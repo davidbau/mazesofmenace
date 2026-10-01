@@ -6,10 +6,8 @@
 // `const struct symdef defsyms[MAXPCHARS + 1]` by including include/defsym.h in
 // PCHAR_DRAWING mode.  `explanation` is the PCHAR/PCHAR2 macro's `desc` argument.
 //
-// GROUND TRUTH: generated 2026-08-14 by compiling
 // nethack-c-v5/upstream/include/defsym.h in PCHAR_DRAWING mode against a local
 // mirror of drawing.c's defsyms[] initialiser and dumping
-// defsyms[i].explanation for every i — the same method as tools/dump-oc-name.c
 // and js/oc_name_data.js, zero hand-curation.  This is the 5.0 tree, NOT
 // nethack-c/ (3.7).  MAXPCHARS == 105 in both, matching js/const.js:3.
 //

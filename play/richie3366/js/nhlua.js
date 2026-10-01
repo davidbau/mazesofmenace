@@ -59,13 +59,17 @@ export function lua_integer_unpacked(number) {
 /**
  * Lua 5.4.8 lauxlib.c luaL_checkinteger/interror: no truncation.
  * The optional width applies a C destination cast before returning a JS
- * Number, so coordinate/table input retains exact low bits of Lua integers.
+ * Number. Width 64 transports a lua_Integer: safe values use Number and
+ * larger values retain BigInt until the caller applies its destination cast.
  */
 export function luaL_checkinteger_unpacked(v, width = null) {
     const number = lua_number_unpacked(v);
     const integer = lua_integer_unpacked(number);
-    if (integer !== null)
-        return Number(width === null ? integer : BigInt.asIntN(width, integer));
+    if (integer !== null) {
+        const narrowed = width === null ? integer : BigInt.asIntN(width, integer);
+        const result = Number(narrowed);
+        return width === 64 && !Number.isSafeInteger(result) ? narrowed : result;
+    }
     if (number !== null) throw new Error('bad argument (number has no integer representation)');
     const got = (v == null) ? 'nil'
         : (typeof v === 'object' ? 'table' : typeof v);

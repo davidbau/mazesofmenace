@@ -18,13 +18,6 @@ import { ENGRAVE, HEADSTONE } from './const.js';
 import { GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS } from './const.js';
 import { LARGEST_INT, ARTICLE_A, SUPPRESS_SADDLE, has_mgivenname, G_GENOD, MM_NOMSG } from './const.js';
 import { addtobill } from './shk.js';
-/* C's dozap RETURNS an ECMD_* code (zap.c:2626-2682); this body signalled
- * only through g.context.move and returned undefined, so the capture-replay
- * sweep's return comparison could never agree with C.  The 'z' dispatcher
- * (js/cmd.js:27450) ignores the value, so this is a faithfulness fix, not a
- * behaviour change — but it is the difference between a red sweep record and
- * a green one, and the record it fixes is exactly the no-candidates early-out
- * arm added above (seed0362-barbarian-quest-planes: C returns ECMD_CANCEL=2). */
 import { ECMD_OK, ECMD_CANCEL, ECMD_TIME } from './const.js';
 import { POOL, MOAT, DRAWBRIDGE_DOWN, IS_FOUNTAIN, Is_waterlevel, Is_airlevel } from './const.js';
 import { PIT, FIRE_RES, COLD_RES, SHOCK_RES, SLEEP_RES, ACID_RES, DISINT_RES, POISON_RES, W_ARMOR, W_ACCESSORY, W_WEP, W_ART, W_RING, W_ARMG, W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMF, W_ARMS, W_AMUL, W_TOOL, W_RINGL, W_RINGR, SDOOR, SCORR, DOOR, CORR, ROOM, D_CLOSED, D_LOCKED, D_TRAPPED, D_NODOOR, BOLT_LIM, STATUE_TRAP, STONE, ZAP_POS, IS_WALL, IS_OBSTRUCTED, IS_TREE, IS_ROOM, isok, W_NONDIGGABLE, Is_earthlevel, u_at, TRAPDOOR, HOLE, NO_TRAP_FLAGS } from './const.js';
@@ -54,16 +47,6 @@ import { is_ice } from './engrave.js';
 import { create_gas_cloud } from './region.js';
 import { closed_door, may_dig, is_pool } from './look.js';
 import { m_at, mon_nam, xkilled, XKILL_GIVEMSG, XKILL_NOCORPSE, more_experienced, dmgval, u_slow_down } from './uhitm.js';
-/* js/uhitm.js's more_experienced (imported above, used at the pre-existing
- * call site below) unconditionally sets disp.botl on any urexp change; C
- * gates that assignment behind `#ifdef SCORE_ON_BOTL`, which this build does
- * NOT define (config.h:627 is commented out; verified against every patch
- * and nethack-c-v5/patches + build-capture-src-v5.sh — none defines it), so
- * C never sets botl from urexp alone. js/exper.js's more_experienced ports
- * that guard (checking flags.showscore, the option SCORE_ON_BOTL exposes,
- * which defaults FALSE) and is the C-faithful body for weffects()'s
- * more_experienced(0,10) disclose call below — board evidence: rec#56 gets
- * +10 urexp with display.botl untouched (boardall-s/weffects.jsonl). */
 import { more_experienced as more_experienced_faithful, losexp } from './exper.js';
 /* C ref: mondata.h DEADMONSTER(mon) — mhp <= 0. */
 function DEADMONSTER(mon) { return !!(mon && (mon.mhp | 0) <= 0); }
@@ -144,8 +127,6 @@ import { setmangry, wake_nearto } from './mklev.js';
 import { mondead as mondead_zap } from './mklev.js';
 import { pay_for_damage } from './shk.js';
 import { dist2 } from './hacklib.js';
-/* zap_over_floor (zap.c:5141) support — the whole C body, not the ZT_FIRE
- * fragment it replaced. */
 import { LAVAPOOL, LAVAWALL, IRONBARS, DRAWBRIDGE_UP, ICE, VWALL, HWALL,
          ICED_POOL, ICED_MOAT, DB_UNDER, DB_FLOOR, DB_ICE, IS_WATERWALL,
          SHOP_BARS_COST, SHOP_DOOR_COST, SHOPBASE, D_BROKEN, TT_LAVA,
@@ -190,7 +171,6 @@ import { bypass_obj } from './worn.js';
 import { NON_PM, MCORPSENM, ismnum, NO_NC_FLAGS, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL } from './const.js';
 import { PM_LONG_WORM } from './pm.generated.js';
 import { ENV } from './hostenv.js';
-// ── Wand type constants (objects.h — Wave-D build, WAN_LIGHT base = 410) ─────
 // C ref: nethack-c/include/objects.h WAND() entries, sequential from WAN_LIGHT.
 const WAN_LIGHT = 410;
 const WAN_SECRET_DOOR_DETECTION = 411;
@@ -293,7 +273,7 @@ const AD_ELEC = 6;
 const AD_DISN = 5;
 const AD_ACID = 8;
 const AD_RBRE = 242; /* monattk.h — random breath weapon (resist's monkilled adtyp) */
-const AD_DGST = 26; /* monattk.h:68 — digests opponent (monkilled's disintegration gate) */
+const AD_DGST = 26;
 const AT_ENGL = 11; /* monattk.h:21 — engulf (swallow or by a cloud) */
 const AD_DRLI = 15; /* monattk.h:57 — drains life levels (drain_item's defends() arg) */
 const DWARVISH_CLOAK = 141; /* objects.h CLOAK() DWARVISH_CLOAK; was 144 = ALCHEMY_SMOCK */
@@ -403,11 +383,6 @@ export function obj_unpolyable(obj) {
     const WAN_POLYMORPH_OTYP = 422;
     const SPE_POLYMORPH_OTYP = 399;
     const POT_POLYMORPH_OTYP = 316;
-    /* objects.h AMULET_OF_UNCHANGING == 207, verified with
-     * tools/c-const-oracle.mjs against the v5 recorder build.  This was 211
-     * ("Object type numbers from u_init.js"), which is a different amulet, so
-     * the unpolyable guard for it never fired and an amulet of unchanging on
-     * the floor would have been polymorphed. */
     const AMULET_OF_UNCHANGING_OTYP = 207;
 
     if (obj.otyp === WAN_POLYMORPH_OTYP
@@ -427,35 +402,6 @@ export function obj_unpolyable(obj) {
     // obj_resists(obj, 5, 95)
     return obj_resists(obj, 5, 95);
 }
-/* ---------------------------------------------------------------------------
- * The hero-blindness triple: Blind / make_blinded / toggle_blindness.
- *
- * WHY THESE LIVE HERE.  C's make_blinded is potion.c:260-331.  js/ holds FOUR
- * bodies of that name and every one of them is a no-op:
- *     js/potion.js:1206   make_blinded(timeout, talk)   — empty body, "stub: no-op"
- *     js/mhitu.js:121     make_blinded(_dur, _vis)      — empty body, exported
- *     js/sit.js:59        make_blinded(_timeout,_noisy) — empty body
- * and js/display.js:2293 records the consequence verbatim: "KNOWN GAP: nothing
- * in js/ currently calls make_blinded, so this stays silent everywhere in the
- * corpus".  So there was no real body to import — hence a real one here, at the
- * only call site the corpus actually reaches (flashburn).  It is EXPORTED so
- * the three no-op copies above can collapse onto it.  That collapse is NOT
- * shipped with this change and must NOT be done as a mechanical rewire: unlike
- * flashburn's (measured: 2 executions, both via_lightning), those three stubs
- * sit on the cream-pie / potion-of-blindness / sit-on-throne paths, where
- * turning a no-op into a real blinding is a live behaviour change that needs
- * its own probe-and-gate pass.  It is reported as a separate finding instead.
- * Do NOT add a fifth copy.
- *
- * RNG, VERIFIED AGAINST C: make_blinded draws NOTHING.  Its whole body is
- * set_itimeout() + message selection + toggle_blindness(), and toggle_blindness
- * (potion.c:335-364) is SET_BOTL + vision_recalc(0) + see_monsters() +
- * Sting_effects() + learn_unseen_invent() — no rn*() on any arm of either.  The
- * same is true of resists_blnd (mondata.c:247-272) and resists_blnd_by_arti
- * (mondata.c:277-292).  So everything added here is state + display, never RNG
- * order, on every path including the gapped ones.
- * ---------------------------------------------------------------------------
- */
 /* C ref: nethack-c/include/youprop.h:87-103.
  *   HBlinded u.uprops[BLINDED].intrinsic / EBlinded .extrinsic / BBlinded .blocked
  *   BlindedTimeout (HBlinded & TIMEOUT)
@@ -515,33 +461,6 @@ function _set_HBlinded(val) {
     const p = _blind_prop();
     p.intrinsic = ((p.intrinsic | 0) & ~_TIMEOUT_MASK) | v;
 }
-/* C ref: nethack-c/src/potion.c:335-364 toggle_blindness().
- *   SET_BOTL; gv.vision_full_recalc = 1; vision_recalc(0);
- *   if (Blind_telepat || Infravision || Stinging) see_monsters();
- *   if (Stinging) Sting_effects(-1);
- *   if (!Blind) learn_unseen_invent();
- * No RNG on any arm.
- * learn_unseen_invent() IS NOW CALLED.  The gap note that stood here argued
- * "the !Blind arm only runs when REGAINING sight, which the flashburn call site
- * (make_blinded with a positive timeout) never does" — true of that ONE caller
- * and false of the function: potion.c:1131 peffect_extra_healing calls
- * healup(..., cureblind=TRUE) -> make_blinded(0L, TRUE), which is exactly a
- * blindness ENDING.  learn_unseen_invent() then xname()s every inventory item
- * the hero could not see, and xname's observe_object sets obj->dknown — INCLUDING
- * the potion currently in use.  dopotion's tail (potion.c:640) is gated on
- * `otmp->dknown`, so without this the makeknown()+more_experienced() branch is
- * skipped and C's exercise(A_WIS) rn2(19) never fires: seed4500 step 1204 records
- * THREE rn2(19)@exercise(attrib.c:509) after peffect_extra_healing's d(4,8), and
- * peffect_extra_healing itself only has two (A_CON, A_STR).  The third is that
- * makeknown.  So this is an RNG-LOAD-BEARING omission, not a display gap.
- * Blind_telepat / Infravision / Stinging remain gapped and remain false for every
- * corpus hero form, so see_monsters()/Sting_effects() are still skipped exactly
- * where C skips them.  RNG in learn_unseen_invent itself: none — xname and
- * addinv_core2 draw nothing; the rn2(19) is drawn later, by the CALLER's
- * makeknown, which this unblocks.
- * js/vision.js does not model blindness at all (its header says so), so
- * vision_recalc(0) is called for C-faithful shape; it is a no-op with respect
- * to darkness today.  That is a display gap, not an RNG one. */
 function toggle_blindness() {
     game.disp = game.disp || {};
     game.disp.botl = 1;                 /* SET_BOTL */
@@ -578,35 +497,6 @@ function _Halluc() {
     const h = up?.[HALLUC];
     return !!(h?.intrinsic);
 }
-/* C ref: nethack-c/src/potion.c:260-331 make_blinded(long xtime, boolean talk).
- * Structure preserved: probe HBlinded ahead to learn whether the hero's Blind
- * state is about to TOGGLE (the Eyes of the Overworld can override it), pick
- * the message, store the real timeout, then toggle_blindness() iff it toggled.
- *
- * THE REGAINING-SIGHT TALK ARM (potion.c:277-282) IS NOW PORTED — it is the
- * second half of seed0108's step-62 topline "You've got the glop off.  You can
- * see again.", raised by wipeoff()'s make_blinded(0L, TRUE) (do.c:2378).  Its
- * partner, js/cmd.js wipeoff() + the js/allmain.js occupation driver arm,
- * landed in the same change: porting either alone buys nothing, which is what
- * the 2026-08-17 note here said and it was right.
- *
- * The arm only fires on `can_see_now && !u_could_see`, i.e. a blindness that is
- * ENDING, so it is invisible to the two other talk == TRUE callers in this tree
- * — js/cmd.js:3475 (#wizintrinsic) and js/spell.js:899 both pass a POSITIVE
- * xtime onto an already-blind or newly-blinded hero, which is the `xtime &&
- * !old` / losing-sight side.
- *
- * STILL GAPPED, and each one still needs machinery this module does not have:
- * the `old && !xtime` clearing-without-toggling arm and the `!old && xtime`
- * setting-without-toggling arm (potion.c:283-297, 309-323) — haseyes(),
- * PermaBlind, Blindfolded, body_part(EYE)/eyecount()/makeplural()/vtense(),
- * strange_feeling().  The losing-sight arm is now COMPLETE: its talk half
- * (potion.c:301-306) and its Punished/set_bc(0) tail are both here.
- *
- * RNG ON EVERY ARM, PORTED AND GAPPED: none.  Each is pline/Your/
- * strange_feeling, and strange_feeling's rn2 lives in its potion-quaffing arm,
- * which make_blinded cannot reach.  So a caller landing on a gapped arm still
- * gets silence, never a wrong RNG sequence. */
 export function make_blinded(xtime, talk) {
     const old = _BlindedTimeout();
     const u_could_see = !_Blind();
@@ -633,12 +523,6 @@ export function make_blinded(xtime, talk) {
                 pline("Far out!  Everything is all cosmic again!");
             else
                 pline("You can see again.");
-            /* C's fpostfx() message is still inside the command that produced
-             * the result line.  Fold the fresh pline back onto that result so a
-             * later pline sees the same accumulated tty topline.  In gen392 the
-             * later line is allmain.c's encumber_msg(); its addition exceeds the
-             * tty reserve and naturally pages these two messages.  make_blinded
-             * itself has no display_nhwindow/more call and must not force one. */
             /* pline() now adopts an otherwise-idle result channel itself.
              * Only fold the two channels here when that result is still
              * separate; if pline() already consumed it, prepending the saved
@@ -653,21 +537,7 @@ export function make_blinded(xtime, talk) {
             }
         }
     }
-    /* C potion.c:300-308 — losing sight.  The `talk` half (the "cloud of
-     * darkness" / hallucinating variants) is still gapped, but the tail of the
-     * SAME arm is not display text: it is the one call that initialises the
-     * ball & chain map-memory variables BEFORE the hero goes blind, while the
-     * hero can still see and set_bc() can therefore read the glyph that lies
-     * under each of them (ball.c:388-420).  Without it u.bglyph / u.cglyph are
-     * undefined at the first blind move_bc and the pair drop nothing when they
-     * leave a square.  Witness: seed4500-knight-coverage step 994, blinded by a
-     * raven while punished.  RNG-free. */
     if (u_could_see && !can_see_now) {  /* potion.c:300 losing sight */
-        /* C potion.c:301-306 — the talk half.  Both lines are plain plines
-         * with no RNG and no state; the only reason this was gapped is that
-         * no public session lost sight through a talking caller.
-         * gen413-reseed-seed565607 step 1094 does: C's topline there is
-         * "A cloud of darkness falls upon you.--More--". */
         if (talk) {
             if (_Halluc())
                 pline("Oh, bummer!  Everything is dark!  Help!");
@@ -687,155 +557,23 @@ export function make_blinded(xtime, talk) {
         toggle_blindness();
     }
 }
-/* C ref: nethack-c/src/mondata.c:247-272 resists_blnd(), hero arm only:
- *     if (is_you ? (Blind || Unaware) : ...) return TRUE;
- *     if (dmgtype_fromattack(ptr, AD_BLND, AT_EXPL|AT_GAZE)) return TRUE;
- *     if (resists_blnd_by_arti(mon)) return TRUE;
- *     if (is_you && Blnd_resist) { impossible(...); return TRUE; }
- *     return FALSE;
- * Unaware is youprop.h:399 `(gm.multi < 0 && (unconscious() || is_fainted()))`.
- *
- * NOTE the first arm: an ALREADY-BLIND hero resists, so a second flash neither
- * re-blinds nor prints, and flashburn falls through to `return FALSE`.  The
- * previous body here returned TRUE and printed unconditionally, which is why
- * this is a behaviour fix and not only a state fix.
- *
- * KNOWN GAP: the AD_BLND EXPL/GAZE arm (hero polymorphed into a yellow light
- * or an Archon), the Sunsword arm, and Blnd_resist are not reproduced —
- * dmgtype_fromattack over the hero's own permonst and the artifact table do not
- * resolve here.  No corpus hero form or inventory reaches any of them, and none
- * of them draws RNG.  Unaware is approximated by u.usleep/u.uunaware under the
- * multi<0 guard.  The port keeps the multi counter on game (g.multi,
- * cmd.js:967/7274), not on u, so that is what is read; unconscious() and
- * is_fainted() are the real ported bodies (js/pickup.js:377, js/eat.js:1556),
- * so Unaware is exact rather than approximated. */
 export function _u_resists_blnd() {
     if (_Blind())
         return true;
     /* Unaware — youprop.h:399 (gm.multi < 0 && (unconscious() || is_fainted())) */
     return ((game.multi | 0) < 0) && (unconscious() || is_fainted());
 }
-/* C ref: nethack-c/src/mondata.c:277-292 resists_blnd_by_arti(mon) — TRUE when
- * the wielded weapon is an artifact conferring blindness resistance (Sunsword).
- * KNOWN GAP: the artifact property table does not resolve in this module, so
- * this reports FALSE.  No corpus hero wields Sunsword.  No RNG either way. */
 function _u_resists_blnd_by_arti() {
     /* C artifact.c:2264 — `is_art(uquiver, ART_SUNSWORD)` is not involved;
      * resists_blnd_by_arti checks the wielded weapon.  ART_SUNSWORD is the
      * twentieth artilist entry (the same ordinal used by light.js). */
     return !!game.u?.uwep && ((game.u.uwep.oartifact | 0) === 20);
 }
-/* ---------------------------------------------------------------------------
- * flashburn — flash blindness on hero from lightning or light.
- * C ref: nethack-c/src/zap.c:3053-3075
- *     boolean flashburn(long duration, boolean via_lightning)
- *     {
- *         if (!resists_blnd(&gy.youmonst)) {
- *             You(are_blinded_by_the_flash);      // zap.c:63 "are blinded by the flash!"
- *             make_blinded(duration, FALSE);
- *             if (!Blind)
- *                 Your1(vision_clears);           // decl.c:49 "vision quickly clears."
- *             return TRUE;
- *         }
- *         if (!via_lightning && resists_blnd_by_arti(&gy.youmonst)) {
- *             shieldeff(u.ux, u.uy);
- *             return TRUE;
- *         }
- *         return FALSE;
- *     }
- *
- * `duration` is evaluated at the CALL SITE (C evaluates arguments before the
- * call), so the rnd(100) at zap.c:2740 and the d(nd,50) at zap.c:4979 fire
- * unconditionally and are already drawn by the callers below.  flashburn itself
- * draws nothing, and neither does anything it calls — see the RNG note on the
- * blindness triple above.
- *
- * ── REACHABILITY, MEASURED (2026-08-09, all 64 sessions, probes at fn entry
- *    and at each of the three call sites, module-load canary 64/64) ──────────
- * flashburn() executes exactly TWICE in the whole corpus:
- *   seed1900-wizard-quaff-zap (PASS)   via zap.c:2740, the wand-break arm,
- *                                      via_lightning=TRUE, duration=rnd(100)=76
- *   seed5500-wizard-items-alchemy(FAIL) via zap.c:4979, ZT_LIGHTNING,
- *                                      via_lightning=TRUE, duration=d(nd,50)
- * The zapyourself WAN_LIGHT / EXPENSIVE_CAMERA call site (zap.c:2920) — the one
- * whose discarded return value was fixed in 395f93f7 — fires ZERO times.
- * use_camera() DOES run twice in seed0209, but both are DIRECTIONAL (apply.c:106
- * do_blinding_ray), not the cursed-camera or self-directed arms, so neither
- * reaches zapyourself and neither reaches here.  The 395f93f7 learn_it fix is
- * therefore correct-but-currently-dead; it is kept (Cardinal Rule 1).
- * Both live calls pass via_lightning=TRUE, so the resists_blnd_by_arti/shieldeff
- * arm is unreachable in the corpus.
- *
- * seed5500's C ground truth for the blinding this now performs: step 842 shows
- * "You are blinded by the flash!" and the status line turns from "Stressed" to
- * "Stressed Blind" for every step from 842 to the session end at 909.
- * ---------------------------------------------------------------------------
- */
 /* Exported for js/mcastu.js mcast_lightning (mcastu.c:596), which is C's third
  * call site for it and the only one outside zap.c. */
 export async function flashburn(duration, via_lightning) {
     if (!_u_resists_blnd()) {
         await pline('You are blinded by the flash!');   /* zap.c:3058 */
-        /* ── WHY make_blinded IS GATED ON _topline_more_pending() ──────────
-         * In C, You(are_blinded_by_the_flash) is pline() -> update_topl(), and
-         * when the new text does not fit beside what the topline already holds
-         * it calls more(), which BLOCKS until the player dismisses it.  Only
-         * then does control return and make_blinded() run.  This port's pline()
-         * (js/display.js:2757) never blocks — it appends to _pending_message and
-         * the --More-- is resolved later, at the input boundary — so a naive
-         * `pline(); make_blinded();` applies the blindness at a moment when C is
-         * still sitting inside more() with an unblinded hero.
-         *
-         * MEASURED, and this is not hypothetical: calling make_blinded()
-         * unconditionally here turns seed1900-wizard-quaff-zap from PASS to FAIL
-         * (rng stays perfect at 3255/3255; screens.matched 12 -> 9).  Its step 9
-         * screen is "You shock yourself!--More--" and C's status line there is
-         * "Dlvl:1 $:0 HP:12(12) Pw:8(8) AC:9 Xp:1" with NO "Blind": C drew the
-         * rnd(100) (it is an argument, evaluated before the call), entered
-         * flashburn, and is parked inside more() for the whole rest of the
-         * recorded session — steps 10 and 11 show the same --More--.  C never
-         * reaches make_blinded there.  Blinding anyway is an ORDERING ERROR, not
-         * compensation removal, so it is not landed.
-         * PARKED-NOTE: session=seed1900-wizard-quaff-zap citation-only
-         *
-         * _topline_more_pending() (js/display.js:2794) is this port's existing
-         * answer to "would C still be inside more() right now"; js/dogmove.js:2923
-         * uses it for the same reason on the pet-kill newsym path, and its own
-         * comment says so.  So: apply the blindness exactly when C would have
-         * applied it before the next screen capture.
-         *
-         * THE GAP THAT USED TO BE HERE IS NOW CLOSED.  This comment previously
-         * recorded a KNOWN GAP: "when a --More-- IS pending, C blinds the hero
-         * after the player dismisses it and this port never does — there is no
-         * general post-more deferred-effect queue", and named the unblocking
-         * task as building one.  That queue now exists
-         * (js/display.js _defer_until_more_dismissed, drained by flush_screen at
-         * the instant the whole pending --More-- chain has been paged, i.e. when
-         * C's more() returns and the C caller resumes), so the gated arm is
-         * DEFERRED rather than DROPPED.  Both branches below are therefore
-         * C-faithful in ordering; the only difference is WHEN they run.
-         *
-         * MEASURED, seed5500-wizard-items-alchemy: the ZT_LIGHTNING self-zap at
-         * step 838 accumulates four plines ("You kill the poor kitten! ...",
-         * "The bolt of lightning bounces! ...", "Your balsa wand breaks apart
-         * and explodes!", "Your ring of see invisible turns to dust and
-         * vanishes!") before this one, so C pages three --More--s (steps
-         * 839/840/841) and lands "You are blinded by the flash!" alone on the
-         * topline at step 842 — where its status line reads "Stressed Blind"
-         * and every remembered room-floor cell has darkened to S_darkroom.  The
-         * port reached this call with a --More-- pending and, before this
-         * change, dropped the blinding entirely: steps 842-909 rendered
-         * "Stressed" with an undarkened room.  Deferring restores both.
-         *
-         * seed1900-wizard-quaff-zap (PASS) is the other live call and is
-         * unaffected: its recorded session ENDS with the --More-- still up
-         * (steps 10 and 11 press non-dismiss keys), so the queue is never
-         * drained — matching C, which is still parked inside more() there and
-         * never reaches make_blinded either.
-         *
-         * RNG: none on either branch — make_blinded and everything it calls
-         * draw nothing, which is what makes deferring safe (the queue moves the
-         * effect in time, so an RNG-drawing effect could never be queued). */
         const _apply_blindness = () => {
             make_blinded(duration, false);              /* zap.c:3059 */
             /* zap.c:3060-3061 — BOTH statements are downstream of the blocking
@@ -855,32 +593,16 @@ export async function flashburn(duration, via_lightning) {
         return true;                                    /* zap.c:3062 */
     }
     if (!via_lightning && _u_resists_blnd_by_arti()) {
-        /* C zap.c:3071 shieldeff(u.ux, u.uy) — the sparkle animation.
-         * KNOWN GAP: shieldeff is not ported in this module; it is a pure
-         * display effect and draws no RNG.  Unreachable in the corpus (both
-         * live call sites pass via_lightning=TRUE). */
         return true;                                    /* zap.c:3072 */
     }
     return false;                                       /* zap.c:3074 */
 }
-/* ---------------------------------------------------------------------------
- * recharge_ring — apply an electric zap to a carried ring (charge effect).
- * C ref: nethack-c/src/read.c:807-840 (ring path of recharge()).
- *
- * C RNG: rn2(7) at read.c:807 — if obj->spe > rn2(7), ring explodes.
- * For the seed1900 path: obj->spe=0, rn2(7)=1 → 0 > 1 is FALSE → ring spins.
- * pline output: "<Name> spins clockwise for a moment."
- * No additional RNG beyond rn2(7) in this branch.
- * ---------------------------------------------------------------------------
- */
 async function recharge_ring(obj) {
     /* C read.c:807: int s = is_blessed ? rnd(3) : is_cursed ? -rnd(2) : 1 */
     /* For ordinary (mag=0) recharge: is_blessed=false, is_cursed=false → s=1 */
     /* No s-rng here (s determined without RNG for neutral ring). */
     const spe = (obj ? obj.spe : 0) | 0;
     if (spe > rn2(7) || spe <= -5) {
-        /* C read.c:808-814: ring explodes.
-         * For seed1900: spe=0 > rn2(7)=1 → false, so we never enter here. */
         /* C uses Yobjnam2(obj, "pulsate") followed by otense(obj, "explode").
          * Keep the two clauses in one pline: this is the text C gives to the
          * player before Ring_gone/useup, and it also preserves the message
@@ -907,14 +629,6 @@ async function recharge_ring(obj) {
         await losehp(_zap_Maybe_Half_Phys(damage), 'exploding ring', KILLED_BY_AN);
     }
     else {
-        /* C read.c:817-819: "Your <ring> spins clockwise for a moment." — the
-         * ring is rendered via xname(obj).  Derive the display name from the real
-         * otyp (obj_typename) when the cloned obj has no cached _name, so the
-         * topline TEXT (and therefore the more() split point) matches C exactly
-         * — seed1900's recharged ring is otyp 174 = "ring of gain strength", and
-         * the combined "You shock yourself!  Your ring of gain strength spins
-         * clockwise for a moment." overflows the topline so the first --More--
-         * page shows only "You shock yourself!". */
         let name = obj && obj._name;
         if (!name && obj) {
             try { name = obj_typename(obj.otyp | 0); } catch { /* fall back */ }
@@ -942,11 +656,6 @@ const DESTROY_STRINGS = [
     ['turns to dust and vanishes', '', ''],
     ['breaks apart and explodes', '', 'exploding wand'],
 ];
-/* Exported so the hero-defender attack arms in js/mhitu.js can reach the REAL
- * body: that file carries its own `destroy_items` stub (a constant `return
- * false`, drawing nothing), and js/uhitm.js carries a second one that draws a
- * FABRICATED rn2(10).  Both shadow this implementation — the shape
- * tools/equiv-test/auto-replay-sweep.mjs reports as `resolved_is_stub`. */
 export async function destroy_items(mon_is_hero, dmgtyp, dmg_in) {
     /* C zap.c:5990-6001: limit = dmg_in / DMG_DESTROY_SCALE + possible increment */
     let limit = Math.trunc(dmg_in / DMG_DESTROY_SCALE);
@@ -961,15 +670,6 @@ export async function destroy_items(mon_is_hero, dmgtyp, dmg_in) {
      * for u_carry); reservoir-sample eligible stacks into items_to_destroy[0..limit).
      * The rn2(elig_stacks) at 6038 fires once for every eligible stack PAST the
      * first 'limit' (elig_stacks counts pre-increment). */
-    /* All damage types scan the LIVE game.invent chain.  Earlier the AD_ELEC path
-     * read a synthetic game.u._inv copy (a historical workaround from before
-     * game.invent was populated); that copy is now harmful — maybe_destroy_item_elec
-     * unlinks the destroyed object from game.invent by reference (_destroy_useup /
-     * _ring_gone), so operating on phantom copies fired the right RNG but left the
-     * real inventory intact (seed5500 step 839: the bounced lightning bolt's
-     * destroy_items(AD_ELEC) destroyed nothing → the see-invisible ring + balsa wand
-     * survived in JS, shifting every later drop-menu letter and the weight/
-     * encumbrance/umovement banking).  Scan the real chain so the side effects land. */
     const chain = [];
     for (let o = game.invent; o; o = o.nobj)
         chain.push(o);
@@ -1042,8 +742,6 @@ function _destroyable(obj, adtyp) {
  * and the destruction count loop (for quan: if(!rn2(3)) cnt++) @5889. */
 async function maybe_destroy_item(obj, dmgtyp) {
     if (!obj) return 0;
-    /* C zap.c:5809: external worn item protects inventory? — rn2(100) only when a
-     * resistance item is worn (none for the corpus wizard; prob 0 → no roll). */
     if (inventory_resistance_check(dmgtyp))
         return 0;
     let quan = obj.quan | 0;
@@ -1086,24 +784,6 @@ async function maybe_destroy_item(obj, dmgtyp) {
             if (!rn2(3)) cnt++;
         if (!cnt)
             return 0;
-        /* C zap.c:5899-5911 — THE DESTRUCTION MESSAGE.
-         *     mult = (cnt == 1L) ? ((quan == 1L) ? "" : "One of ")
-         *            : ((cnt < quan) ? "Some of "
-         *               : (quan == 2L) ? "Both of " : "All of ");
-         *     pline("%s%s %s!", mult,
-         *           (cnt == 1L && quan == 1L) ? Yname2(obj) : yname(obj),
-         *           destroy_strings[dindx][(cnt > 1L)]);
-         * `u_carry || vis` is TRUE on this path (the hero's own pack).  Printed
-         * BEFORE the useup loop, while obj still holds its pre-destruction quan
-         * and its name.
-         *
-         * This whole message was ABSENT — the AD_ELEC sibling
-         * (maybe_destroy_item_elec) carried it and this body did not, so every
-         * fire/cold item destruction drew C's RNG and rendered nothing.  A
-         * missing pline is not merely a missing line: C's update_topl fires
-         * more() at each overflow, so the messages are also the page boundaries.
-         * Measured on seed5002 segment 0 (a bolt of fire bounced back onto the
-         * hero at step 88), C pages FIVE frames and this port paged three. */
         {
             const mult = (cnt === 1)
                 ? ((quan === 1) ? '' : 'One of ')
@@ -1210,10 +890,6 @@ async function maybe_destroy_item_elec(obj, dmgtyp) {
         /* C zap.c:5855-5867: ring sub-switch. */
         const wornRing = (((obj.owornmask | 0) & W_RING) !== 0);
         const gloves = game.u && game.u.uarmg;
-        /* uarmg && !is_metallic(uarmg): worn ring under non-metallic gloves is
-         * protected.  No corpus glove is non-metallic on this path; guard kept
-         * faithful via the worn-ring + gloves test (is_metallic unported → if
-         * gloves exist treat conservatively as protected only when present). */
         if ((wornRing && gloves && !_is_metallic(gloves))
             || otyp === RIN_SHOCK_RESIST) {
             skip++;
@@ -1294,10 +970,6 @@ async function maybe_destroy_item_elec(obj, dmgtyp) {
     return dmg;
 }
 
-/* C is_metallic(obj): material is metal-ish.  Unported full material table; no
- * corpus AD_ELEC path reaches it with non-metallic gloves, so default false
- * (gloves treated as not protecting).  Faithful for the corpus; widen if a
- * session exercises non-metallic-glove ring protection. */
 function _is_metallic(_obj) {
     return false;
 }
@@ -1318,17 +990,6 @@ export function zappable(obj) {
         obj.spe = spe - 1;
     return 1;
 }
-/* ---------------------------------------------------------------------------
- * zapyourself — hero zaps a wand/spell at themselves.
- * C ref: nethack-c/src/zap.c:2700-3008 zapyourself(struct obj *obj, boolean ordinary)
- *
- * Returns: damage (int) — 0 for non-damaging otyps.
- *
- * Ported: damage-roll skeleton + the WAN_LIGHTNING path in full detail
- * (seed1900 SCORE-MOVER — 99.88% close).  Other branches follow C structure
- * but call stubs for unported helpers (polyself, tele, etc.).
- * ---------------------------------------------------------------------------
- */
 /* C zap.c:1156-1230, unturn_you().  An undead-turning zap at the hero
  * reverses the normal undead-turning effect on carried corpses: one corpse
  * from each stack is revived, then the backlash stuns the hero.  Keep this
@@ -1385,7 +1046,6 @@ export async function zapyourself(obj, ordinary) {
             exercise(A_STR, false);
             break;
         case WAN_LIGHTNING:
-            /* C zap.c:2725-2741 — seed1900 case */
             learn_it = true;
             orig_dmg = d(12, 6); /* C zap.c:2727 — SCORE-MOVER divergence point */
             /* Shock_resistance check — wizard has none */
@@ -1398,13 +1058,6 @@ export async function zapyourself(obj, ordinary) {
             }
             /* C zap.c:2739: (void) destroy_items(&gy.youmonst, AD_ELEC, orig_dmg) */
             await destroy_items(true, AD_ELEC, orig_dmg);
-            /* C zap.c:2740: (void) flashburn((long) rnd(100), TRUE)
-             * NOTE: rnd(100) is evaluated as an argument (C evaluates all args
-             * before the call), but for seed1900 this fires AFTER the session's
-             * last recorded step boundary, so it is not checked by the score test.
-             * We call it faithfully to preserve C's RNG sequence for sessions
-             * that record past this point.  rnd(100) is evaluated BEFORE the
-             * awaited flashburn call (C evaluates args before the call). */
             {
                 const _fbDur = rnd(100);
                 await flashburn(_fbDur, true);
@@ -1461,40 +1114,6 @@ export async function zapyourself(obj, ordinary) {
             break;
         case WAN_MAGIC_MISSILE:
         case SPE_MAGIC_MISSILE:
-            /* C zap.c:2790-2801 —
-             *     learn_it = TRUE;
-             *     if (Antimagic) {
-             *         shieldeff(u.ux, u.uy);
-             *         pline_The("missiles bounce!");
-             *         monstseesu(M_SEEN_MAGR);
-             *     } else {
-             *         damage = d(4, 6);
-             *         pline("Idiot!  You've shot yourself!");
-             *         monstunseesu(M_SEEN_MAGR);
-             *     }
-             *
-             * The comment that stood here — "Antimagic check omitted" — named
-             * its own defect and was RIGHT: this arm ran C's ELSE branch
-             * unconditionally, so a hero with Antimagic drew d(4,6) — FOUR
-             * leaves — where C's taken arm draws NONE.  shieldeff
-             * (display.c:1109) is a sparkle animation and monstseesu /
-             * monstunseesu (mondata.c:1557, :1572) only set or clear monster
-             * memory bits; all three are RNG-free, so the ONLY stream
-             * difference between C's two arms is the d(4,6).  Not drawing it on
-             * the Antimagic path is what makes the port C-faithful — it is a
-             * branch this port never had, not a deleted call.
-             *
-             * MEASURED, gen419 step 8 and gen011 step 115 (both key '.'): C
-             * paints "The missiles bounce!" where this port painted "Idiot!
-             * You've shot yourself!" — the two arms of this one if/else, so the
-             * branch C took is directly readable off the recorded topline.
-             * Both runs are RNG-FIRST at lead 0, the extra-draw signature.
-             *
-             * _cm_Antimagic() is an exact port of youprop.h:57
-             * `Antimagic == (HAntimagic || EAntimagic)` and already served
-             * cancel_monst's resist path in this same file, so the sibling
-             * comment at the WAN_FIRE arm ("no Antimagic tracking yet") is
-             * stale. */
             learn_it = true;
             if (_cm_Antimagic()) {
                 /* C: shieldeff(u.ux, u.uy) — the sparkle animation, display
@@ -1523,23 +1142,6 @@ export async function zapyourself(obj, ordinary) {
             break;
         case WAN_CANCELLATION:
         case SPE_CANCELLATION:
-            /* C zap.c:2812-2815:
-             *     (void) cancel_monst(&gy.youmonst, obj, TRUE, TRUE, TRUE);
-             * This was a TODO, so zapping a wand of cancellation at yourself
-             * did NOTHING.  MEASURED on corpus-generated/v5/train's
-             * gen219-reseed-seed1344065: the hero zaps `c` (a wand of
-             * cancellation) at `.` (self) at step 7, and from then on C's whole
-             * inventory is cancelled while this port's is untouched -- C's
-             * three scrolls read as blank paper at steps 10 and 17, its two
-             * spellbooks are "plain", its potions are water, its +1 quarterstaff
-             * is +0 and its magic marker is (0:0), where this port still had a
-             * scroll of light, a scroll of identify, a spellbook of force bolt,
-             * a potion of gain ability, a blessed +1 quarterstaff and a marker
-             * at (0:20).
-             * Corroborated on an INDEPENDENT frame the cancellation does not
-             * touch directly: step 19 drinks potion `g` and C prints "This
-             * tastes like water." -- the potion of healing this port still
-             * believes it is holding. */
             await cancel_monst(game.youmonst, obj, true, true, true);
             break;
         case SPE_DRAIN_LIFE:
@@ -1635,19 +1237,11 @@ export async function zapyourself(obj, ordinary) {
             break;
         case WAN_DEATH:
         case SPE_FINGER_OF_DEATH:
-            /* C zap.c:2885-2902.  The nonliving/demon arm (zap.c:2887-2892) is
-             * omitted: no corpus hero is in such a form when this fires. */
             learn_it = true;
             /* C zap.c:2894-2895 — killer name + NO_KILLER_PREFIX, set BEFORE the
              * messages because done() reads them. */
             if (!game.svk) game.svk = {};
             if (!game.svk.killer) game.svk.killer = { id: 0, format: 0, name: '', next: null };
-            /* C zap.c:2894 `Sprintf(svk.killer.name, "shot %sself with a
-             * death ray", uhim())` — you.h:315 uhim() is
-             * genders[flags.female ? 1 : 0].him, i.e. "her" or "him".  It was
-             * hard-coded to "her" here, which is right for seed5006's female
-             * Tourist (segment 0) and wrong for the male Knight who does the
-             * same thing in segment 1: C's stone reads "shot himself". */
             game.svk.killer.name =
                 `shot ${game.flags?.female ? 'her' : 'him'}self with a death ray`;
             game.svk.killer.format = NO_KILLER_PREFIX_ZAP;
@@ -1843,9 +1437,6 @@ function findone(zx, zy, found) {
         found.num_traps++;
     }
 
-    /* C detect.c:1700-1721: hidden / unspottable monster.  The trapped-chest
-     * detect_obj_traps() scans (buried/floor/minvent/invent) consume no RNG and
-     * find nothing in the corpus; not ported until exercised. */
     if (mtmp && (!canspotmon(mtmp) || mtmp.mundetected || mtmp.m_ap_type)) {
         if (mtmp.m_ap_type) {
             mtmp.m_ap_type = 0; /* seemimic: reveal a mimicking monster */
@@ -1871,7 +1462,6 @@ function findone(zx, zy, found) {
  */
 export async function findit() {
     const g = game;
-    /* C detect.c:1807: if (u.uswallow) return 0; — hero not swallowed in corpus. */
     if (g.u?.uswallow) return 0;
 
     const found = {
@@ -1924,24 +1514,11 @@ export async function findit() {
 
     /* C detect.c:1890: if (!num) You("don't find anything."). */
     if (!num) {
-        /* Side-channel marker mirroring C's recorder ">pline @ findit" leaf —
-         * tied to the actual pline so the events channel matches. */
         pushRngLogEntry('>findit @ js/zap.js (detect.c:1889)');
         await pline("You don't find anything.");
     }
     return num;
 }
-/* ---------------------------------------------------------------------------
- * zapnodir — zap a NODIR wand/spell (no direction needed).
- * C ref: nethack-c/src/zap.c:2535-2598 zapnodir(struct obj *obj)
- *
- * Dispatches on obj->otyp.  The NODIR wands the corpus exercises:
- *   WAN_SECRET_DOOR_DETECTION (seed2200) → findit() (no RNG).
- * Other NODIR wands (light, enlightenment, create monster, wishing, stasis)
- * follow C structure but are marked TODO; each consumes the RNG C would draw
- * if a session reaches it (noted inline) so the sequence stays faithful.
- * ---------------------------------------------------------------------------
- */
 export async function zapnodir(obj) {
     const g = game;
     const otyp = obj ? (obj.otyp | 0) : 0;
@@ -2077,7 +1654,7 @@ export function flash_str(fltyp, nohallu) {
  */
 function zap_hit(ac, type) {
     const chance = rn2(20);
-    const spell_bonus = 0; /* type ? spell_hit_bonus(type) : 0 — no cast bonus on corpus */
+    const spell_bonus = 0;
     void type;
     if (!chance) /* small chance for naked target to avoid being hit */
         return (rnd(10) < ac + spell_bonus) ? 1 : 0;
@@ -2225,8 +1802,6 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         await poisoned_u('blast', A_DEX, 'poisoned blast', 15, false);
         break;
     case ZT_DEATH: {
-        /* C zap.c:4470-4517.  Death-breath is disintegration; wand/spell
-         * death has its own nonliving/antimagic gates. */
         const deathBreath = abstyp === 24; /* ZT_BREATH(ZT_DEATH) */
         if (deathBreath) {
             const disnProt = inventory_resistance_check(AD_DISN);
@@ -2280,9 +1855,6 @@ async function zhitu(type, nd, fltxt, sx, sy) {
     default:
         break;
     }
-    /* C zap.c:4550-4581: compose the real killer attribution before the
-     * Half_spell_damage gate, then let canonical losehp resolve polymorph,
-     * lifesaving, and any blocking death before zhitu returns. */
     const wand = game.gc_current_wand;
     const verb = abstyp < 10
         ? ((wand && (wand.oclass | 0) === TOOL_CLASS) ? 'played' : 'zapped')
@@ -2416,32 +1988,7 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
     const fltyp = zaptype(type), damgtype = fltyp % 10;
     _buzz_fltyp = fltyp; /* for the bounce message text */
     const fireball = (type === 10 + ZT_FIRE); /* ZT_SPELL(ZT_FIRE) */
-    /* hdmgtype = Hallucination ? rn2(6) : damgtype — no Hallucination on corpus. */
     const hdmgtype = _uhas(23 /* HALLUC */) ? rn2(6) : damgtype;
-    /* C zap.c:4801-4818 — a ray zapped while the hero is engulfed pierces
-     * straight into the swallower; the range/bounce/zap_over_floor loop
-     * below never runs at all (dobuzz returns right after this).
-     *     if (u.uswallow) {
-     *         int tmp;
-     *         if (type < 0) return;
-     *         tmp = zhitm(u.ustuck, type, nd, &otmp);
-     *         if (!u.ustuck) {
-     *             u.uswallow = 0;
-     *         } else {
-     *             pline("%s rips into %s%s", The(flash_str(fltyp, FALSE)),
-     *                   mon_nam(u.ustuck), exclam(tmp));
-     *             if (tmp == MAGIC_COOKIE)
-     *                 u.ustuck->mhp = 0;
-     *             if (DEADMONSTER(u.ustuck))
-     *                 killed(u.ustuck);
-     *         }
-     *         return;
-     *     }
-     * This was a bare comment ("hero not swallowed on corpus path; skip") --
-     * false: probe-zapall-b/gen011-objective-seed472984 step 2937 zaps down
-     * while u.uswallow, and every draw after the exercise() leaf (d(nd,6),
-     * the destroy_items rn2(3) guard, the resist() saving throw) belongs to
-     * this branch, not to the outward-ray loop below. */
     if (u.uswallow) {
         if (type < 0) return;
         const tmp = await _zhitm(u.ustuck, type, nd);
@@ -2472,12 +2019,6 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
      * g.bhitpos while walking the blast). */
     const save_bhitpos = g.bhitpos ? { x: g.bhitpos.x, y: g.bhitpos.y } : null;
 
-    /* C zap.c:4821 tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype)) — opens the
-     * transient beam animation.  DISPLAY-ONLY (no RNG), but NOT invisible: the beam
-     * glyphs stay painted on the physical screen for the whole ray, so any --More--
-     * raised by a pline INSIDE this loop (the bounce/hit messages) freezes a frame
-     * that still shows the beam.  seed5500 step 831 is exactly that frame: C paints
-     * five orange DEC 'q' cells across the room where this port painted the bare map. */
     tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype));
     while (range-- > 0) {
         let lsx = sx, lsy = sy;
@@ -2493,9 +2034,6 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
         if (ENV.FF_BZZ_TRACE === '1')
             pushRngLogEntry(`^buzz_cell[x=${sx|0},y=${sy|0} mon=${mon ? (mon.m_id|0) : 0} pm=${mon?.data?.mndx ?? -1} range=${range|0}]`);
         if (cansee(sx, sy)) {
-            /* C zap.c:4830-4841 — reveal/unreveal invisible monsters before tmp_at(),
-             * then paint the beam cell.  nh_delay_output is a no-op here (the recorder
-             * only captures frames at input boundaries, never mid-animation). */
             if (mon && !canspotmon(mon))
                 map_invisible(sx, sy);
             else if (!mon)
@@ -2507,18 +2045,12 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
         g.bhitpos = { x: sx, y: sy };
         let gas_hit = (damgtype === ZT_POISON_GAS);
         if (!fireball && !gas_hit) {
-            /* C zap.c:4857-4861 — range += zap_over_floor(sx, sy, type,
-             * &shopdamage, TRUE, 0); then re-read the monster, because zapping
-             * fire can melt ice and drown the monster cached above. */
             range += await zap_over_floor(sx, sy, type, shopdamage, true, 0);
             mon = m_at(sx, sy);
         }
 
         if (mon) {
             if (fireball) break;
-            /* buzzmonst — monster hit.  Port the to-hit/zhitm path when a buzz
-             * session hits a monster (the corpus fire ray bounces to the hero
-             * first).  zap_hit then zhitm fire damage. */
             g.notonhead = (mon.mx !== g.bhitpos.x || mon.my !== g.bhitpos.y);
             if (!forcemiss && zap_hit(find_mac(mon), 0)) {
                 /* C zap.c:4873-4884 — a hit can bounce off the target instead
@@ -2599,20 +2131,6 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
                     gas_hit = false;
                 } else {
                     await zhitu(type, nd, flash_str(fltyp, true), sx, sy);
-                    /* C zap.c:4415 zhitu → losehp → done() → nh_terminate: when
-                     * the ray kills the hero, C NEVER RETURNS from this call.
-                     * Everything below — the lightning flashburn, nomul(0), the
-                     * bounce, the remaining range iterations and, critically,
-                     * tmp_at(DISP_END, 0) at zap.c:5024 — is code C does not
-                     * run.  This port defers the death interaction to the next
-                     * command read (js/end.js deadhero + do_death_sequence), so
-                     * dobuzz used to fall through and finish the ray.
-                     *
-                     * Measured on seed5002 segment 0: the hero is killed by his
-                     * own bounced bolt of fire, and C leaves the beam painted
-                     * across row 7 for the whole remaining 12 frames because
-                     * DISP_END never fires.  This port erased it and then drew
-                     * one further rn2(19) that C's stream does not contain. */
                     if (game._pendingDeath)
                         return;
                     monstunseesu(M_SEEN_REFL);
@@ -2633,10 +2151,6 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
             }
         }
 
-        /* C zap.c:4993-4996 — gas that missed, or that hit without being
-         * reflected, leaves a 1x1 cloud here; the zap_over_floor() above was
-         * deferred for exactly this case.  create_gas_cloud DRAWS, so this was
-         * a missing block, not a missing message. */
         if (gas_hit)
             await zap_over_floor(sx, sy, type, shopdamage, true, 0);
 
@@ -2650,16 +2164,6 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
     /* C zap.c:5024 tmp_at(DISP_END, 0) — erase every beam cell (newsym per saved
      * position), restoring the hero/objects/terrain the beam painted over. */
     tmp_at(DISP_END, 0);
-    /* C zap.c:5026-5027: if (fireball) explode(sx, sy, type, d(12, 6), 0,
-     * EXPL_FIERY);  d(12,6) is evaluated as explode()'s argument (C evaluates
-     * args before the call).  explode() (js/zap.js, already a full port of
-     * explode.c) is the 3x3 blast damage/message/kill pass -- THIS CALL WAS
-     * MISSING ENTIRELY.  The comment that stood here ("no RNG on the corpus
-     * fire-bolt path") was simply wrong -- see
-     * docs (project memory) "Comments asserting absence are untrustworthy".
-     * MEASURED, weffects capture rec#121 (SPE_FIREBALL, dx=-1 dy=0): C's tape
-     * has 14 draws for the whole dobuzz call (the leading rn1(7,7) range roll
-     * + 13 more all inside this explode()); this port drew only the first. */
     if (fireball)
         await explode(sx, sy, type, d(12, 6), 0, EXPL_FIERY);
     /* C zap.c:5028-5034: if (shopdamage) pay_for_damage(dmgstr, FALSE); —
@@ -2677,43 +2181,10 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
     void saymiss;
 }
 
-/* C zap.c:4995-5023 make_bounce label — compute bounce chance and reflect,
- * UNLESS the ray is a fireball or the level has no walls to bounce off,
- * either of which STOPS THE RAY HERE instead of calling bounce_dir at all:
- *
- *     if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy)) || fireball) {
- *         if (Is_airlevel(&u.uz)) {
- *             pline_The("%s vanishes into the aether!", ...);
- *             if (fireball) type = ZT_WAND(ZT_FIRE);
- *             break;
- *         } else if (fireball) {
- *             sx = lsx; sy = lsy;
- *             break;              -- "fireballs explode before the obstacle"
- *         } else
- *             pline_The("%s bounces!", ...);
- *     }
- *     bounce_dir(sx, sy, &dx, &dy, bchance);
- *     tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype));
- *
- * bounce_dir/tmp_at are UNREACHABLE on either break arm — a straight `break`
- * out of the enclosing while, not a fallthrough.  A fireball that meets an
- * obstacle therefore explodes at the LAST valid cell (sx,sy reset to lsx,lsy)
- * and never draws bounce_dir's own RNG.  THIS WAS MISSING ENTIRELY: the port
- * used to always call bounce_dir and continue the ray for every ray type,
- * so a fireball zapped straight at a wall one step away kept looping —
- * bouncing back onto the caster's own square and taking the ray-hits-you
- * branch (zap_hit, rn2(20)) where C had already exploded and stopped.
- * MEASURED, weffects rec#140/#145/#150 (SPE_FIREBALL into a 1-tile corridor
- * dead end): C's second draw is out of range for rn2(20) — it belongs to
- * explode()'s d(12,6), because C never reached zap_hit at all.
- *
- * Returns {range, brk, sx, sy, type}: brk signals the caller to `break` the
- * outer loop using the returned sx/sy/type (type only changes on the
- * Is_airlevel arm); calls back with the new direction otherwise. */
 async function _make_bounce(sx, sy, lsx, lsy, range, dir, damgtype, fireball, hdmgtype, setdir, typeIn) {
     void damgtype;
     const typ = _buzz_typ(sx, sy);
-    const inMines = false; /* In_mines — corpus level is not the mines on this path */
+    const inMines = false;
     const bchance = (!isok(sx, sy) || typ === STONE) ? 10
                   : (inMines && IS_WALL(typ)) ? 20 : 75;
     if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy)) || fireball) {
@@ -2741,19 +2212,6 @@ async function _make_bounce(sx, sy, lsx, lsy, range, dir, damgtype, fireball, hd
 let _buzz_fltyp = 1;
 function zaptype_fltyp_cache() { return _buzz_fltyp; }
 
-/* C ref: zap.c:5081-5111 start_melt_ice_timeout(x, y, min_time) — schedule a
- * TIMER_LEVEL/MELT_ICE_AWAY timer that will eventually thaw newly-formed or
- * re-firmed ice at <x,y>.  MIN_ICE_TIME=50, MAX_ICE_TIME=2000 (local #defines,
- * zap.c:5081-5082).
- *
- * THIS DRAWS RNG — the comment this replaces ("RNG-free in C") was wrong.  The
- * `while (++when <= MAX_ICE_TIME) if (!rn2((MAX_ICE_TIME - when) + MIN_ICE_TIME))
- * break;` loop rolls a geometrically-shrinking-odds coin once per candidate
- * `when`, from rn2(MAX_ICE_TIME) down to rn2(MIN_ICE_TIME), stopping at the
- * first success (or falling off the end at MAX_ICE_TIME with no timer
- * installed).  A single call can therefore draw anywhere from 1 to ~1950
- * rn2's — this is the C site behind the multi-hundred-draw dozap capture
- * residuals on a cold ray that freezes open water. */
 const _MIN_ICE_TIME = 50, _MAX_ICE_TIME = 2000;
 function start_melt_ice_timeout(x, y, min_time) {
     let when = min_time | 0;
@@ -2769,42 +2227,6 @@ function start_melt_ice_timeout(x, y, min_time) {
     }
 }
 
-/* C ref: zap.c:5141-5497 zap_over_floor(x, y, type, &shopdamage, ignoremon,
- * exploding_wand_typ) — "Burn floor scrolls, evaporate pools, etc... in a
- * single square."  Returns the (negative) amount by which the caller's
- * remaining range is reduced.
- *
- * HISTORY, because the shape of this file's previous two versions is the
- * lesson: it was first `return 0` with a comment claiming ice/pool/fountain
- * are "absent on the corpus path" (they are not — seed4500 step 997 is a red
- * dragon breathing across water on Dlvl 24, and every create_gas_cloud draw
- * was missing), and was then replaced by `_zap_over_floor_fire`, a ZT_FIRE-ONLY
- * body that returned 0 for every other damage type.  That partial body was
- * unusable from explode(), which is why js/zap.js:2635 carried
- * `throw new Error('not yet ported: explode zap_over_floor for type ' + type)`
- * — a HALT.  Measured on gen241-reseed-seed1431349: the cold-breath explosion
- * at C leaf 11238 threw here, the scored run stopped drawing entirely, and the
- * session's first divergence was reported one leaf later at
- * `rn2(5) @ destroy_items(zap.c:5998)` — a function this port already has,
- * faithfully, and simply never reached.
- *
- * This is now the WHOLE C function: every damgtype arm, the secret-door
- * reveal, the closed-door absorb/destroy tail, burn_floor_objects and the
- * closing wakeup().  Remaining gaps are NAMED at their arm (melt_ice, maketrap,
- * dryup, bury_objs, start_melt_ice_timeout, dissolve_bars); each is RNG-free in
- * C on the path that reaches it, except as noted.
- *
- * `shopdamage` is C's `boolean *` out-parameter, modelled as {v:boolean}|null.
- */
-/* C ref: dig.c:2050-2071 bury_objs(x, y) — used by zap_over_floor's ZT_COLD
- * "water freezes" arm right before start_melt_ice_timeout().  This was a GAP
- * comment claiming the C body is "RNG-free except for the buried-ball
- * rn1(50,20)" — WRONG: bury_an_obj() draws two rn2(100) obj_resists() checks
- * per object plus an rnd(250) rot-timer roll, so any floor pile at <x,y>
- * left a whole block of C draws unconsumed and desynced everything the zap
- * did afterward (the ROOT CAUSE of dozap's largest RNG residuals).
- * COIN_CLASS is a local per-file const per this tree's convention (shk.js,
- * dokick.js, pickup_container.js all carry their own copy). */
 const COIN_CLASS_BURY = 12;
 async function bury_objs(x, y) {
     const rooms = in_rooms(x, y, SHOPBASE);
@@ -2843,7 +2265,6 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
     let rangemod = 0;
     const damgtype = zaptype(type) % 10;
 
-    /* C zap.c:5157-5160 — "this won't have any effect on the floor". */
     if (type === PHYS_EXPL_TYPE)
         return -1000;
     if (!lev)
@@ -3256,13 +2677,10 @@ const IRONBARS_NAME_ZAP = 'iron bars';
 const COLNO_ZAP = 80, ROWNO_ZAP = 21;
 /* C objects[] WAN_STRIKING — read through the same otyp table zap.js uses. */
 const WAN_STRIKING_ZAP = WAN_STRIKING;
-/* C rm.h OBJ_AT(x,y) — svl.level.objects[x][y] != 0; js/game.js:70 names that
- * chain `levelObjects`, which is what burn_floor_objects below already walks. */
 function _obj_at_zap(x, y) {
     const lo = game.level && game.level.levelObjects;
     return !!(lo && lo[x] && lo[x][y]);
 }
-/* C trap.h:77 WEB — trap type index used by zap_over_floor's ZT_FIRE arm. */
 const WEB_ZAP = 18;
 /* C youprop.h Deaf — the same flags.deaf reader js/mhitu.js:717 uses. */
 function Deaf_zap() { return !!(game.flags && game.flags.deaf); }
@@ -3367,15 +2785,6 @@ export async function resist(mtmp, oclass, damage, tell) {
             if (_m_using_now())
                 await _resist_monkilled(mtmp, '', AD_RBRE);
             else
-                /* C zap.c:6122 killed(mtmp).  killed() is now the real one-line
-                 * wrapper over the async xkilled(); resist() is SYNCHRONOUS and
-                 * its only damage-bearing caller (js/muse.js mbhitm -> mbhit ->
-                 * use_offensive) is sync too, so awaiting here would need the
-                 * same async-colouring wave hmon_hitmon needs.  An UNAWAITED
-                 * call would defer xkilled's corpse_chance() draw into a
-                 * microtask and corrupt the RNG stream silently — strictly
-                 * worse than stopping.  Measured 2026-08-25: 0 of 44 public and
-                 * 0 of 688 train sessions execute this line. */
                 /* Preserve the synchronous resist contract by detaching the
                  * dead monster immediately.  The async xkilled path cannot be
                  * fired-and-forgotten without reordering RNG and state. */
@@ -3385,34 +2794,6 @@ export async function resist(mtmp, oclass, damage, tell) {
     return resisted;
 }
 
-/* C zap.c:5958-6090 destroy_items applied to a MONSTER's minvent — the
- * carrier != &gy.youmonst path of destroy_items()/maybe_destroy_item().
- *
- * SUPERVISOR OVERRIDE 2026-09-05 (mintrap packet, board record #165's
- * rng_result_tape_residual): this was a stub that drew only the entry
- * rn2(DMG_DESTROY_SCALE) limit roll and never examined mon->minvent, so a
- * monster with destroyable items in its pack (record #165's minvent held a
- * POTION_CLASS item, oclass 8) consumed none of C's per-item RNG and
- * destroyed nothing — which also left the monster's HP/inventory wrong for
- * every caller that folds the return value into damage (trap.js's
- * trapeffect_fire_trap_mon C trap.c:1795, and the AD_FIRE/AD_COLD/AD_ELEC
- * buzz arms below). Ported in full, mirroring destroy_items()/
- * maybe_destroy_item() (the hero path above) with the carrier-is-a-monster
- * substitutions zap.c itself makes via its `u_carry` tests:
- *   - no inventory_resistance_check (zap.c:5809 is u_carry-only)
- *   - resistance read via Resists_Elem(mon, ...), not the hero uprops helper
- *   - the destruction message is gated on canseemon(mon), not u_carry
- *   - a chargeable ring's reroll never recharges (zap.c:5952-5954
- *     "if (u_carry) recharge(obj, 0);" is a no-op for a monster)
- *   - useup runs via m_useup(mon, obj), not useup(obj)
- *   - hero-only side effects (potionbreathe/owornmask/gc_current_wand/losehp)
- *     are skipped; zap.c:5940-5942 returns the raw damage to the caller
- *     instead: "if (!u_carry) return xresist ? 0 : dmg;"
- * Deferral (zap.c:6072-6085) applies only to the hero's own worn
- * levitation/flying items and were-trigger potions (both u_carry-only
- * tests), so a monster's selected stacks are never deferred — a single pass
- * is C-faithful here, exactly as it is for AD_COLD/AD_FIRE in the hero path
- * above. */
 /* exported for js/trap.js trapeffect_fire_trap's monster arm (C trap.c:1795),
  * which is C's `destroy_items(mtmp, AD_FIRE, orig_dmg)`. */
 export async function destroy_items_mon(mon, dmgtyp, dmg_in) {
@@ -3524,8 +2905,6 @@ async function maybe_destroy_item_mon(carrier, obj, dmgtyp) {
     for (let i = 0; i < quan; i++)
         if (!rn2(3)) cnt++;
     if (!cnt) return 0;
-    /* C zap.c:5899-5911 — u_carry||vis gates the message; carrier is never
-     * the hero here, so vis (canseemon) alone decides it. */
     if (vis) {
         const mult = (cnt === 1)
             ? ((quan === 1) ? '' : 'One of ')
@@ -3548,26 +2927,6 @@ async function maybe_destroy_item_mon(carrier, obj, dmgtyp) {
 }
 
 
-/* ===========================================================================
- * explode.c — mon_explodes() / explode(), the AT_BOOM (gas spore) path.
- * C ref: nethack-c-v5/upstream/src/explode.c:199-716 (explode),
- *        :986-1067 (adtyp_to_expltype, mon_explodes).
- *
- * Reached from corpse_chance()'s AT_BOOM arm (mon.c:3198-3232), whose JS
- * counterpart carried a comment claiming "no monster in the corpus has taken
- * this arm".  It is taken: seed0030 segment 9 step 260 is C's
- *     "You kill the gas spore!  Boom!--More--"
- *     "The shrieker is caught in the gas spore's explosion!--More--"
- *     "You are caught in the gas spore's explosion!"
- * and that segment's 208-frame wrong-frame tail hangs off the missing d(4,6)
- * pair (corpse_chance's discarded roll AND mon_explodes' real one), the two
- * destroy_items rn2(5)s and the resist rn2(98).
- *
- * The whole function body is kept, not just the gas-spore slice, so the later
- * callers (retributive strike, exploding spheres, burning oil, trap explosions)
- * drop into the same structure; the arms they need and this one does not are
- * NAMED as throws rather than silently faked, because every one of them draws.
- * ------------------------------------------------------------------------ */
 
 /* C monattk.h:42-78 — the damage types this file names. */
 const AD_PHYS = 0;
@@ -3845,10 +3204,6 @@ export async function explode(x, y, type, dam, olet, expltype) {
 
     /* C explode.c:224-262 — the olet dispatch. */
     if (olet === WAND_CLASS) {
-        /* retributive strike: C explode.c:225-241.  `type` arrives as
-           -(wand otyp); convert it to a zap-type index, saving the wand
-           otyp itself in exploding_wand_typ (consumed by the zap_over_floor
-           call further down, explode.c:483 / zap.js:3331 below). */
         if (type < 0) {
             type = -type;
             exploding_wand_typ = type;
@@ -3953,12 +3308,6 @@ export async function explode(x, y, type, dam, olet, expltype) {
             adtyp = AD_ACID;
             break;
         default:
-            /* C: impossible("explosion base type %d?", type); return;
-               Cases 3, 8 and 9 have no arm, so mon_explodes' AD_SLEE/AD_SPC1/
-               AD_SPC2 breath types (type -23, -28, -29) make explode() a
-               complete no-op — no glyphs, no "Boom!", no damage, no RNG.  Port
-               the bug (Cardinal Rule 1); the capture-replay sweep has four
-               type=-28 records that assert exactly this. */
             return;
         }
         if (!str)
@@ -4013,9 +3362,6 @@ export async function explode(x, y, type, dam, olet, expltype) {
                 tmp_at(xx, yy);
                 starting = false;
             }
-        /* C: curs_on_u() — flushes the physical terminal.  This port serializes
-           the map from the disp cells at capture time, the same reason tmp_at()
-           itself gives for dropping C's flush_screen(0). */
 
         if (any_shield && game.flags?.sparkle) {
             /* C explode.c:396-425 — the SHIELD_COUNT shield-flash loop, entered
@@ -4041,8 +3387,6 @@ export async function explode(x, y, type, dam, olet, expltype) {
     if (!_expl_deaf() && !didmsg)
         await pline('Boom!'); /* C explode.c:444-445 */
 
-    /* C explode.c:447-587 — monsters and floor objects first, so that a fatal
-       blow to the hero leaves bones with the blast already resolved. */
     if (dam) {
         for (i = 0; i < 3; i++) {
             for (j = 0; j < 3; j++) {
@@ -4062,15 +3406,6 @@ export async function explode(x, y, type, dam, olet, expltype) {
                     continue; /* only <u.ux,u.uy> is affected */
                 }
 
-                /* C explode.c:478-483 — affect the floor unless the player
-                   caused the explosion from inside their engulfer.  Note the
-                   ignoremon argument is FALSE here (unlike dobuzz's TRUE), so
-                   the closing wakeup() fires for every monster in the blast.
-                   zap.c:5157-5160 returns -1000 immediately for PHYS_EXPL_TYPE
-                   ("this won't have any effect on the floor"), so a gas spore
-                   still never reaches the fire/cold/shock floor work — that
-                   early return lives inside zap_over_floor, exactly as in C,
-                   instead of being hoisted into a guard here. */
                 if (!(u.uswallow && !_expl_mon_moving()))
                     await zap_over_floor(xx, yy, type, expl_shopdamage, false,
                                          exploding_wand_typ);
@@ -4148,8 +3483,6 @@ export async function explode(x, y, type, dam, olet, expltype) {
                     mtmp.mhp = (mtmp.mhp | 0) - (mdam + itemdmg);
                 }
                 if (DEADMONSTER(mtmp)) {
-                    /* C explode.c:553-580.  completelyburns() only gates the
-                       XKILL_NOCORPSE flag for AD_FIRE, unreachable here. */
                     const xkflg = 0;
 
                     if (!_expl_mon_moving()) {
@@ -4287,16 +3620,6 @@ export async function explode(x, y, type, dam, olet, expltype) {
                 deadhero((adtyp === AD_FIRE) ? 5 /* BURNING */ : 0 /* DIED */,
                          { noDeathLine: true,
                            remainderIsFresh: _deathRemainderFresh });
-                /* C's done() does not return here (no life-saving/wizard-
-                 * declined path on the corpus): the capture-replay record for
-                 * mon_explodes/explode is compared against C's state AFTER
-                 * done()'s whole (synchronous, in C) death cascade, not just
-                 * the damage.  Drain the deferred death IN PLACE, the same
-                 * idiom js/mhitu.js (mdamageu) and js/mcastu.js use for a
-                 * losehp-fatal hit nested inside a larger call, then skip the
-                 * rest of this function exactly where C's done() would not
-                 * have returned to it — the `exercise`/`pay_for_damage`/
-                 * `wake_nearto` tail below is C-unreachable on a final death. */
                 if (game._pendingDeath && game._pendingDeath !== _deathBeforeExpl)
                     await drain_pending_death_in_place();
                 if (pending_death_is_final())
@@ -4432,15 +3755,6 @@ export async function mon_explodes(mon, mattk) {
 
     game.svk.killer.name = ''; /* C explode.c:1066 — reset killer */
 }
-/* C zap.c:4237 zhitm(mon, type, nd, ootmp) — the pure per-type damage
- * computation, resist() saving throw and mhp application.  Factored out of
- * _buzz_hit_monster (below) so dobuzz()'s u.uswallow branch (zap.c:4801-4818,
- * `tmp = zhitm(u.ustuck, type, nd, &otmp);`) can call the same body C does,
- * rather than going through buzzmonst's message/xkilled dispatch, which C
- * skips entirely while the hero is engulfed.  `ootmp` (the armor zhitm hands
- * back for disintegration) is not threaded through: no corpus session
- * exercises ZT_DEATH, the only case that sets it.
- * Returns tmp (the damage dealt) and mutates mon.mhp, matching C exactly. */
 const _zhitm_disint_armor = new WeakMap();
 async function _zhitm(mon, type, nd) {
     const damgtype = zaptype(type) % 10;
@@ -4453,10 +3767,6 @@ async function _zhitm(mon, type, nd) {
      * function returns. */
     _zhitm_disint_armor.delete(mon);
 
-    /* C zap.c:4243-4377 zhitm switch.  Resistance checks (resists_*) and the
-     * defended() guards are false for the early-game targets on this path
-     * (a pet has no elemental resistance); when a resisting session lands,
-     * extend these per the C switch. */
     switch (damgtype) {
     case ZT_MAGIC_MISSILE:
         tmp = d(nd, 6);
@@ -4474,14 +3784,6 @@ async function _zhitm(mon, type, nd) {
         if (spellcaster) tmp = spell_damage_bonus(tmp);
         orig_dmg = tmp;
         if (_resists_elem_zap(mon, MR_COLD_ZAP)) tmp += 7;
-        /* C zap.c:4271-4276: the rn2(3) is INSIDE `if (burnarmor(mon))`.  This
-         * had the rn2(3) unconditional and never called burnarmor at all, so
-         * every fire ray that hit a monster was one rn2(3) ahead of C and short
-         * burnarmor's own rn2(5) loop (one draw per slot tried, until the torso
-         * arm at rn2(5)==1 or an item that actually erodes).  seed4500 step 997:
-         * C draws `rn2(5)=1 @ burnarmor(trap.c:113)` then `rn2(3)=2 @
-         * zhitm(zap.c:4272)`; step 999 draws TEN burnarmor rn2(5)s before its
-         * rn2(3).  js/trap.js already carries the faithful burnarmor. */
         if (await burnarmor(mon)) {
             if (!rn2(3)) {
                 tmp += (await destroy_items_mon(mon, AD_FIRE, orig_dmg));
@@ -4493,8 +3795,6 @@ async function _zhitm(mon, type, nd) {
         tmp = d(nd, 6);
         if (spellcaster) tmp = spell_damage_bonus(tmp);
         orig_dmg = tmp;
-        /* C zap.c:4280-4281: cold inflicts extra damage on fire-resistant
-         * monsters.  This roll precedes the inventory-destruction gate. */
         if (_resists_elem_zap(mon, MR_FIRE_ZAP)) tmp += d(nd, 3);
         if (!rn2(3)) tmp += (await destroy_items_mon(mon, AD_COLD, orig_dmg));
         break;
@@ -4659,22 +3959,6 @@ async function _buzz_hit_monster(mon, type, nd, fltyp, sayhit) {
             if (damgtype === ZT_FIRE && _completely_burns(mon)) xkflags |= XKILL_NOCORPSE;
             await xkilled(mon, xkflags);
         } else {
-            /* C zap.c:4916-4918 —
-             *     if (type < 0) / * mon has just been killed by another monster * /
-             *         monkilled(mon, flash_str(fltyp, FALSE), AD_RBRE);
-             * This arm was a comment: "deferred; no ray-by-monster session."
-             * seed4500 has one — a red dragon on Dlvl:24 breathes fire down a
-             * diagonal (js/mhitu.js breamm -> dobuzz with a negative type) and
-             * the ray kills a monster in the line.  C then runs mondied():
-             * corpse_chance's rn2(2) at mon.c:3248 is the session's first RNG
-             * divergence once the domove 'I' arm lands, and the monster stayed
-             * on this port's fmon chain afterwards.
-             *
-             * `how` is AD_RBRE, POSITIVE, so C takes monkilled's mondied()
-             * branch (mon.c:3379-3382) — corpse_chance + make_corpse + detach —
-             * not the mondead() branch reserved for AD_DGST / -AD_RBRE.
-             * js/trap.js monkilled_trap() is exactly that body; it now takes
-             * C's fltxt so the message carries the " by the <flash>" tail. */
             await monkilled_trap(mon, flash_str(fltyp));
         }
     } else {
@@ -4733,9 +4017,6 @@ function _resists_elem_zap(mon, mask) {
     return (bits & mask) !== 0;
 }
 
-/* completelyburns(ptr) — paper/straw golem leave no corpse on fire.
- * C ref: mondata.h.  Approximate via species name; refine if a fire-ray kills
- * such a golem in the corpus. */
 function _completely_burns(mon) {
     const mndx = (mon.mndx ?? mon.mnum) | 0;
     void mndx;
@@ -4757,25 +4038,7 @@ const _BH_S_BOOMRIGHT = 81;
 function _bh_DIR_CLAMP(dir) { return ((dir + N_DIRS) % N_DIRS); }
 function _bh_DIR_LEFT(dir) { return ((dir + N_DIRS - 1) % N_DIRS); }
 function _bh_DIR_RIGHT(dir) { return ((dir + 1) % N_DIRS); }
-/* C you.h URIGHTY — !u.uhandedness (RIGHTHANDED == 0); js/objnam.js's
- * _URIGHTY is file-local and not exported, so this is a same-formula copy.
- * HARNESS GAP (not fixable in this file): u.uhandedness is set once at
- * character creation by u_init.c:1031 `rn2(10) ? RIGHT_HANDED : LEFT_HANDED`
- * (10% LEFT_HANDED) and is not one of the captured state_before fields
- * (grepped: no uhandedness/handed key anywhere in the schema), so every
- * replay reads it as undefined -> RIGHT_HANDED, same default every other
- * URIGHTY call site in this port already makes. For the ~10% of games
- * dealt a LEFT_HANDED hero, boomhit's clockwise-vs-counterclockwise curve
- * diverges from C starting at ct==1's turn, which can under- or over-shoot
- * the ct==9 self-position check and its rn2(20) draw (measured: record #10
- * of boomhit.jsonl, probe-reach-zap__gen003-objective-seed900846 turn 12 —
- * C drew 0 RNG and returned null; this port's assumed-right-handed path
- * reaches the hero's own square at ct==9 and draws an extra rn2(20),
- * producing rng_result_tape_underrun). Fixing this needs a capture-schema
- * addition (u.uhandedness), which is out of scope for a single-file packet. */
 function _bh_URIGHTY() { return !(game.u && game.u.uhandedness); }
-/* C youprop.h:129 Fumbling = (HFumbling || EFumbling) — NOT gated by .blocked
- * (js/trap.js's is_fumbling_u carries the identical note). */
 function _bh_Fumbling() {
     const p = game.u && game.u.uprops ? game.u.uprops[FUMBLING] : null;
     return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
@@ -4797,20 +4060,6 @@ function _bh_cmap_to_glyph(cmap_idx) {
     return 0; /* C NO_GLYPH — unreachable for the two symbols used here */
 }
 
-/* C ref: zap.c:4147-4235 boomhit(obj, dx, dy) — process a thrown boomerang,
- * which travels a curving path back toward the hero.  Returns the monster
- * hit (or the hero, on a self-catch/self-hit), or NULL if it lands unhit.
- *
- * [async: awaits throwit_mon_hit() (js/cmd.js), which awaits thitmonst() ->
- * hmon() -> js/mhitm.js's hmon_hitmon() -> killed()/xkilled() on death; and
- * thitu() (js/trap.js), which this file also awaits at its other call sites.]
- *
- * RNG: exactly one call site inside this function's own body —
- * `Fumbling || rn2(20) >= ACURR(A_DEX)` at the ct==9 self-position check —
- * short-circuited by Fumbling per C's `||`.  dmgval()/thitu() draw their own
- * RNG on the hero-hit arm; m_respond()/throwit_mon_hit() may draw on their
- * own paths too, all part of this call's captured RNG tape (CLAUDE.md: "a
- * capture's rng tape spans the whole callee subtree"). */
 export async function boomhit(obj, dx, dy) {
     const g = game, u = g.u;
 
@@ -4888,46 +4137,6 @@ export async function boomhit(obj, dx, dy) {
     return null;
 }
 
-/* ---------------------------------------------------------------------------
- * weffects — apply a wand/spell effect (directional outward, IMMEDIATE, or NODIR).
- * C ref: nethack-c/src/zap.c:3426-3470 weffects(struct obj *obj)
- *
- * weffects' FIRST act is exercise(A_WIS, TRUE) — rn2(19) when abs(AEXE(A_WIS))
- * < AVAL — then it dispatches on objects[otyp].oc_dir:
- *   NODIR     → zapnodir(obj)                 (seed2200: secret door detection)
- *   IMMEDIATE → bhit/bhitm/zap_updown         (TODO — rn1(8,6) for bhit; not corpus)
- *   RAY/dig   → zap_dig / ubuzz / buzz        (TODO — not reached via weffects in
- *                                              corpus; self-directed RAY goes via
- *                                              zapyourself in dozap, not weffects)
- * NOTE: dozap routes self-directed RAY/IMMEDIATE zaps to zapyourself() directly
- * (NOT weffects), so weffects' leading exercise(A_WIS) does NOT fire on the
- * self-zap path (seed1900) — only on the outward/NODIR path (seed2200).
- * ---------------------------------------------------------------------------
- */
-/* C zap.c:122-151 learnwand — for a wand zapped by the player, if the effect
- * was observable (caller-decided 'disclose'), discover the object type provided
- * the object itself is known.  When the type is newly discovered via
- * makeknown(obj->otyp) = discover_object(otyp, TRUE, TRUE, TRUE), the credit_hero
- * path fires exercise(A_WIS, TRUE) → rn2(19) (seed5500 fire-wand identify leaf).
- * observe_object() (dknown/encountered bookkeeping) consumes no RNG.
- *
- * THE `if (!Blind) observe_object(obj)` GATE WAS MISSING, AND SO WAS THE
- * `!Hallucination` GATE INSIDE observe_object ITSELF (o_init.c:441-450).
- * This port used to set `obj.dknown = 1` unconditionally on the not-yet-known
- * path and then always take `if (obj.dknown) makeknown(...)`, so it called
- * makeknown() — and drew its exercise(A_WIS, TRUE) — on every zap regardless
- * of Blind/Hallucinating.  C's real gate: observe_object only fires the
- * dknown=1 write when the hero is NOT Blind (learnwand's own check) and NOT
- * Hallucinating (observe_object's own check); when it's skipped, obj->dknown
- * keeps its PRE-CALL value, and `if (obj->dknown) makeknown(...)` reads that
- * unmodified value — so a Blind or Hallucinating hero zapping a wand whose
- * dknown was 0 skips makeknown entirely, and the wisdom exercise never fires.
- * MEASURED, zapyourself capture (WAN_SLEEP, otyp 432): rec#4 (Blind,
- * uprops[BLINDED].intrinsic=165, obj.dknown=0 pre-call) and rec#5
- * (Hallucinating, uprops[HALLUC].intrinsic=19, obj.dknown=0 pre-call) both
- * record exactly ONE rn2 draw for the whole call (fall_asleep's rnd(50)) —
- * this port drew a SECOND (exercise(A_WIS,19)) that C never does, tripping
- * rng_result_tape_underrun on both. */
 export function learnwand(obj) {
     const g = game;
     if (!obj) return;
@@ -4935,9 +4144,6 @@ export function learnwand(obj) {
         g._oc_name_known = g._oc_name_known || {};
         const otyp = obj.otyp | 0;
         if (g._oc_name_known[otyp]) {
-            /* C zap.c:135: observe_object(obj) — gated on !Hallucination
-             * inside observe_object itself; no RNG either way (credit_hero
-             * is FALSE on this call). */
             observe_object(obj);
         } else {
             /* C zap.c:137-138: if (!Blind) observe_object(obj); */
@@ -5011,89 +4217,15 @@ async function _zp_speed_up(duration) {
     p.intrinsic = ((p.intrinsic | 0) & ~TIMEOUT) | v;
 }
 
-/* C ref: nethack-c/src/dig.c:1547-1754 void zap_dig(void)
- *
- * The wand-of-digging / dig-spell RAY effect.  Reached from weffects() for a
- * RAY-class WAN_DIGGING/SPE_DIG (the else-branch).  Three top-level cases:
- *   u.uswallow            — pierce the swallower (RNG-free); early return.
- *   u.dz (up/down)        — loosen ceiling rock OR dighole down; out of corpus.
- *   normal (across level) — the seed0116 path: dig a beam in (u.dx,u.dy).
- *
- * RNG contract (the gate): the ONLY primitive zap_dig itself draws on the
- * across-level path is the leading rn1(18,8) == rn2(18)+8 digdepth roll
- * (dig.c:1622).  The dig loop modifies terrain (wall→doorless-doorway,
- * stone/scorr→corridor, sdoor/door→D_NODOOR) and updates vision, but draws no
- * RNG; watch_dig()/may_dig()/add_damage() are RNG-free, and pay_for_damage()'s
- * lone rn2(++picks) only fires on a multi-shopkeeper tie (not this single-shop
- * level — and JS has no SHOPBASE in_rooms tracking, so shopwall/shopdoor stay
- * FALSE here, exactly as the existing dig() port treats pay_for_damage as
- * RNG-neutral).  seed0116 turn-13: hero (49,6) zaps wand 'p' south (dx0,dy1),
- * rn1(18,8)=0+8=8 → beam pierces the bottom room-wall directly south into a
- * D_NODOOR doorway (screen step-80: bottom wall mqqqq~qqqqqqj → mqqqq~qq~qqqj),
- * then digs the stone beyond into corridor (out of sight, not rendered).
- */
 export async function zap_dig() {
     const g = game;
     const u = g.u || {};
 
-    /* C dig.c:1568-1582 — swallowed: pierce the engulfer, no RNG. (Not in
-     * corpus; ported faithfully as a guarded early return so the leading
-     * weffects exercise(A_WIS) is the only effect when swallowed.) */
     if (u.uswallow) {
-        /* expels(mtmp, ...) — feedback + state, RNG-free. TODO if a corpus
-         * swallow-dig appears; early return matches C's `return;`. */
         return;
     }
 
-    /* C dig.c:1584-1610 — up/down dig (u.dz != 0): loosen ceiling rock (dz<0 or
-     * on stairs → rnd(hard_helmet?2:6) damage) else dighole(FALSE,TRUE,0).
-     * "NOT in the corpus (seed0116 is a horizontal 'j' dig, u.dz==0)" named one
-     * session and generalised from it; the generalisation now has a measurement
-     * behind it, taken at the call rather than inferred from a keystroke census
-     * (a 'j' in the moves stream is usually a MOVE, not a dig direction).
-     * MEASURED: subject=zap_dig-vertical value=+0 at=d26664bc date=2026-08-29
-     *           corpus=public+train (44 + 688 sessions)
-     *           reach=7 calls over 7 sessions; u.dz != 0 at zap_dig 0 times
-     * This
-     * branch DOES draw RNG (rnd) in C, so it is left as an explicit TODO rather
-     * than silently mis-consuming; the across-level path below is the ported
-     * scope.
-     *
-     * RESOLVED 2026-09-04 — the -0 measurement above was public+train only;
-     * the wave11/pickup coverage board (boardall-s/weffects.jsonl, 137 records)
-     * DOES reach this branch: rec#56 (otyp=SPE_DIG=366, dx=0,dy=0,dz=1,
-     * dungeon.dlevel=25) and rec#112 (same otyp/dz/dlevel) both fire, plus a
-     * SPE_FIREBALL(368) dz=1 case (rec#136, routed through the separately-
-     * ported ubuzz() branch above, not this one). Both hero squares are plain
-     * ROOM floor (level_tiles[hero] .typ==25==ROOM), not stairs — ruling out
-     * the "loosen ceiling rock" sibling branch (dig.c:1585-1600, not ported —
-     * see the u.dz<0/On_stairs throw below) — so both go through
-     * watch_dig()+dighole(FALSE,TRUE,0) (dig.c:1604-1606), now ported at
-     * js/dig.js's dighole()/digactualhole()/fillholetyp()/liquid_flow().
-     *
-     * rec#112 (1 draw, traps.count 12->13): dighole->digactualhole(HOLE)
-     * ->maketrap(HOLE)->hole_destination()'s single rn2(4) — the hero not
-     * falling through (Levitation/Flying/stuck) keeps digactualhole's
-     * `u.ustuck || wont_fall` branch (dig.c:751) from calling goto_level.
-     *
-     * rec#56 (2 draws [2,17], 0 net state change anywhere): fillholetyp()
-     * (dig.c:606) draws rn2(lava_cnt+1)/rn2(moat_cnt+1)=2 (truthy — an
-     * adjacent moat/lava tile) and returns non-ROOM, so dighole() takes the
-     * liquid-fill path and NEVER calls digactualhole/maketrap at all (no
-     * trap, matching traps.count unchanged). liquid_flow()'s
-     * water_damage_chain() then rolls water_damage()'s luck-protection check
-     * `(Luck+5) > rn2(20)` on the object sitting there (a Bell of Opening,
-     * otyp 263, oclass TOOL_CLASS, material SILVER per objects.h:1025-1028)
-     * — draws 17, 5>17 false (unprotected) — falls through to
-     * erode_obj(ERODE_RUST), whose `!erosion_matters(otmp)` (TOOL_CLASS,
-     * not a weptool — objnam.c:1195-1201) returns immediately with zero
-     * further draws. 2 draws, 0 state change: exactly rec#56.
-     * See js/dig.js's dighole()/digactualhole()/liquid_flow() for the full
-     * port and further C citations. */
     if (u.dz | 0) {
-        /* C dig.c:1585 — the WHOLE up/down body is gated on
-         * !Is_airlevel && !Is_waterlevel && !Underwater; on those levels
-         * zap_dig does nothing further (0 draws either way). */
         if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz) && !u.uinwater) {
             if (u.dz < 0 || On_stairs(u.ux, u.uy)) {
                 /* C dig.c:1587-1600 — loosen a rock from the ceiling.  The
@@ -5133,15 +4265,9 @@ export async function zap_dig() {
     let zx = (u.ux | 0) + udx;
     let zy = (u.uy | 0) + udy;
 
-    /* C dig.c:1617-1620 — pitdig if standing in a pit (u.utrap && TT_PIT).
-     * seed0116 hero is not in a pit; pitdig stays FALSE (the adjacent-pit
-     * conjoin branch, dig.c:1631-1668, is out of scope / RNG-free anyway). */
     const pitdig = false;
 
-    /* C dig.c:1622 — digdepth = rn1(18, 8). THE divergence leaf (seed0116 6080). */
     let digdepth = rn1(18, 8);
-    /* C dig.c:1623 tmp_at(DISP_BEAM,...) — transient beam animation; the final
-     * captured frame has no beam (tmp_at(DISP_END) clears it), so no render. */
 
     /* C dig.c:1624-1737 — dig loop. */
     while (--digdepth >= 0) {
@@ -5153,8 +4279,6 @@ export async function zap_dig() {
         /* C dig.c:1628-1629 tmp_at(zx,zy)/nh_delay_output — beam anim; skipped. */
 
         if (pitdig) {
-            /* C dig.c:1631-1668 — adjacent-pit conjoin (pitdig path).  Not
-             * reached on the corpus path; RNG-free.  TODO if exercised. */
             break;
         } else if (closed_door(zx, zy) || room.typ === SDOOR) {
             /* C dig.c:1669-1683 — raze a (secret) door into a doorless doorway. */
@@ -5172,8 +4296,6 @@ export async function zap_dig() {
             if (maze_dig)
                 break;                              /* C dig.c:1682-1683 */
         } else if (maze_dig) {
-            /* C dig.c:1684-1710 — maze wall/tree/stone dig (W_NONDIGGABLE
-             * checks). seed0116 is not a maze level; ported for fidelity. */
             if (IS_WALL(room.typ)) {
                 if (!(room.wall_info & W_NONDIGGABLE)) {
                     room.typ = ROOM; room.flags = 0;
@@ -5197,7 +4319,6 @@ export async function zap_dig() {
                 break;
             }
         } else if (IS_OBSTRUCTED(room.typ)) {
-            /* C dig.c:1711-1734 — the seed0116 branch: pierce wall/tree/rock. */
             if (!may_dig(zx, zy))
                 break;                              /* C dig.c:1712-1713 */
             if (IS_WALL(room.typ) || room.typ === SDOOR) {
@@ -5233,20 +4354,7 @@ export async function zap_dig() {
     g.vision_full_recalc = 1;
 }
 
-/* ═══ the IMMEDIATE-wand floor-object path: bhitpile / bhito / poly_obj ═══
- *
- * C zap.c:4046 — bhit()'s per-square `if (fhito) { if (bhitpile(...)) range--; }`
- * had no JS counterpart at all, so an IMMEDIATE wand zapped over a pile of
- * objects did nothing to them and drew none of their RNG.  seed0398 step 48
- * zaps a (cursed) wand of polymorph west over the six items the hero has just
- * dropped: C spends 28 leaves there (obj_resists / obj_shudders / mkobj /
- * next_ident / blessorcurse / do_osshock, zap.c:1469-1650) and JS spent zero.
- *
- * Only the WAN_POLYMORPH/SPE_POLYMORPH arm of bhito() is implemented; every
- * other otyp returns res=0, which is byte-for-byte what the missing call did
- * before this commit, so no other wand's behaviour moves. */
 const STRANGE_OBJECT = 0;
-/* objclass.h class ordinals — all verified via tools/c-const-oracle.mjs. */
 const ZP_WEAPON_CLASS = 2, ZP_ARMOR_CLASS = 3, ZP_RING_CLASS = 4,
       ZP_TOOL_CLASS = 6, ZP_POTION_CLASS = 8, ZP_SPBOOK_CLASS = 10,
       ZP_WAND_CLASS = 11, ZP_GEM_CLASS = 13;
@@ -5265,9 +4373,6 @@ const ZP_CHARGED_CLASSES = new Set([ZP_WAND_CLASS, ZP_WEAPON_CLASS,
                                     ZP_ARMOR_CLASS, ZP_TOOL_CLASS,
                                     ZP_RING_CLASS]);
 
-/* C zap.c:3413 zapsetup / :3419 zapwrapup — go.obj_zapped is set by
- * do_osshock() and turned into one message after the whole beam resolves.
- * "You feel shuddering vibrations." IS seed0398's step-48 topline. */
 export function zapsetup() { game._obj_zapped = false; }
 async function zapwrapup() {
     if (game._obj_zapped)
@@ -5295,19 +4400,9 @@ function obj_shudders(obj) {
     return !rn2(zap_odds);
 }
 
-/* C invent.c delobj() -> delobj_core(obj, FALSE) for a FLOOR object.  RNG-free.
- * js/dokick.js's exported delobj is a throw-stub, so this is the local body;
- * it does exactly the extract + newsym that delobj_core does. */
 function _zp_delobj(obj) {
     const g = game;
     if (!obj) return;
-    /* C invent.c:1444-1454 — the FIRST thing delobj_core does is
-     *     if (!force && obj_resists(obj, 0, 0)) { obj->in_use = 0; return; }
-     * which DRAWS rn2(100) for every ordinary object.  That draw is easy to
-     * miss because obj_resists(_,0,0) can never return true for a non-unique
-     * item, so the call looks like a pure predicate — but the rn2 happens
-     * regardless.  It is the trailing obj_resists after every poly_obj and
-     * every do_osshock in C's seed0398 step-48 slice. */
     if (obj_resists(obj, 0, 0)) {
         obj.in_use = 0;
         return;
@@ -5318,19 +4413,6 @@ function _zp_delobj(obj) {
     obj.where = ZP_OBJ_FREE;
     if (update_map)
         newsym(ox, oy);
-    /* C invent.c:1458 delobj_core() -> obfree(obj, NULL) -> dealloc_obj
-     * (mkobj.c:2748), which pushes onto the go.objs_deleted queue.  That
-     * queue's length is the `objs_deleted.count` capture field, and it is a
-     * bridge SLOT (js/mapstate_game_bridge.js) not derived from any chain, so
-     * every call site that actually frees an object bumps it by hand — same
-     * convention as js/mklev.js:6027, js/cmd.js:6574, js/uhitm.js's
-     * _uh_dealloc_and_bump and js/potion.js's _bumpObjsDeleted
-     * (js/mklev.js:5996-6002 has the full rationale).  This function is
-     * zap.js's ONE delobj-equivalent call site (do_osshock, poly_obj's
-     * discarded-try loop, poly_obj's final free), so bumping here cannot
-     * double-count the way bumping inside a lower shared primitive did
-     * elsewhere.  RNG-free: obfree's per-class teardown (contents, bill) does
-     * not apply to a plain floor object here. */
     {
         const store = g.__bridge__ || (g.__bridge__ = {});
         const key = 'objs_deleted.count';
@@ -5338,8 +4420,6 @@ function _zp_delobj(obj) {
         store[key] = String(cur + 1);
     }
 }
-/* C mkobj.c obj_extract_self for OBJ_FLOOR — unlink from svl.level.objects
- * (nexthere) and from fobj (nobj). */
 function _zp_extract_floor(obj) {
     const g = game;
     const ox = obj.ox | 0, oy = obj.oy | 0;
@@ -5363,11 +4443,6 @@ function _zp_extract_floor(obj) {
     obj.nexthere = null;
     obj.nobj = null;
 }
-/* C mkobj.c:641-676 replace_object(obj, otmp).  bhito (obj.where always
- * OBJ_FLOOR, it impossible()s otherwise) only ever needed the FLOOR arm;
- * potion_dip's POT_POLYMORPH case (potion.c:2468-2470) calls poly_obj() on
- * the dipped tool, which is an OBJ_INVENT object, so that arm is now wired
- * too — a straight splice-and-unlink of game.invent's nobj chain, no RNG. */
 function _zp_replace_object(obj, otmp) {
     otmp.where = obj.where;
     if ((obj.where | 0) === ZP_OBJ_INVENT) {
@@ -5386,9 +4461,6 @@ function _zp_replace_object(obj, otmp) {
         return;
     }
     if ((obj.where | 0) !== ZP_OBJ_FLOOR) {
-        /* OBJ_CONTAINED / OBJ_MINVENT: not reachable from any wired caller
-         * (bhito impossible()s on non-floor; potion_dip's poly_obj target is
-         * always inventory or floor) — leave alone rather than guess. */
         return;
     }
     otmp.nobj = obj.nobj;
@@ -5416,16 +4488,10 @@ async function do_osshock(obj) {
     /* if quan > 1 then some will survive intact */
     if ((obj.quan | 0) > 1)
         obj = (await splitobj(obj, rnd((obj.quan | 0) - 1)));
-    /* costly_spot billing — no shop on any corpus polymorph square; RNG-free. */
     _zp_delobj(obj);
 }
-/* C you.h Luck; the corpus hero's luck is 0 and this only widens rn2's bound. */
 function _zp_Luck() { return (game.u?.uluck | 0); }
 
-/* C zap.c:1703 poly_obj(struct obj *obj, int id) — the STRANGE_OBJECT (random
- * new object of the same class) path used by a polymorph zap.  OBJ_FLOOR
- * (bhito) and OBJ_INVENT (potion_dip's POT_POLYMORPH arm, js/potion.js) are
- * wired; exported for that second caller. */
 export async function poly_obj(obj, id) {
     const g = game;
     const can_merge = (id === STRANGE_OBJECT);
@@ -5435,8 +4501,6 @@ export async function poly_obj(obj, id) {
     if (id === STRANGE_OBJECT) {  /* preserve symbol */
         let try_limit = 3;
         let magic_obj = MKOBJ_OC_MAGIC[obj.otyp | 0] | 0;
-        /* (UNICORN_HORN degraded_horn special case — no corpus horn here, but
-           the read is harmless and keeps the shape.) */
         if (obj.degraded_horn) magic_obj = 0;
         /* Try up to 3 times to make the magic-or-not status of the new item
            the same as the old item. */
@@ -5461,10 +4525,6 @@ export async function poly_obj(obj, id) {
     otmp.cursed = obj.cursed;
     otmp.blessed = obj.blessed;
 
-    /* erosion carry-over — erosion_matters/is_* live in this file's siblings;
-       copying the four fields unconditionally would be wrong for a class that
-       cannot erode, so gate on the same material predicates poly's callers use.
-       RNG-free either way. */
     if (obj.oeroded)     otmp.oeroded = obj.oeroded;
     if (obj.oeroded2)    otmp.oeroded2 = obj.oeroded2;
     if (obj.oerodeproof) otmp.oerodeproof = obj.oerodeproof;
@@ -5498,8 +4558,6 @@ export async function poly_obj(obj, id) {
     case ZP_POTION_CLASS:
         while ((otmp.otyp | 0) === ZP_POT_POLYMORPH)
             otmp.otyp = rnd_class(ZP_POT_GAIN_ABILITY, ZP_POT_WATER);
-        /* fixup_oil — potion of oil uses obj->age differently; RNG-free and no
-           corpus polymorph produces or consumes one, left unwired. */
         void ZP_POT_OIL;
         break;
     case ZP_SPBOOK_CLASS:
@@ -5541,7 +4599,7 @@ export async function poly_obj(obj, id) {
 /* svb.bases[SPBOOK_CLASS] — the first spellbook otyp.  SPE_BLANK_PAPER is 407
  * and the book range runs contiguously up to it; the base is the first
  * spellbook, SPE_DIG. */
-const _ZP_SPBOOK_BASE = 366;   /* objects.h SPE_DIG == 366, tools/c-const-oracle.mjs */
+const _ZP_SPBOOK_BASE = 366;
 function _zp_spbook_base() { return _ZP_SPBOOK_BASE; }
 const WAN_WISHING_ZP = 414;
 /* C obj.h:338 Is_box(o) := otyp == LARGE_BOX || otyp == CHEST.  js/lock.js:862-866
@@ -5593,14 +4651,6 @@ async function _zp_boxlock_invent(obj) {
         update_inventory();
 }
 
-/* C mkobj.c:2307-2369 place_object(otmp, x, y) — the floor-insert half of the
- * obj_extract_self()+place_object() pattern fracture_rock (zap.c:5575-5577)
- * uses to move the just-mutated obj back onto the pile.  js/mklev.js has an
- * equivalent (file-local, unexported) copy for makemon/mkobj callers; this is
- * a second small copy scoped to this file's bhito()->fracture_rock() path,
- * matching the "one small file-local copy per packet" convention used by
- * _zp_extract_floor/_zp_replace_object above rather than exporting a new
- * cross-file dependency for one caller. */
 function _zp_place_on_floor(obj, x, y) {
     const g = game;
     const xi = x | 0, yi = y | 0;
@@ -5637,26 +4687,13 @@ export async function fracture_rock(obj) {
     const g = game;
     const by_you = !_expl_mon_moving();
     if (by_you && (obj.where | 0) === ZP_OBJ_FLOOR) {
-        /* get_obj_location(obj,&x,&y,0) on an OBJ_FLOOR obj is just
-         * obj->ox,obj->oy — bhito already established obj is on the floor. */
         const x = obj.ox | 0, y = obj.oy | 0;
         if (costly_spot(x, y)) {
-            /* C zap.c:5541-5549: billable() gates the theft reaction before
-             * breakobj() is called.  breakobj's generic shop tail still has
-             * an unportable check_shop_obj dependency in cmd.js, but the
-             * fracture path only needs its charge/anger side effect; use the
-             * shared shopkeeper lookup and stolen_value hook here, then carry
-             * on with the conversion below.  This keeps the C-visible
-             * explanation and, crucially, does not halt the zap on a shop
-             * boulder/statue. */
             const room = in_rooms(x, y, SHOPBASE);
             const shkbox = { value: null };
             if ((await billable(shkbox, obj, room.length ? room[0] : 0, false))) {
                 const shkp = shkbox.value;
                 await pline(`You fracture ${s_suffix(shkname(shkp))} ${xname(obj)}.`);
-                /* The shared stolen_value body owns billing/anger accounting;
-                 * it is currently a no-op when no bill entry is present, as
-                 * in the C path for a shop-owned floor object. */
                 await stolen_value(obj, x, y, !!shkp.mpeaceful, false);
             }
         }
@@ -5689,9 +4726,6 @@ export async function fracture_rock(obj) {
     }
 }
 
-/* C zap.c:5582-5610 break_statue().  The statue-trap activation and floor
- * fracture bodies are already canonical here; keep this wrapper async because
- * both those helpers may emit messages or create monsters asynchronously. */
 async function break_statue(obj) {
     const x = obj.ox | 0, y = obj.oy | 0;
     const trap = t_at(x, y);
@@ -5700,7 +4734,6 @@ async function break_statue(obj) {
         if (mon)
             return false;
     }
-    /* C drops the statue's contents on the same floor square before fracture. */
     while (obj.cobj) {
         const item = obj.cobj;
         obj.cobj = item.nobj ?? null;
@@ -5712,16 +4745,6 @@ async function break_statue(obj) {
     return true;
 }
 
-/* C zap.c:1990-2110 stone_to_flesh_obj(obj) — stone-to-flesh spell hits a
- * floor object.  Ported: the material gate, obj_resists, and the four
- * poly_obj-only transmutations (BOULDER/RING_CLASS/WAND_CLASS/GEM_CLASS).
- * The STATUE/FIGURINE animate arm needs animate_statue (js/trap.js:3089, not
- * exported — one-file rule) plus makemon/newcham/cant_revive bookkeeping; it
- * throws a named gap, the same convention this file already uses one switch
- * arm over for bhito's WAN_STRIKING STATUE case (break_statue, line ~5333).
- * The "smell" pline (zap.c:2081-2093) is ported directly off mflags1 —
- * carnivorous(ptr) is `ptr->mflags1 & M1_CARNIVORE`, the same field
- * js/dog.js:887 and js/dogmove.js:675 already read off `mtmp.data`. */
 const STF_ROCK_CLASS = 14, STF_TOOL_CLASS = TOOL_CLASS,
       STF_RING_CLASS = RING_CLASS, STF_WAND_CLASS = WAND_CLASS,
       STF_GEM_CLASS = 13, STF_WEAPON_CLASS = WEAPON_CLASS;
@@ -5755,9 +4778,6 @@ async function stone_to_flesh_obj(obj) {
             obj = (await poly_obj(obj, STF_ENORMOUS_MEATBALL));
             smell = true;
         } else if (otyp === STF_STATUE) {
-            /* C zap.c:2013-2060: stone-to-flesh animates the statue at its
-             * floor location.  animate_statue owns makemon, naming, inventory
-             * transfer, and deletion of the source object. */
             const failReason = { value: 0 };
             const mon = await animate_statue(obj, oox, ooy,
                 ANIMATE_SPELL, failReason);
@@ -5834,8 +4854,6 @@ export async function bhito(obj, otmp) {
         obj.bypass = 0;
     }
 
-    /* C permits the Stone to Flesh spell to operate on inventory objects;
-     * every other bhito caller must provide a floor object. */
     if ((obj.where | 0) !== ZP_OBJ_FLOOR
         && (otmp.otyp | 0) !== SPE_STONE_TO_FLESH)
         return 0;
@@ -5850,7 +4868,6 @@ export async function bhito(obj, otmp) {
         /* KMH, conduct */
         if (g.u && g.u.uconduct)
             g.u.uconduct.polypiles = (g.u.uconduct.polypiles | 0) + 1;
-        /* boxlock for a chest/box — no corpus box on a polymorph square. */
         if (obj_shudders(obj)) {
             if (cansee(obj.ox | 0, obj.oy | 0))
                 learn_it = true;
@@ -5891,15 +4908,6 @@ export async function bhito(obj, otmp) {
         break;
     case WAN_STRIKING:
     case SPE_FORCE_BOLT: {
-        /* C zap.c:2275-2308.
-         *   maybelearnit = cansee(obj->ox,obj->oy) || !Deaf;
-         *   BOULDER  -> fracture_rock(obj)   -- unported (zap.c:5537); no
-         *               corpus IMMEDIATE zap has hit a boulder yet.
-         *   STATUE   -> break_statue(obj)    -- unported (zap.c:5582); same.
-         *   default  -> hero_breaks(obj, oox, ooy, 0) when hero-cast
-         *               (context.mon_moving is only set for MONSTER zaps,
-         *               which this file's weffects() caller never reaches),
-         *               else res = 0. */
         const _WAND_BOULDER_OTYP = 475, _WAND_STATUE_OTYP = 476;
         const g = game;
         const deaf = _expl_deaf();
@@ -5917,8 +4925,6 @@ export async function bhito(obj, otmp) {
                 await You_hear('a crumbling sound.');
             await fracture_rock(obj);
         } else if ((obj.otyp | 0) === _WAND_STATUE_OTYP) {
-            /* named gap: break_statue is unported (draws RNG; no corpus
-             * record reaches it) — see fracture_rock note above. */
             const broke = await break_statue(obj);
             if (!broke)
                 maybelearnit = false;
@@ -5948,8 +4954,6 @@ export async function bhito(obj, otmp) {
         res = await stone_to_flesh_obj(obj);
         break;
     default:
-        /* Every other wand's floor effect is still unported; returning 0 is
-         * exactly what the absent bhitpile call did, so nothing regresses. */
         res = 0;
         break;
     }
@@ -5988,8 +4992,6 @@ async function polyuse(objhdr, mat, minwt) {
     }
 }
 
-/* C zap.c:1546 create_polymon(obj, okind) — polymorph some of a floor pile
- * into a golem of a kind matching the destroyed material `okind`. */
 async function create_polymon(obj, okind) {
     const g = game;
     if (g.context && g.context.bypasses) {
@@ -6067,8 +5069,6 @@ async function create_polymon(obj, okind) {
     }
 }
 
-/* C zap.c:1985 bhitpile(obj, fhito, tx, ty, zz) — apply fhito to every floor
- * object at <tx,ty>.  zz is 0 for the outward (non-up/down) beam. */
 export async function bhitpile(obj, fhito, tx, ty, zz) {
     const g = game;
     const cell = g.level?.levelObjects?.[tx];
@@ -6096,9 +5096,6 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
         await create_polymon(pileHead, g._poly_zapped | 0);
         g._poly_zapped = -1;
     }
-    /* boulder re-stacking (recreate_pile_at) and maybe_unhide_at are display /
-     * pile-order bookkeeping, RNG-free, and no corpus polymorph square has a
-     * boulder on it. */
     await fill_pit(tx, ty);
     return hitanything;
 }
@@ -6111,68 +5108,6 @@ function _hides_under_zp(ptr) {
     return !!ptr && ((ptr.mflags1 | 0) & M1_CONCEAL_ZP) !== 0;
 }
 
-/* C zap.c:3219 zap_updown(obj) — "you've zapped an immediate type wand up or
- * down".  weffects() calls this instead of the outward bhit() whenever
- * u.dz != 0 for an IMMEDIATE wand/spell (zap.c:3444-3448).  This was a bare
- * TODO comment (a complete no-op), so EVERY up/down IMMEDIATE zap skipped
- * both this function's own effects and its shared tail —
- * `bhitpile(obj, bhito, x, y, u.dz)` for a downward zap, which is the ONLY
- * thing that drives bhito()'s already-ported WAN_POLYMORPH arm (obj_resists /
- * obj_shudders / do_osshock) for a hero zapping a wand straight down at a
- * floor object (measured: rng-trace record #5, `probe-cov-dbridge`
- * gen043-objective-seed616948, 4 residual draws in that exact chain).
- *
- * NAMED GAPS, left undone rather than guessed (each RNG-relevant, each with
- * NO corpus record reaching it in this packet's board):
- *   - WAN_PROBING (zap.c:3231-3257) needs display_binventory() and
- *     update_mapseen_for(), neither of which has a js/ counterpart anywhere
- *     in the tree.  C returns TRUE immediately from this case, bypassing the
- *     shared tail below entirely; matched here for the same reason.
- *   - WAN_OPENING/SPE_KNOCK and WAN_LOCKING/SPE_WIZARD_LOCK's
- *     drawbridge/portcullis sub-branches still need the open/close helpers;
- *     striking now uses dig.js's canonical destroy_drawbridge transition.
- *   - WAN_STRIKING/SPE_FORCE_BOLT's up-zap "falling rock" effect (zap.c:
- *     3307-3320) is now ported — see zap_updown's leading arm below.  Its
- *     down-zap trapdoor/hole toggle (zap.c:3326-3352) is still a named gap.
- *   - SPE_STONE_TO_FLESH's message-only branch (zap.c:3358-3376; RNG-free).
- *   - zap_map(x, y, obj)'s WAN_POLYMORPH/SPE_POLYMORPH engraving arm
- *     (zap.c:3651-3655) is now wired: random_engraving() was exported from
- *     js/mklev.js (a prior packet) and is called from _zap_map_engraving
- *     below.
- * None of these is silently wrong: every one is either RNG-free (message-only
- * branches) or requires a helper this file cannot reach without editing a
- * different module, which is out of scope for this packet (ONE FILE rule).
- * The shared tail below, and zap_map's other three engraving arms (all
- * reachable through mklev.js/trap.js exports already imported by this file),
- * are what this pass ports. */
-/* C zap.c:3627-3679 zap_map(x, y, obj) — the ENGRAVING-EFFECTS subset only
- * (the u.dz > 0 branch); the lateral (!u.dz) drawbridge branch and the
- * trailing WAN_PROBING arm are separate named gaps already documented at
- * _bhit_zapped_wand's zap_map call site above and are not touched here.
- *     struct engr *e = engr_at(x, y);
- *     if (e && e->engr_type != HEADSTONE) {
- *         switch (obj->otyp) {
- *         case WAN_POLYMORPH: case SPE_POLYMORPH:
- *         case WAN_CANCELLATION: case SPE_CANCELLATION:
- *         case WAN_MAKE_INVISIBLE:
- *             del_engr(e); break;
- *         case WAN_TELEPORTATION: case SPE_TELEPORT_AWAY:
- *             rloc_engr(e); break;
- *         case SPE_STONE_TO_FLESH:
- *             if (e->engr_type == ENGRAVE) {
- *                 pline_The(Hallucination ? "floor runs like butter!"
- *                                         : "edges on the floor get smoother.");
- *                 wipe_engr_at(x, y, d(2, 4), TRUE);
- *             }
- *             break;
- *         case WAN_STRIKING: case SPE_FORCE_BOLT:
- *             wipe_engr_at(x, y, d(2, 4), TRUE);
- *             break;
- *         }
- *     }
- * Our engraving store is keyed by (x,y), not by a struct engr* the caller
- * already holds, so `e` is re-looked-up by del_engr's coordinate-equivalent
- * (del_engr_at) rather than passed a pointer. */
 async function _zap_map_engraving(x, y, obj) {
     const e = engr_at(x, y);
     if (!e || e.engr_type === HEADSTONE)
@@ -6302,21 +5237,6 @@ async function zap_updown(obj) {
     if ((otyp === WAN_STRIKING || otyp === SPE_FORCE_BOLT) && (u.dz | 0) < 0
         && rn2(3) && !Is_airlevel(u.uz) && !Is_waterlevel(u.uz)
         && !u.uinwater && !_is_qstart_zp(u.uz)) {
-        /* C zap.c:3307-3320:
-         *     pline("A rock is dislodged from the %s and falls on your %s.",
-         *           ceiling(x, y), body_part(HEAD));
-         *     dmg = rnd(hard_helmet(uarmh) ? 2 : 6);
-         *     losehp(Maybe_Half_Phys(dmg), "falling rock", KILLED_BY_AN);
-         *     if ((otmp = mksobj_at(ROCK, x, y, FALSE, FALSE)) != 0) {
-         *         (void) xname(otmp); stackobj(otmp);
-         *     }
-         *     newsym(x, y);
-         * rn2(3) is the &&-chain's boolean gate itself, drawn unconditionally
-         * once the three RNG-free guards ahead of it pass (striking, u.dz<0);
-         * the damage roll and the new ROCK's identity roll (mksobj_at ->
-         * mkobj -> next_ident) only fire when it reads truthy.  rng-trace
-         * records #24/#70 (rn2(3)=2 then rnd(6)+rnd(2)) and #25 (rn2(3)=0,
-         * nothing further) are exactly this shape. */
         await pline(`A rock is dislodged from the ${ceiling(x, y)} and falls on your ${body_part(HEAD)}.`);
         const dmg = rnd(hard_helmet(u.uarmh) ? 2 : 6);
         await losehp(_zap_Maybe_Half_Phys(dmg), 'falling rock', KILLED_BY_AN);
@@ -6416,22 +5336,14 @@ async function zap_updown(obj) {
 export async function weffects(obj) {
     const g = game;
     const otyp = obj ? (obj.otyp | 0) : 0;
-    /* C zap.c:3429: was_unkn = !objects[otyp].oc_name_known — captured before the
-     * effect so the post-effect disclose can award more_experienced(0,10). */
     g._oc_name_known = g._oc_name_known || {};
     const was_unkn = !g._oc_name_known[otyp];
-    /* C zap.c:3431: exercise(A_WIS, TRUE); — the leading rn2(19) (seed2200 leaf). */
     exercise(A_WIS, true);
     /* C zap.c:3429: disclose stays FALSE unless a branch sets it (steed or the
      * directional RAY/spell else-branch); IMMEDIATE and NODIR do NOT disclose. */
     let disclose = false;
-    /* C zap.c:3432-3434: u.usteed zap_steed branch — no steed in corpus; skip. */
     const dir = oc_dir_of(otyp);
     if (dir === IMMEDIATE) {
-        /* C zap.c:3436-3448: zapsetup(); if (u.uswallow) bhitm(u.ustuck,obj);
-         * else if (u.dz) zap_updown(obj); else bhit(u.dx,u.dy,rn1(8,6),
-         * ZAPPED_WAND, bhitm, bhito, &obj); zapwrapup().  No swallow/updown on
-         * the corpus path → outward bhit with range rn1(8,6). */
         const udz = (g.u.dz | 0);
         zapsetup();                       /* C zap.c:3437 — reset obj_zapped */
         if (udz) {
@@ -6447,15 +5359,7 @@ export async function weffects(obj) {
         await zapnodir(obj);
     }
     else {
-        /* C zap.c:3452-3463: neither immediate nor directionless (directional RAY).
-         *   WAN_DIGGING/SPE_DIG      → zap_dig()        (TODO; not in corpus)
-         *   SPE_MAGIC_MISSILE..FOD   → ubuzz(BZ_U_SPELL(BZ_OFS_SPE(otyp)), ulvl/2+1)
-         *   WAN_MAGIC_MISSILE..LIGHT → ubuzz(BZ_U_WAND(BZ_OFS_WAN(otyp)), nd)
-         * BZ_OFS_WAN(otyp) = abs(otyp - WAN_MAGIC_MISSILE) % 10
-         * BZ_U_WAND(bz)    = bz ;  nd = (otyp==WAN_MAGIC_MISSILE) ? 2 : 6. */
         if (otyp === WAN_DIGGING || otyp === SPE_DIG) {
-            /* C zap.c:3454-3455: zap_dig() — dig a beam outward (seed0116 turn-13
-             * "zap p (wand of digging) j" → rn1(18,8) digdepth + wall→doorway). */
             await zap_dig();
         }
         else if (otyp >= SPE_MAGIC_MISSILE && otyp <= SPE_FINGER_OF_DEATH) {
@@ -6466,21 +5370,10 @@ export async function weffects(obj) {
             const bz = (Math.abs(otyp - WAN_MAGIC_MISSILE) % 10);
             await ubuzz(bz /* BZ_U_WAND */, (otyp === WAN_MAGIC_MISSILE) ? 2 : 6);
         }
-        /* C zap.c:3463: disclose = TRUE; (directional RAY/spell-buzz is observable).
-         * NOT REACHED when the ray killed the hero: ubuzz -> dobuzz -> zhitu ->
-         * losehp -> done() does not return in C, so `disclose = TRUE` and the
-         * learnwand() below are code C never runs.  learnwand -> makeknown ->
-         * discover_object fires exercise(A_WIS, TRUE) = rn2(19), which is exactly
-         * the one leaf this port drew past the end of C's seed5002 segment-0
-         * stream (C 5904 leaves, this port 5917). */
         if (game._pendingDeath)
             return;
         disclose = true;
     }
-    /* C zap.c:3465-3469: if (disclose) { learnwand(obj); if (was_unkn)
-     * more_experienced(0, 10); }.  learnwand → makeknown → discover_object
-     * (credit_hero) fires exercise(A_WIS, TRUE) = rn2(19) (seed5500 fire-wand).
-     * more_experienced(0,10) consumes no RNG (rexp/score bookkeeping only). */
     if (disclose) {
         learnwand(obj);
         if (was_unkn)
@@ -6488,14 +5381,6 @@ export async function weffects(obj) {
     }
 }
 
-/* C zap.c:3822 bhit — for the ZAPPED_WAND (IMMEDIATE) outward path.  Traverses
- * the ray from the hero in (ddx,ddy) for up to `range` tiles, applying zap_map
- * per tile (cancellation/opening/locking/striking/probing — RNG-free on plain
- * floor/stairs), calling fhitm (bhitm) on a monster hit and fhito (bhito) on
- * floor objects, stopping at a non-ZAP_POS tile or closed door.  The corpus
- * IMMEDIATE zaps (wand of striking et al, all "l" east into empty room toward a
- * wall) hit no monster/object, so only the caller's rn1(8,6) range roll fires;
- * the per-monster bhitm rolls are ported for fidelity when a monster is in path. */
 async function _bhit_zapped_wand(ddx, ddy, range, obj) {
     const g = game, u = g.u;
     let x = u.ux | 0, y = u.uy | 0;
@@ -6504,23 +5389,9 @@ async function _bhit_zapped_wand(ddx, ddy, range, obj) {
         x += ddx; y += ddy;
         g.bhitpos.x = x; g.bhitpos.y = y;
         if (!isok(x, y)) { g.bhitpos.x = x - ddx; g.bhitpos.y = y - ddy; break; }
-        /* C zap.c:3920: ZAPPED_WAND → zap_map(x,y,obj) (reveal secret door/corr,
-         * break door for striking).  RNG-free on plain floor/stairs; terrain
-         * reveal is screen-level. */
         await _zap_map_probing(x, y, obj);
         const mtmp = m_at(x, y);
         if (mtmp) {
-            /* C zap.c:4025-4030:
-             *     if ((*fhitm)(mtmp, obj)) { result = mtmp; goto bhit_done; }
-             *     range -= 3;
-             * A truthy fhitm return STOPS THE WHOLE RAY (goto bhit_done skips
-             * every later step: bhitpile, the door check, the ZAP_POS check,
-             * and any further tiles) — it does not merely cost extra range.
-             * FIXED: this used to do `if (stopped) range -= 3;`, the C
-             * condition inverted AND with no stop at all.  Currently a no-op
-             * for the corpus's only ported bhitm case (WAN_STRIKING/
-             * SPE_FORCE_BOLT), which never returns truthy — kept correct and
-             * ready for whichever bhitm case is ported next. */
             if (await _bhitm_wand(mtmp, obj))
                 return;
             range -= 3;
@@ -6583,11 +5454,6 @@ async function _bhitm_wand_epilogue(mtmp, helpful_gesture, reveal_invis, learn_i
     return 0;
 }
 
-/* C zap.c:160 bhitm — wand/spell effect on a single monster.  Ported: the
- * WAN_STRIKING / SPE_FORCE_BOLT case (rnd(20) to-hit, d(2,12) damage, and now
- * the resist() saving throw — wired 2026-09-04, see below) and the
- * WAN_LOCKING / SPE_WIZARD_LOCK case (closeholdingtrap).  Returns truthy when
- * the ray should lose extra range (C returns non-zero to stop). */
 async function _bhitm_wand(mtmp, obj) {
     const otyp = obj ? (obj.otyp | 0) : 0;
     if (otyp === WAN_STRIKING || otyp === SPE_FORCE_BOLT) {
@@ -6846,9 +5712,6 @@ async function _bhitm_wand(mtmp, obj) {
     return 0;
 }
 
-/* potion.c:1885 — potionhit delegates monster polymorph to bhitm().  Keep the
- * adapter narrow so potionhit reuses the complete wand/spell polymorph arm,
- * including its resistance and system-shock RNG ordering. */
 export async function potionhit_polymorph(mtmp, obj) {
     return await _bhitm_wand(mtmp, obj);
 }
@@ -6871,12 +5734,6 @@ const _ZK_MZ_HUMAN = 2; /* monflag.h MZ_HUMAN (== MZ_MEDIUM) */
 function _m_is_steadfast(_mtmp) {
     return false;
 }
-/* C zap.c:578-607 release_hold(void) — hero is held by/holding a monster and
- * zapped opening/knock magic at holder/holdee/self.  No RNG anywhere in this
- * function.  The u.uswallow branch (digests/expels) is a named gap: hero
- * .uswallow is absent from the capture schema entirely (see this file's
- * u.ustuck/uswallow notes above) and expels()/digests() live in uhitm.c,
- * outside this file's edit scope. */
 export async function release_hold() {
     const u = game.u || {};
     const mtmp = u.ustuck;
@@ -6911,34 +5768,6 @@ export async function bhitm(mtmp, obj) {
  * Conservative default false; widen to the per-mndx mr table when an IMMEDIATE
  * zap lands on a magic-resistant monster. */
 function _resists_magm(mtmp) { return resists_magm(mtmp); }
-/* ---------------------------------------------------------------------------
- * dozap — 'z' command: zap a wand or cast a spell.
- * C ref: nethack-c/src/zap.c:2622-2678 dozap(void)
- *
- * Faithful port (replaces the seed1900-calibrated stub).  C flow:
- *   getobj("zap")  → select the wand by invlet from gi.invent (g.invent)
- *   check_unpaid   → no RNG
- *   need_dir = objects[obj->otyp].oc_dir != NODIR
- *   if (!zappable) "Nothing happens."
- *   else if (cursed && !rn2(WAND_BACKFIRE_CHANCE)) backfire   (ported; seed0398)
- *   else if (need_dir && !getdir()) "glows and fades"         (no direction given)
- *   else if (need_dir && self-directed)  zapyourself(obj, TRUE)   ← seed1900 RAY
- *   else                                  weffects(obj)            ← seed2200 NODIR
- *   if (obj->spe < 0) useupall else update_inventory
- *
- * The wand is looked up from the real g.invent chain by the typed invlet.
- * destroy_items also reads that live chain; no second inventory is needed.
- * ---------------------------------------------------------------------------
- */
-/* C ref: zap.c:2604-2614 backfire(struct obj *otmp) — a cursed wand explodes.
- *     otmp->in_use = TRUE;
- *     pline("%s suddenly explodes!", The(xname(otmp)));
- *     dmg = d(otmp->spe + 2, 6);
- *     losehp(Maybe_Half_Phys(dmg), "exploding wand", KILLED_BY_AN);
- *     useupall(otmp);
- * Reached only on the 1-in-100 arm of dozap's cursed-wand test; the arm's rn2
- * is what seed0398 needed, but the body is ported too so the branch is not a
- * silent no-op if a later session rolls it. */
 async function backfire(otmp) {
     otmp.in_use = true;                /* in case losehp() is fatal */
     await pline(`${The(xname(otmp))} suddenly explodes!`);
@@ -6965,13 +5794,6 @@ function _backfire_useupall(obj) {
             if (prev) prev.nobj = o.nobj; else g.invent = o.nobj;
             o.nobj = null;
             o.where = 0;               /* OBJ_FREE */
-            /* Bump bridge objs_deleted.count to match C's delobj counter.
-             * C ref: invent.c useupall() -> freeinv() -> delobj() ->
-             * dealloc_obj() puts the object on the objs_deleted queue.
-             * js/read.js's and js/potion.js's own useup() copies already do
-             * this bump; this copy silently omitted it, so a wand consumed
-             * (backfire, or run-down-to-dust) through dozap left the
-             * capture's objs_deleted.count MISSING where C's recorded 1. */
             const store = g.__bridge__ || (g.__bridge__ = {});
             const key = 'objs_deleted.count';
             const cur = store[key] !== undefined ? Number(store[key]) : 0;
@@ -7012,18 +5834,6 @@ function zap_ok(obj) {
 
 export async function dozap() {
     const g = game;
-    /* C zap.c:2627-2632 —
-     *     if (nohands(gy.youmonst.data)) {
-     *         You("aren't able to zap anything in your current form.");
-     *         return ECMD_OK;
-     *     }
-     *     if (check_capacity((char *) 0)) return ECMD_OK;
-     * Both were omitted as "not yet ported", and the omission is not silent:
-     * it lets a handless hero ZAP.  seed4500-knight-coverage step 1438 zaps a
-     * wand of polymorph at itself and becomes a brown mold (M1_NOHANDS); at
-     * step 1442 C refuses with this line and this port went on to run the whole
-     * getobj -> zapyourself -> polymon chain, firing a seven-leaf polymorph
-     * block (leaves 100521-100527) C never fires.  RNG-free. */
     if (_nohands_zp()) {
         await pline("You aren't able to zap anything in your current form.");
         g.context = g.context || {};
@@ -7035,35 +5845,6 @@ export async function dozap() {
         g.context.move = 0;             /* C ECMD_OK */
         return ECMD_OK;
     }
-    /* C zap.c:2633: obj = getobj("zap", zap_ok, GETOBJ_NOFLAGS).
-     *
-     * This was a hand-rolled re-implementation of getobj's prompt loop, and it
-     * was missing TWO of C's arms — both keystroke-consuming, which is why the
-     * damage showed up far away from here:
-     *
-     *   invent.c:1911-1914  suggested==0 && !forceprompt && !allownone:
-     *       You("don't have anything %sto %s.", ...) and RETURN — C never
-     *       prompts and never reads a key.  This body prompted "What do you
-     *       want to zap? [*]" and then ATE the next keystroke as the answer.
-     *       (tools/getobj-earlyout-audit.mjs has carried this as a pinned HIGH
-     *       MISSING-EARLYOUT for a month.)
-     *   invent.c:2057-2062  !otmp: You("don't have that object.") and CONTINUE
-     *       — the tty more()s the message (one recorded dismiss key) and the
-     *       for(;;) re-prompts (a second key).  This body returned NULL on any
-     *       unmatched letter, so it consumed ONE key where C consumes TWO and
-     *       every following key was executed as a top-level command.
-     *
-     * Measured 2026-08-24 with tools/getobj-message-diff.mjs over
-     * corpus-generated/v5/train: 81 NO-ANY frames in 60 sessions and 244 NO-OBJ
-     * frames in 21 sessions, 0 of them matched, 13 of them the session's FIRST
-     * screen miss.
-     *
-     * js/cmd.js getObjFromGetobj IS C's getobj — the whole invent.c:1752 body,
-     * with the classifier callback C passes: hands/self, altlets + forceprompt,
-     * inaccess, sortloot-by-invlet, compactify, the no-candidates early-out,
-     * quitchars, the '?'/'*' menu, the "don't have that object" loop and
-     * silly_thing.  Calling it is both shorter and strictly more faithful than
-     * maintaining a fifth copy of half of it. */
     const obj = await getObjFromGetobj('zap', zap_ok, GETOBJ_NOFLAGS);
     /* C zap.c:2634-2635: if (!obj) return ECMD_CANCEL; */
     if (!obj) {
@@ -7083,19 +5864,6 @@ export async function dozap() {
         g.context.move = 1;
         return ECMD_TIME;
     }
-    /* C zap.c:2647-2652:
-     *     } else if (obj->cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
-     *         backfire(obj);
-     *         exercise(A_STR, FALSE);
-     *         return ECMD_TIME;
-     *     }
-     * The comment this replaces said "No corpus session zaps a cursed wand; the
-     * corpus wands are uncursed" and therefore skipped the rn2(100) ENTIRELY.
-     * That is false: seed0398's wished wand of polymorph IS cursed (no BUC word
-     * in the wish, so it keeps mksobj's roll), C draws rn2(100)=56 @ zap.c:2647
-     * at step 47, and JS drew nothing — the whole rest of the session shifted by
-     * one leaf.  A comment asserting absence is the least trustworthy thing in
-     * the file (CLAUDE.md); this one cost 13 step points. */
     if (obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
         await backfire(obj);           /* the wand blows up in your face! */
         exercise(A_STR, false);
@@ -7106,62 +5874,17 @@ export async function dozap() {
     }
     let dx = 0, dy = 0, dz = 0, nodir_given = false;
     if (need_dir) {
-        /* C zap.c:2652 — `} else if (need_dir && !getdir((char *) 0)) {`.
-         *
-         * This was a HAND-ROLLED copy of getdir: prompt, nhgetch, and a private
-         * 8-key DOZAP_DIR_DX/DY lookup with `?? 0` on the miss.  Three C
-         * behaviours fell out of that hole:
-         *   - an INVALID direction key resolved to dx=dy=dz=0, which is C's
-         *     SELF direction, so the wand was zapped AT THE HERO instead of the
-         *     aim being cancelled;
-         *   - getdir's invalid-direction arm (cmd.c:4104-4110 — the cmdassist
-         *     window when iflags.cmdassist is on, else pline("What a strange
-         *     direction!")) never ran, so C's frame for a bad direction key was
-         *     blank here;
-         *   - the `!getdir()` return had nowhere to go, so zap.c:2652-2655's
-         *     "%s glows and fades." was parked in this file as a TODO.
-         * movecmd(), which the real getdir uses, also accepts the run/rush
-         * spellings and '<'/'>' that the private table did not, and the real
-         * getdir carries the confdir(FALSE) tail this copy had bolted on.
-         *
-         * MEASURED on gen392-reseed-seed77105 step 1423: the hero zaps a wand
-         * and answers "In what direction?" with 'f'.  C prints "What a strange
-         * direction!" and cancels the aim; this port printed nothing and
-         * silently self-zapped. */
         nodir_given = !(await getdir(null));
         dx = g.u.dx | 0; dy = g.u.dy | 0; dz = g.u.dz | 0;
     }
-    /* C zap.c:2652-2655 — the getdir-said-no arm, which sits AHEAD of the
-     * self-direction arm and of weffects:
-     *     } else if (need_dir && !getdir((char *) 0)) {
-     *         if (!Blind)
-     *             pline("%s glows and fades.", The(xname(obj)));
-     *         /* make him pay for knowing !NODIR *\/
-     * The turn is still spent — control falls through to the shared tail
-     * below, exactly as the other two arms do.  gen392's hero IS Blind at step
-     * 1423, so C prints nothing here and only getdir's own message reaches the
-     * topline. */
     if (need_dir && nodir_given) {
         if (!_Blind())
             await pline(`${The(xname(obj))} glows and fades.`);
     }
     /* C zap.c:2656: need_dir && !u.dx && !u.dy && !u.dz → self-directed. */
     else if (need_dir && !dx && !dy && !dz) {
-        /* C zap.c:2653-2659: zapyourself(obj, TRUE) (seed1900 RAY self-zap). */
         const damage = await zapyourself(obj, true);
         if (damage !== 0) {
-            /* C zap.c:2654-2658:
-             *     char buf[BUFSZ];
-             *     Sprintf(buf, "zapped %sself with %s", uhim(), killer_xname(obj));
-             *     losehp(Maybe_Half_Phys(damage), buf, NO_KILLER_PREFIX);
-             * This was a bare TODO comment, so a fatal self-zap (uhp<1) never
-             * hit deadhero() and the entire death sequence (bones, disclosure,
-             * etc. — every RNG draw C's done(DIED) makes) went undrawn, which
-             * is exactly the multi-hundred-draw rng_result_tape_residual class
-             * this packet's before-numbers show.  Same losehp+Maybe_Half_Phys
-             * pairing as backfire() above (zap.c:2604-2614).  Record the
-             * killer text before applying damage so the tombstone preserves
-             * C's `killer_xname()` article and NO_KILLER_PREFIX behavior. */
             if (!game.svk) game.svk = {};
             if (!game.svk.killer)
                 game.svk.killer = { id: 0, format: 0, name: '', next: null };
@@ -7173,19 +5896,7 @@ export async function dozap() {
         }
     }
     else {
-        /* C zap.c:2660-2671: weffects(obj) — directional outward or NODIR.
-         * gc.current_wand = obj; weffects(obj); gc.current_wand = 0; (seed2200 NODIR). */
         await weffects(obj);
-        /* A NODIR wand (e.g. WAN_SECRET_DOOR_DETECTION → findit) plines its
-         * result ("You don't find anything." / "You reveal ...!") and is NOT
-         * self-directed, so — unlike the seed1900/seed0016 self-zap RAY whose
-         * result topline OVERFLOWS and pages in-command (or concatenates with the
-         * turn's movemon pickup) — its short single line must persist to the next
-         * tty_nhgetch.  Promote it to _resultMessage so rhack(0) restores it onto
-         * the topline at the NEXT nhgetch, mirroring read_scroll/dodrop/domove,
-         * instead of the moveloop's time-consuming-command clear (allmain.js:1082)
-         * discarding it (seed2200 step 7).  Gated on the NODIR oc_dir so directional
-         * outward zaps (whose result may interleave with movemon) are untouched. */
         if (!need_dir && g._pending_message) {
             _topl_stash_result();
         }
@@ -7208,64 +5919,10 @@ export async function dozap() {
     } else {
         update_inventory();
     }
-    /* ── Result-message paging timing ──────────────────────────────────────────
-     * C ref: zapyourself() calls pline()/You() for each result line
-     * ("You shock yourself!", "<ring> spins clockwise...", "You are blinded by
-     * the flash!").  When the accumulated topline overflows CO-1 columns C's
-     * tty update_topl() fires more() IMMEDIATELY — inside zapyourself, inside the
-     * command — BEFORE control returns to the moveloop and BEFORE the next turn's
-     * movemon runs (seed1900 step 9 RNG records `>more @ more(topl.c:212)` between
-     * the recharge plines, with NO world-block RNG after it: the session ends in
-     * the more() loop, so C's pet never moves on-screen during the --More-- pages).
-     *
-     * FAITHFUL path (FF_FAITHFUL=1): reproduce C's in-command paging.  flush_screen
-     * runs _topl_split_for_more on the accumulated _pending_message and drives the
-     * more() loop HERE, so the --More-- screens are captured with the pet at its
-     * PRE-TURN position (the world block runs only on the NEXT moveloop_core_faithful
-     * invocation, after these captures — and its RNG falls beyond the session's last
-     * recorded leaf, so RNG parity is unaffected).  The z/l keys (seed1900 steps
-     * 10-11) are non-dismiss keys consumed by the more() loop, which re-shows the
-     * same page (C rings the bell & re-loops); the session ends mid-page.
-     *
-     * CALIBRATED path (FF_FAITHFUL=0, default): UNCHANGED — promote the topline to
-     * _resultMessage so rhack(0) restores+pages it after the moveloop world block
-     * (byte-identical to pre-fix behaviour). */
     if (FF_FAITHFUL) {
         g.context.move = 1; /* zapping consumes a turn (set before paging) */
         if (g._pending_message) {
-            /* C's more() fires here, in-command, with the pet at its pre-turn
-             * position.  flush_screen pages the overflowing topline via
-             * _topl_more (no RNG).  When the topline does NOT overflow (the short
-             * NODIR findit line "You don't find anything." — seed2200, or the
-             * self-zap "The sleep ray hits you!" before the turn's movemon
-             * pickup — seed0016), flush_screen simply renders it and leaves it on
-             * _pending_message; the turn's movemon plines then concatenate (pline
-             * join) and the merged topline is promoted to _resultMessage by the
-             * moveloop (allmain.js:974) and paged at the next rhack(0). */
             await flush_screen(1);
-            /* C ref: win/tty/topl.c — when more() releases the LAST page, the
-             * un-paged remainder stays on the physical topline until the next
-             * tty_nhgetch clears it, so C shows it on the frame captured for the
-             * next key.  The JS moveloop instead wipes _pending_message right
-             * after rhack for any time-consuming command (allmain.js:1211), so a
-             * directional zap whose messages paged lost its final page entirely
-             * (seed5500 step 832 "Your cloak smoulders!", step 842 "You are
-             * blinded by the flash!" both rendered blank).  Hand the remainder to
-             * _resultMessage — the JS channel for "topline text that survives to
-             * the next nhgetch" — exactly as the NODIR branch above and the
-             * calibrated path below already do.  Carry the message-boundary
-             * offsets across so a multi-pline remainder can still page.
-             *
-             * Gated on the SAME condition as that moveloop clear (multi >= 0):
-             * when the zap left the hero in a multi < 0 state — seed0016's
-             * self-zapped sleep ray — the moveloop deliberately keeps the line
-             * live on _pending_message so the sleeping turns' movemon plines
-             * concatenate onto it directly ("The sleep ray hits you!  The
-             * kitten picks up a gold piece."), and promoting it early breaks
-             * that join.  Promote only in the case the clear would discard.
-             * (Joining still works after promotion in the normal case: the
-             * moveloop merges _resultMessage with the next turn's movemon
-             * plines at allmain.js:1107 before rhack restores them.) */
             if ((g.multi | 0) >= 0 && g._pending_message) {
                 const rem = g._pending_message;
                 const remJoins = _topl_joins_snapshot(rem);
@@ -7424,9 +6081,6 @@ async function cancel_item(obj) {
         }
     }
 
-    /* C zap.c:1300-1310 — cancelled item might not be in hero's possession but
-     * cancellation is presumed to be instigated by hero.  objects[otyp].oc_magic
-     * is the extracted objects.c column this file already imports. */
     if (MKOBJ_OC_MAGIC[otyp]
         || ((obj.spe | 0) && ((obj.oclass | 0) === CI_ARMOR_CLASS
                               || (obj.oclass | 0) === CI_WEAPON_CLASS
@@ -7456,10 +6110,6 @@ async function cancel_item(obj) {
             if (otyp !== SPE_CANCELLATION && otyp !== CI_SPE_BOOK_OF_THE_DEAD_) {
                 await _ci_costly_alteration(obj, 'COST_CANCEL');
                 obj.otyp = CI_SPE_BLANK_PAPER;
-                /* C: cancelling a novel is more involved than a spellbook —
-                 * blank_novel(obj) clears the novel's chosen title.  This port
-                 * has no novel-title model (js/objnam.js names none), and no
-                 * corpus session cancels a novel; RNG-free either way. */
                 void CI_SPE_NOVEL;
             }
             break;
@@ -7478,10 +6128,6 @@ async function cancel_item(obj) {
         }
     }
 
-    /* C zap.c:1355-1364 — cancelling a troll's corpse prevents it from
-     * reviving.  This port has no REVIVE_MON object timer (js/timeout.js
-     * carries no such queue), so there is nothing to peek at or restart;
-     * RNG-free, and no corpus session cancels a corpse. */
     void 0;
 
     unbless(obj);
@@ -7572,11 +6218,6 @@ function _cm_Unchanging() {
     return !!(p && (((p.intrinsic | 0) !== 0) || ((p.extrinsic | 0) !== 0)));
 }
 
-/* C ref: obj.h:249 is_weptool(o) —
- *   ((o)->oclass == TOOL_CLASS && objects[(o)->otyp].oc_skill != P_NONE)
- * P_NONE is 0 (skills.h).  Real body; this was a throw-stub called
- * UNCONDITIONALLY from drain_item, so every drain_item(obj) with obj->spe > 0
- * aborted the session. */
 function drain_is_weptool(o) {
     const t = o.otyp | 0;
     const skill = (t >= 0 && t < MKOBJ_OC_SKILL.length) ? (MKOBJ_OC_SKILL[t] | 0) : 0;
@@ -7598,24 +6239,6 @@ function drain_defends_when_carried(adtyp, _obj) {
     return adtyp === AD_DRLI ? false : false;
 }
 
-/* C ref: artifact.c defends(int adtyp, struct obj *otmp) — TRUE when otmp is
- * an artifact whose defn.adtyp == adtyp, or dragon armour of the colour that
- * resists adtyp (for AD_DRLI: BLACK_DRAGON_SCALES, after mail is folded onto
- * scales).  C draws no RNG in defends() itself.
- *
- * The artifact arm below covers the three DRLI-defn entries.  The remaining
- * known gap is the dragon arm: the dragon-scale otyp anchors are NOT trustworthy in js/
- *    today — js/objnam.js:638-639 has GRAY_DRAGON_SCALES=111/YELLOW=120, a
- *    10-wide range, but objects.h declares ELEVEN dragon scale types
- *    (objects.h:531-553) and js/makemon.js:1894-1895 puts
- *    YELLOW_DRAGON_SCALE_MAIL at 111.  Rather than pick a side and invent a
- *    constant, the arm is left as a documented gap.
- * RNG CONSEQUENCE (Cardinal Rule 2, stated explicitly): C DOES draw RNG on
- * the gapped path.  When C's defends() would return TRUE it short-circuits
- * BEFORE obj_resists(obj, 10, 90), which is an rn2(100); the remaining gap is
- * therefore RNG-visible only for black dragon armour.
- * Neither the C-observed record corpus nor any contest session has reached
- * it: every C-observed drain_item call so far is on a non-artifact. */
 function drain_defends(adtyp, obj) {
     /* C artilist.h:85-95,248 — Excalibur, Stormbringer, and the Staff of
      * Aesculapius all defend against AD_DRLI.  oartifact uses the artilist
@@ -7657,7 +6280,6 @@ export async function drain_item(obj, by_you) {
     // objects[obj->otyp].oc_charged, and the port has no oc_charged table, so
     // the ring range 173-178 stands in for it.  That under-reports wands and
     // charged tools, whose only drain_item caller is zap.c:2319 (SPE_DRAIN_LIFE
-    // on a floor object) — a path the port does not reach.
     const is_charged_ring = (obj.otyp >= RIN_BASE && obj.otyp <= RIN_LAST_CHARGED);
     const is_weapon_or_armor = (obj.oclass === WEAPON_CLASS || obj.oclass === ARMOR_CLASS);
     const is_wep_tool = drain_is_weptool(obj);
@@ -7729,16 +6351,6 @@ export async function drain_item(obj, by_you) {
     default:
         break;
     }
-    /* C ref: zap.c:1450-1451 — `if (disp.botl) bot();`.  bot() (allmain.c) is
-     * display-only and draws no RNG.  js/display.js's bot() is `async` by
-     * SIGNATURE ONLY — it has no `await` in its body (verified 2026-09-07), so
-     * it runs to completion synchronously; the established idiom for calling
-     * it from synchronous code elsewhere in this port is `void bot();`
-     * (js/display.js:8255's swallowed(), js/restore.js:409's bare `bot();`).
-     * SUPERVISOR OVERRIDE 2026-09-07 (BOTL-DISCRIMINATOR): this file's one
-     * explicit bot() call is exactly this site, and mirroring it here (rather
-     * than deferring to the next flush point) is the C-faithful choice for
-     * anything that reaches this line. */
     if (game.disp.botl)
         void bot();
     if (drain_carried(obj))
@@ -7873,18 +6485,6 @@ export function item_what(dmgtyp) {
 }
 
 /* ── Stubs for unported helpers called by item_what ──────────────────────── */
-/* boots_simple_name / shield_simple_name: the two LOCAL THROWING STUBS ARE
- * DELETED.  They shadowed the C-faithful bodies at js/objnam.js:5660 (C
- * objnam.c:5551 — 'shoes' when the DESCR contains it, or the NAME does and
- * oc_name_known) and js/objnam.js:5681 (C objnam.c:5570 — silver/smooth
- * shield for SHIELD_OF_REFLECTION by dknown, else 'shield'; C's light/heavy
- * split is #if 0).  item_what()'s W_ARMF and W_ARMS arms below (C
- * zap.c:5743/:5745) therefore THREW instead of naming the item — the landmine
- * shape, which the runner scores as a total session failure.  RNG-free.
- * They are added to this file's EXISTING './objnam.js' import, which already
- * brings in their four siblings cloak_/suit_/helm_/gloves_simple_name;
- * js/objnam.js does not import js/zap.js, so the edge is one-way and there is
- * no cycle. */
 function shirt_simple_name(obj) { return shirt_simple_name_real(obj); }
 /* simpleonames: C objnam.c:2428-2442, fully ported and exported by
  * js/objnam.js and imported at this file's header.  A file-local THROWING
@@ -7892,17 +6492,7 @@ function shirt_simple_name(obj) { return shirt_simple_name_real(obj); }
  * amulet/blindfold/ring/weapon call sites (zap.c:5758,5763,5765).  objnam.js
  * does not import zap.js, so the edge is one-way and there is no cycle. */
 
-/* ── burn_floor_objects ──────────────────────────────────────────────────── */
-/* C ref: zap.c burn_floor_objects(4585-4649) */
 
-/**
- * Burn objects (scrolls, spellbooks, green slime) on floor at position x,y.
- * @param {number} x
- * @param {number} y
- * @param {boolean} give_feedback
- * @param {boolean} u_caused
- * @returns {number} number of objects burned
- */
 export async function burn_floor_objects(x, y, give_feedback, u_caused) {
     let cnt = 0;
     let obj = game.level.levelObjects[x][y];
@@ -7983,21 +6573,6 @@ export function hit(str, mtmp, force) {
 }
 
 /* ── Stubs for unported helpers called by zapnodir ───────────────────────── */
-/* litroom() is NOT redeclared here.  C has exactly one litroom (read.c:2491);
- * this file used to carry a throw-stub of that name, which shadowed the real
- * body for zapnodir()'s WAN_LIGHT / SPE_LIGHT arm.  It is now imported from
- * js/read.js (where the port lives) at the top of this file.
- *   Reachability, measured: a 64-session probe (stderr write in the stub,
- * replayed via frozen/ps_test_runner.mjs --worker-session=) fired ZERO times,
- * so this was a LANDMINE, not an executing bug — but a live one, because C
- * DOES reach litroom through zapnodir in seed0500/seed0501
- * (`>mksobj @ spelleffects(spell.c:1401)` then `>pline @ litroom(read.c:2565)`).
- * JS only avoids it because js/spell.js:1462-1464 handles SPE_LIGHT inline via
- * litroom_light_spell() instead of routing spelleffects through zapnodir().
- * Re-routing spell.js to the C structure is a separate, floor-risky change
- * (seed0501 PASSES today on the narrow body) and is deliberately NOT done here;
- * this change only removes the throw so the wand-of-light arm degrades to the
- * real body instead of failing the whole session. */
 /* C zap.c:3021-3051 lightdamage(struct obj *obj, boolean ordinary, int amt)
  * Pseudo-damage from a light source, used to determine blindness duration.
  * RNG: NONE unless the hero is polymorphed into a gremlin — the whole body is
@@ -8021,13 +6596,6 @@ function lightdamage(obj, ordinary, amt) {
          * js pline() takes a single already-formatted string. */
         pline('Ow, that light hurts'
               + ((dmg > 2 || (g.u && (g.u.mh | 0) <= 5)) ? '!' : '.'));
-        /* C zap.c:3040-3048 — killer text + losehp(Maybe_Half_Phys(dmg), buf,
-         * NO_KILLER_PREFIX).  KNOWN GAP: this file has no losehp/ansimpleoname/
-         * bare_artifactname port, and the branch is unreachable on the current
-         * corpus (no session polymorphs into a gremlin).  C draws NO further
-         * RNG here — Maybe_Half_Phys is a Half_physical_damage division, not a
-         * roll — so the RNG sequence above is complete and faithful; only the
-         * HP loss and its message are missing. */
     }
     return dmg;
 }

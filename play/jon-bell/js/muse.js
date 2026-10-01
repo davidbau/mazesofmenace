@@ -3,7 +3,6 @@
 // C ref: nethack-c/src/muse.c
 //
 // find_offensive() already lives in js/makemon.js (it was ported alongside the
-// musable capture group); this module carries the half that ACTS on its
 // verdict: precheck(), mzapwand(), use_offensive(), and the monster-side beam
 // walker mbhit()/mbhitm().
 //
@@ -12,8 +11,6 @@
 // hurled potion).  Every other arm returns C's own no-action value (0,
 // muse.c:2019 `case 0: return 0;`) and carries a KNOWN GAP comment naming the C
 // file:line and the missing dependency.  They are NOT thrown: the replay runner
-// treats an exception as total session failure and discards the ENTIRE matched
-// RNG prefix, so a throw on a path a session only CASCADES into costs thousands
 // of correctly-matched leaves elsewhere.
 
 import { game } from './gstate.js';
@@ -96,16 +93,6 @@ function stop_occupation() {
         game.occupation = null;
 }
 
-/* C ref: hack.h:1530 `#define makeknown(x) discover_object((x), TRUE, TRUE, TRUE)`
- * — THREE booleans, not two.  This wrapper passed only two, so
- * discover_object()'s fourth parameter `credit_hero` arrived undefined and the
- * `if (credit_hero) exercise(A_WIS, TRUE);` at o_init.c:482-483 never ran.
- * That exercise draws rn2(19) whenever |AEXE(A_WIS)| < AVAL, so learning a wand
- * off a monster's zap is RNG-LOAD-BEARING: seed0030 segment 7 leaf 10515 and
- * segment 3 leaf 9882 are both exactly this draw, C's
- * `rn2(19) @exercise(attrib.c:509)` immediately after mbhitm sets learnit and
- * use_offensive returns.  js/makemon.js:5268 already had the four-argument
- * form; this file's private copy did not. */
 function makeknown(otyp) { discover_object(otyp, true, true, true); }
 
 /* C ref: zap.c:3550-3563 hit(str, mtmp, force) — the "The wand hits <mon>!"
@@ -179,17 +166,6 @@ function mzapwand(mtmp, otmp, self) {
          * callers live in use_defensive/use_misc (js/makemon.js).  RNG-free
          * either way; the charge below is still spent, as in C. */
     } else {
-        /* C muse.c:185-188 —
-         *     pline_mon(mtmp, "%s zaps %s!", Monnam(mtmp), an(xname(otmp)));
-         *     stop_occupation();
-         * THIS ARM WAS MISSING.  Its body had been folded up into the `self`
-         * branch above, so the ONLY path that reaches mzapwand() from this
-         * module — use_offensive's MUSE_WAN_STRIKING, which passes self=FALSE
-         * — printed no message at all.  seed0030 segment 7 step 152: C's
-         * topline is "You miss Swidnica.  Swidnica gets angry!  Swidnica zaps
-         * a short wand!--More--" and this port showed only the first two
-         * messages, so it also missed the --More-- and the keystroke that
-         * dismisses it, and the segment ran three frames short of C. */
         pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
         stop_occupation();
     }
@@ -275,15 +251,10 @@ async function mbhitm(mtmp, otmp) {
     return 0;
 }
 
-/* C ref: muse.c:1706-1726 fhito_loc(obj, tx, ty, fhito) — apply fhito to every
- * floor object at <tx,ty>; returns whether anything was hit (which costs the
- * beam an extra point of range). */
 async function fhito_loc(obj, tx, ty, fhito) {
     if (!fhito)
         return false;
     let hitanything = 0;
-    /* C level.objects[x][y] is this port's levelObjects mirror (the public
-     * game.level.objects name is not populated on the scored path). */
     const pile = game.level?.levelObjects?.[tx]?.[ty] ?? null;
     for (let otmp = pile, next_obj = null; otmp; otmp = next_obj) {
         next_obj = otmp.nexthere;
@@ -294,12 +265,6 @@ async function fhito_loc(obj, tx, ty, fhito) {
     return hitanything ? true : false;
 }
 
-/* C ref: zap.c:2857 bhito(obj, otmp) — a zap effect hitting a floor object.
- * WAN_STRIKING uses the same breaks() chain as C's monster beam path: the
- * breaktest obj_resists roll, shatter message, and breakobj/delobj cleanup all
- * occur before the beam continues.  Keep the return value zero, matching C's
- * WAN_STRIKING arm (the object is affected but does not cost an extra range
- * point in this walker).  Other zap arms remain deliberately unimplemented. */
 async function bhito(otmp, zap) {
     if (!otmp || !zap || (zap.otyp | 0) !== WAN_STRIKING)
         return 0;
@@ -309,9 +274,6 @@ async function bhito(otmp, zap) {
     return 0;
 }
 
-/* C ref: muse.c:1733-1812 mbhit(mon, range, fhitm, fhito, obj) — walk the beam
- * from mon towards its believed hero position <mux,muy>, applying fhitm to
- * each monster/hero it crosses and fhito to each floor object pile. */
 async function mbhit(mon, range, fhitm, fhito, obj) {
     const otyp = obj.otyp | 0;
     const bhitpos = (game.bhitpos = game.bhitpos || { x: 0, y: 0 });
@@ -450,24 +412,6 @@ export async function use_offensive(mtmp) {
     case MUSE_POT_CONFUSION:
     case MUSE_POT_SLEEPING:
     case MUSE_POT_ACID:
-        /* C muse.c:2005-2017 — an offensive potion is HURLED, not drunk.
-         *   if (cansee(mtmp->mx, mtmp->my)) {
-         *       observe_object(otmp);
-         *       pline_mon(mtmp, "%s hurls %s!", Monnam(mtmp),
-         *                 singular(otmp, doname));
-         *   }
-         *   m_throw(mtmp, mtmp->mx, mtmp->my, sgn(mtmp->mux - mtmp->mx),
-         *           sgn(mtmp->muy - mtmp->my),
-         *           distmin(mtmp->mx, mtmp->my, mtmp->mux, mtmp->muy), otmp);
-         *   return 2;
-         * The comment that stood in the default arm below said the blocker was
-         * "m_throw ... not ported anywhere in js/".  That was true when it was
-         * written and false when it was read: m_throw has been in js/mhitu.js
-         * (:2628) since the AT_SPIT port.  Measured on seed0030 segment 0 step
-         * 50 — a gnome hurls a potion of sleeping at the hero and C draws
-         * m_throw's two rn2(5) forcehits, u_catch_thrown_obj's rn2(88),
-         * bottlename's rn2(7) and potionhit's rnd(2), where this port fell
-         * through to mattacku's ordinary thrwmu() and drew a lone rn2(5). */
         if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
             observe_object(otmp);
             pline(`${Monnam(mtmp)} hurls ${(await singular(otmp, doname))}!`);
@@ -479,25 +423,6 @@ export async function use_offensive(mtmp) {
                 otmp);
         return 2;
     default:
-        /* KNOWN GAP — the unported arms of C's switch (muse.c:1846-2013):
-         *   MUSE_WAN_DEATH / SLEEP / FIRE / COLD / LIGHTNING / MAGIC_MISSILE
-         *     (muse.c:1846-1866) need buzz()/buzz_force_miss() (zap.c).
-         *   MUSE_FIRE_HORN / MUSE_FROST_HORN (muse.c:1867-1875) need
-         *     mplayhorn() (muse.c) and buzz().
-         *   MUSE_SCR_EARTH (muse.c:1891-1952) needs mreadmsg/drop_boulder_on_*.
-         *   MUSE_CAMERA (muse.c:1953-1970) needs mreadmsg/flash_hits_mon.
-         *
-         * Returns 0 — C's OWN no-action value for this function: muse.c:2009
-         * `case 0: return 0;` and muse.c:2011-2013 `default: impossible(...);
-         * break;` which falls out of the switch to the function's trailing
-         * return 0.  mattacku then continues to its normal attack loop
-         * (mhitu.c:759-761 `if (offended != 0) return (offended == 1);`),
-         * which is exactly the behaviour before this block existed.
-         *
-         * NOT thrown: the replay runner treats an exception as total session
-         * failure and discards the ENTIRE matched RNG prefix, so a throw here
-         * costs thousands of correctly-matched leaves on sessions that merely
-         * cascade into this path. */
         return 0;
     }
 }
@@ -511,10 +436,6 @@ export async function use_offensive(mtmp) {
 /* C ref: hacklib.h sgn(n). */
 function sgn(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }
 
-/* C ref: rm.h:114 ZAP_POS(typ) = ((typ) >= POOL) — a zap passes over anything
- * from POOL upward.  POOL/OBJ_FLOOR/KILLED_BY_AN/TELL all come from const.js
- * (rm.h:72 POOL=16, obj.h:76 OBJ_FLOOR=1, hack.h:595 KILLED_BY_AN=0); local
- * copies here had POOL 18, OBJ_FLOOR 0 and KILLED_BY_AN 1, all wrong. */
 function ZAP_POS(typ) { return (typ | 0) >= POOL; }
 
 /* C ref: mon.c:4397-4416 seemimic(mtmp) — a mimic that acts drops its

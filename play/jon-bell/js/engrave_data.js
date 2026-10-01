@@ -1,13 +1,11 @@
 // @ts-nocheck
 // GENERATED — DO NOT EDIT.  Regenerate with:
-//     bash scripts/build-dat-files.sh && node scripts/gen-engrave-data.mjs
 //
 // VINTAGE: NetHack 5.0.0_Release.  Both scripts read their .txt sources from
 // nethack-c-v5/upstream/dat and refuse to fall back to nethack-c/dat (3.7),
 // whose rumors.tru compiles to TRUE_RUMOR_SIZE=23875 instead of 24924.  That
 // fallback used to be the default and used to pass both scripts' asserts, so
 // a routine regenerate silently reverted the rumor fix; each script now checks
-// the decoded moduli against the corpus before writing anything.
 //
 // Decoded from the compiled data files the C reference opens at runtime
 // (dat/{rumors,epitaph,engrave}), NOT from their .txt sources.

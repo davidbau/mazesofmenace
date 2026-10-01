@@ -1,22 +1,18 @@
 // @ts-nocheck
 // rng.js — PRNG wrappers around ISAAC64.
 // C ref: rng.c — three RNG contexts: core, display, lua.
-// Contest: only core context is used for parity.
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
 import { ENV } from './hostenv.js';
 let _rngLog = [];
 let _rngLogEnabled = false;
-// Captured-input replay RNG — two tape modes, mutually exclusive.
 //
 // _rngTape (pre-mod): see installRngTape() near the bottom of this file.
 // When set, RND(N) pops the next value and applies `% N` at the call
 // site. One pre-mod tape can drive multiple call sites with different
-// N args. Used by the equiv_oracle subprocess-style replay (smoke
 // fixture, fast-check fixtures with seeded RNG).
 //
 // _rngResultTape (post-mod, "result tape"): see installRngResultTape().
-// Captured `rng_consumed` values from per-function replay come from
 // NETHACK_RNGLOG's `= <result>` column — they are each function's OWN
 // return value (NOT a single shared rn2-style 0..N-1 pool). Per-fn
 // return-spaces:
@@ -32,7 +28,6 @@ let _rngLogEnabled = false;
 // `rng_result_tape_oor: <fn>(<args>) got <popped>` to name the call
 // site precisely. For rne/d (upper bound is fn-internal) and rnz
 // (upper bound is unconstrained), only the lower bound is enforced;
-// the captured C value is trusted as valid by construction.
 //
 // Only one tape is active at a time; installing one clears the other.
 // initRng(seed) clears both, returning to ISAAC64.
@@ -86,7 +81,6 @@ export function initRng(seed) {
     // CORE, consumed independently.
     _initDispCtx(seed);
     _rngLog = [];
-    // A fresh seed always returns to ISAAC64 mode — matches the C-oracle
     // contract ("the `seed` op clears any installed tape"). Both tape
     // modes (pre-mod and result) clear together.
     _rngTape = null;
@@ -94,18 +88,6 @@ export function initRng(seed) {
     _rngResultTape = null;
     _rngResultTapePos = 0;
 }
-/* How many slots of the installed result tape were NOT consumed.
- *
- * The tape pins the VALUES of the draws a port makes. Nothing pinned that it
- * made them at all: a port that skips the draws entirely replays clean, because
- * every assertion is on values that were never requested. Measured on the stub
- * corpus, 24 functions already under-consume at HEAD — christen_orc consumes
- * 0 of 337 recorded draws and scores CONF=hi, because js/dokick.js:1018 has a
- * module-local `rndorcname() { return ""; }` shadowing the real port.
- *
- * That is a direct Cardinal Rule 2 failure: the RNG sequence is the first
- * signal, and half of it was unchecked. Returning the residual lets the sweep
- * assert the tape was drained. */
 export function rngResultTapeResidual() {
     if (!_rngResultTape) return 0;
     return _rngResultTape.length - _rngResultTapePos;
@@ -115,14 +97,10 @@ export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled)
     _rngLog.push(entry); }
 // ---------------------------------------------------------------------
-// Step-Explorer caller annotation (opt-in, env-gated).
 //
 // When env var STEP_EXPLORER_RNG_TRACE=1 (set ONLY by the
-// tools/step-explorer/ subprocess), each RNG primitive's log entry is
 // suffixed with " @<file.js:line>" naming the JS caller. This is purely
 // a label appended to the log string — it does NOT change RNG values,
-// argument handling, or any state visible to the contest scorer. With
-// the env var unset (the default in every contest run and in CI), this
 // code path is a no-op single-property read; semantics are identical
 // to the previous unannotated behaviour.
 //
@@ -134,19 +112,13 @@ export function pushRngLogEntry(entry) { if (_rngLogEnabled)
 // symmetrically in side-by-side panes.
 //
 // Anti-cheat: this records WHERE JS called rn2 — it does NOT read
-// session telemetry or alter what rn2 returns. The frozen scorer
-// never sets STEP_EXPLORER_RNG_TRACE, so the contest path is byte-
-// identical to before this hook existed. See tools/step-explorer/
 // for the only consumer.
 // ---------------------------------------------------------------------
 const _STEP_EXPLORER_RNG_TRACE = !!(typeof process !== 'undefined'
     && ENV && ENV.STEP_EXPLORER_RNG_TRACE);
 function _stepExplorerCallerTag() {
-    // Allocating an Error captures the JS call stack on V8. We walk past
     // this helper + the immediate rn2/rnd/d/rne/rnz frame and report the
-    // first frame outside js/rng.js — that is the porter-meaningful
     // call site. Cheap when the env flag is off (we return ''); when on,
-    // ~5us per call which is fine for the explorer's one-session use.
     const stack = new Error().stack || '';
     const lines = stack.split('\n');
     // Find first frame whose path does NOT mention 'rng.js'. Lines look
@@ -183,7 +155,6 @@ function _maybeTagEntry(entry) {
 // The result-tape path does NOT go through RND. Each public primitive
 // (rn2/rnd/d/rne/rnz) handles its own tape pop and validation against its
 // own return-space — see the per-function block in the wrappers below.
-// That separation is load-bearing: the captured `rng_consumed` values
 // come from NETHACK_RNGLOG's `= <result>` column, which is each
 // function's OWN return (rnd returns 1..N, not rn2's 0..N-1), so a
 // single shared RND-shaped reduction would mis-interpret rnd/d/rne/rnz
@@ -216,38 +187,10 @@ function popResultTape() {
     const popped = _rngResultTape[_rngResultTapePos++];
     return Number(popped);
 }
-/* C rnd.c:64-71
- *   int rn2_on_display_rng(int x)
- *   { return (isaac64_next_uint64(&rnglist[DISP].rng_state) % x); }
- *
- * "0 <= rn2(x) < x, but on a different sequence from the 'main' rn2; used in
- * cases where the answer doesn't affect gameplay and we don't want to give
- * users easy control over the main RNG sequence."
- *
- * NOT the scored stream, and deliberately NOT logged into _rngLog: the
- * recorder writes core draws to NETHACK_RNGLOG and display draws to the
- * separate NETHACK_RNGLOG_DISP (patches/005-rng-display-logging.patch), and
- * the 44 public sessions carry ONLY the core channel — measured 2026-08-14,
- * zero of the corpus's 360 distinct recorded RNG call sites is a display-rng
- * one.  Putting a display draw into getRngLog() would therefore inject a value
- * into a stream the scorer compares positionally against a recording that does
- * not contain it.
- *
- * Consumers: rndmonnam/bogusmon (do_name.c:1389/1368), random_monster /
- * random_object / random_trap / rndcolor (display.c), obj_to_glyph
- * (invent.c:3319), hcolor (do_name.c:1464) — the hallucination and
- * cosmetic-appearance surface. */
 export function rn2_on_display_rng(x) {
     if (x <= 0)
         return 0;
     if (!game.dispCtx) {
-        /* C seeds BOTH contexts from one sys_random_seed() at options.c:7161,
-         * so a DISP context is never absent in C.  It can be absent here when a
-         * harness enters through something other than initRng() — the
-         * capture-replay sweep drives one function against recorded state and
-         * never seeds.  Seed it from the same value CORE has rather than
-         * throwing: throwing turns every such caller into a halt, and the value
-         * is C's, not invented. */
         _initDispCtx(game.currentSeed | 0);
     }
     return Number(isaac64_next_uint64(game.dispCtx) % BigInt(x));
@@ -283,7 +226,6 @@ export function rnd(x) {
     if (_rngResultTape !== null) {
         // Result-tape: popped value is the C-side rnd(x) return,
         // already in [1, x]. Return directly — do NOT add 1 (that
-        // was the off-by-one bug this fix corrects: rnd's captured
         // value is the post-`+1` C return, not the pre-`+1` rn2
         // result). Out-of-range means JS is invoking rnd with a
         // different N than C did at this step.
@@ -308,13 +250,11 @@ export function d(n, x) {
     let tmp;
     if (_rngResultTape !== null) {
         // Result-tape: popped value is the C-side d(n,x) return,
-        // already in [n, n*x]. The capture pipeline records only the
         // outer d() result line; the internal RND(x) calls inside the
         // loop emit no separate `= R` log entries (rnd.c suppresses
         // them via RNGLOG_IN_RND_C), so the tape carries exactly one
         // value per d() call. We pop once and return it.
         // Lower-bound check (popped >= n) is sufficient; upper bound
-        // (n*x) is fn-internal and trusted because the captured C
         // value is valid by construction.
         const popped = popResultTape();
         if (popped < n) {
@@ -334,9 +274,6 @@ export function d(n, x) {
 // C ref: rne(x) — exponentially distributed. Return space 1..max(ulevel/3, 5).
 // Internal rn2 calls are logged (matching C's PRNG log format).
 export function rne(x) {
-    /* Result tapes carry one aggregate C return per public primitive.  The
-     * internal rn2 draws of rne() are already folded into that captured
-     * result and therefore do not occupy separate result-tape slots. */
     if (_rngResultTape !== null) {
         const popped = popResultTape();
         if (popped < 1)
@@ -357,8 +294,6 @@ export function rne(x) {
 // C ref: rnz(i) — fuzzy random around i. Returns some positive integer.
 // Internal rn2/rne calls are logged (matching C's PRNG log format).
 export function rnz(i) {
-    /* Result tapes carry one aggregate C return per public primitive; do not
-     * replay rnz's internal rn2/rne draws against that one-slot contract. */
     if (_rngResultTape !== null) {
         const popped = popResultTape();
         if (popped <= 0)
@@ -390,9 +325,7 @@ export function rnz(i) {
 // 003-rng-log-core.patch suppresses only the inner call's own caller-
 // context, not the log line itself) -- so the tape carries TWO entries in
 // that case, `rn2(37+|adj|)=...` immediately followed by rnl's own
-// aggregate `rnl(x)=i` line. For Luck=0 (the common case) adjustment=0, rn2
 // is never called (C short-circuits `adjustment && rn2(...)`), and only the
-// `rnl(x)` line is emitted. Fixed 2026-09-05: the tape branch used to pop
 // only one slot unconditionally, desyncing the tape by one draw on every
 // non-zero-Luck rnl() call (witness: dokick record #32, rn2(38)=8 popped as
 // rnl(7)'s own result).
@@ -403,9 +336,6 @@ export function rnl(x) {
     // C: adjustment = Luck;  Luck = u.uluck + u.moreluck (decl.h). Needed in
     // BOTH branches: when non-zero, C's rnl() makes a SECOND logged draw
     // (the internal `rn2(37+|adj|)` guard, rnd.c:141) before its own
-    // aggregate `rnl(x)=i` line -- patches/003-rng-log-core.patch suppresses
-    // only that inner call's own caller-context, not its log entry. Measured
-    // 2026-09-05 via rng-trace on dokick record #32: `rn2(38)=8 @
     // kick_nondoor(dokick.c:1147)` precedes `rnl(7)=4` in the same call's
     // rng_consumed, and the old tape branch (which never computed adjustment
     // or popped this leading slot) threw rng_result_tape_oor popping 8 for
@@ -453,7 +383,6 @@ export function rnl(x) {
 export const c_d = d;
 export const lua_d = d;
 // ---------------------------------------------------------------------
-// RNG tape — captured-input replay
 //
 // Install an explicit sequence of pre-mod values that rn2/rnd/d/rne/rnz
 // will consume in order via RND(). Each call site applies its own
@@ -507,12 +436,10 @@ export function installRngTape(values) {
     _rngResultTapePos = 0;
 }
 // ---------------------------------------------------------------------
-// RNG result tape — post-mod captured-input replay
 //
 // Companion to installRngTape(). Values supplied here are treated as
 // ALREADY post-mod outputs of the original C rn2(N) calls (the
 // `= <result>` column from NETHACK_RNGLOG, harvested by
-// harness/capture_trampoline.c into the captured-record `rng_consumed`
 // array). rn2/rnd/d/rne/rnz read directly from this tape with no
 // `% N` reduction applied.
 //
@@ -521,11 +448,9 @@ export function installRngTape(values) {
 //     RND(N). If the popped value is >= N, RND throws
 //     Error('rng_result_tape_oor: rn2(<N>) got <popped>'). Out-of-
 //     range means JS is calling rn2 with a different N than C did at
-//     this step — a Cardinal Rule 2 miscall, NOT a porter bug at the
 //     visible function. The error message names the offending N for
 //     easy triage.
 //   - Underrun throws Error('rng_result_tape_underrun') from the next
-//     consume. Caller should size the tape to exactly the captured
 //     rng_consumed array; extra calls signal that JS is consuming
 //     more RNG than C did.
 //

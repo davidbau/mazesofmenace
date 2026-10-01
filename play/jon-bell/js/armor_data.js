@@ -1,34 +1,3 @@
-/* GENERATED FILE — DO NOT EDIT BY HAND.
- * Regenerate: node tools/gen-armor-data.mjs
- * Verify:     node tools/oc-delay-parity.mjs
- *
- * The ARMOR_CLASS rows of the C objects table, read straight out of
- * nethack-c/include/objects.h via tools/dump-oc-delay.c (which expands the
- * same OBJECTS_INIT macros src/objects.c does).  Fields mirror struct objclass:
- *
- *   delay    = oc_delay     — take-off / put-on occupation length.  armoroff()
- *                             (do_wear.c:1921) is
- *                                 int delay = -objects[otyp].oc_delay;
- *                             and BRANCHES on it: nonzero schedules nomul(delay)
- *                             + afternmv + nomovemsg (the hero burns |delay|
- *                             turns and every monster moves), zero runs *_off()
- *                             immediately.  A wrong cell here silently adds or
- *                             deletes turns; see tools/oc-delay-parity.mjs.
- *   armcat   = oc_armcat    — ARM_SUIT 0, ARM_SHIELD 1, ARM_HELM 2,
- *                             ARM_GLOVES 3, ARM_BOOTS 4, ARM_CLOAK 5,
- *                             ARM_SHIRT 6.
- *   material = oc_material  — objclass.h MAT_*; drives is_metallic()/
- *                             is_crackable() and so hard_helmet().
- *   a_ac     = a_ac/oc_oc1  — the AC this piece subtracts.  ARM_BONUS(obj)
- *                             (hack.h:1531) is
- *                                 objects[obj->otyp].a_ac + obj->spe
- *                                 - min(greatest_erosion(obj),
- *                                       objects[obj->otyp].a_ac)
- *                             — it is indexed BY OTYP, never read off the
- *                             object, so find_ac() must resolve it here.
- *   name     = OBJ_NAME     — actual name ("leather armor"), null for NoDes.
- *   descr    = OBJ_DESCR    — unidentified description ("old gloves"), null.
- */
 export const ARMOR_DATA = {
     89: { delay: 1, armcat: 2, material: 7, a_ac: 1, name: "elven leather helm", descr: "leather hat" },  /* ARM_HELM */
     90: { delay: 1, armcat: 2, material: 11, a_ac: 1, name: "orcish helm", descr: "iron skull cap" },  /* ARM_HELM */

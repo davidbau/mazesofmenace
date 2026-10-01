@@ -342,6 +342,5 @@ function check_enhanced_colors(buf) {
         retcolor = color | NH_BASIC_COLOR;
     }
     // Note: skipping sscanf("#rrggbb") and colortable fuzzymatch branches
-    // as they are not needed for the current corpus.
     return retcolor;
 }

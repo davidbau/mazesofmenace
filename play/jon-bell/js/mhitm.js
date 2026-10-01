@@ -66,8 +66,6 @@ import { mon_nam, exclam } from './uhitm.js';
  * js/uhitm.js.  mhitm.js already imports from uhitm.js (mon_nam, dmgval_weapon,
  * ...), so this rides the existing edge rather than adding a new one. */
 import { xkilled as xkilled_mh, XKILL_GIVEMSG as XKILL_GIVEMSG_MH, XKILL_NOMSG as XKILL_NOMSG_MH } from './uhitm.js';
-/* hmon / hmon_hitmon (hero hits monster) leaf callees — [claude-lane, issue-24].
- * dmgval aliased to avoid the local not-yet-ported dmgval stub in this file. */
 import { dmgval as dmgval_weapon, weapon_dam_bonus, use_skill, weapon_type, dbon } from './uhitm.js';
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { setmangry, wake_msg, wake_nearto, healmon } from './mklev.js';
@@ -228,12 +226,6 @@ export function attk_protection(aatyp) {
  * itself and passive_obj() below, not in the side-effect helpers.
  * ---------------------------------------------------------------------------
  */
-/* mdamageu — C ref: nethack-c/src/mhitu.c:1902-1923.  This was a file-local
- * no-op stub shadowing the real port in js/mhitu.js (same shadowing-stub
- * class as make_confused/make_stunned there: a bare-handed hit on an
- * AD_ACID-passive monster silently dropped hero damage, DIAG
- * hero.uhp:MISSING, record #112 probe-reach-melee__gen034-objective-
- * seed744953).  Import the one real body instead of re-stubbing it. */
 import { mdamageu } from './mhitu.js';
 /* m_canseeu — C ref: nethack-c/include/vision.h:45-52 (macro):
  *   (!Invis || perceives(m->data)) && !Underwater && couldsee(m->mx, m->my)
@@ -312,29 +304,6 @@ export function ugolemeffects(damtype, dam) {
  * for this file's three call sites (uhitm.c:6043 floating-eye touch/paralysis
  * delay, uhitm.c's gelatinous-cube nomul(-tmp) below it, and the
  * svc.context.run nomul(0) further down this file). */
-/* dynamic_multi_reason — GENUINE PORT (no real body existed anywhere;
- * js/uhitm.js:5784-5786 carries its own separate, explicitly-labelled
- * "no-op stub").
- * C ref: uhitm.c:101-122 void dynamic_multi_reason(struct monst *mon,
- * const char *verb, boolean by_gaze)
- *
- * C builds a two-part buffer: "m_id:verb by NAME[ gaze]", then sets
- * gm.multi_reason to point PAST the "m_id:" prefix — so every OTHER reader
- * of multi_reason (nomovemsg checks, this port's steal.js/topten.js) sees
- * only "verb by NAME[ gaze]", exactly the flat-string convention every other
- * writer in this codebase already uses (do_wear.js, potion.js, cmd.js, ...).
- * The id-prefixed backing buffer exists solely for end.c's fixup_death() to
- * recover mon->m_id later via pointer arithmetic when the hero dies while
- * multi-reasoned; fixup_death has NO js/ port (grepped: only a comment at
- * js/end.js:1525), so that recovery path is unreachable here and inventing
- * a matching buffer/prefix convention would be undocumented state nothing
- * reads.  Storing the flat string only is therefore both C-faithful (it is
- * exactly what gm.multi_reason itself points at) and the minimal change.
- *
- * RNG: x_monnam's hallucination arm (the only RNG source in that function)
- * is gated on `!(suppress & SUPPRESS_HALLUCINATION)`; this call passes that
- * flag, so do_hallu is forced false and no draw happens — verified at
- * js/mhitm.js:528. */
 function dynamic_multi_reason(mon, verb, by_gaze) {
     const who = x_monnam(mon, ARTICLE_A, null,
         SUPPRESS_IT | SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION
@@ -356,15 +325,6 @@ function dynamic_multi_reason(mon, verb, by_gaze) {
  * monster and this call site had no effect at all. */
 function split_mon(mon, you) { return split_mon_rt(mon, you); }
 function done_in_by(mon, how) { return done_in_by_real(mon, how); }
-/* polymon — MODULE-LOCAL STUB DELETED.  C has exactly one polymon
- * (polyself.c:735); this file carried `function polymon(_pm) { return false; }`,
- * which shadowed the real export (js/polyself.js:304) for this file's single
- * call site in passive()'s AD_STON arm.  The dead-port census scored that row
- * SHADOWED/CRITICAL.  The stub is NOT replaced by an import: polyself.js's
- * polymon is `async`; wiring that independent transformation branch still
- * requires its own state and message-order review.
- * The gap is now stated at the one call site (search PM_STONE_GOLEM below)
- * rather than answered "false" by a look-alike that reads like a port. */
 /* canseemon is NOT a stub here — the real one (js/display.js:3105, C ref
  * display.h:129) is imported at the top of this file.  A module-local
  * `function canseemon(){ return false; }` used to shadow that import, which
@@ -451,31 +411,6 @@ function monnear(mon, x, y) {
  * (js/eat.js, js/zap.js, js/dog.js, js/makemon.js, js/dogmove.js, js/uhitm.js)
  * and the import path is not what this change is about. */
 export { s_suffix };
-/* C ref: nethack-c-v5/upstream/src/do_name.c:1479-1512 hliquid(liquidpref) —
- * "if hallucinating, return a random liquid instead of 'liquidpref'".
- *
- *     boolean hallucinate = Hallucination && !program_state.gameover;
- *     if (hallucinate || !liquidpref || !*liquidpref) {
- *         int indx, count = SIZE(hliquids);
- *         if (liquidpref && *liquidpref) ++count;   / * include the default * /
- *         indx = rn2_on_display_rng(count);
- *         if (IndexOk(indx, hliquids)) return hliquids[indx];
- *     }
- *     return liquidpref;
- *
- * The `++count` is not decoration: with a non-empty preference the roll is
- * rn2(41) over a 40-entry table, and the one out-of-range index is exactly how
- * C gives the real word ("water") a 1-in-41 chance of surviving hallucination.
- * Dropping it would draw the right modulus never and the wrong one always.
- *
- * This was `return s`, a stub that drew NOTHING.  It is on the DISPLAY isaac64
- * stream, which no recorded session carries and therefore no scored-path oracle
- * can see — measured only by tools/display-rng-diff.mjs against a
- * NETHACK_RNGLOG_DISP=1 recording.  On seed0383 C makes exactly one rn2(41)
- * here, at core leaf 11524, and every hallucinated glyph and name after it was
- * one display draw out of step; the visible half was step 187's topline, C
- * "You avoid stepping into the pool of purified water." against this port's
- * "pool of water". */
 const _hliquids = [
     "yoghurt", "oobleck", "clotted blood", "diluted water", "purified water",
     "instant coffee", "tea", "herbal infusion", "liquid rainbow",
@@ -504,14 +439,6 @@ export function hliquid(liquidpref) {
  * ===========================================================================
  */
 
-/* C ref: nethack-c/include/hack.h:1026 — EXACT_NAME is 0x1F, i.e.
- *   SUPPRESS_IT|SUPPRESS_INVISIBLE|SUPPRESS_HALLUCINATION|SUPPRESS_SADDLE
- *   |SUPPRESS_MAPPEARANCE
- * and deliberately does NOT include SUPPRESS_NAME (0x20, declared after it;
- * do_name.c:817-818 documents it as "combination of all the above").
- * js/const.js:305 computes 0x27 instead (SUPPRESS_NAME in place of SADDLE and
- * MAPPEARANCE); const.js is overwritten from frozen/ by the scorer, so the C
- * value is redeclared here rather than corrected there. */
 const XM_EXACT_NAME = 0x1F;
 /* C ref: nethack-c/include/monst.h:52-72 — M_AP_TYPE(m) is m_ap_type masked. */
 const M_AP_MONSTER = 3;
@@ -531,11 +458,6 @@ function xm_highc_first(bp) {
     return String.fromCharCode(first) + bp.slice(1);
 }
 
-/* struct monst * identity.  C compares raw pointers (`mtmp == &gy.youmonst`,
- * `mon != other_mon`, `mtmp != u.usteed`); the capture-replay marshaller
- * rebuilds every monster from flat fields, so the pointers are always distinct
- * objects and pointer equality is inexpressible.  m_id is unique per monster
- * (monst.h) and is the only field that can carry that identity. */
 function xm_same_monst(a, b) {
     if (!a || !b) return false;
     if (a === b) return true;
@@ -593,11 +515,6 @@ function xm_Mgender(mtmp) {
     return mtmp.female ? FEMALE : MALE;
 }
 
-/* C ref: nethack-c/include/mextra.h:218,227.  The replay reconstructor exposes
- * has_mgivenname() directly as a bound presence field (struct_reconstructor.js);
- * the strict monst proxy has no `mextra` key to walk, so prefer it when present.
- * The name STRING itself is not captured — a record with has_mgivenname set and
- * no mgivenname is a capture gap, not something to paper over here. */
 export function xm_has_mgivenname(mtmp) {
     if (!mtmp) return false;
     if ('has_mgivenname' in mtmp) return !!mtmp.has_mgivenname;
@@ -915,51 +832,6 @@ function nh_getenv(name) {
     return null;  /* no environment variables in this port */
 }
 
-/* ── roguename — C ref: nethack-c/src/do_name.c:1423-1439 ─────────────────
- * The previous line range (1423-1436) stopped one line SHORT of the only two
- * RNG draws in the function (do_name.c:1437), i.e. it cited the ROGUEOPTS
- * scan and omitted the part that matters.
- *
- * DRAW ORDER — verified against the scoring oracle, 2026-08-09.  C sequences
- * the controlling expression of `?:` before either arm and evaluates only the
- * selected arm (C17 6.5.15p4), so rn2(3) FIRST and rn2(2) only when rn2(3) is
- * non-zero is forced by the standard, not implementation-defined.  This is NOT
- * the sibling rndorcname() hazard: that one's ambiguity came from unspecified
- * VARARGS evaluation order inside a Sprintf(), where the capture corpus and the
- * contest sessions were recorded by binaries that disagreed.  There are no
- * varargs here, and both oracles agree.  All 4 draws the 64 contest sessions
- * record for this function (seed0360, seed0365, seed0800 — see
- * T2-test-roguename-ctrace.mjs) are rn2(3)-then-conditionally-rn2(2).
- *
- * NOT WIRED, and not wirable from this file (measured 2026-08-09).  C has two
- * call sites:
- *   do_name.c:738   namefloorobj() -> unames[4], Hallucination-gated; ZERO
- *                   occurrences in the 64 contest sessions.
- *   extralev.c:303  makerogueghost(); ALL 4 recorded draws come from here.
- * extralev.c is entirely unported — 0 of its 6 functions (roguejoin,
- * roguecorr, miniwalk, makeroguerooms, corr, makerogueghost) exist in js/ —
- * and js/mklev.js makelevel() calls makerooms() unconditionally where C
- * branches to `makeroguerooms(); makerogueghost();` (mklev.c:1302-1305), so the
- * JS never generates a rogue level at all.  tools/dead-port-census.mjs agrees:
- * "Wiring it revives 0 REAL bodies + 1 throw-stubs — i.e. nothing actually
- * starts working; the whole chain is stubs."  Wiring this needs an extralev.c
- * subsystem port plus the makelevel() branch, both outside this file.
- *
- * Payoff if that lands: none today.  All 3 sessions already fail, and in each
- * one the roguename draw sits far downstream of that session's own first
- * divergence, so by Cardinal Rule 3 it is cascade, not the bug.  Indices below
- * are frozen/score.sh's own RNG-call step (its firstDivergence.step axis;
- * 1-based over steps[].rng with the ^toplin/^botlx markers dropped) measured at
- * HEAD d71bd00a, with the session keystroke step in parentheses:
- *     seed0360  first divergence 2996 (step 136)  vs roguename 72788 (step 234)
- *     seed0365  first divergence 3107 (step 152)  vs roguename  9878 (step 232)
- *     seed0800  first divergence 2619 (step 109)  vs roguename  6026 (step 117)
- * Both axes agree.  Do not use tools/first-divergence.mjs's "leaf" index for
- * this comparison without re-deriving it: that index is 0-based and counts a
- * DIFFERENT stream, so a naive regex over the session JSON silently misaligns
- * (it drops non-rn* draws such as `d(2,4)`), which is how an earlier revision
- * of this note got these numbers wrong.
- * --------------------------------------------------------------------------- */
 export function roguename() {
     const opts = nh_getenv("ROGUEOPTS");
     if (opts) {
@@ -1193,35 +1065,6 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     (protector === W_ARMH && !uarmh) ||
                     (protector === (W_ARMC | W_ARMG) && (!uarmc || !uarmg));
                 if (unprotected) {
-                    /* C ref: nethack-c/src/uhitm.c:5950-5955 —
-                     *   if (!Stone_resistance
-                     *       && !(poly_when_stoned(gy.youmonst.data)
-                     *            && polymon(PM_STONE_GOLEM))) {
-                     *       done_in_by(mon, STONING);
-                     *       return M_ATTK_DEF_DIED;
-                     *   }
-                     *
-                     * ARGUMENT FIX: poly_when_stoned() takes gy.youmonst.data —
-                     * the HERO's current form.  This site passed `ptr`, which is
-                     * bound to mon.data at the top of passive(), i.e. the
-                     * PETRIFYING ATTACKER.  It was asking "is the cockatrice a
-                     * non-stone golem?" instead of "is the hero currently a
-                     * golem, and therefore turns into a stone golem rather than
-                     * dying?".  Both read false today (an ordinary hero is not a
-                     * golem, and neither is a cockatrice), which is why no gate
-                     * has caught it — it goes wrong precisely in the case the
-                     * branch exists for.
-                     *
-                     * KNOWN GAP: polymon().  See the note where the shadowing
-                     * stub used to be, above.  RNG ON THIS GAPPED PATH: C DOES
-                     * draw — polymon() consumes rn2(10) (polyself.c:792),
-                     * rn2(500) (:813), d(9,8) (:868) and more.  Reaching it from
-                     * here requires the hero to be polymorphed into a non-stone
-                     * golem AND to be hit by a petrifying passive attack; no
-                     * session in the 64-session corpus does the former, and the
-                     * corpus's 64 real polymon calls (seed3100, seed5500) all
-                     * arrive through polyself.c's own path, which js/polyself.js
-                     * already serves with the real body. */
                     const hero_uptr = (game.youmonst && game.youmonst.data)
                         ? game.youmonst.data
                         : permonstTemplate((u && u.umonnum) | 0);
@@ -1268,7 +1111,6 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
             }
             break;
         case AD_MAGM:
-            /* C uhitm.c:5981-5991 — Oracle wrath; no rn2 */
             {
                 const antimagic = _hero_prop_active(ANTIMAGIC);
                 if (antimagic) {
@@ -1475,22 +1317,6 @@ export function num_horns(ptr) {
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * GROWNUPS — C ref: nethack-c/src/mondata.c:1228-1301 `static const short
- * grownups[][2]`.  C has exactly ONE table, walked forwards with a `break` on
- * first match by BOTH little_to_big() and big_to_little(), so row ORDER is
- * load-bearing and the two functions must never hold private copies.  (They
- * did: little_to_big carried a 14-row subset missing chickatrice->cockatrice
- * and every dragon/naga/soldier row, and big_to_little carried a 65-row copy
- * whose tail was resolved against a stale mons[] index space — baby crocodile
- * 324 (= iguana), student 368 (= Dark One), archeologist 330 (= long worm
- * tail), attendant 371, page 372, apprentice 381 — and which was missing the
- * aligned cleric->high cleric and acolyte->cleric rows entirely.)
- * Indices are pmidx, resolved from js/makemon_pmnames.json (the C-captured
- * mons[] name table, 383 rows) via each row's gender-neutral name, which is
- * the name C's MON() macro turns into the PM_ id.
- * ---------------------------------------------------------------------------
- */
 const GROWNUPS = [
     [9, 10],     /* chickatrice -> cockatrice */
     [16, 18],    /* little dog -> dog */
@@ -1868,11 +1694,6 @@ export function hcolor(colorpref) {
     return colorpref;
 }
 
-/* rn2_on_display_rng was a file-local stub here that THREW, shadowing the real
- * body js/rng.js has carried since 2026-08-14 — so hcolor() above, the only
- * caller, could not run at all.  (A local `function` declaration and an import
- * of the same name are a duplicate binding, which is why the import at the head
- * of this file could not be added until this stub went.) */
 
 /* ---------------------------------------------------------------------------
  * cvt_prop_to_mseenres — C ref: nethack-c/src/mondata.c:1539-1555
@@ -2257,10 +2078,6 @@ export function mon_hates_blessings(mon) {
  */
 export function new_oname(obj, lth) {
     if (lth) {
-        /* allocate oextra if necessary; otherwise get rid of old name.
-         * In the capture-replay trampoline, oextra is flattened (see
-         * free_oname below): mirror obj->oextra = newoextra() as the
-         * flat oextra_* presence bits newoextra() reports all-null. */
         if (!obj.oextra_present) {
             const oe = newoextra();
             obj.oextra_present = 1;
@@ -2326,14 +2143,6 @@ export function raceptr(mtmp) {
     return mtmp.data;
 }
 
-/* ---------------------------------------------------------------------------
- * shade_miss — C ref: nethack-c/src/uhitm.c:2016-2052
- * Checks if attack passes harmlessly through a shade monster.
- * Returns true if the attack is negated (harmlessly passes through shade).
- * No RNG calls in this function.
- * State change: may set mdef->msleeping = 0.
- * ---------------------------------------------------------------------------
- */
 export function shade_miss(magr, mdef, obj, thrown, verbose) {
     const youagr = (magr.m_id | 0) === 0;
     const youdef = (mdef.m_id | 0) === 0;
@@ -2389,13 +2198,6 @@ export async function domindblast() {
     const u = game.u;
     if (!u) return ECMD_OK;
 
-    /* Check energy requirement.  C polyself.c:1888 You("concentrate but lack the
-     * energy to maintain doing so.") — You() prefixes "You "; pline() here takes a
-     * single already-formatted string, so spell the prefix out.  Left UNAWAITED
-     * (as the rest of this file does): js/display.js pline() has no await in its
-     * body, so it commits the topline synchronously — and keeping domindblast
-     * synchronous keeps it inside the capture-replay sweep, which skips any async
-     * export as `async_not_replayable`. */
     if ((u.uen | 0) < 10) {
         pline("You concentrate but lack the energy to maintain doing so.");
         return ECMD_OK;
@@ -2406,8 +2208,6 @@ export async function domindblast() {
     /* SET_BOTL() — mark display botl for update */
     if (game.disp) game.disp.botl = 1;
 
-    /* C polyself.c:1894-1895 You("concentrate."); pline("A wave of psychic energy
-     * pours out.");  — the You() prefix again.  Unawaited, per the note above. */
     pline("You concentrate.");
     pline("A wave of psychic energy pours out.");
 
@@ -2493,30 +2293,10 @@ function mindless(mdata) {
     return (mflags1 & M1_MINDLESS) !== 0;
 }
 
-/* C ref: mon.c:3469-3473 —
- *     void
- *     killed(struct monst *mtmp)
- *     {
- *         xkilled(mtmp, XKILL_GIVEMSG);
- *     }
- * A one-line wrapper, and nothing else.  xkilled() is a real, substantial port
- * at js/uhitm.js:2577, so this was a THROWING stub sitting in front of a
- * working body: measured 2026-08-25, the throw halts the scored run of
- * gen502-recombine-seed572060 at frame 549 of 833 (via kickdmg ->
- * kick_monster -> dokick_resolve -> dokick), forfeiting the whole tail.
- *
- * async because xkilled is: its tail awaits corpse_chance(), which DRAWS, so a
- * fire-and-forget call would run the first pline synchronously and then defer
- * every RNG draw after it into a microtask — the RNG stream would interleave
- * with whatever the caller did next.  Every call site awaits. */
 export async function killed(mtmp) {
     await xkilled_mh(mtmp, XKILL_GIVEMSG_MH);
 }
 
-/* C ref: sounds.c growl_sound(mtmp) — the verb for the monster's msound.
- * Every arm returns a string; the default is "scream", which is what a nymph
- * (MS_SEDUCE) gets — that is C's "The wood nymph screams!" on
- * seed4500-knight-coverage step 986. */
 function growl_sound(ptr) {
     /* C monflag.h:11-59 ms_sounds — values transcribed from the 5.0 enum, not
      * assumed contiguous (MS_HISS is 9, MS_GROAN is 44). */
@@ -2539,22 +2319,6 @@ function growl_sound(ptr) {
     default: return 'scream';
     }
 }
-/* EXPORTED so the capture-replay sweep resolves C's growl() to THIS body: with
- * it module-local, `auto-replay-sweep --filter growl` fell through to
- * js/shk.js:1615's `export function growl(_shkp) {}` (an empty body) and scored
- * 68/68 clean against a stub — a CRITICAL resolved_is_stub row.  js/shk.js's
- * two call sites (:1377, :1440) still reach that empty one; rewiring them is a
- * separate change with its own measurement, not a rename.
- *
- * C ref: sounds.c growl(mtmp) — a monster's angry noise, plus the wake it
- * causes around itself.  `growl` was read at the wakeup() call site below with
- * NO binding anywhere in this module (js-binding-audit's `unbound` class), so
- * reaching it was a ReferenceError, not a no-op; js/shk.js's same-named
- * `export function growl(_shkp) {}` is the shopkeeper's, not this one.
- *
- * C draws no RNG here for a non-hallucinating hero: growl_sound is a switch and
- * wake_nearto_core is a plain fmon walk.  The Hallucination arm
- * (ROLL_FROM(h_sounds)) is on the DISPLAY rng, not the scored one. */
 /* RETURN VALUE: C's growl() is void; its callers read `iflags.last_msg ==
  * PLNMSG_GROWL` afterwards to learn whether a growl message actually printed
  * (mon.c:4243).  js/ has no last_msg channel, so this returns that same
@@ -2580,11 +2344,6 @@ export function growl(mtmp) {
     }
     return false;
 }
-/* C sounds.c:341-348 h_sounds[] — the 35 hallucinatory noise verbs.  Both
- * yelp() and growl() pick from it with ROLL_FROM (hack.h:1493
- * `array[rn2(SIZE(array))]`), which is the CORE rn2, NOT the display one:
- * MEASURED on seed0383 leaf 11373, `rn2(35)=6 @yelp(sounds.c:437)` sits in the
- * recorded core stream. */
 const H_SOUNDS_MM = [
     'beep',   'boing',   'sing',   'belche', 'creak',   'cough',
     'rattle', 'ululate', 'pop',    'jingle', 'sniffle', 'tinkle',
@@ -2597,34 +2356,6 @@ const H_SOUNDS_MM = [
 /* C monflag.h:12-25 — ms_sounds enum values. */
 const MS_BARK_MM = 1, MS_MEW_MM = 2, MS_ROAR_MM = 3, MS_GROWL_MM = 5,
       MS_SQEEK_MM = 6, MS_SQAWK_MM = 7, MS_WAIL_MM = 14;
-/* C ref: sounds.c:426-476 yelp(mtmp) — a hurt pet's cry.
- *
- * It had no body anywhere in js/, and abuse_dog() (its only corpus caller)
- * had none either, so the whole pair was missing from the stream.  MEASURED on
- * seed0383 leaf 11372: C draws `rn2(9) @abuse_dog(dog.c:1381)` and then
- * `rn2(35) @yelp(sounds.c:437)`; this port drew neither and went straight on
- * to xkilled's rn2(6).
- *
- * RNG: exactly one rn2(35) and ONLY while hallucinating — the non-hallucinating
- * arm is a switch.  The deaf verbs are written out but never chosen;
- * Soundeffect() is a no-op without SND_LIB.
- *
- * "`Deaf` is false for every corpus hero" is FALSE as stated — seed0002 and
- * train/gen413 both go deaf, and js/allmain.js, js/eat.js rottenfood and
- * js/trap.js domagictrap all write u.HDeaf.  The load-bearing fact is that no
- * DEAF hero reaches yelp, and it comes with a second one that makes the whole
- * switch moot today: every call so far is hallucinating, so the non-hallucinating
- * switch (deaf verbs included) has never been evaluated at all.
- * MEASURED: subject=yelp-Deaf value=+0 at=d26664bc date=2026-08-29
- *           corpus=public+train (44 + 688 sessions)
- *           reach=9 calls over 9 sessions; Deaf at the call 0, Hallucinating
- *           at the call 9 of 9 — the switch arm is unreached, not merely
- *           un-chosen
- * NOTE Gate 0: sounds.c has NO registered subsystem in
- * tools/lib/subsystem-instruments.mjs, so a divergence rooted here may not be
- * debugged until one exists (and a cFiles entry is not the shortcut — it is the
- * first-match routing key).
- * The `svc.context.run` nomul(0) is C's, and js/ has nomul. */
 export function yelp(mtmp) {
     const data = mtmp.data || permonstTemplate((mtmp.mndx ?? mtmp.mnum ?? -1) | 0);
     if (!data) return;
@@ -2673,11 +2404,6 @@ export function seemimic(mtmp) {
     _wakeup_newsym(mtmp.mx | 0, mtmp.my | 0);
 }
 
-/* wakeup(mtmp, via_attack) — C ref: nethack-c/src/mon.c wakeup().
- * [claude-lane, issue-24] Faithful port. Consumes no RNG for already-awake
- * hostile monsters (setmangry early-returns for non-peaceful); the peaceful
- * shopkeeper/priest sub-branch (hot_pursuit / ghod_hitsu) is out of the
- * thrown-hmon capture corpus and is left to the existing callee stubs. */
 export async function wakeup(mtmp, via_attack, defer_priest = false) {
     const was_sleeping = mtmp.msleeping;
     wake_msg(mtmp, via_attack);
@@ -2685,14 +2411,6 @@ export async function wakeup(mtmp, via_attack, defer_priest = false) {
     const M_AP_NOTHING = 0, M_AP_MONSTER = 3;
     const apType = (mtmp.m_ap_type | 0) & 0x7 /* M_AP_TYPMASK */;
     if (apType !== M_AP_NOTHING) {
-        /* C mon.c:4331-4340 — "mimics come out of hiding, but disguised Wizard
-         * doesn't have to lose his disguise":
-         *     if (M_AP_TYPE(mtmp) != M_AP_MONSTER) seemimic(mtmp);
-         * This used to be `void M_AP_MONSTER;` on the claim that no corpus
-         * monster reaches it with a disguise.  seed0030 segment 1 step 92 does:
-         * the hero walks into a small mimic posing as a chest, C's
-         * stumble_onto_mimic() calls wakeup(mtmp, FALSE), and the mimic must
-         * drop its disguise here or the map keeps showing the chest. */
         if (apType !== M_AP_MONSTER)
             seemimic(mtmp);
     } else {
@@ -2709,8 +2427,6 @@ export async function wakeup(mtmp, via_attack, defer_priest = false) {
             growl(mtmp);
         await setmangry(mtmp, true);
         if (was_peaceful) {
-            /* temple priest / shopkeeper reprisal — not exercised by the
-             * thrown-hmon corpus (all hostile targets). Left to callee stubs. */
             if (mtmp.ispriest && !defer_priest)
                 ghod_hitsu(mtmp);
             if (mtmp.isshk && !(game.u && game.u.ushops && game.u.ushops[0]))
@@ -2729,17 +2445,6 @@ export async function wakeup_attack(mtmp, via_attack) {
         await ghod_hitsu(mtmp);
 }
 
-/*
- * hmon(mon, obj, thrown, dieroll) — hero hits monster.
- * C ref: nethack-c/src/uhitm.c:819. Pure wrapper of hmon_hitmon (+ a priest
- * ghod_hitsu reprisal and angry_guards, neither exercised by the corpus).
- * [wave19/hmon-async] async, matching hmon_hitmon below: hmon_hitmon's
- * destroyed/poiskilled tail awaits the real killed()/xkilled() (js/uhitm.js),
- * which itself awaits corpse_chance()'s draw, so every caller up to and
- * including dothrow() must await this call or the RNG stream misorders. See
- * hmon_hitmon's own header comment for the full caller chain and the
- * coordinated-conversion rationale.
- */
 export async function hmon(mon, obj, thrown, dieroll) {
     const anger_guards = (mon.mpeaceful
         && (mon.ispriest || mon.isshk /* || is_watch(mon.data) */));
@@ -2747,7 +2452,6 @@ export async function hmon(mon, obj, thrown, dieroll) {
     if (mon.ispriest && !rn2(2))
         await ghod_hitsu(mon);
     if (anger_guards) {
-        /* angry_guards(!!Deaf) — not exercised by the corpus */
     }
     return result;
 }
@@ -2797,35 +2501,6 @@ function _ammo_and_launcher_hmon(a, l) {
     return _is_ammo_hmon(a) && !!l && _oc_skill_hmon(a) === -_oc_skill_hmon(l);
 }
 
-/*
- * hmon_hitmon — the damage core. C ref: nethack-c/src/uhitm.c:1755.
- * Faithful transcription of the control flow the capture corpus exercises
- * (thrown weapon-class missile). Death (destroyed/poiskilled) delegates to
- * the real killed()/xkilled() sequence (js/uhitm.js xkilled), which is async
- * — its tail awaits corpse_chance(), which DRAWS — so this function is async
- * too and every caller up the chain must await it.
- *
- * [wave19/hmon-async] LANDED: the coordinated sync->async conversion this
- * file's previous revision described but did not perform. Full caller chain,
- * every hop now async and every call awaited (verified: no bare invocation of
- * any function in this chain remains — grep for the name without a preceding
- * `await`):
- *
- *   dothrow()            js/cmd.js:2211  (already async/awaited its callers)
- *     -> throwit_mon_hit()  js/cmd.js    (dothrow.c:1481) — made async, awaited
- *          -> thitmonst()   js/cmd.js    (dothrow.c:2010) — made async, awaited
- *               -> hmon()   js/mhitm.js  (uhitm.c:819)    — made async, awaited
- *                    -> hmon_hitmon()  js/mhitm.js (uhitm.c:1755) — this fn
- *                         -> troll_baned()  pure, RNG-free, sync (unchanged)
- *                         -> killed()       js/mhitm.js:2416, already async — awaited
- *                         -> xkilled()      js/uhitm.js, already async     — awaited
- *
- * ball.js's drag_ball -> hmon path is a SEPARATE, always-throwing local stub
- * (`export function hmon() { throw ... }` in js/ball.js) that does not import
- * this hmon and is unaffected by this change; dokick.c/apply.c's own
- * thitmonst call sites have no js/ counterpart at all (grepped) and are
- * likewise untouched — the only live js/ callers of this chain are dothrow's.
- */
 export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     const u = game.u || {};
     const uwep = u.uwep || null;
@@ -2871,13 +2546,11 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     if (hmd.dmg > 0)
         await _hmon_hitmon_dmg_recalc(hmd, obj, u, uwep);
 
-    /* ispoisoned handled inside dmg path; corpus objects aren't poisoned */
     if (hmd.dmg < 1) {
         const mon_is_shade = (mon.data && (mon.data.pmidx | 0) === PM_SHADE);
         hmd.dmg = (hmd.get_dmg_bonus && !mon_is_shade) ? 1 : 0;
     }
 
-    /* jousting / stagger / knockback all require !thrown — skipped for corpus */
     let maybe_knockback = false;
     if (hmd.jousting) {
         /* not exercised */
@@ -2903,31 +2576,6 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     /* splitmon: puddings + hand_to_hand only — never for THROWN */
     _hmon_hitmon_msg_hit(hmd, mon, obj);
 
-    /* C uhitm.c:1899-1911, now fully landed (was two throws; see hmon_hitmon's
-     * header comment for the caller chain that made this safe to land):
-     *     if (hmd.poiskilled) {
-     *         pline_The("poison was deadly...");
-     *         if (!hmd.already_killed) xkilled(mon, XKILL_NOMSG);
-     *         hmd.destroyed = TRUE;
-     *     } else if (hmd.destroyed) {
-     *         if (!hmd.already_killed) {
-     *             if (troll_baned(mon, obj)) gm.mkcorpstat_norevive = TRUE;
-     *             killed(mon);
-     *             gm.mkcorpstat_norevive = FALSE;
-     *         }
-     *     }
-     * killed() is the real one-line wrapper over async xkilled() (js/uhitm.js);
-     * both draw RNG in their tails (xkilled's corpse_chance()), so both are
-     * awaited here — hmon_hitmon is now async and so is every caller up to
-     * dothrow(), which already awaited its own callers.
-     *
-     * troll_baned/mkcorpstat_norevive are ported for C-fidelity though nothing
-     * in js/ reads mkcorpstat_norevive yet (js/mklev.js's mkcorpstat() does not
-     * copy it onto a newly-made corpse's .norevive, so it stays dead state
-     * today) — Cardinal Rule 1: port the C global regardless, and it is free
-     * (troll_baned is pure/RNG-free) and gated for whenever mkcorpstat grows a
-     * reader.  pline_The is inlined (js/uhitm.js's copy is file-local and
-     * unexported) as `pline("The " + ...)`. */
     if (hmd.poiskilled) {
         pline('The poison was deadly...');
         if (!hmd.already_killed)
@@ -2947,13 +2595,11 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
 
     if (!hmd.destroyed && !hmd.offmap) {
         await wakeup_attack(mon, true);
-        /* maybe_knockback requires uwep+melee — false for THROWN corpus */
         void maybe_knockback;
     }
     return hmd.destroyed ? false : true;
 }
 
-/* is_pole (obj.h:228) — minimal, only used for HMON_APPLIED (not in corpus) */
 function is_pole_hmon(otmp) {
     const o = otmp.oclass | 0;
     const sk = _oc_skill_hmon(otmp);
@@ -2964,17 +2610,14 @@ function is_pole_hmon(otmp) {
 /* uhitm.c:1388 hmon_hitmon_do_hit */
 async function _hmon_hitmon_do_hit(hmd, mon, obj, u, uwep) {
     if (!obj) {
-        /* barehanded — not in the thrown corpus */
         hmd.dmg = 0;
         return;
     }
     if (hmd.mdat && (hmd.mdat.pmidx | 0) === PM_SHADE) {
-        /* shade handling omitted for the corpus (no shade targets) */
     }
     if ((obj.oclass | 0) === _OCLASS_WEAPON || (obj.oclass | 0) === _OCLASS_GEM) {
         _hmon_hitmon_weapon(hmd, mon, obj, u, uwep);
     } else if ((obj.oclass | 0) === 8 /* POTION_CLASS */) {
-        /* potion throw — not exercised by the corpus */
     } else {
         await _hmon_hitmon_misc_obj(hmd, mon, obj);
     }
@@ -3014,7 +2657,6 @@ export function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
     /* Healer/rogue/shatter special cases require hand_to_hand — skipped for THROWN */
 
     if (obj.oartifact) {
-        /* artifact_hit — corpus objects are not artifacts */
     }
     if (hmd.material === _MAT_SILVER_HMON && mon_hates_silver(mon))
         hmd.silvermsg = hmd.silverobj = true;
@@ -3023,38 +2665,14 @@ export function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
     if (hmd.thrown === HMON_THROWN
         && (_is_ammo_hmon(obj) || _is_missile_hmon(obj))) {
         if (_ammo_and_launcher_hmon(obj, uwep)) {
-            /* C uhitm.c: `if (Role_if(PM_SAMURAI) && otyp == YA && uwep->otyp
-             * == YUMI) hmd->dmg++;` and the elf/ELVEN_ARROW+ELVEN_BOW twin.
-             * "not in corpus" was read off the ROLES present (Samurai 63
-             * sessions, elf 20) and is the wrong census: what has to be absent
-             * is not the role but this ARM, and the arm is stronger than the
-             * comment claimed.
-             * MEASURED: subject=ammo_and_launcher-arm value=+0 at=d26664bc
-             *           date=2026-08-29 corpus=public+train (44 + 688 sessions)
-             *           reach=0 — the enclosing _ammo_and_launcher_hmon() branch
-             *           executes ZERO times in 732 sessions, so no hero of any
-             *           role fires matched ammo from a matched launcher */
             hmd.train_weapon_skill = (hmd.dmg > 0);
         }
         if (obj.opoisoned /* && is_poisonable(obj) */)
             hmd.ispoisoned = true;
     }
-    /* permapoisoned non-ammo/missile limit — corpus objects aren't permapoisoned */
 }
 
-/* uhitm.c:1120 hmon_hitmon_misc_obj — default (weight-based) path only.
- * Not exercised by the weapon-class corpus, but kept for structural fidelity. */
 async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
-    /* C uhitm.c:1124 `switch (obj->otyp)`.  Only the CREAM_PIE/BLINDING_VENOM
-     * case is transcribed; every other otyp still falls through to C's
-     * `default:` weight-based arm below, which is what this function used to be
-     * in its entirety.  The pie case became reachable when js/cmd.js grew a
-     * thitmonst: seed0014 step 505 throws a cream pie at a kobold and C's leaf
-     * is `rn2(25)=1 @hmon_hitmon_misc_obj(uhitm.c:1295)` — the rn1(25, 21)
-     * BLINDING DURATION.  Without this case the pie took the weight-based
-     * damage path, which killed the kobold outright (C's trace has no
-     * corpse_chance and no grow_up at that step) and then halted the scored run
-     * inside the unported killed(). */
     if ((obj.otyp | 0) === CREAM_PIE || (obj.otyp | 0) === BLINDING_VENOM_HM) {
         mon.msleeping = 0;
         /* C uhitm.c:1265-1268 — AT_SPIT for venom, AT_WEAP for a thrown pie. */
@@ -3076,9 +2694,6 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
             }
             await setmangry(mon, true);
             mon.mcansee = 0;
-            /* C uhitm.c:1295 hmd->dmg = rn1(25, 21) — rn1(x, y) is rn2(x) + y,
-             * and the recorder logs it as rn2(25).  This is a BLINDNESS
-             * duration, not damage; C zeroes hmd->dmg below. */
             hmd.dmg = rn2(25) + 21;
             if (((mon.mblinded | 0) + hmd.dmg) > 127)
                 mon.mblinded = 127;
@@ -3089,10 +2704,6 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
             pline((obj.otyp | 0) === CREAM_PIE ? 'Splat!' : 'Splash!');
             await setmangry(mon, true);
         }
-        /* C uhitm.c:1304-1313 — the object is used up either way.  It was
-         * freeinv'd by dothrow before the throw, so clearing gt.thrownobj is
-         * what C's obfree() amounts to here and is what tells thitmonst's
-         * caller not to place it on the floor. */
         game.thrownobj = null;
         hmd.hittxt = true;
         hmd.get_dmg_bonus = false;
@@ -3139,14 +2750,6 @@ async function _hmon_hitmon_dmg_recalc(hmd, obj, u, uwep) {
         let skillwep = obj;
         if ((_is_ammo_hmon(obj) || _is_missile_hmon(obj)) && _ammo_and_launcher_hmon(obj, uwep))
             skillwep = uwep;
-        /* NOTE (capture gap, issue-24): weapon_dam_bonus() needs the hero's
-         * P_SKILL(weapon) proficiency, which is NOT in the capture
-         * state_before, so a capture-replay record of this function still
-         * cannot grade the skill term.  The CALLEE half of that note is now
-         * stale and has been corrected: js/uhitm.js weapon_dam_bonus() no
-         * longer returns 0 for every wielded weapon — it reads P_SKILL and
-         * returns C's -2/0/+1/+2 (and the two-weapon and riding arms), which
-         * is exactly the value the boundary survive/kill records needed. */
         dmgbonus += weapon_dam_bonus(skillwep);
         if (hmd.train_weapon_skill) {
             const wtype = hmd.thrown ? weapon_type(skillwep) : weapon_type(uwep);
@@ -3264,10 +2867,8 @@ export function float_vs_flight() {
     _ensure_uprop(LEVITATION);
     _ensure_uprop(FLYING);
 
-    /* stuck_in_floor: trapped AND NOT in a pit */
     const stuck_in_floor = (u.utrap | 0) && ((u.utraptype | 0) !== TT_PIT_VAL);
 
-    /* floating overrides flight; so does being trapped in the floor */
 
     const hLevit = (u.uprops[LEVITATION].intrinsic | 0);
     const eLevit = (u.uprops[LEVITATION].extrinsic | 0);
@@ -3377,22 +2978,6 @@ export function rndorcname(s) {
         s = "";                                 /* C do_name.c:1546 `*s = '\0'` */
         for (let i = 0; i < iend; ++i) {
             vstart = 1 - vstart;                /* 0 -> 1, 1 -> 0 */
-            /* C do_name.c:1549-1550
-             *   Sprintf(eos(s), "%s%s", (i > 0 && !rn2(30)) ? "-" : "",
-             *           vstart ? ROLL_FROM(v) : ROLL_FROM(snd));
-             * ROLL_FROM (hack.h:1498) is `array[rn2(SIZE(array))]`, so the second
-             * conversion argument draws too.  Varargs argument evaluation order
-             * is unspecified in C, so the ORDER is settled by the recorded C
-             * reference trace, not by reading the source:
-             *   sessions/seed0365-knight-quest-rogue — 223 draws over 27 calls,
-             *   e.g. `rn2(4)=1 @ ...(do_name.c:1550)`, `rn2(30)=17 @ ...(:1549)`,
-             *   `rn2(11)=3 @ ...(:1550)`, ...
-             * Replaying those draws against the C control flow parses 27/27 calls
-             * with every modulus and the vstart alternation consistent ONLY under
-             * LEFT-TO-RIGHT evaluation: the dash rn2(30) at :1549 is drawn BEFORE
-             * the ROLL_FROM at :1550.  (Right-to-left mis-parses call 1 at the
-             * very first i>0 iteration: it wants rn2(11) and the trace has
-             * rn2(30).)  Draw the dash first. */
             let dash = "";
             if (i > 0 && !rn2(30)) {
                 dash = "-";
@@ -3790,7 +3375,6 @@ export function resists_magm(mon) {
      * equality alone misses the replay-reconstructed hero; see xm_same_monst(). */
     const is_you = is_youmonst(mon);
 
-    /* as of 3.2.0:  gray dragons, Angels, Oracle, Yeenoghu */
     if (dmgtype(ptr, AD_MAGM)
         || (ptr && (ptr.pmidx | 0) === PM_BABY_GRAY_DRAGON)
         || dmgtype(ptr, AD_RBRE)) {
@@ -3829,14 +3413,6 @@ export function resists_magm(mon) {
     return false;
 }
 
-/* C ref: mondata.c:129 Resists_Elem(struct monst *mon, int propindx)
- * Elemental/property resistance check. The intrinsic path uses
- * mon_resistancebits(mon) = (mon->data->mresists | mon->mextrinsics |
- * mon->mintrinsics) (monst.h:268). mon->data->mresists is the permonst
- * template field (permonstTemplate row[5]); mextrinsics/mintrinsics were
- * captured as monst scalars in wsv-V82 to unpark this fn. Mirrors the
- * resists_magm structure (wielded-artifact + worn/carried-item walk).
- * NO RNG. */
 export function Resists_Elem(mon, propindx) {
     const ALCHEMY_SMOCK = 144; /* objclass.h enum value (matches objnam.js) */
     const WEAPON_CLASS = 2;
@@ -3917,36 +3493,6 @@ export function resists_drli(mon) {
     return defended(mon, AD_DRLI);
 }
 
-/* C ref: nethack-c-v5/upstream/src/mondata.c:248 resists_blnd(mon).
- *
- * This was a throw-stub, and can_blnd() above reaches it on the light-based
- * arm (AT_EXPL/AT_BOOM/AT_GAZE/AT_BREA/AT_MAGC) — i.e. a session halt, not a
- * wrong answer.  AT_MAGC already routed here before this commit; correcting
- * can_blnd's stale 3.7 case labels moves AT_BREA/AT_EXPL/AT_BOOM/AT_GAZE onto
- * it as well, so the two changes belong in one commit.
- *
- * RNG: none, on either side.  C's catchall arm calls impossible() (a warning,
- * not a panic) before returning TRUE; js/steed.js impossible() is a no-op, so
- * it is called for shape and the TRUE is returned exactly as C returns it.
- *
- * is_you WAS `((mon && mon.m_id) | 0) === 0` — this file's OWN documented
- * caveat (this function's original commit comment, and js/makemon.js:6216's
- * cross-file flag) said that only matches C's `mon == &gy.youmonst` while
- * game.youmonst is unpopulated; once the hero has polymorphed at least once,
- * game.youmonst.m_id is 1 (polyself.js), the `=== 0` test goes false, and a
- * hero-identity call falls through to the MONSTER-data arm reading fields
- * game.youmonst never carries (mcansee/mblinded/msleeping), which the strict
- * proxy or a `|0` on `undefined` (`!(undefined|0)` = true) turns into a wrong
- * answer.  MEASURED reaching this exact path: js/makemon.js find_offensive's
- * MUSE_CAMERA check (`!Blind && !resists_blnd(game.youmonst)`) — the
- * `mcansee` gap made every one of it read `resists_blnd() === true`,
- * short-circuiting past `!rn2(6)` and costing a real return-value mismatch
- * (board find_offensive rec#12988: C rolled the die and returned TRUE; this
- * bug never rolled it and returned FALSE) — the only 3-of-13,129 divergence
- * in that file's full sweep.  is_youmonst() (:361 above, already used by this
- * function's own neighbours at :3561/:3617 two screens up) is the file's
- * established, pointer-identity-correct fix for the exact same class of
- * check; this call site was simply never updated to it. */
 export function resists_blnd(mon) {
     const ptr = mon ? mon.data : null;
     const is_you = is_youmonst(mon);
@@ -3996,17 +3542,6 @@ function resists_blnd_by_arti(mon) {
 /* monattk.h:53 AD_BLND. */
 const AD_BLND = 11;
 
-/* Helper: MON_WEP — get monster's wielded weapon
- * C ref: monst.h MON_WEP(mon) macro — mon->mw member
- * Note: mon->mw is not captured; fall back to inventory walk
- */
-/* C monst.h:210 — `#define MON_WEP(mon) ((mon)->mw)`, nothing more.  This used
- * to walk minvent for a W_WEP owornmask bit under the note "mon.mw is not
- * captured in replay"; that note is stale (js/uhitm.js:2988 mon_wield_item
- * assigns mon.mw, measured 9 times over 4 sessions) and the walk found nothing,
- * because js/ set no monster object's W_WEP bit until this commit.  Two other
- * copies of this macro — js/mhitu.js:3241 and js/makemon.js:3647 — were already
- * the C-faithful one-liner, so the long body was the divergent one. */
 function MON_WEP(mon) {
     if (!mon) return null;
     return mon.mw ?? null;
@@ -4135,7 +3670,6 @@ export function christen_monst(mtmp, name) {
     new_mgivenname(mtmp, lth); /* removes old name if one is present */
     if (lth)
         mtmp.mextra.mgivenname = name; /* C: Strcpy(MGIVENNAME(mtmp), name) */
-    /* update_inventory() call omitted — mleashed not yet captured */
     return mtmp;
 }
 
@@ -4160,17 +3694,6 @@ export function new_mgivenname(mtmp, lth) {
     }
 }
 
-/* C monsters.h role rows.  These were written as `342 /* PM_KNIGHT *\/` and
- * `347 /* PM_SAMURAI *\/`; tools/otyp-check.mjs says 342 is mons[342]
- * "valkyrie" and 347 is "Hippocrates" -- the 5.0 rows are 335 and 340, and
- * they are 3.7 spellings carried forward (pm-otyp-audit reports both).  With
- * the wrong numbers neither arm could ever fire.  Resolved by NAME here so a
- * future renumbering cannot break them silently.
- *
- * C ref: uhitm.c:331-349 check_caitiff — knight/samurai dishonorable-attack
- * penalty.  It had NO call site anywhere in js/ (C calls it from
- * find_roll_to_hit, uhitm.c:381) so it was doubly dead; js/uhitm.js now calls
- * it once per attack, which is C's `if (!(*attk_count)++)`. */
 const _cc_cache = new Map();
 function _cc_role_mnum(name) {
     /* LAZY: js/mhitm.js and js/makemon.js are a module cycle, so calling
@@ -4542,9 +4065,7 @@ function strstri(haystack, needle) {
 // (236). Nothing downstream can depend on the old values: namep[1] is returned
 // straight to the caller as "the monster this spelling names", so a wrong index
 // is a wrong monster, never a compensating one.
-// Corrected 2026-08-07 from nethack-c/include/monsters.h `bn` (cross-checked
 // row-for-row against js/makemon_pmnames.json); re-check with
-// `node tools/pm-otyp-audit.mjs`.
 const PM_GRAY_DRAGON = 143;              /* was 96  = giant spider */
 // PM_BABY_GRAY_DRAGON already imported from pm.generated.js
 const PM_GRAY_UNICORN = 102;
@@ -4589,28 +4110,6 @@ const LOW_PM = 0;
 const NUM_MGENDERS = 3;
 const BUFSZ = 256;
 
-/* C botl.c:366-407 title_to_mon(str, rank_indx, title_length) — resolve a rank
- * TITLE ("Digger", "Plunderess", "High Priest") to the role's mons[] index.
- * Loops roles i, then rank j in 0..8, testing rank[j].m then rank[j].f with
- * str_start_is(str, chkstr, TRUE) — a case-blind PREFIX test, so "Digger of the
- * Deep" matches "Digger" and *title_length is the length of the TITLE, not of
- * str.  First match wins; no match sets *title_length = 0 and returns NON_PM.
- *
- * C-faithful subtlety this pins: "Priestess" matches the MALE rank[3] "Priest"
- * first (str starts with "Priest"), so rank_indx is 3 and title_length is 6,
- * NOT 9.  A port that "corrects" that to the female branch is wrong.
- *
- * WAS A STUB returning NON_PM unconditionally, which is indistinguishable from
- * a faithful port over the whole 386-record capture corpus (every record feeds
- * an item/spell name and falls through) — docs/DECOMP-title_to_mon.md.  The
- * second blocker that doc names, "js/roles.js has no rank[] column", is STALE:
- * the table landed later as js/rank_data.js ROLE_RANKS, generated from 5.0
- * role.c through cpp, so it carries the LIVE Ranger list and not the #if 0
- * elvish one a regex extraction takes.
- *
- * C returns roles[i].mnum, which is the real mons[] index (PM_ARCHEOLOGIST …).
- * js/roles.js's roles[].mnum is a 0..12 TABLE-ORDER index reused by other call
- * sites in that file; ROLE_PM_MNUM is the column C's .mnum means. */
 export function title_to_mon(str, rank_indx, title_length) {
     /* Loop through each of the roles */
     for (let i = 0; i < ROLE_RANKS.length; i++) {

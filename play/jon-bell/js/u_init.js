@@ -48,7 +48,6 @@ const STATUE = 476; // objects.h
 // urole.mnum == 334).  They were spelled PM_ARCHEOLOGIST..PM_WIZARD here, which
 // put 0..12 into the same JS name as the 331..343 that js/makemon.js,
 // js/uhitm.js, js/mhitm.js and js/pm.generated.js correctly use.  Two values
-// under one name is a defect by construction (tools/reviewer/const-agreement-check.mjs),
 // and C has no constant named PM_HEALER equal to 3 — so the ROLE_ prefix names
 // the index space these actually live in.  The INITROLE_TO_PM table just below
 // is the bridge between the two spaces, and its comments keep the PM_ spelling
@@ -180,73 +179,12 @@ const ALIGN_VALUE = [1, 0, -1];
  * the unified newhp()/newpw() in js/exper.js, mirroring C 1:1 (attrib.c:1086,
  * exper.c:45 both branch on u.ulevel==0 internally). u_init_misc() below calls
  * newhp()/newpw() directly, just as C u_init.c:996-997 does. */
-/**
- * Port of C u_init_misc() (u_init.c:944) called from newgame() (allmain.c:866),
- * folded together with the relevant portions of init_attr() (attrib.c:723)
- * and init_uhunger() (eat.c:126) needed to populate u.uhp, u.uhpmax, u.uen,
- * u.uenmax, u.uhunger, u.uac, u.acurr, u.amax, u.ualign for the post_init
- * structural state snapshot.
- *
- * What we DO port from C:
- *   - newhp() / newpw() at u.ulevel == 0 (consume the same RNG calls in
- *     the same order as C — see fastforward consumers).
- *   - u.uhp = u.uhpmax = u.uhppeak = newhp(); analogous for newpw().
- *   - u.uhunger = 900; u.uhs = NOT_HUNGRY (init_uhunger).
- *   - u.uhandedness via rn2(10) — already issued; we just consume it.
- *   - u.ualign.{type,record}, u.ualignbase[] from flags.initalign and
- *     roles[].initrecord (matches the existing consumer in exper.ts).
- *   - u.uac = 10 (no armor, default before find_ac()).
- *   - u.ulevel = 1 (u_init.c:1000).
- *   - u.acurr.a[] / u.amax.a[] = roles[].attrbase[] (init_attr without the
- *     redistribute step — np=75 redistribute paths rely on rnd_attr RNG that
- *     C exercises later in u_init_inventory_attrs; for the post_init state
- *     diff oracle which is currently surfacing uhp/uhpmax/uhunger only,
- *     attrbase-only is sufficient and matches `attr_base` C event_log; the
- *     redistribute pass is the next porter task).
- *
- * What we do NOT port (deliberately, in this task):
- *   - vary_init_attr() / init_attr_role_redist() — uses rn2(20),rn2(7),
- *     rnd_attr; touches acurr.a not the bug-board scalars.
- *   - u_init_role() / u_init_race() inventory bestowal — RNG already drained
- *     in fastforward_post_mklev; no scalar in the bug board today.
- *   - u_init_carry_attr_boost — needs inv_weight() not yet ported.
- *   - u_init_skills_discoveries, find_ac — out of scope; uac=10 fine for now.
- *
- * RNG ORDER (must match C exactly, see u_init.c:996-1028):
- *   1. newhp(): rnd(role.hpadv.inrnd) if > 0; rnd(race.hpadv.inrnd) if > 0
- *   2. newpw(): rnd(role.enadv.inrnd) if > 0; rnd(race.enadv.inrnd) if > 0
- *   3. init_uhunger() : no RNG.
- *   4. u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED.
- *
- * (For NetHack 3.7 today: only Hea/Kni/Mon/Pri/Wiz roles have enadv.inrnd > 0;
- * no role/race has hpadv.inrnd > 0 — so newhp() does no RNG in practice.)
- */
 export async function u_init_misc() {
     const g = game;
     g.flags = g.flags || {};
     const initrole = (g.flags.initrole ?? -1) | 0;
     const initrace = (g.flags.initrace ?? -1) | 0;
-    /* C ref: role.c role_init() is called before u_init_misc() in newgame()
-     * (allmain.c:858 role_init(), allmain.c:866 u_init_misc()).  role_init()
-     * always resolves flags.initrole to a valid non-negative index — it never
-     * returns with initrole < 0.  Therefore in C, u_init_misc() is never
-     * called with initrole < 0.
-     *
-     * In JS, seed1300 (chargen-loop) has initrole == -1 because the player
-     * quit before the game started (no welcome screen reached, isChargenIncomplete
-     * returns true).  Mirror C's guarantee by skipping the entire body:
-     *   - skips newhpInit(-1,-1) which would spuriously return 1
-     *   - skips newpwInit(-1,-1) which would spuriously return 1
-     *   - skips rn2(10) handedness call (C never made it for this session)
-     *   - leaves g.u state untouched (C u_init_misc was never called either)
-     *
-     * isChargenIncomplete is imported for explicit documentation; the guard
-     * condition initrole < 0 is equivalent for all current sessions.
-     * C ref: nethack-c/src/role.c role_init() line 1980-2024. */
     if (initrole < 0) {
-        /* chargen-incomplete session (e.g. seed1300): player quit before
-         * newgame() ran; C never called u_init_misc() for this session.
-         * isChargenIncomplete(sessionData) would return true here. */
         return;
     }
     const rOk = initrole >= 0 && initrole < NUM_ROLES;
@@ -288,15 +226,6 @@ export async function u_init_misc() {
     /* C ref u_init.c:991: u.umonnum = u.umonster = gu.urole.mnum;
      * gu.urole is undefined at replay time; use INITROLE_TO_PM table. */
     u.umonnum = u.umonster = INITROLE_TO_PM[initrole];
-    /* C ref u_init.c:992-993: u.ulycn = NON_PM; set_uasmon().
-     * set_uasmon() is RNG-free.  It writes gy.youmonst.data (the hero's current
-     * form — read by u_calc_moveamt for mmove, allmain.c:127) and the whole
-     * FROMFORM half of u.uprops[], including
-     *   PROPSET(INFRAVISION, infravision(Upolyd ? mdat : &mons[gu.urace.mnum]))
-     * which is why role_init() must have assigned gu.urace with its real PM_
-     * mnum before we get here (role.c:2024).  Previously the JS granted racial
-     * infravision only on the legacy gameFromSession() path, out of the
-     * recorded checkpoints; this is the real C source of it. */
     u.ulycn = NON_PM;
     set_uasmon();
     /* C ref u_init.c:995-1000: u.ulevel = 0; newhp/newpw; adjabil(0,1);
@@ -311,37 +240,8 @@ export async function u_init_misc() {
     const pw = newpw();
     u.uen = u.uenmax = u.uenpeak = pw;
     u.uspellprot = 0;
-    /* C ref u_init.c:999 — adjabil(0, 1), i.e. "the hero gains every innate
-     * ability whose role/race table row has ulevel == 1".  Consumes no RNG, but
-     * its intrinsics are load-bearing on the RNG stream: HFast at level 1 (Monk
-     * mon_abil[0], Samurai sam_abil[0], attrib.c:47/73) makes
-     * u_calc_moveamt() fire rn2(3) on EVERY turn (allmain.c:131-137).  Without
-     * this call the JS monk/samurai hero was never Fast, and the whole
-     * post-preamble stream shifted by one leaf per turn from the first
-     * u_calc_moveamt (measured: seed0012 and seed0017 both first diverge
-     * exactly at `rn2(3) @ u_calc_moveamt(allmain.c:131)`).
-     *
-     * adjabil() is async only because it plines a "You feel <gainstr>!" on a
-     * gain — but EVERY ulevel==1 row in attrib.c's tables has an empty gainstr,
-     * so the 0 -> 1 transition prints nothing.  It is still awaited, so that a
-     * future table with a level-1 message cannot silently interleave. */
     await adjabil(0, 1);
     u.ulevel = u.ulevelmax = 1;
-    /* C ref eat.c:126-135 init_uhunger().  Port the full body so disp.botl
-     * gets driven correctly when uhs/ATEMP(A_STR) at entry are non-default.
-     *
-     *   disp.botl = (u.uhs != NOT_HUNGRY || ATEMP(A_STR) < 0);
-     *   u.uhunger = 900;
-     *   u.uhs = NOT_HUNGRY;
-     *   if (ATEMP(A_STR) < 0) { ATEMP(A_STR) = 0; encumber_msg(); }
-     *
-     * NOT_HUNGRY=1 per hack.h:566.  ATEMP(A_STR) is u.acurr.atemp.a[A_STR];
-     * the JS port doesn't yet model the atemp side of acurr (only the abase
-     * a[] is bridged) — at u_init_misc entry after C's memset, atemp is all
-     * zero, so the ATEMP(A_STR) < 0 branch never fires for replay records
-     * generated from C's post-memset state.  We default the read to 0 (the
-     * C zero-init shape) and skip the encumber_msg() side which is purely
-     * a windowport effect outside the state-diff oracle's scope. */
     const uhsBefore = (u.uhs | 0);
     const NOT_HUNGRY = 1;
     const atempStr = (u.acurr && u.acurr.atemp && u.acurr.atemp.a)
@@ -352,22 +252,10 @@ export async function u_init_misc() {
     u.uhs = NOT_HUNGRY;
     if (atempStr < 0 && u.acurr && u.acurr.atemp && u.acurr.atemp.a) {
         u.acurr.atemp.a[0] = 0;
-        /* encumber_msg() — windowport effect; outside the state-diff oracle. */
     }
     /* C ref u_init.c:1005: u.ublesscnt = 300 — "no prayers just yet".
      * Prayer cooldown counter; decremented in moveloop, no RNG involved. */
     u.ublesscnt = 300;
-    /* C ref u_init.c:1028: u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED.
-     * include/you.h:441 — RIGHT_HANDED is 0x00 and LEFT_HANDED is 0x01, which
-     * is also what js/const.js has always said.  This line stored them the
-     * OTHER way round, and its comment asserted "RIGHT_HANDED == 1,
-     * LEFT_HANDED == 0" to justify it, on the stated premise that handedness
-     * was not on the bug board.  It is: 3 of the 44 public sessions print
-     * "You are left-handed." in the '^X' window.  The seven readers in
-     * js/cmd.js and js/potion.js were inverted to match, so the pair agreed
-     * with itself and with C on the common case; js/objnam.js's _URIGHTY,
-     * which spells C's macro correctly, was the one that silently disagreed.
-     * One rn2(10) either way, so the RNG stream is untouched. */
     u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
     /* C ref u_init.c:1006 + attrib.c:1099-1100:
      *   u.ualignbase[A_CURRENT] = u.ualignbase[A_ORIGINAL] = u.ualign.type =
@@ -392,14 +280,6 @@ export async function u_init_misc() {
     u.ualignbase = u.ualignbase || [0, 0];
     u.ualignbase[0] = alignVal; /* A_CURRENT */
     u.ualignbase[1] = alignVal; /* A_ORIGINAL */
-    /* C ref attrib.c:723 init_attr(75) — abase=AMAX=attrbase[], then
-     * init_attr_role_redist(np=75) distributes leftover via rnd_attr (RNG),
-     * then vary_init_attr() applies rn2(20)/rn2(7) variations. Both of those
-     * RNG passes are out of scope for this task (deferred porter task), so
-     * we do NOT touch u.acurr / u.amax here — leave whatever the caller set
-     * (current allmain.js sets a seed8000 Tourist-specific display-order
-     * default; the bug board does not currently flag hero.str/.int/etc as
-     * a top divergence, so that's safe). */
     // Equipment, spells, skills and AC belong to u_init_skills_discoveries,
     // after inventory creation and the first display (C allmain.c:newgame).
 }
@@ -744,7 +624,7 @@ const SCR_ENCHANT_WEAPON = 328; /* offset 5 from scroll base 323 — confirmed b
 const SCR_MAGIC_MAPPING_OTYP = 337;
 const SCR_AMNESIA = 338; /* offset 15 from scroll base 323 */
 const SCR_FIRE = 339; /* offset 16 from scroll base 323 */
-const SCR_BLANK_PAPER = 365; /* Wave D: mail scroll at 364 shifted subsequent scrolls +1 */
+const SCR_BLANK_PAPER = 365;
 /* --- Spellbooks --- */
 const SPE_HEALING_OTYP = 374;
 const SPE_FORCE_BOLT = 376;
@@ -813,12 +693,6 @@ function trquan(trquan_min, trquan_max) {
         return 1;
     return trquan_min + rn2(trquan_max - trquan_min + 1);
 }
-/**
- * C ref: nethack-c/src/mkobj.js SPBOOK_OC_LEVEL — oc_level for each spellbook.
- * Spellbooks start at otyp 366 (SPE_DIG = FIRST_SPELL in Wave-D build).
- * Source: objects.h SPELL rows, 6th param (level field), and mkobj.js:46-89.
- * Index i => otyp (366 + i).
- */
 const SPBOOK_FIRST_OTYP_C = 366;
 const SPBOOK_OC_LEVEL_C = new Uint8Array([
     /* 366 SPE_DIG            */ 5,
@@ -1178,27 +1052,6 @@ const PM_DWARF_RACE = 2;
 const PM_GNOME_RACE = 3;
 
 
-/* ── knows_object / knows_class (u_init.c:574-629) ─────────────────────────
- *
- * The role/race pre-discovery pass.  C's u_init_role() and u_init_race() end
- * with knows_class()/knows_object() calls that set objects[otyp].oc_name_known
- * for the item types the hero recognizes on sight from the start — a Barbarian
- * knows every non-magic weapon and armor, a Rogue knows every dagger variant,
- * an elf knows every elven item.  This drives xname()'s `nn` test
- * (objnam.c:589), i.e. whether an item prints as its ACTUAL name ("elven
- * dagger") or as its unidentified description ("runed dagger").
- *
- * RNG: NONE.  discover_object() is called with credit_hero=FALSE so its
- * exercise(A_WIS) branch (o_init.c:483) is not taken; knows_class() consumes
- * no rn2/rnd/d/rne/rnz.  It is pure identification state.
- *
- * seed0369 (human Rogue) wishes for "blessed +5 Sting": C prints
- * "g - an elven dagger named Sting." because ROLE_ROGUE's
- * knows_class(WEAPON_CLASS) pre-discovered ELVEN_DAGGER (oc_skill P_DAGGER);
- * without this pass JS printed the description, "g - a runed dagger."  The
- * Monk in seed0366 gets no knows_class(WEAPON_CLASS), which is why C prints
- * "j - a runed broadsword named Stormbringer." there — the same code path,
- * opposite outcome, so this is the discriminating evidence for the port. */
 /* skills.h P_* — the oc_skill values the knows_class() weapon filters test. */
 const _P_NONE = 0, _P_DAGGER = 1, _P_POLEARMS = 16, _P_SPEAR = 17,
     _P_LANCE = 19, _P_BOW = 20, _P_CROSSBOW = 22;
@@ -1208,12 +1061,6 @@ const _WEAPON_CLASS = 2, _TOOL_CLASS = 6, _GEM_CLASS = 13;
  * the C onames enum (JS otyp numbering is identical — MKOBJ_OC_CLASS matches
  * the preprocessed objects[] oc_class column slot for slot). */
 const _KO_CORNUTHAUM = 93, _KO_DUNCE_CAP = 94, _KO_SMALL_SHIELD = 150;
-/* _KO_TOUCHSTONE was 471, which is LOADSTONE — touchstone is 472.  So the
- * Archeologist's u_init.c:645 knows_object(TOUCHSTONE) pre-identified a
- * loadstone instead, and since discover_object() marks it known-but-not-
- * encountered it showed up in the '\' discoveries list as "* loadstone (gray)"
- * on every Archeologist game (measured: seed0361-archeologist-tour step 358).
- * Every otyp in this block was re-checked against js/oc_name_data.js OC_NAME. */
 const _KO_SACK = 217, _KO_TOUCHSTONE = 472, _KO_POT_FULL_HEALING = 315,
     _KO_SHURIKEN = 25, _KO_POT_WATER = 322;
 /* objclass.h MAXOCLASSES — objects[] slots below this are the per-class

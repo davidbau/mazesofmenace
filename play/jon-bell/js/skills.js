@@ -92,29 +92,6 @@ const ODD_SKILL_NAMES = [
 /* C ref: weapon.c:60-62 barehands_or_martial[], indexed via martial_bonus(). */
 const BAREHANDS_OR_MARTIAL = ['bare handed combat', 'martial arts'];
 
-/* C ref: include/skills.h:81
- *   #define martial_bonus() (Role_if(PM_SAMURAI) || Role_if(PM_MONK))
- * That is the WHOLE definition, in 5.0 and in 3.7 alike: a pure role test with
- * no skill-level clause.  This body used to read
- *   martial() && P_SKILL(P_MARTIAL_ARTS) >= P_BASIC
- * citing a `martial()` in skills.h that does not exist (dokick.c:9's martial()
- * is a DIFFERENT macro — martial_bonus() || is_bigfoot(youmonst.data) — and it
- * has no skill clause either).
- * MEASURED: the extra conjunct was INERT, not wrong-in-practice.  It looks like
- * it should exclude the Samurai, whose Skill_S entry is only
- * { P_MARTIAL_ARTS, P_MASTER } — but P_MARTIAL_ARTS IS P_BARE_HANDED_COMBAT
- * (skills.h:69), and skill_init's "high potential fighters already know how to
- * use their hands" bump (weapon.c:1784) sets P_SKILL to P_BASIC whenever
- * P_MAX_SKILL > P_EXPERT, which is true for the Monk (GRAND_MASTER) and the
- * Samurai (MASTER) and false for every other role.  So the conjunct held
- * exactly when the role test held: a probe over all 688 train sessions saw 188
- * calls here, 21 of them Samurai, and ZERO where the two spellings disagreed.
- * This edit is structural faithfulness (TOOLING_PHILOSOPHY #8), worth a
- * measured +0 today; it removes a clause C does not have and a citation to a
- * `martial()` skills.h does not define.
- * Role_if(X) is `gu.urole.mnum == X` (you.h:247); this port's per-file
- * convention for that test is flags.initrole against the roles[] index
- * (role.c order: Monk = 5, Samurai = 9). */
 function martial_bonus() {
     const ir = (game.flags?.initrole ?? -1) | 0;
     return ir === ROLE_SAMURAI || ir === ROLE_MONK;
@@ -378,10 +355,7 @@ export async function skill_init(initrole) {
     /* walk through array to set skill maximums */
     const table = SKILLS_FOR_ROLE[ir];
     if (!table)
-        return; /* C panics ("No skills found for role"); the chargen-loop
-                 * sessions reach u_init with initrole == -1 (see u_init.js's
-                 * own initrole < 0 note), so leave the array all-restricted
-                 * rather than abort a replay. */
+        return;
     for (const [skill, skmax] of table) {
         skillrow(skill).max_skill = skmax;
         if (P_SKILL(skill) === P_ISRESTRICTED) /* skill pre-set */

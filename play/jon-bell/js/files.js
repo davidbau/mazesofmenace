@@ -5,10 +5,6 @@ import { game } from './gstate.js';
 import { PANICLOG } from './const.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 
-/* C files.c:paniclog, using the browser's existing virtual filesystem.
- * Version is the pinned 5.0 target, not const.js's JS build banner. Date and
- * uid are host metadata: the VFS has no Unix user, so its uid is zero. These
- * fields are not gameplay state or an oracle for a native host's log bytes. */
 export function paniclog(type, reason) {
     const state = game.program_state;
     if (!state.in_paniclog) {

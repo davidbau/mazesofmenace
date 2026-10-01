@@ -13,7 +13,6 @@ export function pushKeys(keys) {
     for (const k of keys)
         pushKey(k);
 }
-// ── FF_PROMPTSTATE (env-gated, RNG-NEUTRAL telemetry) ───────────────────────
 // Per-keystroke prompt-state marker.  At EACH nhgetch boundary (the SAME place C
 // records `^toplin[tty_nhgetch=2]` for a top-level command read vs `^toplin[more=0]`
 // for a more() page-ack), emit which key-reading CONTEXT JS is in:
@@ -82,16 +81,13 @@ function _emitActionTrace(key) {
 // In browser mode, waits for a real keypress.
 export async function nhgetch() {
     // RNG-neutral per-keystroke prompt-state marker (FF_PROMPTSTATE=1) — emitted
-    // BEFORE the capture hook so it precedes this step's RNG slice in the log.
     _emitPromptState();
     _emitToplInputTrace('before');
-    // Fire the capture hook before reading the next key
     const hook = game._preNhgetchHook;
     if (hook)
         await hook();
     // C ref: tty_nhgetch clears the topline (cl_end → clear_nhw) at the START
     // of each nhgetch call, BEFORE delivering the key to the caller.  In JS,
-    // _screen_output was already captured by the preNhgetchHook above (using the
     // last flush_screen output), so clearing _pending_message here mirrors the C
     // behaviour: the next pline() call after nhgetch starts a fresh topline
     // instead of concatenating onto the previous turn's message.
@@ -122,20 +118,6 @@ export async function nhgetch() {
     game._topl_history_recall = null;
     game._pending_message = '';
     game._topl_unacknowledged = false;
-    /* The deferred-movemon turn tag (_movemonMsgTurn, js/allmain.js) names the
-     * batch of movemon plines that is on the topline RIGHT NOW.  C has no such
-     * tag — botl.c:159 just prints svm.moves — and the only reason this port
-     * carries one is the movemon-before-HEAD-increment window inside
-     * faithful_moveloop_turn().  That window closes when the topline it describes
-     * is cleared, which is HERE (tty_nhgetch), not only when flush_screen happened
-     * to page it: display.js retires the tag on `hadMore`, so a movemon message
-     * that FITTED left it armed for every later frame, and the next forced
-     * --More-- (a getobj error, a yn prompt, a menu) rendered `T:` one turn low.
-     * MEASURED gen329-reseed-seed516524 step 102: C shows the getobj "You don't
-     * have that object.--More--" at T:41 and this port showed T:40, four steps
-     * after an unpaged pet message armed the tag.  The page-ack reads inside an
-     * open --More-- window come through here too, so the retire is gated on the
-     * window being closed. */
     if (!game._inMovemonMore)
         game._movemonMsgTurn = null;
     /* C ref: win/tty/wintty.c:4065-4066, the first thing tty_nhgetch() does
@@ -150,11 +132,6 @@ export async function nhgetch() {
     game._topl_win_stop = false;
     game._topl_win_stop_armed = false;
     game._topl_win_stop_buf = null;
-    /* An ESC consumed by a level-arrival page arms one same-call message
-     * suppression.  If the arrival returns without another pline in that
-     * command, the arm must expire with this next input request; otherwise a
-     * later command's first message is incorrectly swallowed (gen008's
-     * engraving reveal after teleport). */
     game._arrival_more_suppress = false;
     game._topl_urgent_next = false;
     /* Paint-time topline persistence (see js/display.js _topl_sticky) lives

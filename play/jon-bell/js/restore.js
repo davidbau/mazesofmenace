@@ -11,7 +11,6 @@ import { role_init } from './roles.js';
 //                         puts it back and runs C's catch-up pass over the
 //                         monsters that were left on it.
 //   dorecover() + co.   — the WHOLE-GAME restore that runs at the top of a new
-//                         process, i.e. of a new contest SEGMENT.  See the long
 //                         note above restore_saved_game() below.
 
 import { game } from './gstate.js';
@@ -37,61 +36,11 @@ function hides_under(ptr) {
     return (((ptr?.mflags1) | 0) & M1_CONCEAL) !== 0;
 }
 
-/* C ref: restore.c:1013 getlev(nhfp, pid, lev) — read a previously-visited
- * level back in.  do.c:1711 calls this instead of mklev() whenever
- * svl.level_info[new_ledger].flags & LFILE_EXISTS.
- *
- * RNG ORDER.  The file-reading half (rest_levl, rest_stairs, rest_rooms,
- * restore_timers, restmonchn, restobjchn, rest_engravings, restdamage,
- * rest_regions, rest_track) draws NOTHING — it is deserialisation, and here it
- * is a pointer swap.  Every draw getlev makes is in the per-monster catch-up
- * loop at restore.c:1181-1221:
- *
- *     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
- *         ... place_monster / hideunder ...
- *         if (!u.uz.dlevel || program_state.restoring == REST_LEVELS) continue;
- *         if (ghostly)            { ...bones only... }
- *         else if (elapsed > 0L)  mon_catchup_elapsed_time(mtmp, elapsed);
- *         restore_cham(mtmp);
- *         if (ghostly || (elapsed > 0L && elapsed > (long) rnd(10)))
- *             hide_monst(mtmp);
- *     }
- *
- * so the leaf stream for an ordinary (non-bones) revisit is, per monster:
- * mon_catchup_elapsed_time's four CONDITIONAL rn2 draws (all four guarded by a
- * field that is 0 on an untrapped, unconfused, unstunned, untame monster), then
- * one rnd(10).  `elapsed > 0L` short-circuits the &&, so a level revisited on
- * the same turn it was left draws nothing at all.
- *
- * Witness: seed4500 step 331, the hero leaving Gehennom for Dlvl 1 —
- *     rnd(10)=10 @ getlev(restore.c:1219)
- *     rnd(10)=7  @ getlev(restore.c:1219)
- *     rn2(79)/rn2(21) x13 @ place_lregion(mkmaze.c:396)
- * two monsters, neither trapped/confused/stunned/tame, then the arrival
- * placement.  This port drew the place_lregion pairs with no rnd(10) ahead of
- * them, which is the first value divergence at leaf 49731.
- */
 export async function getlev(lev) {
     const g = game;
     const u = g.u || (g.u = {});
     const snap = stored_level(lev);
     if (!snap) {
-        /* C restore.c:1053-1064 — a missing/mismatched level file is
-         * trickery()/error(), not a silent regenerate.  Reaching here means
-         * savelev() and the LFILE_EXISTS bookkeeping disagree.
-         *
-         * CONFIRMED STRUCTURAL CAPTURE-REPLAY GAP, not a defect here
-         * (capture-port-dodown, wave 9 + wave 104, independently re-verified
-         * with rng-trace).  A capture-replay fixture snapshots only the ONE
-         * record's own state_before, so it has no way to hand this function a
-         * level it never generated in-process — every dodown record whose C
-         * side revisits an already-generated level (dlevel 3->4 etc.) throws
-         * here instead of drawing C's per-monster catch-up rn2/rnd stream.
-         * Witness: dodown board record #4 — C's getlev(restore.c:1219) drew
-         * rnd(10) x3 (values 9,1,7); this port drew 0 before throwing. Fixing
-         * this needs the recorder to capture the level store as a side
-         * channel (see js/save.js's savelev/getlev SWEEP NOTE above), not a
-         * change to this function's logic. */
         throw new Error(`getlev: no stored level ${lev}`);
     }
 
@@ -102,63 +51,6 @@ export async function getlev(lev) {
      * rest_track.  All of it is the departing level's own containers, which
      * clear_level_structures() replaced rather than mutated. */
     g.level = snap.level;
-    /* C restore.c:955-984 rest_stairs — THE SAVE/RESTORE ROUND TRIP REVERSES
-     * THE STAIRWAY CHAIN, and this port used to carry the list through
-     * unchanged.
-     *
-     *   stairs.c:22-23   stairway_add():  tmp->next = gs.stairs; gs.stairs = tmp;
-     *                                     -- PREPENDS, so the chain is newest-first.
-     *   save.c:667,684   save_stairs():   stway = gs.stairs; ... stway = stway->next;
-     *                                     -- writes the file HEAD -> TAIL.
-     *   restore.c:964    rest_stairs():   stairway_free_all();
-     *   restore.c:978                     stairway_add(...) per record read
-     *                                     -- re-PREPENDS in file order.
-     *
-     * So a chain saved as [A,B,C] is written A,B,C and read back as [C,B,A]:
-     * every savelev()/getlev() round trip REVERSES gs.stairs, and the parity
-     * therefore flips on every revisit of a level.  C does it by rebuilding the
-     * nodes; the identity-preserving equivalent here is an in-place reversal of
-     * the `next` pointers (other state — the stored snapshot's own head — is
-     * fixed up below so the level store stays consistent).
-     *
-     * It is invisible until something takes the FIRST match on a predicate the
-     * chain does not satisfy uniquely (stairway_find / stairway_find_dir /
-     * stairway_find_type on a level carrying both a branch stair and the main
-     * staircase) or iterates gs.stairs for display.  Same family as the
-     * addinv_core0 head-insert defect: a chain-ORDER property that draws no RNG
-     * and paints no cell of its own.
-     *
-     * MEASURED AT +0, AND THE ZERO IS EXPLAINED — DO NOT RE-DISPATCH IT AS A
-     * POINTS TARGET.  tools/placement-diff.mjs priced STAIR-ORDER at 2,064
-     * points over gen413/gen040/gen094/gen392 (its four largest rows, all one
-     * claim at step 372).  Landing this cleared every STAIR-ORDER claim in the
-     * corpus and moved 0 of 688 train sessions: points 97,872 -> 97,872,
-     * frameDelta 0, public 11,391/11,405 with 43 passing, unchanged.  The
-     * AND THE FIRST EXPLANATION OF THAT ZERO WAS ALSO WRONG — it is recorded
-     * here because the error is instructive.  I first probed the stored
-     * corpus files for a level carrying two same-direction stairways, got
-     * ZERO, and concluded chain order was unobservable.  The stored sessions
-     * carry only `^md.stairs.count`; the per-stair `stairs[i].up` detail
-     * exists ONLY in placement-diff's own RE-RECORD (record-v5.sh with
-     * RECORD_MAPSTATE=dump), so the probe read a channel with no `up` field
-     * at all and returned a FALSE ZERO.  On the right channel (161 cached
-     * re-records) the answer is 110 level-entry blocks over 7 sessions —
-     * stairs.count histogram 1:1391 2:2494 3:94 4:11 5:5.  Order-observable
-     * levels DO exist here.
-     *
-     * The real reason for the zero, measured session by session: of those 7,
-     * FIVE (gen007 gen617 gen619 gen639 gen658) are placement-CLEAN in the
-     * parent — their duplicate-direction level is never REVISITED, so no
-     * getlev fires and the chain still stands in mklev build order; gen140's
-     * root is LEVEL-SKELETON (levl.lit), not stair order; and only gen392
-     * carried a STAIR-ORDER claim, which cleared for +0.  Total recoverable
-     * behind all seven is 326 points and two of them already score 100%.  So:
-     * no scored frame in this corpus is produced by a first-match on a
-     * non-unique gs.stairs predicate on a REVISITED level.
-     *
-     * Kept because it is what C does (Cardinal Rule 1) and because an unfixed
-     * STAIR-ORDER claim mis-ranks 2,064 points onto a non-cause; NOT kept on
-     * any points claim. */
     {
         let prev = null, cur = snap.stairs;
         while (cur) {
@@ -244,12 +136,6 @@ export async function getlev(lev) {
         if (!(u.uz?.dlevel | 0))
             continue;
         if (ghostly) {
-            /* restore.c:1204-1212 — "reset peaceful/malign relative to new
-             * character".  peace_minded() IS an RNG site in C (makemon.c:1290
-             * rn2(16+...)), but it is reached only for a UNICORN-or-not test
-             * that no bones monster in this corpus satisfies, and this port has
-             * no shopkeeper-by-name reset; the arm is left at the mpeaceful
-             * clear a hostile bones monster gets.  set_malign() is RNG-free. */
             if (!mtmp.isshk)
                 mtmp.mpeaceful = 0;
         } else if (elapsed > 0) {
@@ -275,20 +161,6 @@ export async function getlev(lev) {
 const FULL_MOON_PHASE = 4;
 const NEW_MOON_PHASE = 0;
 
-/*
- * C ref: sys/unix/unixmain.c:243 `if (*svp.plname && (nhfp =
- * restore_saved_game()) != 0)`, i.e. files.c:1076 restore_saved_game() ->
- * set_savefile_name() + open_savefile().
- *
- * The `*svp.plname` guard is not decoration.  C runs plnamesuffix() (and its
- * askname() for an unnamed hero) BEFORE this point, so the name is always
- * known here; this port asks for it inside playChargen(), i.e. AFTER, so a
- * session with no `OPTIONS=name:` in its rc cannot be probed for and starts a
- * new game.  Every multi-segment session in the corpus names its hero in the
- * rc, so nothing currently depends on closing that ordering gap — but a
- * held-out session that saves under an interactively-typed name would, and the
- * fix is to move askname() ahead of this call rather than to guess the name.
- */
 export function restore_saved_game(plname) {
     if (!plname)
         return null;
@@ -333,24 +205,6 @@ async function restgamestate(state) {
     /* C restore.c:591 `gh.hero_seq = svm.moves << 3;` — "hero_seq isn't saved
      * and restored because it can be recalculated". */
     game.hero_seq = (game.moves | 0) << 3;
-    /* C restore.c:727 `adj_erinys(u.ualign.abuse);`, in restgamestate()'s tail
-     * beside relink_timers()/relink_light_sources() and under C's own comment
-     * "must come after all mons & objs are restored".
-     *
-     * This is C TELLING US ITS STATICS ARE FRESH.  mons[PM_ERINYS] is a static
-     * that adj_erinys() (mon.c:5922) mutates during play; u.ualign.abuse is
-     * saved, the mutated table is NOT, so the restoring process has to replay
-     * the mutation from the initialisers it booted with.  js/ mirrors that
-     * boundary at resetGame() -> resetStatics() (js/statics.js), which means
-     * this call is no longer optional here either: without it a segment that
-     * restores a save with abuse > 0 would run a pristine erinys where C runs
-     * a bumped one.  (Before the tables were restored at all, the second
-     * segment of a session inherited the first segment's mutation and was
-     * accidentally close to right; that is not a property to keep.)
-     *
-     * Dynamically imported: js/attrib.js pulls in display/uhitm/dokick, and a
-     * static import here would close a cycle through them.  RNG-neutral —
-     * adj_erinys() draws nothing. */
     const { adj_erinys } = await import('./attrib.js');
     adj_erinys((game.u?.ualign?.abuse ?? 0) >>> 0);
     return true;
@@ -475,24 +329,6 @@ function welcome_back_message() {
     return `${Hello_str} ${g.plname || 'Hero'}, the${buf}, welcome back to NetHack!`;
 }
 
-/*
- * C ref: allmain.c:47 moveloop_preamble(resuming) with resuming == TRUE, plus
- * the welcome(FALSE) that main() reached one call earlier.
- *
- * This is the resuming twin of the startup-message block inside
- * js/allmain.js#newgame, and the paging rule is the same one, from C's tty
- * backend: a message is paged with --More-- iff another blocking message
- * follows it before the next nhgetch.  The new-game queue has a third
- * possible successor, the tutorial prompt; the restore queue does not, because
- * allmain.c:662 guards maybe_do_tutorial() with `if (!resuming)`.  So the last
- * message of a restore ALWAYS lands unpaged on the topline.
- *
- * seed0013 segment 1 is the two-message form: "Hello Sneaky, the human Rogue,
- * welcome back to NetHack!" pages (step 0 records it with --More--, and the
- * segment's first two keystrokes are an 'i' the pager rejects and the space
- * that dismisses it), then "You are lucky!  Full moon tonight." sits on the
- * topline for step 2.
- */
 export async function restore_preamble() {
     const g = game;
     await l_nhcore_call(NHCORE_RESTORE_OLD_GAME);

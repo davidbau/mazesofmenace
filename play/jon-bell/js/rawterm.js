@@ -9,14 +9,12 @@
 // these functions run, and what is left is plain stdout at whatever cursor
 // position the last write left behind.
 //
-// Only one C path reaches it in the corpus — really_done()'s tail:
 //
 //     if (have_windows && !iflags.toptenwin)
 //         exit_nhwindows((char *) 0), have_windows = FALSE;   <- clears screen
 //     topten(how, endtime);                                   <- raw_print x2
 //     if (done_stopprint) { raw_print(""); raw_print(""); }
 //
-// and that produces seed0398's last recorded frame exactly: a cleared 24x80
 // grid whose only content is the wizard-mode topten notice on row 1, with the
 // cursor parked at (col 0, row 4).  The row and the cursor both fall straight
 // out of "puts() writes the string then a newline", which is the whole model
@@ -64,11 +62,6 @@ export function exit_nhwindows(str) {
         raw_print(str);
 }
 
-/* C ref: wintty.c tty_raw_print(const char *str) -> puts(str).
-   puts() writes the string AND a trailing newline, so each call occupies one
-   row and leaves the cursor at column 0 of the next one.  Nothing in the
-   corpus prints past row 23, so the scroll case is deliberately not modelled;
-   writes past the bottom are dropped rather than guessed at. */
 export function raw_print(str) {
     const st = _state();
     if (!st.rows)
@@ -80,9 +73,6 @@ export function raw_print(str) {
     _publish();
 }
 
-/* Render the raw grid the way the capture hook wants it: newline-separated
-   rows, trailing empty rows dropped (the recorded screens are trimmed the
-   same way, and the judge's decodeScreen() pads back to 24x80 regardless). */
 export function raw_term_screen() {
     const st = _state();
     if (!st.rows)
@@ -93,7 +83,6 @@ export function raw_term_screen() {
     return rows.join('\n');
 }
 
-/* Push the raw grid into the fields jsmain.js's capture hook reads. */
 function _publish() {
     const g = game;
     const st = _state();

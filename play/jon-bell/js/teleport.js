@@ -205,20 +205,6 @@ function goodpos_simple(x, y) {
      * pet-placement divergence (W20.5 wire-blocker). */
     if (mon_at(x, y))
         return false;
-    /* C teleport.c:170-174 — `if (!accessible(x, y)) return FALSE;` (the
-     * pool/lava escape hatches need MM_IGNOREWATER/MM_IGNORELAVA, which no
-     * enexto_core caller in this file sets).  accessible() is monmove.c:2187:
-     *   ACCESSIBLE(SURFACE_AT(x,y)) && !closed_door(x,y)
-     * and closed_door() is monmove.c:2180:
-     *   IS_DOOR(typ) && (doormask & (D_LOCKED | D_CLOSED))
-     * This used to be open-coded here reading `loc.door`, a field js/ never
-     * writes — every level tile carries the door state in `doormask` (the
-     * rm.h `#define doormask flags` alias, as js/look.js:312, js/dig.js:443
-     * and closed_door_local() below all read it).  `undefined & D_CLOSED` is
-     * 0, so the whole closed-door rejection was dead: enexto placed monsters
-     * ON closed and locked doors, where C refuses.  It also dropped D_LOCKED.
-     * Delegated to closed_door_local()/accessible_local(), this file's own C
-     * ports of the same two functions, so there is one reading of the mask. */
     if (!accessible_local(x, y))
         return false;
     /* C teleport.c:174-176, "skip boulder locations for most creatures":
@@ -234,46 +220,6 @@ function goodpos_simple(x, y) {
         return false;
     return true;
 }
-/* C ref: teleport.c:219-275 enexto_core (NEW_ENEXTO variant) —
- * Gather candidates within radius 3 (near pass), then full map fallback.
- * For each candidate call goodpos; return first valid {x, y}.
- * Returns {x, y} on success, null on failure (falls back to {xx, yy}).
- *
- * C's third and fourth parameters are `struct permonst *mdat` and
- * `mmflags_nht entflags`, and C uses BOTH:
- *     fakemon = cg.zeromonst;  set_mon_data(&fakemon, mdat);
- *     ... goodpos(cc->x, cc->y, &fakemon, entflags)
- * They were dropped here, with the note "entflags is ignored here (both passes
- * use same goodpos_simple)".  THAT IS WRONG ON WATER, and it is measurable:
- * seed4500-knight-coverage step 978 creates a red dragon next to the hero on
- * the MEDUSA level, whose map is mostly moat.  C's `goodpos(&fakemon)` asks
- * "is this square good for a RED DRAGON" (teleport.c:146 is_pool → is_swimmer /
- * m_in_air) while goodpos_simple asks the hero-shaped question, so with a
- * BIT-IDENTICAL collect_coords shuffle the two sides accept DIFFERENT elements
- * of the same shuffled ring.
- *
- * CORRECTED 2026-08-17, with the coordinates measured rather than recalled.
- * The hero is at (43,6); C accepts candidate INDEX 0, (44,6), which is MOAT,
- * because m_in_air(dragon) is true; this port rejected it as inaccessible and
- * walked on to (41,8).  (The previous text said "C put the dragon at (41,7),
- * east of the hero", which is neither C's square nor east of the hero.)
- *
- * AND THIS WIRING ALONE DID NOT FIX IT.  goodpos_full was already reached with
- * the right fakemon and the right gpflags when the note above was written, and
- * the dragon still landed on (41,8) — because js/makemon.js m_in_air() resolved
- * its form index only from `data_mndx`, a CAPTURE-schema field no live monst
- * carries, so it returned FALSE for every flyer in the game.  Passing the right
- * arguments to a predicate that cannot answer is indistinguishable from not
- * passing them; the sweep could not see it either, because the replay fixture
- * always populates data_mndx.
- *
- * `fakemon` is passed in already built rather than being constructed from an
- * mdat here, because the permonst resolution (permonstTemplate) lives in
- * js/mklev.js; that is a mechanism difference, not a semantic one — it is
- * exactly C's `fakemon` after set_mon_data.  Callers that pass neither keep the
- * previous goodpos_simple behaviour, which is the pre-existing narrowing (C
- * would substitute &mons[u.umonster] for a null mdat), unchanged and not made
- * worse. */
 export function enexto_core(xx, yy, fakemon, entflags) {
     const ok = fakemon
         ? ((x, y) => goodpos_full(x, y, fakemon, entflags | 0))
@@ -304,52 +250,6 @@ function MON_AT(x, y) {
     }
     return null;
 }
-/* C ref: teleport.c:419-446 teleok — is (x,y) an acceptable hero teleport
- * destination?  C is:
- *     if (!trapok) { ...trap exceptions...; if (!trapok) return FALSE; }
- *     if (!goodpos(x, y, &gy.youmonst, 0)) return FALSE;
- *     if (!tele_jump_ok(u.ux, u.uy, x, y)) return FALSE;
- *     if (!in_out_region(x, y)) return FALSE;
- *     return TRUE;
- *
- * The goodpos() half is inlined here for the mtmp == &gy.youmonst case rather
- * than delegating to goodpos_full() below, because goodpos_full() needs a real
- * `mtmp` and game.youmonst is NOT populated on the live replay path (see the
- * note at scrolltele's noteleport_level call): passing the undefined value
- * would skip C's `m_at(x,y)` rejection entirely, which is strictly worse.  The
- * inline form follows C goodpos (teleport.c:86-185) statement for statement for
- * a hero argument, taking each branch in C's order:
- *   C 98    isok
- *   C 106-112  the !allow_u / u_at rejection — SKIPPED, C guards it with
- *              `mtmp != &gy.youmonst` and here mtmp IS the hero
- *   C 114-115  MON_AT && avoid_monpos — avoid_monpos is 0, skipped
- *   C 118-130  m_at(x,y) && (mtmp2 != mtmp || wormno) → reject (hero is never
- *              in the m_at chain and has no wormno, so: any monster rejects)
- *   C 133-140  is_pool → RETURN Swimming || Amphibious || (!Is_waterlevel &&
- *              !is_waterwall && (Levitation || Flying || Wwalking))
- *   C 148-151  is_lava → RETURN Levitation || Flying || (Fire_resistance &&
- *              Wwalking && uarmf && uarmf->oerodeproof) [+ the Upolyd
- *              likes_lava term, see the mdat note below]
- *   C 170-173  accessible(x,y) = ACCESSIBLE(typ) && !closed_door(x,y)
- *   C 175-177  sobj_at(BOULDER,x,y) → reject
- *
- * NO RNG is consumed on the hero path.  C's one goodpos RNG site is
- * `mdat->mlet == S_EEL && rn2(13)` (C 149), reached only when the *creature
- * being placed* is an eel; it is also an `else if` after the is_pool branch.
- *
- * mdat NOTE (honest gap).  C reads mdat = gy.youmonst.data for four tests:
- * the S_EEL rn2(13) above, passes_walls(mdat) (C 162), amorphous(mdat)
- * (C 164) and throws_rocks(mdat) in the boulder test (C 175).  The hero's
- * permonst is unavailable here (game.youmonst is undefined on this path), and
- * for an UN-polymorphed hero every one of those four predicates is false, so
- * omitting them is exactly C's behaviour.  A polymorphed hero who is a
- * wall-walker, amorphous, an eel or a rock-thrower would differ; that needs
- * gy.youmonst.data wired through to the replay path, not a guess here.
- *
- * tele_jump_ok (C 437) enforces the dndest/updest exclusion rectangles used
- * by special levels.  gen123 reaches one on depth 35: omitting this check made
- * safe_teleds accept (48,9), while C rejected it and continued searching.
- * in_out_region (C 439) is the canonical region transition predicate. */
 export function teleok(x, y, trapok) {
     if (!trapok) {
         /* C teleport.c:424-434: a real trap at the destination is disallowed
@@ -422,35 +322,9 @@ function tele_jump_ok(x1, y1, x2, y2) {
 export async function teleds(nux, nuy, teleds_flags) {
     const u = game.u;
     const is_teleport = (teleds_flags & TELEDS_TELEPORT) !== 0;
-    /* ── C teleport.c:461-528 — the ball & chain block ────────────────────────
-     * This whole block was absent.  Every piece of it (drag_ball, move_bc,
-     * placebc, unplacebc) has been ported in js/ball.js for some time and
-     * js/read.js punish() writes u.uball, so a punished hero could reach teleds
-     * — and left her ball and chain behind on the map.
-     *
-     * seed4500 step 789 is that case: a wizard-mode level teleport off the
-     * up-staircase.  C unplacebc()s the pair before the move and placebc()s it
-     * at the destination, so the arrival square holds "an iron chain (attached
-     * to you)" and "a very heavy iron ball (chained to you)" — C opens a
-     * "Things that are here:" window with a --More-- over them, and the recorded
-     * SPACE at step 790 dismisses it.  This port left the ball (cyan `0`) and
-     * chain (cyan `_`) painted at the departure square, drew no pile window, and
-     * therefore read step 790's SPACE as a command ("Unknown command ' '.") —
-     * a keystroke desync on top of the two wrong glyphs.
-     *
-     * C ref: teleport.c:459-463
-     *     ball_active = (Punished && uball->where != OBJ_FREE);
-     *     if (!ball_active || near_capacity() > SLT_ENCUMBER
-     *         || distmin(u.ux, u.uy, nux, nuy) > 1)
-     *         allow_drag = FALSE;
-     * OBJ_FREE is 0 (obj.h `where` enum); u.uball.where is the same field
-     * unplacebc()/placebc() maintain in js/ball.js. */
     const uball = u.uball;
     let ball_active = !!(uball && (uball.where | 0) !== OBJ_FREE);
     let ball_still_in_range = false;
-    /* C's teleds() takes allow_drag as a parameter in some callers; every
-     * corpus caller reaches it via the TRUE default and the three tests below
-     * are what actually clear it. */
     let allow_drag = true;
     if (!ball_active || near_capacity() > SLT_ENCUMBER
         || distmin(u.ux | 0, u.uy | 0, nux | 0, nuy | 0) > 1)
@@ -506,29 +380,6 @@ export async function teleds(nux, nuy, teleds_flags) {
         await placebc();
     /* C 536: newsym(u.ux0, u.uy0) — clear hero from old spot */
     newsym(u.ux0, u.uy0);
-    /* C 537: see_monsters() — repaint EVERY monster on the level.
-     *
-     * This was missing, and its absence is a stale-glyph leak that only a
-     * long-range teleport exposes: a warning glyph (display.c:1030/1055
-     * `mon && mon_warning(mon)`) is gated on `mdistu(mon) < 100`, so a hero who
-     * teleports AWAY from a warned monster must have that monster's square
-     * repainted before the next flush or the '1'..'5' stays on the map at a
-     * square the hero can no longer sense.  newsym(u.ux0,u.uy0) above only
-     * repaints the square the hero LEFT.
-     *
-     * MEASURED on seed0367 step 185: a warning '1' at map (67,19) stood from
-     * step 148 through 184 in both runs (correctly — the hero was inside the
-     * 100-squared radius).  The ^T teleport put her at (48,9), i.e. mdistu 461,
-     * and C blanked that cell on the teleport frame while this port carried the
-     * glyph one frame further.
-     *
-     * ORDERING NOTE: C runs see_monsters() BEFORE vision_recalc(0) (it only
-     * sets gv.vision_full_recalc here and recalculates three statements later);
-     * this port already hoisted vision_recalc(0) into teleds' body, so the two
-     * sit in the opposite order.  Nothing between them reads vision — and
-     * mon_warning, the predicate this fixes, is a pure distance test — so the
-     * repaint set is the same either way; keeping see_monsters at C's statement
-     * position is the faithful placement of the call that was absent. */
     see_monsters();
     /* C 538/541: vision_full_recalc then vision_recalc(0) before effects */
     vision_recalc(0);
@@ -540,71 +391,6 @@ export async function teleds(nux, nuy, teleds_flags) {
         const same = (nux === u.ux0 && nuy === u.uy0);
         await pline(`You materialize in ${same ? 'the same' : 'a different'} location!`);
     }
-    /* ══ C teleport.c:568 `spoteffects(TRUE);` ═══════════════════════════════
-     * The LAST statement of teleds before invocation_message()/notice_mon_on(),
-     * and it had NO counterpart here at all: a teleported hero landed on her
-     * destination square in total silence.
-     *
-     * What is wired is the ONE sub-effect of spoteffects (hack.c:3299-3400) the
-     * corpus reaches on a teleport arrival: `if (pick && !pit) pickup(1);`
-     * (hack.c:3375-3376), which with autopickup off falls through to
-     * check_here(FALSE) -> look_here().  _spoteffects_pickup is the same body
-     * goto_level's do.c:2015 `(void) pickup(1)` and domove's spoteffects tail
-     * both call, so there is one pickup(1) in this port, not three.
-     *
-     * seed4500 steps 789 and 794 are the loss: a wizard-mode ^T teleport onto a
-     * staircase while Punished.  C's arrival window is
-     *     There is a staircase down here.
-     *
-     *     Things that are here:
-     *     an iron chain (attached to you)
-     *     a very heavy iron ball (chained to you)
-     *     --More--
-     * and the recorded SPACE at step 795 dismisses it.  This port drew nothing,
-     * raised no blocking read, and read that SPACE as a command ("Unknown
-     * command ' '.") — the head of a 791-frame divergence run.
-     *
-     * STILL UNPORTED, and each is a `return`-shaped gap rather than a throw so
-     * an unreached path cannot delete a frame: switch_terrain() (hack.c:3335),
-     * pooleffects(TRUE) (:3339), check_special_room(FALSE) (:3342),
-     * dosinkfall() (:3344), the levitation-timeout rn2(2) deferral (:3355-3369),
-     * dotrap() (:3379-3394) and the pit ordering it implies, the Warning-on-ice
-     * block (:3402-3414) and the piercer/monster-underfoot block (:3416+).
-     * dotrap in particular is a REAL gap: teleporting onto a known trap should
-     * spring it.  No corpus teleport lands on a trap or a pool today (checked
-     * against the two ^T sessions), so wiring only pickup(1) is the narrow
-     * faithful step; widening it needs its own before/after measurement.
-     *
-     * THE GUARD IS LOAD-BEARING.  pickup(1) sits inside
-     *     if (!gi.in_steed_dismounting) { ... }        (hack.c:3350)
-     * "if dismounting, check again later" — and dismount_steed reaches teleds
-     * with exactly that flag set (js/cmd.js:10567).  Ported without the guard,
-     * a dismount printed the floor pile a second time and seed0104-knight-ride-
-     * combat went 43/43 -> 41/43, i.e. from PASSING to failing.  MEASURED, not
-     * inferred: that is the whole delta the guard buys back. */
-    /* ── C hack.c:3352 `check_special_room(FALSE);` ──────────────────────────
-     * Listed as STILL UNPORTED in the note above; it is the seed0367 root.
-     * It sits OUTSIDE the in_steed_dismounting guard (that guard opens at
-     * hack.c:3355, three statements later), and BEFORE pickup(1), because C's
-     * room-entry message precedes the floor-pile window.
-     *
-     * check_special_room() is also the only caller of move_update(), i.e. the
-     * only writer of u.urooms / u.urooms0 / u.uentered / u.ushops*.  Skipping
-     * it on a teleport arrival therefore did two things: it deleted the whole
-     * room-entry message switch (zoo, court, temple, shop, ...) for a
-     * teleported hero, AND it left u.urooms describing the square the hero
-     * teleported AWAY from, so every later temple_occupied/vault_occupied/
-     * inhishop read was stale until the next domove.
-     *
-     * seed0367 step 185 is the measured loss: a wizard-mode ^T lands the
-     * Priest inside the untended temple on the Sanctum level, so C runs
-     * intemple() -> `switch (rn2(4))` (priest.c:504) -> "You feel like you are
-     * being watched." and the `if (!rn2(5))` ghost roll (priest.c:519).  This
-     * port drew neither leaf and printed neither message, which also meant the
-     * "You materialize in a different location!" pline was the ONLY message of
-     * the command and so raised no --More--; the recorded SPACE at step 186
-     * then leaked to rhack as "Unknown command ' '." and the input pointer
-     * stayed ahead of C's for the rest of the segment. */
     await check_special_room(false);
     /* The command-result publication used to sit immediately after the
      * materialize pline above, i.e. BEFORE spoteffects ran.  That snapshot is
@@ -619,19 +405,6 @@ export async function teleds(nux, nuy, teleds_flags) {
      * update_topl reserve rule in flush_screen sees both plines and raises the
      * --More-- between them exactly where C does (topl.c:264: no join when
      * len(new) + len(committed) + 3 >= CO-8, and 36 + 39 + 3 = 78). */
-    /* MOVE, do not COPY.  C has exactly ONE topline (win/tty/topl.c gt.toplines);
-     * this port has two channels (_resultMessage + _pending_message) and
-     * _topl_merge_result renders them as `result + "  " + pending`, so leaving
-     * the text in BOTH shows it twice.  The scroll-of-teleportation read is the
-     * measured case: seed0004 step 289 rendered "As you read the scroll, it
-     * disappears.  You materialize in a different location!" TWICE over three
-     * wrapped rows, where C pages after the first pline (38 + 39 + 3 = 80 >= CO-8,
-     * topl.c:264, so update_topl takes its more() arm).  The doubling was not the
-     * post-rhack stash (that clears _pending_message a moment later) but the
-     * faithful moveloop's own end-of-turn merge in js/allmain.js, which runs while
-     * both channels still hold the line.  Carry the join offsets across with the
-     * text — the durable {src, joins} record js/cmd.js _result_append_join keeps —
-     * or the moved line becomes one atomic pline that never pages at all. */
     if (is_teleport && (game.flags?.verbose !== false)) {
         const _joins = _topl_joins_snapshot(game._pending_message);
         game._resultMessage = game._pending_message;
@@ -644,39 +417,6 @@ export async function teleds(nux, nuy, teleds_flags) {
     }
     if (!game.in_steed_dismounting)
         await _spoteffects_pickup();
-    /* ── FOLD spoteffects' OWN plines back onto the published result line ────
-     * C ref: win/tty/topl.c — there is exactly ONE topline buffer (gt.toplines),
-     * so every pline teleds emits after the materialize message is on the SAME
-     * line, and update_topl decides per message whether it joins or pages.
-     *
-     * The publish above snapshots the topline BEFORE `pickup(1)` runs, so
-     * describe_decor()'s "There is a staircase down here." (pickup.c:401,
-     * reached from pickup.c:709's `if (flags.mention_decor) describe_decor();`
-     * guard — mention_decor is ON for every tutorial level, dat/tut-1.lua:66-68)
-     * and read_engr_at()'s engraving lines land on _pending_message with
-     * _resultMessage already non-empty.  js/allmain.js moveloop_core_faithful's
-     * post-rhack clear then hits its own `&& !g._resultMessage` guard, declines
-     * to stash, and executes `g._pending_message = ''` — DESTROYING them.  The
-     * guard is right (it must not OVERWRITE a published result); what was
-     * missing is the APPEND, which is what C's single buffer does.
-     *
-     * MEASURED on gen446-recombine-seed373399 step 811: a teleport-control
-     * level_tele lands the hero on Tutorial:1's down staircase.  C's topline is
-     *     You materialize in a different location!--More--
-     * (39 + 2 + 31 = 72, past the CO-1-8 reserve of topl.c:264, so update_topl
-     * takes its more() arm) and the recorded SPACE at step 811 dismisses it,
-     * revealing "There is a staircase down here." at step 812.  This port drew
-     * only the materialize line, raised no blocking read, and read that SPACE as
-     * a command ("Unknown command ' '.") — from there the input pointer stayed
-     * one key ahead of C's, the very next '>' descended a turn early, and the
-     * two runs were on different dungeon levels for the rest of the segment.
-     *
-     * Append rather than move: _spoteffects_pickup's ct>0 arm publishes its own
-     * "You see here ..." through _result_append_join into _resultMessage, so a
-     * bare move would put the materialize line AFTER it.  _topl_merge_result
-     * rebases the per-pline join offsets onto the merged string, which is what
-     * lets _topl_split_for_more page at the genuine message boundary instead of
-     * treating the whole line as one atomic pline.  DISPLAY-ONLY: no RNG. */
     if (is_teleport && (game.flags?.verbose !== false)
         && game._resultMessage && game._pending_message) {
         const _rmj = game._resultMessageJoins;
@@ -708,7 +448,6 @@ export async function safe_teleds(teleds_flags) {
     }
     /* C 745-763: shuffled candidate ring search */
     let cc_flags = CC_RING_PAIRS | CC_SKIP_MONS;
-    /* !Passes_walls → add CC_SKIP_INACCS (hero in corpus does not pass walls) */
     cc_flags |= CC_SKIP_INACCS;
     const candy = collect_coords(game.u.ux | 0, game.u.uy | 0, 0, cc_flags, null);
     let backupx = 0, backupy = 0;
@@ -743,15 +482,6 @@ function Teleport_control(u) {
     const p = u && u.uprops && u.uprops[TELEPORT_CONTROL];
     return !!(p && (p.intrinsic || p.extrinsic));
 }
-/* youprop.h:80-81 — `#define HStun u.uprops[STUNNED].intrinsic` then
- * `#define Stunned HStun`.  INTRINSIC ONLY: `grep -rn EStun` over
- * nethack-c-v5/upstream/{include,src} returns zero hits, so 5.0 has no
- * extrinsic STUNNED slot at all.  This helper read `intrinsic || extrinsic`
- * until 2026-09-09, which is not a spelling difference: its one remaining
- * caller is scrolltele's control test (teleport.c:872), where an extrinsic-only
- * STUNNED slot would take teleport control AWAY from a hero C leaves in
- * control.  Contrast Teleport_control just above, which C really does define
- * as `HTeleport_control || ETeleport_control` (youprop.h:231). */
 function Stunned(u) {
     const p = u && u.uprops && u.uprops[STUNNED];
     return !!(p && p.intrinsic);
@@ -786,19 +516,6 @@ function unconscious() {
                       || nmm.startsWith('You are consci')));
 }
 
-/* C ref: teleport.c:847-915 scrolltele(struct obj *scroll) — "teleport the
- * hero; usually discover scroll of teleportation if via scroll".
- *
- * The teleport-control branch at C 871-903 was previously commented out of
- * this port on the grounds that the corpus hero has neither Teleport_control
- * nor a blessed scroll — but C's condition is
- *     ((Teleport_control || (scroll && scroll->blessed)) && !Stunned) || wizard
- * and every `playmode:debug` session (the whole seed036x/037x quest tour) has
- * wizard set, which makes that branch UNCONDITIONAL there.  The missing
- * pline + getpos() is the shared first divergence of that cluster: C's
- * "Where do you want to be teleported?" is paged by getpos's Tip window, so C
- * blocks for a --More-- dismiss keystroke that JS never consumed, and every
- * later keystroke was off by one. */
 export async function scrolltele(scroll) {
     const g = game, u = g.u;
     const cc = { x: 0, y: 0 };
@@ -807,11 +524,6 @@ export async function scrolltele(scroll) {
     const wizard = !!(g.flags && g.flags.debug);
 
     /* C 853-859: disable teleportation in stronghold && Vlad's Tower. */
-    /* C ref: teleport.c:854 noteleport_level(&gy.youmonst) — it reads only
-     * mon->data, which for the hero is &mons[u.umonnum] (polyself.c set_uasmon).
-     * game.youmonst is not populated on the live replay path (only the capture
-     * sweep seeds it), so resolve data the same way js/makemon.js:1417-1424
-     * already does for makemon-internal monster shapes. */
     if (noteleport_level({ data: permonstTemplate(u.umonnum | 0) }) && !wizard) {
         await pline('A mysterious force prevents you from teleporting!');
         if (scroll)
@@ -832,18 +544,6 @@ export async function scrolltele(scroll) {
     if ((!!(u.uhave && u.uhave.amulet) || On_W_tower_level(u.uz)) && !rn2(3)) {
         /* C ref: pline.c You_feel(x) → pline("You feel %s", x). */
         await pline('You feel disoriented for a moment.');
-        /* C 867-870:
-         *     if (!wizard || y_n("Override?") != 'y') return;
-         * "don't discover the scroll [at least not yet for wizard override];
-         *  disorientation doesn't reveal that this is a teleport attempt".
-         * y_n() is yn_function(query, ynchars, 'n', TRUE) — a one-keystroke
-         * prompt with no general implementation in this port.  This arm is
-         * unreachable for every recorded session (the left operand needs the
-         * hero to carry the Amulet or to stand on a wiz1/wiz2/wiz3 level at
-         * the moment scrolltele runs, and no session does either), so we take
-         * C's non-wizard branch rather than invent a prompt renderer whose
-         * keystroke consumption we cannot check against a recording.
-         * WIRE_PENDING: y_n("Override?") for the wizard case. */
         return;
     }
 
@@ -911,10 +611,6 @@ export async function scrolltele(scroll) {
 export async function tele() {
     await scrolltele(null);
 }
-/* C ref: apply.c:918-928 next_to_u — FALSE if any leashed monster is not
- * adjacent, or if the steed is carrying the Amulet.  No RNG.  The corpus hero
- * leashes nothing and rides nothing, so this is TRUE, but the predicate is
- * ported rather than hardcoded because tele_trap's arm order depends on it. */
 export function next_to_u() {
     /* C: get_iter_mons(mleashed_next2u) — any leashed monster more than one
      * square away (apply.c:905-916) aborts the teleport. */
@@ -950,13 +646,6 @@ async function vault_tele() {
     await tele();
 }
 
-/* C ref: teleport.c:1490-1534 tele_trap — hero hit a teleport trap.
- *
- * This used to be a bare `await tele()` whose comment asserted every other arm
- * was unreached ("C 1508: trap->once -> false (new trap)").  That assertion was
- * false: seed0012's vault teleporter IS a once-trap, so C ran vault_tele() and
- * this port ran tele(), and the two streams part company on the very next draw
- * (C rn2(2) @somex(mkroom.c:668) vs JS rnd(79) @safe_teleds). */
 export async function tele_trap(trap) {
     /* C 1493-1499: a fixed-destination teleport trap could theoretically place
      * hero onto a second teleport trap; prevent the recursive call from
@@ -1012,23 +701,6 @@ let _in_tele_trap = false;
 /* C ref: teleport.c:1301 etc — the shared "You shudder for a moment." string
  * (You1(shudder_for_moment), hack.h). */
 const shudder_for_moment = 'You shudder for a moment.';
-/* C ref: teleport.c:1443-1489 domagicportal(ttmp) — the HERO arm of stepping
- * onto a magic portal trap.  Its one caller is trap.c:2709-2722
- * trapeffect_magic_portal:
- *     if (mtmp == &gy.youmonst) { feeltrap(trap); domagicportal(trap); }
- *     else return trapeffect_level_telep(mtmp, trap, trflags);
- * (the monster arm is already ported: js/teleport.js's own mlevel_tele_trap,
- * wired from js/trap.js's MONSTER trapeffect_selector).
- *
- * NOT YET WIRED: js/trap.js's HERO trapeffect_selector (the `isYou` switch)
- * has no `case MAGIC_PORTAL:` at all, so it falls to the RNG-free `default`
- * arm and a hero who steps onto a magic portal gets no message and no level
- * change from this port today.  Nothing outside this file imports
- * domagicportal yet, so this addition is behavior-neutral by itself; the
- * wiring — `case MAGIC_PORTAL: feeltrap(trap); return
- * domagicportal(trap);` (mirroring trap.c:2715-2717, with feeltrap already
- * exported from js/trap.js) — lives in js/trap.js, out of this packet's
- * one-file scope. */
 export async function domagicportal(ttmp) {
     const u = game.u;
 
@@ -1103,19 +775,7 @@ function _u_antimagic() {
     return !!(p && (p.intrinsic || p.extrinsic));
 }
 
-/* C ref: teleport.c:1770-1775 hack.h RLOC_* flag bits.
- * FIX: this was 0x01, which is the C header's RLOC_ERR bit, not RLOC_NOMSG
- * (hack.h: RLOC_ERR=0x01, RLOC_MSG=0x02, RLOC_NOMSG=0x04). rloc_to() below
- * is self-consistent either way (it only ever constructs and immediately
- * consumes this one sentinel), but rloc_to_flag()/u_teleport_mon() feed
- * rloc_to_core() REAL captured rlocflags bit patterns, and rloc_to_core's
- * own preventmsg/vanishmsg masking (below) must agree with the real C bit
- * layout for those to compute correctly. RLOC_MSG is imported from const.js
- * where it already matches (0x02); RLOC_NOMSG did not, so it is corrected
- * here rather than importing const.js's equally-wrong copy (0x0001). */
 export const RLOC_NOMSG = 0x04;
-/* C ref: hack.h RLOC_ERR — only gates whether rloc()'s impossible() no-op
- * fires (see rloc() below); not otherwise load-bearing. */
 const RLOC_ERR = 0x01;
 
 /* ══ C mon.c:3955-4084 — enexto / mnexto / mnearto ═══════════════════════════
@@ -1231,8 +891,6 @@ export async function mnexto(mtmp, rlocflags) {
         await deal_with_overcrowding(mtmp);
         return;
     }
-    /* C mon.c:3971-3979 iflags.mon_telecontrol — the wizard-mode
-     * 'montelecontrol' option, which no corpus nethackrc sets. */
     await rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
 }
 /* C mon.c:3997-4017 maybe_mnexto(mtmp) — "like mnexto() but requires
@@ -1377,11 +1035,6 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
         if (u.uswallow) {
             u.ux = mtmp.mx | 0;
             u.uy = mtmp.my | 0;
-            /* check_special_room(FALSE) / docrt(): full re-draw on hero
-             * relocation via swallow — not exercised by any capture in
-             * this task's scope (mtmp is never u.ustuck here); left
-             * unmodeled rather than fabricated, matching this file's
-             * existing convention for genuinely unreached branches. */
         } else if (dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0) <= 2) {
             /* C teleport.c:1695 `!m_next2u(mtmp)`; you.h:553
                m_next2u(m) = distu(m->mx, m->my) <= 2, and hack.h:1536
@@ -1421,10 +1074,6 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
             const tail = next ? next : (nearu ? nearu : "");
             pline(`${nm} ${sudden}${verb}${tail}!`);
         }
-        /* wand discovery: only when a message was actually delivered (C's
-         * own "(bug?)" comment). gc.current_wand is not modeled anywhere
-         * in js/ (no capture side-channel carries it); left as a no-op
-         * rather than fabricated — matches this file's makeknown_local(). */
     }
 
     /* shopkeepers will only teleport if you zap them with a wand of
@@ -1458,57 +1107,9 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
         await mintrap(mtmp, NO_TRAP_FLAGS);
 }
 
-/* --- rloc_to_core dependencies with no genuinely-ported, safely-importable
- * implementation anywhere in js/ yet. Each mirrors this project's existing
- * per-callsite convention (js/dogmove.js, js/makemon.js) of a local
- * no-op/throwing stand-in rather than a fabricated behavior, and each is
- * commented with why it's safe: either never exercised by the captures this
- * task is scored against, or a pure no-op message/bookkeeping channel that
- * this port doesn't model anywhere. --- */
 
-/* C ref: worm.c:706-726 remove_worm.  "Not ported anywhere in js/" was true
- * when written and is NOT any more — js/worm.js exports the real body.  This
- * stays a no-op anyway, and the reason is the PAIR, not the port:
- * rloc_to_core() is remove_worm(mtmp) at C teleport.c:130 and
- * place_worm_tail_randomly(mtmp, x, y) at :156, and the second half is the
- * stub 100 lines below.  Wiring only the first would take the whole body off
- * the map and never lay it back down — a worm that teleports and loses its
- * tail, which is a different wrong answer, not a smaller one.  The second half
- * is an RNG SITE (rnd_nextto_goodpos per segment), so landing the pair changes
- * the leaf stream and is its own measured change.
- * REACH, measured 2026-08-25: zero.  No worm in any of the 688 train sessions
- * ever moves — grep finds ZERO `worm.c` RNG sites in the C ground truth of the
- * whole corpus (controls: makemon.c 688/688, teleport.c 658/688), and a
- * WPROBE at js/monmove.js's move block fires 0 times in 688 runs.  Wire the
- * PAIR when that stops being true. */
 function remove_worm_local(mdef) { return remove_worm_real(mdef); }
 
-/* C ref: mon.c remove_monster(x,y) — clears the level's monster-grid entry
- * at <x,y>. No shared exported implementation exists; js/dogmove.js:3755
- * and js/makemon.js:3154 each already carry their own private no-op copy —
- * this mirrors that established convention.
- *
- * THIS IS AN UNPORTED GAP, not a decision that the state does not matter.
- * C really does clear the monster grid here, and the fmon-chain/monster-grid
- * state we leave behind is therefore WRONG, not merely unobserved. The earlier
- * comment justified the no-op on the grounds that no capture currently grades
- * it; that reasoning is backwards (it is how porting-to-the-test starts) and
- * has been removed. Port the real remove_monster when a shared owner exists. */
-/* C ref: mon.c remove_monster(x, y) —
- *     if ((mtmp = svl.level.monsters[x][y]) != 0) mtmp->mstate |= MON_DETACH;
- *     svl.level.monsters[x][y] = (struct monst *) 0;
- * The body here was `{ }`, so the whole C statement was dead — and it is not
- * bookkeeping: rloc_to_core's VERY NEXT statement is newsym(oldx, oldy), and
- * mtmp->mx/my are not updated until the place_monster below it.  This port keeps
- * no monster GRID (m_at, js/uhitm.js:1861, and MON_AT above both scan gmon.fmon
- * comparing mtmp->mx/my), so "clear the grid slot" is expressed by taking the
- * monster off its map coordinate; without that, newsym found the monster still
- * standing on the square it just left and repainted it there.  Measured on
- * seed0014 step 417: after "She stole a black onyx ring.  The water nymph
- * vanishes!" C paints floor at (48,17) and this port painted 'n' — one cell, in
- * a frame whose other 576 painted cells matched.
- * place_monster_local() below assigns the real destination and resets mstate to
- * MON_FLOOR, exactly as C's place_monster does. */
 function remove_monster_local(x, y) {
     const mtmp = MON_AT(x, y);
     if (!mtmp)
@@ -1526,9 +1127,6 @@ function update_monster_region_local(mtmp) {
     return update_monster_region_real(mtmp);
 }
 
-/* C ref: worm.c:730-800 place_worm_tail_randomly — PORTED and exported from
- * js/worm.js since before this note; unwired here as the other half of the
- * remove_worm_local() pair above, which explains the reach measurement. */
 function place_worm_tail_randomly_local(mdef, fx, fy) { return place_worm_tail_randomly_real(mdef, fx, fy); }
 
 /* C ref: pline.c:93-97 set_msg_xy — record the map coordinate that owns the
@@ -1545,14 +1143,6 @@ function set_msg_xy_local(x, y) {
 /* C ref: youprop.h Blind macro (HBlind|EBlind, not blocked). Local copy —
  * this file has no existing hero-blindness reader to import safely. */
 function Blind_local() {
-    /* C youprop.h:87 Blind = (HBlinded || EBlinded || !haseyes(...)), i.e.
-     * u.uprops[BLINDED].  The prop table is an ARRAY indexed by the numeric
-     * prop id (const.js BLINDED = 15); this read was `uprops.BLINDED`, the
-     * STRING key, which has no writer anywhere in js/ and so was PERMANENTLY
-     * FALSE.  Cost: rloc_to_core's arrival message is
-     * `!Blind ? "appears" : "arrives"` (teleport.c:1723), so seed4500 step
-     * 1759 printed "It suddenly appears next to you!" where C, with the hero
-     * blind (the status row says Blind), prints "arrives". */
     const p = game.u?.uprops?.[BLINDED_TP];
     if (p && (((p.intrinsic | 0) || (p.extrinsic | 0))
               && !(p.blocked | 0)))
@@ -1566,12 +1156,6 @@ function Blind_local() {
 /* js/const.js:2327 BLINDED — the numeric prop index. */
 const BLINDED_TP = 15;
 
-/* C ref: shk.c onshopbill/stolen_value/make_angry_shk — none has a working
- * port anywhere in js/ (js/shk.js:564 onshopbill is itself a local `false`
- * stub; js/dokick.js and js/cmd.js both carry throwing stolen_value stubs).
- * All three are behind `mtmp.minvent` / `resident_shk`, and every capture in
- * this task's scope has isshk=0 and minvent="" (see triage-ledger.json),
- * so these are unreached; left honest rather than fabricated. */
 async function onshopbill_local(obj, shkp, silent) { return await onshopbill(obj, shkp, silent); }
 function stolen_value_local(_obj, _x, _y, _peaceful, _silent) {
     void _obj; void _x; void _y; void _peaceful; void _silent;
@@ -1584,19 +1168,6 @@ function DEADMONSTER(mon) {
     return (mon.mhp | 0) <= 0;
 }
 
-/* C ref: steed.c:897-933 place_monster — NOT imported from js/steed.js:
- * that port calls describe_level(buf,0) unconditionally on the
- * bad-position/DEADMONSTER/occupied branches, and js/steed.js:101's
- * describe_level is a throwing "not yet ported" stub — so importing it
- * would crash every capture that exercises DEADMONSTER (mhp<=0), which
- * this task's rloc_to captures DO (triage-ledger.json's record with
- * mtmp_mhp:0). describe_level's only use here is building the text for an
- * impossible() call, and impossible() is ALREADY an established no-op
- * project-wide (see js/steed.js's own comment: "it never aborts; every
- * caller falls through to its own fallback value... The message/paniclog
- * side is not modeled"). So the debug-string construction is dropped
- * entirely and only the control-flow/state effect — which C bug-for-bug
- * leaves mon->mx/my UNCHANGED when mon is dead — is kept. */
 function place_monster_local(mon, x, y) {
     if (!isok(x, y) && (x !== 0 || y !== 0 || !mon.isgd)) {
         /* impossible(...) no-op (describe_level's buf feeds only that
@@ -1629,15 +1200,6 @@ function is_rider(ptr) {
     return (n | 0) === 311 || (n | 0) === 312 || (n | 0) === 313;
 }
 
-/* C teleport.c:196 enexto(coord *cc, x, y, mdat) — the OUT-PARAM spelling C
- * writes at its call sites: fills *cc and returns TRUE/FALSE.  Was a throwing
- * "not yet ported: enexto" stub whose note said "a faithful enexto/goodpos pair
- * is a separate, larger porting task"; that pair IS ported (enexto_core :237
- * over collect_coords :78), so this is now the two-line adapter onto the real
- * enexto() above.  A throw here is a HALT, so the two call sites that reach it
- * (tele_trap's occupied-destination bump and u_teleport_mon's rider/
- * control_teleport arm) were one reached branch away from forfeiting a
- * session's whole tail. */
 function enexto(cc, ux, uy, data) {
     const mm = enexto_out(ux, uy, data);
     if (!mm)
@@ -1646,9 +1208,6 @@ function enexto(cc, ux, uy, data) {
     return true;
 }
 
-/* ---- goodpos()/rloc_pos_ok()/rloc() faithful port ----
- * These back rloc()'s candidate search, which is what u_teleport_mon's
- * plain (non-enexto) branch actually exercises for every capture in scope. */
 
 const S_EEL = 57;
 const S_HUMAN = 53;
@@ -1746,13 +1305,6 @@ function Is_waterlevel_local() {
     return !!uz && !!wl && uz.dnum === wl.dnum && uz.dlevel === wl.dlevel;
 }
 
-/* C ref: monmove.c:241-304 onscary(x,y,mtmp) — used by goodpos()'s
- * GP_CHECKSCARY check for a real (m_id != 0) monster. sengr_at("Elbereth")
- * and is_vampshifter are not modeled: no capture side-channel in this
- * task's scope carries engraving state (verified against the captures'
- * field list — level_tiles/worn/invent/objects/traps/stairs/rooms/fmon/…,
- * no engravings channel), so they read as absent/false rather than being
- * guessed at. */
 function onscary_local(x, y, mtmp) {
     const auditory_scare = (x === 0 && y === 0);
     const magical_scare = !auditory_scare;
@@ -1776,29 +1328,13 @@ function onscary_local(x, y, mtmp) {
 
     if (sobj_at(SCR_SCARE_MONSTER, x, y)) return true;
 
-    /* sengr_at("Elbereth", ...) — not modeled (no engraving capture
-       channel in scope); no Elbereth ever found, matches C's !ep case. */
     return false;
 }
-/* C ref: priest.c inhistemple — delegate to the canonical priest module. */
 function inhistemple_local(mtmp) { return inhistemple_real(mtmp); }
 
 /* C ref: mondata.h:46 haseyes(ptr) = (ptr->mflags1 & M1_NOEYES) == 0 */
 function haseyes(mdat) { return ((mdat.mflags1 | 0) & M1_NOEYES) === 0; }
 
-/* C ref: teleport.c:50-76 goodpos_onscary(x, y, mptr) — the permonst-only
- * approximation of onscary(), used by goodpos() for the m_id == 0 case
- * (fake monster structs from makemon/mplayer, i.e. "is this square scary
- * to *this monster type*" with no individual monster to consult).
- *
- * `mptr == &mons[PM_MINOTAUR]` is a permonst POINTER identity test in C;
- * ported as a pmidx comparison, the same convention this file already uses
- * for likes_lava_local() — mons[] rows arrive here as reconstructed
- * permonst templates, so JS reference equality would never fire.
- *
- * sengr_at("Elbereth", ...) is not modeled, matching onscary_local() above:
- * no capture side-channel in scope carries engraving state, so it reads as
- * absent (C's !ep case) rather than being guessed at. */
 function goodpos_onscary(x, y, mptr) {
     /* onscary() checks Angels and lawful minions; this oversimplifies */
     const mlet = mptr.mlet | 0;
@@ -1916,36 +1452,6 @@ function accessible_local(x, y) {
     if (!lev) return false;
     return !!(ACCESSIBLE(lev.typ) && !closed_door_local(x, y));
 }
-/* C ref: mkmaze.c:317-332 is_exclusion_zone(type, x, y) — walk
- * sve.exclusion_zones; LR_DOWNTELE/LR_UPTELE also match a generic LR_TELE
- * zone, everything else needs an exact zonetype match.
- *
- * This replaces a throwing stub whose comment read "never reached by any
- * goodpos_full() call site in this file (no caller passes GP_AVOID_MONPOS)".
- * That was true when written and is FALSE now: makemon's byyou branch
- * (js/mklev.js, C makemon.c:1180) passes its gpflags straight through, and
- * makemon sets GP_AVOID_MONPOS itself, so the first enexto_core() call that
- * actually forwarded gpflags HALTED seed4500-knight-coverage at frame 978/1814
- * on this throw.  An "unreached" note is a claim about today's callers, and
- * porting a caller invalidates it.
- *
- * CONTAINER, and this is the CORRECTED reading — the first version of this
- * comment claimed `game.exclusion_zones` had no writer, on a `grep | head`
- * whose output was truncated before it reached js/sp_lev.js.  It HAS one:
- * js/sp_lev.js:803 lspo_exclusion() (C sp_lev.c:5505, the des.exclusion
- * opcode) unshifts onto `game.exclusion_zones` for every exclusion a level
- * declares, and per js/sp_lev.js:5628 every monster-generation exclusion in
- * dat/ belongs to a Sokoban level — which the public corpus reaches.  So this
- * reader is LIVE, not vacuous.
- * `game.exclusion_zones` (an array) is the tree's live store; js/dungeon.js
- * keeps a separate module-local `sve.exclusion_zones` linked list written only
- * by its own save/restore pair, and js/sp_lev.js:5622 already documents that
- * split.  This is the THIRD copy of mkmaze.c:317-332 in js/ (js/mklev.js:534
- * lregion_is_exclusion_zone and js/sp_lev.js:5896 is_exclusion_zone are the
- * other two, both module-local).  A copy rather than an import because
- * js/sp_lev.js already imports THIS file (enexto_core, rloc), so importing it
- * back would close a cycle; all three read the same container and the same
- * fields, so they cannot answer differently. */
 function is_exclusion_zone_local(type, x, y) {
     for (const ez of (game.exclusion_zones || [])) {
         const typeMatches =
@@ -1958,29 +1464,10 @@ function is_exclusion_zone_local(type, x, y) {
     return false;
 }
 
-/* C ref: teleport.c:1573-1633 rloc_pos_ok — is <x,y> ok for mtmp to arrive
- * at via Tport/fall? mtmp->mx==0 (no current location — migrating-monster
- * arrival, or a fresh &gy.youmonst-shaped struct as u_teleport_mon's
- * captures exercise) takes C's three region-bit branches, each gated on
- * svd.dndest.nlx / svu.updest.lx / svd.dndest.lx: dungeon-branch-destination
- * region bounds that are absent on ordinary levels (matches this file's
- * existing teleok() comment on the same fields). With all three zero, NONE
- * of C's three `if` branches fire and control falls through the whole
- * `if (!xx) {...}` block to the final `return TRUE` — so the migrating-
- * monster case here is just "no extra rejection", not unreached. The
- * resident-shk/priest room-containment path (xx truthy) is unreached in
- * this task's scope (isshk/ispriest are 0 on every capture). tele_jump_ok's
- * dndest/updest regions are likewise absent on ordinary levels, so it
- * reduces to isok(x,y). */
 function rloc_pos_ok(x, y, mtmp) {
     if (!goodpos_full(x, y, mtmp, GP_CHECKSCARY)) return false;
     const xx = mtmp.mx | 0;
     if (!xx) {
-        /* C teleport.c:1600-1621 — migrating monsters arriving through a
-           dungeon branch are constrained to the destination region.  These
-           fields are nonzero on branch/special levels (gen388's Mines arrival
-           is one such case); treating them as universally zero made JS accept
-           the first random square while C rejected it and retried rloc(). */
         const d = game.dndest || {};
         const up = game.updest || {};
         const flags = mtmp.my | 0;
@@ -2007,61 +1494,6 @@ function rloc_pos_ok(x, y, mtmp) {
     return true;
 }
 
-/* C ref: teleport.c:1798-1895 rloc — place a monster at a random location.
- * The u.usteed / iswiz-stairway / mon_telecontrol branches are all
- * structurally unreachable in this task's captured scope (verified: no
- * record has a steed, iswiz is always 0, and mon_telecontrol is never set)
- * and are left as loud throwing guards rather than fabricated, per this
- * file's existing convention (see enexto() above).
- *
- * NOW EXPORTED, and NOW SYNCHRONOUS — like C's `boolean rloc(...)`.
- *
- * Exported because this was the only real body of `rloc` in the tree while
- * js/makemon.js exported a `throw new Error('not yet ported: rloc')` stub of
- * the same name.  Every importer — and the capture-replay sweep, which
- * resolves C names through the inventory — bound to the throwing stub, so the
- * sweep scored rloc 3 records run / 3 diverged with `__error__: not yet
- * ported: rloc` while this faithful port sat unreachable.  That stub is now
- * deleted; this is the single body.
- *
- * De-async'd because its `async` had become vestigial: the only awaits in the
- * body were on rloc_to_core(), which was itself de-async'd (see its comment at
- * teleport.c:1644 above — "the async form made every caller that did not
- * `await` silently reorder rloc's tail behind its own continuation AND swallow
- * any throw as an unhandled rejection").  That same argument applies one level
- * up: C's rloc is a plain synchronous boolean function, and every remaining
- * callee here (collect_coords, rloc_pos_ok, goodpos_full, passes_walls, rnd,
- * rn2) is synchronous.  Keeping the async wrapper would have forced the
- * uhitm.c call sites — mhitm_ad_heal (uhitm.c:4363) and mhitm_ad_tlpt
- * (uhitm.c:2945), both of which C calls as `(void) rloc(...)` from
- * synchronous code — to either await (cascading async through
- * mhitm_adtyping -> mdamagem_dm -> hitmm -> mattackm -> dog_move -> dochug ->
- * movemon, i.e. the whole monster-turn loop) or drop the await and reintroduce
- * exactly the reordering/unhandled-rejection hazard that comment warns about. */
-/* C teleport.c:1949-1959
- *   boolean
- *   tele_restrict(struct monst *mon)
- *   {
- *       if (noteleport_level(mon)) {
- *           if (canseemon(mon))
- *               pline("A mysterious force prevents %s from teleporting!",
- *                     mon_nam(mon));
- *           return TRUE;
- *       }
- *       return FALSE;
- *   }
- *
- * This name had THREE spellings in js/ and the only EXPORTED one threw:
- * js/uhitm.js:4416 and js/mhitu.js:1288 each carry a correct file-local copy,
- * while js/makemon.js exported `function tele_restrict() { throw ... }` and
- * js/teleport.js — the C home of the function — exported none, so the
- * capture-replay sweep's fixture stage named js/teleport.js#tele_restrict, found
- * no export, and fell through to the throw-stub.  The body lives here now;
- * js/makemon.js re-exports it so its existing importers keep working.
- *
- * noteleport_level() is fully ported (js/makemon.js) and
- * game.level.flags.noteleport is written by js/sp_lev.js from des.level_flags(),
- * so this predicate had everything it needed all along. */
 /* C ref: teleport.c:1748-1772 teleport_pet(mtmp, force_it).
  *
  *   the steed never teleports; a leashed pet only goes if the leash is not
@@ -2100,17 +1532,6 @@ export function teleport_pet(mtmp, force_it) {
     return true;
 }
 
-/* C ref: teleport.c:1777-1866 mlevel_tele_trap(mtmp, trap, force_it, in_sight).
- *
- * The monster half of a hole / trapdoor / level-teleporter / MAGIC_PORTAL:
- * take the monster off THIS level and hand it to migrate_to_level().  Returns
- * Trap_Moved_Mon when it does, which mintrap() hands back to postmov()
- * (monmove.c:1509-1513) as MMOVE_DIED — and that is what makes dochug SKIP its
- * post-move distfleeck recalc (monmove.c:914).  See the migration-chain header
- * in js/dog.js for the seed0360 measurement that made this load-bearing.
- *
- * RNG: none on the MAGIC_PORTAL path outside the endgame — C's rn2(7) sits
- * behind `In_endgame(&u.uz) &&`, which short-circuits everywhere else. */
 export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
     const u = game.u;
     const tt = trap ? (trap.ttyp | 0) : NO_TRAP_MTT;
@@ -2122,22 +1543,6 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         let migrate_typ = MIGR_RANDOM_MTT;
 
         if (is_hole(tt)) {
-            /* C teleport.c:2019-2032 —
-             *     if (Is_stronghold(&u.uz)) assign_level(&tolevel, &valley_level);
-             *     else if (Is_botlevel(&u.uz)) { ..."avoids the %s"...;
-             *                                    return Trap_Effect_Finished; }
-             *     else { assign_level(&tolevel, &trap->dst);
-             *            (void) clamp_hole_destination(&tolevel); }
-             * The ordinary-dungeon arm is now LIVE: js/trap.js routes HOLE /
-             * TRAPDOOR through trapeffect_hole_mon -> trapeffect_level_telep_mon
-             * -> here, which is what takes the monster off the level.  trap->dst
-             * is written at maketrap time by hole_destination() (js/mklev.js:5233,
-             * with C's rn2(4) descent loop), so this reads a real destination
-             * rather than inventing one.  Only the STRONGHOLD arm still throws:
-             * svl.valley_level has no JS publisher.
-             * MEASURED: seed0030 segment 6 turn 93 — the giant rat m_id=164 falls
-             * through the Dlvl-3 trapdoor at (45,12) and C's fmon drops to one
-             * monster; see js/trap.js trapeffect_hole_mon. */
             if (Is_stronghold(u?.uz)) {
                 /* C teleport.c:2020-2021: monsters falling through a hole
                  * from the castle are sent to the Valley, rather than to the
@@ -2223,7 +1628,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
 const TRAP_EFFECT_FINISHED_MTT = 0, TRAP_MOVED_MON_MTT = 3;
 const NO_TRAP_MTT = 0, HOLE_MTT = 13, TRAPDOOR_MTT = 14;
 const LEVEL_TELEP_MTT = 16, MAGIC_PORTAL_MTT = 17;
-const MIGR_RANDOM_MTT = 1, MIGR_PORTAL_MTT = 8; /* dungeon.h */
+const MIGR_RANDOM_MTT = 0, MIGR_PORTAL_MTT = 8; /* dungeon.h */
 const S_ELEMENTAL_MTT = 46; /* defsym.h MONSYM(46, 'E', ELEMENTAL, S_ELEMENTAL) */
 /* C dungeon.c:1376 ledger_no(lev).  js/dog.js, js/mklev.js:2485 and
  * js/cmd.js:5626 each keep this same one-liner file-locally. */
@@ -2262,39 +1667,6 @@ export async function mvault_tele(mtmp) {
  * locally (see the note at :930). */
 const RLOC_NONE_TP = 0x00;
 
-/* C ref: teleport.c:1961-2002 mtele_trap(mtmp, trap, in_sight) — a MONSTER
- * steps onto a teleport trap.
- *
- *     if (noteleport_level(mtmp)) return;          <- silent: C deliberately
- *                                                     prints nothing here
- *     if (teleport_pet(mtmp, FALSE)) {
- *         monname = Monnam(mtmp);                  <- BEFORE it moves
- *         if (trap->once)                     mvault_tele(mtmp);
- *         else if (isok(trap->teledest.x, trap->teledest.y)) {
- *             if (!(m_at(...) || u_at(...)))
- *                 rloc_to_core(mtmp, teledest.x, teledest.y, RLOC_MSG);
- *         } else
- *             (void) rloc(mtmp, RLOC_NONE);
- *         if (in_sight) { ... pline ...; seetrap(trap); }
- *     }
- *
- * MEASURED on gen094-reseed-seed1081192 step 842, and NOT by reading the RNG
- * stream — three readings of it were consistent and the first two were wrong.
- * A backtrace probe in a locally rebuilt recorder (`PROBE_RLOC`, the
- * /tmp/nhrec recipe) printed the caller outright:
- *     rloc <- mtele_trap(teleport.c:2007) <- trapeffect_telep_trap(trap.c:2082)
- *          <- trapeffect_selector(trap.c:2970) <- mintrap(trap.c:3825)
- *          <- postmov(monmove.c:1509) <- m_move <- dochug <- movemon
- * at `moves=83 mon=265 @56,4`.  C's five rejected `rnd(79)/rn2(21)` pairs and
- * the sixth accepted one are that rloc; this port's TELEP_TRAP arm returned
- * Trap_Effect_Finished and drew nothing.  Global leaf 79552.
- *
- * THE RETURN VALUE IS LOAD-BEARING TOO, separately from the draws.  C's
- * trapeffect_telep_trap returns Trap_Moved_Mon, mintrap hands that back to
- * postmov (monmove.c:1510), postmov turns it into MMOVE_DIED, and dochug's
- * `if (status != MMOVE_DIED)` at monmove.c:914 then SKIPS the post-move
- * distfleeck recalc — one rn2(5) that C does not draw.  Returning
- * Trap_Effect_Finished drew it. */
 export async function mtele_trap(mtmp, trap, in_sight) {
     if (typeof process !== 'undefined' && ENV?.FF_TRAP_TRACE === '1') {
         pushRngLogEntry(`^mtele_trace[id=${mtmp?.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1}`
@@ -2467,7 +1839,6 @@ export async function rloc(mtmp, rlocflags) {
     }
 
     if (!backupx) {
-        /* impossible() no-op; RLOC_ERR only gates whether it fires. */
         void RLOC_ERR;
         return false;
     }

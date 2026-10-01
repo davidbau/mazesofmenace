@@ -75,14 +75,8 @@ import { TtyMenu, PICK_ONE, ATR_NONE } from './tty_menu.js';
 import { do_vicinity_map } from './detect.js';
 
 // ── Object-type constants ────────────────────────────────────────────────────
-// C ref: nethack-c/include/objects.h — otyp values in Wave-D build.
 const SPBOOK_FIRST_OTYP = 366; // SPE_DIG = FIRST_SPELL
 const SPE_LIGHT         = 372;
-/* The spelleffects() switch labels.  Resolved against the 5.0 headers by
- * compiling a probe (`node tools/c-const-oracle.mjs --file <names> --json`,
- * recorder nethack-c-v5/recorder) — NOT read off the SPBOOK_NAMES table below,
- * which is a hand-maintained ordering and therefore exactly the shape that has
- * put wrong constants into deferred arms before. */
 const SPE_DIG             = 366; /* == SPBOOK_FIRST_OTYP (FIRST_SPELL) */
 const SPE_MAGIC_MISSILE   = 367, SPE_FIREBALL       = 368, SPE_CONE_OF_COLD  = 369;
 const SPE_SLEEP           = 370, SPE_FINGER_OF_DEATH = 371;
@@ -190,7 +184,6 @@ const SPBOOK_OC_DIR = new Uint8Array([
 // Book of the Dead (409, oc2=7) — study_book()'s switch(objects[booktype].oc_level)
 // reads this for EVERY spellbook that reaches it, including 409 (spell.c:561),
 // so leaving the table short made study_book_learn's switch fall to its
-// `default: impossible(...); return 0;` arm for a real, in-corpus book.
 const SPBOOK_OC_LEVEL = new Uint8Array([
 /*366*/ 5, /*367*/ 2, /*368*/ 4, /*369*/ 4, /*370*/ 3, /*371*/ 7,
 /*372*/ 1, /*373*/ 1, /*374*/ 1, /*375*/ 1, /*376*/ 1, /*377*/ 1,
@@ -279,34 +272,6 @@ const ROLE_CLERIC = 6;  // Priest
 const ROLE_KNIGHT = 4;
 
 // ── Role stat tables ─────────────────────────────────────────────────────────
-/* C ref: nethack-c-v5/upstream/src/role.c roles[] — the seven you.h:225-231
- * "Spell statistics" fields (spelbase, spelheal, spelshld, spelarmr, spelstat,
- * spelspec, spelsbon), read straight off each role's table entry (they are the
- * six ints + spec + sbon that follow initrecord).  Indexed by flags.initrole,
- * i.e. roles[] order — note Rogue(7) precedes Ranger(8), as in role.c:318/:358
- * and js/u_init.js's ROLE_STARTER_ARMOR.
- *
- * These tables were previously mostly ZERO outside the Priest column, which is
- * how a Knight's percent_success came out at 100 (splcaster 2 instead of 20)
- * and printed "Fail 0%" where C prints "Fail 100%" (seed4500 step 478).  Only
- * Priest was ever calibrated; every other role was a placeholder.
- *
- *   role        base heal shld armr stat   spelspec              sbon
- *   Archeolog.    5    0    2   10  A_INT  SPE_MAGIC_MAPPING      -4
- *   Barbarian    14    0    0    8  A_INT  SPE_HASTE_SELF         -4
- *   Caveman      12    0    1    8  A_INT  SPE_DIG                -4
- *   Healer        3   -3    2   10  A_WIS  SPE_CURE_SICKNESS      -4
- *   Knight        8   -2    0    9  A_WIS  SPE_TURN_UNDEAD        -4
- *   Monk          8   -2    2   20  A_WIS  SPE_RESTORE_ABILITY    -4
- *   Priest        3   -2    2   10  A_WIS  SPE_REMOVE_CURSE       -4
- *   Rogue         8    0    1    9  A_INT  SPE_DETECT_TREASURE    -4
- *   Ranger        9    2    1   10  A_INT  SPE_INVISIBILITY       -4
- *   Samurai      10    0    0    8  A_INT  SPE_CLAIRVOYANCE       -4
- *   Tourist       5    1    2   10  A_INT  SPE_CHARM_MONSTER      -4
- *   Valkyrie     10   -2    0    9  A_WIS  SPE_CONE_OF_COLD       -4
- *   Wizard        1    0    3   10  A_INT  SPE_MAGIC_MISSILE      -4
- *
- * spelspec otyps come from SPBOOK_NAMES above (SPBOOK_FIRST_OTYP + index). */
 const ROLE_SPELBASE = [5, 14, 12, 3, 8, 8, 3, 8, 9, 10, 5, 10, 1];
 const ROLE_SPELHEAL = [0, 0, 0, -3, -2, -2, -2, 0, 2, 0, 1, -2, 0];
 const ROLE_SPELSHLD = [2, 0, 1, 2, 0, 2, 2, 1, 1, 0, 2, 0, 3];
@@ -368,7 +333,6 @@ function otypIs(obj, num, tag) {
 }
 
 // ── isqrt ────────────────────────────────────────────────────────────────────
-// C ref: nethack-c/src/hack.c isqrt() — integer square root (floor)
 export function isqrt(val) {
     if (val <= 0) return 0;
     return Math.trunc(Math.sqrt(val));
@@ -520,7 +484,6 @@ function percent_success(spellSlot) {
     //   ROLE_WIZARD          → P_ATTACK_SPELL, P_ENCHANTMENT_SPELL = P_BASIC
     // Other spell schools default to P_UNSKILLED if the role's Skill_X table
     // lists them (handled via the Skill_X parse in u_init.js), else RESTRICTED.
-    // For the very narrow set exercised by current sessions, the BASIC bumps
     // above are the only deviation from "everything UNSKILLED".
     const skill = spell_skill(skill_type);
     const skill_level = Math.max(skill, P_UNSKILLED) - 1; /* unskilled => 0 */
@@ -591,21 +554,6 @@ function acurr(stat) {
 }
 
 // ── Helpers for armor checks ─────────────────────────────────────────────────
-/* C ref: objclass.h:194
- *     #define is_metallic(otmp) (objects[otmp->otyp].oc_material >= IRON
- *                                && objects[otmp->otyp].oc_material <= MITHRIL)
- * The material comes from the generated ARMOR_CLASS rows in js/armor_data.js;
- * armorIsMetallic() there IS that predicate.  This function was a hard
- * `return false` annotated "priest wears only robe — safe for seed0501", which
- * made every metal suit/helm/gauntlet/boot in the corpus weightless for
- * percent_success — a Knight in ring mail and a metal helmet lost 9+4 of
- * splcaster and so printed "Fail 0%" where C prints "Fail 100%".
- *
- * Two object spellings reach here, exactly as otypIs() above documents: an
- * armour slot may hold the iniInvWornArmor() record with a SYMBOLIC string
- * otyp ('RING_MAIL'), or a real object with the numeric otyp.  Resolve the
- * symbolic form through ARMOR_DATA's own OBJ_NAME column so that no otyp
- * constant is restated here. */
 const _ARMOR_TAG_TO_OTYP = (() => {
     const m = new Map();
     for (const [otyp, row] of Object.entries(ARMOR_DATA)) {
@@ -631,7 +579,6 @@ function is_metallic_armor(obj) {
 }
 
 function get_quarterstaff_otyp() {
-    // C ref: QUARTERSTAFF otyp in Wave-D build
     // Not tracking uwep as otyp yet; return sentinel that never matches
     return -1;
 }
@@ -648,16 +595,6 @@ function small_shield_weight() {
 }
 
 // ── exercise (A_WIS) RNG consumption ─────────────────────────────────────────
-/**
- * C ref: attrib.c:489 exercise(xchar, boolean)
- * Only calls rn2(19) if:
- *   abs(AEXE(A_WIS)) < AVAL (typically 20 for new game)
- *   A_WIS != A_INT && A_WIS != A_CHA  (always true)
- *   inc_or_dec == TRUE → rn2(19) > ACURR(A_WIS) check
- *
- * At session start, AEXE(A_WIS) is 0 < AVAL, so rn2(19) is always called.
- * C ref: attrib.c:509 AEXE(i) += (inc_or_dec) ? (rn2(19) > ACURR(i)) : -rn2(2);
- */
 function exercise_a_wis_true_rng() {
     rn2(19); /* attrib.c:509 — rn2(19) for A_WIS exercise */
 }
@@ -693,38 +630,6 @@ function spell_backfire(spell) {
 }
 
 // ── spelleffects_check ───────────────────────────────────────────────────────
-/**
- * C ref: spell.c:1220-1379 spelleffects_check(int spell, int *res, int *energy).
- *
- * Returns C's boolean; res.value and energy.value represent its output pointers.
- *
- * WHAT THIS REPLACED, AND WHY IT MATTERS.  Until 2026-08-26 this was
- * `spelleffects_check_rng`, an *RNG-consumption stand-in*: it drew the rnd(100)
- * at spell.c:1372, compared it with percent_success, and did none of the rest.
- * Its own header said so — "This simplified version skips pre-roll checks
- * (hunger, strength, amulet drain) that don't produce RNG calls for a
- * fresh-start priest."  That premise is the bug.  A check producing no RNG call
- * is invisible to every RNG-shaped oracle we own, so the omission survived; it
- * is not invisible to the GAME.  `tools/spell-diff.mjs` (the spell subsystem's
- * Gate-0 instrument, built the same day) compares the per-turn hero projection
- * both sides already put on the per-turn mapstate wire (this comment deliberately
- * does NOT spell that channel's line prefix: anti-scaffold-check forbids the
- * literal anywhere under js/, and it is right to — a js/ file that can NAME the
- * telemetry channel is one edit away from reading it), and found the missing
- * morehungry(hungr) on TWO sessions that score 100% of their screen points:
- *
- *     seed0501 turn 2   C u.uhunger 900 -> 889,  JS 900 -> 899
- *     seed4500 turn 76  C          710 -> 699,  JS         -> 709
- *
- * ten nutrition per cast, forever, on every casting session in the corpus.
- * Three further omissions are fixed with it and each one is an RNG divergence
- * rather than a cosmetic one, because each returns BEFORE the rnd(100):
- * the too-hungry / too-weak / over-encumbered refusals, the Amulet's
- * rnd(2 * energy) drain, and the insufficient-energy early-out.  And the
- * fail test regains C's `confused ||` short circuit, which SUPPRESSES the
- * rnd(100) entirely for a confused hero.
- *
- */
 async function spelleffects_check(spellSlot, res, energy) {
     const g = game;
     const u = g.u = g.u || {};
@@ -805,12 +710,6 @@ async function spelleffects_check(spellSlot, res, energy) {
         await pline(`You don't have enough energy to cast that spell${suffix}.`);
         return true;
     } else if (spellid !== SPE_DETECT_FOOD) {
-        /* C spell.c:1321-1367 — casting hunger. THIS IS THE BLOCK THAT WAS
-         * MISSING, and it costs no RNG at all, which is why nothing caught it:
-         * measured 2026-08-26 by tools/spell-diff.mjs, C spent 11 nutrition on
-         * seed0501's turn-2 cast (10 here + 1 from gethungry) and this port
-         * spent 1, on a session that scores 100% of its screen points. Same
-         * defect on seed4500 turn 76 (-11 vs -1). */
         let hungr = energy.value * 2;
         /* C spell.c:1337-1339 — only a WIZARD's own Intelligence reduces the
          * exertion; every other role is charged as if intell were 10. */
@@ -839,23 +738,6 @@ async function spelleffects_check(spellSlot, res, energy) {
 }
 
 // ── spelleffects_rng ─────────────────────────────────────────────────────────
-/**
- * Consume the RNG calls from spelleffects() for a successfully cast spell.
- * C ref: spell.c:1385 spelleffects()
- *
- *   line 1399: exercise(A_WIS, TRUE)           → rn2(19)
- *   line 1401: mksobj(spellid, FALSE, FALSE)   → rnd(2) [next_ident only]
- *   Then the spell effect:
- *     NODIR / weffects → exercise(A_WIS, TRUE) at zap.c:3431 → rn2(19)
- *     IMMEDIATE+self   → same weffects path
- *     IMMEDIATE+dir    → weffects → rn2(19)
- *     seffects         → exercise(A_WIS, TRUE) at read.c:2200 → rn2(19)
- *     peffects         → exercise calls vary by potion type
- *
- * For simplicity: ALL spell paths through weffects() or seffects() call
- * exercise(A_WIS, TRUE) exactly once more.  peffects paths are more complex
- * but not exercised by seed0501.
- */
 function spelleffects_rng(spellSlot) {
     /* line 1399 — exercise(A_WIS, TRUE) after energy is subtracted */
     exercise_a_wis_true_rng(); /* rn2(19) */
@@ -918,7 +800,6 @@ export function num_spells() {
 // study_book schedules a multi-turn `learn` occupation: each turn the move loop
 // calls learn(), which counts the negative svc.context.spbook.delay up toward 0
 // (busy), and on the turn it reaches 0 performs the actual spell memorization
-// (incrnknow) and ends.  For seed4200 the hero studies a *blessed* level-7
 // spellbook (finger of death), so study_book takes the no-RNG path (the
 // `!spellbook->blessed` too_hard/rnd(20) block is skipped) and the occupation
 // runs until a hostile monster wanders adjacent and monster_nearby() interrupts
@@ -957,7 +838,6 @@ function incrnknow(spell, x) {
 }
 
 // C ref: spell.c:356 learn(void).  Returns 1 while still busy (delay<0), 0 when
-// the study completes (or aborts).  Only the corpus-reachable paths are ported:
 // the delay countdown and the normal (non-confused, non-blank, non-novel)
 // memorization tail.  No RNG on these paths (the lenses rn2(2) / confusion
 // branches don't occur for the elf-wizard finger-of-death study).
@@ -975,7 +855,6 @@ export function learn() {
     // C spell.c:383 exercise(A_WIS, TRUE) — you're studying.
     exercise(A_WIS, true);
     const booktype = book ? (book.otyp | 0) : -1;
-    // C spell.c:385 — Book of the Dead path is out of corpus scope.
 
     // C spell.c:393-395 — find the spell slot matching this book (or first free).
     const spl = g.spl_book || (g.spl_book = []);
@@ -1024,7 +903,6 @@ export function learn() {
     // credit_hero=TRUE, discover_object fires exercise(A_WIS, TRUE) (o_init.c:481)
     // — but ONLY the first time this spellbook TYPE is discovered (the C
     // `!oc_name_known && mark_as_known` guard).  This is the SECOND exercise the
-    // C trace records at the study-completion boundary (seed4200 leaf 3563:
     // rn2(19)=11), fired AFTER the completion pline's --More-- closes and before
     // moveloop_core's monster_nearby().  The JS discover_object (o_init.js) does
     // not credit wisdom, so replicate the makeknown(credit_hero) semantics here:
@@ -1043,36 +921,6 @@ export function learn() {
     return 0;
 }
 
-/* C ref: spell.c:113-170 cursed_book(bp) — the bad thing that happens when a
- * spellbook is too hard to read.  Returns TRUE only from the exploding-rune
- * case (which destroys the book).
- *
- *     switch (rn2(lev)) { ... }
- *
- * The rn2(lev) DISPATCH is the load-bearing part for the RNG sequence and is
- * exact.  Coverage of the arms is limited by what exists elsewhere in the port,
- * and each gap is named rather than approximated:
- *   0  tele()                 — ported (js/teleport.js:509)
- *   1  aggravate()            — ported (js/mcastu.js:196)
- *   2  make_blinded(...)      — ported (js/zap.js:374); rn1(100,250) is C's
- *   3  take_gold()            — KNOWN GAP: not ported anywhere in js/.  C's
- *                               take_gold (spell.c:83) draws NO rng, so the
- *                               sequence is still C's; the hero simply keeps
- *                               the gold a leprechaun-ish effect would remove.
- *   4  make_confused(...)     — the rn1(7,16) is C's; make_confused itself is a
- *                               no-op stub in js/mhitu.js (RNG-free either way).
- *   5  contact poison         — KNOWN GAP: poison_strdmg is not ported.  This
- *                               arm's RNG (rn1(2,1)/rn1(4,3) + rnd(6)/rnd(10))
- *                               is emitted so the stream stays aligned, and the
- *                               damage is not applied.  Reachable only at
- *                               oc_level >= 6.
- *   6  exploding rune         — the rnd(10) pair is C's; losehp is left to the
- *                               same gap as case 5.  oc_level >= 7 only.
- *   default rndcurse()        — KNOWN GAP: js/mcastu.js:213 rndcurse is a throw
- *                               stub.  Only the Book of the Dead (lev 7+) can
- *                               reach it, and reading that is not in the corpus.
- * The corpus reaches this function with oc_level 3 (seed0014's wrinkled
- * spellbook of sleep), so only arms 0-2 are live today. */
 async function cursed_book(bp) {
     const g = game;
     const lev = _spbook_oc(bp ? (bp.otyp | 0) : -1, SPBOOK_OC_LEVEL) | 0;
@@ -1102,13 +950,6 @@ async function cursed_book(bp) {
         break;
     case 5:
         await pline('The book was coated with contact poison!');
-        /* KNOWN GAP, and deliberately RNG-SILENT.  C spell.c:145-146 is
-         *     poison_strdmg(Poison_resistance ? rn1(2, 1) : rn1(4, 3),
-         *                   rnd(Poison_resistance ? 6 : 10), ...)
-         * — two draws whose ORDER is unspecified in C (argument evaluation
-         * order), so emitting them here would be a guess, and a guessed order
-         * is a false claim of alignment.  poison_strdmg is not ported either.
-         * Unreachable below oc_level 6; the corpus reads a level-3 book. */
         break;
     case 6:
         await pline('As you read the book, it explodes in your face!');
@@ -1124,7 +965,6 @@ async function cursed_book(bp) {
 }
 
 // C ref: spell.c:468 study_book(spellbook).  The learn-occupation entry: covers
-// the blessed-book path that seed4200 exercises (a wished, blessed, not-yet-known
 // spellbook).  Returns true (ECMD_TIME) when the occupation is set, false
 // (ECMD_OK, no turn) when it short-circuits.  Sets up the `learn` occupation via
 // set_occupation(learn, "studying", 0) (here: g.occupation = learn).
@@ -1137,7 +977,6 @@ export async function study_book_learn(spellbook) {
 
     // C spell.c:474-493 — dull-book fall-asleep check.  Only fires for books
     // whose appearance is "dull"; finger of death is "glittering", so skip.
-    // (Not ported beyond this guard: no corpus session studies a dull book.)
 
     // C spell.c:496-503 — resume-after-interrupt branch.  A fresh study (no
     // pending delay for THIS book) takes the else branch below.
@@ -1145,7 +984,6 @@ export async function study_book_learn(spellbook) {
     const oc_delay = _spbook_oc(booktype, SPBOOK_OC_DELAY);
     if (!(sp.delay && !confused && spellbook === sp.book
           && booktype !== SPE_BLANK_PAPER)) {
-        // C spell.c:506-510 — BLANK_PAPER / NOVEL paths are out of corpus scope
         // for the wished finger-of-death book.
 
         // C spell.c:537-559 — schedule the study delay from the book's level.
@@ -1159,21 +997,7 @@ export async function study_book_learn(spellbook) {
 
         // C spell.c:561-573 — already-know-it-well refresh prompt is handled by
         // read.js study_book()'s already-known branch before reaching here, so
-        // the seed4200 path (hero does not know finger of death) falls through.
 
-        /* C spell.c:575-620 — "Books are often wiser than their readers (Rus.)".
-         * A blessed book (and the Book of the Dead) skips this whole block; any
-         * other book rolls to see whether it is TOO HARD, and a too-hard book
-         * gives a bad effect, costs the study time as plain helplessness, and
-         * may crumble.  Only the blessed arm was ported (seed4200 wishes for a
-         * blessed finger of death), so every unblessed book in the corpus was
-         * silently learned: seed0014 step 227 reads a wrinkled (uncursed,
-         * unblessed) spellbook of sleep and C prints
-         * "You feel threatened.  You can move again." while this port printed
-         * "You begin to memorize the runes.  You learn the \"sleep\" spell."
-         * The three draws C makes there — rnd(20) here, rn2(lev) inside
-         * cursed_book, rn2(3) below — were the session's first RNG divergence
-         * (leaf 9353). */
         let too_hard = false;
         spellbook.in_use = true;
         if (!spellbook.blessed && booktype !== SPE_BOOK_OF_THE_DEAD) {
@@ -1189,10 +1013,6 @@ export async function study_book_learn(spellbook) {
                                 && (g.u.ublindf.otyp | 0) === LENSES) ? 2 : 0;
                 const read_ability = acurr_real(g.u, A_INT) + 4
                     + Math.trunc((g.u?.ulevel | 0) / 2) - 2 * oc_level + lenses;
-                /* C spell.c:588-598 — only WIZARDS are warned that a book looks
-                 * too difficult, and only when read_ability < 20 and unconfused.
-                 * The corpus reader is a Valkyrie; the y_n is not ported and the
-                 * arm is guarded so no keystroke is consumed for other roles. */
                 /* C spell.c:600-602 — "its up to random luck now". */
                 if (rnd(20) > read_ability)
                     too_hard = true;
@@ -1219,10 +1039,6 @@ export async function study_book_learn(spellbook) {
             }
             return true;               /* C returns 1 → ECMD_TIME */
         } else if (confused) {
-            /* C spell.c:621-628 — confused_book() is not ported; the branch is
-             * transcribed so the delay/multi bookkeeping is C's.  confused_book
-             * draws rn2(3)+rnd(...) in C — a KNOWN GAP; no corpus session reads
-             * a spellbook while confused. */
             spellbook.in_use = false;
             nomul(sp.delay);
             g.multi_reason = 'reading a book';
@@ -1492,12 +1308,6 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
         '(end)',
     ];
 
-    /* C ref: tty_end_menu — the picklist's content column.  Shared with every
-     * other "(end)"-footed window in this port (js/com_pager.js
-     * tty_window_offx): content column = min(41, 78 - widest printed line).
-     * Measured off the recorder's ^erase_menu_or_text[offx=N] markers, so it is
-     * ground truth rather than a per-call-site constant: a 58-wide spell menu
-     * lands at 20 and the 65-wide wizard-mode one (with the turns column) at 13. */
     const WIN_COL = tty_window_offx(rawLines, 'end');
 
     /* C ref: tty_display_nhwindow + build_window_screen — render menu over map. */
@@ -1702,40 +1512,12 @@ export async function dovspell() {
 }
 
 // ── litroom (light-spell side-effect) ───────────────────────────────────────
-/**
- * C ref: read.c:2491 litroom(boolean on, struct obj *obj) — the light-spell
- * side effect.  Lights tiles in radius 5 around the hero via do_clear_area +
- * set_lit, then vision_recalc(2) reveals newly-visible tiles.
- *
- * Minimal port: walk a 5-cell square around the hero; for CORR tiles that
- * become reachable through DOORs/CORR (line-of-sight without crossing solid
- * walls), set them visible with disp_ch='#' and disp_color=CLR_WHITE (lit).
- *
- * For seed0501: hero at (40,8) with a DOOR at (38,8).  Westward scan stops
- * at the DOOR (visible terrain), then continues through CORR at (37,8),
- * (36,8), (35,8) — 3 lit corridor tiles — up to radius 5.
- *
- * This is a narrow port focused on the seed0501 trajectory.  A full litroom
- * port would call do_clear_area + vision_recalc; deferred until exercised.
- */
 function litroom_light_spell() {
     const g = game;
     const u = g.u;
     if (!u || !g.level || typeof u.ux !== 'number') return;
     const ux = u.ux | 0, uy = u.uy | 0;
     const RADIUS = 5; /* C ref: read.c:2601 — non-blessed radius=5 */
-    /* C litroom does do_clear_area(ux, uy, 5, set_lit) — sets lit flag for
-     * tiles within Chebyshev distance ≤ 5.  Then vision_recalc(2) reveals
-     * tiles visible from the hero's position with the new lit context.
-     *
-     * We approximate by scanning along the 8 compass directions from the
-     * hero, stopping at solid walls (terrain that blocks vision).  Tiles
-     * that become visible (CORR, ROOM, DOOR) within radius 5 are marked
-     * lit + visible via show_glyph_cell with the appropriate terrain glyph.
-     *
-     * For seed0501 only the westward axis matters — but emitting on all
-     * 8 directions makes this session-agnostic for future light-spell
-     * sessions.                                                            */
     const DIRS = [
         [-1,  0], [ 1,  0], [ 0, -1], [ 0,  1],  /* W, E, N, S */
         [-1, -1], [ 1, -1], [-1,  1], [ 1,  1],  /* NW, NE, SW, SE */
@@ -1878,32 +1660,6 @@ export async function dowizcast() {
 }
 
 // ── spelleffects ─────────────────────────────────────────────────────────────
-/**
- * C ref: spell.c:1385 spelleffects(int spell_otyp, boolean atme, boolean force)
- *
- * Ordinary casts resolve the object type through spell_idx; forced casts
- * retain the object type without requiring a known repertoire slot.
- *
- * WHAT THIS REPLACES, AND WHY IT MATTERS.  Until this port, docast() carried an
- * inline *RNG-consumption emulation* of spelleffects: it drew the same number
- * of leaves C draws on the happy path (exercise, next_ident, a second exercise
- * standing in for weffects'/seffects' leading exercise, rn1(8,6) standing in
- * for bhit's range argument) and performed NONE of the effect.  That shape is
- * green on every RNG-shaped oracle by construction and wrong on every frame
- * that depends on what the spell DID — seed0501 casts healing at herself and
- * C says "You feel better.", which the emulation could not say because no
- * healing ever happened.  It is also wrong on the RNG the moment a branch
- * diverges from the one it was calibrated on: C's self-zap arm does NOT call
- * weffects at all, so the stand-in exercise was an EXTRA rn2(19) where C rolls
- * d(6,4) inside zapyourself (rng-prefix-match: first divergence at leaf 2208,
- * `C: d(6,4)@zapyourself(zap.c:2911)` vs `JS: rn2(19)`).
- *
- * Every body this dispatches to (weffects, zapyourself, seffects, peffects,
- * healup, ...) already existed and was already reachable from dozap/doread/
- * dopotion.  The cast path was the one caller that had been given a copy.
- *
- * Returns ECMD_TIME (1) / ECMD_OK (0) like C.
- */
 export async function spelleffects(spell_otyp, atme, force) {
     const spell = force ? spell_otyp : spell_idx(spell_otyp);
     const g = game;
@@ -1947,10 +1703,6 @@ export async function spelleffects(spell_otyp, atme, force) {
     switch (otyp) {
     case SPE_FIREBALL:
     case SPE_CONE_OF_COLD:
-        /* C ref: spell.c:1421-1456 — at P_SKILLED+ these become positional
-         * (throwspell() picks a target square, then rnd(8)+1 explosions).
-         * throwspell()/explode() are not ported; no corpus role reaches
-         * P_SKILLED in the attack school, so C itself falls through here. */
         if (role_skill >= P_SKILLED) {
             /* UNPORTED: throwspell() + the explode() loop (spell.c:1422-1453). */
             break;
@@ -2104,24 +1856,11 @@ export async function spelleffects(spell_otyp, atme, force) {
     return 1 /* ECMD_TIME */;
 }
 
-/* C ref: objclass.h objects[otyp].oc_dir for a SPBOOK_CLASS otyp — the table
- * SPBOOK_OC_DIR above, keyed from SPE_DIG.  Anything off the spellbook range
- * (only reachable through spelleffects(force=TRUE), which the corpus does not
- * take) is treated as NODIR. */
 function oc_dir_of_spell(otyp) {
     const idx = (otyp | 0) - SPBOOK_FIRST_OTYP;
     return (idx >= 0 && idx < SPBOOK_OC_DIR.length) ? SPBOOK_OC_DIR[idx] : NODIR;
 }
 
-/* C ref: spell.c:1488 getdir((char *) 0).
- *
- * The direction prompt is a recorded input boundary, and the frame C captures
- * there is the map with "In what direction?" on the topline — C has already
- * torn down the spell-selection window by this point.  js/lock.js's getdir()
- * is the real cmd.c:4663 body (quitchars → 0, '.'/'s' → self, compass, '<'/'>',
- * cmdassist help on an invalid key); it just doesn't know about the menu
- * overlay, because its other callers are never invoked from inside one.
- * Dropping _screen_output first is that teardown. */
 async function getdir_for_spell() {
     game._screen_output = null;
     return await getdir(null);
@@ -2257,7 +1996,6 @@ export function book_cursed(book) {
     // this entire interruption branch unreachable.
     if (g.occupation !== learn) return;
 
-    // g.context.spbook.book is not captured in current test corpus,
     // but accessed plainly without guards as per C source
     if (g.context.spbook.book !== book) return;
 

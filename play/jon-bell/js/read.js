@@ -1,35 +1,4 @@
 // @ts-nocheck
-/* js/read.js — recharge() and helpers from nethack-c/src/read.c.
- * C ref: nethack-c/src/read.c:728-1008
- *
- * Wave cadence-1 (with-context AB arm).
- * RNG sites (up to 17 per call, path-dependent):
- *
- * WAND_CLASS path:
- *   1. rn2(343)  — read.c:762: explosion check (only if n>0 and not WAN_WISHING)
- *   2. rnd(lim)  — read.c:763: wand_explode damage (only if exploded)
- *   3. rn1(5, lim+1-5) — read.c:773: charge count (if !cursed, lim!=1)
- *   4. rnd(n)    — read.c:775: charge count for !blessed (if !cursed, lim!=1)
- *
- * RING_CLASS (oc_charged) path:
- *   1. rnd(3)  — read.c:803: s if blessed
- *      rnd(2)  — read.c:803: |s| if cursed
- *   2. rn2(7)  — read.c:807: destruction check
- *   3. rnd(3*abs(spe)) — read.c:812: explosion damage (only if destroyed)
- *
- * TOOL_CLASS (oc_charged) path, per switch case:
- *   BELL_OF_OPENING:      rnd(3)           if is_blessed
- *   MAGIC_MARKER/TINNING_KIT/EXPENSIVE_CAMERA:
- *                         rn1(16,15)       if is_blessed & !recharged-marker
- *                         rn1(11,10)       if !is_cursed & (not marker case)
- *   CRYSTAL_BALL:         rnd(2)           if !is_cursed && !is_blessed && spe<7||cursed
- *   HORN_OF_PLENTY/BAG_OF_TRICKS/CAN_OF_GREASE:
- *                         rn1(10,6) or rn1(5,6) if is_blessed; rn1(5,2) if normal
- *   MAGIC_FLUTE/MAGIC_HARP/FROST_HORN/FIRE_HORN/DRUM_OF_EARTHQUAKE:
- *                         d(2,4) if is_blessed; rnd(4) if normal
- *
- * @ts-nocheck — js sibling; ambient game types not declared.
- */
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { discover_object } from './o_init.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
@@ -76,7 +45,6 @@ const WAN_LAST_NODIR = 415; /* WAN_STASIS */
 // C ref: nethack-c/include/worn.h W_RINGL / W_RINGR mapped to LEFT_RING/RIGHT_RING.
 // From js/const.js: LEFT_RING = W_RINGL, RIGHT_RING = W_RINGR.
 // We use numeric values that match C (LEFT_RING=0x80000, RIGHT_RING=0x100000).
-// See frozen/const.js for exact values — import from there to stay in sync.
 // For RNG-critical paths we only need them for masking; actual values do not
 // affect RNG order.
 const LEFT_RING = 0x20000;
@@ -144,8 +112,6 @@ function wand_explode_stub(obj, dam) {
     /* C: various pline calls + losehp + useup.
      * RNG for dam is consumed by the caller before this call.
      * No additional RNG in this stub path. */
-    /* TODO: full wand_explode implementation (damage, useup) when a session
-     * exercises the deep path. */
 }
 /* ---------------------------------------------------------------------------
  * stripspe — remove charges from object (no RNG).
@@ -182,19 +148,6 @@ function cap_spe(obj) {
  * C ref: nethack-c/src/read.c p_glow1/2/3 — no RNG.
  * ---------------------------------------------------------------------------
  */
-/* C read.c:667-683 — all three p_glow variants name the object through
- * Yobjnam2(otmp, ...) (objnam.c:2278), and that naming call is NOT
- * side-effect-free:
- *     Yobjnam2 -> yobjnam -> yname (objnam.c:2357) -> cxname -> xname
- *     (objnam.c:575) -> xname_flags, which at objnam.c:627-628 does
- *         if (!Blind && !gd.distantname) observe_object(obj);
- * and observe_object (o_init.c:442) sets obj->dknown = 1.  The message text
- * itself is still a stub here, but the dknown side effect is load-bearing:
- * without it recharge() leaves the object unidentified (capture divergence
- * __args_after__.obj.dknown C=1 JS=0 on the crystal-ball p_glow1 path).
- * gd.distantname is not tracked anywhere in this port (false on every
- * reachable path), so only the Blind guard applies — same reasoning as the
- * two existing xname shims in js/cmd.js (_wt_xname, xprname). */
 function _p_glow_observe(obj) {
     const p = game.u?.uprops?.[BLINDED];
     const Blind = !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
@@ -202,7 +155,6 @@ function _p_glow_observe(obj) {
         observe_object(obj);
 }
 async function p_glow1(obj) {
-    /* C: pline("%s briefly.", Yobjnam2(otmp, Blind ? "vibrate" : "glow")) */
     _p_glow_observe(obj);
 }
 async function p_glow2(obj, color) {
@@ -592,13 +544,10 @@ export async function recharge(obj, curse_bless) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// doread + study_book (early-known-spell branch) — seed0501 priest 'r/g' path.
 // C ref: nethack-c/src/read.c:330 doread() and src/spell.c:468 study_book().
 //
 // Scope: only the "spellbook already known + Refresh prompt" branch is ported;
-// it covers the seed0501 trajectory of Z/r/g and ends pinned on the y_n prompt.
 // Other doread branches (scrolls, T-shirt, credit card, blank, level filter,
-// MAIL_STRUCTURES) are deferred until exercised by a session.
 // ─────────────────────────────────────────────────────────────────────────────
 import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
 import { t_at } from './trap.js';
@@ -616,9 +565,6 @@ import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, INVIS, SEE_INVIS } from './cons
 /* make_confused's C home is potion.c:88; this file's private copy wrote a flat
  * `game.HConfusion` that only its own readers consulted. */
 import { make_confused } from './potion.js';
-/* skills.h oc_skill values — the read.c:1526 mergeable-weapon test and the
- * read.c:1533 uslinging() test.  Imported from the single canonical copy in
- * js/const.js rather than re-declared (const-agreement-check gate). */
 import { P_DAGGER, P_KNIFE, P_SPEAR, P_SLING } from './const.js';
 /* worn.h/prop.h owornmask bits: W_ART/W_ARTI are the artifact "carried" pseudo
  * slots that seffect_remove_curse masks off at read.c:1516. */
@@ -685,25 +631,6 @@ import { getlin } from './wizcmds.js';
  * read.c:1207 ("nonmagical armor is easier to enchant"). */
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { getObjName } from './o_init.js';
-/* ── seffects arms landed 2026-08-31 (claude-lane subsystem-port) ────────────
- * C read.c:2202-2280's switch dispatches 23 scroll otyps; this file carried 11
- * of them and let the rest fall to a silent `default: break`.  The four arms
- * below are the ones the corpus REACHES (measured over all 688
- * corpus-generated/v5/train sessions, by grepping the recorded C RNG-leaf
- * attribution and the recorded toplines):
- *     seffect_mail            4 sessions   RNG-free
- *     seffect_scare_monster   1 session    draws resist() per visible monster
- *     seffect_create_monster  1 session    rn2(73) + create_critters()
- *     seffect_blank_paper     1 session    RNG-free
- * The remaining eight unported arms (taming, genocide, gold detection, food
- * detection, charging, fire, earth, stinking cloud) draw in ZERO of the 688 —
- * see the `default:` comment in seffects() for why that arm is still silent
- * rather than C's impossible().
- *
- * resist()/monflee() are cyclic imports (js/zap.js imports litroom() from this
- * file) but every binding used is a hoisted `function` declaration, so the
- * cycle resolves — the same argument js/makemon.js:94 records for
- * create_particular. */
 import { resist } from './zap.js';
 /* C read.c:364-556's non-scroll readable ladder needs these; all are hoisted
  * `export function`s, so the js/mklev.js and js/objnam.js cycles resolve. */
@@ -777,11 +704,6 @@ function spellet(i) {
     return ' ';
 }
 
-/* C ref: invent.c:1627 compactify() + invent.c:1908 — collapse runs of >=3
- * consecutive invlets to "<first>-<last>", but ONLY when the suggested-letter
- * count exceeds 5 (C gates the compactify call on `suggested > 5`).  For
- * seed4200's readable set "ijklmp" (6 items) this yields "i-mp"; a 2-letter
- * priest set is left untouched. */
 function _compact_letter_ranges(letters) {
     if (!letters || letters.length <= 5) return letters;
     let out = '';
@@ -813,15 +735,6 @@ function set_cursor(col, row) {
     }
 }
 
-/* C ref: topl.c more() — append "--More--" to topline and wait for a dismiss
- * key.  Unlike _topline_more in cmd.js, this version LOOPS until a valid
- * dismiss key (space, enter, ESC) is received, silently consuming other keys.
- * The screen stays unchanged across non-dismiss keys (preNhgetchHook captures
- * the same screen each iteration), matching C's tty_doprev_message behaviour.
- *
- * C ref: topl.c more / tty_putstr's MORE flag.  Dismiss keys in our build:
- *   ' ', '\n' (10), '\r' (13), '\x1b' (27).
- */
 async function topline_more_loop(msg) {
     const g = game;
     const full = msg + '--More--';
@@ -830,58 +743,23 @@ async function topline_more_loop(msg) {
     /* Cursor just past end of "--More--" (col = msg.length + 8). */
     set_cursor(full.length, 0);
     while (true) {
-        const key = await nhgetch(); /* preHook captures current screen each iter */
+        const key = await nhgetch();
         if (key === 32 /* space */ || key === 10 /* \n */ ||
             key === 13 /* \r */    || key === 27 /* ESC */) {
             return key;
         }
-        /* Non-dismiss key — re-render same screen so the next preHook captures
-         * the unchanged --More-- prompt (cursor too).  flush_screen would reset
-         * cursor to the hero, so set _pending_message + set_cursor again. */
         g._pending_message = full;
         await flush_screen(1);
         set_cursor(full.length, 0);
     }
 }
 
-/* C ref: spell.c:468 study_book() — the early-return branch when hero already
- * knows the spell at high retention (spellknow(i) > KEEN/10).
- *
- * Truncated port: covers spell.c:561-573 only:
- *   pline "You know \"<name>\" quite well already."
- *   y_n("Refresh your memory anyway?") returns 'n' → return 0 (no turn)
- *
- * For seed0501: light is at sp_know=20000 > 2000 → this branch fires.
- *
- * The y_n() call internally calls more() because the topline is occupied by
- * the pline above (C topl.c more() invokes when adding a query to a full
- * topline).  After more() is dismissed, y_n writes "Refresh your memory
- * anyway? [yn] (n)" and reads the response.  Replay ends here — the response
- * is the last key in the session, captured by the preHook of the next-but-
- * never-fired nhgetch.
- */
 async function study_book_already_known(spellName) {
     const g = game;
     const msg = `You know "${spellName}" quite well already.`;
     /* C ref: pline + tty more() chain — pline sets the topline; the subsequent
      * y_n in C calls topl.c more() to clear the line.  Mirror that loop. */
     await topline_more_loop(msg);
-    /* After --More-- dismiss: y_n("Refresh your memory anyway?") =
-     * yn_function(query, "yn", 'n', TRUE).  C ref: spell.c:571, cmd.c:6150.
-     * tty_yn_function renders "<query> [yn] (n)" and LOOPS reading keys until a
-     * valid response: 'y'/'n' answer the prompt, <space>/<return>/ESC select the
-     * default ('n'), and ANY OTHER KEY beeps and re-reads — the prompt persists
-     * and the invalid key is consumed without terminating (spell.c only cares
-     * whether the result is 'n', so the return value is discarded here).
-     *
-     * The single-key read this replaced leaked invalid keystrokes to rhack
-     * (seed0600: after the prompt, keys 'a' and 'm' must be eaten by the loop
-     * before '\r' selects the default; a lone nhgetch consumed only 'a' and
-     * desynced the whole downstream input stream).
-     *
-     * seed0501 ends AT this prompt: its first nhgetch throws InputQueueEmpty
-     * (caught by the gameFromSession loop) exactly as before — iteration 1 is
-     * byte-identical to the old single read, so that session is unaffected. */
     const ynPrompt = 'Refresh your memory anyway? [yn] (n)';
     while (true) {
         g._pending_message = ynPrompt;
@@ -895,12 +773,6 @@ async function study_book_already_known(spellName) {
         if (lc === 'y' || lc === 'n') break;              /* valid yn answer */
         /* invalid key: tty_yn_function loops and re-reads; prompt persists */
     }
-    /* C ref: after y_n returns, study_book returns 0 with NO new pline, so the
-     * "Refresh your memory anyway?" topline is NOT cleared — it lingers until the
-     * NEXT command's nhgetch clears WIN_MESSAGE (cf. dooup's y_n_default in
-     * cmd.js).  Restore the prompt so the resulting-state frame still shows it,
-     * matching C.  (seed0501 ends inside the loop above via InputQueueEmpty and
-     * never reaches this line.) */
     g._pending_message = ynPrompt;
 }
 
@@ -950,11 +822,6 @@ export async function study_book(spellbook) {
         g.context.move = 0; /* y_n-'n' → study_book returns 0 → ECMD_OK */
         return false;
     }
-    /* C ref: spell.c:537-640 — the hero does NOT already know this spell at high
-     * retention → schedule the multi-turn `learn` occupation (the seed4200
-     * blessed finger-of-death path).  study_book_learn returns true (ECMD_TIME)
-     * with g.occupation = learn set; the allmain.js learn-occupation driver runs
-     * the study turns. */
     const moved = await study_book_learn(spellbook);
     g.context = g.context || {};
     g.context.move = moved ? 1 : 0;
@@ -985,24 +852,8 @@ export async function doread() {
     }
     const g = game;
 
-    /* C read.c:354 — gk.known = FALSE, BEFORE check_capacity()/getobj().
-     * gk.known is the "this effect identified the scroll" flag that read.c:637
-     * tests to choose learnscroll() (which draws rn2(19) inside
-     * discover_object -> exercise(A_WIS, TRUE)) over trycall().  It is a
-     * GLOBAL, reset at the top of EVERY doread; without this reset a `true`
-     * left behind by an earlier scroll (seffect_light / seffect_magic_mapping
-     * / seffect_confuse_monster all set it) made the NEXT read call
-     * learnscroll() and draw a phantom rn2(19).  That phantom draw was
-     * seed0002's first RNG divergence (scorer: js "rn2(19)=6" vs session
-     * "rn2(5)=2 @ distfleeck(monmove.c:539)"). */
     g._gk_known = false;
 
-    /* C read.c:355 — `if (check_capacity((char *) 0)) return ECMD_OK;`
-     * The comment above already named this line and it was never written, so an
-     * over-encumbered hero was prompted for a scroll and READ it.  C refuses
-     * with "You can't do that while carrying so much stuff."  seed4500-knight-
-     * coverage step 1504: the hero is an Overloaded brown mold and this port
-     * opened the getobj prompt, then ate the answer key.  RNG-free. */
     if (check_capacity(null)) {
         g.context = g.context || {};
         g.context.move = 0;   /* C ECMD_OK — no time passes */
@@ -1038,14 +889,6 @@ export async function doread() {
      * form the recorded prompt uses ("[i-mp or ?*]"). */
     letters = _compact_letter_ranges(letters);
 
-    /* C ref: invent.c:1927-1934 — the bracket is " [*]" when NO letter was
-     * suggested and " [<letters> or ?*]" otherwise:
-     *     if (!buf[0]) Strcat(qbuf, " [*]");
-     *     else Sprintf(eos(qbuf), " [%s or ?*]", buf);
-     * read_ok (read.c:315) DOWNPLAYs every non-scroll/non-book carried item, so a
-     * hero with neither suggests nothing and C prompts "What do you want to
-     * read? [*]" — the old unconditional form rendered "[ or ?*]" (seed0368
-     * steps 73 and 77). */
     const prompt = letters
         ? `What do you want to read? [${letters} or ?*]`
         : 'What do you want to read? [*]';
@@ -1053,22 +896,6 @@ export async function doread() {
     await flush_screen(1);
     set_cursor(prompt.length + 1, 0); /* TTY: cursor past prompt + trailing space */
 
-    /* ── getobj for(;;) loop (C ref: invent.c:1916-2069) ─────────────────────
-     * Read an object letter.  An invlet NOT in inventory plines "You don't have
-     * that object." (invent.c:2059), which lands on the still-occupied prompt
-     * topline and more()s.  CRUCIAL: the more() loop (win/tty/topl.c more()) only
-     * DISMISSES on a dismiss key (space / CR / LF / ESC); any OTHER key rings the
-     * bell and re-shows --More-- — it does NOT begin a new getobj read.  Only after
-     * the More is dismissed does getobj re-prompt and read the next letter.  A
-     * quitchar (ESC / space / CR / LF) at the prompt cancels → "Never mind."
-     * (invent.c:1950-1953), doread(NULL) = ECMD_CANCEL, NO turn.
-     *
-     * seed2200 steps 16-21: 'r' → prompt; 'j' (not in invent) → "don't have"+more();
-     * 'q','g' are swallowed by more() as non-dismiss keys (C step 18/19); ' ' (step
-     * 20) dismisses the more() and re-prompts; ESC (step 21) cancels ("Never mind.").
-     * Reading 'q'/'g' as fresh getobj selections (the old single-key path) leaked
-     * them to rhack — 'q' became dodrink → a spurious quaff turn whose movemon
-     * mis-aligned the engrave that follows. */
     const _isQuit = (k) => k === 27 /* ESC */ || k === 32 /* space */
         || k === 13 /* CR */ || k === 10 /* LF */;
     let keyCode = -1;
@@ -1088,32 +915,11 @@ export async function doread() {
             set_cursor(prompt.length + 1, 0);
             continue;
         }
-        /* C invent.c:1950-1953 —
-         *     if (strchr(quitchars, ilet)) {
-         *         if (flags.verbose) pline1(Never_mind);
-         *         return (struct obj *) 0;
-         *     }
-         * quitchars is decl.c:96 " \r\n\033", so ALL FOUR cancel keys take this
-         * arm, not just ESC.  This arm was ESC-only, so a SPACE at the read prompt
-         * cancelled without leaving the loop.  The `flags.verbose` test lives in
-         * getobj_never_mind(): gen040-reseed-seed267324 runs `OPTIONS=!verbose`,
-         * and at its step 495 the space that cancels THIS prompt leaves C's
-         * topline still reading "What do you want to read? [ijk or ?*]" while the
-         * port overwrote it with "Never mind.". */
         if (_isQuit(keyCode)) {
             await getobj_never_mind(prompt);
             cancelled = true;
             break;
         }
-        /* C invent.c:1960-1999 `redo_menu` — '?' and '*' are NOT looked up as
-         * invlets; they open display_pickinv (restricted to the suggested
-         * letters for '?', the whole pack for '*') and ITS answer becomes the
-         * object letter.  This loop had no such branch at all, so '?' fell
-         * through to the invlet walk below, matched nothing, and paged "You
-         * don't have that object." — seed0004-feeding-pony step 288, where C
-         * shows the one-line message menu "o - a scroll labeled STRC PRST SKRZ
-         * KRK.--More--" and the following 'o' reads the scroll.  Everything
-         * after that step diverged: 113 contiguous frames. */
         if (keyCode === 63 /* '?' */ || keyCode === 42 /* '*' */) {
             const pick = await getobj_redo_menu(keyCode, rawLetters, '');
             /* invent.c:1989-1993 — ESC out of the menu: "Never mind." (already
@@ -1160,36 +966,6 @@ export async function doread() {
     g.disp = g.disp || {};
     g.disp.botl = 1;
 
-    /* ===== C read.c:364-556 — the non-scroll readable ladder ==================
-     *
-     * This is the else-if chain that sits ABOVE the silly_thing arm below, and
-     * until now NONE of it was ported, so every readable in it was rejected
-     * with "That is a silly thing to read." and cost no turn.  The comment that
-     * used to stand on the silly_thing arm said these were "NOT ported; none is
-     * carried in the corpus, and when one is, this arm will wrongly claim it,
-     * which is the signal to port them."  MEASURED over all 688
-     * corpus-generated/v5/train sessions, that premise is FALSE and the signal
-     * has fired:
-     *     FORTUNE_COOKIE   7 sessions   ("You break up the cookie...")
-     *     MAGIC_MARKER     2 sessions   ("Magic Marker(TM) ... Water Soluble.")
-     *     everything else  0 sessions   (coin / candy / orb / credit card /
-     *                                    dunce cap / T-shirt / Hawaiian shirt)
-     * [[comments-asserting-absence-are-untrustworthy]].
-     *
-     * THE TURN IS AS IMPORTANT AS THE TEXT.  Most of these arms return
-     * ECMD_TIME, so C runs a monster pass this port was skipping entirely.
-     * gen625-grammar-seed827169 step 33 records `rnd(20)=11 @ mattacku(mhitu.c:806)`
-     * and `d(1,2)=2 @ hitmu(mhitu.c:1187)` in the same bucket as the marker
-     * text; ECMD_OK skipped all of it, which is why that member is RNG-FIRST at
-     * lead 0.  Each arm below therefore sets context.move exactly as C's return
-     * value does.
-     *
-     * The remaining unported arm in this ladder is ORB_OF_FATE
-     * (read.c:527-536), which needs is_art(obj, ART_ORB_OF_FATE), i.e. the
-     * artifact table; js/read.js has no artifact lookup.  T_SHIRT and
-     * ALCHEMY_SMOCK now use the canonical deterministic wipeout helper above;
-     * HAWAIIAN_SHIRT continues through its separate RNG-free design table.
-     * ========================================================================= */
 
     /* C read.c:364-375 — outrumor has its own blindness check.
      *
@@ -1219,39 +995,6 @@ export async function doread() {
         return ECMD_TIME;
     }
 
-    /* C read.c:375-415 — T_SHIRT / ALCHEMY_SMOCK / HAWAIIAN_SHIRT share a Blind
-     * check and (for T_SHIRT/HAWAIIAN_SHIRT only) an "obscured by worn suit"
-     * check, then split: HAWAIIAN_SHIRT prints its RNG-free procedural design
-     * and returns; T_SHIRT/ALCHEMY_SMOCK print their slogan text through
-     * erode_obj_text().  All three arms now use the canonical C helper bodies
-     * above; the seeded erode path is deterministic and consumes no RNG.
-     *
-     *     if (Blind) { You_cant(find_any_braille); return ECMD_OK; }
-     *     if ((otyp == T_SHIRT || otyp == HAWAIIAN_SHIRT) && uarm
-     *         && scroll == uarmu) {
-     *         pline("%s shirt is obscured by %s%s.",
-     *               scroll->unpaid ? "That" : "Your", shk_your(buf, uarm),
-     *               suit_simple_name(uarm));
-     *         return ECMD_OK;
-     *     }
-     *     if (otyp == HAWAIIAN_SHIRT) {
-     *         pline("%s features %s.", flags.verbose ? "The design" : "It",
-     *               hawaiian_design(scroll, buf));
-     *         return ECMD_TIME;
-     *     }
-     *
-     * THE "obscured by a worn suit" GUARD IS PORTED BELOW, and porting it is
-     * a TURN-ACCOUNTING fix, not a message fix: C returns ECMD_OK from it and
-     * spends NO world turn, while the design arm two lines later returns
-     * ECMD_TIME.  Skipping the guard therefore ran a monster pass C does not
-     * run for every hero wearing body armour over the shirt -- a Tourist
-     * starts with HAWAIIAN_SHIRT in uarmu, so one body-armour pickup arms it.
-     * (CLAUDE.md 2026-09-07: this is the class that cost the generated corpus
-     * 11,625 screen points.)
-     *
-     * C's guard condition is `(otyp == T_SHIRT || otyp == HAWAIIAN_SHIRT)`.
-     * The two shirt types share the same worn-suit predicate, while an
-     * alchemy smock remains readable beneath body armour as C specifies. */
     if (scroll && ((scroll.otyp | 0) === T_SHIRT_RD
                    || (scroll.otyp | 0) === ALCHEMY_SMOCK_RD)) {
         if (_Blind()) {
@@ -1427,30 +1170,6 @@ export async function doread() {
         return ECMD_OK;
     }
 
-    /* C read.c:502-524 — MAGIC_MARKER.
-     *
-     *     static const int red_mons[] = { PM_FIRE_ANT, ... PM_PIRANHA };
-     *     struct permonst *pm = &mons[red_mons[scroll->o_id % SIZE(red_mons)]];
-     *     if (Blind) { You_cant(find_any_braille); return ECMD_OK; }
-     *     if (flags.verbose) pline("It reads:");
-     *     Sprintf(buf, "%s", pmname(pm, NEUTRAL));
-     *     pline("\"Magic Marker(TM) %s Red Ink Marker Pen.  Water Soluble.\"",
-     *           upwords(buf));
-     *     if (!u.uconduct.literate++) livelog_printf(...);
-     *     return ECMD_TIME;
-     *
-     * The two corpus members read back exactly: gen625's o_id % 14 == 3 gives
-     * PM_IMP -> "Imp", gen604's == 6 gives PM_SCORPION -> "Scorpion".  They also
-     * differ on flags.verbose -- gen604 shows the separate "It reads:" page and
-     * gen625 does not -- which is why the verbose prefix is a real branch and
-     * not decoration.
-     *
-     * The PM_ indices come from js/pm.generated.js but are VERIFIED BY NAME
-     * against js/makemon_pmnames.json (that file's [3]/[11]/[26]/[52]/[97]/...
-     * read "fire ant"/"pyrolisk"/"hell hound"/"imp"/"scorpion"), because
-     * pm.generated.js still carries some 3.7 spellings and an index taken on
-     * faith from it can be off by a row.  pmname(pm, NEUTRAL) is
-     * pm->pmnames[NEUTRAL] with C's fallback (do_name.c:1303). */
     if (scroll && (scroll.otyp | 0) === MAGIC_MARKER) {
         const red_mons = [
             PM_FIRE_ANT, PM_PYROLISK, PM_HELL_HOUND, PM_IMP,
@@ -1524,21 +1243,6 @@ export async function doread() {
         return ECMD_TIME;
     }
 
-    /* C read.c:557-560 — an object that is neither a scroll nor a spellbook is
-     * rejected with the common silly-thing string, ECMD_OK, no turn:
-     *     } else if (scroll->oclass != SCROLL_CLASS
-     *                && scroll->oclass != SPBOOK_CLASS) {
-     *         pline(silly_thing_to, "read");
-     *         return ECMD_OK;
-     *     }
-     * silly_thing_to is decl.c's "That is a silly thing to %s."  read_ok DOWNPLAYs
-     * these rather than EXCLUDEing them, so getobj hands them to doread instead of
-     * calling silly_thing() itself — the player CAN pick them at the "[*]" prompt.
-     * The earlier otyp-specific readables C tests before this arm (T-shirt, cap,
-     * credit card, can of grease, magic marker, coins, Orb of Fate, candy bar —
-     * read.c:400-556) are NOT ported; none is carried in the corpus, and when one
-     * is, this arm will wrongly claim it, which is the signal to port them.
-     * seed0368 steps 74 and 78 read the cloak 'e' / the arrows 'a'. */
     if (scroll && (scroll.oclass | 0) !== SCROLL_CLASS
         && (scroll.oclass | 0) !== SPBOOK_CLASS_OC) {
         await pline('That is a silly thing to read.');
@@ -1547,36 +1251,6 @@ export async function doread() {
         await _clear_botl();
         return ECMD_OK;
     }
-    /* C read.c:561-576 — the LAST arm of the same else-if chain the silly_thing
-     * test above closes, so it is only reached for a scroll or a spellbook:
-     *
-     *     } else if (Blind && otyp != SPE_BOOK_OF_THE_DEAD) {
-     *         const char *what = 0;
-     *
-     *         if (otyp == SPE_NOVEL)          what = "words";
-     *         else if (scroll->oclass == SPBOOK_CLASS) what = "mystic runes";
-     *         else if (!scroll->dknown)       what = "formula on the scroll";
-     *         if (what) {
-     *             pline("Being blind, you cannot read the %s.", what);
-     *             return ECMD_OK;
-     *         }
-     *     }
-     *
-     * Note what C does NOT block: a blind hero reading a scroll whose
-     * appearance is already dknown falls THROUGH (what stays NULL) and reads
-     * it normally.  Only an unidentified scroll, a spellbook and a novel are
-     * refused, and the Book of the Dead is exempt entirely.
-     *
-     * MEASURED on corpus-generated/v5/train/gen128-reseed-seed1659512 step 419,
-     * where the hero is blind inside a dust vortex: C prints "Being blind, you
-     * cannot read the formula on the scroll." and consumes no turn, while this
-     * port read the scroll ("As you pronounce the formula on it, the scroll
-     * disappears.--More--"), destroyed it, and ran its effect.  RNG-free here,
-     * but NOT downstream: the scroll effect C never runs was drawing, which is
-     * why that session's RNG divergence sat seven steps later at 426.
-     *
-     * ECMD_OK — no turn consumed, so context.move is cleared exactly as the
-     * silly_thing arm above clears it. */
     if (scroll && _Blind() && (scroll.otyp | 0) !== SPE_BOOK_OF_THE_DEAD_RD) {
         let what = null;
         if ((scroll.otyp | 0) === SPE_NOVEL_RD)
@@ -1593,58 +1267,13 @@ export async function doread() {
             return ECMD_OK;
         }
     }
-    /* C read.c:578-595 — the two things a scroll of mail does BEFORE the
-     * literacy bump, both #ifdef MAIL_STRUCTURES (defined in this build):
-     *
-     *     confused = (Confusion != 0);
-     *     if (otyp == SCR_MAIL) {
-     *         confused = FALSE; / * override * /
-     *         if (!u.uconduct.literate) {
-     *             if (!scroll->spe && y_n(
-     *              "Reading mail will violate \"illiterate\" conduct.  Read anyway?"
-     *                                    ) != 'y')
-     *                 return ECMD_OK;
-     *         }
-     *     }
-     *
-     * The `confused = FALSE` override is why a confused hero reading mail never
-     * gets the "Being confused, you mispronounce the magic words..." line;
-     * read_scroll() recomputes `confused` itself from _Confusion(), so the
-     * override is carried on the object as a flag it reads.
-     *
-     * The y_n is NOT reached on any of this row's four members: all four wished
-     * their scroll, and objnam.c:5171 (js/objnam.js) gives a wished mail scroll
-     * spe = 1, so `!scroll->spe` is false.  It is ported anyway because it is
-     * part of the same C block and because a spe-0 mail scroll picked up in
-     * play WOULD reach it.  y_n is not wired here, so the prompt itself is
-     * left as a named gap rather than guessed at: taking the un-prompted
-     * branch matches C whenever the hero is already literate, which is the
-     * only state any corpus session reaches this line in (C's own
-     * `u.uconduct.literate` is bumped by every earlier read, and the block
-     * immediately below is what bumps ours). */
     if (scroll && (scroll.otyp | 0) === SCR_MAIL) {
         scroll._mail_confusion_override = true;   /* C read.c:581 confused = FALSE */
         const _lit = (game.u?.uconduct?.literate) | 0;
         if (!_lit && !(scroll.spe | 0)) {
-            /* KNOWN GAP: C opens y_n() here and returns ECMD_OK on anything but
-             * 'y'.  Unreached on every session in corpus-generated/v5/train that
-             * reads mail (all four are spe-1 wishes), so it is named rather than
-             * guessed.  When a session reaches it, wire y_n and delete this. */
             void 0;
         }
     }
-    /* C read.c:598-606 — the illiteracy conduct bump, which sits between the
-     * silly_thing arm above and the SPBOOK dispatch below:
-     *     if (otyp != SPE_BOOK_OF_THE_DEAD && otyp != SPE_NOVEL
-     *         && otyp != SPE_BLANK_PAPER && otyp != SCR_BLANK_PAPER)
-     *         if (!u.uconduct.literate++) livelog_printf(...);
-     * ("Actions required to win the game aren't counted towards conduct".)
-     * Nothing in js/ wrote u.uconduct.literate except js/engrave.js:332, and
-     * THAT site is guarded on `if (u.uconduct)` — an object nothing creates —
-     * so the counter never left 0 and insight.c:2170's conduct line always read
-     * "You have been illiterate."  MEASURED on seed4500-knight-coverage step
-     * 1573: C's #conduct window reads "You have read items or engraved 5
-     * times."  RNG-free. */
     if (scroll) {
         const _otyp = scroll.otyp | 0;
         if (_otyp !== SPE_BOOK_OF_THE_DEAD_RD && _otyp !== SPE_NOVEL_RD
@@ -1660,10 +1289,6 @@ export async function doread() {
             _u.uconduct.literate = (_u.uconduct.literate | 0) + 1;
         }
     }
-    /* The selected object is a spellbook → study_book (C read.c:608-610):
-     *   if (scroll->oclass == SPBOOK_CLASS) return study_book(scroll) ? ECMD_TIME : ECMD_OK;
-     * For a book whose spell the hero does NOT already know at high retention,
-     * study_book sets up the multi-turn `learn` occupation (the seed4200 path). */
     if (scroll && (scroll.oclass | 0) === SPBOOK_CLASS_OC) {
         const moved = await study_book(scroll);
         g.context = g.context || {};
@@ -1682,17 +1307,6 @@ export async function doread() {
         await read_scroll(scroll);
         g.context = g.context || {};
         g.context.move = 1; /* C read.c:646: doread returns ECMD_TIME */
-        /* read_scroll plined the scroll feedback ("As you read the scroll, it
-         * disappears." + the seffect message, e.g. "A map coalesces in your
-         * mind!") into _pending_message.  Because doread consumes a turn
-         * (move=1), moveloop_core would otherwise CLEAR _pending_message
-         * (allmain.js:1082), discarding the result line.  Mirror the
-         * domove/dodrop path: hand the result to _resultMessage so the next
-         * rhack(0) restores it onto the topline at the NEXT nhgetch — exactly
-         * where C shows the scroll feedback (seed2200 step 10).  The read
-         * turn's movemon (faithful_moveloop_turn) concatenates any of its own
-         * plines onto this via the allmain.js:974 merge, matching C's single
-         * topline that persists until tty_nhgetch. */
         if (g._pending_message) {
             _topl_stash_result();
         }
@@ -2004,24 +1618,6 @@ function _Hallucination() {
     return !!(_uprop_on(HALLUC) && !_uprop_on(HALLUC_RES));
 }
 
-/* C ref: objects[otyp].oc_magic — read by seffects (read.c:2199-2200) to award
- * exercise(A_WIS, TRUE) "just for trying", which DRAWS rn2(19).
- *
- * This used to be the hand-written predicate `otyp !== SCR_BLANK_PAPER`, i.e.
- * "every scroll is magic except blank paper".  MEASURED FALSE: objects.h has
- * TWO non-magic scrolls, because the mail scroll's SCROLL() row also passes
- * mgc = 0 —
- *     SCROLL("mail",        "stamped",  0,  0,  0, SCR_MAIL),
- *     SCROLL("blank paper", "unlabeled", 0, 28, 60, SCR_BLANK_PAPER),
- * — and js/objnam.js:3919 already recorded that this exact predicate is "right
- * for 42 of the 43 scrolls and wrong for SCR_MAIL (otyp 364, oc_magic 0)"
- * without anything acting on it.  So every mail read drew a phantom rn2(19)
- * that C does not draw, which is the RNG divergence at the read step on all
- * four SCR_MAIL sessions in corpus-generated/v5/train.
- *
- * Now read from the extracted objects.c column (js/mkobj_erosion_meta.js), the
- * same table seffect_enchant_armor already consults at read.c:1207, rather than
- * from a predicate that has to be kept in step with the header by hand. */
 function _scroll_oc_magic(otyp) {
     return !!MKOBJ_OC_MAGIC[otyp | 0];
 }
@@ -2040,15 +1636,6 @@ async function read_scroll(scroll) {
     /* C read.c:612-634 */
     if (otyp !== SCR_BLANK_PAPER) {
         const silently = !_can_chant();
-        /* C read.c:617-618 — a few scroll feedback messages describe something
-         * happening to the scroll ITSELF, so those avoid "it disappears": the
-         * scroll of fire, and a CURSED scroll of remove curse (which
-         * disintegrates instead — read.c:1506).  Without this the topline read
-         * "As you read the scroll, it disappears." (38 cols) where C reads "You
-         * read the scroll." (20 cols); the shorter line let the following
-         * seffect plines fit under update_topl's CO-1-8 reserve, so C's
-         * --More-- never fired on the JS side and its page-ack keystroke leaked
-         * to rhack (seed0002 step 128, MISSING-CONSUME). */
         const nodisappear = (otyp === SCR_FIRE
                              || (otyp === SCR_REMOVE_CURSE && !!scroll.cursed));
         if (_Blind())
@@ -2082,23 +1669,11 @@ async function read_scroll(scroll) {
     }
 }
 
-/* C ref: mondata.c:580-587 can_chant(&gy.youmonst) — FALSE when the hero is
- * Strangled or polymorphed into a silent/headless/buzzing form.  Neither
- * Strangled nor those polyforms is tracked on the read path in this port, so
- * this returns TRUE (C's value for an ordinary hero).  When a session puts the
- * hero in one of those states the feedback verb will be wrong, which is the
- * signal to port the real predicate. */
 function _can_chant() {
     /* C passes &gy.youmonst; replay state keeps the same form as game.youmonst. */
     return can_chant_real(game.youmonst || { m_id: 0, data: game.youmonst?.data });
 }
 
-/* C ref: do_name.c:678 trycall(obj) — offer to #call the object's type when the
- * type is neither identified nor already user-named.  (js/cmd.js exports a
- * trycall, but it delegates to js/cmd.js:18375 docall(), which is a no-op stub;
- * this file needs the real keystroke-consuming docall, so it drives
- * _docall_scroll directly — the same shape js/potion.js uses for
- * _docall_potion.) */
 async function trycall(obj) {
     const g = game;
     const otyp = obj.otyp | 0;
@@ -2108,17 +1683,6 @@ async function trycall(obj) {
         await _docall_scroll(obj);
 }
 
-/* C ref: do_name.c:636-676 docall(struct obj *obj) — scoped to SCROLL_CLASS,
- * the only class that reaches it from read.c:643.  Mirrors js/potion.js
- * _docall_potion (do_name.c:636 for POTION_CLASS).
- *
- * KEYSTROKE ACCOUNTING (this is the point of the port): the "Call a <scroll>:"
- * prompt is a getlin() — every character the player types, plus the closing
- * Return, is a keystroke C consumes here and never hands to rhack.  Before the
- * prompt is drawn, tty's update_topl more()s the still-unacked scroll feedback,
- * consuming one more.  seed0002 steps 129-140 are exactly that: one page-ack
- * plus "helpig you" + CR.  RNG-free apart from discover_object below (which
- * passes credit_hero=FALSE, so it does not exercise()). */
 async function _docall_scroll(obj) {
     const g = game;
     if (!obj.dknown)
@@ -2175,13 +1739,6 @@ export function useup(obj) {
         if (o === obj) {
             if (prev) prev.nobj = o.nobj; else game.invent = o.nobj;
             obj.nobj = null;
-            /* Bump bridge objs_deleted.count to match C's delobj counter.
-             * C ref: invent.c useup() -> freeinv() -> delobj() -> dealloc_obj()
-             * puts the object on the objs_deleted queue.  js/potion.js's own
-             * useup() (dodrink's copy of the same C function) already does
-             * this bump; this copy silently omitted it, so a scroll consumed
-             * through doread left the capture's objs_deleted.count MISSING
-             * where C's recorded 1. */
             const store = game.__bridge__ || (game.__bridge__ = {});
             const key = 'objs_deleted.count';
             const cur = store[key] !== undefined ? Number(store[key]) : 0;
@@ -2206,24 +1763,6 @@ function _Yname2(obj) {
     return Yobjnam2(obj, null);
 }
 
-/* ── Worn-armor record adapter ────────────────────────────────────────────────
- * The hero's WORN armor slots (u.uarm/uarmc/uarmh/...) are populated by
- * js/u_init.js's ROLE_STARTER_ARMOR table (js/u_init.js:186-204) with SYMBOLIC
- * records — { otyp: 'HELMET', a_ac: 1, spe: 0, oeroded: 0, oeroded2: 0 } — not
- * with the numeric-otyp objects the rest of the port uses.  js/do_wear.js's
- * some_armor() returns those records and js/do_wear.js's find_ac() reads them,
- * so an enchantment MUST mutate the record it was handed (that is what moves
- * AC:-7 -> AC:-11 on seed0365 step 147).  But js/objnam.js cannot NAME one:
- * xname_flags() falls through to its default arm and renders the literal
- * "xname_flags(HELMET,0)", and aobjnam() prefixes "undefined " because `quan`
- * is absent.  So: mutate the real record, and name through a numeric-otyp view
- * of it — the same separation C makes in docall_xname (do_name.c:605), which
- * names through a struct copy.
- *
- * This adapter is a BRIDGE OVER A MODEL GAP, not a fix for it: the real fix is
- * for js/u_init.js to build proper objects (or for u.uarm* to point at the
- * g.invent entries, which already exist with the right numeric otyps and
- * owornmasks).  Both files are outside this file's write scope. */
 const _STARTER_ARMOR_OTYP = {
     /* keys: js/u_init.js ROLE_STARTER_ARMOR / js/cmd.js ARMOR_STR_NAME.
      * values: objects.h otyps, read out of the C enum itself. */
@@ -2307,26 +1846,17 @@ function _carried_or_worn_rd(obj) {
     return obj === u.uarm || obj === u.uarmc || obj === u.uarmh || obj === u.uarms
         || obj === u.uarmg || obj === u.uarmf || obj === u.uarmu;
 }
-/* C ref: obj.h get_obj_location(obj, &x, &y, 0) for the two `where` values
- * shk_owns can see from here: OBJ_INVENT (and this port's worn records) give
- * the hero's square, OBJ_FLOOR gives the object's own.  Returns null for the
- * carrier-indirect cases (OBJ_MINVENT / OBJ_CONTAINED), which C resolves
- * through the carrier and which cannot occur for a worn suit. */
 function _get_obj_location_rd(obj) {
-    if ((obj.where | 0) === 1 /* OBJ_FLOOR */)
+    if ((obj.where | 0) === 1)
         return { x: obj.ox | 0, y: obj.oy | 0 };
     if (_carried_or_worn_rd(obj))
         return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
     return null;
 }
-/* C ref: shk.c:5884-5896 staticfn shk_owns(buf, obj) — the owning shopkeeper's
- * possessive name for an object still on a bill or sitting on a costly floor
- * spot, C's literal "the" when no shopkeeper is there, or 0 (null) when the
- * object is not shop-owned at all.  RNG-free. */
 function _shk_owns_rd(obj) {
     const loc = _get_obj_location_rd(obj);
     if (loc && (obj.unpaid
-                || ((obj.where | 0) === 1 /* OBJ_FLOOR */ && !obj.no_charge
+                || ((obj.where | 0) === 1 && !obj.no_charge
                     && costly_spot(loc.x, loc.y)))) {
         const shkp = shop_keeper(inside_shop(loc.x, loc.y));
         return shkp ? s_suffix(shkname(shkp)) : THE_YOUR_RD[0];
@@ -2388,17 +1918,6 @@ function _in_invent(obj) {
         if (o === obj) return true;
     return false;
 }
-/* C ref: mkobj.c:1746-1839 bless()/curse()/uncurse().
- *
- * Ported faithfully for the ordinary object: the blessed/cursed bits, plus the
- * three special-case arms C takes.  NOT PORTED (annotated where they sit): the
- * lamplit arti_light_radius/maybe_adjust_light bracket (this port has no light
- * radius model — js/read.js:1214 impact_arti_light is already a documented
- * stub), set_moreluck() for a carried luckstone/luck artifact, weight() for a
- * bag of holding, and the figurine transform timer.  None of the four consumes
- * RNG, so the draw order is unaffected; each is flagged so a session that
- * actually carries one of those objects surfaces as a state divergence rather
- * than as silence. */
 function _bless(otmp) {
     if ((otmp.oclass | 0) === COIN_CLASS_OC)
         return;                                  /* C mkobj.c:1750 */
@@ -2477,34 +1996,6 @@ function _oc_merge_weapon(obj) {
     return sk < 0 || sk === P_DAGGER || sk === P_KNIFE || sk === P_SPEAR;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * seffect_enchant_armor — C ref: nethack-c/src/read.c:1114-1290
- *
- * RNG DRAW ORDER (exactly as C evaluates it):
- *   1. some_armor(&gy.youmonst)            read.c:1121 (C initializer — runs
- *                                          FIRST, before any body statement):
- *                                          up to 4x rn2(4) at do_wear.c:2642,
- *                                          2645, 2648, 2651, one per worn
- *                                          helmet/gloves/boots/shield.
- *   2. !otmp branch:  exercise(A_CON,..)   read.c:1132  rn2(19) or rn2(2)
- *                     exercise(A_STR,..)   read.c:1133  rn2(19) or rn2(2)
- *   3. rn2(s)                              read.c:1177  ONLY when
- *                                          s > (special_armor ? 5 : 3)
- *   4. rn2(otmp->spe)                      read.c:1216  ONLY when s<=0 && spe>0
- *      OR rnd(s)                           read.c:1219  when s > 0
- *   5. rn2(7)                              read.c:1287  ONLY when the new spe
- *                                          exceeds the limit and the armor is
- *                                          not special
- * Ground truth, seed0365 step 146-147 (recorded C trace):
- *   rn2(19)=4 @ exercise(attrib.c:509)     <- seffects read.c:2200, not here
- *   rn2(4)=0 @ some_armor(do_wear.c:2642)
- *   rn2(4)=3 @ some_armor(do_wear.c:2645)
- *   rn2(4)=1 @ some_armor(do_wear.c:2651)
- *   rnd(4)=4 @ seffect_enchant_armor(read.c:1217)
- *   >pline @ seffect_enchant_armor(read.c:1259)   -> "Your helmet glows silver
- *                                                    for a while." + more()
- *   rn2(7)=2 @ seffect_enchant_armor(read.c:1287) -> !2 is false, no 2nd pline
- * ═══════════════════════════════════════════════════════════════════════════ */
 async function seffect_enchant_armor(sobjp) {
     const g = game;
     const sobj = sobjp.obj;
@@ -2637,9 +2128,6 @@ async function seffect_enchant_armor(sobjp) {
         otmp.lamplit = was_lit;
         return;
     }
-    /* C read.c:1253-1259 — the main feedback pline.  This is the pline whose
-     * width tips update_topl past its CO-1-8 reserve and fires more(); its
-     * absence is seed0365's MISSING-CONSUME at step 147. */
     await pline(`${_Yname2(nm)} `
                 + `${(s === 0) ? 'violently ' : ''}`
                 + `${otense(nm, Blind ? 'vibrate' : 'glow')}`
@@ -2782,12 +2270,6 @@ async function chwepon(otmp, amount) {
         return 1;
     }
 
-    /* C wield.c:990-996 — a named artifact resists disenchantment.
-     * KNOWN GAP: restrict_name() (artifact.c:329) is not ported; the guard also
-     * needs uwep->oartifact, which no corpus weapon reaching here carries.  C
-     * draws NO RNG on this arm (it is a pline and an early return), so skipping
-     * it cannot shift the sequence — it can only mis-word a message for an
-     * artifact being disenchanted, which is the signal to port restrict_name. */
 
     /* C wield.c:997-1010 — soft upper/lower limit on uwep->spe. */
     if ((((uwep.spe | 0) > 5 && amount >= 0)
@@ -2827,11 +2309,6 @@ async function chwepon(otmp, amount) {
      * this port (js/objnam.js's _artiexist models only the wish-time existence
      * bits), so the clue line is not emitted.  Message only; no RNG. */
 
-    /* C wield.c:1041-1045 — an elven magic clue, cookie@keebler: elven weapons
-     * vibrate warningly when enchanted beyond a limit.  The rn2(7) is inside a
-     * `spe > 5` guard, so it is unreachable for every weapon in the corpus; the
-     * is_elven_weapon()/oartifact disjuncts short-circuit BEFORE it in C, which
-     * is why the guard must be written in C's order if this ever fires. */
     if ((uwep.spe | 0) > 5
         && (_is_elven_weapon(uwep) || uwep.oartifact || !rn2(7))) {
         await pline(`${Yobjnam2(uwep, 'suddenly vibrate')} unexpectedly.`);
@@ -2867,29 +2344,6 @@ function _useupall(obj) {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * seffect_enchant_weapon — C ref: nethack-c-v5/upstream/src/read.c:1620-1675
- *
- * RNG DRAW ORDER: the `s` ladder draws AT MOST ONE value, and only for an
- * already-well-enchanted or blessed-scroll case:
- *     scursed            -> -1                      (no draw)
- *     !uwep              -> 1                       (no draw)
- *     uwep->spe >= 9     -> rn2(uwep->spe) == 0
- *     sblessed           -> rnd(3 - uwep->spe / 3)
- *     else               -> 1                       (no draw)
- * then chwepon()'s own rn2(3)/rn2(7), both behind |spe| > 5 guards.
- *
- * Ground truth, seed0002 step 191 (recorded C trace) — an uncursed scroll, a
- * Healer's +0 scalpel, not confused, not blind:
- *   rn2(19)=12 @ exercise(attrib.c:509)   <- seffects read.c:2200, not here
- *   (no further draw before the monster-movement block)
- *   topline "Your scalpel glows blue for a moment."
- * i.e. s == 1 with no draw, chwepon takes the plain feedback arm, and
- * makeknown(SCR_ENCHANT_WEAPON) fires because uwep->known is set on a starting
- * weapon and amount > 0.  That makeknown is the load-bearing half: without it
- * read_scroll's `if (!oc_name_known) trycall()` opened a "Call a scroll labeled
- * VE FORBRYDERNE:" getlin, which swallowed every following keystroke.
- * ═══════════════════════════════════════════════════════════════════════════ */
 async function seffect_enchant_weapon(sobjp) {
     const g = game;
     const sobj = sobjp.obj;
@@ -2941,27 +2395,6 @@ async function seffect_enchant_weapon(sobjp) {
         cap_spe(uwep);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * seffect_remove_curse — C ref: nethack-c/src/read.c:1488-1602
- *
- * RNG DRAW ORDER: NONE on the scursed path (message only).  On the non-cursed
- * CONFUSED path, blessorcurse(obj, 2) draws rn2(2) per eligible object and a
- * further rn2(2) whenever the first lands on 0 (mkobj.c:1847-1852).  The
- * uncursing path itself is RNG-free.
- *
- * Ground truth, seed0002 step 127 (recorded C trace):
- *   rn2(19)=12 @ exercise(attrib.c:509)              <- seffects read.c:2200
- *   >pline @ seffect_remove_curse(read.c:1503)       "You feel like someone is
- *                                                     helping you."
- *   >pline @ seffect_remove_curse(read.c:1506)       "The scroll disintegrates."
- *   >more  @ more(../win/tty/topl.c:212)
- * The scroll is CURSED, so doread's own feedback is the nodisappear form ("You
- * read the scroll.", read.c:625) and the three lines together overflow the
- * topline: the first page is "You read the scroll.  You feel like someone is
- * helping you.--More--", acked by step 128, then "The scroll disintegrates."
- * --More--, acked by step 129, then trycall()'s "Call a scroll labeled XOR
- * OTA:" getlin eats steps 130-140.
- * ═══════════════════════════════════════════════════════════════════════════ */
 async function seffect_remove_curse(sobj) {
     const g = game;
     const otyp = sobj.otyp | 0;
@@ -3029,25 +2462,6 @@ async function seffect_remove_curse(sobj) {
                 }
             }
         }
-        /* C read.c:1581-1598 — a ridden steed's saddle is treated as part of
-         * the hero's inventory:
-         *     if (u.usteed && (obj = which_armor(u.usteed, W_SADDLE)) != 0) {
-         *         if (confused) { blessorcurse(obj, 2); obj->bknown = 0; }
-         *         else if (obj->cursed) {
-         *             uncurse(obj);
-         *             if (!Blind) { pline("%s %s.", Yobjnam2(obj, "glow"),
-         *                                 hcolor("amber"));
-         *                           obj->bknown = Hallucination ? 0 : 1; }
-         *             else obj->bknown = 0;
-         *         }
-         *     }
-         * NOT PORTED, and deliberately not faked: this port has no steed model
-         * at all — nothing in js/ ever assigns `usteed`, so the branch is
-         * unreachable and a `u.usteed` read would be a permanently-undefined
-         * accessor (the exact silent-default shape js-binding-audit gates on).
-         * The confused arm would draw rn2(2)[+rn2(2)] via blessorcurse, so a
-         * session that actually rides while reading remove curse will surface
-         * as an RNG divergence here rather than as silence. */
     }
     if (_Punished() && !confused) {
         /* C read.c:1600 unpunish() — ball & chain removal (ball.c).  Not ported
@@ -3059,29 +2473,6 @@ async function seffect_remove_curse(sobj) {
     /* C read.c:1607 update_inventory() — display only, no RNG. */
 }
 
-/* C ref: read.c:1786 seffect_teleportation(struct obj **sobjp):
- *
- *     boolean scursed = sobj->cursed;
- *     boolean confused = (Confusion != 0);
- *     if (confused || scursed) {
- *         level_tele();
- *         gk.known = TRUE;
- *     } else {
- *         scrolltele(sobj);
- *     }
- *
- * SCR_TELEPORTATION had NO arm in this file's seffects() switch at all, so a
- * read scroll of teleportation fell into `default:` and did nothing — and then,
- * gk.known still false, read_scroll's tail called trycall() and put up a "Call a
- * scroll labeled ...:" naming prompt C never shows.  seed5006 segment 0 step 161
- * is the witness: a CONFUSED Tourist reads it, C runs level_tele() (which is the
- * only reason the "To what level do you want to teleport?" prompt appears at
- * step 163 and the hero ends up on the Dlvl 3 that segment 1's bones file is
- * built from), and this port asked her to name the scroll instead.
- *
- * Both arms are C's; neither is a stand-in.  level_tele() lives in js/cmd.js
- * (the level-teleport body, teleport.c:1165) and scrolltele() in
- * js/teleport.js (teleport.c:844). */
 async function seffect_teleportation(sobj) {
     const scursed = !!sobj.cursed;
     const confused = (_Confusion() !== 0);
@@ -3154,28 +2545,6 @@ function _actualoname(obj) {
     }
 }
 
-/* ── C ref: read.c:1323-1395 seffect_destroy_armor(struct obj **sobjp) ────────
- * The scroll of destroy armor.  5.0 rewrote this: the ordinary (uncursed,
- * unconfused) arm now calls destroy_arm(), which ERODES worn armor rather than
- * disintegrating it, so a leather-armored hero gets "Your leather armor
- * smoulders!" — the message this port used to lose entirely, because
- * SCR_DESTROY_ARMOR had no arm in seffects() at all.
- *
- * RNG, in C's order:
- *   some_armor(&gy.youmonst)  do_wear.c:2630 — rn2(4) per extra worn slot
- *                             beyond the first candidate (helm/gloves/boots/
- *                             shield); zero draws when only a suit is worn.
- *   confused && !otmp     : exercise(A_STR/A_CON, FALSE)  read.c:1338-1339
- *   scursed && armor cursed: rn1(10, 10)                  read.c:1360
- *   scursed, armor not    : disintegrate_arm()            read.c:1362
- *   blessed + >1 worn     : disintegrate_arm() after getobj  read.c:1376-1381
- *   blessed               : disintegrate_cursed_armor()   read.c:1384
- *   otherwise             : destroy_arm()                 read.c:1387
- *   destroy_arm() failed  : exercise(A_STR/A_CON, FALSE)  read.c:1391-1392
- *
- * Measured on the 44 public sessions: destroy_arm() fires exactly once (seed0007
- * step 123, one rn2(4) + two rn2(1)) and NOTHING reaches disintegrate_arm().
- */
 async function seffect_destroy_armor(sobjp) {
     const g = game, u = g.u || {};
     const sobj = sobjp.obj;
@@ -3225,13 +2594,6 @@ async function seffect_destroy_armor(sobjp) {
             if (!_oc_name_known(sobj.otyp | 0))
                 await pline(`This is ${an(_actualoname(sobj))}!`);  /* read.c:1373 */
             g._gk_known = true;
-            /* C read.c:1376 getobj("destroy", any_worn_armor_ok, GETOBJ_PROMPT).
-             * KNOWN GAP: the shared getobj (js/eat.js:2808) picks the first
-             * GETOBJ_SUGGEST item WITHOUT opening C's prompt, so it consumes no
-             * keystroke where C consumes one.  That is a pre-existing property
-             * of this tree's getobj, not something introduced here, and no
-             * public session reaches this arm; the C call is written as C wrote
-             * it so the site becomes correct the moment a real getobj lands. */
             const atmp = getobj('destroy', any_worn_armor_ok, GETOBJ_PROMPT);
             /* check the return value, in case the user picked a non-valid obj */
             if (any_worn_armor_ok(atmp) === GETOBJ_SUGGEST_RD)
@@ -3319,31 +2681,6 @@ async function seffect_mail(sobjp) {
     }
 }
 
-/* C ref: read.c:1453-1486 seffect_scare_monster(&sobj)
- *
- *     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
- *         if (DEADMONSTER(mtmp)) continue;
- *         if (cansee(mtmp->mx, mtmp->my)) {
- *             if (confused || scursed) {
- *                 mtmp->mflee = mtmp->mfrozen = mtmp->msleeping = 0;
- *                 mtmp->mcanmove = 1;
- *             } else if (!resist(mtmp, sobj->oclass, 0, NOTELL))
- *                 monflee(mtmp, 0, FALSE, FALSE);
- *             if (!mtmp->mtame) ct++;
- *         }
- *     }
- *     if (otyp == SCR_SCARE_MONSTER || !ct) { ... You_hear(...) }
- *
- * THE RNG IS THE resist() CALL, one per VISIBLE non-resisting monster, and it
- * is the whole reason this arm shows up on the RNG axis:
- * gen594-grammar-seed758889's first divergence is C's
- * `rn2(108)=57 @resist(zap.c:6141)` at leaf 6148, where this port was still
- * inside the monster-movement pass because the scroll did nothing.
- * resist() is rn2(100 + alev - dlev) with alev 9 for SCROLL_CLASS, so a
- * recorded rn2(108) reads back as "one visible monster of level 1".
- *
- * DEADMONSTER(mon) is (mon)->mhp < 1 (mondata.h) -- the same spelling
- * js/makemon.js:5771 uses inside monflee itself. */
 async function seffect_scare_monster(sobjp) {
     const sobj = sobjp.obj !== undefined ? sobjp.obj : sobjp;
     const otyp = sobj.otyp | 0;
@@ -3377,26 +2714,6 @@ async function seffect_scare_monster(sobjp) {
     }
 }
 
-/* C ref: read.c:1607-1623 seffect_create_monster(&sobj)
- *
- *     if (create_critters(1 + ((confused || scursed) ? 12 : 0)
- *                         + ((sblessed || rn2(73)) ? 0 : rnd(4)),
- *                         confused ? &mons[PM_ACID_BLOB] : (struct permonst *) 0,
- *                         FALSE))
- *         gk.known = TRUE;
- *
- * THE DRAW ORDER IS THE POINT.  C evaluates the count argument before the
- * mptr argument, and inside the count `sblessed || rn2(73)` short-circuits:
- * a BLESSED scroll draws nothing, an unblessed one always draws rn2(73), and
- * only a zero from that draws the extra rnd(4).  gen586-grammar-seed744787
- * records exactly `rn2(73)=63 @ seffect_create_monster(read.c:1616)` -- nonzero,
- * so cnt stays 1 and no rnd(4) follows.
- *
- * neverask is FALSE, so in wizard mode create_critters() opens C's
- * "Create what kind of monster?" prompt (makemon.c:1568 create_particular()) --
- * which is the frame gen586 is missing.  create_critters is already ported
- * (js/makemon.js:3294) and is async here because makemon()/create_particular()
- * are. */
 async function seffect_create_monster(sobjp) {
     const sobj = sobjp.obj !== undefined ? sobjp.obj : sobjp;
     const sblessed = !!sobj.blessed;
@@ -3458,31 +2775,12 @@ function o_in_rd(obj, oclass) {
 
 const FOOD_CLASS_RD = 7, POTION_CLASS_RD = 8;
 
-/* C ref: detect.c:262-306 check_map_spot(x, y, oclass, 0) — food_detect always
- * passes material=0, so only the oclass arm is reachable here.  C decodes the
- * remembered glyph back to an otyp via glyph_to_obj() and reads
- * objects[otyp].oc_class; this port's loc.remembered_glyph carries no otyp
- * (see js/display.js's cell shape), so it matches the glyph's rendered
- * SYMBOL against the target class's default symbol instead ('%' FOOD_CLASS,
- * '!' POTION_CLASS) -- equivalent whenever the default symset AND NOT HALLUCINATING is in effect,
- * which every corpus session uses. *
- * HALLUCINATION GAP (2026-09-10 review): C decodes the STORED otyp —
- * objects[glyph_to_obj(glyph)].oc_class == oclass (detect.c:290) — while this
- * reads the RENDERED character. Those agree under the default symset because
- * class syms are a bijection, but under hallucination the rendered char need
- * not track the object's real class. What it changes is which stale cells get
- * unmapped, hence `stale`, which selects between "You sense a lack of food
- * nearby." and the strange_feeling path — i.e. whether the scroll is USED UP.
- * Narrow, but not cosmetic. Decode the class rather than matching the symbol
- * when a glyph_to_obj equivalent exists here.
- */
 function _check_map_spot_rd(x, y, oclass) {
     const g = game;
     const loc = g.level && g.level.at ? g.level.at(x, y) : null;
     const rg = loc && loc.remembered_glyph;
     if (!rg || rg.cls !== GLYPHCLS_OBJ)
         return false;
-    // Campaign Rogue levels use ':' for remembered food-class glyphs;
     // detect.c decodes the stored glyph class rather than assuming '%'.
     const wantCh = (oclass === POTION_CLASS_RD)
         ? '!' : (Is_rogue_level(game.u?.uz) ? ':' : '%');
@@ -3536,11 +2834,6 @@ function reconstrain_map_rd() {
     u.uswallow = g.iflags?.save_uswallow; if (g.iflags) g.iflags.save_uswallow = 0;
     return saved;
 }
-/* C ref: detect.c:94-102 map_redisplay(): reconstrain_map() then docrt(), whose
- * first statement flushes any pending topline -- a blocking more() when one
- * is outstanding (the pattern js/cmd.js's reveal_terrain and js/potion.js's
- * object_detect both gate off game._pending_message). The restored underwater
- * or buried view is then redrawn through the shared display routines. */
 async function map_redisplay_rd() {
     const saved = reconstrain_map_rd();
     if (game._pending_message)
@@ -3826,26 +3119,6 @@ export async function seffects(sobj) {
         break;
     }
     default:
-        /* C read.c:2284-2285's default is
-         *     impossible("What weird effect is this? (%u)", otyp);
-         * i.e. C treats an unhandled otyp as a BUG, not as a no-op -- and in C
-         * it is UNREACHABLE, because all 23 scroll/spell otyps have an arm.
-         *
-         * DELIBERATELY NOT PORTED AS impossible(), and this is a STOP with a
-         * measurement rather than an oversight.  Reaching this arm here means
-         * one of the still-unported arms (SCR_TAMING/SPE_CHARM_MONSTER,
-         * SCR_GOLD_DETECTION, SCR_CHARGING, SCR_FIRE, SCR_EARTH,
-         * SCR_STINKING_CLOUD -- SCR_FOOD_DETECTION/SPE_DETECT_FOOD moved out
-         * of this list, see seffect_food_detection above) was selected.
-         * C does NOT print impossible() there -- it runs the real effect -- so
-         * emitting impossible()'s topline would put text on row 0 that C never
-         * writes, which is strictly further from C's frame than staying silent
-         * (read_scroll has already plined C's "As you read the scroll, it
-         * disappears.", which C also prints).
-         *
-         * Port the remaining arms and this comment becomes wrong -- at that
-         * point the default IS unreachable here too and impossible() is the
-         * faithful thing to write. */
         break;
     }
     return 0; /* C: magic-mapping case breaks → seffects returns 0 → doread useup */
@@ -3872,22 +3145,6 @@ const SCR_DESTROY_ARMOR = 324;
 const SCR_GENOCIDE = 331;
 const ALL_SPELLS = 0x2; /* bitmask for all spells; value doesn't matter since forget is stubbed */
 
-/* C ref: read.c:1738-1746 (seffect_light) + read.c:2491-2634 (litroom).
- * Corpus path assumes not Confused (matches read_scroll's existing
- * not-Blind/not-Confused simplification for this file).  gk.known is set
- * for a sighted hero; litroom() prints the lit-field feedback;
- * lightdamage() always returns a truthy pseudo-damage for a non-gremlin
- * hero (dmg starts at amt=5, only ever reduced when polymorphed into a
- * gremlin, never zeroed) so gk.known is also set on the !scursed path
- * regardless of blindness.  RNG: none on this path (lightdamage() only draws
- * rnd() when the hero is polymorphed into a gremlin).
- *
- * The lit-field pline used to be emitted HERE, inline, and litroom() was never
- * called — so the scroll printed its message and lit nothing.  C's litroom()
- * owns both: it prints, then do_clear_area(u.ux, u.uy, blessed ? 9 : 5,
- * set_lit) marks the squares lit and vision_recalc(2) forces the redraw that
- * reveals newly-lit corridor.  seed0002 step 96 is exactly that: C draws two
- * corridor '#' at (69,7)/(69,8) that JS left blank. */
 async function seffect_light(sobj) {
     const g = game;
     const sblessed = !!sobj.blessed;
@@ -3904,15 +3161,6 @@ async function seffect_light(sobj) {
             g._gk_known = true;
         }
     } else {
-        /* C read.c:1756-1783 — a confused scroll of light does NOT light the
-         * room; it surrounds the hero with cancelled tame lights.  This whole
-         * arm was absent, so a confused read fell through to litroom() and lit
-         * the room anyway, drawing none of the rn1()/makemon() the C run does.
-         *
-         * UNREACHED on the 44 public sessions and known to be: seffect_light
-         * runs exactly once across the corpus (tools/fn-reach.mjs, 1 call on
-         * 1/44) and that read is not confused, so this arm is held-out value
-         * only and is measured at +0 on public by construction, not by luck. */
         const pm = scursed ? PM_BLACK_LIGHT : PM_YELLOW_LIGHT;
         /* C read.c:1759 — svm.mvitals[pm].mvflags & G_GONE. */
         const mvflags = (g.mvitals && g.mvitals[pm]) ? (g.mvitals[pm].mvflags | 0) : 0;
@@ -3980,58 +3228,8 @@ function is_whirly_lit(mon_data) {
 /* free: no-op in JS */
 function free_lit(ptr) {}
 
-/* stubs for unported helpers — no-op for sweep compatibility */
 function impact_arti_light(otmp, flag, visible) { /* not yet ported */ }
 function light_hits_gremlin(mon, dmg) { /* not yet ported */ }
-/* move_bc(before, control, ballx, bally, chainx, chainy)
- * C ref: nethack-c/src/ball.c:437-558.  Pick the ball and chain up off the
- * floor before the hero's surroundings change (before=1) and put them back
- * after (before=0).  litroom is the only caller in this file, and it calls
- * with control=0 and only when !Blind (read.c:2578 and read.c:2616), so the
- * whole `if (Blind)` half (ball.c:449-506) and every `control & BC_*` arm are
- * dead for this call site.
- *
- * DELIBERATELY STILL A NO-OP — this is not an oversight:
- *  1. The two calls are a MATCHED PAIR.  Implementing only the before=1 half
- *     (remove_object + maybe_unhide_at + newsym, all of which js/mklev.js
- *     already exports) would unlink uball/uchain from the floor and never
- *     relink them: the ball and chain would leak off the level permanently.
- *     A half-port here is strictly worse than no port.
- *  2. The before=0 half needs place_object, which js/mklev.js:2836 declares
- *     file-private (NOT exported).  Importing a name that module does not
- *     export is an ESM load error, i.e. all 64 sessions fail.
- *  3. Faithful control=0 behaviour also needs bc_order() (ball.c:400-425) and
- *     a u.bc_order state slot: C picks the placement order via
- *     `(control & BC_CHAIN) || (!control && u.bc_order == BCPOS_CHAIN)`, so
- *     with control=0 the ball/chain stacking order on the tile is decided
- *     entirely by bc_order.  js/ball.js:167 dragBallMoveBc() looks like the
- *     body wanted but is specialised to drag_ball's control!=0 usage — it
- *     tests only `(control & BC_CHAIN) !== 0` and omits the bc_order
- *     bookkeeping — so it is NOT reusable here without that fix.
- * The port belongs in js/ball.js next to ball.c's other functions, promoted
- * from dragBallMoveBc and exported; see CROSSFILE-ball-move_bc.patch.
- *
- * REACHABILITY (measured, not assumed): zero.  Instrumenting litroom and
- * running all 64 sessions individually via ps_test_runner --worker-session
- * produced 0 litroom entries.  On the C side the recorder attributes callee
- * entries to their call site, and the only litroom site in any of the 64
- * traces is `>pline @ litroom(read.c:2565)` (6 calls in 3 sessions) — that
- * line is in the `on` branch, so C never takes the !on branch that reaches
- * move_bc either.  The sweep cannot grade it at all: move_bc's capture set is
- * empty (skip_reason=empty_corpus).
- * RNG ON THE GAPPED PATH: NONE.  ball.c:437-558 and bc_order (ball.c:400-425)
- * contain no rn2/rnd/rne/rnz/d call, so leaving this inert cannot shift the
- * RNG sequence or its order; only floor-object placement and map glyphs. */
-/* C ref: read.c:2470-2489 set_lit(x, y, val) — the do_clear_area() callback
- * litroom() drives.  `val` is a non-null pointer flag, not a value: non-null
- * lights the square, null darkens it.
- *   if (val) { levl[x][y].lit = 1; if a gremlin is here, push it on `gremlins` }
- *   else     { levl[x][y].lit = 0; snuff_light_source(x, y); }
- * RNG: none.
- * KNOWN GAP (darken path only): snuff_light_source() — light.c's floor-lamp
- * bookkeeping — is unported (js/mklev.js:10395 still throws on it), so a cursed
- * scroll of light leaves a dropped lit lamp burning.  It consumes no RNG, and
- * the lit=0 half (which is what the map render reads) is faithful. */
 function set_lit(x, y, val) {
     const loc = game.level?.at(x, y);
     if (!loc)
@@ -4215,18 +3413,6 @@ async function seffect_confuse_monster(sobj) {
     }
 }
 
-/* C ref: read.c:1722 seffect_genocide(struct obj **sobjp).
- *
- * KNOWN GAP: do_genocide()/do_class_genocide() -- the class-selection menu and
- * the actual monster-removal effect -- are not ported anywhere in this tree,
- * so only the unconditional prefix (read.c:1726-1730) is ported here: the
- * "you have found a scroll of genocide!" discovery message and gk.known=TRUE.
- * That prefix is what doread's tail (learnscroll -> learnscrolltyp ->
- * more_experienced) needs to award the first-discovery exp bonus, and it is
- * also everything C itself does when the class-selection prompt is
- * cancelled (0 further RNG draws).  A session where the player actually
- * completes a genocide (drawing RNG inside do_genocide/do_class_genocide)
- * still diverges past this point -- the gap is real and named, not hidden. */
 async function seffect_genocide(sobj) {
     const g = game;
     const otyp = sobj.otyp | 0;
@@ -4257,18 +3443,6 @@ async function seffect_amnesia(sobj) {
     exercise(2 /* A_WIS */, false);
 }
 
-/* ── Punishment (read.c:1976-1988 + read.c:3018-3062 + ball.c:110-143) ────────
- *
- * The scroll of punishment was the LAST unported scroll effect that a corpus
- * session actually reads, and its absence did not merely drop a message: with
- * no arm in seffects(), gk.known stayed FALSE, so doread's tail (read.c:636-643)
- * took `trycall(scroll)` instead of `learnscroll(scroll)` and opened a
- * "Call a scroll labeled KIRJE:" getlin.  A getlin swallows every keystroke up
- * to the closing Return, so from seed4500 step 492 onward EVERY recorded key was
- * being typed into a naming field instead of driving the game — 1094 consecutive
- * frames of it.  The turn counter reading one low at step 491 was a symptom of
- * this same substitution, not turn accounting.
- */
 
 /* C objects.h — the scroll block runs SCR_ENCHANT_ARMOR=323 .. SCR_STINKING_CLOUD
  * =343 (js/oc_name_data.js:341 is "punishment"). */
@@ -4282,10 +3456,6 @@ const HEAVY_IRON_BALL = 477;
 /* C obj.h:394 — WT_IRON_BALL_INCR, the per-repeat weight bump. */
 const WT_IRON_BALL_INCR = 160;
 
-/* C ref: read.c:1976-1988 seffect_punishment(struct obj **sobjp).
- * gk.known is set unconditionally (so doread learnscroll()s the type — that is
- * the rn2(19) exercise at index 12 of seed4500's step-492 slice), and a confused
- * or BLESSED read only feels guilty. */
 async function seffect_punishment(sobj) {
     const g = game;
     const sblessed = !!sobj.blessed;
@@ -4299,19 +3469,6 @@ async function seffect_punishment(sobj) {
     await punish(sobj);                       /* C read.c:1987 */
 }
 
-/* C ref: read.c:3018-3062 punish(struct obj *sobj).
- *
- * RNG (measured against seed4500 step 492, leaves 49915-49926): the two
- * mkobj() calls are the ONLY draws — each is rnd(oclass_prob_totals[oclass])
- * = rnd(1000) at mkobj.c:289, then mksobj's next_ident rnd(2) and the four
- * mkobj_erosions draws.  placebc()'s flooreffects() calls draw nothing on a
- * plain floor square.
- *
- * NOTE the message ordering, which is load-bearing for the frame at step 491:
- * You() runs FIRST, before any mkobj, so it is the pline that more()s the
- * still-unacked "As you read the scroll, it disappears." — the --More-- frame
- * C captures there is punish()'s doing, and the ball/chain do not exist yet
- * when it is drawn. */
 export async function punish(sobj) {
     const g = game;
     const u = g.u || (g.u = {});
@@ -4387,10 +3544,6 @@ function _is_whirly(d) {
     return (d.mlet | 0) === S_VORTEX_RD || (d.pmidx | 0) === PM_AIR_ELEMENTAL;
 }
 
-/* C ref: mkobj.c dropy(obj) — drop at the hero's feet with no shop/flooreffects
- * bookkeeping.  Only the amorphous-polyform arm above reaches it, which no
- * corpus session does; keep it minimal and faithful rather than absent, so the
- * arm cannot silently leak the object off the level. */
 function dropy(obj) {
     const u = game.u || {};
     if (obj) place_object(obj, u.ux, u.uy);
@@ -4491,24 +3644,13 @@ function hcolor(color) {
 
 function pline_The(fmt, ...args) { return pline("The " + fmt, ...args); }
 
-/* ---------------------------------------------------------------------------
- * seffect_identify — C ref: read.c:2055-2099.
- * The scroll-of-identify effect.  Uses up the scroll first, then (for the
- * non-confused, non-cursed-unknown case) computes cval = rn2(5) and runs
- * identify_pack(cval) which pops the per-item identify menu.
- *
- * RNG: rn2(5) (read.c:2087) for cval when sblessed || (!scursed && !rn2(5)).
- * Per identified item: discover_object(credit_hero=TRUE) → exercise(A_WIS)
- * → rn2(19) (the seed5500 step-787 leaves).
- * ---------------------------------------------------------------------------
- */
 async function seffect_identify(holder, otyp) {
     const g = game;
     const sobj = holder.obj;
     const is_scroll = (sobj.oclass | 0) === SCROLL_CLASS_OC;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = false; /* Confusion not exercised by the corpus identify path */
+    const confused = false;
     /* C read.c:2063: already_known for a spellbook is TRUE; for a scroll it is
      * objects[otyp].oc_name_known. */
     const already_known = !is_scroll || _oc_name_known(otyp);
@@ -4524,9 +3666,6 @@ async function seffect_identify(holder, otyp) {
             await pline('This is an identify scroll.');
         }
         if (!already_known) {
-            /* C read.c:2079: learnscrolltyp(SCR_IDENTIFY) — discover the scroll
-             * type (credit_hero=TRUE → its own exercise).  Not exercised here
-             * (identify is already known in seed5500), but faithful. */
             learnscrolltyp(SCR_IDENTIFY);
         }
         if (confused || (scursed && !already_known))
@@ -4537,7 +3676,7 @@ async function seffect_identify(holder, otyp) {
         /* C read.c:2085-2092 */
         let cval = 1;
         if (sblessed || (!scursed && !rn2(5))) { /* read.c:2086 */
-            cval = rn2(5); /* read.c:2087 — leaf 2270 in seed5500 */
+            cval = rn2(5);
             /* C read.c:2089: if (cval == 1 && sblessed && Luck > 0) ++cval; */
             const luck = (g.u && (g.u.uluck | 0)) || 0;
             if (cval === 1 && sblessed && luck > 0) ++cval;
@@ -4586,12 +3725,6 @@ async function identify(otmp) {
     return 1;
 }
 
-/* C ref: invent.c:2875 prinv()/xprname() — the single-line item display.  For
- * identify the prefix is empty, so the line is "<invlet> - <doname>".  doname()
- * for the now-fully-identified item prepends the BUC adjective (the item is
- * bknown after fully_identify_obj), e.g. "a blessed scroll of enchant weapon".
- * Each line --More--s on the topline (the seed5500 step-787/788
- * "n - a blessed scroll of enchant weapon.--More--"). */
 async function _prinv_identify(obj) {
     const letter = obj.invlet ? String.fromCharCode(obj.invlet | 0) : '?';
     /* C invent.c:2875 prinv() -> xprname() -> doname(): the real namer, run on
@@ -4600,9 +3733,6 @@ async function _prinv_identify(obj) {
     await pline(`${letter} - ${name}.`);
 }
 
-/* C ref: invent.c:2711 identify_pack — dialog to identify id_limit items (0=all).
- * For the corpus, id_limit (cval) is small and < unid_cnt, so it goes through the
- * menu_identify path (MENU_FULL default → ggetobj returns 0 → menu_identify). */
 export async function identify_pack(id_limit, learning_id) {
     const g = game;
     const unid_cnt = count_unidentified(g.invent);
@@ -4648,15 +3778,6 @@ async function menu_identify(id_limit) {
             break;
         }
         if (picks.length === 0) {
-            /* C invent.c:2687-2692 — the menu was shown and the player
-             * committed WITHOUT selecting anything (n == 0).  C does not give
-             * up here: it burns one of five tries and re-opens the same menu,
-             * printing "Choose an item; use ESC to decline." on every try but
-             * the last, where it prints thats_enough_tries (decl.c:42,
-             * "That's enough tries!") and stops.  This port broke out of the
-             * loop instead, so C's re-prompt and its --More-- never appeared,
-             * and C then read a keystroke this port did not — a wrong KEYSTROKE
-             * COUNT, not merely a wrong frame.  gen232 step 496. */
             if (!--tryct) {
                 await pline("That's enough tries!");
                 break;
@@ -4684,19 +3805,6 @@ async function menu_identify(id_limit) {
  * RNG is fired only later by identify() per pick. */
 async function _identify_objlist_menu(promptText) {
     const g = game;
-    /* C wintty.c:1918-1919 — the FIRST thing tty_display_nhwindow() does for an
-     * NHW_MENU is
-     *     if (ttyDisplay->toplin == TOPLINE_NEED_MORE)
-     *         tty_display_nhwindow(WIN_MESSAGE, TRUE);
-     * so a topline still standing when the menu opens is paged out with a
-     * --More-- of its own, on its own frame, before the menu is drawn.
-     *
-     * This lived in menu_identify() and ran ONCE, before the loop — enough for
-     * the "As you read the scroll, it disappears." topline that precedes the
-     * first menu (seed5500 step 768 = SPACE), but menu_identify re-opens the
-     * window after a no-selection round and its "Choose an item; use ESC to
-     * decline." pline needs exactly the same treatment.  It belongs at the
-     * window, not at the caller. */
     if (g._pending_message) {
         await topline_more_loop(g._pending_message);
         g._pending_message = '';
@@ -4741,8 +3849,6 @@ async function _identify_objlist_menu(promptText) {
     ];
     const present = new Set(eligible.map(o => o.oclass | 0));
     const classOrder = INV_ORDER.filter(oc => present.has(oc));
-    /* Any class not in def_inv_order (there is none in the corpus) would be
-     * dropped by C's loop as well, so no fallback pass is needed. */
     /* C invent.c:4789-4793 names[] (indexed by oclass), via let_to_name(). */
     const CLASS_HEADER = {
         1: 'Illegal objects', 2: 'Weapons', 3: 'Armor', 4: 'Rings',
@@ -4754,25 +3860,6 @@ async function _identify_objlist_menu(promptText) {
 
     /* Build display rows: header + items, plus selection state per item. */
     const entries = []; /* {obj, selected} */
-    /* Each entry is the FULLY rendered row (leading margin included), because the
-     * tty menu's separator row carries no margin while every menu line does.
-     * C's page-1 layout for this menu (session step 768, verbatim):
-     *   row0  " <inv>What would you like to identify first?</inv>"
-     *   row1  ""                       <- separator, no leading space
-     *   row2  " <inv>Scrolls</inv>"
-     *   row3  " n - a scroll labeled PRIRUTSENIE"    ... through row8 " t - ..."
-     *   row9  " <inv>Potions</inv>"    <- NO blank line before a class heading
-     * i.e. exactly ONE separator, between the prompt and the first heading:
-     * pickup.c:1101-1140 query_objlist emits only add_menu_heading + add_menu per
-     * class, never a spacer, so the single gap is the tty menu's prompt
-     * separator.  Emitting a spacer per class pushed Potions/Rings down a row
-     * each and shortened page 1. */
-    /* The menu's mlist entries, WITHOUT the one-column left margin.  C stores
-     * the bare string in tty_add_menu and paints the margin at draw time
-     * (wintty.c:1432-1433 `(void) putchar(' '); ++ttyDisplay->curx;`, which in
-     * process_menu_window is UNCONDITIONAL — unlike process_text_window, where
-     * it is gated on cw->offx).  Keeping the margin out of the string is what
-     * lets tty_window_offx() measure cw->maxcol the way tty_end_menu does. */
     function buildLines() {
         const lines = [];
         lines.push(`\x1b[7m${promptText}\x1b[0m`);
@@ -4806,31 +3893,6 @@ async function _identify_objlist_menu(promptText) {
      * process_menu_window only repaints on a page change — which this renderer
      * never performs, so once erased it stays erased. */
     let titleErased = false;
-    /* ── WINDOW GEOMETRY (C wintty.c:1902-1932 tty_display_nhwindow, NHW_MENU)
-     *
-     * A tty NHW_MENU is an OVERLAY in the top-right corner, not a full-screen
-     * window.  wintty.c defines H2344_BROKEN at line 13, so the live arm is
-     *     cw->offx = min(min(82, cols / 2), cols - maxcol - 1)
-     * i.e. min(40, 79 - maxcol) at 80 columns, and the window is forced
-     * full-screen (offx = 0, term_clear_screen()) only when
-     *     cw->maxrow >= ttyDisplay->rows  ||  !iflags.menu_overlay
-     * with maxrow = nitems + 1 for a single page and lmax + 1 = 24 for a
-     * multi-page menu (tty_end_menu, wintty.c:2836-2841).  At 24 rows that
-     * makes every menu of 23 or more entries full-screen and every shorter one
-     * a corner overlay over the live map and status lines.
-     *
-     * This renderer was written against seed5500 step 768 and seed0006 step
-     * 546, whose identify menus both run to two pages and are therefore
-     * full-screen — so it hard-coded the full-screen case and drew a SHORT
-     * menu at column 1 over a blanked screen.  gen232-reseed-seed1268561 step
-     * 495 is the short case: 7 entries (prompt + blank + 2 class headings + 3
-     * items), maxcol = 40 from the prompt, offx = 39, and C paints the menu at
-     * column 40 with the map and both status rows still showing.  JS blanked
-     * all of it, which cost the frame and the 20 after it.
-     *
-     * js/com_pager.js already carries the shared machinery (tty_window_offx +
-     * build_window_screen) that js/shk.js's "Pay for which items?" menu and
-     * js/pickup_container.js use for exactly this. */
     const SCREEN_ROWS = 24;
     /* C tty_end_menu: lmax = min(52, rows - 1) = 23 lines per page. */
     const PAGE_CONTENT = SCREEN_ROWS - 1;
@@ -4865,19 +3927,6 @@ async function _identify_objlist_menu(promptText) {
     while (true) {
         const { rows, footer, footerRow, pageCount } = frameRows();
         g._screen_output = rows.join('\n');
-        /* C wintty.c:1543-1545 draws the footer with
-         *     tty_curs(window, 1, page_lines);  -> curx = offx
-         *     cl_end();
-         *     dmore(cw, resp);                  -> tty_curs(BASE, curx + 2, .)
-         *                                          then xputs(morestr)
-         * so the text lands at column offx + 1 (= WIN_COL) and the cursor ends
-         * strlen(morestr) further right.  morestr is tty_end_menu's "(end) " —
-         * SIX characters, the trailing space included (wintty.c:2820) — on a
-         * single-page menu, and process_menu_window's Sprintf "(%d of %d)"
-         * with NO trailing space on a multi-page one (wintty.c:1538-1539).
-         * Verified both ways: seed5500 step 768 and seed0006 step 546 record
-         * [9,23,1] for a full-screen "(1 of 2)" (1 + 8), and gen232 step 495
-         * records [46,7,1] for an overlay "(end) " (40 + 6). */
         set_cursor(WIN_COL + footer.length + (pageCount > 1 ? 0 : 1), footerRow);
 
         const k = await nhgetch();
@@ -4885,9 +3934,6 @@ async function _identify_objlist_menu(promptText) {
         if (kc === 27 /* ESC */) { escaped = true; break; }
         /* RETURN / ENTER finishes the menu with current selections. */
         if (kc === 10 || kc === 13) break;
-        /* SPACE advances the page; on the last page it finishes (C menu next-page
-         * then accept).  For the seed5500 menu all picks are on page 1 and the
-         * player presses ENTER, so paging is not exercised; advance-or-finish. */
         if (kc === 32) {
             /* single page → finish; multi-page → would advance.  We only render
              * page 1, so treat space as finish to keep selections intact. */
@@ -4934,8 +3980,6 @@ async function _identify_objlist_menu(promptText) {
 async function seffect_magic_mapping(sobj) {
     const g = game;
     const is_scroll = true; /* sobj is a real scroll here */
-    /* C read.c:2110-2134: nommap / blessed-secret-door handling — not exercised by
-     * the corpus (no nommap level, scroll not blessed); skip to the common path. */
     if (is_scroll) {
         g._gk_known = true; /* C read.c:2134 gk.known = TRUE */
     }
@@ -4945,10 +3989,6 @@ async function seffect_magic_mapping(sobj) {
     await do_mapping();
 }
 
-/* C ref: display.c:233 magic_map_background(x,y,show) — set the remembered glyph
- * at (x,y) to the real terrain (back_to_glyph), correcting out-of-sight unlit
- * room/corridor floor to dark.  We store the terrain glyph into loc.remembered_glyph
- * (the JS analogue of lev->glyph). */
 export function magic_map_background(loc, x, y) {
     if (!loc) return;
     const tg = terrain_glyph(loc, x, y);
@@ -4956,7 +3996,6 @@ export function magic_map_background(loc, x, y) {
     /* C: if (!cansee(x,y) && !lev->waslit) — dark-room / dark-corridor correction. */
     if (!cansee(x, y) && !loc.waslit) {
         if (loc.typ === ROOM && rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR) {
-            /* S_room → DARKROOMSYM (dark floor) under dark_room+use_color. */
             rg.color = CLR_BLACK;
         } else if (loc.typ === ROOM && rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR) {
             rg.color = CLR_BLACK;
@@ -4971,18 +4010,6 @@ export function magic_map_background(loc, x, y) {
         && (rememberedClass == null || rememberedClass === GLYPHCLS_CMAP
             || rememberedClass === GLYPHCLS_TRAP || rememberedClass === GLYPHCLS_ENGR))
         loc.remembered_glyph = { ...rg, cls: GLYPHCLS_CMAP };
-    /* C display.c:257 — `update_lastseentyp(x, y);` is magic_map_background's
-     * LAST statement, and it is the ONLY writer of svl.lastseentyp[][] on the
-     * magic-mapping path (C's plain map_background, display.c:279-287, has no
-     * such call; only magic_map_background and the _map_location macro do).
-     * It was dropped here, so a level revealed by #wizmap / a scroll of magic
-     * mapping ended up fully seenv'd with an all-zero lastseentyp plane, and
-     * #overview's recalc_mapseen counted no features on it at all.
-     * MEASURED on seed4500-knight-coverage step 893: Dlvl 3's fountain, Dlvl
-     * 4's three fountains and Dlvl 24's fountain were all invisible to the
-     * overview (Dlvl 3 was dropped from the list entirely for failing
-     * interest_mapseen), while the ONE fountain on Dlvl 4 the hero had walked
-     * past in person was counted — the sighted path already had its writer. */
     update_lastseentyp(x, y);
 }
 
@@ -4998,10 +4025,6 @@ export function show_map_spot(loc, x, y, cnf) {
         loc.typ = CORR;
         /* unblock_point — vision update; the cell is now passable corridor. */
     }
-    /* C detect.c:1399 oldglyph = glyph_at(x,y) — what is CURRENTLY PAINTED here,
-     * captured BEFORE magic_map_background overwrites the cell.  The JS analogue
-     * of gbuf[y][x] is the disp_* cell (what the last paint put on the screen);
-     * disp_cls carries the glyph FAMILY that C encodes in the glyph number. */
     const oldCls = loc.disp_cls;
     const oldGlyph = { ch: loc.disp_ch, color: loc.disp_color, decgfx: !!loc.disp_decgfx,
                        cls: oldCls };
@@ -5030,14 +4053,6 @@ export function show_map_spot(loc, x, y, cnf) {
                                          decgfx: oldGlyph.decgfx, cls: oldCls };
         }
     }
-    /* C detect.c:1417-1419 — `if (!cnf && lev->roomno >= ROOMOFFSET)
-     *     room_discovered(lev->roomno - ROOMOFFSET);`
-     * "possibly update #overview".  The old note here called the overview "not a
-     * rendered channel", which stopped being true when show_overview() was
-     * ported: this is how a shop or temple on a MAGIC-MAPPED level gets into
-     * mapseen.msrooms[] without the hero ever walking into it.  MEASURED on
-     * seed4500 step 893 — C annotates the #wizmap'd Dlvl 3 "A general store, a
-     * fountain." and this port printed "A fountain." */
     if (!cnf && (loc.roomno | 0) >= ROOMOFFSET)
         room_discovered((loc.roomno | 0) - ROOMOFFSET);
 }
@@ -5047,31 +4062,13 @@ export function show_map_spot(loc, x, y, cnf) {
  * re-renders the map from the freshly-set remembered glyphs. */
 export async function do_mapping() {
     const g = game;
-    const cnf = 0; /* Confusion — not set in seed2200 read path */
+    const cnf = 0;
     for (let zx = 1; zx < COLNO; zx++) {
         for (let zy = 0; zy < ROWNO; zy++) {
             const loc = g.level?.at(zx, zy);
             if (loc) show_map_spot(loc, zx, zy, cnf);
         }
     }
-    /* C detect.c:1432-1442 — the tail is a TWO-ARM branch on
-     *     if (!svl.level.flags.hero_memory || unconstrained) { flush_screen;
-     *         browse_map(...); map_redisplay(); }  else { reconstrain_map(); }
-     * `unconstrained` is unconstrain_map()'s return, TRUE only for a hero who is
-     * underwater / buried / engulfed (detect.c:1355), and hero_memory is on, so
-     * every corpus reach takes the ELSE arm — which redraws NOTHING.  The screen
-     * after do_mapping is exactly what show_map_spot's own show_glyph calls left.
-     *
-     * This port ended with an unconditional docrt(), which is C's OTHER arm and
-     * is not RNG-neutral in what it paints: docrt_flags ends in see_monsters(),
-     * so every monster is overlaid AFTER the trap/object pass — undoing the
-     * "during mapping, furniture > traps > objects, opposite to how normal
-     * vision behaves" priority the whole function exists to produce.  Measured
-     * on seed4500 step 1241 (#wizmap on Dlvl 25): C paints the `"` of the web at
-     * (26,16) over the giant spider mktrap() put on it (mklev.c:2104), this port
-     * repainted the `s`, and that single cell was 15 consecutive frames.
-     * reconstrain_map() restores u.uinwater/uburied/uswallow, all of which this
-     * port never cleared here, so the else arm is a no-op. */
     /* C detect.c:1443: exercise(A_WIS, TRUE) → rn2(19) */
     exercise(2 /* A_WIS */, true);
 }
@@ -5100,14 +4097,6 @@ function learnscrolltyp(scrolltyp) {
         /* Mark the object type as known. discover_object consumes RNG via
          * exercise(A_WIS, TRUE) when credit_hero=TRUE. */
         discover_object(scrolltyp, true, true, true);
-        /* C read.c:61 more_experienced(0, 10).  The note that stood here — "not
-         * yet exported from uhitm.js" — was FALSE: js/exper.js has the body and
-         * js/uhitm.js re-exports it (js/zap.js, js/cmd.js and js/potion.js all
-         * import it from there).  RNG-free; it moves u.urexp only, which nothing
-         * paints until the tombstone.  MEASURED, seed5006 segment 0 step 187:
-         * the confused read of a scroll of teleportation is the session's only
-         * type discovery, and C's stone says "with 144 points" where this port
-         * said 134 — exactly the missing 10. */
         more_experienced(0, 10);
         return true;
     }

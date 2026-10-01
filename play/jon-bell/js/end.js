@@ -3,13 +3,11 @@
 //
 // Hero death and the wizard/explore-mode "Die? [yn]" savelife path.
 //
-// In playmode:debug (wizard mode) the recorded seed4200 hero's HP drops below 1
 // twice.  C runs, per lethal hit:
 //
 //     losehp()/mdamageu() -> done_in_by(mtmp, DIED) -> done(how)
 //        done_in_by (end.c:195) prints "You die..." with ordinary You()
 //        done() (end.c:1109-1121, the `(wizard || discover)` branch) calls
-//        paranoid_query(ParanoidDie, "Die?").  ParanoidDie is UNSET in the contest
 //        rc, so it resolves to yn_function("Die?", "yn", 'n', FALSE) (cmd.c
 //        paranoid_ynq else-branch) — the [yn] prompt shown as `Die? [yn] (n)`.
 //        yn_function LOOPS nhgetch, silently EATING every keystroke that is not a
@@ -18,7 +16,6 @@
 //        gm.multi = -1, svc.context.move = 0, nomovemsg "You survived that attempt
 //        on your life.".  The prompt itself draws no RNG; savelife can draw when
 //        it expels a swallowed hero (unstuck plus mnexto).  The separate
-//        debug_fuzzer_savelife() path is gated on iflags.debug_fuzzer.
 //
 // ── Deferral (why the prompt runs at the command-read boundary, not in place) ──
 // The C damage sites reach done() synchronously and open the blocking read right
@@ -28,7 +25,6 @@
 // the (RNG-free) blocking interaction is driven by do_death_sequence() at the next
 // command-read boundary (cmd.js rhack).  This preserves both the RNG order (the
 // prompt draws nothing) and the message order (the fatal hit is the last message-
-// producing action of the turn in the recorded sessions), and lets the death
 // keystrokes be consumed by the prompt instead of leaking to rhack.
 import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
@@ -42,7 +38,6 @@ import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN
 import { nhgetch } from './input.js';
 import { paranoid_query } from './paranoid.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
-// only ever set by tools/input-desync-triage.mjs). See js/route_telemetry.js.
 import { routeTag } from './route_telemetry.js';
 import { acurr, minuhpmax, setuhpmax } from './attrib.js';
 import { rn2, d } from './rng.js';
@@ -122,12 +117,10 @@ import { Blind } from './vision.js';
 // #wizintrinsic arms for those properties (wizcmds.c:1043-1060) cannot be
 // C-faithful without them.  The whole trio is RNG-FREE.
 //
-// The list is state-only: nothing in the corpus survives long enough for a
 // delayed killer to fire, so its observable effect today is zero.  It is
 // ported anyway rather than stubbed because make_sick()'s `!kptr` test
 // (potion.c:184) BRANCHES on find_delayed_killer()'s result, and a stub that
 // always returned null would take a different arm than C on the second
-// make_sick() of a session.
 function _killer_head() {
     const g = game;
     if (!g.svk)
@@ -190,36 +183,6 @@ export function dealloc_killer(kptr) {
 // C ref: the `u.uhp < 1 -> done_in_by(mtmp, DIED)` / `losehp -> done(DIED)` test
 // at the damage sites.  Flag the pending death exactly once (C forces uhp to 0 in
 // done(); the interactive prompt then decides survive/really-die).  RNG-FREE.
-/* C ref: bones.c:365-393 can_make_bones(void) — whether this death leaves a
- * bones file.  Only reached from really_done, and the ONLY thing about it that
- * is observable in a replay is its single rn2:
- *     if (depth(&u.uz) <= 0
- *         || (!rn2(1 + (depth(&u.uz) >> 2)) && !wizard))
- *         return FALSE;
- * The guards ahead of it are all FALSE-returning early exits that draw nothing:
- * !flags.bones (on by default), a bad ledger number, no_bones_level, u.uswallow,
- * and a MAGIC_PORTAL on a non-branch level.  None of them holds for a corpus
- * death, and each one that DID hold would suppress the draw — so they are tested
- * here rather than assumed, except the Is_special/boneid arm of no_bones_level,
- * which needs the s_level table this file has no access to.  (The Is_branchlev
- * arm was in that same sentence and is now PORTED below, because the claim that
- * it is "FALSE for every level any corpus session dies on" was measurably
- * wrong — see its own note.)
- *
- * The Is_botlevel arm of no_bones_level IS tested, and it is not academic: the
- * comment this replaces asserted the whole of no_bones_level was FALSE "for every
- * level any corpus session dies on (Dlvl 1-3 of the Dungeons of Doom)".
- * seed0009 dies in the TUTORIAL, a one-level dungeon, so its only level is the
- * bottom level and C returns FALSE with NO draw at all — while this function
- * would have rolled rn2(1).  The draw landed past the end of C's recorded log,
- * where `matched` cannot see it, which is exactly how an assumption like that
- * survives.  seed0103 dies on Dlvl 1 of the Dungeons of Doom (30+ levels), so
- * its recorded `rn2(1)=0 @ can_make_bones(bones.c:377)` is unaffected.
- * The last line of this header used to read "Return value unused by this port:
- * the bones-file write is not ported."  savebones() has been ported since, and
- * really_done() reads this function's result as `bones_ok` to gate both the
- * wizard-mode "Save bones?" query and finish_paybill(); seed5006 and seed0030
- * both write real bones files from it. */
 function can_make_bones() {
     const g = game;
     const u = g.u || {};
@@ -232,36 +195,10 @@ function can_make_bones() {
     const dgn = g.dungeons?.[u.uz?.dnum | 0];
     if (dgn && (u.uz?.dlevel | 0) === (dgn.num_dunlevs | 0))
         return false;
-    /* C bones.c:30-31 no_bones_level -> `(Is_branchlev(lev) && lev->dlevel > 1)`
-     * — "no bones on the last or multiway branch levels in any dungeon (level 1
-     * isn't multiway)".
-     *
-     * The header above used to name this arm as one of two "which need dungeon
-     * topology predicates this file has no access to and which are FALSE for
-     * every level any corpus session dies on".  Both halves were wrong:
-     * js/dungeon.js owns the topology (it already has builds_up and
-     * dungeon_branch over the same svb.branches table, so Is_branchlev is four
-     * lines there), and seed0030 falsifies the claim TWICE — segments 4 and 7
-     * both die on a Dlvl 2 that carries the Gnomish Mines entrance, so C
-     * returns FALSE here with NO draw while this port rolled
-     * rn2(1) @ can_make_bones(bones.c:377).  Those are the session's only two
-     * surplus RNG leaves (JS 105531 vs C 105529) and its first RNG divergence.
-     * Segment 3 dies on a Dlvl 2 whose game put the Mines entrance elsewhere,
-     * which is why the same depth behaves differently three segments apart. */
     if (Is_branchlev(u.uz) && (u.uz?.dlevel | 0) > 1)
         return false;
     if (u.uswallow)
         return false;
-    /* C bones.c:376-379 uses depth(&u.uz) — the ABSOLUTE cross-branch depth
-     * (dungeon.c:1387, dungeons[dnum].depth_start + dlevel - 1), NOT u.uz.dlevel.
-     * Reading dlevel made every death in a BRANCH roll the wrong modulus, and in
-     * the Gnomish Mines it is not a small difference: seed0030 segment 6's
-     * Priestess dies on Mines level 1, which is DEPTH 4, so C rolls rn2(2) while
-     * this port rolled rn2(1) — and rn2(1) is always 0, so `!rn2(...)` was
-     * ALWAYS true and can_make_bones ALWAYS returned false there.  That is why
-     * savebones() had never once run on the corpus despite being ported.
-     * (`depth` is imported from js/hacklib.js at the top of this file; the local
-     * const that used to shadow it is what hid the substitution.) */
     const udepth = depth(u.uz);
     if (udepth <= 0)
         return false;
@@ -272,34 +209,6 @@ function can_make_bones() {
     return true;
 }
 
-/* opts.alreadySaidYouDie — the killing site has ALREADY plined C's own death
- * line (zap.c:2899 urgent_pline("You die.") on the wand-of-death self-zap), so
- * do_death_sequence must not add done_in_by's "You die..." on top of it.  C's
- * two paths really are different messages from different functions; the flag
- * records which one already ran.
- *
- * opts.noDeathLine — C prints NO death line at all on this path.  A DIFFERENT
- * fact from the one above, kept as its own flag because it is its own claim
- * about the C source, and both must suppress the same manufactured pline.
- *
- * WHY IT HAS TO EXIST.  "You die..." is emitted by the KILL SITE in C, never by
- * done(): done_in_by (end.c:195, reached from mhitu.c:1925 / uhitm.c:5952),
- * losehp (hack.c:4287) and eat.c:285 each pline it and THEN call done().  This
- * port centralises it into do_death_sequence instead, which produces the right
- * screen for those three callers and a MANUFACTURED page for any caller that
- * reaches done() by another route.  mcastu.c:337-340 touch_of_death is exactly
- * such a route: `svk.killer.format = KILLED_BY; Strcpy(...); done(DIED);` with
- * no death line anywhere, and done() itself (end.c:1020-1128) prints none
- * before paranoid_query(ParanoidDie,"Die?").
- *
- * MEASURED on /tmp/capscr9/board touch_of_death: all 7 records are wizard-mode
- * (flags.debug=1) deaths whose "Die?" is declined, and 3 of them (rec#0/1/4)
- * carry EXACTLY the two keys C read -- one page ack plus the query answer --
- * while this port demanded three and starved on the missing one.
- *
- * The other done()-direct callers (done(ESCAPED), done(QUIT), done(GENOCIDED),
- * done(PANICKED) ...) have the same defect and are NOT fixed here; each needs
- * its own C reading. */
 export function deadhero(how, opts) {
     const g = game;
     if (!g._pendingDeath)
@@ -309,32 +218,9 @@ export function deadhero(how, opts) {
                             urgentDeathLine: !!(opts && opts.urgentDeathLine),
                             noDeathLine: !!(opts && opts.noDeathLine),
                             remainderIsFresh: !!(opts && opts.remainderIsFresh),
-                            /* C reaches really_done() INSIDE the killing turn,
-                             * so `svm.moves` on the endwin's "after %ld moves."
-                             * line (end.c:1544) is the turn counter AS OF THE
-                             * FATAL BLOW.  This port defers the whole death
-                             * interaction to the next command-read boundary
-                             * (see the module header), by which point the
-                             * moveloop has advanced g.moves once more — the
-                             * stone read "after 45 moves" where C says 44
-                             * (seed0030 segment 0 step 75).  Snapshot it here,
-                             * where C would have read it. */
                             moves: g.moves | 0 };
 }
 
-/* Will the _pendingDeath that was just flagged actually END the game?
- *
- * C does not need this question asked: done() (end.c:1068-1117) either RETURNS
- * -- lifesaved, or wizard/explore mode where the player answers 'n' to "Die?"
- * -- or never returns at all, and its caller's remaining code runs or does not
- * run accordingly, for free.  This port defers the whole blocking interaction
- * to a later boundary, so a caller that needs C's "the rest of me never ran"
- * behaviour has to predict the answer.
- *
- * `how > GENOCIDED` skips both escapes outright (end.c's own gate).  Otherwise
- * a life-saving amulet or wizard/explore mode means the hero may well walk away
- * -- in wizard mode the "Die?" default is 'n' -- so the honest answer is "not
- * necessarily", and the caller should behave as if done() returned. */
 export function pending_death_is_final() {
     const g = game;
     const how = g._pendingDeath ? (g._pendingDeath.how | 0) : -1;
@@ -356,40 +242,6 @@ export function pending_death_is_final() {
     return !(wizard() || discover());
 }
 
-/* ══ C end.c:185-300 done_in_by(mtmp, how) ═══════════════════════════════════
- * Record WHO killed the hero, then die.  The killer name is what outrip() puts
- * on the tombstone ("killed by a gnome") and what topten() prints in the score
- * line, both through formatkiller(), which reads svk.killer.
- *
- * Until this existed, every monster kill left svk.killer.name EMPTY and the
- * tombstone read "killed by an []" (seed0030 segment 0 step 75) — the mdamageu
- * site called deadhero() with the damage but never with the monster.
- *
- * C's `You("die...")` (end.c:195) is NOT emitted here: this port defers the
- * whole blocking death interaction to do_death_sequence() at the next
- * command-read boundary (see the module header), and that is where the
- * force_more('You die...') lives.  Everything else here is RNG-FREE.
- *
- * PORTED HERE (each is a name prefix / branch plus, in three cases, a
- * killer.format override): the G_UNIQ "the <unique>" arm (end.c:201-206), the
- * named-ghost "the ghost of <name>" arm (:212-216 and :260-264), the
- * shopkeeper "Ms. <name>, the shopkeeper" arm (:264-270), the priest/minion
- * m_monnam arm (:271-273) and the has_mgivenname " called <name>" tail
- * (:276-282).  The claim that all six were absent was true when it was
- * written and is now true of ONE: the cham/mimic "imitating"/"disguised as"
- * arm (:223-255) is still not ported — it needs M_AP_TYPE and the vampshifter
- * chain, and no corpus hero is killed by a shapeshifter in a borrowed shape.
- *
- * MEASURED, seed0030: the Wizard of segment 3 and the Knight of segment 7 are
- * each killed by a named shopkeeper.  C's stone reads
- * "killed by Ms. Maganasipi; the shopkeeper" (formatkiller turns the comma
- * into a semicolon) and the segment-8 topten list reads
- * "Killed by Ms. Maganasipi, the shopkeeper."; this port said "a shopkeeper"
- * in both places, on five separate frames across four segments.
- *
- * monhealthdescr() (end.c:217) is a genuine no-op: v5's pager.c:139 still
- * wraps its whole body in `#if 0`.
- */
 export function done_in_by(mtmp, how) {
     const g = game;
     if (!g.svk) g.svk = {};
@@ -399,8 +251,6 @@ export function done_in_by(mtmp, how) {
      * mummy. Keep this state on the same done_in_by path that records the
      * killer; really_done() emits the corresponding blocking message. */
     if (mptr && (mptr.mlet | 0) === 39) {
-        /* Race records in this port do not publish C's mummynum field;
-         * human is the only supported race in this corpus. */
         const mnum = Number.isInteger(g.urace?.mummynum)
             ? (g.urace.mummynum | 0) : PM_HUMAN_MUMMY;
         g.u.ugrave_arise = mnum;
@@ -441,9 +291,6 @@ export function done_in_by(mtmp, how) {
     /* C end.c:218-219 */
     if (mtmp?.minvis)
         buf += 'invisible ';
-    /* C end.c:220-221 — Hallucination && canspotmon(mtmp).  GAP: no corpus
-     * hero dies hallucinating, and the hallucinated form would also have to be
-     * drawn from the display RNG stream. */
     if (imitator) {
         /* C end.c:223-255 — describe the real monster in its current form. */
         const realidx = cham >= 0 ? cham : (mptr?.pmidx | 0);
@@ -533,7 +380,6 @@ export async function savelife(how, inPlace) {
     // C end.c:713-714 — life-drain to xp 0 bulletproofing.
     if ((u.ulevel | 0) < 1)
         u.ulevel = 1;
-    // C end.c:715-717 — floor uhpmax at minuhpmax(10).
     const uhpmin = minuhpmax(10);
     if ((u.uhpmax | 0) < uhpmin)
         setuhpmax(uhpmin, true);
@@ -541,17 +387,6 @@ export async function savelife(how, inPlace) {
     u.uhp = Math.min(u.uhpmax | 0, givehp);
     if (Upolyd(u))
         u.mh = Math.min(u.mhmax | 0, givehp);
-    /* C end.c:721-723:
-     *     if (u.uhunger < 500 || how == CHOKING)
-     *         init_uhunger();
-     * This was skipped on the claim that "the corpus hero is neither (uhunger
-     * >= 500)".  MEASURED FALSE on seed4500: the hero declines death at step
-     * 1056 with u.uhunger already down at ~183, so C resets it to 900 and never
-     * shows a hunger status for the rest of the session, while this port carried
-     * the starved value forward, crossed the 150 HUNGRY threshold at turn 188,
-     * and painted "Hungry" into the status row of every subsequent frame.
-     * RNG-free; init_uhunger() also clears a negative ATEMP(A_STR) and sets
-     * disp.botl, both of which C does here. */
     if ((u.uhunger | 0) < 500 || (how | 0) === CHOKING_END)
         init_uhunger();
     /* C end.c:724-728 — only an immediately fatal sickness timeout is cured.
@@ -575,7 +410,6 @@ export async function savelife(how, inPlace) {
     // When the death interaction runs IN PLACE (inside movemon, C position), the
     // in-turn countdown IS replayable: this turn HEAD block still runs after
     // movemon, so gm.multi = -1 ticks back to 0 there and unmul() plines the
-    // nomovemsg exactly where C does (seed5002 segment 1 step 148, "You survived
     // that attempt on your life." on its own topline, after the
     // "OK, so you don't die.  The kitten bites the giant bat.--More--" page).
     g.multi = inPlace ? -1 : 0;
@@ -626,18 +460,6 @@ export async function savelife(how, inPlace) {
 function _done_force_hp_zero() {
     const g = game;
     if (!g.u) return;
-    /* C botl.c:279 — done()'s own `disp.botlx = TRUE; bot();` (end.c:1041-1046)
-     * runs BEFORE this block and REFUSES TO PAINT while u.uhp is exactly -1, so
-     * the PHYSICAL status line keeps its previous values.  Setting u.uhp = 0
-     * here only sets disp.botl; the line does not change until the next thing
-     * that actually calls bot(), and on a non-shop death nothing does before
-     * the "You die..." page.  js/display.js re-derives the status from live `u`
-     * at render time and keys its frozen-value fallback off `u.uhp === -1`, so
-     * zeroing the sentinel here unfroze it: seed0030 segment 4 step 192 reads
-     * HP:1(11) in C (the pre-death paint) and read HP:0(11) here.  Latch the
-     * suppression instead — js/display.js clears _botlFrozenDeath in bot(),
-     * which is exactly where C's next real paint would happen (and does, on a
-     * SHOP death, because paybill's pline runs flush_screen first). */
     if ((g.u.uhp | 0) === -1)
         g._botlFrozenDeath = true;
     if ((g.u.uhp | 0) !== 0 || (g.u.mh | 0) !== 0) {
@@ -679,21 +501,6 @@ export async function do_death_sequence(opts) {
         return false;
     g._pendingDeath = null;
     g._deathMoves = (pd.moves != null) ? (pd.moves | 0) : null;
-    /* C end.c:1068-1070 — the FIRST thing done() does after settling killer.name:
-     *     if (how < PANICKED) {
-     *         u.umortality++;
-     *         ...force HP to zero...
-     *     }
-     * It sits ABOVE both the Lifesaved arm and the wizard/discover "Die?" query,
-     * so a death the player then DECLINES still counts.  done() (:824 in this
-     * file) has the block; do_death_sequence -- the path every wizard-mode death
-     * actually takes -- had only the HP half, spelled _done_force_hp_zero().
-     * The counter is read by insight.c's mortality line ("You have been killed
-     * <N times>.", js/cmd.js _attributes_enlightenment) and by topten.
-     * MEASURED on seed4500-knight-coverage: the hero declines "Die?" three times
-     * (steps 1007, 1056, 1787) and C's ^X at step 1809 reads "You have been
-     * killed thrice." where this port, with u.umortality still 0, emitted no
-     * line at all -- the whole page shifted up by one. */
     if (g.u && (pd.how | 0) < PANICKED)
         g.u.umortality = (g.u.umortality | 0) + 1;
     // The width-driven pages of this turn's combat/zap messages have already been
@@ -717,15 +524,6 @@ export async function do_death_sequence(opts) {
         remainder = String(g._pending_message || '');
         _prejoinedButWait = true;
     }
-    /* ...UNLESS the page that led here was dismissed with ESC.  topl.c:232 set
-     * WIN_STOP on that dismiss, and with WIN_STOP set update_topl raises no
-     * more() at all (:272 `else if (!skip)`); the "You die" that follows is
-     * topl.c:298's one escape from the suppression and it is DRAWN, not paged
-     * (redotoplin:139 more()s only when cury != 0, and it is 0 here).
-     * MEASURED on seed4500-knight-coverage step 1786: the player ESCs "You hit
-     * it.  The silver dragon bites!  The silver dragon hits!--More--" and C's
-     * very next frame is the "Die? [yn] (n)" prompt -- no combat page, no
-     * "You die...--More--" page in between. */
     let _winStopHere = !!(g._topl_win_stop || g._topl_win_stop_armed);
     let _suppressDeathPage = false;
     if (remainder && !_winStopHere && !pd.remainderIsFresh) {
@@ -749,42 +547,11 @@ export async function do_death_sequence(opts) {
         _winStopHere = false;
         _suppressDeathPage = false;
     }
-    /* C end.c:1041-1046 — done() forces a FULL status update here:
-     *     disp.botlx = TRUE;
-     *     bot();
-     * and bot() (botl.c:279) declines to paint at all while u.uhp is exactly -1,
-     * so on a death that landed the hero on -1 hit points the physical status
-     * line keeps the values of the last paint that DID happen -- for the "You
-     * die..." page, the wizard-mode "Die?" prompt, and everything after.
-     *
-     * THE ORDER MATTERS AND WAS INVERTED HERE.  C's `u.uhp = 0` (end.c:1071-1075,
-     * "in case caller hasn't already done this") runs AFTER that bot(); this port
-     * ran it FIRST, which destroyed the -1 sentinel before anything rendered and
-     * repainted HP:0 over C's frozen value.  Measured on seed5002 segment 1: a
-     * giant bat bites a 1-HP hero for d(1,6)=2 and C reads HP:1(12) on all twelve
-     * frames from "You die...--More--" onward. */
     if (!pd.prejoinButWait) {
         if (g.disp) g.disp.botlx = 1;
         await bot();
         done_death_context(pd.how);
     }
-    /* ── C end.c:1082-1102 — the Lifesaved arm ─────────────────────────────
-     * C tests this BEFORE the wizard/discover "Die?" query and sets `survive`,
-     * which then suppresses that query entirely (end.c:1104 `if (!survive &&
-     * (wizard || discover) ...)`).  This port had NO port of the arm at all, so
-     * a life-saved hero in a debug-mode session got the "Die?" prompt C never
-     * raises.  MEASURED on seed0399-wizard-hallu-actions step 448: C reads
-     *     "You die...  But wait...  Your medallion begins to glow!--More--"
-     * and this port read "Die? [yn] (n)".
-     *
-     * The one RNG site in the whole arm is makeknown(AMULET_OF_LIFE_SAVING) —
-     * hack.h:1530 `#define makeknown(x) discover_object((x), TRUE, TRUE, TRUE)`,
-     * whose credit_hero argument reaches o_init.c:483 exercise(A_WIS, TRUE) and
-     * draws rn2(19).  That draw is C leaf 10729, this session's first RNG
-     * divergence: the scored run was still inside distfleeck() there.
-     * (adjattrib(A_CON, -1, TRUE) can draw rn2 only when ABASE would fall below
-     * ATTRMIN; it does not here, and C's log confirms it — the leaf after the
-     * rn2(19) is distfleeck's rn2(5).) */
     /* C youprop.h:387 `#define Lifesaved u.uprops[LIFESAVED].extrinsic` reads
      * ONLY the extrinsic half (set when an amulet of life saving is worn).
      * `.intrinsic` is a plain long that carries no gameplay meaning for this
@@ -832,17 +599,6 @@ export async function do_death_sequence(opts) {
             await flush_screen(1);
         if ((pd.how | 0) === CHOKING_END)
             await pline('You vomit ...');
-        /* C win/tty/topl.c:257-274 — update_topl joins an incoming message onto
-         * the committed topline only while it fits the CO-1-8 reserve, else it
-         * more()s FIRST.  This port normally accumulates a turn's plines and
-         * lets flush_screen split them, which produces the same PAGES — but not
-         * the same suppression: topl.c:232 sets WIN_STOP when a page is
-         * dismissed with ESC, and every message after it is swallowed until the
-         * next tty_nhgetch.  seed0399 dismisses this very page with the ESC at
-         * step 451, so C shows "You feel much better!" (the message that owned
-         * the more()) and swallows "The medallion crumbles to dust!" entirely.
-         * Raising the page HERE, at C's own join test, is what lets pline() see
-         * the ESC.  _topl_joins_committed is the exported form of that test. */
         const _muchbetter = 'You feel much better!';
         if (!_topl_joins_committed(g._pending_message || '', _muchbetter))
             await force_more(g._pending_message || '');
@@ -864,7 +620,6 @@ export async function do_death_sequence(opts) {
         g._resultMessage = g._resultMessage || null;
         return true;
     }
-    // C end.c:1105-1113 — the "Die?" prompt below is gated on `wizard || discover`.
     // An ordinary hero never sees it: done() falls straight through to
     // really_done(how).  This branch had no port at all, so an ordinary death
     // raised the wizard prompt (or, before the losehp arm existed, nothing).
@@ -876,20 +631,14 @@ export async function do_death_sequence(opts) {
         // force_more above has already done — and then OPENS A FRESH TOPLINE.
         // The page over "You die..." ITSELF comes later, from really_done's
         // `display_nhwindow(WIN_MESSAGE, FALSE)` at end.c:1244, and that is
-        // AFTER paybill(): a shop death's "<Shk> takes all your possessions."
         // JOINS this line and the two are paged together
-        // ("You die...  Maganasipi takes all your possessions.--More--",
-        // seed0030 segment 3 step 286).  Paging here instead put the
         // shopkeeper's line on a frame of its own and shifted the tombstone.
         if (!pd.alreadySaidYouDie && !pd.noDeathLine)
             await pline('You die...');
         _done_force_hp_zero();
         // C end.c:1128 done() -> really_done(how).  This used to stop here and
         // hand-render ONE frame — a hardcoded
-        //     'Do you want your possessions identified? [ynq] (n)'
         // — under a comment asserting that "flags.end_disclose defaults to
-        // 'none' for every corpus session".  That is measurably false:
-        // seed0030's rc says `disclose:-i -a -v -g -c -o`, i.e. all six
         // categories are DISCLOSE_NO_WITHOUT_PROMPT, so C raises NO prompt and
         // eats NO key — it goes straight to the tombstone (segment 0 step 75).
         // The hardcoded frame also bypassed can_make_bones(), the disclosure
@@ -897,7 +646,6 @@ export async function do_death_sequence(opts) {
         // really_done(); routing through it is what puts them on a death.
         //
         // really_done() ends at C's nh_terminate, which this port spells as a
-        // throw after the last frame is captured; jsmain parks it in
         // replayError exactly as it already does for the QUIT path.
         await really_done(pd.how);
         g._resultMessage = null;
@@ -909,18 +657,6 @@ export async function do_death_sequence(opts) {
     // and the "You die." it plined was already paged by the force_more above.
     if (!pd.alreadySaidYouDie && !pd.noDeathLine) {
         if (_winStopHere) {
-            /* WIN_STOP is live: topl.c:298's `if (!notdied) flags &= ~WIN_STOP,
-             * skip = FALSE` lets "You die..." through, and :300's
-             * redotoplin(toplines) DRAWS it with no more().  It never joins
-             * (:264's strncmp("You die") guard), so it replaces the topline.
-             *
-             * ...but ONLY WHEN IT WOULD HAVE FIT.  `notdied` is assigned inside
-             * the short-circuited condition at topl.c:262-265, so a "You die"
-             * that overflows gt.toplines never reaches the strncmp, leaves
-             * notdied == 1, does NOT clear WIN_STOP and is NOT drawn — see the
-             * long note in js/display.js pline() for the two measured cases.
-             * The length is measured against the SUPPRESSED buffer
-             * (_topl_win_stop_buf), not against what is painted. */
             const _wsBuf = (g._topl_win_stop_buf != null)
                 ? String(g._topl_win_stop_buf) : String(g._pending_message || '');
             if (_wsBuf.length + 2 + 'You die...'.length < TOPL_LIMIT_END) {
@@ -938,26 +674,6 @@ export async function do_death_sequence(opts) {
         }
     }
     _done_force_hp_zero();
-    /* C ref: win/tty/topl.c:389-393 — tty_yn_function's own preamble:
-     *     if (ttyDisplay->toplin == TOPLINE_NEED_MORE
-     *         && (cw->flags & (WIN_STOP | WIN_NOSTOP)) != WIN_STOP)
-     *         more();
-     *     cw->flags &= ~(WIN_STOP | WIN_NOSTOP);
-     * so the prompt PAGES whatever un-acknowledged message is standing on the
-     * topline, and only then clears the suppression bit.
-     *
-     * The !_winStopHere arm above force_more()s "You die..." itself, which is
-     * this same page pulled forward, and leaves nothing pending — so this is a
-     * no-op there.  It matters on the two arms that do NOT page: the WIN_STOP
-     * arm above, and `alreadySaidYouDie`, where done_in_by() already plined
-     * "You die..." through js/display.js.
-     *
-     * MEASURED on seed0399-wizard-hallu-actions: the ant's second kill arrives
-     * with WIN_STOP live, so "You die..." replaces the topline silently
-     * (topl.c:298-300) and C's NEXT two frames are "You die...--More--" — the
-     * page raised right here — before "Die? [yn] (n)" appears at step 523.
-     * Without it the port raised the prompt one page early and ran the rest of
-     * the session a keystroke out of step. */
     if (!g._topl_win_stop && !_suppressDeathPage
         && g._pending_message && g._pending_message.length > 0)
         await force_more(g._pending_message);
@@ -998,7 +714,6 @@ export async function do_death_sequence(opts) {
             // C end.c:1117-1119 — pline("OK, so you don't die."); savelife(how).
             await savelife(pd.how);
             // "OK, so you don't die." (done) and the nomovemsg (savelife) both land on
-            // one topline read at the next nhgetch capture (C: the nomovemsg is emitted
             // when the multi<0 countdown completes; here both are the command-result
             // line the next rhack(0) restores).
             g._resultMessage = "OK, so you don't die.  "
@@ -1014,9 +729,7 @@ export async function do_death_sequence(opts) {
         }
     } else {
         // C end.c:1128 really_done(how) — the hero actually dies.  The comment
-        // that stood here ("No recorded session answers 'y' to Die?, so the
         // real-death teardown is not exercised") was measurably FALSE:
-        // seed5006 segment 0 step 186 answers 'y' and C goes straight into
         // really_done(), where it raises "Save bones? [yn] (n)" and then pages
         // the tombstone.  Leaving the game state as-is stopped the replay dead
         // there: this port emitted a LIVE game frame (HP:1(10), then 2, 3, 4 as
@@ -1028,32 +741,6 @@ export async function do_death_sequence(opts) {
     return true;
 }
 
-/* ═══ #quit — cmd.c extcmdlist "quit" → end.c:1550 done2() ═══
- *
- * The doextcmd dispatch chain had no 'quit' arm, so seed0398's "#quit\nyi<ESC>"
- * typed the name, dispatched to nothing, and then C's two confirmation prompts
- * ate keystrokes JS ran as commands.  C's frames are
- *     step 83  "Really quit without saving? [yn] (n)"   cursor col 37
- *     step 84  "Dump core? [ynq] (q)"                   cursor col 21
- *     step 85  same frame again — 'i' is not in "ynq", yn_function eats it
- *
- * Scope: the two prompts and their key handling.  Answering 'n'/ESC to the
- * first is C's "don't quit" arm and is ported; answering 'y' and then reaching
- * really_done(QUIT) -- the disclosure / vanquished / tombstone / topten
- * teardown -- is NOT ported, so the replay stops consuming keys there exactly as
- * do_death_sequence's 'y' arm already does.  seed0398's LAST recorded frame
- * (step 86, "Since you were in wizard mode, the score list will not be
- * checked.") is that unported teardown; it is one step point and it is
- * deliberately left on the table rather than faked.
- *
- * WITHDRAWN 2026-09-01.  This comment used to read "In_tutorial is false for
- * every corpus session, so done2's tutorial y_n -- which would consume a
- * keystroke -- is skipped, not merely unimplemented."  It was MEASURED FALSE:
- * gen434 / gen516 (step 83) and gen446 (step 1711) all record C asking
- * "Switch from the tutorial back to regular play? [yn] (n)".  The claim was
- * true of the 44 PUBLIC sessions and written down as a property of "every
- * corpus session"; the tutorial question is now ported in done2() below.
- */
 /* C win/tty/topl.c update_topl:264 — `n0 + strlen(gt.toplines) + 3 < CO - 8`
  * with CO == 80, i.e. `buffer + 2 + message < 71`.  js/display.js keeps the same
  * constant as TOPL_LIMIT; it is not exported, and this file needs only the
@@ -1189,42 +876,11 @@ const UTOTYPE_ATSTAIRS_END = 0x01;
 /* C ref: end.c:90-118 done2(void) — the #quit / ^C confirmation. */
 export async function done2() {
     const g = game;
-    /* C end.c:92-96 —
-     *     boolean abandon_tutorial = FALSE;
-     *     if (In_tutorial(&u.uz)
-     *         && y_n("Switch from the tutorial back to regular play?") == 'y')
-     *         abandon_tutorial = TRUE;
-     *
-     * The comment above this function used to assert "In_tutorial is false for
-     * every corpus session, so done2's tutorial y_n -- which would consume a
-     * keystroke -- is skipped, not merely unimplemented."  MEASURED FALSE on
-     * train: gen434 and gen516 (step 83) and gen446 (step 1711) all record C
-     * painting "Switch from the tutorial back to regular play? [yn] (n)" while
-     * this port painted "Really quit without saving? [yn] (n)".  The comment
-     * even named the exact consequence it was wrong about, and its root is the
-     * usual one — measured against the 44 PUBLIC sessions and written down as a
-     * property of "every corpus session".
-     *
-     * hack.h:1329 `y_n(query) == yn_function(query, ynchars, 'n', TRUE)`, so
-     * this is the same "[yn] (n)" reader paranoid_query degrades to below; the
-     * 4th argument only controls the do-again buffer, which this port does not
-     * model. */
     let abandon_tutorial = false;
     if (In_tutorial(g.u?.uz)
         && (await _yn_prompt('Switch from the tutorial back to regular play?',
                              'yn', 'n')) === 'y')
         abandon_tutorial = true;
-    /* C end.c:98-99 —
-     *     if (abandon_tutorial || !paranoid_query(ParanoidQuit,
-     *                                             "Really quit without saving?"))
-     * Note the `||`: answering 'y' to the tutorial question SHORT-CIRCUITS, so
-     * C never asks the quit question and never reads the key it would consume.
-     * That is the whole reason this row costs points — it is a keystroke-
-     * consumption difference, not merely an extra prompt.
-     *
-     * ParanoidQuit is unset in the contest rc, so paranoid_query degrades to
-     * yn_function(qbuf, "yn", 'n', FALSE) (cmd.c:5655 paranoid_query ->
-     * paranoid_ynq). */
     const quit = !abandon_tutorial
         && await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_QUIT),
                                 'Really quit without saving?');
@@ -1254,17 +910,6 @@ export async function done2() {
         }
         return;                              /* ECMD_OK */
     }
-    /* C end.c:120-144 — wizard mode only: ynq("Dump core?").  ynq() is
-     * yn_function(query, "ynq", 'q', FALSE).
-     *
-     * The 'q' arm was previously read as "quit cancelled" and returned.  C does
-     * NOT cancel: it is
-     *         } else if (c == 'q')
-     *             done_stopprint++;
-     *     }
-     *     done(QUIT);
-     * — 'q' means "quit, but print nothing more", and the quit goes through.
-     * That misread is what left seed0398's last frame showing the map. */
     if (wizard()) {
         const c2 = await _yn_prompt('Dump core?', 'ynq', 'q');
         if (c2 === 'q')
@@ -1288,30 +933,8 @@ export async function done2() {
  * core?", by a 'q' answer to any disclose() prompt, and by hangup. */
 function done_stopprint() { return (game.program_state.stopprint | 0) > 0; }
 
-/* C ref: end.c:1019 done(int how).
- *
- * Ported for the QUIT path only.  Every branch above really_done() is decided
- * by `how`, and for QUIT (=13) they all fall out statically:
- *   - how != TRICKED, so the paniclog/"very tricky wizard" arm is skipped;
- *   - `how == QUIT && done_stopprint` suppresses the status update (C sets
- *     disp.botl = disp.botlx = disp.time_botl = FALSE) — which matters, because
- *     the alternative arm calls bot() and would repaint the status row;
- *   - `how >= PANICKED`, so killer.name is set from deaths[] and the
- *     u.umortality++ / force-HP-to-zero block (gated on how < PANICKED) is not
- *     run;
- *   - Lifesaved and the (wizard||discover) "Die?" query are BOTH gated on
- *     `how <= GENOCIDED` (=10), so QUIT raises no prompt and consumes no key.
- * The lethal-HP deaths keep going through do_death_sequence() above; this is
- * not a general done() and does not try to be. */
 export async function done(how) {
     const g = game;
-    /* C end.c:1027-1038 — TRICKED is a diagnostic termination request, but
-     * wizard mode deliberately keeps playing after recording the trickery.
-     * paniclog() is an out-of-band log in this runner; the state changes that
-     * affect the game are clearing the killer and restoring its default
-     * prefix.  Returning here is essential: routing this through really_done
-     * incorrectly tears down the session and consumes no C-equivalent input.
-     */
     if (how === TRICKED && wizard()) {
         if (g.svk?.killer) {
             g.svk.killer.name = '';
@@ -1319,11 +942,6 @@ export async function done(how) {
         }
         return;
     }
-    /* ESCAPED reaches this same C routine from prev_level() when the hero
-     * climbs out of the dungeon.  It skips the life-saving/debug gates below
-     * (ESCAPED is greater than GENOCIDED), then enters really_done(), just as
-     * QUIT and BURNING do.  Keeping it here matters because prev_level() is an
-     * async command path and can now await the complete end-game transition. */
     /* C end.c:1019 accepts GENOCIDED here as well.  Genocide is a terminal
      * outcome raised by the # genocide command after it has removed the
      * hero's current species; it does not take the ordinary death prompt or
@@ -1368,37 +986,11 @@ export async function done(how) {
         g.botl = false;
         g.botlx = false;
     } else {
-        /* C end.c:1043-1045 — `disp.botlx = TRUE; bot();`, a forced full status
-           update.  This is what turns seed0009's status row from HP:14(14) at
-           the "You burn to a crisp...--More--" frame into HP:0(14) at the next
-           one: the more() blocks BEFORE done() runs. */
         if (g.disp) g.disp.botlx = true;
         g.botlx = true;
         g.botl = true;
         await bot();
     }
-    /* C end.c:1060-1067.  The comment that used to stand here quoted these
-       three tests correctly and then RAN NONE OF THEM — it closed with
-       "deaths[] itself is only read by the unported disclosure output", which
-       is false: killer.name is what formatkiller() renders into the topten
-       entry, so a #quit whose killer.name was never set reached topten() with
-       an EMPTY name and the default KILLED_BY_AN format, and C's own an("")
-       (objnam.c, "Alphabetize an empty string?") turned it into "an []".
-       seed0030 segment 8's last frame read
-           "0  Galen-Sam-Hum-Mal-Law died in The Dungeons of Doom on level 1.
-            An []."
-       where C reads "... quit in The Dungeons of Doom on level 1.".
-
-           if (how == ASCENDED || (!killer.name[0] && how == GENOCIDED))
-               killer.format = NO_KILLER_PREFIX;
-           if (!killer.name[0] && (how == STARVING || how == BURNING))
-               killer.format = KILLED_BY;
-           if (!killer.name[0] || how >= PANICKED)
-               Strcpy(killer.name, deaths[how]);
-
-       QUIT (=13) takes the how >= PANICKED arm; BURNING arrives from
-       lava_effects with killer.name already "molten lava", so its first
-       disjunct is false and the name survives. */
     done_death_context(how);
 
     if (how < PANICKED) {
@@ -1414,11 +1006,6 @@ export async function done(how) {
             }
         }
     }
-    /* C end.c:1080-1102 Lifesaved and end.c:1104-1117 the (wizard || discover)
-       "Die?" query are BOTH gated on `how <= GENOCIDED`, so QUIT (=13) raises
-       neither.  For BURNING (=5) they are live gates, and lava_effects has
-       already refused to reach here with either one true — but assert it here
-       too rather than silently skipping a prompt that consumes a keystroke. */
     if (how <= GENOCIDED) {
         /* C youprop.h:387 `#define Lifesaved u.uprops[LIFESAVED].extrinsic` —
          * extrinsic only, same reasoning as the do_death_sequence arm above:
@@ -1475,22 +1062,6 @@ export async function done(how) {
     await really_done(how);
 }
 
-/* C ref: flag.h:116 flags.end_disclose[NUM_DISCLOSURE_OPTIONS + 1].  The rc
- * parser (js/options.js parse_end_disclose, wired at options.js:229) writes it,
- * and a session whose rc is silent on `disclose` falls back to options.c:7211's
- * all-'n' init — which is what END_DISCLOSE_DEFAULT below is.
- *
- * The fallback is the MINORITY path, so parse_end_disclose is load-bearing
- * rather than decorative; that is the fact worth recording here, and it is
- * measured.  (An automated absence census, tools/absence-claim-lint.mjs
- * --corpus-claims, used to flag the older wording of this note by matching the
- * 'n' KEY against a sentence that was about the OPTION.  Keeping the sentence
- * in option terms is what makes it testable.)
- * MEASURED: subject=nethackrc-disclose-coverage value=+0 at=d26664bc
- *           date=2026-08-29 corpus=public+train
- *           213 of 744 recorded segments name `disclose` — 154 carry
- *           "disclose:yi ya yv yg yc yo" and 59 "disclose:-i -a -v -g -c -o";
- *           the remaining 531 take the all-'n' init this comment describes */
 function _end_disclose() {
     const s = game.flags?.end_disclose;
     return (s === 'none' || (typeof s === 'string' && s.length === 6)) ? s : END_DISCLOSE_DEFAULT;
@@ -1513,23 +1084,6 @@ function should_query_disclose_option(category) {
     }
 }
 
-/* C ref: end.c:832 disclose(int how, boolean taken) — the end-of-game
- * "Do you want ...?" ladder.
- *
- * Ported for the two blocks the corpus reaches with a scored frame, and only as
- * far as the ANSWER: every 'y' arm behind it (display_inventory +
- * container_contents; enlightenment in ENL_GAMEOVERDEAD mode) is unported.
- *
- * Two structural details that decide whether a keystroke is consumed at all:
- *   - the possessions block is `if (gi.invent && !done_stopprint)`, so an
- *     empty-handed hero is never asked.  seed0009's tutorial Ranger carries
- *     nothing, which is why its first recorded prompt is the ATTRIBUTES one;
- *   - `ask` comes from should_query_disclose_option, so an rc that sets
- *     `disclose:-i -a ...` (seed0030) raises NO prompt and eats NO key.
- * Both are the difference between a frame landing and every later frame in the
- * segment shifting by one.
- *
- * `c == 'q'` sets done_stopprint, which silences the rest of the teardown. */
 async function disclose(how, taken) {
     const g = game;
     let c = '\0';
@@ -1540,22 +1094,6 @@ async function disclose(how, taken) {
         const [ask, defquery] = should_query_disclose_option('i');
         c = ask ? await _yn_prompt(qbuf, 'ynq', defquery) : defquery;
         if (c === 'y') {
-            /* C end.c:636-640:
-             *     iflags.force_invmenu = FALSE;
-             *     (void) display_inventory((char *) 0, TRUE);
-             *     container_contents(gi.invent, TRUE, TRUE, FALSE);
-             * `lets == NULL` is the whole pack and want_reply TRUE forces the
-             * full sortpack menu (invent.c:3428) -- the same window the 'i'
-             * command paints, which is why this calls js/cmd.js's
-             * display_inventory() rather than growing a second copy of it.
-             * The one difference is the class headings: windows.c:1822-1824
-             * strips iflags.menu_headings' ATR_INVERSE while
-             * program_state.gameover is set, so they print PLAIN here and
-             * reverse-video everywhere else.  seed0006 step 110 records
-             * " Weapons" with no escape sequence, against seed0900 step 4's
-             * " \x1b[7mCoins\x1b[0m" from the live 'i' command.
-             * force_invmenu is not modelled (this port has no perm-invent
-             * window for display_pickinv to avoid). */
             const _discloseInv = await inventory_menu_legacy({ gameover: true });
             /* C dismisses the inventory NHW_MENU with docorner() before
              * container_contents() opens its NHW_TEXT window.  The corner
@@ -1589,12 +1127,6 @@ async function disclose(how, taken) {
         if (c === 'q')
             g.program_state.stopprint++;
     }
-    /* C end.c:658-666 — the vanquished and genocided lists.  Neither raises a
-       prompt of its own unless it has something to show: list_vanquished
-       returns at once when ntypes == 0 and list_genocided when ngone == 0.
-       seed0009's hero is a pacifist who genocided nothing, so both are silent
-       and no keystroke is consumed — which is why its recorded frame after the
-       attributes window is the CONDUCT prompt. */
     if (!done_stopprint()) {
         const [ask_v, defq_v] = should_query_disclose_option('v');
         await list_vanquished(defq_v.charCodeAt(0), ask_v);
@@ -1603,9 +1135,6 @@ async function disclose(how, taken) {
         const [ask_g, defq_g] = should_query_disclose_option('g');
         await list_genocided(defq_g.charCodeAt(0), ask_g);
     }
-    /* C end.c:668-688 — conduct.  The prompt gains " and achievements" only
-       when count_achievements() > 0; u.uachieved has no writer in this tree, so
-       the count is 0 and the plain wording is what C prints for seed0009. */
     if (!done_stopprint()) {
         const [ask_c, defq_c] = should_query_disclose_option('c');
         const acnt = count_achievements();
@@ -1703,9 +1232,6 @@ function outrip_lines(how, when) {
     return ['', ...rip, '', ''];
 }
 
-/* C dungeon.c single_level_branch(lev) — a one-level dungeon reached by a
- * branch (Fort Ludios).  end.c:1537 uses it to suppress " on dungeon level N".
- * The Tutorial has two levels, so seed0009 keeps its level number. */
 function _single_level_branch(uz) {
     const d = game.dungeons?.[uz?.dnum | 0];
     return ((d?.num_dunlevs | 0) === 1);
@@ -1750,24 +1276,6 @@ const _ENDS = [
  * below owns its own C guard; this is not a separate reduced quit path.
  * Full windowport, dumplog and teardown parity remain separate obligations.
  */
-/* C end.c:1221-1230 — the killer fix-up every `how` passes through on its way
- * to topten():
- *
- *     if (how == QUIT) {
- *         svk.killer.format = NO_KILLER_PREFIX;
- *         if (u.uhp < 1) { how = DIED; u.umortality++;
- *                          Strcpy(svk.killer.name,
- *                                 "quit while already on Charon's boat"); }
- *     }
- *     if (how == ESCAPED || how == PANICKED)
- *         svk.killer.format = NO_KILLER_PREFIX;
- *
- * It is UNCONDITIONAL in C and sits BEFORE disclose(), the tombstone and
- * topten().  This port had it only in really_done()'s done_stopprint tail —
- * i.e. AFTER the topten() call on the ordinary path — so an ordinary #quit
- * reached the score list with the default KILLED_BY_AN format still set and
- * rendered "died ... An []." (seed0030 segment 8 step 38).  Returns the
- * possibly-rewritten `how`, which is C's assignment through its own parameter. */
 function _really_done_killer(how) {
     const g = game;
     if (!g.svk) g.svk = {};
@@ -1865,33 +1373,7 @@ async function really_done(how) {
     if (g.program_state.done_hup)
         g.program_state.stopprint++;
     g.iflags.vision_inited = false;
-    /* C end.c:1168 captures getnow() once and reuses that endtime for the
-     * grave, bones, tombstone, and score-list paths. */
     g._endtime = getnow();
-    /* C end.c:1156-1157 `if (!program_state.panicking) done_object_cleanup();`
-     * — done() runs it BEFORE really_done(), and the part with a live model
-     * here is end.c:874-887:
-     *
-     *     ox = u.ux + u.dx, oy = u.uy + u.dy;
-     *     if (!isok(ox, oy) || !accessible(ox, oy)) ox = u.ux, oy = u.uy;
-     *     if (gt.thrownobj && gt.thrownobj->where == OBJ_FREE) {
-     *         place_object(gt.thrownobj, ox, oy);
-     *         stackobj(gt.thrownobj), gt.thrownobj = 0;
-     *     }
-     *     if (gk.kickedobj && gk.kickedobj->where == OBJ_FREE) { ...same... }
-     *
-     * An object in flight when the hero dies is in LIMBO — extracted from its
-     * owner and not yet on the map — and C deliberately puts it on the map here
-     * rather than freeing it, precisely so it reaches the bones file.
-     * MEASURED, seed0030 segment 6: the gnome's arrow kills the Priestess at
-     * (29,13) with u.dx,u.dy = -1,-1 from her last "y" move, and the eventlog
-     * shows `^place[18,28,12]` between `^botl[done]` and
-     * `rn2(2) @can_make_bones(bones.c:377)`.  Segment 9 reads that arrow back
-     * as one of the 49 objects its bones load renumbers; without this the load
-     * was one `rnd(2) @next_ident` short.
-     * NOT MODELLED, named rather than dropped: inven_inuse(TRUE) (no in_use
-     * writer here) and the uchain/lift_covet_and_placebc arm (no punished
-     * corpus death). */
     {
         const u = g.u || {};
         let ox = (u.ux | 0) + (u.dx | 0), oy = (u.uy | 0) + (u.dy | 0);
@@ -1917,47 +1399,11 @@ async function really_done(how) {
     if ((g.moves | 0) <= 1 && how < PANICKED && !done_stopprint())
         await pline(`Do not pass Go.  Do not collect 200 ${currency(200)}.`);
     {
-        /* C end.c:1214 `bones_ok = (how < GENOCIDED) && can_make_bones();`.
-           The && short-circuits for QUIT (=13), so no draw there; for a real
-           death the rn2 inside can_make_bones IS the step's RNG and must be
-           reproduced whether or not the bones file is written.  Its RESULT is
-           load-bearing now that savebones() exists: it gates the "Save bones?"
-           query below (C end.c:1363). */
         const bones_ok = (how < GENOCIDED) && can_make_bones();
         /* C end.c:1221-1230, in C's order: AFTER bones_ok (which tests the
            pre-rewrite `how`) and BEFORE disclose(), the tombstone and
            topten(). */
         how = _really_done_killer(how);
-        /* C end.c:1232-1241 — fixup_death(how) then, for anything but a panic:
-         *     boolean silently = done_stopprint ? TRUE : FALSE;
-         *     taken = paybill((how == ESCAPED) ? -1 : (how != QUIT), silently);
-         *     paygd(silently);
-         *     clearpriests();
-         *
-         * The note that stood here said paybill was "unported; it is FALSE for
-         * any hero not in a shop, which is every corpus death".  The second
-         * half is false: seed0030 kills the hero inside a shop TWICE (segment 3
-         * step 286, Maganasipi; segment 7 step 162, Swidnica), and C's topline
-         * on both is "You die...  <Shk> takes all your possessions.--More--".
-         * paybill was unreachable rather than absent — js/shk.js carried the
-         * body but three THROWING file-local stubs (inherits, mongone,
-         * on_level) shadowed the real ones underneath it.
-         *
-         * `taken` is not only a wording: end.c:1301 `if (bones_ok && taken)
-         * finish_paybill();` is what moves the pack to the shopkeeper's repo
-         * spot BEFORE savebones() drops it, and it feeds disclose()'s prompt.
-         *
-         * Its SECOND effect is the status line.  C's pline() runs
-         * `if (u.ux) flush_screen(1)` before it puts the message (pline.c), and
-         * flush_screen() honours the pending disp.botl that done() set when it
-         * forced u.uhp to 0.  So a shop death REPAINTS the status before the
-         * "You die..." page and a non-shop death does not: C reads HP:0(11) at
-         * seed0030 segment 3 step 286 and HP:11(11) — the pre-death paint,
-         * frozen because bot() refuses to paint at u.uhp == -1 — at segment 4's
-         * death.  This port had the second and not the first.
-         *
-         * paygd() (the vault guard's gold) and clearpriests() are NOT ported;
-         * neither has a corpus witness and both are RNG-free. */
         let taken = false;
         if (how !== PANICKED) {
             const silently = !!done_stopprint();
@@ -1979,27 +1425,6 @@ async function really_done(how) {
          * early. */
         if (have_windows && g._pending_message)
             await force_more(g._pending_message);
-        /* C end.c:1249-1277 — "This is needed for both inventory disclosure and
-         * dumplog.  Both are optional, so do it once here instead of
-         * duplicating it in both of those places."
-         *     if (how != PANICKED)
-         *         for (obj = gi.invent; obj; obj = nextobj) {
-         *             discover_object(obj->otyp, TRUE, TRUE, FALSE);
-         *             obj->known = obj->bknown = obj->dknown = obj->rknown = 1;
-         *             set_cknown_lknown(obj);
-         *             ... SchroedingersBox ...
-         *         }
-         * This is why disclose()'s own comment says "caller has already ID'd
-         * everything".  It was missing, so the disclosed pack still showed
-         * unidentified types by their appearance: seed0006 step 110 printed
-         * "p - a ruby ring" and "o - a blue gem" where C prints
-         * "p - an uncursed +2 ring of increase accuracy" and
-         * "o - an uncursed worthless piece of blue glass".  RNG-free —
-         * discover_object's exercise(A_WIS) is behind credit_hero, which is
-         * FALSE here.
-         * Quantum boxes share one live-cat result between disclosure and
-         * dumplog.  Once a live cat is retained, later boxes become ordinary
-         * boxes without another observation draw. */
         if (how !== PANICKED) {
             for (let obj = g.invent, nextobj = null; obj; obj = nextobj) {
                 nextobj = obj.nobj;
@@ -2027,41 +1452,6 @@ async function really_done(how) {
         // C end.c:1300: after disclosure, before the grave and score blocks.
         if (bones_ok && taken)
             await finish_paybill();
-        /* C end.c:1305-1318 — THE GRAVE BLOCK.  It sits between disclose() and
-         * the score calculation, and it is where the dead hero's own corpse is
-         * created:
-         *
-         *     if (bones_ok && u.ugrave_arise == NON_PM
-         *         && !(svm.mvitals[u.umonnum].mvflags & G_NOCORPSE)) {
-         *         int mnum = !Upolyd ? gu.urace.mnum : u.umonnum,
-         *             was_already_grave = IS_GRAVE(levl[u.ux][u.uy].typ);
-         *         corpse = mk_named_object(CORPSE, &mons[mnum], u.ux, u.uy, svp.plname);
-         *         Sprintf(pbuf, "%s, ", svp.plname);
-         *         formatkiller(eos(pbuf), sizeof pbuf - Strlen(pbuf), how, TRUE);
-         *         make_grave(u.ux, u.uy, pbuf);
-         *         if (IS_GRAVE(levl[u.ux][u.uy].typ) && !was_already_grave)
-         *             levl[u.ux][u.uy].emptygrave = 1;
-         *     }
-         *
-         * It was NOT ported, and the note that stood where this now is claimed
-         * only that "the ghost gets no attached corpse".  That understates it by
-         * 29 RNG leaves: mk_named_object -> mkcorpstat(CORPSE, ..., CORPSTAT_INIT)
-         * -> mksobj(CORPSE, init=TRUE), whose FOOD_CLASS/CORPSE arm
-         * (mkobj.c:899-903) rolls `undead_to_corpse(rndmonnum())` for a
-         * placeholder corpsenm and then starts its rot timer, all BEFORE
-         * mkcorpstat overwrites corpsenm with the hero's race.
-         *
-         * MEASURED, seed0030 segment 6 step 247 (the tombstone frame), C's leaves
-         * in order — 19831 rnd(2) @next_ident(mkobj.c:521), then 23x rn2()
-         * @rndmonst_adj(makemon.c:1716) (the weighted-reservoir walk inside
-         * rndmonnum), then 5x @start_corpse_timeout(mkobj.c:1413), and only THEN
-         * the 9 rn2(5)/rn2(8) pairs @drop_upon_death that savebones() makes.
-         * This port jumped straight to drop_upon_death, so segment 6's stream
-         * diverged 29 leaves early and the bones file it wrote was the wrong one —
-         * which is what segment 9 (132 recoverable step points) reads back.
-         *
-         * make_grave() takes an explicit epitaph here, so its get_rnd_text()
-         * branch does not fire: no extra draw (js/mklev.js make_grave). */
         let _corpse = null;
         {
             const u = g.u || {};
@@ -2085,24 +1475,6 @@ async function really_done(how) {
                     _loc.emptygrave = 1; /* corpse isn't buried */
             }
         }
-        /* C end.c:1325-1327
-         *     umoney = money_cnt(gi.invent);
-         *     tmp = u.umoney0;
-         *     umoney += hidden_gold(TRUE);   <- accumulate gold from containers
-         * The hidden_gold term was missing, so a hero carrying a container with
-         * coins in it under-reported BOTH the tombstone's "and N pieces of
-         * gold" line and the score computed from it: seed5006 segment 0 step
-         * 187 reads "311 pieces of gold ... 144 points" in C and read "307 ...
-         * 130" here.  The status row is unaffected (botl prints money_cnt of
-         * the open inventory), which is why this only ever shows up on the
-         * stone.
-         *
-         * C end.c:1372 gd.done_money = umoney — the value outrip() puts on the
-         * stone.  C assigns it AFTER the bones block but from this SAME already
-         * computed umoney, precisely because "containers will be gone by then
-         * if bones just got saved" (end.c:1370).  savebones() now really does
-         * empty gi.invent (drop_upon_death), so computing it here rather than
-         * there is not a convenience — it is the ordering C's comment demands. */
         {
             const umoney = clong(clong(money_cnt(g.invent ?? null))
                                  + clong(hidden_gold(true)));
@@ -2133,11 +1505,6 @@ async function really_done(how) {
                 }
             }
         }
-        /* C end.c:1355-1361 — an undead transformation is announced after
-         * scoring and before the bones query. The WIN_MESSAGE display owns
-         * one input boundary before "Save bones?"; omitting it was screen-only
-         * but shifted every post-death frame (gen594's human mummy case).
-         */
         const _arise = g.u?.ugrave_arise | 0;
         if (_arise >= 0 && _arise < MONS_ROWS_END.length && !done_stopprint()) {
             const _ariseName = monPmname(_arise, g.flags?.female ? FEMALE : MALE);
@@ -2146,25 +1513,6 @@ async function really_done(how) {
                 : 'Your body rises from the dead';
             await pline(`${_ariseText} as ${an(_ariseName)}...`);
         }
-        /* C end.c:1363-1369
-         *     if (bones_ok) {
-         *         if (!wizard || paranoid_query(ParanoidBones, "Save bones?"))
-         *             savebones(how, endtime, corpse);
-         *         corpse = (struct obj *) 0;
-         *     }
-         * ParanoidBones is UNSET in every corpus rc, so paranoid_query degrades
-         * to yn_function("Save bones?", "yn", 'n', FALSE) and answers TRUE only
-         * on an explicit 'y' (cmd.c:5655 paranoid_query -> paranoid_ynq).
-         *
-         * An ORDINARY hero never sees this query — `!wizard` short-circuits and
-         * savebones() runs silently, which is what seed0030 records (segment 6
-         * step 247: 9 drop_upon_death rn2(5)/rn2(8) pairs and no prompt frame).
-         * A wizard-mode hero DOES see it: seed5006 segment 0 step 186 is the
-         * frame "Save bones? [yn] (n)", answered 'y'.
-         *
-         * `corpse` is the object created by C's grave block at end.c:1306
-         * (mk_named_object(CORPSE...) + make_grave); that block is NOT ported
-         * here, so the ghost gets no attached corpse — see js/bones.js. */
         if (bones_ok) {
             const _wizard_bones = wizard();
             const _save_bones = !_wizard_bones
@@ -2204,13 +1552,6 @@ async function really_done(how) {
            Schroedinger's cat) are not reachable from a death. */
         {
             const u = g.u || {};
-            /* C end.c:1392-1393 `if (how < GENOCIDED && flags.tombstone
-               && endwin != WIN_ERR) outrip(endwin, how, endtime);` — the
-               tombstone is for a DEATH.  QUIT is 13 and GENOCIDED is 10, so a
-               #quit gets the summary text with NO stone above it; this port
-               drew one unconditionally and pushed seed0030 segment 8's
-               "Sayonara Galen the Samurai..." from row 0 down to row 18.
-               flags.tombstone is On by default (optlist.h). */
             if (!have_windows)
                 g.program_state.stopprint = 1;
             const lines = (have_windows && how < GENOCIDED && (g.flags?.tombstone ?? true))
@@ -2314,10 +1655,6 @@ async function really_done(how) {
                        + `hit point${uhpmax === 1 ? '' : 's'} when you ${_ENDS[how] ?? 'died'}.`);
             lines.push('');
             }
-            /* C writes the tombstone and end summary to endwin and displays
-             * that text window even in wizard/discover mode.  Only the
-             * subsequent score list is suppressed there; skipping this
-             * window loses the paged tombstone frames (seed5006). */
             if (!done_stopprint())
                 await display_text_window(lines);
         }

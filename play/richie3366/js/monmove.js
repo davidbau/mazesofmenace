@@ -532,7 +532,9 @@ async function mpickstuff(mtmp) {
                 // C mon.c mpickstuff: distant_name(otmp, doname) before extract —
                 // far path suppresses observe so !dknown stays "a potion" (D-0840).
                 const otmpname = distant_name(otmp, doname);
-                if (game.flags.verbose) {
+                // C mon.c:1899 — flags.verbose is decl-TRUE; an uninitialized
+                // JS bag reads as ON, matching every sibling site (`!== false`, D-3191).
+                if (game.flags?.verbose !== false) {
                     await pline_mon(mtmp, `${Monnam(mtmp)} picks up ${otmpname}.`);
                 }
             }

@@ -46,12 +46,6 @@ import { g_at } from './cmd.js';
 import { flush_screen, force_more, topl_park_cursor } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
 import { nhgetch } from './input.js';
-/* C win/tty/wintty.c tty_yn_function(query, resp, def, sensitive) — real body
- * lives in js/end.js (that file already reads nhgetch() and documents the
- * quitchars-includes-space rule this stub was missing). end.js imports
- * init_uhunger from this file, so this is a circular import; safe the same
- * way as the js/cmd.js edge above — nothing here calls it at module-eval
- * time, only from inside floorfood(). */
 import { yn_function, savelife, deadhero, pending_death_is_final,
          do_death_sequence } from './end.js';
 /* C trap.c:1046 reset_utrap(msg) — real body lives in js/trap.js (which
@@ -65,13 +59,6 @@ import { reset_utrap, selftouch, t_at as t_at_real, deltrap as deltrap_real } fr
  * same {dnum, dlevel} shape this expects (js/dig.js:115, js/allmain.js:332,
  * js/cmd.js:9202). No cycle: js/dungeon.js does not import js/eat.js. */
 import { on_level } from './dungeon.js';
-/* C engrave.c:187 can_reach_floor(check_pit) — real body in
- * js/hold_another_object.js, whose own comment names this file's copy as a
- * STUB left deliberately alone because re-pointing it "would move code
- * paths this change has no business moving" — that caution was scoped to
- * THAT file's change, not a standing veto; this task's brief explicitly
- * asks for it, gated by the floor after every stub. No import cycle:
- * js/hold_another_object.js does not import js/eat.js. */
 import { can_reach_floor } from './hold_another_object.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
          STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, TIMEOUT, LAST_PROP } from './const.js';
@@ -193,7 +180,6 @@ const A_WIS = 2;
 // There is ONE getrumor in C and there is now one here.  This file used to
 // carry a second, independent body (with its own copy of get_rnd_line); both
 // copies were missing C's exclude_cookie retry loop, and the mklev copy's
-// omission desynced seed0007's level-1 graffiti at leaf 1629.  The canonical
 // port lives beside get_rnd_line_from_section in js/mklev.js; re-exported here
 // for existing callers; cookie post-effects use the shared outrumor path.
 //
@@ -204,14 +190,12 @@ const A_WIS = 2;
 //
 // Anti-cheat: the rumor text comes from the engrave_data rumor tables resolved
 // by the rolled file offset (get_rnd_line line-selection), NEVER from the
-// session screen. Verified 0-divergence by tools/rumor-retrieval-diff.mjs.
 export { getrumor };
 // C ref: eat.c:2817 doeat() — the 'e' command.
 //
 // Keyed, named and queued commands call this body. Return the actual C
 // command result; rhack owns the corresponding context.move/prefix reset.
 //
-// Ported: Strangled refusal, floorfood("eat",0) → the real interactive
 // getobj (js/cmd.js getObjFromGetobj, which IS invent.c:1752 — see that
 // function's own header), check_capacity, the hands_obj iron-bars sentinel,
 // is_edible()/"You cannot eat that!", the worn-item refusal, TIN dispatch to
@@ -246,31 +230,16 @@ export async function doeat() {
         return ECMD_OK;
     }
 
-    /* C eat.c:2829 floorfood("eat", 0). */
     const otmp = await floorfood('eat', 0);
     if (!otmp) {
         /* C eat.c:2829: empty, declined or cancelled selection is ECMD_OK. */
         return ECMD_OK;
     }
 
-    /* C eat.c:2830-2831 check_capacity((char *) 0).
-     * CORRECTED 2026-09-05 — the "over-weighs corpsenm 153/327" theory this
-     * comment used to carry was STALE: js/weight.js's corpse arm already
-     * applies eaten_stat() (landed 2026-08-21/26, both BEFORE this comment's
-     * own 2026-09-04 commit), and the capture's own replayed objects already
-     * carry the reduced owt (279/75) directly — measured with a debug print
-     * on every doeat replay in this board: check_capacity() returns false on
-     * EVERY record including 19-23, never true.  It was never the blocker.
-     * The real cause of records 19-23 is named below at doeat_food's call
-     * site: C's "otmp === svc.context.victual.piece" resume branch
-     * (eat.c:2923-2949) is simply missing here. */
     if (await check_capacity(null)) {
         return ECMD_OK;
     }
 
-    /* C eat.c:2847-2854 — hands_obj: floorfood's "eating iron bars at the
-     * current spot" placeholder.  The still_chewing() resume pline is not
-     * ported; the turn itself is. */
     if (otmp === hands_obj) {
         return ECMD_TIME;
     }
@@ -288,23 +257,6 @@ export async function doeat() {
         return ECMD_OK;
     }
 
-    /* C eat.c:2923-2951 — resuming a meal already in progress: this 'e'
-     * re-selected the SAME object doeat is already mid-way through eating.
-     * This branch was entirely missing: every resumed meal fell through to
-     * the general path below and re-ran eatcorpse()/rottenfood() on an
-     * already-processed corpse, redrawing RNG the C capture never spends on
-     * a resume (its acid/poison/rot roll happens once, when the meal
-     * STARTS) and desyncing the tape for every doeat call after it in the
-     * session. C skips touchfood's split/oeaten-init and the whole
-     * conduct/eatcorpse/rottenfood dispatch on this path — it only
-     * re-anchors victual.piece/o_id, prints the resume message, and calls
-     * start_eating(otmp, FALSE) again.
-     * Independently measured a second time on probe-cov-consume/gen000: 5
-     * board records (a food ration re-selected mid-chew) all record ZERO
-     * draws here while the pre-port code drew at least one — an
-     * rng_result_tape_underrun.
-     * C eat.c:2935 calls do_reset_eat() (not a bare victual zero) on the
-     * touchfood()==NULL arm; _do_reset_eat() below is that port. */
     {
         const v0 = _victual();
         if (otmp === v0.piece) {
@@ -340,32 +292,6 @@ export async function doeat() {
     await doeat_food(otmp);
     return ECMD_TIME;
 }
-/* C eat.c:3363 newuhs(boolean incr)
- *
- * Recomputes hero's hunger status (u.uhs) from u.uhunger and applies
- * state changes: strength-temp adjustments, messages, fainting/starving.
- *
- * Ported: status threshold calculation, u.uhs assignment, SET_BOTL, the
- * FAINTING branch (eat.c:3411-3448) including its rn2(20-n) draw — added
- * 2026-09-05, capture-replay showed 29/300 gethungry records with an
- * unconsumed RNG draw whenever u.uhs was already FAINTED/FAINTING at call
- * time (e.g. seed-generated sessions that starve for many turns).
- *
- * Not yet ported: pline() messages for SATIATED/NOT_HUNGRY transitions
- * (eat.c:3468-3499 partial — only HUNGRY/WEAK are ported below),
- * done(STARVING) (eat.c:3438) — no general death handler is exported
- * anywhere in js/ (checked end.js, exper.js, mhitu.js, save.js: all three
- * `done()` bodies there are stubs/throws), so the STARVED branch below sets
- * u.uhs/botl for state consistency but cannot end the game.  Likewise the
- * newly-faint trigger's `ga.afternmv = unfaint` sets the existing string-tag
- * convention (see is_fainted()/reset_faint() above), but allmain.js's
- * afternmv_dispatch() has no 'unfaint' case yet (cross-file, out of this
- * packet's one-file scope) — a countdown that completes via this path will
- * not yet call unfaint(). Neither gap is exercised by any captured
- * gethungry record (checked all 29 diverging records: the trigger condition
- * is false or the hero is already FAINTED in every one), so it does not
- * block the fix below; add it when a session reaches it.
- */
 export async function newuhs(incr) {
     const g = game;
     const u = g.u;
@@ -384,16 +310,6 @@ export async function newuhs(incr) {
         newhs = WEAK;
     else
         newhs = FAINTING;
-    /* C eat.c:3397-3408 — saved_hs block (occupation eating midmeal).  While eating,
-     * u.uhs may pass through intermediate hunger states (e.g. cross 1000 → SATIATED)
-     * that should NOT update the displayed status line until the meal ends: C saves the
-     * FIRST hunger status (save_hs) once, sets u.uhs = newhs, and RETURNS WITHOUT
-     * SET_BOTL — so bot() does not re-render the status during the meal.  The displayed
-     * status keeps the pre-meal hunger until done_eating, then the post-meal newuhs
-     * (occupation cleared) restores/commits it.  iseating mirrors C's
-     * `go.occupation == eatfood || gf.force_save_hs` (bite() sets force_save_hs).
-     * This is why seed0014's "Satiated" appears only at step 4 (done_eating), not step 3
-     * (lesshungry) — even though u.uhunger crossed 1000 at the turn-2 bite. */
     const iseating = (g.occupation === eatfood) || !!g._force_save_hs;
     if (iseating) {
         if (!g._saved_hs) {
@@ -424,11 +340,6 @@ export async function newuhs(incr) {
                 const duration = 10 - uhungerDivBy10;
                 await stop_occupation();
                 await You('faint from lack of food.');
-                /* C eat.c:3421 incr_itimeout(&HDeaf, duration).  u.HDeaf is the
-                 * flat countdown this codebase already uses in place of C's
-                 * packed timeout word (js/allmain.js:1652-1658,
-                 * js/fastforward.js:1246-1253); incr_itimeout adds `duration`
-                 * to it, clamped at itimeout()'s zero floor. */
                 u.HDeaf = Math.max(0, (u.HDeaf | 0) + duration);
                 if (g.disp)
                     g.disp.botl = 1;
@@ -472,24 +383,6 @@ export async function newuhs(incr) {
          * js/attrib.js and is DISPLAY-ordered via C_ATTR_TO_DISP, neither of
          * which this module reaches).  It is NOT the reason the switch below
          * was missing. */
-        /* C eat.c:3468-3499 — the hunger-transition messages, and with them the
-         * two things that are not messages at all:
-         *     if (incr && go.occupation
-         *         && (go.occupation != eatfood && go.occupation != opentin))
-         *         stop_occupation();
-         *     end_running(TRUE);
-         * A counted rest, a search, a travel — anything holding an occupation —
-         * is INTERRUPTED by crossing a hunger boundary, and C prints the stop
-         * on the same topline.  This whole switch was absent, so a counted
-         * command ran to completion here and the turn counter ran away from C's:
-         * gen413-reseed-seed565607 step 1070 is `50.` at T:120, where C stops at
-         * T:146 with "You are beginning to feel hungry.  You stop waiting." and
-         * this port waited out all fifty turns to T:158 in silence.  From there
-         * the two runs were a different number of turns apart for the rest of
-         * the session.
-         * opentin is not ported, so `go.occupation != opentin` is vacuously
-         * true and is left out rather than spelled against a name that does not
-         * exist. */
         switch (newhs) {
         case HUNGRY:
             if (_eat_Hallucination()) {
@@ -609,45 +502,6 @@ export async function gethungry() {
     if (u.uinvulnerable || (g.iflags && g.iflags.debug_hunger)) {
         return;
     }
-    /* C eat.c:3174-3179:
-     *   if ((!Unaware || !rn2(10))
-     *       && (carnivorous(gy.youmonst.data) || herbivorous(...) || metallivorous(...))
-     *       && !Slow_digestion)
-     *       u.uhunger--;
-     *
-     * Unaware = (gm.multi < 0 && (unconscious() || is_fainted()))
-     *   unconscious() (trap.c:6757): gm.multi < 0 && (u.usleep ||
-     *                 nomovemsg matches "You awake"/"You regain con"/
-     *                 "You are consci")
-     *   is_fainted()  (eat.c:3348): u.uhs == FAINTED
-     * JS reads the LIVE gm.multi (g.multi — maintained by the faithful
-     * moveloop's nomul()/countdown and dumped to the 'hero.multi' mapstate
-     * field by mapstate.js:159), NOT the stale g.__bridge__ placeholder
-     * (which is only seeded on replay setup, never updated during a turn).
-     * When Unaware=false, C short-circuits: (!Unaware || ...) =
-     * (true || ...) = true and rn2(10) is NOT called.
-     *
-     * DIETARY CHECK — was hardcoded true, "until u.umonnum tracking is ported".
-     * u.umonnum IS tracked: js/u_init.js:376 sets it from INITROLE_TO_PM at
-     * u_init.c:991's `u.umonnum = u.umonster = gu.urole.mnum`, and every one of
-     * the 13 role rows in js/makemon_mons.json carries M1_CARNIVORE or
-     * M1_HERBIVORE (measured: Monk is herbivore-only, the other twelve are
-     * both), so the ported guard is TRUE for every un-polymorphed corpus hero
-     * and behaves exactly as the hardcoded true did.  What the constant threw
-     * away is the POLYMORPH case C wrote the guard for, quoted in its own
-     * comment at eat.c:3169 — "being polymorphed into a creature which doesn't
-     * eat prevents this first uhunger decrement".  A hero poly'd into a golem,
-     * an elemental or a vortex carries none of the three flags and C stops
-     * decrementing uhunger; this port kept starving them on schedule.
-     * (Read the note on _hero_carnivorous() with care: it says the Monk's
-     * umonnum is PM_HUMAN.  INITROLE_TO_PM[5] is 336, the `monk` row, not the
-     * `human` one.)
-     * _heroMnum() returning -1 is "not resolvable", not "does not eat": C's
-     * gy.youmonst.data is always a valid permonst, and an unresolved umonnum
-     * here can only be the un-polymorphed hero, whose role row always eats — so
-     * that case takes the C-equivalent TRUE rather than the predicates' false.
-     *
-     * Slow_digestion: u.uprops[SLOW_DIGESTION] not yet tracked → false. */
     const multiVal = (g.multi | 0);
     const unaware = (multiVal < 0) && (_unconscious() || is_fainted());
     /* C: (!Unaware || !rn2(10)) — consume rn2(10) only when asleep. */
@@ -661,9 +515,6 @@ export async function gethungry() {
     if (awarenessOk && heroEats && !slowDigestion) {
         u.uhunger = (u.uhunger | 0) - 1;
     }
-    /* C eat.c:3191 — accessorytime = rn2(20).
-     * Primary porting target: this call was missing from JS, causing
-     * divergence at sessions seed0012 step 9 and seed0387 step 26. */
     const accessorytime = rn2(20); /* eat.c:3191 */
     if (accessorytime % 2 !== 0) {
         /* C eat.c:3193-3198: odd — regeneration and encumbrance hunger. */
@@ -768,8 +619,6 @@ export async function morehungry(num) {
     await newuhs(true);
 }
 
-/* C eat.c:1295 Hunger — the HUNGER intrinsic (ring of hunger etc).  For the
- * corpus heroes this is false. */
 function _Hunger() {
     const u = game.u;
     const p = u && u.uprops ? u.uprops[HUNGER] : null;
@@ -925,18 +774,6 @@ function _pmname(mdat, mgender) {
     if (!mdat || !Number.isInteger(mdat.pmidx)) return "monster";
     return monPmname(mdat.pmidx | 0, mgender | 0);
 }
-/* C end.c:1019 done(int how) — eat_brains calls this DIRECTLY (not through
- * done_in_by), so no "You die..." is ever emitted here; that line belongs to
- * done_in_by only. Ported subset: force-HP-to-zero (end.c:1068-1078), the
- * (wizard || discover) "Die?" query (end.c:1104-1117, ParanoidDie is unset on
- * every scored session so this is the plain yn_function("Die?","yn",'n')
- * loop) and its 'n'/ESC/quitchars-default survive arm (pline + savelife(),
- * end.c:1108-1112). Every other exit — Lifesaved (end.c:1082-1102), ordinary
- * (non-debug) mode's unconditional death (end.c:1104 falls to really_done),
- * and a wizard/explore 'y' answer — really_done()s the game, which this file
- * has no reach into (js/end.js's own really_done is module-private); throw
- * rather than fabricate, matching js/end.js done()'s own convention for its
- * unported arms. */
 async function _done(how) {
     const g = game;
     const u = g.u;
@@ -1071,12 +908,8 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
     let result = M_ATTK_HIT;
     let xtra_dmg = rnd(10);
 
-    /* Determine if magr/mdef are the player.
-       In C: magr == &gy.youmonst (pointer comparison).
-       The sweep may seed g.youmonst as an incomplete object; only trust it
-       if it has an m_id. */
     const youmonst = g.youmonst;
-    let magr_is_you = true;   /* default for the sole corpus record (player attacker) */
+    let magr_is_you = true;
     let mdef_is_you = false;
     if (youmonst && youmonst.m_id !== undefined) {
         magr_is_you = (magr.m_id === youmonst.m_id);
@@ -1142,7 +975,6 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             if (dmg_p) dmg_p.value += xtra_dmg;
         } else {
             await morehungry(-rnd(30));
-            /* ensure attribute arrays exist (C always has them; sweep may not seed u.acurr.a) */
             if (!u.acurr) u.acurr = {};
             if (!u.acurr.a) u.acurr.a = [12, 10, 15, 18, 9, 9];
             if (!u.aexe) u.aexe = {};
@@ -1158,13 +990,6 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
         }
         maybe_cannibal(pd.pmidx, true);
     } else if (mdef_is_you) {
-        /* C attrib.h ABASE(x) = u.acurr.a[x] directly; this port's u.acurr.a is
-         * in DISPLAY order, so the C-constant index A_INT must be translated
-         * via C_ATTR_TO_DISP first (js/attrib.js acurr()/getAbase() callers do
-         * the same). Indexing u.acurr.a[A_INT] raw reads the DEX slot instead
-         * of INT (A_INT=1 is display index 3), which is why this branch never
-         * fired: the corpus's INT never happened to read <= 3 through the
-         * wrong slot. */
         const abase = getAbase(u);
         const di_int = C_ATTR_TO_DISP[A_INT];
         if ((abase[di_int] | 0) <= 3 /* ATTRMIN */) {
@@ -1311,11 +1136,6 @@ function _vegetarianE(m) {
         || (_mletE(m) === S_PUDDING_E && m !== PM_BLACK_PUDDING_E);
 }
 
-/* C mondata.h: hero (gy.youmonst.data) dietary predicates over u.umonnum.
- * The Monk in human form (umonnum=PM_HUMAN) is neither carnivore nor herbivore
- * — humans carry neither M1 flag — which the seed0200 trace confirms (eatcorpse
- * short-circuits before rn2(10) at eat.c:1988 and yummy is false).  Resolve via
- * u.umonnum when tracked, defaulting to the role's PM (human roles → omnivore). */
 function _heroMnum() {
     const u = game.u;
     let m = (u && u.umonnum != null) ? (u.umonnum | 0) : -1;
@@ -1329,7 +1149,6 @@ function _hero_humanoid() { const m = _heroMnum(); return m >= 0 ? ((_mf1E(m) & 
 function _hero_herbivorous() { const m = _heroMnum(); return m >= 0 ? _herbivorousE(m) : false; }
 function _hero_metallivorous() { const m = _heroMnum(); return m >= 0 ? _metallivorousE(m) : false; }
 
-/* C mkobj.c:2426 peek_at_iced_corpse_age — floor corpses (not on ice) return age. */
 function _peek_at_iced_corpse_age(otmp) {
     let retval = otmp.age | 0;
     if ((otmp.otyp | 0) === CORPSE_OTYP && otmp.on_ice) {
@@ -1356,12 +1175,6 @@ function _nonrotting_corpse(m) {
         || _is_rider({ pmidx: m });
 }
 
-/* C objects.h FOOD(name, prob, delay, wt, unk, material, nutrition, ...) — the
- * static per-otyp { oc_delay, oc_nutrition } for FOOD_CLASS objects, in objects
- * otyp order (TRIPE_RATION=264 … TIN=296).  JS inventory/floor objects do not
- * carry oc_* fields, so obj_nutrition() and the eat reqtime must read them from
- * this table (objects[otyp]) exactly as C does.  Values transcribed leaf-for-leaf
- * from nethack-c/include/objects.h:1048-1117.  [otyp] -> [delay, nutrition]. */
 /* The table itself now lives in js/food_props.js — see the import above; a
  * second transcription here is exactly how the two readers drift apart. */
 /* C objclass.h oc_material: VEGGY=3, FLESH=4.  Per objects.h, the FLESH-material
@@ -1415,20 +1228,6 @@ function _obj_nutrition(otmp) {
     if (otmp.globby) return otmp.owt | 0;
     return _oc_nutrition(otmp.otyp | 0); /* non-corpse comestibles: oc_nutrition */
 }
-/* ── touchfood (C eat.c:360) and the invent surgery it performs ─────────────
- *
- * "First bite" bookkeeping.  A stack is SPLIT so that the bitten item is a
- * separate object, and — even for a singleton — the object is pulled out of
- * inventory and re-added WITHOUT merging, which is what gives a partly eaten
- * item its own inventory letter.  That letter is the whole visible effect:
- * seed4500 step 527 offers "[ghm or ?*]" where the apple stack is still 'g'
- * and the one bitten apple from step 525 is 'm'.
- *
- * C ref: obj.h carried(obj) — (obj)->where == OBJ_INVENT.  js/u_init.js and
- * js/pickup_container.js disagree about the numeric OBJ_INVENT they stamp on
- * `where` (2 vs 3), so membership of gi.invent is read from the chain rather
- * than from the field; the chain is the thing C's freeinv/addinv act on.
- */
 function _eat_carried(obj) {
     for (let o = game.invent; o; o = o.nobj)
         if (o === obj) return true;
@@ -1518,12 +1317,6 @@ function _eat_reorder_invent() {
         }
     }
 }
-/* C ref: invent.c:1169 addinv_nomerge(obj) → addinv_core0(obj, NULL, TRUE) with
- * obj->nomerge set, so the quiver/stack merge scans are skipped and the object
- * always lands in a slot of its own.  flags.invlet_constant is the `fixinv`
- * default (no session in the corpus sets !fixinv), so C prepends and then
- * reorder_invent()s — the invlet order, not the insertion order, is what the
- * inventory display and getobj's letter list read. */
 function _eat_addinv_nomerge(obj) {
     const g = game;
     obj.no_charge = 0;
@@ -1536,24 +1329,6 @@ function _eat_addinv_nomerge(obj) {
     obj.pickup_prev = 1;
     return obj;
 }
-/* C ref: eat.c:360 touchfood(struct obj *otmp) — "might destroy otmp if hero
- * drops it".  RNG: the quan>1 split runs splitobj → nextoid → next_ident, which
- * is mkobj.c:522 `svc.context.ident += rnd(2)`. Shop-owned food can also
- * allocate a billing dummy through costly_alteration, which draws for its ID.
- *
- * KNOWN GAP, named not guessed: `otmp->oeaten` is NOT one of the OBJ_CHAIN_
- * FIELD_ORDER fields the capture's invent-chain wire format carries (js/
- * struct_reconstructor.js), so a corpse/comestible that was ALREADY partly
- * eaten in an earlier, unrecorded turn always replays here with oeaten unset
- * — `if (!(otmp.oeaten|0))` below always takes the fresh-nutrition arm, where
- * C may keep the smaller left-over value from an interrupted meal.  Board
- * `boardall-s` records 13/15/16/17/18 (lizard/acid-blob corpses answered with
- * a lone trailing 'y', i.e. this session's SECOND-plus 'e' on the same
- * corpse) carry a C-recorded `oeaten_delta` this port cannot reproduce for
- * exactly that reason: the true starting oeaten is invisible to any replay of
- * a single capture record.  Not fixable from this file — it needs a capture-
- * schema change (an `oeaten` slot on the invent-chain wire format) tracked
- * outside js/eat.js. */
 async function touchfood(otmp) {
     if ((otmp.quan | 0) > 1) {
         if (!_eat_carried(otmp))
@@ -1662,7 +1437,6 @@ function _violated_vegetarian() {
     if (u && u.uconduct) u.uconduct.unvegetarian = (u.uconduct.unvegetarian | 0) + 1;
     if (_isMonk()) {
         _emit_eat_pline('You feel guilty.'); /* C eat.c:1380 */
-        /* C eat.c:1381 adjalign(-1) — RNG-free; alignment not gated here. */
     }
 }
 /* Append an eatcorpse pline to the command-message channel that survives to the
@@ -1742,12 +1516,6 @@ function _eat_make_blinded(xtime) {
     p.intrinsic = ((p.intrinsic | 0) & ~0x00ffffff) | v;
 }
 
-/* C ref: eat.c:1800-1809 Hear_again() — "called when waking up after fainting",
- * i.e. the ga.afternmv callback rottenfood()'s knockout arm installs.
- *     if (!rn2(2)) { make_deaf(0L, FALSE); disp.botl = TRUE; }
- * The rn2(2) is UNCONDITIONAL, so this is a live leaf on every rotten-food
- * knockout: seed4500 step 526's whole RNG slice is this one draw.  make_deaf(0)
- * zeroes the HDeaf timer (the u.HDeaf slot rottenfood incremented). */
 export function Hear_again() {
     if (!rn2(2)) {
         const u = game.u || (game.u = {});
@@ -1758,25 +1526,11 @@ export function Hear_again() {
     return 0;
 }
 
-/* C eat.c:1811-1852 rottenfood(obj) — called on the "first bite" of rotten food.
- * Returns 1 only from the third arm (which sets up a nomul), 0 otherwise.
- *
- * THE RNG SHAPE, which is the whole reason this exists: C rolls rn2(4) at 1817
- * unconditionally; if that is non-zero it rolls rn2(4) at 1823 (the `&& !Blind`
- * is evaluated AFTER the roll, so blindness does not suppress the leaf); if that
- * arm fails it rolls rn2(3) at 1830.  Three leaves at most, and at least one
- * always.  seed0014's rotten newt corpse takes all three and lands on no arm. */
 function rottenfood(obj) {
     /* C eat.c:1815-1816 pline("Blecch!  %s %s!", ...) */
     _emit_eat_pline(`Blecch!  ${_is_rottable(obj) ? 'Rotten' : 'Awful'} ${_foodword(obj)}!`);
     if (!rn2(4)) { /* C eat.c:1817 */
         /* C eat.c:1818-1821 */
-        /* C eat.c:1821 body_part(LIGHT_HEADED) — polyself.c's humanoid_parts,
-         * animal_parts and bird_parts all spell slot 10 "light headed", and the
-         * only tables that differ are the jelly/vortex/fish shapes.  Importing
-         * js/cmd.js's body_part from eat.js would introduce a module cycle for a
-         * branch no public session takes; the un-polymorphed hero's word is
-         * inlined instead. */
         _emit_eat_pline(_eat_Hallucination()
             ? 'You feel rather trippy.'
             : 'You feel rather light headed.');
@@ -1794,10 +1548,6 @@ function rottenfood(obj) {
     } else if (!rn2(3)) { /* C eat.c:1830 */
         /* C eat.c:1831-1848 — the "world spins" knockout. */
         const duration = rnd(10); /* C eat.c:1833 */
-        /* C eat.c:1836-1843.  The Levitation / Is_airlevel / Is_waterlevel arm
-         * ("you lose control of yourself") and dungeon.c:1750 surface() are both
-         * unwired here — WIRE_PENDING, RNG-free, and reachable only when the hero
-         * is already Blind, which no public session is at this call. */
         let what, where;
         if (!_eat_Blind()) { what = 'goes'; where = 'dark'; }
         else { what = 'you slap against the'; where = game.u?.usteed ? 'saddle' : 'floor'; }
@@ -1815,13 +1565,6 @@ function rottenfood(obj) {
         nomul(-duration); /* C eat.c:1847 */
         game.multi_reason = 'unconscious from rotten food'; /* C eat.c:1848 */
         game.nomovemsg = 'You are conscious again.'; /* C eat.c:1849 */
-        /* C eat.c:1850 ga.afternmv = Hear_again.  The afternmv channel IS
-         * reachable from here — it is a plain string tag on `game`, which
-         * js/allmain.js afternmv_dispatch() switches on when unmul() fires; the
-         * WIRE_PENDING note this replaces predates that channel carrying
-         * anything but do_wear's callbacks.  It is not optional: Hear_again
-         * draws rn2(2) (eat.c:1804) when the countdown expires, and seed4500's
-         * step 526 is exactly that one leaf. */
         game.afternmv = 'Hear_again';
         return 1;
     }
@@ -1878,10 +1621,6 @@ async function eatcorpse(otmp) {
         else if (otmp.blessed) rotted -= 2;
     }
 
-    /* C eat.c:1895 — stoneable/slimeable are FALSE for ordinary corpses; the
-     * tainted branch fires only when rotted > 5.  None of the corpus's eaten
-     * corpses reach rotted > 5, so the taint rn1(10,10)/make_sick path is not
-     * exercised; port it faithfully so it is general. */
     const stoneable = false, slimeable = (mnum === PM_GREEN_SLIME_E); // simplified flags
     if (!glob && !stoneable && !slimeable && rotted > 5) {
         /* tainted */
@@ -1890,41 +1629,10 @@ async function eatcorpse(otmp) {
         return 2; /* corpse used up (useup); no occupation */
     } else if (_acidicE(mnum) && !_eat_Acid_resistance()) {
         tp++;
-        /* C eat.c:1926-1928 —
-         *     You("have a very bad case of stomach acid.");
-         *     losehp(rnd(15), !glob ? "acidic corpse" : "acidic glob", KILLED_BY_AN);
-         * board `boardall-s` record 12/14: this used to draw-and-discard the
-         * rnd(15), leaving hero.uhp unchanged where C's capture shows it
-         * dropping. */
         You('have a very bad case of stomach acid.');
         await losehp(rnd(15), !glob ? 'acidic corpse' : 'acidic glob', KILLED_BY_AN);
     } else if (_poisonousE(mnum) && rn2(5)) { /* eat.c:1936 */
         tp++;
-        /* C eat.c:1937-1943:
-         *     pline("Ecch - that must have been poisonous!");
-         *     if (!Poison_resistance)
-         *         poison_strdmg(rnd(4), rnd(15), "poisonous corpse", KILLED_BY_AN);
-         *     else You("seem unaffected by the poison.");
-         * poison_strdmg (attrib.c:274) is losestr(strloss) then losehp(dmg).
-         * Both rolls were already being drawn here and thrown away, so the Str
-         * and HP drops never landed: seed0030 segment 2 step 24 shows C at St:4
-         * (8 - rnd(4)) against this port's unchanged St:8, and the status line
-         * then mismatches on every later frame of the segment.
-         *
-         * Poison_resistance has no ported predicate and is FALSE for the corpus
-         * heroes (same convention as the Acid_resistance arm above).
-         *
-         * The rnd(4)-before-rnd(15) order is C's argument-evaluation order as
-         * the recorded trace fixes it; bound to locals so it cannot drift.
-         *
-         * The "Ecch" pline is emitted now — the blocker this note recorded (the
-         * eat-occupation driver forcing the cross-turn --More-- unconditionally)
-         * is gone, see the rotted-cadaver arm below.  seed0030 segment 2 step 24:
-         * "Ecch - that must have been poisonous!" (36) and done_eating's "You
-         * finish eating the kobold corpse." (36) do NOT fit together
-         * (36+2+36 = 74 >= 71), so C pages here — the frame is
-         * "Ecch - that must have been poisonous!--More--" and the recorded space
-         * at step 25 dismisses it. */
         _emit_eat_pline('Ecch - that must have been poisonous!');
         const _strloss = rnd(4);
         const _pdmg = rnd(15);
@@ -1952,30 +1660,6 @@ async function eatcorpse(otmp) {
      * The uprops pair is the live half and is what a polymorphed hero needs. */
     } else if ((rotted > 5 || (rotted > 3 && rn2(5))) && !_eat_Sick_resistance()) {
         tp++;
-        /* C eat.c:1941-1942:
-         *     You_feel("%ssick.", (Sick) ? "very " : "");
-         *     losehp(rnd(8), "cadaver", KILLED_BY_AN);
-         * The rnd(8) HP loss is applied here (rnd(8) was already the RNG this
-         * branch consumed).  losehp on the hero's own action
-         * (!svc.context.mon_moving) consumes NO further RNG — saving_grace()
-         * returns the amount unchanged — so apply the HP drop directly (mirrors
-         * dokick.c losehp).  Death (uhp<1) is not reached for the small rnd(8)
-         * damage the corpus exercises.  seed0002 step 53: HP 11 -> 5 (rnd(8)=6),
-         * fixing the status line (BOTL) for every subsequent frame.
-         *
-         * The pline IS emitted now.  It is printed by C at eatcorpse time (turn 1),
-         * then the multi-turn eat occupation runs silently and done_eating appends
-         * "You finish eating the <corpse>."; C's update_topl CONCATENATES both onto
-         * one topline when their combined width fits CO-1-8=71 (seed0002: 14+2+35 =
-         * 51 -> no --More--) and PAGES when it overflows.  The blocker this note
-         * used to record — eat_occupation_turn forcing the cross-turn --More--
-         * UNCONDITIONALLY — is now gone: that driver applies C's own update_topl
-         * join test (display.js _topl_joins_committed) and joins instead of paging
-         * when the two fit.
-         *
-         * (Sick) is FALSE for every corpus hero (make_sick is only reached from the
-         * tainted-corpse arm above, which no session takes), so the "very " prefix
-         * is not reachable; it is written out anyway so the branch stays C-shaped. */
         _emit_eat_pline(`You feel ${_uprop_on(SICK) ? 'very ' : ''}sick.`);
         const _dmg = rnd(8); /* eat.c:1942 losehp(rnd(8), ...) */
         if (u) {
@@ -1989,30 +1673,9 @@ async function eatcorpse(otmp) {
     const v = _victual();
     v.reqtime = 3 + ((!glob ? _cwtE(mnum) : (otmp.owt | 0)) >> 6);
 
-    /* C eat.c:1949 — rotting-corpse rn2(7) gate. */
     if (!tp && !_nonrotting_corpse(mnum) && ((otmp.orotten ? 1 : 0) || !rn2(7))) {
-        /* C eat.c:1950-1957:
-         *     if (rottenfood(otmp)) {
-         *         otmp->orotten = TRUE;
-         *         otmp = touchfood(otmp);
-         *         if (!otmp) return 1;
-         *         retcode = 1;
-         *     }
-         * The note that used to stand here — "rottenfood(otmp) rolls no RNG for
-         * the corpus's corpses" — was simply false: rottenfood ALWAYS rolls
-         * rn2(4), and rolls a further rn2(4) and rn2(3) as its earlier arms fail
-         * (the && !Blind and the third arm's condition are evaluated AFTER the
-         * roll).  seed0014 step 309 eats a rotten newt corpse and C's trace reads
-         * rn2(4)=2 / rn2(4)=1 / rn2(3)=1 @ eat.c:1817,1823,1830 — three leaves we
-         * were not consuming, and the "Blecch!  Rotten food!" topline we were not
-         * printing. */
         if (rottenfood(otmp)) {
             otmp.orotten = true;
-            /* C eat.c:1953 otmp = touchfood(otmp).  WIRE_PENDING: touchfood
-             * (eat.c:1740) is not ported — it splits a stack and stamps oeaten.
-             * It is RNG-FREE, so leaving it unwired costs state, never sequence,
-             * and it is reachable only from rottenfood's third arm (the
-             * "world spins" nomul branch), which no public session takes. */
             retcode = 1;
         }
         if (_cnutritE(mnum) === 0) {
@@ -2058,12 +1721,6 @@ async function eatcorpse(otmp) {
     return retcode;
 }
 
-/* C eat.c:2099 fprefx(otmp) — pre-eat flavor text + a few RNG-bearing branches.
- * Returns false only when the eat is aborted (rotten egg explode / pyrolisk).
- * Ported for the non-polymorphed, non-Hallucinating starting-hero cases that the
- * corpus exercises.  RNG-faithful: TRIPE non-carnivore vomiting rn2(2); APPLE/PEAR
- * UNIX hallucination rnd(100); CLOVE undead rn1 — gated exactly as C.  For the
- * common case (lembas/cram/food ration/fruit, sober hero) it is RNG-free. */
 async function _fprefx(otmp) {
     const v = _victual();
     const otyp = otmp.otyp | 0;
@@ -2122,31 +1779,8 @@ async function _fprefx(otmp) {
         /* C eat.c:2176-2177 — cursed apple skips the core joke here; the
          * fall-asleep feedback is deferred to fpostfx().  No message, no RNG. */
     } else if (ORGANISER_IS_MACOS && otyp === APPLE_OTYP) {
-        /* PLATFORM-CONDITIONAL.  C eat.c:2179-2186, the
-         * '#if defined(MACOS9) || defined(MACOS)' arm, which precedes the UNIX
-         * arm precisely so an apple gets the Apple-specific message.  The
-         * organiser build defines MACOS via config1.h:43-45 (__APPLE__ &&
-         * __MACH__); seed0016 renders this line.  On a *nix build this arm is
-         * compiled out entirely and APPLE falls through to the UNIX arm below.
-         * Flip ORGANISER_PLATFORM in js/platform_identity.js to switch.
-         *
-         * NOTE THIS ARM ALSO CHANGES THE RNG.  Under the macOS arm an apple
-         * draws nothing here; under the Unix arm a HALLUCINATING apple-or-pear
-         * draws rnd(100) (eat.c:2193).  So the platform identity is a
-         * Cardinal-Rule-2 signal, not only a message. */
         _emit_eat_pline('Delicious!  Must be a Macintosh!');
     } else if (otyp === APPLE_OTYP || otyp === PEAR_OTYP) {
-        /* C eat.c:2188-2202 — the '#ifdef UNIX' arm, present on BOTH builds.
-         * With ORGANISER_IS_MACOS true, APPLE is already consumed above, so
-         * only PEAR reaches here (which is exactly what C does).
-         *
-         * KNOWN GAP, unrelated to the platform switch: C's hallucinating
-         * variant (eat.c:2192-2201) draws rnd(100) and prints
-         * "Segmentation fault -- core dumped." / "Bus error -- core dumped." /
-         * "Yo' mama -- core dumped."  This port always emits the
-         * non-hallucinating "Core dumped." and draws nothing.  No public
-         * session eats a pear while hallucinating; a held-out one would
-         * diverge on RNG here. */
         _emit_eat_pline('Core dumped.');
     } else {
         const bland = (otyp === CRAM_RATION_OTYP || otyp === K_RATION_OTYP_E || otyp === C_RATION_OTYP_E);
@@ -2169,10 +1803,6 @@ function _hero_undead() {
     return !!(((d && d.mflags2) | 0) & M2_UNDEAD_E);
 }
 
-/* C mon.c:4515-4527 iter_mons(vfunc) — call vfunc for every living, on-map
- * monster in fmon, snapshotting nmon first so the callback may unlink mtmp.
- * DEADMONSTER(mon) == mon->mhp < 1; mon_offmap(mon) == mon->mstate != MON_FLOOR
- * (MON_FLOOR == 0). */
 function _iter_mons(vfunc) {
     let mtmp2;
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp2) {
@@ -2185,25 +1815,11 @@ function _iter_mons(vfunc) {
     }
 }
 
-/* C monmove.c monflee(mtmp, fleetime, first, fleemsg) restricted to the
- * (fleetime == 0, first == FALSE, fleemsg == FALSE) call garlic_breath makes.
- * With first FALSE the `!first || !mtmp->mflee` guard is always taken; a zero
- * fleetime clears mfleetim (an UNTIMED flee, which is what makes dochug's
- * monmove.c:781 `mflee && !mfleetim` regain-courage rn2(25) reachable on the
- * following turn); fleemsg FALSE suppresses the whole message block, which
- * carries monflee's only rn2 (the flees_light rn2(10)).  So this call is
- * RNG-free EXCEPT for the vrock gas-cloud branch, preserved below.
- * u.ustuck / mon_track_clear are the two remaining C side effects: the hero is
- * never engulfed while eating on the corpus path, and mtrack is not modelled by
- * this port (bookkeeping only — mon_track_clear consumes no RNG). */
 function _monflee_untimed(mtmp) {
     if ((mtmp.mhp | 0) < 1)  /* DEADMONSTER — C returns immediately */
         return;
     mtmp.mfleetim = 0;
     if ((mtmp.mnum | 0) === PM_VROCK && !(mtmp.mspec_used | 0)) {
-        /* C monmove.c: mtmp->mspec_used = 75 + rn2(25); create_gas_cloud(...).
-         * The rn2 is preserved for sequence parity; create_gas_cloud is not yet
-         * ported (no corpus session flees a vrock — WIRE_PENDING). */
         mtmp.mspec_used = 75 + rn2(25);
     }
     mtmp.mflee = 1;
@@ -2227,9 +1843,6 @@ function _eat_sleep_resistance() {
     return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 
-/* C eat.c:3133 bite() — one bite; for the corpus corpses nmod<0 so it rolls no
- * RNG (lesshungry / consume_oeaten / recalc_wt are all RNG-free).  Returns 1 if
- * choked (not reached here), else 0. */
 async function bite() {
     const v = _victual();
     const u = game.u;
@@ -2259,8 +1872,6 @@ async function bite() {
     return 0;
 }
 
-/* C eat.c:544 done_eating — finish the meal: "You finish eating X." then
- * cpostfx (RNG-free for the corpus's corpses) and useup. */
 async function done_eating(message) {
     const v = _victual();
     const piece = v.piece;
@@ -2281,11 +1892,6 @@ async function done_eating(message) {
          * food_xname(.,TRUE) prefixes "the" for a known singleton corpse. */
         _emit_eat_pline(`You finish eating ${_food_xname(piece, true)}.`);
     }
-    /* C eat.c:563 cpostfx(piece->corpsenm).  The claim that used to stand here —
-     * "no RNG for the corpus corpses" — was false: every corpse that falls to
-     * cpostfx's `default:` arm sets check_intrinsics, and that tail rolls
-     * eye_of_newt_buzz (newt / AT_MAGC) and corpse_intrinsic.  seed0014 step 309
-     * eats a newt and C's trace reads rn2(3)/rnd(3)/rn2(3) @ eat.c:1106-1111. */
     if (piece && (piece.corpsenm | 0) >= 0 && (piece.otyp | 0) === CORPSE_OTYP)
         await cpostfx(piece.corpsenm | 0);
     /* C eat.c:2529-2532 —
@@ -2296,7 +1902,6 @@ async function done_eating(message) {
      * switch was unreachable. */
     else if (piece)
         await _fpostfx(piece);
-    /* C eat.c:567-570: use the real inventory/floor consumption paths. */
     if (piece) {
         if (piece.where === OBJ_INVENT)
             await useup(piece);
@@ -2350,25 +1955,6 @@ async function _fpostfx(otmp) {
         break;
     }
     case CARROT_OTYP:
-        /* C eat.c:2517-2521 —
-         *     if (!u.uswallow
-         *         || !attacktype_fordmg(u.ustuck->data, AT_ENGL, AD_BLND))
-         *         make_blinded((long) u.ucreamed, TRUE);
-         * i.e. eating a carrot cures blindness unless the hero is inside a
-         * blinding engulfer (which would re-blind immediately).  make_blinded
-         * with talk=TRUE is what prints "You can see again." and, through
-         * toggle_blindness(), what drops "Blind" off the status row and
-         * repaints the map.
-         *
-         * js/zap.js:507 make_blinded is the real body; this file's private
-         * _eat_make_blinded() is a TIMER-ONLY copy (it writes the HBlinded
-         * word and returns) and would have left the hero seeing with a stale
-         * screen and no message.
-         *
-         * MEASURED on gen392-reseed-seed77105 step 528: the blind hero eats a
-         * carrot.  C reads "This carrot is delicious!  You can see again."
-         * and this port stopped at "This carrot is delicious!" — and then
-         * stayed blind for the next 103 recorded frames.  RNG-free. */
         if (!u.uswallow
             || !attacktype_fordmg(u.ustuck ? u.ustuck.data : null,
                                   AT_ENGL_FPFX, AD_BLND_FPFX))
@@ -2450,11 +2036,6 @@ const CARROT_OTYP = 282; /* objects.h food class — js/food_props.js:45 */
 const SPRIG_OF_WOLFSBANE_OTYP = 283, LUMP_OF_ROYAL_JELLY_OTYP = 286;
 const EUCALYPTUS_LEAF_OTYP = 276;
 
-/* Display name for a single floor CORPSE object, with article — C look_here →
- * doname → "a goblin corpse" / "an orc corpse".  Used by check_here's
- * "You see here X." auto-look (pickup.c:452).  Returns null for non-corpse
- * objects (whose general doname is not yet ported), so check_here only emits
- * the line it can render faithfully. */
 export function corpse_floor_xname(otmp) {
     if (!otmp) return null;
     const q = (otmp.quan == null) ? 1 : (otmp.quan | 0);
@@ -2463,10 +2044,6 @@ export function corpse_floor_xname(otmp) {
     if ((otmp.otyp | 0) === CORPSE_OTYP) {
         base = `${_monNameLower(otmp.corpsenm | 0)} corpse`;
     } else {
-        /* C invent.c look_here → doname → xname OBJ_NAME for a plain food item.
-         * A floor food ration the hero steps onto ("You see here a food ration.",
-         * seed1150 step 6/17).  Food objects carry no BUC prefix in doname when
-         * undiscovered, so the bare OBJ_NAME with its article is faithful. */
         base = FLOOR_FOOD_XNAME[otmp.otyp | 0] || null;
     }
     if (!base) return null;
@@ -2474,25 +2051,10 @@ export function corpse_floor_xname(otmp) {
     const article = /^[aeiou]/i.test(base) ? 'an' : 'a';
     return `${article} ${base}`;
 }
-/* Food-class OBJ_NAMEs (objects.h FOOD macro order) the hero may step onto and
- * auto-look ("You see here ..."); FOOD_RATION=293 is the common floor ration. */
 const FLOOR_FOOD_XNAME = { 293: 'food ration', 264: 'tripe ration' };
 
 /* C invent.c food_xname — for a singleton corpse: "<monster> corpse", with a
  * leading "the" when article=true (food_xname(.,TRUE)). */
-/* C ref: eat.c:217-235 food_xname(food, the_pfx).
- *   CORPSE → corpse_xname(CXN_SINGULAR [| CXN_PFX_THE])
- *   else   → singular(food, xname)          [the ordinary case]
- *   the_pfx → the(result)
- * The non-corpse branch used to return the literal string "food", so every
- * comestible was named "food": seed0367 step 61 rendered "This food is
- * delicious!" where C has "This clove of garlic is delicious!" (eat.c:2204
- * give_feedback → pline("This %s is %s", singular(otmp, xname), ...)).  For a
- * comestible, objnam.c's FOOD_CLASS xname branch is the plain OBJ_NAME once the
- * CORPSE / EGG-with-corpsenm / known-TIN / SLIME_MOLD special cases are taken
- * out, and singular() of a bare type name is that name — so OBJ_NAME is the
- * faithful result here.  objName() (not getObjName()) is required: the latter
- * is the partial table and returns null across the whole comestible range. */
 function _food_xname(otmp, the_pfx) {
     if ((otmp.otyp | 0) === CORPSE_OTYP) {
         const mname = _monNameLower(otmp.corpsenm | 0);
@@ -2546,7 +2108,6 @@ export async function start_eating(otmp, already_partly_eaten) {
     const v = _victual();
     v.fullwarn = 0; v.doreset = 0;
     v.eating = 1;
-    /* C eat.c:2040 — cprefx for corpses; RNG-free for the corpus corpses. */
     /* C eat.c:2049 — first bite. */
     if (await bite()) {
         v.usedtime = (v.usedtime | 0) + 1;
@@ -2579,17 +2140,8 @@ export async function doeat_food(otmp) {
     let dont_start = false;
     const already_partly_eaten = (otmp.oeaten | 0) ? true : false;
 
-    /* C eat.c:2969 otmp = touchfood(otmp).  This used to be only touchfood's
-     * LAST clause (set oeaten if unset), which left out both halves of the
-     * split: the stack kept its full quan and carried the bite on itself, and
-     * the bitten item never got an inventory slot of its own.  seed4500 step
-     * 527 is the visible cost — after biting one apple out of the 'g' stack at
-     * step 525, C's eat prompt reads "[ghm or ?*]" (the partly eaten apple is
-     * 'm') where this port still offered "[gh or ?*]". */
     otmp = await touchfood(otmp);
     if (!otmp) {
-        /* C eat.c:2977 do_reset_eat(); return ECMD_TIME — touchfood dropped the
-         * item and it was destroyed (full pack + no room on the floor). */
         _zero_victual();
         game.context = game.context || {};
         game.context.move = 1;
@@ -2615,11 +2167,6 @@ export async function doeat_food(otmp) {
         if (tmp === 2) { _zero_victual(); game.context.move = 1; return true; }
         else if (tmp) dont_start = true;
     } else {
-        /* C eat.c:2987-3045 — non-corpse general comestible.
-         * Material conduct (FLESH → unvegan/unvegetarian) is RNG-free; the VEGGY
-         * default-case unvegan bumps (pancake/cookie/cream pie/candy/jelly) are
-         * RNG-free too.  We bump the conduct counters that gate later livelog but
-         * consume no RNG. */
         const mat = _oc_material(otmp.otyp | 0);
         if (u) u.uconduct = u.uconduct || {};
         if (mat === MATERIAL_FLESH) {
@@ -2640,19 +2187,6 @@ export async function doeat_food(otmp) {
                     && ((game.moves | 0) - (otmp.age | 0)) > ((otmp.blessed ? 50 : 30))
                     && ((otmp.orotten ? 1 : 0) || !rn2(7))));
         if (rotten) {
-            /* C eat.c:3032-3036 —
-             *     if (rottenfood(otmp)) { otmp->orotten = TRUE;
-             *                             dont_start = TRUE; }
-             *     consume_oeaten(otmp, 1);
-             * The comment that used to stand here ("RNG-free message path for
-             * the corpus") was false in exactly the way the sibling CORPSE arm
-             * at :1172 already documents: rottenfood() ALWAYS rolls, up to three
-             * leaves, and prints "Blecch!  Rotten food!".  Skipping the call
-             * dropped four draws and the topline, and set orotten/dont_start
-             * unconditionally where C sets them only on the knockout arm.
-             * seed4500 step 525 is that arm: C's rn2(4)=1, rn2(4)=3, rn2(3)=0,
-             * rnd(10)=3 -> "The world spins and goes dark." and a 3-turn
-             * nomul. */
             if (rottenfood(otmp)) {
                 otmp.orotten = true;
                 dont_start = true;
@@ -2878,16 +2412,6 @@ function tin_variety(obj, displ) {
     return r | 0;
 }
 
-/* C eat.c:1427 — tin_details(struct obj *obj, int mnum, char *buf)
- * Appends or replaces buf with tin description.
- * SPINACH_TIN → " of spinach"
- * NON_PM (empty) → "empty tin"
- * Other → monster name with tin variety descriptor
- *
- * In C, buf is modified in place (char* output param). JS strings are
- * immutable, so the resulting buffer contents are RETURNED (the __charptr__
- * convention: the oracle compares args_after.buf against the return value).
- */
 export function tin_details(obj, mnum, buf) {
     /* C eat.c:1432: `if (!obj || !buf) return;` — a NULL-POINTER test.  A JS
      * empty string is a valid non-NULL buffer holding "", not a null pointer,
@@ -2953,28 +2477,6 @@ function tinopen_ok(obj) {
     return 2; /* GETOBJ_EXCLUDE */
 }
 
-/* ═══ THE TIN-OPENING OCCUPATION — C eat.c:1381-1796 ═══════════════════════════
- *
- * start_tin() (eat.c:1723) chooses the opening method and, unless the tin opens
- * instantly, sets the "opening the tin" OCCUPATION; opentin() (eat.c:1703) is
- * its per-turn callback; consume_tin() (eat.c:1526) is what the callback runs
- * once its countdown expires.  The occupation itself is driven by C's
- * moveloop_core (allmain.c:485-509) — see the OPENTIN driver in js/allmain.js,
- * modelled on the learn/picklock drivers already there.
- *
- * start_tin() USED TO BE AN EMPTY STUB in this file, so a tin selected at the
- * eat prompt fell through to doeat_food() and was swallowed as ordinary food in
- * one bite ("This tin is delicious!").  C prints "It is not so easy to open
- * this tin." and then spends rn1(1 + 500 / (ACURR(A_DEX) + ACURRSTR), 10) turns
- * on it — a modulus the recorder annotates as `rn2(N) @ start_tin(eat.c:1784)`,
- * from which N-1 == 500 / (DEX + STR) decodes the hero's two attributes.
- *
- * C weapon otyps, resolved by NAME out of js/oc_name_data.js (OC_NAME.indexOf)
- * rather than copied from a 3.7 table:
- *   tin opener 239, dagger 34, elven dagger 35, orcish dagger 36,
- *   silver dagger 37, athame 38, knife 40, stiletto 41, crysknife 43,
- *   axe 44, pick-axe 259, tin 296.
- */
 const TIN_OTYP = 296;
 const TIN_OPENER_OTYP = 239;
 const _TIN_DAGGERS = [34 /* DAGGER */, 37 /* SILVER_DAGGER */, 35 /* ELVEN_DAGGER */,
@@ -3015,18 +2517,6 @@ async function use_up_tin(tin) {
     t.o_id = 0;
 }
 
-/* C eat.c:1389 costly_tin(int alter_type) — split one tin off the stack and
- * bill it when it is unpaid (carried) or lying on a shop square.
- *
- * SCOPE, stated rather than hidden.  The CARRIED-unpaid half is ported: it
- * needs only tin->unpaid and the real splitobj(), whose next_ident() rnd(2) is
- * the ONLY PRNG draw anywhere in this function.  The FLOOR half —
- * costly_spot(tin->ox, tin->oy) && !tin->no_charge — is a NAMED GAP: its body
- * lives in js/shk.js:1326 and importing it here would close an
- * eat -> shk -> cmd -> eat module cycle.  Consequence: a tin opened while the
- * hero stands on an unpaid shop square is not billed and (if quan > 1) is not
- * split, so that rnd(2) is not drawn.  costly_alteration() itself is RNG-free
- * and is the same named no-op js/read.js:1681 already carries. */
 async function costly_tin(_alter_type) {
     const t = _tin_ctx();
     let tin = t.tin;
@@ -3042,46 +2532,15 @@ async function costly_tin(_alter_type) {
     return tin;
 }
 
-/* C hack.h:1334 y_n(query) => yn_function(query, ynchars, 'n', TRUE), i.e.
- * tty_yn_function writes "<query> [yn] (n)" to the topline, parks the cursor
- * one column past it and reads one key.  Same body as js/potion.js:303's y_n;
- * duplicated rather than imported because potion.js does not export it and
- * eat.js importing potion.js for it would be a wider edge than the message
- * deserves.  RNG-FREE.
- *
- * Measured against the recording: gen476 answers this prompt with '+' (invalid
- * -> tty_yn_function loops and re-reads, the prompt frame is shown twice) and
- * then ESC (-> the default, 'n'); gen651 answers it with ESC on the first
- * read.  Both frames are recorded as "Eat it? [yn] (n)". */
 async function _tin_y_n(question) {
     const g = game;
     const prompt = question + ' [yn] (n)';
-    /* C win/tty/topl.c — tty_yn_function writes the prompt through the SAME
-     * topline update_topl() drives, so an already-occupied topline is paged out
-     * BEFORE the prompt appears; the prompt never overwrites an unacknowledged
-     * message.  Reproduce that in two steps: flush_screen(1) pages every
-     * width-overflow page (consuming one recorded dismiss key each), and
-     * force_more() acknowledges the non-overflowing remainder.
-     *
-     * MEASURED on gen651 step 37: consume_tin has just plined
-     *   "It is not so easy to open this tin."  (35, from start_tin)
-     * + "You succeed in opening the tin."      (31 -> 68, still fits CO-1-8)
-     * + "It smells like newts."                (21 -> 91, overflows)
-     * so C shows the first two joined with --More-- (frame 37, acked by ' '),
-     * then "It smells like newts.--More--" alone (frames 38-41: 'n','g','e' ring
-     * the bell, '\n' dismisses), and only then "Eat it? [yn] (n)" (frame 42).
-     * Setting _pending_message straight to the prompt DESTROYED both pages and
-     * rendered the prompt at frame 37 — this port's own y_n copies get away
-     * with it only because they are called on an empty topline. */
     await flush_screen(1);
     if (g._pending_message)
         await force_more(g._pending_message);
     for (;;) {
         g._pending_message = prompt;
         await flush_screen(1);
-        /* C win/tty/topl.c tty_yn_function — the prompt is written with its
-         * TRAILING SPACE and the cursor is left one column past it.  gen651
-         * step 42 records cursor col 17 for the 16-column "Eat it? [yn] (n)". */
         {
             const disp = g.nhDisplay;
             if (disp) topl_park_cursor(disp, prompt + ' ');
@@ -3131,12 +2590,6 @@ async function consume_tin(mesg) {
     /* C eat.c:1537-1542 — trapped, or a cursed non-homemade tin one time in 8. */
     if ((tin.otrapped | 0)
         || ((tin.cursed | 0) && (r | 0) !== HOMEMADE_TIN && !rn2(8))) {
-        /* b_trapped("tin", NO_PART) — trap.c's container blast.  UNPORTED and
-         * NAMED: it consumes RNG (its damage roll) and no session in the
-         * corpus opens a trapped or cursed non-homemade tin (measured: the 4
-         * train sessions that reach start_tin all take the plain branch, and
-         * NO public session reaches start_tin at all).  Throwing rather than
-         * guessing keeps a wrong answer from being scored as a right one. */
         await b_trapped_tin();
         return;
     }
@@ -3198,17 +2651,6 @@ async function consume_tin(mesg) {
             }
         }
 
-        /* C eat.c:1598-1646 — the hero accepts and eats the contents.
-         *
-         * SCOPE, NAMED: cprefx(mnum) (eat.c:1610) is not ported anywhere in
-         * this file — js/eat.js:1927 start_eating() carries the identical named
-         * gap for the corpse path — so the were-form / acidic / petrification
-         * pre-effects are missing here too.  Everything else on this arm is
-         * live: eating_conducts, observe_object, costly_tin, cpostfx (this
-         * file's own body), the rotten-tin make_vomiting roll, the nutrition
-         * arithmetic, and the greasy-tin make_glib roll.  NO CORPUS SESSION
-         * TAKES THIS ARM — all four tin sessions answer 'n' above — so it is
-         * unmeasured and is written to C rather than to a trace. */
         _zero_victual(); /* C eat.c:1598 svc.context.victual = zero_victual */
 
         await pline(`You consume ${TINTXTS[r | 0].txt} ${monPmname(mnum, 2)}.`);
@@ -3241,12 +2683,6 @@ async function consume_tin(mesg) {
         }
 
         if (TINTXTS[r | 0].greasy) {
-            /* C eat.c:1634-1645.  NOTE: fingers_or_gloves(TRUE) is an honest
-             * throw-stub in js/do_wear.js:4178, so this arm HALTS rather than
-             * printing a fabricated body part.  It sits at the very END of the
-             * accept branch, so every draw above it has already landed.  Reached
-             * only by answering 'y' to "Eat it?" on a greasy tin variety — 0 of
-             * 688 train and 0 of 44 public sessions answer 'y' at all. */
             const alreadyglib = (g.u?.uprops?.[GLIB]?.intrinsic | 0) & TIMEOUT;
             make_glib(alreadyglib + rn1(11, 5)); /* 5..15 */
             await pline(`Eating ${TINTXTS[r | 0].txt} food made your `
@@ -3312,15 +2748,9 @@ async function consume_tin(mesg) {
  * that turn's world block; 1 means still busy, 0 ends the occupation. */
 export async function opentin() {
     const t = _tin_ctx();
-    /* C eat.c:1705-1709 — "perhaps it was stolen (although that should cause
-     * interruption)".  carried(tin) || (obj_here(tin) && can_reach_floor). */
     if (!t.tin)
         return 0;
     if (!_eat_carried(t.tin)) {
-        /* obj_here(svc.context.tin.tin, u.ux, u.uy) — the floor half.  A tin
-         * that left the inventory without leaving the per-tile chain under the
-         * hero is still openable in C; this port checks the tile chain the same
-         * way freeinv walks it. */
         const u = game.u || {};
         let here = false;
         for (let o = game.level?.levelObjects?.[u.ux | 0]?.[u.uy | 0]; o; o = o.nexthere)
@@ -3357,29 +2787,10 @@ function _tin_cantwield() {
     return nohands || verysmall;
 }
 
-/* C eat.c:1771-1784, the `no_opener:` label.  Returns the turn count, or null
- * when the Glib arm has already dropped the tin and start_tin must return.
- * THE ONE PRNG DRAW: rn1(1 + 500 / (ACURR(A_DEX) + ACURRSTR), 10) — the
- * recorder annotates it `rn2(N) @ start_tin(eat.c:1784)`, and N is 1 + the
- * integer division, so the modulus decodes DEX+STR exactly. */
 async function _tin_no_opener(otmp) {
     const g = game;
     const u = g.u || {};
     await pline('It is not so easy to open this tin.');
-    /* C eat.c:1773-1783 — greasy hands: the tin slips away and start_tin
-     * RETURNS without opening anything.
-     *     pline_The("tin slips from your %s.", fingers_or_gloves(FALSE));
-     *     if (otmp->quan > 1L) otmp = splitobj(otmp, 1L);
-     *     if (carried(otmp)) dropx(otmp); else stackobj(otmp);
-     *     return;
-     * The ONE PRNG draw here is splitobj -> next_ident -> rnd(2), and it is the
-     * real splitobj().  UNREACHED on every corpus we hold (the 4 train sessions
-     * that call start_tin all produce the rn1 at eat.c:1784, which is BELOW
-     * this early return, and no public session calls start_tin) — so it is
-     * written to C and not to a trace.  Ported rather than left as a throw
-     * because C exits here WITHOUT opening the tin: a throw on this arm would
-     * halt a session that previously merely mis-ate the tin.
-     * C youprop.h Glib — u.uprops[GLIB].intrinsic | extrinsic. */
     if ((u.uprops?.[GLIB]?.intrinsic | 0) || (u.uprops?.[GLIB]?.extrinsic | 0)) {
         await pline(`The tin slips from your ${fingers_or_gloves(false)}.`);
         let slip = otmp;
@@ -3666,11 +3077,6 @@ export async function cant_finish_meal(corpse) {
         g.occupation = null;
 
         /* C eat.c:3910: stop_occupation(); (clears occupation and calls maybe_finished_meal) */
-        /* In JS, we've already cleared occupation. The stub stop_occupation in C also
-         * calls maybe_finished_meal(TRUE), but since occupation is now null, that will
-         * return FALSE and just call nomul(0). Our captures show state_after_diff empty
-         * (only occupation changes), so we don't need to replicate stop_occupation's
-         * complete behavior. */
 
         /* C eat.c:3911: newuhs(FALSE); */
         await newuhs(false);
@@ -3689,7 +3095,6 @@ const M1_TPORT = 0x02000000;
 const M1_TPORT_CNTRL = 0x04000000;
 
 export function intrinsic_possible(type, ptr_pmidx) {
-    /* Reconstruct permonst from pmidx; capture provides ptr_pmidx instead of ptr. */
     let ptr = ptr_pmidx;
     if (typeof ptr_pmidx === 'number') {
         ptr = permonstTemplate(ptr_pmidx);
@@ -3837,10 +3242,6 @@ function _incr_itimeout(idx, incr) {
     p.intrinsic = ((p.intrinsic | 0) & ~TIMEOUT) | v;
 }
 
-/* C eat.c:970-1080 givit(type, ptr) — try to grant one intrinsic.
- * RNG: the `!should_givit() && !temp_givit()` gate, and d(3,6) on the two timed
- * arms.  Every effect arm below is a message + a FROMOUTSIDE bit; the messages
- * go to the eat message channel like the rest of eatcorpse's plines. */
 function givit(type, ptr) {
     if (!should_givit(type, ptr) && !temp_givit(type, ptr))
         return;
@@ -3923,11 +3324,6 @@ function givit(type, ptr) {
     }
 }
 
-/* C eat.c:1102-1123 eye_of_newt_buzz — the "eye of newt" magic-energy boost.
- * THREE leaves at most: rn2(3) at 1106 (short-circuits the || so the uen test
- * costs nothing extra), rnd(3) at 1109, and rn2(3) at 1111 — the last only when
- * the boost pushed u.uen above u.uenmax.  seed0014's newt corpse rolls all
- * three; the port had NO cpostfx at all, so all three were missing. */
 function eye_of_newt_buzz() {
     const u = game.u;
     if (!u) return;
@@ -3948,12 +3344,6 @@ function eye_of_newt_buzz() {
     }
 }
 
-/* C eat.c:1334-1370 corpse_intrinsic(ptr) — pick (one of) the intrinsics this
- * corpse can convey.  Returns 0 for none, -1 for the giant-strength fake prop.
- * RNG: one rn2(count) per CANDIDATE intrinsic (reservoir sampling), plus a
- * final rn2(2) when strength is the only candidate.  A monster that conveys
- * nothing — a newt — rolls NOTHING, which is why seed0014's trace goes straight
- * from eye_of_newt_buzz to the monster turn. */
 export function corpse_intrinsic(ptr) {
     const conveys_STR = ((ptr.mflags2 | 0) & M2_GIANT) !== 0; /* C mondata.h is_giant */
     let count = 0, prop = 0;
@@ -4009,33 +3399,10 @@ export function mon_givit(mtmp, ptr) {
     if (vis && !innate) _emit_eat_pline(`${Monnam(mtmp)} ${suffix}`);
 }
 
-/* C eat.c:1128-1327 cpostfx(pm) — called after completely consuming a corpse.
- *
- * The port had NO cpostfx: done_eating carried the comment "cpostfx
- * (piece->corpsenm) — no RNG for the corpus corpses" and called nothing.  That
- * is false for any corpse reaching the `default:` arm, which is most of them:
- * default sets check_intrinsics, and the tail below rolls eye_of_newt_buzz (for
- * AT_MAGC monsters and the newt) and corpse_intrinsic (one rn2 per conveyable
- * intrinsic) and then givit.
- *
- * SCOPE, stated honestly: the switch's special-form arms that need machinery
- * this port does not have — polyself (chameleon/doppelganger/sandestin/genetic
- * engineer), attrcurse (disenchanter), pluslvl (wraith), the mimic nomul, the
- * lycanthropy set_ulycn/retouch_equipment tail — are marked WIRE_PENDING and
- * left as no-ops, exactly the behaviour they had before this function existed.
- * They are called out per-arm so the gap is greppable rather than implied.  Of
- * those, only PM_STALKER (rn1(100,50)), the mind flayer arm (rn2(2)) and the
- * polyself arms consume RNG; each is a KNOWN
- * remaining divergence for a session that eats one of those corpses, not a new
- * one. */
 async function cpostfx(pm) {
     let check_intrinsics = false;
-    /* C eat.c:1136-1137 — the eatmbuf cleanup; eatmupdate/eatmdone own that
-     * buffer and no session reaches the mimic arm that sets it. */
     switch (pm) {
     case PM_WRAITH:
-        /* C eat.c:1141 pluslvl(FALSE) — WIRE_PENDING (RNG: pluslvl rolls for
-         * hp/en gain).  Not reachable in the public corpus. */
         break;
     case PM_HUMAN_WERERAT:
     case PM_HUMAN_WEREJACKAL:
@@ -4178,25 +3545,6 @@ export function eatmupdate() {
     }
 }
 
-/* C ref: pline.c:366-374 You(const char *line, ...) —
- *     vpline(YouMessage(tmp, "You ", line), the_args)
- * i.e. the vsnprintf-formatted message with a literal "You " prefix.
- *
- * This body had NEITHER half: it took a single argument (so
- * `You("can no longer ride %s.", mon_nam(mon))` in js/trap.js:4697 dropped
- * mon_nam(mon) and printed the literal "%s"), and it never prefixed "You ",
- * so `You("can fly.")` rendered `can fly.` where C renders `You can fly.`.
- * Every one of the 15 call sites that reach this export — js/eat.js:2119,
- * js/trap.js (10), js/mcastu.js:628, js/teleport.js:644 and :1220 — passes
- * C's text with no prefix of its own, so the prefix was missing at all of
- * them.  Found via tools/format-arity-lint.mjs, which could only see the two
- * sites that also passed varargs.
- *
- * The _resultMessage channel is DELIBERATELY kept: it is the command-result
- * topline channel that survives to the next nhgetch and is merged by
- * js/allmain.js:1217/1431.  Routing these through pline() directly instead
- * would change topline TIMING, which is a different (and unmeasured) change
- * from fixing the text. */
 export function You(line, ...args) {
     const msg = 'You ' + (args.length > 0 ? nh_sprintf(line, args) : String(line));
     /* C has one topline.  If a prior pline is still live in the pending
@@ -4249,7 +3597,6 @@ export function thesimpleoname(obj) {
     return thesimpleoname_real(obj);
 }
 
-/* C eat.c floorfood — pick floor food, or from inventory */
 export async function floorfood(verb, corpsecheck) {
     const g = game;
     const u = g.u;
@@ -4260,7 +3607,6 @@ export async function floorfood(verb, corpsecheck) {
     g.getobj_else = 0;
     let otmp = null;
 
-    /* skip floor if can't touch, on steed while eating, or in pool/lava */
     let skipfloor = false;
     if ((g.iflags && g.iflags.menu_requested)
         || !can_reach_floor(true) || (feeding && u.usteed)
@@ -4322,8 +3668,6 @@ export async function floorfood(verb, corpsecheck) {
                 return null;
             ++g.getobj_else;
         }
-        /* C eat.c floorfood(): `uptr != &mons[PM_RUST_MONSTER]` — form-index
-         * identity (there is no `game.mons` array; the old read threw). */
         if (_pmidxOf(uptr) !== (PM_RUST_MONSTER | 0)
             && (gold = g_at(u.ux, u.uy)) !== null) {
             let qbuf;
@@ -4372,16 +3716,8 @@ export async function floorfood(verb, corpsecheck) {
         }
     }
 
-    } /* end of !skipfloor block */
+    }
 
-    /* skipfloor: label in C — inventory path.
-     * C eat.c:3711 `otmp = getobj("eat", eat_ok, GETOBJ_NOFLAGS)` — the
-     * feeding branch is the one this board's target (doeat) reaches, so it
-     * calls the real interactive getobj (js/cmd.js getObjFromGetobj, which
-     * IS invent.c:1752).  The sacrifice/tin branches keep the old
-     * non-interactive `getobj` stub — out of scope for this file's target
-     * (doeat only ever calls floorfood("eat", 0)) and each has its own
-     * live caller elsewhere that this change must not perturb. */
     if (feeding) {
         const picked = await getObjFromGetobj('eat', eat_ok, GETOBJ_NOFLAGS);
         otmp = (picked && picked.hands) ? null : picked;
@@ -4403,7 +3739,6 @@ export async function floorfood(verb, corpsecheck) {
     return otmp;
 }
 
-/* Stubs for unported helpers called by floorfood */
 /* C ref: pline.c You_cant(const char *line, ...) — "You can't %s!". */
 async function You_cant(msg) { await pline(`You can't ${msg}`); }
 /* C ref: hack.c:4370 check_capacity(str) —
@@ -4434,15 +3769,6 @@ async function feel_cockatrice(obj, force) {
         await pline(`Touching the ${name} is a fatal mistake...`);
     await instapetrify_eat(`touching ${name} bare-handed`);
 }
-/* C ref: apply.c:2166-2173 tinnable(corpse) —
- *     if (corpse->oeaten) return 0;
- *     if (!mons[corpse->corpsenm].cnutrit) return 0;
- *     return 1;
- * Ported whole rather than re-pointed: apply.c is owned by another porter's
- * file in this wave (js/pickup.js scope), and no js/ body of this name
- * exists anywhere else in the tree to import — grepped tree-wide before
- * writing this. _cnutritE is this file's own mons[].cnutrit table
- * (js/eat_corpse_data.json, already used by obj_nutrition above). RNG-free. */
 function tinnable(corpse) {
     if (corpse.oeaten | 0)
         return false;
@@ -4452,11 +3778,6 @@ function tinnable(corpse) {
 }
 /* C ref: dbridge.c:46-83 is_pool_or_lava — real body imported above from
  * js/look.js, which this file already imports from (end_running). */
-/* C mondata.h:22 — #define is_clinger(ptr) (((ptr)->mflags1 & M1_CLING) != 0L)
- * monflag.h:89 M1_CLING = 0x00000010L ("can cling to ceiling"): piercers,
- * mimics, wumpus.  floorfood's caller passes gy.youmonst.data (which may be
- * absent in a partially-seeded replay world — a missing permonst has no flags,
- * matching C's "hero form does not cling"). */
 const M1_CLING_E = 0x00000010;
 function is_clinger(uptr) {
     return (((uptr && uptr.mflags1) >>> 0) & M1_CLING_E) !== 0;
@@ -4470,12 +3791,6 @@ async function mksobj(otyp, init, artif) { return await mksobj_real(otyp, init, 
 function obj_extract_self(obj) {
     return obj_extract_self_general(obj);
 }
-/* g_at: the LOCAL `return null` STUB IS DELETED.  It shadowed the C-faithful
- * body at js/cmd.js:28082 (C invent.c:1613 — walk the tile's nexthere chain,
- * return the first COIN_CLASS object) at floorfood()'s call site below
- * (C eat.c:3659), so the "There is 1 gold piece here; eat it?" prompt could
- * never fire: JS always believed there was no gold underfoot.  RNG-free.
- * This file already imports from './cmd.js'. */
 function will_feel_cockatrice(obj, force) {
     /* C invent.c:4333 — blind (or forced touch), bare-handed, stone-vulnerable
        contact with a cockatrice corpse. */
@@ -4531,19 +3846,8 @@ function tin_ok(obj) {
         return -3;
     return 2;
 }
-/* C ref: pline.c impossible(const char *s, ...) — VARIADIC, and it PRINTS:
- * vpline(s, the_args) followed by pline("Program in disorder - perhaps you'd
- * better #quit."), plus a paniclog entry.  This body takes fixed parameters,
- * so its callers silently dropped their arguments (flagged by
- * tools/format-arity-lint.mjs).  The rest parameter fixes the arity.
- * KNOWN GAP, deliberately not closed here: this stub still emits NOTHING
- * where C emits two toplines.  Porting the output is not a safe drive-by —
- * impossible() firing in this port where it does not fire in C would ADD
- * toplines C never printed, which is a regression in the opposite direction.
- * Reported rather than guessed at. */
 function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 
-/* Constants used by floorfood */
 const BEAR_TRAP = 5; /* trap type */
 const TT_BEARTRAP = 1; /* utraptype */
 const IRONBARS = 22; /* level type */

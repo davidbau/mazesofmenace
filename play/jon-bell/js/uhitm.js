@@ -1,14 +1,5 @@
 import { lifesaved_monster, wipe_engr_at } from './mklev.js';
 // @ts-nocheck
-/* js/uhitm.js — hero attack resolution.
- * C ref: nethack-c/src/uhitm.c
- * W20.5: displacement gate (safemon branch, uhitm.c:463-510).
- * W22.4: fix calling convention — cmd.js W21.3 wire (b677362) passes (x,y)
- *        not mtmp; accept both signatures and look up monster from coords.
- * W24.6: non-safemon attack body — overexertion/gethungry + exercise(A_STR) +
- *        hitum (rnd20 + exercise A_DEX on hit + dmgval + xkilled path) +
- *        passive (rn2(3) if malive).
- *        Mirror: nethack-c/src/uhitm.c::do_attack lines 449-584. */
 import { game, wizard, discover } from './gstate.js';
 import { rehumanize } from './polyself.js';
 import { xname, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
@@ -35,12 +26,6 @@ import { near_capacity } from './weight.js';
 import { ARMOR_DATA } from './armor_data.js';
 import { Upolyd, STR18, P_BARE_HANDED_COMBAT, P_NONE, P_NUM_SKILLS, P_SKILL_LIMIT, P_ISRESTRICTED,
 P_BASIC, P_SKILLED, P_EXPERT, P_UNSKILLED, P_RIDING,
-/* weapon_descr's skill constants — C ref: nethack-c/include/skills.h:38-44.
- * These were previously five file-local `const` declarations inside
- * weapon_descr(), three of which were +1 off (P_BOW=21, P_SLING=22,
- * P_CROSSBOW=23 against skills.h's 20/21/22).  const.js is byte-identical to
- * frozen/const.js and already carries the correct enum, so import rather than
- * re-declare: a duplicated constant set is what drifted in the first place. */
 P_BOW, P_SLING, P_CROSSBOW, P_FLAIL, P_PICK_AXE, W_SADDLE, LEFT_SIDE, RIGHT_SIDE, LEG, M_AP_TYPE, M_AP_MONSTER, M_ATTK_AGR_DIED, M_ATTK_MISS, W_ARMG, W_ARM, W_ARMC, W_ARMU, W_ARMH, W_ARMS, W_ARMF, W_AMUL, W_RINGL, W_RINGR, engulfing_u, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_ELEC, STRAT_WAITFORU, FIRE_RES, COLD_RES, SLEEP_RES, FREE_ACTION, SHOCK_RES, POISON_RES, DRAIN_RES, STONE_RES, SEE_INVIS, DETECT_MONSTERS, ERODE_RUST, BLINDED, TIMEOUT,
 /* mon_nam's x_monnam call — C ref: nethack-c/src/do_name.c:1041-1046 */
 ARTICLE_THE, ARTICLE_NONE, SUPPRESS_SADDLE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
@@ -111,24 +96,13 @@ import { mon_hates_blessings, mon_hates_silver, shade_miss, mon_nam_too, x_monna
          xm_has_mgivenname as has_mgivenname } from './mhitm.js';
 import { some_mon_nam } from './mhitm.js';
 import { Resists_Elem, sleep_monst } from './mhitm.js';
-/* y_monnam: do_attack's "You stop.  %s is in the way!" names the blocked-on
- * monster with y_monnam (uhitm.c:499), and js/mhitm.js carries the single
- * C-faithful x_monnam-based body — the same one mon_nam above delegates to. */
 import { y_monnam, helpless } from './mhitm.js';
 /* C uhitm.c:331 check_caitiff / mon.c:4331 wakeup — both live in js/mhitm.js,
  * which this file already imports from (see above). */
 import { check_caitiff, wakeup, wakeup_attack, seemimic } from './mhitm.js';
 import { Adjmonnam as Adjmonnam_uh } from './mhitm.js';
 import { defended as defended_real } from './mhitm.js';
-/* passive: the real, complete uhitm.c:5866-6127 body (js/dokick.js's kick
- * path already calls this same export).  _swing's own copy below used to be
- * a file-local partial reimplementation carrying only the malive-gated
- * AD_PLYS arm; see the call site for what that shadowing cost. */
 import { passive as passive_uh } from './mhitm.js';
-/* attacktype: real body (mondata.c:53) imported from js/mhitm.js — js/dog.js
- * also exports a function under this name, but that one is a hardcoded
- * always-false stub; mhitm_ad_dren's xdrainenergym helper needs the real
- * one to gate on AT_MAGC/AT_BREA. */
 import { attacktype } from './mhitm.js';
 /* hcolor(colorpref) — do_name.c:1461-1466. Needed by artifact_hit's SPFX_DRLI
  * arm (Stormbringer's "The black blade draws the life..." message uses
@@ -254,30 +228,6 @@ const MONS_MSIZE = monMsizePack.msize;
 const PM_WIZARD_OF_YENDOR = 285; /* monsters.h:2858 MON(... WIZARD_OF_YENDOR);
                                   * was 291 = PM_HORNED_DEVIL */
 
-/* C ref: weapon.c:949 abon(void) — strength & dexterity attack bonus.
- * Upolyd branch inlines makemon.c:2015 adj_lev(&mons[u.umonnum]).
- *
- * The Upolyd guard is C's you.h:554 macro VERBATIM — (u.umonnum != u.umonster)
- * — read off game.u, which is where this port keeps both scalars:
- * js/u_init.js:376 seeds u.umonnum = u.umonster = INITROLE_TO_PM[initrole]
- * (C u_init.c:991 u.umonnum = u.umonster = gu.urole.mnum) and js/polyself.js
- * maintains u.umonnum across polymorph/rehumanize.  js/trap.js:1231
- * _gp_Upolyd, js/zap.js:6229 _cm_Upolyd and js/teleport.js:1529 Upolyd_hero
- * already spell the same predicate the same way.
- *
- * It previously read game.youmonst.mndx against game.urole.mnum, which was
- * wrong on BOTH halves and wrong in a way that never threw.  mndx is NOT a
- * struct monst member (monst.h has "short mnum"); C's set_mon_data
- * (mondata.c:19) writes mon->mnum, and so does this port's set_mon_data
- * (js/makemon.js:6894) — mndx exists only as the capture-replay
- * DERIVED_ALIASES mapping in js/struct_reconstructor.js:339, so on the live
- * scored path game.youmonst.mndx is undefined.  MEASURED over the public 44
- * (probe on every Upolyd call, 2026-09-06): ym.mndx=undefined in 44/44
- * sessions while u.umonnum and youmonst.mnum both carried the real form.
- * (undefined | 0) is 0, so the guard read 0 !== 331..343 and abon() answered
- * adj_lev(&mons[0]) - 3 — the giant ant — for EVERY hero on EVERY swing.
- * That is the defect that made "const abon_val = abon();" in do_attack cost
- * 2,215 screen points (docs/ADJUDICATION-orphan-branches-2026-09-06.md). */
 export function abon() {
     const u = game.u || {};
     const str = acurr(u, A_STR);
@@ -351,14 +301,6 @@ export function dbon() {
  * C ref: monsters.h NAM() macro — same order as C mons[] array.
  * Used by mon_nam() / Monnam() helpers below for hit/miss/kill messages. */
 export const MONS_NAMES = ["giant ant","killer bee","soldier ant","fire ant","giant beetle","queen bee","acid blob","quivering blob","gelatinous cube","chickatrice","cockatrice","pyrolisk","jackal","fox","coyote","werejackal","little dog","dingo","dog","large dog","wolf","werewolf","winter wolf cub","warg","winter wolf","hell hound pup","hell hound","gas spore","floating eye","freezing sphere","flaming sphere","shocking sphere","kitten","housecat","jaguar","lynx","panther","large cat","tiger","displacer beast","gremlin","gargoyle","winged gargoyle","hobbit","dwarf","bugbear","dwarf lord","dwarf king","mind flayer","master mind flayer","manes","homunculus","imp","lemure","quasit","tengu","blue jelly","spotted jelly","ochre jelly","kobold","large kobold","kobold lord","kobold shaman","leprechaun","small mimic","large mimic","giant mimic","wood nymph","water nymph","mountain nymph","goblin","hobgoblin","orc","hill orc","mordor orc","uruk hai","orc shaman","orc captain","rock piercer","iron piercer","glass piercer","rothe","mumak","leocrotta","wumpus","titanothere","baluchitherium","mastodon","sewer rat","giant rat","rabid rat","wererat","rock mole","woodchuck","cave spider","centipede","giant spider","scorpion","lurker above","trapper","pony","white unicorn","gray unicorn","black unicorn","horse","warhorse","fog cloud","dust vortex","ice vortex","energy vortex","steam vortex","fire vortex","baby long worm","baby purple worm","long worm","purple worm","grid bug","xan","yellow light","black light","zruty","couatl","aleax","angel","ki rin","archon","bat","giant bat","raven","vampire bat","plains centaur","forest centaur","mountain centaur","baby gray dragon","baby gold dragon","baby silver dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","stalker","air elemental","fire elemental","earth elemental","water elemental","lichen","brown mold","yellow mold","green mold","red mold","shrieker","violet fungus","gnome","gnome lord","gnomish wizard","gnome king","giant","stone giant","hill giant","fire giant","frost giant","ettin","storm giant","titan","minotaur","jabberwock","keystone kop","kop sergeant","kop lieutenant","kop kaptain","lich","demilich","master lich","arch lich","kobold mummy","gnome mummy","orc mummy","dwarf mummy","elf mummy","human mummy","ettin mummy","giant mummy","red naga hatchling","black naga hatchling","golden naga hatchling","guardian naga hatchling","red naga","black naga","golden naga","guardian naga","ogre","ogre lord","ogre king","gray ooze","brown pudding","green slime","black pudding","quantum mechanic","genetic engineer","rust monster","disenchanter","garter snake","snake","water moccasin","python","pit viper","cobra","troll","ice troll","rock troll","water troll","olog hai","umber hulk","vampire","vampire lord","vlad the impaler","barrow wight","wraith","nazgul","xorn","monkey","ape","owlbear","yeti","carnivorous ape","sasquatch","kobold zombie","gnome zombie","orc zombie","dwarf zombie","elf zombie","human zombie","ettin zombie","ghoul","giant zombie","skeleton","straw golem","paper golem","rope golem","gold golem","leather golem","wood golem","flesh golem","clay golem","stone golem","glass golem","iron golem","human","","","","elf","woodland elf","green elf","grey elf","elf lord","elvenking","doppelganger","shopkeeper","guard","prisoner","oracle","priest","high priest","soldier","sergeant","nurse","lieutenant","captain","watchman","watch captain","medusa","wizard of yendor","croesus","ghost","shade","water demon","incubus","horned devil","erinys","barbed devil","marilith","vrock","hezrou","bone devil","ice devil","nalfeshnee","pit fiend","sandestin","balrog","juiblex","yeenoghu","orcus","geryon","dispater","baalzebub","asmodeus","demogorgon","death","pestilence","famine","mail daemon","djinni","jellyfish","piranha","shark","giant eel","electric eel","kraken","newt","gecko","iguana","baby crocodile","lizard","chameleon","crocodile","salamander","long worm tail","archeologist","barbarian","caveman","healer","knight","monk","","ranger","rogue","samurai","tourist","valkyrie","wizard","lord carnarvon","pelias","shaman karnov","hippocrates","king arthur","grand master","arch priest","orion","master of thieves","lord sato","twoflower","norn","neferet the green","minion of huhetotl","thoth amon","chromatic dragon","cyclops","ixoth","master kaen","nalzok","scorpius","master assassin","ashikaga takauji","lord surtur","dark one","student","chieftain","neanderthal","attendant","page","abbot","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"];
-/* mon_nam(mtmp) — C ref: nethack-c/src/do_name.c:1041-1046.
- *   return x_monnam(mtmp, ARTICLE_THE, (char *) 0,
- *                   (has_mgivenname(mtmp)) ? SUPPRESS_SADDLE : 0, FALSE);
- * This used to be a hand-rolled species-table lookup that always produced
- * "the <species>": it had no canspotmon() test (so an unseen monster was
- * never "it"), no &gy.youmonst test (so the hero was never "you"), and no
- * invisible/mappearance/shopkeeper/priest handling.  It now delegates to the
- * real x_monnam (js/mhitm.js), which is the single C-faithful implementation. */
 export function mon_nam(mtmp) {
     return x_monnam(mtmp, ARTICLE_THE, null,
                     has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
@@ -383,15 +325,6 @@ export function exclam(dmg) {
  * Generated from nethack-c/include/objects.h WEAPON()/PROJECTILE() macros.
  * Weapons start at otyp 18 (ARROW). Index = otyp. 0 = no damage die.
  * C ref: weapon.c:216 dmgval() — uses objects[otyp].oc_wsdam / .oc_wldam. */
-/* Sized to the whole otyp space, not to the weapon range. It was Uint8Array(128)
- * — every otyp above the last launcher read oc_wsdam == 0, so dmgval SKIPPED its
- * `rnd(objects[otyp].oc_wsdam)` for every GEM_CLASS / ROCK_CLASS / BALL_CLASS /
- * CHAIN_CLASS object, i.e. it dropped a real PRNG DRAW, not just a damage number.
- * Measured (seed4500-knight-coverage, leaf 61415): a monster slings otyp 474
- * ("rock", oc_wsdam 3) at the hero and C draws rnd(3)@dmgval(weapon.c:265)
- * between u_catch_thrown_obj's rn2(91) and thitu's rnd(20); JS went straight to
- * the rnd(20). The two hand-written fallbacks below it (boulder/statue 20, heavy
- * iron ball 25) were the visible half of this hole — they are now table rows. */
 const OTYP_LIMIT = 481;              /* objects.h: last object is ACID_VENOM=480 */
 const WEAPON_WSDAM = new Uint8Array(OTYP_LIMIT);
 const WEAPON_WLDAM = new Uint8Array(OTYP_LIMIT);
@@ -448,15 +381,6 @@ export { WEAPON_WLDAM };
         }
     }
 
-    /* ── the non-WEAPON_CLASS objects that also carry oc_wsdam/oc_wldam ───────
-     * objects.h:1516-1525 gives EVERY gem 3/3 through the GEM() macro, and the
-     * five ROCK() entries supply their own — luckstone/loadstone/touchstone/rock
-     * 3/3, flint 6/6.  Both macros set oc_skill = -P_SLING, and nothing else in
-     * objects.h does, so the GEM_CLASS otyp range is DERIVED here from
-     * MKOBJ_OC_SKILL rather than pinned as two literals (measured: a contiguous
-     * run of 36, which is exactly the count of GEM()/ROCK() lines in
-     * nethack-c-v5/upstream/include/objects.h).  Flint is likewise found by NAME,
-     * not by position in that run. */
     const P_SLING_NEG = -21; /* C skills.h:44 P_SLING = 21 */
     for (let otyp = 0; otyp < OTYP_LIMIT; otyp++) {
         if ((MKOBJ_OC_SKILL[otyp] | 0) !== P_SLING_NEG) continue;
@@ -477,16 +401,6 @@ export { WEAPON_WLDAM };
         const otyp = OC_NAME.indexOf(name);
         if (otyp > 0 && otyp < OTYP_LIMIT) { WEAPON_WSDAM[otyp] = sdam; WEAPON_WLDAM[otyp] = ldam; }
     }
-    /* objects.h:1007-1017 WEPTOOL() and :1645 the acid-venom OBJECT() — the
-     * last four rows objects.h gives a damage die that this table did not have.
-     * C's dmgval draws `rnd(objects[otyp].oc_wsdam)` for ANY object with a
-     * non-zero die, whatever its oclass (weapon.c:264-265), so a zero row here
-     * is a DROPPED PRNG DRAW, not merely a wrong damage number — the same
-     * defect class the gem/rock rows above were added to close.
-     * MEASURED on corpus-generated/v5/train/gen042-reseed-seed244788: a monster
-     * wielding a PICK-AXE (otyp 259) hits the hero and C draws
-     * `rnd(6)=3 @ dmgval(weapon.c:265)` between hitmu's d(2,4) and
-     * mhitm_knockback's rn2(3); this port went straight to the rn2(3). */
     const WEPTOOL_DMG = [
         ['pick-axe', 6, 3],            /* objects.h:1007 WEPTOOL, P_PICK_AXE */
         ['grappling hook', 2, 6],      /* objects.h:1010 WEPTOOL, P_FLAIL    */
@@ -516,15 +430,6 @@ const SPEAR_OTYPS = new Set([27, 28, 29, 30, 31, 32]);
  * S_NAGA(40), S_GIANT(34). C ref: weapon.c:71 kebabable[]. */
 const KEBABABLE_MLET = new Set([50, 30, 36, 40, 34]);
 /* ── artifact to-hit: spec_abon (artifact.c:1075-1088) ────────────────────── */
-/* The five artilist[] columns spec_applies()/spec_abon() read, in the COMPILED
- * artifact ordinal (index i == obj->oartifact == js/objnam.js's ARTILIST index;
- * index 0 is artilist[ART_NONARTIFACT]).  Extracted the same way js/attrib.js's
- * ARTILIST_SPFX was — by compiling nethack-c-v5/upstream/include/artilist.h
- * against the recorder's include tree and printing the struct — so the `#if 0`-d
- * "Palantir of Westernesse" (artilist.h:237-246) is absent here exactly as it is
- * absent from the C build, and the spfx column below reproduces attrib.js's
- * value-for-value.  NOT hand-transcribed; the header's A() macro hides the attk
- * fields behind PHYS()/COLD()/FIRE()/ELEC()/STUN()/DRLI(). */
 const ARTI_SPEC = [
     /*  0 dummy                */ { spfx: 0x00000000, adtyp:  0, damn: 0, damd:  0, mtype:    0, align: -128 },
     /*  1 Excalibur            */ { spfx: 0x00000297, adtyp:  0, damn: 5, damd: 10, mtype:    0, align:    1 },
@@ -650,21 +555,8 @@ function spec_applies(arti, mtmp, mndx) {
              * completeness (Cardinal Rule 1: port the whole switch). */
             return !(yours ? _hero_resists(POISON_RES) : resists_poison_uh(mtmp));
         case AD_DRLI_UH:
-            /* artifact.c:1051 `resists_drli(mtmp)` — mondata.c:200-210's full
-             * predicate (undead/demon/were/PM_DEATH/vampshifter or a worn/
-             * wielded defends() match), already ported faithfully as
-             * resists_drli_deth below for mhitm_ad_drli's own use; reused
-             * here rather than re-deriving it a second time.  MEASURED: this
-             * `return false` used to make Stormbringer's spec_abon()
-             * rnd(5)/hitum() dieroll ordering read false where C's Stormbringer
-             * wielder (do_attack record #296) draws it true — do_attack
-             * records #141/#296/#293's artifact_hit(artifact.c:1506) cluster. */
             return !(yours ? _hero_resists(DRAIN_RES) : resists_drli_deth(mtmp));
         case AD_STON_UH:
-            /* artifact.c:1053 `resists_ston(mtmp)`.  sh_resists_ston below is
-             * this file's existing always-false stub for that predicate
-             * (mondata.h resists_ston, itself gated on a KNOWN GAP);
-             * unreached in practice, same as AD_DRST_UH above. */
             return !(yours ? _hero_resists(STONE_RES) : sh_resists_ston(mtmp));
         default:
             impossible("Weird weapon special attack.");
@@ -699,35 +591,6 @@ export function spec_abon(otmp, mtmp, mndx) {
     return 0;
 }
 
-/* C ref: artifact.c:1090-1109 spec_dbon(otmp, mon, tmp) — "special damage
- * bonus", verbatim:
- *
- *   if ((weap == &artilist[ART_NONARTIFACT])
- *       || (weap->attk.adtyp == AD_PHYS
- *           && weap->attk.damn == 0 && weap->attk.damd == 0))
- *       gs.spec_dbon_applies = FALSE;
- *   else if (is_art(otmp, ART_GRIMTOOTH))
- *       gs.spec_dbon_applies = TRUE;
- *   else
- *       gs.spec_dbon_applies = spec_applies(weap, mon);
- *   if (gs.spec_dbon_applies)
- *       return weap->attk.damd ? rnd((int) weap->attk.damd) : max(tmp, 1);
- *   return 0;
- *
- * Note the `damd ? rnd(damd) : max(tmp,1)` split: an artifact with a damage
- * DIE rolls it, and an artifact with damn but NO die (Grayswandir, Orcrist,
- * Sting, Demonbane, Werebane, Giantslayer, Ogresmasher, Trollsbane, Sunsword,
- * Frost Brand, Fire Brand) instead DOUBLES the physical damage — with no RNG
- * draw at all.  That doubling is the whole reason this had to be ported:
- * seed0361-archeologist-tour wields a wished-for Grayswandir, so every one of
- * its melee hits did roughly half of C's damage while consuming exactly C's
- * RNG, and the first place that became visible was the blow at step 240 that
- * C killed the gnome king with and this port did not (C then ran
- * xkilled -> rn2(6) @mon.c:3587, we ran the survivor's
- * mhitm_knockback rn2(3) — the session's first RNG divergence at leaf 22362).
- *
- * gs_spec_dbon_applies is C's gs.spec_dbon_applies (decl.c:679): a global set
- * as a side effect here and READ afterwards by artifact_hit's message arms. */
 let gs_spec_dbon_applies = false;
 /* artilist[] ordinal of Grimtooth, the one artifact whose damage bonus
  * deliberately bypasses spec_applies() (artifact.c:1099-1102). */
@@ -771,43 +634,6 @@ function spec_ability(otmp, abil) {
 const SPFX_DRLI_UH   = 0x00000100;
 const SPFX_BEHEAD_UH = 0x00000400;
 
-/* C ref: artifact.c:1447-1721 artifact_hit(magr, mdef, otmp, dmgptr, dieroll).
- * "Return TRUE if the artifact did something special (in which case the caller
- * won't print the normal hit message)."  Hero and monster melee callers
- * await this function. The throw sites in mthrowu.c and dothrow.c remain
- * outside this implementation.
- *
- * `dmg` is C's *dmgptr and is returned rather than written through a pointer.
- *
- * The opening spec_dbon() damage bonus and the FIRE, COLD, ELEC, and DRLI
- * branches are ported.  For
- * Grayswandir (spfx SPFX_RESTR|SPFX_HALRES, attk PHYS(5,0)) that is the whole
- * function: no AD_ arm matches, spec_dbon_applies is TRUE so the
- * `if (!gs.spec_dbon_applies) return FALSE` early-out at artifact.c:1543 is
- * NOT taken, neither SPFX_BEHEAD nor SPFX_DRLI is set, and control falls
- * through to `return FALSE` at artifact.c:1721 having drawn zero RNG.
- *
- * Remaining gaps are:
- *   - AD_MAGM  (artifact.c:1527-1535): pline only, no RNG.
- *   - AD_STUN  (artifact.c:1537-1540, Magicbane): Mb_hit(), artifact.c:1225-
- *     1440, which draws rn2() several times.
- *   - SPFX_BEHEAD (artifact.c:1550-1644, Vorpal Blade / Tsurugi of Muramasa):
- *     ROLL_FROM(behead_msg) is an rn2(2).
- * SPFX_DRLI (artifact.c:1645-1720, Stormbringer / Staff of Aesculapius) IS
- * PORTED below — the life-drain damage bonus, the attacker heal, and (for the
- * unreached youdefend half) the level-drain/heal-attacker pair.  MEASURED:
- * do_attack record #296 (probe-artiwield-b, a Stormbringer wielder) — C's
- * post-dmgval draws are `rnd(8) @ monhp_per_lvl(makemon.c:989)` (the drain)
- * then `rn2(6) @ xkilled(mon.c:3587)` (the kill this drain causes); this port
- * skipped both, staying on the survives-branch and drawing
- * mhitm_knockback's rn2(3) in their place — the recorded hero HP going
- * 85->86 across the hit (healup's `(drain+1)/2` heal) is the confirming
- * signature.
- * None of Fire Brand, Frost Brand, Magicbane or Vorpal Blade/Tsurugi of
- * Muramasa is named on any frame of any of the 44 public sessions (measured:
- * grep of sessions/*.json for every artilist name yields Mjollnir on
- * seed0108 + seed0360 and Grayswandir on seed0361, and nothing else; the
- * generated corpus is what reaches Stormbringer). */
 export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1) {
     /* artifact.c:1448-1454 — youattack/youdefend/vis, needed by the SPFX_DRLI
      * arm below.  This file's convention is that a null monst means
@@ -883,10 +709,6 @@ export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1
         || (arti_attacks(AD_STUN_UH, otmp) && dieroll <= MB_MAX_DIEROLL_UH))
         return { dmg, special: false }; /* KNOWN GAPS above, no RNG owed */
 
-    /* artifact.c:1542-1546 — "since damage bonus didn't apply, nothing more
-     * to do; no further attacks have side-effects on inventory".  This gate
-     * sits BEFORE the SPFX_BEHEAD/SPFX_DRLI checks below in C; do the same
-     * here rather than checking those abilities unconditionally. */
     if (!gs_spec_dbon_applies)
         return { dmg, special: false };
 
@@ -971,29 +793,6 @@ const NH_BLACK_UH = 'black';
 /* C artifact.c:1241 — "rolls above this aren't magical". */
 const MB_MAX_DIEROLL_UH = 8;
 
-/* hitval(weapon, mtmp, mndx) — to-hit bonus from the wielded weapon.
- * C ref: weapon.c:149-187, in full:
- *   if (Is_weapon)                          tmp += otmp->spe;
- *                                           tmp += objects[otyp].oc_hitbon;
- *   if (Is_weapon && blessed && mon_hates_blessings(mon))   tmp += 2;
- *   if (is_spear && strchr(kebabable, mlet))                tmp += 2;
- *   if (otyp == TRIDENT && is_swimmer(ptr))                 tmp += 4 or 2;
- *   if (is_pick && passes_walls && thick_skinned)           tmp += 2;
- *   if (otmp->oartifact)                    tmp += spec_abon(otmp, mon);
- *
- * The artifact term WAS MISSING, under the note "not reached by the starting
- * weapons of the sessions this covers".  seed0361-archeologist-tour wields a
- * wished-for Grayswandir: at step 236 C draws rnd(5) @spec_abon(artifact.c
- * :1085) immediately before hitum's rnd(20), and this port went straight to the
- * rnd(20) — leaf 22084, the session's first divergence once use_defensive
- * landed.  Grayswandir carries neither SPFX_DBONUS nor SPFX_ATTK, so
- * spec_applies takes its first line (`attk.adtyp == AD_PHYS`, true) and the
- * bonus is an unconditional rnd(5) against every defender.
- *
- * The blessed / trident / pick terms are ported alongside because they sit
- * between the spear term and the artifact term in C and are the same shape;
- * the previous note claimed all four were unreachable, and the artifact one
- * was reachable. */
 export function hitval(weapon, mtmp, mndx) {
     if (!weapon) return 0;
     let tmp = 0;
@@ -1002,21 +801,6 @@ export function hitval(weapon, mtmp, mndx) {
     const mlet = row ? (row[0] | 0) : -1;
     /* Is_weapon: starting weapons here are all WEAPON_CLASS, so spe applies. */
     tmp += (weapon.spe | 0);
-    /* C weapon.c:158 `tmp += objects[otmp->otyp].oc_hitbon;` — UNCONDITIONAL,
-     * for any weapon reaching here (WEAPON_CLASS or a weptool). WEAPON_HITBON
-     * only covers WEAPON_CLASS otyps; the three WEPTOOLs (objects.h "tools
-     * useful as weapons") get their oc_hitbon from a macro quirk this table
-     * cannot express: the WEPTOOL() macro passes its `hitbon` parameter to
-     * BOTH the strike-mode bits (oc_dir: PIERCE/SLASH/WHACK) AND straight
-     * into objects[].oc_oc1 (== oc_hitbon) — so a pick-axe's oc_hitbon is
-     * literally WHACK (4), not 0. Missing this made a pick-axe (P_PICK_AXE
-     * is P_ISRESTRICTED for most roles, weapon_hit_bonus -4) undercount by
-     * exactly the amount weapon_hit_bonus's penalty was meant to be offset
-     * by: MEASURED on probe-kickdig/gen002-objective-seed1259205 do_attack
-     * records #180/#186 (tmp needed 11, computed 7) immediately after fixing
-     * find_mac_full_uh (which independently made record #181's tmp correct
-     * at 10) — both fixes were required together; either alone flips the
-     * OTHER records' hit/miss the wrong way. */
     tmp += (otyp === PICK_AXE_HITBON_UH || otyp === GRAPPLING_HOOK_HITBON_UH) ? 4
          : (otyp === UNICORN_HORN_HITBON_UH) ? 1
          : (otyp >= 0 && otyp < WEAPON_HITBON.length) ? (WEAPON_HITBON[otyp] | 0) : 0;
@@ -1083,28 +867,7 @@ const M1_HUMANOID_UH = 0x00020000;
 const S_SNAKE_UH = 45;
 /* is_pool(x,y) is js/look.js's, already imported above as is_pool_uh; hitval's
  * caller passes mtmp === null for the hero, so the hero's square is used then. */
-/* weapon_hit_bonus(weapon) — skill-based to-hit bonus.
- * C ref: weapon.c:1540-1631. At game start, skill_init() [weapon.c:1745-1756]
- * sets P_SKILL = P_BASIC for every weapon type the hero is wielding/carrying,
- * and P_BASIC maps to bonus 0 (weapon.c:1563-1565). With no steed (u.usteed
- * unset for these sessions) the riding penalty block is skipped. So for a
- * hero making a weapon attack with a starting wielded weapon, this is 0.
- * (Advancing skill, two-weaponing, riding, and bare-handed/martial are
- *  follow-ups; none are reached by the sessions this covers.) */
 export function weapon_hit_bonus(weapon) {
-    /* C ref: weapon.c:1605-1714 weapon_hit_bonus(struct obj *weapon).
-     * weapon_type(NULL) == P_BARE_HANDED_COMBAT (weapon.c:1565), so a
-     * bare-handed attack (weapon==null) takes the P_BARE_HANDED_COMBAT branch:
-     *   bonus = P_SKILL(type);
-     *   bonus = max(bonus, P_UNSKILLED) - 1;    // unskilled => 0
-     *   bonus = ((bonus + 2) * (martial_bonus() ? 2 : 1)) / 2;
-     * For a starting Monk: P_SKILL(P_BARE_HANDED_COMBAT) = P_BASIC (=2) because
-     * skill_init caps the Monk's GRAND_MASTER max down to P_BASIC at start
-     * (weapon.c skill_init "High potential fighters already know how to use
-     * their hands"), and martial_bonus() = Role_if(PM_MONK) is true:
-     *   bonus = 2; bonus = max(2,1)-1 = 1; bonus = ((1+2)*2)/2 = 3.
-     * For a wielded starting weapon the skill is P_BASIC → bonus 0 (unchanged).
-     * No steed in the cluster sessions → no riding penalty. */
     if (!weapon) {
         /* C weapon.c:1601-1607, read straight off the skill array rather than
          * off a hardcoded starting value:
@@ -1118,19 +881,6 @@ export function weapon_hit_bonus(weapon) {
         bonus = ((bonus + 2) * (martial ? 2 : 1)) / 2 | 0;
         return bonus;
     }
-    /* C weapon.c:1616-1663 — the wielded-weapon arms.  This used to `return 0`
-     * with the note "P_BASIC for a wielded starting weapon -> 0", which is true
-     * ONLY for the P_BASIC single-weapon case; it silently answered 0 for an
-     * unskilled weapon (-4) and, far worse, for two-weapon combat, where C's
-     * penalty is -9/-7/-5/-3.  seed0107's samurai begins two-weapon combat at
-     * step 15 and attacks a lichen at step 40: C's to-hit is 9 lower, C MISSES
-     * with the primary and then hits with the secondary ("You miss the lichen.
-     * You kill the lichen!"), and the port hit on the first swing.  That is the
-     * session's FIRST RNG divergence — C draws passive()'s rn2(3) where the port
-     * draws exercise(A_DEX)'s rn2(19).
-     *
-     * u.weapon_skills is real state (js/skills.js is its writer), so read
-     * P_SKILL rather than assuming a starting value. */
     const _u = game.u || {};
     const wep_type = weapon_type(weapon);
     const type = (_u.twoweap && (weapon === _u.uwep || weapon === _u.uswapwep))
@@ -1172,20 +922,6 @@ export function weapon_hit_bonus(weapon) {
 /* weapon_dam_bonus(weapon) — damage bonus from weapon skill and other factors.
  * C ref: weapon.c:1638-1725 */
 export function weapon_dam_bonus(weapon) {
-    /* C ref: weapon.c:1638-1725 weapon_dam_bonus(struct obj *weapon).
-     * weapon_type(NULL) == P_BARE_HANDED_COMBAT, so bare-handed attack takes
-     * the P_BARE_HANDED_COMBAT branch:
-     *   bonus = P_SKILL(type);
-     *   bonus = max(bonus, P_UNSKILLED) - 1;    // unskilled => 0
-     *   bonus = ((bonus + 1) * (martial_bonus() ? 3 : 1)) / 2;
-     * At game start, skill_init sets P_SKILL(P_BARE_HANDED_COMBAT) to P_BASIC
-     * only for roles with max_skill > P_EXPERT (Monks). Other roles get
-     * P_UNSKILLED.
-     *   Monk (P_BASIC):    bonus = 2; max(2,1)-1=1; ((1+1)*3)/2=3
-     *   non-Monk (P_UNSKILLED): bonus = 1; max(1,1)-1=0; ((0+1)*1)/2=0
-     *   Samurai (P_UNSKILLED, but martial): bonus = 1; max(1,1)-1=0; ((0+1)*3)/2=0
-     * For a wielded starting weapon the skill is P_BASIC → bonus 0 (unchanged).
-     * No steed in the cluster sessions → no riding penalty. */
     if (!weapon) {
         /* C weapon.c:1696-1701, read straight off the skill array.  The old
          * `pSkill = isMonk ? P_BASIC : P_UNSKILLED` hardcode was wrong for the
@@ -1201,25 +937,6 @@ export function weapon_dam_bonus(weapon) {
         bonus = ((bonus + 1) * (martial ? 3 : 1)) / 2 | 0;
         return bonus;
     }
-    /* C weapon.c:1649-1700 — the wielded-weapon arms, the exact mirror of
-     * weapon_hit_bonus() above (same `type` selection, same three branches,
-     * different constants).  This used to `return 0` under the note "P_BASIC
-     * for a wielded starting weapon -> 0" — true only for the P_BASIC single-
-     * weapon case, and silently 0 for an UNSKILLED or RESTRICTED weapon, whose
-     * C bonus is -2.
-     *
-     * seed0361-archeologist-tour is that case: the Archeologist wishes for a
-     * "blessed +5 Grayswandir", a SILVER SABER, and P_SABER is restricted for
-     * the Archeologist (u_init.c Skill_A has no P_SABER row), so every one of
-     * her melee hits does 2 LESS damage in C than this port gave it.  With the
-     * spec_dbon() doubling now ported, that 2 is what decides whether the gnome
-     * king at Dlvl 11 dies to the third blow or the fourth: C's per-hit damage
-     * is 2*(rnd(8)+5) - 2 = 10 and the king (36 HP) survives three of them,
-     * where 12-a-hit kills on the third.  The two ports are a pair — landing
-     * either one alone moves the session's first divergence the wrong way.
-     *
-     * u.weapon_skills is real state (js/skills.js is its writer), the same
-     * source weapon_hit_bonus reads. */
     const _u = game.u || {};
     const wep_type = weapon_type(weapon);
     const type = (_u.twoweap && (weapon === _u.uwep || weapon === _u.uswapwep))
@@ -1284,34 +1001,6 @@ function _ensure_role_weapons_uhitm(u) {
     if (!u || u._weaponsInitUhitm)
         return;
     u._weaponsInitUhitm = true;
-    /* C has no such function: this is a bootstrap for the paths that never ran
-     * ini_inv, and it must not speak for a hero whose real inventory chain
-     * exists.  `u.uwep == NULL` is a FACT about such a hero, not a gap to fill —
-     * `x` with no secondary weapon is C's ready_weapon(NULL) -> setuwep(NULL),
-     * and the hero is then genuinely bare-handed.  MEASURED on
-     * gen362-reseed-seed208714: the Wizard swaps his quarterstaff out at step
-     * 191 ("You are bare handed."), and at his first melee 140 steps later this
-     * function invented a fresh +1 quarterstaff, so C printed "You begin bashing
-     * monsters with your bare hands." where we printed "...with the
-     * quarterstaff." and rolled rnd(6) for damage where C rolled rnd(2)
-     * (hmon_hitmon_barehands, uhitm.c:847).
-     *
-     * The `game.invent` guard above catches that case (Wizard still holds his
-     * spellbook etc., so the chain is non-null) but NOT the stronger form of
-     * the same bug: a hero whose ENTIRE inventory chain is empty.  `u.uwep` is
-     * always a pointer INTO `invent` in C (mksobj/addinv puts every object on
-     * the chain before anything can wield it), so an empty chain makes
-     * `u.uwep === NULL` a structural certainty, not something this bootstrap
-     * may override.  MEASURED on a Ranger session (do_attack board, turn 350,
-     * `invent.count=0`, capture's own `uwep_null=1`): this function still read
-     * `game.invent` as falsy (nothing IS chargen-lazy this late) and fabricated
-     * a fresh starting dagger, drawing `dmgval`'s switch-bonus roll where C drew
-     * nothing and desyncing every RNG draw after it (rn2(3) popped an
-     * out-of-range 4 at passive()'s uhitm.c:6019 two draws later). Every
-     * `invent.count=0` record in that corpus reads `uwep_null=1` and none of
-     * them is near the start of the game (`turn` 112-368) — the lazy-init
-     * window this bootstrap exists for is turns before the first dofire/doinv,
-     * so gate it on that instead of trusting an empty chain at any turn. */
     if ((game.moves | 0) > 20)
         return;
     if (game.invent)
@@ -1377,15 +1066,6 @@ function _ensure_role_weapons_uhitm(u) {
     }
     /* All other roles: weapon slots left as-is. */
 }
-/* C ref: display.h:159-161 _is_safemon macro — pet or peaceful monster
- * that hero shouldn't auto-attack.
- *   flags.safe_dog && mon->mpeaceful && canspotmon(mon)
- *   && !Confusion && !Hallucination && !Stunned
- * safe_dog (opt name: safe_pet) defaults to On (C optlist.h:627-629).
- * We use game.flags.safe_dog ?? true (default On).
- * Stage A: replaced canspot approximation with real canspotmon() from display.js.
- * If this regresses any session under --strict, revert to the approximation and
- * file the canspotmon-in-is_safemon swap as a separate follow-up task. */
 export function is_safemon(mtmp) {
     if (!mtmp)
         return false;
@@ -1397,20 +1077,6 @@ export function is_safemon(mtmp) {
     /* canspotmon — real implementation from display.js (display.h:129) */
     if (!canspotmon(mtmp))
         return false;
-    /* C display.h:161 — `&& !Confusion && !Hallucination && !Stunned`.
-     * youprop.h:80-84,116-120 spell all three off u.uprops:
-     *   Stunned       == HStun          == u.uprops[STUNNED].intrinsic
-     *   Confusion     == HConfusion     == u.uprops[CONFUSION].intrinsic
-     *   Hallucination == HHallucination && !Halluc_resistance
-     * The three fields this used to read — u.uconf, u.uhallu, u.ustun — have
-     * ZERO writers anywhere in js/ (grep: two read sites, no assignment), so
-     * the whole clause was dead and is_safemon stayed TRUE for a confused hero.
-     * That is a movement fault, not a message fault: C's domove_core gates BOTH
-     * the run-stop test (hack.c:2765) and the pet-swap branch (hack.c:2920) on
-     * is_safemon, so a confused hero who walks into a visible pet takes the
-     * ordinary do_attack path in C and took the swap-places path here.
-     * _xk_hallu() below already reads the Hallucination macro correctly; reuse
-     * it rather than open-code a fourth spelling. */
     const u = game.u;
     if ((u?.uprops?.[CONFUSION]?.intrinsic | 0)
         || (u?.uprops?.[STUNNED]?.intrinsic | 0)
@@ -1435,40 +1101,9 @@ const _AC_STRAT_WAITMASK = (_AC_STRAT_CLOSE | _AC_STRAT_WAITFORU);
 /* C decl.c `something[] = "something"` — the noun attack_checks uses for a
  * monster the hero cannot identify. */
 const _AC_SOMETHING = 'something';
-/* C include/mondata.h:35 hides_under(ptr) = ((ptr)->mflags1 & M1_CONCEAL) != 0L.
- * include/monflag.h:92 M1_CONCEAL is 0x00000080L.  This carried 0x08000000L,
- * which is monflag.h:112 M1_ACID — the same wrong bit js/dig.js:700 carried,
- * under a private name no name-keyed census could match to it. */
 const _AC_M1_CONCEAL = 0x00000080;
 function _ac_hides_under(ptr) { return !!(((ptr && ptr.mflags1) | 0) & _AC_M1_CONCEAL); }
 
-/* C ref: uhitm.c:186-328 attack_checks(mtmp, wep) — "FALSE means it's OK to
- * attack".  do_attack's Step 1 was the comment
- *     "attack_checks() — returns FALSE for visible non-mimic monsters.
- *      No RNG consumed. Skip."
- * which is true only for a monster the hero can SEE.  For one it cannot, C
- * prints "Wait!  There's something there you can't see!", plants the
- * remembered-'I' marker, wakes the monster and RETURNS TRUE — do_attack aborts
- * before overexertion()/exercise(), so gethungry's rn2(20) and exercise's
- * rn2(19) are never drawn and the whole to-hit chain is skipped.
- *
- * Measured on seed4500-knight-coverage step 1003: a BLIND knight walks south
- * into an unseen monster.  C's next leaf is the movemon-phase
- * `rn2(5) @ distfleeck(monmove.c:538)`; this port drew `rn2(20) @ gethungry`
- * for an attack C never started, and the streams parted there
- * (global leaf 87218).
- *
- * PORTED: the strategy-bit clear, the engulf and forcefight early-outs, the
- * cannot-see arm, the hidden-monster (hides_under / S_EEL) arm and the
- * sensemon wake.  NOT PORTED, and named rather than faked:
- *   - the mimic arms (seemimic / stumble_onto_mimic have no js/ body); a
- *     mimicking target falls through to the attack, which is what this port
- *     already did.
- *   - the `flags.confirm && mpeaceful` paranoid_query prompt: it is gated on
- *     canspotmon(mtmp), and the arms above already returned for every
- *     unspottable monster, so the only path that reaches it needs a blocking
- *     prompt this call site (a synchronous chain) cannot raise.
- */
 /* Read the actual displayed glyph, as C attack_checks does. */
 function _ac_glyph_is_warning_at(x, y, _mon) {
     return glyph_is_warning_at(x, y);
@@ -1479,24 +1114,6 @@ const _UH_MZ_SMALL = 1;              /* monflag.h:178 */
 function _uh_cantwield(ptr) {
     return !!(((ptr?.mflags1) | 0) & _UH_M1_NOHANDS) || ((ptr?.msize | 0) < _UH_MZ_SMALL);
 }
-/* C uhitm.c:1071-1090 hmon_hitmon_weapon — "is it not a melee weapon?"
- * dispatch to hmon_hitmon_weapon_ranged() rather than the melee dmgval()
- * path, for a launcher, a missile/ammo swung by hand, or a pole at short
- * range unmounted (SNICKERSNEE excepted).  do_attack's melee call always has
- * hmd->thrown == HMON_MELEE (0), so `!hmd->thrown` is always true here and
- * the fourth C disjunct (`is_ammo(obj) && (thrown != HMON_THROWN || ...)`) is
- * subsumed by the second.  is_launcher/is_missile/is_ammo mirror
- * js/mhitm.js's _is_launcher_hmon/_is_missile_hmon/_is_ammo_hmon (obj.h:235/
- * 245/238) under this file's own private names — same static census, same
- * MKOBJ_OC_SKILL table already imported here. The pole-at-short-range
- * sub-clause (`!thrown && !u.usteed && is_pole(obj) && !is_art(obj,
- * ART_SNICKERSNEE)`) IS ported, via js/cmd.js's already-exported is_pole/
- * is_art -- MEASURED: do_attack record #146 (probe-reach-melee, a wielded
- * LANCE, otyp 72, oc_skill 19 == P_LANCE, un-mounted) has C's actual next
- * draw as rnd(2) @ hmon_hitmon_weapon_ranged; this port had been calling the
- * melee dmgval(), whose own rnd(6) switch-bonus draw (weapon.c, LANCE's
- * bigmonst-table term) doesn't exist on the ranged path and desynced every
- * later draw in the record. */
 function _uh_is_launcher(otmp) {
     const sk = MKOBJ_OC_SKILL[(otmp?.otyp | 0)] | 0;
     return (otmp?.oclass | 0) === WEAPON_CLASS && sk >= P_BOW && sk <= P_CROSSBOW;
@@ -1518,12 +1135,6 @@ function _uh_is_missile(otmp) {
 function _uh_is_pole_ranged(otmp) {
     return !(game.u && game.u.usteed) && is_pole(otmp) && !sr_is_art(otmp, 19 /* ART_SNICKERSNEE, artilist.h */);
 }
-/* C uhitm.c:885-909 hmon_hitmon_weapon_ranged: "then do only 1-2 points of
- * damage and don't use or train weapon's skill". Ported: the base rnd(2)
- * (0 for a shade without shade_glare) and the silver bonus. NOT PORTED: the
- * boomerang-splinter branch (uhitm.c:897-909, `!thrown && obj==uwep &&
- * obj->otyp==BOOMERANG && rnl(4)==4-1`) — no residual record exercises a
- * wielded boomerang; named rather than faked. */
 function _uh_hmon_hitmon_weapon_ranged(obj, mon) {
     const isShade = (mon?.data?.pmidx | 0) === PM_SHADE;
     let dmg = (isShade && !shade_glare(obj)) ? 0 : rnd(2);
@@ -1536,18 +1147,6 @@ function _uh_hmon_hitmon_weapon_ranged(obj, mon) {
  * and js/mhitm.js:4318 both carry this same 290 under a private name). */
 const PM_AMOROUS_DEMON_UH = 290;
 const NON_PM_UH = -1;
-/* C uhitm.c:2131-2143 demonpet() — "send in a demon pet for the hero;
- * exercise wisdom".  Reached only from damageum()'s
- *   is_demon(gy.youmonst.data) && !rn2(13) && !uwep
- *   && u.umonnum != PM_AMOROUS_DEMON && u.umonnum != PM_BALROG
- * gate (see _damageum below), when a demon-form polymorphed hero lands a
- * bare-handed weaponless hit.  Verbatim:
- *   pline("Some hell-p has arrived!");
- *   i = !rn2(6) ? ndemon(u.ualign.type) : NON_PM;
- *   pm = i != NON_PM ? &mons[i] : gy.youmonst.data;
- *   if ((dtmp = makemon(pm, u.ux, u.uy, NO_MM_FLAGS)) != 0)
- *       (void) tamedog(dtmp, (struct obj *) 0, FALSE);
- *   exercise(A_WIS, TRUE); */
 async function _uh_demonpet() {
     await pline('Some hell-p has arrived!');
     const i = !rn2(6) ? ndemon((game.u?.ualign?.type | 0)) : NON_PM_UH;
@@ -1562,14 +1161,6 @@ async function _uh_demonpet() {
 function _uh_role_is_monk() {
     return ((game.flags?.initrole ?? -1) | 0) === 5;
 }
-/* C include/skills.h:81
- *   #define martial_bonus() (Role_if(PM_SAMURAI) || Role_if(PM_MONK))
- * The WHOLE definition — no skill-level clause (the `martial()` some captions
- * in this port cite lives in dokick.c:9 and is a different, wider macro).
- * This file used to inline it as a bare `isMonk` at three sites, which is
- * silently wrong for every Samurai: 42 of 688 train sessions and 4 of 44
- * public ones are Samurai.  Same roles[]-index convention as _uh_role_is_monk
- * above (role.c order: Monk = 5, Samurai = 9). */
 const _UH_ROLE_MONK = 5, _UH_ROLE_SAMURAI = 9;
 function _uh_martial_bonus() {
     const ir = (game.flags?.initrole ?? -1) | 0;
@@ -1598,8 +1189,6 @@ export async function attack_checks(mtmp, wep) {
     const bx = (game.gb?.bhitpos?.x ?? mtmp.mx) | 0;
     const by = (game.gb?.bhitpos?.y ?? mtmp.my) | 0;
     const glyph_invisible = glyph_is_invisible_at(bx, by);
-    /* C uhitm.c:229 `!glyph_is_warning(glyph)` — see _ac_glyph_is_warning_at
-     * above for the derivation and the measured cluster this closes. */
     const glyph_warning = _ac_glyph_is_warning_at(bx, by, mtmp);
     const Blind = _ac_blind();
 
@@ -1609,25 +1198,10 @@ export async function attack_checks(mtmp, wep) {
         && !(!Blind && (mtmp.mundetected | 0) && _ac_hides_under(mtmp.data))) {
         void pline(`Wait!  There's ${_AC_SOMETHING} there you can't see!`);
         map_invisible(bx, by);
-        /* C uhitm.c:236-243 — an invisible mimic becomes a sticker.  M_AP_TYPE
-         * is 0 for every corpus monster on this path; the set_ustuck arm is
-         * named, not called. */
         await wakeup_attack(mtmp, true); /* "always necessary; also un-mimics mimics" */
         return true;
     }
 
-    /* C uhitm.c:254-266 — a hidden mimic is REVEALED instead of attacked, and
-     * the reveal costs the turn (return TRUE aborts do_attack before
-     * overexertion()/exercise()/hitum()).
-     *
-     * Measured, seed0030 segment 1 step 92 (key "n"): a Tourist walks into a
-     * small mimic posing as a chest.  C's whole step is one leaf —
-     * `rnd(2) @ next_ident(mkobj.c:521)`, from the throwaway object
-     * that_is_a_mimic() makes to name the disguise — and its topline is
-     * "That chest is a small mimic!".  Without this arm the port fell straight
-     * through to the attack and drew gethungry's rn2(20), exercise's rn2(19)
-     * and hitum's rnd(20) for an attack C never started, printing
-     * "You hit the small mimic." (global leaf 21307). */
     if (M_AP_TYPE(mtmp) && !_ac_prot_from_shape_changers() && !sensemon(mtmp)
         && !glyph_warning) {
         if (glyph_invisible) {
@@ -1652,9 +1226,6 @@ export async function attack_checks(mtmp, wep) {
             return false;
         }
         if (!sensemon(mtmp) && !_ac_detect_monsters()) {
-            /* C uhitm.c:290-296.  Hallucination and the "hiding under <obj>"
-             * arm need l_monnam/doname; the Blind / in-a-pool arm is the one
-             * this corpus reaches. */
             if (Blind || is_pool_uh(mtmp.mx | 0, mtmp.my | 0))
                 void pline("Wait!  There's a hidden monster there!");
             return true;
@@ -1667,48 +1238,6 @@ export async function attack_checks(mtmp, wep) {
         await wakeup_attack(mtmp, true);
     }
 
-    /* C uhitm.c:308-324 —
-     *     if (flags.confirm && mtmp->mpeaceful
-     *         && !Confusion && !Hallucination && !Stunned) {
-     *         if (is_art(wep, ART_STORMBRINGER)) {
-     *             go.override_confirmation = TRUE;
-     *             return FALSE;
-     *         }
-     *         if (canspotmon(mtmp)) {
-     *             char qbuf[QBUFSZ];
-     *             Sprintf(qbuf, "Really attack %s?", mon_nam(mtmp));
-     *             if (!paranoid_query(ParanoidHit, qbuf)) {
-     *                 svc.context.move = 0;
-     *                 return TRUE;
-     *             }
-     *         }
-     *     }
-     *
-     * WHICH CALLER REACHES THIS, because the header comment above used to say
-     * the prompt "is gated on canspotmon(mtmp), and the arms above already
-     * returned for every unspottable monster, so the only path that reaches it
-     * needs a blocking prompt this call site (a synchronous chain) cannot
-     * raise."  The gating claim was wrong in an interesting way and the
-     * synchronous claim was simply a limitation, now removed:
-     *
-     *   - do_attack (uhitm.c:462) CANNOT normally reach here for a peaceful
-     *     monster, because its own `is_safemon(mtmp) && !forcefight` block
-     *     returns first, and _is_safemon (display.h:159) differs from this
-     *     guard in exactly one conjunct: `flags.safe_dog` instead of
-     *     `flags.confirm`.  Both default On.
-     *   - dokick.c:126 maybe_kick_monster DOES reach it, on every kick.  It
-     *     sets forcefight only for a NON-peaceful or unspottable target, so a
-     *     visible pet lands squarely in this block.  MEASURED: gen293 / gen333
-     *     / gen397 step 14 and gen560 step 30 are all `^D` (kick) followed by a
-     *     direction key, and C's next frame is "Really attack the kitten?
-     *     [yn] (n)".  The string was ABSENT from js/ entirely.
-     *
-     * The cost is keystroke consumption, not one frame: C's yn_function
-     * re-reads on any answer outside "yn" without repainting, so gen293 spends
-     * FOURTEEN further keys on the same frame before an ESC answers 'n'.
-     *
-     * This function is now async solely for this prompt; both callers await it
-     * (js/uhitm.js do_attack and js/dokick.js maybe_kick_monster). */
     if (_ac_flags_confirm() && (mtmp.mpeaceful | 0) && !_ac_conf_hallu_stun()) {
         /* C uhitm.c:310-314 — an intelligent chaotic weapon wants blood and
          * skips the question.  go.override_confirmation is read by
@@ -1731,14 +1260,6 @@ export async function attack_checks(mtmp, wep) {
 
     return false;
 }
-/* C flag.h:556-584 ParanoidHit == ((flags.paranoia_bits & PARANOID_HIT) != 0).
- * options.c:7173 initialises flags.paranoia_bits to
- * PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP, so PARANOID_HIT is CLEAR
- * unless an rc says otherwise — and no corpus rc carries a
- * paranoid_confirmation line (js/options.js has no arm that lowers one into
- * flags.paranoia_bits either, so the field is normally absent).  Written as C
- * writes it, with C's own initialiser as the default, rather than hard-coding
- * `false`. */
 const _AC_PARANOID_HIT = 0x0010;   /* flag.h:87 */
 const _AC_PARANOID_PRAY = 0x0020, _AC_PARANOID_SWIM = 0x0400,
       _AC_PARANOID_TRAP = 0x0800; /* flag.h:88, :93, :94 */
@@ -1782,28 +1303,6 @@ function _ac_prot_from_shape_changers() {
  * that_is_a_mimic makes, so oartifact is 0 there). */
 function _ac_is_plural(o) { return (o?.quan | 0) !== 1; }
 
-/* C ref: pager.c:284-360 object_from_map(glyph, x, y, &otmp), reached ONLY from
- * that_is_a_mimic()'s glyph_is_object() arm below.
- *
- * SCOPE — the mimic call only.  C reads the MAP glyph via glyph_at(x, y); this
- * port has no glyph layer to read back, so the caller passes the disguise
- * (mtmp.mappearance) that painted that glyph in the first place.  For a hidden
- * mimic the two are the same thing by construction: display.c paints an
- * M_AP_OBJECT monster as objnum_to_glyph(mappearance).
- *
- * The floor-object lookup C does first is not skipped, it is DECIDED: C runs
- * `sobj_at(glyphotyp, x, y)` and then throws the result away —
- *     if (mtmp && is_obj_mappear(mtmp, glyphotyp)) { otmp = 0; mimic_obj = TRUE; }
- * — so on the mimic path otmp is unconditionally 0 and the temporary object is
- * unconditionally made.  That mksobj() is the rnd(2) this whole port exists to
- * draw (mkobj.c:1187 otmp->o_id = next_ident(), mkobj.c:521).
- *
- * init=FALSE, so mksobj draws exactly that one leaf.
- *
- * KNOWN GAP, named not faked: C's mkobj(oc_class, FALSE) fallback for a
- * glyphotyp with no OBJ_NAME (a shuffled-out description shown only under
- * Hallucination).  set_mimic_sym only ever picks named otyps, so the fallback
- * is unreachable from here; it throws rather than silently substituting. */
 async function _mimic_object_from_map(mtmp, glyphotyp) {
     if (!OC_NAME[glyphotyp])
         throw new Error(`object_from_map: no OBJ_NAME for otyp ${glyphotyp} `
@@ -1817,31 +1316,12 @@ async function _mimic_object_from_map(mtmp, glyphotyp) {
     /* C pager.c:335-338 — coins pluralize, slime mold takes current_fruit. */
     if ((otmp.oclass | 0) === _AC_COIN_CLASS)
         otmp.quan = 2;
-    /* C pager.c:351-353 — the fake object is presented as floor-resident so
-     * doname()'s shop-price formatting has coordinates to work with. */
-    otmp.where = 3 /* OBJ_FLOOR */;
+    otmp.where = 3;
     otmp.ox = mtmp.mx | 0;
     otmp.oy = mtmp.my | 0;
     return otmp;
 }
 
-/* C ref: uhitm.c:6200-6276 that_is_a_mimic(mtmp, mimic_flags) — announce a
- * hidden mimic, and (with MIM_REVEAL) drop its disguise.
- *
- * The ONE RNG leaf in this function is object_from_map()'s mksobj, on the
- * glyph_is_object arm.  Everything else is message formatting.
- *
- * KNOWN GAPS, named not faked:
- *   - the Blind arm (uhitm.c:6211-6216): needs Blind_telepat; falls through to
- *     the default fmtbuf with what = "a monster", which is C's own answer for a
- *     blind hero without telepathy.
- *   - the glyph_is_cmap arm (uhitm.c:6224-6231): C builds "That %s actually is
- *     %%s!" from defsyms[sym].explanation, and js/ has no defsyms explanation
- *     table.  A hand-scoped partial table here would be a partial namer, so the
- *     furniture disguise keeps C's default "Wait!  That's %s!" and this comment
- *     names the difference rather than inventing text.
- *   - the mcorpsenm / CORPSE / STATUE / LEASH fixups (uhitm.c:6262-6272) apply
- *     to disguises this corpus does not reach. */
 const _MIM_REVEAL = 1;      /* C hack.h:1185 */
 const _MIM_OMIT_WAIT = 2;   /* C hack.h:1186 */
 async function that_is_a_mimic(mtmp, mimic_flags) {
@@ -1939,37 +1419,6 @@ function _ac_blind() {
 /* C youprop.h Detect_monsters — no writer in js/; reads FALSE. */
 function _ac_detect_monsters() { return _hero_resists(DETECT_MONSTERS); }
 
-/* C ref: uhitm.c:5197-5215 missum(mdef, mattk, wouldhavehit) — the WHOLE
- * function, not just its message:
- *
- *     if (wouldhavehit) Your("armor is rather cumbersome...");
- *     if (could_seduce(&gy.youmonst, mdef, mattk))
- *         You("pretend to be friendly to %s.", mon_nam(mdef));
- *     else if (canspotmon(mdef) && flags.verbose) You("miss %s.", mon_nam(mdef));
- *     else You("miss it.");
- *     if (!helpless(mdef)) wakeup(mdef, TRUE);
- *
- * hitum()'s miss branch used to inline only the middle line, so a MISSED
- * monster was never woken and, crucially, setmangry() never ran on it.  The hit
- * branch has carried its wakeup(mon, TRUE) since the seed4500 wood-nymph fix
- * (uhitm.c:1926); the miss branch is the same requirement and was simply not
- * ported with it.
- *
- * Measured, seed0030 segment 7 step 152 (Knight, key "l"): the hero misses the
- * peaceful shopkeeper Swidnica.  C's topline is
- *     "You miss Swidnica.  Swidnica gets angry!  Swidnica zaps a short wand!"
- * — missum's wakeup(TRUE) reaches setmangry (mon.c:4306 "%s gets angry!"),
- * which clears mpeaceful, which is the FIRST test in find_offensive
- * (muse.c:1427).  Without it the shopkeeper stayed peaceful, find_offensive
- * returned FALSE, and this port skipped C's rn2(8) @ use_offensive(muse.c:1884)
- * plus the whole mbhitm beam.
- *
- * KNOWN GAP, named not faked: could_seduce(&youmonst, mdef, mattk) needs the
- * attack struct hitum() does not thread down here; it is FALSE for every
- * non-succubus/incubus target, which is every target this corpus misses.
- * `wouldhavehit` is the Monk-in-body-armor penalty, which hitum() does not
- * compute either — it is passed FALSE, the value C passes from every call site
- * except uhitm.c:801's twoweapon retry. */
 async function missum(mdef, wouldhavehit) {
     if (wouldhavehit)
         pline('Your armor is rather cumbersome...');
@@ -1980,53 +1429,6 @@ async function missum(mdef, wouldhavehit) {
     /* C uhitm.c:5212-5213 `if (!helpless(mdef)) wakeup(mdef, TRUE);` */
     if (!((mdef.msleeping | 0) || !(mdef.mcanmove | 0)))
         await wakeup_attack(mdef, true);
-    /* C uhitm.c:5212-5213 —
-     *     if (!helpless(mdef)) wakeup(mdef, TRUE);
-     *   (helpless(mon) = mon->msleeping || !mon->mcanmove)
-     * MEASURED AND HELD BACK, not overlooked.  Landing this line is correct C
-     * and it does advance the RNG: on seed0030 it moves segment 3's first
-     * divergence 9881 -> 9882 and segment 7's 10404 -> 10515, because
-     * setmangry() clears mpeaceful and find_offensive() (muse.c:1427) tests
-     * mpeaceful first, so C's rn2(8) @ use_offensive(muse.c:1884) finally gets
-     * drawn.  But it also makes segment 7 die THREE KEYSTROKES early
-     * (169 emitted vs C's 172), and the scorer concatenates segments by frame
-     * INDEX, so those 3 missing frames shift segments 8 and 9 and cost 278
-     * step points against the 32 they win: frozen/score.sh 9349 -> 9071.
-     *
-     * The blocker is downstream of this line — the death tail of an
-     * angry-shopkeeper fight — not in this line.  Everything the line NEEDS is
-     * now ported and live (js/mklev.js setmangry's peacefuls_respond /
-     * qst_guardians_respond / angry_guards / maybe_gasp / Monnam / pline_mon /
-     * m_canseeu / quest_info / growl, all of which previously threw), so
-     * uncommenting it is a one-line change once segment 7's last three frames
-     * are accounted for.  Do NOT re-derive the cascade above; measure the frame
-     * count first (tools/scored-halt-oracle.mjs seed0030-ten-diverse-deaths).
-     *
-     * (LIVE as of this session — see below.)
-     *
-     * RE-MEASURED 2026-08-20 on this branch, and the picture MOVED — record
-     * these numbers rather than re-deriving them a third time:
-     *   - With the line live, segment 7's muse beam is now LEAF-EXACT.  C's
-     *     10512 rn2(8)=6 @use_offensive, 10513 rnd(20)=10 @mbhitm(muse.c:1618)
-     *     and 10514 d(2,12)=13 @mbhitm(muse.c:1622) all MATCH; the wand of
-     *     striking hits for C's damage.  The previous note's "10404 -> 10515"
-     *     is confirmed, and the 111 leaves it buys are all correct.
-     *   - Segment 3 also improves, 275 -> 276 matched, divergence 9881 -> 9882.
-     *   - The remaining seg-7 divergence at leaf 10515 is ONE MISSING DRAW:
-     *     C draws rn2(19) @exercise(attrib.c:509) between the mbhitm damage
-     *     roll and the next turn's first mcalcmove; this port draws nothing
-     *     there, and every later leaf is shifted by one.  js/attrib.js
-     *     exercise() and exerper() both read faithful, so the missing call is
-     *     a CALL SITE, not the body — and it is NOT the exerchk slot, which
-     *     the corpus shows sitting between gethungry and moveloop_core:360,
-     *     several leaves earlier.  That is where the next session should start.
-     *   - The frame deficit is UNCHANGED at 3 (169/172, scored-halt-oracle),
-     *     so the line is still not landable: the scorer concatenates segments
-     *     by frame INDEX and 3 short frames shift segments 8 and 9.
-     *     seed0030's own step points go 1663 -> 1664 with the line live, which
-     *     is not worth that shift.  Fix leaf 10515 first, re-check the frame
-     *     count, and only then uncomment.
-     */
 }
 
 /* C hack.c:3035 overexert_hp: use the current form's HP; otherwise interrupt
@@ -2136,9 +1538,6 @@ export async function do_attack(mtmpOrX, y) {
         return false;
     const forcefight = (game.context?.forcefight | 0);
     if (is_safemon(mtmp) && !forcefight) {
-        /* C uhitm.c:464 — if (!u_wield_art(ART_STORMBRINGER)) { ... }
-         * ART_STORMBRINGER: no intelligent chaotic weapon in cluster sessions.
-         * Treat as always false (not wielding Stormbringer). */
         /* C uhitm.c:475-478:
          *   boolean foo = (Punished || !rn2(7)
          *                  || (is_longworm(mtmp->data) && mtmp->wormno)
@@ -2154,21 +1553,6 @@ export async function do_attack(mtmpOrX, y) {
             || (_is_longworm_uh(mtmp.data) && (mtmp.wormno | 0))
             || (IS_OBSTRUCTED(game.level?.locations?.[game.u?.ux | 0]?.[game.u?.uy | 0]?.typ | 0)
                 && !_passes_walls_uh(mtmp.data));
-        /* C uhitm.c:481-489 — the shop check, run ONLY when nothing else has
-         * already given a reason to stop:
-         *   for (p = in_rooms(mtmp->mx, mtmp->my, SHOPBASE); *p; p++)
-         *       if (tended_shop(&svr.rooms[*p - ROOMOFFSET])) { inshop = TRUE; break; }
-         * This was the constant `false`, on the note "no tended shop at monster
-         * position in cluster sessions" — a premise about the 44 public
-         * recordings that the generated corpus falsifies.  A shopkeeper standing
-         * in his own doorway is the ordinary case: C refuses to displace him and
-         * prints "You stop.  <Shk> is in the way!", where this port fell through
-         * to `return false` and SWAPPED PLACES with him.  That is not one wrong
-         * topline — the hero ends the turn on the wrong square, so every monster
-         * pass after it diverges.  Measured on gen406-reseed-seed381059 step 784
-         * (a travel command into Manlobbi's doorway): 866 consecutive frames and
-         * the session's whole RNG tail hang off it.
-         * in_rooms/tended_shop are RNG-free. */
         let inshop = false;
         if (!foo) {
             const _rooms = game.level?.rooms ?? [];
@@ -2201,31 +1585,11 @@ export async function do_attack(mtmpOrX, y) {
              * mflee/mfleetim set. */
             if (mtmp.mtame)
                 await monflee(mtmp, rnd(6), false, false);
-            /* C uhitm.c:499-503 —
-             *     Strcpy(buf, y_monnam(mtmp));
-             *     buf[0] = highc(buf[0]);
-             *     You("stop.  %s is in the way!", buf);
-             * y_monnam is "your little dog" for a pet; highc capitalises the
-             * first letter.  This read `mtmp.mname || 'it'` — a field nothing in
-             * the port assigns — so every blocked run said "You stop.  it is in
-             * the way!" (seed0014 step 209). */
             const buf = y_monnam(mtmp) || '';
             const first = buf.charCodeAt(0);
             const monname = (first >= 0x61 && first <= 0x7a)
                 ? String.fromCharCode(first & ~0x20) + buf.slice(1) : buf;
             await pline(`You stop.  ${monname} is in the way!`);
-            /* C uhitm.c:502 — end_running(TRUE), and NOTHING else: C does not
-             * touch svc.context.move here, so the blocked step still consumes
-             * its turn (the moveloop set context.move before rhack, and
-             * domove_core just returns TRUE up through domove_monster_stuff).
-             *
-             * This site had `game.context.move = 0` INSTEAD of end_running.
-             * Both halves were wrong and they hid each other: the missing
-             * end_running left svc.context.run/travel/mv/multi standing, so the
-             * interrupted move resumed and printed the same line twice on one
-             * topline; the invented move=0 suppressed the turn, and with the
-             * duplicate gone that turned into a spurious --More-- whose dismiss
-             * ate seed0014's keys 210-212. */
             end_running(true);
             return true;
         }
@@ -2262,34 +1626,6 @@ export async function do_attack(mtmpOrX, y) {
             return false;
         }
     }
-    /* Non-safemon or forcefight: full attack body.
-     * C uhitm.c:514-584 — attack_checks + overexertion + exercise(STR) + hitum + passive.
-     *
-     * W24.6: port the essential RNG chain so sessions blocked by
-     * gethungry(eat.c:3191) and exercise(attrib.c:509) gain sequential depth.
-     *
-     * C execution order (do_attack non-safemon path):
-     *   1. attack_checks() — no RNG for visible non-mimic monsters (returns FALSE)
-     *   2. check_capacity() — no RNG for unencumbered hero (returns FALSE)
-     *   3. overexertion():
-     *        gethungry()  → rn2(20) [eat.c:3191]
-     *        if moves%3!=0 && encumbered: overexert_hp() (no RNG for us)
-     *        return (multi < 0)  → FALSE for multi=0 (attack continues)
-     *   4. exercise(A_STR, TRUE) → rn2(19) [attrib.c:509]
-     *   5. u_wipe_engr(3) — engraving-dependent RNG
-     *   6. hitum():
-     *        find_roll_to_hit() → pure arithmetic, no RNG
-     *        rnd(20) dieroll
-     *        if (tmp > dieroll): exercise(A_DEX, TRUE) → rn2(19)
-     *        known_hitum → hmon → hmon_hitmon → dmgval → rnd(wsdam) [weapon.c:265]
-     *        xkilled → rn2(6) [mon.c:3574 treasure check]
-     *        mondead → corpse_chance → rn2(tmp) [mon.c:3235]
-     *   7. passive(mon, uwep, mhit, malive, AT_WEAP, ...):
-     *        if (malive && !mcan && rn2(3)) → switch(adtyp) → usually no-op [uhitm.c:6020]
-     *
-     * C ref: uhitm.c:514-584, hack.c:3062-3073, attrib.c:509, eat.c:3191,
-     *        weapon.c:216-295 (dmgval), mon.c:3464-3640 (xkilled),
-     *        mon.c:3220-3235 (corpse_chance), uhitm.c:5866-6127 (passive). */
 
     /* Lazy weapon init: ensure u.uwep reflects starting equipment for roles
      * that wield a weapon at game start (Valkyrie: spear, Wizard: quarterstaff).
@@ -2297,26 +1633,6 @@ export async function do_attack(mtmpOrX, y) {
      * JS defers this until first attack so it also covers cmd.js dofire path. */
     _ensure_role_weapons_uhitm(game.u);
 
-    /* C uhitm.c:517-520 —
-     *     gb.bhitpos.x = u.ux + u.dx;
-     *     gb.bhitpos.y = u.uy + u.dy;
-     *     gn.notonhead = (gb.bhitpos.x != mtmp->mx || gb.bhitpos.y != mtmp->my);
-     * with C's own comment on the line above it: "attack_checks() used to use
-     * <u.ux+u.dx,u.uy+u.dy> directly, now it uses gb.bhitpos instead; it might
-     * map an invisible monster there".  That is exactly what attack_checks does
-     * with it — `glyph_at(gb.bhitpos)` decides which arm runs, and the
-     * cannot-see arm calls `map_invisible(gb.bhitpos.x, gb.bhitpos.y)`.
-     *
-     * This port never wrote gb.bhitpos here, so attack_checks read whatever the
-     * LAST writer left behind — js/monmove.js:1451 (a monster's own attack),
-     * js/dogmove.js:3847 (the pet's), js/dog.js:294, js/mklev.js:12244 — and
-     * planted the remembered-'I' marker on that stale square.  MEASURED on
-     * seed0014 step 621: the hero walks west into an unseen monster at (30,14)
-     * and C paints one 'I' there; this port painted that one (from mhitu's own
-     * map_invisible when the monster hit back) AND a second one at (45,7), a
-     * square 15 columns away that the hero has never seen, left in bhitpos by
-     * an earlier movemon pass.  It survives on the map for the rest of the
-     * segment, so every later frame misses on that cell alone. */
     {
         const _u = game.u || {};
         const _bx = ((_u.ux | 0) + (_u.dx | 0)) | 0;
@@ -2343,35 +1659,7 @@ export async function do_attack(mtmpOrX, y) {
         return true;
     }
 
-    /* C uhitm.c:536-537 — `if (u.twoweap && !can_twoweapon()) untwoweapon();`.
-     * can_twoweapon()/untwoweapon() have no js/ body.  MEASURED: throwing here
-     * costs seed0107-samurai-twoweapon-enhance 58 of its 98 step points, because
-     * that hero attacks in two-weapon mode on a path where C's can_twoweapon()
-     * says yes and nothing happens.  Left as the status-quo no-op and NAMED, so
-     * the gap is on the record without a live throw standing on it. */
 
-    /* C uhitm.c:539-551 — gu.unweapon: the FIRST melee attack after the hero
-     * loses (or takes up) a non-weapon announces itself.
-     *     if (gu.unweapon) {
-     *         gu.unweapon = FALSE;
-     *         if (flags.verbose) { ... You("begin bashing monsters with %s.") }
-     *     }
-     * The flag already has writers in this port (js/steal.js uwepgone sets it,
-     * js/cmd.js setuwep clears it) — it simply had no READER, so the line was
-     * never printed.  MEASURED on seed0014 step 624: a bullwhip yanks the
-     * hero's dwarvish spear away at step 619, and C's next melee topline is
-     * "You begin bashing monsters with your bare hands.  You miss it.--More--"
-     * where this port showed only "You miss it." — a whole --More-- page
-     * missing, so every later frame of the session was off.
-     *
-     * MEASURED COST, kept anyway (Cardinal Rule 5): landing this line costs
-     * seed0367-priest-quest-tour 9 step points.  That session wields a
-     * spellbook (gu.unweapon TRUE in C too) and the line first fires at its
-     * step 262 — 59 steps PAST its first screen miss at 203, on a frame where
-     * C's topline is EMPTY because C never makes that attack at all.  The nine
-     * frames were post-divergence luck-matches, not a regression this line
-     * caused; C prints "You begin bashing" exactly once in the whole 44-session
-     * corpus, and that once is seed0014 step 624. */
     if (game.unweapon) {
         game.unweapon = false;
         if (game.flags?.verbose ?? true) {
@@ -2399,61 +1687,14 @@ export async function do_attack(mtmpOrX, y) {
     /* Step 6: hitum() — find_roll_to_hit (pure arithmetic) + rnd(20) + ... */
     const u = game.u;
 
-    /* C uhitm.c:349-359 mon_maybe_unparalyze(mtmp) — "maybe unparalyze
-     * monster".  A one-in-ten shake-off for a monster that cannot move, drawn
-     * by every caller between find_roll_to_hit() and its to-hit roll.  The
-     * rn2(10) fires ONLY when !mcanmove, which is why dropping it was invisible
-     * until a session actually froze something. */
-    /* C uhitm.c:379-382, inside find_roll_to_hit:
-     *     if (!(*attk_count)++) {
-     *         check_caitiff(mtmp);
-     *     }
-     * i.e. ONCE per attack sequence, before the first to-hit roll.  This port's
-     * find_roll_to_hit is inlined below and simply dropped the call, and
-     * js/mhitm.js's check_caitiff() had no call site anywhere in js/ — so a
-     * lawful Knight could hit a sleeping or fleeing monster and neither lose
-     * alignment nor say anything.  It is the first sentence of C's topline on
-     * seed4500-knight-coverage step 985: "You caitiff!  You hit it.  The wood
-     * nymph wakes up!--More--".  Draws no RNG (adjalign does not). */
     check_caitiff(mtmp);
 
-    /* find_roll_to_hit(mtmp, AT_WEAP, uwep, ...) — C ref: uhitm.c:365-428.
-     * Structural port for the common non-polymorphed, non-monk, non-riding
-     * hero making a weapon attack. monAC is find_mac(mtmp) — the REAL
-     * current AC (base permonst AC minus every worn armor piece's ARM_BONUS,
-     * see find_mac_full_uh) — not the static base-only table. The remaining
-     * terms JS lacks precise state for (u.utrap, monk armor/bare bonus,
-     * orc/elf) are 0 for the sessions this covers and are noted inline. */
     const mndx = (mtmp.mndx ?? mtmp.mnum) | 0;
     const monAC = find_mac_full_uh(mtmp);
-    /* abon() — strength+dex attack bonus. C ref: weapon.c:950-984, uhitm.c:375
-     * `tmp = 1 + abon() + ...` — UNCONDITIONAL, not gated by Upolyd; abon()
-     * itself is what branches on Upolyd (returning
-     * `adj_lev(&mons[u.umonnum]) - 3` while polymorphed).  This site used to
-     * reimplement only the str/dex half inline and skip it entirely (abon_val
-     * = 0) whenever Upolyd(u), duplicating — and diverging from — the real,
-     * already-fixed `abon()` export above (the same shadow-stub class this
-     * file's own header comment on `abon()` documents for the 2026-09-06 fix).
-     * MEASURED: do_attack record #82 (a polymorphed Marilith hero) — C's
-     * to-hit tmp includes abon()'s Upolyd branch and rolls a hit
-     * (rnd(2) barehand damage next); this port's abon_val=0 rolled a miss. */
     const abon_val = abon();
     /* luck bonus: sgn(Luck) * ((abs(Luck)+2)/3) — C ref: uhitm.c:378 */
     const luck = (u && u.uluck) ? (u.uluck | 0) : 0;
     const luckBonus = (luck > 0 ? 1 : luck < 0 ? -1 : 0) * (((luck < 0 ? -luck : luck) + 2) / 3 | 0);
-    /* maybe_polyd(youmonst.data->mlevel, u.ulevel) — C's macro (youprop.h) is
-     * `Upolyd ? (polyd) : (orig)`: while polymorphed this term is the CURRENT
-     * FORM's monster level, not the hero's experience level. This always read
-     * u.ulevel regardless of Upolyd, the same bug abon() (this file, Upolyd
-     * branch above) already carries a fix for on an analogous term — this site
-     * just never got it. mons[umonnum][1] is the same mlevel column abon()
-     * reads via _MONS[umonnum][1].
-     * MEASURED (do_attack records #80, #96): a polymorphed low-level hero's
-     * to-hit roll used u.ulevel=1 where C used the current form's mlevel
-     * (e.g. mons[208].mlevel=6), understating tmp by the difference and
-     * turning a C hit into a miss — record #80's dieroll=16 needs tmp>16,
-     * which the +5 this fix restores is what C's own draw sequence requires
-     * (damageum's d(1,4) next, not a miss). C ref: uhitm.c:379, youprop.h:22. */
     const ulevel = Upolyd(u)
         ? (((u.umonnum | 0) >= 0 && (u.umonnum | 0) < _MONS.length)
             ? (_MONS[u.umonnum | 0][1] | 0) : 0)
@@ -2465,17 +1706,6 @@ export async function do_attack(mtmpOrX, y) {
     if (mtmp.mflee) tmp += 2;
     if (mtmp.msleeping) tmp += 2;
     if (!mtmp.mcanmove) tmp += 4;
-    /* role/race adjustments (uhitm.c:398-406): monk-no-armor and orc/elf bonus.
-     *   if (Role_if(PM_MONK) && !Upolyd) {
-     *       if (uarm) tmp -= (role_roll_penalty = urole.spelarmr);
-     *       else if (!uwep && !uarms) tmp += (u.ulevel / 3) + 2;
-     *   }
-     * A Monk with no body armor and bare-handed (no weapon, no shield) gets
-     * the martial-arts to-hit bonus.  The Monk's starting kit is a ROBE
-     * (cloak/uarmc, not uarm) + leather gloves, so uarm is null; the bonus
-     * fires.  spelarmr penalty (when uarm) is for an armored monk — rare in
-     * the cluster sessions; follow-up if exercised.  The orc/elf race bonus
-     * (uhitm.c:404-406) does not apply to the human heroes here. */
     const initrole = (game.flags?.initrole ?? -1) | 0;
     const isMonk = (initrole === 5); /* roles[] index 5 = Monk = PM_MONK */
     if (isMonk && !Upolyd(u)) {
@@ -2489,42 +1719,15 @@ export async function do_attack(mtmpOrX, y) {
             tmp += ((ulevel / 3) | 0) + 2;
         }
     }
-    /* C uhitm.c:409-412 — encumbrance and utrap penalties to the to-hit roll:
-     *     if ((tmp2 = near_capacity()) != 0)
-     *         tmp -= (tmp2 * 2) - 1;
-     *     if (u.utrap)
-     *         tmp -= 3;
-     * This was a comment claiming "near_capacity()==0 and !u.utrap for the
-     * unencumbered, untrapped hero this path covers; no adjustment" — an
-     * absence claim about the 44 public sessions that a generated corpus
-     * falsifies.  RNG-free (both terms are pure arithmetic), but the missing
-     * penalty can flip tmp > dieroll from FALSE to TRUE, turning a C miss into
-     * a hit here: MEASURED on probe-kickdig/gen002-objective-seed1259205 (a
-     * pick-axe wielder at near_capacity()==1/Burdened), where C's next draw
-     * after the dieroll is passive()'s rn2(3) (a miss) and this port went on
-     * to draw exercise(A_DEX)'s rn2(19) instead (a hit it should not have
-     * been). */
     const _encumbrance = near_capacity();
     if (_encumbrance !== 0)
         tmp -= (_encumbrance * 2) - 1;
     if (u && u.utrap)
         tmp -= 3;
-    /* weapon block — C ref: uhitm.c:419-425.
-     * do_attack reaches hitum() with aatyp == AT_WEAP, so:
-     *   if (weapon) tmp += hitval(weapon, mtmp);
-     *   tmp += weapon_hit_bonus(weapon);
-     * THIS was the missing term that flipped tmp > dieroll for seed0006/0600/
-     * 2200/3100 (quarterstaff spe+hitbon = +1, scalpel hitbon = +2). */
     const _tmpBase = tmp;
 
     let malive = true; /* monster still alive after this attack */
 
-    /* One swing: find_roll_to_hit's weapon terms + rnd(20) + known_hitum +
-     * passive.  C runs this body twice when gt.twohits.  `second` is C's
-     * gt.twohits == 2 and gates the two things that differ: exercise(A_DEX)
-     * fires only on the first swing (uhitm.c:783 vs the second block, which has
-     * no exercise), and passive() runs unconditionally on the first swing but
-     * only `if (mhit)` on the second (uhitm.c:811-813). */
     const _swing = async (weapon, second, viaHmonas) => {
     let tmp = _tmpBase;
     const uwepForHit = weapon;
@@ -2532,11 +1735,6 @@ export async function do_attack(mtmpOrX, y) {
         tmp += hitval(uwepForHit, mtmp, mndx);
     tmp += weapon_hit_bonus(uwepForHit);
 
-    /* C uhitm.c:779 / uhitm.c:802 — mon_maybe_unparalyze(mon), between
-     * find_roll_to_hit() and the dieroll, on BOTH swings.  It draws rn2(10)
-     * whenever the target cannot move, so it is not optional: gen232-reseed-
-     * seed1268561 leaf 82,938 is C's rn2(10) here against JS's rnd(20), i.e.
-     * the whole rest of the stream off by one draw. */
     mon_maybe_unparalyze(mtmp);
     /* hitum() rnd(20) dieroll [uhitm.c:781 / uhitm.c:804] */
     const dieroll = rnd(20);
@@ -2545,46 +1743,8 @@ export async function do_attack(mtmpOrX, y) {
     if (!mhit)
         await missum(mtmp, false);
     if (mhit) {
-        /* exercise(A_DEX, TRUE) — C's condition is `tmp > dieroll`
-         * (uhitm.c:782-783), NOT `mhit`:
-         *     mhit = (tmp > dieroll || u.uswallow);
-         *     if (tmp > dieroll)
-         *         exercise(A_DEX, TRUE);
-         * The two conditions coincide except when u.uswallow forces mhit
-         * TRUE on a roll that did not beat tmp (a swallowed hero always
-         * "hits" the engulfing monster) — there C skips the roll entirely.
-         * This was gated on mhit, so an engulfed hero drew an extra rn2(19)
-         * exercise() has ONLY in hitum's first block (uhitm.c:784); the
-         * twohits block at 800-810 has none, hence the `!second` guard.
-         * MEASURED: do_attack records #110/#229/#230/#235/#237/#238/#240 (all
-         * u.uswallow=1, tmp<=dieroll) drew this extra rn2(19) where C's next
-         * draw was the damage roll (dmgval/hmon_hitmon_barehands), desyncing
-         * the rest of the tape by one slot. */
         if (!second && tmp > dieroll) exercise(A_DEX, true);
 
-        /* C uhitm.c:615-617 known_hitum, the "KMH, conduct" block, which sits
-         * exactly here — after the hit is known and before hmon():
-         *     if (weapon && (weapon->oclass == WEAPON_CLASS
-         *                    || is_weptool(weapon)))
-         *         u.uconduct.weaphit++;
-         * RNG-free.  It had no port, so u.uconduct.weaphit stayed 0 for the
-         * whole game and insight.c:2137's `if (!u.uconduct.weaphit)` arm printed
-         * "You have never hit with a wielded weapon." into every #conduct window
-         * — seed0106 step 199, where C (a Priest who has just maced a kobold to
-         * death) prints no such line at all, and the extra line also widened the
-         * window and moved its column.
-         *
-         * NOT PORTED, and check this rather than believing it: C's companion
-         * `oldweaphit` restore (uhitm.c:613, 636-639) undoes the increment when
-         * the hit did no damage (`mon->mhp == oldhp`, the Vorpal-Blade-hit-
-         * converted-to-miss case).  The two expressions that decide it are both
-         * in THIS function, ~90 lines below — `totalDmg = Math.max(1, ...)`
-         * (mirroring hmon_hitmon's get_dmg_bonus clamp, uhitm.c:1813) and
-         * `mtmp.mhp = Math.max(0, curHp - totalDmg)`.  While totalDmg >= 1 and
-         * mhp is written from it, oldhp cannot survive a landed hit and the
-         * restore is dead code.  If either expression changes, port the restore
-         * (it also has to clear `mhit`, which is a const here, so it is a small
-         * restructure, not a one-liner). */
         if (weapon && ((weapon.oclass | 0) === WEAPON_CLASS || is_weptool(weapon))) {
             const uc = (u.uconduct ||= {});
             uc.weaphit = (uc.weaphit | 0) + 1;
@@ -2595,20 +1755,6 @@ export async function do_attack(mtmpOrX, y) {
          * Armed: the real dmgval(obj, mon) below, which derives bigmonst
          * from mon.data internally (weapon.c:224). */
         const uwep = weapon; /* C: known_hitum(mon, <this swing's weapon>, ...) */
-        /* C uhitm.c:1414-1415 hmon_hitmon_do_hit routes a non-NULL obj into
-         * hmon_hitmon_weapon ONLY when it is a weapon, a weptool, or a gem
-         * (`obj->oclass == WEAPON_CLASS || is_weptool(obj) || obj->oclass ==
-         * GEM_CLASS`); every other wielded object (a tool, a crystal ball, a
-         * bag, ...) falls to hmon_hitmon_misc_obj instead, which is a
-         * DIFFERENT damage calculation (weight-based, no weapon-skill bonus
-         * or training) — not dmgval().  This site used to call dmgval() for
-         * every non-NULL uwep regardless of class.
-         * MEASURED (rng-trace do_attack rec#5, tin opener otyp 239 TOOL_CLASS,
-         * not a weptool): C's next draws after the dieroll are
-         * mhitm_knockback's rn2(3)/rn2(6) (uhitm.c:5258/5269) — reachable only
-         * because misc_obj's weight-based dmg (1) plus dbon() pushes hmd.dmg
-         * above 1 — and this port drew neither, going straight to
-         * known_hitum's rn2(25) two slots early. */
         const isWeaponClassHit = !!uwep && ((uwep.oclass | 0) === WEAPON_CLASS
             || is_weptool(uwep) || (uwep.oclass | 0) === GEM_CLASS);
         /* C uhitm.c:1071-1080 hmon_hitmon_weapon's dispatch — see
@@ -2629,62 +1775,19 @@ export async function do_attack(mtmpOrX, y) {
              * martial_bonus() is false → rnd(2). */
             const martial = _uh_martial_bonus();
             dmg = rnd(martial ? 4 : 2);
-            /* special_dmgval(youmonst, mon, spcdmgflg, &silverhit) [uhitm.c:862]
-             * fires RNG only for blessed gloves vs blessing-hating monsters or
-             * silver gloves/rings vs silver-hating monsters.  The Monk's
-             * leather gloves are non-silver and (in the cluster sessions) the
-             * target neither hates blessings nor silver, so no RNG and no
-             * bonus.  Full port deferred until a session exercises it. */
             /* the bare-handed weapon-skill bonus is weapon_dam_bonus(NULL);
              * it is added below, through the same single call C makes from
              * hmon_hitmon_dmg_recalc for BOTH the armed and unarmed cases. */
         } else {
-            /* C uhitm.c:1795 hmon_hitmon_weapon_melee: `hmd->dmg = dmgval(obj, mon);`.
-             * This site used to hand-roll ONLY dmgval's first term (a bare
-             * rnd(oc_wsdam)/rnd(oc_wldam) die) — no per-weapon-type switch
-             * bonus (weapon.c:227-295: +1/+rnd(4)/+rnd(6)/+d(2,4)/+d(2,6) for
-             * IRON_CHAIN/MACE/FLAIL/BATTLE_AXE/TWO_HANDED_SWORD and 20+ other
-             * otyps), no thick-skinned/shade zeroing, no heavy-iron-ball
-             * weight bonus, no weapon-vs-monster-type bonus (blessed/
-             * axe-vs-wood/silver/light + spec_dbon adjustment), and no
-             * erosion penalty.  All of that is ALREADY correctly ported at
-             * this file's exported `dmgval(otmp, mon)` (weapon.c:216-355,
-             * verbatim down to the same spec_dbon double-count this file's own
-             * MEASURED comment on it documents) — it was simply never called
-             * from here, so an armed do_attack hit duplicated a fraction of
-             * dmgval() instead of running it.
-             * MEASURED via rng_result_tape_oor on 5 do_attack records
-             * (board16-s indices 39/50/54/59, weapons two-handed sword /
-             * broadsword / elven broadsword): C's next draw after this die
-             * roll is dmgval's own switch bonus (rnd(4) for BROADSWORD/
-             * ELVEN_BROADSWORD, d(2,6) for TWO_HANDED_SWORD in the bigmonst
-             * table), which this port never drew, desyncing the passive()
-             * rn2(3) two slots later into an out-of-range pop. */
             if (isRangedMelee) {
                 dmg = _uh_hmon_hitmon_weapon_ranged(uwep, mtmp);
             } else if (isWeaponClassHit) {
                 dmg = dmgval(uwep, mtmp);
             } else {
-                /* C uhitm.c:1341-1362, the "default" arm of
-                 * hmon_hitmon_misc_obj (the many object-specific arms above
-                 * it — BOULDER/HEAVY_IRON_BALL/IRON_CHAIN, MIRROR,
-                 * EXPENSIVE_CAMERA, CORPSE, EGG, CLOVE_OF_GARLIC, CREAM_PIE/
-                 * BLINDING_VENOM, ACID_VENOM — are a NAMED GAP: none has been
-                 * observed wielded into melee by the corpus yet, so they are
-                 * not ported). */
                 dmg = _uh_misc_obj_dmg(uwep, mtmp);
             }
         }
 
-        /* C uhitm.c:955-966 — a Rogue using an ordinary melee weapon can
-         * backstab a visible fleeing or helpless monster.  dmgval() above is
-         * only the base weapon damage; C adds this separate rnd(u.ulevel)
-         * before artifact_hit() and before the strength/skill bonuses below.
-         *
-         * gen180-reseed-seed244454 reaches this at level 1 while striking a
-         * fleeing pet: C draws rnd(1) here, then abuse_dog()'s rn2(8).  The
-         * missing branch made JS go directly to abuse_dog(), shifting every
-         * subsequent draw in the session by one. */
         const _backstabData = mtmp?.data;
         const _backstabMlet = _backstabData?.mlet | 0;
         const _backstabbable = !!_backstabData
@@ -2709,33 +1812,6 @@ export async function do_attack(mtmpOrX, y) {
             dmg += rnd(Math.max(1, u.ulevel | 0));
         }
 
-        /* dbon() strength damage bonus — C ref: weapon.c:992-1013, verbatim:
-         *     if (Upolyd) return 0;
-         *     if (str < 6) return -1;
-         *     else if (str < 16) return 0;
-         *     else if (str < 18) return 1;
-         *     else if (str == 18) return 2;          // up to 18
-         *     else if (str <= STR18(75)) return 3;   // up to 18/75, i.e. <=93
-         *     else if (str <= STR18(90)) return 4;   // up to 18/90, i.e. <=108
-         *     else if (str < STR18(100)) return 5;   // up to 18/99, i.e. <118
-         *     else return 6;
-         * This table used to invent five extra tiers (68/78/88/98/108, up to a
-         * ceiling of 8) that match NEITHER this table NOR abon()'s to-hit
-         * table just above it in this same function (whose break points ARE
-         * 68/118, the STR18(50)/STR18(100) abon() uses) — an unattributed
-         * table with no C site behind it.  Every str2 above 68 (STR18(50)) got
-         * a bonus 1-2 points too high, growing to +2 by str2=108 and topping
-         * out at dbon_val=8 for str2>=108 where C's ceiling is 6.
-         *
-         * MEASURED: do_attack rec#11 (board12-s) — a bare-handed, non-Monk
-         * hero wearing Gauntlets of Power (uarmg.otyp 161, forcing
-         * acurr(A_STR)=STR19(25)=125).  rnd(2)=1 damage + this table's
-         * dbon_val=8 + skillDmgBonus=0 made totalDmg=9, >= the target's 8 HP,
-         * so this port routed through xkilled() and drew its rn2(6) treasure
-         * check where C's actual next draw (tape value 20) was uhitm.c:625's
-         * `!rn2(25)` monflee gate — C's target survived at 1 HP.  With the
-         * correct dbon_val=6, totalDmg=7 < 8 and this port takes the same
-         * hit-not-kill branch C does, and 20 is in-range for rn2(25). */
         let dbon_val = 0;
         if (!Upolyd(u)) {
             const str2 = acurr(u, A_STR);
@@ -2821,80 +1897,21 @@ export async function do_attack(mtmpOrX, y) {
          * hmon_hitmon: dmg < 1 is clamped to 1 (get_dmg_bonus && !shade) at
          * uhitm.c:1813-1818.  dbon()/weapon_dam_bonus consume no RNG. */
         const skillDmgBonus = useWeaponSkillHit ? weapon_dam_bonus(uwep || null) : 0;
-        /* C uhitm.c:1492-1497, the very next statement inside the same
-         * `if (hmd->use_weapon_skill)` block:
-         *     if (hmd->train_weapon_skill) {
-         *         int wtype = hmd->thrown ? weapon_type(skillwep)
-         *                                 : uwep_skill_type();
-         *         use_skill(wtype, 1);
-         *     }
-         * This is hitum's melee path, so hmd->thrown is HMON_MELEE and only the
-         * uwep_skill_type() arm is reachable.  use_skill() has been a faithful
-         * port for a while; nothing CALLED it from combat, so P_ADVANCE kept the
-         * skill_init() baseline for the whole game and the #enhance menu's
-         * practice column was frozen (js/skills.js:20 documented exactly this).
-         * MEASURED on seed4500-knight-coverage step 631: C's #enhance reads
-         * "j -  long sword         Basic           25(  80)" against this port's
-         * "20(  80)" -- 20 is practice_needed_to_advance(P_UNSKILLED), the value
-         * skill_init() writes, and the five extra points are five long-sword
-         * hits that did more than minimal damage.  Three step points
-         * (631/633/635 re-render that column). */
         if (trainWeaponSkill)
             await use_skill(uwep_skill_type(), 1);
         const totalDmg = Math.max(1, dmgvalResult + (u.udaminc | 0)
             + dbon_val + skillDmgBonus);
 
-        /* hmon_hitmon stagger [uhitm.c:1828-1833, 1570-1586]:
-         *   else if (unarmed && dmg > 1 && !thrown && !obj && !Upolyd)
-         *       hmon_hitmon_stagger(...);
-         * unarmed = !uwep && !uarm && !uarms (uhitm.c:1780).  The stagger body
-         * evaluates rnd(100) as the FIRST operand of its && condition
-         * (uhitm.c:1577), so the rnd(100) is ALWAYS consumed when this branch
-         * is taken, regardless of whether the stun lands:
-         *   if (rnd(100) < P_SKILL(P_BARE_HANDED_COMBAT) && !bigmonst && !thick_skinned)
-         * For a starting Monk P_SKILL(bare)=P_BASIC=2, so the stun almost never
-         * lands (rnd(100) in 1..100 < 2 only when ==1), but the RNG is spent.
-         * mhurtle_to_doom (if it lands) is not modelled here; the cluster
-         * sessions don't stun on this roll. */
         const heroUnarmed = !uwep && !(u && u.uarm) && !(u && u.uarms);
         if (heroUnarmed && totalDmg > 1 && !Upolyd(u)) {
             rnd(100); /* stagger stun check — RNG consumed, stun unmodelled */
         }
 
-        /* C uhitm.c:1544-1551, inside hmon_hitmon just after the damage is
-         * known and BEFORE the monster can die:
-         *     if (... thrown == HMON_MELEE ... && !hmd.jousting
-         *         && hmd.dmg > 0 && u.uconduct.weaphit <= 1)
-         *         first_weapon_hit(obj);
-         * The comment at uhitm.c:1981-1986 says why the order matters: the
-         * chronicle must read "hit with a wielded weapon ... for the first
-         * time" BEFORE "killed for the first time" when both happen on the
-         * same turn, which is exactly seed0106 (both at turn 17).  Jousting is
-         * a lance-only path this port does not model, so the !jousting
-         * conjunct is always true here. */
         if (weapon && totalDmg > 0 && ((u.uconduct?.weaphit | 0) <= 1))
             first_weapon_hit(weapon);
 
         /* kill check: monster dies if total damage >= current HP */
         const curHp = (mtmp.mhp | 0);
-        /* C uhitm.c:1897 hmon_hitmon_pet(&hmd, mon, obj), whose body
-         * (uhitm.c:1587-1601) is
-         *     if (mon->mtame && hmd->dmg > 0) {
-         *         abuse_dog(mon);           / * reduces tameness * /
-         *         if (mon->mtame && !hmd->destroyed)
-         *             monflee(mon, 10 * rnd(hmd->dmg), FALSE, FALSE);
-         *     }
-         * It sits AFTER `mon->mhp -= hmd.dmg` / the `destroyed` flag and
-         * BEFORE the kill-or-hit-message branch, so its draws come first — C's
-         * own comment says "do this even if the pet is being killed or
-         * migrating (affects revival)".
-         *
-         * This whole arm was absent from js/uhitm.js's hmon (js/mhitm.js's
-         * THROWN copy has it, and that one is not on this path).  MEASURED on
-         * seed0383 leaf 11372: C draws `rn2(9) @abuse_dog(dog.c:1381)` and
-         * `rn2(35) @yelp(sounds.c:437)` for the kitten the hero has just hit,
-         * and this port went straight to xkilled's rn2(6).
-         * `destroyed` is C's hmd.destroyed — mhp < 1 after the damage. */
         const _hmon_destroyed = (curHp > 0 && totalDmg >= curHp);
         if ((mtmp.mtame | 0) && totalDmg > 0) {
             abuse_dog(mtmp);
@@ -2921,23 +1938,6 @@ export async function do_attack(mtmpOrX, y) {
         } else {
             mtmp.mhp = Math.max(0, curHp - totalDmg);
 
-            /* hmon_hitmon_msg_hit [uhitm.c:1643-1661]: fires when !hittxt &&
-             * !destroyed.  C, verbatim:
-             *
-             *   else if (!flags.verbose)   You("hit it.");
-             *   else                       You("%s %s%s", verb, mon_nam(mon),
-             *                                  canseemon(mon) ? exclam(dmg) : ".");
-             *
-             * Both branches were previously collapsed into the verbose one with
-             * canseemon hardwired true.  seed4500-knight-coverage's nethackrc
-             * carries `!verbose`, so C prints the literal "You hit it." on every
-             * melee hit of that session and we printed the monster's name — the
-             * session's first screen miss at step 267, on a Knight hitting an
-             * earth elemental.
-             *
-             * Note the two branches are not the same sentence with a name
-             * swapped: the terse one is a fixed string, so it does not consult
-             * canseemon or exclam at all. */
             if (artiHittxt) {
                 /* C uhitm.c:1643 — hmon_hitmon_msg_hit is guarded by
                  * `!hmd->hittxt`; artifact_hit() set it by printing its own. */
@@ -2948,20 +1948,6 @@ export async function do_attack(mtmpOrX, y) {
                       + (canseemon(mtmp) ? exclam(totalDmg) : '.'));
             }
 
-            /* C uhitm.c:1924-1932, the tail of hmon_hitmon:
-             *     if (!hmd.destroyed && !hmd.offmap) {
-             *         int hitflags = M_ATTK_HIT;
-             *         wakeup(mon, TRUE);
-             *         if (maybe_knockback && mhitm_knockback(...)) ...
-             *     }
-             * The wakeup() was absent, so a monster the hero hit stayed
-             * ASLEEP here (measured: seed4500's wood nymph still has
-             * msleeping=1 after the hit) and C's "The wood nymph wakes up!"
-             * never printed.  It draws no RNG on this path: growl()'s verb is
-             * a switch, wake_nearto_core is an fmon walk, and setmangry()
-             * early-returns for an already-hostile target.  It goes BEFORE the
-             * knockback block, as in C, because its plines precede the
-             * knockback's on the topline. */
             await wakeup_attack(mtmp, true);
 
             /* mhitm_knockback [uhitm.c:5248-5430] — called from hmon_hitmon when
@@ -3017,46 +2003,6 @@ export async function do_attack(mtmpOrX, y) {
         }
     }
 
-    /* Step 7: passive() [uhitm.c:5864-6127]
-     * C calls passive() unconditionally after the first swing and only
-     * `if (mhit)` after the second (uhitm.c:811-813):
-     *     (void) passive(mon, uwep, mhit, malive, AT_WEAP, wep_was_destroyed);
-     *     ... second swing only ...
-     *     if (mhit) (void) passive(mon, secondwep, mhit, malive, AT_WEAP, ...);
-     *
-     * This used to be a file-local partial reimplementation carrying only
-     * the malive-gated AD_PLYS arm (uhitm.c:6019-6063) — the "these affect
-     * you even if they just died" prologue switch (uhitm.c:5894-6015:
-     * AD_FIRE/AD_ACID/AD_STON/AD_RUST/AD_CORR/AD_MAGM/AD_ENCH, each gated on
-     * mhitb rather than malive) was missing outright, along with the
-     * passive-attack-dice prologue that feeds it (uhitm.c:5878-5890).
-     * MEASURED (do_attack rng-trace, record #73): C's next draw after
-     * known_hitum's rn2(25) is `rn2(2) @ passive(uhitm.c:5907)` — an AD_ACID
-     * splash — and this port skipped straight to the malive-gated rn2(3),
-     * drawing a value C never draws at that position.
-     *
-     * js/mhitm.js's `passive()` (imported above as `passive_uh`) is the
-     * SAME C function, already the shared body js/dokick.js's kick path
-     * calls — reusing it here instead of re-deriving a second, incomplete
-     * copy.  `wep_was_destroyed` is C's `wepbefore && !uwep` (sampled at
-     * hitum() entry vs. after this swing); this port never nulls uwep
-     * inside a swing (no in-function weapon-destruction path), so the
-     * comparison is always false here, same fidelity level the removed
-     * inline code carried (it never modeled wep_was_destroyed either).
-     *
-     * `viaHmonas` — this passive() call belongs to hitum() (uhitm.c:789/810),
-     * which is the ONLY caller that draws it here.  hmonas()'s AT_WEAP row
-     * (uhitm.c:5468-5546, use_weapon) does NOT call passive() itself; every
-     * row of hmonas's loop, AT_WEAP included, falls through to the ONE
-     * shared unconditional tail at uhitm.c:5825-5834, already ported as this
-     * function's caller's `_passiveAndKnockback()`.  Calling passive_uh here
-     * AS WELL, when _swing is reused for that row, drew it twice — once from
-     * this line, once from _passiveAndKnockback's own rn2(3) gate — and the
-     * second, spurious draw desynchronised every later record on a
-     * polymorphed hero's weapon row (rng-trace: hmon_hitmon_barehands's
-     * rnd(2)/rnd(4) uhitm.c:847, passive's own rn2(3) uhitm.c:6019, and
-     * mhitm_knockback's rn2(3)/rn2(6) uhitm.c:5258/5269 all read as missing
-     * or out-of-range downstream of it). */
     if (!viaHmonas && (!second || mhit)) {
         await passive_uh(mtmp, weapon, mhit, malive, 254 /* AT_WEAP, uhitm.c aatyp enum */, false);
     }
@@ -3086,18 +2032,6 @@ export async function do_attack(mtmpOrX, y) {
               AT_HUGS_H = 7, AT_WEAP_H = 254, AT_MAGC_H = 255;
         const pmndx = (u && u.umonnum) | 0;
         const rows = MONS_MATTK[pmndx] || [];
-        /* damageum(mdef, mattk, specialdmg) [uhitm.c:4835-4864] — verbatim
-         * down to the RNG chain: its own damage die, then the FULL
-         * mhitm_adtyping() switch (already ported at this file's exported
-         * `mhitm_adtyping`, reusing every mhitm_ad_* handler this file
-         * already has for AD_FIRE/AD_COLD/AD_STON/... instead of stopping at
-         * the die roll), then the kill sequence.
-         * PORTED: the `is_demon(youmonst) && !rn2(13) && !uwep && ...`
-         * demonpet() gate at uhitm.c:4846-4849 (see _uh_demonpet above).
-         * MEASURED via rng-trace --summary on this packet's board: 6
-         * records' first missing draw was this rn2(13) itself (e.g. record
-         * #193) -- the guard consumed nothing at all, whether or not it
-         * would go on to fire. */
         const _damageum = async (mattk, specialdmg) => {
             const mhm = { damage: d(mattk.damn | 0, mattk.damd | 0),
                           hitflags: M_ATTK_MISS, permdmg: 0,
@@ -3148,66 +2082,6 @@ export async function do_attack(mtmpOrX, y) {
             }
             return M_ATTK_HIT; /* C uhitm.c:4883 */
         };
-        /* C uhitm.c:5825-5834 — the tail every non-`continue`d row of the loop
-         * below falls through to, UNCONDITIONALLY:
-         *     if (sum[i] == M_ATTK_DEF_DIED)
-         *         (void) passive(mon, weapon, 1, 0, mattk->aatyp, FALSE);
-         *     else
-         *         (void) passive(mon, weapon, (sum[i] != M_ATTK_MISS), 1,
-         *                        mattk->aatyp, FALSE);
-         *     if (mhitm_knockback(&gy.youmonst, mon, mattk, &sum[i], weapon_used))
-         *         break;
-         * This was entirely absent for every row except AT_WEAP (which gets an
-         * unrelated, differently-gated knockback draw of its own inside
-         * hmon_hitmon, ported at `_swing`'s `maybeKnockback` block above) — so
-         * a polymorphed hero's claw/bite/kick/butt/sting/tentacle/exploding/
-         * engulfing attack never drew passive()'s prologue die, its
-         * `malive && !mcan` rn2(3) gate, or mhitm_knockback()'s own
-         * unconditional rn2(3)/rn2(chance) entry pair.
-         * MEASURED via rng-trace --summary on this packet's board: 14 records'
-         * first missing draw is mhitm_knockback's rn2(3) (uhitm.c:5258), 8 are
-         * passive's malive-gate rn2(3) (uhitm.c:6019), 7 are inside passive's
-         * gated switch (uhitm.c:6042), 2 are passive's prologue die
-         * (uhitm.c:5888) — all unreachable without this call.
-         * `diedThisRow` mirrors `sum[i] == M_ATTK_DEF_DIED`: DEADMONSTER(mtmp)
-         * is meaningful for the weaponless and AT_WEAP rows (the only ones
-         * that mutate mtmp.mhp in this port); AT_EXPL/AT_ENGL's damage to the
-         * target is an existing NAMED GAP (not applied to mtmp.mhp), so
-         * DEADMONSTER(mtmp) there just reads whatever state preceded this row,
-         * same approximation those two arms already carry.
-         * passive()'s own AD_* switch (uhitm.c:5894-6015, 6020-6117) USED TO BE
-         * a NAMED GAP here: this function hand-rolled only the prologue die
-         * (uhitm.c:5886/5888) and the malive-gated rn2(3) GATE itself
-         * (uhitm.c:6019), skipping every case body of BOTH switches — the
-         * mhitb-gated one entirely (AD_FIRE/AD_ACID/AD_STON/AD_RUST/AD_CORR/
-         * AD_MAGM/AD_ENCH) and the malive-gated one's own cases
-         * (AD_PLYS/AD_COLD/AD_STUN/AD_FIRE/AD_ELEC, uhitm.c:6020-6117).
-         * MEASURED (do_attack rng-trace record #80): C's next draw after the
-         * prologue die is `rn2(2) @ passive(uhitm.c:5907)` (AD_ACID's mhitb
-         * splash check), which this port skipped straight past to draw the
-         * malive-gate `rn2(3)` out of order.
-         * The fix: delegate the WHOLE thing to js/mhitm.js's `passive()`
-         * (imported above as `passive_uh`) — the same shared, complete C
-         * translation `_swing` above already calls for the direct hitum()
-         * path (see that call site's comment) — instead of maintaining a
-         * second, partial copy.  `weapon` mirrors hmonas's own local: C
-         * resets it to 0 at the top of EVERY row (uhitm.c:5466) and only the
-         * AT_WEAP/AT_CLAW-via-use_weapon row assigns it (uhitm.c:5514/5531,
-         * `*originalweapon` i.e. uwep here — altwep/uswapwep is an existing
-         * NAMED GAP, matching `_swing`'s own uwep-only call). `aatypRow` is
-         * `mattk->aatyp`, the row's OWN aatyp (the loop's `aatyp` local at
-         * every call site). `mhitRow` is `sum[i] != M_ATTK_MISS`, which each
-         * call site now derives from a local mirroring C's own sum[i]:
-         * `_swing`'s return for the AT_WEAP/AT_CLAW row, `_damageum`'s for
-         * the weaponless row, and `_sumIExpl`/`_sumIEngl` for AT_EXPL and
-         * AT_ENGL.  Only the AT_BREA/AT_SPIT/AT_GAZE row leaves sum[i] at its
-         * loop-top M_ATTK_MISS default (uhitm.c:5796-5799 sets dhit = 0 and
-         * nothing else).  This comment used to claim AT_EXPL was in that
-         * group too; it is not — uhitm.c:5766 is
-         * `sum[i] = explum(mon, mattk)` and explum() never returns
-         * M_ATTK_MISS.  mhitm_knockback's OGRESMASHER chance=2
-         * exception is left unmodelled, matching `_swing`'s own accepted
-         * simplification (chance=6 always) for consistency. */
         const _passiveAndKnockback = async (aatypRow, mhitRow, weaponRow) => {
             const diedThisRow = DEADMONSTER(mtmp);
             /* C uhitm.c:5828-5834:
@@ -3222,17 +2096,6 @@ export async function do_attack(mtmpOrX, y) {
             rn2(3);   /* mhitm_knockback knockdistance: uhitm.c:5258 */
             rn2(6);   /* mhitm_knockback chance check: uhitm.c:5269 */
         };
-        /* C uhitm.c:5428 `weapon_used = FALSE` — true once any row this loop
-         * has taken the use_weapon path, so at most one CLAW/TUCH row per
-         * hmonas() call swings the wielded weapon instead of the bare attack
-         * (uhitm.c:5476-5485).  This was entirely absent: every polymorphed
-         * hero's AT_CLAW row went straight to the weaponless dieroll even
-         * while wielding a weapon they could use.
-         * MEASURED: do_attack record #141 (a Barbed Devil wielding the
-         * Cleaver) — C's row 0 is AT_CLAW, `uwep` is set and cantwield() is
-         * false, so C goes `use_weapon` and draws hitval()'s spec_abon()
-         * rnd(3) before the dieroll; this port's unconditional weaponless
-         * path drew the dieroll first, off by the whole hitval() chain. */
         let weapon_used = false;
         for (let i = 0; i < NATTK_UH; i++) {
             /* uhitm.c:5455-5458 — after the first attack, skip if the target
@@ -3377,19 +2240,6 @@ export async function do_attack(mtmpOrX, y) {
                          * are part of the same named gap. */
                         _sumIEngl = M_ATTK_DEF_DIED; /* C uhitm.c:5106 */
                     } else {
-                        /* uhitm.c:5107-5169 — the non-digest AD_* switch:
-                         * only AD_ELEC/AD_COLD/AD_FIRE (their own rn2(2))
-                         * and AD_DREN (rn2(4)) draw; AD_PHYS/AD_ACID/AD_BLND
-                         * do not. Every arm then falls through, unconditional:
-                         *     end_engulf();
-                         *     mdef->mhp -= dam;
-                         *     if (DEADMONSTER(mdef)) killed(mdef);
-                         * killed() is xkilled(mdef, XKILL_GIVEMSG) [mon.c:3464] —
-                         * NOT XKILL_NOCORPSE, so its treasure-drop rn2(6) DOES
-                         * fire. This arm used to stop at gulpum's own d() draw,
-                         * so a non-digest engulf kill never reached xkilled.
-                         * MEASURED via rng-trace: record #121's first missing
-                         * draw is exactly this rn2(6) @ mon.c:3587. */
                         if (adtyp === 6 /* AD_ELEC */ || adtyp === 3 /* AD_COLD */
                             || adtyp === 2 /* AD_FIRE */) {
                             if (!rn2(2))
@@ -3486,38 +2336,6 @@ export async function do_attack(mtmpOrX, y) {
             mon_maybe_unparalyze(mtmp);
             const dieroll = rnd(20);
             const dhit = tmp > dieroll || !!(u && u.uswallow);
-            /* uhitm.c:5591-5661 — the verb table, the shade harmless-pass
-             * arm, and failed_grab() are ported below (all three are
-             * RNG-free, like the AT_ENGL row's own failed_grab check just
-             * above); special_dmgval (silver ring/blessed bonus)/silver_sears
-             * remain a NAMED GAP, so specialdmg is always 0 below
-             * (special_dmgval never called).
-             * The could_seduce() early-out and the wakeup() that follows it
-             * are ported now (see below) — this comment used to call the
-             * latter a "wakeup-message" gap, which was wrong: wakeup()
-             * (mon.c:4332-4363) is RNG-BEARING, not textual.
-             * MEASURED (gen376-reseed-seed1291181 frame 121): with none of
-             * this ported, a lethal weaponless hit fell straight to
-             * xkilled(NOMSG) with no hit message at all, so C's "You bite
-             * the jackal.  You kill the jackal!" read as whatever unrelated
-             * topline a later handler happened to print that turn. */
-            /* C uhitm.c:5546/5587/5664 `sum[i] = damageum(mon, mattk, ...)`,
-             * read back by the shared tail at uhitm.c:5828-5831 as
-             * `sum[i] != M_ATTK_MISS`.  sum[i] is initialised to M_ATTK_MISS
-             * at uhitm.c:5441 and this arm only assigns it from damageum's
-             * RETURN, so a row that never calls damageum -- a miss, a shade
-             * pass-through, a failed_grab -- stays M_ATTK_MISS.
-             * This used to be a bare boolean set to true whenever damageum
-             * was CALLED, which is not the same predicate: damageum returns
-             * M_ATTK_MISS on the demon-pet path (uhitm.c:4851, mdef never
-             * touched) and returns mhm.hitflags on the `mhm.done` path
-             * (uhitm.c:4857), which is M_ATTK_MISS on every lifesaved-defender arm
-             * mhitm_adtyping can take (uhitm.c:2322 AD_RUST, 2403 AD_DCAY,
-             * 2604 AD_FIRE, 3076 AD_ENCH, 3966 AD_STON, and 4521 where the
-             * AGGRESSOR is the one lifesaved).  Both cases over-reported a HIT to
-             * passive(), whose mhitb argument gates real draws --
-             * uhitm.c:5907 `if (mhitb && rn2(2))` (AD_ACID) and the
-             * mhitb-gated rn2(6)/rn2(30) arms at uhitm.c:5898/5925. */
             let _sumI = M_ATTK_MISS;
             /* C uhitm.c:5581-5590, the prologue of this arm's `if (dhit)`:
              *     if (!u.uswallow
@@ -3595,11 +2413,6 @@ export async function do_attack(mtmpOrX, y) {
                     Your('%s %s harmlessly through %s.', verb, vtense(verb, 'pass'),
                          mon_nam(mtmp));
                 } else {
-                    /* mhitm.c:597-635 failed_grab() — pure predicate, no RNG.
-                     * NAMED GAP: its own "passes right through"/"fails to
-                     * hold" message is not ported (unreached by this
-                     * packet's AT_BITE/AD_PHYS session); only the
-                     * miss-with-no-damageum-call behaviour is. */
                     const adtyp = row.adtyp | 0;
                     const isUnsolid = !!(mtmp.data
                         && ((mtmp.data.mflags1 | 0) & M1_UNSOLID_UH));
@@ -3623,35 +2436,9 @@ export async function do_attack(mtmpOrX, y) {
         }
     };
 
-    /* C uhitm.c:565-568:
-     *     if (Upolyd) (void) hmonas(mtmp); else (void) hitum(mtmp, ...);
-     * hmonas() [uhitm.c:5423-5824] is the polymorphed-hero attack loop: it
-     * iterates the CURRENT monster form's whole mattk[] table (multiple
-     * attacks per turn for e.g. a dragon's bite+claw+claw), routing each row
-     * through its own aatyp-specific handler (AT_WEAP reuses the
-     * known_hitum/hmon_hitmon chain below via `_swing`; the weaponless types
-     * go straight to damageum(); AT_EXPL/AT_ENGL go to explum()/gulpum()).
-     * This was entirely absent -- every Upolyd melee ran the `_swing` (bare
-     * hitum()) path below regardless, which is a DIFFERENT C function with a
-     * different RNG signature (a single weapon-or-bare-hands swing, not a
-     * per-row loop over the polyform's attacks).  MEASURED via
-     * rng-trace --summary on this packet's board: 19 records' first missing
-     * draw is damageum's d(damn,damd) (uhitm.c:4842), 6 are gulpum's
-     * (uhitm.c:4958), 1 is explum's (uhitm.c:4893) -- all unreachable without
-     * this branch. */
     if (Upolyd(u)) {
         await _hmonas();
     } else {
-        /* C uhitm.c:776 — gt.twohits = (uwep ? u.twoweap : double_punch()) ?
-         * 1 : 0.  0 = single hit, 1 = first of two.  This whole second-attack
-         * path was absent: hitum()'s twohits block (uhitm.c:794-814) makes a
-         * SECOND swing with uswapwep when dual-wielding, and seed0107's
-         * samurai spends steps 40..97 in two-weapon combat.  See
-         * double_punch() below for the bare-handed half (it can draw rn2(5),
-         * so it is not optional).  Computed here, inside the !Upolyd arm,
-         * because gt.twohits is local to hitum() in C -- hmonas() never reads
-         * or sets it via double_punch(), so drawing rn2(5) for a polymorphed
-         * bare-handed attacker was a surplus draw this restructure removes. */
         const _twohits = (u && u.uwep) ? (u.twoweap ? 1 : 0) : (double_punch() ? 1 : 0);
         /* C hitum: `x = u.ux + u.dx, y = u.uy + u.dy` — the attacked square,
          * used to check the monster is still there before the second swing. */
@@ -3687,29 +2474,6 @@ function double_punch() {
         return (skl_lvl - P_BASIC) > rn2(5);
     return false;
 }
-/* C ref: exper.c:84 experience(struct monst *mtmp, int nk).
- *
- * This used to be a per-mndx TABLE (MONS_XP, generated from monsters.h by
- * running C's formula with the monster's BASE mlevel).  That is not what C
- * computes: every `mtmp->m_lev` in exper.c:89-134 is the LIVE level, and
- * makemon.c:2015 adj_lev() raises it with depth and with the hero's own
- * experience level.  seed4500 step 989 kills a wood nymph on Dlvl 24 with
- * u.ulevel 15: adj_lev gives m_lev 4 (base 3, +21/5 for difficulty, +12/4 for
- * the hero, capped at 3*3/2 = 4), so C awards
- *     (1 + 4*4) + 4 + 4 == 25          [the two AD_SITM/AD_SEDU claws]
- * where the base-3 table said 16, and every frame from there on carried
- * "Xp:15/160095" against C's "Xp:15/160104" — a status-row miss on all 599
- * frames of that run.  The table also silently mis-answered its OTHER caller:
- * js/mklev.js:12079 already calls this with C's (mtmp, nk) signature, and an
- * object is neither >= 0 nor < MONS_XP.length, so the tourist camera awarded 1.
- *
- * Ported straight through instead.  Data sources are the packs this file
- * already reads: _MONS[mndx] for mlet/mmove/mflags2 and MONS_MATTK[mndx] for
- * permonst.mattk[].  find_mac is the base-AC lookup (MONS_AC, permonst.ac);
- * C's worn.c find_mac adds worn armor, which no monster in the corpus wears
- * at a kill — that approximation is pre-existing and unchanged here.
- * MAIL_STRUCTURES (exper.c:136-139) is not defined in this build's config.h.
- * C ref: exper.c:84-166. */
 const NORMAL_SPEED_UH = 12;   /* C monmove.h NORMAL_SPEED */
 const AT_BUTT_UH = 4, AT_WEAP_UH = 254, AT_MAGC_UH = 255; /* monattk.h */
 const AD_PHYS_UH = 0, AD_BLND_UH = 11, AD_DRLI_UH = 15, AD_STON_UH = 18,
@@ -3746,26 +2510,6 @@ function _arm_bonus_uh(obj) {
 const AMULET_OF_GUARDING_UH = 210; /* objects.h AMULET() amulet of guarding —
     same otyp js/do_wear.js:273 uses for the hero's identical -2 special case */
 const AC_MAX_UH = 99; /* C you.h:472 AC_MAX */
-/* C worn.c:717 find_mac(mon) — the REAL one, base AC minus every WORN piece
- * of armor (mon->misc_worn_check gates which minvent nodes count):
- *     base = mon->data->ac;
- *     for (obj = mon->minvent; obj; obj = obj->nobj)
- *         if (obj->owornmask & mwflags) {
- *             if (obj->otyp == AMULET_OF_GUARDING) base -= 2;
- *             else base -= ARM_BONUS(obj);
- *         }
- *     if (abs(base) > AC_MAX) base = sgn(base) * AC_MAX;
- *
- * This used to be find_mac()'s BASE-ONLY value (permonst.ac, no armor), which
- * is C-correct only for an unarmored monster. An armored monster (a watchman
- * in leather armor + helmet + small shield + low boots is a common one) then
- * had its AC read as its BARE-SKIN value in find_roll_to_hit's `tmp`, several
- * points too high, turning a C miss into a hit here: MEASURED on
- * probe-kickdig/gen002-objective-seed1259205 do_attack record #181 (a
- * PM_WATCHMAN, misc_worn_check 45, four worn pieces summing ARM_BONUS 7): C's
- * next draw after the rnd(20) dieroll is passive()'s rn2(3) (a miss, real AC
- * 10-7=3, tmp=6 against dieroll 10) and this port went on to draw
- * exercise(A_DEX)'s rn2(19) instead (a hit, using the unarmored AC 10, tmp=13). */
 function find_mac_full_uh(mtmp) {
     let base = find_mac(mtmp);
     const mwflags = (mtmp?.misc_worn_check | 0);
@@ -3863,16 +2607,6 @@ export function experience(mtmp, nk) {
     return tmp;
 }
 
-/* C ref: exper.c:168 more_experienced(int exper, int rexp).
- * Re-pointed at js/exper.js's body (re-exported here — js/cmd.js, js/potion.js,
- * js/read.js and js/zap.js all import more_experienced from THIS file).  This
- * file's own copy was not C-faithful: it set botl on any uexp/urexp change,
- * which is only correct while flags.showexp is on, and it omitted C's second
- * gate entirely, exper.c:186-190 `if (!disp.botl && exp_percent_changing())
- * disp.botl = TRUE;` — a uexp change can move a percentage-based experience-
- * level highlight even with showexp off.  js/exper.js:438 carries all three
- * C arms (showexp / exp_percent_changing / showscore) plus the wraparound cap
- * (exper.c:174-180) this file's copy also lacked. */
 export { more_experienced };
 
 /* C ref: exper.c:305 newexplevel(void) — decide whether the hero levels up.
@@ -3908,37 +2642,7 @@ async function unlink_mon(mtmp) {
      * reaches 0, and nothing on this path zeroes it. */
     if ((mtmp.mx | 0) > 0 && emits_light(mtmp.data))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
-    /* C mon.c:2744/2703, inside m_detach()'s mon_leaving_level(mtmp):
-     *     mon->mtrapped = 0;
-     *     unstuck(mon); / * mon is not swallowing or holding you nor held by
-     *                      you * /
-     * unconditional for ANY monster leaving the level, dead or not.  It is
-     * NOT merely the "hero killed the thing engulfing/holding them" case:
-     * mhitm_ad_stck's `magr == youmonst` arm (this file, mhitm_ad_stck)
-     * calls set_ustuck(mdef) on every successful AD_STCK hit -- including a
-     * killing one, since damageum() sticks the target BEFORE checking
-     * whether the hit killed it.  Without this call a polymorphed hero
-     * whose current form has an AD_STCK attack (e.g. #monster into a
-     * grabbing creature) stays "stuck" to a monster it just killed, and a
-     * swallowed hero who kills their engulfer never has uswallow/ustuck
-     * cleared.  MEASURED (do_attack rec#107, probe-reach-melee: hero killed
-     * while engulfed loses hero.uswallow/hero.ustuck_m_id entirely; rec#144,
-     * probe-reach-melee: a polymorphed hero force-killing a tame pony via an
-     * AD_STCK attack left a spurious hero.ustuck_m_id standing).
-     * mtmp->mtrapped is not modelled here (unconditionally set 0 in C too,
-     * but nothing in this port keys behaviour off a dead monster's mtrapped
-     * flag). */
     await unstuck(mtmp);
-    /* KEYSTONE-A: defer the fmon unlink to match C.  C mon.c:3174 mondead ->
-     * m_detach leaves the node LINKED (mon.c:2796 sets MON_DETACH, purge
-     * deferred) until dmonsfree() reaps it at the movemon-end purge
-     * (mon.c:1340) — now run every turn by js/fastforward.js.  The sole caller
-     * (xkilled) already forced mtmp.mhp = 0, so the movemon-end dmonsfree
-     * (mhp<1 && !isgd) will purge it; every fmon reader carries the DEADMONSTER
-     * guard (fmon-walk-census H1=0), so the dead-but-linked node between the
-     * kill and the purge is skipped exactly as C's remove_monster'd grid cell
-     * is.  Splicing here removed it a full purge-pass early — the wave-12
-     * class of desync this campaign closes. */
     mtmp.mstate = (mtmp.mstate | 0) | 0x02; /* MON_DETACH (const.js) */
 }
 
@@ -3962,40 +2666,10 @@ export const XKILL_NOCONDUCT = 4;
  *   6. experience() + more_experienced() + newexplevel().
  *   7. m_detach (unlink) + newsym.
  * C ref: mon.c:3464-3700. */
-/* C ref: steal.c:874-897 relobj(mtmp, show=1, is_pet=FALSE) — release every
- * object a dying monster carried onto its square.  RNG-free: mdrop_obj's only
- * RNG-capable call is flooreffects, which draws nothing for an ordinary item on
- * an ordinary tile.
- *
- * With is_pet FALSE the loop drains the WHOLE minvent chain (the droppables()
- * filter that keeps a pet's wielded/worn gear is the is_pet arm only).  The
- * vault-guard gold special case (steal.c:881-888) needs mtmp->isgd, which never
- * holds on a hero-kill path.  mdrop_obj's verbose "<Monnam> drops <obj>." is
- * likewise pet-only (relobj passes is_pet && flags.verbose), so this drop is
- * silent — matching C, which prints nothing when the hero kills a monster
- * carrying gear. */
 async function relobj_xkilled(mtmp) {
     const omx = mtmp.mx | 0, omy = mtmp.my | 0;
     let otmp;
     while ((otmp = mtmp.minvent) != null) {
-        /* C steal.c:821-823, mdrop_obj's FIRST statement:
-         *     (C's own comment: "call distant_name() for its possible
-         *      side-effects even if the result might not be printed, and do it
-         *      before extracting obj from minvent")
-         *     char *obj_name = distant_name(obj, doname);
-         * It was dropped here as "the verbose pline is pet-only, so this drop
-         * is silent" — true of the MESSAGE and false of the CALL.  The side
-         * effect is obj->dknown = 1 and, through xname, observe_object(), which
-         * is what puts the type into disco[] and therefore FIXES ITS POSITION in
-         * the '\' discoveries list.  Because C runs it once per item in
-         * minvent order while place_object pushes each onto the head of
-         * nexthere, the discovery order is the REVERSE of the pile order the
-         * hero then sees.  MEASURED on seed0361-archeologist-tour step 358: the
-         * hero kills a dwarf carrying iron shoes then a dwarvish cloak, C lists
-         * "pair of hard shoes" above "hooded cloak", and this port -- which
-         * first named them at the step-242 look_here, walking the pile
-         * top-down -- printed them the other way round.
-         * `doname_sh` is this file's existing doname stand-in (_drop_doname). */
         await distant_name(otmp, doname_sh);
         /* C worn.c:1377-1403 extract_from_minvent(mon, obj, FALSE, TRUE):
          * obj_extract_self then owornmask = 0.  update_mon_extrinsics is
@@ -4003,7 +2677,6 @@ async function relobj_xkilled(mtmp) {
          * above), so the do_extrinsics arm is unreachable here. */
         extract_from_minvent_dm(mtmp, otmp);
         otmp.owornmask = 0;
-        /* C steal.c:841-843 — !flooreffects → place_object + stackobj. */
         if (!await flooreffects(otmp, omx, omy, 'fall')) {
             place_object(otmp, omx, omy);
             stackobj_dm(otmp);
@@ -4028,25 +2701,6 @@ function first_weapon_hit(weapon) {
     let buf = '';
     if (weapon.cursed && weapon.bknown)
         buf += 'cursed ';
-    /* obj_is_pname()/has_oname() read weapon.oextra.oname, and a captured
-     * artifact's oextra is sometimes only a PRESENCE stub (the pointer's
-     * non-NULL-ness was captured; its string content was not, on capture
-     * channels predating the oname side-key) -- reading '.oname' off that
-     * stub self-reports by throwing (struct_reconstructor.js makePresenceStub).
-     * This whole function only feeds a livelog string (RNG-free, unscored,
-     * per the header comment above), so letting that self-report ESCAPE here
-     * aborts the rest of do_attack's RNG-relevant tail (mhitm_knockback,
-     * known_hitum's monflee check, passive()) over a diagnostic string this
-     * port doesn't even score on. MEASURED: do_attack records #36/#99/#293/#296
-     * threw exactly this ("obj(chain o_id=1200/215/74/95).oextra") at this
-     * line. On THIS board all four already have an earlier, unrelated first
-     * divergence upstream (record #36: an extra exercise() draw before
-     * dmgval; #99: abuse_dog's own missing rn2(4)), so this guard alone does
-     * not clear their records -- but it stops a diagnostic-only string from
-     * silently truncating every later draw on any record whose real
-     * first-divergence sits at or after this line. Degrade to the un-named
-     * form, same as C's own FALSE arms of obj_is_pname (not-fully-identified
-     * / not an artifact). */
     let pname;
     try {
         pname = obj_is_pname(weapon);
@@ -4098,24 +2752,6 @@ function _uh_Deaf() {
               || (game.u?.uroleplay?.deaf ? 1 : 0));
 }
 
-/* C ref: mon.c:3173 corpse_chance(mon, magr, was_swallowed) — "does this death
- * leave a corpse?".  It is the ONLY home of the rn2(tmp) corpse roll, and the
- * roll is the LAST thing it does: four earlier arms return without touching the
- * stream.  Previously xkilled inlined the tail alone, so every death rolled
- * rn2(tmp) — including the deaths where C returns TRUE for free.  Measured on a
- * hero-killed earth elemental (msize MZ_HUGE, so bigmonst): C drew nothing here
- * and went straight on to distfleeck's rn2(5); JS drew a spurious rn2(3) and
- * every later draw in the run was shifted by one.
- *
- * mondata.h:11-12  verysmall(p) = p->msize < MZ_SMALL
- *                  bigmonst(p)  = p->msize >= MZ_LARGE
- * mondata.h:108    is_golem(p)  = p->mlet == S_GOLEM
- * mondata.h:157    is_mplayer(p)= p in mons[PM_ARCHEOLOGIST..PM_WIZARD]
- * mondata.h:161    is_rider(p)  = p is Death / Famine / Pestilence
- *
- * magr/was_swallowed are carried so the signature matches C; only the caller
- * that swallows uses them, and that caller is the AT_BOOM arm below.
- */
 export async function corpse_chance(mtmp, magr, was_swallowed) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
     const row = (mndx >= 0 && mndx < _MONS.length) ? _MONS[mndx] : null;
@@ -4132,15 +2768,6 @@ export async function corpse_chance(mtmp, magr, was_swallowed) {
         return false;
     }
 
-    /* C mon.c:3192-3232 — "Gas spores always explode upon death".  This arm used
-     * to be a GAP whose comment asserted "no monster in the corpus has taken
-     * this arm"; measured 2026-08-19 that is FALSE — seed0030 segment 9 step 260
-     * kills a gas spore, and the whole 208-frame tail of that segment hung off
-     * this fall-through.  Note the C shape being ported: `tmp` is computed here
-     * and, on the un-swallowed path, DISCARDED — mon_explodes() rolls the damage
-     * again from the same mattk row.  So a gas spore death draws d(4,6) TWICE,
-     * once at mon.c:3203 and once at explode.c:1026, and the recorded trace
-     * shows exactly that pair (13 then 11).  Port the bug (Cardinal Rule 1). */
     const mattks = MONS_MATTK[mndx] || [];
     for (let i = 0; i < NATTK_UH; i++) {
         const atk = mattks[i];
@@ -4208,10 +2835,6 @@ export async function corpse_chance(mtmp, magr, was_swallowed) {
     if (levelNoCorpse)
         return false;
 
-    /* C mon.c:3231-3233 — classes that always leave a corpse, RNG-free.
-     * `mcloned` is not in STRUCT_FIELDS['struct monst *'], so a bare read
-     * throws inside the capture-replay marshaller's struct proxy; probe for it
-     * instead.  Absent means 0, which is what a bare read yields live. */
     const bigmonst = (msize >= MZ_LARGE);
     const mcloned = Object.hasOwn(mtmp, 'mcloned') ? (mtmp.mcloned | 0) : 0;
     if (((bigmonst || mndx === PM_LIZARD) && !mcloned)
@@ -4226,15 +2849,6 @@ export async function corpse_chance(mtmp, magr, was_swallowed) {
     return !rn2(tmp);
 }
 
-/* C mkobj.c:2748 dealloc_obj, for a never-placed, content-free object (see
- * the two xkilled treasure-drop discard arms below): dealloc_obj() itself
- * only links the object onto game.objs_deleted, but the capture's own
- * `objs_deleted.count` mapstate field is a bridge SLOT (bridgeSlot(), js/
- * mapstate_game_bridge.js), not derived from that chain — every other call
- * site that reaches dealloc_obj (js/mklev.js's mongone, js/read.js's own
- * useup) bumps the slot by hand for the same reason, documented at
- * js/mklev.js:5996-6002.  One local helper so this file's two call sites
- * agree with each other. */
 async function _uh_dealloc_and_bump(otmp) {
     await dealloc_obj(otmp);
     const store = game.__bridge__ || (game.__bridge__ = {});
@@ -4255,21 +2869,8 @@ export async function xkilled(mtmp, xkflags) {
 
     mtmp.mhp = 0;
 
-    /* C mon.c:3499-3503, the "KMH, conduct" block, immediately before the
-     * "You kill %s!" message:
-     *     if (!noconduct) {
-     *         if (!u.uconduct.killer++)
-     *             livelog_printf(LL_CONDUCT, "killed for the first time");
-     *     }
-     * RNG-free, and livelog is not screen output.  Unported, u.uconduct.killer
-     * stayed 0 forever and insight.c:2144's `if (!u.uconduct.killer)` arm put
-     * "You have been a pacifist." into every #conduct window — seed0106 step 199
-     * prints it over C for a Priest who has just killed a kobold. */
     if (!((flags & XKILL_NOCONDUCT) !== 0)) {
         const uc = ((game.u || {}).uconduct ||= {});
-        /* C's `if (!u.uconduct.killer++) livelog_printf(LL_CONDUCT, "killed for
-         * the first time")` is a POST-increment: the chronicle entry fires on
-         * the first kill only.  seed0106 step 188 shows it at turn 17. */
         if (!(uc.killer | 0))
             livelog_printf(_LL_CONDUCT_UHITM, 'killed for the first time');
         uc.killer = (uc.killer | 0) + 1;
@@ -4279,34 +2880,7 @@ export async function xkilled(mtmp, xkflags) {
      * "destroyed".  A tame monster is named "the poor <species>"
      * (x_monnam(mtmp, ARTICLE_THE, "poor", ...)); hostile use mon_nam. */
     if (!nomsg) {
-        /* C mon.c:3507 `nonliving(mtmp->data) ? "destroy" : "kill"`.  This was
-         * a hardcoded 'kill' sitting directly under a comment that states the
-         * rule correctly — the comment-quotes-the-guard-code-omits-it shape.
-         * nonliving() is mondata.h:219 (is_undead || PM_MANES || is_golem ||
-         * S_VORTEX); makemon.js already carries the index-keyed form, so this
-         * imports it rather than re-deriving it under a new name.
-         * Measured on the v5 corpus: three recorded frames say "You destroy "
-         * — seed0030 seg 9 step 199 (kobold zombie, the segment's FIRST MISS),
-         * seed0012, seed0014.  No RNG either way; C draws nothing here. */
         const verb = nonlivingMon(mndx) ? 'destroy' : 'kill';
-        /* C mon.c:3507-3512, in full:
-         *     boolean namedpet = has_mgivenname(mtmp) && !Hallucination;
-         *     You("%s %s!", ...,
-         *         !(wasinside || canspotmon(mtmp)) ? "it"
-         *           : !mtmp->mtame ? mon_nam(mtmp)
-         *             : x_monnam(mtmp, namedpet ? ARTICLE_NONE : ARTICLE_THE,
-         *                        "poor", namedpet ? SUPPRESS_SADDLE : 0, FALSE));
-         * The tame arm used to be a hand-built "the poor " + MONS_NAMES[mndx],
-         * a partial namer that never reached x_monnam.  Two consequences, both
-         * measured on seed0383 step 178: a HALLUCINATING hero's x_monnam goes
-         * through rndmonnam(), so C prints "You kill the poor titan!" where
-         * this port printed the real species ("kitten"); and rndmonnam draws
-         * rn2_on_display_rng(430) + rn2_on_display_rng(2), two DISPLAY-stream
-         * draws this port did not make, which put every later hallucinated
-         * glyph and name out of step.
-         * `wasinside` is C's `engulfing_u(mtmp)` sampled at entry — the hero
-         * killing the engulfer that holds them still names it, because the
-         * canspotmon() test would fail from inside a stomach. */
         const namedpet = has_mgivenname(mtmp) && !_xk_hallu();
         const name = !(wasinside || canspotmon(mtmp)) ? 'it'
             : !mtmp.mtame ? mon_nam(mtmp)
@@ -4325,35 +2899,11 @@ export async function xkilled(mtmp, xkflags) {
         return;
     }
 
-    /* C mon.c:3134-3136, inside that same mondead():
-     *     if (svm.mvitals[mndx].died < 255)
-     *         svm.mvitals[mndx].died++;
-     * RNG-free.  C reads it as experience(mtmp, svm.mvitals[mndx].died) at
-     * mon.c:3672, and exper.c:141-163 DOES use `nk` — the repeat-kill halving
-     * for a revived/cloned monster.  (This comment used to claim `nk` was
-     * unused; it is, but only on the mrevived==0 && mcloned==0 path, which is
-     * every kill the corpus makes.)  Unported, every hero kill left
-     * mvitals untouched, so insight.c:2799 list_vanquished() found nothing and
-     * #vanquished printed "No creatures have been vanquished." — seed0106 step
-     * 213, where C lists "a kobold" / "a lichen" / "2 creatures vanquished."
-     * js/trap.js monkilled_trap already carries this same increment; this is
-     * the hero-kill twin. */
     if (game.mvitals && mndx >= 0) {
         const mv = (game.mvitals[mndx] ||= { born: 0, died: 0, mvflags: 0 });
         if ((mv.died | 0) < 255) mv.died = (mv.died | 0) + 1;
     }
 
-    /* C mon.c:3549 mondead(mtmp) -> mon.c:3174 m_detach(mtmp, mptr, TRUE) ->
-     * remove_monster(mx,my) + newsym(mx,my).  This runs HERE in C, BEFORE the
-     * treasure drop and before corpse_chance -- not at the end of xkilled, which
-     * is where this port used to unlink.  The ordering is observable: C's
-     * m_at(mx,my) returns NULL for everything that follows, and the square is
-     * repainted before any pline in that tail can raise a --More--.  seed0030
-     * segment 9 step 260 is the frame that proves it: the gas spore explodes
-     * from inside corpse_chance, and C's "You kill the gas spore!  Boom!--More--"
-     * frame already shows floor where the 'e' was.  (js/uhitm.js m_at filters
-     * mhp<=0, so the m_at half of this was already true; js/display.js newsym
-     * walks fmon unfiltered, so the GLYPH half needed the unlink to move.) */
     const dx = (mtmp.mx | 0), dy = (mtmp.my | 0);
     if (typeof process !== 'undefined' && ENV?.FF_DEATH_TRACE === '1') {
         const cell = game.level?.at(dx, dy);
@@ -4361,93 +2911,13 @@ export async function xkilled(mtmp, xkflags) {
             `typ=${cell?.typ ?? -1},seenv=${cell?.seenv ?? -1},lit=${cell?.lit ? 1 : 0},` +
             `waslit=${cell?.waslit ? 1 : 0},minvent=${mtmp.minvent ? 1 : 0}]`);
     }
-    /* C mon.c:3170-3171, inside that same mondead() and BEFORE m_detach:
-     *     if (glyph_is_invisible(levl[mtmp->mx][mtmp->my].glyph))
-     *         unmap_object(mtmp->mx, mtmp->my);
-     * Killing a monster the hero cannot see RETIRES the remembered-'I' marker
-     * that hitting it put there; newsym alone does NOT (display.c:1032/1093
-     * both re-show the remembered glyph when the square is out of sight).
-     * Omitted, an 'I' stayed on the map for the rest of the game.  seed4500
-     * step 997: a BLIND knight kills the thing north of him, C repaints that
-     * cell dark and this port left the I standing — one cell, and the head of
-     * the session's 704-frame miss run. */
     if (glyph_is_invisible_at(dx, dy))
         unmap_object(dx, dy);
     await unlink_mon(mtmp);
     newsym(dx, dy);
 
-    /* C mon.c:2779, inside m_detach() and AFTER mon_leaving_level() above:
-     *     relobj(mtmp, 1, FALSE); / * drop mtmp->minvent, issue newsym(mx,my) * /
-     * to drop everything the monster was carrying onto its death square.  That
-     * happens BEFORE the rn2(6) treasure drop and before the corpse, so the
-     * monster's own belongings end up UNDER both in the tile's pile.
-     * (seed4500 step 56: C kills a kobold, its 8 darts land on the corridor
-     * square and render as ')'; JS dropped nothing, so the square stayed '#'
-     * and step 57's "You see here 8 darts." was missing too.)
-     *
-     * THE ORDER AGAINST THE UNLINK IS LOAD-BEARING, and it used to be the other
-     * way round here.  C m_detach runs mon_leaving_level() FIRST — that is the
-     * remove_monster + newsym above — and only then relobj, under its own
-     * comment: "We compromise and just make sure mtmp is off the map before
-     * dropping its former belongings" (mon.c:2731-2735).  Called while the
-     * monster is still linked, relobj's newsym repaints the corpse square as
-     * the monster that just died.  Under Hallucination that is not merely a
-     * stale glyph: display.c:599-618 sends every monster glyph through
-     * what_mon(), so the spurious repaint draws an extra rn2(383) on the
-     * DISPLAY isaac64 stream and every later hallucinated glyph and name in the
-     * session is one draw out of step.  MEASURED on seed0383 with
-     * tools/display-rng-diff.mjs: display draw 265, JS rn2(383) from
-     * relobj_xkilled's newsym where C's next display draw is 5 core leaves
-     * later in m_move — matchedDisplayDraws 269/622. */
     await relobj_xkilled(mtmp);
 
-    /* C mon.c:3573-3630 — the treasure drop AND corpse_chance are BOTH inside
-     * one outer gate this port never had:
-     *     if (nocorpse || LEVEL_SPECIFIC_NOCORPSE(mdat))
-     *         goto cleanup;
-     *     ...
-     *     if (accessible(x, y) || is_pool(x, y)) {
-     *         "illogical but traditional treasure drop" (rn2(6) ...)
-     *         if (!wasinside && corpse_chance(mtmp, NULL, FALSE))
-     *             cadaver = make_corpse(...);
-     *     }
-     *  cleanup:
-     * mon.c:44 LEVEL_SPECIFIC_NOCORPSE(mdat):
-     *     Is_rogue_level(&u.uz) || !svl.level.flags.deathdrops
-     *     || (svl.level.flags.graveyard && is_undead(mdat) && rn2(3))
-     * The third disjunct DRAWS (mondata.h is_undead = mflags2 & M2_UNDEAD);
-     * C evaluates this SAME macro twice — once inside corpse_chance() at
-     * mon.c:3241 (already a GAP, see that function) and once HERE — so a
-     * graveyard-level undead kill costs two independent rn2(3) draws, not one.
-     * This port had NEITHER copy: it went straight to rn2(6) with no gate at
-     * all, so on any level with deathdrops off (most special levels: mazes,
-     * Sokoban, the Quest, etc.) it drew a treasure rn2(6) — and, if that
-     * hit, a whole mkobj() draw chain — that C never made, then still ran
-     * corpse_chance/make_corpse where C skips straight to `cleanup:`.
-     *
-     * MEASURED: do_attack recs 12-23 (board12-s), a maze level with
-     * level_flags.deathdrops=0 (dungeon.dnum 8) — 12 straight kills where
-     * C's recorded tape stops at exactly 6 draws (gethungry, exercise(STR),
-     * dieroll, exercise(DEX), dmg, stagger) and this port's next call
-     * (xkilled's rn2(6)) hit rng_result_tape_underrun because C never drew
-     * a 7th value here at all.
-     *
-     * accessible(x,y)/is_pool(x,y) GATES both the treasure drop and the
-     * corpse below (mon.c:3581 `if (accessible(x, y) || is_pool(x, y)) {`
-     * wraps mon.c:3583-3618 as one block; there is no separate corpse gate).
-     * x,y is `mtmp->mx, mtmp->my` sampled at xkilled() entry (mon.c:3482) —
-     * this port's `dx,dy` (mtmp.mx/mtmp.my read right after mondead, above)
-     * is the same square: KEYSTONE-A's deferred detach means unlink_mon
-     * never zeroes mx/my, so dx,dy still matches the death square here.
-     * MEASURED (wave-125 red-not-mine, weffects record #122, do_attack):
-     * explode() kills a wall-walking ghost on a STONE tile; C's
-     * accessible(61,19) is false, is_pool(61,19) is false, so C draws ZERO
-     * of this block's RNG and this port drew rn2(6) unconditionally,
-     * producing rng_result_tape_oor at the next call.  mdat is read as this
-     * function's own `mndx`-derived row rather than re-resolved after
-     * mondead() the way C's `mdat = mtmp->data` is (mondead can change
-     * mtmp->data for a vampshifter reverting form on death — unexercised
-     * here, named rather than modelled). */
     const _xk_mflags2 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][7] | 0) : 0;
     const _xk_levelSpecificNoCorpse = Is_rogue_level(game.u?.uz)
         || !(game.level?.flags?.deathdrops)
@@ -4455,27 +2925,6 @@ export async function xkilled(mtmp, xkflags) {
             && !!rn2(3));
     if (!(nocorpse || _xk_levelSpecificNoCorpse)
         && (accessible(dx, dy) || is_pool_uh(dx, dy))) {
-        /* C mon.c:3573-3603 — "illogical but traditional treasure drop".  rn2(6)
-         * ALWAYS fires (leftmost in the &&); when ==0 and the guards pass, a random
-         * object is created (mkobj(RANDOM_CLASS, TRUE) — rnd(100) class pick, rnd(prob)
-         * type pick, then mksobj) and either discarded or dropped on the kill square.
-         * The kill square (x,y) is mtmp's death position (C xkilled: coordxy x=mtmp->mx).
-         * Guards: species leaves a corpse (!G_NOCORPSE), kill square isn't the hero's
-         * (engulfer/steed exclusion), monster isn't a Kop, monster isn't cloned.
-         * oc_big is not modelled in the small-monster cull (owt>30 already covers the
-         * light objects small monsters would keep; oc_big only affects placement, never
-         * RNG).
-         *
-         * RNG-CRITICAL (seed0002 step 116, "You kill the lichen!"): each disposal
-         * branch in C draws RNG that JS was skipping —
-         *   - delobj(otmp) → delobj_core(otmp, FALSE) → obj_resists(otmp, 0, 0)
-         *     [invent.c:1445, rn2(100)] fires for the two "discard" branches (FOOD
-         *     and small-monster-big-object).  The lichen (MZ_SMALL) drops a heavy
-         *     (owt=200) armor → the big-object branch → delobj → rn2(100)=40, the
-         *     leaf-6717 first divergence (JS previously did nothing there).
-         *   - the place branch is `!flooreffects(otmp,x,y,...)` (C mon.c:3599); on a
-         *     plain floor flooreffects draws no RNG and returns false, but e.g. a
-         *     potion on a temperature>0 tile rolls obj_resists (do.c:345). */
         {
             const tx = (mtmp.mx | 0), ty = (mtmp.my | 0);
             const u = game.u || {};
@@ -4491,43 +2940,17 @@ export async function xkilled(mtmp, xkflags) {
                 const otmp = await mkobj(RANDOM_CLASS, true);
                 const otyp = (otmp.otyp | 0);
                 if ((otmp.oclass | 0) === FOOD_CLASS && (mf2 & M2_COLLECT) === 0 && !otmp.oartifact) {
-                    /* C mon.c:3591 delobj(otmp) -> delobj_core(otmp, FALSE):
-                     *     if (!force && obj_resists(obj,0,0)) { obj->in_use=0; return; }
-                     *     ... obj_extract_self(obj); ... obfree(obj, NULL);
-                     * The RNG gate (rn2(100) inside obj_resists) fired but its
-                     * result was discarded and dealloc_obj() (mkobj.c:2748,
-                     * obfree's core effect for a never-placed object with no
-                     * contents) was never called — so the capture's own
-                     * `objs_deleted.count` observable stayed at C's pre-kill
-                     * value.  obj_extract_self is a no-op here (this object was
-                     * never placed on any chain), so dealloc_obj alone matches
-                     * obfree's OBSERVABLE effect for the plain, content-free
-                     * RANDOM_CLASS drop this branch always produces. */
                     if (!obj_resists(otmp, 0, 0))
                         await _uh_dealloc_and_bump(otmp);
                 } else if (msize_x < MZ_HUMAN && otyp !== FIGURINE && (otmp.owt | 0) > 30) {
-                    /* C mon.c:3592-3598 delobj(otmp) — small monster can't leave a large
-                     * object.  (C first calls artifact_exists() when oartifact; a random
-                     * monster drop is never an artifact here, so only the delobj_core
-                     * obj_resists(otmp,0,0) RNG gate matters.)  Same gate-then-delete
-                     * fix as the FOOD_CLASS arm above. */
                     if (!obj_resists(otmp, 0, 0))
                         await _uh_dealloc_and_bump(otmp);
                 } else if (!await flooreffects(otmp, tx, ty, nomsg ? '' : 'fall')) {
-                    /* C mon.c:3599-3601 — !flooreffects → place on the kill square.
-                     * (C also calls stackobj(otmp) here; the JS stackobj merge is
-                     * RNG-neutral and unported — omitted, matching prior behavior.) */
                     place_object(otmp, tx, ty);
                 }
             }
         }
 
-        /* C mon.c:3617-3618 — corpse--none if hero was inside the monster:
-         *     if (!wasinside && corpse_chance(mtmp, (struct monst *) 0, FALSE))
-         * `wasinside` is sampled at xkilled() entry (this function's own
-         * `wasinside` above); this call previously had no such guard, so
-         * killing one's own engulfer (rare in this corpus) would have made a
-         * corpse C never makes. */
         if (!wasinside) {
             if (await corpse_chance(mtmp, null, false)) {
                 await make_corpse(mtmp, (mtmp.mx | 0), (mtmp.my | 0));
@@ -4535,13 +2958,6 @@ export async function xkilled(mtmp, xkflags) {
         }
     }
 
-    /* C mon.c:3641-3642 — "monster is gone, corpse or other object might now be
-     * visible": a SECOND newsym on the death square, after the treasure drop and
-     * the corpse.  The first one is inside mondead()/m_detach above and paints
-     * the bare tile; this one is what makes the dropped '(' or the corpse '%'
-     * appear (seed0030 segment 3 step 188, a newt killed on a corridor square
-     * whose rn2(6) treasure drop lands there).  C runs it before the `cleanup:`
-     * label, i.e. before the luck/experience tail. */
     newsym(dx, dy);
 
     /* C mon.c:3651 — peaceful/tame luck penalty.
@@ -4563,22 +2979,9 @@ export async function xkilled(mtmp, xkflags) {
 
     await newexplevel(); /* C mon.c:3664 */
 
-    /* C mon.c:3666-3715 — adjust alignment points.  RNG-NEUTRAL (adjalign and
-     * set_malign draw no RNG).  The if/else chain applies EXTRA adjustments for
-     * special monsters; line 3715 `adjalign(mtmp->malign)` then fires for EVERY
-     * kill.  For an ordinary hostile monster (e.g. seed0116's kobold) only 3715
-     * runs: set_malign yields malign = max(5,|maligntyp|) for an always-hostile,
-     * non-coaligned monster, so adjalign(+5) raises a wizard's record 0 -> 5
-     * (>= STRIDENT) which is what makes a later prayer report "pleased". */
     await _xkilled_adjust_alignment(mtmp, mndx);
 }
 
-/* C mon.c:3666-3715 alignment-point adjustment, factored out of xkilled.
- * RNG-NEUTRAL.  Faithful to the C if/else chain.  Side effects beyond the
- * record (ugangr, luck, ublessed, the tame-kill thunder pline) are ported;
- * livelog (non-screen) is omitted.  The quest-leader branch is guarded on a
- * tracked leader id (off-corpus when untracked); the priest branch uses an
- * inline p_coaligned (u.ualign.type == mon's shrine alignment). */
 async function _xkilled_adjust_alignment(mtmp, mndx) {
     const u = game.u;
     if (!u) return;
@@ -4636,25 +3039,6 @@ async function _xkilled_adjust_alignment(mtmp, mndx) {
     adjalign(mtmp.malign | 0);
 }
 
-/* C ref: youprop.h:116-120 — the Hallucination macro, used here for the
- * tame-kill thunder/applause flavour line.
- *   HHallucination    u.uprops[HALLUC].intrinsic          (INTRINSIC only: there
- *                     is no extrinsic term on HALLUC and no 'blocked' test)
- *   Halluc_resistance HHalluc_resistance || EHalluc_resistance
- *   Hallucination     (HHallucination && !Halluc_resistance)
- *
- * The "best-effort" body this replaces was wrong three times over, and each way
- * is its own defect class:
- *   - `u.uprops.HALLUC` is a STRING key.  Every write in this port is
- *     `u.uprops[HALLUC]` with HALLUC = 23 (const.js:2320), so the string
- *     property never existed and the lookup was always undefined.
- *   - `h.blocked === 0` made the test TRUE for any property record that merely
- *     EXISTS — the opposite of a blocked test, and true for a record created
- *     with the usual { intrinsic: 0, extrinsic: 0, blocked: 0 } shape.
- *   - the `u._hallucination` fallback reads a field NOTHING in js/ assigns
- *     (tools/never-written-field-lint.mjs: NO-WRITER, 3 read sites).
- * Read the same shape js/potion.js:786 already uses, so the two agree.
- * RNG-free. */
 function _xk_hallu() {
     const u = game.u;
     if (!u) return false;
@@ -4684,12 +3068,6 @@ export function m_at(x, y) {
         if ((m.mhp | 0) > 0 && m.mx === x && m.my === y)
             return m;
     }
-    /* C's grid also holds a long worm's TAIL SEGMENTS (rm.h:533
-     * place_worm_seg writes the worm itself into every segment square), and
-     * those are not fmon entries, so the walk above cannot see them.  One
-     * lookup in C, two here; see THE MAP-GRID GAP in js/worm.js for what the
-     * omission cost (seed0373's Sokoban zoo made three monsters on squares C's
-     * makemon() refuses without a draw). */
     return worm_seg_at(x, y);
 }
 
@@ -4795,21 +3173,6 @@ export function skill_name(skill) {
 
     /* P_BARE_HANDED_COMBAT (index 35): use barehands_or_martial */
     if (skill === 35) { /* P_BARE_HANDED_COMBAT */
-        /* C skills.h:81 martial_bonus() = (Role_if(PM_SAMURAI) || Role_if(PM_MONK)).
-         * This read `game.u.urole.mnum` against the mons[] ids 340/336, and
-         * NOTHING IN js/ EVER ASSIGNS u.urole -- js/roles.js:612 sets
-         * game.urole, a DIFFERENT object.  Measured at runtime over the train
-         * corpus: `typeof game.u.urole` is "undefined" at every sample, so the
-         * `.mnum` read on it is a guaranteed TypeError, parked on
-         * nhGame.replayError, i.e. a silent truncation of any session that
-         * reaches this arm.  (It is latent, not live: a probe over all 688
-         * train sessions never enters it.)
-         * `game.urole.mnum` IS populated and IS the PM index (measured: 336 for
-         * a Monk, 341 Tourist, 343 Wizard), so C's literal Role_if spelling is
-         * available -- but the other three martial_bonus sites in this file,
-         * and every other role test in this port, key on flags.initrole
-         * (roles[] index), so this uses the same one predicate they do rather
-         * than introducing a second index space here. */
         const martial = _uh_martial_bonus() ? 1 : 0;
         return barehands_or_martial[martial];
     }
@@ -4985,25 +3348,6 @@ export function weapon_descr(obj) {
     return makesingular(descr);
 }
 
-/* shade_glare(obj) — C ref: nethack-c/src/artifact.c:553-571.
- * "Decide whether this obj is effective when attacking against shades; does
- * not consider the bonus for blessed objects versus undead."  Draws no RNG
- * and changes no state.  Called only from dmgval() (weapon.c:307) and
- * hmon_hitmon (uhitm.c:893).
- *
- *   1. any silver object is effective                       -> TRUE
- *   2. non-silver artifacts with SPFX_DFLAG2 && mtype == M2_UNDEAD -> TRUE
- *   3. otherwise harmless to shades                         -> FALSE
- *
- * KNOWN GAP: arm 2.  get_artifact()/artilist[] are not ported; the only two
- * entries that qualify are "Sunsword" (artilist.h:209) and "The Mitre of
- * Holiness" (artilist.h:265).  Neither can be generated or wished for in the
- * 64-session corpus without the artifact tables that dmgval's own
- * oartifact/spec_dbon arm (below) is already missing, so this returns FALSE
- * for them — a shade would wrongly shrug off a Sunsword hit.
- * RNG ON THE GAPPED PATH: NONE.  artifact.c:553-571 and get_artifact()
- * (artifact.c:270) contain no rn2/rnd/rne/rnz/d call, so the gap can only
- * change a damage amount, never the RNG sequence or its order. */
 const SHADE_GLARE_SILVER_MAT = 14; /* objclass.h:20 enum obj_material_types */
 
 function shade_glare(obj) {
@@ -5051,16 +3395,6 @@ function is_axe_dv(otmp) {
  * - Blessed/silver/artifact/light bonuses
  * - Erosion penalties
  * Returns integer damage value >= 1 (if tmp > 0 after penalties). */
-/* C uhitm.c:1341-1362, the "default" arm of hmon_hitmon_misc_obj — a
- * hand-to-hand hit with an object that is neither a weapon (WEAPON_CLASS),
- * a weptool, nor a gem (GEM_CLASS): a wielded tool, a crystal ball, a bag,
- * etc.  Not dmgval() — that function is only reached through
- * hmon_hitmon_weapon.  The many object-specific arms above the default one
- * in C (BOULDER/HEAVY_IRON_BALL/IRON_CHAIN, MIRROR, EXPENSIVE_CAMERA,
- * CORPSE, EGG, CLOVE_OF_GARLIC, CREAM_PIE/BLINDING_VENOM, ACID_VENOM) are a
- * NAMED GAP — none has been observed wielded into melee by the corpus yet —
- * as is the wet-towel damage bonus (uhitm.c:1358-1367, which also needs the
- * dryit/dry_a_towel follow-up this file does not model here). */
 function _uh_misc_obj_dmg(obj, mon) {
     const VEGGY_UH = 3, PAPER_UH = 5, SILVER_UH = 14;
     const SPBOOK_CLASS_UH = 10;
@@ -5326,33 +3660,6 @@ export function dmgval(otmp, mon) {
             && (ptr.pmidx | 0) === PM_GREMLIN_DV)
             bonus += rnd(8);
 
-        /* C weapon.c:336-339 —
-         *   /\* if the weapon is going to get a double damage bonus, adjust
-         *      this bonus so that effectively it's added after the doubling *\/
-         *   if (bonus > 1 && otmp->oartifact && spec_dbon(otmp, mon, 25) >= 25)
-         *       bonus = (bonus + 1) / 2;
-         * This is NOT a damage-only arm.  spec_dbon (artifact.c:1090-1109)
-         * ends in `weap->attk.damd ? rnd(damd) : max(tmp, 1)`, so calling it
-         * DRAWS rnd(damd) for any artifact with a damage die, and dmgval's
-         * call here is a SECOND spec_dbon on the same blow — artifact_hit
-         * (artifact.c:1470) makes the first.  Measured in the recording:
-         * gen033-reseed-seed463101 seg0 step503 shows
-         *     rnd(4)=1  @ dmgval(weapon.c:265)
-         *     rnd(4)=2  @ dmgval(weapon.c:328)     <- bonus = 2 > 1
-         *     rnd(24)=4 @ spec_dbon(artifact.c:1107)   <- THIS call
-         *     rnd(24)=16 @ spec_dbon(artifact.c:1107)  <- artifact_hit's call
-         * and every other artifact blow in the corpus shows exactly ONE
-         * rnd(24).  rnd(24) is Mjollnir (attk.damd 24, ARTI_SPEC index 3), a
-         * blessed one here.  With the arm disabled we skipped that draw and
-         * every leaf after it shifted by one.
-         * spec_dbon also SETS gs_spec_dbon_applies as a side effect, exactly
-         * as C's does, and C leaves that write standing for artifact_hit to
-         * overwrite on the same blow; do not "optimise" the call away.
-         * spec_dbon here is js/uhitm.js:614, the REAL body (ARTI_SPEC +
-         * spec_applies), not a stand-in.  Its extra 3rd parameter is the
-         * defender's mndx, read only when mtmp is null (this file's "defender
-         * is the hero" convention); dmgval has already returned 0 above when
-         * mon has no ->data, so mon is never null here and -1 is unread. */
         if (bonus > 1 && (otmp?.oartifact | 0)
             && spec_dbon(otmp, mon, -1, 25) >= 25)
             bonus = ((bonus + 1) / 2) | 0;
@@ -5568,9 +3875,6 @@ export function setmnotwielded(mon, obj) {
                   s_suffix(mon_nam(mon)), mbodypart(mon, HAND),
                   otense(obj, "stop"));
     }
-    /* C weapon.c:1822-1823 — `if (MON_WEP(mon) == obj) MON_NOWEP(mon);` then
-     * `obj->owornmask &= ~W_WEP;`.  MON_WEP is monst.h:210 `mon->mw`, which
-     * js/uhitm.js:2988 does assign, so neither field is "not captured". */
     if (mon && mon.mw === obj)
         mon.mw = null;
     obj.owornmask = (obj.owornmask | 0) & ~W_WEP;
@@ -5586,11 +3890,6 @@ export function setmnotwielded(mon, obj) {
  * this file's local copy was a no-op stub silently swallowing
  * setmnotwielded()'s "stops shining" light-source teardown (weapon.c:1812). */
 
-/* xname(obj) — C objnam.c:574-578.  The private stub that used to be here
- * returned the literal "something" for every object; js/objnam.js now carries the
- * real xname_flags() body (all 16 oclass arms), so import it instead.  This was
- * the SEVENTH xname body in js/ — tools/dead-port-census.mjs flags it
- * DEAD-DUPLICATE as soon as the canonical one exists. */
 
 /* C ref: hacklib.c:343-359 s_suffix — imported from js/hacklib.js.
  * This was a "stub (unported helper)" carrying only the LAST of C's four arms
@@ -5664,12 +3963,6 @@ export function mwepgone(mon) {
  * objects[].oc_material SILVER = 14 (objclass.h). */
 const SPD_SILVER = 14;
 
-/* which_armor(mon, flag) — C ref: worn.c:998. Hero branch reads the u-worn
- * slots; the monster branch walks minvent by owornmask. Local mirror because
- * the shared which_armor (js/makemon.js) is still a stub — same idiom as
- * trap.js _which_armor / do_wear.js which_armor_mon / mklev.js which_armor_mv.
- * Identity uses the m_id fallback (the sweep reconstructs magr as a fresh
- * object, so `=== game.youmonst` alone would miss the hero). */
 function _spd_is_you(mon) {
     return mon === game.youmonst
         || (game.youmonst && mon.m_id === game.youmonst.m_id);
@@ -5823,10 +4116,6 @@ function sr_touch_petrifies(corpsenm) {
 function sr_is_art(otmp, art) {
     return !!otmp && (otmp.oartifact | 0) === art;
 }
-/* MON_WEP(mon) = (mon)->mw (monst.h:208): the monster's wielded weapon. The
- * game keeps mw pointing at the minvent obj whose owornmask carries W_WEP, so
- * we recover it by that invariant rather than a separate pointer (verified
- * identical to the captured mw_o_id across the whole select_rwep corpus). */
 function sr_MON_WEP(mtmp) {
     for (let o = mtmp.minvent; o; o = o.nobj)
         if (((o.owornmask | 0) & SR_W_WEP) !== 0)
@@ -5852,9 +4141,6 @@ async function oselect(mtmp, type) {
     return null;
 }
 
-/* weapon.c:532 select_rwep — select a ranged weapon for a monster. Sets the
- * gp.propellor control-flow global (modeled here as a local sentinel, as its
- * write is not part of the captured state-diff). */
 const SR_hands_obj = {}; /* &hands_obj sentinel: "doesn't need a propellor" */
 /* C's gp.propellor (weapon.c:531) — a global that select_rwep writes and
  * mon_wield_item's NEED_RANGED_WEAPON case reads back as the object to WIELD
@@ -6038,9 +4324,6 @@ const SH_BIMANUAL = new Set([
 function sh_oc_bimanual(otyp) { return SH_BIMANUAL.has(otyp | 0); }
 /* mondata.h:107 is_giant(ptr) — M2_GIANT. */
 function sh_is_giant(data) { return ((data?.mflags2 | 0) & SH_M2_GIANT) !== 0; }
-/* mondata.h resists_ston — the same always-false convention js/mklev.js:10187
- * and js/dogmove.js:3779 already use for this predicate; it only gates whether
- * a gloveless monster will pick up a cockatrice corpse as a weapon. */
 function sh_resists_ston(mtmp) { return resists_ston_real(mtmp); }
 
 /* weapon.c:704 select_hwep — select a hand to hand weapon for the monster. */
@@ -6081,10 +4364,6 @@ export async function select_hwep(mtmp) {
     return null;
 }
 const OCLASS_WEAPON_SH = 2; /* objclass.h WEAPON_CLASS */
-/* js/mklev.js's touch_artifact throws on the artifact case; nothing in the
- * corpus puts an artifact in a monster's pack, and the `oartifact` test above
- * already short-circuits for every ordinary weapon, so keep the honest shape:
- * non-artifacts are touchable, artifacts are not modelled. */
 async function touch_artifact_sh(otmp, _mtmp) {
     return await touch_artifact_real(otmp, _mtmp);
 }
@@ -6107,25 +4386,6 @@ export async function mon_wield_item(mon) {
         obj = await select_hwep(mon);
         break;
     case SH_NEED_RANGED_WEAPON:
-        /* C weapon.c:813-815:
-         *     (void) select_rwep(mon);
-         *     obj = gp.propellor;
-         * The object WIELDED is the PROPELLOR (bow / sling / crossbow, or the
-         * polearm / throw-and-return weapon select_rwep forces), NOT the
-         * missile select_rwep returns.  For a monster carrying only hand-thrown
-         * missiles the propellor stays &hands_obj, so the `obj !== SR_hands_obj`
-         * guard below rejects it and C wields NOTHING, falling through to
-         * weapon_check = NEED_WEAPON.
-         *
-         * Wielding the RETURN VALUE instead handed such a monster a wielded
-         * missile it never had in C, and that difference is not cosmetic: it is
-         * read back a turn later by dochug's wield block (monmove.c:846-857),
-         * where `mw_tmp->otyp == obj->otyp` then reads as "already wielding it"
-         * and the monster walks instead of standing still to wield.  Measured
-         * on seed0030 segment 9: the goblin 70#137 wielded its own orcish
-         * dagger here at turn 69 (C wields nothing), and at turn 73 walked onto
-         * (68,11) — a square C leaves as bare corridor, and the first of 381
-         * step points lost in that segment. */
         await select_rwep(mon); /* C: (void) select_rwep(mon) — called for its gp.propellor side effect */
         obj = SR_propellor;
         break;
@@ -6202,18 +4462,12 @@ export async function mon_wield_item(mon) {
             if (mwelded(obj)) {
                 let mon_hand = mbodypart(mon, HAND);
                 if (sh_oc_bimanual(obj.otyp)) mon_hand = makeplural(mon_hand);
-                /* C weapon.c:892-918 emits two independent plines here.  Keep
-                 * the join boundary so topl.c can page the wield announcement
-                 * before the longer weld message when the combined line does
-                 * not fit (gen104's barrow-wight long sword case). */
                 pline(_wieldLine);
                 pline(`${Yname2_sh(obj)} welds itself to ${mhis_sh(mon)} ${mon_hand}!`);
             } else {
                 pline(_wieldLine);
             }
         }
-        /* C:919-928 artifact_light begin_burn: no artifact reaches a monster's
-         * pack in the corpus (see touch_artifact_sh). */
         return 1;
     }
     mon.weapon_check = SH_NEED_WEAPON;
@@ -6243,31 +4497,6 @@ export function monmightthrowwep(obj) {
     return false;
 }
 
-/* C ref: uhitm.c:74-96 mhitm_mgc_atk_negated(magr, mdef, verbosely) — "does
- * mdef's magic-cancellation-proof armor (Protection, an amulet of guarding,
- * etc) thwart magr's magical attack".  Called by mhitm_ad_plys/mhitm_ad_slee
- * (both arms) as the `!mhitm_mgc_atk_negated(...)` gate on paralysis/sleep.
- *
- * Was a STUB captioned "not yet ported, consumes RNG and returns false" that
- * drew the rn2(10) (so a clean run's RNG stream matched) but hardcoded
- * `return false` — an ALWAYS-FALSE stand-in for the real magic_negation()
- * computation, same defect class as attack_checks's glyph_is_warning
- * hardcoded-false (7b8b1b090).  Effect: every caller's `!mhitm_mgc_atk_negated`
- * gate was structurally present but functionally VACUOUS — it read as "gated"
- * while never actually negating an attack, and any defender with real armor
- * protection (mc>0 from Protection/an amulet of guarding) that C rolls
- * negated=TRUE for never got the message and never blocked the attack.
- *
- * Concretely for mhitm_ad_slee's mhitu arm: C's
- *     if (gm.multi >= 0 && !rn2(5) && !mhitm_mgc_atk_negated(magr, mdef, TRUE))
- *         ... fall_asleep(-rnd(10), TRUE); ...
- * stops at 2 draws (rn2(5), then mhitm_mgc_atk_negated's rn2(10)) whenever the
- * roll negates the attack — fall_asleep's rnd(10) is NEVER reached.  The
- * always-false stub instead let every negated record fall through into
- * fall_asleep anyway, drawing a THIRD value the C recording never has:
- * measured on mhitm_adtyping record #298 (probe-trapset gen043,
- * mdef_is_you=1, AD_SLEE), C's tape holds exactly 2 draws and the stub's
- * extra rnd(10) popped an empty tape -> rng_result_tape_underrun. */
 function mhitm_mgc_atk_negated(magr, mdef, strict) {
     /* C uhitm.c:83-84 — mcan doesn't apply to youmonst; hero can't be
      * cancelled, so this arm draws NO RNG (short-circuits before armpro). */
@@ -6828,13 +5057,6 @@ function resists_elec(mon) {
     return (bits & MR_ELEC) !== 0;
 }
 
-/* mhitm_ad_elec — C ref: uhitm.c:2683-2733.  The mdef === game.youmonst
- * (mhitu) branch is dead through THIS file's own dispatch (mhitm_adtyping
- * here is only reached with mdef a monster, per the wave-7 defender-split
- * routing) — js/mhitu.js has its own mhitm_ad_elec_u for that case — but it
- * is kept, faithful to the C, for structural parity with mhitm_ad_fire/cold
- * immediately above, which the mhitu.js AD_FIRE/AD_COLD wiring DOES call
- * through with mdef=game.youmonst. */
 export async function mhitm_ad_elec(magr, mattk, mdef, mhm) {
     const orig_dmg = mhm.damage;
 
@@ -7233,22 +5455,6 @@ export async function mhitm_ad_ench(magr, mattk, mdef, mhm) {
                     break;
                 }
             }
-            /* C ref: uhitm.c:3642 — if (obj && drain_item(obj, FALSE)) ...
-             * This was an RNG-shim standing in for drain_item, whose
-             * is_weptool/defends stubs threw unconditionally.  js/zap.js now
-             * carries a real, non-throwing drain_item, so call it.  The shim
-             * was wrong three ways, all RNG- or state-visible:
-             *   1. it drew rnd(100); C's obj_resists (zap.c:1469) draws rn2(100).
-             *   2. it gated on obj.spe > 0 alone, so an amulet or blindfold
-             *      (uamul / ublindf — neither oc_charged nor weapon/armor/
-             *      weptool) drew where C returns FALSE without drawing.
-             *   3. it never decremented obj->spe, and set disp.botl to 0 where
-             *      C's SET_BOTL sets it to 1 — so a successfully drained piece
-             *      of armour kept its enchantment and the status line was
-             *      never marked dirty.
-             * Behaviour-neutral on the current corpus: every C-observed
-             * drain_item call so far arrives with spe == 0, so old and new
-             * code both draw nothing and change nothing. */
             if (obj && (await drain_item(obj, false))) {
                 /* C: pline("%s less effective.", Yobjnam2(obj, "seem"));
                  * KNOWN GAP: Yobjnam2 is not ported here; message omitted.
@@ -7372,12 +5578,6 @@ async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
     }
 }
 
-/* mhitm_ad_deth — C ref: uhitm.c:3836-3894.
- * Was entirely absent from this dispatcher's switch (fell to `default:`,
- * mhm.damage zeroed, no draw). Measured on
- * probe-reach-melee/gen042-objective-seed836413 step 1628: C draws
- * rn2(20)=17 @mhitm_ad_deth(uhitm.c:3858) then d(8,6)=24
- * @touch_of_death(mcastu.c:326); this port drew nothing (record #148). */
 async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
 
@@ -7435,27 +5635,6 @@ async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
 
 const PM_GREEN_SLIME_UH = 208; /* pm.generated.js */
 
-/* mhitm_ad_slim — C ref: uhitm.c:3524-3570.  Only the `magr==youmonst`
- * ("uhitm") arm is ported here: it is the only arm do_attack's callee
- * subtree (hmonas -> damageum -> mhitm_adtyping) can ever reach with
- * magr===game.youmonst.  The `mdef==youmonst` ("mhitu") arm already has a
- * real body at js/mhitu.js's mhitm_ad_slim_u (monster infects the hero);
- * the plain "mhitm" arm is monster-vs-monster and out of this file's scope.
- *
- * Was entirely ABSENT from mhitm_adtyping's switch below (fell to
- * `default:`, mhm.damage zeroed, no draw at all).  MEASURED via
- * rng-trace --record on this packet's board (e.g. record #112,
- * probe-reach-melee/gen045-objective-seed1849727 step 947): C draws
- * rn2(10) @mhitm_mgc_atk_negated(uhitm.c:87), then (1 in 4)
- * rn2(4) @mhitm_ad_slim(uhitm.c:3537); this port drew neither, at all 12
- * AD_SLIM records rng-trace groups under that first site.
- *
- * slimeproof() now uses the shared mondata.h predicate from js/mklev.js.
- * munslime()'s "monster cures itself" branch (muse.c:3031)
- * has no js/ body anywhere in the tree and can draw further RNG of its own
- * (a monster with e.g. a wand of fire); modelled as always-FALSE (no
- * escape), exact for the ordinary case and a named approximation for a
- * monster carrying a cure. */
 async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
     const negated = mhitm_mgc_atk_negated(magr, mdef, false);
     if (magr !== game.youmonst)
@@ -7480,9 +5659,6 @@ async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
 const AD_DREN = 16; /* monattk.h:58 */
 const AD_DRST = 7, AD_DRDX = 30, AD_DRCO = 31; /* monattk.h:49,72,73 */
 
-/* xdrainenergym — C ref: mhitm.c:1458-1467. "Hero or monster has
- * successfully hit target mon with drain energy attack" -- mspec_used-gated
- * energy drain, shared by mhitm_ad_dren's uhitm and mhitm arms. */
 function xdrainenergym(mon, givemsg) {
     if ((mon.mspec_used | 0) < 20 /* limit draining */
         && (attacktype(mon.data, 255 /* AT_MAGC */)
@@ -7493,13 +5669,6 @@ function xdrainenergym(mon, givemsg) {
     }
 }
 
-/* mhitm_ad_dren — C ref: uhitm.c:2416-2439.
- * Was entirely ABSENT from mhitm_adtyping's switch below (fell to
- * `default:`, mhm.damage zeroed, no draw at all). MEASURED via
- * rng-trace --record on this packet's board (record #122,
- * probe-reach-melee/gen017-objective-seed2534, magr/mdef both monsters --
- * the "mhitm" arm): C draws mhitm_mgc_atk_negated's rn2(10) then (1 in 4)
- * rn2(4) at uhitm.c:2437; this port drew neither. */
 async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
     const negated = mhitm_mgc_atk_negated(magr, mdef, false);
 
@@ -7543,22 +5712,6 @@ function resists_poison_uh(mon) {
     return Resists_Elem(mon, POISON_RES);
 }
 
-/* mhitm_ad_drst — C ref: uhitm.c:3120-3161 (dispatched here for
- * AD_DRST/AD_DRDX/AD_DRCO, same as C's switch fallthrough).
- * Was entirely ABSENT from mhitm_adtyping's switch below (fell to
- * `default:`, mhm.damage zeroed, no draw). MEASURED via rng-trace on this
- * packet's board, record #147 (probe-reach-zap/gen021-objective-seed748292,
- * magr/mdef both monsters -- the "mhitm" arm): C draws
- * mhitm_mgc_atk_negated's rn2(10)=4 then rn2(8)=7 at uhitm.c:3130; this
- * port drew neither. Only the uhitm and mhitm arms are implemented: the
- * mhitu arm (mdef===youmonst) drains an attribute via poisoned(), a
- * repo-wide no-op stub (this file's own copy, shared by other callers
- * such as AD_STON) that giving a real body belongs to its own packet --
- * this packet's board has no mhitu-arm record for this adtyp (verified:
- * only record #147 above is actionable here), so it falls back to the
- * pre-existing default-case behavior (message only, no attribute loss, no
- * draw) rather than risk a wider regression. Same scoping precedent as
- * mhitm_ad_slim's mdef===youmonst arm above. */
 async function mhitm_ad_drst(magr, mattk, mdef, mhm) {
     const negated = mhitm_mgc_atk_negated(magr, mdef, false);
 
@@ -7670,23 +5823,7 @@ export function disguised_as_non_mon(mtmp) {
  * (C ref: mondata.c:1557-1582); this file's local copies were no-op stubs
  * silently dropping every m_setseenres/m_clearseenres update this file
  * triggers (M_SEEN_SLEEP/FIRE/COLD arms below). */
-/* You — real body imported from js/do_wear.js (C ref: pline.c You(),
- * `vpline(YouMessage(tmp, "You ", line), the_args)`); this file's local
- * copy was a no-op, silently dropping every "You " topline this file
- * raises (21 call sites: "You rust!", "You are frozen!", "You are put to
- * sleep!", etc).  js/mhitm.js and js/eat.js also export a `You` under this
- * name — the brief flagged both as previously reported stubs/non-general
- * (js/eat.js's routes through the deferred _resultMessage channel for its
- * own timing needs, not a general pline).  js/do_wear.js's is async, but
- * pline() (js/display.js) has no `await` anywhere in its own body, so it
- * runs to completion synchronously regardless of whether the caller awaits
- * it — safe to call unawaited, same as every other pline() call already in
- * this file. */
 function dynamic_multi_reason(mon, verb, by_gaze) {
-    /* C uhitm.c:101-122 — genuine port (mirrors js/mhitm.js:299).  Builds
-     * "verb by NAME[ gaze]" and sets gm.multi_reason.  RNG-free: x_monnam's
-     * hallucination arm is gated on !(suppress & SUPPRESS_HALLUCINATION),
-     * which this call passes, so no draw happens. */
     const who = x_monnam(mon, ARTICLE_A, null,
         SUPPRESS_IT | SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION
         | SUPPRESS_SADDLE | SUPPRESS_NAME, false);
@@ -7805,10 +5942,6 @@ async function do_stone_mon(magr, mattk, mdef, mhm) {
 }
 function Soundeffect(se, vol) { /* no-op */ }
 const se_cockatrice_hiss = 0;
-/* C ref: pline.c:435-452 You_hear — imported from js/display.js.  The no-op
- * that used to sit here dropped all three of this file's calls on the floor
- * (:4875 "a cough from %s!", :4879 "hissing.", :4883 "%s hissing!"), i.e. C
- * printed a topline and this port printed nothing. */
 
 /* C mhitu.c:162-170 — called when an attack removes intrinsic speed. */
 export function u_slow_down() {
@@ -8080,12 +6213,6 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
 }
 
 /* stub: set_wounded_legs — not yet ported */
-/* set_wounded_legs — MODULE-LOCAL STUB DELETED.  It set disp.botl and nothing
- * else, shadowing the real body at js/cmd.js:36146 (C attrib.c: decrement
- * ATEMP(A_DEX) the first time, set the timeout, OR in the side).  The Dex
- * penalty is RNG-LOAD-BEARING: mhitm_ad_legs' next draw is
- * rnd(60 - ACURR(A_DEX)), so on seed4500-knight-coverage's second xan sting C
- * drew rnd(52) (Dex 9 -> 8) and this port drew rnd(51) again. */
 
 /* constants for mhitm_ad_heal */
 const A_CON = 4;
@@ -8152,19 +6279,6 @@ function Role_if(pm) {
     /* C: urole.mnum == pm */
     return !!(game.urole && game.urole.mnum === pm);
 }
-/* mongone — real body imported from js/mklev.js (C ref: mon.c:3266-3282);
- * this file's local copy was a no-op stub silently dropping the nurse's
- * self-dismissal (uhitm.c:4356, mhitm_ad_heal's `goaway` arm).  js/shk.js
- * also has a mongone under this name, but its own comment documents it as
- * a deliberate unlink-only stub after two measured-broken real wirings —
- * js/mklev.js's is the faithful port. */
-/* monflee — LOCAL NO-OP STUB DELETED.  C has exactly one monflee
- * (monmove.c:461); this file carried `function monflee(magr, n, a, b) {}`,
- * which silently swallowed every call (mhitm_ad_tlpt at :2981 and the
- * known_hitum check above), so no monster ever entered the fleeing state
- * through js/uhitm.js.  The real body now lives in js/makemon.js (replacing
- * the `not yet ported: monflee` throw stub the capture-replay sweep was
- * binding) and is imported at the head of this file. */
 /* rloc — LOCAL STUB DELETED; the real body is imported from js/teleport.js.
  * It was `function rloc(magr, flags) { return true; }`: C's rloc
  * (teleport.c:1799) draws rnd(COLNO-1) + rn2(ROWNO) up to 50 times and then
@@ -8173,29 +6287,6 @@ function Role_if(pm) {
  * mhitm_ad_heal (C uhitm.c:4363) and mhitm_ad_tlpt (C uhitm.c:2945) — are
  * `(void) rloc(...)` in C, i.e. the return is discarded; they are wired to the
  * real synchronous rloc with no await and no async cascade. */
-/* C teleport.c:1949-1959 tele_restrict(mon):
- *     if (noteleport_level(mon)) {
- *         if (canseemon(mon))
- *             pline("A mysterious force prevents %s from teleporting!",
- *                   mon_nam(mon));
- *         return TRUE;
- *     }
- *     return FALSE;
- *
- * Was `return false`, the same measured-false absence this port carried in
- * js/mhitu.js (tele_restrict_mu): dat/medusa-3.lua, dat/juiblex.lua,
- * dat/orcus.lua and the four Planes all open with des.level_flags(...,
- * "noteleport"), js/sp_lev.js:1340 writes game.level.flags.noteleport from
- * that call, and noteleport_level() has been fully ported in js/makemon.js
- * (:4517) all along — only the read was missing.  A constant FALSE here makes
- * the two mhitm call sites below (uhitm.c:2945 mhitm_ad_tlpt and uhitm.c:4363
- * mhitm_ad_heal) run rloc()'s rnd(COLNO-1)/rn2(ROWNO) rejection loop on levels
- * where C refuses to teleport at all — an RNG hole, not a harmless default.
- * js/makemon.js still EXPORTS a throw-stub named tele_restrict and
- * js/teleport.js exports none, which is why the capture-replay sweep resolves
- * this name to the stub and reports CRITICAL; that pre-existing three-spelling
- * split is NOT resolved here (it needs one shared body and a wider re-import
- * pass), only the two live constant-FALSE readers. */
 function tele_restrict(magr) {
     if (noteleport_level_uh(magr)) {
         if (canseemon(magr))
@@ -8231,10 +6322,6 @@ function permapoisoned(otmp) {
 function cloneu() {
     return false; /* stub */
 }
-/* mhitm_really_poison — C ref: uhitm.c:3098-3117. Helper for
- * mhitm_ad_drst's "mhitm" arm (also called from mhitm_ad_phys for
- * poisoned weapons, out of this packet's scope); its callers already gate
- * on `!negated && !rn2(8)`, so this body itself is unconditional. */
 function mhitm_really_poison(magr, mattk, mdef, mhm) {
     if (game.vis && canspotmon(magr))
         pline('%s %s was poisoned!', s_suffix(Monnam(magr)), mpoisons_subj(magr, mattk));

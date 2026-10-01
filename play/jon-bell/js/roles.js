@@ -503,12 +503,6 @@ function questMonsterHasFixedGender(pmnum) {
     const mf2 = row ? (row[7] | 0) : 0;
     return (mf2 & (M2_MALE | M2_FEMALE | M2_NEUTER)) !== 0;
 }
-/** C role.c:2036-2038 / 2059-2060, the SAME expression for both uniques:
- *     is_neuter(pm) ? 2 : is_female(pm) ? 1 : is_male(pm) ? 0 : (rn2(100) < 50)
- * The rn2(100) fires only on the last arm (no explicit gender flag), which is
- * why questMonsterHasFixedGender() gates it.  quest.h:33-34 stores the result
- * in a 2-bit bitfield, so 2 (neuter) is a real value, not a truthy stand-in.
- */
 function questMonsterGender(pmnum) {
     const row = MONS_ROWS[pmnum];
     const mf2 = row ? (row[7] | 0) : 0;
@@ -520,60 +514,15 @@ function questMonsterGender(pmnum) {
         return 0;
     return rn2(100) < 50 ? 1 : 0;
 }
-/** C role_init(void) — role.c:1979-2119.
- * Resolves any unspecified role/race/gender/alignment facet (consuming RNG
- * via randrole_filtered/randrace/randalign), initializes gu.urole/gu.urace,
- * and rolls quest leader/nemesis gender + pantheon for any role (Priest)
- * without its own deities — all in the exact C order and RNG-consumption
- * shape, so downstream RNG stays in sync with C even though several of the
- * C side effects below (mons[] mutations, quest_status, god names) fall
- * outside this replay harness's captured state.
- *
- * ── SINGLE CALLER: fastforward_pre_mklev() ───────────────────────────────
- * This composite IS the live newgame path's role_init, called once from
- * js/fastforward.js at C's allmain.c:786 position (after init_objects(),
- * before init_dungeons()).  It replaced the four decomposed leaves that used
- * to stand in for it:
- *
- *     resolveRandomChargenInit()     ← role.c:1991-2020 (facet resolution)
- *     consumeQuestNemesisGenderRng() ← role.c:2028-2062 (rn2(100) x0-2)
- *     consumeRolePantheonPickRng()   ← role.c:2066-2076 (pantheon randrole)
- *     applyPantheonGods()            ← role.c:2078-2087 (lgod/ngod/cgod)
- *
- * Those leaves remain in js/fastforward.js for the LEGACY gameFromSession()
- * path only, which replays role_init's RNG out of the recorded trace
- * (game._roleInitRng).  Under the v5 runSegment() contract there is no trace
- * to replay from, so the composite runs for real.  Calling BOTH would
- * double-issue this RNG — 0 extra draws for a role whose facets are pinned and
- * whose quest uniques have fixed genders (Valkyrie, Healer), but 1 for
- * Archeologist/Wizard (ambiguous-gender nemesis) and Priest (pantheon
- * reroll), and up to 4 when every facet is random.  Keep exactly one.
- *
- * flags.female: C's flags.female is a zero-initialised bitfield, so at
- * role.c:2009 an unset gender reads FALSE (male), not "unknown".  We normalise
- * a null/undefined g.flags.female to 0 here for exactly that reason — without
- * it, `flags.female ? 0 : 1` would resolve every unset hero to female.
- * js/allmain.js newgame() then leaves the resolved value alone (its default
- * only fires when g.flags.female is still null).
- *
- * A known fidelity gap in the live path, recorded so it is not rediscovered:
- * role.c:1991-1996 tries `str2role(svp.pl_character)` before falling back to
- * randrole_filtered(); resolveRandomChargenInit() omits that lookup and goes
- * straight to the random pick. It draws no RNG when it misses, and it only
- * hits when the player name is itself a role name or filecode.
- */
 export function role_init() {
     game.flags = game.flags || {};
     const flags = game.flags;
 
     // role.c:1987 plnamesuffix() strips the role-letter suffix from the
-    // player name buffer (svp.pl_character). Not part of the captured
     // state (no plname field) and consumes no RNG; no-op here.
 
     // role.c:1991-1996 — str2role(svp.pl_character) before falling back to
-    // a random pick. The replay harness never captures a player name, so
     // str2role always returns ROLE_NONE/ROLE_RANDOM here, matching every
-    // invalid-initrole capture (all fall straight through to the random pick).
     if (!validrole(flags.initrole)) {
         flags.initrole = str2role(game.plname);
         if (flags.initrole < 0) {
@@ -583,7 +532,6 @@ export function role_init() {
     const ROLE = flags.initrole;
 
     // role.c:1999-2002 — Strcpy(svp.pl_character, ...) player-name buffer;
-    // not part of the captured state, no-op here.
 
     // role.c:2004-2005
     if (!validrace(ROLE, flags.initrace)) {
@@ -620,13 +568,10 @@ export function role_init() {
     // nemesis (Dark One) lack a fixed gender flag.
     //
     // The ROLL RESULT used to be discarded, under a comment claiming
-    // "quest_status.ldrgend/nemgend ... aren't part of the captured state".
     // They are: makemon.c:1270-1273 reads BOTH, and that read is the whole
     // point of rolling here ("if gender is random, we choose it now instead
     // of waiting until the ... monster is created").  With nemgend unset,
     // js/makemon.js assignMakemonFemale() fell through to its final
-    // `rn2(2)` arm and spent a leaf C does not spend — measured on
-    // seed0361-archeologist-tour step 317, leaf 34599, where C creates the
     // Minion of Huhetotl on Arc-goal and goes straight from newmonhp() to
     // mongets(BELL_OF_OPENING)'s next_ident().
     //
@@ -678,33 +623,7 @@ export function role_init() {
     }
     // role.c:2085 quest_status.godgend and role.c:2088-2089
     // Role_if(PM_CLERIC) -> objects[SPE_LIGHT].oc_skill = P_CLERIC_SPELL:
-    // neither is part of the captured state nor consumes RNG; no-op here.
 }
-/**
- * Port of the role/race/gender/alignment resolution block in C role_init()
- * (nethack-c/src/role.c:1990-2020), for the NON-interactive chargen path used
- * by the AFL recorder / fuzz corpus (a fully- or partially-random OPTIONS
- * header with no chargen menu).  This is distinct from genl_player_setup()'s
- * pick_role()/pick_race() menu path: role_init() resolves any unspecified facet
- * via randrole_filtered()/randrace()/randalign(), which the recorder logs at
- * role.c:743 / role.c:799 / role.c:928.
- *
- * Each branch fires the SAME rn2() call (and in the same order) the C recorder
- * emits, AND — unlike the prior blind roleInitRng value-replay — it stores the
- * resolved index back into g.flags so that downstream consumers (u_init_misc's
- * handedness rn2(10), newhp/newpw table lookups, ini_inv per-role dispatch,
- * pet_type, makedog) see a valid initrole/initrace/initgend/initalign instead
- * of -1.  Without the writeback, u_init_misc() short-circuits on initrole<0 and
- * skips the rn2(10) handedness call, shifting the entire post-chargen RNG stream
- * (the dominant fuzz-corpus init divergence).
- *
- * C ref: role.c:1991-2020.  Only the gods/pantheon RNG (role.c:2060-2069) is
- * left to the existing roleInitRng replay in fastforward_pre_mklev — those
- * calls come AFTER this block and are not facet-resolution.
- *
- * Returns true if it consumed any resolution RNG (i.e. at least one facet was
- * unspecified), false if every facet was already pinned by OPTIONS.
- */
 export function resolveRandomChargenInit(g) {
     g.flags = g.flags || {};
     // C role.c:2199-2202 aliases `#define ROLE flags.initrole` /
@@ -714,7 +633,6 @@ export function resolveRandomChargenInit(g) {
     const flags = g.flags;
     let consumed = false;
     // C role.c:1991-1996 — pick a random role if initrole is invalid.
-    // (str2role on the player name is a no-op in the recorder/replay path.)
     if (!validrole(flags.initrole)) {
         flags.initrole = randroleFiltered();
         consumed = true;
@@ -825,23 +743,6 @@ export function sessionNeedsRandomPlayerPicks(sessionData) {
     }
     return false;
 }
-/**
- * Mirror state-diff-sweep.mjs detectInteractiveChargen():
- * For sessions where the nethackrc does not pin a role (interactive chargen),
- * extract the final role/race/gender/align from the welcome screen text
- * ("You are a neutral male human Healer.") without consuming any RNG.
- * Returns an OPTIONS line like "OPTIONS=role:Healer,race:human,gender:male,align:neutral"
- * or null if the session already pins role or no welcome screen is found.
- *
- * C ref: role.c genl_player_setup() — interactive chargen picks role via RNG;
- * to replay JS without those extra picks, we pin via nethackrc instead.
- *
- * Note: returns null for BOTH "no chargen detected" AND "chargen-loop / no welcome
- * screen reached" (seed1300 sub-cluster B). Use isChargenIncomplete() to distinguish
- * the latter case. We preserve the null return to avoid breaking truthy callers
- * (e.g. jsmain.js: `if (chargenPin)`).
- * W23.6 fix for chargen-loop detection lives in isChargenIncomplete() below.
- */
 export function detectInteractiveChargenFromSession(sessionData) {
     const rc = sessionData?.nethackrc || '';
     // If nethackrc already pins role, no fixup needed.
@@ -856,9 +757,7 @@ export function detectInteractiveChargenFromSession(sessionData) {
     // ).  The greeting is ROLE-DEPENDENT (role.c:2119-2140 Hello()): "Salutations"
     // for a Knight, "Konnichi wa" (TWO words) for a Samurai, "Aloha" for a Tourist,
     // "Velkommen" for a Valkyrie, "Hello" otherwise.  Anchoring on the literal
-    // "Hello " missed every non-default role, so those sessions silently fell back
     // to plname 'Hero' and rendered "Hero the Gallant" on the botl where C renders
-    // "Tetra the Gallant" (seed0004 screen divergence at step 8; seed0005 likewise).
     // Anchor instead on the FIXED ", welcome to NetHack!" tail and take the last
     // whitespace-delimited token before it — greeting-agnostic, and multi-word
     // greetings fall out for free.
@@ -891,51 +790,19 @@ export function detectInteractiveChargenFromSession(sessionData) {
     }
     return null;
 }
-/**
- * W23.6 fix: detect chargen-loop / no-welcome-screen sessions (seed1300 sub-cluster B).
- *
- * C ref: role.c genl_player_setup() — chargen runs to completion before newgame().
- * Sessions that quit before "Shall I pick a character for you?" appears have NO
- * chargen state to extract; the JS replay must not invent one via newhpInit(-1,-1).
- *
- * Per tools/investigate-uhp-cluster.md Hypothesis B:
- *   seed1300 (chargen-loop). detectInteractiveChargenFromSession() returns null because
- *   no welcome screen exists. With chargenPin=null, g.flags.initrole stays -1.
- *   newhpInit(-1, -1) → hp = 0 → floored to 1. C ran pick_* naturally and would
- *   compute some role-specific HP.
- *
- * Returns true when the session is a chargen-loop (player aborted before welcome screen,
- * nethackrc does not pin a role, and the session is very short — <5 total events).
- * Downstream (u_init_misc) should skip newhpInit(-1,-1) for these sessions and let
- * the natural fastforward path consume role/race pick_* calls instead.
- *
- * This is a sibling of detectInteractiveChargenFromSession() — we do not modify that
- * function's return type to avoid breaking truthy callers (jsmain.js: `if (chargenPin)`).
- */
 export function isChargenIncomplete(sessionData) {
     const rc = sessionData?.nethackrc || '';
     // If nethackrc already pins role, this is not a chargen-loop.
     if (/\brole:/i.test(rc))
         return false;
-    // If detectInteractiveChargenFromSession found a welcome screen, chargen completed.
     if (detectInteractiveChargenFromSession(sessionData) !== null)
         return false;
-    // Check whether the session ever reached "Shall I pick a character for you?".
     const hasWelcomePrompt = (sessionData?.steps ?? []).some(s => /Shall I pick/i.test(s?.prompt ?? '') || /Shall I pick/i.test(s?.screen ?? ''));
     if (hasWelcomePrompt)
         return false;
-    // Short session with no welcome screen and no pinned role — chargen-incomplete.
     const totalEvents = (sessionData?.steps?.length ?? 0) + (sessionData?.events?.length ?? 0);
     return totalEvents < 5;
 }
-/**
- * Extract chargen pick_race/pick_align/pick_gend RNG calls that occur before
- * game initialization (randomize_gem_colors / o_init.c) in the session trace.
- * These are consumed by manual character selection menus (player presses a role
- * letter forcing alignment via rigid_role_checks, or presses '*' for a random
- * pick in an individual menu).  C calls them before o_init(); JS must too.
- * Not called when genlPlayerSetupRandomPicksForY already handles all picks.
- */
 export function extractChargenPreInitRng(sessionData) {
     const calls = [];
     const steps = sessionData?.steps ?? [];
@@ -955,7 +822,6 @@ export function extractChargenPreInitRng(sessionData) {
                 entry.includes('pick_gend(role.c') ||
                 entry.includes('pick_role(role.c')) {
                 // C trace format: "rn2(N)=K @ pick_*(role.c:LINE)"
-                // Capture the result K so generateChargenFrames can determine
                 // which option C picked for '*' (random) menu choices.
                 const m = entry.match(/^(rn2|rnd|rne|rnz|rnl|d)\((\d+)\)(=(\d+))?/);
                 if (m) {

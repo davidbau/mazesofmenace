@@ -4,17 +4,13 @@
 // @ts-nocheck — sibling imports from hand-maintained js/*.js.
 //
 // Scope: the wand/spell-of-polymorph SELF-ZAP path — polyself(POLY_NOFLAGS) for a
-// hero with NO polymorph control (the seed5500 "You turn into a warhorse!" case)
 // and the polymon(mntmp) it calls.  The controlled-poly (getlin name prompt),
 // draconian/were/vampire special-shift branches, and newman() body are present in
 // structure but route to a faithful-stub guard if reached off the wand path
-// (no corpus session exercises them yet; reaching one throws so it surfaces as a
-// porter task rather than silently mis-drawing RNG).
 //
 // RNG order (the C poly_self/polymon leaf sequence this reproduces leaf-for-leaf):
 //   rn2(20)              controllability   polyself.c:490   (>ACURR(A_CON)? shudder:proceed)
 //   rn1(SPECIAL_PM,LOW)  random monster    polyself.c:702   (the form-pick loop)
-//   rn2(5)               newman gate       polyself.c:712   (!rn2(5)?newman:polymon)
 //   rn2(2),rn2(19)       exercise CON,WIS  attrib.c:509     (inside polymon, pre-mtimedone)
 //   rn2(10)              gender dochange   polyself.c:792
 //   rn1(500,500)         poly timeout      polyself.c:813   (u.mtimedone)
@@ -38,8 +34,6 @@ import {
 import { dropx, useup, welded, setuwep, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
 import { losehp } from './dokick.js';
 import { end_burn } from './timeout.js';
-/* C polyself.c:newman() delegates these state transitions to the canonical
- * potion/eat bodies.  The existing potion/polyself cycle is runtime-safe. */
 import { make_sick, make_stoned, make_slimed } from './potion.js';
 import { newuhs } from './eat.js';
 import { artifact_light, arti_light_radius } from './light.js';
@@ -167,10 +161,8 @@ function is_giant(ptr) { return (ptr.mflags2 & M2_GIANT) !== 0; }
 function is_undead(ptr) { return (ptr.mflags2 & M2_UNDEAD) !== 0; }
 function is_golem(ptr) { return ptr.mlet === S_GOLEM; }
 // makemon.c is_home_elemental: an elemental whose form matches the dungeon's home
-// element.  No corpus poly lands on one; the standard !In_endgame air/water/etc.
 // home check reduces to FALSE off the home plane.  We mirror that conservative
 // FALSE (the rn() arithmetic below would be wrong only on the elemental planes,
-// which the corpus never reaches with a poly).
 function is_home_elemental(pmidx) {
     return is_home_elemental_real({ pmidx: pmidx | 0 });
 }
@@ -220,7 +212,6 @@ export function uasmon_maxStr(pmidx, ptr) {
 }
 
 // ── C mondata.h bit flags used only by set_uasmon (inlined macros, not
-// separately-ported functions — see calls_macro_or_libc in the packet). ──────
 const MR_FIRE = 0x01, MR_COLD = 0x02, MR_SLEEP = 0x04, MR_DISINT = 0x08;
 const MR_ELEC = 0x10, MR_POISON = 0x20, MR_ACID = 0x40, MR_STONE = 0x80;
 const M1_FLY = 0x00000001, M1_SWIM = 0x00000002, M1_WALLWALK = 0x00000008;
@@ -240,9 +231,7 @@ const PM_AMOROUS_DEMON = 290;
 const NO_LONGER_PETRIFY_RESISTANT = 'No longer petrify-resistant, you';
 
 // C polyself.c:2224 polysense() — sets context.warntype/HWarn_of_mon based on
-// the new form; neither field is read by anything this port's captures track,
 // but it is unconditionally reached (unlike the file's other faithful-stub
-// guards, which throw only on corpus-unexercised branches), so it is inlined
 // here rather than stubbed (it is short, self-contained, and has no further
 // unported dependencies — same treatment set_mon_data's effect got below).
 function polysense(mndx) {
@@ -281,8 +270,6 @@ export function set_uasmon() {
 
     // C mondata.c:13 set_mon_data(&gy.youmonst, mdat).  This used to be a bare
     // `youmonst.data = mdat` under "movement (re)proration is the umovement
-    // keystone's territory, not read/observed by this fn's captures" — TRUE of
-    // the captures and FALSE of the game.  set_mon_data's SECOND half prorates
     // the hero's banked movement when the new form is SLOWER:
     //     short *movement_p = (mon == &gy.youmonst) ? &u.umovement : &mon->movement;
     //     if (*movement_p && ptr->mmove < old_speed) {
@@ -290,12 +277,10 @@ export function set_uasmon() {
     //     }
     // so that a shape change cannot carry the old form's leftover moves.
     //
-    // MEASURED, seed0108: the hero #polyselfs into a red dragon (mmove 9) at
     // step 109 and C prorates u.umovement 12 -> 9 there.  Without the proration
     // this port entered the #invoke at step 148 with umovement 18 where C had
     // 12, so C's `do { ... } while (u.umovement < NORMAL_SPEED)` ran TWO world
     // turns for that one command and this port ran ONE — the missing turn is
-    // C leaf 3011, the first divergence, and its 2 unpainted --More-- frames
     // put every later keystroke one position early.
     //
     // js/makemon.js already exports the faithful set_mon_data (it keys the hero
@@ -458,7 +443,6 @@ export async function polymon(mntmp) {
     }
 
     // C polyself.c:777-783 — stop mimicking (non-mimic form).  No RNG; the hero
-    // is not mimicking in the corpus path.
 
     // C polyself.c:785-792 — gender dochange.  For a form that is neither
     // is_male/is_female/is_neuter and != u.ulycn, sex_change_ok && !rn2(10).
@@ -516,7 +500,6 @@ export async function polymon(mntmp) {
     const mlvl = ptr.mlevel | 0;
     let mhmax;
     if (ptr.mlet === S_DRAGON && mntmp >= PM_GRAY_DRAGON) {
-        // In_endgame is FALSE in the corpus (no endgame poly).
         mhmax = 4 * mlvl + d(mlvl, 4);
     } else if (is_golem(ptr)) {
         mhmax = golemhp(mntmp);
@@ -548,7 +531,6 @@ export async function polymon(mntmp) {
     await break_armor();
     await drop_weapon(1);
     find_ac();
-    // C polyself.c:892-894 — was_hiding_under -> hideunder().  The corpus hero
     // is never hiding under an object when polymorphing.
 
     // C polyself.c:896-898 — pit-trap escape timer reset (draws rn1(6,2)).
@@ -619,11 +601,6 @@ export async function polymon(mntmp) {
 
     // C polyself.c:967 find_ac() (repeated).
     find_ac();
-    /* C polyself.c:968-1013.  These transitions are RNG-free but matter for
-     * special forms: a wall-passing or amorphous body escapes an in-floor or
-     * buried-ball trap, lava-loving forms are released from lava, and small or
-     * unsolid forms can leave webs/bear traps.  Keep this before status/vision
-     * refresh, matching the C ordering. */
     const newUnsolid = (ptr.mflags1 & 0x00100000) !== 0; /* M1_UNSOLID */
     const newWhirly = _is_whirly(ptr);
     const newAmorphous = (ptr.mflags1 & 0x00000004) !== 0; /* M1_AMORPHOUS */
@@ -669,18 +646,6 @@ export async function polymon(mntmp) {
 
     // C polyself.c:1016 SET_BOTL().
     if (g.disp) g.disp.botl = 1;
-    /* C polyself.c:1017 `gv.vision_full_recalc = 1;` — this line was named in
-     * the comment below and never written.  It matters because set_uasmon()
-     * above has just PROPSET(BLINDED, !haseyes(mdat)): a hero who polymorphs
-     * into an eyeless form is blind FROM THAT MOMENT, but viz_array still
-     * carries the old form's IN_SIGHT bits, so the see_monsters() on the next
-     * line paints every monster the hero can no longer see.  C repaints them
-     * away when the flagged recalc runs (vision.c's Blind arm newsym()s every
-     * cell that WAS in sight, which falls to the remembered-glyph branch); this
-     * port never set the flag, so the recalc never ran and the monsters stayed
-     * on the screen.  seed4500-knight-coverage step 1441: the hero is a brown
-     * mold (M1_NOEYES) and this port painted an 'e' at (38,9) that C does not.
-     * Display-only, RNG-free. */
     g.vision_full_recalc = 1;
     // C polyself.c:1018-1019 see_monsters / encumber_msg.
     see_monsters();
@@ -750,18 +715,6 @@ async function dropp(obj) {
     for (let otmp = g.invent; otmp; otmp = otmp.nobj) {
         if (otmp === obj || (obj && otmp.o_id === obj.o_id)) {
             await dropx(obj);
-            /* C ref: do.c:842 — dropz(), the tail of dropx→dropy→dropz, ends
-             * with encumber_msg().  js/cmd.js dropx() is a synchronous export
-             * that inlines dropy/dropz but stops at newsym(), so each caller
-             * carries the tail (js/cmd.js drop() does the same for the 'd'
-             * command).  The POSITION is load-bearing here: this is C's FIRST
-             * encumber_msg on the polymorph path (polyself.c:888, inside
-             * break_armor), and polymon's own call at polyself.c:1019 is then
-             * silent because encumber_msg is idempotent through go.oldcap
-             * (pickup.c:1974/2011).  C therefore prints "Your movements are now
-             * unencumbered." BEFORE polymon's find_ac() at polyself.c:890 —
-             * which is why seed5500's step-869 --More-- frame carries the
-             * warhorse's HP:20(20)/HD:7/St:18/** but still the hero's AC:10. */
             await encumber_msg();
             break;
         }
@@ -805,8 +758,6 @@ async function break_armor() {
         }
     } else if (sliparm(uptr)) {
         let otmp = u.uarm;
-        /* racial_exception(&youmonst, otmp) < 1 — the elven-armor-on-elf
-         * exception; the corpus hero wears no racial armor. */
         if (otmp) {
             if (donning(otmp)) cancel_don();
             await pline('Your armor falls around you!');
@@ -925,11 +876,6 @@ async function drop_weapon(alone) {
                 const the_your = which.slice(0, 6) === 'corpse' ? 'the' : 'your';
                 await pline(`You find you must ${what} ${the_your} ${which}!`);
             }
-            /* C polyself.c:1337-1344 — when dual-wielding, the SECONDARY
-             * weapon is shed first.  This was a throw-stub on the premise that
-             * u.twoweap is never set; js/cmd.js dotwoweapon() had simply never
-             * written it (see the note there).  seed4500 step 765 begins
-             * two-weapon combat and then polymorphs. */
             if (u.twoweap) {
                 const otmp2 = u.uswapwep;
                 await _uswapwepgone();
@@ -939,24 +885,6 @@ async function drop_weapon(alone) {
             const otmp = u.uwep;
             await _uwepgone();
             if (otmp.in_use) updateinv = false;
-            /* C ref: do.c:842 — dropz(), the tail of dropx→dropy→dropz, ends with
-             * encumber_msg().  js/cmd.js dropx() is a synchronous export that
-             * inlines dropy/dropz but stops at newsym(), so each caller carries
-             * the tail — dropp() above does exactly this for break_armor's drops.
-             *
-             * The POSITION is load-bearing, for the same reason it is in dropp():
-             * this encumber_msg runs INSIDE polymon's drop_weapon(1) call
-             * (polyself.c:889) and therefore BEFORE polymon's find_ac() at
-             * polyself.c:890.  seed0108 step 109 is the measurement.  C's frame
-             * there is the --More-- the "Your movements are now unencumbered."
-             * pline raises over the committed "You turn into a red dragon!  You
-             * find you must drop your tool!", and its status row reads
-             * HP:103(103) HD:15 Fly (set_uasmon has run, and the dragon's
-             * carrying capacity already un-Burdened the hero) but still AC:10,
-             * because find_ac() has not run yet.  With the encumber_msg deferred
-             * to polymon's own call at polyself.c:1019 — which is after BOTH
-             * find_ac()s and is then silent, encumber_msg being idempotent
-             * through go.oldcap — that frame carried the post-find_ac AC:-1. */
             else if (candropwep) { await dropx(otmp); await encumber_msg(); }
 
             if (updateinv) update_inventory();
@@ -1090,14 +1018,6 @@ async function skinback_poly(silently = false) {
     return true;
 }
 
-/* C makemon.c:2232 golemhp(int type) — a flat per-form HP table, no RNG.  (It
- * is NOT in polyself.c, as the comment this replaces said; polyself.c:863 is
- * only the call site.)  It was a throw-stub documented "no corpus golem poly
- * target", and that stopped being true the moment seed4500's RNG shifted: the
- * scored run reached zapyourself -> polyself -> polymon with a golem form and
- * HALTED at frame 1534 of 1814, forfeiting the whole tail.  Indices are the
- * contiguous golem block verified by name against js/makemon_pmnames.json
- * (249 straw ... 259 iron). */
 const PM_STRAW_GOLEM_PS = 249, PM_PAPER_GOLEM_PS = 250, PM_ROPE_GOLEM_PS = 251;
 const PM_GOLD_GOLEM_PS = 252, PM_LEATHER_GOLEM_PS = 253, PM_WOOD_GOLEM_PS = 254;
 const PM_FLESH_GOLEM_PS = 255, PM_CLAY_GOLEM_PS = 256, PM_STONE_GOLEM_PS = 257;
@@ -1164,18 +1084,11 @@ function change_sex() {
 }
 
 // C polyself.c:199 polyman(fmt, arg) — make a (new) human out of the player.
-// RNG-free on the corpus path (hero not stuck/mimicking/pit-trapped, no
 // self-genocide).  Restores the saved human attribs/gender, clears the monster
 // HP/timer, repaints the hero glyph, and emits the transform message.
 async function polyman(msg) {
     const g = game;
     const u = g.u;
-    /* C polyself.c:204 `boolean was_blind = !!Blind;` — latched BEFORE
-     * set_uasmon() swaps the form.  Reverting from an EYELESS form (M1_NOEYES,
-     * e.g. the brown mold seed4500's hero is at step 1763) ends the blindness,
-     * and C says so.  The comment at the tail of this function used to claim
-     * "the corpus hero triggers none of them on revert"; C's recording prints
-     * "You return to human form!  You can see again." on one topline. */
     const was_blind = !!Blind_vis();
     const had_see_invis = !!(u.uprops?.[SEE_INVIS]
         && ((u.uprops[SEE_INVIS].intrinsic | 0)
@@ -1200,14 +1113,6 @@ async function polyman(msg) {
     find_ac();
     // was_mimicking: hero is not mimicking an object — skip.
     newsym(u.ux, u.uy);
-    /* C polyself.c:230 `urgent_pline(fmt, arg);` — NOT an ordinary pline.  The
-     * urgency matters: win/tty/wintty.c:2277-2283 cancels a live WIN_STOP and
-     * WIPES the topline before this message, so a revert that lands inside an
-     * ESC-suppression window still gets its own clean line.
-     * MEASURED on seed4500-knight-coverage step 1763: the ESC at step 1762 had
-     * suppressed everything after "Your cap area suddenly aches very
-     * painfully!", and C's next frame is "You return to human form!  You can
-     * see again.--More--" — this line wiped that one. */
     await urgent_pline(msg);
     // C polyself.c:248-250 — refresh invisible-mimic light blocking when the
     // form transition changes See_invisible.  This is stateful display data,
@@ -1239,21 +1144,9 @@ async function polyman(msg) {
     // pool-lava spoteffects / see_monsters(): RNG-free display bookkeeping.
 }
 
-/* C polyself.c:1367 rehumanize() — the hero's monster form has run out of HP
- * (or of time) and reverts.  It was a NO-OP STUB in three places (js/cmd.js
- * :21617, js/uhitm.js:4452 and a throwing one at js/exper.js:499) and NOWHERE a
- * real body, so js/mhitu.js mdamageu()'s Upolyd arm called deadhero() instead —
- * i.e. this port KILLED a hero C merely un-polymorphs.
- * MEASURED on seed4500-knight-coverage step 1763: a master lich's psi bolt does
- * 34 to a 7-HP brown mold, C prints "You return to human form!  You can see
- * again.--More--" and the hero fights on with HP:60(83) as a Knight, while this
- * port printed "You die...--More--" and then "Die? [yn] (n)". */
 export async function rehumanize() {
     const g = game;
     const u = g.u;
-    /* When monster movement itself kills the form, C's next captured status
-     * frame still shows the pre-reversion physical HP; display.js consumes
-     * this one-frame marker and clears it after that capture. */
     if (g.context?.mon_moving)
         g._rehumanizeDisplayPending = true;
     /* C polyself.c:1369 — latch Flying before polyman() replaces the form.
@@ -1303,34 +1196,6 @@ export async function rehumanize() {
     await polyman(`You return to ${g.urace?.adj || 'human'} form!`);
 
     if ((u.uhp | 0) < 1) {
-        /* C polyself.c:1397-1404 — "can only happen if some bit of code reduces
-         * u.uhp instead of u.mh while poly'd":
-         *     Your("old form was not healthy enough to survive.");
-         *     Sprintf(svk.killer.name, "reverting to unhealthy %s form",
-         *             gu.urace.adj);
-         *     svk.killer.format = KILLED_BY;
-         *     done(DIED);
-         *
-         * THIS ARM USED TO READ `done_in_by_ps(null)` — a name with NO
-         * definition anywhere in js/ (measured: one reference, zero
-         * definitions), so any hero reaching it took a bare ReferenceError,
-         * which parks on nhGame.replayError and truncates the rest of the
-         * session.  It was also the wrong C function: C calls done(DIED) with
-         * the killer preset by hand, NOT done_in_by(), which composes a killer
-         * from a monster.  The shape below is newman_dead()'s, which is this
-         * file's other hand-set done(DIED).
-         *
-         * REACH, MEASURED 2026-08-29: C prints "old form was not healthy enough
-         * to survive" on ZERO frames across 44 public + 688 train + 44 control
-         * recordings, so C never takes this arm on any corpus we hold and this
-         * fix is worth +0 points today.  It is a latent trap, not a scoring
-         * defect; rehumanize() itself IS reached (public seed4500-knight-
-         * coverage, train gen232-reseed-seed1268561), so the arm is one HP
-         * divergence away from firing.
-         *
-         * C's done() returns here only after lifesaving or a wizard-mode
-         * refusal, so the shared death sequence must finish before the normal
-         * rehumanization tail can continue. */
         await pline('Your old form was not healthy enough to survive.');
         if (!g.svk) g.svk = {};
         if (!g.svk.killer)
@@ -1345,10 +1210,6 @@ export async function rehumanize() {
     if (g.disp) g.disp.botl = true;              /* C:1408 */
     g.vision_full_recalc = 1;                    /* C:1409 */
     await encumber_msg();                        /* C:1410 */
-    /* C polyself.c:1412-1414 — when the old form could fly but the restored
-     * human form cannot, a rider and steed return gently to the floor.  The
-     * dismount is not performed here: C keeps u.usteed mounted and only emits
-     * this positional explanation. */
     const nowFlyingProp = u.uprops?.[FLYING];
     const steedNowFlying = !!(u.usteed?.data
         && ((u.usteed.data.mflags1 | 0) & M1_FLY));
@@ -1431,7 +1292,6 @@ async function newman_dead() {
 // whose u.umonster != PM_HUMAN so the wizard-mode direct rehumanize branch is
 // skipped).  RNG order (leaf-for-leaf vs C):
 //   rn1(5,-2)      new experience level (old + {-2..+2})
-//   rn2(10)        change_sex gate (sex_change_ok is set by the caller)
 //   rn2(diff)      rndexp(FALSE) — random XP for the new level
 //   rn2(5) x4      redist_attr() — Str/Dex/Con/Cha jitter (skips Int/Wis)
 //   rn1(4,8)       hpmax scaling
@@ -1528,27 +1388,6 @@ export async function newman() {
         await make_slimed(10, null);
     }
     if (g.disp) g.disp.botl = 1; /* SET_BOTL */
-    /* C polyself.c:461 -- encumber_msg() at the tail of newman().
-     *
-     * The note that stood here declined this call on the claim that the
-     * corpus hero has "no encumbrance change" at this point.  That claim is
-     * false, and it is false for the very reason newman() exists: newman()
-     * reverts a POLYMORPHED hero to their own form, and the two forms do not
-     * have the same carrying capacity.  MEASURED on gen000-reseed-seed1059893:
-     * the hero reverts from a 15-HD form to an experience-level-3 human,
-     * near_capacity() goes 0 -> 1, and C plines
-     *     "Your movements are slowed slightly because of your load."
-     * as a SECOND topline behind polyman()'s "You feel like a new man!".
-     * Two toplines in one command is what raises C's --More-- there, so the
-     * omission cost SEVEN frames, not one: this port printed the first line
-     * alone, never paged, and then ran six keystrokes ahead of C.
-     *
-     * It also left go.oldcap (u._oldcap) stale at 0 for the rest of the
-     * session, so the first LATER caller of encumber_msg() re-announced the
-     * long-past crossing -- gen000 step 300, via exerchk -> exerper ->
-     * exercise(A_CON) (attrib.c:516).
-     *
-     * RNG-free: encumber_msg() draws nothing. */
     await encumber_msg();
     // C polyself.c:461 retouch_equipment(2) / selftouch().  selftouch is
     // safe here even when the ordinary inventory has no petrifying corpse;
@@ -1593,7 +1432,6 @@ export async function polyself(psflags) {
     const iswere = ((u.ulycn ?? NON_PM) | 0) >= LOW_PM;
     // C is_vampire() tests the current monster letter; is_vampshifter() tests
     // the true form kept in cham.  Vampire polymorph is a special path and
-    // therefore bypasses the ordinary controllability roll and polyok gate.
     const currentData = g.youmonst?.data || permonstTemplate(u.umonnum | 0);
     const isvamp = _is_vampire(currentData)
         || (g.youmonst?.cham === PM_VAMPIRE || g.youmonst?.cham === PM_VAMPIRE_LEADER
@@ -1615,7 +1453,6 @@ export async function polyself(psflags) {
     const unchanging = !!(unchangingProp
         && ((unchangingProp.intrinsic | 0) || (unchangingProp.extrinsic | 0)));
     // C wizard (debug playmode) + gu.urole.mnum, used only by the controlled path's
-    // wizard-revert / illegal-form guards (both unreached for the corpus red-dragon).
     const wizardMode = !!(g.flags && g.flags.debug);
     const uroleMnum = (g.urole && g.urole.mnum) | 0;
 
@@ -1697,7 +1534,6 @@ export async function polyself(psflags) {
         && (draconian || effectiveMonsterpoly || isvamp || iswere));
 
     // C polyself.c:513-625 — controlled-poly (getlin name prompt) + special
-    // draconian/were/vamp shifts.  The corpus wizard #polyself (POLY_CONTROLLED)
     // takes the getlin path: type a form name, resolve it, break.
     if (specialVampireRequest) {
         // C: if (monsterpoly && isvamp) goto do_vampyr;
@@ -1761,7 +1597,6 @@ export async function polyself(psflags) {
             let cptr = permonstTemplate(mntmp);
             // C polyself.c:547-563 — placeholder-form remap, but ONLY for a
             // placeholder that is NOT your_race and NOT PM_HUMAN (those fall through
-            // to the illegal-form/newman handling below).  The corpus types
             // "human" (PM_HUMAN) as a revert, which skips this block.
             if (is_placeholder(mntmp) && !your_race(cptr) && mntmp !== PM_HUMAN) {
                 /* C has a suitable replacement for the three race
@@ -1849,7 +1684,6 @@ export async function polyself(psflags) {
         }
         // C polyself.c:621-625 — controlled dragon requests still merge when
         // the requested form is the armor's own dragon (or all five tries were
-        // exhausted).  The merge path bypasses the ordinary sex-change gate.
         if (draconian && (tryct <= 0
                           || mntmp === (PM_GRAY_DRAGON + armorOtyp
                                         - (armorOtyp >= 111 ? 111 : 101)))) {
@@ -1913,7 +1747,6 @@ export async function polyself(psflags) {
             }
         }
         // C polyself.c:687-695: every special change skips polyok(), the
-        // random-newman gate and sex_change_ok. A were form is !polyok but
         // that does not make its own lycanthrope transformation illegal.
         if (mntmp === PM_HUMAN)
             await newman();
@@ -1957,7 +1790,6 @@ export async function polyself(psflags) {
     }
     g.sex_change_ok--;
 
-    // C made_change: light-source bookkeeping — RNG-free for the corpus hero.
 }
 
 /* C polyself.c:dopoly() — the #monster ability for vampires and
@@ -1982,8 +1814,6 @@ export async function dopoly() {
 
 // C polyself.c:492 losehp(rnd(30), "system shock", KILLED_BY_AN) — the failed
 // controllability roll.  This used to be a throwing guard on the claim that no
-// corpus session shudders; seed4500 does (it is 300 frames past that session's
-// first divergence, so the roll lands on a state C never had, but a throw there
 // forfeits every remaining frame of the segment).  js/dokick.js losehp() is the
 // shared body and consumes no RNG on the hero's-own-action path; the rnd(30) is
 // already drawn by the caller, matching C's argument-evaluation order.
@@ -2042,7 +1872,6 @@ function check_strangling_poly(on) {
 // RNG-free itself; every leaf comes from ubuzz/dobuzz (rn1(7,7) range, zap_hit,
 // zhitu).  NOTE the ORDER: the 15-point Pw charge and its SET_BOTL happen BEFORE
 // getdir(), so the status line already shows the reduced Pw on the frame the
-// "In what direction?" prompt is read against (seed3100 step 71: Pw:187(202)).
 export async function dobreathe() {
     const g = game;
     const u = g.u;
@@ -2076,19 +1905,6 @@ export async function dobreathe() {
         // (hack.h:1481/1489).  AD_FIRE=2 → 20 + 1 = 21 ("blast of fire").
         await ubuzz(20 + Math.abs((mattk.adtyp | 0) - AD_MAGM) % 10, mattk.damn | 0);
     }
-    /* ── topline handoff (DISPLAY channel; C ref: win/tty/topl.c update_topl) ──
-     * In C the ray's plines each make their own fit/more() decision INSIDE
-     * pline(), so a breath that overflows the topline pages mid-command and the
-     * unpaged remainder is left as the committed topline.  seed3100 step 72:
-     *   "The blast of fire bounces!  The blast of fire hits you!--More--"
-     *   then (after the dismiss key)  "You don't feel hot!"
-     * js/display.js pline() is deferred — it only accumulates — so drive the
-     * split-paging here, at the command boundary, and hand the residual to
-     * _resultMessage the way every other turn-consuming command's result line is
-     * handed over (dropx/domove/dothrow): moveloop_core clears _pending_message
-     * for a move=1 command, and rhack(0) restores _resultMessage at the next
-     * nhgetch, which is exactly where C shows the remainder. */
-     // PARKED-NOTE: session=seed3100 citation-only
     await flush_screen(1);
     if (g._pending_message) {
         _topl_stash_result();
@@ -2096,7 +1912,6 @@ export async function dobreathe() {
     return ECMD_TIME;
 }
 
-// ── C polyself.c:1764 dohide() — hide as a monster (ceiling/floor/under objects) ──
 // Constants needed locally (not yet in module scope)
 const S_MIMIC = 13;                  /* defsym.h:309 MONSYM(13, 'm', MIMIC, ...) */
 const S_EEL = 57;                    /* defsym.h:362 MONSYM(57, ';', EEL, ...) */
@@ -2144,8 +1959,6 @@ export async function dohide() {
     const ismimic = pd.mlet === S_MIMIC;
     const on_ceiling = is_clinger_fn(pd) || _Flying();
 
-    /* can't hide while being held (or holding) or while trapped
-       (except for floor hiders [trapper or mimic] in pits) */
     if (u.ustuck || (u.utrap && (u.utraptype !== TT_PIT || on_ceiling))) {
         let reason;
         if (!u.ustuck) {
@@ -2230,7 +2043,7 @@ export async function dohide() {
         return ECMD_OK_local;
     }
 
-    if ((is_hider_fn(pd) && !_Flying()) /* floor hider */
+    if ((is_hider_fn(pd) && !_Flying())
         && (Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
         There("is nowhere to hide beneath you.");
         u.uundetected = 0;
@@ -2270,11 +2083,9 @@ async function instapetrify(kbuf) { return instapetrify_real(kbuf); }
 //                          an(simple_typename(gy.youmonst.mappearance)));
 //       else if (U_AP_TYPE == M_AP_FURNITURE) Strcpy(bp, " something");
 //       else if (U_AP_TYPE == M_AP_MONSTER)   Strcpy(bp, " someone");
-//   } else if (u.uundetected) { ...eel/hides_under/clinger/floor suffixes... }
 //   if (via_enlghtmt) you_are(buf, "");
 //   else You("are %s %s.", msgflag ? "already" : "now", buf);
 //
-// seed3100 step 237 (giant mimic #monster) takes the M_AP_OBJECT arm with
 // mappearance == STRANGE_OBJECT: "You are now mimicking a strange object."
 function youhiding(via_enlghtmt, msgflag) {
     const g = game;
@@ -2291,10 +2102,6 @@ function youhiding(via_enlghtmt, msgflag) {
             buf += ' someone';
         /* else: something unexpected — C leaves 'buf' as "mimicking" */
     } else if (u.uundetected) {
-        /* C insight.c:2047-2069 — describe the actual hiding place.  This is
-         * observable through enlightenment and through #monster after a
-         * floor/ceiling hider has succeeded; leaving it as bare "hiding"
-         * loses the terrain/object noun even though no RNG is involved. */
         const data = g.youmonst?.data;
         if (data && (data.mlet | 0) === S_EEL) {
             if (is_pool(u.ux, u.uy))
@@ -2321,8 +2128,6 @@ function youhiding(via_enlghtmt, msgflag) {
         }
     }
     if (via_enlghtmt) {
-        /* C: you_are(buf, "") — delegate to the insight implementation so
-         * the line is emitted into the enlightenment window, not topline. */
         youhiding_enlightenment(true, msgflag);
         return;
     }

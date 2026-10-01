@@ -51,14 +51,8 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
-/* objects[otyp].oc_cost — generated from nethack-c-v5/upstream/include/objects.h
- * by tools/gen-oc-cost-data.mjs.  getprice() (shk.c:4321) reads it, and every
- * shop price in the game is a rational multiple of it. */
 import { OC_COST } from './oc_cost_data.js';
 import { OC_NAME } from './oc_name_data.js';
-/* C objnam.c xname()/the()/The() — the real bodies.  This file's own `xname`
- * export (below) is a throwing sweep-fixture stub with other callers; the
- * pricing code uses xname_shk() so the two never collide. */
 import { xname_flags as xname_flags_shk, CXN_NORMAL as CXN_NORMAL_SHK,
          the as the_shk, The as The_shk, arti_cost,
          thesimpleoname as thesimpleoname_real,
@@ -146,9 +140,6 @@ function next_shkp(shkp, withbill) {
 const PAY_BUY = 1, PAY_CANT = 0, PAY_SKIP = -1, PAY_BROKE = -2;
 const FullyUsedUp = 1, PartlyUsedUp = 2, PartlyIntact = 3, FullyIntact = 4,
       KnownContainer = 5, UndisclosedContainer = 6;
-/* C hack.h:1418-1421 flags.menu_style.  options.c:7258 initoptions() defaults
- * it to MENU_FULL and no corpus nethackrc sets `menustyle`, so pay_billed_items
- * always takes the menu branch. */
 const MENU_TRADITIONAL = 0, MENU_FULL = 2;
 function _menu_style() {
     const v = game.flags?.menu_style;
@@ -204,14 +195,6 @@ function bp_to_obj(bp) {
     return bp.useup ? o_on(id, game.billobjs) : find_oid(id);
 }
 
-/* C shk.c:157 money2mon(mon, amount) — transfer gold from hero to monster.
- * Returns the amount actually paid.  C's two impossible() reports are no-ops
- * in this port (see :709); each still returns 0 the way C does.
- *
- * THE RNG SITE.  When the hero has more gold than the price (the ordinary
- * case), splitobj() splits the payment off the stack and splitobj's nextoid()
- * calls next_ident(), which draws rnd(2) — seed0002's leaf 19167,
- * `rnd(2)=1 @next_ident(mkobj.c:521)`, is exactly this split. */
 async function money2mon(mon, amount) {
     const ygold = findgold(game.invent);
 
@@ -303,10 +286,6 @@ export function saleable(shkp, obj) {
     for (let i = 0; i < shp.iprobs.length && shp.iprobs[i].iprob; i++) {
         const itype = shp.iprobs[i].itype | 0;
         if (itype === VEGETARIAN_CLASS_SALE) {
-            /* C: `if (veggy_item(obj, 0)) return TRUE;`  veggy_item (eat.c) is
-             * not ported; the only shop whose iprobs carry VEGETARIAN_CLASS is
-             * the delicatessen, and no corpus session enters one.  Named rather
-             * than answered wrongly — a deli would mis-answer FOOD here. */
             continue;
         }
         if (itype < 0 ? (itype === -(obj.otyp | 0)) : (itype === (obj.oclass | 0)))
@@ -507,19 +486,6 @@ async function make_itemized_bill(shkp) {
     return { ibillct: n, ibill };
 }
 
-/* C shk.c:1665 menu_pick_pay_items(ibillct, ibill) — the "Pay for which items?"
- * PICK_ANY menu.  Returns the number of entries selected and marks them
- * queuedpay; ESC returns 0 (C's `max(n, 0)`).
- *
- * GEOMETRY.  create_nhwindow(NHW_MENU) on tty gives an OVERLAY window, not the
- * full-screen one: tty_end_menu (wintty.c:2729) sets maxcol = max(strlen+2) and
- * wintty.c:1908 offx = min(40, 79 - maxcol), so the content column is
- * min(41, 78 - longest_line) — js/com_pager.js tty_window_offx(_, 'end').
- * seed0002 step 353's single 34-column entry puts it at column 41, which is
- * what C recorded.  end_menu prepends "" and then the prompt, so the prompt is
- * row 0 (reverse video) and row 1 is blank.
- *
- * DISPLAY-ONLY: consumes keystrokes through nhgetch() and makes no RNG call. */
 async function menu_pick_pay_items(ibillct, ibill) {
     const g = game;
     /* C:1682-1687 — first pass over ibill[] purely to width-align the prices. */
@@ -850,8 +816,6 @@ async function pay_billed_items(shkp, ibillct, ibill, stashed_gold, paidBox) {
     return true;
 }
 
-/* C shk.c:2310 buy_container — purchase all unpaid bill entries belonging to
- * one container, then report the aggregate purchase. */
 async function buy_container(shkp, indx, ibillct, ibill) {
     const e = ESHK(shkp), container = ibill[indx].obj;
     const totalcost = ibill[indx].cost | 0;
@@ -892,30 +856,6 @@ async function buy_container(shkp, indx, ibillct, ibill) {
     return bought ? 0 : 2;
 }
 
-/* C ref: shk.c:1743 dopay() — the #pay command.
- *
- * RETURNS the C ECMD result (do.h: ECMD_OK == no time, ECMD_TIME == turn
- * consumed).  C's rhack (cmd.c:4486-4493) maps the dispatched command's
- * return to svc.context.move: ECMD_OK → reset_cmd_vars() → context.move=FALSE;
- * ECMD_TIME → context.move=TRUE.  The 'p' dispatch in rhack (js/cmd.js) wires
- * this return to context.move the same way (cf. the #loot/#dip handlers).
- * Returning ECMD_OK on the early-outs is load-bearing: the "no shopkeeper /
- * can't see" arms are ECMD_OK in C (shk.c:1785/1790/1810), so they must NOT
- * leave context.move at the moveloop_core pre-rhack default of 1 — otherwise JS
- * runs a SPURIOUS per-turn world block for the no-op 'p', advancing the monster
- * moveloop one turn before the hero's NEXT move becomes visible (seed0116
- * turn-9: the pet read the stale hero square (51,7) instead of the moved
- * (50,6), flipping its set_apparxy near-check and firing the wrong rng leaf —
- * rn2(4)@dochug instead of rn2(100)@obj_resists).
- *
- * THE BUG THIS REPLACES.  Every eshk read in the old body was spelled
- * `m.eshk` — but this port stores the substruct at `mextra.eshk` (js/const.js
- * ESHK()), so `resident` was never resolved, `eshkp` fell back to `{}`, and
- * `billct` read undefined.  seed0002 step 353 typed 'p' standing next to
- * Ermenak with a 50-zorkmid shield of reflection on the bill and got
- * "You do not owe the shopkeeper anything." where C opened the itemized
- * "Pay for which items?" menu — 242 wrong frames, the whole tail of the
- * session.  The bill state itself was already correct (billct 1, price 50). */
 export async function dopay() {
     const g = game;
     g.multi = 0;
@@ -947,15 +887,6 @@ export async function dopay() {
     if (nxtm && nexttosk === 1) {
         shkp = nxtm; /* C: goto proceed */
     } else {
-        /* C youprop.h:103 Blind := ((HBlinded || EBlinded) && !BBlinded), read
-         * off u.uprops[BLINDED] — the ONE spelling this port writes (js/zap.js
-         * _set_HBlinded).  It used to read `g.flags.blind`, a field nothing in
-         * js/ ever assigns, so Blind was a constant false: a blind hero with no
-         * shopkeeper anywhere took C's FIRST arm instead of its second and got
-         * "There appears to be no shopkeeper here to receive your payment."
-         * where C says "You can't see..." (seed4500 steps 1625 and 1675).
-         * Note the two arms are BOTH reachable with sk == 0 and differ only on
-         * Blind — that is exactly what makes a dead Blind read visible here. */
         const Blind = _shk_Blind();
         const Blind_telepat = false; /* no telepathy tracking in this port */
         if ((!sk && (!Blind || Blind_telepat)) || (!Blind && !seensk)) {
@@ -1150,10 +1081,6 @@ export async function dopay() {
         const shopname = shtype_name((eshkp.shoptype | 0) - SHOPBASE);
         if (!_shk_Deaf() && !muteshk(shkp)) {
             SetVoice(shkp, 0, 80, 0);
-            /* C pline.c verbalize() — the message in double quotes.  Awaited
-             * here (unlike this file's fire-and-forget verbalize()) because it
-             * pages over the "You bought ..." line: seed0002 step 359 is that
-             * --More-- and step 360 is this line. */
             await pline('"' + Sprintf('Thank you for shopping in %s %s%s',
                                       s_suffix_shk(shkname(shkp)), shopname,
                                       !eshkp.surcharge ? '!' : '.') + '"');
@@ -1576,10 +1503,6 @@ export function in_rooms(x, y, typewanted) {
 }
 /* inside_shop (C shk.c:567) already has exactly one body in this tree, at
  * js/mklev.js:2561; imported rather than re-derived here. */
-/* C shk.c costly_spot(x, y) — is <x,y> a square whose contents are for sale?
- * Was `return false` unconditionally, which is why every floor pile inside a
- * shop rendered without its "(for sale, N zorkmids)" tail and why sellobj/
- * shop_object could never fire.  The shopkeeper's OWN square is excluded. */
 export function costly_spot(x, y) {
     if (!game.level?.flags?.has_shop)
         return false;
@@ -1598,36 +1521,10 @@ export function costly_spot(x, y) {
     return !!inside_shop(x, y)
         && !((x | 0) === homeX && (y | 0) === homeY);
 }
-/* C shk.c:2995 contained_cost(obj, shkp, price, usell, unpaid_only) — "returns
- * the price of a container's content.  the price of the 'top' container is
- * added in the calling functions."
- *
- * This was a throwing stub, and the throw was SWALLOWED rather than fatal:
- * get_cost_of_shop_item() calls it for any Has_contents() object (shk.c:2840),
- * and js/cmd.js's _look_here_single_name() wraps its doname_body() call in a
- * bare `try { } catch { viaDoname = null; }`.  So stepping onto a FULL
- * container in a shop threw here, fell out of doname, and dropped through to
- * the hand-scoped partial-namer ladder, which names the box but knows nothing
- * about prices: gen094 step 197 rendered "You see here an ice box." where C
- * renders "You see here an ice box (for sale, 473 zorkmids)." — the box's own
- * 32 plus 441 of contents.  An empty container was never affected, which is why
- * the shop tail looked ported.
- *
- * The `usell` arm calls set_cost(), still a stub in this file.  That is not a
- * new gap and it is not reachable from here: every C call site of
- * contained_cost passes usell=FALSE (shk.c:2840, :3295, :3477, :3527, and the
- * :3038 recursion propagates its caller's value), so the selling arm has no
- * live entry point in this tree.  Ported anyway, structurally, rather than
- * dropped — if set_cost lands, this works.
- *
- * RNG-free: getprice/get_cost/get_pricing_units are pure table arithmetic. */
 export function contained_cost(obj, shkp, price, usell, unpaid_only) {
     let top = obj;
     for (; (top.where | 0) === OBJ_CONTAINED_SHK; top = top.ocontainer)
         continue;
-    /* pick_obj() removes item from floor, adds it to shop bill, then puts it
-       in inventory; behave as if it is still on the floor during the
-       add-to-bill portion of that situation */
     const on_floor = ((top.where | 0) === OBJ_FLOOR_SHK
                       || (top.where | 0) === OBJ_FREE_SHK);
     let x, y;
@@ -1657,9 +1554,6 @@ export function contained_cost(obj, shkp, price, usell, unpaid_only) {
                      && (otmp.age | 0) < 20 * candleOcCost(otmp.otyp | 0)))
                 price += set_cost(otmp, shkp);
         } else {
-            /* no_charge is only set for floor items (including contents of
-               floor containers) inside shop proper; items on freespot are
-               implicitly 'no charge' */
             if (on_floor ? (!otmp.no_charge && !freespot)
                          : (otmp.unpaid || !unpaid_only))
                 price += get_cost(otmp, shkp) * get_pricing_units(otmp);
@@ -1686,9 +1580,6 @@ export function contained_gold(obj, even_if_unknown) {
     }
     return value;
 }
-/* C invent.c:3620 count_contents — count nested contents, optionally by
- * quantity, and include shop-floor objects not yet marked unpaid during a
- * new drop. */
 export function count_contents(container, nested, quantity, everything, newdrop) {
     let shoppy = false;
     if (!everything && !newdrop) {
@@ -1869,7 +1760,6 @@ export function append_price_quote(buf, eos, otyp,
     let len = (typeof eos === 'string') ? buf.length - eos.length : (typeof eos === 'number' ? eos : buf.length);
     let len2;
 
-    // If the sweep passes objects as a single arg, try to use it
     if (oc_sell_minseen !== undefined && typeof oc_sell_minseen === 'object') {
         const obj = oc_sell_minseen;
         oc_sell_minseen = obj.oc_sell_minseen;
@@ -2065,18 +1955,6 @@ export async function find_objowner(obj, x, y) {
 export async function onshopbill(obj, shkp, silent) {
     return !!(await onbill(obj, shkp, silent));
 }
-/* C shk.c:2863 oid_price_adjustment(obj, oid) — "decide whether to apply a
- * surcharge (or hypothetically, a discount) to obj if it had ID number 'oid';
- * returns 1: increase, 0: normal, -1: decrease".
- *
- * The guard here used to be `!obj.dknown` alone, on the recorded reasoning that
- * "objects[otyp].oc_name_known is always 1 in the captured corpus".  It is not:
- * C's guard is `!(obj->dknown && objects[otyp].oc_name_known)`, and the whole
- * point of the surcharge is that it applies to items the hero has SEEN but
- * whose TYPE is undiscovered.  Every unidentified item on a shop floor is
- * dknown=1 / oc_name_known=0, i.e. exactly the case the simplification deleted:
- * seed0002 step 343 priced the shop's shield of reflection at 38 zorkmids where
- * C quotes 50 (o_id 140, 140 % 4 == 0, so C imposes the 4/3 surcharge). */
 export function oid_price_adjustment(obj, oid) {
     const GEM_CLASS = 13;
     const GLASS = 19;
@@ -2112,16 +1990,6 @@ export function xname(obj) { return xname_flags_shk(obj, CXN_NORMAL_SHK); }
 /* C objnam.c:2424-2442 simpleonames(obj) — the real general port lives in
  * js/objnam.js and is imported above as simpleonames_real. */
 export function simpleonames(obj) { return simpleonames_real(obj); }
-/* C ref: pline.c impossible(const char *s, ...) — VARIADIC, and it PRINTS:
- * vpline(s, the_args) followed by pline("Program in disorder - perhaps you'd
- * better #quit."), plus a paniclog entry.  This body takes fixed parameters,
- * so its callers silently dropped their arguments (flagged by
- * tools/format-arity-lint.mjs).  The rest parameter fixes the arity.
- * KNOWN GAP, deliberately not closed here: this stub still emits NOTHING
- * where C emits two toplines.  Porting the output is not a safe drive-by —
- * impossible() firing in this port where it does not fire in C would ADD
- * toplines C never printed, which is a regression in the opposite direction.
- * Reported rather than guessed at. */
 function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 
 /* CORPSE_SHK (objects.h CORPSE = 265) is declared once below (contained_cost
@@ -2130,14 +1998,10 @@ function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 const M2_PNAME_SHK = 0x00080000;    /* monflag.h M2_PNAME */
 const the_your_shk = ['the', 'your']; /* decl.c c_common_strings.c_the_your */
 
-/* C ref: shk.c:5900-5912 staticfn shk_owns(buf, obj) — is `obj` on a shop
- * bill or sitting on a costly floor spot? Returns the owning shopkeeper's
- * possessive name, or the literal "the" fallback, or null (C's 0) when no
- * shopkeeper owns it. RNG-free. */
 function shk_owns_shk(obj) {
     const loc = _get_obj_location_shk(obj, 0);
     if (loc && (obj.unpaid
-                || ((obj.where | 0) === 1 /* OBJ_FLOOR */ && !obj.no_charge
+                || ((obj.where | 0) === 1 && !obj.no_charge
                     && costly_spot(loc.x, loc.y)))) {
         const shkp = shop_keeper(inside_shop(loc.x, loc.y));
         return shkp ? s_suffix_shk(shkname(shkp)) : the_your_shk[0];
@@ -2173,7 +2037,7 @@ export function shk_your(_buf, obj) {
 
     let prefix;
     if (chk_pm && ptr && the_unique_pm(ptr)) {
-        prefix = 'the'; /* override ownership: "the Oracle's corpse" */
+        prefix = 'the';
     } else {
         prefix = shk_owns_shk(obj);
         if (prefix == null) prefix = mon_owns_shk(obj);
@@ -2191,15 +2055,6 @@ export function Shk_Your(buf, obj) {
     return highc(s.charAt(0)) + s.slice(1);
 }
 
-/* C ref: shk.c:1039 inhishop(shkp) — is the shopkeeper in his own shop room?
- *   if (!on_level(&eshkp->shoplevel, &u.uz)) return FALSE;
- *   shkrooms = in_rooms(shkp->mx, shkp->my, SHOPBASE);
- *   return strchr(shkrooms, eshkp->shoproom) != 0;
- * JS in_rooms() is a stub, so we read the tile's roomno directly: a square is
- * in the shop room when its roomno equals eshkp->shoproom (the common single-
- * room shop) or is SHARED (a region shared with the shop).  shoplevel parity is
- * not tracked in the JS eshk substruct; the corpus shk is always on its own
- * level when it moves, so we skip the on_level guard. */
 export function inhishop(shkp) {
     const eshkp = ESHK(shkp);
     if (!eshkp) return false;
@@ -2237,22 +2092,11 @@ export function shop_object(x, y) {
                : null;
 }
 
-/* C ref: shk.c:4557 shk_fixes_damage — repair shop damage with an incantation.
- * No-op when there is no recorded damage for this shop (find_damage → NULL),
- * which is the only corpus case.  TODO: port find_damage/repair_damage. */
 function shk_fixes_damage(_shkp) {
     /* find_damage(shkp) is null for an undamaged shop → C returns immediately. */
     return;
 }
 
-/* C ref: shk.c:4880 shk_move(shkp) — shopkeeper movement.
- * Returns 1 moved, 0 didn't, -1 let m_move do it, -2 died.
- *
- * This is the seed0116 first-divergence root (leaf 6303, turn 18): the
- * shopkeeper is at home in his shop, far from the hero, so the udist<3 block is
- * skipped, satdoor is true (shk sits on his home spot eshk->shk) → appr=0, and
- * move_special's pick_move loop fires rn2(++chcnt) per eligible candidate.
- */
 export async function shk_move(shkp) {
     const g = game;
     const u = g.u || {};
@@ -2291,12 +2135,6 @@ export async function shk_move(shkp) {
                 eshkp.following = 0;
                 return 0;
             }
-            /* C shk.c:4914-4930: periodic "didn't you forget to pay?" nag.
-             * The rn2(9) rile_shk gate fires only here (close + following +
-             * moves > followmsg+4).  Not exercised by the corpus shk (it is not
-             * following).  Port the structure; the nag message + rile_shk are
-             * TODO (rile_shk unported), but the rn2(9) MUST fire to stay RNG-
-             * faithful if this branch is ever hit. */
             const moves = (g.moves | 0);
             const followmsg = (g.followmsg | 0);
             if (moves > followmsg + 4) {
@@ -2358,9 +2196,6 @@ export async function shk_move(shkp) {
             const shdy = eshkp ? (eshkp.shd?.y ?? 0) | 0 : 0;
             uondoor = ((u.ux | 0) === shdx && (u.uy | 0) === shdy);
             if (uondoor) {
-                /* C shk.c:4966-4971: badinv = carrying pick-axe/mattock (or
-                 * Fast & such on the floor).  Live JS otyps (dig.js/dogmove.js):
-                 * PICK_AXE=259, DWARVISH_MATTOCK=71. */
                 const PICK_AXE = 259, DWARVISH_MATTOCK = 71;
                 badinv = !!(carrying(PICK_AXE) || carrying(DWARVISH_MATTOCK));
                 /* Fast + sobj_at(...) refinement omitted (no Fast tracking);
@@ -2405,10 +2240,6 @@ export async function shk_move(shkp) {
     return z;
 }
 
-/* C ref: shk.c:4997 after_shk_move — re-enter-shop bookkeeping.
- * Only acts when bill_p is the special -1000 sentinel (re-derive on re-entry);
- * the corpus shk never hits this, so it is a no-op.  TODO: port the
- * check_special_room re-entry path. */
 export function after_shk_move(shkp) {
     const eshkp = ESHK(shkp);
     if (!eshkp || !inhishop(shkp)) return;
@@ -2419,13 +2250,6 @@ export function after_shk_move(shkp) {
         eshkp.bill_p = eshkp.bill || [];
 }
 
-/* C ref: shk.c:289 restshk(shkp, ghostly) — restore shopkeeper state
- * on level change or when a ghostly shopkeeper reappears.
- *
- * Full port blocked: ESHK(shkp) accesses mextra which is not in
- * STRUCT_FIELDS['struct monst *'] for the restshk capture corpus.
- * Once infra is updated, uncomment the real body below.
- */
 export function restshk(shkp, ghostly) {
     const u = game.u || {};
     if (!(u.uz && u.uz.dlevel))
@@ -2451,24 +2275,12 @@ function _ushops0_shk(u) {
     return us | 0;
 }
 
-/* C mhitu.c m_canseeu(mtmp) — shk can see the hero.  Stub: mirror the common
- * case (hero not invisible / not hidden → visible).  Only consulted in the
- * ANGRY branch, which the corpus shk does not take. */
 function m_canseeu_shk(_shkp) {
     const u = game.u || {};
     const Invis = _shk_Invis();
     return !Invis && !u.uundetected;
 }
 
-/* C ref: shk.c:1344 pacify_shk(shkp, clear_surcharge)
- *     NOTANGRY(shkp) = TRUE;
- *     if (clear_surcharge && ESHK(shkp)->surcharge) {
- *         bp = ESHK(shkp)->bill_p;  ct = ESHK(shkp)->billct;
- *         ESHK(shkp)->surcharge = FALSE;
- *         while (ct-- > 0) { bp->price -= (bp->price + 3L) / 4L; bp++; }
- *     }
- * Was a throwing stub; u_entered_shop() below calls it on the first visit of a
- * new customer, which is the only corpus path that reaches it. */
 function pacify_shk(shkp, clear_surcharge) {
     shkp.mpeaceful = 1; /* NOTANGRY(shkp) = TRUE */
     const eshkp = ESHK(shkp);
@@ -2485,7 +2297,6 @@ function pacify_shk(shkp, clear_surcharge) {
     }
 }
 
-/* SVALL — seen-all bits (S_wall|S_floor|S_feature from rm.h). Not yet in const.js. */
 const SVALL = 0xFF;
 
 /* C ref: shk.c:4399 add_damage — record damage to a location for later repair. */
@@ -2653,7 +2464,6 @@ export function set_residency(shkp, zero_out) {
             zero_out ? null : shkp;
 }
 
-/* C ref: shk.c:2485 paybill — distribute hero's possessions to shopkeepers after death/quit */
 export async function paybill(croaked, silently) {
     const g = game;
     const u = g.u;
@@ -2736,33 +2546,12 @@ export function Hello(mtmp) {
         return 'Hello';
     }
 }
-/* C ref: shk.c:749-916  u_entered_shop(char *enterstring) — called from
- * check_special_room() (hack.c:3659) when move_update() has just recorded a
- * shop room the hero was not in last move.
- *
- * This was `function u_entered_shop() { /* not yet ported *\/ }` in js/cmd.js,
- * so no shopkeeper in the corpus ever greeted the hero: seed0002 step 340 is
- * C's `"Hello, David!  Welcome to Ermenak's used armor dealership!"` against a
- * blank JS topline.
- *
- * SCOPED to what the corpus reaches, and the omissions are named rather than
- * silently dropped:
- *   - the `!inside_shop()` blocking tail (pick-axe / mattock / steed) ends in
- *     `dochug(shkp)`, which DOES draw RNG.  It is ported to the point of
- *     deciding should_block; the dochug() is left out because reaching it needs
- *     the hero to be standing in the doorway carrying a digging tool or riding,
- *     and no corpus entry does.  If one ever does, the stream slips a whole
- *     monster move — surfaced here rather than guessed at.
- * RNG-FREE on every arm this reaches. */
 export function u_entered_shop(enterstring) {
     const g = game, u = g.u || {};
     if (!enterstring || !enterstring.length || enterstring.charCodeAt(0) === 0)
         return;
     const rmno = enterstring.charCodeAt(0);
     const shkp = shop_keeper(rmno);
-    /* C's two "deserted shop" arms (!shkp, !inhishop) need the static
-     * empty_shops[] cache and deserted_shop(); neither is ported and neither is
-     * reached by a tended corpus shop.  Bail the way C bails: clear u.ushops. */
     if (!shkp || !inhishop(shkp)) {
         u.ushops = '';
         return;
@@ -3234,22 +3023,6 @@ export function Shknam(shkp) {
     return nam ? (highc(nam.charAt(0)) + nam.slice(1)) : nam;
 }
 function helpless(shkp) { return !!(shkp.msleeping || !shkp.mcanmove); }
-/* C shk.c:2576-2676 inherits(shkp, numsk, croaked, silently) — "decide whether
- * a shopkeeper will take possession of dying hero's invent; when this returns
- * True, it should call set_repo_loc() before returning".
- *
- * This was a throwing stub, and so were mongone() and on_level() below it —
- * three FILE-LOCAL stubs that SHADOWED real bodies (js/mklev.js:5492 mongone,
- * js/dungeon.js:11 on_level) and made paybill() unreachable in practice, which
- * is why js/end.js could carry a comment calling paybill "unported ... FALSE
- * for any hero not in a shop, which is every corpus death".  seed0030 kills the
- * hero in a shop TWICE (segment 3, Maganasipi; segment 7, Swidnica) and C
- * prints "<Shk> takes all your possessions." on both stones.
- *
- * RNG: the ONLY draw in the whole function is the numsk > 1 `!rn2(2)` head-shake
- * in the multi-shopkeeper message, which needs a second shopkeeper present and
- * a visible one at that.  Both corpus deaths have exactly one, so this is
- * RNG-free on the measured path — but the draw is ported, not elided. */
 export async function inherits(shkp, numsk, croaked, silently) {
     const g = game;
     const u = g.u || {};
@@ -3367,23 +3140,6 @@ async function _inherits_clear(shkp, taken) {
         set_repo_loc(shkp);
     return taken;
 }
-/* C pline.c:274-277 — every vpline() runs `if (u.ux) flush_screen(...)` BEFORE
- * it hands the text to putmesg(), and flush_screen() (display.c:2285-2288) opens
- * with `if (disp.botl || disp.botlx) bot(); else if (disp.time_botl)
- * timebot();`.  So a pline REPAINTS THE STATUS LINE at its own instant.
- *
- * This port accumulates a window's plines and pages them later, and its
- * per-pline flushed-frame log (js/display.js _pline_flush_frame_record) ignores
- * boundaries below column 20 — the possessions line opens at column 10, right
- * after "You die..." — so nothing repainted here.  It matters: done() has just
- * requested a repaint (u.uhp forced to 0 with disp.botl set) that C performs at
- * exactly this pline, which is why C reads HP:0(11) on seed0030 segment 3 step
- * 286 and HP:1(11) — the frozen pre-death paint — on segment 4's non-shop death
- * two steps of the same session later.
- *
- * FLEET-FEEDBACK: the general fix is for pline() itself to carry the
- * flush_screen(1) → bot() edge; that is a repo-wide change with its own
- * measurement, so this call site spells out the one C does here. */
 async function _shk_vpline_flush() {
     const d = game.disp;
     if (d && ((d.botl | 0) || (d.botlx | 0)))
@@ -3402,13 +3158,6 @@ function addupbill(shkp) {
     }
     return total;
 }
-/* C shk.c:1093-1127 setpaid(shkp) — clear every unpaid marker this shopkeeper
- * owns and zero its bill.  SCOPED: the gt.thrownobj / gk.kickedobj and the
- * migrating-monster chains are walked, the gb.billobjs dealloc loop is the
- * chain reset (this port has no obj allocator), and clear_unpaid is spelled as
- * the recursive walk clear_no_charge already uses for the floor.  RNG-free and
- * screen-invisible; it exists because inherits() must not leave a dead shk's
- * bill live for the next segment's game. */
 async function setpaid(shkp) {
     const g = game;
     await clear_unpaid_chain(shkp, g.invent);
@@ -3487,37 +3236,12 @@ function costly_adjacent(shkp, x, y) {
     const loc = game.level?.at(x, y);
     return !!(loc?.edge) || (x === (eshkp.shk?.x | 0) && y === (eshkp.shk?.y | 0));
 }
-/* C mondata.h has_head(ptr) — !(mlet is S_EYE/S_JELLY/... ); the only reader
- * here is the numsk > 1 message, which no corpus death reaches.  A shopkeeper
- * is always @-class and always has a head, which is what this returns. */
 function has_head_shk(_data) { return true; }
 /* C monst.h NOTANGRY(mon) = ((mon)->mpeaceful) — the file's own ANGRY() below
  * is its negation; both are spelled out so inherits() reads as C does. */
 function NOTANGRY_SHK(mon) { return !!mon.mpeaceful; }
 /* C monsym.h LOW_PM = 0 — u.ugrave_arise < LOW_PM means "no revival". */
 const LOW_PM_SHK = 0;
-/* C mon.c mongone / dungeon.c on_level.  Both were file-local THROWING stubs
- * that SHADOWED the real bodies, so paybill's two loops — the only callers in
- * this file — would have thrown on the first shopkeeper they touched.
- *
- * on_level is four lines of arithmetic and is transcribed below (js/dungeon.js:11
- * spells it the same way).
- *
- * mongone is NOT.  The real body is js/mklev.js:5492 and this is only its fmon
- * unlink — the observable half, and the half `next_shkp`'s chain walk needs.  It
- * is deliberately NOT wired to the real one, and the two obvious wirings were
- * both MEASURED and both wrong:
- *   - a STATIC `import { mongone }` added to this file's existing mklev import
- *     list broke the corpus outright, seed0030 1953 -> 345 step points (shk.js
- *     and mklev.js import each other, so adding a symbol moves the evaluation
- *     order);
- *   - a `const { mongone } = await import('./mklev.js')` at paybill() entry left
- *     the screens intact but took seed0030's RNG from 105529/105529 to
- *     23714/105529 — an await boundary inside the death path reorders the
- *     deferred-death drain.
- * Neither is exercised: paybill only calls this for a shopkeeper whose shop is
- * on ANOTHER level, and no corpus death has one.  When a session does, this is
- * the site to fix, and the note above is what it costs to get wrong. */
 export function mongone(mtmp) {
     for (let prev = null, m = game.fmon; m; prev = m, m = m.nmon)
         if (m === mtmp) {
@@ -3681,18 +3405,10 @@ export function hot_pursuit(shkp) {
             eshkp.customer = String(plname).substring(0, 32); /* PL_NSIZ */
         eshkp.following = 1;
     }
-    /* C: clear_no_charge(NULL, fobj) + clear_no_charge_pets(shkp) — shopkeeper
-     * networking clears obj->no_charge for every object on this level's floor
-     * (and inside floor containers), then for pet-carried goods. */
     clear_no_charge(null, null);
     clear_no_charge_pets(shkp);
 }
 
-/* C ref: shk.c:1420-1441 clear_no_charge / clear_no_charge_pets — walk an
- * object chain (recursing into containers) clearing obj->no_charge.  The JS
- * floor-object chain (fobj) is not modelled as a single list in this port; the
- * per-tile lists in game.level.objects are walked instead so the same objects
- * are reached.  RNG-free either way. */
 function clear_no_charge(_shkp, chain) {
     for (let otmp = chain; otmp; otmp = otmp.nobj) {
         otmp.no_charge = 0;
@@ -3700,8 +3416,6 @@ function clear_no_charge(_shkp, chain) {
             clear_no_charge(_shkp, otmp.cobj);
     }
     const objs = game.level?.objects;
-    /* C walks the single global `fobj` chain; this port has no such chain, so
-     * a null `chain` argument means "every object on this level's floor". */
     if (!chain && objs) {
         for (let x = 0; x < COLNO; x++) {
             const col = objs[x];
@@ -3764,12 +3478,6 @@ function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
     }
     hot_pursuit(shkp);
 }
-/* C sounds.c growl(mtmp) — ONE function; this was a same-name EMPTY body
- * shadowing it for this module's two call sites (:1377 dopay's angry
- * shopkeeper, :1440) and, because it is the exported one, for the
- * capture-replay sweep as well (68 records scored clean against a no-op).
- * The real port lives in js/mhitm.js; re-exported here so js/cmd.js:162's
- * existing `import { growl } from './shk.js'` keeps resolving. */
 export function growl(shkp) { return growl_mhitm(shkp); }
 /* C sounds.c:426-... yelp(mtmp) — the real general port lives in
  * js/mhitm.js (yelp_mhitm, imported above); it draws rn2 through the
@@ -3786,21 +3494,6 @@ function um_dist(x, y, n) {
     return Math.abs((u.ux | 0) - x) > n || Math.abs((u.uy | 0) - y) > n;
 }
 
-/* C mon.c:3955 mnexto / mon.c:4031 mnearto now live in js/teleport.js, next to
- * enexto_core and rloc_to_flag, and are imported above.
- *
- * What used to sit here was an EMPTY `export function mnexto()` whose comment
- * blamed enexto: "This build compiles teleport.c's NEW_ENEXTO variant of
- * enexto_core (teleport.c:219), which orders candidate squares with
- * collect_coords() -- a RANDOMISED ordering, so enexto CONSUMES RNG. ...
- * Porting it means porting collect_coords' shuffle plus goodpos over the whole
- * map in the exact draw order."  Both ARE ported, and have been since
- * js/teleport.js:78 (collect_coords) and :237 (enexto_core) landed; the
- * shuffle is bit-identical to C's on the 45-draw ring-1..3 signature the
- * seed4500 recording carries.  The module-local mnearto that used to follow
- * returned 0 from BOTH its move_other arm and its !goodpos arm, citing the same
- * blocker.
- */
 
 async function home_shk(shkp, killkops) {
     const e = ESHK(shkp);
@@ -3847,13 +3540,8 @@ function likes_magic_fp(mndx) { return (monMflags2_fp(mndx) & M2_MAGIC) !== 0; }
 
 // C mon.c add_to_minv — untracked by this task's diff fields (monster
 // inventory chains aren't part of finish_paybill's state_diff_fields), so
-// this is a legitimate stub per the porter charter: the object is simply
-// removed from consideration (it does not land on the floor).
 function add_to_minv_fp(_mtmp, _otmp) { }
 
-/* C bones.c give_to_nearby_mon(otmp, x, y) — give object to a random
- * object-liking monster on/adjacent to x,y (skipping hero's tile); if none,
- * place object on floor at x,y. */
 function give_to_nearby_mon(otmp, x, y) {
     let selected = null;
     let nmon = 0;
@@ -3884,7 +3572,6 @@ function give_to_nearby_mon(otmp, x, y) {
 // recurse into containers. The only branch with an observable effect is the
 // CRYSKNIFE reversion (rn2(10) when not oerodeproof); costly_alteration's
 // shop-billing side effect is untracked by this task's diff fields, so it is
-// stubbed (a legitimate out-of-scope helper per the porter charter).
 const CRYSKNIFE_OTYP = 43;
 const WORM_TOOTH_OTYP = 42;
 function costly_alteration_fp(_obj, _alter_type) { }
@@ -3904,7 +3591,6 @@ function obj_no_longer_held(obj) {
     }
 }
 
-// C light.c artifact_light/obj_is_burning — no RNG; obj.lamplit gates both.
 function artifact_light_fp(obj) {
     return !!(obj && (obj.otyp === 102 /* GOLD_DRAGON_SCALE_MAIL */ || obj.otyp === 112 /* GOLD_DRAGON_SCALES */));
 }
@@ -3917,10 +3603,6 @@ function end_burn_fp(_obj, _timer_attached) { }
 function goodfruit_fp(_id) { }
 const SLIME_MOLD_OTYP = 285;
 
-/* C bones.c drop_upon_death(mtmp, cont, x, y) — called by savebones() (too
- * late for this case) and by finish_paybill(). Extracts every item off
- * gi.invent, dropping it into mtmp's inventory, cont's contents, a nearby
- * object-liking monster, or the floor at (x,y). */
 export async function drop_upon_death(mtmp, cont, x, y) {
     const g = game;
     let otmp;
@@ -3968,8 +3650,6 @@ function is_undead(data) { return ((data.mflags2 | 0) & M2_UNDEAD) !== 0; }
 // C mkobj.c weight(obj) — only reached when drop_upon_death's `cont` argument is
 // truthy.  finish_paybill() passes 0 and savebones() (js/bones.js, ported) passes
 // null, so no live caller reaches it; C's only truthy-cont caller is savebones'
-// u.ugrave_arise "embed your possessions in your statue" arm (bones.c:482), which
-// no corpus death takes.  ("savebones() is out of scope" is what this note used
 // to say, and that has not been true since savebones landed.)
 function weight_fp(obj) { return obj ? (obj.owt | 0) : 0; }
 
@@ -3994,15 +3674,8 @@ export async function finish_paybill() {
     }
     await drop_upon_death(0, 0, ox, oy);
 }
-/* C attrib.c:1304 adjalign(n) — the real general port lives in js/attrib.js
- * (adjalign_real, imported above); js/mhitm.js's adjalign is itself a
- * delegate to the same body. RNG-neutral. */
 function adjalign(n) { return adjalign_real(n); }
 function noit_mhis(_shkp) { return "his"; }
-/* C do_name.c noit_mhim(mon) — the objective pronoun with no "it" fallback
- * ("him"/"her").  Only inherits()'s partial-payment message reads it, and no
- * corpus death reaches that arm, but it is spelled out rather than left
- * undefined (an undeclared read is a ReferenceError, not a blank). */
 function noit_mhim(mon) { return mon?.female ? 'her' : 'him'; }
 /* C polyself.c:1956-2046 mbodypart(mon, part) — the real general port lives
  * in js/cmd.js (mbodypart_real, imported above). */
@@ -4028,9 +3701,6 @@ function cad(altusage) {
     return `"${highc(res.charAt(0))}${res.slice(1)}!  `;
 }
 
-/* C shk.c:921 pick_pick().  `pickmovetime` is file-static in C; keeping the
- * marker on game preserves once-per-move behavior while preventing one
- * replay/session from suppressing the first warning in the next session. */
 export async function pick_pick(obj) {
     if (obj?.unpaid || !is_pick(obj)) return;
     const shops = game.u?.ushops || '';
@@ -4068,12 +3738,6 @@ function muteshk(shkp) { return helpless(shkp) || (_msound_of_shk(shkp) <= MS_AN
 /* C ref: pline.c:435-452 You_hear — imported from js/display.js.  The copy here
  * had no guard at all, so shk_move's ":2291 an angry voice:" printed even for a
  * deaf hero. */
-/* C pline.c:380-388 Your(str, ...) — delegates to the real do_wear.js body
- * (Your_real, imported above). Previous local body only substituted ONE
- * format argument (`_a`) rather than being variadic, and used `pline`
- * directly rather than the shared `_plineVFmt` formatter Your_real uses.
- * Return the shared helper's promise so callers which model a C message
- * boundary can await completion. */
 function Your(fmt, ...args) { return Your_real(fmt, ...args); }
 /* Minimal printf for the %s / %ld conversions this file uses.  The previous
  * body read `arguments[ai++]` from inside the String.replace callback, i.e.
@@ -4194,20 +3858,6 @@ export async function obfree(obj, merge) {
 /* obj_extract_self is the shared mkobj body, re-exported through cmd.js. */
 
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * SHOP PRICING AND BILLING — C ref: nethack-c-v5/upstream/src/shk.c
- *
- * Every function below was a throwing stub, an empty body, or absent.
- * js/cmd.js:4166-4199 recorded the gap by name: "KNOWN GAP — NOT PORTED, AND C
- * DRAWS RNG HERE.  addtobill consumes rn2(SIZE(honored) - 1) = rn2(4) at
- * shk.c:3612, inside append_honorific() ... Porting it faithfully needs the
- * shop-billing subsystem this file does not have — shop_keeper/inhishop/ESHK,
- * add_one_tobill, get_cost, contained_cost, costly_gold, currency, Shknam,
- * set_voice".  That single missing draw IS
- * seed0002-healer-reflection-drummer's first RNG divergence (leaf 18457,
- * C `rn2(4)=1 @append_honorific(shk.c:3611)` against a JS side still inside
- * distfleeck), and the missing price tails are its first SCREEN divergence.
- * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── objclass / otyp constants this block needs (objclass.h, objects.h) ── */
 const GEM_CLASS_SHK = 13;
@@ -4314,7 +3964,7 @@ function _get_obj_location_shk(obj, locflags) {
     switch (obj.where | 0) {
     case 3: /* OBJ_INVENT */
         return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
-    case 1: /* OBJ_FLOOR */
+    case 1:
         return { x: obj.ox | 0, y: obj.oy | 0 };
     case 4: /* OBJ_MINVENT */
         if (obj.ocarry && (obj.ocarry.mx | 0))
@@ -4332,35 +3982,6 @@ function _get_obj_location_shk(obj, locflags) {
     return null;
 }
 
-/* C shk.c:4275 corpsenm_price_adj(obj) — "adjust tin, egg, or corpse price
- * based on monster data".
- *
- *     if ((otyp == TIN || otyp == EGG || otyp == CORPSE)
- *         && ismnum(obj->corpsenm)) {
- *         long tmp = 1L;
- *         for (i = 0; i < SIZE(icost); i++)
- *             if (intrinsic_possible(icost[i].trinsic, ptr))
- *                 tmp += icost[i].cost;
- *         if (unique_corpstat(ptr)) tmp += 50;
- *         val = max(1, ((ptr->mlevel - 1) * 2));
- *         if (obj->otyp == CORPSE) val += max(1, (ptr->cnutrit / 30));
- *         val = val * tmp;
- *     }
- *
- * This returned a flat 0, on a comment asserting that the FIRE_RES..TELEPAT
- * ids "are not reachable from this module, and no corpus session enters a
- * delicatessen".  BOTH halves were wrong: js/const.js exports every one of the
- * eleven ids (js/eat.js:7 imports them from there), and gen094 walks into a
- * general store holding an ICE BOX WITH SEVENTEEN CORPSES IN IT — no
- * delicatessen required, since any container's contents are priced through
- * contained_cost().  With the adjustment at 0 every corpse fell to get_cost's
- * `if (!tmp) tmp = 5` floor and the box quoted 104 zorkmids against C's 473.
- *
- * intrinsic_possible() is js/eat.js's ported body (it accepts a pmidx as well
- * as a permonst); mlevel/geno come from permonstTemplate() and cnutrit from
- * js/food_props.js, the same three sources the old comment named.  RNG-free.
- *
- * C's icost[] is a local; kept local here for the same reason. */
 const _CORPSENM_ICOST = [
     [FIRE_RES, 2], [SLEEP_RES, 3], [COLD_RES, 2], [DISINT_RES, 5],
     [SHOCK_RES, 4], [POISON_RES, 2], [ACID_RES, 1], [STONE_RES, 3],
@@ -4439,9 +4060,6 @@ export function getprice(obj, shk_buying) {
     return tmp;
 }
 
-/* C shk.c:2846 get_pricing_units(obj) — quan, except globs sell by weight.
- * KNOWN GAP: objects[].oc_weight is not carried in js/ and no corpus shop
- * holds a glob, so the globby arm keeps quan.  RNG-free. */
 export function get_pricing_units(obj) {
     return obj.quan | 0;
 }
@@ -4545,11 +4163,9 @@ export function get_cost_of_shop_item(obj, nochrg) {
     while ((top.where | 0) === 2 /* OBJ_CONTAINED */ && top.ocontainer)
         top = top.ocontainer;
     const eshkp = ESHK(shkp);
-    const freespot = ((top.where | 0) === 1 /* OBJ_FLOOR */
+    const freespot = ((top.where | 0) === 1
                       && loc.x === (eshkp?.shk?.x | 0)
                       && loc.y === (eshkp?.shk?.y | 0));
-    /* no_charge is only set for floor items inside shop proper;
-       items on freespot are implicitly 'no charge' */
     const nc = (((top.where | 0) === 1) && (obj.no_charge || freespot)) ? 1 : 0;
     if (nochrg) nochrg.value = nc;
 
@@ -4642,20 +4258,6 @@ export async function billable(shkpBox, obj, roomno, reset_nocharge) {
     return shkp ? true : false;
 }
 
-/* C shk.c:439 record_price_quote(otyp, price, buyprice) — the seen-price range
- * the 'pricequotes' option's append_price_quote() reads back.  objects[] has no
- * home in js/, so the four columns live on game._oc_price_seen[otyp].
- * CORRECTED 2026-08-21: this used to end "the option is off in every corpus
- * nethackrc, so nothing reads them yet", which conflated two different C call
- * sites.  `iflags.pricequotes` gates only doname's arms (objnam.c:1676,1682);
- * o_init.c:720 disco_append_typename calls append_price_quote UNCONDITIONALLY,
- * so the discoveries list shows the tag whatever the nethackrc says.
- * js/cmd.js _disco_append_price_quote is that reader, and seed0002 step 587 is
- * the frame that needed it.
- * The four columns' unseen sentinel is C's OBJECT() initialiser
- * (include/objects.h:51) `(0UL-1UL), 0, (0UL-1UL), 0` — min = ULONG_MAX,
- * max = 0 — which is what the Infinity/0 pair below spells.
- * RNG-free. */
 export function record_price_quote(otyp, price, buyprice) {
     const g = game;
     const tbl = (g._oc_price_seen ||= {});
@@ -4725,7 +4327,7 @@ async function add_one_tobill(obj, dummy, shkp) {
     bp.bquan = obj.quan | 0;
     if (dummy) {              /* a dummy object must be inserted into  */
         bp.useup = true;      /* the gb.billobjs chain here.  crucial for */
-        add_to_billobjs(obj); /* eating floorfood in shop.  see eat.c  */
+        add_to_billobjs(obj);
     } else {
         bp.useup = false;
     }

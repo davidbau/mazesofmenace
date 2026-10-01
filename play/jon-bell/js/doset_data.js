@@ -3,7 +3,6 @@
 // enumerates, GENERATED from the NetHack 5.0 headers, not transcribed.
 //
 // PROVENANCE.  The row list and its order come from a clang probe compiled
-// against nethack-c-v5/recorder/include: include/optlist.h is re-included with
 // a fourth NHOPT_DUMP macro branch that stringifies each NHOPTB/NHOPTC/NHOPTO
 // argument list, so every #ifdef in the file is resolved by the same
 // preprocessor the game is built with (that is what decides whether altmeta,
@@ -20,8 +19,6 @@
 // Wizard boolean rows additionally retain their set_wizonly/set_wiznofuz
 // filters below; doset() applies those against the live play mode and fuzzer flag.
 // The original non-wizard 140-row sequence was validated row-for-row against the C
-// recording in sessions/seed0007-rogue-snake-swamp.session.json (steps 20-35),
-// which is the only public session that opens this menu.
 //
 // LIMIT, STATED.  `val` for a compound/other option is C's get_val output.
 // Where the port models the backing state (fruit, pickup_types, name, role,
@@ -29,7 +26,6 @@
 // writer for the backing field — there is no flags.end_disclose, no
 // flags.inv_order, no flags.paranoia_bits — so `val` is the value C's get_val
 // produces from its INITIAL state, with the C site cited.  That is exact for
-// any session that does not change the option, which is every public session;
 // it will need the real handler the day one does.
 //
 // `longest` is options.c:8507 longest_option_name(set_gameview, set_in_game),

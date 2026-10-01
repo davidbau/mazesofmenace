@@ -78,48 +78,6 @@ export function nhlib_percent(threshold) {
 export function nhlib_filler_region_rng_consume() {
     return nhlib_percent(30);
 }
-/**
- * themerms.lua "Storeroom" fill contents RNG consumer.
- * C ref: themerms.lua themeroom_fills["Storeroom"].contents (lines 251-262).
- *
- * Lua sequence:
- *   local locs = selection.room():percentage(30)  -- rn2(100) per floor cell
- *   locs:iterate(function(x,y)                    -- y-outer, x-inner
- *     percent(25)                                 -- rn2(100)
- *     des.object("chest") or des.monster(...)     -- somexy -> somex + somey
- *   end)
- *
- * C selection_filter_percent iterates x-outer y-inner; rn2(100) called once per
- * cell in the selection. For a regular room all (lx..hx,ly..hy) cells are in the
- * selection, so floorCellCount = roomWidth * roomHeight.
- *
- * `hooks` carries the level-generation callbacks the fill needs (mklev.js owns
- * them; nhlib.js may not import mklev.js).  The `register*` module-globals above
- * were the older shape of the same idea and had NO caller anywhere in js/, so
- * `_mkclass_fn` / `_makemon_fn` / `_mksobj_fn` were all permanently null and
- * BOTH branches of this fill created nothing and drew none of C's creation RNG.
- * Measured on seed5002 segment 1: C's first mimic ran leaves 2854..2949 (96
- * leaves) where this fill drew 2.
- *
- *   hooks.lx / hooks.ly     room origin — somex/somey are rn1(w, lx)/rn1(h, ly),
- *                           so the DRAW is rn2(w)/rn2(h) and the COORDINATE is
- *                           lx + that.  The old stand-in dropped the origin and
- *                           handed makemon (0,0), which is C's "pick a random
- *                           square yourself" sentinel — a different code path.
- *   hooks.inducedAlign      js/sp_lev.js induced_align (C sp_amask_to_amask)
- *   hooks.mkclassMimic      () => mkclassAligned(S_MIMIC, G_NOGEN, A_NONE)
- *   hooks.makemon           js/mklev.js makemon (async; see below)
- *   hooks.mksobjAt          js/mklev.js mksobj_at
- *   hooks.chestOtyp         CHEST
- *   hooks.monAt             m_at — C's MON_AT(x, y) (rm.h:506)
- *   hooks.enexto            enexto(x, y, pm) — C teleport.c:198-203, i.e.
- *                           enexto_core(GP_CHECKSCARY) || enexto_core(0)
- *   hooks.insideRoom        inside_room(croom, x, y) — C mkroom.c:678
- *
- * makemon() is async in this port.  Await each creation before continuing so
- * its post-creation state changes finish in C order and later creations cannot
- * change game.fmon before the caller applies the monster spec.
- */
 export async function nhlib_fill_storeroom_rng(floorCellCount, roomWidth, roomHeight, hooks) {
     const h = hooks || {};
     const lx = h.lx | 0, ly = h.ly | 0;
@@ -193,7 +151,6 @@ export async function nhlib_fill_storeroom_rng(floorCellCount, roomWidth, roomHe
             // so a storeroom that rolls the same square twice diverges by the
             // whole enexto ring shuffle (45 leaves: rings of 8/16/24 shuffled
             // as 7+15+23) plus the entire second mimic's creation block.
-            // Measured on seed0030 segment 1 step 59 (Dlvl 2): C ran
             // collect_coords(teleport.c:700) from leaf 3985 and went on to build
             // the mimic; we skipped straight to the next percent(25) and every
             // later leaf on that level was noise.
@@ -262,69 +219,6 @@ const PM_FOG_CLOUD = 106;
 const PM_WOOD_NYMPH = 67;
 /* C include/monflag.h:214 `enum mgender { MALE, FEMALE, NEUTRAL, ... }`. */
 const FEMALE = 1;
-/**
- * themerms.lua "Cloud room" fill contents RNG consumer.
- * C ref: themerms.lua themeroom_fills["Cloud room"].contents (lines 62-70).
- *
- * Lua sequence:
- *   local fog = selection.room();
- *   for i = 1, (fog:numpoints() / 4) do          -- Math.trunc(numpoints/4) iterations
- *     des.monster({ id = "fog cloud", asleep = true });
- *   end
- *   des.gas_cloud({ selection = fog });          -- RNG-free (see below)
- *
- * `des.monster{ id = ... }` is the TABLE form of lspo_monster (sp_lev.c:3290),
- * whose RNG order per iteration is:
- *
- *   1. get_table_montype -> find_montype("fog cloud")   sp_lev.c:3156
- *      PM_FOG_CLOUD carries neither M2_MALE nor M2_FEMALE, and "fog cloud"
- *      resolves through name_to_monplus with matchgend == NEUTRAL (its
- *      pmnames row has only the neuter slot filled), so C's
- *      `mgend = ... : rn2(2)` fallback fires on EVERY iteration.  This draw
- *      is what the old stand-in was missing: it is the first divergence of
- *      corpus-generated/v5/train/gen345-reseed-seed244908 at leaf 316,
- *      C `rn2(2)=0 @find_montype(sp_lev.c:3156)`.
- *   2. create_monster: amask = sp_amask_to_amask(m->sp_amask)  sp_lev.c:1945.
- *      The spec names no `align`, so get_table_align defaults to "random" ==
- *      AM_SPLEV_RANDOM and this is induced_align(80) — dungeon.c:2012's
- *      rn2(3) on an ordinary Dungeons-of-Doom level.  ALSO missing before.
- *   3. get_location_coord(random coord) -> somexy   sp_lev.c:1965
- *   4. makemon(pm, x, y, NO_MM_FLAGS)   sp_lev.c:1989 — the spec sets no
- *      tail/group/adjacentok/ignorewater/countbirth, so mm_flags is 0.
- *   5. mtmp->female = m->female (sp_lev.c:2124) and, since asleep=true
- *      is > BOOL_RANDOM, mtmp->msleeping = 1 (sp_lev.c:2132-2133).
- *
- * `des.gas_cloud` (lspo_gas_cloud, sp_lev.c:4929) only builds an NhRegion
- * from the selection; create_gas_cloud_selection draws no RNG, so it is not
- * modelled here.
- *
- *
- * numPoints is `selection.room():numpoints()` — selection_from_mkroom
- * (selvar.c) sets only the cells of the room's bounding box that are !edge AND
- * carry the room's own roomno, so on a themeroom built from a des.map overlay
- * it is SMALLER than width*height.  Using w*h here ran the loop too many times:
- * on corpus-generated/v5/train/gen572-grammar-seed575364 C's garden made 6
- * nymphs and this made 9.
- * `hooks` carries the level-generation callbacks the fill needs, the same
- * shape nhlib_fill_storeroom_rng uses and for the same reason (nhlib.js may
- * not import mklev.js, and the older `register*` module-globals had no caller
- * anywhere in js/ — `_makemon_fn` was permanently null, so this fill created
- * no fog clouds at all and drew none of C's creation RNG).
- *
- *   hooks.croom          the mkroom being filled — somexy needs its lx/ly, and
- *                        somex/somey are rn1(w, lx)/rn1(h, ly): the DRAW is
- *                        rn2(w)/rn2(h) and the COORDINATE is lx + that.  The
- *                        old stand-in dropped the origin and handed makemon
- *                        (0, 0), which is C's "pick a square yourself"
- *                        sentinel — a different code path.
- *   hooks.inducedAlign   js/sp_lev.js induced_align (C sp_amask_to_amask)
- *   hooks.somexy         js/mklev.js somexy (C mkroom.c:661)
- *   hooks.makemon        js/mklev.js makemon (async; each call is awaited so
- *                        its post-creation state is complete before spec flags
- *                        are applied and before the next creation starts)
- *   hooks.setSpecFlags   (mtmp) => void — applies female/msleeping to the
- *                        monster makemon just prepended to game.fmon
- */
 export async function nhlib_fill_cloud_room_rng(numPoints, roomWidth, roomHeight, hooks) {
     const h = hooks || {};
     const croom = h.croom || null;
@@ -345,11 +239,6 @@ export async function nhlib_fill_cloud_room_rng(numPoints, roomWidth, roomHeight
             c.x = rn2(roomWidth);
             c.y = rn2(roomHeight);
         }
-        /* 3a. C sp_lev.c:1976-1978 — `if (MON_AT(x,y) && enexto(&cc,x,y,pm))
-         * x = cc.x, y = cc.y;`.  A cloud room places numpoints/4 monsters into
-         * one room, so collisions are the common case, not the edge case: the
-         * FOURTH fog cloud of gen345-reseed-seed244908 lands on an occupied
-         * square and C runs collect_coords(teleport.c:700) from leaf 356. */
         if (h.monAt && h.monAt(c.x, c.y)) {
             const cc = h.enexto ? h.enexto(c.x, c.y, PM_FOG_CLOUD) : null;
             if (cc) {
@@ -376,17 +265,6 @@ export async function nhlib_fill_cloud_room_rng(numPoints, roomWidth, roomHeight
  * des.object("boulder") nor the des.trap("rolling boulder") each cell asks for.
  * It is now a real fill in js/mklev.js (themeroom_fill_boulder_room), which is
  * where mktrap and mkroll_launch live; nhlib.js may not import mklev.js. */
-/* themerms.lua "Spider nest" (lines 87-99) and "Trap room" (lines 100-113) used
- * to have RNG-only stand-ins here — nhlib_fill_spider_nest_rng and
- * nhlib_fill_trap_room_rng.  Both drew the percentage(30) roll and then stopped,
- * the second under the comment "locs:iterate with explicit (x,y) -- no
- * additional rn2".  Every des.trap in those loops reaches mktrap(), whose victim
- * gate draws rnd(4) per trap (mklev.c:2147) and often a whole mktrap_victim
- * block after it, so the stand-ins were short by at least one leaf per selected
- * cell.  They are now real fills in js/mklev.js (themeroom_fill_trap_room /
- * themeroom_fill_spider_nest), which is where mktrap lives; nhlib.js may not
- * import mklev.js.  "Boulder room" was the third of the trio and went the same
- * way — see the note above. */
 /**
  * themerms.lua "Garden" fill contents RNG consumer.
  * C ref: themerms.lua themeroom_fills["Garden"].contents (lines 116-129). Lit rooms only.
@@ -507,11 +385,6 @@ export function nhlib_fill_buried_zombies_rng(croom, difficulty) {
     for (let i = 0; i < n; i++) {
         for (let j = zombSize; j >= 2; j--)
             rn2(j); // shuffle(zombifiable)
-        /* C ref: sp_lev.c get_location():1226-1239 — do { somexy(croom, &tmpc); }
-         * while (!is_ok_location(x,y,DRY) && ++cpt<100).
-         * For irregular rooms, somexy() retries internally up to 100×, consuming
-         * rn2(w)+rn2(h) per attempt until a non-edge cell is found.
-         * Delegate to registered somexy for exact retry parity. */
         if (_somexy_fn)
             _somexy_fn(croom, { x: 0, y: 0 });
         else {
@@ -607,41 +480,6 @@ export function nhlib_fill_temple_of_gods_rng(roomWidth, roomHeight) {
         rn2(roomHeight);
     }
 }
-/**
- * themerms.lua "Ghost of an Adventurer" fill contents RNG consumer.
- * C ref: themerms.lua themeroom_fills["Ghost of an Adventurer"].contents (lines 221-246).
- *
- * Lua sequence (C themerms.lua:221-246):
- *   loc = selection.room():rndcoord(0)      -- rn2(floorCellCount)
- *   des.monster({ id="ghost", coord=loc })  -- find_montype rn2(2), induced_align rn2(3), makemon
- *   if percent(65) then des.object({id="dagger",  coord=loc, buc="not-blessed"}) end  -- rn2(100)
- *   if percent(55) then des.object({class=")",    coord=loc, buc="not-blessed"}) end  -- rn2(100)
- *   if percent(45) then                                                                -- rn2(100)
- *     des.object({id="bow",   coord=loc, buc="not-blessed"})
- *     des.object({id="arrow", coord=loc, buc="not-blessed"})
- *   end
- *   if percent(65) then des.object({class="[", coord=loc, buc="not-blessed"}) end  -- rn2(100)
- *   if percent(20) then des.object({class="=", coord=loc, buc="not-blessed"}) end  -- rn2(100)
- *   if percent(20) then des.object({class="?", coord=loc, buc="not-blessed"}) end  -- rn2(100)
- *
- * Each des.object() call that fires consumes mkobj RNG (class-dependent selection + erosions).
- * mksobj class constants: WEAPON_CLASS=2, ARMOR_CLASS=3, RING_CLASS=4, SCROLL_CLASS=9.
- *
- * THE `id=` AND `class=` SPECS TAKE DIFFERENT PATHS, AND THEY DRAW DIFFERENT RNG.
- * C sp_lev.c create_object (2205-2228) branches on them:
- *   o->id != -1  (an `id=` spec)     → mksobj_at(o->id, x, y, TRUE, !named)
- *   o->id == -1  (a `class=` spec)   → mkobj_at(oclass,  x, y, !named)
- * mkobj() draws the class-selection `rnd(objects-in-class prob total)` at
- * mkobj.c:289 BEFORE mksobj; mksobj_at() does not draw it at all.  So the three
- * `id=` objects here (dagger, bow, arrow) consume ONE FEWER LEAF EACH than the
- * four `class=` ones — measured on the SCORED path of
- * corpus-generated/v5/train/gen028-reseed-seed1155683 leaf 328, where C went
- * straight to `rnd(2) @next_ident(mkobj.c:521)` for the dagger while this
- * stand-in drew `rnd(1002) @mkobj(mkobj.c:289)` first and desynced the stream
- * for the remaining 12,035 leaves.
- *
- * C ref: selection_rndcoord(selvar.c:302).
- */
 /* objects.h ordinals (index into js/oc_name_data.js OC_NAME, which is
    objects[] row-for-row): the three id-specified objects of this fill.
    Same spellings/values as js/u_init.js and js/m_initweap.js. */
@@ -650,8 +488,6 @@ const DAGGER = 34;
 const BOW = 83;
 export async function nhlib_fill_ghost_rng(floorCells, makemonFn, mkobjFn, mksobjAtFn) {
     // C ref: themerms.lua:223 — loc = selection.room():rndcoord(0).
-    // floorCells is the ordered cell list rndcoord walks (selvar.c:302-314); the
-    // count is rndcoord's idx and rn2(idx) picks loc = floorCells[c].  For backward
     // compatibility a plain number is still accepted (consumes rn2(count) only).
     let idx, loc = null;
     if (Array.isArray(floorCells)) {
@@ -684,7 +520,6 @@ export async function nhlib_fill_ghost_rng(floorCells, makemonFn, mkobjFn, mksob
         // STRAT_WAITFORU puts the ghost in STRAT_WAITMASK, so dochug (monmove.c:739)
         // returns BEFORE distfleeck — the ghost consumes no per-turn movement RNG until
         // it can see the hero (m_canseeu clears WAITFORU at monmove.c:732-734).  Omitting
-        // these flags made the ghost act every turn, shifting movemon RNG (seed0015 t5).
         // The makemonFn wrapper (mklev.js) sets the asleep/waiting flags on the created
         // ghost before this fill continues with the dropped objects.
         await mfn(287, lx, ly, 0); // PM_GHOST = 287 (ghost is named — not MM_NONAME)
@@ -739,7 +574,6 @@ export async function nhlib_fill_ghost_rng(floorCells, makemonFn, mkobjFn, mksob
     // roll passed built a TOOL.  It survived because mkobj()'s modulus is
     // oclass_prob_totals[oclass], which is 1000 for EVERY class -- the wrong
     // class draws an rnd(1000) of exactly the right shape, so the stream only
-    // parts company at the first class-specific mksobj_init draw.  On gen658
     // that is C's blessorcurse(otmp, 4) (mkobj.c:1079, the POTION/SCROLL arm)
     // against this port's rndmonnum_adj (mkobj.c:1044, the FIGURINE arm).
     if (rn2(100) < 20) { // C themerms.lua:243 percent(20)
@@ -748,41 +582,6 @@ export async function nhlib_fill_ghost_rng(floorCells, makemonFn, mkobjFn, mksob
     }
     return loc;
 }
-/**
- * themerms.lua "Teleportation hub" fill contents RNG consumer.
- * C ref: themerms.lua themeroom_fills["Teleportation hub"].contents (lines 264-279).
- *
- * Lua sequence:
- *   locs = selection.room():filter_mapchar(".") -- w*h interior floor cells (absolute coords)
- *   for i = 1, 2 + nh.rn2(3) do       -- rn2(3); count = 2..4
- *     local pos = locs:rndcoord(1)     -- rn2(remaining count); removeit=true
- *     pos.x = pos.x + rm.region.x1 - 1  -- apply offset (doubles the lx, C-faithful)
- *     pos.y = pos.y + rm.region.y1       -- apply offset (doubles the ly, C-faithful)
- *     table.insert(postprocess, {handler=make_a_trap, data={...coord=pos...}})
- *   end
- *
- * roomCells must be the ordered list of floor cells in the room (x-outer y-inner),
- * mirroring selection.room():filter_mapchar(".") for the room at (lx..hx, ly..hy).
- * This allows correct tracking of which cell each rn2 pick selects (with removeit).
- *
- * Returns { count, srcCoords } where srcCoords are the ABSOLUTE trap source positions,
- * needed by themerooms_post_level_generate to simulate the make_a_trap repeat loop.
- *
- * C-faithful derivation of the retry condition:
- *   In C, rndcoord (during themeroom fill, croom != NULL) subtracts croom->lx/ly.
- *   Lua then adds rm.region.x1-1 = croom->lx-1 and rm.region.y1 = croom->ly.
- *   Net: data.coord = { x: abs_trap_x - 1, y: abs_trap_y }.
- *
- *   In make_a_trap, the dest comes from rndcoord on the global ROOM selection
- *   (croom=NULL, xstart=1, ystart=0), giving teledest = { x: abs_dest_x - 1, y: abs_dest_y }.
- *
- *   Retry condition: teledest.x == data.coord.x OR teledest.y == data.coord.y
- *     = (abs_dest_x - 1) == (abs_trap_x - 1) OR abs_dest_y == abs_trap_y
- *     = abs_dest_x == abs_trap_x OR abs_dest_y == abs_trap_y.
- *
- *   Both the -1 offsets cancel; the effective comparison is on raw absolute coords.
- *   We store srcCoords as absolute {x: abs_trap_x, y: abs_trap_y} and compare directly.
- */
 export function nhlib_fill_teleportation_hub_rng(roomCells, roomLx) {
     const count = 2 + rn2(3);
     const srcCoords = [];
@@ -798,24 +597,6 @@ export function nhlib_fill_teleportation_hub_rng(roomCells, roomLx) {
         const c = rn2(locs.length); // rn2(remaining count); removeit=true
         const cell = locs[c];
         locs.splice(c, 1); // removeit
-        /* ── THE `pos.x > 0` GUARD (themerms.lua:270) ──────────────────────────
-         * C's Teleportation hub fill is
-         *     local pos = locs:rndcoord(1);
-         *     if (pos.x > 0) then ... table.insert(postprocess, ...) end
-         * and `pos` is ROOM-LOCAL: l_selection_rndcoord (nhlsel.c:415-421) does
-         *     if (gc.coder && gc.coder->croom) { x -= croom->lx; y -= croom->ly; }
-         * and gc.coder->croom IS set while a themeroom contents closure runs.
-         * So pos.x == 0 for every pick in the room's LEFTMOST column, and C
-         * registers NO postprocess entry for it -- while still having spent the
-         * rndcoord draw.  Only x is tested; a pick with pos.y == 0 is kept.
-         *
-         * Omitting this made JS register one make_a_trap entry too many, and each
-         * surplus entry costs TWO leaves at post_level_generate (the
-         * selection_rndcoord rn2(<map ROOM cells>) plus mktrap's rnd(4)) --
-         * measured as the first RNG divergence of gen202/gen208.
-         *
-         * The draw above is OUTSIDE the guard on purpose: the skip is
-         * RNG-neutral here and only changes the postprocess list length. */
         if ((cell.x | 0) - (roomLx | 0) <= 0)
             continue;
         // Store absolute coords; the themerms.lua offset bug (pos.x += rm.region.x1-1,
@@ -826,23 +607,6 @@ export function nhlib_fill_teleportation_hub_rng(roomCells, roomLx) {
     }
     return { count, srcCoords };
 }
-/**
- * nhlib.lua top-level shuffle(align) consumed by com_pager_core() (questpgr.c:487).
- *
- * C ref: questpgr.c com_pager_core() → nhl_init(&sbi) → nhlib.lua is loaded fresh
- * into a new Lua state.  Loading nhlib.lua runs the module-level shuffle(align)
- * at nhlib.lua:25, which calls math.random(3) → 1+nh.rn2(3) then math.random(2) →
- * 1+nh.rn2(2).
- *
- * This nhl_init call happens inside com_pager() (allmain.c:911–913):
- *   if (flags.legacy)
- *       com_pager(u.uroleplay.pauper ? "pauper_legacy" : "legacy");
- *
- * It fires AFTER u_init_skills_discoveries() and BEFORE moveloop_preamble().
- * flags.legacy defaults TRUE; sessions recorded with OPTIONS=!legacy skip this.
- *
- * Call this from fastforward_post_mklev() when flags.legacy is not explicitly false.
- */
 export function nhlib_com_pager_rng() {
     nhlib_load_toplevel_rng();
 }

@@ -169,7 +169,6 @@ export function set_levltyp_lit(x, y, typ, lit) {
 
 // C ref: mkmaze.c:706-711 check_ransacked() — orc-town-mines kludge; sets
 // gr.ransacked (game.ransacked) true only when entering "minetn-1" while in
-// the mines branch. Consumed by sp_lev.js's fixup_special (stolen_booty gate).
 function check_ransacked(s) {
     const g = game;
     const uz = g.u?.uz;
@@ -201,10 +200,6 @@ export function dmonsfree() {
     }
 }
 
-/* dealloc_monst — C ref: nethack-c/src/mon.c:2661.  The single live
- * implementation is js/dog.js (imported above and re-exported here for
- * dmonsfree()'s callers).  The throwing stub that used to sit here was a
- * WRONG TWIN of the js/dog.js copy the sweep resolves. */
 export { dealloc_monst };
 
 /* C ref: mkmaze.c:1316-1349 mazexy(coord *cc) — "find random point in generated
@@ -265,26 +260,6 @@ export function Invocation_lev(lev) {
     return In_hell(lev) && !!dun && (lev.dlevel | 0) === (dun.num_dunlevs | 0) - 1;
 }
 
-/* C ref: mkmaze.c:1041-1093 pick_vibrasquare_location() — choose where the
- * stairs down to Moloch's Sanctum will eventually be cut, i.e. where the
- * vibrating square goes.
- *
- * Reached from create_trap()'s VIBRATING_SQUARE arm (sp_lev.c:1818-1821), which
- * dat/hellfill.lua:437-438 fires on the invocation level:
- *     des.stair("up")
- *     if (u.invocation_level) then des.trap("vibrating square")
- *     else des.stair("down") end
- * so a JS that answers `u.invocation_level` FALSE builds a down staircase where
- * C builds the square, and diverges on the RNG stream at that instant: measured
- * on gen232-reseed-seed1268561 leaf 79,437, C rn1(67, 7) here vs JS rn2(79) in
- * get_location().
- *
- * The two rn1() calls are per LOOP ITERATION and the loop keeps going while the
- * square is in direct line with the up stairs, on the same diagonal, within
- * INVPOS_DISTANCE of them, on non-SPACE terrain, or occupied — three iterations
- * on gen232 (leaves 79,437-79,442).  Note C's trycnt guard sits INSIDE the body,
- * after the draws and before the condition, so the 1001st pick is kept rather
- * than rejected. */
 export function pick_vibrasquare_location() {
     const g = game;
     let x = 0, y = 0, stway = null, trycnt = 0;
@@ -356,15 +331,12 @@ async function populate_maze() {
 //   * the Is_special arm — makemaz(slev->proto), sp == slev;
 //   * the dungeons[dnum].fill_lvl arm — makemaz(fill_lvl), where sp is NULL
 //     (a plain Gnomish Mines level has no s_level entry; makelevel only
-//     routes here when the ungated chain lookup came back empty);
 //   * the In_hell / below-Medusa arm — makemaz(""), sp is NULL, protofile comes
 //     out EMPTY and C falls through to the maze fallback below.  That third
 //     caller is what this block exists for: mklev.c:1286-1289 is where the
 //     Dungeons of Doom stops being rooms-and-corridors and starts being mazes,
 //     and js/mklev.js had the arm with an EMPTY BODY, so every such level was
-//     generated as rooms and corridors instead.  Measured: gen040 leaf 14245 —
 //     C rn2(3) @ mkmaze.c:1198 (corrmaze), JS rn2(1) @ rnd_rect, and 1,498
-//     recoverable step points behind it; gen140 the same signature for 1,486.
 // `sp` is C's own `s_level *sp = Is_special(&u.uz)`, passed in rather than
 // re-derived so this file needs no dungeon-chain import.
 // STILL out of scope, and still a throw: the dungeons[dnum].proto name-building
@@ -378,7 +350,6 @@ export async function js_makemaz(s, sp) {
         protofile = `${protofile}-${rnd(sp.rndlevs)}`;
     }
     // C: wizard-mode SPLEVTYPE env override (mkmaze.c:1157-1178) — never in
-    // the contest harness (no wizard mode), and only reachable when
     // sp->rndlevs is set; tut-1/tut-2 have no rndlevs. Not ported.
     if (protofile) {
         check_ransacked(protofile);
@@ -445,7 +416,6 @@ export async function js_makemaz(s, sp) {
 //   maze_remove_deadends (:903-944), create_maze (:949-1035).
 // Reached from splev_initlev's LVLINIT_MAZE arm (sp_lev.c:2998-2999), i.e.
 // des.level_init({ style = "maze", ... }) in a .lua level file — hellfill.lua's
-// hells[3..6] are the corpus users.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /* C: #define mz_move(X, Y, dir) — adjust a coordinate one step in `dir`.
@@ -689,29 +659,6 @@ export function create_maze(corrwid, wallthick, rmdeadends) {
 }
 
 
-/* C ref: decl.h:208 `lev_region bughack;` (gb.bughack) — "for preserving the
- * insect legs when wallifying baalzebub's lair".  Only its two rectangles are
- * used.
- *
- * THE INITIAL VALUE IS NOT ZERO.  This function used to zero both rectangles
- * and carried a comment asserting that "decl.c:228 zero-initialises the whole
- * struct ... That is C's behaviour and it is ported, not repaired."  That
- * assertion is false.  src/decl.c:225-226 initialises g_init_b's bughack row
- * as  { {COLNO, ROWNO, 0, 0}, {COLNO, ROWNO, 0, 0}, FALSE, FALSE, 0, 0, {0} },
- * i.e. BOTH lev_region rectangles start at {x1=COLNO, y1=ROWNO, x2=0, y2=0}
- * (field order from include/hack.h:879-889: inarea{x1,y1,x2,y2} then
- * delarea{x1,y1,x2,y2}) — exactly the value baalz_fixup() restores when it
- * finishes, which is the tell: the reset would be pointless if 0 were the
- * initial state.  Starting delarea.x1 at 0 made baalz_fixup's
- * `if (delarea.x1 === COLNO)` arm fail for the FIRST marker pool as well as
- * the second, so BOTH pools landed in the delarea.x2/y2 slot, delarea.x1
- * stayed 0, and the first of the two rear-leg joint fix-ups never ran.
- *
- * MEASURED on Baalzebub's lair (dat/baalz.lua, two marker 'P' pools), in both
- * orientations flip_level produces — 8 of 688 train sessions reach it:
- *   unflipped  delarea.x1=(68,8)   C BRCORNER(6)/HWALL(2)  we had TLWALL(10)/TUWALL(8)
- *   flipped    delarea.x1=(12,8)   C BLCORNER(5)/HWALL(2)  we had TRWALL(11)/TUWALL(8)
- * — precisely the pair the first fix-up block converts. */
 export function bughack() {
     const g = game;
     if (!g.bughack)
@@ -834,22 +781,6 @@ export async function baalz_fixup() {
     bh.inarea.y2 = bh.delarea.y2 = 0;
 }
 
-/* C mkmaze.c:1483-1513 fumaroles() — "augment the Plane of Fire; called from
- * goto_level() when arriving and moveloop_core() when on the level".
- *
- * This had NO port at all, and it is not cosmetic: the rn2(3) below is the
- * FIRST leaf of the Plane of Fire's arrival on
- * seed0373-barbarian-quest-tour (leaf 32410), immediately after
- * u_collide_m()'s collect_coords shuffle, and each loop pass draws two more
- * (rn1(COLNO-4,3) / rn1(ROWNO-4,3)) whether or not the square it picks is
- * lava.  On that arrival C runs four passes and none of them lands on a
- * LAVAPOOL, so create_gas_cloud never fires there — but the eight
- * position draws do, and this port drew none of them.
- *
- * Norep(): C's message is "You hear a %swhoosh!" and is Deaf-aware.  This port
- * has no Deaf model at this call site; the hero of the corpus session that
- * reaches here is not deaf, and the message only fires when a pass DID land on
- * lava, which is a strictly narrower condition than the RNG above. */
 export async function fumaroles() {
     let nmax = rn2(3);
     let sizemin = 5;
@@ -883,26 +814,6 @@ export async function fumaroles() {
         await Norep(`You hear a ${loud ? 'loud ' : ''}whoosh!`);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
- * C mkmaze.c:1516-2107 — "Special waterlevel stuff in endgame (TH)".
- *
- * Only the AIR half is live.  js/sp_lev.js fixup_special() used to throw
- * "UNPORTED CALLEE: setup_waterlevel" for both Is_waterlevel and Is_airlevel,
- * which kept `air` and `water` out of js/mklev.js's LOADER_READY: admitting
- * either without this turned seed0373-barbarian-quest-tour into a HALT at
- * frame 110.  seed0373 teleports to the Plane of Air at step 110 and C spends
- * 857 of that step's 2907 leaves in here.
- *
- * The WATER half of each function below (the `struct container` pick-up and
- * replace that carries objects, monsters, the hero and traps inside a moving
- * bubble, plus unplacebc/lift_covet_and_placebc and elemental_clog) is NOT
- * ported: no public corpus session visits the Plane of Water, and `water`
- * stays out of LOADER_READY, so those arms are unreachable.  They are left as
- * C's control flow with the RNG-bearing statements intact and the content
- * moves omitted, so the draw counts stay right if `water` is ever admitted and
- * the omission shows up as a wrong hero/monster position rather than as
- * silently-wrong RNG.
- * ───────────────────────────────────────────────────────────────────────── */
 
 /* C mkmaze.c: svx.xmin / svy.ymin / svx.xmax / svy.ymax, set by
  * setup_waterlevel() and read by the gbxmin/gbymin/gbxmax/gbymax macros. */
@@ -1133,11 +1044,6 @@ export function setup_waterlevel() {
         for (let y = 0; y <= ROWNO - 1; y++) {
             const loc = game.level?.at(x, y);
             if (!loc) continue;
-            /* C: levl[x][y].glyph = cmap_to_glyph(Is_waterlevel ? S_water
-             * : S_air) — "entire level is remembered as one glyph".  This
-             * port's per-cell memory is remembered_glyph; S_air is a blank
-             * (js/display.js:847 AIR -> ' ' CLR_CYAN) and S_water the DEC
-             * wave. */
             loc.remembered_glyph = waterlev
                 ? { ch: '~', color: CLR_BLUE, decgfx: true }
                 : { ch: ' ', color: CLR_CYAN, decgfx: false };
@@ -1232,7 +1138,6 @@ export async function movebubbles() {
 // stolen_booty() and its three statics — C ref: mkmaze.c:713-889.
 //
 // "A tragic accident has occurred in Frontier Town... It has been overrun by
-// orcs.  The booty that the orcs took from the town is now in the possession
 // of the orcs that did this and have long since fled the level."
 //
 // fixup_special() (js/sp_lev.js) reaches this from exactly one arm —
@@ -1240,13 +1145,10 @@ export async function movebubbles() {
 // check_ransacked() above, which is TRUE only while generating "minetn-1"
 // (orctown) in the Gnomish Mines.  That arm was a bare
 // `throw new Error('UNPORTED CALLEE: stolen_booty')`, so every recording that
-// generates orctown STOPPED EMITTING FRAMES there.  Measured 2026-08-25 with
-// tools/scored-halt-oracle.mjs over corpus-generated/v5/train: 6 sessions
 // halt at this throw.
 //
 // RNG GROUND TRUTH.  The recorded C stream names every leaf's function and
 // line, so the whole subsystem was written against it rather than guessed;
-// corpus-generated/v5/train/gen141-reseed-seed1076328 leaves 7658..7779 are
 // the reference (rndorcname, then :820 rnd(4), :822 rn2(4) per candle, :823
 // rnd(3), :826 rn1(4,LEATHER_GLOVES), :828 rnd(10), :831 rn1(33,TRIPE_RATION)
 // per food slot, :843 rn2(2), makemon, shiny_orc_stuff :757/:764/:772,
@@ -1259,15 +1161,6 @@ const ORC_LEADER = 1;
 /* C mkmaze.c:713 `static const char *const orcfruit[] = ...` */
 const orcfruit = ["paddle cactus", "dwarven root"];
 
-/* otyps used by stolen_booty.  objects.h is an X-macro file with no `#define
- * TALLOW_CANDLE` text in it, so these cannot be grepped out of the C tree;
- * they are the index of the matching OBJ_NAME in js/oc_name_data.js (which is
- * generated from objects.h in OBJECTS_DESCR_INIT mode).  Cross-checked against
- * tools/pm-otyp-audit.mjs's truth table (TALLOW_CANDLE 224, WAX_CANDLE 225,
- * ROCK 474) and against js/makemon.js:1307's GOLD_PIECE_OTYP 438.  The 3.7 and
- * 5.0 objects.h differ in 12 lines, all of them comments or wand oc_prob
- * values — no row is added, removed or reordered — so the 3.7-generated table
- * is authoritative for 5.0 otyp NUMBERING. */
 const SB_TALLOW_CANDLE = 224, SB_WAX_CANDLE = 225, SB_SKELETON_KEY = 221;
 const SB_LEATHER_GLOVES = 159, SB_GAUNTLETS_OF_DEXTERITY = 162;
 const SB_TRIPE_RATION = 264, SB_CORPSE = 265, SB_EGG = 266;
@@ -1363,9 +1256,6 @@ async function migrate_orc(mtmp, mflags) {
                       + ((g.dungeons?.[uz?.dnum | 0]?.depth_start | 0) - 1);
 
     if (mflags === ORC_LEADER) {
-        /* Note that the orc leader will take possession of any remaining stuff
-           not already delivered to other orcs between here and the bottom of
-           the mines. */
         nlev = max_depth;
         /* once in a blue moon, he won't be at the very bottom */
         if (!rn2(40))
@@ -1416,20 +1306,6 @@ async function shiny_orc_stuff(mtmp) {
     }
 }
 
-/* migr_booty_item — C ref: mkmaze.c:779-796.  Make one loot item, park it on
- * the migrating chain owed to the first orc created anywhere, and stamp the
- * gang's name on it (which is how deliver_obj_to_mon() later knows what to
- * christen its recipient).
- *
- * ONAME: C does `new_oname(otmp, strlen(gang) + 1); Strcpy(ONAME(otmp), gang)`.
- * js/mhitm.js's new_oname() writes the FLAT capture-replay shape
- * (obj.oname / obj.oextra_oname_present), but ONAME()/has_oname()
- * (js/const.js:2890-2891) — which is what js/dokick.js's deliver_obj_to_mon
- * calls — read `obj.oextra.oname`.  Write the shape the live readers read;
- * js/objnam.js:506 already spells the assignment this way.
- *
- * RNG: rn2(2) for the fruit name and rn2(3) for the extra quantity, FOOD_CLASS
- * only. */
 async function migr_booty_item(otyp, gang) {
     const otmp = await mksobj_migr_to_species(otyp, SB_M2_ORC, true, false);
     if (otmp && gang) {

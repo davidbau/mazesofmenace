@@ -1,5 +1,4 @@
 // dungeon.js — port of nethack-c/src/dungeon.c (scaffold: functions are added here
-// one packet at a time by the porting fleet; see tasks/generated/port-*.yaml)
 
 import { game } from './gstate.js';
 import { In_quest, In_endgame, Is_knox_level } from './const.js';
@@ -153,24 +152,6 @@ export function endgamelevelname(indx) {
     return outbuf;
 }
 
-/* C ref: botl.c:440-475 describe_level(buf, dflgs) — "provide the name of the
- * current level for display by various ports".
- *      dflgs & 1: append trailing space   (status line)
- *      dflgs & 2: include the branch name (livelog)
- *
- * C reads &u.uz directly; this port takes the d_level as a parameter because
- * the status renderer must be able to describe the level captured in the
- * level-transition --More-- snapshot (bot() has not re-run yet at that frame),
- * and the label and the depth have to come from the SAME {dnum, dlevel} pair.
- * Passing game.u.uz is the C behaviour.
- *
- * C fills `buf` and returns int (1 when the level had a name, 0 for the plain
- * "Dlvl:n" form).  JS strings are immutable, so `buf` is an out-holder: pass an
- * object and the text lands in its `.s`.  Callers that only want the text call
- * describe_level_buf() below.  Note the "%s:%-2d" left-justified width-2 pad and
- * the addspace are both real: the tty windowport strips the trailing blanks off
- * BL_LEVELDESC before laying the field out (wintty.c:4546-4556), which is why
- * they are invisible in the recorded status rows. */
 export function describe_level(buf, dflgs, uz) {
     const r = describe_level_impl(dflgs, uz);
     if (buf && typeof buf === 'object')
@@ -233,7 +214,6 @@ export function free_exclusions() {
 }
 
 // update_file(nhfp) macro (hack.h): (nhfp)->mode & (COUNTING | WRITING).
-// calls_macro_or_libc for this packet; reproduced inline rather than stubbed.
 const COUNTING = 0x01;
 const WRITING = 0x02;
 function update_file(nhfp) {

@@ -1,31 +1,3 @@
-/**
- * js/lua/patterns.js — Lua 5.4 pattern-matching engine
- *
- * This is a hand-written, zero-dependency implementation of Lua's string
- * pattern dialect (NOT JavaScript RegExp).  The exported functions mirror
- * Lua's string library:
- *
- *   luaFind(s, pattern, init, plain) → [start, end, ...captures] | null
- *   luaMatch(s, pattern, init)       → captures… | null
- *   luaGmatch(s, pattern)            → iterator (returns captures each call)
- *   luaGsub(s, pattern, repl, n)     → [resultString, replacementCount]
- *
- * ALL positional arguments and return values use Lua's 1‑based indexing.
- * Callers (the interpreter packet) are responsible for translating to/from
- * JS 0‑based indices at the boundary.
- *
- * Lua pattern syntax supported (5.4):
- *   Character classes:   %a %c %d %g %l %p %s %u %w %x  (upper-case = complement)
- *   Magic characters:     ^ $ ( ) % . [ ] * + - ?  (otherwise literal)
- *   Anchors:              ^ (start of string), $ (end of string)
- *   Character sets:       [abc]  [^abc]  [%a%d]  [a-z]
- *   Quantifiers:          * (0+ greedy), + (1+ greedy), - (0+ lazy), ? (0 or 1)
- *   Captures:             (...) capturing group;  empty () is a position capture
- *   Back-references:      %1 … %9  refer to prior captures
- *   Balanced match:       %bxy  balance between characters x and y
- *   Frontier:             %f[set]  zero-width assertion at boundary of set
- *   Escapes:              %% → literal %,  %X where X non-magic → literal X
- */
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -63,13 +35,9 @@ function charClassPredicate(letter) {
 //   { type: 'literal',  ch: 'a' }
 //   { type: 'class',    cls: 'a' }          // %a, %A, %d, …
 //   { type: 'any' }                          // .
-//   { type: 'set',      chars: Set, negated: bool }
-//   { type: 'capture',  body: atom }
-//   { type: 'position' }                     // empty capture ()
 //   { type: 'anchor_start' }                 // ^
 //   { type: 'anchor_end' }                   // $
 //   { type: 'balanced', x: '(', y: ')' }     // %b()
-//   { type: 'frontier', set: {chars,negated} } // %f[...]
 //   { type: 'backref',  n: 1..9 }            // %1..%9
 //
 // Quantifiers are attached to the preceding atom via .quant:
@@ -288,7 +256,6 @@ function parsePattern(pattern) {
 // ---------------------------------------------------------------------------
 
 function matchHere(atoms, s, pos, captures) {
-  // Returns: { endPos, captures } or null
   let cur = pos;
   const savedCaptures = [...captures];
 
@@ -306,7 +273,6 @@ function matchHere(atoms, s, pos, captures) {
     }
 
     if (atom.type === 'position') {
-      // Position capture: captures the current position (1-indexed)
       savedCaptures.push(cur + 1);
       continue;
     }
@@ -320,7 +286,6 @@ function matchHere(atoms, s, pos, captures) {
       const result = matchQuantifier(atom, s, cur, savedCaptures, '*');
       if (!result) return null;
       cur = result.endPos;
-      // Copy captures from result
       result.captures.forEach((c, idx) => {
         if (idx < savedCaptures.length) savedCaptures[idx] = c;
         else savedCaptures.push(c);
@@ -402,22 +367,17 @@ function matchOne(atom, s, pos, captures) {
     const innerCaps = [];
     const result = matchHere(atom.body, s, pos, innerCaps);
     if (!result) return null;
-    // Capture: if inner has captures, those become the capture values;
-    // otherwise capture the matched substring
     if (innerCaps.length > 0) {
-      // Inner captures exist — push them
       for (const c of innerCaps) {
         newCaps.push(c);
       }
     } else {
-      // Capture the substring
       newCaps.push(s.substring(capStart, result.endPos));
     }
     return { endPos: result.endPos, captures: newCaps };
   }
 
   if (atom.type === 'backref') {
-    // %1-%9: match the exact text of a prior capture
     const capIdx = atom.n - 1; // 0-based
     if (capIdx >= captures.length) return null;
     const capVal = String(captures[capIdx]);
@@ -503,7 +463,6 @@ function matchQuantifier(atom, s, pos, captures, quant) {
     if (!result) break;
     matches.push({ start: cur, end: result.endPos });
     cur = result.endPos;
-    // Update captures
     result.captures.forEach((c, idx) => {
       if (idx < allCaps.length) allCaps[idx] = c;
       else allCaps.push(c);
@@ -518,13 +477,6 @@ function matchQuantifier(atom, s, pos, captures, quant) {
   return { endPos: cur, captures: allCaps };
 }
 
-/**
- * Core matching logic.  Tries to match `pattern` against `s` starting at
- * position `startPos` (0‑based JS index).
- *
- * Returns { start: number, end: number, captures: any[] } | null.
- * start and end are 1‑based (Lua conventions).
- */
 function matchPattern(s, pattern, startPos) {
   const atoms = parsePattern(pattern);
   const hasStartAnchor = atoms.length > 0 && atoms[0].type === 'anchor_start';
@@ -554,15 +506,6 @@ function matchPattern(s, pattern, startPos) {
 // Public API
 // ---------------------------------------------------------------------------
 
-/**
- * string.find(s, pattern [, init [, plain]])
- *
- * Looks for the first match of `pattern` in `s`.  If found, returns an array
- *   [start, end, ...captures]
- * where start/end are 1‑based indices.  If not found, returns null.
- *
- * If `plain` is truthy, `pattern` is matched literally (no magic).
- */
 export function luaFind(s, pattern, init = 1, plain = false) {
   if (typeof s !== 'string') {
     throw new Error('luaFind: subject must be a string');
@@ -587,15 +530,6 @@ export function luaFind(s, pattern, init = 1, plain = false) {
   return [result.start, result.end, ...captures];
 }
 
-/**
- * string.match(s, pattern [, init])
- *
- * Extracts captures from the first match.  If the pattern has no captures,
- * returns the whole match as a string.  If one capture, returns that capture
- * value.  If multiple captures, returns them as an array.
- *
- * Returns null if no match.
- */
 export function luaMatch(s, pattern, init = 1) {
   if (typeof s !== 'string') {
     throw new Error('luaMatch: subject must be a string');
@@ -607,7 +541,6 @@ export function luaMatch(s, pattern, init = 1) {
   const startPos = Math.max(1, init || 1) - 1;
   const atoms = parsePattern(pattern);
 
-  // Check if pattern contains any capture groups
   const hasCaptures = atoms.some(a => a.type === 'capture' || a.type === 'position');
   const hasExplicitCaptures = atoms.some(a => a.type === 'capture');
 
@@ -615,7 +548,6 @@ export function luaMatch(s, pattern, init = 1) {
   if (!result) return null;
 
   if (!hasCaptures) {
-    // No captures: return the full match
     return s.substring(result.start - 1, result.end);
   }
 
@@ -628,12 +560,6 @@ export function luaMatch(s, pattern, init = 1) {
   return caps;
 }
 
-/**
- * string.gmatch(s, pattern)
- *
- * Returns an iterator function.  Each call returns the next match's captures
- * (or the full match if no captures).
- */
 export function luaGmatch(s, pattern) {
   if (typeof s !== 'string') {
     throw new Error('luaGmatch: subject must be a string');
@@ -673,18 +599,6 @@ export function luaGmatch(s, pattern) {
   };
 }
 
-/**
- * string.gsub(s, pattern, repl [, n])
- *
- * Returns [resultString, replacementCount].
- *
- * `repl` can be:
- *   - a string (with %1‑%9 back-references to captures)
- *   - a function(table) → string (Lua-style: receives captures as varargs)
- *   - a table (hash) mapping capture[1] → replacement
- *
- * `n` limits the number of replacements (default: unlimited).
- */
 export function luaGsub(s, pattern, repl, n) {
   if (typeof s !== 'string') {
     throw new Error('luaGsub: subject must be a string');
@@ -711,10 +625,8 @@ export function luaGsub(s, pattern, repl, n) {
 
     let replacement;
     if (typeof repl === 'function') {
-      // Lua gsub passes captures as multiple arguments to the function
       replacement = repl(...caps);
     } else if (typeof repl === 'object' && repl !== null && !Array.isArray(repl)) {
-      // Table: use first capture as key
       const key = caps.length > 0 ? String(caps[0]) : '';
       replacement = (key in repl) ? String(repl[key]) : '';
     } else if (typeof repl === 'string') {

@@ -2,7 +2,6 @@
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
 // Literal port of pure-ish functions from nethack-c/src/exper.c, isolated
 // from the rest of the engine so they can be exercised by the per-function
-// equivalence oracle without dragging in globals.
 //
 // Source of truth: nethack-c/src/exper.c
 //

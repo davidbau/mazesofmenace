@@ -6,9 +6,6 @@ import { game } from './gstate.js';
 import { setworn, setnotworn } from './worn.js';
 import { impossible as equipment_impossible } from './pline.js';
 import { end_burn } from './timeout.js';
-/* C ref: do_wear.c:2476 mons[u.umonnum].ac — the mons pack carries lvl/mr/mov
- * but not ac; js/makemon_ac.json is generated from monsters.h LVL() by
- * scripts/gen-mons-ac.mjs, aligned to the same mndx order. */
 import monAcPack from './makemon_ac.json' with { type: 'json' };
 const MONS_AC = monAcPack.ac;
 /* C mons[] rows (permonst); row[6] = mflags1.  Imported as a raw data pack for
@@ -16,16 +13,8 @@ const MONS_AC = monAcPack.ac;
  * import cycle (makemon.js imports xname from here). */
 import monsPackDw from './makemon_mons.json' with { type: 'json' };
 const MONS_DW = /** @type {number[][]} */ (monsPackDw.mons);
-/* C permonst.msize (MZ_*) per MON() row order — the same generated pack
- * js/makemon.js:58 reads (scripts/gen-mons-msize.mjs).  canwearobj's
- * verysmall()/WrappingAllowed() guards are msize tests, and MONS_DW carries no
- * msize column. */
 import monMsizePackDw from './makemon_msize.json' with { type: 'json' };
 const MONS_MSIZE_DW = /** @type {number[]} */ (monMsizePackDw.msize);
-/* C permonst.mflags1 for the hero's CURRENT form (gy.youmonst.data).  Prefer
- * the live youmonst.data (polyself.js / the capture reconstructor set it), else
- * resolve u.umonnum — u_init.c:991 sets u.umonnum = u.umonster = gu.urole.mnum
- * and polyself keeps it current (same resolution find_ac uses for MONS_AC). */
 function _hero_mflags1_dw() {
     const d = game.youmonst && game.youmonst.data;
     if (d && d.mflags1 != null) return d.mflags1 >>> 0;
@@ -91,18 +80,6 @@ import { u_safe_from_fatal_corpse } from './pickup.js';
 /* C zap.c:1457 obj_resists() — maybe_destroy_armor's 90%-for-artifacts save.
  * js/zap.js imports only xname from this file, so this cycle is import-only. */
 import { obj_resists } from './zap.js';
-/* C hack.h:511-538 `enum getobj_callback_returns`:
- *   GETOBJ_EXCLUDE = -3, GETOBJ_EXCLUDE_NONINVENT = -2,
- *   GETOBJ_EXCLUDE_INACCESS = -1, GETOBJ_EXCLUDE_SELECTABLE = 0,
- *   GETOBJ_DOWNPLAY = 1, GETOBJ_SUGGEST = 2.
- * SEPARATE FINDING, deliberately NOT fixed here: js/const.js:1957-1962 exports
- * this enum as 0/1/2/3/4/5, so four of its six members carry a value C never
- * uses, and js/cmd.js:9385 keeps its own file-local copy with the same wrong
- * EXCLUDE.  Re-basing that shared enum inverts every `if (!ok(obj))`-shaped
- * caller in js/cmd.js (0 is falsy, -3 is not), which is a measured-and-scored
- * change of its own and is not in this target's scope.  The two members this
- * file needs are spelled with C's values and C's citation, the same way
- * js/cmd.js:29828 already spells any_obj_ok's pair. */
 const GETOBJ_EXCLUDE_DW = -3;   /* hack.h:515 */
 const GETOBJ_SUGGEST_DW = 2;    /* hack.h:538 */
 import { ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE,
@@ -113,7 +90,6 @@ import { ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE,
  * seventeenth copy.  See _uwep_welded_dw() below for the one C guard cmd.js's
  * `welded` omits. */
 import { welded, body_part, _plineVFmt, _spoteffects_pickup as _spoteffects_pickup_fd, surface, useup, getObjFromGetobj } from './cmd.js';
-/* C rm.h W_SADDLE — the worn-mask bit float_down's message gate tests. */
 const W_SADDLE_FD = 0x00100000;
 /* C's go.oldcap is ONE global (decl.h:741, BSS-zero at game start) and C has ONE
  * encumber_msg() (pickup.c:1978).  This file used to carry a SECOND body of it
@@ -153,9 +129,6 @@ import { UNCHANGING as UNCHANGING_PROP } from './const.js';
 /* C polyself.c poly_gender() — js/makemon.js:2112 is the ONE definition (do_wear.c
  * itself calls the same global function; not duplicating it here). */
 import { poly_gender } from './makemon.js';
-/* C ref.c cmd.js:1638 trycall(obj) — do_call.c's "call an object type" prompt,
- * gated on the type being unnamed/uncalled.  Reused rather than duplicated: see
- * the `welded`/`useup` imports above for the established cross-file pattern. */
 import { trycall } from './cmd.js';
 /* C objects.h — AMULET_OF_RESTFUL_SLEEP is otyp 204 (same numbering
  * js/mklev.js:370 uses for the amulet_curse table). */
@@ -199,21 +172,6 @@ function change_sex_dw() {
         if (g.flags) g.flags.female = !g.flags.female;
     }
     if (upolyd) u.mfemale = !u.mfemale;
-    /* C polyself.c:290 `u.umonnum = u.umonster;` — a faithful no-op while not
-     * polymorphed (u.umonster is the hero's fixed ROLE base form; u_init.c:991
-     * sets u.umonnum = u.umonster = gu.urole.mnum once at game start and
-     * u.umonster never changes after — the SAME invariant js/uhitm.js's abon()
-     * already relies on, deriving it from game.urole.mnum because no capture
-     * carries a separate u.umonster side-channel). Reading the bare
-     * `u.umonster` field here always evaluated to `undefined | 0 === 0` in
-     * replay (that field is never seeded), so this line CORRUPTED
-     * hero.umonnum from its real value to 0 on every non-polymorphed call.
-     * MEASURED doputon rec#17 (a worn amulet of change, non-polymorphed hero,
-     * role.mnum/hero.umonnum both 331): C's assignment is 331 -> 331; this
-     * port wrote 331 -> 0. Prefer the real field when it IS live (the scored
-     * path sets it at chargen and never touches it again), else the
-     * game.urole.mnum invariant, else leave umonnum as its current value —
-     * the correct no-op when nothing else is known. */
     if (!upolyd) {
         u.umonnum = (u.umonster != null) ? (u.umonster | 0)
             : (g.urole ? (g.urole.mnum | 0) : (u.umonnum | 0));
@@ -330,26 +288,6 @@ function isCrackable(obj) {
     const mat = objOcMaterial(obj.otyp | 0);
     return mat === GLASS && (obj.oclass | 0) === ARMOR_CLASS;
 }
-/* C ref: hack.h:1531 — ARM_BONUS(obj):
- *   objects[obj->otyp].a_ac + obj->spe
- *     - min((int)greatest_erosion(obj), objects[obj->otyp].a_ac)
- *
- * The a_ac term is indexed BY OTYP out of the objects[] table (objclass.h:99,
- * 102 — a_ac is the oc_oc1 union slot); it is never a per-object field in C.
- * This port used to read only `obj.a_ac`, a value the SYNTHETIC records
- * precompute (js/u_init.js iniInvWornArmor, js/mapstate_game_bridge.js
- * applyWornToGame).  A REAL struct obj — a wished dragon scale mail, anything
- * picked up and worn — carries no such field, so `obj.a_ac | 0` was 0 and the
- * piece's entire AC contribution silently vanished (seed0364 step 142: C
- * "AC:-4" vs JS "AC:5", exactly the orange DSM's a_ac of 9).  Resolve it from
- * the generated objects.h table, as C does, and keep obj.a_ac only for a
- * record whose otyp has no ARMOR_CLASS row at all.
- *
- * At post_init, freshly-spawned armor has no erosion (oeroded=oeroded2=0),
- * so greatest_erosion(obj) == 0 and the min() term is 0.  (obj.oeroded||0) +
- * (obj.oeroded2||0) stands in as the erosion proxy for forward compatibility
- * when a real erosion model lands.
- */
 /* The gi.invent node bearing `slotmask`, or null.  C worn.c:78 setworn() puts
  * that very node into u.uarm/uarmc/…, so C's ARM_BONUS reads one object; this
  * port keeps TWO representations for a worn slot (see the "BRIDGE OVER A MODEL
@@ -374,14 +312,6 @@ function armBonus(obj, slotmask) {
      * counters, not their sum (they are alternative damage kinds — burnt vs
      * rusted/rotted — and only the worse one counts). */
     let er1 = (obj.oeroded || 0) | 0, er2 = (obj.oeroded2 || 0) | 0;
-    /* Pull erosion from the invent node too — see _worn_invent_node.  Without
-     * this a fire ray that scorched the hero's worn cloak left AC unchanged:
-     * seed5500 step 832 onward, C "AC:10" vs JS "AC:9" for 79 captured frames.
-     * Deliberately NOT extended to `spe`: seed0365 step 147's enchant-armor
-     * scroll writes +4 to the stand-in only, and reading spe off the invent node
-     * instead loses it (measured: 147-151 flip from pass to fail).  Merging the
-     * two records is the real fix and belongs in u_init.js, out of scope here. */
-     // PARKED-NOTE: session=seed5500,seed0365 citation-only
     if (slotmask) {
         const inode = _worn_invent_node(slotmask);
         if (inode && inode !== obj) {
@@ -486,33 +416,11 @@ export function find_ac() {
             g.disp.botl = 1;
     }
 }
-/* C ref: do_wear.c:567-573 hard_helmet() — hard helms provide better protection
- * against falling rocks. Returns TRUE if obj is a metallic or crackable helmet.
- * C source:
- *   boolean hard_helmet(struct obj *obj)
- *   {
- *       if (!obj || !is_helmet(obj))
- *           return FALSE;
- *       return (is_metallic(obj) || is_crackable(obj)) ? TRUE : FALSE;
- *   }
- * Port: check oclass==ARMOR_CLASS as proxy for is_helmet; the full is_helmet
- * macro also checks oc_armcat==ARM_HELM but captured obj records all have
- * oclass==ARMOR_CLASS for armor objects. */
 export function hard_helmet(obj) {
     if (!obj || (obj.oclass | 0) !== ARMOR_CLASS)
         return false;
     return isMetallic(obj) || isCrackable(obj);
 }
-/* C ref: do_wear.c:3014-3019 reset_remarm() — clear saved context to avoid
- * inappropriate resumption of interrupted 'A' (doremarm/takeoff-all).
- * C source:
- *   void reset_remarm(void)
- *   {
- *       svc.context.takeoff.what = svc.context.takeoff.mask = 0L;
- *       svc.context.takeoff.disrobing[0] = '\0';
- *   }
- * Port: clears g.context.takeoff state fields. RNG-free, no observable
- * state_after_diff in the capture oracle (this is internal bookkeeping). */
 export function reset_remarm() {
     const g = game;
     g.context = g.context || {};
@@ -544,20 +452,6 @@ const ARM_GLOVES = 3;
 const ARM_BOOTS = 4;
 const ARM_CLOAK = 5;
 const ARM_SHIRT = 6;
-/* Worn-armor metadata: oc_delay (take-off / put-on delay), oc_armcat and
- * oc_material for every ARMOR_CLASS otyp.  These used to be a hand-transcribed
- * literal covering only the starter pieces; four of its cells had drifted from
- * C (LEATHER_ARMOR 0 vs 3, ROBE 5 vs 0, CLOAK_OF_DISPLACEMENT 1 vs 0,
- * HAWAIIAN_SHIRT 10 vs 0), and since armoroff()/armoron() BRANCH on oc_delay,
- * each wrong cell silently added or deleted whole game turns.  js/armor_data.js
- * is now generated straight from the C objects table
- * (tools/gen-armor-data.mjs) and gated by tools/oc-delay-parity.mjs, so the
- * transcription step — and its whole defect class — is gone.
- *
- * Records reach here two ways: real gi.invent objects (js/u_init.js
- * _adjust_and_addinv_ini, readobjnam/mksobj wishes) carry a NUMERIC otyp, while
- * the legacy iniInvWornArmor() synthetic u.u* records carry the SYMBOLIC name
- * ("LEATHER_ARMOR").  Both resolve to the same generated row. */
 const ARMOR_ROW_BY_NAME = (() => {
     const m = new Map();
     for (const otyp of Object.keys(ARMOR_DATA)) {
@@ -587,25 +481,6 @@ function armorMeta(obj) {
     return armorRow(obj) || { delay: 0, armcat: ARM_SUIT };
 }
 
-/* ---- the *_simple_name family (objnam.c:5432-5601) ---------------------
- * armoroff()/armoron() build their nomovemsg from armor_simple_name()'s
- * per-category helper ("You finish taking off your <what>."), so these are
- * screen-channel-load-bearing, not cosmetic.
- *
- * DUPLICATION, DELIBERATE AND TEMPORARY — js/objnam.js also exports a
- * *_simple_name family, but its armor_simple_name() cannot be called here yet:
- *   - its dispatch switch transliterated C's CASE ORDER as the armcat ordinals,
- *     so ARM_SHIELD(1) and ARM_CLOAK(5) are SWAPPED; a cloak therefore reaches
- *     shield_simple_name(), which is still a `throw new Error('not yet ported')`
- *     stub (js/objnam.js:2612) — i.e. it throws on every cloak;
- *   - its suit_simple_name() tests dragon SCALES as otyp 89-98, which is the
- *     HELM range (scales are 111-120, mail 101-110);
- *   - its name lookups go through getObjName(), which returns null for most
- *     armor otyps, so "ring mail" silently degrades to "suit" instead of "mail".
- * The version here is backed by js/armor_data.js (the generated C table), so it
- * has the real names, armcats and materials.  UNIFY the two when
- * port-gen-armor_simple_name-001 lands the objnam.js side behind its
- * capture-replay sweep; this file should then import from there. */
 
 /* C ref: obj.h:347-350 Is_dragon_scales / Is_dragon_mail — contiguous otyp
  * runs.  Resolved by C oc_name rather than by re-typing the otyp bounds. */
@@ -756,13 +631,6 @@ const ARMCAT_TO_AFTERNMV = [
     'Armor_off', 'Shield_off', 'Helmet_off',
     'Gloves_off', 'Boots_off', 'Cloak_off', 'Shirt_off',
 ];
-/* Donning afternmv tags (the put-on counterpart).  C ref: do_wear.c:2379-2394 —
- * accessory_or_armor_on sets ga.afternmv = Armor_on / Helmet_on / Gloves_on /
- * Boots_on / Shield_on / Cloak_on / Shirt_on selected by which u.* slot the
- * object was just setworn() into.  Indexed by oc_armcat (same order as
- * ARMCAT_TO_SLOT).  All *_on callbacks are RNG-free AC/intrinsic recomputes for
- * the starter (non-artifact, non-dragon) armor in the corpus (verified Armor_on
- * do_wear.c:887-906 — 0 RNG call-sites via cref-extract). */
 const ARMCAT_TO_AFTERNMV_ON = [
     'Armor_on', 'Shield_on', 'Helmet_on',
     'Gloves_on', 'Boots_on', 'Cloak_on', 'Shirt_on',
@@ -788,31 +656,6 @@ export async function Armor_off()  {
     return r;
 }
 export function Shield_off() { return takeoff_slot('uarms'); }
-/* C ref: do_wear.c:1006-1063 Helmet_off() — the per-otyp switch runs BEFORE the
- * shared `setworn((struct obj *) 0, W_ARMH)` tail, so it still reads uarmh.
- * Only the FEDORA arm is ported, mirroring Helmet_on() above (do_wear.c:432):
- *
- *     case FEDORA:
- *         if (Role_if(PM_ARCHEOLOGIST)) change_luck(-1);
- *         break;
- *
- * It is the exact inverse of the +1 Helmet_on grants, and WITHOUT it an
- * Archeologist who takes her fedora off keeps Luck 1 forever.  That is not a
- * cosmetic drift: nh_timeout (timeout.c:603-604) computes
- * `baseluck += 1` only while `Role_if(PM_ARCHEOLOGIST) && uarmh
- * && uarmh->otyp == FEDORA`, so with the hat off C's baseluck is 0 and u.uluck
- * times out to 0 — while this port sat at 1 with nothing to pull it back.  A
- * nonzero Luck makes rnl(x) DRAW: rnd.c:225 `if (adjustment && rn2(37 +
- * abs(adjustment)))` is an extra rn2 C never fires at Luck 0.  seed0361 takes
- * the fedora off at step 15 ("Tc") and diverges 7,900 leaves later on the first
- * rnl in the run — doopen_indir's rnl(20) (lock.c:905), where C logs one leaf
- * and this port logged rn2(38) first.
- *
- * The remaining arms (DUNCE_CAP disp.botl, HELM_OF_TELEPATHY/
- * HELM_OF_CAUTION's early return through see_monsters, HELM_OF_BRILLIANCE's
- * adj_abon, HELM_OF_OPPOSITE_ALIGNMENT's uchangealign) reach helpers this port
- * does not have and no corpus session wears those helmets — deferred, not
- * guessed, exactly as Helmet_on defers them. */
 export async function Helmet_off() {
     const u = game.u;
     const otmp = u ? u.uarmh : null;
@@ -1014,45 +857,11 @@ export async function Cloak_off() {
     if (propRec)
         propRec.extrinsic = (propRec.extrinsic | 0) & ~W_ARMC;
     await takeoff_slot('uarmc');
-    /* do_wear.c:392 switch (otyp) — only the types with a removal effect.  The
-     * plain cloaks (orcish/dwarvish/protection/magic resistance/oilskin/robe/
-     * leather) break with no effect.  Elven cloak (toggle_stealth), mummy
-     * wrapping and cloak of invisibility are not reached by the corpus 'T'
-     * steps and are left to their own ports. */
     if (otyp === CLOAK_OF_DISPLACEMENT_OTYP || otyp === 'CLOAK_OF_DISPLACEMENT')
         await toggle_displacement(otmp, oldprop, false);
     return 0;
 }
-/* C ref: do_wear.c:887 Armor_on() and the sibling *_on functions — the donning
- * afternmv callbacks.  By the time these fire, accessory_or_armor_on has already
- * called setworn(obj, mask) (do_wear.c:2377), so the slot is occupied; the
- * callback's remaining job is the AC/intrinsic recompute.  For the starter armor
- * pieces in the corpus each *_on is pure bookkeeping:
- *   Armor_on  (do_wear.c:887): set uarm->known, dragon_armor_handling, arti light
- *   Helmet_on/Gloves_on/Boots_on/Shield_on/Cloak_on/Shirt_on: intrinsic side
- *     effects (e.g. Boots_on speed/levitation, Gloves_on fumbling) that are all
- *     no-ops for the plain starter pieces.
- * All are RNG-free (verified Armor_on do_wear.c:887-906 — 0 rn2/rnd via
- * cref-extract).  We recompute u.uac via find_ac() and return 0 like the C
- * callbacks.  When the per-slot intrinsics/light/dragon handling is needed by a
- * later corpus session, extend the matching callback. */
 function don_slot(_slot) {
-    /* C ref: every one of the five *_on callbacks this helper stands in for ends
-     * with the SAME tail, immediately after its per-otyp switch:
-     *   Armor_on   do_wear.c:891  if (!uarm->known)  { uarm->known = 1;  ... }
-     *   Cloak_on   do_wear.c:375  if (uarmc && !uarmc->known) { uarmc->known = 1; ... }
-     *   Helmet_on  do_wear.c:510  if (uarmh && !uarmh->known) { uarmh->known = 1; ... }
-     *   Gloves_on  do_wear.c:598  if (!uarmg->known) { uarmg->known = 1; ... }
-     *   Shield_on  do_wear.c:725  if (!uarms->known) { uarms->known = 1; ... }
-     *   Shirt_on   do_wear.c:770  if (!uarmu->known) { uarmu->known = 1; ... }
-     * — "the +/- is evident because of the status line AC": donning any armor
-     * reveals its enchantment, because the hero can read the AC change off the
-     * bottom line.  Boots_on already ports its copy (do_wear.c:255, above); this
-     * helper dropped the other six, so a worn piece kept known=0 and doname()
-     * printed it without its spe.  seed0014 step 126: the -4 orcish helm the hero
-     * has just finished donning lists as "an orcish helm" where C lists
-     * "a -4 orcish helm".  update_inventory() is the persistent-inventory-window
-     * refresh, a no-op on tty.  RNG-free. */
     const otmp = game.u ? game.u[_slot] : null;
     if (otmp && !otmp.known)
         otmp.known = 1;
@@ -1064,33 +873,6 @@ function don_slot(_slot) {
      * wearing ..." pline still pages against the pre-don AC.  RNG-free. */
     return 0;
 }
-/* C ref: do_wear.c:797-882 dragon_armor_handling(otmp, puton, on_purpose) —
- * "handle extra abilities for hero wearing dragon scale armor".
- *
- * Dragon scale mail's oc_oprop is its RESISTANCE (objects.h:521: blue is
- * SHOCK_RES), so setworn() confers only that; every OTHER property a DSM grants
- * is set here, by hand, on the W_ARM bit.  This function was not ported at all
- * and Armor_on()/Armor_off() did not call it, so a hero in blue dragon scale
- * mail was never Fast, one in orange never had Free_action, and so on.
- *
- * Corpus witness: seed0367-priest-quest-tour step 141 (PUBLIC).  The hero
- * finishes donning wished blue dragon scale mail and C's topline reads
- *     "You finish your dressing maneuver.  You speed up."
- * where this port stopped at "You finish your dressing maneuver."
- * gen030-reseed-seed1082511 is its reseed twin and reaches the same code.
- *
- * RNG-FREE: none of the eleven arms draws rn2/rnd in C.
- *
- * Two arms are DEFERRED rather than guessed, and say so:
- *   - GOLD: `make_hallucinated(!puton, ..., W_ARM)` (potion.c:2401 here).
- *     js/do_wear.js has no import edge to js/potion.js and adding one for an
- *     unwitnessed arm is not worth a new module cycle.
- *   - YELLOW on REMOVAL: the two `wielding_corpse()` calls (do_wear.c:867-868),
- *     which can kill the hero; wielding_corpse is not ported anywhere in js/.
- *     The EStone_resistance clear itself IS ported.
- * Both are unreached by anything measured; a session that hits one diverges on
- * state, not on the leaf stream.
- */
 const GOLD_DRAGON_SCALE_MAIL_DW = 102, RED_DRAGON_SCALE_MAIL_DW = 104,
       WHITE_DRAGON_SCALE_MAIL_DW = 105, ORANGE_DRAGON_SCALE_MAIL_DW = 106,
       BLACK_DRAGON_SCALE_MAIL_DW = 107, BLUE_DRAGON_SCALE_MAIL_DW = 108,
@@ -1104,13 +886,6 @@ function _dw_set_extrinsic(prop, on) {
     const u = game.u;
     if (!u)
         return;
-    /* u.uprops is a SPARSE object in this port — a slot exists only once
-     * something has written it — so the record must be created on demand, the
-     * same idiom setworn_armor() uses (do_wear.js:1421).  Reading it and
-     * returning early instead would make the whole function a silent no-op for
-     * exactly the properties a DSM is the FIRST writer of, which is all of
-     * them: seed0367's `EFast |= W_ARM` landed nowhere, so u_calc_moveamt
-     * (allmain.c:127) still saw a non-Fast hero and skipped C's rn2(3). */
     if (!u.uprops) u.uprops = {};
     if (!u.uprops[prop]) u.uprops[prop] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     const rec = u.uprops[prop];
@@ -1200,12 +975,6 @@ export async function Armor_on()  {
     return don_slot('uarm');
 }
 export function Shield_on() { return don_slot('uarms'); }
-/* C ref: do_wear.c:432 Helmet_on(void) — per-otyp switch on uarmh->otyp.
- * FEDORA/PM_ARCHEOLOGIST is the only case that consumes replay-visible state
- * (change_luck); the remaining cases (HELM_OF_CAUTION/BRILLIANCE/
- * HELM_OF_OPPOSITE_ALIGNMENT/DUNCE_CAP) reach unported helpers (see_monsters
- * side effects, ABON/uchangealign/curse) not exercised by the corpus for this
- * function and are deferred rather than guessed. */
 const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93;
 export function Helmet_on() {
     const u = game.u;
@@ -1241,41 +1010,10 @@ export function Helmet_on() {
     return don_slot('uarmh');
 }
 /* Gloves_on's real body (with C's per-otyp switch) is below, beside Cloak_on. */
-/* C ref: do_wear.c:186-257 Boots_on(void) — the donning afternmv for the boots
- * slot.  setworn() already ran (accessory_or_armor_on, do_wear.c:2377), so
- * uarmf is set and its extrinsic property is already conferred; oldprop is the
- * property the hero had from OTHER sources, with the boots' own bit stripped.
- *
- *   long oldprop = u.uprops[objects[uarmf->otyp].oc_oprop].extrinsic
- *                  & ~WORN_BOOTS;
- *   switch (uarmf->otyp) {
- *   case LOW_BOOTS: case IRON_SHOES: case HIGH_BOOTS:
- *   case JUMPING_BOOTS: case KICKING_BOOTS:  break;
- *   case SPEED_BOOTS:
- *       if (!oldprop && !(HFast & TIMEOUT)) {
- *           makeknown(uarmf->otyp);
- *           You_feel("yourself speed up%s.", (oldprop || HFast) ? " a bit more" : "");
- *       }
- *       break;
- *   ...
- *   }
- *   if (uarmf && !uarmf->known) { uarmf->known = 1; update_inventory(); }
- *
- * seed0360 step 137: the wished speed boots finish donning and C emits
- * "You feel yourself speed up." joined onto the nomovemsg topline.  RNG-free.
- * The WATER_WALKING_BOOTS (spoteffects), ELVEN_BOOTS (toggle_stealth),
- * FUMBLE_BOOTS (incr_itimeout(rnd(20))) and LEVITATION_BOOTS (float_up)
- * branches reach unported helpers and are deferred rather than guessed — none
- * is reached by the corpus.  Async because the SPEED_BOOTS feedback is a
- * pline; afternmv_dispatch (allmain.js) already awaits its callbacks. */
- // PARKED-NOTE: session=seed0360 citation-only
 const LOW_BOOTS_OTYP = 163, IRON_SHOES_OTYP = 164, HIGH_BOOTS_OTYP = 165;
 const SPEED_BOOTS_OTYP = 166, JUMPING_BOOTS_OTYP = 168, KICKING_BOOTS_OTYP = 170;
 const WATER_WALKING_BOOTS_OTYP_DW = 167;
 export const ELVEN_BOOTS_OTYP_DW = 169, LEVITATION_BOOTS_OTYP_DW = 172;
-/* Resolved against the recorded binary with `node tools/c-const-oracle.mjs`,
- * not guessed: FUMBLE_BOOTS 171 (WATER_WALKING_BOOTS 167, ELVEN_BOOTS 169,
- * LEVITATION_BOOTS 172 for the arms still deferred below). */
 const FUMBLE_BOOTS_OTYP_DW = 171;
 const PROP_TIMEOUT = 0x00ffffff; /* C prop.h TIMEOUT */
 export async function Boots_on() {
@@ -1299,11 +1037,6 @@ export async function Boots_on() {
              * better than potion speed (do_wear.c:219-226). */
             const HFast = rec ? (rec.intrinsic | 0) : 0;
             if (!oldprop && !(HFast & PROP_TIMEOUT)) {
-                /* hack.h:1535 — makeknown(x) = discover_object(x, TRUE, TRUE, TRUE).
-                 * The 4th arg (credit_hero) is RNG-LOAD-BEARING: o_init.c:482
-                 * exercises A_WIS, which draws rn2(19) @ attrib.c:509.  seed0360
-                 * step 137 is exactly that call, sequenced between unmul()'s
-                 * nomovemsg pline and the You_feel below. */
                 discover_object(otyp, true, true, true);
                 await pline(`You feel yourself speed up${(oldprop || HFast) ? ' a bit more' : ''}.`);
             }
@@ -1349,19 +1082,6 @@ export async function Boots_on() {
             break;
         }
         case FUMBLE_BOOTS_OTYP_DW:
-            /* C do_wear.c:231-234:
-             *     case FUMBLE_BOOTS:
-             *         if (!oldprop && !(HFumbling & ~TIMEOUT))
-             *             incr_itimeout(&HFumbling, rnd(20));
-             *         break;
-             * HFumbling is u.uprops[FUMBLING].intrinsic; `& ~TIMEOUT` is its
-             * SOURCE bits (FROMOUTSIDE &c), so the guard is "no untimed
-             * fumbling from anywhere else".  No makeknown on this arm — the
-             * boots stay "a pair of combat boots".
-             * The comment above used to say this arm and its three siblings are
-             * "not reached by the corpus"; seed0014 step 470 wears exactly these
-             * boots, and C's rnd(20)=14 @ Boots_on(do_wear.c:233) is leaf 18433
-             * — the session's first RNG divergence before this. */
             if (!oldprop && !((rec ? (rec.intrinsic | 0) : 0) & ~PROP_TIMEOUT)) {
                 const _incr = rnd(20);
                 if (rec) {
@@ -1372,11 +1092,6 @@ export async function Boots_on() {
             }
             break;
         default:
-            /* deferred boots types — WATER_WALKING_BOOTS (spoteffects),
-             * ELVEN_BOOTS (toggle_stealth) and LEVITATION_BOOTS (float_up)
-             * reach unported helpers.  All three are RNG-free on this arm, so
-             * a session that dons one diverges on state/messages, not on the
-             * leaf stream. */
             break;
     }
     /* do_wear.c:253-256 — boots' +/- is evident because of the status-line AC. */
@@ -1391,21 +1106,6 @@ const MUMMY_WRAPPING_OTYP = 138, ELVEN_CLOAK_OTYP = 139, ORCISH_CLOAK_OTYP = 140
       ALCHEMY_SMOCK_OTYP = 144, LEATHER_CLOAK_OTYP_DW = 145,
       CLOAK_OF_PROTECTION_OTYP = 146, CLOAK_OF_INVISIBILITY_OTYP = 147,
       CLOAK_OF_MAGIC_RESISTANCE_OTYP = 148;
-/* C ref: do_wear.c:363-419 Cloak_on(void).
- *
- * This was `don_slot('uarmc')` — the shared tail ONLY, with the whole per-otyp
- * switch missing, so donning a cloak of displacement set `known` and did
- * nothing else.  Measured on seed0360-wizard-world-tour step 497: the hero
- * wears the wished cloak of displacement and C emits
- *     "You feel that monsters have difficulty pinpointing your location.--More--"
- * plus the makeknown() behind it, whose discover_object(credit_hero=TRUE)
- * exercises A_WIS and draws rn2(19) @ attrib.c:509 (leaf 101931) — this port
- * drew nothing and printed nothing.  toggle_displacement was already ported
- * (Cloak_off calls it); only the donning half had no caller.
- *
- * `oldprop` is read from the ALREADY-worn cloak with its own WORN_CLOAK bit
- * masked off, exactly as C does (accessory_or_armor_on ran setworn() first).
- * RNG-free on every arm. */
 export async function Cloak_on() {
     const g = game;
     const u = g.u || (g.u = {});
@@ -1431,10 +1131,6 @@ export async function Cloak_on() {
             makeknown_otyp(otyp);
             break;
         case ELVEN_CLOAK_OTYP:
-            /* C do_wear.c:376 toggle_stealth(uarmc, oldprop, TRUE) — not
-             * ported anywhere in js/ (Cloak_off defers the same arm).  RNG-free
-             * either way; a session that dons one diverges on its message, not
-             * on the leaf stream. */
             break;
         case CLOAK_OF_DISPLACEMENT_OTYP:
             await toggle_displacement(otmp, oldprop, true);
@@ -1482,15 +1178,6 @@ export function Shirt_on()  { return don_slot('uarmu'); }
 /* objects.h otyps for the glove slot. */
 const LEATHER_GLOVES_OTYP = 159, GAUNTLETS_OF_FUMBLING_OTYP = 160,
       GAUNTLETS_OF_POWER_OTYP = 161, GAUNTLETS_OF_DEXTERITY_OTYP = 162;
-/* C ref: do_wear.c:574-604 Gloves_on(void).  Same defect as Cloak_on above: the
- * per-otyp switch was missing entirely.  seed0360-wizard-world-tour step 495 is
- * the witness — the hero finishes donning wished gauntlets of power and C runs
- *     case GAUNTLETS_OF_POWER: makeknown(uarmg->otyp); disp.botl = TRUE;
- * whose discover_object(credit_hero=TRUE) exercises A_WIS for rn2(19)
- * @attrib.c:509 (leaf 101930).  The recorded C event log marks it
- * `^botl[Gloves_on]` on that very turn.
- * The GAUNTLETS_OF_FUMBLING arm DRAWS rnd(20) — same shape as Boots_on's
- * FUMBLE_BOOTS arm above, and ported the same way. */
 export function Gloves_on() {
     const g = game;
     const u = g.u || (g.u = {});
@@ -1813,16 +1500,6 @@ export async function dotakeoff_obj(otmp) {
         /* getobj returned NULL → ECMD_CANCEL, no turn (do_wear.c:1852). */
         return ECMD_CANCEL;
     }
-    /* C ref: do_wear.c:1846-1853 dotakeoff() — its whole body after the
-     * count_worn_stuff/getobj selection is `return armor_or_accessory_off(otmp)`.
-     * It does NOT clear any worn state itself: setworn(0, mask) lives inside the
-     * *_off callback, which for a DELAYED take-off runs only when unmul() fires
-     * ga.afternmv at the end of the nomul countdown (do_wear.c:1931-1937).  This
-     * port used to null the slot and the invent node's owornmask right here, at
-     * command time — which unwore the piece turns early, so any find_ac() during
-     * the countdown saw the hero already stripped (seed0365 step 42's paged frame
-     * showed the post-removal AC:7 where C still shows AC:3).  takeoff_slot() now
-     * clears both representations at C's own setworn() moment instead. */
     const res = await armor_or_accessory_off(otmp);
     return res;
 }
@@ -2017,10 +1694,6 @@ export async function remarm_swapwep() {
     await do_takeoff();
     return !game.u.uswapwep || game.u.uswapwep.bknown !== oldbknown ? ECMD_TIME : ECMD_OK;
 }
-/* objclass.h (defsym order) — oclass values used to route accessory_or_armor_on.
- * These MUST match the JS reconstructed-object scheme (js/objnam.js): the corpus
- * objects carry oclass per the defsym enum (WEAPON=2 ARMOR=3 RING=4 AMULET=5
- * TOOL=6 FOOD=7 ...), NOT a different numbering. */
 const ARMOR_CLASS = 3;
 const RING_CLASS = 4;
 const AMULET_CLASS = 5;
@@ -2041,33 +1714,6 @@ const MEAT_RING = 270;
  *   else       { unmul(""); on_msg(obj); }
  *
  * RNG-free (Armor_on et al. have 0 RNG call-sites — cref-extract). */
-/* C ref: worn.c:49-69 recalc_telepat_range() — "calc the range of hero's
- * unblind telepathy".
- *
- *     for (wp = worn; wp->w_mask; wp++) {
- *         struct obj *oobj = *(wp->w_obj);
- *         if (oobj && objects[oobj->otyp].oc_oprop == TELEPAT) nobjs++;
- *     }
- *     if (ETelepat & W_ART) nobjs++;   [all SPFX_ESP artifacts count as one]
- *     u.unblind_telepat_range = nobjs ? (BOLT_LIM * BOLT_LIM) * nobjs : -1;
- *
- * C calls it from the tail of setworn() (worn.c:144) and setnotworn()
- * (worn.c:183), and from set_artifact_intrinsic() (artifact.c:803).
- *
- * u.unblind_telepat_range HAD NO WRITER IN js/ AT ALL.  js/display.js
- * tp_sensemon() reads it as `(u.unblind_telepat_range | 0)` — undefined|0 === 0
- * — so `mdistu(mon) <= range` was false for every monster that is not standing
- * on the hero, and an amulet of ESP conferred nothing.  MEASURED on
- * seed0367-priest-quest-tour, whose Priest wields an amulet of ESP through a
- * graveyard: at step 203 C paints the wraiths ('W', CLR_BLACK) and the ghosts
- * (S_GHOST is a BLANK) it senses telepathically, and this port painted a
- * Warning digit over every one of them — 27 cells over 11 rows, the session's
- * first screen miss.
- *
- * The worn[] table is C's (worn.c:26-36), in C's order.  Reading each slot off
- * u.<name> is this port's model of C's `*(wp->w_obj)`; the chargen stand-in
- * records carry a symbolic string otyp, for which MKOBJ_OC_OPROP[otyp|0] is 0,
- * i.e. the same "confers nothing" answer C gives for a non-TELEPAT item. */
 const WORN_SLOTS_TP = ['uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf',
                        'uarmu', 'uleft', 'uright', 'uwep', 'uswapwep',
                        'uquiver', 'uamul', 'ublindf', 'uball', 'uchain'];
@@ -2134,20 +1780,6 @@ async function already_wearing2(cc1, cc2) {
     await pline(`You can't wear ${cc1} because you're wearing ${cc2} there already.`);
 }
 
-/* ═══ canwearobj() and the predicates it reads ═══════════════════════════════
- * C ref: do_wear.c:2030-2207.  "Can the hero wear this piece?"; on success it
- * writes otmp's slot mask through `mask` and returns !err.
- *
- * EVERY reject arm is RNG-FREE — C returns (or falls out with err++) before any
- * rn2/rnd draw, and accessory_or_armor_on then returns ECMD_OK, so the step
- * costs NO turn.  That is exactly the defect this ports out: seed0003 step 154
- * applies a leather cloak (otyp 145) while the Monk's robe (otyp 143) already
- * holds u.uarmc.  C rejects in the is_cloak arm (do_wear.c:2172-2178) with
- * "You are already wearing a robe." and spends no move; JS only rejected when
- * the *incoming* piece was itself worn (owornmask), so it fell through to
- * armoron() → setworn + nomul(-delay) → ECMD_TIME, spending a move C never
- * spent.  The hero then stands one square off C's, and every later
- * pet-movement modulus is computed from the wrong hero coordinate. */
 
 /* C ref: obj.h:280-298 is_helmet/is_shield/is_boots/is_gloves/is_cloak/
  * is_shirt/is_suit — oclass == ARMOR_CLASS && objects[otyp].oc_armcat == ARM_x.
@@ -2177,8 +1809,6 @@ const MZ_SMALL_DW = 1, MZ_MEDIUM_DW = 2, MZ_HUGE_DW = 4;
 const M1_NOHANDS_DW = 0x00002000;
 /* defsym.h:328,358 MONSYM ordinals */
 const S_CENTAUR_DW = 29, S_GHOST_DW = 54;
-/* objects.h otyps read by the guards below (verified against a compiled
- * OBJECTS_INIT dump, the same ground truth tools/dump-oc-delay.c reads). */
 const MUMMY_WRAPPING_DW = 138;
 const RUBBER_HOSE_DW = 78;
 const BATTLE_AXE_DW = 45;
@@ -2191,19 +1821,6 @@ const ELVEN_ARMOR_OTYPS_DW = new Set([89, 127, 139, 153, 169]);
  * broadsword, elven broadsword, long sword, two-handed sword, katana,
  * tsurugi, runesword). */
 const SWORD_OTYP_LO_DW = 46, SWORD_OTYP_HI_DW = 58;
-/* obj.h:257 bimanual(otmp) — (WEAPON_CLASS || TOOL_CLASS) && oc_bimanual.
- * The oc_bimanual otyps of those two classes, straight from the compiled
- * objects table: battle-axe, two-handed sword, tsurugi, the twelve polearms
- * (partisan..bec de corbin), dwarvish mattock, quarterstaff, unicorn horn.
- * (objects.h also sets oc_bimanual on dragon scale mail/scales, plate/splint/
- * banded mail, large shield and boulder, but C's oclass test excludes them.)
- *
- * THAT NOTE IS NOW STALE AND HAS BEEN CORRECTED (2026-09-10): js/cmd.js's
- * _BIMANUAL_INV_OTYPS carries the same 18 otyps and the shared auditor grades
- * it AGREES.  Do not "fix" cmd.js back to the four-value set.  This body is now
- * the ONE copy js/mhitu.js, js/mhitm.js, js/makemon.js, js/u_init.js,
- * js/trap.js, js/dig.js and js/mkobj.js all import; js/objnam.js and js/cmd.js
- * keep private copies that agree with it value-for-value. */
 const BIMANUAL_OTYPS_DW = new Set([45, 55, 57, 59, 60, 61, 62, 63, 64, 65, 66,
                                    67, 68, 69, 70, 71, 79, 261]);
 function is_sword(otmp) {
@@ -2217,17 +1834,6 @@ function is_elven_armor(otmp) {
 /* C ref: hack.h plur(x) — ((x) == 1) ? "" : "s". */
 function plur_dw(x) { return (x | 0) === 1 ? '' : 's'; }
 
-/* C ref: gy.youmonst.data — the hero's permonst, reduced to the three fields
- * canwearobj's guards read (mlet, mflags1, msize).  Prefer the live
- * youmonst.data (polyself.js / the capture reconstructor set it), else resolve
- * u.umonnum against the generated mons[] packs — the same resolution
- * _hero_mflags1_dw() above uses.
- *
- * Defaulting convention (identical to js/cmd.js:5332 _hero_nohands /
- * _wt_cantwield): when neither source identifies a form, default to "human" —
- * mflags1 = 0, msize = MZ_MEDIUM — NOT to a zeroed permonst.  A zeroed msize is
- * MZ_TINY, which would make verysmall() true and reject EVERY 'W' with "You
- * can't wear any armor in your current form." */
 function _hero_data_dw() {
     const d = game.youmonst && game.youmonst.data;
     const i = (d && d.pmidx != null) ? (d.pmidx | 0)
@@ -2376,21 +1982,6 @@ export async function glibr() {
 const BP_FOOT_DW = 5, BP_LEG_DW = 9;
 /* C ref: hack.h surface(x, y) — use the canonical terrain description. */
 function surface_dw(x, y) { return surface(x, y); }
-/* C ref: invent.c:2093-2131 silly_thing(word, otmp).  (extern.h:1373 declares
- * it; the body is in invent.c, not objnam.c — the previous comment here named
- * the wrong file.)  The whole OBSOLETE_HANDLING 'P'/'R' vs 'W'/'T' block at
- * invent.c:2097-2122 is #ifdef'd out and never compiled, so the live body is
- * just the two-arm if/else at invent.c:2125-2130.
- *   silly_thing_to = "That is a silly thing to %s."  (decl.c:43, reached via
- *   decl.h:34 #define silly_thing_to c_common_strings.c_silly_thing_to)
- * No RNG on either arm.  C DOES reach invent.c:2130 in the corpus — 4 times in
- * seed1100 — but through getobj's own call (invent.c:2072) with word "call",
- * not through this do_wear.c:2195 call site, which stays a can't-happen arm
- * (an ARMOR_CLASS object whose oc_armcat is none of the seven).
- * KNOWN GAP within this port: the AMULET_OF_YENDOR / FAKE_AMULET_OF_YENDOR
- * arm needs those two otyp constants, which js/do_wear.js does not import; it
- * is dead for every do_wear.c:2195 caller anyway, since that arm requires
- * word == "call" and this call site passes "wear".  No RNG on it either. */
 const AMULET_OF_YENDOR_DW = 213;      /* C objects.h:874 (js/mcastu.js:739 same value) */
 const FAKE_AMULET_OF_YENDOR_DW = 212; /* C objects.h:869 (js/eat.js:43 same value) */
 export async function silly_thing_dw(word, otmp) {
@@ -2586,29 +2177,12 @@ function _slithy_dw(ptr) { return ((ptr.mflags1 >>> 0) & M1_SLITHY_DW) !== 0; }
 /* C ref: you.h:340-345 u.utraptype enum. */
 const TT_BEARTRAP_DW = 1, TT_LAVA_DW = 4, TT_INFLOOR_DW = 5, TT_BURIEDBALL_DW = 6;
 
-/* C ref: do_wear.c:2210 accessory_or_armor_on(obj) — shared by 'W'/'P'.
- * Routes by oclass: armor → armoron (donning delay); ring/amulet/eyewear →
- * immediate accessory don (Ring_on/Amulet_on/Blindf_on, no delay).
- *
- * Stage-4 scope: the armor branch (the delay machinery) is the keystone path.
- * The accessory branches are modeled at the control-flow level (setworn +
- * RNG-free *_on); their full intrinsic side-effects (and the ring left/right
- * yn_function prompt at do_wear.c:2270-2288) are extended as corpus sessions
- * reach them — no session currently diverges at a W/P/R step (every wear/puton
- * session diverges upstream first), so these paths are presently unreached. */
 export async function accessory_or_armor_on(obj) {
     const g = game;
     const u = g.u = g.u || {};
     if (!obj) {
         return ECMD_CANCEL;
     }
-    /* C ref: do_wear.c:2214-2217 — the object is already worn (any armor or
-     * accessory slot occupied): "You are already wearing that!" and bail with
-     * NO turn (ECMD_OK).  This is the same reject canwearobj() repeats at
-     * do_wear.c:2058 for the armor path; checking it here first matches C and
-     * covers accessories too.  Without it a redundant 'W' on already-worn armor
-     * would fall through to armoron → nomul(-1), spending a spurious don turn
-     * that desyncs the turn stream (seed0116 W/b on a worn piece). */
     if ((obj.owornmask | 0) & (W_ACCESSORY_MASK | W_ARMOR_C)) {
         await already_wearing(c_that_);
         return ECMD_OK;
@@ -2618,11 +2192,6 @@ export async function accessory_or_armor_on(obj) {
     const ring = (oclass === RING_CLASS || obj.otyp === MEAT_RING);
     const amulet = (oclass === AMULET_CLASS);
     if (armor) {
-        /* do_wear.c:2225-2227 —
-         *     if (!canwearobj(obj, &mask, TRUE)) return ECMD_OK;
-         * A reject costs NO time and NO RNG; C returns ECMD_OK before touching
-         * the item.  (do_wear.c:2229-2239's HELM_OF_OPPOSITE_ALIGNMENT quest
-         * branch is not ported — no corpus session wears one on the quest.) */
         const maskbox = { mask: 0 };
         if (!(await canwearobj(obj, maskbox, true))) {
             return ECMD_OK;
@@ -2635,20 +2204,6 @@ export async function accessory_or_armor_on(obj) {
         return await armoron(obj);
     }
     if (ring) {
-        /* C do_wear.c:2254-2257 — the FIRST thing the ring branch does:
-         *     if (nolimbs(gy.youmonst.data)) {
-         *         You("cannot make the ring stick to your body.");
-         *         return ECMD_OK;
-         *     }
-         * mondata.h:53 nolimbs(ptr) is `(mflags1 & M1_NOLIMBS) == M1_NOLIMBS`,
-         * i.e. BOTH bits of monflag.h:99's 0x00006000 (M1_NOHANDS | the limbs
-         * bit) -- not a plain non-zero test; this file's nolimbs() at the
-         * bottom already spells it that way.  The guard was absent, so a
-         * polymorphed limbless hero was prompted for a finger and put the ring
-         * on: seed4500-knight-coverage step 1503, a brown mold, where C refuses
-         * and this port asked "Which finger, Right or Left? [rl]" and then
-         * consumed the answer key, desynchronising every following keystroke.
-         * RNG-free. */
         if (nolimbs(game.youmonst && game.youmonst.data)) {
             await pline('You cannot make the ring stick to your body.');
             return ECMD_OK;
@@ -2660,8 +2215,6 @@ export async function accessory_or_armor_on(obj) {
         const RIGHT_RING_VAL = 0x00040000;
         let mask = 0;
         if (g.u.uleft && g.u.uright) {
-            /* do_wear.c:2259 — no free fingers; "There are no more ...". RNG-free,
-             * no turn.  Deferred message (not reached by corpus). */
             return ECMD_OK;
         }
         if (g.u.uleft) {
@@ -2669,10 +2222,6 @@ export async function accessory_or_armor_on(obj) {
         } else if (g.u.uright) {
             mask = LEFT_RING_VAL;
         } else {
-            /* do_wear.c:2270 — prompt for finger, read one key via yn_function.
-             * The "Which ring-finger, Right or Left? [rl]" prompt is rendered to
-             * the topline, then tty_nhgetch reads the answer (the session's finger
-             * key).  ESC/'\0' cancels (ECMD_OK, no turn). */
             const u = g.u;
             /* C do_wear.c:2271-2272 — humanoid(gy.youmonst.data) ? "ring-" : ""
              * (mondata.h:65, mflags1 & M1_HUMANOID). */
@@ -2692,10 +2241,6 @@ export async function accessory_or_armor_on(obj) {
                 if (key === 0 || key === 27 /* ESC */) {
                     return ECMD_OK;
                 }
-                /* C's accessory finger reader treats space/CR/LF as a
-                 * cancelled choice, returning to the command loop while the
-                 * prompt remains painted; it is not yn_function's default
-                 * answer path (gen041). */
                 if (key === 32 || key === 13 || key === 10) {
                     g._topl_sticky = promptText;
                     return ECMD_OK;
@@ -2706,8 +2251,6 @@ export async function accessory_or_armor_on(obj) {
                 /* invalid key: loop and re-read (C do..while !mask). */
             }
         }
-        /* do_wear.c:2290-2318 — Glib/cursed-gloves/welded-weapon guards: none of
-         * these apply to the corpus hero (no gloves, weapon not welded). */
         /* do_wear.c:2356 retouch_object(): no silver/material conflict here. */
         /* do_wear.c:2409-2416 — setworn(obj, mask); Ring_on(obj); on_msg. */
         await setworn(obj, mask);
@@ -2720,18 +2263,6 @@ export async function accessory_or_armor_on(obj) {
         return ECMD_TIME;
     }
     if (amulet) {
-        /* do_wear.c:2419 — Amulet_on(obj).  RNG-free except AMULET_OF_RESTFUL_SLEEP
-         * (rnd(98), do_wear.c:1048), which IS in the corpus (seed0007 step 285)
-         * and is ported below.  setworn + on_msg in Amulet_on.
-         *
-         * C's Amulet_on (do_wear.c:963-1087) is setworn(amul, W_AMUL), a per-otyp
-         * switch, then "if (!on_msg_done) on_msg(uamul);" at :1085.  The tail
-         * on_msg was missing here, so JS never printed the
-         * "<invlet> - <doname> (being worn)." prinv line.  That is not merely a
-         * cosmetic loss: the missing line shortens the topline, so the following
-         * movemon plines fit where C had to raise --More--, and JS then eats C's
-         * page-ack key as a command (seed0360 MISSING-CONSUME at step 140).
-         * setworn also confers the extrinsic property, which JS was dropping. */
         await remove_worn_item(obj, false);
         await setworn(obj, W_AMUL_C);
         find_ac();
@@ -2742,19 +2273,6 @@ export async function accessory_or_armor_on(obj) {
          * ported below (own early-return arm — see its citation).  MAGICAL_
          * BREATHING / UNCHANGING / STRANGULATION still reach unported helpers
          * and stay deferred. */
-        /* C ref: do_wear.c:1046-1054 — case AMULET_OF_RESTFUL_SLEEP:
-         *     long newnap = (long) rnd(98) + 2L, oldnap = (HSleepy & TIMEOUT);
-         *     if (newnap < oldnap || oldnap == 0L)
-         *         HSleepy = (HSleepy & ~TIMEOUT) | newnap;
-         * The comment above this block used to call this arm "not in corpus".
-         * seed0007 step 285 ('P' then 'p' on "a cubical amulet") IS this arm,
-         * and its rnd(98) is that session's FIRST RNG divergence: leaf 15877,
-         * C rnd(98)=77 @Amulet_on(do_wear.c:1048) against a JS still inside the
-         * previous turn's distfleeck().  The draw is the load-bearing part —
-         * nothing in this port reads HSleepy (js/fastforward.js says so, and
-         * nh_timeout's SLEEPY arm is not ported) — but C writes it, so write it.
-         * "avoid clobbering FROMOUTSIDE bit" is why C masks rather than
-         * assigns. */
         if ((obj.otyp | 0) === AMULET_OF_RESTFUL_SLEEP_DW) {
             const u = g.u;
             if (!u.uprops) u.uprops = {};
@@ -2766,24 +2284,6 @@ export async function accessory_or_armor_on(obj) {
                 u.uprops[SLEEPY_DW].intrinsic =
                     ((u.uprops[SLEEPY_DW].intrinsic | 0) & ~TIMEOUT_DW) | newnap;
         }
-        /* C ref: do_wear.c:997-1023 — case AMULET_OF_CHANGE.  Previously a bare
-         * "reaches unported helpers, stays deferred" branch (see the comment two
-         * paragraphs up): the generic setworn+on_msg above ran and this port
-         * left the amulet sitting worn.  C instead flips the hero's sex, prints
-         * an ALTERNATE message (never on_msg's default), and the amulet
-         * DISINTEGRATES the same turn — so "the amulet stays on the hero"
-         * (invent_delta.worn_*) is wrong on two counts at once.
-         *
-         * MEASURED on board12-s doputon rec#17 (a fresh '*'-search 'P' onto a
-         * cubical amulet already in the corpus): C's expected side is a
-         * `gone_*` invent delta (o_id 82, otyp 206 = AMULET_OF_CHANGE — see
-         * js/objnam.js:372's AMULET_OF_ESP=201 anchor, +5 ordinal), never a
-         * `worn_*` one, and the record carries ONE extra recorded RNG draw this
-         * port's replay left unconsumed (rng_result_tape_residual) — traced to
-         * discover_object's credit_hero exercise(A_WIS,TRUE) (rn2(19)) firing
-         * only on the branch below, via makeknown(AMULET_OF_CHANGE) when the
-         * sex-flip is observable and the type was not already known. change_sex
-         * itself draws nothing (see change_sex_dw's own citation). */
         if ((obj.otyp | 0) === AMULET_OF_CHANGE_DW) {
             const origSex = poly_gender();
             if (!Unchanging_dw())
@@ -2803,18 +2303,8 @@ export async function accessory_or_armor_on(obj) {
                     (g.flags && g.flags.female) ? 'feminine' : 'masculine');
             } else {
                 await You("don't feel like yourself.");
-                /* do_wear.c:1020 — `call_it = (uamul->dknown != 0);`.  Every
-                 * corpus amulet is dknown (amulets always show their shape),
-                 * per do_wear.c's own comment two lines below in C; obj.dknown
-                 * may be absent on a reconstructed record, so default TRUE
-                 * rather than mis-reading an uncaptured field as FALSE. */
                 callIt = obj.dknown !== undefined ? !!obj.dknown : true;
             }
-            /* do_wear.c:1023 livelog_newform(FALSE, orig_sex, new_sex) — writes
-             * to the external livelog file only; no RNG, no captured game
-             * state, no screen output.  Not ported for the same reason no
-             * other livelog_printf call site in this codebase is (grep
-             * livelog_printf js/*.js: cited in comments only, never a body). */
             await pline('The amulet disintegrates!');
             if (callIt)
                 await trycall(obj);
@@ -2824,65 +2314,11 @@ export async function accessory_or_armor_on(obj) {
         await on_msg(obj);
         return ECMD_TIME;
     }
-    /* C ref: do_wear.c:2420-2422 — the eyewear arm.
-     *     } else if (eyewear) {
-     *         Blindf_on(obj);   // setworn() and on_msg() handled by Blindf_on()
-     * `eyewear` is do_wear.c:2213 `obj->oclass == TOOL_CLASS && is_worn_eyewear`,
-     * i.e. the three EYEWEAR otyps (objects.h:944-950): lenses, blindfold, towel.
-     * This branch used to be a bare `return ECMD_TIME` with the comment
-     * "eyewear / unwearable accessory", which made putting on a blindfold a
-     * silent no-op: ublindf was never set, u.uprops[BLINDED].extrinsic was never
-     * conferred, and neither of C's two toplines was printed.  seed5006 step 121
-     * is that miss — its FIRST screen divergence, and the head of a 73-step
-     * contiguous miss run to the end of the segment.
-     *
-     * The `else impossible("putting on unexpected type of accessory")` arm
-     * (do_wear.c:2423) stays a plain fall-through: C's impossible() is not a
-     * scored channel and costs no RNG.
-     *
-     * C ref: do_wear.c:2323-2345 — the two guards this arm used to skip
-     * straight past, ported now:
-     *     if (!has_head(gy.youmonst.data)) {
-     *         You("have no head to wear %s on.", ansimpleoname(obj));
-     *         return ECMD_OK;
-     *     }
-     *     if (ublindf) {
-     *         if (ublindf->otyp == TOWEL) Your("%s is already covered by a
-     *             towel.", body_part(FACE));
-     *         else if (ublindf->otyp == BLINDFOLD) {
-     *             if (obj->otyp == LENSES) already_wearing2("lenses", "a
-     *                 blindfold");
-     *             else already_wearing("a blindfold");
-     *         } else if (ublindf->otyp == LENSES) {
-     *             if (obj->otyp == BLINDFOLD) already_wearing2("a blindfold",
-     *                 "some lenses");
-     *             else already_wearing("some lenses");
-     *         } else already_wearing(something); // ???
-     *         return ECMD_OK;
-     *     }
-     * Both are RNG-free rejects costing no turn. Without the second, the
-     * eyewear slot (a single W_TOOL/ublindf pointer) had no conflict check at
-     * all: putting on a second item of eyewear while one was already worn
-     * silently OVERWROTE u.ublindf and flipped owornmask on the incoming item
-     * without clearing the outgoing one's, corrupting the worn-accessory
-     * state for every later doremring/dotakeoff search on that slot. MEASURED
-     * board12-s doputon rec#22 — a fresh '*'-search 'P' onto "a pair of
-     * lenses" while a blindfold already occupies the slot; C changes nothing
-     * ("You can't wear lenses because you're wearing a blindfold there
-     * already."), this port wore them anyway. */
     if (oclass === TOOL_CLASS_DW && _is_eyewear_dw(obj)) {
         if (!has_head(game.youmonst && game.youmonst.data)) {
             await pline(`You have no head to wear ${ansimpleoname(obj)} on.`);
             return ECMD_OK;
         }
-        /* Read the eyewear occupant off the invent chain's own owornmask bit
-         * (the same pattern this function's own top guard uses,
-         * `obj.owornmask & (W_ARMOR|W_ACCESSORY)`) rather than trusting
-         * g.u.ublindf directly. In a continuous session setworn_tool() keeps
-         * them identical (u.ublindf IS the invent node with W_TOOL set) — but
-         * prefer the invent-derived read since it is the same ground truth
-         * `wornAccessoryPieces()` above and this file's other worn-state
-         * reads already use. */
         let ub = g.u.ublindf;
         if (!ub) {
             for (let o = g.invent; o; o = o.nobj) {
@@ -2927,36 +2363,6 @@ function _is_eyewear_dw(obj) {
     return otyp === LENSES_OTYP_DW || otyp === BLINDFOLD_OTYP_DW
         || otyp === TOWEL_OTYP_DW;
 }
-/* C ref: do_wear.c:2433 dowear() — the 'W' command.
- *   if (verysmall(data) || nohands(data)) { "Don't even bother."; ECMD_OK }
- *   if (<all 11 armor+accessory slots full>) {
- *       "You are already wearing a full complement of armor."; ECMD_OK }
- *   otmp = getobj("wear", wear_ok, GETOBJ_NOFLAGS);
- *   return otmp ? accessory_or_armor_on(otmp) : ECMD_CANCEL;
- *
- * do_wear.c's dowear() takes NO parameter; js/cmd.js's 'W' handler already
- * runs BOTH of these guards at its call site (js/cmd.js:31278-31321, with its
- * own comment explaining why: this port's dowear() historically took the
- * object already chosen, so the guards had to live where the getobj key-read
- * does) before ever calling in with an already-resolved `otmp`. Running them
- * again here is therefore a no-op on that path — cmd.js guarantees they are
- * both false by the time it calls dowear(otmp) — but it makes this function
- * correct when called bare.
- *
- * SUPERSEDED (do not re-revert without re-measuring): past these two guards,
- * this function used to say C's own getobj() "reads a keystroke this bare
- * call has no access to" and returned ECMD_CANCEL outright whenever no object
- * was supplied. That was true only for as long as this port had no keystroke
- * channel. record.getch_returns now carries the exact keys C's tty_nhgetch()
- * read, and the oracle seeds this port's own nhgetch queue from them before
- * calling in — so a bare call (`otmp === undefined`, true zero-argument call:
- * cmd.js NEVER omits the argument, it always passes either a resolved object
- * or an explicit null on its own getobj cancel) now calls THE SAME
- * getObjFromGetobj (js/cmd.js:14407, invent.c:1752's getobj) js/cmd.js's live
- * 'W' path already uses, with wear_ok as the classifier. When cmd.js DOES
- * pass an explicit otmp (object or null), this branch is skipped entirely —
- * `otmp === undefined` is false either way — so the live scored path is
- * byte-for-byte unchanged. */
 export async function dowear(otmp) {
     const ydata = _hero_data_dw();
     if (verysmall_dw(ydata) || nohands_dw(ydata)) {
@@ -2976,32 +2382,15 @@ export async function dowear(otmp) {
     if (otmp === undefined) {
         otmp = await getObjFromGetobj('wear', wear_ok, GETOBJ_NOFLAGS_CMD);
     }
-    /* do_wear.c never touches context.move — rhack() (cmd.c:3816-3819) does,
-     * keyed off the ECMD_* return value.  Confirmed on captured ground truth:
-     * every dowear() record's state_after_diff is empty, including the
-     * getobj-cancelled ones that return ECMD_CANCEL here. */
     if (!otmp) {
         return ECMD_CANCEL;
     }
     return await accessory_or_armor_on(otmp);
 }
-/* C ref: do_wear.c:2455 doputon() — the 'P' command.  getobj("put on", puton_ok)
- * then accessory_or_armor_on(otmp).
- *
- * SUPERSEDED, same finding as dowear() above: a bare call (`otmp ===
- * undefined`) now resolves the object itself via getObjFromGetobj + puton_ok,
- * replayed from record.getch_returns. cmd.js's 'P' handler always passes an
- * explicit otmp (object or null from its own getobj call), so this branch is
- * never reached from the live scored path. */
 export async function doputon(otmp) {
     const g = game;
     const u = g.u || {};
 
-    /* do_wear.c never touches context.move — rhack() (cmd.c:3816-3819) does,
-     * keyed off the ECMD_* return value.  Confirmed on captured ground truth:
-     * every doputon() record's state_after_diff is empty, both the
-     * full-slots ECMD_OK and the getobj-cancelled ECMD_CANCEL records
-     * included. */
     /* Guard: all slots full — do_wear.c:2459-2467 */
     if (u.uleft && u.uright && u.uamul && u.ublindf
         && u.uarm && u.uarmu && u.uarmc && u.uarmh && u.uarms && u.uarmg && u.uarmf) {
@@ -3037,12 +2426,6 @@ export async function doputon(otmp) {
 export async function off_msg(otmp) {
     if (game.flags.verbose) await You('were wearing %s.', (await doname(otmp)));
 }
-/* C ref: objnam.c doname() for a worn ring — the bare (article-less) body plus
- * the worn-hand suffix.  xname uses the TYPE name when the ring's type is
- * name-known (oc_name_known && dknown), otherwise the shuffled APPEARANCE
- * ("ivory ring").  No +N prefix unless `known` (charge identified) — the corpus
- * ring is unidentified, so its charge is unknown and no enchantment shows.
- * (objnam.c:1494 worn suffix, :1500 spe-prefix gate.)  RNG-free. */
 function ringDonameBody(otmp) {
     const g = game;
     const otyp = otmp.otyp | 0;
@@ -3059,16 +2442,6 @@ function ringDonameBody(otmp) {
         name = descr ? `${descr} ring` : 'ring';
     }
     const hand = ((otmp.owornmask | 0) & LEFT_RING_VAL) ? 'left' : 'right';
-    /* C objnam.c:1499-1501, the RING_CLASS tail of doname_base():
-     *     if (known && objects[obj->otyp].oc_charged)
-     *         Sprintf(eos(prefix), "%+d ", obj->spe);
-     * oc_charged holds for the six spec==1 rings adornment(173)..protection(178)
-     * (objects.h:741-757); every other ring type has no enchantment to show, so
-     * a known ring of levitation stays "a ring of levitation".  seed5500's
-     * removal of its +3 ring of protection is the corpus case:
-     * "You were wearing a +3 ring of protection (on right hand)."
-     * The BUC word (objnam.c:1318-1348) is NOT added here: it is gated on
-     * obj->bknown, and no corpus ring reaches a doname with bknown set. */
     const RIN_BASE = 173, RIN_LAST_CHARGED = 178;
     let prefix = '';
     if (otmp.known && otyp >= RIN_BASE && otyp <= RIN_LAST_CHARGED) {
@@ -3077,17 +2450,6 @@ function ringDonameBody(otmp) {
     }
     return `${prefix}${name} (on ${hand} ${body_part(HAND)})`;
 }
-/* C ref: do_wear.c:76 on_msg(otmp) — add-to-invent feedback after donning a ring
- * or amulet.  For W_RING|W_AMUL it calls prinv(NULL, otmp, 0), which prints
- * "<invlet> - <doname>." on the topline.  RNG-free (display only).
- *
- * Putting on a ring consumes a turn (accessory_or_armor_on → ECMD_TIME), so the
- * moveloop runs a world block AND nhgetch clears the topline before the next
- * command read.  The C topline set here persists until that next nhgetch (tty
- * clears it at the start of the read).  Mirror that persistence with
- * g._resultMessage — rhack(key=0) restores it to _pending_message before
- * flush_screen, so the preNhgetchHook captures it at the next command boundary
- * (the same mechanism the throw/wish result lines use). */
 async function on_msg(otmp) {
     const g = game;
     const W_RING = 0x00060000; /* W_RINGL|W_RINGR */
@@ -3105,35 +2467,7 @@ async function on_msg(otmp) {
             g._resultMessage = g._pending_message;
         return;
     }
-    /* C ref: do_wear.c:80-85 — W_AMUL takes the same prinv(NULL, otmp, 0) branch
-     * as W_RING.  doname's AMULET_CLASS case (objnam.c:1383-1386) appends
-     * " (being worn)" when owornmask & W_AMUL.  Unlike the ring path above there
-     * is no preceding float_up/encumber topline to merge with: C emits this
-     * prinv as a plain pline BEFORE returning ECMD_TIME, and the turn's movemon
-     * plines then join onto it (seed0360 step 139:
-     * "q - a cubical amulet (being worn).  The kitten misses the goblin.--More--").
-     * Route it to _resultMessage exactly like the ring branch above: rhack's tail
-     * (allmain.js:1209) wipes _pending_message once the command returns, and
-     * moveloop_core merges the world block's movemon plines onto _resultMessage
-     * (rebasing the join offsets so _topl_split_for_more can still page it).
-     * RNG-free (display only). */
     if ((otmp.owornmask | 0) & W_AMUL_C) {
-        /* prinv -> xprname(obj, NULL, invlet, TRUE, 0, 0) -> "<invlet> - " +
-         * doname(obj) + ".".  This used to re-derive doname by hand as
-         * `an(xname_amulet(otmp)) + " (being worn)"`, which is a PARTIAL namer:
-         * xname_amulet is the type name only, so every doname prefix in front
-         * of it was silently dropped -- most visibly the BUC word.
-         * gen030-reseed-seed1082511 step 143 is the witness: the hero wishes
-         * for a blessed amulet of ESP (so bknown AND blessed are set, and the
-         * pickup line at step 136 already read "j - a blessed oval amulet.")
-         * and puts it on, where C says
-         *     "j - a blessed oval amulet (being worn)."
-         * and this port said "j - an oval amulet (being worn)." -- it even got
-         * the ARTICLE wrong, because the hand-rolled a/an test ran against the
-         * type name instead of against the real first word.
-         * objnam.js doname() already carries the AMULET_CLASS "(being worn)"
-         * suffix (objnam.c:1383-1386) and just_an()'s article fixup
-         * (objnam.c:1687-1693), so the whole re-derivation goes away. */
         const invlet = String.fromCharCode(otmp.invlet | 0);
         const line = `${invlet} - ${(await doname(otmp))}.`;
         const committed = g._pending_message || '';
@@ -3145,26 +2479,6 @@ async function on_msg(otmp) {
             : merged;
         return;
     }
-    /* C ref: do_wear.c:87-98 — the ARMOR (and verbose eyewear) arm:
-     *     if (flags.verbose) {
-     *         const char *otmp_name = xname(otmp);
-     *         if (otmp->otyp == TOWEL) Sprintf(how, " around your %s", body_part(HEAD));
-     *         You("are now wearing %s%s.",
-     *             obj_is_pname(otmp) ? the(otmp_name) : an(otmp_name), how);
-     *     }
-     * This arm was MISSING, so accessory_or_armor_on's zero-delay branch
-     * (do_wear.c:2402 `unmul(""); on_msg(obj);`) printed nothing at all for a
-     * cloak — every cloak has oc_delay 0, so that is the ONLY branch a cloak
-     * ever takes.  seed0360-wizard-world-tour step 498: C's topline reads
-     * "You are now wearing a cloak of displacement." (paged off step 497's
-     * displacement message, which is why C raises --More-- there and this port
-     * did not, leaking the page-ack key into rhack as "Unknown command ' '.").
-     * CORRECTED: the sentence that used to end this note -- "flags.verbose is
-     * On by default and no corpus nethackrc turns it off" -- is false.  Two
-     * public sessions open with `OPTIONS=!autopickup,!verbose,...`
-     * (seed4500-knight-coverage and seed0398-wizard-wandpoly-pile), and with
-     * verbose off C's on_msg falls off the end printing NOTHING for armor.
-     * RNG-free. */
     if (!(game.flags && game.flags.verbose))
         return;
     const _otmp_name = xname(otmp);
@@ -3181,29 +2495,7 @@ const _PM_CLERIC_ROLE = 6;
 function _Role_if_cleric() {
     return ((game.flags?.initrole ?? -1) | 0) === _PM_CLERIC_ROLE;
 }
-/* C ref: objnam.c doname() for an armor piece — the full body the off_msg shows
- * AFTER removal (so owornmask is cleared and the "(being worn)" suffix from
- * objnam.c:1388 does NOT appear).  Components (objnam.c:1387-1424):
- *   - BUC word when bknown (objnam.c:1339 add_erosion_words path → "uncursed")
- *   - "%+d " enchantment when `known` (objnam.c:1423) — armor is enchantable
- *   - the type name: name-known → "<actualn>" ("cloak of magic resistance"),
- *     else the shuffled appearance ("<descr>", e.g. "ornamental cope").
- * RNG-free.  (Erosion words / poisoned / artifact-light branches are not on the
- * corpus path: the starter cloak is uneroded, non-artifact.) */
 function armorDonameBody(otmp) {
-    /* BUC word — objnam.c:1318-1349.  flags.implicit_uncursed defaults On
-     * (optlist.h:396-397 NHOPTB(implicit_uncursed, ..., On, ...)), so the
-     * leading `!flags.implicit_uncursed` disjunct is FALSE and the second one
-     * decides whether "uncursed " is emitted:
-     *   ((!known || !oc_charged || ARMOR_CLASS || RING_CLASS)
-     *    && otyp != FAKE_AMULET_OF_YENDOR && otyp != AMULET_OF_YENDOR
-     *    && !Role_if(PM_CLERIC))
-     * For ARMOR_CLASS the first parenthesis is unconditionally true and the two
-     * amulet exclusions cannot apply, so the whole test reduces to
-     * !Role_if(PM_CLERIC): a Priest/Priestess (who always knows BUC) never sees
-     * the redundant "uncursed" word.  seed0367 step 54 is exactly that case —
-     * C "You were wearing a +0 robe." for the priest's bknown uncursed robe,
-     * while the port emitted "an uncursed +0 armor.". */
     let prefix = '';
     if (otmp.bknown) {
         if (otmp.cursed) prefix += 'cursed ';
@@ -3229,10 +2521,6 @@ function armorDonameBody(otmp) {
 /* C off_msg runs after the armor's removal callback and before armoroff
  * returns. Its message can block while u.uac still has the pre-removal value. */
 
-/* C ref: do_wear.c:1347 Ring_off_or_gone(obj, gone) — clear the ring's conferred
- * extrinsic property bit and the worn slot, then dispatch the ring's removal
- * side-effect.  For RIN_LEVITATION that is float_down().  RNG-free up to the
- * dispatched side-effect; float_down() itself is RNG-free on the corpus path. */
 async function Ring_off_or_gone(obj, gone) {
     const u = game.u;
     const W_RING = 0x00060000; /* RIGHT|LEFT ring masks */
@@ -3278,8 +2566,6 @@ async function Ring_off_or_gone(obj, gone) {
         }
     }
     if ((obj.otyp | 0) === RIN_LEVITATION_OTYP) {
-        /* do_wear.c:1406 — if (!(BLevitation & FROMOUTSIDE)) float_down(0,0);
-         * the corpus hero has no FROMOUTSIDE block, so float_down runs. */
         const p = uprop_levitation_record();
         const FROMOUTSIDE = 0x04000000;
         if (!((p.blocked | 0) & FROMOUTSIDE)) {
@@ -3328,42 +2614,11 @@ export async function Ring_off(obj) {
     await Ring_off_or_gone(obj, false);
 }
 
-/* C ref: do_wear.c:66-71 off_msg(otmp) — "You were wearing %s." doname(otmp),
- * called AFTER setworn() has cleared the mask (so doname's "(being worn)"
- * suffix — objnam.js:4927, gated on the object's OWN owornmask — is correctly
- * absent, unlike on_msg's amulet branch which fires BEFORE the mask clears).
- * Generic across every accessory/armor type in C; this file already has a
- * ring-specific and an armor-specific copy (off_msg/armor_off_msg) built
- * before doname() was safe to call for every class, so this is a THIRD
- * narrow copy rather than a refactor of those two — unifying them is out of
- * this fix's scope. RNG-free. */
 async function off_msg_amulet(otmp) {
     if (!(game.flags && game.flags.verbose))
         return;
     await pline(`You were wearing ${(await doname(otmp))}.`);
 }
-/* C ref: do_wear.c:1090-1184 Amulet_off() — the doremring/dotakeoff accessory-
- * off dispatch's amulet arm.  Reads the global uamul (this file's u.uamul),
- * exactly like the C signature (void, no args).
- *
- * Ported at the same fidelity as Ring_off/Blindf_off above: the tail every
- * case arm shares (setworn(0,W_AMUL) + off_msg, do_wear.c:1180-1183) always
- * runs, and the per-otyp switch is ported for the arms this file can reach
- * faithfully.  AMULET_OF_LIFE_SAVING / VERSUS_POISON / REFLECTION /
- * AMULET_OF_CHANGE / AMULET_OF_UNCHANGING / FAKE_AMULET_OF_YENDOR /
- * AMULET_OF_YENDOR are bare `break;` in C (do_wear.c:1092-1099) — nothing to
- * port, the shared tail is their whole body, and this file's oracle corpus
- * exercises VERSUS_POISON/UNCHANGING/REFLECTION removal exactly this way.
- * AMULET_OF_GUARDING recomputes AC (find_ac() already models the AMULET_OF_
- * GUARDING -2 term, do_wear.c:366).  The remaining arms (ESP/STRANGULATION/
- * MAGICAL_BREATHING/RESTFUL_SLEEP/FLYING) run their shared setworn+off_msg
- * EARLY per C, then defer their otyp-specific follow-on effect: each needs
- * either display machinery this file does not have (ESP's see_monsters(),
- * FLYING's spoteffects()) or hero state no corpus session reaches this call
- * while actually experiencing (Strangled/Underwater/HSleepy — none of which
- * has a reader anywhere in js/ per this file's existing SLEEPY_DW note
- * above). None of the deferred follow-ons touches the worn-mask/return
- * channel this fix targets. */
 export async function Amulet_off() {
     const g = game;
     const u = g.u || (g.u = {});
@@ -3387,8 +2642,6 @@ export async function Amulet_off() {
         await setworn(null, W_AMUL_C);
         await off_msg_amulet(amul);
         earlyOffMsg = true;
-        /* Strangled-clear / "can breathe more easily" follow-up deferred —
-         * no corpus session removes this amulet while actually Strangled. */
     } else if (otyp === AMULET_OF_RESTFUL_SLEEP_DW) {
         /* do_wear.c:1150-1154 — setworn only; off_msg comes from the shared
          * tail below (early_off_msg is NOT set for this case in C). */
@@ -3400,16 +2653,11 @@ export async function Amulet_off() {
         await setworn(null, W_AMUL_C);
         await off_msg_amulet(amul);
         earlyOffMsg = true;
-        /* Underwater drown()/region_danger() follow-up deferred — hero is
-         * never Underwater at this call in the corpus. */
     } else if (otyp === AMULET_OF_FLYING_DW) {
         /* do_wear.c:1155-1170 */
         await setworn(null, W_AMUL_C);
         await off_msg_amulet(amul);
         earlyOffMsg = true;
-        /* float_vs_flight()/"stop flying or land"/spoteffects() follow-up
-         * deferred — no corpus session removes a worn amulet of flying while
-         * actually flying. */
     } else if (otyp === AMULET_OF_GUARDING) {
         find_ac(); /* do_wear.c:1176 — shared tail handles setworn+off_msg. */
     }
@@ -3419,15 +2667,6 @@ export async function Amulet_off() {
         await off_msg_amulet(amul);
 }
 
-/* C ref: trap.c:4004 float_down(hmask, emask) — end-of-levitation feedback.
- * Corpus path: hero is untrapped, not flying/swallowed/in-water, on normal
- * dungeon floor (no pool/lava/trap), not Sokoban/airlevel/waterlevel, not
- * punished — so the only feedback is "You float gently to the floor." followed
- * by encumber_msg() (carrying capacity dropped now that levitation ended).
- * RNG-free on this path (pickup(1) at the tail finds no floor items here, and
- * the per-turn exerchk that draws rn2(19) fires later from the moveloop engine
- * after this ECMD_TIME command returns).  Deferred branches (BLevitation/BFlying/
- * uswallow/Punished/pool/lava/trap/Sokoban/steed) are annotated, not reached. */
 export async function float_down(hmask, emask) {
     const g = game;
     const u = g.u;
@@ -3438,7 +2677,6 @@ export async function float_down(hmask, emask) {
     if (Levitation())
         return 0; /* maybe another ring/potion/boots still levitating */
     // C trap.c:4036-4053: a blocked source never lifted the hero off the
-    // floor. Clear the blocker and update carrying capacity without landing.
     if (p.blocked | 0) {
         const trapped = (p.blocked | 0) === I_SPECIAL;
         float_vs_flight();
@@ -3458,16 +2696,6 @@ export async function float_down(hmask, emask) {
     nomul(0); /* stop running or resting (hack.c) */
     float_vs_flight();
     /* BFlying/uswallow/Punished/pool/lava branches deferred (FALSE here). */
-    /* trap = t_at(u.ux,u.uy): no trap on the hero's square → the "float gently"
-     * branch (do_wear.c equivalent trap.c:4124): You("float gently to the %s",
-     * surface) → "floor" on normal dungeon floor.
-     * C trap.c:4100 gates that whole message block on `if (!(emask & W_SADDLE))`:
-     * dismount_steed calls float_down(0L, W_SADDLE) unconditionally (steed.c:810)
-     * precisely so the hero comes down WITHOUT a levitation-ending line.  The
-     * gate was missing, so the first dismount this port ever performed printed
-     * "You float gently to the floor." where C prints nothing (seed0104 step 29,
-     * which also swallowed the frame C uses for the floor pile). */
-     // PARKED-NOTE: session=seed0104 citation-only
     if (!(emask & W_SADDLE_FD)) {
         await pline(`You float gently to the ${surface(u.ux, u.uy)}.`);
         // C update_topl may block here before landing triggers another effect.
@@ -3648,25 +2876,6 @@ export function stuck_ring(ring, otyp) {
     return null;
 }
 
-/* C ref: do_wear.c:1602-1640 doffing(otmp) — check if an object is queued for
- * doffing by the 'A' command (takeoff-all).
- *
- *   boolean doffing(struct obj *otmp)
- *   {
- *       long what = svc.context.takeoff.what;
- *       boolean result = FALSE;
- *       if (otmp == uarm)
- *           result = (ga.afternmv == Armor_off || what == WORN_ARMOR);
- *       else if (otmp == uarmu)
- *           result = (ga.afternmv == Shirt_off || what == WORN_SHIRT);
- *       ...
- *       return result;
- *   }
- *
- * Port: otmp is a struct obj record (marshalled from C via capture). Compare
- * it against the player's worn slots using object identity (===). If it's worn
- * and either the afternmv tag matches the *_off for that slot OR the takeoff
- * what bitmask includes the slot, return true. RNG-free. */
 export function doffing(otmp) {
     const g = game;
     g.u = g.u || {};
@@ -3728,26 +2937,6 @@ export function doffing(otmp) {
     return result;
 }
 
-/* ───────────────────────── EYEWEAR (the W_TOOL slot) ─────────────────────────
- * objects.h:944-950 EYEWEAR rows — lenses confer NOTHING (oc_oprop 0),
- * blindfold and towel both confer BLINDED.  The property itself comes from
- * MKOBJ_OC_OPROP rather than a local table, so a towel goes through the
- * identical path; the otyps are only needed by name for the "still cannot see"
- * suppression in Blindf_off and the TOWEL wording in on_msg (LENSES_OTYP_DW /
- * BLINDFOLD_OTYP_DW / TOWEL_OTYP_DW are declared above).
- *
- * C ref: youprop.h:96-103
- *     Blindfolded  EBlinded                    (u.uprops[BLINDED].extrinsic)
- *     Blind        ((HBlinded || EBlinded) && !BBlinded)
- * The same triple js/vision.js:19 Blind(), js/display.js:3941 _disp_Blind() and
- * js/trap.js:2033 already read — including the `u.ublind` alias those accept —
- * so the vision recalc, the status line and this agree by construction.
- *
- * NOTE this is deliberately NOT `u._blind`.  Five sites in js/ derive a local
- * `const Blind = !!(u._blind)` from a field that NOTHING in js/ or frozen/ ever
- * assigns (js/dokick.js:201 even labels itself `WIRE_PENDING: full Blind
- * macro`), so every one of them is permanently false.  Reading uprops here is
- * what makes the property a real one rather than a sixth dead guard. */
 function _Blind_dw() {
     const u = game.u;
     if (!u) return false;
@@ -3757,23 +2946,6 @@ function _Blind_dw() {
 }
 
 
-/* C ref: potion.c:335-364 toggle_blindness().
- *     SET_BOTL; gv.vision_full_recalc = 1; vision_recalc(0);
- *     if (Blind_telepat || Infravision || Stinging) see_monsters();
- *     if (Stinging) Sting_effects(-1);
- *     if (!Blind) learn_unseen_invent();
- * No RNG on any arm.  This is the same body js/zap.js:355 carries file-locally
- * for flashburn; kept local here for the same reason (zap.js does not export
- * it, and importing zap.js from do_wear.js would close a cycle through
- * mhitm.js).  vision_recalc(0) is the load-bearing call: js/vision.js:596 has
- * the real `else if (Blind)` arm, so once EBlinded is set this is what clears
- * IN_SIGHT everywhere and repaints the remembered map.
- *
- * KNOWN GAP: see_monsters()/Sting_effects()/learn_unseen_invent() are not
- * called.  Blind_telepat and Infravision are false for every corpus hero form
- * and Stinging needs the artifact Sting, so C skips all three too; the !Blind
- * arm's learn_unseen_invent only marks dknown on unseen inventory, which no
- * corpus screen reads back.  None of the four draws RNG. */
 function toggle_blindness_dw() {
     const g = game;
     g.disp = g.disp || {};
@@ -3782,24 +2954,7 @@ function toggle_blindness_dw() {
     vision_recalc(0);
 }
 
-/* C ref: do_wear.c:76-100 on_msg(otmp), the EYEWEAR arm.  For W_TOOL with
- * flags.verbose (the corpus default — no `!verbose` in any session's
- * nethackrc) C skips the prinv add-to-invent line and prints
- *     You("are now wearing %s%s.", obj_is_pname(otmp) ? the(name) : an(name),
- *         how);
- * with `how` = " around your <head>" for a TOWEL and empty otherwise.
- * RNG-free.  KNOWN GAP: obj_is_pname (a named/artifact blindfold) is not
- * tested — no corpus eyewear is named, and the branch only changes the
- * article. */
 async function eyewear_on_msg(otmp) {
-    /* C do_wear.c:81-85 — for W_TOOL the verbose test comes FIRST and inverted:
-     *     if (... || ((otmp->owornmask & W_TOOL) != 0L && !flags.verbose)) {
-     *         prinv((char *) NULL, otmp, 0L);
-     *         return;
-     *     }
-     * so with `!verbose` (seed4500 / seed0398) the eyewear line is the prinv
-     * add-to-invent form, not "You are now wearing ...".  The comment above
-     * asserted no corpus nethackrc turns verbose off; two do. */
     if (!(game.flags && game.flags.verbose)) {
         const invlet = String.fromCharCode(otmp.invlet | 0);
         await pline(`${invlet} - ${(await doname(otmp))}.`);
@@ -3811,45 +2966,13 @@ async function eyewear_on_msg(otmp) {
     await pline(`You are now wearing ${an(name)}${how}.`);
 }
 
-/* C ref: do_wear.c:67-71 off_msg(otmp) — You("were wearing %s.", doname(otmp)).
- * Blindf_off calls setworn(0, mask) FIRST, so owornmask is already clear by the
- * time this runs and doname adds no "(being worn)" suffix.  The corpus eyewear
- * is an unnamed, non-bknown blindfold, for which doname reduces to
- * an(xname(obj)) — "a blindfold". */
 async function eyewear_off_msg(otmp) {
     /* C do_wear.c:69 — off_msg is `if (flags.verbose)`; see armor_off_msg. */
     if (!(game.flags && game.flags.verbose))
         return;
-    /* off_msg calls doname(), not an(xname()).  The distinction matters when
-     * the blindfold's blessed/uncursed state is known: C then says
-     * "an uncursed blindfold" (gen432), while an unidentified one still says
-     * "a blindfold" (the public eyewear sessions). */
     await pline(`You were wearing ${(await doname(otmp))}.`);
 }
 
-/* C ref: do_wear.c:1479-1512 Blindf_on(otmp).
- *     boolean already_blind = Blind, changed = FALSE;
- *     remove_worn_item(otmp, FALSE);      // blindfold might be wielded
- *     setworn(otmp, W_TOOL);
- *     on_msg(otmp);
- *     if (Blind && !already_blind) { changed = TRUE; You_cant("see any more."); ... }
- *     else if (already_blind && !Blind) { changed = TRUE; You("can see!"); }
- *     if (changed) toggle_blindness();
- *
- * Note the ORDER, which is what the screen shows: setworn confers EBlinded
- * BEFORE on_msg, so the "You are now wearing a blindfold." pline is already
- * emitted from a blind hero — and the "You can't see any more." line follows it
- * on the same topline.  seed5006 step 121 is exactly that pair, with the turn's
- * movemon line joined on:
- *     "You are now wearing a blindfold.  You can't see any more.  It bites!"
- * ("It", not "The sewer rat", because canspotmon is now false; and the kitten's
- * miss is suppressed entirely for the same reason.)
- *
- * RNG-free: setworn, on_msg, the message arms and toggle_blindness all draw
- * nothing.  KNOWN GAPS, none of them RNG-bearing and none corpus-reachable:
- * the Punished/set_bc(0) ball-and-chain arm (no corpus hero is punished), and
- * the `already_blind && !Blind` arm, which needs the Eyes of the Overworld
- * (w_blocks → BBlinded) plus the u.uroleplay.blind conduct. */
 export async function Blindf_on(otmp) {
     const already_blind = _Blind_dw();
     let changed = false;
@@ -3861,8 +2984,6 @@ export async function Blindf_on(otmp) {
 
     if (_Blind_dw() && !already_blind) {
         changed = true;
-        /* flags.verbose is on for every corpus session; You_cant() is
-         * You("can't %s", ...) → "You can't see any more." */
         await pline("You can't see any more.");
     } else if (already_blind && !_Blind_dw()) {
         changed = true;
@@ -3872,25 +2993,6 @@ export async function Blindf_on(otmp) {
         toggle_blindness_dw();
 }
 
-/* C ref: do_wear.c:1514-1553 Blindf_off(otmp).
- *     boolean was_blind = Blind, changed = FALSE;
- *     svc.context.takeoff.mask &= ~W_TOOL;
- *     setworn((struct obj *) 0, otmp->owornmask);
- *     if (!nooffmsg) off_msg(otmp);
- *     if (Blind) { if (was_blind) { if (otyp != LENSES) You("still cannot see."); }
- *                  else { changed = TRUE; You_cant("see anything now!"); ... } }
- *     else if (was_blind) { if (!gulp_blnd_check()) { changed = TRUE;
- *                                                    You("can see again."); } }
- *     if (changed) toggle_blindness();
- *
- * seed5006 step 125: "You were wearing a blindfold.  You can see again.--More--"
- * — off_msg first, then the regained-sight line, both before the turn's world
- * block, which is what raises the --More--.
- *
- * KNOWN GAPS (RNG-free, not corpus-reachable): gulp_blnd_check() — a hero
- * swallowed by a light-blocking engulfer stays blind on removal, and no corpus
- * hero is engulfed while wearing eyewear; the Punished/set_bc(0) arm; and the
- * `Blind && !was_blind` arm, which again needs the Eyes of the Overworld. */
 export async function Blindf_off(otmp) {
     const g = game;
     const was_blind = _Blind_dw();
@@ -3931,15 +3033,6 @@ export async function Blindf_off(otmp) {
         toggle_blindness_dw();
 }
 
-/* C ref: prop.h LEVITATION property + ring otyps used by Ring_on.
- * otyp values are the contiguous RIN_* block from objects.c (verified against
- * the JS object table via simple_typename): adornment=173, gain strength=174,
- * gain constitution=175, increase accuracy=176, increase damage=177,
- * protection=178, regeneration=179, ... levitation=183.  The prior constants
- * here (adornment=168, gain_str=178, protection=170 …) were wrong — they made
- * Ring_on's switch miss the real ring types, so e.g. putting on a ring of
- * protection skipped learnring()→discover_object()→exercise(A_WIS,TRUE) and
- * dropped C's rn2(19) (seed5500 step 820 first-divergence). */
 export const RIN_LEVITATION_OTYP = 183;
 const RIN_INVISIBILITY_OTYP = 198;
 const RIN_SEE_INVISIBLE_OTYP = 199;
@@ -3984,9 +3077,6 @@ function Flying() {
     return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
 }
 
-/* C ref: do_wear.c:1193 learnring(ring, observed).  For the corpus we need the
- * `makeknown(ringtype)` discovery path (ring->dknown && !oc_name_known).
- * RNG-free. */
 function learnring(ring, observed) {
     const ringtype = ring.otyp | 0;
     const g = game;
@@ -4000,18 +3090,6 @@ function learnring(ring, observed) {
             discover_object(ringtype, true, true, true);
         }
     }
-    /* C do_wear.c:1215-1218 — "make enchantment of charged ring known (might be
-     * +0) ... if we've seen this ring and know its type":
-     *     if (ring->dknown && objects[ringtype].oc_name_known) {
-     *         if (objects[ringtype].oc_charged) ring->known = 1;
-     *         update_inventory();
-     *     }
-     * `known` is what doname's RING_CLASS tail (objnam.c:1499-1501) gates the
-     * "%+d " on, so without it the prinv/off_msg for a charged ring lost its
-     * enchantment: seed5500 step 820 C "F - a +3 ring of protection (on right
-     * hand)." vs JS "F - a ring of protection (on right hand).".  oc_charged is
-     * the six spec==1 rings adornment(173)..protection(178) (objects.h:741-757).
-     * update_inventory() is a perm-invent repaint we do not model. */
     const RIN_BASE = 173, RIN_LAST_CHARGED = 178;
     if (ring.dknown && g._oc_name_known[ringtype]) {
         if (ringtype >= RIN_BASE && ringtype <= RIN_LAST_CHARGED)
@@ -4019,13 +3097,6 @@ function learnring(ring, observed) {
     }
 }
 
-/* C ref: attrib.c:1268 extremeattr(attrindx) — "does attrindx's value match
- * its max or min?".  A_STR's GAUNTLETS_OF_POWER hilimit override is ported
- * (uarmg is already tracked by this file); A_CON's u_wield_art(ART_OGRESMASHER)
- * override is NOT — no corpus record reaches adjust_attrib for A_STR or A_CON
- * (only A_CHA, via RIN_ADORNMENT, is proven reached — board12-s doputon
- * rec#3), and A_CHA takes neither branch, so this is complete for the
- * proven-reached path. */
 function extremeattr_dw(which) {
     const g = game;
     const u = g.u || {};
@@ -4038,17 +3109,6 @@ function extremeattr_dw(which) {
     const curval = acurr(u, which);
     return curval === lolimit || curval === hilimit;
 }
-/* C ref: do_wear.c:1223 adjust_attrib(obj, which, val) — Ring_on's
- * RIN_GAIN_STRENGTH/RIN_GAIN_CONSTITUTION/RIN_ADORNMENT arms.
- *     old_attrib = ACURR(which);
- *     ABON(which) += val;
- *     observable = (old_attrib != ACURR(which));
- *     if (observable || !extremeattr(which)) learnring(obj, observable);
- *     disp.botl = TRUE;
- * RNG-free itself; learnring() CAN draw (discover_object's credit_hero
- * exercise(A_WIS,TRUE) on first discovery — see learnring's own citation
- * above, and change_sex_dw's sibling AMULET_OF_CHANGE finding, same
- * mechanism, same board12-s wave). */
 function adjust_attrib_dw(obj, which, val) {
     const g = game;
     const u = g.u || {};
@@ -4063,10 +3123,6 @@ function adjust_attrib_dw(obj, which, val) {
     if (g.disp) g.disp.botl = 1;
 }
 
-/* C ref: trap.c:3917 float_up().  Levitation onset feedback + float_vs_flight +
- * encumber_msg.  The corpus hero floats up while untrapped and not in water/
- * swallowed/hallucinating/airlevel → the final "You start to float in the air!"
- * branch.  Trapped / water / steed branches are deferred (annotated). */
 export async function float_up() {
     const u = game.u;
     ensure_uprop(LEVITATION_PROP);
@@ -4097,7 +3153,6 @@ export async function float_up() {
     } else if (u.uswallow) {
         /* swallowed branch — not reached. */
     } else {
-        /* Hallucination / Is_airlevel deferred (FALSE for corpus). */
         await pline('You start to float in the air!');
     }
     /* steed branch (u.usteed) — none. */
@@ -4108,11 +3163,6 @@ export async function float_up() {
     await encumber_msg();
 }
 
-/* C ref: do_wear.c:1242 Ring_on(obj) — ring-effect dispatch.  The ring is
- * already worn (setworn ran first) so u.uprops[oc_oprop].extrinsic is set.
- * Property-only rings (teleport/regen/searching/.../sustain-ability) just
- * `break` (no immediate effect).  Effect rings are ported per the corpus need;
- * the +N stat / accuracy / damage / protection setups are cheap and C-faithful. */
 export async function Ring_on(obj) {
     const u = game.u;
     const otyp = obj.otyp | 0;
@@ -4122,7 +3172,6 @@ export async function Ring_on(obj) {
     let oldprop = prop?.extrinsic | 0;
     if ((oldprop & W_RING) !== W_RING)
         oldprop &= ~W_RING;
-    /* C do_wear.c:1249 — make sure ring isn't wielded (corpus rings aren't). */
     switch (otyp) {
         case RIN_SEE_INVISIBLE_OTYP: {
             set_mimic_blocking();
@@ -4169,14 +3218,6 @@ export async function Ring_on(obj) {
             }
             break;
         }
-        /* C do_wear.c:1313-1319 — adjust_attrib(obj, A_STR|A_CON|A_CHA, obj->spe).
-         * MEASURED reached by board12-s doputon rec#3 (RIN_ADORNMENT/A_CHA):
-         * previously a bare no-op, which left u.abon untouched (a silent
-         * attribute-bump loss) and skipped adjust_attrib_dw's learnring() call
-         * — the record's rng_result_tape_residual (1 unconsumed draw) traced to
-         * exactly that missing learnring()->discover_object()->
-         * exercise(A_WIS,TRUE) on first-discovery, the same mechanism as the
-         * AMULET_OF_CHANGE finding above. */
         case RIN_GAIN_STRENGTH_OTYP:
             adjust_attrib_dw(obj, A_STR, obj.spe | 0);
             break;
@@ -4200,11 +3241,6 @@ export async function Ring_on(obj) {
             break;
         }
         default:
-            /* property rings (RIN_TELEPORTATION..RIN_SUSTAIN_ABILITY, MEAT_RING)
-             * and toggle rings (stealth/warning/see-invis/invis/poly/...): the
-             * extrinsic is already set by setworn; their immediate-don effects
-             * (toggle_stealth/see_monsters/...) consume no RNG on the corpus
-             * path and are deferred until a session reaches them. */
             break;
     }
 }
@@ -4384,41 +3420,6 @@ export function cancel_doff(obj, slotmask) {
 }
 
 
-/* C ref: do_wear.c:3342-3401 inaccessible_equipment() — check whether equipment
- * is blocked from being removed by outer armor covering it.
- * C source:
- *   boolean
- *   inaccessible_equipment(
- *       struct obj *obj,
- *       const char *verb, // "dip" or "grease", or null to avoid messages
- *       boolean only_if_known_cursed) // ignore covering unless cursed+known
- *   {
- *       static NEARDATA const char need_to_take_off_outer_armor[] =
- *           "need to take off %s to %s %s.";
- *       char buf[BUFSZ];
- *       boolean anycovering = !only_if_known_cursed;
- *   #define BLOCKSACCESS(x) (anycovering || ((x)->cursed && (x)->bknown))
- *       if (!obj || !obj->owornmask) return FALSE;
- *       if (obj == uarm && uarmc && BLOCKSACCESS(uarmc)) {
- *           if (verb) { Strcpy(buf, yname(uarmc)); You(..., buf, verb, yname(obj)); }
- *           return TRUE;
- *       }
- *       if (obj == uarmu && ((uarm && BLOCKSACCESS(uarm)) || ...)) {
- *           if (verb) { ... You(...); }
- *           return TRUE;
- *       }
- *       if ((obj == uleft || obj == uright) && uarmg && BLOCKSACCESS(uarmg)) {
- *           if (verb) { Strcpy(buf, yname(uarmg)); You(...); }
- *           return TRUE;
- *       }
- *       return FALSE;
- *   }
- * Port: checks worn armor slots for blocking equipment. RNG-free; no state
- * modifications in recorded captures.  verb is null in all recorded replays, so
- * the message arms below are unexercised by the capture corpus — they are still
- * C-shaped rather than stubbed, because `verb` is caller-supplied ("dip" /
- * "grease") and a corpus that has not yet reached those callers is not evidence
- * that they are unreachable (the drain_item `spe == 0` lesson). */
 export function inaccessible_equipment(obj, verb, only_if_known_cursed) {
     const g = game;
     g.u = g.u || {};
@@ -4428,12 +3429,6 @@ export function inaccessible_equipment(obj, verb, only_if_known_cursed) {
     if (!obj)
         return false;
 
-    /* Check if obj is actually worn by checking against worn slots.
-     * The C function checks obj->owornmask, but that field is not captured
-     * in the harness records. We infer it from object identity: if obj matches
-     * any worn slot (u.uarm, u.uarmc, u.uarmu, u.uleft, u.uright, u.uarmg),
-     * then it is worn (owornmask is nonzero). If it doesn't match any worn slot,
-     * it's not currently being worn. */
     const isWorn = (obj === u.uarm || obj === u.uarmc || obj === u.uarmu ||
                     obj === u.uleft || obj === u.uright || obj === u.uarmg ||
                     obj === u.uarmh || obj === u.uarmf || obj === u.uarms);
@@ -4449,13 +3444,6 @@ export function inaccessible_equipment(obj, verb, only_if_known_cursed) {
         return anycovering || ((x.cursed || false) && (x.bknown || false));
     }
 
-    /* C do_wear.c:3349-3350 static const char need_to_take_off_outer_armor[].
-     * These three call sites were `You(verb, obj)` — a two-argument call to a
-     * function C invokes with FOUR (the format plus three strings), against a
-     * `You` that was a throw-stub.  Porting You() without fixing the shape
-     * would have replaced a guaranteed abort with a guaranteed wrong topline
-     * (the format string itself, printed verbatim), which the render gates read
-     * as real output.  C ref: do_wear.c:3359-3395. */
     const need_to_take_off_outer_armor = 'need to take off %s to %s %s.';
 
     /* check for suit covered by cloak */
@@ -4518,14 +3506,9 @@ export function count_worn_armor() {
 export function some_armor(victim) {
     const g = game;
     const u = g.u;
-    /* C: victim == &gy.youmonst.  Reference equality is canonical but the
-       sweep may reconstruct objects separately; fall back to m_id. */
     const is_you = (victim === g.youmonst)
         || (g.youmonst && victim.m_id === g.youmonst.m_id);
 
-    /* Walk a monster's minvent for worn armor matching mask.
-       Mirrors C's which_armor (worn.c).  When minvent is missing (sweep
-       reconstruction edge-case), search global chains. */
     function which_armor_mon(mon, mask) {
         for (let obj = mon.minvent; obj; obj = obj.nobj) {
             if ((obj.owornmask | 0) & mask)
@@ -4720,27 +3703,6 @@ async function wornarm_destroyed(wornarm) {
     }
 }
 
-/* ── C ref: do_wear.c:3198-3253 disintegrate_arm(struct obj *atmp) ────────────
- * hit by destroy armor scroll (cursed, or blessed) / black dragon breath.
- * Returns 1 if something was destroyed, 0 if nothing could be.
- *
- * Note (C's own comment): if the cloak resisted, the suit or shirt underneath
- * is not impacted either; likewise a resisting suit shields the shirt.  That is
- * what `resistedc` / `resistedsuit` carry, and it is why those two slots use
- * their own boxes rather than sharing `resisted`.
- *
- * RNG (C order): one rn2(100) inside obj_resists per slot actually TESTED, in
- * the order cloak, suit, shirt, helm, gloves, boots, shield — stopping at the
- * first slot that yields a victim.
- *
- * C calls end_burn(otmp, FALSE) for a lamplit suit (a gold dragon scale mail)
- * before printing, so that Armor_gone() cannot report "stops shining" after the
- * destruction message.  That call used to be OMITTED here, on the stated
- * grounds that end_burn was a throw-stub in this tree; it is a real body now
- * (js/timeout.js, landed 2026-08-25 with begin_burn), so the call is made.
- * RNG-free either way, and nothing on the 44 public sessions reaches
- * disintegrate_arm at all (measured: zero recorded draws at do_wear.c:3189
- * across the whole corpus). */
 export async function disintegrate_arm(atmp) {
     const u = game.u || {};
     let otmp = null;
@@ -4820,89 +3782,15 @@ export function cancel_don() {
 }
 
 
-/* You — C pline.c:369-377.
- *   You(const char *line, ...) {
- *       va_start(the_args, line);
- *       vpline(YouMessage(tmp, "You ", line), the_args);
- *   }
- * i.e. printf-format `line`, prefix the literal "You ", hand it to pline.
- * C draws NO RNG here: vpline formats, may call vision_recalc()/flush_screen()
- * when gv.vision_full_recalc is set, then putmesg() — no rn2/rnd/d anywhere on
- * any arm (pline.c:153-287).
- *
- * This was `throw new Error('not yet ported: You')`, and it was IMPORTED by
- * js/cmd.js:84 and js/ball.js:34 — so it was bound, and every one of the 29
- * call sites across those two files was a guaranteed total session loss (the
- * replay runner discards the whole matched RNG prefix on an exception), which
- * no binding gate could see. The class is now gated by
- * tools/js-binding-audit.mjs --stub-resolve.
- *
- * Async because the pline it delegates to is async and several call sites
- * already write `await You(...)`; pline's body has no await before it mutates
- * game._pending_message, so the non-awaited call sites still take effect in
- * step order.
- *
- * KNOWN GAP, all of it C-shaped rather than fatal: vpline's BUFSZ-1 truncation
- * ("___ extremely l...ext"), the a11y.accessiblemsg location prefix, and
- * msgtype NOREP/NOSHOW suppression are not ported — pline() itself does not
- * implement them either, so You() must not invent them. Conversion specifiers
- * outside _plineVFmt's set are left verbatim rather than mis-substituted. */
 export async function You(line, ...args) {
     return pline('You ' + _plineVFmt(line, args));
 }
 
-/* Your — C pline.c:380-388, identical to You() with the "Your " prefix.
- * Was imported from js/vault.js:481, another throw-stub, for the single call at
- * do_wear.js:1615 (accessory_or_armor_on's "all slots full" message) — a live,
- * measured-hot path. js/cmd.js:19663, js/potion.js:1188, js/read.js:2307,
- * js/shk.js:1848 and js/sit.js:75 each hold a separate Your body; this is the
- * one that shares pline's formatter instead of re-deriving it. */
 export async function Your(line, ...args) {
     return pline('Your ' + _plineVFmt(line, args));
 }
 
-/* yname — C objnam.c:2568-2582.
- *   yname(obj) { s = cxname(obj);
- *                if (!carried(obj) || !obj_is_pname(obj)
- *                    || obj->oartifact >= ART_ORB_OF_DETECTION)
- *                    s = strcat(shk_your(nextobuf(), obj), s);
- *                return s; }
- * RNG-free on every arm.
- *
- * This was a throw-stub here AND at js/cmd.js:19318, which mattered because
- * js/cmd.js:6674 is `await You("smear royal jelly all over %s.", yname(eobj))`
- * — porting You() alone would have moved the abort one argument to the left,
- * exactly the failure recorded in the cmd.js:6537 comment. Both sites now
- * resolve to this body.
- *
- * KNOWN GAP: shk_your()'s shopkeeper/monster-owner arms are not ported (they
- * yield "Izchak's " for an unpaid item and "the Oracle's " for a monster's),
- * and obj_is_pname/oartifact gating of the possessive is not modelled — so an
- * artifact the hero carries gets "your " where C would omit it. The fallback
- * arm C reaches for every ordinary object, `the_your[carried(obj)]`, is what is
- * ported; js/cmd.js:19700 Shk_Your carries the same simplification with the
- * same caveat. */
 export function yname(obj) {
-    /* C shk.c the_your[] fallback: carried → "your ", otherwise "the ".
-     * carried(o) is obj.h:332 `(o)->where == OBJ_INVENT`.
-     *
-     * THIS PORT DOES NOT MAINTAIN obj.where ON THE INVENTORY PATHS — u_init's
-     * starting inventory and the pickup path both leave it unset, so the bare
-     * `where === 3` test called every carried object "the".  js/lock.js:993
-     * measured that same defect on its own copy of yname (seed0014's starting
-     * dwarvish spear and seed0108's wished-for Mjollnir both came out "the")
-     * and worked around it by walking the gi.invent chain, which is what
-     * OBJ_INVENT MEANS and which this port DOES maintain; do the same here, in
-     * the shared body, rather than growing a third private copy.
-     *
-     * The `where === 3` disjunct is kept so this can only ever turn a "the "
-     * into a "your ", never the reverse: the WORN-armor records (u.uarm and
-     * friends, js/u_init.js:186) are not linked on the invent chain but do
-     * carry the field, and do_wear.js's need_to_take_off_outer_armor callers
-     * name them through here.
-     *
-     * Measured on seed5002 segment 0: the fire-destroyed potions rendered as
-     * "The potion of invisibility boils and explodes!" against C's "Your". */
     let owned = !!obj && (obj.where | 0) === 3;
     if (obj && !owned) {
         for (let o = game.invent; o; o = o.nobj) {
@@ -4911,17 +3799,7 @@ export function yname(obj) {
     }
     return (owned ? 'your ' : 'the ') + cxname(obj);
 }
-/* xname — C objnam.c:574-578.  Its home is objnam.c, i.e. js/objnam.js, which
- * now carries the real xname_flags() body; this used to be a throw-stub, which
- * meant every js/ball.js and js/mhitu.js caller that reached it aborted the
- * whole session (and the replay runner discards the session's entire matched
- * RNG prefix on an exception).  Re-exported rather than re-implemented so
- * js/ball.js:35 and js/mhitu.js:40, which import it from here, resolve to the
- * single body. */
 export { xname };
-/* C shk.c:5863-5875 shk_your() fallback.  Shopkeeper/monster ownership is
- * handled by js/shk.js; this local export is used by wear naming and needs the
- * ordinary carried-versus-floor prefix without throwing. */
 export function shk_your(obj) {
     const carried = !!obj && ((obj.where | 0) === 3
         || obj === game.invent

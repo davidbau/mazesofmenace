@@ -16,7 +16,6 @@ import { bimanual, reset_remarm } from './do_wear.js'; /* mondata.h:69 / do_wear
 import { book_cursed } from './spell.js';     /* spell.c:2093 */
 // ── Object-type constants ────────────────────────────────────────────────────
 // All values must match the otyp indices baked into the C build this JS mirrors.
-// Wave-D build: mail scroll at 364 shifted spellbooks +1 relative to vanilla.
 const POT_HEALING = 307;
 const POT_EXTRA_HEALING = 308;
 const POT_SPEED = 302;
@@ -45,7 +44,7 @@ const SPBOOK_no_NOVEL = -10; // 0 - (int)SPBOOK_CLASS
 // The 42 entries correspond to otyp 366-407 (SPE_DIG ... SPE_BLANK_PAPER).
 // Index i in this array => otyp (366 + i).
 // Source: objects.h SPELL rows, column 6 (the "level" field).
-const SPBOOK_FIRST_OTYP = 366; // SPE_DIG = FIRST_SPELL in Wave-D build
+const SPBOOK_FIRST_OTYP = 366;
 const SPBOOK_OC_LEVEL = new Uint8Array([
     /*366 SPE_DIG            */ 5,
     /*367 SPE_MAGIC_MISSILE  */ 2,
@@ -114,27 +113,6 @@ function add_to_container(container, obj) {
     return obj;
 }
 // ── fill_supply_chest ────────────────────────────────────────────────────────
-/**
- * Mirror of nethack-c/src/mklev.c:1055-1132.
- *
- * Called immediately after `supply_chest` is created with mksobj_at(..., FALSE, FALSE).
- * Sets olocked, fills the chest with guaranteed supply items, optionally adds
- * one extra biased-toward-low-level item, then updates owt.
- *
- * @param {object} supply_chest  - the container object (already on the floor)
- * @param {number} dlevel        - uz.dlevel (used to bias spellbook selection)
- *
- * HOW TO WIRE INTO mklev.js (replace lines ~4298-4335 in the oracle chest block):
- *
- *   // At top of mklev.js, add import:
- *   import { fill_supply_chest } from './mkobj.js';
- *
- *   // Replace the entire `if (supply_chest) { ... skip_chests = true; }` block with:
- *   if (supply_chest) fill_supply_chest(supply_chest, uz.dlevel ?? 1);
- *   skip_chests = true;
- *
- * C ref: nethack-c/src/mklev.c:1055-1132
- */
 export async function fill_supply_chest(supply_chest, dlevel) {
     // C mklev.c:1055  supply_chest->olocked = !!(rn2(6));
     supply_chest.olocked = !!rn2(6);
@@ -206,34 +184,6 @@ export async function fill_supply_chest(supply_chest, dlevel) {
     supply_chest.owt = weight(supply_chest);
 }
 
-/* ───────────────────────────────────────────────────────────────────────────
- * C mkobj.c:1766-1839 unbless() / curse().
- *
- * These are the general-purpose bless-state mutators every caller in C shares.
- * This port had FIVE hand-written partial copies and no shared body:
- *   js/mklev.js:4074  curse()      — deliberately reduced to what a freshly
- *                                    mksobj'd FLOOR object can reach
- *   js/read.js:1626   _curse()/_bless()/_uncurse()
- *   js/priest.js:321  a field-only reduction
- *   js/shk.js:3033    "clear blessed, set cursed"
- *   js/m_initweap.js:275 curseObj()
- * — so the first caller that needed the FULL body (sit.c rndcurse(), reached by
- * a monster casting a curse-items spell) had none to call.  This is that body;
- * it is deliberately placed in mkobj.js, C's own home for it, so the next
- * caller finds it instead of writing a sixth copy.
- *
- * TWO ARMS ARE OMITTED, both RNG-free, both annotated at the line they belong on:
- *   (a) the `otmp->lamplit` arti_light_radius()/maybe_adjust_light() bracket —
- *       this port has no light-radius model at all (js/read.js:1214
- *       impact_arti_light is an existing documented stub);
- *   (b) `otmp == uswapwep && u.twoweap` -> drop_uswapwep() — wield.c's
- *       drop_uswapwep has no js/ counterpart, and u.twoweap has no writer in
- *       js/ either, so the guard could not be true today.
- * Neither consumes RNG, so the draw order is unaffected either way, and both
- * are written as comments rather than throws: a throw on an arm that only a
- * cursed LIT lamp reaches would convert a wrong pixel into a dead session tail
- * (the class recorded in [[a-new-throw-on-a-live-arm-does-halt]]).
- * ─────────────────────────────────────────────────────────────────────────── */
 const _BC_COIN_CLASS = 12;      /* objclass.h COIN_CLASS  (js/mklev.js:271) */
 const _BC_SPBOOK_CLASS = 10;    /* objclass.h SPBOOK_CLASS (js/mklev.js:269) */
 const _BC_BAG_OF_HOLDING = 219; /* objects.h  (js/mklev.js:319) */

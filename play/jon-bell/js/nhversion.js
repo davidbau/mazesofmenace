@@ -13,32 +13,6 @@ import { get_lua_version, nhl_lua_ver, nhl_lua_copyright } from './nhlua.js';
 /* global.h COLNO */
 const COLNO = 80;
 
-/* nomakedefs.version_string, as generated into date.c by makedefs -v for the
- * reference build the corpus was recorded against (mdlib.c:317-352
- * version_id_string(): "<port> NetHack Version <version> - last build
- * <date+time>.").  Build metadata, pinned the same way js/const.js pins
- * COPYRIGHT_BANNER_C.
- *
- * v5 TRUTH.  nethack-c-v5/upstream/include/patchlevel.h pins VERSION_MAJOR 5,
- * VERSION_MINOR 0, PATCHLEVEL 0 and NH_DEVEL_STATUS = NH_STATUS_RELEASED, so
- * mdlib.c appends no "Work-in-progress" status suffix; the release date is
- * May 2, 2026 (patchlevel.h:68) and the organiser build pins the time to
- * 12:00:00.  Three recorded sessions render this line — seed2200 step 109,
- * seed0106 step 175, seed4500 step 1585 — and all three carry
- * "MacOS NetHack Version 5.0.0 - last build May  2 2026 12:00:00." (note the
- * two spaces before the day, ctime's %e padding).  The 3.7 string this file
- * used to pin was a migration leftover; the judge's preDecode canonicalises
- * the STARTUP banner but NOT this line, so it was scored and lost. */
-/* PLATFORM-CONDITIONAL.  The leading token is PORT_ID (mdlib.c:341
- * version_id_string(): "%s NetHack%s Version %s%s - last %s %s."), which is
- * "MacOS" on the organiser build (include/global.h:191-193, #ifdef __APPLE__)
- * and would be "Unix" on a plain *nix build (include/global.h:217-221).  Both
- * arms live in js/platform_identity.js; flip ORGANISER_PLATFORM there.
- *   macOS arm: "MacOS NetHack Version 5.0.0 - last build May  2 2026 12:00:00."
- *   Unix  arm: "Unix NetHack Version 5.0.0 - last build May  2 2026 12:00:00."
- * The judge canonicalises from "Version 5.0.0" to end of line
- * (frozen/ps_test_runner.mjs:75), so the PORT_ID prefix -- and only the prefix
- * -- is what is actually scored on this line. */
 const VERSION_STRING =
     PORT_ID + " NetHack Version 5.0.0"
     + " - last build May  2 2026 12:00:00.";
@@ -90,17 +64,6 @@ export function insert_rtoption(buf) {
     return buf;
 }
 
-/* tty putstr() line splitting for a NHW_TEXT window.
- *
- * Not in the contest's C tree (win/tty is absent from nethack-c/), so this is
- * derived from the recorded frame: doextversion() hands putstr() the 83-char
- * version string in ONE call (its own :194-204 split looks for a '(' and this
- * string has none), and the recorder shows it occupying two window lines —
- * "…last build Apr 15 2026" then "17:53:30." — with the break at the last
- * space before column COLNO and the space itself dropped.  A window line, not
- * a terminal wrap: it counts against the 23-line page and pushes the Lua
- * copyright onto page 2, which is how the two recorded pages line up.
- */
 function tty_putstr_lines(str) {
     const out = [];
     while (str.length >= COLNO) {

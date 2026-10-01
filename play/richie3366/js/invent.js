@@ -7689,7 +7689,9 @@ export async function prinv(prefix, obj, quan = 0) {
     // C :2886–2889 — the JS xprname arguments put quan before txt/cost.
     const body = xprname(obj, obj_to_let(obj), !totalOf, quan, null, 0);
     await pline(`${prefix}${prefix ? ' ' : ''}${body}${
-        game.flags?.verbose ? totalbuf : ''
+        // C :2889 — flags.verbose is decl-TRUE; an uninitialized JS bag
+        // reads as ON, matching every sibling site (`!== false`).
+        game.flags?.verbose !== false ? totalbuf : ''
     }`);
 }
 
@@ -7858,7 +7860,9 @@ export async function doprtool() {
         // C :4721 — read nobj AFTER reassign, using the object's identity
         // in the array so a newly inserted gold head cannot repeat a tool.
         const inv = game.invent || [];
-        otmp = inv[inv.indexOf(otmp) + 1];
+        const nextIdx = inv.indexOf(otmp);
+        // A removed otmp yields -1; restarting at the head would loop.
+        otmp = nextIdx < 0 ? undefined : inv[nextIdx + 1];
     }
     // C :4730–4733 — the empty view reports without an inventory menu.
     if (!ct) {

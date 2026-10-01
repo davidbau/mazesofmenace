@@ -1,8 +1,6 @@
 // js/symbols.js
 //
 // Ported functions from nethack-c/src/symbols.c.
-// Auto-created as a header-only scaffold by tools/equiv-test/gen-port-tasks.mjs
-// --emit-module-scaffolds. Porters add one exported function per task.
 
 import { game } from './gstate.js';
 import { lowc, mungspaces } from './mklev.js';
@@ -87,7 +85,6 @@ export function savedsym_free() {
  * then applies special defaults for certain indices.
  */
 export function get_othersym(idx, which_set) {
-    // Constants (from hack.h and frozen/const.js)
     const SYM_OFF_P = 0;
     const MAXPCHARS = 105;
     const SYM_OFF_O = SYM_OFF_P + MAXPCHARS;  // 105

@@ -2,7 +2,6 @@
 // statics.js — THE PROCESS BOUNDARY C HAS AND js/ DOES NOT.
 //
 // Every `static`/file-scope object in the C tree is re-initialised from its
-// declared initialiser when a new process starts, and the contest runs each
 // SEGMENT as a fresh C process: the organiser saves, exits, and restores.  C
 // relies on that so hard that it re-derives one of these tables by hand on the
 // way back in — restore.c:727 calls `adj_erinys(u.ualign.abuse)` "after all
@@ -14,15 +13,10 @@
 // hands 29 different js/ modules THE SAME array, and nothing ever puts it
 // back.  So a game that mutates a static table (mon.c:5922 adj_erinys() does,
 // faithfully, and it is right to) leaves it mutated for every later game in
-// the same process.  The judge's scorer forks one child per session and cannot
-// see this; the judge's PLAYABILITY runner scores all 44 in ONE process and is
-// fully exposed to it.  Measured with tools/module-state-leak.mjs on
-// 2026-09-29: forked 11405/11405 44/44, one-process 9288/11405 40/44.
 //
 // WHAT THIS MODULE IS ALLOWED TO DO, and the two rules are why it is a module
 // rather than a few lines in resetGame():
 //
-//  1. RESTORE CONTENTS, NEVER REBIND.  29 modules captured the array by
 //     reference at import time and several alias individual ROWS
 //     (permonstTemplate hands out `MONS[mndx]`).  Assigning a fresh array to
 //     an `export let` is invisible to every one of them — that exact bug was
@@ -45,20 +39,13 @@
 // A GENUINE NO-OP IN A FRESH PROCESS.  The pristine snapshot is taken at
 // module load, before any game code can run, and every write below is guarded
 // by a !== compare, so the first reset of a process writes nothing at all and
-// the forked/scored path cannot move.
 
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMattkPack from './makemon_mattk.json' with { type: 'json' };
 
-/* The shared tables themselves.  Same object identity as the 29 importers'. */
 const MONS = monsPack.mons;
 const MATTK = monMattkPack.mattk;
 
-/* C's static initialisers, captured before any game can run.  `mons[]` rows
- * are flat number arrays ([mlet, mlevel, difficulty, geno, maligntyp, …]);
- * `mattk[]` rows are 6 {aatyp, adtyp, damn, damd} attack structs.  Both are
- * copied one level deeper than the table itself because adj_erinys() writes
- * INTO a row (pm[1], pm[2], pm[6]) and INTO an attack (mattk[0].damn). */
 const MONS_PRISTINE = MONS.map((row) => row.slice());
 const MATTK_PRISTINE = MATTK.map((row) => row.map(
     (a) => ({ aatyp: a.aatyp, adtyp: a.adtyp, damn: a.damn, damd: a.damd })));
@@ -123,7 +110,6 @@ export function resetStatics() {
         derivedResets[i].fn();
 }
 
-/* Diagnostics only — tools/module-state-leak.mjs and the tests below. */
 export function staticResetOwners() {
     return derivedResets.map((r) => r.name);
 }

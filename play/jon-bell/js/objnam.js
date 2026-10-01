@@ -116,15 +116,12 @@ const POTION_CLASS   = 8;
 const SCROLL_CLASS   = 9;
 const SPBOOK_CLASS   = 10;
 const WAND_CLASS     = 11;
-/* objects.h WAN_WISHING — verified 414 via tools/c-const-oracle.mjs (matches
- * js/zap.js:66 and js/mklev.js:301). */
 const WAN_WISHING    = 414;
 /* objects.h SCROLL("mail", "stamped", ...) -- resolved BY NAME against this
  * port's own object table (js/oc_name_data.js OC_NAME[364] === 'mail'), the
  * same 364 js/mklev.js:1909 and js/read.js already carry. */
 const SCR_MAIL_OTYP  = 364;
 const COIN_CLASS     = 12;
-/* C objects.h GOLD_PIECE otyp (tools/c-const-oracle.mjs against the 5.0 tree). */
 const GOLD_PIECE_OTYP = 438;
 const GEM_CLASS      = 13;
 const ROCK_CLASS     = 14;
@@ -134,12 +131,11 @@ const VENOM_CLASS    = 17; /* defsym.h:484 OBJCLASS(17, '.', VENOM, ...) */
 const MAXOCLASSES    = 18; /* fencepost past last valid class */
 
 // ── Key otyp constants ────────────────────────────────────────────────────────
-// Values baked into the Wave-D build (same as mklev.js / u_init.js).
 const STRANGE_OBJECT    = 0;   /* C: STRANGE_OBJECT = 0 */
 const SCALE_MAIL        = 130; /* base "scale mail" armor (oc_prob 66) */
 const POT_WATER         = 322;
-const SCR_BLANK_PAPER   = 365; /* Wave D: mail scroll shifted spellbooks +1 */
-const SPE_BLANK_PAPER   = 407; /* Wave D: last spellbook */
+const SCR_BLANK_PAPER   = 365;
+const SPE_BLANK_PAPER   = 407;
 /* objects.h SPBOOK() rows: SPE_BLANK_PAPER (407), SPE_NOVEL (408),
  * SPE_BOOK_OF_THE_DEAD (409) close the spellbook run — the Book of the Dead is
  * the LAST spellbook, not the first.  366 is SPE_DIG (svb.bases[SPBOOK]=366),
@@ -305,9 +301,7 @@ const SIZEOF_WRPSYM = 13;
 // name → {oclass, first, last} for rnd_class dispatch.
 // C objnam.c:3344-3366.  The f_o_range/l_o_range endpoints are otyps; they are
 // read here straight out of objects.h's declaration order (== OC_NAME index,
-// cross-checked by tools/pm-otyp-audit.mjs).  ARMOR_CLASS base = 89
 // (MKOBJ_SVB_BASES[3]) and the armor run is helms(89) shields(150) gloves(159)
-// boots(163) — NOT the "Wave-D" numbering this table used to carry, in which
 // every row but "bag"/"boots"/"dragon scale mail" named the wrong objects and
 // so summed the wrong oc_prob window into rnd_class()'s rnd(sum).
 const O_RANGES = [
@@ -619,10 +613,6 @@ export function oname(obj, name, oflgs) {
     if ((obj.oartifact | 0) || (lth && exist_artifact(obj.otyp, nm)))
         return obj;
 
-    /* C new_oname(obj, lth) — removes old name if one is present.  js/mhitm.js
-     * exports a new_oname(), but that one drives the FLATTENED capture-replay
-     * oextra_* convention, not the live obj.oextra.oname that ONAME() reads;
-     * calling it here would leave ONAME(obj) empty. */
     if (!obj.oextra)
         obj.oextra = {};
     obj.oextra.oname = lth ? nm : undefined;
@@ -656,7 +646,6 @@ export function oname(obj, name, oflgs) {
 // Indexed by the roles[] INDEX (0=Arc 1=Bar 2=Cav 3=Hea 4=Kni 5=Mon 6=Pri
 // 7=Rog 8=Ran 9=Sam 10=Tou 11=Val 12=Wiz) — i.e. flags.initrole, which is what
 // quest_info(0) below reads.  NOT by urole.mnum: C's Role.mnum is the role's
-// PM_ index (role.c:45 `PM_ARCHEOLOGIST,`), so on the scored path
 // game.urole.mnum is 331, not 0.
 const _ROLE_QUESTARTI = [
     21, /* 0 Arc: ART_ORB_OF_DETECTION */
@@ -689,7 +678,6 @@ export function is_quest_artifact(otmp) {
 // 'descr' = OBJ_DESCR(objects[i]) — the description (shuffled for identified classes)
 // 'dn'    = shuffled description from game state (for amulets/rings/potions/etc.)
 //
-// This table is sufficient for all wish strings exercised by seed0600/seed0800.
 // For unrecognized wish strings, readobjnam falls back to the 'any:' path (rn2(13)).
 //
 // Amulets (otyp 201-213, AMULET_CLASS=5):
@@ -699,7 +687,6 @@ export function is_quest_artifact(otmp) {
 //   For wishymatch purposes, name lookup ("amulet of life saving") uses the REAL
 //   NAME, not the shuffled description.
 //
-// WAVE-D otyp values extracted from js/mklev.js and js/u_init.js constants.
 
 const OBJ_NAME_TABLE = [
     // ── WEAPON_CLASS (otyp 18-88) ─────────────────────────────────────────
@@ -718,7 +705,6 @@ const OBJ_NAME_TABLE = [
     // js/armor_data.js, both put helms at 89-100 and scales at 111-120).
     // _dragon_armor_otyp() resolves a wished colour through THIS table while
     // mksobj/doname name the result through armor_data.js, so every mismatched
-    // row wished one object and printed another: seed0361 wishes "blessed +5
     // silver dragon scale mail", got otyp 102, and printed "j - a gold dragon
     // scale mail." where C prints "j - a silver dragon scale mail."
     { otyp: 101, oclass: ARMOR_CLASS, name: "gray dragon scale mail",    descr: null },
@@ -814,15 +800,6 @@ export function getObjDescr(otyp) {
     const g = game;
     if (g._objDescriptions && g._objDescriptions[otyp] != null)
         return g._objDescriptions[otyp];
-    /* Fall back to the canonical (pre-shuffle) OBJ_DESCR — the authoritative
-     * compiled table (oc_descr_data.js, index == otyp), matching C's
-     * OBJ_DESCR(objects[otyp]) when oc_descr_idx == otyp (i.e. every item the
-     * o_init shuffle did NOT reassign: nodescr items and the fixed-appearance
-     * armor/tools like orcish helm -> "iron skull cap", bag of holding ->
-     * "bag").  The old fallback (OBJ_NAME_TABLE) was a small hand table with
-     * gaps — otyp 90 (orcish helm) and 219 (bag) both returned null, so a pet
-     * dropping/lifting them plined "something", desyncing the topline --More--
-     * page count vs C (seed0600). */
     const d = (otyp >= 0 && otyp < OC_DESCR.length) ? OC_DESCR[otyp] : null;
     return (d != null) ? d : null;
 }
@@ -833,26 +810,8 @@ export function getObjDescr(otyp) {
 // C ref: objnam.c:221-292.  oclass numbering: WEAPON=2, ARMOR=3, RING=4,
 // AMULET=5, POTION=8, SCROLL=9, SPBOOK=10, WAND=11.
 export function obj_typename(otyp) {
-    /* C objnam.c:205: actualn = OBJ_NAME(*ocl).  OBJ_NAME has FULL otyp
-     * coverage in C, so this must read _objName() — objnam.c's own
-     * full-coverage OBJ_NAME (getObjName()'s partial extracted table first,
-     * then the C ground-truth OC_NAME dump) — exactly as xname_flags()'s arms
-     * at objnam.c:612 (js/objnam.js:1525, :3439) already do.  getObjName()
-     * ALONE returns null for 211 otyps (STRANGE_OBJECT, the 17 class dummies,
-     * tools, food, coins, gems, rocks, the fixed-name helms/boots), which the
-     * old invented `?? 'object'` fallback then rendered as the literal
-     * "object": simple_typename(STRANGE_OBJECT) returned "object" where C
-     * returns "strange object" (captured, seed3100-wizard-polyself). */
     let actualn = _objName(otyp);              /* OBJ_NAME — real name */
     let dn = getObjDescr(otyp);                /* OBJ_DESCR — shuffled appearance */
-    /* C objnam.c:206-208 — `un = ocl->oc_uname; nn = ocl->oc_name_known;`.
-     * BOTH were missing from this port, so every arm below behaved as if the
-     * type were always name-known: an ENCOUNTERED-but-unidentified type was
-     * named "<real name> (<appearance>)" where C names it by appearance alone.
-     * The discoveries list is exactly where that shows, because
-     * interesting_to_discover() (o_init.c:525) admits `oc_encountered` types:
-     * seed4500 step 522 lists the venom C calls "splash of venom" as "splash of
-     * blinding venom (splash of venom)". */
     const un = (game._oc_uname && game._oc_uname[otyp] != null)
         ? game._oc_uname[otyp] : null;
     const nn = !!(game._oc_name_known && game._oc_name_known[otyp]);
@@ -898,25 +857,6 @@ export function obj_typename(otyp) {
             buf = _called(nn ? actualn : 'amulet');
             return dn ? `${buf} (${dn})` : buf;
         default:
-            /* C objnam.c:256-263 — the ARMOR_CLASS arm, which FALLS THROUGH
-             * into default after seeding buf with a collective prefix:
-             *     case ARMOR_CLASS:
-             *         if (oc_armcat == ARM_GLOVES || oc_armcat == ARM_BOOTS)
-             *             Strcpy(buf, "pair of ");
-             *         else if (otyp >= GRAY_DRAGON_SCALES
-             *                  && otyp <= YELLOW_DRAGON_SCALES)
-             *             Strcpy(buf, "set of ");
-             *         FALLTHROUGH;
-             * This arm was missing entirely, so the discoveries list (\, which
-             * names types through obj_typename) read "leather gloves (riding
-             * gloves)" where C reads "pair of leather gloves (riding gloves)" —
-             * seed4500 step 522, four rows of it at once.  oc_armcat() is
-             * do_wear.js's authoritative otyp -> category map, already imported
-             * here; ARM_GLOVES=3, ARM_BOOTS=4 (objclass.h).
-             * Then ARMOR_CLASS / WEAPON_CLASS / default: Strcat(buf, actualn);
-             * if (dn) Sprintf(eos(buf), " (%s)", dn).  actualn is non-null by
-             * objnam.c:216-218 above, so there is no fallback here — C would
-             * have Strcat'd a NULL. */
             buf = '';
             if (oclass === 3 /* ARMOR_CLASS */) {
                 const cat = oc_armcat({ otyp }) | 0;
@@ -1002,7 +942,7 @@ export function xname_scroll(obj) {
 //   - nn (name known)                             → actualn
 //   - un (user-call)                              → "amulet called <un>"
 //   - else (appearance)                           → "<descr> amulet"
-const AMULET_OF_YENDOR = 213;      /* Wave-D otyp */
+const AMULET_OF_YENDOR = 213;
 const FAKE_AMULET_OF_YENDOR = 212;
 export function xname_amulet(obj) {
     return _xname_arm(obj, _xn_ctx(obj, CXN_SINGULAR, false));
@@ -1028,13 +968,11 @@ export function xname_ring(obj) {
 //
 // OTYP CONSTANTS: the AUTHORITATIVE values (index into oc_name_data.js /
 // objects.h order).  The prior values (dragon scales 89-98, shields 99-103)
-// were a stale "Wave-D" numbering that did NOT match the real objects.h order
 // — otyp 89-91 are helms (elven leather helm / orcish helm / dwarvish iron
 // helm), so a dknown orcish helm (otyp 90) was wrongly caught by the dragon-
 // scale branch and named "set of null", and real dragon scales (111-120) and
 // shields (150-158) were never classified.  (This made a pet dropping/lifting
 // an orcish helm produce a wrong-width topline, desyncing the --More-- page
-// count vs C — seed0600.)
 const GRAY_DRAGON_SCALES = 111;
 const YELLOW_DRAGON_SCALES = 120;
 const ELVEN_SHIELD_OTYP = 153;
@@ -1073,7 +1011,6 @@ export function xname_weapon(obj) {
 // This is the ONE place C appends a personal name; a caller that adds its own
 // " named <x>" on top of an xname() result double-names the object.  The name
 // lives in obj->oextra->oname (const.js ONAME/has_oname), which is where
-// readobjnam's oname(otmp, name, ONAME_WISH) and the capture reconstructor
 // write it — a bare obj.oname is not that field.
 // (The `nameit:` entry from obj_is_pname() is a separate xname_flags path and
 // is not part of this helper.)
@@ -1257,21 +1194,8 @@ function wishymatch(u_str, o_str, retry_inverted) {
 // "enchant armor" for SCR_ENCHANT_ARMOR, exactly as C's objects[i].oc_name).
 // For the otyps getObjName does NOT cover (tools, dragon scales/mails, a few
 // armors), we fall back to the curated OBJ_NAME_TABLE entry — which is how the
-// pre-existing wish corpus (magic marker, bag of holding, dragon scale mail)
 // resolved.  getObjName WINS on any otyp it covers (the OBJ_NAME_TABLE has stale
 // otyp assignments for 97/98 and adds non-faithful "scroll of " prefixes).
-/* shiny_obj — C ref: objnam.c:3530-3534
-     int shiny_obj(char oclass)
-     { return (int) rnd_otyp_by_namedesc("shiny", oclass, 0); }
- * The one caller is shiny_orc_stuff() (C mkmaze.c:772, js/mkmaze.js) — the
- * orctown gang's ring.  Note the object DESCRIPTIONS are shuffled per game, so
- * which ring answers to "shiny" is seed-dependent; that is exactly why C picks
- * it by description rather than by otyp, and why this must go through
- * rnd_otyp_by_namedesc rather than a hard-coded otyp.  It draws rn2(maxprob)
- * whenever anything matches (C leaf 7775 on
- * corpus-generated/v5/train/gen141-reseed-seed1076328 is
- * 'rn2(1)=0 @ rnd_otyp_by_namedesc(objnam.c:3522)'), so it is NOT RNG-free and
- * cannot be stubbed to a constant. */
 export function shiny_obj(oclass) {
     return rnd_otyp_by_namedesc_js('shiny', oclass, 0) | 0;
 }
@@ -1426,18 +1350,6 @@ function _objName(i) {
      * C ground-truth OC_NAME. */
     const g = getObjName(i);
     if (g != null) return g;
-    /* getObjName() is consulted FIRST, so the JS/C misalignment above
-     * OC_NAME_JS_ALIGNED_MAX cannot bite: measured across otyp 0..480, the only
-     * slots where the two tables disagree are 407-409 (getObjName: flame
-     * sphere / freeze sphere / blank paper; OC_NAME: blank paper / novel / Book
-     * of the Dead), and getObjName is NON-NULL for all three, so the fallback
-     * below is never reached for them.  Every otyp where getObjName IS null and
-     * OC_NAME is not is the fixed-name tail 438..478 — gold piece, the whole
-     * gem/glass run, boulder, statue, heavy iron ball, iron chain — where the
-     * two numberings coincide.  Restricting the fallback to i < 366 left
-     * actualn null on all of those, which xname_flags()'s COIN/CHAIN/ROCK/GEM
-     * arms then rendered as the literal "object?" (objnam.c:612's
-     * pacify-the-analyzer fallback), e.g. "object?" for a boulder. */
     if (i >= 0) {
         const n = OC_NAME[i];
         if (n != null) return n;
@@ -1497,16 +1409,6 @@ function readobjnam_preparse(bp) {
     let blessed = 0, uncursed = 0, iscursed = 0;
     let unlabeled = 0, erodeproof = 0, ispoisoned = 0;
     let halfeaten = 0;
-    /* C _readobjnam_data fields the chain below sets and the old port dropped
-     * entirely.  Every one of these is a REAL C prefix arm (objnam.c:4030-4160)
-     * and their absence is not cosmetic: an unrecognised prefix does not merely
-     * lose a flag, it survives into `bp` and makes the whole name lookup MISS,
-     * so the wish falls off the bottom of readobjnam into the random-object
-     * path.  MEASURED 2026-09-01 over the 192 reach sessions: "trapped chest",
-     * "trapped unlocked chest", "greased iron shoes" and "cursed greased
-     * oilskin cloak" account for 24 of the 48 diverging wishes, every one of
-     * them C drawing rn2(oc_prob-sum) in rnd_otyp_by_namedesc while JS drew
-     * rn2(SIZEOF_WRPSYM) for a random class. */
     let islit = 0, wetness = 0;
     let trapped = 0;               /* 0 unspecified, 1 trapped, 2 untrapped */
     let locked = 0, unlocked = 0, broken = 0;
@@ -1704,12 +1606,6 @@ function readobjnam_preparse(bp) {
     }
     if (save_off >= 0) off = save_off;
 
-    /* `preparseRes` is C's return value — 1 only when bp was EMPTY on entry,
-     * which readobjnam answers with `goto any` (a random object).  It is
-     * returned and deliberately NOT acted on: this port's readobjnam returns
-     * `no_wish` for an empty string one step earlier, and changing that is a
-     * separate behavioural decision with its own canary cost.  Carried so the
-     * divergence is visible rather than absent. */
     return { bp: buf.slice(off), preparseRes: res,
              cnt, spe, spesgn, blessed, uncursed, iscursed, unlabeled,
              erodeproof, ispoisoned, halfeaten,
@@ -1739,9 +1635,7 @@ function _strsubst_from(buf, from, orig, repl) {
 // Until this landed the JS never removed the parenthetical at all: a wish for
 // `wand of polymorph (0:30)` kept its suffix through the whole name-lookup
 // chain, matched nothing, and fell out of the bottom of readobjnam into the
-// `any:` random-object path — which is why seed0398 step 26 printed
 // "o - a scroll labeled YUM YUM." where C prints "o - a silver wand."
-// PARKED-NOTE: session=seed0398 citation-only
 //
 // C's atoi()/digit() semantics are reproduced literally, including the quirk
 // that a NEGATIVE charge spec ("(-3)") leaves d->p parked on the '-' (which
@@ -1852,8 +1746,6 @@ function _singplur_compound(str) {
     return -1;
 }
 
-/* Singularize a bare word (no compound suffix).  Mirrors the suffix-stripping
- * cases of C makesingular that the wish corpus exercises. */
 function _singularize_word(word) {
     const wl = word.toLowerCase();
     /* C objnam.c:3076 checks the shared singular/plural exception tables
@@ -1906,7 +1798,6 @@ export function makesingular(str) {
 
 // C: objnam.c:2169-2230 — the(str): prepend "the " when appropriate.
 // NOTE the() does NOT capitalise — that is The() (objnam.c:2231-2239).  This
-// was exported under no name at all until now, so the sweep's inventory
 // fallback resolved the C symbol `the` onto the JS export `The` and every
 // record came back capitalised ("The scroll" for C's "the scroll").
 export function the(str) {
@@ -1997,7 +1888,6 @@ export function The(str) {
 // Parses bp as a wish string, fires appropriate RNG, and returns a new object.
 // Returns null if the wish string is unrecognized (falls through to random).
 //
-// This implementation covers the paths exercised by seed0600/seed0800:
 //   - named items (magic marker, bag of holding, etc.) → rnd_otyp_by_namedesc
 //   - blank scroll → SCR_BLANK_PAPER directly (no rnd_otyp)
 //   - holy water → POT_WATER directly (no rnd_otyp)
@@ -2061,12 +1951,6 @@ export async function readobjnam(bp, no_wish) {
     ({ bp, spe, spesgn, rechrg, islit } = readobjnam_parse_charges(bp, spe, spesgn, islit));
 
     /* ── readobjnam_postparse1 ───────────────────────────────────────────── */
-    /* "holy water" / "unholy water" (objnam.c:4487-4499).  C sets the BUC flag
-     * (blessed for holy, iscursed for unholy), sets typ = POT_WATER, then does
-     * `goto typfnd` — so the common tail (objnam.c:5069-5081) applies the wished
-     * count to quan for oc_merge potions.  Route through _finalize_wish (JS's
-     * typfnd tail) so a "3 potions of holy water" wish comes in as quan 3, not
-     * 1 (seed0600 step 74: C "m - 3 clear potions", not "a clear potion"). */
     const bpl = bp.toLowerCase();
     if (bpl.endsWith("holy water")) {
         const isUnholy = /unholy\s+water$/i.test(bp);
@@ -2177,19 +2061,6 @@ export async function readobjnam(bp, no_wish) {
         }
     }
 
-    /* ── dragon "<color> dragon scale[s]/scale mail" (name_to_monplus) ────────
-     * C readobjnam strips a leading monster name via name_to_monplus()
-     * (objnam.c:4396-4431); for "<color> dragon scale mail" this leaves the
-     * residual armor name "scale mail" with d->mntmp set to the dragon, and
-     * for "<color> dragon scales" leaves "scales" (handled at objnam.c:4478).
-     * We port only the dragon family (the monsters whose scales/mail are
-     * wishable); other monster prefixes are not exercised by the wish corpus.
-     * After the residual "scale mail" matches the SCALE_MAIL object in
-     * rnd_otyp_by_namedesc (firing rn2(oc_prob(SCALE_MAIL)+1) since SCALE_MAIL
-     * is the sole match), C converts it to the dragon's mail via
-     * "GRAY_DRAGON_SCALE_MAIL + mntmp - PM_GRAY_DRAGON" (objnam.c:5244-5248);
-     * "scales" is set directly with no RNG.  We resolve the target otyp by
-     * color name because the JS object order differs from C's. */
     {
         const m = bplc.match(/^(gray|grey|gold|silver|shimmering|red|white|orange|black|blue|green|yellow) dragon (scale mail|scales)$/);
         if (m) {
@@ -2211,28 +2082,6 @@ export async function readobjnam(bp, no_wish) {
         }
     }
 
-    /* ── gold pieces (objnam.c:4533-4546, readobjnam_postparse2) ─────────
-     *   if (!BSTRCMPI(d->bp, d->p - 10, "gold piece")
-     *       || !BSTRCMPI(d->bp, d->p - 7, "zorkmid")
-     *       || !strcmpi(d->bp, "gold") || !strcmpi(d->bp, "money")
-     *       || !strcmpi(d->bp, "coin") || *d->bp == GOLD_SYM) {
-     *       if (d->cnt > 5000 && !wizard) d->cnt = 5000;
-     *       else if (d->cnt < 1) d->cnt = 1;
-     *       d->otmp = mksobj(GOLD_PIECE, FALSE, FALSE);
-     *       d->otmp->quan = (long) d->cnt;
-     *       d->otmp->owt = weight(d->otmp);
-     *       disp.botl = TRUE;
-     *       return 3;   <- returns the object straight out of readobjnam
-     *   }
-     * BSTRCMPI(base, ptr, str) is a TAIL compare, so "gold piece" / "zorkmid"
-     * match as suffixes while "gold"/"money"/"coin" must be the whole string.
-     * Missing entirely: seed0399 wishes for "blessed 30 gold pieces" at step
-     * 162 and fell through to the random-object path ("r - an object." where C
-     * says "$ - 30 gold pieces."), losing the rest of the session.
-     *
-     * Note mksobj's init argument is FALSE here — gold draws no mksobj_init
-     * RNG — and that C `return`s directly, so the wish's blessed/cursed and
-     * enchantment prefixes are DISCARDED for gold.  Hence no _finalize_wish. */
     if (bplc.endsWith("gold piece") || bplc.endsWith("zorkmid")
         || bplc === "gold" || bplc === "money" || bplc === "coin"
         || bp.charCodeAt(0) === 36 /* GOLD_SYM '$' */) {
@@ -2271,56 +2120,6 @@ export async function readobjnam(bp, no_wish) {
         }
     }
 
-    /* ── postparse1's MONSTER-NAME STRIP (objnam.c:4374-4432) ────────────────
-     *
-     * C strips a leading (or "<obj> of <mon>") monster name off the wish and
-     * remembers it in d->mntmp, so "troll corpse" looks up the object "corpse"
-     * and "figurine of a lichen" looks up "figurine".  Without it BOTH strings
-     * miss every object name and fall out of the bottom of readobjnam into the
-     * random-object path.  MEASURED 2026-09-01 across the reach corpora: C draws
-     * `rn2(1)=0 @ rnd_otyp_by_namedesc` for "troll corpse" (CORPSE is the only
-     * match, oc_prob 0, +1 for xtra_prob) and `rn2(26)` for "figurine of a
-     * lichen" (FIGURINE, oc_prob 25) where this port drew rn2(13) for a random
-     * object class.
-     *
-     *     if (!strstri(bp,"wand ") && !strstri(bp,"spellbook ")
-     *         && !strstri(bp,"gauntlets ") && !strstri(bp,"gloves ")
-     *         && !strstri(bp,"finger ")) {
-     *         if ((p = strstri(bp, "tin of ")) != 0) { ...; d->typ = TIN; }
-     *         else if ((p = strstri(bp," of ")) != 0
-     *                  && ((d->mntmp = name_to_mon(p+4,&d->mgend)) >= LOW_PM))
-     *             *p = 0;
-     *     }
-     *     if (strncmpi(bp,"samurai sword",13) && strncmpi(bp,"wizard lock",11)
-     *         && strncmpi(bp,"death wand",10)  && strncmpi(bp,"master key",10)
-     *         && strncmpi(bp,"ninja-to",8)     && strncmpi(bp,"magenta",7)) {
-     *         if (d->mntmp < LOW_PM && strlen(bp) > 2
-     *             && ((d->mntmp = name_to_monplus(bp,&rest,&d->mgend)) >= LOW_PM)) {
-     *             obp = bp; bp = rest;
-     *             if (*bp == ' ') bp++;
-     *             else if (!strncmpi(bp,"s ",2) || ...) bp += 2;
-     *             else if (!strncmpi(bp,"es ",3) || !strncmpi(bp,"'s ",3)) bp += 3;
-     *             else if (!*bp && !actualn && !dn && !un && !oclass) {
-     *                 bp = obp; d->mntmp = NON_PM;   / * no referent * /
-     *             }
-     *         }
-     *     }
-     *
-     * Placed here rather than at C's position (before makesingular and before
-     * the class-name search) because every arm above this point already
-     * returns for the strings it handles, and moving the whole block up would
-     * re-order the dragon-scale and class-name arms that the public canaries
-     * cover.  The one visible consequence is that `makesingular` has already
-     * run on the UNSTRIPPED string; for every wish in the corpus the residual
-     * is already singular, so the two orders agree.  The `tin of
-     * <preparation> <monster> meat` arm below is the direct equivalent of
-     * tin_variety_txt() followed by name_to_mon(); name_to_mon deliberately
-     * accepts the trailing " meat" after its longest monster-name match.
-     *
-     * `dn`/`un` are C's " labeled "/" called " fields and this port parses
-     * neither, so the no-referent revert below tests only the two conditions it
-     * can: an empty residual and an unset oclass.  Reverting is what stops a
-     * bare "troll" wish from silently becoming a corpse. */
     {
         const bplc_ms = bp.toLowerCase();
         const blocked = bplc_ms.includes('wand ') || bplc_ms.includes('spellbook ')
@@ -2433,23 +2232,6 @@ export async function readobjnam(bp, no_wish) {
         }
     }
 
-    /* ── postparse3's gem/tin real-name check (objnam.c:4732-4747) ───────────
-     *
-     *     if (!d->oclass && d->actualn) {
-     *         for (i = svb.bases[GEM_CLASS]; i <= LAST_REAL_GEM; i++)
-     *             if ((zn = OBJ_NAME(objects[i])) != 0 && !strcmpi(d->actualn, zn)) {
-     *                 d->typ = i; goto typfnd;
-     *             }
-     *         if (!strcmpi(d->actualn, "tin")) { d->typ = TIN; goto typfnd; }
-     *     }
-     *
-     * This runs BEFORE rnd_otyp_by_namedesc and is RNG-FREE, which is the whole
-     * point: a real gem's name is exact, so C spends no draw resolving it.  The
-     * comment in C says why the "tin" line is there — "plain `tin` has a random
-     * chance of yielding `tin wand` unless we do this".  MEASURED: three reach
-     * sessions wish "cursed 200 diamonds"; C's next leaf is
-     * `rnd(2) @ next_ident(mkobj.c:521)` (straight into mksobj) where this port
-     * drew rn2(3)/rn2(10) matching "diamond" against shuffled DESCRIPTIONS. */
     if (oclass === 0 && actualn) {
         const gemBase = MKOBJ_SVB_BASES[GEM_CLASS] | 0;
         for (let i = gemBase; i <= LAST_REAL_GEM; i++) {
@@ -2554,62 +2336,10 @@ export async function readobjnam(bp, no_wish) {
         }
     }
 
-    /* ── NO MATCH — C objnam.c:4988-4989 RETURNS NULL ───────────────────────
-     *
-     *     if (!d->oclass)
-     *         return ((struct obj *) 0);
-     *  any:
-     *     if (!d->oclass)
-     *         d->oclass = wrpsym[rn2((int) sizeof wrpsym)];
-     *  typfnd:
-     *     ...
-     *     d->otmp = d->typ ? mksobj(d->typ, TRUE, FALSE) : mkobj(d->oclass, FALSE);
-     *
-     * The `any:` label — the random-class draw — is reached ONLY by an explicit
-     * `goto any`: bp == NULL (objnam.c:4913), readobjnam_preparse returning 1
-     * (an empty/all-prefix string, objnam.c:4929), or a postparse returning 4.
-     * FALLING OFF the bottom of the name search is a different outcome: C
-     * returns NULL, and makewish (zap.c:6362) answers that with
-     * "Nothing fitting that description exists in the game." plus a re-prompt.
-     *
-     * This port ran the two outcomes together and always granted a random
-     * object, so every wish C refused, we granted — and the two runs then
-     * diverged for the rest of the session.  MEASURED on
-     * gen653-grammar-seed1011090 step 39: the wish string is the fuzzer's
-     * "wgol,hh,hhhhhhjjb jbjjjj#ncl ziriPpe", C prints "Nothing fitting that
-     * description exists in the game.--More--" and re-prompts, and this port
-     * handed over "o - a dusty spellbook."  19 train sessions carry that C
-     * topline.
-     *
-     * A CLASS-ONLY match ("scroll", "wand of gnitzbar") is NOT no-match: oclass
-     * is set, `any:` leaves it alone, and typfnd's mkobj(d->oclass, FALSE)
-     * grants a random object of that class.  That is the case this arm keeps. */
     /* The trap arm of C wizterrainwish is above.  Furniture/terrain
      * suffixes (fountains, thrones, water, lava, ice, and so on) still need
      * their own mutations and side effects; they remain unmatched here. */
 
-    /* ── C objnam.c:4982-4990 — "polearm" / "hammer" pick a random weapon of
-     * that skill.  These sit ABOVE the NULL return, so they are NOT no-match:
-     *     if (!d->oclass && !d->typ) {
-     *         if (!strncmpi(d->bp, "polearm", 7)) {
-     *             d->typ = rnd_otyp_by_wpnskill(P_POLEARMS); goto typfnd;
-     *         } else if (!strncmpi(d->bp, "hammer", 6)) {
-     *             d->typ = rnd_otyp_by_wpnskill(P_HAMMER); goto typfnd;
-     *         }
-     *     }
-     * strncmpi is a PREFIX test on the parsed name, so "polearms of doom" and
-     * "hammertime" both match; reproduced with startsWith on the lowercased bp.
-     * `!d->typ` holds wherever this port reaches here — every arm above that
-     * resolves a typ has already returned — so only the oclass test remains.
-     * Each fires exactly one rn2 inside rnd_otyp_by_wpnskill, then falls into
-     * the same typfnd tail (mksobj + _finalize_wish) every named wish uses.
-     * The moduli are the MATCH COUNTS and they differ: measured against
-     * js/mkobj_data.js + js/mkobj_erosion_meta.js, P_POLEARMS matches 12 otyps
-     * (59 partisan .. 70 bec de corbin) so it draws rn2(12), and P_HAMMER
-     * matches exactly 1 (76 war hammer) so it draws rn2(1) — a real draw, not
-     * an elidable one.  Both counts are > 0, so rnd_otyp_by_wpnskill can never
-     * hand back STRANGE_OBJECT here and the `if (pwtyp)` guard below can never
-     * diverge from C's unconditional `goto typfnd`. */
     if (oclass === 0) {
         const bplc_pw = bp.toLowerCase();
         let pwtyp = 0;
@@ -2643,31 +2373,6 @@ export async function readobjnam(bp, no_wish) {
 function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx) {
     if (!otmp) return otmp;
     dx = dx || {};
-    /* ── C objnam.c:5122-5166, the `switch (d.typ)` spe block, CORPSE/STATUE/
-     * FIGURINE arm.  THIS ARM DRAWS, and its position in the stream is exact:
-     * it is the first draw after mksobj() returns.  MEASURED on
-     * probe-reach-zap/gen002-objective-seed1685539 leaf 3045 —
-     * `rn2(2)=0 @ readobjnam(objnam.c:5163)` — sitting between mksobj's own
-     * start_corpse_timeout run and the SECOND start_corpse_timeout run that
-     * set_corpsenm() below triggers.  Getting the arm right but the position
-     * wrong is the same divergence as not having it.
-     *
-     *     struct permonst *P = (ismnum(d.mntmp)) ? &mons[d.mntmp] : 0;
-     *     d.otmp->spe = !P ? CORPSTAT_RANDOM
-     *                   : is_neuter(P) ? CORPSTAT_NEUTER
-     *                     : (d.mgend == FEMALE && !is_male(P)) ? CORPSTAT_FEMALE
-     *                       : (d.mgend == MALE && !is_female(P)) ? CORPSTAT_MALE
-     *                         : CORPSTAT_RANDOM;
-     *     if (P && d.otmp->spe == CORPSTAT_RANDOM)
-     *         d.otmp->spe = is_male(P) ? CORPSTAT_MALE
-     *                       : is_female(P) ? CORPSTAT_FEMALE
-     *                         : rn2(2) ? CORPSTAT_MALE : CORPSTAT_FEMALE;
-     *     if (d.ishistoric && d.typ == STATUE) d.otmp->spe |= CORPSTAT_HISTORIC;
-     *
-     * Only reached when the monster-name strip resolved a monster; C runs the
-     * `!P` branch on a plain "corpse" wish too, but there `spe` is set to
-     * CORPSTAT_RANDOM (0) which mksobj already left it at, and no draw happens
-     * — which is why a bare "corpse" wish has always matched. */
     {
         const t = otmp.otyp | 0;
         if (t === TIN) {
@@ -2728,11 +2433,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         case CORPSE:
             if (((P.geno | 0) & G_UNIQ_OBJNAM) === 0 || wizard()) {
                 if (((_mvflags_of(mntmp) & G_NOCORPSE_OBJNAM) === 0)) {
-                    /* C: a guardian's corpse is its genus (mkobj.c genus()) —
-                     * not exercised by any corpus wish, and genus() has no js/
-                     * export, so the guardian rewrite is NOT applied.  It is
-                     * named rather than dropped: a "watchman corpse" wish would
-                     * come out as a watchman rather than as its genus. */
                     set_corpsenm(otmp, mntmp);
                 }
             }
@@ -2750,12 +2450,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
             otmp.corpsenm = mntmp;
             break;
         case SCALE_MAIL:
-            /* Dragon mail — depends on the order of objects & dragons.  The
-             * dedicated "<colour> dragon scale mail" arm in readobjnam already
-             * covers every wish the corpus makes, so this is the general path
-             * for a wish that reaches SCALE_MAIL with a dragon mntmp some other
-             * way.  js/ has no PM_GRAY_DRAGON-relative enum to add to, so the
-             * conversion goes through the same name resolver that arm uses. */
             {
                 const colour = _dragon_colour_of(mntmp);
                 if (colour) {
@@ -2768,22 +2462,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
             break;
         }
     }
-    /* C objnam.c readobjnam does NOT mark a wished object known/dknown/bknown.
-     * It creates the object with mksobj(typ, TRUE) — which sets the per-class
-     * id-defaults via unknow_object() (known = oc_uses_known ? 0 : 1, dknown=0,
-     * bknown=0, rknown=0; mkobj.c:1193/855-865) — and then only sets blessed/
-     * cursed/spe from the wish words (objnam.c:5253-5266).  The dknown=1 mark
-     * comes LATER, in hold_another_object()->observe_object() (o_init.c:442-450,
-     * mark_as_known=FALSE so known/bknown are NOT touched) — handled in the JS
-     * hold path (_wish_addinv_prinv in wizcmds.js).  So we must NOT blanket-set
-     * the id-flags here; doing so OVER-IDENTIFIES the object (e.g. a wished
-     * "blessed scroll of enchant weapon" displays as "scroll labeled FOO" in C,
-     * bknown=0, NOT "blessed scroll …"), which silences merged()'s "You learn
-     * more about your items by comparing them." --More-- when the wished stack
-     * merges into a differently-known existing stack (invent.c:862-941; the
-     * seed5500 scare-monster merge keystone).  The mksobj defaults already hold
-     * the correct (known,dknown,bknown,rknown); we leave them alone.  Verified by
-     * tools/wish-ident-diff.mjs against the prinv result-frame doname. */
     /* Apply BUC from wish string (overrides mksobj_init result) */
     if (blessed) {
         otmp.blessed = true;
@@ -2800,49 +2478,10 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         otmp.spe = spesgn * spe;
     }
 
-    /* C objnam.c:5122 `switch (d.typ) { ... }` -- "set otmp->spe.  This may, or
-     * may not, use d.spe...".  C runs this switch AFTER the spesgn arithmetic
-     * above, so these arms OVERRIDE a wished enchantment rather than being
-     * overridden by it.  TIN and SCR_MAIL are ported here; the TOWEL /
-     * SLIME_MOLD / STATUE / FIGURINE / CORPSE / venom / WAN_WISHING arms of the
-     * same switch are not, and are named so the gap is visible.
-     *
-     *     #ifdef MAIL_STRUCTURES
-     *     / * scroll of mail:  0: delivered in-game via external event (or
-     *        randomly for fake mail); 1: from bones or wishing;
-     *        2: written with marker * /
-     *     case SCR_MAIL:
-     *         d.otmp->spe = 1;
-     *         break;
-     *     #endif
-     *
-     * MEASURED, and this is the half of the scroll-of-mail chain that does NOT
-     * live in js/read.js: four corpus-generated/v5/train sessions
-     * (gen028/gen042/gen106/gen332) wish for a "blessed scroll of mail" and then
-     * read it.  read.c:2156 seffect_mail() switches on exactly this spe, and C's
-     * spe==1 arm is what prints "This seems to be a chain letter threatening
-     * your luck." / "...junk mail addressed to the finder of the Eye of Larn."
-     * With spe left at 0 the port would take seffect_mail's default arm instead.
-     *
-     * It also gates a PROMPT: read.c:588 asks
-     * "Reading mail will violate \"illiterate\" conduct.  Read anyway?" only
-     * when `!scroll->spe`, so a spe-0 mail scroll would open a y_n C never opens.
-     * RNG-FREE. */
     if ((otmp.otyp | 0) === SCR_MAIL_OTYP)
         otmp.spe = 1;
-    /* C objnam.c:5069-5081 — wished count applied to quantity for merge-able
-     * objects.  In wizard mode (session replay is always wizard) the quantity
-     * is unrestricted, so cnt>1 directly sets otmp->quan.  Without this, "2
-     * potions of full healing" comes in as a single potion and the hero's
-     * carried weight (inv_weight / near_capacity) is short by one potion's
-     * worth per stacked wish (seed5500: 3 quan-2 potion wishes → 60cn short →
-     * Burdened instead of Stressed).  The oc_merge gate is the class-based
-     * proxy used elsewhere for the makewish merge path. */
     if (cnt > 0 && _oc_merge_on(otmp.otyp)
         && (wizard()
-            /* C: in normal play the count still has to beat a die roll, and
-             * that rnd(6) is a REAL draw — it only short-circuits away because
-             * every corpus session so far runs playmode:debug. */
             || cnt < rnd(6)
             || (cnt <= 7 && _is_candle_on(otmp))
             || (cnt <= 20
@@ -2855,10 +2494,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
          * so the placeholder owt does not need updating here. */
     }
 
-    /* C objnam.c:5085-5090 — this sits immediately after quantity handling
-     * and before charge/BUC finalization.  A wished lit lamp/candle/oil potion
-     * is briefly placed at the hero so begin_burn() can attach its light
-     * source, then released for makewish's inventory insertion. */
     if (islit && ((otmp.otyp | 0) === 227 /* OIL_LAMP */
                   || (otmp.otyp | 0) === 228 /* MAGIC_LAMP */
                   || (otmp.otyp | 0) === 226 /* BRASS_LANTERN */
@@ -2870,38 +2505,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         obj_extract_self_general(otmp);
     }
 
-    /* C objnam.c:5270-5288 — "set eroded and erodeproof".
-     *
-     *     if (erosion_matters(d.otmp)) {
-     *         d.otmp->oeroded = d.otmp->oeroded2 = 0;      <- the load-bearing line
-     *         if (d.eroded  && (is_flammable || is_rustprone || is_crackable))
-     *             d.otmp->oeroded = d.eroded;
-     *         if (d.eroded2 && (is_corrodeable || is_rottable))
-     *             d.otmp->oeroded2 = d.eroded2;
-     *         if (d.erodeproof && (is_damageable(d.otmp) || otyp == CRYSKNIFE))
-     *             d.otmp->oerodeproof = (Luck >= 0 || wizard);
-     *     }
-     *
-     * The ZEROING is not cosmetic and it is not redundant: readobjnam built this
-     * object with mksobj(typ, TRUE, FALSE), and mksobj runs mkobj_erosions(),
-     * which rolls rn2(80) for rust and rn2(80) for corrosion on any damageable
-     * item.  A wish therefore arrives ALREADY ERODED at the roll's whim, and C
-     * throws that away unless the wish text asked for it.  Measured on
-     * gen321-reseed-seed711338 step 106: the recorded C stream has
-     * `rn2(80)=0 @ mkobj_erosions(mkobj.c:211)` + `rn2(9)=2` immediately before
-     * `makewish(zap.c:6421)`, so C DID roll oeroded2=1 on that plate mail — and
-     * then printed "f - a plate mail." because this block cleared it, where we
-     * printed "f - a corroded plate mail.".  RNG-free on both sides: the roll
-     * already happened, this only discards its result.
-     *
-     * KNOWN GAP, deliberately not filled here: the two `d.eroded` arms are
-     * unreachable in this port because readobjnam_preparse does not yet parse
-     * C's erosion ADJECTIVES (objnam.c:4080-4090 — "rusty"/"burnt"/"corroded"/
-     * "rotted"/"eroded", each optionally prefixed "very"/"thoroughly"), so
-     * d.eroded and d.eroded2 are always 0.  They are named rather than dropped
-     * so the gap is visible; wishing "rusty long sword" currently yields a clean
-     * one.  The erodeproof arm IS wired, because preparse already parses all
-     * eight of its spellings. */
     if (_erosion_matters(otmp)) {
         otmp.oeroded = 0;
         otmp.oeroded2 = 0;
@@ -2915,10 +2518,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         if (dx.eroded2 && (_is_corrodeable(otmp) || _is_rottable(otmp)))
             otmp.oeroded2 = dx.eroded2 | 0;
         if (erodeproof && (_is_damageable(otmp) || (otmp.otyp | 0) === CRYSKNIFE_OTYP))
-            /* C's Luck macro (u.uluck + moreluck) is not ported; every corpus
-             * session runs playmode:debug so the wizard() term decides, and the
-             * uluck fallback is the closest available reading for the arm that
-             * does not run here. */
             otmp.oerodeproof = (wizard() || ((game.u?.uluck | 0) >= 0)) ? 1 : 0;
     }
 
@@ -2940,28 +2539,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         otmp.recharged = rechrg | 0;
     }
 
-    /* ── C objnam.c:5306-5340 — the box/chest and surface-state prefix flags.
-     * RNG-FREE, every one of them, but not cosmetic: without the PARSE that
-     * feeds them (readobjnam_preparse's trapped/locked/unlocked/broken/greased
-     * arms) the adjective survived into `bp` and the whole name lookup missed,
-     * so "trapped chest" produced a random object instead of a chest.  MEASURED
-     * 2026-09-01: that single class was 18 of the 48 diverging wishes in the
-     * reach corpora.
-     *
-     *     if (d.trapped) {
-     *         if (Is_box(d.otmp) || d.typ == TIN) d.otmp->otrapped = (d.trapped == 1);
-     *     }
-     *     if (d.contents == TIN_EMPTY) { ... }
-     *     if (Is_box(d.otmp)) {
-     *         if (d.locked)        d.otmp->olocked = 1, d.otmp->obroken = 0;
-     *         else if (d.unlocked) d.otmp->olocked = 0, d.otmp->obroken = 0;
-     *         else if (d.broken)   d.otmp->olocked = 0, d.otmp->obroken = 1;
-     *         if (d.otmp->obroken) d.otmp->otrapped = 0;
-     *     }
-     *     if (d.isgreased) d.otmp->greased = 1;
-     *     if (d.isdiluted && d.otmp->oclass == POTION_CLASS)
-     *         d.otmp->odiluted = (d.otmp->otyp != POT_WATER);
-     */
     const _typ = otmp.otyp | 0;
     const _isBox = (_typ === LARGE_BOX || _typ === CHEST);
     if (dx.trapped) {
@@ -2972,9 +2549,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         if (_typ === BAG_OF_TRICKS_OTYP || _typ === HORN_OF_PLENTY_OTYP) {
             if ((otmp.spe | 0) > 0) otmp.spe = 0;
         }
-        /* NOT PORTED: C's `else if (Has_contents(otmp)) { delete_contents(otmp);
-         * otmp->owt = weight(otmp); }` — this module imports no container
-         * machinery, and "empty chest" is not wished anywhere in the corpus. */
     }
     if (_isBox) {
         if (dx.locked)        { otmp.olocked = 1; otmp.obroken = 0; }
@@ -2999,20 +2573,10 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
     return otmp;
 }
 
-/* C include/objects.h BITS(..., oc_merge, ...) — merge-able object classes for
- * the wish-count path (objnam.c:5070 `objects[typ].oc_merge`).  POTION/SCROLL/
- * GEM/FOOD are oc_merge=TRUE class-wide; WEAPON ammo/missiles also merge but
- * are not exercised by the wish corpus.  Mirrors wizcmds.js _MERGE_CLASSES. */
-/* C objects[otyp].oc_merge — the real column (js/mkobj_erosion_meta.js), not
- * the FOOD/POTION/SCROLL/GEM class set that used to stand in for it here.  The
- * proxy dropped the count on every mergeable WEAPON: seed0399's "blessed 20
- * daggers" came in as "a dagger" where C says "q - 20 daggers." */
 function _oc_merge_on(otyp) {
     const i = otyp | 0;
     return (i >= 0 && i < MKOBJ_OC_MERGE.length) && (MKOBJ_OC_MERGE[i] | 0) !== 0;
 }
-/* C objnam.c:5079-5083 — the non-wizard escape hatches.  otyps from
- * tools/c-const-oracle.mjs against the 5.0 tree. */
 const ROCK_OTYP = 474, FLINT_OTYP = 473;
 const TALLOW_CANDLE_OTYP = 224, WAX_CANDLE_OTYP = 225;
 /* C hack.h Is_candle(otmp) — the two candle otyps (js/shk.js says the same). */
@@ -3100,15 +2664,6 @@ export function gloves_simple_name(gloves) {
     }
     return "gloves";
 }
-/* C ref: objnam.c:5510-5526 helm_simple_name() — return "hat" or "helm".
- * C source:
- *   const char *
- *   helm_simple_name(struct obj *helmet)
- *   {
- *       return !hard_helmet(helmet) ? "hat" : "helm";
- *   }
- * Port: delegate to hard_helmet() which checks is_metallic and is_crackable.
- * RNG-free; no state changes; pure logic based on helmet otyp properties. */
 export function helm_simple_name(helmet) {
     return !hard_helmet(helmet) ? "hat" : "helm";
 }
@@ -3126,7 +2681,6 @@ export function suit_simple_name(suit) {
         if (otyp >= 101 && otyp <= 110)
             return "dragon mail";
         // Is_dragon_scales — <color> dragon scales, otyp 111-120.  The prior
-        // range 89-98 was the stale "Wave-D" numbering (89-91 are elven leather
         // helm / orcish helm / dwarvish iron helm — see the same correction in
         // js/do_wear.js xname_armor), so real dragon scales fell through to the
         // suffix checks ("gray dragon scales" ends in neither " mail" nor
@@ -3138,7 +2692,6 @@ export function suit_simple_name(suit) {
         // coverage), NOT getObjName: getObjName's extracted table omits the
         // fixed-name armor otyps and returns null for e.g. ring mail (132), so
         // the " mail" suffix test never fired and every suit was named "suit"
-        // (seed0365 step 44: "...your suit." vs C's "...your mail.").
         const suitnm = _objName(otyp);
         if (suitnm != null) {
             const suitnmLen = suitnm.length;
@@ -3609,7 +3162,6 @@ export function An(str) {
 // ── docall_xname (C do_name.c:605-633) ────────────────────────────────────────
 // The name shown in the "Call a <object>:" prompt: a single, article-prefixed,
 // BUC-stripped xname of the object.  Scoped to potions (the only #call path the
-// corpus exercises via trycall→docall after quaffing an unidentified potion).
 export function docall_xname_potion(obj) {
     /* C copies the obj, forces quan=1, clears blessed/cursed (so "[un]holy water"
      * becomes "water"), clears odiluted, then returns an(xname(&otemp)). */
@@ -3761,7 +3313,6 @@ export function makeplural(oldstr) {
         return str;
     }
 
-    /* -eau/-eaux (gateau, chapeau...) */
     if (len >= 3 && strcmpi(str.substring(spot - 2), "eau") === 0
         && BSTRCMPI(str, spot - 5, "bureau")) {
         str = str.substring(0, spot + 1) + "x";
@@ -3791,7 +3342,6 @@ export function makeplural(oldstr) {
 
     const lo_c = lowc(str[spot]);
 
-    /* codex/spadix/neocortex and the like */
     if (len >= 5
         && (strcmpi(str.substring(spot - 2), "dex") === 0
             || strcmpi(str.substring(spot - 2), "dix") === 0
@@ -4563,14 +4113,6 @@ function _xn_ctx(obj, cxn_flags, side_effects) {
     if (!c.dn)
         c.dn = c.actualn;
 
-    /* KNOWN GAP — C:625-626
-     *     if (!nn && ocl->oc_uses_known && ocl->oc_unique) obj->known = 0;
-     * This port carries no oc_uses_known / oc_unique columns (they are not in
-     * js/mkobj_data.js or js/mkobj_erosion_meta.js), so the "clear obj->known
-     * for an unidentified unique" poke is not applied.  It changes only which
-     * article an undiscovered unique artifact prints with; C draws NO RNG here.
-     * The one otyp it can reach in this corpus is the Amulet of Yendor, whose
-     * AMULET arm reads `known` directly. */
 
     if (side_effects) {
         /* C:627-628 — `if (!Blind && !gd.distantname) observe_object(obj);`
@@ -4645,11 +4187,6 @@ function _xname_arm(obj, c) {
             const pm_name = obj_pmname(obj);
             buf += ` of ${just_an({}, pm_name)}${pm_name}`;
         } else if (is_wet_towel(obj)) {
-            /* C:718-719 `if (wizard) ConcatF1(buf, 0, " (%d)", obj->spe);` —
-             * wizard mode is the playmode:debug option, not the Wizard role.
-             * 13 corpus sessions DO set it, so this suffix can fire; the
-             * previous comment's "this port never sets it on a scored session"
-             * was true only because the read used the dead `game.wizard`. */
             if (wizard())
                 buf += ` (${obj.spe | 0})`;
         }
@@ -4855,19 +4392,6 @@ function _xname_arm(obj, c) {
     return buf;
 }
 
-/* C's SCROLL arm branches on `ocl->oc_magic`.  This port has no oc_magic
- * column; SCR_BLANK_PAPER is the ONLY non-magic scroll in objects.h, so the
- * otyp compare IS oc_magic for SCROLL_CLASS.  (The older
- * `getObjName()=='blank paper'` proxy was wrong — getObjName(SCR_BLANK_PAPER)
- * returns null in JS, so blank paper mis-rendered "scroll labeled unlabeled"
- * instead of "unlabeled scroll"; seed0600 step 49 wish for "5 unlabeled
- * scrolls".) */
-/* C objnam.c:863 `else if (ocl->oc_magic)` — objects[otyp].oc_magic, the real
- * BITS() `mgc` column (js/mkobj_erosion_meta.js MKOBJ_OC_MAGIC, already read by
- * js/u_init.js knows_class()).  This was `typ !== SCR_BLANK_PAPER`, which is
- * right for 42 of the 43 scrolls and wrong for SCR_MAIL (otyp 364, oc_magic 0):
- * a wished scroll of mail named itself "a scroll labeled stamped" where C says
- * "a stamped scroll" (seed0399 step 214). */
 function _oc_magic_scroll(typ) {
     const i = typ | 0;
     return (i >= 0 && i < MKOBJ_OC_MAGIC.length) && (MKOBJ_OC_MAGIC[i] | 0) !== 0;
@@ -4894,27 +4418,12 @@ export function xname_flags(obj, cxn_flags) {
 let gd_distantname = 0;
 export function in_distant_name() { return gd_distantname > 0; }
 
-/* C objnam.c:347-408 — char *distant_name(struct obj *obj, char *(*func)(OBJ_P))
- *   "Give the name of an object seen at a distance.  Unlike xname/doname, we
- *    usually don't want to set dknown if it's not set already."
- * RNG: NONE on any arm (func may draw; xname/doname/mshot_xname do not).
- *
- * The near test is `get_obj_location(obj, &ox, &oy, 0) && cansee(ox, oy)
- * && (obj->oartifact || distu(ox, oy) <= neardist)`.  get_obj_location
- * (zap.c:654-688) has NO case for OBJ_FREE, so it returns FALSE for anything
- * not in inventory / on the floor / in a monster's pack — which is exactly
- * what a missile in flight is (m_throw extracts it from minvent before the
- * first step).  So every mthrowu.c caller takes the ++gd.distantname arm. */
 export async function distant_name(obj, func) {
     /* C:370-371 — r = (u.xray_range > 2) ? u.xray_range : 2;
      *             neardist = (r * r) * 2 - r    [r == 2 -> 6] */
     const r = ((game.u?.xray_range | 0) > 2) ? (game.u.xray_range | 0) : 2;
     const neardist = (r * r) * 2 - r;
 
-    /* C:384-386 — zero o_id during final disclosure so xname() omits the
-     * T-shirt / candy-wrapper / Hawaiian-motif text.  `program_state.gameover`
-     * is never set on a replayed session, so the save/restore is a no-op here;
-     * kept because it is the only reason C touches o_id at all. */
     const save_oid = obj.o_id;
 
     let str;
@@ -4961,8 +4470,6 @@ function distu_on(x, y) {
     const dx = (x | 0) - (game.u?.ux | 0), dy = (y | 0) - (game.u?.uy | 0);
     return dx * dx + dy * dy;
 }
-/* obj.where values — js/const.js:1105-1108 (OBJ_FREE 0, OBJ_FLOOR 1,
- * OBJ_CONTAINED 2, OBJ_INVENT 3, OBJ_MINVENT 4). */
 const OBJ_FLOOR_ON = 1, OBJ_INVENT_ON = 3, OBJ_MINVENT_ON = 4;
 
 /* C objnam.c:1089-1103 — char *mshot_xname(struct obj *obj)
@@ -5040,36 +4547,6 @@ function _is_weptool(obj) {
     return (obj.oclass | 0) === TOOL_CLASS
         && (MKOBJ_OC_SKILL[obj.otyp | 0] | 0) !== 0;
 }
-/* C obj.h:257  #define bimanual(otmp)                                       \
- *     ((otmp->oclass == WEAPON_CLASS || otmp->oclass == TOOL_CLASS)          \
- *      && objects[otmp->otyp].oc_bimanual)
- *
- * oc_bimanual is objclass.h:65's alias for oc_big, set by the 'bi' column of
- * objects.h's WEAPON()/WEPTOOL() rows.  Extracting that column from
- * nethack-c-v5/upstream/include/objects.h gives 17 WEAPON rows plus 1 WEPTOOL
- * row -- 18 otyps, each resolved by name through js/oc_name_data.js:
- *
- *    45 battle-axe        62 glaive           68 bill-guisarme
- *    55 two-handed sword  63 halberd          69 lucern hammer
- *    57 tsurugi           64 bardiche         70 bec de corbin
- *    59 partisan          65 voulge           71 dwarvish mattock
- *    60 ranseur           66 fauchard         79 quarterstaff
- *    61 spetum            67 guisarme        261 unicorn horn  (WEPTOOL)
- *
- * (objects.h also sets the bit on dragon scale mail, dragon scales, plate mail,
- * splint mail, banded mail, large shield and boulder, but C's oclass test
- * excludes every one of those, so they are not members here.)
- *
- * This set used to be {44, 57, 58, 71} = axe, tsurugi, runesword, dwarvish
- * mattock, under a comment naming quarterstaff(79), two-handed sword(55),
- * battle-axe(45) and dwarvish mattock(71) -- same cardinality, same positions,
- * different values: a 3.7 table carried across the 5.0 renumbering without
- * being re-resolved.  Of the four, only the mattock was oc_bimanual in C.
- * tools/anon-otyp-set-audit.mjs reports it CLAIMED-NOT-PRESENT.
- * js/do_wear.js:2163 BIMANUAL_OTYPS_DW and js/cmd.js:13292 _BIMANUAL_INV_OTYPS
- * already carry this exact 18-otyp set; this is the third copy, now agreeing.
- * (do_wear.js's comment says cmd.js holds a wrong 4-value set -- that is stale;
- * cmd.js:13292 has the full 18 and the shared auditor grades it AGREES.) */
 const _DONAME_BIMANUAL = new Set([45, 55, 57, 59, 60, 61, 62, 63, 64, 65, 66,
                                   67, 68, 69, 70, 71, 79, 261]);
 function _bimanual(otmp) {
@@ -5093,24 +4570,6 @@ function _is_corrodeable(o) {
 function _is_crackable(o) {
     return _mat(o.otyp | 0) === _MAT_GLASS && (o.oclass | 0) === ARMOR_CLASS;
 }
-/* C mkobj.c:2268-2285 is_flammable(otmp) is a FUNCTION, not a macro, and it has
- * two early-outs in front of the material test:
- *
- *     if (Is_candle(otmp))                                        return FALSE;
- *     if (objects[otyp].oc_oprop == FIRE_RES || otyp == WAN_FIRE) return FALSE;
- *     return ((omat <= WOOD && omat != LIQUID) || omat == PLASTIC);
- *
- * Both were missing here.  Measured against the compiled tables, the only otyps
- * the omission mis-answers are TALLOW_CANDLE(224) and WAX_CANDLE(225) (material
- * WAX=2, so they passed the omat <= WOOD test); every oc_oprop == FIRE_RES
- * object and WAN_FIRE(430, material IRON) is already excluded by the material
- * test, so the second guard is faithfulness only.
- * A candle answering TRUE here would take objnam.c:1187 "fireproof " where C
- * takes objnam.c:1189 "rotproof " (candles ARE is_rottable), and would let
- * objnam.c:5274 set oeroded for a wished "burnt candle".  Both sites are
- * currently unreachable for a candle because erosion_matters() (objnam.c:1195)
- * returns FALSE for a non-weptool TOOL_CLASS object, so nothing ever sets
- * oeroded or oerodeproof on one -- ported for faithfulness, not a live defect. */
 function _is_flammable(o) {
     const t = o.otyp | 0;
     if (_Is_candle(t))
@@ -5178,15 +4637,6 @@ function add_erosion_words(obj) {
 /* objects.h oc_charged, for the arms this body models — see the GAP note on
  * doname().  WAND_CLASS is CHARGED throughout; the charged rings are the
  * adornment..protection run (js/read.js:77-80, from u_init.js/objects.h). */
-/* C objclass.h:60 objects[].oc_charged — "may have +n or (n) charges", the
- * BITS() `chrg` column.  This was a three-case guess ("wands, and rings 173-178")
- * and it is WRONG for the two biggest classes: objects.h:117 WEAPON() and :425
- * ARMOR() both pass chrg=1, as does :895 WEPTOOL(); TOOL()/CONTAINER() pass the
- * per-row `chg` and RING() passes `spec` (so ALL charged rings, not a hand
- * range).  doname()'s BUC block (objnam.c:1341) reads it to decide whether
- * "uncursed" is redundant, so the guess made C's `a +1 long sword named Sword
- * of Justice` come out `an uncursed +1 long sword named Sword of Justice`
- * (seed4500 step 332 and step 735).  Now the generated column. */
 function _oc_charged(obj) {
     const otyp = obj.otyp | 0;
     return !!(OC_CHARGED[otyp] | 0);
@@ -5242,17 +4692,6 @@ async function doname_base(obj, doname_flags) {
         prefix = 'a ';
     }
 
-    /* C:1305-1319 — "empty" prefix.  Has_contents is modelled by the container
-     * otyp test (this file's Is_container_otyp) plus a live cobj list.
-     *
-     * C obj.h Has_contents(o) is `((o)->cobj != 0)` and `cobj` is the head of a
-     * ->nobj LINKED LIST, which is how js/mkobj.js:105, js/mklev.js:3782 and
-     * js/pickup_container.js:261 all build and walk it.  This tested
-     * `obj.cobj.length`, an ARRAY property that is `undefined` on a list node,
-     * so has_contents was FALSE for every non-empty container in the game and
-     * every one of them read "empty".  seed0108 step 250: C asks "There is a
-     * broken chest here, tip it?" about a chest holding a comestible, a potion
-     * and a ring; this port asked about "an empty broken chest". */
     const BAG_OF_TRICKS = 220, HORN_OF_PLENTY = 252, STATUE = 476;
     const has_contents = !!obj.cobj;
     if (cknown
@@ -5271,15 +4710,6 @@ async function doname_base(obj, doname_flags) {
             prefix += 'cursed ';
         else if (obj.blessed)
             prefix += 'blessed ';
-        /* C optlist.h NHOPTB(implicit_uncursed, ..., On, ...) — this option
-         * DEFAULTS ON, and nothing in this port initialises g.flags for it, so
-         * `!(g.flags && g.flags.implicit_uncursed)` was permanently TRUE and
-         * doname() printed "uncursed " for EVERY bknown, non-cursed,
-         * non-blessed object regardless of the rest of the condition.  Only
-         * visible once a caller was routed onto the real doname: seed0030
-         * segment 5 step 6 has C "The little dog picks up a glass wand." where
-         * we produced "an uncursed glass wand".  Read it the way js/lock.js
-         * cmdassist_on() reads its option: undefined means the default. */
         else if (!(g.flags && (g.flags.implicit_uncursed === undefined
                                ? true : !!g.flags.implicit_uncursed))
                  || ((!known || !_oc_charged(obj)
@@ -5300,26 +4730,6 @@ async function doname_base(obj, doname_flags) {
     }
     if (obj.greased)
         prefix += 'greased ';
-    /* C objnam.c:1374-1381 —
-     *     if (cknown && Has_contents(obj) && bpspaceleft > 0) {
-     *         long itemcount = count_contents(obj, FALSE, FALSE, TRUE, FALSE);
-     *         ConcatF2(bp, 0, " containing %ld item%s", itemcount,
-     *                  plur(itemcount));
-     *     }
-     * This was a NAMED GAP, on the grounds that "js/shk.js:562 count_contents
-     * is a throw-stub".  The arguments this call site passes make that
-     * irrelevant: nested=FALSE, quantity=FALSE, everything=TRUE collapses
-     * count_contents (invent.c:3620-3651) to "how many stacks are on
-     * container->cobj" -- the whole shop/nesting apparatus is behind
-     * `if (!everything && !newdrop)` and behind `if (nested ...)`, neither of
-     * which this call reaches.  Has_contents in 5.0 is `(o)->cobj != 0` with
-     * the Is_container test COMMENTED OUT (obj.h:333), which is the same
-     * spelling `has_contents` already uses eight lines above for the "empty "
-     * prefix -- so the two halves of C's cknown pair now agree.
-     * MEASURED on seed0012 step 278: the apply-a-bag class menu reads
-     * "j - a bag containing 1 item" in C and read "j - a bag" here.  Note the
-     * hand-scoped copy at js/cmd.js:24095 (_container_pickup_doname) already
-     * had this tail; the real doname did not. */
     if (cknown && has_contents) {
         /* count_contents(obj, FALSE, FALSE, TRUE, FALSE) — separate stacks. */
         let itemcount = 0;
@@ -5507,9 +4917,6 @@ async function doname_base(obj, doname_flags) {
     }
     return prefix + bp;
 }
-/* C mvitals[omndx].mvflags & MV_KNOWS_EGG — the "you have seen this hatch"
- * bit.  js/ carries no mvitals mvflags table; C's arm additionally requires
- * `known`, which is the case every corpus egg reaches. */
 function _mvitals_knows_egg(_omndx) { return false; }
 /* C you.h URIGHTY — !u.uhandedness (RIGHTHANDED == 0). */
 function _URIGHTY() { return !(game.u && game.u.uhandedness); }
@@ -5535,18 +4942,6 @@ function _is_missile_dn(o) {
 function _Is_candle(otyp) {
     return otyp === TALLOW_CANDLE_OTYP || otyp === WAX_CANDLE_OTYP;
 }
-/* prop.h:100-127 owornmask bits.  These USED TO BE hand-copied literals here,
- * under a comment claiming "js/const.js W_* carry the same values" — and SIX of
- * the fifteen did not.  W_QUIVER and W_SWAPWEP were TRANSPOSED (0x400/0x200 for
- * C's 0x200/0x400), so doname() printed "(alternate weapon; not wielded)" for a
- * QUIVERED object and "(at the ready)" for the secondary weapon; W_RINGL,
- * W_RINGR, W_TOOL and W_SADDLE were each off by a slot as well.  Measured on
- * gen049/gen054/gen159/gen359 step 6, where C's prinv after #quiver reads
- * "b - a +1 bow (at the ready)." and this printed the alternate-weapon phrase.
- * The transposition was invisible for as long as doquiver hand-formatted its own
- * result line instead of going through prinv().  Imported now, not re-copied:
- * a private copy of a constant table is a copy that can drift, and this one had.
- * HAND_D is body_part.h's HAND ordinal, which const.js does not carry. */
 import { W_ARM as W_ARM_D, W_ARMC as W_ARMC_D, W_ARMH as W_ARMH_D,
          W_ARMS as W_ARMS_D, W_ARMG as W_ARMG_D, W_ARMF as W_ARMF_D,
          W_ARMU as W_ARMU_D, W_RINGL as W_RINGL_D, W_RINGR as W_RINGR_D,
@@ -5588,14 +4983,6 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
         if (c.pluralize)
             buf = makeplural(buf);
 
-        /* KNOWN GAP — C:971-994, the `program_state.gameover && obj->o_id`
-         * block: T_SHIRT/ALCHEMY_SMOCK " with text \"…\"", CANDY_BAR
-         * " labeled \"…\"", HAWAIIAN_SHIRT " with %s motif".  Those four texts
-         * come from tshirt_text()/apron_text()/candy_wrapper_text()/
-         * hawaiian_motif() (objnam.c:5100+), none of which is ported.  They are
-         * end-of-game disclosure only — unreachable while a session is being
-         * replayed — and C draws NO RNG in any of them (they index fixed tables
-         * by obj->o_id). */
 
         /* C:998-999 */
         if (has_oname(obj) && c.dknown) {
@@ -5729,45 +5116,6 @@ export function ansimpleoname(obj) {
     return simpleoname;
 }
 
-/* C objnam.c:2009-2085 — char *short_oname(struct obj *obj,
- *                            char *(*func)(OBJ_P), char *(*altfunc)(OBJ_P),
- *                            unsigned lenlimit)
- *
- * The length-bounded object namer every PROMPT goes through.  A prompt has a
- * fixed prefix and suffix and a QBUFSZ (128) budget, so the object name gets
- * whatever is left; when the preferred formatter (usually doname) overshoots
- * that budget, C does not truncate the string — it re-formats the object with
- * the name-lengthening ATTRIBUTES turned off, and only falls back to a
- * different formatter if that is still too long:
- *
- *     save_obj = *obj;
- *     obj->bknown = obj->rknown = obj->greased = 0;
- *     obj->oeroded = obj->oeroded2 = 0;
- *     outbuf = (*func)(obj);
- *     if (altfunc && strlen(outbuf) > lenlimit)
- *         outbuf = (*altfunc)(obj);
- *     *obj = save_obj;
- *
- * So the same object can be named two DIFFERENT ways one prompt apart, with no
- * state change between them, purely because it crossed the length threshold.
- * seed0014 is exactly that: the hero dips a worn orcish helm into a fountain
- * six times, and C's prompt reads
- *
- *   step 372  "Dip a cursed -4 orcish helm (being worn) into the fountain?"   36
- *   step 377  "... cursed rusty -4 orcish helm ..."                           42
- *   step 383  "... cursed very rusty -4 orcish helm ..."                      47
- *   step 388  "Dip a -4 orcish helm (being worn) into the fountain?"          29
- *
- * The helm did not get uncursed and the rust did not come off — "a cursed
- * thoroughly rusty -4 orcish helm (being worn)" is 53 characters, dodip's
- * lenlimit is 50, so bknown and oeroded were zeroed for the duration of that
- * one doname call.  Reading that transition as a state change is the trap; it
- * is a formatting threshold.
- *
- * The two truncate-the-user-supplied-string passes above it (oc_uname and
- * ONAME shortened to 8 characters plus "...") are ported as well; they run
- * first and are what keeps a long #name'd item from reaching the strip pass.
- */
 export async function short_oname(obj, func, altfunc, lenlimit) {
     const g = game;
     const otyp = obj.otyp | 0;
@@ -5900,7 +5248,6 @@ export async function deliver_splev_message() {
 // pline() is called unconditionally, including for an empty converted line
 // (C's vpline() early-out tests the FORMAT "%s", which is never empty, then
 // substitutes the argument).  No dat/ level message contains a blank line, so
-// this path is not exercised by the corpus.
 const _BUFSZ = 256; /* global.h:391 */
 async function deliver_by_pline(str) {
     const { pline } = await import('./display.js');
@@ -5919,7 +5266,6 @@ async function deliver_by_pline(str) {
 
 // ── convert_arg (C questpgr.c:196-325) ──────────────────────────────────────
 // Expands one %-arg into C's gc.cvt_buf.  Only the arms reachable from the
-// des.message() texts in dat/ are ported: the whole corpus of level messages is
 // dat/{air,astral,earth,water}.lua (9 calls), and the only %-arg any of them
 // uses is astral.lua's `%d`.  The remaining letters are REPORTED, not guessed —
 // emitting "" for a known-but-unported letter would silently drop text.  C's

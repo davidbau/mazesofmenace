@@ -1,16 +1,13 @@
 // @ts-nocheck
 // mapstate_schema.js — single source of truth for the mapstate schema
-// used by the per-function differential equivalence harness.
 //
 // The first 40 keys (the "build_mapdump core") mirror the non-grid
 // portion of nethack-c/src/cmd.c build_mapdump() (lines 296-453), in the
 // same insertion order. That is the same set of keys js/mapstate.js's
-// emitMapstate() pushes via pushRngLogEntry, so anything captured-and-
 // replayed through these protocol primitives lines up by name with the
 // keys the dev runner already surfaces in firstStateDivergence reports.
 //
 // Each entry is { key, default }. `default` is the value the table holds
-// before any load_mapstate op fires — a fresh oracle process should
 // dump_mapstate(["*"]) and get this exact list back. Defaults reflect
 // C zero-init except where C explicitly seeds a non-zero value:
 //   - "v"               = "2"     — emitted as `v=2` by build_mapdump.
@@ -25,7 +22,6 @@
 // All other fields default to "0" (C struct zero-init: long fields, char
 // fields, boolean flags).
 //
-// IMPORTANT: the C oracle (harness/equiv_oracle.c) has an identical table
 // in the same order. Both lists are mechanically mirrored from this file
 // and from build_mapdump's body. If you add a key here, add it there too
 // (the C-side compile already fails the build if the table length and
@@ -33,11 +29,7 @@
 //
 // APPEND-ONLY CONVENTION
 // ----------------------
-// Wave-3.5 (T5.5, 2026-05-14) widened the schema beyond the 40-key
-// build_mapdump core to capture role/race/align/gender state that the
-// captured T4 functions depend on but build_mapdump doesn't surface
 // (build_mapdump targets turn-boundary state replay; per-function
-// capture-dedup needs the input-identity vector — different criterion,
 // different keys). 13/27 input buckets for u_init_misc were collapsing
 // onto the same input hash despite producing different outputs
 // (Valkyrie + Wizard look identical in 40-key state but newhp/newpw
@@ -45,23 +37,17 @@
 //
 // NEW KEYS GO AT THE END, NEVER INSERTED MID-LIST. Reasoning:
 //   - load_mapstate is additive (unknown keys throw, known keys
-//     overwrite); old captured JSONL files only contain the 40 core
-//     keys, and the dedup tool's schema-order check (capture-dedup.mjs
 //     validateSchemaOrder) compares position-by-position against
 //     record 0's order. Inserting a key mid-list would mis-position
 //     every following key in old records and break dedup of any pre-
-//     widening capture file.
-//   - The equiv-oracle and capture.c SCHEMA[] tables index by position
 //     (g_values[i], g_before[i]). Appending preserves all existing
 //     indices; inserting would shift them.
 //   - C build_mapdump emit order is fixed by upstream NetHack. New
 //     keys are NOT part of build_mapdump's wire format — they're
-//     capture-probe-only — so they don't conflict with the C dumper's
 //     order constraint.
 //
 // If you genuinely need to reorder the existing 40, that's a separate
 // "schema migration" task: bump the schema version, regenerate every
-// capture file, and update all three mirrors atomically.
 export const MAPSTATE_SCHEMA = Object.freeze([
     // header — build_mapdump cmd.c:296-298
     { key: 'v', default: '2' },
@@ -109,7 +95,6 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     { key: 'invent.count', default: '0' },
     { key: 'traps.count', default: '0' },
     { key: 'stairs.count', default: '0' },
-    // WS6d (2026-07-06): level-transfer chain counts — decl.h
     // gm.migrating_objs / gm.migrating_mons / gm.mydogs, gb.billobjs,
     // go.objs_deleted. The 40-key build_mapdump core is blind to these
     // transfer chains, so a fn whose primary effect is splicing a node onto
@@ -117,27 +102,21 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     // keepdogs, losedogs, dobjsfree, discard_migrations, ...) recorded an
     // EMPTY state_after_diff — a state-diff-blind vacuous green (WS10 audit).
     // Counting each chain head makes that mutation observable. Bridge
-    // placeholder slots (no live JS chain wired yet), so a recaptured
     // migration fn flips vacuous→red-for-real until its port builds the
-    // chain — the intended compensation-removal, not a regression.
     { key: 'migrating_objs.count', default: '0' },
     { key: 'migrating_mons.count', default: '0' },
     { key: 'mydogs.count', default: '0' },
     { key: 'billobjs.count', default: '0' },
     { key: 'objs_deleted.count', default: '0' },
-    // ---------- Wave-3.5 (T5.5) appended keys ----------
     //
     // role/race/align/gender identifiers read by u_init_misc + its
     // transitive callees (newhp at attrib.c:1086, newpw at exper.c:45,
     // adjabil at attrib.c:1011, max_rank_sz at botl.c:408). None of
-    // these appear in build_mapdump — they're per-function-capture
     // input-identity inputs, not turn-boundary replay state.
     //
     // role.mnum  = gu.urole.mnum (PM_VALKYRIE=13, PM_WIZARD=14, etc.).
     //              Drives ALL of urole.hpadv / urole.enadv / urole.rank /
     //              urole.initrecord through the const roles[] table.
-    //              13 of 27 false-ND buckets in the u_init_misc capture
-    //              collapse when this is captured (Valkyrie + Wizard
     //              were hashing identical despite producing 16/12 HP).
     // race.mnum  = gu.urace.mnum (PM_HUMAN=53, PM_ELF=55, etc.). Drives
     //              urace.hpadv / urace.enadv. Race contributes <=4
@@ -152,7 +131,6 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     //              read by u_init_misc itself but read by callers.
     // uroleplay.blind = 0/1 — u_init_misc:1024 reads u.uroleplay.blind
     //              and conditionally sets HBlinded. None of the 64
-    //              contest sessions enable it, but it's an input the
     //              function reads, so it belongs in the input vector.
     { key: 'role.mnum', default: '0' },
     { key: 'race.mnum', default: '0' },
@@ -162,39 +140,26 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     { key: 'flags.initalign', default: '0' },
     { key: 'flags.female', default: '0' },
     { key: 'uroleplay.blind', default: '0' },
-    // Wave-11.4 (2026-05-17): context.ident — the global next_ident counter
     // shared between monster m_id and object o_id allocation.  Including it in
-    // the capture-probe state_before vector allows capture-dedup to distinguish
-    // sessions where the ident counter is already off BEFORE the first
     // makemon/mkobj call fires, disambiguating "ident counter drift" from
-    // "extra makemon call" on the bug board.  This is a capture-probe-only key
     // (NOT in build_mapdump) — same append-only extension pattern as the T5.5
-    // input-identity keys above.  C sampler: svc.context.ident in capture.c.
     // JS source: g.context?.ident in mapstate_game_bridge.js.
     { key: 'context.ident', default: '0' },
-    // 2026-08-09: context.run + domove_attempting — the MOVEMENT MODE, the two
     // fields set_move_cmd(dir, run) writes (cmd.c:2058). They are the ONLY
     // difference between do_move_<dir> / do_run_<dir> / do_rush_<dir>, whose
     // bodies are otherwise identical, so without them all 24 movement commands
     // share a byte-identical fixture and a run ported as a walk replays CLEAN
-    // (measured 2026-08-09: `swept 1 0 clean` on a deliberately wrong mode).
-    // Those 24 are the only minted packets that replace a LIVE stub, so this
     // gap sat directly across the fleet's one score-bearing target.
     // Append-only positional extension, same as the keys above: old fixtures
-    // pad to default '0', recaptured records carry real values.
-    // C sampler: svc.context.run / gd.domove_attempting in capture.c.
     // JS source: g.context?.run / g.domove_attempting in
     // mapstate_game_bridge.js.
     { key: 'context.run', default: '0' },
     { key: 'context.forcefight', default: '0' },
     { key: 'domove_attempting', default: '0' },
-    // wsv-V5 (2026-06-11): hero trap scalars for uteetering_at_seen_pit
     // (dig.c reads u.utrap [TT_PIT check] + u.utraptype). trap->tseen landed
     // in V2; these complete the gap. Append-only positional extension — old
-    // fixtures pad to default '0', recaptured records carry real values.
     { key: 'hero.utrap', default: '0' },
     { key: 'hero.utraptype', default: '0' },
-    // wsv-V7 (2026-06-11): hero AMAX attributes for redist_attr (attrib.c:743
     // AMAX(i)=u.amax.a[i]). Parallel to hero.str/int/... (ABASE); attribute
     // order. Append-only; old fixtures pad to '0'.
     { key: 'hero.amax_str', default: '0' },
@@ -203,7 +168,6 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     { key: 'hero.amax_dex', default: '0' },
     { key: 'hero.amax_con', default: '0' },
     { key: 'hero.amax_cha', default: '0' },
-    // 2026-09-04: hero AEXE exercise accumulators. C's exercise() (attrib.c:509)
     // draws rn2(19)/rn2(2) ONLY while abs(AEXE(i)) < AVAL(50), so without these
     // an isolated replay always started from BSS-zero, never saturated, and drew
     // where C did not. Append-only; old fixtures pad to '0'.
@@ -216,9 +180,7 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     { key: 'hero.aexe_dex', default: '0' },
     { key: 'hero.aexe_con', default: '0' },
     { key: 'hero.aexe_cha', default: '0' },
-    // 2026-09-05 (wave 4): hero ATEMP / ABON attribute arrays (attrib.h
     // ATEMP(x)=u.atemp.a[x], ABON(x)=u.abon.a[x]). acurr(x) is
-    // ABON + ATEMP + ABASE clamped; neither array was captured, so an isolated
     // replay computed acurr(A_DEX) from ABASE alone while C's ATEMP(A_DEX) is -1
     // whenever Wounded_legs is active (do.c:2435/2452, its only writers) —
     // mhitm_ad_legs rnd(50) vs rnd(49) on the mhitm_adtyping/mattacku boards.
@@ -237,9 +199,6 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     { key: 'hero.abon_dex', default: '0' },
     { key: 'hero.abon_con', default: '0' },
     { key: 'hero.abon_cha', default: '0' },
-    // 2026-09-04: gameplay OPTION flags. Only the chargen flags.init* keys were
-    // in the schema; the options that GATE BEHAVIOUR were not, so a replay read
-    // them all as undefined (measured: pickup's `autopickup && !flags.pickup`
     // always took the wrong arm). pickup_types is a char[MAXOCLASSES] STRING.
     { key: 'flags.pickup', default: '0' },
     { key: 'flags.pickup_thrown', default: '0' },
@@ -256,15 +215,12 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     { key: 'flags.pickup_burden', default: '0' },
     { key: 'flags.sortloot', default: '0' },
     { key: 'flags.pickup_types', default: '' },
-    // wsv-V89 (2026-06-22): hero alignment for can_pray (pray.c:714-1088).
     // u.ualign.type (schar: A_CHAOTIC=-1/A_NEUTRAL=0/A_LAWFUL=1) and
     // u.ualign.record (int: piety). Append-only; old fixtures pad to '0'.
     { key: 'hero.ualign_type',   default: '0' },
     { key: 'hero.ualign_record', default: '0' },
-    // wsv-V89c (2026-06-22): u.ushops — char[5] rooms hero currently occupies.
     // Read by unpaid_cost (shk.c:3285) to iterate shops. Empty string = not in shop.
     { key: 'hero.ushops',        default: '' },
-    // WS8-prevpos (2026-07-13): hero PREVIOUS position — u.ux0/u.uy0 (coordxy)
     // and u.uz0 (d_level {dnum,dlevel}, marshalled as two scalars). Read
     // unconditionally by spoteffects (hack.c:3262 levl[u.ux0][u.uy0].typ +
     // on_level(&u.uz,&u.uz0)) and the prev-position consumer class
@@ -274,7 +230,6 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     { key: 'hero.uy0',        default: '0' },
     { key: 'hero.uz0_dnum',   default: '0' },
     { key: 'hero.uz0_dlevel', default: '0' },
-    // disp7 (2026-07-14): hero POLYMORPH form — the Upolyd blind-oracle class
     // (overexert_hp/losehp `Upolyd ? u.mh : u.uhp` readers, the #monster
     // domonability family). hero.umonnum = u.umonnum (you.h:412, current
     // monster number); hero.upolyd = the you.h:547 macro (u.umonnum !=
@@ -284,89 +239,63 @@ export const MAPSTATE_SCHEMA = Object.freeze([
     { key: 'hero.upolyd',     default: '0' },
     { key: 'hero.umh',        default: '0' },
     { key: 'hero.umhmax',     default: '0' },
-    // schema2 (2026-07-14): occupation PRESENCE (go.occupation != NULL,
     // sampled 0/1 — the pointer value itself is unportable). The dotrap
     // SQKY_BOARD falsifier discriminator: stop_occupation()/nomul(0) fire on
     // an active occupation even when multi==0 (allmain.c:755-767). JS slot is
     // g.occupation truthiness (js/mapstate_game_bridge.js). Append-only; old
     // fixtures pad to '0'.
     { key: 'hero.occupation', default: '0' },
-    // Batch-1 (2026-07-15): hero/global scalar mutators — u.uexp/u.urexp
     // (more_experienced, exper.c:169), gu.unweapon (setuwep, wield.c:100),
     // u.twoweap (set_twoweap), u.uinwater (set_uinwater). Append-only at the
     // END — old fixtures pad to '0'; 3-mirror with SCHEMA/SETTERS in
-    // harness/capture.c. Bridge slots in js/mapstate_game_bridge.js.
     { key: 'hero.uexp', default: '0' },
     { key: 'hero.urexp', default: '0' },
     { key: 'hero.unweapon', default: '0' },
     { key: 'hero.twoweap', default: '0' },
     { key: 'hero.uinwater', default: '0' },
-    // wave15/harness (2026-09-05, TASK A): u.ustuck -- a MONSTER POINTER, not
     // a plain scalar, so it is carried as the stable m_id of the monster u is
-    // stuck to/engulfed by (-1 = no monster, C NULL). Was captured NOWHERE:
     // uhitm.c's attack_checks() opens with
     //   if (engulfing_u(mtmp)) return FALSE;   /* u.uswallow && u.ustuck==mtmp */
     // consuming ZERO RNG, and without this key an isolated do_attack/mattacku
     // replay always read game.u.ustuck === undefined, so that short-circuit
     // could never fire even though js/uhitm.js:1224 (`u.ustuck === mtmp`) is
-    // already byte-for-byte C-faithful -- the gap was capture-side only.
-    // C sampler: patches/010-capture-surface.patch s_hero_ustuck_m_id
     // (u.ustuck ? u.ustuck->m_id : -1). JS resolution: the bridge cannot
     // resolve an m_id to a live fmon-chain reference at apply time (fmon is
     // seeded AFTER applyMapstateToGame -- see
-    // tools/equiv-test/lib/replay-core.mjs seedUstuckFromCapture); the raw id
     // round-trips through the real game.u.ustuck slot once resolved (same
     // hero.hero_seq exception as above), or a __bridge__ placeholder before
     // that. Append-only; old fixtures pad to '-1' (no monster).
     { key: 'hero.ustuck_m_id', default: '-1' },
-    // wave15/harness (2026-09-05, coordinator-reported, same recapture pass
     // as hero.ustuck_m_id above): two more hero scalars the port reads
-    // correctly but the capture never sent. Both are plain scalars (real
     // production slots game.u.usleep / game.u.uinvulnerable), so a direct
     // numSlot bridge mapping, not a deferred m_id resolution.
-    //   hero.usleep -- mhitu.c:940 gates "The combat suddenly awakens you."
-    //     on `u.usleep && u.usleep < svm.moves && !rn2(10)`. Was captured on
     //     unmul's trampoline only; every other trampoline (mattacku
     //     included) never carried it.
-    //   hero.uinvulnerable -- mhitu.c:743's prayer-invulnerability gate
     //     returns FALSE before the attack loop starts, consuming zero RNG.
-    //     Captured nowhere; newly exposed by the MON_MATTK[290]
     //     incubus/succubus fix (main bd1963429) making the attack loop run
     //     for real on records that used to no-op on an empty attack row.
     { key: 'hero.usleep', default: '0' },
     { key: 'hero.uinvulnerable', default: '0' },
-    // harness (2026-09-05, wave-1 addinv "this red is not mine"): gl.lastinvnr
     // (decl.h:536), the rolling invlet cursor assigninvlet (invent.c:721-731)
     // scans FROM. Real slot: game._lastinvnr, read by every assigninvlet port
     // (js/hold_another_object.js, pickup_container.js, wizcmds.js, u_init.js)
-    // through `game._lastinvnr ?? 51`. Captured nowhere before this key, so a
     // replayed addinv guessed the cursor: 4 of 5 residuals were invlet exp
     // 107..110 got 100 on identical free-letter sets. Appended at the END
     // (4-mirror: patch 010 SCHEMA + SETTERS, bridge SLOTS).
     { key: 'hero.lastinvnr', default: '0' },
-    // harness (2026-09-05): u.uroleplay.deaf / flags.acoustics -- inputs of
     // sounds.c:206 `Deaf || !flags.acoustics || ...` (dosounds), dokick.c's
     // `(Deaf && !Unaware) || !flags.acoustics`, mhitu.c. Deaf's HDeaf/EDeaf
     // half rides the "uprops" side-channel (index DEAF=16); these two were
-    // captured nowhere. Appended at the END of the C SCHEMA order (after
-    // hero.lastinvnr; the rect.* keys below are rnd_rect's capture_extra_int
     // suffix, not SCHEMA[] entries). 4-mirror: patch 010 getter+SCHEMA+setter+
     // SETTERS, js/mapstate_game_bridge.js SLOTS.
     { key: 'uroleplay.deaf', default: '0' },
     { key: 'flags.acoustics', default: '1' },
-    // harness (2026-09-05, wave-9 doeat "red-not-mine", verified): iflags.
     // menu_requested -- the 'm' command prefix (cmd.c do_reqmenu sets it
-    // before rhack dispatches the handler). eat.c:3596 floorfood() gates the
-    // whole floor-food yn-prompt loop on it; js/eat.js:3839 already tests
-    // `g.iflags.menu_requested` faithfully, but the flag was captured
     // nowhere, so every 'm'-prefixed doeat replayed onto the prompt path C
-    // skipped (9/9 actionable records on probe-cov-consume gen000). Real
     // slot: game.iflags.menu_requested (boolSlot). Appended at the END of
     // the C SCHEMA order, after flags.acoustics. 4-mirror: patch 010
     // getter+SCHEMA+setter+SETTERS, js/mapstate_game_bridge.js SLOTS.
     { key: 'iflags.menu_requested', default: '0' },
-    // harness (2026-09-05): rect.c's rnd_rect() trampoline emits five
-    // capture_extra_int suffix keys -- the allocator's live count
     // (gr.rect_cnt) and the four coordinates of the rectangle C returned.
     // rect.cnt is a REAL slot (game.rect_cnt, js/rect.js); rect.ret.* are
     // return descriptors compared under pointer-identity and round-trip
@@ -401,7 +330,6 @@ export function globToRegExp(glob) {
 }
 // Expand an array of glob patterns to the matching schema keys, in
 // schema-insertion order, deduped. Used by both the dump_mapstate JS
-// helper and the C-oracle dump implementation.
 export function expandGlobs(globs) {
     if (!Array.isArray(globs) || globs.length === 0)
         return [];

@@ -4,7 +4,6 @@
 // near_capacity(), max_capacity().
 //
 // This is the single shared, C-faithful implementation; the old per-file
-// near_capacity() stubs (attrib.js, eat.js, fastforward.js) delegate here.
 import { game } from './gstate.js';
 import { acurr } from './attrib.js';
 import { UNENCUMBERED, OVERLOADED, LEVITATION, LOW_PM, Upolyd, WOUNDED_LEGS, LEFT_SIDE, RIGHT_SIDE, Is_airlevel } from './const.js';
@@ -92,28 +91,6 @@ export function weight(obj) {
         }
         return wt + cwt;
     }
-    /* C mkobj.c:1957-1963 —
-     *     if (obj->otyp == CORPSE && ismnum(obj->corpsenm)) {
-     *         long long_wt = obj->quan * (long) mons[obj->corpsenm].cwt;
-     *         wt = (long_wt > LARGEST_INT) ? LARGEST_INT : (int) long_wt;
-     *         if (obj->oeaten)
-     *             wt = eaten_stat(wt, obj);
-     *         return wt;
-     *     }
-     * A corpse weighs its MONSTER's body weight, not objects[CORPSE].oc_weight
-     * (which is 1).  It was left unported on the grounds that porting it is a
-     * corpus-wide encumbrance change; it is, and the change is what C does.
-     * An orc corpse is 850 units — on its own more than half a dwarven
-     * Valkyrie's 925-unit capacity — so with it unported the hero could lift a
-     * body and stay UNENCUMBERED where C burdens them, which silently removes
-     * both the "Burdened" status field and pickup_prinv's encumbrance prefix.
-     * MEASURED on gen026-reseed-seed1264160 step 74: C's status carries
-     * "Burdened" and its topline is "You have a little trouble lifting e - an
-     * orc corpse."; this port had near_capacity() == UNENCUMBERED with the
-     * corpse weighing 1, so it printed a bare "e - an orc corpse." and no
-     * status field.  ismnum() is C's own guard (monst.h:285), so a corpse whose
-     * corpsenm is unset still falls through to the oc_weight default below,
-     * exactly as it did before. */
     if (otyp === CORPSE && _ismnum_cwt(obj.corpsenm)) {
         const long_wt = (obj.quan | 0) * _cwt(obj.corpsenm | 0);
         let cwt = (long_wt > LARGEST_INT) ? LARGEST_INT : long_wt;
@@ -121,21 +98,6 @@ export function weight(obj) {
             cwt = eaten_stat(cwt, obj);
         return cwt;
     }
-    /* C mkobj.c weight():
-     *     } else if (obj->oclass == FOOD_CLASS && obj->oeaten) {
-     *         return eaten_stat((int) obj->quan * wt, obj);
-     * A partly eaten comestible weighs its FRACTION of the untouched weight,
-     * rounded down and floored at 1.  This arm was skipped with the note that
-     * "oeaten state is not generally reconstructed" — but js/eat.js writes
-     * otmp.oeaten (:997, :1019-1022) and reads it back for the "partly eaten"
-     * name, so it is live, and eaten_stat() is already a faithful export there.
-     * MEASURED on seed4500-knight-coverage step 1809: the hero carries "an
-     * uncursed partly eaten apple" (oc_weight 2, oc_nutrition 50), and C's
-     * wizard-mode encumbrance reveal reads "You are unencumbered <-403>"
-     * against this port's "<-402>" — the apple weighing 2 where C weighs it 1.
-     * A partly eaten CORPSE never reaches here: C's corpse arm above takes it,
-     * running eaten_stat over the mons[].cwt weight rather than over
-     * oc_weight. */
     if ((obj.oclass | 0) === FOOD_CLASS && (obj.oeaten | 0))
         return eaten_stat((obj.quan | 0) * wt, obj);
     if ((obj.oclass | 0) === COIN_CLASS) {
@@ -160,17 +122,6 @@ function acurrstr(u) {
     return Math.min(str, 125) - 100;
 }
 
-/* C hack.c:4259 weight_cap() — carrying capacity from STR+CON, capped.
- *
- * Faithful for the non-levitating, non-flying hero (the case the replay
- * corpus exercises).  EWounded_legs is read from game.u.uprops[WOUNDED_LEGS]
- * (set by trap.js's set_wounded_legs port).  The deferred branch:
- *   - Levitation / Is_airlevel / strong-steed → MAX_CARR_CAP
- * is gated on properties not yet reconstructed in replay; it evaluates to
- * its no-op (FALSE) default, matching C for the unaffected hero.  The
- * load-bearing STR/CON capacity computation is real.  The Upolyd polymorph
- * rescale IS ported (the wand-of-polymorph corpus exercises it — e.g. seed5500
- * polys the hero to a warhorse, whose cwt>WT_HUMAN raises capacity). */
 export function weight_cap() {
     const u = game.u;
     if (!u) return 1;
@@ -210,12 +161,6 @@ export function weight_cap() {
     const ELevitation = levProp ? (levProp.extrinsic | 0) : 0;
     const BLevitation = levProp ? ((levProp.blocked | 0) & ~I_SPECIAL_BIT) : 0;
     const Levitation = (HLevitation || ELevitation) && !BLevitation;
-    /* C hack.c:4290 `Is_airlevel(&u.uz)` — the Plane of Air gives MAX carrying
-     * capacity ("pugh@cornell", C's own comment).  This was hardcoded FALSE
-     * because no session reached the Plane; seed0373-barbarian-quest-tour does,
-     * and its ^X at step 119 reads "You are unencumbered <-557>" against this
-     * port's "<-507>" — exactly MAX_CARR_CAP(1000) minus the Barbarian's
-     * ordinary 950. */
     const Is_airlevel_wc = Is_airlevel(game.u?.uz);
     const strongSteed = false;
     if (Levitation || Is_airlevel_wc || strongSteed) {
@@ -285,13 +230,6 @@ export function max_capacity() {
     return (inv_weight_raw() - wc) - (2 * wc);
 }
 
-/* C pickup.c:1972 encumber_msg() — prints a message if encumbrance crossed a
- * threshold since the previous check.  go.oldcap is a global (BSS-zero at
- * game start); tracked here on the hero record as u._oldcap, shared with the
- * other encumber_msg() call sites (do_wear.js) which read/write the same
- * field once it has been set.  Default to 0 (not near_capacity(), which
- * would read the ALREADY-CHANGED post-event state) so the very first call of
- * a session compares against the C-faithful zero baseline. */
 export async function encumber_msg() {
     return encumber_msg_sync();
 }
@@ -336,13 +274,6 @@ export function encumber_msg_sync() {
     }
     if (msg) {
         pline(msg);
-    /* C pickup.c:1992 / :2013 — `disp.botl = TRUE;` at the tail of BOTH arms of
-     * encumber_msg(), AFTER the pline.  It is what tells the NEXT flush_screen
-     * to re-run bot() and repaint the encumbrance field; without it this port's
-     * _capture_botl (js/display.js:3353) never refreshes _botlPaintedCap, so
-     * every later frame renders the stale pre-change capacity.  seed0399 became
-     * Burdened at step 412 and then rendered no encumbrance word at all for the
-     * remaining 119 frames. */
         if (game.disp) game.disp.botl = true;
     }
     u._oldcap = newcap;

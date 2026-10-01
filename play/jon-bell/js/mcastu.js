@@ -1,5 +1,4 @@
 // js/mcastu.js — port of nethack-c/src/mcastu.c (scaffold: functions are added here
-// one packet at a time by the porting fleet; see tasks/generated/port-*.yaml)
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
@@ -37,10 +36,6 @@ import { nasty } from './mklev.js';
  * deferral for C's non-returning done()) and rehumanize (polyself.c). */
 import { mhe, nonliving, is_demon } from './makemon.js';
 import { minuhpmax, setuhpmax, adjuhploss, losestr } from './attrib.js';
-/* C you.h:554 Upolyd (u.umonnum != u.umonster) — touch_of_death's first branch.
- * js/const.js hosts this port's one Upolyd; it was referenced here with no
- * binding in scope at all, which auto-replay-sweep caught as
- * `ERROR: Upolyd is not defined` on all 5 touch_of_death records. */
 import { Upolyd } from './const.js';
 import { losehp } from './dokick.js';
 import { deadhero } from './end.js';
@@ -132,7 +127,6 @@ const mcast_level = [
     18,  // CLONE_WIZ
 ];
 
-// ── hero-property macros (youprop.h), read from the captured u.uprops[] ──
 function propOn(id) {
     const p = game.u?.uprops?.[id];
     return !!(p && (p.intrinsic || p.extrinsic));
@@ -152,16 +146,8 @@ function ShockResistance() { return propOn(SHOCK_RES_MC); }
 function FireResistance() { return propOn(FIRE_RES); }
 function ColdResistance() { return propOn(COLD_RES); }
 
-// ── genuinely unported helpers, unreached by castmu's capture-replay corpus
 // (all 15 records: thinks_it_foundyou=0, mpeaceful=1, adtyp in {AD_SPEL,
 // AD_CLRC}) — thrown loudly rather than silently no-op'd, per charter. ──
-/* C mcastu.c:62-85 cursetxt(mtmp, undirected) — the flavour text a monster that
- * TRIED to cast and could not (mcan / mspec_used / m_seenres) emits.
- * Was a throwing stub, and castmu()'s "monster unable to cast spells?" arm
- * calls it unconditionally — so wiring mattacku's AT_MAGC case made it live and
- * it halted seed4500-knight-coverage's scored run at step 1770.
- * RNG SITE: the else arm's `(!(svm.moves % 4) || !rn2(4))`.  The rn2(4) is
- * SHORT-CIRCUITED away on every fourth move, so the draw is conditional. */
 export function cursetxt(mtmp, undirected) {
     const u = game.u || {};
     const mux_off = ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0));
@@ -293,36 +279,6 @@ function com_pager(msgid) {
     pline(line);
     return true;
 }
-/* C zap.c:5500-5533 mon_spell_hits_spot(caster, adtyp, x, y) — "monster has cast
- * flames or frost at target on <x,y>".  Two independent halves:
- *
- *   1. AD_MAGM / AD_ACID only: thoroughly clobber an engraving at <x,y>,
- *          if (etext) wipe_engr_at(x, y, strlen(etext) + d(6, 6), TRUE);
- *      This is the ONLY RNG in the function, and it draws only when an
- *      engraving is actually present on the spot.
- *   2. any adtyp in [AD_MAGM, AD_ACID]: zap_over_floor(x, y, -ZT_SPELL(adtyp-1),
- *      &shopdummy, TRUE, 0) — hit items and/or terrain.
- *
- * NEITHER half is ported, and this was a bare `throw` for all of them, which
- * halted the scored replay of any session where a monster cast one of the five
- * spells that call it (mcastu.c:265 AD_FIRE, :280 AD_COLD, :294 AD_MAGM, :561
- * fire pillar, :594 lightning).  The throw is now confined to the case C itself
- * calls impossible() on, and the two real halves are annotated where they belong:
- *
- *   - wipe_engr_at (engrave.c) has NO js/ counterpart at all (js/mklev.js:6524
- *     engr_at exists; the wipe does not), so the d(6,6) cannot be drawn
- *     faithfully.  Left as a comment: on a spot with no engraving C draws
- *     nothing either, which is the ordinary case, and a conditional throw here
- *     would trade a wrong RNG stream for a dead session tail — strictly worse
- *     under partial credit.
- *   - zap_over_floor is not ported as a general body either (js/zap.js:2083
- *     carries only _zap_over_floor_fire, the ZT_FIRE room-floor arm).  MEASURED
- *     at the one site this port now reaches — gen040-reseed-seed267324 step 1389,
- *     the AD_ELEC call at the bottom of mcast_lightning — C records exactly three
- *     draws for the whole spell (d(8,6), rn2(5)@destroy_items, rnd(100)@flashburn)
- *     and NONE of them is inside zap_over_floor, so the omission is invisible
- *     there.  It will not be invisible on a fire/cold cast over burnable floor
- *     items; that is the next thing to port here. */
 export async function mon_spell_hits_spot(_mtmp, adtyp, _x, _y) {
     if (adtyp === AD_MAGM || adtyp === AD_ACID) {
         /* C zap.c:5509-5516 — engraving clobber. */
@@ -402,16 +358,6 @@ export async function burn_away_slime() {
     if ((p?.intrinsic | 0) || (p?.extrinsic | 0))
         await make_slimed(0, 'The slime that covers you is burned away!');
 }
-/* C wizard.c:472-491 has_aggravatables(mon) — "are there any monsters mon
- * could aggravate?"  The gate on MCAST_AGGRAVATION in spell_would_be_useless
- * (mcastu.c:952), so a throwing stub here HALTED the scored run the moment a
- * spellcasting monster got far enough to choose a spell.  Measured on gen094:
- * the run stopped at frame 1755 of 1814, forfeiting 59 step points, and it
- * only started halting there because the earlier links in this chain got the
- * replay that deep in the first place.
- *
- * helpless() is js/mhitm.js's exported body (msleeping || !mcanmove), the one
- * this tree already settled on.  RNG-free. */
 export function has_aggravatables(mon) {
     const u = game.u;
     const in_w_tower = In_W_tower(mon.mx, mon.my, u.uz);
@@ -477,18 +423,6 @@ export async function touch_of_death(mtmp) {
         game.svk.killer.format = KILLED_BY_MC;
         game.svk.killer.name = kbuf;
         const _deathBeforeTouch = game._pendingDeath || null;
-        /* C mcastu.c:337-340 — this arm is `svk.killer.format = KILLED_BY;
-         * Strcpy(svk.killer.name, kbuf); done(DIED);` and NOTHING ELSE.  There
-         * is no done_in_by() here and no losehp(), so C's "You die..." (the
-         * line those two emit, end.c:195 / hack.c:4287) is NEVER printed on
-         * this path; done() itself prints nothing before
-         * paranoid_query(ParanoidDie,"Die?") (end.c:1020-1117).  This port
-         * centralises the death line into do_death_sequence, so the flag is
-         * how a caller says "C prints none".  Without it the port raised an
-         * extra "You die...--More--" page and read a keystroke C never read.
-         * MEASURED: /tmp/capscr9/board touch_of_death rec#0/1/4 carry exactly
-         * the two keys C consumed (one page ack + the "Die?" answer) and this
-         * port demanded three. */
         deadhero(0 /* DIED */, { noDeathLine: true });
         /* C: done(DIED) never returns here — it resolves the death (or
          * Lifesaved reprieve) synchronously before touch_of_death's final
@@ -512,13 +446,6 @@ export async function touch_of_death(mtmp) {
         game.svk.killer.name = ''; /* not killed if we get here... */
 }
 
-/* C mcastu.c:388-407 mcast_death_touch(struct monst *mtmp) — the
- * MCAST_DEATH_TOUCH arm of mcast_spell.  This was a throwing stub, and it is
- * the halt that ended gen362-reseed-seed208714's scored replay at frame 583 of
- * 833.  RNG: the opening pline's mhe() draws rn2(4) when the hero is
- * hallucinating (pronoun_gender, mondata.c:1199), and the second arm draws
- * rn2(mtmp->m_lev) — SHORT-CIRCUITED AWAY by Antimagic, so an antimagic hero
- * consumes no draw here.  Both are ported as written. */
 export async function mcast_death_touch(mtmp) {
     const u = game.u;
     const ydata = mon_data_mc(game.youmonst);
@@ -545,7 +472,6 @@ export async function mcast_death_touch(mtmp) {
  * prefixes "You dream that you feel "; js/dig.js:902 spells the same body). */
 function You_feel_mc(line) { pline('You feel ' + line); }
 const KILLED_BY_MC = 1;               /* hack.h killer.format */
-// mcast_spell case bodies not exercised by the capture corpus (no spellnum
 // other than MCAST_HASTE_SELF ever reaches mcast_spell in the 15 records).
 export async function mcast_clone_wiz(mtmp) {
     const g = game, u = g.u || {};
@@ -561,11 +487,6 @@ export async function mcast_clone_wiz(mtmp) {
     }
     newsym(clone.mx | 0, clone.my | 0);
 }
-/* C mcastu.c:420-447 mcast_summon_mons(mtmp) — the MCAST_SUMMON_MONS arm.
- * Was a throwing stub; nasty() (js/mklev.js) is the body it needed.
- * The mtmp->iswiz arm ("Destroy the thief, my pet!") is C's Wizard-of-Yendor
- * variant and carries a SetVoice/verbalize pair this port has no channel for;
- * seed4500's caster is a master lich, not the Wizard. */
 export async function mcast_summon_mons(mtmp) {
     const count = await nasty(mtmp);
     const u = game.u || {};
@@ -591,11 +512,6 @@ export async function mcast_summon_mons(mtmp) {
             pline(`${mappear} from nowhere!`);
     }
 }
-/* C dungeon.c:1923 In_W_tower(x, y, lev).  This was a `return false` stub on
- * the claim "the corpus never enters the tower"; js/dochug.js has the real
- * body (its own wizard-tactics caller needs it) and now exports it, so both
- * aggravate() and has_aggravatables() below resolve to one implementation
- * instead of to a constant. */
 import { In_W_tower_wz as In_W_tower } from './dochug.js';
 
 // DEADMONSTER macro: #define DEADMONSTER(mon) ((mon)->mhp < 1)
@@ -620,10 +536,6 @@ export function aggravate() {
         }
     }
 }
-/* rndcurse's C home is sit.c:567, and its one real body now lives in js/sit.js.
- * This throwing stub was the halt that ended gen040-reseed-seed267324's scored
- * replay at frame 1307 of 1814; re-exported rather than re-derived so the
- * throne-effect caller (sit.c:143) and this one (mcastu.c:833) stay one body. */
 /* C do_wear.c:3278 destroy_arm() — mcast_destroy_armor's body. */
 import { destroy_arm } from './do_wear.js';
 import { rndcurse } from './sit.js';
@@ -649,18 +561,6 @@ export async function mcast_destroy_armor() {
         monstunseesu(M_SEEN_MAGR_MC);
     }
 }
-/* C mcastu.c:465-486 mcast_weaken_you(mtmp, dmg) — the MCAST_WEAKEN_YOU arm
- * ("drain strength").  Was a throwing stub, and it is the halt link 3 walked
- * gen362-reseed-seed208714 into at frame 630: with the AD_DRLI fix realigning
- * the stream, this port finally reaches the spell C actually casts here, and
- * the recording draws `rnd(15)=2 @ mcast_weaken_you(mcastu.c:481)`.
- *
- * RNG: rnd(dmg) on the !Antimagic path only, where dmg is RECOMPUTED from the
- * caster's level (m_lev - 6, floored at 1, halved by Half_spell_damage) and the
- * `dmg` argument castmu passed in is DISCARDED — port the shadowing as written.
- * losestr() (attrib.c:221, js/attrib.js:1191) then draws rn1(4,3) once per
- * point of strength below the racial minimum, and can be fatal via losehp;
- * svk.killer.name is cleared afterwards exactly as C clears it. */
 export async function mcast_weaken_you(mtmp, dmg) {
     const u = game.u || {};
     if (Antimagic()) {
@@ -668,10 +568,6 @@ export async function mcast_weaken_you(mtmp, dmg) {
         monstseesu(M_SEEN_MAGR_MC);
         You_feel_mc('momentarily weakened.');
     } else {
-        /* C mcastu.c:526 You() is a normal pline during movemon.  The generic
-         * JS You helper targets the deferred command-result channel, which
-         * reordered this line ahead of the barrow-wight's already-emitted
-         * swing on gen362. */
         pline('You suddenly feel weaker!');
         dmg = (mtmp.m_lev | 0) - 6;
         if (dmg < 1) /* C's own comment: paranoia since only chosen when
@@ -687,25 +583,6 @@ export async function mcast_weaken_you(mtmp, dmg) {
         monstunseesu(M_SEEN_MAGR_MC);
     }
 }
-/* C ref: mcastu.c:488-501 mcast_disappear(struct monst *mtmp) — the monster
- * casts "disappear" on itself.
- *
- *     if (!mtmp->minvis && !mtmp->invis_blkd) {
- *         if (canseemon(mtmp))
- *             pline_mon(mtmp, "%s suddenly %s!", Monnam(mtmp),
- *                       !See_invisible ? "disappears" : "becomes transparent");
- *         mon_set_minvis(mtmp, FALSE);
- *         if (cansee(mtmp->mx, mtmp->my) && !canspotmon(mtmp))
- *             map_invisible(mtmp->mx, mtmp->my);
- *     } else
- *         impossible("no reason for monster to cast disappear spell?");
- *
- * RNG-free.  Ported here because the travel port (js/cmd.js dotravel_target)
- * moves the hero along C's real travel path, which walks seed4500 into a
- * caster it never used to reach: the throw-stub truncated the replay at step
- * 1773 of 1814 (41 emitted frames, all of them already-missing ones, so the
- * score was unchanged — but a truncated run is strictly worse on any corpus
- * where those frames would have matched). */
 export function mcast_disappear(mtmp) {
     if (!mtmp.minvis && !mtmp.invis_blkd) {
         if (canseemon(mtmp)) {
@@ -722,34 +599,6 @@ export function mcast_disappear(mtmp) {
         impossible('no reason for monster to cast disappear spell?');
     }
 }
-/* C mcastu.c:503-519 mcast_stun_you(dmg) — MCAST_STUN_YOU's body.
- *
- *     if (Antimagic || Free_action) {
- *         shieldeff(u.ux, u.uy);  monstseesu(M_SEEN_MAGR);
- *         if (!Stunned) You_feel("momentarily disoriented.");
- *         make_stunned(1L, FALSE);
- *     } else {
- *         You(Stunned ? "struggle to keep your balance." : "reel...");
- *         dmg = d(ACURR(A_DEX) < 12 ? 6 : 4, 4);
- *         if (Half_spell_damage) dmg = (dmg + 1) / 2;
- *         make_stunned((HStun & TIMEOUT) + (long) dmg, FALSE);
- *         monstunseesu(M_SEEN_MAGR);
- *     }
- *
- * Was a throwing stub on a LIVE arm — mcast_spell's MCAST_STUN_YOU case calls
- * it unconditionally.  MEASURED on gen413-reseed-seed565607: this chain's
- * upstream landings shifted the (already long-diverged) post-step-1070
- * trajectory far enough that a spellcaster picked STUN_YOU, and the scored run
- * stopped emitting at frame 1788 of 1814 — 26 forfeited frames, 7 step points.
- * The session's first divergence did not move (step 478, RNG step 1070, both
- * identical before and after), so the halt was this stub being REACHED, not a
- * new defect: [[a-new-halt-can-be-progress]] read from the other side.
- *
- * The d(6,4) / d(4,4) in the else arm is the only RNG here and it is the point
- * — a stub that throws draws nothing, so every leaf after it was wrong anyway.
- * make_stunned (js/mhitm.js:215) is still a no-op, so the stun DURATION this
- * computes has no reader yet; it is computed C-faithfully regardless, because
- * the argument is what the eventual body will consume. */
 export function mcast_stun_you(dmg) {
     const u = game.u;
     if (Antimagic() || FreeAction_mc()) {
@@ -775,16 +624,6 @@ function HStun_timeout_mc() {
     const p = game.u?.uprops?.[STUNNED_MC];
     return (p?.intrinsic | 0) & 0x00FFFFFF; /* TIMEOUT */
 }
-/* C ref: nethack-c-v5/upstream/src/mcastu.c:307-318 m_cure_self() —
- * MCAST_CURE_SELF's body.  Was a throwing stub on a LIVE arm: mcast_spell's
- * MCAST_CURE_SELF case calls it unconditionally, so any spellcasting monster
- * that chose cure-self halted the whole scored run (measured: three train
- * sessions stopped emitting inside dochug -> castmu -> mcast_spell).
- *
- * The d(3, 6) is drawn ONLY on the wounded branch, and only AFTER the
- * canseemon()/pline_mon() message — a monster already at full HP consumes no
- * RNG here and keeps `dmg` unchanged (mcast_spell then applies it via
- * mdamageu, which is why this arm returns dmg rather than zeroing it). */
 export function m_cure_self(mtmp, dmg) {
     if (mtmp.mhp < mtmp.mhpmax) {
         if (canseemon(mtmp))
@@ -795,10 +634,6 @@ export function m_cure_self(mtmp, dmg) {
     }
     return dmg;
 }
-/* C mcastu.c:600-620 mcast_psi_bolt(dmg) — MGC_PSI_BOLT's body.  RNG-free.
- * Was a throwing stub, and it is on a LIVE arm: as soon as mattacku's AT_MAGC
- * case was wired (js/mhitu.js), seed4500-knight-coverage's master lich reached
- * it at step 1761 and the whole scored run halted there. */
 export function mcast_psi_bolt(dmg) {
     /* C's own comment: prior to 3.4.0 Antimagic was setting the damage to 1 --
      * this made the spell virtually harmless to players with magic res. */
@@ -819,14 +654,6 @@ export function mcast_psi_bolt(dmg) {
         pline('Your ' + body_part(HEAD_MC) + ' suddenly aches very painfully!');
     return dmg;
 }
-/* C mcastu.c:521-536 mcast_geyser(dmg) — MCAST_GEYSER.
- * ONE RNG site: d(8,6) at mcastu.c:529 (the recorder names it exactly that on
- * gen040 step 1417).  C's own comment: `this is physical damage (force not
- * heat), not magical damage or fire damage` — which is why the halving reads
- * Half_physical_damage and not Half_spell_damage, the only spell in this file
- * that does.  The water_damage_chain() call is inside C's own `#if 0` with the
- * comment `since inventory items aren't affected, don't include this`, so it
- * is not code C runs. */
 const HALF_PHDAM_MC = 56;             /* prop.h (js/const.js:2383) */
 function HalfPhysicalDamage_mc() { return propOn(HALF_PHDAM_MC); }
 export function mcast_geyser(dmg) {
@@ -854,19 +681,6 @@ export async function mcast_fire_pillar(mtmp, dmg) {
     await mon_spell_hits_spot(mtmp, AD_FIRE, u.ux, u.uy);
     return dmg;
 }
-/* C mcastu.c:565-598 mcast_lightning(mtmp, dmg) — MCAST_LIGHTNING's body.
- * Was a throwing stub, and it is a LIVE arm: on gen040-reseed-seed267324 it is
- * the halt that stops the scored replay at frame 1380 of 1814 once the rndcurse
- * halt above it is fixed.  C's draws at that step (1389) are, in order:
- *     d(8,6)=20   @ mcast_lightning(mcastu.c:574)
- *     rn2(5)=0    @ destroy_items(zap.c:5998)
- *     rnd(100)=14 @ mcast_lightning(mcastu.c:596)
- * — so the three RNG sites are the damage roll, destroy_items' scaled-limit
- * increment, and flashburn's blinding duration, and the intervening
- * mon_spell_hits_spot draws nothing there (see its note).
- *
- * `orig_dmg` is captured BEFORE the Half_spell_damage halving and is what
- * destroy_items receives — C zap.c takes the pre-halving figure. */
 export async function mcast_lightning(mtmp, dmg) {
     const u = game.u;
     let orig_dmg;
@@ -916,28 +730,6 @@ import { unconscious } from './pickup.js';
 import { is_fainted } from './eat.js';
 import { PM_CYCLOPS as PM_CYCLOPS_MC, PM_FLOATING_EYE as PM_FLOATING_EYE_MC } from './pm.generated.js';
 import { PM_WIZARD_OF_YENDOR as PM_WIZARD_OF_YENDOR_MC } from './pm.generated.js';
-/* ── mcastu.c:644-790 — the five MCAST_ arms that were throwing stubs ──
- *
- * All five were `throw new Error('not yet ported: …')`, and two of them are on
- * a LIVE arm: on gen040-reseed-seed267324 the scored replay is RNG-exact for
- * 75,976 leaves and then halts in mcast_insects at recorded step 1417,
- * forfeiting 406 of 1814 frames; neutralising that one exposes mcast_paralyze
- * a few turns later.  (Measured with tools/scored-halt-oracle.mjs and
- * tools/first-divergence.mjs: "C rn2(9)=3 @mkclass_aligned(makemon.c:1934) vs
- * JS rn2(5)=2 @js/monmove.js:173" — C had moved on into mkclass while JS was
- * still finishing the monster pass, because our mcast_insects drew nothing.)
- *
- * C's draw order at that step, verbatim from the recording, is the spec these
- * bodies are written against:
- *     rn2(9) x6 + rnd(16)  @ mkclass_aligned(makemon.c:1934/1969)  <- mkclass(S_ANT, 0)
- *     rnd(9)               @ mcast_insects(mcastu.c:658)           <- the quan roll
- *   then, once per loop iteration:
- *     rn2(k) descending    @ collect_coords(teleport.c:700)        <- enexto()
- *     rn2(9) x6 + rnd(16)  @ mkclass_aligned                       <- mkclass(let, 0)
- *     next_ident/newmonhp/m_initinv/…                              <- makemon()
- * Nothing else in these bodies draws on the core stream (bogusmon() is on the
- * DISPLAY rng, per js/do_name.js).
- */
 
 /* defsym.h:295/:346 monster-class symbols. */
 const S_ANT_MC = 1, S_SNAKE_MC = 45;
@@ -1229,7 +1021,6 @@ function m_seenres(mtmp, mask) {
     // castmu's only reachable case (cvt_adtyp_to_mseenres only returns
     // nonzero for AD_MAGM/FIRE/COLD/SLEE/DISN/ELEC/DRST/ACID, never for the
     // AD_SPEL/AD_CLRC attacks castmu is invoked with here); this avoids
-    // touching the uncaptured seen_resistance struct field.
     if (mask === 0) return false;
     return (mtmp.seen_resistance & mask) !== 0;
 }
@@ -1249,27 +1040,6 @@ const mon_wizard_spells = [
     MCAST_AGGRAVATION, MCAST_SUMMON_MONS, MCAST_CLONE_WIZ, MCAST_DEATH_TOUCH,
 ];
 
-/* ══ C ref: mcastu.c:87-122 choose_monster_spell(mtmp, adtyp) ═══════════════
- * NetHack 5.0 REPLACED 3.7's choose_magic_spell() / choose_clerical_spell()
- * — the two `while (spellval > 24 && rn2(25)) spellval = rn2(spellval);`
- * cascades that stood here — with one table-driven chooser.  This port still
- * carried the 3.7 pair, and the RNG shape is not the same: seed0367 leaf 3399
- * has C drawing rn2(13) at mcastu.c:112 (maxlev, the level of the LAST entry
- * of mon_cleric_spells = MCAST_GEYSER) where this port drew rn2(16) from
- * choose_clerical_spell's `while (spellnum > 15 && rn2(16))`.
- *
- *     spellval = rn2(mtmp->m_lev);
- *     if (spellval > maxlev && rn2(maxlev))
- *         spellval = rn2(maxlev);
- *     for (i = len-1; i >= 0; i--)
- *         if (mcast_data[list[i]].level <= spellval
- *             && !spell_would_be_useless(mtmp, list[i]))
- *             return list[i];
- *     return list[0];
- *
- * Note the descending scan calls spell_would_be_useless() per candidate, and
- * that predicate itself draws RNG on two spells in 5.0 (see there), so the
- * draw sequence depends on the whole list walk, not just the two rolls above. */
 function choose_monster_spell(mtmp, adtyp) {
     let list = null, len = 0;
 
@@ -1363,9 +1133,7 @@ function spell_would_be_useless(mtmp, spellnum) {
 }
 
 // C ref: mcastu.c mcast_spell(). Only MCAST_HASTE_SELF's body (the sole
-// spellnum this task's capture corpus ever reaches here with) is a real
 // port; the sibling spell effects are genuinely unreached, stubbed per the
-// packet charter.
 async function mcast_spell(mtmp, dmg, spellnum) {
     if (dmg < 0) {
         impossible('monster cast spell (%d) with negative dmg (%d)?', spellnum, dmg);
@@ -1419,30 +1187,6 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         dmg = 0;
         break;
     case MCAST_HASTE_SELF:
-        /* C mcastu.c:853 — `mon_adjust_speed(mtmp, 1, (struct obj *) 0);`.
-         * What stood here was a hand-inlined copy of ONLY the `case 1:` arm of
-         * mon_adjust_speed (worn.c:494-499), i.e. the permspeed half.  The
-         * function does not end there: worn.c:531-539 scans minvent for worn
-         * speed boots and then assigns
-         *     mon->mspeed = otmp ? MFAST : mon->permspeed;
-         * and mspeed — NOT permspeed — is what mcalcmove(mon.c:1136) reads.
-         * So a monster that hasted itself kept mspeed 0 forever and drew its
-         * movement allotment as if it were still normal speed.
-         *
-         * MEASURED, seed0360-wizard-world-tour: a Wizard-quest apprentice
-         * (mnum 382, m_id 4010, base mmove 12) casts haste self on the quest
-         * home level.  In C its mspeed becomes MFAST, so mcalcmove computes
-         * mmove = (4*12+2)/3 = 16, mmove_adj = 4, and the unconditional
-         * rn2(12) now sometimes lands < 4 and banks 24 movement instead of 12
-         * — C's `^mcalcmove[382@26,6 speed=12 mv=0->24]`.  With mspeed 0 this
-         * port banked 12 every turn, so at turn 62 the apprentice had no
-         * second movemon pass: C ran its dochug (leaves 112243-112247,
-         * rn2(5) @distfleeck + rn2(10) @m_move:1891 + two rn2 @m_move:1970 +
-         * the recalc rn2(5)) and this port went straight on to the next turn's
-         * mcalcmove.  That was the session's first RNG divergence.
-         * The rn2(12) itself is drawn either way, so the leaf COUNT never
-         * moved and only the resulting `movement` diverged — silent until a
-         * monster's banked movement crossed NORMAL_SPEED. */
         mon_adjust_speed(mtmp, 1, null);
         dmg = 0;
         break;
@@ -1489,7 +1233,6 @@ async function mcast_spell(mtmp, dmg, spellnum) {
 }
 
 // C ref: nethack-c/src/mcastu.c:177 castmu()
-// See tasks/generated/port-castmu.yaml (inventory digest, acceptance gates).
 export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     const ml = mtmp.m_lev;
     let dmg;
@@ -1719,7 +1462,6 @@ function is_lminion(mtmp) {
 }
 
 // wizard.c:60 amulet()/mklev.c:982 precedent read u.uhave.amulet from a
-// cached flag that isn't part of the capture schema (no "uhave" side
 // channel exists — see js/mapstate_game_bridge.js). The only ground truth
 // the replay carries is the hero's actual invent chain, so derive the same
 // boolean the cache would hold by scanning it for the unique amulet otyp.

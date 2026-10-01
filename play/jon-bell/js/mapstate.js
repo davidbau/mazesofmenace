@@ -1,6 +1,5 @@
 // @ts-nocheck
 // mapstate.js — JS-side structural-state dumper, mirroring the C
-// `build_mapdump` / `harness_emit_mapstate_dump` pair in
 // nethack-c/src/cmd.c:288-547.
 //
 // v2 scope: emits ~35 scalar fields in C insertion order, matching the
@@ -43,8 +42,6 @@ const U64_MASK = 0xffffffffffffffffn;
 // hash differs from C until the field is genuinely ported.
 const UNCOMP = '?';
 // Module-local set of unique keys we fell back on this run. Cleared at
-// the top of every emitMapstate call. Tests/sweep tooling can grab this
-// after a session to know which port tasks the schema surfaces.
 const _uncomputableKeys = new Set();
 export function getUncomputableKeys() {
     return Array.from(_uncomputableKeys);
@@ -92,7 +89,6 @@ function pushNum(lines, key, value) {
 // Emit "key=?" for a field the JS port genuinely cannot source today.
 // The literal `?` token appears in the wire payload, so the hash diverges
 // from C at this field, and the dev runner surfaces it as a `js_value="?"`
-// bug board entry. Record the key for aggregation across sessions.
 function pushUnknown(lines, key) {
     _uncomputableKeys.add(key);
     lines.push(`${key}=${UNCOMP}`);
@@ -130,7 +126,6 @@ export function emitMapstate(phase) {
     // Order MUST match C insertion order for hash equality and for the
     // field-level diff walk in computeFirstStateDivergence (it iterates
     // Object.keys(c.fields) in C-insertion order — see
-    // tools/dev-runner/ps_test_runner.mjs:217-229).
     const lines = [];
     lines.push(`v=2`);
     lines.push(`phase="${phase || 'turn'}"`);
@@ -170,7 +165,6 @@ export function emitMapstate(phase) {
     // u_init_misc()'s memset(&u,0,...) zeros it (u_init.c:954), and
     // moveloop_preamble()'s u.umovement = NORMAL_SPEED assignment
     // (allmain.c:85) fires only after newgame() returns — so it has not yet
-    // run when harness_emit_mapstate_dump("post_init") fires at allmain.c:909.
     // Initialized to 0 in u_init.ts u_init_misc().
     pushNum(lines, 'hero.umovement', u.umovement);
     // JS u.acurr.a is stored in display order [St,Dx,Co,In,Wi,Ch] (see
@@ -388,20 +382,15 @@ export function emitMapstate(phase) {
     pushRngLogEntry(`^mapstate[v=2 turn=${turn} hash=${hex16(hash)} len=${payload.length} dump=1]`);
 }
 // ---------------------------------------------------------------------
-// Protocol primitives: captured-input replay table.
 //
 // loadMapstateEntries / dumpMapstateEntries form a side-channel from the
 // existing emitMapstate() pipeline: they back a single Map<string,string>
 // seeded from MAPSTATE_SCHEMA defaults. They are used by the per-function
-// equivalence harness (tools/equiv-test/) to snapshot a portion of the
-// state on the C oracle side, transfer it across the JSON-line protocol,
 // and reproduce the same values on the JS side before invoking a function
 // under test.
 //
 // IMPORTANT: this is intentionally a separate store from `game` — the
-// harness needs deterministic round-trip semantics regardless of whether
 // the JS port has wired up the corresponding game-state field yet. Tests
-// that want to drive game.u.* off a captured mapstate read the dumped
 // entries and apply them by hand.
 //
 // Round-trip property (asserted in test/mapstate-load-dump.test.mjs):
@@ -416,10 +405,6 @@ function freshTable() {
     return t;
 }
 let _mapstateTable = freshTable();
-/**
- * Reset the captured-input replay table back to schema defaults. Useful
- * between tests; not part of the C-protocol op set.
- */
 export function resetMapstateTable() {
     _mapstateTable = freshTable();
 }
@@ -450,19 +435,6 @@ export function loadMapstateEntries(entries) {
         _mapstateTable.set(e.key, String(e.val));
     }
 }
-/**
- * Read the table back as a list of {key, val} entries, restricted to
- * keys matching at least one of the supplied shell globs. ["*"] returns
- * every schema key. The returned list is sorted by schema-insertion
- * order (== build_mapdump emit order) so callers can hash the wire
- * payload reproducibly.
- *
- * If a caller wants strict alphabetical order they can sort the result
- * themselves; the spec asks for "stable sort order by key" and
- * schema-insertion order is stable, deterministic, and matches the C
- * dumper — the diff walk in tools/dev-runner/ps_test_runner.mjs already
- * relies on the same order, so we keep it.
- */
 export function dumpMapstateEntries(keysGlob) {
     if (!Array.isArray(keysGlob)) {
         throw new TypeError(`dumpMapstateEntries expected an array, got ${typeof keysGlob}`);

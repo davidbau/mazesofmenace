@@ -3,7 +3,6 @@
 //
 // C ref: include/objects.h FOOD(name, prob, delay, wt, unk, material, nutrition,
 // ...) — the per-otyp { oc_delay, oc_nutrition } pair for every FOOD_CLASS otyp
-// (TRIPE_RATION=264 … TIN=296).  JS inventory/floor objects do not carry oc_*
 // fields, so every caller must read them from this table exactly as C reads
 // objects[otyp].
 //

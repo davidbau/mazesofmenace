@@ -4,27 +4,21 @@ import { ENV } from './hostenv.js';
 // THE ONE SWITCH FOR THE REFERENCE BUILD'S PLATFORM IDENTITY.
 //
 // NetHack decides "am I a Mac or a Unix?" entirely at COMPILE time.  Nothing in
-// a recorded session carries the answer: a session is `seed, datetime,
 // nethackrc, moves, steps` and no more, so the port CANNOT detect the platform
 // from its input.  C genuinely ships both arms of each conditional, so carrying
 // both here is faithful; what is NOT faithful is inventing a third behaviour or
 // sniffing the expected output.  Hence: both arms present, one constant picks.
 //
 // The organiser's reference build is macOS.  Evidence, all from the fixture in
-// sessions/ (no inference):
 //   - 3 of 44 render "MacOS NetHack Version 5.0.0 ..."; 0 render "Unix NetHack"
-//     (seed0106, seed2200, seed4500)
 //   - the same 3 render "strong PRNG seed from /dev/random" (Linux says
 //     /dev/urandom); 0 render /dev/urandom
-//   - seed0016 renders "Delicious!  Must be a Macintosh!" (Unix says
 //     "Core dumped."); 0 render "Core dumped."
 //   - all 44 render "Version 5.0.0 MacOS, built ..." on the chargen splash,
-//     but frozen/ps_test_runner.mjs:75 canonicalises everything from "Version
 //     5.0.0" to end of line, so that one is NOT scored either way.
 //
 // TO FLIP: change ORGANISER_PLATFORM to PLATFORM_UNIX.  That is the whole
 // change; every site below reads it.  See
-// docs/analysis/PLATFORM-DUAL-ARM-2026-09-09.md for the full audit of which C
 // conditionals reach a rendered frame and which do not.
 //
 // WHAT THIS CONSTANT IS *NOT*.  It is NOT "define MACOS".  A genuine macOS
@@ -36,22 +30,12 @@ import { ENV } from './hostenv.js';
 // The fixture shows NEITHER.  The organiser's build carries the macOS
 // *identity* without those macOS *features*, exactly as
 // nethack-c-v5/patches/008-organiser-platform-identity.patch reproduces it on a
-// Linux recorder.  So this constant deliberately covers only the three sites
 // patch 008 covers, and widening it to "the macOS define set" would BREAK the
 // port.  Do not add TIMED_DELAY behaviour behind this flag.
 
 export const PLATFORM_MACOS = 'macos';
 export const PLATFORM_UNIX = 'unix';
 
-/**
- * The platform identity the reference recorder was compiled with.
- *
- * The contest default is the organiser's MacOS build.  A controlled override
- * is useful for replay diagnostics and for corpora recorded from the Unix arm;
- * it is deliberately opt-in and rejects unknown values so ordinary scoring
- * remains unchanged.  Browser callers have no `process`, hence the guarded
- * lookup.
- */
 const requestedPlatform = (typeof process !== 'undefined' && process?.env)
     ? ENV.TELEPORT_PLATFORM
     : undefined;

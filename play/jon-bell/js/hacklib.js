@@ -49,28 +49,6 @@ export function deepest_lev_reached(noquest) {
 }
 // C ref: rn2(x) already in rng.js — re-export not needed
 
-/* C ref: hacklib.c:343-359 s_suffix(const char *s) — a name converted to
- * possessive.  FOUR arms, in this order:
- *     Strcpy(buf, s);
- *     if (!strcmpi(buf, "it"))          Strcat(buf, "s");    // it  -> its
- *     else if (!strcmpi(buf, "you"))    Strcat(buf, "r");    // you -> your
- *     else if (*(eos(buf) - 1) == 's')  Strcat(buf, "'");    // Xs  -> Xs'
- *     else                              Strcat(buf, "'s");   // X   -> X's
- * strcmpi is CASE-INSENSITIVE, so "It"/"IT"/"You"/"YOU" take the first two
- * arms too.  RNG-free; pure string formatting.
- *
- * THE ONE BODY.  C has 165 call sites for this five-line helper and js/ had
- * grown EIGHT hand-derived copies of it, four of which carried only the last
- * arm (`s + "'s"`), so every subject already ending in 's printed the doubled
- * form: MEASURED on a C-recorded probe (tools/migration/record-v5.sh seed
- * 777001, apply.c:1683 use_lamp's candle arm) C's topline is "Your candles'
- * flames burn brightly!" where this port printed "Your candles's flames burn
- * brightly!".  The copies lived in js/mhitm.js, js/mhitu.js (twice, as
- * s_suffix and s_suffix_mu), js/uhitm.js, js/shk.js (s_suffix_shk),
- * js/steal.js, js/questpgr.js (_s_suffix) and js/wizcmds.js (_ta_s_suffix);
- * they all import this now.  hacklib.js is the right home precisely because it
- * is a leaf — it imports gstate.js and nothing else, so every one of those
- * modules can reach it without adding a cycle. */
 export function s_suffix(s) {
     const buf = String(s ?? '');
     if (buf.toLowerCase() === 'it')

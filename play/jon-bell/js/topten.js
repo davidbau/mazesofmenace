@@ -52,57 +52,6 @@ export function tt_doppel(mon) {
     return ret;
 }
 
-/**
- * struct toptenentry *get_rnd_toptenentry(void)
- * nethack-c/src/topten.c:1381-1412
- *
- * "Get a random player name and class from the high score list."
- *
- *     rfile = fopen_datafile(RECORD, "r", SCOREPREFIX);
- *     if (!rfile) {
- *         impossible("Cannot open record file!");
- *         return NULL;                       <-- NO rng drawn on this path
- *     }
- *     tt = &tt_buf;
- *     rank = rnd(sysopt.tt_oname_maxrank);   <-- topten.c:1395, sys.c:70 => rnd(10)
- *  pickentry:
- *     for (i = rank; i; i--) {
- *         readentry(rfile, tt);
- *         if (tt->points == 0) break;
- *     }
- *     if (tt->points == 0) {
- *         if (rank > 1) { rank = 1; rewind(rfile); goto pickentry; }
- *         tt = NULL;
- *     }
- *     (void) fclose(rfile);
- *     return tt;
- *
- * EMPTY IS NOT ABSENT — this is the whole point of the port.  The
- * session-recording environment has a `record` file that EXISTS and is
- * EMPTY.  fopen() therefore SUCCEEDS, so C runs the rnd() at topten.c:1395
- * and only afterwards discovers (via readentry -> points == 0) that there is
- * no entry to return.  The returned value is NULL either way, but the RNG
- * cost is one rnd(10) on the exists-but-empty path and zero on the
- * cannot-open path.  Modelling the OUTCOME ("always returns null") instead of
- * the CONTROL FLOW silently drops that draw and desynchronises every
- * subsequent rn2 in the stream.
- *
- * Verified against the C-recorded contest traces: 220 occurrences across 13
- * sessions of
- *     "rnd(10)=N @ get_rnd_toptenentry(topten.c:1395)"
- * each immediately followed by
- *     "rn2(13)=M @ mk_tt_object(mkobj.c:2243)"
- * e.g. seed0360 step 155:
- *     ^place[265,21,8]
- *     rnd(10)=1 @ get_rnd_toptenentry(topten.c:1395)
- *     rn2(13)=7 @ mk_tt_object(mkobj.c:2243)
- *
- * The empty file means readentry()'s fscanf reads 0 of 13 fields and sets
- * tt->points = 0 on the very first pass, so the `for` loop always breaks on
- * iteration 1, the rank>1 retry re-reads the same EOF, and NULL is returned
- * after exactly one rnd(10).  Never more than one: the retry does not
- * re-draw.
- */
 function get_rnd_toptenentry() {
     /* topten.c:1387 */
     const rfile = fopen_datafile("record", "r", "scoreprefix");
@@ -174,27 +123,6 @@ const _TT_ROLE_MNUM = {
  * here rather than coded as a dead branch. */
 const _TT_PM_HUMAN_MUMMY = 192; /* makemon_pmnames.json[192] === "human mummy" */
 
-/**
- * staticfn int classmon(char *plch)
- * nethack-c-v5/upstream/src/topten.c:1356
- *
- *     for (i = 0; roles[i].name.m; i++)
- *         if (!strncmp(plch, roles[i].filecode, ROLESZ)) {
- *             if (roles[i].mnum != NON_PM) return roles[i].mnum;
- *             else return PM_HUMAN;
- *         }
- *     if (!strcmp(plch, "E")) return PM_RANGER;   // 3.2.x "Elf" class
- *     impossible("What weird role is this? (%s)", plch);
- *     return PM_HUMAN_MUMMY;
- *
- * This was a throwing stub, and until the `record` file became real that was
- * self-verifying: get_rnd_toptenentry() could only return NULL, so classmon()
- * was unreachable and a green sweep proved it.  It is reachable NOW.  With any
- * non-empty scoreboard get_rnd_toptenentry() ALWAYS returns an entry -- if the
- * rnd(10) rank overshoots the list it rewinds and takes rank 1 -- so every
- * tt_oname() (a statue or morgue corpse) and every tt_doppel() (a doppelganger
- * choosing a form) in a session's second or later segment reaches this line.
- */
 function classmon(plrole) {
     const code = copynchars_str(String(plrole ?? ''), _TT_ROLESZ);
     if (Object.prototype.hasOwnProperty.call(_TT_ROLE_MNUM, code))
@@ -346,26 +274,6 @@ function impossible(fmt, arg) {
 
 
 
-/**
- * struct obj * tt_oname(struct obj *otmp)
- * nethack-c/src/topten.c:1421-1440
- *
- * "Attach random player name and class from high score list to an object
- *  (for statues or morgue corpses)."
- *
- * Create a corpse object using a random topten entry.
- * Sets the gender flag and names the corpse after the entry's name.
- *
- * RNG COST: exactly one rnd(sysopt.tt_oname_maxrank) == rnd(10), drawn
- * inside get_rnd_toptenentry() (topten.c:1395), whenever otmp is non-NULL.
- * The scoreboard in the recording environment is EMPTY, not ABSENT, so
- * get_rnd_toptenentry() still pays that draw before returning NULL and this
- * function still returns NULL — a null return does NOT mean "no RNG was
- * consumed".  A NULL otmp returns early at topten.c:1424 and draws nothing.
- * The set_corpsenm/classmon/oname tail below is unreachable for an empty
- * scoreboard (tt is always NULL); it is transcribed for structure, and its
- * throwing stubs are self-verifying — a green sweep proves it is dead.
- */
 export function tt_oname(otmp) {
     if (!otmp) {
         return null;
@@ -398,28 +306,7 @@ export function tt_oname(otmp) {
  * hoisted `function` declarations, which ESM initialises at instantiation time
  * (before any module body evaluates), and nothing here calls them at load. */
 
-/* ---- stubs for unported helpers (exported so sweep can intercept) ---- */
 
-/**
- * void copynchars(char *dst, const char *src, int n)
- * nethack-c/src/hacklib.c:351
- *
- * "copies at most n characters, stopping sooner if terminator reached;
- *  treats newline as input terminator; unlike strncpy, always supplies
- *  '\0' terminator so dst must be able to hold at least n+1 characters"
- *
- *     while (n > 0 && *src != '\0' && *src != '\n') {
- *         *dst++ = *src++;
- *         --n;
- *     }
- *     *dst = '\0';
- *
- * C is void and writes through dst starting at dst[0], so the resulting
- * C string in dst is exactly the copied prefix — whatever dst held before
- * is overwritten and then NUL-terminated.  JS strings are immutable, so the
- * buffer contents are returned (the __charptr__ convention: the oracle
- * compares args_after.dst against this function's return value).
- */
 export function copynchars(dst, src, n) {
     const s = (src == null) ? "" : String(src);
     let i = 0;
@@ -442,8 +329,6 @@ const _TT_COLNO = 80;   /* C config.h COLNO */
 const _TT_NAMSZ = 10, _TT_DTHSZ = 100, _TT_ROLESZ = 3;
 const _TT_SCANBUFSZ = 4 * (_TT_ROLESZ + 1) + (_TT_NAMSZ + 1) + (_TT_DTHSZ + 1) + 1;
 
-/* C topten.c:929 outheader() — " No  Points     Name" padded out to
- * COLNO - 9 == 71, then "Hp [max]".  seed0009 step 72 row 1. */
 export function outheader() {
     let linebuf = ' No  Points     Name';
     while (linebuf.length < _TT_COLNO - 9) linebuf += ' ';
@@ -451,18 +336,6 @@ export function outheader() {
     topten_print(linebuf);
 }
 
-/* C topten.c:946 outentry(rank, t1, so).
- *
- * `so` means STANDOUT: the line is padded out to COLNO - 1 and printed with
- * topten_print_bold(), which is how the hero's own entry is highlighted.  The
- * padding is bold SPACES; the judge's screen-decode treats a space's
- * attributes as invisible unless they are inverse/underline (screen-decode.mjs
- * observableState), so the padding compares equal against the recorder's
- * cursor-forward encoding of the same run.
- *
- * The escaped/ascended/quit/starved arms and the astral-plane death location
- * are ported alongside the death arm because they are one switch, but only the
- * ordinary-death path has a corpus witness (seed0009). */
 export function outentry(rank, t1, so) {
     const gs = game;
     let second_line = true;
@@ -558,9 +431,6 @@ function topten_emit(linebuf, so) {
         topten_print(linebuf);
 }
 
-/* C topten.c:172 topten_print_bold(x) — raw_print_bold() when there is no
- * toptenwin.  The tty emits ESC[1m ... ESC[0m around the row, which is exactly
- * what the recorder captured for seed0009's two entry rows. */
 export function topten_print_bold(x) {
     const gs = game;
     const win = gs.gt ? gs.gt.toptenwin : undefined;
@@ -588,28 +458,6 @@ function copynchars_str(s, n) {
  * the call site reads as C's does rather than silently omitting the call. */
 function discardexcess(rfile) { /* the line was consumed by _tt_getline */ }
 
-/**
- * staticfn void readentry(FILE *rfile, struct toptenentry *tt)
- * nethack-c-v5/upstream/src/topten.c:220
- *
- * THE PREMISE THIS FUNCTION USED TO CARRY, AND WHY IT IS FALSE.  Until now the
- * whole body was `if (t1) t1.points = 0;` under a comment reading "Only the
- * EMPTY-record-file behaviour is modelled, because that is the only shape the
- * recording environment ever presents".  That is true of a session's FIRST
- * segment and false of every later one: topten() WRITES the record file at each
- * death, the v5 harness shares one storage handle (js/storage.js) across the
- * segments of a session, and seed0030-ten-diverse-deaths is ten deaths in a row
- * on one handle.  C's segment 1 renders two score rows, segment 2 three, segment
- * 7 seven; this port rendered one every time, because the file it read back was
- * always empty.
- *
- * C's parse is two steps: an fscanf() of the 13 fixed numeric fields, then an
- * fgets() of the rest of the line re-parsed by sscanf().  A short fscanf zeroes
- * tt->points and discards the line — note that it leaves EVERY OTHER FIELD
- * UNTOUCHED, which is load-bearing: topten()'s occ_cnt arm reuses one entry
- * buffer across reads, so a dropped record keeps the previous record's strings.
- * That is C's behaviour and it is reproduced here.
- */
 export function readentry(rfile, tt) {
     if (!tt)
         return;
@@ -651,11 +499,6 @@ export function readentry(rfile, tt) {
     const inbuf = line.slice(nums[0].length).slice(0, _TT_SCANBUFSZ - 1);
 
     if (tt.ver_major < 3 || (tt.ver_major === 3 && tt.ver_minor < 3)) {
-        /* C topten.c:259-273 — the pre-3.3 record layout, "%c%c %[^,],%[^\n]".
-         * Nothing this port writes carries a version below 5.0.0 and no corpus
-         * record file predates it, so the arm is named and left out rather than
-         * half-ported against a str2role()/roles[].filecode remap with no
-         * witness. */
         tt.points = 0n;
         return;
     }
@@ -687,22 +530,6 @@ export function readentry(rfile, tt) {
  * at rank 1 after running off the end of the list.
  */
 function rewind(rfile) { if (rfile) rfile.pos = 0; }
-/**
- * staticfn void topten_print(const char *x)
- * nethack-c-v5/upstream/src/topten.c:165
- *
- *     if (gt.toptenwin == WIN_ERR)
- *         raw_print(x);
- *     else
- *         putstr(gt.toptenwin, ATR_NONE, x);
- *
- * `toptenwin` is an OFF-by-default option and no corpus rc sets it, so
- * gt.toptenwin is never created and every call takes the raw_print() arm —
- * which is why really_done() tears the windowing system down BEFORE calling
- * topten() (end.c:1592, `if (have_windows && !iflags.toptenwin)
- * exit_nhwindows(...)`).  The putstr() arm is left unported rather than
- * faked: reaching it needs a real NHW_TEXT window, and nothing does.
- */
 export function topten_print(s) {
     const gs = game;
     const win = gs.gt ? gs.gt.toptenwin : undefined;
@@ -793,9 +620,6 @@ function display_nhwindow(win, flag) {
     const gs = game;
     const rows = w.lines.map(({ text, attr }) =>
         attr ? '\x1b[1m' + text + '\x1b[0m' : text);
-    /* The capture hook consumes _screen_output for terminal frames.  Preserve
-     * every text-window row, including blank rows, and park the cursor at the
-     * beginning of the row after the final putstr as tty does. */
     gs._screen_output = rows.join('\n');
     if (gs.nhDisplay) {
         gs.nhDisplay.cursorCol = 0;
@@ -805,22 +629,6 @@ function display_nhwindow(win, flag) {
 function destroy_nhwindow(win) { _TT_WINDOWS.delete(win); }
 function lock_file(filename, prefix, timeout) { return 1; }
 function unlock_file(filename) { /* no-op */ }
-/* C files.c:1067 fopen_datafile(filename, mode, prefix) — fopen() under
- * SCOREPREFIX.  The only datafile this port opens is RECORD ("record",
- * global.h:14), and its backing store is the frozen save/bones/topten VFS
- * (js/storage.js), which the v5 harness threads across the segments of one
- * session and resets between sessions — the same lifetime a real `record` file
- * has in the recording environment.
- *
- * ABSENT vs EMPTY.  C's fopen("r") returns NULL for a file that does not exist,
- * and topten() then raw_prints "Cannot open record file!" and skips the whole
- * score list.  No corpus session shows that line: NetHack's install ships an
- * EMPTY `record`, so the file always exists.  A missing VFS key therefore reads
- * as an empty file, not as a failed fopen.  (This is the same premise
- * get_rnd_toptenentry()'s header already states — it is why C pays its rnd(10)
- * before returning NULL on a fresh scoreboard.)
- *
- * "w" truncates and is flushed to the VFS by fclose(); "r" never writes. */
 function fopen_datafile(filename, mode, prefix) {
     const write = String(mode).indexOf('w') >= 0;
     return {

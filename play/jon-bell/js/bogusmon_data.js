@@ -1,6 +1,5 @@
 // @ts-nocheck
 // GENERATED — DO NOT EDIT.  Regenerate with:
-//     bash scripts/build-dat-files.sh && node scripts/gen-bogusmon-data.mjs
 //
 // VINTAGE: NetHack 5.0.0_Release, decoded from the COMPILED dat/bogusmon chunk
 // (not bogusmon.txt — record 0 is makedefs' hardcoded default entry "grue",

@@ -183,35 +183,7 @@ function intermed() {
     return r < 0 ? '' : ROLE_INTERMED[r];
 }
 
-/* ── quest.lua text entries (dat/quest.lua questtext[<section>][<msgid>]) ────
- *
- * PORTED ENTRIES ONLY.  A msgid that is not here delivers nothing and reports
- * an impossible(), exactly as C's com_pager_core does when the lua lookup
- * fails (questpgr.c:522-539: impossible + return FALSE, non-fatal) — so an
- * unported entry surfaces as a MISSING-message divergence and a logged
- * "not ported" line, never as a silently-wrong substitute message.
- *
- * Text is copied verbatim from nethack-c/dat/quest.lua, including its line
- * breaks: deliver_by_window() splits on '\n' and putstr()s each line, so the
- * physical line layout IS the rendered window.
- *
- * The `firsttime` msgid is now ported for ALL THIRTEEN roles (quest.lua's own
- * section order: Arc Bar Cav Hea Kni Mon Pri Ran Rog Sam Tou Val Wiz).  Four
- * more entries are ported for the two roles whose sessions run the
- * chat_with_leader Rule-5 arm end to end: Arc.leader_first + Arc.badalign
- * (seed0361 steps 179/184) and Pri.leader_first + Pri.assignquest (seed0367
- * steps 194/197).  Everything else (nexttime, othertime, encourage, badlevel,
- * leader_next, posthanks, the locate/goal chains, and the other eleven roles'
- * leader text) remains unported and takes the report-and-drop path above. */
 const QUESTTEXT = {
-    /* dat/quest.lua:34-194 `common` — the section com_pager() reads directly
-     * and the one qt_pager() falls back to.  goto_level()'s main-dungeon arm
-     * (do.c:1926-1934) delivers quest_portal / quest_portal_again /
-     * quest_portal_demand when the hero reaches the Quest branch entrance
-     * without having answered the leader's call; all three were missing, so
-     * that arm printed nothing.  seed0367 steps 235-239 are the measured loss:
-     * quest_portal is `output = "pline"` over FOUR physical lines, i.e. four
-     * separate plines, and C's topline pages between each of them. */
     common: {
         /* dat/quest.lua:182-188 */
         quest_portal: {
@@ -253,17 +225,6 @@ Strange forbidding shapes seem to be moving in the distance.`,
 my most promising student.  Allow me to see if you are ready for the
 most difficult task of your career."`,
         },
-        /* dat/quest.lua:432-434 — on_start()'s repeat-visit message
-         * (quest.c:31-34, taken when Qstat(not_ready) <= 2).  This was the
-         * entry seed0361-archeologist-tour reported "not ported" twice: it
-         * level-teleports back onto Home 1 at step 282 and again later, and C
-         * pages "You materialize on a different level!--More--" precisely
-         * BECAUSE this window follows.  With the entry missing, no window was
-         * delivered, no --More-- was raised, and the ^V that C spent
-         * dismissing the page leaked into rhack as a command — the
-         * MISSING-CONSUME input-pointer desync at step 283 that
-         * input-consumption-diff has been naming (it abstained while the
-         * screen root was upstream; it is the root now). */
         nexttime: {
             text: 'Once again, you are back at %H.',
         },
@@ -274,10 +235,6 @@ most difficult task of your career."`,
             text: `You are back at %H.
 You have an odd feeling this may be the last time you ever come here.`,
         },
-        /* dat/quest.lua:397-403 — the quest LOCATE level's arrival window
-         * (quest.c on_locate -> qt_pager("locate_first")).  seed0361 step 308:
-         * C's "A plain opens before you.  Beyond the plain lies a foreboding
-         * edifice." over a --More--'d text window. */
         locate_first: {
             output: 'text',
             synopsis: '[This foreboding edifice must hide the entrance to %i.]',
@@ -367,12 +324,6 @@ need of your help.  There is a great quest you must undertake.
         leader_other: {
             text: '"Again, you stand before me, %p.  Surely you have prepared yourself."',
         },
-        /* dat/quest.lua:586-591 — the quest LOCATE level's arrival window
-         * (quest.c:50 on_locate -> qt_pager("locate_first")).  seed0373 step 55
-         * level-teleports onto Bar-loca and C pages "You materialize on a
-         * different level!--More--" precisely BECAUSE this window follows; with
-         * the entry missing no window was delivered, no --More-- was raised, and
-         * the space that C spent dismissing the page leaked into rhack. */
         locate_first: {
             output: 'text',
             synopsis: '[You have located %i.]',
@@ -514,15 +465,6 @@ heal them on your return, but not now.`,
         },
     },
     Kni: {
-        /* dat/quest.lua:1189-1196 — the quest GOAL level's first-visit arrival
-         * text (quest.c:63 on_goal -> qt_pager("goal_first")).
-         * Its absence cost more than the four lines: qt_pager (questpgr.c:630)
-         * is `if (!com_pager_core(filecode, msgid, FALSE))
-         * com_pager_core("common", msgid, TRUE)`, and the fallback opens a
-         * SECOND Lua state whose nhlib.lua body draws rn2(3)+rn2(2) on the core
-         * RNG -- the standing `impossible: com_pager: questtext[common]
-         * [goal_first] not ported` on every replay of
-         * seed4500-knight-coverage, whose last 15 frames it owned. */
         goal_first: {
             output: 'text',
             synopsis: '[You %x the entrance to a cavern inside a hill.]',
@@ -738,22 +680,6 @@ tower...  unless something were dreadfully wrong!`,
         nexttime: {
             text: 'Once again, you are back at %H.',
         },
-        /* dat/quest.lua:3010-3012 — the quest LOCATE level's arrival message
-         * (quest.c:41 on_locate -> qt_pager("locate_first")).
-         *
-         * Its absence was NOT just a missing message.  qt_pager (questpgr.c:630)
-         * is `if (!com_pager_core(filecode, msgid, FALSE)) com_pager_core("common",
-         * msgid, TRUE)`, and com_pager_core opens a FRESH Lua state, whose
-         * nhlib.lua module body runs `shuffle(align)` and therefore draws
-         * rn2(3) + rn2(2) on the CORE rng (js/nhlib.js nhlib_load_toplevel_rng).
-         * So a msgid missing from the role section costs TWO EXTRA RNG LEAVES,
-         * every time, on top of the missing text.  seed0360-wizard-world-tour
-         * step 781: C delivers this line and loads one Lua state; this port
-         * missed on `Wiz`, fell back to `common` (which has no locate_first
-         * either — hence the standing `impossible: com_pager:
-         * questtext[common][locate_first] not ported` on every replay of this
-         * session) and loaded two, putting the stream two leaves ahead just
-         * before the Home-2 filler level was generated. */
         locate_first: {
             text: 'Wisps of fog swirl nearby.  You feel that %ns lair is close.',
         },
@@ -888,13 +814,6 @@ const ROLE_QUESTARTI = [
     'The Orb of Fate',                      // 11 Val role.c:516 artilist.h:297
     'The Eye of the Aethiopica',            // 12 Wiz role.c:556 artilist.h:303
 ];
-/* C objnam.c the(str) — the arm that matters for the quest-artifact names above:
- * a string already starting with "the " (case-insensitively) keeps its article
- * and has its first letter LOWERCASED, so "The Mitre of Holiness" renders as
- * "the Mitre of Holiness" (seed0367 step 197 records exactly that).  The
- * remaining the() arms (leading quote, a lowercase or non-alphabetic first
- * letter, "Foo's", the shk/proper-noun cases) are unreachable from this table —
- * every one of its 13 entries begins "The ". */
 function _the(str) {
     const s = String(str ?? '');
     if (s.slice(0, 4).toLowerCase() === 'the ')

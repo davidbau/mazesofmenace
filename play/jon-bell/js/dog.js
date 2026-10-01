@@ -30,10 +30,7 @@ import { isok, Has_contents, MON_MIGRATING, MAX_NUM_WORMS } from './const.js';
 import { within_bounded_area } from './rect.js';   /* C rect.c */
 import { newsym } from './display.js';             /* C display.c */
 import { see_wsegs as see_wsegs_dog, remove_worm, wormgone, count_wsegs } from './worm.js';  /* C worm.c redraw_worm's stand-in */
-import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic } from './mhitm.js';/* C sounds.c — abuse_dog's two noises;
-     helpless is monst.h:251, read by keepdogs (dog.c:816) as an UNDECLARED GLOBAL until now:
-     the surrounding condition is true for any pet that follows you off the level, so reaching
-     it threw ReferenceError.  Measured 0/688 train and 0/44 public today — latent, not live. */
+import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic } from './mhitm.js';
 import { vision_recalc } from './vision.js';       /* C vision.c */
 import { depth } from './hacklib.js';              /* C dungeon.c depth() */
 import { fill_pit, mintrap } from './trap.js';              /* C trap.c:5391 */
@@ -43,11 +40,6 @@ import { picked_container, deliver_obj_to_mon } from './dokick.js';    /* C shk.
 /* C steal.c:851-871 mdrop_special_objs — canonical special-inventory drop
  * handling; this module's keepdogs() steed branch reaches it directly. */
 import { mdrop_special_objs as mdrop_special_objs_real } from './steal.js';
-/* C shk.c:1187 obfree(obj, merge).  This file used to export its OWN throwing
- * `obfree` stub, which shadowed the ported body for discard_migrations()'s
- * call below (C dog.c:987) and offered a second, broken binding of the name to
- * any importer that happened to name dog.js.  The stub is deleted and the body
- * every other importer already names is imported here. */
 import { obfree } from './dokick.js';
 import { set_residency, in_rooms } from './shk.js';          /* C shk.c:1907 */
 import { mon_track_clear } from './monmove.js';      /* C monmove.c:90 */
@@ -67,11 +59,6 @@ import { healmon } from './mklev.js';
 /* C dog.c:271-274 — makedog's own call, on the starting pet, before christening.
  * see_monster_closeup's real body is js/mklev.js:10320 (C mon.c:5971). */
 import { see_monster_closeup } from './mklev.js';
-/* C dog.c:274 `carrying(EXPENSIVE_CAMERA) ? TRUE : FALSE`.  js/cmd.js:23891 is
- * the C-faithful carrying (returns the obj / null, per invent.c); js/eat.js also
- * exports one that returns 1/0.  EXPENSIVE_CAMERA=229 verified against the
- * reference build with tools/c-const-oracle.mjs (objects.h is an X-macro file,
- * so the value is not greppable). */
 import { carrying, body_part, dismount_steed as dismount_steed_real } from './cmd.js';
 const EXPENSIVE_CAMERA = 229;
 /* C spellbook object type SPE_CREATE_FAMILIAR = 401 (objects.h X-macro; not
@@ -79,11 +66,6 @@ const EXPENSIVE_CAMERA = 229;
  * js/u_init.js:1225, js/mkobj.js:85). Used by pick_familiar_pm's spell arm. */
 const SPE_CREATE_FAMILIAR_DOG = 401;
 import { attacktype as _attacktype_real } from './mhitm.js';
-/* ── tamedog()'s callees (C dog.c:1144-1285).  Every one of these was read as
- * an undeclared global, so tamedog() threw ReferenceError the moment a thrown
- * food reached dothrow.c:2269's tamedog(mon, obj, TRUE) — measured on three
- * train sessions, which stopped emitting at 82% of their frames.  Each names
- * its C home; none is a new body. ── */
 import { canseemon, canspotmon } from './display.js';   /* C display.c */
 import { cansee } from './vision.js';                   /* C vision.c */
 import { wake_nearto, place_object } from './mklev.js'; /* C sounds.c / mkobj.c */
@@ -161,13 +143,6 @@ function pet_type() {
     else
         return rn2(2) ? PM_KITTEN : PM_LITTLE_DOG;
 }
-/* C ref: dog.c:44–88 initedog — initialise tame state for a new/re-tamed pet.
- * Called from makedog() with everything=TRUE (starting pets) and from
- * make_familiar / tamedog with everything=TRUE or FALSE.
- * The `edog` struct fields (droptime, dropdist, apport, hungrytime, etc.) are
- * not yet modelled in JS — only the monst-level fields are set here.
- * C ref mirrors: mtmp->mtame, mpeaceful, mavenge; set_malign omitted (no RNG,
- * not in state-diff oracle fields for post_init). */
 export function initedog(mtmp, everything) {
     /* C dog.c:49 — schar minimumtame = is_domestic(mtmp->data) ? 10 : 5;
      * All three starter pets (LITTLE_DOG, KITTEN, PONY) have M2_DOMESTIC. */
@@ -209,14 +184,6 @@ export function initedog(mtmp, everything) {
             killed_by_u: 0,
         };
     }
-    /* C dog.c:87 `u.uconduct.pets++`.  This was skipped as "uconduct not yet
-     * modelled in JS", but u.uconduct IS read: show_conduct() prints
-     * " You never had a pet." when the count is zero.  With no writer that
-     * line appeared for every hero including the ones who START with a pet,
-     * which is the whole starting-pet corpus -- seed0009's tutorial Ranger
-     * among them.  RNG-free bookkeeping.  (The livelog arm above it needs
-     * program_state.in_moveloop and livelog_printf; neither is modelled and
-     * neither draws.) */
     const u = game.u || (game.u = {});
     if (!u.uconduct) u.uconduct = {};
     u.uconduct.pets = (u.uconduct.pets | 0) + 1;
@@ -236,25 +203,6 @@ export async function makedog() {
     if (pettype === NON_PM)
         return null;
 
-    /* C dog.c:232-248 — the pet's name, chosen BEFORE makemon():
-     *     petname = (pettype == PM_LITTLE_DOG) ? gd.dogname
-     *               : (pettype == PM_KITTEN) ? gc.catname
-     *                 : (pettype == PM_PONY) ? gh.horsename : "";
-     *     if (!*petname && pettype == PM_LITTLE_DOG) { role defaults }
-     *
-     * The role-default table applies ONLY when the option-supplied name is
-     * empty, and ONLY to PM_LITTLE_DOG — all four names were dogs' names.  This
-     * file previously hardcoded petname to "" with the comment "We assume no
-     * user-supplied name (gd.dogname == "")", which is the untrustworthy
-     * absence-comment pattern: OPTIONS=dogname:/catname:/horsename: reach
-     * g.flags.<key> through options.js's fallback `result.flags[key] = val`, and
-     * seed4500-knight-coverage really does set `OPTIONS=horsename:Shadowfax`
-     * (it is inert there only because that session also sets pettype:none, so
-     * makedog returns at the arm above).  A KITTEN or PONY could never be named
-     * at all before this.
-     *
-     * C role indices (roles[] order, 5.0): 1 Barbarian, 2 Caveman, 8 Ranger,
-     * 9 Samurai — note 5.0 moved Ranger to 8 / Rogue to 7. */
     const f = game.flags || {};
     let petname = pettype === PM_LITTLE_DOG ? (f.dogname || '')
                 : pettype === PM_KITTEN ? (f.catname || '')
@@ -296,13 +244,10 @@ export async function makedog() {
      * (makemon.c:1302/1319). makedog bypasses makemon in JS so explicitly init here
      * to mirror C. W20.2 / W21.8 audit follow-up — NON_PM = -1 per monst.h. */
     const petMon = { mx: petPos.x, my: petPos.y, mnum: pettype,
-        /* C makemon.c:1254 set_mon_data(mtmp, ptr) — mtmp->data = ptr, unconditional
-         * for every monster; see tasks/generated/keystone-spec-accessor-mystery.md */
         data: permonstTemplate(pettype),
         m_id: petMId, m_lev: 0, mhp: 0, mhpmax: 0,
         msleeping: 0, mpeaceful: 0, mcansee: 1, mcanmove: 1, minvent: null, nmon: null,
         cham: -1, minvis: 0, perminvis: 0,
-        /* C makemon.c:1237 *mtmp = cg.zeromonst — per-turn movement points (mon.c:1233 gate) */
         movement: 0 };
     newMonHp(petMon, pettype);
     /* C makemon.c:1281 — femaleok ? rn2(2) : 0 */
@@ -325,26 +270,6 @@ export async function makedog() {
     g.fmon = petMon;
     /* C dog.c:262-268 — a pauper's starting pony has no saddle. */
     if (!g.u.uroleplay?.pauper && pettype === PM_PONY) {
-        /* C dog.c:267 `put_saddle_on_mon((struct obj *) 0, mtmp);` — the NULL obj
-         * arg means put_saddle_on_mon() creates the saddle itself.
-         *
-         * This used to fake the call: bump svc.context.ident by rnd(2) for
-         * next_ident and OR in the W_SADDLE bit, on the reasoning that "the saddle
-         * object itself is not needed in JS minvent for naming (Monnam reads the
-         * flag)".  Naming was never the only reader.  mon.c curr_mon_load() sums
-         * obj->owt over minvent, so an absent 200-weight saddle makes the pony
-         * 200 lighter-laden than C's, and mon.c can_carry() then answers a
-         * different question:
-         *     curr_mon_load(200) + orc corpse(850) > max_mon_load(1000)  -> C: 0
-         *     curr_mon_load(  0) + orc corpse(850) < 1000                -> JS: 1
-         * so dogmove.c:446 `if (rn2(20) < edog->apport + 3)` fired on every turn
-         * the pony stood on the orc corpse where C fires it twice in the whole
-         * recording.  seed0004 leaf 5263 (step 83): C draws the next dog_goal
-         * obj_resists rn2(100), this port drew that rn2(20).
-         *
-         * js/steed.js put_saddle_on_mon is the real, already-ported body
-         * (mksobj -> fully_identify_obj -> mpickobj -> W_SADDLE + owornmask);
-         * mksobj(SADDLE) draws the same single next_ident rnd(2) the fake did. */
         await put_saddle_on_mon(null, petMon);
     }
     /* C dog.c:270-274 — still inside the `if (!svc.context.startingpet_mid)`
@@ -407,16 +332,6 @@ export async function makedog() {
     return petMon;
 }
 
-/* C ref: nethack-c-v5/upstream/src/dog.c:103-135 pick_familiar_pm — choose a
- * monster type for a new familiar (figurine's own species, or a random pet
- * type, or a level-appropriate random monster).  C's `struct permonst *pm`
- * result is used only for a null-check and as makemon()'s first argument in
- * the caller below, and this port's makemon()/rndmonstAdj() already speak in
- * bare mndx (see js/mklev.js:4582 makemonPtrMndx), so this returns an mndx
- * (or null) rather than a permonst-shaped object. staticfn in C: not exported.
- * async: pline() (js/display.js) is async in this port (a --More-- prompt
- * reads a keystroke), so every call site must await it — see make_familiar's
- * own comment below for the record this was measured against. */
 async function pick_familiar_pm(otmp, quietly) {
     if (otmp) { /* figurine; otherwise spell */
         const mndx = otmp.corpsenm | 0;
@@ -446,12 +361,6 @@ async function pick_familiar_pm(otmp, quietly) {
     }
 }
 
-/* C ref: nethack-c-v5/upstream/src/dog.c:137-215 make_familiar — create a
- * familiar monster from a figurine (otmp truthy) or a spell (otmp null) at
- * (x,y).  async: its one live JS callee, makemon() (js/mklev.js), is async;
- * nothing in js/ calls make_familiar synchronously yet (js/spell.js:1966
- * still marks its own call site UNPORTED), so there is no sync-caller
- * boundary to resolve here (contrast CLAUDE.md's KEYSTONE B). */
 export async function make_familiar(otmp, x, y, quietly) {
     let mtmp = null;
     let trycnt = 100;
@@ -541,12 +450,6 @@ function free_emin(mtmp) {
     mtmp.isminion = 0;
 }
 
-/* emits_light() moved to js/makemon.js (this port's shared home for
- * mondata.h macros) on 2026-08-19, when makemon() and the vision system grew
- * live callers and a second copy here would have shadowed the shared one.
- * LS_MONSTER / monst_to_any / del_light_source now come from their C homes
- * (monflag.h and light.c) rather than from a file-local const and two
- * throw-stubs at the foot of this file. */
 
 /* discard_migrations — C ref: dog.c:939-993 */
 export async function discard_migrations() {
@@ -720,15 +623,6 @@ const DISMOUNT_GENERIC = 0;
 
 /* C ref: dog.c:790–886 keepdogs */
 export async function keepdogs(pets_only) {
-    /* C dog.c:792 declares `struct monst *mtmp, *mtmp2;` at FUNCTION scope, and
-     * dog.c:794 walks `for (mtmp = fmon; mtmp; mtmp = mtmp2)`.  This port declared
-     * mtmp2 with `let` inside the loop BODY, but the update expression `mtmp = mtmp2`
-     * is evaluated in the loop-HEAD scope, where that binding does not exist -- so
-     * keepdogs() threw `ReferenceError: mtmp2 is not defined` the moment it finished
-     * its first monster, i.e. on every level change with more than one monster on
-     * the level.  Found by the capture-replay sweep (rec#0 __error__), not by a
-     * reader: the name is spelled correctly and the C is transliterated correctly;
-     * only the SCOPE is wrong, which is a shape no grep for a missing port finds. */
     let mtmp2;
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp2) {
         mtmp2 = mtmp.nmon;
@@ -808,25 +702,6 @@ const M1_REGEN = 0x00800000;
 const M1_CARNIVORE = 0x20000000;
 const M1_HERBIVORE = 0x40000000;
 
-/* C ref: dog.c:627 mon_catchup_elapsed_time(mtmp, nmv) — "heal monster for
- * time spent elsewhere".  Called from getlev() (restore.c:1213) for every
- * monster on a level the hero is returning to, and from mon_arrive()
- * (dog.c:495) for a migrating monster.
- *
- * RNG ORDER — four conditional draws, in C's statement order:
- *     mtrapped -> rn2(imv + 1)        (dog.c:669)
- *     mconf    -> rn2(imv + 1)        (dog.c:671)
- *     mstun    -> rn2(imv + 1)        (dog.c:673)
- *     mtame && mtame <= wilder -> rn2(wilder)   (dog.c:694)
- * Every one is guarded by a field that is 0 on an ordinary hostile, which is
- * why C's seed4500 step-331 restore of Dlvl 1 draws NO rn2 here for either of
- * its two monsters and goes straight to the rnd(10) hide check.  The `mtame >
- * wilder` arm is taken whenever wilder == 0 (mtame is non-zero there), so
- * rn2(wilder) is never reached with wilder == 0.
- *
- * The DEBUG/NH_DEVEL nmv<0 panic and nmv==0 impossible() are compiled out of
- * NH_STATUS_RELEASED (which 5.0.0_Release is), so the release build falls
- * straight into the LARGEST_INT clamp. */
 export function mon_catchup_elapsed_time(mtmp, nmv) {
     const LARGEST_INT = 32767; /* C global.h — sizeof(int) guard value */
     let imv = 0;
@@ -1189,25 +1064,6 @@ export function dealloc_mextra(m) {
  * stale field values.  Zeroing is done in place on the caller's object rather
  * than by rebinding, mirroring the C struct assignment through the pointer. */
 export function dealloc_monst(mon) {
-    /* C 2666-2669:
-     *     if (mon->nmon) { describe_level(buf, 2);
-     *                      panic("dealloc_monst with nmon on %s", buf); }
-     * NOT PORTED — deliberately, and this is the only C statement omitted.
-     * It is a debug-only sanity assertion with no game-state effect: every one
-     * of the five C call sites hands over a monster already off every list
-     * (mon.c:2483-2485 dmonsfree and dog.c:958-961 keepdogs both do
-     *   *list = mon->nmon; mon->nmon = 0;
-     * immediately before the call; mon.c:2541 replmon calls relmon() first;
-     * zap.c:740 frees an omonst copy that was never on a list; save.c:887
-     * walks a list it is tearing down).  It is also UNREPLAYABLE: `nmon` is
-     * not in the capture schema, so reading it throws
-     *   "struct monst * field 'nmon' was not captured — add it to
-     *    STRUCT_FIELDS['struct monst *'] in tools/generate-auto-trampolines.mjs"
-     * and every one of the 500 records dies on the assertion instead of
-     * exercising the function.  Same class as js/mkmaze.js dmonsfree()'s
-     * un-ported purge_monsters count assertion.  CAPTURE-FIELD-GAP: adding
-     * `nmon` to STRUCT_FIELDS['struct monst *'] and recapturing would let the
-     * panic branch be ported verbatim. */
     if (mon.mextra)
         dealloc_mextra(mon);
     /* C: *mon = cg.zeromonst */
@@ -1228,38 +1084,6 @@ export function dealloc_monst(mon) {
 
 /* steed.c:573-822 — use cmd.js's canonical async implementation. */
 export async function dismount_steed(how) { return await dismount_steed_real(how); }
-/* C ref: dog.c:766-784 keep_mon_accessible(mon) — keepdogs()'s SECOND arm.
- *
- *     if (mon->iswiz) return TRUE;
- *     if (mon->mextra
- *         && ((mon->isshk   && !on_level(&u.uz, &ESHK(mon)->shoplevel))
- *          || (mon->ispriest && !on_level(&u.uz, &EPRI(mon)->shrlevel))
- *          || (mon->isgd    && !on_level(&u.uz, &EGD(mon)->gdlevel))))
- *         return TRUE;
- *     return FALSE;
- *
- * C's own comment: "the Wizard is kept accessible so that his harassment can
- * fetch him instead of creating a new instance, but also so that he can be put
- * back at his current location if hero returns to his level"; the three mextra
- * classes are "monsters with special attachment to a particular level [who]
- * only need to be kept accessible when on some OTHER level".
- *
- * u.uz is still the level being LEFT at the keepdogs() call (do.c:1623 runs
- * before u.uz is reassigned), so a shopkeeper standing in its own shop is
- * on_level and is NOT kept accessible — it goes into the level save file like
- * any other monster.  Only a DISPLACED shk/priest/guard, and the Wizard
- * anywhere, take this arm.
- *
- * This was a throwing stub, and its caller — the inline keepdogs in
- * js/cmd.js goto_level — simply had no else-if arm for it, so nothing threw and
- * the Wizard stayed in fmon and went into the level file.  MEASURED on
- * corpus-generated/v5/train/gen140-reseed-seed844901: the hero level-teleports
- * off the Wizard's tower (Dlvl 40) at step 328 and returns at step 1296; C's
- * getlev draws 26 `rnd(10) @getlev(restore.c:1219)` (one per monster in the
- * restored chain) and this port drew 27, the extra one being the Wizard C had
- * migrated off the level.  That was the session's first RNG-value divergence
- * (global leaf 81615) and it desynchronised the whole place_lregion arrival
- * that follows, putting the hero on a different square of the level. */
 export function keep_mon_accessible(mtmp) {
     if (mtmp.iswiz)
         return true;
@@ -1356,36 +1180,10 @@ export async function wary_dog(mtmp, was_dead) {
     }
 }
 
-/* C ref: dog.c:1371-1400 abuse_dog(mtmp) — the hero hurt its own pet.
- *
- * It had NO DEFINITION ANYWHERE in js/: js/mhitm.js:2724
- * (_hmon_hitmon_pet, uhitm.c:1589) read the bare name with no binding in
- * scope — js-binding-audit's `unbound` class, i.e. a ReferenceError if it had
- * ever been reached, not a no-op.  MEASURED on seed0383 leaf 11372: C draws
- * `rn2(9) @abuse_dog(dog.c:1381)` (the `rn2(mtmp->mtame)` yelp/growl coin)
- * and then `rn2(35) @yelp(sounds.c:437)`, and this port drew neither.
- *
- *     if (!mtmp->mtame) return;
- *     if (Aggravate_monster || Conflict) mtmp->mtame /= 2;
- *     else mtmp->mtame--;
- *     if (mtmp->mtame && !mtmp->isminion) EDOG(mtmp)->abuse++;
- *     if (!mtmp->mtame && mtmp->mleashed) m_unleash(mtmp, TRUE);
- *     if (mtmp->mx != 0) {
- *         if (mtmp->mtame && rn2(mtmp->mtame)) yelp(mtmp);
- *         else growl(mtmp);
- *         if (!mtmp->mtame) { newsym(...); if (wormno) redraw_worm(mtmp); }
- *     }
- *
- * RNG: exactly the one `rn2(mtmp->mtame)`, plus whatever yelp()/growl() draw
- * (one rn2(35) each, and only while hallucinating). */
 export function abuse_dog(mtmp) {
     if (!(mtmp.mtame | 0))
         return;
 
-    /* C youprop.h Aggravate_monster / Conflict — neither is set for any corpus
-     * hero on this path (u.uprops[AGGRAVATE_MONSTER] and [CONFLICT] are the
-     * same triple every other guard in this file reads), so the halving arm is
-     * written out and takes the else. */
     if (_ad_prop_on(AGGRAVATE_MONSTER_DOG) || _ad_prop_on(CONFLICT_DOG))
         mtmp.mtame = ((mtmp.mtame | 0) / 2) | 0;
     else
@@ -1429,30 +1227,6 @@ function _ad_prop_on(p) {
 export async function mdrop_special_objs(mtmp) {
     return await mdrop_special_objs_real(mtmp);
 }
-/* ═══════════════════════════════════════════════════════════════════════════
- * THE LEVEL-MIGRATION CHAIN — mon_leaving_level / relmon / mon_leave /
- * migrate_to_level.  C refs: mon.c:2694-2727, mon.c:2561-2592, dog.c:728-763,
- * dog.c:886-932.  All four are RNG-FREE.
- *
- * WHY THIS LANDED (seed0360-wizard-world-tour, first divergence at leaf
- * 101022 / session step 399): Wiz-strt.lua declares a `type="branch"`
- * levregion, and js/sp_lev.js's splev_place_branch DOES create the quest
- * home level's MAGIC_PORTAL at (66,13) — that part was already right.  What
- * was missing is what happens when a MONSTER walks onto it.  C's
- * trapeffect_selector routes a monster on a MAGIC_PORTAL through
- * trapeffect_level_telep -> mlevel_tele_trap -> migrate_to_level, which takes
- * the monster OFF this level and returns Trap_Moved_Mon; postmov turns that
- * into MMOVE_DIED and dochug then SKIPS its post-move distfleeck recalc
- * (monmove.c:914 `if (status != MMOVE_DIED)`).  With migrate_to_level a throw
- * stub, trapeffect_selector_mon had no MAGIC_PORTAL arm at all, so the
- * wraith (mnum 230, m_id 4045) that C portals away at turn 32 stayed put and
- * paid one EXTRA distfleeck rn2(5) — one draw, and the whole 120,639-leaf
- * stream shifted from there.  Ground truth: an instrumented recording
- * (NETHACK_EVENTLOG=1 + NETHACK_MAPDUMP_TURNS=32-32) shows C's turn-32 trap
- * list carrying 6 traps to this port's 5, the extra one being
- * `traps[0] x=66 y=13 ttyp=17` (MAGIC_PORTAL), and `^distfleeck[230#4045...]`
- * firing ONCE for that monster where this port fired it twice.
- * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* C dungeon.c:1376 ledger_no(lev) = lev->dlevel + svd.dungeons[lev->dnum].ledger_start
  * C dungeon.c:1402 ledger_to_dnum / :1422 ledger_to_dlev — the inverses.
@@ -1509,7 +1283,6 @@ export async function mon_leaving_level(mon) {
     const mx = mon.mx | 0, my = mon.my | 0;
     const onmap = isok(mx, my) && m_at(mx, my) === mon;
 
-    /* C: "to prevent an infinite relobj-flooreffects-hmon-killed loop" */
     mon.mtrapped = 0;
     await unstuck(mon); /* mon is not swallowing or holding you nor held by you */
 
@@ -1658,16 +1431,6 @@ export async function migrate_to_level(mtmp, tolev, xyloc, cc) {
         xyflags |= 2;
     mtmp.wormno = num_segs;
     mtmp.mlstmv = game.moves;
-    /* C monst.h: `coord mtrack[MTSZ]` is a FIXED array, memset to zero by
-     * makemon, so mtrack[2] always exists.  In js/ it is grown lazily and the
-     * two writers disagree about length: js/monmove.js:2565 mon_track_add pads
-     * to MTSZ, js/dogmove.js:4241 does not — it unshifts and truncates, so a
-     * pet that has moved once carries a length-1 array.  This guard only tested
-     * for the array's ABSENCE, so a short one reached `mtrack[2].x =` and threw
-     * TypeError: Cannot set properties of undefined.  A throw here is a HALT:
-     * it stopped gen359-reseed-seed94012's scored run
-     * at 24 of 27 frames, inside mlevel_tele_trap -> migrate_to_level.
-     * A missing slot reads as 0,0 in C, which is what the padding writes. */
     if (!Array.isArray(mtmp.mtrack))
         mtmp.mtrack = [];
     while (mtmp.mtrack.length < MTSZ_DOG)
@@ -1724,75 +1487,13 @@ export function newedog(mtmp) {
         mtmp.mextra.edog.parentmid = mtmp.m_id;
     }
 }
-/* C ref: nethack-c/src/mondata.c:654-660 — "creature sticks other creatures it hits"
- *     return (boolean) (dmgtype(ptr, AD_STCK)
- *                       || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
- *                       || attacktype(ptr, AT_HUGS));
- * dmgtype/attacktype are the already-ported, sweep-clean ones (js/dogmove.js
- * dmgtype, js/mhitm.js attacktype); imported under aliases because this module
- * still carries its own dormant `attacktype` stub (js/dog.js:518, `return
- * false`) that would otherwise shadow the real one.
- * NOTE (was: "tamedog's AT_WEAP branch is unreachable regardless, and
- * mon_wield_item is itself a stub") — BOTH halves of that are now false.
- * mon_wield_item's real body lives in js/uhitm.js and is imported above, and
- * tamedog's call site was repointed at _attacktype_real, so the AT_WEAP branch
- * is live.  It is still RNG-free. */
 export function sticks(ptr) {
     return (_dmgtype_real(ptr, AD_STCK)
             || (_dmgtype_real(ptr, AD_WRAP) && !_attacktype_real(ptr, AT_ENGL))
             || _attacktype_real(ptr, AT_HUGS)) ? true : false;
 }
-/* C ref: mon.c:3437-3467 unstuck(struct monst *mtmp) —
- *
- *   if (u.ustuck == mtmp) {
- *       struct permonst *ptr = mtmp->data;
- *       unsigned swallowed = u.uswallow;
- *       / * do this first so that docrt()'s botl update is accurate;
- *          clears u.uswallow as well as setting u.ustuck to Null * /
- *       set_ustuck((struct monst *) 0);
- *       if (swallowed) { ... docrt(); }
- *       / * prevent holder/engulfer from immediately re-holding * /
- *       if (!mtmp->mspec_used && (dmgtype(ptr, AD_STCK)
- *                                 || attacktype(ptr, AT_ENGL)
- *                                 || attacktype(ptr, AT_HUGS)))
- *           mtmp->mspec_used = rnd(2);
- *   }
- *
- * This was `{ /* stub *\/ }` with six call sites (js/dog.js x2, js/dogmove.js,
- * js/makemon.js, js/teleport.js x2), and the rnd(2) is the whole reason it
- * matters: the guard is a HOLDER's re-hold cooldown, so it fires exactly when
- * the hero was stuck to something -- which, until the AD_STCK arm landed one
- * commit ago, could never happen in this port.
- *
- * Measured on the UNSEEN corpus session gen000-reseed-seed5472 step 141: the
- * kitten kills the lichen the hero is stuck to, and C draws
- * `rnd(2)=2 @ unstuck(mon.c:3465)` at leaf 2860 -- the session's first RNG
- * divergence once AD_STCK was wired.  js/makemon.js:4792 already carried a
- * comment predicting this exact draw.
- *
- * GAP, named rather than guessed: C's `if (swallowed)` arm ends in docrt(),
- * which is async in this port (js/display.js:2204) while unstuck() has six
- * SYNCHRONOUS call sites.  The synchronous half of that arm is ported below,
- * INCLUDING the Punished/placebc() ball&chain relocation (mon.c:3454-3455,
- * RNG-free -- js/ball.js's placebc() is itself RNG-free).  Records #154 and
- * #155 of the unstuck capture board are a Punished hero getting expelled
- * (not killed) from a fog cloud twelve turns apart, each showing
- * fobj.count go 11 -> 13 -- consistent with unplacebc() pulling the ball
- * and chain into OBJ_FREE limbo at swallow time (mhitu.c gulpmu) and this
- * arm putting them back on the floor at release.  NOT independently
- * verifiable against those two records: the capture schema has no
- * uball/uchain/Punished channel, so `game.u.uball` is never populated by
- * this replay harness (only by js/read.js setworn_bc() in real play) and
- * the fallback object-chain scan can't see them either -- while swallowed
- * they are OBJ_FREE, absent from both the invent and floor channels.  That
- * is a capture-schema gap, not evidence this arm is wrong; the docrt()
- * repaint remains unported, since it is display-only and RNG-free either
- * way. */
 export async function unstuck(mtmp) {
     const u = game.u;
-    /* Capture replay rebuilds monsters from flat records, so the pointer C
-     * compares in unstuck() cannot survive marshalling.  Use the stable
-     * monster id as the equivalent identity when both sides provide it. */
     const stuck = u && u.ustuck;
     const same = !!(stuck && mtmp
         && (stuck === mtmp

@@ -27,21 +27,6 @@ export function get_lua_version() {
 export function nhl_lua_ver() { return lua_ver; }
 export function nhl_lua_copyright() { return lua_copyright; }
 export function nhl_reset_lua_version() { lua_ver = ''; lua_copyright = ''; }
-/* C ref: decl.c:1096 `gl = g_init_l;` inside decl_globals_init(), where
- * g_init_l gives lua_ver[] and lua_copyright[] DUMMY (decl.c:488-489), i.e.
- * the empty string.  So a new C process ALWAYS re-enters the `gl.lua_ver[0]
- * == 0` arm of get_lua_version() (nhlua.c:2421) and builds a throwaway Lua
- * state to ask it its version.
- *
- * That arm is not free here: nhlib_load_toplevel_rng() above is this port's
- * model of the RNG that state's top level consumes, so the FIRST
- * get_lua_version() of a process draws and every later one does not.  With
- * no reset, only the first game in a node process ever paid — measured on
- * seed4500 by tools/module-state-leak.mjs --mode bisect (both controls
- * behaved; restoring this ONE binding took the victim 1635/1814 -> 1814/1814).
- *
- * The reset function already existed and had ZERO callers; this is the
- * process boundary it was waiting for. */
 registerStaticReset('nhlua.js: gl.lua_ver / gl.lua_copyright', nhl_reset_lua_version);
 
 export const NHCORE_START_NEW_GAME = 0, NHCORE_RESTORE_OLD_GAME = 1,

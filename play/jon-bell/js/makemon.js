@@ -1,12 +1,5 @@
 import { linedup } from './trap.js';
 import { newobj } from './game.js';
-/* M_AP_NOTHING / M_AP_MONSTER: used by m_lined_up (C mondata/monst.h
- * mimicry check).  They were referenced there but never bound in this module,
- * so every m_lined_up call on the Upolyd path threw ReferenceError
- * ("M_AP_NOTHING is not defined") — 22 of 280 captured find_offensive records.
- * Is_knox_level: C dungeon.h:135 Is_knox(x) == Lcheck(x, &knox_level);
- * find_defensive spelled it `Is_knox` which is bound nowhere in this module
- * (5 of 500 captured find_defensive records threw "Is_knox is not defined"). */
 import { M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE, M_AP_OBJECT, Is_knox_level,
          STAIRS, LADDER, W_NONDIGGABLE, W_ARMH, TELEP_TRAP,
          W_ARMC, W_ARMG, W_ARMF, W_ARMU } from './const.js';
@@ -47,38 +40,6 @@ import { W_ARMOR, W_ACCESSORY, TRAPNUM, NO_TRAP, FLYING, LEVITATION, BLINDED, FA
 import { BILLSZ, ROT_CORPSE } from './const.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { rank_of } from './rank_data.js';
-/* C trap.h:114 `#define is_hole(ttyp) ((ttyp) == HOLE || (ttyp) == TRAPDOOR)`.
- * find_defensive()'s MUSE_TRAPDOOR arm below reads it with NO BINDING IN SCOPE
- * — a ReferenceError that only fires once a monster actually gets far enough
- * into muse.c's defensive scan to look at a trap.  js/const.js:2301 has the
- * real one; this is the missing import, not a missing port.  (js-binding-audit
- * reports it in the `unbound` class.)
- *
- * SAME DEFECT, SAME FUNCTION, SAME COMMENT — AND THE OTHER THREE NAMES ON THE
- * SAME LINE WERE LEFT OUT.  find_defensive()'s trap check twelve lines further
- * down (C muse.c:667) is
- *     if (t && (is_pit(t.ttyp) || t.ttyp === WEB || t.ttyp === BEAR_TRAP))
- * and NONE of is_pit / WEB / BEAR_TRAP had a binding in scope, so the moment a
- * monster's defensive scan reaches a square that HAS a trap the run dies with
- * `ReferenceError: is_pit is not defined`.  Fixing is_pit alone just moves the
- * ReferenceError along the same line to WEB; they go in together.  The fix
- * above was written against the ONE unbound name that had a witness at the
- * time and did not check the rest of the expression.
- *
- * MEASURED on gen564-grammar-seed1518798 (train): the scored run HALTED at
- * frame 83 of 227 — 144 frames forfeited — in find_defensive <- m_move <-
- * dochug <- ff_movemon_one_pass.  With the three names bound it reaches frame
- * 119 and stops on the pre-existing `not yet ported: mcast_weaken_you` throw
- * (js/mcastu.js:468), which is a stated gap and a separate task.  The throw was
- * latent on main and reachable there all along; it surfaced here only because
- * this branch's depth chain changed which level the hero teleports onto.
- *
- * `node tools/js-binding-audit.mjs --unbound --file js/makemon.js` still
- * reports 25 further unbound reads in this file (Can_fall_thru,
- * m_sees_sleepy_soldier, is_ice/is_lava/is_pool, In_V_tower/is_Vlad and the
- * m_use_defensive cluster at :3376-3415).  Those are NOT all missing imports —
- * several have no js/ definition at all — so they are left for a scoped pass
- * rather than guessed at here. */
 import { is_hole, is_pit, WEB, BEAR_TRAP } from './const.js';
 import { LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_LAVA } from './const.js';
 import { Norep, You_hear } from './display.js';
@@ -201,10 +162,6 @@ const SPECIAL_PM = /** @type {number} */ (monsPack.special_pm);
 const MON_HAS_WEAP_ATK = /** @type {number[]} */ (monArmedPack.has_weap_atk);
 /** C permonst.msize (MZ_*) per MON() row order — js/makemon_msize.json (gen-mons-msize.mjs). */
 const MONS_MSIZE = /** @type {number[]} */ (monMsizePack.msize);
-/** C permonst.mr (base magic resistance %, monsters.h MR() 2nd arg) per MON()
- * row order — js/makemon_mr.json (same pack js/zap.js already reads). Sourced
- * for permonstTemplate so a reconstructed mon.data.mr read (resist(), zap.c)
- * replays faithfully (harness-unpark 2026-07-16: body_field_not_captured:mr). */
 const MONS_MR = /** @type {number[]} */ (monMrPack.mr);
 /** C permonst.mattk[NATTK] per MON() row — js/makemon_mattk.json (gen-mons-mattk.mjs).
  * Each row is 6 × {aatyp, adtyp, damn, damd}. Aligned to MONS via the audit filter. */
@@ -298,16 +255,6 @@ const PM_LONG_WORM_TAIL = 330;
 const S_DRAGON = 30;
 /** C defsym.h MONSYM — S_GOLEM */
 const S_GOLEM = 55;
-/* The six constants below were hand-written as RAW monsters.h MON() ordinals.
- * That is not the PM_ numbering: makedefs skips the entries monsters.h compiles
- * out (#ifdef CHARON x2 and the five `#if 0 /* DEFERRED|OBSOLETE * /` blocks),
- * so every raw ordinal runs 3-7 too high. js/pm.generated.js carries the real
- * enum, and this file already imports PM_SILVER_DRAGON from it; the rest now
- * come from the same place instead of being re-derived by hand.
- * Measured drift: gray dragon 146->143 (146 is the red dragon), straw golem
- * 255->249 (255 is the flesh golem), iron golem 265->259 (265 is a Woodland-elf),
- * Death/Pestilence/Famine 318/319/320 -> 311/312/313 (318/319/320 are the
- * shark, the giant eel and the electric eel). */
 const S_TRAPPER = 20;
 const S_EYE = 5;
 const S_LIGHT = 25;
@@ -356,20 +303,6 @@ const STEED_MLET = new Set([
 const DEF_MONSYM_CHARS = '?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ \'&;:~]';
 /** C mondata.h is_placeholder: PM_ORC=72, PM_GIANT=169, PM_HUMAN=260, PM_ELF=264 (from pm.generated.js). */
 const PLACEHOLDER = new Set([72, 169, 260, 264]);
-/** role.c roles[] quest enemies: enemy1num, enemy2num, enemy1sym, enemy2sym
- * (you.h:186-193 field order; index = flags.initrole = the roles[] index).
- *
- * The enemy PM indices are the pm.generated.js values for the PM_ symbols C
- * names in role.c; the syms are the defsym.h MONSYM ordinals.  Every enemy
- * index below was cross-checked by resolving it through monPmname() against the
- * monster C names — the previous hand-entered numbers were uniformly inflated
- * (by 0 at the head of the table growing to +6 by the tail: Healer's
- * PM_GIANT_RAT read 91 = rabid rat, PM_SNAKE read 220 = troll), i.e. derived
- * from a monster index space that is not this table's.  That mis-index made
- * qt_montype() return the wrong quest monster while consuming exactly C's RNG,
- * which is invisible on the RNG-value axis until the wrong monster's own rolls
- * differ (seed0364: newmonhp d(3,8) for a rabid rat where C rolls d(1,8) for a
- * giant rat). */
 const ROLE_QUEST = [
     /*  0 Archeologist */ { enemy1num: NON_PM, enemy2num: 192, enemy1sym: 45, enemy2sym: 39 }, /* random / human mummy */
     /*  1 Barbarian    */ { enemy1num: 203, enemy2num: 220, enemy1sym: 41, enemy2sym: 46 }, /* ogre / troll */
@@ -434,16 +367,6 @@ export function levelDifficulty() {
         return deepest_lev_reached(false);
     }
     let res = depth_of_level(uz);
-    /* C dungeon.c:2041-2043 — `if (builds_up(&u.uz)) res += 2 * (entry_lev -
-     * uz.dlevel + 1)`.  This used to read `game.builds_up?.(uz)`, a field NOTHING
-     * in js/ has ever assigned (tools/js-binding-audit.mjs already lists it under
-     * `dead-accessor`), so the optional call was permanently undefined and the
-     * whole builds-up arm was dead.  On Sokoban that under-reports difficulty by
-     * 8: seed0116-wizard-wear-shop / seed2600-wizard-custom-binds level-teleport
-     * to soko1 (depth 2, entry_lev 4), where C's level_difficulty() is
-     * 2 + 2*(4-1+1) = 10 and this returned 2 — enough to drop adj_lev() for an
-     * mlevel-9 zoo monster from 9 to 8, i.e. C d(9,8) vs JS d(8,8) at
-     * newmonhp(makemon.c:1042). */
     if (builds_up(uz)) {
         const dun = game.dungeons?.[uz.dnum];
         const entryLev = dun?.entry_lev ?? 1;
@@ -451,27 +374,10 @@ export function levelDifficulty() {
     }
     return res;
 }
-/* C ref: dungeon.h:140 `#define Inhell In_hell(&u.uz)`, dungeon.c:1942-1945
- * `return svd.dungeons[lev->dnum].flags.hellish`.
- * This used to compare u.uz.dnum against `game.gehennom_dnum` — a field NOTHING
- * in js/ has ever written, so Inhell() was unconditionally false.  In Gehennom
- * that silently flipped uncommon()'s rule (in hell it excludes monsters with
- * maligntyp > A_NEUTRAL; outside it excludes G_HELL ones) and dropped
- * rndmonst_adj's G_NOHELL skip, so the Valley of the Dead drew its random
- * monsters from the wrong pool entirely — seed4500's first divergence at leaf
- * 18215 (C rn2(30) vs JS rn2(31), the reservoir totalweight).  Read the flag C
- * reads instead; the dead gehennom_dnum lookup is gone. */
 export function Inhell() {
     const flags = game.dungeons?.[game.u?.uz?.dnum]?.flags;
     if (flags && flags.hellish !== undefined)
         return !!flags.hellish;
-    /* The capture-replay harness builds a minimal game.dungeons[dnum] with only
-     * depth_start (tools/equiv-test/lib/replay-core.mjs:184-188) and injects the
-     * C-resolved In_hell through `gehennom_dnum` instead (its seedHellFromCapture,
-     * :266-274).  gehennom_dnum is NOT a C variable — it is this port's own
-     * modelling of In_hell — so keep honouring it where the real flag word is
-     * absent, or every in-hell capture record silently replays as not-in-hell.
-     * Live play always has the flag and never reaches here. */
     const gd = game.gehennom_dnum;
     return gd !== undefined && gd !== null && game.u?.uz?.dnum === gd;
 }
@@ -536,17 +442,6 @@ registerStaticReset('makemon.js: mongen_order / mclass_maxf / align_shift', () =
 function alignShift(row) {
     const moves = game.moves ?? 0;
     if (alignShiftOldmoves !== moves) {
-        /* C ref: makemon.c:1618 `lev = Is_special(&u.uz)` — dungeon.c:1448's
-         * plain svs.sp_levchn scan, with NO admission gate.  js/mklev.js's
-         * Is_special() adds this port's LOADER_READY filter, which is right
-         * for "do we build this level's .lua" and wrong here: align_shift
-         * reads the s_level RECORD, never the built level, so C answers for
-         * every chained level whether or not we can load it.
-         * MEASURED NO-OP on this corpus today — the only chain entries with a
-         * nonzero flags.align are oracle:2, medusa:1, tut-1:1 and tut-2:1, and
-         * all four are already admitted — so this is shape, not points.  It is
-         * here so that removing a proto from LOADER_READY cannot silently
-         * change monster generation weights. */
         alignShiftLev = sp_levchn_lookup(game.u?.uz);
         alignShiftOldmoves = moves;
     }
@@ -683,31 +578,9 @@ function isHomeElementalMndx(mndx) {
         return Is_waterlevel(uz);
     return false;
 }
-/* C makemon.c:35 is_home_elemental(ptr) — exported wrapper over the mndx logic.
- * permonst* is captured as pmidx (wsv-V8). */
 export function is_home_elemental(ptr) {
     return isHomeElementalMndx(ptr.pmidx);
 }
-/* C mondata.h:178-185 — emits_light(ptr) returns the light's RANGE (1) or 0.
- * It is NOT a flag test: monflag.h has no M3_LIGHT bit (0x0001 is M3_WANTSAMUL).
- *     #define emits_light(ptr)                                          \
- *         (((ptr)->mlet == S_LIGHT || (ptr) == &mons[PM_FLAMING_SPHERE] \
- *           || (ptr) == &mons[PM_SHOCKING_SPHERE]                       \
- *           || (ptr) == &mons[PM_BABY_GOLD_DRAGON]                      \
- *           || (ptr) == &mons[PM_FIRE_VORTEX])                          \
- *              ? 1                                                      \
- *              : ((ptr) == &mons[PM_FIRE_ELEMENTAL]                     \
- *                 || (ptr) == &mons[PM_GOLD_DRAGON]) ? 1 : 0)
- * The C `ptr == &mons[PM_X]` pointer identity is expressed here as the
- * permonst's own form index (`pmidx`, set by permonstTemplate) — the
- * established convention in this port (js/trap.js:3441, js/mklev.js:9972),
- * because permonstTemplate mints a fresh object per call so `===` on the
- * object would never match.
- *
- * This body was file-local in js/dog.js until 2026-08-19; it moved here, the
- * shared home of this port's mondata.h macros (is_home_elemental, sliparm,
- * hates_silver, olfaction above), when makemon() and the vision system grew
- * live callers.  js/dog.js now imports it rather than keeping a second copy. */
 const S_LIGHT_ML = 25; /* defsym.h:324 MONSYM(25, 'y', LIGHT, S_LIGHT) */
 export function emits_light(mdata) {
     if (!mdata) return 0;
@@ -722,9 +595,6 @@ export function emits_light(mdata) {
     return (pm === PM_FIRE_ELEMENTAL_EL || pm === PM_GOLD_DRAGON_EL) ? 1 : 0;
 }
 
-/* C mondata.c:1507 olfaction(mdat) — FALSE if the monster can't smell (golems,
- * spheres, jellies, puddings, blobs, vortices, elementals, fungi, lights).
- * All mlet checks (is_golem == mlet==S_GOLEM); ptr.mlet captured wsv-V8. */
 export function olfaction(mdat) {
     const mlet = mdat.mlet;
     if (mlet === S_GOLEM
@@ -737,9 +607,6 @@ export function olfaction(mdat) {
         return false;
     return true;
 }
-/* C mondata.c:632 sliparm(ptr) — creature slips out of/through armor: whirly,
- * size <= MZ_SMALL, or noncorporeal. is_whirly = mlet==S_VORTEX || PM_AIR_ELEMENTAL;
- * noncorporeal = mlet==S_GHOST. ptr.mlet/msize/pmidx captured wsv-V8. */
 export function sliparm(ptr) {
     /* C mondata.h:57 is_whirly(ptr) = mlet == S_VORTEX || ptr == &mons[PM_AIR_ELEMENTAL]. */
     const is_whirly = (ptr.mlet === S_VORTEX || ptr.pmidx === PM_AIR_ELEMENTAL);
@@ -749,13 +616,9 @@ export function sliparm(ptr) {
      * shadow it. */
     return is_whirly || ptr.msize <= MZ_SMALL || noncorporeal(ptr);
 }
-/* C mondata.h predicate macros — mflags2 bit tests (ptr.mflags2 captured wsv-V9). */
 function is_were(ptr) { return (ptr.mflags2 & M2_WERE) !== 0; }
 export function is_demon(ptr) { return (ptr.mflags2 & M2_DEMON) !== 0; }
 function type_is_pname(ptr) { return (ptr.mflags2 & M2_PNAME) !== 0; }
-/* C mon.c:5903 check_gear_next_turn(mon) — flag mon to re-check worn gear next
- * turn by setting the I_SPECIAL bit in misc_worn_check (monst.misc_worn_check
- * captured wsv-V10). */
 export function check_gear_next_turn(mon) {
     mon.misc_worn_check |= I_SPECIAL;
 }
@@ -880,24 +743,6 @@ const PM_QUEEN_BEE = 5;
  * C role.c — urole[].ldrnum entries (quest_info(MS_LEADER)) for roles[0..12].
  * PN indices from monsters.h MON() basename order / monsPack row order.
  */
-/* MEASURED WRONG 2026-08-20, REPAIRED 2026-08-21.  The old values (Arc ldr 351
- * / nem 366 / grd 379) were in the monsPack row order; these tables are indexed
- * by `mndx`, which is a row index into MONS[] (= makemon_mons.json), the SAME
- * space permonstTemplate() and monPmname() use — and in that space 351 is
- * Orion, not Lord Carnarvon.  Every row below round-trips through monPmname()
- * to the role.c monster, and they now agree number-for-number with
- * js/questpgr.js's ROLE_LDRNUM / ROLE_GUARDNUM / ROLE_NEMNUM (same index
- * space) and name-for-name with js/roles.js's ROLE_LDRNUM / ROLE_NEMINUM
- * (PM_ constants, roles[] order — note roles[7] is Rogue and roles[8] is
- * Ranger, so the Rog/Ran rows are NOT in alphabetical order).
- *
- * Two readers were dead because of the old numbers, not one:
- *   - peace_minded()'s MS_LEADER/MS_GUARDIAN/MS_NEMESIS arm never fired for
- *     the actual quest monsters and could fire for an unrelated one;
- *   - assignMakemonFemale()'s ldrgend/nemgend arms (makemon.c:1270-1273)
- *     never fired either, so the quest nemesis fell through to the final
- *     `rn2(2)` and spent a leaf C does not spend.
- */
 const ROLE_LDRNUM = [
     344, 345, 346, 347, 348, 349, 350, 352, 351, 353, 354, 355, 356,
 ];
@@ -938,12 +783,6 @@ const ROLE_INITRECORD = [
     0, // 11 Val
     0, // 12 Wiz
 ];
-/**
- * C permonst.geno — generation flags (G_SGROUP/G_LGROUP/G_UNIQ/...) for a
- * monster row. Used by makemon's group-spawn gate (makemon.c:1431-1440).
- * @param {number} mndx
- * @returns {number}
- */
 export function monGeno(mndx) {
     const row = MONS[mndx];
     return row ? (row[3] | 0) : 0;
@@ -1180,9 +1019,6 @@ function canSaddleMndx(_mtmp, mndx) {
         return false;
     return true;
 }
-/** C steed.c:26 can_saddle(mtmp) — can this monster wear a saddle?  Reads only
- * mtmp->data ≡ MONS[mnum] (mnum captured; no minvent/which_armor — that check
- * lives in the caller, use_saddle/makemon). */
 export function can_saddle(mtmp) {
     return canSaddleMndx(mtmp, monsndx(mtmp));
 }
@@ -1543,17 +1379,6 @@ function monMattk(mndx) {
 function monMsound(mndx) {
     return MONS_MSOUND[mndx] | 0;
 }
-/** Build the read-only `struct permonst` template for a monster index — the
- * object `mon->data` points at in C (mons[mndx]). Used by the capture-replay
- * reconstructor (js/struct_reconstructor.js) to materialize `mon.data` from the
- * captured `data_mndx` (mon->data->pmidx), so the ~95 fns that read mon->data->*
- * replay faithfully WITHOUT any recorder change (pmidx is already captured).
- * Column map (MONS row): [0]mlet [1]mlevel [3]geno [4]maligntyp [5]mr(mresists)
- * [6]mflags1 [7]mflags2 [8]mflags3 [9]mmove — confirmed by the mon* accessors
- * above + the row[5]=mr1 / row[6]=mflags1 comment. Parallel JSON tables supply
- * msize/mattk/msound/pmnames. Fields NOT sourced here (ac, cwt, cnutrit,
- * mconveys, mcolor) are intentionally absent — a fn that reads one self-reports
- * via the strict proxy in reconstructMonst rather than silently mismatching. */
 export function permonstTemplate(mndx) {
     const i = mndx | 0;
     if (i < 0 || i >= NUMMONS) return null;
@@ -1565,7 +1390,7 @@ export function permonstTemplate(mndx) {
         geno: row[3] | 0,
         maligntyp: row[4] | 0,
         mresists: row[5] | 0, // row[5]=mr1 (resist BITFIELD), NOT the mr% field (absent from MONS table)
-        mr: MONS_MR[i] | 0,   // base magic resistance % (makemon_mr.json; resist() reads ptr->mr) — harness-unpark 2026-07-16
+        mr: MONS_MR[i] | 0,
         mflags1: row[6] >>> 0,  // unsigned uint32 bitfield — | 0 wraps high-bit values negative (raceptr V26)
         mflags2: row[7] >>> 0,
         mflags3: row[8] >>> 0,
@@ -1590,36 +1415,6 @@ export function monPmname(mndx, mgender) {
         g = NEUTRAL;
     return row[g];
 }
-/* ─── alt_spl — C mondata.c:946-1021's alternate-spelling table ────────────
- *
- * WHY IT IS NEEDED, since this header used to say no corpus session types such
- * a form: a dat/*.lua does.  Rog-strt.lua:106 is
- * `des.monster({ id = "Master of Thieves", ... })`, and name_to_monplus's own
- * -ves singularization (mondata.c:940-941) rewrites that to "Master of Thief"
- * before any lookup happens — which matches no canonical pmname.  C recovers it
- * through this table, whose entry carries C's comment "Inappropriate
- * singularization by -ves check above".  Without the table the Rogue quest home
- * cannot load at all; it throws "Unknown monster id" out of
- * js/sp_lev.js get_table_montype().
- *
- * HOW THE TARGETS ARE RESOLVED.  C names each target by a PM_ constant.  NINE
- * of the forty are constants js/pm.generated.js does not define
- * (PM_ALIGNED_CLERIC, PM_HIGH_CLERIC, PM_ELVEN_MONARCH, PM_ELF_NOBLE,
- * PM_AMOROUS_DEMON, PM_CAVE_DWELLER, PM_HUMAN_WERERAT/WEREJACKAL/WEREWOLF) —
- * they are 5.0 renames of 3.7 spellings, the hazard already recorded for this
- * file.  So nothing here is written as a PM_ constant.  Every target is
- * resolved AT MODULE LOAD by its 5.0 canonical name from
- * nethack-c-v5/upstream/include/monsters.h, looked up in MONS_PMNAMES — the
- * very table the scan below indexes into, so the index cannot be inconsistent
- * with the lookup it feeds.  A name that fails to resolve, or resolves
- * ambiguously, throws here rather than silently becoming a wrong monster.
- *
- * The three were-forms are the only ambiguous names: "wererat"/"werejackal"/
- * "werewolf" each name both an animal form and a human one (that duplication is
- * exactly why C's table has the "human wererat"/"rat wererat" prefixes at all).
- * They are disambiguated by mlet — S_HUMAN for the HUMAN_* row — which puts
- * them at 261/262/263 against the animal forms' 91/15/21, agreeing with
- * js/pm.generated.js's PM_WERERAT=91 / PM_WEREJACKAL=15 / PM_WEREWOLF=21. */
 const S_HUMAN_MLET = 53;   /* defsym.h MONSYM(53, '@', HUMAN, ...) */
 function _altspl_pm(canonicalName, mletFilter) {
     const hits = [];
@@ -1709,32 +1504,6 @@ const ALT_SPL = [
     ['erinyes', _altspl_pm('erinys'), NEUTRAL],
 ];
 
-/* C mondata.c:883 name_to_mon(in_str, gender_name_var) — resolve a user-supplied
- * monster-name string to a mndx (NON_PM if unrecognized).  Wraps name_to_monplus.
- * Returns { mntmp, gender } where gender is the matched pmnames gender slot
- * (NEUTRAL default), mirroring the *gender_name_var out-param.
- *
- * Scope: the canonical-pmnames matching loop (mondata.c:1038-1072) plus the
- * "a "/"an "/"the " article strip and the vortices/-ies/-ves plural handling
- * (mondata.c:923-943), ported faithfully — this resolves every monster typed by
- * its canonical mons[].pmnames[] spelling (e.g. "red dragon") — PLUS the alt_spl
- * alternate-spelling table (mondata.c:946-1036), see ALT_SPL above, PLUS the
- * title_to_mon() rank-title fallback (mondata.c:1074-1075), wired 2026-08-28
- * when title_to_mon stopped being a stub.
- *
- * That fallback is measured UNREACHED on this corpus and is here for fidelity,
- * not for points: no rank title (138 of them, role.c) appears in the keystroke
- * stream of any of the 688 train or 44 public sessions, no dat/*.lua monster or
- * appear_as id resolves through one, and no session sets an OPTIONS=fruit (the
- * other C caller that feeds user text in, options.c:8230).  The 500-record
- * name_to_monplus replay stays clean with the fallback live, which is the
- * evidence that it does not FALSE-POSITIVE on real C inputs.
- *
- * The claim this header used to make — "no corpus poly/genocide session types
- * such a form" — was true and beside the point: the alt_spl gap was reached
- * from dat/*.lua, not from a keystroke.  Rog-strt.lua's quest leader is
- * `id = "Master of Thieves"`, which C's own -ves singularization turns into
- * "Master of Thief" before any lookup, and only alt_spl recovers it. */
 export function name_to_mon(in_str, gender_name_var) {
     const NON_PM = -1;
     /* strncmpi(a, b, n): does b start with a's first n chars, case-insensitively? */
@@ -1808,15 +1577,6 @@ export function name_to_mon(in_str, gender_name_var) {
         }
         if (exact_match) break;
     }
-    /* C mondata.c:1073-1075 — carrying C's own FIXME above it, that some titles
-     * have gender and title_to_mon does not propagate it:
-     *     if (mntmp == NON_PM)
-     *         mntmp = title_to_mon(str, (int *) 0, &len);
-     * A string that matches no mons[] pmname but STARTS WITH a role rank title
-     * ("Digger", "Plunderess", "High Priest") resolves to that role's player
-     * monster.  This was omitted while title_to_mon was a stub; it is ported now
-     * (js/mhitm.js, C botl.c:366).  `len` is written but dead here: name_to_mon
-     * passes remainder_p = NULL, and C only reads len for the remainder. */
     if (mntmp === NON_PM) {
         const lenRef = { value: len };
         mntmp = title_to_mon(str, null, lenRef);
@@ -1918,24 +1678,6 @@ export function monsym_explain(mlet) {
     return DEF_MONSYMS_EXPLAIN[mlet | 0] || '';
 }
 
-/* C ref: mondata.c:1150-1225 name_to_monclass(in_str, mndx_p)
- *   "positive return => class index; 0 => no match.  *mndx_p is set to a
- *    specific monster index when the input named a species rather than a
- *    class."
- *
- * mndx_p is C's `int *` out-param, spelled here as a {value} box (the tree's
- * convention — see cant_revive at js/read.js:3495).  Pass null when the caller
- * passes (int *) 0.
- *
- * Ported because create_particular_parse (js/wizcmds.js) THREW on this path:
- * a wizard-mode "Create what kind of monster?" answered with anything that is
- * not a monster name halted the whole scored run.  MEASURED on
- * gen483-recombine-seed1841527 step 33, which types "E- Elbereth" at that
- * prompt: C answers 0 here, plines "I've never heard of such monsters." and
- * re-prompts, while this port stopped emitting at frame 33 of 230.
- *
- * NO RNG on any path.
- */
 export function name_to_monclass(in_str, mndx_p) {
     const MAXMCLASSES = 61, NON_PM = -1;
     /* defsym.h MONSYM ordinals, from the same rows as the table above. */
@@ -2032,8 +1774,6 @@ export function can_chant(mtmp) {
         return false;
     return true;
 }
-/** C mondata.c noattacks(ptr) — TRUE if no real attack (AT_BOOM doesn't count).
- * ptr is a permonst captured as pmidx; mattk ≡ MONS_MATTK[pmidx]. */
 export function noattacks(ptr) {
     const a = monMattk(ptr.pmidx | 0);
     if (!a)
@@ -2095,11 +1835,6 @@ const MON_HAS_EXPL_ATK = new Set([
 function attacktypeExpl(mndx) {
     return MON_HAS_EXPL_ATK.has(mndx | 0);
 }
-/** C muse.c rnd_defensive_item's noteleport_level(mtmp) call — teleport.c:29-47.
- * Was a `return false` stub, which made rnd_defensive_item skip C's
- * `goto try_again` retry on no-teleport levels (Bar-strt.lua's
- * des.level_flags("noteleport")) and consume rn2(3) where C re-rolls
- * rn2(8+...). The real port already exists below; this just delegates. */
 function noteleportLevel(mtmp) {
     /* C passes mtmp straight through and noteleport_level() reads mon->data.
      * The makemon-internal monster shapes that reach rndDefensiveItem (via
@@ -2134,30 +1869,6 @@ function isClingerMndx(mndx) {
 function has_ceiling(lev) {
     return !(In_endgame(lev) && !Is_earthlevel(lev));
 }
-/** C mon.c:2130 m_in_air(mtmp) — monster is up in the air / on the ceiling.
- *      is_flyer(mtmp->data) || is_floater(mtmp->data)
- *      || (is_clinger(mtmp->data) && has_ceiling(&u.uz) && mtmp->mundetected)
- *
- * C reads mtmp->data.  This resolved the form index ONLY from the synthetic
- * `data_mndx` scalar, which is a CAPTURE-schema field: js/struct_reconstructor.js
- * writes it (and materialises `.data` from it) and js/polyself.js writes it on
- * &gy.youmonst, but nothing on the LIVE path does — a monst built by makemon()
- * carries `.data` (the permonstTemplate row) and `.mnum`, never `data_mndx`.
- * `undefined | 0` is 0 and `0 < 0` is false, so every live call fell through to
- * mndx 0 (a giant ant: no M1_FLY, no M1_CLING, mlet not S_EYE/S_LIGHT) and
- * m_in_air returned FALSE for every flying monster in the game.  The two live
- * callers are both C's goodpos()/mfndpos() water-and-lava tests, so the whole
- * "a flyer may stand over a pool or lava" rule was dead:
- *   - js/teleport.js goodpos_full (C teleport.c:146/:160) — seed4500 step 978
- *     creates a red dragon next to the hero on the Medusa level; C's goodpos
- *     accepts the FIRST shuffled candidate (44,6), a moat square, because the
- *     dragon flies, and this port rejected it and walked on to (41,8).
- *   - js/mklev.js mfndpos (C mon.c:2168-2170) — poolok/lavaok, i.e. whether a
- *     flying monster is willing to move over water or lava at all.
- * `.data.pmidx` first is C's own read; the `data_mndx ?? mndx ?? mnum` tail is
- * the same resolution order js/mklev.js:13477 mfndpos already uses, so the
- * capture-replay shape (where the reconstructor sets both, from one source) is
- * unchanged. */
 export function m_in_air(mtmp) {
     const pmidx = mtmp?.data?.pmidx;
     const mndx = (typeof pmidx === 'number') ? (pmidx | 0)
@@ -2169,14 +1880,6 @@ export function m_in_air(mtmp) {
         || (isClingerMndx(mndx)
             && has_ceiling(game?.u?.uz) && !!mtmp.mundetected);
 }
-/** C polyself.c poly_gender() — gender of the polymorphed player:
- * (is_neuter(youmonst.data) || !humanoid(youmonst.data)) ? 2 : flags.female.
- * youmonst form mndx is u.umonnum (C reads youmonst.data, and set_uasmon keeps
- * gy.youmonst.data == &mons[u.umonnum]); flags.female from the captured mapstate
- * (game.flags.female).  This read used to be game.youmonst.mndx, a field only
- * the capture-replay reconstructor ever writes (js/struct_reconstructor.js:339
- * DERIVED_ALIASES) -- undefined on the live path in 44/44 public sessions, so
- * the mndx == null guard below swallowed every polymorphed hero. */
 export function poly_gender() {
     const mndx = (game.u && game.u.umonnum != null) ? (game.u.umonnum | 0) : null;
     const female = game.flags?.female ? 1 : 0;
@@ -2195,16 +1898,11 @@ export function poly_gender() {
 function isNeuterMndx(mndx) {
     return (monMflags2(mndx) & M2_NEUTER) !== 0;
 }
-/** C mondata.c:1180 gender(mtmp) — 2 if neuter, else mtmp->female (0/1).
- * data ≡ MONS[mnum]; female captured (wsv Phase-1). */
 export function gender(mtmp) {
     if (isNeuterMndx(monsndx(mtmp)))
         return 2;
     return mtmp.female | 0;
 }
-/** C mon.c:344 zombie_maker(mon) — FALSE if cancelled; else S_ZOMBIE (except
- * ghoul/skeleton) or S_LICH create zombies. mon->mcan captured (wsv Phase-1);
- * mon->data->mlet ≡ MONS[mnum]. */
 export function zombie_maker(mon) {
     if (mon.mcan)
         return false;
@@ -2250,45 +1948,12 @@ function findGold(minvent) {
     }
     return false;
 }
-/* C ref: mondata.h:219-220
- *     #define nonliving(ptr) \
- *         (is_undead(ptr) || (ptr) == &mons[PM_MANES] || weirdnonliving(ptr))
- * with mondata.h:218 `#define weirdnonliving(ptr) (is_golem(ptr) || (ptr)->mlet
- * == S_VORTEX)`, mondata.h:95 `#define is_undead(ptr) (((ptr)->mflags2 &
- * M2_UNDEAD) != 0L)` and is_golem(ptr) = (ptr->mlet == S_GOLEM).  Every input
- * is already packed: mflags2 is MONS row column 7 (monMflags2) and mlet is
- * column 0 (monMlet).
- *
- * This was `return false` unconditionally, and its one caller is rnd_misc_item
- * (muse.c:2670) — `if (!rn2(40) && !nonliving(pm) && !is_vampshifter(mtmp))
- * return AMULET_OF_LIFE_SAVING;`.  So whenever the 1-in-40 fired for an UNDEAD
- * monster, C fell through to the `switch (rn2(3))` below while we returned the
- * amulet and drew mksobj's stream instead: seed4500's first RNG-value
- * divergence on the scored path, leaf 25554 (C rn2(3)=1 @muse.c:2672 vs JS
- * rnd(2)=1 @mklev.js:591) — the hero had just arrived in the VALLEY OF THE
- * DEAD, whose morgue fill is nothing but undead, so the stub was wrong on
- * essentially every monster the level makes.
- */
 export function nonlivingMon(mndx) {
     const mlet = monMlet(mndx);
     return (monMflags2(mndx) & M2_UNDEAD) !== 0
         || mndx === PM_MANES
         || mlet === S_GOLEM || mlet === S_VORTEX;
 }
-/* C ref: monst.h:217-219
- *     #define is_vampshifter(mon) \
- *         ((mon)->cham == PM_VAMPIRE || (mon)->cham == PM_VAMPIRE_LEADER \
- *          || (mon)->cham == PM_VLAD_THE_IMPALER)
- * A monst-level (not permonst-level) test: `cham` is the shapechanger's TRUE
- * form, set by makemon at makemon.c:1355-1359 — i.e. before the m_initinv at
- * :1444 that reaches rnd_misc_item — and NON_PM for everything else.  Nothing
- * in js/ writes mtmp.cham at creation yet, so this reads undefined and is false
- * for every monster the corpus makes today; written as the macro rather than as
- * `return false` so it becomes correct the moment makemon starts setting cham,
- * instead of silently staying a stub.  (5.0 renamed PM_VAMPIRE_LORD to
- * PM_VAMPIRE_LEADER; js/pm.generated.js still emits the 3.7 name for index 227,
- * and js/cmd.js:3533 and js/mhitm.js:1935 already spell the same macro that
- * way.) */
 function isVampshifter(mtmp) {
     const cham = mtmp ? mtmp.cham : undefined;
     return cham === PM_VAMPIRE || cham === PM_VAMPIRE_LORD
@@ -2456,26 +2121,6 @@ export async function mInitinv(mtmp, mksobjFn) {
             }
             break;
         case S_GIANT:
-            /* C makemon.c:740-753:
-             *   if (ptr == &mons[PM_MINOTAUR]) {
-             *       if (!rn2(3) || (gi.in_mklev && Is_earthlevel(&u.uz)))
-             *           (void) mongets(mtmp, WAN_DIGGING);
-             *   } else if (is_giant(ptr)) {
-             *       for (cnt = rn2((int) (mtmp->m_lev / 2)); cnt; cnt--) {
-             *           otmp = mksobj(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1),
-             *                         FALSE, FALSE);
-             *           otmp->quan = (long) rn1(2, 3);
-             *           otmp->owt = weight(otmp);
-             *           (void) mpickobj(mtmp, otmp);
-             *       }
-             *   }
-             * C evaluates `!rn2(8)` FIRST, so the rn2(8) fires even on the
-             * earth level where the second disjunct would also be true.
-             *
-             * The bound is 8, not 3: NetHack 3.7 makemon.c:742 reads `!rn2(3)`
-             * and 5.0 makemon.c:740 reads `!rn2(8)`.  This port carried the 3.7
-             * value.  Witness: seed0360-wizard-world-tour step 159, the castle's
-             * minotaur — C rn2(8)=7 vs JS rn2(3)=2 at leaf 16324. */
             if (mndx === PM_MINOTAUR) {
                 if (!rn2(8) || (game.in_mklev && Is_earthlevel(uz))) {
                     const w = await mksobjFn(WAN_DIGGING_OTYP, true, false);
@@ -2519,14 +2164,6 @@ export async function mInitinv(mtmp, mksobjFn) {
             if (mndx === PM_MASTER_LICH && !rn2(13)) {
                 await mongets(mtmp, rn2(7) ? _ATHAME : WAN_NOTHING, mksobjFn);
             } else if (mndx === PM_ARCH_LICH && !rn2(3)) {
-                /* C: mksobj(rn2(3) ? ATHAME : QUARTERSTAFF, TRUE, rn2(13) ? FALSE : TRUE)
-                 * — both rn2 draws fire.  Order is LEFT-TO-RIGHT per
-                 * docs/CARDINAL_RULES.md ("Argument evaluation order"), but C
-                 * leaves it unspecified for non-varargs calls too, so if an
-                 * arch-lich ever appears in a trace and the rn2(3)/rn2(13) pair
-                 * shows up reversed, swap these two lines — same class as the
-                 * reversed rndorcname() draw order (js/were.js header). No
-                 * corpus session generates one today, so this is UNVERIFIED. */
                 const pick = rn2(3) ? _ATHAME : _QUARTERSTAFF;
                 const artif = rn2(13) ? false : true;
                 const otmp = await mksobjFn(pick, true, artif);
@@ -2548,13 +2185,6 @@ export async function mInitinv(mtmp, mksobjFn) {
             }
             break;
         case S_QUANTMECH:
-            /* C makemon.c:777-795 — SchroedingersBox.  The rn2(20) is the LEFT
-             * operand of `!rn2(20) && ptr == &mons[PM_QUANTUM_MECHANIC]`, so it
-             * fires for EVERY S_QUANTMECH monster, quantum mechanic or not —
-             * that unconditional draw is what this arm's absence was costing
-             * (measured on seed0399-wizard-hallu-actions step 42: C drew
-             * rn2(20) at makemon.c:777 while we fell through to the rn2(50)
-             * defensive-item tail). */
             if (!rn2(20) && mndx === PM_QUANTUM_MECHANIC) {
                 const box = await mksobjFn(LARGE_BOX, false, false);
                 const catcorpse = await mksobjFn(CORPSE, true, false);
@@ -2609,24 +2239,7 @@ export async function mInitinv(mtmp, mksobjFn) {
             }
             break;
         case S_HUMAN:
-            /* C makemon.c:603-701 — the is_mercenary() arm, FIRST in S_HUMAN's
-             * if/else-if chain and previously absent entirely.  The old comment
-             * here claimed "the mercenary check fires RNG only inside the soldier
-             * blocks, but PM_SOLDIER is handled by the guard at line 1428" — that
-             * guard is C's makemon.c:823 `if (ptr == &mons[PM_SOLDIER] && rn2(13))
-             * return;`, which sits at the END of m_initinv and gates only the
-             * defensive/misc/gold tail.  It does not stand in for this block, and
-             * the block draws heavily: 5 armour rounds plus rations.  Witness:
-             * seed0360-wizard-world-tour step 159 (wizard-mode level-teleport to
-             * `j - castle: 25`) — the castle's garrison is soldiers, C drew
-             * `rn2(5) @ makemon.c:644` (round 1's third arm) and JS had already
-             * fallen through to `rn2(50)` at the m_lev defensive-item roll.
-             *
-             * mondata.h:111 is_mercenary(ptr) = ((ptr->mflags2 & M2_MERC) != 0L);
-             * MONS row column 7 is mflags2 (see permonstTemplate). */
             if (((MONS[mndx]?.[7] >>> 0) & M2_MERC) !== 0) {
-                /* C makemon.c:604-633 — mac approximates the mercenary's AC and
-                 * gates every later round, so it must track C exactly. */
                 let mac;
                 switch (mndx) {
                 case PM_GUARD:          mac = -1; break;
@@ -2762,25 +2375,6 @@ export async function mInitinv(mtmp, mksobjFn) {
                     }
                 }
             }
-            /* C makemon.c:721-727 — the temple-priest arm of the same
-             * if/else-if chain, which was missing entirely.  It is what
-             * priestini()'s makemon(PM_ALIGNED_CLERIC, ..., MM_EPRI) reaches:
-             *     mongets(mtmp, rn2(7) ? ROBE
-             *                          : rn2(3) ? CLOAK_OF_PROTECTION
-             *                                   : CLOAK_OF_MAGIC_RESISTANCE);
-             *     mongets(mtmp, SMALL_SHIELD);
-             *     mkmonmoney(mtmp, (long) rn1(10, 20));
-             * seed4500's Valley of the Dead shrine is the witness: C drew
-             * rn2(7) here while JS had already fallen through to the
-             * `mlev > rn2(50)` defensive-item roll below.
-             *
-             * The `|| quest_mon_represents_role(ptr, PM_CLERIC)` disjunct IS
-             * modelled now (the parked note here used to say it was not, on
-             * the premise that no corpus monster reaches it).  That premise
-             * was false: seed0367 teleports a Priest to Pri-strt, whose
-             * des.monster("Arch Priest") is mlet S_HUMAN / msound MS_LEADER,
-             * and C draws this rn2(7) for it at makemon.c:723 (leaf 2786).
-             * The macro is makemon.c:11-13 — see questMonRepresentsRole(). */
             else if ((MONS_MSOUND[mndx] | 0) === MS_PRIEST
                      || questMonRepresentsRole(mndx, ROLE_IDX_CLERIC)) {
                 const cloakOtyp = rn2(7) ? ROBE_OTYP
@@ -2855,31 +2449,9 @@ export async function mInitinv(mtmp, mksobjFn) {
         !findGold(mtmp.minvent) &&
         !rn2(5)) {
         const amount = d(levelDifficulty(), mtmp.minvent ? 5 : 10) | 0;
-        /* C makemon.c:830-832 — mkmonmoney(mtmp, amount).  This was the one
-         * hand-inlined copy of mkmonmoney() that DROPPED the amount: it built
-         * the GOLD_PIECE and chained it into minvent but never assigned
-         * gold->quan (makemon.c:583), so every gold-liking monster in the game
-         * carried exactly ONE zorkmid.  mksobj(GOLD_PIECE, FALSE, FALSE)
-         * leaves quan at 1, and the whole point of the d() above is the
-         * quantity, so the bug was invisible on the RNG axis and visible the
-         * moment a pile was rendered: seed0361-archeologist-tour step 242
-         * walks onto the square where the dwarf it just killed dropped its
-         * purse and C's "Things that are here:" reads "31 gold pieces" where
-         * this port read "a gold piece".
-         *
-         * Now routed through mkmonmoney() itself, which is what the
-         * WIRE_PENDING note that used to sit here asked for; it also sets the
-         * where/ocarry fields the inline copy left unset. */
         await mkmonmoney(mtmp, amount);
     }
 }
-/* ---- mplayer.c: mk_mplayer_armor + mk_mplayer (C ref: mplayer.c:94–317) ----
- * Port target: nethack-c/src/mplayer.c:117 mk_mplayer
- * RNG sites: 60 (inventory in c-function-inventory.json)
- * Called only from sp_lev.c:1987 when PM_ARCHEOLOGIST<=id<=PM_WIZARD.
- * Endgame-only function; most corpus sessions never reach it.
- * Game-engine side effects injected via callbacks object.
- */
 /* C objnam.c rnd_class(first, last) — local copy for mplayer armor/weapon picks.
  * Iterates otyp range [first..last], uses MKOBJ_OC_PROB weights; if all zero,
  * falls back to rn1(last-first+1, first).  C ref: objnam.c:5401-5417. */
@@ -3001,48 +2573,6 @@ function _mkMplayerArmor(typ, mksobjFn, mpickobjFn, mon) {
     if (obj && mpickobjFn && mon)
         mpickobjFn(mon, obj);
 }
-/**
- * C mplayer.c:117 mk_mplayer(ptr, x, y, special)
- * Creates a player-monster (mplayer) with equipment.
- * RNG: 60 sites total (see c-function-inventory.json).
- * ptr is passed as mndx (monster index integer in JS).
- *
- * Callbacks.  Everything on the special=FALSE path (the only path create_monster
- * can reach) is REQUIRED, because each of these either draws RNG itself or gates
- * a draw: makemon, mksobj, mongets, mpickobj, setMalign, weight, isSpear, isArt,
- * monmightthrowwep, rndOffensiveItem, rndDefensiveItem, rndMiscItem.  Passing a
- * partial cbs used to "work" by silently skipping the call — which silently
- * skipped C's draws too, i.e. an RNG divergence that no gate here would catch.
- * The special=TRUE (endgame) callbacks below are still optional; that path is
- * unreachable from create_monster and has no session coverage yet.
- * Optional: rlocInsurance, mkArtifact, m_dowear, mkmonmoney, mkobj,
- * christenMonst, getMplname.
- *   cbs.makemon(mndx, x, y, flags) → mtmp object or null
- *   cbs.mksobj(otyp, init, artif)  → obj or null
- *   cbs.mpickobj(mon, obj)         → void
- *   cbs.mongets(mon, otyp)         → void
- *   cbs.m_dowear(mon, force)       → void
- *   cbs.mkArtifact(obj, align, lvl, artif) → obj
- *   cbs.mkmonmoney(mon, n)         → void
- *   cbs.christenMonst(mon, name)   → mon
- *   cbs.getMplname(mon)            → string (player-monster name)
- *   cbs.rndDefensiveItem(mon)      → otyp
- *   cbs.rndMiscItem(mon)           → otyp
- *   cbs.rndOffensiveItem(mon)      → otyp
- *   cbs.setMalign(mon)             → void
- *   cbs.isSpear(obj)               → boolean
- *   cbs.isArt(obj, artname)        → boolean
- *   cbs.weight(obj)                → number
- *   cbs.monmightthrowwep(obj)      → boolean
- *
- * @param {number} ptr — mndx (JS monster index)
- * @param {number} x
- * @param {number} y
- * @param {boolean} special — TRUE only in endgame special-level generation
- * @param {object} [cbs] — callbacks for game-engine side effects
- * @returns {any} mtmp or null
- */
-// WIRED 2026-08-09: called from js/sp_lev.js create_monster's mplayer branch
 // (C sp_lev.c:1987).  async because js/mklev.js makemon() is async.
 export async function mkMplayer(ptr, x, y, special, cbs) {
     /* C mplayer.c:123 if (!is_mplayer(ptr)) return NULL;
@@ -3467,14 +2997,6 @@ export function propagate(mndx, tally, ghostly) {
     if ((mv.born | 0) >= lim
         && !(mons_row[3] & G_NOGEN)
         && !(mv.mvflags & 0x01)) { /* G_EXTINCT */
-        /* C makemon.c:975-978 emits debugpline1("Automatically extinguished
-           %s.") here.  include/lint.h:67-72 expands debugpline1 to nothing
-           unless DEBUG is defined, and the scored 5.0 build does not define it
-           (include/config.h never sets it; neither do the organiser patches),
-           so this is a no-op in C and must be a no-op here.  It was also a live
-           ReferenceError: `debugpline1` has no binding in this module, and
-           `wizard()` is TRUE on every generated wizard-mode session, so the
-           first species to hit its birth limit would have thrown. */
         mv.mvflags |= 0x01; /* G_EXTINCT */
     }
     return result;
@@ -3512,7 +3034,6 @@ export async function stealgold(mtmp) {
     let tmp;
     let who, whose, what;
 
-    /* skip lesser coins on the floor */
     while (fgold && fgold.otyp !== GOLD_PIECE_OTYP)
         fgold = fgold.nexthere;
 
@@ -3562,27 +3083,6 @@ export async function stealgold(mtmp) {
         if (game.disp) game.disp.botl = 1;
     }
 }
-/* OFFENSIVE MUSE_* constants — C muse.c:1272-1290, values verbatim.
- *
- * These numbers are OBSERVABLE: C writes them into gm.m.has_offense, the
- * capture trampoline records gm.m as the args_after "musable" group
- * (harness/capture_trampoline.c cap_disp6_musable_after), and use_offensive()
- * switches on them.  A renumbering is therefore a Cardinal-Rule-1 violation,
- * not a cosmetic choice — the port previously used a consecutive 1..18
- * renumbering of its own invention (FIRE_HORN 4, WAN_COLD 5, FROST_HORN 6,
- * WAN_LIGHTNING 7, WAN_MAGIC_MISSILE 8, WAN_UNDEAD_TURNING 9, WAN_STRIKING 10,
- * WAN_TELEPORTATION 11, POT_PARALYSIS 12, POT_BLINDNESS 13, POT_CONFUSION 14,
- * POT_SLEEPING 15, POT_ACID 16), which disagrees with C on 13 of 18 values.
- *
- * C has ONE value space across the three #define blocks (there are no #undefs
- * in muse.c): the defensive block at 308-329 and the offensive block at
- * 1272-1290 coexist, and the single name they share — MUSE_WAN_TELEPORTATION —
- * is defined as 15 in both, so the redefinition is benign.  MUSE_SCR_FIRE (8)
- * is defined by C but referenced only by use_offensive(), so it is not
- * declared here.  MUSE_WAN_UNDEAD_TURNING is deliberately NOT redefined by C's
- * offensive block ("also a defensive item so don't redefine; nonconsecutive
- * value is ok") — it keeps the defensive value 20, shared by find_offensive's
- * m_use_undead_turning() path and find_defensive's wielded-corpse path. */
 const MUSE_WAN_DEATH = 1;
 const MUSE_WAN_SLEEP = 2;
 const MUSE_WAN_FIRE = 3;
@@ -3628,29 +3128,6 @@ const M_SEEN_ACID    = 0x0080; /* monst.h:84  Acid_resistance, AD_ACID */
 const M_SEEN_REFL    = 0x0100; /* monst.h:85  reflection, no corresponding AD_foo */
 void M_SEEN_NOTHING; void M_SEEN_DISINT; void M_SEEN_POISON;
 
-/* Object type constants — REAL otyps from the OBJECTS_ENUM ordering of
- * nethack-c/include/objects.h (ground truth: js/oc_name_data.js OC_NAME, which
- * is generated by compiling objects.h in OBJECTS_DESCR_INIT mode; index ==
- * otyp).  These were previously a consecutive 1..18 placeholder block of the
- * port's own invention.  That is not merely "not C" — otyps 1..18 are REAL
- * objects in this build (1 "generic strange" … 18 "arrow"), so every
- * `obj->otyp == WAN_*` test in find_offensive was simultaneously unable to
- * match the wand it names AND able to match an unrelated low-otyp item.  The
- * selection it feeds is observable: C stores it in gm.m.has_offense /
- * gm.m.offensive, which the capture records as the args_after "musable" group.
- *
- *   WAND_CLASS   410..434 : striking 417, undead turning 421, teleportation
- *                           424, digging 428, magic missile 429, fire 430,
- *                           cold 431, sleep 432, death 433, lightning 434
- *   POTION_CLASS 296..322 : confusion 299, blindness 300, paralysis 301,
- *                           sleeping 314, acid 320
- *   SCROLL_CLASS 323..343 : earth 340
- *   TOOL_CLASS   ..261    : expensive camera 229, frost horn 250,
- *                           fire horn 251, bugle 256, unicorn horn 261
- *   ROCK_CLASS            : boulder 475
- * (WAN_TELEPORTATION / WAN_CREATE_MONSTER / WAN_DIGGING etc. already had
- * correct values under their `_OTYP` spellings earlier in this file; the two
- * spellings now agree.) */
 const WAN_DEATH = 433;
 const WAN_SLEEP = 432;
 const WAN_FIRE = 430;
@@ -3968,15 +3445,6 @@ function touch_petrifies_corpsenm(corpsenm) {
     return cn === PM_COCKATRICE || cn === PM_CHICKATRICE;
 }
 
-/* C ref: muse.c:358-376 m_sees_sleepy_soldier(mtmp) — TRUE if mtmp can see at
- * least one sleeping (helpless) soldier within a 7x7 box centered on itself,
- * excluding a vault guard (mons[PM_GUARD]) and itself. No RNG. This was a
- * throw-stub-shaped gap: unreferenced anywhere in js/, so find_defensive's
- * bugle-alert arm (muse.c:638-641) threw ReferenceError on any capture where
- * a mercenary carrying a bugle was actually evaluated. `m_at` here reads
- * game.fmon by position (js/uhitm.js#m_at), matching C's m_at(x,y) grid
- * lookup per that function's own comment (no separate level.monsters grid in
- * this port). */
 function m_sees_sleepy_soldier(mtmp) {
     const x = mtmp.mx | 0, y = mtmp.my | 0;
     for (let xx = x - 3; xx <= x + 3; xx++) {
@@ -3993,15 +3461,6 @@ function m_sees_sleepy_soldier(mtmp) {
     return false;
 }
 
-/* C ref: dbridge.c:61-73 is_lava(x,y) — LAVAPOOL, LAVAWALL, or a raised
- * drawbridge (DRAWBRIDGE_UP) whose underneath mask is DB_LAVA.  js/dig.js,
- * js/look.js and js/teleport.js each carry a same-named local predicate, but
- * all three (and js/look.js's own comment admits it) test only the typ
- * equality and drop the DRAWBRIDGE_UP/DB_LAVA arm C also tests — this copy
- * is written against C directly rather than propagating that gap.  Was
- * entirely UNDEFINED in this file (no import, no local def): a bare
- * ReferenceError on every find_defensive call that reaches the
- * WAN_DIGGING branch (js/makemon.js:4114), rec#2283 on the raw sweep board. */
 function is_lava(x, y) {
     if (!isok(x, y)) return false;
     const lev = game.level?.at(x, y);
@@ -4011,19 +3470,6 @@ function is_lava(x, y) {
         || (typ === DRAWBRIDGE_UP && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_LAVA);
 }
 
-/* C ref: monst.h:221-222
- *     #define is_Vlad(m) ((m)->data == &mons[PM_VLAD_THE_IMPALER]  \
- *                         || (m)->cham == PM_VLAD_THE_IMPALER)
- * Pointer identity ported as pmidx equality, the same convention this file's
- * other `.data.pmidx === PM_x` sites already use (e.g. :3902, :3959).  The
- * `cham` half mirrors isVampshifter() (:2226) and its caveat
- * applies identically here: nothing in js/ writes mtmp.cham at monster
- * creation yet, so that arm is dead until makemon starts setting it — kept
- * as the macro rather than dropped, so it activates the moment cham does.
- * Was entirely UNDEFINED in this file: fixing is_lava (above) let
- * find_defensive's WAN_DIGGING guard (js/makemon.js:4153) reach this name
- * next and throw the same ReferenceError one guard further in, rec#2283 on
- * the raw sweep board after the is_lava fix. */
 function is_Vlad(mtmp) {
     if (!mtmp) return false;
     return (mtmp.data && (mtmp.data.pmidx | 0) === PM_VLAD_THE_IMPALER)
@@ -4227,11 +3673,6 @@ export function find_defensive(mtmp, tryescape) {
                 if (obj.otyp === WAN_DIGGING && obj.spe > 0 && !stuck && !t
                     && !mtmp.isshk && !mtmp.isgd && !mtmp.ispriest
                     && !is_floater(mtmp.data)
-                    /* C muse.c:648 `&& !Sokoban` — rm.h:538 spells that macro
-                     * svl.level.flags.sokoban_rules, which this file already
-                     * reads as sokobanRules() (js/makemon.js:1738).  The bare
-                     * identifier here was an undeclared global: a ReferenceError
-                     * that halted the scored run of seed4500 at frame 1782. */
                     && !sokobanRules()
                     && !(game.level.locations[x][y].wall_info & W_NONDIGGABLE)
                     && !(Is_botlevel(game.u.uz) || In_endgame(game.u.uz))
@@ -4353,16 +3794,6 @@ function See_invisible() {
 function u_at(x, y) { return x === game.u.ux && y === game.u.uy; }
 /* C you.h:553 m_next2u(m) = (distu((m)->mx,(m)->my) <= 2) */
 function m_next2u(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy) <= 2; }
-/* C muse.c:419-435 (staticfn) — "return TRUE if monster mtmp has another
- * monster next to it"; called only from find_defensive's Is_knox arm.
- *   if (DEADMONSTER(mtmp) || mon_offmap(mtmp)) return FALSE;
- *   for x in mx-1..mx+1, y in my-1..my+1:
- *       if (!isok(x,y)) continue;
- *       if ((m2 = m_at(x,y)) && m2 != mtmp) return TRUE;
- *   return FALSE;
- * DEADMONSTER = mhp < 1 (monst.h:212); mon_offmap = mstate != MON_FLOOR
- * (monst.h:253, MON_FLOOR == 0).  m_at is monster_at() here, as in find_misc.
- * It was referenced but never defined — reaching this arm threw. */
 function m_next2m(mtmp) {
     if ((mtmp.mhp | 0) < 1 || ((mtmp.mstate | 0) !== 0))
         return false;
@@ -4399,10 +3830,6 @@ function t_at(x, y) {
     }
     return null;
 }
-/* C mkobj.c sobj_at(otyp,x,y) — walk the tile's floor-object chain for the
- * given otyp. Mirrors js/mklev.js's sobj_at (mklev.js imports FROM
- * makemon.js, so it is duplicated here rather than imported, to avoid a
- * circular import). */
 function sobj_at(otyp, x, y) {
     let otmp = game.level && game.level.levelObjects && game.level.levelObjects[x]
         ? (game.level.levelObjects[x][y] ?? null) : null;
@@ -4413,12 +3840,6 @@ function sobj_at(otyp, x, y) {
     }
     return otmp;
 }
-/* C hack.c m_at(x,y) — is another monster at (x,y)? Used here for the C
- * expression `svl.level.monsters[xx][yy]` (a monster-presence lookup);
- * game.fmon is not captured by the mapstate schema (only fmon.count is), so
- * this walks an empty chain and safely returns null (no monster found) for
- * every capture record — the correct default when the C monster-position
- * side-channel wasn't recorded. */
 function monster_at(x, y) {
     for (let m = game.fmon; m; m = m.nmon)
         if (!m._mapRemoved && (m.mhp | 0) > 0 && m.mx === x && m.my === y)
@@ -4554,30 +3975,6 @@ export function find_misc(mtmp) {
     return !!game.has_misc;
 }
 
-/* C ref: muse.c:1093 precheck(mon, obj) — the pre-use hazards.  use_misc()'s
- * copy; js/muse.js:100 has the use_offensive() copy, which never sees a potion
- * because its caller guards on oclass != POTION_CLASS (muse.c:1841).
- *
- * C draws in exactly three places, and every one is CONDITIONAL:
- *   objdescr_is(obj,"milky") && !(mvitals[PM_GHOST].mvflags & G_GONE)
- *       && !rn2(POTION_OCCUPANT_CHANCE(mvitals[PM_GHOST].born))
- *   objdescr_is(obj,"smoky") && !(mvitals[PM_DJINNI].mvflags & G_GONE)
- *       && !rn2(POTION_OCCUPANT_CHANCE(mvitals[PM_DJINNI].born))
- *   obj->oclass == WAND_CLASS && obj->cursed && !rn2(WAND_BACKFIRE_CHANCE)
- * hack.h:1409-1410 POTION_OCCUPANT_CHANCE(n) = 13 + 2*n, WAND_BACKFIRE_CHANCE
- * = 100.
- *
- * What was here instead drew an UNCONDITIONAL rn2(100) for every
- * MUSE_POT_INVISIBILITY / MUSE_POT_SPEED / MUSE_POT_POLYMORPH quaff, on the
- * stated reasoning that "odescr is not captured" so the draw had to be inferred
- * from has_misc "for the record to match C's total".  It is a fabricated draw:
- * the description IS available (game._objDescriptions[otyp], written by
- * o_init.js shuffle_all), and C draws nothing at all for an ordinary
- * non-milky/non-smoky potion.  seed0399-wizard-hallu-actions: the werewolf
- * quaffs a potion of speed at step 113 and this rn2(100)=82 landed as the
- * session's first RNG-value divergence (leaf 10113, where C draws
- * rn2(5) @distfleeck).  Its wand arm tested `oclass === 10`, which is
- * SPBOOK_CLASS — WAND_CLASS is 11 — so the cursed-wand backfire never drew. */
 function precheck(mtmp, otmp) {
     if (!otmp)
         return 0;
@@ -4585,13 +3982,6 @@ function precheck(mtmp, otmp) {
     const occupant_chance = (mndx) => 13 + 2 * ((game.mvitals?.[mndx]?.born | 0));
     const gone = (mndx) => (((game.mvitals?.[mndx]?.mvflags | 0) & G_GONE) !== 0);
     if ((otmp.oclass | 0) === POTION_CLASS_MM) {
-        /* KNOWN GAP — muse.c:1104-1160, the bodies behind these two draws
-         * (enexto + makemon a ghost / djinni, mquaffmsg, m_useup, paralyze_monst
-         * or the djinni's rn2(2) wish-verbalize, then `return 2`).  The draws
-         * themselves are C-faithful; the ~1-in-13 branch they gate is not
-         * ported, so a milky/smoky quaff that rolls 0 diverges AFTER the draw
-         * rather than one draw early on every quaff.  js/muse.js:100 records the
-         * same gap for the use_offensive copy. */
         if (descr === 'milky' && !gone(PM_GHOST_MM)
             && !rn2(occupant_chance(PM_GHOST_MM))) {
             return 0;
@@ -4614,46 +4004,8 @@ function precheck(mtmp, otmp) {
     }
     return 0;
 }
-/* C objclass.h — POTION_CLASS 8, WAND_CLASS 11 (the old code's `oclass === 10`
- * was SPBOOK_CLASS).  hack.h:1410 WAND_BACKFIRE_CHANCE.  monsters.h indices via
- * tools/c-const-oracle.mjs. */
 const POTION_CLASS_MM = 8, WAND_CLASS_MM = 11, WAND_BACKFIRE_CHANCE_MM = 100;
 const PM_GHOST_MM = 287, PM_DJINNI_MM = 315;
-/* ---------------------------------------------------------------------------
- * mquaffmsg(mtmp, otmp) — C ref: nethack-c/src/muse.c:292-302 (staticfn).
- *
- *   if (canseemon(mtmp)) {
- *       observe_object(otmp);
- *       pline_mon(mtmp, "%s drinks %s!", Monnam(mtmp), singular(otmp, doname));
- *   } else if (!Deaf) {
- *       Soundeffect(se_mon_chugging_potion, 25);
- *       You_hear("a chugging sound.");
- *   }
- *
- * Was `function mquaffmsg(mtmp, otmp) { }` — an empty body reached from four
- * call sites in this file, so a monster drinking a potion produced no output
- * at all.  C reaches it in seed0360-wizard-world-tour (step 435, the !Deaf
- * arm, `>pline @ mquaffmsg(muse.c:300)`) and three times in
- * seed0368-ranger-quest-tour (steps 260 and 286: two :300 and one :297, the
- * canseemon arm).  Both are far downstream of those sessions' current first
- * divergence, so this cannot flip a session today; it is fidelity, not a fix.
- *
- * RNG: NONE on any arm — canseemon, observe_object (o_init.c:441, sets dknown
- * and calls discover_object), Deaf and You_hear are all RNG-free, and
- * Soundeffect is audio only.  So this port cannot move the RNG sequence in
- * either direction; its whole observable surface is the topline and the
- * discoveries list.
- *
- * KNOWN GAP: C's name is `singular(otmp, doname)` (objnam.c:1116 — set quan to
- * 1, call doname, restore quan).  js/eat.js's exported `doname` returns the
- * literal "thing"; the only real doname body in the tree is
- * js/objnam.js:694 doname_potion(), which is exactly right here because every
- * one of muse.c's mquaffmsg callers passes a POTION (muse.c:1164/1178/1192 in
- * mon_choose_defensive's healing/extra-healing/full-healing arms, and
- * :2400/:2446/:2489 in use_misc).  The quan save/restore is reproduced so a
- * stacked potion renders singular the way C does.
- * ---------------------------------------------------------------------------
- */
 /* C ref: nethack-c/include/youprop.h:125 Deaf = (HDeaf || EDeaf ||
  * u.uroleplay.deaf).  DEAF is prop.h index 40; js/const.js exports it. */
 function mquaffmsg_Deaf() {
@@ -4716,23 +4068,6 @@ async function mreadmsg_singular(otmp, namer) {
     otmp.quan = savequan;
     return nam;
 }
-/* C ref: muse.c:236-284 mreadmsg(mtmp, otmp) — "see or hear a monster reading
- * a scroll; when scroll hasn't been seen, its label is revealed unless hero
- * is deaf".  RNG-free: there is no rn2/rnd/d call anywhere in this body (the
- * comment already carried at precheck() above, muse.c:1104, says the same).
- *
- * use_defensive()'s MUSE_SCR_TELEPORTATION arm (muse.c:887) is the only
- * caller in scope; both captured records for that arm (board use_defensive
- * rec#0, rec#3) have the reading monster far outside the hero's line of
- * sight, so this always takes the !vismon branch on the corpus we have —
- * both branches are ported regardless, per C's own structure.
- *
- * KNOWN GAP: muse.c:283 `if (tpindicator) flash_mon(mtmp);` — flash_mon
- * (mon.c:6066) is a cosmetic glyph-flicker (flash_glyph_at over
- * gv.viz_array) with no js/ definition anywhere in the tree; it draws RNG
- * only while Hallucinating (mon_to_glyph's newsym_rn2 callback). Skipped —
- * it changes no captured channel (RNG/screen state) outside that rare arm,
- * only a transient render this port has no viz_array to flash. */
 async function mreadmsg(mtmp, otmp) {
     const vismon = canseemon(mtmp);
     let tpindicator = !vismon && sensemon(mtmp);
@@ -4748,14 +4083,8 @@ async function mreadmsg(mtmp, otmp) {
         const youdata = game.youmonst ? game.youmonst.data : null;
         const similar = same_race(youdata, mtmp.data);
         const uniqmon = (((mtmp.data?.geno | 0) & G_UNIQ) !== 0) || !!mtmp.isshk;
-        /* mtmp.meverseen is not in every capture's STRUCT_FIELDS list (the
-         * replay's strict struct proxy throws on an uncaptured read, the same
-         * contract tools/equiv-test/lib/replay-core.mjs's own spliceMonstArg
-         * uses for m_id above); fall back to C's implicit zero-init default
-         * for a record that never captured it.  Message-flavour only — does
-         * not affect RNG or the return value. */
         let meverseen = false;
-        try { meverseen = !!mtmp.meverseen; } catch { /* uncaptured */ }
+        try { meverseen = !!mtmp.meverseen; } catch { }
         const recognize = !Hallucination_mm()
             && (meverseen || (similar && !uniqmon));
         const mflags = SUPPRESS_INVISIBLE_MM | SUPPRESS_SADDLE_MM
@@ -4791,24 +4120,6 @@ async function mreadmsg(mtmp, otmp) {
 const PLNMSG_UNKNOWN_MM = 0; /* const.js PLNMSG_UNKNOWN */
 const ARTICLE_A_MM = 2, SUPPRESS_IT_MM = 0x01, SUPPRESS_INVISIBLE_MM = 0x02,
       SUPPRESS_SADDLE_MM = 0x08, AUGMENT_IT_MM = 0x40; /* const.js */
-/* C ref: muse.c:165-190 mzapwand(mtmp, otmp, self) — "when a monster zaps a
- * wand give a message, deduct a charge, and if it isn't directly seen, remove
- * hero's memory of the number of charges".  This was an EMPTY BODY, so the
- * three use_defensive/use_misc self-zaps below (make invisible, speed monster,
- * polymorph) were silent AND never spent the charge.
- *
- * seed0030 segment 3 step 273: a monster the hero cannot see self-zaps and C
- * prints "You hear a distant zap."; this port printed nothing.
- *
- * KNOWN GAPs, named rather than faked:
- *   - muse.c:181 unknow_object(otmp) — the hero forgets the wand's charge
- *     count.  Knowledge-only and RNG-free.
- *   - muse.c:182-184, the `self` message
- *     `pline("%s with %s!", monverbself(mtmp, Monnam(mtmp), "zap", 0),
- *            doname(otmp))` — missing dependency monverbself (do_name.c).
- *     Left silent, which is what this stub already did, so no regression.
- * The `else` (visible, not-self) arm is the one js/muse.js carries; it is
- * unreachable from this file, whose three callers all pass self=TRUE. */
 function mzapwand(mtmp, otmp, self) {
     if (!otmp)
         return;
@@ -4844,24 +4155,7 @@ export function mon_set_minvis(mtmp, cursed_potion) {
     }
 }
 
-/* C display.c see_wsegs — delegate to worm.js's canonical tail redraw. */
 function see_wsegs_rl(mon) { return see_wsegs_real(mon); }
-/* C ref: muse.c:2249-2260 muse_newcham_mon(mon) — "type of monster to
- * polymorph into; defaults to one suitable for the current level rather than
- * the totally arbitrary choice of newcham()".  If the monster is wearing
- * dragon scales or dragon scale mail this is DETERMINISTIC (no RNG): the
- * matching dragon type.  Otherwise it is rndmonst() — a level-appropriate
- * random pick, a DIFFERENT roll from newcham()'s own "no preference" random
- * form (select_newcham_form's `rn1(SPECIAL_PM-LOW_PM,LOW_PM)` retry loop).
- *
- * WAS `return null`.  Both of this file's callers (MUSE_WAN_POLYMORPH,
- * MUSE_POT_POLYMORPH) feed the result straight into newcham(mtmp, mdat, ...),
- * and that port's convention treats mdat===null as "caller has no
- * preference, pick at random" — so the stub silently substituted newcham's
- * own random-selection RNG for muse.c's rndmonst() draw, a real divergence
- * whenever a WAN_POLYMORPH/POT_POLYMORPH record is captured (not observed in
- * the current board captures — has_misc 5/9 has zero records — but wrong on
- * inspection, not merely unexercised, so it is fixed rather than left). */
 function muse_newcham_mon(mtmp) {
     const m_armr = which_armor(mtmp, W_ARM);
     if (m_armr) {
@@ -4967,13 +4261,6 @@ export function removed_from_icebox(obj) {
     }
 }
 
-/* C ref: muse.c:2264-2372 mloot_container(mon, container, vismon) — use_misc's
- * MUSE_BAG arm.  WAS `function mloot_container(mtmp, otmp, vismon) { return
- * 0; }`, a no-op stub that drew none of C's rn2(10) takeout-count roll plus
- * per-item rn2(nitems+1)/rn2(nitems) draws — every captured MUSE_BAG record
- * (board use_misc rec#0-3, m_has_misc=10) left its recorded draws unconsumed
- * (rng_result_tape_residual), and rec#0/rec#3 additionally returned 0 instead
- * of C's 2. */
 async function mloot_container(mon, container, vismon) {
     let contnr_nam = '', mpronounbuf = '';
     let takeout_count, res = 0;
@@ -5091,15 +4378,6 @@ async function mloot_container(mon, container, vismon) {
  * so every one of them believed the monster's square was in sight and printed
  * messages C suppresses.  This file already imports from './vision.js'. */
 function ceiling(x, y) { return ceiling_real(x, y); }
-/* surface: the LOCAL `return "floor"` STUB IS DELETED.  It shadowed the
- * C-ordered body at js/cmd.js:18553 (C dungeon.c:1750) at the five message
- * sites below — muse.c:937/945/958/964 mdig_tunnel feedback and muse.c:2605's
- * "yanks %s to the %s!" — so a monster digging on ice, lava, water, a bridge,
- * an altar, a headstone, a fountain, stairs, a wall or a doorway printed
- * "floor" where C names the terrain.  RNG-free.  This file already imports
- * from './cmd.js' (g_at on line 91).  The export carries two documented gaps
- * of its own (the swallowed-hero arm and SURFACE_AT's db_under_typ), both
- * RNG-free; it is strictly closer to C than `return "floor"`. */
 function Can_rise_up(x, y, uz) {
     if (!uz || In_endgame(uz) || In_sokoban(uz))
         return false;
@@ -5213,11 +4491,6 @@ function remove_monster(x, y) {
  * for the quan half as well, so a stack of wielded daggers read "It is welded"
  * where C says "They are welded". */
 function is_plural(obj) { return (obj?.quan | 0) !== 1; }
-/* C do.c:804 dropy(obj) = dropz(obj, FALSE).  This was an EMPTY LOCAL STUB,
- * so the bullwhip disarm below destroyed the hero's weapon outright:
- * remove_worn_item() + freeinv() took it out of inventory and nothing put it
- * on the floor.  The one body now lives in js/cmd.js (this repo's do.c host,
- * next to dropx/drop); imported at the top of this file. */
 /* mon_adjust_speed — THE ONE BODY lives at js/trap.js (C ref: worn.c:479-556).
  * The empty no-op that used to sit here silently dropped the MUSE_WAN_SPEED_MONSTER
  * and MUSE_POT_SPEED effects in use_misc below; imported at the top of this file. */
@@ -5244,38 +4517,6 @@ function pline_The(msg) { pline(msg); }
 const TRAP_KILLED_MON_MM = 2;
 
 function the(str) { return "the " + str; }
-/* C ref: trap.c:7097-7133 trapname(ttyp, override) — return the trap type's
- * name, unless the player is hallucinating (and override is not set), in
- * which case return a random or hallucinatory trap name.
- *
- * The non-hallucinating result is defsyms[trap_to_defsym(ttyp)].explanation
- * (trap_to_defsym(t) = S_arrow_trap + t - 1, rm.h:497; S_arrow_trap = 49, the
- * same value every other trap_to_defsym twin in this port carries) —
- * js/defsym_data.js DEFSYM_EXPLANATION is the generated dump of that exact
- * table.
- *
- * The hallucinating branch draws nameidx = rn2_on_display_rng(total_names+1)
- * — the DISPLAY isaac64 stream, kept separate from the scored one (js/rng.js)
- * — EXCEPT for the roletrap sub-branch's `rn2(3)` coin flip (trap.c:7139),
- * which is the plain core rn2, not rn2_on_display_rng: trap.c has no local
- * #define rewriting rn2 for this function, and rnd.c:95 confirms rn2() is the
- * CORE-context primitive. So that one coin flip inside the 1/(total_names+1)
- * roletrap arm DOES draw a scored RNG value; the rest of the hallucination
- * branch does not.
- *
- * HARNESS GAP (found porting this fn, not fixed here — out of file scope):
- * Hallucination() below reads game.u.uprops[HALLUC], but
- * tools/equiv-test/lib/replay-core.mjs's applyMapstateToGame() call
- * (js/mapstate_game_bridge.js) is never passed the record's captured
- * top-level `uprops` array at all — only stateBefore/levelTiles/worn/traps/
- * invent/invent_onames. So on replay game.u.uprops is always {} and
- * Hallucination() always reads false, even on a record whose captured
- * `uprops[HALLUC].intrinsic` is nonzero. This is the same class already
- * named for DEAF in js/mapstate_schema.js:346-350 ("rides the uprops
- * side-channel ... captured nowhere"); HALLUC has no named
- * hero.HHallu/EHallu mirror field either. Measured: 8 of 27
- * override=false/Hallucination-true board records return the plain
- * defsym name instead of a hallucinatory one for exactly this reason. */
 const _TRAPNAME_HALU = [
     /* riffs on actual nethack traps */
     "bottomless pit", "polymorphism trap", "devil teleporter",
@@ -5443,32 +4684,6 @@ async function mon_escape(mtmp, vismon) {
     return 2;
 }
 
-/* C ref: muse.c:795-1221 use_defensive(mtmp) — "Perform a defensive action for
- * a monster.  Must be called immediately after find_defensive().  Return
- * values are 0: did something, 1: died, 2: did something and can't attack
- * again (i.e. teleported)."
- *
- * WAS a one-line throw at js/dochug.js:24, on the measured claim that
- * find_defensive() returns TRUE zero times across the 44 public sessions.
- * That measurement was taken with only ONE of C's two call sites live: dochug
- * (monmove.c:794) passes tryescape=FALSE, and its `mhp >= mhpmax` gate does
- * reject every monster the corpus offers it — but m_move (monmove.c:1927)
- * calls `find_defensive(mtmp, TRUE)` when mfndpos() finds the monster nowhere
- * to go, and tryescape=TRUE SKIPS that gate entirely.  That call site was
- * missing from js/monmove.js, so the "zero times" figure was measuring one of
- * the two doors.  seed0361-archeologist-tour step 236: a boxed-in gnome lord
- * (m_id 739 at <52,19>, 18/18 hp, carrying one potion of healing) takes the
- * m_move door in C, quaffs, and the recording's topline is "You hear a
- * chugging sound." where this port printed nothing.
- *
- * ARM COVERAGE.  Every arm is written in C's order with C's control flow.  The
- * arms whose dependency is an ASYNC js/ function (makemon, maketrap) or a
- * throwing stub (obfree) cannot be called from this synchronous path; each of
- * those returns C's own no-action value (muse.c:1218 `case 0: return 0;`) under
- * a KNOWN GAP comment naming the C site and the missing dependency, rather than
- * throwing — js/muse.js:14 records why a throw is the worse failure here (the
- * replay runner treats an exception as total session failure and discards the
- * entire matched RNG prefix). */
 export async function use_defensive(mtmp) {
     let i, fleetim;
     let otmp = game.defensive;
@@ -5750,8 +4965,6 @@ export async function use_defensive(mtmp) {
         return 2;
     }
     case MUSE_TRAPDOOR:
-        /* trap doors on "bottom" levels of dungeons are rock-drop
-         * trap doors, not holes in the floor.  We check here for safety. */
         if (Is_botlevel(game.u.uz))
             return 0;
         await m_flee(mtmp);
@@ -6128,24 +5341,6 @@ export async function use_misc(mtmp) {
     return 0;
 }
 
-/* C do.c:663-711 canletgo(obj, word) — "some common tests when trying to drop
- * or throw items".  RNG-FREE; the only state it writes is set_bknown() on a
- * cursed loadstone and the LOADSTONE corpsenm kludge reset.
- *
- * This was a throw-stub, and it is reached from muse.c:2360 find_misc()'s
- * BULLWHIP arm — `canletgo(uwep, "") || (u.twoweap && canletgo(uswapwep, ""))`
- * — which a whip-wielding monster standing next to the hero evaluates.  On
- * seed0014 that throw halted the scored run at 619/714 frames.  Every reachable
- * caller in this port passes word == "", so C prints nothing (each message is
- * behind `if (*word)`); the messages are ported anyway so the first caller that
- * passes a real word does not have to rediscover them.
- *
- * NAMED GAPS, all inside `if (*word)` and therefore unreachable from the
- * word == "" callers: Norep's per-message no-repeat state is js/display.js's
- * (shared, correct), but `something` is C's shared "something" string and
- * body_part(HAND) is the hero's polymorphed hand name — this port's body_part
- * already handles that.  The LOADSTONE `plur(obj->quan)` uses the same
- * makeplural the rest of this file imports. */
 export function canletgo(obj, word) {
     const u = game.u || {};
     const w = String(word ?? '');
@@ -6199,22 +5394,6 @@ const LOADSTONE_OTYP = 471, LEASH_OTYP = 236;
 export function attacktype(ptr, atyp) {
     return attacktype_fordmg(ptr, atyp, AD_ANY) ? true : false;
 }
-/* C ref: muse.c:1342-1367 hero_behind_chokepoint(mtmp) — "from monster's point
- * of view, is hero behind a chokepoint?"  RNG-free geometry: step one square
- * from the monster's BELIEVED hero position (mux,muy) back toward the monster,
- * then ask whether both squares two directions off (DIR_LEFT2 / DIR_RIGHT2 of
- * that step) are off-map or inaccessible.  If so the hero is in a doorway or
- * corridor mouth and a wand of teleportation is worth spending.
- *
- * Was a throwing stub, and it stopped being unreachable the moment dochug
- * started calling tactics() (js/dochug.js): a covetous monster carrying a
- * charged wand of teleportation reaches find_offensive's MUSE_WAN_TELEPORTATION
- * arm (:3325) on seed4500 step 1757.
- *
- * xytodir may return DIR_ERR (-1) when dx,dy are both 0 (monster standing on
- * its believed hero square); C's DIR_CLAMP((-1)+6)%8 and ((-1)+2)%8 are then
- * evaluated on that -1 exactly as written here — port the arithmetic, not an
- * interpretation of it. */
 export function hero_behind_chokepoint(mtmp) {
     const N_DIRS_MM = 8; /* C hack.h:655 N_DIRS = N_DIRS_Z - 2 */
     const DIR_CLAMP_MM = (dir) => ((dir + N_DIRS_MM) % N_DIRS_MM);
@@ -6309,17 +5488,6 @@ export function mon_likes_objpile_at(mtmp, x, y) {
 
     return false;
 }
-/* C monmove.c:241-304 onscary(x, y, mtmp) — "is (x,y) scary to mtmp?"
- *
- * Reached from find_defensive (:3449) and find_misc (:3720); both were dead
- * while dochug's monmove.c:816-822 block was unwired, which is why this could
- * sit as a throwing stub.  Measured at HEAD by driving all 44 public sessions
- * with the branch wired: the stub throws 21 times (seed0030 x4,
- * seed0104 x17), i.e. it is LIVE, not unreachable.
- *
- * <0,0> is C's musical-scaring sentinel (auditory_scare): it ignores scrolls,
- * engravings and the dungeon branch.
- */
 export function onscary(x, y, mtmp) {
     const auditory_scare = (x === 0 && y === 0);
     const magical_scare = !auditory_scare;
@@ -6595,50 +5763,12 @@ function dist2(x1, y1, x2, y2) {
     return dx * dx + dy * dy;
 }
 
-/* freeinv() is js/cmd.js's — invent.c:1401 extract_nobj + pickup_prev=0 +
- * freeinv_core + update_inventory, the single copy dropx() and useupall() both
- * route through.  It was a throw-stub HERE, shadowing that export, and
- * use_misc's bullwhip-disarm arm (muse.c:2553) calls it: on seed0014 a
- * whip-wielding monster next to the hero halted the scored run at 619/714
- * frames.  Imported rather than re-derived (js/makemon.js already imports
- * welded/trycall/body_part from the same module). */
 /* C polyself.c:1956-2046 mbodypart(struct monst *mon, int part) is fully
  * ported and exported by js/cmd.js.  This file carried an EXPORTED throwing
  * stub of the same name, which shadowed it for stealgold()'s steed arm
  * (steal.c:78-81, makeplural(mbodypart(u.usteed, FOOT))) AND was what
  * js/read.js imported by name for litroom()'s engulfed arm.  Imported from
  * ./cmd.js above, alongside body_part from the same module. */
-/* ---------------------------------------------------------------------------
- * release_hero(mon) — C ref: nethack-c/src/monmove.c:361-374 (staticfn).
- * "ungrab/expel held/swallowed hero".  Called only from monflee().
- *
- *   if (mon == u.ustuck) {
- *       if (u.uswallow)            expels(mon, mon->data, TRUE);
- *       else if (!sticks(gy.youmonst.data)) { unstuck(mon); You("get released!"); }
- *   }
- *
- * C's `mon == u.ustuck` is a pointer compare.  The capture-replay marshaller
- * rebuilds every monster from flat fields, so pointer identity is
- * inexpressible; m_id is the per-monster unique key (monst.h) and is the only
- * field that can carry it — the same substitution js/mhitm.js:xm_same_monst
- * already makes.
- *
- * RNG ON THIS PATH: C's unstuck() (mon.c) ends with
- *     if (!mtmp->mspec_used && (dmgtype(ptr, AD_STCK) || attacktype(ptr, AT_ENGL)
- *                               || attacktype(ptr, AT_HUGS)))
- *         mtmp->mspec_used = rnd(2);
- * i.e. C DOES draw rnd(2) when a holding/engulfing monster is released.
- * js/dog.js:651 `unstuck` is a no-op stub, so that draw is MISSING — a
- * pre-existing gap in dog.js (not this file), recorded here because the
- * standing rule requires every gapped path to state its RNG.  Unreachable on
- * the present corpus: the capture marshaller emits no u.ustuck at all (the 13
- * monflee capture records carry no ustuck key), and the state_before schema
- * has no ustuck field, so `same` below is always false under replay.
- * KNOWN GAP: expels() is likewise a js/dog.js-local no-op stub and is not
- * exported; the swallow arm is therefore written as a documented no-op rather
- * than a cross-file import.  C's expels() draws no RNG of its own.
- * ---------------------------------------------------------------------------
- */
 async function monflee_release_hero(mon) {
     const u = game.u;
     const ustuck = u ? u.ustuck : null;
@@ -6657,21 +5787,6 @@ async function monflee_release_hero(mon) {
     }
 }
 
-/* flees_light(mon) — C ref: nethack-c/src/monmove.c:449-457 (macro).
- *   ((mon)->data == &mons[PM_GREMLIN]
- *    && ((uwep && uwep->lamplit && artifact_light(uwep))
- *        || (uarm && uarm->lamplit && artifact_light(uarm)))
- *    && mon->mcansee && couldsee(mon->mx, mon->my))
- * Draws no RNG itself, but it selects the monflee message arm that DOES
- * (rn2(10) at monmove.c:500), so it must be evaluated, not assumed.
- * The KNOWN GAP that stood here — "artifact_light() is a `return false` stub
- * everywhere it exists in js/, so the whole conjunction collapses to false and
- * the rn2(10) arm is never taken" — is CLOSED: js/light.js now carries the real
- * artifact_light() (landed 2026-08-25 with begin_burn), so the conjunction is
- * evaluated rather than assumed.  It is still expected to be false on this
- * corpus (the two SPFX_LIGHT sources are Sunsword and gold dragon scales/mail,
- * neither generatable here, and no corpus monster is a gremlin), but it is now
- * false because the predicate SAYS so, not because the predicate is missing. */
 function monflee_flees_light(mon) {
     if (!mon || (mon.data ? (mon.data.pmidx | 0) : (mon.mnum | 0)) !== PM_GREMLIN)
         return false;
@@ -6683,37 +5798,11 @@ function monflee_flees_light(mon) {
     return !!mon.mcansee && !!couldsee(mon.mx | 0, mon.my | 0);
 }
 
-/* C youprop.h:399 — avoid importing eat.js here because it cycles through
- * monster action code.  The captured state exposes these status flags. */
 function monflee_unaware() {
     const u = game.u || {};
     return (game.multi | 0) < 0 && ((u.uhs | 0) === FAINTED);
 }
 
-/* ---------------------------------------------------------------------------
- * monflee(mtmp, fleetime, first, fleemsg) — monster begins fleeing.
- * C ref: nethack-c/src/monmove.c:461-533.
- *
- * "monster begins fleeing for the specified time, 0 means untimed flee /
- *  if first, only adds fleetime if monster isn't already fleeing /
- *  if fleemsg, prints a message about new flight, otherwise, caller should"
- *
- * WAS: `export function monflee() { throw new Error('not yet ported: monflee'); }`
- * — a throw stub with no parameters.  It is what the capture-replay sweep
- * bound (the fixture names js/monmove.js#monflee, that export does not exist,
- * and resolution fell through to this inventory entry), scoring 13 records run
- * / 13 diverged with `__error__: not yet ported: monflee`.  js/uhitm.js:3499
- * carried a second, silent `function monflee(magr, n, a, b) {}` no-op that
- * shadowed nothing real; it now imports this body.
- *
- * RNG: two draws, both conditional, and neither is exercised by any of the
- * 13 capture-replay records for this function (all 13 record an empty consumed
- * -RNG list, so the sweep has no evidence either way about these two arms):
- *   monmove.c:500  rn2(10)  — flees_light() message arm  (see monflee_flees_light)
- *   monmove.c:525  rn2(25)  — PM_VROCK && !mspec_used
- * The VROCK arm IS ported below and will draw.
- * ---------------------------------------------------------------------------
- */
 export async function monflee(mtmp, fleetime, first, fleemsg) {
     if (!mtmp)
         return;
@@ -6733,10 +5822,6 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
             mtmp.mfleetim = 0;
         } else if (!mtmp.mflee || mtmp.mfleetim) {
             ft += (mtmp.mfleetim | 0);
-            /* C monmove.c:483-484: ensure the monster flees long enough to
-             * visibly stop fighting.  Note this test is on the SUM, not on the
-             * caller's fleetime — capture record 10 (seed0600, fleetime=1,
-             * mfleetim=0) is the one that exercises it. */
             if (ft === 1)
                 ft++;
             mtmp.mfleetim = Math.min(ft, 127) >>> 0;
@@ -6770,9 +5855,6 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
                     pline_mon(mtmp, 'Bright light!');
                 }
             } else {
-                /* C monmove.c:517-518 — the ONLY arm the corpus reaches:
-                 * seed0002 step 569 and seed0360 step 494 both show
-                 * `>pline @ monflee(monmove.c:518)`. */
                 pline_mon(mtmp, `${Monnam(mtmp)} turns to flee.`);
             }
         }
@@ -6789,18 +5871,6 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
     /* C monmove.c:531-532: ignore recently-stepped spaces when made to flee */
     mon_track_clear(mtmp);
 }
-/* rloc — THROW STUB DELETED.  C's rloc lives in teleport.c:1799, and a
- * complete, faithful port of it (plus goodpos/rloc_pos_ok/collect_coords) has
- * existed at js/teleport.js since the u_teleport_mon packet — but it was not
- * exported, so this stub was the only `rloc` any importer or tool could bind
- * to.  Nothing in js/ ever imported this stub; what it did bind was the
- * capture-replay sweep, which resolves C names through
- * tools/c-function-inventory.json and scored rloc 3 records run / 3 diverged
- * with `__error__: not yet ported: rloc`.  js/teleport.js now exports the real
- * body; deleting this stub is what lets the sweep resolve to it. */
-/* C steal.c:14 somegold(lmoney) — the ONE body now lives in js/steal.js
- * (this repo's steal.c host).  Re-exported so this module's importers keep
- * resolving the name, rather than leaving a second, throwing definition. */
 import { somegold } from './steal.js';
 import { ENV } from './hostenv.js';
 export { somegold };
@@ -6857,7 +5927,6 @@ function _splitobj_shedsLight(obj) {
     return _splitobj_ignitable(obj) || artifact_light(obj);
 }
 
-// Capture-replay reconstructs `obj` as an object graph independent of
 // game.fobj/game.invent (same o_id, different JS instance), so match chain
 // nodes by o_id as a fallback to reference equality — same convention as
 // js/mklev.js remove_object's extract_nobj matched-node splice.
@@ -6871,11 +5940,6 @@ function _splitobj_linkRealChain(obj, otmp) {
     else
         return;
     for (let o = head; o; o = o.nobj) {
-        /* `obj` IS the live chain node: the caller's `obj.nobj = otmp` above has
-         * already spliced otmp in, and re-splicing here would set
-         * otmp.nobj = obj.nobj = otmp — a self-loop that hangs every later walk
-         * of the chain.  Only the capture-replay case (a detached copy of a node
-         * that is still on the chain under the same o_id) has work to do. */
         if (o === obj)
             return;
         if (o.o_id === obj.o_id) {
@@ -6909,9 +5973,6 @@ export async function splitobj(obj, num) {
     game.context.objsplit = { parent_oid: obj.o_id, child_oid: otmp.o_id };
     obj.nobj = otmp;
     _splitobj_linkRealChain(obj, otmp);
-    /* Only set nexthere when on the floor; nexthere is also used as a back
-     * pointer to the container object when contained. For either case,
-     * otmp's nexthere pointer is already pointing at the right thing. */
     if ((obj.where | 0) === OBJ_FLOOR)
         obj.nexthere = otmp;
     /* lua isn't tracking the split off portion even if it happens to be
@@ -6920,13 +5981,6 @@ export async function splitobj(obj, num) {
         otmp.where = OBJ_FREE;
     if (obj.unpaid)
         await splitbill(obj, otmp);
-    /* C mkobj.c:496-498 copy_oextra(otmp, obj) + has_omid(otmp)/free_omid.
-     * copy_oextra has no standalone js export (port_note): obj->oextra isn't
-     * safely readable across this corpus's mixed capture generations (older
-     * records predate the oextra presence-bit scalars), and every record that
-     * DOES carry them shows oextra absent, so copy_oextra is a no-op here and
-     * has_omid(otmp) — gated on the oextra copy_oextra would have produced —
-     * is therefore always false too. */
     if (obj.timed)
         obj_split_timers(obj, otmp);
     if (_splitobj_shedsLight(obj))
@@ -6954,7 +6008,7 @@ export async function unsplitobj(obj) {
         list = obj.ocontainer?.cobj || obj.nexthere?.cobj || null;
         break;
     default:
-        return null; /* C deliberately declines free/floor/bill/migration */
+        return null;
     }
 
     let parent = null, child = null;
@@ -7010,10 +6064,6 @@ export async function splitbill(obj, otmp) {
  * behaviour while no timer existed to split; splitting a stack of timed
  * corpses now duplicates their ROT_CORPSE elements as C does. */
 function obj_split_light_source(src, dest) { return obj_split_light_source_real(src, dest); }
-/* C teleport.c:1950 tele_restrict — the body now lives in js/teleport.js (its C
- * home, and the path the capture-replay sweep's fixture already names).  It is
- * re-exported here because this file's two gold-snatch rloc guards below and
- * js/monmove.js m_move()'s PM_TENGU arm import the name from js/makemon.js. */
 export { tele_restrict };
 
 
@@ -7074,7 +6124,6 @@ const PRONOUN_GENDERS_HE = ["he", "she", "it", "they"];
 export function mhe(mtmp) {
     return PRONOUN_GENDERS_HE[pronoun_gender_mm(mtmp, 2 /* PRONOUN_HALLU */)];
 }
-/* C mon.c mondied — delegate to the canonical monster-death implementation. */
 export async function mondied(mtmp) { return await mondied_dm(mtmp); }
 /* C mondata.c:13 set_mon_data(struct monst *mon, struct permonst *ptr) — point
  * mon at a new form and prorate its banked movement when the new form is
@@ -7212,15 +6261,6 @@ export async function grow_up(mtmp, victim) {
     return ptr;
 }
 
-/* C ref: hack.h:1530 #define makeknown(x) discover_object((x), TRUE, TRUE, TRUE)
- *
- * This was an empty body, described as "not part of this packet's port scope".
- * It has four callers in this file and the identification IS observable: the
- * shield-of-reflection arm of ureflects() below fires the first time a ray
- * bounces off the hero's shield, and every later frame that names the shield
- * depends on it (seed0002 step 552 is the bounce; the inventory and item
- * menus after it read "shield of reflection", not "polished silver shield").
- * js/o_init.js discover_object is the shared body. */
 function makeknown(otyp) { discover_object(otyp | 0, true, true, true); }
 
 const _AMULET_OF_REFLECTION = 208;

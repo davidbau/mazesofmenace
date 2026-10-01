@@ -7,7 +7,6 @@
 //   invent.c:1169  addinv_nomerge(obj)
 //   invent.c:814   merged(&otmp, &obj)
 //   invent.c:694   assigninvlet(otmp)
-//   engrave.c:187  can_reach_floor(check_pit)
 //
 // WHY THIS FILE EXISTS, AND WHY IT IS A FILE.
 // `hold_another_object` is the "an object arrives in the hero's hands from
@@ -18,14 +17,12 @@
 //   js/mhitu.js:4434   u_catch_thrown_obj  — every monster that throws
 //                      something at the hero, on the 1-in-(100-DEX) branch
 //                      where the hero catches it.  This is the one that
-//                      halted corpus session gen137 at frame 173 of 219.
 //   js/cmd.js:18745    use_tinning_kit tin creation
 //   js/wizcmds.js      makewish (has its own hand-rolled equivalent)
 //
 // It lives in its own module rather than in js/mhitu.js because it is
 // invent.c, not mthrowu.c, and rather than in js/cmd.js (which hosts the
 // other 521 invent.c references and would be its natural long-term home)
-// because a concurrent session owns that file.  Folding js/cmd.js's inline
 // dopickup copy of addinv_core0 and js/pickup_container.js's `_addinv` into
 // the export below is the right follow-up; see the fleet-feedback note in
 // this change's commit message.
@@ -41,11 +38,7 @@
 // mark_as_known=FALSE and credit_hero=FALSE, addinv_core1, addinv_core2,
 // carry_obj_effects, merged, assigninvlet, reorder_invent, near_capacity,
 // inv_cnt, prinv/xprname/doname and encumber_msg — is bookkeeping and text.
-// That is asserted here and MEASURED: see the commit message for the
-// draw-count instrumentation over gen137.
 //
-// NO CORPUS GROUND TRUTH EXISTS FOR THIS FUNCTION, AND THAT IS WORTH SAYING
-// OUT LOUD.  `u_catch_thrown_obj` draws 46 times across 19 train sessions and
 // 10 times across the 44 public ones, and NOT ONE of those 56 draws returned
 // 0 — i.e. no recording in this repo contains a successful catch, so nothing
 // downstream of the `!rn2(catch_chance)` branch can be checked against C.
@@ -125,16 +118,6 @@ const MZ_HUGE = 4, S_MIMIC = 13;
 const P_BOW = 20, P_CROSSBOW = 22, P_DART = 23, P_BOOMERANG = 25;
 /* include/obj.h:481-482 how_lost. */
 const LOST_NONE = 0, LOST_THROWN = 1, LOST_EXPLODING = 4;
-/* include/obj.h OBJ_* where values (obj.h:75-84): FREE 0, FLOOR 1,
- * CONTAINED 2, INVENT 3, MINVENT 4, MIGRATING 5, BURIED 6, ONBILL 7,
- * DELETED 9.  This constant was wrong (2, OBJ_CONTAINED's value) until this
- * change — the same bug js/lock.js:1141's _wepname comment names as already
- * fixed at the js/wizcmds.js wish call site ("addinv did write it and wrote
- * 2, OBJ_CONTAINED, under a comment naming OBJ_INVENT"); js/const.js:1108
- * and js/zap.js:3627 both carry the correct 3.  It matters HERE specifically
- * because addinv_core0 (below) is the function that stamps obj.where, and
- * this file's own addinv()/addinv_before() are now its live, exported
- * entry points. */
 const OBJ_FREE = 0, OBJ_INVENT = 3;
 
 /* ---------------------------------------------------------------------------
@@ -167,30 +150,15 @@ function ceiling_hider(ptr) {
         && ((is_clinger(ptr) && (ptr?.mlet | 0) !== S_MIMIC) || is_flyer(ptr));
 }
 
-/* ---------------------------------------------------------------------------
- * C engrave.c:187 can_reach_floor(check_pit) — "check whether hero can reach
- * something at ground level".  Ported whole; every predicate it needs already
- * exists as a real body in this port (attacktype and sticks are the two that
- * matter, and both are the genuine ports, not the js/dog.js stub of the same
- * name).  RNG-free.
- *
- * NOTE the js/eat.js and js/dokick.js copies of this name are STUBS
- * (`return true` / a three-field test); they are left alone here rather than
- * re-pointed, because changing what they answer would move code paths this
- * change has no business moving.
- * ------------------------------------------------------------------------ */
 export function can_reach_floor(check_pit) {
     const u = game.u || {};
     const youdata = _hero_data();
 
     if (u.uswallow
         || (u.ustuck && !sticks(youdata)
-            /* C's own comment: assume the arms are pinned rather than that the
-               hero has been lifted up above the floor. */
             && attacktype(u.ustuck.data, AT_HUGS))
         || (Levitation() && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))))
         return false;
-    /* C: restricted/unskilled riders can't reach the floor. */
     if (u.usteed && P_SKILL(P_RIDING) < P_BASIC)
         return false;
     if (u.uundetected && ceiling_hider(youdata))
@@ -297,16 +265,6 @@ export async function merged(potmp, pobj) {
     } else if (!otmp.globby) { /* C's `else if (!Is_pudding(otmp))` */
         otmp.owt = weight(otmp);
     }
-    /* C:843-844 oname transfer.  `oname` is NOT a field of struct obj — it
-     * lives in `oextra` (nethack-c-v5/upstream/include/obj.h:191,196:
-     * ONAME(o) == o->oextra->oname, has_oname(o) == (o->oextra && ONAME(o))).
-     * A direct `.oname` read on an obj asks a question C never asks and, on
-     * the capture-replay strict Proxy, fails on any record whose oextra is
-     * NULL (obj_oextra_present === 0) even though C's has_oname() is simply
-     * false there and never reaches this branch at all. Guard exactly as C
-     * does; the actual oname(otmp, ONAME(obj), ONAME_SKIP_INVUPD) call
-     * remains an intentional not-yet-ported throw (see the file-scope note
-     * above) for the one case C DOES enter this branch. */
     if (!has_oname(otmp) && has_oname(obj))
         /* C oname(..., ONAME_SKIP_INVUPD) allocates the survivor's oextra and
          * copies the discarded stack's name without refreshing inventory.
@@ -431,14 +389,6 @@ function _Role_if(role_idx) {
 }
 function _Role_if_cleric() { return _Role_if(ROLE_PRIEST); }
 
-/* ---------------------------------------------------------------------------
- * C obj.h:236-247 — the ammo/missile macros, needed ONLY by the autoquiver arm
- * of hold_another_object.  `flags.autoquiver` is Off by default (optlist.h:190
- * initval Off) and is set by no session in `sessions/` or in any generated
- * corpus, so this is dead on everything measurable — which is exactly why it
- * is ported from the header rather than assumed away.  MKOBJ_OC_SKILL is the
- * real signed oc_skill column, extracted from the recorder's own objects.o.
- * ------------------------------------------------------------------------ */
 function _oc_skill(obj) { return MKOBJ_OC_SKILL[obj.otyp | 0] | 0; }
 function is_ammo(obj) {
     if (!obj) return false;
@@ -591,12 +541,6 @@ export async function addinv_core0(obj, other_obj, update_perm_invent) {
     return obj;
 }
 
-/* ---------------------------------------------------------------------------
- * C invent.c:1152 addinv(obj) — "add obj to the hero's inventory in the
- * default fashion".  Was UNPORTED (no js/ export of this name at all,
- * `tools/c-function-inventory.json`), even though its whole body,
- * addinv_core0, already lived here.  RNG-free (addinv_core0 is).
- * ------------------------------------------------------------------------ */
 export async function addinv(obj) {
     return await addinv_core0(obj, null, true);
 }
@@ -624,16 +568,6 @@ export async function addinv_nomerge(obj) {
     return result;
 }
 
-/* ---------------------------------------------------------------------------
- * C invent.c:1208 hold_another_object(obj, drop_fmt, drop_arg, hold_msg).
- *
- * "Add an item to the inventory unless we're fumbling or it refuses to be held
- * (via touch_artifact), and give a message.  If there aren't any free
- * inventory slots, we'll drop it instead."
- *
- * Returns the surviving object, or null when it ended up on the floor —
- * C returns `(struct obj *) 0` there and its callers are written for it.
- * ------------------------------------------------------------------------ */
 export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     const g = game;
     const u = g.u || {};
@@ -643,9 +577,6 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     if (!Blind())
         observe_object(obj); /* maximize mergeability */
 
-    /* C:1218-1240 — temporarily put artifacts on the hero's square so
-     * touch_artifact sees a legal floor object, then extract and drop them if
-     * the artifact refuses the hero (or touching it rehumanizes them). */
     if (obj.oartifact) {
         const wasUpolyd = Upolyd(u);
         const crysknife = (obj.otyp | 0) === 43;
@@ -654,9 +585,6 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         const canTouch = await touch_artifact_youmonst(obj);
         remove_object(obj);
         if (!canTouch) {
-            /* C:1229-1231 — a refused artifact is returned to the floor
-             * without the catch/drop message; that message belongs only to
-             * the later rehumanization branch. */
             await dropy(obj);
             return obj;
         }
@@ -697,11 +625,6 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         const oquan = obj.quan | 0;
         let prev_encumbr = near_capacity(); /* before addinv() */
 
-        /* C:1261-1265 — the encumbrance limit is max(current, pickup_burden).
-         * optlist.h:573 pickup_burden's initval is MOD_ENCUMBER ("stressed",
-         * which js/doset_data.js:221 already records as this port's value);
-         * no corpus rc sets it, and this port has no writer for it, so an
-         * absent field reads as C's default. */
         const pickup_burden = (g.flags?.pickup_burden ?? MOD_ENCUMBER) | 0;
         if (prev_encumbr < pickup_burden)
             prev_encumbr = pickup_burden;

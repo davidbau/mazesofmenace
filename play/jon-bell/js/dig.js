@@ -1,13 +1,9 @@
 // C ref: nethack-c/src/dig.c — the apply-a-pick-axe / dig occupation subsystem.
 //
-// Scope ported here (the corpus-exercised path, seed0314 archeologist digging a
-// pit downward in an ordinary room floor):
 //   use_pick_axe2()  — the down-dig (u.dz > 0) branch: "You start digging
 //                       downward.", then set_occupation(dig).  (dig.c:1336-1357)
 //   dig()            — the per-occupation-turn effort accumulator: one rn2(5) per
 //                       turn (dig.c:366), make-the-pit when effort crosses 50.
-//   dighole()/digactualhole() — the PIT-on-room-floor path: "You dig a pit in the
-//                       floor." + set_utrap(rn1(4,2)) pit timeout (dig.c:707/739).
 //
 // RNG faithfulness is the contract: each occupation turn draws exactly one
 // rn2(5) (the effort roll), and the terminating turn additionally draws the
@@ -45,11 +41,6 @@ import { in_town, xytodir, useup, goto_level, _spoteffects_pickup,
 /* bimanual — C obj.h:257.  Needed by pick_can_reach() below (dig.c:141). */
 import { bimanual } from './do_wear.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-/* recalc_block_point — C vision.c:900.  js/trap.js:1180 exports a throw-stub of
- * this name; the real body is js/vision.js:689 (its C home).  The import here
- * resolved to the stub, so mdig_tunnel():744 was a total session loss on reach
- * — bound, therefore invisible to the unbound check.
- * Found by: node tools/js-binding-audit.mjs --stub-resolve */
 import { recalc_block_point } from './vision.js';
 import { float_vs_flight } from './mhitm.js';
 import { LEVITATION, FLYING, STEALTH, CXN_NO_PFX, Has_contents } from './const.js';
@@ -104,11 +95,6 @@ import { mkclass } from './makemon.js';
 /* C fountain.c furniture handlers: these bodies are shared with potion.js. */
 import { dogushforth, dryup, breaksink } from './potion.js';
 
-/* C dbridge.c:888-1010, reduced to the stateful bridge-collapse effects used
- * by digging.  The debris objects and entity death messages belong to the
- * wider dbridge subsystem; keep the bridge terrain/trap/engraving transition
- * and its RNG cadence here so dighole never turns a valid collapse into a
- * session-fatal throw. */
 export async function destroy_drawbridge(x, y) {
     const ox = x | 0, oy = y | 0;
     const inputDir = is_drawbridge_wall(ox, oy);
@@ -258,9 +244,7 @@ export function is_pick(obj) {
 }
 
 // C ref: weapon.c:949 abon(void) — strength & dexterity attack bonus.  Ported
-// for the non-polymorphed hero (Upolyd path out of corpus scope).  STR18(50)/
 // STR18(100) are the 18/50 and 18/100 thresholds; for str < 17 they are never
-// reached, so only the str<17 ladder is exercised by the corpus pick-axe dig.
 export function abon() {
     const u = game.u || {};
     const str = acurr(u, 0); /* A_STR = 0 */
@@ -334,11 +318,8 @@ export function set_utrap(tim, typ) {
     float_vs_flight(); /* maybe block Lev and/or Fly */
 }
 
-// C ref: dig.c:640 digactualhole(x, y, BY_YOU, PIT) — the room-floor PIT path.
-// Emits "You dig a pit in the floor." (dig.c:707) then the pit timeout
 // set_utrap(rn1(4,2)) (dig.c:739).  maketrap is stubbed in JS (trap.c:457 returns
 // null); we record a PIT trap directly on the level list so t_at sees it and set
-// the hero trapped, matching the C state-after.  The corpus hero is neither
 // levitating nor flying (wont_fall == FALSE) so the set_utrap branch is taken.
 async function digactualhole_pit(x, y) {
     const g = game;
@@ -356,9 +337,7 @@ async function digactualhole_pit(x, y) {
 }
 
 // C ref: dig.c:885 dighole(pit_only=TRUE, by_magic=FALSE, cc=NULL) — for the
-// corpus the dig target is ordinary room floor (fillholetyp → ROOM, no fluid),
 // so this reduces to digactualhole(PIT) at the hero's square.  (The boulder /
-// drawbridge / grave / liquid branches are out of corpus scope.)
 async function dighole_pit() {
     const u = game.u || {};
     await digactualhole_pit(u.ux | 0, u.uy | 0);
@@ -370,11 +349,8 @@ async function dighole_pit() {
 // (dig.c:1584-1610).  Unlike dighole_pit()/digactualhole_pit() above (the
 // narrow pick-axe-occupation PIT path), this is a faithful port of the FULL
 // C functions, reached whenever a wand-of-digging/spell-of-digging is zapped
-// straight down.  Board evidence (boardall-s/weffects.jsonl, wave11/pickup):
-//   rec#112 — plain ROOM floor, no adjacent fluid: fillholetyp()->ROOM,
 //     digactualhole(BY_YOU,HOLE)->maketrap(HOLE)->hole_destination()'s single
 //     rn2(4) (trap.c:442-454).  1 draw, traps.count +1.
-//   rec#56  — plain ROOM floor WITH an adjacent moat/lava tile: fillholetyp()
 //     draws rn2(lava_cnt+1)/rn2(moat_cnt+1)=2 (truthy) -> typ!=ROOM -> NO trap
 //     is ever created (digactualhole is not called on this sub-path); instead
 //     liquid_flow() converts the tile and runs water_damage_chain() on the
@@ -501,10 +477,7 @@ function wake_nearby_(_flag) {
 
 // C ref: dat.c surface(x,y) — terrain-dependent surface noun used only in
 // message text on branches this file does not verify against the board
-// (undiggable/too-hard messages).  Simplified to the two cases the corpus
-// board evidence needs to distinguish (ROOM floor vs anything else); C's
 // full version also covers ice/trees/altars/etc., which are out of scope
-// here because every verified record digs into a plain ROOM floor.
 function surface_(x, y) {
     const lev = game.level?.at(x, y);
     const typ = lev ? (lev.typ | 0) : 0;
@@ -545,11 +518,7 @@ async function furniture_handled_(x, y, madeby_u) {
 // nothing extra.
 //
 // EXPORTED (was file-local): apply.c's do_break_wand WAN_DIGGING arm
-// (apply.c:4034-4056, js/cmd.js) needs this same body -- capture-replay
-// doapply record #13 named the missing export as its blocker (wave 123).
 // Exporting adds no new caller in THIS file, so this file's own behaviour
-// and the capture-replay sweep numbers are unchanged; wiring the cmd.js
-// caller is a separate, out-of-scope change (this packet is js/dig.js only).
 export function dig_check_(madeby, x, y) {
     const ttmp = t_at(x, y);
     const lev = game.level?.at(x, y);
@@ -617,8 +586,6 @@ function Deaf_dg() {
 // only two callers, mklev.js's mdig_tunnel and hack.c's dig-related move
 // handling, already call it by this name in comments). apply.c's
 // do_break_wand WAN_DIGGING arm (js/cmd.js, apply.c:4034-4056) is the
-// capture-replay-identified caller this export unblocks — wiring that call
-// site is a js/cmd.js change and out of this packet's one-file scope.
 export async function watch_dig(mtmp, x, y, zap) {
     const lev = game.level?.at(x, y);
     const typ = lev ? (lev.typ | 0) : 0;
@@ -651,11 +618,7 @@ export async function watch_dig(mtmp, x, y, zap) {
 // (LAVAPOOL/MOAT/POOL) to fill a new hole with, or ROOM if none.
 //
 // EXPORTED (was file-local): apply.c's do_break_wand WAN_DIGGING arm
-// (apply.c:4034-4056, js/cmd.js) needs this same body -- capture-replay
-// doapply record #13 named the missing export as its blocker (wave 126/127).
 // Exporting adds no new caller in THIS file, so this file's own behaviour
-// and the capture-replay sweep numbers are unchanged; wiring the cmd.js
-// caller is a separate, out-of-scope change (this packet is js/dig.js only).
 export function fillholetyp_(x, y, fill_if_any) {
     const lo_x = Math.max(1, x - 1), hi_x = Math.min(x + 1, 79 /* COLNO-1 */);
     const lo_y = Math.max(0, y - 1), hi_y = Math.min(y + 1, 20 /* ROWNO-1 */);
@@ -694,16 +657,12 @@ export function fillholetyp_(x, y, fill_if_any) {
 // skip above.
 //
 // EXPORTED (was file-local): apply.c's do_break_wand WAN_DIGGING arm
-// (apply.c:4034-4056, js/cmd.js) needs this same body -- capture-replay
-// doapply record #13 named the missing export as its blocker (wave 126/127).
 // The `else if (mon) minliquid(mon)` arm (dig.c:876-877) used to be dead code
 // here because this file's only caller (dighole(), always at the hero's own
 // square) made u_spot unconditionally true; do_break_wand's 9-direction loop
 // can hit an adjacent square instead, so it is ported for real now rather
 // than left as a comment.  Exporting/completing this adds no new caller in
-// THIS file, so this file's own behaviour and the capture-replay sweep
 // numbers are unchanged; wiring the cmd.js caller is a separate,
-// out-of-scope change (this packet is js/dig.js only).
 export async function liquid_flow_(x, y, typ, ttmp, fillmsg) {
     const u_spot = u_at_(x, y);
     if (ttmp) await delfloortrap(ttmp);
@@ -726,7 +685,6 @@ export async function liquid_flow_(x, y, typ, ttmp, fillmsg) {
     }
 }
 function u_at_(x, y) { return game.u && (game.u.ux | 0) === x && (game.u.uy | 0) === y; }
-// Floor object chain lookup — C's svl.level.objects[x][y] per-tile head
 // pointer.  js/mklev.js:4517-4524 sobj_at() documents the JS mirror as
 // game.level.levelObjects[x][y]; this file has no existing standalone helper
 // for "objects at (x,y)" so it is duplicated here rather than importing
@@ -743,11 +701,7 @@ function floorObjsAt_(x, y) {
 // since it needs spoteffects() which has no js/ body anywhere in this tree.
 //
 // EXPORTED (was file-local): apply.c's do_break_wand WAN_DIGGING arm
-// (apply.c:4034-4056, js/cmd.js) needs this same body -- capture-replay
-// doapply record #13 named the missing export as its blocker (wave 126/127).
 // Exporting adds no new caller in THIS file, so this file's own behaviour
-// and the capture-replay sweep numbers are unchanged; wiring the cmd.js
-// caller is a separate, out-of-scope change (this packet is js/dig.js only).
 export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) {
     const g = game;
     const u = g.u || {};
@@ -793,11 +747,6 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
     ttmp.tseen = 0;
     /* seetrap/feeltrap (dig.c:648-651) — display-only bookkeeping, no RNG. */
 
-    /* You("dig %s %s the %s.", ...) / pline / desecrate_altar (dig.c:653-679)
-     * — message-only feedback for the corpus's silent (no-message) records;
-     * not reproduced textually since neither verified record shows a "you
-     * dig..." topline (BOTH go through the HOLE arm below, where at_u &&
-     * !wont_fall is what prints "You fall through...", never reached here). */
 
     if (ttyp === PIT) {
         if (shopdoor && heros_fault) await pay_for_damage('ruin', false);
@@ -882,8 +831,6 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
 // digactualhole_ above (fill_pit and recalc_block_point, the arm's other two
 // callees, already have js/ homes: js/trap.js and js/vision.js respectively).
 // Exporting adds no new caller in THIS file, so this file's own behaviour and
-// the capture-replay sweep numbers are unchanged; wiring the cmd.js caller is
-// a separate, out-of-scope change (this packet is js/dig.js only).
 export async function maybe_dunk_boulders(x, y) {
     let otmp;
     while (is_pool_or_lava(x, y) && (otmp = sobj_at(BOULDER, x, y))) {
@@ -894,7 +841,6 @@ export async function maybe_dunk_boulders(x, y) {
 
 // C ref: hack.c:4522-4542 spot_checks(x,y,old_typ) — always called at the end
 // of dighole().  Only fires for old_typ DRAWBRIDGE_UP/ICE (ice-melt timer
-// bookkeeping); both verified records dig plain ROOM floor, so this is a
 // no-op for them, ported fully anyway since the pieces already exist.
 function spot_checks_(x, y, old_typ) {
     const lev = game.level?.at(x, y);
@@ -1030,8 +976,6 @@ export { dighole };
 
 // C ref: dig.c:300 dig(void) — the occupation callback, run once per turn by the
 // moveloop occupation driver.  Returns 1 while still digging, 0 when done.
-// Down-dig path only (the corpus is a downward pit dig); the horizontal
-// rock/tree dig is out of corpus scope.
 export async function dig() {
     const g = game;
     const u = g.u || {};
@@ -1040,12 +984,7 @@ export async function dig() {
      * g.context.digging.tool (the apply object), since the JS uwep wiring may
      * differ from C's (the pick-axe is the C uwep). */
     const tool = d.tool || u.uwep || {};
-    /* C dig.c:311-315 — abort if swallowed / lost the pick / left the level / the
-     * dig square moved.  None apply on the corpus path (hero stays put digging
-     * down). */
 
-    /* C dig.c:336 — Fumbling fumble path (rn2(3)); the corpus hero is not
-     * Fumbling, so no fumble RNG is drawn. */
 
     /* C dig.c:365-366 — effort += 10 + rn2(5) + abon() + uwep->spe
      *                              - greatest_erosion(uwep) + u.udaminc. */
@@ -1056,8 +995,6 @@ export async function dig() {
         d.effort *= 2;
 
     if (d.down) {
-        /* C dig.c:370 — ttmp = t_at(dpx, dpy).  No pre-existing trap on the corpus
-         * square (HOLE / TRAPDOOR / pit branches not taken). */
         /* C dig.c:372-378 — effort > 250 → full hole (not reached: pit first). */
         if (d.effort > 250) {
             await dighole_pit();
@@ -1072,9 +1009,6 @@ export async function dig() {
         await dighole_pit();
         return 0;
     }
-    /* C dig.c:443-565 — horizontal dig (!digging.down).  The corpus path is
-     * digging through a wall (autodig, seed3300); statue/boulder/tree/door
-     * targets are out of scope. */
     const dpx = d.pos.x | 0, dpy = d.pos.y | 0;
     const lev = g.level && g.level.at ? g.level.at(dpx, dpy) : null;
     if (d.effort > 100) {
@@ -1093,16 +1027,6 @@ export async function dig() {
             lev.typ = DOOR; lev.doormask = D_NODOOR;
             digtxt = 'You make an opening in the wall.';
         }
-        /* C dig.c:520-524 — after the typ change, BEFORE the pline:
-         *   if (!does_block(dpx, dpy, &levl[dpx][dpy])) unblock_point(dpx, dpy);
-         *   feel_newsym(dpx, dpy);
-         *   if (digtxt && !quiet) pline1(digtxt); // after newsym
-         * The dug cell stays in sight with unchanged seenv, so vision_recalc's
-         * change-gated newsym never re-renders it — C's EXPLICIT feel_newsym is
-         * what repaints the broken cell (and unblock_point lets vision see
-         * through the D_NODOOR doorway).  Without these the display keeps the
-         * stale HWALL glyph (seed3300 step-13 map). does_block is false for a
-         * D_NODOOR door, so unblock_point always fires here. */
         unblock_point(dpx, dpy);
         feel_newsym(dpx, dpy);
         if (digtxt && !d.quiet)
@@ -1114,9 +1038,6 @@ export async function dig() {
         g.vision_full_recalc = 1;
         return 0;
     }
-    /* C dig.c:546-565 — not enough effort yet.  d_target[DIGTYP_ROCK] = "rock".
-     * Print "You hit the <rock> with all your might." once (did_dig_msg gate),
-     * wake_nearby (RNG-neutral). */
     if (!g.did_dig_msg) {
         await pline('You hit the rock with all your might.');
         g.did_dig_msg = true;
@@ -1168,15 +1089,11 @@ export async function use_pick_axe2(obj) {
         return 0;
     }
     if (!(u.dx | 0) && !(u.dy | 0) && !dz) {
-        /* C dig.c:1180-1191 — hit yourself; out of corpus scope. */
         g.context = g.context || {};
         g.context.move = 1;
         return 1;
     }
     if (dz === 0) {
-        /* C dig.c:1192-1310 — horizontal dig.  confdir(FALSE) is a no-op for a
-         * non-Confused hero (no RNG).  The corpus path is digging into a wall
-         * (autodig, seed3300): dig_typ → DIGTYP_ROCK, d_action = "digging". */
         const rx = (u.ux | 0) + (u.dx | 0);
         const ry = (u.uy | 0) + (u.dy | 0);
         if (!isok(rx, ry)) {
@@ -1205,13 +1122,6 @@ export async function use_pick_axe2(obj) {
          * never reach the BOULDER/STATUE arms at all). */
         const dig_target = dig_typ(obj, rx, ry);
         if (dig_target === DIGTYP_UNDIGGABLE) {
-            /* C dig.c:1204-1268 — not diggable.  Ported scope: the TREE
-             * sub-case (pick vs tree — "need an axe to cut down a tree", no
-             * set_occupation call).  WEB trap / IRONBARS / water wall / lava
-             * wall / boulder-or-statue-unreachable / pit-clearing messages
-             * are out of corpus scope and fall through to the pre-existing
-             * silent swing (no occupation either way, so behaviour is
-             * unchanged for those). */
             if (loc && loc.typ === TREE) {
                 await pline('You need an axe to cut down a tree.');
             }
@@ -1279,7 +1189,6 @@ export async function use_pick_axe2(obj) {
 // C ref: dig.c:1092 use_pick_axe(obj) — apply entry.  Wields the tool if it is
 // not the current weapon (deferred re-apply via cmdq in C), then builds the
 // direction list and reads getdir for the dig direction.  The getdir key (the
-// session's '>' at step 17) is consumed by doapply's getdir wrapper (cmd.js)
 // before this is called, so here we resolve u.dx/u.dy/u.dz from that key and
 // dispatch to use_pick_axe2.  Returns ECMD_TIME (1) / ECMD_CANCEL (0).
 //
@@ -1287,11 +1196,6 @@ export async function use_pick_axe2(obj) {
 export async function use_pick_axe(obj, dirCh) {
     const g = game;
     const u = g.u || {};
-    /* C dig.c:1100-1109 — if the pick-axe is not wielded, wield it first.  In the
-     * corpus the archeologist's pick-axe is already the wielded weapon ("weapon
-     * in right hand"), so no wield turn is spent; we treat the apply object as
-     * the dig tool directly (the JS uwep wiring is a separate pre-existing
-     * concern and does not affect the dig RNG, which uses the tool's spe). */
 
     /* C dig.c:1152 — getdir(qbuf); doapply already read the direction key.
      * Resolve the direction key into u.dx/u.dy/u.dz (movecmd / getdir). */
@@ -1318,17 +1222,6 @@ export async function use_pick_axe(obj, dirCh) {
 const STATUE = 476;
 const BOULDER = 475;
 
-/* C include/obj.h:217
- *   #define is_axe(otmp)                                              \
- *       ((otmp->oclass == WEAPON_CLASS || otmp->oclass == TOOL_CLASS) \
- *        && objects[otmp->otyp].oc_skill == P_AXE)
- * This used to be `otyp === AXE` (44), which excludes the BATTLE-AXE (45) --
- * C admits every oc_skill == P_AXE object, and dig_typ()/dig() below are the
- * "chop a tree / chop a door" gate, so a wielded battle-axe read as UNDIGGABLE.
- * The oclass guard is LOAD-BEARING, not decoration: oc_skill is a shared
- * schar field, and otyps 159-162 (leather gloves and the three gauntlets) also
- * hold 3 in it, so dropping the guard would make gloves an axe.  Same shape as
- * is_pick() above, and as js/uhitm.js:3437 is_axe_dv. */
 const P_AXE_DG = 3; /* skills.h P_AXE */
 function is_axe(obj) {
     if (!obj) return false;
@@ -1465,8 +1358,6 @@ function is_organic(otmp) {
 }
 
 // C ref: timeout.c obj_timer_checks(otmp, x, y, force) — the object-timer
-// re-evaluation on a floor-position change. Not modeled: no bury_an_obj
-// capture's state_after_diff ever names a timer-related schema key (all 59
 // records show fobj.count only), so this untracked side effect is a no-op,
 // mirroring js/uhitm.js's end_burn no-op precedent.
 function obj_timer_checks(otmp, x, y, force) {
@@ -1474,10 +1365,7 @@ function obj_timer_checks(otmp, x, y, force) {
 }
 
 // C ref: mkobj.c:2511 remove_object(otmp) — extract_nexthere + extract_nobj
-// splice off the per-tile and global floor-object chains, reproduced locally
 // (js/mklev.js's exported remove_object pulls in its own obj_timer_checks
-// dependency, still an un-ported throwing stub there; this packet ports
-// bury_an_obj only, so the floor-splice is reimplemented here rather than
 // depending on that shared call chain — same per-file convention as
 // js/eat.js's local _useup_invent and js/ball.js's local findBallChain).
 function removeObjectFloor(otmp) {
@@ -1530,11 +1418,9 @@ function removeObjectFloor(otmp) {
 // C ref: dig.c:1989 debugpline1("bury_an_obj: %s", xname(otmp)) — lint.h's
 // non-lint build compiles debugpline1 to either an empty macro or
 // ifdebug(pline(...)); either way it never touches otmp/game state tracked
-// by this packet's schema. No-op, mirroring the established local-no-op
 // convention for debug/log helpers (js/mcastu.js's impossible()).
 function debugpline1(_fmt, _arg) { }
 
-// Unported helpers (not exercised by any of the 59 captures: no record has
 // otmp === uball/uchain or otyp === LEASH) — stubbed per charter rather than
 // ported.
 export async function unpunish() {
@@ -1665,8 +1551,6 @@ export async function rot_organic(arg, timeout) {
     const obj = arg.a_obj;
 
     while (Has_contents(obj)) {
-        /* We don't need to place contained object on the floor
-           first, but we do need to update its map coordinates. */
         obj.cobj.ox = obj.ox;
         obj.cobj.oy = obj.oy;
         /* Everything which can be held in a container can also be
@@ -1678,18 +1562,6 @@ export async function rot_organic(arg, timeout) {
     await obfree(obj, null);
 }
 
-/* C ref: dig.c:2145-2189 rot_corpse(anything *arg, long timeout)
- *
- * "Called when a corpse has rotted completely away."  RNG-free.
- *
- * This is the handler that never ran: js/mklev.js start_corpse_timeout()
- * computed C's `when` (drawing rnz(rot_adjust), so the RNG stream was right)
- * and then threw the schedule away, because there was no timer queue to put it
- * on.  Every corpse this port ever created therefore lived forever.  On
- * seed0004-feeding-pony that left a level-generation corpse on top of the pile
- * at (40,5), so the square rendered "%" (FOOD_CLASS) where C renders "("
- * (the sack underneath it) — the session's first screen miss, at step 228,
- * 58 steps ahead of its first RNG divergence. */
 export async function rot_corpse(arg, timeout) {
     let x = 0, y = 0;
     const obj = arg.a_obj;
@@ -1761,12 +1633,6 @@ export function cvt_sdoor_to_door(lev) {
     lev.arboreal_sdoor = 0; /* clears 'candig' */
 }
 
-/* C ref: dig.c:1503-1543 draft_message(unexpected).  The Hallucination arms
- * draw rn1(2,...) (+ a second rn1(3,...) below STRIDENT alignment record); the
- * sober arms draw nothing.  No corpus session reaches this at all — grep of all
- * 44 traces finds zero `@ draft_message(dig.c:` leaves and zero
- * `@ mdig_tunnel(dig.c:1442)` (the rn2(3) that gates the closed-door call) —
- * but the SCORR arm calls it unconditionally with no RNG, so it has to exist. */
 export function draft_message(unexpected) {
     if (unexpected) {
         if (!_dig_hallucination()) {
@@ -1812,13 +1678,6 @@ function _dig_hallucination() {
     return !!hh && !((hr?.intrinsic | 0) || (hr?.extrinsic | 0));
 }
 
-/* C ref: monmove.c:53-74 mb_trapped(mtmp, canseeit) — a monster sets off the
- * door trap it just broke.  Returns TRUE if the monster died.  Draws exactly
- * one rnd(15) (monmove.c:65).  ("which the corpus reaches ONCE across all 44
- * sessions" was measured with only THIS file's caller wired; js/monmove.js's
- * m_move door block reaches it too — seed0383 step 203.)  mondied() is still a throwing stub (js/makemon.js:4290): C only
- * calls it when the blast is lethal, so the UNPORTED-CALLEE surfaces as a
- * divergence rather than being silently skipped, matching this file's idiom. */
 export async function mb_trapped(mtmp, canseeit) {
     if (game.flags?.verbose) {
         if (canseeit && !_dig_unaware())
@@ -1849,20 +1708,12 @@ function mdistu_dig(mon) {
  * asleep or paralyzed, instead of silently forcing the conscious branch. */
 function _dig_unaware() { return !!Unaware_real(); }
 function _dig_deaf() { return !!(game.flags?.deaf); }
-/* C ref: pline.c:387-400 You_feel(line) — "You feel <line>" ("You dream that
- * you feel" when Unaware, which is never set for the corpus hero). */
 function You_feel(line) { pline("You feel " + line); }
 /* C ref: pline.c:435-452 pline_mon(mtmp, ...) — a monster-attributed pline; the
  * SetVoice/Deaf routing is display-only, so this is plain pline as in
  * js/makemon.js:4296 and js/mcastu.js:237. */
 function pline_mon(_mtmp, msg) { pline(msg); }
 
-/* C ref: mkobj.c:1977-1987 rnd_treefruit_at(x, y) —
- *   mksobj_at(ROLL_FROM(treefruits), x, y, TRUE, FALSE)
- * ROLL_FROM (hack.h:1493) is `array[rn2(SIZE(array))]`, so this draws exactly
- * one rn2(5) BEFORE mksobj_at's own draws.  otyps are the Wave-D JS values
- * (js/u_init.js:1041-1043 + objects.h FOOD ordering: PEAR 279, MELON 280,
- * BANANA 281, CARROT 282). */
 const _TREEFRUITS = [277 /* APPLE */, 278 /* ORANGE */, 279 /* PEAR */,
                      281 /* BANANA */, 276 /* EUCALYPTUS_LEAF */];
 export async function rnd_treefruit_at(x, y) {
@@ -1883,54 +1734,7 @@ function Soundeffect(se, vol) { /* no-op */ }
 function impossible(_msg, ..._args) { }
 const se_crashing_rock = 0;
 
-/* C ref: nethack-c/src/dig.c:1413-1498 — mdig_tunnel (monster digs through a
- * door/wall/rock/tree).
- *
- * KNOWN GAP — NOT WIRED, deliberately (investigated 2026-08-09).  C's only call
- * site is nethack-c/src/monmove.c:1667-1670, inside postmov():
- *     if (can_tunnel && may_dig(mtmp->mx, mtmp->my) && mdig_tunnel(mtmp))
- *         return MMOVE_DIED;
- * js/monmove.js has no equivalent block (its postmov port runs the door arm at
- * monmove.c:1546-1646 and then goes straight to mon_track_add + newsym), so
- * mdig_tunnel has zero JS call sites.
- *
- * Do NOT wire it as-is.  Six of this function's leaves are stubs, and three of
- * them sit on paths a real wire-up reaches immediately:
- *   - the SCORR arm calls draft_message() UNCONDITIONALLY (throws);
- *   - the IS_WALL arm calls You_hear() whenever flags.verbose && !rn2(5)
- *     (verbose is on for the corpus, so ~1 wall dig in 5 throws);
- *   - the SDOOR arm calls cvt_sdoor_to_door() (throws);
- *   - closed_door + D_TRAPPED calls mb_trapped() (throws);
- *   - closed_door + verbose + !rn2(3) calls draft_message() (throws);
- *   - the IS_TREE arm calls rnd_treefruit_at() when pile < 5 (throws).
- * An exception is a TOTAL session failure in the runner (the whole matched RNG
- * prefix is discarded), so these must be ported before the monmove.c:1667 block
- * is added.
- *
- * tools/dead-port-census.mjs presents this row as "the sweep refutes the static
- * stub-chain rule: 0/16 records diverge".  That sweep evidence is invalid — see
- * the `pile` comment below and the RNG_DRAIN_BASELINE / level_tiles notes there. */
 export async function mdig_tunnel(mtmp) {
-    /* C dig.c:1417 — `int pile = rnd(12);` is the FIRST statement of the C body
-     * and is UNCONDITIONAL: every mdig_tunnel() call consumes exactly one rnd(12)
-     * before any terrain test, including the `!IS_OBSTRUCTED && !IS_TREE` no-dig
-     * early return.  All 16 captured C records consume it (values 2..11), so the
-     * previous `let pile = 0` was a Cardinal-Rule-2 defect: it under-consumed the
-     * stream on every call.  It went unseen because mdig_tunnel is listed in
-     * auto-replay-sweep.mjs's RNG_DRAIN_BASELINE, which switches off the
-     * assertRngTapeDrained() check for exactly this function.  With
-     * RNG_TAPE_DRAIN_STRICT=1 the un-fixed body was 16/16 diverged.
-     *
-     * Sweep side effect of this fix, measured: the row goes 0/16 -> 5/16
-     * `rng_result_tape_underrun`, and the 5 red records are EXACTLY the 5 whose
-     * captured rnd(12) is < 5 (values 2,4,2,4,3).  That is a capture-schema
-     * artifact, not a port defect: every mdig_tunnel record has
-     * `level_tiles: null`, so the replay runs on a blank all-STONE map and takes
-     * the else/CORR arm, where `pile < 5` calls mksobj_at(ROCK) and over-draws
-     * the tape.  C took a no-dig arm on its real map (all 16 records return
-     * FALSE and report no post-call state delta at all).  Fixing the row
-     * honestly needs the harness to capture the map tiles for mdig_tunnel — not
-     * a JS change. */
     const pile = rnd(12);
     const here = game.level.at(mtmp.mx, mtmp.my);
     if (here.typ === SDOOR)

@@ -26,8 +26,6 @@ import { put_saddle_on_mon } from './steed.js';
 import { is_pool } from './look.js';
 import { light_sources_list } from './light.js';
 import { region_stats_snapshot } from './region.js';
-/* C read.c:3111 cant_revive — already ported and sweep-clean; see the comment
- * above _cp_is_male below for why this file no longer carries its own copy. */
 import { cant_revive } from './read.js';
 import { PM_LONG_WORM_TAIL, PM_LONG_WORM, PM_STALKER } from './pm.generated.js';
 /* y_n_default is C's y_n() (hack.h:1329 y_n(q) := yn_function(q, ynchars, 'n',
@@ -131,19 +129,6 @@ const A_CHAOTIC = -1;
 const A_NEUTRAL = 0;
 const A_LAWFUL  = 1;
 
-/* C ref: include/artilist.h artilist[] — the touch_artifact()-relevant fields
- * (spfx, mtype, alignment, role, race) for each artifact, indexed by the
- * 1-based artilist index that objnam.js stamps onto otmp.oartifact.
- * Only the fields touch_artifact() / bane_applies() / spec_applies() read are
- * carried here; attack adtyp is omitted because the wizard-wish path only
- * reaches the AD_PHYS bane branch (no SPFX_ATTK bane is hero-applicable here).
- * mtype/role/race are encoded as the raw C constant *values* are not needed:
- * for the hero (yours) case spec_applies(SPFX_DFLAG2) only matches when the
- * monster (the hero's permonst) carries the M2 flag, which a human/elf/etc.
- * hero never does for these banes, so we record the *kind* of dbonus and let
- * bane_applies fall through to FALSE for the hero unless it is a class/flag
- * match the hero can satisfy. To stay faithful we keep the spfx bitmask and
- * alignment; role/race gate badclass (only relevant when self_willed). */
 export const ARTI_PROPS = [
     /*  0 STRANGE_OBJECT */ { spfx: 0,                                          al: A_NONE,    role: false, race: false },
     /*  1 Excalibur     */ { spfx: SPFX_RESTR | SPFX_INTEL,                     al: A_LAWFUL,  role: true,  race: false },
@@ -207,12 +192,6 @@ function _ta_Maybe_Half_Phys(dmg) {
     const half = !!(p && (p.intrinsic || p.extrinsic));
     return half ? Math.floor(((dmg | 0) + 1) / 2) : (dmg | 0);
 }
-/* C ref: youprop.h:401 Hate_silver = (u.ulycn >= LOW_PM
- *                                     || hates_silver(gy.youmonst.data));
- * mondata.c:524-529 hates_silver(ptr) is already ported and exported as
- * js/makemon.js hates_silver(); reuse it rather than re-deriving the monflag
- * bits here (the first draft of this helper mis-declared M2_WERE/M2_UNDEAD and
- * scripts/gates/tier1.sh's monflag audit caught it). */
 function _ta_Hate_silver() {
     const u = game.u || {};
     if (((u.ulycn ?? -1) | 0) >= LOW_PM) return true;
@@ -240,65 +219,6 @@ function _ta_xname(otmp) {
     return 'object';
 }
 
-/* C ref: artifact.c:908-974 touch_artifact(obj, &gy.youmonst) — hero (yours)
- * case.  Returns 1 if the hero can touch the artifact, 0 if it refuses.  Only
- * the `yours` branch is ported (artifact.c:921-928); the monster branches at
- * :929-938 belong to the not-yet-ported can_touch_safely / meatobj callers.
- *
- * WHEN C DRAWS rn2(4) (artifact.c:944-945) — the whole point of this port:
- *
- *     if (((badclass || badalign) && self_willed)
- *         || (badalign && (!yours || !rn2(4)))) {
- *
- * `||` short-circuits, so:
- *   - first clause TRUE  → the second is NEVER evaluated: NO rn2(4) is drawn,
- *     and the body IS entered — the hero IS blasted.  (This is the case the
- *     previous comment got wrong: it read "no rn2 drawn" as "no blast".)
- *   - first clause FALSE and badalign FALSE → `&&` short-circuits: no rn2(4),
- *     no blast.
- *   - first clause FALSE and badalign TRUE  → `!yours` is FALSE for the hero,
- *     so `||` DOES evaluate `!rn2(4)`: the draw happens, and the blast fires
- *     only on rn2(4)==0.
- *
- * Reproducible check over the recorded C corpus (not an assertion — run it):
- *   grep -l 'touch_artifact(artifact\.c:945)' sessions/*.json
- *     → seed0361, seed0365, seed0371 (rn2(4) drawn: badalign, NOT self_willed)
- *   grep -l 'touch_artifact(artifact\.c:951)' sessions/*.json
- *     → seed0366 only (blast entered with NO rn2(4): Stormbringer is
- *       SPFX_INTEL, so self_willed short-circuits the `||`)
- *   grep -o 'd(4,10)=[0-9]*\|rn2(2)=[0-9]* @ exercise' sessions/seed0366*.json
- *     → d(4,10)=24 / rn2(2)=1, then d(4,10)=18 / rn2(2)=0 — two blasts, each
- *       4 rnd(10) draws (rnd.c d()) followed by exercise(A_WIS, FALSE)'s
- *       -rn2(2) at attrib.c:509.  losehp() itself is RNG-free (hack.c:4219:
- *       saving_grace returns n unchanged for the hero's own action), but it
- *       DOES move u.uhp — seed0366 step 77 renders HP:78(102) after d(4,10)=24.
- *
- * Blast-body RNG, in C order:
- *   artifact.c:953  d((Antimagic ? 2 : 4), (self_willed ? 10 : 4))
- *   artifact.c:956  rnd(10)  — only when oc_material == SILVER && Hate_silver
- *   artifact.c:959  exercise(A_WIS, FALSE) → attrib.c:509 -rn2(2), itself
- *                   gated on abs(AEXE(A_WIS)) < AVAL(50)
- *
- * MESSAGE PAGING: artifact.c:951's You() lands on the topline BEFORE the
- * damage is applied, but C only more()s it when the NEXT pline arrives (the
- * caller's prinv), by which time losehp() has already updated the status line.
- * So this function does NOT page — it records the text in
- * game._touch_artifact_blast_msg and the caller force_more()s it immediately
- * before its own next message.  Paging here would render the pre-damage HP.
- *
- * CALLERS.  Wired: makewish() below (C invent.c:1227 hold_another_object).
- * NOT wired yet: the WIELD path — C wield.c:186 ready_weapon() calls
- * retouch_object(&wep, FALSE) (artifact.c:2508), which calls touch_artifact at
- * :2520; for a non-silver, non-bane artifact retouch_object then returns 1 with
- * no further RNG (artifact.c:2527-2528).  Its JS counterpart is dowield() in
- * js/cmd.js (the `ready_weapon` block just before `_weapon_prinv_line`), which
- * is why seed0361/seed0365 still stop at their recorded
- * `rn2(4) @ touch_artifact(artifact.c:945)` and seed0366 at its second
- * `d(4,10) @ artifact.c:953`.  Grep the ground truth:
- *   grep -c 'touch_artifact(artifact\.c:94[59]\|artifact\.c:951' sessions/*.json
- * A separate, unrelated local stub named touch_artifact lives at
- * js/mklev.js:8581 (throws) for the MONSTER branch (can_touch_safely /
- * meatobj) — it is file-local and does NOT shadow this export. */
 export async function touch_artifact_youmonst(otmp) {
     const g = game;
     g._touch_artifact_blast_msg = null; /* C artifact.c:913 touch_blasted = FALSE */
@@ -368,24 +288,9 @@ export async function touch_artifact_youmonst(otmp) {
     return 1; /* C artifact.c:973 */
 }
 
-/* C ref: wizcmds.c — getlin(prompt, buf) reads a string from the user.
- * In the session trace, getlin fires a '^toplin[hooked_tty_getlin=2]' event
- * then reads chars until Enter/ESC.  Each char is one nhgetch() step.
- * Mirror: show prompt on topline, loop nhgetch until '\n'/'\r'/ESC.
- * Returns the typed string (empty on ESC/cancel).
- * Exported so makewish (zap.js) can call it directly. */
 export async function getlin(prompt) {
     const g = game;
     let buf = '';
-    /* C ref: tty_getlin — the prompt is shown on the topline, typed input is
-     * echoed after a single space, and the cursor sits at the input position
-     * (col = prompt.length + 1 + chars-typed, row 0).  flush_screen() resets
-     * the cursor to the hero square inside display.js _buildScreenOutput(), so
-     * we MUST override the cursor AFTER each flush — exactly as doextcmd() does
-     * (js/cmd.js).  Without this the cursor stayed on the hero during every
-     * getlin, diverging from C's topline cursor and failing the cursor gate on
-     * #levelchange / wish / naming sessions (seed0361/0362/0365/0370/0372 +
-     * the chargen cluster). */
     const renderPrompt = () => {
         g._pending_message = buf ? (prompt + ' ' + buf) : prompt;
     };
@@ -393,18 +298,6 @@ export async function getlin(prompt) {
         const d = g.nhDisplay;
         if (d) topl_park_cursor(d, prompt + ' ' + buf);
     };
-    /* C ref: win/tty/getline.c:53-54 hooked_tty_getlin opens with
-     *     if (ttyDisplay->toplin == TOPLINE_NEED_MORE && !(cw->flags & WIN_STOP))
-     *         more();
-     * — the SAME unconditional page tty_yn_function does (topl.c:390-392, and
-     * the reason js/lock.js _ynq force_more()s before overwriting).  getlin was
-     * missing it and assigned straight over the pending message, which deletes
-     * both the --More-- and the message under it.  seed5006 segment 0 step 161
-     * is the witness: a CONFUSED read of a scroll of teleportation plines "As
-     * you read the scroll, it disappears." and "Being confused, you mispronounce
-     * the magic words...", and C pages BOTH before level_tele's "To what level
-     * do you want to teleport?" prompt appears — two keystrokes this port was
-     * consuming as getlin input instead. */
     if (g._pending_message) {
         /* Two different more()s, in C's order.  flush_screen() raises the
          * WIDTH-driven ones update_topl() would have raised as each message
@@ -417,23 +310,6 @@ export async function getlin(prompt) {
         await flush_screen(1);
         if (g._pending_message) await force_more(g._pending_message);
     }
-    /* C win/tty/getline.c:56 `ttyDisplay->toplin = TOPLINE_SPECIAL_PROMPT;` —
-     * set for the WHOLE of hooked_tty_getlin()'s read loop, on EVERY getlin.
-     * It (a) exempts the topline from redotoplin()'s more() (topl.c:139
-     * `if (ttyDisplay->cury && otoplin != TOPLINE_SPECIAL_PROMPT) more();`)
-     * and (b) routes the echo through addtopl/putsyms, which HARD-WRAPS at
-     * column CO-1 and keeps taking keystrokes.
-     *
-     * js/display.js already models that state as `game._topl_prompt_echo`
-     * (_topl_split_for_more:4970 and _buildScreenOutput:4071 both read it), but
-     * only js/cmd.js's '#' extended-command prompt ever SET it — and that
-     * prompt is one caller of getlin, not the mechanism.  Every other getlin
-     * (wish, #name, #call, #levelport, create_particular) took the ordinary
-     * message path, so an echo that ran past column 79 raised a --More-- C does
-     * not raise and then ATE the next keystroke dismissing it.
-     * MEASURED, gen094 step 532: the hero types 53 characters into
-     * "Call a vellum spellbook:"; C spills onto row 1 and carries on reading,
-     * while this port paged at column 71 and desynchronised from there. */
     /* C hooked_tty_getlin displays the query through custompline(), whose
      * vpline() tail updates gp.prevmsg even though SUPPRESS_HISTORY keeps the
      * query out of message history.  Keep Norep's comparison state in sync. */
@@ -447,26 +323,6 @@ export async function getlin(prompt) {
     while (true) {
         const keyCode = await nhgetch();
         if (keyCode === 27 /* ESC */ || keyCode === 3 /* ^C */) {
-            /* C win/tty/getline.c:81-95 hooked_tty_getlin:
-             *     if (c == '\033' && obufp[0] != '\0') {
-             *         obufp[0] = '\0';
-             *         bufp = obufp;
-             *         tty_clear_nhwindow(WIN_MESSAGE);
-             *         ... addtopl(query); addtopl(" "); addtopl(obufp);
-             *     } else {
-             *         obufp[0] = '\033'; obufp[1] = '\0';
-             *         break;
-             *     }
-             * ESC only CANCELS when the input buffer is already EMPTY.  With
-             * anything typed it is a KILL-LINE: the buffer is emptied, the
-             * prompt is redrawn bare, and getlin KEEPS READING.  This port
-             * cancelled on every ESC, so an ESC mid-line returned the cancel
-             * sentinel and every keystroke after it was re-interpreted as a
-             * command.  MEASURED on gen483-recombine-seed1841527 step 21: the
-             * hero zaps a wand of create monster in wizard mode, create_
-             * particular()'s getlin collects ".rjhlll.rjqg ", and the ESC at
-             * step 20 clears it — C re-prompts and reads 209 more frames of
-             * input, while this port made a newt and diverged from there on. */
             if (buf.length > 0) {
                 buf = '';
                 renderPrompt();
@@ -500,10 +356,6 @@ export async function getlin(prompt) {
     }
 }
 
-/* C ref: wizcmds.c:243-342 wiz_kill(void).  This is a no-time wizard
- * command: repeatedly position the cursor on a monster, credit the kill to
- * the hero, and run the canonical xkilled lifecycle (including its treasure
- * gate and deferred monster cleanup). */
 export async function wiz_kill() {
     const g = game;
     const savedVerbose = g.flags?.verbose;
@@ -634,54 +486,12 @@ export async function wiz_level_change() {
  * unidentified-spellbook/scroll/potion/wand/ring appearance forms (the wishable
  * readable classes); other object kinds fall back to the typename. */
 const _WISH_CLASS_NOUN = { 4: 'ring', 8: 'potion', 9: 'scroll', 10: 'spellbook', 11: 'wand' };
-/* C ref: objnam.c:998-1008 — xname()'s common tail, after the per-class switch:
- *     if (has_oname(obj) && dknown) { Strcat(buf, " named "); Strcat(buf, ONAME(obj)); }
- * A wished-for artifact carries its artifact name in oextra.oname (set by
- * readobjnam's oname(otmp, name, ONAME_WISH) port, objnam.js), so the C line is
- * "g - an elven dagger named Sting." not "g - an elven dagger.".
- *
- * The `dknown` guard holds on this path: xname() calls observe_object(obj)
- * (objnam.c:627) for a sighted hero before reading obj->dknown, and the wizard
- * wish is never made blind in the corpus.
- *
- * The obj_is_pname() shortcut (objnam.c:663 `goto nameit`, which would print
- * the bare artifact name with "the ") is NOT reachable for a fresh wish:
- * obj_is_pname() returns FALSE while not_fully_identified(obj) (objnam.c:337),
- * and a wished artifact has neither `known` nor `bknown` set — matching the C
- * traces for every artifact wish in the corpus (seed0360 "r - a war hammer
- * named Mjollnir.", seed0366 "j - a runed broadsword named Stormbringer.").
- *
- * C applies this tail exactly ONCE, at the end of xname_flags(); the JS class
- * helpers that are real ports of an xname() branch (xname_weapon, shared with
- * VENOM/TOOL) carry it themselves, so this wrapper must NOT re-apply it there
- * — doing so double-named a wished artifact ("l - an athame named Magicbane
- * named Magicbane.", seed0364 step 64).  It is applied here only for the
- * appearance-form branches below that stand in for an unported xname() class
- * branch (the wand/ring "<descr> <noun>" forms).  Delegates to objnam.js's
- * xname_oname_tail so the has_oname()/dknown guard and the artifact "The "
- * downcase are the single C-faithful implementation. */
 function _wish_xname_named_tail(otmp, phrase) {
     return xname_oname_tail(otmp, phrase);
 }
-/* `quanOverride` (used by the merge prinv) mirrors C prinv(prefix, obj, oquan):
- * xprname temporarily prints `oquan` (the wished obj's quantity), NOT the merged
- * stack total — so a wish that merges into a held singleton still prints the
- * singular "<let> - <doname>" (seed5500 step 212), while a fresh multi-quantity
- * wish prints "<count> <plural>" (step 304). */
 /* C objclass.h COIN_CLASS = 12 (js/objnam.js:81 says the same). */
 const COIN_CLASS_WZ = 12;
 async function _wish_doname(otmp, quanOverride) {
-    /* C invent.c:2889 prinv() -> xprname() -> doname().  This used to be a
-     * hand-rolled per-oclass ladder that stood in for doname while objnam.js's
-     * real one was unusable; it had no COIN/FOOD branch and ended in a
-     * `return 'an object'` fallback, which is exactly what seed0399 printed for
-     * "2 fortune cookies" (step 240) and "an apple" (step 255).  Call the real
-     * doname; measured +4 step points across the corpus with zero regressions
-     * (seed0399 410 -> 412, seed0367 162 -> 164) and no session lost.
-     *
-     * The quan swap is C xprname()'s own (invent.c:2841-2846): it temporarily
-     * assigns obj->quan = quan so both the count and makeplural inside xname
-     * use the wished object's oquan rather than the merged stack total. */
     const savequan = otmp.quan;
     if (quanOverride != null)
         otmp.quan = quanOverride | 0;
@@ -691,47 +501,17 @@ async function _wish_doname(otmp, quanOverride) {
         otmp.quan = savequan;
     }
 }
-/* C invent.c:4379 mergable(otmp /*into*\/, obj /*combine*\/) — narrowed to the
- * makewish path.  C's addinv_core0() (invent.c:1108) loops gi.invent and merges
- * `obj` into the first mergable stack instead of giving it a fresh invlet; a
- * wished item that is identical to one the hero already holds therefore reuses
- * the existing letter (e.g. seed5500 wishes 8 scrolls but two of them coincide
- * with a stack already present, so C assigns only 7 new scroll letters — the
- * follow-player gi.invent scan in dog_goal then iterates one fewer node).  The
- * gate is `objects[otyp].oc_merge`: TRUE for POTION/SCROLL/GEM/FOOD-class
- * objects, FALSE for WAND/RING/SPBOOK/WEAPON/ARMOR/TOOL (per include/objects.h
- * BITS(_, oc_merge, ...)).  (An earlier version of this comment ended "Coins
- * never reach makewish", which is false -- seed0399 wishes for gold at step
- * 162 -- but coins ARE still excluded from this SET, and C's addinv merges
- * wished gold into the hero's existing money stack by the same oc_merge rule.
- * No corpus wish yet lands on a hero who is already carrying gold.)
- *
- * CRITICAL (invent.c:4395, 4425-4427): mergable() requires identical otyp,
- * cursed, blessed, spe, AND dknown — but it does NOT require `known` to match,
- * and bknown mismatch only blocks the merge when (Blind || Hallucination) (which
- * never holds during a wizard wish).  So two stacks that differ ONLY in `known`
- * (or in bknown while sighted) STILL MERGE; the merge then RECONCILES those
- * dimensions in merged() (invent.c:862-875) and, if a reconciliation actually
- * happened (discovered), fires "You learn more about your items by comparing
- * them." (invent.c:941).  The old port wrongly gated the merge on bknown AND
- * dknown matching, which — combined with _finalize_wish's blanket over-ID — made
- * every wished stack identical and merged silently, suppressing that --More--
- * (seed5500 step 211).  The erosion/oeaten refinements never differ between two
- * freshly-created wished objects, so only the FOOD oeaten/orotten case is kept. */
 const _MERGE_CLASSES = new Set([7 /*FOOD*/, 8 /*POTION*/, 9 /*SCROLL*/, 13 /*GEM*/]);
 function _wish_mergable(into, obj) {
     if (into === obj) return false;
     if ((into.otyp | 0) !== (obj.otyp | 0)) return false;
     if (obj.nomerge || into.nomerge) return false;
-    if (!_MERGE_CLASSES.has(obj.oclass | 0)) return false; /* oc_merge gate */
+    if (!_MERGE_CLASSES.has(obj.oclass | 0)) return false;
     if ((obj.cursed | 0) !== (into.cursed | 0)) return false;
     if ((obj.blessed | 0) !== (into.blessed | 0)) return false;
     if ((obj.spe | 0) !== (into.spe | 0)) return false;
     /* C invent.c:4425 — dknown MUST match. */
     if ((obj.dknown | 0) !== (into.dknown | 0)) return false;
-    /* C invent.c:4426 — bknown mismatch blocks merge only when Blind||Hallu (and
-     * !Cleric); a sighted wizard wish never blocks on bknown, so we do NOT gate
-     * on it here.  `known` is intentionally NOT compared (C doesn't). */
     /* FOOD oeaten/orotten match (mergable invent.c:4421) */
     if ((obj.oclass | 0) === 7) {
         if ((obj.oeaten | 0) !== (into.oeaten | 0)) return false;
@@ -740,13 +520,6 @@ function _wish_mergable(into, obj) {
     return true;
 }
 
-/* C invent.c:856-875 merged() knowledge reconciliation — when `obj` merges into
- * `otmp`, any id-dimension known on EITHER stack becomes known on the survivor,
- * and a real change (discovered) drives the "You learn more about your items by
- * comparing them." pline.  Returns TRUE if a reconciliation happened (a dimension
- * flipped that, per C's discovered rules, counts as a discovery).  Mutates the
- * surviving stack `into`.  (rknown's `oerodeproof` gate and bknown's !Cleric gate
- * are modelled; erosion never differs between fresh wished stacks.) */
 function _wish_merged_reconcile(into, obj) {
     let discovered = false;
     if ((obj.known | 0) !== (into.known | 0)) {
@@ -759,8 +532,6 @@ function _wish_merged_reconcile(into, obj) {
     }
     if ((obj.bknown | 0) !== (into.bknown | 0)) {
         into.bknown = 1;
-        /* C: if (!Role_if(PM_CLERIC)) discovered = TRUE;  the contest wizard is
-         * never a Cleric, so this always counts. */
         discovered = true;
     }
     return discovered;
@@ -789,19 +560,6 @@ function _wish_encumber_text(oldcap, newcap) {
     return null;
 }
 
-/* C ref: invent.c:1290 hold_another_object → encumber_msg().  After prinv()
- * (the "<let> - <doname>." line, already in g._resultMessage), encumber_msg()
- * is a SEPARATE pline()/update_topl().  When near_capacity() crossed since
- * oldcap, the load-change line is appended to the topline; the per-pline
- * update_topl reserve rule (win/tty/topl.c) raises a --More-- of the (committed)
- * prinv ONLY when the joined text overflows the topline (CO-1-8) — short
- * prinv+encumber pairs share one row with NO --More-- (seed5500 step 765: "Q -
- * a large box.  You rebalance your load.  Movement is difficult." fits, no
- * More), while a long pair pages (step 673/674: the balsa-wand prinv + the
- * 57-col slowdown line overflows → "L - a balsa wand.--More--", encumber on the
- * next frame).  We record the join offset so the display split happens at the
- * message boundary, exactly as the cmd.js pickup path and pline() do.
- * DISPLAY-channel only, no RNG; consumes the dismiss key only when a More fires. */
 async function _wish_encumber_msg(oldcap, prinvLine) {
     const g = game;
     const newcap = near_capacity();
@@ -809,41 +567,12 @@ async function _wish_encumber_msg(oldcap, prinvLine) {
     if (oldcap === newcap) return;
     const msg = _wish_encumber_text(oldcap, newcap);
     if (!msg) return;
-    /* C pickup.c:1992 / :2013 — `disp.botl = TRUE;` at the tail of BOTH arms of
-     * encumber_msg(), AFTER the pline.  It is what tells the NEXT flush_screen to
-     * re-run bot() and repaint the encumbrance field; without it this port's
-     * _capture_botl (js/display.js:3353) never refreshes _botlPaintedCap and
-     * every later frame renders the stale pre-change capacity.  seed0399 became
-     * Burdened on the step-412 wish and then rendered no encumbrance word at all
-     * for the remaining 119 frames. */
     if (g.disp) g.disp.botl = true;
     const prev = g._resultMessage;
     if (prev) {
         const joined = prev + '  ' + msg;
         _topl_record_join(prev, joined);
         g._resultMessage = joined;
-        /* ── the prinv page shows the PRE-encumbrance status line ──────────────
-         * C pickup.c:1972-1993 encumber_msg(): the load-change Your()/You() runs
-         * FIRST and SET_BOTL() only after it returns.  When that pline overflows
-         * the topline it more()s the committed prinv, and that --More-- blocks
-         * INSIDE the pline, before SET_BOTL — so the bottom line the player sees
-         * is still the one the last bot() painted, i.e. the OLD capacity.  The
-         * session trace states the order outright (seed5500 step 673):
-         *     >pline @ prinv(invent.c:2889)
-         *     >pline @ encumber_msg(pickup.c:1979)
-         *     >more  @ more(../win/tty/topl.c:212)
-         * and only on step 674, after `<more`/`<pline`, does `^botl[encumber_msg]`
-         * fire.  Hence C step 673 reads "... AC:9 Xp:20" while step 674 reads
-         * "... AC:9 Xp:20 Burdened".  Rendering the live near_capacity() during
-         * the page showed "Burdened" one frame early.
-         * Freeze the frame + the displayed cap for exactly this prinv page using
-         * the same channel the dopickup prinv uses (cmd.js _pickupEncMorePending
-         * / allmain.js _pickupEncPreFrame → display.js's split loop); the hero is
-         * stationary during a wish, so the frame is captured here rather than at
-         * the next turn top.  display.js drops both after the page is dismissed.
-         * DISPLAY-ONLY: no RNG, no state mutation.  Skipped when the pair fits on
-         * one row (no --More--, e.g. step 765's large box), because then C's
-         * SET_BOTL lands before the next frame is captured anyway. */
         if (prinvLine) {
             const f = capture_painted_frame();
             if (f) {
@@ -918,33 +647,11 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
     const _dropCap = Math.max(_oldcap, _pickupBurden);
     const _oquan = (otmp.quan ?? 1) | 0;
 
-    /* C invent.c:1216-1217 hold_another_object — `if (!Blind) observe_object(obj)`
-     * BEFORE addinv(), "to maximize mergeability".  observe_object (o_init.c:442-450)
-     * sets obj->dknown=1 and discover_object(otyp, FALSE/*mark_as_known*\/,
-     * TRUE/*encountered*\/, FALSE/*credit_hero*\/) — it does NOT set known or
-     * bknown, and credit_hero=FALSE so NO exercise(A_WIS)/RNG.  This dknown=1 is
-     * what makes the wished stack mergeable with an existing observed stack (and
-     * is the ONLY id-bit a wish adds beyond mksobj's class defaults).
-     *
-     * THE `if (!Blind)` IS LOAD-BEARING and used to be missing, under a comment
-     * asserting "replays are never Blind".  seed4500 wishes three times while
-     * blind — steps 1202, 1501, 1531 — and C's prinv lines are "o - a potion.",
-     * "r - a ring.", "s - a wand.": readobjnam does not set dknown, the hero
-     * cannot see the object, so xname takes its `if (!dknown)` arm and prints
-     * the bare class noun.  This port observed the object anyway and answered
-     * "o - a brilliant blue potion." / "r - an engagement ring." / "s - a wand of
-     * polymorph.", i.e. it disclosed an identification C never granted — and
-     * every later naming of those items (the 'i' menu at step 1681, the '\\'
-     * discoveries list at 1701) inherited it.  RNG-free either way. */
     if (!_wish_Blind() && (otmp.otyp | 0) >= 0) {
         otmp.dknown = 1;
         discover_object(otmp.otyp | 0, false, true, false); /* RNG-free */
     }
 
-    /* C invent.c:1244-1249 hold_another_object — fumbling always drops the
-     * object before the ordinary add/merge and capacity paths.  drop_it expects
-     * an inventory object, so C temporarily adds it with nomerge set, then
-     * clears nomerge immediately before dropx()/hitfloor(). */
     if (_wish_Fumbling()) {
         otmp.nomerge = 1;
         otmp = (await addinv_core0(otmp, null, false));
@@ -968,22 +675,8 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
             o.quan = ((o.quan ?? 1) | 0) + oquan;
             o.owt = (o.owt | 0); /* weight recompute is weight-only/RNG-free */
             if (discovered) {
-                /* C invent.c:941 pline("You learn more about your items by
-                 * comparing them.") — then prinv()'s fresh pline pages it with a
-                 * forced --More-- (the hero is stationary during a wish, so the
-                 * live-frame force_more is correct).  DISPLAY-channel only, no RNG;
-                 * consumes the recorded dismiss key (seed5500 step 211→212). */
                 await force_more('You learn more about your items by comparing them.');
             }
-            /* C invent.c:1140 `added:` — addinv_core0 falls through to
-             * addinv_core2(obj) on EVERY path, the merge path included, and the
-             * object it hands over is the SURVIVING (merged) node, not the one
-             * that was folded in.  This call was absent, so a wish never ran
-             * addinv_core2 at all; see the new-invlet branch below for the
-             * measurement.  The `added:` tail's FIRST statement is
-             * `obj->pickup_prev = 1;` and it was still missing here even though
-             * the comment below quotes it: it marks the surviving node, not the
-             * one folded in. */
             const _c2msgs = [];
             o.pickup_prev = 1;
             addinv_core2(o, _c2msgs);
@@ -998,14 +691,6 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 await _wish_drop_overburdened(dropped, dropSpec);
                 return;
             }
-            /* C invent.c:2889 prinv(prefix, merged_obj, oquan) → xprname(obj, ...,
-             * dot=!total_of, ..., oquan).  total_of = (oquan && oquan < obj->quan):
-             * a merge that grows the stack sets total_of TRUE, so xprname omits the
-             * trailing period; the " (N in total)." suffix is only added when
-             * flags.verbose, which wiz_wish() turns OFF for the duration of the wish
-             * — so a merged wished stack reads "<let> - <doname>" with NO period and
-             * NO total suffix (seed5500 step 212).  The surviving stack keeps its
-             * original letter. */
             let prinvLine = null;
             if (o.invlet) {
                 const total_of = (oquan > 0 && oquan < (o.quan | 0));
@@ -1020,32 +705,8 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
         }
     }
 
-    /* C invent.c:694 assigninvlet() — assign the next free a..zA..Z letter,
-     * scanning from gl.lastinvnr+1 (NOT from 'a') and wrapping; gl.lastinvnr is
-     * a GLOBAL that persists across every assignment, so the chosen letter is
-     * NOT simply the first free slot.  The old naive "first free from 'a'" port
-     * diverged here: a wish after the hero dropped item 'a' (seed0116 drops a
-     * blessed +1 quarterstaff, freeing 'a') must still get 'o' (lastinvnr=13,
-     * next free after 'n'), not the freed 'a' — and the cascading `P <letter>`
-     * put-on then mis-dispatches (the same fault hangs seed0800's grand-tour).
-     * Mirrors _assigninvlet_ini (u_init.js) which already tracks game._lastinvnr.
-     * RNG-free. */
-    /* C invent.c:697-701, the FIRST statement of assigninvlet():
-     *     if (otmp->oclass == COIN_CLASS) { otmp->invlet = GOLD_SYM; return; }
-     * The comment here used to say "coins are handled by the caller (only
-     * non-coin otmp reach here)", which is false -- makewish() passes every
-     * object with a non-zero oclass, and seed0399 wishes for "blessed 30 gold
-     * pieces" at step 162.  Wished gold was taking a letter off the a-zA-Z
-     * scan ("r - ...") where C prints "$ - 30 gold pieces." */
     if ((otmp.oclass | 0) === COIN_CLASS_WZ) {
         otmp.invlet = 0x24; /* GOLD_SYM '$' */
-        /* C SET_BOTL(): botl.c's gold field is money_cnt(gi.invent), and as of
-         * the shadow retirement js/display.js _statusLine2() reads exactly that,
-         * so the wished gold reaching game.invent is all the status row needs.
-         * The hand-merge into game._ini_inv_chain that used to sit here (added
-         * for seed0399 step 162, "$:0" against C's "$:30") is gone with it.
-         * C's SET_BOTL runs bot(), which also ends any '$:' staleness latched
-         * by js/potion.js's dipfountain bath arm. */
         g._botlGoldStale = undefined;
     } else {
         const inuse = new Array(52).fill(false);
@@ -1072,72 +733,10 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
             g._lastinvnr = i;
         }
     }
-    /* C invent.c:1108 addinv_core0 — `obj->where = OBJ_INVENT`.
-     * obj.h:78 OBJ_INVENT is 3; this said 2, which is OBJ_CONTAINED, under a
-     * comment naming the right constant.  Every `carried(obj)` reader therefore
-     * answered FALSE for a wished-for item: seed0108 forces a chest with the
-     * wished Mjollnir at step 235 and C says "your war hammer named Mjollnir"
-     * where shk_your's the_your[carried(obj)] gave us "the". */
     otmp.where = OBJ_INVENT_WIZ;
-    /* C invent.c:1115-1123 addinv_core0, the no-merge arm:
-     *     assigninvlet(obj);
-     *     if (flags.invlet_constant || !prev) {
-     *         obj->nobj = gi.invent;      // insert at BEGINNING
-     *         gi.invent = obj;
-     *         if (flags.invlet_constant)
-     *             reorder_invent();       // then re-sort the chain by inv_rank
-     *     } else {
-     *         prev->nobj = obj;           // insert at END
-     *         obj->nobj = 0;
-     *     }
-     * `fixinv` (flags.invlet_constant, optlist.h initval On) is the default and
-     * this corpus never turns it off, so C ALWAYS takes the head-insert +
-     * reorder_invent() arm; the tail-append arm is the !fixinv one.  This port
-     * took the tail-append unconditionally, under a comment asserting the
-     * opposite ("appends to the END of gi.invent").  The two orders agree only
-     * while every newly assigned letter sorts AFTER every letter already held,
-     * which stops being true the moment #adjust, a freed slot, or the
-     * gl.lastinvnr wrap hands out an earlier letter.
-     *
-     * MEASURED on gen446-recombine-seed373399 (Archeologist, playmode:debug).
-     * Step 733 #adjusts the starting scroll stack from 'a' to 'z'; step 1201
-     * wishes for a potion of extra healing, which assigninvlet gives 'b'.  C's
-     * chain is then [b potion, z scrolls] (inv_rank 'b'^040=0x42 < 'z'^040=0x5A);
-     * this port's was [z scrolls, b potion].  Nothing reads the order until
-     * step 1351, when a red dragon's fire breath runs destroy_items(AD_FIRE)
-     * (zap.c:6031) and walks gi.invent: C's first eligible stack is the POTION,
-     * so it draws `rnd(6)` at maybe_destroy_item (zap.c:5835) before the quan
-     * loop; ours was the SCROLL stack, whose arm sets dmg=1 with no roll, so we
-     * went straight to `rn2(3)`.  That is C leaf 5082 and the whole remaining
-     * 430 points of the session.  An inventory-order fault draws NO RNG of its
-     * own — it is silent until something iterates the chain. */
     otmp.nobj = g.invent ?? null;
     g.invent = otmp;
     reorder_invent();
-    /* C invent.c:1140-1141 `added:` — addinv_core0's common tail:
-     *     obj->pickup_prev = 1;
-     *     addinv_core2(obj);        <- extrinsics conferred by carrying obj
-     *     carry_obj_effects(obj);
-     * This whole tail was missing from the wish path.  addinv_core2
-     * (invent.c:1024-1049, ported at js/cmd.js:37357) has two arms and BOTH are
-     * reachable from a wish: confers_luck() -> set_moreluck() for a wished
-     * luckstone, and the Archeologist scroll-label decipher.
-     *
-     * MEASURED on gen446-recombine-seed373399 (Archeologist, playmode:debug).
-     * At step 371 the hero finishes wishing for "3 scrolls of punishment".  C
-     * runs addinv_core2, which observe_object()s the stack, plines "You decipher
-     * the label on your scrolls labeled JUYED AWK YACC." and makeknown()s the
-     * type.  That pline is what leaves a --More-- standing over the next eight
-     * recorded keystrokes ('#','w','i','z','w','i','s','h'), all of which C
-     * discards at xwaitforspace until the '\n' at step 380 dismisses it.  With
-     * no decipher message this port had no --More--, so it consumed the '#' as
-     * an extended-command prefix, ran a SECOND #wizwish, and every frame from
-     * step 372 to the end of the session (1442 of 1814) was wrong.
-     *
-     * carry_obj_effects() (the cursed-figurine timeout) is NOT called here: its
-     * only arm is attach_fig_transform_timeout(), which this port does not have
-     * a body for, and adding an unported call on a newly-live arm converts a
-     * wished cursed figurine from a wrong frame into a halted session. */
     const _core2msgs = [];
     otmp.pickup_prev = 1;
     addinv_core2(otmp, _core2msgs);
@@ -1417,24 +1016,11 @@ export async function makewish() {
     let tries = 0;
     let wishedText = '';
     for (;;) {
-        /* C zap.c:6325-6328:
-         *     Strcpy(promptbuf, "For what do you wish");
-         *     if (iflags.cmdassist && tries > 0)
-         *         Strcat(promptbuf, " (enter 'help' for assistance)");
-         *     Strcat(promptbuf, "?");
-         * iflags.cmdassist defaults ON (options.c) and the corpus nethackrc
-         * does not clear it, so the suffix appears from the second prompt on.
-         * MEASURED on gen653-grammar-seed1011090 step 42, where C's topline is
-         * "For what do you wish (enter 'help' for assistance)?". */
         let promptbuf = 'For what do you wish';
         if (_wish_cmdassist_on() && tries > 0)
             promptbuf += " (enter 'help' for assistance)";
         promptbuf += '?';
 
-        /* C zap.c:6334: getlin(promptbuf, buf).  (The iflags.menu_requested
-         * wish_history_menu arm at zap.c:6331 is #ifdef DEBUG-only history
-         * recall, reachable only after a prior wish in the same game with the
-         * menu-request prefix; not exercised by this corpus.) */
         const buf = await getlin(promptbuf);
 
         /* C zap.c:6343: (void) mungspaces(buf);
@@ -1485,17 +1071,6 @@ export async function makewish() {
         break;
     }
 
-    /* The join offsets of whatever the retry loop left on the topline, taken
-     * NOW: game._topl_joins is a SINGLE-STRING side-channel (it tracks one
-     * `_topl_joins_src` at a time), and _wish_addinv_prinv's own pline()s
-     * re-key it to the result line — so by the time the merge below runs the
-     * pending line's offsets are gone.  Snapshotting them here is what keeps
-     * the "Nothing fitting..." / "That's enough tries!" boundary a genuine
-     * message boundary for _topl_split_for_more; without it the two refusal
-     * messages read as ONE atomic 74-column pline and page as a unit, which is
-     * not a shape C's update_topl can produce (measured on
-     * gen689-grammar-seed930671 step 63: C pages after "…exists in the game.",
-     * JS paged after "…That's enough tries!"). */
     const _wishPendingSrc = g._pending_message;
     const _wishPendingJoins = _topl_joins_snapshot(_wishPendingSrc);
 
@@ -1506,14 +1081,6 @@ export async function makewish() {
      * rn1(100,50) below (Cardinal Rule 2: RNG order).  Non-artifact wishes
      * consume no RNG here.  We model only touch_artifact's RNG; the
      * inventory/encumbrance bookkeeping consumes none. */
-    /* C zap.c:6389-6390 `if (!u.uconduct.wishes++) livelog_printf(...)` — the
-     * KMH conduct counter, bumped once per wish that produced an object (the
-     * `nothing` / `hands_obj` / no-match early returns above never reach it).
-     * NOTHING in js/ wrote it, so insight.c:2183's conduct line always read
-     * "You have used no wishes."  MEASURED on seed4500-knight-coverage step
-     * 1573: C's #conduct window reads "You have used 9 wishes."  The livelog
-     * call itself has no channel in this port; the counter is the observable.
-     * RNG-free. */
     if (otmp) {
         const _u = g.u || (g.u = {});
         _u.uconduct = _u.uconduct || {};
@@ -1536,34 +1103,12 @@ export async function makewish() {
     const _wishDropSpec = otmp ? _wish_drop_spec(otmp) : null;
 
     if (otmp && (otmp.oartifact | 0)) {
-        /* C invent.c:1216-1217 — hold_another_object calls observe_object(obj)
-         * (dknown = 1) BEFORE place_object + touch_artifact at :1225-1227.  The
-         * blast message at artifact.c:951 is s_suffix(the(xname(obj))), and
-         * xname's ONAME tail (objnam.c:998) is gated on dknown — so without
-         * this the message loses its " named <artifact>" tail.  RNG-free and
-         * idempotent; _wish_addinv_prinv() below repeats it (with the
-         * discover_object half) for the non-artifact path.  C's single
-         * observe_object() sits under `if (!Blind)` (invent.c:1215-1216), ahead
-         * of the artifact branch, so this copy carries the same guard. */
         if (!_wish_Blind())
             otmp.dknown = 1;
         await touch_artifact_youmonst(otmp);
     }
 
-    /* C zap.c:6412: hold_another_object(otmp, ...) → invent.c:1208
-     * hold_another_object → addinv(otmp) → prinv(prefix, otmp, ...).  addinv
-     * assigns the next free a-z invlet (assigninvlet), appends the object to
-     * gi.invent, and prinv prints "<invlet> - <doname>." on the topline.  For
-     * a wished, unidentified spellbook this is "p - a glittering spellbook."
-     * (seed4200) — the doname is the article + shuffled appearance + class
-     * noun.  RNG-neutral (no rn2/rnd here; touch_artifact above already drained
-     * any artifact RNG, and the rn1(100,50) below is next in C order).  Scoped
-     * to non-coin objects (wishes are never gold). */
     if (otmp && (otmp.oclass | 0) !== 0) {
-        /* C artifact.c:951's You() is still sitting on the topline; prinv's
-         * pline is the NEXT message, so the tty more()s the blast line here —
-         * AFTER losehp() moved u.uhp, which is why seed0366 step 77 renders
-         * "You are blasted by ...--More--" over HP:78(102), not HP:102(102). */
         const blastMsg = g._touch_artifact_blast_msg;
         if (blastMsg) {
             g._touch_artifact_blast_msg = null;
@@ -1572,34 +1117,6 @@ export async function makewish() {
         await _wish_addinv_prinv(otmp, _wishDropSpec);
     }
 
-    /* C has ONE topline.  The refusal messages this loop just printed and
-     * prinv's "<let> - <object>." are consecutive pline()s on it, and
-     * update_topl's width rule (topl.c:264, join iff n0 + strlen(toplines) + 3
-     * < CO - 8) decides where the --More-- falls.  THIS PORT SPLITS THE TOPLINE
-     * ACROSS TWO CHANNELS — _pending_message (mid-command plines) and
-     * _resultMessage (the command-result line that survives to the next
-     * nhgetch) — and allmain.c's post-rhack arbitration (js/allmain.js:2499)
-     * DROPS _pending_message outright whenever _resultMessage is already set:
-     *
-     *     if ((!_preRhackMsg || g._attackPublished)
-     *         && g._pending_message && !g._resultMessage)
-     *         g._resultMessage = g._pending_message;
-     *     g._pending_message = '';
-     *
-     * _wish_addinv_prinv publishes into _resultMessage, so on the fifth-refusal
-     * path the "Nothing fitting...  That's enough tries!" line was generated
-     * correctly and then destroyed.  Merge the two in C's order instead, with
-     * the join offsets carried over, so flush_screen's split rule pages them
-     * where C's update_topl does.  MEASURED on gen653-grammar-seed1011090 step
-     * 160: C shows "Nothing fitting that description exists in the
-     * game.--More--" and then, at 162, "That's enough tries!  o - a dusty
-     * spellbook."; without this merge JS showed only "o - a dusty
-     * spellbook.--More--".
-     *
-     * Guarded on BOTH channels being non-empty, which before this commit could
-     * not happen on the wish path at all: getlin() clears _pending_message when
-     * it returns, so prinv always ran with an empty pending channel.  Every
-     * pre-existing wish is therefore byte-identical. */
     if (g._pending_message && g._resultMessage) {
         const _pj = (g._pending_message === _wishPendingSrc)
             ? _wishPendingJoins : _topl_joins_snapshot(g._pending_message);
@@ -1628,26 +1145,6 @@ export async function makewish() {
 export async function wiz_wish() {
     const g = game;
 
-    /* C wizcmds.c:35-42:
-     *     if (wizard) { ...makewish()... }
-     *     else pline(unavailcmd, ecname_from_fn(wiz_wish));
-     * The comment that stood here said "in session replays we are always in
-     * wizard mode; skip the check".  That is an absence claim about the corpus
-     * and it is false: the generated held-out corpus contains ordinary
-     * (playmode:normal) games whose keystream still types ^W, and C answers
-     * "Unavailable command 'wizwish'." and then runs the wish TEXT as ordinary
-     * commands.  Measured on gen513-recombine-seed428318 step 39 (the ^W): this
-     * port opened "For what do you wish?" and swallowed the next 33 keys, so
-     * every frame from step 40 to the end of the session (793 of 833) was
-     * wrong.  ecname_from_fn() returns extcmdlist[].ef_txt, which has NO
-     * leading '#'.
-     * (The KEY chain reaches this through rhack -> can_do_extcmd (cmd.c:481),
-     * which prints the identical message from the identical ef_txt and never
-     * calls the function; the NAME chain cannot arrive at all, because
-     * extcmds_match (cmd.c:3054) skips every WIZMODECMD row when !wizard, so
-     * '#wizwish' resolves to nothing and gets "unknown extended command."
-     * This arm is therefore observationally the same wherever it is reached.)
-     * RNG-free: makewish's rn2(100) is on the taken branch only. */
     if (!wizard()) {
         await pline("Unavailable command 'wizwish'.");
         return ECMD_OK;
@@ -1673,32 +1170,9 @@ export async function wiz_wish() {
     return ECMD_OK;
 }
 
-/* ═══ #wizgenesis — wizcmds.c:203 wiz_genesis → read.c:3372 create_particular ═══
- *
- * The extcmd dispatch chain had no 'wizgenesis' arm, so seed0398's
- * "#wizgenesis\njackal\n" typed its name, dispatched to nothing, and then C's
- * getlin ate the seven "jackal" keystrokes as a prompt while JS ran them as
- * commands.  The session's first miss after the polymorph work is exactly that
- * prompt: C step 65 shows "Create what kind of monster?", JS showed a blank
- * topline with the cursor still on the hero.
- *
- * Scope: the plain "<monster name>" path.  create_particular_parse's quantity
- * prefix, the "saddled/sleeping/invisible/hidden/female/male" gear+state words,
- * the "tame/peaceful/hostile" dispositions, "*"/"random", and the monster-CLASS
- * fallback (name_to_monclass) are all parsed the same way C parses them, but
- * the ones whose CREATION side needs unported helpers (mkclass, rndmonst,
- * tamedog, put_saddle_on_mon, flash_mon, newcham) throw rather than silently
- * doing something else — a wrong monster is an RNG divergence, and a loud stop
- * is easier to diagnose than a quiet one.
- */
-const _CP_MAXMCLASSES = 61;   /* monsym.h MAXMCLASSES (tools/c-const-oracle.mjs) */
+const _CP_MAXMCLASSES = 61;
 const _CP_NON_PM = -1;
-/* monst.h MALE=0 FEMALE=1 NEUTRAL=2 — all three verified with
- * tools/c-const-oracle.mjs (const.js:163-534 agrees). */
 const _CP_MALE = 0, _CP_FEMALE = 1, _CP_NEUTRAL = 2;
-/* mkobj/monst flags, tools/c-const-oracle.mjs: MM_NOEXCLAM 262144,
- * MM_FEMALE 65536, MM_MALE 32768.  (The MM_FEMALE/MM_MALE pair had been
- * guessed at 0x200/0x400 here; measured instead.) */
 const _CP_MM_NOEXCLAM = 262144, _CP_MM_FEMALE = 65536, _CP_MM_MALE = 32768;
 /* defsym.h MONSYM ordinals: MONSYM(35, 'I', INVISIBLE, S_invisible, ...) and
  * MONSYM(59, '~', WORM_TAIL, S_WORM_TAIL, ...). */
@@ -1720,9 +1194,6 @@ function create_particular_parse(str) {
     /* quantity */
     const mq = /^([0-9]+) */.exec(bufp);
     if (mq) { d.quan = parseInt(mq[1], 10); bufp = bufp.slice(mq[0].length); }
-    /* QUAN_LIMIT = ROWNO * (COLNO - 1); the out-of-range arm needs
-       monster_census(), which js/ has no body for — a wizgenesis with an
-       out-of-range count is not in the corpus. */
     const QUAN_LIMIT = 21 * 79;
     if (d.quan < 1 || d.quan > QUAN_LIMIT)
         throw new Error('create_particular_parse: out-of-range quantity needs monster_census()');
@@ -1819,17 +1290,6 @@ async function create_particular_creation(d) {
 
     if (!d.randmonst) {
         firstchoice = d.which;
-        /* C read.c:3260-3272 —
-         *     if (cant_revive(&d->which, FALSE, (struct obj *) 0)
-         *         && firstchoice != PM_LONG_WORM_TAIL) {
-         *         Sprintf(buf, "Creating %s instead; force %s?",
-         *                 mons[d->which].pmnames[NEUTRAL],
-         *                 mons[firstchoice].pmnames[NEUTRAL]);
-         *         if (y_n(buf) == 'y') d->which = firstchoice;
-         *     }
-         * The prompt CONSUMES A KEYSTROKE, which is why this cannot be skipped:
-         * a wizgenesis of any unique (seed5002 segment 1 types "Asmodeus") reads
-         * one more key than an ordinary one.  This used to throw. */
         const box = { value: d.which };          /* C's `int *mtype` */
         const remapped = cant_revive(box, false, null);  /* remaps box.value */
         d.which = box.value;
@@ -1915,30 +1375,6 @@ async function create_particular_creation(d) {
     }
     return madeany;
 }
-/* C read.c:3110-3133 cant_revive(&mtype, FALSE, (struct obj *) 0) is ALREADY
- * PORTED, at js/read.js:3495, with the tree's {value} out-param convention —
- * 61 capture-replay records, 0 diverged, hi-confidence, 11 branch classes.
- * It is imported, not re-derived (SHELF-FIRST applies to the tree, not only to
- * the tools).  What used to sit here was a "would it fire?" BOOLEAN predicate
- * over a hand-written NAME SET, and C's cant_revive does not answer that
- * question: it REMAPS *mtype in place, and the caller's prompt reads the
- * REMAPPED value, so a boolean-only shape could never have driven the prompt.
- *
- * That name set was also wrong in both directions against 5.0's mons[]:
- *   - it listed 'watchman' and 'watch captain' (PM_WATCHMAN 282 /
- *     PM_WATCH_CAPTAIN 283), which C does NOT block;
- *   - it listed the 3.7 spellings 'high priest' and 'aligned priest', which in
- *     5.0 are rows 276/275's MALE names — monPmname(_, NEUTRAL) returns
- *     'high cleric'/'aligned cleric', so both entries were DEAD;
- *   - it OMITTED PM_GUARD ('guard', row 272) entirely, the first name in C's
- *     list.
- * js/read.js's copy carries the right nine indices (checked row-for-row against
- * js/makemon_pmnames.json: guard 272, shopkeeper 271, aligned cleric 275, high
- * cleric 276, Angel 123, long worm tail 330, long worm 114, human zombie 244,
- * doppelganger 270 — the `PM_PRIEST as PM_ALIGNED_CLERIC` /
- * `PM_HIGH_PRIEST as PM_HIGH_CLERIC` aliases at js/read.js:39 are 3.7 NAMES for
- * the correct 5.0 ROWS). */
-/* M2_MALE 65536 / M2_FEMALE 131072, tools/c-const-oracle.mjs. */
 function _cp_is_male(p)   { return !!((p.mflags2 | 0) & 65536); }
 function _cp_is_female(p) { return !!((p.mflags2 | 0) & 131072); }
 
@@ -1993,25 +1429,6 @@ export async function wiz_genesis() {
         await pline('Unavailable command \'wizgenesis\'.');
     }
 
-    /* C wizcmds.c:214 — wiz_genesis returns ECMD_OK on BOTH arms, and rhack
-     * (cmd.c:4486-4493) maps ECMD_OK onto reset_cmd_vars() → svc.context.move
-     * = FALSE.  #wizgenesis costs no turn.
-     *
-     * The '#wizgenesis' NAME chain reaches this through doextcmd, which already
-     * cleared context.move ahead of its dispatch; the C('g') KEY chain
-     * (js/cmd.js key === 7) does NOT, so it left context.move at the 1
-     * allmain.js:2127 sets before rhack and moveloop_core ran a full world turn
-     * that C never runs.  Measured on seed5002 segment 0 step 85 (the '\n' that
-     * closes the "Create what kind of monster?" getlin for "gas spore"): C draws
-     * 50 leaves and stops; this port drew 60 — the extra ten being that phantom
-     * turn's six mcalcmove rn2(12) plus gethungry/exercise/dog_move.  That put
-     * the whole remainder of the segment ten leaves out of phase, so the very
-     * next command (z n l — zap the wand of fire east) lost its
-     * exercise(A_WIS)/dobuzz/zap_hit/zhitu stream and dropped "The bolt of fire
-     * hits you!" off the step-88 topline.
-     *
-     * Placed here rather than in the key arm, where wiz_wish() (wizcmds.js:948)
-     * puts its identical ECMD_OK clear — one site covers both chains. */
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
 }

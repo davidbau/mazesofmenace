@@ -24,7 +24,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, _topl_record_join, pline, canseemon,
-         topl_force_break_now } from './display.js';
+         topl_force_break_now, You_hear } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -32,16 +32,7 @@ import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
 import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickobj, stairway_at, stairway_find_dir, upstart, wake_nearto,
          /* meatmetal (mon.c:1521) */ mksobj_at,
          /* meatmetal (mon.c:1473) */ is_rustprone,
-         /* m_consume_obj (mon.c:1399).  ALIASED because this file EXPORTS a
-          * throwing `healmon` stub (js/monmove.js, below) that SHADOWS this
-          * real body (js/mklev.js:17762).  MEASURED: no js/ file imports
-          * healmon from './monmove.js' — every other consumer (dog.js,
-          * dochug.js, mcastu.js, mhitm.js, were.js) already takes it from
-          * './mklev.js'.  The stub's only caller is this file's own
-          * mon_regen(), which nothing imports either, so the shadow is dead
-          * today.  It is still left ALONE: deleting an export is a change to
-          * this file's public surface, which is outside this packet's
-         * one-file scope. */ healmon as healmon_real, meatobj as meatobj_real,
+ healmon as healmon_real, meatobj as meatobj_real,
          meatcorpse as meatcorpse_real, newcham } from './mklev.js';
 import { accessible, closed_door, may_dig } from './look.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
@@ -104,26 +95,6 @@ const PM_GREMLIN = 40;
 /* C ref: pm.generated.js — for m_postmove_effect */
 const PM_HEZROU = 296;
 const PM_STEAM_VORTEX = 110;
-/* C ref: monmove.c:241-304 onscary(x,y,mtmp) — REAL now (js/makemon.js:5403,
- * exported).  This file is the C-FAITHFUL HOME for onscary, and the caption
- * that used to sit here asked for the shadows to be collapsed before a real
- * port landed.  Three of the four have been: js/makemon.js carries the full
- * body (Rodney / lawful-minion / Angel / Rider immunity, the human-and-unique
- * magical-scare exemption, shopkeeper-in-shop and priest-in-temple, the <0,0>
- * auditory-scare sentinel, the vampire-on-altar arm, sobj_at(SCR_SCARE_MONSTER),
- * and the full Elbereth sengr_at + displacement + Gehennom/endgame gate);
- * js/mklev.js's mfndpos copy re-points to it; and js/teleport.js keeps
- * goodpos_onscary DELIBERATELY, because teleport.c:50 is a separate,
- * permonst-only C function, not a shadow.  Only this one was still `false`.
- *
- * The old caption's warning holds and is why this is its own commit: omitting a
- * negated deterrent is the PERMISSIVE direction, so re-pointing can only make
- * these sites report "scared" MORE often, never less.  It is RNG-load-bearing
- * at distfleeck — a true sawscary takes the monflee branch, which draws rn2(7)
- * and rnd(10) or rnd(100) that a false one never draws — and RNG-free at the
- * other two sites (searches_for_item, stop_occupation).
- *
- * onscary itself consumes NO RNG (C monmove.c:241-304). */
 const onscary_stub = onscary;
 /* C ref: mon.c:2462-2469 monnear — is the (x,y) square adjacent to monster?
  * dist2(mon->mx, mon->my, x, y) < 3 (diagonal OK except PM_GRID_BUG). */
@@ -157,23 +128,6 @@ function flees_light(mtmp) {
     /* couldsee stub: assume visible if mcansee is set; L15 refines */
     return !!(mtmp.mcansee);
 }
-/* C ref: youprop.h:198 — #define Invis ((HInvis || EInvis) && !BInvis), a
- * macro over the u.uprops[INVIS] triple.  This port stores that property in
- * TWO places: the numeric uprops[] slot (the potion / worn-armor / mcastu
- * writers) and a mirrored u.HInvis scalar — js/trap.js:3688 domagictrap's
- * fate-11 arm writes BOTH and comments on why.  js/display.js:1672 hit the same
- * hazard in canspotself() and settled it by reading both spellings, "because
- * reading only one of them makes the predicate depend on which writer happened
- * to land first"; this is that reader for monmove.c's three Invis macro sites.
- *
- * All three of them read ONLY the mirrored scalars.  Measured by
- * tools/never-initialised-field-probe.mjs over all 44 public sessions,
- * js/monmove.js:155 reads an absent u.HInvis 31,333 times in 43 sessions and
- * js/monmove.js:1744 does so 8,727 times in 40 — so Invis was permanently
- * false in distfleeck's seescary selection, in m_canseeu(), and in m_move's
- * should_see arm, and m_move's `should_see && Invis && !perceives && rn2(11)`
- * never drew.  js/priest.js:594-614 and set_apparxy below already carry this
- * same repair for their own copies of the macro. */
 function _Invis_mv() {
     const u = game.u;
     if (!u) return false;
@@ -183,25 +137,10 @@ function _Invis_mv() {
     const BInvis = p?.blocked | 0;
     return !!((HInvis || EInvis) && !BInvis);
 }
-/* C ref: monmove.c:534-585 distfleeck.
- * Computes inrange/nearby/scared for monster mtmp relative to hero.
- * Returns {inrange, nearby, scared} mirroring C's out-pointer signature.
- *
- * RNG: rn2(5) is consumed UNCONDITIONALLY at entry (bravegremlin).
- * rn2(7) + rnd(10 or 100) are consumed only when scared=1 (monflee branch).
- *
- * Smoke tests (expected behavior):
- * 1. tame mtmp: rn2(5) fires, bravegremlin computed; inrange/nearby from dist2;
- *    scared=0 because onscary_stub returns false for tame peaceful monsters.
- * 2. non-tame, !nearby: rn2(5) fires; scared=0 (nearby gate fails).
- * 3. non-tame, nearby, !sawscary, !flees_light, !sanctuary: rn2(5) fires; scared=0.
- * 4. non-tame, nearby, sawscary=true (stub always false, so never in current port).
- */
 export function distfleeck(mtmp) {
     const u = game.u;
     if (!u || !mtmp)
         return { inrange: 0, nearby: 0, scared: 0 };
-    /* C monmove.c:539 — rn2(5) is UNCONDITIONAL; do not gate it. */
     const bravegremlin = (rn2(5) === 0) ? 1 : 0;
     /* C monmove.c:542-543:
      * *inrange = (dist2(mtmp->mx, mtmp->my, mtmp->mux, mtmp->muy) <= BOLT_LIM*BOLT_LIM)
@@ -352,12 +291,6 @@ const PM_DEATH_MV = 311, PM_PESTILENCE_MV = 312, PM_FAMINE_MV = 313;
 function _is_rider_mv(mndx) {
     return mndx === PM_DEATH_MV || mndx === PM_PESTILENCE_MV || mndx === PM_FAMINE_MV;
 }
-/* C ref: monmove.c:133 m_can_break_boulder(mtmp) =
- *   is_rider(mtmp->data) || (!mtmp->mspec_used
- *       && (mtmp->isshk || mtmp->ispriest || mtmp->data->msound == MS_LEADER)).
- * msound is not in the packed monst row; MS_LEADER applies only to the Quest
- * leader (unique, absent from the early corpus), so it is conservatively omitted
- * — isshk/ispriest are read from the live monster, and is_rider from mnum. */
 function _m_can_break_boulder_mv(mtmp, mndx) {
     if (_is_rider_mv(mndx))
         return true;
@@ -365,9 +298,6 @@ function _m_can_break_boulder_mv(mtmp, mndx) {
         return false;
     return !!(mtmp.isshk || mtmp.ispriest);
 }
-/* C ref: mon.c:2080-2083 — ALLOW_ROCK iff passes_walls || throws_rocks ||
- * m_can_break_boulder.  (passes_walls also grants ALLOW_WALL, irrelevant to the
- * boulder gate.)  Returns just the ALLOW_ROCK bit (0 if none). */
 export function _allow_rock_mv(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
@@ -380,22 +310,6 @@ export function _allow_rock_mv(mtmp) {
     return 0;
 }
 
-/* C ref: mon.c:2054-2055,2089 mon_allowflags(): can_open = !(nohands(mdat) ||
- * verysmall(mdat)); if (can_open) allowflags |= OPENDOOR. Computed the SAME
- * way js/monmove.js:mfndpos_nontame already computes it inline (established
- * precedent) — factored out here so BOTH movemon-integration call sites
- * (dog_move, m_move) can OR it into their allowflags without duplicating the
- * mflags1/msize lookup a third time. UNLOCKDOOR is deliberately omitted, same
- * documented simplification mfndpos_nontame already carries: it needs
- * monhaskey/iswiz/is_rider (unported world state), so keyless hands-having
- * movers correctly still reject locked doors — this only restores the
- * closed-but-unlocked-door OPENDOOR case. Without this bit, mfndpos rejects
- * every closed door a hands-having monster should be able to open, undercounting
- * cnt by 1 whenever a candidate square is a closed door — the exact bug behind
- * the m_move/site-2 regression on seed0013 turn 7 (mon mndx=59 at (9,3): C
- * accepts the closed door at (10,3), cnt=6; without this fix mfndpos rejects
- * it, cnt=5, and the mtrack-avoidance rn2(4*(cnt-j)) at monmove.c:1987 draws
- * rn2(20) instead of C's rn2(24)). */
 export function _can_open_mv(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
@@ -409,20 +323,6 @@ const ALLOW_BARS_MV = 0x10000000;
 const AD_RUST_BARS_MV = 24, AD_CORR_BARS_MV = 42; /* attack.h AD_RUST/AD_CORR */
 const S_VORTEX_BARS_MV = 22; /* mondata.h mlet S_VORTEX (is_whirly) */
 
-/* C ref: mon.c:2078-2083 mon_allowflags(): ALLOW_BARS iff passes_bars(mdat)
- * (mondata.c:554-562) — same call-site-factoring rationale as _can_open_mv
- * above (mfndpos.info sees a caller-supplied flag, not something it derives
- * itself). passes_bars = passes_walls || amorphous || unsolid || is_whirly
- * || verysmall || dmgtype(RUST) || dmgtype(CORR) || metallivorous ||
- * (slithy && !bigmonst). The last two (metallivorous, slithy&&!bigmonst)
- * are deliberately omitted — same "port faithfully but expect little sweep
- * coverage" carve-out the keystone spec §7 already uses for rare mondata.h
- * predicates — this covers the common early-corpus case (verysmall grid
- * bugs/rodents, amorphous oozes, rust/corrosion monsters). Confirmed
- * load-bearing: seed3300 turn 3, a grid bug (mndx=116, verysmall) next to an
- * IRONBARS square — without this bit mfndpos rejects it (cnt 4->3),
- * flipping the mtrack rn2(4*(cnt-j)) at monmove.c:1987 from rn2(16) to
- * rn2(12) and regressing a previously-passing session. */
 export function _passes_bars_mv(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
@@ -442,48 +342,6 @@ export function _passes_bars_mv(mtmp) {
     return passes_bars ? ALLOW_BARS_MV : 0;
 }
 
-/* C ref: mon.c:2064-2124 mon_allowflags(struct monst *) — the WHOLE function,
- * replacing the three hand-rolled reductions that stood in for it.
- *
- * ── READ THIS BEFORE "deduplicating" against js/mklev.js:11113 ──────────────
- * js/mklev.js ALSO exports a mon_allowflags(). It is sweep-green (500 records,
- * 0 diverged, hi confidence) and it has NO live callers: it reads mtmp.data
- * throughout, which only the capture-replay reconstructor populates, so the
- * sweep is the only thing that has ever run it. Wiring m_move to it — even
- * with a permonstTemplate()-materialized `.data` view, which is the idiom
- * js/mklev.js:mfndpos itself uses — was tried here and drops
- * seed4500-knight-coverage's rngPrefix from 8332 to 2786. So the sweep being
- * green says nothing about the live path; the two are not interchangeable
- * today. This copy reads the packed mons rows directly, the convention
- * _allow_rock_mv / _can_open_mv / _passes_bars_mv in this file already follow,
- * and it is the one measured against the corpus. Unifying them is real work
- * (materialize `.data` on live monst objects, then re-measure), not a rename.
- *
- * Why this matters for the RNG stream and not just for "where a monster walks":
- * the bits returned here are mfndpos()'s `flag`, and mfndpos()'s candidate
- * count `cnt` bounds m_move's mtrack-avoidance draw `rn2(4 * (cnt - j))`
- * (monmove.c:1963). Get one bit wrong for one monster and that rn2 is called
- * with the wrong N, which is a Cardinal-Rule-2 divergence at that very leaf.
- *
- * Measured (seed4500-knight-coverage, leaf 7979, step 255): an earth elemental
- * (mndx 156, M1_WALLWALK) at (40,8) is boxed in on its south side by two HWALL
- * squares (39,9) and (41,9) and a door at (40,9) held by another monster. C
- * gives it ALLOW_ROCK|ALLOW_WALL from passes_walls(), so may_passwall() keeps
- * both wall squares as candidates: cnt = 7, and C draws rn2(28). The previous
- * reduction here (`ALLOW_U | _allow_rock_mv | _can_open_mv | _passes_bars_mv`)
- * had no ALLOW_WALL arm at all, so both wall squares were rejected: cnt = 5,
- * and we drew rn2(20). That was the session's first divergence on every axis.
- *
- * Deliberate deviations, all of them "the supporting state is not ported yet"
- * rather than reinterpretations of C:
- *   - m_can_break_boulder's MS_LEADER arm (msound is not carried on the packed
- *     mons row) — already the documented carve-out in _m_can_break_boulder_mv.
- *   - passes_bars()'s metallivorous / (slithy && !bigmonst) arms — the
- *     documented carve-out in _passes_bars_mv.
- * Everything else is a literal transcription, in C's order, including the
- * Conflict short-circuit: resist_conflict() draws rnd(20), so it MUST NOT be
- * evaluated unless Conflict is set, exactly as C's `&&` does.
- */
 export function mon_allowflags(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
@@ -595,27 +453,6 @@ function _noteleport_level_mv(mtmp, mndx) {
     }
 }
 
-/* C ref: monmove.c:1181-1222 m_balks_at_approaching(oldappr, mtmp, &pdistmin,
- * &pdistmax) — a 5.0 addition that was carried here only as the comment
- * "m_balks_at_approaching — stub: no change".
- *
- * A hostile that can hurt the hero from range does not walk up to them: within
- * dist2 < 25 and in line of sight it turns its approach into a RETREAT
- * (appr = -1), or, for a throw-and-return weapon, into a preferred-range band
- * (appr = -2 with pdistmin/pdistmax). This is entirely RNG-free for every
- * monster in the corpus, which is exactly why the stub was invisible on the RNG
- * axis and cost SCREEN points instead.
- *
- * Measured (seed4500-knight-coverage, step 261, the session's first screen
- * miss): a snake-class hostile at (37,8), hero at (34,10) — dist2 13, in sight,
- * AT_SPIT in its mattk table, so C returns -1 and the monster backs off to
- * (38,7). With the stub, appr stayed 1 and it closed to (36,8) instead. Every
- * PRNG leaf around that step matched; only the map cell was wrong.
- *
- * get_atkdam_type() draws for AD_RBRE (random breath), so ranged_attk_available
- * is on the RNG path for those monsters — the C call order below is preserved
- * exactly rather than reordered for cheapness.
- */
 function m_balks_at_approaching(oldappr, mtmp, prefrange) {
     const mwep = mtmp.mw ?? null;
     const x = mtmp.mx | 0, y = mtmp.my | 0;
@@ -671,19 +508,10 @@ function _m_canseeu_mv(mtmp) {
     return (!Invis || perceives) && !u?.uinwater && couldsee(mtmp.mx | 0, mtmp.my | 0);
 }
 
-/* C ref: trap.c:1063 floor_trigger — traps that only fire when the victim
- * is on the ground (ttyp 1..TRAPDOOR). */
 function floor_trigger_mv(ttyp) {
     return ttyp >= T_ARROW_MV && ttyp <= T_TRAPDOOR_MV;
 }
 
-/* C ref: trap.c:1108 m_harmless_trap(mtmp, ttmp) — TRUE if the trap won't hurt
- * mtmp (so it needn't be avoided / marked in mfndpos info[]).  Faithful port;
- * intrinsic resistance branches read the permonst mresists column; equipment
- * resistance remains outside this compact movement helper.  Mirror of the proven pet-AI copy
- * in dogmove.js:m_harmless_trap; kept local to avoid a cross-module export of a
- * trap.c helper through dogmove.  check_in_air(mon) = is_floater || is_flyer
- * (M1_FLY covers float+fly in this corpus). */
 function m_harmless_trap_mv(mtmp, ttmp) {
     const ttyp = ttmp.ttyp | 0;
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
@@ -696,7 +524,6 @@ function m_harmless_trap_mv(mtmp, ttmp) {
      * mresists is MONS row column 5; sleep resistance is bit 0x04. */
     const resistsSleep = (mndx >= 0 && mndx < _MONS_MV.length)
         && (((_MONS_MV[mndx][5] | 0) & 0x04) !== 0);
-    /* C: if (!Sokoban && floor_trigger(ttyp) && check_in_air(mtmp,0)) return TRUE */
     if (floor_trigger_mv(ttyp) && isFlyer)
         return true;
     switch (ttyp) {
@@ -734,12 +561,6 @@ const POOL_TYP_MV = 16;  /* POOL — IS_OBSTRUCTED(typ) = (typ) < POOL */
 const TREE_TYP_MV = 13;  /* TREE */
 const DOOR_TYP_MV = 23;  /* DOOR — IS_DOOR(typ) = (typ) == DOOR */
 const WATER_TYP_MV = 18; /* WATER — IS_WATERWALL(typ) = (typ) == WATER */
-/* C ref: rm.h:220-224 — door bit-mask values. Was previously D_CLOSED=0x02,
- * D_LOCKED=0x04 (shifted down one bit), which made mfndpos accept a locked
- * door (doormask=D_LOCKED=0x08) instead of rejecting it: 0x08 & wrong-0x04 = 0
- * and 0x08 & wrong-0x02 = 0, so the door-reject branch never fired, inflating
- * the candidate count cnt by 1 and breaking the rn2(4*(cnt-j)) bound at
- * monmove.c:1987 (seed1050: rn2(16) vs C rn2(12)). */
 const D_BROKEN_MV = 0x01;
 /* D_ISOPEN = 0x02 (passable; an open door is accepted because neither D_CLOSED
  * nor D_LOCKED is set).  Referenced by the postmov door-open block below. */
@@ -807,13 +628,6 @@ export function mfndpos_nontame(mtmp, allowflags) {
     }
     if (!(mtmp.mcansee | 0))
         flag |= ALLOW_SSM_MV;
-    /* C mon.c:2055,2089 mon_allowflags(): can_open = !(nohands || verysmall);
-     * if (can_open) allowflags |= OPENDOOR.  Without this bit a door-opening
-     * monster's closed-door neighbour is wrongly dropped from mfndpos, lowering
-     * cnt by 1 and shrinking rn2(4*(cnt-j)) at monmove.c:1987 (seed0013: a
-     * mndx=59 mon at a closed door — C rn2(24)=17 vs JS rn2(20)).  UNLOCKDOOR
-     * requires monhaskey/iswiz/is_rider (unported world state) — keyless
-     * hands-having mons get can_unlock=false, so locked doors still reject. */
     {
         const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
         const mf1 = mrow ? (mrow[6] | 0) : 0;
@@ -894,19 +708,6 @@ export function mfndpos_nontame(mtmp, allowflags) {
                 if (!(flag & ALLOW_U_MV)) continue;
                 info |= ALLOW_U_MV;
             } else {
-                /* C mon.c:2294-2317 — MON_AT(nx,ny): a monster (not hero) blocks
-                 * this square. C computes mm_aggression / mm_displacement to decide
-                 * whether the mover may attack/displace it; otherwise the square is
-                 * rejected (continue). For the common early-game hostile-vs-hostile
-                 * case mm_aggression()==0 and mm_displacement()==0 (those cover
-                 * purple-worm/shrieker, zombie-maker, W-tower pairings — none in the
-                 * early corpus), so:
-                 *   - if flag has ALLOW_M (set by mconf via ALLOW_ALL): accept, ALLOW_M;
-                 *     (mtame defender + !ALLOW_TM would reject, but flag-from-mconf
-                 *      includes ALLOW_TM so a tame defender is also accepted here)
-                 *   - else: !(mmflag & ALLOW_MDISP) → reject (continue).
-                 * This is the missing gate that over-counted candidates: a hostile
-                 * mon could not step onto a square another monster occupies. */
                 let mon_here = null;
                 for (let m = game.fmon; m; m = m.nmon) {
                     if (m === mtmp) continue;
@@ -932,13 +733,6 @@ export function mfndpos_nontame(mtmp, allowflags) {
             /* sanctuary, garlic, NOTONL branches require unported world state;
              * conservatively not applied (do not reject in the common empty-room
              * early-game case). */
-            /* C mon.c:2322-2326 — boulder gate.  checkobj = OBJ_AT(nx,ny); if a
-             * boulder lies on the candidate square and the mover lacks ALLOW_ROCK,
-             * the square is rejected (continue), lowering cnt; otherwise the square
-             * keeps ALLOW_ROCK in info[].  This is the cnt-correcting gate for
-             * boulder squares (seed4200 leaf 14147: a gnome mummy next to a boulder
-             * at (71,12) — C cnt=1 not 2, so m_move's mtrack loop never fires
-             * rn2(8)).  Live boulders use otyp 475 (mklev.js). */
             {
                 let hasBoulder = false;
                 for (let o = game.level?.levelObjects?.[nx]?.[ny]; o; o = o.nexthere) {
@@ -949,15 +743,6 @@ export function mfndpos_nontame(mtmp, allowflags) {
                     info |= ALLOW_ROCK_MV;
                 }
             }
-            /* C mon.c:2341-2358 — trap avoidance.  A non-pet hostile that lacks
-             * ALLOW_TRAPS rejects a candidate square holding a non-harmless trap it
-             * already knows (mon_knows_traps).  Without this a monster steps back
-             * onto a squeaky board / known trap it learned, over-counting cnt and
-             * inflating rn2(4*(cnt-j)) at monmove.c:1987 (seed0013 leaf 3970: a
-             * lichen that learned the SQKY_BOARD it stepped on rejects that square,
-             * cnt 4->3, C rn2(12) not fired).  fixed_tele_trap/hastrack ALLOW_TRAPS
-             * marking uses unported teledest/track state; the corpus trap here is a
-             * floor trap, so only the rejection gate is load-bearing. */
             {
                 const ttmp = t_at(nx, ny);
                 if (ttmp) {
@@ -1023,11 +808,6 @@ const PM_GELATINOUS_CUBE_MV = 8;  /* monsters.h:166 MON(... GELATINOUS_CUBE);
  * is CLOTH.  Now both are live: see mon_would_take_item below. */
 const GEMSTONE_MAT_MV = 20, MINERAL_MAT_MV = 21;
 
-/* C ref: muse.c searches_for_item — every otyp / mons index / flag it names.
- * Resolved against the 5.0 headers with `node tools/c-const-oracle.mjs` (the
- * object and monster ids are X-macro enum members, so there is nothing in any
- * header to grep and hand-counting the expansion is how a wrong index is
- * written down confidently — see the SADDLE note in that tool). */
 const WAN_MAKE_INVISIBLE_MV = 418, WAN_SPEED_MONSTER_MV = 420;
 const WAN_DIGGING_MV = 428, WAN_POLYMORPH_MV = 422, WAN_UNDEAD_TURNING_MV = 421;
 const WAN_TELEPORTATION_MV = 424, WAN_CREATE_MONSTER_MV = 413;
@@ -1100,7 +880,6 @@ export function mon_would_take_item(mtmp, otmp) {
     const mxload = max_mon_load(mtmp);
     const pctload = mxload > 0 ? Math.trunc((cload * 100) / mxload) : 100;
 
-    /* C: uball/uchain check — JS uball/uchain not tracked for floor scan; skip. */
     if (mtmp.mtame && (otmp.cursed | 0))
         return false;
     const mindless = !!(mflags1 & M1_MINDLESS_MV);
@@ -1110,17 +889,6 @@ export function mon_would_take_item(mtmp, otmp) {
     const likes_gems = !!(mflags2 & M2_JEWELS_MV);
     const likes_magic = !!(mflags2 & M2_MAGIC_MV);
 
-    /* C monmove.c:1033 `if (is_unicorn(mtmp->data)
-     *                       && objects[otmp->otyp].oc_material != GEMSTONE)
-     *                       return FALSE;`
-     * mondata.h:149 is_unicorn(ptr) = (ptr->mlet == S_UNICORN && likes_gems(ptr)).
-     * The comment this replaces said "corpus collectors here are not unicorns",
-     * which is false: seed0399 has a hostile black unicorn that walked three
-     * squares to a bag, over a spider web, and picked it up — two plines
-     * ("...is caught in a spider web.", "...picks up a bag.") that C never
-     * emits, which put a --More-- on step 117's topline and cost the whole
-     * 415-step tail.  C's unicorn ignores everything that is not a gemstone,
-     * so m_search_items never redirects its goal to the bag at all. */
     if (mlet === S_UNICORN_MV && likes_gems
         && _oc_material_mv(otyp) !== GEMSTONE_MAT_MV)
         return false;
@@ -1149,36 +917,6 @@ export function mon_would_take_item(mtmp, otmp) {
     return false;
 }
 
-/* C ref: muse.c:2758 searches_for_item(mon, obj) — "will this monster go out of
- * its way to fetch this object?".  It is the FIRST arm of mon_would_take_item()
- * (monmove.c:1009), so for every non-animal, non-mindless monster it decides the
- * m_search_items() goal redirect — RNG-free, and therefore invisible to every
- * RNG oracle.
- *
- * The body used to be `return false;` under a comment asserting the TRUE cases
- * "do not apply to ordinary corpus floor items".  Measured on
- * seed0399-wizard-hallu-actions step 113 (the session's first screen miss, with
- * 419 of its 532 step points behind it), that assertion is wrong twice over —
- * both misses are ordinary floor items in an ordinary room:
- *
- *   - a quantum mechanic at (19,9) two squares from a POTION OF HEALING at
- *     (17,10).  C takes the POTION_CLASS arm, m_search_items sets ggx,ggy =
- *     (17,10), and the appr==1 loop walks it to (18,10).  With the stub the goal
- *     stayed mux,muy = (47,9) and it walked to (20,9).
- *   - two elf-lords at (57,11)/(58,11) two squares from a SACK at (58,13).  C
- *     takes the TOOL_CLASS Is_container arm; the sack (distmin 2) beats the
- *     tripe ration at (54,11) (distmin 3/4) that the likes_objs/practical[] arm
- *     had found, so C moves them to (57,12)/(58,11).  With the stub they chased
- *     the tripe to (56,11)/(57,10).
- *
- * All three monsters run the selection loop with appr == 1, which draws no RNG
- * at all, so C and JS agreed on every rn2 in the turn and disagreed only about
- * three glyphs on the map.
- *
- * Ported arm for arm against muse.c.  Two predicates need tables this module
- * does not carry and are called out at their arm rather than dropped silently:
- * resists_ston()/cures_stoning() in the CORPSE arm and mcould_eat_tin() in the
- * TIN arm.  No RNG anywhere in C's body. */
 function searches_for_item_mv(mon, obj) {
     const typ = obj.otyp | 0;
     const mndx = (mon.mndx ?? mon.mnum ?? 0) | 0;
@@ -1186,11 +924,6 @@ function searches_for_item_mv(mon, obj) {
     const mflags1 = mrow ? (mrow[6] >>> 0) : 0;
     const mlet = mrow ? (mrow[0] | 0) : -1;
 
-    /* C muse.c:2763-2768 — don't let monsters interact with protected items on
-     * the floor (an object lying on the monster's own scary square).  onscary is
-     * still this file's stub (see onscary_stub above); when it lands, this arm
-     * activates with no further edit.  Only reachable when the object is on the
-     * monster's own square, which m_search_items reaches at distmin 0. */
     if ((obj.where | 0) === OBJ_FLOOR
         && (obj.ox | 0) === (mon.mx | 0) && (obj.oy | 0) === (mon.my | 0)
         && onscary_stub(obj.ox | 0, obj.oy | 0, mon))
@@ -1354,37 +1087,6 @@ function touch_petrifies_mndx_mwci(mndx) {
 }
 /* C include/mextra.h:161 enum dogfood_types */
 const ACCFOOD_MWCI = 2, MANFOOD_MWCI = 3;
-/* C ref: monmove.c:1035-1050 mon_would_consume_item(mtmp, otmp) — "monster mtmp
- * would love to consume object otmp, WITHOUT picking it up".  Called from
- * m_search_items (monmove.c:1425) as the second half of
- *   (mon_would_take_item(...) && can_carry(...) > 0) || mon_would_consume_item(...)
- *
- *   if (otmp->otyp == CORPSE && !touch_petrifies(&mons[otmp->corpsenm])
- *       && corpse_eater(mtmp->data))
- *       return TRUE;
- *   if (mtmp->mtame && has_edog(mtmp)
- *       && (ftyp = dogfood(mtmp, otmp)) < MANFOOD
- *       && (ftyp < ACCFOOD || EDOG(mtmp)->hungrytime <= svm.moves))
- *       return TRUE;
- *   return FALSE;
- *
- * The old body returned false with two reasons.  The DOGFOOD reason was CORRECT
- * and is now measured: over 23,344 calls across 688 train sessions mtmp->mtame
- * is true ZERO times here, because m_move dispatches a pet to dog_move long
- * before m_search_items.  The CORPSE reason ("tables not available in this
- * module") was a port gap, not a fact about C, and the tables are four integers.
- *
- * dogfood() DRAWS RNG (obj_resists' rn2(100), among others), so the C
- * short-circuit order is load-bearing and reproduced exactly: dogfood is
- * reached only behind mtmp->mtame && has_edog(mtmp), the same guard C puts in
- * front of it.  The corpse arm is RNG-free.
- *
- * CAVEAT, stated because it is UNMEASURABLE from this corpus: svm.moves is
- * spelled `game.moves` here, matching this file's other svm.moves read inside
- * the same monster loop (monmove.js:3438, monmove.c:310).  js/dogmove.js:3823
- * documents a place where game.moves runs one AHEAD of C's svm.moves; if the
- * dogfood arm ever goes live, check that boundary first — the corpus cannot
- * settle it, since mtmp->mtame is false on all 23,344 calls. */
 function mon_would_consume_item(mtmp, otmp) {
     if ((otmp.otyp | 0) === CORPSE_OTYP_MV
         && !touch_petrifies_mndx_mwci(otmp.corpsenm | 0)
@@ -1413,12 +1115,6 @@ function is_armed_mv(mndx) {
     return attacktype({ pmidx: mndx | 0 }, AT_WEAP_MV);
 }
 
-/* C ref: objclass.h objects[otyp].oc_material.  Only used by the likes_gems gem
- * branch (mineral filter).  A real material table isn't imported here; return a
- * non-MINERAL (!= 21) sentinel so the gem branch fires for gem-class items —
- * harmless for non-jewel-loving corpus collectors (likes_gems is false).
- * KNOWN GAP: a jewel-lover standing near a luckstone/loadstone/touchstone/
- * flint/rock (all MINERAL) will path to it here where C would not. */
 /* C objects[otyp].oc_material.  The generated objects.c column already in the
  * tree (js/mkobj_erosion_meta.js, the same table js/mklev.js obj_oc_material
  * and js/do_wear.js read); this was a constant-1 stub. */
@@ -1427,17 +1123,6 @@ function _oc_material_mv(otyp) {
     return (i >= 0 && i < MKOBJ_OC_MATERIAL.length) ? (MKOBJ_OC_MATERIAL[i] | 0) : 0;
 }
 
-/* C ref: monmove.c:1355 m_search_items(mtmp, &ggx, &ggy, &mmoved, &appr).
- * Scans floor objects within SQSRCHRADIUS of the monster; if it finds an object
- * it would take/consume, redirects the goal (*ggx,*ggy) to that object's square
- * (closest qualifying object wins).  Returns TRUE only when the wanted object is
- * directly under the monster (sets *mmoved = MMOVE_DONE), telling m_move to stop.
- * RNG: the in-shop `rn2(25)` skip (monmove.c:1381) — `if (*in_rooms(omx, omy,
- * SHOPBASE) && (rn2(25) || mtmp->isshk)) goto finish_search;` — is now live via
- * js/shk.js's real in_rooms(); previously this file treated every monster as
- * not-in-a-shop and never drew, which is cfn-never-drawn-in-js (this rn2(25)
- * had NO js/ call site at all).  All other gates remain RNG-neutral. Returns
- * { redirected, ggx, ggy, appr, mmoved, done }. */
 async function m_search_items(mtmp, ggx, ggy, mmoved, appr) {
     let minr = SQSRCHRADIUS_MV;
     const omx = mtmp.mx | 0, omy = mtmp.my | 0;
@@ -1472,24 +1157,12 @@ async function m_search_items(mtmp, ggx, ggy, mmoved, appr) {
 
         for (let xx = lmx; xx <= hmx; xx++) {
             for (let yy = lmy; yy <= hmy; yy++) {
-                /* OBJ_AT(xx,yy): first floor object at this square. */
                 const firstObj = game.level?.levelObjects?.[xx]?.[yy];
                 if (!firstObj) continue;
                 /* found an object closer already */
                 if (minr < distmin_mv(omx, omy, xx, yy)) continue;
                 if (!could_reach_item(mtmp, xx, yy)) continue;
                 /* hides_under(ptr) && cansee — stub: collectors here aren't hiders. */
-                /* C monmove.c:1369-1376 — don't chase an object hidden beneath
-                 * a monster which cannot expose or vacate it.  This is more than
-                 * a pathing nicety: m_search_items changes ggx/ggy without RNG,
-                 * so omitting the guard changes the deterministic candidate
-                 * selected by m_move while the random stream still matches.
-                 *
-                 * gen237 move 9: dwarf mummy m_id=140 at (63,9) sees a gem at
-                 * (63,7), but snake m_id=147 is concealed on top of it
-                 * (mundetected=1).  C skips that square and approaches the hero,
-                 * choosing (62,10); JS chased the concealed gem and chose
-                 * (62,8), making the next turn's mfndpos bound diverge. */
                 const mtoo = m_at(xx, yy);
                 if (mtoo
                     && (helpless_mv(mtoo) || (mtoo.mundetected | 0)
@@ -1550,61 +1223,15 @@ function distmin_mv(x0, y0, x1, y1) {
     return dx > dy ? dx : dy;
 }
 
-/* C ref: mthrowu.c:1329 linedup / 1375 m_lined_up / 1397 lined_up(mtmp).
- * lined_up(mtmp) = is the monster geometrically lined up with its perceived hero
- * (mux,muy)?  For a far/non-aligned monster this returns FALSE with no RNG (the
- * orthogonal/diagonal + range test fails first).  The boulder-LoS rn2 branch is
- * ported but only fires for an in-range aligned monster whose LoS is blocked
- * solely by boulders (out of the early corpus). */
 function lined_up_mv(mtmp) {
     const u = game.u;
     if (!u) return false;
-    /* C mthrowu.c:1382-1386 — the FIRST thing m_lined_up() does, BEFORE any
-     * geometry test:
-     *     if (utarget && Upolyd && rn2(25)
-     *         && (u.uundetected || (U_AP_TYPE != M_AP_NOTHING
-     *                               && U_AP_TYPE != M_AP_MONSTER)))
-     *         return FALSE;
-     * `utarget` is always TRUE here (lined_up(mtmp) = m_lined_up(&gy.youmonst,
-     * mtmp), mthrowu.c:1397), so once the hero is polymorphed C draws rn2(25)
-     * on EVERY call — including the monmove.c:1916 in_line test that every
-     * hostile monster's m_move() runs, and including the far-away/unaligned
-     * monsters whose geometry test would fail with no RNG at all.  C evaluates
-     * rn2(25) before the u.uundetected/U_AP_TYPE test because && is
-     * left-to-right, so the draw happens even for a visible, non-mimicking
-     * hero; only the RESULT is discarded.  This arm was missing here, so from
-     * the moment seed5500's hero zapped himself into a warhorse (step 869) the
-     * JS monster loop was one rn2 short per monster per turn: C's rn2(25)=3 at
-     * m_lined_up vs this port's rn2(4*(cnt-j)) in the mfndpos mtrack loop
-     * below, the session's first RNG-value divergence at leaf 5411.
-     * C decl.c gy.youmonst is always live; this port has no global hero-monst
-     * record, so an absent one reads as m_ap_type 0 == M_AP_NOTHING, which is
-     * what a non-mimicking hero has (same reading as makemon.js m_lined_up). */
     if (Upolyd(u) && rn2(25)) {
         const _uap = ((game.youmonst?.m_ap_type | 0) & M_AP_TYPMASK);
         if (u.uundetected
             || (_uap !== M_AP_NOTHING && _uap !== M_AP_MONSTER))
             return false;
     }
-    /* C mthrowu.c:1387-1389 — the geometry + line-of-sight test is linedup()
-     * itself, called with the boulderhandling mode m_lined_up() picks:
-     *     boolean ignore_boulders = utarget && (throws_rocks(mtmp->data)
-     *                                    || m_carrying(mtmp, WAN_STRIKING));
-     *     return linedup(tx, ty, mtmp->mx, mtmp->my,
-     *                    utarget ? (ignore_boulders ? 1 : 2) : 0);
-     * `utarget` is always TRUE here (lined_up(mtmp) = m_lined_up(&gy.youmonst,
-     * mtmp), mthrowu.c:1397), so boulderhandling is 1 or 2 and NEVER 0.
-     *
-     * This used to be a hand-rolled copy of linedup()'s first half that stopped
-     * at `return !!couldsee(bx, by)` — a STAND-IN: it type-checks, it runs, and
-     * it silently drops C's whole boulderhandling tail, including the
-     * `rn2(2 + boulderspots)` at mthrowu.c:1369 that decides whether a sight
-     * line blocked SOLELY by boulders still counts as lined up.  The note above
-     * it claimed "the boulder-LoS rn2 branch is ported", which was true of
-     * js/trap.js linedup() and false of this call site — the only one m_move()
-     * uses.  seed0014 step 258: the hero has just pushed a boulder between
-     * itself and the jackal, C draws rn2(3)=1 @linedup(mthrowu.c:1369) and this
-     * port drew nothing, the session's first RNG-value divergence at leaf 12864. */
     const ignore_boulders = ((mtmp.data?.mflags2 | 0) & M2_ROCKTHROW_MV) !== 0
                             || !!m_carrying(mtmp, WAN_STRIKING_MV);
     /* [no callers care about the 1 vs 2 situation any more] */
@@ -1665,19 +1292,6 @@ export async function m_move_aggress(mtmp, x, y) {
  * monster.  Both tame and hostile postmov paths call this shared leaf; C's
  * postmov invokes mintrap uniformly for pets and non-pets. */
 function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
-    /* C mintrap front-matter (trap.c:3770-3797), inlined here because the
-     * trapeffect_sqky_board leaf is open-coded below rather than reached
-     * through trapeffect_selector.  Faithful order:
-     *   - floor_trigger(SQKY) && check_in_air(mtmp) → step over (no RNG);
-     *     check_in_air = is_floater||is_flyer (M1_FLY), false for ground mons.
-     *   - already_seen && rn2(4) && !forcebungle → ignore (the trap was
-     *     learned on a prior step); first encounter has already_seen=false
-     *     so no rn2 fires (matches seed0013: the lichen's first squeak).
-     *   - mon_learns_traps(mtmp, SQKY): sets mtrapseen so mfndpos_nontame
-     *     rejects this square next turn (the cnt 4->3 fix at leaf 3970).
-     * trap->madeby_u setmangry(rnl(5)) is omitted: generated dungeon traps
-     * have madeby_u=0 in this path; the madeby_u anger/rnl(5) arm remains an
-     * explicit inherited gap outside this shared movement effect. */
     const _mf1_sq = (mtmp.data.mflags1 | 0);
     const _in_air_sq = (_mf1_sq & M1_FLY_MV) !== 0;
     let _sqky_handled = false;
@@ -1761,29 +1375,6 @@ function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
         }
         if (_mark_seen)
             seetrap(trap); /* C marks the trap after pline_mon */
-        /* C trap.c trapeffect_sqky_board, monster branch TAIL
-         * (after both the in_sight pline arm and the You_hear arm):
-         *     wake_nearto(mtmp->mx, mtmp->my, 40);   [the
-         *     "wake up nearby monsters" tail]
-         * This call was absent, and it is the ONLY thing on the
-         * squeaky-board path that changes world state rather than
-         * the screen — so the message matched C while the sleepers
-         * around the board stayed asleep.  Those monsters are then
-         * skipped by dochug (`msleeping && !disturb` returns 0
-         * before distfleeck), so the NEXT turn's movemon pass runs
-         * fewer monster moves than C's and the whole RNG stream
-         * shears.  Measured on seed0360-wizard-world-tour: a hell
-         * hound (m_id 3522) steps on the board at (41,11) on turn
-         * 26 and C wakes five monsters inside dist2 < 40 of it
-         * (m_ids 3555/3538/3534/3531/3518, the last being the
-         * Wizard of Yendor); on turn 27 C runs 42 dochug passes to
-         * this port's 36 and the first RNG divergence lands at leaf
-         * 86078.  wake_nearto consumes NO rng (wake_nearto_core,
-         * mon.c:4364, has no rn2), so this cannot move the stream
-         * except through the monster set it corrects.
-         * Guarded by !_sqky_handled exactly as C is: the two
-         * step-over/ignore paths (m_in_air, already-seen && rn2(4))
-         * never reach trapeffect_sqky_board at all. */
         wake_nearto(mtmp.mx | 0, mtmp.my | 0, 40);
     }
 }
@@ -1806,27 +1397,6 @@ export async function m_move(mtmp, after) {
      * the mainline path re-reads its own omx/omy further down. */
     const _entry_omx = mtmp.mx | 0, _entry_omy = mtmp.my | 0;
 
-    /* C monmove.c:1757-1766 — the FIRST statement of m_move():
-     *     if (mtmp->mtrapped) {
-     *         int i = mintrap(mtmp, NO_TRAP_FLAGS);
-     *         if (i == Trap_Killed_Mon) { newsym(mtmp->mx, mtmp->my);
-     *                                     return MMOVE_DIED; }
-     *         if (i == Trap_Caught_Mon) return MMOVE_NOTHING;
-     *     }
-     * This runs BEFORE the mtame -> dog_move dispatch (monmove.c:1797), so an
-     * already-trapped PET pays mintrap's escape roll before any dog_move RNG.
-     *
-     * The old stub's justification ("no trap table in JS yet") is stale:
-     * mintrap() is ported in js/trap.js:2164 with the full mtrapped branch --
-     * `if (!rn2(40))` at trap.js:2176, C trap.c:3731 -- and the postmov path
-     * below already calls it after a move.  Only this HEAD call site was
-     * missing, so a monster that was ALREADY in a trap at the top of its turn
-     * silently skipped the rn2(40) struggle-to-escape draw every turn.
-     *
-     * seed0004: the pet pony is stuck in a trap at turn 30.  C draws
-     * rn2(40)=26 @mintrap(trap.c:3731); JS fell straight through to
-     * dog_move -> dogfood -> obj_resists rn2(100) (js/dogmove.js:435) at the
-     * same leaf index -- first RNG-value divergence @ leaf 4313. */
     if (mtmp.mtrapped) {
         const i = await mintrap(mtmp, NO_TRAP_FLAGS_MV);
         if (i === TRAP_KILLED_MON_MV) {
@@ -1880,22 +1450,8 @@ export async function m_move(mtmp, after) {
     if (mtmp.mtame | 0) {
         /* C: return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...) */
         const res = await dog_move(mtmp, after);
-        /* C postmov (monmove.c:1508) `newsym(omx, omy); /* update the old position *\/`
-         * — the FIRST half of the redraw pair, fired before mintrap.  dog_move()
-         * itself calls no newsym (C dogmove.c newdogpos has none); the pair lives
-         * here, straddling mintrap, and the gap between the two halves is
-         * observable: mintrap's "<pet> is caught in a bear trap!" pline raises a
-         * --More-- while the destination cell still shows its remembered object.
-         * seed0004 step 34: C paints the orc corpse '%' at <75,18> under the
-         * blocked --More--; drawing the pony there early cost 11 frames. */
         if (res === MMOVE_MOVED_MV)
             newsym(_entry_omx, _entry_omy);
-        /* C postmov (monmove.c:1498-1535): when the pet actually MOVED, fire
-         * mintrap at its new cell.  A pet stepping onto a dart/arrow/rock trap
-         * creates a missile via mksobj (next_ident) inside trapeffect_*; without
-         * this the pet's move never triggers the trap and the next_ident RNG that
-         * C fires here is missing (seed1500 step 13: dog → dart trap).  Routed
-         * through the same ported mintrap the hostile path uses (line 574 below). */
         if (res === MMOVE_MOVED_MV) {
             const _trap = t_at(mtmp.mx | 0, mtmp.my | 0);
             if (_trap && _trap.ttyp !== SQKY_BOARD_MV) {
@@ -1937,12 +1493,6 @@ export async function m_move(mtmp, after) {
         const xm = await shk_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
         if (xm === -1) {
-            /* C case -1: "let m_move do it" — shk follows hero outside shop.
-             * C sets mmoved=MMOVE_NOTHING and breaks; the seed0116 shk is in his
-             * shop, far from hero, and never returns -1, so we conservatively
-             * treat -1 as no-move rather than port the unported isshk-in-
-             * not_special fall-through.  TODO: when a session exercises
-             * shk_move==-1, fall through to the not_special block below. */
             return MMOVE_NOTHING_MV;
         }
         /* C default (impossible) and cases 0,1 → postmov with MMOVE_NOTHING/MOVED.
@@ -1953,19 +1503,6 @@ export async function m_move(mtmp, after) {
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
     }
     if ((mtmp.ispriest | 0)) {
-        /* WIRED 2026-08-14.  Both blockers named below have cleared:
-         *   (1) it is no longer inert — js/sp_lev.js create_altar()'s
-         *       shrine/sanctum path calls the real priestini(), and with
-         *       'minetn' in mklev.js's LOADER_READY the corpus generates
-         *       Minetown's temple and its priest;
-         *   (2) it is no longer unsafe — js/priest.js histemple_at() is a full
-         *       port of priest.c:153-158 now that in_rooms() and on_level()
-         *       are real bodies, so C's no-RNG `return -1` arm is reachable
-         *       and pri_move() no longer over-draws rn1(3,-1) for a priest
-         *       standing outside his temple.
-         * Witness: seed0360-wizard-world-tour leaf 43154 — C
-         * `rn2(3) @pri_move(priest.c:194)` while JS ran the normal-movement
-         * path because ispriest fell into the no-op below. */
         const xm = await pri_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
         if (xm === -1) return MMOVE_NOTHING_MV;
@@ -1974,60 +1511,12 @@ export async function m_move(mtmp, after) {
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
     }
     if ((mtmp.isgd | 0)) {
-        /* C monmove.c:1830-1851 — `xm = isgd ? gd_move(mtmp) : ...`, then
-         *     switch (xm) { case -2: MMOVE_DIED; case -1: MMOVE_NOTHING;
-         *       default: postmov(..., (xm != 1) ? MMOVE_NOTHING : MMOVE_MOVED) }
-         * This arm returned MMOVE_NOTHING with the comment "Stub: gd_move not
-         * ported", so the vault guard invault() creates stood on the breach it
-         * had just opened and never led the hero anywhere.  MEASURED on
-         * seed0012-monk-vault-escort step 285: the hero's next westward step
-         * walked into the stationary guard and became do_attack().
-         * gd_move is RNG-light -- its only draw is the `!rn2(10)` gate on
-         * "Move along!" (vault.c:1069) -- but the corridor it digs is the whole
-         * back half of that session's map. */
         const _gdomx = mtmp.mx | 0, _gdomy = mtmp.my | 0;
         const xm = await gd_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
         if (xm === -1) return MMOVE_NOTHING_MV;
-        /* C monmove.c:1508 — postmov()'s `newsym(omx, omy); /_ update the old
-         * position _/`, inside its `if (mmoved == MMOVE_MOVED)` block.  omx/omy
-         * are dochug's entry coordinates (monmove.c:1745), captured above.
-         * gd_move's own newsym (vault.c:1198) fires AFTER place_monster and so
-         * repaints the NEW square only; without this one the guard's glyph stays
-         * painted on the square he just left.  MEASURED on seed0012 step 284:
-         * the guard walks from <71,13> to <70,13> and the frame showed TWO '@'
-         * -- and stayed one square stale for the whole 23-turn escort.
-         * postmov() is this port's port of postmov's :1660 tail only; the
-         * shk and priest arms above go through the same tail and are equally
-         * missing this newsym, but neither move_special nor pri_move has a
-         * corpus witness for it, so this is scoped to the arm that does. */
         if (xm === 1)
             newsym(_gdomx, _gdomy);
-        /* C monmove.c:1649-1657 — the LAST statement of postmov()'s
-         * `if (mmoved == MMOVE_MOVED)` block:
-         *     if (engulfing_u(mtmp) && (mtmp->mx != omx || mtmp->my != omy)) {
-         *         ... swallowed(0);
-         *     } else {
-         *         newsym(mtmp->mx, mtmp->my);
-         *     }
-         * A vault guard never engulfs, so only the else arm is portable here.
-         * It reads as a redundant repaint of the square gd_move's own newsym
-         * (vault.c:1198) already painted -- EXCEPT on the turn gd_move_cleanup
-         * fires, where parkguard() has just moved the guard to <0,0> and this
-         * newsym is therefore newsym(0,0).  <0,0> is not isok(), so C takes
-         * newsym's impossible() arm and PLINES "newsym: attempting screen
-         * update for <0,0>" -- which pages the "Suddenly, the guard
-         * disappears." already on the topline.
-         * VERIFIED against a locally-built 5.0 recorder instrumented with
-         * backtrace(3): seed0012-monk-vault-escort raises exactly ONE bad
-         * newsym in the whole session, at moves=327, and its stack is
-         * newsym <- postmov(monmove.c:1658) <- m_move(monmove.c:1823) <-
-         * dochug <- dochugw <- movemon_singlemon <- iter_mons_safe <- movemon.
-         * The guard entered m_move at <65,6> alive with isgd=1, so
-         * movemon_singlemon's parked-guard branch (`isgd && !mx`) does NOT
-         * catch it -- gd_move parks it mid-call and postmov then reads the
-         * parked coordinates.  That --More-- is seed0012's last unmatched
-         * frame (307/308). */
         if (xm === 1)
             newsym(mtmp.mx | 0, mtmp.my | 0);
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
@@ -2036,64 +1525,13 @@ export async function m_move(mtmp, after) {
     /* C monmove.c:1864-1872: tengu teleport: if (PM_TENGU && !rn2(5) && !mcan && !tele_restrict)
      * teleport/mnexto and return MMOVE_MOVED. */
     const mndx_mv = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-    /* C monmove.c:1841-1842 — the fourth conjunct is `!tele_restrict(mtmp)`,
-     * and it is REACHED: it only runs once the monster is a tengu, rn2(5)
-     * rolled 0 and mcan is clear, so short-circuiting cannot hide it.  This
-     * port had it commented out as a constant-FALSE stub, which made every
-     * tengu on a no-teleport level take the teleport arm and draw C's
-     * monmove.c:1843 rn2(2) where C falls through to `not_special:` and draws
-     * the mfndpos/mtrack rn2(4*(cnt-j)) at monmove.c:1963 instead.  MEASURED
-     * on seed0360-wizard-world-tour: at step 399 the hero is on the Wizard
-     * quest home level, and dat/Wiz-strt.lua opens with
-     * des.level_flags("mazelevel", "noteleport", "hardfloor") — so
-     * noteleport_level() is TRUE there and C never takes this arm.  That is
-     * the session's first RNG divergence (leaf 100823: C rn2(20)=7 @
-     * monmove.c:1963 vs JS rn2(2)=1 here). */
     if (mndx_mv === PM_TENGU_MV && !rn2(5) && !(mtmp.mcan | 0)
         && !tele_restrict(mtmp)) {
-        /* C monmove.c:1843-1846:
-         *     if (mtmp->mhp < 7 || mtmp->mpeaceful || rn2(2))
-         *         (void) rloc(mtmp, RLOC_MSG);
-         *     else
-         *         mnexto(mtmp, RLOC_MSG);
-         * Both arms stood here as "no movement (no level map)" / "mnexto stub"
-         * comments.  That premise is stale: rloc() (js/teleport.js:2023) and
-         * mnexto() (js/teleport.js:982) are both complete ports living next to
-         * collect_coords()/enexto_core() in the same file, and both are already
-         * called from js/dochug.js, js/shk.js and js/mhitu.js.  BOTH ARMS DRAW:
-         * rloc() does up to 50 rnd(COLNO-1)/rn2(ROWNO) tries and then a whole-map
-         * collect_coords() walk, and mnexto() runs enexto_out() -> collect_coords(),
-         * which shuffles rings 1..3 (rn2(8)..rn2(2), rn2(16)..rn2(2),
-         * rn2(24)..rn2(2)).  Standing here drawing NOTHING is what put the JS
-         * stream a whole teleport behind C.
-         *
-         * MEASURED on gen104-reseed-seed289322 (train): at session step 151 a
-         * tengu (mon #112 @ <71,5>) takes this arm — C draws rn2(5)=0
-         * @m_move(monmove.c:1841) and rn2(2)=0 @m_move(monmove.c:1843), both of
-         * which this port already reproduced, and then goes straight into
-         * rn2(8)=2 rn2(7)=2 rn2(6)=1 ... @collect_coords(teleport.c:700).  That
-         * rn2(8) is global leaf 8124 and it is the session's FIRST RNG-value
-         * divergence: JS returned from here having drawn nothing and went on to
-         * the next monster's distfleeck rn2(5). */
         if ((mtmp.mhp | 0) < 7 || (mtmp.mpeaceful | 0) || rn2(2)) {
             await rloc(mtmp, RLOC_MSG);
         } else {
             await mnexto(mtmp, RLOC_MSG);
         }
-        /* C returns through postmov(mtmp, ptr, omx, omy, MMOVE_MOVED,
-         * seenflgs) here.  rloc()/mnexto() already repaints the relocation,
-         * but postmov deliberately repeats both ends: newsym(omx, omy) near
-         * its entry (monmove.c:1508), then newsym(mtmp->mx, mtmp->my) at the
-         * end of its MMOVE_MOVED block (monmove.c:1658).  postmov() below only
-         * ports C's trailing MMOVE_MOVED/MMOVE_DONE block, so this early-return
-         * arm skipped that redraw pair.
-         *
-         * Under hallucination the destination repaint is observable even when
-         * the cell is otherwise unchanged: it consumes another display-RNG
-         * random_monster draw.  gen002's tengu teleports to <49,14>; C paints
-         * it once in rloc_to_core and once here, while JS formerly painted it
-         * only once.  That shifted every later hallucinated warning/name and
-         * eventually changed --More-- input consumption. */
         newsym(_entry_omx, _entry_omy);
         newsym(mtmp.mx | 0, mtmp.my | 0);
         /* C monmove.c:1847 — `return postmov(..., MMOVE_MOVED, ...)`. */
@@ -2102,31 +1540,6 @@ export async function m_move(mtmp, after) {
 
  /* not_special: normal monster movement (C monmove.c:1874-2099) */
 
-    /* C monmove.c:1875-1876, the first statement after `not_special:`:
-     *     if (u.uswallow && !mtmp->mflee && u.ustuck != mtmp)
-     *         return MMOVE_MOVED;
-     * While the hero is inside a stomach EVERY other non-fleeing monster's
-     * m_move() returns immediately: it does not move and it draws nothing.
-     * The line that used to stand here said `uswallow stub: false`, which was
-     * true only for as long as nothing in js/ could set u.uswallow; the
-     * AT_ENGL/gulpmu port made it a live gap.
-     *
-     * MEASURED on seed0383 at global leaf 10358: C's monster at <32,5>, whose
-     * mux/muy is the swallowed hero's own square, takes this return — two
-     * distfleeck rn2(5) back to back with nothing between them — while this
-     * port ran the whole movement AI down to m_move's lined_up() and drew
-     * `rn2(2 + boulderspots)` @linedup(mthrowu.c:1369) for a sight line the
-     * swallowed hero no longer has (vision_recalc(2) zeroes viz_array, so
-     * couldsee() is false everywhere and linedup falls through to its
-     * boulder walk).
-     *
-     * A previous pass measured this return as COSTING 15 screen points and
-     * parked it, because the next C behaviour it exposes was unported:
-     * movemon_singlemon's I_SPECIAL re-equip skip (mon.c:1269-1284), which
-     * needs m_dowear.  Both landed in this same commit — js/trap.js
-     * m_dowear_type was a no-op stub, and js/fastforward.js now reads the
-     * flag it has always been setting — so the return goes in with them.
-     * Ordering matters: this line alone is a regression. */
     if ((game.u?.uswallow | 0) && !(mtmp.mflee | 0) && game.u.ustuck !== mtmp)
         return MMOVE_MOVED_MV;
 
@@ -2170,12 +1583,6 @@ export async function m_move(mtmp, after) {
 
         const u = game.u;
         const Invis = _Invis_mv();
-        /* C mondata.h:81 — #define perceives(ptr) ((ptr)->mflags1 & M1_SEE_INVIS)
-         * monflag.h:109 M1_SEE_INVIS = 0x01000000L ("can see invisible
-         * creatures").  Same read as this file already does at m_move's other
-         * two perceives() sites (js/monmove.js:123, :1508); prefer the live
-         * mon->data when the capture reconstructor materialized it, else the
-         * packed MONS row (row[6] = mflags1). */
         const _mf1_perc = (mtmp.data && mtmp.data.mflags1 != null)
             ? (mtmp.data.mflags1 >>> 0)
             : ((mndx_mv >= 0 && mndx_mv < _MONS_MV.length)
@@ -2196,18 +1603,6 @@ export async function m_move(mtmp, after) {
             /* C: || u.uundetected stub: false */
             /* C: || (GOLD_PIECE && !likes_gold) stub: false */
             || (mtmp.mpeaceful | 0) /* || ... && !mtmp->isshk */
-            /* C monmove.c:1870-1871:
-             *   || ((monsndx(ptr) == PM_STALKER || ptr->mlet == S_BAT
-             *        || ptr->mlet == S_LIGHT) && !rn2(3))
-             * The two mlet arms were skipped as "mlet not tracked for all mons",
-             * which is not so: the reconstructed permonst carries mlet and the
-             * packed MONS row carries it in column 0, exactly like mflags1 just
-             * above.  Dropping them dropped one rn2(3) per bat / yellow light per
-             * m_move, and with it the `!appr && !rn2(++chcnt)` reservoir sampling
-             * (monmove.c:1968) that only runs once this arm has forced appr to 0.
-             * seed0399-wizard-hallu-actions diverges on exactly that: at step 113
-             * C draws rn2(3) @m_move(monmove.c:1871) then rn2(1)..rn2(8) for a
-             * yellow light (mndx 118, mlet 25), where JS drew neither. */
             || ((mndx_mv === PM_STALKER_MV
                  || mlet_mv === S_BAT_MV || mlet_mv === S_LIGHT_MV) && !rn2(3))
            ) {
@@ -2221,22 +1616,6 @@ export async function m_move(mtmp, after) {
          * away.  Was "m_balks_at_approaching — stub: no change". */
         appr = m_balks_at_approaching(appr, mtmp, prefrange_mv);
 
-        /* C monmove.c:1904-1911 — when the monster CANNOT currently see the hero
-         * (should_see false) but it can_track (has eyes / wields Excalibur), it
-         * follows the hero's footstep scent-trail instead of heading straight at
-         * the hero's (perceived) square:
-         *   if (!should_see && can_track(ptr)) {
-         *       cp = gettrack(omx, omy);
-         *       if (cp) { ggx = cp->x; ggy = cp->y; }
-         *   }
-         * gettrack() returns the newest utrack coord within distmin<=1 of the
-         * monster (the settrack ring buffer of the hero's last UTSZ positions,
-         * already maintained in js/track.js).  RNG-FREE.  Without this a
-         * far-from-hero wandering monster walks straight toward the hero's live
-         * square rather than backtracking along the trail the hero actually left,
-         * so it selects a different (RNG-free appr==1) candidate and later fires a
-         * different mtrack rn2(4*(cnt-j)) at monmove.c:1987 (seed0003 mon#71:
-         * C follows the trail west to (7,15), JS marched east to (9,15)). */
         if (!should_see && can_track({ pmidx: mndx_mv })) {
             const _cp = gettrack(omx, omy);
             if (_cp) {
@@ -2338,24 +1717,6 @@ export async function m_move(mtmp, after) {
     }
 
     if (cnt === 0 && !_is_unicorn_mv(mtmp.data.pmidx | 0)) {
-        /* C monmove.c:1926-1930 —
-         *     if (cnt == 0 && !is_unicorn(mtmp->data)) {
-         *         if (find_defensive(mtmp, TRUE) && use_defensive(mtmp))
-         *             return MMOVE_DONE;
-         *         return MMOVE_NOMOVES;
-         *     }
-         * THE `find_defensive` CALL WAS MISSING, and `is_unicorn` was a
-         * hardcoded `false`.  This is C's SECOND door into the monster
-         * item-use machinery and the only one that passes tryescape=TRUE,
-         * which SKIPS find_defensive's `mhp >= mhpmax` gate (muse.c:544) —
-         * so the measurement recorded at js/dochug.js ("find_defensive
-         * returns TRUE zero times across the 44 public sessions") was taken
-         * with this door shut.  seed0361-archeologist-tour step 236: a gnome
-         * lord (m_id 739) boxed in at <52,19> gets cnt==0 here, and in C
-         * quaffs the one potion of healing it carries — leaf 22042,
-         * rn2(13) @precheck(muse.c:74) then d(6,4) @use_defensive(muse.c
-         * :1165), where this port ran straight on into the next monster's
-         * distfleeck. */
         if (find_defensive(mtmp, true) && (await use_defensive(mtmp)))
             return MMOVE_DONE_MV;
         return MMOVE_NOMOVES_MV;
@@ -2367,23 +1728,6 @@ export async function m_move(mtmp, after) {
     let nix = omx, niy = omy;
     let nidist = dist2(nix, niy, ggx, ggy);
     const jcnt = Math.min(MTSZ_MV, cnt - 1);
-    /* C monmove.c:1935-1938 — "allow monsters be shortsighted on some levels
-     * for balance":
-     *   if (!mtmp->mpeaceful && svl.level.flags.shortsighted
-     *       && nidist > (couldsee(nix, niy) ? 144 : 36) && appr == 1)
-     *       appr = 0;
-     * This block was entirely absent here.  It is the LAST writer of `appr`
-     * before the candidate loop, so dropping it silently pinned every hostile
-     * on a shortsighted level to appr == 1 — and with appr != 0 the
-     * `!appr && !rn2(++chcnt)` reservoir sampling at monmove.c:1970 never runs
-     * at all.  `svl.level.flags.shortsighted` is set by des.level_flags()
-     * (js/sp_lev.js:1340) for medusa-3, juiblex, orcus, and the four Planes;
-     * js/mklev.js:5787 already clears it per level, so the flag was live and
-     * only the read was missing.  Measured on seed4500-knight-coverage
-     * (Medusa's level, Dlvl 24): C runs rn2(1), rn2(2), ... rn2(7) for a raven
-     * at leaf 82543 where JS ran none, and that is the session's first RNG
-     * divergence.  nidist here is dist2(omx, omy, ggx, ggy) — nix/niy are still
-     * the monster's own square at this point, exactly as in C. */
     if (!(mtmp.mpeaceful | 0)
         && !!(game.level && game.level.flags && game.level.flags.shortsighted)
         && nidist > (couldsee(nix, niy) ? 144 : 36)
@@ -2464,29 +1808,6 @@ export async function m_move(mtmp, after) {
             && !(game.u?.uswallow | 0))
             return MMOVE_DONE_MV;
 
-        /* C monmove.c:1990:
-         *     if (mmoved == MMOVE_MOVED && m_digweapon_check(mtmp, nix, niy))
-         *         return MMOVE_DONE;
-         * The comment that used to stand here read "m_digweapon_check stub:
-         * false".  That was a FALSE ABSENCE CLAIM: m_digweapon_check is fully
-         * ported below in this same file (js/monmove.js) and had ZERO call
-         * sites, so a tunneling monster that needs a pick (dwarf, gnome with a
-         * mattock) never spent its move WIELDING one.  It walked straight into
-         * the wall instead and postmov's dig arm fired mdig_tunnel's
-         * unconditional rnd(12), a leaf C does not draw on that pass: C spends
-         * that whole move on the wield (MMOVE_DONE — no move, no dig, no RNG),
-         * and digs on a LATER pass once the pick is in hand.
-         *
-         * seed0360-wizard-world-tour, step 182: dwarf m_id 1869 at (28,7)
-         * carrying a PICK_AXE it is not wielding picks (29,8), a diggable
-         * TRWALL.  C: weapon_check := NEED_PICK_AXE, mon_wield_item() wields
-         * the pick, m_move returns MMOVE_DONE, two distfleeck rn2(5) and
-         * nothing else.  JS: moved and dug, inserting rnd(12) @dig.c:1418 plus
-         * the IS_WALL "crashing rock" rn2(5) — the session's first RNG-value
-         * divergence, global leaf 43164.
-         *
-         * m_digweapon_check and mon_wield_item are both RNG-free, so this
-         * wiring REMOVES two JS-only leaves rather than adding any. */
         if (mmoved === MMOVE_MOVED_MV && await m_digweapon_check(mtmp, nix, niy))
             return MMOVE_DONE_MV;
 
@@ -2504,28 +1825,6 @@ export async function m_move(mtmp, after) {
             return MMOVE_NOTHING_MV;
         }
 
-        /* C monmove.c:2043-2047:
-         *     if ((mfp.info[chi] & ALLOW_M) != 0
-         *         || (nix == mtmp->mux && niy == mtmp->muy))
-         *         return m_move_aggress(mtmp, nix, niy);
-         *
-         * THE SECOND CLAUSE WAS MISSING, and it is not the ALLOW_M case: it is
-         * the DISPLACED-IMAGE case.  When the square the selection loop picked
-         * IS the monster's believed hero position, C does not WALK there — it
-         * attacks that spot (C's own comment: "It may mistake the monster for
-         * your (displaced) image") and the monster stays where it is.  With an
-         * empty square m_move_aggress attacks nothing, draws nothing and
-         * returns MMOVE_DONE, which is why the omission was invisible on the
-         * RNG axis: seed0360 turn 59, monster m_id=4039 at (13,19) believes the
-         * hero is at (12,18) (the hero wears displacement; its real square is
-         * (10,18)).  ggx,ggy IS mux,muy (monmove.c:1855), so (12,18) has
-         * dist2 0 and always wins the loop.  C attacks the image, moves
-         * nothing, and spends its SECOND move of the turn (movement 24) going
-         * north to (13,18); this port walked onto (12,18) and stopped there.
-         * One monster one square off on a bit-identical leaf stream — and it is
-         * that monster's mtrack, one turn later, that makes C draw the
-         * rn2(28) @ m_move(monmove.c:1963) this session's whole RNG axis
-         * diverges on (leaf 110880). */
         if (chi >= 0 && ((mfp_poss[chi].info & ALLOW_M_MV)
                          || (nix === (mtmp.mux | 0) && niy === (mtmp.muy | 0)))) {
             return await m_move_aggress(mtmp, nix, niy);
@@ -2567,15 +1866,6 @@ export async function m_move(mtmp, after) {
         mtmp.mx = nix;
         mtmp.my = niy;
 
-        /* C monmove.c:2104-2117 moves the monster, then calls
-         * maybe_unhide_at() BEFORE returning into postmov().  postmov() starts
-         * by repainting the old square, so this ordering matters while
-         * hallucinating: hideunder() can repaint the destination as a monster
-         * before the old square's object glyph consumes its display-RNG draw.
-         *
-         * gen315: cave spider #127 moves from <73,8> (an object square) to
-         * <72,8>.  C consumes rn2(383) for maybe_unhide_at(new), then
-         * rn2(463) for postmov's old object; the former port reversed them. */
         maybe_unhide_at(mtmp.mx | 0, mtmp.my | 0);
 
         /* C postmov (monmove.c:1467-1468):
@@ -2620,16 +1910,6 @@ export async function m_move(mtmp, after) {
             }
         }
 
-        /* C postmov (monmove.c:1534): newsym(omx, omy) — refresh the OLD cell
-         * (clear the monster glyph, redraw terrain/object/engraving there).
-         * Fired before mintrap, mirroring postmov order.  RNG-neutral: newsym
-         * consumes no RNG.  This is the hostile-monster analogue of the
-         * already-present dog_move() newsym pair (dogmove.js:1661-1662); without
-         * it a monster that moves within an already-visible (vision-unchanged)
-         * region never gets its glyph refreshed on the map, since vision_recalc
-         * only calls newsym on cells whose visibility changed and C's per-turn
-         * see_monsters() is gated off for the common (non-hallu, non-telepath)
-         * case (allmain.c:511-528).  Matches seed0011 step 20 grid-bug 'x'. */
         newsym(omx, omy);
 
         /* C postmov → mintrap: check for trap at new position.
@@ -2642,12 +1922,6 @@ export async function m_move(mtmp, after) {
         {
             const _trap = t_at(nix, niy);
             if (_trap && _trap.ttyp !== SQKY_BOARD_MV) {
-                /* C monmove.c:1535-1540: trapret = mintrap(mtmp, NO_TRAP_FLAGS);
-                 * if (trapret == Trap_Killed_Mon || trapret == Trap_Moved_Mon) {
-                 *     if (mtmp->mx) newsym(...); return MMOVE_DIED; }
-                 * A hostile monster stepping into a pit (trapeffect_pit monster
-                 * branch) can die here exactly like the tame path; propagate the
-                 * death so dochug stops and no spurious post-move RNG fires. */
                 const trapret = await mintrap(mtmp, 0);
                 if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
                     if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
@@ -2658,28 +1932,10 @@ export async function m_move(mtmp, after) {
             }
         }
 
-        /* C postmov (monmove.c:1543-1646): open a door, or crash through it, if
-         * 'mtmp' can.  Runs after the move+mintrap with mtmp->mx/my at the new
-         * cell.  RNG-NEUTRAL for the corpus path: the only rn2 here is the
-         * doorbuster D_LOCKED !rn2(2) (monmove.c:1622), which is NOT reached by a
-         * hands-having door-opener (the D_CLOSED && can_open branch).  Ported the
-         * common D_CLOSED→open branch (the seed0015 hostile that opens a closed
-         * door out of the hero's sight → You_hear("a door open.")) and the
-         * TRAPPED variant of it (below); the amorphous/UNLOCKDOOR/doorbuster
-         * branches still need unported world state.
-         *
-         * "the trapped branch ... is not hit by the corpus door-openers" was
-         * this comment's own claim, and seed0383 falsifies it: at step 203 a
-         * monster opens a TRAPPED closed door, C runs mb_trapped()'s rnd(15)
-         * (monmove.c:65) and prints "You hear a distant explosion.", and this
-         * port drew nothing — leaf 16839, the session's first RNG divergence. */
         {
             const _dloc = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0];
             if (_dloc && (_dloc.typ | 0) === DOOR_TYP_MV
                 && !(_mf1_ct & M1_WALLWALK_MV) && !can_tunnel_mv) {
-                /* C monmove.c:1789: can_open = !(nohands(ptr) || verysmall(ptr)).
-                 * Same predicate mfndpos_nontame uses to set OPENDOOR (it already
-                 * gated this monster onto the door cell). */
                 const _mndx_d = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
                 const _mrow_d = (_mndx_d >= 0 && _mndx_d < _MONS_MV.length) ? _MONS_MV[_mndx_d] : null;
                 const _mf1_d = _mrow_d ? (_mrow_d[6] | 0) : 0;
@@ -2692,11 +1948,6 @@ export async function m_move(mtmp, after) {
                  * skipped, as in C (the !passes_walls && !can_tunnel guard). */
                 const _dm_d = _dloc.doormask | 0;
                 const _btrapped_d = (_dm_d & D_TRAPPED_MV) !== 0;
-                /* C monmove.c:1538-1543 — a monster carrying the Master Key of
-                 * Thievery disarms the trap first, with no message.  C's
-                 * has_magic_key (artifact.c:2790) walks mon->minvent for that
-                 * artifact; no corpus monster carries it, but the read is
-                 * written out rather than assumed away. */
                 let _btrapped_now = _btrapped_d;
                 if (_btrapped_now) {
                     let _mk = mtmp.minvent;
@@ -2718,11 +1969,6 @@ export async function m_move(mtmp, after) {
                     newsym(mtmp.mx | 0, mtmp.my | 0);
                     recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
                     vision_recalc(0);
-                    /* C monmove.c:1606-1615 (flags.verbose true in corpus): the
-                     * three feedback branches.  Deaf is never set for the corpus
-                     * hero, so an out-of-sight open yields You_hear("a door open.").
-                     * canspotmon(mtmp) → pline_mon; cansee-only → You_see — both
-                     * require the hero to see the door cell. */
                     /* C monmove.c:1535 UnblockDoor — canseeit = didseeit || cansee(). */
                     const _canseeit_d = _didseeit_pm || !!cansee(mtmp.mx | 0, mtmp.my | 0);
                     /* C monmove.c:1576-1580 — a trapped door blows up INSTEAD of
@@ -2733,40 +1979,22 @@ export async function m_move(mtmp, after) {
                             return MMOVE_DIED_MV;
                         _doorDone = true;
                     }
-                    /* C monmove.c:1583 — ALL THREE feedback arms sit inside
-                     * `if (flags.verbose)`.  mb_trapped() above does NOT: the
-                     * explosion happens (and can kill) whether or not the option
-                     * is set.  This port had the arms unconditional and the
-                     * comment three lines up asserted "flags.verbose true in
-                     * corpus" as a licence to omit the test; 33 of the 688 train
-                     * sessions set !verbose, and gen406 is one of them — a
-                     * hostile opens a door out of sight at step 267 and this
-                     * port printed "You hear a door open." onto a topline C
-                     * leaves empty.  RNG-neutral: no arm draws. */
                     let _doormsg = null;
+                    let _doorhear = false;
                     if (game.flags?.verbose === false) {
                         /* C: the whole feedback block is skipped */
                     } else if (_doorDone) {
                         /* mb_trapped() gave the feedback */
                     } else if (!_canseeit_d) {
-                        /* C monmove.c:1613: !Deaf → You_hear("a door open.").
-                         * Deaf is never set for the corpus hero. */
-                        _doormsg = 'You hear a door open.';
+                        /* C monmove.c:1613: !Deaf → You_hear("a door open.");
+                         * display.js You_hear carries the Deaf / Unaware
+                         * ("You dream that you hear ") prefixes (pline.c:447). */
+                        _doorhear = true;
                     } else if (!canspotmon(mtmp)) {
                         /* C monmove.c:1611: canseeit && !canspotmon →
                          * You_see("a door open."). */
                         _doormsg = 'You see a door open.';
                     }
-                    /* C monmove.c:1609 — canseeit && canspotmon → pline_mon(mtmp,
-                     * "%s opens a door.", Monnam(mtmp)).  This arm used to be
-                     * left out on the premise that "no current session has a
-                     * hero-visible monster open a door"; seed0014 step 439 is
-                     * exactly that case and C prints "The water nymph opens a
-                     * door." where this port printed nothing.  Monnam is
-                     * available here as Monnam_dm (imported from ./dogmove.js and
-                     * already used by this file's other naming sites), and it
-                     * carries C's own canspotmon → "It" fallback, so the guard
-                     * and the name agree by construction. */
                     else {
                         _doormsg = `${Monnam_dm(mtmp)} opens a door.`;
                     }
@@ -2774,7 +2002,9 @@ export async function m_move(mtmp, after) {
                      * pline/You_see/You_hear.  Keep that real display call: its
                      * pre-message flush is the physical frame a subsequent
                      * width-driven more() freezes. */
-                    if (_doormsg)
+                    if (_doorhear)
+                        await You_hear('a door open.');
+                    else if (_doormsg)
                         await pline(_doormsg);
                 } else if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
                     && (_mf2_d & M2_GIANT_MAF) !== 0) {
@@ -2817,19 +2047,6 @@ export async function m_move(mtmp, after) {
             }
         }
 
-        /* C postmov (monmove.c:1643-1646) — "possibly dig":
-         *     if (can_tunnel && may_dig(mtmp->mx, mtmp->my) && mdig_tunnel(mtmp))
-         *         return MMOVE_DIED;
-         * This block had no JS equivalent, so a tunneling monster (a Mines gnome
-         * with a pick-axe, a dwarf, a rock mole) never drew mdig_tunnel's
-         * unconditional `int pile = rnd(12)` (dig.c:1418) and never opened the
-         * rock it walked into.  Corpus-wide the missing leaves are 260 rnd(12)
-         * at dig.c:1418 plus 41 rn2(5) at dig.c:1468 (the "crashing rock"
-         * You_hear roll) across 7 sessions; seed0030 segment 0's first
-         * divergence after the goto_level arrival fix is the first of them, at
-         * leaf 13906.  The `&&` short-circuit is load-bearing: may_dig() draws
-         * no RNG but mdig_tunnel()'s first statement does, so the call must not
-         * be hoisted. */
         if (can_tunnel_mv && may_dig(mtmp.mx | 0, mtmp.my | 0)
             && await mdig_tunnel(mtmp))
             return MMOVE_DIED_MV; /* mon died (position already updated) */
@@ -2860,19 +2077,8 @@ export async function m_move(mtmp, after) {
     return postmov(mtmp, mmoved); /* MMOVE_MOVED or MMOVE_NOTHING */
 }
 
-/* C ref: monmove.c:79-87 mon_track_add(mtmp, x, y).
- *   for (j = MTSZ - 1; j > 0; j--)
- *       mtmp->mtrack[j] = mtmp->mtrack[j - 1];
- *   mtmp->mtrack[0].x = x;
- *   mtmp->mtrack[0].y = y;
- * Push (x,y) onto the front of the monster's MTSZ-deep position track, shifting
- * the older entries back one slot (the oldest, index MTSZ-1, falls off). The
- * arg-state-after oracle (assertArgsAfter vs the captured mtmp.mtrack string)
- * asserts the shift; the mapstate-only effect-diff channel cannot see this
- * per-arg array write. mtmp.mtrack is the reconstructed array of {x,y} coords. */
 export function mon_track_add(mtmp, x, y) {
     if (!Array.isArray(mtmp.mtrack)) mtmp.mtrack = [];
-    // Ensure MTSZ slots exist so the shift is faithful even if the capture/array
     // is short (C's mtrack is a fixed coord[MTSZ]; a missing slot reads as 0,0).
     while (mtmp.mtrack.length < MTSZ_MV) mtmp.mtrack.push({ x: 0, y: 0 });
     for (let j = MTSZ_MV - 1; j > 0; j--) {
@@ -2882,10 +2088,6 @@ export function mon_track_add(mtmp, x, y) {
     mtmp.mtrack[0].y = y;
 }
 
-/* C ref: monmove.c:90-93 mon_track_clear(mtmp):
- *   memset(mtmp->mtrack, 0, sizeof(mtmp->mtrack));
- * Zero all MTSZ track entries. Modeled as MTSZ {x:0,y:0} coords so the
- * arg-state-after oracle sees "0:0;0:0;0:0;0:0;". */
 export function mon_track_clear(mtmp) {
     mtmp.mtrack = [];
     for (let j = 0; j < MTSZ_MV; j++) mtmp.mtrack.push({ x: 0, y: 0 });
@@ -2910,18 +2112,6 @@ export function set_apparxy(mtmp) {
         return;
     const mx = (mtmp.mux !== undefined ? mtmp.mux : 0) | 0;
     const my = (mtmp.muy !== undefined ? mtmp.muy : 0) | 0;
-    /* C monmove.c:2211-2215: tame || ustuck || u_at(mx,my) → trivial.
-     * C's `mtmp == u.ustuck` is a read of the HERO struct's field; this site
-     * spelled it `game.ustuck`, a bare property of the game object that nothing
-     * in js/ has ever written.  js/mklev.js:13933 set_ustuck() — the only
-     * writer of the real field — assigns `game.u.ustuck`, and every other
-     * ustuck read in this file (js/monmove.js:477) already goes through
-     * `game.u?.ustuck`.  Measured by tools/never-initialised-field-probe.mjs:
-     * this line reads an absent field 22,073 times across 40 of the 44 public
-     * sessions, so "the grabber still has hold of you" was permanently false
-     * and a monster holding the hero fell through to the displacement half
-     * below — which draws RNG (rn2(3)/rn2(4) plus the rn2(2*displ+1) scatter
-     * pair) where C returns before touching the stream. */
     if (mtmp.mtame
         || mtmp === (u.ustuck ?? null)
         || (mx === (u.ux | 0) && my === (u.uy | 0))) {
@@ -2929,34 +2119,6 @@ export function set_apparxy(mtmp) {
         mtmp.muy = u.uy | 0;
         return;
     }
-    /* C monmove.c:2241-2258: notseen/notthere/Underwater branches.
-     * notseen = (!mtmp->mcansee || (Invis && !perceives(mtmp->data)))
-     * notthere = (Displaced && mtmp->data != PM_DISPLACER_BEAST)
-     * If Underwater: displ=1
-     * If notseen && !(xorn && umoney): displ=1
-     * If notthere && couldsee(mx,my): displ=2; else displ=1
-     * If displ=0: mux=u.ux, muy=u.uy; return.
-     *
-     * L15 follow-up: full displacement loop with rn2(3)/rn2(4) gate +
-     *   rn2(2*displ+1) coordinate scatter loop + couldsee check.
-     *
-     * Conservative for now: emit displ=0 path (mux=u.ux, muy=u.uy) which is
-     * correct when hero is visible and not displaced. This matches C for the
-     * common case of a normal non-tame non-confused monster during early game. */
-    /* C youprop.h Invis = ((HInvis || EInvis) && !BInvis) and Displaced =
-     * (HDisplaced || EDisplaced).  Those C names are macros over u.uprops[];
-     * in this tree the ONLY spelling that is ever WRITTEN is the numeric
-     * u.uprops[<PROP>] table (js/makemon.js:4347 _onscary_Displaced,
-     * js/mklev.js:12711 Displaced_mv/Invis_mv, js/mcastu.js:77 all read it that
-     * way).  This function read `u.HInvis`/`u.EInvis`/`u.HDisplaced`/
-     * `u.EDisplaced` — four fields with no writer anywhere in js/, so both
-     * predicates were permanently false and the whole displacement half of
-     * set_apparxy was dead.
-     *
-     * The Ranger starts with a worn cloak of displacement, so C takes the
-     * `notthere` branch for every non-tame monster from turn 1 and rolls
-     * rn2(4) + the rn2(2*displ+1) scatter pair; seed0101 step 24 has three of
-     * those and we drew none of them. */
     const _uprop = (p) => {
         const r = u.uprops?.[p];
         return r ? r : null;
@@ -2996,28 +2158,6 @@ export function set_apparxy(mtmp) {
     const gotu_roll = notseen ? rn2(3) : notthere ? rn2(4) : -1;
     const gotu = (gotu_roll === 0) ? 1 : 0; /* !rn2(n) means rn2(n)==0 */
     if (!gotu) {
-        /* C monmove.c:2241-2258
-         *     do {
-         *         if (++try_cnt > 200) { mx = u.ux; my = u.uy; break; }
-         *         mx = u.ux - displ + rn2(2 * displ + 1);
-         *         my = u.uy - displ + rn2(2 * displ + 1);
-         *     } while (!isok(mx, my)
-         *              || (displ != 2 && mx == mtmp->mx && my == mtmp->my)
-         *              || ((mx != u.ux || my != u.uy) && !passes_walls(mtmp->data)
-         *                  && !(accessible(mx, my)
-         *                       || (closed_door(mx, my)
-         *                           && (can_ooze(mtmp) || can_fog(mtmp)))))
-         *              || !couldsee(mx, my));
-         *
-         * The loop condition used to be a documented stub that rejected only the
-         * monster's own square, so the FIRST candidate was almost always accepted
-         * and every further iteration's rn2 pair was never drawn.  That is a
-         * variable-length RNG consumer, so a single missed retry desynchronises
-         * the whole stream: seed0030 segment 9 index 8954, where C rejects
-         * <u.ux+1, u.uy-1> and re-rolls (two more rn2(3) draws) and this port
-         * kept it.  Each guard is now the real predicate, all already ported —
-         * accessible/closed_door from js/look.js, couldsee from js/vision.js,
-         * can_ooze/can_fog in this file. */
         const range = 2 * displ + 1;
         const M1_WALLWALK = 0x00000008;  /* monflag.h:88 */
         const passes_walls = ((mtmp.data?.mflags1 | 0) & M1_WALLWALK) !== 0;
@@ -3053,13 +2193,6 @@ export function set_apparxy(mtmp) {
     }
 }
 
-/* C ref: monmove.c:693-705 m_postmove_effect — post-move effects for gas clouds.
- * Hezrous create stench clouds; Steam Vortex creates harmless vapor (if !mcan).
- * Called after location changes for monsters, before for hero.
- * create_gas_cloud is a real function (region.c:1213), NOT a macro, and it DOES
- * consume RNG: rn1(3,4) at region.c:1303 on every call, plus the BFS shuffle
- * draws at :1255/:1279 for cloudsize > 1.  The C corpus shows 33 such draws
- * across seed0360/seed0364/seed0800. */
 
 /* C ref: monmove.c:177-180 distu(x, y) - distance squared from hero to (x,y).
  * Returns dx*dx + dy*dy where dx = x - u.ux, dy = y - u.uy. */
@@ -3130,12 +2263,6 @@ function count_webbing_walls_mv(x, y) {
          + (holds_up_web_mv(x - 1, y) ? 1 : 0);
 }
 
-/* C ref: monmove.c:1251-1264 soko_allow_web — reject webs that would interfere
- * with solving Sokoban.  C's `Sokoban` macro is In_sokoban(&u.uz) plus the
- * "already solved" flag; this tree carries the dungeon test only, so a solved
- * Sokoban level is treated as unsolved (strictly more restrictive, and no
- * corpus session is in Sokoban).  m_cansee(mon, x, y) is vision.h:42
- * clear_path(mon->mx, mon->my, x, y). */
 function soko_allow_web_mv(mon) {
     if (!In_sokoban(game.u?.uz))
         return true;
@@ -3145,21 +2272,6 @@ function soko_allow_web_mv(mon) {
     return false;
 }
 
-/* C ref: monmove.c:1267-1292 maybe_spin_web(struct monst *mtmp) — "monster
- * might spin a web", called from postmov for every monster that moved.
- *
- * The rn2(1000) is the whole point: it fires for EVERY webmaker that moved and
- * is not helpless / on a trap, whether or not a web results.  Measured on the
- * 44-session public corpus it is drawn 44 times across 5 sessions
- * (seed0361 x25, seed4500 x9, seed0399 x8, seed0360 x1, seed0367 x1), and
- * seed0399's first screen miss at step 117 is exactly the first of its eight:
- * C leaf 10137 is `rn2(1000)=41 @ maybe_spin_web(monmove.c:1279)` where JS drew
- * nothing, so from there JS ran one leaf ahead and every remaining monster in
- * that movemon slice moved somewhere else.
- *
- * None of those 44 recorded draws succeeds — the smallest is 25 and no session
- * topline ever contains "spins a web" — so the maketrap arm below is not
- * exercised by the public corpus and is ported from C rather than measured. */
 async function maybe_spin_web(mtmp) {
     const ptr = mtmp.data;
     if (webmaker_mv(ptr)
@@ -3172,22 +2284,6 @@ async function maybe_spin_web(mtmp) {
 
         /* C:1279 — rn2() is the left operand, so it is ALWAYS evaluated. */
         if (rn2(1000) < prob) {
-            /* C:1280 `(trap = maketrap(mtmp->mx, mtmp->my, WEB)) != 0` — take
-             * maketrap's OWN return value, awaited.
-             *
-             * CORRECTED 2026-09-06.  The previous shape fired maketrap
-             * unawaited, swallowed any rejection with .catch(() => {}), and
-             * recovered the trap with t_at().  Its justification was "this
-             * movemon chain (movemon -> dochugw -> dochug -> m_move -> postmov)
-             * is synchronous end to end", which is not true:
-             * tools/async-boundary-census.mjs reports m_move as ASYNC and as
-             * this site's own nearest async ancestor at distance 2.  Since all
-             * seven `return postmov(...)` sites are inside that async
-             * m_move, and m_move's only two callers (js/dochug.js:590,:637)
-             * already await it, making this chain async costs ZERO call-site
-             * edits.  Swallowing the rejection was also hiding a real failure
-             * mode: on C's path maketrap cannot fail, so a throw here should
-             * surface, not be discarded. */
             const trap = await maketrap(mtmp.mx | 0, mtmp.my | 0, WEB);
             if (trap) {
                 mtmp.mspec_used = d(4, 4); /* 4..16 */
@@ -3208,39 +2304,6 @@ async function maybe_spin_web(mtmp) {
     }
 }
 
-/* C ref: monmove.c:1660-1703 — postmov()'s trailing
- *     if (mmoved == MMOVE_MOVED || mmoved == MMOVE_DONE) { ... }
- * block, which every one of C's six `return postmov(...)` sites runs and which
- * this port had dropped entirely.  Its rn2(5) (monmove.c:1696) is a REAL,
- * per-moved-hider PRNG draw: seed4500 segment 0 index 7897 is C
- * `rn2(5) @ postmov(monmove.c:1696)` where JS drew nothing, and from there our
- * stream ran one call behind C's for the rest of the segment (it slips again at
- * 7908, 7937, ... — the same omission re-firing, once per moving hider).
- *
- *   if (hides_under(ptr) || ptr->mlet == S_EEL) {
- *       if (mtmp->mundetected || (!helpless(mtmp) && rn2(5)))
- *           (void) hideunder(mtmp);
- *       newsym(mtmp->mx, mtmp->my);
- *   }
- *
- * Note the short-circuit: an ALREADY-hidden monster (mundetected) draws NO
- * rn2(5), and neither does a helpless (asleep / !mcanmove) one.  hideunder()
- * itself (js/mklev.js:9277) is RNG-free.
- *
- * The formerly omitted eater and redraw arms are wired below in their C order.
- * They all precede the hides_under rn2(5), so that ordering is load-bearing.
- * Remaining special-case limitations are confined to the shared helper
- * implementations themselves.
- * monmove.c:1690 maybe_spin_web() IS now ported (see maybe_spin_web below) —
- * it draws rn2(1000) for every webmaker that moved, and seed0399's first
- * screen miss (step 117) was the one leaf it was not drawing.
- * monmove.c:1680-1681 `if (mpickstuff(mtmp)) mmoved = MMOVE_DONE;` IS now
- * ported (see mpickstuff below) — without it a hostile collector standing on an
- * item it wants never took the item, so m_search_items kept answering "the goal
- * is underfoot, stay put" (a `return TRUE` at monmove.c:1440) on every
- * subsequent turn and the monster froze in place for the rest of the game,
- * skipping the mfndpos/mtrack draws C makes for it.
- * Returns the (possibly unchanged) mmoved, as C does. */
 export async function postmov(mtmp, mmoved) {
     if (mmoved !== MMOVE_MOVED_MV && mmoved !== MMOVE_DONE_MV)
         return mmoved;
@@ -3291,33 +2354,6 @@ export async function postmov(mtmp, mmoved) {
     return mmoved;
 }
 
-/* =====================================================================
- * meatmetal — C ref: mon.c:1454-1529
- *   "Maybe eat a metallic object (not just gold).
- *    Return value: 0 => nothing happened, 1 => monster ate something,
- *    2 => monster died"
- *
- * Wired from _postmov_tail (C postmov, monmove.c:1663-1666) for every
- * metallivorous monster that MOVED (or is DONE) onto a square carrying a floor
- * pile.  This is the first of the three eaters the _postmov_tail header lists
- * as KNOWN GAPS, and it is inserted ABOVE mpickstuff and ABOVE the hides_under
- * rn2(5) exactly as that header requires.
- *
- * It lives in this file rather than js/mklev.js (where meatobj/meatcorpse sit)
- * because postmov's only js/ body is _postmov_tail, and because js/ has no
- * mon.c module: the file already carries ~30 file-local `_mv`-suffixed helpers
- * for the same reason.  Nothing else in js/ defines meatmetal, so this shadows
- * nothing.
- *
- * MEASURED, gen413-reseed-seed565607 segment 0 step 1070 — a rock mole
- * (PM_ROCK_MOLE = 92, monster #1194) tunnels from (73,12) onto (72,12) and C
- * draws, in this order:
- *     rn2(100)=56 @ obj_resists(zap.c:1469)   <- meatmetal's obj_resists(otmp,5,95)
- *     rn2(100)=92 @ obj_resists(zap.c:1469)   <- m_consume_obj -> delobj -> delobj_core
- *     rnd(25)=16  @ meatmetal(mon.c:1521)     <- the "Left behind a pile?" roll
- * where this port fell straight through to mpickstuff and drew rnd(2) in
- * next_ident() from splitobj instead.
- * ===================================================================== */
 
 /* C monflag.h:115 M1_METALLIVORE; mondata.h:92 metallivorous(ptr).  0x80000000
  * is the sign bit, so mask with >>> 0 the way acidic_mv above does. */
@@ -3353,45 +2389,12 @@ const PM_RUST_MONSTER_MV = 212;
 const AMULET_OF_STRANGULATION_MV = 203, RIN_SLOW_DIGESTION_MV = 193;
 const ROCK_MV = 474;
 
-/* C artifact.c touch_artifact(otmp, mon) returns 1 immediately when
- * `oart == &artilist[ART_NONARTIFACT]`, i.e. for every non-artifact — which is
- * every object any metallivore in this corpus has ever stood on.  js/mklev.js:
- * 13618 has a real body but it is FILE-LOCAL and exported by nobody, so the
- * ARTIFACT arm (the blast / refusal) stays a documented GAP rather than a
- * guess: a metallivore standing on an artifact eats it here where C might
- * refuse.  RNG-free either way — touch_artifact draws nothing. */
 function touch_artifact_mv(_otmp, _mtmp) {
     return true;
 }
 
-/* C mon.c:1392-1452 m_consume_obj(mtmp, otmp), restricted to the case
- * meatmetal reaches: a METALLIC object.  It is inlined rather than called
- * because js/'s only m_consume_obj body (js/mklev.js:15170) is a throwing stub,
- * and because for a metallic object almost every arm of C's function is
- * statically dead:
- *   polyfood/mlevelgain/mhealup/mstoning all require ofood(obj), i.e. otyp is
- *   CORPSE, EGG or TIN (obj.h:318) — none of which is metallic;
- *   `eyes` requires CARROT; deadmimic and `corpsenm` require CORPSE; slimer
- *   requires GLOB_OF_GREEN_SLIME.  So newcham / grow_up / monstone /
- *   mcureblindness / quickmimic / the pyrolisk explode / mon_givit are all
- *   unreachable from here, which is consistent with the measured trace: there
- *   is NO draw between the two obj_resists and the rnd(25).
- * What survives for metal is exactly: the non-pet healmon, meatbox for a
- * container, the uball/uchain special cases, and delobj.
- *
- * Returns nothing; the caller re-checks DEADMONSTER as C does. */
 function _m_consume_metal_obj_mv(mtmp, otmp) {
     const ispet = !!(mtmp.mtame | 0);
-    /* C:1397-1400 non-pet: heal up to the object's weight in hp.  C passes the
-     * RAW objects[otyp].oc_weight column, NOT weight(obj) — quan is ignored, so
-     * js/weight.js's weight() (which multiplies by quan) is the wrong helper.
-     * healmon: THIS FILE EXPORTS A THROWING `healmon` STUB (below) that
-     * SHADOWS the real body at js/mklev.js:17762, so the real one is imported
-     * here under the alias healmon_real.  MEASURED: nothing imports healmon
-     * from './monmove.js' — the stub's only caller is this file's own
-     * mon_regen(), which nothing imports either — so the shadow is dead today.
-     * It is still left ALONE: removing an export changes this file's public
-     * surface, which is outside this packet's one-file scope. */
     if (!ispet && (mtmp.mhp | 0) < (mtmp.mhpmax | 0))
         healmon_real(mtmp, OC_WEIGHT[otmp.otyp | 0] | 0, 0);
     /* C:1401-1402 `if (Has_contents(otmp)) meatbox(mtmp, otmp);` — Has_contents
@@ -3487,12 +2490,6 @@ async function meatmetal_mv(mtmp) {
                 /* C:1518-1519 DEADMONSTER(mtmp) — monst.h `(mtmp)->mhp < 1`. */
                 if ((mtmp.mhp | 0) < 1)
                     return 2;
-                /* C:1520-1522 Left behind a pile?
-                 * UNVERIFIED AGAINST A TRACE: gen413 rolls rnd(25)=16, so the
-                 * mksobj_at(ROCK) arm is NOT exercised by the session that
-                 * motivated this port.  It is ported straight from the C and its
-                 * draw cost (mksobj's own draws for a ROCK) has not been checked
-                 * against any recording. */
                 if (rnd(25) < 3)
                     await mksobj_at(ROCK_MV, mtmp.mx | 0, mtmp.my | 0, true, false);
                 newsym(mtmp.mx | 0, mtmp.my | 0);
@@ -3525,23 +2522,6 @@ function acidic_mv(mndx) {
     return !!(row && ((row[6] >>> 0) & M1_ACID_MV));
 }
 
-/* C ref: mon.c:1847-1910 mpickstuff(struct monst *mtmp)
- *   "pick up (perhaps part of) an object at the monster's location; returns
- *    TRUE if an object was picked up"
- * Called from postmov (monmove.c:1680) for every monster that MOVED or is DONE
- * and is standing on a floor pile.  This is the hostile twin of the pet's
- * dog_move pickup arm (js/dogmove.js:1454-1512), and it reuses that arm's
- * already-live helpers (obj_extract_floor = C's obj_extract_self floor path,
- * distant_obj_name = C's distant_name(otmp, doname), Monnam_dm) rather than a
- * second copy of each.
- *
- * The one rn2 in this function is the shop skip at C:1858.  It sits behind
- * *in_rooms(mx, my, SHOPBASE), so it fires only for a non-tame monster actually
- * standing in a shop; in_rooms here is js/shk.js's real port (the js/mklev.js
- * `return []` twin would make the draw unreachable).
- *
- * Returns TRUE after the FIRST object taken — C comments "pick only one
- * object". */
 export async function mpickstuff(mtmp) {
     /* C:1853-1854 prevent shopkeepers from leaving the door of their shop */
     if ((mtmp.isshk | 0) && inhishop(mtmp))
@@ -3596,7 +2576,6 @@ export async function mpickstuff(mtmp) {
                 if (game.flags?.verbose !== false)
                     void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
             }
-            /* C:1902-1903 obj_extract_self(otmp3) — remove from floor */
             obj_extract_floor(otmp3);
             /* C:1903 mpickobj(mtmp, otmp3) — may merge and free otmp3 */
             void (await mpickobj(mtmp, otmp3));
@@ -3617,8 +2596,6 @@ export function can_hide_under_obj(obj) {
     let o = obj;
     if (!o || (o.where | 0) !== OBJ_FLOOR)
         return false;
-    /* can't hide in/on/under traps (except pits) even when there is an
-       object here; since obj is on floor, its <ox,oy> are up to date */
     const t = t_at(o.ox | 0, o.oy | 0);
     if (t && !is_pit(t.ttyp | 0))
         return false;
@@ -3672,15 +2649,6 @@ export async function dochugw(mtmp, chug) {
         && canspotmon(mtmp) && couldsee(mtmp.mx | 0, mtmp.my | 0)
         /* monster isn't paralyzed or afraid (scare monster/Elbereth) */
         && mtmp.mcanmove && !onscary_stub(u.ux | 0, u.uy | 0, mtmp)) {
-        /* C monmove.c:235 — stop_occupation(), the WHOLE function.  This site
-         * used to inline only two of its three effects (`go.occupation = null;
-         * go.occtxt = null;`), silently dropping the "You stop <occtxt>."
-         * topline and the nomul(0).  Measured: this branch executes ZERO times
-         * across all 44 public sessions (probe counter, whole corpus), and
-         * frozen/score.sh is bit-identical before and after — 5900/11405, 16
-         * passing, zero sessions changed on screens OR rng.  It is kept because
-         * the partial inline is wrong the moment it does fire, not because it
-         * pays today. */
         await stop_occupation();
     }
 
@@ -3688,13 +2656,6 @@ export async function dochugw(mtmp, chug) {
 }
 
 export function m_postmove_effect(mtmp) {
-    /* C monmove.c:674 — `boolean is_u = (mtmp == &gy.youmonst)`.  C's gy is the
-     * decl.c global struct that OWNS youmonst; this port's `game.gy` is a
-     * different object entirely (the sp_lev maze-bounds struct, js/sp_lev.js:
-     * 5304), and it has no `youmonst` member — the probe measures this read as
-     * absent in all 44 sessions, so is_u could never be 1.  The hero monst
-     * lives at `game.youmonst` (written by set_uasmon, js/polyself.js:228),
-     * which is the spelling this same file already uses at :1426 and :3109. */
     const is_u = (mtmp === game.youmonst) ? 1 : 0;
     const x = is_u ? game.u.ux0 : mtmp.mx;
     const y = is_u ? game.u.uy0 : mtmp.my;
@@ -3708,16 +2669,8 @@ export function m_postmove_effect(mtmp) {
     }
 }
 
-/* Unported helper for m_everyturn_effect: the harness-side C event_log() has
- * no JS counterpart and emits no RNG. */
 function event_log() { /* logging — not yet ported */ }
 
-/* C ref: monmove.c:665-685 m_everyturn_effect(mtmp).  Called from mon.c:1230
- * (movemon's per-monster loop, after the DEADMONSTER/mon_offmap checks and
- * BEFORE the movement >= NORMAL_SPEED gate) and from allmain.c:538 for the
- * hero.  NOTE the coordinate source differs from m_postmove_effect: C reads
- * u.ux/u.uy here (monmove.c:671) and u.ux0/u.uy0 there (monmove.c:697),
- * because this one runs before the hero has moved and that one after. */
 export function m_everyturn_effect(mtmp) {
     /* C monmove.c:652 — same `mtmp == &gy.youmonst` test, same repair as
      * m_postmove_effect above. */
@@ -3746,25 +2699,6 @@ export { create_gas_cloud };
 
 /* C ref: monflag.h:87 M1_AMORPHOUS — can flow under doors */
 const M1_AMORPHOUS = 0x00000004;
-/* C monmove.c:2313-2352 stuff_prevents_passage(mtmp) — "Inventory prevents
- * passage under door.  Used by can_ooze() and can_fog()."  RNG-free.
- *
- * The comment that used to sit on the throw here said it was "only reached when
- * amorphous (|| short-circuit)".  That is true of can_ooze() and FALSE of
- * can_fog(), which has no amorphous term at all — and can_fog is the caller
- * that reaches it: measured 2026-08-17, seed0360-wizard-world-tour HALTS the
- * scored run on this throw at frame 766/833, via
- * dochug -> set_apparxy -> can_fog -> here (a vampshifter on the level).
- *
- * Ported verbatim, INCLUDING C's bug on the first test: `typ == COIN_CLASS`
- * compares an OTYP against an OCLASS constant (COIN_CLASS is 12, i.e. otyp 12,
- * an arrow-class weapon), where every other line in the function that means
- * "class" spells it obj->oclass.  Cardinal Rule 1 — port the bug; the JS keeps
- * the same comparison so the same objects pass and fail as in C.
- *
- * Constants below resolved with tools/c-const-oracle.mjs against
- * nethack-c-v5/recorder (the 5.0 binary the corpus was recorded with), not
- * transcribed from nethack-c/ (3.7). */
 const SPP_COIN_CLASS = 12, SPP_GEM_CLASS = 13, SPP_AMULET_CLASS = 5,
       SPP_RING_CLASS = 4, SPP_VENOM_CLASS = 17, SPP_ARMOR_CLASS = 3;
 const SPP_ARROW = 18, SPP_BOOMERANG = 26, SPP_DAGGER = 34, SPP_CRYSKNIFE = 43,
@@ -3860,7 +2794,6 @@ function is_vampshifter(mon) {
 }
 
 export function can_fog(mtmp) {
-    /* Protection_from_shape_changers: no source in scored corpus → always false */
     if (!((game.mvitals?.[PM_FOG_CLOUD]?.mvflags | 0) & G_GENOD_MV) && is_vampshifter(mtmp)
         && !false && !stuff_prevents_passage(mtmp))
         return true;
@@ -3915,12 +2848,6 @@ export function m_avoid_kicked_loc(mtmp, nx, ny) {
     /* isok: x >= 1 && x <= COLNO_MV-1 && y >= 0 && y <= ROWNO_MV-1 */
     const klok = kx >= 1 && kx <= (COLNO_MV - 1) && ky >= 0 && ky <= (ROWNO_MV - 1);
 
-    /* C: (mtmp->mpeaceful || mtmp->mtame) && mtmp->mcansee &&
-     *     !mtmp->mconf && !mtmp->mstun && !Conflict &&
-     *     isok(gk.kickedloc.x, gk.kickedloc.y) &&
-     *     nx == gk.kickedloc.x && ny == gk.kickedloc.y && next2u(nx, ny)
-     * Conflict not modeled (stub false) — no Conflict source in current sessions.
-     * next2u(nx, ny) = distu(nx, ny) <= 2 */
     const u = game.u;
     if (!u) return false;
     const dx = (nx | 0) - (u.ux | 0);
@@ -3982,23 +2909,6 @@ export function mon_regen(mon, digest_meal) {
 }
 
 
-/* C ref: monmove.c:1337-1349 m_avoid_soko_push_loc(mtmp, nx, ny).
- * "monster avoids a location nx, ny, if we're in sokoban, and there's a
- * boulder between the location and hero".  RNG-free on every path.
- *
- *   if (Sokoban && (mtmp->mpeaceful || mtmp->mtame)
- *       && !mtmp->mconf && !mtmp->mstun && !Conflict
- *       && (dist2(nx, ny, u.ux, u.uy) == 4)
- *       && sobj_at(BOULDER, nx + sgn(u.ux - nx), ny + sgn(u.uy - ny)))
- *       return TRUE;
- *   return FALSE;
- *
- * Sole C caller is dogmove.c:1238 (monmove.c:1977's candidate loop calls only
- * m_avoid_kicked_loc), so js/dogmove.js dog_move imports this one definition.
- * Conflict is unmodeled in the port (no Conflict source exists in any current
- * session), so !Conflict is always true here — faithful for the scored corpus.
- * KNOWN GAP: none on the RNG axis; C draws no RNG anywhere in this function,
- * so the unmodeled Conflict term cannot shift the RNG stream either way. */
 export function m_avoid_soko_push_loc(mtmp, nx, ny) {
     const BOULDER = 475; /* C ref: objects.h BOULDER otyp */
 
@@ -4057,7 +2967,6 @@ function is_pool_mv2(x, y) {
 // banner comment). should_displace's only non-trivial dependency (keystone
 // spec §2.3). RNG: rn2(40) at monmove.c:2311 (pet+seen-trap) and :2318
 // (hostile+trap+knows-trap-type) — the two branches are mutually exclusive
-// (is_pet gates which one can fire), so at most one rn2(40) per call.
 export function undesirable_disp(mtmp, x, y) {
     const is_pet = !!(mtmp.mtame | 0) && !(mtmp.isminion | 0);
     const trap = t_at(x, y);
@@ -4087,7 +2996,6 @@ export function should_displace(mtmp, data, ggx, ggy) {
         const ndist = dist2(nx, ny, ggx, ggy);
 
         // C mon.c MON_AT(nx,ny): real game.fmon scan (was hardcoded false —
-        // keystone spec §4's "capture-blind" carve-out is about the REPLAY
         // FIXTURE only, where game.fmon is never populated; in live play
         // game.fmon IS populated, so hardcoding false here made should_displace
         // a permanent no-op once wired into dog_move/m_move, defeating the

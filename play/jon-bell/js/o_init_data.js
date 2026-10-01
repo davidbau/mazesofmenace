@@ -646,7 +646,6 @@ export const SPBOOK_META = [{"sub":"P_MATTER_SPELL","level":5},{"sub":"P_ATTACK_
 // Populated directly into game._objDescriptions.  C ref: objects.h
 // fixed-description OBJECT() entries; keyed by JS otyp.
 //
-// CORRECTED 2026-08-31.  Both tables were SHIFTED BY TWO ROWS, and the old
 // comment named the cause without acting on it ("the post-protection
 // spheres"): objects.h:1413-1421 wraps SPE_FLAME_SPHERE ("canvas") and
 // SPE_FREEZE_SPHERE ("hardcover") in `#if 0 /* DEFERRED */`, so those two rows
@@ -662,7 +661,6 @@ export const SPBOOK_META = [{"sub":"P_MATTER_SPELL","level":5},{"sub":"P_ATTACK_
 // "papyrus", matching objects.h in BOTH the 5.0 tree and the 3.7 one -- so this
 // was never a 3.7-vs-5.0 drift, it was a generator that did not honour `#if 0`.
 //
-// MEASURED on corpus-generated/v5/train's gen219-reseed-seed1344065 step 83:
 // after cancellation blanks the hero's two spellbooks, C's inventory reads
 // "an uncursed plain spellbook" twice where this port read "an uncursed canvas
 // spellbook".  RNG-free -- these are appearance strings, not draws.

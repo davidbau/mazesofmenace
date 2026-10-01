@@ -249,20 +249,6 @@ function _dgnAlignBits(alignment) {
     return _D_ALIGN_BY_NAME[String(alignment ?? 'unaligned').toLowerCase()] ?? 0x00;
 }
 
-/* Compute s_level.flags from level-entry Lua data + dungeon fallback align.
- * Mirrors nethack-c/src/dungeon.c init_level() lines 584-591.
- *
- * The `| _dgnAlignBits(levelEntry.alignment)` below is C dungeon.c:838
- *      tmpl->flags = lvl_flags | lvl_align;
- * (lvl_align = get_dgn_align(L), lvl_flags = get_dgn_flags(L)) — the alignment
- * is OR'd into the flags word BEFORE init_level masks it back out with
- * D_ALIGN_MASK. This file previously dropped it, and commented the resulting
- * always-zero align as an intentional "D_ALIGN_MASK bit-bleed bug" being
- * ported faithfully. There is no such bug in C: the mask reads a value C
- * genuinely put there. Measured on seed4500-knight-coverage step 189 — the
- * Oracle level is `alignment = "neutral"` (dat/dungeon.lua:61), so C's
- * align_shift(makemon.c) takes the AM_NEUTRAL arm and every rndmonst_adj
- * weight came out exactly 5 higher than JS's AM_NONE zero. */
 function computeSLevelFlags(levelEntry, dungeonAlign) {
     const lf = dungeonFlags(levelEntry.flags);
     const rawLevelFlags = _rawFlagsBitmask(lf) | _dgnAlignBits(levelEntry.alignment);
@@ -291,33 +277,6 @@ function ingestDungeonLua(du, dix, pd, wizardLike, svn, unconn, nums, ents, dept
     const brCt = du.branches && du.branches.length ? du.branches.length : 0;
     pd.tmpdungeon[dix] = { name: du.name, branches: brCt };
     const nLv = du.levels.length;
-    /* Dungeon-level align fallback (dungeon.c:589-591):
-     *     if (!new_level->flags.align)
-     *         new_level->flags.align =
-     *             ((pd->tmpdungeon[dgn].flags & D_ALIGN_MASK) >> 4);
-     *
-     * It is NOT "the same shape as the per-level word", and the comment that
-     * said so was wrong.  C builds the two words differently:
-     *     LEVEL   dungeon.c:837  tmpl->flags = lvl_flags | lvl_align;
-     *     DUNGEON dungeon.c:1056 pd->tmpdungeon[dngidx].flags = dgn_flags;
-     *             dungeon.c:1057 pd->tmpdungeon[dngidx].align = dgn_align;
-     * The dungeon's alignment goes to its OWN field and is never OR'd into
-     * .flags, so this fallback can only ever see the dgn_file.h flag bits
-     * (TOWN 0x01 .. UNCONNECTED 0x10) — and `& D_ALIGN_MASK` (0x70) leaves
-     * exactly one of them, UNCONNECTED, which then reads as AM_CHAOTIC.
-     * That accidental bit-bleed is real (it is what gives The Tutorial's
-     * levels align 1, MAZELIKE|UNCONNECTED = 0x14, and the comment below
-     * computeSLevelFlags describes it correctly); the dungeon's configured
-     * alignment reaching here is not.
-     *
-     * ORing du.alignment in gave every Gnomish Mines / Sokoban / Vlad's Tower
-     * level a truthy s_level.flags.align, so induced_align() (dungeon.c:2003)
-     * took a `rn2(100)` C never draws.  Measured on seed0360-wizard-world-tour
-     * with minetn admitted: first RNG divergence at leaf 41786, C rn2(3)
-     * @induced_align vs JS rn2(100), on Minetown's temple altar.
-     * Unchanged for every other dungeon: Doom/Ludios/Planes are "unaligned"
-     * and Gehennom "noalign" (both 0 anyway), Quest and Tutorial declare no
-     * alignment at all. */
     const dgnAlign = (_rawFlagsBitmask(dungeonFlags(du.flags)) & _D_ALIGN_MASK) >> 4;
     /** @type {number} */
     let f;
@@ -551,12 +510,6 @@ export function consumeDungeonInitRng() {
             sl.proto = roleCode + '-goal';
     }
     game._sp_levchn = spLevchn;
-    /* C ref: dungeon.c:1170-1181 init_dungeons() — "one special fixup for dummy
-     * surface level".  The earth level is placed one level above dungeon level 1,
-     * overlaying level 1; the dummy level exists to make earth have depth -1
-     * instead of 0, so the endgame's depth_start is shifted up by one.
-     * Apply BEFORE assembling _dungeons_full so the corrected value propagates.
-     * dunlevs_in_dungeon(planes) == num_dunlevs(planes) (no num_dunlevs<0 case). */
     {
         const dummy = spLevchn.find(sl => sl.proto === 'dummy');
         if (dummy) {
@@ -686,23 +639,6 @@ export function consumeDungeonInitRng() {
                 break;
         }
     }
-    /* NOTE: C's fixup_level_locations() (dungeon.c:1142-1156) floats the Fort
-     * Ludios (knox) branch entrance by rewriting its end1.dnum to svn.n_dgns.
-     * We deliberately do NOT mutate game._dungeon_branches here: that array also
-     * feeds is_branchlev()/place_branch() in mklev, and rewriting end1 perturbs
-     * level generation for sessions that never reach knox (regressing passers).
-     * The float is applied LOCALLY inside print_dungeon_menu() (cmd.js) where the
-     * only consumer that needs it lives — print_branch skips the knox branch and
-     * unplaced_floater()/the "Fort Ludios" heading render the floating entry.
-     *
-     * But the bogus dnum is not only a rendering detail: mk_knox_portal()
-     * (mklev.c:2644) tests `source->dnum < svn.n_dgns` as "the entrance has
-     * already been bound to a real level", and that test is the ONLY thing that
-     * stops it re-rolling its rn2(3) on every later vault level.  Leaving end1
-     * unfloated makes that test read TRUE from turn one, so instead of the dnum
-     * rewrite we carry the same one bit of state next to the branch, as
-     * `end1_floating`.  mk_knox_portal() clears it when it binds the entrance,
-     * exactly where C's `*source = u.uz` makes the dnum real. */
     {
         const knox = game.knox_level;
         if (knox) {

@@ -141,7 +141,6 @@ export async function leppie_stash(mtmp) {
     if (!carriedGold)
         return;
     await mdrop_obj_md(mtmp, carriedGold, false);
-    // Dropping may merge with an existing pile, so reacquire the floor gold.
     const floorGold = g_at(mtmp.mx, mtmp.my);
     if (floorGold)
         await bury_an_obj(floorGold, null);
@@ -207,24 +206,6 @@ function is_mind_flayer_mndx(mndx) {
  * monmove.js at the top of this file (the prior top-level dynamic import +
  * stub fallback predated monmove.js landing and hid the call graph from the
  * static wire-graph). */
-/* C ref: monmove.c:712-960 dochug(struct monst *mtmp).
- * Returns 0 (alive, no special action) for the L14 minimal port.
- *
- * RNG calls fired (early-game normal monster, in C order):
- *   1. [if mconf]        rn2(50) — monmove.c:759 unconfuse check
- *   2. [if mstun]        rn2(10) — monmove.c:763 un-stun check
- *   3. [if mflee+can_tp] rn2(40) — monmove.c:767 flee-teleport check
- *   4. [if mflee]        rn2(25) — monmove.c:781 regain-courage check
- *   5. always            rn2(5)  — distfleeck monmove.c:539 bravegremlin
- *   6. [if mind_flayer]  rn2(20) — monmove.c:853 psychic-attack check
- *   7. [if minvis]       rn2(3)  — monmove.c:905 invisibility wander gate
- *   8. [if lep+no$hero]  rn2(2)  — monmove.c:907 leprechaun has-gold gate
- *   9. [if wanderer]     rn2(4)  — monmove.c:908 wanderer random-move gate
- *  10. [if !mcansee]     rn2(4)  — monmove.c:909 blind random-move gate
- *
- * The action branches (passive spell cast / m_move walk / attack) are L15.
- * This skeleton fires all RNG calls up through line 909 in the correct order.
- */
 /* C mondata.h is_watch(ptr) — the Minetown Watch: a watchman or a watch
  * captain.  (C spells it as two mons[] pointer comparisons.) */
 function is_watch_mndx(mndx) {
@@ -272,8 +253,6 @@ async function watch_on_duty(mtmp) {
         await watch_dig(mtmp, pos.x | 0, pos.y | 0, false);
     }
 }
-/* C monmove.c:574 m_arrival — one-time arrival action, before wait/helpless
- * gates in dochug. -1 means the monster can continue its normal turn. */
 function m_arrival(mon) {
     mon.mstrategy &= ~STRAT_ARRIVE;
     return -1;
@@ -290,33 +269,12 @@ export async function dochug(mtmp) {
         if (res >= 0)
             return res;
     }
-    /* C monmove.c:731-734 — waitmask status change (no RNG):
-     *   if ((mtmp->mstrategy & STRAT_WAITFORU)
-     *       && (m_canseeu(mtmp) || mtmp->mhp < mtmp->mhpmax))
-     *       mtmp->mstrategy &= ~STRAT_WAITFORU;
-     * This is the ONLY release for a monster created with M3_WAITFORU
-     * (makemon.c:1462) or a `waiting=true` special-level spec (sp_lev.c:2162);
-     * without it such a monster never leaves the WAITMASK gate below. */
     if (((mtmp.mstrategy | 0) & STRAT_WAITFORU)
         && (m_canseeu(mtmp) || (mtmp.mhp | 0) < (mtmp.mhpmax | 0))) {
         mtmp.mstrategy = ((mtmp.mstrategy | 0) & ~STRAT_WAITFORU) >>> 0;
     }
     /* C monmove.c:737 — quest_stat_check(mtmp) (quest.c:514). */
     quest_stat_check(mtmp);
-    /* C monmove.c:738-746 — !mcanmove or STRAT_WAITMASK early-exit (no RNG):
-     *     if (!mtmp->mcanmove || (mtmp->mstrategy & STRAT_WAITMASK)) {
-     *         if (Hallucination) newsym(mtmp->mx, mtmp->my);
-     *         if (mtmp->mcanmove && (mtmp->mstrategy & STRAT_CLOSE)
-     *             && !mtmp->msleeping && monnear(mtmp, u.ux, u.uy))
-     *             quest_talk(mtmp);   // give the leaders a chance to speak
-     *         return 0;
-     *     }
-     * The quest_talk() call is how a WAITING quest leader speaks to a hero who
-     * has just walked (or teleported) next to it — seed0361 step 177, where the
-     * hero rests onto a teleport trap, lands adjacent to the Archeologist leader
-     * and C delivers "leader_first" inside that same turn.  Without it the
-     * leader was mute on this path and the frame's --More-- never appeared.
-     * Hallucination redraws the square before either the talk or the return. */
     if (!(mtmp.mcanmove | 0) || ((mtmp.mstrategy | 0) & STRAT_WAITMASK)) {
         if (_hallucinating_dh())
             newsym(mtmp.mx | 0, mtmp.my | 0);
@@ -326,19 +284,6 @@ export async function dochug(mtmp) {
             await _quest_talk_dh(mtmp);
         return 0;
     }
-    /* C monmove.c:727-731
-     *     if (mtmp->msleeping && !disturb(mtmp)) {
-     *         if (Hallucination) newsym(mtmp->mx, mtmp->my);
-     *         return 0;
-     *     }
-     * The comment that stood here said "msleeping early-exit (disturb has own
-     * RNG path)" and then returned 0 unconditionally: disturb() was never
-     * called, so a sleeping monster in the hero's line of sight NEVER woke and
-     * C's `rn2(7) @disturb(monmove.c:351)` was never drawn.
-     * MEASURED, seed0030 segment 9 step 343: the hero walks up to the bones
-     * GHOST (savebones sets msleeping=1) on Mines level 1 and C draws
-     * `rn2(7)=4 @disturb(monmove.c:351)` — the first divergence of the segment
-     * once the bones load itself is leaf-exact. */
     if ((mtmp.msleeping | 0) && !disturb_dh(mtmp)) {
         if (_hallucinating_dh())
             newsym(mtmp.mx | 0, mtmp.my | 0);
@@ -358,27 +303,6 @@ export async function dochug(mtmp) {
         if (!rn2(10))
             mtmp.mstun = 0;
     }
-    /* C monmove.c:767 — Some monsters teleport when fleeing.
-     * can_teleport(mdat) guards: fire rn2(40) only when mflee is set.
-     *     if (mtmp->mflee && !rn2(40) && can_teleport(mdat) && !mtmp->iswiz
-     *         && !noteleport_level(mtmp)) {
-     *         if (rloc(mtmp, RLOC_MSG))
-     *             leppie_stash(mtmp);
-     *         return 0;
-     *     }
-     * The "can_teleport stub = false for all monsters (no teleport data
-     * ported)" comment that used to stand here was an ABSENCE CLAIM about data
-     * this port has had all along: can_teleport(ptr) is mondata.h:82
-     * `(ptr)->mflags1 & M1_TPORT`, and mflags1 comes straight out of
-     * makemon_mons.json.  Measured 2026-08-17 on seed0014 leaf 16842: the water
-     * nymph (M1_TPORT) is fleeing after its steal, C draws the rn2(40)=0,
-     * teleports it with rloc(RLOC_MSG) and returns 0; this port drew the same
-     * rn2(40), fell through the empty branch, and went on to monmove.c:758's
-     * rn2(25) instead.  The nymph never moved and C's "The water nymph appears
-     * close by!" — which owns a --More-- — never printed, so the keystroke that
-     * dismissed it reached rhack as "Unknown command ' '.".
-     * && is short-circuit, so the rn2(40) fires on mflee alone, BEFORE
-     * can_teleport is consulted; keep that order. */
     if ((mtmp.mflee | 0) && !rn2(40) && can_teleport_dh(mtmp)
         && !(mtmp.iswiz | 0) && !_noteleport_level_dh(mtmp)) {
         if (await rloc(mtmp, RLOC_MSG))
@@ -420,35 +344,6 @@ export async function dochug(mtmp) {
     let { inrange, nearby, scared } = distfleeck(mtmp);
     if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
         pushRngLogEntry(`^dh_pre[id=${mtmp?.m_id ?? 0} moved=${inrange}/${nearby}/${scared}]`);
-    /* C monmove.c:793-800 — "search for and potentially use defensive or
-     * miscellaneous items."
-     *
-     *     if (find_defensive(mtmp, FALSE)) {
-     *         if (use_defensive(mtmp) != 0)
-     *             return 1;
-     *     } else if (find_misc(mtmp)) {
-     *         if (use_misc(mtmp) != 0)
-     *             return 1;
-     *     }
-     *
-     * The comment this replaces said "not ported; skip", and it was false in
-     * both halves: find_defensive (js/makemon.js:3296), find_misc
-     * (js/makemon.js:3683) and use_misc (js/makemon.js:3961) are all full
-     * ports — they were simply never CALLED, so a monster in this port could
-     * never use an item.  Measured on seed0399-wizard-hallu-actions: C's
-     * werewolf quaffs its potion of speed on the turn the hero puts on the
-     * amulet (step 113) and JS did not, which cost the session's whole
-     * 419-step tail.
-     *
-     * use_defensive is now ported too (js/makemon.js, C muse.c:795-1221).  The
-     * note that used to sit here — "find_defensive returns TRUE zero times
-     * across the 44 public sessions" — was measured with only THIS door open;
-     * C's other call site, m_move (monmove.c:1927), passes tryescape=TRUE and
-     * so skips the `mhp >= mhpmax` gate that rejects every monster this
-     * tryescape=FALSE call offers it.  See js/monmove.js at the cnt==0 arm.
-     * The `if`/`else if` shape is C's and matters: find_defensive TRUE must
-     * SUPPRESS find_misc, and collapsing the two would silently let a monster
-     * reach for a misc item on a turn C spends on a defensive one. */
     if (find_defensive(mtmp, false)) {
         if ((await use_defensive(mtmp)) !== 0)
             return 1;
@@ -457,20 +352,10 @@ export async function dochug(mtmp) {
             return 1;
     }
     /* C monmove.c:825-851 — Demonic Blackmail. L14: not ported; skip. */
-    /* C monmove.c:827-834 — "the watch will look around and see if you are up
-     * to no good :-)".  The `if (is_watch) ... else if (is_mind_flayer)` shape
-     * is C's: this arm was MISSING entirely, so a Minetown watchman drew no
-     * rn2(3) where C draws one every time it can see the hero.  MEASURED on
-     * seed0014 global leaf 58462: C rn2(3)=1 @watch_on_duty(monmove.c:181)
-     * against this port's rn2(10) from the next monster's m_move. */
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     if (is_watch_mndx(mndx)) {
         await watch_on_duty(mtmp);
     } else if (is_mind_flayer_mndx(mndx) && !rn2(20)) {
-        /* C monmove.c:853-855 — mind_blast() first emits the faint-wave
-         * message when this flayer is outside BOLT_LIM, then refreshes its
-         * apparent target and distance flags.  The close-range damage branch
-         * remains intentionally outside this bounded patch. */
         const mdx = (game.u?.ux | 0) - (mtmp.mx | 0);
         const mdy = (game.u?.uy | 0) - (mtmp.my | 0);
         if (mdx * mdx + mdy * mdy > (BOLT_LIM | 0) * (BOLT_LIM | 0))
@@ -478,23 +363,6 @@ export async function dochug(mtmp) {
         set_apparxy(mtmp);
         ({ inrange, nearby, scared } = distfleeck(mtmp));
     }
-    /* C monmove.c:837-859 — "If monster is nearby you, and has to wield a
-     * weapon, do so.  This costs the monster a move, of course."
-     *
-     * This block was a `not ported; skip` comment, and its absence is a
-     * CONTROL-FLOW divergence, not a missing message: in C a monster that
-     * spends its move wielding returns from dochug BEFORE PHASE THREE, so it
-     * neither calls m_move nor fires the monmove.c:940 distfleeck recalc.
-     * Measured on seed0030 segment 9 turn 74 (recorded C event log): the
-     * goblin 70#137 at (67,12), inrange with dist2 to (mux,muy) exactly 8,
-     * wields its crude dagger and stands still, drawing ONE distfleeck rn2(5);
-     * JS instead walked it to (68,11) and drew the mtrack rn2(4*(cnt-j)) plus
-     * a second distfleeck — three draws where C makes one, and a monster
-     * painted on a square C leaves as bare corridor.
-     *
-     * RNG-neutral by construction: attacktype/MON_WEP/is_pick/mon_wield_item
-     * are all RNG-free, and select_rwep sits behind C's `mtmp->mtrapped &&
-     * !nearby` short-circuit, exactly as here. */
     {
         /* C monmove.c:843 attacktype(mdat, AT_WEAP) — same mattk walk the
          * PHASE-FOUR ranged test at line 441 already uses. */
@@ -518,16 +386,6 @@ export async function dochug(mtmp) {
             }
         }
     }
-    /*
-     * PHASE THREE: Actual movement phase
-     * C monmove.c:901-909 — big if-condition gating m_move vs spell cast.
-     * RNG calls in C evaluation order:
-     *   (mtmp->minvis && !rn2(3))
-     *   (mdat->mlet == S_LEPRECHAUN && !findgold(gi.invent)
-     *       && (findgold(mtmp->minvent) || rn2(2)))
-     *   (is_wanderer(mdat) && !rn2(4))      ← seed1800/seed1500 target
-     *   (!mtmp->mcansee && !rn2(4))
-     */
     const mlet = (mndx >= 0 && mndx < MONS.length && MONS[mndx][0]) | 0;
     /*
      * C monmove.c:904-909 big condition with embedded RNG calls (short-circuit).
@@ -553,13 +411,9 @@ export async function dochug(mtmp) {
         if (!condTrue && mlet === S_LEPRECHAUN && !findgold(game.invent)) {
             if (findgold(mtmp.minvent) || rn2(2)) condTrue = true;
         }
-        /* C monmove.c:908 — (is_wanderer(mdat) && !rn2(4))
-         * ← primary target divergence for seed1800 and seed1500. */
         if (!condTrue && is_wanderer_mndx(mndx)) {
             if (!rn2(4)) condTrue = true;
         }
-        /* C monmove.c:908.5 — Conflict occurs after the wanderer gate and
-         * before the blind-movement gate, so it can suppress only later RNG. */
         if (!condTrue && _conflict_dch() && !(mtmp.iswiz | 0))
             condTrue = true;
         /* C monmove.c:909 — (!mtmp->mcansee && !rn2(4)) */
@@ -641,15 +495,6 @@ export async function dochug(mtmp) {
         }
         if (status === MMOVE_DIED) return 1;
     } else if (condTrue) {
-        /* Non-tame monsters: enter move block when condTrue.
-         * C monmove.c:917-930: undirected spell cast
-         * C monmove.c:932-934: m_move(mtmp, 0)
-         * C monmove.c:940-941: if (status != MMOVE_DIED) distfleeck(recalc)
-         *
-         * W26: the distfleeck recalc is now ENABLED together with the movemon
-         * gate (fastforward.js GATE_ON). With the gate on, dochug fires only
-         * for movement>=NORMAL_SPEED monsters — exactly as C — so the recalc
-         * rn2(5) matches the C trace (two distfleeck per moved monster). */
         if (!(mtmp.mspec_used | 0)) {
             const dx = (mtmp.mx | 0) - (game.u.ux | 0);
             const dy = (mtmp.my | 0) - (game.u.uy | 0);
@@ -693,17 +538,6 @@ export async function dochug(mtmp) {
      * the movement block is skipped entirely (status stays MMOVE_NOTHING) and
      * the pre-movement inrange/scared carry into PHASE FOUR — matching C. */
 
-    /*
-     * C monmove.c:943-984 — switch (status).  Only matters when the movement
-     * block ran; when skipped, status==MMOVE_NOTHING which falls through to
-     * PHASE FOUR (the corpus jackal/grid bug path).  Key behaviour:
-     *   MMOVE_NOMOVES: if scared → panicattk = TRUE; (fallthrough)
-     *   MMOVE_NOTHING / MMOVE_DONE: break → continue to PHASE FOUR
-     *   MMOVE_MOVED: if engulfing_u → return mattacku; else (no ranged attk
-     *                in the common case) → return 0  (do NOT reach PHASE FOUR)
-     *   MMOVE_DIED: handled above (return 1)
-     * Ranged-attack-after-move and engulf paths are deferred; for the corpus a
-     * moved monster never has a ranged attack at <2 range, so return 0 here. */
     if (moved) {
         switch (status) {
             case MMOVE_NOMOVES:
@@ -756,27 +590,6 @@ export async function dochug(mtmp) {
         }
     }
 
-    /*
-     * PHASE FOUR: Standard Attacks — C monmove.c:987-1004.
-     *   if (status != MMOVE_DONE && (!mpeaceful || (Conflict && ...))) {
-     *     if (((inrange && !scared) || panicattk) && !noattacks(mdat)
-     *         && (Upolyd ? u.mh : u.uhp) > 0)
-     *       if (mattacku(mtmp)) return 1;  // monster died (e.g. exploded)
-     *     ...
-     *   }
-     * wormhitu is deferred.
-     *
-     * The Conflict disjunct used to be omitted here with the note "Conflict is
-     * not modeled (stub false)".  It IS modeled — js/do_wear.js setworn_ring
-     * writes uprops[CONFLICT].extrinsic from the ring's oc_oprop — and the
-     * disjunct is doubly load-bearing: resist_conflict() DRAWS rnd(20)
-     * (mondata.c:1612) for every PEACEFUL monster that reaches this point, and
-     * a monster that fails to resist then attacks the hero.  seed0004 step 327:
-     * C prints "You swap places with your saddled pony.  The saddled pony
-     * kicks!" and this port printed only the swap.  C's `&&` short-circuit is
-     * preserved, so a hostile monster (the common case) never draws here and a
-     * hero without Conflict never draws at all.
-     */
     const u = game.u || {};
     const heroHp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
     if (status !== MMOVE_DONE
@@ -868,26 +681,6 @@ function disturb_dh(mtmp) {
     return 1;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * C wizard.c:139-471 — the covetous-monster strategy/tactics block, which
- * dochug() runs at monmove.c:782, BEFORE distfleeck().
- *
- * This whole block was one line of comment here ("L14: is_covetous / tactics
- * not ported; skip"), and it is an RNG SITE: tactics() draws rn2(5) at
- * wizard.c:413 for every covetous monster whose strategy is STRAT_NONE.
- * Measured on seed4500-knight-coverage step 1757 — the session's first RNG
- * divergence, leaf 106304 — C draws `rn2(5)=3 @ tactics(wizard.c:413)` between
- * two distfleeck rn2(5)s and this port drew nothing, so from there our stream
- * ran one call AHEAD of C's for the rest of the segment.  That step's SECOND
- * tactics draw is rn2(5)=0, which fires mnexto(): 45 collect_coords draws
- * (rings 1..3 shuffled, 7 + 15 + 23) and the "It suddenly arrives next to
- * you!" whose --More-- owns the frame.
- *
- * Blast radius: exactly the 24 mons[] rows with M3_COVETOUS (mflags3 & 0x1f) —
- * the two liches, Vlad, the Wizard, the seven demon princes and the fourteen
- * quest nemeses.  seed4500 is the only public session whose trace contains any
- * wizard.c leaf other than pick_nasty's.
- * ══════════════════════════════════════════════════════════════════════════ */
 
 /* C monflag.h:159-168 */
 const M3_WANTSAMUL_WZ = 0x0001, M3_WANTSBELL_WZ = 0x0002,
@@ -937,7 +730,6 @@ function other_mon_has_arti_wz(mtmp, otyp) {
             return m;
     return null;
 }
-/* C wizard.c:199 on_ground(otyp) — walks gf.fobj, the level's floor chain. */
 function on_ground_wz(otyp) {
     for (let otmp = game.fobj; otmp; otmp = otmp.nobj) {
         if (otyp) {
@@ -1025,7 +817,7 @@ function strategy_wz(mtmp) {
         if ((strat = target_on_wz(M3_WANTSAMUL_WZ, mtmp)) !== STRAT_NONE)
             return strat;
 
-    if (game.u?.uevent?.invoked) { /* priorities change once gate opened */
+    if (game.u?.uevent?.invoked) {
         if ((strat = target_on_wz(M3_WANTSARTI_WZ, mtmp)) !== STRAT_NONE)
             return strat;
         if ((strat = target_on_wz(M3_WANTSBOOK_WZ, mtmp)) !== STRAT_NONE)
@@ -1080,13 +872,6 @@ function choose_stairs_wz(out, dir) {
  * js/shk.js kept an EMPTY mnexto and a gap-ridden module-local mnearto for the
  * same C functions, and one body each beats a third copy here. */
 
-/* C dungeon.c:1923 In_W_tower(x, y, lev).  js/dog.js:856 has the same body as
- * a module-local In_W_tower_dog; kept local here for the same reason (it is
- * not exported there) rather than widening dog.js's surface for one caller.
- * EXPORTED now: js/mcastu.js carried a THIRD spelling that was a flat
- * `return false` stub, on the claim "the corpus never enters the tower", and
- * has_aggravatables() (wizard.c:474) compares three In_W_tower results against
- * each other — a constant makes every comparison trivially equal.  One body. */
 export function In_W_tower_wz(x, y, lev) {
     const same = (a, b) => !!a && !!b && (a.dnum | 0) === (b.dnum | 0)
         && (a.dlevel | 0) === (b.dlevel | 0);
@@ -1115,9 +900,6 @@ async function tactics_wz(mtmp) {
         mx = mtmp.mx | 0; my = mtmp.my | 0;
 
         if (u.uswallow && u.ustuck === mtmp) {
-            /* C wizard.c:381 expels(mtmp, mtmp->data, TRUE) — js/dog.js:1025
-             * keeps it as an empty stub; reached only when a covetous monster
-             * has swallowed the hero, which no corpus session does. */
             expels_wz(mtmp, mtmp.data, true);
         }
 

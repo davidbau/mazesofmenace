@@ -1101,8 +1101,8 @@ export async function lspo_gas_cloud(opts) {
         && !(opts.pts instanceof Set)) {
         const o = lcheck_param_table(arguments);
         const { x: tx, y: ty } = get_table_xy_or_coord(o);
-        x = (Number(tx) << 16) >> 16; // coordxy, before the lua_Integer test
-        y = (Number(ty) << 16) >> 16;
+        x = luaL_checkinteger_unpacked(tx, 16); // C :4946 coordxy, before the lua_Integer test
+        y = luaL_checkinteger_unpacked(ty, 16);
         if (tx === -1 && ty === -1) {
             // nhlsel.c:58–66 l_selection_check: JS selections are Set-backed
             // objects, the unpacked equivalent of the selection userdata.
@@ -1169,7 +1169,7 @@ function splev_opt_boolean(v, defval) {
  * C ref: mklev.c count_level_features `:828–841` — recount fountains and
  * sinks over x 1..COLNO-1, y 0..ROWNO-1 (x = 1 lower bound like C).
  */
-function count_level_features() {
+export function count_level_features() {
     const flags = game.level.flags || (game.level.flags = {});
     flags.nfountains = 0; // C :832
     flags.nsinks = 0;
@@ -1302,8 +1302,8 @@ export function lspo_mazewalk(a, b, c) {
         fstocked = splev_opt_boolean(o.stocked, 1); // C :5795
         dir = LSPO_MAZEWALK_DIRS2I[splev_opt_index(o.dir, 'random', LSPO_MAZEWALK_DIRS)]; // C :5796
     }
-    let x = mx | 0; // C :5799-5801 (mcoord pack is implicit in the twin)
-    let y = my | 0;
+    let x = typeof mx === 'bigint' ? Number(mx & 0xffn) : mx | 0; // C :5799 SP_COORD_PACK
+    let y = typeof my === 'bigint' ? Number(my & 0xffn) : my | 0;
     const coder = game.gc?.coder ?? null; // C gc.coder->croom
     const pos = get_location_coord(ANY_LOC, coder?.croom ?? null, x, y); // C :5803
     x = pos.x;
@@ -1590,15 +1590,15 @@ export function lspo_trap(a, b, c) {
             const lc = { x: -1, y: -1 }; // C :4438
             get_coord(o.launchfrom, lc); // C :4439 get_coord(L, -1, &lx, &ly)
             const lp = game.launchplace ?? (game.launchplace = { x: 0, y: 0 });
-            lp.x = lc.x; // C :4442
-            lp.y = lc.y; // C :4443
+            lp.x = luaL_checkinteger_unpacked(lc.x, 16); // C :4442
+            lp.y = luaL_checkinteger_unpacked(lc.y, 16); // C :4443
         }
         if (o.teledest != null && typeof o.teledest === 'object') { // C :4448-4460
             const lc = { x: -1, y: -1 }; // C :4449
             get_coord(o.teledest, lc); // C :4450 get_coord(L, -1, &lx, &ly)
             const lp = game.launchplace ?? (game.launchplace = { x: 0, y: 0 });
-            lp.x = lc.x; // C :4453
-            lp.y = lc.y; // C :4454
+            lp.x = luaL_checkinteger_unpacked(lc.x, 16); // C :4453
+            lp.y = luaL_checkinteger_unpacked(lc.y, 16); // C :4454
         }
     }
     if (tmp.type === NO_TRAP) throw new Error('lspo_trap: Unknown trap type'); // C :4463-4464
@@ -1695,8 +1695,8 @@ export function lspo_feature(a, b, c) {
         typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
         const fx = { x: -1, y: -1 }; // C :4864 fx, fy
         get_coord(b, fx); // C :4866 get_coord(L, 2, &fx, &fy)
-        x = fx.x;
-        y = fx.y;
+        x = luaL_checkinteger_unpacked(fx.x, 16);
+        y = luaL_checkinteger_unpacked(fx.y, 16);
     } else if (argc === 3) { // C :4868-4872
         typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
         x = b | 0;
@@ -1704,8 +1704,8 @@ export function lspo_feature(a, b, c) {
     } else { // C :4873-4880 table form (lcheck_param_table: argc<1 ≡ {})
         o = a ?? {};
         const xy = get_table_xy_or_coord(o); // C :4877
-        x = xy.x;
-        y = xy.y;
+        x = luaL_checkinteger_unpacked(xy.x, 16);
+        y = luaL_checkinteger_unpacked(xy.y, 16);
         typ = LSPO_FEATURES2I[splev_opt_index(o.type, null, LSPO_FEATURES)]; // C :4878
         can_have_flags = true; // C :4879
     }
@@ -1785,8 +1785,8 @@ export function lspo_engraving(a, b, c) {
             throw new Error('bad argument #1 (table expected)');
         const o = a;
         const xy = get_table_xy_or_coord(o); // C :3904
-        x = xy.x;
-        y = xy.y;
+        x = luaL_checkinteger_unpacked(xy.x, 16);
+        y = luaL_checkinteger_unpacked(xy.y, 16);
         etyp = LSPO_ENGRTYPES2I[splev_opt_index(o.type, 'engrave', LSPO_ENGRTYPES)]; // C :3907
         if (typeof o.text !== 'string') // C :3908 get_table_str luaL_checkstring
             throw new Error("bad argument 'text' (string expected)");
@@ -1799,8 +1799,8 @@ export function lspo_engraving(a, b, c) {
     } else if (argc === 3) { // C :3911-3917
         const ex = { x, y }; // C :3912 ex, ey; nil leaves the -1 seed
         get_coord(a, ex); // C :3913 (void) get_coord(L, 1, &ex, &ey)
-        x = ex.x;
-        y = ex.y;
+        x = luaL_checkinteger_unpacked(ex.x, 16);
+        y = luaL_checkinteger_unpacked(ex.y, 16);
         etyp = LSPO_ENGRTYPES2I[splev_opt_index(b, 'engrave', LSPO_ENGRTYPES)]; // C :3916
         if (typeof c !== 'string') // C :3917 dupstr(luaL_checkstring)
             throw new Error('bad argument #3 (string expected)');
@@ -1832,7 +1832,7 @@ export function lspo_engraving(a, b, c) {
  * overflow throws like C `:4059` panic; x/y and w/h half-absence throws
  * like C nhl_error.
  */
-export function lspo_room(opts, contentsFn) {
+export async function lspo_room(opts, contentsFn) {
     create_des_coder(); // C :4030
     const coder = game.gc.coder;
     if (game.in_mk_themerooms && game.themeroom_failed) return 0; // C :4032-4033
@@ -1855,7 +1855,7 @@ export function lspo_room(opts, contentsFn) {
         nhl_error('Room must have both w and h');
     tmproom.xalign = l_or_r2i[get_table_option(o, 'xalign', 'random', left_or_right)]; // C :4068-4069
     tmproom.yalign = t_or_b2i[get_table_option(o, 'yalign', 'random', top_or_bot)]; // C :4070-4071
-    tmproom.rtype = narrow(get_table_roomtype_opt(o, 'type', OROOM)); // C :4072
+    tmproom.rtype = narrow(await get_table_roomtype_opt(o, 'type', OROOM)); // C :4072
     tmproom.chance = narrow(get_table_int_opt(o, 'chance', 100)); // C :4073
     tmproom.rlit = narrow(get_table_int_opt(o, 'lit', -1)); // C :4074
     // theme rooms default to unfilled (C :4075-4077)
@@ -1874,7 +1874,7 @@ export function lspo_room(opts, contentsFn) {
             // C :4092–4098 pushes the public room table, not a mkroom.
             // A JS callback throw implements NHLpa_panic (no endroom on error).
             const contents = contentsFn ?? o.contents;
-            if (typeof contents === 'function') contents(l_push_mkroom_table(tmpcr));
+            if (typeof contents === 'function') await contents(l_push_mkroom_table(tmpcr));
             spo_endroom(coder); // C :4099
             add_doors_to_room(tmpcr); // C :4100
             return 0;
@@ -1951,8 +1951,8 @@ export function lspo_terrain(a, b, c) {
         const o = a ?? {}; // C :4991 lcheck_param_table
         if (o === null || typeof o !== 'object') throw new Error('lspo_terrain: Wrong parameters');
         const mm = get_table_xy_or_coord(o); // C :4993
-        x = mm.x;
-        y = mm.y; // C :4994
+        x = luaL_checkinteger_unpacked(mm.x, 16);
+        y = luaL_checkinteger_unpacked(mm.y, 16); // C :4994
         if (mm.x === -1 && mm.y === -1) { // C :4995
             const s = o.selection; // C :4996 lua_getfield
             if (!s || typeof s !== 'object' || !(s.pts instanceof Set)) // C :4997 l_selection_check
@@ -1969,8 +1969,8 @@ export function lspo_terrain(a, b, c) {
         tmpterrain.ter = check_mapchr(b); // C :5005
         const out = { x: 0, y: 0 };
         get_coord(a, out); // C :5007 get_coord(L, 1, &tx, &ty)
-        x = out.x; // C :5008
-        y = out.y; // C :5009
+        x = luaL_checkinteger_unpacked(out.x, 16); // C :5008
+        y = luaL_checkinteger_unpacked(out.y, 16); // C :5009
     } else if (argc === 2) { // C :5010
         if (!a || typeof a !== 'object' || !(a.pts instanceof Set)) // C :5011 l_selection_check
             throw new Error('lspo_terrain: selection expected');
@@ -2126,7 +2126,7 @@ export function lspo_replace_terrain(opts) {
  * (selection-shape check); l_push_mkroom_table (the room object itself,
  * lspo_room precedent); nhl_pcall_handle (direct contents call).
  */
-export function lspo_region(a, b) {
+export async function lspo_region(a, b) {
     create_des_coder(); // C :5595
     const argc = arguments.length; // C :5593
     const coder = game.gc.coder; // C gc.coder (lspo_room idiom)
@@ -2138,7 +2138,7 @@ export function lspo_region(a, b) {
         const irregular = splev_opt_boolean(o.irregular, 0); // C :5603
         const joined = splev_opt_boolean(o.joined, 1); // C :5604 (TRUE)
         const do_arrival_room = splev_opt_boolean(o.arrival_room, 0); // C :5605
-        const rtype = get_table_roomtype_opt(o, 'type', OROOM); // C :5606
+        const rtype = await get_table_roomtype_opt(o, 'type', OROOM); // C :5606
         let rlit = splev_opt_int(o.lit, -1); // C :5607
         let dx1 = splev_opt_int(o.x1, -1); // C :5563-5566 get_table_coords_or_region
         let dy1 = splev_opt_int(o.y1, -1);
@@ -2189,7 +2189,7 @@ export function lspo_region(a, b) {
                 update_croom(); // C :5705
                 const contents = typeof b === 'function' ? b // unpacked contents (lspo_room precedent)
                     : (typeof o.contents === 'function' ? o.contents : null); // C :5706 lua_getfield contents
-                if (contents) contents(troom); // C :5707-5710 pcall with mkroom table (room object — lspo_room precedent)
+                if (contents) await contents(troom); // C :5707-5710 pcall with mkroom table (room object — lspo_room precedent)
                 spo_endroom(coder); // C :5711
                 add_doors_to_room(troom); // C :5712
             }
@@ -12665,42 +12665,42 @@ xxxxx...xxxxxx....xxxxxxxx
  * scripts; failed-room skip fidelity beyond create_room false;
  * ensure_way_out / link_doors_rooms extras.
  */
-function load_mon_fila() {
+async function load_mon_fila() {
     const g = game;
     nhlib_shuffle_align();
 
     // des.room contents mirror Mon-fila.lua order
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_stair(r, true);
         splev_room_object(r);
         splev_room_monster(r, 'E', 0);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_object(r);
         splev_room_monster(r, 'E', 0);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_object(r);
         splev_room_monster(r, 'xorn');
         splev_room_monster(r, 'earth elemental');
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_stair(r, false);
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'E', 0);
         splev_room_monster(r, 'earth elemental');
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'X', 0);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'earth elemental');
@@ -12722,40 +12722,40 @@ function load_mon_fila() {
  * explicitly hostile (peaceful=0). Named omissions: other-role *-filb;
  * failed-room / ensure_way_out.
  */
-function load_mon_filb() {
+async function load_mon_filb() {
     const g = game;
     nhlib_shuffle_align();
 
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_stair(r, true);
         splev_room_object(r);
         splev_room_monster(r, 'X', 0);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_object(r);
         splev_room_monster(r, 'X', 0);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_object(r);
         splev_room_monster(r, 'E', 0);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_stair(r, false);
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'E', 0);
         splev_room_monster(r, 'earth elemental');
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'X', 0);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'earth elemental');
@@ -17130,58 +17130,58 @@ async function load_minetn_1() {
  * Named omissions: link_doors_rooms extras; ensure_way_out.
  * minetn-6 is D-1503. minetn-7 is D-1504.
  */
-function load_minetn_2() {
+async function load_minetn_2() {
     const g = game;
     nhlib_shuffle_align();
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
 
     // Outer town square: des.room x=3,y=3 center 31×15 lit
-    splev_des_room({
+    await splev_des_room({
         type: 'ordinary', lit: 1, x: 3, y: 3,
         xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 31, h: 15,
-    }, null, (town) => {
+    }, null, async (town) => {
         splev_room_feature_fountain(town, 17, 5);
         splev_room_feature_fountain(town, 13, 8);
 
-        const nest = (opts, doorWall, doorState, monId) => {
+        const nest = async (opts, doorWall, doorState, monId) => {
             if (!percent(75)) return;
-            splev_des_room(opts, town, (r) => {
+            await splev_des_room(opts, town, (r) => {
                 splev_room_door(r, doorState || 'closed', doorWall);
                 if (monId) splev_room_monster(r, monId);
             });
         };
 
-        nest({ type: 'ordinary', x: 2, y: 0, w: 2, h: 2 }, 'west');
-        nest({ type: 'ordinary', lit: 0, x: 5, y: 0, w: 2, h: 2 }, 'south');
-        nest({ type: 'ordinary', x: 8, y: 0, w: 2, h: 2 }, 'east');
-        nest({ type: 'ordinary', lit: 1, x: 16, y: 0, w: 2, h: 2 }, 'west');
-        nest({ type: 'ordinary', lit: 0, x: 19, y: 0, w: 2, h: 2 }, 'south');
-        nest({ type: 'ordinary', x: 22, y: 0, w: 2, h: 2 }, 'south', 'closed', 'gnome');
-        nest({ type: 'ordinary', lit: 0, x: 25, y: 0, w: 2, h: 2 }, 'east');
-        nest({ type: 'ordinary', lit: 1, x: 2, y: 5, w: 2, h: 2 }, 'north');
-        nest({ type: 'ordinary', lit: 1, x: 5, y: 5, w: 2, h: 2 }, 'south');
-        nest({ type: 'ordinary', x: 8, y: 5, w: 2, h: 2 }, 'north', 'locked', 'gnome');
+        await nest({ type: 'ordinary', x: 2, y: 0, w: 2, h: 2 }, 'west');
+        await nest({ type: 'ordinary', lit: 0, x: 5, y: 0, w: 2, h: 2 }, 'south');
+        await nest({ type: 'ordinary', x: 8, y: 0, w: 2, h: 2 }, 'east');
+        await nest({ type: 'ordinary', lit: 1, x: 16, y: 0, w: 2, h: 2 }, 'west');
+        await nest({ type: 'ordinary', lit: 0, x: 19, y: 0, w: 2, h: 2 }, 'south');
+        await nest({ type: 'ordinary', x: 22, y: 0, w: 2, h: 2 }, 'south', 'closed', 'gnome');
+        await nest({ type: 'ordinary', lit: 0, x: 25, y: 0, w: 2, h: 2 }, 'east');
+        await nest({ type: 'ordinary', lit: 1, x: 2, y: 5, w: 2, h: 2 }, 'north');
+        await nest({ type: 'ordinary', lit: 1, x: 5, y: 5, w: 2, h: 2 }, 'south');
+        await nest({ type: 'ordinary', x: 8, y: 5, w: 2, h: 2 }, 'north', 'locked', 'gnome');
 
-        splev_des_room({
+        await splev_des_room({
             type: 'shop', chance: 90, lit: 1, x: 2, y: 10, w: 4, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'west'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'tool shop', chance: 90, lit: 1, x: 23, y: 10, w: 4, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'east'));
 
-        splev_des_room({
+        await splev_des_room({
             type: monkfoodshop(), chance: 90, lit: 1, x: 24, y: 5, w: 3, h: 4,
         }, town, (r) => splev_room_door(r, 'closed', 'north'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'candle shop', lit: 1, x: 11, y: 10, w: 4, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'east'));
 
-        nest({ type: 'ordinary', lit: 0, x: 7, y: 10, w: 3, h: 3 },
+        await nest({ type: 'ordinary', lit: 0, x: 7, y: 10, w: 3, h: 3 },
             'north', 'locked', 'gnome');
 
-        splev_des_room({
+        await splev_des_room({
             type: 'temple', lit: 1, x: 19, y: 5, w: 4, h: 4,
         }, town, (r) => {
             splev_room_door(r, 'closed', 'north');
@@ -17190,7 +17190,7 @@ function load_minetn_2() {
             splev_room_monster(r, 'gnomish wizard');
         });
 
-        nest({ type: 'ordinary', lit: 1, x: 18, y: 10, w: 4, h: 3 },
+        await nest({ type: 'ordinary', lit: 1, x: 18, y: 10, w: 4, h: 3 },
             'west', 'locked', 'gnome lord');
 
         // Town Watch
@@ -17232,39 +17232,39 @@ function load_minetn_2() {
  * Named omissions: link_doors_rooms extras; ensure_way_out.
  * minetn-6 is D-1503. minetn-7 is D-1504.
  */
-function load_minetn_3() {
+async function load_minetn_3() {
     const g = game;
     nhlib_shuffle_align();
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
 
     // Outer alley town: des.room x=3,y=3 center 31×15 lit
-    splev_des_room({
+    await splev_des_room({
         type: 'ordinary', lit: 1, x: 3, y: 3,
         xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 31, h: 15,
-    }, null, (town) => {
+    }, null, async (town) => {
         splev_room_feature_fountain(town, 1, 6);
         splev_room_feature_fountain(town, 29, 13);
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 2, y: 2, w: 2, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'tool shop', chance: 30, lit: 1, x: 5, y: 3, w: 2, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 2, y: 10, w: 2, h: 3,
         }, town, (r) => {
             splev_room_door(r, 'locked', 'north');
             splev_room_monster(r, 'G');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 5, y: 9, w: 2, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'north'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'temple', lit: 1, x: 10, y: 2, w: 3, h: 4,
         }, town, (r) => {
             splev_room_door(r, 'closed', 'east');
@@ -17274,54 +17274,54 @@ function load_minetn_3() {
             splev_room_monster(r, 'gnomish wizard');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 11, y: 7, w: 2, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'west'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'shop', lit: 1, x: 10, y: 10, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'west'));
 
         // Lua bare `random` is nil array entry; lit defaults to -1
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 14, y: 8, w: 2, h: 2,
         }, town, (r) => {
             splev_room_door(r, 'locked', 'north');
             splev_room_monster(r, 'G');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 14, y: 11, w: 2, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'tool shop', chance: 40, lit: 1, x: 17, y: 10, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'north'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 21, y: 11, w: 2, h: 2,
         }, town, (r) => {
             splev_room_door(r, 'locked', 'east');
             splev_room_monster(r, 'G');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: monkfoodshop(), chance: 90, lit: 1, x: 26, y: 8, w: 3, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'west'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 16, y: 2, w: 2, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'west'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 19, y: 2, w: 2, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'north'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'wand shop', chance: 30, lit: 1, x: 19, y: 5, w: 3, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'west'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'candle shop', lit: 1, x: 25, y: 2, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
@@ -17364,28 +17364,28 @@ function load_minetn_3() {
  * + watch. Named omissions: link_doors_rooms extras;
  * ensure_way_out. minetn-6 is D-1503. minetn-7 is D-1504.
  */
-function load_minetn_4() {
+async function load_minetn_4() {
     const g = game;
     nhlib_shuffle_align();
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
 
     // Outer college town: des.room x=3,y=3 center 30×15 lit
-    splev_des_room({
+    await splev_des_room({
         type: 'ordinary', lit: 1, x: 3, y: 3,
         xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 30, h: 15,
-    }, null, (town) => {
+    }, null, async (town) => {
         splev_room_feature_fountain(town, 8, 7);
         splev_room_feature_fountain(town, 18, 7);
 
-        splev_des_room({
+        await splev_des_room({
             type: 'book shop', lit: 1, x: 4, y: 2, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 8, y: 2, w: 2, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'temple', lit: 1, x: 11, y: 3, w: 5, h: 4,
         }, town, (r) => {
             splev_room_door(r, 'closed', 'south');
@@ -17395,29 +17395,29 @@ function load_minetn_4() {
             splev_room_monster(r, 'gnomish wizard');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 19, y: 2, w: 2, h: 2,
         }, town, (r) => {
             splev_room_door(r, 'closed', 'south');
             splev_room_monster(r, 'G');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: 'candle shop', lit: 1, x: 22, y: 2, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 26, y: 2, w: 2, h: 2,
         }, town, (r) => {
             splev_room_door(r, 'locked', 'east');
             splev_room_monster(r, 'G');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: 'tool shop', chance: 90, lit: 1, x: 4, y: 10, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'north'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 8, y: 11, w: 2, h: 2,
         }, town, (r) => {
             splev_room_door(r, 'locked', 'south');
@@ -17427,22 +17427,22 @@ function load_minetn_4() {
             splev_room_monster(r, 'f');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: monkfoodshop(), chance: 90, lit: 1, x: 11, y: 11, w: 3, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'east'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 17, y: 11, w: 2, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'west'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'ordinary', x: 20, y: 10, w: 2, h: 2,
         }, town, (r) => {
             splev_room_door(r, 'locked', 'north');
             splev_room_monster(r, 'G');
         });
 
-        splev_des_room({
+        await splev_des_room({
             type: 'shop', chance: 90, lit: 1, x: 23, y: 10, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'north'));
 
@@ -17950,39 +17950,39 @@ xxxx-------xxxxxxxxxxxxxxx--------------
  * monkeys (D-1513; not four). Named omissions: link_doors_rooms
  * extras; ensure_way_out; map_cleanup; count_level_features.
  */
-function load_minetn_7() {
+async function load_minetn_7() {
     const g = game;
     nhlib_shuffle_align();
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
 
     // Outer bazaar: des.room x=3,y=3 center 30×15 lit
-    splev_des_room({
+    await splev_des_room({
         type: 'ordinary', lit: 1, x: 3, y: 3,
         xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 30, h: 15,
-    }, null, (town) => {
+    }, null, async (town) => {
         splev_room_feature_fountain(town, 12, 7);
         splev_room_feature_fountain(town, 11, 13);
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 2, y: 2, w: 4, h: 2,
             }, town, (r) => splev_room_door(r, 'closed', 'south'));
         }
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 7, y: 2, w: 2, h: 2,
             }, town, (r) => splev_room_door(r, 'closed', 'north'));
         }
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 7, y: 5, w: 2, h: 2,
             }, town, (r) => splev_room_door(r, 'closed', 'south'));
         }
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', lit: 1, x: 10, y: 2, w: 3, h: 4,
             }, town, (r) => {
                 splev_room_monster(r, 'gnome');
@@ -17994,7 +17994,7 @@ function load_minetn_7() {
         }
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 14, y: 2, w: 4, h: 2,
             }, town, (r) => {
                 // lua des.door wall=south pos=0 (C lspo_door tmpd.pos)
@@ -18004,13 +18004,13 @@ function load_minetn_7() {
         }
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 16, y: 5, w: 2, h: 2,
             }, town, (r) => splev_room_door(r, 'closed', 'south'));
         }
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', lit: 0, x: 19, y: 2, w: 2, h: 2,
             }, town, (r) => {
                 splev_room_door(r, 'locked', 'east');
@@ -18018,26 +18018,26 @@ function load_minetn_7() {
             });
         }
 
-        splev_des_room({
+        await splev_des_room({
             type: monkfoodshop(), chance: 50, lit: 1, x: 19, y: 5, w: 2, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 2, y: 7, w: 2, h: 2,
             }, town, (r) => splev_room_door(r, 'closed', 'east'));
         }
 
-        splev_des_room({
+        await splev_des_room({
             type: 'tool shop', chance: 50, lit: 1, x: 2, y: 10, w: 2, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'south'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'candle shop', lit: 1, x: 5, y: 10, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'north'));
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 11, y: 10, w: 2, h: 2,
             }, town, (r) => {
                 splev_room_door(r, 'locked', 'west');
@@ -18045,18 +18045,18 @@ function load_minetn_7() {
             });
         }
 
-        splev_des_room({
+        await splev_des_room({
             type: 'shop', chance: 60, lit: 1, x: 14, y: 10, w: 2, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'north'));
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 17, y: 11, w: 4, h: 2,
             }, town, (r) => splev_room_door(r, 'closed', 'north'));
         }
 
         if (percent(75)) {
-            splev_des_room({
+            await splev_des_room({
                 type: 'ordinary', x: 22, y: 11, w: 2, h: 2,
             }, town, (r) => {
                 splev_room_door(r, 'closed', 'south');
@@ -18064,15 +18064,15 @@ function load_minetn_7() {
             });
         }
 
-        splev_des_room({
+        await splev_des_room({
             type: monkfoodshop(), chance: 50, lit: 1, x: 25, y: 11, w: 3, h: 2,
         }, town, (r) => splev_room_door(r, 'closed', 'east'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'tool shop', chance: 30, lit: 1, x: 25, y: 2, w: 3, h: 3,
         }, town, (r) => splev_room_door(r, 'closed', 'west'));
 
-        splev_des_room({
+        await splev_des_room({
             type: 'temple', lit: 1, x: 24, y: 6, w: 4, h: 4,
         }, town, (r) => {
             splev_room_door(r, 'closed', 'west');
@@ -19040,8 +19040,8 @@ export function lspo_door(a, b, c) {
     } else if (argc === 0 || (argc === 1 && (a == null || typeof a === 'object'))) { // C :4693-4700 table form
         o = a ?? {}; // C :4695 lcheck_param_table
         const xy = get_table_xy_or_coord(o); // C :4697
-        x = xy.x;
-        y = xy.y;
+        x = luaL_checkinteger_unpacked(xy.x, 16);
+        y = luaL_checkinteger_unpacked(xy.y, 16);
         msk = doorstates2i[splev_opt_index(o.state, 'random', doorstates)]; // C :4698-4699
     } else {
         nhl_error('lspo_door: Wrong parameters'); // C param-table failure
@@ -22037,6 +22037,9 @@ function get_unpacked_coord(loc, defhumidity) {
  * get_location_coord_random / in-room double-try.
  */
 function get_location_coord(humidity, croom, rx, ry) {
+    // C sp_lev.h:84 SP_COORD_PACK: retain exact low bits before Number.
+    if (typeof rx === 'bigint') rx = Number(rx & 0xffn);
+    if (typeof ry === 'bigint') ry = Number(ry & 0xffn);
     if (rx < 0 && ry < 0) {
         return croom
             ? get_location_coord_in_room(croom, humidity)
@@ -22503,7 +22506,7 @@ export function nhl_abs_coord(a, b) {
  * C ref: sp_lev.c get_coord :5319–5366.
  * Unpacked stand-in for (lua_State, stack index, *x, *y): a JS object or
  * array is LUA_TTABLE, null/undefined is LUA_TNIL, anything else is a
- * non-nil non-table. Writes xy.x and xy.y only on a success arm (C
+ * non-nil non-table. Writes x before reading y, even when y errors (C
  * out-params). Nil returns false and leaves xy untouched — that is the
  * "non-existent coord is ok" case. A bad table or a non-nil non-table
  * throws via nhl_error; the C returns after those calls are NOTREACHED.
@@ -22524,14 +22527,14 @@ export function get_coord(coord, xy) {
         // C :5329–5334 lua_getfield(L, i, "x"); nil skips; else checkinteger.
         // lua_pop of that field has no unpacked equivalent.
         if (coord.x != null) {
-            xy.x = luaL_checkinteger_unpacked(coord.x); // C :5331
+            xy.x = luaL_checkinteger_unpacked(coord.x, 64); // C :5331
             gotx = true; // C :5332
         }
 
         if (gotx) { // C :5336
             // C :5337–5341 lua_getfield "y". Both fields set → TRUE.
             if (coord.y != null) {
-                xy.y = luaL_checkinteger_unpacked(coord.y); // C :5339
+                xy.y = luaL_checkinteger_unpacked(coord.y, 64); // C :5339
                 ret = true; // C :5341
             } else {
                 nhl_error('Not a coordinate'); // C :5343
@@ -23142,8 +23145,8 @@ export async function l_create_monster(o, arg2, croom = null) {
  */
 export function splev_create_altar(a, croom = null) {
     const t = { ...(a ?? {}) };
-    let rx = (t.rx != null) ? (t.rx | 0) : -1;
-    let ry = (t.ry != null) ? (t.ry | 0) : -1;
+    let rx = (t.rx != null) ? (typeof t.rx === 'bigint' ? Number(t.rx & 0xffn) : t.rx | 0) : -1;
+    let ry = (t.ry != null) ? (typeof t.ry === 'bigint' ? Number(t.ry & 0xffn) : t.ry | 0) : -1;
     if (rx === -1 && ry === -1) {
         const xy = get_table_xy_or_coord(t);
         rx = xy.x;
@@ -23495,6 +23498,9 @@ function get_free_room_loc(croom) {
  * create_trap starts x=y=-1 so the retry arm always somexy-random.
  */
 function get_free_room_loc_coord(croom, rx, ry) {
+    // C sp_lev.h:84 SP_COORD_PACK: retain exact low bits before Number.
+    if (typeof rx === 'bigint') rx = Number(rx & 0xffn);
+    if (typeof ry === 'bigint') ry = Number(ry & 0xffn);
     let pos = get_location_coord(DRY, croom, rx, ry);
     if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
     let trycnt = 0;
@@ -23640,18 +23646,20 @@ export function get_mkroom_name(rtype) {
 
 /**
  * C ref: sp_lev.c get_table_roomtype_opt `:4003–4020` — unpacked-opts
- * form (C reads the Lua field via get_table_str_opt with an empty
- * default; function-valued fields are read as plain values per this
- * file's unpacked-opts architecture). Empty/missing keeps defval (C
- * `:4008`); unknown impossibles and keeps defval (C `:4015–4016`).
+ * form. The field is read through the canonical get_table_str_opt
+ * (nhlua.c:1053–1076; nil → emptystr default, function values pcalled,
+ * any other type nhl_errors before the caller draws room RNG).
+ * Empty/missing keeps defval (C `:4008`); unknown impossibles — awaited
+ * so the diagnostic completes before room RNG or callbacks (C `:4015–
+ * 4016`) — and keeps defval. Free is a GC no-op (C `:4017`).
  */
-export function get_table_roomtype_opt(opts, name, defval) {
-    const roomstr = opts ? opts[name] : undefined; // C :4006 get_table_str_opt (Free is a GC no-op)
+export async function get_table_roomtype_opt(opts, name, defval) {
+    const roomstr = get_table_str_opt(opts ?? {}, name, ''); // C :4006 (emptystr)
     let res = defval;
-    if (roomstr) { // C :4008 `roomstr && *roomstr`
-        const hit = splev_roomtype_entry(String(roomstr).toLowerCase()); // C :4009–4013 strcmpi
+    if (roomstr && roomstr.length !== 0) { // C :4008 `roomstr && *roomstr`
+        const hit = splev_roomtype_entry(roomstr.toLowerCase()); // C :4009–4013 strcmpi
         if (hit) res = hit.type;
-        else impossible(`Unknown room type '${roomstr}'`); // C :4015
+        else await impossible(`Unknown room type '${roomstr}'`); // C :4015–4016
     }
     return res; // C :4018–4019
 }
@@ -23857,10 +23865,10 @@ function splev_room_door(croom, state, wall, pos = -1) {
  * C ref: sp_lev.c build_room + lspo_room — top-level or nested.
  * @returns {object|null} the new mkroom
  */
-function splev_build_room(opts, parent) {
+async function splev_build_room(opts, parent) {
     const g = game;
     const chance = opts.chance ?? 100;
-    const wantType = get_table_roomtype_opt(opts, 'type', OROOM);
+    const wantType = await get_table_roomtype_opt(opts, 'type', OROOM);
     // C: (!chance || rn2(100) < chance) ? rtype : OROOM
     const rtype = (!chance || rn2(100) < chance) ? wantType : OROOM;
     const rlit = opts.lit ?? -1;
@@ -23905,7 +23913,7 @@ function splev_build_room(opts, parent) {
 /**
  * C ref: sp_lev.c lspo_room — build then run contents then add_doors_to_room.
  */
-function splev_des_room(opts, parent, contentsFn) {
+async function splev_des_room(opts, parent, contentsFn) {
     create_des_coder();
     const coder = game.gc.coder;
     const n = coder.n_subroom;
@@ -23922,11 +23930,11 @@ function splev_des_room(opts, parent, contentsFn) {
         o.yalign = ['top', 'center', 'bottom'][
             [SPLEV_TOP, SPLEV_CENTER, SPLEV_BOTTOM].indexOf(o.yalign)] ?? 'random';
     let aroom = null;
-    o.contents = () => {
+    o.contents = async () => {
         aroom = coder.croom;
-        if (typeof contentsFn === 'function') contentsFn(aroom);
+        if (typeof contentsFn === 'function') await contentsFn(aroom);
     };
-    lspo_room(o);
+    await lspo_room(o);
     coder.tmproomlist[n - 1] = oldParent;
     update_croom();
     return aroom;
@@ -24033,15 +24041,15 @@ function splev_room_monster_at(croom, id_or_class, rx, ry) {
  * C ref: dat/oracle.lua via load_special — Delphic Oracle level.
  * Named omissions: oracle verbalize / consultation; ensure_way_out.
  */
-function load_oracle() {
+async function load_oracle() {
     const g = game;
     nhlib_shuffle_align();
 
     // des.level_flags("noflip") — allow_flips=0
-    splev_des_room({
+    await splev_des_room({
         type: 'ordinary', lit: 1, x: 3, y: 3,
         xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 11, h: 9,
-    }, null, (outer) => {
+    }, null, async (outer) => {
         const statues = [
             [0, 0], [0, 8], [10, 0], [10, 8],
             [5, 1], [5, 7], [2, 4], [8, 4],
@@ -24049,7 +24057,7 @@ function load_oracle() {
         for (const [rx, ry] of statues)
             splev_room_statue_montype(outer, rx, ry, 'C', true);
 
-        splev_des_room({
+        await splev_des_room({
             type: 'delphi', lit: 1, x: 4, y: 3, w: 3, h: 3,
         }, outer, (delphi) => {
             splev_room_feature_fountain(delphi, 0, 1);
@@ -27826,38 +27834,38 @@ function load_arc_filb() {
  * other-role *-fila room scripts; failed-room skip fidelity beyond
  * create_room false; ensure_way_out / link_doors_rooms extras.
  */
-function load_pri_fila() {
+async function load_pri_fila() {
     const g = game;
     nhlib_shuffle_align();
 
     // des.room contents mirror Pri-fila.lua order
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_stair(r, true);
         splev_room_object(r);
         splev_room_monster(r, 'human zombie');
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_object(r);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_object(r);
         splev_room_monster(r, 'human zombie');
     });
-    splev_des_room({ type: 'morgue' }, null, (r) => {
+    await splev_des_room({ type: 'morgue' }, null, (r) => {
         splev_room_stair(r, false);
         splev_room_object(r);
         splev_room_trap(r);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'wraith');
     });
-    splev_des_room({ type: 'morgue' }, null, (r) => {
+    await splev_des_room({ type: 'morgue' }, null, (r) => {
         splev_room_object(r);
         splev_room_trap(r);
     });
@@ -27877,42 +27885,42 @@ function load_pri_fila() {
  * Ordinary + morgue des.room + des.random_corridors. Named omissions:
  * other-role *-filb; failed-room / ensure_way_out.
  */
-function load_pri_filb() {
+async function load_pri_filb() {
     const g = game;
     nhlib_shuffle_align();
 
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_stair(r, true);
         splev_room_object(r);
         splev_room_monster(r, 'human zombie');
         splev_room_monster(r, 'wraith');
     });
-    splev_des_room({ type: 'morgue' }, null, (r) => {
+    await splev_des_room({ type: 'morgue' }, null, (r) => {
         splev_room_object(r);
         splev_room_object(r);
         splev_room_object(r);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_object(r);
         splev_room_monster(r, 'human zombie');
         splev_room_monster(r, 'wraith');
     });
-    splev_des_room({ type: 'morgue' }, null, (r) => {
+    await splev_des_room({ type: 'morgue' }, null, (r) => {
         splev_room_stair(r, false);
         splev_room_object(r);
         splev_room_object(r);
         splev_room_trap(r);
     });
-    splev_des_room({ type: 'ordinary' }, null, (r) => {
+    await splev_des_room({ type: 'ordinary' }, null, (r) => {
         splev_room_object(r);
         splev_room_object(r);
         splev_room_trap(r);
         splev_room_monster(r, 'human zombie');
         splev_room_monster(r, 'wraith');
     });
-    splev_des_room({ type: 'morgue' }, null, (r) => {
+    await splev_des_room({ type: 'morgue' }, null, (r) => {
         splev_room_object(r);
         splev_room_trap(r);
     });
@@ -30727,19 +30735,19 @@ function create_mimic_as_chest(croom) {
  * mid create_subroom sized via math.random(floor(rm.w/2), rm.w-2) (nhlib
  * → lo+rn2(hi-lo+1)); optional innermost ordinary + random doors.
  */
-function themeroom_nesting_contents(croom) {
+async function themeroom_nesting_contents(croom) {
     // C l_push_mkroom_table: width/height = 1+(hx-lx)/(hy-ly)
     const { width: rmWidth, height: rmHeight } = l_push_mkroom_table(croom);
     // math.random(math.floor(rm.width/2), rm.width-2)
     const wid = lua_random2(Math.floor(rmWidth / 2), rmWidth - 2);
     const hei = lua_random2(Math.floor(rmHeight / 2), rmHeight - 2);
-    const mid = splev_des_room(
+    const mid = await splev_des_room(
         { type: 'ordinary', w: wid, h: hei, filled: 1 },
         croom,
-        (midRoom) => {
+        async (midRoom) => {
             // C: if percent(90) then des.room({ ordinary, filled=1, ...doors })
             if (percent(90)) {
-                splev_des_room(
+                await splev_des_room(
                     { type: 'ordinary', filled: 1 },
                     midRoom,
                     (inner) => {
@@ -30758,8 +30766,8 @@ function themeroom_nesting_contents(croom) {
 }
 
 /** C lspo_room: nested des.room fail sets gt.themeroom_failed. */
-function themeroom_nested_room(opts, parent, contentsFn) {
-    const inner = splev_des_room(opts, parent, contentsFn);
+async function themeroom_nested_room(opts, parent, contentsFn) {
+    const inner = await splev_des_room(opts, parent, contentsFn);
     if (!inner && game.in_mk_themerooms) game.themeroom_failed = true;
     return inner;
 }
@@ -30768,8 +30776,8 @@ function themeroom_nested_room(opts, parent, contentsFn) {
  * C ref: themerms.lua "Fake Delphi" contents after outer des.room —
  * inner ordinary 3×3 at (4,3) + random door.
  */
-function themeroom_fake_delphi_contents(croom) {
-    themeroom_nested_room(
+async function themeroom_fake_delphi_contents(croom) {
+    await themeroom_nested_room(
         { type: 'ordinary', x: 4, y: 3, w: 3, h: 3, filled: 1 },
         croom,
         (inner) => {
@@ -30782,8 +30790,8 @@ function themeroom_fake_delphi_contents(croom) {
  * C ref: themerms.lua "Room in a room" contents — nested ordinary +
  * random door (outer is fully-random create_room).
  */
-function themeroom_room_in_room_contents(croom) {
-    themeroom_nested_room(
+async function themeroom_room_in_room_contents(croom) {
+    await themeroom_nested_room(
         { type: 'ordinary' },
         croom,
         (inner) => {
@@ -30796,9 +30804,9 @@ function themeroom_room_in_room_contents(croom) {
  * C ref: themerms.lua "Huge room with another room inside" contents —
  * percent(90) nested ordinary + random door, optional second door.
  */
-function themeroom_huge_contents(croom) {
+async function themeroom_huge_contents(croom) {
     if (!percent(90)) return;
-    themeroom_nested_room(
+    await themeroom_nested_room(
         { type: 'ordinary', filled: 1 },
         croom,
         (inner) => {
@@ -30812,12 +30820,12 @@ function themeroom_huge_contents(croom) {
  * C ref: themerms.lua "Mausoleum" contents — 1×1 themed cell at center,
  * mummy/vampire/lich/zombie or human corpse, optional secret door.
  */
-function themeroom_mausoleum_contents(croom) {
+async function themeroom_mausoleum_contents(croom) {
     const { width: rmWidth, height: rmHeight } = l_push_mkroom_table(croom);
     // Lua (rm.width-1)/2 is an integral float for odd outer sizes.
     const cx = Math.trunc((rmWidth - 1) / 2);
     const cy = Math.trunc((rmHeight - 1) / 2);
-    themeroom_nested_room(
+    await themeroom_nested_room(
         { type: 'themed', x: cx, y: cy, w: 1, h: 1, joined: false },
         croom,
         (inner) => {
@@ -30844,7 +30852,7 @@ function themeroom_mausoleum_contents(croom) {
  * (percent walls at table-build), swapped shops, two 3×3 joined=false
  * nested rooms with shopdoorstate doors.
  */
-function themeroom_twin_businesses_contents(croom) {
+async function themeroom_twin_businesses_contents(croom) {
     const southeast = () => (percent(50) ? 'south' : 'east');
     const northeast = () => (percent(50) ? 'north' : 'east');
     const northwest = () => (percent(50) ? 'north' : 'west');
@@ -30874,14 +30882,14 @@ function themeroom_twin_businesses_contents(croom) {
     };
     // C: p = placements[d(#placements)] — Lua 1-based d(n)=1+rn2(n)
     const p = placements[rn2(placements.length)];
-    themeroom_nested_room(
+    await themeroom_nested_room(
         { type: ltype, x: p.lx, y: p.ly, w: 3, h: 3, filled: 1, joined: false },
         croom,
         (left) => {
             splev_room_door(left, shopdoorstate(), p.lwall);
         },
     );
-    themeroom_nested_room(
+    await themeroom_nested_room(
         { type: rtype, x: p.rx, y: p.ry, w: 3, h: 3, filled: 1, joined: false },
         croom,
         (right) => {
@@ -31909,15 +31917,15 @@ async function themerooms_generate(difficulty) {
                 // C lspo_room: contents after build_room, then add_doors_to_room
                 if (do_themed_fill) themeroom_fill(aroom);
                 else if (pick.name === 'Pillars') themeroom_pillars_contents(aroom);
-                else if (pick.name === 'Nesting rooms') themeroom_nesting_contents(aroom);
-                else if (pick.name === 'Fake Delphi') themeroom_fake_delphi_contents(aroom);
-                else if (pick.name === 'Room in a room') themeroom_room_in_room_contents(aroom);
+                else if (pick.name === 'Nesting rooms') await themeroom_nesting_contents(aroom);
+                else if (pick.name === 'Fake Delphi') await themeroom_fake_delphi_contents(aroom);
+                else if (pick.name === 'Room in a room') await themeroom_room_in_room_contents(aroom);
                 else if (pick.name === 'Huge room with another room inside') {
-                    themeroom_huge_contents(aroom);
+                    await themeroom_huge_contents(aroom);
                 } else if (pick.name === 'Mausoleum') {
-                    themeroom_mausoleum_contents(aroom);
+                    await themeroom_mausoleum_contents(aroom);
                 } else if (pick.name === 'Twin businesses') {
-                    themeroom_twin_businesses_contents(aroom);
+                    await themeroom_twin_businesses_contents(aroom);
                 }
                 add_doors_to_room(aroom);
             }

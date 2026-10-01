@@ -3,8 +3,6 @@
 //
 // WHY THIS IS HERE RATHER THAN `node:crypto`
 // ------------------------------------------
-// `js/cfgfiles.js` hashes the session's identity into the configfile path
-// that `option_help()` renders (options.c:9513, seed2200 step 158), so the
 // digest is SCORED TEXT.  It used `import { createHash } from 'node:crypto'`,
 // which a browser cannot resolve — and that one specifier, reached from
 // js/jsmain.js:13, is what killed the whole module graph at
@@ -17,12 +15,10 @@
 // the value HOST-INDEPENDENT instead: one code path, identical bytes in Node
 // and in a browser, and nothing to degrade.
 //
-// EQUIVALENCE IS MEASURED, NOT ASSERTED: test/sha1-vs-node-crypto.test.mjs
 // differentially checks this against `node:crypto` over the RFC 3174 vectors,
 // every length from 0 to 200 (the block-boundary and length-encoding edges),
 // and 2,000 pseudo-random inputs including non-ASCII — plus the exact
 // JSON.stringify([seed, datetime, nethackrc, moves]) shape cfgfiles uses.
-// The public scorer is the second control: all 44 sessions render a path
 // built from this digest.
 
 /** UTF-8 encode a string to bytes, without depending on TextEncoder. */

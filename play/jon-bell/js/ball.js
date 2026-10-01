@@ -1,26 +1,18 @@
 // js/ball.js
 // C ref: nethack-c/src/ball.c
 //
-// Only drag_ball (ball.c:559-871) is ported by this packet
 // (port-gen-drag_ball-001). move_bc/hmon/miss are drag_ball's unported
 // callees; per charter they are stubbed below, not ported.
 //
 // move_bc's OWN state-relevant effect (unlinking uball/uchain from the
-// floor object chain when before=1, relinking when before=0 — ball.c:437-
 // 558) is nonetheless required to reproduce drag_ball's own checked
-// post-call floor-object count (it drops by 1 or 2 on every replayed call —
-// the hero picks the ball/chain up off the floor before being moved). That
-// effect is reproduced locally in dragBallMoveBc()/placeObjectOnFloor()
 // below, reusing the ALREADY-PORTED mkobj.c remove_object (js/mklev.js).
 //
-// THE BLIND HALF IS NOW PORTED (move_bc_blind, set_bc), and the packet
 // comment it replaces was wrong twice over:
 //   * "display-only".  ball.c:449-509 is where movobj() MOVES the ball and
 //     the chain.  With it stubbed, a blind punished hero dragged nothing:
 //     uball and uchain stayed on the square they occupied when the hero went
 //     blind, for as long as the blindness lasted.
-//   * "0/84 captures ever having BLINDED set" — true of the capture fixtures,
-//     false of the corpus.  seed4500-knight-coverage is blinded by a raven at
 //     step 994 while punished and then drags the ball for 42 move_bc calls.
 //     And it could not have been observed either way, because this file's own
 //     Blind() macro read the wrong uprops key and returned false for a blind
@@ -65,8 +57,6 @@ function ball_Maybe_Half_Phys(dmg) {
 }
 
 // Unported callees (charter: stub, do not port). Neither is ever reached by
-// the capture corpus (both live behind the pool/hole + !Levitation branch,
-// which requires an rnd(20) dieroll — no replayed call for this packet ever
 // draws any RNG, so that branch never fires).
 /* hmon: canonical asynchronous combat implementation. */
 async function hmon(mon, obj, thrown, dieroll) {
@@ -141,22 +131,6 @@ export function move_bc(before, control, ballx, bally, chainx, chainy) {
     }
 }
 
-/*
- *  The Blind half of move_bc (ball.c:449-509), plus the two helpers it needs.
- *
- *  C's map memory is the single int `levl[x][y].glyph`; this port's is the
- *  object `loc.remembered_glyph` ({ch, color, decgfx, cls}), so `u.bglyph` /
- *  `u.cglyph` hold a COPY of that object rather than a shared reference — C
- *  copies an int, and js/display.js newsym() MUTATES remembered_glyph in place
- *  (the _darken_room_floor/_darken_corridor demotions at display.js:1946-1947),
- *  so an aliased reference would let a later repaint rewrite the glyph the ball
- *  is holding for its old square.  A tile the hero has never mapped has no
- *  remembered_glyph at all; that is this port's spelling of C's
- *  GLYPH_UNEXPLORED, so it round-trips as null.  `undefined` (nothing ever
- *  picked a glyph up) is distinct from null and is NEVER written back — that
- *  would erase a tile's memory on the strength of a variable set_bc()/placebc()
- *  had not initialised yet.
- */
 function bc_glyph_at(x, y) {
     const loc = game.level?.at(x, y);
     const g = loc?.remembered_glyph;
@@ -264,7 +238,7 @@ function move_bc_blind(before, control, uball, uchain, ballx, bally,
 export function set_bc(already_blind) {
     const u = game.u;
     const { uball, uchain } = findBallChain();
-    if (!uball || !uchain) return;          /* C's callers are all Punished-gated */
+    if (!uball || !uchain) return;
     const ball_on_floor = !carried(uball);
 
     u.bc_order = bc_order(uball, uchain);   /* get the order */
@@ -363,7 +337,6 @@ export async function ballfall() {
 // ball.c:119-143 placebc_core(): put the ball & chain under the hero.  Called
 // by read.c:3057 punish() when the hero is first chained, and by do.c:1814
 // goto_level() on arrival at every new level.
-// RNG: none — flooreffects() draws nothing for a non-boulder on a plain floor,
 // and is called for its water/lava/rust side effects.
 export async function placebc() {
     const u = game.u;
@@ -442,13 +415,11 @@ export async function drop_ball(x, y) {
 }
 
 // unplacebc() — ball.c:212-219 → ball.c:147-180 unplacebc_core(): take the ball
-// & chain OFF the floor object chain, without unchaining the hero.  do.c:1617
 // calls it on departure from a level; without it the ball and chain stay linked
 // into the OLD level's object chain and the arrival-side placebc() then splices
 // them into the new level's too, so remove_object() later walks a tile chain
 // they are not on and throws "extract_nexthere: object lost".
 // The swallowed arm (ball.c:149-161) is omitted with the rest of this file's
-// uswallow handling; the corpus hero is never engulfed while punished.
 export function unplacebc() {
     const { uball, uchain } = findBallChain();
     if (!uball || !uchain) return;
@@ -471,23 +442,9 @@ export function unplacebc() {
 // uball / uchain (decl.h:97-98) are top-level C globals, not modeled as a
 // JS state slot anywhere. Locate the single object carrying the W_BALL /
 // W_CHAIN owornmask bit, wherever it currently is: gi.invent when carried,
-// the floor chain (gl.fobj, seeded from the "objects" capture side-channel)
 // otherwise — mirrors how carried(uball) itself is only knowable by first
 // finding the object.
 function findBallChain() {
-    /* THE SCAN ALONE IS NOT ENOUGH, and the reason is this function's own
-     * caller.  move_bc(before=1) calls remove_object() on the ball and chain:
-     * that is the whole point of the before/after pair — the ball is lifted off
-     * the floor while the hero moves, so between the two halves it is on NEITHER
-     * gi.invent NOR gl.fobj (where == OBJ_FREE).  The scan below then returns
-     * {null, null} and move_bc(0, …) bails at its own `if (!uball || !uchain)`
-     * guard, so the ball and chain are never put back and leak off the level
-     * permanently.  C never has this problem: uball/uchain are independent
-     * globals (decl.h:97-98) that keep pointing at the objects while they are
-     * unlinked.  js/read.js setworn_bc() now writes exactly those globals as
-     * u.uball / u.uchain (worn.c:73 `*(wp->w_obj) = obj`), so prefer them and
-     * keep the scan as the fallback for the capture-replay fixtures, which seed
-     * the object chains from a side-channel without the u.* slots. */
     const gu = game.u;
     if (gu && gu.uball && gu.uchain)
         return { uball: gu.uball, uchain: gu.uchain };
@@ -521,7 +478,6 @@ function is_pool_here(x, y) {
 }
 
 // Levitation macro — youprop.h: (HLevitation|ELevitation) set and not
-// BLevitation-blocked. Never exercised by the capture corpus (the pool/hole
 // condition below is false in every one of the 4 records that reach this
 // far), but implemented for structural completeness.
 function Levitation() {
@@ -535,14 +491,11 @@ function Levitation() {
 // while js/const.js:2327 defines BLINDED = 15 and every writer indexes
 // uprops NUMERICALLY.  So the local macro returned false for a hero who was
 // blind, and EVERY Blind arm below (move_bc's whole map-memory half,
-// unplacebc's glyph drop) was dead code that could not be reached: measured
-// on seed4500-knight-coverage, 42 of the 84 move_bc/dragBallMoveBc calls run
 // with the hero blind and all 42 took the SIGHTED branch.  Read the one live
 // spelling instead — js/vision.js Blind(), which is the same expression the
 // botl "Blind" condition and see_with_infrared already use.
 
 // m_at(x,y) — mon.c: find a monster occupying (x,y). Classified
-// calls_macro_or_libc for this packet (not a porter dependency); reproduced
 // inline. Only reached from the never-exercised hmon/miss branch.
 function m_at(x, y) {
     for (let m = game.fmon; m; m = m.nmon) {
@@ -572,7 +525,6 @@ function chainInMiddle(chx, chy, x, y, uball) {
 // cannot import it (not exported), so the fobj/nexthere splice needed by
 // move_bc's before=0 half is reproduced here. The boulder-vs-boulder
 // under/over ordering special case is omitted: uball/uchain are never a
-// BOULDER, and this half of move_bc is never reached by the capture corpus
 // (before=0 only occurs via SKIP_TO_DRAG or the hmon/miss branch, neither
 // ever taken — see file header).
 function placeObjectOnFloor(otmp, x, y) {
@@ -590,9 +542,6 @@ function placeObjectOnFloor(otmp, x, y) {
 function dragBallMoveBc(before, control, uball, uchain, ballx, bally, chainx, chainy) {
     if (Blind()) {
         // ball.c:449-509 — the same half of the same C function, so it is the
-        // same code: the packet comment that called this a "faithful no-op"
-        // because "0/84 captures have BLINDED set" was true of the CAPTURES and
-        // false of the corpus (seed4500 drags a ball for 42 blind move_bc
         // calls).  Nor is it display-only: it is where movobj() moves the ball
         // and the chain, so with it stubbed neither object moved at all while
         // the hero was blind.

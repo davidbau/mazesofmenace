@@ -65,25 +65,10 @@ function parse_pickup_types(op) {
         const oc_sym = def_char_to_objclass(ch.charCodeAt(0));
         if (oc_sym !== MAXOCLASSES && !out.includes(ch))
             out += ch;
-        /* else badopt: C reports it and returns optn_err, having kept what it
-         * accepted so far.  No corpus config carries a bad symbol. */
     }
     return out;
 }
 
-/* C ref: options.c:1452-1546, the `disclose` do_set arm.
- *
- * Reads a value like "-i -a -v -g -c -o" (seed0030) one CHARACTER at a time:
- * a character that names a category sets that slot, a character that is one of
- * the six setting values becomes the prefix for the NEXT category character,
- * a space is skipped, and a bare category with no prefix means
- * DISCLOSE_YES_WITHOUT_PROMPT (the backward-compatible form).  'k' aliases to
- * 'v' (killed -> vanquished) and 'd' to 'o' (dungeon -> overview).
- *
- * This matters beyond the option itself: end_disclose is what decides whether
- * the game-over disclose() PROMPTS at all, i.e. whether it consumes keystrokes.
- * seed0009 (no `disclose` line, so all 'n') is asked three questions; seed0030
- * (all '-') is asked none. */
 export function parse_end_disclose(val, negated) {
     const op = (val == null) ? '' : String(val);
     const lower = op.toLowerCase();
@@ -127,8 +112,6 @@ export function parse_end_disclose(val, negated) {
         } else if (c === ' ') {
             /* do nothing */
         } else {
-            /* C: config_error_add + optn_err — the whole option is rejected and
-               the array keeps whatever it had.  No corpus rc hits this. */
             return END_DISCLOSE_DEFAULT;
         }
     }
@@ -183,29 +166,6 @@ function _match_paranoia_optname(token, name, minLen) {
         && name.slice(0, token.length).toLowerCase() === token.toLowerCase();
 }
 
-/* C ref: options.c:2816-3040 optfn_paranoid_confirmation(do_set) — the
- * `paranoid_confirmation` compound option (aka "paranoid_confirm").  `op` is
- * the value after the colon, `negated` is whether the option name itself was
- * prefixed with '!' (e.g. `!paranoid_confirmation`).  `existing` is the bits
- * to augment when the value starts with '+' or '-'; the caller is
- * responsible for seeding it from PARANOID_CONFIRMATION_DEFAULT_BITS when
- * paranoia_bits hasn't been set yet, mirroring options.c:7173 running before
- * any config-file line.
- *
- *   paranoid_confirm:foo bar    clear all bits, then set foo|bar
- *   paranoid_confirm:+foo bar   keep existing bits, ALSO set foo|bar
- *   paranoid_confirm:-foo bar   keep existing bits, CLEAR foo|bar
- *   paranoid_confirm:+foo !bar  same as +foo,-bar (per-token '!' or a
- *                                "no"-prefix negates just that token,
- *                                options.c:2955-2972)
- *   !paranoid_confirmation      (no value) clears every bit
- *   !paranoid_confirmation:foo  config error — value on a negated option is
- *                                disallowed, bits are left untouched (no
- *                                corpus rc does this)
- *   paranoid_confirm (no value) config error — bits left untouched
- * An unrecognized token is also a config error: options.c:3007-3011 stops
- * processing immediately and keeps whatever bits earlier tokens on the same
- * line already changed. */
 export function parse_paranoid_confirmation(existing, val, negated) {
     let op = (val == null) ? '' : String(val);
     if (negated)
@@ -396,14 +356,6 @@ export function parseNethackrc(rc) {
                         result.flags.runmode = RUN_CRAWL;
                 }
                 else if (key === 'pickup_types') {
-                    /* C ref: options.c:3321-3390.  optfn_pickup_types clears
-                     * flags.pickup_types FIRST (:3325), so both the negated arm
-                     * (:3365 bad_negation -> optn_err) and an empty value leave
-                     * it empty, i.e. "all".  An empty value additionally takes
-                     * the backwards-compatibility arm at :3327-3334, where
-                     * go.opt_initial is TRUE for every line of the config file
-                     * and `flags.pickup = !negated` — "pickup_types" with no
-                     * value is a synonym for autopickup-of-everything. */
                     if (!val) {
                         result.flags.pickup_types = '';
                         result.flags.pickup = !negated;
@@ -434,8 +386,6 @@ export function parseNethackrc(rc) {
                 if (lname === 'autopickup')
                     result.flags.pickup = value;
                 else if (lname === 'runmode') {
-                    /* C optfn_runmode accepts only the negated no-value form;
-                     * bare `runmode` is a config error and retains RUN_LEAP. */
                     if (negated)
                         result.flags.runmode = RUN_TPORT;
                 }
@@ -460,10 +410,6 @@ export function parseNethackrc(rc) {
                 else if (lname === 'verbose')
                     result.flags.verbose = value;
                 else if (lname === 'paranoid_confirmation' || lname === 'paranoid_confirm') {
-                    /* No colon, so no value: options.c's do_set only accepts
-                     * this shape when negated (clear all bits); a bare,
-                     * non-negated "paranoid_confirmation" is a config error
-                     * and leaves the bits untouched (options.c:2906-2909). */
                     const existing = (result.flags.paranoia_bits != null)
                         ? result.flags.paranoia_bits
                         : PARANOID_CONFIRMATION_DEFAULT_BITS;
@@ -713,23 +659,6 @@ function _ffruit() {
     return g.ffruit;
 }
 
-/* C options.c:7329 initoptions_finish — `(void) fruitadd(svp.pl_fruit, NULL)`,
- * run once at startup, immediately after rcfile() and immediately before
- * `obj_descr[SLIME_MOLD].oc_name = "fruit"`.  Nothing in this port did it, so
- * on a game where no orc-gang loot and no bones file ever called fruitadd()
- * the chain simply did not exist and svc.context.current_fruit stayed unset —
- * js/mklev.js:1645 then stamped every mksobj'd slime mold with `spe = 0`, and
- * 0 is the value C's own comment at options.c:8180 calls "an error".
- *
- * NAMED GAP, deliberately not folded in: the `user_specified` half of fruitadd
- * (options.c:8184-8251) — makesingular() on the name, the FOOD_CLASS
- * name-collision scan, and the "candied " prefixing that follows it.  It cannot
- * be observed anywhere in this project's corpora: measured 2026-08-26, ZERO of
- * the 44 public and 688 train sessions carry a `fruit:` line in their
- * nethackrc, so svp.pl_fruit is the initoptions_init default "slime mold" in
- * every recording, and every recorded C frame that names one reads "slime mold"
- * un-prefixed.  Porting the scan on top of a makesingular() this port does not
- * have would be inventing behaviour no measurement can check. */
 export function init_fruit_chain() {
     const g = game;
     /* C options.c:8276-8282 — newfruit(), fid = ++highest_fruit_id (0 -> 1),
@@ -840,22 +769,6 @@ function _fruit_name_rewrite(nameIn) {
     return plf;
 }
 
-/* fruitadd — C options.c:8168-8286.
- * Returns the fid to store in obj->spe.
- *
- * `user_specified` is C's `(str == svp.pl_fruit)` POINTER-IDENTITY test: it is
- * true only on the call optfn_fruit makes with svp.pl_fruit itself, and false
- * for the two non-user callers (orctown loot, bones restore).  A JS string
- * carries no identity, so the caller states it.
- *
- * The user branch used to be unported on the grounds that no session sets
- * OPTIONS=fruit in its nethackrc.  That was true and still is, and it was the
- * wrong question: the fruit is also settable AT RUNTIME from the 'O' menu, and
- * 9 train sessions plus public seed4500-knight-coverage do exactly that.
- *
- * Note C's aliasing: `str` IS svp.pl_fruit on the user path, so the
- * fruit_from_name lookup and the new fruit's name both read the REWRITTEN
- * (singular, possibly "candied ") value, not the caller's original. */
 export function fruitadd(str, replace_fruit, user_specified) {
     const g = game;
     let altname = '';

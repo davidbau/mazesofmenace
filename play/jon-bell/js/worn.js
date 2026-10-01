@@ -21,14 +21,11 @@ export function bypass_obj(obj) {
     //         svc.context.bypasses = TRUE;
     //     }
     // A pure in-place arg mutation (no RNG, no return). The observable effect
-    // is obj->bypass = 1; the arg-state-after oracle (replay-core
-    // assertArgsAfter, via the ARG_MUTATION_FNS-flagged capture of obj->bypass)
     // asserts it — the mapstate-only state_after_diff cannot see a per-arg
     // struct-field mutation. This is the proving case for that instrument.
     obj.bypass = 1;
     // svc.context.bypasses = TRUE (worn.c:1115). Modeled on game.context like
     // the other svc.context.* JS mirrors (js/dig.js / js/eat.js). Not in the
-    // capture schema, so it is not asserted — present for C-faithfulness.
     game.context = game.context || {};
     game.context.bypasses = true;
 }

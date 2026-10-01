@@ -37,12 +37,6 @@ function _hero_resists(prop) {
 }
 /* make_confused's C home is potion.c:88; the file-local copy below it replaced
  * was an empty body, so neither throne arm could confuse the hero. */
-/* make_glib's C home is potion.c:460, same as make_confused's.  It used to be
- * an empty `export function make_glib(_n) {}` in THIS file — the definition the
- * C-function inventory resolves — which shadowed nothing while potion.js's copy
- * was also a stub, and started shadowing a real body the moment #wizintrinsic's
- * GLIB arm needed one (auto-replay-sweep flagged it CRITICAL/resolved_is_stub).
- * The throne effect-6 call site below is now the real setter. */
 import { make_confused, make_glib, make_sick } from './potion.js';
 import { mkclass, mkclassAligned, newmextra, name_to_mon, permonstTemplate, is_ndemon } from './makemon.js';
 import { pline, canspotmon, map_background, newsym, newsym_force, see_monsters } from './display.js';
@@ -852,19 +846,6 @@ export function mon_has_amulet(mtmp) {
  * Unported helpers (stubs)
  * ---------------------------------------------------------------------------
  */
-/* Tobjnam — STILL UNPORTED (deliberately left stubbed, 2026-08-06).
- * C ref: nethack-c/src/objnam.c:2288
- *     char *bp = The(xname(otmp));
- *     if (verb) { Strcat(bp, " "); Strcat(bp, otense(otmp, verb)); }
- *     return bp;
- * Blocked on xname(): there is NO xname() anywhere in js/.  js/objnam.js has a
- * private (non-exported) xname_flags() that dispatches only WEAPON/ARMOR/
- * AMULET/POTION/SCROLL and returns a debug placeholder for every other class,
- * and it omits xname_flags()'s top-level quan!=1 makeplural.  The first
- * diverging capture record needs FOOD_CLASS + plural ("The fortune cookies "),
- * i.e. exactly the two missing pieces.  Writing The(<partial xname>) here would
- * return a plausible-looking wrong string on most classes, which is harder to
- * detect than this obvious stub — so it stays until xname() exists. */
 export function Tobjnam(obj, verb) { return Tobjnam_rc(obj, verb); }
 /* You: LOCAL EMPTY STUB DELETED — re-pointed to js/do_wear.js's real, async
  * body (pline.c:372 You()), the general-purpose immediate-pline copy that
@@ -950,11 +931,6 @@ export function newemin(mtmp) {
     }
 }
 
-/* ---------------------------------------------------------------------------
- * monster_census — count monsters, optionally only spotted ones
- * C ref: nethack-c/src/minion.c:39
- * ---------------------------------------------------------------------------
- */
 export function monster_census(spotted) {
     let count = 0;
 
@@ -970,32 +946,6 @@ export function monster_census(spotted) {
     return count;
 }
 
-/* ───────────────────────────────────────────────────────────────────────────
- * C sit.c:567-639 rndcurse(void) — "curse a few inventory items at random!"
- *
- * Was `export function rndcurse() { throw new Error('not yet ported: rndcurse'); }`
- * in js/mcastu.js, and it is a LIVE arm, not a cold one: it is the body of
- * MCAST_CURSE_ITEMS (mcastu.c:833), so any monster that casts the clerical
- * curse-items spell reaches it.  On gen040-reseed-seed267324 that throw halted
- * the scored replay at frame 1307 of 1814 and forfeited the whole 507-frame
- * tail; C's own draws at that step are
- *     rnd(6)=2  @ rndcurse(sit.c:593)
- *     rnd(11)=11 @ rndcurse(sit.c:596)
- *     rnd(11)=8  @ rndcurse(sit.c:596)
- * i.e. cnt=2 targets out of an 11-item non-gold pack, which is also that
- * session's first RNG divergence.  Eight train sessions record draws here.
- *
- * RNG ORDER (the whole point of the port):
- *   1. rn2(20)   ONLY if u_wield_art(ART_MAGICBANE) — C's `&&` short-circuits,
- *                so a hero not wielding Magicbane draws NOTHING here.
- *   2. rnd(6 / ((!!Antimagic) + (!!Half_spell_damage) + 1))   — always; C
- *                integer division, so the divisor is 1, 2 or 3 and the argument
- *                is 6, 3 or 2.
- *   3. rnd(nobj) ONCE PER `cnt` ITERATION, unconditionally, BEFORE any of the
- *                skip tests — an already-cursed pick still costs its draw.
- *   4. rn2(10)   only for a picked intelligent artifact.
- *   5. rn2(4)    ONLY if u.usteed — again short-circuited.
- * ─────────────────────────────────────────────────────────────────────────── */
 
 /* youprop.h property indices, read the one spelling js/ actually writes
  * (u.uprops[NUMERIC]); same helper js/mcastu.js:99 uses. */
@@ -1068,9 +1018,6 @@ export async function rndcurse() {
         update_inventory();                              /* C:616 */
     }
 
-    /* C:619-635 — treat steed's saddle as an extended part of hero's inventory.
-     * `u.usteed &&` short-circuits the rn2(4), so a steedless hero draws nothing
-     * here; `pettype:none` corpora never reach it at all. */
     if (u.usteed && !rn2(4) && (otmp = which_armor(u.usteed, W_SADDLE)) != null
         && !otmp.cursed) {
         if (otmp.blessed)

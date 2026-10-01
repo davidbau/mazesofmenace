@@ -3,7 +3,6 @@
 // C ref: makemon.c m_initweap (~163–574), muse.c rnd_offensive_item (~2035–2080).
 // Object numbers are the objects.h row indices (nethack-c/include/objects.h
 // OBJECT/ARMOR/... rows in order, == js/oc_name_data.js OC_NAME index).
-// Graded by tools/pm-otyp-audit.mjs — do not re-derive by hand.
 // @ts-nocheck
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
@@ -395,21 +394,6 @@ export function rndOffensiveItem(mtmp) {
  * @param {(otyp: number, init: boolean, artif: boolean) => any} mksobjFn
  * @returns {any} the created object, or null
  */
-/* C mkobj.c:2648-2664 add_to_minv(mon, obj) — the tail m_initweap/m_initinv
- * reach through mpickobj().  This file inlined only the two chain writes at
- * three sites and dropped `obj->where = OBJ_MINVENT; obj->ocarry = mon;`.
- * Those two fields are not decoration: get_obj_location() (zap.c:654) switches
- * on obj->where and reads obj->ocarry->mx/my for a carried item, so with them
- * unset every monster-carried object looks OBJ_FREE and un-locatable.  That is
- * why distant_name() (objnam.c:405) took its far-away branch for the gear a
- * dying dwarf drops -- no dknown, no observe_object, so the item type never
- * entered disco[] at its C-correct moment (seed0361 step 358, the '\' list).
- *
- * NOT PORTED, and deliberately: C's leading merge loop
- * (`for (otmp = mon->minvent; otmp; otmp = otmp->nobj) if (merged(&otmp,&obj))
- * return 1;`).  merged() is not reachable from this module and adding it would
- * change which objects exist, not just how they are labelled; the three call
- * sites here have always inserted unconditionally and still do. */
 function _add_to_minv(mtmp, obj) {
     obj.where = OBJ_MINVENT;
     obj.ocarry = mtmp;
@@ -628,24 +612,6 @@ export async function mInitweap(mtmp, mksobjFn) {
                 const nam = (typ === LONG_SWORD) ? 'Sunsword' : 'Demonbane';
                 let otmpW = await mksobjFn(typ, false, false);
                 const mal = monAlign(mndx);
-                /* C makemon.c:337-341 — "maybe promote weapon to an artifact":
-                 *     if ((!rn2(20) || is_lord(ptr)) && sgn(...) == A_LAWFUL)
-                 *         otmp = oname(otmp, nam, ONAME_RANDOM);
-                 * This arm was EMPTY under a comment reading "C oname / artifact
-                 * — may add RNG when ported".  oname() draws NOTHING, so the
-                 * absence claim was doubly wrong: the port was not deferred for
-                 * the reason given, and the cost is an RNG divergence anyway —
-                 * one level removed.  oname -> artifact_exists -> artifact_origin
-                 * sets artiexist[].exists, and nartifact_exist() is the modulus
-                 * of EVERY later random-artifact roll:
-                 *     mkobj.c:889   rn2(20 + 10 * nartifact_exist())
-                 *     mkobj.c:1098  rn2(40 + 10 * nartifact_exist())
-                 * so a lawful Angel that never got its Demonbane leaves the
-                 * whole game generating artifacts against the wrong denominator.
-                 * MEASURED on gen362-reseed-seed208714: a lawful minion is made
-                 * during tower3's generation at leaf 43727 with rn2(20)=0 and
-                 * rn2(3)=0 (so SILVER_MACE/Demonbane); C's next weapon roll is
-                 * rn2(40) and ours was rn2(30). */
                 if ((!rn2(20) || isLordMndx(mndx)) && sgn(mal) === A_LAWFUL) {
                     if (otmpW)
                         otmpW = oname(otmpW, nam, ONAME_RANDOM);
@@ -701,21 +667,6 @@ export async function mInitweap(mtmp, mksobjFn) {
                         await mongets(mtmp, DWARVISH_ROUNDSHIELD, mksobjFn);
                     }
                     await mongets(mtmp, DWARVISH_IRON_HELM, mksobjFn);
-                    /* C makemon.c:395.  This read `129 /* dwarvish mithril
-                     * coat *\/` — an inline literal whose COMMENT was right and
-                     * whose VALUE was wrong: otyp 129 is "orcish chain mail"
-                     * (oc_material IRON), not "dwarvish mithril-coat" (otyp
-                     * 126, oc_material MITHRIL).  The file already defined
-                     * DWARVISH_MITHRIL_COAT = 126 four hundred lines up and did
-                     * not use it.
-                     * The wrong object is RNG-VISIBLE, not just cosmetic: mksobj
-                     * ends in mkobj_erosions() (mkobj.c:1172), whose
-                     * may_generate_eroded() gate is is_damageable(), i.e.
-                     * rustprone/flammable/rottable/corrodeable/crackable.
-                     * MITHRIL is none of those, so C draws NOTHING; orcish chain
-                     * mail is IRON, so JS drew rn2(100)+rn2(80)+rn2(80)+rn2(1000)
-                     * — four leaves C never draws, per dwarf, every time this
-                     * arm fires.  seed0360-wizard-world-tour leaf 44026. */
                     if (!rn2(3))
                         await mongets(mtmp, DWARVISH_MITHRIL_COAT, mksobjFn);
                 }

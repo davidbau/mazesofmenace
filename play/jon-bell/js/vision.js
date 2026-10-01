@@ -1,11 +1,9 @@
 // @ts-nocheck
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Stripped-down port for the contest skeleton: no boulders, mimics,
 // underwater, or rogue-level handling.  Blindness (vision.c:547-582) and the
 // pit arm (vision.c:608-623) have since been ported below, and so has the
 // light-source hook: vision.c:702 `do_light_sources(next_array)` plus the two
 // TEMP_LIT tests it feeds (vision.c:756 and vision.c:772).
-// Contestants should port the full vision.c for complete parity.
 import { game } from './gstate.js';
 import { COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
 import { newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon, MATCH_WARN_OF_MON } from './display.js';
@@ -49,7 +47,6 @@ function _visionTrace(phase, control, u, array) {
     // Diagnostic consumers which must preserve the order of display-RNG calls
     // cannot reconstruct it from the core log: display calls themselves do not
     // add entries there.  This opt-in side channel is intentionally inert in
-    // scored replays and is populated by tools/redraw-order-report.mjs only.
     globalThis.__REDRAW_ORDER_TRACE?.push({ kind: 'vision', core: null, marker });
 }
 // C ref: vision.h:10 — location is temporarily lit (by a mobile light
@@ -159,76 +156,15 @@ function _blocks(level, x, y) {
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED))
             return true;
     }
-    /* C vision.c:174 — the SECOND blocking clause, which this port had dropped
-     * entirely:
-     *     if (lev->typ == CLOUD || IS_WATERWALL(lev->typ) || lev->typ == LAVAWALL
-     *         || (Underwater && is_moat(x, y)))
-     *         return 1;
-     * `typ < POOL` above is C's IS_OBSTRUCTED (which also covers TREE at 13),
-     * but CLOUD (36), WATER (18) and LAVAWALL (21) all sit ABOVE POOL, so all
-     * three were transparent here.  LAVAWALL is what a Gehennom maze is built
-     * out of: hellfill.lua's maze variant 5 replaces the wall terrain with lava
-     * and then turns most of it into "Z" (LAVAWALL), so with this clause missing
-     * the hero saw straight through every wall of the level.  seed4500 step 326
-     * (level-teleport arrival on Dlvl:40) painted 551 lava cells C never shows —
-     * the whole maze instead of the corridor the hero stands in.
-     * The Underwater/is_moat arm is left out: this port does not model
-     * Underwater (see this file's header), and MOAT is already >= POOL. */
     if (typ === CLOUD || typ === WATER || typ === LAVAWALL)
         return true;
-    /* C vision.c does_block():
-     *     for (obj = svl.level.objects[x][y]; obj; obj = obj->nexthere)
-     *         if (obj->otyp == BOULDER) return 1;
-     * "Boulders block light."  Missing here, so every boulder was transparent
-     * and the hero saw straight through it: seed0009 step 40 kicks a door open
-     * and C's line of sight stops at the boulder directly below at (7,18),
-     * leaving (7,19) and (7,20) unlit, while this port lit the whole column.
-     * (The visible-region arm that used to be declared a KNOWN GAP here is now
-     * ported at the bottom of this function.) */
     const _objs = game.level?.levelObjects?.[x]?.[y] ?? null;
     for (let o = _objs; o; o = o.nexthere)
         if ((o.otyp | 0) === BOULDER_OTYP_VIS)
             return true;
-    /* C vision.c:186-189 —
-     *     if ((mon = m_at(x, y)) && (!mon->minvis || See_invisible)
-     *         && is_lightblocker_mappear(mon))
-     *         return 1;
-     * "Mimics mimicking a door or boulder or ... block light."
-     *
-     * This arm was documented as having "no live path in this corpus".  That is
-     * FALSE, measured on seed0116: soko1-1.lua places two `des.monster({ id =
-     * "giant mimic", appear_as = "obj:boulder" })`, and one of them lands at
-     * (33,12), one square past the wall gap the hero looks through on arrival.
-     * In C that mimic BLOCKS, so it terminates the clear run and the vision
-     * algorithm marks the blocker itself seen — which is what draws its boulder
-     * glyph.  Transparent here, it fell inside a longer clear run and outside
-     * the shadow cone, so it was never marked seen and never drawn: exactly one
-     * cell, and it was seed0116's FIRST screen miss (step 114, row 13 col 32).
-     *
-     * Revealing a blocking disguise goes through shared seemimic(), which
-     * rechecks remaining terrain/objects before unblocking this point. */
     const mon = _m_at_vis(x, y);
     if (mon && (!mon.minvis || _see_invisible()) && is_lightblocker_mappear(mon))
         return true;
-    /* C vision.c:193-197 —
-     *     if (visible_region_at(x, y))
-     *         return 2;
-     * "Clouds (poisonous or not) block light."  This arm was documented above
-     * as a KNOWN GAP with "no live path in this corpus and it needs state this
-     * port does not carry".  Both halves are false: js/region.js carries the
-     * whole NhRegion list and exports visible_region_at, and seed4500 walks the
-     * hero onto Dlvl:24 with three live gas clouds on the map.  Two of them,
-     * at (45,8) and (46,9), sit exactly on the diagonal from the hero at (42,5)
-     * to a hostile at (47,10), so C's couldsee(47,10) is FALSE and this port's
-     * was TRUE.  That single bit forked m_move twice in the same call:
-     * linedup() took the couldsee arm instead of walking the boulder line (C
-     * drew rn2(2 + boulderspots), we drew nothing), and the shortsighted-level
-     * demotion `nidist > (couldsee(nix,niy) ? 144 : 36)` left appr at 1 instead
-     * of 0, so we ran the mtrack loop's rn2(4*(cnt-j)) where C ran the
-     * !appr && !rn2(++chcnt) loop.  First RNG divergence, seed4500 step 1003.
-     * C returns 2 rather than 1 here; every does_block() caller in 5.0 tests it
-     * as a boolean, so the distinction is not observable and this returns true.
-     */
     if (visible_region_at(x, y))
         return true;
     return false;
@@ -293,38 +229,6 @@ export function vision_reset() {
     const level = game.level;
     if (!level)
         return;
-    /* C vision.c:866-874, the FIRST thing vision_reset() does:
-     *     gv.viz_array = cs_rows0;
-     *     gv.viz_rmin  = cs_rmin0;
-     *     gv.viz_rmax  = cs_rmax0;
-     *     memset(could_see, 0, sizeof(could_see));
-     * `could_see` is the [2][ROWNO][COLNO] pair, so that memset clears BOTH
-     * buffers, not just the one being installed.  This port cleared NEITHER: it
-     * only nulled the rmin/rmax pointers at the tail, so the previous level's
-     * IN_SIGHT bits survived a level change.
-     *
-     * That matters because vision_recalc's update loop only repaints a cell
-     * `if (!(old_row[col] & IN_SIGHT) || oldseenv != lev->seenv)`.  On arrival
-     * at a PREMAPPED level (Sokoban: detect.c premap_detect sets seenv = SVALL
-     * and waslit on every square) the seenv half is already satisfied, so a
-     * cell that happened to be in sight at the SAME (x,y) on the level the hero
-     * just left is never newsym()ed at all — it keeps whatever premap_detect
-     * remembered, which is background + boulders ONLY (detect.c:2151-2152 maps
-     * sobj_at(BOULDER) and nothing else).
-     *
-     * MEASURED on seed0367-priest-quest-tour step 308, arrival on Sokoban 1:
-     * C paints the '%' of a food item at (46,18) that the hero can plainly see;
-     * this port painted the remembered floor, for the whole 16-frame tail of
-     * the session.  newsym(46,18) was never called once on that level.
-     *
-     * The clear CANNOT go in _vision_rebuild_grid() below: this port routes
-     * block_point()/unblock_point()/recalc_block_point() through vision_reset()
-     * as a wholesale stand-in for C's incremental fill_point()/dig_point(), and
-     * those run MID-LEVEL, many times per turn.  Wiping visibility there costs
-     * seed0367 25 step points and 12,140 RNG leaves (measured).  So the clear
-     * belongs to vision_reset() proper -- the level-change entry point, which
-     * is the only place C calls it from with a level swap underneath -- and the
-     * three block-point wrappers now call the grid rebuild alone. */
     game.viz_array = cs_buf0;
     game.active_buf = 0;
     for (let i = 0; i < ROWNO; i++) {
@@ -332,12 +236,6 @@ export function vision_reset() {
         cs_buf1[i].fill(0);
     }
     _vision_rebuild_grid();
-    /* C vision.c:868-869 — gv.viz_rmin = cs_rmin0; gv.viz_rmax = cs_rmax0.  C
-     * does NOT clear these; they still hold the previous level's extents, which
-     * can only WIDEN vision_recalc's update range (start = min(old,new), stop =
-     * max(old,new)), never narrow it.  This port nulled them instead.  Measured
-     * both ways across all 44 sessions at this commit: identical, 10808/11405
-     * either way, so C's form is kept because it is C's form. */
     game._viz_rmin = cs_rmin0;
     game._viz_rmax = cs_rmax0;
     // C vision.c:263 — the rebuilt vision state is ready for recalculation.
@@ -810,7 +708,6 @@ export function vision_recalc(control = 0) {
     // ── C ref: vision.c:548-582, the `else if (Blind)` arm of vision_recalc ──
     // This file's header still says it is a "stripped-down port … no blindness
     // handling", and that gap was invisible for as long as nothing in js/ ever
-    // set the Blinded property.  js/zap.js's flashburn now does (the seed5500
     // wand-explosion flash), so the arm has to exist or the hero goes blind
     // with a fully-lit remembered map.
     //
@@ -828,22 +725,10 @@ export function vision_recalc(control = 0) {
     // reduced version: only cells that WERE in sight need repainting, and each
     // such newsym() falls into display.c:1116-1123's out-of-sight remembered
     // branch, which demotes S_room → S_darkroom (js/display.js
-    // _darken_room_floor) and S_litcorr → S_corr.  That demotion is the entire
-    // COLOR class on seed5500: C paints the remembered room floor ESC[90m
     // (CLR_BLACK) from step 842 on, the port painted ESC[0m.
     // `goto skip` skips the normal IN_SIGHT/update loops but NOT the shared
     // tail (newsym(u.ux,u.uy) + installing next_rmin/next_rmax), so both are
     // reproduced below.  No RNG on any of it.
-    /* C vision.c:544-546 —
-     *     if (u.uswallow || control == 2) { / * do nothing * / ; }
-     *     else if (Blind) { ... }
-     * "You see nothing, nothing can see you --- if swallowed or refreshing."
-     * The control==2 half was here; the u.uswallow half was not, so a
-     * vision_recalc(0) raised while the hero was inside a stomach handed him
-     * the whole level back.  MEASURED on seed0383 leaf 10330: dog_goal's
-     * apport arm is gated on `in_masters_sight = couldsee(omx, omy)`, so C's
-     * swallowed hero never reaches its `edog->apport > rn2(8)` and this port
-     * drew that rn2(8) for the shield of shock resistance at <33,6>. */
     const see_nothing = (control === 2) || !!(u.uswallow | 0);
     if (!see_nothing && Blind()) {
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
@@ -881,7 +766,6 @@ export function vision_recalc(control = 0) {
         // locations.  TT_PIT = 2 (const.js).  Out-of-sight room squares then fall
         // through to the remembered/dark-room glyph (display.c:243-248), so a dark
         // room that was fully visible before the dig shows only its 3x3 lit core
-        // once the hero is pit-trapped.  Underwater / xray paths are out of corpus
         // scope; keep the normal view_from for every non-pit hero.
         if (u.utrap && (u.utraptype | 0) === 2 /* TT_PIT */) {
             for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
@@ -946,22 +830,6 @@ export function vision_recalc(control = 0) {
     game.active_buf = game.active_buf === 0 ? 1 : 0;
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;
-    /* C vision.c:436-440 — `if (u.uswallow || control == 2) { ; }` does NOTHING
-     * except leave the new work area zeroed, and then FALLS THROUGH to the main
-     * update loop below.  Only the Blind arm `goto skip`s it.  With every
-     * next_array bit clear, that loop walks the OLD row extents and takes the
-     * `not_in_sight:` arm at every square that WAS in sight, which is how C
-     * repaints a level the hero has just stopped being able to see.
-     *
-     * Skipping the loop for control == 2 (what this said before) is invisible
-     * on the scored RNG stream and on an ordinary screen, because the squares
-     * are about to be cls()'d anyway — but a HALLUCINATING hero's newsym draws
-     * on the DISPLAY stream at every monster square it repaints, and a monster
-     * the hero can no longer see but has Warning of draws
-     * rn2_on_display_rng(WARNCOUNT - 1).  MEASURED against the C recorder on
-     * seed0383: gulpmu's vision_recalc(2) makes EIGHT rn2(5) draws that this
-     * port made none of, so the stomach cage drawn immediately afterwards took
-     * its colours from eight draws too early. */
     if (old_array && game.level) {
         for (let row = 0; row < ROWNO; row++) {
             const old_row = old_array[row];
@@ -1019,25 +887,6 @@ export function vision_recalc(control = 0) {
                 else {
                     if ((ov & IN_SIGHT)
                         || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
-                        /* C vision.c:820-836, the `not_in_sight:` arm, has a
-                         * guard this port did not:
-                         *     / * TEMPORARY?  Sometimes we get here with col==0
-                         *       and newsym()'s impossible() for !isok() is being
-                         *       triggered, so avoid calling it for <0,y>; other
-                         *       bad coordinates will produce a panic() as they
-                         *       should. * /
-                         *     if (col != 0)
-                         *     newsym(col, row);
-                         * Column 0 is not isok() (hack.h: `x >= 1`), so every
-                         * one of these reached newsym's "should never happen"
-                         * arm.  MEASURED on the scored path: 59 such calls
-                         * (seed0367 x20, seed0373 x20, seed0360 x4 at the time
-                         * of writing), ALL of them from here and ALL at col 0.
-                         * They were harmless only because newsym's !isok arm
-                         * was silent; C's is an impossible() that PLINES, and
-                         * seed0012-monk-vault-escort's last unmatched frame is
-                         * exactly that pline's --More--.  Porting C's guard is
-                         * the prerequisite for letting that message speak. */
                         if (col !== 0)
                             newsym(col, row);
                     }
@@ -1179,7 +1028,6 @@ export function unblock_point(x, y) {
 }
 // C ref: vision.c:900 recalc_block_point — block or unblock per does_block().
 // _blocks() is JS's does_block(): walls/stone/closed doors block, open doors
-// and floor do not.  vision_reset() reads _blocks() for the whole grid so we
 // don't branch here; we just rebuild and flag.
 export function recalc_block_point(x, y) {
     _block_or_unblock(x, y);

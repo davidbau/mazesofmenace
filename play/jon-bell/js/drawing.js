@@ -73,26 +73,6 @@ export function def_char_to_objclass(ch) {
     return MAXOCLASSES;
 }
 
-/* C ref: src/options.c:8060-8071 oc_to_str(src, dest) — walk a string of object
- * CLASS INDICES and emit `def_oc_syms[i].sym` for each, dropping (with an
- * impossible()) anything outside 0..MAXOCLASSES.  C's flags.pickup_types and
- * flags.inv_order hold class indices; this port holds the SYMBOLS themselves
- * (js/cmd.js:33727 autopick_testobj tests `otypes.includes(sym)` directly), so
- * the conversion is identity-with-validation.
- *
- * It lives here rather than in js/options.js for two reasons: it belongs beside
- * the def_oc_syms table it indexes, and drawing.js imports nothing, so it can be
- * pulled into js/options.js, js/optmenu.js and js/doset_data.js without any risk
- * of an import cycle.
- *
- * It accepts BOTH shapes the port's two writers produce — the rc parser's symbol
- * string and js/optmenu.js's array of symbols — because the pickup_types
- * submenu's committed value has been an array for as long as it has existed and
- * a reader that assumed only one of the two is exactly the defect this exists to
- * close: js/optmenu.js:55 called `.join('')` on the rc parser's string and threw
- * `sel.join is not a function`, halting every session that opens the 'O' menu
- * with an OPTIONS=pickup_types line in its config (4 train sessions, at frame 58
- * of 308). */
 export function oc_to_str(src) {
     let dest = '';
     for (const ch of (Array.isArray(src) ? src : String(src ?? '')))

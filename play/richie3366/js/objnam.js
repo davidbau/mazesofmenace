@@ -565,7 +565,7 @@ const candy_wrappers = [
     'Wonka Bar',
 ];
 
-let _wipeout_text = null;
+var _wipeout_text; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_wipeout_text(fn) {
     _wipeout_text = fn;
 }
@@ -1238,7 +1238,7 @@ function get_obj_loc_for_distant(obj) {
  * do_name already imports `xname`, and a static back-edge TDZ-faults
  * `let _shk_owns_prefix` (D-2491). The body lives only in do_name.js.
  */
-let _obj_pmname = null;
+var _obj_pmname; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_obj_pmname(fn) {
     _obj_pmname = fn;
 }
@@ -2502,7 +2502,8 @@ function vtenseSing(verb) {
  * Default TRUE (empty artidisco) until artifact.js registers.
  * Avoids static objnam→artifact (artifact already imports objnam; D-1521).
  */
-let _undiscovered_artifact = (_m) => true;
+const _undiscovered_artifact_default = (_m) => true;
+var _undiscovered_artifact; // hoisted: artifact.js top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_undiscovered_artifact(fn) {
     _undiscovered_artifact = fn;
 }
@@ -2512,7 +2513,7 @@ export function set_undiscovered_artifact(fn) {
  * Default null (no livelog) until artifact.js registers.
  * Avoids static objnam→artifact (artifact already imports objnam; D-1521).
  */
-let _find_artifact = null;
+var _find_artifact; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_find_artifact(fn) {
     _find_artifact = fn;
 }
@@ -2525,7 +2526,7 @@ export function is_plural(o) {
     if (!o) return false;
     if ((o.quan ?? 0) !== 1) return true;
     return (o.oartifact | 0) === ART_EYES_OF_THE_OVERWORLD
-        && !_undiscovered_artifact(ART_EYES_OF_THE_OVERWORLD);
+        && !(_undiscovered_artifact || _undiscovered_artifact_default)(ART_EYES_OF_THE_OVERWORLD);
 }
 
 /**
@@ -2548,7 +2549,7 @@ function bimanual(obj) {
  * Late-bound from shk.js — C doname_base unpaid / (with_price) shop suffix.
  * Avoids static objnam↔shk import cycle (shk already imports doname).
  */
-let _doname_shop_suffix = null;
+var _doname_shop_suffix; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_doname_shop_suffix(fn) {
     _doname_shop_suffix = fn;
 }
@@ -2557,13 +2558,13 @@ export function set_doname_shop_suffix(fn) {
  * Late-bound from invent.js — C xname_flags observe_object.
  * Avoids static objnam↔invent cycle (invent imports doname/xname).
  */
-let _xname_observe = null;
+var _xname_observe; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_xname_observe(fn) {
     _xname_observe = fn;
 }
 
 /** Late-bound cansee for distant_name (vision↔objnam cycle). */
-let _distant_cansee = null;
+var _distant_cansee; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_distant_cansee(fn) {
     _distant_cansee = fn;
 }
@@ -2572,7 +2573,7 @@ export function set_distant_cansee(fn) {
  * Late-bound from do_name.js — C shk.c mon_owns uses y_monnam.
  * Avoids static objnam↔do_name cycle (do_name already imports xname).
  */
-let _y_monnam = null;
+var _y_monnam; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_y_monnam(fn) {
     _y_monnam = fn;
 }
@@ -2580,7 +2581,7 @@ export function set_y_monnam(fn) {
 // C shk.c shk_your: shk_owns lives in shk.js (shk.c home); registered here
 // late-bound like _y_monnam so objnam.js keeps no static edge into shk.js
 // (a static edge reorders eval onto polyself's top-level set_body_part).
-let _shk_owns_prefix = null;
+var _shk_owns_prefix; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_shk_owns_prefix(fn) {
     _shk_owns_prefix = fn;
 }
@@ -2589,7 +2590,7 @@ export function set_shk_owns_prefix(fn) {
  * Late-bound from do_name.js — C objnam.c doname LEASH uses noit_mon_nam.
  * Same cycle as y_monnam.
  */
-let _noit_mon_nam = null;
+var _noit_mon_nam; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_noit_mon_nam(fn) {
     _noit_mon_nam = fn;
 }
@@ -2627,8 +2628,14 @@ export function set_armor_simple_name(fn) {
  * Late-bound from polyself.js — C objnam.c doname_base body_part(HAND).
  * Avoids static objnam↔polyself cycle (polyself already imports an).
  * Unset → C mbodypart null-data humanoid "hand".
+ * `var` (not `let`): polyself's top-level set_body_part can run before
+ * this module finishes evaluating (objnam→invent→polyself→objnam cycle;
+ * D-3173's botl→cfgfiles edge reordered allmain-first eval onto it and
+ * threw "Cannot access '_body_part' before initialization" at route /).
+ * Hoisted `var` without initializer keeps the early write (doffing idiom);
+ * every reader uses truthiness, so undefined ≡ unset.
  */
-let _body_part = null;
+var _body_part;
 export function set_body_part(fn) {
     _body_part = fn;
 }
@@ -2638,7 +2645,7 @@ export function set_body_part(fn) {
  * init: objnam cannot import mon.js (that edge initializes polyself
  * while this `let` is still in TDZ).
  */
-let _find_mid = null;
+var _find_mid; // hoisted: cross-module top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_find_mid(fn) {
     _find_mid = fn;
 }
@@ -2746,7 +2753,8 @@ export function the_unique_obj(obj) {
  * not_fully_identified (includes undiscovered_artifact). Default is the
  * known/dknown/bknown subset until invent.js registers.
  */
-let _not_fully_identified = (obj) => !obj?.known || !obj?.dknown || !obj?.bknown;
+const _not_fully_identified_default = (obj) => !obj?.known || !obj?.dknown || !obj?.bknown;
+var _not_fully_identified; // hoisted: invent.js top-level set_* may run before objnam eval (TDZ-safe idiom)
 export function set_not_fully_identified(fn) {
     _not_fully_identified = fn;
 }
@@ -2757,7 +2765,7 @@ export function set_not_fully_identified(fn) {
 export function obj_is_pname(obj) {
     if (!obj?.oartifact || !has_oname(obj)) return false;
     if (!game.program_state?.gameover && !game.iflags?.override_ID) {
-        if (_not_fully_identified(obj)) return false;
+        if ((_not_fully_identified || _not_fully_identified_default)(obj)) return false;
     }
     return true;
 }

@@ -1,7 +1,6 @@
 // @ts-nocheck
 // Auto-generated from nethack objects.h OBJECTS_INIT (mkobj parity)
 // WAND_CLASS (js indices 410-437): oc_prob re-derived from
-// nethack-c-v5/upstream/include/objects.h on 2026-08-13.  Four slots still
 // carried the 3.7 values -- create monster 45 (5.0: 50), opening 25 (30),
 // locking 25 (30), digging 55 (40).  The class total is 1000 either way, so
 // nothing about the rn2 stream changed; only WHICH wand a given roll selects,

@@ -34,7 +34,6 @@ export function reassign() {
     game._lastinvnr = i;
 }
 
-// wintty.c:3606, compiled without TTY_PERM_INVENT in the scored recorder.
 // This is the actual empty build arm of the window function, not a substitute
 // for the core update_inventory() guards, price state or window dispatch.
 export function tty_update_inventory(arg) {
@@ -60,7 +59,6 @@ function inventory_window_function() {
     throw new Error(`Unported inventory window: ${procs.name}`);
 }
 
-// invent.c:2782. Do not gate this on perm_invent: window ports also need to
 // receive the call which disables their persistent inventory window.
 export function update_inventory() {
     if (!game.program_state.in_moveloop)

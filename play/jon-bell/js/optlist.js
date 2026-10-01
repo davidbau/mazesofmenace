@@ -3,7 +3,6 @@
 // C ref: nethack-c/include/optlist.h — the NHOPTB/NHOPTC/NHOPTP/NHOPTO macro
 // list that expands (under NHOPT_PARSE) into `struct allopt_t allopt[]`
 // (options.c).  This file is that expansion, evaluated for the REFERENCE
-// BUILD the corpus was recorded with, in allopt[] order.
 //
 // Each row is [name, opttyp, setwhere, skipflags, descr]:
 //   opttyp    'B' BoolOpt | 'C' CompOpt (incl. the NHOPTP prefix options) |

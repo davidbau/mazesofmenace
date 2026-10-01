@@ -5,10 +5,8 @@
 // do_light_sources(), called while the vision system is rebuilding its
 // "could see" array; it ORs TEMP_LIT into every location lit by a mobile
 // source.  Nothing is cached between recalcs: every source re-runs its own
-// clear_path() LOS sweep each time.
 //
 // WHAT IS LIVE HERE.  Both LS_MONSTER and LS_OBJECT sources are created now:
-// js/timeout.js begin_burn()/end_burn() landed 2026-08-25 and call
 // new_light_source()/del_light_source() at C's points, so an applied lamp or
 // lantern is a real entry on light_base.  (This paragraph used to say the
 // LS_OBJECT arms were dead code "until begin_burn() lands"; that is the change
@@ -16,14 +14,10 @@
 // helpers begin_burn() needs to size an LS_OBJECT range — artifact_light(),
 // arti_light_radius() and candle_light_range() — are at the foot of this file.
 //
-// WHY IT MATTERS (measured).  emits_light() is 1 for a gold dragon
-// (mondata.h:178-185).  seed0360-wizard-world-tour arrives on tower3 (Dlvl:36)
 // at step 274 next to the des.monster("D",13,05) gold dragon of
 // dat/tower3.lua.  C paints the 3x3 block that dragon lights — the dragon
-// itself, the human beside it, the vortex above it and the floor/wall/door
 // around them.  Without do_light_sources() this port had no TEMP_LIT at all,
 // so those nine cells fell through to the hero's Warning glyphs and blank
-// terrain: the session's FIRST screen miss, on the RENDER-ONLY axis.
 
 import { game } from './gstate.js';
 import {
@@ -65,19 +59,6 @@ function obj_is_local(obj) {
     }
 }
 
-/* C ref: zap.c:654-688 get_obj_location(obj, &x, &y, locflags) and
- * zap.c:691-709 get_mon_location(mon, &x, &y, locflags).  Their C home is
- * zap.c, not light.c; they live here because do_light_sources() is their only
- * live caller in this port and putting them in js/zap.js would close a
- * vision.js -> light.js -> zap.js -> vision.js import cycle.  Move them to
- * js/zap.js (and import from there) the moment zap's own ray code needs them.
- *
- * Both keep C's out-parameter signature: they RETURN a boolean and write the
- * coordinates into `xp`/`yp`, which are this tree's `{ value }` out-param boxes
- * (the convention js/cmd.js's noveltitle uses, and the one
- * the C capture corpus records for these two functions carry in
- * `args_after`).  On the FALSE path C sets *xp = *yp = 0 and that is
- * reproduced, because callers are allowed to read them unconditionally. */
 export function get_obj_location(obj, xp, yp, locflags = 0) {
     /* Some restored inventory objects do not carry C's OBJ_INVENT `where`
      * stamp yet, but they are still linked from gi.invent.  C's
@@ -150,10 +131,6 @@ function new_light_core(x, y, range, type, id) {
     if (range > MAX_RADIUS || range < 0
         /* camera flash uses radius 0 and passes Null object */
         || (range === 0 && (type !== LS_OBJECT || id.a_obj != null))) {
-        /* C impossible("new_light_source: illegal range %d", range) — an
-         * impossible() prints a topline this port must not fabricate, and C
-         * never reaches it on the corpus (every live caller passes
-         * emits_light()'s 1).  Refuse the source, as C does. */
         return null;
     }
     const ls = {
@@ -469,8 +446,6 @@ export function arti_light_radius(obj) {
     if (!obj.lamplit || !artifact_light(obj))
         return 0;
 
-    /* C:900 cursed radius of 1 is not noticeable for a carried item but is
-       for one a monster carries or one left lit on the floor */
     res = (obj.blessed ? 3 : !obj.cursed ? 2 : 1);
 
     /* C:905-909 */

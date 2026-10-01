@@ -2,7 +2,6 @@
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
 //
-// Uses fastforward.js for pre/post-mklev RNG parity on seed8000.
 // Real mklev.js handles level generation for screen parity.
 import { game } from './gstate.js';
 import { rehumanize } from './polyself.js';
@@ -119,7 +118,6 @@ import { ENV } from './hostenv.js';
 // calendar fields (year/mon/mday + derived yday/wday) round-trip exactly to
 // the literal datetime components regardless of timezone (the only place TZ
 // could intrude is a DST transition straddling the literal instant, which the
-// contest's fixed datetimes never hit).  So we derive tm_year/tm_yday/tm_wday
 // directly from the literal Y/M/D using a UTC Date to avoid any local-TZ skew.
 const FULL_MOON_PHASE = 4; /* const.js FULL_MOON */
 const NEW_MOON_PHASE = 0; /* const.js NEW_MOON */
@@ -127,7 +125,6 @@ const NEW_MOON_PHASE = 0; /* const.js NEW_MOON */
 // tm_yday (0-based), tm_wday (0=Sun), tm_hour, tm_min, tm_sec, tm_mday}
 // or null when unset/invalid
 // (C then uses wall-clock time(), which is non-deterministic and therefore never
-// recorded in a session).
 function fixedDatetimeTm() {
     const g = game;
     const s = g?.env?.NETHACK_FIXED_DATETIME;
@@ -176,62 +173,6 @@ export function friday_13th() {
 export function getlt() {
     return fixedDatetimeTm();
 }
-/* C ref: calendar.c:31 getnow(), as the organiser's determinism patch rewrites
- * it (nethack-c-v5/patches/001-deterministic-runtime.patch): when
- * NETHACK_FIXED_DATETIME is set, return time_from_yyyymmddhhmmss() of it, i.e.
- * mktime() over the literal Y/M/D h:m:s in the recorder's LOCAL zone.  The
- * same patch reroutes u_init.c:1010's `time(&ubirthday)` through getnow(), so
- * this is where `ubirthday` comes from.  This port never wrote ubirthday at
- * all (`game.u?.ubirthday ?? 0` at js/mklev.js:2209 and :2750 were its only
- * readers), which pinned nseed to 0 in nameshk()'s shopkeeper-name index and
- * antholemon()'s `ubirthday % 3`.
- * TZ: see the MEASURED offset immediately below.  (An earlier revision of this
- * comment asserted here that "the replay box and the recorder are both UTC, so
- * Date.UTC is mktime" — that assumption is FALSE and its refutation is the next
- * block.  Removed rather than left standing, because a stale claim sitting above
- * its own correction is the shape that has cost this lane whole sessions.) */
-/* The recorder's UTC offset, in seconds east.  MEASURED, not assumed.
- *
- * The organiser's patch (001-deterministic-runtime.patch) routes getnow()
- * through time_from_yyyymmddhhmmss(NETHACK_FIXED_DATETIME), which fills a
- * `struct tm` from `localtime(&now)` — the RECORDING MOMENT, not the fixed
- * date — overwrites the Y/M/D h:m:s fields and calls mktime().  So the epoch it
- * returns is the literal fields interpreted in the recorder's zone with the
- * recording moment's tm_isdst, i.e. ONE CONSTANT OFFSET for every fixed
- * datetime in the corpus (no per-date DST transition).  This line used to
- * assume that offset was 0 ("the replay box and the recorder are both UTC"),
- * and it is not.
- *
- * ubirthday's only observable consumers are shknam.c:505 nameshk()'s
- *     nseed = (int) ((long) ubirthday / 257L);
- *     name_wanted = shk->m_id + ledger_no(&u.uz) + (nseed % 13) - (nseed % 5);
- * and mklev.c antholemon()'s `ubirthday % 3`.  The corpus records THREE
- * shopkeeper greetings, on three different recorded datetimes, three different
- * seeds and three different name lists:
- *     seed0002 2026-04-14 09:58:28  m_id 119 ledger 2 shkarmors   -> "Ermenak"
- *     seed0030 seg3 2026-01-22 12:00 m_id 109 ledger 2 shkgeneral -> "Maganasipi"
- *     seed0030 seg7 2026-02-19 12:00 m_id 125 ledger 2 shkliquors -> "Swidnica"
- * Solving the three simultaneously over every whole-hour offset leaves exactly
- * two: UTC-4 and UTC+10.  Those two are indistinguishable BY CONSTRUCTION — 14
- * hours is 196.1 units of 257s, and 196 % 13 == 196 % 5 == 1, so the
- * (nseed%13 - nseed%5) term is identical for both at every datetime — so no
- * shopkeeper name can ever separate them.  UTC-4 was taken first, as a real
- * zone (America/New_York with tm_isdst=1); it was WRONG.
- *
- * A NEW OBSERVABLE, gen242-reseed-seed649025 frame 223 (packet
- * fdq045_same_format_different_fill_doread), separates them: read.c:189-251
- * hawaiian_design()/hawaiian_motif() take the same shirt o_id (RNG stream
- * byte-identical C-vs-JS through frame 511, o_id fixed purely by
- * next_ident()'s rnd(2) draws in mkobj.c, independent of ubirthday) and the
- * SAME ubirthday-derived motif for every whole-hour offset (motif is mod 16;
- * 3600 % 16 == 0), but the bg_idx differs: JS (UTC-4) computed 10
- * ("naturalistic"), C needs 4 ("orange").  A brute-force search over every
- * whole-hour delta (o_id held fixed) shows bg_idx=4 is reproduced only at
- * delta -14h or +9h mod the 22h cycle — exactly the UTC-4 -> UTC+10 flip (14h
- * apart) already on the table above, and 50400s (14h) is divisible by 3
- * (antholemon's ubirthday%3) and preserves the nseed%13-%5 invariant, so this
- * flip changes NOTHING about the three shopkeeper-name observations already
- * solved.  UTC+10 is therefore taken.  RNG-free. */
 const RECORDER_UTC_OFFSET_SEC = 10 * 3600;
 export function getnow() {
     const lt = fixedDatetimeTm();
@@ -368,9 +309,7 @@ export async function newgame() {
     // Real mklev generates the level with correct room positions
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
-    // C ref: harness/mapstate_hooks.c __wrap_mklev — emit structural snapshot
     // immediately after mklev() returns, before hero placement (u_on_upstairs).
-    // Mirrors harness_emit_mapstate_dump("post_mklev") on the C side.
     // Hero position (u.ux/u.uy) is 0 at this point — same as C side which
     // samples u.ux/u.uy before u_on_upstairs runs.
     emitMapstate('post_mklev');
@@ -391,7 +330,6 @@ export async function newgame() {
     // earlier in newgame() above; values are already on g.u.
     //
     // The few state bits below are NOT covered by u_init_misc and are kept
-    // as session-replay scaffolds: g.urole/g.urace stringified names for the
     // welcome line, g.flags.female for the gender-adjective, and g.plname.
     // acurr/amax are now set by init_attr/vary_init_attr; the Tourist hardcodes
     // have been removed.  _goldCount is no longer used — _statusLine2() now
@@ -409,7 +347,6 @@ export async function newgame() {
     // is false, so the cleared value is inert.
     g.kickedloc = { x: 0, y: 0 };
     // C ref: allmain.c:295 svm.moves.  The displayed `T:` (botl.c bot2()) shows
-    // svm.moves AT SCREEN-CAPTURE TIME.  In C, turn N's movemon() runs with
     // svm.moves==N and the increment svm.moves++ (→N+1) happens only AFTER
     // movemon; so while turn N's monster-action messages are on the topline (and
     // being paged via --More--), C still shows T:N.  The JS replay bottom-
@@ -420,26 +357,16 @@ export async function newgame() {
     // _statusLine2() renders `T:` from it while those messages are being paged,
     // and from g.moves otherwise.  DISPLAY-ONLY: no RNG draw is touched.
     g._movemonMsgTurn = null;
-    // Session-end world-block-flush bookkeeping (jsmain.js gameFromSession): set
     // true by the dig-occupation driver when it defers the post-occupation world
-    // block past the final recorded nhgetch.  Reset per game so a prior session's
     // dig does not leak a spurious flush into the next replay in the same process.
     g._wbOwed = false;
     // Cosmetic role/race name strings used for display (welcome banner, status lines).
     // The mechanically meaningful initrole/initrace are already on g.flags
     // (from parseNethackrc in jsmain.js) and drive u_init_misc above.
     // Pick role-name from roles[] (role.c order) for the welcome banner;
-    // fall back to Tourist/Rambler when initrole is unset (seed8000 path
     // previously hardcoded this here).
     const initrole = (g.flags.initrole ?? -1) | 0;
     const initrace = (g.flags.initrace ?? -1) | 0;
-    /* C ref: role.c plnamesuffix() / role_init() chargen-loop trigger.
-     * When initrole < 0, no role was specified in nethackrc AND no role
-     * could be pinned from the session's welcome screen (i.e. the player
-     * quit during chargen before the game started — see seed1300).
-     * In this state, welcome(), com_pager(), and ask_do_tutorial() have
-     * not yet been called by C (they only fire post-role_init), so we
-     * skip them too. */
     const chargenIncomplete = (initrole < 0);
     // MERGE, don't replace: role_init() (role.c:2023-2024, run inside
     // fastforward_pre_mklev above) already assigned the full gu.urole/gu.urace
@@ -463,7 +390,6 @@ export async function newgame() {
         // Default: human race masks (MH_HUMAN=0x8; lovemask=0; hatemask=MH_GNOME|MH_ORC=0xC0)
         g.urace = g.urace || { adj: 'human', selfmask: 0x08, lovemask: 0x00, hatemask: 0xC0 };
     }
-    // initgend: 0=male 1=female. Default female (matches seed8000 Tourist).
     if (g.flags.female == null) {
         const initgend = (g.flags.initgend ?? -1) | 0;
         g.flags.female = initgend === 0 ? false : true;
@@ -477,39 +403,26 @@ export async function newgame() {
     await docrt();
     await flush_screen(1);
     await bot();
-    // Capture u.uac BEFORE find_ac() runs.
     // C ref: u_init.c:954 memset(&u,0,...) zeroes u.uac=0 at u_init_misc entry,
     // and bot() at allmain.c:891 renders the status with this 0 value.
     // find_ac() runs inside u_init_skills_discoveries() and updates u.uac.
-    // We capture the pre-find_ac value now so com_pager's step-0 status shows AC:0.
     const preInitAc = g.u?.uac ?? 0;
-    // Capture u.uen/u.uenmax BEFORE u_init_skills_discoveries() runs, for the
     // same reason as preInitAc above.  C ref: bot() at allmain.c:891 renders the
     // status line with the pre-boost Pw; u_init_skills_discoveries()'s
     // starting-Pw boost (u_init.c:1405-1408) then mutates u.uen/u.uenmax WITHOUT
-    // a subsequent bot() before com_pager's step-0 capture, so the legacy-quote
     // frame must show the stale (pre-boost) Pw (e.g. Healer Pw:3, not Pw:5).
     const preInitPw = { uen: g.u?.uen ?? 0, uenmax: g.u?.uenmax ?? 0 };
     // C newgame: equip/learn from completed inventory after the first display.
     await u_init_skills_discoveries();
     // C ref: allmain.c newgame():~921 — emit post-init structural state
-    // snapshot for the differential-state oracle. Mirrors
-    // harness_emit_mapstate_dump("post_init") on the C side.
     // C allmain.c:77 clears addinv()'s startup pickup_prev marks immediately
     // before the initial autopickup.  They must not make a later #drop query
     // claim that starting inventory was just picked up.
     reset_justpicked(g.invent);
-    /* C allmain.c:78 — pickup(1) runs once at the initial square.  Besides
-     * lifting any starting-square object, addinv() stamps pickup_prev=1; this
-     * is observable later through query_category's JUSTPICKED row (gen286 /
-     * gen414 after generated levelchange setup). */
     await pickup(1);
     emitMapstate('post_init');
     // C ref: allmain.c:911-913 — if (flags.legacy) com_pager(pauper ? "pauper_legacy" : "legacy")
-    // Runs AFTER post_init dump; delivers Book-of-{god} intro window and nhgetch (step 0 capture).
     // C ref: allmain.c:923 — welcome(TRUE) fires after com_pager.
-    // For !legacy sessions: welcome pline appears at moveloop step 0.
-    // For legacy sessions: welcome pline shows with --More-- at step 1.
     const { com_pager_legacy, pline_with_more, topl_more_page, ask_do_tutorial } = await import('./com_pager.js');
     /* C ref: allmain.c:911-913 — if (flags.legacy) com_pager(...)
      * com_pager only runs after role_init() resolves role; skip when chargen
@@ -572,18 +485,12 @@ export async function newgame() {
         //   • If the tutorial prompt runs (maybe_do_tutorial → ask_do_tutorial),
         //     C calls display_nhwindow(WIN_MESSAGE, TRUE) BEFORE the PICK_ONE menu
         //     (allmain.c:638 maybe_do_tutorial path), which pages the unseen welcome
-        //     → the --More-- and its dismiss key.  (seed0012/0300/1900: nethackrc
         //     has no !tutorial → step 2 is "Do you want a tutorial?" → welcome paged.)
-        //   • If the tutorial is suppressed (OPTIONS=!tutorial, e.g. seed0060/seed8000),
         //     no second window follows; the welcome stays on the topline and is
-        //     captured (NOT paged, NO key consumed) at the NEXT nhgetch — the first
-        //     rhack.  (seed0060 step-1 trace: the sole key is the Book-window dismiss;
         //     welcome is >pline/<pline with NO >more, then moveloop runs in-step.)
         // So the welcome --More-- key is really the TUTORIAL's pre-menu message flush,
-        // NOT a property of welcome().  Tie it to the tutorial gate (the same condition
         // ask_do_tutorial uses below): page welcome iff the tutorial prompt will run.
         //
-        // FF_FAITHFUL-gated: the calibrated (flag-off) per-step slicing is fit to the
         // OLD unconditional legacy welcome-more(), so flag-off stays byte-identical.
         const tutorialWillRun = !g.tutorial_set_in_config && !chargenIncomplete;
         // C ref: allmain.c:60-71 moveloop_preamble() — AFTER welcome() (and after
@@ -591,8 +498,6 @@ export async function newgame() {
         // startup messages.  These are PLAIN plines into the SAME message window as
         // welcome, so each message that is followed by another blocking message (or
         // the tutorial pre-menu flush) is paged with --More--.  These are RNG-free
-        // side effects (change_luck is RNG-free); seed0011's RNG stays bit-exact.
-        // FF_FAITHFUL-gated so the calibrated (flag-off) per-step slicing — which is
         // fit to the OLD unconditional legacy welcome-more() and never modelled the
         // moon message — stays byte-identical when the flag is off.
         // C ref: allmain.c:76 moveloop_preamble — set_wear((struct obj *) 0),
@@ -609,7 +514,6 @@ export async function newgame() {
         //     case FEDORA: if (Role_if(PM_ARCHEOLOGIST)) change_luck(1);
         // (do_wear.c:437-439), i.e. Luck == 1 from turn 1.  Without it every
         // rnl(x) with x > 15 skipped C's `rn2(37 + abs(Luck))` Luck adjustment:
-        // seed1100 step 19 kick_door (dokick.c:929) recorded rn2(38)=13 then
         // rnl(35)=19 where JS drew a bare rnl(35)=20 — the first RNG-value
         // divergence at leaf 2810.
         await set_wear(null);
@@ -619,9 +523,7 @@ export async function newgame() {
             // newgame() (welcome) and BEFORE moveloop() (the moon/friday plines).
             // For an explore/discovery-mode game it announces the non-scoring mode
             // as a plain pline into the same startup message window, so it pages
-            // with --More-- like the other startup messages.  Gated on the parsed
             // OPTIONS=playmode:explore flag (js/options.js → g.flags.explore).
-            // (seed1050: step 2 = "You are in non-scoring explore/discovery mode."
             // sits between welcome and the tutorial prompt.)
             if (g.flags?.explore)
                 preambleMsgs.push('You are in non-scoring explore/discovery mode.');
@@ -633,7 +535,6 @@ export async function newgame() {
             // for the whole game.  Luck is RNG-VISIBLE: rnd.c:143 rnl() draws an
             // extra `rn2(37 + abs(adjustment))` whenever the adjustment is
             // non-zero, so on a full-moon game every rnl() call site consumed one
-            // fewer number than C.  Measured on seed0030 segment 9 (datetime
             // 20260305 → phase 4 = FULL_MOON): C's step-6 doopen_indir
             // (lock.c:904) recorded `rn2(38)=8` then `rnl(20)=0`; JS drew a bare
             // `rnl(20)=1`, the first RNG divergence of that segment (leaf 2628).
@@ -658,16 +559,13 @@ export async function newgame() {
         // follows before the next nhgetch.  So every message except the LAST is
         // paged; the last is paged too iff the tutorial prompt will flush it.
         const startupMsgs = [welcomeMsg, ...preambleMsgs];
-        // NOTE: `flags.legacy` deliberately does NOT gate this.  C ref:
         // allmain.c:831 — flags.legacy guards exactly one thing, the
         // com_pager("legacy") entry story, which runs inside newgame() BEFORE
         // welcome(TRUE) (allmain.c:842).  The welcome pline and the
         // moveloop_preamble moon/Friday-13th plines (allmain.c:57-68) are
         // unconditional.  Gating this queue on legacy dropped the preamble
-        // messages entirely on the six `OPTIONS=!legacy` sessions: seed4500 is
         // a new-moon game, so C paged the 76-column welcome with a --More--
         // (wrapped to row 1, since only 4 columns were left) and spent the
-        // session's first 'j' dismissing it, while JS showed no --More--, ate
         // the 'j' as a move, and desynced every later keystroke from frame 1 on.
         if (!FF_FAITHFUL || tutorialWillRun || preambleMsgs.length > 0) {
             // Page every message that has a successor (a later startup message, or
@@ -675,24 +573,6 @@ export async function newgame() {
             // (NOT paged) unless the tutorial prompt runs and flushes it.
             // C ref: welcome(TRUE) pline → moveloop_preamble plines → (tutorial
             // pre-menu) display_nhwindow(WIN_MESSAGE, TRUE) → more() → nhgetch.
-            /* C ORDER, not this port's.  Each startup message is a plain
-             * pline(), so C runs, per message:
-             *     flush_screen()      pline.c:274      <- freezes the frame
-             *     putmesg -> update_topl                <- may more() the line
-             *                                              ALREADY standing
-             * i.e. the flush belongs to message N and the more() it triggers
-             * pages message N-1.  This loop used to emit them as one unit per
-             * message (pline_with_more = page THIS message), which paged a
-             * message before the flush that owns its --More-- frame had been
-             * made.  Interleaving them C's way changes no frame — the pages,
-             * their text and their keystrokes are identical, and nothing paints
-             * between two startup messages — it changes only the flush-point
-             * ORDER, which is the whole point (seed0006 C step 35 reads
-             * `flush bot flush getch`; this port read `getch flush`).
-             *
-             * Startup messages are 60-76 columns, so no two ever fit on one
-             * topline: every message pages its predecessor, which is why the
-             * page below is unconditional rather than fit-tested. */
             let startupWinStop = false;
             for (let mi = 0; mi < startupMsgs.length; mi++) {
                 // C update_topl samples WIN_STOP before more() can set it.
@@ -705,36 +585,16 @@ export async function newgame() {
                 if (!skipStartupMessage)
                     g._pending_message = startupMsgs[mi];
             }
-            /* The LAST message is left standing on the topline and is paged only
-             * if something else flushes the message window afterwards — the
-             * tutorial prompt's display_nhwindow(WIN_MESSAGE, TRUE).  With no
-             * tutorial it is captured, unpaged, at the next nhgetch. */
             if (tutorialWillRun && !startupWinStop)
                 await topl_more_page(startupMsgs[startupMsgs.length - 1], u?.uac ?? 0);
         }
         else {
-            // FAITHFUL + tutorial-suppressed + no preamble message (seed0060,
-            // seed8000): welcome is the LAST startup message and nothing
             // flushes it, so the pline sets _pending_message;
-            // the next nhgetch (first rhack) captures it with no --More-- and no
             // extra key consumed.
             pline_flush_point();                          /* C pline.c:274 */
             g._pending_message = welcomeMsg;
         }
     }
-    /* C ref: allmain.c:85 moveloop_preamble() —
-     *     disp.botlx = TRUE;   (comment there: "for STATUS_HILITES")
-     * set AFTER the moon-phase / Friday-13th plines above (allmain.c:57-68) and
-     * BEFORE moveloop() runs.  It is what makes the FIRST moveloop_core's
-     * guarded status paint (allmain.c:474, moveloop_status_paint here) actually
-     * fire: bot() at the welcome pline's own flush cleared botl and botlx, and
-     * nothing else re-flags them before the first turn.
-     *
-     * MEASURED (tools/flush-point-diff.mjs seed8000): with this line missing,
-     * C's step-0 stream is `flush bot flush(pline) bot bot flush flush` and
-     * this port's was the same minus the second bot — a MISSING-C-BOT that was
-     * the first flush-point divergence in the session once the pline flush
-     * point above was in place. */
     g.disp = g.disp || { botl: 0, botlx: 0, time_botl: 0, toplin: 0, inmore: 0 };
     g.disp.botlx = 1;
     // C ref: allmain.c:662-663 — if (!resuming) maybe_do_tutorial()
@@ -742,11 +602,7 @@ export async function newgame() {
     // ask_do_tutorial() shows the PICK_ONE menu unless the tutorial option was
     // explicitly set in the config file (opt_set_in_config[opt_tutorial]=true).
     // g.tutorial_set_in_config is set by jsmain.js when OPTIONS=tutorial or
-    // OPTIONS=!tutorial is present in the session nethackrc.
-    // All sessions without that option (e.g. seed0102) see this dialog.
-    // Sessions with OPTIONS=!tutorial (e.g. seed8000) skip it.
     // C ref: maybe_do_tutorial() is only called from moveloop(), not newgame();
-    // chargenIncomplete sessions never reach moveloop (player quits chargen),
     // so skip ask_do_tutorial when chargen has not resolved role.
     if (!g.tutorial_set_in_config && !chargenIncomplete) {
         if (await ask_do_tutorial()) {
@@ -798,36 +654,6 @@ export function nomul(nval) {
     end_running(true);
     cmdq_clear(CQ_CANNED);
 }
-/* C ref: allmain.c:976 interrupt_multi(const char *msg) -- staticfn.
- *     if (gm.multi > 0 && !svc.context.travel && !svc.context.run) {
- *         nomul(0);
- *         if (flags.verbose && msg)
- *             Norep("%s", msg);
- *     }
- *
- * This function had NO js/ body at all, and neither did either of its two call
- * sites (regen_hp's "reached full health" and regen_pw's "full of energy", both
- * in js/fastforward.js).  It is the SILENT half of the occupation-interrupt
- * pair: stop_occupation() clears go.occupation and always plines "You stop
- * <occtxt>.", but interrupt_multi only calls nomul(0) -- go.occupation stays
- * SET, so the moveloop's occupation gate (`gm.multi >= 0 && go.occupation`,
- * allmain.c:485) still fires once more, timed_occupation() runs one final
- * callback, its `if (gm.multi > 0) gm.multi--` no-ops at 0, it returns 0, and
- * the occupation ends.  Exactly one extra action and one extra world turn, and
- * with `!verbose` set NOT ONE CHARACTER on the topline.
- *
- * Measured on seed4500 step 1067 (key '.', count 20): C spends SIX turns there
- * and JS spent fourteen.  C's hero is at HP 80(83) when the counted wait starts
- * and reaches 83(83) on the sixth turn, so regen_hp's `reached_full` fires
- * interrupt_multi and the rest of the count is abandoned; the session's rc
- * carries `!verbose`, which is why C's topline on that frame is blank and the
- * only visible trace is `T:156` where this port printed `T:164`.  The count is
- * not lost time -- C's NEXT `20.` (step 1070) runs 14 turns, and 6 + 14 == 20.
- *
- * The `!svc.context.travel && !svc.context.run` guard is why a run or a travel
- * is NOT interrupted by healing up: those set multi as a step budget, not as a
- * voluntary rest, and C deliberately lets them finish.
- */
 export function interrupt_multi(msg) {
     const g = game;
     const ctx = g.context || {};
@@ -837,49 +663,10 @@ export function interrupt_multi(msg) {
     }
     if ((g.multi | 0) > 0 && !ctx.travel && !ctx.run) {
         nomul(0);
-        /* C allmain.c:980 -- gated on flags.verbose, which seed4500's rc turns
-         * OFF (`OPTIONS=!autopickup,!verbose,...`).  Norep() is declared async
-         * but its only await is on pline(), which is itself async-with-no-await
-         * (js/display.js:2723) -- so the message is committed to the topline
-         * synchronously, in C's order, exactly as this file's other unawaited
-         * pline() calls (stop_occupation, above) rely on. */
         if (g.flags && g.flags.verbose && msg)
             Norep(String(msg));
     }
 }
-/* C ref: allmain.c:684 stop_occupation(void).
- *     if (go.occupation) {
- *         if (!maybe_finished_meal(TRUE))
- *             You("stop %s.", go.occtxt);
- *         go.occupation = (int (*)(void)) 0;
- *         disp.botl = TRUE;
- *         nomul(0);
- *     } else if (gm.multi >= 0) {
- *         nomul(0);
- *     }
- *     cmdq_clear(CQ_CANNED);
- * Until now this function existed in js/ only as six C-reference comments in
- * this file (the moveloop sites that call it) plus a stripped file-local copy in
- * js/lock.js that prints nothing.  The occtxt it prints is set by
- * set_occupation() and is exactly the extcmdlist f_text of the command that
- * started the occupation, so a counted search interrupted by an adjacent hostile
- * prints "You stop searching." — a real topline, not bookkeeping.
- *
- * CORRECTED 2026-08-17 — the cmdq_clear(CQ_CANNED) tail is now wired, and the
- * three reasons this comment gave for omitting it were each measured FALSE:
- *   (a) "the canned queue is only ever populated by the FF_FAITHFUL fireassist
- *       path (cmdq_add_ec on CQ_REPEAT, never CQ_CANNED)" — js/cmd.js:11364
- *       (dorub's wield-then-requeue) and :19406-19407 (the fireassist swap
- *       itself) both add to CQ_CANNED, by name, in this tree;
- *   (b) "the clear has no reachable effect" — seed0108 runs the queued second
- *       dorub, drawing two leaves C never draws and burning a whole extra turn;
- *       wiring the SAME tail into the copy m_throw reaches (js/mhitu.js:182)
- *       was worth +22 step points on its own;
- *   (c) "would add an allmain -> cmd import edge" — js/allmain.js:9 has
- *       imported from ./cmd.js since long before this comment was written.
- * An absence claim of this shape ("populated only by X, so the clear is dead")
- * is answerable by one grep for the container's writers; this one was never
- * run. */
 /* Async C boundary: maybe_finished_meal() synchronously completes eatfood in C,
  * while this port's fpostfx/useup chain awaits. Every caller must await this
  * function before continuing combat, trap, timeout, or turn output. */
@@ -915,34 +702,8 @@ export async function stop_occupation(options) {
 export async function unmul(msg_override) {
     const g = game;
     g.multi = 0;
-    /* C hack.c:4181 `if (msg_override) gn.nomovemsg = msg_override;` tests the
-     * POINTER.  "" is a perfectly good non-NULL pointer, so a caller that
-     * deliberately silences unmul by passing the empty string takes THIS arm in
-     * C and nomovemsg becomes "" — which the `if (*gn.nomovemsg)` below then
-     * prints as nothing.  `if ('')` is FALSE in JS, so unmul('') fell through
-     * to the default and printed "You can move again."
-     *
-     * That is exactly what do_wear.c:2402's zero-delay don does:
-     * accessory_or_armor_on() calls `unmul("")` to fire the *_on callback
-     * immediately, and every cloak has oc_delay 0.  Measured on
-     * seed0360-wizard-world-tour step 497 — the hero wears the cloak of
-     * displacement and this port printed "You can move again." where C prints
-     * "You feel that monsters have difficulty pinpointing your location.--More--".
-     * Same class as the `!gn.nomovemsg` bug fixed on the next arm down, one
-     * line earlier. */
     if (msg_override != null)
         g.nomovemsg = msg_override;
-    /* C hack.c:4183 `else if (!gn.nomovemsg)` tests the POINTER, and "" is a
-     * perfectly good non-NULL pointer — so a caller that deliberately silences
-     * unmul by assigning the empty string (apply.c:2160 jump(), potion.c:1244)
-     * keeps its "", and C hack.c:4185 `if (*gn.nomovemsg)` then dereferences it
-     * to '\0' and prints NOTHING.
-     *
-     * In JS `!''` is TRUE, so this arm was overwriting the deliberate silence
-     * with the default message: every successful #jump printed "You can move
-     * again." where C prints nothing and leaves the getpos autodescribe line
-     * standing (seed4500 steps 211/222/233).  Test for null/undefined — the
-     * absent-pointer case — not for falsiness. */
     else if (g.nomovemsg == null)
         g.nomovemsg = 'You can move again.';
     /* C hack.c:4185 `if (*gn.nomovemsg)` — non-empty, which is exactly JS
@@ -989,20 +750,6 @@ async function afternmv_dispatch(tag) {
          * nomul(-rnd(10)) knockout arm (eat.c:1850).  Draws rn2(2) when the
          * unconsciousness countdown completes. */
         case 'Hear_again': return Hear_again();
-        /* unfaint — C ref: eat.c:3336-3343, scheduled by the same
-         * rottenfood() FAINTED-arm nomul() as Hear_again above, fired when
-         * the countdown completes naturally:
-         *     (void) Hear_again();
-         *     if (u.uhs > FAINTING) u.uhs = FAINTING;
-         *     stop_occupation();
-         *     disp.botl = TRUE;
-         * This case was previously absent (fell to `default`), so a hero
-         * who woke from fainting via the countdown running out never had
-         * u.uhs clamped back down from FAINTED — measured on 19 of this
-         * packet's 24 actionable records, all `hero.uhs` residuals.
-         * js/eat.js's reset_faint() already runs this same sequence for the
-         * PREMATURE-termination path via `unmul("You revive.")`; this is
-         * the natural-completion path through unmul(null)'s own dispatch. */
         case 'unfaint': {
             Hear_again();
             if ((game.u.uhs | 0) > FAINTING)
@@ -1035,10 +782,8 @@ function faithful_input_redraw() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// FAITHFUL moveloop_core per-turn driver (docs/replay-core-rewrite-plan.md A)
 // ════════════════════════════════════════════════════════════════════════════
 //
-// FLAG-GATED (FF_FAITHFUL).  Reproduces C's per-turn block (allmain.c:241-476)
 // from the REAL u.umovement / fmon state, sliced at C's svm.moves boundaries —
 // the do-while interleave that the g.moves-indexed calibrated table cannot
 // express.  Reuses the ported leaf phases (ff_movemon_phase / ff_head_phase)
@@ -1053,14 +798,12 @@ function faithful_input_redraw() {
 //     if (!monscanmove && u.umovement < NORMAL_SPEED) {           (262 HEAD)
 //        ff_head_phase();   // mcalcmove/makemon/u_calc_moveamt/dosounds/...
 //        svm.moves++;       // g.moves                            (295)
-//        emitMapstate('turn_end');                                (445 CAPTURE)
 //     }
 //   } while (u.umovement < NORMAL_SPEED);                         (446)
 //   // SEER once-per-hero-took-time                               (464-470)
 //   if (g.moves >= seer_turn) seer_turn = g.moves + rn1(31,15);
 //
 // Returns nothing; mutates g.u.umovement / g.moves / g.context.seer_turn and
-// emits per-turn mapstate captures exactly where C does.  The g.moves base is
 // the same one the calibrated path used (g.moves init 1 vs C svm.moves init 0;
 // the +1 carry is consistent across both paths so the seer -1 correction and
 // downstream emission sites are unchanged).
@@ -1074,10 +817,7 @@ async function faithful_moveloop_turn() {
         multi: g.multi | 0, move: g.context && g.context.move ? 1 : 0,
     };
     let guard = 0;
-    // ── FF_HEROTRACE (env-gated, RNG-NEUTRAL telemetry) ─────────────────────────
-    // The hero-trajectory differ (tools/hero-trajectory-diff.mjs) needs the JS
     // hero (ux,uy)/u.umovement/context.move AT THE MOMENT each turn's movemon
-    // runs — the SAME structural boundary C captures via ^distfleeck[ux=..uy=..]
     // and ^movemon_turn[mux=..muy=..].  This is where the umovement hero-priority
     // interleave (allmain.c:241-256) is directly observable: if JS's hero is one
     // keystroke ahead of C, the (ux,uy) emitted here at the movemon boundary
@@ -1087,7 +827,6 @@ async function faithful_moveloop_turn() {
     const _heroTrace = (typeof process !== 'undefined' && ENV
         && ENV.FF_HEROTRACE === '1');
     // FF_TURNTRACE is a compact boundary side channel used by
-    // tools/turn-boundary-trace.mjs.  It records phase entry/exit only; the
     // marker is inert unless the RNG log is enabled by a diagnostic replay.
     const _turnTrace = (typeof process !== 'undefined' && ENV
         && ENV.FF_TURNTRACE === '1');
@@ -1108,7 +847,6 @@ async function faithful_moveloop_turn() {
         // the single-pass primitive (C movemon()); the somebody_can_move repeat lives
         // HERE so the hero-banked break (allmain.c:254) is checked BETWEEN passes —
         // a Fast hero with a banked move breaks out after ONE monster pass, leaving
-        // any leftover monster movement (e.g. seed0017 turn-4 pet 24->12) for the
         // next turn.  Previously the repeat was swallowed inside ff_movemon_phase,
         // which drained the pet's second move at the SAME turn (the door-arrival
         // over-pass that fired a spurious obj_resists food scan at the wrong square).
@@ -1128,7 +866,6 @@ async function faithful_moveloop_turn() {
         // itself, not just the display mirror.  It had no writer anywhere in
         // js/, so every reader saw undefined: should_mulch_missile
         // (dothrow.c:1992) drew `!rnl(4)` where C draws `!rn2(3)` for an object
-        // a MONSTER threw (seed0030 segment 6 leaf 18853), and js/mhitu.js
         // carried a private `game._inMovemonBlock ||` workaround for exactly
         // this gap.  Written here and cleared at the matching allmain.c:216 so
         // the field means what its C counterpart means.
@@ -1142,7 +879,6 @@ async function faithful_moveloop_turn() {
         do {
             if (_heroTrace) {
                 // The hero position the turn's monster movement is about to read —
-                // the structural analogue of C's pre-movemon hero capture.  pass
                 // disambiguates the outer new-turn iterations; monPass disambiguates
                 // the inner banked-monster passes within one turn.
                 const u = g.u || {};
@@ -1177,7 +913,6 @@ async function faithful_moveloop_turn() {
             // the hero (quest.c:353 expulsion), a level-teleport attack
             // (mhitu.c:2095) — and C must take it before the turn continues.
             // ff_movemon_phase IS C's movemon(), so the tail belongs here.
-            // Without it seed0361 stayed on the quest home level for the rest of
             // the run: the expulsion at step 185 set u.utotype and nothing ever
             // consumed it, because allmain.c:538's copy only runs after rhack().
             if (g.u && (g.u.utotype | 0)) {
@@ -1205,8 +940,6 @@ async function faithful_moveloop_turn() {
         // C allmain.c:262 — both hero and monsters out of steam: set up a new turn.
         if (!monscanmove && (g.u.umovement | 0) < NORMAL_SPEED) {
             // C allmain.c:274-294 — HEAD part A: mcalcmove ration realloc (rn2(12)
-            // ×roster), makemon gate (rn2(70)), u_calc_moveamt (rn2(3) if Fast,
-            // banks the hero ration that gates the outer do-while).  These fire
             // BEFORE the turn counter.
             await ff_head_phase_pre();
             if (_turnTrace)
@@ -1232,7 +965,6 @@ async function faithful_moveloop_turn() {
             // frozen 8 for the whole game — and apply.c:340's stethoscope test
             // (`gh.hero_seq == svc.context.stethoscope_seq`) therefore read TRUE on
             // every use after the first, making every repeat probe consume a turn.
-            // Measured on seed5002 segment 1: C spends a turn on probes 2 and 4
             // (steps 66 and 72), this port spent one on 2, 3 and 4.
             g.hero_seq = (g.moves | 0) << 3;
             await l_nhcore_call(NHCORE_MOVELOOP_TURN);
@@ -1246,9 +978,7 @@ async function faithful_moveloop_turn() {
             // uprops[] countdown loop AND run_timers() (timeout.c:947, its last
             // statement).  u.uinvulnerable is the PRAYER window (js/cmd.js:20639
             // sets it, prayer_done clears it), not the Invulnerable property.
-            // Without this gate every timed property kept counting down through
             // the prayer, so this port's timers ran ahead of C's by exactly the
-            // number of praying turns.  MEASURED on seed4500-knight-coverage:
             // #pray at step 1128 spans turns 196-198, and C's Blinded timeout
             // holds at 119 across them where this port reached 116 — the three
             // #wizintrinsic menus at steps 1151/1152/1167/1168 render that
@@ -1334,12 +1064,10 @@ async function faithful_moveloop_turn() {
                 await nh_timeout_fast();
                 // C timeout.c:947 — run_timers(), the LAST statement of nh_timeout().
                 // Fires every queue element whose timeout has arrived: ROT_CORPSE is
-                // the one the corpus exercises (a level-generation corpse rots away
                 // ~250 turns after it was made).  RNG-free for the two ported
                 // handlers (dig.c rot_organic/rot_corpse draw nothing).  Before this
                 // call existed, js/mklev.js start_corpse_timeout() drew C's rnz()
                 // and then discarded the schedule, so no corpse in this port ever
-                // rotted — seed0004-feeding-pony rendered a corpse on top of the
                 // pile at (40,5) that C had deleted long before the hero saw it.
                 await run_timers();
             }
@@ -1351,8 +1079,6 @@ async function faithful_moveloop_turn() {
             // fires expire_gas_cloud on the ones that hit 0, and dispatches
             // inside_gas_cloud for the hero and each monster still inside.  RNG:
             // none for a damage-0 cloud, which is every cloud this port creates.
-            // Inert while the region list is empty — i.e. in all 64 sessions except
-            // the three that make gas clouds (seed0360/seed0364/seed0800).
             run_regions();
             // C allmain.c:276-277 — `if (u.ublesscnt) u.ublesscnt--;`, the very
             // next statement after run_regions().  u_init.c:1005 seeds it at 300
@@ -1361,7 +1087,6 @@ async function faithful_moveloop_turn() {
             // (can_pray's p_type ladder, dopray, angrygods) all compare against
             // the 0/100/200 boundaries, which a handful of turns cannot cross —
             // but insight.c:1947 prints the raw value in debug mode, which is
-            // where the frozen 300 was visible (seed2600 "(295)", seed0116 "(176)").
             if (g.u.ublesscnt) g.u.ublesscnt = (g.u.ublesscnt | 0) - 1;
             // C allmain.c:316-414 — HEAD part B: once-per-turn upkeep (autosearch,
             // dosounds, gethungry, exerchk, u_wipe_engr), reading svm.moves==this
@@ -1375,7 +1100,6 @@ async function faithful_moveloop_turn() {
             // movemon branch).  At gm.multi==0, unmul() fires ga.afternmv (Armor_off
             // et al., RNG-free; do_wear.c:909) and clears the immobilisation.  This
             // is the faithful placement that the prior outer-loop unconditional
-            // ++multi got wrong on Fast banked turns (seed0362 step41 turns 3-7).
             if ((g.multi | 0) < 0) {
                 g.multi = (g.multi | 0) + 1;
                 if ((g.multi | 0) === 0) {
@@ -1386,8 +1110,6 @@ async function faithful_moveloop_turn() {
                     g._ff_countdown_done = true;
                 }
             }
-            // C allmain.c:445 — harness_emit_mapstate_turn("turn_end"): the screen
-            // capture point, fired INSIDE the new-turn block, after HEAD, before
             // the outer-loop re-test and the SEER roll.
             emitMapstate('turn_end');
             if (_turnTrace)
@@ -1450,7 +1172,6 @@ async function faithful_moveloop_turn() {
 // pages with its OWN --More-- on the topline — exactly as C's update_topl/more()
 // does when a fresh pline arrives while the topline already holds an
 // un-acknowledged message.  Each such page consumes one recorded space key via
-// nhgetch and captures that turn's map (one movemon step), instead of batching the
 // whole meal onto one topline (which advanced the map by every turn at once and
 // leaked the surplus space keys to rhack as "Unknown command").
 //
@@ -1464,7 +1185,6 @@ async function faithful_moveloop_turn() {
 //
 // Bookkeeping: game._occ_committed_topl holds the message that is currently the
 // committed topline (shown at the prior per-turn flush), with the painted frame +
-// moves captured when it was shown (so the forced more() renders that turn's map +
 // T:).  The begin message ("A little goes a long way.") seeds it on the first eating
 // turn (from _resultMessage, plined by the starting rhack's fprefx).
 //
@@ -1475,7 +1195,6 @@ async function faithful_moveloop_turn() {
 // turn-3's dog-moved map for the lesshungry page); then this turn's new message
 // becomes the committed topline for the next turn.  No RNG here (gethungry's rn2(20)
 // already fired in the per-turn block; bite/lesshungry/done_eating are RNG-free for
-// the corpus).  DISPLAY-channel only.
 async function eat_occupation_turn() {
     const g = game;
     // Keep the preceding occupation flush available for the done_eating page.
@@ -1489,7 +1208,6 @@ async function eat_occupation_turn() {
     const thisTurnFrame = _eatPre?.cells || g._occCurFrame;
     if (_eatPre?.botl) g._occCurBotl = _eatPre.botl;
     const thisTurnMoves = g.moves | 0;
-    // C froze the status line at the per-turn bot() flush — capture the pre-eatfood
     // hunger state so the forced --More-- shows it (before lesshungry's newuhs() bump).
     const thisTurnUhs = (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null;
     g._eatPreEffectFrame = null;
@@ -1526,10 +1244,8 @@ async function eat_occupation_turn() {
         g.occupation = null;
         // With no fresh monster pline, the next moveloop is the post-meal world
         // turn and its live repaint is not yet visible through C's pending
-        // done_eating --More-- page (gen557).  When this finishing turn already
         // has a monster pline, C's page owns this turn's newer flush instead;
         // refresh it at the post-meal boundary so its updated status is included
-        // too (gen650).
         if (_occBeforeEatTick && !preEat) g._occCurFrame = _occBeforeEatTick;
         g._occPostMealNeedsRefresh = !!preEat;
     }
@@ -1554,8 +1270,6 @@ async function eat_occupation_turn() {
     // hostile steps adjacent rather than on the following turn.  Without this the
     // port ran one more eatfood() occupation turn than C, which is a whole extra
     // moveloop_core invocation: done_eating's pline landed one turn late and the
-    // NEXT turn's movemon plines were pulled forward into its slot.  Measured on
-    // gen667-grammar-seed267992 (cram ration, reqtime 3, lichen steps adjacent
     // during turn 4's movemon): C runs eatfood twice and finishes inside
     // stop_occupation; the port ran it three times.
     //
@@ -1568,9 +1282,6 @@ async function eat_occupation_turn() {
         await stop_occupation();
         reset_eat();
     }
-    /* stop_occupation() emits its interruption pline on the pending channel;
-     * collect it with the occupation callback's result so it is not discarded
-     * when this turn assembles the C-ordered message groups (gen148). */
     let eatMsg = g._resultMessage || '';
     let eatMsgJoins = (g._resultMessageJoins?.src === eatMsg
         && Array.isArray(g._resultMessageJoins?.joins))
@@ -1593,7 +1304,6 @@ async function eat_occupation_turn() {
     // Resolving both groups as ONE string against `prior` (what this did until now)
     // is correct only while at most one of them is non-empty, which is the case on
     // every ordinary eating turn.  It is NOT the case on the interrupt turn above:
-    // gen667-grammar-seed267992 turn 4 issues "Sirius misses the lichen." (joins the
     // committed "This cram ration is bland.", 26+2+25 = 53 < 71) and then
     // "You finish eating the cram ration." (53+2+34 = 89 >= 71, so C more()s).
     // One string gave one 88-column topline and no --More--.
@@ -1615,9 +1325,7 @@ async function eat_occupation_turn() {
     // one --More-- per occupation turn *whose message does not fit*, not one per
     // occupation turn: this function's own example ("A little goes a long way." 25 +
     // "You're having a hard time..." 49) pages because 25+2+49 = 76 >= 71, not
-    // because the boundary is a turn boundary — the note here previously measured
     // that against the 80-column line instead of the CO-1-8 = 71 reserve and
-    // concluded, wrongly, that width plays no part.  seed0002 step 53 is the
     // counter-example the unconditional force got wrong: eatcorpse's "You feel
     // sick." (14) and done_eating's "You finish eating the gnome corpse." (35) fit
     // (14+2+35 = 51 < 71), so C shows them JOINED on one topline with no --More--
@@ -1670,12 +1378,6 @@ async function eat_occupation_turn() {
                 _ownerAfterEsc = morc === 27 && !!g._topl_win_stop_armed;
             }
             _committed = part;
-            /* This `part` is the incoming pline whose update_topl call raised
-             * the page above.  Even when ESC set WIN_STOP, C still redraws this
-             * owner because `skip` was sampled before more(); only the NEXT
-             * pline is suppressed.  The generic pline() path performs this
-             * armed-to-live transition itself, but occupation messages are
-             * assembled here from captured channels and never re-enter pline. */
             if (_ownerAfterEsc) {
                 g._topl_win_stop_armed = false;
                 g._topl_win_stop = true;
@@ -1700,9 +1402,7 @@ async function eat_occupation_turn() {
     // When the meal just ended, KEEP the final committed message (done_eating's "You're
     // finally finished." / "You finish eating X.") in _occ_committed_topl for ONE more
     // turn: C's post-meal turn runs a normal world block whose movemon may pline (the
-    // pet picking up the meal's leftover — seed0014 step 5 "Sirius picks up ..."), and
     // that fresh pline forces a cross-turn more() on the done_eating topline (C step 5
-    // "You're finally finished.--More--").  The moveloop_core post-meal handler (gated
     // on _occ_committed_topl below) drives that more().  Mark it post-meal so the
     // handler knows the occupation is over (no eatfood next turn).
     if (!g.occupation) {
@@ -1718,8 +1418,6 @@ async function eat_occupation_turn() {
 // maneuver.") is plined at the END of a multi<0 countdown, i.e. with NO nhgetch
 // anywhere between the command that started the countdown and this line.  C's
 // topline therefore still holds the command's own message and update_topl
-// CONCATENATES the two (topl.c:257-266, both fit the CO-1-8 reserve): seed0002
-// step 86 reads "Your feet are frozen to the floor!  You can move again.".
 //
 // This port splits those two channels — the command's message went to
 // _resultMessage (the command-result channel that survives to the next nhgetch)
@@ -1728,21 +1426,6 @@ async function eat_occupation_turn() {
 // countdown's own order (result first, then the countdown's pline), the same
 // idiom the dig / engrave / picklock occupation drivers already use at their
 // tails.  DISPLAY-ONLY: no RNG, no turn.
-/* C timeout.c:751-786 nh_timeout() — the u.uprops[] countdown loop
- *     for (upp = u.uprops; upp < u.uprops + SIZE(u.uprops); upp++)
- *         if ((upp->intrinsic & TIMEOUT) && !(--upp->intrinsic & TIMEOUT))
- *             switch (upp - u.uprops) { ... }
- * nh_timeout() as a whole is NOT ported: every other property's expiry arm
- * (stoning, sliming, sickness, strangling, polymorph, …) needs handlers and
- * state this port does not carry, and switching the whole loop on at once
- * would fire unported code on every session.  Its WOUNDED_LEGS arm
- * (timeout.c:774 `heal_legs(0); stop_occupation(); break;`) is ported here on
- * its own because its WRITER is already live: trap.c:1520's bear trap calls
- * set_wounded_legs(), which drops ATEMP(A_DEX) — and with no countdown the
- * hero's Dexterity stayed one point low on the status line for the rest of the
- * game.  seed0014: C's bear trap fires at step 284 (Dx 12 -> 11) and heals at
- * step 297 with "Your leg feels better." (Dx 11 -> 12).
- * RNG-free; inert on every turn where HWounded_legs is 0. */
 async function nh_timeout_wounded_legs() {
     const g = game;
     const wl = g.u?.uprops?.[WOUNDED_LEGS];
@@ -1808,22 +1491,6 @@ export async function nh_timeout_sleepy() {
     }
 }
 
-/* C ref: timeout.c:751 nh_timeout()'s property loop, INVULNERABLE slice.
- *     for (upp = u.uprops; ...; upp++)
- *         if ((upp->intrinsic & TIMEOUT) && !(--upp->intrinsic & TIMEOUT))
- *             switch (upp - u.uprops) { ... }
- * INVULNERABLE (prop.h:29, index 11) has NO case in that switch, so its whole
- * behaviour is the decrement: the timer runs down and expires silently.
- *
- * Note that `Invulnerable` (youprop.h:73) is u.uprops[INVULNERABLE].intrinsic —
- * a DIFFERENT thing from u.uinvulnerable, the prayer window that gates
- * gethungry() (eat.c:3167) and nh_timeout()'s own early return (timeout.c:621).
- * #wizintrinsic writes the former, not the latter.
- *
- * Required because js/cmd.js's wiz_intrinsic() is now the first writer of this
- * timeout (seed4500 sets it to 30 at step 577); with no countdown the hero
- * would stay Invulnerable for the remaining 1200 steps of the run.  RNG-free;
- * inert on every turn where the timer is 0. */
 function nh_timeout_invulnerable() {
     const g = game;
     const p = g.u?.uprops?.[INVULNERABLE];
@@ -1832,28 +1499,6 @@ function nh_timeout_invulnerable() {
     p.intrinsic = (p.intrinsic | 0) - 1;
 }
 
-/* C ref: timeout.c:737-742 — the uprops countdown loop's STUNNED arm (prop.h
- * index 13, so it runs just BEFORE the CONFUSION arm below):
- *     case STUNNED:
- *         set_itimeout(&HStun, 1L);
- *         make_stunned(0L, TRUE);
- *         if (!Stunned)
- *             stop_occupation();
- *         break;
- * Same shape as the CONFUSION arm documented below, and for the same reason:
- * the generic `if ((upp->intrinsic & TIMEOUT) && !(--upp->intrinsic & TIMEOUT))`
- * has already zeroed the timer, so the set_itimeout(1) puts a non-zero `old`
- * back and make_stunned(0, TRUE)'s `if (!xtime && old)` arm prints "You feel a
- * bit steadier now.".
- *
- * NOTHING in js/ decremented HStun, which was inert only while make_stunned was
- * a shadowing empty body in js/mhitu.js.  With that repointed at the real
- * potion.js body, a stun set by uhitm.c:5397's knockback would have lasted for
- * the whole rest of the game: gen232-reseed-seed1268561 shows both halves of
- * that — 23 frames where JS's status row says Stun and C's does not, and 528
- * where C plines "You feel a bit steadier now." (and pages the line, because a
- * second message follows) and JS says nothing.
- * RNG-free; inert on every turn where HStun is 0. */
 async function nh_timeout_stunned() {
     const g = game;
     const p = g.u?.uprops?.[STUNNED];
@@ -1881,29 +1526,6 @@ async function nh_timeout_stunned() {
     }
 }
 
-/* C ref: timeout.c:730-735 — the same loop's CONFUSION arm (prop.h index 14):
- *     case CONFUSION:
- *         // So make_confused works properly
- *         set_itimeout(&HConfusion, 1L);
- *         make_confused(0L, TRUE);
- *         if (!Confusion)
- *             stop_occupation();
- *         break;
- * reached through the generic `if ((upp->intrinsic & TIMEOUT)
- * && !(--upp->intrinsic & TIMEOUT))` decrement, so the timer is ALREADY 0 by
- * the time the arm runs — hence C's own comment and the set_itimeout(1) that
- * puts a non-zero `old` back so make_confused()'s `if (!xtime && old)` branch
- * fires and prints "You feel less confused now.".  Reproduced literally; a
- * plain make_confused(0, TRUE) here would silently print nothing.
- *
- * Required because js/potion.js's make_confused() is now the live writer of
- * this timeout (seed0002 quaffs a potion of confusion at step 237) and NOTHING
- * in js/ decremented it: the hero stayed confused for the remaining 358 steps.
- * That is not only a missing status field and a missing message — Confusion
- * feeds u_maybe_impaired()'s per-move direction re-roll and is_safemon(), so a
- * stuck timer keeps re-rolling movement long after C stopped.  C clears it at
- * seed0002 step 263, one line after "The goblin picks up a crude dagger.".
- * RNG-free; inert on every turn where HConfusion is 0. */
 async function nh_timeout_confusion() {
     const g = game;
     const p = g.u?.uprops?.[CONFUSION];
@@ -1931,22 +1553,6 @@ async function nh_timeout_confusion() {
     }
 }
 
-/* C ref: timeout.c:717-720 — the same loop's FAST arm:
- *     case FAST:
- *         if (!Very_fast)
- *             You_feel("yourself slow down%s.", Fast ? " a bit" : "");
- *         break;
- * Both macros are read AFTER the decrement (youprop.h): Very_fast is
- * `(HFast & ~INTRINSIC) || EFast` — the timed half, which the decrement just
- * cleared — and Fast is `HFast || EFast`, which stays true for a hero holding a
- * level-granted FROMEXPER bit.  seed4500's Knight is one, so C's line at step
- * 815 is "You feel yourself slow down a bit." and not the bare form.
- *
- * Required for the same reason as the INVULNERABLE slice: wiz_intrinsic() is
- * the first writer of a FAST timeout, and Very_fast moves the hero's per-turn
- * draw from allmain.c:135 (rn2(3) == 0) to allmain.c:131 (rn2(3) != 0).  With
- * no countdown the hero would keep taking the Very_fast branch for the rest of
- * the run, thirty turns after C stopped.  RNG-free. */
 async function nh_timeout_fast() {
     const g = game;
     const p = g.u?.uprops?.[FAST];
@@ -2009,56 +1615,6 @@ async function nh_timeout_levitation() {
 }
 
 
-/* C ref: timeout.c's nh_timeout() property loop, DEAF arm (timeout.c:751-757):
- *     set_itimeout(&HDeaf, 1L);
- *     make_deaf(0L, TRUE);
- *     disp.botl = TRUE;
- *     if (!Deaf) stop_occupation();
- * reached through the generic `if (!(--upp->intrinsic & TIMEOUT))` decrement.
- * This port has no generic uprops timer loop — only the WOUNDED_LEGS arm above
- * — so this is the DEAF slice of it, in the same narrow shape, on the flat
- * u.HDeaf slot js/cmd.js:8016, js/monmove.js:1762 and js/fastforward.js's
- * dosounds guard read.
- *
- * It is required as soon as anything SETS HDeaf, which js/eat.js rottenfood()
- * now does: with no decrement the hero stays permanently deaf and dosounds()
- * never draws again.  seed4500's rotten-food knockout is HDeaf=3, and C's third
- * unconscious turn is exactly where the timer hits 0 and dosounds' rn2(200)
- * comes back.
- *
- * make_deaf's message is suppressed here for the reason C suppresses it
- * (potion.c:447 `if (Unaware) talk = FALSE;`) — the only way to reach this in
- * the corpus is while unconscious, and C emits no "You can hear again." on
- * seed4500 step 526.  RNG-free. */
-/* C ref: timeout.c:156-164 — the BLINDED case of nh_timeout()'s uprops[]
- * countdown:
- * The switch runs only after the generic property loop has already executed
- * `--upp->intrinsic`.  Consequently, the `was_blind` read in this case sees
- * the post-decrement value (zero for ordinary timed blindness).
- *
- *     case BLINDED: {
- *         boolean was_blind = !!Blind;
- *         set_itimeout(&HBlinded, 1L);
- *         make_blinded(0L, TRUE);
- *         if (was_blind && !Blind) stop_occupation();
- *         break;
- *     }
- * BLINDED is property index 15, so this slice sits between CONFUSION (14) and
- * DEAF (16) in the loop order above.  Both halves are RNG-free.
- *
- * NOTHING in js/ decremented HBlinded: make_blinded (js/zap.js:472) SETS it,
- * wipeoff() clears it, and there was no per-move countdown at all, so a
- * temporarily blinded hero stayed blind for the rest of the game and every
- * reader of the timeout saw a frozen number.  Witness: seed4500's #wizintrinsic
- * menu at steps 1092/1151/1167 lists `i - blinded [93]` in C and `[142]` here,
- * a gap of exactly the 49 moves since the raven blinded her.
- *
- * C's loop condition is `(upp->intrinsic & TIMEOUT) && !(--upp->intrinsic &
- * TIMEOUT)`: it decrements the WHOLE intrinsic word but tests only the TIMEOUT
- * bits, so a prop carrying FROMOUTSIDE/FROMFORM with a zero timeout is not
- * touched.  set_HBlinded/BlindedTimeout (js/zap.js) are the accessors that read
- * and write the same u.uprops[BLINDED] object make_blinded and Blind() use --
- * the live numeric spelling, not the dead string key. */
 async function nh_timeout_blinded() {
     const g = game;
     if (!g.u)
@@ -2071,10 +1627,6 @@ async function nh_timeout_blinded() {
     set_HBlinded(HBlinded_raw() - 1);
     if (BlindedTimeout() !== 0)
         return; /* C: still counting down */
-    /* C's `was_blind` declaration is inside the switch case reached after the
-     * outer loop's `--upp->intrinsic`, so sample it here, after our matching
-     * decrement.  Sampling before the decrement made a plain timeout expiry
-     * stop a counted rest that C leaves running (gen392 turn 265). */
     const was_blind = !!Blind();
     set_HBlinded(1);            /* C set_itimeout(&HBlinded, 1L) */
     make_blinded(0, true);      /* prints "You can see again." */
@@ -2109,18 +1661,6 @@ async function nh_timeout_deaf() {
     u.HDeaf = (u.HDeaf | 0) - 1;
     if ((u.HDeaf | 0) !== 0)
         return;
-    /* C timeout.c:753-759 — the DEAF arm, in C's order:
-     *     set_itimeout(&HDeaf, 1L);
-     *     make_deaf(0L, TRUE);
-     *     disp.botl = TRUE;
-     *     if (!Deaf) stop_occupation();
-     * The set_itimeout(&HDeaf, 1L) before the call is what makes make_deaf's
-     * `old` non-zero, which is the whole reason it prints "can hear again."
-     * rather than "are unable to hear anything."  The talk arm used to throw
-     * here on the grounds that no corpus session reached a non-Unaware DEAF
-     * expiry; gen413-reseed-seed565607 step 1067 does, and C's topline there
-     * is "You can hear again.  You stop waiting." — the second half being the
-     * stop_occupation below. */
     u.HDeaf = 1;                /* C set_itimeout(&HDeaf, 1L) */
     make_deaf(0, true);
     g.disp = g.disp || {};
@@ -2179,24 +1719,6 @@ const FOOT_AM = 5;
 /* objects[] index of "corpse", from js/oc_name_data.js's OC_NAME table —
  * objects.h is an X-macro file with no `#define CORPSE` text to grep. */
 const CORPSE_AM = 265;
-/* C ref: timeout.c:1221-1338 slip_or_trip() — the fumble message.
- *
- * Three branches, and only the last two draw:
- *   1. an object underfoot (and on foot, and not standing in a pool) —
- *      "You trip over <doname>."  RNG-free.
- *   2. fumbling from outside (slippery ice), or standing on ice — the ice
- *      branch, whose `is_ice(u.ux,u.uy) && !rn2(3)` test is the only way in
- *      when HFumbling has no FROMOUTSIDE bit.
- *   3. otherwise — `switch (rn2(4))`, the four "trip over your own feet /
- *      slip and nearly fall / flounder / stumble" lines.
- *
- * seed0014 step 488 is branch 3 with rn2(4)=2: C's recorded topline there is
- * "You slip and nearly fall."
- *
- * NOT PORTED, and each is surfaced rather than guessed: the mounted arms
- * (u.usteed is null in every corpus session that reaches here) and the
- * cockatrice-corpse instapetrify tail of branch 1.
- */
 async function slip_or_trip() {
     const g = game;
     const u = g.u;
@@ -2206,11 +1728,6 @@ async function slip_or_trip() {
     if (otmp && on_foot && !u.uinwater && is_pool(u.ux | 0, u.uy | 0))
         otmp = null;
     if (otmp && on_foot) {
-        /* C timeout.c:1232-1247 — trip over something in particular.  The
-         * PLNMSG_ONE_ITEM_HERE pronoun arm needs iflags.last_msg, which this
-         * port does not carry; the `(otmp->dknown || !Blind)` arm below is the
-         * one every corpus path takes (the hero has just stepped onto the pile
-         * and look_here named it). */
         /* C timeout.c:1234 — after look_here reported one item, refer to it
          * by pronoun; this port previously always regenerated its full name. */
         const oneItem = (g.iflags?.last_msg | 0) === PLNMSG_ONE_ITEM_HERE;
@@ -2343,36 +1860,6 @@ function _fumble_hallucinating() {
     const E = (p) => (up[p]?.extrinsic | 0);
     return !!(H(HALLUC) && !(H(HALLUC_RES) || E(HALLUC_RES)));
 }
-/* C ref: timeout.c:901-930 — nh_timeout()'s FUMBLING arm (property index 25,
- * so it runs between DEAF (16) and WOUNDED_LEGS (26) in C's uprops[] walk).
- *
- *     case FUMBLING:
- *         if (u.umoved && !(Levitation || Flying)) {
- *             slip_or_trip();
- *             nomul(-2);
- *             gm.multi_reason = "fumbling";
- *             gn.nomovemsg = "";
- *             if ((inv_weight() > (WT_NOISY_INV * -1))) {
- *                 if (!Deaf) You("make a lot of noise!");
- *                 wake_nearby(FALSE);
- *             }
- *         }
- *         HFumbling &= ~FROMOUTSIDE;
- *         if (Fumbling)
- *             incr_itimeout(&HFumbling, rnd(20));
- *
- * The WRITER of this timer is already live: js/do_wear.js Boots_on's
- * FUMBLE_BOOTS arm arms HFumbling with rnd(20) (do_wear.c:231-234), which
- * seed0014 fires at step 470.  With no countdown the timer sat there forever
- * and the fumble never happened: C's leaf 21529 is `rn2(4) @slip_or_trip`
- * and 21530 `rnd(20) @nh_timeout(timeout.c:924)`, and this port drew neither.
- *
- * nomul(-2) is the load-bearing half — the hero is helpless for two turns, so
- * C runs those turns WITHOUT reading a key.  A port that skips it consumes two
- * keystrokes C does not.
- *
- * iflags.defer_decor / deferred_decor is not carried by this port (nothing
- * sets it), so the tail of C's arm is a no-op here. */
 async function nh_timeout_fumbling() {
     const g = game;
     const u = g.u;
@@ -2415,9 +1902,6 @@ async function nh_timeout_fumbling() {
         fu.intrinsic = box.value;
     }
 }
-/* C youprop.h:240 Levitation / :253 Flying.  u.usteed is null in every corpus
- * session, so Flying's steed disjunct cannot fire; it is written out anyway so
- * the guard reads as C's. */
 function _fumble_levitation() {
     const p = game.u?.uprops?.[LEVITATION];
     return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0));
@@ -2456,7 +1940,6 @@ function _merge_countdown_pline() {
 // non-helpless monster occupies one of the 8 squares adjacent to the hero.
 // moveloop_core (allmain.c:563) calls this after the occupation callback; if it
 // returns TRUE the occupation is interrupted (stop_occupation()).  This is what
-// ends seed4200's study: a wandering monster reaches an adjacent square at
 // turn 15 and breaks the `learn` occupation before its delay counts to 0.
 export function monster_nearby() {
     const g = game;
@@ -2484,15 +1967,12 @@ export function monster_nearby() {
             if (!(hallu || (!mtmp.mpeaceful && !noattacks_mndx(mndx))))
                 continue;
             // C: not a still-hidden hider (is_hider && mundetected).  Hiders are
-            // not corpus-reachable during a study; a non-hider passes through.
             if (mtmp.mundetected && mtmp._is_hider)
                 continue;
             // C: not helpless (asleep/frozen).  Our roster tracks mcanmove.
             if (mtmp.mcanmove === false || (mtmp.mfrozen | 0) > 0
                 || (mtmp.msleeping | 0))
                 continue;
-            // C: !onscary(...) — Elbereth/scare; not modelled here (no corpus
-            // session engraves Elbereth during a study) → treat as not scary.
             // C: canspotmon — hero can see or sense it.
             if (!canspotmon(mtmp))
                 continue;
@@ -2577,24 +2057,17 @@ async function moveloop_status_paint() {
 }
 
 // moveloop_core — FAITHFUL variant (FF_FAITHFUL=1).  Mirrors the calibrated
-// moveloop_core's shared structure (vision/bot/flush/rhack/captures/message
 // merge) but drives the per-turn world block via faithful_moveloop_turn() and
 // does the svm.moves++ INSIDE the head block (C's point) instead of at the
-// bottom.  Stage A target: seed8000 (dense, 1:1, non-Fast, no occupation, no
 // multi).  The occupation / multi<0 / multi>0 special loops are deliberately
-// NOT replicated here yet (seed8000 never enters them); Stage B/C extend the
-// faithful path to the Fast / run / bump-gap sessions that need them.
 // ════════════════════════════════════════════════════════════════════════════
 async function moveloop_core_faithful() {
     const g = game;
-    // NOTE: the painted-screen snapshot is NOT reset here.  It is captured at the
     // first movemon topline-overflow and lives until flush_screen pages and drops
     // it — and that page happens at the NEXT moveloop_core's flush (the topline
     // accumulated this turn is rendered at the following nhgetch).  Resetting at
-    // entry would wipe a still-unpaged snapshot.  The capture guard
     // (`if (_paintedSnapshot) return`) prevents overwriting an unpaged one.
     // C allmain.c:241 — the per-turn world block runs only when the PREVIOUS
-    // rhack consumed time (context.move was 1 coming in).  Same incoming gate as
     // the calibrated path.
     //
     // ...AND only when the hero is still alive.  C's losehp -> done() (end.c)
@@ -2604,21 +2077,17 @@ async function moveloop_core_faithful() {
     // ECMD_TIME would have bought is NEVER RUN.  This port defers that
     // interaction to the next command-read boundary (js/end.js module header,
     // drained at js/cmd.js:23823), which puts the world block on the WRONG side
-    // of the death; gate it on the same flag so the ordering matches C.
     //
-    // Measured on seed5002 segment 0 (killed by his own bounced bolt of fire):
     // C's segment stream ends at 5904 leaves and this port drew a further ELEVEN
     // — six mcalcmove rn2(12), maybe_generate_rnd_mon, gethungry and friends —
     // and that phantom turn's find_ac() (allmain.c:453, the only place C
     // recomputes u.uac) repainted AC:9 as AC:10 on all twelve remaining frames
     // while its docrt erased the still-painted fire beam off row 7.
     const incomingMove = !!(g.context?.move ?? 0) && !g._pendingDeath;
-    // ── FF_MLTRACE (env-gated, RNG-NEUTRAL telemetry) ───────────────────────────
     // Per-invocation moveloop_core_faithful entry marker — the JS analogue of C's
     // `^ctx_move[moveloop_core=N umv=N]` boundary.  Lets the per-turn / per-command
     // instruments (rng-slice-diff, turn-diff) read context.move AT EACH INVOCATION
     // ENTRY, so the banked-HEAD-block-vs-command-split ordering (the multi-step
-    // getobj keystone, e.g. seed0016 step 7 eat) is observable on the JS side at
     // the same boundary C records it.  Emitted ONLY when FF_MLTRACE=1
     // (pushRngLogEntry is a no-op unless the rng log is enabled, which only the
     // dev/diff tooling enables) → ZERO effect on scored runs, ZERO RNG consumed.
@@ -2631,13 +2100,10 @@ async function moveloop_core_faithful() {
             + ` run=${g.context?.run ? 1 : 0} mv=${g.context?.mv ? 1 : 0}]`);
     }
     // POST-MEAL frame freeze: if a done_eating committed topline is carrying into this
-    // post-meal turn, capture the PRE-turn painted frame now (before this turn's movemon
     // moves the pet).  C's cross-turn more() of the done_eating topline freezes the
     // PHYSICAL screen at the prior per-turn flush — the pet's glyph update for this
-    // turn's move is deferred until the --More-- releases (seed0014 steps 5/6: the pet
     // is drawn at its step-4 square during the step-5 --More--, then advances at step 6).
     // DISPLAY-ONLY: snapshots cells, no RNG, no state mutation.
-    // PARKED-NOTE: session=seed0014 citation-only
     let _postMealPreFrame = null;
     if (g._occ_committed_topl && g._occ_committed_topl.postMeal) {
         if (g._occPostMealNeedsRefresh) occupation_painted_tick();
@@ -2649,29 +2115,21 @@ async function moveloop_core_faithful() {
     if (incomingMove) {
         if (ENV.FF_MATTACK_TRACE === '1')
             pushRngLogEntry(`^ml_pre_world[result=${encodeURIComponent(String(g._resultMessage || '').slice(0,96))} pending=${encodeURIComponent(String(g._pending_message || '').slice(0,96))} force=${g._topl_force_breaks?.length|0}]`);
-        // ── cmdq fireassist swap: capture the pre-movemon frame ──────────────────
         // C ref: win/tty/topl.c more().  When this world block is the fireassist
         // swap's banked turn (g._fireSwapPending, set by _doswapweapon_cmd when a
         // dofire is still queued), the swap's deferred prinv line is committed to
-        // the topline NOW, before movemon moves the pet.  Capture this pre-movemon
         // painted frame + the pre-increment T: so dofire's getdir segment pager can
         // freeze the swap-prinv --More-- page on it ("@d%#", T:N) while the movemon
-        // pline page shows the post-movemon map ("@%%#", T:N+1) — seed1150 step 35
-        // vs 36.  DISPLAY-ONLY: no RNG, no state mutation.  Gated entirely on the
         // fireassist flag → ZERO effect on any non-fireassist world block.
-        // PARKED-NOTE: session=seed1150 citation-only
         if (g._fireSwapPending) {
             g._fireSwapPreFrame = capture_painted_frame();
         }
-        // ── pickup-encumber deferred --More--: capture the pre-movemon frame ─────
         // C ref: allmain.c:248 encumber_msg() fires at the TOP of this turn block,
         // BEFORE movemon().  The pickup_prinv ("You have a little trouble lifting
         // ...") committed last turn joins the encumber_msg pline here, so its
         // --More-- pages over the PRE-movemon physical screen (the pet has not
         // moved yet, svm.moves not incremented, and the encumbrance bot() has not
-        // repainted → cap shows the pre-pickup value).  Capture that frame + the
         // displayed (pre-encumber) cap now, before movemon moves the pet; flush
-        // freezes the prinv page on it.  Gated on the dopickup flag → ZERO effect
         // on any non-pickup turn.  DISPLAY-ONLY: no RNG, no state mutation.
         if (g._pickupEncMorePending) {
             const f = capture_painted_frame();
@@ -2686,26 +2144,10 @@ async function moveloop_core_faithful() {
         // result built from several joined plines (e.g. a RAY spell's self-hit +
         // pet-kill message) loses its internal boundaries by the time the merge
         // below reads them, and is shown as one opaque atomic pline that never
-        // pages — see _topl_merge_result's aJoinsHint doc (seed4200 step 782).
         const _resultMsgJoins = _topl_joins_snapshot(g._resultMessage);
-        /* ...and PERSIST it, keyed to the string it describes, in the durable
-         * side-channel js/cmd.js:_result_append_join already maintains
-         * (`{src, joins}`).  `_resultMsgJoins` is a local, so any consumer that
-         * runs INSIDE faithful_moveloop_turn() below — notably
-         * js/fastforward.js:648, where a hero killed mid-movemon merges the
-         * command result into the pending plines before paging — can only reach
-         * the single-slot `_topl_joins_src`, which this turn's movemon plines
-         * have by then overwritten.  Its snapshot therefore comes back null and
-         * the command result collapses to one atomic pline that never pages.
-         * MEASURED on seed0399-wizard-hallu-actions step 435: the throw's
-         * "The gray dragon scale mail misses the soldier ant." + encumber_msg's
-         * "Your movements are now unencumbered." (a genuine join at offset 50)
-         * were shown as one 88-column line WRAPPED onto row 1, where C pages at
-         * the join and shows the two on successive frames. */
         if (g._resultMessage && _resultMsgJoins && _resultMsgJoins.length)
             g._resultMessageJoins = { src: g._resultMessage, joins: _resultMsgJoins.slice() };
         // C allmain.c:245-446 — drive the faithful per-turn do-while: MOVEMON
-        // (spend prior rations) → HEAD (allot fresh + svm.moves++) → capture →
         // SEER, all from real u.umovement / fmon state.
         await faithful_moveloop_turn();
         // C ref: allmain.c:252-295 — the movemon() plines produced inside the
@@ -2724,20 +2166,13 @@ async function moveloop_core_faithful() {
         // so a turn whose movemon message fitted on the topline left the tag armed
         // for every later turn, and the next FORCED more() from a command (dopray's
         // force_more, a getpos/yn prompt) rendered `T:` from that long-dead turn.
-        // seed4500 step 286: C shows the prayer --More-- at T:66, we showed T:62 —
         // the turn-274 cobra message's tag, four turns stale, with every other
         // status field byte-identical.
-        // PARKED-NOTE: session=seed4500 citation-only
         if (g._pending_message) {
             g._movemonMsgTurn = (g.moves || 1) - 1;
         } else {
             g._movemonMsgTurn = null;
         }
-        /* Opt-in diagnostic for the boundary where the command-result channel
-         * and this turn's movemon topline are recombined.  The strings alone
-         * cannot reveal a lost update_topl boundary; include both the durable
-         * result hint captured above and the live pending-line side-channel.
-         * DISPLAY telemetry only; absent unless FF_TOPL_TRACE=1. */
         if (typeof process !== 'undefined' && ENV?.FF_TOPL_TRACE === '1') {
             const _pendingJoins = _topl_joins_snapshot(g._pending_message);
             pushRngLogEntry(
@@ -2755,7 +2190,6 @@ async function moveloop_core_faithful() {
         // boundaries, and an overflowing command-result+movemon topline is shown
         // UNPAGED (missing its --More-- pages).  For a surviving turn C always pages
         // an overflow, so the un-rebased merge only ever mismatched on already-failing
-        // turns; here it is the seed4200 pre-death combat ("You fail to cast the spell
         // correctly.  The ettin mummy hits!  ...") that must page across 3 --More--
         // frames before the wizard-mode "You die..." pager, else the death event's
         // recorded keystroke window shifts and the "Die?"/savelife screens misalign.
@@ -2777,37 +2211,24 @@ async function moveloop_core_faithful() {
                 `^topl_merge_result[result=${encodeURIComponent(String(g._resultMessage || ''))}`
                 + ` joins=${(_mergedResultJoins || []).join(',')}]`);
         }
-        // ── POST-MEAL cross-turn --More-- (faithful, gated) ──────────────────────
         // C ref: win/tty/topl.c update_topl/more().  After an eat occupation ends, the
         // done_eating topline ("You're finally finished." / "You finish eating X.") was
         // shown at the meal's last per-turn flush and is still the committed topline
         // (_occ_committed_topl.postMeal).  This post-meal turn's movemon may pline (the
-        // pet picking up the meal's leftover — seed0014 step 5), and that FRESH pline
-        // faces the SAME update_topl join-vs-more() gate as every other pline reaching
         // an un-acknowledged topline: JOIN when the two fit the CO-1-8 reserve, force a
         // cross-turn more() only when they do not.
         //
         // PREVIOUSLY this forced more() unconditionally, on the theory that C "still
-        // pages regardless of width" — but the cited seed0014 example (24 + 48 = 74
         // cols) is itself >= TOPL_LIMIT (71) and so was ALWAYS going to fail the
         // ordinary join test; it never demonstrated an exception to it, so the
         // "regardless of width" reading was unproven.  Corrected to run the same
-        // _topl_joins_committed/_topl_merge_result gate the mid-meal path above already
-        // uses, rather than assume a page every time.  Gated entirely on
-        // _occ_committed_topl.postMeal → ZERO effect on any session that did not just
-        // finish an eat occupation, and behaviour is UNCHANGED on every case measured so
-        // far (seed0014 and gen667-grammar-seed267992 both still fail the join test and
         // still force a page here) — this is a correctness fix for the general rule, not
-        // a behavioural change on the sessions this file cites.
         //
-        // NOTE: gen667-grammar-seed267992's OWN first divergence (frame 90,
         // "You finish eating the cram ration.  Sirius misses the lichen." vs this port's
         // "Sirius misses the lichen.  You finish eating the cram ration.--More--") is NOT
         // fixed by this block — it is already wrong by the time eat_occupation_turn()
         // commits `thisTurnMsg` above (the finishing turn's OWN movemon pline is ordered
         // before its done_eating pline), which this block never revisits.  See the
-        // eat_occupation_turn comment above `thisTurnMsg` for what was investigated
-        // there and why a fix was not landed this session.
         const pm = g._occ_committed_topl;
         if (pm && pm.postMeal) {
             // The done_eating committed topline (pm.text) lives only in this bookkeeping
@@ -2853,43 +2274,16 @@ async function moveloop_core_faithful() {
     // a find_ac() is C's own tutorial gamestate stash (nhlua.c:1926-1937
     // setnotworn()+freeinv() for every inventory item — worn.c:147 setnotworn
     // does NOT call find_ac), where C relies on exactly this per-input recompute.
-    // That is why C's seed0500 renders AC:7 on the two tutorial-arrival --More--
     // frames (steps 17-18, painted from inside goto_level before moveloop_core
     // comes back around) and AC:10 from the first post-arrival input (step 19).
     // RNG-free.
     //
-    // Gated on the same pending-death flag as the world block above and for the
     // same C reason: allmain.c:453 sits in the once-per-player-input block, and
     // losehp -> done() never returns to it.  find_ac() is the ONLY place C
     // recomputes u.uac (erode_obj does not; the thirteen other call sites are
     // do_wear/polyself/spell paths), so a hero killed while wearing armor the
-    // blow eroded keeps the PRE-erosion AC on every remaining frame.  Measured
-    // on seed5002 segment 0: burnarmor smoulders the hero's cloak on the killing
     // bolt and C renders AC:9 for all twelve frames after it, where this port
     // recomputed AC:10.
-    /* C allmain.c:444-450, the head of the same once-per-player-input block,
-     * two statements ahead of find_ac():
-     *     clear_splitobjs();
-     *     if (u.uhave.amulet && !u.uevent.amulet_wish) {
-     *         u.uevent.amulet_wish = 1;
-     *         display_nhwindow(WIN_MESSAGE, TRUE);
-     *         urgent_pline("The Amulet is bestowing a wish upon you!");
-     *         makewish();
-     *     }
-     * This had no port.  seed0373-barbarian-quest-tour is handed an Amulet by
-     * level_tele's endgame prerequisite (js/cmd.js) and lands on the Plane of
-     * Fire, so C fires the wish on the very next input: step 103's "It is hot
-     * here." is PAGED by the display_nhwindow (which is why C shows
-     * "--More--" there and this port did not), step 104 carries
-     * "The Amulet is bestowing a wish upon you!  You may wish for an object."
-     * and step 105 the getlin.
-     * The wish is ESC'd in that session, and C's makewish turns an ESC into an
-     * EMPTY wish string, which readobjnam answers with a RANDOM object
-     * (rn2(13) @ objnam.c:4996) — so this block is RNG-load-bearing, not just a
-     * message.  makewish() is js/wizcmds.js's single shared body, the one C
-     * shares between wiz_wish, the wand, the throne and this call site.
-     * clear_splitobjs() is a no-op in this port (no split-object registry) and
-     * is not mirrored. */
     const _u_aw = g.u || {};
     if (!g._pendingDeath && (_u_aw.uhave && _u_aw.uhave.amulet)
         && !(_u_aw.uevent && _u_aw.uevent.amulet_wish)) {
@@ -2932,55 +2326,6 @@ async function moveloop_core_faithful() {
     }
     if (!g._pendingDeath)
         find_ac();
-    /* C ref: allmain.c:454-470, the rest of that same once-per-player-input
-     * block, which this port stopped at find_ac():
-     *
-     *     if (!svc.context.mv || Blind) {
-     *         if (Hallucination) {                  // update screen randomly
-     *             see_monsters(); see_objects(); see_traps();
-     *             if (u.uswallow) swallowed(0);
-     *         } else if (Unblind_telepat || Warning || Warn_of_mon
-     *                    || any_visible_region()) {
-     *             see_monsters();                   // TODO: optimize this
-     *         }
-     *         if (gv.vision_full_recalc) vision_recalc(0);
-     *     }
-     *
-     * see_monsters() re-newsym()s EVERY monster on the level.  That is what
-     * keeps a WARNING hero's warning glyphs honest: mon_warning() (display.h:64)
-     * gates on `mdistu(mon) < 100`, a distance to the HERO, so a glyph can stop
-     * being warranted because the hero moved rather than because the monster
-     * did — and nothing else on the display path repaints a far-away square.
-     *
-     * Measured on seed0360-wizard-world-tour step 334 (Dlvl:41 wizard1, key "k",
-     * hero walking north): two monsters sit at (62,17) and (63,17).  At step 333
-     * the hero is at (63,8), mdistu 82 and 81, and BOTH sides paint a "2" on
-     * row 18.  At step 334 the hero is at (63,7), mdistu 101 and 100 — C clears
-     * both cells, this port left them painted.  That was the session's first
-     * screen miss and the head of a 9-frame miss run, on the RENDER-ONLY axis.
-     *
-     * KNOWN DEVIATION, deliberate: C's `if (gv.vision_full_recalc)
-     * vision_recalc(0)` is INSIDE this `!context.mv || Blind` guard; this port
-     * has always run it unconditionally a few lines below and that is left
-     * alone here, because moving it is a separate change with its own
-     * measurement.  Only the see_* arms are added.
-     *
-     * The Hallucination arm's `if (u.uswallow) swallowed(0)` was omitted on
-     * the grounds that "swallowed() has no body (js/display.js:5818), and a
-     * hallucinating, swallowed hero does not occur on this corpus".  Both
-     * halves were true when written and are now false: the AT_ENGL/gulpmu
-     * landing gave swallowed() a real body, and seed0383 grants itself
-     * hallucination through #wizintrinsic at step 162 while INSIDE a stomach.
-     * MEASURED with a probe at C's display.c swallowed(): in the window after
-     * that grant C calls it at leaves 10608, 10616, 10624, 10632, 10640 and
-     * 10648 — six times where this port called it twice, and the four extra
-     * are exactly this line firing once per turn.  Each call redraws eight
-     * cage cells, each of which draws its own random_monster on the DISPLAY
-     * rng (display.c:2439 what_mon), so omitting it desynchronises that stream
-     * as well as leaving the cage stale.
-     *
-     * RNG-free on the scored stream: every newsym() this reaches draws only
-     * from rn2_on_display_rng, the separate DISPLAY isaac64 context. */
     if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=before_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
     }
@@ -3003,20 +2348,15 @@ async function moveloop_core_faithful() {
     // BEFORE the multi>0 run loop, so a nomul() fired from INSIDE that run loop —
     // i.e. from a run/travel domove — is left undrained when moveloop_core returns.
     // The next invocation then walked straight into rhack with multi still negative,
-    // captured the frame N turns early, and only ran the delayed turns after the key
     // had been read.
     //
-    // seed4500 step 784 is that case exactly: the punished hero travels one square,
     // hack.c:2983-2988 nomul(-2)s for "dragging an iron ball" from inside the run
     // loop, and C renders T:122 at the next nhgetch (turn 120 + the two dragged
     // turns) where this port rendered T:120 and ran turns 121/122 during the NEXT
     // keystroke.  Draining here — after the head world block, before the
     // vision/bot()/flush_screen that paints the frame this input is read against —
-    // puts those turns on C's side of the capture.
     //
-    // Gated entirely on g.multi < 0 AT INVOCATION ENTRY.  The post-rhack loop still
     // owns every nomul() that rhack schedules (it leaves multi == 0 behind), so on
-    // any session whose delays all come from rhack this loop never executes.
     let headCountdownGuard = 0;
     while ((g.multi | 0) < 0) {
         // Finish the current C moveloop_core before starting the next one.
@@ -3032,7 +2372,6 @@ async function moveloop_core_faithful() {
         await faithful_moveloop_turn();
         // C ref: allmain.c:453 — the once-per-player-input find_ac() of the SAME
         // moveloop_core call, which runs AFTER that call's world block.  See the
-        // post-rhack countdown loop for the measurement that fixed the order.
         const redoVision = !(g.context && g.context.mv) || Blind();
         find_ac();
         faithful_input_redraw();
@@ -3086,7 +2425,6 @@ async function moveloop_core_faithful() {
     // recorded space key) instead of being batched onto one topline.  This is the
     // continuation path (turns 2..N): the FIRST eating turn's world block already ran
     // above (incomingMove), so run the occupation callback + page here and RETURN.
-    // Gated on g.occupation === eatfood → ZERO effect on any non-eat session.
     if (g.occupation === eatfood && (g.multi | 0) >= 0) {
         await eat_occupation_turn();
         // C allmain.c:557 — return after (*go.occupation)(); the outer for(;;) re-enters
@@ -3109,8 +2447,6 @@ async function moveloop_core_faithful() {
     await rhack(0);
     // C ref: allmain.c:608-609 — if (u.utotype) deferred_goto(); /* after rhack() */
     // Executes any level change scheduled by schedule_goto() (e.g. wiz_level_tele /
-    // level_tele, domagicportal).  Gated on u.utotype != 0 so it is a no-op for
-    // the 29 currently-passing sessions that never call schedule_goto.
     if (g.u?.utotype) {
         await deferred_goto();
     }
@@ -3128,30 +2464,22 @@ async function moveloop_core_faithful() {
         // SAME EXCEPTION for the learn occupation: study_book's begin message
         // ("You begin to memorize the runes.") must stay on the topline so the
         // study's per-turn movemon plines CONCATENATE onto it and page with the
-        // recorded space keys (seed4200).  Gated on g.occupation === learn → no
         // effect on any non-learn command.
         // AND THE SAME EXCEPTION FOR THE TIN-OPENING OCCUPATION: start_tin's
         // begin message ("It is not so easy to open this tin.") must stay on
         // the topline so consume_tin's "You succeed in opening the tin." and
         // the occupation turns' movemon plines CONCATENATE onto it and page at
-        // C's own width points.  MEASURED against the recording — gen651 step
-        // 37 and gen476 step 16 both render
         //   "It is not so easy to open this tin.  You succeed in opening the
         //    tin.--More--"
         // as ONE topline (35 + 2 + 31 = 68 <= CO-1-8), which is only reachable
-        // if the begin message survives this block.  Gated on
         // g.occupation === opentin → no effect on any non-tin command.
         if ((g.multi | 0) >= 0 && g.occupation !== learn && g.occupation !== opentin) {
             // ...but "replace" is not "destroy".  C never erases the topline
             // here at all: tty_nhgetch clears it at the START of the next key
-            // read, AFTER the screen capture, so a turn-consuming command's own
             // pline is still on the topline at the very next input boundary and
             // the following turn's movemon plines CONCATENATE onto it
             // (topl.c:257-266).  Clearing it outright dropped the line, which is
-            // why dopush's "With great effort you move the boulder." (f825ac91),
             // trapmove's "You are caught in a bear trap." (ce1bdfd5), dosearch0's
-            // "You find a hidden door." (seed0030 segment 3 step 247) and
-            // dotwoweapon's "You begin two-weapon combat." (seed0107 step 73) all
             // rendered as an EMPTY topline — each one correctly generated and
             // then destroyed.  The first two were patched at their own call
             // sites; this is the same repair made once, structurally, so every
@@ -3169,22 +2497,12 @@ async function moveloop_core_faithful() {
             //     forward strands the rest of their sequence: a counted search
             //     ('20s') re-enters with "The little dog misses the jackal." still
             //     pending, and stashing it loses "The little dog bites the
-            //     jackal.--More--" — measured, seed0900 74 -> 13.  Stashing
-            //     unconditionally (no guards) costs 883 step points corpus-wide,
             //     3912 -> 3029.
             //   !_resultMessage — a command that already published a result line
             //     (do_attack, moverock, the dotrap arm) owns the channel; this
             //     must not overwrite it.  Same precedence those call sites use.
             //
-            // DISPLAY-ONLY: no RNG, no turn, no state.  Corpus-wide RNG matched
             // is unchanged at 190562.
-            /* `g._attackPublished` (js/cmd.js domove's do_attack tail) means the
-             * COMMAND produced this line even though the channel was not empty
-             * when rhack was entered — `_preRhackMsg` is read BEFORE rhack's own
-             * nhgetch clears it, so it reports a leftover that is already gone by
-             * the time the command plines.  Honour the marker; without it the
-             * attack line is destroyed by the clear below ("You miss the coyote."
-             * at seed0014 step 546, "You destroy the kobold zombie!" at 607). */
             // C cmd.c do_cmdq_extcmd does not read a key between queued
             // commands; tty topl.c therefore retains the previous command's
             // topline. Preserve the continuation's plines and their pager
@@ -3235,16 +2553,8 @@ async function moveloop_core_faithful() {
     // block (faithful_moveloop_turn, C's allmain.c:243-446) followed by dig()
     // (the effort rn2(5) at dig.c:366, terminating in the digactualhole pit
     // rn1(4,2) at dig.c:739).  The number of turns falls out of the C effort
-    // formula (4 for seed0314's level-1 archeologist), NOT hardcoded.  Gated on
-    // g.occupation === dig → ZERO effect on any non-dig session.
     if (g.occupation === dig && (g.multi | 0) >= 0) {
         let digGuard = 0;
-        /* The HORIZONTAL (wall) dig — flags.autodig, started this same turn by a
-         * `k`-into-rock move (seed3300) — runs the dig() occupation BEFORE the
-         * turn's movemon: the C trace shows HEAD → dig rn2(5)[other] → movemon
-         * (distfleeck), the dig already pinned the hero in place this turn.  The
-         * DOWNWARD pit dig (seed0314) keeps the movemon-then-dig order (its `>`
-         * apply turn has no pre-occupation HEAD).  Distinguished by digging.down. */
         const _digHorizontal = !!(g.context && g.context.digging && !g.context.digging.down);
         if (_digHorizontal) {
             // ── HORIZONTAL (wall) autodig — per-turn paged like the learn driver ──
@@ -3253,7 +2563,6 @@ async function moveloop_core_faithful() {
             // turn's movemon (whose pet plines, e.g. "The little dog picks up a
             // looking glass.", append to the same topline).  win/tty/topl more()
             // pages the accumulated topline whenever it overflows CO-1, freezing
-            // the screen and consuming one recorded space key per page (seed3300
             // steps 12-19).  Mirror with a per-turn flush_screen(1): the begin
             // message "You start digging." (saved to _resultMessage by the autodig
             // branch) seeds the topline; each turn's dig()+movemon plines append;
@@ -3279,7 +2588,6 @@ async function moveloop_core_faithful() {
             }
             // The final (non-overflowing) topline remainder stays on
             // _pending_message; hand it to _resultMessage so the next rhack(0)
-            // restores it for the post-dig screen capture (the C topline persists
             // until the next nhgetch).
             if (g._pending_message) {
                 _topl_stash_result();
@@ -3296,7 +2604,6 @@ async function moveloop_core_faithful() {
             if (r === 0) g.occupation = null;
         }
         // C ref: win/tty/topl.c — the dig occupation's terminating message
-        // ("You dig a pit in the floor.", dig.c:707) CONCATENATES onto the same
         // topline as the occupation's begin-message ("You start digging
         // downward.", dig.c:1349), which rhack saved into _resultMessage.  Both
         // share one topline until the next tty_nhgetch.  The dig() pline above set
@@ -3315,7 +2622,6 @@ async function moveloop_core_faithful() {
         // the turn where the hero is freshly pit-trapped: its movemon moves the pet
         // one more step, and that final position is what C's post-dig screen shows
         // (the dig-step screen reflects the post-occupation turn, not the
-        // pit-making turn).  Run it eagerly here so the captured screen matches C
         // (e.g. the pet at its post-occupation-turn square, possibly out of the
         // pit's reduced 3x3 sight and therefore not drawn) instead of deferring it
         // a full step (which left every dark-room dig screen one turn behind C).
@@ -3329,7 +2635,6 @@ async function moveloop_core_faithful() {
         // NO separate post-occupation turn (C's wall-break turn is an ordinary
         // turn; the next key is the next command).  Skip the extra turn here, else
         // JS runs one turn too many and the hero's subsequent moves lag C by one
-        // turn (seed3300 hero drift at turn 10).  The DOWNWARD pit dig keeps the
         // post-occupation turn (its breaking turn ran movemon-then-dig).
         if (!_digHorizontal) {
             await faithful_moveloop_turn();
@@ -3362,12 +2667,9 @@ async function moveloop_core_faithful() {
     // Drive the learn occupation to its terminating point HERE, modelled exactly
     // on the dig/eat drivers above: each turn = one faithful per-turn world block
     // (faithful_moveloop_turn) followed by learn() (the delay countdown), THEN the
-    // monster_nearby() interrupt check.  For seed4200 the level-7 blessed finger-
     // of-death book schedules an 80-turn delay, but a wandering monster reaches an
     // adjacent square at turn 15 → monster_nearby() fires → stop_occupation()
     // ("You stop studying.").  The number of turns falls out of the world state,
-    // NOT hardcoded.  Gated on g.occupation === learn → ZERO effect on any
-    // non-learn session.
     if (g.occupation === learn && (g.multi | 0) >= 0) {
         let learnGuard = 0;
         // The study's begin message ("You begin to memorize the runes.") is on
@@ -3395,7 +2697,6 @@ async function moveloop_core_faithful() {
         // driver is entered once per read/study command) rather than per iteration —
         // resetting each iteration re-armed the message on the second driver turn and
         // produced a duplicate "You stop studying." AFTER the knockback line, whose
-        // extra --More-- page ate the seed4200 wish (^W) keystroke and cascaded into
         // the wizard-mode "Die?"/savelife death event's keystroke desync.
         g._studyStopMsg = false;
         while (g.occupation === learn && learnGuard++ < 4096) {
@@ -3437,7 +2738,6 @@ async function moveloop_core_faithful() {
         // C ref: allmain.c:543-565 — when the study completes NORMALLY (learn()
         // returned 0), C's outer for(;;) re-enters moveloop_core ONCE MORE with
         // context.move still 1 and runs a full NORMAL post-occupation turn (its
-        // mcalcmove/gethungry/exerchk RNG — e.g. seed4200 turn 21's exercise rn2(19)
         // after the create-monster study completes) BEFORE rhack reads the next
         // recorded command.  Run that turn eagerly here (the dig-driver pattern),
         // then suppress the next head's spurious block (context.move = 0).  In the
@@ -3468,18 +2768,12 @@ async function moveloop_core_faithful() {
     //
     // The turn COUNT is not hardcoded: it is svc.context.tin.reqtime, which
     // start_tin drew as rn1(1 + 500 / (ACURR(A_DEX) + ACURRSTR), 10).
-    // MEASURED on the recordings — gen407 rn2(22)=21 → 31 turns (turns 2..32,
-    // spread over recorded steps 5..15 by nine --More-- pages), gen476
-    // rn2(21)=18 → 28 turns (all inside step 16), gen651 rn2(24)=0 → 10 turns
-    // (all inside step 37).  Gated on g.occupation === opentin → ZERO effect on
-    // any session that never opens a tin (4 of 688 train, 0 of 44 public).
     if (g.occupation === opentin && (g.multi | 0) >= 0) {
         let tinGuard = 0;
         let tinInterrupted = false;
         while (g.occupation === opentin && tinGuard++ < 4096) {
             // C allmain.c:209 — the head world block of THIS moveloop_core
             // invocation, run under C's own `if (svc.context.move)` test.  The
-            // recorded trace shows it BEFORE the first callback: gen651 step 37
             // is `rn2(24) @ start_tin` → `^ctx_move[rhack=1]` → the turn-12
             // world block → `^ctx_move[moveloop_core=1]` → opentin().
             if (g.context && g.context.move) await faithful_moveloop_turn();
@@ -3496,7 +2790,6 @@ async function moveloop_core_faithful() {
             if (r === 0) g.occupation = null;
             // C allmain.c:504-507 — monster_nearby() → stop_occupation() +
             // reset_eat(), the SAME interrupt every occupation takes.  It is
-            // hostile-only, which is why gen407's adjacent tame little dog does
             // NOT interrupt its 31-turn open in the recording.
             if (g.occupation === opentin && monster_nearby()) {
                 await stop_occupation();
@@ -3541,9 +2834,6 @@ async function moveloop_core_faithful() {
     // (make_engr_at → exercise(A_WIS) rn2(19)), then RETURNS — the world block
     // (movemon) is the NEXT moveloop_core invocation (context.move still 1).  Mirror
     // that order exactly: run engrave() (which clears the occupation when finished),
-    // THEN run one post-occupation world block.  seed2200 step 33: 8× rn2(25) smudge
-    // (in doengrave) → exercise rn2(19) (here) → movemon (here).  Gated on
-    // g.occupation === 'engrave' → ZERO effect on any non-engrave session.
     if (g.occupation === 'engrave' && (g.multi | 0) >= 0) {
         let engrGuard = 0;
         // C engrave.c:1268 — (*go.occupation)() == engrave(); returns 0 when finished.
@@ -3577,12 +2867,9 @@ async function moveloop_core_faithful() {
     // dig/learn drivers: each turn = one faithful per-turn world block
     // (faithful_moveloop_turn, C's allmain.c:243-446) FOLLOWED by picklock()
     // (the rn2(100) success roll at lock.c:98).  The number of turns falls out
-    // of the rn2(100) vs chance comparison, NOT hardcoded — for seed0430 the
     // credit-card chance(=12) yields 5 busy/success turns (61,67,25,33 busy,
     // 10 success).  On success picklock() returns 0 and the box is unlocked;
     // C then runs ONE more post-occupation world turn (context.move still 1)
-    // before rhack reads the next key.  Gated on g.occupation === picklock →
-    // ZERO effect on any non-lockpick session.
     if (g.occupation === picklock && (g.multi | 0) >= 0) {
         let pickGuard = 0;
         // C ref: allmain.c:209-558 — one moveloop_core invocation per occupation
@@ -3602,7 +2889,6 @@ async function moveloop_core_faithful() {
         // the first — is governed by exactly C's own test, `if (svc.context.move)`,
         // and the loop below is a literal transcription of it.  This driver used to
         // run a block before EVERY callback unconditionally, which is right for the
-        // #loot path and wrong for the autounlock path: seed0007's step-52 door pick
         // emitted the turn's movemon/mcalcmove/maybe_generate_rnd_mon/gethungry
         // leaves BEFORE picklock's rn2(100) where C emits them after (recorded leaf
         // 3219: C rn2(100)@picklock(lock.c:98) vs JS rn2(5)@distfleeck).  The turn
@@ -3644,12 +2930,9 @@ async function moveloop_core_faithful() {
     // turn = one faithful per-turn world block (faithful_moveloop_turn, C's
     // allmain.c:243-446) FOLLOWED by forcelock() (wake_nearby + the rn2(100) >=
     // chance roll at lock.c:244).  The number of turns falls out of the rn2(100)
-    // vs chance(=oc_wldam*2) comparison, NOT hardcoded — for seed0387 the spear's
     // chance(=16) yields 6 busy turns then a success (rn2(100)=4 < 16); on success
     // forcelock() calls breakchestlock() (rn2(3) destroy + per-content shatter)
     // and returns 0.  C then runs ONE more post-occupation world turn (context.move
-    // still 1) before rhack reads the next key.  Gated on g.occupation === forcelock
-    // → ZERO effect on any non-force session.
     if (g.occupation === forcelock && (g.multi | 0) >= 0) {
         let forceGuard = 0;
         // C lock.c:743 begin message ("You start bashing it with your spear.") is in
@@ -3658,7 +2941,6 @@ async function moveloop_core_faithful() {
         // shatter!" into g._forceMsgs.  Collect the full message sequence (begin +
         // staged) and page them turn-by-turn AFTER the occupation completes (C's tty
         // more()s the committed topline whenever a fresh pline arrives mid-occupation;
-        // each --More-- consumes one recorded space — seed0387 steps 26-28).
         // C lock.c:743's begin message stays on the COMMAND-RESULT channel for the
         // whole occupation.  It used to be lifted out into a local and the channel
         // nulled, which cost the mid-occupation movemon plines their flush frame:
@@ -3667,7 +2949,6 @@ async function moveloop_core_faithful() {
         // _pending_message opens on top of a committed _resultMessage.  With the
         // channel empty that arm never fired, so the --More-- that message raises
         // had no frame of its own and fell back to the coarse end-of-occupation
-        // one.  seed0108 step 235 is the measurement (see the assembly below).
         const beginMsg = g._resultMessage || '';
         while (g.occupation === forcelock && forceGuard++ < 4096) {
             // C allmain.c:243-446 — one full per-turn world block (movemon + HEAD;
@@ -3683,7 +2964,6 @@ async function moveloop_core_faithful() {
         // more()s over is the gbuf as of the SUCCESS TURN's movemon — every one
         // of those plines fires inside the occupation callback, before control
         // returns to moveloop_core for the post-occupation turn.  Freeze the map
-        // HERE, before that extra turn's movemon repaints it.  (seed0014 steps
         // 44-46: C shows the pet one square behind for all three --More-- pages
         // and catches up only at step 47, the pre-rhack flush at cmd.c:5104.)
         occupation_painted_tick();
@@ -3709,10 +2989,8 @@ async function moveloop_core_faithful() {
         //
         // WHY THE WIDTH RULE, NOT ONE PAGE PER MESSAGE.  C's update_topl (topl.c)
         // pages only when the NEXT pline would not fit the CO-1-8 reserve, so
-        // consecutive short messages share a page.  seed0014 steps 44-46 page after
         // every message because every pair genuinely overflows (45+2+32=79,
         // 32+2+43=77, 43+2+30=75, all > 71) -- which is why one-page-per-message
-        // looked right.  seed0108 step 236 is the case that is not: C shows
         // "The kitten drops a lamp.  You succeed in forcing the lock." on ONE page
         // (24+2+32=58 <= 71), and the per-message loop both paged them apart AND
         // dropped the kitten line entirely, because it wiped _pending_message
@@ -3721,7 +2999,6 @@ async function moveloop_core_faithful() {
         // The frozen frame per page then comes from flush_screen's own selection:
         // the per-pline flush frame when one was recorded (the kitten's drop, which
         // C froze mid-movemon with the kitten still standing on the lamp and the
-        // turn's HP regen not yet applied -- seed0014 step 235), falling back to the
         // end-of-occupation frame installed here, which is exactly what
         // occupation_force_more used to install for every page.
         {
@@ -3763,7 +3040,6 @@ async function moveloop_core_faithful() {
     // == wipeoff() BEFORE rhack -- no key is read across the span.  Modelled on the
     // picklock/forcelock drivers, which have exactly this shape.
     //
-    // TURN COUNT IS MEASURED FROM C, NOT ASSUMED.  seed0108 step 62 (key "\n",
     // the newline that submits "# wipe") carries 55 recorded leaves and they split
     // cleanly into TWO world turns at the two moveloop_core(allmain.c:360) leaves:
     //   leaves 0..24  distfleeck/dochug/dog_goal/dog_move/mcalcmove/maybe_generate_
@@ -3771,18 +3047,15 @@ async function moveloop_core_faithful() {
     //   leaves 25..54 the same shape again                       = the POST-occupation
     //                                                              turn, before rhack
     // wipeoff() itself draws nothing, so the count falls out of C's clamps (u.ucreamed
-    // = BlindedTimeout = 3 on this session, both <= 4, so the first callback finishes
     // the job and returns 0) rather than being hardcoded here.
     //
     // NO PAGING.  Both of wipeoff's plines fire inside that one callback, the topline
     // joiner concatenates them ("You've got the glop off.  You can see again." is 43
     // columns, well under CO-1), and C's recorded step-62 frame carries no --More--.
     // So unlike the forcelock driver there is nothing to page: leave the joined
-    // message on _pending_message and let the next nhgetch capture it over the
     // POST-occupation turn's map, which is what C's frame shows (the pet and the
     // homunculus have each moved twice).
     //
-    // Gated on g.occupation === wipeoff -> ZERO effect on any non-wipe session.
     if (g.occupation === wipeoff && (g.multi | 0) >= 0) {
         let wipeGuard = 0;
         while (g.occupation === wipeoff && wipeGuard++ < 4096) {
@@ -3796,7 +3069,6 @@ async function moveloop_core_faithful() {
         // C ref: allmain.c:241-446 — once the occupation clears, C's outer for(;;)
         // re-enters moveloop_core with context.move still 1 and runs ONE post-
         // occupation turn's world block before rhack reads the next key.  That is
-        // leaves 25..54 of seed0108's step-62 bucket; run it eagerly here and
         // suppress the next head's block with context.move = 0, the forcelock shape.
         await faithful_moveloop_turn();
         if (g.vision_full_recalc) {
@@ -3820,7 +3092,6 @@ async function moveloop_core_faithful() {
     // committed to the topline on the first eating turn's page (eat_occupation_turn
     // restores _resultMessage → _pending_message before flush_screen).  context.move=1
     // already set above so the next re-entry's incomingMove fires the first eating turn.
-    // Gated on g.occupation === eatfood → ZERO effect on any non-eat session.
     if (g.occupation === eatfood && (g.multi | 0) >= 0 && !g._occ_committed_topl) {
         // Reset the per-meal painted-frame tracker once, at meal start (the C tty
         // repaints the physical terminal each per-turn flush; the freeze snapshot is
@@ -3865,8 +3136,6 @@ async function moveloop_core_faithful() {
     // multi>0 tail below, and on exit gm.multi is 0 so that tail never fires.
     //
     // Per C, ONE loop iteration is ONE moveloop_core invocation:
-    //   * the head world block, gated on the INCOMING svc.context.move exactly as
-    //     allmain.c:202 gates it (`if (svc.context.move)`) — a callback that
     //     consumed no time leaves no turn to spend;
     //   * svc.context.move = 1 (allmain.c:483), unconditionally;
     //   * (*go.occupation)() — here timed_occupation(), which runs the command
@@ -3876,9 +3145,6 @@ async function moveloop_core_faithful() {
     // post-occupation world block at its head and only then does rhack read the
     // next key — which is C's ordering, so no trailing turn is run eagerly here.
     //
-    // Gated entirely on g.occupation === timed_occupation → ZERO effect on any
-    // session that never issues a counted `s` / `.` (38 of the 44 public
-    // sessions, per tools/counted-command-census.mjs).
     if (g.occupation === timed_occupation && (g.multi | 0) >= 0) {
         let occGuard = 0;
         while (g.occupation === timed_occupation && (g.multi | 0) >= 0
@@ -3906,19 +3172,15 @@ async function moveloop_core_faithful() {
             // C allmain.c:483 — svc.context.move = 1, before the occupation call.
             g.context = g.context || {};
             g.context.move = 1;
-            // C allmain.c:484 — `if (gm.multi >= 0 && go.occupation)`.  The gate is
             // re-evaluated AFTER this invocation's head block, and that ordering is
             // load-bearing: hitmu's tail (mhitu.c:1265) calls stop_occupation() from
             // inside movemon, so a monster that lands a blow on a resting hero clears
             // go.occupation DURING the head block.  C then falls straight through to
-            // rhack and reads the next key; testing the gate only at the top of this
             // loop ran one further donull -- an extra hero action, an extra world turn,
             // and an extra round of monster attacks whose plines overflowed the topline
-            // (seed4500 step 1073: C's four-message line vs a five-message one that
             // raised a --More-- and then swallowed the next 500 recorded keys).
             if (!(g.occupation === timed_occupation && (g.multi | 0) >= 0)) {
                 // The head block above IS this invocation's world turn, and C
-                // reaches rhack inside the SAME moveloop_core call (the gate at
                 // :484 falls through to the `gm.multi == 0` rhack at :601).  So
                 // the turn is already paid for: leave svc.context.move at 0 so
                 // the driver's caller does NOT run a second, unpaid head block
@@ -3944,7 +3206,6 @@ async function moveloop_core_faithful() {
             // reset_eat(); }`.  This is the interrupt that makes a counted search
             // or rest STOP when something hostile steps next to the hero, and it
             // is NOT the same check as cmd_safety_prevention's: that one is
-            // gated on `!gm.multi` (do.c:2329) and so is dead for the whole
             // duration of a counted command.  C runs this one unconditionally,
             // every occupation turn, and stop_occupation() plines
             // "You stop <occtxt>." — "searching" / "waiting" here.
@@ -3966,8 +3227,6 @@ async function moveloop_core_faithful() {
     // the bottom here.  So there is NO bottom g.moves++ in the faithful variant.
     // The turn_end mapstate that the calibrated path emits at the bottom is
     // already emitted inside the head block by faithful_moveloop_turn (C's
-    // allmain.c:445 capture point); we do NOT re-emit it here to avoid a
-    // duplicate per-turn capture.
     //
     // ===================== multi<0 OCCUPATION COUNTDOWN (faithful) =====================
     // C ref: allmain.c:433-441 — when the hero is immobile (gm.multi < 0, set by
@@ -3976,7 +3235,6 @@ async function moveloop_core_faithful() {
     // HEAD block fires `++gm.multi` at allmain.c:435; at gm.multi==0 it calls unmul()
     // which fires ga.afternmv — Armor_off etc.).  NO key is read during the countdown
     // (the C dispatch tail at 543/573/601 all fall through for multi<0, returning
-    // before any rhack), so these turns are NOT separate recorded session steps:
     // they fold into the span before the next nhgetch.
     //
     // The faithful head above already fired ONE per-turn block via
@@ -3986,12 +3244,9 @@ async function moveloop_core_faithful() {
     // "pays off" the head's already-fired turn; subsequent iterations both increment
     // and fire a real faithful per-turn block.  This yields exactly (delay) per-turn
     // blocks total (1 head + delay-1 loop), then unmul after the last — matching the
-    // C trace (seed0362 step 41: nomul=-5 → 5 per-turn blocks, turns 3-7, Armor_off).
     //
     // Mirrors the calibrated path's multi<0 loop (allmain.js head path) byte-for-byte
     // in structure; the only difference is the per-turn engine
-    // (faithful_moveloop_turn vs fastforward_step).  Gated entirely on g.multi<0 →
-    // ZERO effect on any session that never schedules a nomul.  The loop NEVER reads
     // a key.
     // The faithful head above already fired ONE faithful_moveloop_turn (the
     // incomingMove turn whose key we dispatched).  In C that turn's HEAD block
@@ -4015,8 +3270,6 @@ async function moveloop_core_faithful() {
         // call's recompute.  This loop used to call find_ac() FIRST, which handed
         // the very first delayed turn an AC one recompute too new.
         //
-        // MEASURED on seed0383-wizard-hallucinate step 138 with the instrumented
-        // 5.0 recorder (patch 007 + an mpeaceful/uac event): the hero takes off a
         // cloak, then puts on an accessory that moves AC 10 -> -2, and nomul(-5)
         // schedules the dressing delay.  C's `^mattacku_ac[165@27,3 uac=10 ...]`
         // fires INSIDE turn 2's movemon — the gnome's mattacku computes
@@ -4024,7 +3277,6 @@ async function moveloop_core_faithful() {
         // `^botl[find_ac]` (uac -> -2) only lands at the head of turn 3.  This
         // port had already recomputed -2, so the same mattacku evaluated
         // AC_VALUE(-2) = -rnd(2) and drew a leaf C never draws: leaf 9781, the
-        // session's first divergence, `C rn2(5)@distfleeck vs JS rnd(2)@mhitu.js`.
         // The frames stay right either way (the last iteration's find_ac still
         // runs before the paint), so the take-off/dressing status lines the old
         // order was calibrated on are unaffected — only the world block moved to
@@ -4061,11 +3313,8 @@ async function moveloop_core_faithful() {
     }
     // C ref: allmain.c:436 path tail — after the countdown completes (unmul fired
     // inside the last HEAD block, multi now 0), C's hero has banked umovement
-    // (umv>=NORMAL_SPEED, e.g. seed0362 step41 end logs umv=24), so the NEXT
     // moveloop_core does NOT run a new-turn per-turn block before reading the next
     // key — the next recorded command acts first.  Clear context.move so the next
-    // faithful head's incomingMove gate skips the spurious block, matching the
-    // calibrated path's identical suppression.  Gated on "we just ran a countdown"
     // (countdownGuard advanced OR multi reached 0 from <0 this call) — detect via
     // the afternmv having been cleared is fragile, so use: if we entered the loop
     // at all this call (multi was <0 coming in).
@@ -4083,10 +3332,8 @@ async function moveloop_core_faithful() {
         // run, so it survives into the NEXT invocation and cancels the world block
         // of a command that has nothing to do with the countdown.
         //
-        // MEASURED on seed0014 step 562.  The hero rushes west ('H'), the Fumbling
         // timer fires mid-run (timeout.c:906 slip_or_trip + nomul(-2), C leaf
         // 33229) and the RUN loop ticks the countdown out.  C then gives the next
-        // command ('b') its own world block — the instrumented recorder shows
         // parse(392), ^mapstate turn=680, ^mapstate turn=681, parse(393),
         // ^mapstate turn=682 — while this port suppressed it and ran TWO commands
         // inside one turn.  From there every later turn was one behind C, and the
@@ -4106,33 +3353,27 @@ async function moveloop_core_faithful() {
     // C ref: allmain.c:571-600 — the gm.multi>0 tail of moveloop_core, run after
     // rhack dispatched an uppercase run key (cmd.c:4462-4471 DOMOVE_RUSH): rhack
     // set context.run=1, context.mv=TRUE, multi=80, and did the run's FIRST hero
-    // domove.  The screen for this recorded step was captured at rhack's nhgetch
     // (start of this moveloop_core call); the run's SUBSEQUENT world-turns must be
     // produced HERE — within this same call, between this nhgetch and the next —
     // because C drains them via the outer for(;;) moveloop_core WITHOUT calling
     // nhgetch (the run loop returns at line 588/600 without rhack), so they
-    // accumulate into the same recorded-step RNG slice (seed0017 step 2 = 249
     // leaves, step 3 = 387 — multiple run turns per nhgetch span).
     //
     // C per-iteration order is the same as the calibrated path's run loop, but the
     // per-turn WORLD BLOCK is driven by faithful_moveloop_turn() — the faithful
     // do-while that decrements u.umovement, runs movemon, allots fresh rations
     // (incl. the hero's Fast banking via u_calc_moveamt), increments g.moves at C's
-    // svm.moves++ point, fires the SEER, and emits the per-turn capture.  The
     // Fast-banked double-move is handled INSIDE that do-while (allmain.c:254 break)
     // — we do NOT bolt on a separate banked-movemon here as the calibrated path
     // does, because the faithful turn already exercises C's banked branch.
     //
     // Run-state persistence across moveloop_core invocations: multi / context.run /
     // context.mv live in g.context and survive between calls.  A run that does not
-    // stop this call leaves multi>0 set; the NEXT moveloop_core's incomingMove gate
     // runs faithful_moveloop_turn for the next run turn and re-enters this loop.
     // That mirrors C's "run state synthesizes the next keystroke" — no recorded key
     // is consumed for a continuation turn (the next rhack(0)/nhgetch only fires once
     // the run has fully stopped and control returns to the recorded-step boundary).
     //
-    // Gated entirely on g.multi>0 && context.run → ZERO effect on any non-run
-    // session (all 11 flag-on-sacred sessions, every walk-only session): the loop
     // body never runs, the flag-OFF default is untouched by construction.
     // C ref: allmain.c:573-600 — the gm.multi>0 tail.  THREE multi>0 paths share
     // this loop, distinguished by context.mv / context.run:
@@ -4144,7 +3385,6 @@ async function moveloop_core_faithful() {
     //   (c) counted COMMAND  (!context.mv, e.g. "20s")  — C allmain.c:595-599:
     //       --gm.multi; rhack(gc.cmd_key).  Re-runs the SAME command key (search,
     //       etc.) once per remaining count, each potentially consuming a turn.
-    // Gated entirely on g.multi>0 → ZERO effect on any session that never sets a
     // count prefix or a run.  The flag-off default is untouched.
     let runGuard = 0;
     // C ref: win/tty/topl.c — a fresh run begins with a clear topline (the prior
@@ -4166,7 +3406,6 @@ async function moveloop_core_faithful() {
         _run_commit_result(g);
         // C ref: allmain.c:243-446 — the world advances one full turn at the head of
         // the NEXT moveloop_core invocation.  faithful_moveloop_turn() does the C
-        // do-while (umv-=NORMAL_SPEED; movemon; HEAD; svm.moves++; capture; SEER),
         // including the Fast-banked second movemon when u_calc_moveamt banks the
         // bonus (allmain.c:254 break path).
         await faithful_moveloop_turn();
@@ -4182,7 +3421,6 @@ async function moveloop_core_faithful() {
         // width-paging loop in flush_screen replays the per-turn frame whose accumulated
         // length first reaches each --More-- page's committed end (display.js
         // run_page_frame_select).  DISPLAY-ONLY: snapshots disp_* cells, consumes no
-        // RNG, mutates no game state; gated on g._runPageFrames being populated, so a
         // non-paging run / non-run command is byte-identical to before.
         run_page_frame_tick();
         // C ref: allmain.c:513 — `u.umoved = FALSE;`, between the per-turn world
@@ -4194,7 +3432,6 @@ async function moveloop_core_faithful() {
         // stayed TRUE from the run's LAST step and leaked into the turn AFTER the
         // run stopped.
         //
-        // MEASURED on seed0014 step 575.  The Fumbling timer fires mid-run at C
         // turn 699 ("You slip and nearly fall.", nomul(-2)); the run ends there,
         // and at turn 700 the timer expires again.  C's nh_timeout FUMBLING arm
         // (timeout.c:905 `if (u.umoved && !(Levitation || Flying))`) sees the flag
@@ -4215,15 +3452,12 @@ async function moveloop_core_faithful() {
         //
         // This loop tested only `!(g.multi | 0)` below, which is TRUE only for
         // multi === 0 — a negative multi read as "not stopped" and fell through to
-        // the domove.  `isMv` is captured at the top of the iteration, so even
         // nomul()'s own `ctx.mv = 0` did not stop it.  Net effect: the hero took
-        // one extra run step on the turn he tripped.  seed0014 measures it: C
         // trips at (67,9) on turn 590 and the turn-591 movemon sees the pet at
         // (68,9) with the hero still at (67,9) — udist 1, so dog_goal falls into
         // its `appr == 0` arm and scans the hero's 17-item inventory, 17
         // rn2(100)s through dogfood()/obj_resists().  This port had already walked
         // the hero on to (66,9), udist 4, which takes the `udist > 1` arm instead
-        // and draws nothing — the session's first RNG divergence, leaf 21909.
         if ((g.multi | 0) < 0) {
             // A world effect interrupted the run. C skips both action arms
             // but still executes its deferred-travel/vision/callback tail.
@@ -4290,12 +3524,6 @@ async function moveloop_core_faithful() {
                 await deferred_goto();
             if (g.vision_full_recalc)
                 vision_recalc(0);
-            /* FF_RUNBANK_TRACE (RNG-neutral): pairs with ff_worldtick in
-             * fastforward.js — one marker per domove inside the multi>0 run
-             * loop, so tools/hero-run-fastbank-diff.mjs can count how many
-             * domove()s happen between two movemon passes (worldticks) and
-             * compare that count/position against C's ^ctx_move[...umv=X]
-             * gap structure. */
             if (ENV.FF_RUNBANK_TRACE === '1') {
                 pushRngLogEntry(`^ff_rundomove[moves=${g.moves | 0} ux=${g.u.ux | 0} uy=${g.u.uy | 0} multi=${g.multi | 0}]`);
             }
@@ -4309,7 +3537,6 @@ async function moveloop_core_faithful() {
             // arrival square for the turn the domove consumed, before rhack reads the
             // next key.  This holds for the Fast-banked door arrival too: C does NOT
             // suppress the arrival turn when the hero banked a move — the banked second
-            // move is consumed on the NEXT keystroke's run (seed0017 step-3 "L"), while
             // the arrival turn's movemon runs at the DOOR square (29,15) where the
             // hero is on a non-room tile, so dog_goal short-circuits its rn2(4)
             // (dogmove.c:621 !IS_ROOM).  The prior umvBefore<2*NORMAL_SPEED suppression
@@ -4331,7 +3558,6 @@ async function moveloop_core_faithful() {
             // trailing world block for the turn it consumed ALWAYS fires at the top
             // of the next moveloop_core, before rhack reads the next key.
             //
-            // seed1100 "5l": the 5th step is exactly this case (the decrement takes
             // multi 1 -> 0, then domove walks the hero (29,11) -> (30,11)).  C runs
             // turn 6's movemon with the hero at (30,11) — a ROOM square, so dog_goal
             // evaluates rn2(4) (dogmove.c:621).  JS suppressed that turn, read the
@@ -4358,7 +3584,6 @@ async function moveloop_core_faithful() {
             // After the repeated command, if it left context.move set the NEXT
             // faithful_moveloop_turn must run for its world block; that happens on
             // the next loop iteration's faithful_moveloop_turn (the incomingMove
-            // gate is the loop itself here).  When the count is exhausted, fall
             // through to the stop handling.
         }
         // Both C action arms join the same tail. Occupation iterations and
@@ -4389,38 +3614,6 @@ async function moveloop_core_faithful() {
     }
 }
 
-/* C ref: win/tty/topl.c — fold the pending COMMAND-RESULT line onto the live
- * topline, in generation order, during a multi-turn run.
- *
- * C has ONE topline and no result channel: every message is a pline() the
- * instant it is produced, so a run's messages INTERLEAVE in moveloop_core
- * order — [world block turn k] then [domove step k], then [world block turn
- * k+1] then [domove step k+1], all onto the same accumulating topline (no
- * nhgetch clears it between run steps).  This port splits them into two
- * channels: plines land on _pending_message, while a command's RESULT line
- * lands on _resultMessage (js/cmd.js _result_append_join — the deferred channel
- * that survives the post-rhack topline wipe to the next nhgetch).  Outside a
- * run that models C exactly: one command, then one world block, and the head
- * merge in moveloop_core_faithful puts the result first because the command
- * genuinely ran first.  INSIDE a run there are N of each, and that single
- * end-of-run merge sorts EVERY hero result line ahead of EVERY movemon pline of
- * the whole run — an order C never produces.
- *
- * MEASURED on seed0014 step 513 (key "H", turns 618-622).  The pet picks up a
- * dart in the world block at turn 620; the domove that follows walks the hero
- * onto a scroll and autopickup prinvs "u - a scroll labeled DAIYEN FOOELS.", so
- * C shows "The little dog picks up a dart.  u - a scroll labeled DAIYEN
- * FOOELS.--More--".  This port emitted the two in the opposite order.
- *
- * The result line is APPENDED (never prepended): _result_append_join is only
- * ever reached from inside the step's own domove, i.e. after that step's world
- * block and after the domove's own plines ("You swap places with your little
- * dog." then "$ - 5 gold pieces (12 in total).", seed0014 step 163).  The
- * append goes through _topl_merge_result so the join offsets the run's --More--
- * splitter reads are rebased onto the merged string rather than lost.
- *
- * No-op whenever the step produced no result line — which is every step of a
- * plain walk-run — so a run that never picks anything up is byte-identical. */
 function _run_commit_result(g) {
     if (!g._resultMessage) return;
     const line = g._resultMessage;
@@ -4435,13 +3628,6 @@ function _run_commit_result(g) {
     g._resultMessage = null;
     g._resultMessageJoins = null;
     if (prev) {
-        /* C ref: pline.c:274-277 — the prinv that produced `line` flushed the
-         * screen before handing its text to update_topl(), so the frame frozen by
-         * the more() it fires is THIS one: post-domove, the hero already on the new
-         * square.  Record it against the boundary offset the paging loop will ask
-         * for (seed0014 step 163: committed end 37, "You swap places with your
-         * little dog.").  Without this record the page falls back to the coarser
-         * per-run-turn log and freezes a frame from an earlier run turn. */
         _topl_record_join(prev, prev + '  ' + line);
         /* _topl_merge_result reads the b-side joins off the single-slot
          * side-channel, so arm it for `line` and pass the a-side offsets
@@ -4455,20 +3641,9 @@ function _run_commit_result(g) {
         g._pending_message = line;
         if (hint && hint.length) { g._topl_joins = hint.slice(); g._topl_joins_src = line; }
     }
-    /* Record that the live topline now holds text this RUN committed on an
-     * EARLIER step.  The two-buffer model assembles the frame as
-     * `_resultMessage + _pending_message`, so a LATER step of the same run that
-     * publishes into the (now empty) result channel would sort its text AHEAD of
-     * everything committed here — an order C, with its single gt.toplines, cannot
-     * produce.  js/cmd.js _result_append_join reads the marker and folds the live
-     * line back in first.  MEASURED on gen026-reseed-seed1264160 step 74: the 'J'
-     * run swaps with the pet on its first step and autopickups an orc corpse on
-     * its last, and C pages "You swap places with your little dog.--More--" where
-     * this port showed the pickup line with the swap behind it. */
     g._toplRunCommitted = g._pending_message || null;
 }
 
-// SESSION-END WORLD-BLOCK FLUSH (jsmain.js gameFromSession).  Runs the single
 // trailing per-turn world block (the last time-command's MOVEMON/HEAD block) that
 // C runs at the TOP of the moveloop_core iteration following the final recorded
 // nhgetch — the block the JS replay loop terminates short of.  Only invoked when
@@ -4488,10 +3663,7 @@ export async function _flushTrailingWorldBlock() {
 // then test program_state.gameover:
 //     js/nethack.js:18-22          the browser play page
 //     js/allmain.js:5025-5029      moveloop() itself
-//     frozen/playability_runner.mjs:135-142   the judged playability check
 // Each of those saw an exception escape where C saw a clean exit; the frozen
-// runner rethrows anything that is not its own QueueEmpty and marks the session
-// crashed, which is why a port scoring 44/44 read NOT PLAYABLE on every session
 // that reaches a death.  really_done() has already set program_state.gameover
 // (js/end.js:1863), so absorb the terminal error ONCE and return, letting those
 // callers observe the game-over they are testing for.  A caller that ignores the
@@ -4539,13 +3711,9 @@ async function moveloop_core_impl() {
         clear_bypasses();
     // NOTE: the painted-screen snapshot is dropped at flush_screen after its
     // --More-- window is paged (see moveloop_core_faithful) — NOT reset here.
-    // ── FAITHFUL PATH (flag-gated, DEFAULT **ON** — THIS IS THE SCORED PATH) ──
-    // MEASURED 2026-08-16: FF_FAITHFUL = !(env.FF_FAITHFUL === '0'), i.e. TRUE
     // unless explicitly disabled, so the early return below ALWAYS fires and
-    // everything after it in this function is DEAD (see tools/dead-path-lint.mjs,
     // which reports 434 dead lines here). This header previously read
     // "default OFF" and that single wrong word cost TWO consecutive Tier-2
-    // sessions: the first read the calibrated body as live and diagnosed a bug
     // in it, the second concluded moveloop_core_faithful was unreachable and
     // built a falsification on top of that. Do not re-word this without
     // re-measuring: `node -e "import('./js/fastforward.js').then(m=>console.log(m.FF_FAITHFUL))"`.
@@ -4563,7 +3731,6 @@ async function moveloop_core_impl() {
     // more space or a no-op key), C skips the block entirely — no RNG fires
     // before rhack runs.  Mirror that gating here: only fastforward when the
     // incoming context.move is truthy.
-    // The value is captured before rhack might reset it this invocation.
     /* C ref: allmain.c:101 moveloop_preamble sets context.move=0 before the first
      * moveloop_core call, so the per-turn block is skipped on turn 1 (hero acts first).
      * fastforward_post_mklev mirrors that assignment; no ?? 1 fallback needed. */
@@ -4673,7 +3840,6 @@ async function moveloop_core_impl() {
     await flush_screen(1);
     // Snapshot dungeon level before processing the command so we can detect
     // level transitions for after_goto_level.  C ref: do.c:1986 —
-    // harness_emit_mapstate_dump("after_goto_level") fires inside goto_level()
     // which is called during move processing when the hero uses stairs.
     const preMoveUz = g.u && g.u.uz
         ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel }
@@ -4693,10 +3859,8 @@ async function moveloop_core_impl() {
     // START of each nhgetch call (before reading the key), AFTER capturing the
     // current screen state.  This means a pline message set during a move=0
     // command (e.g. dotalk with ECMD_OK) persists and is visible at the NEXT
-    // nhgetch screen capture, then cleared before the key is delivered.
     // Mirror this: only clear _pending_message when the turn was consumed
     // (context.move != 0).  When move=0, the message persists to the next
-    // screen capture so the differential oracle sees it (e.g. dochat wall message
     // visible at the nhgetch that delivers the NEXT command's key).
     if (g.context?.move) {
         // Same repair as moveloop_core_faithful's clear above (read the long
@@ -4709,8 +3873,6 @@ async function moveloop_core_impl() {
         }
         g._pending_message = '';
     }
-    // C ref: nethack-c/src/do.c:1986 — harness_emit_mapstate_dump("after_goto_level")
-    // fires whenever the hero enters a new floor (both new and revisited levels).
     // We detect this by comparing the hero's dungeon position before and after
     // processing the move.  When JS ports goto_level() properly, this implicit
     // detection should remain correct: the emitMapstate call here mirrors the C
@@ -4730,9 +3892,7 @@ async function moveloop_core_impl() {
          * time_botl_moves_incremented(). */
         time_botl_moves_incremented((g.moves | 0) - 1);
     }
-    // C ref: allmain.c moveloop_core:443 — harness_emit_mapstate_turn("turn_end")
     // emitted at the end of every hero turn. Mirror that here so the
-    // differential-state oracle can pair (turn, phase=null) snapshots.
     emitMapstate('turn_end');
     // ===================== go.occupation DRIVER =====================
     // C ref: allmain.c:543-569 — after the command dispatch (and the
@@ -4743,42 +3903,24 @@ async function moveloop_core_impl() {
     // is read during the occupation span (RISK 2: the return is load-bearing).
     //
     // JS off-by-one model: a turn-consuming command's per-turn block normally
-    // fires at the HEAD of the NEXT moveloop_core (incomingMove gate).  But a
     // lock-pick 'apply' (doapply→pick_lock) consumes its getobj/getdir keys
     // WITHIN a single moveloop_core iteration, and C banks the door-open's
     // umovement so the per-turn block surfaces at THIS input boundary (it does
     // NOT fire at the intervening no-time getobj steps — verified: C steps
     // 18/19 have zero RNG, the block lands at step 20).  Since the JS replay
-    // loop stops once all session screens are captured, there is no subsequent
     // head to fire it; we fire the single deferred per-turn block here, plus
     // drive the occupation callback if one was set (picklock).
     //
-    // Gated entirely on g._occupation_turn / g.occupation → ZERO effect on any
-    // session that never sets one (all 8 passing sessions and every move-only
-    // session, whose last per-turn block is correctly absent from the C trace).
     if ((g._occupation_turn || g.occupation) && (g.multi | 0) >= 0) {
         // C ref: allmain.c:262-414 — one new turn: the world advances.
         // g.moves was already incremented above for the time-consuming command;
         // fastforward_step(moves-1) selects the matching per-turn block (turn 1
         // → fastforward_step(1) nodochug, monsters at movement=0).
-        /* C ref: allmain.c:245 — u.umovement -= NORMAL_SPEED at the start of the
-         * occupation turn's moveloop_core (this IS a full hero-took-time turn,
-         * the world block at allmain.c:243-445).  Every OTHER world-block path in
-         * this file (the head, the multi<0 countdown loop, the multi>0 run loop)
-         * already does this decrement before its u_calc_moveamt, but the
-         * occupation driver did not — so the occupation turn's u_calc_moveamt
-         * (inside fastforward_step) added NORMAL_SPEED with no matching decrement,
-         * drifting the running u.umovement balance up by NORMAL_SPEED (verified on
-         * seed0077: the balance climbed 12→24 instead of oscillating 12↔0).  The
-         * decrement restores the C-faithful clean balance.  RNG-neutral:
-         * u_calc_moveamt's rn2(3) position is unchanged; only the umovement
-         * bookkeeping is corrected (harness: SAFE, 0 regressions, 0 advances). */
         g.u = g.u || {};
         g.u.umovement = ((g.u.umovement || 0) - NORMAL_SPEED) | 0;
         await fastforward_step((g.moves || 1) - 1);
         // C ref: allmain.c:556 — (*go.occupation)() drives the occupation;
         // 0 ends it.  picklock() fires rn2(100) on each productive turn and
-        // prints the result message.  For the D_ISOPEN seed0077 path no
         // occupation was set (pick_lock returned early), so this is skipped and
         // only the per-turn block above fired.
         if (g.occupation === picklock) {
@@ -4788,21 +3930,17 @@ async function moveloop_core_impl() {
             }
         }
         // ── DIG occupation (multi-turn) ──────────────────────────────────────
-        // C ref: dig.c:300 dig() — unlike picklock (whose corpus session ends
         // after one banked turn), the dig occupation runs to COMPLETION within a
         // single input boundary: C's outer for(;;) re-enters moveloop_core each
         // turn, runs the FULL per-turn world block, then calls (*go.occupation)()
         // = dig(), accumulating effort until the pit/hole is made (effort > 50),
         // and NO key is read across the span (the dispatch tail returns before
-        // rhack).  seed0314's '>' dig produces 4 effort turns + the digactualhole
         // pit-timeout, all at step 17; steps 18-20 ('.') are post-dig rests.
         //
         // The head per-turn block above already ran ONE turn (the '>' command
         // turn's banked world block, fastforward_step(moves-1)); dig() runs once
         // against that turn.  Then, while dig() keeps returning nonzero, we run a
         // fresh per-turn world block + dig() for each subsequent occupation turn.
-        // Gated entirely on g.occupation === dig → ZERO effect on any non-dig
-        // session.
         if (g.occupation === dig) {
             // First dig() against the head per-turn block (this turn's effort).
             let r = await dig();
@@ -4841,7 +3979,6 @@ async function moveloop_core_impl() {
     // `++gm.multi`; at gm.multi==0 it calls unmul() which fires ga.afternmv
     // (Armor_off etc.).  NO key is read during the countdown (the C dispatch
     // tail returns before rhack — RISK 2), so these turns are NOT separate
-    // recorded session steps: they fold into the span before the next nhgetch.
     //
     // The JS head above already fired ONE per-turn block (the incomingMove
     // fastforward_step for the turn whose key we just dispatched).  In C that
@@ -4850,11 +3987,8 @@ async function moveloop_core_impl() {
     // "pays off" the head's already-fired turn, and subsequent iterations both
     // increment and fire.  This yields exactly (delay) per-turn blocks total
     // (1 from the head + delay-1 from the loop) and unmul after the last,
-    // matching the C trace (seed0362 step 41: nomul=-5 → 5 per-turn blocks,
     // turns 3-7, then Armor_off).
     //
-    // Gated entirely on g.multi < 0 → ZERO effect on any session that never
-    // schedules a nomul (all 8 passing sessions).  The loop NEVER reads a key.
     while ((g.multi | 0) < 0) {
         // C ref: allmain.c:510 find_ac() — the previous moveloop_core call's
         // once-per-player-input tail, run before this delayed turn's block; see
@@ -4870,16 +4004,13 @@ async function moveloop_core_impl() {
             await unmul(null);
             emitMapstate('turn_end');
             // After the countdown, C's hero has banked umovement (umv>=NORMAL_SPEED,
-            // e.g. seed0362 step41 end logs umv=24), so the NEXT moveloop_core does
             // NOT run a new-turn per-turn block before reading the next key — the
             // next command acts first.  The JS off-by-one model fires the per-turn
             // block at the NEXT step's head when the PREVIOUS step's context.move
             // was 1; clearing it here suppresses that spurious head block so the
-            // following command (e.g. seed0364 step42 'b' → do_attack) runs FIRST,
             // matching the C trace order (do_attack BEFORE the trailing turn block).
             // The `delay` per-turn blocks for THIS take-off span were already fully
             // produced (1 by step41's head incomingMove + delay-1 by this loop), so
-            // suppressing the next head block is the correct, regression-safe choice.
             g.context = g.context || {};
             g.context.move = 0;
             _merge_countdown_pline();
@@ -4889,9 +4020,6 @@ async function moveloop_core_impl() {
         // (movemon→mcalcmove→makemon→u_calc_moveamt→dosounds→gethungry→exerchk
         // →u_wipe_engr), the hero takes no action.  Reuse the same per-turn
         // engine the head uses; stepNum>10 selects the generic per-turn block.
-        // The per-turn block respects the gm.multi>=0 gated branches (Searching
-        // dosearch0, polyself) by construction — none fire for the corpus
-        // countdown sessions (RISK note in the plan).
         /* C ref: allmain.c:245 — u.umovement -= NORMAL_SPEED before per-turn block.
          * Stage 1 scaffold: u_calc_moveamt (inside fastforward_step) adds it back. */
         g.u = g.u || {};
@@ -4906,9 +4034,7 @@ async function moveloop_core_impl() {
          * time_botl_moves_incremented(). */
         time_botl_moves_incremented((g.moves | 0) - 1);
         // C ref: allmain.c:464-470 — seer check uses the POST-increment moves;
-        // rn1(31,15) fires when moves >= seer_turn (range 15..45).  For seed0362
         // step 41 seer_turn is far ahead so this fires no RNG, but we include it
-        // for generality, gated identically to the head.
         g.context = g.context || {};
         if (g.context.seer_turn == null)
             g.context.seer_turn = 1;
@@ -4926,7 +4052,6 @@ async function moveloop_core_impl() {
     // (H/J/K/L/Y/U/B/N) was dispatched in rhack (cmd.c:4462 DOMOVE_RUSH tail):
     // it set context.run=1, context.mv=TRUE, multi=80, and did the run's FIRST
     // hero move (domove#1).  context.move is still 1 (a successful run step),
-    // so the head's incomingMove gate and the moves++ above already accounted
     // for the FIRST world-turn (the off-by-one carryover).  Each subsequent run
     // turn is produced HERE: the world advances (per-turn block) BEFORE the
     // hero's next move, exactly as C runs the world block at the head of the
@@ -4939,10 +4064,6 @@ async function moveloop_core_impl() {
     // the SAME intra-turn engine (fastforward_step → moves++ → seer) the multi<0
     // loop uses, so moves++/seer timing is identical and additive (RISK 1/3).
     //
-    // Gated entirely on g.multi > 0 with context.run set → ZERO effect on any
-    // session that never starts a run (all 8 passing sessions, and every
-    // walk-only session).  The loop NEVER reads a key: a multi-recorded-step run
-    // (seed0017) is handled in Stage C; for a single-step run (seed0004 step 16)
     // all run turns complete inside this one moveloop_core invocation.
     while ((g.multi | 0) > 0 && !!(g.context && g.context.run)) {
         ffRunTrace('loop-enter');
@@ -4971,7 +4092,6 @@ async function moveloop_core_impl() {
         // +1 head off-by-one (g.moves init 1 vs C svm.moves init 0; the head
         // compensates via fastforward_step(moves-1)).  The seer is the first site
         // to read g.moves directly, so it must apply the same -1 to recover C's
-        // svm.moves.  Verified against seed0017: C fires rn2(31) at svm.moves=5
         // (leaf 2758, turn D); JS g.moves there is 6, so (6-1)>=5 fires at the
         // C-faithful turn and does NOT fire one turn early at turn C.
         g.context = g.context || {};
@@ -4987,7 +4107,6 @@ async function moveloop_core_impl() {
         lookaround();
         ffRunTrace('after-lookaround', `stopped=${g.multi | 0}`);
         // C ref: allmain.c:584-588 — if lookaround cleared multi the run is over;
-        // C returns BEFORE the line-594 domove and sets context.move=0.  We capture
         // that here so the lookaround-stop path skips the hero domove below (matching
         // C), while a domove-induced stop (nomul inside domove, the common run-into-
         // obstruction case) still advances the hero first.
@@ -5004,14 +4123,12 @@ async function moveloop_core_impl() {
             // domove may itself nomul(0) (hack.c:2773 run-into-monster, or
             // hack.c:2948 door/obstruction/furniture after moving) → multi=0,
             // ending the run on the next loop test.  This is C's turn-N hero action
-            // (e.g. seed0017 step-2 turn C: hero 28,15 → 29,15) and MUST run BEFORE
             // the banked turn's movemon below so that movemon observes C's hero pos.
             await domove(g.u.dx, g.u.dy);
             ffRunTrace('loop-after-domove');
             // domove may have ended the run (nomul → multi=0); recompute.
             runStopped = !(g.multi | 0);
         } else if (!runStopped && !g.context.mv) {
-            // Non-mv repeat path is not yet exercised in the corpus; stop the loop
             // exactly as before to avoid an infinite spin.
             break;
         }
@@ -5027,7 +4144,6 @@ async function moveloop_core_impl() {
         // multi), this banked invocation does NOT domove the hero a SECOND time
         // (C lines 584-588 return after the movemon do-while).  So the banked turn
         // is exactly: one extra movemon, NO extra hero move.
-        // seed0017 step-2 trace: after `^ctx_move umv=24` (turn C, hero now 29,15)
         // the banked `^movemon_turn[16#40 mv=24->12]` fires distfleeck rn2(5) with
         // hero@29 (leaf 2734+) — the leaf-2735 divergence fix.
         if (bankedBonus) {
@@ -5058,12 +4174,6 @@ export async function moveloop(resuming) {
     vision_recalc(0);
     await docrt();
     await flush_screen(1);
-    /* C allmain.c:106 `program_state.in_moveloop = 1;`.  js/gstate.js:91 has
-     * carried the field since the start and js/restore.js:413 sets it, but the
-     * ORDINARY game never did -- so every C test of it read false forever.  The
-     * first reader that needs it is adjattrib (attrib.c:196), whose encumber_msg
-     * is gated on exactly this flag so a chargen-time attribute change is
-     * silent while a mid-game one is not. */
     if (!game.program_state) game.program_state = {};
     game.program_state.in_moveloop = 1;
     for (;;) {

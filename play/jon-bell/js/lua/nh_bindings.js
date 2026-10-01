@@ -1,14 +1,3 @@
-/**
- * js/lua/nh_bindings.js — Native `nh.*` bindings for the Lua interpreter.
- *
- * Exports rn2(n) and random(a, b?) — thin pass-throughs to js/rng.js.
- * These are the JS-side native functions wired onto the Lua `nh` table
- * by packet 7 (port-lua-nhlib-bootstrap-001).
- *
- * Calling convention for Lua bridge (per interp.js defineGlobal):
- *   fn(argsArray, interp) → value
- * We also support direct calls: rn2(n) for validation/testing.
- */
 
 import { rn2 as _rn2 } from '../rng.js';
 

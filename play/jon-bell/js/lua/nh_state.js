@@ -61,7 +61,6 @@ function lua_is_genocided(name) {
 // save/restore the __nh_obj_table global correctly.
 let currentContentsTable = null;
 
-// Recursion guard for the des.room contents callback trampoline. oracle.lua
 // nests a delphi room inside its outer room, so this genuinely recurses.
 let currentRoomTable = null;
 let currentRoomArg = null;
@@ -100,12 +99,6 @@ function makeRecorder(name, handler) {
     }
     recorded._calls = calls;
     recorded._name = name;
-    /* Instrument hook (tools/lua-binding-audit.mjs): the recorder is variadic by
-     * construction, so from the outside EVERY binding looks like it forwards all
-     * of its arguments — including the pure stubs, which forward them to nothing.
-     * Expose the underlying handler so the arity audit can see through the
-     * wrapper to the function that actually decides what C's arguments do.
-     * Inert at runtime: a property on the function object, read by nothing in js/. */
     recorded._handler = handler || null;
     return recorded;
 }
@@ -168,20 +161,6 @@ class NhUTable extends LuaTable {
         /* C: lua_pushinteger(L, depth(&u.uz)) — the ABSOLUTE depth across
          * branches (js/hacklib.js depth()), not u.uz.dlevel. */
         case 'depth':       return depth(u?.uz);
-        /* C: lua_pushboolean(L, Invocation_lev(&u.uz)) — dungeon.c:2016-2021,
-         * `In_hell(lev) && lev->dlevel == num_dunlevs - 1`.
-         *
-         * This used to return a hard FALSE, on the premise that "this port has
-         * no writer for the invocation level".  That premise was about
-         * js/cmd.js's local copy, which reads a `game.invocation_level` nothing
-         * writes — but js/mkmaze.js has carried the real macro since it ported
-         * makemaz, and it needs no writer at all: In_hell and num_dunlevs are
-         * both already there.  dat/hellfill.lua:437 is the only reader and it
-         * picks des.trap("vibrating square") over des.stair("down"), so the
-         * false answer built a down staircase where C builds the square and
-         * took the RNG stream with it — gen232-reseed-seed1268561 leaf 79,437,
-         * C rn1(67, 7) in pick_vibrasquare_location vs JS rn2(79) in
-         * get_location. */
         case 'invocation_level': return Invocation_lev(u?.uz);
         /* C nhlua.c:2004-2006 pushes the whole invent chain through
          * nhl_push_obj.  No dat/*.lua in the 5.0 tree indexes u.inventory, and
@@ -201,14 +180,6 @@ class NhUTable extends LuaTable {
     }
 }
 
-/**
- * Build a stub table: every field in `fields` becomes a recorder function
- * (with no underlying handler). If `fields` is an object, each key maps to
- * an underlying handler — use `null` for pure stubs.
- *
- * Returns a plain object suitable for defineGlobal (interp auto-wraps
- * functions as NativeFunc).
- */
 function stubTable(fields) {
     const tbl = {};
     if (Array.isArray(fields)) {
@@ -223,20 +194,6 @@ function stubTable(fields) {
     return tbl;
 }
 
-/**
- * Create a ready-to-use Lua interpreter with nhlib.lua already loaded.
- *
- * The returned object is the makeInterp() instance; it has:
- *   - .defineGlobal(name, value) — register native globals
- *   - .run(ast)                  — execute a parsed Chunk AST
- *   - .globals                   — the root global table (Table instance)
- *
- * After calling createLevelLuaState():
- *   - nh.rn2 / nh.random are wired to js/rng.js
- *   - des.* / selection.* / u.* are stub recorders
- *   - nhlib.lua has been loaded and run, so percent(), d(), shuffle(),
- *     align, and the redefined math.random are all available in globals.
- */
 export async function createLevelLuaState() {
     const interp = makeInterp();
 
@@ -262,12 +219,10 @@ export async function createLevelLuaState() {
     // wrapper over the cmd.c:3740 port in js/cmd_binds.js — which runs the REAL
     // binding machinery (cmd.c:3419 commands_init + cmd.c:4013 reset_commands +
     // cmd.c:3705 cmd_from_func + hacklib.c:533 visctrl) over the generated
-    // extcmdlist (js/cmd_extcmd_data.js, tools/gen-extcmdlist.mjs).
     // The previous hand-picked ECKEY_DEFAULTS subset here mis-defaulted every
     // omitted command to the unbound "#name" form and also mis-cased the meta
     // bindings ('M-U' for untrap where visctrl(M('u')) is 'M-u'), both of which
     // are baked into the tutorial engraving text at level-creation time:
-    // seed0500 read 'Close the door with '#close'' / ''M-U'' where C reads
     // ''c'' / ''M-u''.  dat/tut-1.lua tut_key() then pattern-matches ^M%-([A-Z])$,
     // so the case error additionally rewrote the line as "Alt-U".
     // A flat ecname->key table cannot answer this correctly either: cmd_from_func
@@ -280,34 +235,6 @@ export async function createLevelLuaState() {
         return cmd_from_ecname(lua_checkstring(args[0]));
     });
     interp.defineGlobal('nh.callback', nhl_callback);
-    /* C ref: nhlua.c:666-672 nhl_parse_config("OPTIONS=!color") →
-     *     parse_conf_str(luaL_checkstring(L, 1), parse_config_line);
-     * the argument goes through the SAME config-line parser a .nethackrc line
-     * does, so a level's Lua can turn game options on and off as it loads.
-     * dat/tut-1.lua:66-68 does exactly that:
-     *     nh.parse_config("OPTIONS=mention_walls");
-     *     nh.parse_config("OPTIONS=mention_decor");
-     *     nh.parse_config("OPTIONS=lit_corridor");
-     * This binding was `() => undefined`, so nothing in js/ ever set
-     * flags.mention_walls / flags.mention_decor / flags.lit_corridor — the
-     * tutorial level ran with all three OFF while C ran with all three ON.
-     * (seed0777: C prints "There is a broken door here." at step 38
-     * (mention_decor, pickup.c:350-353 describe_decor) and "It's a wall." at steps
-     * 44-46 (mention_walls, the hack.c:1067 pline_dir arm); JS printed nothing.)
-     *
-     * parseNethackrc (js/options.js) is the ported config-line parser; its
-     * boolean fallback maps `OPTIONS=<name>` → flags[<name>] = true and
-     * `OPTIONS=!<name>` → false, which is what parse_config_line does for the
-     * NHOPTB entries of optlist.h.  Merge into the LIVE game.flags/game.iflags,
-     * the same objects jsmain.js seeds from the rc.
-     *
-     * KNOWN GAP: only what parseNethackrc already understands is applied; other
-     * config statements (MSGTYPE=, AUTOPICKUP_EXCEPTION=, SOUND=, ...) stay
-     * dropped, and compound options land in flags[key] as raw strings via that
-     * parser's generic fallback.  No dat/*.lua in the corpus passes anything
-     * but an OPTIONS= boolean here.  C draws NO RNG on this path — parse_conf_str
-     * → parse_config_line is pure option assignment — so the gap cannot shift
-     * the RNG sequence; it can only leave an option unset. */
     interp.defineGlobal('nh.parse_config', (str) => {
         /* C: luaL_checkstring would error on a non-string; the Lua side never
          * calls it that way, so silently ignore instead of throwing. */
@@ -365,7 +292,6 @@ export async function createLevelLuaState() {
 
     // --- des global table (stubs — Phase 2 provides real bodies) ---
     // Fields are the lspo_* / des.* API used by level .lua scripts.
-    // We record every call so later validation packets can assert on
     // call *sequence* without needing real level-building logic.
     interp.defineGlobal('des', stubTable([
         'room', 'terrain', 'object', 'monster', 'door',
@@ -383,14 +309,12 @@ export async function createLevelLuaState() {
         // Additional common des.* calls from tutorials
         'finalize', 'level', 'nested', 'prelude',
         'reset_level', 'mortal_region',
-        // Missing from corpus (singular/plural variants)
         'stair', 'exclusion', 'gas_cloud', 'portal', 'random_corridors',
     ]));
 
     // --- REAL des.* handler wiring (Phase 2c) ---
     // As real lspo_* bodies land in js/sp_lev.js (exports named lspo_<name>),
     // the des.<name> binding calls them with the marshalled Lua table. The
-    // recorder layer stays (instruments observe every call); a missing export
     // keeps the record-only stub behavior. Name map defaults to lspo_<desname>;
     // exceptions listed explicitly. WHO-PORTS: the handler BODIES are fleet
     // work — this loop is glue only.
@@ -402,11 +326,6 @@ export async function createLevelLuaState() {
         const exportName = DES_EXPORT_EXCEPTIONS[desName] || ('lspo_' + desName);
         const real = SPLEV[exportName];
         if (typeof real !== 'function') continue;
-        /* Pass `real` itself rather than a `(...args) => real(...args)` shim: the
-         * shim is behaviourally identical (no `this`, all args forwarded) but its
-         * rest parameter erases the handler's declared arity, which is the one
-         * thing tools/lua-binding-audit.mjs needs to compare against C's stack
-         * reads. */
         interp.defineGlobal('des.' + desName, makeRecorder(desName, real));
     }
 
@@ -420,7 +339,6 @@ export async function createLevelLuaState() {
     // js/sp_lev.js lspo_map hands off via the same needsContentsCall shape
     // des.room uses (the closure call has to happen in the interpreter), and
     // this unwraps the hand-off back to the selection so des.map's Lua return
-    // value is unchanged for scripts that capture it.
     // Witness: bigrm-13.lua:61 `des.map({ coord=..., map=pillar,
     // contents=function() end })`.
     const mapContentsCallAst = parse(tokenize('__nh_map_table.contents(__nh_map_arg)'));
@@ -493,10 +411,7 @@ export async function createLevelLuaState() {
     // hand-off (see its RETURN CONTRACT comment) because the closure call has
     // to happen in the interpreter, not in sp_lev.js. Nothing consumed that
     // contract until now, so EVERY des.room `contents` block was silently
-    // skipped: oracle.lua's outer room built at the right place with the right
-    // size, but its 8 centaur statues, its nested delphi subroom (the Oracle
     // and her four fountains) and its two random monsters never existed.
-    // Measured on seed4500-knight-coverage step 189: C runs
     // build_room(sp_lev.c:2811) -> mkclass_aligned(makemon.c:1934) (the first
     // statue's centaur); JS ran build_room and went straight to the next room.
     // Same trampoline shape as des.object's `contents` below/above — route the
@@ -518,7 +433,6 @@ export async function createLevelLuaState() {
             const prevTable = currentRoomTable;
             const prevArg = currentRoomArg;
             // C ref: sp_lev.c:3059-3070 l_push_mkroom_table(L, tmpcr) — the
-            // single argument the closure receives. oracle.lua's closures are
             // `function() ... end` and ignore it, but themerms.lua's take `rm`.
             const cr = result.tmpcr;
             const roomArg = {
@@ -661,7 +575,6 @@ export async function createLevelLuaState() {
 
     // --- selection global table ---
     // new / clone / area are real handlers (port-lspo-selection-wiring-w2-001);
-    // every other name is a stub recorder (no corpus caller today).
 
     /** C ref: nhlsel.c:558-584 l_selection_fillrect. nhlsel.c:995-996 registers
      *  this ONE C body under TWO Lua names, "fillrect" and "area", so both
@@ -769,37 +682,6 @@ export async function createLevelLuaState() {
         return SPLEV.l_selection_filter_mapchar(sel, mapchr, lit);
     }
 
-    /** C ref: nhlsel.c:919-955 l_selection_iterate (registered as "iterate",
-     *  nhlsel.c:1002).  `sel:iterate(function(x,y) ... end)` runs the Lua
-     *  callback once per selected point, in C's own y-outer / x-inner order,
-     *  with x starting at max(1, rect.lx) and the coordinates converted to
-     *  map-/room-relative form (cvt_to_relcoord, sp_lev.c:4793) because that is
-     *  what des.* expects back.
-     *
-     *  This was `null` — a record-only stub — so the callback NEVER RAN.
-     *  dat/bigrm-11.lua is built entirely out of it:
-     *      local sel = selection.match([[.w.]]) | selection.match(".\nw\n.");
-     *      sel:iterate(replace_wall_boulder);      -- des.terrain + des.object
-     *      local sel = selection.match([[.w.]]);
-     *      sel:iterate(replace_wall_boulder);
-     *  With iterate inert, every boulder went unplaced.  Measured on
-     *  corpus-generated/v5/train/gen039-reseed-seed169592 (a bigroom level):
-     *  C draws FORTY-SIX consecutive `rnd(2) @ next_ident(mkobj.c:521)` — one
-     *  o_id per boulder — between create_maze and des.stair("up"), and this
-     *  port drew none of them, so the session's first RNG divergence sat at
-     *  leaf 2969 with C in next_ident and JS already three statements later in
-     *  lspo_stair's get_location.  The C site was where C was standing, not
-     *  where the bug was.
-     *
-     *  RNG-FREE itself: selection_getbounds recomputes a bounding box,
-     *  selection_getpoint is an array read, and cvt_to_relcoord is arithmetic.
-     *  Every draw comes from what the callback itself does.
-     *
-     *  C aborts the whole iteration when the callback errors
-     *  (nhl_pcall_handle -> `goto out`); an exception out of interp.callFunction
-     *  propagates, which stops it the same way but louder — deliberately, since
-     *  a silently swallowed level-build error is the failure mode this port has
-     *  the least chance of noticing. */
     async function iterateHandler(sel, fn) {
         /* C nhlsel.c:930 — argc==2 && lua_type(L,2)==LUA_TFUNCTION, else
          * nhl_error(L, "wrong parameters"). */
@@ -861,22 +743,6 @@ export async function createLevelLuaState() {
         return t;
     }
 
-    /** C ref: nhlsel.c:256-277 l_selection_not, registered under the Lua name
-     *  "negate" (nhlsel.c:987) and as the __unm/__bnot metamethods
-     *  (nhlsel.c:1011/1015).  Covers both call shapes — `selection.negate(sel)`
-     *  and `sel:negate()`; method desugaring makes them identical.
-     *  C does NOT invert in place: the argc>=1 arm clones first
-     *  (l_selection_clone at nhlsel.c:271) and inverts the CLONE, leaving the
-     *  caller's selection untouched.  wizard1.lua:101 depends on that —
-     *  `bounds2:negate() | wiz1` must not destroy bounds2.
-     *  The argc==0 arm is selection_new() + selection_clear(sel, 1), i.e. every
-     *  point set: C's l_selection_new followed by selection_clear(sel, 1).
-     *  RNG-FREE.  Was `null`, i.e. a record-only stub returning undefined, so
-     *  `bounds2:negate() | wiz1` handed the __bor dispatch an undefined operand
-     *  and every one of wizard1/wizard2/wizard3/fakewiz1 died at its LAST line
-     *  with "Cannot read properties of undefined (reading 'bounds')" — a
-     *  message that names selection_or's rect_bounds read, not the real hole.
-     */
     function negateHandler(sel) {
         if (sel == null) {
             const fresh = SPLEV.selection_new();
@@ -888,28 +754,6 @@ export async function createLevelLuaState() {
         return clone;
     }
 
-    /** C ref: nhlsel.c:201-219 l_selection_numpoints, registered under the Lua
-     *  name "numpoints" (nhlsel.c:986).  It was `null` in this table — a PURE
-     *  STUB returning nil — and dat/nhlib.lua's hell_tweaks() river loop is
-     *  built entirely out of it:
-     *      local n_prot = protected_area:numpoints();          -- line 59
-     *      local reqpts = ((nhc.COLNO * nhc.ROWNO) - n_prot) / 12;
-     *      ...
-     *      rpts = allrivers:numpoints();
-     *      until ((rpts > reqpts) or (rivertries > 7));
-     *  With numpoints nil, n_prot is nil, reqpts is NaN and `rpts > reqpts` is
-     *  false forever, so the loop ALWAYS ran its full 8 tries instead of
-     *  stopping as soon as the river was big enough — and every extra try
-     *  draws two selection_rndcoord rn2(numpoints) plus a whole randline.
-     *
-     *  Measured on seed0360-wizard-world-tour step 307 (asmodeus, Dlvl 27):
-     *  C left the loop after FOUR iterations (rpts > reqpts) and went on to
-     *  percent(60)/percent(20)/percent(20); this port started a fifth.  That
-     *  was the session's first RNG divergence at leaf 72020,
-     *      C : rn2(100)=78 @random src=nhlib.lua:10 parent=percent(nhlib.lua:44)
-     *      JS: rn2(692)=266 @selection_rndcoord
-     *  RNG-FREE itself: selection_getbounds only recomputes a dirty bounding
-     *  box and selection_getpoint is a plain array read. */
     function numpointsHandler(sel) {
         const rect = { lx: 0, ly: 0, hx: 0, hy: 0 }; /* C: cg.zeroNhRect */
         SPLEV.selection_getbounds(sel, rect);
@@ -932,38 +776,6 @@ export async function createLevelLuaState() {
         'filter_mapchar': filterMapcharHandler,
         'fillrect':    areaHandler, 'line': lineHandler, 'rect': rectHandler, 'room': null,
     }));
-    /* THE TWO `null` ENTRIES THIS TABLE USED TO CARRY, MEASURED 2026-08-26.
-     * A null in stubTable() is a SILENT no-op — makeRecorder() records the call
-     * and returns undefined — so it is indistinguishable at runtime from a
-     * working binding, which is why they are worth auditing rather than eyeing.
-     *
-     * 'do_randline' — REMOVED, it was a PHANTOM KEY.  C's registration table
-     * (nhlsel.c:981-1006 l_selection_methods[]) has no "do_randline" row; the
-     * Lua-visible name is "randline" (nhlsel.c:991), bound above to
-     * randlineHandler.  `selection_do_randline` is the selvar.c WORKER that
-     * l_selection_randline calls, not a Lua name, so `selection.do_randline` in
-     * C is a nil index — an error, not a no-op.  Registering it made us STRICTLY
-     * LESS faithful than the stub it looked like.  `node tools/lua-binding-audit.mjs
-     * --all` had it as `A5 EXTRA selection.do_randline js(0) vs C(-) [dat: no call site]`.
-     *
-     * The `randline` binding itself is LIVE and CORRECT, which is the answer to
-     * the "selection.randline is a null stub" premise this was queued under:
-     *   - 23 of 688 train sessions draw at `randline(selvar.c:704/705)`.
-     *   - On every one of them the randline draws sit BEFORE the session's first
-     *     RNG divergence, i.e. they matched C leaf-for-leaf.  Two witnesses:
-     *     gen025-reseed-seed5611 first randline leaf 2867 vs prefixMatch 9162,
-     *     gen639-grammar-seed1771982 leaf 7277 vs prefixMatch 15594.
-     *
-     * 'room' — KEPT null, and it is DEAD BY ROUTING, not by absence.  C does
-     * register "room" (nhlsel.c:1004 l_selection_room), and dat/themerms.lua
-     * calls `selection.room()` at 11 sites — but themerms.lua is never handed to
-     * loadLuaFile: the themed rooms are hand-ported in js/nhlib.js + js/mklev.js
-     * (THEMEROOM_META / themerooms_generate), so no Lua `selection.room` call
-     * ever reaches this table.  Bar-strt.lua, the only other file in the queue
-     * note, is cited by 0 of 688 train and 0 of 44 public C traces.  If a future
-     * change routes themerms.lua through the interpreter, THIS null becomes a
-     * live silent no-op — port l_selection_room (nhlsel.c:430-448,
-     * selection_from_mkroom) in the same change, not after it. */
 
     /* --- nhc: the Lua-visible constants table ---
      * C ref: nhlua.c:1903-1937 nhl_consts[] + init_nhc_data(), which does
@@ -994,7 +806,6 @@ export async function createLevelLuaState() {
     // C ref: nhlua.c:1963-2027 nhl_meta_u_index (the `u` metatable's __index)
     // and nhlua.c:2030-2036 nhl_meta_u_newindex.
     //
-    // This WAS a stubTable of five recorder functions returning
     // role='Monk', depth=1, uhunger=150, ux=10, uy=10.  Two things were wrong
     // with that and both are RNG-visible:
     //
@@ -1007,8 +818,6 @@ export async function createLevelLuaState() {
     //   2. depth was pinned to 1 anyway, so even a value-returning stub would
     //      have got the threshold and `math.random(u.depth)` at line 66 wrong.
     //
-    // Measured on seed0360-wizard-world-tour step 307 (level teleport to
-    // `l - asmodeus: 27`), the session's first RNG divergence at leaf 71833:
     //     C : rn2(27)=4 @random src=nhlib.lua:8 parent=hell_tweaks(nhlib.lua:66)
     //     JS: rn2(100)=34
     // C had passed percent(20+27) and was drawing math.random(u.depth) for

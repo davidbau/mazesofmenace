@@ -123,20 +123,12 @@ export function set_ulycn(which) {
 }
 
 // C ref: youprop.h:125 — Protection_from_shape_changers property.
-// The replay data does not capture this; conservatively assume false.
 function Protection_from_shape_changers() {
-    /* C youprop.h:125 —
-     *   (HProtection_from_shape_changers || EProtection_from_shape_changers)
-     * with no blocker.  Read off the numerically-keyed uprops the rest of this
-     * port uses rather than the old unconditional `return false`; no corpus
-     * hero has the property, so this is the same answer arrived at honestly —
-     * and new_were()'s first guard now reads real state. */
     const p = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
     return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0));
 }
 
 // C ref: youprop.h:125 — Deaf property (HDeaf || EDeaf || u.uroleplay.deaf).
-// No deafness in corpus; default false.
 function Deaf() {
     const u = game.u || {};
     const dp = u.uprops?.[DEAF];
@@ -146,64 +138,7 @@ function Deaf() {
     return (HDeaf !== 0) || (EDeaf !== 0) || roleplayDeaf;
 }
 
-/* KNOWN GAP — unported helper stubs.
- *
- * CORRECTED 2026-08-17.  This block used to open "These throw, and that is
- * currently safe ONLY because were_change() has no call site at all".  Both
- * halves were false: js/mklev.js:13240 m_calcdistress() calls were_change(),
- * and the You_hear/wake_nearto/Soundeffect throws HALTED the scored run on
- * seed4500-knight-coverage the moment a flying were-creature reached the howl
- * branch (screens 1076/1814).  All three are ported below — You_hear against
- * C pline.c, wake_nearto delegating to js/mklev.js's real body, Soundeffect as
- * the audio-only no-op the rest of the tree already spells.  new_were() is
- * ported below and is likewise reached.
- *
- * Reachability, measured 2026-08-09 against the C record corpus the replay
- * sweep reads for this function (500 C records): exactly ONE record carries a
- * non-empty recorded-RNG list.  So no CAPTURED C call reaches
- * new_were()/You_hear()/wake_nearto()/Soundeffect().
- *
- * DO NOT READ THAT AS THE PAYOFF — corrected 2026-08-09.  This comment
- * previously reported the capture-corpus count as the measured payoff ("ONE
- * were creature ... consumes one rn2 and does nothing").  The captures are a
- * DERIVED instrument; frozen/score.sh compares against sessions/, so the C
- * session traces are the scoring oracle, and they record SIX draws across
- * THREE sessions, not one across one:
- *     seed0364-healer-quest-hellfill  rn2(50)=47, rn2(50)=22   (were.c:17)
- *     seed0372-valkyrie-quest-tour    rn2(50)=17, rn2(50)=17   (were.c:17)
- *     seed0800-wiz-grand-tour         rn2(50)=21, rn2(50)=44   (were.c:17)
- * This is the same capture-vs-trace asymmetry that hid rndorcname()'s reversed
- * draw order; when the two disagree, the trace wins.  (All six are rn2(50) —
- * i.e. !night() && moonphase != FULL_MOON — and all six are non-zero, so C
- * transformed no monster on any of them: the divergence is six MISSING draws,
- * with no state change attached.)
- *
- * Even so the odds are only ~1/30..1/50 per were per turn, so "no captured call
- * transforms" is a corpus fact, not a proof that none ever will.
- *
- * C-side RNG on the gapped paths: new_were() itself draws NO RNG directly, but
- * its callees mon_break_armor() and possibly_unwield() do (were.c:117-118); so a
- * best-effort no-throw new_were() would still under-consume the stream, and the
- * honest fix is a real port, not a silent stub. */
 
-/* C were.c:51-99 new_were(struct monst *mon) — flip a lycanthrope between its
- * human and beast forms.
- *
- * REACHABILITY, corrected.  The block above says this is unreachable because
- * m_calcdistress() is not ported and mcalcdistress() has no callers.  Both
- * halves are now false: js/mklev.js:12745 m_calcdistress() calls were_change()
- * and js/fastforward.js:370 fmon_mcalcmove() calls mcalcdistress(), so the
- * throw was a live HALT.  Measured on seed0116 at HEAD: the scored run stopped
- * at 125 of 127 frames here, and rng-prefix-match shows NO value divergence
- * before it (prefixMatch 12523/12562, JS stream simply ends) — i.e. C took the
- * same !rn2(50) branch on the same draw and transformed the same monster.  C's
- * next leaf is rn2(12) @ mcalcmove(mon.c:1164).
- *
- * RNG: new_were() draws nothing itself.  Its callees mon_break_armor() and
- * possibly_unwield() are RNG-free for a monster carrying no armor or weapon,
- * and the trailing monflee(rn1(9,2)) is gated on mon_moving && !mpeaceful &&
- * onscary(mux,muy) && monnear(...) — the seed0116 were is nowhere near the
- * hero, which is why C draws nothing here either. */
 export async function new_were(mon) {
     /* C:57-59 — protection from shape changers keeps a human-form were human;
      * a critter-form one always reverts. */
@@ -314,24 +249,6 @@ function monsndx(ptr) {
             : NON_PM) | 0;
 }
 
-/* C were.c:141-190 were_summon(ptr, yours, visible, genbuf) — "were-creature
- * (even you) summons a horde".  makemon() is async in this port
- * (js/mklev.js:4911), so were_summon must be too; its callers already await
- * (mhitu.js's summonmu is the only wired caller today, per js/mhitu.js:5191's
- * KNOWN GAP note, and it is not yet reached from a live path either).
- *
- * `visible` arrives as the reconstructor's `{ value }` pseudo-struct for a
- * captured `int *` (js/struct_reconstructor.js STRUCT_FIELDS['int *']); C's
- * unconditional `*visible = 0;` is `visible.value = 0`.
- *
- * `genbuf` arrives as a plain JS string (capture_arg_string), not an
- * object — a JS string is immutable, so this port CANNOT write the chosen
- * generic name back through it the way C's Strcpy(genbuf, "rat") does. That
- * is a harness limitation, not a skipped C behaviour: no `args_after` group
- * is captured for this fn's genbuf (checked against the two board records at
- * brief time), so the mutation is unobserved by the replay oracle either way.
- * The `!= null` guard mirrors C's pointer-non-NULL test (genbuf's CONTENT,
- * e.g. an empty string, must not be read as "no buffer"). */
 export async function were_summon(ptr, yours, visible, genbuf) {
     const pm = monsndx(ptr);
     let typ;
@@ -373,55 +290,6 @@ export async function were_summon(ptr, yours, visible, genbuf) {
     return total;
 }
 
-/* C ref: nethack-c/src/were.c:8-45 were_change() — transform a were-creature
- * when needed.  If the monster is human-form were and not protected, RNG-based
- * chance to shift.  If non-human form, always shift back to human.
- * Side effects: gw.were_changes counter, audible howl, wake_nearto.
- *
- * KNOWN GAP — NOT WIRED, deliberately (investigated 2026-08-09).  C has two call
- * sites:
- *   nethack-c/src/mon.c:1180  m_calcdistress(mtmp)  — once per monster per turn,
- *                             reached from mcalcdistress() at allmain.c:269.
- *   nethack-c/src/uhitm.c:3068 — the AD_CANCEL mhitm arm, gated on
- *                             !magr->mcan && !rn2(10) && is_were(pd).
- * Neither exists on the JS live path.  m_calcdistress() is not ported at all;
- * js/mklev.js:9440 mcalcdistress() is exported but has ZERO callers and its body
- * calls an undefined `m_calcdistress` (js/mklev.js:9445 — the only mention of
- * that name in js/), so it would raise a ReferenceError if wired as-is.  The JS
- * per-turn head (js/fastforward.js:280 fmon_mcalcmove and its three call sites
- * at :913, :949, :1073) jumps straight from movemon to allmain.c:274, skipping
- * allmain.c:268-269 (`gw.were_changes = 0L; mcalcdistress();`).
- * ALL THREE re-verified against HEAD d71bd00a on 2026-08-09 — still blocked.
- *
- * Wiring were_change therefore means porting m_calcdistress (mon_regen +
- * decide_to_shapeshift + the mblinded/mfrozen/mfleetim countdowns + the
- * mmove==0/minliquid guard) and inserting mcalcdistress() into the per-turn head
- * — a turn-loop change affecting all 60 sessions, and one that touches
- * js/mklev.js and js/fastforward.js, not this file.
- *
- * C-side RNG on this gap: C draws exactly one rn2 per is_were() monster per turn
- * that JS does not draw — six such draws across seed0364/seed0372/seed0800 (the
- * corrected count; see the KNOWN GAP note above, and note the earlier "observed
- * once, in seed0372" was a capture-corpus artefact).
- *
- * Payoff is still nil TODAY, for a reason that outranks the count: all three
- * sessions already fail, and every one of the six draws sits downstream of its
- * own session's first divergence, so by Cardinal Rule 3 they are cascade, not
- * the bug, and closing them flips nothing.  Indices below are frozen/score.sh's
- * own RNG-call step (its firstDivergence.step axis; 1-based over steps[].rng
- * with the ^toplin/^botlx markers dropped) measured at HEAD d71bd00a, with the
- * session keystroke step in parentheses:
- *     seed0364  first divergence 4775 (step 174)  vs 34294 (220), 34343 (222)
- *     seed0372  first divergence 3757 (step 173)  vs 15387 (177), 15445 (184)
- *     seed0800  first divergence 2619 (step 109)  vs 34097 (164), 49270 (186)
- * Both axes agree (seed0372 is the tightest: only 4 keystrokes, but still
- * after).  Do not use tools/first-divergence.mjs's "leaf" index for this
- * comparison without re-deriving it — it is 0-based over a DIFFERENT stream,
- * and a naive regex over the session JSON silently misaligns by dropping
- * non-rn* draws such as `d(2,4)`.
- *
- * Do not re-litigate the count; re-check the first divergences instead.  Needs
- * its own per-turn monster-distress instrument (Gate 0) before anyone tries. */
 export async function were_change(mon) {
     if (!is_were(mon.data))
         return;

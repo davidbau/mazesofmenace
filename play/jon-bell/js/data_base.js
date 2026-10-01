@@ -277,27 +277,6 @@ function resolve_checkfile_entries({ dbase_str, alt }) {
     return { entries, noInfo: false };
 }
 
-/**
- * C ref: pager.c:806 ia_checkfile(otmp) —
- *     Strcpy(itemnam, singular(otmp, xname));
- *     return checkfile(itemnam, NULL, chkfilIaCheck | chkfilDontAsk, NULL);
- *
- * A SEPARATE export rather than a reuse of checkfile_lookup's return shape,
- * because the two run checkfile in different modes and only the BOOLEAN agrees.
- * With chkfilIaCheck, checkfile sets `res = TRUE` and short-circuits the moment
- * a pass resolves an entry (pager.c:1076-1078 `res = TRUE; if (ia_checking)
- * goto checkfile_done;`), so it never opens a window and never reaches the
- * `user_typed_name && pass == 0 && !pass1found_in_file` arm that sets
- * checkfile_lookup's `noInfo` — with chkfilIaCheck, user_typed_name is FALSE.
- *
- * iactions.c:692 gates the "/ - Look up information about this" menu entry on
- * this predicate, and js/cmd.js's itemactions menu used to add that row
- * UNCONDITIONALLY behind a comment claiming C makes it "always available for
- * known items".  It is not: `pancake` and `lock pick` have no data.base key
- * (951 keys; the nearest are `panther` and `pick*ax*`, neither of which
- * pmatches), so C omits the row and the port inserted an extra menu line,
- * pushing "(end)" and every row below it down by one.
- */
 export function ia_checkfile(inp) {
     const keys = checkfile_keys(inp);
     if (!keys) return false;

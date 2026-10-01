@@ -1,12 +1,9 @@
 // js/dat_bundle.js — GENERATED, DO NOT EDIT.
 //
-// Regenerate with:  node tools/gen-dat-bundle.mjs
 //
-// dat/ as part of the module graph rather than as host files.  The contest
 // forbids the filesystem ("no internet or filesystem or threads"; scoring runs
 // under `node --permission` with a minimal --allow-fs-read whitelist) and the
 // play page loads js/ into a browser, which has no filesystem at all.  Reading
-// dat/ off the host scored 0 of 11,405 on the leaderboard while scoring 44/44
 // locally, because locally nethack-c/dat happened to be readable.
 //
 // Precedence baked in at generation time, matching what js/dat_source.js

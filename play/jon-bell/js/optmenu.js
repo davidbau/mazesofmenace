@@ -8,11 +8,9 @@
 // place and re-renders; pickup_types opens the object-class submenu
 // (choose_classes_menu, win/tty path); Enter/ESC exit.
 //
-// Scope: the corpus exercises only the fixed set_in_game menu shown below, the
 // autodig/autopickup boolean toggles, and the pickup_types submenu.  The menu
 // content (labels + ordering) is fixed (it is the static set_in_game projection
 // of allopt[]); only the [value] fields are state-dependent.  Rendered
-// bit-exactly against the recorded tty frames (seed3300).
 import { game } from './gstate.js';
 import { ECMD_OK } from './const.js';
 import { nhgetch } from './input.js';
@@ -56,17 +54,6 @@ const HEADER_COL = 33;  /* visible column the reverse-video section header pads 
 
 function boolStr(on) { return on ? 'X' : ' '; }
 
-/* pickup_types value: "all" when none selected, else the concatenated symbols.
- * C ref: options.c:3392-3395 optfn_pickup_types(get_val) —
- *     oc_to_str(flags.pickup_types, ocl);
- *     Sprintf(opts, "%s", ocl[0] ? ocl : "all");
- *
- * This used to be a bare `sel.join('')`, which is only valid for the ARRAY the
- * submenu below commits.  The OTHER writer — js/options.js parsing
- * "OPTIONS=pickup_types:%" out of the session's nethackrc — stores a STRING, and
- * a string has no .join, so opening this menu in any game whose config names
- * pickup_types threw `sel.join is not a function` and halted the segment at the
- * frame the menu should have painted. */
 function pickupTypesStr() {
     const ocl = oc_to_str(game.flags?.pickup_types);
     return ocl ? ocl : 'all';
@@ -89,25 +76,7 @@ const PAGES = [
         { name: 'fruit', kind: 'comp', hasHandler: false,
           value: () => game.pl_fruit || 'slime mold',
           set: (v) => {
-              /* C options.c:1725 mungspaces(op), then optfn_fruit's do_set body.
-               * This used to write game.pl_fruit and stop there — the NAME the
-               * status/option menu reads, but not the fruit CHAIN.  C's
-               * optfn_fruit ends in `fruitadd(svp.pl_fruit, forig)`, which is
-               * what pushes/renames the gf.ffruit node and sets
-               * svc.context.current_fruit; without it every slime mold mksobj'd
-               * afterwards still carried spe = 1 = "slime mold" and xname
-               * (objnam.c:747) printed the OLD name.
-               * MEASURED gen406-reseed-seed381059 step 865: C "You see here a
-               * mango (for sale, 13 zorkmids)." vs "a slime mold". */
               const msg = optfn_fruit_set(mungspaces(v));
-              /* C options.c:1758-1760 pline("Fruit is now \"%s\".", ...).
-               * give_opt_msg is TRUE on the doset() path, but doset loops
-               * straight back into select_menu, whose redraw overdraws the
-               * topline before any input is read — the recorded frame at
-               * seed4500 step 243 shows the menu, not the message.  Set the
-               * pending message rather than calling pline(), because a pline
-               * here could raise a --More-- that C never shows and that would
-               * eat the next keystroke. */
               if (msg) game._pending_message = msg;
           } },
         { name: 'number_pad', kind: 'sub', value: number_pad_value },
@@ -181,24 +150,6 @@ function _optBox(flag) { return _OPT_BOX.get(flag) || 'flags'; }
 
 // flag default-on table (defaults match optlist.h Off/On).  A boolean's
 // displayed value is game.flags[flag] if defined, else its default.
-/* C options.c: a boolean option's storage is the (struct, field) pair allopt[]
- * names — NHOPTB(name, ..., &flags.dark_room, ...) vs (..., &iflags.cmdassist,
- * ...).  js/doset_data.js already carries that pair, generated from optlist.h,
- * and doset() (the 'm O' full menu) routes through it; doset_simple() (the 'O'
- * menu, the one the corpus actually types) did NOT — it read and wrote
- * game.flags[<option name>] for every boolean, so an IFLAGS option toggled in
- * play landed in a field nothing reads.
- *
- * MEASURED on seed4500, which turns cmdassist off at step 247: the menu still
- * rendered `[ ]` (it reads its own wrong field back), while
- * js/cmd.js wiz_intrinsic and js/optmenu.js doset both read
- * game.iflags.cmdassist and saw `undefined` — i.e. the On default — for the
- * rest of the run.  That is why the #wizintrinsic subtitle could not be landed:
- * drawing it C-faithfully on seed0383 cost 9 points on seed4500, where C had
- * been told not to draw it and this port had lost the instruction.
- *
- * The name in doset_data.js is the OPTION name, which is also the PAGES row's
- * `name`; `flag` stays as the fallback for a row with no NHOPTB counterpart. */
 const _SIMPLE_STORAGE = new Map(DOSET_BOOLS.map((r) => [r.name, r]));
 function simpleBox(entry) {
     const row = _SIMPLE_STORAGE.get(entry.name);
@@ -264,7 +215,6 @@ function buildPageLines(pageIdx) {
         const prefixLen = prefix.length;       // visible length (no escapes here)
         const tail = `[${valueStr(entry)}]` + (entry.suffix || '');
         // C fmtstr_tab_doset_simple uses an unpadded name and a literal tab.
-        // The tty recorder advances one cell without painting the tab byte.
         lines.push(game.iflags?.menu_tab_sep ? prefix + '\x1b[1C' + tail
                    : padTo(prefix, prefixLen, VALUE_COL, tail));
     }
@@ -300,18 +250,11 @@ function pageFrameRows(pageIdx, row0Erased) {
 // Render a full-screen options page into _screen_output (24 rows, col 0).
 function renderPage(pageIdx, row0Erased) {
     const lines = pageFrameRows(pageIdx, row0Erased);
-    /* Join only the drawn lines (through the footer); C's tty menu does not emit
-     * trailing blank rows below the last menu line (page 2's footer is at row 20,
-     * so rows 21-23 are absent — seed3300 step 33 ends at "(2 of 2)" with no
-     * trailing newlines).  Page 1 fills through row 23, so both are covered. */
     game._screen_output = lines.slice(0, SCREEN_ROWS).join('\n');
     // Cursor: just past the footer line ("(N of M)").  C tty leaves the cursor
     // at the end of the last drawn menu line.  Footer is at row lines.length-1.
     const footerRow = lines.length - 1;
     const footerVis = ` (${pageIdx + 1} of ${PAGES.length})`.length;
-    /* cursor one past the last drawn char of the footer line (col == length,
-     * 0-indexed) — matches the dohelp/dodiscovered full-screen-menu convention
-     * and C's tty cursor after the footer (seed3300 step 8: col 9). */
     set_cursor(footerVis, footerRow);
     game._pending_message = '';
 }
@@ -339,31 +282,7 @@ const PICKUP_CLASSES = [
     { sym: '_', name: 'iron chain' },
     { sym: '.', name: 'splash of venom' },
 ];
-/* `marks` is the per-class state CHARACTER, not a boolean set.  C's tty draws a
- * menu item's selection mark in two different places with two different glyphs:
- *
- *   - the initial page paint (wintty.c:1467-1471 process_menu_window) overrides
- *     column 3 of the row with '*' when `curr->selected && curr->count == -1L`
- *     ("all selected" as opposed to '#', "a count of them selected");
- *   - an in-place toggle (wintty.c:1176-1193 set_item_state) rewrites that same
- *     column with '+'.
- *
- * So a class that was ALREADY in flags.pickup_types when the menu opened — which
- * is every class named by an "OPTIONS=pickup_types:…" line in the config — paints
- * '*' and keeps it until the player toggles it, at which point it becomes '+' (or
- * '-').  This port drew '+' for both, which is right for the four public sessions
- * that reach this menu (all four open it with an EMPTY pickup_types, so nothing
- * is preselected and no '*' is reachable) and wrong for every session whose rc
- * sets the option: gen486/gen490/gen491 record "e * %  piece of food" where this
- * painted "e + %  piece of food", for the whole seven-frame life of the menu. */
 function renderPickupSubmenu(marks, bgRows, classes, preserveStatus) {
-    /* Build the visible (escape-free) row texts first: a tty overlay menu is
-     * RIGHT-ALIGNED against the widest row, so the indent is derived, not fixed.
-     * C ref: win/tty/wintty.c process_menu_window — the menu window's offx comes
-     * from its maxcol, i.e. 80 - widest - 2 here (validated on both footers:
-     * the 61-col "Toggle on ..." line gives col 17, seed3300's recorded frame,
-     * and the 47-col "Toggle off ..." line leaves the 53-col Note line widest
-     * and gives col 25, seed0014 step 26's recorded frame). */
     const body = [];
     body.push('Autopickup what?');
     body.push(null);
@@ -379,12 +298,6 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus) {
      * preselected, so its mark starts '-' and can only ever become '+'. */
     body.push(`A ${marks.get('A') || '-'}    All classes of objects`);
     body.push('Note: when no choices are selected, "all" is implied.');
-    /* C ref: src/windows.c:1731-1733 — the footer wording depends on the CURRENT
-     * autopickup state: `flags.pickup ? "Toggle off 'autopickup' to not pick up
-     * anything." : "Toggle on 'autopickup' to automatically pick these things
-     * up."`  Only the off-form was ported, so seed0014 (which turns autopickup on
-     * with '@' before opening 'O' -> pickup_types) showed the wrong sentence AND,
-     * because it is 14 columns longer, shifted the whole overlay 8 columns left. */
     body.push(game.flags?.pickup
         ? "Toggle off 'autopickup' to not pick up anything."
         : "Toggle on 'autopickup' to automatically pick these things up.");
@@ -394,29 +307,7 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus) {
     const pre = `\x1b[${col}C`;
     const lines = body.map((t, i) => (t === null ? ''
         : i === 0 ? `${pre}\x1b[7m${t}\x1b[0m` : `${pre}${t}`));
-    /* C ref: process_menu_window's corner-window cleanup loop runs only up to
-     * cw->maxrow, so every row BELOW the overlay keeps whatever was on screen.
-     * When this submenu is opened from doset_simple() the screen behind it is
-     * the full-screen options menu, whose bottom rows are blank, and emitting
-     * nothing below "(end)" is right.  Opened from doset() the four toggled-
-     * option --More-- frames have just repainted the map and the two status
-     * rows, and those must survive (seed0007 steps 40-47). */
     if (!bgRows) {
-        /* C ref: win/tty/wintty.c process_menu_window — an OVERLAY menu writes
-         * each of its rows as tty_curs(window,1,n) + cl_end() + putstr, so it
-         * erases only from offx rightward and whatever is left of offx stays on
-         * screen.  Reached from doset_simple(), the full-screen Options menu has
-         * just been dismissed, and the tty's dismiss repaints the MAP (docrt)
-         * but NOT the two status rows -- bot() runs only from flush_screen and
-         * only when disp.botl/botlx is flagged, and putting up a menu window
-         * flags neither.  So the background here is map rows 1..21 with blank
-         * status rows, which is exactly build_window_screen(..., statusClipCol=0).
-         *
-         * This used to emit the overlay alone over a blank screen, so seed0012
-         * step 59's `o` (pickup_types) blanked the eight map rows that reach
-         * left of column 25 -- seven frames, cells only.  The doset() caller
-         * below still passes its own bgRows (the four toggled-option --More--
-         * frames it has to preserve) and is untouched. */
         const winLines = body.map((t, i) => (t === null ? ''
             : i === 0 ? `\x1b[7m${t}\x1b[0m` : t));
         game._screen_output = build_window_screen(
@@ -431,17 +322,10 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus) {
         out.push(bgRows[r]);
     }
     game._screen_output = out.join('\n');
-    /* cursor one past the "(end)" footer: overlay col + len("(end)")=5 + 1
-     * (C tty overlay-menu convention, matching the inventory overlay path;
-     * seed3300 step 21/22 cursor col 23 at col 17, seed0014 step 26 col 31 at
-     * col 25). */
     set_cursor(col + '(end)'.length + 1, lines.length - 1);
     game._pending_message = '';
 }
 
-/* C options.c numpadmodes: this is a corner menu (offx=6), not a full-screen
- * menu.  Keep its recorded tty geometry byte-for-byte: the menu is opened by
- * a single option pick and the corpus immediately chooses one of a-f. */
 async function numberPadSubmenu() {
     const rows = [
         '\x1b[7mSelect number_pad mode:\x1b[0m', '',
@@ -496,7 +380,6 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false) {
     for (const c of classes) symByAcc.set(String.fromCharCode(letter++), c.sym);
     const symSet = new Set(classes.map((c) => c.sym));
     while (true) {
-        // set _screen_output to the submenu frame; nhgetch's hook captures it.
         // No flush_screen (it would rebuild _screen_output from the map).
         renderPickupSubmenu(marks, bgRows, classes, preserveStatus);
         const key = await nhgetch();
@@ -610,7 +493,6 @@ export async function doset_simple() {
     let titleErased = false;
     while (true) {
         // renderPage sets game._screen_output to the menu frame; the nhgetch
-        // capture hook (input.js _preNhgetchHook) records it for this step.  Do
         // NOT flush_screen here — flush_screen's _buildScreenOutput would rebuild
         // _screen_output from the map and clobber the menu (the dohelp /
         // dodiscovered full-screen-menu pattern: set _screen_output, then nhgetch).
@@ -635,14 +517,6 @@ export async function doset_simple() {
         const accMap = pageAccelMap(pageIdx);
         let searchPick = null;
         if (!accMap.has(ch) && key === 0x3a /* ':' MENU_SEARCH */) {
-            /* C ref: wintty.c:1700-1730.  doset_simple_menu opens the menu
-             * PICK_ONE (options.c:8648), so the FIRST pmatchi() hit is selected
-             * and select_menu finishes with it — exactly as if its accelerator
-             * had been typed.  Without this the ':' was merely consumed and
-             * every key C spent inside the getlin was answered by this menu's
-             * accelerator table: gen688-grammar-seed1986916 step 82 onwards,
-             * where C searches "s?f    ngratat", commits it at step 108 with no
-             * match, and takes step 109's 'a' as the menu's own pick. */
             await menu_search_case('ONE', dosetSimpleSearchList(),
                 () => pageFrameRows(pageIdx, titleErased),
                 (curr) => { searchPick = curr.entry; });
@@ -660,31 +534,7 @@ export async function doset_simple() {
         if (accMap.has(ch) || searchPick) {
             const entry = searchPick || accMap.get(ch);
             titleErased = false;   /* a pick ends select_menu; the next one repaints */
-            /* C ref: options.c doset() — each menu item selection RETURNS from
-             * select_menu (which paginates internally via space); doset toggles
-             * the option then LOOPS, re-invoking select_menu, which redraws from
-             * the FIRST page.  So after any selection the menu resets to page 1
-             * (seed3300 step 34: 'l' on page 2 toggles showexp → page-1 redraw). */
             if (entry.kind === 'bool') {
-                /* C keeps these booleans in TWO structs, `flags` and `iflags`
-                 * (optlist.h's NHOPTB box argument), and three of them also use
-                 * a DIFFERENT FIELD NAME than the option name.  This menu used
-                 * to write every toggle to game.flags[entry.flag], so a toggle
-                 * of an IFLAGS option was invisible to its reader.
-                 *
-                 * MEASURED on seed4500-knight-coverage, which turns cmdassist
-                 * OFF from this very menu: C's steps 1770/1772/1781 read
-                 * "Are you waiting to get hit?" while this port kept appending
-                 * "  Use 'm' prefix to force a no-op (to rest)." -- because
-                 * js/cmd.js cmd_safety_prevention() and js/lock.js
-                 * cmdassist_on() read game.iflags.cmdassist, which nothing wrote.
-                 *
-                 * simpleBox() resolves BOTH the struct and the field from
-                 * DOSET_BOOLS (the generated NHOPTB box column), and falls back
-                 * to game.flags[entry.flag] for any option with no NHOPTB row --
-                 * so no existing reader is orphaned, only the rows C actually
-                 * stores elsewhere move.  flagOn() reads through the SAME helper,
-                 * which is what keeps writer and reader in agreement. */
                 const { obj, fld } = simpleBox(entry);
                 obj[fld] = !flagOn(entry);
                 if (entry.name === 'color')
@@ -698,27 +548,7 @@ export async function doset_simple() {
                 pageIdx = 0;
                 continue;
             }
-            /* C options.c:8930-8953 — the compound-option arm.  An option with
-             * has_handler == Yes calls its own picker (optfn_*(do_handler));
-             * one WITHOUT a handler takes the generic path:
-             *
-             *     Sprintf(buf, "Set %s to what?", allopt[opt_indx].name);
-             *     getlin(buf, abuf);
-             *     if (abuf[0] == '\033') continue;
-             *     Sprintf(buf, "%s:%s", allopt[opt_indx].name, abuf);
-             *     parseoptions(buf, FALSE, FALSE);
-             *
-             * getlin consumes one keystroke per typed character plus the
-             * terminating Enter, so an unported handler here does not merely
-             * render wrong — it desynchronises the whole keystroke stream.
-             * seed4500 steps 237-248: C is at "Set fruit to what?" typing
-             * "mango" while JS was still sitting in the options menu feeding
-             * m/a/n/g/o to the accelerator table. */
             if (entry.hasHandler === false && entry.set) {
-                /* The menu window overdrew the status rows and getlin repaints
-                 * only the topline + map, so rows 22-23 stay blank for the whole
-                 * prompt (see js/display.js _status_blanked).  doset()'s own
-                 * exit repaints them — seed4500 step 249. */
                 g._status_blanked = true;
                 const abuf = await getlin(`Set ${entry.name} to what?`);
                 g._status_blanked = false;
@@ -739,12 +569,10 @@ export async function doset_simple() {
                 continue;
             }
             // comp/othr options WITH a C handler open their own picker; none of
-            // those is selected anywhere in the corpus, so they remain a no-op
             // re-render (no RNG, stream stays aligned).
             pageIdx = 0;
             continue;
         }
-        // '?' show help — out of corpus scope (no session selects it); re-render.
         // any other key: ignore, menu stays displayed.
     }
     g._pending_message = '';
@@ -787,14 +615,6 @@ function boolValue(row) {
     return (v === undefined || v === null) ? row.init : !!v;
 }
 
-/* C ref: win/tty/topl.c update_topl — each pline() is an independent fit test
- * against the topline, and more() fires the moment the next one will not fit.
- * This port's pline() only accumulates (js/display.js), and flush_screen pages
- * whatever overflowed; but C ALSO clears the topline when a window is put up
- * over it, so the last page gets a --More-- that no overflow produced.  doset's
- * eight "'x' option toggled on." messages page as four frames for exactly that
- * reason: three from overflow, the fourth from the pickup_types window opening
- * on top of them (seed0007 steps 36-39). */
 async function drainTopline() {
     await flush_screen(1);
     if (game._pending_message) await force_more(game._pending_message);
@@ -984,26 +804,12 @@ export async function doset() {
                     /* C ref: options.c:5438-5440 — give_opt_msg is TRUE on the
                      * doset() path (only doset_simple clears it). */
                     await pline(`'${ent.row.name}' option toggled ${!negated ? 'on' : 'off'}.`);
-                    /* C ref: win/tty/topl.c update_topl — the fit test runs per
-                     * pline, so the --More-- fires DURING the pick walk, with
-                     * only the options picked SO FAR applied.  Batching the
-                     * eight messages and paging them at the end would show the
-                     * final status row on every page: seed0007 steps 36-38 have
-                     * C at "Xp:1", "Xp:1" and "Xp:1/0" because showexp and time
-                     * are toggled later in the same walk. */
                     await flush_screen(1);
                     statusRefreshed = true;
                 } else if (ent.row.name === 'pickup_types') {
                     /* C: has_handler -> optfn_pickup_types(do_handler) ->
                      * handler_pickup_types -> the object-class picker. */
                     await drainTopline();
-                    /* C select_menu() dismisses the full-screen Options window
-                     * before choose_classes_menu() opens its NHW_MENU overlay;
-                     * tty_dismiss_nhwindow() redraws the map underneath.  The
-                     * prior _screen_output is still the Options page here, so
-                     * passing it as bgRows leaves that stale full-screen menu
-                     * visible to the left of the submenu (gen279/gen411/etc.).
-                     * Let the submenu compositor render the current map base. */
                     await pickupTypesSubmenu(undefined, statusRefreshed);
                     statusRefreshed = false;
                 } else if (ent.row.name === 'number_pad') {
@@ -1039,9 +845,6 @@ export async function doset() {
                         if (message) await pline(message);
                     }
                 }
-                /* Every other compound has a C handler (a submenu of its own)
-                 * that no public session reaches; leaving it a no-op keeps the
-                 * keystroke stream aligned rather than guessing at a picker. */
             }
         }
 

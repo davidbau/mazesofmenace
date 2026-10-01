@@ -1,5 +1,4 @@
 // region.js — port of nethack-c/src/region.c (scaffold: functions are added here
-// one packet at a time by the porting fleet; see tasks/generated/port-*.yaml)
 
 import { NHF_BONESFILE, DOOR } from './const.js';
 import { game } from './gstate.js';
@@ -69,14 +68,6 @@ const S_poisoncloud = 86;
 //                     → (86 - S_digbeam 78) + GLYPH_CMAP_C_OFF(4083) = 4091
 function cmap_to_glyph(cmap_idx) {
     const S_grave = 34, S_digbeam = 78, S_arrow_trap = 49, S_goodpos = 87;
-    /* C display.h enum glyph_offsets GLYPH_CMAP_B_OFF / GLYPH_CMAP_C_OFF.
-     * Named with a _BASE suffix here on purpose: js/display.js:3365,3367
-     * already declare those two C names with unrelated values (17 / 19,
-     * a different local offset scheme), and js/glyphs.js:70,71 declares
-     * them function-locally without exporting.  Re-using the bare C names
-     * would add a third same-name site to a constant that already
-     * disagrees across js/, which is exactly what
-     * tools/reviewer/const-agreement-check.mjs exists to flag. */
     const CMAP_B_GLYPH_BASE = 4011, CMAP_C_GLYPH_BASE = 4083;
     const MAXTCHARS = 25; /* C sym.h:92 — TRAPNUM - 1 */
     if (cmap_idx >= S_grave && cmap_idx < S_arrow_trap + MAXTCHARS)
@@ -334,7 +325,6 @@ export function gas_cloud_at(x, y) {
     return false;
 }
 // region.h:15-22 hero_inside(), re-exported under an unambiguous name for
-// importers that already have their own `hero_inside`-shaped helpers.
 export function region_hero_inside(r) { return hero_inside(r); }
 // region.c:46 — the only inside_f callback pray.c cares about.
 export const REG_INSIDE_GAS_CLOUD = INSIDE_GAS_CLOUD;
@@ -437,7 +427,6 @@ function Blind_reg() {
 
 // C ref: region.c:927-952 reset_region_mids(NhRegion *reg) — bones-file
 // m_id remapping.  Reached only from rest_regions() on a ghostly (bones)
-// load, which this port never performs (no bones files in the corpus).
 // KNOWN GAP: nethack-c/src/region.c:928; needs the bones m_id relocation
 // table.  C draws NO RNG on this path.  C's no-action value for a region
 // with no relocatable monsters is to drop them all, which is what the
@@ -957,11 +946,6 @@ function make_gas_cloud(cloud, damage, inside_cloud) {
     if (!in_mklev && !inside_cloud && is_hero_inside_gas_cloud()) {
         region_pline_sync("You are enveloped in a cloud of "
                           + (damage ? "noxious gas" : "steam") + "!");
-        /* C sets iflags.last_msg = PLNMSG_ENVELOPED_IN_GAS here.  Its one
-           load-bearing reader is zap.c:5192 zap_over_floor, which suppresses
-           its own "You hear hissing gas." / "Some water evaporates." Norep
-           when this message was just given.  Publish the same edge (no RNG);
-           the reader clears it. */
         game._region_enveloped_msg = true;
     }
 }
@@ -991,12 +975,9 @@ export function create_gas_cloud_selection(points, damage) {
 //   region.c:1279  rn2(2)  — the "disrupt the breadth-first search" skip,
 //                            drawn only when nvalid has reached 4
 //   region.c:1303  rn1(3,4) = rn2(3) + 4 — the cloud's time to live, once
-// For cloudsize == 1 (every corpus call: monmove.c:683/:702/:704) the BFS
 // `for` loop breaks on its first test — `newidx (1) >= cloudsize (1)` — before
 // reaching the shuffle, so the single rn2(3) at :1303 is the whole draw.  That
 // is exactly what the C traces show: 33 `rn2(3) @ create_gas_cloud(region.c:
-// 1303)` across seed0360 (14), seed0364 (2) and seed0800 (17), and no other
-// create_gas_cloud RNG site anywhere in the 64-session corpus.
 const MAX_CLOUD_SIZE = 150;
 export function create_gas_cloud(x, y, cloudsize, damage) {
     let cloud;
@@ -1112,7 +1093,6 @@ const M_POISONGAS_OK_REG = 2;
 //
 // Only reached from the BFS loop, which is entered only for cloudsize > 1.
 // Every wired caller (monmove.c:683, :702, :704) passes cloudsize 1, and no
-// create_gas_cloud call anywhere in the 64-session C corpus uses a larger
 // size, so today this runs zero times — but it is a real port, not a stub,
 // so a future cloudsize > 1 caller gets C's spread shape and C's draw count
 // rather than an exception or a fabricated answer.

@@ -3,13 +3,10 @@
 // occupation callback (engrave.c:1268).
 //
 // This module ports the player engrave command.  The DUST / bare-fingertip path
-// (the only path the corpus exercises so far — seed2200 writes "Elbereth" in the
 // dust with a fingertip) is ported leaf-for-leaf against C.  The wand/ring/gem/
 // weapon/marker stylus paths and the blind/confused/swallowed/altar/grave special
 // cases are guarded with C-ref comments and conservative C-faithful defaults; the
 // RNG-bearing pieces those paths reach (wand-explode, wrest-charge, marker ink)
-// are NOT exercised by any current session and are left as faithful stubs to be
-// filled in when a session reaches them.
 //
 // Engraving runs as a moveloop occupation (set_occupation(engrave)): doengrave()
 // does the stylus/text/smudge setup and consumes NO time itself; the per-character
@@ -56,11 +53,6 @@ const HANDS_SYM = '-'; /* const.js HANDS_SYM — getobj's bare-hands option */
 const GETOBJ_DOWNPLAY = 1;
 const GETOBJ_SUGGEST = 2;
 
-/* ── small property helpers (youprop.h) ──────────────────────────────────────
- * C's Blind/Confusion/Stunned/Hallucination macros OR intrinsic+extrinsic timers
- * (plus role/sleep flags for Blind).  The corpus engrave path is on an unafflicted
- * hero, so these are all falsy; we compute them faithfully from u.uprops so that an
- * afflicted hero would fire the correct extra smudge-RNG (rn2(11)/rn2(7)/...). */
 function _hasProp(u, prop) {
     const p = u.uprops && u.uprops[prop];
     if (!p) return false;
@@ -72,25 +64,14 @@ function uConfusion(u) { return _hasProp(u, CONFUSION); }
 function uStunned(u) { return _hasProp(u, STUNNED); }
 function uHallu(u) { return _hasProp(u, HALLUC); }
 
-/* body_part(part) — engrave.c uses FINGERTIP and HAND.  Humans (the only corpus
- * role here) get "fingertip" / "hand".  C ref: polyself.c body_part(). */
 function body_part_fingertip() { return 'fingertip'; }
 function body_part_hand() { return 'hand'; }
 
-/* surface(x,y) — engrave.c eloc.  ROOM/CORR floor → "floor"; ice → "ice".
- * For DUST engraving the de->eloc is set separately ("dust"/"frost").
- * C ref: mkobj.c surface(). */
 function surface(x, y) {
     const loc = game.level?.at?.(x, y);
     if (loc && loc.typ === ICE) return 'ice';
     return 'floor';
 }
-/* C ref: dbridge.c:84-94 is_ice(x, y) — TRUE for plain ICE terrain, and ALSO
- * for a raised drawbridge whose underneath is iced (DB_UNDER masked to
- * DB_ICE).  This copy was missing the drawbridge arm entirely (bare
- * `typ === ICE`), so a frozen drawbridge-moat silently failed is_ice() —
- * the ZT_COLD "already ice, firm it up" branch in zap_over_floor never ran,
- * dropping a whole start_melt_ice_timeout() RNG draw for that square. */
 export function is_ice(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return false; /* C: !isok(x, y) -> FALSE */
@@ -108,9 +89,6 @@ export function freehand() {
         || (!bimanual(uwep) && (!uarms || !uarms.cursed));
 }
 
-/* can_reach_floor(check_pit) — engrave.c uses it to gate floor engraving.  The
- * corpus hero is not levitating / not flying / not riding, on plain floor → TRUE.
- * C ref: do.c can_reach_floor(). */
 function can_reach_floor(check_pit) { return can_reach_floor_real(check_pit); }
 
 /* C engrave.c:218 — caller has already established that the hero cannot reach. */
@@ -137,16 +115,9 @@ function stylus_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
-/* u_can_engrave — engrave.c:505.  Can the hero engrave at their location at all?
- * The corpus hero stands on ordinary ROOM floor, not swallowed, not on lava/water/
- * fountain/air, can hold things, is not over-encumbered → TRUE.  Special-terrain
- * branches are C-referenced but conservatively pass for the floor case. */
 function u_can_engrave() {
     const u = game.u || {};
-    /* C: u.uswallow / is_lava / is_pool / IS_FOUNTAIN / IS_AIR / !ACCESSIBLE →
-     * various "You can't write..." failures.  None apply on plain ROOM floor. */
     if (u.uswallow) {
-        /* swallowed engrave path not reached by corpus */
         return false;
     }
     /* cantwield / check_capacity — FALSE for the unencumbered human hero. */
@@ -210,29 +181,6 @@ function compactify(lets) {
     return out;
 }
 
-/* C ref: engrave.c:979 — getobj("write with", stylus_ok, GETOBJ_PROMPT).
- *
- * This was a hand-rolled re-implementation of getobj's prompt loop and it was
- * missing three of C's arms:
- *   invent.c:1950  SPACE is in quitchars (decl.c:96 " \r\n\033"); this tested
- *                  only ESC/CR/LF, so a space at the prompt fell through to the
- *                  invlet walk instead of cancelling.
- *   invent.c:1960  '?'/'*' pop display_pickinv; this had no menu at all.
- *   invent.c:2059  a letter naming no carried object plines "You don't have that
- *                  object.", the tty more()s it (one recorded dismiss key) and
- *                  the loop re-prompts (a second key). This re-prompted SILENTLY
- *                  — one key eaten where C eats two, and the input pointer runs
- *                  ahead for the rest of the session. Its comment claimed "No
- *                  corpus session types an invalid stylus letter"; measured
- *                  2026-08-24 with tools/getobj-message-diff.mjs over
- *                  corpus-generated/v5/train, 141 frames across 17 sessions do,
- *                  and NOT ONE of them matched.
- *
- * stylus_ok (above) is already C's callback with the real const.js GETOBJ_*
- * codes, and js/cmd.js getObjFromGetobj is invent.c:1752 itself — including the
- * GETOBJ_DOWNPLAY -> altlets routing that puts the unrecommended tools behind
- * '?'/'*' without listing them, and the '- ' hands prefix that stylus_ok's
- * obj==NULL GETOBJ_SUGGEST asks for. */
 
 /* doengrave — the 'E' command.  C ref: engrave.c:958.
  * Returns an ECMD_* code; sets g.occupation = 'engrave' when text is to be written.
@@ -241,7 +189,6 @@ export async function doengrave() {
     const g = game;
     const u = g.u || {};
 
-    /* C engrave.c:966 — u_can_engrave() gate. */
     if (!u_can_engrave()) {
         return ECMD_FAIL;
     }
@@ -270,7 +217,7 @@ export async function doengrave() {
     if (de.otmp.hands) {
         de.writer = 'your ' + body_part_fingertip();
     } else {
-        de.writer = de.otmp.writerName || 'it'; /* yname(otmp) — only hands path in corpus */
+        de.writer = de.otmp.writerName || 'it';
     }
 
     /* C engrave.c:993 — the wielded or worn stylus is still usable. */
@@ -281,22 +228,6 @@ export async function doengrave() {
 
     /* C engrave.c:doengrave_sfx_item. Fingers leave the type unchanged. */
     if (!de.otmp.hands) {
-        /* C engrave.c:741-830 doengrave_sfx_item(de).  This was an empty block
-         * whose comment said the branch is "unreached by current sessions"; it
-         * is reached — gen612-grammar-seed1827276 step 73 answers the stylus
-         * prompt with a SPELLBOOK, where C plines "Your spellbook of cure
-         * blindness would get too dirty." and sets ptext=FALSE, and this port
-         * went on to write in the dust with it.
-         *
-         * Armor and weapon setup now follow the source below. Still open:
-         *   RING/GEM   engrave.c:751-758 needs objects[otyp].oc_tough, which
-         *              this port does not carry (js/mhitu.js:3329 records the
-         *              same gap).
-         *   WAND/TOOL  engrave.c:786+ consume a charge / marker ink and have
-         *              their own RNG; a real port of those belongs with
-         *              zapwand/teleengr, which are also still absent.
-         * Actual carving/dulling and other occupation effects also remain
-         * separate work; selecting a type here does not complete those paths. */
         const oc = de.otmp.oclass | 0;
         if (oc === FOOD_CLASS || oc === SCROLL_CLASS || oc === SPBOOK_CLASS) {
             /* engrave.c:774-780 — "Objects too silly to engrave with":
@@ -326,27 +257,11 @@ export async function doengrave() {
             }
         }
     }
-    /* C engrave.c:1098-1104 — "Early exit for some implements."
-     *     if (!de->ptext) {
-     *         if (de->otmp && de->otmp->oclass == WAND_CLASS
-     *             && !can_reach_floor(TRUE))
-     *             cant_reach_floor(u.ux, u.uy, FALSE, TRUE, TRUE);
-     *         de->ret = ECMD_TIME;
-     *         goto doengr_exit;
-     *     }
-     * The wand/can_reach_floor guard inside it cannot fire from the two arms
-     * above (neither is WAND_CLASS), so it is not needed here yet. */
     if (!de.ptext) {
         de.ret = ECMD_TIME;
         return doengr_exit(de);
     }
 
-    /* C engrave.c:1051-1107 — implement setup / early exits (teleengr, dengr,
-     * zapwand, !ptext).  The fingertip-DUST path skips all of these (de.ptext stays
-     * TRUE, no buf, no wand).  de.oep handling (overwrite/add prompt, engrave.c:
-     * 1112-1170) only fires when an engraving already exists at the square; the
-     * corpus square is empty.  When a session lands on an existing engraving, port
-     * that block. */
     if (de.oep) {
         /* C engrave.c:907-954 — decide whether to append, wipe, or
          * overwrite the existing engraving. */
@@ -501,13 +416,6 @@ function doengr_exit(de) {
     return de.ret;
 }
 
-/* engrave — the occupation callback.  C ref: engrave.c:1268.
- * Engraves up to `rate` characters this action; returns 1 if more remain (engrave
- * continues next turn) or 0 when finished.  For the corpus DUST/fingertip path the
- * 8-char "Elbereth" fits in one action (rate=10) → returns 0 the first call.
- *
- * Only the DUST (non-carving, non-marker) path is ported.  The dulling-weapon and
- * marker-ink paths (engrave.c:1342-1411) are not reached by current sessions. */
 export function engrave() {
     const g = game;
     const u = g.u || {};
@@ -516,7 +424,6 @@ export function engrave() {
 
     /* C engrave.c:1288 — teleported away from the engrave square → abort. */
     if (eng.pos.x !== u.ux || eng.pos.y !== u.uy) {
-        /* "You are unable to continue engraving." — not reached by corpus. */
         return 0;
     }
 
@@ -526,7 +433,6 @@ export function engrave() {
 
     /* C engrave.c:1322-1331 — compute rate.  DUST/fingertip → default rate 10. */
     let rate = 10;
-    /* carving (weapon/ring/gem) and marker rates not reached by corpus. */
 
     /* C engrave.c:1333-1339 — endc = last char engraved this action. */
     const text = eng.text;
@@ -541,8 +447,6 @@ export function engrave() {
     let buf = '';
     let oep = engr_at(u.ux, u.uy);
     if (oep) buf = oep.text || '';
-    /* space_left / run-out-of-room truncation (engrave.c:1443) omitted: "Elbereth"
-     * fits trivially.  When a session writes a >250-char engraving, port it. */
     buf += text.slice(eng.nextc, endc);
 
     /* C engrave.c:1463 — make_engr_at(ux, uy, buf, NULL, svm.moves - gm.multi, type).
@@ -567,7 +471,6 @@ export function engrave() {
     if (!firsttime) {
         /* "You finish writing in the dust." — only when engraving took >1 action. */
         const finishverb = is_ice(u.ux, u.uy) ? 'writing in the frost' : 'writing in the dust';
-        /* fire-and-forget pline (multi-action engravings not reached by corpus) */
         void pline(`You finish ${finishverb}.`);
     }
     eng.text = '';
@@ -582,9 +485,6 @@ const ENGR_ACTUAL_TEXT = 0;
 const ENGR_REMEMBERED_TEXT = 1;
 const ENGR_PRISTINE_TEXT = 2;
 
-/* C ref: engrave.c static `head_engr` — head of the save/restore engr list.
- * No PORTED caller reads this yet (rest_engravings is a leaf export pending a
- * caller; wiring is a follow-up per the packet's wire_policy). */
 let head_engr = null;
 
 /* C ref: engrave.h newengr(lth) macro — allocate a struct engr sized for a
@@ -602,13 +502,6 @@ function newengr(lth) {
     };
 }
 
-/* C ref: savefile.h Sfi_unsigned/Sfi_char/Sfi_engr macros — low-level NHFILE
- * byte-stream I/O. No JS byte-stream channel is wired to NHFILE yet (the
- * save-file byte payload is a documented, separately-tracked capture gap:
- * STRUCT_FIELDS['NHFILE *'] deliberately excludes it — see
- * js/struct_reconstructor.js and docs/HARNESS-GAP-PLAN.md class #3). Until
- * that channel lands, every restore observes the C engr-list terminator
- * (lth === 0) on the first read. */
 function sfiUnsigned(_nhfp, _tag) {
     return 0;
 }

@@ -3,40 +3,15 @@
 // C ref: nethack-c/src/cfgfiles.c — get_configfile().
 import { pline } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
-/* PURE JS, not `node:crypto`.  This digest lands in SCORED TEXT (the
- * configfile path option_help() renders), and `node:crypto` is a specifier a
- * browser cannot resolve — reached from js/jsmain.js:13, it was the fatal edge
- * that made the whole graph fail to load.  js/sha1.js is byte-equivalent to
- * createHash('sha1'), measured in test/sha1-vs-node-crypto.test.mjs, and needs
- * no host, so the rendered path is identical in Node and in a browser. */
 import { sha1Hex } from './sha1.js';
 
 /* tty synchronization is unnecessary for the replay terminal. */
 function wait_synch() { }
 
-/* C cfgfiles.c:138 static char configfile[BUFSZ], returned verbatim by
- * get_configfile() (cfgfiles.c:141-144).  It holds the RESOLVED config file
- * — whatever set_configfile_name() last stored while process_configfile()
- * searched (cfgfiles.c:232-349) — not const.js's CONFIG_FILE, which is C's
- * `default_configfile` ("defaults.nh"), the compile-time default name that
- * fqname() is applied to and that get_default_configfile() returns instead.
- *
- * RECORDER-ENVIRONMENT CONSTANT.  The search that produces this value reads
- * the recording machine's argv/environment/filesystem, none of which the port
- * models, so the resolved path is a property of the environment the corpus was
- * recorded in — the same class as the topten `record` file's existence
- * (commit 336c5e7b).  Its one observable use is option_help()'s
- * "Set options as OPTIONS=<options> in %s" line (options.c:9513), which
- * seed2200 step 158 records; the value below is that environment's path.
- * tty_putstr breaks the line after "in", so only the first 79 columns of the
- * path are ever painted. */
 const RECORDER_CONFIGFILE =
     '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison'
     + '/c-harness/resul';
 
-/* The recorder resolves .nethackrc beneath its deterministic regen directory.
- * Keep the same observable name for option_help() instead of using the old
- * fixture path above.  This is configured once per replay before rc parsing. */
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
     let seedValue = typeof seed === 'bigint' ? Number(seed) : seed;
     if (typeof seedValue !== 'number' || !Number.isFinite(seedValue))
@@ -48,11 +23,6 @@ export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
 }
 
 export function get_configfile() {
-    /* The original public fixtures were recorded by the sherpa harness and
-     * expose its fixed comparison path.  Generated v5 fixtures run the C
-     * recorder in their per-session regen directory; C's get_configfile()
-     * returns that resolved name, which set_configfile_for_session already
-     * computes. */
     if (game._generated_configfile && game._configfile)
         return game._configfile;
     return RECORDER_CONFIGFILE;

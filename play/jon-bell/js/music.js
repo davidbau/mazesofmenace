@@ -1,36 +1,4 @@
 // @ts-nocheck
-/* music.js — port of nethack-c-v5/upstream/src/music.c, the musical-instrument
- * subsystem reached from apply.c:4373-4383 (WOODEN_FLUTE..DRUM_OF_EARTHQUAKE).
- *
- * WHY THIS FILE EXISTS.  seed0002-healer-reflection-drummer applies its leather
- * drum at session step 569 ("a", then the invlet "o").  Nothing named
- * do_play_instrument existed anywhere in js/, so doapply fell through to its
- * "Sorry, I don't know how to use that." default: the session's first RNG
- * divergence is C's `rn2(2)` at do_improvisation(music.c:535) against a JS
- * rn2(19) from exercise() fired by a leaked keystroke, and with it went the
- * whole 25-frame tail — the --More-- C holds open across keys 570..580 while
- * the pet's "turns to flee." message waits behind it, and the " Deaf" status
- * condition the drum grants for rn1(20,30) turns (steps 584..594).
- *
- * SCOPE.  The improvisation route is ported in full: do_play_instrument's
- * Underwater / can_blow / ynq gates, do_improvisation with all ten instrument
- * arms, improvised_notes, and the effect helpers awaken_scare /
- * awaken_monsters / charm_snakes / calm_nymphs / awaken_soldiers /
- * charm_monsters.  Two leaves are NOT ported and say so by throwing rather
- * than by inventing an answer C computes:
- *   - do_earthquake (music.c:342) — its per-square do_pit needs fillholetyp /
- *     liquid_flow / desecrate_altar / add_damage / seemimic;
- *   - do_play_instrument's passtune route (music.c:786) — the answer-"n" branch
- *     that opens the Stronghold drawbridge.
- * Measured over the 44 public sessions, only seed0002 applies an instrument at
- * all and the "Improvise?" prompt appears in none of them, so no scored path
- * reaches either of the two.
- *
- * Hero_playnotes() is a soundlib macro and this build integrates no sound
- * library, so sndprocs.h:273 defines it EMPTY — every one of its call sites is
- * a no-op in the scored binary and none is reproduced here.  Likewise
- * obj_to_instr(), whose only caller is that macro.
- */
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { pline, Norep, newsym, canseemon } from './display.js';
@@ -122,10 +90,6 @@ function a_monnam(mtmp) { return x_monnam(mtmp, ARTICLE_A, null, 0, true); }
 /* hack.h ROLL_FROM(array) — array[rn2(SIZE(array))]. */
 function ROLL_FROM(arr) { return arr[rn2(arr.length)]; }
 
-/* youprop.h property words.  Stunned (youprop.h:81) and Confusion (:84) are
- * INTRINSIC-ONLY macros; Deaf (:125) and Unchanging (:372) read the
- * intrinsic/extrinsic pair; Hallucination (:120) is HHallucination gated by
- * the Halluc_resistance pair (:119). */
 function _prop(idx) { return (game.u && game.u.uprops) ? game.u.uprops[idx] : null; }
 function Stunned() { return ((_prop(STUNNED)?.intrinsic) | 0) !== 0; }
 function Confusion() { return ((_prop(CONFUSION)?.intrinsic) | 0) !== 0; }
@@ -319,11 +283,6 @@ async function charm_monsters(distance) {
 }
 
 /* ── C music.c:342-470  do_earthquake ───────────────────────────────────── */
-/* NOT PORTED.  Its per-square do_pit() (music.c:221) needs maketrap +
- * fillholetyp + liquid_flow + desecrate_altar + add_damage + seemimic, none of
- * which are reachable from here yet.  DRUM_OF_EARTHQUAKE is its only caller
- * and no public-corpus session applies one; fabricating the pits it makes
- * would be worse than saying so (Cardinal Rule 1). */
 async function do_earthquake(force) {
     const u = game.u || {};
     const into_a_chasm = ' into a chasm';
@@ -507,11 +466,6 @@ async function do_improvisation(instr) {
         break;
     }
 
-    /* C music.c:586 — the notes are rolled BEFORE the per-instrument switch,
-     * so their rnd(5) + notecount x rn2(7) sit between the mode rn2(2) and
-     * whatever the arm draws.  seed0002 step 569 records exactly that:
-     * 27050 rn2(2), 27051 rnd(5)=5, 27052..27056 rn2(7) x5, then the arm's
-     * 27057 rn2(20) (rn1(20,30)) and 27058 rn2(2) (exercise). */
     const improvisation = improvised_notes(same_old_song);
     void improvisation; /* C nhUse(improvisation): only Hero_playnotes reads it */
 
@@ -623,9 +577,6 @@ async function do_improvisation(instr) {
             if (!Deaf()) {
                 await pline(`You beat a ${
                     same_old_song.value ? "familiar " : ""}deafening row!`);
-                /* C music.c:709 incr_itimeout(&HDeaf, rn1(20, 30)) — 30..49
-                 * turns of deafness, which is what puts " Deaf" on seed0002's
-                 * status row from step 582 to the end of the recording. */
                 incr_HDeaf(rn1(20, 30));
             } else {
                 await pline("You pound on the drum.");

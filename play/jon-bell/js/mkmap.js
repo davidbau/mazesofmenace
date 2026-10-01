@@ -169,11 +169,6 @@ export function flood_fill_rm(sx, sy, rmno, lit, anyroom) {
         game.gm.max_ry = sy;
 }
 
-/* C ref: mkmap.c:23-34 init_map(schar bg_typ) — blank the whole map to bg_typ.
- * Note the x range starts at 1 (column 0 is never a playable square) and the
- * y range is the FULL ROWNO, not HEIGHT: init_map/finish_map sweep [1,COLNO)
- * x [0,ROWNO) while the cellular-automaton passes only touch the smaller
- * WIDTH/HEIGHT interior. */
 function init_map(bg_typ) {
     for (let x = 1; x < COLNO; x++)
         for (let y = 0; y < ROWNO; y++) {

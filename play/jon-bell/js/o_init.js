@@ -68,11 +68,6 @@ const FLUORITE = 457;
  *   Recompute oclass_prob_totals[GEM_CLASS].
  */
 export function setgemprobs(dlev) {
-    /* C: lev = (dlev) ? ledger_no(dlev) : 0
-     * ledger_no(dlev) = dlev->dlevel + dungeons[dlev->dnum].ledger_start
-     * Dungeon 0 (main dungeon) has ledger_start=0, so lev = dlev->dlevel.
-     * Other dungeons would use their ledger_start, but contest plays d0
-     * almost exclusively; guard with ?? 0 for safety.                    */
     let lev = 0;
     if (dlev !== null) {
         const ledgerStart = game.dungeons?.[dlev.dnum]?.ledger_start ?? 0;
@@ -105,28 +100,6 @@ export function setgemprobs(dlev) {
 export function oinit() {
     setgemprobs(game.u?.uz ?? null);
 }
-/* some gems can have different colors — C: o_init.c randomize_gem_colors(83-109)
- *
- *   #define COPY_OBJ_DESCR(o_dst, o_src) \
- *       o_dst.oc_descr_idx = o_src.oc_descr_idx, o_dst.oc_color = o_src.oc_color
- *
- * Called from init_objects() during the GEM_CLASS pass (o_init.c:186-189),
- * i.e. BEFORE shuffle_all().  Gems are not one of shuffle_all()'s classes, so
- * both operands still hold their canonical objects.c values here: oc_descr_idx
- * is the identity assignment from o_init.c:165 and oc_color is the static
- * table.  Copying is therefore "give dst src's canonical description and
- * colour", which is what the two runtime maps below record.
- *
- * This body used to read `game.objects` — a property nothing in js/ has ever
- * written (measured by tools/never-initialised-field-probe.mjs: absent at this
- * line in all 44 public sessions), so every COPY_OBJ_DESCR sat behind
- * `if (objs != null)` and did nothing.  The rn2 draws were already faithful;
- * only the RESULT was dropped, leaving turquoise and aquamarine permanently
- * "green" and fluorite permanently "violet" no matter what C rolled.  The port
- * keeps objects[].oc_descr_idx / oc_color as the two runtime overrides
- * game._objDescriptions[otyp] (read by objnam.js:687 getObjDescr) and
- * game._objColors[otyp] (read by display.js:1198/:1412/:1971), which is where
- * shuffle_all() writes its own permutation — so write them here too. */
 export function randomize_gem_colors() {
     const g = game;
     g._objDescriptions = g._objDescriptions || {};
@@ -394,17 +367,6 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered, credi
     g._disco = g._disco || {};
     const wasKnown = !!g._oc_name_known[oindx];
     const wasEnc = !!g._oc_encountered[oindx];
-    /* C ref: o_init.c:463-467 — the guard has a THIRD disjunct this port was
-     * missing:
-     *     || (Role_if(PM_SAMURAI) && Japanese_item_name(oindx, (const char *) 0))
-     * It is the whole mechanism behind u_init.c:745-753, the Samurai's
-     * "pre-discover items that switch to Japanese names" loop: knows_class(
-     * WEAPON_CLASS) has already set oc_name_known on every weapon, so when that
-     * loop calls knows_object(KNIFE, FALSE) both of the first two disjuncts are
-     * FALSE and only this one lets the otyp reach disco[].  Without it, shito /
-     * wakizashi / ninja-to never entered the discoveries list at all — measured
-     * on seed0017-samurai-altar-pray step 59 ('\'), where C lists them and JS
-     * did not, shifting the whole page by three rows. */
     const jpPredisco = _Role_if_samurai() && Japanese_item_name(oindx | 0) != null;
     if ((!wasKnown && mark_as_known) || (!wasEnc && mark_as_encountered) || jpPredisco) {
         const oclass = (MKOBJ_OC_CLASS_LOCAL(oindx)) | 0;
@@ -416,12 +378,6 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered, credi
             g._oc_encountered[oindx] = true;
         if (!wasKnown && mark_as_known) {
             g._oc_name_known[oindx] = true;
-            /* C o_init.c:482-483 — credit the hero's wisdom when an object type
-             * becomes newly known via a hero action (identify, makeknown). This
-             * consumes rn2(19)/rn2(2) and is RNG-load-bearing (e.g. seed5500
-             * scroll-of-identify's per-item discover_object exercises). Earlier
-             * callers passed only 3 args (credit_hero undefined → falsy), exactly
-             * matching the C call sites that pass FALSE. */
             const A_WIS = 2;
             if (credit_hero)
                 exercise(A_WIS, true);
@@ -491,26 +447,6 @@ export function observe_object(obj) {
         discover_object(oindx, false, true, false);
     }
 }
-/* C ref: include/youprop.h:116-120 — observe_object()'s only guard besides the
- * otyp range:
- *     #define HHallucination     u.uprops[HALLUC].intrinsic
- *     #define HHalluc_resistance u.uprops[HALLUC_RES].intrinsic
- *     #define EHalluc_resistance u.uprops[HALLUC_RES].extrinsic
- *     #define Halluc_resistance  (HHalluc_resistance || EHalluc_resistance)
- *     #define Hallucination      (HHallucination && !Halluc_resistance)
- *
- * Note what the macro does NOT read.  Hallucination is "solely a timeout"
- * (youprop.h:115), so there is no EHallucination: the HALLUC slot is consulted
- * for its INTRINSIC only.  And the negated term is the separate HALLUC_RES
- * property (intrinsic OR extrinsic), not HALLUC's own `blocked` field.
- *
- * This body read `(HALLUC.intrinsic || HALLUC.extrinsic) && !HALLUC.blocked`,
- * which is wrong on both halves.  The `blocked` half was the live one: nothing
- * in js/ writes uprops[HALLUC].blocked, so the resistance test was a constant
- * TRUE and a hallucination-resistant hero was still treated as hallucinating —
- * while js/polyself.js:326 does set HALLUC_RES, via
- * PROPSET(HALLUC_RES, dmgtype(mdat, AD_HALU)) in set_uasmon.  Matches the
- * project's canonical copy, js/allmain.js:1884. */
 function _observe_hallucinating() {
     const up = game.u && game.u.uprops ? game.u.uprops : null;
     if (!up) return false;
@@ -545,45 +481,12 @@ function _fixedDescrOf(otyp) {
  * fastforward_pre_mklev() calls this instead of issuing rn2(2) directly.
  */
 export function init_objects() {
-    /* C o_init.c:210-225 — the objects[].oc_name_known audit.  Every row must
-     * satisfy `oc_name_known == !OBJ_DESCR(objects[i])` and C REPAIRS any that
-     * disagrees, so a type with no alternate description starts PRE-KNOWN (there
-     * is nothing about it to identify); only described types, whose appearance
-     * shuffle_all() permutes, start unknown.  This port kept _oc_name_known as a
-     * pure discovery log starting empty, so all 140 descr-less types read as not
-     * name-known — which makes not_fully_identified() (objnam.c:1786) true for
-     * e.g. a starting food ration, and turned seed0014's identify scroll into a
-     * "What would you like to identify first?" menu where C prints "You have
-     * already identified the rest of your possessions."
-     *
-     * Set the flag DIRECTLY, not through discover_object(): C's audit never
-     * touches svd.disco[], so these types must NOT appear in the '\' discoveries
-     * list.  RNG-free; runs before the WAN_NOTHING roll below, as in C. */
     {
         const g = game;
         g._oc_name_known = g._oc_name_known || {};
         for (let i = MAXOCLASSES_OINIT; i < OC_DESCR.length; i++)
             if (!OC_DESCR[i]) g._oc_name_known[i] = true;
     }
-    /* objects[].oc_unique — the objects.h BITS() `uniq` column, which this port
-     * had NO WRITER for: `game._oc_unique` is read at six sites (js/objnam.js
-     * the_unique_obj + xname's actual-name arm + simple_typename, js/mklev.js
-     * mkobj's eligible scan + mksobj's artifact hook, js/eat.js, js/cmd.js) and
-     * every one of them answered `undefined`.  Measured on
-     * seed0373-barbarian-quest-tour step 99: C's prinv reads "Endgame
-     * prerequisite: e - the Amulet of Yendor." and this port read "an Amulet of
-     * Yendor", because the_unique_obj()'s `objects[otyp].oc_unique` conjunct was
-     * always false.
-     * Exactly four rows in nethack-c-v5/upstream/include/objects.h carry
-     * uniq=1 (BITS arg 7); the otyps are cross-checked against
-     * js/oc_name_data.js by NAME, not assumed:
-     *   213 Amulet of Yendor            (objects.h:872)
-     *   262 Candelabrum of Invocation   (objects.h:1022)
-     *   263 Bell of Opening             (objects.h:1026)
-     *   409 Book of the Dead            (objects.h:1439)
-     * Note FAKE_AMULET_OF_YENDOR (212) is NOT unique — the_unique_obj() has its
-     * own arm for the fake, and conflating the two would make a cheap plastic
-     * imitation print as "the Amulet of Yendor" once identified. */
     // The static column is now initialized by resetGame(), before any
     // init_objects/oinit reader, rather than first appearing here.
     /* C o_init.c:234: objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE */

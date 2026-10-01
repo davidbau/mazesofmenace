@@ -955,7 +955,7 @@ export async function dispinv_with_action(
     // return immediately from that action (the array holds obj identities).
     if (c && c !== '\x1b') {
         for (const otmp of game.invent || []) {
-            if (otmp.invlet === c) return await itemactions(otmp);
+            if (otmp && otmp.invlet === c) return await itemactions(otmp);
         }
     }
     return ECMD_OK;

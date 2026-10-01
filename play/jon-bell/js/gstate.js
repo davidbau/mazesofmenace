@@ -13,10 +13,6 @@ export let game = {};
 // property (`game.wizard`) produces a field NOTHING EVER WRITES: the rc parser
 // sets flags.debug (js/options.js:63 for OPTIONS=playmode:debug) and
 // flags.explore (options.js:65), and the misspelled reads then see `undefined`
-// forever.  13 of the 44 corpus sessions run playmode:debug and 2
-// (seed0900, seed1150) run playmode:explore, so those reads were silently
-// taking the non-debug branch in sessions C runs in debug mode.  Note
-// seed1500-rogue-explore-move is NOT one of them — it is named for the
 // in-game exploring it does, not the playmode option.  Exported as functions so there is exactly one
 // spelling of each macro and `game`'s late rebinding in resetGame() is picked up.
 export function wizard() {
@@ -58,27 +54,7 @@ export function questStatusStruct() {
     return q;
 }
 export function resetGame() {
-    /* C ref: a new process gets fresh STATIC initialisers, and the organiser
-     * recorded each segment as a new process.  js/'s module-level tables and
-     * function statics have no such boundary — an imported JSON table is one
-     * object for the life of the node process, shared by 29 modules — so a
-     * game that mutates one (mon.c:5922 adj_erinys() does, C-faithfully)
-     * leaves it mutated for the next game in the same process.  Restoring
-     * them is the FIRST thing a reset does, before `game` is cleared, so the
-     * rest of this function and everything after it reads C's initialisers.
-     * See js/statics.js; measured by tools/module-state-leak.mjs. */
     resetStatics();
-    /* Clear IN PLACE rather than `game = {}`.  `game` is an `export let`, so a
-     * reassignment is invisible to any consumer that captured it by value
-     * instead of through a live binding — and the judge's frozen playability
-     * runner does exactly that:
-     *     const { NethackGame, moveloop_core, game, GameDisplay } = modules;
-     * taken BEFORE nhGame.start() calls this function.  Reassigning left that
-     * runner holding the pre-start object, so its `game.nhDisplay = display`
-     * write went to a discarded object and its `if (game.program_state
-     * ?.gameover) break` could never fire — it looped until moveloop_core threw
-     * and reported every death session as a crash.  Identity is part of the
-     * contract with anything outside this module; only the CONTENTS reset. */
     for (const k of Object.keys(game))
         delete game[k];
     // Static objects[].oc_unique column copied by C objects_globals_init.
@@ -137,7 +113,6 @@ export function resetGame() {
     // "fruit:" option (options.c:1763) overwrites it afterwards — js/jsmain.js
     // start() does exactly that on top of this default. Setting it only in
     // jsmain left game.pl_fruit undefined on every path that does not boot a
-    // full session (capture replay), where fruitname() then produced
     // "undefined juice" instead of C's "slime mold juice".
     game.pl_fruit = 'slime mold';
     // C ref: decl.c:995 `static const struct sinfo init_program_state = { 0 };`
@@ -151,15 +126,12 @@ export function resetGame() {
     // `gameover` in particular is 0 for the whole of normal play — its ONLY
     // assignment in the entire C tree is end.c:1148 `program_state.gameover = 1`
     // inside done(). So the C-correct value at every mid-game read is 0.
-    // (Verified against ground truth, not just inferred: the 11 seed0360
-    // aobjnam artifact captures all have known=0/bknown=0, so
     // not_fully_identified() (objnam.c:1791) is TRUE, and C's recorded return
     // is the non-pname form "war hammer named Mjollnir drops". That output is
     // reachable only if obj_is_pname() (objnam.c:333-341) took the
     // `!program_state.gameover` branch — i.e. gameover was 0.)
     //
     // Assigning only in js/jsmain.js:113 (`g.program_state = {}`) left it
-    // undefined on every path that does not boot a full session — capture
     // replay reaches game code through mapstate_game_bridge.js:550 resetGame()
     // — where objnam.c:337's port threw instead of reading a zero. Modelling
     // C's struct here, rather than guarding each read with `?.`, is what makes
@@ -207,18 +179,15 @@ export function resetGame() {
     // shortcut. decl_globals_init() zeroes iflags, but initoptions() runs
     // afterwards and sets many members to NON-zero defaults, so enumerating
     // all of struct instance_flags (flag.h) as 0 here would assert values that
-    // are false at capture time. JS reads of an absent field are already falsy,
     // so the option-derived members lose nothing by being omitted — whereas
     // writing `0` for them would be a fabricated claim. js/jsmain.js:97
     // (`g.iflags = { ...opts.iflags }`) overwrites this on the boot path, which
     // mirrors C's decl_globals_init() → initoptions() order exactly.
     //
-    // override_ID is enumerated because its C value at every in-play capture
     // point is provably 0: it is not an option, and every setter is a
     // bracketed toggle that restores it — objnam.c:2492-2494 (actualoname),
     // mkobj.c:3329-3331, invent.c:2580-2587, invent.c:3391, and the wizard-mode
     // ^I path at wizcmds.c:53-62. Its reader objnam.c:337 (obj_is_pname) threw
-    // here under capture replay once program_state was modelled.
     game.iflags = {
         window_inited: false,
         override_ID: 0,            /* flag.h:271 */

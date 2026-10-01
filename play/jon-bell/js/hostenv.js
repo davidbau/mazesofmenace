@@ -2,11 +2,8 @@
 //
 // WHY THIS EXISTS
 // ---------------
-// js/ carries ~165 `ENV.FF_*` debug-trace gates.  Under Node they are
 // free; in a BROWSER a bare `process` is an undeclared identifier and every
 // unguarded one throws ReferenceError the moment its statement evaluates.
-// The contest serves js/ to a browser (https://mazesofmenace.ai/play/<owner>/)
-// and judges playability there, so a trace gate nobody has enabled since
 // August is enough to make the page unplayable.
 //
 // `typeof process !== 'undefined' && ...` guarded most of them and is itself
@@ -17,7 +14,6 @@
 //
 // It reads `globalThis.process` rather than importing anything, so there is no
 // specifier for a browser's module loader to fail on — see
-// tools/no-host-fs-check.mjs, which forbids the alternatives.
 //
 // NOT A CAPABILITY.  Reading an env var is not "filesystem or network"; the
 // object is frozen-by-convention here and never written.  On a browser it is

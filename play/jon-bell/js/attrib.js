@@ -16,12 +16,6 @@ import { near_capacity, encumber_msg, encumber_msg_sync } from './weight.js';
 import { aligns } from './roles.js';
 import { uasmon_maxStr } from './polyself.js';
 import { permonstTemplate } from './makemon.js';
-/* C hack.c:4219 losehp() — losestr()'s damage application (attrib.c:244).
- * It was called here with NO binding in scope, so every losestr() that pushes
- * strength below the racial minimum was a ReferenceError waiting to happen;
- * auto-replay-sweep reports it as `ERROR: losehp is not defined` on 2 of its 8
- * records.  Latent until now because losestr had no live caller that could
- * reach the dmg branch; mcast_weaken_you (mcastu.c:481) is one. */
 import { losehp } from './dokick.js';
 import { add_weapon_skill, lose_weapon_skill } from './uhitm.js';
 /* The shared mons[] / mattk[] tables, imported the same way js/dochug.js,
@@ -100,13 +94,6 @@ function getAtemp(u) {
         u.atemp.a = [0, 0, 0, 0, 0, 0];
     return u.atemp.a;
 }
-/* C attrib.c:1206 acurr(chridx) — compute effective current attribute value.
- * Simplified: abon + atemp + abase, clamped to [3, 25].
- * Special cases (Gauntlets of Power, Dunce Cap, etc.) not ported — they
- * require item-tracking infrastructure.  For early-game Wizard sessions the
- * base formula suffices.
- * NOTE: i is a C constant (A_STR=0..A_CHA=5); u.acurr.a / u.abon.a /
- * u.atemp.a are in DISPLAY order — translate via C_ATTR_TO_DISP. */
 export function acurr(u, i) {
     const di = C_ATTR_TO_DISP[i] ?? i; /* C constant → display index */
     const abase = getAbase(u);
@@ -144,25 +131,6 @@ export function attrmax(u, i) {
     const row = (ir >= 0 && ir < RACE_ATTRMAX.length) ? RACE_ATTRMAX[ir] : RACE_ATTRMAX[0];
     return row[i];
 }
-/* C attrib.c:743 redist_attr() — polymorph attribute redistribution. Loops
- * attributes in C order (skips Int/Wis), jitters AMAX by rn2(5)-2 clamped to
- * [ATTRMIN, ATTRMAX], then rescales ABASE proportionally. u.acurr.a/u.amax.a
- * are DISPLAY order → translate via C_ATTR_TO_DISP; ATTRMIN=RACE_ATTRMIN=3.
- * Integer division is Math.trunc (C int /).
- * ATTRMAX(A_STR) = (Upolyd ? uasmon_maxStr() : gu.urace.attrmax[A_STR]) — the
- * sole caller of redist_attr (polyself.c:370) always runs with Upolyd true
- * (u.mtimedone/u.umonnum are set just above it), so the A_STR cap here is
- * always the polymorphed-form cap.
- *
- * mndx is u.umonnum (C reads uasmon_maxStr() -> gy.youmonst.data, and
- * set_uasmon/set_mon_data keep gy.youmonst.data == &mons[u.umonnum]).  It USED
- * to read game.youmonst.mndx, which no code path writes: mndx is not a struct
- * monst member (monst.h has short mnum), set_mon_data writes .mnum
- * (js/makemon.js:6894), and .mndx exists only as the capture-replay
- * DERIVED_ALIASES entry in js/struct_reconstructor.js:339 -- and MAPSTATE_SCHEMA
- * has no youmonst slot at all, so it is undefined under replay too.  Measured
- * over the public 44, 2026-09-06: game.youmonst.mndx undefined in 44/44
- * sessions while u.umonnum carried the real form. */
 export function redist_attr() {
     const u = game.u;
     const abase = getAbase(u);
@@ -317,11 +285,6 @@ export function newhp() {
 const plusattr = ["strong", "smart", "wise", "agile", "tough", "charismatic"];
 const minusattr = ["weak", "stupid", "foolish", "clumsy", "fragile", "repulsive"];
 const attrname = ["strength", "intelligence", "wisdom", "dexterity", "constitution", "charisma"];
-/* DUNCE_CAP object type — not imported from const.js; defined locally.
- * Was 124, which is SPLINT MAIL in 5.0 (objects.h is an X-macro file, so the
- * ids are not greppable — resolved with tools/c-const-oracle.mjs).  A hero in
- * splint mail therefore had her Int/Wis pinned at the dunce-cap cap, and an
- * actual dunce cap did nothing. */
 const DUNCE_CAP = 94;
 /* u.acurr.a[] / u.amax.a[] are `schar` (nethack-c/include/attrib.h:39
  * `struct attribs { schar a[A_MAX]; }`), so any C assignment into them
@@ -405,19 +368,6 @@ export function adjattrib(ndx, incr, msgflg) {
     /* C attrib.c:190 — "Any successful change also resets abuse / exercise
      * level": AEXE(ndx) = 0. */
     getAexe(game.u)[ndx] = 0;
-    /* C attrib.c:195-196 —
-     *     if (program_state.in_moveloop && (ndx == A_STR || ndx == A_CON))
-     *         encumber_msg();
-     * The note that stood here called this "display-only, not ported (no tty)".
-     * It is a PAGE BOUNDARY, and it is not the same call as the encumber_msg()
-     * at poisoned()'s tail — it runs BEFORE poisoned() gets to poisontell(), so
-     * it decides the ORDER of two toplines.  MEASURED on
-     * seed0399-wizard-hallu-actions: C plines
-     *     "The soldier ant's sting was poisoned!"
-     *     "Your movements are slowed slightly because of your load."   <- here
-     *     "You feel weaker!"
-     * and this port, missing the middle one, joined the other two into one
-     * frame that C never shows. */
     if ((game.program_state?.in_moveloop | 0) && (ndx === A_STR || ndx === A_CON))
         encumber_msg();
     return true;
@@ -477,27 +427,6 @@ export function exercise(i, inc_or_dec) {
             aexe[i] = (aexe[i] | 0) - rn2(2);
         }
     }
-    /* C attrib.c:516-517 —
-     *     if (svm.moves > 0 && (i == A_STR || i == A_CON))
-     *         encumber_msg();
-     * The note that stood here called this "not ported (no tty); encumber
-     * check doesn't affect RNG".  Both halves are beside the point: the
-     * contest scores the 24x80 SCREEN, and this call is how C's encumbrance
-     * transition gets announced on any turn where the crossing was caused by
-     * something other than a pickup/drop.
-     *
-     * MEASURED on gen094-reseed-seed1081192 step 541 (key ESC, T:47 -> T:50):
-     * moves hits a multiple of 10, exerper() (attrib.c:523) takes the
-     * NOT_HUNGRY arm and calls exercise(A_CON, TRUE) — `rn2(19)=3 @
-     * exercise(attrib.c:509)` is in the recording — and the encumber_msg()
-     * below finds oldcap 1 > newcap 0 and plines "Your movements are now
-     * unencumbered.".  C's frame is
-     *     "Your movements are now unencumbered.  You can move again."
-     * (the unmul nomovemsg JOINS onto it); this port printed only the second
-     * half.  That was the session's FIRST screen miss.
-     *
-     * Synchronous entry point: exercise() is void in C and is called from 325
-     * synchronous sites in js/ — see the note on encumber_msg_sync(). */
     if ((game.moves | 0) > 0 && (i === A_STR || i === A_CON))
         encumber_msg_sync();
 }
@@ -507,33 +436,6 @@ function ALIGNLIM() {
     return 10 + Math.floor((game.moves | 0) / 200);
 }
 
-/* C mon.c:5922-5965 adj_erinys(unsigned abuse) — makes the erinys (PM_ERINYS)
- * permonst progressively more dangerous as the hero's alignment abuse grows.
- * It mutates GLOBAL monster data (mons[PM_ERINYS]), and is RNG-NEUTRAL.
- *
- * WHAT THE STUB THIS REPLACES GOT WRONG.  It returned early on `abuse <= 5`,
- * on the stated grounds that "across the entire 64-session corpus the hero's
- * abuse never exceeds 0" and that nothing below the first flag threshold is
- * observable.  Both halves are false:
- *   * C's LAST TWO STATEMENTS are outside every threshold and run for ANY
- *     abuse — `pm->mlevel = min(7 + abuse, 50)` and
- *     `pm->difficulty = min(10 + abuse/3, 25)`.  The early return skipped them,
- *     so the erinys stayed mlevel 7 forever.
- *   * seed4500-knight-coverage reaches abuse 2 and then level-teleports into
- *     the Sanctum (dat/sanctum.lua:111 `des.monster({id = "erinys"})`), whose
- *     erinys C rolls d(13,8) for at newmonhp(makemon.c:1042) — mlevel 9, i.e.
- *     7 + 2 — while this port rolled d(10,8) off the untouched mlevel 7.  That
- *     was the session's whole remaining RNG divergence (leaf 95154) and the
- *     head of a 294-frame render miss.
- *
- * The tables are the same JSON module objects js/makemon.js reads (ESM JSON
- * modules are singletons), so mutating a row here is what C's `mons[]` write
- * is: visible to every reader.  Five other files already import these packs
- * directly for the same reason.
- *
- * PM_ERINYS is resolved from the pmname table rather than hardcoded, because a
- * bare PM_* index in this port has been wrong often enough to be worth not
- * guessing at (js/pm.generated.js still carries 3.7 spellings). */
 const M1_FLY = 0x00000001;         /* monflag.h:85 */
 const M1_AMPHIBIOUS = 0x00000200;  /* monflag.h:94 */
 const M1_REGEN = 0x00800000;       /* monflag.h:108 */
@@ -609,16 +511,7 @@ export function adj_erinys(abuse) {
 export function adjalign(n) {
     const u = game.u;
     const align = u.ualign;
-    /* C globals are zero-initialized; if ualign hasn't been set up yet
-       (not present in capture state), treat fields as 0 but don't
-       manufacture the object.  Only mutate when ualign already exists. */
     const rec = align ? align.record : 0;
-    /* C `unsigned u.ualign.abuse`, BSS-zero.  Read it as an unsigned integer
-     * with a 0 default: the field was left absent by chargen until
-     * js/u_init.js:467 started zeroing it, and `undefined - n` is NaN, so
-     * `newabuse > abuse` was false and the counter never moved.  Keep the
-     * coercion here as well so a capture-seeded game with no ualign.abuse
-     * behaves like C's zero rather than like NaN. */
     const abu = (align && align.abuse != null) ? (align.abuse >>> 0) : 0;
     const newalign = rec + n;
 
@@ -718,38 +611,6 @@ function exerper() {
             /* UNENCUMBERED (0): no exercise */
         }
     }
-    /* C attrib.c:570-583 — if (!(svm.moves % 5)) { status checks }
-     *   if ((HClairvoyant & (INTRINSIC | TIMEOUT)) && !BClairvoyant)
-     *       exercise(A_WIS, TRUE);
-     *   if (HRegeneration)                       exercise(A_STR, TRUE);
-     *   if (Sick || Vomiting)                    exercise(A_CON, FALSE);
-     *   if (Confusion || Hallucination)          exercise(A_WIS, FALSE);
-     *   if ((Wounded_legs && !u.usteed) || Fumbling || HStun)
-     *       exercise(A_DEX, FALSE);
-     * Each firing branch draws RNG inside exercise() (rn2(19) for TRUE,
-     * rn2(2) for FALSE), so the branch ORDER above is load-bearing.
-     *
-     * These were stubbed out as "not tracked in JS", but every property here
-     * IS tracked in u.uprops today — and the Wounded_legs branch fires in the
-     * ordinary early game: a bear trap sets wounded legs (trap.c:1519
-     * set_wounded_legs), so from the next moves%5 boundary onward C draws an
-     * rn2(2) here every 5 turns that JS did not.  seed0004: C's turn-25 world
-     * block is rn2(70)@moveloop_core:288, rn2(100)@regen_hp:730,
-     * rn2(20)@gethungry(eat.c:3191), rn2(2)@exercise(attrib.c:509),
-     * rn2(64)@moveloop_core:413 — JS emitted every leaf but the rn2(2).
-     *
-     * C property macros (youprop.h):
-     *   HClairvoyant   u.uprops[CLAIRVOYANT].intrinsic
-     *   BClairvoyant   u.uprops[CLAIRVOYANT].blocked
-     *   HRegeneration  u.uprops[REGENERATION].intrinsic
-     *   Sick           u.uprops[SICK].intrinsic
-     *   Vomiting       u.uprops[VOMITING].intrinsic
-     *   Confusion      HConfusion = u.uprops[CONFUSION].intrinsic
-     *   Hallucination  (HHallucination && !Halluc_resistance)
-     *   Fumbling       (HFumbling || EFumbling)
-     *   Wounded_legs   (HWounded_legs || EWounded_legs)
-     *   HStun          u.uprops[STUNNED].intrinsic
-     */
     if (moves % 5 === 0) {
         const up = u.uprops || {};
         const H = (p) => (up[p]?.intrinsic | 0);
@@ -768,23 +629,6 @@ function exerper() {
             exercise(A_DEX, false);
     }
 }
-/* C attrib.c:598 void exerchk(void)
- *
- * Called once per hero turn from allmain.c:410.
- * Runs exerper() (periodic exercise accumulation), then checks whether
- * enough moves have elapsed to test attributes for gain/loss.
- *
- * RNG sequence when the attrib check fires (moves >= next_attrib_check):
- *   1. Per nonzero AEXE entry that passes lolim/hilim/Upolyd guards:
- *      rn2(50) — "do you get credit for this exercise?"
- *      [rarely: rn2(...) inside adjattrib if ABASE drops below ATTRMIN]
- *   2. rn1(200, 800) = rn2(200) + 800 — always, to set next_attrib_check
- *
- * WIRE NOTE (L11): Call exerchk() from fastforward_step_generic_turn() in
- * js/fastforward.js AFTER gethungry() and BEFORE rn2(82).
- * C allmain.c:407-413 order: gethungry (407), exerchk (410), u_wipe_engr (413).
- * W19.3 owns js/fastforward.js — coordinate with that porter before L11 wire.
- */
 export function exerchk() {
     const g = game;
     const u = g.u;
@@ -800,20 +644,6 @@ export function exerchk() {
     const moves = (g.moves | 0);
     if (moves < ctx.next_attrib_check)
         return;
-    /* C attrib.c:609 — also guard on !gm.multi.
-     * This read used to be bridge-ONLY, defaulting to 0 whenever the slot was
-     * absent — and the slot is populated only by the capture-replay harness, so
-     * on the SCORED path the guard was dead: gm.multi read 0 on every turn and
-     * the attribute test fired inside every nomul() window C skips.  The live
-     * slot exists and always did: js/mapstate.js:159 dumps `hero.multi` FROM
-     * g.multi, which nomul()/unmul() (js/allmain.js) are the writers of.  (The
-     * bridge comment at js/mapstate_game_bridge.js:356, "JS has no slot today",
-     * is what is out of date.)  Keep the bridge as an override so a sweep record
-     * that injects a C-resolved gm.multi still wins; fall back to the live global.
-     * seed0014 measures the dead guard at turn 600: C is mid-fumble countdown
-     * (gm.multi == -1 until the ++/unmul at allmain.c:380, which runs AFTER
-     * exerchk), so C skips the test entirely, while this port drew its rn2(AVAL)
-     * — leaf 22283, one extra draw against C's rn2(76) @moveloop_core:360. */
     const multiVal = (g.__bridge__ && g.__bridge__['hero.multi'] !== undefined)
         ? (g.__bridge__['hero.multi'] | 0) : (g.multi | 0);
     if (multiVal !== 0)
@@ -868,8 +698,6 @@ export function exerchk() {
     /* C attrib.c:673 — svc.context.next_attrib_check += rn1(200, 800) */
     ctx.next_attrib_check += rn1(200, 800);
 }
-/* C attrib.c:1152 minuhpmax(altmin) — minimum value for uhpmax.
- * Returns max(u.ulevel, altmin) with altmin floored at 1. */
 export function minuhpmax(altmin) {
     const u = game.u;
     if (!u)
@@ -928,23 +756,6 @@ export function setuhpmax(newmax, even_when_polyd) {
         }
     }
 }
-/* ── artifact.c: confers_luck() and the two table lookups it needs ───────────
- * confers_luck() lives in artifact.c, not attrib.c, but there is no js/artifact.js
- * and attrib.c's stone_luck() is its only in-tree caller, so it is hosted here.
- * (js/cmd.js:17293 carries a second, independent copy whose spec_ability is still
- * a throwing stub; these two should be consolidated onto this one — see report.)
- *
- * The artilist[] spfx column below was NOT hand-transcribed.  It was extracted by
- * compiling the real header —
- *     gcc -I nethack-c/include -I harness/include   (printf artilist[i].spfx)
- * — so every value is exactly what the C build sees, including the fact that the
- * `#if 0`-d "Palantir of Westernesse" (artilist.h:241) is absent from the compiled
- * table.  That makes index i here identical to C's obj->oartifact ordinal and to
- * js/objnam.js's ARTILIST index.  Index 0 is artilist[ART_NONARTIFACT], the dummy.
- * Only two entries carry SPFX_LUCK: 30 (The Tsurugi of Muramasa) and 32 (The Orb
- * of Fate); the rest of the column is kept so spec_ability() is correct for every
- * SPFX_* bit, not just this one caller's.
- */
 const ART_NONARTIFACT = 0;
 /* C artifact.h — the ART_ enum terminator; artilist[] indices run 0..33. */
 const AFTER_LAST_ARTIFACT = 34;
@@ -1276,25 +1087,6 @@ export async function losestr(num, knam, k_format) {
         adjattrib(A_STR, -num, 1);
 }
 
-/* ── adjabil — C ref: attrib.c:1012 adjabil(int oldlevel, int newlevel) ──────
- * Grant (or revoke) the role/race INNATE intrinsics whose ulevel threshold the
- * hero just crossed.  Each table entry { ulevel, prop, gainstr, losestr } maps a
- * level threshold to a property bit; when oldlevel < ulevel <= newlevel the bit
- * is OR'd in (FROMEXPER for role abilities, FROMRACE for race abilities) and, if
- * the prop was not already intrinsic from another source, "You feel <gainstr>!"
- * is pline()d (gainstr=="" → silent grant, e.g. level-1 abilities).  The reverse
- * (level loss) clears the bit and plines the losestr (or "less <gainstr>").
- *
- * RNG: NONE.  adjabil consumes no rn2/rnd.  Its only observable effect on a
- * passing session is the intrinsic bit + the "You feel <x>!" topline, which the
- * wizard #levelchange ramp pages.  postadjabil() (see_monsters() for WARNING /
- * SEE_INVIS) is display-only and RNG-free; the visible-glyph refresh is not
- * load-bearing for the replay, so it is omitted.
- *
- * Tables transcribed from attrib.c:23-105 (the `struct innate` arrays).  Each
- * row is [ulevel, propIndex, gainstr, losestr]; propIndex is the prop.h enum
- * value (const.js).  The C tables key on the address of the H<prop> global; we
- * key on the prop index and set u.uprops[prop].intrinsic. */
 const _ARC_ABIL = [[1, SEARCHING, '', ''], [5, STEALTH, 'stealthy', ''], [10, FAST, 'quick', 'slow']];
 const _BAR_ABIL = [[1, POISON_RES, '', ''], [7, FAST, 'quick', 'slow'], [15, STEALTH, 'stealthy', '']];
 const _CAV_ABIL = [[7, FAST, 'quick', 'slow'], [15, WARNING, 'sensitive', '']];

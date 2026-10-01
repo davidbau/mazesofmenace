@@ -88,28 +88,11 @@ function oc_material(otyp) {
 /* C ref: objnam.c the(str) — definite article. */
 function _the(str) { return 'the ' + str; }
 
-/* C ref: rnd.c:572 RND(x) — raw ISAAC64 reduction.
- * Used by rnl to avoid logging spurious rn2(N) entries.
- * Contest scoring never installs a tape, so we go straight to ISAAC64.
- * NOTE: rng.js's _rngTape is not accessible here; tape mode is only
- * used by harness tooling, not the contest scorer or depth-of-divergence. */
 function _rawRnd(x) {
     const val = isaac64_next_uint64(game.coreCtx);
     return Number(val % BigInt(x));
 }
 
-/* C ref: rnd.c:112 rnl(x) — 0 <= rnl(x) < x, adjusted by Luck.  Delegated to
- * the canonical rnl() in rng.js (the same call cmd.js's rnl_dosearch makes).
- *
- * The local copy that used to live here drew C's Luck adjustment —
- * `if (adjustment && rn2(37 + abs(adjustment)))` (rnd.c:143) — through the
- * UNLOGGED _rawRnd().  Only the main `i = RND(x)` draw is unlogged in C; the
- * adjustment draw is a genuine rn2() and C records it as its own PRNG line.
- * So on any game with non-zero Luck this consumed the right numbers but
- * emitted one log entry too few, shifting the whole PRNG channel by one from
- * the first door onward.  Measured on seed0030 segment 9 (a full-moon game, so
- * Luck == 1 from turn 1): C's step-6 doopen_indir recorded
- * `rn2(38)=8 @ lock.c:904` then `rnl(20)=0`, where JS logged only `rnl(20)=0`. */
 
 /* C ref: attrib.c:1251 acurrstr() — effective Str for door-opening check.
  * For Str <= 18 (normal human): result = max(str, 3) = str.
@@ -128,34 +111,8 @@ function acurrstr() {
     return result;
 }
 
-/* C ref: lock.c:781 doopen_indir(coordxy x, coordxy y)
- * Called when autoopen fires on walking into a closed door at (x, y).
- * x, y guaranteed non-zero (caller passes the door tile coordinates).
- *
- * Ported scope: simple D_CLOSED door only (lock.c:898-935).
- * Unported branches (no RNG in seed0077 corpus path):
- *   - get_adjacent_loc prompt (line 803-807) — caller passes x,y
- *   - stumble_on_door_mimic (line 819) — no RNG here in corpus
- *   - Confusion/Stunned res=ECMD_TIME (line 823-824)
- *   - newsym glyph-change detection (line 827-834) — simplified to plain newsym
- *   - portcullis / drawbridge (line 836-860) — not in corpus
- *   - D_LOCKED autounlock (line 875-894) — the APPLY_KEY gate + autokey(TRUE)
- *     + the pick_lock() follow-through ARE ported below; the KICK arm is
- *     unreachable at the default flags.autounlock (apply-key alone)
- *   - D_TRAPPED b_trapped (line 906-912) — sets D_NODOOR; not in seed0077
- */
 export async function doopen_indir(x, y) {
     const g = game;
-    /* C lock.c:788-791 —
-     *     if (nohands(gy.youmonst.data)) {
-     *         You_cant("open anything -- you have no hands!");
-     *         return ECMD_OK;
-     *     }
-     * The first thing doopen_indir does, before get_adjacent_loc, so a handless
-     * hero's 'o' consumes no direction key.  Sibling of the guard doclose()
-     * already carries at lock.c:965.  seed5500 step 898: the hero is polymorphed
-     * into a warhorse (M1_NOHANDS) and C plines this where the port printed
-     * nothing.  RNG-free. */
     if (_nohands_lk()) {
         await pline("You can't open anything -- you have no hands!");
         g.context = g.context || {};
@@ -167,32 +124,8 @@ export async function doopen_indir(x, y) {
      * above), so res only ever carries ECMD_OK out of the not-closed branch. */
     let res = ECMD_OK;
 
-    /* C lock.c:793-796 — the getdir prompt override:
-     *     dirprompt = NULL;
-     *     if (u.utrap && u.utraptype == TT_PIT && container_at(u.ux,u.uy,FALSE))
-     *         dirprompt = "Open where? [.>]";
-     * No corpus hero is in a pit over a container when opening; NULL makes
-     * get_adjacent_loc -> getdir use its default "In what direction?". */
     const dirprompt = null;
 
-    /* C lock.c:798-807 —
-     *     if (x > 0 && y >= 0) { cc.x = x; cc.y = y; }
-     *     else if (!get_adjacent_loc(dirprompt, (char *) 0, u.ux, u.uy, &cc))
-     *         return ECMD_OK;
-     *
-     * THE `else` BRANCH WAS MISSING ENTIRELY.  doopen() is `return
-     * doopen_indir(0, 0)`, so the top-level 'o' command took the x>0 test as
-     * false, fell straight through to `g.level.at(0, 0)` — never a DOOR — and
-     * returned ECMD_OK having opened NO blocking read.  seed0108 step 216 types
-     * 'o': C raises "In what direction?" and eats the ESC at step 217 with
-     * "Never mind.", while this port consumed neither key, so both leaked to
-     * rhack.  (The autoopen caller at js/cmd.js:27806 passes real door
-     * coordinates and is unaffected.)
-     *
-     * get_adjacent_loc (cmd.c:3931): getdir, then `pline1(Never_mind)` and
-     * return 0 on cancel; otherwise cc = (x + u.dx, y + u.dy), and an !isok
-     * result returns 0 printing `emsg` — which this caller passes as NULL, so
-     * it is silent.  RNG-free throughout. */
     let cx = x | 0, cy = y | 0;
     if (!(cx > 0 && cy >= 0)) {
         if (!(await getdir(dirprompt))) {
@@ -228,30 +161,6 @@ export async function doopen_indir(x, y) {
     if (!loc) return ECMD_OK;
     const portcullis = _is_drawbridge_wall_stub(cx, cy) >= 0;
 
-    /* C lock.c:841-853 — the not-a-door report.  This used to be a SILENT
-     *     if (loc.typ !== DOOR) return ECMD_OK;
-     * so `o` toward a wall/floor square printed nothing where C always says
-     * something:
-     *
-     *   if (portcullis || !IS_DOOR(door->typ)) {
-     *       if (is_db_wall(cc.x, cc.y) || door->typ == DRAWBRIDGE_UP)
-     *           There("is no obvious way to open the drawbridge.");
-     *       else if (portcullis || door->typ == DRAWBRIDGE_DOWN)
-     *           pline_The("drawbridge is already open.");
-     *       else if (container_at(cc.x, cc.y, TRUE))
-     *           pline("%s like something lootable over there.",
-     *                 Blind ? "Feels" : "Seems");
-     *       else
-     *           You("%s no door there.", Blind ? "feel" : "see");
-     *       return res;
-     *   }
-     *
-     * The sibling doclose() below has carried this block all along; only the
-     * open side was missing it.  gen677 step 83 is `o` then `n` into open
-     * floor: C prints "You see no door there." and this port printed a blank
-     * topline, which cost the session's whole 187-point tail.  RNG-free.
-     * container_at lives in js/pickup.js, which imports this module, so it
-     * comes in through the same dynamic import doloot() above uses. */
     if (portcullis || loc.typ !== DOOR) {
         if (_is_db_wall_stub(cx, cy) || loc.typ === 19 /* DRAWBRIDGE_UP */) {
             await pline('There is no obvious way to open the drawbridge.');
@@ -269,25 +178,6 @@ export async function doopen_indir(x, y) {
         return res;
     }
 
-    /* C lock.c:855-895 — !(door->doormask & D_CLOSED): the door is not closed,
-     * so there is nothing to open; C still reports WHY.  This port used to bail
-     * silently, so walking into a locked door printed nothing where C prints
-     * "This door is locked." (seed0777 step 31, the session's first render
-     * divergence after the botl/eckey fixes).
-     *
-     *   switch (door->doormask) {
-     *   case D_BROKEN: mesg = " is broken";        break;
-     *   case D_NODOOR: mesg = "way has no door";   break;
-     *   case D_ISOPEN: mesg = " is already open";  break;
-     *   default:       mesg = " is locked"; locked = TRUE; break;
-     *   }
-     *   set_msg_xy(cc.x, cc.y);
-     *   pline("This door%s.", mesg);
-     *
-     * Note the switch is on the WHOLE doormask, not a bit test, so D_LOCKED and
-     * any mask C does not name (e.g. D_LOCKED|D_TRAPPED) both take the default
-     * " is locked" arm.  set_msg_xy() only records the message-origin coord for
-     * the 'mention_decor' feature; it paints nothing here.  RNG-free. */
     if (!(loc.doormask & D_CLOSED)) {
         let mesg, locked = false;
         switch (loc.doormask | 0) {
@@ -306,23 +196,6 @@ export async function doopen_indir(x, y) {
             break;
         }
         await pline(`This door${mesg}.`);
-        /* C lock.c:875-894 — the autounlock follow-up:
-         *     if (locked && flags.autounlock) {
-         *         u.dz = 0;
-         *         if ((flags.autounlock & AUTOUNLOCK_APPLY_KEY) != 0
-         *             && (unlocktool = autokey(TRUE)) != 0)
-         *             res = pick_lock(unlocktool, cc.x, cc.y, NULL) ? ECMD_TIME
-         *                                                          : ECMD_OK;
-         *         else if ((flags.autounlock & AUTOUNLOCK_KICK) != 0
-         *                  && !u.usteed && ynq("Kick it?") == 'y') { ... }
-         *     }
-         * flags.autounlock defaults to AUTOUNLOCK_APPLY_KEY alone (flag.h:72,
-         * set by options.c:1089 optfn_autounlock's do_init arm), so the KICK
-         * arm is off for every corpus session and only the apply-key arm can
-         * fire — and only when autokey(TRUE) (lock.c:288) finds a skeleton key,
-         * lock pick or credit card in gi.invent.  seed0777 reaches this with an
-         * EMPTY inventory (the tutorial's nh.gamestate() stash), so autokey
-         * returns 0 and nothing follows the message. */
         if (locked && (g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY)) {
             const au = g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
             if (g.u) g.u.dz = 0;   /* C lock.c:877 */
@@ -366,7 +239,6 @@ export async function doopen_indir(x, y) {
         await pline("The door opens.");
         /* C lock.c:908-913 — D_TRAPPED: b_trapped then D_NODOOR; else D_ISOPEN */
         if (loc.doormask & D_TRAPPED) {
-            /* b_trapped stub — just remove the door; no RNG in corpus */
             loc.doormask = D_NODOOR;
         } else {
             loc.doormask = D_ISOPEN;
@@ -404,43 +276,6 @@ export async function doopen_indir(x, y) {
  * full yn_function/input-state ownership, mouse/getpos, fuzzer and alternate
  * binding initialization remain open; the typed queue primitives alone do
  * not implement those consumer paths. */
-/* C ref: cmd.c:3869 movecmd(sym, MV_ANY) — the ONE thing that decides whether a
- * keystroke is a direction at a getdir() prompt.  This file used to answer that
- * question with a hand-written eight-entry LOWERCASE table:
- *
- *     const DIR_DX_CLOSE = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
- *
- * C does not decide it that way.  reset_commands() (cmd.c:3462-3471, num_pad
- * Off — the corpus nethackrc never sets number_pad) binds THREE keys per
- * direction, not one:
- *
- *     bind_key_fn(dirchars[i],          move_funcs[i][MV_WALK]);   // h j k l ...
- *     bind_key_fn(highc(dirchars[i]),   move_funcs[i][MV_RUN]);    // H J K L ...
- *     bind_key_fn(C(dirchars[i]),       move_funcs[i][MV_RUSH]);   // ^H ^J ^K ...
- *
- * and movecmd(sym, MV_ANY) accepts ALL THREE (cmd.c:3877-3882 scans
- * move_funcs[d][MV_WALK] || [MV_RUN] || [MV_RUSH]).  At a getdir prompt the run
- * and rush keys carry no run/rush semantics at all — movecmd only writes
- * xdir[d]/ydir[d]/zdir[d] — so 'K' at "Loot in what direction?" is plain north.
- *
- * MEASURED, gen341-reseed-seed476480 step 24: the hero types `#loot`, C answers
- * "Loot in what direction?", the recorded key is 'K', and C loots north and
- * prints "You don't find anything there to loot."  This port's lowercase table
- * had no 'K', so it took the invalid-direction arm, drew the cmdassist
- * help_dir window, and that window's --More-- ATE THE NEXT RECORDED KEYSTROKE.
- * From that step on the port was one key ahead of C for the rest of the game.
- *
- * The ORDER also matters and was wrong: C tests movecmd BEFORE quitchars
- * (cmd.c:4095 `else if (!(is_mov = movecmd(dirsym, MV_ANY)) && !u.dz)`, with the
- * `!strchr(quitchars, dirsym)` test inside that arm).  Since C('j') == 0x0A is
- * bound to do_rush_south, an 0x0A at a direction prompt is SOUTH in C, not a
- * cancel — and 0x0A is what a recorded Return arrives as (ICRNL; see
- * js/jsmain.js:710 and the same precedent already ported for getpos at
- * js/cmd.js:406).  Testing quitchars first inverted that.
- *
- * So this now calls the real movecmd()/cmdbind_get()/move_funcs machinery that
- * js/cmd.js already carries, instead of a fourth hand-mirrored copy of a table
- * that was missing two thirds of C's bindings. */
 /* C ref: src/decl.c:96 — `const char quitchars[] = " \r\n\033";`.  SPACE, CR,
  * LF and ESC, and nothing else.  This constant read '\x1b\x07\x03' (ESC, BEL,
  * ^C), which is not any C character class: it omitted the three characters
@@ -528,16 +363,6 @@ async function _getdir_read(g, u, s, noPrompt, cmdq) {
     if (dircode === (g.Cmd?.spkeys?.[NHKF_GETDIR_SELF] ?? 46)
         || dircode === (g.Cmd?.spkeys?.[NHKF_GETDIR_SELF2] ?? 115)) {
         u.dx = 0; u.dy = 0; u.dz = 0;
-        /* C cmd.c:4116-4117 — the tail every successful getdir falls through to:
-         *     if (!u.dz)
-         *         confdir(FALSE);
-         *     return 1;
-         * It was MISSING here, and confdir(FALSE) is not RNG-neutral: it calls
-         * u_maybe_impaired(), whose `Confusion && !rn2(5)` draws whenever the
-         * hero is confused.  MEASURED, seed5006 segment 0 step 183 (a confused
-         * Tourist zapping a wand of death at herself with '.'): C's leaf 10952
-         * is rn2(5)=2 @ u_maybe_impaired(hack.c:2420) and JS drew nothing there
-         * — the session's first RNG divergence. */
         confdir(false);
         return 1;
     }
@@ -577,47 +402,15 @@ async function _getdir_read(g, u, s, noPrompt, cmdq) {
         await pline('What a strange direction!');
     return 0;
 }
-/* C ref: cmd.c:4100-4110 — the whole body of getdir's invalid-direction arm
- * AFTER the quitchars test, factored out because THREE call sites in this port
- * re-derive it:
- *
- *     help_requested = (dirsym == gc.Cmd.spkeys[NHKF_GETDIR_HELP]);
- *     if (help_requested || iflags.cmdassist)
- *         did_help = help_dir(..., "Invalid direction key!");
- *     if (!did_help)
- *         pline("What a strange direction!");
- *
- * The two copies in js/cmd.js (throw_obj's getdir read and dofire's) called
- * help_dir UNCONDITIONALLY: no iflags.cmdassist gate and no "What a strange
- * direction!" fallback at all.  With cmdassist OFF they put up a whole NHW_TEXT
- * window where C prints one topline — and the window's own dismissal expectation
- * is a keystroke-consumption divergence, not just a wrong frame.
- *
- * MEASURED on gen392-reseed-seed77105 step 1519: the session's options menu
- * turns cmdassist OFF at step ~233 (`O` … the toggle keys), C prints "What a
- * strange direction!" at steps 456, 462, 1424, 1520, 1660, 1668 and 1677 and
- * shows the cmdassist window at NONE of them.  This port matched at 456 (that
- * site reads the gate) and put up the window at 1520 (this site did not).
- *
- * This helper still serves the independent fire/throw readers. Shared getdir
- * owns explicit help and its retry loop; converging those readers onto the
- * complete shared input contract remains separate caller work. */
 export async function getdir_bad_dir_feedback() {
     let did_help = false;
     if (cmdassist_on()) {
-        /* C: sym = (s && *s == '^') ? dirsym : '\0'.  Every JS getdir caller
-         * passes a plain prompt ("In what direction?"), never a '^'-prefixed
-         * one, so sym is '\0' and help_dir's "Are you trying to use ^X?"
-         * dowhatdoes_core block is skipped.  help_dir's window path always
-         * returns TRUE (cmd.c:4921), so did_help follows the gate. */
         await help_dir('\0', /* spkey = */ ESC_KEY, 'Invalid direction key!');
         did_help = true;
     }
     if (!did_help)
         await pline('What a strange direction!');
 }
-/* C ref: flag.h iflags.cmdassist — defaults TRUE (options.c), cleared only by
- * "!cmdassist" in the config file.  The corpus nethackrc does not set it. */
 function cmdassist_on() {
     const v = game.iflags?.cmdassist;
     return v === undefined ? true : !!v;
@@ -687,68 +480,6 @@ export async function help_dir(sym, spkey, msg) {
 /* C ref: rm.h IS_DOOR(typ) — only the DOOR typ */
 function _IS_DOOR(typ) { return typ === DOOR; }
 
-/* C ref: lock.c:957 doclose(void) — the 'c' command, try to close a door.
- *
- *   int doclose(void) {
- *     if (nohands(...))   You_cant(...); return ECMD_OK;
- *     if (u.utrap PIT)    You_cant(...); return ECMD_OK;
- *     if (!getdir(NULL))  return ECMD_CANCEL;
- *     x = u.ux + u.dx; y = u.uy + u.dy;
- *     if (u_at(x,y) && !Passes_walls)  You(...); return ECMD_TIME;
- *     if (!isok(x,y))   goto nodoor;
- *     if (stumble_on_door_mimic(x,y))  return ECMD_TIME;
- *     if (Confusion || Stunned)  res = ECMD_TIME;
- *     door = &levl[x][y];  portcullis = (is_drawbridge_wall(x,y) >= 0);
- *     if (Blind) { feel_location(); maybe res = ECMD_TIME; }
- *     if (portcullis || !IS_DOOR(door->typ)) {
- *       is_db_wall/DRAWBRIDGE_UP : "drawbridge is already closed"
- *       portcullis/DRAWBRIDGE_DOWN: "no obvious way to close the drawbridge"
- *       else nodoor: You("%s no door there.", Blind?"feel":"see")
- *       return res;
- *     }
- *     switch (door->doormask) {
- *       D_NODOOR     : pline("This doorway has no door.");      return res;
- *       obstructed   : (msg from obstructed)                    return res;
- *       D_BROKEN     : pline("This door is broken.");           return res;
- *       D_CLOSED/D_LOCKED: pline("This door is already closed."); return res;
- *       D_ISOPEN     : verysmall (and !usteed) → "too small";
- *                      usteed || rn2(25) < (STR+DEX+CON)/3
- *                          → close: D_CLOSED, feel_newsym, block_point
- *                          → resist: exercise(A_STR,TRUE), "door resists!"
- *     }
- *     return ECMD_TIME;
- *   }
- *
- * Ported scope:
- *   - nohands/utrap pre-checks (stubs: false; player is human, not pit-trapped)
- *   - getdir consumption (reads next session key as direction)
- *   - u_at, isok, basic door-state-machine on the no-door path
- *   - drawbridge/portcullis branches kept as nested conditionals (stubs
- *     return false; measured unreached, see below)
- *   - Blind path is a stub (no feel_location side effects modelled here).
- *     THIS IS THE LEAST SAFE OF THIS FILE'S GAPS AND THE ONLY ONE WITH A LIVE
- *     C-SIDE CONJUNCTION.  On the JS side the falsifying state never holds at
- *     the call; on the C side it holds often, and the two disagree because THIS
- *     PORT'S BLINDNESS DIVERGES FROM C'S — not because blind door-closing is
- *     absent from the recordings, which it is not.  So the +0 below is a REACH
- *     result and should be read as unmeasured VALUE, per TOOLING_PHILOSOPHY 15.
- *     MEASURED: subject=doclose-Blind-feel_location value=+0 at=d26664bc
- *               date=2026-08-29 corpus=public+train (44 + 688 sessions)
- *               js-reach=43 calls over 37 sessions; Blind at the call 0 on
- *               BOTH readings (live u.uprops[BLINDED] and this file's own
- *               _blind_stub), is_drawbridge_wall 0
- *               c-side=130 blind 'c' presses over 22 sessions (incl. public
- *               seed4500) — an UPPER BOUND: 'c' is also a menu/prompt key
- *               chain=js-blindness-diverges-from-C
- *               recheck-when=js-blind-state-tracks-C
- *     Why it is still +0 today: of the 58 sessions carrying any such
- *     command+state conjunction, 52 have a first miss somewhere unrelated, 5
- *     pass outright, and the single remaining one (gen000-reseed-seed1059893
- *     step 250) turned out to be a 'q' answering a #tip prompt, not a quaff.
- *   - D_ISOPEN rn2(25) close attempt: faithful port; corpus 'c' sessions
- *     are getlin-consumed (not real doclose dispatches), so this branch
- *     never fires in the current corpus but is included for completeness.
- */
 export async function doclose() {
     const g = game;
     const u = g.u = g.u || {};
@@ -760,8 +491,6 @@ export async function doclose() {
         return;
     }
     /* C lock.c:970 — u.utrap && u.utraptype == TT_PIT */
-    /* WIRE_PENDING: port-doclose-c-cmd-2026-05-27 — utraptype enum not
-     * fully ported; no corpus session is pit-trapped at a 'c' keystroke. */
     if ((u.utrap | 0) && (u.utraptype | 0) === 0 /* TT_PIT=0 in C trap.h */) {
         await pline("You can't reach over the edge of the pit.");
         g.context = g.context || {};
@@ -811,7 +540,6 @@ export async function doclose() {
         portcullis = _is_drawbridge_wall_stub(x, y) >= 0;
         /* C lock.c:998 — Blind path: feel_location may flip glyph */
         if (_blind_stub()) {
-            /* feel_location side effects ungated; assume no glyph change */
         }
     }
     /* C lock.c:1008 — portcullis || !IS_DOOR(door->typ) — also the goto nodoor target */
@@ -916,10 +644,6 @@ const PICKLOCK_LEARNED_SOMETHING = -1; /* time passes */
 const PICKLOCK_DID_NOTHING = 0;        /* no time passes */
 const PICKLOCK_DID_SOMETHING = 1;
 
-/* C ref: objnam.c xname() for a box/chest — the bare object name.  obj_typename
- * doesn't carry box names in JS yet, so map the three box/chest otyps directly
- * (C names from objects.h: "large box", "chest", "ice box").  General over all
- * box otyps; not session-specific. */
 function box_xname(obj) {
     switch (obj ? (obj.otyp | 0) : 0) {
         case LARGE_BOX_OTYP: return 'large box';
@@ -937,9 +661,6 @@ function _an(str) {
     return (vowel ? 'an ' : 'a ') + str;
 }
 
-/* C ref: objnam.c yname(obj) — the hero's own carried item renders as
- * "your <name>".  For the corpus unlock tool (credit card / key / lock pick),
- * the bare tool name is its description-less typename. */
 function _toolname(pick) {
     switch (pick ? (pick.otyp | 0) : 0) {
         case CREDIT_CARD_OTYP: return 'credit card';
@@ -957,17 +678,6 @@ function _yname(pick) { return 'your ' + _toolname(pick); }
 async function _ynq(query) {
     const g = game;
     const prompt = query + ' [ynq] (q)';
-    /* C ref: win/tty/topl.c:390-392 tty_yn_function opens with
-     *     if (ttyDisplay->toplin == TOPLINE_NEED_MORE
-     *         && (cw->flags & (WIN_STOP | WIN_NOSTOP)) != WIN_STOP)
-     *         more();
-     * update_topl sets TOPLINE_NEED_MORE on every message it prints, so a
-     * pline immediately followed by a yn prompt ALWAYS pages -- it does not
-     * matter that the two would have fitted on one row together.  Overwriting
-     * _pending_message here dropped both the --More-- and the message: at
-     * seed0007 step 50 C shows "This door is locked.--More--" and step 51's
-     * SPACE dismisses it, while the port jumped straight to the prompt and was
-     * one keystroke ahead for the rest of the run. */
     if (g._pending_message) await force_more(g._pending_message);
     /* tty_yn_function re-reads after an invalid character.  The old one-shot
      * reader treated '+' (or any other invalid key) as an implicit q, which
@@ -991,8 +701,6 @@ async function _ynq(query) {
             if (ch !== 'y') g._topl_sticky = prompt;
             return ch;
         }
-        /* Invalid input rings the tty bell and leaves the same prompt for the
-         * next nhgetch; the next loop iteration captures that unchanged frame. */
     }
 }
 
@@ -1040,20 +748,7 @@ function _doormaskAt(doorRef) {
     return doorRef.doormask | 0;
 }
 
-/* C ref: cmd.c:206 set_occupation(fn, txt, xtime).
- * This file used to carry its own copy, whose xtime arm set g.occupation to the
- * STRING 'timed_occupation' -- a value no driver in this port dispatches, so any
- * future lock.c caller with a non-zero xtime would have armed a silent stub.
- * Every call site here passes 0, so re-pointing at the exported implementation
- * (js/cmd.js, C's own home for it) is behaviour-identical today and correct the
- * moment it is not.  Verified: frozen/score.sh unchanged at 5900/11405. */
 
-/* C ref: cmd.c:864 reset_occupations() / stop_occupation(). Clears the
- * occupation and per-subsystem state (reset_pick etc.).  Non-exported: used
- * by picklock's give-up/invalid-target paths to drop the occupation.  The
- * moveloop occupation driver's monster_nearby()→stop_occupation interrupt
- * (allmain.c:563) is WIRE_PENDING: port-occupation-driver-monster-interrupt
- * (no corpus session interrupts a lock-pick via an adjacent monster yet). */
 export function reset_pick() {
     game.xlock = { usedtime: 0, picktyp: 0, chance: 0, door: null, box: null, magic_key: false };
 }
@@ -1097,22 +792,12 @@ function stop_occupation() {
     g.occtxt = null;
 }
 
-/* C ref: lock.c:68 picklock() — the occupation callback fired once per turn
- * by the moveloop occupation driver.  Returns 1 while still busy, 0 when the
- * occupation ends (success, give-up, or the target became invalid).
- * Fires rn2(100) (lock.c:99) on each productive turn.
- *
- * Ported scope: door picking.  Box picking (gx.xlock.box) is structurally
- * present but not exercised by the current corpus; the door branch covers
- * seed0077 (and the latent lock-pick cluster). */
 export async function picklock() {
     const g = game;
     const u = g.u || {};
     const x = g.xlock || {};
     if (x.box) {
-        /* C lock.c:70-74 — box moved/gone check: the box must still be a floor
-         * object at the hero's square, else the attempt aborts (you or it moved). */
-        if ((x.box.where | 0) !== 1 /* OBJ_FLOOR */
+        if ((x.box.where | 0) !== 1
             || (x.box.ox | 0) !== (u.ux | 0) || (x.box.oy | 0) !== (u.uy | 0)) {
             x.usedtime = 0; return 0;
         }
@@ -1140,9 +825,6 @@ export async function picklock() {
     if (rn2(100) >= (x.chance | 0)) {
         return 1; /* still busy */
     }
-    /* C lock.c:138 — success path. Trap/magic-key branches (lock.c:103-136)
-     * require gx.xlock.magic_key + a trapped target, which the corpus lock-pick
-     * path does not hit; the door/box state flip below covers the rest. */
     await pline(`You succeed in ${lock_action()}.`);
     if (x.door) {
         const door = g.level?.at?.(x.door.x, x.door.y) ?? null;
@@ -1151,8 +833,6 @@ export async function picklock() {
             else door.doormask = D_LOCKED;
         }
     } else if (x.box) {
-        /* C lock.c:151-155 — box lock toggles; lknown set; trapped → chest_trap.
-         * The corpus box here is non-trapped (otrapped falsy), so no chest_trap. */
         x.box.olocked = !x.box.olocked;
         x.box.lknown = 1;
         /* if (gx.xlock.box->otrapped) chest_trap(...) — not reached (untrapped). */
@@ -1161,17 +841,6 @@ export async function picklock() {
     x.usedtime = 0; return 0;
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * #force — doforce()/forcelock()/breakchestlock() (lock.c:677/216/162)
- * ════════════════════════════════════════════════════════════════════════════
- * Mirrors the #loot/picklock occupation pattern.  doforce sets up the forcelock
- * occupation (gx.xlock.box/chance/picktyp); the moveloop occupation driver fires
- * forcelock() once per turn (rn2(100) >= chance → still busy).  On success
- * forcelock() calls breakchestlock(), which (for a blunt weapon, !rn2(3)) may
- * destroy the box and scatter/shatter its contents (chest_shatter_msg →
- * bottlename rn2(7) + potionbreathe for potions).  Gated entirely on
- * g.occupation === forcelock → ZERO effect on any non-force session.
- */
 
 /* C ref: lock.c:649 u_have_forceable_weapon(void) — uwep is a forceable melee
  * weapon (not a launcher/projectile/flail/lance-beyond, or a rock).  Uses
@@ -1186,37 +855,11 @@ function u_have_forceable_weapon() {
             return false;
         return true;
     }
-    /* non-weapon, non-weptool: only a rock is forceable (corpus never hits). */
     return oclass === ROCK_CLASS_OC;
 }
 
-/* C ref: objnam.c yname(obj) for the bashing / prying message.
- *     char *s = shk_your(outbuf, obj);      / * "your " when carried * /
- *     return strncat(s, cxname(obj), ...);
- * This used to be `'your ' + simple_typename(otyp)`, which is the OBJECT TYPE
- * and nothing else, so every suffix cxname carries — the artifact/called name,
- * the erosion and enchantment prefixes, the (weapon in hand) tail — was
- * dropped.  seed0108 step 235 forces a chest with the wished-for Mjollnir and
- * C says "You start bashing it with your war hammer named Mjollnir."; this
- * printed "your war hammer".  cxname is the same body js/do_wear.js yname()
- * calls; simple_typename is kept for the non-yname callers below. */
 function _wepname(uwep) {
     if (!uwep) return 'your ' + simple_typename(0);
-    /* C shk.c:2141 shk_your — `the_your[carried(obj) ? 1 : 0]`, i.e. "your " for
-     * an OBJ_INVENT object and "the " otherwise (shk_owns/mon_owns cannot fire
-     * for a wielded weapon).
-     *
-     * carried(o) is `o->where == OBJ_INVENT`, and THIS PORT DOES NOT MAINTAIN
-     * obj.where ON THE INVENTORY PATHS — measured here: reading it made both
-     * seed0014's starting dwarvish spear and seed0108's wished-for Mjollnir
-     * come out as "the", costing 2 points on seed0014.  (js/wizcmds.js's wish
-     * addinv did write it and wrote 2, OBJ_CONTAINED, under a comment naming
-     * OBJ_INVENT; that is fixed, but u_init's starting inventory and the pickup
-     * path still leave it unset.)  Stamping `where` everywhere would arm every
-     * other carried()/mcarried() reader in one step, so the membership test is
-     * done on the gi.invent chain itself, which is what OBJ_INVENT MEANS and
-     * which this port does maintain.  Fixing the stamp is the follow-up; the
-     * chain walk gives the same answer meanwhile. */
     let owned = false;
     for (let o = game.invent; o; o = o.nobj) {
         if (o === uwep) { owned = true; break; }
@@ -1252,32 +895,20 @@ export async function forcelock() {
         x.usedtime = 0; return 0;
     }
     if (x.picktyp) {
-        /* C lock.c:228-240 — blade: weapon-break check (corpus uses a blunt
-         * spear, so picktyp=0 and this branch is not reached).  rn2(1000-spe). */
         if (rn2(1000 - (u.uwep.spe | 0)) > (992 - 0 /* greatest_erosion */ * 10)
             && !u.uwep.cursed) {
             await pline(`${(u.uwep.quan | 0) > 1 ? 'One of y' : 'Y'}our ${simple_typename(u.uwep.otyp | 0)} broke!`);
-            /* useup(uwep) — out of corpus scope; clear wield. */
             u.uwep = null;
             await pline('You give up your attempt to force the lock.');
             exercise(A_DEX, true);
             x.usedtime = 0; return 0;
         }
     } else {
-        /* C lock.c:242 — blunt: wake_nearby(FALSE) (hammering).  RNG-free for
-         * the corpus roster (wake_msg/disturb_buried_zombies consume no rn2). */
         wake_nearby_force();
     }
     /* C lock.c:244 — rn2(100) >= chance → still busy. */
     if (rn2(100) >= (x.chance | 0))
         return 1;
-    /* C lock.c:247 — success.  Stage the per-pline messages (succeed / destroyed
-     * / bottle-shatter) into g._forceMsgs so the moveloop occupation driver can
-     * page them turn-by-turn with a --More-- each (C's tty more()s the committed
-     * topline whenever a fresh pline arrives while the prior is un-acknowledged:
-     * "You start bashing it...--More--" → "You succeed...--More--" → "...totally
-     * destroyed...--More--" → "You see a bottle shatter!").  Each --More-- consumes
-     * one recorded space key (seed0387 steps 26-28). */
     g._forceMsgs = g._forceMsgs || [];
     _forceEmit('You succeed in forcing the lock.');
     exercise(x.picktyp ? A_DEX : A_STR, true);
@@ -1312,10 +943,6 @@ function wake_nearby_force() {
     }
 }
 
-/* C ref: lock.c:161 breakchestlock(box, destroyit).
- *   !destroyit: bill (shop), unlock+break the box in place.
- *   destroyit:  "totally destroyed"; scatter contents to the floor, shattering
- *               (or breathing) potions/rn2(3) items; delete the box. */
 export async function breakchestlock(box, destroyit) {
     const g = game;
     const u = g.u || {};
@@ -1341,12 +968,8 @@ export async function breakchestlock(box, destroyit) {
             }
             otmp.quan = (otmp.quan | 0) - 1;
         }
-        /* ICE_BOX corpse age fixup (lock.c:199) — corpus box isn't an ice box. */
         place_object(otmp, u.ux | 0, u.uy | 0);
-        /* stackobj(otmp) — merge with like floor objects; corpus scatters to an
-         * empty tile, so the place_object insert suffices for the floor chain. */
     }
-    /* delobj(box) — remove the box from the floor.  C lock.c:210. */
     _delobj(box, u.ux | 0, u.uy | 0);
 }
 
@@ -1359,11 +982,6 @@ function _extract_from_box(box, obj) {
     obj.where = 0 /* OBJ_FREE */;
 }
 
-/* C ref: invent.c:1430 delobj() → delobj_core(obj, FALSE).  The unforced path
- * first calls obj_resists(obj, 0, 0) (zap.c:1469 → rn2(100)) to protect the
- * Amulet / invocation tools (an ordinary box never resists, but the rn2(100)
- * still fires — it is part of C's RNG sequence here), then obj_extract_self +
- * unlink from the floor pile. */
 function _delobj(box, x, y) {
     /* C invent.c:1446 — if (!force && obj_resists(obj, 0, 0)) return; */
     if (obj_resists(box, 0, 0)) return;
@@ -1389,20 +1007,6 @@ async function chest_shatter_msg(otmp) {
         await potionbreathe(otmp);
         return;
     }
-    /* C lock.c:1288-1293 —
-     *     save_HBlinded = HBlinded, save_BBlinded = BBlinded;
-     *     HBlinded = 1L, BBlinded = 0L;
-     *     thing = singular(otmp, xname);
-     *     HBlinded = save_HBlinded, BBlinded = save_BBlinded;
-     * "We have functions for distant and singular names, but not one which does
-     * _both_" — so C fakes blindness across the xname() call.  That matters
-     * because xname_flags() at objnam.c:627 runs `if (!Blind && !gd.distantname)
-     * observe_object(obj);`, which would set obj->dknown on an object the hero
-     * has never seen (it was sealed inside the chest).  With dknown still 0 the
-     * SPBOOK arm prints the bare class name.  Using simple_typename() here
-     * instead named the object outright — seed0014 step 47 printed "A spellbook
-     * of healing is torn to shreds!" where C prints "A spellbook is torn to
-     * shreds!".  Display-only: no RNG on either path. */
     const uprops = (game.u && game.u.uprops) ? game.u.uprops : null;
     const bl = uprops ? uprops[BLINDED] : null;
     const save_HBlinded = bl ? bl.intrinsic : 0;
@@ -1456,7 +1060,6 @@ function _An(str) { return _an(str).charAt(0).toUpperCase() + _an(str).slice(1);
 export async function doforce() {
     const g = game;
     const u = g.u || {};
-    /* C lock.c:688 — uswallow guard (not in corpus). */
     /* C lock.c:692 — must wield a forceable weapon. */
     if (!u_have_forceable_weapon()) {
         const uwep = u.uwep;
@@ -1467,7 +1070,6 @@ export async function doforce() {
         await pline(`You can't force anything ${phrase} weapon${usePlural ? 's' : ''}.`);
         return ECMD_OK;
     }
-    /* C lock.c:703 — can_reach_floor (no levitation/pit in corpus → true). */
 
     /* C lock.c:708 — picktyp = is_blade(uwep) && !is_pick(uwep). */
     const uwep = u.uwep;
@@ -1483,7 +1085,6 @@ export async function doforce() {
         return ECMD_TIME;
     }
 
-    /* C lock.c:716 — scan floor for a lockable box at the hero's tile. */
     x.box = null;
     const lvlObjs = g.level?.levelObjects;
     for (let otmp = lvlObjs?.[u.ux | 0]?.[u.uy | 0] ?? null; otmp; otmp = otmp.nexthere) {
@@ -1528,8 +1129,6 @@ export async function doforce() {
     return ECMD_TIME;
 }
 
-/* C ref: obj.h is_blade(otmp) — WEAPON_CLASS && oc_skill in {P_DAGGER..P_SABER}.
- * For the corpus the only #force weapon is a spear (P_SPEAR) → not a blade. */
 function is_blade_force(o) {
     if (!o || (o.oclass | 0) !== WEAPON_CLASS_OC) return false;
     const s = weapon_type(o);
@@ -1542,13 +1141,6 @@ function is_pick_force(o) {
     return weapon_type(o) === P_PICK_AXE_SK;
 }
 
-/* C ref: lock.c:288 autokey(boolean opening) — pick a tool for autounlock.
- *   Returns the first SKELETON_KEY, else LOCK_PICK, else (if opening) a
- *   CREDIT_CARD from inventory.  The quest-artifact partitioning (Rogue's
- *   Master Key / Tourist's Platinum Yendorian Express Card) only matters
- *   when the hero carries another role's quest artifact; the corpus hero
- *   carries a plain credit card, so the mundane partition is sufficient.
- *   C lock.c:337-343 fallback ordering: key ?: pick ?: card. */
 export function autokey(opening) {
     let key = null, pick = null, card = null;
     for (let o = game.invent; o; o = o.nobj) {
@@ -1563,18 +1155,6 @@ export function autokey(opening) {
     return key ? key : (pick ? pick : (card ? card : null));
 }
 
-/* C ref: lock.c:358 pick_lock(pick, rx, ry, container).
- *   Ported scopes:
- *     (a) !autounlock door picking via 'apply' (rx==ry==0, container==NULL):
- *         reads a direction (getdir), resolves the adjacent tile, rejects
- *         (non-door/open/broken/nodoor) or sets up the picklock occupation.
- *     (b) autounlock CONTAINER unlock (rx,ry,container provided by
- *         do_loot_cont): the box is at the hero's square; the APPLY_KEY path
- *         asks "Unlock it with <pick>? [ynq]" then sets up the picklock
- *         occupation with the credit-card / key / lock-pick chance.
- *   Returns PICKLOCK_* (lock.c:352-354): nonzero ⇒ time passes (ECMD_TIME).
- *   RNG-free on every branch reached by the corpus (the rn2 lives in
- *   picklock(), the occupation callback). */
 export async function pick_lock(pick, rx, ry, container) {
     const g = game;
     const u = g.u = g.u || {};
@@ -1608,8 +1188,6 @@ export async function pick_lock(pick, rx, ry, container) {
 
     /* C lock.c:429 — u_at(cc): pick the lock on a container at the hero's tile. */
     if (cx === (u.ux | 0) && cy === (u.uy | 0)) {
-        /* C lock.c:447 — scan floor objects at the hero's tile for a box.
-         * For autounlock, only the just-discovered-locked container counts. */
         let c = 'n';
         let count = 0;
         const lvlObjs = g.level?.levelObjects;
@@ -1618,7 +1196,6 @@ export async function pick_lock(pick, rx, ry, container) {
             if (autounlock && otmp !== container) continue;
             if (!_Is_box(otmp)) continue;
             ++count;
-            /* can_reach_floor guarded out (no levitation/pit in corpus). */
             /* C lock.c:471 — AUTOUNLOCK_UNTRAP path (could_untrap) not enabled
              * by default flags (APPLY_KEY only); skip to the APPLY_KEY arm. */
             /* C lock.c:482 — AUTOUNLOCK_APPLY_KEY: "Unlock it with <pick>? [ynq]" */
@@ -1680,66 +1257,14 @@ export async function pick_lock(pick, rx, ry, container) {
     }
     const door = g.level?.at?.(cx, cy) ?? null;
     if (!door || !_IS_DOOR(door.typ)) {
-        /* C lock.c:578-591 — !IS_DOOR(door->typ) "no door there" branch:
-         *
-         *   int res = PICKLOCK_DID_NOTHING, oldglyph = door->glyph;
-         *   schar oldlastseentyp = update_mapseen_for(cc.x, cc.y);
-         *   feel_location(cc.x, cc.y);
-         *   if (door->glyph != oldglyph
-         *       || svl.lastseentyp[cc.x][cc.y] != oldlastseentyp)
-         *       res = PICKLOCK_LEARNED_SOMETHING;        // = -1, time passes
-         *   ... You("%s no door there.", Blind ? "feel" : "see");
-         *   return res;
-         *
-         * The hero feels/sees the adjacent non-door tile.  feel_location()
-         * runs _map_location() (display.c:448) whose tail calls
-         * update_lastseentyp() — it writes svl.lastseentyp[cc] = current typ.
-         * The compare is against oldlastseentyp captured from
-         * update_mapseen_for() (a whole-level recalc_mapseen() before the feel).
-         * When this is the first time the hero folds this freshly-adjacent
-         * tile into map memory, the post-feel lastseentyp (the raw typ) differs
-         * from the pre-feel recalc value → res = PICKLOCK_LEARNED_SOMETHING →
-         * a turn passes (ECMD_TIME) so movemon runs (seed1500 turn 9: the
-         * "You see no door there" apply at (71,13) consumes the turn, then C
-         * fires the monster-movement RNG block).
-         *
-         * Faithful model: rather than reproduce the whole mapseen subsystem,
-         * detect the equivalent `door->glyph != oldglyph` signal directly —
-         * feel_location's ROOM-darkening (display.c:899-906) flips the
-         * remembered glyph S_room → S_darkroom for this unlit floor, which is
-         * the change C's compare observes.  See the per-tile handling below. */
         let res = PICKLOCK_DID_NOTHING;
         if (door) {
-            /* feel_location(cc) — display.c:899-906: an unlit ROOM floor still
-             * glyphed S_room (the lit/default floor) is re-glyphed to S_darkroom
-             * (CLR_BLACK → ANSI 90) when felt:
-             *   if (typ == ROOM && glyph == S_room
-             *       && (!waslit || (dark_room && use_color)))
-             *       lev->glyph = S_darkroom;
-             * That glyph mutation is exactly C's `door->glyph != oldglyph` test
-             * (lock.c:584): feeling a not-yet-darkened unlit room floor flips the
-             * remembered glyph, so res becomes PICKLOCK_LEARNED_SOMETHING (-1) →
-             * ECMD_TIME → the turn passes and movemon runs (seed1500 turn 9).
-             * flags.dark_room + iflags.use_color are constant-true in the corpus
-             * (same convention as display.js _darken_room_floor), so the !waslit
-             * arm and the dark_room arm both reduce to "darken an S_room floor". */
             const rg = door.remembered_glyph;
             if (rg && _darken_room_floor(door, rg)) {
-                /* glyph changed S_room → S_darkroom (C lock.c:585).  C's
-                 * feel_location does `show_glyph(x,y, lev->glyph = S_darkroom)`
-                 * (display.c:901) — it writes the dark floor straight into the
-                 * display buffer, overriding the lit in-sight render.  Mirror that
-                 * by pushing the darkened glyph through show_glyph_cell so the
-                 * captured screen shows ANSI 90, then set res → ECMD_TIME. */
                 show_glyph_cell(cx, cy, rg.ch, rg.color, rg.decgfx, 0, rg.cls);
                 res = PICKLOCK_LEARNED_SOMETHING;
             }
         }
-        /* C lock.c:589 — You("%s no door there.", Blind ? "feel" : "see").
-         * The "corpus hero is not Blind on this path" note this carried was an
-         * assertion about a corpus, not about the code; gen392 falsified the
-         * sibling doopen_indir copy of the same alternation at step 458, so
-         * read the predicate here too. */
         await pline(`You ${_blind_stub() ? 'feel' : 'see'} no door there.`);
         return res;
     }
@@ -1749,14 +1274,6 @@ export async function pick_lock(pick, rx, ry, container) {
     if (mask === D_ISOPEN) { await pline('You cannot lock an open door.'); return PICKLOCK_LEARNED_SOMETHING; }
     if (mask === D_BROKEN) { await pline('This door is broken.'); return PICKLOCK_LEARNED_SOMETHING; }
 
-    /* C lock.c:604-612 — default arm, AUTOUNLOCK_UNTRAP first:
-     *     if ((flags.autounlock & AUTOUNLOCK_UNTRAP) != 0
-     *         && could_untrap(FALSE, FALSE)
-     *         && (c = ynq("Check this door for a trap?")) != 'n') { ... }
-     * flags.autounlock is apply-key ALONE for every corpus session (flag.h:72
-     * default, and every recorded nethackrc renders "autounlock [apply-key]"),
-     * so this arm never fires and never consumes a keystroke — same treatment
-     * the container branch above already gives it (lock.c:471). */
 
     /* C lock.c:614-618 — credit cards are only good for unlocking. */
     if (picktyp === CREDIT_CARD_OTYP && !(mask & D_LOCKED)) {
@@ -1764,32 +1281,11 @@ export async function pick_lock(pick, rx, ry, container) {
         return PICKLOCK_LEARNED_SOMETHING;
     }
 
-    /* C lock.c:619-625 — the confirmation prompt, on BOTH the apply path and
-     * the autounlock path:
-     *     Sprintf(qbuf, "%s it%s%s?",
-     *             (door->doormask & D_LOCKED) ? "Unlock" : "Lock",
-     *             autounlock ? " with " : "",
-     *             autounlock ? yname(pick) : "");
-     *     c = ynq(qbuf);
-     *     if (c != 'y')
-     *         return PICKLOCK_DID_NOTHING;
-     * This CONSUMES a keystroke.  It was the missing piece that made
-     * doopen_indir's autounlock arm unportable: seed0007 step 50 walks into a
-     * locked door ("This door is locked.--More--"), step 51's SPACE dismisses
-     * that --More--, and step 52's 'y' answers exactly this prompt
-     * ("Unlock it with your lock pick? [ynq] (q)"). */
     const qbuf = ((mask & D_LOCKED) ? 'Unlock' : 'Lock') + ' it'
                + (autounlock ? ' with ' + _yname(pick) : '') + '?';
     if ((await _ynq(qbuf)) !== 'y')
         return PICKLOCK_DID_NOTHING;
 
-    /* C lock.c:627-629 — for autounlock the touch check has not happened yet:
-     *     if (autounlock && !touch_artifact(pick, &gy.youmonst))
-     *         return PICKLOCK_DID_SOMETHING;
-     * touch_artifact() is unconditionally TRUE for a non-artifact tool, which
-     * is every unlock tool autokey() can return in the corpus (a plain lock
-     * pick / key / credit card); the artifact arm is is_magic_key's business
-     * below. */
 
     /* C lock.c:638-657 — chance computation. */
     const dex = acurr(u, A_DEX);
@@ -1829,14 +1325,6 @@ function is_magic_key_hero(obj) {
     return !!obj.blessed;
 }
 
-/* ── mondata.h predicates over gy.youmonst.data ─────────────────────────
- * C lock.c calls nohands(gy.youmonst.data) (lock.c:965) and
- * verysmall(gy.youmonst.data) (lock.c:1035) on the hero's CURRENT form, so
- * both must follow polymorph.  Resolve the permonst the way the rest of js/
- * does: prefer the live gy.youmonst.data (polyself.js / the capture
- * reconstructor materialize it), else fall back to u.umonnum — u_init.c:991
- * sets u.umonnum = u.umonster = gu.urole.mnum, and polyself keeps it current.
- */
 /** C mondata.h:10 monsndx(ptr) — the hero's current form index, or -1. */
 function _hero_mndx_lk() {
     const d = game.youmonst && game.youmonst.data;
@@ -1879,25 +1367,9 @@ function _Passes_walls_lk() {
     return !!((p.intrinsic | 0) || (p.extrinsic | 0));
 }
 
-/* ── Stubs for unported helpers ─────────────────────────────────────────
- * All return false / 0 / no-op; no corpus 'c' session reaches a branch
- * where these stubs would mask a true positive (the cluster sessions
- * have 'c' eaten by getlin or getobj prompts, not by top-level doclose).
- */
 function _stumble_on_door_mimic_stub(_x, _y) { return false; }
 function _confusion_stub() { return false; }
 function _stunned_stub() { return false; }
-/* C ref: youprop.h:103 `#define Blind ((HBlinded || EBlinded) && !BBlinded)`.
- * This was `return false` — a HARDCODED not-blind — and it feeds the four
- * Blind ? "feel"/"Feels" : "see"/"Seems" alternations lock.c uses at
- * lock.c:591 (pick_lock's no-door arm), lock.c:846-851 (doopen_indir's) and
- * lock.c:1015 (doclose's).  A blind hero opening or closing toward a doorless
- * square therefore read "You see no door there." where C says "You feel no
- * door there."  js/vision.js:32 Blind() is the port's one live spelling of
- * that macro — it is what the botl "Blind" condition and see_with_infrared
- * already read — so this delegates rather than re-deriving the uprops test.
- * MEASURED on gen392-reseed-seed77105 step 458: the hero is Blind (status row
- * says so on both sides) and presses `o` then `l` into open floor.  No RNG. */
 function _blind_stub() { return Blind(); }
 /* C ref: dbridge.c:136-162 is_drawbridge_wall().  Keep this local rather
  * than importing dokick.js: dokick.js imports breakchestlock from lock.js,
@@ -2044,22 +1516,6 @@ export function doorlock(otmp, x, y) {
     return res;
 }
 
-/* C ref: lock.c:1054-1057 comment + lock.c:1056 boxlock(obj, otmp) —
- *   /_* box obj was hit with spell or wand effect otmp;
- *      returns true if something happened *_/
- *   boolean
- *   boxlock(struct obj *obj, struct obj *otmp) /_* obj *is* a box *_/
- * `obj` is the box/chest that was hit; `otmp` is the wand/spellbook object
- * carrying the effect.  Called from js/zap.js's bhito() (zap.c:2393-2400,
- * WAN_LOCKING/SPE_WIZARD_LOCK/WAN_OPENING/SPE_KNOCK rays crossing a floor
- * container), from boxlock_invent() (zap.c:2687-2697, same four otyps against
- * carried containers) and from #force's own auto-unlock-on-open
- * (pickup.c:2411, boxlock(coffers, &boxdummy) with a synthetic WAN_OPENING
- * dummy) — none of those call sites are this file's to edit; this export
- * only provides the function itself.
- * ASYNC: the C body is synchronous, but its two message lines go through
- * this port's pline(), which is async (js/display.js:6342) — callers must
- * `await boxlock(...)`. */
 export async function boxlock(obj, otmp) {
     let res = false;
 

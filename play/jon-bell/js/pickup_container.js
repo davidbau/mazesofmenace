@@ -4,7 +4,6 @@
 //        :3252 menu_loot(), :3383 in_or_out_menu(), :1226 query_category(),
 //        invent.c addinv/prinv, invent.c:1979 encumber_msg.
 //
-// Reached after a floor container is unlocked (do_loot_cont falls through to
 // use_container for an unlocked, untrapped box).  The interactive flow:
 //   1. in_or_out_menu  — "Do what with the <box>?" PICK_ONE menu (':oibrs q').
 //   2. on 'o' (take out): menu_loot(0, FALSE).  With flags.menu_style==MENU_FULL,
@@ -21,8 +20,6 @@
 // structural: the taken-out item leaves the box's
 // cobj chain and is appended to gi.invent, so the next dog_goal hero-inventory
 // food scan (dogmove.c:618) fires obj_resists()->rn2(100) once per inventory
-// NODE and the node count must match C (seed0430: scroll taken out -> 14 nodes,
-// not 13; the missing 14th obj_resists was the first divergence).
 
 import { ECMD_OK, ECMD_TIME, OBJ_FREE, OBJ_INVENT,
          PARANOID_AUTOALL, PARANOID_CONFIRM,
@@ -71,9 +68,6 @@ import { obfree, scatter, losehp } from './dokick.js';
 import { rn2, d } from './rng.js';
 
 
-/* C ref: cmd.c set_cursor — local copy (set_cursor is module-private elsewhere).
- * The pre-nhgetch capture hook reads game.nhDisplay.cursor{Col,Row} for the
- * recorded cursor position. */
 function set_cursor(col, row) {
     const disp = game?.nhDisplay;
     if (disp) {
@@ -240,24 +234,6 @@ async function boh_loss(container, held) {
     return loss;
 }
 
-/* C ref: objnam.c:2474 thesimpleoname(obj) = the(simpleonames(obj)), and
- * simpleonames() is minimal_xname() for a quan-1 object — which is what every
- * container is.  That is the namer C uses for the ':' / 's' menu lines
- * (pickup.c:3395,3419) and, through yname()/Ysimple_name2(), for the
- * "Do what with %s?" prompt and the empty-container message (pickup.c:3077-3082).
- *
- * This was a HAND-WRITTEN otyp->name switch returning the IDENTIFIED type name.
- * SACK's type name is "sack" but its DESCRIPTION is "bag", and objects[SACK]
- * .oc_name_known is 0 until the hero names or price-IDs one, so C says "bag"
- * for the whole of seed0004-feeding-pony while this port said "sack".  All four
- * bag-class containers share the description "bag" (SACK, OILSKIN_SACK,
- * BAG_OF_HOLDING, BAG_OF_TRICKS), so the switch could not have been right for
- * any of them before discovery — it leaked the answer.
- *
- * simpleonames() reaches xname() through distant_name(), so it does NOT set
- * dknown or call observe_object(): naming the box for a prompt cannot identify
- * it, which is exactly why C formats containers through this path and not
- * through xname() directly. */
 function _box_xname(obj) {
     return simpleonames(obj);
 }
@@ -272,10 +248,6 @@ function _carried_box(o) {
         if (p === o) return true;
     return false;
 }
-/* C ref: shk.c the_your[] via yname() — use_container's prompt is built by
- *     safe_qbuf(qbuf, "Do what with ", "?", container, yname, ysimple_name, "it")
- * (pickup.c:3081). Shop-owned containers use the shopkeeper's possessive;
- * otherwise shk_your chooses the carried or floor ownership prefix. */
 function _yname_box(o) {
     let prefix = shk_your('', o);
     // Preserve the existing carried-chain fallback until every acquisition
@@ -287,15 +259,6 @@ function _Yname_box(o) {
     return _Upstart(_yname_box(o));
 }
 
-/* C ref: end.c:1648 and pickup.c:1136 both name a container's contents with
- * doname_with_price(obj).  This used to be a hand-scoped namer that knew only
- * SCROLL_CLASS and returned the literal string "an object" for everything else
- * -- so seed0007's large box, which also holds gold, a spellbook and a gem,
- * would have painted three rows of "an object" had the rows been painted at
- * all.  js/objnam.js's real doname_base() covers every class; the one thing it
- * still omits is the shop-price parenthetical, which needs obj->unpaid or a
- * costly spot and so cannot fire for a box the hero forced open on a normal
- * level. */
 async function _item_doname(obj) {
     return await doname_with_price(obj);
 }
@@ -345,9 +308,6 @@ async function out_container(box, obj) {
     _extract_from_container(box, obj);
     box.owt = weight(box);
     if ((box.otyp | 0) === ICE_BOX_OTYP) removed_from_icebox(obj);
-    /* C pickup.c out_container: bill at the floor container's location,
-     * after extraction but before inventory insertion and its pickup line.
-     * An already-unpaid item retains its existing bill entry. */
     if (!obj.unpaid && !_carried_box(box) && costly_spot(box.ox, box.oy)) {
         obj.ox = box.ox;
         obj.oy = box.oy;
@@ -360,13 +320,6 @@ async function out_container(box, obj) {
     return 1;
 }
 
-/* ---------------------------------------------------------------------------
- * in_or_out_menu — C ref: pickup.c:3383.  The "Do what with the <box>?"
- * PICK_ONE menu.  Returns the chosen loot char (':','o','i','b','r','s','n','q').
- * Renders the menu overlay, captures the frame at nhgetch, and maps the key to
- * the corresponding loot char.  The lootchars index set mirrors C's
- * menuselector "_:oibrsnq".
- */
 async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, more_containers) {
     const g = game;
     /* tty display_nhwindow pages an occupied message window before painting a
@@ -379,19 +332,6 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     const lines = [];
     lines.push(`\x1b[7m${promptText}\x1b[0m`);
     lines.push('');
-    /* C pickup.c:3409-3412 — the accelerator table is chosen by flags.lootabc:
-     *     static const char lootchars[] = "_:oibrsnq", abc_chars[] = "_:abcdenq";
-     *     const char *menuselector = flags.lootabc ? abc_chars : lootchars;
-     * add_menu() is passed menuselector[any.a_int] for each entry, but the
-     * function RETURNS lootchars[k] — the canonical action char — whichever
-     * table was displayed (pickup.c:3474).  So under 'lootabc' the same five
-     * entries are keyed a/b/c/d/e and still mean o/i/b/r/s.  Note the trap this
-     * makes for a display-only shortcut: with lootabc on, the displayed 'b' is
-     * "put something in" (canonical 'i') while canonical 'b' displays as 'c',
-     * so the keystroke must be mapped THROUGH the table, not compared to the
-     * canonical char.  seed0007 turns the option on from the 'O' menu at step 37
-     * ("'lootabc' option toggled on.") and its step-111 loot menu is the a/b/c/d/e
-     * form; every other corpus loot menu (seed0004, seed0012, seed0108) is o/i. */
     const LOOTCHARS = '_:oibrsnq';
     const ABC_CHARS = '_:abcdenq';
     const sel = (g.flags && g.flags.lootabc) ? ABC_CHARS : LOOTCHARS;
@@ -430,39 +370,12 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     const endCursorCol = WIN_COL + 5 + 1; /* WIN_COL + len('(end)') + 1 */
 
     const BYKEY = new Map(items.map((it) => [it.disp.charCodeAt(0), it.canon]));
-    /* C wintty.c tty_select_menu (~line 1627): on a single-page menu (this one
-     * never paginates -- eight items at most) SPACE hits
-     * `else if (morc == ' ') finished = TRUE;` with nothing selected, exactly
-     * like ESC's cancel arm (`case '\033': ... WIN_CANCELLED; finished = TRUE;`
-     * when not mid-count).  Both leave n==0, so in_or_out_menu's own tail
-     * (pickup.c:3476) returns `(n == 0 && more_containers) ? 'n' : 'q'` for
-     * EITHER key -- not a hardcoded 'q'.  RETURN/ENTER instead commits the
-     * menu's pre-marked SELECTED entry (pickup.c:3459-3463: 'q' unless
-     * more_containers, in which case 'n') -- a different C code path (n==1)
-     * that happens to carry the identical char.  All three collapse to the
-     * same `cancelDefault` value here.
-     * Missing the SPACE arm previously left the menu open through a stray
-     * space keystroke and ate the caller's next command entirely:
-     * gen215-reseed-seed1388013 step 339 -- C exits its empty/held/no-other-
-     * inventory sack's container menu on the space and starts "#chat", while
-     * this port stayed up and consumed "#chat\r" as five more ignored keys,
-     * then closed on the trailing \r. */
     const cancelDefault = qDefault ? 'q' : 'n';
     let chosen = cancelDefault;
     while (true) {
         g._screen_output = screenOutput;
         set_cursor(endCursorCol, endRow);
         const k = await nhgetch();
-        /* ESC and SPACE are NOT the same key here, and the comment above used
-         * to claim they were. C wintty.c:1604-1613 ESC deselects everything AND
-         * sets WIN_CANCELLED, so tty_select_menu (wintty.c:2796-2797) returns
-         * n == -1; SPACE takes the finish arm (wintty.c:1626-1629) WITHOUT
-         * cancelling, leaving the pre-marked entry selected, so n == 1.
-         * pickup.c:3476 is `(n == 0 && more_containers) ? 'n' : 'q'` — n == -1
-         * fails the n == 0 test, so ESC returns 'q' UNCONDITIONALLY, even with
-         * another container on the square. They coincide only when
-         * more_containers is false, which is the only case the measured
-         * sessions exercise. */
         if (k === 27 /* ESC */) { chosen = 'q'; break; }
         if (k === 32 /* SPACE */) { chosen = cancelDefault; break; }
         /* RETURN/ENTER selects the default (the SELECTED entry: 'q' or 'n'). */
@@ -493,32 +406,6 @@ const _QC_CLASS_SYM = {
     10: '+', 11: '/', 12: '$', 13: '*', 14: '`', 15: '0', 16: '_',
 };
 
-/* ---------------------------------------------------------------------------
- * sortloot — C ref: invent.c:592 sortloot() / :403 sortloot_cmp() / :150
- * loot_classify().  Both container-loot displays run their list through it:
- * container_contents() (end.c:1636) and query_objlist() (pickup.c:1086).
- *
- * WHY IT MATTERS BEYOND ORDER: loot_classify() opens with
- *     if (!Blind) observe_object(obj);
- * so merely sorting a container's contents sets dknown on every item in it.
- * That is the ONLY reason C can print "a scroll labeled FOOBIE BLETCH" in a
- * ':' contents window whose `identified` argument is FALSE -- xname() prints a
- * bare "scroll" without dknown.  Miss this and the window renders four rows of
- * the wrong text while looking structurally right.
- *
- * C runs the qsort only when n > 1, so a one-item container is NOT classified
- * and its single item keeps dknown == 0.  That asymmetry is C's, and it is
- * reproduced here rather than smoothed over.
- *
- * PORTED: loot_classify's `orderclass` (the flags.inv_order / def_srt_order
- * position) and the observe_object side effect, plus sortloot_cmp's stable
- * tiebreak on original index.
- * NOT PORTED, stated rather than hidden: loot_classify's `subclass` and `disco`
- * tiers and sortloot_cmp's loot_xname()/BUCX/greased/erosion/erodeproof/spe
- * tiers.  Those only order two items that SHARE a class, and after
- * add_to_container's merge landed no container in the 44-session corpus holds
- * two stacks of one class (measured 2026-08-19).  When one does, this falls
- * through to C's own list order instead of guessing a comparator. */
 /* C ref: invent.c:259-297 loot_classify's FOOD_CLASS subclass switch.  The
  * other classes' subclass tables (ARMOR oc_armcat, WEAPON oc_skill, TOOL
  * container/instrument, GEM oc_material x discovery) are NOT ported and fall to
@@ -590,20 +477,6 @@ function _sortloot(list, byInvlet = false) {
             sli.bucx = (sli.obj.bknown
                         ? (sli.obj.blessed ? 3 : !sli.obj.cursed ? 2 : 1) : 0);
         }
-        /* C ref: invent.c:353-448 sortloot_cmp with sortlootmode ==
-         * SORTLOOT_LOOT|SORTLOOT_PACK (SORTLOOT_INUSE and SORTLOOT_INVLET both
-         * clear, which is what query_objlist/container_contents pass).  Tiers,
-         * in C's order: orderclass, subclass, disco, loot_xname (strcmpi,
-         * quantity ignored), BUCX, then the stable index tiebreak.
-         *
-         * THE NAME TIER USED TO BE MISSING, under a note saying no container in
-         * the corpus holds two stacks of one class.  seed0012's ice box holds
-         * SIX food stacks -- two jackal, one kobold, one lichen, two newt -- and
-         * C lists them in that alphabetical order while this port listed them in
-         * cobj-chain order (step 31).  The greased / erosion / erodeproof / spe
-         * tiers between BUCX and the tiebreak are still not ported: they can
-         * only separate two items that already agree on name AND BUCX, which
-         * nothing in this corpus does. */
         arr.sort((a, b) => {
             const classOrder = a.orderclass - b.orderclass;
             if (classOrder) return classOrder;
@@ -634,24 +507,6 @@ function _strcmpi(a, b) {
     return x.length - y.length;
 }
 
-/* ---------------------------------------------------------------------------
- * container_contents — C ref: end.c:1594.  The ':' ("Look inside") choice of
- * the loot menu, and final disclosure.  Called from use_container with
- * (identified=FALSE, all_containers=FALSE, reportempty=TRUE).
- *
- * THIS WAS THE FIRST SCREEN MISS ON seed0007 (step 112).  use_container's ':'
- * arm set cknown and looped straight back to the "Do what with the large box?"
- * menu under the comment "(display of contents not yet needed by the corpus)",
- * so C painted a contents window and this port re-painted the action menu.
- *
- * The window is filled with putstr() and shown with display_nhwindow(win,
- * TRUE), which for a tty NHW_MENU carrying cw->data goes to
- * process_text_window() (wintty.c:1548) -- a "--More--" page-ack at the row
- * after the last line, dismissed only by quitchars (" \r\n\033"), NOT a
- * picklist.  Hence the 'more' branch of tty_window_offx (min(41, 79 - maxcol))
- * and the cursor at offx + len("--More--").
- *
- * RNG-free: sortloot, xname and doname draw nothing. */
 export async function container_contents(list, identified, all_containers, reportempty,
                                         statusClipCol = undefined) {
     /* C:1604/1668 — `for (box = list; box; box = box->nobj) { ... if
@@ -755,50 +610,14 @@ async function _container_contents_one(box, identified, all_containers, reportem
 
 /* C ref: objnam.c upstart() over thesimpleoname() — "The large box is empty."
  * thesimpleoname prefixes "the"; upstart capitalises the first letter. */
-/* C ref: objnam.c Upstart(char *s) — `if (s) *s = highc(*s); return s;`
- * It CAPITALISES, and that is all it does.  This body also prepended an
- * article, and both of its call sites hand it a string that ALREADY carries
- * one (_yname_box returns "your sack" / "the large box"), so the empty-container
- * title read "The your sack is empty.  Do what with it?" against C's
- * "Your sack is empty.  Do what with it?" — and would have read "The the large
- * box ..." for a floor container.  C builds this line with Yname2 == Upstart o
- * yname (pickup.c:3077), never with the().  MEASURED on
- * corpus-generated/v5/probe-mechanism mech056..mech063 step 12, where the four
- * extra columns also shift the whole right-aligned menu overlay. */
 function _Upstart(str) {
     if (!str) return str;
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-/* ---------------------------------------------------------------------------
- * The tty single-page PICK_ANY menu key loop — C ref: win/tty/wintty.c:1400
- * process_menu_window().  Both query_category() and query_objlist() reach it
- * through select_menu(); this file had two hand-rolled copies of it that
- * accepted ONLY the accelerators, so every menu-control key ('@' invert-all,
- * '.' select-all, '-' deselect-all) was silently ignored.  seed0007 answers
- * BOTH of its loot menus with '@' followed by RETURN, so with the control keys
- * missing the port committed an empty selection and looted nothing.
- *
- * `items` is the selectable rows in display order:
- *     { sel, gsel, skipinvert, selected }
- * `sel` is the accelerator C paints, `gsel` the group accelerator
- * (def_oc_syms[oclass].sym for the object/class rows, 0 for the rest).
- *
- * Tall PICK_ANY menus paginate at ttyDisplay->rows - 1 (23 content rows on
- * the 24-row terminal).  Each page is a full-screen tty window; selectors and
- * page-bulk commands apply only to that page, while all-bulk commands retain
- * their cross-page scope.
- *
- * KEY PRIORITY IS NOT THE OBVIOUS ONE (wintty.c:1552-1558): an accelerator
- * wins over a same-spelled menu command, and C's own comment there names this
- * very case -- "':' to look inside a container vs ':' to search".  Compare
- * against the accelerator set FIRST, then map the menu command. */
 const _MENU_SELECT_ALL = 0x2e /* '.' */, _MENU_UNSELECT_ALL = 0x2d /* '-' */,
       _MENU_INVERT_ALL = 0x40 /* '@' */, _MENU_SELECT_PAGE = 0x2c /* ',' */,
       _MENU_UNSELECT_PAGE = 0x5c /* '\\' */, _MENU_INVERT_PAGE = 0x7e /* '~' */;
-/* C src/windows.c:1562 menuitem_invert_test with iflags.menuinvertmode == 1
- * (options.c:7279 sets that at initoptions time and no corpus rc changes it):
- * a SKIPINVERT row may be toggled OFF in bulk but never ON. */
 function _invert_test(mode, skipinvert, is_selected) {
     if (!skipinvert)
         return true;
@@ -948,41 +767,6 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter) {
     }
 }
 
-/* C ref: pickup.c:1226 query_category(qstr, olist, qflags, &pick_list, how) —
- * the "<action> what type of objects?" filter menu menu_loot opens FIRST when
- * flags.menu_style == MENU_FULL (the default), before the item list.
- *
- * THE WHOLE FUNCTION WAS MISSING, and the file's own header said so as if it
- * were always skipped: "a SINGLE object category short-circuits ... so we go
- * straight to query_objlist".  The short-circuit is real (pickup.c:1288, "no
- * point in actually showing a menu for a single category") but it is a
- * CONDITION, not the rule -- and it is the condition seed0012 happens to meet.
- * seed0108's chest holds a comestible, a potion and a ring, so C shows the menu
- * at step 243 and this port jumped straight to "Take out what?".  seed0007 step
- * 114 shows it too and answers 'a'.
- *
- * Ported for the take-out call, whose flags are
- *     ALL_TYPES | UNPAID_TYPES | BUCX_TYPES | CHOOSE_ALL | JUSTPICKED
- * (pickup.c:3285).  Entry order, exactly C's:
- *     A - Auto-select every relevant item          (CHOOSE_ALL)
- *         (ignored unless some other choices are also picked)
- *     <blank>
- *     a - All types                                (ALL_TYPES && ccount > 1)
- *     b.. - one per class present, in flags.inv_order
- *     <blank>                                      (iff any B/U/C/X entry)
- *     B/C/U/X - the BUCX cluster, alphabetical
- *
- * GAPPED, each false on a floor container the hero just forced open: do_unpaid
- * (count_unpaid -- nothing in a floor box is a shop's), do_usedup (BILLED_TYPES
- * is not in the take-out flags), do_worn (WORN_TYPES likewise), and JUSTPICKED
- * (count_justpicked is 0 for a box the hero did not just loot into).  ParanoidAutoAll
- * is off by default, so verify_All is FALSE and the hint line is the
- * "(ignored unless ...)" one.  RNG-free throughout.
- *
- * Returns { menuShown, allCategories, classes } -- `classes` is C's
- * gv.valid_menu_classes, and an EMPTY set with allCategories false means
- * allow_category() rejects everything, which is exactly why C shows no item
- * menu after an ESC here (query_objlist finds nothing to list). */
 async function query_category_takeout(box) {
     const contents = [];
     for (let o = box.cobj; o; o = o.nobj) contents.push(o);
@@ -997,16 +781,6 @@ async function query_category_takeout(box) {
  * list can populate (pickup_prev is set on things the hero just picked up). */
 async function _query_category(contents, action, withJustPicked) {
 
-    /* C pickup.c:1258-1282 count_buc(olist, TYPE, ofilter) per BUCX bit.
-     * C invent.c:3548: a COIN_CLASS stack counts as BUC_UNCURSED unless
-     * flags.goldX (optlist.h:348, default Off); every other object counts by
-     * its bknown/blessed/cursed triple.  Role_if(PM_CLERIC)'s "priests always
-     * know bless/curse state" write is the priest-only arm.
-     * seed0007's box holds gold (-> Uncursed) and three !bknown items
-     * (-> unknown Bless/Curse), so C paints BOTH a 'U' and an 'X' row and
-     * num_buc_types is 2.  This port knew only 'X', which is one menu row
-     * short: the frame is one line taller in C and the "(end)" footer, the
-     * cursor row and every row below the missing entry all move. */
     const _buc = (o) => {
         if ((o.oclass | 0) === COIN_CLASS)
             return (game.flags && game.flags.goldX) ? 'X' : 'U';
@@ -1075,9 +849,6 @@ async function _query_category(contents, action, withJustPicked) {
         addrow('a', 'All types', 'ALL', undefined, true, 0);
         invlet = 'b';
     }
-    /* C:1361-1385 one row per class present, keyed b.., group-accelerated by
-     * def_oc_syms[oclass].sym.  MENU_ITEMFLAGS_NONE — these DO bulk-invert,
-     * which is why '@' at seed0007 step 115 flips b/c/d/e and nothing else. */
     for (const oc of present) {
         addrow(invlet, _QC_CLASS_NAME[oc] ?? 'Items', 'CLASS', oc, false,
                _QC_CLASS_SYM[oc] || 0);
@@ -1189,18 +960,6 @@ async function _query_category(contents, action, withJustPicked) {
              allCategories, classes, justPickedCount };
 }
 
-/* C ref: pickup.c:936 allow_category(obj) — the query_objlist filter built
- * from gv.valid_menu_classes by add_valid_menu_class (pickup.c:895).
- *
- * The rule the old three-liner got wrong is the AND, spelled out in C's own
- * comment: when more than one FILTER TYPE is present the object must match one
- * entry of EACH type, not any entry of any type.  So picking Coins+Scrolls and
- * ALSO 'U' (the seed0007 '@' invert would do exactly that if the BUCX rows were
- * not SKIPINVERT) accepts only uncursed coins and scrolls.
- *
- * GAPPED here, each unreachable for a floor container: gs.shop_filter ('u',
- * needs UNPAID_TYPES to have produced a row) and gp.picked_filter ('P', needs
- * JUSTPICKED to have counted something).  ParanoidAutoAll is Off by default. */
 const _BUCX_KEYS = new Set(['B', 'C', 'U', 'X']);
 function _qc_allow(obj, sel) {
     /* C:958-963 gp.picked_filter — 'P' restricts to objects the hero just
@@ -1230,26 +989,6 @@ function _qc_allow(obj, sel) {
     return true;
 }
 
-/* ---------------------------------------------------------------------------
- * query_objlist — C ref: pickup.c:1025, reached from menu_loot(0, FALSE) at
- * pickup.c:3355 with mflags = INVORDER_SORT | INCLUDE_VENOM and
- * allow = all_categories ? allow_all : allow_category.  The "Take out what?"
- * PICK_ANY item menu.
- *
- * Three things the earlier hand-rolled version got wrong, all visible on
- * seed0007 step 116:
- *  1. GROUPING.  C walks flags.inv_order (the `pack` loop, pickup.c:1103-1141)
- *     and emits a class HEADING the first time that class contributes a row,
- *     so the classes appear in inv_order, not in the order they happen to sit
- *     on the cobj chain.  The old code used "order classes first appear".
- *  2. THE COIN ACCELERATOR.  add_menu is passed '$' for the first row iff it
- *     is COIN_CLASS (pickup.c:1136), and wintty.c:2722's auto-letter loop skips
- *     any row that already has a selector -- so gold is '$' and the NEXT row is
- *     'a', not 'b'.
- *  3. GROUP ACCELERATORS.  each row's group selector is
- *     def_oc_syms[oc_class].sym, so '?' toggles every scroll at once.
- *
- * Returns the selected objects in menu display order. */
 async function menu_loot_takeout(box, eligible) {
     /* C query_objlist lists only the objects the caller's filter accepts;
      * `eligible` IS that filtered list, in cobj order. */
@@ -1350,16 +1089,6 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
         .map((it) => ({ obj: it.obj, count: it.count }));
 }
 
-/* ---------------------------------------------------------------------------
- * in_container — C ref: pickup.c:2557.  Put obj from inventory into
- * gc.current_container.  Returns 1 inserted, 0 not inserted, -1 stop.
- *
- * The refusal cascade and burning-item extinguishing precede shop handling.
- * Remaining branches include the magic-bag explosion (C:2659-2693, including unpaid
- * item bill restoration). Floor-container shop sales run in C order below.
- *
- * Fatal corpse handling can transform or kill the hero before insertion.
- */
 async function in_container(obj) {
     const g = game;
     const box = g.current_container;
@@ -1426,9 +1155,6 @@ async function in_container(obj) {
      * site, and the one door every object leaves gi.invent through.  freeinv()
      * on the line above already ran it; repeating it would deduct twice. */
 
-    /* C pickup.c:2629-2643: selling a non-coin item precedes its put message.
-     * An owned floor container suppresses sale offers, but sellobj still
-     * returns unpaid goods to the shop bill. Carried containers never sell. */
     if (floorContainer && costly_spot(u.ux, u.uy)
         && (obj.oclass | 0) !== COIN_CLASS) {
         wasUnpaid = !!obj.unpaid;
@@ -1513,9 +1239,6 @@ export async function use_container_impl(cobjRef, held, more_containers) {
     if (!obj.lknown) {
         obj.lknown = 1;
     }
-    /* C pickup.c:2990-3002 — a trapped container is triggered before the
-     * in/out menu.  #loot of the held-out large box reaches this arm: the
-     * trap is one-shot, aborts looting, and still costs the turn. */
     if (obj.olocked) {
         await pline(`The ${_box_xname(obj)} is locked.${held ? '  You must put it down to unlock.' : ''}`);
         return ECMD_OK;
@@ -1556,19 +1279,6 @@ export async function use_container_impl(cobjRef, held, more_containers) {
         }
     }
 
-    /* inokay: hero carries something besides just the container.  C pickup.c:
-     * 3038-3039 — `gi.invent != 0 && (gi.invent != gc.current_container ||
-     * gi.invent->nobj)`.  When the container is on the floor (do_loot_cont's
-     * call, held=false) it can never be gi.invent's head, so this collapses to
-     * "invent is non-empty" — the case the old comment here described.  But
-     * this function is ALSO reached from cmd.js's apply arm with the box
-     * ALREADY in inventory (held=true): if the applied container is the ONLY
-     * thing carried, gi.invent === gc.current_container and ->nobj is null, so
-     * C says inokay=false (nothing else to put in) even though invent itself
-     * is non-null.  The old `g.invent != null` test missed exactly that case.
-     * (Not the cause of the gen215/gen145 divergence below -- that hero also
-     * carries other items, so inokay is true either way here -- but it is a
-     * real C-fidelity gap the same read turned up, so it is fixed alongside.) */
     const inokay = (g.invent != null
                     && (g.invent !== obj || obj.nobj != null));
     /* outokay: box has contents. */
@@ -1584,7 +1294,6 @@ export async function use_container_impl(cobjRef, held, more_containers) {
         const promptText = outmaybe
             ? `Do what with ${_yname_box(obj)}?`
             : `${_Yname_box(obj)} is ${cursedMbag ? 'now ' : ''}empty.  Do what with it?`;
-        /* MENU_FULL/PARTIAL → in_or_out_menu; corpus default is MENU_FULL. */
         if (!inokay && !outmaybe) {
             c = 'b';
         } else {
@@ -1624,23 +1333,6 @@ export async function use_container_impl(cobjRef, held, more_containers) {
              * MENU_FULL (the default) the TYPE filter menu comes first. */
             g.pickup_encumbrance = 0;
             const sel = await query_category_takeout(obj);
-            /* C pickup.c:3294-3295 — `if (!n) return ECMD_OK;` — menu_loot
-             * RETURNS the moment query_category picks nothing, which is BEFORE
-             * :3360's `if (!put_in) current_container->cknown = 1`.  An ESC at
-             * the type prompt therefore leaves cknown 0 in C.  The comment that
-             * stood here said :3360 "runs before query_objlist on every
-             * take-out path" and set cknown unconditionally on the
-             * nothing-eligible branch, which conflates two different cases:
-             *   - NOTHING SELECTED (ESC, or Return with no rows picked): C has
-             *     already returned; cknown stays 0.
-             *   - a class WAS selected but no object matches it: C does reach
-             *     :3360 and does set cknown.
-             * MEASURED on seed0108-wizard-extcmd-wishlist: at step 245 the hero
-             * ESCs out of "Take out what type of objects?" on a chest holding
-             * six stacks, and five steps later C's #tip prompt reads "There is
-             * a broken chest here, tip it?" while a cknown chest names itself
-             * "a broken chest containing 6 items".  The wrong cknown was inert
-             * until doname learned C's " containing N items" tail. */
             if (!sel.autopick && !sel.allCategories && sel.classes.size === 0) {
                 /* C: return ECMD_OK from menu_loot — no menu, no cknown. */
             } else if (sel.autopick) {
@@ -1707,9 +1399,6 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             && !sel.allCategories && sel.classes.size === 0) {
             /* C:3293-3294 `if (!n) return ECMD_OK;` — nothing picked. */
         } else if (sel.autopick) {
-            /* Same raw-chain rule for put-in.  in_container can destroy a
-             * magic bag, so both the loop condition and post-call break use
-             * current_container, while next is captured before unlinking. */
             let nlooted = 0;
             for (let it = g.invent; it && g.current_container;) {
                 const next = it.nobj;

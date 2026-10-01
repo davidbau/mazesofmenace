@@ -143,7 +143,7 @@ import {
     closed_door, avoid_moving_on_trap, avoid_moving_on_liquid,
     escape_from_sticky_mon, domove_fight_ironbars, domove_fight_web,
     air_turbulence, slippery_ice_fumbling,
-    test_move, doorless_door,
+    test_move, doorless_door, crawl_destination,
 } from './hack.js';
 import { t_at, dountrap } from './trap.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
@@ -4483,38 +4483,59 @@ async function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnl
 }
 
 /**
- * C ref: hack.c findtravelpath TRAVP_TRAVEL adjacent fast path (:1272–1292)
- * + dest→hero BFS. Adjacent TEST_MOVE stays the blocksMove/boulder
- * stand-ins (full test_move TEST_MOVE unported, named); the BFS success arm
- * is C :1400–1418.
+ * C ref: hack.c findtravelpath TRAVP_TRAVEL/TRAVP_VALID (:1271–1306) —
+ * adjacent fast path + BFS. Adjacent: travel1 + next2u (distu<=2, the
+ * self cell qualifies in C too) + the crawl_destination
+ * restricted-diagonal gate, then end_running(FALSE) + live test_move
+ * TEST_MOVE (was blocksMove/boulder stand-ins); TEST_MOVE failure under
+ * TRAVEL sets run=8 and falls into the BFS. VALID swaps BFS ends
+ * (hero→dest). dest==hero skips the BFS via C `found:` (zero+nomul).
+ * @param {number} [mode] — TRAVP_TRAVEL (step + stop) or TRAVP_VALID
+ *   (mark + step only, C :1400–1418)
  * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
  */
-async function findtravelpath_travel(couldseeOnly = false) {
+async function findtravelpath_travel(couldseeOnly = false, mode = TRAVP_TRAVEL) {
     const u = game.u;
     const destX = u.tx | 0;
     const destY = u.ty | 0;
     if (!isok(destX, destY)) return TRAVEL_NOPATH;
 
     const ctx = game.context;
-    // Adjacent reachable → normal one-step move; clear travel destination
-    if (ctx?.travel1
-        && Math.abs(destX - u.ux) <= 1 && Math.abs(destY - u.uy) <= 1
-        && (destX !== u.ux || destY !== u.uy)
-        && !blocksMove(destX, destY)
-        && !boulder_at(destX, destY)) {
-        end_running(true);
-        u.dx = destX - u.ux;
-        u.dy = destY - u.uy;
-        nomul(0);
-        if (!game.iflags) game.iflags = {};
-        if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
-        game.iflags.travelcc.x = 0;
-        game.iflags.travelcc.y = 0;
-        return TRAVEL_STEP;
+    // C :1271–1292 — adjacent reachable → normal one-step move.
+    if ((mode === TRAVP_TRAVEL || mode === TRAVP_VALID) && ctx?.travel1
+        && Math.abs(destX - (u.ux | 0)) <= 1 && Math.abs(destY - (u.uy | 0)) <= 1
+        && await crawl_destination(destX, destY)) {
+        end_running(false);
+        if (await test_move(u.ux | 0, u.uy | 0,
+                            destX - (u.ux | 0), destY - (u.uy | 0), TEST_MOVE)) {
+            if (mode === TRAVP_TRAVEL) {
+                u.dx = destX - u.ux;
+                u.dy = destY - u.uy;
+                nomul(0);
+                if (!game.iflags) game.iflags = {};
+                if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+                game.iflags.travelcc.x = 0;
+                game.iflags.travelcc.y = 0;
+            }
+            return TRAVEL_STEP;
+        }
+        // C :1291–1292 — TEST_MOVE failed: run=8, then fall into the BFS.
+        if (mode === TRAVP_TRAVEL && ctx) ctx.run = 8;
     }
 
-    if (destX === u.ux && destY === u.uy) return TRAVEL_NOPATH;
+    // C found: — dest==hero skips the BFS (zero + nomul like C).
+    if (destX === (u.ux | 0) && destY === (u.uy | 0)) {
+        u.dx = 0;
+        u.dy = 0;
+        nomul(0);
+        return TRAVEL_NOPATH;
+    }
 
+    // C :1297–1306 — VALID swaps ends (BFS hero→dest, not dest→hero —
+    // that falsely succeeds from impassable stone).
+    if (mode === TRAVP_VALID)
+        return await findtravelpath_bfs(u.ux | 0, u.uy | 0, destX, destY,
+                                        false, couldseeOnly, TRAVP_VALID);
     return await findtravelpath_bfs(destX, destY, u.ux, u.uy, false, couldseeOnly);
 }
 
@@ -4523,7 +4544,7 @@ async function findtravelpath_travel(couldseeOnly = false) {
  * couldsee cells, pick matrix cell closest to u.tx/u.ty, then
  * TRAVP_TRAVEL from that pick back to hero.
  * Named omissions: travel_test_move arms (may_passwall, worm_cross,
- * wand-unknown, Known_*walking); TEST_MOVE in the no-guess arm.
+ * wand-unknown, Known_*walking — test_move's own row).
  * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
  */
 async function findtravelpath_guess() {
@@ -4531,7 +4552,13 @@ async function findtravelpath_guess() {
     const destX = u.tx | 0;
     const destY = u.ty | 0;
     if (!isok(destX, destY)) return TRAVEL_NOPATH;
-    if (destX === u.ux && destY === u.uy) return TRAVEL_NOPATH;
+    // C found: — dest==hero skips the BFS (zero + nomul like C).
+    if (destX === (u.ux | 0) && destY === (u.uy | 0)) {
+        u.dx = 0;
+        u.dy = 0;
+        nomul(0);
+        return TRAVEL_NOPATH;
+    }
 
     // C: start BFS at hero; travel[hero] stays 0 (not a guess candidate).
     const travel = new Map();
@@ -4613,21 +4640,21 @@ async function findtravelpath_guess() {
         }
     }
 
+    // C :1481–1490 — no guesses: sgn toward dest; live test_move
+    // TEST_MOVE (was blocksMove/boulder/avoids/diag stand-ins).
     if (px === (u.ux | 0) && py === (u.uy | 0)) {
-        // C: no guesses — sgn toward dest if TEST_MOVE allows
-        const dx = Math.sign(destX - u.ux);
-        const dy = Math.sign(destY - u.uy);
-        if (!dx && !dy) return TRAVEL_NOPATH;
-        const nx = (u.ux | 0) + dx;
-        const ny = (u.uy | 0) + dy;
-        if (!isok(nx, ny) || blocksMove(nx, ny) || boulder_at(nx, ny)) return TRAVEL_NOPATH;
-        if (travel_avoids_cell(nx, ny)) return TRAVEL_NOPATH;
-        if (travel_blocks_tight_diag(u.ux, u.uy, nx, ny)) return TRAVEL_NOPATH;
-        u.dx = dx;
-        u.dy = dy;
-        // C :1484–1487 — the general-direction step also marks travelmap.
-        selection_setpoint(u.ux, u.uy, travelmap_ensure(), 1);
-        return TRAVEL_STEP;
+        u.dx = Math.sign(destX - (u.ux | 0));
+        u.dy = Math.sign(destY - (u.uy | 0));
+        if (await test_move(u.ux | 0, u.uy | 0, u.dx, u.dy, TEST_MOVE)) {
+            // C :1484–1487 — the general-direction step also marks travelmap.
+            selection_setpoint(u.ux, u.uy, travelmap_ensure(), 1);
+            return TRAVEL_STEP;
+        }
+        // C found: — zero + nomul like C.
+        u.dx = 0;
+        u.dy = 0;
+        nomul(0);
+        return TRAVEL_NOPATH;
     }
 
     // C: mode = TRAVP_TRAVEL; goto noguess from (px,py) toward hero
@@ -4662,9 +4689,10 @@ export async function is_valid_travelpt(x, y) {
     u.ty = y | 0;
     let ret = TRAVEL_NOPATH;
     try {
-        // C findtravelpath(TRAVP_VALID): start at hero, seek dest
-        // (not dest→hero — that falsely succeeds from impassable stone).
-        ret = await findtravelpath_bfs(u.ux, u.uy, u.tx, u.ty, false, false, TRAVP_VALID);
+        // C findtravelpath(TRAVP_VALID) via the shared envelope: adjacent
+        // fast path (travel1-gated like C) + BFS hero→dest (not dest→hero —
+        // that falsely succeeds from impassable stone).
+        ret = await findtravelpath_travel(false, TRAVP_VALID);
     } finally {
         u.tx = savedTx;
         u.ty = savedTy;
@@ -4765,7 +4793,8 @@ async function dotravel_target() {
 /**
  * C ref: cmd.c dotravel — '_' / #travel getpos then dotravel_target.
  * Branch envelope: cancel, already-here, adjacent step, greedy BFS step.
- * Full test_move (TEST_MOVE/DO_MOVE modes) deferred.
+ * Adjacent + no-guess steps use live test_move TEST_MOVE; DO_MOVE-mode
+ * probes stay deferred (domove executes the step instead).
  * @returns {Promise<number>} ECMD_*
  */
 export async function dotravel() {

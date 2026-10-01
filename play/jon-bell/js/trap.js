@@ -9,12 +9,9 @@ import { MONS_CWT } from './mklev.js';
 import { water_damage_chain, flooreffects, instapetrify as instapetrify_real, can_ride as can_ride_real, surface as surface_real, body_part as body_part_real, mbodypart as mbodypart_real } from './cmd.js';
 import { discover_object } from './o_init.js';
 // @ts-nocheck
-// trap.js — Trap subsystem skeleton for L12+ porter targets.
-// C ref: nethack-c/src/trap.c (108 RNG calls, 7,189 weighted sessions)
 // @ts-nocheck — sibling imports from hand-maintained js/*.js.
 //
 // This file contains TODO stubs for the major public functions in trap.c.
-// Future porters should fill in one function at a time, wiring in the
 // correct RNG calls in C-source order.
 import { game } from './gstate.js';
 /* Local C helpers whose canonical bodies are not exported by their home modules. */
@@ -22,18 +19,10 @@ function m_next2u(mon) { return dist2(mon.mx | 0, mon.my | 0, game.u?.ux | 0, ga
 function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 import { rn2, rn1, d, rnl, rnd, pushRngLogEntry } from './rng.js';
 import { exercise, change_luck, adjalign, adjattrib, minuhpmax, setuhpmax } from './attrib.js';
-/* dofiretrap's uhpmax-drain-to-death arm (trap.c:4290-4291) — no corpus
- * fire trap has driven uhpmax below minuhpmax(1) yet, so this edge is
- * written out for C fidelity rather than measured. */
 import { losexp } from './exper.js';
 /* dofiretrap's Underwater/Drain_resistance guards (trap.c:4247, :4291). */
 import { DRAIN_RES, MON_DETACH } from './const.js';
 import { bot, pline, Norep, canseemon, canspotmon, newsym, map_trap, tmp_at, obj_to_glyph, glyph_is_invisible_at, unmap_object, You_hear, You_hear as _trap_You_hear, feel_newsym, map_invisible, livelog_printf, shieldeff, topl_force_break_now } from './display.js';
-/* canspotmon was READ at four sites in this file (the rolling-boulder monster
- * arm plus three trap-noticed predicates) and imported at none of them — a
- * latent ReferenceError, of the class tools/js-binding-audit.mjs calls
- * `unbound`.  js/display.js exports it; js/dogmove.js already imports it
- * from there. */
 import { cansee, clear_path, couldsee, recalc_block_point, Blind, vision_recalc } from './vision.js';
 import { distmin, s_suffix as _s_suffix, dist2 } from './hacklib.js';
 import { sobj_at, in_rooms, obj_ice_effects, is_flammable, dealloc_obj, mk_trap_statue, engr_at, ordin,
@@ -52,9 +41,6 @@ import { setnotworn } from './worn.js';
  * returned promise can settle. */
 import { punish } from './read.js';
 import { PM_LONG_WORM, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_MINOTAUR } from './pm.generated.js';
-/* trapeffect_pit's "How pitiful.  Isn't that the pits?" quip (trap.c:1898) and
- * m_easy_escape_pit (trap.c:3728); PM_RANGER is Role_if()'s argument at
- * trap.c:1894 — urole.mnum is a PM index on the scored path. */
 import { PM_PIT_VIPER, PM_PIT_FIEND, PM_RANGER } from './pm.generated.js';
 /* goodpos_onscary()'s Gehennom short-circuit; js/mklev.js reads the same one. */
 import { Inhell, nonlivingMon, splitobj, which_armor, can_saddle as can_saddle_real, sliparm as sliparm_real, monPmname, onscary as onscary_real } from './makemon.js';
@@ -71,15 +57,6 @@ SWIMMING, MAGICAL_BREATHING, PASSES_WALLS, Is_rogue_level, MELT_ICE_AWAY, ROT_OR
 /* launch_obj()'s DISP_FLASH boulder trail (trap.c:3355, :3565) and the
  * obj->where values its obj_extract_self dispatches on (mkobj.c:2426) */
 DISP_FLASH, DISP_END, OBJ_FREE, OBJ_FLOOR,
-/* body-part enum (const.js:371/379, the same values js/cmd.js's body_part /
- * mbodypart index on).  These were READ but never imported: trapeffect_rust_trap's
- * hero arms 0/1/2 called body_part(HEAD) / body_part(ARM) against undeclared
- * identifiers, so any hero rust trap rolling rn2(5) < 3 threw a ReferenceError
- * mid-turn.  Unreached today by luck — the corpus's ONE hero rust trap
- * (public seed0398 step 45) rolls rn2(5)=3, the `default` arm, which touches
- * neither name — but a throw on a live arm halts the session
- * ([[a-new-throw-on-a-live-arm-does-halt]]).  `node --check` cannot see this;
- * only a run of the arm can. */
 ARM, HEAD, MAY_HIT, MAY_DESTROY, MAY_FRACTURE, VIS_EFFECTS, } from './const.js';
 /* launch_obj()'s monster arm (trap.c:3408).  mhitu.js already imports thitu /
  * find_mac from this file, so the edge is mutual and runtime-only, the same
@@ -226,27 +203,6 @@ const FIND_MAC_AC_MAX = 99;
  * Same otyp value as js/trap.js:2100 _MDW_AMULET_OF_GUARDING /
  * js/do_wear.js AMULET_OF_GUARDING. */
 const FIND_MAC_AMULET_OF_GUARDING = 210;
-/**
- * C ref: worn.c:717-736 find_mac(struct monst *mon):
- *   int base = mon->data->ac;
- *   long mwflags = mon->misc_worn_check;
- *   for (obj = mon->minvent; obj; obj = obj->nobj) {
- *       if (obj->owornmask & mwflags) {
- *           if (obj->otyp == AMULET_OF_GUARDING) base -= 2;
- *           else base -= ARM_BONUS(obj);
- *       }
- *   }
- *   if (abs(base) > AC_MAX) base = sgn(base) * AC_MAX;
- *   return base;
- *
- * ARM_BONUS(obj) (hack.h:1526-1528) is ported at _mdw_arm_bonus (below,
- * hoisted — same function m_dowear_type uses for the identical formula), so
- * this is not a second implementation, just a second caller.
- *
- * RNG: none.  `mon->misc_worn_check` gates which minvent items count exactly
- * as C's owornmask & mwflags does — a monster can carry unworn gear that must
- * NOT contribute.
- */
 export function find_mac(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
     let base = (mndx >= 0 && mndx < MONS_AC.length) ? (MONS_AC[mndx] | 0) : 10;
@@ -264,19 +220,6 @@ export function find_mac(mtmp) {
     return base;
 }
 
-/* MONS row layout (makemon_mons.json, per js/makemon.js permonstTemplate):
- *   [mlet, mlevel, geno, ?, maligntyp, mr1, mflags1, mflags2, mflags3, mmove]
- * — the LAST column is permonst.mmove, NOT msize.  msize is a separate
- * per-mndx table (js/makemon_msize.json), which is why trap_msize() below
- * exists.  This header used to claim column 9 was msize and read
- * `row[9] >= 4`, which is two errors compounding: the wrong column AND the
- * wrong constant (C monflag.h:181 MZ_LARGE is 3, not 4).  Reading mmove as a
- * size made bigmonst() true for every monster with speed >= 4, i.e. nearly all
- * of them, so missile_dmgval() rolled the LARGE die where C rolls the SMALL
- * one.  MEASURED, seed0030 segment 6 step 165: a dart trap hits a small
- * monster and C draws `rnd(3) @ dmgval(weapon.c:265)` (DART oc_wsdam 3) where
- * this port drew `rnd(2)` (oc_wldam 2) — leaf 18683.
- * C mondata.h:12 bigmonst(ptr) = ((ptr)->msize >= MZ_LARGE). */
 const _TRAP_MONS = /** @type {number[][]} */ (monsPack.mons);
 function mon_is_big(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
@@ -324,10 +267,6 @@ async function t_missile(otyp, trap) {
     return otmp;
 }
 
-/* thitm — monster is hit by a trap missile.  C ref: trap.c:6690.
- * RNG: rnd(20) strike check; dmgval (rnd) only on a strike.  Returns true if the
- * monster was killed.  Damage/monkilled bookkeeping beyond mhp is left to the
- * (unported) death path; the corpus missile-trap case is a clean miss. */
 async function thitm(tlev, mon, obj, d_override, nocorpse) {
     let strike;
     let trapkilled = false;
@@ -361,14 +300,6 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
         if (!harmless) {
             mon.mhp = (mon.mhp | 0) - dam;
             if ((mon.mhp | 0) <= 0) {
-                /* C trap.c:6735-6741: monkilled(mon, "", AD_PHYS); then, if the
-                 * monster is DEADMONSTER, newsym + trapkilled = TRUE.  monkilled →
-                 * mondied → mondead → corpse_chance → make_corpse for an ordinary
-                 * monster (no fltxt message / no special death effect).  A pet
-                 * stepping onto a pit (trapeffect_pit monster branch, which calls
-                 * thitm with a d_override pit-damage value) dies here, and its
-                 * corpse RNG (corpse_chance rn2(tmp) + make_corpse) must fire to
-                 * stay in lockstep with C (seed0015 leaf 8500+). */
                 await monkilled_trap(mon);
                 trapkilled = true;
             }
@@ -504,15 +435,6 @@ export async function monkilled_trap(mtmp, fltxt = '') {
     if ((mtmp.mhp | 0) > 0) return;
     if (beSad)
         await pline('You have a sad feeling for a moment, then it passes.');
-    /* C mon.c:3113-3117 — mondead() restores a shapechanger's true form
-     * before it updates mvitals and before mondied() asks corpse_chance().
-     * This death path is hand-rolled rather than delegated to mondead(), so it
-     * must perform the same state transition.  Besides deciding which corpse
-     * is made, the restored form changes whether corpse_chance draws at all:
-     * a chameleon temporarily shaped as a large monster is not an automatic
-     * large-monster corpse; C restores it to PM_CHAMELEON and rolls rn2(3).
-     * Keep the original form's light/inventory teardown out of this block;
-     * C saves the old permonst pointer for m_detach() before restoring data. */
     const trueForm = mtmp.cham | 0;
     if (trueForm >= 0) {
         const trueData = permonstTemplate(trueForm);
@@ -522,9 +444,6 @@ export async function monkilled_trap(mtmp, fltxt = '') {
         }
     }
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
-    /* C mon.c:3121 mondead: svm.mvitals[mndx].died++ (no RNG).  Kept for
-     * faithful bookkeeping; G_GONE accrues only via genocide/extinction, so this
-     * does not change make_corpse's G_NOCORPSE/G_GONE gate. */
     if (g.mvitals && mndx >= 0) {
         const mv = (g.mvitals[mndx] ||= { died: 0, mvflags: 0 });
         if ((mv.died | 0) < 255) mv.died = (mv.died | 0) + 1;
@@ -533,21 +452,6 @@ export async function monkilled_trap(mtmp, fltxt = '') {
      * be repainted there after placement (C: mon_leaving_level newsym(mx,my) +
      * the placed corpse object render). */
     const _dx = mtmp.mx | 0, _dy = mtmp.my | 0;
-    /* C mon.c:3170-3171, the last thing mondead() does before m_detach():
-     *     if (glyph_is_invisible(levl[mtmp->mx][mtmp->my].glyph))
-     *         unmap_object(mtmp->mx, mtmp->my);
-     * A monster the hero could not spot was being remembered as an 'I'; its
-     * death retires that marker.  The newsym() below does NOT do it — out of
-     * sight, display.c:1031-1032 re-shows the remembered glyph, so the 'I'
-     * survives every later repaint until something unmaps it explicitly.
-     * mondied() calls mondead() FIRST and corpse_chance/make_corpse after, so
-     * this precedes the corpse roll, exactly as it does in C.
-     * seed4500-knight-coverage step 1048: a red dragon's fire breath kills a
-     * monster on <42,6>, a square the blind hero had mapped as 'I'.  C repaints
-     * it as remembered floor; this port left the 'I' standing — the session's
-     * one and only wrong frame.  js/mklev.js mondead() and js/dogmove.js
-     * mondied_dm() already carry this call; this hand-rolled death path did not.
-     */
     if (glyph_is_invisible_at(_dx, _dy))
         unmap_object(_dx, _dy);
     /* C mon.c:2765-2779: m_detach releases a dead monster's inventory before
@@ -555,27 +459,11 @@ export async function monkilled_trap(mtmp, fltxt = '') {
      * objects can be struck by the same beam, and their breaktest/delobj RNG is
      * part of this death's ordering. */
     await relobj_md(mtmp);
-    /* C mon.c:3247-3249: drop a corpse if corpse_chance succeeds.  accessible()/
-     * is_pool gate the *placement*, not the RNG — corpse_chance always rolls. */
     const dropCorpse = corpse_chance_mon(mtmp);
     if (dropCorpse) {
         const make_corpse = _trapFns.make_corpse_fn;
         if (make_corpse) await make_corpse(mtmp, _dx, _dy);
     }
-    /* C mon.c m_detach(): "Take mtmp off map but not out of fmon list yet
-     * (dmonsfree does that)."  mtmp->mhp is already 0 (set above); m_detach's
-     * own job here reduces to flagging the monster MON_DETACH so a later
-     * dmonsfree() purge (real body: js/mkmaze.js dmonsfree(), which walks
-     * fmon unlinking on mhp<1) reaps it — this file used to splice mtmp out
-     * of game.fmon immediately here, reasoning "JS has no purge pass"; that
-     * no longer holds now that js/mkmaze.js's dmonsfree() is a real chain
-     * walk and fmon.count is a LIVE mapstate slot (fmonCountSlot): an
-     * immediate splice shrinks fmon.count on THIS call, one full purge pass
-     * early, which mintrap's own capture corpus catches as an EXTRA state
-     * change C never produces (records #100/#132/#296: a pit/trap kill
-     * leaves C's fmon.count unchanged until the next dmonsfree()).  Leaving
-     * mtmp linked (mhp=0, MON_DETACH set) until dmonsfree() runs is the same
-     * C-faithful deferral js/mklev.js's mongone() already uses. */
     if ((mtmp.mstate | 0) & MON_DETACH) {
         /* C mon.c:2789-2792 `impossible("m_detach: ... already detached?")` —
          * monkilled_trap is never called twice on the same monster from any
@@ -597,19 +485,6 @@ export async function monkilled_trap(mtmp, fltxt = '') {
         newsym(_dx, _dy);
 }
 
-/* dealloc_obj_trap — drop a struck (consumed) trap missile.  C trap.c:6750
- * dealloc_obj(obj).  The missile was never linked onto the floor/global chains
- * (t_missile leaves it floating), so there is nothing to unlink, but it must
- * still go through the REAL dealloc_obj (js/mklev.js:3612 — sets
- * where=OBJ_DELETED and prepends to the game.objs_deleted queue) rather than
- * a hand-rolled `where` write, because the `objs_deleted.count` mapstate slot
- * is a dead bridgeSlot placeholder (js/mapstate_game_bridge.js:730) not
- * derived from that queue — it must be bumped by hand in step with the one
- * real deletion, the same pattern this file's own m_useupall / js/cmd.js
- * useupf / js/potion.js delobj use. Measured: a struck dart/arrow/rock trap
- * missile left `objs_deleted.count` MISSING (records #129, #300) because this
- * helper only mimicked the `where` write and skipped both the real queue and
- * the counter.  No RNG. */
 async function dealloc_obj_trap(obj) {
     if (!obj) return;
     await dealloc_obj(obj);
@@ -620,48 +495,6 @@ async function dealloc_obj_trap(obj) {
 }
 const OBJ_DELETED_T = 9; /* C obj.h OBJ_DELETED (6 is OBJ_BURIED) */
 
-/* stackobj — C ref: invent.c:4363-4375.
- *
- *     for (otmp = svl.level.objects[obj->ox][obj->oy]; otmp; otmp = otmp->nexthere)
- *         if (otmp != obj && merged(&obj, &otmp))
- *             break;
- *
- * THIS FILE USED TO CARRY ITS OWN file-local `stackobj` (plus `mergable_trap`
- * and `merge_floor_obj`) that SHADOWED the exported js/sp_lev.js:3694 one, and
- * it merged BACKWARDS: it called merge_floor_obj(otmp, obj) with otmp the PILE
- * MEMBER and obj the FRESHLY PLACED object, making the old pile member the
- * survivor and deleting the new object.  C's merged(&obj, &otmp) has `obj` — the object stackobj() was
- * called on, i.e. the one just place_object()'d — as *potmp, the SURVIVOR, and
- * the pile member `otmp` as *pobj, the one obj_extract_self()'d.  Because
- * place_object() prepends, the survivor therefore keeps the HEAD of fobj and the
- * TOP of svl.level.objects[x][y]; the shadow left it at the bottom of both.
- * Measured consequence (gen290-reseed-seed242132 step 31, falling-rock trap onto
- * a pile of 9 rocks at 32,4): the map cell rendered "%" instead of "*", and the
- * pet's next-turn dog_goal() fobj scan visited the pile in a different order, so
- * its rn2(8) fired one object early.
- *
- * The shadow was also a REDUCED port in two further ways — its mergable_trap
- * omitted the per-otyp oc_merge gate entirely (so two same-otyp non-stackable
- * items would merge), and its merge_floor_obj copied only `quan`, dropping C's
- * age averaging, owt recompute, known/rknown/bknown union, bypass propagation,
- * timer stop and obfree.  Rather than fix three defects in a private copy, the
- * shadow is deleted and the shared exported body is used, which is the one
- * js/cmd.js, js/dokick.js, js/zap.js, js/mhitu.js, js/end.js, js/vault.js and
- * js/mklev.js already call.  (js/sp_lev.js imports this file, so this is an ES
- * module cycle; `stackobj` is a hoisted function declaration and js/sp_lev.js
- * has no top-level executable statements, and the same cycle already exists
- * between js/sp_lev.js and js/cmd.js.) */
-/* Safe accessor for a monster's given name. C's struct monst has NO
- * top-level mgivenname field — do_name.c always stores it at
- * mtmp->mextra->mgivenname — but a bare `mtmp?.mgivenname` read (this file's
- * former pattern, four call sites) triggers the capture-replay strict
- * Proxy's get-trap for a property never in STRUCT_FIELDS['struct monst *']
- * and throws "field 'mgivenname' was not captured" on every monster whose
- * mextra is null/absent (has_mgivenname===0), which is most of them.
- * `'mgivenname' in mtmp` (Reflect.has, no get trap) probes without
- * triggering it — same pattern as js/dogmove.js's _has_mgivenname_dm — so
- * this stays defensive against any code path that writes a top-level field
- * (js/mhitm.js's new_mgivenname does) without throwing on the common case. */
 function _mgivenname(mtmp) {
     if (!mtmp) return '';
     if (mtmp.mextra && mtmp.mextra.mgivenname) return mtmp.mextra.mgivenname;
@@ -693,66 +526,6 @@ function missile_name(obj) {
         default: return 'a missile';
     }
 }
-/* ---------------------------------------------------------------------------
- * chest_trap — trigger a chest trap (box/chest with a trap flag set)
- * C ref: nethack-c/src/trap.c:6274
- *   boolean chest_trap(struct obj *obj, int bodypart, boolean disarm)
- *
- * Called when the hero opens/kicks/disarms a trapped chest.
- * RNG call sequence drawn by THIS function's own body:
- *   1. rn2(13 + Luck)          — trap.c:6292 luck-saves check
- *   2. rn2(13)                 — trap.c:6294 (luck path) which message
- *   3. rn2(20)                 — trap.c:6326 (bad path) outer selector
- *   4. rn2(13-Luck) or rn2(26) — trap.c:6326 (bad path) inner selector
- *   5. d(6,6)                  — trap.c:6378 explosion damage (cases 21-25)
- *   6. rn2(3)                  — trap.c:6399 gas cloud branch (cases 17-20)
- *   7. d(4,4)                  — trap.c:6423 electricity dmg (cases 6-8)
- *   8. d(5,6)                  — trap.c:6444 freeze duration nomul (cases 3-5)
- *   9. rn2(6) or rn2(CLR_MAX)  — trap.c:6455 ROLL_FROM(blindgas) when Blind,
- *                                else rndcolor() (cases 0-2)
- *  10. rn1(7,16)               — trap.c:6466 stunned duration (cases 0-2)
- *  11. rn1(5,16)               — trap.c:6468 hallucination duration (cases 0-2)
- *
- * KNOWN GAPS — this body is RNG-shaped for its own draws but its CALLEES are
- * not ported, and several of them DO draw core RNG in C.  Listed per branch,
- * with an explicit statement of whether C draws on the gapped path, because
- * that determines whether wiring chest_trap up is safe:
- *   cases 21-25 (explode): stolen_value/delete_contents/delobj/wake_nearby and
- *       losehp are missing.  C DRAWS NO extra core RNG on this path
- *       (delete_contents shk.c and wake_nearby mon.c have no rn* calls), but
- *       the hero survives damage-free and the floor stack is not destroyed.
- *   cases 17-20 (noxious gas): C calls poisoned() (attrib.c) on the rn2(3)!=0
- *       arm — poisoned DRAWS (rn2(fatal+…), d(4,6), rnd(6), rn1(10,6), …),
- *       and create_gas_cloud on the other arm.  JS draws NOTHING here.
- *   cases 13-16 (needle): C calls poisoned("needle", …) — DRAWS, as above.
- *       JS draws nothing.
- *   cases 9-12 (fire): C calls dofiretrap() — DRAWS heavily (d(2,4), rnd(3),
- *       rn2(2), …).  JS draws nothing.
- *   cases 6-8 (shock): C calls destroy_items(…, AD_ELEC, orig_dmg) — DRAWS
- *       (rn2(DMG_DESTROY_SCALE), rn2(elig_stacks)) — plus losehp.  JS draws
- *       only the d(4,4).
- *   cases 3-5 (freeze): C calls nomul(-d(5,6)) and sets nomovemsg; nomul draws
- *       NOTHING, so this branch is RNG-exact today — the only gap is that the
- *       hero is not actually paralysed.  (This is the branch the one recorded
- *       C invocation in the corpus takes; see below.)
- *   cases 0-2 (hallu gas): make_stunned/make_hallucinated (potion.c) draw
- *       NOTHING, so this branch is RNG-exact today apart from the missing
- *       property writes.
- * Because five of the seven branches under-consume, this function is
- * DELIBERATELY LEFT UNWIRED (census: UNWIRED/HIGH, 0 call sites).  The single
- * C invocation in the whole 64-session corpus is seed0006-wizard-sepra step
- * 124 (a `#loot` of a trapped box → pickup.c:2991), which takes the freeze
- * branch: rn2(13)=5 @trap.c:6292, rn2(20)=3 and rn2(13)=5 @trap.c:6326,
- * d(5,6)=15 @trap.c:6444.  That is at global RNG index 6670, far past that
- * session's first divergence (~2905), so wiring it cannot move the score
- * today; it can only lose RNG parity on the other six branches.  Port
- * poisoned/dofiretrap/destroy_items first, THEN wire the pickup.c:2991,
- * pickup.c:3971, lock.c:155, dokick.c:661/669 and trap.c:5783 call sites.
- *
- * Returns TRUE if the chest object was destroyed (caller must not use obj).
- * Returns FALSE otherwise (hero survived or trap fizzled).
- * ---------------------------------------------------------------------------
- */
 export async function chest_trap(obj, bodypart, disarm) {
     const u = game.u || {};
     const gm = game.gm || {};
@@ -957,20 +730,6 @@ export function t_at(x, y) {
  * the matching entry. */
 export function deltrap(trap) {
     if (!trap) return;
-    /* C trap.c:1700 deltrap() unlinks from gf.ftrap; both containers have to
-     * drop it or the chain readers keep seeing a trap the array no longer has.
-     *
-     * Capture-replay (tools/equiv-test/auto-replay-sweep.mjs, marshal class
-     * struct-fields) reconstructs the `trap` argument as a FRESH object built
-     * from the record's trap_tx/trap_ty/trap_ttyp/... fields, not the literal
-     * element the mapstate bridge seeded onto game.ftrap/game.level.traps, so
-     * `===` never matches during replay even though it is the same trap.
-     * Measured: STATUE_TRAP records #8/#10/#16 all had game.level.traps
-     * contain a [tx,ty,ttyp]-matching entry with `t === trap` false, so both
-     * unlinks below fall back to positional identity — (tx,ty) uniquely
-     * identifies a trap in C's own one-trap-per-square invariant, so this is
-     * not a guess. Reference equality is tried first so a live (non-replay)
-     * caller passing the real object keeps working unchanged. */
     const samePos = (o) => !!o && (o.tx | 0) === (trap.tx | 0) && (o.ty | 0) === (trap.ty | 0);
     const isMatch = (o) => o === trap;
     let unlinkedHead = false;
@@ -998,23 +757,6 @@ export function deltrap(trap) {
         i = game.level.traps.findIndex(t => (t.tx | 0) === (trap.tx | 0) && (t.ty | 0) === (trap.ty | 0));
     if (i >= 0) game.level.traps.splice(i, 1);
 }
-/* C trap.c:6667-6690 — boolean delfloortrap(struct trap *ttmp)
- *
- * "some of these are arbitrary -dlc": the trap types a flood / terrain change
- * is allowed to wash away.  Anything else (a magic portal, a vibrating square,
- * the stairs-adjacent traps) survives and the caller aborts whatever it was
- * doing to that square -- gush() returns without making a pool there.
- *
- *   if (ttmp && (SQKY_BOARD || BEAR_TRAP || LANDMINE || FIRE_TRAP
- *                || is_pit || is_hole || TELEP_TRAP || LEVEL_TELEP
- *                || WEB || MAGIC_TRAP || ANTI_MAGIC)) {
- *       if (u_at(tx, ty)) { if (u.utraptype != TT_BURIEDBALL) reset_utrap(TRUE); }
- *       else if ((mtmp = m_at(tx, ty)) != 0) mtmp->mtrapped = 0;
- *       deltrap(ttmp);
- *       return TRUE;
- *   }
- *   return FALSE;
- */
 export async function delfloortrap(ttmp) {
     if (ttmp && (ttmp.ttyp === SQKY_BOARD || ttmp.ttyp === BEAR_TRAP
                  || ttmp.ttyp === LANDMINE || ttmp.ttyp === FIRE_TRAP
@@ -1054,11 +796,7 @@ function CAN_OVERWRITE_TERRAIN(ttyp) {
     const debugOverwriteStairs = !!(game.iflags && game.iflags.debug_overwrite_stairs);
     return debugOverwriteStairs || !(ttyp === LADDER || ttyp === STAIRS);
 }
-// C ref: rm.h — levl[x][y].typ read. The replay oracle's capture never
-// populates level_tiles for maketrap (harness capture-adequacy gap; see
-// capture-adequacy-gate.mjs --fn maketrap), so game.level may be a fresh
 // all-STONE GameMap (built by the "traps" side-channel) or entirely
-// unset. An uncaptured tile reads as STONE (the GameMap default), never
 // throws — matches how a real, tile-populated GameMap defaults untouched
 // cells.
 function lev_typ(x, y) {
@@ -1082,9 +820,7 @@ function is_lava_local(x, y) {
 // Reimplemented locally (rather than importing js/look.js's is_pool_or_lava)
 // because that shared helper dereferences `game.level.at(x, y)` without a
 // typeof guard and throws when game.level is the plain-object fallback this
-// replay oracle produces for captures with a stairs/rooms side-channel but
 // no level_tiles snapshot (project_level_grid_null_tiles_empty_traps_gap;
-// see tools/equiv-test/lib/replay-core.mjs's loadGameFromMapstate comment).
 // lev_typ()/lev_flags() already default to STONE/null for that shape, so
 // this mirrors dbridge.c exactly without hitting the crash.
 function is_pool_or_lava_local(x, y) {
@@ -1132,18 +868,11 @@ function coordptr_get(p) {
 function coordptr_set(p, v) {
     if (p !== null && typeof p === 'object') p.value = v;
 }
-/* C `mon == &gy.youmonst`.  Reconstructed capture records are not the same
- * object as game.youmonst, so fall back to the m_id sentinel this file already
- * uses for that comparison (see immune_to_trap's is_you note below:
- * set_uasmon() hardcodes gy.youmonst.m_id = 1 and next_ident() reserves it). */
 function _gp_is_youmonst(mon) {
     if (!mon) return false;
     if (mon === game.youmonst) return true;
     return (mon.m_id | 0) === 1;
 }
-/* C pointer equality between two struct monst *.  Capture-reconstructed
- * structs are distinct objects from the game.fmon entries they describe, so
- * m_id is the faithful identity key (same convention as above). */
 function _gp_same_mon(a, b) {
     if (!a || !b) return false;
     if (a === b) return true;
@@ -1285,15 +1014,6 @@ function _gp_is_rider(mdat) {
     const pm = mdat?.pmidx | 0;
     return pm === PM_DEATH || pm === PM_PESTILENCE || pm === PM_FAMINE;
 }
-/* C engrave.c sengr_at(s, x, y, strict) — the engraving at <x,y> when it is not
- * a headstone, is already finished (engr_time <= svm.moves) and its text matches
- * `s` case-insensitively (strict) or contains it (!strict).
- *
- * GAP, stated rather than faked: js/mklev.js make_engr_at() drops C's `epoch`
- * argument, so an engraving record carries no engr_time and the "already
- * finished" gate cannot be evaluated.  Every engraving this port creates is
- * complete on creation, which is the same answer for all of them; a future
- * multi-turn engrave port must add engr_time here. */
 function _gp_sengr_at(s, x, y, strict) {
     const ep = engr_at(x, y);
     if (ep && (ep.engr_type | 0) !== HEADSTONE) {
@@ -1783,7 +1503,7 @@ export async function maketrap(x, y, typ) {
                 const wasIce = lev && ((lev.drawbridgemask | 0) & 28 /* DB_UNDER */) === 8 /* DB_ICE */;
                 if (lev) {
                     lev.drawbridgemask = (lev.drawbridgemask | 0) & ~28;
-                    lev.drawbridgemask = (lev.drawbridgemask | 0) | 16 /* DB_FLOOR */;
+                    lev.drawbridgemask = (lev.drawbridgemask | 0) | 16;
                 }
                 if (wasIce) {
                     obj_ice_effects(x, y, true);
@@ -1823,20 +1543,6 @@ export async function maketrap(x, y, typ) {
     if (!oldplace) {
         if (!game.level) game.level = { traps: [] };
         if (!Array.isArray(game.level.traps)) game.level.traps = [];
-        /* C trap.c:578-583 —
-         *     if (!oldplace) { ttmp->ntrap = gf.ftrap; gf.ftrap = ttmp; }
-         * This port keeps the level's traps TWICE: as game.level.traps (the
-         * array t_at() and deltrap() work on) and as C's gf.ftrap chain, which
-         * is what every "walk all traps" caller reads — see_traps
-         * (js/display.js), the magic-mapping sweep (js/sp_lev.js), the Amulet
-         * warmth roll (js/sit.js), expulsion()'s seal arm and goto_level()'s
-         * portal-arrival scan (js/cmd.js).  js/mklev.js's own maketrap already
-         * maintained BOTH; this one maintained only the array, so every trap it
-         * made was invisible to all of them.  mkportal() goes through THIS
-         * maketrap, so the quest branch's MAGIC_PORTAL was absent from ftrap and
-         * goto_level's portal arrival could not find it — seed0361's expulsion
-         * landed on the up-staircase instead of the portal square (leaf 7809,
-         * the place_lregion rn2(79) C never draws). */
         ttmp.ntrap = game.ftrap ?? null;
         game.ftrap = ttmp;
         game.level.traps.push(ttmp);
@@ -1870,21 +1576,6 @@ export function clamp_hole_destination(dlev) {
     dlev.dlevel = Math.min(dlev.dlevel, bottom);
     return dlev;
 }
-/* C ref: trap.c:441-454 hole_destination.  This file used to carry a local
- * re-implementation whose comment said the class was one "this replay oracle
- * cannot verify" — and it was WRONG in the way an unverifiable body gets to
- * be wrong: it assigned dst->dnum/dst->dlevel and then simply stopped, with
- * no
- *
- *     while (dst->dlevel < bottom) { dst->dlevel++; if (rn2(4)) break; }
- *
- * So a trapdoor's destination was the level the hero is standing on, and —
- * the part that shows up in the stream — the rn2(4) per descended level was
- * never drawn.  js/mklev.js has carried the faithful body all along; it just
- * was not exported.  Measured on gen362-reseed-seed208714: ensure_way_out's
- * `maketrap(x, y, rn2(2) ? HOLE : TRAPDOOR)` on a mine-town "inaccessibles"
- * level is a live call site, and the missing rn2(4) desynchronised the stream
- * from level-generation onward.  One body, as C has. */
 /* C ref: nethack-c/src/pline.c:587-637 impossible(const char *s, ...) — it
  * paniclog()s the formatted message and pline()s it, then RETURNS; it never
  * aborts.  Callers (immune_to_trap's two error arms, install_trap's
@@ -1919,28 +1610,12 @@ export async function dotrap(trap, trflags) {
     let forcetrap = ((trflags & FORCETRAP) !== 0
                      || (trflags & _FAILEDUNTRAP_BT) !== 0);
     const forcebungle = (trflags & FORCEBUNGLE) !== 0;
-    /* C trap.c:3002-3005.  These were hard-coded FALSE with the comment "pit
-     * traps not yet ported"; the hero pit arm is ported now, and all three feed
-     * both the escape check below AND trapeffect_pit's damage arguments, so a
-     * fabricated constant here is a wrong answer the moment a session walks
-     * between two pits.  Note conjoined_pits/adj_nonconjoined_pit both require
-     * the hero to ALREADY be in a pit, so on a first fall both are still false —
-     * measured, not assumed: they are false on all four members of this row. */
     const plunged = (trflags & _TOOKPLUNGE_T) !== 0;
     const conj_pit = conjoined_pits(trap, t_at(u.ux0 | 0, u.uy0 | 0), true);
     const adj_pit = adj_nonconjoined_pit(trap);
     /* C trap.c:3006: nomul(0) */
     nomul(0);
-    /* C trap.c:3008-3011: fixed_tele_trap → FORCETRAP.  A telep trap with a
-     * fixed destination; the corpus trap has none, so this is false. */
     /* fixed_tele_trap(trap) is false (no teledest) */
-    /* C trap.c:3014-3022 — the Sokoban pit/hole arm, and it is an `if / else if`
-     * with the block below, not an independent statement: on a Sokoban pit C
-     * SKIPS the already-seen escape check entirely, so its rn2(5) is never
-     * drawn there.  This port ran the escape check unconditionally, which is an
-     * RNG difference and not merely a missing message.  Unreached by the corpus
-     * (no recorded hero steps on a Sokoban pit), written out because the branch
-     * structure is what matters. */
     if (In_sokoban(u?.uz) && (is_pit(ttype) || is_hole(ttype))) {
         /* The "air currents" message is still appropriate -- even when
          * the hero isn't flying or levitating -- because it conveys the
@@ -1950,9 +1625,6 @@ export async function dotrap(trap, trflags) {
                     + `${_tr_trapname(ttype)}!`); /* do force "pit" while hallucinating */
         /* then proceed to normal trap effect */
     } else if (!forcetrap) {
-        /* C trap.c:3025: floor_trigger(ttype) && check_in_air(youmonst) → the
-         * hero would just step over a floor trap while levitating/flying.
-         * MAGIC/TELEP traps are not floor_trigger, so this is skipped. */
         if (floor_trigger(ttype) && check_in_air(true, trflags)) {
             return;
         }
@@ -2018,8 +1690,6 @@ export async function reset_utrap(msg) {
             await You("can fly.");
     }
 }
-/* C ref: trap.c:1063 floor_trigger — trap types that only trigger when the
- * victim is on the floor (skipped while levitating/flying). */
 function floor_trigger(ttyp) {
     switch (ttyp) {
         case 1:
@@ -2062,31 +1732,12 @@ function check_in_air(mtmp, trflags) {
     if ((tf & _HURTLING_T) !== 0)
         return true;
     if (mtmp === true) {
-        /* `u.uprops.LEVITATION` / `.FLYING` used to be read here BY NAME.
-         * u.uprops is keyed by PROP NUMBER (js/attrib.js's _uprop convention,
-         * and uprop_active just above reads it that way), so both lookups were
-         * permanently `undefined` and the hero's half of this predicate was a
-         * constant FALSE — a levitating hero triggered every floor trap.  It
-         * did not surface before because the only ported floor-trap hero arms
-         * carried their own Levitation guard; PIT's does too (trap.c:1850), but
-         * C's gate is HERE and the two are not the same gate: C's returns from
-         * dotrap before feeltrap and before mons_see_trap. */
         return uprop_active(LEVITATION) || (uprop_active(FLYING) && !plunged);
     }
     const pm = mtmp?.data;
     if (!pm) return false;
     return _imm_is_floater(pm) || (_imm_is_flyer(pm) && !plunged);
 }
-/* C ref: youprop.h Fumbling = (HFumbling || EFumbling), i.e.
- * u.uprops[FUMBLING].intrinsic || u.uprops[FUMBLING].extrinsic — NOT gated by
- * .blocked (unlike uprop_active's Levitation/Flying reads above, which are
- * `&& !blocked`; C's Fumbling macro has no such term).  This read
- * `u.uprops.FUMBLING` — a property named "FUMBLING" — but u.uprops is indexed
- * by NUMBER (uprop_active's own convention two functions up), so the lookup
- * was permanently undefined and the hero was never fumbling: measured on
- * record #28 (probe-trapset-b__gen004-objective-seed889459), where the hero's
- * real HFumbling=67108865 should have short-circuited dotrap's escape check
- * before rn2(5) and this port drew it anyway. */
 function is_fumbling_u() {
     const u = game.u;
     const p = (u && u.uprops) ? u.uprops[FUMBLING] : null;
@@ -2158,24 +1809,6 @@ export function m_carrying(mtmp, type) {
     /* No matching object found. */
     return null;
 }
-/* C skills.h:43-45 — the launcher skills, contiguous and ORDERED:
- *   P_BOW = 20, P_SLING = 21, P_CROSSBOW = 22.
- * C's launcher/ammo macros are RANGE tests over oc_skill, and ammo carries the
- * NEGATED skill of the launcher that fires it (matching_launcher). Both
- * predicates below were hand-enumerated otyp lists that dropped the middle of
- * that range — the SLING (otyp 87, oc_skill 21) was in neither, and
- * ammo_and_launcher had no sling arm and no GEM_CLASS arm at all, so a monster
- * slinging rocks read as unarmed.
- *
- * Measured (seed4500-knight-coverage, tools/monster-position-diff.mjs, first
- * divergence turn 131): m_id=1332 wields otyp 87 and carries 6 of otyp 474
- * (oc_skill -21, GEM_CLASS — sling ammo). C's m_has_launcher_and_ammo is TRUE,
- * so m_balks_at_approaching (monmove.c:1199) returns -1 and the monster BACKS
- * OFF: (35,2) -> (34,2) with the hero at (38,2). With the hardcoded list it read
- * FALSE, appr stayed 1, and it CLOSED to (36,2) instead. The whole divergence is
- * RNG-free at the point it happens — m_move's selection loop draws nothing when
- * appr != 0 — which is why the per-C-site draw census called this clean.
- */
 const _LAUNCH_WEAPON_CLASS = 2; /* C objclass.h WEAPON_CLASS */
 const _LAUNCH_GEM_CLASS = 13;   /* C objclass.h GEM_CLASS   */
 const _P_BOW = 20, _P_CROSSBOW = 22; /* C skills.h:43,45 */
@@ -2283,16 +1916,6 @@ function _worn_breakarm(data) {
         || (data.pmidx | 0) === _WORN_PM_MARILITH
         || (data.pmidx | 0) === _WORN_PM_WINGED_GARGOYLE;
 }
-/* C mondata.h:133 cantweararm(ptr) = (breakarm(ptr) || sliparm(ptr)).
- *
- * m_dowear used to carry a file-LOCAL `cantweararm(data) { return
- * !humanoid(data); }`, which is a different predicate entirely: it says a
- * mountain centaur (M1_HUMANOID, MZ_LARGE) CAN wear a suit, where C's
- * bigmonst arm of breakarm() says it cannot.  MEASURED on seed0361 leaf 7934
- * against a probed C recorder: with the wrong predicate the centaur #214 at
- * <72,4> put on a suit inside the movemon I_SPECIAL block, was frozen for 5
- * turns and lost its whole move (C: `oldworn=0 now=0 skip=0`), which moved the
- * session's prefixMatch 23361 -> 7934 and cost 93 step points. */
 function _worn_cantweararm(data) {
     return _worn_breakarm(data) || _worn_sliparm(data);
 }
@@ -2309,7 +1932,6 @@ export async function m_dowear(mon, creation) {
     function is_animal(data) { return (data.mflags1 & 0x00040000 /* M1_ANIMAL */) !== 0; }
     function mindless(data) { return (data.mflags1 & 0x00010000 /* M1_MINDLESS */) !== 0; }
     function MON_WEP(m) {
-        /* walk minvent for W_WEP — mon.mw is not captured */
         for (let o = m.minvent; o; o = o.nobj) {
             if (((o.owornmask | 0) & W_WEP) !== 0)
                 return o;
@@ -2353,25 +1975,6 @@ export async function m_dowear(mon, creation) {
         await m_dowear_type(mon, W_ARM, creation, RACE_EXCEPTION);
 }
 
-/* ── m_dowear_type (C worn.c:798-1002) ────────────────────────────────────────
- * The whole body was a `no-op stub`, so m_dowear() above walked its seven
- * slots and wore nothing.  That is not merely a missing "%s puts on %s."
- * message: it is why the movemon I_SPECIAL re-equip block (C mon.c:1269-1284)
- * could not be ported at all — that block skips a monster's ENTIRE turn when
- * m_dowear actually changes misc_worn_check or clears mcanmove, and a stub
- * m_dowear never changes either.
- *
- * MEASURED against C on the whole 44-session public corpus (a locally built
- * recorder with a probe at worn.c:970): m_dowear wears something 84 times, and
- * exactly TWO of those are `creation == FALSE` — seed0383's monster #144
- * (mnum 165, levitation boots, W_ARMF, m_delay 2) and seed0399's #197 (mnum 46,
- * banded mail, W_ARM under a worn cloak, m_delay 7).  Both are in the two
- * hallucinate sessions and both make their monster spend the turn equipping.
- *
- * RNG: m_dowear_type consumes NO core PRNG.  Its only draw-shaped call is
- * hcolor() on the autocurse arm, which is the DISPLAY rng (rn2_on_display_rng),
- * not the scored stream; autocurse fires 0 times in the corpus.
- */
 /* objclass.h — the two oclasses m_dowear_type filters on. */
 const _MDW_ARMOR_CLASS = 3, _MDW_AMULET_CLASS = 5;
 /* objects.h oc_armcat ordinals (js/armor_data.js `armcat`). */
@@ -2434,11 +2037,6 @@ function _mdw_oc_delay(otyp) {
     const row = ARMOR_DATA[otyp | 0];
     return row ? (row.delay | 0) : 0;
 }
-/* C worn.c:1112-1124 racial_exception(mon, obj) — hobbits may wear elven
- * armor; no "unacceptable" exceptions exist in 5.0.  raceptr(mon) is
- * mondata.h:20: mon->data unless the monster is a player-monster/mplayer,
- * which no corpus monster reaching here is, so mon.data is read directly and
- * the mplayer arm is named rather than guessed at. */
 function _mdw_racial_exception(mon, obj) {
     if ((mon.data?.pmidx | 0) === _MDW_PM_HOBBIT
         && _MDW_ELVEN_ARMOR_OTYPS.has(obj.otyp | 0))
@@ -2465,11 +2063,6 @@ function _mdw_curse(obj) {
     obj.blessed = 0;
     obj.cursed = 1;
 }
-/* C artifact.c:1231 artifact_light(obj) — an artifact whose oartifact row has
- * the light bit.  No corpus monster wears an artifact; the guard is written
- * out so the shape is C's, and a monster's minvent artifact would simply not
- * begin burning (the same conservative reading js/do_wear.js:1660 records for
- * the hero's artifact arm). */
 function _mdw_artifact_light(obj) {
     return false && obj;
 }
@@ -2648,11 +2241,6 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
     best.owornmask = (best.owornmask | 0) | flag;
     if (autocurse)
         _mdw_curse(best);
-    /* C worn.c:974-991 — the artifact-light arm.  _mdw_artifact_light() is
-     * constant-false (no corpus monster wears a light-emitting artifact), so
-     * this whole block is unreachable rather than wrong; it is written out so
-     * the shape is C's and so a future artifact_light() port has one site to
-     * flip. */
     update_mon_extrinsics(mon, best, true, creation);
     /* if couldn't see it but now can, or vice versa */
     if (!creation && (!!sawmon !== !!canseemon(mon))) {
@@ -2665,10 +2253,6 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
     }
     void sawloc;
 }
-/* C ref: trap.c:2936 trapeffect_selector — dispatch a triggered trap to its
- * per-type handler.  Only the handlers needed by ported sessions are wired;
- * unported types fall through to Trap_Effect_Finished (no RNG, matching a
- * monster/hero that the unported effect would simply not affect). */
 /* C hack.h:1347-1350 — launch_obj()'s `style` bits.
  *     #define ROLL          0x01   / * the object is rolling * /
  *     #define LAUNCH_UNSEEN 0x40   / * hero neither caused nor saw it * /
@@ -2702,10 +2286,6 @@ function _lo_hero_monst() {
     if (ym && ym.data) return ym;
     return { m_id: 1, data: null };
 }
-/* C allmain.c:684 stop_occupation() — the launch_obj call site only ever needs
- * the nomul(0) half for the corpus hero (no occupation is running when a
- * boulder hits her); js/mhitu.js keeps its own copy for m_throw's identical
- * call site. */
 function _lo_stop_occupation() {
     const g = game;
     if (!g.occupation)
@@ -2723,9 +2303,6 @@ function closed_door_lo(x, y) {
     if (!loc) return false;
     return IS_DOOR(loc.typ | 0) && !!((loc.doormask | 0) & (D_LOCKED | D_CLOSED));
 }
-/* C hack.h:1236 Maybe_Half_Phys(dmg) — halve (rounded up) under
- * Half_physical_damage.  No corpus hero has that property; the guard is written
- * out so the shape is C's, and reads the uprop the rest of the file reads. */
 const HALF_PHYSICAL_DAMAGE = 74; /* C prop.h HALF_PHYS_DAM */
 function Maybe_Half_Phys_lo(dmg) {
     const p = game.u?.uprops?.[HALF_PHYSICAL_DAMAGE];
@@ -2738,14 +2315,6 @@ const M2_ROCKTHROW_LO = 0x00000020; /* C monflag.h M2_ROCKTHROW */
 function throws_rocks_lo(data) {
     return !!(((data && data.mflags2) | 0) & M2_ROCKTHROW_LO);
 }
-/* C ref: mkobj.c:2426-2470 obj_extract_self(obj) — dispatch on obj->where.
- * js/dokick.js exports a function of this name, but its whole body is the
- * OBJ_MIGRATING arm (it walks gm.migrating_objs and returns), so calling it on
- * a FLOOR object leaves the object linked into the level's object chain — and
- * on this tree it throws outright, because g.gm is undefined outside a
- * migration.  launch_obj only ever extracts a floor boulder (sobj_at found it)
- * or a splitobj() result, so those are the two arms written out; the rest name
- * themselves rather than silently no-op. */
 function _lo_obj_extract_self(obj) {
     switch (obj.where | 0) {
     case OBJ_FREE: /* C: nothing to do */
@@ -2758,31 +2327,6 @@ function _lo_obj_extract_self(obj) {
         break;
     }
 }
-/* C ref: trap.c:3260-3574 launch_obj(otyp, x1,y1, x2,y2, style)
- *   "Move obj from (x1,y1) to (x2,y2).  Return 0 if no object was launched,
- *    1 if an object was launched and placed somewhere, 2 if it was used up."
- *
- * This had NO body in js/ at all — js/cmd.js:29145 threw on the moverock call
- * site and trapeffect_selector had no ROLLING_BOULDER_TRAP arm, so the whole
- * trap was silent.  seed0361 step 206 steps on one: C prints "Click!  You
- * trigger a rolling boulder trap!  A boulder misses you." and draws exactly two
- * leaves — rnd(20) @dmgval(weapon.c:265) for the boulder's damage and rnd(20)
- * @thitu(mthrowu.c:106) for the to-hit — and this port drew neither, so the
- * stream slid at global leaf 11065.
- *
- * PORTED: the whole rolling path — the other-side boulder lookup, the
- * quan==1 vs splitobj extract, the style dispatch and its delaycnt, the
- * per-square walk with the isok() guard, the monster arm (throws_rocks snatch
- * rn2(3), then ohitmon), the hero arm (dmgval + thitu), the ROLL-only
- * down_gate/ship_object and t_at trap arms, boulder-hits-boulder, the
- * closed-door smash, and the wall/tree Thump! stop.
- *
- * DEFERRED, each named where C has it: launch_drop_spot() (bones bookkeeping,
- * no JS model), hits_bars() (IRONBARS — has no JS body), scatter()/
- * fracture_rock() on the LANDMINE arm, and rloco/add_to_migration on the
- * TELEP_TRAP/LEVEL_TELEP arms.  All four are RNG-bearing, so each reports
- * rather than silently continuing down a path whose leaf count would be wrong.
- */
 /* SYNCHRONOUS.  This was `async` only because every statement it awaits is a
  * pline(), and js/display.js pline() has no await of its own — it appends to
  * game._pending_message and returns; the blocking --More-- belongs to
@@ -2947,8 +2491,6 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                 case SPIKED_PIT:
                 case HOLE:
                 case TRAPDOOR:
-                    /* C trap.c:3489-3501 — the boulder stops here; it is only
-                     * used up if flooreffects consumes it. */
                     x2 = x; y2 = y;
                     if (await flooreffects(singleobj, x2, y2, 'fall'))
                         used_up = true;
@@ -3047,50 +2589,6 @@ async function trapeffect_rolling_boulder_trap(trap, _trflags) {
     }
     return Trap_Effect_Finished;
 }
-/* C ref: trap.c:2081-2104 trapeffect_rolling_boulder_trap — MONSTER branch.
- *
- *     if (!m_in_air(mtmp)) {
- *         boolean in_sight = (mtmp == u.usteed
- *                             || (cansee(mtmp->mx, mtmp->my)
- *                                 && canspotmon(mtmp)));
- *         int style = ROLL | (in_sight ? 0 : LAUNCH_UNSEEN);
- *         boolean trapkilled = FALSE;
- *
- *         newsym(mtmp->mx, mtmp->my);
- *         if (in_sight)
- *             pline_mon(mtmp, "%s%s triggers %s.",
- *                   !Deaf ? "Click!  " : "", Monnam(mtmp),
- *                   trap->tseen ? "a rolling boulder trap" : something);
- *         if (launch_obj(BOULDER, trap->launch.x, trap->launch.y,
- *                        trap->launch2.x, trap->launch2.y, style)) {
- *             if (in_sight) trap->tseen = TRUE;
- *             if (DEADMONSTER(mtmp)) trapkilled = TRUE;
- *         }
- *         return trapkilled ? Trap_Killed_Mon : mtmp->mtrapped
- *             ? Trap_Caught_Mon : Trap_Effect_Finished;
- *     }
- *     return Trap_Effect_Finished;
- *
- * `something` is C's shared "something" string (decl.c).  The HERO arm above
- * has been ported since seed0361; trapeffect_selector_mon had no
- * ROLLING_BOULDER_TRAP case at all, so a monster that walked onto one simply
- * stood there and the boulder never rolled.
- *
- * MEASURED on seed0014 step 560, Dlvl 5 of the Gnomish Mines: a gnome lord
- * (m_id 300) steps from (60,9) onto the rolling boulder trap at (60,10).  C
- * prints "Click!  The gnome lord triggers something.--More--", launches the
- * boulder, and the boulder's ohitmon() draws
- *     33277 rnd(20) = 3  @ ohitmon(mthrowu.c:350)
- *     33278 rnd(20) = 18 @ dmgval(weapon.c:265)
- * which kills the gnome lord — its pack drops (^place[23,60,10],
- * ^place[88,60,10]), corpse_chance rolls rn2(2), and the boulder is placed.
- * This port drew none of it and went straight on to the next monster's
- * distfleeck rn2(5): the session's first RNG divergence at leaf 33276, and the
- * head of a 154-frame miss run (the un-paged --More-- desyncs every later
- * keystroke).
- *
- * Trap_Is_Gone is not reachable here: unlike the missile traps, C's rolling
- * boulder arm has no `trap->once` self-destruct. */
 async function trapeffect_rolling_boulder_trap_mon(mtmp, trap) {
     if (_gp_m_in_air(mtmp))
         return Trap_Effect_Finished;
@@ -3115,22 +2613,6 @@ async function trapeffect_rolling_boulder_trap_mon(mtmp, trap) {
         : ((mtmp.mtrapped | 0) ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-/* ---------------------------------------------------------------------------
- * STATUE_TRAP arm: animate_statue / activate_statue_trap / trapeffect_statue_trap
- * C ref: trap.c:725-899 animate_statue, trap.c:908-936 activate_statue_trap,
- * trap.c:2279-2288 trapeffect_statue_trap.
- *
- * dotrap only ever reaches this through trapeffect_statue_trap's isYou branch,
- * with x==u.ux, y==u.uy (the hero's own square) and cause==ANIMATE_NORMAL, so
- * u_at(x,y) is always TRUE and the ANIMATE_SPELL/ANIMATE_SHATTER/Hallucination
- * arms below (reached only from stone-to-flesh and wand-of-striking/pick-axe
- * callers of animate_statue, never from dotrap) are ported for structural
- * fidelity but are not exercised by this function's captured records.
- * mk_trap_statue-created statues never carry omonst traits (has_omonst is
- * always false for a fresh trap statue), so use_saved_traits is always FALSE
- * here and montraits() (zap.c:712, bones/revival) is never reached either —
- * routed to an honest throw rather than guessed.
- * ------------------------------------------------------------------------ */
 const ANIMATE_NORMAL = 0, ANIMATE_SHATTER = 1, ANIMATE_SPELL = 2;
 const AS_OK = 0, AS_NO_MON = 1, AS_MON_IS_UNIQUE = 2;
 const _STAT_S_GOLEM = 55; /* defsym.h:359, same local-copy pattern as js/mhitm.js/js/polyself.js */
@@ -3161,62 +2643,9 @@ function _stat_upstart(s) {
     }
     return s;
 }
-/* Simplified shk_your (shk.c:5863-5875): the ownership-prefix text feeds only
- * a pline() the sweep's mapstate channels do not observe, so this approximates
- * the common (non-shop) case rather than importing the full shk.js ownership
- * chain into a file that has none of it. No RNG either way. */
 function _stat_shk_your(obj) {
     return u_at(obj.ox | 0, obj.oy | 0) ? 'your ' : 'the ';
 }
-/* delobj — C invent.c:1430-1436 delobj(obj) -> invent.c:1438-1460
- * delobj_core(obj, FALSE).
- *
- * WHAT WAS HERE: a file-local `_stat_obj_extract` that spliced the statue out
- * of level.objects[x][y] and out of the global fobj chain but NEVER set
- * obj->where, followed by a hand-rolled copy of delobj_core.  C reaches those
- * same two splices through obj_extract_self (mkobj.c:2557) -> remove_object
- * (mkobj.c:2508) -> extract_nexthere + extract_nobj (mkobj.c:2596-2639), and
- * it is extract_nobj's TAIL that does `obj->where = OBJ_FREE; obj->nobj = 0;`
- * (mkobj.c:2612-2613).  Dropping that tail left where == OBJ_FLOOR, so the
- * next call panicked: "dealloc_obj: obj not free (type=476, where=1)".
- *
- * Both halves were shadows of ports this file can already see.  The faithful
- * obj_extract_self is js/mklev.js:15111 (re-exported through cmd.js and
- * imported by THIS file at :153, where :1579 already uses it); the faithful
- * delobj_core is js/cmd.js `_delobj_useupf`, a line-for-line transliteration
- * of invent.c:1438-1460 that calls that same obj_extract_self.  Calling it is
- * strictly more faithful than re-deriving it here, and it is the documented
- * "file-local stubs shadow real ports" class.
- *
- * WHY obfree AND NOT dealloc_obj.  The old note's premise — "obfree is an
- * unported throwing stub (js/mklev.js)" — is STALE: the real body landed at
- * js/shk.js:4136 (C shk.c:1187-1275), and js/mklev.js:15200 is the comment
- * recording the deletion of its own throwing copy.  The two are not
- * interchangeable even once extraction is correct.  C's delobj_core ends in
- * obfree(obj, (struct obj *) 0) (invent.c:1459, "frees contents also"), and
- * obfree does four things dealloc_obj does not: delete_contents, o_unleash /
- * food_disappears / book_disappears / maybe_reset_pick per class, a
- * setnotworn on a still-worn object, and — the arm that matters for a statue —
- * on an UNPAID shop object it calls add_to_billobjs and RETURNS WITHOUT
- * DEALLOCATING (shk.c:1232-1241).  A statue is exactly the object a shop
- * charges for (trap.c:865-872 runs stolen_value on it a few lines above this
- * call), so substituting dealloc_obj would delete an object the shopkeeper is
- * still billing.  Every arm obfree can take from here is a chain walk or a
- * table lookup (onbill / next_shkp / shop_keeper); it draws no RNG, and the
- * public scorer and the train canary are both unmoved by this change.
- *
- * The objs_deleted.count bump stays: that mapstate slot is still a dead
- * bridgeSlot placeholder (js/mapstate_game_bridge.js:798), not a walk of
- * game.objs_deleted, so it is hand-bumped in step with each real deletion the
- * same way this file's dealloc_obj_trap and m_useupall do.  It is now
- * CONDITIONAL on the object actually having been deallocated, because both of
- * delobj_core's early returns — obj_resists (invent.c:1446-1453) and obfree's
- * billobjs arm — delete nothing and must not bump a deletion counter.
- * dealloc_obj sets where = OBJ_DELETED (js/mklev.js:3857) on the one path that
- * does delete, which is the test used here.
- *
- * RNG: obj_resists(obj, 0, 0) inside delobj_core — the last of the 49 draws
- * this arm's captured records consume. */
 async function _stat_delobj(obj) {
     await delobj_core(obj);
     if ((obj.where | 0) === OBJ_DELETED_T) {
@@ -3381,20 +2810,11 @@ export async function animate_statue(statue, x, y, cause, failReason) {
         await remove_worn_item(statue, true);
     await _stat_delobj(statue);
 
-    /* C: "avoid hiding under nothing" (Upolyd hero hides_under check,
-     * trap.c:896-898) — hides_under/OBJ_AT have no js/ definition anywhere in
-     * this repo; draws no RNG and only touches u.uundetected, which none of
-     * this arm's captured records observe. Not ported. */
 
     failReason.value = AS_OK;
     return mon;
 }
 
-/* activate_statue_trap — C ref: trap.c:908-936.
- * Exported (2026-09-06, capture-port-doapply wave 105): use_pole's
- * statue-square arm (js/cmd.js, apply.c:3524-3537) needs this to handle an
- * ACTIVE STATUE_TRAP square instead of throwing 'not yet ported' — the body
- * was already a faithful port, it was only unreachable across files. */
 export async function activate_statue_trap(trap, x, y, shatter) {
     let mtmp = null;
     let otmp = sobj_at(_STAT_STATUE, x, y);
@@ -3436,9 +2856,6 @@ async function trapeffect_selector(mtmp, trap, trflags, isYou) {
                 return await trapeffect_dart_trap(trap, trflags);
             return await trapeffect_dart_trap_mon(mtmp, trap);
         case ROCKTRAP:
-            /* C trap.c:2947 -> trapeffect_rocktrap.  Both halves exist: the
-             * monster one has been here since seed0030, the hero one had no arm
-             * at all and fell to the no-RNG `default` below. */
             if (isYou)
                 return await trapeffect_rocktrap(trap, trflags);
             return await trapeffect_rocktrap_mon(mtmp, trap);
@@ -3520,10 +2937,6 @@ async function trapeffect_selector(mtmp, trap, trflags, isYou) {
                 return await trapeffect_rolling_boulder_trap(trap, trflags);
             return Trap_Effect_Finished;
         case FIRE_TRAP:
-            /* C trap.c:2957 -> trapeffect_fire_trap.  Both halves are wired
-             * now: this selector had NO arm at all, so a hero fire trap fell
-             * to the no-RNG `default` below (see trapeffect_fire_trap's
-             * header comment for the measured residual). */
             if (isYou)
                 return await trapeffect_fire_trap(trap, trflags);
             return await trapeffect_fire_trap_mon(mtmp, trap);
@@ -3534,10 +2947,6 @@ async function trapeffect_selector(mtmp, trap, trflags, isYou) {
              * `mtmp == &gy.youmonst` test. */
             return await trapeffect_statue_trap(mtmp, trap, trflags, isYou);
         case MAGIC_PORTAL:
-            /* C trap.c:2968 -> trapeffect_magic_portal.  The body was INLINED
-             * here while every sibling arm delegates to a named trapeffect_*;
-             * it is a `staticfn` of its own in C (trap.c:2710) and is one
-             * here now. */
             return await trapeffect_magic_portal(mtmp, trap, trflags, isYou);
         default:
             /* Unported trap types: no RNG, no effect yet. */
@@ -3572,28 +2981,6 @@ async function trapeffect_anti_magic_u(trap) {
     return Trap_Effect_Finished;
 }
 
-/* C ref: trap.c:2709-2722 — staticfn int trapeffect_magic_portal(struct monst
- * *mtmp, struct trap *trap, unsigned int trflags), verbatim:
- *
- *     if (mtmp == &gy.youmonst) {
- *         feeltrap(trap);
- *         domagicportal(trap);
- *     } else {
- *         return trapeffect_level_telep(mtmp, trap, trflags);
- *     }
- *     return Trap_Effect_Finished;
- *
- * This selector arm had NO body at all before it was inlined, so a hero
- * stepping onto a magic portal got no message and no level change (seed244908
- * step 110: C's topline joins "You activated a magic portal!--More--" onto the
- * prior line; JS printed nothing because the whole effect never ran).
- * domagicportal is void in C, so the fallthrough to Trap_Effect_Finished on
- * the hero branch is C's own control flow, not a shortcut.
- *
- * trapeffect_level_telep is `async` in this port (js/trap.js:4233), which is
- * why the monster branch is awaited; the inlined call site was the only
- * un-awaited call in the whole selector switch and would have returned a
- * pending Promise to a caller that compares it against Trap_Effect_Finished. */
 async function trapeffect_magic_portal(mtmp, trap, trflags, isYou) {
     if (isYou) {
         feeltrap(trap);
@@ -3603,46 +2990,7 @@ async function trapeffect_magic_portal(mtmp, trap, trflags, isYou) {
     }
     return Trap_Effect_Finished;
 }
-/* C ref: trap.c:1596 trapeffect_rust_trap — HERO branch (mtmp == &gy.youmonst).
- *
- * The hero body verbatim (trap.c:1604-1656):
- *     seetrap(trap);
- *     switch (rn2(5)) {
- *     case 0: pline("%s you on the %s!", A_gush..., body_part(HEAD));
- *             water_damage(uarmh, helm_simple_name(uarmh), TRUE); break;
- *     case 1: pline("%s your left %s!", A_gush..., body_part(ARM));
- *             if (water_damage(uarms, "shield", TRUE) != ER_NOTHING) break;
- *             if (u.twoweap || (uwep && bimanual(uwep)))
- *                 water_damage(u.twoweap ? uswapwep : uwep, 0, TRUE);
- *  uglovecheck: water_damage(uarmg, gloves_simple_name(uarmg), TRUE); break;
- *     case 2: pline("%s your right %s!", A_gush..., body_part(ARM));
- *             water_damage(uwep, 0, TRUE); goto uglovecheck;
- *     default: pline("%s you!", A_gush...);
- *             <splash_lit over gi.invent, excluding uwep/uswapwep>
- *             if (uarmc)      water_damage(uarmc, cloak_simple_name(uarmc), TRUE);
- *             else if (uarm)  water_damage(uarm,  suit_simple_name(uarm),  TRUE);
- *             else if (uarmu) water_damage(uarmu, "shirt", TRUE);
- *     }
- *     update_inventory();
- *     if (u.umonnum == PM_IRON_GOLEM) { ... losehp ... }
- *     else if (u.umonnum == PM_GREMLIN && rn2(3)) split_mon(&gy.youmonst, NULL);
- *
- * Why this was worth porting: RUST_TRAP fell through trapeffect_selector's
- * default arm, so the whole body -- INCLUDING its leading rn2(5) -- drew
- * nothing.  seed0398 step 45 is the hero walking east onto a rust trap; C spends
- * 12 leaves there and JS spent 11.  Every RNG oracle called that "aligned to
- * leaf 2839" because C's NEXT leaf after the missing rn2(5) is distfleeck's own
- * rn2(5), which returned the same value -- the one-leaf hole was invisible on
- * value comparison and only showed up as a 42-step render run starting with a
- * blank topline where C says "A gush of water hits you!".
- *
- * MONSTER branch (trap.c:1657-1720) is deliberately NOT wired: it needs
- * which_armor/mbodypart/completelyrusts/monkilled/split_mon, none of which this
- * session exercises, and a half-built monster arm would draw its rn2(5) into a
- * stream nothing else in it matches.  It stays on the selector's default arm,
- * which is what it did before this commit. */
 const A_gush_of_water_hits = "A gush of water hits";
-/* C polyself.c PM_IRON_GOLEM / PM_GREMLIN — verified via tools/c-const-oracle.mjs. */
 const _RT_PM_IRON_GOLEM = 259, _RT_PM_GREMLIN = 40;
 /* objects.h AMULET_OF_LIFE_SAVING — otyp 202 (js/oc_name_data.js OC_NAME[202]
  * is "amulet of life saving"; js/end.js:82 and js/monmove.js:986 both pin the
@@ -3716,10 +3064,6 @@ async function trapeffect_rust_trap(trap, trflags) {
 function _rt_Maybe_Half_Phys(dmg) {
     return uprop_active(HALF_PHDAM) ? Math.trunc((dmg + 1) / 2) : dmg;
 }
-/* C ref: trap.c:4692 splash_lit — douses a lit light source.  KNOWN GAP, not ported
- * anywhere in js/; only reachable with a lit lamp/candle in open inventory,
- * which no corpus session carries into a rust trap.  Left as an explicit no-op
- * so the loop above stays structurally C-shaped. */
 function splash_lit_rt(otmp) { void otmp; }
 /* C potion.c:2875 split_mon().  The rust-trap hero arm reaches this only for
  * a gremlin, but keeping the monster form here also makes the helper useful
@@ -3783,49 +3127,6 @@ function _split_next_ident() {
     return id;
 }
 
-/* C ref: trap.c:1596 trapeffect_rust_trap — MONSTER branch (trap.c:1655-1720),
- * the `else` half of the same C function whose hero half sits above.
- *
- * The note above this pair used to read "MONSTER branch is deliberately NOT
- * wired ... none of which this session exercises".  That was true of seed0398
- * and is false of the corpus: `trapeffect_rust_trap(trap.c:1663)` — the MONSTER
- * switch, distinct from the hero switch at trap.c:1610 — is drawn on 9 occasions
- * across 8 of the 688 train sessions, and on ZERO public ones, which is exactly
- * why nobody saw it.  [[our-own-landings-manufacture-stale-premises]]: the
- * comment was accurate about the session it was written for and became a
- * standing claim about the corpus.
- *
- * WHY THE ABSENCE WAS INVISIBLE ON THE RNG AXIS.  With no `case RUST_TRAP` in
- * trapeffect_selector_mon the monster fell to `default: return
- * Trap_Effect_Finished` and drew nothing, so JS's NEXT draw — distfleeck's own
- * unconditional rn2(5) at js/monmove.js — landed on the stream position C spent
- * on trap.c:1663.  Same call, same modulus, and (necessarily, since it is the
- * same stream position) the same VALUE.  The hole is therefore invisible to any
- * value comparison and only surfaces TWO leaves later, as
- * `C rn2(5) @distfleeck(monmove.c:538)` against whatever JS reached next.
- * Measured, on the three sessions whose FIRST miss this is:
- *     gen345  trap event leaf 10777 (rn2(5)=0)  first divergence 10779
- *     gen300  trap event leaf  2791 (rn2(5)=4)  first divergence  2793
- *     gen522  trap event leaf  2721 (rn2(5)=4)  first divergence  2723
- * On the RENDER axis it is not subtle at all: C paints the gush topline and this
- * port painted an empty row 0 —
- *     gen345 step 107  "A gush of water hits the frost giant on the head!"  (case 0)
- *     gen300 step  26  "A gush of water hits the saddled pony!"             (default)
- *     gen522 step  16  "A gush of water hits the newt!"                     (default)
- * and the arm C's recorded rn2(5) selects agrees with the recorded text in all
- * three, which is what pins the port to the right switch rather than to a
- * plausible one.
- *
- * DRAW BUDGET, censused over the whole train corpus rather than reasoned about:
- * all 9 monster rust events draw EXACTLY ONE leaf (the rn2(5)), with the next
- * recorded leaf always back in monmove/dochug.  So no water_damage() target in
- * the corpus is non-NULL, no monster completelyrusts, and no gremlin steps on a
- * rust trap.  The bodies below are ported anyway (C is the truth), but their
- * gaps are named rather than guessed at.
- *
- * SYNCHRONOUS, like every other *_mon arm here: mintrap and m_move are sync, so
- * this uses the file's `void pline(...)` form.  C's pline_mon() is pline() plus
- * an a11y message-location hint (pline.c:138) — no terminal difference. */
 async function trapeffect_rust_trap_mon(mtmp, trap, trflags) {
     void trflags;
     /* C trap.c:1656-1660 */
@@ -3902,13 +3203,6 @@ async function trapeffect_rust_trap_mon(mtmp, trap, trflags) {
         if ((mtmp.mhp | 0) < 1)              /* C monst.h:214 DEADMONSTER */
             trapkilled = true;
     } else if (mptr && (mptr.pmidx | 0) === PM_GREMLIN && rn2(3)) {
-        /* NAMED GAP, and the RNG half of it is NOT a gap: C's rn2(3) is drawn
-         * above, in C's order, because it is the leaf that would move the stream.
-         * split_mon (polyself.c) is unported everywhere in js/ — js/potion.js:3186
-         * is a throwing stub — and throwing HERE would halt a session that
-         * currently survives, which is strictly worse than the pre-existing
-         * behaviour (see the identical decision in trapeffect_landmine_mon's
-         * detonation arm).  No corpus session walks a gremlin onto a rust trap. */
         void 0;
     }
 
@@ -3929,11 +3223,6 @@ function _rt_MON_WEP(m) {
 /* C mon.c:2827 mlifesaver(mon) — the worn amulet of life saving that will save
  * this monster.  RNG-free; only read for the "falls"/"starts to fall" wording. */
 function _rt_mlifesaver(mon) {
-    /* C: if (!nonliving(mon->data) || is_vampshifter(mon)) — is_vampshifter is
-     * not ported in this file, and it only WIDENS the set, so a nonliving
-     * non-vampshifter is the one case this can get wrong; it cannot fire here
-     * anyway (the caller is an iron golem, which IS nonliving, and an iron golem
-     * carries no amulet in any corpus session). */
     if (_mk_nonliving(mon))
         return null;
     const otmp = which_armor(mon, W_AMUL);
@@ -4019,18 +3308,6 @@ async function trapeffect_arrow_trap(trap, trflags) {
     if (!hit) await hero_missile_lands(otmp);
     return Trap_Effect_Finished;
 }
-/* C ref: trap.c:1250 trapeffect_dart_trap — HERO branch (mtmp == &youmonst).
- *   if (trap->once && trap->tseen && !rn2(15)) { soft click; deltrap; return; }
- *   trap->once = 1; seetrap(trap);
- *   pline("A little dart shoots out at you!");
- *   otmp = t_missile(DART, trap);            // full mksobj creation RNG
- *   if (!rn2(6)) otmp->opoisoned = 1;        // trap.c:1272 poison check
- *   if (u.usteed && !rn2(2) && steedintrap(...)) ;  // no usteed in corpus
- *   else if (thitu(7, dmgval(otmp,&youmonst), &otmp, "little dart")) {
- *       if (otmp) { if poisoned -> poisoned(); obfree(otmp); }
- *   } else { place_object; observe; stackobj; }
- * RNG order matched to seed0002 step 47: mksobj(DART) → rn2(6) → dmgval rnd(3)
- * → thitu rnd(20) [→ exercise rn2(2) on hit]. */
 async function trapeffect_dart_trap(trap, trflags) {
     void trflags;
     if ((trap.once | 0) && trap.tseen && !rn2(15)) {
@@ -4048,8 +3325,6 @@ async function trapeffect_dart_trap(trap, trflags) {
     await pline('A little dart shoots out at you!');
     const otmp = await t_missile(OTYP_DART, trap);
     if (!rn2(6)) otmp.opoisoned = 1; /* C trap.c:1272 */
-    /* C trap.c:1274: u.usteed && rn2(2) && steedintrap — no usteed in corpus,
-     * the && short-circuits on !u.usteed, so rn2(2) does NOT fire here. */
     const oldumort = game.u.umortality | 0;
     const dmg = missile_dmgval(OTYP_DART, otmp.spe | 0, game.u);
     const hit = await thitu(7, dmg, otmp, 'little dart');
@@ -4325,13 +3600,6 @@ function Blind_thitu() {
 export async function thitu(tlev, dam, otmp, name) {
     const u = game.u;
     const uac = u.uac | 0;
-    /* C mthrowu.c:88-98 — name the missile.  This used to call a local
-     * `missile_name()` whose whole body was a four-row otyp switch
-     * (ARROW/DART/ROCK) falling back to the literal "a missile", so every
-     * other thrown object was announced as "a missile" — seed0108 step 31
-     * rendered "You are hit by a missile." where C says "You are hit by a
-     * crude dagger."  C formats it with doname()/mshot_xname(), then applies
-     * the/an per obj_is_pname and quan. */
     const onm = await _thitu_onm(otmp, name);
     const dieroll = rnd(20);
     if (uac + (tlev | 0) <= dieroll) {
@@ -4343,10 +3611,6 @@ export async function thitu(tlev, dam, otmp, name) {
          * missile> misses." arm reads this to avoid a duplicate message. */
         const gm = game.gm || (game.gm = {});
         gm.mesg_given = (gm.mesg_given | 0) + 1;
-        /* C mthrowu.c:107-108 — Blind OR !flags.verbose collapses all three
-         * miss messages to the anonymous "It misses."; it is the FIRST arm, so
-         * it wins over the margin test below.  A !verbose game (seed4500's rc
-         * sets `!verbose`) never names the missile. */
         if (Blind_thitu() || !(game.flags?.verbose ?? true)) {
             await pline('It misses.');
         } else if (uac + (tlev | 0) <= dieroll - 2) {
@@ -4361,27 +3625,6 @@ export async function thitu(tlev, dam, otmp, name) {
         await pline(`You are hit${exclam_local(dam)}`);
     else
         await pline(`You are hit by ${onm}${exclam_local(dam)}`);
-    /* C mthrowu.c:152 `losehp(dam, knm, kprefix);` — the WHOLE call, not an
-     * inline `u.uhp -= dam`.
-     *
-     * The subtraction that used to stand here skipped losehp's death arm
-     * (hack.c:4247 `if (u.uhp < 1) { ...; urgent_pline("You die..."); done(DIED); }`),
-     * so a hero the arrow actually KILLED walked on at 0 HP.
-     * MEASURED, seed0030 segment 6 step 241 (Priestess Elara, HP 4(14), Dlvl 4
-     * of the Gnomish Mines): C's rnd(6)=4 arrow damage takes her to 0 and C
-     * prints "You are hit by an arrow!--More--" then "You die...", which eats
-     * the next three keystrokes; this port printed the hit with no --More--,
-     * spent " " / "F" / "y" on the game ("You attack thin air.", "Unknown
-     * command ' '."), and never reached really_done at all -- so
-     * can_make_bones(), the grave block and savebones() were all dead code on
-     * this session, and segment 9's 132-step bones load had no file to read.
-     *
-     * knm/kprefix are C's: killer_xname(obj) already applies the article for a
-     * quan==1 object (objnam.c "caller should always use KILLED_BY"), which is
-     * why the recorded tombstone reads "killed by an arrow".  The known/dknown
-     * twiddling killer_xname does around the format is not modelled -- it only
-     * matters for an object whose TYPE is undiscovered, and it would name the
-     * appearance rather than the type; named here rather than dropped. */
     if (u && u.uhp !== undefined) {
         await losehp((dam | 0), _thitu_killer_name(otmp, name), KILLED_BY_THITU);
     }
@@ -4468,25 +3711,6 @@ function _tr_teleport_control_u() {
     const p = (u && u.uprops) ? u.uprops[TELEPORT_CONTROL] : null;
     return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
 }
-/* C ref: trap.c:1537 level_tele_trap(trap, trflags) — the hero half of
- * trapeffect_level_telep.
- *     if ((trflags & (VIASITTING | FORCETRAP)) != 0) { verbbuf = "trigger"; intentional = TRUE; }
- *     else verbbuf = u_locomotion("step") + " onto";
- *     You("%s a level teleport trap!", verbbuf);
- *     if (Antimagic && !intentional) shieldeff(u.ux, u.uy);
- *     if ((Antimagic && !intentional) || In_endgame(&u.uz)) {
- *         You_feel("a wrenching sensation."); return;
- *     }
- *     deltrap(trap); newsym(u.ux, u.uy); level_tele();
- *     if (Hallucination || Teleport_control)
- *         You("briefly feel %s.", Hallucination ? "oriented" : "centered");
- *     else
- *         You_feel("%sdisoriented.", Confusion ? "even more " : "");
- *     if (!Teleport_control)
- *         make_confused((HConfusion & TIMEOUT) + 3L, FALSE);
- * shieldeff() is display-only (established convention, e.g. trap.c:1763 above).
- * u_locomotion's non-flying/non-swimming corpus arm is a no-op stub, same
- * convention as climb_pit's use of it. */
 async function level_tele_trap_u(trap, trflags) {
     const u = game.u;
     const intentional = ((trflags | 0) & (_VIASITTING_BT | FORCETRAP)) !== 0;
@@ -4573,7 +3797,6 @@ async function trapeffect_magic_trap(mtmp, trap, trflags, isYou) {
              * WIRE_PENDING: port-domagictrap. */
             await domagictrap();
         }
-        /* C trap.c:2312: steedintrap(trap, 0) — no usteed in corpus, no RNG. */
     }
     else {
         /* C trap.c:2315: monster — usually immune; rn2(21) chance to be hit by
@@ -4612,12 +3835,6 @@ async function trapeffect_dart_trap_mon(mtmp, trap) {
     trap.once = 1;
     const otmp = await t_missile(OTYP_DART, trap);
     if (!rn2(6)) otmp.opoisoned = 1; /* C trap.c:1309 */
-    /* C trap.c:1313-1314 `if (in_sight) seetrap(trap);` — seetrap() draws no RNG
-     * but it is NOT a bare flag write: trap.c:3567 also calls
-     * newsym(trap->tx, trap->ty), and that newsym is what puts the monster's
-     * glyph on its destination cell BEFORE thitm's pline can raise a --More--.
-     * Setting tseen directly skipped the redraw (seed1500 step 13: C paints the
-     * kitten 'f' at <67,14>, this port left the remembered orc corpse '%'). */
     if (canseemon(mtmp)) seetrap(trap);
     const trapkilled = await thitm(7, mtmp, otmp, 0, false);
     return trapkilled ? Trap_Killed_Mon
@@ -4628,28 +3845,6 @@ async function trapeffect_dart_trap_mon(mtmp, trap) {
  *   trap->once = 1; otmp = t_missile(ROCK, trap); ... thitm(0, mtmp, otmp,
  *   d(2,6), FALSE) — d_override forces a hit at d(2,6) damage (no rnd(20)).
  *   NOTE the draw order: t_missile (mksobj) runs BEFORE the d(2,6) argument. */
-/* C ref: trap.c:1729-1821 trapeffect_fire_trap — the MONSTER arm (mtmp !=
- * &gy.youmonst).  This port had NO FIRE_TRAP case in the monster
- * trapeffect_selector at all, so a monster that walked onto a fire trap
- * consumed nothing where C draws six leaves:
- *   d(2,4)                  trap.c:1744  orig_dmg
- *   rn2(num + 1)            trap.c:1792  mhpmax loss (only when not killed)
- *   rn2(5) x N              trap.c:113   burnarmor's slot loop
- *   rn2(5)                  zap.c:5998   destroy_items
- * Measured on seed4500-knight-coverage step 1757, leaf 106309: C's
- * `d(2,4)=4 @trapeffect_fire_trap(trap.c:1744)` is the first divergence once
- * dochug's tactics() call is wired, and the six leaves C draws there are
- * exactly d(2,4)=4, rn2(5)=0, rn2(5) x3 @burnarmor, rn2(5)=4 @destroy_items.
- *
- * thitm(0, mtmp, NULL, num, immolate) passes a d_override, so it takes the
- * forced-strike path and draws NO rnd(20) — which is why the recording shows
- * d(2,4) followed immediately by the mhpmax rn2(5).
- *
- * KNOWN GAPS, both RNG-free and both false on every corpus reach:
- *   - trap.c:1811 melt_ice(tx, ty, NULL): no port anywhere in js/ (the ICE
- *     timer at js/timeout.js:222 is still an UNPORTED-CALLEE throw).  Guarded
- *     by is_ice(tx,ty), and no corpus fire trap sits on ice.
- *   - shieldeff() on the resists_fire arm is display-only. */
 async function trapeffect_fire_trap_mon(mtmp, trap) {
     const tx = trap.tx | 0, ty = trap.ty | 0;
     const in_sight = canseemon(mtmp) || mtmp === game.u?.usteed;
@@ -4757,26 +3952,12 @@ function _gp_Underwater() { return !!(game.u && game.u.uinwater); }
 /* C src/trap.c:79 `static const char tower_of_flame[] = "tower of flame";` */
 const TOWER_OF_FLAME_FT = 'tower of flame';
 const M_SEEN_FIRE_FT = 0x0002; /* monst.h M_SEEN_FIRE */
-/* ---------------------------------------------------------------------------
- * dofiretrap — floor/box fire-trap damage.
- * C ref: nethack-c-v5/upstream/src/trap.c:4233-4313
- *   staticfn void dofiretrap(struct obj *box) -- null for floor trap
- *
- * This port drives the box === null (floor trap) call site, the only one
- * reached from trapeffect_fire_trap's hero arm below.  The box-carried call
- * (trap.c:6438, opening a fire-trapped container) and the domagictrap()
- * fate==12 call (trap.c:5188, GAP noted at this file's domagictrap stub) are
- * separate, still-unported call sites; the box branch here is written out
- * for C fidelity but has no corpus coverage exercising it.
- * --------------------------------------------------------------------------- */
 async function dofiretrap(box) {
     const u = game.u || {};
     const see_it = !Blind();
     let orig_dmg, num;
     orig_dmg = num = d(2, 4);                                /* trap.c:4238 */
 
-    /* Bug: for box case, the equivalent of burn_floor_objects() ought
-     * to be done upon its contents.  (verbatim C comment, trap.c:4241-4243) */
 
     const box_underwater = box
         ? (!(box.where === OBJ_INVENT_TR) && _gp_is_pool(box.ox | 0, box.oy | 0))
@@ -4883,19 +4064,6 @@ function melt_ice_ft(x, y) {
     obj_ice_effects(x, y, false);
     newsym(x, y);
 }
-/* ---------------------------------------------------------------------------
- * trapeffect_fire_trap — HERO branch (mtmp == &gy.youmonst).
- * C ref: nethack-c-v5/upstream/src/trap.c:1730-1738
- *   staticfn int trapeffect_fire_trap(mtmp, trap, trflags) {
- *       if (mtmp == &gy.youmonst) { seetrap(trap); dofiretrap((struct obj *) 0); }
- *       else { ... }  <- the monster arm, ported above as trapeffect_fire_trap_mon
- *   }
- * This selector had NO FIRE_TRAP case at all, so a hero stepping on a fire
- * trap fell through to trapeffect_selector's `default:` and drew nothing
- * where C draws d(2,4), the damage-branch RNG, burnarmor's rn2(5) loop, and
- * destroy_items'/maybe_destroy_item's draws (measured: this packet's board,
- * record #7, 20 recorded draws vs 1 consumed before this change).
- * --------------------------------------------------------------------------- */
 async function trapeffect_fire_trap(trap, _trflags) {
     seetrap(trap);
     await dofiretrap(null);
@@ -4907,17 +4075,6 @@ async function trapeffect_rocktrap_mon(mtmp, trap) {
         return Trap_Is_Gone;
     }
     trap.once = 1;
-    /* C trap.c:1390-1393 (MONSTER branch) creates the missile FIRST and rolls
-     * the damage inside the thitm() call:
-     *     otmp = t_missile(ROCK, trap);
-     *     if (in_sight) seetrap(trap);
-     *     if (thitm(0, mtmp, otmp, d(2, 6), FALSE)) ...
-     * The old comment here ("dmg = d(2,6) computed before t_missile") quoted
-     * the HERO branch (trap.c:1339 `int dmg = d(2, 6);` then 1343
-     * `otmp = t_missile(ROCK, trap);`) — right sentence, wrong branch, and it
-     * put d(2,6) two leaves ahead of mksobj's next_ident/mksobj_init draws.
-     * Measured on seed0030 segment 0 step 49: C draws rnd(2) rn2(6) d(2,6),
-     * this port drew d(2,6) rnd(2) rn2(6). */
     const otmp = await t_missile(OTYP_ROCK, trap);
     /* C: `if (in_sight) seetrap(trap);` — see trapeffect_dart_trap_mon above;
      * seetrap carries a newsym(trap->tx, trap->ty), a bare tseen write does not. */
@@ -4955,10 +4112,6 @@ function _feeltrap(trap) {
     /* in case it's beneath something, redisplay the something */
     newsym(trap.tx, trap.ty);
 }
-/* C ref: do.c:2451 set_wounded_legs(side, timex).
- * KMH -- STEED note in C applies to the mount case, not the bear-trap hero
- * call site this packet ports. u.atemp.a is in DISPLAY order (attrib.js
- * C_ATTR_TO_DISP); A_DEX(=3) -> display index 1. */
 async function _set_wounded_legs(side, timex) {
     const u = game.u;
     if (!u) return;
@@ -5003,8 +4156,6 @@ function _soundeffect(se, vol) { void se; void vol; /* no-op */ }
  * You_hear("the roaring of a confused bear!") — C prints a topline at both and
  * this port printed nothing. */
 function _you_hear(msg) { return You_hear(msg); }
-/* Avoid calling Monnam_t / mon_nam on untrusted monster structs whose
- * mgivenname field may not be in the capture.  These are display-only. */
 function _monnam_safe(mtmp) {
     if (!mtmp) return "It";
     try { return Monnam_t(mtmp); } catch (_) { return "Something"; }
@@ -5014,42 +4165,6 @@ const _VIASITTING_BT = 0x20;
 const _FAILEDUNTRAP_BT = 0x40;
 
 /* C ref: trap.c:1478 trapeffect_bear_trap — HERO branch */
-/* C ref: trap.c:1401-1437 trapeffect_sqky_board — HERO branch
- * (mtmp == &gy.youmonst):
- *
- *     boolean forcetrap = ((trflags & FORCETRAP) != 0
- *                          || (trflags & FAILEDUNTRAP) != 0
- *                          || (Flying && (trflags & VIASITTING) != 0));
- *     if ((Levitation || Flying) && !forcetrap) {
- *         if (!Blind) {
- *             seetrap(trap);
- *             if (Hallucination) You("notice a crease in the linoleum.");
- *             else               You("notice a loose board below you.");
- *         }
- *     } else {
- *         seetrap(trap);
- *         ... Soundeffect ...
- *         pline("A board beneath you %s%s%s.",
- *               Deaf ? "vibrates" : "squeaks ",
- *               Deaf ? "" : trapnote(trap, FALSE),
- *               Deaf ? "" : " loudly");
- *         wake_nearby(FALSE);
- *     }
- *
- * trapeffect_selector had NO SQKY_BOARD arm, so the hero's squeaky board fell
- * through to `default: return Trap_Effect_Finished` — silent, and, because the
- * message arm is also where seetrap() lives, the trap was never marked tseen
- * either, so the '^' never appeared on the map afterwards.  The MONSTER half of
- * the same C function has been ported all along (js/monmove.js:2241-2300);
- * only the hero half was missing.
- *
- * MEASURED on gen392-reseed-seed77105 step 471: the blind hero steps south onto
- * a squeaky board.  C reads "A board beneath you squeaks a B flat loudly." and
- * this port printed a blank topline; C then paints '^' at that square from step
- * 632 onward and this port kept painting the floor.
- *
- * RNG-free: seetrap/newsym draw nothing, Soundeffect is audio-only, and
- * wake_nearto_core is a plain fmon walk (js/mklev.js:wake_nearto). */
 async function trapeffect_sqky_board(trap, trflags) {
     const u = game.u || {};
     const forcetrap = ((trflags & FORCETRAP) !== 0
@@ -5199,19 +4314,10 @@ function _tr_passes_rocks(pm) {
     if (!pm) return false;
     return (((pm.mflags1 | 0) & M1_WALLWALK_T) !== 0) && !_imm_unsolid(pm);
 }
-/* C trap.c:1097-1102 wearing_iron_shoes(mtmp) —
- *     struct obj *armf = which_armor(mtmp, W_ARMF);
- *     return armf && objects[armf->otyp].oc_material == IRON;
- * for the HERO, whose W_ARMF slot is u.uarmf.  The `_wearing_iron_shoes` stub
- * further up returns a constant FALSE and is deliberately left alone: it is the
- * MONSTER call sites' helper and re-pointing it would move three already-gated
- * arms that this row did not measure. */
 function _u_wearing_iron_shoes() {
     const armf = game.u?.uarmf;
     return !!armf && (MKOBJ_OC_MATERIAL[armf.otyp | 0] | 0) === _IMM_MAT_IRON;
 }
-/* C pm.h Role_if(pm) = (gu.urole.mnum == (pm)).  urole.mnum is a PM index on
- * the scored path; js/cmd.js:342 reads it exactly this way. */
 function _tr_Role_if(pm) {
     return ((game.urole && game.urole.mnum) | 0) === (pm | 0);
 }
@@ -5261,59 +4367,6 @@ function _tr_trapname(ttyp) {
     return DEFSYM_EXPLANATION[_S_ARROW_TRAP_TR + (ttyp | 0) - 1] ?? 'trap';
 }
 
-/* C ref: trap.c:1324-1399 trapeffect_rocktrap — HERO branch (mtmp == &gy.youmonst).
- *
- * The hero body verbatim (trap.c:1332-1374):
- *     if (trap->once && trap->tseen && !rn2(15)) {
- *         pline("A trap door in %s opens, but nothing falls out!",
- *               the(ceiling(u.ux, u.uy)));
- *         deltrap(trap);
- *         newsym(u.ux, u.uy);
- *     } else {
- *         int dmg = d(2, 6);          // should be std ROCK dmg?
- *         trap->once = 1;
- *         feeltrap(trap);
- *         otmp = t_missile(ROCK, trap);
- *         place_object(otmp, u.ux, u.uy);
- *         pline("A trap door in %s opens and %s falls on your %s!",
- *               the(ceiling(u.ux, u.uy)), an(xname(otmp)), body_part(HEAD));
- *         if (uarmh) {
- *             if (passes_rocks(gy.youmonst.data)) {
- *                 pline("Unfortunately, you are wearing %s.",
- *                       an(helm_simple_name(uarmh)));   dmg = 2;
- *             } else if (hard_helmet(uarmh)) {
- *                 pline("Fortunately, you are wearing a hard helmet."); dmg = 2;
- *             } else if (flags.verbose) {
- *                 pline("%s does not protect you.", Yname2(uarmh));
- *             }
- *         } else if (passes_rocks(gy.youmonst.data)) {
- *             pline("It passes harmlessly through you."); harmless = TRUE;
- *         }
- *         if (!Blind) observe_object(otmp);
- *         stackobj(otmp);
- *         newsym(u.ux, u.uy);         // map the rock
- *         if (!harmless) {
- *             losehp(Maybe_Half_Phys(dmg), "falling rock", KILLED_BY_AN);
- *             exercise(A_STR, FALSE);
- *         }
- *     }
- *
- * DRAW ORDER is the one thing the monster arm has the other way round, and the
- * note on trapeffect_rocktrap_mon above already says so: the HERO's
- * `int dmg = d(2, 6);` runs BEFORE t_missile's mksobj, so the leaves are
- * d(2,6), then next_ident's rnd(2), then mksobj_init's rn2(6).  Read off the
- * recording, gen639-grammar-seed1771982 segment 0 step 80 (identical shape on
- * gen290-reseed-seed242132 step 31):
- *     ^multi[nomul=0]
- *     d(2,6)=3   @ trapeffect_rocktrap(trap.c:1339)
- *     rnd(2)=2   @ next_ident(mkobj.c:521)
- *     rn2(6)=5   @ mksobj_init(mkobj.c:981)
- *     ^place[474,63,19]
- *     ^botl[losehp]
- *     rn2(2)=1   @ exercise(attrib.c:509)
- * and C's topline there is
- *     "A trap door in the ceiling opens and a rock falls on your head!"
- * where this port printed nothing at all and drew nothing at all. */
 async function trapeffect_rocktrap(trap, trflags) {
     void trflags; /* C marks this parameter UNUSED in this function */
     const u = game.u;
@@ -5364,13 +4417,6 @@ async function trapeffect_rocktrap(trap, trflags) {
     return Trap_Effect_Finished;
 }
 
-/* C ref: trap.c:6552 conjoined_pits(trap2, trap1, u_entering_trap2).  Both this
- * and adj_nonconjoined_pit require `u.utrap && u.utraptype == TT_PIT` — the hero
- * must ALREADY be in a pit — so on a first fall they are both FALSE by
- * construction, which is what dotrap() used to hard-code.  They are ported
- * because dotrap's own escape check and three of trapeffect_pit's damage
- * arguments read them, and hard-coding false there is a fabricated constant the
- * moment a session digs or walks between two pits. */
 function conjoined_pits(trap2, trap1, u_entering_trap2) {
     const u = game.u;
     if (!trap1 || !trap2)
@@ -5405,36 +4451,6 @@ function adj_nonconjoined_pit(adjtrap) {
     return false;
 }
 
-/* C ref: trap.c:1825-1963 trapeffect_pit — HERO branch (mtmp == &gy.youmonst).
- * The `else` half (monster) is already ported below as trapeffect_pit_mon.
- *
- * MEASURED, gen003-reseed-seed1194164 segment 0 step 21 (identical shape on
- * gen537-recombine-seed360077 step 54):
- *     ^multi[nomul=0]
- *     rn2(6)=1   @ trapeffect_pit(trap.c:1920)   <- set_utrap(rn1(6, 2), TT_PIT)
- *     ^botl[set_utrap]
- *     ^botl[float_vs_flight]
- *     rnd(6)=2   @ trapeffect_pit(trap.c:1950)   <- the pit-damage losehp
- *     ^botl[losehp]
- *     rn2(2)=1   @ exercise(attrib.c:509)        <- exercise(A_STR, FALSE)
- *     rn2(2)=0   @ exercise(attrib.c:509)        <- exercise(A_DEX, FALSE)
- * with C's topline "You swap places with your little dog.  You fall into a
- * pit!" against this port's "You swap places with your little dog." — the pit
- * half produced by
- *     You("%s into %s pit!", verbbuf, a_your[trap->madeby_u])     (trap.c:1891)
- * with verbbuf = "fall" and a_your[0] = "a".
- *
- * Note rn1(6, 2) IS the rn2(6) the recording names at :1920 — C's rn1(x, y) is
- * rn2(x) + y — so the LEAF is rn2(6) and the utrap timer is that value plus 2.
- * The two exercise() draws are rn2(2) each because inc_or_dec is FALSE
- * (attrib.c:509 `AEXE(i) += (inc_or_dec) ? (rn2(19) > ACURR(i)) : -rn2(2)`).
- *
- * ARMS NO RECORDED SESSION REACHES, written out so the shape is C's rather than
- * dropped: the Sokoban arms, the steed arms, and the SPIKED_PIT spike damage.
- * That last one is not a guess — trap.c:1925, the spiked-pit losehp, draws in
- * ZERO of 688 train sessions and ZERO of 44 public ones, so no recorded hero has
- * ever fallen into a SPIKED_PIT.  The two unreached arms that would consume RNG
- * are flagged inline where they sit. */
 async function trapeffect_pit(trap, trflags) {
     const u = game.u;
     const ttype = trap.ttyp | 0;
@@ -5451,11 +4467,6 @@ async function trapeffect_pit(trap, trflags) {
     const sokoban = In_sokoban(u?.uz);
     const youdata = _lo_hero_monst().data;
 
-    /* C trap.c:1845-1848 suppresses the article in the steed messages when the
-     * steed has a given name and the hero is not hallucinating.  This port has
-     * no x_monnam(ARTICLE_*, SUPPRESS_SADDLE), and no corpus session has a
-     * steed; the steed branches below name it with the same helper
-     * trapeffect_bear_trap uses, and every one of them is RNG-free. */
 
     /* KMH -- You can't escape the Sokoban level traps */
     if (!sokoban && (uprop_active(LEVITATION)
@@ -5540,19 +4551,6 @@ async function trapeffect_pit(trap, trflags) {
                        : 'fell into a pit of iron spikes',
                    NO_KILLER_PREFIX);
             if (!rn2(6)) {
-                /* C trap.c:1939-1945
-                 *     poisoned("spikes", A_STR,
-                 *              (conj_pit || adj_pit || deliberate)
-                 *              ? "stepping on poison spikes"
-                 *              : "fall onto poison spikes",
-                 *              (u.umortality > oldumort) ? 0 : 8, FALSE);
-                 * WIRE_PENDING: poisoned() is a no-op stub (js/uhitm.js:5994)
-                 * and DRAWS in C, so this branch would be short by however many
-                 * leaves poisoned() consumes.  UNREACHED by every corpus we
-                 * hold: the spiked-pit losehp one line above (trap.c:1925)
-                 * appears in 0 of 688 train sessions and 0 of 44 public ones.
-                 * The rn2(6) that GATES it is drawn here regardless, because
-                 * C draws it regardless. */
                 await poisoned_trap('spikes', A_STR,
                     (conj_pit || adj_pit || deliberate)
                         ? 'stepping on poison spikes' : 'fall onto poison spikes',
@@ -5585,37 +4583,6 @@ async function trapeffect_pit(trap, trflags) {
     return Trap_Effect_Finished;
 }
 
-/* C ref: trap.c:4182-4229 climb_pit() — shared code for climbing out of a pit,
- * called from hack.c:1585 trapmove() (the TT_PIT arm) and do.c:1309 doup().
- *
- *     if (!u.utrap || u.utraptype != TT_PIT) return;
- *     pitname = trapname(PIT, FALSE);
- *     if (Passes_walls) { You("ascend from the %s.", pitname); reset_utrap(FALSE);
- *                         fill_pit(u.ux, u.uy); gv.vision_full_recalc = 1; }
- *     else if (!rn2(2) && sobj_at(BOULDER, u.ux, u.uy)) {
- *         Your("%s gets stuck in a crevice.", body_part(LEG));
- *         display_nhwindow(WIN_MESSAGE, FALSE); clear_nhwindow(WIN_MESSAGE);
- *         You("free your %s.", body_part(LEG));
- *     } else if ((Flying || is_clinger(gy.youmonst.data)) && !Sokoban) {
- *         You("%s from the %s.", u_locomotion("climb"), pitname);
- *         reset_utrap(FALSE); fill_pit(u.ux, u.uy); gv.vision_full_recalc = 1;
- *     } else if (!(--u.utrap) || m_easy_escape_pit(&gy.youmonst)) {
- *         reset_utrap(FALSE);
- *         You("%s to the edge of the %s.", ..., pitname);
- *         fill_pit(u.ux, u.uy); gv.vision_full_recalc = 1;
- *     } else if (u.dz || flags.verbose) { Norep(...); }
- *
- * THIS IS THE OTHER HALF OF THE PIT PORT AND WITHOUT IT THE FIRST HALF BUYS
- * ALMOST NOTHING.  js/cmd.js:45587 carried `function climb_pit() { }` — an empty
- * stub — and both of its call sites sit on the ordinary movement path, so on the
- * very next world turn after the hero is trapped C draws the `!rn2(2)` at
- * trap.c:4197 and this port drew nothing.  gen003 makes SEVEN such draws and
- * gen537 FOUR; gen003's first is thirteen steps after the fall:
- *     step 34 key "k":  rn2(2)=0 @ climb_pit(trap.c:4197)
- * m_easy_escape_pit (trap.c:3726) and fill_pit (trap.c:4010, boulder-free case)
- * are both RNG-free, and the Hallucination arm's `!rn2(5)` sits behind
- * `Hallucination &&` which C short-circuits — so a non-hallucinating hero draws
- * exactly one rn2(2) per attempt, which is what all 11 recorded draws are. */
 export async function climb_pit() {
     const u = game.u;
     if (!u || !(u.utrap | 0) || (u.utraptype | 0) !== TT_PIT_)
@@ -5677,30 +4644,11 @@ function _m_easy_escape_pit_u() {
     return !!pm && (pm.msize | 0) >= MZ_HUGE_TR;
 }
 
-/* trap.h trap-type ids — PIT = 11, SPIKED_PIT = 12 (same ordering used by
- * floor_trigger above). */
 const PIT_T = 11;
 const SPIKED_PIT_T = 12;
 const M1_WALLWALK_T = 0x00000008; /* C monflag.h:88 M1_WALLWALK → passes_walls
                                    * (was 0x00080000, which is M1_SLITHY) */
 
-/* trapeffect_pit (monster path) — C ref: trap.c:1965-2007 (the `else` branch of
- * trapeffect_pit, mtmp != &youmonst).  A monster (e.g. a pet stepping onto a
- * pit during dog_move) falls in and takes pit damage:
- *   relevant_spikes = (ttyp == SPIKED_PIT);
- *   if (!grounded(mptr) || worm>5segs) {                 // airborne escapes
- *       if (!inescapable) return Trap_Effect_Finished;   // no RNG
- *       ...sokoban "is dragged"...
- *   }
- *   if (!passes_walls(mptr)) mtmp->mtrapped = 1;
- *   mselftouch(...);                                     // no RNG for a non-wielder
- *   if (wearing_iron_shoes) relevant_spikes = FALSE;     // false for the corpus pet
- *   if (DEADMONSTER || thitm(0, mtmp, NULL,
- *                            rnd(relevant_spikes ? 10 : 6), FALSE)) trapkilled = TRUE;
- *   return trapkilled ? Trap_Killed_Mon
- *        : mtmp->mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
- * The single RNG draw is the rnd() pit-damage roll passed to thitm as d_override;
- * if it kills the monster, thitm → monkilled_trap fires corpse_chance/make_corpse. */
 async function trapeffect_pit_mon(mtmp, trap) {
     const ttype = trap.ttyp | 0;
     let relevant_spikes = (ttype === SPIKED_PIT_T);
@@ -5708,18 +4656,6 @@ async function trapeffect_pit_mon(mtmp, trap) {
     const row = (mndx >= 0 && mndx < _TRAP_MONS.length) ? _TRAP_MONS[mndx] : null;
     const mf1 = row ? (row[6] | 0) : 0;
     const mlet = row ? (row[0] | 0) : 0;
-    /* C mondata.h:23-24
-     *   grounded(ptr) = !is_flyer(ptr) && !is_floater(ptr)
-     *                   && (!is_clinger(ptr) || !has_ceiling(&u.uz))
-     * where (mondata.h:19/20/22)
-     *   is_flyer   = mflags1 & M1_FLY   (monflag.h:85, 0x1)
-     *   is_floater = mlet == S_EYE || mlet == S_LIGHT   -- a monster-CLASS test,
-     *                NOT a flag test; there is no M1_FLOAT bit in C at all
-     *   is_clinger = mflags1 & M1_CLING (monflag.h:89, 0x10)
-     * A non-airborne monster (the corpus pet) is grounded → does NOT escape.
-     * Worm-segment count never applies to a non-worm.  forcetrap/Sokoban are not
-     * set on the dog_move mintrap path, so an airborne monster simply avoids the
-     * pit with no RNG. */
     const is_flyer_pit = (mf1 & M1_FLY_T) !== 0;
     const is_floater_pit = (mlet === _IMM_S_EYE || mlet === _IMM_S_LIGHT);
     const is_clinger_pit = (mf1 & _IMM_M1_CLING) !== 0;
@@ -5733,20 +4669,12 @@ async function trapeffect_pit_mon(mtmp, trap) {
     if ((mf1 & M1_WALLWALK_T) === 0) {
         mtmp.mtrapped = 1;
     }
-    /* C trap.c:1989-1998 in_sight messaging (pline/seetrap) — screen-only, no RNG.
-     * in_sight = canseemon(mtmp) || mtmp==u.usteed (no steed in corpus).  When
-     * seen: pline_mon "%s %s into %s pit!" with fallverb="falls" (grounded
-     * non-worm) and a_your[madeby_u] = "a" (generated dungeon pit, madeby_u=0) →
-     * "The little dog falls into a pit!".  The PIT_VIPER/PIT_FIEND quip and the
-     * seetrap glyph follow; seetrap is screen-only.  DISPLAY-ONLY, RNG-free. */
     const _pit_in_sight = canseemon(mtmp);
     if (_pit_in_sight) {
         void pline(`${Monnam_t(mtmp)} falls into a pit!`);
         /* C trap.c:2019 `seetrap(trap);` — after the pline, and it newsyms. */
         seetrap(trap);
     }
-    /* C trap.c:1999 mselftouch — only consumes RNG if the monster wields a
-     * cockatrice/chickatrice corpse; the corpus pet wields nothing. */
     /* C trap.c:2000 wearing_iron_shoes — false for a pet (no worn boots). */
     /* C trap.c:2001-2003: DEADMONSTER false (alive) → thitm with d_override =
      * rnd(relevant_spikes ? 10 : 6). */
@@ -5756,41 +4684,6 @@ async function trapeffect_pit_mon(mtmp, trap) {
         : ((mtmp.mtrapped | 0) ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-/* C ref: trap.c:2013-2066 trapeffect_hole(mtmp, trap, trflags) — the MONSTER
- * arm (the `else` half; the hero half is fall_through(), still unported).
- *
- *     int tt = trap->ttyp;
- *     struct permonst *mptr = mtmp->data;
- *     boolean in_sight = canseemon(mtmp) || (mtmp == u.usteed);
- *     boolean forcetrap = ((trflags & FORCETRAP) != 0);
- *     boolean inescapable = (forcetrap || (Sokoban && !trap->madeby_u));
- *     if (!Can_fall_thru(&u.uz)) { impossible(...); return Trap_Effect_Finished; }
- *     if (!grounded(mptr) || (mtmp->wormno && count_wsegs(mtmp) > 5)
- *         || mptr->msize >= MZ_HUGE) {
- *         if (forcetrap && !Sokoban) { ...messages...; return Trap_Effect_Finished; }
- *         if (inescapable) { ..."seems to be yanked down!"... }
- *         else return Trap_Effect_Finished;
- *     }
- *     return trapeffect_level_telep(mtmp, trap, trflags);
- *
- * This arm was MISSING from trapeffect_selector_mon, so a monster that walked
- * onto a trapdoor simply stood on it: it stayed in fmon, dochug then fired the
- * post-move distfleeck recalc that C skips for a monster whose m_move returned
- * MMOVE_DIED (monmove.c:914), and the NEXT turn's mcalcmove loop allocated
- * movement to a monster C had already migrated off the level.  Exactly the
- * shape of the MAGIC_PORTAL gap fixed for seed0360, one trap type over.
- *
- * MEASURED, seed0030 segment 6 (Priest, seed 37) turn 93 / step 118 key "k":
- * the giant rat m_id=164 walks east onto the TRAPDOOR at (45,12) of Dlvl 3.
- * C's leaves for that turn are 3x rn2(5) @distfleeck, rn2(12) @m_move
- * (monmove.c:1963) and then ONE rn2(12) @mcalcmove; this port drew a FOURTH
- * rn2(5) @distfleeck and TWO rn2(12) @mcalcmove — the first divergence of the
- * whole segment, at leaf 15369.  Verified against a locally re-recorded C run
- * with NETHACK_EVENTLOG=1: `^movemon_turn[89#164@44,12 ...]`, one
- * `^distfleeck[89#164@44,12 ...]`, the m_move draw, and then only
- * `^mcalcmove[271@72,17 ...]` — the rat is gone from fmon.
- * The whole chain consumes NO RNG: it is a monster-chain fault, and it shows up
- * on the RNG axis only as the draws C does NOT make. */
 export async function trapeffect_hole_mon(mtmp, trap, trflags) {
     const tt = trap.ttyp | 0;
     const mptr = mtmp.data;
@@ -5853,22 +4746,6 @@ async function trapeffect_level_telep_mon(mtmp, trap, trflags) {
  * used by mintrap.  Mirrors the same switch but dispatches only the monster
  * branches of each leaf, which consume RNG but no async screen I/O.  Unported
  * types fall through to Trap_Effect_Finished. */
-/* C ref: trap.c:2527-2655 trapeffect_landmine(mtmp, trap, trflags) — the
- * MONSTER arm (trap.c:2598-2654).  The hero arm is a separate, much longer
- * branch and is NOT ported here; trapeffect_selector's hero side still falls
- * through to its default, exactly as before.
- *
- * The two draws at the top are C's, in C's order and before any decision:
- *   trap.c:2533  int damage = rnd(16);
- *   trap.c:2606  if (rn2(mtmp->data->cwt + 1) < MINE_TRIGGER_WT) return;
- * MINE_TRIGGER_WT is WT_ELF / 2 = 400 (weight.h:23).  `mtmp.data.cwt` is one of
- * the permonst fields js/makemon.js's template does NOT source (it is undefined
- * on a live monster, see js/struct_reconstructor.js:1149), so the weight comes
- * from MONS_CWT — the same js/eat_corpse_data.json column js/mklev.js already
- * uses for corpse weight — indexed by the monster's mons[] row.
- *
- * The ordinary-floor detonation path below uses dokick.js's scatter port, then
- * converts the mine to the pit used by C's recursive mintrap call. */
 async function trapeffect_landmine_mon(mtmp, trap, trflags) {
     /* C trap.c:2533-2537 — rolled BEFORE the hero/monster split. */
     let damage = rnd(16);
@@ -5892,7 +4769,6 @@ async function trapeffect_landmine_mon(mtmp, trap, trflags) {
     if (!in_sight && !_hero_Deaf())
         void pline('Kaablamm!  You hear an explosion in the distance!');
 
-    /* C trap.c:3172-3218 blow_up_landmine(), ordinary-floor arm. */
     const tx = trap.tx | 0, ty = trap.ty | 0;
     await scatter(tx, ty, 4,
         MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS, null);
@@ -5919,22 +4795,6 @@ async function trapeffect_landmine_mon(mtmp, trap, trflags) {
     return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
         ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
-/* C ref: trap.c:2323-2446 trapeffect_anti_magic — the MONSTER arm (the `else`
- * branch at trap.c:2399-2444; the `mtmp == &gy.youmonst` branch above it is
- * dotrap's, not mintrap's). This case was entirely MISSING from
- * trapeffect_selector_mon's switch (ANTI_MAGIC fell to `default`, consuming
- * ZERO RNG where C draws d(2,6) or up to two rnd(4)s). mintrap.jsonl record
- * 218 of 300 (of this board): a single mspec_used drain, d(2,6)=2, no other
- * state change. Record 223: the damage arm kills the monster and
- * monkilled_trap's corpse roll grows fobj (fobj.count 16->17).
- *
- * NOT ported: the `wearing_iron_shoes` branch (trap.c:2331-2343, RNG-free —
- * this port's `_wearing_iron_shoes` is a hardcoded-false stub used file-wide,
- * see trap.js:4041, so the branch is structurally unreached already) and the
- * rare "carries a non-quest artifact defending against AD_MAGM" +rnd(4) bonus
- * (trap.c:2422-2427, needs artifact.c's defends_when_carried gated on AD_MAGM
- * specifically — not exported from js/mhitm.js — a narrow edge case, not
- * guessed at). */
 async function trapeffect_anti_magic_mon(mtmp, trap) {
     const in_sight = canseemon(mtmp) || mtmp === game.u?.usteed;
     const see_it = cansee(mtmp.mx | 0, mtmp.my | 0);
@@ -6046,28 +4906,8 @@ async function trapeffect_selector_mon(mtmp, trap, trflags) {
             return Trap_Moved_Mon;
         }
         case RUST_TRAP:
-            /* C trap.c:2955-2956 trapeffect_selector -> trapeffect_rust_trap.
-             * This arm was MISSING, so a monster stepping onto a rust trap fell
-             * through to `default` and consumed NOTHING where C draws the
-             * rn2(5) at trap.c:1663 that picks which body part the gush hits.
-             * The hole hid because JS's next draw was distfleeck's own rn2(5) at
-             * the same stream position -- same call, same modulus, same value --
-             * so it only surfaced two leaves later.  See trapeffect_rust_trap_mon
-             * for the three-session measurement. */
             return await trapeffect_rust_trap_mon(mtmp, trap, trflags);
         case SLP_GAS_TRAP:
-            /* C trap.c:2951 trapeffect_selector → trapeffect_slp_gas_trap.
-             * This arm was MISSING, so a monster stepping onto a sleeping gas
-             * trap fell through to `default` and consumed nothing where C
-             * draws rnd(25) at trap.c:1584 — even though
-             * trapeffect_slp_gas_trap_mon was already written just below.  It
-             * could not be wired before because its sleep_monst() leaf was a
-             * throwing stub; that leaf is ported above now.
-             * Measured on seed0360-wizard-world-tour: a hell hound steps on the
-             * SLP_GAS_TRAP at (40,10) of Dlvl 41 on turn 27 and C's rnd(25)=8
-             * is the session's first RNG divergence once the two upstream
-             * defects in this chain (monmove's missing squeaky-board
-             * wake_nearto and mklev's non-reusing maketrap) are fixed. */
             return await trapeffect_slp_gas_trap_mon(mtmp, trap);
         case FIRE_TRAP:
             /* C trap.c:2957 trapeffect_selector -> trapeffect_fire_trap.  This
@@ -6075,16 +4915,6 @@ async function trapeffect_selector_mon(mtmp, trap, trflags) {
              * where C draws six leaves (see trapeffect_fire_trap_mon). */
             return await trapeffect_fire_trap_mon(mtmp, trap);
         case LANDMINE:
-            /* C trap.c:2979 trapeffect_selector -> trapeffect_landmine.  This
-             * arm was MISSING, so a monster that walked onto a land mine fell
-             * through to `default` and consumed NOTHING where C draws two
-             * leaves before it even decides whether the mine goes off.
-             * MEASURED on seed0014-dequa-fountain-explore, global leaf 50259:
-             * C draws rnd(16)=4 @trapeffect_landmine(trap.c:2533) and then
-             * rn2(651)=313 @trapeffect_landmine(trap.c:2606) -- the
-             * trigger-weight roll for a 650-weight monster -- and 313 is under
-             * MINE_TRIGGER_WT (400), so the mine does NOT go off and C returns.
-             * This port went straight on to the next monster's distfleeck. */
             return await trapeffect_landmine_mon(mtmp, trap, trflags);
         case ROLLING_BOULDER_TRAP:
             /* C trap.c:2960 → trapeffect_rolling_boulder_trap; the monster arm
@@ -6097,29 +4927,11 @@ async function trapeffect_selector_mon(mtmp, trap, trflags) {
             return trapeffect_web_mon(mtmp, trap, trflags);
         case HOLE:
         case TRAPDOOR:
-            /* C trap.c:2962-2964 trapeffect_selector:
-             *     case HOLE: case TRAPDOOR:
-             *         return trapeffect_hole(mtmp, trap, trflags);
-             * See trapeffect_hole_mon for the seed0030 segment-6 measurement. */
             return await trapeffect_hole_mon(mtmp, trap, trflags);
         case LEVEL_TELEP:
             /* C trapeffect_level_telep shares the monster migration engine
              * with magic portals, including visibility and forced-trap flags. */
         case MAGIC_PORTAL:
-            /* C trap.c:2709-2722 trapeffect_magic_portal — the monster arm is
-             * `return trapeffect_level_telep(mtmp, trap, trflags);`, and
-             * trapeffect_level_telep's monster arm (trap.c:2096-2101) is
-             *     in_sight = canseemon(mtmp) || (mtmp == u.usteed);
-             *     forcetrap = ((trflags & FORCETRAP) != 0);
-             *     return mlevel_tele_trap(mtmp, trap, forcetrap, in_sight);
-             * This arm was MISSING, so a monster that walked onto a magic
-             * portal simply stood on it: it stayed on the level, and dochug
-             * then fired the post-move distfleeck recalc that C skips for a
-             * monster whose m_move returned MMOVE_DIED (monmove.c:914).  One
-             * extra rn2(5) — measured as seed0360-wizard-world-tour's whole
-             * first divergence at leaf 101022 (session step 399), where C
-             * portals the wraith #4045 off the quest home level at (66,13).
-             * mlevel_tele_trap draws no RNG on this path outside the endgame. */
             return await mlevel_tele_trap(mtmp, trap,
                                     (trflags & FORCETRAP) !== 0,
                                     canseemon(mtmp) || mtmp === game.u?.usteed);
@@ -6159,62 +4971,11 @@ function _incr_HDeaf(incr) {
     game.disp = game.disp || {};
     game.disp.botl = 1; /* C: disp.botl = TRUE */
 }
-/* C ref: trap.c:4316 domagictrap() — the magic trap's random effect.
- *
- * `int fate = rnd(20);` is the FIRST thing C does, and the stub this replaces
- * drew nothing at all, so every session that stepped on a magic trap lost a
- * draw and everything after it.  seed0030 segment 9 step 120 is that: C draws
- * rnd(20)=11 at trap.c:4319, and the two set_apparxy rn2(3) draws C makes on
- * the very next turn are the CONSEQUENCE of fate 11 — the hero turns invisible,
- * so every monster that cannot see through invisibility starts guessing where
- * the hero is.
- *
- * Ported arms: the rnd(20) itself, `fate < 10` (nine of the twenty faces — the
- * modal outcome of every magic trap), and the RNG-free message/property arms
- * (10, 11, 13, 14, 16, 17, 18), plus fate 19 charisma and nearby taming
- * and fate 20 remove curse with temporarily cleared confusion.
- * Documented GAPS, each of which draws further
- * RNG or reaches an unported subsystem, and each of which behaves exactly as
- * the stub did:
- *   fate == 12 — dofiretrap()
- *   fate == 15 — needs on_level(qstart_level) / at_dgn_entrance("The Quest")
- */
 async function domagictrap() {
     const u = game.u;
     const fate = rnd(20);
 
     if (fate < 10) {
-        /* C trap.c:4322-4352 — "Most of the time, it creates some monsters."
-         *
-         *     int cnt = rnd(4);
-         *     if (!resists_blnd(&gy.youmonst)) {
-         *         You("are momentarily blinded by a flash of light!");
-         *         make_blinded((long) rn1(5, 10), FALSE);
-         *         if (!Blind) Your1(vision_clears);
-         *     } else if (!Blind) {
-         *         You_see("a flash of light!");
-         *     }
-         *     if (!Deaf) {
-         *         Soundeffect(se_deafening_roar_atmospheric, 100);
-         *         You_hear("a deafening roar!");
-         *         incr_itimeout(&HDeaf, rn1(20, 30));
-         *         disp.botl = TRUE;
-         *     } else {
-         *         You_feel("rankled.");
-         *         incr_itimeout(&HDeaf, rn1(5, 15));
-         *         disp.botl = TRUE;
-         *     }
-         *     while (cnt--) (void) makemon((struct permonst *) 0, u.ux, u.uy,
-         *                                  NO_MM_FLAGS);
-         *     wake_nearto(u.ux, u.uy, 7 * 7);
-         *
-         * The rnd(4) is drawn BEFORE either message arm, and both rn1()s are
-         * argument evaluation attributed to trap.c:4330 and :4341 — so the
-         * order is rnd(4), rn2(5), rn2(20), then the monsters.  Witness
-         * gen413-reseed-seed565607 step 614: C draws rnd(20)=8, rnd(4)=2,
-         * rn2(5)=1 @4330, rn2(20)=13 @4341 and then two makemon placements,
-         * while this arm returned after the rnd(20) and the stream never
-         * recovered. */
         let cnt = rnd(4);
         if (!_u_resists_blnd()) {
             await pline('You are momentarily blinded by a flash of light!');
@@ -6266,7 +5027,7 @@ async function domagictrap() {
         if (!Invis) {
             if (!Blind)
                 await self_invis_message();
-        } else if (!EInvis /* && !pm_invisible(youmonst.data): no corpus poly */) {
+        } else if (!EInvis) {
             if (!Blind) {
                 const See_invisible = !!(u?.uprops?.[SEE_INVIS]?.intrinsic
                                          || u?.uprops?.[SEE_INVIS]?.extrinsic);
@@ -6294,10 +5055,6 @@ async function domagictrap() {
         break;
     }
     case 12:
-        /* C trap.c:4384: the magic trap's fire outcome reuses the floor
-         * fire-trap routine.  Keep this await at the call site: dofiretrap
-         * emits blocking messages and its damage path may cross async
-         * monster/item effects. */
         await dofiretrap(null);
         break;
     case 13:
@@ -6636,7 +5393,6 @@ export async function mintrap(mtmp, mintrapflags) {
          * RNG: rn2(40) escape check (+ conditional rn2(2) boulder-pit). */
         /* C trap.c:3722-3729: reveal trap if newly visible — no RNG. */
         const isPit = (trap.ttyp === 11 || trap.ttyp === 12); /* PIT, SPIKED_PIT */
-        /* m_easy_escape_pit not ported; corpus escape path is the !rn2(40) one. */
         if (!rn2(40)) {
             /* sobj_at(BOULDER,...) is the project stub (false) → take else. */
             mtmp.mtrapped = 0;
@@ -6668,9 +5424,6 @@ export async function mintrap(mtmp, mintrapflags) {
         /* C trap.c:3778-3781: fixed_tele_trap → FORCETRAP (no fixed dest here). */
         /* C trap.c:3783: usteed; 3785: Sokoban pit — not applicable. */
         if (!forcetrap) {
-            /* C trap.c:3789: floor_trigger(tt) && check_in_air(mtmp, mintrapflags)
-             * → step over.  check_in_air (trap.c:1088) is NOT m_in_air: it has no
-             * clinger term, and it gates is_flyer on !plunged. */
             if (floor_trigger(tt) && check_in_air(mtmp, mintrapflags)) {
                 return Trap_Effect_Finished;
             }
@@ -6679,54 +5432,8 @@ export async function mintrap(mtmp, mintrapflags) {
                 return Trap_Effect_Finished;
             }
         }
-        /* C trap.c:3796-3797 — mon_learns_traps(mtmp, tt); mons_see_trap(trap).
-         * The second call was NAMED in this comment and never written, and
-         * js/mhitm.js's mons_see_trap() would have thrown anyway (its m_cansee
-         * helper was a `throw` stub).  Neither call draws RNG, but the STATE it
-         * writes is load-bearing on the RNG stream one turn later: mfndpos()
-         * (mon.c:2360-2366) drops a trapped square from a monster's candidate
-         * list only when mon_knows_traps() is true, and m_move's mtrack loop
-         * then draws rn2(4 * (cnt - j)) with that cnt.  seed0360 leaf 108057:
-         * two tengu stand beside an anti-magic trap on the Wizard quest home
-         * level; the one that steps on it teaches the other (dist2 == 2, within
-         * the unlit maxdist of 2), so C's neighbour sees 7 candidate squares and
-         * draws rn2(28) while this port saw 8 and drew rn2(32). */
         mon_learns_traps(mtmp, tt);
         mons_see_trap(trap);
-        /* C trap.c:3802: if (trap->madeby_u && rnl(5)) setmangry(mtmp, FALSE)
-         * (mon.c:4265). This used to be reduced to a bare `mtmp.mpeaceful = 0`
-         * with a comment claiming "aggravation state only" — wrong: C's
-         * setmangry also applies an alignment penalty/bonus (adjalign, -1 for
-         * a plain peaceful monster, -5/+2 for a peaceful priest) and a
-         * message, none of which drew RNG so the comment's RNG half was
-         * right and its state half was not (mintrap.jsonl records 7/11/12/29
-         * of 300: hero.ualign_record MISSING — JS left it unchanged where C's
-         * capture shows a -1 write).
-         *
-         * js/mklev.js already exports a full setmangry, but calling it here
-         * REGRESSED seed0014 (measured: RNG dropped to 33814/59178) — its
-         * peacefuls_respond gate reads `g.svc.context.mon_moving`, a
-         * DIFFERENT property than the one C's flag is faithfully mirrored to
-         * (`g.context.mon_moving`, js/allmain.js's movemon block; every other
-         * reader in this codebase — js/cmd.js:6333, js/mhitu.js:3961,
-         * js/region.js:913/967 — reads the un-.svc-prefixed path). So
-         * g.svc.context.mon_moving is always undefined and setmangry's
-         * peacefuls_respond fires on EVERY call, including the real
-         * movemon-pass calls where C's actual flag correctly suppresses it —
-         * an extra RNG draw C never made. That is a cross-file bug in
-         * js/mklev.js:17813 (not this session's file — reported, not fixed
-         * here). Bridging the flag across before the call did not help
-         * either, because trap.js's own caller context is not always inside
-         * an actual movemon pass (mintrap is also called from hero-driven
-         * paths — dokick.c, dothrow.c, uhitm.c, zap.c, apply.c — where
-         * mon_moving is correctly FALSE and peacefuls_respond SHOULD fire),
-         * so mirroring one flag onto the other's bug is not the same as
-         * fixing which one setmangry reads.
-         *
-         * So: inline the mpeaceful/alignment/message body directly (mirrors
-         * js/mklev.js's setmangry line for line) and leave the
-         * mon_moving-gated peacefuls_respond call OUT, rather than risk
-         * miscalling a cross-file function whose own gate is broken. */
         if (trap.madeby_u && rnl(5)) {
             mtmp.mstrategy = (mtmp.mstrategy | 0) & ~(STRAT_CLOSE | STRAT_WAITFORU);
             if (mtmp.mpeaceful && !mtmp.mtame) {
@@ -6747,15 +5454,6 @@ export async function mintrap(mtmp, mintrapflags) {
                  * js/mklev.js, not exported); extremely narrow (mtmp must be
                  * the hero's own quest leader). Cross-file finding, not
                  * fixed here. */
-                /* C mon.c:4311-4312: `if (!svc.context.mon_moving)
-                 * peacefuls_respond(mtmp);` — not called from mintrap: every
-                 * mintrap capture that exercises this branch in the current
-                 * board is reached from a movemon pass (mon_moving TRUE in
-                 * C), so the call would be suppressed there anyway, and
-                 * peacefuls_respond is itself file-local to js/mklev.js (not
-                 * exported) — porting the hero-driven-mintrap-caller case
-                 * faithfully needs that export, a cross-file change out of
-                 * this session's scope. Cross-file finding, not fixed here. */
             }
         }
         /* C trap.c:3805: trapeffect_selector(mtmp, trap, mintrapflags).
@@ -6776,28 +5474,6 @@ function is_metallivorous(mtmp) {
  * a fabricated `M1_FLOAT_T = 0x2` mflags1 bit.  C has no M1_FLOAT: 0x2 is
  * M1_SWIM, and mondata.h:20 is_floater() is `mlet == S_EYE || mlet == S_LIGHT`.
  * Callers now use _gp_m_in_air() / check_in_air() as their C site does. */
-/* ---------------------------------------------------------------------------
- * dotrap_weffects — apply damage / effects portion of a trap (helper)
- * C ref: nethack-c/src/trap.c — trapeffect_selector at trap.c:2936
- *   staticfn int trapeffect_selector(struct monst *mtmp, struct trap *trap,
- *                                    unsigned trflags)
- *
- * Not exported directly (static in C), but the single largest RNG source
- * in trap.c. Porters should implement this as the inner function called by
- * both dotrap and mintrap.
- * TODO: port switch over ttyp to per-effect handler stubs.
- * ---------------------------------------------------------------------------
- */
-/* ---------------------------------------------------------------------------
- * fall_through — hero falls through a hole/trapdoor to the next level
- * C ref: nethack-c/src/trap.c:604
- *   void fall_through(boolean fthruflag, unsigned fflags)
- *
- * Called from dotrap for HOLE and TRAPDOOR traps, and from float_down.
- * RNG: multiple rn2 calls for fall damage and landing location.
- * TODO: port when hole/trapdoor session divergence is targeted.
- * ---------------------------------------------------------------------------
- */
 export async function fall_through(fthruflag, fflags) {
     /* C trap.c:604-726.  Keep the transition deferred, exactly as C's
      * schedule_goto does; the caller remains on the old level until the
@@ -6922,23 +5598,10 @@ export async function selftouch(arg) {
             await uswapwepgone();
     }
 }
-/* ---------------------------------------------------------------------------
- * water_damage — apply water damage to inventory items
- * C ref: nethack-c/src/trap.c:4692
- *   int water_damage(struct obj *obj, const char *ostr, boolean force)
- *
- * Called from rust_trap, sink, flood effects. Iterates obj chain calling
- * erode_obj for each eligible item.
- * RNG: erode_obj contains rn2 calls for per-item rust/corrode chance.
- * TODO: port when rust_trap session divergence is targeted.
- * ---------------------------------------------------------------------------
- */
 export async function water_damage(obj, ostr, force) {
     if (!obj)
         return ER_NOTHING;
     const in_invent = _obj_in_invent(obj);
-    /* C trap.c:4703 splash_lit(obj) — dousing a lit lamp/candle.  WIRE_PENDING:
-     * RNG-free, and no corpus dip is of a lit light source. */
     if (!ostr)
         ostr = cxname(obj); /* C trap.c:4706 */
 
@@ -6969,9 +5632,6 @@ export async function water_damage(obj, ostr, force) {
         if (newspe !== oldspe) {
             newspe = Math.min(newspe, 7);
             obj.spe = Math.max(newspe, 0);
-            /* finish_towel_change's uwep/unweapon update is display-only
-             * wielded-weapon-message bookkeeping; no corpus dip wields a
-             * towel, so it is left unported here (named, not silent). */
             if (in_invent)
                 update_inventory();
         }
@@ -7004,16 +5664,6 @@ export async function water_damage(obj, ostr, force) {
         (await water_damage_chain(obj.cobj, false));
         return ER_DAMAGED;                              /* contents damaged */
     } else if (_wd_Waterproof_container(obj)) {
-        /* C trap.c:4758-4770 — an UNCURSED waterproof container keeps the water
-         * out.  RNG-FREE, and it returns before the luck roll below.  This is
-         * the arm the note that stood here called WIRE_PENDING on the grounds
-         * that "no corpus dip is of a container" — true of dips, and irrelevant,
-         * because water_damage() is also reached from water_damage_chain() over
-         * a FLOOR pile.  seed4500 step 1329: drinkfountain's fate 30 floods the
-         * square holding a chest (otyp 215, Is_box, so waterproof), and this
-         * port fell through to the `(Luck + 5) > rn2(20)` roll below and drew a
-         * leaf C never draws — leaf 100395, one extra rn2(20) in the middle of
-         * gush()'s own 25-draw run. */
         if (in_invent && !Blind_thitu() && !game.u?.uinwater) {
             await pline(`The water cannot get into your ${ostr}.`);
             discover_object(obj.otyp | 0, true, true, true); /* C makeknown() */
@@ -7087,9 +5737,6 @@ async function pot_acid_damage_(obj, in_invent, described) {
     if (in_invent)
         update_inventory();
 }
-/* C you.h Luck — the port keeps it on game.u.uluck (+ moreluck); the corpus
- * hero's luck is 0 and this only gates the !force arm, which dipfountain never
- * takes.  WIRE_PENDING: the luck-timeout/moreluck composition. */
 function _water_damage_Luck() { return (game.u?.uluck | 0); }
 /* objects.h otyps water_damage discriminates on. */
 /* C obj.h:336-343 — the container macros water_damage() needs.  otyps read off
@@ -7121,16 +5768,6 @@ const _WD_SCROLL_CLASS = 9, _WD_SPBOOK_CLASS = 10, _WD_POTION_CLASS = 8;
 const _SCR_BLANK_PAPER_OTYP = 365, _SPE_BLANK_PAPER_OTYP = 407; /* js/read.js:1110, js/mklev.js:203 */
 const _POT_ACID_OTYP = 320, _POT_WATER_OTYP = 322;  /* js/potion.js:1209, :55 */
 const EF_NONE = 0;
-/* ---------------------------------------------------------------------------
- * erode_obj — erode a single item (rust, corrode, burn, rot)
- * C ref: nethack-c/src/trap.c:171
- *   int erode_obj(struct obj *otmp, const char *ostr, int type, int flags)
- *
- * Used by fire_damage, water_damage, burnarmor. Returns ER_* value.
- * RNG: rn2 calls for erosion chance when !EF_FORCEEFFECT.
- * TODO: port when fire/rust/water trap session divergence is targeted.
- * ---------------------------------------------------------------------------
- */
 /* ── object-material predicates (objclass.h / mkobj.c) ──────────────────────
  * C: is_flammable/is_rustprone/is_corrodeable/is_crackable depend on
  * objects[otyp].oc_material.  MKOBJ_OC_MATERIAL mirrors that table.  These are
@@ -7198,13 +5835,6 @@ function _is_corrodeable(otmp) {
 function _is_crackable(otmp) {
     return _erode_material(otmp.otyp) === _MAT_GLASS && (otmp.oclass | 0) === _ERODE_ARMOR_CLASS;
 }
-/* C hacklib.c vtense(subj, verb) — the real thing lives in js/objnam.js and is
- * a faithful port (the "ends in s but not *us/*ss" plural test plus the
- * special_subjs table).  What stood here was `verb + 's'` under a comment
- * asserting "the corpus erode messages are singular", and that assertion is
- * false: seed4500 step 998 burns the hero's GLOVES, C says "Your gloves
- * smoulder!" (plural subject -> bare verb) and this port said "smoulders!".
- * One character, and it was the only remaining difference on that frame. */
 function _erode_vtense(subj, verb) {
     return vtense(subj, verb);
 }
@@ -7334,49 +5964,15 @@ function _obj_in_invent(otmp) {
  * cxname (js/cmd.js) that the inventory window already uses. */
 function _erode_xname(otmp) {
     if (!otmp) return 'item';
-    /* NOTE (harness-b11 2026-09-06): the `if (otmp._name) return otmp._name;`
-     * shortcut that used to sit here read a field `struct obj` DOES NOT HAVE
-     * (obj.h has no `_name`; the given name lives in oextra->oname).  Nothing
-     * in js/ ever set it, so it was dead on every real object — but it made
-     * every capture-replay of burnarmor/passive_obj throw against the strict
-     * struct proxy ("field '_name' was not captured").  C's erode_obj has no
-     * such branch: `if (!ostr) ostr = cxname(otmp);` (trap.c:238) and nothing
-     * else. */
     return cxname(otmp) || 'item';
 }
-/* ---------------------------------------------------------------------------
- * burnarmor — apply fire damage to hero/monster armor
- * C ref: nethack-c/src/trap.c:88
- *   boolean burnarmor(struct monst *victim)
- *
- * Called from dofiretrap, buzz, zapyourself, explode.
- * RNG: rn2(oldspe+1) for wet towel drying, rn2(5) for armor slot selection.
- * TODO: port when fire trap / fire beam session divergence is targeted.
- * ---------------------------------------------------------------------------
- */
 export async function burnarmor(victim) {
     /* C trap.c:88-161.  victim==&gy.youmonst on the hero fire-ray path. */
     const u = game.u || {};
     if (!victim)
         return 0;
-    /* C: hitting_u = (victim == &gy.youmonst) (trap.c:95).  is_youmonst()
-     * (js/mhitm.js:456) is this project's canonical spelling of that test —
-     * needed here because the capture-replay marshaller rebuilds monster
-     * structs from flat fields, so `victim === game.youmonst` reference
-     * equality (the old test) is false even for the hero on every replayed
-     * record, which desynced the RNG tape (rn2 counted from the wrong
-     * branch below).  `victim === '__hero__'` is kept only because
-     * js/zap.js:1970 still calls burnarmor('__hero__') with a string
-     * sentinel instead of game.youmonst as C's call site does (zap.c:4433
-     * passes &gy.youmonst) — is_youmonst()/xm_same_monst() throws on a
-     * string operand (`'m_id' in a`), so this file cannot switch to
-     * is_youmonst()-only until that caller is fixed (see RESULT
-     * out_of_file_cause; that caller is outside this packet's target file). */
     const hitting_u = (victim === '__hero__') || is_youmonst(victim);
 
-    /* C trap.c:97-110 — wet-towel drying: rn2(oldspe+1) per carried wet towel.
-     * The seed5500 wizard carries no towel, so this loop body never runs (no
-     * RNG).  Port the structure faithfully for towel-carrying sessions. */
     const TOWEL = 234; /* objects.h:949 TOWEL; was 246 = MAGIC_WHISTLE */
     for (let item = hitting_u ? game.invent : (victim.minvent || null); item; item = item.nobj) {
         if ((item.otyp | 0) === TOWEL && (item.spe | 0) > 0) { /* is_wet_towel */
@@ -7435,20 +6031,6 @@ export async function burnarmor(victim) {
     }
     return 0; /* FALSE */
 }
-/* C's u.uarm/uarmc/... ARE the gi.invent nodes (setworn assigns the object
- * itself, worn.c:78).  In JS the chargen worn-armor slots are stand-in records
- * built by iniInvWornArmor() (u_init.js) with a symbolic otyp and no
- * owornmask/oeroded/blessed fields, while the REAL starting-kit object lives in
- * game.invent carrying the W_ARM* bit that _ini_inv_use_obj() set.  erode_obj
- * needs the real node: on the stand-in, otyp is a string so erosion_matters()
- * is false and the object isn't found in gi.invent so uvictim is false — both
- * of which silently suppress the "Your <armor> smoulders!" pline (seed5500
- * step 831: the missing third message meant the topline never overflowed, so
- * more() never fired and C's page-ack space leaked to rhack as a command).
- *
- * Resolve slot -> the gi.invent node bearing that worn mask; fall back to the
- * caller's u.<slot> when no invent node claims it (so "is anything worn in
- * this slot" keeps its existing answer). */
 function _hero_worn(slotmask, fallback) {
     if (!fallback)
         return fallback || null;
@@ -7458,8 +6040,6 @@ function _hero_worn(slotmask, fallback) {
     }
     return fallback;
 }
-/* which_armor(mon, slot) for a monster victim — find the worn item by wornmask.
- * The corpus path is hero-only; monster fire-ray erosion is uncommon. */
 function _which_armor(mon, slotmask) {
     if (!mon || !mon.minvent) return null;
     for (let o = mon.minvent; o; o = o.nobj) {
@@ -7609,25 +6189,11 @@ export function bypass_objlist(objchain, on) {
     }
 }
 
-/* ---------------------------------------------------------------------------
- * clear_bypasses — clear bypass bits on all object chains and monsters
- * C ref: nethack-c/src/worn.c:1061-1108
- *   void clear_bypasses(void)
- *
- * Resets bypass bit on all objects in the game: floor objects (fobj),
- * hero inventory (gi.invent), migrating objects/mons, buried objects,
- * billed objects, deleted objects, and all monster inventories.
- * Also handles long-worm polymorph control: clears mcorpsenm field
- * for long worms created by polymorph zaps, reverting them to normal.
- * RNG: none.
- * ---------------------------------------------------------------------------
- */
 export function clear_bypasses() {
     const u = game.u || {};
     const fobj = game.fobj || null;
     const fmon = game.fmon || null;
 
-    // Clear bypass on floor objects
     clear_bypass(fobj);
 
     // Clear bypass on hero inventory
@@ -7899,20 +6465,6 @@ function _imm_has_ceiling(lev) {
     return !(In_endgame(lev) && !Is_earthlevel(lev));
 }
 
-/* ---------------------------------------------------------------------------
- * immune_to_trap — is a monster (possibly the hero) immune to, or otherwise
- * unaffected by, triggering a trap of a given type.
- * C ref: nethack-c/src/trap.c:2783
- *   int immune_to_trap(struct monst *mon, unsigned ttype)
- * Returns TRAP_NOT_IMMUNE / TRAP_CLEARLY_IMMUNE / TRAP_HIDDEN_IMMUNE.
- * RNG: none (rng_calls_count: 0).
- * is_you: mon->m_id is a fixed sentinel — set_uasmon() hardcodes
- * gy.youmonst.m_id = 1, and next_ident() reserves id 1 so no other monster
- * is ever assigned it (nethack-c/src/mkobj.c:529). Reconstructed capture
- * records carry that same raw m_id, so (mon.m_id === 1) is the faithful
- * equivalent of C's (mon == &gy.youmonst) here.
- * ---------------------------------------------------------------------------
- */
 export function immune_to_trap(mon, ttype) {
     if (!mon) {
         impossible_('immune_to_trap: null monster');
@@ -8128,24 +6680,6 @@ function ume_altprop(o) {
  * imported from the frozen-shadow js/const.js. */
 const UME_MSLOW = 1, UME_MFAST = 2;
 
-/* ---------------------------------------------------------------------------
- * mon_adjust_speed — C ref: nethack-c/src/worn.c:479-556
- *   void mon_adjust_speed(struct monst *mon, int adjust, struct obj *obj)
- *   adjust: positive => increase speed, negative => decrease
- *   obj:    item to make known if the effect can be seen
- *
- * RNG: NONE.  The whole body is state mutation plus one optional pline; the
- * only C draws reachable from here are inside Monnam()'s hallucination path,
- * which uses rn2_on_display_rng (the display stream, not the scored core one)
- * — see do_name.c:1470 rndcolor / hcolor.  Confirmed against the reference
- * trace: seed0360-wizard-world-tour records four mon_adjust_speed calls (from
- * mcastu.c:904, monster hasting itself) and every one of the eight trace
- * entries is a `>pline`/`<pline` midlog pair at worn.c:547 — zero rn* lines
- * are attributed to worn.c anywhere in the 64-session corpus.
- *
- * Was a throw-stub here (census: SHADOWED/CRITICAL, 2 reachable call sites in
- * update_mon_extrinsics below), i.e. a live throw on the speed-boots path.
- * --------------------------------------------------------------------------- */
 export function mon_adjust_speed(mon, adjust, obj) {
     /* C worn.c:485-487 */
     let give_msg = !game.in_mklev;
@@ -8220,31 +6754,6 @@ export function mon_adjust_speed(mon, adjust, obj) {
             pline(Monnam_t(mon) + " seems to be moving " + howmuch + "slower.");
         }
 
-        /* C worn.c:552-554 — `if (obj != 0) learnwand(obj);`
-         *
-         * BOTH HALVES OF THE COMMENT THAT USED TO STAND HERE WERE FALSE, and
-         * both were measured false on the same divergence.  It claimed (a)
-         * that learnwand "is not ported anywhere in js/ at HEAD (no export, no
-         * local copy)" — it is, at js/zap.js:3356, and it has been called from
-         * three sites in that file all along, it was merely module-local — and
-         * (b) that "it draws NO RNG ... so skipping it cannot desynchronise the
-         * PRNG stream on ANY path".  learnwand's else arm is
-         * `makeknown(obj->otyp)`, and hack.h:1530 defines
-         * `makeknown(x) = discover_object((x), TRUE, TRUE, TRUE)` — credit_hero
-         * TRUE — so o_init.c:482-483 fires `exercise(A_WIS, TRUE)`, i.e.
-         * rn2(19), the FIRST time that object type becomes name_known.  The
-         * js/zap.js body already reproduces that (it calls discover_object with
-         * credit_hero true) and its own header says so; only this call site was
-         * missing.
-         *
-         * MEASURED on gen104-reseed-seed289322 (train): at session step 159 a
-         * tengu quaffs a potion of speed in the hero's sight
-         * (muse.c:2491-2497 MUSE_POT_SPEED -> mquaffmsg -> mon_adjust_speed).
-         * The pline above raises a --More--; after it is dismissed C's very
-         * next draw is `rn2(19)=4 @exercise(attrib.c:509)`, global leaf 8237,
-         * and that was the session's first RNG-value divergence — this port
-         * returned from here having drawn nothing and went straight on to the
-         * next monster's distfleeck rn2(5). */
         if (obj)
             learnwand(obj);
     }
@@ -8448,16 +6957,6 @@ export async function m_useup(mon, obj) {
 export async function extract_from_minvent(mon, obj, do_extrinsics, silently) {
     const unwornmask = obj.owornmask | 0;
 
-    /* C worn.c:1393-1396 opens with
-     *     if (obj->where != OBJ_MINVENT) { impossible(...); return; }
-     * That guard is NOT reproduced, and the reason is measured, not assumed:
-     * this port does not maintain obj->where for monster inventory.  The gnome
-     * lord's potion of healing in seed0361 reads where == OBJ_FREE (0) while
-     * sitting in mon->minvent, so C's guard rejects every real call and the
-     * object is never unlinked.  mon->minvent IS maintained, so the unlink
-     * below walks that chain and is the invariant this port actually has.
-     * Restoring the guard needs obj->where to be written at every mpickobj /
-     * mongets / m_initinv site first — a separate change. */
     /* C worn.c:1402 obj_extract_self(obj).  js/dokick.js's obj_extract_self is
      * NOT C's mkobj.c:2557 switch — it walks only the gm.migrating_objs chain
      * and silently returns for every other obj->where, so calling it here left
@@ -8504,20 +7003,6 @@ const W_WEP_TR = 0x00000100;
 function DEADMONSTER_TR(mon) { return !mon || (mon.mhp | 0) <= 0; }
 function impossible_tr(msg) { pline("impossible: " + msg); }
 
-/* m_useupall — C ref: nethack-c/src/mthrowu.c:1153-1158:
- *     extract_from_minvent(mon, obj, TRUE, FALSE);
- *     obfree(obj, (struct obj *) 0);
- * THE EXTRACT CALL WAS MISSING, under the note that its mutation "is confined
- * to the monster's own inventory chain, which the mapstate oracle does not
- * observe, so it has no oracle-visible effect on this corpus".  That was a
- * claim about an oracle, not about C, and it is now false: with use_defensive
- * live (js/makemon.js), seed0361's gnome lord quaffed the SAME potion of
- * healing on turn 30, 31, 33, 34 and 35, because m_useup never took it out of
- * minvent.  obfree's net observed effect is the single object deletion, which C
- * records on the go.objs_deleted queue via dealloc_obj; the objs_deleted.count
- * mapstate slot is a dead placeholder (js/mapstate_game_bridge.js) not derived
- * from that queue, so it is bumped in step with the one real deletion — the
- * same pattern js/cmd.js useupf and js/potion.js delobj use. */
 export async function m_useupall(mon, obj) {
     await extract_from_minvent(mon, obj, true, false);
     await dealloc_obj(obj);

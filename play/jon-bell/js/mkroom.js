@@ -56,7 +56,6 @@ export function search_special(type) {
 function Sfi_int(nhfp, val, name) { return val; }
 
 // rest_room (mkroom.c staticfn).  Save-file room records are not represented
-// in this JS harness, so Sfi_mkroom is a structural no-op; preserve the C
 // subroom recursion and resident reset so restore callers still receive the
 // same room graph when records were materialized by the bridge.
 function rest_room(nhfp, r) {

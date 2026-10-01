@@ -80,14 +80,6 @@ const G_FREQ = 7;
  * constant VALUES.  (The file-local G_NOCORPSE copy that used to live here went
  * away with the inlined corpse path — js/mklev.js's make_corpse owns that test
  * now, on the correct side of C's special-species switch.) */
-/* Per-mndx AC lookup (permonst.ac), indexed by PM_* number.
- * C ref: worn.c:709 find_mac(mon) = mon->data->ac for unarmored monsters.
- * Authoritative source: the LVL(mlevel,mmove,ac,...) 3rd field of every active
- * MON() in nethack-c/include/monsters.h, in C mons[] order (preprocessor-aware,
- * 383 active entries: #if 0 / CHARON excluded).  The prior literal defaulted 68
- * monsters to 10 (a parse gap), e.g. PM_KITTEN(32) was 10 vs C's 6 — which made
- * the newt's return-attack against a pet kitten read as a hit instead of a miss
- * (tmp=10+0>6 vs C tmp=6+0==6, strike=FALSE), the seed0060 first divergence. */
 const MONS_AC = [3,-1,3,3,4,-4,8,8,8,8,6,6,7,7,7,7,6,5,5,4,4,4,4,4,4,4,2,10,9,4,4,4,6,5,6,6,6,4,6,-10,2,-4,-2,10,10,5,10,10,5,0,7,6,2,7,2,5,8,8,8,10,10,10,6,8,7,7,7,9,9,9,10,10,10,10,10,10,5,10,3,0,0,7,0,4,2,6,5,5,7,7,6,6,0,0,3,3,4,3,3,3,6,2,2,2,5,4,0,2,2,2,2,2,5,5,5,6,9,-4,0,0,3,5,0,-4,-5,-6,8,7,6,6,4,3,2,2,2,2,2,2,2,2,2,2,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,3,2,2,2,2,9,9,9,9,9,7,7,10,10,4,10,0,0,6,4,3,3,3,-3,6,-2,10,10,10,10,0,-2,-4,-6,6,6,5,5,4,4,4,3,6,6,6,6,4,2,2,0,5,3,4,8,8,6,6,3,3,2,-10,8,3,3,5,2,2,4,2,0,4,-4,2,1,0,-6,5,4,0,-2,6,6,5,6,6,6,10,10,9,9,9,8,6,10,6,4,10,10,8,6,6,4,9,7,5,1,3,10,10,10,10,10,10,10,10,10,10,5,0,10,10,0,10,7,10,10,0,10,10,10,10,2,-8,0,-5,10,-4,0,-5,2,0,-6,0,-2,-1,-4,-1,-3,4,-2,-7,-5,-6,-3,-2,-5,-7,-8,-5,-5,-5,10,4,6,4,2,-1,-3,6,8,8,7,7,6,6,5,-1,0,10,10,10,10,10,10,10,10,10,10,10,10,10,0,0,0,0,0,0,7,0,0,0,10,0,0,-2,0,0,0,-1,-10,-2,10,0,0,2,0,10,10,10,10,10,10,10,10,10,10,10,10,10,10];
 /* Monster species names — same array as uhitm.js MONS_NAMES.
  * C ref: monsters.h NAM() macro, indexed by PM_xxx (pm.generated.js) value. */
@@ -115,10 +107,6 @@ function Mgender_dm(mtmp) { return mtmp.female ? 1 /* FEMALE */ : 0 /* MALE */; 
 /* C const.js spellings, local to keep this file's import list unchanged. */
 const ARTICLE_THE_DM = 1;      /* hack.h ARTICLE_THE */
 const SUPPRESS_SADDLE_DM = 0x08;
-/* `'mgivenname' in mtmp` (Reflect.has, no get trap) safely reports false on a
- * replay-reconstructed monst whose strict proxy never captured a top-level
- * mgivenname — avoids the "field not captured" throw a bare read would
- * trigger via the proxy's get trap. */
 function _has_mgivenname_dm(mtmp) {
     if (!mtmp) return false;
     return !!(mtmp?.mextra?.mgivenname
@@ -136,25 +124,6 @@ function obj_pmname_dm(obj) {
                                 : 2;              /* NEUTRAL */
     return monPmname(mndx, mgend) || '';
 }
-/* C ref: mon.c:1806 mon_nam(mtmp) =
- *     x_monnam(mtmp, ARTICLE_THE, (char *) 0,
- *              has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, FALSE);
- * This was a hand-rolled "the <species>" namer — the same partial-namer shape
- * js/uhitm.js:265 already retired in favour of the real x_monnam.  What it was
- * missing, beyond the invisible/mappearance/shopkeeper/priest handling, is
- * C's FIRST branch (do_name.c:948-953):
- *
- *     if (do_hallu) { mnam = rndmonnam(&rnamecode); ... }
- *
- * A hallucinating hero sees a MADE-UP name for every monster in every message,
- * and rndmonnam draws rn2_on_display_rng(430) plus either rn2(2) (gender) or
- * rn2(7640) (a bogusmons.txt line) — draws this port did not make, so the whole
- * DISPLAY stream fell behind from the first such message onward.  MEASURED on
- * seed0383-wizard-hallucinate step 198: C prints "Barney the dinosaur picks up
- * a sprig of wolfsbane." (a bogusmon) where this port printed "The soldier
- * picks up a sprig of wolfsbane."  The same defect is why mpickstuff, the
- * door-opening message and the pet-drop message all named real species on a
- * hallucinating hero. */
 function mon_nam_dm(mtmp) {
     return x_monnam(mtmp, ARTICLE_THE_DM, null,
                     _has_mgivenname_dm(mtmp) ? SUPPRESS_SADDLE_DM : 0, false);
@@ -270,13 +239,6 @@ const RIN_SLOW_DIGESTION_OTYP = 193;
 const COIN_CLASS_  = 12;        /* alias for clarity in weight() */
 const GEM_CLASS   = 13;
 
-/* -----------------------------------------------------------------------
- * Object-weight & monster-load tables — for can_carry() weight gate.
- * C ref: include/objects.h oc_weight column; include/monsters.h SIZ() cwt.
- * Extracted from the C reference objects[] / mons[] arrays (bit-for-bit).
- * OC_WEIGHT[otyp] = objects[otyp].oc_weight (encumbrance, 1cn = 0.1lb).
- * MONS_CWT[mndx]  = mons[mndx].cwt (corpse weight; 0 = corpseless).
- * ----------------------------------------------------------------------- */
 const OC_WEIGHT = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,5,30,30,30,35,36,20,25,10,10,10,12,10,5,5,5,20,20,60,120,30,30,30,30,40,40,70,70,40,150,40,60,40,80,50,50,75,150,120,125,60,80,120,150,100,120,180,30,36,120,50,30,20,40,15,15,20,30,30,30,30,3,50,3,30,40,3,4,4,10,40,30,50,50,50,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,450,415,450,400,350,150,150,300,300,250,200,250,250,150,30,5,5,3,10,10,10,10,15,10,15,10,10,10,10,30,30,30,40,50,50,100,100,50,10,10,30,10,10,50,20,20,15,20,15,50,20,15,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,20,20,20,20,20,20,20,20,20,20,20,20,20,350,600,900,15,15,15,15,3,4,1,2,2,30,20,20,12,13,150,3,2,5,200,12,4,100,4,15,50,2,200,200,3,3,5,5,18,18,18,18,30,30,30,10,25,25,100,30,20,10,10,10,0,1,1,1,400,5,20,20,20,20,1,1,2,2,2,5,2,2,1,1,5,2,10,2,1,2,5,15,20,10,10,10,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,10,50,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,10,500,10,10,10,6000,2500,480,120,1,1,0];
 const MONS_CWT = [10,1,20,30,200,1,30,200,600,10,30,30,300,300,300,300,150,400,400,800,500,500,250,850,700,200,600,10,10,10,10,10,150,200,600,600,600,250,600,750,100,1000,1200,500,900,1250,900,900,1450,1450,100,60,20,150,200,300,50,50,50,400,450,500,450,60,300,600,800,600,600,600,400,1000,850,1000,1200,1300,1000,1350,200,400,400,400,2500,1200,2500,2650,3800,3800,20,30,30,40,30,30,50,50,200,50,800,800,1300,1300,1300,1300,1500,1800,0,0,0,0,0,0,600,600,1500,2700,15,300,0,0,1200,900,1450,1450,1450,1450,20,30,40,30,2500,2550,2550,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,4500,4500,4500,4500,4500,4500,4500,4500,4500,4500,900,0,0,2500,2500,20,50,50,50,50,100,100,650,700,700,750,2250,2250,2200,2250,2250,1700,2250,2300,1500,1300,1450,1450,1450,1450,1200,1200,1200,1200,400,650,850,900,800,1450,1700,2050,500,500,500,500,2600,2600,2600,2600,1600,1700,1700,500,500,400,900,1450,1450,1000,750,50,100,150,250,100,250,800,1000,1200,1200,1500,1200,1450,1450,1450,1200,0,1450,1200,100,1100,1700,1600,1250,1550,400,650,850,900,800,1450,1700,400,2050,300,400,400,450,450,800,900,1400,1550,1900,1800,2000,1450,1450,1450,1450,800,800,800,800,800,800,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1500,1450,1500,900,1500,1500,1500,1500,1500,1500,1450,1450,1450,600,1500,80,60,500,200,200,1800,10,10,30,200,10,100,1450,1500,0,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,2200,1450,1450,1450,1800,1450,1450,1450,4500,1900,4500,1450,1450,750,1450,1450,2250,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450,1450];
 
@@ -296,10 +258,6 @@ const M1_NOTAKE    = 0x00000800;
 const M1_NOHANDS   = 0x00002000;
 const M1_MINDLESS  = 0x00010000;
 const M1_ANIMAL    = 0x00040000;
-/* Tool otyp constants used only by droppables()'s keeper branches, which are
- * dead code for animal/mindless pets (all corpus pets).  Values per the JS otyp
- * space (u_init.js / m_initweap.js); wrong values are harmless for animal pets
- * because the DUMMY keeper sentinel forces a break+default-drop regardless. */
 const PICK_AXE_OTYP         = 259;
 const DWARVISH_MATTOCK_OTYP = 71;
 const UNICORN_HORN_OTYP     = 261;
@@ -328,12 +286,6 @@ function obj_weight(obj) {
     const quan = Math.max(1, (obj.quan ?? 1) | 0);
     let wt = (otyp >= 0 && otyp < OC_WEIGHT.length) ? (OC_WEIGHT[otyp] | 0) : 0;
 
-    /* C: globby objects return cached owt as-is.  `globby` and `cobj` are both
-     * absent from the sweep's STRUCT_FIELDS['struct obj *'] schema, and that
-     * proxy THROWS on an uncaptured field name instead of yielding undefined —
-     * so both are probed for existence first, the same way js/mklev.js:3331
-     * weight() already probes `globby`.  On live objects this is an ordinary
-     * read; the probe only changes behaviour under capture-replay. */
     if (Object.hasOwn(obj, 'globby') && obj.globby)
         return (obj.owt | 0);
 
@@ -411,16 +363,6 @@ export function max_mon_load(mtmp) {
     return maxload | 0;
 }
 
-/* -----------------------------------------------------------------------
- * can_carry — C ref: mon.c:1978.
- * Returns the max number of objects the monster could pick up from the pile
- * (frequently otmp->quan), or 0 if it cannot carry the item at all.
- * RNG-FREE on the pet-goal path (the rn2 branch only fires for stacks
- * exceeding LARGEST_INT, which never happens for a single floor item).
- * The can_touch_safely / artifact / silver checks are simplified: the pet
- * path objects in our corpus are ordinary, so we port the type/hands/weight
- * gates that actually fire and leave the rare touch checks as pass-through.
- * ----------------------------------------------------------------------- */
 export function can_carry(mtmp, otmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const mrow = (mndx >= 0 && mndx < _MONS.length) ? _MONS[mndx] : null;
@@ -435,11 +377,7 @@ export function can_carry(mtmp, otmp) {
     if (mflags1 & M1_NOTAKE)
         return 0;
 
-    /* C: can_touch_safely — silver/petrify/artifact gates. JS pet-path
-     * objects are ordinary; treat as touchable (no early 0). */
 
-    /* C: iquan = (quan > LARGEST_INT) ? 20000+rn2(...) : quan.
-     * Single floor items never exceed LARGEST_INT — no RNG. */
     const quanRaw = (otmp.quan ?? 1) | 0;
     const iquan = (quanRaw > LARGEST_INT)
         ? (20000 + rn2(LARGEST_INT - 20000 + 1))
@@ -479,7 +417,6 @@ export function can_carry(mtmp, otmp) {
     if (mlet === S_NYMPH)
         return (oclass === ROCK_CLASS) ? 0 : iquan;
 
-    /* C: the weight gate (the seed1800 case). */
     if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp))
         return 0;
 
@@ -645,9 +582,6 @@ function _same_race(m1, m2) {
     if (_is_golem(m1)) return _is_golem(m2);
     if (_is_mind_flayer(m1)) return _is_mind_flayer(m2);
     const l1 = _mlet(m1), l2 = _mlet(m2);
-    /* C: kobold-zombie/mummy folded into S_KOBOLD; ogre/nymph/centaur/dragon/naga
-     * by mlet. For pets without these mlets the cannibalism clause is gated by
-     * humanoid(mptr) anyway, so plain mlet equality is sufficient here. */
     if (l1 === S_KOBOLD_C) return l2 === S_KOBOLD_C;
     if (l1 === S_OGRE)     return l2 === S_OGRE;
     return l1 === l2;
@@ -655,9 +589,6 @@ function _same_race(m1, m2) {
 
 /* C monst.h ismnum(x): LOW_PM (0) <= x < NUMMONS. _MONS.length == NUMMONS. */
 function ismnum_js(x) { return (x | 0) >= 0 && (x | 0) < _MONS.length; }
-/* C mkobj.c:2426 peek_at_iced_corpse_age — for a corpse on ice, scale the age.
- * Floor corpses (on_ice=false) just return obj->age; we only reach the ice
- * branch if obj.on_ice is set.  ROT_ICE_ADJUSTMENT = 2 (mkobj.c:2394). */
 function peek_at_iced_corpse_age_js(otmp, moves) {
     let retval = otmp.age | 0;
     if ((otmp.otyp | 0) === CORPSE_OTYP && otmp.on_ice) {
@@ -669,17 +600,6 @@ function peek_at_iced_corpse_age_js(otmp, moves) {
 
 /* C const: ismnum(x) — valid monster index (0 <= x < NUMMONS). */
 export function dogfood(mtmp, obj) {
-    /* C dog.c:1002 — poisoned item check (no RNG here, but it GATES the rn2(100)
-     * below: returning POISON skips obj_resists entirely).
-     *     if (obj->opoisoned && !resists_poison(mon)) return POISON;
-     * `opoisoned` IS `otrapped` (obj.h:139) — one bitfield, two spellings — so a
-     * TRAPPED CONTAINER is "poisoned" to C's dogfood() and C makes no obj_resists
-     * draw for it.  This port spells the two halves as separate JS properties and
-     * read only one, so a pet scanning a trapped chest drew an rn2(100) C never
-     * draws.  (The `!resists_poison(mon)` conjunct is still missing: js/mklev.js
-     * carries a `resists_poison` STUB that shadows the real predicate
-     * m_poisongas_ok_resists_poison, so there is nothing correct to call yet.
-     * It only matters for a poison-resistant pet, which no corpus pet is.) */
     if (otrapped_of(obj) && !resists_poison(mtmp))
         return POISON;
     /* C dog.c:1004:
@@ -732,9 +652,8 @@ export function dogfood(mtmp, obj) {
              * fptr = &mons[corpsenm] (the corpse species); mptr = mtmp->data (pet).
              * No RNG fired here; all RNG already consumed by obj_resists above. */
             const fx = (obj.corpsenm ?? -1) | 0; /* CORPSE → corpsenm */
-            const fxValid = ismnum_js(fx);       /* C: ismnum(fx) gate (NUMMONS sentinel) */
+            const fxValid = ismnum_js(fx);
             const moves = (game.moves ?? 0) | 0;
-            /* C: peek_at_iced_corpse_age(obj) — floor corpses (not on ice) return obj->age. */
             const corpseAge = (obj.on_ice ? peek_at_iced_corpse_age_js(obj, moves) : (obj.age | 0));
             const mlet_pet = _mlet(mndx);
             /* C dog.c:1068-1073 — rotted (old) OR acidic OR poisonous → POISON.
@@ -878,14 +797,6 @@ async function dog_hunger(mtmp, edog) {
     return false;
 }
 
-/* -----------------------------------------------------------------------
- * obj_extract_self / delobj — remove a floor object from both per-tile
- * nexthere chain and the global fobj nobj chain, then mark it deleted.
- * Mirror of the place_object() linkage in mklev.js (reverse).
- * C ref: mkobj.c obj_extract_self / invent.c delobj_core (the dealloc path).
- * NO RNG here — the obj_resists(obj,0,0) gate is fired by the CALLER
- * (dog_eat) to keep the rn2(100) sequence visible at the call site.
- * ----------------------------------------------------------------------- */
 export function obj_extract_floor(obj) {
     if (!obj) return;
     const xi = obj.ox | 0;
@@ -920,20 +831,6 @@ export function obj_extract_floor(obj) {
         recalc_block_point(xi, yi);
 }
 
-/* ----------------------------------------------------------------------------
- * droppables — C dogmove.c:29 droppables(mon).
- * Returns the first object in the monster's inventory it would willingly drop
- * (the pet-fetch "do I have something to drop?" test), or null if it would
- * keep everything.  RNG-FREE.
- *
- * The pick-axe / unicorn-horn / unlocking-tool "keeper" cases let an intelligent
- * tool-using monster hold ONE of each useful tool and treat duplicates as
- * droppable; an animal/mindless pet keeps none (the &dummy stand-ins), so any
- * non-worn, non-wielded item is droppable.  We port the keeper structure with a
- * conservative tool-detector (the corpus's tame pets are dogs/cats — animals —
- * so the keeper branches never fire there; the structure preserves faithfulness
- * for any future tool-using pet).
- * ------------------------------------------------------------------------- */
 function MON_WEP_dm(mon) {
     /* C MON_WEP(mon) = mon->mw (the wielded weapon). */
     if (mon.mw) return mon.mw;
@@ -956,11 +853,6 @@ export function droppables(mon) {
         /* won't hang on to any tool — act as if already holding each. */
         pickaxe = unihorn = key = DUMMY;
     } else {
-        /* C dogmove.c:50-58 — intelligent pets: keep useful tools.  The
-         * tunnels/needspick/nohands/verysmall predicates are not yet wired for
-         * the (non-existent in corpus) tool-using pet; default to keeping
-         * (pickaxe/key = null) which matches an intelligent humanoid that could
-         * use them.  This branch is never reached by the corpus's animal pets. */
         pickaxe = null;
         unihorn = null;
         key = null;
@@ -1007,22 +899,11 @@ export function droppables(mon) {
     return null; /* don't drop anything */
 }
 
-/* relobj_dm — C steal.c:880 relobj(mtmp, show, is_pet=TRUE) for a pet.
- * Drops every droppable item to the floor at the pet's tile.  RNG-FREE
- * (mdrop_obj → flooreffects is a no-op for a normal item on a normal tile,
- * place_object/stackobj are linkage).  C mdrop_obj (steal.c:839) plines
- * "<Monnam> drops <obj>." when verbose and the tile is in sight; relobj passes
- * show=TRUE for a pet, so the drop is verbose (seed0014 step 7: "Sirius drops a
- * scroll labeled JUYED AWK YACC."). */
 async function relobj_dm(mtmp) {
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
     let otmp;
     while ((otmp = droppables(mtmp)) != null) {
-        /* C steal.c:826 — distant_name(obj, doname) FIRST (before extract), for its
-         * dknown side-effect AND the printed name ("a scroll labeled ...").  The obj
-         * still carries its floor coords (ox,oy) here — set them from the pet's tile so
-         * distant_name's near+cansee check resolves (the item is being dropped here). */
         otmp.ox = omx; otmp.oy = omy;
         const objName = await distant_obj_name(otmp);
         /* C steal.c:mdrop_obj — extract_from_minvent then place_object. */
@@ -1030,12 +911,6 @@ async function relobj_dm(mtmp) {
         /* C steal.c:839 — verbose && cansee → pline "<Monnam> drops <obj>." */
         if (cansee(omx, omy) && game.flags?.verbose !== false)
             void pline(`${Monnam_dm(mtmp)} drops ${objName}.`);
-        /* C steal.c:841-842 — !flooreffects(...) → { place_object(obj,omx,omy); stackobj(obj); }
-         * flooreffects is a no-op for a normal item on a normal tile; stackobj merges
-         * the dropped item into a like floor pile already present (a previous drop at the
-         * same square) so the per-tile object list matches C exactly.  Without it a
-         * re-drop leaves two separate piles where C has one (the seed0600 leaf-4432
-         * dog_goal floor-scan divergence). */
         place_object(otmp, omx, omy);
         stackobj_dm(otmp);
     }
@@ -1043,38 +918,6 @@ async function relobj_dm(mtmp) {
     if (mtmp.minvis && cansee(omx, omy)) newsym(omx, omy);
 }
 
-/* relobj_dead_dm — C steal.c:874 relobj(mtmp, show=1, is_pet=FALSE), reached
- * from mon.c:3174 m_detach(mtmp, mptr, TRUE) inside mondead().  A monster that
- * dies on the map drops EVERYTHING it was carrying onto its square; the
- * droppables() filter that lets a live pet keep its wielded/worn gear is the
- * is_pet arm, and a dead monster is never is_pet.
- *
- * This path had no port at all, so a monster killed by another monster took its
- * whole pack with it.  MEASURED on seed0014 step 509: the little dog kills a
- * kobold at (48,9) carrying a quarterstaff and 14 darts.  C emits
- * `^place[79,48,9] ^place[24,48,9]` between mhitm_knockback and corpse_chance
- * and paints ')' on the square; this port painted bare floor.  It is not a
- * cosmetic miss: on the pet's NEXT movemon pass in the same turn, dog_goal's
- * floor scan finds that adjacent pile and reaches the apport gate
- * (`edog->apport > rn2(8)`, dogmove.c:554).  With the pile absent the scan found
- * only a gold pile five squares away that can_reach_location() rejects, so this
- * port fell through to the follow-the-hero arm and drew `rn2(4)`
- * (dogmove.c:575) where C drew `rn2(8)` — the session's first RNG divergence,
- * at leaf 22782.
- *
- * RNG-free.  mdrop_obj's only RNG-capable call is flooreffects(), which draws
- * nothing for an ordinary item falling onto an ordinary square; relobj_dm (the
- * live-pet twin above) omits it for the same reason and this keeps that
- * treatment.  The `mon->isgd` vault-guard gold arm needs a vault guard, which
- * never dies on this path; update_mon_extrinsics is skipped by C itself because
- * `!DEADMONSTER(mon)` is false by the time m_detach runs.
- *
- * C calls distant_name(obj, doname) before extracting each object "for its
- * possible side-effects even if the result might not be printed"; with
- * verbosely FALSE (is_pet && flags.verbose) the string is always discarded here,
- * so only the side-effect is reproduced: get_obj_location() of a minvent object
- * yields the carrier's square, and cansee() + distu() <= neardist there means
- * doname() runs unblinded and sets obj->dknown. */
 function relobj_dead_dm(mtmp) {
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
@@ -1093,7 +936,6 @@ function relobj_dead_dm(mtmp) {
          * obj_no_longer_held(); clear it here the way relobj_xkilled does. */
         extract_from_minvent_dm(mtmp, otmp);
         otmp.owornmask = 0;
-        /* C steal.c:841-843 — !flooreffects(...) → place_object + stackobj. */
         place_object(otmp, omx, omy);
         stackobj_dm(otmp);
     }
@@ -1108,36 +950,6 @@ function relobj_dead_dm(mtmp) {
         newsym(omx, omy);
 }
 
-/* stackobj_dm — C ref: invent.c:4363-4375 stackobj(obj).
- *
- *     for (otmp = svl.level.objects[obj->ox][obj->oy]; otmp; otmp = otmp->nexthere)
- *         if (otmp != obj && merged(&obj, &otmp))
- *             break;
- *
- * NOTE THE ARGUMENT ORDER, which this port had backwards until 2026-09-10.
- * merged(struct obj **potmp, struct obj **pobj) opens with
- * `struct obj *otmp = *potmp, *obj = *pobj;` (invent.c:815) and then does
- * `otmp->quan += obj->quan` / `obj_extract_self(obj)` — so *potmp is the
- * SURVIVOR and *pobj is the one unlinked.  stackobj passes `&obj` (its own
- * argument, the object just place_object()'d) as *potmp and `&otmp` (the pile
- * member the scan found) as *pobj.  The FRESHLY PLACED object survives; the
- * PILE MEMBER is extracted.  C says so in its own words at mon.c:934:
- * `stackobj(obj); /* 'obj' remains valid if stacking happens *\/`.  Because
- * place_object() prepends, the survivor keeps the HEAD of fobj and the TOP of
- * svl.level.objects[x][y].
- *
- * This function used to call merged_dm(otmp /* pile member *\/, obj /* fresh *\/),
- * i.e. it kept the OLD pile member and deleted the new object, leaving the
- * combined stack at the BOTTOM of the pile and the fobj head unchanged.  That is
- * the same inversion that was found and removed from js/trap.js's file-local
- * `stackobj` shadow, and it is a port of the SAME C function: all three call
- * sites of this one (js/dogmove.js mdrop_obj x2 and js/uhitm.js:3939, all
- * steal.c:839 `stackobj(obj)`; js/eat.js:3119, eat.c:1781 `stackobj(otmp)`)
- * quote plain C stackobj().
- *
- * RNG-free.  mergable() is ported with the food/coin/corpse-relevant fields (the
- * pet drop path drops apport food and gold); the lamp/candle/glob/shop special cases
- * are included to the extent the dropped objects can exercise them. */
 export function stackobj_dm(obj) {
     if (!obj) return;
     const xi = obj.ox | 0;
@@ -1152,12 +964,6 @@ export function stackobj_dm(obj) {
     }
 }
 
-/* mergable_dm — C ref: invent.c:4378 mergable(otmp /*into*\/, obj /*combine*\/).
- * Returns true iff `obj` can merge into `otmp`.  oc_merge is the gate: FOOD/POTION/
- * SCROLL/GEM/COIN classes (and stackable weapons) merge.  Coins always merge after
- * the otyp/nomerge gate.  The Blind/Hallucination bknown branch and Cleric-role
- * special-casing are not reachable on the pet-drop path (the dropped items are
- * unidentified-state-matched apport food), so dknown/bknown are compared directly. */
 function mergable_dm(otmp, obj) {
     if (obj === otmp || (obj.otyp | 0) !== (otmp.otyp | 0)
         || obj.nomerge || otmp.nomerge || !_oc_merge_dm(obj))
@@ -1199,8 +1005,6 @@ function mergable_dm(otmp, obj) {
         if ((obj.corpsenm ?? -1) !== (otmp.corpsenm ?? -1))
             return false;
     }
-    /* hatching eggs / revivable corpses don't merge — timed/reviver flags not
-     * tracked here; corpsenm equality above is the dominant gate for the drop path. */
     if (ot === EGG_OTYP && (obj.timed || otmp.timed))
         return false;
 
@@ -1217,13 +1021,6 @@ function _oc_merge_dm(obj) {
         || oc === GEM_CLASS || oc === COIN_CLASS_ || oc === _WEAPON_CLASS_DM;
 }
 
-/* merged_dm — C ref: invent.c:813 merged(struct obj **potmp, struct obj **pobj),
- * called here as C's stackobj does: merged(&survivor, &victim).  The FIRST
- * parameter is *potmp, the survivor; the SECOND is *pobj, the one extracted.
- * (This comment used to read "merged(&otmp, &obj)", which is not what
- * invent.c:4372 writes — it writes merged(&obj, &otmp).)  otmp absorbs obj's quantity
- * (and approximate age for non-lit/non-glob), then obj is extracted from the per-tile
- * + global floor chains and marked deleted.  No RNG. */
 function merged_dm(otmp, obj) {
     if (!obj.lamplit && !obj.globby
         && (otmp.quan | 0) + (obj.quan | 0) > 0
@@ -1284,10 +1081,6 @@ export function extract_from_minvent_dm(mon, obj) {
  * Unnamed tame pet → "Your {species}".  Named pet → the given name.
  * mon_nam_dm gives "the {species}"; convert leading "the " → "Your ". */
 function noit_Monnam_dm(mtmp) {
-    /* `'mgivenname' in mtmp` (Reflect.has, no get trap) safely reports false
-     * on a replay-reconstructed monst whose strict proxy never captured a
-     * top-level mgivenname — avoids the "field not captured" throw that a
-     * bare `mtmp?.mgivenname` read would trigger via the proxy's get trap. */
     const givenname = mtmp?.mextra?.mgivenname
         || (('mgivenname' in mtmp) ? mtmp.mgivenname : '') || '';
     if (givenname) return givenname;
@@ -1305,9 +1098,6 @@ function noit_Monnam_dm(mtmp) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/* Object name as produced by distant_name(obj, doname) for the common
- * floor object the pet eats.  Early-game pets eat corpses: "a {species} corpse".
- * C ref: objnam.c doname → "a jackal corpse". */
 async function dog_obj_name(obj) {
     const otyp = obj.otyp | 0;
     if (otyp === CORPSE_OTYP) {
@@ -1315,25 +1105,11 @@ async function dog_obj_name(obj) {
         const base = sp ? sp + ' corpse' : 'corpse';
         return 'a ' + base;
     }
-    /* C ref: objects.h:936 MIRROR (otyp 230) OBJ_NAME "mirror", unidentified
-     * DESCR "looking glass".  A pet handles it before the hero identifies it, so
-     * doname renders the appearance: "a looking glass" (seed3300 — "The little
-     * dog picks up a looking glass."). */
     if (otyp === 230 /* MIRROR */)
         return 'a looking glass';
-    /* C ref: dogmove.c:287/292 obj_name = distant_name(obj, doname) — the FULL
-     * doname, for every object class.  This fallback used to return the literal
-     * "something", so seed0012 step 36 printed "Your little dog eats something."
-     * where C printed "Your little dog eats a tripe ration.".  js/objnam.js's
-     * real doname() covers every class; the two arms above are kept ahead of it
-     * only because they are the ones this file's own corpus frames are pinned
-     * on, not because doname cannot do them. */
     return await distant_name(obj, doname);
 }
 
-/* top_floor_obj — the head object of the per-tile pile at (x,y).  C uses
- * vobj_at(nix,niy) (the remembered object via glyph) but on the common visible
- * floor pile that is the pile head; we read the live head. */
 function top_floor_obj(x, y) {
     return game.level?.levelObjects?.[x | 0]?.[y | 0] ?? null;
 }
@@ -1346,69 +1122,11 @@ function an_dm(word) {
     return 'a ' + word;
 }
 
-/* distant_obj_name — C's `distant_name(otmp, doname)`.
- *   dogmove.c:457   char *otmpname = distant_name(otmp, doname);
- *   steal.c:826     (the same call, in mdrop_obj, for the pet-drops message)
- *
- * THE WHOLE BODY IS NOW THAT ONE CALL, which is what C's is.  It used to be a
- * hand-rolled near/far test followed by seven class-specific arms, each of
- * which called its formatter DIRECTLY -- and calling the formatter directly is
- * exactly the bypass distant_name() exists to prevent.  On the FAR branch C
- * brackets the call with ++gd.distantname / --gd.distantname
- * (objnam.c:401-403); xname_flags() reads that counter at objnam.c:627
- * (`if (!Blind && !gd.distantname) observe_object(obj);`) and observe_object
- * (o_init.c:442-451) sets obj->dknown = 1.  So a bare formatter call marks an
- * object the pet picked up across the room permanently identified, and the
- * GEM_CLASS arm (objnam.c:914-928) then renders "an orange gem" where C
- * renders "a gem".  Commit 06da5b5bb closed the generic fallback; the seven
- * class arms below it were still bypassing, and now do not: they run INSIDE
- * distant_name()'s bracket, as func.
- *
- * Three further corrections come free with delegating the near/far test to the
- * real distant_name(), because the hand-rolled one differed from C on all
- * three:
- *   - it set obj.dknown = true UNCONDITIONALLY on the near branch.  C never
- *     assigns dknown here at all; it reaches it only through observe_object(),
- *     which is gated on !Blind (objnam.c:627) and, inside observe_object
- *     itself, on !Hallucination (o_init.c:447).  A blind or hallucinating hero
- *     was identifying objects a pet walked over.
- *   - it omitted C's `obj->oartifact ||` disjunct (objnam.c:387-388), so an
- *     artifact took the far branch at any distance -- C treats an artifact as
- *     near unconditionally, precisely so find_artifact() runs.
- *   - it read obj.ox / obj.oy directly, where C calls get_obj_location()
- *     (zap.c:654-688), whose OBJ_MINVENT arm answers with the CARRIER's
- *     square.  relobj_dm() above compensates by fabricating ox/oy on an object
- *     that is still in the pet's minvent; that fabrication is now redundant
- *     for this path (distant_name reads obj.where / obj.ocarry) but is left
- *     in place because it is out of this change's scope and harmless --
- *     place_object() overwrites both fields moments later. */
 export async function distant_obj_name(obj) {
     return await distant_name(obj, _dm_doname);
 }
 
-/* The `func` C passes distant_name() at every call site in this file is plain
- * doname().  This is that doname -- plus the per-class scaffolding this port
- * still needs, because js/objnam.js's doname() does not yet name every class
- * the way doname_base() does (hoisting doname above ALL the arms measures -3
- * step points on seed0383; see the POTION note below).  Being `func` rather
- * than the caller is the entire point: gd.distantname is up while this runs
- * whenever the object is not near-and-visible. */
 async function _dm_doname(obj) {
-    /* C objnam.c:627-630 -- xname_flags()'s prologue, the two mutations a
-     * formatting call performs before it formats anything:
-     *     if (!Blind && !gd.distantname)
-     *         observe_object(obj);
-     *     if (Role_if(PM_CLERIC))
-     *         obj->bknown = 1;
-     * js/objnam.js's _xn_ctx() has both, under its `side_effects` flag -- but
-     * every per-class entry point below (xname_scroll / xname_armor /
-     * xname_amulet / doname_potion) passes side_effects = FALSE, so an arm that
-     * answers here instead of falling through to doname() would perform
-     * neither.  That is what the deleted `obj.dknown = true` was standing in
-     * for, ungated.  observe_object() is idempotent (discover_object guards on
-     * its own wasKnown/wasEncountered flags) and draws no RNG with
-     * credit_hero = false, so the second call the doname() fallthrough makes is
-     * a no-op. */
     if (!_dm_Blind() && !in_distant_name())
         observe_object_dm(obj);
     if (_dm_Role_if_cleric())
@@ -1419,50 +1137,8 @@ async function _dm_doname(obj) {
         const sp = obj_pmname_dm(obj);
         return an_dm(sp ? sp + ' corpse' : 'corpse');
     }
-    /* The SCROLL_CLASS_DM arm that stood here is GONE.  It called xname_scroll()
-     * directly and wrapped the bare name with an_dm()/a plural "s", which is
-     * only xname_flags()'s SCROLL_CLASS case (objnam.c:854-869) -- it never
-     * reached doname_base's BUC-word prefix (objnam.c:1321-1348), so an
-     * identified, bknown-but-uncursed scroll lost its "uncursed " word.
-     * MEASURED on gen606-grammar-seed1454339 step 117: C prints "The kitten
-     * picks up an uncursed scroll of magic mapping." and this arm answered
-     * "a scroll of magic mapping." js/objnam.js's doname() already implements
-     * xname()+BUC+count for SCROLL_CLASS via the shared xname_flags() switch
-     * arm (no scroll-specific case is needed in doname_base's own per-class
-     * switch; objnam.c has none either), and this same function already falls
-     * through to that real doname(obj) call below for any class not
-     * special-cased above it. Scrolls now fall through to doname() at the foot
-     * of this function, which is C's own distant_name(otmp, doname). */
-    /* C dogmove.c:457 distant_name(otmp, doname) — doname() already returns the
-     * complete string (article/count + BUC + xname) for a POTION_CLASS object
-     * (objnam.c doname_base POTION_CLASS branch), unlike the scroll/weapon/food
-     * cases above which build the article around a bare xname.  Without this
-     * branch a floor potion fell through to dog_obj_name's corpse-only fallback,
-     * which misreads the unrelated obj.corpsenm field as a monster index and
-     * names the potion after whatever species happens to sit at that index
-     * (seed0003 step 145/146: a potion of healing shown as "a giant ant",
-     * producing a topline 8 chars shorter than C's and skipping the --More--
-     * width boundary C pages at). */
     if ((obj.oclass | 0) === POTION_CLASS_DM)
         return doname_potion(obj);
-    /* The WEAPON_OTYP_NAMES arm that stood here is GONE.  It knew three otyps
-     * ({arrow, dart, rock}) and no prefixes at all, and it PRE-EMPTED the real
-     * doname() below for every one of them.  MEASURED on seed0383 step 203: C
-     * prints "The Grey-elf picks up 6 poisoned darts." and this arm answered
-     * "6 darts" — doname_base's `if (obj->opoisoned) Strcat(prefix, "poisoned ")`
-     * (objnam.c) never ran, because doname was never reached.  Weapons now fall
-     * through to doname() at the foot of this function, which is C's own
-     * distant_name(otmp, doname).
-     *
-     * The other partial arms are left in place deliberately: hoisting doname()
-     * above ALL of them measures -3 step points (205 -> 202 on this session),
-     * because js/objnam.js's doname does not yet name a floor POTION the way
-     * doname_potion does and the pline goes missing entirely (seed0383 step 139,
-     * C "The genetic engineer picks up a potion."). One class at a time, each
-     * measured. */
-    /* C objnam.c xname FOOD_CLASS → the OBJ_NAME (e.g. "food ration").  A pet
-     * fetching/dropping a ration (seed1150 "Slasher picks up a food ration.")
-     * doname()s to "a food ration"; a stack pluralizes ("N food rations"). */
     const fn = FOOD_OTYP_NAMES[otyp];
     if (fn) {
         const q = (obj.quan | 0);
@@ -1474,72 +1150,16 @@ async function _dm_doname(obj) {
         const q = (obj.quan | 0);
         return (q !== 1) ? `${q} gold pieces` : an_dm('gold piece');
     }
-    /* C objnam.c:763-778 xname ARMOR_CLASS → the appearance name for an
-     * unidentified armor (e.g. orcish helm doname()s to "an iron skull cap").
-     * A pet dropping/lifting a floor armor (seed0600 — "The little dog drops an
-     * iron skull cap.") formats through doname; without this it fell through to
-     * dog_obj_name → "something", making the topline shorter than C so the
-     * --More-- page count desynced and a page-ack keystroke leaked to rhack.
-     * The dknown side-effect above (near+cansee) is already applied, so
-     * xname_armor sees the same discovery state C's distant_name/doname does. */
     if ((obj.oclass | 0) === _ARMOR_CLASS_DM) {
         const an = xname_armor(obj);
         const q = (obj.quan | 0);
         return (q > 1) ? `${q} ${an}s` : an_dm(an);
     }
-    /* C objnam.c AMULET_CLASS xname branch → "<descr> amulet" for an
-     * unidentified amulet (e.g. "hexagonal amulet"); doname wraps the article.
-     * Without this an amulet fell through to dog_obj_name's corpse-only
-     * fallback → "something" (seed0365 step 42: JS "The saddled pony picks up
-     * something.--More--" vs C "The saddled pony picks up a hexagonal
-     * amulet.--More--"; the same object drops again at step 44).  The dknown
-     * side-effect above (near+cansee) is already applied, so xname_amulet sees
-     * the same discovery state C's distant_name/doname does. */
     if ((obj.oclass | 0) === _AMULET_CLASS_DM) {
         const am = xname_amulet(obj);
         const q = (obj.quan | 0);
         return (q > 1) ? `${q} ${am}s` : an_dm(am);
     }
-    /* C ref: dogmove.c:457 distant_name(otmp, doname) — doname() names EVERY
-     * class; the arms above are a hand-scoped partial and anything they miss
-     * fell through to dog_obj_name, whose last resort misreads obj.corpsenm as
-     * a species index and otherwise yields the literal "something".  A topline
-     * that is short by the whole object name shifts every later --More-- page
-     * boundary, so the wrong name costs keystroke sync, not just text:
-     * seed0030 segment 7 step 68 has C "The saddled pony picks up a shining
-     * spellbook." against JS "The saddled pony picks up something."
-     *
-     * This used to re-derive `xname() + an()/count` here, which is only
-     * doname_base's LAST two steps: it drops every prefix doname builds before
-     * them — the BUC word and the enchantment.  seed0116 step 85 has C "The
-     * kitten picks up a blessed +1 quarterstaff." against JS "The kitten picks
-     * up a quarterstaff." (and the same at the matching drop, step 86).
-     * js/objnam.js's doname() IS the ported doname_base, so call it; it runs
-     * AFTER every arm above, so nothing they already name changes name.
-     * RNG-free.
-     *
-     * MUST go through distant_name(obj, doname), not a bare doname(obj) call.
-     * C's own dog_invent (dogmove.c:457) never calls doname() directly — it
-     * calls distant_name(otmp, doname), which wraps the formatter in the
-     * gd.distantname counter (objnam.c:401-403) whenever the object is NOT
-     * near-and-visible.  js/objnam.js's doname()->...->xname_flags() reads
-     * that counter at objnam.c:627-628 / js/objnam.js:4211
-     * (`if (!Blind && !gd.distantname) observe_object(obj);`) to decide
-     * whether to mark the object's TYPE discovered (dknown=1).  A bare
-     * doname(obj) call leaves gd_distantname at 0 even for a FAR object, so
-     * observe_object() fires unconditionally and wrongly sets dknown=true —
-     * confirmed by instrumentation: a floor gem at distu=26 (neardist=6, so
-     * genuinely far) read dknownBefore:0, dknownAfter:1 after this call, and
-     * js/objnam.js's GEM_CLASS arm (:4466 `if (!c.dknown) buf = rock;`) then
-     * takes the KNOWN branch and renders the appearance descriptor ("an
-     * orange gem") instead of C's generic "a gem". distant_name() is already
-     * imported (line 23) and used correctly elsewhere in this file (line
-     * 955, 1687 indirectly via this function).
-     *
-     * THAT WRAPPING NOW HAPPENS ONE LEVEL UP, in distant_obj_name(), so this
-     * is a plain doname() again -- it IS the `func` distant_name() was handed,
-     * and re-entering distant_name() here would repeat the near/far test the
-     * caller has already made. */
     const generic = await doname(obj);
     if (generic)
         return generic;
@@ -1569,11 +1189,7 @@ const _ARMOR_CLASS_DM = 3; /* C ARMOR_CLASS */
 const _AMULET_CLASS_DM = 5; /* C AMULET_CLASS */
 const SCROLL_CLASS_DM = 9; /* C SCROLL_CLASS */
 const POTION_CLASS_DM = 8; /* C POTION_CLASS */
-/* Minimal weapon otyp → base name (objects.h order) for the floor objects a pet
- * may pick up / step onto in the corpus.  DART=24 is the dart-trap missile. */
 const WEAPON_OTYP_NAMES = { 18: 'arrow', 24: 'dart', 474: 'rock' };
-/* Food-class OBJ_NAMEs (objects.h FOOD macro order) for floor food a pet may
- * fetch/drop.  FOOD_RATION=293 is the common starting ration. */
 const FOOD_OTYP_NAMES = { 293: 'food ration', 264: 'tripe ration' };
 
 /* is_flyer / is_floater — C mondata.h:19-20.  is_floater is mlet S_EYE/S_LIGHT. */
@@ -1598,23 +1214,6 @@ function locomotion_step(mtmp) {
     return 'steps'; /* vtense of "step" */
 }
 
-/* -----------------------------------------------------------------------
- * dog_nutrition — C ref: dogmove.c:155-215.  Fires NO RNG.
- *
- * Sets mtmp->meating (how many turns the pet is busy chewing) and returns the
- * nutrition credited to edog->hungrytime.  meating is NOT cosmetic: C's
- * m_move() (monmove.c:1743) returns MMOVE_DONE for an eating monster BEFORE the
- * `mtmp->mtame -> dog_move()` branch at monmove.c:1772, so every turn of meating
- * suppresses the pet's ENTIRE dog_move RNG block (dog_invent's dogfood scan,
- * dog_goal's fobj sweep + rn2(8)/rn2(4), and the mfndpos selection loop).
- * A meating that is too short therefore restarts the pet's RNG early and slides
- * the whole stream — seed0014 step 51, where a goblin corpse (cwt 400) gives
- * C meating = 3 + (400>>6) = 9 turns of silence and JS's hardcoded 3 gave 3.
- *
- * `mons[].cwt` is MONS_CWT above (already in this file, verified equal to the
- * generated eat_corpse_data.json cwt column); cnutrit and objects[].oc_delay /
- * oc_nutrition come from js/food_props.js.
- * ----------------------------------------------------------------------- */
 export function dog_nutrition(mtmp, obj) {
     let nutrit;
 
@@ -1656,41 +1255,12 @@ export function dog_nutrition(mtmp, obj) {
         nutrit = Math.trunc((obj.quan | 0) / 20);
         if (nutrit < 0) nutrit = 0;
     } else {
-        /* C:204-213 unusual pet eating odd stuff (e.g. gelatinous cube).
-         * NOTE C uses obj->owt (the instance weight) for meating here, but
-         * objects[otyp].oc_nutrition (the STATIC column) for nutrit — capture
-         * rec#16 pins the difference: owt 351 vs oc_nutrition 350.
-         *
-         * KNOWN GAP: js/food_props.js only carries the FOOD_CLASS oc_nutrition
-         * rows, so nutrit is 0 for every non-food class here.  This is what the
-         * dog_nutrition capture-replay sweep reports as 15/20 diverged (all 15
-         * are this branch; the 5 FOOD/COIN records pass exactly).  Closing it
-         * needs the full objects[] oc_nutrition column, which is per-class from
-         * the objects.h macros — WEAPON/ARMOR/TOOL/CONTAINER/WEPTOOL = oc_weight,
-         * RING 15, AMULET 20, POTION 10, SCROLL 6, SPBOOK 20, WAND 30, COIN 0 —
-         * EXCEPT GEM_CLASS (gems and rocks), whose GEM()/ROCK() rows each carry
-         * their own `nutr` literal and so need a real per-otyp table.
-         * Unreachable from the corpus today: JS calls dog_nutrition only from
-         * dog_eat, and no corpus session has a pet eat a non-food object. */
         mtmp.meating = Math.trunc((obj.owt | 0) / 20) + 1;
         nutrit = 5 * oc_nutrition(obj.otyp | 0);
     }
     return nutrit;
 }
 
-/* -----------------------------------------------------------------------
- * dog_eat — C ref: dogmove.c:218-342
- * The pet eats a floor object (typically a corpse).  Returns 1 (ate, counts
- * as the dog's move) or 2 (pet died — not modelled for the corpse path).
- *
- * RNG order (verified against seed0070 trace, kitten eats jackal corpse):
- *   1. dogfood(mtmp, obj)  [dogmove.c:319]      → obj_resists(0,95) → rn2(100)
- *   2. m_consume_obj → delobj → delobj_core      → obj_resists(0,0)  → rn2(100)
- *      [mon.c:1409 → invent.c:1446]
- * dog_nutrition (dogmove.c:233) fires NO rng for a corpse.
- * The "Your kitten eats a jackal corpse." pline fires BETWEEN the move-choice
- * and the two obj_resists (C order: pline at 293-294, then dogfood, then delobj).
- * ----------------------------------------------------------------------- */
 export async function dog_eat(mtmp, obj, x, y, devour) {
     const edog = (mtmp.mtame && mtmp.mextra?.edog) ? mtmp.mextra.edog : null;
     const moves = (game.moves ?? 0) | 0;
@@ -1724,18 +1294,6 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         newsym(mtmp.mx | 0, mtmp.my | 0);
     }
 
-    /* C dogmove.c:265-267 — "food items are eaten one at a time; entire stack
-     * for other stuff":
-     *     if (obj->quan > 1L && obj->oclass == FOOD_CLASS)
-     *         obj = splitobj(obj, 1L);
-     * splitobj -> nextoid -> next_ident() draws rnd(2) (mkobj.c:522), and the
-     * REMAINDER of the stack stays on the floor for the pet to come back to.
-     * This used to be a comment reading "(corpse quan==1 on the early path; no
-     * split, no RNG)", which was true only because nothing in this port ever
-     * produced a floor stack of quan>1 food: the throw path was not calling
-     * stackobj (js/cmd.js), so two thrown carrots stayed two stacks of one.
-     * With that fixed the pony's meal is a stack of 2 and C's rnd(2) is real —
-     * seed0004 leaf 11847. */
     if (((obj.quan ?? 1) | 0) > 1 && (obj.oclass | 0) === FOOD_CLASS)
         obj = (await splitobj(obj, 1));
 
@@ -1760,8 +1318,6 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
      *     obj_resists(obj,0,0) = rn2(100)               [SECOND post-pline rn2(100)] */
     const dfres = dogfood(mtmp, obj); /* obj_resists(0,95) — fires rn2(100) */
     if (dfres === DOGFOOD && obj.invlet) {
-        /* apport reward — invlet is unset for floor corpses; not reached here.
-         * Kept faithful for the dropped-food path. */
         if (edog) {
             const dropdist = (edog.dropdist | 0);
             const droptime = (edog.droptime | 0);
@@ -1779,17 +1335,6 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
     return ((mtmp.mhp | 0) <= 0) ? 2 : 1;
 }
 
-/* -----------------------------------------------------------------------
- * dog_invent — C ref: dogmove.c:396-494
- * Pet considers dropping/eating/picking up items at its current location.
- * Returns 0 (nothing special), 1 (ate something), 2 (died).
- *
- * RNG calls (in C order):
- *  1. If droppables: rn2(udist+1), maybe rn2(apport), maybe rn2(10)
- *  2. Else if floor obj at pet's loc:
- *     - dogfood(obj) → obj_resists → rn2(100)
- *     - If not edible and can_carry: rn2(20), maybe rn2(udist), maybe rn2(apport)
- * ----------------------------------------------------------------------- */
 async function dog_invent(mtmp, edog, udist) {
     /* C dogmove.c:410 — helpless(mtmp) || mtmp->meating → return 0 early.
      * helpless(mon) is monst.h:251 "(mon)->msleeping || !(mon)->mcanmove";
@@ -1813,7 +1358,7 @@ async function dog_invent(mtmp, edog, udist) {
         if (!rn2(udist + 1) || !rn2(edog.apport)) {
             /* C: if (rn2(10) < edog->apport) { relobj(...); apport--; ... } */
             if (rn2(10) < (edog.apport | 0)) {
-                await relobj_dm(mtmp); /* drop droppable item(s) to the floor */
+                await relobj_dm(mtmp);
                 if ((edog.apport | 0) > 1)
                     edog.apport = (edog.apport | 0) - 1;
                 edog.dropdist = udist;
@@ -1839,29 +1384,12 @@ async function dog_invent(mtmp, edog, udist) {
     /* C: dogfood(mtmp, obj) — fires obj_resists → rn2(100) */
     const edible = dogfood(mtmp, floorObj);
 
-    /* C dogmove.c:437-441 —
-     *     if ((edible <= CADAVER
-     *          || (edog->mhpmax_penalty && edible == ACCFOOD))
-     *         && could_reach_item(mtmp, obj->ox, obj->oy))
-     *         return dog_eat(mtmp, obj, omx, omy, FALSE);
-     * The call used to be a comment ("dog_eat: complex — stub as 'ate
-     * something' = return 1") whose second line, "No further RNG from dog_eat
-     * in the common path", is false: dog_eat splits a food stack of quan>1
-     * (rnd(2) via next_ident), calls dogfood() again for the apport reward and
-     * delobj() to consume the item — two more rn2(100)s — AND it is what
-     * actually REMOVES the food from the floor.  Returning 1 without eating
-     * left the meal lying there forever, so the pet re-found it every turn.
-     * The could_reach_item conjunct was missing too; it reads the OBJECT's own
-     * square, which on this path is the pet's own square. */
     const starving = (edog.mhpmax_penalty | 0) > 0;
     if ((edible <= CADAVER || (starving && edible === ACCFOOD))
         && could_reach_item(mtmp, floorObj.ox | 0, floorObj.oy | 0)) {
         return await dog_eat(mtmp, floorObj, omx, omy, false);
     }
 
-    /* C dogmove.c:443: carryamt = can_carry(mtmp, obj);
-     * RNG-free; gates whether the rn2(20) pickup roll fires.  A heavy item
-     * the pet cannot carry yields carryamt=0 → no RNG consumed. */
     const carryamt = can_carry(mtmp, floorObj);
     /* C: && could_reach_item(mtmp, obj->ox, obj->oy) */
     if (carryamt > 0 && !floorObj.cursed
@@ -1870,14 +1398,6 @@ async function dog_invent(mtmp, edog, udist) {
         if (rn2(20) < (edog.apport | 0) + 3) {
             /* C: if (rn2(udist) || !rn2(edog->apport)) */
             if (rn2(udist) || !rn2(edog.apport)) {
-                /* C dogmove.c:448-450:
-                 *   otmp = obj;
-                 *   if (carryamt != obj->quan)
-                 *       otmp = splitobj(obj, carryamt);
-                 * When the pet can carry only PART of a floor stack
-                 * (carryamt < quan), C splits a fresh stack off the floor pile.
-                 * splitobj() -> nextoid() -> next_ident() fires rnd(2)
-                 * (mkobj.c:522) — the diverging leaf in seed0016/seed0060. */
                 let otmp = floorObj;
                 if (carryamt !== ((floorObj.quan ?? 1) | 0))
                     otmp = splitobj_dm(floorObj, carryamt);
@@ -1901,9 +1421,6 @@ async function dog_invent(mtmp, edog, udist) {
     return 0;
 }
 
-/* add_to_minv_dm — C mkobj.c:2652 add_to_minv: merge into the monster's minvent
- * if a mergable stack exists, else prepend.  The dog's minvent is empty in the
- * corpus pickup, so this prepends; merged() is not reached. */
 function add_to_minv_dm(mon, obj) {
     obj.where = OBJ_MINVENT;
     obj.ocarry = mon;
@@ -1911,29 +1428,6 @@ function add_to_minv_dm(mon, obj) {
     mon.minvent = obj;
 }
 
-/* splitobj_dm — C mkobj.c:457-503 splitobj(obj, num) for a floor stack.
- * Splits `num` items off `obj` into a fresh object `otmp`, returns `otmp`.
- * RNG: otmp->o_id = nextoid(obj, otmp) (mkobj.c:470).  nextoid (mkobj.c:536)
- * walks oid_price_adjustment() (RNG-free) then calls (void) next_ident()
- * (mkobj.c:550) — the SINGLE rnd(2) at mkobj.c:522 this path consumes.
- * `obj` keeps quan-num and stays on the floor (where==OBJ_FLOOR); otmp is the
- * portion the pet carries.
- *
- * The o_id used to be derived here as a bare `oid = context.ident`, on the
- * recorded reasoning that "for an ordinary pet-path item there is no
- * price-adjustment difference, so nextoid's loop exits after one ++oid".  That
- * is a statement about the ITEM and the loop's variable is the OID: for
- * anything not both dknown and oc_name_known — every unidentified floor stack a
- * pet picks part of — shk.c:2869 makes the adjustment `(oid % 4) == 0`, so
- * olddif is a property of the PARENT's o_id and newdif of the CANDIDATE's, and
- * they disagree often enough that the loop really does iterate: MEASURED over
- * all 688 corpus-generated/v5/train sessions, this site is entered 58 times and
- * 10 of those runs take more than one iteration (3 take 2, 2 take 3, 5 take 4).
- * When it iterates, context.ident SKIPS FORWARD without drawing, and every later
- * m_id/o_id in the game is low — the RNG-free divergence class 686193c5 fixed
- * on the throw path (a wrong shopkeeper name out of nameshk's m_id index).
- * Use the one faithful body (js/makemon.js nextoid) instead of a fourth
- * hand-derivation. */
 function splitobj_dm(obj, num) {
     /* otmp = newobj(); *otmp = *obj; — copy the whole structure. */
     const otmp = newobj(obj);
@@ -1949,9 +1443,6 @@ function splitobj_dm(obj, num) {
      * is weight-only, RNG-free and unobserved on this path). */
     obj.quan = (((obj.quan ?? 1) | 0) - num) | 0;
     otmp.quan = num | 0;
-    /* C mkobj.c:481-489: objsplit context + insert otmp into the floor chain
-     * after obj (obj -> otmp -> next).  obj stays OBJ_FLOOR; otmp is OBJ_FLOOR
-     * until the caller obj_extract_self()s it before pickup. */
     otmp.where = OBJ_FLOOR;
     otmp.nobj = obj.nobj ?? null;
     obj.nobj = otmp;
@@ -1960,28 +1451,7 @@ function splitobj_dm(obj, num) {
     return otmp;
 }
 
-/* -----------------------------------------------------------------------
- * dog_goal — C ref: dogmove.c:498-695
- * Sets gg.gx/gg.gy/gg.gtyp goal for pet.
- * Returns -1/0/1 (dog's desire to approach player) or -2 (abort move).
- *
- * RNG calls (in C order):
- *  1. For each floor object in SQSRCHRADIUS:
- *     dogfood(obj) → obj_resists → rn2(100) per object
- *     If otyp >= MANFOOD and conditions met: rn2(8)
- *  2. If gtyp==UNDEF (no food found) and in_masters_sight:
- *     (already handled above in the loop)
- *  3. appr = 1 if gtyp is food; else 0/1 based on distance
- *  4. If IS_ROOM(levl[u.ux][u.uy].typ): maybe rn2(4) (short-circuits if !IS_ROOM)
- *     If dog_has_minvent: rn2(edog.apport)
- * ----------------------------------------------------------------------- */
 function dog_goal(mtmp, edog, after, udist, whappr) {
-    /* C dogmove.c:494-496 — "Steeds don't move on their own will".  Read
-     * `game.u.usteed`: `game.usteed` has no writer, so the guard never fired and
-     * the mounted pony kept picking goals, walking off the hero's square and
-     * attacking whatever it reached (seed0104 step 12: "The saddled pony hits
-     * the lichen.  The lichen is killed!" over C's blank topline, with the `u`
-     * left behind two squares west of the rider). */
     if (mtmp === game.u?.usteed)
         return -2;
 
@@ -2006,7 +1476,6 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
         gg.gx = (game.u?.ux | 0);
         gg.gy = (game.u?.uy | 0);
     } else {
-        /* C: scan floor objects in SQSRCHRADIUS x SQSRCHRADIUS area */
         let min_x = Math.max(1, omx - SQSRCHRADIUS);
         let max_x = Math.min(COLNO - 1, omx + SQSRCHRADIUS);
         let min_y = Math.max(0, omy - SQSRCHRADIUS);
@@ -2016,7 +1485,6 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
         gg.gx = 0;
         gg.gy = 0;
 
-        /* C: for (obj = fobj; obj; obj = obj->nobj) — iterate ALL floor objects */
         for (let obj = game.fobj; obj; obj = obj.nobj) {
             const nx = obj.ox | 0;
             const ny = obj.oy | 0;
@@ -2065,14 +1533,6 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
                 /* m_cansee(mtmp, nx, ny) = clear_path(mtmp->mx, mtmp->my, nx, ny) */
                 const canSee  = (otyp === MANFOOD) || !!(clear_path(omx, omy, nx, ny));
                 if (litOk && canSee) {
-                    /* C dogmove.c:589-593:
-                     *   int aproll = rn2(8);
-                     *   int carry_res = (edog->apport > aproll) ? can_carry(mtmp, obj) : 0;
-                     *   int sel = (edog->apport > aproll && carry_res > 0);
-                     * can_carry is RNG-free here; it gates which apport target is
-                     * selected (the weight gate rejects items heavier than the
-                     * pet can carry).  Short-circuit: only evaluate can_carry when
-                     * apport > aproll, matching C's conditional. */
                     const aproll = rn2(8);
                     const carry_res = ((edog.apport | 0) > aproll) ? can_carry(mtmp, obj) : 0;
                     const sel = ((edog.apport | 0) > aproll && carry_res > 0);
@@ -2212,9 +1672,6 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
         edog.ogoal.x = 0;
     }
 
-    /* C dogmove.c:691 — structural ground-truth marker (event_log).  Mirrors
-     * the recorded C `^dog_goal_end[...]` so the oracle can assert JS goal ==
-     * C goal per pet per turn BEFORE the RNG sequence is compared. */
     pushRngLogEntry(`^dog_goal_end[M${mtmp.m_id >>> 0} goal=${gg.gx},${gg.gy} gtyp=${gg.gtyp} appr=${appr}]`);
 
     return appr;
@@ -2256,38 +1713,6 @@ const BOULDER_OTYP   = 475;
 const M1_SWIM_DM = 0x00000002;
 const PM_FIRE_ELEMENTAL_DM = 155, PM_SALAMANDER_DM = 329;
 
-/* -----------------------------------------------------------------------
- * could_reach_item — C ref: dogmove.c:1423-1430
- *   if ((!is_pool(nx, ny)   || is_swimmer(mon->data))
- *       && (!is_lava(nx, ny)   || likes_lava(mon->data))
- *       && (!sobj_at(BOULDER, nx, ny) || throws_rocks(mon->data)))
- *       return TRUE;
- * C: is_pool(x,y) = typ==POOL||MOAT||WATER or is_moat(); is_lava=LAVAPOOL/WALL
- *
- * The three monster-capability tests used to be hardcoded FALSE, with the note
- * "stubs = false for dog/cat/kitten".  That was true of this function's FIRST
- * caller (dog_move) and false of its others: js/monmove.js:1309 calls it for
- * EVERY hostile monster inside m_search_items, and js/monmove.js:2731 for the
- * monster's own square.  So any swimmer looking for an item in water was told
- * it could not reach it.
- *
- * seed4500 turn 139, water nymph m_id=1963 at (44,14) (M1_SWIM, monsters.h
- * mflags1 0x2020002): C's m_search_items redirects her goal to the kelp frond
- * at (44,16) — distmin 2, in the water — and she steps to (44,15).  This port
- * skipped both in-water kelp fronds in range and redirected to a piece of amber
- * at (48,11), distmin 4, so she stepped to (45,13) instead.  Wrong square,
- * BIT-IDENTICAL RNG stream (m_move's selection loop draws nothing when
- * appr != 0, monmove.c:1969) — the shape tools/monster-position-diff.mjs exists
- * to see.  Three steps later that mfndpos count is 8 where C's is 7 and the
- * leaf stream finally parts at rn2(4*(cnt-j)) (monmove.c:1963), seed4500's
- * first RNG divergence at leaf 83695.
- *
- * The TERRAIN test stays as it was (typ 16..19 for is_pool, 20/21 for is_lava):
- * C's is_pool adds is_moat() for a DRAWBRIDGE_UP whose drawbridgemask says
- * DB_MOAT, and is_lava the DB_LAVA twin, and this port does not model
- * drawbridgemask.  That approximation is pre-existing and unmeasured; the
- * capability stubs are what the corpus caught.
- * ----------------------------------------------------------------------- */
 export function could_reach_item(mtmp, nx, ny) {
     const locs = game.level?.locations;
     const typ = (locs?.[nx]?.[ny]?.typ ?? 0) | 0;
@@ -2307,15 +1732,6 @@ export function could_reach_item(mtmp, nx, ny) {
         /* C mondata.h:190 likes_lava(ptr) — fire elemental / salamander only */
         && _mndx !== PM_FIRE_ELEMENTAL_DM && _mndx !== PM_SALAMANDER_DM)
         return false;
-    /* sobj_at(BOULDER, nx, ny): check if any object at (nx,ny) is a boulder.
-     * C ref: dogmove.c:1428 — (!sobj_at(BOULDER,nx,ny) || throws_rocks(mon->data))
-     * C sobj_at walks svl.level.objects[nx][ny] nexthere chain.
-     * JS mirror: game.level.levelObjects[nx][ny] (x-first, matching GameMap init in
-     * game.js where levelObjects[x][y] is set). The old code used objmap[ny][nx]
-     * which does not exist in game state — the boulder check was never firing,
-     * causing could_reach_item to return true for boulder squares and triggering
-     * a spurious dogfood() → obj_resists() → rn2(100) call in dog_move for those
-     * squares (seed2500 leaf 3641 divergence). */
     const firstObj = game.level?.levelObjects?.[nx]?.[ny];
     if (firstObj) {
         for (let o = firstObj; o; o = o.nexthere) {
@@ -2389,13 +1805,6 @@ function distu(x, y) {
     return dist2(x | 0, y | 0, u.ux | 0, u.uy | 0);
 }
 
-/* C ref: monmove.c:1322-1334 m_avoid_kicked_loc(mtmp, nx, ny).
- * A peaceful/tame, seeing, unconfused/unstunned monster avoids (skips as a
- * movement candidate) the square the hero just kicked (gk.kickedloc), provided
- * the square is next2u (distu <= 2). RNG-free. Conflict is unmodeled in the
- * port (no Conflict source exists in any current session), so !Conflict is
- * always true here — faithful for the scored corpus. isok(0,0) is false
- * (x>=1 fails), so the default/cleared kickedloc=(0,0) makes this inert. */
 function m_avoid_kicked_loc(mtmp, nx, ny) {
     const kl = game.kickedloc;
     if (!kl) return false;
@@ -2506,7 +1915,6 @@ function find_friends(mtmp, mtarg, maxdist) {
  * ----------------------------------------------------------------------- */
 function score_targ(mtmp, mtarg) {
     let score = 0;
-    /* C: if (!mconf || !rn2(3) || Is_qstart) — gate for non-confused path */
     if (!(mtmp.mconf | 0) || !rn2(3)) {
         /* C: multiple early returns (score -= 3000 or -5000) before rnd(5).
          * Order follows C dogmove.c:748-806 exactly; the pseudo-youmonst target
@@ -2710,9 +2118,6 @@ async function pet_ranged_attk(mtmp, forced) {
                 if (mstatus !== M_ATTK_MISS) return MMOVE_DONE;
             }
         } else {
-            /* C: mstatus != M_ATTK_MISS (pet made a ranged attack) → lose move.
-             * Also the calibrated flag-off path (byte-frozen). WIRE_PENDING:
-             * full ranged-attack port (mattackm) needed for pet combat sessions. */
             return MMOVE_DONE;
         }
     } else if (forced) {
@@ -2739,17 +2144,10 @@ const T_ARROW=1, T_DART=2, T_ROCK=3, T_SQKY=4, T_BEAR=5, T_LANDMINE=6,
 const M1_FLY_DM = 0x00000001, M1_AMORPHOUS_DM = 0x00000004, M1_UNSOLID_DM = 0x00100000;
 const PM_IRON_GOLEM_DM = 259; /* monsters.h MON(... IRON_GOLEM); was 277 = PM_SOLDIER */
 
-/* C ref: trap.c:1063 floor_trigger — local copy (trap.js doesn't export it). */
 function floor_trigger_dm(ttyp) {
     return ttyp >= T_ARROW && ttyp <= T_TRAPDOOR; /* 1..14 */
 }
 
-/* C ref: trap.c:1108 m_harmless_trap(mtmp, ttmp) — TRUE if the trap won't hurt
- * this monster (so the pet needn't avoid it; it's not marked in info[]).
- * Faithful port for the pet-AI path.  Intrinsic resistances come from the
- * permonst mresists column; equipment-granted resistance is intentionally not
- * reconstructed here yet.
- * The canary's TELEP_TRAP returns FALSE (break -> not harmless). */
 export function m_harmless_trap(mtmp, ttmp) {
     const ttyp = ttmp.ttyp | 0;
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
@@ -2767,8 +2165,6 @@ export function m_harmless_trap(mtmp, ttmp) {
         | (mtmp.mextrinsics | 0) | (mtmp.mintrinsics | 0));
     const resistsSleep = (resistanceBits & 0x04) !== 0;
     const resistsFire = (resistanceBits & 0x01) !== 0;
-    /* C: if (!Sokoban && floor_trigger(ttyp) && check_in_air(mtmp,0)) return TRUE
-     * check_in_air(mon) = is_floater || is_flyer  (M1_FLY covers float+fly). */
     if (floor_trigger_dm(ttyp) && isFlyer)
         return true;
     switch (ttyp) {
@@ -2814,8 +2210,6 @@ function fixed_tele_trap_dm(ttmp) {
     return tx > 0 && tx < COLNO && ty >= 0 && ty < ROWNO;
 }
 
-/* C ref: mon.c:2335-2358 — set ALLOW_TRAPS bit for a candidate trap square.
- * Pets always pass ALLOW_TRAPS in flag, so mon_knows_traps gate is skipped. */
 function trapInfoBit(mtmp, nx, ny, flag) {
     const ttmp = t_at(nx, ny);
     if (!ttmp) return 0;
@@ -2825,16 +2219,12 @@ function trapInfoBit(mtmp, nx, ny, flag) {
         return ALLOW_TRAPS;
     if (!m_harmless_trap(mtmp, ttmp)) {
         if (!(flag & ALLOW_TRAPS)) {
-            /* mon_knows_traps gate — pets have ALLOW_TRAPS so never reached here */
         }
         return ALLOW_TRAPS;
     }
     return 0;
 }
 
-/* C ref: rm.h IS_DOOR(typ)=(typ==DOOR); D_BROKEN=0x01.
- * Door-diagonal gate: a closed/open/locked door (anything but a doorless
- * D_NODOOR opening or a fully D_BROKEN door) blocks diagonal passage. */
 function door_blocks_diag(loc) {
     if (!loc || (loc.typ | 0) !== DOOR_TYP) return false;
     const dm = (loc.doormask ?? loc.flags ?? 0) | 0;
@@ -3029,7 +2419,6 @@ function passivemm_rng(magr, mdef, mhitb, mdead) {
         return mdead | mhit;
     }
 
-    /* C mhitm.c:1363 — rn2(3) gate on the live-defender passive effect. */
     if (rn2(3)) {
         switch (slot.adtyp) {
             case _AD_PLYS: /* floating eye / gelatinous cube */
@@ -3073,16 +2462,6 @@ const NEED_WEAPON$ = 1;
 const NEED_HTH_WEAPON$ = 3;
 const NO_TRAP_FLAGS$ = 0;
 
-/* C ref: mhitm.c:105-171 fightm(struct monst *mtmp) — "have monsters fight
- * each other".  Called from movemon_singlemon (mon.c:1305-1318) for every
- * monster the CONFLICTED hero can see, and its FIRST statement draws
- * rnd(20) via resist_conflict(); a monster that resists is left to its
- * ordinary dochug.  Lives here rather than in js/mhitm.js because mattackm
- * (also mhitm.c) is defined in this file.
- *
- * seed0004-feeding-pony: the hero puts on an unidentified ring of conflict at
- * step 283 and from that turn on C draws one rnd(20) per adjacent-and-visible
- * monster, per turn, that this port drew none of. */
 export async function fightm(mtmp) {
     const g = game;
     const u = g.u;
@@ -3090,10 +2469,6 @@ export async function fightm(mtmp) {
     if (resist_conflict(mtmp))
         return 0;
     if (u && u.ustuck === mtmp) {
-        /* C mhitm.c:114-118 itsstuck(mtmp) := sticks(gy.youmonst.data)
-         * && mtmp == u.ustuck && !u.uswallow.  sticks() has no JS counterpart
-         * (the corpus hero is never a sticky polymorph form) — the same
-         * documented carve-out js/monmove.js:2043 already carries.  RNG-free. */
     }
     const has_u_swallowed = engulfing_u_const(mtmp);
     let nmon;
@@ -3179,17 +2554,6 @@ export async function mattackm(magr, mdef) {
         mdef.msleeping = 0;
     }
 
-    /* C mhitm.c:327-351 — mundetected monsters become un-hidden if attacked.
-     * Every arm below is RNG-FREE in C (pure newsym/pline work), so no gap in
-     * here can shift the RNG stream in either direction.
-     * KNOWN GAP (message text only): C reaches this through You()/pline_mon()/
-     * Monnam()/mon_nam()/makeplural(), none of which is bound in this module —
-     * calling them would have thrown a ReferenceError the first time a hidden
-     * defender was attacked, i.e. total session failure.  They are spelled here
-     * with this file's local Monnam_dm/mon_nam_dm (identical output for the
-     * ordinary monster case) and with noname_monnam/a_monnam, which remain
-     * placeholder stubs, so the "dream of"/"Suddenly, you notice" wording can
-     * still differ from C on the rare Unaware / never-before-seen paths. */
     if (mdef.mundetected) {
         mdef.mundetected = 0;
         newsym(mdef.mx, mdef.my);
@@ -3509,9 +2873,6 @@ function engulfing_u_dm(magr) {
     return engulfing_u_const(magr);
 }
 
-/* C mondata.h:mon_offmap(mon) == (mon->mstate != MON_FLOOR). MON_FLOOR is 0,
- * so any nonzero mstate (MON_DETACH et al., set on death/migration) means
- * off-map. */
 function mon_offmap_dm(mdef) {
     if (!mdef) return true;
     return (mdef.mstate | 0) !== 0;
@@ -3554,8 +2915,6 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     const dy = sgn_dm(defy - (magr.my | 0));
     if (!isok(defx + dx, defy + dy))
         return false;
-    /* C:5303-5306 door-diagonal check skipped — no is_door lane in this
-     * port's scope; equivalent to always-doorless for the captured records. */
 
     if (DEADMONSTER_dm(magr) || DEADMONSTER_dm(mdef))
         return false;
@@ -3566,8 +2925,6 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
      * already happened above). */
     if (!(((magr.data?.msize | 0) > (mdef.data?.msize | 0) + 1)))
         return false;
-    /* C:5330 flimsy/blunt-weapon gate skipped — mwep material/type not
-     * modeled in this port's scope. */
     if (unsolid_dm(magr.data))
         return false;
     /* C:5343 m_is_steadfast(mdef) skipped — not modeled. */
@@ -3606,29 +2963,6 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
  * only; the gas-spore/lich/Vlad/golem/mplayer/rider/shopkeeper special cases
  * in corpse_chance and make_corpse are not modeled here). */
 async function monkilled_dm(mdef, mattk) {
-    /* C mon.c:3382-3391 monkilled(mdef, "", how):
-     *     if (fltxt && (mdef->wormno ? worm_known(mdef)
-     *                                : cansee(mdef->mx, mdef->my)))
-     *         pline_mon(mdef, "%s is %s%s%s!", Monnam(mdef),
-     *                   nonliving(mptr) ? "destroyed" : "killed",
-     *                   *fltxt ? " by the " : "", fltxt);
-     *     else
-     *         iflags.sad_feeling = mdef->mtame ? TRUE : FALSE;
-     * The mhitm.c:1088 callsite passes fltxt="" — a non-null empty string, so
-     * `fltxt` is TRUE and `*fltxt` is '\0': the guard reduces to cansee() and the
-     * " by the <fltxt>" suffix is empty.  This message was previously emitted
-     * UNCONDITIONALLY, so a monster killed out of the hero's sight announced its
-     * own death: seed0030 segment 5 step 37 printed "You hear some noises in the
-     * distance.  It is killed!" where C prints only the noises line ("It" being
-     * Monnam of a monster the hero cannot see is itself the tell).
-     * wormno/worm_known: long worms are not modeled in this file's scope, and a
-     * pet-melee kill of a worm segment is not exercised by the corpus; the
-     * cansee() arm is C's behaviour for every non-worm mdef.
-     * DISPLAY-ONLY and RNG-free — the pline is the only thing gated; every
-     * death-bookkeeping step below still runs either way.
-     * The else arm's iflags.sad_feeling is a DEFERRED signal in this port (the
-     * "you have a peculiarly sad feeling" delivery reads mklev.js's file-local
-     * iflags); trap.js's monkilled_trap twin already carries the same note. */
     if (cansee(mdef.mx | 0, mdef.my | 0)) {
         const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
         pline(`${Monnam_dm(mdef)} is ${verb}!`);
@@ -3662,46 +2996,10 @@ export async function mondied_dm(mdef) {
             `lit=${cell?.lit ? 1 : 0},waslit=${cell?.waslit ? 1 : 0},minvent=${mdef.minvent ? 1 : 0}]`);
     }
     {
-        /* C mon.c:2702-2703 — the first two statements of mon_leaving_level(),
-         * which m_detach() calls and which this inlined fmon unlink stands in
-         * for:
-         *     mon->mtrapped = 0;
-         *     unstuck(mon);
-         * unstuck() draws rnd(2) (mon.c:3465) when the hero was stuck to THIS
-         * monster, and nothing else in C's mondead->m_detach chain draws before
-         * mondied's corpse_chance, so this is the position.
-         * Measured on the UNSEEN corpus session gen000-reseed-seed5472 step 141:
-         * the kitten kills the lichen the hero is stuck to, and C draws
-         *   rnd(2)=2 @ unstuck(mon.c:3465)
-         *   rn2(2)=1 @ corpse_chance(mon.c:3248)   <- this port already drew this
-         * so the whole gap read as ONE missing leaf sitting in front of a leaf we
-         * had right.  Unreachable until js/mhitu.js's AD_STCK arm gave u.ustuck a
-         * writer on the monster-combat path. */
         mdef.mtrapped = 0;
         await unstuck_dm(mdef);
-        /* KEYSTONE-A: the fmon unlink is DEFERRED to C's dmonsfree purge, not
-         * spliced here.  C mon.c:3174 mondied -> m_detach leaves the node
-         * LINKED (mon.c:2796 sets MON_DETACH, below) until dmonsfree() reaps it
-         * at the movemon-end purge (mon.c:1340) — now run every turn by
-         * js/fastforward.js.  mondied_dm runs INSIDE movemon (a pet dying on its
-         * own move), so that purge lands the same turn.  This is the exact wave-12
-         * change that regressed 11,391->10,759 WITHOUT the purge + guards; with
-         * fmon-walk-census H1=0 and the per-turn dmonsfree in place it is
-         * floor-safe.  mhp=0 + MON_DETACH (set below) leave the node in C's post-
-         * m_detach state; mx/my are intentionally left at the death square (C
-         * mon.c:2700 does the same). */
     }
     mdef.mhp = 0;
-    /* C mon.c:3134-3136 mondead():
-     *     if (svm.mvitals[mndx].died < 255)
-     *         svm.mvitals[mndx].died++;
-     * RNG-free.  mvitals.died is what insight.c:2799 list_vanquished() counts,
-     * and it counts EVERY death, not just the hero's — seed0106's little dog
-     * kills a lichen at step 34 and C's #vanquished window at step 213 lists it
-     * alongside the kobold the hero killed ("2 creatures vanquished.").  Without
-     * this the window read "No creatures have been vanquished."
-     * js/trap.js monkilled_trap and js/uhitm.js xkilled carry the same line;
-     * this is the mon-vs-mon twin. */
     {
         const g = game;
         const mndx_dead = (mdef.mndx ?? mdef.mnum ?? -1) | 0;
@@ -3710,37 +3008,14 @@ export async function mondied_dm(mdef) {
             if ((mv.died | 0) < 255) mv.died = (mv.died | 0) + 1;
         }
     }
-    /* C mon.c:3170-3171 mondead(), the two lines immediately before m_detach:
-     *     if (glyph_is_invisible(levl[mtmp->mx][mtmp->my].glyph))
-     *         unmap_object(mtmp->mx, mtmp->my);
-     * They were missing.  hitmm() (mhitm.c:68, this file's mattackm_dm) calls
-     * map_invisible() on a defender the hero cannot spot, so a pet killing an
-     * unseen monster FIRST wrote the 'I' marker onto the square and then never
-     * took it off — m_detach's newsym below repaints the square, sees the
-     * remembered 'I' still standing, and leaves it.  MEASURED on seed0006 step
-     * 77: the kitten kills a kobold zombie the hero cannot see at (63,8) and
-     * this port painted 'I' where C paints the remembered corridor '#' — one
-     * cell, and the head of a 46-frame miss run.
-     * Deliberately NOT unmap_invisible(): that helper is C's display.c:388
-     * wrapper, which also fires its own newsym.  mondead does the bare pair and
-     * lets m_detach's newsym (immediately below) do the repaint. */
     if (glyph_is_invisible_at(deadMx, deadMy)) unmap_object(deadMx, deadMy);
 
     /* C mon.c:2700 leaves mx/my untouched on death (the zeroing is #if 0'd
      * out in C itself — "too many places assume that the stale monst->mx,my
      * values are still valid"). Off-map status is carried by mstate alone. */
     mdef.mstate = (mdef.mstate | 0) | MON_DETACH;
-    /* C m_detach repaints immediately; a pending --More-- does not suppress
-     * this map update.  Deferring it left the dead pet's glyph on the square
-     * for the kill-message frame (gen136, one cell; RNG/topline already exact). */
     newsym(deadMx, deadMy);
 
-    /* C mon.c:3174 mondead() -> m_detach(mtmp, mptr, TRUE) -> steal.c:892
-     * relobj(mtmp, 1, FALSE): the dead monster's whole pack falls on its
-     * square.  m_detach's own newsym (mon_leaving_level, mon.c:2725) is the one
-     * above — it paints bare floor because the drop has not happened yet — and
-     * relobj's trailing newsym is what puts the ')' on the map.  Both are inside
-     * mondead(), so both precede mondied()'s corpse_chance roll below. */
     relobj_dead_dm(mdef);
 
     /* C mon.c:3234 corpse_chance (default/common case):
@@ -3754,38 +3029,6 @@ export async function mondied_dm(mdef) {
         ? (_MONS[mndx_def][3] | 0) : 0;
     const tmp_cc = 2 + (((geno_def & G_FREQ) < 2) ? 1 : 0)
         + ((msize_def < MZ_SMALL) ? 1 : 0);
-    /* C mon.c:3260-3262 mondied():
-     *     if (corpse_chance(mdef, (struct monst *) 0, FALSE)
-     *         && (accessible(mdef->mx, mdef->my) || is_pool(mdef->mx, mdef->my)))
-     *         (void) make_corpse(mdef, CORPSTAT_NONE);
-     * The second conjunct was absent here, so a monster that died on a square
-     * C refuses to drop a corpse on still got one.  It is not a cosmetic guard:
-     * make_corpse -> mkcorpstat -> mksobj -> next_ident() draws rnd(2)
-     * (mkobj.c:521), so the missing guard INSERTS a leaf and everything after
-     * it is cascade.  Measured on seed0030 segment 1, leaf 3768: C draws
-     * `rnd(1) @grow_up(makemon.c:2095)` immediately after
-     * `rn2(3)=0 @corpse_chance(mon.c:3248)`; JS drew `rnd(2) @next_ident` and
-     * never reached grow_up at all.  On the screen that is the extra '%' at
-     * (row 4, col 51) where C paints '.' -- the head of a 69-frame miss run. */
-    /* C mon.c:3260-3262 mondied():
-     *     if (corpse_chance(mdef, (struct monst *) 0, FALSE)
-     *         && (accessible(mdef->mx, mdef->my) || is_pool(mdef->mx, mdef->my)))
-     *         (void) make_corpse(mdef, CORPSTAT_NONE);
-     * The accessible/is_pool conjunct is not cosmetic: make_corpse ->
-     * mkcorpstat -> mksobj -> next_ident() draws rnd(2) (mkobj.c:521), so
-     * skipping it INSERTS a leaf and everything after is cascade.
-     *
-     * make_corpse itself is js/mklev.js's — NOT a local re-derivation.  This
-     * site used to inline "G_NOCORPSE ? nothing : mkcorpstat(CORPSE, ...)",
-     * which is only C's default_1 arm, and C's own comment above that arm is
-     * "All special cases should precede the G_NOCORPSE check".  Every mummy and
-     * zombie carries G_NOCORPSE yet still leaves the corpse of its BASE
-     * creature (mon.c:629-649), and the shared body has had that arm since
-     * seed0030 — this copy had not, so a pet kill of one drew nothing where C
-     * drew next_ident + the whole mksobj(CORPSE) block.  MEASURED on seed0006
-     * step 77, C leaf 3197: the kitten kills a kobold zombie, C draws
-     * `rnd(2) @next_ident` and this port went straight to
-     * `rnd(1) @grow_up(makemon.c:2095)`. */
     if (!rn2(tmp_cc) && (accessible(deadMx, deadMy) || is_pool(deadMx, deadMy)))
         await make_corpse(mdef, deadMx, deadMy, CORPSTAT_NONE);
 }
@@ -3866,20 +3109,6 @@ function getmattk(magr, mdef, i, res, alt_attk) {
 }
 function gulpmm(magr, mdef, mattk) { return M_ATTK_HIT; }
 
-/* C mhitm.c:41-71 pre_mm_attack(magr, mdef) — run at the top of BOTH hitmm()
- * and missmm() before the message.  Unhides/unmimics either party, then for a
- * visible fight places the 'I' glyph over anything the hero cannot spot:
- *   if (gv.vis) {
- *     if (!canspotmon(magr)) map_invisible(magr->mx, magr->my);
- *     else if (showit) newsym(magr->mx, magr->my);
- *     ... same for mdef ...
- *   }
- * RNG-free.  KNOWN GAP, NARROWED 2026-09-11: seemimic() IS now available in
- * this file (imported from js/mhitm.js — the file-local no-op stub that used
- * to shadow it is gone), but C's shape here is `if (M_AP_TYPE(x)) seemimic(x);
- * else if (x->mundetected) ...` (mhitm.c:47-59) and only the mundetected arm
- * is modeled below.  The mimic arm of THIS function is still unported; C draws
- * no RNG on either branch, so it cannot move the RNG stream. */
 function pre_mm_attack_dm(magr, mdef) {
     let showit = false;
     const vis = !!(game.v?.vis);
@@ -3892,27 +3121,6 @@ function pre_mm_attack_dm(magr, mdef) {
     else if (showit) newsym(mdef.mx | 0, mdef.my | 0);
 }
 
-/* C mhitm.c:26-38 noises(magr, mattk) — the OUT-OF-SIGHT arm of every
- * monster-vs-monster attack message.  When gv.vis is false, C does not stay
- * silent: it tells the hero it heard something.
- *
- *   boolean farq = (mdistu(magr) > 15);
- *   if (!Deaf && (farq != gf.far_noise || svm.moves - gn.noisetime > 10)) {
- *       gf.far_noise = farq;
- *       gn.noisetime = svm.moves;
- *       You_hear("%s%s.", (mattk->aatyp == AT_EXPL) ? "an explosion"
- *                                                   : "some noises",
- *                farq ? " in the distance" : "");
- *   }
- *
- * RNG-free.  Deaf has no canonical ported predicate (same WIRE_PENDING note as
- * dosounds' top guard in js/fastforward.js) and is FALSE here.  gf.far_noise
- * and gn.noisetime are C zero-init globals; the port keeps them on `game` so
- * the "don't repeat within 10 moves at the same range band" throttle is
- * preserved — without it the message would fire on every unseen blow.
- * mdistu(mon) = distu(mon->mx, mon->my) = dist2 to the hero (hack.h:1532).
- * This was seed0030 segment 1's first screen miss (step 47: C
- * "You hear some noises in the distance.", JS a blank topline). */
 function noises_dm(magr, mattk) {
     const u = game.u;
     if (!u) return;
@@ -3934,13 +3142,6 @@ function noises_dm(magr, mattk) {
     }
 }
 
-/* C mhitm.c:644-731 hitmm — pre_mm_attack, then (gv.vis) the hit message,
- * then mdamagem.  RNG-free up to the mdamagem call: could_seduce() and
- * shade_miss() draw no RNG, and noises() (the !gv.vis arm, mhitm.c:729) is
- * RNG-free too (mhitm.c:27-38 — a You_hear gated on Deaf/noisetime only).
- * The seduction arm ("smiles at"/"talks to") is now ported — see below.
- * KNOWN GAP: the silver-searing arm and the AT_TENT "%s tentacles suck"
- * s_suffix spelling; neither consumes RNG in C. */
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     pre_mm_attack_dm(magr, mdef);
     /* C mhitm.c:659 compat = !magr->mcan ? could_seduce(magr, mdef, mattk) : 0.
@@ -3950,15 +3151,6 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
      * mon_nam_too ≈ mon_nam for a non-self attack.  buf is "<Monnam> <verb>"
      * per the mattk->aatyp switch (mhitm.c:674-701). */
     if (game.v?.vis && compat) {
-        /* C mhitm.c:667-672 — the seducer's hit is a chat-up line, not a blow:
-         *     Snprintf(buf, "%s %s", magr_name,
-         *              mdef->mcansee ? "smiles at" : "talks to");
-         *     pline("%s %s %s.", buf, mon_nam(mdef),
-         *           (compat == 2) ? "engagingly" : "seductively");
-         * compat == 2 is the same-gender nymph case.  Measured on seed0014
-         * step 457: C prints "The water nymph smiles at the little dog
-         * engagingly."; this port printed "The water nymph hits the little
-         * dog." because it never computed compat at all. */
         pline(Monnam_dm(magr) + ' ' + ((mdef.mcansee | 0) ? 'smiles at' : 'talks to')
               + ' ' + mon_nam_dm(mdef) + ' '
               + ((compat === 2) ? 'engagingly' : 'seductively') + '.');
@@ -3970,14 +3162,6 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     return await mdamagem_dm(magr, mdef, mattk, mwep, dieroll);
 }
 
-/* C mhitm.c:76-91 missmm — pre_mm_attack, then the miss message.  RNG-free.
- *     pline("%s %s %s.", Monnam(magr),
- *           (magr->mcan || !could_seduce(magr, mdef, mattk))
- *               ? "misses" : "pretends to be friendly to",
- *           mon_nam_too(mdef, magr));
- * The comment here used to assert could_seduce() "is false for the ordinary
- * mon-vs-mon melee in the scored corpus" and park the arm; seed0014 step 458
- * is C's "The water nymph pretends to be friendly to the little dog." */
 function missmm(magr, mdef, mattk) {
     pre_mm_attack_dm(magr, mdef);
     if (game.v?.vis)
@@ -4064,25 +3248,6 @@ function spitmm(magr, mattk, mdef) {
 }
 function thrwmm(magr, mdef) { return M_ATTK_MISS; }
 
-/* -----------------------------------------------------------------------
- * dog_move — C ref: dogmove.c:1024-1419
- * Main pet movement function.
- * Returns MMOVE_NOTHING/MMOVE_MOVED/MMOVE_DIED/MMOVE_DONE.
- *
- * RNG calls (in C order for tame pet, early game):
- *  1. dog_hunger: no RNG when not starving
- *  2. dog_invent: dogfood → rn2(100) for floor obj at pet's tile
- *                 maybe rn2(20), rn2(udist), rn2(apport) if can carry
- *  3. dog_goal: rn2(100) per floor obj in scan radius, rn2(8) for MANFOOD apport
- *               rn2(4) for approach chance, maybe rn2(apport) if has_minvent
- *  4. mfndpos: no RNG
- *  5. Position loop: per candidate position:
- *     - dogfood → rn2(100) for each floor obj at that tile
- *     - rn2(13*uncursedcnt) if cursed
- *     - rn2(MTSZ*(k-j)) for backtrack avoidance
- *     - rn2(++chcnt) / rn2(3) / rn2(12) for position selection
- *  6. pet_ranged_attk: score_targ → rnd(5) per direction target found
- * ----------------------------------------------------------------------- */
 export async function dog_move(mtmp, after) {
     /* C: edog = EDOG(mtmp) if mtame && has_edog */
     const edog = (mtmp.mtame && mtmp.mextra?.edog) ? mtmp.mextra.edog : null;
@@ -4105,10 +3270,6 @@ export async function dog_move(mtmp, after) {
     /* C: udist = distu(omx, omy) */
     let udist = distu(omx, omy);
 
-    /* C dogmove.c:1015-1020 — "Let steeds eat and maybe throw rider during
-     * Conflict"; the Conflict arm needs dismount_steed and no corpus rider has
-     * Conflict, so only the `udist = 1` (treat the steed as adjacent to its
-     * master) is live.  `game.usteed` -> `game.u.usteed`: no writer, dead guard. */
     if (mtmp === game.u?.usteed) {
         udist = 1;
     } else if (!udist) {
@@ -4135,35 +3296,6 @@ export async function dog_move(mtmp, after) {
             /* ate something — skip to newdogpos */
             return MMOVE_MOVED;
 
-        /* C: whappr = (svm.moves - edog->whistletime < 5)
-         *
-         * C's svm.moves at the dog_move during movemon equals the turn counter for
-         * the turn whose HEAD block already ran svm.moves++ (allmain.c). We must
-         * compare against that same value.
-         *
-         * The JS off-by-one between game.moves and C svm.moves DIFFERS by path:
-         *   - CALIBRATED path (FF_FAITHFUL=0): the calibrated fastforward_step runs
-         *     movemon while game.moves is the POST-INCREMENT value carried from the
-         *     PREVIOUS turn's g.moves++ (which fires at the end of moveloop_core
-         *     after rhack). So game.moves = C svm.moves + 1 here → use (moves - 1).
-         *   - FAITHFUL path (FF_FAITHFUL=1): the faithful HEAD block increments
-         *     g.moves at C's svm.moves++ point WITHIN the turn, BEFORE the movemon
-         *     that this dog_move belongs to. So game.moves = C svm.moves here →
-         *     use moves directly. Subtracting 1 makes whappr stale by one turn
-         *     (an extra `whappr=1` turn) and masks the j>0 rn2(3)/rn2(12) tie-break,
-         *     which is the seed0011/1500/0004/0002/0015 dog_move divergence root.
-         *
-         * BUGFIX (seed0001 leaf-3417): FF_FAITHFUL is DEFAULT-ON — the module-level
-         * fastforward.js `FF_FAITHFUL` const is `env.FF_FAITHFUL !== '0'`, so the
-         * faithful HEAD path (with the in-turn svm.moves++) is what runs on the
-         * scored/default run (env UNSET).  We reference the module FF_FAITHFUL
-         * const directly (the single source of truth, `env.FF_FAITHFUL !== '0'`)
-         * so this matches the moveloop's gating exactly: on the default scored
-         * run dog_move uses `moves` (no -1), only the calibrated rollback
-         * (FF_FAITHFUL=0) applies `moves - 1`.  The old inline `=== '0'` read was
-         * already correct here; switching to the const removes the last ad-hoc
-         * env read.  (seed0001 leaf-3417: a stale whappr=1 short-circuited the
-         * j>0 rn2(12) tie-break and diverged at dogmove.c:1310.) */
         const moves_c = FF_FAITHFUL ? moves : (moves - 1);
         whappr = ((moves_c - (edog.whistletime | 0)) < 5) ? 1 : 0;
     } else {
@@ -4175,20 +3307,6 @@ export async function dog_move(mtmp, after) {
     if (appr === -2)
         return MMOVE_NOTHING;
 
-    /* C dogmove.c:1046-1054 —
-     *     if (Conflict && !resist_conflict(mtmp)) {
-     *         if (!edog) { lose_guardian_angel(mtmp); return MMOVE_DIED; }
-     *     }
-     * The body is empty for an ordinary edog pet, but resist_conflict() DRAWS
-     * rnd(20) (mondata.c:1612), so the call is load-bearing on the RNG axis and
-     * skipping it desynchronises the whole stream.  This site used to read
-     * "Conflict branch for non-edog guardian angel — skip"; the skip was only
-     * safe while nothing in js/ conferred Conflict, and a worn ring of conflict
-     * confers it (js/do_wear.js setworn_ring writes uprops[CONFLICT].extrinsic
-     * from oc_oprop).  seed0004 step 286: the hero puts on "an engagement ring"
-     * at step 283, and from the very next movemon C draws two rnd(20)s this port
-     * drew neither of — leaf 10370, the session's first RNG divergence.
-     * The `&&` short-circuit is C's and must be kept: no Conflict, no draw. */
     if (_conflict_dm() && !resist_conflict(mtmp)) {
         if (!edog) {
             /* C minion.c:468-510 — a guardian angel abandons a conflicted
@@ -4242,11 +3360,6 @@ export async function dog_move(mtmp, after) {
     let uncursedcnt = 0;
     for (let i = 0; i < cnt; i++) {
         const { x: nx, y: ny, info } = mfp_poss[i];
-        /* C dogmove.c:1126: if (MON_AT(nx,ny) && !((info[i]&ALLOW_M)||(info[i]&ALLOW_MDISP))) continue;
-         * Now real (was "Stub: skip monster-at-position check" — mfndpos_stub
-         * never emitted ALLOW_MDISP so this was previously unreachable for
-         * ALLOW_M-lacking squares too; wiring restores it since mfndpos can
-         * now emit ALLOW_M on the MON_AT branch, see mklev.js Packet 0). */
         if (m_at(nx, ny) && !((info & ALLOW_M) || (info & ALLOW_MDISP)))
             continue;
         if (cursed_object_at(nx, ny))
@@ -4294,24 +3407,6 @@ export async function dog_move(mtmp, after) {
                 }
             }
             if (mtmp2) {
-                /* C dogmove.c:1117-1126: the balk/skip test (no RNG).
-                 * balk = mtmp->m_lev + ((5*mtmp->mhp)/mtmp->mhpmax) - 2
-                 *   if (mtmp2->m_lev >= balk
-                 *       || (mtmp2->mtame && mtmp->mtame && !Conflict)
-                 *       || (max_passive_dmg(mtmp2, mtmp) >= mtmp->mhp)
-                 *       || ((mtmp->mhp * 4 < mtmp->mhpmax
-                 *            || mtmp2->data->msound == MS_GUARDIAN
-                 *            || mtmp2->data->msound == MS_LEADER)
-                 *           && mtmp2->mpeaceful && !Conflict))
-                 *       continue;
-                 * Only the first of the four disjuncts was ported.  The
-                 * max_passive_dmg one is what a pet uses to refuse a foe whose
-                 * PASSIVE counter-attack could kill it outright — seed0399's
-                 * kitten walks up to a green mold (passive AD_ACID) and C's
-                 * kitten declines while ours bit it and killed it, printing a
-                 * whole message pair ("The kitten bites the green mold.  The
-                 * green mold is killed!") that C never queues.  That extra
-                 * message is the spurious --More-- on step 117's topline. */
                 const agr_mlev = (mtmp.m_lev | 0);
                 const agr_mhp  = (mtmp.mhp | 0);
                 const agr_mhpmax = (mtmp.mhpmax | 0) || 1;
@@ -4356,27 +3451,6 @@ export async function dog_move(mtmp, after) {
                 if (mstatus & M_ATTK_AGR_DIED)
                     return MMOVE_DIED;
 
-                /* C dogmove.c:1157-1168: return attack check.
-                 *   if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) == M_ATTK_HIT
-                 *       && rn2(4)
-                 *       && mtmp2->mlstmv != svm.moves
-                 *       && !onscary(mtmp->mx, mtmp->my, mtmp2)
-                 *       && monnear(mtmp2, mtmp->mx, mtmp->my)) { ... }
-                 * Note: rn2(4) is NOT consumed when M_ATTK_DEF_DIED is set because
-                 * (M_ATTK_HIT | M_ATTK_DEF_DIED) == M_ATTK_HIT only if DEF_DIED is 0.
-                 *
-                 * The three conditions AFTER the rn2(4) were missing, so every
-                 * successful pet hit that rolled a non-zero rn2(4) fired a return
-                 * attack C does not.  mlstmv is the load-bearing one: mhitm.c:366
-                 * stamps magr->mlstmv = svm.moves at the top of mattackm, so a
-                 * defender that has ALREADY attacked this turn does not get a free
-                 * counter-attack out of sequence -- which is exactly C's comment
-                 * there ("this still counts as its move for the round and it
-                 * shouldn't move again").  seed5002 segment 1 leaf 5811: C's kitten
-                 * hits the giant bat, rolls rn2(4)=1, and then STOPS because the bat
-                 * had already bitten the kitten this turn; this port ran the return
-                 * attack and drew rnd(20)@mattackm where C draws rn2(5)@distfleeck
-                 * for the next monster -- the segment's first RNG divergence. */
                 if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT) {
                     if (rn2(4)
                         && (mtmp2.mlstmv | 0) !== (game.moves | 0)
@@ -4414,24 +3488,11 @@ export async function dog_move(mtmp, after) {
             return MMOVE_NOTHING;
         }
 
-        /* C dogmove.c:1236-1239 — avoid a location the hero just kicked, and
-         * (in Sokoban) a square that would push a boulder into the hero. Both
-         * are RNG-free `continue`s. m_avoid_kicked_loc (monmove.c:1323) skips a
-         * candidate that equals gk.kickedloc when the pet is unconfused/unstunned,
-         * can see, is peaceful/tame, no Conflict, and the square is next2u. Omitting
-         * this skip lets an extra candidate reach the rn2(++chcnt) position-select
-         * below, firing one spurious RNG call (seed0060 step-15 kick → pet dog_move). */
         if (m_avoid_kicked_loc(mtmp, nx, ny))
             continue;
         if (m_avoid_soko_push_loc(mtmp, nx, ny))
             continue;
 
-        /* C dogmove.c:1241-1262 — trap avoidance.
-         *   if ((info[i] & ALLOW_TRAPS) && (trap = t_at(nx,ny))) {
-         *     if (mleashed) { if (!Deaf) whimper(mtmp); }
-         *     else if (trap->tseen && rn2(40)) continue;  // 1/40 step anyway
-         *   }
-         * The rn2(40) here is THE seed0001 first divergence after the goal fix. */
         if (info & ALLOW_TRAPS) {
             const trap = t_at(nx, ny);
             if (trap) {
@@ -4443,22 +3504,6 @@ export async function dog_move(mtmp, after) {
             }
         }
 
-        /* C: dog eschews cursed objects, but likes dog food.
-         * Walk floor objects at (nx, ny):
-         *
-         * C dogmove.c:1264-1279:
-         *   boolean can_reach_food = could_reach_item(mtmp, nx, ny);
-         *   for (obj = svl.level.objects[nx][ny]; obj; obj = obj->nexthere) {
-         *       if (obj->cursed) cursemsg[i] = TRUE;
-         *       else if (can_reach_food
-         *                && (otyp = dogfood(mtmp, obj)) < MANFOOD
-         *                && (otyp < ACCFOOD || edog->hungrytime <= svm.moves)) { ... }
-         *   }
-         * The `can_reach_food &&` SHORT-CIRCUITS: when the dog cannot reach the
-         * item (pool/lava/boulder under it), dogfood() is NOT called and the
-         * rn2(100) is NOT consumed. The previous port called dogfood()
-         * unconditionally, firing a spurious rn2(100) for unreachable floor
-         * objects at candidate squares. C-faithful gate restored. */
         if (edog) {
             let goto_newdogpos = false;
             const can_reach_food = could_reach_item(mtmp, nx, ny);
@@ -4531,24 +3576,6 @@ export async function dog_move(mtmp, after) {
 
     /* newdogpos: */
     if (nix !== omx || niy !== omy) {
-        /* C dogmove.c:1280-1288 — the chosen square is the HERO's:
-         *     if (mfp.info[chi] & ALLOW_U) {
-         *         if (mtmp->mleashed) { pline "%s breaks loose of %s leash!";
-         *                               m_unleash(mtmp, FALSE); }
-         *         (void) mattacku(mtmp);
-         *         return MMOVE_DONE;
-         *     }
-         * mfndpos only ever marks the hero's square ALLOW_U when the CALLER
-         * passed the bit, and for a pet the only source of it is
-         * mon_allowflags' `if (Conflict && !resist_conflict(mtmp))`
-         * (mon.c:2086) — so this arm is exactly "a conflicted pet turns on the
-         * hero".  It was a one-line "stub: skip", which is why seed0004's
-         * saddled pony walked into the hero and did nothing where C prints
-         * "The saddled pony kicks!" and rolls mattacku's whole attack set
-         * (step 327: rnd(20), d(1,6) hitmu, two mhitm_knockback draws, rnd(21)
-         * for the pony's second attack).
-         * ALLOW_MDISP (dogmove.c:1224-1233) is handled in the candidate loop
-         * above and is unrelated to Conflict. */
         if (chi >= 0 && (mfp_poss[chi].info & ALLOW_U)) {
             if (mtmp.mleashed | 0) {
                 void pline(`${Monnam_dm(mtmp)} breaks loose of ${mhis_dm(mtmp)} leash!`);
@@ -4563,10 +3590,6 @@ export async function dog_move(mtmp, after) {
         /* Stub: update position */
         mtmp.mx = nix;
         mtmp.my = niy;
-        /* C dogmove.c:1357-1372: the pet is forced onto a tile it dislikes
-         * (cursemsg[chi]).  If it was/is visible, announce the reluctant step
-         * onto the top item of the pile.  This pline drives a --More-- in the
-         * corpus, so it must fire to keep the keystroke stream aligned. */
         if (chi >= 0 && cursemsg[chi] && (wasseen || canseemon(mtmp))) {
             const o = top_floor_obj(nix, niy);
             const what = o ? (await distant_obj_name(o)) : 'something';
@@ -4730,9 +3753,6 @@ export function paralyze_monst(mon, amt) {
 }
 
 /* C ref: mhitm.c:1249 slept_monst(mon). No RNG. */
-/* helpless is a C macro; its fields (msleeping, mcanmove) are not captured.
-   In the corpus, slept_monst is only called when mon is helpless, so
-   the helpless check is elided. */
 export async function slept_monst(mon) {
     if (mon === game.u.ustuck
         && !sticks(game.youmonst.data) && !game.u.uswallow) {
@@ -4805,10 +3825,6 @@ export async function monstone(mtmp) {
 import { update_monster_region as update_monster_region_real } from './region.js';
 import { ENV } from './hostenv.js';
 
-/* place_worm_tail_randomly and remove_worm are a required pair in
- * mdisplacem(): C removes the old tail before laying it back out, and the
- * latter performs one RNG shuffle per segment.  Both delegate to worm.js so
- * this path cannot accidentally wire only the RNG-bearing half. */
 function place_worm_tail_randomly(mdef, fx, fy) {
     return place_worm_tail_randomly_real(mdef, fx, fy);
 }

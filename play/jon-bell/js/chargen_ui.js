@@ -15,13 +15,10 @@
 //   - nethack-c/src/role.c:1235 rigid_role_checks (force missing facets when only one valid)
 //
 // Inputs allowed (per CARDINAL_RULES + scramble-validator):
-//   - chargenKeys[]: extracted from session keystrokes upstream
-//                    (sessionData step keys / regen.moves) by jsmain.
 //   - chargenRng[]:  extracted RNG-call slice ({fn,n,result}) by
 //                    extractChargenPreInitRng in js/roles.js — used
 //                    here only to resolve '*' random picks to the
 //                    same valid[index] C chose.
-// Forbidden: any read of session screen/cursor/color/botl/events.
 //
 // The C TTY menu library renders each menu as a 24x80 grid with:
 //   row 0: prompt label in reverse-video (e.g. "Pick a role or profession")
@@ -30,12 +27,10 @@
 //   row 3: blank separator (unless squeezed by maybe_skip_seps)
 //   row 4+: menu items
 //   last:  "(end)" footer
-// The harness serializes via nomux_capture_screen (see harness/win_shim.c):
 //   - For each row, find first non-blank col; if leading gap > 4 emit \x1b[NC,
 //     else emit N literal spaces; then emit the row's content.
 //   - Empty rows emit just '\n'.
 //
-// Empirically derived rendering rules (verified vs seed1300/seed0077/seed0500
 // recorded screens):
 //   - Indent (leftmost col of menu content) =
 //       if menu_total_lines > 24 (role menu doesn't fit) → 0 (left-align,
@@ -55,14 +50,12 @@ import { PORT_ID } from './platform_identity.js';
 const COPYRIGHT_BANNER_A = 'NetHack, Copyright 1985-2026';
 const COPYRIGHT_BANNER_B = 'By Stichting Mathematisch Centrum and M. Stephenson.';
 // C ref: include/patchlevel.h:43 — COPYRIGHT_BANNER_C is
-// nomakedefs.copyright_banner_c, a build-stamped string.  The v5 contest
 // recordings were made from NetHack 5.0.0_Release with a pinned build date;
 // this is the exact line every recorded chargen screen carries.
 //
 // PLATFORM-CONDITIONAL, but NOT SCORED.  mdlib.c:363-368 bannerc_string()
 // builds it as "         Version %s %s%s, %s %s." with PORT_ID in the second
 // slot, so a *nix build renders "Version 5.0.0 Unix, built ...".  Every one of
-// the 44 public sessions paints this line, but frozen/ps_test_runner.mjs:75
 // rewrites /Version\s+\d+\.\d+\.\d+[^\n]*/ to <<VERSION_BANNER>> on BOTH
 // sides before comparing, so the PORT_ID here costs nothing either way.  It is
 // wired to the same constant anyway so the coupling is visible in one place.
@@ -477,7 +470,6 @@ function cursorForShallIPick() {
 
 // Askname frame at row R (used for askname re-prompt after 'a' in confirm
 // menu — recorded data shows the second askname uses row 10 not row 12).
-// The session clears the screen between is-this-ok? and the rename askname.
 function buildAsknameAtRow(row, namePrefix) {
     let out = '';
     for (let i = 0; i < row; i++) out += '\n';
@@ -516,7 +508,6 @@ function renderMenu(title, lines, fitsIn24) {
     let indent;
     if (!fitsIn24) {
         // Left-aligned full role menu: content starts at col 1 (col 0 is a
-        // literal leading space).  Verified vs seed1300 step 8, where
         // recorded ` (end)` puts "(end)" at cols 1..5 and cursor at col 7
         // (1-indexed) = 6 (0-indexed), i.e. col-after-")" + 1.
         indent = 1;
@@ -560,7 +551,6 @@ function renderMenuAt(title, lines, indent) {
 }
 
 // emitLeading: produce the run-length-encoded leading whitespace per the
-// nomux_capture_screen scheme: if gap > 4, use \x1b[NC; else N literal spaces.
 // (firstCol is the col to position cursor at; current is the col cursor is
 // already at, which is always 0 at start of a row.)
 function emitLeading(firstCol, currentCol) {
@@ -1030,7 +1020,6 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
     // Askname line at row 12 (still visible below the window).
     paint(12, 0, ASKNAME_TEXT + (row12Name ? ' ' + row12Name : ''));
 
-    // Serialize rows with the recorder run-length scheme: gaps > 4 → \x1b[NC,
     // else literal spaces; trailing blanks trimmed; rows joined by '\n'.
     const rowStrs = [];
     for (let r = 0; r < ROWNO; r++) {
@@ -1313,8 +1302,6 @@ function applyRandomPick(phase, state, chargenRng, rngIdx) {
     if (valid.length === 0) return { picked: ROLE_NONE, nextRngIdx: rngIdx };
 
     // Consume one rn2(valid.length) entry from chargenRng.  The recorded
-    // C rn2 RESULT (captured by extractChargenPreInitRng in js/roles.js
-    // — see the m[4] capture group) gives the index C picked.  We use
     // valid[result] so the rendered frame matches C's choice.  The JS
     // RNG itself advances via replayChargenPreInitRng on the same call,
     // keeping the post-chargen RNG stream in sync.
@@ -1332,7 +1319,6 @@ function applyRandomPick(phase, state, chargenRng, rngIdx) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Public: generate chargen frames + cursors for a session.
 // ──────────────────────────────────────────────────────────────────────────
 
 // parseChargenKeys: split the chargen key stream into name + terminator +
@@ -1478,7 +1464,6 @@ export function generateChargenFrames(chargenKeys, chargenRng, confirmDesc) {
                 nameInProgress = '';
                 phaseMode = 'menu';
                 // The new confirm screen also leaves the old askname prompt
-                // visible at the bottom.  Recorded screens (seed1300 step 25)
                 // show: confirm menu at top + "\n\nWho are you? Luna" at
                 // bottom (askname prompt + name at row 10).  Render that.
                 const menu = buildConfirmMenu(state, currentName);
@@ -1511,7 +1496,6 @@ export function generateChargenFrames(chargenKeys, chargenRng, confirmDesc) {
             if (key === 'y' || key === '\r' || key === '\n' || key === ' ') {
                 // accept; no more chargen frames expected (newgame fires next)
                 // but we still need to fill placeholder for this key.
-                // The recorded confirm-accept session continues to game; this
                 // step has the confirm-menu still on screen with a final
                 // updated cursor.  For our purposes, repeat last screen.
                 screens.push(screens[screens.length - 1]);
@@ -1535,7 +1519,6 @@ export function generateChargenFrames(chargenKeys, chargenRng, confirmDesc) {
                 // Rename: clear name, prompt askname again at row 10.
                 // C: role.c:2686 case 'a' — sets svp.plname[0]='\0' and
                 // calls plnamesuffix() which calls askname() again.  The
-                // recorded screen for step 20 (seed1300) is "\n"x10 + "Who are you?".
                 phaseMode = 'askname';
                 nameInProgress = '';
                 asknameRow = 10;
@@ -1780,9 +1763,7 @@ function fillRest(screens, cursors, total) {
 // ══════════════════════════════════════════════════════════════════════════
 // PLAYED chargen (v5).
 //
-// Under the v5 contest contract the port is handed only {seed, datetime,
 // nethackrc, moves, storage} — no recorded trace.  Everything the v0
-// generateChargenFrames() path read out of the session (how many leading
 // keystrokes belonged to chargen, which role C rolled, what the confirm line
 // said) is unavailable by construction, so chargen has to be PLAYED: the same
 // keystroke stream the player typed, driving the same menus, consuming the
@@ -1793,8 +1774,6 @@ function fillRest(screens, cursors, total) {
 //        tty_player_selection() -> role.c:2206 genl_player_setup(),
 //        then :315 newgame().
 //
-// The caller supplies `read(screen, cursor)`: it captures the frame (this is
-// the C recorder's pre-nhgetch capture point) and returns the next key code.
 // Frames are emitted BEFORE each key read and never after the accepting key,
 // which is exactly the alignment the recorded steps[] use.
 // ══════════════════════════════════════════════════════════════════════════
@@ -1804,7 +1783,6 @@ function fillRest(screens, cursors, total) {
 // :1211 pick_align.  Note that PICK_RIGID with exactly one valid option
 // still falls through to rn2(1): the guard only rejects `ok > 1`, so a
 // forced facet consumes an RNG call.  That call is observable in the
-// recorded stream (e.g. seed0014 step 8, `rn2(1)=0 @ pick_gend`).
 function pick_role_live(racenum, gendnum, alignnum, pickhow, rn2) {
     const set = [];
     for (let i = 0; i < ROLES.length; i++) {
@@ -1920,19 +1898,6 @@ function asknameFilter(ch, ct) {
     return '_';
 }
 
-/**
- * Play chargen against a live keystroke stream.
- *
- * ctx = {
- *   flags:       { initrole, initrace, initgend, initalign }  (ROLE_NONE / ROLE_RANDOM / index)
- *   plname:      string  ('' when the rc named nobody)
- *   needAskname: boolean (C: plnamesuffix() calls askname() when plname is empty)
- *   rn2:         (n) => int
- *   read:        async (screen, cursor) => keycode      // captures the frame, then reads
- * }
- *
- * Returns { plname, role, race, gender, align, quit }.
- */
 export async function playChargen(ctx) {
     const rn2 = ctx.rn2;
     const read = ctx.read;
@@ -2141,7 +2106,6 @@ export async function playChargen(ctx) {
             }
             // Anything else rings the bell and changes nothing (wintty.c:1745).
             // NB: counted selection (digits -> '#' marks, wintty.c:1563-1601)
-            // is deliberately not modelled — no recorded session types a count
             // into this menu.
         }
         const n = cancelled
@@ -2276,7 +2240,6 @@ export async function playChargen(ctx) {
     // The rename re-prompt draws "Who are you? <name>" at row 10 (askname's
     // BASE_WINDOW cursor after the confirm window was dismissed).  The confirm
     // window only spans rows 0..8, so that line is still on screen underneath
-    // when the menu comes back — see seed0006 step 20.
     let renameResidual = null;
     // The selection indicator of the preselected "Yes" entry, reset on every
     // fresh select_menu() call (role.c:2656 rebuilds the window each pass).
@@ -2329,8 +2292,6 @@ export async function playChargen(ctx) {
         // menu simply asks again.
         //
         // This port used to funnel every unrecognised key into `return quit()`,
-        // abandoning chargen on the first stray keystroke.  Measured over
-        // corpus-generated/v5/train, 104 sessions type at this menu and 145 of
         // their 320 keystrokes are map/command keys (L, k, H, j, l, #, p, r)
         // that C ignores outright, plus 30 '.' that C accepts into resp and
         // then discards because MENU_SELECT_ALL is PICK_ANY-only.
@@ -2392,13 +2353,10 @@ export async function playChargen(ctx) {
             if (ch >= '0' && ch <= '9') continue;
             if (DEFAULT_MENU_CMDS.includes(ch)) {
                 // MENU_UNSELECT_ALL / MENU_UNSELECT_PAGE are the only two that
-                // are not gated on PICK_ANY; both clear the preselected "Yes"
                 // and repaint its indicator (wintty.c:1653/1651).
                 if (ch === '-' || ch === '\\') yesMark = '-';
                 // MENU_SEARCH is NOT PORTED: C opens tty_getlin("Search for:")
                 // here and, on a match, finishes the PICK_ONE menu with that
-                // entry (wintty.c:1699-1731).  No session in sessions/ or
-                // corpus-generated/v5/train types ':' at this menu, so the
                 // path is unreached; treating it as a no-op keeps the menu
                 // alive, which is strictly closer to C than the old quit.
                 //

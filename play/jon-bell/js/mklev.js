@@ -14,7 +14,6 @@ import { unstuck as unstuck_mk } from './dog.js';
 // mklev.js — Level generation.
 // C ref: mklev.c — makelevel, makerooms, makecorridors, generate_stairs.
 // Also includes parts of sp_lev.c (create_room) and mkmap.c (litstate_rnd).
-// Stripped-down version for contest: generates regular dungeon levels with
 // room placement, corridors, doors, stairs, niches, and fill.
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 import { game, wizard } from './gstate.js';
@@ -36,12 +35,6 @@ import { big_to_little, little_to_big, mon_hates_silver, passes_bars, resist_con
          growl, seemimic, update_inventory } from './mhitm.js';
 /* hideunder()'s "You see %s %s under %s." (C mon.c:4787-4796) */
 import { ansimpleoname, ARTILIST, ARTI_NOGEN, ARTI_GEN_SPE, oname, vtense,
-/* quest_info: setmangry (:15350) reads `mons[quest_info(MS_LEADER)]` and had NO
- * binding in this module's scope, so the moment a peaceful humanoid was angered
- * the line threw "quest_info is not defined" — a ReferenceError, not a stub, and
- * therefore invisible to every stub census.  MS_LEADER is questpgr.c's MS_LEADER
- * (monflag.h msound value 36); js/objnam.js keeps it module-private, so it is
- * re-declared here against the same C source rather than exported ad hoc. */
          quest_info, makeplural, artifact_exists as artifact_exists_real, getObjDescr } from './objnam.js';
 const MS_LEADER = 36; /* C monflag.h MS_LEADER — your class leader */
 /* C mkobj.c:1248 mksobj()'s SPE_NOVEL arm calls do_name.c's noveltitle(). */
@@ -174,22 +167,6 @@ import { set_apparxy } from './monmove.js';                   /* C monmove.c:142
  * imported here under _nc names.  The stubs are GONE as of the shadow-body
  * audit — every call site in this file now goes through these aliases. */
 import { distant_name as distant_name_nc, doname as doname_nc, Tobjnam } from './objnam.js';
-/* obfree — C shk.c:1186-1272.  The note that stood here said "all three js/
- * copies (here, js/dog.js, js/dokick.js) are unported stubs"; js/dokick.js's
- * has since been ported (the plain-object teardown, with the arms whose
- * callees are unported kept as explicit UNPORTED-CALLEE throws) and six other
- * modules already import it.  The local throwing stub at :14909 shadowed it
- * for discard_minvent() below; deleted, and the real body imported here.
- *
- * MODULE CYCLE: js/dokick.js imports THIS module directly (:43 place_object,
- * makemon, ...), so this edge closes a cycle -- but only a cycle that is
- * ALREADY CLOSED five ways over: mklev -> cmd -> dokick, and likewise via
- * sp_lev, mkmaze, trap and makemon, each of which this file imports and each
- * of which imports dokick.  (The comment at :5792 claiming the mklev<->dokick
- * cycle "does not exist today" is wrong on that point; measured by BFS over
- * js/'s static import graph.)  It is inert for the same reason the lock.js
- * edge at :152 is: the binding is a hoisted function declaration and neither
- * side calls the other during module evaluation. */
 import { obfree, delobj as delobj_real, deliver_obj_to_mon } from './dokick.js';
 import { js_makemaz, mazexy, set_levltyp_lit, set_levltyp, bughack, bubbles_clear_level } from './mkmaze.js';
 /* maybe_reset_pick — C lock.c:268; add_to_migration() below calls it when the
@@ -334,7 +311,6 @@ const PM_STALKER = 153; /* C pm.generated.js — S_ELEMENTAL class */
 const PM_GHOST = 287;
 const PM_DEATH_R = 311;
 const PM_PESTILENCE = 312;
-/* C makemon.c:1415-1417 group/minion gate constants */
 const PM_ANGEL = 123; /* pm.generated.js PM_ANGEL */
 const PM_ALIGNED_CLERIC = 275; /* = pm.generated.js PM_PRIEST (NetHack "aligned cleric") */
 const PM_HIGH_CLERIC = 276; /* = pm.generated.js PM_HIGH_PRIEST */
@@ -380,7 +356,7 @@ const SCR_TELEPORTATION = 333;
 const BELL = 255;
 const CORPSE = 265;
 const STATUE = 476;
-const SPE_BLANK_PAPER = 407; /* Wave D: mail scroll at 364 shifted spellbooks +1 */
+const SPE_BLANK_PAPER = 407;
 /* C objects.h — armor otyps for mksobj_init ARMOR_CLASS (mkobj.c:1088-1091) */
 const HELM_OF_OPPOSITE_ALIGNMENT = 99;
 const SPLINT_MAIL = 124;
@@ -426,13 +402,6 @@ const WOODEN_HARP = 253;
 const MAGIC_HARP = 254;
 const DRUM_OF_EARTHQUAKE = 258;
 const BELL_OF_OPENING = 263;
-/* C makemon.c:1351-1384 — the `mitem` block's ids and monster indices.  Every
- * value here was resolved against the recorded binary's own headers with
- * `node tools/c-const-oracle.mjs <name>` (nethack-c-v5/recorder), NOT grepped
- * out of nethack-c/ (3.7) and NOT written as an inline `N /* NAME *\/` literal,
- * which is the otyp defect no name-keyed tool can see.  Suffixed `_MK` where
- * mklev.js already binds the bare name inside a function (STRANGE_OBJECT at
- * mimic-appearance, POT_SICKNESS in js/makemon.js) so nothing is shadowed. */
 const STRANGE_OBJECT_MK = 0;
 const TWO_HANDED_SWORD_MK = 55;
 const POT_SICKNESS_MK = 318;
@@ -696,24 +665,6 @@ function u_on_newpos(x, y) {
         game.u.usteed.mx = x;
         game.u.usteed.my = y;
     }
-    /* C dungeon.c:1588-1600 — the TAIL, which every copy of this function in
-     * this port was missing:
-     *     if (!on_level(&u.uz, &u.uz0)) { u.ux0 = u.ux, u.uy0 = u.uy;
-     *                                     map_location(u.ux, u.uy, FALSE); ... }
-     *     else if (!Blind && !Hallucination && !u.uswallow)
-     *         see_nearby_objects();
-     * The level-change arm refreshes map_location() and invalidates the shared
-     * terrain-status classifier below; switch_terrain() consumes that marker.
-     *
-     * WHY IT MATTERS BEYOND THE GLYPH.  see_nearby_objects() sets dknown on the
-     * TOP object of every nearby pile, and dknown is what puts a type into
-     * disco[] — so the ORDER the hero comes near piles is the order the '\'
-     * discoveries list prints.  js/cmd.js's domove tail was the only caller, so
-     * a hero who arrived by TELEPORT (C teleport.c:525 u_on_newpos) never
-     * observed anything.  MEASURED on seed0361-archeologist-tour step 358: C
-     * lists "pair of hard shoes" above "hooded cloak" because it saw the shoes
-     * while they were still the pile top; this port saw neither until the
-     * step-242 look_here named the cloak first, and printed the two swapped. */
     if (!_Blind_mk()
         && !_Hallucination_mk()
         && !(game.u.uswallow | 0))
@@ -758,19 +709,6 @@ function lregion_is_exclusion_zone(type, x, y) {
     }
     return false;
 }
-/* C ref: mkmaze.c:412-467 put_lregion_here — the LR_TELE/LR_UPTELE/LR_DOWNTELE
- * arms.  This file's place_lregion is the hero-arrival copy (its only caller is
- * u_on_rndspot), so C's LR_PORTAL / LR_UPSTAIR / LR_DOWNSTAIR / LR_BRANCH arms
- * cannot be reached from here — js/sp_lev.js carries its own put_lregion_here
- * for fixup_special's call sites, which is where those rtypes arrive.
- *
- * The load-bearing part is the MON_AT test: place_lregion used to inline a bare
- * `!bad_location(...) -> u_on_newpos(...)`, and bad_location does NOT look at
- * monsters.  C rejects a candidate square that already holds a monster and
- * re-rolls, so every occupied candidate costs C one extra rn2 pair that JS never
- * spent.  Witness: seed0360-wizard-world-tour arriving on the castle, C's third
- * candidate (5,5) holds one of the maze's monsters — C rejects it and rolls a
- * fourth pair, JS took it (leaf 22808 of 120639). */
 async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
     const lregionTrace = typeof process !== 'undefined'
         && ENV?.FF_LREGION_TRACE === '1';
@@ -803,10 +741,6 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
             pushRngLogEntry(`^lregion_occupied[x=${x | 0},${y | 0} id=${mtmp.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1} oneshot=${oneshot ? 1 : 0}]`);
         /* move the monster if no choice, or just try again */
         if (oneshot) {
-            /* C: `if (!rloc(mtmp, RLOC_NOMSG)) m_into_limbo(mtmp);`  rloc's
-               failure tail is m_into_limbo (js/dog.js:505, an unported throw);
-               reached only from the 1x1-region / deterministic-fallback path,
-               which no corpus session takes. */
             await rloc(mtmp, RLOC_NOMSG);
         } else {
             return false;
@@ -921,18 +855,6 @@ export { u_on_newpos };
 export function level_difficulty() {
     return levelDifficulty() | 0;
 }
-/** C ref: dungeon.c:1965-1973 single_level_branch(d_level *lev) — "is 'lev' the
- *  only level in its branch?  affects level teleporters".  C's body is exactly
- *  `return Is_knox(lev)` (its own TODO notes Fort Ludios is assumed to be the
- *  only single-level branch).
- *  `lev` was previously not a parameter at all and every caller here read
- *  u.uz implicitly; C has three distinct argument sites (&u.uz at mklev.c:1963
- *  / trap.c:482 / teleport.c:1278+2196, but &tolev at stairs.c:206), so the
- *  d_level argument is now real.  It defaults to u.uz so the &u.uz call sites
- *  read the same as before.
- *  Exported for js/trap.js, whose own copy was a throwing stub — Is_knox_level
- *  and the dungeon tables it reads are module-local here, the same reason
- *  mk_trap_statue lives in this file and is re-exported there. */
 export function single_level_branch(lev) {
     const uz = lev ?? game.u?.uz;
     if (!uz)
@@ -1002,24 +924,6 @@ function nartifact_exist() {
         if (ae[k]) ++a;
     return a;
 }
-/* C ref: artifact.c:172-311 mk_artifact(otmp, alignment, max_giftvalue,
- * adjust_spe).  Scope: the `!by_align` path — alignment == A_NONE, i.e. "turn
- * THIS object into one of the artifacts whose base type it already is", which
- * is what all three mksobj/mkobj call sites pass (mkobj.c:891, :1100, :1255).
- * Was a no-op stub returning otmp unchanged, so C's rn2(n) over the eligible
- * list never fired and the object never became an artifact — seed4500's
- * scored-path divergence at leaf 23538 (C rn2(2) @ artifact.c:259 vs JS
- * already on to mkobj_erosions, which C skips for an artifact because
- * may_generate_eroded() bails on otmp->oartifact).
- *
- * The `by_align` path (a divine gift or sacrifice reward, pray.c) additionally
- * needs Role_if/race_hostile and an mksobj of the chosen base type; it is NOT
- * ported here and keeps the old return-unchanged behaviour rather than gaining
- * a new throw, so nothing that limps today starts dying.
- *
- * RNG: exactly one rn2(n) when the eligible list is non-empty, and none at all
- * when it is empty — which is what the old stub accidentally got right and is
- * why this call site stayed aligned until an eligible artifact existed. */
 function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
     const by_align = (alignment !== A_NONE);
     if (by_align)
@@ -1294,7 +1198,6 @@ function mkobj_erosions(otmp) {
             otmp.greased = 1;
     }
 }
-/* mkobj.c — corpse revive/rot RNG (ported for session parity; timers are stubs). */
 /** C mkobj.c rider_revival_time */
 function rider_revival_time(body, retry) {
     const minturn = retry ? 3 : (((body.corpsenm | 0) === PM_DEATH_R) ? 6 : 12);
@@ -1347,13 +1250,6 @@ function is_rider_pm(pmIdx) {
 export function start_corpse_timeout(body) {
     if (body.corpsenm === PM_LIZARD || body.corpsenm === PM_LICHEN)
         return;
-    /* C mkobj.c:1400 — `action = ROT_CORPSE;` the default; the three arms
-     * below override it.  The action used to be COMPUTED AND THROWN AWAY: this
-     * function ended by incrementing body.timed and never calling start_timer,
-     * because there was no timer queue.  With no ROT_CORPSE timer nothing ever
-     * rotted, so a level-generation corpse was still on the floor hundreds of
-     * turns after C had deleted it — seed0004-feeding-pony's first screen miss
-     * (step 228: the pile at (40,5) rendered "%" where C renders "("). */
     let action = ROT_CORPSE;
     const rot_adjust = game.in_mklev ? 25 : 10;
     const moves = Math.max((game.moves) | 0, 1);
@@ -1408,12 +1304,6 @@ export function attach_fig_transform_timeout(obj) {
     start_timer(rnd(9000) + 200, TIMER_OBJECT, FIG_TRANSFORM, obj_to_any(obj));
 }
 
-/* attach_egg_hatch_timeout — LOCAL STUB DELETED.  This no-op body shadowed the
- * name for set_corpsenm() below, which is the ONE call site of the four that
- * actually executes (measured: 11 calls across seed0360/0364/0365/0366/0371/
- * 0372/0800).  C's attach_egg_hatch_timeout (timeout.c:981) draws
- * rnd(151)..rnd(200) there; the no-op drew nothing.  The single faithful body
- * now lives in its C home, js/timeout.js, and is imported at the top. */
 
 export function set_corpsenm(obj, id) {
     const old_id = obj.corpsenm | 0;
@@ -1505,24 +1395,12 @@ async function mksobj(otyp, init, artif) {
         oartifact: 0, timed: 0, bypass: 0, unpaid: 0, lamplit: 0,
         oeaten: 0, greased: 0, in_use: 0, globby: 0, oeroded: 0, oeroded2: 0,
         no_charge: 0, nomerge: 0, oerodeproof: 0, invlet: 0, otrapped: 0,
-        /* C obj.h:135 Bitfield(obroken, 1) — zero-initialized by
-           *otmp = cg.zeroobj (mkobj.c:1186); mksobj never assigns it
-           * afterward, so every fresh object starts with obroken=0 ("lock
-           * has been broken" — nothing has broken it yet). Previously
-           * omitted, leaving obroken undefined on every mksobj object and
-           * diverging the per-fn capture-replay oracle (return.obroken
-           * expected 0, got null) on every mkgold record. */
         obroken: 0,
         /* C obj.h:102 Bitfield(recharged, 3) — zero-initialized by
            *otmp = cg.zeroobj (mkobj.c:1188-1189); mksobj never assigns it
            * afterward, so every object starts with recharged=0. */
         recharged: 0,
         pickup_prev: 0, omigr_from_dnum: 0, omigr_from_dlevel: 0,
-        /* C mkobj.c:1186 *otmp = cg.zeroobj — usecount (aliased wishedfor) and
-           how_lost (LOST_NONE) are zero-initialized like every other field; a
-           freshly-made object has never been used and has not been lost. Omitting
-           them left both undefined on every mksobj object, diverging the per-fn
-           capture-replay oracle (return.usecount / return.how_lost expected 0). */
         usecount: 0, how_lost: 0,
         /* C mkobj.c:1192 otmp->where = OBJ_FREE */
         where: OBJ_FREE, /* OBJ_FREE=0; set by place_object when placed */
@@ -1596,17 +1474,6 @@ async function mksobj(otyp, init, artif) {
            leaves corpsenm == 0. */
         otmp.leashmon = 0; /* #define leashmon corpsenm → corpsenm = 0 */
     }
-    /* C mkobj.c:1247-1250 — SPE_NOVEL.  novelidx is `#define novelidx corpsenm`
-       (obj.h), so `otmp->novelidx = -1` is the same NON_PM the creation path
-       already wrote; both names access the same field through newobj().
-       The comment that used to sit here said "the title machinery (noveltitle)
-       is not ported and no capture record exercises this otyp, so ... is
-       intentionally omitted".  Both halves were wrong where it counts: the
-       corpus does exercise it (seed4500 step 864, seed0030, seed0361 each draw
-       one `rn2(41) @noveltitle(do_name.c:1615)`), and omitting the call dropped
-       that leaf from the stream — it is seed4500's FIRST divergence, the head of
-       a 721-frame miss run.  "No capture record exercises it" is a statement
-       about the sweep fixtures, not about the scored corpus. */
     else if (sw === SPE_NOVEL) {
         otmp.novelidx = -1; /* "none of the above"; will be changed */
         const novidx = { value: otmp.novelidx | 0 }; /* C's `&otmp->novelidx` */
@@ -1614,18 +1481,6 @@ async function mksobj(otyp, init, artif) {
         otmp.novelidx = novidx.value | 0;
         otmp = oname(otmp, title, ONAME_NO_FLAGS);
     }
-    /* C mkobj.c:1252-1255 — "unique objects may have an associated artifact
-       entry".  The comment that used to sit here called this "not yet ported"
-       on the ground that no capture record exercises an oc_unique otyp; that
-       claim was FALSE on the scored corpus, which is where it matters —
-       seed0360 hands Vlad the Candelabrum of Invocation (oc_unique) through
-       makemon's mitem block, and mksobj() runs 8,768 times across all 44
-       sessions.  Found by tools/call-count-lint.mjs (mksobj -> mk_artifact,
-       C 1x / js 0x).
-       C's comment says mk_artifact() with A_NONE never returns NULL.  It draws
-       NO RNG on this path: by_align is false and `unique` is true, so
-       artifact.c's eligible scan skips every entry, n == 0, and it returns the
-       original object before reaching `m = eligible[rn2(n)]`. */
     if (game._oc_unique && game._oc_unique[otmp.otyp | 0] && !otmp.oartifact)
         otmp = mk_artifact(otmp, A_NONE, 99, false);
     /* C mkobj.c:1258 — otmp->owt = weight(otmp); final weight computation
@@ -1633,23 +1488,6 @@ async function mksobj(otyp, init, artif) {
     otmp.owt = weight(otmp);
     return otmp;
 }
-/* C mondata.c little_to_big / big_to_little (grownups table, mkobj.c:1228-1301).
- * C has exactly ONE grownups[] table.  This file used to carry a SECOND,
- * PRIVATE copy of it — 65 rows against the 67 C has, and its tail resolved
- * against a stale mons[] index space (baby crocodile 324 = iguana, student
- * 368 = Dark One, archeologist 330 = long worm tail, attendant 371, page 372,
- * apprentice 381), missing aligned cleric -> high cleric and acolyte -> cleric
- * outright.  js/mhitm.js already holds the C-faithful table and this file
- * already imported its big_to_little() for goodpos/pick_nasty; only
- * can_be_hatched(), dead_species() and grow_up()'s ancestry walk were still
- * reading the private stale copy.  They now read the one table C has.
- *
- * Cost of the drift, measured on gen362-reseed-seed208714: mksobj's typed-egg
- * loop is `can_be_hatched(rndmonnum())`, and can_be_hatched only draws its
- * BREEDER_EGG rn2(77) when lays_eggs(little_to_big(mnum)) — so a baby
- * crocodile that failed to map to the (oviparous) crocodile skipped the draw
- * and spun the loop for another rndmonst() reservoir walk, desynchronising the
- * stream from that point on. */
 const little_to_big_pm = little_to_big;
 const big_to_little_pm = big_to_little;
 /**
@@ -1658,9 +1496,6 @@ const big_to_little_pm = big_to_little;
  * KILLER_BEE (1) and GARGOYLE (41) short-circuit without rn2(77).
  */
 export function can_be_hatched(mnum) {
-    /* PM_SCORPIUS is 364, not 363 (363 is PM_NALZOK) — the inline-literal
-     * class tools/pm-otyp-audit.mjs reports and no name-keyed tool can see.
-     * Checked with tools/otyp-check.mjs against the 5.0 recorder. */
     if (mnum === 364 /* PM_SCORPIUS */)
         mnum = 97 /* PM_SCORPION */;
     mnum = little_to_big_pm(mnum);
@@ -1674,27 +1509,6 @@ export function can_be_hatched(mnum) {
     }
     return NON_PM;
 }
-/* C mon.c:5586-5604 dead_species(m_idx, egg) with egg=TRUE.
- *
- *   if (m_idx < LOW_PM) return TRUE;
- *   alt_idx = egg ? big_to_little(m_idx) : m_idx;
- *   return ((svm.mvitals[m_idx].mvflags & G_GENOD) != 0
- *           || (svm.mvitals[alt_idx].mvflags & G_GENOD) != 0);
- *
- * G_GENOD (0x02) is an MVITALS flag (monflag.h:209), and mvitals[] is RUNTIME
- * state.  This body read `mons[mnum].geno` instead — a different field whose
- * 0x02 bit is part of G_FREQ (monflag.h:202, the 0x0007 creation-frequency
- * mask), so it answered "genocided" for every monster whose spawn frequency is
- * 2, 3, 6 or 7.  Nothing was ever genocided in these sessions; the test was
- * simply reading the wrong array.
- *
- * Cost: mksobj's typed-egg loop is `mndx = can_be_hatched(rndmonnum()); if
- * (mndx != NON_PM && !dead_species(mndx, TRUE)) break;`, so a false positive
- * here rejects a monster C accepted and spins the loop for another rndmonst()
- * reservoir walk — tens of leaves per egg, and a generic egg where C has a
- * typed one.  seed4500's first divergence after the add_door fix was exactly
- * this: leaf 76101, C rn2(6)@mksobj_init (the egg is done) vs JS rn2(3) at the
- * head of a fresh rndmonst() walk. */
 export function dead_species(m_idx, egg) {
     /* generic eggs are unhatchable and have corpsenm of NON_PM */
     if (m_idx < LOW_PM)
@@ -1791,22 +1605,6 @@ async function mksobj_init(otmp, otyp, artif) {
             else {
                 for (let tryct = 200; tryct > 0; --tryct) {
                     const mndx = undead_to_corpse(rndmonnum());
-                    /* C mkobj.c:932-933:
-                     *     if (mons[mndx].cnutrit
-                     *         && !(svm.mvitals[mndx].mvflags & G_NOCORPSE))
-                     * The cnutrit conjunct was dropped here as an "approximate
-                     * cnutrit" and it is NOT approximable: 33 of the 383
-                     * monsters have cnutrit == 0, and the ones that also leave
-                     * a corpse (wraith, barrow wight, Nazgul, and the golems
-                     * that are not G_NOCORPSE) are accepted by !G_NOCORPSE
-                     * alone.  C then RETRIES rndmonnum() where this port
-                     * stopped, so one accepted zero-nutrition monster costs a
-                     * whole rndmonnum() call -- on gen405 that is C's second
-                     * rn2(7) @rndmonst_adj(makemon.c:1666) plus its qt_montype
-                     * pair, against this port going straight to set_tin_variety.
-                     * mvitals[].mvflags is seeded from mons[].geno & G_NOCORPSE
-                     * and only ever gains G_GENOD/G_EXTINCT, so reading the
-                     * G_NOCORPSE bit off the static geno column is exact. */
                     if (mons_cnutrit(mndx)
                         && ((MONS_ROWS[mndx][3] | 0) & G_NOCORPSE) === 0) {
                         otmp.corpsenm = mndx;
@@ -1818,25 +1616,6 @@ async function mksobj_init(otmp, otyp, artif) {
             blessorcurse(otmp, 10);
         }
         else if (otyp === SLIME_MOLD) {
-            /* C mkobj.c:942-944 — no RNG; spe = current_fruit index, and
-             * `flags.made_fruit = TRUE`.  The flag was never written here; it
-             * is what optfn_fruit reads to decide whether the PREVIOUS fruit
-             * may be renamed in place (forig) or a new chain node has to be
-             * added, so leaving it unset made every runtime fruit change take
-             * C's replace branch.
-             *
-             * C options.c:7329 initoptions_finish runs `fruitadd(pl_fruit, 0)`
-             * once at startup, before any level (and so any mksobj'd slime
-             * mold) can exist, guaranteeing svc.context.current_fruit is
-             * already >=1 (options.c:8180: "every fruit has an id of at
-             * least 1; 0 is an error"). A capture-replay record that calls
-             * mkobj() in isolation reconstructs game state from
-             * state_before, which carries no channel for this global, so
-             * `current_fruit` can read back undefined even though C's own
-             * invariant makes that state unreachable. Lazily run the same
-             * startup step js/jsmain.js normally performs first, mirroring
-             * options.js's own `_ffruit()` lazy-init, instead of guessing a
-             * fallback number. */
             if (!game.ffruit)
                 init_fruit_chain();
             otmp.spe = game.svc.context.current_fruit;
@@ -2075,9 +1854,6 @@ async function mksobj_init(otmp, otyp, artif) {
         return;
     }
     if (oc === POTION_CLASS || oc === SCROLL_CLASS) {
-        /* C mkobj.c:1077-1081 — #ifdef MAIL_STRUCTURES: skip blessorcurse for SCR_MAIL.
-         * MAIL_STRUCTURES is defined in this build (global.h:432); SCR_MAIL=364 is in
-         * the scroll range 323-365 (MKOBJ_SVB_BASES[9..10]) post-Wave-D insertion. */
         const SCR_MAIL = 364;
         if (otyp !== SCR_MAIL)
             blessorcurse(otmp, 4);
@@ -2099,19 +1875,6 @@ export function rnd_class(first, last) {
     }
     return first;
 }
-/* ══ gm.migrating_objs — ONE chain, two spellings ═══════════════════════════
- * C has a single `gm.migrating_objs`.  js/ reaches it two ways:
- *   game.gm.migrating_objs   js/dokick.js (obj_extract_self, deliver_obj_to_mon,
- *                            the kick-to-another-level path), js/mklev.js kill_eggs
- *   game.migrating_objs      js/dog.js discard_migrations, js/shk.js:145,
- *                            js/questpgr.js:1005 — and the capture harness's
- *                            seedMigratingObjsFromCapture side-channel
- * js/mapstate_game_bridge.js:163 already documents the split and reads whichever
- * is defined.  Two heads means an object added through one spelling is invisible
- * to every reader of the other, so bind them to ONE storage slot the first time
- * anything migrates: game.gm.migrating_objs becomes an accessor over
- * game.migrating_objs.  Idempotent, and re-installed after resetGame() replaces
- * `game` (game.gm is a fresh object then). */
 function _gm_migrating() {
     const g = game;
     if (!g.gm)
@@ -2134,20 +1897,6 @@ function _gm_migrating() {
     return g.gm;
 }
 
-/* add_to_migration — C ref: mkobj.c:2697-2717.  RNG-FREE.
- *
- * This was a throwing stub, so every caller halted the replay: dokick.c:1743's
- * kick-an-object-down-the-stairs path (this file, above), trap.c:3479's
- * fall-through-a-trapdoor path, and mkobj.c:261 mksobj_migr_to_species below —
- * the orctown loot generator, which is what stolen_booty() (js/mkmaze.js) is
- * built out of.
- *
- * C's two failure arms (panic on where != OBJ_FREE, impossible on an unpaid
- * object) are diagnostics, not control flow: C's panic() aborts and its
- * impossible() prints and continues.  Neither can be reproduced usefully here,
- * so the unpaid case follows C and continues; the not-free case throws, because
- * silently double-linking an object that is still on a floor/inventory chain
- * would corrupt both chains. */
 export function add_to_migration(obj) {
     const g = game;
     const gm = _gm_migrating();
@@ -2223,17 +1972,13 @@ async function mkobj(oclass, artif) {
     let prob;
     // C invariant: objects[].oc_prob for GEM_CLASS is level-dependent --
     // mklev.c:1264 calls oinit()->setgemprobs(&u.uz) as the FIRST thing
-    // makelevel() does, so by the time any mkobj() runs in a real session
     // the shared table already reflects the current dungeon level. This
     // function's own makelevel() (below) already calls oinit() the same
     // way, so this is a no-op RNG-free recompute in ordinary play -- but a
-    // capture-replay record that calls mkobj() in isolation reconstructs
     // game.u.uz from state_before without re-running that level-entry step,
     // so MKOBJ_OC_PROB can still hold a stale (level-0 default) gem
     // distribution. Refresh it here so the GEM_CLASS walk below sees the
-    // same table C does. Measured: 13/17 mkobj capture-replay divergences
     // were __return__.otyp landing one GEM_CLASS slot off (e.g. obsidian
-    // vs. agate) at dungeon.dlevel != 0, tracing to exactly this table.
     oinit();
     if (oclass == RANDOM_CLASS) {
         const uz = game.u?.uz;
@@ -2283,7 +2028,6 @@ export async function mkgold(amount, x, y) {
     // C invent.c:1612-1623 g_at(x,y) — walk the per-tile nexthere chain
     // (svl.level.objects[x][y]) for the first COIN_CLASS object. Was a
     // private _goldObjs Map keyed off mkgold's own prior calls in the same
-    // JS session; that map starts empty on every replay record (game state
     // is reconstructed from state_before, not from mkgold call history), so
     // the merge branch could never trigger under replay even when C's fobj
     // chain already had a gold pile there — walk the real levelObjects
@@ -2296,9 +2040,6 @@ export async function mkgold(amount, x, y) {
     if (gold) {
         // C mkobj.c:2013-2015 — merge into existing pile (no new mksobj/next_ident)
         gold.quan += amount;
-        // HARNESS GAP: the replay reconstructor's floor-object snapshot channel
-        // (harness/capture.c snapshot_level_objects, consumed by
-        // seedLevelObjectsFromCapture in tools/equiv-test/lib/replay-core.mjs)
         // does not emit obroken/usecount/recharged — those ride the narrower
         // OBJ_CHAIN_FIELD_ORDER / STRUCT_FIELDS lists in
         // js/struct_reconstructor.js, neither of which backs this channel — so
@@ -2329,8 +2070,6 @@ const POT_FULL_HEALING = 315;
 /** C objects.h otyp values needed by shknam.c */
 const SCR_CHARGING = 342; /* scroll base 323 + pos 19 */
 const TOUCHSTONE_SHK = 472; /* gem, matches u_init.js TOUCHSTONE_OTYP */
-/* objects.h SPBOOK("novel", ...) — verified against the 5.0 recorder with
-   tools/otyp-check.mjs, not copied from u_init.js. */
 const SPE_NOVEL = 408;
 const LEATHER_GLOVES_SHK = 159; /* matches u_init.js LEATHER_GLOVES_OTYP */
 const ELVEN_CLOAK_SHK = 139; /* matches u_init.js ELVEN_CLOAK */
@@ -2575,19 +2314,6 @@ function veggy_item_type(otyp) {
     return false;
 }
 
-/*
- * C shknam.c shkveg(void) — pick a random vegetarian food item.
- * Mirrors: iterate svb.bases[FOOD_CLASS]..svb.bases[FOOD_CLASS+1]-1,
- * collect items where veggy_item(null, i), rnd(maxprob) then walk to select.
- * C ref: nethack-c/src/shknam.c:408-439
- *
- * The veggy_item test used to be inlined here as `material == VEGGY ||
- * otyp == EGG`, dropping veggy_item's TIN/CORPSE arm.  TIN carries oc_prob 75,
- * so maxprob came out 785 where C computes 860 and the rnd(maxprob) bound
- * itself diverged — seed4500's first RNG divergence at leaf 9974, stocking a
- * health food store on Dlvl 10.  (CORPSE is in the list too, at oc_prob 0: it
- * cannot be selected, but C builds ok[] with it and so does this.)
- */
 function shkveg() {
     const foodStart = MKOBJ_SVB_BASES[FOOD_CLASS] | 0; /* 264 */
     const foodEnd = MKOBJ_SVB_BASES[FOOD_CLASS + 1] | 0; /* 297 */
@@ -2930,7 +2656,6 @@ function stock_room_goodpos(sroom, rmno, sh, sx, sy) {
                 return false;
         }
     }
-    /* C: only solid floor squares */
     if (!(loc.typ >= ROOM))
         return false; /* IS_ROOM */
     return true;
@@ -3114,13 +2839,6 @@ export async function stock_room(shpIndx, sroom) {
         if ((doorCell.flags | 0) === D_LOCKED) {
             let m = doors[sroom.fdoor].x, n = doors[sroom.fdoor].y;
             const sx0 = m, sy0 = n;
-            /* C ref: shknam.c:751-760 — find the adjacent NON-shop cell to
-               engrave "Closed for inventory".  C uses inside_shop(), which is
-               STRICT: a cell is "inside" only if its roomno is set, it is NOT an
-               edge (wall) cell, and its room is a shop.  Using a loose
-               `roomno >= ROOMOFFSET` here wrongly counts the shop's WALL cells
-               (edge=1) as inside, shifting (m,n) one column and carving a stray
-               CORR outside the shop (seed0003 (12,9) map-gen divergence). */
             if (inside_shop(sx0 + 1, sy0))
                 m--;
             else if (inside_shop(sx0 - 1, sy0))
@@ -3159,21 +2877,6 @@ export async function stock_room(shpIndx, sroom) {
             }
         }
     }
-    /* C shknam.c:792-796 — "Hack for Orcus's level: it's a ghost town, get rid
-     * of shopkeepers":
-     *     if (on_level(&u.uz, &orcus_level)) {
-     *         struct monst *mtmp = shop_keeper(rmno);
-     *         mongone(mtmp);
-     *     }
-     * The comment that used to stand here said "on_level / shop_keeper not
-     * ported; skip (Orcus level is extremely rare)".  Both ARE ported
-     * (js/dungeon.js:11, js/shk.js:2371); what was missing was
-     * game.orcus_level, which js/dungeon_rng.js never set (C dungeon.c:723).
-     * And the level is not rare on this corpus: seed0360-wizard-world-tour
-     * teleports to `p - orcus: 40` at step 324, which was its first RNG
-     * divergence — C drew the five obj_resists rolls of mongone's
-     * mdrop_special_objs over the shopkeeper's inventory and this port drew
-     * none. */
     if (game.orcus_level && on_level(game.u?.uz, game.orcus_level)) {
         const shkmon = shop_keeper(rmno);
         if (shkmon)
@@ -3255,15 +2958,6 @@ function squadmon() {
             break;
         }
     }
-    /* C mkroom.c:831 `mndx = ROLL_FROM(squadprob).pm;` — and hack.h:1498
-     * `#define ROLL_FROM(a) a[rn2(SIZE(a))]`, so this is a RANDOM element and
-     * it DRAWS rn2(4).  This port took the last element with no draw at all,
-     * on the theory that the fall-through was the "last" case.  It is not:
-     * sel_prob is rnd(80 + level_difficulty()) and the probs sum to 100, so
-     * every level deep enough for rnd() to exceed 100 reaches here and C
-     * consumes a draw this port did not.
-     * Witness: seed0360-wizard-world-tour step 159, the castle garrison at
-     * level_difficulty 25 — sel_prob = rnd(105), leaf 21017, C rn2(4)=3. */
     if (mndx < 0)
         mndx = squadprob[rn2(squadprob.length)].pm;
     const mv = game.mvitals?.[mndx]?.mvflags | 0;
@@ -3310,48 +3004,6 @@ async function mk_zoo_thronemon(tx, ty) {
         }
     }
 }
-/*
- * C mkobj.c:2226-2250 mk_tt_object(objtype, x, y)
- * (NOT mkroom.c — the old header here misfiled it.)
- *
- * "make an object named after someone listed in the scoreboard file;
- *  never returns Null"
- *
- *     initialize_it = (objtype != STATUE);
- *     otmp = mksobj_at(objtype, x, y, initialize_it, FALSE);
- *     if (!tt_oname(otmp)) {                                  // mkobj.c:2242
- *         int pm = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1,       // mkobj.c:2243
- *                      PM_ARCHEOLOGIST);
- *         set_corpsenm(otmp, pm);                             // mkobj.c:2246
- *     }
- *     return otmp;
- *
- * EMPTY SCOREBOARD != ABSENT SCOREBOARD.  A previous version of this comment
- * claimed the recording environment's empty scoreboard meant "tt_oname()
- * always returns null" and therefore that the tt_oname() CALL could be
- * skipped and the rn1() emitted directly.  The premise is right and the
- * conclusion is wrong: tt_oname() -> get_rnd_toptenentry() (topten.c:1381)
- * opens the record file FIRST, and only a FAILED fopen returns NULL without
- * drawing.  The recording environment's record file EXISTS and is EMPTY, so
- * the fopen succeeds and C spends rnd(sysopt.tt_oname_maxrank) == rnd(10) at
- * topten.c:1395 *before* discovering there is no entry.  Skipping the call
- * dropped exactly one rnd(10) immediately before every rn2(13) here.
- *
- * Verified against the C-recorded contest traces: the rnd(10) and the rn2(13)
- * are always adjacent, 220 times across 13 sessions (seed0360, 0361, 0362,
- * 0364..0372, 0800).  The reproducible query and the full evidence live in
- * tasks/generated/stub-wall/triage-ledger.json under
- * _CRITICAL_recorder_env_mismatch -- kept there rather than here so this file
- * states only C truth.  seed0360 step 155 shows:
- *     ^place[265,21,8]
- *     rnd(10)=1 @ get_rnd_toptenentry(topten.c:1395)
- *     rn2(13)=7 @ mk_tt_object(mkobj.c:2243)
- *
- * Those same traces also show set_corpsenm()'s start_corpse_timeout() draws
- * following the rn2(13) for CORPSE (e.g. "rn2(1000)=682 @
- * start_corpse_timeout(mkobj.c:1414)"), which is why the tail below calls
- * set_corpsenm() as C does rather than assigning corpsenm/owt by hand.
- */
 export async function mk_tt_object(objtype, x, y) {
     /* C mkobj.c:2237: player statues never contain books */
     const initialize_it = (objtype !== STATUE);
@@ -3705,9 +3357,6 @@ export async function fill_special_room(croom) {
             break;
     }
 }
-/* C mkobj.c:2307-2369 — place object on floor: set coords/where and prepend to fobj chain.
- * Only the fobj global chain (nobj link) is required for fobj.count measurement;
- * the per-tile nexthere chain is a separate concern (C level.objects[x][y]). */
 function place_object(otmp, x, y) {
     if (!otmp)
         return;
@@ -3736,37 +3385,11 @@ function place_object(otmp, x, y) {
     otmp.ox = xi;
     otmp.oy = yi;
     otmp.where = OBJ_FLOOR;
-    // C mkobj.c:2364-2365 — prepend to global floor-object chain (fobj = svl.level.objlist)
     otmp.nobj = game.fobj;
     game.fobj = otmp;
-    /* C mkobj.c:2331-2334 — "Boulders block light."
-     *     if (otmp->otyp == BOULDER) {
-     *         if (!otmp2 || otmp2->otyp != BOULDER)
-     *             block_point(x, y);
-     *     }
-     * remove_object() already had its recalc_block_point() counterpart, so a
-     * pushed boulder UNblocked the square it left and never blocked the one it
-     * arrived on: the hero saw straight through the boulder for the rest of the
-     * game.  seed0014 step 255 drew the jackal standing behind the just-pushed
-     * boulder that C cannot see, and step 256 then took moverock_core's
-     * canspotmon arm ("There's the jackal on the other side.") where C takes the
-     * unseen arm ("You hear a monster behind the boulder.").
-     * C calls block_point BEFORE splicing otmp into the pile, because its
-     * block_point edits the viz arrays directly; this port's block_point is a
-     * vision_reset() that RE-READS the pile, so it must run after the splice —
-     * same final state, which is exactly what _block_or_unblock documents. */
     if ((otmp.otyp | 0) === BOULDER && (!otmp2 || (otmp2.otyp | 0) !== BOULDER))
         block_point(xi, yi);
 }
-/* C mkobj.c:2510-2525 remove_object — unlink otmp from the floor: per-tile
- * nexthere chain (svl.level.objects[x][y]) and the global fobj chain, recalc
- * vision if it was a boulder, and re-check its timers. extract_nexthere/
- * extract_nobj (mkobj.c:2600-2645) are inlined here per the one-function-
- * per-packet rule (mirrors place_object's inlined fobj/nexthere splice
- * above). Capture-replay reconstructs otmp as an object graph independent
- * of game.fobj/levelObjects (same o_id, different JS instance), so match
- * chain nodes by o_id as a fallback to reference equality — same convention
- * as js/cmd.js dropx's freeinv splice. */
 export function remove_object(otmp) {
     const x = otmp.ox | 0;
     const y = otmp.oy | 0;
@@ -3774,7 +3397,6 @@ export function remove_object(otmp) {
     if ((otmp.where | 0) !== OBJ_FLOOR)
         throw new Error(`remove_object: obj where=${otmp.where}, not on floor`);
     // C mkobj.c:2627-2645 extract_nexthere(otmp, &svl.level.objects[x][y]).
-    // Splice out the MATCHED node's own .nexthere (not otmp's captured copy)
     // so the real chain's topology (built from the "objects" side-channel)
     // stays intact when otmp is a same-o_id-but-different-instance match.
     {
@@ -3874,24 +3496,6 @@ export function dobjsfree() {
         dealloc_obj_real(otmp);
     }
 }
-/* C mkobj.c:2720-2731 add_to_buried(obj) —
- *     if (obj->where != OBJ_FREE) panic("add_to_buried: obj not free");
- *     obj->where = OBJ_BURIED;
- *     obj->nobj = svl.level.buriedobjlist;
- *     svl.level.buriedobjlist = obj;
- *
- * The CHAIN LINK was deferred ("deferred to L14") and the objects were simply
- * dropped on the floor of the heap: `where` was set and nothing ever held a
- * reference, so every buried object this port created stopped existing the
- * moment mineralize() returned.  That is invisible until a BONES FILE carries a
- * level from one game to the next, because the buried chain is the LAST thing
- * restore.c's getlev() renumbers.
- * MEASURED, seed0030 segment 9 step 335: C's bones load draws 49
- * `rnd(2) @next_ident(mkobj.c:521)` and its own ^md dump accounts for only 45
- * of them (12 monsters + 13 minvent + 20 floor); reconstructing the ident
- * sequence from those 49 draws puts the last FOUR ids after the last floor
- * object, i.e. on svl.level.buriedobjlist — the gold and gems mineralize()
- * (mklev.c:1521/1534) buries in the Mines' walls. */
 export function add_to_buried(obj) {
     if (!obj)
         return;
@@ -3924,104 +3528,55 @@ export function obj_ice_effects(x, y, do_buried) {
 // C ref: dungeon.c:1447-1457 Is_special() — walk the special-level
 // chain (svs.sp_levchn), matched by (dnum,dlevel). game._sp_levchn is
 // built by dungeon_rng.js at dungeon-init time and is ALREADY correct
-// (verified: js/dungeon_rng.js:414-444). Gated behind LOADER_READY —
-// see tasks/generated/keystone-spec-phase3-wiring.md §4.3 for why: this
 // is the SINGLE firewall point that keeps every non-tut-1/tut-2 special
 // level behaving exactly as today (Is_special returns null, as if this
-// packet never landed) until its own .lua opcode needs are verified and
-// it's added to the allowlist by a future packet.
 // NOT allowlisted, and deliberately so.  Each blocked proto throws a DIFFERENT
 // unported-callee during its .lua load, so admitting one crashes
-// gameFromSession before the first nhgetch and collapses its session from ~3.1k
-// matched rng calls to ZERO frames (measured 2026-08-08 by adding Cav/Ran/Rog
-// together and re-running tools/more-pagination-diff.mjs).  Each unblocks when
 // ITS OWN callee lands — they are independent ports, not one.  Their questtext
 // firsttime entries are already ported below.
 //
-// DO NOT edit this list by trial.  `node tools/lua-level-load-probe.mjs --all`
 // drives the real load_special() against every dat/*-strt.lua WITHOUT touching
 // this set and reports each blocker by name; add a proto only after the probe
 // reports it `ok`, and only ONE AT A TIME (level generation is global — a wrong
-// opcode moves RNG for every session that reaches that level, so each admission
-// needs its own render/input-consumption/passing-session gate run).
 //
-// AND RUN THAT GATE AGAINST THE SESSION THAT ACTUALLY VISITS THE LEVEL.  Which
-// session that is, is now a lookup, not a guess:
-//   node tools/special-level-session-map.mjs --all      # proto -> gate session
-//   node tools/special-level-session-map.mjs <session>  # what this session visits
 // It resolves the C-side checkpoint coordinates (d3l1_002, ...) through the
 // role-renamed level chain, so it reports where C actually stood — not where the
-// JS replay got to, which stops at the session's first divergence and therefore
 // under-reports exactly the protos that most need gating.
-// This matters because the wrong gate session is SILENTLY VACUOUS.  Measured
-// 2026-08-10: admitting all five blocked protos below AT ONCE left seed2200
-// (218/218), seed5500 (910/910) and seed0500 (60/130) bit-identical to baseline
 // — none of the three visits a *-strt level.  Admitting only Cav-strt and running
-// its real gate session, seed0363, collapses it to a hard ERROR immediately.
 //
-// Blocker readout, 2026-08-09 (node tools/lua-level-load-probe.mjs --all):
-//   Cav-strt (seed0363): lspo_region irregular region (flood_fill_rm path)
 //   Wiz-strt           : lspo_region irregular region (same callee as Cav-strt)
-//   Ran-strt (seed0368): lspo_map table-form call shape
 //                        (was "mkmap (mines)"; mkmap landed in 7cbb4f54 and the
 //                         blocker moved forward to the next unported opcode)
-//   Rog-strt (seed0369): lspo_monster appear_as field (mimic/shapechanger)
 //   Mon-strt           : lspo_object STATUE/EGG/TIN/FIGURINE special-casing
 //
-// Kni-strt admitted 2026-08-09: its two blockers were create_monster's
 // mk_mplayer dispatch (the four "knight" guards are PM_KNIGHT=335, inside the
 // player-monster range [PM_ARCHEOLOGIST=331, PM_WIZARD=343], so C routes them
 // through mplayer.c:117 mk_mplayer) and create_object's put_saddle_on_mon (the
 // warhorse `inventory` closure). Both are now wired in js/sp_lev.js.
 //
-// Pri-strt ADMITTED 2026-08-19, and the parking note it replaces is kept here
-// because its SHAPE is the lesson.  The 2026-08-10 note read:
 //
-//   "STILL NOT ADMITTED THOUGH THE PROBE REPORTS IT ok: Pri-strt ... its gate
-//    run cannot be run yet.  Its gate session is seed0367-priest-quest-tour ...
-//    But seed0367's JS replay diverges at step 67/239 ... 81 steps BEFORE the
 //    teleport.  Admitting Pri-strt therefore moves nothing measurable ... ADMIT
-//    IT once seed0367's step-67/68 divergence is fixed and the replay reaches
-//    step 148 — then its gate run has signal."
-// PARKED-NOTE: session=seed0367-priest-quest-tour,seed0367 premise=step67/RENDER release=step148
-// PARKED-NOTE: session=seed0367-priest-quest-tour,seed0367 resolved=2026-08-19
 //
-// That was correct WHEN MEASURED and decayed silently as the chain in front of
-// it landed.  Re-measured 2026-08-19, seed0367's first miss is no longer step 67
 // but step 141, and the single remaining blocker was do_wear.c:820's "You speed
-// up." (dragon_armor_handling, ported this same session).  With that landed the
-// replay reaches step 148 — exactly the stated condition — and the gate run has
 // signal.  It is worth re-reading how the arithmetic MOVED under the fix:
 //   - admitted with the rn2(3) @ u_calc_moveamt still missing:  167 -> 162  (-5)
 //   - admitted after that leaf is restored:                     167 -> 168  (+1)
 // Same one-word diff, opposite verdict.  A proto loaded on a shifted RNG stream
 // generates a DIFFERENT level and scores like a bug; admission is only ever
 // measurable once the prefix into it is bit-exact.  Do not re-park a proto on a
-// negative measured before the leaves feeding it line up.
-// Pri-strt was in any case the LAST free admission: as of 2026-08-10 every other
-// proto any session visits is probe-BLOCKED.  Ranked by protos unblocked, the
 // callees worth porting next are lvlfill_maze_grid (7: castle, asmodeus, orcus,
 // wizard2, wizard3, fakewiz1, fakewiz2), lspo_region irregular/flood_fill_rm
 // (6: Cav-strt, Wiz-strt, valley, Pri-loca, Wiz-loca, Cav-loca), create_object
 // RANDOM_CLASS (4: Bar-loca, Mon-loca, Ran-loca, Val-loca), then create_altar
 // priestini (2), lspo_map table-form (2), find_level LR_PORTAL by name (2).
-// minetn/minend are visited by 7-8 sessions each but are multi-variant (no single
 // dat/<proto>.lua), so they need the variant-selection path, not just an opcode.
-// oracle admitted 2026-08-11 (claude-lane port:seed4500-knight-coverage-r2).
-// `node tools/lua-level-load-probe.mjs oracle` reports `ok` (41 des.* opcodes,
-// load_special completes).  Its gate session is seed4500-knight-coverage: at
 // step 189 the hero level-teleports to Dlvl 5, C's trace goes
 // getbones(bones.c:645) -> the nhlib.lua `shuffle(align)` of a FRESH lua state
 // -> build_room(sp_lev.c:2811), i.e. makemaz(slev->proto) on a special level,
-// and its screen shows the Oracle (`@`) ringed by centaurs (`C`).  With oracle
 // blocked, Is_special returned null there, JS fell through to regular themed-room
 // generation, and every one of the 1,621 remaining steps rendered the wrong level.
 // ┌───────────────────────────────────────────────────────────────────────────
 // │ SUPERSEDED — castle IS in LOADER_READY (see the const below) and its
-// │ measured admission cost is ZERO.  The three castle blocks that follow are
-// │ kept because their MEASUREMENTS were each correct when taken, and the way
-// │ they were wrong is the reusable lesson; the final block (2026-08-13,
-// │ port:seed0360-stuck-root-8708) is the one that holds.  Reading order:
 // │ -47 (below) -> -3 -> 0, with the -47 and -3 blocks each concluding that the
 // │ cost belonged to castle's own generation.  It never did.
 // │
@@ -4035,113 +3590,68 @@ export function obj_ice_effects(x, y, do_buried) {
 // │ build_room tail into goto_level/place_lregion; a cost that survives THAT is
 // │ a property of the level.
 // └───────────────────────────────────────────────────────────────────────────
-// castle: PROBE-OK BUT DELIBERATELY NOT ADMITTED (2026-08-13, claude-lane
-// port:seed0360-r2-frontier).  [SUPERSEDED — see the banner above.]  This is
 // the first entry whose blocker chain is fully cleared and which STILL must not
-// be admitted, so read the measurement before re-trying it.
-//   Its gate session is seed0360-wizard-world-tour: at step 159 the hero
 //   answers the level-teleport menu with "j" ("j -   castle: 25 (tune EEBGG)")
 //   and C's trace goes getbones(bones.c:645) -> the nhlib.lua shuffle(align) of
 //   a FRESH lua state, i.e. makemaz(slev->proto) on a special level.  With
 //   castle blocked, Is_special returns null there and JS draws rn2(5) @
 //   js/mklev.js:4513 — regular themed-room generation on the wrong level.  That
-//   is leaf 8708: the session's FIRST RNG divergence and, at the same step, its
 //   first screen divergence.
 //   The blocker chain (lvlfill_maze_grid -> lspo_mazewalk's fill_empty_maze
 //   tail (maze1xy + rndtrap) -> js/trap.js's three exported throwing stubs that
 //   shadowed already-ported set_levltyp/recalc_block_point/spot_stop_timers)
-//   landed in 760fd082, and `node tools/lua-level-load-probe.mjs castle` went
 //   from BLOCKED to `ok` (173 des.* opcodes, load_special completes).
-//   MEASURED WITH castle IN THIS SET: frozen/score.sh 3769 -> 3722, i.e.
-//   -47 screen points — seed0360 199 -> 159 and seed0361 159 -> 152.  Loading
 //   the real castle is STRUCTURALLY right and moves the RNG axis a long way
-// PARKED-NOTE: session=seed0360-r2-frontier,seed0360-wizard-world-tour,seed0360,seed0361 citation-only
-// PARKED-NOTE: session=seed0360-r2-frontier,seed0360-wizard-world-tour,seed0360,seed0361 parked=2026-08-13
 //   (prefixMatch 8708 -> 12975 after the l_selection_setpoint fix below), but
 //   its generation is still not leaf-exact, so the frames it now renders are
 //   wrong where the old random level happened to coincide.  Cardinal Rule 4
-//   (the score floor) outranks the structural gain, so it stays out.
 //   NEXT BLOCKER, for whoever picks this up: the probe now reports
 //   "not yet ported: mkroll_launch", and with castle admitted the first RNG
 //   divergence is leaf 12975 — C rn2(3) @ induced_align(dungeon.c:2012) vs
-//   JS rn2(100).  Admit castle only when THAT is closed and score.sh is >= the
-//   floor; a probe `ok` is necessary and NOT sufficient.
-// NOTE tools/special-level-session-map.mjs — the tool the block above tells you
-// to use to find a proto's gate session — CRASHES on every v5 session (reads
-// top-level session.seed, undefined under the segments schema; js/rng.js:58
-// "Cannot convert undefined to a BigInt").  Resolve the gate session from the
 // C trace until that is fixed.
-// bigrm: ADMITTED 2026-08-13 (claude-lane port:seed0399-wrong-level-type), at
-// a MEASURED +44, having been held out earlier the same day at a measured -11.
-// Both measurements were right; what changed is what else is in the tree.
-//   The -11 (and the -27 this session re-measured for the admission ALONE) is
-//   real and is still being paid: seed0361 -8, seed0367 -11, seed0373 -8.  All
-//   three are HALTS, not mis-generation — `node tools/scored-halt-oracle.mjs
-//   seed0361-archeologist-tour` names "UNPORTED-CALLEE: lspo_replace_terrain
-//   selection field" and seed0367 dies at js/lua/interp.js:1313 "attempt to
 //   call a method on a non-table value".  Those are the CONDITIONAL arms of
 //   bigrm-2.lua:50 (`selection = darkness:grow()`) and bigrm-5.lua:33-34
 //   (`selection.match("."):percentage(2):grow()`); the unconditional arms load
 //   fine, which is why lua-level-load-probe and loader-chain both report
 //   bigrm-2/-5 CHAIN-CLEARS and see none of this.  Port those two and the -27
 //   should come back as a gain.
-//   The +71 that outweighs it is seed0399-wizard-hallu-actions, 42 -> 113.  It
 //   only appeared once the two render bugs ahead of this commit landed (the
 //   golem class char and the stale 3.7 wand probabilities): with bigrm admitted
-//   and those two still broken, seed0399 gained ZERO — its arrival frame was
 //   built leaf-exactly and still missed on 4 cells.  That is the general shape
 //   and the reason the earlier -11 was not evidence against the level:
 //   ADMITTING A SPECIAL LEVEL PAYS NOTHING UNTIL EVERY GLYPH ON IT IS RIGHT,
-//   so a proto measured negative should be re-measured after render fixes, not
 //   just after RNG ones.
-//   Measured this session, frozen/score.sh over all 44:
 //     baseline                                    4051
 //     + the two render fixes, bigrm NOT admitted   4051   (+0 — invisible
 //                                                          without the level)
 //     + bigrm admitted                             4095   (+44)
-// castle, RE-MEASURED 2026-08-13T05:0x (claude-lane port:lua-shuffle-shared-root)
-// at the then-current floor of 4013, after ~40 cmd.js landings had moved it up
-// from the 3769 the entry above was measured at.  THE COST DID NOT MOVE:
-// score-parallel 4013 -> 3966, seed0360 199 -> 159 and seed0361 159 -> 152,
-// i.e. the same -47 and the same two sessions.  So castle's negative is a
 // stable property of castle's own generation, not a stale coincidence, and it
 // stays out.
 //   [REFUTED — this sentence is the wrong conclusion this file exists to warn
 //   about.  The -47 was the ARRIVAL path (lspo_drawbridge's raw map coords,
 //   goto_level never reading svd.dndest, place_lregion missing
 //   put_lregion_here), not castle's generation, and it went -47 -> -3 -> 0 as
-//   those landed.  "The cost did not move across a higher floor" reads like
 //   evidence that the cost is intrinsic; it is only evidence that nothing in
 //   the chain the level exercises had landed yet.  See the banner at the head
 //   of these blocks.]
 // Do NOT re-measure castle again without first closing the RNG
-// chain: with castle admitted the first divergence was leaf 12975, closed by
 // the induced_align port (js/sp_lev.js, ae1cb942) which moved it to 12999 —
 // next blocker `rn2(5) @ m_initinv(makemon.c:644)` vs JS rn2(50), the soldier
 // body-armor rounds (makemon.c:637-646) on the castle's garrison.
 // Contrast FILL_READY's minefill below, whose parked -60 DID go stale (to 0).
 //
-// castle, RE-MEASURED AGAIN 2026-08-13 (claude-lane port:seed0360-special-
-// level-dlvl25) at floor 4168, after this session closed six links of its
 // generation chain: m_initinv's mercenary arm, the minotaur's 5.0 rn2(8), the
 // long worm's tail, the des-coder leak, find_branch_room, the
 // fill_special_room loop on the special-level arm, and squadmon's ROLL_FROM.
 // THE COST HAS ALMOST ENTIRELY GONE, BUT IT IS STILL NEGATIVE:
 //   castle NOT admitted   4168
-//   castle admitted       4165   (-3, all of it on seed0360: 200 -> 197)
 // i.e. -47 -> -3.  So the old "stable property of castle's own generation"
 // verdict was wrong — the cost was the unported chain, not the level — but
 // castle STILL does not pay for itself and stays out under the measure-then-
-// admit rule.  The remaining chain, on the scored path with castle admitted,
 // is `rn2(10) @ place_lregion(mkmaze.c:396)` at leaf 22802 of 120639
-// (tools/divergence-location.mjs seed0360-wizard-world-tour); JS has finished
 // the level and moved on to mineralize_kelp while C is still placing lregions.
 // Close that and re-measure — this is now a near-miss, not a parked negative.
-// PARKED-NOTE: session=seed0360-special-,seed0360,seed0360-wizard-world-tour leaf=rn2(10)@place_lregion
-// PARKED-NOTE: session=seed0360-special-,seed0360,seed0360-wizard-world-tour resolved=2026-08-13
 //
-// castle: ADMITTED 2026-08-13 (claude-lane port:seed0360-stuck-root-8708) at a
-// MEASURED COST OF ZERO, having been held out earlier the same day at -3.  The
 // -3 was never castle's own generation — that had already been leaf-exact for a
 // while; it was three defects in the ARRIVAL, all outside sp_lev, that only a
 // level declaring a teleport_region could expose:
@@ -4161,66 +3671,41 @@ export function obj_ice_effects(x, y, do_buried) {
 //      monsters, and C re-rolls when a candidate square holds one.  C's third
 //      candidate (5,5) held a maze monster; JS took it.  (Leaf 22808.)
 // With all three closed the castle's whole generation AND arrival are leaf-exact
-// (first divergence 8708 -> 22810, the first leaf of the NEXT step).  The three
-// A/B runs of frozen/score.sh over all 44, measured this session:
 //   baseline (no fixes, castle out)       4807
-//   three fixes in, castle STILL out      4812   (+5: seed0360 197 -> 200,
-//                                                 seed4500 328 -> 330)
 //   three fixes in, castle admitted       4812   (castle itself: EXACTLY 0)
-// So the points are the arrival fixes — seed4500 has no castle in it at all and
 // still gains 2 — and castle's own admission is now cost-NEUTRAL rather than
 // negative.  It is admitted on structural faithfulness (TOOLING_PHILOSOPHY #8)
-// at a tied score, not on a point delta: with it out, seed0360 renders a
 // rooms-and-corridors level where C renders the stronghold, and its first RNG
 // divergence stays pinned at leaf 8708 of 120639 (7% in) instead of 22810.
-// The thing worth carrying forward: three sessions in a row re-measured castle's
 // cost as a property OF THE LEVEL.  It never was.  It was the arrival path that
 // only a level declaring a teleport_region exercises.
 //
-// PROBE-OK BUT MEASURED NEGATIVE, 2026-08-17 (claude-lane port:materialize-
-// arrival).  `node tools/lua-level-load-probe.mjs <p>` reports `ok` for ALL of
 // minend-1/-2/-3, soko2-1/-2, soko3-1/-2, soko4-1/-2, tower2, tower3, medusa-1,
 // juiblex and baalz — the block above's "minetn/minend ... are multi-variant, so
 // they need the variant-selection path, not just an opcode" is stale: minetn is
 // admitted and multi-variant, so that path exists and minend loads through it.
 // Only tower1 (js/lua/interp.js:1399), wizard3 and fakewiz1 (both
 // js/sp_lev.js:6008) are still BLOCKED, and `rogue` has no dat/rogue.lua at all.
-// STALE ON TWO COUNTS as of 2026-08-28: tower1 and wizard3 are both in
 // LOADER_READY now, and the probe's BLOCKED verdict on wizard3/fakewiz1 was an
 // artifact of the probe env having no sp_levchn — see the wizard3 note above
 // LOADER_READY below.
 //
-// minend was ADMITTED AND REVERTED at a measured cost, one proto at a time as
-// this block requires — frozen/score.sh over all 44:
 //     minend OUT   6835 / 11405, 27 passing
-//     minend IN    6833 / 11405, 27 passing    (-2, all of it seed4500-knight-
 //                                               coverage 801 -> 799)
-// Its gate session seed0360-wizard-world-tour did NOT move (226 both ways),
-// which is the whole point and the thing to carry forward: seed0360 step 192
-// ("x" on the level-teleport menu = "minend: 10") is that session's FIRST screen
 // miss and JS renders a rooms-and-corridors level where C renders Mine's End, so
 // admitting minend is structurally right — and it buys nothing today because
-// seed0360's RNG already diverged 10 steps earlier, at leaf 43164 / step 182
 // (C `rn2(5) @distfleeck(monmove.c:538)` vs JS `rnd(12) @js/dig.js:878`
 // mdig_tunnel, i.e. JS tunnels a mines monster C does not), so the level is
 // built off a stream that is already wrong.  Close THAT first, then re-admit:
 // this is the castle shape exactly (a proto's parked cost measures the unported
 // chain around it, not the level), and per that banner the -2 should be
-// re-measured after the monmove fix rather than treated as minend's property.
-// PARKED-NOTE: session=seed4500-knight-,seed0360-wizard-world-tour,seed0360 premise=step182/RNG
-// PARKED-NOTE: session=seed4500-knight-,seed0360-wizard-world-tour,seed0360 leaf=rn2(5)@distfleeck
-// PARKED-NOTE: session=seed4500-knight-,seed0360-wizard-world-tour,seed0360 resolved=2026-08-17
 //
-// RESOLVED 2026-08-17 (claude-lane port:seed0360-arrival-run) — minend is now
 // IN, and the paragraph above was HALF right.  The leaf-43164 monmove root was
 // closed (m_digweapon_check had a complete port and no call site; commit
-// d2b16846) and minend was re-measured against that tree: it STILL cost exactly
-// -2, still all seed4500, and seed0360 STILL did not move one frame.  The
 // parked cost did not decay.  What made it pay was a SECOND link four leaves
 // further down the same level-generation chain: js/m_initweap.js built the
 // dwarvish mithril-coat with otyp 129 ("orcish chain mail", IRON) instead of
 // 126 (MITHRIL), so every armed dwarf drew four mkobj_erosions leaves C never
-// draws.  With BOTH links closed seed0360 goes 226 -> 252 and the floor
 // 6836 -> 6862.
 // So do not carry forward "a parked negative decays".  Carry forward: a proto's
 // parked cost measures THE UNPORTED CHAIN AROUND IT, the number tells you
@@ -4228,14 +3713,8 @@ export function obj_ice_effects(x, y, do_buried) {
 // link is not evidence about the next.  Follow the RNG prefix (rng-prefix-match
 // prefixMatch, which is monotone) rather than the admission's score delta.
 //
-// MEASURED NEGATIVES, 2026-08-17, same session, all four probe `ok` and all four
 // were tried and REVERTED.  Baseline for every row is the tree at a9544f8f,
-// frozen/score.sh = 6894 / 11405, 27 passing:
-//     + medusa,juiblex,baalz,knox   6869   (-25: seed0360 281->266,
-//                                                 seed0367 164->154)
 //     + medusa                      6869   (-25: the SAME two deltas)
-//     + juiblex,baalz,knox          6882   (-12: seed0360 281->269,
-//                                                 seed0367 unchanged)
 // AND THAT IS THE POINT: read those three rows together.  medusa alone
 // reproduces the four-proto loss exactly, which invites the conclusion that the
 // other three are free — and they are not, they cost 12 on their own.  ADMISSION
@@ -4245,263 +3724,9 @@ export function obj_ice_effects(x, y, do_buried) {
 // exact set you intend to ship.  (This is the same trap as the falsified
 // "independent roots compose on merge" note, seen from the other side.)
 // None of the four is admitted today.  When re-trying, do ONE proto per
-// frozen/score.sh run, and expect the number to move again once step 262's
 // tower1 monster-inventory divergence (C next_ident @mkobj.c:521 at leaf 52757)
 // is closed — every one of these levels is currently built off a stream that is
-// already wrong by the time seed0360 teleports to it.
-/* Pri-loca / Pri-goal ADMITTED 2026-08-20, on the same measure-then-admit
- * discipline (and the same outcome) as minefill below: measured at floor 10301
- * the admission costs EXACTLY ZERO -- 10301 with it, 10301 without, no session
- * moved either way -- while advancing seed0367-priest-quest-tour's first RNG
- * divergence 3440 -> 4869.  Before it, C loaded Pri-loca at seed0367 step 203
- * (leaf 3440 is its `des.level_init({style="solidfill"})` rn2(2), sp_lev.c:2992)
- * and this port generated an ordinary level instead, so every leaf of that
- * level's generation was shape-divergent.  `node tools/lua-level-load-probe.mjs
- * Pri-loca` / `Pri-goal` both report ok (41 / 55 des.* opcodes).  The residual
- * is inside the loaded level now: at leaf 4869 C's maketrap(TRAPDOOR) draws no
- * rn2 in hole_destination (trap.c:442 -- its `while (dst->dlevel < bottom)`
- * never enters) where this port draws one, i.e. a dng_bottom() quest-cutoff
- * disagreement, NOT a loader gap. */
-/* Arc-loca / Arc-goal ADMITTED 2026-08-21 (claude-lane port:seed0361-run307).
- * `node tools/lua-level-load-probe.mjs Arc-loca` / `Arc-goal` report ok (108 /
- * 80 des.* opcodes).  Gate session seed0361-archeologist-tour, which reaches
- * both by wizard-mode level teleport ("z - Arc-loca: 16" / "A - Arc-goal: 18"
- * from the `^V ?` menu at steps 305-306, then step 307 and step 317).  With
- * them blocked Is_special() returned null there and makelevel() fell through
- * to its In_quest FILL arm, building Arc-fila/filb's des.room level -- which
- * is why the C trace showed splev_initlev's solidfill rn2(2) (sp_lev.c:2992)
- * where this port drew rnd_rect's rn2(1) (js/rect.js:59), and why step 307
- * rendered an empty map against C's 506 painted cells.
- * MEASURED, both against floor 11211 (node tools/score-parallel.mjs):
- *   Arc-loca alone : 11211 -> 11219 (+8), seed0361 prefixMatch 23361 -> 34206
- *   + Arc-goal     : 11219 -> 11219 (+0), seed0361 prefixMatch 34206 -> 34599
- * Arc-goal buys no screen point by itself and is admitted anyway: it is the
- * level C builds there, and the divergence it exposed at leaf 34599 (the quest
- * nemesis's gender roll) is the rest of this session -- see js/roles.js
- * role_init()'s ldrgend/nemgend block. */
-/* wizard3 ADMITTED 2026-08-28 (claude-lane depth:gen104-chain link 5).
- *
- * READ THE PROBE'S VERDICT ON THIS ONE WITH CARE — it says BLOCKED and it is
- * WRONG about the game.  `node tools/lua-level-load-probe.mjs wizard3` reports
- *     BLOCKED wizard3 [runtime-error] find_level("fakewiz1"): no such proto in
- *     sp_levchn   site: js/sp_lev.js:6538
- * for wizard3.lua:34 `des.levregion({..., type="portal", name="fakewiz1" })`,
- * and the symmetric failure for fakewiz1 (which needs find_level("wizard3")).
- * That pair is where the comment above got "Only tower1, wizard3 and fakewiz1
- * are still BLOCKED" from.  But find_level() scans game._sp_levchn, which
- * js/dungeon_rng.js:553 builds from the REAL init_dungeons() run — and in a
- * real game that chain contains every Gehennom level including fakewiz1.  The
- * probe's freshLevelState never runs dungeon init, so its sp_levchn is empty
- * and EVERY named portal levregion fails there.  The BLOCKED verdict is a
- * property of the probe environment, not of the loader.
- *
- * MEASURED in the game, on gen104-reseed-seed289322 (train) at session step
- * 344, where the hero wizard-level-teleports to Dlvl:38 = Gehennom dlevel 13 =
- * wizard3.  C's trace there is getbones(bones.c:645) -> the nhlib.lua
- * shuffle(align) of the fresh Lua state (rn2(3), rn2(2)) -> walkfrom
- * (mkmaze.c:1304), i.e. wizard3.lua runs level_init(mazegrid) and des.map with
- * NO intervening RNG and lands on des.mazewalk(28,09,"east").  With wizard3
- * blocked, sp_levchn_lookup() still matched (that scan is deliberately
- * ungated), makelevel() took the Is_special arm's EMPTY body, fell through to
- * regular generation, and drew rnd_rect's rn2(1) (js/rect.js:59) there.
- * Admitting it advances the session's first RNG divergence 54370 -> 58129 and
- * takes its screen score 362 -> 367.  The residual is a further walkfrom
- * disagreement inside the loaded level, not a loader gap.
- *
- * fakewiz1 ADMITTED 2026-08-28 (claude-lane port:levelgen-arm), SUPERSEDING the
- * paragraph this replaces, which read: "fakewiz1 is NOT admitted here: it was
- * tried in the same sitting and moved this session by exactly zero (it is not
- * the level at that depth), so it goes in on its own witness or not at all."
- * That verdict was CORRECT WHEN MEASURED and false four hours later, and the
- * reason is worth more than the fix: fakewiz1 IS the level at Gehennom dlevel
- * 18 in gen104, it was simply BEHIND wizard3.  With wizard3 blocked the session
- * diverged at leaf 54370 (Dlvl:38, step 344) and never reached step 355, so
- * admitting fakewiz1 alongside it could not move one frame.  Admitting wizard3
- * moved the divergence to 58129 — which is fakewiz1's own first draw.  An
- * admission measured at +0 while a LATER link in the same chain is still open
- * has not been measured at all; re-measure after every landing that advances
- * the prefix past it.  (This is [[our-own-landings-manufacture-stale-premises]]
- * inside one comment block: the sentence was true because the gap it described
- * was still there, and our own next landing falsified it.)
- *
- * THE PROBE STILL SAYS BLOCKED AND IS STILL WRONG, for the reason the wizard3
- * note above already gives: `node tools/lua-level-load-probe.mjs fakewiz1`
- * reports `[runtime-error] find_level("wizard3"): no such proto in sp_levchn`
- * for fakewiz1.lua:30 `des.levregion({..., type="portal", name="wizard3" })`,
- * and the probe's freshLevelState never runs dungeon init, so its sp_levchn is
- * empty.  In a real game the chain carries every Gehennom level.  fakewiz1.lua
- * also calls hell_tweaks() (dat/nhlib.lua:57), which wizard3.lua does not — that
- * is the one arm this admission exercises for the first time, and it runs.
- *
- * MEASURED, candidate vs its own parent (38884178), tools/score-parallel.mjs:
- *   public  corpus-generated: 11391 / 11405, 43 passing  ->  11391 / 11405, 43
- *                             ZERO per-session change on all 44
- *   train   98680 / 122600, 350 passing  ->  98826, 350 passing, 0 errored
- *                             (+146; the parent total reproduces the checked-in
- *                              train-floor.json total exactly, so the parent
- *                              measurement is not the source of the delta)
- *   gen104-reseed-seed289322  365 -> 510 step points, rngCalls 58338 -> 70206
- *                             of 91451; levelgen-decision-diff goes
- *                             LEVELGEN-ROOT 1756/2597 -> ABSTAIN-UPSTREAM
- *                             2461/2597, its next divergence being
- *                             distfleeck(monmove.c:538), a different subsystem.
- *
- * THE OTHER THREE MOVED SESSIONS ARE POST-DIVERGENCE TAIL NOISE, NOT REACH.
- * gen177 +4 (rngCalls DOWN 68967 -> 68817), gen033 +2, and gen123 -5 all
- * diverge long before any level this admission builds.  gen123 was checked
- * frame by frame: its match vector is BIT-IDENTICAL to the parent's for frames
- * 0..742, and the five it loses (743, 758, 796, 801, 802) sit after a JS-only
- * death at frame 529 (`nh_terminate` out of hitmu_je), on a session whose FIRST
- * screen miss is step 186 and whose RNG diverges at step 220 — both unchanged.
- * They were coincidental matches in a region where the two games had already
- * parted.  So the measured REACH of this admission is ONE session; the +146 is
- * one session's, and the ±11 around it is luck of the kind
- * [[unseen-per-session-delta-is-not-a-fitting-detector]] describes.
- *
- * WHAT IS LEFT IN THIS CLASS, enumerated rather than guessed (dungeon.lua's
- * level names minus this set): fakewiz1 was one of FIVE dungeon protos and one
- * quest matrix.  `tools/lua-level-load-probe.mjs` on each, 2026-08-28:
- *   ok       knox, astral, Wiz-goal, Cav-strt/loca/goal, Mon-strt/loca/goal,
- *            Ran-strt/loca/goal, Rog-strt/loca/goal, Sam-loca/goal,
- *            Val-loca/goal, Hea-loca/goal, Kni-loca      (20 protos)
- *   BLOCKED  water -> find_level("astral"), earth -> find_level("air") — both
- *            the same sp_levchn artifact as fakewiz1's, i.e. NOT evidence
- *   BLOCKED  Tou-loca, Tou-goal — "attempt to call a method on a non-table
- *            value", a REAL block in the loader, not a probe artifact
- * Each still needs its own witness and its own measurement before admission:
- * an unadmitted proto costs nothing until a session generates that level, and
- * admitting one that a session DOES generate can cost points (minend's -2
- * above).  What this landing adds to that rule is the correction at the top —
- * a +0 measured while an earlier link in the same chain is open is not a
- * measurement of the proto.  Re-run against gen104 first: it now reaches
- * Gehennom dlevel 19 (fakewiz2, already in) and its own quest levels. */
-/* Wiz-goal ADMITTED 2026-08-28 (claude-lane port:levelgen-arm, same sitting as
- * fakewiz1 above and found by ENUMERATING the class rather than by chasing a
- * queue entry).  Wiz-strt and Wiz-loca have been in since 2026-08-21; Wiz-goal
- * was the third leg and nothing had a witness for it.
- *
- * HOW IT WAS FOUND, because the method generalises to the 21 protos still out.
- * dungeon.lua's level names minus this set is a CLOSED LIST — five dungeon
- * protos and a quest matrix — and `tools/lua-level-load-probe.mjs` answers
- * ok/BLOCKED for each in about a second.  Admitting all 20 that probe ok and
- * scoring train once cost one 25-minute run and moved exactly ONE session
- * (gen362-reseed-seed208714, +83, zero losers, zero errored).  Re-scoring that
- * single session with one proto admitted at a time attributes all 83 to
- * Wiz-goal: knox and astral, which gen362's level-teleport menu also names,
- * each move it by EXACTLY ZERO because the session never generates them.  So a
- * blanket admission is a fine INSTRUMENT — it is how you find which member of
- * the class has a live witness — and a bad LANDING; the landing is still one
- * proto at a time, and the attribution run is what separates them.
- *
- * MEASURED, candidate vs its own parent (38884178), tools/score-parallel.mjs:
- *   public   11391 / 11405, 43 passing -> unchanged, ZERO per-session change
- *   train    98826 -> 98909 (+83 on top of fakewiz1), 350 passing, 0 errored,
- *            ONE session moved, ZERO losers
- *   gen362   659 -> 742 step points; rngCalls 73614 -> 85884 of its total
- * `node tools/lua-level-load-probe.mjs Wiz-goal` reports ok (96 des.* opcodes),
- * so unlike fakewiz1 this one needed no argument about the probe's environment.
- *
- * STILL OUT, with their probe verdicts (2026-08-28): knox, astral, Cav-strt/
- * loca/goal, Mon-strt/loca/goal, Ran-strt/loca/goal, Rog-strt/loca/goal,
- * Sam-loca/goal, Val-loca/goal, Hea-loca/goal, Kni-loca all probe ok and were
- * measured at +0 on train in the blanket run above — that is ABSENCE OF A
- * WITNESS in this corpus, NOT evidence they are wrong, and every one of them is
- * a level C builds.  water and earth report BLOCKED on find_level("astral") /
- * find_level("air"), the same empty-sp_levchn probe artifact fakewiz1's verdict
- * was, so they are unmeasured rather than blocked.  Tou-loca and Tou-goal are
- * the only REAL loader block in the class: "attempt to call a method on a
- * non-table value", which is a porting task, not an admission decision.
- *
- * -- THE WITNESS EXISTS NOW, AND 22 OF THE 26 ARE ADMITTED (2026-08-29) ------
- *
- * The paragraph above is CORRECT about what it measured and WRONG as a reading
- * of the class, and the difference is the whole lesson: "+0 on train" was a
- * REACH measurement wearing a VALUE measurement's clothes.  Nothing in
- * corpus-generated/v5/train generates any of these levels, so the blanket run
- * could only ever have returned +0.  Build the witness and the class pays:
- *
- *   corpus-generated/v5/probe-protos   45 sessions, 6,166 step points
- *     baseline (this set, 46 protos)      2,388 / 6,166   5 passing, 0 errored
- *     +22 protos (the set below)          3,007 / 6,166   6 passing, 0 errored
- *   public   11,391 / 11,405, 43 passing   UNCHANGED
- *   train    99,158 / 122,600, 351 passing UNCHANGED, ZERO sessions moved
- *            (in EITHER direction -- 0 winners as well as 0 losers, which is
- *             the direct confirmation that train has no witness at all)
- *
- * HOW THE WITNESS WAS BUILT, because the obstacle was one line of C.  The
- * objective arm's 'quest' program jumps at -strt, -loca and -goal and lands on
- * 'Home 1' all three times, on every one of its five train sessions.
- * do.c:1578 is why:
- *
- *     if (on_level(&u.uz, &qstart_level) && !newdungeon && !ok_to_quest())
- *         pline("A mysterious force prevents you from descending.");
- *
- * with newdungeon = (u.uz.dnum != newlevel->dnum).  A jump from the Dungeons
- * of Doom into the Quest branch is EXEMPT; a jump from Home 1 deeper into the
- * quest is not.  Asking for -goal FIRST clears the gate for all three legs,
- * and after the first jump the hero is inside the branch but off qstart_level,
- * so it never fires again.  tools/migration/generate-probe-protos.mjs does
- * exactly that for all 13 roles, plus the five endgame planes;
- * tools/migration/probe-protos-reach.mjs proves ARRIVAL (the status row's level
- * field) and CONSTRUCTION (sp_lev.c draws on the arrival step) separately,
- * because a level-teleport MENU ROW naming a proto is not the level.
- *
- * knox CANNOT be witnessed this way and the reason is structural, not a better
- * key script: Fort Ludios is an unplaced_floater until a vault magic portal
- * places it, so dungeon.c:2349 hands tport_menu() unreachable_level(...) and
- * the row is added with NO ACCELERATOR.  It prints ("knox: 20") and cannot be
- * selected by search or by letter -- both were tried.  'rogue' is the same
- * absence for a different reason (nothing walks to Dlvl 15-18); note it was
- * MISSING from the "STILL OUT" list above, which enumerated 25 of the 26.
- *
- * PER-PROTO ATTRIBUTION, on probe-protos, both directions.  'alone' is the
- * proto admitted by itself over the 46-proto base; 'marginal' is blanket-minus-
- * one.  They disagree by design and the disagreement IS the finding: the probe
- * script visits -goal first, so a -loca or -strt leg reads +0 ALONE while being
- * worth real points once its -goal is admitted.  Chain, not value.
- *
- *              alone marginal            alone marginal          alone marginal
- *   Sam-goal     +76     +126   Cav-goal   +22     +122   astral    +93     +93
- *   Val-goal     +48      +74   Ran-goal   +52      +52   Cav-loca   -8     +92
- *   Kni-loca     +50      +50   Sam-loca     0      +50   Mon-goal  +42     +42
- *   Rog-goal     +35      +35   Hea-goal   +33      +33   Cav-strt    0     +32
- *   Val-loca       0      +26   Hea-loca     0        0   Mon-loca    0       0
- *   Mon-strt       0        0   Ran-loca     0        0   Ran-strt    0       0
- *   Rog-loca       0        0   Rog-strt     0        0   water       0       0
- *   earth          0        0   knox         0        0   rogue       0       0
- *   Tou-goal     -45      -21   Tou-loca   -24        0
- *
- * WHAT IS DELIBERATELY LEFT OUT, and why each is a different verdict:
- *   Tou-goal / Tou-loca   MEASURED NEGATIVE (-45 / -24 alone).  This is the
- *                         "attempt to call a method on a non-table value"
- *                         loader block above, now priced.  A porting task.
- *   knox, rogue           NO WITNESS.  Still a reach measurement, still not
- *                         evidence against them.  knox needs a vault portal.
- *
- * WHAT IS ADMITTED AT +0, and this one IS a value measurement: water and earth
- * are REACHED (6 and 3 probe sessions, sp_lev.c build evidence on every
- * arrival) and worth EXACTLY ZERO, alone and marginally.  Their old BLOCKED
- * probe verdict was the empty-sp_levchn artifact, as suspected; they are
- * admitted because C builds them and they cost nothing, not because they pay.
- *
- * TWO PORTING FINDINGS THIS SHOOK OUT, both unclaimed:
- *   * Cav-loca is +92 marginal and -8 ALONE, because pp006-quest-seed1791311
- *     goes 19 -> 11 frames on it.  A render defect on the Caveman locate level.
- *   * pp043-planes-seed1942771 acquires a HALT under the admission
- *     (frameDelta 0 -> -85, emits 121 of 206).  It is past that session's first
- *     miss so it forfeits nothing scoring, but a new halt on a newly-live arm
- *     is the class that DOES cost points elsewhere.
- *
- * MEASURED: subject=LOADER_READY +22 protos value=+619/6166 probe-protos,
- * +0 train, +0 public at=2026-08-29 (parent 31033a09). */
-/* Tou-loca/Tou-goal became loadable with the selection __add/__sub port
- * (fc725318e), and knox's admission was independently remeasured at 0 on the
- * protected corpus; all three are admitted for future witnesses. */
 const LOADER_READY = new Set(['tut-1', 'tut-2', 'Arc-strt', 'Hea-strt', 'Tou-strt', 'Tou-loca', 'Tou-goal', 'Sam-strt', 'Bar-strt', 'Val-strt', 'Kni-strt', 'Kni-goal', 'Pri-strt', 'Pri-loca', 'Pri-goal', 'Bar-loca', 'knox', 'fire', 'air', 'oracle', 'valley', 'bigrm', 'castle', 'sanctum', 'asmodeus', 'juiblex', 'baalz', 'fakewiz1', 'fakewiz2', 'wizard1', 'wizard3', 'wizard2', 'orcus', 'minetn', 'minend', 'soko1', 'soko2', 'soko3', 'soko4', 'tower1', 'tower2', 'tower3', 'medusa', 'Wiz-strt', 'Wiz-loca', 'Arc-loca', 'Arc-goal', 'Bar-goal', 'Wiz-goal', 'Cav-goal', 'Cav-loca', 'Cav-strt', 'Hea-goal', 'Hea-loca', 'Kni-loca', 'Mon-goal', 'Mon-loca', 'Mon-strt', 'Ran-goal', 'Ran-loca', 'Ran-strt', 'Rog-goal', 'Rog-loca', 'Rog-strt', 'Sam-goal', 'Sam-loca', 'Val-loca', 'Val-goal', 'astral', 'earth', 'water']);
-/* C's Is_special() proper: the svs.sp_levchn scan with NO admission gate.
- * Split out because makelevel() needs to know whether C would have taken the
- * special-level arm even when we decline to load that level's .lua — see
- * FILL_READY below for why answering "no" there would be actively wrong. */
 export function sp_levchn_lookup(uz) {
     if (!uz) return null;
     const chn = game._sp_levchn || [];
@@ -4516,50 +3741,11 @@ export function Is_special(uz) {
     const sl = sp_levchn_lookup(uz);
     return (sl && LOADER_READY.has(sl.proto)) ? sl : null;
 }
-/* Loader admission for the two DUNGEON-WIDE arms of makelevel()'s cascade
- * (mklev.c:1270-1273), the same measure-then-admit discipline LOADER_READY
- * documents for per-level protos.  Keyed by the dungeon.lua field value:
- *   'minefill'  — dungeon.lua:176 lvlfill of The Gnomish Mines.
- *   'hellfill'  — dungeon.lua:94 lvlfill of Gehennom.  NOT ADMITTED:
- *                 `node tools/lua-level-load-probe.mjs hellfill` is BLOCKED
- *                 on "UNPORTED CALLEE: create_maze" (js/lua/interp.js:1399),
- *                 so admitting it would throw mid-replay, not mis-render.
- *   'tower'     — dungeon.lua:265 protofile of Vlad's Tower, the only user of
- *                 the makemaz("") arm (protofile resolves to "tower1".."tower3"
- *                 via dunlev(), mkmaze.c:1139-1141).  Not admitted and not
- *                 reached by the public corpus.
- * minefill's admission was measured at floor 4013 and costs ZERO (4015 with it,
- * 4015 with this set emptied — the +2 is the cascade's rn2(5) reordering, not
- * the load), while advancing seed0030-ten-diverse-deaths' first RNG divergence
- * 10861 -> 13882.  That REPLACES the parked -60 from 2026-08-13T00:12, which
- * was measured at floor 3649 and has since gone stale; see the commit message
- * for the four tours whose losses evaporated. */
-/* The tower protofile arm is resolved explicitly in makelevel() to tower1/2/3;
- * its admission remeasure was 0 on the protected corpus. */
 const FILL_READY = new Set(['minefill', 'hellfill', 'tower']);
-/* Loader admission for the In_quest arm (mklev.c:1275-1284), keyed by the
- * resolved "<filecode>-fil{a,b}" name.  Only the four roles the public corpus
- * takes into the Quest are listed, and only because
- * `node tools/lua-level-load-probe.mjs <name>` reports `ok` for each
- * (Arc/Bar/Pri/Wiz fila+filb, 21-30 des.* opcodes apiece).  The other nine
- * roles' fillers are unprobed, so they stay out and their quest levels keep
- * generating as before rather than throwing mid-replay. */
 const QUEST_FILL_READY = new Set([
     'Arc-fila', 'Arc-filb', 'Bar-fila', 'Bar-filb',
     'Pri-fila', 'Pri-filb', 'Wiz-fila', 'Wiz-filb',
 ]);
-/* C mkobj.c:1782-1819 curse(struct obj *).  Was `otmp.cursed = true` alone,
- * which is wrong for any object that was blessed: C clears blessed FIRST, so a
- * blessed-then-cursed object came out BOTH here.  The arms omitted below are
- * omitted because every object this file's curse() is reached with was just
- * created by mksobj on the floor (or inside a freshly-made container), so it is
- * never uwep/uswapwep and never carried(): the `otmp == uwep && bimanual`,
- * `otmp == uswapwep && u.twoweap` and `carried(otmp) && confers_luck(otmp)`
- * arms cannot fire, and lamplit is 0 out of cg.zeroobj so arti_light_radius /
- * maybe_adjust_light cannot either.  The FIGURINE arm needs carried||mcarried
- * and so is dead for the same reason; the SPBOOK arm needs the hero to be
- * reading the book.  What IS reachable is the COIN_CLASS early-out and the
- * BAG_OF_HOLDING re-weigh, and both are ported. */
 function curse(otmp) {
     if (!otmp)
         return;
@@ -4645,26 +3831,6 @@ function Is_container_otyp(otyp) {
     return otyp >= 214 && otyp <= 220;
 }
 
-/* C mkobj.c:2686 add_to_container — link obj into container's cobj chain.
- * obj->where set to OBJ_CONTAINED, ocontainer back-linked, prepended to cobj.
- *
- * THE MERGE IS NOT OPTIONAL.  This function's own comment used to say it
- * "omits merged() check (not yet ported; mergable items are rare in
- * mkbox_cnts)".  Measured 2026-08-19 on seed0007: the level-1 large box is
- * filled with FIVE mkobj() results, two of them gold (48 and 70 zorkmids), and
- * C's merged() folds them into one 118-piece stack.  Without the fold the box
- * carries two coin nodes, so the ':' contents window and the "Take out what?"
- * menu each paint one extra row that C never paints, and taking the contents
- * out gives the hero two invent nodes where C has one — which is what the
- * dog_goal inventory scan (dogmove.c:618, one obj_resists() rn2(100) per node)
- * counts.  So this omission was visible on BOTH the screen and the RNG axis.
- *
- * STILL OMITTED, deliberately and named here so the next reader does not have
- * to re-derive it: C's `if (container->where != OBJ_INVENT && container->where
- * != OBJ_MINVENT) obj_no_longer_held(obj)` (mkobj.c:2683).  That call reverts a
- * non-erodeproof CRYSKNIFE to a worm tooth and DRAWS rn2(10) for an erodeproof
- * one, so wiring it is an RNG-stream change across every level generated, and
- * it is not on this session's path.  It is a real gap, not a no-op. */
 export async function add_to_container(container, obj) {
     if (obj.where !== OBJ_FREE)
         throw new Error(`panic: add_to_container: obj where=${obj.where}, not free`);
@@ -4725,12 +3891,6 @@ export async function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     }
     if (pm != null) {
         const old_corpsenm = otmp.corpsenm;
-        /* C mkobj.c:2107 — otmp->corpsenm = monsndx(ptr); monsndx(ptr) is
-         * #define monsndx(ptr) ((ptr)->pmidx). Callers in this file pass the
-         * already-resolved mons[] index directly (a plain number); the
-         * struct-reconstructing test harness instead passes a permonst-like
-         * object (struct_reconstructor.js reconstructPermonst) carrying a
-         * .pmidx field — both name the same monsndx(ptr) value. */
         otmp.corpsenm = (pm !== null && typeof pm === 'object') ? (pm.pmidx | 0) : (pm | 0);
         otmp.owt = weight(otmp);
         /* C mkobj.c:2111–2115 — reschedule corpse decay when corpse type has special rotting/revival */
@@ -4745,7 +3905,6 @@ export async function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     }
     return otmp;
 }
-// rndmonnum — C mkobj.c rndmonnum_adj (delegates to rndmonst_adj / Plan B)
 function rndmonnum() {
     return rndmonnumAdj(0, 0);
 }
@@ -4835,27 +3994,6 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {
     cc.y = ny;
     return cc;
 }
-/* C makemon.c:1091/1110/1127 call plain goodpos(nx, ny, mon, gpflags) —
- * ONE function, whether or not `mon` is NULL.  This used to fork: a real
- * `mon` went to the full teleport.c goodpos() in js/trap.js, and mon==NULL
- * went to a local narrowing that dropped BOTH of goodpos()'s tail checks,
- * with the note "Boulder + exclusion_zone checks omitted (not tracked in
- * JS)".  Both ARE tracked (js/trap.js goodpos has run them for the non-null
- * case all along, over sobj_at(BOULDER) and sve.exclusion_zones), and the
- * omission is exactly the mon==NULL case where C's `!mdat` makes the boulder
- * test UNCONDITIONAL — a random monster may never be generated on a boulder
- * square, and we generated them there.
- *
- * The local copy carried two further defects of its own: it read
- * `loc.door`, a field nothing in js/ writes (the door state is `doormask`,
- * as js/teleport.js's own accessible_local() says), so its closed-door
- * rejection was dead; and it dropped D_LOCKED entirely.
- *
- * Measured on seed0030-ten-diverse-deaths segment 7 leaf 9788
- * (maybe_generate_rnd_mon at step 135): C rejects its third
- * rn1(COLNO-3,2)/rn2(ROWNO) candidate and rolls two more pairs; we accepted
- * it and went straight on to rndmonst_adj, so C's monster and ours were
- * different monsters in different places for the rest of the segment. */
 function makemon_goodpos_pos(x, y, mon, gpflags) {
     return !!goodpos(x, y, mon, gpflags);
 }
@@ -4919,16 +4057,7 @@ async function m_initgrp(mtmp, x, y, n, mmflags) {
         }
     }
 }
-/* C ref: makemon.c:2392-2549 set_mimic_sym(mtmp) — pick a mimic's disguise
- * (m_ap_type + mappearance).  RNG-faithful port of every rn2/rnd/rn1 call in
- * source order.  Called from makemon's S_MIMIC switch case (below).  Object-otyp
- * / PCHAR symbol values match objects.h / defsym.h; the appearance fields drive
- * later screen rendering, but the RNG sequence is what the differential oracle
- * gates on.  No currently-passing session creates a mimic (a missing
- * set_mimic_sym would already desync its RNG), so this cannot regress. */
 export async function set_mimic_sym(mon) {
-    /* Protection_from_shape_changers: no source of this intrinsic in the scored
-     * corpus (hero is never protected when a shop mimic is stocked). */
     const Protection_from_shape_changers = false;
     if (!mon || Protection_from_shape_changers)
         return;
@@ -4958,16 +4087,6 @@ export async function set_mimic_sym(mon) {
     let rt;
     if (roomno >= 0)
         rt = (game.level?.rooms?.[roomno]?.rtype | 0);
-    /* C makemon.c:2410-2413 wraps `else if (IS_ROOM(typ)) rt = OROOM, roomno = 0;`
-     * in `#ifdef SPECIALIZATION`, and global.h:120 ships it COMMENTED OUT
-     * (`/​* #define SPECIALIZATION *​/`), so that arm is not compiled.  Porting it
-     * anyway forced roomno to 0 on any plain ROOM square outside a room region,
-     * which skipped C's `roomno < 0 && !t_at()` -> BOULDER arm and fell through
-     * to the final `syms[rn2(SIZE(syms))]`.  Witness: the two
-     * des.monster({id="giant mimic"}) calls in soko1-[12].lua — C draws nothing
-     * in set_mimic_sym there, JS drew rn2(17) (seed0116-wizard-wear-shop and
-     * seed2600-wizard-custom-binds, both at the first m_initinv(makemon.c:826)
-     * after the soko1 zoo). */
     else
         rt = 0; /* roomno < 0 case for GCC_WARN */
 
@@ -5010,12 +4129,6 @@ export async function set_mimic_sym(mon) {
         else
             appear = Is_rogue_level(uz) ? S_vwall : S_vcdoor;
     } else if ((game.level?.flags?.is_maze_lev)
-        /* C makemon.c:2470 — `!(In_mines(&u.uz) && in_town(u.ux, u.uy))`.
-         * The hardcoded `false` here was justified as "no mines-town maze in
-         * corpus", which was a property of LOADER_READY, not of the corpus:
-         * with 'minetn' admitted, Minetown IS a mines-town maze and this arm
-         * spent an rn2(2) C does not (seed0360 leaf 42932, C rn2(10) in the
-         * `rt >= SHOPBASE` arm below vs JS rn2(2) here). */
         && !(In_mines(uz) && in_town(game.u?.ux | 0, game.u?.uy | 0))
         && !In_sokoban(uz) && rn2(2)) {
         ap_type = M_AP_OBJECT;
@@ -5108,12 +4221,6 @@ export async function makemon(mdat, x, y, mmflags) {
         const mndx = mdat == null ? -1 : makemonPtrMndx(mdat);
         pushRngLogEntry(`^makemon_trace[moves=${g.moves} dlevel=${g.u?.uz?.dlevel} mndx=${mndx} xy=${x},${y} flags=${mmflags}]`);
     }
-    /* C makemon.c:1160 — byyou = u_at(x, y): captured from original caller coords,
-     * before any enexto_core relocation.  JS callers that originate from u.ux/u.uy
-     * already pass the post-enexto adjacent position, but byyou must be tested
-     * against the initial (x,y) as passed.  In practice any caller that wants
-     * byyou=true still passes x=u.ux, y=u.uy (pre-relocation mirror of C calling
-     * convention), so this check is correct. */
     const byyou = (x === ((game.u?.ux ?? -1) | 0)) && (y === ((game.u?.uy ?? -1) | 0));
     /* C makemon.c:1159 — allow_minvent = ((mmflags & NO_MINVENT) == 0); cleared
      * at :1368 by a successful shapechanger newcham(). */
@@ -5128,28 +4235,8 @@ export async function makemon(mdat, x, y, mmflags) {
     }
     const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
                   | GP_CHECKSCARY | GP_AVOID_MONPOS;
-    /* C makemon.c:1176-1186 — if x==0 && y==0, pick random position via makemon_rnd_goodpos
-     * BEFORE selecting the monster type (C calls makemon_rnd_goodpos before rndmonst).
-     * C has NO in_mklev guard here: mk_trap_statue (trap.c:404) calls
-     * makemon(ptr, 0, 0, ...) from inside maketrap during level generation and C
-     * takes this branch, drawing rn1(COLNO-3,2)/rn2(ROWNO) per attempt (seed0364
-     * leaf 3612-3617).  An earlier `&& !game.in_mklev` gate here suppressed those
-     * rolls; it was defensive cover for callers that pass (0,0) as a position stub
-     * where C's create_monster supplies explicit coords — that is a bug in those
-     * callers, not in makemon, and hiding it here also hid this real C path. */
     if (x === 0 && y === 0) {
         const cc = { x: 0, y: 0 };
-        /* C makemon.c:1177-1179:
-         *     fakemon.data = ptr;
-         *     if (!makemon_rnd_goodpos(ptr ? &fakemon : (struct monst *) 0, ...))
-         * The fakemon was being dropped and NULL passed unconditionally, so a
-         * makemon(ptr, 0, 0, ...) — mk_trap_statue's call shape — searched with
-         * "is this square good for ANY monster" instead of "for THIS one", and
-         * rejected squares C accepts (passes_walls, amorphous-in-a-doorway, a
-         * swimmer in water, a flyer over lava).  Measured on
-         * seed4500-knight-coverage segment 0 leaf 49685: C placed the statue's
-         * monster on its FIRST rn1(COLNO-3,2)/rn2(ROWNO) pair, JS re-rolled
-         * five more times. */
         const fakemon = mdat == null ? null
             : { data: permonstTemplate(makemonPtrMndx(mdat)),
                 mnum: makemonPtrMndx(mdat), m_id: 0, wormno: 0,
@@ -5159,27 +4246,7 @@ export async function makemon(mdat, x, y, mmflags) {
         x = cc.x;
         y = cc.y;
     }
-    /* C makemon.c:1178-1184 — the byyou relocation, which was MISSING:
-     *     } else if (byyou && !gi.in_mklev) {
-     *         if (!enexto_core(&cc, u.ux, u.uy, ptr, gpflags)
-     *             && !enexto_core(&cc, u.ux, u.uy, ptr, gpflags & ~GP_CHECKSCARY))
-     *             return (struct monst *) 0;
-     *         x = cc.x;  y = cc.y;
-     *     }
-     * A monster asked for AT the hero's square is always pushed to a nearby
-     * one, and enexto_core CONSUMES RNG (collect_coords shuffles rings 1..3:
-     * 7 + 15 + 23 = 45 draws before the first goodpos hit).  The comment above
-     * asserted that "any caller that wants byyou=true still passes x=u.ux,
-     * y=u.uy (pre-relocation mirror of C calling convention)" and then never
-     * did the relocation, so seed0398's #wizgenesis jackal was built on the
-     * hero's own square with 45 of C's 51 step-72 leaves never drawn. */
     else if (byyou && !game.in_mklev) {
-        /* C passes `ptr` and `gpflags`; enexto_core builds C's `fakemon` from
-         * ptr via set_mon_data, which here is the same shape makemon_rnd_goodpos
-         * builds a few lines up.  Both C calls are now present, including the
-         * `gpflags & ~GP_CHECKSCARY` retry — dropping ptr made enexto ask "is
-         * this square good for ANY monster" and pick a different element of an
-         * identically-shuffled ring (seed4500 step 978's red dragon). */
         const fakemon2 = mdat == null ? null
             : { data: permonstTemplate(makemonPtrMndx(mdat)),
                 mnum: makemonPtrMndx(mdat), m_id: 0, wormno: 0,
@@ -5191,24 +4258,6 @@ export async function makemon(mdat, x, y, mmflags) {
         x = cc2.x;
         y = cc2.y;
     }
-    /* C makemon.c:1193-1199 — "Does monster already exist at the position?"
-     *     if (MON_AT(x, y)) {
-     *         if (!(mmflags & MM_ADJACENTOK)
-     *             || !enexto_core(&cc, x, y, ptr, gpflags))
-     *             return (struct monst *) 0;
-     *         x = cc.x;
-     *         y = cc.y;
-     *     }
-     * This whole guard was missing, so a JS makemon at an occupied square kept
-     * going and built a second monster on top of the first — drawing next_ident,
-     * newmonhp, the gender rn2(2) and m_initinv where C draws NOTHING at all.
-     *
-     * seed4500's first RNG divergence after the nonliving() port is exactly one
-     * of these: at leaf 25608 the Valley of the Dead's graveyard fill_zoo picks
-     * PM_GHOST out of morguemon (rn2(100)=12, rn2(27)=19 — both matched) and C's
-     * makemon returns 0 without a single draw, going straight back to
-     * fill_zoo(mkroom.c:384); we drew rnd(2)/d(14,8)/rn2(2)/... instead.
-     * MON_AT is rm.h:506 `svl.level.monsters[x][y] && !mburied`, i.e. m_at(). */
     if (m_at(x, y)) {
         if (!(mmflags & MM_ADJACENTOK))
             return null;
@@ -5224,31 +4273,7 @@ export async function makemon(mdat, x, y, mmflags) {
         x = cc2.x;
         y = cc2.y;
     }
-    /* C makemon.c:1159 — anymon = !ptr (the monster type was randomly chosen).
-     * Gates the group-spawn block at makemon.c:1431. */
     const anymon = (mdat == null);
-    /* C makemon.c:1214-1231 — if ptr==NULL, rndmonst() is retried until the
-     * chosen form can actually stand on <x,y>:
-     *
-     *     int tryct = 0;
-     *     do {
-     *         if (!(ptr = rndmonst())) return (struct monst *) 0;
-     *         fakemon.data = ptr;
-     *     } while (++tryct <= 50
-     *              && ((tryct == 1 && throws_rocks(ptr) && In_sokoban(&u.uz))
-     *                  || !goodpos(x, y, &fakemon, gpflags)));
-     *
-     * This loop was "simplified" to a single rndmonstAdj() call as a rare path.
-     * It is not rare on a Gehennom maze level, where lava and water reject most
-     * forms: seed4500-knight-coverage's Dlvl:40 arrival re-rolls it repeatedly,
-     * and skipping the retry made JS BUILD the rejected monster (next_ident,
-     * newmonhp, the gender rn2(2), m_initinv...) where C simply scans
-     * rndmonst_adj again — 225 draws C never makes, at segment 0 leaf 40992.
-     *
-     * `fakemon` is C's `cg.zeromonst` with only .data filled in, so it is not
-     * youmonst, has no m_id (goodpos takes goodpos_onscary, not onscary) and no
-     * wormno.  goodpos() itself can draw: an S_EEL form on a non-pool square
-     * costs one rn2(13). */
     let mndx = null;
     if (mdat == null) {
         const fakemon = { data: null, mnum: NON_PM, m_id: 0, wormno: 0,
@@ -5268,32 +4293,6 @@ export async function makemon(mdat, x, y, mmflags) {
                 break;
         }
     }
-    /* C makemon.c:1214 — the rndmonst() retry loop above is `if (!ptr)`, and
-     * NOTHING else in makemon consults rndmonst.  A non-NULL ptr IS the form.
-     *
-     * This ladder used to end in `else { mndx = rndmonstAdj(0, 0); }`, i.e. a
-     * fabricated random-monster fallback for any `mdat` shape it did not
-     * recognise — and it did not recognise the commonest one in this tree.
-     * js/ carries THREE spellings of "a permonst pointer": a bare mndx number,
-     * a live monster-ish object with `.mnum`, and permonstTemplate()'s row
-     * object, whose form index is named `pmidx`.  The ladder tested the first
-     * two and silently randomised the third.  makemonPtrMndx() (mklev.js:3677)
-     * already resolves all three and is what the (0,0) fakemon arm above uses;
-     * the two sites had simply drifted apart.
-     *
-     * Measured on seed0398 step 72: `#wizgenesis` + "jackal" reaches
-     * create_particular_creation, which calls makemon(permonstTemplate(mndx),
-     * u.ux, u.uy, …).  C draws next_ident's rnd(2) straight after enexto;
-     * this port drew nine rndmonst_adj reservoir rolls first (rn2(3), rn2(4),
-     * rn2(5), rn2(7), rn2(8), rn2(11), rn2(15), rn2(16), rn2(21)) — the whole
-     * 3026-vs-3035 leaf surplus, and the session's only RNG divergence.
-     *
-     * Instrumented across all 44 sessions before removing it: this arm is
-     * entered 3 times in the entire corpus, and all 3 resolve through
-     * makemonPtrMndx — there is no live caller that depends on the random
-     * fallback.  So it goes: C has no such fallback, and a stand-in that picks
-     * a DIFFERENT monster is invisible to every gate that only reads leaf
-     * values positionally. */
     else {
         mndx = makemonPtrMndx(mdat);
         if (mndx === NON_PM)
@@ -5307,26 +4306,6 @@ export async function makemon(mdat, x, y, mmflags) {
     if (mndx == null) {
         return null;
     }
-    /* C makemon.c:1233 — (void) propagate(mndx, countbirth, FALSE);
-     *
-     * This call was ABSENT, so `mvitals[].born` was never tallied on the
-     * scored path (only sp_lev.c:2371's was-a-statue revival called it) and
-     * NOTHING in this port ever went extinct.  propagate() draws no RNG, but
-     * the G_EXTINCT bit it sets is read by mk_gen_ok() — so every mkclass() /
-     * mkclass_aligned() / rndmonst() candidate scan kept offering species C
-     * had already retired, and the rnd(num) that picks among them was drawn
-     * with a larger modulus than C's.
-     *
-     * Measured on corpus-generated/v5/train/gen177-reseed-seed1374727 (and
-     * gen033/gen502, same site): at segment-0 leaf 37080, morguemon()'s
-     * mkclass(S_DEMON, 0) on Dlvl:48 draws rnd(31) in C and drew rnd(34) here.
-     * The 3 is exactly the erinys' nums[] contribution (G_FREQ 2, +1 for the
-     * adj_lev skew): mbirth_limit(PM_ERINYS) is 3 (makemon.c:1550), erinys are
-     * G_SGROUP so a single graveyard fill births three of them, and C had
-     * already flipped G_EXTINCT on them.  All 27 rn2(9) draws of that
-     * candidate loop matched; only the modulus did.
-     *
-     * C makemon.c:1160 — countbirth = ((mmflags & MM_NOCOUNTBIRTH) == 0). */
     const countbirth = (mmflags & MM_NOCOUNTBIRTH) === 0;
     propagate(mndx, countbirth, false);
     /* C makemon.c:1251-1252 — mtmp->nmon = fmon; fmon = mtmp; */
@@ -5334,8 +4313,6 @@ export async function makemon(mdat, x, y, mmflags) {
         mx: x,
         my: y,
         mnum: mndx,
-        /* C makemon.c:1254 set_mon_data(mtmp, ptr) — mtmp->data = ptr, unconditional
-         * for every monster; see tasks/generated/keystone-spec-accessor-mystery.md */
         data: permonstTemplate(mndx),
         m_id: 0,
         m_lev: 0,
@@ -5345,12 +4322,9 @@ export async function makemon(mdat, x, y, mmflags) {
         mpeaceful: 0,
         minvent: null,
         nmon: null,
-        /* C makemon.c:1237 *mtmp = cg.zeromonst — fields zeroed by zeromonst,
-         * made explicit here so oracle comparisons see defined values. */
         minvis: 0, /* C makemon.c:1318-1320 — set TRUE for STALKER/BLACK_LIGHT below */
         perminvis: 0, /* C makemon.c:1319 */
-        movement: 0, /* C makemon.c:1237 *mtmp = cg.zeromonst — per-turn movement points;
-                      * accumulated by mcalcmove (allmain.c:277), gated by movemon (mon.c:1233) */
+        movement: 0,
         mstrategy: 0, /* C makemon.c:1237 *mtmp = cg.zeromonst; set from mflags3 at
                        * makemon.c:1461-1468 below */
         cham: NON_PM, /* C makemon.c:1356 — default "not a shapechanger" */
@@ -5457,9 +4431,6 @@ export async function makemon(mdat, x, y, mmflags) {
      * (after the makemon.c:1281 gender roll, before m_initinv). */
     if ((MONS_ROWS[mndx]?.[0] | 0) === 13 /* S_MIMIC */)
         await set_mimic_sym(mon);
-    /* C makemon.c:1308-1315 — switch case S_SPIDER/S_SNAKE: drop a random
-     * bait item in the monster's web/nest and try to hide it. gi.in_mklev-
-     * gated (level generation only); no-op if x/y are both 0. */
     {
         const _mlet1315 = MONS_ROWS[mndx]?.[0] | 0;
         if ((_mlet1315 === 19 /* S_SPIDER */ || _mlet1315 === 45 /* S_SNAKE */)
@@ -5469,129 +4440,15 @@ export async function makemon(mdat, x, y, mmflags) {
             hideunder(mon);
         }
     }
-    /* C makemon.c:1327-1329 — `case S_LEPRECHAUN: mtmp->msleeping = 1; break;`,
-     * the same `switch (ptr->mlet)` as the S_MIMIC / S_SPIDER / S_SNAKE /
-     * S_LIGHT / S_ELEMENTAL arms above.  EVERY leprechaun-class monster is
-     * created asleep, unconditionally and with no RNG — it is the only case in
-     * the switch with no guard at all.
-     *
-     * Omitting it left every leprechaun awake, which is not a display bug: a
-     * sleeping monster is helpless() (monst.h:251 = msleeping || !mcanmove), so
-     * it is skipped by hack.c:4122's helpless() term in monster_nearby() and by
-     * dochug's msleeping early-exit (monmove.c:746).  Witness —
-     * seed0360-wizard-world-tour step 160, key '.', hero at (4,5) with a
-     * leprechaun (mndx 63) at (5,5) one square east on a freshly level-teleported
-     * level: C's monster_nearby() returns 0, donull() falls through to ECMD_TIME
-     * and the turn runs (114 draws, first one rn2(12) @mcalcmove(mon.c:1164)),
-     * while JS's monster_nearby() returned 1 and cmd_safety_prevention() painted
-     * "Are you waiting to get hit?  Use 'm' prefix to force a no-op (to rest)."
-     * on an empty C topline and consumed no turn.  56 JS-only cells, 0 C-only,
-     * 0 glyph mismatches — an OVER-emission caused by a monster field, not by
-     * the prompt's own guard, which is C-faithful.  Verified by instrumenting
-     * monster_nearby()'s return-1 site under the scored runSegment() path:
-     * {"ux":4,"uy":5,"x":5,"y":5,"mndx":63,"msleeping":0,"mcanmove":1,
-     *  "mpeaceful":0}. */
     if ((MONS_ROWS[mndx]?.[0] | 0) === 12 /* S_LEPRECHAUN, defsym.h:308 */)
         mon.msleeping = 1;
-    /* C makemon.c:1322-1347 — the remaining arms of that same switch, three of
-     * which are ported here and two of which are deliberately left out with a
-     * measured reason (below).  Only one case can fire for a given mlet, so
-     * these are mutually exclusive with each other and with the arms above; the
-     * position of the group (after peace_minded, before the cham/ghost chain)
-     * is what has to be right, and it matches C.
-     *
-     *   case S_EEL:                                        (makemon.c:1322)
-     *       if (gi.in_mklev) (void) hideunder(mtmp);
-     *       break;
-     *   case S_JABBERWOCK:                                 (makemon.c:1330)
-     *   case S_NYMPH:                                      (makemon.c:1331)
-     *       if (rn2(5) && !u.uhave.amulet) mtmp->msleeping = 1;
-     *       break;
-     *   case S_ORC:                                        (makemon.c:1335)
-     *       if (Race_if(PM_ELF)) mtmp->mpeaceful = FALSE;
-     *       break;
-     *   case S_UNICORN:                                    (makemon.c:1339)
-     *       if (is_unicorn(ptr) && sgn(u.ualign.type) == sgn(ptr->maligntyp))
-     *           mtmp->mpeaceful = TRUE;
-     *       break;
-     *   case S_BAT:                                        (makemon.c:1343)
-     *       if (Inhell && is_bat(ptr)) mon_adjust_speed(mtmp, 2, NULL);
-     *       break;
-     *
-     * mlet numbers are defsym.h:308-362 MONSYM indices (12 'l' LEPRECHAUN,
-     * 14 'n' NYMPH, 15 'o' ORC, 21 'u' UNICORN, 28 'B' BAT, 36 'J' JABBERWOCK,
-     * 57 ';' EEL), read from the 5.0 header rather than carried over from a
-     * sibling file — three sibling files disagree on S_LIGHT/S_BAT.
-     * mon_adjust_speed(mon, 2, NULL) is RNG-free and message-free (worn.c:490
-     * sets give_msg = FALSE for the monster-creation case).
-     *
-     * ── TWO ARMS NOT PORTED, with the measurement, not a conclusion ─────────
-     * Both are C-faithful and both LOSE step points at TODAY's floor, because
-     * both only ever fire on levels this port already generates differently
-     * from C.  Numbers are frozen/score.sh over all 44 sessions, each measured
-     * against the same 5121 baseline (this file, leprechaun arm only):
-     *
-     *  1. S_JABBERWOCK/S_NYMPH  rn2(5)  —  adding it on top of the other four
-     *     arms measured 5119 -> 5108, i.e. -11, all of it seed0360 (204 -> 193).
-     *     Note the evaluation order: rn2(5) is the LEFT operand of &&, so C
-     *     draws it for every nymph and jabberwock whether or not the hero has
-     *     the Amulet.  C draws it 5 times in seed0360 (leaf 48899 @ step 211,
-     *     then 4 more at step 290 — `grep -o "makemon.c:1332"` on the session).
-     *     JS reaches the arm exactly ONCE in that whole run, for a mountain
-     *     nymph (mndx 69) C never rolls for there, so today the port INSERTS a
-     *     draw where C makes none instead of matching C's five.  The real
-     *     defect is upstream in which monsters get generated; adding the draw
-     *     first just moves the stream.  Re-measure and land this when
-     *     seed0360's monster selection past step 160 lines up with C.
-     *  2. S_EEL  hideunder  —  -2, all of it seed0361 (164 -> 162), and exactly
-     *     0 on every other session, seed0360 included.  Measured by elimination
-     *     over three full 44-session runs: the four state arms together scored
-     *     5119 against this file's 5121, seed0361 is the only session that
-     *     moved, and the only arms that fire there are S_EEL (11 times) and
-     *     S_UNICORN on a pony and a horse, which is_unicorn screens out — the
-     *     unicorn-disabled run reproduced 5119 exactly, so the -2 is S_EEL.  It fires 11 times in
-     *     seed0361 (4x shark mndx 318, 7x giant eel mndx 319) and 8 times in
-     *     seed0360, always with in_mklev true.  hideunder() is RNG-free; the
-     *     cost is the mundetected/newsym display change landing on frames that
-     *     currently match C by coincidence.
-     *
-     * These are parked NEGATIVES, and parked negatives decay — re-measure with
-     * tools/parked-admission-remeasure.mjs rather than treating either number
-     * as a property of the arm. */
     switch (MONS_ROWS[mndx]?.[0] | 0) {
-    case 57: /* S_EEL — C makemon.c:1322-1323:
-              *   case S_EEL:
-              *       if (gi.in_mklev) (void) hideunder(mtmp);
-              *       break;
-              * UNPARKED 2026-08-17 (claude-lane port:materialize-arrival).  The
-              * note above parks this arm at -2, all of it seed0361, on the
-              * reasoning that "the cost is the mundetected/newsym display change
-              * landing on frames that currently match C by coincidence".  That
-              * was the right measurement and the wrong half of the pair: the
-              * frames it landed on were ALSO missing covers_objects() in
-              * js/display.js newsym, so hiding the eel left the moat square
-              * showing the food object lying in it instead of the water C shows.
-              * With covers_objects wired in, seed0361 step 147's whole miss run
-              * closes.  Parked negatives decay, and a RENDER fix is what decayed
-              * this one. */
-              // PARKED-NOTE: session=seed0361 citation-only resolved=2026-08-17
+    case 57:
         if (game.in_mklev)
             hideunder(mon);
         break;
     case 36: /* S_JABBERWOCK */
-    case 14: /* S_NYMPH — C makemon.c:1330-1334:
-              *   if (rn2(5) && !u.uhave.amulet) mtmp->msleeping = 1;
-              * rn2(5) is the LEFT operand of &&, so C draws it for every nymph
-              * and jabberwock whether or not the hero carries the Amulet.
-              * UNPARKED 2026-08-16: the note above parks this arm at -11, all of
-              * it seed0360, measured when JS reached it exactly once for a
-              * monster C never rolled for.  Admitting soko1 to LOADER_READY puts
-              * a real nymph in soko1's zoo, and C's rn2(5) there is
-              * seed0116-wizard-wear-shop's first RNG divergence (leaf 9291,
-              * C rn2(5) @makemon(makemon.c:1332) vs JS rn2(2)).  Re-measured
-              * against frozen/score.sh at the current floor before landing —
-              * parked negatives decay (CLAUDE.md). */
-              // PARKED-NOTE: session=seed0360,seed0116-wizard-wear-shop leaf=rn2(5)@makemon resolved=2026-08-16
+    case 14:
         if (rn2(5) && !(game.u?.uhave?.amulet))
             mon.msleeping = 1;
         break;
@@ -5619,114 +4476,15 @@ export async function makemon(mdat, x, y, mmflags) {
             mon_adjust_speed(mon, 2, null);
         break;
     }
-    /* C makemon.c:1347-1349:
-     *     if ((ct = emits_light(mtmp->data)) > 0)
-     *         new_light_source(mtmp->mx, mtmp->my, ct, LS_MONSTER,
-     *                          monst_to_any(mtmp));
-     * RNG-free.  emits_light() (mondata.h:178-185) is non-zero for the S_LIGHT
-     * class, the flaming/shocking spheres, the fire vortex, the fire elemental
-     * and the two gold dragons.  Without this the vision system has no
-     * TEMP_LIT to find and a lit monster's surroundings stay dark: measured on
-     * seed0360-wizard-world-tour step 274, the tower3 gold dragon's own 3x3
-     * block was the session's first screen miss. */
     {
         const ct = emits_light(mon.data);
         if (ct > 0)
             new_light_source(mon.mx | 0, mon.my | 0, ct, LS_MONSTER,
                              monst_to_any(mon));
     }
-    /* C makemon.c:1355-1368 — the shapechanger arm, head of the same else-if
-     * chain as the PM_GHOST arm below:
-     *
-     *   mtmp->cham = NON_PM;
-     *   if (!Protection_from_shape_changers
-     *       && (mcham = pm_to_cham(mndx)) != NON_PM) {
-     *       mtmp->cham = mcham;
-     *       if (mndx != PM_VLAD_THE_IMPALER
-     *           && newcham(mtmp, (struct permonst *) 0, NO_NC_FLAGS))
-     *           allow_minvent = FALSE;
-     *   }
-     *
-     * A shapechanger is given its shape HERE, at creation, and a successful
-     * newcham() suppresses ALL of the makemon.c:1441-1453 starting inventory —
-     * m_initweap, m_initinv and the domestic-saddle roll.  Omitting this arm was
-     * seed4500-knight-coverage's first RNG divergence (segment 0 leaf 23880,
-     * Dlvl:27 Gehennom): C drew rn2(4) @pickvampshape(mon.c:4967) for a vampire
-     * taking bat form, JS drew rn2(50) @m_initinv for a vampire that never
-     * shifted.
-     *
-     * ROUTING CARVE-OUT CLOSED (2026-08-13): PM_SANDESTIN and PM_DOPPELGANGER
-     * used to be filtered out here, because select_newcham_form()'s arms for
-     * them need pick_nasty() (the 44-entry nasties[] table + big_to_little())
-     * and tt_doppel().  Both are ported now — pick_nasty() beside
-     * select_newcham_form() below, tt_doppel() in js/topten.js — so EVERY cham
-     * type takes C's path and this call site no longer filters.  The filter was
-     * seed4500-knight-coverage's first RNG divergence at segment 0 leaf 40828
-     * (Dlvl:40 Gehennom): C drew rn2(7)=4 @select_newcham_form(mon.c:5167) for a
-     * doppelganger, JS drew rn2(75) @m_initweap for one that never shifted. */
-    /* C makemon.c:1351 — `mitem = STRANGE_OBJECT;` ("extra inventory item for
-     * this monster"), the head of the block below.  The whole mitem mechanism
-     * was ABSENT from this port; the comment that used to sit two paragraphs
-     * down said the PM_WIZARD_OF_YENDOR / PM_CROESUS arms "this port does not
-     * implement", and the Vlad arm above them was not there at all.
-     *
-     * It is RNG-visible on the FIRST monster of every Vlad's-tower level:
-     * mongets() -> mksobj() -> next_ident() draws rnd(2).  Measured on
-     * seed0360-wizard-world-tour step 262 (key 'G' = the #levelport menu's
-     * `G - tower1: 34`), which is the session's first divergence at leaf 52757:
-     *     C : rnd(2)=1 @ next_ident(mkobj.c:521)     <- Vlad's Candelabrum
-     *     JS: rnd(8)=7 @ js/m_initweap.js:759        <- straight on to m_initweap
-     * The Candelabrum is the ONE object here that costs exactly one leaf: its
-     * TOOL_CLASS arm of mksobj_init falls to `default:` (no draw) and its
-     * material is GOLD, so is_damageable() is false and mkobj_erosions() draws
-     * nothing either. */
     let mitem = STRANGE_OBJECT_MK;
     if (mndx === PM_VLAD_THE_IMPALER_NC)
         mitem = CANDELABRUM_OF_INVOCATION;
-    /* C makemon.c:1355-1382 — ONE else-if chain: the shapechanger arm, then
-     * the Wizard of Yendor, the ghost, Croesus, the quest nemesis and
-     * Pestilence.  Each of the last four only picks `mitem`; the ghost arm
-     * names instead.  Written as a chain here because it IS one in C — a
-     * shapechanger that took a new form must not also be handed an item.
-     *
-     *   mtmp->cham = NON_PM;
-     *   if (!Protection_from_shape_changers
-     *       && (mcham = pm_to_cham(mndx)) != NON_PM) {
-     *       mtmp->cham = mcham;
-     *       if (mndx != PM_VLAD_THE_IMPALER
-     *           && newcham(mtmp, (struct permonst *) 0, NO_NC_FLAGS))
-     *           allow_minvent = FALSE;
-     *   } else if (mndx == PM_WIZARD_OF_YENDOR) { ... }
-     *
-     * A shapechanger is given its shape HERE, at creation, and a successful
-     * newcham() suppresses ALL of the makemon.c:1441-1453 starting inventory —
-     * m_initweap, m_initinv and the domestic-saddle roll.  Omitting this arm was
-     * seed4500-knight-coverage's first RNG divergence (segment 0 leaf 23880,
-     * Dlvl:27 Gehennom): C drew rn2(4) @pickvampshape(mon.c:4967) for a vampire
-     * taking bat form, JS drew rn2(50) @m_initinv for a vampire that never
-     * shifted.
-     *
-     * ROUTING CARVE-OUT CLOSED (2026-08-13): PM_SANDESTIN and PM_DOPPELGANGER
-     * used to be filtered out here, because select_newcham_form()'s arms for
-     * them need pick_nasty() (the 44-entry nasties[] table + big_to_little())
-     * and tt_doppel().  Both are ported now — pick_nasty() beside
-     * select_newcham_form() below, tt_doppel() in js/topten.js — so EVERY cham
-     * type takes C's path and this call site no longer filters.  The filter was
-     * seed4500-knight-coverage's first RNG divergence at segment 0 leaf 40828
-     * (Dlvl:40 Gehennom): C drew rn2(7)=4 @select_newcham_form(mon.c:5167) for a
-     * doppelganger, JS drew rn2(75) @m_initweap for one that never shifted.
-     *
-     * The PM_GHOST arm (makemon.c:1375-1376):
-     * do_name.c:772-776 rndghostname() = rn2(7) ? ROLL_FROM(ghostnames) : svp.plname,
-     * where ROLL_FROM(a) (hack.h:1498) = a[rn2(SIZE(a))] and SIZE(ghostnames) == 34.
-     * So: rn2(7)!=0 consumes a second rn2(34); rn2(7)==0 consumes only the one.
-     * C runs it AFTER peace_minded (1299) and after the mlet switch (1303-1348).
-     * Previously this consumed its two rn2 draws ~50 lines earlier (right after the
-     * makemon.c:1281 gender roll) and threw the name away.  Moving it was provably
-     * RNG-neutral for a ghost: nothing C executes between 1281 and 1376 draws RNG
-     * for PM_GHOST — peace_minded (1299) returns at its always_hostile() guard
-     * because mons[PM_GHOST].mflags2 (0x1100003) has M2_HOSTILE (0x00100000) set,
-     * and mlet S_GHOST (54) matches no case in the 1303-1348 switch. */
     mon.cham = NON_PM; /* C makemon.c:1355 — default "not a shapechanger" */
     {
         const mcham = pm_to_cham(mndx);
@@ -5763,38 +4521,12 @@ export async function makemon(mdat, x, y, mmflags) {
      *     (void) mongets(mtmp, mitem);` */
     if (mitem !== STRANGE_OBJECT_MK && allow_minvent)
         await mongets(mon, mitem, async (otyp, init, artif) => (await mksobj(otyp, init, artif)));
-    /* C makemon.c:1387-1392 — during level generation, ordinary demons, the
-     * wumpus, long worms and giant eels start out asleep 4 times in 5 (the
-     * roll is skipped entirely once the hero carries the Amulet).  The `else`
-     * arm (byyou → newsym + set_apparxy) draws no RNG and is display-only.
-     * PASS CANARY: Bar-strt.lua:91-93 des.monster("giant eel", ...) ×3. */
     if (game.in_mklev) {
         if ((is_ndemon(permonstTemplate(mndx)) || mndx === PM_WUMPUS
              || mndx === PM_LONG_WORM || mndx === PM_GIANT_EEL)
             && !(game.u?.uhave?.amulet) && rn2(5))
             mon.msleeping = 1;
     }
-    /* C makemon.c:1397-1404:
-     *     if (is_dprince(ptr) && ptr->msound == MS_BRIBE) {
-     *         mtmp->mpeaceful = mtmp->minvis = mtmp->perminvis = 1;
-     *         mtmp->mavenge = 0;
-     *         if (u_wield_art(ART_EXCALIBUR) || u_wield_art(ART_DEMONBANE))
-     *             mtmp->mpeaceful = mtmp->mtame = FALSE;
-     *     }
-     *     if (mndx == PM_RAVEN && uwep && uwep->otyp == BEC_DE_CORBIN)
-     *         mtmp->mpeaceful = TRUE;
-     *
-     * These were skipped as "field writes only, no RNG".  The writes ARE
-     * RNG-free, but mpeaceful is READ two calls later inside the same makemon:
-     * m_initinv (makemon.c:829) reaches rnd_misc_item, whose `case 1` is
-     *     if (mtmp->mpeaceful && !See_invisible) return 0;
-     * and returning there SKIPS a rn2(6).  Witness: gen413-reseed-seed565607
-     * step 322, the arrival at Dlvl 35 (Gehennom) — Asmodeus (PM index 309,
-     * M2_DEMON|M2_PRINCE, msound MS_BRIBE) is generated by the level fill,
-     * C returns 0 from that arm and draws rn2(100)=73 @makemon.c:1447 next,
-     * while JS drew the extra rn2(6) and every later draw of the level's
-     * 2,802-call generation was off.  A comment asserting a block is inert
-     * is only as good as its downstream readers. */
     const _dpPtr = permonstTemplate(mndx);
     if (_dpPtr && is_dprince(_dpPtr) && (_dpPtr.msound | 0) === MS_BRIBE_MK) {
         mon.mpeaceful = mon.minvis = mon.perminvis = 1;
@@ -5807,27 +4539,11 @@ export async function makemon(mdat, x, y, mmflags) {
     if (mndx === PM_RAVEN_MK && game.u?.uwep
         && (game.u.uwep.otyp | 0) === BEC_DE_CORBIN)
         mon.mpeaceful = 1;
-    /* C makemon.c:1405-1409 — the long worm's tail:
-     *     if (mndx == PM_LONG_WORM && (mtmp->wormno = get_wormno()) != 0) {
-     *         initworm(mtmp, allowtail ? rn2(5) : 0);
-     *         if (count_wsegs(mtmp))
-     *             place_worm_tail_randomly(mtmp, x, y);
-     *     }
-     * This was missing entirely, so C's rn2(5) — and the 8-draw
-     * rnd_nextto_goodpos shuffle for each tail segment — never fired.
-     * Witness: seed0360-wizard-world-tour step 159, the castle's long worm;
-     * C drew rn2(5)=1 @ makemon.c:1406 while JS had already run on to
-     * m_initinv's rn2(50) (leaf 19241).
-     * allowtail is makemon.c:1161 `((mmflags & MM_NOTAIL) == 0)`. */
     if (mndx === PM_LONG_WORM && (mon.wormno = get_wormno()) !== 0) {
         initworm(mon, ((mmflags & MM_NOTAIL) === 0) ? rn2(5) : 0);
         if (count_wsegs(mon))
             place_worm_tail_randomly(mon, x, y);
     }
-    /* C makemon.c:1415-1429 — angel/cleric minion extended-data init.
-     * Aligned/high clerics always get an emin (unless caller set MM_EPRI|MM_EMIN);
-     * a plain angel gets one with probability !rn2(3).  This precedes the group
-     * gate so its RNG must fire here in order. */
     const _geno = monGeno(mndx);
     if ((mndx === PM_ALIGNED_CLERIC || mndx === PM_HIGH_CLERIC)
             ? (mmflags & (MM_EPRI | MM_EMIN)) === 0
@@ -5865,37 +4581,9 @@ export async function makemon(mdat, x, y, mmflags) {
             await mInitweap(mon, async (otyp, init, artif) => (await mksobj(otyp, init, artif)));
         }
         await mInitinv(mon, async (otyp, init, artif) => (await mksobj(otyp, init, artif)));
-        /* C makemon.c:1445 `m_dowear(mtmp, TRUE);` — a freshly created monster
-         * puts on everything m_initweap/m_initinv just gave it, all at once and
-         * with no message or delay (creation == TRUE).  RNG-free.
-         *
-         * This call site did not exist, so EVERY monster in this port carried
-         * its armor unworn: misc_worn_check and owornmask stayed 0, which is
-         * why the movemon I_SPECIAL re-equip block (mon.c:1269-1284, now
-         * ported in js/fastforward.js) could not be landed without it — a
-         * monster whose gear had never been put on wears its whole kit the
-         * first time that block fires and spends a turn C does not.  Measured:
-         * landing the I_SPECIAL block alone cost 615 step points (seed0030
-         * -422, seed0399 -98, seed0361 -95); with this line the same block is
-         * asking C's question about C's state. */
         await m_dowear(mon, true);
         makemonDomesticSaddle(mon, mndx, mmflags);
     }
-    /* C makemon.c:1461-1468 — initial strategy flags from the permonst's mflags3.
-     * No RNG; pure state.  Omitting this left mstrategy 0 for every monster, so
-     * dochug's WAITMASK gate (monmove.c:739) never fired and quest leaders /
-     * guardians / covetous uniques took a full dochug turn where C returns 0
-     * before distfleeck (monmove.c:539) — an extra rn2(5) per monster per turn.
-     *
-     *   if (ptr->mflags3 && !(mmflags & MM_NOWAIT)) {
-     *       if (ptr->mflags3 & M3_WAITFORU) mtmp->mstrategy |= STRAT_WAITFORU;
-     *       if (ptr->mflags3 & M3_CLOSE)    mtmp->mstrategy |= STRAT_CLOSE;
-     *       if (ptr->mflags3 & (M3_WAITMASK | M3_COVETOUS))
-     *           mtmp->mstrategy |= STRAT_APPEARMSG;
-     *   }
-     *
-     * C monflag.h:165-169 — M3_WAITFORU 0x0040, M3_CLOSE 0x0080,
-     * M3_WAITMASK 0x00c0, M3_COVETOUS 0x001f. */
     const _mflags3 = (mon.data?.mflags3 ?? 0) >>> 0;
     if (_mflags3 && !(mmflags & MM_NOWAIT)) {
         if (_mflags3 & 0x0040 /* M3_WAITFORU */)
@@ -5905,25 +4593,6 @@ export async function makemon(mdat, x, y, mmflags) {
         if (_mflags3 & (0x00c0 /* M3_WAITMASK */ | 0x001f /* M3_COVETOUS */))
             mon.mstrategy = ((mon.mstrategy | 0) | STRAT_APPEARMSG) >>> 0;
     }
-    /* C makemon.c:1469-1470 —
-     *     if (allow_minvent && gm.migrating_objs)
-     *         deliver_obj_to_mon(mtmp, 1, DF_NONE);  /_* in case of waiting items *_/
-     * A brand-new monster picks up anything already parked on the migrating
-     * chain FOR ITS SPECIES.  This call site did not exist, so the whole
-     * MIGR_TO_SPECIES delivery mechanism was unreachable from monster
-     * creation — and it is not a quiet no-op: for an orc carrying named
-     * orctown loot, deliver_obj_to_mon() runs christen_orc(), i.e.
-     * rndorcname(), i.e. 5..9 RNG leaves.  Measured on
-     * corpus-generated/v5/train/gen141-reseed-seed1076328: C leaf 7762 is
-     * makemon's own saddle rn2(100) and 7763 is
-     * 'rn2(2)=0 @ rndorcname(do_name.c:1543)' from exactly this call.
-     *
-     * DYNAMIC import: js/dokick.js already imports THIS module (mksobj,
-     * setmangry, dealloc_obj, ...).  A static import from './dokick.js' here
-     * would close a mklev<->dokick evaluation cycle that does not exist
-     * today; the chain is null in the overwhelming majority of makemon()
-     * calls, so the gated dynamic import (js/bones.js:305 uses the same
-     * idiom) costs nothing and opens no cycle. */
     if (allow_minvent && game.gm?.migrating_objs) {
         const DF_NONE = 0; /* dungeon.h — neither DF_RANDOM nor DF_ALL */
         await deliver_obj_to_mon(mon, 1, DF_NONE);
@@ -5940,13 +4609,6 @@ export async function makemon(mdat, x, y, mmflags) {
         mon.mux = (game.u?.ux ?? 0) | 0;
         mon.muy = (game.u?.uy ?? 0) | 0;
     }
-    /* C makemon.c:1473-1474 — `if (!gi.in_mklev) { newsym(mtmp->mx, mtmp->my);
-     * /_* make sure the mon shows up *_/ ... }`.  This is the UNCONDITIONAL
-     * post-creation display update (distinct from the byyou-only newsym at
-     * makemon.c:1393 above); without it a monster generated mid-game is not
-     * painted until some later event happens to newsym its square.  seed5500
-     * step 822: C paints the Warning glyph '1' for the level-7 hostile the
-     * instant it is generated at (29,14); JS painted nothing. */
     if (!game.in_mklev) {
         newsym(mon.mx | 0, mon.my | 0);
         /* C makemon.c:1475-1500 — the appearance message, previously unported:
@@ -5969,10 +4631,6 @@ export async function makemon(mdat, x, y, mmflags) {
          * which js/ has no body for; it is left out rather than approximated,
          * and a mimic makes no `what` so no message is emitted (C would). */
         if (!(mmflags & MM_NOMSG)) {
-            /* const.js M_AP_NOTHING 0 / M_AP_MONSTER 3 / MM_NOMSG 131072 /
-             * MM_NOEXCLAM 262144 — all four verified with
-             * tools/c-const-oracle.mjs; local copies to avoid widening this
-             * file's already-enormous const import. */
             const M_AP_NOTHING = 0, M_AP_MONSTER = 3, MM_NOEXCLAM_MK = 262144;
             let exclaim = !(mmflags & MM_NOEXCLAM_MK);
             let what = null;
@@ -6002,11 +4660,6 @@ export async function makemon(mdat, x, y, mmflags) {
  * dungeon.c:2016-2021, In_hell && dlevel == num_dunlevs - 1; js/sp_lev.js:6605
  * carries the same local port and the same note about js/cmd.js's
  * Invocation_lev reading a game.invocation_level nothing ever writes. */
-/* EXPORTED 2026-09-06 (KEYSTONE B): js/makemon.js's use_defensive
- * MUSE_WAN_DIGGING arm needs it (muse.c:932).  Exporting the one that already
- * exists here is strictly better than adding a FOURTH local copy — js/dig.js
- * :247 and js/sp_lev.js:6605 already carry their own, which is the
- * duplicate-bodies hazard CLAUDE.md names.  Export-only: no body change. */
 export function Can_dig_down(lev) {
     if (game.level?.flags?.hardfloor)
         return false;
@@ -6051,38 +4704,6 @@ function is_unicorn(ptr) {
 function sgn_mklev(n) {
     return n > 0 ? 1 : (n < 0 ? -1 : 0);
 }
-/* C ref: trap.c:389-414 mk_trap_statue — create a "living" statue at x,y.
- *
- *   int trycount = 10;
- *   do {                       // avoid ultimately hostile co-aligned unicorn
- *       mptr = &mons[rndmonnum_adj(3, 6)];
- *   } while (--trycount > 0 && is_unicorn(mptr)
- *            && sgn(u.ualign.type) == sgn(mptr->maligntyp));
- *   statue = mkcorpstat(STATUE, (struct monst *) 0, mptr, x, y, CORPSTAT_NONE);
- *   mtmp = makemon(&mons[statue->corpsenm], 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
- *   if (!mtmp)
- *       return;
- *   while (mtmp->minvent) {
- *       otmp = mtmp->minvent;
- *       otmp->owornmask = 0;
- *       obj_extract_self(otmp);
- *       (void) add_to_container(statue, otmp);
- *   }
- *   statue->owt = weight(statue);
- *   mongone(mtmp);
- *
- * The temporary monster exists only so that the statue can be stuffed with the
- * inventory that monster would have carried; it is removed again immediately.
- * RNG (Cardinal Rule 2), in C order:
- *   1. rndmonnum_adj(3, 6) per do-while pass  (rndmonst_adj, +qt_montype on a
- *      quest level),
- *   2. mkcorpstat -> mksobj(STATUE): next_ident, then mksobj_init's ROCK_CLASS
- *      STATUE arm rolls its own corpsenm = rndmonnum() (overwritten by
- *      mkcorpstat afterwards, but the rolls are consumed),
- *   3. makemon(..., 0, 0, ...): the random-placement makemon_rnd_goodpos pass,
- *      m_id, newmonhp, gender and starting inventory.
- * The tail (inventory transfer, weight, mongone) draws no RNG.
- * seed0364 leaf 3604..3619 is exactly this sequence. */
 /* Exported so js/trap.js — mk_trap_statue's C home (trap.c:389, staticfn, its
  * only C caller being maketrap at trap.c:509) — can call THIS body instead of
  * re-declaring its own.  The body stays here because its whole callee chain
@@ -6122,65 +4743,8 @@ export async function mk_trap_statue(x, y) {
     statue.owt = weight(statue);
     await mongone(mtmp);
 }
-/* C ref: mon.c:3253-3270 mongone(mdef) — dismiss a monster; its inventory is
- * removed from the game rather than dropped:
- *     mdef->mhp = 0;
- *     if (mdef->isgd && !grddead(mdef)) return;
- *     unstuck(mdef);
- *     mdrop_special_objs(mdef);
- *     discard_minvent(mdef, FALSE);
- *     m_detach(mdef, mdef->data, FALSE);
- *
- * Two level-generation callers reach this in the corpus: mk_trap_statue below
- * (whose monster's minvent has already been emptied into the statue, so the
- * loop is a no-op) and stock_room's Orcus ghost-town hack (shknam.c:792-796),
- * whose shopkeeper has a full default inventory.  This was `mongone_mklev`,
- * scoped to the first caller with the second one's minvent walk omitted; the
- * omission is RNG-visible, so the body is now the whole C shape.
- *
- * RNG: exactly one rn2(100) per minvent item, inside mdrop_special_objs's
- * obj_resists(obj, 0, 0) (zap.c:1458-1471).  With ochance == achance == 0 the
- * VALUE never changes the outcome for an ordinary item, but the DRAW has to
- * happen.  Measured on seed0360-wizard-world-tour step 324, the level teleport
- * to `p - orcus: 40`: C draws five of them between the fifth shop item and the
- * next makemon, and this port drew none.
- *
- * The two branches this path cannot reach get honest throws rather than a
- * silent mishandle, the same discipline js/sp_lev.js:4818-4821 already uses
- * for create_monster's copy of this sequence:
- *   - isgd: only the vault guard, never a shopkeeper or a statue trap's
- *     monster (grddead() is unported).
- *   - obj_resists() true / is_quest_artifact(): C PRESERVES that item via
- *     mdrop_obj()/rloco(), both unported (js/steal.js:335, :364).  Only the
- *     Amulet, the Book of the Dead, the Candelabrum, the Bell of Opening, a
- *     Rider corpse or the current role's quest artifact can take it.
- * unstuck(mdef) is a no-op here in C too: u.ustuck cannot be a monster the
- * level builder just made.  C defers the fmon unlink to dmonsfree()'s purge of
- * MON_DETACH monsters, and so does this port: js/mkmaze.js dmonsfree() is a
- * real fmon-walking purge, so mdef is left linked (mhp=0, MON_DETACH set)
- * for it to reap later, exactly as C leaves it linked between m_detach() and
- * the next dmonsfree() call. */
 export async function mongone(mdef) {
     mdef.mhp = 0;
-    /* C mon.c:3256 `if (mdef->isgd && !grddead(mdef)) return;` — a dead vault
-     * guard is kept at <0,0> until its temporary corridor has been removed.
-     *
-     * js/vault.js:158 grddead() IS a real body, but it is worthless here:
-     * everything it decides on comes from clear_fcorr(), which is
-     * `function clear_fcorr() { return true; }` (js/vault.js:540).  With that
-     * stub grddead always reports "disposed", so mongone never takes C's early
-     * return and walks the guard's full minvent instead.  Measured on
-     * mongone's C capture corpus record #130 — the one vault-guard record in
-     * the set — calling grddead() for real turns that record's
-     * failure from this throw into `rng_result_tape_underrun`: the JS draws
-     * obj_resists rolls C never drew, because C's grddead had already emptied
-     * the guard's inventory through relobj() (or returned FALSE and skipped
-     * mongone's body entirely).
-     *
-     * So the blocker is clear_fcorr (vault.c:88, the fakecorr/EGD bookkeeping),
-     * not grddead, and this refuses rather than fabricating a verdict.  Not
-     * reachable from either live caller: stock_room's shopkeeper and
-     * mk_trap_statue's fresh monster are never the vault guard. */
     if (mdef.isgd && !await grddead(mdef))
         return;
     /* C mon.c:2728-2732 m_detach(), reached below by mongone(): remove a
@@ -6213,25 +4777,6 @@ export async function mongone(mdef) {
             }
         }
     }
-    /* C mkobj.c:2525-2537 discard_minvent(mdef, FALSE) — RNG-free:
-     *     while ((otmp = mtmp->minvent) != 0) {
-     *         extract_from_minvent(mtmp, otmp, TRUE, TRUE);
-     *         obfree(otmp, (struct obj *) 0);
-     *     }
-     * `mdef.minvent = null` alone was NOT enough: obfree bottoms out in
-     * dealloc_obj (mkobj.c:2748), which puts the object on the go.objs_deleted
-     * queue, and that queue's length is observable — it is exactly the
-     * `objs_deleted.count` field mongone's C capture corpus records, and 6 of
-     * its 131 records failed on it (exp=8 got=null).
-     *
-     * obfree's per-class teardown above dealloc_obj (o_unleash for a leash,
-     * food_disappears, book_disappears, delete_contents, the shop bill) is
-     * RNG-free and js/dokick.js:1273's port throws on every one of those arms;
-     * none can fire for a level-generation monster's freshly created default
-     * inventory, so dealloc_obj is called directly rather than routed through a
-     * body that would throw on a food ration.  C's obfree impossible()s on a
-     * WORN object and CONTINUES into dealloc_obj (shk.c:1266-1273), which is
-     * why owornmask is cleared here rather than refused. */
     while (mdef.minvent) {
         const otmp = mdef.minvent;
         /* C mkobj.c obj_extract_self(), OBJ_MINVENT arm:
@@ -6246,37 +4791,11 @@ export async function mongone(mdef) {
         otmp.owornmask = 0;
         otmp.where = OBJ_FREE;
         await dealloc_obj(otmp);
-        /* `objs_deleted.count` is a DEAD-PLACEHOLDER mapstate bridge slot
-         * (js/mapstate_game_bridge.js:486 bridgeSlot) — unlike fobj.count it is
-         * not derived from a real chain, so dealloc_obj's push onto
-         * game.objs_deleted is invisible to it and the capture reads null.
-         * js/cmd.js does the same manual bump at two call sites
-         * (_bumpObjsDeletedCount_useupf and the snuff/useup path) and this is
-         * the third.  The single-point fix is to derive the slot from
-         * game.objs_deleted inside dealloc_obj itself, but that would
-         * DOUBLE-count at both existing bump sites, so it needs its own change
-         * and its own sweep of those functions. */
         const _bstore = game.__bridge__ || (game.__bridge__ = {});
         const _bkey = 'objs_deleted.count';
         const _bcur = _bstore[_bkey] !== undefined ? Number(_bstore[_bkey]) : 0;
         _bstore[_bkey] = String(_bcur + 1);
     }
-    /* C mon.c:2720-2792 m_detach() — takes mdef off the MAP but NOT out of the
-     * fmon list yet: "Take mtmp off map but not out of fmon list yet
-     * (dmonsfree does that)."  mtmp->mhp is already 0 (set above, mirroring
-     * mongone's own `mdef->mhp = 0;`) and m_detach's own job here reduces to
-     * flagging the monster MON_DETACH so a later dmonsfree() purge (real body:
-     * js/mkmaze.js dmonsfree(), which walks fmon unlinking `mhp < 1 && !isgd`)
-     * reaps it.  This file used to unlink mdef from game.fmon immediately,
-     * reasoning "JS has no purge pass" — that reasoning no longer holds now
-     * that js/mkmaze.js's dmonsfree() is a real chain walk and fmon.count is a
-     * LIVE mapstate slot (js/mapstate_game_bridge.js fmonCountSlot): an
-     * immediate splice here shrinks fmon.count on THIS call, one full purge
-     * pass early, which mongone's own capture corpus catches as an EXTRA state
-     * change C's use_defensive never produced (MUSE_SSTAIRS -> mon_escape ->
-     * mongone, records #15/#24/#25: C's fmon.count is unchanged by this call,
-     * only objs_deleted.count moves). Leaving mdef linked (mhp=0, MON_DETACH
-     * set) until dmonsfree() runs is the same C-faithful deferral. */
     if ((mdef.mstate | 0) & MON_DETACH) {
         /* C mon.c:2789-2792 `impossible("m_detach: ... already detached?")` —
          * mongone is never called twice on the same monster from any live
@@ -6405,68 +4924,10 @@ async function maketrap(x, y, typ) {
     // C trap.c:464-465 — TRAPPED_DOOR and TRAPPED_CHEST are never physical traps
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST)
         return null;
-    /* C trap.c:466-477 — `if ((ttmp = t_at(x, y)) != 0) { ... oldplace = TRUE;
-     * ... /^* old <tx,ty> remain valid *^/ }`: when a trap ALREADY EXISTS on
-     * this square, C REUSES that struct and re-types it in place.  It does NOT
-     * allocate a second one, and the "Simplified: occupancy guards omitted"
-     * comment that used to stand above was wrong about the consequence — the
-     * guard it dropped is not a screen, it is the identity of the trap.
-     *
-     * Without it, mktrap()'s second hit on a square left TWO trap structs on
-     * gf.ftrap for one square, and t_at() then answers with whichever the chain
-     * reaches first — the STALE one.  Measured on seed0360-wizard-world-tour,
-     * Dlvl 41 (wizard1): mktrap makes SQKY_BOARD at (40,10) and later
-     * SLP_GAS_TRAP at the same square.  C ends with ONE trap there, ttyp 8; this
-     * port ended with two, and t_at((40,10)) answered SQKY_BOARD.  That is
-     * scored twice over: (a) a hell hound that had already learned SQKY_BOARD
-     * refused (40,10) in mfndpos as a known trap, so mfndpos returned cnt 0 and
-     * the monster did not move at all where C moved it, and (b) C's
-     * trapeffect_slp_gas_trap rnd(25) at trap.c:1584 never fired.  Same defect
-     * duplicated (35,14): C MAGIC_TRAP, this port ANTI_MAGIC + MAGIC_TRAP.
-     * undestroyable_trap() is MAGIC_PORTAL / VIBRATING_SQUARE only (trap.h);
-     * it is inlined because js/trap.js does not export it.
-     *
-     * tseen: C trap.c:501 `ttmp->tseen = unhideable_trap(typ)`, and trap.h:115
-     * `#define unhideable_trap(ttyp) ((ttyp) == HOLE)` — a HOLE is a VISIBLE
-     * trap and is seen from the moment it is created.  This body set tseen=false
-     * unconditionally, under a note calling it "a separate, pre-existing
-     * divergence on the display axis" left alone "so this commit moves one
-     * measured thing".  Measured now: seed0014 step 600, the arrival frame on
-     * Dlvl 6 of the Gnomish Mines, C paints a brown '^' at (69,15) — the HOLE
-     * that level-gen just made — and this port painted bare floor.  Re-recording
-     * the session with tseen added to the instrumented C recorder's trap dump
-     * shows it tseen=1 in the very first map-state dump that carries the trap
-     * (turn 727), i.e. set at creation, not by anything the hero or a monster
-     * did.
-     * js/trap.js's maketrap (the non-level-gen twin) already has the line. */
     const oldtrap = t_at(x, y);
     if (oldtrap && (oldtrap.ttyp === MAGIC_PORTAL || oldtrap.ttyp === VIBRATING_SQUARE))
         return null;
     const oldplace = !!oldtrap;
-    /* C trap.c:478-489 — the NEW-trap terrain screen.  When there is no trap
-     * here yet, C REFUSES to make one on a staircase or ladder, in water or
-     * lava, on furniture (unless the trap is a pit or hole), on a raised
-     * drawbridge for a portal, in air for anything but a portal, or a level
-     * teleporter in a one-level branch — and returns NULL.  The caller then
-     * reads `kind = t ? t->ttyp : NO_TRAP` (mklev.c:2100) and the whole victim
-     * block, INCLUDING its rnd(4), is short-circuited by `kind != NO_TRAP`.
-     *
-     * This body's header used to write the screen off as "occupancy/overwrite
-     * guards omitted (level-gen pre-screens positions)".  It does not:
-     * des.trap()'s create_trap (sp_lev.c) only re-rolls STAIRS/LADDER, and
-     * mktrap()'s own loop only tests occupied()/boulder, so every other case
-     * here reaches maketrap and C returns NULL where this port made a trap.
-     * MEASURED on seed0360-wizard-world-tour's Wizard quest home (dnum 3
-     * dlevel 1): at leaf 100104 C's fifth des.trap rolls HOLE, rejects it
-     * (rn2(7)), re-rolls PIT — and then draws NO rnd(4), because its maketrap
-     * returned NULL.  This port made the pit, drew the rnd(4), and every trap
-     * and monster placed after it on that level was one draw out of step; the
-     * two rosters agree on the four oldest traps and differ from the fifth on.
-     *
-     * CAN_OVERWRITE_TERRAIN (rm.h:320) is
-     * `iflags.debug_overwrite_stairs || !(ttyp == LADDER || ttyp == STAIRS)`;
-     * nothing in this port sets debug_overwrite_stairs, so it reduces to the
-     * stairs/ladder test. */
     const _ltLoc = game.level?.at(x, y);
     const _lt = _ltLoc ? (_ltLoc.typ | 0) : STONE;
     if (!oldplace
@@ -6517,27 +4978,6 @@ async function maketrap(x, y, typ) {
     // C trap.c:512-514 — ROLLING_BOULDER_TRAP: boulder will roll towards trigger
     if (typ === ROLLING_BOULDER_TRAP)
         await mkroll_launch(trap, x, y, BOULDER, 1);
-    /* C trap.c:514-565 — the PIT / SPIKED_PIT / HOLE / TRAPDOOR arm of
-     * maketrap's switch.  This body carried ONLY its `hole_destination` line
-     * (the two-thirds of the arm below were absent), so a hole, pit or trapdoor
-     * made during level generation left the terrain it landed on UNTOUCHED.
-     *
-     * MEASURED on the terrain channel (corpus-generated/v5/probe-terrain, the
-     * RNG-free `#terrain` option-5 dump): makeniche() writes SCORR at the niche
-     * square (mklev.c:759) and then calls maketrap() there, and C's
-     * `else if (lev->typ == STONE || lev->typ == SCORR) set_levltyp(x,y,CORR)`
-     * (trap.c:553-554) turns it straight back into CORR.  This port kept the
-     * SCORR, so a vampire/level-teleport niche read as a SECRET corridor where
-     * C has an ordinary one — 11 of 100 probe dumps, on levels whose PRNG was
-     * still bit-exact 6,493-20,386 leaves deep, which is why no leaf-for-leaf
-     * instrument could see it.  (The queue entry had the direction the other
-     * way round: it is JS that writes SCORR and C that writes CORR.)
-     *
-     * js/trap.js's maketrap twin has carried the whole arm since 760fd082;
-     * THIS copy — the one every level-gen path calls — never got it.
-     *
-     * `lev` is C's `struct rm *` captured at entry, so every test below reads
-     * the CURRENT typ, and the chain is else-if: at most one arm fires. */
     if (typ === PIT || typ === SPIKED_PIT) {
         // C trap.c:514-517 — `ttmp->conjoined = 0;` then FALLTHRU
         trap.conjoined = 0;
@@ -6558,8 +4998,6 @@ async function maketrap(x, y, typ) {
         /* C trap.c:529-561 — normalise the terrain the trap sits on. */
         let clear_flags = true; /* assume lev->flags needs to be reset */
         if (_typNow() === DRAWBRIDGE_UP) {
-            /* C trap.c:532-545 — bridge closed and we're putting a hole or pit
-             * at the span spot; keep drawbridgemask, floor it. */
             clear_flags = false;
             const was_ice = _lev && (((_lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE);
             if (_lev) {
@@ -6590,18 +5028,6 @@ async function maketrap(x, y, typ) {
         await unearth_objs(x, y);
         recalc_block_point(x, y);
     }
-    /* C trap.c:566-574 — the TELEP_TRAP arm of maketrap's switch, the fixed
-     * destination a des.trap({teledest=...}) asked for:
-     *     if (isok(gl.launchplace.x, gl.launchplace.y)) {
-     *         ttmp->teledest.x = gx.xstart + gl.launchplace.x;
-     *         ttmp->teledest.y = gy.ystart + gl.launchplace.y;
-     *         if (ttmp->teledest.x == x && ttmp->teledest.y == y)
-     *             impossible("making fixed-dest tele trap pointing to itself");
-     *     }
-     * js/trap.js's maketrap has carried this arm all along; THIS copy — the
-     * one every level-gen path actually calls — did not, so a fixed-destination
-     * teleporter made during level generation had no destination and fell
-     * through to tele()'s random safe_teleds. */
     if (typ === TELEP_TRAP) {
         const lp = game.gl?.launchplace;
         const lpx = lp ? lp.x : undefined;
@@ -6717,25 +5143,6 @@ function wipe_engr_at(x, y, cnt, magical) {
 function get_rnd_text_epitaph() {
     return get_rnd_line_from_section(EPITAPH_LINES, EPITAPH_OFFSETS, EPITAPH_CHUNK_SIZE, rn2, 60);
 }
-/* C ref: engrave.c:1686-1703 make_grave(x, y, str).
- *   if ((levl[x][y].typ != ROOM && levl[x][y].typ != GRAVE) || t_at(x, y))
- *       return;
- *   if (!set_levltyp(x, y, GRAVE)) return;
- *   del_engr_at(x, y);
- *   if (!str) str = get_rnd_text(EPITAPHFILE, buf, rn2, MD_PAD_RUMORS);
- *   make_engr_at(x, y, str, NULL, 0L, HEADSTONE);
- *
- * The `t_at(x, y)` half of the first guard and the set_levltyp failure exit
- * were BOTH missing, and both gate the epitaph draw — get_rnd_text is real RNG
- * (a rn2(EPITAPH section size) with a retry loop), so a grave C declines to
- * make is a draw C does not take.  Measured on seed0360 with the sanctum
- * admitted: fill_zoo's MORGUE arm calls make_grave on a square that one of
- * sanctum.lua:85-90's six RANDOMLY-PLACED traps had already taken, so C
- * returned at the t_at guard and went on to the next square's morguemon(),
- * while JS drew an epitaph — first RNG divergence at leaf 40858,
- * C rn2(100) @morguemon(mkroom.c:481) vs JS rn2(24075) @get_rnd_line.
- * The engraving itself was also being dropped (the headstone had no text and
- * `\` / reading the grave would show nothing). */
 export function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
     const graveTrace = typeof process !== 'undefined' && ENV?.FF_GRAVE_TRACE === '1';
@@ -6791,7 +5198,6 @@ const cookie_marker = '[cookie] ';
 // drawn is cookie-tagged, C throws it away and rolls the WHOLE selection
 // again — a fresh rn2(2) adjtruth AND a fresh rn2(section_size) offset.  The
 // re-roll can land in the other pool, so the second draw's modulus differs
-// from the first.  Omitting the retry is what desynced seed0007 at leaf 1629.
 //
 // RNG per iteration, in order: rn2(2) [rumors.c:151] then rn2(section_size)
 // [rumors.c:167 -> get_rnd_line:465, itself up to 10 draws for pad rejection].
@@ -6841,38 +5247,6 @@ export function getrumor(truth, exclude_cookie) {
 /* C hack.h:54-57 — outrumor()'s `mechanism` argument. */
 export const BY_ORACLE = 0, BY_COOKIE = 1, BY_PAPER = 2, BY_OTHER = 9;
 
-/* C ref: rumors.c:529-575 outrumor(truth, mechanism)
- *
- *     boolean reading = (mechanism == BY_COOKIE || mechanism == BY_PAPER);
- *     if (reading) {
- *         if (is_fainted() && mechanism == BY_COOKIE) return;
- *         else if (Blind) {
- *             if (mechanism == BY_COOKIE) pline(fortune_msg);
- *             pline("What a pity that you cannot read it!");
- *             return;
- *         }
- *     }
- *     line = getrumor(truth, buf, reading ? FALSE : TRUE);
- *     ...
- *
- * THE TWO EARLY RETURNS ARE THE RNG-INTERESTING PART, and they are what the
- * three fortune-cookie sessions in corpus-generated/v5/train actually take: the
- * hero is BLIND, so C prints "This cookie has a scrap of paper inside." and
- * "What a pity that you cannot read it!" and NEVER CALLS getrumor -- no
- * rn2(2) adjtruth, no section draw, and no exercise(A_WIS).  A port that always
- * drew the rumor would desync on exactly those sessions.
- *
- * `reading` also inverts getrumor's exclude_cookie: the two reading mechanisms
- * are the ONLY ones allowed to receive a cookie-tagged rumor (and getrumor
- * strips the marker for them), which the getrumor above already implements.
- *
- * pline1(line) is C's "print this string literally, no format expansion"; this
- * port's pline() only sprintf()s when it is handed varargs, so a bare
- * pline(line) is pline1.
- *
- * is_fainted() is a cyclic import (js/eat.js imports getrumor from this file)
- * but it is a hoisted `export function`, so the cycle resolves -- the same
- * argument js/makemon.js:94 records for create_particular. */
 export async function outrumor(truth, mechanism) {
     const fortune_msg = 'This cookie has a scrap of paper inside.';
     const reading = (mechanism === BY_COOKIE || mechanism === BY_PAPER);
@@ -6894,16 +5268,10 @@ export async function outrumor(truth, mechanism) {
         line = 'NetHack rumors file closed for renovation.';
     switch (mechanism) {
     case BY_ORACLE:
-        /* Oracle delivers the rumor.  C's nested rn2s short-circuit exactly as
-         * written: rn2(4) always draws, rn2(3) only when the first was 0, and
-         * rn2(2) only when the second was 0 too. */
         await pline('True to her word, the Oracle %ssays: ',
                     (!rn2(4) ? 'offhandedly '
                              : (!rn2(3) ? 'casually '
                                         : (rn2(2) ? 'nonchalantly ' : ''))));
-        /* C then SetVoice()+verbalize1(line); verbalize1 is not ported here and
-         * no corpus session reaches BY_ORACLE, so the line is named rather than
-         * guessed.  [WIS exercised by getrumor()] */
         return;
     case BY_COOKIE:
         await pline(fortune_msg);
@@ -7062,7 +5430,6 @@ function random_engraving() {
 // dead monster.  ORDINARY-MONSTER path only (the default_1 branch, mon.c:874):
 // most melee/ranged kills.  The special-species cases (dragons → scales, golems →
 // gems/chains/weapons, unicorns → horn, undead → old corpse, etc.) consume DIFFERENT
-// RNG and are NOT ported here yet — when a session kills one of those, extend this
 // switch.  Returns the created corpse object (already placed) or null (G_NOCORPSE).
 //
 // RNG sequence (mirrors C mkcorpstat(CORPSE, 0, mdat, x, y, INIT) → mksobj(CORPSE,
@@ -7120,23 +5487,6 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     let corpstatflags = (corpseflags | 0) || CORPSTAT_NONE;
     if (mtmp.female) corpstatflags |= CORPSTAT_FEMALE;
     else if (((mtmp.data?.mflags2 | 0) & M2_NEUTER) === 0) corpstatflags |= CORPSTAT_MALE;
-    /* C mon.c:629-649 — the mummy/zombie arm.  It sits in the switch ABOVE
-     * default_1, and C's own comment there is "All special cases should precede
-     * the G_NOCORPSE check": every mummy and zombie carries G_NOCORPSE in its
-     * geno (no mummy corpses exist as an object), yet the kill still leaves the
-     * corpse of the BASE creature —
-     *     num = undead_to_corpse(mndx);
-     *     obj = mkcorpstat(CORPSE, mtmp, &mons[num], x, y, corpstatflags|INIT);
-     *     obj->age -= (TAINT_AGE + 1);   / * this is an *OLD* corpse * /
-     * Falling into default_1 instead returned null and drew nothing, so C's
-     * mksobj(CORPSE, TRUE) RNG — next_ident's rnd(2) and everything after it —
-     * was never consumed.  seed0030 segment 9 PRNG index 10811 is that kill: a
-     * kobold zombie that leaves a kobold corpse.
-     *
-     * KNOWN GAP (as before this change): C additionally passes `mtmp` to
-     * mkcorpstat, which save_mtraits()es the dead monster onto the corpse and
-     * sets norevive for a cancelled troll.  Both are RNG-free and feed only the
-     * unported revival path. */
     if (_MUMMY_ZOMBIE_MNDX.has(mndx)) {
         const obj = await _mkcorpstat_corpse(undead_to_corpse(mndx), x, y,
                                        corpstatflags | CORPSTAT_INIT);
@@ -7160,9 +5510,7 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     // C mon.c:934-935 — make_corpse ends `stackobj(obj); newsym(x, y);`.  Every
     // newsym the death path issued before this one ran while the corpse did not
     // exist yet (mondead → m_detach → mon_leaving_level, mon.c:2725), so they
-    // painted bare floor; this is the one that puts the '%' on the map.
     // stackobj() is not modelled — a fresh corpse carries its own age/rot timer
-    // and does not merge with an existing floor stack.
     newsym(x | 0, y | 0);
     return otmp;
 }
@@ -7182,9 +5530,7 @@ export function valid_vampshiftform(base, form) {
 }
 /** Export mksobj/mkobj for use by fastforward.js ini_inv_rng (u_init.c::ini_inv). */
 export { mksobj, mkobj, mksobj_at, place_object };
-/** Export dig_corridor for equiv-test replay fixture (harness capture baseline). */
 export { dig_corridor };
-/** Export sobj_at/next_ident for equiv-test capture-replay sweep (js_counterpart). */
 export { sobj_at, next_ident };
 /** Export wipe_engr_at for dochug monster-move engraving wipe (monmove.c:755). */
 export { wipe_engr_at };
@@ -7248,18 +5594,6 @@ import { ENV } from './hostenv.js';
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
-    /* C mklev.c:6102 `if (getbones()) return;` — a bones level REPLACES the
-     * generated one, so makelevel() and everything after it is skipped.
-     *
-     * getbones() grew a real load half (js/bones.js), and the wizard-mode
-     * "Get bones?"/"Unlink bones?" queries it can raise are blocking topline
-     * reads, so it returns a PROMISE on the load path.  On the overwhelmingly
-     * common no-bones-file path it still returns a plain boolean, and this is
-     * awaited only when it is actually thenable: a bare `await getbones()` puts
-     * a microtask boundary inside EVERY level generation in the game, and that
-     * alone (measured with a synchronous probe body) moved seed4500 steps 1585
-     * and 1586 from matching to not.  C's getbones is an ordinary call; keeping
-     * the ordinary case ordinary is what keeps that true here. */
     {
         let gb = getbones();
         if (gb && typeof gb.then === 'function')
@@ -7269,20 +5603,6 @@ export async function mklev() {
     }
     g.in_mklev = true;
     await makelevel();
-    /* C mklev.c:6110-6118 mklev() is exactly
-     *     gi.in_mklev = TRUE; makelevel(); level_finalize_topology();
-     * with NO count_level_features() between them.  C counts fountains and
-     * sinks in only three places — the special-level coder's finalize
-     * (sp_lev.c:6043, sp_lev.c:6484), mkmaze.c:108, and a terrain wish
-     * (objnam.c) — and an ORDINARY level made by makelevel() reaches none of
-     * them, because themerooms run inside makerooms() and not through the
-     * special-level loader.  So on an ordinary level C's
-     * svl.level.flags.nfountains counts ONLY the fountains mkfount() made;
-     * terrain a themeroom laid down with des.feature("fountain") is NOT
-     * counted.  The starter skeleton recounted here, which is not C's
-     * behaviour and not a harmless bookkeeping difference: nfountains gates
-     * dosounds()'s first branch (sounds.c:213), so an uncounted themeroom
-     * fountain made JS draw an rn2(400) on every turn where C drew nothing. */
     await level_finalize_topology();
     g.in_mklev = false;
     // Emit mapdump event
@@ -7343,16 +5663,6 @@ export function clear_level_structures() {
     lf.has_town = false;
     lf.wizard_bones = false;
     lf.corrmaze = false;
-    /* C mklev.c:898 — svl.level.flags.temperature = In_hell(&u.uz) ? 1 : 0;
-     * This was hard-coded to 0, so the flag had no writer that could ever make
-     * it non-zero outside des.level_flags("cold"/"hot").  It is not display
-     * state: makemon.c:1707 adds temperature_shift(ptr) into rndmonst_adj's
-     * per-row weight (makemon.c:1639-1650), so on a Gehennom level C's summed
-     * weight — and therefore the rn2(sum) it draws — is larger than ours.
-     * Witness: seed4500 step 322, C rn2(8) @rndmonst_adj(makemon.c:1716) vs
-     * JS rn2(5) @js/makemon.js:1111.  It also gates do.c:318's potion
-     * obj_resists roll, zap.c:5242's chance, and do.c:2001-2011's
-     * hellish_smoke_mesg topline. */
     lf.temperature = In_hell(g.u?.uz) ? 1 : 0;
     lf.rndmongen = true;
     lf.deathdrops = true;
@@ -7367,17 +5677,6 @@ export function clear_level_structures() {
      * would silently SUPPRESS create_gas_cloud's rn1(3,4) at monmove.c:682.
      * Consumes no RNG itself. */
     clear_regions();
-    /* C mklev.c:922 — reset_xystart_size(), inside clear_level_structures(),
-     * between free_exclusions() and the lev_message free.  Missing here, so
-     * gx.xstart/xsize and gy.ystart/ysize survived the level change: whatever
-     * des.map() last set on a special level (sp_lev.c:6143-6144 gx.xsize =
-     * mf->wid) was still in place when the NEXT level's get_location() read
-     * it.  That is a live RNG defect, not bookkeeping — get_location's random
-     * arm draws rn2((int) sx) (sp_lev.c:1233), so a stale sx makes every
-     * random placement on the following level draw from the wrong range.
-     * Witness: seed4500 step 322, C rn2(79) (xsize = COLNO-1, freshly reset)
-     * vs JS rn2(76) (the width of a map fragment from an earlier level).
-     * Consumes no RNG itself. */
     reset_xystart_size();
     /* C engrave.c:1580-1581 — head_engr = 0.  Engravings hang off the single
      * global head_engr chain (decl.c:85), but that chain is per-level in
@@ -7417,54 +5716,8 @@ export function clear_level_structures() {
      * already zeroed; init_vault() is `g.vault_x = -1`; stairway_free_all() is
      * `g.stairs = null`. */
     game.lev_message = null;
-    /* C mklev.c:921 free_exclusions() (dungeon.c:2582), between clear_regions()
-     * and reset_xystart_size().
-     *
-     * The comment that stood here said "free_exclusions() has no counterpart
-     * because this port carries no travel-exclusion state at all."  That is
-     * false: js/sp_lev.js:855 lspo_exclusion() unshifts onto
-     * game.exclusion_zones for every `des.exclusion()` a level's Lua declares,
-     * and goodpos() (js/trap.js:1110, and the two other copies in
-     * js/teleport.js and js/sp_lev.js) reads it —
-     *     if (avoid_monpos && is_exclusion_zone(LR_MONGEN, x, y)) return FALSE;
-     * — where avoid_monpos is GP_AVOID_MONPOS, which makemon.c:1162 sets on
-     * EVERY monster creation.  Nothing ever emptied the array, so a
-     * monster-generation exclusion declared by one special level went on
-     * rejecting squares at the same coordinates on every level generated after
-     * it, for the rest of the game.
-     *
-     * seed0116-wizard-wear-shop step 114 is the witness: the hero level-teleports
-     * and the new level's zoo tries to fill (45..49, 4).  C's rndmonst pick is
-     * accepted on the first try; this port's goodpos rejected all 50 tries at
-     * each of those five squares (probed: the failing test is precisely
-     * `GPFAIL exclusion`), so the whole zoo generated with no monsters and no
-     * gold — 25 makemon+mkgold blocks' worth of RNG that C draws and we did not.
-     * First divergence leaf 9643, C rnd(2) @next_ident(mkobj.c:521), JS rn2(3).
-     *
-     * js/dungeon.js's free_exclusions() is NOT called from here: it empties its
-     * own module-local `sve.exclusion_zones` linked list, which has no reader
-     * anywhere in js/ (the three goodpos copies all read game.exclusion_zones),
-     * and js/dungeon.js already imports this module, so calling it would close
-     * an import cycle for no behavioural gain. */
     game.exclusion_zones = [];
 }
-/* ===========================================================================
- * src/extralev.c — "rogue"-style level generation (Ken Arromdee, 1988/89).
- *
- * The whole file was unported until now: js/mklev.js's makelevel() called
- * makerooms() unconditionally where C branches to
- *   `makeroguerooms(); makerogueghost();`  (mklev.c:1294-1305)
- * so this port never generated a Rogue level at all.  On
- * seed0360-wizard-world-tour that is the FIRST RNG-value divergence of the
- * whole run: C leaf 68428 is `rn2(5)=1 @ makeroguerooms(extralev.c:220)`
- * while JS is off in rnd_rect() building an ordinary rooms-and-corridors
- * level.  263 of C's leaves at that keystroke belong to this file.
- *
- * Kept in js/mklev.js rather than a new js/extralev.js because every callee
- * it needs (add_room, dodoor, somex, somey, makemon, mksobj_at) already
- * lives here as a file-local; the tree already carries mkobj.c bodies in
- * this file for the same reason.
- * ======================================================================== */
 
 /* C decl.h:819 `struct rogueroom r[3][3];` inside `struct grid gr` — a GLOBAL,
  * read by roguecorr()/miniwalk() after makeroguerooms() has filled it.  Same
@@ -7686,7 +5939,6 @@ export async function makeroguerooms() {
                 here.dx = rn1(22, 2); /* 2-23 long, plus walls */
                 here.dy = rn1((y === 2) ? 4 : 3, 2); /* 2-5 high, plus walls */
 
-                /* boundaries of room floor */
                 here.rlx = rnd(23 - here.dx + 1);
                 here.rly = rnd(((y === 2) ? 5 : 4) - here.dy + 1);
                 g.level.nroom++;
@@ -7851,28 +6103,6 @@ async function makelevel_generate() {
             + ` sp=${slev ? 1 : 0}]`);
     if (slev && !Is_rogue_level(uz0)) {
         await js_makemaz(slev.proto, slev);
-        /* C mklev.c:1414-1418, with C's own comment:
-         *     // Fill all special rooms now, regardless of whether this is a
-         *     // special level, proto level, or ordinary level.
-         *     for (i = 0; i < svn.nroom; ++i)
-         *         fill_special_room(&svr.rooms[i]);
-         * That loop sits AFTER makelevel()'s whole if/else chain, so it runs on
-         * the special-level arm too — but this port `return`ed here, so every
-         * needfill room a .lua declared was left unfilled.  load_special() has
-         * no fill loop of its own (sp_lev.c:6491-6497 goes fixup_special ->
-         * premap_detect -> give_up), so nothing else covered it.
-         *
-         * Witness: castle.lua:57-58 declares two `des.region({..., type=
-         * "barracks", filled=1})`.  C fills them — seed0360-wizard-world-tour
-         * step 159, leaf 19938, C draws rnd(105) @ squadmon(mkroom.c:821), the
-         * garrison's first soldier — while JS had already run on to
-         * mineralize_kelp's rn2(30).
-         *
-         * themerooms_post_level_generate() (mklev.c:1420) is NOT replicated on
-         * this arm: it is gated on gl.luathemes[u.uz.dnum], and the JS gate
-         * `g._luathemes_loaded[dnum]` is the same condition, but it also frees
-         * gc.coder and re-wallifies, so it needs its own measurement rather
-         * than being folded into this fix. */
         for (let ri = 0; ri < g.level.nroom; ri++) {
             const rr = g.level.rooms[ri];
             if (rr && rr.hx > 0)
@@ -7880,25 +6110,6 @@ async function makelevel_generate() {
         }
         return;
     }
-    /* C ref: mklev.c:1270-1273 — the two DUNGEON-WIDE arms, which sit between
-     * the Is_special arm above and the In_hell/Medusa arm below:
-     *     } else if (svd.dungeons[u.uz.dnum].proto[0]) {   makemaz("");
-     *     } else if (svd.dungeons[u.uz.dnum].fill_lvl[0]) { makemaz(fill_lvl);
-     * Both were missing entirely, so every Gnomish Mines and Gehennom level
-     * fell through to makerooms() and was generated as a room-and-corridor
-     * level.  seed0030-ten-diverse-deaths segment 0 step 45 is the witness:
-     * the hero descends into the Mines and C's trace goes getbones(bones.c:645)
-     * -> the nhlib.lua shuffle(align) of a fresh lua state -> splev_initlev
-     * (sp_lev.c:2992) -> init_fill(mkmap.c:45), i.e. makemaz("minefill"), while
-     * JS drew the rn2(5) of the Medusa arm below and generated rooms.
-     *
-     * `spAny` is C's own `sp = Is_special(&u.uz)`, UNGATED.  It has to be:
-     * minetn-N / minend-N ARE s_level entries in the Mines, so C takes the
-     * Is_special arm for them and never reaches fill_lvl.  Gating this on the
-     * admission set instead would route Minetown into minefill.lua — a level
-     * C never generates there.  When such a level is not admitted we fall all
-     * the way through to the pre-existing regular generation, exactly as
-     * before this cascade existed. */
     const dgn = (g._dungeons_full || [])[uz0?.dnum ?? 0];
     const spAny = sp_levchn_lookup(uz0);
     if (spAny && !Is_rogue_level(uz0)) {
@@ -7926,37 +6137,11 @@ async function makelevel_generate() {
         }
     }
     else if (In_quest(uz0)) {
-        /* C ref: mklev.c:1275-1284 — the QUEST FILL arm, which was missing
-         * entirely.  A quest level that is not one of the three s_levels
-         * (x-strt / x-loca / x-goal) is filled from the role's own pair of
-         * filler maps:
-         *     Sprintf(fillname, "%s-loca", gu.urole.filecode);
-         *     loc_lev = find_level(fillname);
-         *     Sprintf(fillname, "%s-fil", gu.urole.filecode);
-         *     Strcat(fillname, (u.uz.dlevel < loc_lev->dlevel.dlevel) ? "a" : "b");
-         *     makemaz(fillname);
-         * i.e. Wiz-fila above the locate level and Wiz-filb below it.
-         *
-         * Two costs of its absence, both measured on the corpus: JS generated
-         * a rooms-and-corridors level where C loads the filler map, AND — because
-         * this arm sits BEFORE the In_hell/Medusa arm in C's cascade — JS fell
-         * through to that arm's `rn2(5)` and spent a leaf C never spends on a
-         * quest level.  Witnesses: seed0360 (Wiz quest dlevel 2 and 4),
-         * seed0361 (Arc dlevel 2 and 4), seed0367 (Pri dlevel 2),
-         * seed0373 (Bar quest).
-         *
-         * makemaz() is called with a plain name and Is_special(&u.uz) is NULL
-         * for a fill level (it is not on sp_levchn), so there is no rndlevs
-         * draw — hence js_makemaz(fillname, null). */
         const filecode = game.urole?.filecode;
         const loc_lev = filecode ? find_level(`${filecode}-loca`) : null;
         if (filecode && loc_lev) {
             const fillname = `${filecode}-fil`
                 + (((uz0?.dlevel | 0) < (loc_lev.dlevel.dlevel | 0)) ? 'a' : 'b');
-            /* Same measure-then-admit discipline as LOADER_READY / FILL_READY:
-             * a filler whose .lua hits an unported des.* opcode THROWS inside
-             * makelevel and kills the run, so it must probe clean first
-             * (tools/lua-level-load-probe.mjs <name>). */
             if (QUEST_FILL_READY.has(fillname)) {
                 await js_makemaz(fillname, null);
                 for (let ri = 0; ri < g.level.nroom; ri++) {
@@ -7979,20 +6164,6 @@ async function makelevel_generate() {
         const medusa = g.medusa_level;
         if (In_hell(uz0) || (rn2(5) && medusa && uz0?.dnum === medusa.dnum
             && depth_of_level(uz0) > depth_of_level(medusa))) {
-            /* C: makemaz("").  This body used to be EMPTY, with a comment
-             * saying the contest "often continues regular gen anyway" — it does
-             * not.  C's protofile comes out empty here, so makemaz falls
-             * through to its maze fallback and builds a random maze; JS drew
-             * the rn2(5) above, took the branch, did nothing, and then
-             * generated a rooms-and-corridors level.  That is the largest
-             * single-cause RNG block in the train corpus: gen040 diverges at
-             * leaf 14245 (C rn2(3) @ mkmaze.c:1198 vs JS rn2(1) @ rnd_rect)
-             * for 1,498 recoverable step points and gen140 for 1,486.
-             *
-             * C then falls out of the whole if/else chain into the
-             * fill_special_room loop (mklev.c:1414-1418) — a no-op on a maze,
-             * where nroom is 0 — so the `return` below is C's control flow, not
-             * a short cut, in the same shape as the Is_special arm above. */
             await js_makemaz('', null);
             for (let ri = 0; ri < g.level.nroom; ri++) {
                 const rr = g.level.rooms[ri];
@@ -8003,19 +6174,6 @@ async function makelevel_generate() {
         }
     }
     // Regular level generation
-    /* C ref: mklev.c:1294-1299
-     *     if (Is_rogue_level(&u.uz)) {
-     *         makeroguerooms();
-     *         makerogueghost();
-     *     } else {
-     *         makerooms();
-     *     }
-     * This port called makerooms() unconditionally, so a Rogue level was
-     * generated as an ordinary rooms-and-corridors level and the whole
-     * extralev.c leaf block (263 leaves on seed0360 step 301) was never drawn.
-     * Note the themerms.lua load lives INSIDE C's makerooms() (mklev.c:374),
-     * so it — and the shuffle this port models it with — must sit on the
-     * non-rogue side of the branch. */
     const dnum = g.u?.uz?.dnum ?? 0;
     const is_rogue = Is_rogue_level(uz0);
     if (is_rogue) {
@@ -8024,7 +6182,6 @@ async function makelevel_generate() {
     } else {
         // C ref: mklev.c:373-390 — themes = gl.luathemes[u.uz.dnum] is cached
         // for the WHOLE branch's lifetime (set once, on the branch's first
-        // "regular" level, never cleared afterward). A capture-replay of a
         // single dodown() call restores only that one call's state snapshot,
         // so g._luathemes_loaded starts empty on every replay even when it is
         // really deep into a branch that has already generated many earlier
@@ -8065,7 +6222,6 @@ async function makelevel_generate() {
     if (!is_rogue) {
     await makecorridors();
     await make_niches();
-    // Vault creation (simplified for contest)
     if (g.vault_x !== -1) {
         const vw = { value: 1 }, vh = { value: 1 };
         const vx = { value: g.vault_x }, vy = { value: g.vault_y };
@@ -8120,7 +6276,6 @@ async function makelevel_generate() {
         const u_depth = depth_of_level(uz) | 0;
         const medusaDepth = g.medusa_level ? (depth_of_level(g.medusa_level) | 0) : 0;
         const nroom = g.level.nroom | 0;
-        /* C: wizard && nh_getenv("SHOPTYPE") — never in contest, skipped. */
         if (u_depth > 1 && u_depth < medusaDepth
             && nroom >= room_threshold && rn2(u_depth) < 3) {
             await do_mkroom(SHOPBASE);
@@ -8143,12 +6298,6 @@ async function makelevel_generate() {
         else if (u_depth > 11 && !rn2(6)) {
             await do_mkroom(MORGUE);
         }
-        /* C mklev.c:1366 `!rn2(8) && antholemon()`.  The guard was parked as a
-         * comment; antholemon() draws no RNG (it is ubirthday % 3 plus
-         * level_difficulty, filtered by mvitals G_GONE), so wiring it cannot
-         * shift the stream — but it does gate the room, and C's && is what
-         * decides whether the ANTHOLE arm or the next else-if runs.
-         * tools/call-count-lint.mjs: makelevel -> antholemon, C 1x / js 0x. */
         else if (u_depth > 12 && !rn2(8) && antholemon()) {
             await do_mkroom(ANTHOLE);
         }
@@ -8210,14 +6359,6 @@ async function makelevel_generate() {
         if (rr && rr.hx > 0)
             await fill_special_room(rr);
     }
-    /* C ref: mklev.c:1428 themerooms_post_level_generate()
-     * C: themerooms_post_level_generate() runs Lua post_level_generate() (firing postprocess
-     *    callbacks) then wallification(1, 0, COLNO-1, ROWNO-1).
-     * post_level_generate (themerms.lua:1092-1097) iterates the postprocess table calling
-     * each handler. Teleportation hub fills register make_a_trap entries that call
-     * selection.negate():filter_mapchar("."):rndcoord(1) = rn2(ALL_ROOM_CELLS) per trap,
-     * then des.trap() which calls mktrap() consuming rnd(4) for the victim check.
-     * Mirror nethack-c/src/mklev.c:1428 */
     if (g._luathemes_loaded?.[dnum]) {
         await themerooms_post_level_generate();
         wallification(1, 0, COLNO - 1, ROWNO - 1);
@@ -8853,33 +6994,6 @@ async function themeroom_des_trap(type, x, y, spider_on_web) {
         mktrap_flags |= MKTRAP_NOSPIDERONWEB;
     await mktrap(type, mktrap_flags, null, { x, y });
 }
-/**
- * C ref: themerms.lua:100-113 themeroom_fills["Trap room"].
- *
- *   local traps = { "arrow", "dart", "falling rock", "bear",
- *                   "land mine", "sleep gas", "rust", "anti magic" };
- *   shuffle(traps);                              -- rn2(8)..rn2(2)
- *   local locs = selection.room():percentage(30);
- *   locs:iterate(function(x,y) des.trap(traps[1], x, y); end);
- *
- * The stand-in this replaces (nhlib.js nhlib_fill_trap_room_rng) drew the
- * shuffle and the percentage and then stopped, under the comment
- * "locs:iterate with explicit (x,y) -- no additional rn2".  That is wrong:
- * every des.trap reaches mktrap, whose victim gate (mklev.c:2147) ALWAYS draws
- * rnd(4) once `gi.in_mklev && kind != NO_TRAP && !MKTRAP_NOVICTIM` hold — and
- * for six of the eight trap types in this list the gate then passes and
- * mktrap_victim() draws a whole object/corpse block on top.
- *
- * The shuffle result was also DISCARDED by the stand-in, so which of the eight
- * types was picked could not be known; it decides both whether the victim block
- * runs (SQKY_BOARD and RUST_TRAP are excluded by name, ANTI_MAGIC by
- * `kind < HOLE`) and what mktrap_victim drops.
- *
- * MEASURED on corpus-generated/v5/train/gen277-reseed-seed329413: C leaves
- * 391..396 are six `rnd(4) @mktrap(mklev.c:2147)` — one per selected cell —
- * where this port drew none and went straight back to rnd_rect().  That was the
- * session's first RNG-value divergence at 8 of 409 screen points.
- */
 async function themeroom_fill_trap_room(croom) {
     const traps = [ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP,
                    LANDMINE, SLP_GAS_TRAP, RUST_TRAP, ANTI_MAGIC];
@@ -8888,40 +7002,6 @@ async function themeroom_fill_trap_room(croom) {
     for (const c of themeroom_percentage_cells(croom, 30))
         await themeroom_des_trap(traps[0], c.x, c.y, true);
 }
-/* C ref: themerms.lua:172-189 themeroom_fills["Massacre"].
- *
- *   local mon = { "apprentice", "warrior", ... 27 names ... };
- *   local idx = math.random(#mon);
- *   for i = 1, d(5,5) do
- *      if (percent(10)) then idx = math.random(#mon); end
- *      des.object({ id = "corpse", montype = mon[idx] });
- *   end
- *
- * The stand-in this replaces (nhlib.js nhlib_fill_massacre_rng) drew the index
- * roll, the d(5,5) count, each percent(10) and each corpse's somex/somey pair —
- * and then STOPPED, making no corpse.  Everything des.object draws inside
- * create_object was therefore missing, and it is not a little: per corpse C
- * draws next_ident, the rndmonnum() reservoir loop mksobj's FOOD_CLASS/CORPSE
- * arm runs (mkobj.c:899-906), mksobj's gender roll at mkobj.c:1222, and TWO
- * start_corpse_timeout blocks (mkobj.c:1413) — mksobj sets a timer for the
- * random corpsenm it just rolled, then set_corpsenm() stops it and starts
- * another for the montype the level actually asked for.
- *
- * MEASURED: 3 of the 688 train sessions run this fill and ALL THREE have their
- * first RNG divergence on its first corpse — gen422-recombine-seed224264 at C
- * leaf 451 (`rnd(2) @ next_ident(mkobj.c:521)`, where this port drew the NEXT
- * iteration's percent(10) instead), gen167-reseed-seed1816153 at leaf 517,
- * gen323-reseed-seed1062629 at leaf 589. Between them they hold 441 recoverable
- * screen points, and the corpses are `%` glyphs on the floor besides.
- *
- * The montype -> mons index resolution is C's, not a lookup table: lspo_object
- * (sp_lev.c:3692-3699) scans mons[] from LOW_PM and takes the FIRST row whose
- * NEUTRAL, MALE or FEMALE name matches, with no RNG anywhere on the path (the
- * find_montype() gender roll belongs to des.monster, not des.object).  That
- * scan order is load-bearing and slightly surprising: "priest"/"priestess"
- * reach the ALIGNED PRIEST row long before the player-monster priest row, so
- * those two names do NOT make a player-priest corpse.
- */
 const MASSACRE_MONNAMES = [
     'apprentice', 'warrior', 'ninja', 'thug',
     'hunter', 'acolyte', 'abbot', 'page',
@@ -8978,31 +7058,6 @@ async function themeroom_fill_massacre(croom) {
             otmp.spe = 0;
     }
 }
-/**
- * C ref: themerms.lua:190-199 themeroom_fills["Statuary"].
- *
- *   for i = 1, d(5,5) do des.object({ id = "statue" }); end
- *   for i = 1, d(3)   do des.trap("statue");            end
- *
- * The stand-in this replaces (nhlib.js nhlib_fill_statuary_rng) drew the two
- * d() counts and then, per item, ONLY the somex/somey placement pair — it made
- * neither the statue nor the trap, so everything mksobj_at() and mktrap() draw
- * inside them was missing.  Per statue that is next_ident() plus mksobj_init's
- * ROCK_CLASS/STATUE arm (mkobj.c:1150-1156: corpsenm = rndmonnum(), which is
- * the rndmonst_adj reservoir loop, and a possible spellbook) plus the gender
- * roll at mkobj.c:1222 — roughly a dozen leaves each, against a statue count of
- * d(5,5), i.e. 5..25 of them.  Per statue TRAP it is maketrap()'s
- * mk_trap_statue() (a whole makemon) and mktrap()'s victim-gate rnd(4).
- *
- * MEASURED: 13 of the 688 train sessions run this fill, and every one of them
- * has its first RNG divergence inside it — gen008-reseed-seed1269586 at C leaf
- * 365, the first statue's next_ident, is the shortest.  Between them they hold
- * ~3,200 recoverable screen points.
- *
- * Both loops take the RANDOM-coordinate form of their des.* call
- * (SP_COORD_PACK_RANDOM), so each item's position is one somexy(croom) —
- * get_location's random arm, sp_lev.c:1366-1374 — rather than an explicit cell.
- */
 async function themeroom_fill_statuary(croom) {
     /* nhlib.lua:30-38 d(dice, faces) sums `dice` rolls of math.random(1, faces);
      * math.random's 2-arg shim (nhlib.lua:9-10) is nh.random(lo, hi + 1 - lo),
@@ -9030,83 +7085,9 @@ async function themeroom_fill_statuary(croom) {
         await themeroom_des_trap(STATUE_TRAP, pos.x, pos.y, true);
     }
 }
-/**
- * C ref: themerms.lua:87-99 themeroom_fills["Spider nest"].
- *
- *   local spooders = nh.level_difficulty() > 8;
- *   local locs = selection.room():percentage(30);
- *   locs:iterate(function(x,y)
- *      des.trap({ type = "web", x = x, y = y,
- *                 spider_on_web = spooders and percent(80) });
- *   end);
- *
- * Lua evaluates the argument TABLE before calling des.trap, so when spooders is
- * true the percent(80) rn2(100) is drawn per cell AHEAD of that cell's trap —
- * the old stand-in drew all of them in one block before any trap, which is the
- * right count in the wrong order the moment mktrap draws anything.  And mktrap
- * does: WEB reaches the victim gate's rnd(4) like every other type (the gate's
- * `kind < HOLE` tail then fails, WEB being 18, so no victim block follows), and
- * a true spider_on_web additionally spawns the giant spider at mklev.c:2114.
- *
- * MEASURED on corpus-generated/v5/train/gen361-reseed-seed1010135 (C leaves
- * 574..579, six webs) and gen565-grammar-seed518510 (C leaves 486..489, four):
- * in both, C's rnd(4) run is the session's first RNG-value divergence.
- */
-/**
- * C ref: sp_lev.c create_object:2193-2210 restricted to the EXPLICIT-COORDINATE
- * string form the themeroom fills use — `des.object("boulder", x, y)`.
- *
- * lspo_object's 3-argument form fills an `object` struct with id resolved from
- * the name and coord set from the two integers, so get_location_coord() resolves
- * to that exact cell and draws nothing.  `named` is FALSE (no name string), so
- * create_object takes the `o->id != -1` arm:
- *     otmp = mksobj_at(o->id, x, y, TRUE, !named);
- * i.e. init TRUE, artif TRUE.  For BOULDER (ROCK_CLASS, quan 1, no spe, no
- * blessorcurse, not artifact-eligible) mksobj's only draw is next_ident's
- * rnd(2) — which is exactly what C records here (leaf 347 of gen140's Dlvl-4
- * generation is a lone `rnd(2) @next_ident(mkobj.c:521)`).
- *
- * Everything create_object does after mksobj_at (spe / curse_state / corpsenm /
- * erosion / containment) is default-valued for this form and RNG-free.
- */
 async function themeroom_des_object(otyp, x, y) {
     return await mksobj_at(otyp, x, y, true, true);
 }
-/**
- * C ref: themerms.lua:72-86 themeroom_fills["Boulder room"] (mindiff 4).
- *
- *   local locs = selection.room():percentage(30);
- *   local func = function(x,y)
- *      if (percent(50)) then des.object("boulder", x, y);
- *      else des.trap("rolling boulder", x, y); end
- *   end;
- *   locs:iterate(func);
- *
- * The stand-in this replaces (nhlib.js nhlib_fill_boulder_room_rng) drew the
- * percentage(30) roll and one percent(50) per selected cell and then STOPPED,
- * making neither boulder nor trap — the same shortfall its two neighbours
- * "Spider nest" and "Trap room" had before they became real fills here, and its
- * own header said so ("STILL A STAND-IN ... left measured-and-named rather than
- * guessed at").
- *
- * What the stand-in was missing, per branch:
- *   percent TRUE  -> des.object("boulder", x, y): mksobj's next_ident rnd(2).
- *   percent FALSE -> des.trap("rolling boulder", x, y): maketrap() reaches
- *                    mkroll_launch (trap.c:512-514), whose find_random_launch_coord
- *                    draws rn1(5,4) then rn2(N_DIRS) (trap.c:3626-3627) and, ONLY
- *                    when a clear path was found, mksobj(BOULDER)'s next_ident;
- *                    then mktrap's victim gate draws rnd(4) (mklev.c:2137).
- *                    So a failed launch is 3 leaves and a successful one is 4 —
- *                    a fixed per-cell count cannot express it, which is why the
- *                    stand-in could not be widened and had to become a real fill.
- *
- * MEASURED on corpus-generated/v5/train/gen140-reseed-seed844901: the hero falls
- * down the stairs at step 796 and C generates Dlvl 4 with a boulder room in it.
- * C's leaves 343..358 of that level's block are the two rolling-boulder traps and
- * four boulders above; this port drew five more rn2(100) and went straight on to
- * rnd_rect().  Global leaf 47888 — the session's first RNG-value divergence, with
- * 789 of its 1,017 recoverable screen points behind it.
- */
 async function themeroom_fill_boulder_room(croom) {
     for (const c of themeroom_percentage_cells(croom, 30)) {
         if (nhlib_percent(50))
@@ -9157,8 +7138,6 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // nothing, because its makemon reached nhlib.js through the
             // `registerNhlibMakemon` module-global that no file in js/ ever
             // called.  It also skipped find_montype's rn2(2) gender fallback
-            // and create_monster's induced_align rn2(3): measured on
-            // corpus-generated/v5/train/gen345-reseed-seed244908, C's first
             // fog cloud runs leaves 316..324 where this fill drew 2.
             const fogCells = roomRndcoordCells(aroom);
             await nhlib_fill_cloud_room_rng(fogCells.length, w, h,
@@ -9195,8 +7174,6 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // selvar.c selection_from_mkroom) snapshots gc.coder->croom's cells
             // HERE, at fill time; the handler runs later, at post_level_generate.
             // Registering consumes no RNG.  Missing this registration was worth
-            // 13 rn2(100) leaves on gen074-reseed-seed214983 (C leaves
-            // 1821..1833, the session's first RNG divergence).
             _pendingPostprocess.push({ kind: 'garden_walls',
                 cells: roomRndcoordCells(aroom) });
         }
@@ -9210,13 +7187,11 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // C creates: chest object → mkbox_cnts auto-fill → bury → d(3,4) random contents.
             //
             // 1. des.object({id="chest"}) → sp_lev.c create_object():
-            //      get_location_coord(random) → somexy(croom)  [chest floor position]
             //    C ref: sp_lev.c create_object:2203 get_location_coord.
             const _chestPos = somexy(aroom, {});
             //    then mksobj_at(CHEST, x, y, init=TRUE): mksobj(CHEST,TRUE) →
             //      next_ident + mksobj_init (olocked rn2(5) + otrapped rn2(10) + tknown)
             //      + mkbox_cnts(chest) (auto-stocks the container — the recursive
-            //      next_ident/mkobj/mkbox_cnts run at leaf 414-445 of seed3300).
             //    C ref: mkobj.c mksobj:1186 / mksobj_init CHEST:1083-1093 / mkbox_cnts:514.
             //    artif = !named (sp_lev.c create_object:2212); the spec carries no
             //    name= field, so named is FALSE and artif is TRUE.  Inert for a
@@ -9226,10 +7201,8 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // C ref: themerms.lua:136-142 — the chest's contents() callback registers a
             // make_dig_engraving postprocess entry (the buried chest is the dig target).
             // Registering consumes no RNG; the deferred callback (post_level_generate)
-            // fires `selection.negate():filter_mapchar("."):rndcoord(0)` = rn2(roomCellCount).
             // xobj.NO_OBJ is nil for a real chest, so the registration always fires.
             // C themerms.lua:140-141 — data = { x = xobj.ox, y = xobj.oy } (the
-            // chest's floor position; the buried-treasure dig target the engraving
             // text points toward).  The chest is placed at the somexy coord above.
             _pendingPostprocess.push({ kind: 'dig_engraving',
                 data: { x: _chestPos ? (_chestPos.x | 0) : 0,
@@ -9311,7 +7284,6 @@ async function themeroom_fill_rng(aroom, difficulty) {
                     set_corpsenm(_corpse, zombifiable[0]);
                     place_object(_corpse, corpsePos.x, corpsePos.y);
                     // 4. bury_an_obj:2007 obj_resists(corpse,0,0), then move it
-                    // from the floor chain to the buried-object chain.
                     obj_resists(_corpse, 0, 0);
                     obj_extract_self(_corpse);
                     add_to_buried(_corpse);
@@ -9330,10 +7302,6 @@ async function themeroom_fill_rng(aroom, difficulty) {
             await themeroom_fill_statuary(aroom);
         }
         else if (pick.name === 'Light source') {
-            /* C themerms.lua:204-209 des.object({id="oil lamp", lit=true}).
-             * The coordinate draws alone are insufficient: mksobj_at consumes
-             * next_ident + oil-lamp initialization, and the lit flag registers
-             * the floor light source before makerooms continues. */
             const lampPos = {};
             if (somexy(aroom, lampPos)) {
                 const lamp = await mksobj_at(OIL_LAMP, lampPos.x, lampPos.y, true, false);
@@ -9384,7 +7352,6 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // ghost monster AND all its dropped objects are placed at that single loc.
             // The previous port consumed rn2(w*h) but discarded the coordinate, placing
             // the ghost (PM_GHOST=287) at (0,0) — a phantom monster whose spurious
-            // dochug/distfleeck shifted the per-turn movemon RNG (seed0015 turn 5).
             const ghostCells = roomRndcoordCells(aroom);
             // Place the ghost's dropped objects at the same rndcoord loc (C themerms
             // ghost fill: des.object({coord=loc})); mkobj_at = mkobj + place_object
@@ -9435,9 +7402,7 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // (selvar.c:239-241), and selection.room() sets only the cells whose
             // levl[x][y].roomno == rmno and !edge (selvar.c:792-796) — NOT the
             // whole lx..hx/ly..hy box.  On a map-first theme room those differ:
-            // gen193-reseed-seed637820's room is a 6x6 box with 27 tagged cells,
             // so `w * h` drew NINE selection rolls C never made and that was the
-            // session's first divergence.  roomRndcoordCells() is this file's
             // existing mirror of selection_from_mkroom (it is what Cloud room,
             // Garden, Ghost and Teleportation hub already count with), and it
             // agrees with w*h exactly on an ordinary rectangular room.
@@ -9448,15 +7413,6 @@ async function themeroom_fill_rng(aroom, difficulty) {
                 /* C sp_lev.c:1956 pm = mkclass(class, G_NOGEN) with class =
                  * def_char_to_monclass('m') = S_MIMIC; mkclass forwards A_NONE. */
                 mkclassMimic: () => mkclassAligned(13 /* S_MIMIC */, 0x0200 /* G_NOGEN */, A_NONE),
-                /* C sp_lev.c:2001-2035 — the spec's appear_as ("obj:chest")
-                 * OVERRIDES the disguise set_mimic_sym just rolled inside
-                 * makemon.  RNG-free (the roll already happened); it only
-                 * rewrites m_ap_type/mappearance, and only for a mimic, and
-                 * only when the hero lacks Protection_from_shape_changers —
-                 * which has no source in this corpus (js/monmove.js:2971).
-                 * Without it the room paints three random mimic disguises
-                 * where C paints three chests: seed5002 segment 1 step 4 was
-                 * `!`/`:`/`b` against C's `(`/`(`/`(`. */
                 makemon: async (pm, mx, my, mmflags) => {
                     const before = game.fmon;
                     const p = await makemon(pm, mx, my, mmflags);
@@ -9530,7 +7486,6 @@ async function themeroom_fill_rng(aroom, difficulty) {
 //
 // make_a_trap (themerms.lua:1081-1089): for each registered teleportation hub trap,
 // picks a destination using:
-//   local locs = selection.negate():filter_mapchar(".");  -- ALL ROOM cells on level
 //   repeat
 //     data.teledest = locs:rndcoord(1);  -- rn2(remaining ROOM cell count), removeit=true
 //   until (data.teledest.x ~= data.coord.x and data.teledest.y ~= data.coord.y);
@@ -9555,10 +7510,8 @@ async function themerooms_post_level_generate() {
     // insertion order, firing each handler. Two handler kinds consume RNG:
     //   - make_dig_engraving (themerms.lua:1052) — registered by Buried treasure fill.
     //   - make_a_trap        (themerms.lua:1081) — registered by Teleportation hub fill.
-    // Both reference selection.negate():filter_mapchar(".") = ALL ROOM cells level-wide.
     if (_pendingPostprocess.length === 0)
         return;
-    // Build ordered list of ROOM cells -- mirrors selection.negate():filter_mapchar(".")
     // then selection_rndcoord traversal (x-outer, y-inner, full map bounds).
     // C ref: selvar.c selection_filter_mapchar() iterates x from 0..COLNO-1, y from 0..ROWNO-1.
     // No postprocess handler alters levl[][].typ, so this snapshot is valid for all entries.
@@ -9577,8 +7530,6 @@ async function themerooms_post_level_generate() {
             continue;
         if (entry.kind === 'dig_engraving') {
             // C ref: themerms.lua:1052-1054 make_dig_engraving:
-            //   local floors = selection.negate():filter_mapchar(".");
-            //   local pos = floors:rndcoord(0);  -- rn2(idx), removeit=0 (no removal)
             // selection_rndcoord (selvar.c:302) consumes exactly one rn2(roomCells.length).
             // des.engraving({coord=pos,type="burn",text=...}) uses an explicit coord, so
             // get_location_coord/make_engr_at(BURN) consume no further RNG (engrave.c:409).
@@ -9619,33 +7570,6 @@ async function themerooms_post_level_generate() {
                 // Remove picked cell (removeit=1 in C)
                 locs.splice(idx, 1);
             } while (src && !(destX !== src.x && destY !== src.y));
-            /* C themerms.lua:1088 `des.trap(data)` — and `data` is the table the
-             * Teleportation hub fill built at themerms.lua:273-276:
-             *     { type = "teleport", seen = true, coord = pos, teledest = 1 }
-             * with `teledest` replaced above by the cell the repeat loop picked.
-             *
-             * This line USED TO BE a bare `rnd(4)`, with a comment explaining
-             * that mktrap's victim gate consumes one rnd(4) for a TELEP_TRAP
-             * even though the gate body is skipped.  That much was true, and
-             * the RNG stream stayed bit-aligned — which is exactly why the gap
-             * survived: every RNG oracle read green while NO TRAP WAS EVER
-             * MADE.  `seen = true` means these are TSEEN from creation, so C
-             * paints a '^' on each of them from the first frame that shows the
-             * room, and this port painted floor.
-             *
-             * MEASURED, gen341-reseed-seed476480 step 39: the hero hits an
-             * ordinary teleporter and materialises inside the hub room; C's
-             * frame carries two '^' (map (74,3) and (71,4)) that this port
-             * painted as room floor, and every frame from there to the end of
-             * the session missed on those two cells.
-             *
-             * C reaches mktrap through create_trap (sp_lev.c:1812), which for a
-             * non-VIBRATING_SQUARE trap with croom == NULL (post_level_generate
-             * runs after every room's contents closure has been popped) just
-             * resolves the absolute coord and forwards:
-             *     mktrap(t->type, MKTRAP_MAZEFLAG | MKTRAP_SEEN, NULL, &tm);
-             * mktrap draws the same single rnd(4) the hand-rolled line did — so
-             * this is RNG-neutral by construction, not by adjustment. */
             const _gl = (game.gl = game.gl || {});
             const _xstart = (game.gx?.xstart) | 0;
             const _ystart = (game.gy?.ystart) | 0;
@@ -9753,19 +7677,6 @@ function splev_create_door_rng(room, ddMask, ddSecret) {
                 else {
                     mask = D_CLOSED;
                 }
-                /* C sp_lev.c:1735 — `if (dd->mask != D_ISOPEN && !rn2(25))`.
-                 * There is NO level_difficulty() term here.  The one that used
-                 * to sit in this condition belongs to a DIFFERENT C function:
-                 * mklev.c:630-632 dosdoor(), whose trapped test really is
-                 * `doormask != D_ISOPEN && !shdoor && level_difficulty() >= 5
-                 * && !rn2(25)`.  Both 5.0 and 3.7 agree that create_door has no
-                 * such gate (js/sp_lev.js:527, this file's own second
-                 * transcription of the same C function, already says so), so
-                 * this was a cross-contamination between the two door makers,
-                 * not a version skew.  Cost: every des.door() on a level below
-                 * difficulty 5 skipped a live rn2(25), which is seed4500's
-                 * first RNG divergence — leaf 52821, 147 draws into the Dlvl 4
-                 * mklev() that step 796's ">" triggers. */
                 if (mask !== D_ISOPEN && !rn2(25)) {
                     mask |= D_TRAPPED;
                 }
@@ -9991,8 +7902,6 @@ function themerooms_contents_huge_room_inner(outerRoom) {
 // Outer room (w=9+rn2(4), h=9+rn2(4), filled=1) already built as aroom.
 //
 // Contents outer (rm = outerRoom passed by lspo_room):
-//   local wid = math.random(floor(rm.width/2), rm.width-2)   -- nhlib:10: rn2(rm.width-2+1-floor(rm.width/2))
-//   local hei = math.random(floor(rm.height/2), rm.height-2) -- rn2(rm.height-2+1-floor(rm.height/2))
 //   des.room({ type="ordinary", w=wid, h=hei, filled=1,
 //      contents = function()
 //         if (percent(90)) then                               -- rn2(100)
@@ -10014,12 +7923,9 @@ function themerooms_contents_nesting_rooms(outerRoom) {
     // outerRoom dimensions (outer room's inner play area)
     const outerWidth = outerRoom.hx - outerRoom.lx + 1; // rm.width
     const outerHeight = outerRoom.hy - outerRoom.ly + 1; // rm.height
-    // themerms.lua:349: local wid = math.random(floor(rm.width/2), rm.width-2)
-    // nhlib.lua:10: math.random(a,b) = a + rn2(b+1-a) = floor(w/2) + rn2(w-2+1-floor(w/2))
     const widMin = Math.floor(outerWidth / 2);
     const widRange = outerWidth - 2 + 1 - widMin; // = outerWidth - 1 - widMin
     const wid = widMin + rn2(widRange);
-    // themerms.lua:350: local hei = math.random(floor(rm.height/2), rm.height-2)
     const heiMin = Math.floor(outerHeight / 2);
     const heiRange = outerHeight - 2 + 1 - heiMin;
     const hei = heiMin + rn2(heiRange);
@@ -10099,7 +8005,6 @@ async function themerooms_contents_mausoleum(outerRoom) {
     const outerWidth = outerRoom.hx - outerRoom.lx + 1;
     const outerHeight = outerRoom.hy - outerRoom.ly + 1;
     // themerms.lua:424-439: inner 1x1 "crypt" at center
-    // x = (rm.width-1)/2, y = (rm.height-1)/2 (integer division via Lua floor)
     const cryptX = Math.trunc((outerWidth - 1) / 2);
     const cryptY = Math.trunc((outerHeight - 1) / 2);
     const cryptSpec = {
@@ -10139,7 +8044,6 @@ async function themerooms_contents_mausoleum(outerRoom) {
             // the Dungeons of Doom, since it is neither a special level nor an
             // aligned branch, so neither rn2(100) arm fires (dungeon.c:1999-2015).
             // This call is BEFORE mkclass, and omitting it was the first RNG
-            // divergence of five train sessions: C rn2(3) @induced_align
             // (dungeon.c:2012) against our rn2(9) @mkclass_aligned.
             // C ref: sp_lev.c sp_amask_to_amask():1907-1920, create_monster():1945
             const G_NOGEN = 0x0200;
@@ -10151,7 +8055,6 @@ async function themerooms_contents_mausoleum(outerRoom) {
             // sp_lev.c:1959-1961 — the Mines dwarf/gnome own-race suppression.
             // Guarded on In_mines first: themerooms are a room-and-corridor
             // (mklev makerooms) feature and the Mines are makemaz/mkmap levels,
-            // so this arm is not reached on this corpus; it is ported rather
             // than asserted away.  your_race(ptr) is monflag.h's
             // (ptr->mflags2 & gu.urace.selfmask) != 0.
             let cryptPmEff = cryptPm;
@@ -10208,7 +8111,6 @@ async function themerooms_contents_mausoleum(outerRoom) {
             // create_object then makes the CORPSE object itself — the previous JS
             // model stopped after the montype mkclass resolution and skipped the
             // object (C placed a corpse JS did not — the creation gap, first
-            // divergence at leaf 400 of seed0430, MISSING-CREATION-IN-JS).
             // mksobj(CORPSE, init=TRUE) fires: next_ident (corpse o_id),
             // mksobj_init CORPSE → corpsenm = rndmonnum() (rndmonst_adj loop),
             // gender, then set_corpsenm → start_corpse_timeout (here the random
@@ -10221,7 +8123,6 @@ async function themerooms_contents_mausoleum(outerRoom) {
             // C sp_lev.c:2259-2263 — apply the montype-resolved corpsenm override.
             // monsndx(pm) is just the PM index mkclass already returned.  This is
             // the SECOND set_corpsenm; for the resolved HUMAN PM (non-LIZARD/LICHEN)
-            // it fires start_corpse_timeout's rnz(25) — leaf 410 of seed0430.
             if (montypePm != null && montypePm !== NON_PM) {
                 set_corpsenm(corpse, montypePm);
             }
@@ -10316,36 +8217,6 @@ function nhlib_shuffle_inplace(list) {
  * text to grep.  SCR_TELEPORTATION (333) and WAN_DIGGING (428) are already
  * declared at the top of this file. */
 const WAN_TELEPORTATION = 424;
-/**
- * C themerms.lua:764-815 — the contents of the 'Water-surrounded vault'
- * themeroom's des.map, from the des.region onward.
- *
- * THIS IS THE ONE MAP-FIRST THEMEROOM WHOSE contents() IS NOT `filler_region`.
- * Every other entry in THEMEROOM_MAP_LUA is `function(m) filler_region(a,b); end`,
- * so themerooms_generate ran filler_region's percent(30) unconditionally. On
- * seed0014 segment 0 that spurious rn2(100) landed at leaf 19646, exactly one
- * leaf ahead of C's `rnd(4) @litstate_rnd(mkmap.c:446)`, and the 49 leaves this
- * function draws were missing entirely — C 19646..19696 against JS's nothing.
- *
- *   des.region({region={3,3,3,3}, type="themed", irregular=true,
- *               filled=0, joined=false});     -- litstate_rnd + flood_fill_rm
- *                                                + add_room: the CALLER does
- *                                                this (it is the map's room)
- *   shuffle(chest_spots)                       -- rn2(4) rn2(3) rn2(2)
- *   obj.new(escape_items[math.random(#escape_items)])
- *   des.object{id="chest", coord=chest_spots[1], [olocked="no"]}
- *   box:addcontent(itm)
- *   for i = 2, #chest_spots do des.object{id="chest", coord=chest_spots[i]} end
- *   shuffle(nasty_undead); des.monster(nasty_undead[1], 2, 2)
- *   des.exclusion{...}                         -- RNG-free
- *
- * `chest_spots`/the monster coord are map-fragment relative: the contents
- * callback runs INSIDE lspo_map (sp_lev.c:6308-6311), before reset_xystart_size(),
- * with gc.coder->croom NULL — lspo_region's own spo_endroom already popped the
- * region — so get_location_coord resolves them as gx.xstart+cx, gy.ystart+cy.
- *
- * @param {{x: number, y: number}} mapPos the map fragment's origin (gx.xstart/gy.ystart)
- */
 async function themeroom_water_surrounded_vault_contents_rng(mapPos) {
     /* themerms.lua:776-777 — the two tables, in source order. */
     /* The three names verbatim from themerms.lua:776 — the list Lua shuffles is
@@ -10361,16 +8232,6 @@ async function themeroom_water_surrounded_vault_contents_rng(mapPos) {
     const escapeItems = [SCR_TELEPORTATION, RIN_TELEPORTATION,
         WAN_TELEPORTATION, WAN_DIGGING];
     const itmOtyp = escapeItems[rn2(escapeItems.length)];
-    /* obj.new(<string>) is nhlobj.c:350's readobjnam path (NOT mksobj by id).
-     * readobjnam (objnam.c:4749) resolves the type through
-     * rnd_otyp_by_namedesc(actualn, oclass, xtra_prob=1), which sums
-     * (oc_prob + 1) over every objects[] row in the class whose name or
-     * description matches, then draws `prob = rn2(maxprob)` (objnam.c:3522).
-     * All four escape-item names match EXACTLY ONE row in their class — no ring,
-     * scroll or wand name or description repeats "teleportation"/"digging", and
-     * none of the four class's names contains " of " for the partial-name rule
-     * to fire on — so maxprob is that one row's oc_prob + 1.  Verified on
-     * seed0014 leaf 19652: the ring (oc_prob 1) drew rn2(2). */
     rn2((MKOBJ_OC_PROB[itmOtyp] | 0) + 1);
     /* readobjnam ends at mksobj(typ, TRUE, FALSE); no wish modifiers are given. */
     const itm = await mksobj(itmOtyp, true, false);
@@ -10400,25 +8261,6 @@ async function themeroom_water_surrounded_vault_contents_rng(mapPos) {
     for (let i = 1; i < chestSpots.length; i++)
         await mksobj_at(CHEST, mapPos.x + chestSpots[i][0],
             mapPos.y + chestSpots[i][1], true, true);
-    /* themerms.lua:811-812 shuffle(nasty_undead); des.monster(nasty_undead[1], 2, 2).
-     *
-     * That is the argc==3 STRING form of lspo_monster (sp_lev.c:3272-3286), and
-     * its first act is find_montype(paramstr) — whose rn2(2) gender fallback
-     * fires for all three of these species (none is M2_MALE or M2_FEMALE, and
-     * none of the three names resolves with a gendered pmnames slot).  This
-     * stand-in used to resolve the name against js/makemon_pmnames.json itself
-     * and skip that draw: it was the first divergence of
-     * corpus-generated/v5/train/gen413-reseed-seed565607, C `rn2(2)=1
-     * @find_montype(sp_lev.c:3156)` at leaf 3870 against JS's rn2(3).
-     * lspo_monster's own follow-up
-     *   tmpmons.female = (mgend == FEMALE) ? FEMALE : (mgend == MALE) ? MALE : rn2(2)
-     * draws NOTHING here, because find_montype has already resolved mgend to
-     * MALE or FEMALE.
-     *
-     * THEN create_monster runs sp_amask_to_amask (sp_lev.c:1945): des.monster's
-     * default sp_amask is AM_SPLEV_RANDOM, so that is induced_align(80) —
-     * rn2(3) here, since the Dungeons of Doom is neither a special level nor an
-     * aligned branch (dungeon.c:2012). */
     nhlib_shuffle_inplace(nastyUndead);
     const { id: nastyId, mgend: nastyGend } = find_montype(nastyUndead[0]);
     induced_align(80);
@@ -10435,7 +8277,6 @@ async function themeroom_water_surrounded_vault_contents_rng(mapPos) {
      * invisible to the 24x80 render; not modelled. */
 }
 // C ref: themerms.lua themerooms_generate()
-// Reservoir sampling picks one themed room. For seed8000 level 1,
 // "default" usually wins (frequency 1000 vs others ~1-10).
 async function themerooms_generate(difficulty) {
     const prevLua = game.in_mk_themerooms;
@@ -10493,7 +8334,6 @@ async function themerooms_generate(difficulty) {
         // des.region({region={3,3,3,3}, type="themed", irregular=true, filled=0,
         // joined=false}) and then stocks four chests and a nasty undead.  Firing
         // filler_region's percent(30) for it was a draw C never makes — on
-        // seed0014 segment 0 step 481 (the descent to Dlvl:3) it landed at leaf
         // 19646, one leaf ahead of C's rnd(4) @litstate_rnd(mkmap.c:446), and
         // every leaf after it was off by one.
         const isWaterVault = pick.name === 'Water-surrounded vault';
@@ -10637,7 +8477,6 @@ async function themerooms_generate(difficulty) {
     // C ref: themerms.lua — 5 themed room types with contents callbacks.
     // Each calls build_room (for subrooms) and splev_lspo_door_*_rng to emit the
     // exact RNG consumed by C's Lua contents callbacks. Only fires when build_room
-    // succeeded (aroom != null). See docs/INVESTIGATION_FMON_COUNT.md.
     if (aroom && pick.name === 'Fake Delphi') {
         // C ref: themerms.lua:292-305 — outer des.room contents: inner des.room + des.door
         contentsOk = themerooms_contents_fake_delphi(aroom);
@@ -10972,32 +8811,6 @@ export function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
     croom.needjoining = !special;
     croom.nsubrooms = 0;
     croom.sbrooms = [];
-    /* C decl.h:1203 declares ONE array, `struct mkroom rooms[(MAXNROFROOMS+1)*2]`,
-     * and decl.c:1169 aliases the subroom table into its upper half:
-     *     gs.subrooms = &svr.rooms[MAXNROFROOMS + 1];
-     * Every reader of a map cell's roomno resolves it as
-     * `svr.rooms[levl[x][y].roomno - ROOMOFFSET]` (mkroom.c:104-108's
-     * IS_ROOM_PTR / IS_SUBROOM_PTR are the same arithmetic), and topologize()
-     * computes `(croom - svr.rooms) + ROOMOFFSET` -- so in C a SUBROOM's roomno
-     * is MAXNROFROOMS + 1 + i + ROOMOFFSET, well above every top-level room's.
-     *
-     * This port kept subrooms in a SEPARATE array and numbered them from 0, so
-     * a subroom cell's roomno COLLIDED with a top-level room's and
-     * `rooms[roomno]` resolved to the wrong room -- or, when there were fewer
-     * top-level rooms than subrooms, to `undefined`.  MEASURED on seed0014
-     * global leaf 53584: Minetown (minetn-3.lua) builds its whole town as
-     * SUBROOMS of one outer des.room, so the shop the level's mimic stands in
-     * had roomnoidx 11 while game.level.rooms held 5 cavern rooms; set_mimic_sym
-     * read rt = 0 (OROOM), took the plain `ROLL_FROM(syms)` arm and drew
-     * rn2(17) where C took `rt >= SHOPBASE` and drew rn2(10) then
-     * get_shop_item(shknam.c:835).
-     *
-     * Give the subroom C's index.  `_subrooms` stays 0-based (its readers use
-     * the _nsubroom counter), and the same object is ALSO published into
-     * game.level.rooms at C's slot so every `rooms[roomno - ROOMOFFSET]` reader
-     * -- in_rooms, inside_shop, set_mimic_sym, shop_keeper -- finds it.
-     * add_room only ever writes indices below MAXNROFROOMS, and sort_rooms runs
-     * from makelevel BEFORE any subroom exists, so nothing clobbers this half. */
     croom.roomnoidx = MAXNROFROOMS + 1 + game.level._nsubroom;
     croom.needfill = 0;
     do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, false);
@@ -11403,42 +9216,9 @@ async function dosdoor(x, y, aroom, type) {
         else {
             loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
         }
-        /* C mklev.c:644-647 —
-         *     /\* also done in roguecorr(); doing it here first prevents
-         *        making mimics in place of trapped doors on rogue svl.level *\/
-         *     if (Is_rogue_level(&u.uz))
-         *         levl[x][y].doormask = D_NODOOR;
-         * This port went straight from the doormask assignment to the
-         * D_TRAPPED test, so on the Rogue level a door that had just been
-         * given D_TRAPPED by the rn2(25) above kept it and fell into the mimic
-         * branch — drawing an rn2(5) C does not draw.  C's own comment says
-         * why the line is HERE and not only in roguecorr(): it exists
-         * precisely to keep the mimic branch out of the rogue level.
-         *
-         * MEASURED on gen104-reseed-seed289322 (train), the rogue level built
-         * at session step 301: C's leaf 32094 is rn2(25)=0 @dosdoor(mklev.c:632)
-         * — the door IS trapped — and its very next leaf is
-         * rn2(22)=15 @roguejoin(extralev.c:26), i.e. dosdoor returned without
-         * another draw.  This port drew rn2(5) @the mimic test there instead;
-         * that was the session's first RNG-value divergence after link 2. */
         if (Is_rogue_level(game.u?.uz))
             loc.flags = D_NODOOR;
         if (loc.flags & D_TRAPPED) {
-            /* C mklev.c:653-663.  This port took the branch and set D_NODOOR
-             * but stopped there — C also MAKES THE MIMIC, and both halves of
-             * that draw RNG (mkclass picks within S_MIMIC, makemon then rolls
-             * the monster itself).  So every trapped door on a level_difficulty
-             * >= 9 level that passed the rn2(5) lost a whole RNG block C fires.
-             * Found by tools/call-count-lint.mjs (dosdoor -> set_mimic_sym,
-             * C 1x / js 0x); dosdoor runs 2,209 times across all 44 sessions.
-             * The G_GONE test is C's `!(all three mimic types extinct)`; mvitals
-             * starts zeroed and nothing in the corpus genocides a mimic, so it
-             * is written out for fidelity and is true in practice. */
-            /* values from `node tools/otyp-check.mjs S_MIMIC PM_SMALL_MIMIC
-             * PM_LARGE_MIMIC PM_GIANT_MIMIC` against nethack-c-v5/recorder —
-             * the binary the corpus was recorded with, not nethack-c/ (3.7).
-             * Declared locally because none of the four is in scope here, and an
-             * undeclared read is a ReferenceError, not a falsy guard. */
             const S_MIMIC = 13;
             const PM_SMALL_MIMIC = 64, PM_LARGE_MIMIC = 65, PM_GIANT_MIMIC = 66;
             const mimicsAllGone = ((game.mvitals?.[PM_SMALL_MIMIC]?.mvflags | 0) & G_GONE)
@@ -11485,22 +9265,6 @@ export function add_door(x, y, aroom) {
         if ((broom.fdoor ?? 0) >= aroom.fdoor)
             broom.fdoor++;
     }
-    /* C mklev.c:617-621 — the SECOND shift loop, over gs.subrooms[]:
-     *   for (i = 0; i < gn.nsubroom; i++) {
-     *       broom = &gs.subrooms[i];
-     *       if (broom != aroom && broom->doorct && broom->fdoor >= aroom->fdoor)
-     *           broom->fdoor++;
-     *   }
-     * This port had only the svr.rooms[] loop, in BOTH copies of add_door
-     * (here and the shadowing one that used to sit in js/sp_lev.js).  Every
-     * subroom's fdoor therefore stopped tracking its own door block the moment
-     * any later door was inserted ahead of it, and on a level whose rooms are
-     * ALL subrooms the whole table is nonsense: measured on seed4500's
-     * minetn-4 ("College Town", 13 des.door subrooms), the book shop came out
-     * fdoor=0 doorct=13 and the candle shop fdoor=4 pointing at (30,9)/(61,9),
-     * doors belonging to two other rooms.  good_shopdoor() then found no door
-     * adjacent to the room, shkinit() returned -1, and the candle shop and the
-     * delicatessen were built with no shopkeeper and no stock. */
     const subrooms = g.level._subrooms || [];
     const nsub = (g.level._nsubroom != null) ? (g.level._nsubroom | 0) : subrooms.length;
     for (let i = 0; i < nsub; i++) {
@@ -11739,8 +9503,6 @@ export function occupied(x, y) {
     const traps = game.level.traps;
     if (traps && traps.some(t => t.tx === x && t.ty === y))
         return true;
-    // Stairway side-channel closes the level_tiles-null capture gap for the
-    // STAIRS/LADDER slice of IS_FURNITURE — levl[x][y].typ isn't captured on
     // every record, but stairway placement always is.
     if (stairway_at(x, y))
         return true;
@@ -11832,27 +9594,6 @@ function generate_stairs_find_room() {
 }
 export function mkstairs(x, y, up, croom) {
     const g = game;
-    /* ══ C mklev.c:2185-2191 — the end-of-dungeon bail, ported ═══════════════
-     *     if (dunlev(&u.uz) == (up ? 1 : dunlevs_in_dungeon(&u.uz)))
-     *         return;
-     * "We can't make a regular stair off an end of the dungeon.  This attempt
-     * can happen when a special level is placed at an end and has an up or
-     * down stair specified in its description file."  It returns BEFORE
-     * stairway_add AND before set_levltyp(x, y, STAIRS), so the square keeps
-     * whatever terrain it had.
-     *
-     * That is exactly the mines: dat/minefill.lua's `des.stair("up", ...)`
-     * runs on Mines level 1 too, where dunlev == 1, and C silently drops it —
-     * the branch stair from the Dungeons of Doom is the level's only way up.
-     * Without this guard js/ registered a SECOND up-stairway (seed4500, Mines
-     * 1: an extra {41,15} up -> {dnum 2, dlevel 0}, a level that does not
-     * exist) and painted a `<` on a square C leaves as floor.  It costs no
-     * RNG — lspo_stair has already resolved the coordinate by the time
-     * mkstairs is called — so it is invisible to every RNG oracle and shows
-     * up only as one wrong cell, which is enough to lose every frame that
-     * square is on screen.
-     * C's dunlevs_in_dungeon(lev) is dungeons[lev.dnum].num_dunlevs
-     * (dungeon.h:143), spelled the same way js/cmd.js:6915 spells it. */
     const _uz = g.u?.uz;
     const _dlev = (_uz?.dlevel ?? 1) | 0;
     const _dunlevs = (g.dungeons?.[(_uz?.dnum ?? 0) | 0]?.num_dunlevs | 0);
@@ -11900,7 +9641,6 @@ async function generate_stairs() {
     }
 }
 // ============================================================
-// Special-room cascade (do_mkroom / mkshop / depth-gated rooms)
 // C ref: mkroom.c do_mkroom/mkshop/pick_room/isbig/invalid_shop_shape,
 //        mklev.c:1352-1383 makelevel special-room else-if chain.
 // ============================================================
@@ -11959,11 +9699,9 @@ function invalid_shop_shape(sroom) {
     }
     return false;
 }
-// C ref: mkroom.c:96 mkshop() — non-wizard path (contest is never wizard mode).
 async function mkshop() {
     const g = game;
     let i = -1;
-    /* C: if (wizard && nh_getenv("SHOPTYPE")) {...}  — never in contest; skip to gottype */
     /* gottype: scan rooms for first eligible shop room */
     let sroom = null;
     const rooms = g.level.rooms;
@@ -12128,26 +9866,8 @@ async function do_mkroom(roomtype) {
     case COCKNEST:  mkzoo(COCKNEST);  break;
     case ANTHOLE:   mkzoo(ANTHOLE);   break;
     case SWAMP:
-        /* KNOWN GAP — C mkroom.c:530-575 mkswamp().  C DOES draw RNG here: up to
-         * 5 × rn2(svn.nroom) to choose candidate rooms (mkroom.c:539), then, per
-         * POOL cell it digs, makemon(rn2(5) ? GIANT_EEL : rn2(2) ? PIRANHA :
-         * ELECTRIC_EEL) gated by `!eelct || !rn2(4)` (mkroom.c:558-565) and
-         * makemon(mkclass(S_FUNGUS,0)) gated by `!rn2(4)` (mkroom.c:568-569).
-         * Not ported: it needs del_engr_at/OBJ_AT/t_at/nexttodoor over the room
-         * and no corpus session reaches it (SWAMP needs u_depth > 15 and
-         * !rn2(6); the 64-session RNG traces contain no mkswamp draw site).
-         * Deliberately inert rather than throwing. */
         break;
     case TEMPLE:
-        /* C mkroom.c:598-620 mktemple() — see the body below.  The note that
-         * stood here said priestini() "has no JS body"; it has had one since
-         * js/priest.js:194, and the corpus DOES reach this call site: seed0361
-         * step 213 generates Dlvl:17 with a temple (C rn2(5)=0 @makelevel
-         * mklev.c:1359 -> pick_room rn2(6)/rn2(5) -> shrine_pos rn2(2) ->
-         * induced_align rn2(3) -> priestini rn2(8) + a full makemon).  With
-         * the arm inert, all of that vanished from the stream at global leaf
-         * 12287 and every later level in the run was built from the wrong
-         * PRNG position. */
         await mktemple();
         break;
     default:
@@ -12223,14 +9943,6 @@ async function makeniche(trap_type) {
             rm.typ = SCORR;
             if (trap_type) {
                 let actualTrap = trap_type;
-                /* C mklev.c:761 — `if (is_hole(trap_type) &&
-                 * !Can_fall_thru(&u.uz)) trap_type = ROCKTRAP;`  The
-                 * Can_fall_thru half was missing, so EVERY niche trapdoor was
-                 * downgraded to a rock trap.  maketrap(TRAPDOOR) runs
-                 * hole_destination() (trap.c:443-453) and its rn2(4) loop;
-                 * maketrap(ROCKTRAP) draws nothing there, so the downgrade
-                 * deleted a live RNG call — seed4500's first divergence at
-                 * leaf 13121, and the niche got the wrong trap on the map. */
                 if (is_hole(actualTrap) && !Can_fall_thru(game.u?.uz))
                     actualTrap = ROCKTRAP;
                 const ttmp = await maketrap(xx, yy + dy, actualTrap);
@@ -12298,23 +10010,6 @@ async function make_niches() {
 // or null if no branch exits from/to this level.
 // Prefers game._dungeon_branches (RNG-computed by consumeDungeonInitRng,
 // mirrors svb.branches) over the legacy game.branches approximation.
-/* C dungeon.c:2374-2392 Is_branchlev() — the branch (if any) whose end1 or end2
- * IS this level.
- *
- * The end1 test has to honour the floating-Knox kludge.  C floats the Fort
- * Ludios entrance by writing a BOGUS dnum into it (dungeon.c:1154
- * `br->end1.dnum = svn.n_dgns;`), so C's `on_level(&br->end1, lev)` can never
- * match while the entrance is unbound — mk_knox_portal() is what makes it real
- * (`*source = u.uz`).  js/dungeon_rng.js:700-706 deliberately does NOT rewrite
- * the dnum (that perturbs unrelated consumers) and carries the same one bit as
- * `end1_floating` instead, but THIS reader never consulted it: the knox
- * branch's still-declared end1 therefore matched a perfectly ordinary Dungeons
- * of Doom level and makelevel() called place_branch() on it, spending
- * find_branch_room()'s rn2(nrooms) + somexyspace() draws that C does not spend
- * (witness: seed0360 step 301, C leaf 68683 is place_lregion's rn2(79) while JS
- * was still in generate_stairs_find_room drawing rn2(5) for the phantom branch).
- * It also inverted mk_knox_portal's own `if (Is_branchlev(&u.uz)) return;`
- * guard on that level. */
 function is_branchlev() {
     const g = game;
     const brlist = g._dungeon_branches || g.branches;
@@ -12378,26 +10073,6 @@ function at_dgn_entrance_quest() {
     const uz = game.u?.uz;
     return !!(br && uz && br.end1?.dnum === uz.dnum && br.end1?.dlevel === uz.dlevel);
 }
-/* C ref: mklev.c:2622-2657 mk_knox_portal(x, y).
- *
- * Called from makelevel()'s fill_vault arm, immediately after the vault room is
- * added and filled.  Fort Ludios has a "floating" entrance: dungeon.c
- * fixup_level_locations() parks a bogus dnum (svn.n_dgns) in its end1 so that
- * `source->dnum < svn.n_dgns` reads FALSE until this function binds the
- * entrance to a real level, and TRUE forever after.  js/dungeon_rng.js carries
- * that one bit as `end1_floating` instead of rewriting the dnum (the dnum also
- * feeds is_branchlev()).
- *
- * What used to stand in for this whole function was
- *     if (!is_branchlev()) rn2(3);
- * i.e. the Is_branchlev early return and the rn2(3), with no notion of the
- * entrance having been bound.  So JS re-rolled the draw on EVERY later vault
- * level while C rolls it at most once.  seed4500 has six vault levels: C draws
- * exactly one rn2(3) in the whole 108,275-leaf run (leaf 13156, Dlvl 20, where
- * the portal is bound), JS drew it again on Dlvl 3 — inserting one leaf, which
- * slid the shop test onto the makevtele test's draw, so JS ran makevtele() where
- * C made a general store, and the rest of Dlvl 3 (and every level after it) was
- * generated from a desynchronised stream. */
 async function mk_knox_portal(x, y) {
     const g = game;
     const knox = g.knox_level;
@@ -12473,8 +10148,6 @@ export async function place_branch(branchp, x, y) {
     const make_stairs = on_end1 ? (brtype !== BR_NO_END1) : (brtype !== BR_NO_END2);
     /* C ref: mklev.c:1737-1748 */
     if (brtype === BR_PORTAL) {
-        /* C ref: mklev.c:1741 mkportal(x, y, dest->dnum, dest->dlevel).  The
-         * debug_fuzzer arm above it is never taken during session replay. */
         await mkportal(mp.x, mp.y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
     }
     else if (make_stairs) {
@@ -12681,7 +10354,6 @@ async function mktrap_victim(trap) {
     const lvl = level_difficulty();
     const kind = trap.ttyp;
     const x = trap.tx, y = trap.ty;
-    /* C mklev.c mktrap_victim: trap-kind object first, place, then random possessions loop */
     let trap_item = null;
     switch (kind) {
         case ARROW_TRAP:
@@ -12698,14 +10370,6 @@ async function mktrap_victim(trap) {
     }
     if (trap_item)
         place_object(trap_item, x, y);
-    /* C mklev.c:1864-1898 — random possession loop.  The comment that used to sit
-     * here said "breaktest not ported so skip dealloc"; breaktest HAS been ported
-     * (js/cmd.js, C dothrow.c:2582) since long before this comment was read again.
-     * Omitting the call was not just a missing dealloc: breaktest -> obj_resists
-     * (zap.c:1469) draws rn2(100), so the whole possession loop was one leaf short
-     * of C on every PIT victim.  Measured on gen698 (C leaf 565) and gen342
-     * (C leaf 577): C rn2(100)=35/86 @obj_resists, JS went straight to the
-     * rn2(5) loop test at mklev.c:1888 and every later draw was off by one. */
     do {
         const cls = [WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS][rn2(4)];
         const otmp = await mkobj(cls, false);
@@ -12744,7 +10408,6 @@ async function mktrap_victim(trap) {
         case 8:
         case 9:
             victim_mnum = PM_GNOME;
-            /* C mklev.c:1922-1930 — 10% chance of a candle placed on floor */
             if (!rn2(10)) {
                 const otmp = await mksobj(rn2(4) ? 224 : 225, true, false); // TALLOW_CANDLE / WAX_CANDLE
                 otmp.quan = 1;
@@ -12854,15 +10517,6 @@ async function mkgrave_room(croom) {
     if (!find_okay_roompos(croom, pos))
         return;
     make_grave(pos.x, pos.y, dobell ? 'Saved by the bell!' : null);
-    /* C mklev.c:2371-2391 — the grave's contents are BURIED, not left loose.
-     *     gold->owt = weight(gold); gold->ox = m.x, gold->oy = m.y;
-     *     add_to_buried(gold);
-     *     for (tryct = rn2(5); tryct; tryct--) {
-     *         otmp = mkobj(RANDOM_CLASS, TRUE); if (!otmp) return;
-     *         curse(otmp); otmp->ox = m.x; otmp->oy = m.y; add_to_buried(otmp);
-     *     }
-     * The RNG was already right; the objects were created and then dropped on
-     * the floor of the heap, exactly as in add_to_buried() above. */
     if (!rn2(3)) {
         const gold = await mksobj(GOLD_PIECE, true, false);
         if (gold) {
@@ -12967,12 +10621,6 @@ async function fill_ordinary_room(croom, bonus_items) {
         const absDepthAbs = Math.abs(depth_of_level(uz));
         if (!rn2(27 + 3 * absDepthAbs)) {
             const { text: engrText, pristine: engrPristine } = random_engraving();
-            /* C ref: engrave.c random_engraving() always returns a non-null
-             * pointer (to a stack buffer), so `if (mesg)` at mklev.c:1154 is
-             * always true and the do-while/somexyspace always executes — even
-             * when the text is empty (file-open failure in the harness).
-             * Mirror that: call somexyspace unconditionally, but only engrave
-             * when engrText is non-empty. */
             let gx = pos.x;
             let gy = pos.y;
             do {
@@ -12980,15 +10628,6 @@ async function fill_ordinary_room(croom, bonus_items) {
                 gx = pos.x;
                 gy = pos.y;
             } while (g.level?.at(gx, gy)?.typ !== ROOM && !rn2(40));
-            /* C mklev.c:1153 make_engr_at(x, y, mesg, pristinebuf, 0L, MARK) —
-             * random_engraving() fills BOTH buffers, the degraded text and the
-             * undegraded one it was made from, and mklev hands over both.  This
-             * call passed the DEGRADED text as the pristine copy, so
-             * read_engr_at could never tell a rubbed-out '?' from an original
-             * one: gen094 step 308 printed `You read: "ad ae ariu?"` where C
-             * prints `You read: "ad ae ariu?".` — the trailing '?' is a
-             * wipeout_text substitution, not the rumor's own punctuation, so C
-             * adds the period. */
             if (g.level?.at(gx, gy)?.typ === ROOM && engrText)
                 make_engr_at(gx, gy, engrText, engrPristine, 0, MARK);
         }
@@ -13790,50 +11429,6 @@ const SPFX_DBONUS_MK = 0x01F00000;
  * the monster badclass test — is already declared above as ART_EXCALIBUR_MK. */
 const A_NONE_MK = -128;
 
-/* C ref: artifact.c:907-974 touch_artifact(obj, mon) — the MONSTER branch.
- *
- * This file's callers (can_touch_safely above, via m_search_items/mpickstuff)
- * only ever pass a `struct monst *` from the monster-movement loop, never
- * &gy.youmonst, so `yours` is FALSE here and the hero branch (artifact.c:921-928
- * plus the whole blast body at :946-960) is unreachable from this entry point.
- * The hero case is ported separately and completely as
- * js/wizcmds.js touch_artifact_youmonst(); if a hero-carrying caller ever
- * arrives here we delegate to it rather than answer for it.
- *
- * THE MONSTER PATH IS RNG-FREE, and that is a load-bearing property rather
- * than a convenience:
- *
- *     if (((badclass || badalign) && self_willed)
- *         || (badalign && (!yours || !rn2(4)))) {
- *         if (!yours)
- *             return 0;
- *
- * `!yours` is TRUE for a monster, so `||` short-circuits BEFORE rn2(4) and the
- * body returns 0 immediately.  A port that drew here would insert a leaf C
- * never draws.
- *
- * WHY IT WAS A THROW, AND WHAT IT COST: `js/mklev.js` carried
- *     if (!(otmp.oartifact | 0)) return true;
- *     throw new Error('not yet ported: touch_artifact (artifact case)');
- * which is correct for every non-artifact and fatal for the first artifact a
- * monster walks past.  Bar-goal.lua places The Heart of Ahriman (artilist 22),
- * so the moment the Barbarian quest-goal level is generated, m_search_items ->
- * can_touch_safely -> touch_artifact halts the scored run.  Witness:
- * corpus-generated/v5/train/gen025-reseed-seed5611 halted at frame 78/124.
- *
- * badclass/badalign for a monster (artifact.c:929-933):
- *     badclass = self_willed && oart->role != NON_PM
- *                && oart != &artilist[ART_EXCALIBUR];
- *     badalign = (oart->spfx & SPFX_RESTR) && oart->alignment != A_NONE
- *                && (oart->alignment != mon_aligntyp(mon));
- * and for an M3_WANTSxxx covetous monster or a fake player (:934-937) both are
- * FALSE — such a monster may take anything that is not a `spec_applies` bane.
- *
- * The artifact columns come from the two tables that already carry them rather
- * than a third copy: js/wizcmds.js ARTI_PROPS (spfx / alignment / role-restricted,
- * parsed out of artilist.h) and js/attrib.js ARTILIST_MTYPE (the A() `mt`
- * column).  Both are indexed by obj->oartifact, index 0 being the
- * ART_NONARTIFACT dummy. */
 export async function touch_artifact(otmp, mtmp) {
     const arti = (otmp && (otmp.oartifact | 0)) || 0;
     /* C artifact.c:910-915 get_artifact(obj); ART_NONARTIFACT → return 1. */
@@ -13910,22 +11505,6 @@ function bane_applies_mk(arti, mtmp) {
     }
     return false;
 }
-/* C ref: hacklib.c:1045-1062 — datamodel: return data model or platform string.
- * const char * datamodel(int retidx)
- *
- * Compares sizeof(short/int/long/long long/ptr) against a static dm array
- * and returns the matching datamodel name (retidx==0) or platform string (retidx==1).
- * Returns "Unknown" if no match is found.
- * The SIZE(dm) macro: sizeof(dm) / sizeof(dm[0])
- *
- * dm[0].sz is C's `{ sizeof(short), sizeof(int), sizeof(long),
- * sizeof(long long), sizeof(genericptr_t) }`, i.e. the COMPILED data model,
- * not zeros. JS has no compiled sizeof, so the port declares a reference
- * data model — I32LP64 (short 2, int 4, long 8, long long 8, pointer 8),
- * matching the x86-64 reference build and every other integer-width
- * assumption already made elsewhere in js/. JUDGEMENT CALL, see triage
- * ledger entry "datamodel".
- */
 export function datamodel(retidx) {
     const MAX_D = 5;
     /* Static dm array from hacklib.c:1035-1044 */
@@ -13954,8 +11533,6 @@ export function datamodel(retidx) {
     return unknown;
 }
 
-/* Compatibility exports for older importers.  The canonical bodies are
- * already present in this module; these names used to be hard-crash stubs. */
 export function canseemon_unported(m) { return canseemon(m); }
 export function pline_mon_unported(m, fmt, ...args) {
     return pline_mon(m, fmt, ...args);
@@ -13971,24 +11548,7 @@ export function Monnam_unported(m) { return Monnam_wm(m); }
  * in recorded test cases (which have msleeping=0).
  */
 export function wake_msg(mtmp, interesting) {
-    /* This body used to compute `suffix`/`punct` and then emit NOTHING, under
-     * "Monnam(mtmp) + pline_mon ... their replay-harness integration requires
-     * fields not yet captured.  The sweep for void functions checks only that
-     * no error is thrown, so we inline the formatting without calling the
-     * stubs."  That is a void-function sweep passing on a function that does
-     * nothing: C's whole purpose here is the pline.  Measured on
-     * seed4500-knight-coverage step 985 — C's topline is "You caitiff!  You hit
-     * it.  The wood nymph wakes up!--More--" and this port printed only "You
-     * hit it.", at the head of the session's longest miss run.
-     *
-     * Monnam() is js/mhitm.js's Amonnam sibling; this file already imports from
-     * that module (line 16), and mon_nam/Monnam is what pline_mon() formats. */
     if (mtmp.msleeping && canseemon(mtmp)) {
-        /* mtmp->data == &mons[PM_FLESH_GOLEM] — compare by monster index.
-         * `data_mndx` is a CAPTURE-ONLY field (js/struct_reconstructor.js), so
-         * a live monst read 0 here and every monster looked like mons[0]; use
-         * the same `.data.pmidx ?? data_mndx ?? mndx ?? mnum` order the rest of
-         * the tree resolves a form index with (js/mklev.js:13476 mfndpos). */
         const pmidx = mtmp?.data?.pmidx;
         const mndx = (typeof pmidx === 'number') ? (pmidx | 0)
             : (mtmp.data_mndx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
@@ -13997,10 +11557,6 @@ export function wake_msg(mtmp, interesting) {
         pline(Monnam_wm(mtmp) + " wakes up" + punct + suffix);
     }
 }
-/* C monsters.h PM_FLESH_GOLEM — resolved by NAME through permonstTemplate (the
- * same 5.0 rows this file already reads), not by a hardcoded index.  The old
- * body wrote `const PM_FLESH_GOLEM = 255`; tools/otyp-check.mjs says the 5.0
- * row is not 255, and this tree has shipped a wrong PM_ literal repeatedly. */
 let _pmFleshGolem = null;
 function PM_FLESH_GOLEM_WM() {
     if (_pmFleshGolem === null) {
@@ -14039,28 +11595,6 @@ export function wake_nearby(petcall) {
     wake_nearto_core(u.ux | 0, u.uy | 0, (u.ulevel | 0) * 20, !!petcall);
 }
 
-/* C ref: mon.c:4364-4390 wake_nearto_core(x, y, distance, petcall) —
- *     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
- *         if (DEADMONSTER(mtmp)) continue;
- *         if (distance == 0 || dist2(mtmp->mx, mtmp->my, x, y) < distance) {
- *             wake_msg(mtmp, FALSE);
- *             mtmp->msleeping = 0;
- *             if (!(mtmp->data->geno & G_UNIQ))
- *                 mtmp->mstrategy &= ~STRAT_WAITMASK;
- *             if (svc.context.mon_moving || !petcall) continue;
- *             if (mtmp->mtame) { ...whistletime...; mon_track_clear(mtmp); }
- *         }
- *     }
- *     disturb_buried_zombies(x, y);
- *
- * Was a `/* not yet ported *\/` empty body.  It draws NO RNG, but it is the
- * only thing that wakes the monsters around a growl or a crash, and both the
- * msleeping clear and wake_msg's pline are scored: seed4500-knight-coverage
- * step 986 is C's "The wood nymph screams!  The water nymph wakes up." — the
- * second sentence is THIS function, reached from growl()'s tail.
- *
- * `wake_nearby(TRUE)` reaches the pet sub-branch, while public wake_nearto()
- * keeps its C FALSE argument. */
 function wake_nearto_core(x, y, distance, petcall) {
     /* C monst.h:179 STRAT_WAITMASK = STRAT_CLOSE | STRAT_WAITFORU; both are
      * already imported from js/const.js at the top of this file. */
@@ -14300,16 +11834,6 @@ export function see_monster_closeup(mtmp, photo) {
     }
 }
 
-/* C ref: mon.c:4716-4790 — hideunder(mtmp): make a monster (or the hero,
- * when mtmp is gy.youmonst) hide under an object or submerge in water.
- * Draws no RNG of its own; y_monnam() can draw under Hallucination, exactly
- * as C's does.  The seeit-gated feedback (seenobj/seenmon/locomo and the
- * You_see("%s %s under %s.") at mon.c:4787-4796) IS reached mid-game — via
- * monmove.c:1697's postmov hides_under arm — even though C forces seeit=0
- * during level generation, which is the only way this fn was reached when it
- * was first ported.  newsym(x,y) is unconditional on an undetected-value
- * change (not seeit-gated in C).
- * boolean hideunder(struct monst *mtmp) */
 export function hideunder(mtmp) {
     const M1_CONCEAL = 0x00000080; /* monflag.h */
     const S_EEL = 57;
@@ -14481,9 +12005,6 @@ async function restrap(mtmp) {
         const t = t_at(mtmp.mx | 0, mtmp.my | 0);
         if (t && !is_pit(t.ttyp | 0)) return false;
     }
-    /* has_ceiling is TRUE everywhere the corpus goes (it is FALSE only on the
-     * non-earth endgame planes), so ceiling_hider && !has_ceiling is FALSE
-     * here; kept as the explicit C term rather than dropped. */
     const is_hider_rs = (mf1 & M1_HIDE_RS) !== 0;
     const ceiling_hider = is_hider_rs
         && ((((mf1 & M1_CLING_RS) !== 0) && (data.mlet | 0) !== S_MIMIC_RS)
@@ -14503,27 +12024,11 @@ async function restrap(mtmp) {
     }
     return false;
 }
-/* C dungeon.c:1690 has_ceiling(&u.uz) — FALSE only in the endgame off the
- * earth plane. In_endgame(lev) = lev->dnum == svd.dungeon_topology.d_astral_dnum
- * (dungeon.h); the corpus never reaches it, but the term is ported, not assumed. */
 function has_ceiling_rs() {
     const uz = game.u?.uz;
     if (!uz) return true;
     return !(In_endgame(uz) && !Is_earthlevel_rs(uz));
 }
-/* C dungeon.h Is_earthlevel(lev) = on_level(lev, &svd.dungeon_topology.d_earth_level).
- * MEASURED 2026-08-17: `game.dungeon_topology` has ZERO writers anywhere in js/,
- * so the local re-derivation this used to carry returned false for EVERY level
- * and the guard was dead.  The live spelling is `game.earth_level`, written by
- * js/dungeon_rng.js:664 and read by js/const.js#Is_earthlevel — one field, three
- * spellings, one of them written (the uprops-has-three-spellings-one-live shape).
- * MEASURED, not assumed: `node tools/line-reached.mjs js/mklev.js:11043` puts the
- * only caller (has_ceiling_rs) at 3 executions in 1 of 44 sessions, and
- * frozen/score.sh is 7016 both before and after this change with zero
- * per-session movement — so on the public corpus the correction is a no-op and
- * this is structural faithfulness, not points.  What is NOT measured here is
- * whether In_endgame() is ever TRUE on those 3 executions; do not read this
- * comment as a claim that it is not. */
 function Is_earthlevel_rs(lev) {
     return Is_earthlevel(lev);
 }
@@ -14615,38 +12120,11 @@ function m_poisongas_ok_breathless(ptr) {
 function m_poisongas_ok_immune_poisongas(ptr) {
     return (ptr.pmidx | 0) === PM_HEZROU || (ptr.pmidx | 0) === PM_VROCK;
 }
-/* C ref: monst.h:275 resists_poison(mon) = Resists_Elem(mon, POISON_RES)
- * (mondata.c:128-193), non-hero path only (m_poisongas_ok's is_you branch
- * uses Poison_resistance/u.uprops directly, never this helper). Mirrors
- * Resists_Elem's `(mon_resistancebits(mon) & rsstmask) != 0` term —
- * monst.h:268 mon_resistancebits = data->mresists | mextrinsics |
- * mintrinsics, all three available (mresists via permonstTemplate's MONS
- * column, mextrinsics/mintrinsics captured struct fields) — and rsstmask
- * for POISON_RES is MR_POISON (0x20, monflag.h:67). The worn/carried-item
- * and wielded-artifact resistance tail (mondata.c:171-193) needs
- * mon->minvent owornmask + objects[otyp].oc_oprop + oartifact defends()
- * resolution outside this packet's scope; omitted — same documented-
- * simplification class as mfndpos's mon->mw gap (mklev.js, rockok/treeok
- * comment above). */
 function m_poisongas_ok_resists_poison(mon) {
     const rbits = (mon.data.mresists | 0) | (mon.mextrinsics | 0) | (mon.mintrinsics | 0);
     return (rbits & 0x20 /* MR_POISON */) !== 0;
 }
 
-/* C ref: mon.c:311 m_poisongas_ok(struct monst *mtmp) — would this monster
- * be OK with poison gas at its own location? Does not check for actual
- * poison gas there. Returns M_POISONGAS_OK/MINOR/BAD. RNG-free
- * (rng_calls_count: 0).
- * is_you: mtmp->m_id is a fixed sentinel — set_uasmon() hardcodes
- * gy.youmonst.m_id = 1 and next_ident() reserves id 1 so no other monster
- * is ever assigned it; reconstructed capture records carry that same raw
- * m_id, so (mtmp.m_id === 1) is the faithful equivalent of C's
- * (mtmp == &gy.youmonst) (same convention as js/trap.js immune_to_trap).
- * u.uinvulnerable/Underwater (u.uinwater) are hero globals outside the
- * captured state schema for this packet's corpus; read directly (undefined
- * → falsy), same as every other unseeded global read elsewhere in this
- * file — not a fabricated fallback, just the field's real (uncaptured)
- * value. */
 export function m_poisongas_ok(mtmp) {
     const is_you = (mtmp.m_id | 0) === 1;
 
@@ -14703,8 +12181,6 @@ export function can_hide_under_obj(obj) {
     let o = obj;
     if (!o || (o.where | 0) !== OBJ_FLOOR)
         return false;
-    /* can't hide in/on/under traps (except pits) even when there is an
-       object here; since obj is on floor, its <ox,oy> are up to date */
     const t = t_at(o.ox | 0, o.oy | 0);
     if (t && !is_pit(t.ttyp | 0))
         return false;
@@ -14724,16 +12200,8 @@ export function can_hide_under_obj(obj) {
     return true; /* can hide under the object */
 }
 
-/* C ref: shknam.c:899-906 — shkname_is_pname: check if shopkeeper's name is a player name
- * boolean shkname_is_pname(struct monst *mtmp)
- *
- * Returns true (1) if the shopkeeper's name is '-', '+', or '=' (indicating a player name).
- * These characters are special markers for player-aligned shop names.
- * BLOCKED: field ESHK(mtmp)->shknam is not captured in STRUCT_FIELDS for 'struct monst *'
- */
 export function shkname_is_pname(mtmp) {
     /* BLOCKED: C: const char *shknm = ESHK(mtmp)->shknam; */
-    /* The shknam field is not captured. This is a harness gap. */
     throw new Error('shkname_is_pname: ESHK(mtmp)->shknam not captured — harness gap');
 }
 
@@ -14872,11 +12340,6 @@ export async function kill_genocided_monsters() {
     kill_eggs(game.level?.buriedobjlist);
 }
 
-/* C mon.c:1174 mcalcdistress() — iter_mons(m_calcdistress).  iter_mons
- * (mon.c:4527) caches nmon before the callback, and skips DEADMONSTER(mtmp)
- * (mhp < 1) and mon_offmap(mtmp) (monst.h:255 — mstate != MON_FLOOR).
- * `mstate` is left unset on monsters this port builds, so the offmap test must
- * coerce (undefined !== 0 would skip every monster on the live path). */
 export async function mcalcdistress() {
     for (let mtmp = game.fmon, mtmp2; mtmp; mtmp = mtmp2) {
         mtmp2 = mtmp.nmon;
@@ -14945,23 +12408,6 @@ export function dealloc_oextra(o) {
     }
 }
 
-/* C objclass.h — oc_merge bitfield for each object type. Extracted by
- * compiling nethack-c/include/objects.h's OBJECTS_INIT the same way
- * objects.c does and dumping obj_init[i].oc_merge for i in [0,NUM_OBJECTS]
- * (scratch dumper, not checked in — same method as tools/dump-oc-name.c).
- * Indexed by otyp (same indexing as MKOBJ_OC_CLASS / OC_USES_KNOWN).
- *
- * VINTAGE RE-VERIFIED 2026-08-14 (claude-lane port:role-start-admission-
- * blockers).  The provenance line above names nethack-c/, which is the 3.7
- * tree, and 3.7/5.0 disagree on otyp indices (SADDLE=237 in 3.7 is
- * stethoscope in 5.0) — so this table was a live candidate for the same
- * class of bug.  It is not: the same dumper compiled against
- * nethack-c-v5/upstream/include/objects.h (NUM_OBJECTS=481, 482 entries)
- * agrees with this array on ALL 482 indices, and with js/oc_name_data.js's
- * OC_NAME on all 482 names.  The 5.0 object table is index-identical to
- * 3.7's for oc_merge and oc_name; the 3.7-sourced comment is stale, not
- * wrong.  Exported so js/sp_lev.js's oc_merge() reads the real bit rather
- * than a four-otyp hand-verified subset. */
 export const OC_MERGE = new Uint8Array([
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,  // [0-19]
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1,  // [20-39]
@@ -15074,12 +12520,6 @@ export function ing_suffix(s) {
     return buf;
 }
 
-/* C ref: mkobj.c:2439-2494 obj_timer_checks(otmp, x, y, force) — corpse-on-ice
- * ROT_CORPSE/REVIVE_MON timer re-scaling.  RNG-free (stop_timer/start_timer
- * consume no draws); the throw this replaces was firing whenever remove_object
- * spliced a `.timed` object off a floor tile (dozap's burn_floor_objects /
- * bhitpile paths reach it via delobj/remove_object on a timed corpse).
- * ROT_ICE_ADJUSTMENT = 2 (mkobj.c local #define, C line 2388). */
 const _OTC_ROT_ICE_ADJUSTMENT = 2;
 export function obj_timer_checks(otmp, x, y, force) {
     let tleft = 0;
@@ -15209,7 +12649,6 @@ export async function discard_minvent(mtmp, uncreate_artifacts) {
 /* constant: ONAME_NO_FLAGS */
 const ONAME_NO_FLAGS = 0;
 
-/* C worn.c: extract_from_minvent — delegate to the canonical trap-layer port. */
 export async function extract_from_minvent(mtmp, otmp, a, b) {
     return await extract_from_minvent_md(mtmp, otmp, a, b);
 }
@@ -15218,12 +12657,10 @@ export async function extract_from_minvent(mtmp, otmp, a, b) {
  * real body (C shk.c:1186-1272) for discard_minvent() above.  Imported at
  * :145 instead. */
 
-/* C do_name.c: safe_oname — delegate to the canonical naming helper. */
 function safe_oname(otmp) {
     return safe_oname_real(otmp);
 }
 
-/* C artifact.c: artifact_exists — delegate to the canonical artifact helper. */
 function artifact_exists(otmp, name, a, b) {
     return artifact_exists_real(otmp, name, a, b);
 }
@@ -15238,10 +12675,6 @@ export async function meatobj(mtmp) {
     let buf = "";
     let otmpname;
 
-    /* If a pet, eating is handled separately, in dog.c.
-       C: if (mtmp->mtame) return 0;
-       NOTE: mtame not captured by sweep STRUCT_FIELDS; the check is
-       unreachable in the current corpus (all records have mtame==0). */
 
     /* eat organic objects, including cloth and wood, if present;
        engulf others, except huge rocks and metal attached to player */
@@ -15335,20 +12768,9 @@ export async function meatobj(mtmp) {
  * Return value: 0 = nothing eaten, 1 = ate a corpse, 2 = died. */
 export async function meatcorpse(mtmp) {
     let otmp, ptr, corpsepm;
-    /* C: original_ptr = mtmp->data. mtmp.data not captured for this fn's
-       corpus (no data_mndx); mtmp.mnum tracks the same monster-type
-       identity as mtmp->data (see js/struct_reconstructor.js
-       DERIVED_ALIASES comment: mtmp->mnum == monsndx(mtmp->data) is a
-       C-enforced invariant) — same substitution meatobj above uses for
-       its identical original_mnum polymorph/death check. */
     const original_mnum = mtmp.mnum;
     const x = mtmp.mx, y = mtmp.my;
 
-    /* if a pet, eating is handled separately, in dog.c.
-       C: if (mtmp->mtame) return 0;
-       NOTE: mtame not captured by sweep STRUCT_FIELDS for this fn's corpus;
-       the check is unreachable in the current corpus (same precedent as
-       meatobj above). */
 
     /* skips past any globs */
     for (otmp = sobj_at(CORPSE, x, y); otmp;
@@ -15600,11 +13022,6 @@ export async function m_consume_obj(mtmp, otmp) {
         mon_givit(mtmp, permonstTemplate(corpsenm));
 }
 
-/* C do.c:2130-2169 — revive a corpse into its monster form.  The full C
- * routine has presentation branches for every object location; gameplay
- * callers in this port reach it for floor and monster-inventory corpses.
- * Keep the object removal and monster creation ordering identical: locate,
- * create, then consume the corpse only after a successful creation. */
 export async function revive_corpse(otmp) {
     if (!otmp || (otmp.otyp | 0) !== CORPSE)
         return false;
@@ -15641,9 +13058,6 @@ export async function revive_corpse(otmp) {
     if (otmp.timed)
         obj_stop_timers(otmp);
     if (wasBuried || (otmp.where | 0) === OBJ_FLOOR) {
-        /* C zap.c:1111-1126: floor corpses use delobj_core(..., TRUE) and
-         * buried zombies are extracted directly; neither path performs
-         * delobj()'s obj_resists roll. */
         const wasFloor = (otmp.where | 0) === OBJ_FLOOR;
         obj_extract_self(otmp);
         await dealloc_obj(otmp);
@@ -15663,22 +13077,6 @@ export async function revive_corpse(otmp) {
 function is_mines_prize(otmp) { return is_mines_prize_real(otmp); }
 function is_soko_prize(otmp) { return is_soko_prize_real(otmp); }
 
-/* C monst.h:279 — resists_ston(mon) = Resists_Elem(mon, STONE_RES),
- * mondata.c:128-193.  Ported 2026-08-17, replacing a `return false` stub whose
- * four callers in this file (:11020 the corpse-stoning arm, :11814/:11826
- * mstoning, :11908 flesh_petrifies) were therefore all permanently "does not
- * resist".
- * The primary term is monst.h:268
- *   mon_resistancebits(mon) = data->mresists | mextrinsics | mintrinsics
- * tested against MR_STONE (0x80, monflag.h:69 — resolved against
- * nethack-c-v5/recorder, i.e. the binary the corpus was recorded with, not the
- * 3.7 headers).  `mresists` is MONS row column [5] (see permonstTemplate).
- * OMITTED, as a stated narrowing rather than an oversight: mondata.c:173-193's
- * wielded-artifact `defends(AD_STON, MON_WEP(mon))` and worn/carried
- * `objects[otyp].oc_oprop == STONE_RES` tail.  No ordinary object carries
- * oc_oprop STONE_RES, so the tail can only fire for an artifact that defends
- * against AD_STON, and defends() is not ported.  Same narrowing class, stated
- * the same way, as m_poisongas_ok_resists_poison() above. */
 export function resists_ston(mtmp) {
     if (!mtmp)
         return false;
@@ -15747,15 +13145,6 @@ export function slimeproof(data) {
         || (pm | 0) === PM_GHOST;
 }
 
-/* C do_name.c:1367 Monnam(mon) — upstart(mon_nam(mon)).
- *
- * This was `throw new Error('not yet ported: Monnam')`, a file-local stub
- * shadowing js/mklev.js's OWN Monnam_wm() (:11878), which is that exact body
- * and has been live since the wake_msg port.  The throw is not dead code:
- * setmangry (:15324) prints C's "%s gets angry!" through it, so the first time
- * this port angered a peaceful humanoid the segment died with an anonymous
- * "not yet ported: Monnam" — measured on seed0030 segment 7 step 152, where
- * the whole 20-frame tail was forfeited.  Delegate rather than re-derive. */
 function Monnam(mtmp) {
     return Monnam_wm(mtmp);
 }
@@ -15764,22 +13153,10 @@ function Monnam(mtmp) {
  * `func` argument of the three distant_name() calls above; with those moved
  * to doname_nc (js/objnam.js, imported at :143) it had no caller left. */
 
-/* ── mpickobj — C ref: nethack-c/src/steal.c:616-687 ────────────────────────
- *   int mpickobj(struct monst *mtmp, struct obj *otmp)
- *   "Returns 1 if otmp is free'd, 0 otherwise."
- *
- * Ported statement-for-statement.  Branches whose callees are not yet ported
- * throw UNPORTED-CALLEE rather than being silently skipped, so the capture
- * sweep attributes them instead of scoring a quiet wrong answer.
- * event_log() (steal.c:633) is C-side harness instrumentation with no JS
- * counterpart and no game state effect — not ported. */
 const MPICKOBJ_LOST_NONE = 0, MPICKOBJ_LOST_THROWN = 1;
 const MPICKOBJ_LOST_DROPPED = 2, MPICKOBJ_LOST_STOLEN = 3;
 const MPICKOBJ_AT_ENGL = 11; /* monattk.h:22 — engulf */
 const MPICKOBJ_OBJ_MINVENT = 4; /* obj.h — OBJ_MINVENT */
-/* C ref: nethack-c/include/obj.h — Has_contents(o) is (Is_container(o)
-   && o->cobj != 0); the cobj test alone is sufficient (only containers ever
-   carry one) and is what the captured records expose. */
 function Has_contents(o) { return !!o.cobj; }
 export async function mpickobj(mtmp, otmp) {
     let freed_otmp;
@@ -15793,7 +13170,6 @@ export async function mpickobj(mtmp, otmp) {
         /* C: impossible("... taking or picking up attached ball/chain?") */
         return 0;
     }
-    /* C 633-635 event_log("pickup[...]") — harness-only, not ported. */
 
     /* C 636-641: if a monster acquires a thrown or kicked object, the throwing
        or kicking code shouldn't continue to track and place it */
@@ -15802,8 +13178,6 @@ export async function mpickobj(mtmp, otmp) {
     else if (otmp === game.kickedobj)
         game.kickedobj = 0;
 
-    /* C 642-646: an unpaid item can be on the floor; if a monster picks it up,
-       take it off the shop bill */
     if (otmp.unpaid || (Has_contents(otmp) && count_unpaid(otmp.cobj))) {
         await subfrombill(otmp, (await find_objowner(otmp, otmp.ox, otmp.oy)));
     }
@@ -15816,8 +13190,6 @@ export async function mpickobj(mtmp, otmp) {
         snuff_otmp = true;
     }
 
-    /* C 657-659: for a hero-owned object on a shop floor, mtmp is taking
-       possession and if it's eventually dropped in a shop, shk will claim it */
     otmp.no_charge = 0;
 
     /* C 660-678: some object handling is only done if mtmp isn't a pet */
@@ -15874,28 +13246,6 @@ function obj_sheds_light_mp(obj) {
 }
 
 
-/* ── C ref: youprop.h:96-120 — the Blind and Hallucination macros ─────────────
- *   HBlinded  u.uprops[BLINDED].intrinsic / EBlinded .extrinsic / BBlinded .blocked
- *   Blind             ((HBlinded || EBlinded) && !BBlinded)
- *   HHallucination    u.uprops[HALLUC].intrinsic          (INTRINSIC only — there
- *                     is no extrinsic term on HALLUC and no 'blocked' test)
- *   Halluc_resistance HHalluc_resistance || EHalluc_resistance
- *   Hallucination     (HHallucination && !Halluc_resistance)
- *
- * The call sites in this file used to derive these from `u._blind` /
- * `u._hallucination` — property names that NOTHING in js/ or frozen/ ever
- * assigns (tools/never-written-field-lint.mjs ranks both NO-WRITER, 13 and 3
- * read sites), so every one of them was permanently FALSE.  That was invisible
- * for as long as the hero could not go blind at all; js/do_wear.js's Blindf_on
- * now confers EBlinded when a blindfold goes on, so a dead guard here is a
- * wrong guard.
- *
- * They read the LIVE binding now: the NUMERIC prop index, which is what
- * js/zap.js's make_blinded, js/eat.js and Blindf_on actually write, and what
- * js/vision.js:19 and js/display.js:3941 already test.  This is deliberately
- * not the string key `u.uprops.BLINDED`, which is a third spelling of the same
- * property and is dead for the same reason.  RNG-free.
- */
 function _Blind_mk() {
     const u = game.u;
     if (!u) return false;
@@ -15920,48 +13270,10 @@ function Blind_mp() {
     return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
 }
 
-/* C ref: nethack-c/src/mkobj.c:2645-2668 add_to_minv(struct monst *mon,
- *                                                    struct obj *obj)
- *
- * Inlined here as a FILE-LOCAL rather than reusing js/dokick.js's exported
- * `add_to_minv`: that copy is a 3-line variant that returns void, never merges
- * and never sets obj->where / obj->ocarry, and it is 500/500 RED in the
- * capture sweep.  It is outside this task's editable file set, so calling it
- * would make mpickobj return `undefined` where C returns 0/1.  Adding a
- * competing `add_to_minv` EXPORT here would just create another wrong twin, so
- * the C body lives inside mpickobj's own module scope with this note.
- * FLEET-FEEDBACK: js/dokick.js's add_to_minv needs this same body; once it has
- * it, this local should be deleted and the export imported. */
-/* Read a `struct obj` field that may be absent from the capture schema.  On the
- * capture-replay path the object is a proxy that THROWS for an uncaptured field
- * name instead of yielding undefined, so an existence probe has to come first;
- * on the live path this is an ordinary property read. */
 function _ofield(o, name) {
     return (o && Object.hasOwn(o, name)) ? o[name] : 0;
 }
 
-/* C ref: invent.c:790-880 merged(&otmp, &obj) followed by shk.c:1187 obfree(obj,
- * otmp), for the ONE caller this file has: add_to_minv()'s fold of a freshly
- * acquired object into a MONSTER's inventory (obj->where == OBJ_FREE, otmp->where
- * == OBJ_MINVENT).  That call site is what makes most of both C functions
- * unreachable, and the unreachable arms are asserted rather than assumed:
- *
- *   merged()   — the oname/lamplit/timed/owornmask/globby arms and the
- *                "You learn more about your items by comparing them." pline all
- *                require has_oname(obj), obj->lamplit, obj->timed,
- *                obj->owornmask, obj->globby, or otmp->where == OBJ_INVENT.
- *                None can hold for a monster picking an ordinary item off the
- *                floor, so each throws if it ever does.
- *   obfree()   — the LEASH/FOOD/SPBOOK/container/BOULDER teardown and the whole
- *                shop-bill half need obj->unpaid or a matching bill entry; with
- *                merge != NULL and no bill, C falls to the o_id price-adjustment
- *                transfer and dealloc_obj().  Same treatment.
- *
- * This replaces a bare `throw new Error('not yet ported: obfree')`, which is what
- * made js/monmove.js mpickstuff() kill seed0030 segment 0 the moment a goblin
- * picked up a second gem: 19 frames forfeited, and because the judge concatenates
- * segments positionally that cost 900 step points in a session it had gained in.
- * RNG-FREE end to end (weight() and oid_price_adjustment() draw nothing). */
 
 
 export async function add_to_minv(mon, obj) {
@@ -16057,23 +13369,6 @@ export async function mktrap(num, mktrapflags, croom, tm) {
         } while (kind === NO_TRAP);
     }
     
-    /* C mklev.c:2081-2082 — `if (is_hole(kind) && !Can_fall_thru(&u.uz)) kind
-     * = ROCKTRAP;`.  This read a HAND-ROLLED stand-in,
-     *     (u.uz.dlevel < dungeons[u.uz.dnum].num_dunlevs)
-     * i.e. "not the bottom level" — which is only the Is_botlevel() clause of
-     * Can_dig_down (dungeon.c:1649-1653).  It dropped BOTH of the other two
-     * terms, `!svl.level.flags.hardfloor` and `!Invocation_lev(lev)`, and the
-     * Is_stronghold arm Can_fall_thru adds on top.  Can_fall_thru is exported
-     * from this very file (it and Can_dig_down are ported a few hundred lines
-     * up), so the stand-in was never needed.
-     *
-     * MEASURED on seed0367 leaf 4869, the Priest quest LOCATE level, which
-     * dat/Pri-loca.lua:8 declares `des.level_flags("mazelevel", "hardfloor",
-     * "noflip")`: traptype_rnd rolls TRAPDOOR (rnd(25)=14) on both sides; C
-     * converts it to ROCKTRAP and its maketrap draws nothing, while this port
-     * kept TRAPDOOR and its maketrap ran hole_destination()'s rn2(4)
-     * (trap.c:442) — one extra draw, and every trap, monster and object placed
-     * after it on that level one leaf out of step. */
     if (is_hole(kind) && !Can_fall_thru(game.u?.uz))
         kind = ROCKTRAP;
     
@@ -16111,7 +13406,6 @@ export async function mktrap(num, mktrapflags, croom, tm) {
         trap.dst.dlevel = game.u.ucamefrom.dlevel;
     }
     
-    /* C mklev.c:2147-2175 — victim roll gate */
     const lvl = level_difficulty();
     if (game.in_mklev
         && kind !== NO_TRAP && !(mktrapflags & MKTRAP_NOVICTIM)
@@ -16154,31 +13448,6 @@ function kill_eggs(objlist) {
 }
 
 /* Stub: mondead — not yet ported */
-/* C ref: mon.c:3121 mondead(struct monst *mtmp) — "this monster died and
- * leaves no corpse".  Was an EMPTY body captioned "not yet ported", which is
- * the worst shape a death can have: the caller believes the monster is gone,
- * the monster stays on fmon, keeps its square, and keeps rendering.  Landing
- * minliquid's lava arm above exposed it — seed0360-wizard-world-tour's mumak
- * stopped taking its turn (so the rng matched) while its Warning glyph stayed
- * painted on a square C leaves blank, which is parity-by-accident.
- *
- * Ported: mhp = 0, the mvitals died counter, m_detach's fmon unlink + <mx,my>
- * clear, and the newsym that repaints the vacated cell.  Same shape as
- * js/trap.js monkilled_trap's already-landed detach, minus the corpse — C's
- * mondead never makes one (that is mondied, mon.c:3247).
- *
- * DOCUMENTED GAPS, none of which is reachable from this file's two callers
- * (minliquid's lava arm and kill_genocided_monsters):
- *   - the vampshifter revival arm (mon.c:3121-3160), which is why C's
- *     minliquid re-checks DEADMONSTER after calling this;
- *   - the S_KOP / iswiz wizdead() / MS_NEMESIS nemdead() / Medusa achievement
- *     special cases;
- *   - (CLOSED) unmap_object() when the tile holds a remembered-invisible
- *     glyph — this list was stale: the body below HAS carried mon.c:3170-3171
- *     since it was added, and the line at that call site still says "which is
- *     why the header above listed this as a known gap";
- *   - m_detach's minvent, mextra, timer and light-source teardown, and the
- *     mvitals G_GONE extinction bookkeeping. */
 /* C mon.c:2827-2836: only a worn life-saving amulet can save this monster. */
 export function mlifesaver(mon) {
     if (!lifesave_nonliving(mon.data) || m_poisongas_ok_is_vampshifter(mon)) {
@@ -16244,21 +13513,6 @@ export async function mondead(mtmp) {
     if ((mx | 0) > 0 && emits_light(mtmp.data))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
     if (beSad) await pline('You have a sad feeling for a moment, then it passes.');
-    /* C mon.c:2702-2703, the first two statements of mon_leaving_level(), which
-     * m_detach() calls and which the inlined detach below stands in for:
-     *     mon->mtrapped = 0;
-     *     unstuck(mon); / * mon is not swallowing or holding you nor held by you * /
-     * Omitting it was invisible for as long as nothing in js/ could make
-     * u.ustuck non-null on a monster the hero fights; wiring mhitm_adtyping_u's
-     * AD_STCK arm (js/mhitu.js) makes it reachable, and unstuck() draws rnd(2)
-     * (mon.c:3465, the holder re-hold cooldown).
-     * Measured on the UNSEEN corpus session gen000-reseed-seed5472 step 141:
-     * the kitten kills the lichen the hero is stuck to and C draws
-     *   rnd(2)=2 @ unstuck(mon.c:3465)      <- missing here
-     *   rn2(2)=1 @ corpse_chance(mon.c:3248)
-     * -- the second of which this port already drew, in mondied's tail, which
-     * is why the gap read as a single missing leaf rather than a missing chain.
-     * The position is C's: BEFORE the fmon unlink and the square vacate. */
     mtmp.mtrapped = 0;
     await unstuck_mk(mtmp);
     /* C mon.c:3121 svm.mvitals[mndx].died++ (no rng), capped at 255. */
@@ -16280,17 +13534,6 @@ export async function mondead(mtmp) {
      * MON_AT early return).  Position is C's: before the fmon unlink. */
     if (mtmp.wormno)
         remove_worm_mk(mtmp);
-    /* KEYSTONE-A: defer the fmon unlink to C's dmonsfree purge.  C mon.c:3174
-     * m_detach vacates the MAP (mon_leaving_level -> remove_monster + the
-     * newsym below) but leaves the node LINKED in fmon (mon.c:2796 sets
-     * MON_DETACH) until dmonsfree() reaps it — at the movemon-end purge
-     * (mon.c:1340), now run every turn by js/fastforward.js.  mtmp.mhp is
-     * already 0 (above), so the purge's `mhp<1 && !isgd` reaps it, and every
-     * fmon reader carries the DEADMONSTER guard (fmon-walk-census H1=0) so a
-     * dead-but-linked node is skipped exactly as C's remove_monster'd grid
-     * cell is.  mx/my are left at the death square (C mon.c:2700 leaves them;
-     * the saved mx/my above drive the newsym).  The splice that used to sit
-     * here removed the node one full purge-pass early. */
     mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
     /* C mon.c:2718-2720, mon_leaving_level(), is explicit that mx/my must NOT
      * be zeroed here:
@@ -16316,14 +13559,6 @@ export async function mondead(mtmp) {
     /* C mon.c:2711 mon_leaving_level -> newsym(mx, my): repaint the cell the
      * monster just vacated.  RNG-free. */
     newsym(mx, my);
-    /* C mon.c:2776-2779, m_detach()'s due_to_death arm:
-     *     / * release (drop onto map) all objects carried by mtmp; assumes that
-     *        mtmp->mx,my contains the appropriate location * /
-     *     relobj(mtmp, 1, FALSE); / * drop mtmp->minvent, issue newsym(mx,my) * /
-     * mondead() reaches m_detach with due_to_death TRUE (mon.c:3174), and C's
-     * order is exactly this: mon_leaving_level()'s newsym above, then the drop.
-     * mx/my still hold the death square, which mon.c:2718-2720 is explicit
-     * about (see the note above).  See relobj_md() below for the measurement. */
     await relobj_md(mtmp);
     /* C mon.c:2786-2787, near the END of m_detach():
      *     if (mtmp->wormno) wormgone(mtmp);
@@ -16338,43 +13573,6 @@ export async function mondead(mtmp) {
         wormgone_mk(mtmp);
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * relobj() and mdrop_obj() — C steal.c:874-899 and steal.c:812-846, reached as
- * relobj(mtmp, 1, FALSE) from m_detach() (mon.c:2778-2779) inside mondead()
- * (mon.c:3174).  A monster that dies on the map drops EVERYTHING it carried
- * onto its own square, each item routed through flooreffects() so that lava,
- * water and traps get their say before it is placed.
- *
- * WHY THIS EXISTS.  mondead() above carried m_detach's map-vacate half
- * (mon_leaving_level's remove_monster + newsym) and not its inventory half;
- * its own header listed "m_detach's minvent ... teardown" verbatim as a gap.
- * MEASURED on corpus-generated/v5/train-macos-20260909/gen123-reseed-seed860298
- * segment 0 step 331 (Dlvl 35, Gehennom): a minotaur (mnum 177, m_id 1687)
- * burns away in lava at (19,13) carrying a wand of digging (otyp 428).  The
- * session's own recorded C rng log reads
- *     213: ^movemon_turn[177#1687@19,13 mv=12->0 ...]
- *     214: rn2(100)=82 @ obj_resists(zap.c:1469)
- *     215: ^place[428,19,13]
- *     216: ^movemon_turn[117#1819@56,6 ...]
- * — the draw is lava_damage's unconditional obj_resists (trap.c:4582, reached
- * from flooreffects()'s is_lava arm at do.c:270-271), and the ^place is that
- * wand SURVIVING it (oc_material IRON == 11, so not < DRAGON_HIDE) and landing
- * on the square.  #1687 is killed inside minliquid and so never reaches
- * dochug, which is why it never draws distfleeck's rn2(5) the way every other
- * monster in that pass does.  Having no drop at all, this port spent that same
- * raw value on the NEXT monster's distfleeck and ran one draw ahead from C
- * leaf 66295 onward (82 mod 5 == 2, the value it read there).
- *
- * NOT COPIED FROM js/dogmove.js relobj_dead_dm (:1013), although that is the
- * same C function already ported for the mon-vs-mon path.  It deliberately
- * SKIPS flooreffects() on the stated grounds that it "draws nothing for an
- * ordinary item falling onto an ordinary square".  This session is the
- * counter-example: the square is lava and flooreffects() is precisely where
- * the draw is.  Shape borrowed; that carve-out not.
- *
- * RNG: neither function draws anything itself.  Every draw either can reach is
- * inside flooreffects().
- * ════════════════════════════════════════════════════════════════════════════ */
 
 /* C obj.h:79 OBJ_MINVENT == 4 (js/const.js:1118; this file's own const.js
  * import line does not carry it and is long enough already). */
@@ -16385,25 +13583,6 @@ const OBJ_MINVENT_MD = 4;
 export async function mdrop_obj_md(mon, obj, verbosely) {
     const omx = mon.mx | 0, omy = mon.my | 0;
     const unwornmask = obj.owornmask | 0;
-    /* C steal.c:820-823: "call distant_name() for its possible side-effects
-     * even if the result might not be printed, and do it before extracting obj
-     * from minvent".  The side-effect that matters is xname_flags()'s
-     *     if (!Blind && !gd.distantname) observe_object(obj);
-     * (objnam.c:627-628), and observe_object (o_init.c:441-452) is what sets
-     * obj->dknown and credits the discovery.  js/objnam.js:4241-4247 carries
-     * that line and js/objnam.js's distant_name() tracks gd.distantname, so the
-     * chain is real here rather than decorative.
-     *
-     * distant_name() locates the object through get_obj_location(), i.e. off
-     * obj->where and obj->ocarry.  THIS PORT DOES NOT MAINTAIN where FOR
-     * MONSTER INVENTORY — js/trap.js:7996 measured a gnome lord's minvent
-     * potion reading OBJ_FREE while sitting in mon->minvent, which is why that
-     * file's extract_from_minvent() drops C's 'where != OBJ_MINVENT' guard too.
-     * So the two fields are set to the invariant C guarantees at this point,
-     * immediately before the read; extract_from_minvent() on the very next line
-     * clears both again (where = OBJ_FREE, ocarry = NULL) and nothing outlives
-     * the call.  Without it every dropped item takes distant_name's not-located
-     * arm and the dknown/discovery side-effect is silently lost. */
     obj.where = OBJ_MINVENT_MD;
     obj.ocarry = mon;
     const obj_name = await distant_name_nc(obj, doname_nc);
@@ -16434,15 +13613,6 @@ export async function mdrop_obj_md(mon, obj, verbosely) {
         place_object(obj, omx, omy);
         await stackobj(obj);
     }
-    /* C steal.c:844-845:
-     *     if (!DEADMONSTER(mon) && unwornmask)
-     *         update_mon_extrinsics(mon, obj, FALSE, TRUE);
-     * C's own comment explains the ordering ("do this last, after placing obj
-     * on floor").  m_detach forces mon->mhp = 0 before reaching relobj
-     * (mon.c:2765) and mondead() above does the same, so DEADMONSTER(mon) is
-     * true and C itself skips this on the only path that gets here.  Written as
-     * the guard rather than as an omission so a future live-monster caller
-     * takes C's arm. */
     if ((mon.mhp | 0) >= 1 && unwornmask)
         update_mon_extrinsics_md(mon, obj, false, true);
 }
@@ -16481,43 +13651,6 @@ export async function relobj_md(mtmp) {
         newsym(omx, omy);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * newcham() and its shape-selection chain.  C ref (NetHack 5.0.0, src/mon.c):
- *     pickvampshape         mon.c:4941-4989
- *     select_newcham_form   mon.c:5157-5225
- *     accept_newcham_form   mon.c:5228-5252
- *     validspecmon          mon.c:5117-5136  (via isspecmon, mon.c:4995)
- *     mgender_from_permonst mon.c:5256-5273
- *     newcham               mon.c:5277-5535
- *
- * WHY THIS EXISTS: makemon()'s shapechanger arm (makemon.c:1355-1368) gives a
- * newly created M2_SHAPESHIFTER its random shape IMMEDIATELY, and a successful
- * newcham() clears `allow_minvent` so the new form skips m_initweap/m_initinv/
- * m_dowear/put_saddle_on_mon entirely.  That arm was missing from this port, so
- * every vampire and chameleon generated by makemon kept its base form AND drew
- * m_initinv's rn2(50)+rn2(100) and the saddle rn2(100) that C never draws.
- * Measured on seed4500-knight-coverage segment 0 leaf 23880 (Dlvl:27, Gehennom):
- * C draws rn2(4)=2 @pickvampshape(mon.c:4967) choosing PM_VAMPIRE_BAT, then
- * rn2(10) @mgender_from_permonst and d(7,8) @newmonhp for the new form; JS
- * instead drew rn2(50) @m_initinv for a vampire that never shifted.
- *
- * SCOPE / CARVE-OUTS (documented at their sites below, not silently faked):
- *   - (CLOSED 2026-08-13) PM_SANDESTIN and PM_DOPPELGANGER used to be routed
- *     around this chain because pick_nasty() and tt_doppel() were unported.
- *     Both now exist — pick_nasty() below, tt_doppel() in js/topten.js — so
- *     every cham type takes the C path and makemon's caller no longer filters.
- *     The carve-out was seed4500-knight-coverage's first RNG divergence at
- *     segment 0 leaf 40828 (Dlvl:40, Gehennom): C drew rn2(7)=4 then rn2(3)=2
- *     @select_newcham_form(mon.c:5167/5169) for a doppelganger taking a topten
- *     role shape, while JS — having skipped newcham entirely — drew rn2(75)
- *     @m_initweap for a doppelganger that never shifted.
- *   - The PM_LONG_WORM tail arm (get_wormno/initworm, one rn2(5)) is omitted:
- *     long-worm segments are unmodelled project-wide (no get_wormno exists), and
- *     makemon itself never calls initworm either.
- *   - Message, light-source, leash, u.ustuck, steed and minvent-boulder arms are
- *     inert on the makemon path (msg is off under NO_NC_FLAGS, and minvent is
- *     still empty at makemon.c:1367 — inventory is not added until :1441).
- * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* C monsters.h indices (pm.generated.js) used by the newcham chain. Suffixed
  * _NC to stay clear of this file's existing PM_ and M-flag locals. */
@@ -16625,9 +13758,6 @@ function mon_has_special_nc(mtmp) {
     return 0;
 }
 
-/* C youprop.h:125 Protection_from_shape_changers — the replay data does not
- * capture this intrinsic; js/were.js and js/mklev.js set_mimic_sym both assume
- * FALSE for the scored corpus, and this follows them. */
 function Protection_from_shape_changers_nc() {
     const p = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
     return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0));
@@ -16734,22 +13864,6 @@ export function pick_nasty(difcap) {
 }
 
 
-/* C wizard.c:591 nasty(summoner) — "create some nasty monsters, aligned with
- * the caster or neutral ... returns the number of monsters created".  UNPORTED
- * until now: pick_nasty() above has been here since the newcham() port, but
- * nothing called it from the summon path, and mcast_summon_mons() (mcastu.c
- * :421) — the MCAST_SUMMON_MONS arm of every monster spellcaster — was a
- * throwing stub in js/mcastu.js.
- *
- * MEASURED on seed4500-knight-coverage step 1784, where C's tape reads
- *   rn2(10)=5  @nasty(wizard.c:607)      the !rn2(10) && Inhell gate
- *   rnd(5)=5   @nasty(wizard.c:620)      the outer loop count, tmp = ulevel/3
- *   rn2(44)    @pick_nasty(wizard.c:541) x7
- *   45 collect_coords draws per enexto   x7
- *   makemon x7, then rnd(4) @nasty(wizard.c:695) x7 (mspec_used)
- * i.e. 566 leaves this port drew none of.
- *
- * async because js makemon() is. */
 export async function nasty(summoner) {
     const u = game.u;
     /* C:597 — "when a monster casts the 'summon nasties' spell, it gives
@@ -17081,12 +14195,6 @@ function mgender_from_permonst(mtmp, mdat) {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * newcham()'s equipment half (C mon.c:5484-5518) and the helpers it needs.
- * Everything here is RNG-FREE in C; the only draw the whole block can reach is
- * the rnl(3) inside js/trap.js's mon_break_armor steed arm and whatever
- * flooreffects() draws when a dropped object lands in water/lava/a trap.
- * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* C monst.h:210-211 MON_WEP(mon) == mon->mw, MON_NOWEP(mon) == (mon->mw = 0).
  * js/uhitm.js:6064 is what writes the slot (mon_wield_item) and js/uhitm.js:5445
@@ -17102,26 +14210,6 @@ const AT_WEAP_NC = 254;
 const M2_ROCKTHROW_NC = 0x08000000;
 function throws_rocks_nc(ptr) { return ((ptr.mflags2 | 0) & M2_ROCKTHROW_NC) !== 0; }
 
-/* C mkobj.c:2575-2578, obj_extract_self()'s OBJ_MINVENT arm:
- *     extract_nobj(obj, &obj->ocarry->minvent);
- *     obj->ocarry = (struct monst *) 0;
- * with extract_nobj (mkobj.c:2596-2614) setting where = OBJ_FREE and nobj = 0.
- *
- * WHY NOT obj_extract_self(): this file's own obj_extract_self (:14858) is a
- * THROW stub, js/dokick.js's walks only gm.migrating_objs and silently returns
- * for a minvent object, and js/steal.js's and js/dig.js's both throw on
- * anything but OBJ_FLOOR — no OBJ_MINVENT-correct obj_extract_self exists in
- * js/ at all.  Dispatching on obj.where is also not available: this port does
- * not maintain where for monster inventory (js/trap.js:7996 measured a gnome
- * lord's minvent potion reading OBJ_FREE while sitting in mon->minvent), which
- * is exactly why js/trap.js's extract_from_minvent spells the same unlink
- * inline.  Both call sites below reach this with `obj` already proven to be a
- * node of `mon.minvent` (they walked that chain to find it), so the OBJ_MINVENT
- * arm is the only one C could take.  This is NOT extract_from_minvent: that is
- * worn.c:1377's wrapper, which additionally clears owornmask, runs
- * update_mon_extrinsics, calls obj_no_longer_held and mwepgone — none of which
- * C's obj_extract_self does, and possibly_unwield below has already done its
- * own setmnotwielded by the time it calls this. */
 function obj_extract_from_minvent_nc(mon, obj) {
     let prev = null, curr = mon.minvent;
     while (curr && curr !== obj) { prev = curr; curr = curr.nobj; }
@@ -17131,21 +14219,11 @@ function obj_extract_from_minvent_nc(mon, obj) {
         prev.nobj = curr.nobj;
     else
         mon.minvent = curr.nobj;
-    obj.where = 0; /* OBJ_FREE — flooreffects() below asserts on it */
+    obj.where = 0;
     obj.nobj = null;
     obj.ocarry = null;
 }
 
-/* C weapon.c:746-795 possibly_unwield(mon, polyspot) — "Called after
- * polymorphing a monster, robbing it, etc....  Monsters otherwise never unwield
- * stuff on their own.  Might print message."  Draws no RNG of its own.
- *
- * A FILE-LOCAL COPY, deliberately.  js/dogmove.js:3858 exports a function of
- * this name whose entire body is `{}` — an unconditional no-op serving that
- * file's mhitm.c:411 / uhitm.c:2255 / uhitm.c:4726 call sites.  Importing it
- * here would be a SILENT omission dressed as a call, which is the failure mode
- * this port keeps re-learning; rewiring it is a change with three other call
- * sites to re-measure and belongs to its own packet. */
 async function possibly_unwield_nc(mon, polyspot) {
     let obj;
     const mw_tmp = MON_WEP_nc(mon);
@@ -17187,19 +14265,6 @@ async function possibly_unwield_nc(mon, polyspot) {
         mon.weapon_check = NEED_WEAPON;
 }
 
-/* C trap.c:3912-3933 mselftouch(mon, arg, byplayer) — a monster that has just
- * lost its gloves (or its stoning resistance) touches the cockatrice corpse it
- * is wielding.  The GUARD is ported verbatim and is RNG-free; the BODY is not.
- *
- * minstapetrify (C trap.c:3858-3879) is unported everywhere in js/ — both
- * existing copies (js/uhitm.js:7545 and js/cmd.js:18821, which cites the first)
- * are silent no-ops.  C's version calls mon_to_stone / mon_adjust_speed /
- * xkilled(XKILL_NOMSG), and xkilled draws (corpse creation, death drops), so a
- * no-op here would be a silent RNG divergence on a path this file newly
- * reaches.  Per the brief for this change it is a NAMED THROW instead — the
- * same convention can_touch_safely (:13500 above) already uses for
- * resists_ston.  It fires only for a monster wielding a cockatrice/chickatrice
- * corpse, gloveless and not stoning-resistant, at the moment it polymorphs. */
 async function mselftouch_nc(mon, arg, byplayer) {
     const mwep = MON_WEP_nc(mon);
 
@@ -17338,13 +14403,6 @@ export async function newcham(mtmp, mdat, ncflags) {
     const olddata = mtmp.mnum | 0;
     let newmndx = (mdat === null || mdat === undefined) ? NON_PM : (mdat | 0);
 
-    /* C mon.c:5283-5286 — polyspot/msg/seenorsensed are captured at function
-     * entry, before anything below mutates mtmp.
-     * `polyspot` WAS NOT DECODED AT ALL: the flag js/zap.js's bhitm arm passes
-     * as NC_VIA_WAND_OR_SPELL (C zap.c:301-302) was accepted and never read,
-     * because the whole block that consumes it (C mon.c:5484-5518) was omitted
-     * below.  It says "this shape change came from a wand or spell, so anything
-     * the monster drops must be bypass_obj()'d against the SAME zap". */
     const polyspot = ((ncflags | 0) & NC_VIA_WAND_OR_SPELL) !== 0;
     const msg = ((ncflags | 0) & NC_SHOW_MSG) !== 0;
     const seenorsensed = canspotmon(mtmp);
@@ -17379,15 +14437,6 @@ export async function newcham(mtmp, mdat, ncflags) {
         }
     }
 
-    /* C mon.c:5308-5313 — oldname, captured before the transform below for the
-     * msg arms further down.  `msg` is FALSE (NO_NC_FLAGS) on the makemon
-     * shapechanger-creation path, so oldname is never computed there — but it
-     * IS true on decide_to_shapeshift()'s per-turn call (:16716 below,
-     * `newcham(mon, ptr, NC_SHOW_MSG)`, C mon.c:4928), which is what this
-     * capture exists for.
-     * l_oldname (C mon.c:5314-5320) is only read by the u.ustuck/u.uswallow
-     * block (C mon.c:5411-5443), which this port omits below as inapplicable
-     * to the callers reaching this function — so it is not captured here. */
     let oldname;
     if (msg) {
         oldname = upstart(x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE,
@@ -17496,40 +14545,6 @@ export async function newcham(mtmp, mdat, ncflags) {
     /* C mon.c:5411-5443 — the u.ustuck / u.uswallow arms cannot apply to a
      * monster makemon is still building. */
 
-    /* C mon.c:5451-5454:
-     *     if (mdat == &mons[PM_LONG_WORM] && (mtmp->wormno = get_wormno()) != 0) {
-     *         initworm(mtmp, rn2(5));
-     *         place_worm_tail_randomly(mtmp, mtmp->mx, mtmp->my);
-     *     }
-     * WAS omitted with the note "no get_wormno exists, and makemon does not
-     * call initworm either".  BOTH halves of that are false today:
-     * js/worm.js carries real get_wormno / initworm / create_worm_tail /
-     * place_worm_tail_randomly bodies, and this file's own makemon port already
-     * calls all four for C makemon.c:1405-1409 (:5670 above) — they are
-     * imported at the head of this file for exactly that.
-     *
-     * THE rn2(5) IS REAL IN OUR RECORDINGS, and it falls between two draws this
-     * function already makes.  corpus-generated/v5/train-macos-20260909
-     * gen608-grammar-seed784147, step 193, C leaves 2955-2968:
-     *     2955  rn2(3)=0   @ select_newcham_form(mon.c:5189)
-     *     2956  rn2(98)=59 @ pick_animal(mon.c:4862)
-     *     2957  rn2(10)=1  @ mgender_from_permonst(mon.c:5269)   <- :16511 above
-     *     2958  d(13,8)=77 @ newmonhp(makemon.c:1042)            <- :16523 above
-     *     2959  rn2(5)=4   @ newcham(mon.c:5452)                 <- THIS DRAW
-     *     2960+ rn2(8)/rn2(7)/... @ rnd_nextto_goodpos(trap.c:4956)
-     *                                    <- place_worm_tail_randomly, 8 per seg
-     * i.e. immediately AFTER newcham's own newmonhp() and immediately BEFORE
-     * place_worm_tail_randomly's per-segment rnd_nextto_goodpos shuffle; the
-     * msg/vampshifter arms between them (C mon.c:5460-5482) draw nothing.
-     * Four sessions across the corpora we own reach it (this one, plus one each
-     * in probe-cov-dbridge, probe-trapset-b and train-remeasure-20260907).
-     *
-     * NOTE C does NOT guard the tail placement with count_wsegs() here, unlike
-     * makemon.c:1407 which does.  Reproduced as C has it: with rn2(5) == 0
-     * initworm() leaves wtails[wnum] === wheads[wnum] and
-     * place_worm_tail_randomly() takes its own single-segment early return, so
-     * the unguarded call is RNG-free in that case and the difference is not
-     * observable — but it is C's code and the guard is not ours to add. */
     if (newmndx === PM_LONG_WORM && (mtmp.wormno = get_wormno()) !== 0) {
         initworm(mtmp, rn2(5));
         place_worm_tail_randomly(mtmp, mtmp.mx | 0, mtmp.my | 0);
@@ -17567,25 +14582,6 @@ export async function newcham(mtmp, mdat, ncflags) {
         && !Protection_from_shape_changers_nc())
         mtmp.cham = pm_to_cham(newmndx);
 
-    /* C mon.c:5484-5518 — the EQUIPMENT CONSEQUENCES of a polymorph.
-     *
-     * WAS omitted, with the justification that all of this "walk[s]
-     * mtmp->minvent, which is still empty at makemon.c:1367 (inventory is added
-     * at :1441)" and that level generation is "the only path that reaches this
-     * function today".  BOTH CLAIMS ARE FALSE as of js/zap.js's bhitm
-     * polymorph arm (C zap.c:263-333): its target is a LIVE monster with a real
-     * inventory — the arm itself iterates that inventory at C zap.c:283-285 to
-     * bypass_obj() every item — and it is the caller that passes
-     * NC_VIA_WAND_OR_SPELL, i.e. `polyspot`, which this function accepted and
-     * never read.  With the whole block missing, `polyspot` was a flag with no
-     * consumer and the equipment half of every wand/spell polymorph was
-     * silently skipped.  Its rn2(25) sibling occurs 50 times across 32 sessions
-     * of the corpora we own, so this is a live path, not a hypothetical one.
-     *
-     * RNG: C draws NOTHING here directly.  The only draws the block can reach
-     * are inside callees — flooreffects() when a dropped object lands in
-     * water/lava/a trap, mon_break_armor()'s rnl(3) steed arm, and monflee()'s
-     * rn1(9, 2) at the very end. */
     await possibly_unwield_nc(mtmp, polyspot); /* might lose use of weapon */
     /* C worn.c:1177 mon_break_armor — the real port, js/trap.js:8138.  Several
      * of ITS OWN helpers are stubs in that file (breakarm/sliparm/m_lose_armor/
@@ -17606,8 +14602,6 @@ export async function newcham(mtmp, mdat, ncflags) {
     if (mtmp.minvent && !throws_rocks_nc(newdata)) {
         let otmp, otmp2;
 
-        /* DEADMONSTER(): it is possible for flooreffects() to kill mtmp; the
-           rest of its inventory would be dropped making otmp2 stale */
         for (otmp = mtmp.minvent; otmp && !DEADMONSTER_nc(mtmp); otmp = otmp2) {
             otmp2 = otmp.nobj;
             if ((otmp.otyp | 0) === BOULDER) {
@@ -17656,33 +14650,6 @@ export async function newcham(mtmp, mdat, ncflags) {
     return 1;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * m_calcdistress (C mon.c:1180) and its arms — the per-turn per-monster
- * distress pass, run from mcalcdistress() at allmain.c:228, immediately before
- * the mcalcmove reallocation loop.  Ported here rather than in js/fastforward.js
- * because three of its four arms (minliquid, healmon, newcham) already live in
- * this file; js/fastforward.js previously carried only the three timeout
- * countdowns and documented the rest as a known gap.
- *
- * C body, in order:
- *     if (mtmp->data->mmove == 0) {
- *         if (gv.vision_full_recalc) vision_recalc(0);
- *         if (minliquid(mtmp)) return;
- *     }
- *     mon_regen(mtmp, FALSE);
- *     if (ismnum(mtmp->cham)) decide_to_shapeshift(mtmp);
- *     were_change(mtmp);
- *     ... mblinded / mfrozen / mfleetim countdowns ...
- *
- * RNG drawn on this path, measured over the 44-session v5 corpus:
- *     decide_to_shapeshift(mon.c:4881/4883/4899/4921)   132 draws
- *     were_change(were.c:17)                             13 draws
- *     minliquid_core(mon.c:1116)                         10 draws
- * mon_regen draws none.  IT MUST LAND AS A WHOLE: were_change alone would leave
- * decide_to_shapeshift's rn2(6)-per-shapechanger-per-turn missing, and
- * makemon already sets `cham` (see the newcham routing carve-out above), so a
- * partial port reads as a fresh divergence rather than progress.
- * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* C hack.h:1532 mdistu(mon) — distu(mon->mx, mon->my), i.e. dist2 to the hero. */
 function mdistu_mcd(mon) {
@@ -17837,54 +14804,6 @@ export async function minliquid(mtmp) {
     return res;
 }
 
-/* C ref: mon.c:1116 minliquid_core(struct monst *mtmp) — what happens to a
- * monster standing in water or lava.  Was a `return 0` stub, i.e. "nothing
- * ever happens to a monster in liquid", AND its movemon call site
- * (mon.c:1256 `if (minliquid(mtmp)) return FALSE;`) did not exist either, so
- * this port ran a full dochug for a monster C had already burned away.
- *
- * PORTED ARM — inlava, for a monster that cannot fly/float/cling, does not
- * like lava, cannot teleport, and does not resist fire.  C then prints
- * "%s burns to a crisp." (only when the hero can see the square) and kills it
- * with no corpse.  MEASURED on seed0360-wizard-world-tour, Dlvl 42 (wizard2):
- * a mumak (mnum 82, m_id 3667) is standing in the lava at (55,9) at turn 28;
- * C's movemon pass burns it away, so it draws NO distfleeck at session step
- * 368, while this port ran its dochug, drew an extra rn2(3) inside
- * linedup()'s boulder arm (js/trap.js) and walked the monster to (55,8) —
- * where the hero's Warning glyph then painted a "1" on a square C leaves
- * blank.  That was the session's first RNG divergence (leaf 98492) and its
- * first screen miss.
- *
- * DOCUMENTED GAPS, each of which keeps this function's PREVIOUS answer (0) so
- * nothing that used to survive starts dying on an unported path:
- *   - inpool / waterwall drowning (mon.c:1177-1225).  Needs mondied +
- *     water_damage_chain + deal_with_overcrowding.
- *   - the PM_GREMLIN split (rn2(3) + split_mon) and PM_IRON_GOLEM rust
- *     (rn2(5) + d(2,6)) special cases at the head of C's body.  BOTH DRAW RNG,
- *     so their absence is a real divergence for those two species in water;
- *     split_mon is unported.
- *   - the out-of-water eel arm (mon.c:1247-1252: `if (mhp > 1 && rn2(mhp) >
- *     rn2(8)) mhp--; monflee(mtmp, 2, FALSE, FALSE)`).  TWO draws per
- *     out-of-water eel per turn.
- *   - [CLOSED 2026-08-27] can_teleport monsters in a POOL: C tries
- *     `rloc(mtmp, RLOC_MSG)` first, which draws.  The note here said wiring
- *     rloc in "is a new cycle"; it is not and was not — this file imports rloc
- *     from js/teleport.js at line 52 and has done since that module landed.
- *     See the inpool/waterwall arm below.
- *   - [CLOSED 2026-09-10] the LAVA side of the same test (mon.c:1016-1022)
- *     is now ported below, mirroring the pool/waterwall arm: a can_teleport
- *     monster in lava tries `rloc(mtmp, RLOC_MSG)` before the fire-resist
- *     check, and only falls through to burn/resist on failure — exactly as
- *     C does. fdq029: gen440-recombine-seed1789231 leaf 10396 expected
- *     `rnd(79)=7 @rloc(teleport.c:1850)` and this port drew nothing.
- *   - [CLOSED] fire-resistant monsters: C takes 1 point of damage, then
- *     fire_damage_chain + rloc for the survivor.  Ported below in the same
- *     ordering as mon.c:1028-1045.
- *   - C picks `mondead()` vs `xkilled()` on svc.context.mon_moving.  Nothing
- *     in js/ writes game.context.mon_moving on the movemon path (the one call
- *     site this commit adds), and in C that path always has it TRUE, so the
- *     mondead branch is taken unconditionally rather than reading a field
- *     nothing sets. */
 const M1_FLY_ML = 0x00000001;     /* C monflag.h */
 const M1_CLING_ML = 0x00000010;
 const M1_TPORT_ML = 0x02000000;
@@ -17918,12 +14837,6 @@ async function minliquid_core(mtmp) {
     const mf1 = ptr.mflags1 | 0, mlet = ptr.mlet | 0;
     const inlava = is_lava_here
         && !((mf1 & M1_FLY_ML) !== 0 || mlet === S_EYE_ML || mlet === S_LIGHT_ML);
-    /* C mon.c:1105-1109 — inpool = is_pool(mx,my) && (!(is_flyer||is_floater)
-     * || Is_waterlevel(&u.uz)).  Needed ONLY to keep the eel arm below on C's
-     * side of the `if (inpool || inlava) ... else` split: an eel standing IN
-     * water is not "outside".  Getting this wrong is not subtle — omitting it
-     * fired the eel arm on every in-water eel and moved seed4500's RNG
-     * divergence 19,000 leaves EARLIER. */
     const inpool = dbridge_is_pool(mx, my)
         && (!((mf1 & M1_FLY_ML) !== 0 || mlet === S_EYE_ML || mlet === S_LIGHT_ML)
             || Is_waterlevel(game.u?.uz));
@@ -17943,24 +14856,6 @@ async function minliquid_core(mtmp) {
             + ` drown=${(mf1 & (M1_SWIM_ML | M1_AMPHIBIOUS_ML
                 | M1_BREATHLESS_ML)) !== 0 ? 0 : 1}]`);
     if (!inlava && !inpool && !waterwall) {
-        /* C mon.c:1244-1252 — the `} else {` tail, reached when the monster is
-         * in NEITHER pool nor lava: "but eels have a difficult time outside".
-         *     if (mtmp->data->mlet == S_EEL && !Is_waterlevel(&u.uz)
-         *         && !breathless(mtmp->data)) {
-         *         if (mtmp->mhp > 1 && rn2(mtmp->mhp) > rn2(8))
-         *             mtmp->mhp--;
-         *         monflee(mtmp, 2, FALSE, FALSE);
-         *     }
-         * TWO draws per out-of-water eel per turn, and the header above already
-         * listed this as a gap.  seed4500-knight-coverage reaches it: the
-         * fountain's fate-30 gush floods squares on Dlvl 3 at step 1329, and at
-         * step 1576 C draws rn2(24) then rn2(8) here (leaves 101606-101607) for
-         * a beached ';' with 24 hp.  defsym.h:362 is
-         * `MONSYM(57, ';', EEL, S_EEL, "sea monster")`, so S_EEL is 57;
-         * monflag.h:95 M1_BREATHLESS is 0x00000400.
-         *
-         * The inpool arm above it is still the documented gap it was: this adds
-         * only the else, which is the branch a DRY square takes. */
         if (mlet === S_EEL_ML && !Is_waterlevel(game.u?.uz)
             && (mf1 & M1_BREATHLESS_ML) === 0) {
             if ((mtmp.mhp | 0) > 1 && rn2(mtmp.mhp | 0) > rn2(8))
@@ -17969,44 +14864,6 @@ async function minliquid_core(mtmp) {
         }
         return 0;
     }
-    /* C mon.c:1064-1110 — `} else if (inpool || waterwall) {`, the drowning
-     * arm, of which the TELEPORT ESCAPE at its head is ported here:
-     *
-     *     if ((waterwall || !is_clinger(mtmp->data)) && !cant_drown(mtmp->data)) {
-     *         if (can_teleport(mtmp->data) && !tele_restrict(mtmp)) {
-     *             if (rloc(mtmp, RLOC_MSG))
-     *                 return 0;
-     *         }
-     *         ... drown ...
-     *     }
-     *
-     * rloc() DRAWS — rnd(COLNO-1) + rn2(ROWNO) per placement attempt
-     * (teleport.c:1850-1851) — so a can_teleport monster standing in water is
-     * a multi-leaf event that this port had nowhere to produce.
-     *
-     * MEASURED on gen094-reseed-seed1081192 step 842.  Inside one movemon
-     * pass C draws
-     *     rn2(5) @distfleeck  rn2(5) @distfleeck
-     *     rnd(79)=9 rn2(21)=14 | rnd(79)=29 rn2(21)=8 | rnd(79)=4 rn2(21)=14
-     *     rnd(79)=62 rn2(21)=19 | rnd(79)=73 rn2(21)=7   @rloc(teleport.c:1850-1)
-     *     rn2(5) @distfleeck
-     * — five rejected random spots and then a good one, with NO draw of any
-     * kind between the preceding distfleeck and the first rnd(79).  That rules
-     * out every other rloc call site on the movemon path: dochug's own teleport
-     * (monmove.c:745) is gated behind `!rn2(40)`, m_move's tengu behind
-     * `!rn2(5)` at monmove.c:1841 and its unicorn behind `rn2(2)` at :2064, and
-     * none of those three draws is on the stream.  minliquid runs BEFORE dochug
-     * for each monster (mon.c:1256), which is also why the escaping monster's
-     * own distfleeck comes AFTER its rloc block rather than before it.
-     * Global leaf 79552, the session's first RNG divergence.
-     *
-     * STILL A GAP, and it keeps this function's previous answer (0) exactly as
-     * the other gaps do: the DROWNING tail itself (mon.c:1071-1110 — the
-     * "%s drowns." pline, mondied/xkilled, water_damage_chain and the survivor's
-     * second rloc).  js/makemon.js:5962 mondied is a THROWING stub, and this arm
-     * is newly live, so landing a throw on it would halt the session rather than
-     * mis-score one frame.  A monster that cannot teleport out therefore still
-     * survives its pool here. */
     if (!inlava && (inpool || waterwall)) {   /* C's `else if` — inlava wins */
         const is_clinger_ml = (mf1 & M1_CLING_ML) !== 0;
         /* C mondata.h:28 cant_drown(ptr) = is_swimmer || amphibious || breathless */
@@ -18066,8 +14923,6 @@ async function minliquid_core(mtmp) {
         }
         return 0;
     }
-    /* C mon.c:1170-1177 — the message is gated on cansee() (the SQUARE), so a
-     * monster burning out of the hero's sight is silent. */
     /* C picks the verb from on_fire(mtmp->data, &mattk[0]): "boils away" /
      * "melts away" / "burns to a crisp".  on_fire is unported; "burns to a
      * crisp" is C's default arm.  Screen-only and only when the hero can see
@@ -18088,18 +14943,13 @@ function exp_log(fmt, ...args) {
 
 
 // ───────────────────────────────────────────────────────────────────────
-// mfndpos — port-mfndpos-tm-001 (movemon campaign leaf 2/2). C ref:
-// nethack-c/src/mon.c:2126-2370. Full spec: tasks/generated/
 // keystone-spec-movemon-mfndpos.md. Small direct/transitive C callees are
 // ported inline below (charter_digest) rather than stubbed-and-thrown;
-// each capture-blind carve-out (no side-channel to validate against) is
 // documented at its definition instead of silently faked. Two carve-outs
 // are load-bearing and shared with should_displace (already landed):
 //   - MON_AT(nx,ny) is always "no other monster here" on replay — the
-//     capture schema has no monster-position side-channel (spec §4);
 //     m_at() reading the never-populated game.fmon chain gives this for
 //     free without a special case. Target: ~491/500 (98.2%), not 500/500.
-//   - visible_region_at always returns null (no region-list capture),
 //     which makes the poison-gas skip branch (mon.c:2228-2231)
 //     unconditionally false regardless of m_poisongas_ok's true value —
 //     computing that predicate faithfully would be moot, so it isn't.
@@ -18159,7 +15009,6 @@ function likes_lava_mv(mndx) { return mndx === PM_FIRE_ELEMENTAL || mndx === PM_
 // sokobanRules() precedent, mirrored locally to avoid a needless import).
 function Sokoban_mv() { return !!(game.level?.flags?.sokoban_rules ?? game.sokoban); }
 
-// C ref: youprop.h Displaced/Invis — read from the captured u.uprops[] side
 // channel (js/mcastu.js propOn()/Invis() precedent; not exported there, so
 // mirrored locally).
 function Displaced_mv() {
@@ -18185,9 +15034,7 @@ function bad_rock_mv(mdat, x, y) {
 }
 
 // C ref: hack.c:934 cant_squeeze_thru(mon). `mon` is never the hero in this
-// packet's callers (movemon AI only), so the "mon == &gy.youmonst" branches
 // are structurally omitted (they can never fire). curr_mon_load walks
-// mon->minvent (owt/otyp are captured OBJ_CHAIN_FIELD_ORDER fields).
 function cant_squeeze_thru_mv(mon) {
     const mdat = mon.data;
     if (passes_walls_mv(mdat)) return 0;
@@ -18208,8 +15055,6 @@ function cant_squeeze_thru_mv(mon) {
 //   if (!(svm.mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
 //       && !Protection_from_shape_changers && !stuff_prevents_passage(mtmp))
 //       return TRUE;
-// The old caption's "no capture side-channel" premise is about the DWARF
-// capture schema, not this port: game.mvitals, mon.cham and the full
 // stuff_prevents_passage inventory walk all live in js/monmove.js, exported,
 // and are already what js/cmd.js:23843 calls at the cant_squeeze_thru site.
 // Both mfndpos uses here are the SAME C predicate — the diagonal tight-squeeze
@@ -18218,8 +15063,6 @@ function cant_squeeze_thru_mv(mon) {
 const can_fog_mv = can_fog;
 
 // C ref: worm.c:898 worm_cross(x1,y1,x2,y2) — REAL now (js/worm.js:466,
-// exported).  The old caption's "no capture side-channel" premise was about the
-// DWARF capture schema, not the port: worm.c's wtails[] chain is module-private
 // state in js/worm.js and the full port has lived there since the long-worm
 // work.  mon.c:2253's arm ("mustn't pass between adjacent long worm segments,
 // but can attack that way") drops a diagonal candidate square, and every
@@ -18231,7 +15074,6 @@ const worm_cross_mv = worm_cross;
 //   #define fixed_tele_trap(t) ((t)->ttyp == TELEP_TRAP \
 //                               && isok((t)->teledest.x,(t)->teledest.y))
 // The old caption's premise ("STRUCT_FIELDS['struct trap *'] has no
-// fixed-teleport sub-flag") is about the DWARF capture schema, not this port:
 // teledest is real state in js/, defaulted to {-1,-1} at maketrap
 // (js/mklev.js:6187) and set from a des.trap({teledest=...}) at mklev.js:6292 /
 // trap.js:1538, and js/teleport.js:935 already branches on isok(teledest) at
@@ -18249,8 +15091,6 @@ function fixed_tele_trap_mv(ttmp) {
 // find_defensive/find_misc sites: mfndpos's `cnt` is the argument of m_move's
 // mtrack draw `rn2(4 * (cnt - j))` (monmove.c:1963), so one wrongly-kept
 // candidate square shifts that argument for every later candidate AND lets the
-// monster step onto a square C refuses.  MEASURED on
-// seed0399-wizard-hallu-actions: a scroll of scare monster lies at (56,6), C's
 // mfndpos for the yellow light at (57,5) returns cnt=7 and this port returned
 // cnt=8 — first RNG divergence at leaf 10348, C rn2(24) vs JS rn2(28), and the
 // 'y' ended one row south of where C put it for the rest of the segment.
@@ -18272,7 +15112,6 @@ function is_pool_mv(x, y) {
 // C ref: dbridge.c:62 is_lava(x,y) — LAVAPOOL/LAVAWALL only; the
 // DRAWBRIDGE_UP + DB_LAVA under-mask sub-case is omitted, the same
 // simplification class as is_pool_mv's DRAWBRIDGE_UP handling above (rare,
-// and the level_tiles capture's generic `flags` doesn't distinguish it).
 function is_lava_mv(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
@@ -18294,19 +15133,6 @@ function which_armor_mv(mon, flag) {
     return null;
 }
 
-/* C include/obj.h:217
- *   #define is_axe(otmp)                                              \
- *       ((otmp->oclass == WEAPON_CLASS || otmp->oclass == TOOL_CLASS) \
- *        && objects[otmp->otyp].oc_skill == P_AXE)
- * This read `otyp === AXE` (44) only, which excludes the BATTLE-AXE (45).
- * The oclass guard is load-bearing: oc_skill is a shared schar field and otyps
- * 159-162 (leather gloves, the three gauntlets) also hold P_AXE in it.
- * (The old caption here claimed js/dig.js carried "an apparently-stale AXE=12";
- * it did not — it carried 44 — and it is now the same oc_skill test as this.)
- * NO CALLERS TODAY: mfndpos's C mon.c:2182-2185 arm — a CURSED wielded
- * pick/axe with weapon_check == NO_WEAPON_WANTED — is not ported (mon->mw is
- * not in the capture schema), so this body is dead.  Repaired anyway so the
- * porter who lands that arm does not inherit a wrong premise. */
 const P_AXE_MV = 3; /* skills.h P_AXE */
 function is_axe_mv(obj) {
     if (!obj) return false;
@@ -18323,7 +15149,6 @@ export function mfndpos(mon, data, flag) {
     const y = mon.my | 0;
     // WIRING FIX (movemon integration spec): `mon.data` (a materialized
     // permonst-shaped object) and `mon.data_mndx` only exist on the
-    // capture-replay reconstruction (js/struct_reconstructor.js
     // reconstructMonst) — LIVE monst objects created by makemon/makedog
     // never get a `.data` field (verified: no `.data =` assignment exists
     // anywhere in js/makemon.js or js/dog.js), only `.mndx`/`.mnum` (the
@@ -18332,7 +15157,6 @@ export function mfndpos(mon, data, flag) {
     // prior direct `mon.data.mlet` / `mon.data_mndx` reads crashed with
     // "Cannot read properties of undefined (reading 'mlet')" the instant
     // this function was wired into a live dog_move/m_move call (the leaf
-    // gate never caught this: the replay fixture's reconstructMonst always
     // populates `.data`/`.data_mndx`, so this path was untested on live
     // state). permonstTemplate(mndx) is the SAME materializer
     // reconstructMonst itself calls — reusing it here keeps mdat's shape
@@ -18344,7 +15168,6 @@ export function mfndpos(mon, data, flag) {
 
     // C mon.c:2150 memset(data,0,sizeof(*data)) — explicit reset so this
     // port is correct for any caller, not just the replay fixture's
-    // already-pre-zeroed (PRE_ZERO_ARGS) capture.
     data.cnt = 0;
     for (let i = 0; i < 9; i++) { data.poss[i] = { x: 0, y: 0 }; data.info[i] = 0; }
 
@@ -18364,11 +15187,8 @@ export function mfndpos(mon, data, flag) {
             rockok = treeok = true;
         } else {
             // C mon.c:2170-2172 also special-cases a CURSED wielded
-            // pick/axe (mon->mw) here; mon->mw is not in the capture
             // schema (STRUCT_FIELDS['struct monst *'] has no 'mw' field),
             // so this port always falls through to the m_carrying branch
-            // below — an honest, sweep-verifiable simplification per the
-            // packet charter.
             rockok = !!m_carrying(mon, PICK_AXE_MV)
                 || (!!m_carrying(mon, DWARVISH_MATTOCK_MV) && !which_armor_mv(mon, W_ARMS));
             treeok = !!m_carrying(mon, AXE_MV)
@@ -18499,26 +15319,6 @@ export function mfndpos(mon, data, flag) {
                     } else {
                         const mtmp2 = m_at(nx, ny);
                         if (mtmp2) {
-                            /* C mon.c:2287-2305. mm_aggression/mm_displacement
-                             * (mon.c:2412/2437) are NOT ported here — both are 0
-                             * for the vast majority of monster pairs (they only
-                             * cover purple-worm-vs-shrieker, zombie-maker-vs-
-                             * zombifiable, and W-tower-level pairing; the
-                             * displacer half is implemented by
-                             * mm_displacement_mk above.  Treating aggression as
-                             * 0 mirrors the SAME simplification
-                             * js/monmove.js:mfndpos_nontame already uses
-                             * (established precedent): mmflag reduces to `flag`
-                             * alone, so ALLOW_M is granted here iff the caller's
-                             * flag already requested it (mon_allowflags sets
-                             * ALLOW_M for tame movers). §4's "capture-blind"
-                             * note is about the REPLAY FIXTURE only (game.fmon
-                             * is empty there) — in live play game.fmon IS
-                             * populated, so leaving this branch a no-op (the
-                             * prior version) silently drops ALLOW_M/ALLOW_MDISP
-                             * for every live-play MON_AT square, even when flag
-                             * already carries ALLOW_M — a wiring-integration
-                             * blocker, not a capture gap. */
                             let mmflag = flag;
                             if (mmflag & ALLOW_M) {
                                 data.info[cnt] |= ALLOW_M;
@@ -18552,14 +15352,6 @@ export function mfndpos(mon, data, flag) {
                             data.info[cnt] |= ALLOW_SANCT;
                         }
                     }
-                    /* checkobj = OBJ_AT(nx,ny) in C is a redundant fast-path
-                       guard: sobj_at(X,...) truthy already implies an obj is
-                       present, so `checkobj && sobj_at(X,...)` is equivalent
-                       to `sobj_at(X,...)` alone — calling sobj_at directly
-                       avoids js/const.js's OBJ_AT (which checks
-                       game.level.objects, a field the replay bridge never
-                       populates; floor objects live in levelObjects, same
-                       gap class documented for other packets). */
                     if (sobj_at(CLOVE_OF_GARLIC_MV, nx, ny)) {
                         if (flag & NOGARLIC) {
                             traceReject(nx, ny, 'garlic');
@@ -18710,7 +15502,6 @@ export function iter_mons(fn) {
         next = mtmp.nmon;
         if ((mtmp.mhp | 0) < 1)
             continue;
-        /* Undefined mstate is the port's ordinary floor state (0). */
         if ((mtmp.mstate | 0) !== (MON_FLOOR | 0))
             continue;
         fn(mtmp);
@@ -18847,14 +15638,6 @@ export function stairs_description(sway, outbuf, stcase) {
     return outbuf;
 }
 
-/* ── mon.c's "you angered a peaceful monster" tail ────────────────────────────
- * setmangry() has three callees that had NO js/ body and NO binding in this
- * module: peacefuls_respond(), qst_guardians_respond() and (through the first)
- * angry_guards() and maybe_gasp().  The function therefore threw a
- * ReferenceError the first time the hero angered anything peaceful, which is
- * how seed0030 segment 7 lost its whole 20-frame tail: the Knight misses the
- * peaceful shopkeeper Swidnica, setmangry runs, and the segment dies.
- * These are ports of mon.c:4159-4256 / mon.c:5711-5758 / sounds.c:546-609. */
 
 /* C monflag.h MS_* — only the values this tail actually tests. */
 const MS_SILENT_SM = 0, MS_HUMANOID_SM = 25, MS_ARREST_SM = 26,
@@ -18894,19 +15677,6 @@ function big_little_match_sm(montyp1, montyp2) {
     return false;
 }
 
-/* C ref: sounds.c:546-609 maybe_gasp(mon) — "hero has attacked a peaceful
- * monster within 'mon's view".  Returns the exclamation, or null.
- *
- * THE RNG LEAF: hack.h:1493 ROLL_FROM(Exclam) is `Exclam[rn2(SIZE(Exclam))]`,
- * i.e. an rn2(5) drawn ONLY when dogasp is true.  Getting the dogasp switch
- * wrong therefore costs a draw, not just a message.
- *
- * KNOWN GAP, named not faked: sounds.c:559-561's co-aligned-angel arm
- *     else if (msound == MS_CUSS && has_emin(mon) && ...) msound = MS_HUMANOID;
- * needs EMIN(mon)->renegade, which this port has no reader for.  Leaving msound
- * as MS_CUSS lands on C's own "don't care" arm (dogasp stays FALSE), so the
- * only difference is an angel that would have gasped; no rn2 is drawn either
- * way for the arms this corpus reaches. */
 function maybe_gasp_sm(mon) {
     const Exclam = ["Gasp!", "Uh-oh.", "Oh my!", "What?", "Why?"];
     const mptr = mon.data;
@@ -18942,18 +15712,6 @@ function maybe_gasp_sm(mon) {
     return null;
 }
 
-/* C ref: mon.c:5150-5162 get_iter_mons(bfunc) — walk fmon and return the first
- * live, on-map monster for which `bfunc` returns TRUE (the callback is the
- * side effect; the return value is only tested for NULL).  RNG-FREE.
- *
- * Exported under C's own name: it had NO body anywhere in js/ (js/potion.js's
- * dryup and js/dokick.js's watchman-arrest both name it in comments, and
- * dryup CALLED it), so the first Minetown fountain dip was a live
- * ReferenceError -- seed0014 halted at frame 711 of 714 there.
- * `mon_offmap(mon)` (mon.c) is `mon->mstate & (MON_DETACH|MON_MIGRATING|
- * MON_LIMBO|MON_OFFMAP|MON_BUBBLEMOVE)`; this port has no mstate field, so the
- * test reduces to DEADMONSTER alone -- the same reduction js/fastforward.js:506
- * already documents for its own fmon walk. */
 export function get_iter_mons(bfunc) {
     for (let mtmp = game.fmon, next; mtmp; mtmp = next) {
         next = mtmp.nmon;
@@ -18964,14 +15722,6 @@ export function get_iter_mons(bfunc) {
     }
     return null;
 }
-/* C ref: mon.c:5710-5758 angry_guards(silent) — anger the Minetown watch.
- * RNG-FREE.
- *
- * EXPORTED under C's own name: the capture-replay sweep's fixture stage names
- * `js/mklev.js#angry_guards`, and with no such export it fell through to
- * js/dokick.js's `export function angry_guards(){ throw ... }` and reported
- * 1 run / 1 diverged as a CRITICAL DARK-PORT.  js/dokick.js's throwing copy is
- * left alone here — retiring it is a dokick change, not a mon.c one. */
 export async function angry_guards(silent) {
     let ct = 0, nct = 0, sct = 0, slct = 0;
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
@@ -19018,24 +15768,6 @@ function _sm_m_next2u(mon) {
     return dist2(mon.mx | 0, mon.my | 0, game.u.ux | 0, game.u.uy | 0) <= 2;
 }
 
-/* C ref: mon.c:4159-4256 peacefuls_respond(mtmp) — every OTHER peaceful monster
- * that can see the hero attack `mtmp` reacts.
- *
- * RNG, in C's order, per qualifying monster:
- *   humanoid/shk/priest arm : rn2(5) gasp roll (guarded by !Deaf), then, for a
- *                             non-shk/non-priest/non-leader, rn2(10) against
- *                             mlevel and rn2(50) for the flee timer.
- *   same-mlet arm           : rn2(3), then rn2(4) growl and rn2(6) flee,
- *                             the last with an rn2(25) timer.
- *
- * Deaf has no js/ reader and reads FALSE, which is the value every corpus hero
- * has, so `!Deaf && !rn2(5)` keeps its draw.
- *
- * `exclaimed` after growl() is C's `iflags.last_msg == PLNMSG_GROWL`; js/ has
- * no last_msg channel, so js/mhitm.js's growl() now returns whether it actually
- * printed, which is the same predicate.  It is message-only: monflee's own two
- * draws sit behind flees_light() (an artifact light source) and PM_VROCK,
- * neither of which any of these monsters has. */
 async function peacefuls_respond(mtmp) {
     const mndx = (mtmp.data?.pmidx ?? mtmp.mnum ?? -1) | 0;
     const Deaf = false;
@@ -19208,11 +15940,4 @@ export async function setmangry(mtmp, via_attack) {
         await peacefuls_respond(mtmp);
 }
 
-/* Wire the real somexy() into js/sp_lev_loc.js's get_location() croom branch
- * (C ref: sp_lev.c:1226-1233 — `if (croom) { somexy(croom, &tmpc); ... }`).
- * Module-scope registration, not `game._somexy`: gstate reassigns `game` on
- * reset.  Before this, every des.* opcode that resolved a RANDOM coord inside
- * a room threw "somexy not yet wired" — which is what oracle.lua's
- * `des.monster()` / `des.object()` (no coord field, inside a room's contents
- * closure) hit the moment des.room's contents actually started running. */
 registerSpLevSomexy(somexy);

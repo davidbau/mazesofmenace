@@ -340,7 +340,6 @@ export async function optfn_boolean(optidx, req, negated, opts, op) {
 }
 
 export function can_set_perm_invent() {
-    // The recorder tty build has no TTY_PERM_INVENT. Other window ports
     // expose their actual capabilities, not an assumed successful operation.
     if (!game.windowprocs || !(game.windowprocs.wincap & WC_PERM_INVENT)) return false;
     if (!game.iflags.perminv_mode) game.iflags.perminv_mode = 1;

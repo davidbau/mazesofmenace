@@ -1,5 +1,4 @@
 // worm.js — port of nethack-c/src/worm.c (scaffold: functions are added here
-// one packet at a time by the porting fleet; see tasks/generated/port-*.yaml)
 
 import { MAX_NUM_WORMS, NON_PM, MCORPSENM, NORMAL_SPEED, MSLOW, MFAST, MHPMAX } from './const.js';
 import { PM_LONG_WORM } from './pm.generated.js';
@@ -53,42 +52,10 @@ export function worms_rest_snapshot(saved) {
 }
 
 // newseg() (worm.c:8) — #define newseg() (struct wseg *) alloc(sizeof (struct
-// wseg)); calls_macro_or_libc for this packet, reproduced inline (alloc has
 // no sizeof/malloc model in JS) rather than stubbed, same pattern as
 // js/dungeon.js's local alloc(_size) stub.
 function newseg() { return {}; }
 
-/* THE MAP-GRID GAP — NARROWED 2026-08-21, and the note is kept because the
- * rest of it still stands.
- * C keeps worm segments in `svl.level.monsters[x][y]` — place_worm_seg(m,x,y)
- * (rm.h:533) writes the grid, remove_monster(x,y) (rm.h:534) clears it, and
- * m_at()/MON_AT() READ that grid.  This port has no such grid: js/uhitm.js
- * m_at walks the fmon chain, and a worm segment is not an fmon entry.  The
- * note that used to sit here argued the gap was CHEAP, on the grounds that
- * rnd_nextto_goodpos shuffles before it tests, so a segment we fail to place
- * on the grid cannot change a DRAW COUNT.  That is true of the tail layout
- * itself and false of everything else that reads the grid, which is the half
- * this file never measured:
- *
- *   seed0373-barbarian-quest-tour step 78 generates Sokoban level 1, whose
- *   soko1-1.lua zoo region is filled by fill_zoo(mkroom.c:345).  At the zoo's
- *   8th square C makes a long worm (`rn2(5)=3 @ makemon(makemon.c:1406)`,
- *   leaf 24531 — initworm with 3 tail segments) and lays its tail across three
- *   further squares of that same zoo.  fill_zoo then walks on, and C's
- *   makemon() returns 0 at each of those three squares WITHOUT A SINGLE DRAW
- *   (makemon.c:1193 `if (MON_AT(x, y)) ... return 0`), while still running the
- *   ZOO arm's mkgold().  This port drew a whole monster on each of them: at
- *   leaf 25654 C is on its next square's `mkgold(rn1(100,10))` and we are
- *   already inside rndmonst_adj().  Three occupied squares, one first
- *   divergence, and every leaf of that level's generation after it.
- *
- * So the segment squares are now recorded here, in a module-local occupancy
- * map, and js/uhitm.js m_at() consults it after its fmon walk comes up empty —
- * which is what C's single grid read does in one step.  What is STILL missing
- * is the grid itself: a square holding a live fmon monster and a square
- * holding a worm segment are two different lookups here where C has one, and
- * nothing in this port maintains the grid across level changes, so the map is
- * cleared when a worm is tossed and when its level is left. */
 const _seg_occ = new Map();          /* (x<<8|y) -> the worm whose segment is here */
 const _seg_key = (x, y) => (((x | 0) << 8) | (y & 0xff));
 /* C rm.h:533 place_worm_seg(m, x, y) — `svl.level.monsters[x][y] = m`. */
@@ -99,25 +66,6 @@ function remove_monster(x, y) { _seg_occ.delete(_seg_key(x, y)); }
 /* The grid READ, for js/uhitm.js m_at().  C has no separate entry point: its
  * m_at() is the one grid lookup and a segment square answers with the worm. */
 export function worm_seg_at(x, y) { return _seg_occ.get(_seg_key(x, y)) || null; }
-/* C sp_lev.c:844-846 / :858-860 — the `svl.level.monsters[x][y]` third of
- * flip_level()'s map swap, which sits beside the levl[][] and level.objects[][]
- * swaps js/sp_lev.js already performs.  C flips a worm's body in TWO places and
- * needs both: flip_worm_segs_{vertical,horizontal}() above rewrite each
- * segment's own <wx,wy>, and this grid swap moves the segment's OCCUPANCY with
- * the terrain.  js/sp_lev.js carried a note saying the monsters[][] swap was
- * unnecessary because "game.level.monsters has no real backing"; that stopped
- * being true when _seg_occ was added here, and the two halves then disagreed —
- * a flipped level's worm had its segments' coordinates on one side of the map
- * and their occupancy on the other.
- *
- * MEASURED on gen345-reseed-seed244908 (corpus-generated/v5/train) step 42:
- * the Dlvl-11 arrival flips horizontally, C shows the long worm's two tail
- * segments at <72,11> and <72,12>, and this port had flipped the segments to
- * 72 while leaving _seg_occ keyed at 8 — so m_at() found nothing there and
- * newsym() painted floor.
- *
- * Spelled as a per-cell swap called from the flip loops rather than as a
- * bulk re-key, so it is the same statement in the same place as C's. */
 export function worm_seg_swap(x1, y1, x2, y2) {
     const k1 = _seg_key(x1, y1), k2 = _seg_key(x2, y2);
     const a = _seg_occ.get(k1), b = _seg_occ.get(k2);
@@ -285,19 +233,6 @@ export function cutworm(worm, x, y, cuttier) {
 
 const MONS = /** @type {number[][]} */ (monsPack.mons);
 
-/* C ref: mon.c:1108-1150 mcalcmove(mon, m_moving).  Private copy, deliberately
- * NOT shared with js/fastforward.js's own mcalcmove: that one hardcodes
- * m_moving=TRUE (no such parameter exists there — see its comment "m_moving=
- * TRUE: random rounding to a NORMAL_SPEED multiple"), so it cannot serve
- * worm_move's `mcalcmove(worm, FALSE)` call (worm.c:222).  With m_moving
- * FALSE, C's whole final "randomly round to a NORMAL_SPEED multiple" block —
- * including its rn2(NORMAL_SPEED) draw — is SKIPPED entirely; reusing the
- * fastforward.js version here would draw an RNG value C never draws at this
- * site.  This porter owns only js/worm.js and may not edit js/fastforward.js
- * to add the parameter, so this is a faithful independent copy rather than a
- * shared import.  The u.usteed/ugallop branch is kept for exact structural
- * fidelity even though a long worm can never be u.usteed (worms are never
- * rideable), so it is always false in practice and draws nothing here. */
 function mcalcmove(mon, m_moving) {
     const mndx = (mon.data?.pmidx ?? mon.mndx ?? mon.mnum ?? 0) | 0;
     let mmove = (mndx >= 0 && mndx < MONS.length) ? ((MONS[mndx][9] ?? 0) | 0) : 0;
@@ -328,21 +263,6 @@ function mcalcmove(mon, m_moving) {
     return mmove;
 }
 
-/* C worm.c:189-279 worm_move(worm) — move the worm: place a new head-mirror
- * segment where the head just left, then either grow (extend the tail) or
- * shrink it, on the wgrowtime[] schedule.  Caller must gate on mon->wormno
- * (C's own doc comment on the function).
- *
- * RNG, in exact C order, only on the wgrowtime[wnum] <= svm.moves branch:
- *   mmove = mcalcmove(worm, FALSE)   -- draws nothing for a worm (see above)
- *   incr = rn1(10, 2)                -- SKIPPED when !wgrowtime[wnum]
- *   ... else: rnd(5)                 -- only when !wgrowtime[wnum]
- *   worm->mhp += d(2, 2)             -- unconditional on this branch
- * C's `int mmove = mcalcmove(worm, FALSE), incr = rn1(10, 2);` is one
- * declaration list evaluated left to right, so mmove is computed before incr
- * — reproduced in that order even though mcalcmove draws nothing in
- * practice, so no real corpus session can tell the two orders apart.
- * The no-growth branch (shrink_worm) draws nothing. */
 export function worm_move(worm) {
     const wnum = worm.wormno | 0;
 
@@ -705,25 +625,6 @@ export function worm_cross(x1, y1, x2, y2) {
     return false;
 }
 
-/* C ref: worm.c:213-222 see_wsegs(worm) — "Refresh all of the segments of the
- * given worm.  This is only called from see_monster() in display.c or when a
- * monster goes minvis."
- *
- *     struct wseg *curr = wtails[worm->wormno];
- *     while (curr != wheads[worm->wormno]) { newsym(curr->wx, curr->wy);
- *                                            curr = curr->nseg; }
- *
- * The head segment is deliberately NOT refreshed here: display.c's
- * see_monsters() has already newsym()ed the monster's own <mx,my>, which is
- * the head.  RNG-free (newsym's only randomness is rn2_on_display_rng, the
- * separate DISPLAY context).
- *
- * It lives here rather than in js/display.js because wtails/wheads are this
- * module's private state, the same reason C put it in worm.c ("It is located
- * here for modularity").  js/display.js carried a `see_wsegs` throw-stub until
- * 2026-08-19; that stub halted seed0360-wizard-world-tour at frame 159 the
- * moment allmain.c:466's per-move see_monsters() arm was wired and the run
- * reached a long worm. */
 export function see_wsegs(worm) {
     const wnum = worm.wormno | 0;
     let curr = wtails[wnum];

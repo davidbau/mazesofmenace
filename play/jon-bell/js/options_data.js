@@ -1,9 +1,7 @@
 // @ts-nocheck
 // Generated declarative metadata, not translated gameplay logic.
-// Regenerate/check: node tools/options-table.mjs [--check]
 // Source: nethack-c-v5/upstream/include/optlist.h (NetHack 5.0)
 // SHA-256: 23dafb109132dd63bbfe704b39fac8cccaaeee31a0dbd895c7ba928bd92af9b8
-// Configuration: recorder/include, normal tty preprocessing (no shim defines).
 // Unfiltered: parser ambiguity and aliases include compound/other rows too.
 export const OPTION_DEFINITIONS = [
     {"name":"windowtype","type":"C","section":"Advanced","setwhere":"set_gameview","initval":false,"negateok":false,"valok":true,"dupeok":false,"alias":null,"addr":null,"termpref":"Term_False","pfx":false,"handler":"optfn_windowtype"},

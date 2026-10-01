@@ -107,45 +107,15 @@ function strncmpi(s1, s2, n) {
 function impossible(_msg) { /* paniclog only; no screen output in this port */ }
 /* C ref: monst.h:250 — #define DEADMONSTER(mon) ((mon)->mhp < 1) */
 function DEADMONSTER(mon) { return (mon.mhp | 0) < 1; }
-/* C ref: pline.c:435-452 You_hear — imported from js/display.js.  The copy here
- * gated on Deaf() ALONE, which is wrong twice over: it omitted C's
- * `!flags.acoustics` disjunct and both non-default prefixes, and its Deaf()
- * (:53) reads u.uprops[DEAF], a slot nothing in js/ writes — so the guard could
- * never fire and this was an unconditional print wearing a guard. */
 /* C ref: mondata.h sticks(ptr) — the hero's form can hold a monster.  Read only
  * as the second half of `u.ustuck && !sticks(...)`, and u.ustuck is null for
  * every turn of the guard escort. */
 function sticks(ptr) { return sticks_real(ptr); }
 
-/* Object types and the MON_WEP macro have no js/ exporter; other ported
- * modules (mklev.js, dig.js, makemon.js) define them locally with these
- * C-verified values (objects: BOULDER=475, GOLD_PIECE=438 per mklev.js;
- * MON_WEP(mon) == mon->mw per monst.h:208). Kept local here for the same
- * reason. */
 const BOULDER = 475;
 const GOLD_PIECE = 438;
 function MON_WEP(mon) { return mon.mw; }
 
-/* vault.c:243
- *   char
- *   vault_occupied(char *array)
- *   {
- *       char *ptr;
- *
- *       for (ptr = array; *ptr; ptr++)
- *           if (svr.rooms[*ptr - ROOMOFFSET].rtype == VAULT)
- *               return *ptr;
- *       return '\0';
- *   }
- *
- * `array` is a NUL-terminated string of room indices (roomno + ROOMOFFSET),
- * e.g. u.urooms (you.h:377, char urooms[5]). Each char *ptr indexes
- * svr.rooms[*ptr - ROOMOFFSET] (== game.level.rooms[*ptr - ROOMOFFSET] in the
- * port). Returns the first such char whose room rtype == VAULT, else '\0'.
- *
- * The C return is a `char`; the differential capture records it as the byte's
- * numeric value (the trampoline emits (long) __cap_ret). We therefore return
- * the numeric char code (the room index in the array), and 0 for no match. */
 export function vault_occupied(array) {
     const rooms = game.level?.rooms ?? [];
     // for (ptr = array; *ptr; ptr++) — iterate chars until the NUL terminator.
@@ -293,10 +263,6 @@ function verbalize(line) {
  * output and consumes no RNG. */
 function SetVoice(_mon, _a, _b, _c) { /* no sound driver in this port */ }
 
-/* C ref: mkobj.c:1957 sobj_at(otyp, x, y) — the first object of type `otyp` on
- * the floor at <x,y>, walking the per-tile nexthere chain.  js/makemon.js:3861
- * and js/mklev.js:4062 each carry a file-local copy of exactly this; neither is
- * exported. */
 function sobj_at(otyp, x, y) {
     for (let otmp = game.level?.levelObjects?.[x]?.[y]; otmp; otmp = otmp.nexthere)
         if ((otmp.otyp | 0) === otyp)
@@ -366,14 +332,6 @@ function find_guard_dest(guard, out) {
     return false;
 }
 
-/* C ref: vault.c:316-629 invault(void) — called once per turn from
- * moveloop_core (allmain.c:357), between exerchk() and the u_wipe_engr gate.
- * Everything below the first two guards is dead unless the hero is standing in
- * a vault room, which one public session does (seed0012-monk-vault-escort).
- *
- * async: js/mklev.js makemon() and js/wizcmds.js getlin() are both async — the
- * getlin genuinely blocks, reading the six keystrokes of the hero's answer plus
- * its Return out of the recorded input. */
 async function fracture_vault_boulder(obj) {
     const x = obj.ox | 0, y = obj.oy | 0;
     remove_object(obj);
@@ -381,7 +339,7 @@ async function fracture_vault_boulder(obj) {
     obj.oclass = 13; /* GEM_CLASS */
     obj.quan = rn1(60, 7);
     obj.owt = weight(obj);
-    obj.where = 1; /* OBJ_FLOOR */
+    obj.where = 1;
     place_object(obj, x, y);
     await stackobj(obj);
     newsym(x, y);
@@ -499,10 +457,6 @@ export async function invault() {
         await reset_faint(); /* if fainted - wake up */
         /* if there are any boulders in the guard's way, destroy them */
         if ((otmp = sobj_at(BOULDER, guard.mx, guard.my)) !== null) {
-            /* C vault.c:431-446 — fracture_rock() the whole pile, then
-             * You_see/You_hear "%s shatter."  fracture_rock (dig.c:1620) has no
-             * js/ body and the corpus never puts a boulder under a vault wall,
-             * so this arm is left explicit rather than silently dropped. */
             let count = 0;
             const bname = simpleonames(otmp);
             do {
@@ -531,7 +485,6 @@ export async function invault() {
         }
 
         if (u.uswallow) {
-            /* can't interrogate hero, don't interrogate engulfer */
             if (!Deaf()) {
                 SetVoice(guard, 0, 80, 0);
                 verbalize("What's going on here?");
@@ -755,24 +708,6 @@ function findgd() {
     }
     return null;
 }
-/* C ref: pline.c:376-384 Your(const char *line, ...) —
- *     vpline(YouMessage(tmp, "Your ", line), the_args)
- * and invent.c:1546 currency(long amount).
- *
- * Both were `throw new Error('not yet ported')` while a REAL body for each
- * already existed in the tree: js/do_wear.js:3153 Your(line, ...args) and
- * js/cmd.js:27093 currency(amount) (which carries C's Hallucination
- * ROLL_FROM(currencies) rn2 draw — a hand-written replacement here would
- * have had to reproduce that draw or desync the RNG).  Re-exported rather
- * than re-implemented; neither module imports this one, so no cycle.
- *
- * This is the vault.js:91 call site
- *   Your("%ld %s goes into the Magic Memory Vault.", umoney, currency(umoney))
- * which tools/format-arity-lint.mjs flagged for arity — the arity was moot
- * while the callee threw.  NOTE: nothing in js/ imports vault.js today, so
- * this pays nothing on the public corpus; the sibling stubs mnexto/mongone/
- * freeinv on the same function's OTHER branch still throw and are not part
- * of this defect class. */
 import { Your } from './do_wear.js';
 export { Your };
 export { currency } from './cmd.js';
@@ -916,8 +851,6 @@ function parkguard(grd) {
     EGD(grd).ogy = grd.my | 0;
 }
 
-/* C ref: vault.c:646-729 wallify_vault(grd) — restore any vault wall square the
- * hero (or anything else) opened up, and sweep loose gold back inside. */
 async function wallify_vault(grd) {
     const vlt = EGD(grd).vroom | 0;
     const room = game.level.rooms[vlt];
@@ -1085,8 +1018,6 @@ async function move_gold(gold, vroom) {
     newsym(nx, ny);
 }
 
-/* C vault.c:748-827 gd_pick_corridor_gold().  The guard may briefly move to
- * the coin square, take the coins, and return to its escort position. */
 async function gd_pick_corridor_gold(grd, goldx, goldy) {
     const guardx = grd.mx | 0, guardy = grd.my | 0;
     const underHero = (goldx | 0) === (game.u.ux | 0)

@@ -26,10 +26,6 @@ function strchr(str, ch) {
 import { recalc_block_point, unblock_point, cansee } from './vision.js';
 import { exercise, acurr, change_luck } from './attrib.js';
 import { HALLUC, SHOPBASE, SDOOR, SCORR, CORR, ROOM, STAIRS, LADDER, IRONBARS, DOOR, D_NODOOR, D_ISOPEN, D_BROKEN, D_TRAPPED, D_LOCKED, IS_THRONE, IS_ALTAR, IS_FOUNTAIN, IS_GRAVE, IS_SINK, IS_TREE, IS_STWALL, IS_DOOR, ECMD_TIME, ECMD_CANCEL, ECMD_OK, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, DBWALL, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, KILLED_BY, G_GONE, T_LOOTED, TREE_LOOTED, TREE_SWARM, S_LPUDDING, S_LDWASHER, LA_DOWN, MM_NOMSG, MM_MALE, MM_FEMALE, MM_ANGRY, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT, STONE, ICE, IS_WATERWALL, IS_DRAWBRIDGE, IS_WALL, W_NONDIGGABLE, isok, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH, NON_PM, MIGR_NOWHERE, MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL, MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES, ONAME, has_oname, has_mgivenname, In_mines, Is_stronghold, In_endgame, Is_botlevel, Has_contents, N_DIRS, xdir, ydir,
-/* down_gate (:1006) and ship_object (:1107) both call is_hole() and NEITHER
- * had it in scope — a live ReferenceError on any call, which nothing reached
- * until launch_obj (js/trap.js) started calling down_gate on a rolling
- * boulder's path.  js-binding-audit's "unbound" class, fixed at the import. */
 is_hole, } from './const.js';
 /* prop.h BLINDED — the live key for the Blind macro (see _Blind_dk below). */
 import { BLINDED as DK_BLINDED } from './const.js';
@@ -64,38 +60,15 @@ import { maybe_mnexto } from './teleport.js';
 import { set_apparxy } from './monmove.js';
 import { m_in_out_region } from './region.js';
 import { noteleport_level } from './makemon.js';
-/* C makemon.c permonstTemplate(mndx) — builds the {data,mnum,...} shape
- * enexto_out()/makemon() expect for a not-yet-placed monster (see
- * js/makemon.js:3345 for the identical pattern).  Needed by kick_nondoor's
- * SINK (black pudding / amorous demon) and TREE (killer bee swarm) arms,
- * both of which used to be "makemon stub — WIRE_PENDING" no-ops even though
- * makemon() itself is a complete, already-exported js/mklev.js body with no
- * importer anywhere reaching these two call sites. */
 import { permonstTemplate, monflee } from './makemon.js';
 import { enexto_out } from './teleport.js';
 // C shk.c:1166 is_unpaid() — the ONE implementation lives in js/shk.js, which
 // is this repo's shk.c host module and the module the auto-generated replay
-// fixture (tools/equiv-test/fixtures/is_unpaid.replay.mjs) targets.  This file
 // used to carry a second, throwing copy of the name, which made the local call
 // at dokick.js:937 (ship_object's `unpaid` test) throw at runtime; re-exported
 // rather than re-implemented so there is no second body to drift.
 import { obfree, is_unpaid, in_rooms, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, Shknam as shk_Shknam, hot_pursuit as shk_hot_pursuit, billable, get_cost, get_pricing_units, onbill, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs } from './shk.js';
 import { stairway_at } from './mklev.js';
-/* C dokick.c:1740-1760 -- ship_object()'s break/splat arm.  Every one of these
- * names was read there with NO binding in scope (js-binding-audit's "unbound"
- * class): the arm was a guaranteed ReferenceError, and once otransit_msg()
- * below stopped throwing, `breaktest` became the NEXT thing to halt the same
- * train session (gen039, frame 113/532).
- *   breaktest        dothrow.c:2582, the one body, js/cmd.js:37167 -- it draws
- *                    rn2 via obj_resists(), so skipping it was also an RNG gap
- *   remove_worn_item steal.c:216, the one body, js/steal.js:73
- *   change_luck      attrib.c:520, the one body -- NOT js/mhitm.js's exported
- *                    `change_luck(_n) {}` no-op, which would silently eat the
- *                    mirror/egg luck penalties
- *   ismnum           permonst.h, js/const.js:2909
- *   MKOBJ_OC_MATERIAL  objects[otyp].oc_material; this repo has no `objects[]`
- *                    object array, that column is the table breaktest itself
- *                    reads */
 import { remove_worn_item, rloco } from './steal.js';
 import { ismnum } from './const.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
@@ -111,41 +84,7 @@ import { dealloc_obj, add_to_minv } from './mklev.js';
 import { food_disappears } from './eat.js';
 import { t_at } from './trap.js';
 import { deadhero, do_death_sequence } from './end.js';
-/* C do.c:2426 set_wounded_legs(side, timex).  The ONE body lives in js/cmd.js
- * (this repo's do.c host module, next to heal_legs); both call sites below
- * used to be `set_wounded_legs stub — WIRE_PENDING` comments that drew the
- * duration and threw it away, so a hero who hurt a leg kicking never got
- * wounded legs: ATEMP(A_DEX) never dropped (seed0360 step 547, C Dx:12 vs
- * JS Dx:13), dokick()'s Wounded_legs refusal never fired, and exerper()'s
- * moves%5 `if (Wounded_legs && !u.usteed) exercise(A_DEX, FALSE)` branch
- * (attrib.c:582) never drew its rn2(2). */
 import { set_wounded_legs, ok_to_quest, breaktest, breakmsg, breakobj, altar_wrath, _delobj_useupf as delobj_core, currency as cmd_currency, snuff_candle, thitmonst } from './cmd.js';
-/* C dothrow.c:1078 hurtle(dx, dy, range, verbose) — the ONE body lives in
- * js/cmd.js (this repo's dothrow.c host module, alongside hurtle_step and
- * mhurtle), exported but with ZERO importers anywhere in js/ before this: a
- * finished, never-wired function.  Every "hurtle stub — WIRE_PENDING" comment
- * in this file (kick_dumb, kick_ouch) used to consume the C-matching RNG draw
- * and then silently drop the call, so C's nomul(-range) (u.multi negative)
- * and the resulting position/facing change never happened here — wiring it in
- * is a genuine gap-close (a dead, already-correct export activated) whether
- * or not any single board's records exercise it.
- *
- * CHECKED, NOT ASSUMED: this board's own 19 diverged dokick records were
- * traced by hand (getdir()/confdir() direction-scramble interacting with a
- * 46-call repeated-door-kick sequence at a fixed square) and NONE of them
- * actually reach either hurtle() call site — a `DEBUG_HURTLE`-instrumented
- * sweep run confirmed zero hurtle() invocations across all 104 records, so
- * this wiring is a correctness fix for code this board does not exercise,
- * not a measured cause of any row in its diverged set.  The seven records
- * whose hero.multi/hero.dx/hero.dy diverge with a fully-matched RNG tape
- * (dokick#27/30/75/81/91/99/102) remain OPEN: their dx/dy pattern looks
- * hurtle-shaped but the terrain behind each kick is plain ROOM (not
- * obstructed, not a door), so dokick.c's own Levitation bracing check
- * ("You have nothing to brace yourself against.", ECMD_OK, no state change)
- * should fire in both C and JS alike and does not explain a real ECMD_TIME
- * kick with a reversed facing — left for the next session with the
- * DEBUG_HURTLE instrumentation as a starting point rather than guessed at
- * further. */
 import { hurtle } from './cmd.js';
 import { RIGHT_SIDE } from './const.js';
 import { UNCHANGING } from './const.js';
@@ -175,18 +114,12 @@ import { LEG, is_pit, WEB, STATUE_TRAP, ZAP_POS } from './const.js';
 import { obj_resists } from './zap.js';
 import { useup } from './cmd.js';
 export { is_unpaid, in_rooms, shop_keeper };
-/* C mkobj.c:239-249 mksobj_at / mkobj.c mksobj — both real, complete bodies in
- * js/mklev.js (this repo's mkobj.c host), exported there but with no importer
- * reaching this file's TREE-kick arm before now. */
 import { mksobj_at, mksobj, mpickobj, obj_extract_self } from './mklev.js';
 /* C mkobj.c:1977-1987 rnd_treefruit_at(x, y) — the one real body lives in
  * js/dig.js (a monster-digs-near-a-tree caller already exercises it), which
  * used to keep it file-local; exported there rather than re-derived here so
  * there is only one ROLL_FROM(treefruits) draw site in the tree. */
 import { rnd_treefruit_at, unpunish } from './dig.js';
-/* C do.c:161-360 flooreffects(obj, x, y, verb) — the one body lives in
- * js/cmd.js; scatter()'s landing tail needs it (a scattered object can fall
- * into a trap/pool/lava square exactly as a dropped one can). */
 import { flooreffects } from './cmd.js';
 /* Historical alias, identical to the shared mkobj extraction above. */
 import { obj_extract_self_general } from './cmd.js';
@@ -239,8 +172,6 @@ function is_pool(x, y) {
     const t = loc.typ | 0;
     return t === POOL || t === MOAT || t === WATER || is_moat(x, y);
 }
-/* C ref: dungeon.c Is_juiblex_level(uz) — true on Juiblex level.
-   Not yet ported; stubbed to return false (corpus has no Juiblex records). */
 function Is_juiblex_level(uz) { return Is_juiblex_level_real(uz); }
 /* C ref: dbridge.c:99-114 is_moat(x,y) — MOAT or DRAWBRIDGE_UP over DB_MOAT,
    except on Juiblex level (always false there). */
@@ -292,13 +223,6 @@ export function acurrstr(u) {
     return Math.min(str, 125) - 100;
 }
 
-/* C ref: skills.h:81 martial_bonus() = Role_if(PM_SAMURAI) || Role_if(PM_MONK).
- * dokick.c:8-10 martial() = martial_bonus() || is_bigfoot(youmonst.data)
- *               || (uarmf && uarmf->otyp == KICKING_BOOTS).
- * g.flags.initrole is the roles[] index: Monk=5, Samurai=9.
- * KICKING_BOOTS / Sasquatch-poly are not exercised by the current corpus;
- * we model the role-based martial_bonus() faithfully (the dominant case)
- * and leave bigfoot/kicking-boots as FALSE additions (WIRE_PENDING). */
 function martial() {
     const g = game;
     const u = g.u || {};
@@ -308,11 +232,6 @@ function martial() {
      * otyp constant not surfaced in const.js yet (WIRE_PENDING). */
     return martial_bonus;
 }
-/* rnl(x) is imported from rng.js: it draws the main value via the UNLOGGED
- * RND(x) (like C's rnl, which logs a single "rnl(x)=i" entry) plus the
- * conditional Luck rn2(37+|adj|).  The former local shadow called rn2(x) for the
- * main draw, which logged "rn2(x)" instead of "rnl(x)" and diverged the PRNG
- * annotation channel at kick_door (seed0003 leaf 5628 @dokick.c:930). */
 /* C ref: dokick.c:863-878 kick_dumb(x, y) — no-leverage kick at empty space.
  * RNG: rn2(3) — maybe kick at empty space vs. strain a muscle.
  *      rnd(5)  — wounded legs duration if strained.
@@ -322,10 +241,6 @@ function kick_dumb(x, y) {
     const u = g.u || {};
     /* C: exercise(A_DEX, FALSE) — consumes rn2(2) (the AEXE decrement roll) */
     exercise(A_DEX, false);
-    /* C: if (martial() || ACURR(A_DEX) >= 16 || rn2(3))
-     * Short-circuit ordering matters: rn2(3) is only evaluated when BOTH
-     * martial() is false AND ACURR(A_DEX) < 16.  (For a Monk/Samurai martial()
-     * is true → rn2(3) is NOT drawn; this is the seed0200 path.) */
     const dex = acurr(u, A_DEX) | 0;
     if (martial() || dex >= 16 || rn2(3)) {
         /* C: You("kick at empty space."); if (Blind) feel_location(x,y) — no RNG */
@@ -338,19 +253,6 @@ function kick_dumb(x, y) {
         /* C: set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) */
         set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
     }
-    /* C: if ((Is_airlevel(&u.uz) || Levitation) && rn2(2)) hurtle(...)
-     * Levitation now reads the real uprop (Levitation_dk, dokick.js:153) —
-     * MEASURED (rng-trace --summary on this task's dokick board): C draws
-     * kick_monster's own Levitation-gated rn2(3) (dokick.c:154) on 3 records
-     * this port never drew, because every Levitation read in this file used
-     * to be a hardcoded FALSE stub.  Is_airlevel stays WIRE_PENDING — no
-     * captured record was traced to it.
-     * hurtle(-u.dx, -u.dy, 1, TRUE) — dokick.c:877, range hardcoded to 1.
-     * hurtle() is now the real js/cmd.js body (see the import note above);
-     * this used to draw the rn2(2) and drop the call, leaving hero.multi/
-     * hero.dx/hero.dy unset whenever this branch DOES fire.  Not measured as
-     * the cause of any row on this task's board — see the import note's
-     * "CHECKED, NOT ASSUMED" paragraph. */
     const airlevel = Is_airlevel(u.uz);
     const Levitation = Levitation_dk(u);
     if ((airlevel || Levitation) && rn2(2)) {
@@ -403,32 +305,11 @@ export async function losehp(n, knam, k_format) {
         }
         return;
     }
-    /* C hack.c:4242 / muse.c:1624 — the monster wand path passes through the
-     * one-shot saving-grace guard.  Keep the guard on that caller's killer
-     * label: the captured poison path uses losehp for bookkeeping but C leaves
-     * its HP unchanged, so applying the guard to every losehp caller regresses
-     * gen022 by thousands of RNG leaves. */
     n = (String(knam).toLowerCase().includes('wand'))
         ? monster_saving_grace(n | 0) : (n | 0);
     u.uhp = (u.uhp | 0) - (n | 0);
     if ((u.uhp | 0) > (u.uhpmax | 0))
         u.uhpmax = u.uhp; /* perhaps n was negative */
-    /* C hack.c:4247-4253 —
-     *     if (u.uhp < 1) {
-     *         svk.killer.format = k_format;
-     *         if (svk.killer.name != knam) Strcpy(svk.killer.name, knam ? knam : "");
-     *         urgent_pline("You die...");
-     *         done(DIED);
-     *     }
-     * The comment that stood here said the death path was "not exercised by the
-     * kick_ouch caller", which was true when kick_ouch was the only caller and
-     * is not true now: this function has twenty-odd callers, and seed0103's hero
-     * dies on mount_steed's slip damage (steed.c:354 rn1(5,10) against 4 HP).
-     * Without the arm the hero walked on at 0 HP and the session's last three
-     * frames -- the paged slip line, "You die...--More--", and the
-     * possessions-disclosure prompt -- were never emitted.
-     * The canonical death sequence is awaited here so lifesaving and any
-     * blocking death interaction finish before the damage caller resumes. */
     if ((u.uhp | 0) < 1) {
         /* C hack.c:4248-4250 writes svk.killer, which is the struct
          * formatkiller() (topten.c:172) reads for the tombstone and the score
@@ -445,10 +326,6 @@ export async function losehp(n, knam, k_format) {
         deadhero(0 /* DIED */, { urgentDeathLine: true });
         await do_death_sequence({ inPlace: true });
     } else if ((n | 0) > 0 && (u.uhp | 0) * 10 < (u.uhpmax | 0)) {
-        /* C hack.c:4288-4289 — the low-HP warning.  Absent here, so a hero
-         * dropped under 10% of max got no message at all: seed4500 step 831,
-         * where C pages "You hear the howling of the CwnAnnwn...--More--" on
-         * its own frame after the iron-ball damage. */
         await maybe_wail();
     }
 }
@@ -521,12 +398,6 @@ async function kick_ouch(x, y, kickobjnam) {
     /* C: dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5) */
     const con = acurr(u, A_CON) | 0;
     const dmg = rnd(con > 15 ? 3 : 5); /* consume RNG */
-    /* C: losehp(Maybe_Half_Phys(dmg), kickstr(buf, kickobjnam), KILLED_BY).
-     * Maybe_Half_Phys(dmg) = Half_physical_damage ? (dmg+1)/2 : dmg
-     * (Half_physical_damage is an unported property = false here, so dmg).
-     * losehp (hack.c:4219) consumes no RNG on the normal-form damage path.
-     * Apply the HP loss before the caller continues so the next turn's
-     * regen_hp() gate (u.uhp < u.uhpmax) sees the damage. */
     await losehp(dmg, "kicking something", KILLED_BY);
     /* C: if (Is_airlevel || Levitation) hurtle(-u.dx, -u.dy, rn1(2,4), TRUE)
      * Levitation now reads the real uprop (Levitation_dk, dokick.js:153) —
@@ -799,15 +670,6 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             return ECMD_TIME;
         }
         else if (!(maploc.looted & TREE_SWARM)) {
-            /* C dokick.c:1171-1190 — the killer-bee swarm.  enexto()/makemon()
-             * are both real, exported bodies (js/teleport.js:1009 enexto_out,
-             * js/mklev.js:4911 makemon) with no importer reaching this arm
-             * before now — "makemon stub — WIRE_PENDING" was dropping BOTH
-             * calls' RNG (enexto's collect_coords ring walk, makemon's own
-             * placement/hp/inventory draws) rather than consuming it, so any
-             * corpus kick that swarms a tree left every later draw shifted.
-             *
-             * C: int cnt = rnl(4) + 2 */
             let cnt = rnl(4) + 2;
             let made = 0;
             let mmx = x, mmy = y;
@@ -888,7 +750,6 @@ export async function kick_nondoor(x, y, avrg_attrib) {
                 mmflags |= MM_FEMALE;
             }
             void pline(`${_Blind_dk() ? "Something" : "The dish washer"} returns!`);
-            /* C: if (makemon(...)) newsym(x, y); — newsym is placement-gated. */
             const demon = await makemon(permonstTemplate(PM_AMOROUS_DEMON_DK), x, y, mmflags);
             if (demon) newsym(x, y);
             maploc.looted |= S_LDWASHER;
@@ -925,8 +786,6 @@ async function kick_door(x, y, avrg_attrib) {
     const u = g.u || {};
     const maploc = g.level?.at(x, y);
     if (!maploc) return;
-    /* Levitation macro (youprop.h:240) — reads the real uprop (Levitation_dk,
-     * dokick.js:153); see kick_dumb's identical fix for the measured evidence. */
     const Levitation = Levitation_dk(u);
     /* C: if (doormask == D_ISOPEN || D_BROKEN || D_NODOOR) kick_dumb; return */
     if (maploc.doormask === D_ISOPEN || maploc.doormask === D_BROKEN
@@ -992,30 +851,6 @@ async function kick_door(x, y, avrg_attrib) {
         /* watchman_door_damage (in_town) — WIRE_PENDING */
     }
 }
-/* ── the monster arm of dokick(): maybe_kick_monster / kick_monster / kickdmg ──
- * C ref: dokick.c:33-121 kickdmg, :125-143 maybe_kick_monster,
- *        :146-289 kick_monster.
- *
- * dokick_resolve()'s `if (mtmp)` used to be a WIRE_PENDING early-return whose
- * comment read "Not exercised by the current corpus (no monster on the kicked
- * square)".  That was false: seed0014 step 622 is a ^D kick west into an unseen
- * monster the hero has just bumped into, and C's whole keystroke is five leaves
- *     rn2(20) @gethungry(eat.c:3191)      -- maybe_kick_monster's overexertion()
- *     rn2(3)  @dokick.c:257               -- !rn2(clumsy ? 3 : 4), clumsy from Fumbling
- *     rnd(1)  @kickdmg(dokick.c:81)       -- dmg = rnd((STR+DEX+CON)/15 / 2)
- *     rn2(19) @exercise(attrib.c:509)     -- kickdmg's exercise(A_DEX, TRUE)
- *     rn2(3)  @passive(uhitm.c:6019)
- * with the topline "You kick it."  The stub drew none of them and printed
- * nothing, so the stream parted at global leaf 43341 and the last 91 frames of
- * the session were lost.
- *
- * SCOPED: a TAME target still takes the old early-return (see dokick_resolve).
- * kickdmg's pet arm is `abuse_dog(mon)` (dog.c:1145), and abuse_dog needs
- * yelp() and m_unleash(), both still throwing stubs in this port -- porting it
- * here would either fabricate the pet's reaction or turn a kicked pet from a
- * silent no-op into a halt.  Named here rather than hidden behind an "unreached"
- * claim: if a session kicks its pet, THIS is the gap.
- */
 const _KM_AT_KICK = 3;              /* monattk.h AT_KICK */
 const _KM_S_EEL = 57;               /* defsym.h MONSYM(57, ';', EEL, S_EEL) */
 const _KM_KICKING_BOOTS = 170;      /* objects[] index of "kicking boots" */
@@ -1048,10 +883,6 @@ function _km_nolimbs(ptr) { return (((ptr?.mflags1) | 0) & _KM_M1_NOLIMBS) === _
 function _km_slithy(ptr) { return !!(((ptr?.mflags1) | 0) & _KM_M1_SLITHY); }
 /* C mon.h DEADMONSTER(mon) := ((mon)->mhp < 1). */
 function _km_deadmonster(mon) { return ((mon?.mhp | 0) < 1); }
-/* C youprop.h:129 Fumbling = (HFumbling || EFumbling).  seed0014's hero is
- * wearing fumble boots -- "You trip over your own feet." at step 617 is the
- * same property -- and that is the ONLY reason its kick is clumsy, which is
- * what makes C's roll rn2(3) and not rn2(4). */
 function _km_fumbling() {
     const p = game.u?.uprops?.[FUMBLING];
     return !!(p && (((p.intrinsic | 0)) || ((p.extrinsic | 0))));
@@ -1230,13 +1061,6 @@ async function kick_monster(mon, x, y) {
     /* anger target even if wild miss will occur */
     await setmangry(mon, true);
 
-    /* C dokick.c:154-159 -- Levitation wild miss.  Levitation now reads the
-     * real uprop (Levitation_dk, dokick.js:153), matching dokick_resolve's
-     * bracing check at dokick.js:1150.  MEASURED (rng-trace --summary on this
-     * task's dokick capture board): with the old hardcoded FALSE, C's
-     * Levitation-gated rn2(3) here (dokick.c:154) was drawn on 3 board
-     * records this port never drew, desyncing the RNG tape for the rest of
-     * the call (rng_result_tape_oor on later draws in the same record). */
     const Levitation = Levitation_dk(u);
     if (Levitation && !rn2(3) && _km_verysmall(mon.data) && !_km_is_flyer(mon.data)) {
         void pline('Floating in the air, you miss wildly!');
@@ -1363,13 +1187,6 @@ function _ko_Is_box(o) { const t = o.otyp | 0; return t === _KO_LARGE_BOX || t =
 function _ko_Is_mbag(o) { const t = o.otyp | 0; return t === _KO_BAG_OF_HOLDING || t === _KO_BAG_OF_TRICKS; }
 function _ko_is_art_mjollnir(o) { return !!(o && (o.oartifact | 0) === _KO_ART_MJOLLNIR); }
 
-/* C ref: dokick.c:409-485 container_impact_dmg(obj, x, y) — a kicked/dropped/
- * thrown container's fragile contents (glass, eggs) may break.  Reached only
- * when the kicked object Is_container() && Has_contents() && !Is_mbag().
- * Shop billing (costly/stolen_value/make_angry_shk) is WIRE_PENDING here, same
- * as this file's other shop-billing gaps (SHOP_DOOR_COST is the only shop
- * billing this port models) — costly requires a shop_keeper at (x,y), which
- * these sessions' corridors/vaults don't have. */
 export async function container_impact_dmg(obj, x, y) {
     if (!_ko_Is_container(obj) || !Has_contents(obj) || _ko_Is_mbag(obj))
         return;
@@ -1443,7 +1260,7 @@ async function really_kick_object(x, y, kickedobj) {
 
     const trap = t_at(x, y);
     if (trap) {
-        if ((is_pit(trap.ttyp | 0) && !false /* Passes_walls: WIRE_PENDING, false for every corpus hero */)
+        if ((is_pit(trap.ttyp | 0) && !false)
             || (trap.ttyp | 0) === WEB) {
             if (!trap.tseen)
                 await find_trap(trap);
@@ -1463,11 +1280,6 @@ async function really_kick_object(x, y, kickedobj) {
         return 1;
     }
 
-    /* C dokick.c:542-556 -- bare-footed cockatrice/chickatrice corpse kick
-     * (touch_petrifies + polymon/instapetrify).  WIRE_PENDING: no corpus
-     * session kicks a cockatrice corpse barefoot; touch_petrifies() itself
-     * draws no RNG (a pure permonst-index compare), so skipping this arm does
-     * not shift any RNG this port would otherwise draw on the common path. */
 
     const isgold = (kickedobj.oclass | 0) === _KO_COIN_CLASS;
     let k_owt = weight(kickedobj);
@@ -1485,7 +1297,7 @@ async function really_kick_object(x, y, kickedobj) {
     let slide = false;
     if (is_pool(x, y)) {
         range = Math.trunc(range / 3) + 1;
-    } else if (false /* Is_airlevel || Is_waterlevel: WIRE_PENDING, false for every corpus hero */) {
+    } else if (false) {
         range += rnd(3);
     } else {
         if (is_ice(x, y)) { range += rnd(3); slide = true; }
@@ -1504,10 +1316,6 @@ async function really_kick_object(x, y, kickedobj) {
         range = 1;
 
     const shkp = await find_objowner(kickedobj, x, y);
-    /* costly_adjacent is not ported anywhere in this tree (WIRE_PENDING); the
-     * narrower costly_spot half is real (js/shk.js), so `costly` is FALSE
-     * whenever the kicked-from square itself isn't a billable shop floor --
-     * exactly the case for every corridor/vault kick this corpus records. */
     const costly = !!(shkp && costly_spot(x, y));
 
     void pline(`You kick ${!isgold ? (await singular(kickedobj, doname)) : (await doname(kickedobj))}.`);
@@ -1641,15 +1449,6 @@ async function really_kick_object(x, y, kickedobj) {
     await snuff_candle(kickedobj);
     newsym(x, y);
 
-    /* C dokick.c:736-738 bhit(u.dx, u.dy, range, KICKED_WEAPON, ...).  No
-     * ported bhit() exists anywhere in this tree; this walks the same
-     * straight line bhit() does (object starts one square out, then steps up
-     * to range-1 further), stopping at the map edge or a water/lava wall, and
-     * looking for a monster at each square.  IRONBARS-stops-the-object and
-     * shopkeeper-catches-a-thrown-pick are WIRE_PENDING (no session records
-     * kicking anything down an ironbarred or shop corridor far enough to
-     * reach them, and bhit's own RNG for those -- !rn2(5) on IRONBARS past
-     * point-blank range -- is only drawn once the walk gets that far). */
     let bx = x, by = y, bRange = range - 1, mon = null;
     while (bRange-- > 0) {
         const nx = bx + dxTo, ny = by + dyTo;
@@ -1686,8 +1485,6 @@ async function really_kick_object(x, y, kickedobj) {
             const mercenary = (mflags2 & 0x00000200) !== 0;
             if (!likesGold && !mon.isshk && !mon.ispriest && !mon.isgd && !mercenary) {
                 await wakeup_attack(mon, true);
-                /* C's miss() formats this with xname/mon_nam; preserve the
-                 * visible outcome while returning the coin to the floor. */
                 if (canspotmon(mon))
                     await pline(`${xname(kickedobj)} misses ${mon_nam(mon)}.`);
             } else if (!(mon.mcanmove | 0)) {
@@ -1719,13 +1516,6 @@ async function really_kick_object(x, y, kickedobj) {
     return 1;
 }
 
-/* C ref: dokick.c:1256-1304 dokick() tail — kick resolution after getdir().
- * The getdir() prompt + direction read + the no_kick guards are handled by
- * the cmd.js wrapper; this resolves the kick once a valid (dx,dy) is set.
- * For the current corpus the hero is a normal humanoid: not uswallow, not
- * levitating, not in a pit, not on the air level, so the recoil/brace
- * branches are inert.  The 5-test terrain dispatch (monster, pool, object,
- * door, non-door) mirrors C exactly. */
 export async function dokick_resolve() {
     const g = game;
     const u = g.u || {};
@@ -1750,26 +1540,6 @@ export async function dokick_resolve() {
         avrg_attrib = Math.trunc((acurrstr(u) + (acurr(u, A_DEX) | 0)
             + (acurr(u, A_CON) | 0)) / 3);
     }
-    /* C: u.uswallow / utrap-pit — none apply for the corpus hero (not
-     * swallowed, not in a pit).  WIRE_PENDING. */
-    /* C dokick.c:1354-1368 — Levitation bracing check.  While levitating the
-     * hero needs something solid BEHIND them (the square opposite the kick
-     * direction) to brace against; if that square is open floor (not
-     * obstructed, not a door — doors can be opened while levitating so they
-     * count as bracing), the kick has NO EFFECT and dokick returns ECMD_OK
-     * immediately, WITHOUT ever computing mtmp or calling
-     * maybe_kick_monster.  This branch was entirely absent (the old comment
-     * claimed "not levitating" for the whole corpus); missing it let a
-     * levitating-hero kick fall through into maybe_kick_monster and draw
-     * gethungry's rn2(20), which C never reaches here — a phantom draw that
-     * overran the recorded 1-value tape (confdir's own u_maybe_impaired
-     * rn2(5) is C's only draw for the whole call).  MEASURED on this board's
-     * dokick.jsonl rec#61 (and the same shape at rec#s 62-98 except the
-     * confdir-scrambled-direction records): hero.uprops[LEVITATION]
-     * intrinsic=119, target-behind square (49,9) typ=ROOM, not a door,
-     * not an air level here so the OBJ_AT half of the C condition is
-     * bypassed by `!Is_airlevel || …` — C prints "You have nothing to brace
-     * yourself against." and returns ECMD_OK. */
     if (Levitation_dk(u)) {
         const xx = (u.ux | 0) - dx;
         const yy = (u.uy | 0) - dy;
@@ -1784,9 +1554,6 @@ export async function dokick_resolve() {
     }
     const isokTarget = (x >= 0 && x < 80 && y >= 0 && y < 21);
     const mtmp = isokTarget ? m_at(x, y) : null;
-    /* C: if (mtmp) { ... maybe_kick_monster ... } — monster kick path.
-     * Not exercised by the current corpus (no monster on the kicked square);
-     * WIRE_PENDING: full kick_monster / maybe_kick_monster. */
     /* C dokick.c:1370-1378 -- "might not kick monster if it is hidden and
      * becomes revealed, if it is peaceful and player declines to attack, or if
      * the hero passes out due to encumbrance with low hp; svc.context.move will
@@ -1794,21 +1561,6 @@ export async function dokick_resolve() {
     let oldInvis = false;
     if (mtmp) {
         oldInvis = glyph_is_invisible_at(x, y);
-        /* C dokick.c:1377-1382 —
-         *     oldglyph = glyph_at(x, y);
-         *     if (!maybe_kick_monster(mtmp, x, y))
-         *         return (svc.context.move ? ECMD_TIME : ECMD_OK);
-         *
-         * The TAME early-return below used to sit ABOVE this call, so a kick
-         * aimed at a pet never entered maybe_kick_monster at all -- and that is
-         * the ONLY caller in the game that reaches attack_checks's "Really
-         * attack %s?" confirmation, because do_attack's own is_safemon block
-         * returns first for a peaceful target.  MEASURED: gen293 / gen333 /
-         * gen397 (step 14, `^D` then 'j') and gen560 (step 30, `^D` then 'h')
-         * all record C asking "Really attack the kitten? [yn] (n)"; this port
-         * silently consumed the turn.  On all four the answer is 'n' or ESC, so
-         * maybe_kick_monster returns FALSE with context.move 0 and the kick is
-         * called off before kick_monster -- the pet arm below is not reached. */
         if (!await maybe_kick_monster(mtmp, x, y))
             return (g.context.move ? ECMD_TIME : ECMD_OK);
         /* A TAME target that survives maybe_kick_monster goes on to
@@ -1816,16 +1568,6 @@ export async function dokick_resolve() {
          * is abuse_dog() (dog.c:1381), and yelp()/m_unleash() are real bodies
          * now (js/mhitm.js yelp, js/dog.js m_unleash). */
     }
-    /* C ref: dokick.c:1383-1384 — wake_nearby(FALSE); u_wipe_engr(2);
-     * wake_nearby is RNG-free here (it only clears msleeping / disturbs buried
-     * zombies).  u_wipe_engr(2) (engrave.c:264) erodes the engraving the hero is
-     * STANDING ON, and that is NOT RNG-free whenever one is present: wipe_engr_at
-     * → wipeout_text(text, 2, 0) draws rn2(strlen) + rn2(4) [+ rn2(#substitutes)]
-     * per eroded character.  seed1100 step 19 kicks the locked door while standing
-     * on the dust engraving "?d ae? riur" (11 chars), so C's next leaf after the
-     * kick's direction read is rn2(11) @wipeout_text(engrave.c:134); JS jumped
-     * straight to kick_door's exercise(A_DEX) rn2(19) (attrib.c:509) and diverged
-     * there (first-divergence leaf 2804). */
     /* C dokick.c:1383 — wake_nearby(FALSE), before the engraving is wiped. */
     {
         const u = game.u || {};
@@ -1871,10 +1613,6 @@ export async function dokick_resolve() {
         void pline(`You splash some ${is_pool(x, y) ? "water" : "lava"} around.`);
         return ECMD_TIME;
     }
-    /* C dokick.c:1452-1463 — OBJ_AT(x,y) && (!Levitation || Is_airlevel
-     * || Is_waterlevel || sobj_at(BOULDER,x,y)).  Is_waterlevel is
-     * WIRE_PENDING (false for every corpus hero, matching this file's other
-     * Is_waterlevel/Is_airlevel gaps). */
     const objHere = obj_at(x, y);
     if (objHere) {
         let hasBoulder = false;
@@ -1899,40 +1637,11 @@ export async function dokick_resolve() {
     }
     return await kick_nondoor(x, y, avrg_attrib);
 }
-/* C ref: engrave.c:264 u_wipe_engr(cnt) —
- *     if (can_reach_floor(TRUE)) wipe_engr_at(u.ux, u.uy, cnt, FALSE);
- * can_reach_floor is the same WIRE_PENDING stub this file already uses for the
- * Levitation/steed branches, so it is TRUE here.  The whole-corpus
- * justification this note used to carry was RETRACTED 2026-08-29 — see
- * can_reach_floor's own definition below for what replaced it and for the
- * measurement.  That measurement is a REACH result, so treat the value as
- * unmeasured, per TOOLING_PHILOSOPHY 15. */
 function u_wipe_engr(cnt) {
     const u = game.u || {};
     if (can_reach_floor(true))
         wipe_engr_at(u.ux | 0, u.uy | 0, cnt, false);
 }
-/* C ref: engrave.c:187 can_reach_floor(check_pit).  WIRE_PENDING stub matching
- * this file's existing Levitation convention.
- *
- * RETRACTED here 2026-08-29: this note used to license the stub by asserting
- * that the corpus hero is never engulfed, stuck, mounted or hiding and never
- * levitating.  That is a claim about the WHOLE corpus and it does not survive
- * the recordings, which carry Fly on 25 sessions, Ride on 7 and Lev on 7.  The
- * far narrower thing the stub actually needs is a claim about the STATE AT THIS
- * CALL, and that has now been measured rather than assumed.  Method: arm-level
- * instrumentation on the scored replay path (tools/lib/scored-replay.mjs),
- * reading the LIVE numeric u.uprops[<id>] spelling — the string-keyed one is
- * dead and reports a false zero — with a per-moveloop positive control proving
- * the reader does see these states elsewhere (BLINDED 37 sessions, HALLUC 21,
- * NOHANDS 14, FLYING 12, SWALLOW 5, STEED 5, STUNNED 2, DEAF 1, LEVITATION 0).
- *
- * MEASURED: subject=can_reach_floor-falsifying-state value=+0 at=d26664bc
- *           date=2026-08-29 corpus=public+train (44 + 688 sessions)
- *           reach=196 calls over 103 sessions; at the call Levitation 0,
- *           Flying 0, usteed 0, uundetected 0, uswallow 0
- *           recheck-when=js-levitation-state-exists (the port sets LEVITATION
- *           in 0 of 732 sessions, so this arm's safety is partly circular) */
 function can_reach_floor(_check_pit) {
     const u = game.u || {};
     if (u.uswallow || u.usteed || u.uundetected) return false;
@@ -2117,18 +1826,9 @@ export async function impact_drop(missile, x, y, dlev) {
     }
 }
 
-/* ── Helpers ported for ship_object ──
- * stairway_at (C stairs.c:39) and t_at (C trap.c) are the real bodies from
- * js/mklev.js and js/trap.js.  Both used to be file-local `return null` stubs
- * here, so down_gate() and drop_to() behaved as if no square ever held a
- * stairway or a trap — a SILENT stub, not a throw. */
 function on_level(a, b) {
     return a && b && a.dnum === b.dnum && a.dlevel === b.dlevel;
 }
-/* C quest.c:139 ok_to_quest() — the ONE body lives in js/cmd.js (this repo's
- * quest.c host for the Qstat accessors, next to _quest_status).  This file
- * carried a throwing stub of the same name, which is what down_gate() below
- * resolved to. */
 export function down_gate(x, y) {
     const g = game;
     const u = g.u || {};
@@ -2200,17 +1900,12 @@ function drop_to(cc, loc, x, y) {
     }
 }
 
-/* C ref: dokick.c:1638-1767 ship_object(otmp, x, y, shop_floor_obj) */
 export async function ship_object(otmp, x, y, shop_floor_obj) {
     const g = game;
     const u = g.u || {};
     /* SHOPBASE comes from const.js (mkroom.h:66 = 14); the local `= 12` copy
      * that used to be declared here shadowed it with a wrong value. */
     const BOULDER = 475, COIN_CLASS = 12;
-    /* MIGR_NOWHERE / MIGR_LADDER_UP now come from ./const.js (-1 / 5,
-     * dungeon.h:149,152).  The local copies read 0 and 3: with down_gate()
-     * returning -1 for failure, `toloc === MIGR_NOWHERE` was never true here,
-     * so ship_object() ran on past the C early-return (C dokick.c:1663-1664). */
     /* C dokick.c:1717-1723 tests `objects[otyp].oc_material == GLASS`,
      * `otyp == EXPENSIVE_CAMERA`, `otyp == MIRROR` and `otyp == EGG`.  All four
      * values here were from a stale index space, so the whole crash/splat
@@ -2332,17 +2027,6 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
 /* Unported helper stubs — these must throw; stubbing with no-op breaks state invariants. */
 export { obj_extract_self } from './mklev.js';
 export { add_to_minv } from './mklev.js';
-/* rndorcname — C ref: do_name.c:1538-1555.  This WAS a local
- * `function rndorcname() { return ""; }` stub that consumed NO RNG, while C's
- * christen_orc() below calls `rndorcname(buf2)` with a real stack buffer and
- * therefore always burns rn1(2,3) + rn2(2) plus 2*iend-1 more draws.  The one
- * real port lives in js/mhitm.js (imported at the top of this file); the stub
- * shadowed it, so every christen_orc() — the orctown loot-delivery naming path
- * (deliver_obj_to_mon below) and stolen_booty()'s gang naming — diverged the
- * RNG stream by 5..9 leaves per orc.  Measured on
- * corpus-generated/v5/train/gen141-reseed-seed1076328, C leaf 7763:
- * `rn2(2)=0 @ rndorcname(do_name.c:1543)`.
- * Local stubs — will be intercepted by capture-replay harness */
 function upstart(s) { if (s && s.length > 0) { const c = s.charCodeAt(0); return ((c >= 97 && c <= 122) ? String.fromCharCode(c - 32) : s.charAt(0)) + s.slice(1); } return s; }
 /* christen_monst — C ref: nethack-c/src/do_name.c:30-46 new_mgivenname
  * (inlined) + nethack-c/src/do_name.c:132-153 christen_monst. Local copy
@@ -2399,12 +2083,6 @@ export function christen_orc(mtmp, gang, other) {
     }
     return mtmp;
 }
-/* free_oname — C ref: do_name.c:80-88.  ONAME(o)/has_oname(o) (js/const.js:2890)
- * read `o.oextra.oname`; this wrote the FLAT `o.oname` that js/mhitm.js's
- * capture-replay new_oname() uses and nothing on the live path reads, so
- * deliver_obj_to_mon()'s "the name has been transferred to the orc, drop it
- * from the object" step below was a no-op and the delivered loot kept its gang
- * name.  Clear both spellings. */
 export function free_oname(otmp) {
     if (otmp.oextra)
         otmp.oextra.oname = null;
@@ -2425,12 +2103,6 @@ export { add_to_migration, mksobj_migr_to_species };
 /* mon.c:5710 angry_guards — expose the canonical mklev implementation rather
  * than retaining a throwing shadow for external callers. */
 export async function angry_guards(flag) { return await mklev_angry_guards(flag); }
-/* C shk.c:5350-5363 costly_spot(x, y) -- js/shk.js:1339 carries the complete
- * body; this was a WRONG-TWIN throwing stub of the same shape js/cmd.js's own
- * (now-fixed) copy was.  Three live call sites in THIS file (dokick.js:1462
- * kick_object's on-the-ground-in-a-shop check, :1512/:1742 ship_object's
- * shop-billing arms) resolved to this local declaration rather than the
- * import and threw the instant a kick happened on a shop floor. */
 export function costly_spot(x, y) {
     return shk_costly_spot(x, y);
 }
@@ -2464,20 +2136,6 @@ function Soundeffect(senum, vol) { /* audio only -- no state, no RNG */ }
  * were eleven by the time they were counted; there is one.
  */
 
-/* C ref: dokick.c:1908-1941 otransit_msg(otmp, nodrop, chainthere, num)
- *
- * The message ship_object() prints when a kicked/thrown/dropped object goes
- * down a gate the hero can see.  It was a throwing stub, and because
- * ship_object() calls it BEFORE the nodrop early-return, ANY visible object
- * transit killed the replay outright -- two train sessions halted here, one at
- * frame 811/1814 (a monster's thrown weapon, mhitu.c drop_throw) and one at
- * 113/532 (a rolling boulder trap's launch_obj, trap.c ohitmon).
- *
- * RNG-free: every leaf here (corpse_xname/Tobjnam/otense) is string formatting.
- * gg.gate_str is set by down_gate() a few frames earlier; ship_object() only
- * reaches this call when down_gate() returned something other than
- * MIGR_NOWHERE, so it is always a live string by the time we read it.
- */
 export function otransit_msg(otmp, nodrop, chainthere, num) {
     const g = game;
     let optr, obuf, xbuf;
@@ -2944,17 +2602,6 @@ export async function breaks(otmp, nx, ny) {
 export async function delobj(otmp) {
     return await delobj_core(otmp);
 }
-/* C prop.h HALF_PHDAM (const.js:2384) — Maybe_Half_Phys(dmg) = the uprop
- * halves damage.  This file's kick_object() (dokick.js:400 area) and several
- * OTHER files (js/mhitu.js, js/spell.js, js/potion.js, js/fastforward.js) all
- * carry a comment claiming "Half_physical_damage is unported = false"; that
- * was true only in the sense that nothing WRITES the prop today (grep,
- * 2026-09-05: zero writers of u.uprops[HALF_PHDAM] anywhere in js/), which
- * makes it behaviorally false right now but not a structural absence — the
- * live accessor already exists (js/cmd.js's private `_uprop_active`,
- * js/mcastu.js's private `propOn`, both keyed on the numeric prop id since
- * [[uprops-has-three-spellings-one-live]]).  Match that convention here
- * rather than hardcode a value this file cannot see change. */
 function _dk_Maybe_Half_Phys(dmg) {
     const p = game.u?.uprops?.[HALF_PHDAM];
     const active = !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
@@ -3148,28 +2795,6 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
 /* stairway_find_from: LOCAL throwing stub DELETED — use mklev.js's canonical
  * stairs lookup at the migration call site above. */
 
-/* ── C ref: youprop.h:96-120 — the Blind and Hallucination macros ─────────────
- *   HBlinded  u.uprops[BLINDED].intrinsic / EBlinded .extrinsic / BBlinded .blocked
- *   Blind             ((HBlinded || EBlinded) && !BBlinded)
- *   HHallucination    u.uprops[HALLUC].intrinsic          (INTRINSIC only — there
- *                     is no extrinsic term on HALLUC and no 'blocked' test)
- *   Halluc_resistance HHalluc_resistance || EHalluc_resistance
- *   Hallucination     (HHallucination && !Halluc_resistance)
- *
- * The call sites in this file used to derive these from `u._blind` /
- * `u._hallucination` — property names that NOTHING in js/ or frozen/ ever
- * assigns (tools/never-written-field-lint.mjs ranks both NO-WRITER, 13 and 3
- * read sites), so every one of them was permanently FALSE.  That was invisible
- * for as long as the hero could not go blind at all; js/do_wear.js's Blindf_on
- * now confers EBlinded when a blindfold goes on, so a dead guard here is a
- * wrong guard.
- *
- * They read the LIVE binding now: the NUMERIC prop index, which is what
- * js/zap.js's make_blinded, js/eat.js and Blindf_on actually write, and what
- * js/vision.js:19 and js/display.js:3941 already test.  This is deliberately
- * not the string key `u.uprops.BLINDED`, which is a third spelling of the same
- * property and is dead for the same reason.  RNG-free.
- */
 function _Blind_dk() {
     const u = game.u;
     if (!u) return false;
@@ -3177,10 +2802,6 @@ function _Blind_dk() {
     return !!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
             && !(bp.blocked | 0);
 }
-/* C ref: youprop.h Deaf = (HDeaf || EDeaf) && !BDeaf — u.uprops[DEAF], same
- * pattern as _Blind_dk above.  Used by kick_nondoor's SINK arm (dokick.c
- * :1201-1206, :1211-1215) — both plines there pick DEAF-specific text rather
- * than being gated on/off by it. */
 function _Deaf_dk() {
     const u = game.u;
     if (!u) return false;

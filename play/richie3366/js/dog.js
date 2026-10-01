@@ -40,7 +40,7 @@ import { christen_monst, Monnam, mon_pmname, s_suffix } from './do_name.js';
 import {
     monnear, m_at, see_monster_closeup, minliquid, restore_cham,
     wake_nearto, discard_minvent, mdrop_special_objs,
-    mon_leaving_level, m_into_limbo, healmon, dealloc_monst,
+    mon_leaving_level, m_into_limbo, healmon, dealloc_monst, mnexto,
 } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import {
@@ -794,6 +794,8 @@ function arrive_stairway_find_dir(up) {
 function mon_arrive_link(mtmp) {
     mtmp.mstate = (mtmp.mstate | 0) | MON_STILL_ARRIVING;
     if (!game.fmon) game.fmon = [];
+    // C `:431–432` — mtmp->nmon = fmon before the prepend (relmon keeps nmon).
+    mtmp.nmon = game.fmon[0] || null;
     game.fmon.unshift(mtmp);
     if (mtmp.isshk) set_residency(mtmp, false);
     const num_segs = mtmp.wormno | 0;
@@ -826,14 +828,16 @@ async function mon_arrive_with_you(mtmp) {
     await restore_cham(mtmp);
     if (mtmp === u.usteed) return;
 
+    // C `:472–477` — !MON_AT && !rn2 gate; rloc_to onto the hero spot,
+    // else the live mnexto (enexto fail → deal_with_overcrowding, C
+    // mon.c:3966–3969 — never rloc_to onto the hero; mon_telecontrol +
+    // RLOC_NOMSG ride along). Both placements awaited: rloc_to is async
+    // and losedogs sequences arriving migrants.
     const onSpot = m_at(u.ux, u.uy);
     if (!onSpot && !rn2(mtmp.mtame ? 10 : mtmp.mpeaceful ? 5 : 2)) {
-        rloc_to(mtmp, u.ux, u.uy);
+        await rloc_to(mtmp, u.ux, u.uy);
     } else {
-        // C: mnexto — enexto near hero then rloc_to
-        const mm = { x: 0, y: 0 };
-        if (enexto(mm, u.ux, u.uy, mtmp.data)) rloc_to(mtmp, mm.x, mm.y);
-        else rloc_to(mtmp, u.ux, u.uy);
+        await mnexto(mtmp, RLOC_NOMSG);
     }
     mtmp.mstate = (mtmp.mstate | 0) & ~MON_STILL_ARRIVING;
 }

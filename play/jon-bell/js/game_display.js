@@ -1,14 +1,10 @@
-// DO NOT EDIT — This file is part of the contest's fixed infrastructure.
-// The judge overwrites it from frozen/ on every scoring run.
 // game_display.js — NetHack-specific display wrapper around Terminal.
 // Adds game state properties (topMessage, toplines, toplin) and
-// message window handling. Delegates all terminal operations to
 // the wrapped Terminal instance.
 //
 // Usage:
 //   const terminal = new Terminal('game-container');
 //   const display = new GameDisplay(terminal);
-//   // display.setCell, display.readKey etc. all delegate to terminal
 //   // display.topMessage, display.putstr_message are NetHack-specific
 
 import { Terminal, CLR_GRAY } from './terminal.js';
@@ -36,7 +32,6 @@ export class GameDisplay {
         this.messageWinFlags = 0;
     }
 
-    // --- Delegate all Terminal properties and methods ---
 
     get rows() { return this.terminal.rows; }
     get cols() { return this.terminal.cols; }
@@ -72,7 +67,6 @@ export class GameDisplay {
     colorToCss(color) { return this.terminal.colorToCss(color); }
     captureForShell() { return this.terminal.captureForShell(); }
 
-    // Input methods — delegate to terminal with NetHack-specific defaults
     pushKey(code) { return this.terminal.pushKey(code); }
     clearInputQueue() { return this.terminal.clearInputQueue(); }
     get isWaitingForInput() { return this.terminal.isWaitingForInput; }

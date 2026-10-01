@@ -4,37 +4,24 @@
 // C ref: nethack-c-v5/upstream/src/bones.c.
 //
 // ── THE PREMISE THIS FILE USED TO CARRY, AND WHY IT IS FALSE ─────────────────
-// Until 2026-08-20 the whole file was one function under this comment:
 //
-//     "In the contest there are no actual bones files on disk, so
 //      open_bonesfile always returns NULL -> getbones always returns 0.  The
 //      only RNG-visible effect is the rn2(3) call at line 643."
 //
 // That is measurably wrong, and it is wrong because it reasons about DISK.  The
-// v5 harness hands runSegment() a `storage` handle (js/storage.js, the frozen
-// save/bones/topten VFS) that is SHARED ACROSS THE SEGMENTS OF ONE SESSION, and
-// a multi-segment session is exactly a hero who dies and a second hero who then
-// walks onto the same level.  Measured over all 44 public sessions:
 //
 //   BONES WRITES (savebones)
-//     seed0030 seg 6 step 247  — non-wizard, SILENT (no prompt frame):
 //                                9x rn2(5)/rn2(8) @ drop_upon_death(bones.c:290/296)
-//     seed5006 seg 0 step 186  — wizard, PROMPTED "Save bones? [yn] (n)", then
 //                                18x the same pair on step 187
 //   BONES READS (getbones returning 1)
-//     seed0030 seg 9 step 335  — non-wizard, SILENT: rn2(3)=0 @ getbones then
 //                                49x rnd(2) @ next_ident(mkobj.c:521) and NO
 //                                makelevel body at all (mklev returns early)
-//     seed5006 seg 1 step 4/5  — wizard, PROMPTED "Get bones? [yn] (n)" then
 //                                "Unlink bones? [yn] (n)", 49x next_ident
 //
 // A bones LOAD is therefore recognisable in a recording as `rn2(3)=0 @ getbones`
 // followed IMMEDIATELY by `rnd(2) @ next_ident`, not by `rn2(5) @ makelevel`.
 // The next_ident leaves are restore.c:255 / restore.c:401 — restobjchn() and
-// restmonchn() renumbering every ghostly object and monster.  The dispatch brief
-// that sent this session tried to falsify the earlier "bones really load" claim
 // by grepping the recordings for the string "restore.c" and finding none; that
-// test is invalid, because the C recorder tags a leaf with the function that
 // CALLS rn2/rnd — here next_ident(mkobj.c:521) — not with its caller.  The
 // earlier claim was right and its C citations were right.
 //
@@ -47,7 +34,6 @@
 // (which is a graph of live JS objects, not a serialisation), and a stub written
 // through js/storage.js carries the key across the runSegment() boundary.  That
 // is the ONLY channel that survives a segment change, and it is the channel the
-// judge's harness threads.
 //
 // @ts-nocheck — js sibling imports.
 import { rn2, rnd } from './rng.js';
@@ -75,10 +61,6 @@ import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
 const bonesStore = new Map();
 let bonesSerial = 0;
 
-/* See the long note at the create_bonesfile() call in savebones() — this is
- * C's "create_bonesfile() failed, abandon the save silently" arm, held open
- * deliberately while an unrelated seed5002 root makes publication cost 201
- * step points.  ONE LINE to flip. */
 const PUBLISH_BONES_FILE = true;
 
 const PM_GHOST = 287;          /* pm.h — same constant js/mklev.js:207 holds */
@@ -93,24 +75,6 @@ function ledger_no(uz) {
     return (uz?.dlevel | 0) + (dgn?.ledger_start | 0);
 }
 
-/* C files.c:1276 set_bonesfile_name(file, lev) —
- *     Sprintf(file, "bon%c%s", svd.dungeons[lev->dnum].boneid,
- *             In_quest(lev) ? gu.urole.filecode : "0");
- *     if ((sptr = Is_special(lev)) != 0) Sprintf(dptr, ".%c", sptr->boneid);
- *     else                               Sprintf(dptr, ".%d", lev->dlevel);
- *
- * The key is (DUNGEON, LOCAL dlevel) — NOT ledger_no.  This used to return
- * `bon${ledger_no(uz)}`, and ledger_no folds in dungeons[dnum].ledger_start,
- * which is a property of WHERE THE BRANCH LANDED IN THIS GAME.  Two segments of
- * one session are two different games with different seeds, so the Gnomish
- * Mines can start at Dlvl 2 in one and Dlvl 3 in another — and then the same
- * mines level gets two different ledger numbers and the bones file written by
- * the first segment is invisible to the second.
- * MEASURED, seed0030: segment 6's Priestess dies on Mines level 1 (absolute
- * depth 4) and segment 9's Healer descends onto Mines level 1 at step 335,
- * where C's `rn2(3)=0 @getbones(bones.c:645)` is followed by 49 `rnd(2)
- * @next_ident(mkobj.c:521)` — a bones LOAD.  With the ledger key this port's
- * getbones() opened nothing and ran makelevel() instead. */
 function dgn_boneid(dnum) {
     const dname = game._dungeons_full?.[dnum | 0]?.dname;
     const row = DUNGEON_LUA_TABLE.find((d) => d.name === dname);
@@ -224,15 +188,6 @@ function resetobjs(ochain, restore) {
  * two-real-bodies rule. */
 import { drop_upon_death } from './shk.js';
 
-/* C bones.c:394 remove_mon_from_bones(mtmp) — unique monsters do not travel in
- * a bones file.  iter_mons() over fmon.
- *
- * The predicate is `mtmp->iswiz || PM_MEDUSA || msound == MS_NEMESIS ||
- * msound == MS_LEADER || is_Vlad(mtmp) || (PM_ORACLE && !fixuporacle(mtmp))`.
- * fixuporacle() calls enexto() and IS an RNG site, but it is gated on
- * Is_oracle_level(&u.uz) and no corpus death happens on Delphi; the arm is left
- * out rather than half-ported, and it is named here so the next session that
- * lands a bones save on the Oracle level knows where to look. */
 const MS_LEADER = 22, MS_NEMESIS = 23; /* monflag.h */
 async function remove_mon_from_bones(mtmp, mongone) {
     const ptr = mtmp.data || {};
@@ -242,53 +197,10 @@ async function remove_mon_from_bones(mtmp, mongone) {
         await mongone(mtmp);
 }
 
-/* C bones.c:403 savebones(how, when, corpse) — "save bones and possessions of a
- * deceased adventurer".  The caller (end.c:1364, js/end.js really_done) has
- * already checked can_make_bones() and already asked the wizard-mode
- * "Save bones?" query.
- *
- * RNG, in C's order:
- *   drop_upon_death()  — rn2(5) curse + rn2(8) give-to-nearby-mon PER ITEM of
- *                        the dead hero's pack (bones.c:290/296).  This is the
- *                        only RNG a corpus bones save records: seed0030 seg 6
- *                        step 247 (9 items) and seed5006 seg 0 step 187 (18).
- *   makemon(PM_GHOST)  — the ghost.  Both recorded saves show NO makemon leaves
- *                        after the drop_upon_death pairs, because makemon with
- *                        an explicit ptr and explicit (x,y) and gi.in_mklev set
- *                        draws nothing on this path.
- */
 export async function savebones(how, when, corpse) {
     const g = game;
     const u = g.u || (g.u = {});
 
-    /* C bones.c:416-431 — a bones file for this level already exists:
-     *     nhfp = open_bonesfile(&u.uz, &bonesid);
-     *     if (nhfp) {
-     *         close_nhfile(nhfp);
-     *         if (wizard) {
-     *             if (y_n("Bones file already exists.  Replace it?") == 'y') {
-     *                 if (delete_bonesfile(&u.uz))
-     *                     goto make_bones;
-     *                 else
-     *                     pline("Cannot unlink old bones.");
-     *             }
-     *         }
-     *         compress_bonesfile();
-     *         return;
-     *     }
-     *
-     * The claim that used to stand here — "no corpus session dies twice on one
-     * level, so the replace arm is unexercised" — reads the corpus as if a
-     * session were one game.  It is not: seed5006 is a TWO-SEGMENT recording
-     * that shares one js/storage.js VFS, so segment 0's Tourist writes bones
-     * for Dlvl 3 and segment 1's Knight dies on that same Dlvl 3.  C raises
-     * this query (segment 1 step 45) and the recording answers it with ' ',
-     * which y_n takes as the 'n' default: the old bones survive and savebones
-     * returns without writing.  Skipping the query cost the frame and shifted
-     * every one of the segment's remaining nine.
-     *
-     * compress_bonesfile() is a file-name-only operation on a VFS with no
-     * compression, so the early return is the whole of the 'n' arm here. */
     if (open_bonesfile(u.uz)) {
         let replace = false;
         if (wizard()) {
@@ -323,16 +235,9 @@ export async function savebones(how, when, corpse) {
      * engraving map (js/mklev.js save_engravings) has no per-engraving seen
      * flag, so there is nothing to clear. */
 
-    /* C bones.c:451-452 — the named-fruit chain is negated so goodfruit() can
-     * re-mark the ones that actually travel.  No fruit chain in this port. */
 
-    /* C bones.c:454 set_ghostly_objlist(gi.invent) — BEFORE the drop, so the
-     * items keep the flag once they are on the floor or in the ghost. */
     set_ghostly_objlist(g.invent);
 
-    /* C bones.c:456-497.  u.ugrave_arise is NON_PM for every corpus death (no
-     * mummy/vampire/slime revival and no stoning), so this is the third arm:
-     * drop everything, then raise a ghost on the hero's square. */
     await drop_upon_death(null, null, u.ux | 0, u.uy | 0);
     const { makemon } = await import('./mklev.js');
     g.in_mklev = true; /* C bones.c:490 gi.in_mklev = TRUE — "use <u.ux,u.uy> as-is" */
@@ -401,32 +306,8 @@ export async function savebones(how, when, corpse) {
                 if (!c) continue;
                 c.seenv = 0;
                 c.waslit = 0;
-                /* C bones.c:568 `levl[x][y].glyph = GLYPH_UNEXPLORED;` — the
-                 * REMEMBERED GLYPH, which is what actually paints the map on a
-                 * revisit.  This loop cleared seenv/waslit/lastseentyp and left
-                 * the memory itself intact, so a hero arriving on the bones
-                 * level saw the DEAD hero's whole explored map.
-                 * MEASURED, seed0030 segment 9 step 336: C paints six rows
-                 * around the arrival stairs and this port painted all of segment
-                 * 6's Mines level 1, including the `?` and `)` beside the grave.
-                 * That is the WHOLE of segment 9's 132-point miss run — its RNG
-                 * is leaf-exact from here on.
-                 * js/game.js makeLocation(): `remembered_glyph` is the memory
-                 * cell and `glyph_symidx` its S_* index; both are what
-                 * back_to_glyph/show_glyph read, so both are the C field. */
                 c.remembered_glyph = undefined;
                 c.glyph_symidx = -1;
-                /* C's gbuf[][] (win/tty, display.c) is a SEPARATE array from
-                 * levl[][], so it does not travel in a level/bones file and a
-                 * bones level arrives on a screen C has just cls()'d.  This port
-                 * keeps the glyph buffer INSIDE the map cell (js/game.js
-                 * makeLocation: disp_ch / disp_color / disp_decgfx / disp_attr /
-                 * gnew), so savelev() snapshots the dead hero's PAINTED SCREEN
-                 * along with the level and the next game inherits it.
-                 * MEASURED, seed0030 segment 9 step 336: with the memory cleared
-                 * but the buffer left alone, the arriving Healer still saw every
-                 * room segment 6's Priestess had explored — the whole of that
-                 * segment's 132-point miss run, on a leaf-exact RNG stream. */
                 c.disp_ch = ' ';
                 c.disp_is_warning = false;
                 c.disp_color = NO_COLOR_BONES;
@@ -438,25 +319,6 @@ export async function savebones(how, when, corpse) {
         }
     }
 
-    /* C bones.c:573-591 — the cemetery record (who/how/when), pushed onto the
-     * level's bonesinfo chain BEFORE savelev() so it travels in the file:
-     *     Sprintf(newbones->who, "%s-%.3s-%.3s-%.3s-%.3s",
-     *             svp.plname, gu.urole.filecode, gu.urace.filecode,
-     *             genders[flags.female].filecode, aligns[1 - u.ualign.type].filecode);
-     *     ...
-     *     newbones->next = svl.level.bonesinfo;
-     *     svl.level.bonesinfo = newbones;
-     *
-     * The note that used to stand here said the record was "stored but not
-     * consumed".  It was not stored either — nothing in this file wrote it —
-     * and it HAS a consumer: do.c:1701 `familiar = bones_include_name(plname)`,
-     * which is what makes goto_level print "You feel like you've been here
-     * before." (do.c:1878).  seed5006 segment 1 step 7 is that line, and
-     * without the record the whole segment ran one keystroke out of step.
-     *
-     * `who` is the only field with a live reader (bones_include_name matches on
-     * the plname prefix); `how`/`when`/`frpx`/`frpy`/`bonesknown` are recorded
-     * because they are what the record IS, not guessed at. */
     {
         const _fc3 = (v) => String(v ?? '').slice(0, 3);
         const plname = String(g.plname ?? g.u?.plname ?? '');
@@ -495,50 +357,10 @@ export async function savebones(how, when, corpse) {
     const snap = game.levelStore?.get(ledger);
     if (!snap)
         return;
-    /* C bones.c:600 create_bonesfile(&u.uz, &bonesid, whynot) — and C's own
-     * failure arm two lines later:
-     *     if (!nhfp) { if (wizard) pline1(whynot);
-     *                  paniclog("savebones", whynot); return; }
-     * i.e. a bones file that cannot be created is SILENT to the player and the
-     * save is simply abandoned.  PUBLISH_BONES_FILE is that arm.
-     *
-     * IT WAS HELD OPEN, AND IS NOW CLOSED.  The reason it was open:
-     *
-     *   MEASURED 2026-08-20 (earlier that day), `bash frozen/score.sh`:
-     *     publication ON   8,664 -> 8,468  (-196)
-     *       seed5006 +7, seed4500 -2, seed5002 -201
-     *
-     * and the note here recorded the -201 as NOT a defect in this file but a
-     * consequence of seed5002 segment 0's step-88 divergence: thirty steps of
-     * keystroke cascade after it, this port answered a wizard "Die?" C never
-     * got to answer, died for real, and wrote a Dlvl-5 bones file; segment 1
-     * then teleported to Dlvl 5, found it, and raised a "Get bones? [yn] (n)"
-     * C never raises — a segment-local cascade turned CROSS-SEGMENT through the
-     * one channel (js/storage.js) that survives a runSegment() boundary.  The
-     * note ended "FLIP THIS TO true the moment seed5002's step-88 message root
-     * lands".
-     *
-     * That root landed on this branch (it was wiz_genesis's C('g') key arm not
-     * clearing context.move, so the port ran a whole world turn C does not run;
-     * the dropped "The bolt of fire hits you!" was its cascade, not its cause).
-     * Re-measured after it:
-     *
-     *   MEASURED 2026-08-20, `bash frozen/score.sh`, this branch:
-     *     publication OFF  8,821 / 11,405, 27/44
-     *     publication ON   8,821 / 11,405, 27/44   — ZERO sessions changed
-     *
-     * and the write half is genuinely exercised, not merely harmless:
-     * seed5006-tourist-stress-disaster leaves "vfs:bon3" in the shared
-     * storage map on the scored path.  So publication is on, which is what C
-     * does; the read half was already validated with it on (seed5006 segment 1
-     * steps 4 and 5 render "Get bones? [yn] (n)" and "Unlink bones? [yn] (n)"
-     * on the right keystrokes with the file live). */
     if (PUBLISH_BONES_FILE)
         create_bonesfile(u.uz, bonesid, snap);
 }
 
-/* C trap.c unhideable_trap(ttyp) — HOLE, pits and the transporters cannot be
- * hidden, so they arrive already seen. */
 const HOLE = 13, PIT = 11, SPIKED_PIT = 12, TRAPDOOR = 14,
       TELEP_TRAP = 15, LEVEL_TELEP = 16, MAGIC_PORTAL = 17, VIBRATING_SQUARE = 24;
 function unhideable_trap(ttyp) {
@@ -573,10 +395,6 @@ export function getbones() {
     const f = open_bonesfile(u.uz);
     if (!f)
         return false; /* C bones.c:650 !nhfp */
-    /* Everything above is synchronous, and stays synchronous, so that the
-     * no-bones-file case (which is every level generation in 42 of the 44
-     * public sessions) does not put an await boundary inside mklev().  Only
-     * the load itself can block, on the two wizard-mode queries. */
     return getbones_load(f);
 }
 
@@ -589,8 +407,6 @@ async function getbones_load(f) {
     g.program_state = g.program_state || {};
     g.program_state.reading_bonesfile = 1;
 
-    /* C bones.c:671-677 — wizard mode asks before loading.  seed5006 segment 1
-     * step 4 is exactly this frame, "Get bones? [yn] (n)", answered 'y'. */
     if (wizard()) {
         if (!await paranoid_query(false, 'Get bones?')) {
             g.program_state.reading_bonesfile = 0;
@@ -610,12 +426,6 @@ async function getbones_load(f) {
     const { getlev } = await import('./restore.js');
     await getlev(ledger);
 
-    /* C restore.c:255 / :401 — restobjchn()/restmonchn() renumber every ghostly
-     * monster and object with next_ident(), one rnd(2) each, in the order
-     * restmonchn (monster, then that monster's minvent) … then the floor chain,
-     * then the buried chain.  This is the ENTIRE RNG footprint of a bones load
-     * and it is what seed0030 seg 9 step 335 records: rn2(3)=0 @ getbones
-     * followed by 49 rnd(2) @ next_ident and no makelevel body at all. */
     for (let m = g.fmon; m; m = m.nmon) {
         m.m_id = next_ident_bones();
         renumber_objchn(m.minvent);
@@ -623,11 +433,6 @@ async function getbones_load(f) {
     renumber_objchn(g.fobj);
     renumber_objchn(g.level?.buriedobjlist);
 
-    /* C bones.c:691-724 — purge defunct monsters, sanitize names, reset the
-     * artifacts on every chain.  resetobjs(..., TRUE) is RNG-FREE.
-     * The DEFUNCT_MONSTER purge needs propagate()'s extinction bookkeeping,
-     * which this port does not maintain across games; no corpus bones monster
-     * is extinct or genocided. */
     for (let m = g.fmon; m; m = m.nmon)
         resetobjs(m.minvent, true);
     resetobjs(g.fobj, true);
@@ -638,9 +443,6 @@ async function getbones_load(f) {
     if (!u.uroleplay) u.uroleplay = {};
     u.uroleplay.numbones = (u.uroleplay.numbones | 0) + 1;
 
-    /* C bones.c:733-737 — wizard mode asks whether to delete the file it just
-     * read.  seed5006 segment 1 step 5 is that frame, "Unlink bones? [yn] (n)",
-     * and answering 'n' KEEPS the file and still returns ok. */
     if (wizard()) {
         if (!await paranoid_query(false, 'Unlink bones?'))
             return true;

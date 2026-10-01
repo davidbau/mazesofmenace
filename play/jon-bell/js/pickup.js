@@ -1,6 +1,5 @@
 // pickup.c — container_at, reset_justpicked, doloot, the trap.c leaves
 // (unconscious, uteetering_at_seen_pit, uescaped_shaft) that other modules
-// import from here, and (2026-09-04) a direct, scoped port of pickup() itself
 // plus its pickup.c-local helpers (autopick, autopick_testobj, pickup_object,
 // lift_object, carry_count, pick_obj, pickup_prinv, query_objlist's
 // fast-path).  See the landmark comment near the bottom of this file for the
@@ -14,9 +13,7 @@
 // slices of pickup()'s behaviour inline (_spoteffects_pickup, etc. — see the
 // landmark comment below).  The `pickup` export added here is NOT wired into
 // that call graph (nothing imports `pickup` from this file as of this
-// writing — grep confirms it); it exists so the capture-replay oracle can
 // exercise pickup.c's real body directly.  Unifying the two remains the
-// subsystem campaign the old comment described.
 // @ts-nocheck — js sibling imports.
 import { game } from './gstate.js';
 import {
@@ -124,13 +121,10 @@ export function container_at(x, y, countem) {
     return containerCount | 0;
 }
 
-/* C mondata.h:53 — both bits of M1_NOLIMBS must be set.  Having no hands
- * alone does not prevent tipping a floor container with other limbs. */
 function nolimbs(ptr) {
     return ((ptr?.mflags1 | 0) & 0x00006000) === 0x00006000;
 }
 
-/* C pickup.c:2041 — shared floor-container guard for loot versus tip. */
 export async function able_to_loot(x, y, looting) {
     const verb = looting ? 'loot' : 'tip';
     const t = t_at(x, y);
@@ -277,8 +271,6 @@ const LARGE_BOX_OTYP = 214;
 const CHEST_OTYP = 215;
 const ICE_BOX_OTYP = 216;
 const BAG_OF_TRICKS_OTYP = 220;
-/* C autounlock default = AUTOUNLOCK_APPLY_KEY (options.c:1089); no nethackrc
- * override in the corpus, so apply-key is active. */
 const AUTOUNLOCK_APPLY_KEY = 2;
 
 /* C ref: objnam.c — bare box/chest name (obj_typename lacks box names in JS). */
@@ -294,14 +286,6 @@ function _box_xname(obj) {
 function _the(str) { return 'the ' + str; }
 function _The(str) { return 'The ' + str; }
 
-/* C ref: pickup.c:2082 do_loot_cont(cobjp, cindex, ccount).
- *   For the corpus path: a single locked chest on the floor.  The locked
- *   branch plines "Hmmm, <box> turns out to be locked." then, with the default
- *   APPLY_KEY autounlock, calls pick_lock(autokey(TRUE), ox, oy, cobj) which
- *   asks "Unlock it with <pick>? [ynq]" and, on 'y', sets up the picklock
- *   occupation (ECMD_TIME).  The unlocked branch falls through to use_container
- *   (take-out menu) — see use_container (separately ported).
- *   Returns ECMD_OK / ECMD_TIME. */
 async function do_loot_cont(cobjRef, cindex, ccount) {
     const g = game;
     const cobj = cobjRef.obj;
@@ -309,17 +293,6 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
 
     if (cobj.olocked) {
         let res = ECMD_OK;
-        /* C pickup.c:2106 — flags.autounlock (default APPLY_KEY).  Resolve the
-         * unlock tool FIRST: whether a follow-up prompt (pick_lock's "Unlock it
-         * with <tool>?") will arrive determines whether C's tty pages the locked
-         * line.  C plines the locked message plainly; the --More-- (seed0430)
-         * comes from the SUBSEQUENT unlock prompt concatenating onto the topline
-         * and overflowing — NOT from the locked line itself.  When no tool is
-         * found (seed0387: Valkyrie has no key/pick/card), the locked line is
-         * terminal → no follow-up pline → NO --More-- → rhack reads the next
-         * recorded command (the player's '#force').  Forcing an unconditional
-         * --More-- here (the prior shortcut) consumed that '#' and desynced the
-         * keystream into a spurious diagonal move on the later 'y'. */
         const autounlock = AUTOUNLOCK_APPLY_KEY;
         const ox = cobj.ox | 0, oy = cobj.oy | 0;
         g.u.dz = 0; /* C pickup.c:2110 — #loot isn't a move; pick_lock cares. */
@@ -343,8 +316,6 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
             /* C pickup.c:2119 — pass ox,oy to skip the direction prompt. */
             if (await pick_lock(unlocktool, ox, oy, cobj))
                 res = ECMD_TIME;
-            /* C pickup.c:2123 — a trap might destroy cobj; corpus box is
-             * untrapped, so cobj survives (no *cobjp = NULL). */
             return res;
         }
         /* AUTOUNLOCK_FORCE branch (doforce) — not in default flags; with no
@@ -354,7 +325,6 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
 
     cobj.lknown = 1;
     if (cobj.otyp === BAG_OF_TRICKS_OTYP) {
-        /* C pickup.c:2144 — carnivorous bag (not in corpus); leave unported. */
         return ECMD_TIME;
     }
     /* C pickup.c:2155 — use_container for an unlocked container. */
@@ -367,24 +337,12 @@ export async function doloot() {
     g.loot_reset_justpicked = true;
     const res = await doloot_core();
     g.loot_reset_justpicked = false;
-    /* use_container's out_container plined the take-out "<let> - <name>." line
-     * into _pending_message.  A turn-consuming #loot (res & ECMD_TIME) would
-     * otherwise have moveloop_core CLEAR _pending_message (allmain.js merge),
-     * discarding the result line.  Hand it to _resultMessage so the next rhack
-     * restores it onto the topline at the NEXT nhgetch — exactly where C shows
-     * the prinv line (seed0430 step 21).  Mirrors the drop()/domove convention
-     * (cmd.js doddrop). */
     if ((res & ECMD_TIME) && g._pending_message) {
         _topl_stash_result();
     }
     return res;
 }
 
-/* C ref: pickup.c:2171 doloot_core() — loot a container on the floor.
- *   Ported scope: the corpus underfoot-container path.  check_capacity /
- *   nohands / Confusion guards are faithful no-ops for the unencumbered,
- *   handed, non-confused corpus hero.  The lootmon (directional / saddle)
- *   and grave branches are kept as structural conditionals but not reached. */
 async function doloot_core() {
     const g = game;
     const u = g.u;
@@ -399,17 +357,6 @@ async function doloot_core() {
     g.abort_looting = false;
 
     /* C pickup.c:2188 — check_capacity: false (unencumbered hero). */
-    /* C pickup.c:2192-2196 —
-     *     if (nohands(gy.youmonst.data)) {
-     *         You("have no hands!");   / * not `body_part(HAND)' * /
-     *         return ECMD_OK;
-     *     }
-     * This read "nohands: false (human hero)" and was a comment, not a guard.
-     * seed0108 #loots at step 176 while polymorphed into a RED DRAGON, so C
-     * prints "You have no hands!" and spends no turn; this port went on to open
-     * the chest, set its lknown, and answer C's later frames with the wrong
-     * locked-message variant ("The chest is locked." for C's "Hmmm, the chest
-     * turns out to be locked.").  RNG-free either way. */
     if (_loot_nohands()) {
         await pline("You have no hands!");
         return ECMD_OK;
@@ -479,19 +426,7 @@ async function doloot_core() {
                 if (anyfound) c = 'y';
             }
         }
-        /* C pickup.c:2288 — the IS_GRAVE arm ("You need to dig up the grave to
-         * effectively loot it...").  No corpus session #loots on a grave. */
 
-        /* C pickup.c:2293 lootmon — 3.3.1's directional looting.  This branch
-         * was previously a comment claiming "the corpus container is underfoot
-         * and already handled, so c==='y'", which is false whenever there is NO
-         * container underfoot: `mon_beside()` alone is enough to enter it, and a
-         * pet standing next to the hero satisfies that.  seed0002 step 507 types
-         * `#loot` with its little dog adjacent and no container anywhere, so C
-         * opens a getdir prompt ("Loot in what direction?") and eats the next
-         * three keystrokes; this port answered "You don't find anything here to
-         * loot." immediately and let those three keys fall through to rhack as
-         * commands. */
         if (c !== 'y' && (mon_beside(u.ux | 0, u.uy | 0)
                           || g.iflags?.menu_requested)) {
             let looted_mon = false;
@@ -503,11 +438,6 @@ async function doloot_core() {
             if (underfoot && container_at(cc.x, cc.y, false))
                 continue lootcont; /* C: goto lootcont */
             if ((u.dz | 0) < 0) {
-                /* C: You("%s to loot on the %s.", dont_find_anything,
-                 *        ceiling(cc.x, cc.y));
-                 * ceiling() (mkmaze.c) is "ceiling" everywhere except under
-                 * water / inside solid rock / on the Plane of Air, none of which
-                 * a #loot-ing corpus hero is in. */
                 await pline("You don't find anything to loot on the ceiling.");
                 return ECMD_TIME;
             }
@@ -520,9 +450,6 @@ async function doloot_core() {
                 if (timepassed)
                     looted_mon = true;
             }
-            /* C pickup.c:2314-2317 — "always use a turn when choosing a
-             * direction is impaired".  Confusion/Stunned are not tracked on
-             * this path in this port; the corpus #loot hero is neither. */
 
             /* C pickup.c:2324-2338 — preserve pre-3.3.1 behaviour for
              * containers: they can only be looted from underfoot. */
@@ -582,18 +509,6 @@ async function get_adjacent_loc(prompt, emsg, x, y, cc) {
     return 1;
 }
 
-/* C ref: pickup.c:2124 loot_mon(mtmp, passed_info, prev_loot) — 3.3.1's
- * "remove the saddle from your steed" and 3.4.0's loot-the-swallower.  C's two
- * out-params are carried in one box (this tree's {value}-style convention).
- *
- * SCOPE.  The saddle arm needs which_armor(mtmp, W_SADDLE); this port has no
- * W_SADDLE writer at all (nothing ever saddles a monster — `#ride` is the only
- * producer and it is unported), so the guard is evaluated against the monster's
- * worn mask and is simply false for every monster in the corpus.  Stated rather
- * than dropped: the moment a saddle can exist, the yn_function + the rnd(3)
- * RNG draw inside it become live and must be written.  The u.uswallow arm calls
- * pickup(), which this file documents as living in js/cmd.js; no corpus session
- * #loots from inside a swallower. */
 async function loot_mon(mtmp, box) {
     if (mtmp && mtmp !== game.u?.usteed && (which_armor(mtmp, _W_SADDLE) || _which_saddle(mtmp))) {
         const saddle = which_armor(mtmp, _W_SADDLE) || _which_saddle(mtmp);
@@ -626,17 +541,11 @@ async function loot_mon(mtmp, box) {
         if (ans === 'q') return 0;
     }
     if (game.u?.uswallow) {
-        /* C pickup.c:2470 — delegate to the ordinary pickup command with the
-         * directional-query count carried by passed_info. */
         const count = box?.passed_info | 0;
         return await pickup(count);
     }
     return 0;
 }
-/* C ref: worn.c which_armor(mon, W_SADDLE) — the saddle in mon's minvent.
- * objects.h SADDLE is otyp 258 (TOOL_CLASS); W_SADDLE is a worn-mask bit that
- * nothing in js/ sets, so this scans for the object AND the mask the way C's
- * which_armor does and returns null for every corpus monster. */
 const _SADDLE_OTYP = 235;
 const _W_SADDLE = 0x00080000; /* obj.h W_SADDLE */
 function _which_saddle(mtmp) {
@@ -645,11 +554,6 @@ function _which_saddle(mtmp) {
             return o;
     return null;
 }
-/* C ref: do_name.c mon_nam(mtmp) — "the <monster>" for the in-the-way message.
- * js/do_name.js owns the real body; this branch is unreached by the corpus
- * (it needs a container one square away with a monster on it), so rather than
- * add an import cycle for a dead path it uses the same placeholder shape the
- * rest of this file uses for un-plumbed namers. */
 function mon_nam_loot(mtmp) {
     return `the ${mtmp?.data?.mname ?? 'monster'}`;
 }
@@ -679,83 +583,6 @@ async function use_container(cobjRef, held, more_containers) {
     return await use_container_impl(cobjRef, held, more_containers);
 }
 
-/* ---------------------------------------------------------------------------
- * C pickup() and its check_here()/look_here() chain.
- *
- * HISTORY.  This file used to carry a second, never-executed body of C's
- * pickup() (pickup.c:671-911) whose every leaf was a throw-stub, with no
- * caller anywhere — it was removed 2026-0x-xx rather than left as a decoy.
- * C's pickup() is (and remains) LIVE in js/cmd.js, split across three
- * fragments that share no body with each other or with what follows here:
- *   - `_spoteffects_pickup()`   = pickup(1) + check_here() + look_here()'s
- *     ct<=1 arms + read_engr_at(); called from domove's spoteffects tail and
- *     from goto_level's arrival (do.c:2015).
- *   - `_look_here_pile()`       = look_here()'s ct>=2 menu arm
- *     (invent.c:4286-4313), called separately on either side of dotrap.
- *   - `dopickup()`/`_pickup_menu()` = the pickup(0) interactive arm
- *     (pickup.c:766-780).
- * A fourth, unreferenced partial of look_here() sits at js/look.js:236.
- * Unifying those four fragments into one call graph anchored on the `pickup`
- * export below remains a subsystem campaign, not a single-file change.
- *
- * 2026-09-04: `pickup(what)` and its pickup.c-local helpers ARE now ported
- * for real, below — the capture-replay oracle has 9 ground-truth records of
- * pickup() and reported `export_missing` (no js/ definition of the name
- * existed anywhere).  `pickup` is NOT imported by js/cmd.js or wired into the
- * three fragments above (grep confirms it as of this writing) — this export
- * exists so the oracle can replay pickup.c's real body directly against its
- * captures.  It is C-faithful, not output-fitted, and it is honestly SCOPED:
- * every branch this port cannot cover throws a named
- * `not yet ported: <what> (<c file>)` error rather than fabricating a result.
- * The boundary, precisely:
- *
- *   PORTED (real, not stubbed):
- *     - The full pickup() guard cascade (pickup.c:671-786): unconscious()
- *       short-circuit, the autopickup-declined-with-conditions early return,
- *       the can_reach_floor early return's STRUCTURE (describe_decor() call
- *       point kept, see below), the multi/notake early return's STRUCTURE,
- *       the run-stop nomul(0).
- *     - autopick() + autopick_testobj() + check_autopickup_exceptions()
- *       (pickup.c:894-947) — the what>0 (autopickup) dispatch, fully real.
- *     - query_objlist()'s FAST PATH ONLY (pickup.c:1024, the n==0 and the
- *       n==1-with-AUTOSELECT_SINGLE returns) — the what<=0 (interactive)
- *       dispatch when 0 or 1 items qualify.  n>=2 needs a real TTY menu
- *       (sortloot + create_nhwindow/start_menu/select_menu), which is genuine
- *       menu-UI machinery this port does not have wired for pickup's path;
- *       it throws there by name rather than fake a menu answer.  NOTE: this
- *       is exactly the gap the 9 captured what<=0 records hit — every one of
- *       them has 8-19 objects on the hero's tile, so all 8 throw here. It is
- *       the honest boundary, not a workaround.
- *     - lift_object/carry_count now serve both floor pickup and container
- *       removal. They implement capacity, carried-container weight credits,
- *       gold rounding, partial stacks, inventory slots, and the shared ynq
- *       prompt. Fatal corpse handling includes life-saving and stone-golem
- *       transformation. Artifact-message handling on floor pickup still
- *       needs a separate audit.
- *
- *   Historical gap notes (several predate subsequent ports; consult the
- *   function bodies and current lifecycle audit before treating them as gaps):
- *     - describe_decor() (pickup.c:353) is STALE as a "gap" bullet — it is a
- *       real ported async function a few lines below (reads real terrain via
- *       this file's own `_surface_at`); kept here only because nothing else
- *       in this boundary comment was re-audited when it landed.
- *     - read_engr_at() (engrave.c:318) is REAL as of 2026-09-04 — see its
- *       own C-ref comment below.  The claim that used to sit here ("engrave.
- *       js's `head_engr` is module-private with no export") was FALSE: the
- *       live engraving store has lived in js/mklev.js's exported `engr_at`
- *       all along, and engrave.js itself reads through that same export.
- *     - check_here()'s ct>=1 arm, i.e. look_here() (invent.c) — not ported
- *       anywhere in this tree (js/look.js:236 is an unreferenced partial).
- *     - query_objlist()'s real n>=2 menu (see above).
- *     - pickup_object()'s CORPSE / SCR_SCARE_MONSTER / artifact / gold /
- *       BOULDER-in-Sokoban / LOADSTONE branches.
- *     - pick_obj()'s shop-billing (robshop) branch — addtobill/
- *       remote_burglary; remote_burglary has no js/ port at all.
- *     - the u.uswallow arm's minor differences (loot-a-swallower) — the
- *       floor-vs-minvent object-chain split is real (see pick_obj below),
- *       but no corpus session #pickups from inside a swallower to exercise
- *       it, so it is UNVALIDATED rather than UNPORTED.
- * ------------------------------------------------------------------------ */
 
 /* ---- small pickup.c-local constants not already in const.js ---- */
 const _CORPSE_OTYP = 265;
@@ -768,16 +595,6 @@ const _M1_NOTAKE = 0x00000800;   /* monflag.h */
 const _M1_HIDE = 0x00000100;     /* monflag.h — hides_under() */
 const _invlet_basic = 52;        /* hack.h invlet_basic */
 
-/* C ref: obj.h OBJ_AT(x,y) = (svl.level.objects[x][y] != (struct obj *)0).
- * js/const.js's own OBJ_AT reads a DIFFERENT, parallel field
- * (`game.level.objects`, a flat array read with .some()) that the
- * capture-replay harness's seedLevelObjectsFromCapture() never populates —
- * only `game.level.levelObjects` (the per-tile nexthere-chain 2D array) and
- * `game.fobj` (the flat nobj chain) are seeded
- * (tools/equiv-test/lib/replay-core.mjs).  Importing const.js's OBJ_AT here
- * silently read as "nothing on this tile" for every replayed record.  This
- * file's OWN container_at() (just above) already reads `levelObjects` for
- * exactly this reason; this mirrors that established, correct convention. */
 function _OBJ_AT(x, y) {
     return !!(game.level?.levelObjects?.[x | 0]?.[y | 0]);
 }
@@ -892,21 +709,6 @@ async function deferred_decor(setup) {
     }
 }
 
-/* C ref: pickup.c:353-425 describe_decor(void) — 'mention_decor' terrain
- * feedback ("when walking onto a dungeon feature such as stairs or altar,
- * describe it even if it isn't covered up by an object"); also called
- * UNCONDITIONALLY (regardless of mention_decor) from pickup()'s
- * can_reach_floor guard (pickup.c:713), so this must be a real body even on
- * sessions/replays where mention_decor never turns on.
- *
- * dfeature_at/waterbody_name/back_on_ground are imported from js/cmd.js,
- * which already carries real, tested bodies for all three (see the import
- * comment above for the cycle note). gd.decor_fumble_override /
- * gd.decor_levitate_override are read with no writer anywhere in this tree —
- * force_decor() (pickup.c:316-332), their only writer, is called from
- * invent.c/zap.c call sites outside this file's ownership and is not ported
- * here; reading the unwritten field is the established convention for a
- * real-but-unreached upstream writer, not a fabricated constant. */
 async function describe_decor() {
     const g = game;
     const u = g.u;
@@ -960,31 +762,6 @@ async function describe_decor() {
     return res;
 }
 
-/* C ref: engrave.c:318-406 read_engr_at(x, y).  The stub's own claim that
- * this is blocked on an unexported `head_engr` in js/engrave.js was FALSE —
- * the live engraving store has lived in js/mklev.js (`_engr_map`, written by
- * `make_engr_at`/`del_engr_at`, read by the exported `engr_at`) since before
- * this stub was written, and js/engrave.js itself already imports THOSE
- * exports rather than owning any list of its own (see js/engrave.js:27).
- * js/look.js and js/cmd.js each already carry their own real, RNG-free port
- * of this exact C function for their own call sites (the project's
- * established convention — see `_lift_ynq`/`_db_under_typ`/`_surface_at`
- * above, each mirroring a one-off C helper rather than reaching across a
- * module boundary this file may not edit); this is a THIRD, for
- * check_here()'s ct===0 site (pickup.c:454-455).  It combines what those two
- * have separately: js/look.js's `_read_engr_at` ports the sensing/reveal
- * plines but drops the C tail's `if (svc.context.run > 0) nomul(0);`
- * (engrave.c:400-401); js/cmd.js's copy keeps that tail but layers on a
- * hand-built paging model tuned for ITS OWN walking/arrival call sites, which
- * does not apply here (check_here() is reached from pickup(), not a move).
- * This port takes the plain sensing/reveal plines (below) and keeps the
- * C tail's nomul(0), against engrave.c directly. NOT transcribed: the
- * BUFSZ-based truncation of a very long engraving text (engrave.c:376-383,
- * same omission js/look.js documents) — no corpus engraving approaches that
- * length and the truncation only pads the displayed string, never whether a
- * line is printed. RNG: none (read_engr_at itself draws nothing; verified
- * against engrave.c — no rn2/rnd/rne/rnz/rnl/rn1 call anywhere in its body
- * or in engr_at/is_ice/surface()/can_reach_floor). */
 async function read_engr_at(x, y) {
     const ep = engr_at(x, y);
     if (!ep || !ep.text || !ep.text[0])
@@ -1101,11 +878,6 @@ function _follow(curr, qflags) {
     return (qflags & BY_NEXTHERE) ? curr.nexthere : curr.nobj;
 }
 
-/* C ref: pickup.c:894-903 check_autopickup_exceptions(obj).  ga.apelist
- * (OPTIONS=autopickup_exception:... entries) has no js/ home anywhere in
- * this tree — nothing tracks it — so this always takes the common "no
- * exceptions configured" path, matching every corpus session unless its
- * nethackrc sets one. */
 function check_autopickup_exceptions(obj) {
     void obj;
     return null;
@@ -1132,11 +904,6 @@ function autopick_testobj(otmp, calc_costly) {
     if (_autopick_costly && !otmp.no_charge)
         return false;
 
-    /* how_lost is read only inside these flag-gated branches — the flags
-     * default off (options.c has no explicit initializer for pickup_thrown/
-     * pickup_stolen/nopick_dropped, so the BSS-zero C default is FALSE),
-     * which is the common case and keeps the uncaptured-field read out of
-     * the hot path. */
     if (g.flags?.pickup_thrown && (otmp.how_lost | 0) === LOST_THROWN)
         return true;
     if (g.flags?.pickup_stolen && (otmp.how_lost | 0) === LOST_STOLEN)
@@ -1181,25 +948,6 @@ function n_or_more(obj, refCount) {
     return (obj.quan | 0) >= refCount;
 }
 
-/* C ref: reference/win-tty/wintty.c:1328 process_menu_window's morc switch —
- * the tty select-menu key state machine.  Mirrors js/pickup_container.js's
- * module-private `_tty_pick_any_menu` (item-letter toggle, '.'/','
- * select-all, '-'/'\\' unselect-all, '@'/'~' invert, group accelerators,
- * ESC deselects EVERYTHING then cancels, \n/\r/space commits) — duplicated
- * here rather than imported because that file keeps it module-private and
- * this port may only edit js/pickup.js (the same established convention
- * this file already uses for _db_under_typ/_surface_at above, each file
- * mirroring another's one-off C machinery rather than reaching across a
- * module boundary that isn't exported).
- *
- * NOT rendered to screen: `pickup()`'s call tree is unreachable from the
- * scored dispatch (js/cmd.js does not import `pickup`, `query_objlist` or
- * any of their helpers — verified 2026-09-04 by grepping every `js/*.js`
- * import of './pickup.js': only `unconscious`, `doloot`,
- * `uescaped_shaft`/`uteetering_at_seen_pit`, `container_at`,
- * `reset_justpicked` and `add_valid_menu_class` cross that boundary), so
- * this drives real selection state off the real getch queue for the
- * capture-replay oracle without needing a faithfully-painted menu frame. */
 const _QO_SELECT_ALL = 0x2e /* '.' */, _QO_UNSELECT_ALL = 0x2d /* '-' */,
       _QO_INVERT_ALL = 0x40 /* '@' */, _QO_SELECT_PAGE = 0x2c /* ',' */,
       _QO_UNSELECT_PAGE = 0x5c /* '\\' */, _QO_INVERT_PAGE = 0x7e /* '~' */;
@@ -1247,25 +995,6 @@ async function _select_menu(items, how) {
     }
 }
 
-/* C ref: invent.c:592 sortloot()/:403 sortloot_cmp()/:150 loot_classify(),
- * as called from THIS file's query_objlist (pickup.c:1080-1086) with mode ==
- * SORTLOOT_LOOT|SORTLOOT_PACK (USE_INVLET/SORTLOOT_INUSE never set on
- * pickup()'s call sites; flags.sortloot=='f' and flags.sortpack default On
- * are both true on every corpus record checked).  Mirrors
- * js/pickup_container.js's own module-private `_sortloot`/`_loot_classify`
- * (established convention: each file mirrors another's one-off C helper
- * rather than reaching across a module boundary that isn't exported — see
- * this file's `_db_under_typ`/`_surface_at`), adapted for a chain that is
- * ALREADY filtered by `allow` (sortloot's own filterfunc does the same
- * filtering C-side, so re-filtering here would be redundant, not wrong-but-
- * different) and for a plain array input instead of a linked list, since
- * this file's query_objlist walks BY_NEXTHERE/nobj via `_follow` up front.
- *
- * PORTED: loot_classify's `orderclass` (flags.inv_order position) + its
- * observe_object side effect, and sortloot_cmp's subclass/disco/loot_xname/
- * BUCX tiers plus the stable index tiebreak — i.e. the same subset
- * pickup_container.js's copy ports, for the same reason (the un-ported
- * per-class subclass tables collapse to C's own `default: k = 1`). */
 const _PU_INV_ORDER = [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16];
 const _PU_SLIME_MOLD_OTYP = 285, _PU_TIN_OTYP = 296, _PU_EGG_OTYP = 266,
       _PU_CORPSE_OTYP = 265;
@@ -1326,37 +1055,6 @@ function _pu_sortloot(eligible) {
     return arr.map((sli) => sli.obj);
 }
 
-/* C ref: pickup.c:1024 query_objlist(qstr, olist_p, qflags, pick_list, how,
- * allow).  FULLY ported: the n==0 fast return, the n==1-with-
- * AUTOSELECT_SINGLE fast pick, and (2026-09-06) the n>=2 real menu in
- * sortloot() order — item letters auto-assigned 'a'..'z','A'..'Z' skipping
- * any explicit selector (wintty.c:2715-2726 tty_end_menu; the only
- * explicit-selector case on pickup()'s own call sites is the literally-first
- * menu row getting '$' when it's COIN_CLASS, pickup.c:1133-1135 — USE_INVLET
- * is never set on pickup()'s path), group accelerators from each item's own
- * class symbol (pickup.c:1121 `any.a_obj = curr` + def_oc_syms lookup),
- * driven through `_select_menu` above.
- *
- * CORRECTED 2026-09-06 (was a NAMED GAP): sortloot's DISPLAY ORDER (class
- * grouping via flags.inv_order, then subclass/disco/name/BUCX/index within a
- * class) is now reproduced via `_pu_sortloot` above, so letters are assigned
- * to the SORTED list, not raw `_follow()` traversal order.  The previous
- * "use the object's leftover invlet as its menu selector" theory (measured
- * off records 12-19) is FALSIFIED by pickup.c:1131-1135 itself: `add_menu`'s
- * `ch` argument is `(qflags & USE_INVLET) ? curr->invlet : (first &&
- * curr->oclass == COIN_CLASS) ? '$' : 0`, and USE_INVLET is never set here,
- * so invlet cannot reach the menu row at all — every record that theory
- * explained is equally explained by sortloot-order + sequential assignment
- * (an object's leftover invlet is itself usually a byproduct of a prior
- * inventory-pack sort, which is why the two coincided).  Verified against
- * capture records 288/289/293/294 (this file's own residual): a 16-19-item
- * floor pile's sole AMULET_CLASS item sorts to row 'a' right after gold's
- * '$' (COIN=12, AMULET=5 in flags.inv_order — pickup.c:118-121's
- * def_inv_order), matching every explicit-letter record on this board.
- * The FEEL_COCKATRICE early abort (pickup.c:1112-1118, `destroy_nhwindow` +
- * `look_here` instead of a menu) is still not ported — no known record on
- * this board needs it (Blind is required and this port doesn't have Blind
- * wired through pickup.js). */
 async function query_objlist(qstr, objchain, qflags, how, allow) {
     void qstr;
     let n = 0, last = null;
@@ -1428,11 +1126,6 @@ function delta_cwt(container, obj) {
 const GOLD_WT = (n) => Math.trunc((Number(n) + 50) / 100);
 const GOLD_CAPACITY = (w, n) => (Number(w) * -100) - (Number(n) + 50) - 1;
 
-/* C ref: pickup.c:1570-1697 carry_count(obj, container, count, telekinesis,
- * wt_before, wt_after).  Handles floor objects and objects removed from
- * carried or floor containers, including bag-of-holding deltas, cumulative
- * gold rounding, partial stacks, and the native refusal messages.  Returns
- * the two C out-parameters alongside the accepted count. */
 async function carry_count(obj, container, count, telekinesis) {
     const adjust_wt = !!container && (container.where | 0) === OBJ_INVENT;
     const is_gold = (obj.oclass | 0) === _COIN_CLASS;
@@ -1530,19 +1223,6 @@ async function _lift_ynq(query) {
     return await yn_function(query, 'ynq', 'q');
 }
 
-/* C ref: pickup.c:1705-1774 lift_object(obj, container, cnt_p, telekinesis).
- * Handles both floor and container removal, including Sokoban boulders,
- * loadstones and rock-throwing forms.  Returns the
- * lifted count via mutating `cnt` ({v: count}) the way C mutates *cnt_p, and
- * returns C's int result (1 = lift, 0 = don't lift, -1 = nothing lifted).
- *
- * Now async: the over-encumbrance branch (pickup.c:1760-1786) is a REAL
- * port — prefix selection, the qbuf message (via doname(), with obj->quan
- * temporarily set to *cnt_p the way C does), and a real ynq() confirmation
- * via `_lift_ynq` above.  telekinesis short-circuits to result=0 exactly as
- * C does, with no prompt at all (pickup() itself never calls with
- * telekinesis=true — all three call sites pass FALSE — so that arm is real
- * but UNVALIDATED by any corpus record). */
 export async function lift_object(obj, container, cnt, telekinesis) {
     const g = game;
     await _cmdModule();
@@ -1651,24 +1331,6 @@ function merge_choice_local(objlist, obj) {
     return _cmd_mod.merge_choice(objlist, obj);
 }
 
-/* C ref: pickup.c:1897-1938 pick_obj(otmp).  Ported for the non-shop
- * (!costly_spot) case, on both the floor (OBJ_FLOOR) and swallowed-monster
- * (OBJ_MINVENT) chains — the latter is UNVALIDATED (no corpus session
- * #pickups from inside a swallower).
- *
- * The shop-billing (robshop) branch (pickup.c:1921-1939) is now ported:
- * addtobill (js/shk.js, real body) is called with u.ushops temporarily
- * pointed at the object's own shop room, exactly as C's
- * Strcpy/addtobill/Strcpy dance does, and robshop is recomputed from the
- * restored u.ushops per pickup.c:1932.  remote_burglary (shk.c:665) itself
- * remains a NAMED GAP for its rob_shop/call_kops guts: js/shk.js's rob_shop
- * is a private stub that always returns false (shk.js is out of scope for
- * this packet), so this cannot faithfully complete the "still unpaid AND
- * away from the shop" branch.  It throws rather than fabricate a silent
- * no-op if that branch is ever actually reached; every corpus record so far
- * has the hero standing IN the shop while picking up, so u.ushops already
- * contains the object's room and robshop resolves false after the restore
- * — remote_burglary is not reached by any known session. */
 async function pick_obj(otmp) {
     const g = game;
     const u = g.u || {};
@@ -1719,31 +1381,6 @@ async function pick_obj(otmp) {
         await remote_burglary(ox, oy);
     }
 
-    /* DELIBERATELY DOES NOT bump objs_deleted.count here, even though
-     * `picked !== otmp` on the merge path.  It used to (a workaround, now
-     * removed): merged() (js/hold_another_object.js:944-ref block) now bumps
-     * the counter itself, at C's actual free point (invent.c:944
-     * `obfree(obj, otmp)`, verified) — the ONE place inside addinv_core0
-     * that reassigns its local `obj` away from the passed-in identity is
-     * exactly the two `if (merged(...))` successes (invent.c:1101-1114,
-     * js/hold_another_object.js:484,496). Bumping here too double-counted
-     * one real C free as two (measured via DIAG_ALL_DIVERGENCES: pickup
-     * rec#34 objs_deleted.count went DIVERGED the moment merged() grew its
-     * own bump). merged() is this port's single source of truth for this
-     * counter now; do not re-add a bump here.
-     *
-     * The one OTHER way addinv_core0 can return a non-`otmp` identity is
-     * its `how_lost === LOST_EXPLODING` early `return null` (invent.c:
-     * 1064-1065) — NOT a merged()/obfree free, so it would need its own
-     * bump if it ever fired. It cannot fire today: no js/ site ever writes
-     * `how_lost = LOST_EXPLODING` (grep across js/*.js), so `otmp.how_lost`
-     * can never read 4 here and this branch is dead on the whole port.
-     * If a future port ever sets LOST_EXPLODING before an addinv/pick_obj
-     * call, this comment is the flag to add that bump at the site that
-     * frees the object (mirroring js/cmd.js's
-     * _bumpObjsDeletedCount_useupf convention), not here — because
-     * addinv_core0 never frees it; whatever set how_lost=LOST_EXPLODING
-     * already did. */
     return picked;
 }
 
@@ -1898,18 +1535,6 @@ export async function pickup(what) {
         if (((g.multi | 0) && !g.context?.run)
             || (autopickup && !g.flags?.pickup)
             || notake(g.youmonst?.data)) {
-            /* NAMED GAP (oracle-side, not a JS logic bug): `g.flags.pickup`
-             * (the "autopickup" OPTION) is a per-session nethackrc setting,
-             * not per-call game state — it is not, and cannot be, part of
-             * the capture-replay schema (state_before/level_tiles/etc never
-             * carry option values), so `!g.flags?.pickup` reads TRUE
-             * (undefined) for every replayed record regardless of what the
-             * recording session's rc actually set.  Measured: this record's
-             * capture shows an item WAS added by a `what>0` (autopickup)
-             * call with zero RNG draws, which is only possible in C if
-             * flags.pickup was actually true for that session — information
-             * this port has no way to recover.  check_here(false) below is
-             * still the C-faithful NEXT step once this guard is (mis-)true. */
             await check_here(false);
             if (notake(g.youmonst?.data) && _OBJ_AT(ux, uy)
                 && (autopickup || g.flags?.pickup)) {
@@ -2037,16 +1662,6 @@ export function unconscious() {
                       || nmm.startsWith('You are consci')));
 }
 
-/* C ref: trap.c:6628-6635 boolean uteetering_at_seen_pit(struct trap *trap).
- *     return (trap && is_pit(trap->ttyp) && trap->tseen
- *             && u_at(trap->tx, trap->ty)
- *             && !(u.utrap && u.utraptype == TT_PIT));
- * "TRUE if you escaped a pit and are standing on the precipice."  No RNG.
- *
- * js/cmd.js:45 imports this and js/cmd.js:3129 CALLS it from flooreffects()'s
- * `u_at(x,y) && t_at(x,y)` arm (an object landing on the hero's own trap
- * square).  The throw-stub this replaces would have aborted the session
- * there. */
 export function uteetering_at_seen_pit(trap) {
     const u = game.u;
     return !!(trap && is_pit(trap.ttyp | 0) && trap.tseen

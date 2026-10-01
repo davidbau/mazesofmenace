@@ -1,9 +1,3 @@
-// CONTESTANT-OWNED under v5 — edit freely. This file is NOT frozen.
-// It carried "DO NOT EDIT — the judge overwrites it from frozen/ on every
-// scoring run" from the 3.7 era; that is false and was measured so on
-// 2026-09-29. frozen/score.sh:49-51 overlays exactly three files —
-// js/isaac64.js, js/terminal.js, js/storage.js — and frozen/ holds no
-// const.js at all. The stale header would make an agent refuse a legitimate
 // edit here, which is the cost of leaving it.
 const MAXPCHARS = 105; // from symbols.js
 // const.js -- Game constants and configuration
@@ -488,7 +482,6 @@ export const COPYRIGHT_BANNER_C = "         Version 3.7.0-134 MacOS Work-in-prog
 
 // AUTO-IMPORT-BEGIN: CONST_ALL_HEADERS
 // Auto-imported header constants (pre-symbol pass)
-// Source dir: /Users/davidbau/git/mazesofmenace/teleport/maud/scripts/generators/../../nethack-c/patched/include
 //
 // Rules:
 // - include object-like #define macros (not function-like) and enum constants
@@ -1144,17 +1137,6 @@ export const LOST_DROPPED = 2;
 export const LOST_STOLEN = 3;
 export const LOSTOVERRIDEMASK = 0x3;
 export const LOST_EXPLODING = 4;
-/* C obj.h:139 `#define opoisoned otrapped` — ONE bitfield with TWO spellings.
- * C's `struct obj` has a single `otrapped` bit that means "this box/door is
- * trapped" for containers and "this weapon is coated with poison" for missiles,
- * and the macro exists only so the source reads naturally at each use.  This
- * port stores the two spellings as TWO DISTINCT JS PROPERTIES — the poison
- * writers (mksobj_init, potion.c dip, trap.c dart/arrow traps) set `.opoisoned`
- * while the trap writers (mksobj_init's box roll, sp_lev, trap.c's boulder
- * flag) set `.otrapped` — so every site that reads the C FIELD is blind to half
- * of it unless it reads BOTH.  js/struct_reconstructor.js already records the
- * alias for the capture-replay sweep (DERIVED_ALIASES 'struct obj *').  Read
- * the field through here rather than adding a sixth hand-mirrored spelling. */
 export function otrapped_of(o) {
     return (o && ((o.otrapped | 0) || (o.opoisoned | 0))) ? 1 : 0;
 }
@@ -1948,11 +1930,6 @@ export const EXPL_MAX = 7;
 export const BURNING_OIL = 19;  /* MAXOCLASSES + 1 */
 export const MON_EXPLODE = 20;  /* MAXOCLASSES + 2 */
 export const TRAP_EXPLODE = 21; /* MAXOCLASSES + 3 */
-/* C hack.h:1339-1344 explode.c scflags — these four were all off by one bit
- * (MAY_HITMON=0x1 collided with VIS_EFFECTS=0x1 above, MAY_HITYOU=0x2,
- * MAY_DESTROY=0x4, MAY_FRACTURE=0x8), a bug with no observable effect only
- * because zero call sites existed anywhere in js/ (grep, 2026-09-05) before
- * js/dokick.js's scatter() port became the first real consumer. */
 export const MAY_HITMON = 0x02;
 export const MAY_HITYOU = 0x04;
 export const MAY_HIT = (0x02 | 0x04);
@@ -2611,7 +2588,6 @@ export const SYM_OTH           = 5;
 // DECgraphics Symbol Set
 // C ref: dat/symbols DECgraphics symset
 // These are the raw VT100 alternate-character bytes. display.js wraps them
-// with SO/SI so tty output matches recorded C sessions exactly.
 // ==========================================================================
 
 export const decgraphics = [
@@ -2642,31 +2618,6 @@ export const gs = { showsyms: null, symset: [{ name: null, handling: 0, nocolor:
 export const gp = { primary_syms: null, pl_race: null, plinemsg_types: null };
 const gr = { rogue_syms: null };
 
-/* C ref: decl.c:1103 `gs = g_init_s;` inside decl_globals_init(), where
- * g_init_s gives `{ DUMMY }` for symset[] (decl.c:687) — every field zero,
- * every name NULL — on every new process.
- *
- * js/jsmain.js:266 sets symset[PRIMARYSET].handling unconditionally from the
- * rc, but it sets .name only `if (opts.symset)`, so the NAME of the last
- * rc that had one survived into every later game in the process.  6 of the
- * 44 public sessions run with no symset line, and the 'O' menu renders this
- * field verbatim ("<name>, active, handler=<H>" — options.c:4180), so they
- * reported a symset they had not chosen.  Convicted, not assumed:
- * tools/module-state-leak.mjs --mode bisect, poisoner seed0105 (DECgraphics)
- * victim seed0108 (no symset), both controls behaved, ddmin over 13 sticky
- * bindings reduced to this one; restoring it alone took 293/303 -> 303/303.
- *
- * Restoring the FIELDS rather than replacing the entry objects: js/display.js,
- * js/glyphs.js and js/doset_data.js all read `gs.symset[PRIMARYSET]` and some
- * hold the row, so a fresh object would be invisible to them (the same
- * live-binding trap js/gstate.js:60 documents).
- *
- * Deliberately NOT resetting gs.showsyms / gp.primary_syms / gr.rogue_syms
- * here.  They are the same class in C — zeroed by the same assignment — but
- * js/symbols.js rebuilds all three during each game's option pass, they are
- * not convicted by the bisect, and nulling them would expose every reader
- * that runs before that pass to a state this port has never been in.  Left
- * as a measured residual rather than a speculative change. */
 registerStaticReset('const.js: gs.symset[] (decl.c g_init_s)', () => {
     for (const entry of gs.symset) {
         entry.name = null;
@@ -2784,7 +2735,6 @@ export const AKLYS_LIM = BOLT_LIM / 2;
 // AUTO-IMPORT-END: CONST_WEAPON_SKILLS
 // AUTO-IMPORT-BEGIN: CONST_ALL_HEADERS_POST
 // Auto-imported header constants (post-symbol pass)
-// Source dir: /Users/davidbau/git/mazesofmenace/teleport/maud/scripts/generators/../../nethack-c/patched/include
 //
 // Rules:
 // - include object-like #define macros (not function-like) and enum constants
@@ -2958,43 +2908,9 @@ export function has_ebones(mtmp) { return !!mtmp?.mextra?.ebones; }
 export function ONAME(obj) { return obj?.oextra?.oname || ''; }
 export function has_oname(obj) { return !!obj?.oextra?.oname; }
 export function OMONST(obj) { return obj?.oextra?.omonst; }
-/* C: #define MGIVENNAME(mon) ((mon)->mextra->mgivenname)
- *    #define has_mgivenname(mon) ((mon)->mextra && MGIVENNAME(mon))
- * Both read ONLY through mextra (mextra.h) -- C short-circuits on a NULL
- * mextra and never touches a flat field. A flat mtmp.mgivenname fallback
- * here tripped the capture-replay reconstructor ("field 'mgivenname' was
- * not captured") on every monst whose mextra is NULL. */
 export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || ''; }
 export function has_mgivenname(mtmp) { return !!(mtmp?.mextra && mtmp.mextra.mgivenname); }
 
-/* C ref: you.h:554 — #define Upolyd (u.umonnum != u.umonster)
- *
- * This used to read `player.mtimedone > 0` under a comment claiming that WAS
- * the macro.  It is not: u.mtimedone (you.h:422) is "no. of turns until
- * polymorph times out", a separate field, and C uses the two together rather
- * than interchangeably — potion.c:1326 reads
- * `if (u.mtimedone && u.umonnum != u.umonster)`, which would be redundant if
- * they were one predicate.  They come apart in C wherever a form change does
- * not touch the timer: were.c:226-227 tops up a zero mtimedone on an already
- * were-formed hero, and polyself.c:293 rehumanize()'s `if (!Upolyd)` guard is
- * evaluated before polyman() clears mtimedone at polyself.c:216.
- *
- * MEASURED over the public 44 (2026-09-06, temporary probe on every call, 19
- * distinct hero states observed): the two predicates AGREE on every one, so
- * this correction is behaviour-neutral on today's corpus and structural.  Both
- * u.umonnum and u.umonster are live and correct on the scored path —
- * js/u_init.js:376 seeds them per u_init.c:991 and js/polyself.js maintains
- * u.umonnum — which is why js/trap.js:1231 _gp_Upolyd, js/zap.js:6229
- * _cm_Upolyd and js/teleport.js:1529 Upolyd_hero already spell it this way.
- *
- * C's macro takes no argument; it always reads the global `u`.  The `player`
- * parameter is this port's convention and every live call site passes game.u
- * (or an alias of it), so it is honoured when given and falls back to game.u
- * when it is not.
- *
- * Capture-replay note: the `hero.upolyd` mapstate slot
- * (js/mapstate_game_bridge.js) seeds the inputs THIS predicate reads; it was
- * written against the mtimedone spelling and moved with this change. */
 export function Upolyd(player) {
     const u = player || ((typeof game !== 'undefined' && game) ? game.u : null);
     if (!u) return false;

@@ -63,7 +63,6 @@ function copy_you_inline(value) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, copy_you_inline(v)]));
 }
 
-// memcpy of struct you: inline aggregates are values; ustuck, usteed and
 // umonst remain pointers. Restore into the existing hero, leaving C globals
 // (including the worn slots) alone. No traversal of pointed-to game graphs.
 export function copy_you(source, destination = {}) {

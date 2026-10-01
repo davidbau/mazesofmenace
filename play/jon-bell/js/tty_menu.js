@@ -5,13 +5,11 @@
 // tty_end_menu (2649) / process_menu_window (1329), plus src/windows.c
 // add_menu_str / add_menu_heading (1816).
 //
-// WHY THIS FILE EXISTS (2026-08-14).  Before it, every menu in the port had
 // its own bespoke renderer and its own key loop: js/optmenu.js, js/skills.js,
 // js/spell.js, js/coloratt.js, js/com_pager.js, js/cmd.js and
 // js/pickup_container.js each re-derived pagination, accelerator assignment,
 // the "(n of m)" footer and the footer cursor column by hand.  That is seven
 // independent chances to get the same C function wrong, and the divergences
-// they produce look like unrelated per-session bugs.  This module is the one
 // place those rules live; new menus should be built on it, and the existing
 // bespoke ones migrated onto it one at a time behind the score.
 //
@@ -158,9 +156,6 @@ export class TtyMenu {
              * tabs (ch < 32). Encode that unpainted cell in the screen wire
              * format, leaving mlist.str intact for geometry and MENU_SEARCH. */
             text = text.replace(/\t/g, '\x1b[1C');
-            /* C: attr_n — headers highlight the whole line, menu lines only
-             * from [4] onwards.  Nothing in the corpus uses a coloured menu
-             * line, so only the whole-line case needs the escape. */
             if (curr.attr === ATR_INVERSE) lines.push(' ' + ESC_INVERSE + text + ESC_RESET);
             else lines.push(' ' + text);
         }

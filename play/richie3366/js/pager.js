@@ -859,7 +859,7 @@ function checkfile_split_names(dbase, inp, supplementalHolder) {
         ep = dbase.indexOf(', ');
     }
     if (ep > 0) dbase = dbase.slice(0, ep); // :961-962
-    // :977-981 — remove charges or "(lit)" or wizmode "(N aum)" from the
+    // :971-975 — remove charges or "(lit)" or wizmode "(N aum)" from the
     // base description (dbase already lowered, so indexOf matches C strstri).
     const qi = dbase.indexOf(' (');
     if (qi > 0) dbase = dbase.slice(0, qi);
@@ -873,17 +873,6 @@ function checkfile_split_names(dbase, inp, supplementalHolder) {
         if (!alt) alt = null;
     }
     return { dbase, alt };
-}
-
-/**
- * C pager.c checkfile `:984–996` — alternate description when the name
- * carries no given name: the player's fruit name maps to the generic
- * slime-mold entry, else the singular of the base description.
- */
-function checkfile_alt_for(dbase) {
-    if (fruit_from_name(dbase, true, null)) // :990-992
-        return 'slime mold'; // C obj_descr[SLIME_MOLD].oc_name
-    return makesingular(dbase); // :995-996
 }
 
 /**
@@ -933,7 +922,17 @@ async function checkfile(inp, pm = null, chkflags = 0, supplementalHolder = null
     const split = checkfile_split_names(dbase, inp, supplementalHolder); // :944-976
     dbase = split.dbase;
     let alt = split.alt;
-    if (!alt) alt = checkfile_alt_for(dbase); // :984-996
+    // C :984-996 — no given name: fruit name maps to the generic slime-mold
+    // entry, else the singular. C :990-992 writes alt with strcpy(newstr),
+    // the SAME buffer dbase_str points into: dbase aliases to the fruit
+    // entry too (offset 0), so pass 0 looks the same string up (single
+    // pass when equal) instead of the intact fruit name.
+    if (!alt) {
+        if (fruit_from_name(dbase, true, null)) // :990-992
+            alt = dbase = 'slime mold'; // C obj_descr[SLIME_MOLD].oc_name
+        else
+            alt = makesingular(dbase); // :995-996
+    }
     let pass1found_in_file = false; // :941
     let pass1Index = -1; // C pass1offset: text offset of the pass-1 entry
     for (let pass = alt !== dbase ? 1 : 0; pass >= 0; --pass) { // :998
@@ -981,8 +980,17 @@ export function ia_checkfile(otmp) {
     const dbase = checkfile_dbase_str(lcase(itemnam));
     if (!dbase) return false;
     const split = checkfile_split_names(dbase, itemnam, null);
-    const base = split.dbase;
-    const alt = split.alt || checkfile_alt_for(base);
+    let base = split.dbase;
+    let alt = split.alt;
+    // C :990-996 — same fruit-name buffer aliasing as checkfile: a fruit
+    // match aliases base to the slime-mold entry (single query), else the
+    // singular stays the alternate.
+    if (!alt) {
+        if (fruit_from_name(base, true, null))
+            alt = base = 'slime mold';
+        else
+            alt = makesingular(base);
+    }
     const queries = alt !== base ? [alt, base] : [base];
     for (const q of queries) {
         if (lookup_data_base_entry(q)) return true;

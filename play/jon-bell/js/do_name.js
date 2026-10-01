@@ -1,7 +1,5 @@
 // js/do_name.js — port of nethack-c/src/do_name.c
 //
-// JS-only doctrine (CLAUDE.md): hand-authored, source of truth, no build step.
-// Correctness is enforced by the differential capture-replay sweep, not types.
 
 import { monPmname, permonstTemplate } from './makemon.js';
 import { rn2, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
@@ -12,12 +10,6 @@ import { ENV } from './hostenv.js';
 /* C monflag.h enum mgender { MALE, FEMALE, NEUTRAL, NUM_MGENDERS } */
 const MALE = 0, FEMALE = 1;
 
-/* oextra referencing/testing macros (nethack-c/include/obj.h:191,196).
- * ONAME(o)      == o->oextra->oname
- * has_oname(o)  == (o->oextra && ONAME(o))
- * In JS the reconstructed obj carries a nested `oextra` object whose `oname`
- * is the captured given-name string, or null when C's has_oname() was false
- * (NULL oextra OR NULL oname). Both forms collapse to the same observable. */
 function ONAME(o) {
     return o.oextra.oname;
 }
@@ -36,45 +28,14 @@ export function safe_oname(obj) {
     return "";
 }
 
-/* Mgender — C ref: nethack-c/src/do_name.c:1289-1300
- *   int Mgender(struct monst *mtmp) {
- *       int mgender = MALE;
- *       if (mtmp == &gy.youmonst) { if (Upolyd ? u.mfemale : flags.female) mgender = FEMALE; }
- *       else if (mtmp->female) mgender = FEMALE;
- *       return mgender;
- *   }
- * The captured mon_pmname corpus never passes &gy.youmonst (no youmonst form
- * channel here), so the hero branch is dormant — a real monster's gender is
- * just mon->female ? FEMALE : MALE. Neuter monsters are handled downstream by
- * pmname()'s NEUTRAL fallback (their pmnames[MALE]/[FEMALE] are NULL). */
 function Mgender(mtmp) {
     return mtmp.female ? FEMALE : MALE;
 }
 
-/* mon_pmname — C ref: nethack-c/src/do_name.c:1313-1317
- *   char *mon_pmname(struct monst *mon) { return pmname(mon->data, Mgender(mon)); }
- * mon->data is the monster's current FORM (struct permonst *); the capture
- * carries it as the synthetic `data_mndx` field (mon->data->pmidx). monPmname
- * applies pmname()'s gender-pick + NEUTRAL fallback against that form's row. */
 export function mon_pmname(mon) {
     return monPmname(mon.data_mndx | 0, Mgender(mon));
 }
 
-/* ── Hallucinatory naming (do_name.c:1362-1421) ────────────────────────────
- *
- * These three draw from the DISPLAY isaac64 stream (js/rng.js
- * rn2_on_display_rng), not the scored one — C rnd.c:26 `enum { CORE, DISP }`.
- * That is why they are invisible to every RNG oracle in this repo: the
- * recorder writes display draws to NETHACK_RNGLOG_DISP
- * (nethack-c-v5/patches/005-rng-display-logging.patch) and the 44 public
- * sessions carry only the core channel — measured 2026-08-14, zero of the
- * corpus's 360 distinct recorded call sites is a display-rng one.  The map
- * cells and the topline are the only oracle for this surface.
- *
- * Was `export function rndmonnam() { throw ... }` at js/priest.js:710, which
- * HALTED seed0399-wizard-hallu-actions at frame 426/532 via
- * mon_nam -> x_monnam.
- */
 
 /* C do_name.c:1364 `const char bogon_codes[] = "-_+|=";` — see dat/bogusmon.txt. */
 const bogon_codes = '-_+|=';
@@ -160,12 +121,6 @@ export function bogon_is_pname(code) {
     return '-+='.indexOf(code) >= 0;
 }
 
-/* C do_name.c:1587-1603 — "Discworld novel titles, in the order that they were
- * published; a subset of them have index macros used for variant spellings; if
- * the titles are reordered for some reason, make sure that those get renumbered
- * to match".  Verbatim from nethack-c-v5/upstream/src/do_name.c:1590; the ORDER
- * is load-bearing twice over — it is the rn2() index space (SIZE == 41, which
- * is the modulus the recorder observes) and the NVL_* macros below index it. */
 const sir_Terry_novels = [
     "The Colour of Magic", "The Light Fantastic", "Equal Rites", "Mort",
     "Sourcery", "Wyrd Sisters", "Pyramids", "Guards! Guards!", "Eric",
@@ -188,29 +143,6 @@ export const NVL_MASKERADE = 17;
 export const NVL_AMAZING_MAURICE = 27;
 export const NVL_THUD = 33;
 
-/* C do_name.c:1610-1624
- *   const char *noveltitle(int *novidx)
- *   { int j, k = SIZE(sir_Terry_novels);
- *     j = rn2(k);
- *     if (novidx) { if (*novidx == -1) *novidx = j;
- *                   else if (*novidx >= 0 && *novidx < k) j = *novidx; }
- *     return sir_Terry_novels[j]; }
- *
- * The rn2(SIZE) is drawn UNCONDITIONALLY — before the novidx test and even
- * when novidx pins the answer — so it is part of the stream whether or not the
- * drawn value is used.  That is the whole of this port's parity contribution:
- * seed4500 draws it exactly once, at session step 864, as the first leaf this
- * port failed to reproduce.
- *
- * C's `int *novidx` is an in/out parameter.  JS passes a one-field box rather
- * than the object, so the caller stays responsible for the corpsenm/novelidx
- * union aliasing (obj.h #define novelidx corpsenm); handing the obj in would
- * hide that.  The field is `value`, which is this tree's OUTPUT-POINTER
- * convention -- js/struct_reconstructor.js:195 maps C's `int *` to the
- * one-field pseudo-struct ['value'], so the capture-replay sweep can build the
- * argument.  A box named anything else makes the sweep report
- * "field 'x' was not captured" and read as a divergence.
- * Pass null for C's noveltitle(NULL). */
 export function noveltitle(novidx) {
     const k = sir_Terry_novels.length;
     let j = rn2(k);

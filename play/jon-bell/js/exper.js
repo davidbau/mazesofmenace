@@ -29,9 +29,6 @@ import { rehumanize as rehumanize_real } from './polyself.js';
  * can invoke losexp(). */
 import { done as done_real } from './end.js';
 
-/* C mondata.c:200 resists_drli for the hero.  The experience-loss caller only
- * supplies gy.youmonst, so the hero's aggregate resistance property is the
- * authoritative check here (including intrinsic and equipment sources). */
 function resists_drli(mon) {
     const p = game.u?.uprops?.[DRAIN_RES];
     return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)))
@@ -136,16 +133,6 @@ function enermod(en) {
         return en;
     }
 }
-/* C ref: attrib.c newhp(void) — mirrors C 1:1 including the u.ulevel==0 init
- * path (attrib.c:1090-1101) AND the level-up path (attrib.c:1103-1131).
- * Called with u.ulevel==0 during hero initialization (u_init.c:996,
- * polyself.c:392) and with u.ulevel>0 on level gain (exper.c:337).
- *
- * C structure note: the contest sessions all PASS with the formerly-split
- * newhpInit/newpwInit; this reunification reproduces the exact same RNG calls
- * in the exact same order on the init path (role.hpadv.inrnd then
- * race.hpadv.inrnd, both via rnd(), only when > 0), so it is score-neutral by
- * construction (Cardinal Rule 1 structure restored, Cardinal Rule 5 honored). */
 export function newhp() {
     const g = game;
     const u = g.u || {};
@@ -295,22 +282,8 @@ export async function pluslvl(incr) {
     const MAXULEV = 30;
     if (!incr) {
         await pline('You feel more experienced.');
-        /* C win/tty/topl.c update_topl: this pline lands on the prior level's
-         * still-unacked topline; if it overflows CO-1-8, more() fires NOW — and
-         * the --More-- frame freezes the bottom line at the CURRENT (pre-increment)
-         * u.ulevel, so the page's rank title matches C (seed5500 step 20 = Evoker
-         * @ level 2, not the post-increment rank).  Page before ++u.ulevel. */
         await flush_screen(1);
     }
-    /* C exper.c:332-336: Upolyd branch — increase monster-form HP first (so
-     * a normal human/whatever increase below is retained for later), when
-     * the hero is currently polymorphed. This was skipped under a stale
-     * "hero is never Upolyd during wizard levelchange" comment; since the
-     * 2026-09-06 Upolyd/abon() fix a polymorphed hero levelling up via
-     * do_attack's xkilled->newexplevel->pluslvl chain reaches this for real
-     * (MEASURED: do_attack rng-trace record #93, C's next draw is
-     * rnd(8)@monhp_per_lvl(makemon.c:989)). C: `if (Upolyd) { hpinc =
-     * monhp_per_lvl(&gy.youmonst); u.mh += hpinc; setuhpmax(u.mhmax, FALSE); }` */
     if (Upolyd(u)) {
         const monHpInc = monhp_per_lvl(g.youmonst);
         u.mh = (u.mh | 0) + monHpInc;
@@ -357,28 +330,11 @@ export async function pluslvl(incr) {
         /* C exper.c:366-367: ulevelmax */
         if ((u.ulevelmax | 0) < (u.ulevel | 0))
             u.ulevelmax = u.ulevel;
-        /* C exper.c:357-367 — SoundAchievement (a no-op in this build), then
-         *     old_ach_cnt = count_achievements();
-         *     newrank = xlev_to_rank(u.ulevel);
-         *     if (newrank > oldrank) record_achievement(achieve_rank(newrank));
-         * This is the ONLY writer of the ACH_RNK1..ACH_RNK8 achievements, and
-         * it was missing while record_achievement had no body: seed4500's
-         * #conduct window (step 1573) lists "You have attained the rank of
-         * Esquire/Bachelor/Sergeant/Knight" and this port listed nothing.
-         * C's livelog_printf fallback when the count did NOT change is the
-         * live-log, not a scored channel, and is left out with the rest of the
-         * livelog tail. */
         const old_ach_cnt = count_achievements();
         const newrank = xlev_to_rank(u.ulevel | 0);
         if (newrank > oldrank)
             record_achievement(achieve_rank(newrank));
         void old_ach_cnt;
-        /* C exper.c:368: adjabil(u.ulevel-1, u.ulevel) — grant role/race innate
-         * intrinsics whose level threshold was just crossed (e.g. wizard L15
-         * HWarning "You feel sensitive!", L17 HTeleport_control "You feel
-         * controlled!").  No RNG; emits plines onto the accumulating topline.
-         * For the wizard #levelchange ramp these extra plines re-chunk the
-         * width-paged --More-- stream (seed5500 steps 34-36). */
         await adjabil((u.ulevel | 0) - 1, u.ulevel | 0);
         /* Per-pline update_topl: page if adjabil's intrinsic-gain plines overflowed. */
         if (!incr)
@@ -391,28 +347,6 @@ export async function pluslvl(incr) {
     }
     /* C exper.c:384: SET_BOTL() */
     if (g.disp) g.disp.botl = 1;
-    /* C: pline() → update_topl().  Each pline accumulates onto the topline; the
-     * tty calls more() AT THE INSTANT adding a pline would overflow CO-1-8=71
-     * columns (win/tty/topl.c update_topl).
-     *
-     * !incr (wizard #levelchange / potion of gain level / wraith): pluslvl emits
-     * "You feel more experienced." (exper.c:328), "Welcome to experience level N."
-     * (exper.c:365), and — via adjabil() above — any role/race intrinsic-gain
-     * plines ("You feel sensitive!", "You feel controlled!").  These accumulate on
-     * the topline and are paged STRICTLY by the genuine update_topl width rule, two
-     * short messages per --More-- until the next would overflow.  When adjabil adds
-     * a third message at a level threshold the page boundaries re-chunk exactly as
-     * C does (seed5500 steps 34-36): the prior per-level force_more (one page per
-     * level) only matched because each level happened to emit exactly two messages.
-     * flush_screen() commits every overflowing page (consuming one recorded dismiss
-     * key each, no RNG) and leaves the still-fitting tail in _pending_message to be
-     * extended by the next pluslvl iteration — exactly C's per-pline more() timing.
-     * The ramp's final level leaves a fitting (un-paged) remainder, matching C's
-     * last topline with no --More-- (seed5500 step 39).
-     *
-     * incr (normal kill-driven newexplevel): NO standalone "You feel more
-     * experienced." pline; the "Welcome..." line concatenates with the kill turn's
-     * topline and is paged by the moveloop's width/cross-turn rule, not here. */
     if (!incr) {
         /* per-pline flush_screen() above already paged each overflow at the moment
          * its pline landed (matching update_topl timing + the frozen-status level);
@@ -421,26 +355,7 @@ export async function pluslvl(incr) {
          * ran yet a "You feel more experienced." remained accumulated. */
         await flush_screen(1);
     }
-    /* C exper.c:319-385 pluslvl() contains NO more(), NO xwaitforspace and NO
-     * nhgetch on EITHER path: every page-ack it produces comes from the ordinary
-     * pline() -> update_topl() width rule.  The kill-driven (incr) path used to
-     * run a bare `await nhgetch()` here — a HAND-PLACED page-ack that consumed one
-     * recorded keystroke on every level gain whether or not the topline had
-     * overflowed, with no counterpart anywhere in C.  Deleted; nothing replaces it
-     * (adding a flush_screen(1) here instead is ALSO unfaithful — it would run
-     * bot() and clear disp.botl, which C pluslvl leaves SET for the moveloop:
-     * measured as a newexplevel capture-replay divergence, display.botl EXTRA). */
 }
-/**
- * Consume RNG for C u_init_misc() between init_castle_tune and nhlib shuffle:
- * newhp() and newpw() at u.ulevel==0 (attrib.c:1090, exper.c:49), then handedness
- * rn2(10) (u_init.c:1028). Order matches C.
- *
- * Now delegates to u_init.ts u_init_misc() — the full port — which both
- * consumes the RNG calls in C order AND populates u.uhp/uhpmax/uen/uenmax/
- * uhunger/uac/acurr/amax/ualign on the hero. This replaces the previous
- * partial port which only consumed RNG.
- */
 /* C ref: exper.c more_experienced(int exper, int rexp) — void, updates u.uexp/u.urexp */
 export function more_experienced(exper, rexp) {
     const g = game;
@@ -519,10 +434,6 @@ export async function consumeUInitMiscHeroInitRng(_initrole, _initrace) {
     await u_init_misc();
 }
 
-/* C ref: pline.c:514 livelog_printf — was a no-op stub here, so exper.c:245's
- * "lost all experience" chronicle entry never reached gg.gamelog and
- * '#chronicle' was missing it (seed0106 step 188, turn 5).  The real one lives
- * next to pline() in js/display.js, as it does in C's pline.c. */
 
 /* stubs for helpers not yet exported */
 function SoundAchievement(a, b, c) { /* stub */ }

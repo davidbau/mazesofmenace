@@ -7,7 +7,6 @@ import { ECMD_OK, ECMD_TIME } from './const.js';
 // C ref: invent.c:4105 look_here(int obj_cnt, unsigned lookhere_flags)
 // C ref: invent.c:4037 dfeature_at(coordxy x, coordxy y, char *buf)
 //
-// 2026-09-04: look_here() is now a full port of every arm of invent.c's
 // function — uswallow stomach contents, the region/trap pre-message, the
 // Blind preamble, dfeature line construction, the lava/pool/no-object
 // short-circuit, the pile_limit summary, the single-object arm, and the
@@ -50,14 +49,6 @@ import { stairway_at, stairs_description, engr_at } from './mklev.js';
  * avoid_moving_on_liquid's mention_walls feedback.  Hoisted function
  * declaration, so the mhitm <-> look module cycle cannot leave it in TDZ. */
 import { Amonnam, hliquid, poly_when_stoned } from './mhitm.js';
-/* 2026-09-04: look_here() (invent.c:4162, the poison-gas/trap line) calls
- * visible_region_at() but this file never imported it — a plain ReferenceError
- * the moment that line was reached. It stayed invisible while look_here was
- * unreferenced; wiring js/pickup.js's check_here to it exposed the bug on 12 of
- * 13 pickup oracle records. region.js imports is_pool_or_lava from this file, so
- * this closes a cycle — benign here because both sides are hoisted function
- * declarations referenced only inside function bodies, never at module
- * evaluation time (the same shape as the pre-existing makemon<->trap cycle). */
 import { visible_region_at, reg_damg } from './region.js';
 import { pushRngLogEntry } from './rng.js';
 import { Blind } from './vision.js';
@@ -75,14 +66,6 @@ import { ENV } from './hostenv.js';
 import { force_decor, mbodypart, set_msg_xy, instapetrify,
          dfeature_at as _cmd_dfeature_at } from './cmd.js';
 
-/* ── FF_DIRTRACE (env-gated, RNG-NEUTRAL telemetry) ──────────────────────────
- * The run-step direction-resolution trace.  umovement-runstep-view shows the
- * run-path OUTCOME (which squares the hero visited); this exposes the CAUSE —
- * the (dx,dy) entering lookaround() and the (dx,dy) it leaves with, plus which
- * code path (the hack.c:3946-3974 corridor turn-resolution block) rewrote the
- * direction, with the corrct/noturn/m0/i0/x0/y0 ledger that gated it.  Emitted
- * ONLY when FF_DIRTRACE=1 (pushRngLogEntry is a no-op unless the rng log is
- * enabled, which only the dev/diff tooling does) → ZERO effect on scored runs. */
 const _DIRTRACE = (typeof process !== 'undefined' && ENV
     && ENV.FF_DIRTRACE === '1');
 
@@ -95,11 +78,6 @@ function _is_sink(typ)     { return typ === SINK; }
 function _is_altar(typ)    { return typ === ALTAR; }
 function _is_grave(typ)    { return typ === GRAVE; }
 
-/* _an/_vtense_are (narrow local approximations of an()/vtense()) were
- * RETIRED 2026-09-04: look_here() now imports the real, general ports from
- * js/objnam.js (an, vtense), which is what C's invent.c:4236-4238 actually
- * calls.  _dfeature_at() below never called either — it returns a plain
- * {text, article} pair and leaves article-application to its caller. */
 
 /* C ref: insight.c:3207 align_str(aligntyp alignment) — the alignment
  * adjective.  Transcribed verbatim, including the two arms the altar text
@@ -161,7 +139,6 @@ function _a_gname_at(x, y) {
 // cmd.js carries its OWN dfeature_at() at cmd.js:21553, but its stairs and
 // altar arms bottom out in `throw new Error('not yet ported')` stubs
 // (stairs_description / align_str, cmd.js:21617-21618), so wiring THAT one into
-// a live path would abort any session whose hero steps onto a staircase or
 // altar holding a pile.  This body has no throwing arm.
 export function _dfeature_at(x, y) {
     const lev = game.level?.at?.(x, y);
@@ -210,52 +187,12 @@ export function _dfeature_at(x, y) {
     if (typ === DRAWBRIDGE_DOWN) return { text: 'lowered drawbridge', article: 1 };
     if (typ === DBWALL)    return { text: 'raised drawbridge', article: 1 };
 
-    /* STAIRS — C invent.c:4081-4082
-     *     } else if (stway) {
-     *         dfeature = stairs_description(stway, altbuf, TRUE);
-     * This arm used to be a hand-rolled three-case approximation off
-     * game.level.upstair / .dnstair: "staircase up out of the dungeon" for the
-     * depth-1 upstair, and a bare "staircase up"/"staircase down" for
-     * everything else.  js/mklev.js:13505 has stairs_description() ported in
-     * full — every branch of stairs.c:187-235 — and NOTHING called it, so the
-     * two forms C builds out of the stairway record were both missing:
-     *   - a traversed ordinary stair gains " to level %d" (stairs.c:210)
-     *     -> "There is a staircase up to level 3 here."   (seed4500 step 798)
-     *   - a KNOWN BRANCH stair is named for its destination dungeon
-     *     (stairs.c:230) -> "There is a branch staircase up to the Dungeons of
-     *     Doom here."                                     (seed4500 step 814)
-     * Both facts live on the stairway record (tolev / u_traversed), which is
-     * why C keys off stairway_at() and not off the level's two stair slots —
-     * a mines level reached by a branch has an up-stair in neither.
-     * (js/cmd.js:21553 has a THIRD dfeature_at whose stairs arm is a throwing
-     * stub; the note above this function explains why this one is the live
-     * body.  Do not wire that one.) */
     const stway = stairway_at(x, y);
     if (stway)
         return { text: stairs_description(stway, null, true), article: 1 };
     return null;
 }
 
-/* ────────────────────────────────────────────────────────────────────────
- * look_here() support — C ref: invent.c:4105-4317.
- *
- * NOTE ON LIVE WIRING (2026-09-04).  js/cmd.js has grown its OWN complete,
- * separately-refined reimplementation of this function, split across
- * `_dolook`/`_look_here_pile`/`_look_here_skip_objects`/
- * `_look_here_blind_preamble`/`_look_here_single_name` — that is the body
- * the ':' command and the spoteffects/pickup path actually run (cmd.js:131
- * says so explicitly: "NOT dolook: js/look.js's dolook()/look_here() is the
- * unreferenced partial").  js/pickup.js's check_here() ALSO does not call
- * this file: it throws `not yet ported: check_here -> look_here` unconditionally
- * whenever the tile holds >=1 object (js/pickup.js:674-689), never referencing
- * js/look.js at all.  So completing look_here here does not by itself move
- * the pickup oracle or the ':' command — the wiring lives in two files this
- * porter does not own (js/pickup.js, js/cmd.js).  This function is still
- * brought up to a real, honest, non-placeholder body — every arm of the C
- * function, with its own named boundaries where a real callee has no js/
- * home anywhere in this tree — so that whichever future change wires either
- * caller to it (or replaces cmd.js's private copy) has a faithful target.
- * ──────────────────────────────────────────────────────────────────────── */
 
 const _CORPSE_OTYP = 265;
 const _PM_CHICKATRICE = 9;
@@ -305,15 +242,6 @@ function _surface_lk(x, y) {
     return 'ground';
 }
 
-/* C ref: engrave.c:318-407 read_engr_at(x, y).  Real body: locates the live
- * engraving (js/mklev.js's `_engr_map`, the store js/engrave.js itself
- * writes through and reads via `engr_at` — see the note this replaced,
- * still true), builds the "sensing" line per engr_type, then the reveal
- * line.  NOT transcribed: the BUFSZ-based truncation of a very long
- * engraving text (engrave.c:376-383) — no corpus engraving approaches that
- * length, and the truncation only trims the displayed string, so omitting
- * it cannot change whether a line is printed, only whether it is padded to
- * an unreachable length. RNG: none (read_engr_at itself draws nothing). */
 async function _read_engr_at(x, y) {
     const ep = engr_at(x, y);
     if (!ep || !ep.text) return;
@@ -402,10 +330,6 @@ function _will_feel_cockatrice_lk(otmp, force_touch) {
         && isCorpse && touchPetrifies;
 }
 
-/* C ref: invent.c:4343 feel_cockatrice(otmp, force_touch).  The canonical
- * instapetrify body lives in cmd.js; look.js already has a benign cmd.js
- * cycle for dfeature_at, so delegate rather than leave this reachable arm as
- * a silent no-op. */
 async function _feel_cockatrice_lk(otmp, force_touch) {
     if (!_will_feel_cockatrice_lk(otmp, force_touch)) return;
     const name = corpse_xname(otmp, null, CXN_ARTICLE);
@@ -597,7 +521,6 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
 //   hide_unhide_msgtypes(FALSE, MSGTYP_MASK_REP_SHOW);
 //   return res;  // ECMD_OK or ECMD_TIME
 // MSGTYPE handling is a display-options feature we don't model; behavior is
-// transparent for the default config used by sessions in the corpus.
 export async function dolook() {
     return await look_here();
 }
@@ -637,7 +560,6 @@ function _db_under_typ(mask) {
 //    ? db_under_typ(levl[x][y].drawbridgemask)
 //    : levl[x][y].typ)
 // Uses the underlying terrain in front of a closed drawbridge. drawbridgemask
-// is the shared `flags` bitfield (rm.h #define), captured via the level_tiles
 // side-channel. RNG: none.
 function _surface_at(lev) {
     return (lev.typ === DRAWBRIDGE_UP)
@@ -784,21 +706,6 @@ export function avoid_moving_on_liquid(x, y, msg) {
     const notWaterwall = !(IS_WATERWALL(typThere) || typThere === LAVAWALL);
     if (safe_terrain && safe_protected && notWaterwall) return false;
     if (is_pool_or_lava(x, y) && levThere.seenv) {
-        /* C hack.c:2481-2486 — the mention_walls feedback arm, which this port
-         * left out ("Not printing for Stage A") and never came back to:
-         *     if (msg && flags.mention_walls) {
-         *         set_msg_xy(x, y);
-         *         You("stop at the edge of the %s.",
-         *             hliquid(is_pool(x,y) ? "water" : "lava"));
-         *     }
-         * mention_walls is Off by default but ON in 33 of the 688 train
-         * nethackrcs; on gen406 the hero runs into the moat at step 327 and C
-         * prints this line where this port printed nothing.  hliquid() is
-         * RNG-free unless the hero is hallucinating, and then it draws on the
-         * DISPLAY isaac64 stream, not the core one — so this arm cannot move
-         * the scored RNG sequence either way.
-         * set_msg_xy() is msgtype/msg-window bookkeeping with no 24x80 effect
-         * and is not ported. */
         if (msg && game.flags?.mention_walls) {
             void pline(`You stop at the edge of the ${hliquid(isPoolThere ? 'water' : 'lava')}.`);
         }
@@ -833,14 +740,6 @@ export function end_running(and_travel) {
         ctx.travel1 = 0;
         ctx.mv = 0;
     }
-    /* C hack.c:4062-4065 — UNCONDITIONAL (outside the and_travel guard):
-     *     if (gt.travelmap) { selection_free(gt.travelmap, TRUE); gt.travelmap = NULL; }
-     * gt.travelmap is the set of squares this travel session has already
-     * stepped through; findtravelpath (js/cmd.js) reads it to detect "I have
-     * been here before" and print "You stop, unsure which way to go."  Leaving
-     * it allocated across travel sessions makes every LATER travel see the
-     * PREVIOUS one's footprints and stop on its first step.  JS is
-     * garbage-collected, so selection_free is just the null-out. */
     if (game.gt && game.gt.travelmap)
         game.gt.travelmap = null;
     if ((game.multi | 0) > 0) {
@@ -1076,13 +975,6 @@ export function lookaround() {
             u.dy = y0 - uy;
         }
     }
-    /* FF_DIRTRACE: emit the run-step direction-resolution CAUSE.  dxIn/dyIn is
-     * the direction lookaround() was called with; dxOut/dyOut is what it leaves
-     * (== in unless the turn-resolution block rewrote it); the corridor ledger
-     * (corrct/noturn/m0/i0/x0/y0) is exactly what gated hack.c:3946; turnGate is
-     * whether the turn-block condition held; turnApplied is whether the |i|<=2
-     * clamp let it actually rewrite u.dx/u.dy; stop is whether nomul(0) had run
-     * (multi cleared → run ended this lookaround). */
     if (_DIRTRACE) {
         pushRngLogEntry(
             `^ff_dirtrace[moves=${game.moves | 0} ux=${ux} uy=${uy}`

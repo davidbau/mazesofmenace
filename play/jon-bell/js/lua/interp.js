@@ -117,7 +117,7 @@ class LuaClosure {
     this.type = 'function';
     this.params = params;       // array of param names; '...' means vararg
     this.body = body;           // array of statements
-    this.env = env;             // Environment (captured at definition)
+    this.env = env;
     this.isVararg = isVararg;   // true if '...' is in params
   }
 }
@@ -713,7 +713,6 @@ export function makeInterp() {
         existing = new LuaTable();
         tbl.setLocal(part, existing);
       }
-      // Now navigate into it
       tbl = null; // can't use Environment for table access
       current = existing;
     }
@@ -733,7 +732,6 @@ export function makeInterp() {
 
   // getGlobal — read a (possibly dotted) global's current value; null if absent.
   // Mirror of defineGlobal's traversal. Lets instruments WRAP an existing
-  // binding (record + delegate) instead of blindly replacing it — replacing
   // loses any semantics the state layer installed (e.g. des.object's
   // contents-closure invocation). Native fns come back as the plain JS
   // functions defineGlobal marshalled in, directly callable with the same
@@ -754,7 +752,6 @@ export function makeInterp() {
   async function run(ast) {
     try {
       const result = await evalBlock(ast.body, globals);
-      // If the chunk ends with a return, propagate its values
       if (result && result._control === 'return') {
         delete result._control;
         const vals = result.filter(v => v !== undefined);

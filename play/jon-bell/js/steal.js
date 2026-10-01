@@ -291,32 +291,12 @@ export async function uqwepgone() {
     }
 }
 
-/* setnotworn was a throw-stub HERE, exported, and it was the symbol the rest
- * of js/ resolved — while a complete but file-local copy sat in js/cmd.js.
- * The single body now lives in its C home, js/worn.js (worn.c:150), and is
- * imported at the top of this file for remove_worn_item()'s catchall below.
- * Not re-exported: steal.c does not define it, and a second exporting module
- * is what makes the capture-replay sweep unable to pin the authoritative
- * symbol. */
 
 function debugpline1(msg, ...args) {
     /* C debugpline1() writes only to the optional debug log; this port has no
      * debug log sink, so preserve the call as an intentional no-op. */
 }
 
-/* simpleonames (objnam.c:2424-2442) was a throw-stub, SHADOWING two real
- * candidates -- js/objnam.js:5244 (the general, long-standing body: exact
- * transliteration of minimal_xname() + makeplural(), matching C exactly) and
- * js/shk.js:1629 (a thin pass-through wrapper around the SAME objnam.js
- * body, imported and renamed there, ported only hours before this file was
- * ported). Chose objnam.js: functionally identical, but js/shk.js already
- * imports remove_worn_item from this file, so importing simpleonames from
- * shk.js instead would have opened a direct two-node cycle for no benefit.
- * The one call site here (remove_worn_item()'s debugpline1 diagnostic) is
- * still gated by debugpline1 itself, which remains a throw-stub -- out of
- * this file's assigned worklist -- so this alone does not unblock that path;
- * it only removes the shadow the audit tool flags. Now imported at the head
- * of this file. */
 
 /* is_fainted (eat.c:3347) was a throw-stub, SHADOWING a real, general,
  * RNG-free body at js/eat.js:2280 (`u.uhs === FAINTED`). Now imported at the
@@ -381,21 +361,7 @@ export async function mdrop_special_objs(mon) {
     }
 }
 
-/* extract_from_minvent (worn.c:1377-1417) was a throw-stub, SHADOWING a real
- * body at js/trap.js:7101, reached from mdrop_special_objs()'s migrating-
- * monster arm. Verified by reading it: general and matching C, with two
- * documented gaps neither of which applies to a migrating monster (the
- * obj->where impossible()-guard is deliberately not reproduced per a measured
- * seed0361 counterexample, and the gold-dragon-scales artifact_light arm needs
- * end_burn, itself unported). js/trap.js already imports uwepgone from this
- * file, so this completes an existing runtime call-cycle. Now imported at the
- * head of this file. */
 
-/* C ref: dungeon.c On_W_tower_level(lev) — Is_wiz1_level || Is_wiz2_level ||
- * Is_wiz3_level.  js/teleport.js, js/makemon.js and js/cmd.js each already
- * carry an unexported file-local copy of this three-line predicate; this is
- * the fourth (flagged in the fleet-feedback note rather than fixed here — a
- * cross-file move is out of this packet's one-file scope). */
 function _rloco_on_W_tower_level(lev) {
     if (!lev)
         return false;
@@ -447,13 +413,6 @@ const RLOCO_CORPSE = 265; /* objects[].otyp CORPSE -- same literal js/dig.js,
                               js/dog.js and js/hold_another_object.js each use
                               locally for this otyp. */
 
-/* C ref: teleport.c:2101-2181 rloco(obj) — "place object randomly, returns
- * False if it's gone (eg broken)".  Stays synchronous: its existing callers
- * (this file's mdrop_special_objs, js/dokick.js:2321
- * `if (rloco(otmp) && ...)`) both read its boolean return value
- * synchronously, so making this async (addtobill below is) would silently
- * turn every `if (rloco(...))` truthy on the pending Promise -- an
- * out-of-file landmine this packet's one-file scope must not create. */
 export async function rloco(obj) {
     /* teleport.c:2107-2110 -- a Rider corpse revives instead of relocating;
      * C returns FALSE when revival consumes the object. */
@@ -552,16 +511,6 @@ export async function rloco(obj) {
 /* artifact.c: quest artifact predicate — use objnam.js's role-aware body. */
 function is_quest_artifact(obj) { return is_quest_artifact_real(obj); }
 
-/* obfree (shk.c:1186-1275) was a throw-stub, SHADOWING a real body at
- * js/dokick.js:1779, reached from relobj()'s isgd vault-guard gold path
- * (obfree(otmp, null) on the extracted gold pile). Verified by reading it:
- * general for the class relobj() actually passes (COIN_CLASS -- no
- * owornmask, no contents, not on a shop bill), with explicit
- * UNPORTED-CALLEE throws (not silent skips) for leash/spellbook/
- * has-contents/shop-bill objects it does not yet cover -- a visible throw on
- * those classes, same as today, not a regression. js/dokick.js already
- * imports remove_worn_item from this file. Now imported at the head of this
- * file. */
 
 
 
@@ -588,13 +537,6 @@ function is_quest_artifact(obj) { return is_quest_artifact_real(obj); }
  * (:350, "%s gold %s." with Monnam(mtmp)) takes a monster name that can end in
  * 's — "Juiblex", no, but "the gnome lords" after a plural Monnam does. */
 
-/* droppables (dogmove.c:29-130) was a throw-stub, SHADOWING a real, general,
- * RNG-free body at js/dogmove.js:872 -- reached from relobj()'s is_pet loop.
- * One documented narrow gap (the intelligent-tool-using-pet keeper branch is
- * stubbed to null rather than the real tunnels/needspick/nohands/verysmall
- * predicates), but the corpus's tame pets are all animals/mindless, which
- * takes the DUMMY-sentinel arm instead and is a complete, faithful port for
- * that case. Now imported at the head of this file. */
 
 function flags() {
     return { verbose: false };

@@ -1,9 +1,7 @@
 // @ts-nocheck
-// jsmain.js — Game engine: NethackGame class and session replay.
 // C ref: unixmain.c — nethack_main() initialization and game setup.
 //
 // For browser play, see nethack.js.
-// For session replay (testing), see gameFromSession() below.
 import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
 import { newgame, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
@@ -25,24 +23,9 @@ import { lights_rest_snapshot } from './light.js';
 import { regions_rest_snapshot } from './region.js';
 import { vision_debug_snapshot } from './vision.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
-// only ever set by tools/input-desync-triage.mjs). See js/route_telemetry.js.
 import { routeTag, routeFrameTick } from './route_telemetry.js';
 import { restore_saved_game, dorecover, restore_preamble } from './restore.js';
 import { ENV } from './hostenv.js';
-/**
- * LEGACY (gameFromSession) ONLY — the v5 runSegment() path does NOT use this.
- *
- * Extract RNG calls from C's role_init() phase: between the last
- * init_objects(o_init.c) call and the first nhlib.lua call.
- * For Priest (no lgod): includes randrole(FALSE) = rn2(NUM_ROLES).
- * For Arch/Wiz (random nemesis gender): includes rn2(100).
- * C ref: role.c role_init() lines 2058-2069.
- *
- * Under the v5 contract runSegment() is handed no trace, so it passes
- * roleInitRng: null and js/fastforward.js runs the real js/roles.js role_init()
- * instead of replaying these recorded values.  This extractor survives only to
- * keep gameFromSession() and the v0 capture fixtures bit-identical.
- */
 function extractRoleInitRng(sessionData) {
     const calls = [];
     let capturing = false;
@@ -66,26 +49,15 @@ function extractRoleInitRng(sessionData) {
                 calls.push({ fn: m[1], n: parseInt(m[2], 10) });
         }
         if (capturing && calls.length > 0)
-            return calls; // stop at step boundary past first capture
+            return calls;
     }
     return calls;
 }
 // ── NethackGame ──
-// Wraps a single game session with replay infrastructure.
 export class NethackGame {
     constructor(opts = {}) {
         this._seed = opts.seed || 0;
         this._datetime = opts.datetime || null;
-        /* C ref: calendar.c:31 getnow() as the organiser's determinism patch
-         * rewrites it — it reads NETHACK_FIXED_DATETIME and there is ALWAYS a
-         * clock behind it.  runSegment() passes that env explicitly, but a bare
-         * `new NethackGame({seed, datetime, nethackrc})` — which is how
-         * frozen/playability_runner.mjs and the browser play page drive the
-         * game — left g.env empty, so getlt() returned null and any session
-         * that reached yyyymmdd()/hhmmss() (death -> topten) threw
-         * "Cannot read properties of null (reading 'tm_year')".  A clockless
-         * game is not a C state; derive the env from the datetime we were
-         * given so every entry point sees the same one. */
         this._env = opts.env
             || (opts.datetime ? { NETHACK_FIXED_DATETIME: opts.datetime } : {});
         this._nethackrc = opts.nethackrc || '';
@@ -94,8 +66,6 @@ export class NethackGame {
         this._chargenRng = opts.chargenRng ?? [];
         this._roleInitRng = opts.roleInitRng ?? null;
         this._playChargen = opts.playChargen ?? false;
-        // The harness's per-SESSION Web-Storage-shaped handle
-        // (frozen/ps_test_runner.mjs:311).  js/storage.js — a frozen file, so
         // the hook has to be the one it already reads — resolves it through
         // game.mockStorage, which resetGame() clears; start() re-links it
         // immediately afterwards, exactly as the InMemoryStorage note at the
@@ -121,7 +91,6 @@ export class NethackGame {
         set_configfile_for_session(this._seed, this._datetime,
                                    this._nethackrc, this._moves);
         // Re-link the host storage handle after the globals reset.  js/storage.js
-        // is FROZEN (the judge overwrites it), so game.mockStorage is the only
         // hook available and it must be re-established here rather than by
         // adding an export there.
         g.mockStorage = this._storage;
@@ -143,18 +112,6 @@ export class NethackGame {
         // "fruit:" option).  Consumed by fruitname() for the fruit-juice/see-invis
         // "This tastes like <fruit> juice." message.
         g.pl_fruit = opts.fruit || 'slime mold';
-        /* C options.c:7324-7329 initoptions_finish — rcfile() is read FIRST and
-         * then `(void) fruitadd(svp.pl_fruit, (struct fruit *) 0)` pushes the
-         * hero's fruit onto gf.ffruit as fid 1 and sets
-         * svc.context.current_fruit to it.  This port had no such call, so the
-         * chain stayed empty, current_fruit stayed unset, and every slime mold
-         * mksobj'd at js/mklev.js:1645 got `spe = 0` — which xname then failed
-         * to resolve, printing C's impossible() fallback "fruit" in place of
-         * the fruit's name.  Measured on gen513-recombine-seed428318 step 147:
-         * C "The kitten picks up a slime mold." vs JS "... a fruit.".
-         * Placed here, immediately after the rc is parsed, for the same reason
-         * C places it immediately after rcfile(): the fruit name may come from
-         * the rc's `fruit:` option. */
         init_fruit_chain();
         /* C options.c:7171-7173 initoptions_init — the score-list options.
          * They are read by topten() (topten.c:819) as
@@ -162,22 +119,6 @@ export class NethackGame {
          * so leaving them undefined made skip_scores TRUE and suppressed the
          * whole end-of-game score list, header included.  sysopt comes from
          * sys.c:67-68: entrymax = max(ENTRYMAX, 10), pointsmin = max(POINTSMIN, 1). */
-        /* C options.c:7258-7262 initoptions_init runs the optlist.h initvals
-         * before the rc is read.  `dark_room` is NHOPTB(..., On, ...)
-         * (optlist.h:264), and nothing in this port ever set it, so
-         * js/display.js reglyph_darkroom() read `undefined` and took its
-         * `!flags.dark_room` arm — the one that PROMOTES a remembered S_corr
-         * back to S_litcorr whenever loc.waslit.  reglyph_darkroom runs on every
-         * goto_level (js/cmd.js:5904, C do.c:1715), so re-entering a level
-         * re-lit every corridor the hero had ever seen lit: seed0002 steps
-         * 449-506 painted four '#' bright-white (CLR_WHITE) where C paints
-         * S_corr, on 57 consecutive frames.  With the initval present the same
-         * call takes C's `else` arm and DEMOTES an out-of-sight S_litcorr, which
-         * is what C's own newsym does on the way out.
-         * Scope check: the only other readers are the darkroom arms at
-         * display.js:815/831/866, each gated on `dark_room && iflags.use_color`
-         * or its negation — and iflags.use_color is likewise unset here, so
-         * every one of those tests keeps the value it had before this line. */
         g.flags = { verbose: true, end_top: 3, end_around: 2, end_own: false,
                     rest_on_space: false,
                     dark_room: true, menu_style: 2 /* MENU_FULL */, apelist: null,
@@ -196,38 +137,17 @@ export class NethackGame {
                      tt_oname_maxrank: 10, ...(g.sysopt || {}) };
         // C ref: options.c set_playmode() line 10179 — when playmode:debug (wizard mode)
         // is set, C overrides svp.plname with "wizard" unconditionally (after
-        // authorize_wizard_mode() succeeds, which it always does in the contest
         // recordings).  The rc name (e.g. "Gronk") is discarded; the welcome message
         // reads "Hello wizard, ...".  Mirror this here so the JS plname and the cursor
         // position at the --More-- boundary (strlen("Hello wizard,...--More--")) match C.
         if (g.flags.debug)
             g.plname = 'wizard';
-        // C ref: calendar.c getnow() — store the session env so the newgame
         // preamble can read NETHACK_FIXED_DATETIME for phase_of_the_moon().
         g.env = this._env;
         g.flags.initrole = roleOptionToIndex(opts.role);
         g.flags.initrace = raceOptionToIndex(opts.race);
         g.flags.initgend = genderOptionToIndex(opts.gender);
         g.flags.initalign = alignOptionToIndex(opts.align);
-        /* C optlist.h:236-238 — `NHOPTB(color, Map, 0, opt_in, set_in_game, On,
-         * ..., &iflags.wc_color, ...)`: the `color` option's initval is On and
-         * its field is iflags.wc_color, which flag.h:507 aliases as
-         *     #define use_color wc_color
-         * Nothing in this port ever set it, so `game.iflags.use_color` read
-         * `undefined` — and the note two blocks up said so, then concluded the
-         * darkroom tests therefore "keep the value it had before this line".
-         * They did, and that value was WRONG: js/display.js reglyph_darkroom()
-         * gates on `!flags.dark_room || !iflags.use_color || Is_rogue_level`,
-         * so an undefined use_color took C's rogue-level/no-color arm and
-         * DEMOTED every remembered S_darkroom floor to GLYPH_NOTHING on every
-         * goto_level.  Re-entering a level therefore blanked the interior of
-         * every room the hero had mapped but could not currently see, keeping
-         * only the walls.  Witness: seed4500-knight-coverage step 1315, the
-         * return to Dlvl 3 it had #wizmap'd at step 781 — C repaints five room
-         * interiors, this port repainted their outlines around empty space, and
-         * the miss ran 270 frames.
-         * The rc's own `color` / `!color` still wins: js/options.js:172 parses
-         * it into opts.flags.color. */
         g.iflags = {
             suppress_price: 0,
             wc_color: true,
@@ -297,7 +217,6 @@ export class NethackGame {
         // which runs AFTER mklev().  We start at 0 here so that the
         // post_mklev mapstate snapshot (emitMapstate('post_mklev') in
         // allmain.js:newgame, before fastforward_post_mklev) emits
-        // turn=0, matching the C recorder's svm.moves=0 at that point.
         // allmain.js:newgame() sets g.moves=1 at the u_init_role
         // equivalent position (after fastforward_post_mklev).
         g.moves = 0;
@@ -320,10 +239,7 @@ export class NethackGame {
             g.nhDisplay = this._pendingDisplay;
             this._pendingDisplay = null;
         }
-        // The session's virtual message/map/text windows are now available,
-        // including headless replay through the capture hook.
         g.iflags.window_inited = true;
-        // Install capture hook
         this._installCaptureHook();
         // ── attempt_restore (v5 cross-segment save channel) ───────────────
         // C ref: sys/unix/unixmain.c:220 `attempt_restore:` — after
@@ -331,14 +247,10 @@ export class NethackGame {
         // player_selection()+newgame(), main() asks whether this hero has a
         // save file; if so the whole new-game path is skipped and moveloop()
         // runs with resuming=TRUE.  The save file travels through
-        // `input.storage` (frozen/ps_test_runner.mjs:311-334 builds one
-        // Web-Storage-shaped handle per SESSION and threads it into every
         // segment), which js/storage.js reads through game.mockStorage.
         //
         // A segment whose storage holds no save file falls straight through to
         // the chargen+newgame path below, which is every single-segment
-        // session in the corpus — 43 of 44 — so this branch's blast radius is
-        // exactly the sessions that recorded an `S`ave.
         {
             // set_playmode has already replaced the configured name in wizard
             // mode. Look up the same effective name that dosave0 writes.
@@ -356,12 +268,9 @@ export class NethackGame {
         // then :315 newgame().  Everything here happens AFTER the RNG is
         // seeded and BEFORE newgame(), so the facet picks are the first
         // entries in the stream — exactly where the recordings show them
-        // (seed0004 step 7: pick_role/pick_race/pick_gend/pick_align, then
         // step 8's randomize_gem_colors from newgame).
         //
-        // Off by default: gameFromSession() replays chargen from the trace
         // (extractChargenPreInitRng + generateChargenFrames) and must keep
-        // doing so, since the v0 corpus and every capture fixture are keyed
         // to that path.
         if (this._playChargen) {
             // C ref: unixmain.c:193 set_playmode() runs BEFORE plnamesuffix(),
@@ -375,9 +284,7 @@ export class NethackGame {
                 plname: startName,
                 needAskname: !startName,
                 rn2,
-                // The C recorder captures the screen at each tty_nhgetch,
                 // before the key is delivered; nhgetch() fires the same
-                // capture hook the game loop uses, so chargen frames land in
                 // _screens[] at the indices the recorded steps[] expect.
                 read: async (screen, cursor) => {
                     game._screen_output = screen;
@@ -416,11 +323,6 @@ export class NethackGame {
                     + ` inMore=${game._inMovemonMore ? 1 : 0} snap=${snap ? 1 : 0} cells=${snap?.cells?.size ?? -1}`
                     + ` moves=${snap?.moves ?? -1}]`);
             }
-            /* Optional scored-path floor-object probe.  It is intentionally
-             * written into the existing per-frame RNG slice channel so a
-             * diagnostic can correlate an object's BUC/price state with the
-             * exact screen boundary that exposed it.  The probe is inert in
-             * normal scoring and bounded to the first 512 floor objects. */
             if (typeof process !== 'undefined' && ENV?.FF_OBJECT_TRACE === '1') {
                 const rows = [];
                 let count = 0;
@@ -508,16 +410,10 @@ export class NethackGame {
                     frame: keyIdx, ...vision_debug_snapshot(),
                 }) + ']');
             }
-            // Capture RNG slice since last capture
             const fullLog = getRngLog() || [];
             const slice = fullLog.slice(nhGame._lastRngIdx);
             nhGame._lastRngIdx = fullLog.length;
-            // Capture screen output (with DEC line-drawing and ANSI colors)
             const disp = game?.nhDisplay;
-            /* The recorder can capture the terminal after an ESCAPED game has
-             * entered gameover but before the async teardown resumes.  At that
-             * boundary C has already blanked the tty; emit that terminal frame
-             * at the existing final input boundary. */
             const escapedTeardown = game._endHow === ESCAPED
                 && game.program_state?.gameover
                 && game.flags?.debug
@@ -540,14 +436,9 @@ export class NethackGame {
             }
             nhGame._rngSlices.push(slice);
             // Keep the marker through stale brown-mold frames; clear it only
-            // after the first captured human-form status frame consumes it.
             if (String(game._screen_output || '').startsWith('You return to human form'))
                 game._rehumanizeDisplayPending = false;
-            // Capture cursor
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
-            /* Optional scored-path inventory probe.  It is deliberately
-             * environment-gated and writes only to the existing diagnostic
-             * RNG log, so ordinary replays and scores are unchanged. */
             if (typeof process !== 'undefined' && ENV?.FF_INVENT_TRACE === '1') {
                 const inv = [];
                 for (let o = game.invent; o; o = o.nobj)
@@ -555,7 +446,6 @@ export class NethackGame {
                 pushRngLogEntry(`^invent_trace[frame=${keyIdx} ${inv.join(',')}]`);
             }
             // Telemetry frame counter (inert unless NH_ROUTE_TELEMETRY=1):
-            // keeps the route-tag frame index == number of frames captured.
             routeFrameTick();
         };
     }
@@ -563,38 +453,26 @@ export class NethackGame {
     getCursors() { return this._cursors; }
     getRngLog() { return getRngLog(); }
 }
-// ── Session replay ──
-// Called by the test runner to replay a recorded session.
 export async function gameFromSession(sessionData) {
     // C ref: calendar.c getnow(), as 001-deterministic-runtime.patch rewrites it —
     // the recorded instant arrives as NETHACK_FIXED_DATETIME and is the sole input to
     // phase_of_the_moon() / friday_13th() / night() / midnight() / ubirthday.
     //
-    // A v0 session carries it inside env{}; a v5 session carries it as a first-class
-    // per-SEGMENT `datetime` field (frozen/ps_test_runner.mjs passes input.datetime,
-    // and runSegment() below rebuilds env from it).  session-load.mjs bridgeSession()
-    // promotes segments[0].datetime to sessionData.datetime — but this function only
-    // ever read env, so on EVERY v5 session the legacy replay ran with no fixed
     // datetime at all: phase_of_the_moon() returned -1, night()/midnight() 0 and
     // getnow() (hence ubirthday) 0.  On a full-moon recording moveloop_preamble
     // (allmain.c:60) then skipped change_luck(1), so Luck was 0 where C had 1, and
     // every later rnl() lost its `rn2(37 + abs(adjustment))` draw (rnd.c:143) —
-    // seed0012 desynced at leaf 3918 in doopen_indir (lock.c:904) and drew 8,492
     // leaves where the scorer draws all 13,878.  Same run, different calendar.
     const env = (sessionData.env && sessionData.env.NETHACK_FIXED_DATETIME)
         ? sessionData.env
         : (sessionData.datetime
             ? { ...(sessionData.env || {}), NETHACK_FIXED_DATETIME: sessionData.datetime }
             : (sessionData.env || {}));
-    // Prefer seed_str (exact decimal string, present on fuzz corpus entries
     // where the 64-bit seed may exceed 2^53) to avoid float64 rounding.
     // Fall back to env.NETHACK_SEED (also an exact decimal string when set by
-    // the recorder) then to the numeric `seed` field (safe for contest sessions
     // whose seeds always fit within 2^53).  The BigInt is passed straight
     // through to initRng() which calls BigInt(seed) — backward-compatible
     // because BigInt(number) and BigInt(string) both work, and the numeric
-    // path for contest sessions is unchanged: Number fits in 2^53 so
-    // BigInt(number) === BigInt(seed_str) for every contest session.
     const _seedRaw = sessionData.seed_str
         ?? (env.NETHACK_SEED ? env.NETHACK_SEED : null)
         ?? sessionData.seed
@@ -602,24 +480,19 @@ export async function gameFromSession(sessionData) {
     const seed = typeof _seedRaw === 'string' ? BigInt(_seedRaw) : _seedRaw;
     const rc = sessionData.nethackrc || '';
     const needsRandomPicks = sessionNeedsRandomPlayerPicks(sessionData);
-    // For interactive-chargen sessions, pin role/race/gender/align from the
     // welcome screen text instead of calling genlPlayerSetupRandomPicksForY().
     // genlPlayerSetupRandomPicksForY() consumes 4 RNG calls (rn2 x4) before
     // fastforward_pre_mklev, shifting the stream so that newpwInit's rnd(N)
-    // lands on the wrong value.  The C recorder avoids this by prepending a
     // pinned OPTIONS line to nethackrc — we mirror that here.
-    // C ref: tools/state-diff-sweep.mjs detectInteractiveChargen() (same logic).
     // nethack-c/src/role.c genl_player_setup() — the 4 picks happen at chargen
     // menu time, not at game-init time; JS replay must not re-consume them.
     //
     // chargenPin is applied unconditionally when a welcome screen is detected —
-    // not only for full-'y' (needsRandomPicks=true) sessions.  Partial interactive
     // chargen (player picks role/race/gender manually but one pick is random via
     // '*') leaves needsRandomPicks=false (no pick_role call in the trace) but
     // still needs the role pinned via OPTIONS to set g.flags.initrole for
     // u_init_misc().  Without the pin, initrole stays -1 and newhpInit returns 1.
     //
-    // The actual C pick calls (e.g. pick_align rn2(1)) are captured in chargenRng
     // via extractChargenPreInitRng and replayed by replayChargenPreInitRng.  Do NOT
     // suppress chargenRng when chargenPin is applied — those calls are real C RNG
     // consumption that must be mirrored to keep the stream in sync.  Only suppress
@@ -642,13 +515,10 @@ export async function gameFromSession(sessionData) {
         // C ref: calendar.c getnow() reads NETHACK_FIXED_DATETIME from the
         // environment.  moveloop_preamble (allmain.c:60) calls
         // phase_of_the_moon()/friday_13th() which derive from getlt()→getnow().
-        // Pass the session's env so the JS preamble can emit the matching
         // moon/Friday-13th display messages (RNG-free side effects).
         env,
         preflightRandomPicks: effectiveNeedsRandomPicks,
-        // chargenRng: replay actual C pick calls from the session trace.
         // Suppressed only when genlPlayerSetupRandomPicksForY handles all picks
-        // (effectiveNeedsRandomPicks=true — full 'y' session without a detectable
         // welcome screen to pin from).
         chargenRng: effectiveNeedsRandomPicks ? [] : extractChargenPreInitRng(sessionData),
         roleInitRng: extractRoleInitRng(sessionData),
@@ -657,18 +527,14 @@ export async function gameFromSession(sessionData) {
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };
     nhGame._pendingDisplay = display;
-    // Extract keys from session.
     // C ref: nethack chargen runs interactively (role/race/gender/align menus)
     // before newgame()/mklev() start.  In JS, chargen is replayed via RNG only
     // (chargenPin + replayChargenPreInitRng) without any nhgetch calls.  The C
-    // session's nhgetch keys from the chargen UI (steps before botlx[newgame])
     // must be SKIPPED so that JS's post-chargen nhgetch calls (com_pager_legacy,
-    // pline_with_more, ask_do_tutorial) read the correct session keys.
     //
     // Detect the chargen nhgetch count from the steps array: find the first step
     // where `botlx[newgame]` appears in the RNG trace — that's the newgame step.
     // All non-null-key steps before it are chargen UI nhgetch calls.
-    // For sessions where newgame starts at step 0 (no interactive chargen UI),
     // this count is 0 and allKeys is unchanged.
     const steps = sessionData.steps || [];
     let chargenNhgetchCount = 0;
@@ -688,7 +554,6 @@ export async function gameFromSession(sessionData) {
             break;
         }
     }
-    // Chargen-loop sessions (e.g. seed1300): no newgame step ever fires
     // because the player quits chargen before game start.  All non-null-key
     // steps are chargen UI nhgetch calls.  We still pre-populate chargen
     // frames so the prefix at least matches; the game loop will then have
@@ -705,10 +570,8 @@ export async function gameFromSession(sessionData) {
     // too (it is NOT a post-chargen display-dismiss). The chargen FRAME sequence
     // now INCLUDES the "Is this ok?" frame (generateChargenFrames, below), which
     // is the frame the leaked confirm key answers; the newgame step's screen —
-    // the Book-of-<god> intro — is the first LIVE com_pager capture.
     // For non-interactive chargen (newgameStep==0, key==null) confirmKeyLeaked is
     // false and liveSkipCount==chargenNhgetchCount==0, so the key stream is
-    // byte-identical to before — the change is inert for all newgameStep==0 sessions.
     const confirmKeyLeaked = newgameStepFound
         && steps[newgameStepIndex] != null
         && steps[newgameStepIndex].key != null;
@@ -724,16 +587,12 @@ export async function gameFromSession(sessionData) {
     // unambiguously-encoded per-step array: ESC is "", backslash is "\\",
     // each exactly one JSON character → one byte).  We deliberately do NOT use
     // regen.moves here.  regen.moves is a redundant compact form whose escape
-    // convention is inconsistent across the corpus: most sessions store control
     // bytes verbatim (so [...moves] is byte-identical to steps[].key), but some
-    // (e.g. seed0070) serialise ESC as the literal four-character C escape "\x1b",
     // which a per-character split mis-reads as four separate keys (\,x,1,b) and
     // shifts the entire stream — there, the later 'q' was dispatched as a
     // top-level dodrink (erroneous fountain quaff rnd(10)).  Decoding the escapes
-    // is not safe either, because other sessions (e.g. seed1337) legitimately have
     // a backslash key (0x5c) immediately followed by ESC, which is indistinguishable
     // from an escape sequence.  steps[].key has no such ambiguity, and is verified
-    // byte-identical to [...regen.moves] for every session whose moves field is
     // not mis-encoded — so this is a strict superset-correct source.
     const nonNullKeys = steps.filter(s => s.key != null).map(s => s.key);
     // Skip chargenNhgetchCount keys from the front of the non-null key list for
@@ -745,11 +604,9 @@ export async function gameFromSession(sessionData) {
     }
     // Render the chargen UI frames (copyright + askname + Shall-I-pick) as
     // pre-populated screens before newgame() runs.  These are deterministic
-    // outputs of C's tty_nhgetch capture loop during askname() and
     // tty_player_selection(), driven only by the typed input keys.
     // C ref: nethack-c/src/role.c plnamesuffix() -> askname() (no source for
     // tty_askname); patchlevel.h COPYRIGHT_BANNER_A..D.
-    // The capture hook in _installCaptureHook() will then push the post-
     // chargen screens (Book-of-{god} etc.) starting at index chargenNhgetchCount,
     // aligning jsScreens[i] with cSteps[i].screen for the chargen prefix.
     if (chargenNhgetchCount > 0) {
@@ -757,7 +614,6 @@ export async function gameFromSession(sessionData) {
         // [ynaq]" confirm menu overlaid on the copyright banner, describing the
         // auto-picked hero as "<name> the <align> <gender> <race> <role>".  We
         // reconstruct the "<align> <gender> <race> <role>" description from the
-        // session's welcome screen ("<greeting> <name>, welcome to NetHack!  You
         // are a <align> <gender> <race> <role>."), which uses the identical
         // adjectives — see buildConfirmInfoLine.  (The greeting word varies by
         // role/deity — "Hello"/"Salutations"/"Velkommen"/… — so we key off the
@@ -781,7 +637,6 @@ export async function gameFromSession(sessionData) {
             generateChargenFrames(chargenKeys, nhGame._chargenRng, confirmDesc);
         for (let i = 0; i < chargenScreens.length; i++) {
             // Telemetry (inert unless NH_ROUTE_TELEMETRY=1): the pre-populated
-            // chargen frames bypass the capture hook, so tag+tick them here.
             routeTag('chargen_ui', null, nhGame._screens.length);
             nhGame._screens.push(chargenScreens[i]);
             nhGame._cursors.push(chargenCursors[i]);
@@ -789,7 +644,6 @@ export async function gameFromSession(sessionData) {
         }
     }
     await nhGame.start();
-    // Load hero speed properties from session checkpoints.
     // C ref: attrib.c arc_abil/bar_abil/cav_abil/kni_abil/mon_abil/sam_abil/val_abil —
     // check_innate_abil sets HFast |= FROMEXPER when ulevel >= role threshold.
     // check_innate_abil/give_level_message/set_uasmon are not yet ported to JS, so we
@@ -797,7 +651,6 @@ export async function gameFromSession(sessionData) {
     // Very_fast uses speed potion/boots (timeout bits of HFast), hero.very_fast=1 ⟹ set TIMEOUT bits.
     //
     // Intrinsic Fast (hero.fast=1, hero.very_fast=0): level-granted via check_innate_abil
-    // — permanent once gained.  Quest sessions (Arc/Cav/Kni/Val) level up rapidly so
     // the hero is fast=0 at the first checkpoint (d0l1_001, moves=0) but fast=1 in all
     // subsequent checkpoints.  All game-turn steps (where fastforward_step fires rn2(3))
     // occur AFTER the hero reaches the Fast threshold; the intervening zero-move turns
@@ -807,7 +660,6 @@ export async function gameFromSession(sessionData) {
     //
     // Timeout-based Fast (hero.very_fast=1): from speed potions/spells — EXPIRES during
     // play.  The potion effect is ephemeral; we cannot know from checkpoint data alone
-    // when it wears off.  Therefore we only propagate very_fast from the FIRST checkpoint
     // (original behaviour), not the max, to avoid falsely marking the hero as Very_fast
     // after the potion has expired.
     {
@@ -828,13 +680,6 @@ export async function gameFromSession(sessionData) {
                 const intrinsicBits = heroFast ? 0x01000000 /* FROMEXPER */ : 0;
                 /* very_fast = speed potion/boots: TIMEOUT portion of HFast non-zero */
                 const timeoutBits = heroVeryFast ? 1 /* TIMEOUT=1 tick */ : 0;
-                /* OR, don't overwrite.  u_init_misc() now runs the real
-                 * adjabil(0,1) (attrib.c:999) on BOTH paths, so the level-1
-                 * innate Fast of a Monk/Samurai is already here with its
-                 * FROMEXPER|FROMOUTSIDE bits; an assignment would drop
-                 * FROMOUTSIDE.  This checkpoint read survives only to carry
-                 * the two things adjabil cannot know from a cold start: a
-                 * level-up gained mid-session, and a timeout-based Very_fast. */
                 const prevFast = g.u.uprops[FAST_PROP] || { intrinsic: 0, extrinsic: 0 };
                 g.u.uprops[FAST_PROP] = {
                     intrinsic: (prevFast.intrinsic | 0) | intrinsicBits | timeoutBits,
@@ -886,21 +731,15 @@ export async function gameFromSession(sessionData) {
             throw e;
         }
     }
-    // SESSION-END WORLD-BLOCK FLUSH (the g.moves-convention trailing block).
     // C ref: allmain.c:241-446.  C runs each time-command's per-turn WORLD BLOCK
     // (movemon/distfleeck/dochug/mcalcmove + svm.moves++) at the TOP of the NEXT
     // moveloop_core iteration.  The JS replay loop above terminates at the final
-    // command's screen capture, so a command whose trailing world block was
     // DEFERRED past the final nhgetch (g._wbOwed, set only by the dig-occupation
     // driver's context.move=0 phase-shift in allmain.js — see the note there) never
     // ran that block in-slice.  C ran it before EOF, recording its leaves into the
     // final step's RNG slice; JS is short exactly those leaves.  Run ONE faithful
     // world block here iff one is still owed AND the faithful path is active — this
     // is the single-trailing-world-block flush (gmoves-convention-diff NEEDS-FLUSH).
-    // GATED on g._wbOwed (set only by the dig suppression) → ZERO effect on any
-    // session that did not defer a post-occupation block.  The flag is general (keyed
-    // on the dig accounting, never on a session id); seed0314 happens to be the only
-    // current corpus session that defers a block past EOF.
     if (FF_FAITHFUL && game._wbOwed && (game.context && game.context.move)) {
         game._wbOwed = false;
         try { await _flushTrailingWorldBlock(); }
@@ -911,22 +750,14 @@ export async function gameFromSession(sessionData) {
     return nhGame;
 }
 
-// ── v5 contest entry point ──
-// The NetHack-5.0 generation of the contest calls a single exported function
-// per game SEGMENT, and — unlike gameFromSession() above — hands the port only
 // the inputs a real player would have:
 //
 //     runSegment({ seed, datetime, nethackrc, moves, storage }, prevGame)
 //
 // The recorded screens / RNG / cursors are deliberately NOT passed in
-// (frozen-v5/ps_test_runner.mjs:261 replayInputFor() strips the session down to
-// exactly these four fields, "never the recorded").  Everything gameFromSession()
-// derives from sessionData.steps[] — the chargen nhgetch prefix, the chargen RNG
 // replay (extractChargenPreInitRng), the role pin read out of the welcome-screen
-// text, the hero speed properties read out of sessionData.checkpoints — is
 // therefore unavailable here BY CONSTRUCTION.  This adapter takes none of it.
 //
-// See docs/MIGRATION-NETHACK-5.0.md for the measured consequences.
 export async function runSegment(input, prevGame = null) {
     const seedRaw = input.seed;
     const nhGame = new NethackGame({
@@ -934,7 +765,6 @@ export async function runSegment(input, prevGame = null) {
         datetime: input.datetime,
         nethackrc: input.nethackrc || '',
         moves: input.moves || '',
-        // C ref: calendar.c getnow() reads NETHACK_FIXED_DATETIME.  The v5 harness
         // passes the datetime as a first-class field rather than through env.
         env: { NETHACK_FIXED_DATETIME: input.datetime },
         // The cross-segment save/bones/record channel.  See NethackGame's
@@ -947,30 +777,8 @@ export async function runSegment(input, prevGame = null) {
         playChargen: true,
     });
     const display = new GameDisplay(null);
-    // The harness scores per-step with partial credit, so running out of input is
-    // a normal terminal condition, not a failure: keep the frames captured so far.
     display.onEmptyQueue = () => { throw new Error('Input queue empty'); };
     nhGame._pendingDisplay = display;
-    /* ICRNL.  The recorded `moves` are the bytes the organiser's harness wrote
-     * into the C game's PTY, and a tty leaves ICRNL set — setftty() (unixtty.c)
-     * only touches c_lflag — so a recorded Return (0x0D) reaches readchar() as
-     * NEWLINE (0x0A).  The reference recorder applies exactly this translation
-     * before feeding its key file down a pipe, where no termios translation
-     * happens (tools/migration/record-v5.sh:249 `moves.replace(/\r/g, "\n")`),
-     * and its header records why: '\r' has no default binding, so an untranslated
-     * Return makes the game answer "Unknown command '^M'." and consume no turn
-     * where the recording took a real move.
-     *
-     * It is not only the unbound-key case.  0x0A IS bound — cmdbind_get maps it
-     * to do_rush_south (C_('j')) — and the two keys diverge wherever a reader
-     * tests bindings before quitchars.  seed0014 step 189 is that: the recorded
-     * '\r' arrives inside getpos()'s cursor loop, where C reaches
-     * movecmd(c, MV_RUSH) (getpos.c:917) BEFORE the quitchars test at :1040 and
-     * jumps the cursor eight rows south, to an unexplored square that
-     * autodescribes as "unexplored area (no travel path)".  Read as 0x0D it is
-     * only a quitchar, the cursor never moves, and every later frame carries the
-     * wrong cursor.  getlin/yn/menu commits accept both interchangeably, so the
-     * translation changes nothing on those paths. */
     for (const ch of (input.moves || '')) {
         const k = ch.charCodeAt(0);
         display.pushKey(k === 0x0d ? 0x0a : k);
@@ -981,23 +789,16 @@ export async function runSegment(input, prevGame = null) {
     try { await nhGame.start(); } catch (e) { quiet(e); }
     // C ref: allmain.c:59 moveloop() — `for (;;) { moveloop_core(); }`.  One
     // moveloop_core() call is ONE command, not the whole game: C keeps calling
-    // it until the process exits.  The legacy gameFromSession() path spelled
     // that out (`for (iter…) await moveloop_core()`), but this adapter only
     // ever called it once, so every segment stopped emitting frames at the
-    // hero's first real command — the corpus-wide truncation at the welcome
     // screen.  Replay's terminal condition is "the recorded keystrokes ran
     // out", which onEmptyQueue turns into a throw; under per-step partial
-    // credit that is a normal end, so keep the frames captured so far.
     //
     // maxIter is a runaway guard only.  It has to be generous: a single
     // keystroke can drive many moveloop_core invocations (occupations,
     // multi-turn runs, `s`earch counts), so bound it off the input length the
-    // same way gameFromSession bounds off the recorded step count.
     //
-    // Deliberately NOT gated on per-iteration progress.  A "consumed no key
     // and painted no frame" iteration looks stalled but is the normal shape of
-    // a multi-turn occupation (eating, searching) mid-run; measured, such a
-    // guard truncated seed0002 at 53/595 frames and seed0200 at 23/40.  Only
     // the iteration ceiling and the empty input queue end the loop.
     const maxIter = Math.max((input.moves || '').length * 8, 1024);
     for (let iter = 0; iter < maxIter; iter++) {
@@ -1007,10 +808,8 @@ export async function runSegment(input, prevGame = null) {
             // else is a real port gap — most often one of the deliberate
             // `throw new Error('UNPORTED-CALLEE: …')` markers.  Under per-step
             // partial credit those must NOT discard the frames already
-            // rendered: the harness accumulates a segment's screens only after
             // runSegment() returns, so letting the throw escape forfeits every
             // point the segment had already earned (and, in the frozen runner,
-            // every LATER segment of the session too).  Stop the loop, keep the
             // frames, and park the cause on the game for the diagnosis tools.
             if (!String(e?.message || '').includes('Input queue empty'))
                 nhGame.replayError = e;

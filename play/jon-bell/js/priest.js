@@ -39,10 +39,6 @@ function _hero_invis_priest(u) {
     const blocked = p?.blocked | 0;
     return !!((intrinsic || extrinsic) && !blocked);
 }
-/* Your — C pline.c:380-388.  js/vault.js:481 is a throw-stub; the real body
- * (pline with a "Your " prefix and C-shaped printf formatting) is
- * js/do_wear.js.  pri_move():422 was a guaranteed session kill on reach.
- * Found by: node tools/js-binding-audit.mjs --stub-resolve */
 import { Your } from './do_wear.js';
 import { mon_nam } from './uhitm.js';
 import { mattacku } from './mhitu.js';
@@ -341,29 +337,6 @@ function curse(otmp) { otmp.blessed = 0; otmp.cursed = 1; }
  * above was already written against that array form (`rooms_at_pos[0]`), so the
  * stub was the only thing standing between it and a working lookup. */
 
-/*
- * move_special — movement for priests and shopkeepers.  Called from shk_move()
- * (shk.js) and pri_move().  C source: nethack-c/src/priest.c:41-139.
- * Valid returns: 1 moved, 0 didn't, -1 let m_move do it, -2 died.
- *
- * RNG: the pick_move loop fires rn2(++chcnt) for each candidate square that
- * passes the IS_ROOM/isshk guard (and the avoid+NOTONL skip) when appr==0 (the
- * shopkeeper-wandering / satdoor path).  This is the seed0116 first-divergence
- * at leaf 6303 (turn 18): the shopkeeper at home in his shop, satdoor → appr=0,
- * mfndpos cnt=4 of which 3 are IS_ROOM squares (the 4th is non-room and the shk
- * is in_his_shop so the isshk-OR clause is false) → rn2(1),rn2(2),rn2(3).
- *
- * mfndpos: C calls mfndpos(mtmp, &mfp, mon_allowflags(mtmp)).  For a peaceful
- * shopkeeper mon_allowflags = ALLOW_SANCT|ALLOW_SSM|ALLOW_ROCK(+OPENDOOR/
- * UNLOCKDOOR) — NOT ALLOW_U.  The shared mfndpos_nontame() (monmove.js) already
- * folds in OPENDOOR/UNLOCKDOOR and the mconf ALLOW_ALL handling, so we pass just
- * the ALLOW_ROCK bit (shopkeepers can break boulders → m_can_break_boulder).
- *
- * NOTONL: mfndpos_nontame() does NOT mark the NOTONL bit (mon.c:2327-2330: a
- * candidate that the monster sees AND that is online2 with the perceived hero
- * gets info|=NOTONL).  We recompute it here from monseeu && online2(nx,ny,
- * mux,muy) so the avoid-skip at C priest.c:83 fires identically.
- */
 export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
                              omx, omy, ggx, ggy) {
     /* C priest.c:56-57 */
@@ -377,17 +350,6 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
 
     let nix = omx;
     let niy = omy;
-    /* C priest.c:65-66: allowflags = mon_allowflags(mtmp); cnt = mfndpos(...).
-     * The peaceful-shk flags that influence the candidate set reduce to
-     * ALLOW_ROCK (boulder squares) here; ALLOW_SANCT/ALLOW_SSM gate sanctuary/
-     * sees-self-magic squares which the real mfndpos's in_rooms() stub
-     * conservatively does not reject in the common dungeon case (same
-     * simplification m_move/dog_move use). WIRING: real mfndpos (js/mklev.js)
-     * replaces mfndpos_nontame (movemon integration spec §priest-site);
-     * _can_open_mv/_passes_bars_mv added for the same reason site-2
-     * validation required them (mon_allowflags's OPENDOOR/ALLOW_BARS bits
-     * are computed unconditionally in C, not just for the tame/hostile
-     * branches this packet's allowflags literal covers). */
     const allowflags = _allow_rock_mv(mtmp) | _can_open_mv(mtmp) | _passes_bars_mv(mtmp);
     const mfp = { cnt: 0, poss: [], info: [] };
     const real_cnt = mfndpos(mtmp, mfp, allowflags);
@@ -396,9 +358,6 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
         poss.push({ x: mfp.poss[i].x, y: mfp.poss[i].y, info: mfp.info[i] | 0 });
     const cnt = poss.length;
 
-    /* C priest.c:249-250 monseeu = mcansee && (!Invis || perceives(mdat)).
-     * Invis: hero invisible to this mon; perceives requires M1_SEE_INVIS.  The
-     * shk corpus path has mcansee=1 and a visible hero → monseeu true. */
     const u = game.u;
     const Invis = _hero_invis_priest(u);
     const perceives_data = !!((mtmp.data.mflags1 || 0) & 0x01000000 /* M1_SEE_INVIS */);
@@ -414,9 +373,6 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
         info[i] = inf;
     }
 
-    /* C priest.c:68-73: isshk && avoid && uondoor — if no candidate avoids the
-     * hero's line we cannot avoid him, so drop avoid.  (uondoor is false on the
-     * seed0116 path so this whole block is skipped.) */
     if ((mtmp.isshk | 0) && avoid && uondoor) {
         let any = false;
         for (let i = 0; i < cnt; i++) {
@@ -491,9 +447,6 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
         mtmp.my = niy;
         newsym(omx, omy);
         newsym(nix, niy);
-        /* C priest.c:125-126: isshk && !in_his_shop && inhishop(mtmp) →
-         * check_special_room(FALSE).  inhishop re-check + room re-entry effect
-         * not ported; no corpus shk re-enters its shop mid-move.  TODO. */
         return 1;
     }
     return 0;
@@ -551,35 +504,6 @@ function m_canseeu(mtmp) {
            && online2(mtmp.mx, mtmp.my, (u?.ux ?? 0) | 0, (u?.uy ?? 0) | 0);
 }
 
-/*
- * pri_move — priest monster movement AI.
- * C source: nethack-c/src/priest.c:176-217.  Called from C monmove.c:1833
- * (dochug's shk/gd/priest dispatch); the JS mirror at js/monmove.js:1041 still
- * returns MMOVE_NOTHING for `mtmp.ispriest` instead of calling this body.
- *
- * DO NOT WIRE THAT CALL SITE YET (measured 2026-08-09, dead-port-census row
- * "pri_move UNWIRED/HIGH, 2 sessions / 82 C calls").  Two independent reasons:
- *
- *  1. It would be INERT.  Nothing in js/ ever assigns `ispriest = 1`.  C's only
- *     producers of priests are priestini() (mkroom.c:617 via mktemple(), and
- *     sp_lev.c create_altar()'s shrine/sanctum path); mktemple() is a documented
- *     KNOWN GAP in js/mklev.js do_mkroom(), and the sp_lev path is
- *     js/sp_lev.js:3867 `throw new Error('UNPORTED-CALLEE: create_altar
- *     shrine/sanctum path (priestini)')` — and zero corpus sessions throw, which
- *     proves it is never reached.  The only other epri producer, newepri() at
- *     js/mklev.js:1997, is inside copy_mextra() and needs a source priest.
- *
- *  2. It would be UNSAFE the moment reason 1 stops holding: histemple_at()
- *     above is a stub that answers TRUE for every priest, so pri_move() would
- *     draw rn1(3,-1) twice (priest.c:194-195) on turns where C returns -1 with
- *     no RNG at all.  Port histemple_at()'s in_rooms()/on_level() conjuncts
- *     first, then wire.
- *
- * The corpus ground truth is that C really does run this: 82 attributed calls
- * across seed0363-caveman-quest-actions and seed0800-wiz-grand-tour, all of the
- * shape `rn2(3)=N @ pri_move(priest.c:194)` / `(priest.c:195)`.  The blocker is
- * mktemple()/priestini(), not this wire.
- */
 export async function pri_move(priest) {
     let ggx, ggy, omx, omy;
     let temple;
@@ -721,14 +645,6 @@ export function mon_aligntyp(mon) {
     return (algn > 0) ? A_LAWFUL : (algn < 0) ? A_CHAOTIC : A_NEUTRAL;
 }
 
-/*
- * priestname — build the display name for a priest/minion into caller buffer
- * pname and return it.  C source: nethack-c/src/priest.c:301-367.  The C
- * function writes into a caller-supplied char buffer and returns that pointer;
- * the JS port accumulates the same string and returns it (the sweep records
- * the return as an opaque pointer identity, so parity rests on not diverging
- * state, which this fn never mutates).
- */
 export function priestname(mon, article, reveal_high_priest, pname) {
     const hp = game.u?.uprops || {};
     const do_hallu = !!(((hp[HALLUC]?.intrinsic | 0) || (hp[HALLUC]?.extrinsic | 0))
@@ -815,14 +731,6 @@ function DIR_CLAMP(dir) { return ((dir + N_DIRS) % N_DIRS); }
 const SPBOOK_no_NOVEL = -10;
 const AMULET_OF_YENDOR = 213;
 
-/* C do_name.c:1389 rndmonnam(char *code) / :1415 bogon_is_pname(char code) —
- * both now live in js/do_name.js, C's own home for them, on the DISPLAY rng.
- * These were `throw new Error('not yet ported: ...')`, and rndmonnam HALTED
- * seed0399-wizard-hallu-actions at frame 426/532 through mon_nam -> x_monnam.
- *
- * `code` is C's out-parameter (`char *`); js/mhitm.js:468 already established
- * the convention of passing a scratch object and reading `.code` off it, so
- * these wrappers fill that object and return the name. */
 export function rndmonnam(code) {
     const r = dn_rndmonnam_ex();
     if (code && typeof code === 'object')
@@ -834,12 +742,4 @@ export function bogon_is_pname(code) { return dn_bogon_is_pname(code); }
 export function on_level(a, b) {
     return !!(a && b && a.dnum === b.dnum && a.dlevel === b.dlevel);
 }
-/* mongone's real body is js/mklev.js (C home mon.c:3253), beside makemon and
- * newcham, the other mon.c functions this port hosts there.  This file carried
- * a `throw new Error('not yet ported')` stub of the same name, which SHADOWED
- * it for clearpriests() above and which tools/equiv-test/auto-replay-sweep
- * resolves to (CRITICAL, resolved_is_stub, 131 records).  Re-exported so there
- * is one implementation.  js/shk.js:2401 and js/vault.js:537 still declare the
- * same stub name for their own callers; collapsing those two needs their own
- * measurement. */
 export { mongone } from './mklev.js';

@@ -10,12 +10,6 @@ import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { observe_object } from './o_init.js';
 import { SEE_INVIS, TELEPAT, DETECT_MONSTERS, INVIS } from './const.js';
 import { PICK_ONE, PICK_ANY } from './const.js';
-/* C ref: include/you.h:562 `#define u_at(x,y) ((x) == u.ux && (y) == u.uy)`.
- * This file used to export its OWN throwing `u_at` stub, which shadowed the
- * canonical const.js body for every call inside this module AND offered a
- * second, broken binding of the name to any importer that happened to name
- * display.js — a DUAL EXPORT with no correct side to converge on.  The stub is
- * deleted; the one body every other module already imports is imported here. */
 import { u_at } from './const.js';
 /* C ref: include/align.h:29-39 — altar_to_glyph's alignment-mask tests. */
 import { AM_MASK, AM_SANCTUM, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC } from './const.js';
@@ -59,7 +53,6 @@ import { describe_level_buf } from './dungeon.js';
 import { update_inventory } from './mhitm.js';
 import { ARTILIST, otense } from './objnam.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
-// only ever set by tools/input-desync-triage.mjs). See js/route_telemetry.js.
 import { routeTag } from './route_telemetry.js';
 /* C youprop.h:399 Unaware = (gm.multi < 0 && (unconscious() || is_fainted())).
  * Both leaves are ported; these are the exported bodies js/cmd.js's
@@ -183,12 +176,10 @@ const MON_MLET = new Uint8Array([
     53, 53, 53, 53, 53, 56, 53, 30, 34, 30, 53, 56, 19, 53, 53, 34,
     53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53,
 ]);
-// Regenerated 2026-06-03 directly from C ground truth: mons[i].mcolor after
 // monst_globals_init() (monst.c memcpy from mons_init[]).  The prior table had
 // 19 entries stuck at the CLR_GRAY (7) fallback where the real monster carries a
 // distinct color (e.g. mndx 333 "caveman" / 337 "priest" = CLR_WHITE(15), used to
 // color a caveman/priest *corpse* glyph via mon_color(corpsenm) — display.c:3059).
-// Indexing is exact (NUMMONS=383, the same #ifdef config as the recorder).
 const MON_MCOLOR = [
     3, 11, 4, 1, 0, 5, 2, 15, 6, 3, 11, 1, 3, 1, 3, 3,
     15, 11, 15, 15, 7, 7, 6, 0, 6, 1, 1, 7, 4, 15, 1, 12,
@@ -283,8 +274,6 @@ const ANSI_COLOR = [
     // never emits ANSI 30 (black-on-black is invisible); CLR_BLACK renders as
     // bright-black (ANSI 90). Likewise CLR_GRAY = "low-intensity white" IS the
     // terminal default foreground, so the tty emits no color code (ANSI 39),
-    // not 37. Verified empirically: no recorded C session emits ESC[37m or
-    // ESC[30m; CLR_GRAY monsters/objects render at default (e.g. seed1900
     // step0 orc `o`).
     90, // CLR_BLACK     0 → bright black (default-dark)
     31, // CLR_RED       1
@@ -304,14 +293,10 @@ const ANSI_COLOR = [
     97, // CLR_WHITE     15
 ];
 // ── Terrain to display character + color + DEC flag ──
-// W18.4 sub-task C terrain color audit (2026-05-17):
 // All entries verified against nethack-c/include/defsym.h PCHAR2 entries 90-152.
 // Walls (HWALL/VWALL/corners): defsym CLR_GRAY → JS NO_COLOR (ANSI default=39).
 //   NO_COLOR renders at terminal default (no color code emitted), matching
-//   C's walls which are also default-colored in recorded sessions — no fix needed.
 // Stairs: defsym CLR_GRAY (idx 7) but C emits ANSI 93 (CLR_YELLOW idx 11).
-//   Session files confirm ANSI 93 for stairs — JS CLR_YELLOW is correct.
-// ROOM/CORR: defsym CLR_GRAY → JS NO_COLOR; sessions show no color code for floor
 //   and corridor — confirmed correct.
 // All other entries (DOOR, pool, lava, fountain, etc.) match defsym.h colors.
 // Future: if a new terrain color mismatch appears on bug board, re-audit here.
@@ -510,62 +495,6 @@ function _wall_angle_glyph(loc, decMode) {
         ? { ch: sym.d, color: wallColor, dec: true }
         : { ch: sym.a, color: wallColor, dec: false };
 }
-/* C ref: display.h:597-603 cmap_walls_to_glyph() + display.c:2949-2965 +
- * display.c:2677 `int wallcolors[sokoban_walls + 1]`.
- *
- * Every wall cmap symbol (S_vwall..S_trwall, and SDOOR which wall_angle()
- * resolves to one of them) is turned into a glyph in a PER-BRANCH block —
- *     (cmap_idx) - S_vwall
- *     + (In_mines(&u.uz)   ? GLYPH_CMAP_MINES_OFF
- *        : In_hell(&u.uz)  ? GLYPH_CMAP_GEH_OFF
- *          : Is_knox(&u.uz) ? GLYPH_CMAP_KNOX_OFF
- *            : In_sokoban(&u.uz) ? GLYPH_CMAP_SOKO_OFF
- *              : GLYPH_CMAP_MAIN_OFF)
- * — and map_glyphinfo colours each block from its own `wall_color(n)`, i.e.
- * `wallcolors[n]` indexed by enum level_walls (display.h:353): main=0, mines=1,
- * gehennom=2, knox=3, sokoban=4.  We rendered EVERY wall at NO_COLOR
- * unconditionally and had no model of this at all.
- *
- * The values.  nethack-c-v5/upstream/src/display.c:2677 ships wallcolors[]
- * initialised to five CLR_GRAYs with the real table on the line BELOW it,
- * commented out:  CLR_GRAY, CLR_BROWN, CLR_RED, CLR_GRAY, CLR_BRIGHT_BLUE.
- * The recorded 5.0.0_Release output says that commented table is what the
- * scored binary actually runs.  Measured over all 44 public sessions, decoding
- * every DEC-graphics wall cell of every recorded frame:
- *     main       colour 39/default   71,165 cells   (CLR_GRAY)
- *     mines      colour 33           21,244 cells   (CLR_BROWN) seed0014/0030/4500
- *     sokoban    colour 34            7,731 cells   (CLR_BLUE)  seed0360/0361/0367
- *     gehennom   colour 31            2,780 cells   (CLR_RED)   seed4500
- * so three of the four witnessed entries are the commented line verbatim, and
- * Sokoban is CLR_BLUE (34) rather than the comment's CLR_BRIGHT_BLUE — which
- * the same recordings emit as 94 elsewhere, so the two are distinguishable and
- * 34 is not an encoding artefact.  Knox has no witness in the corpus; it keeps
- * the CLR_GRAY both the live initialiser and the comment give it.
- *
- * main stays NO_COLOR rather than CLR_GRAY: both encode to ANSI 39, and
- * NO_COLOR keeps the main-dungeon byte stream identical to what it was.
- * DISPLAY-ONLY, no RNG.
- *
- * WHERE THAT TABLE ACTUALLY COMES FROM — CORRECTED 2026-08-19, and it is the
- * "C snapshot disagrees with the scored binary" shape in reverse.  The live
- * initialiser at display.c:2677 is five CLR_GRAYs and it is NOT dead code: the
- * per-branch colours are loaded from the SYMSET, not compiled in.  dat/symbols
- * carries `G_vwall_sokoban: /blue`, `G_vwall_gehennom: /red`, ... inside the
- * `start: IBMgraphics` / `start: DECgraphics` / `start: curses` blocks, and the
- * default (and `plain`) symset defines no G_* entries at all, so with no
- * `OPTIONS=symset:` in the rc wallcolors[] stays all CLR_GRAY.
- *
- * The earlier measurement that produced this table only ever saw sessions that
- * DO load one: 38 of the 44 public sessions set symset:DECgraphics, and every
- * mines/sokoban/gehennom witness it cites is among them.  The 6 that do not are
- * seed0103, seed0104, seed0106, seed0107, seed0108 and seed0200, and only
- * seed0108 reaches a coloured branch -- it level-teleports into Sokoban at step
- * 290, where C paints the walls with NO colour and this port painted them blue
- * across 9 frames.
- *
- * So the branch colours are gated on a symset being loaded.  The gate is the
- * loaded symset's own name, not H_DEC: IBMgraphics and curses carry the same
- * G_* block and would want the same colours if a future session asked for one. */
 /* dat/symbols — which symsets define the per-branch `G_*_sokoban: /blue`,
  * `G_*_gehennom: /red`, `G_*_mines: /brown` colour overrides that populate
  * wallcolors[].  The plain/default set defines none.  Read off the loaded
@@ -603,39 +532,6 @@ function _wall_color() {
     return NO_COLOR;       /* wallcolors[main_walls] = CLR_GRAY */
 }
 
-/* ── the Rogue symbol set (C symbols.c:186-213 init_rogue_symbols +
- *    symbols.c:217-233 assign_graphics, switched by do.c:1667
- *      assign_graphics(Is_rogue_level(newlevel) ? ROGUESET : PRIMARYSET))
- *
- * On a Rogue level C swaps gs.showsyms wholesale to gr.rogue_syms, which is
- * built from the PLAIN defsyms[] table -- NOT from the loaded symset.  So a
- * session running `OPTIONS=symset:DECgraphics` (38 of the 44 public sessions)
- * still gets ASCII on the Rogue level: C paints `.` where this port painted the
- * DEC centred dot.  Witness: seed0360-wizard-world-tour step 302, C row 10
- * "\e[11C.@." against JS "\e[11C<SO>~<SI>@<SO>~<SI>".
- *
- * init_rogue_symbols then applies exactly four overrides on top of defsyms:
- *     rogue_syms[S_vodoor] = rogue_syms[S_hodoor] = rogue_syms[S_ndoor] = '+'
- *     rogue_syms[S_upstair] = rogue_syms[S_dnstair] = '%'
- * plus the object-class table def_r_oc_syms[] (drawing.c:72-83).  S_vcdoor and
- * S_hcdoor are already '+' in defsyms, and S_brupstair/S_brdnstair are NOT
- * overridden, so branch stairs keep '<'/'>'.
- *
- * COLOUR: on a Rogue level WITHOUT PC graphics every map glyph is NO_COLOR.
- * reset_glyphmap's last act (display.c:3077-3081) is
- *     if ((!has_color(color)
- *          || ((gg.glyphmap_perlevel_flags & GMAP_ROGUELEVEL) && !has_rogue_color))
- *         || !iflags.use_color)
- *         color = NO_COLOR;
- * and has_rogue_color needs HAS_ROGUE_IBM_GRAPHICS (display.c:2582-2587), i.e.
- * `currentgraphics == ROGUESET && SYMHANDLING(H_IBM)`.  These sessions load
- * DECgraphics (H_DEC), never H_IBM, so has_rogue_color is FALSE and the whole
- * map -- terrain, objects, monsters AND the hero -- paints uncoloured.  Witness:
- * seed0360 step 302, C row 10 is "\e[11C.@." while this port wrote
- * "\e[11C.\e[97m@\e[39m." (the CLR_WHITE hero).  It is the glyphmap colour that
- * is cleared, so the mask belongs on the MAP rows only -- the status line and
- * topline keep their colours.  For the same reason nothing on the map can be in
- * DEC mode there: gr.rogue_syms is built from defsyms[], which is plain ASCII. */
 function rogue_graphics() {
     return !!Is_rogue_level(game?.u?.uz);
 }
@@ -674,9 +570,7 @@ export function terrain_glyph(loc, x, y) {
     // wall type, its wall_info orientation mode, AND the seen-vector; depending
     // on which faces have been seen it can yield a different corner/T glyph or
     // S_stone (blank).  Without this JS drew a fixed wall glyph for a partly-seen
-    // wall where C shows blank stone (seed0013 step 5, vwall at 33,14 mode
     // WM_W_LEFT seenv SV6 -> S_stone).  DBWALL has its own back_to_glyph case
-    // (no seenv gate) and is handled by the switch below.
     if ((typ >= VWALL && typ <= TRWALL) || typ === SDOOR)
         return _wall_angle_glyph(loc, decMode);
     switch (typ) {
@@ -689,11 +583,9 @@ export function terrain_glyph(loc, x, y) {
             // C ref: display.c:2349 back_to_glyph CORR case —
             //   idx = (ptr->waslit || flags.lit_corridor) ? S_litcorr : S_corr;
             // S_litcorr (lit corridor) renders bright-white (CLR_WHITE → ANSI 97)
-            // in these sessions; S_corr (dark corridor) is CLR_GRAY (default).
             // back_to_glyph "assumes hero can see x,y", so the lit form only
             // applies in-sight; an out-of-sight remembered corridor is dark
             // (display.c:1109 downgrades remembered S_litcorr → S_corr when
-            // !cansee && !waslit).  Gate on cansee so remembered_glyph stays dark.
             // flags.lit_corridor comes from OPTIONS=lit_corridor (options.js →
             // g.flags.lit_corridor); loc.waslit is the per-cell lit-memory bit
             // (the light-spell litroom path sets white corridors directly).
@@ -741,7 +633,6 @@ export function terrain_glyph(loc, x, y) {
             // ONE up-staircase per level: on a special level whose .lua places
             // its own stairs (bigrm-7.lua:36-37 des.stair("up"); des.stair
             // ("down")) that stand-in reported the up-stair as a down-stair —
-            // measured on seed0399-wizard-hallu-actions step 42, Dlvl 12, where
             // C renders `<` at map (34,6) and we rendered `>`.
             const _isUp = !(((game.level?.at?.(x, y)?.ladder) | 0) & LA_DOWN);
             let _sway = null;
@@ -761,11 +652,6 @@ export function terrain_glyph(loc, x, y) {
             return { ch: _isUp ? '<' : '>', color: _color, dec: false };
         }
         case LADDER: {
-            /* C display.c:2352-2358 back_to_glyph(LADDER) — ladders use
-             * S_upladder/S_dnladder (or the branch variants), selected by
-             * levl[x][y].ladder and stairway_at().  DECgraphics encodes
-             * these as meta-y/meta-z; the recorder's normalized bytes are
-             * `y`/`z` with the DEC flag set. */
             const _isUp = !(((game.level?.at?.(x, y)?.ladder) | 0) & LA_DOWN);
             let _sway = null;
             for (let s = game.stairs; s; s = s.next) {
@@ -821,15 +707,6 @@ export function terrain_glyph(loc, x, y) {
         case SCORR: return { ch: ' ', color: NO_COLOR, dec: false }; // hidden corridor = STONE (invisible)
         // C ref: defsym.h PCHAR entries — remaining terrain types.
         // HI_METAL=CLR_CYAN, HI_GOLD=CLR_YELLOW (color.h).
-        /* The non-wall terrain symbols that dat/symbols ALSO overrides in the
-         * DECgraphics symset (the `start: DECgraphics` block, dat/symbols:689).
-         * These were all emitting their ASCII PCHAR glyph unconditionally, so a
-         * DECgraphics session drew '}' for water/lava where C draws the DEC
-         * diamond, '#' for a tree where C draws the DEC plus-or-minus, and so
-         * on.  As with the wall cases above, `ch` is the DEC byte with the high
-         * bit stripped (\xe0 → '`', \xe7 → 'g', \xfc → '|', \xfe → '~',
-         * \xfb → '{') and `dec: true` marks it for the G1 charset.
-         * Colors are unchanged — they come from defsym.h PCHAR, not the symset. */
         // C ref: dat/symbols:707 S_bars: \xfc (meta-|, not-equals); defsym.h:110 HI_METAL.
         case IRONBARS: return decMode ? { ch: '|', color: CLR_CYAN, dec: true }
             : { ch: '#', color: CLR_CYAN, dec: false };
@@ -854,39 +731,12 @@ export function terrain_glyph(loc, x, y) {
         // C ref: dat/symbols:717 S_lava: \xe0; defsym.h:138 CLR_RED.
         case LAVAPOOL: return decMode ? { ch: '`', color: CLR_RED, dec: true }
             : { ch: '}', color: CLR_RED, dec: false };
-        /* C ref: defsym.h:139 PCHAR(41,'}',S_lavawall,"wall of lava",CLR_ORANGE)
-         * + dat/symbols:718 S_lavawall: \xe0.  LAVAWALL had NO case at all, so
-         * it fell through to the `default:` arm and rendered an uncolored '?'.
-         * (seed0777 step 37, screen row 19 col 7: C draws an ORANGE DEC diamond,
-         * JS drew '?'.) */
         case LAVAWALL: return decMode ? { ch: '`', color: CLR_ORANGE, dec: true }
             : { ch: '}', color: CLR_ORANGE, dec: false };
         case FOUNTAIN: return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false }; // S_fountain CLR_BRIGHT_BLUE (no DEC override)
         case SINK: return { ch: '{', color: CLR_WHITE, dec: false }; // S_sink CLR_WHITE (no DEC override)
         case THRONE: return { ch: '\\', color: CLR_YELLOW, dec: false }; // S_throne HI_GOLD=CLR_YELLOW (no DEC override)
         case GRAVE: return { ch: '|', color: CLR_WHITE, dec: false }; // S_grave CLR_WHITE (no DEC override)
-        /* C ref: dat/symbols:714 S_altar: \xfb (meta-{, pi); defsym.h:129 gives
-         * S_altar the base colour CLR_GRAY — but an altar is the one cmap cell
-         * whose colour does NOT come from defsyms.  display.c:2365-2367
-         *     case ALTAR:
-         *         idx = S_altar;  \/* not really used *\/
-         *         bypass_glyph = altar_to_glyph(ptr->altarmask);
-         * emits one of the FIVE per-alignment altar glyphs, and map_glyphinfo
-         * (display.c:2918-2925) colours those from `altarcolors[offset]`
-         * (display.c:2666), not from the cmap table:
-         *     altar_color_unaligned = CLR_RED           (display.h:291)
-         *     altar_color_chaotic/neutral/lawful = CLR_GRAY
-         *         (USE_GENERAL_ALTAR_COLORS is never defined in this tree —
-         *          it appears exactly once, as the #if at display.h:292)
-         *     altar_color_other     = CLR_BRIGHT_MAGETA (the AM_SANCTUM altar)
-         * so the constant CLR_GRAY here was right for three of the five and
-         * WRONG for the two that matter on a special level.
-         *
-         * MEASURED on seed0367 step 185: the Priest quest home level places
-         * `des.altar({ x=28, y=09, align="noalign", type="altar" })`
-         * (dat/Pri-strt.lua:72) — an UNALIGNED altar, which C paints CLR_RED
-         * and this port painted grey, one cell diagonally below the hero the
-         * moment the ^T teleport put her in the temple. */
         case ALTAR: {
             /* C ref: display.h:569-579 altar_to_glyph(amsk) — the offset into
              * altarcolors[].  js/game.js:9 records C's `#define altarmask flags`
@@ -917,25 +767,17 @@ export function terrain_glyph(loc, x, y) {
 // ── Dark-room re-glyph (S_darkroom) ──
 // C ref: display.c:1116-1123 newsym() out-of-sight branch + sym.h:96 DARKROOMSYM
 // + defsym.h:113 PCHAR(20,'.',S_darkroom,...,CLR_BLACK).
-// When a remembered ROOM-floor cell goes out of the hero's sight, C re-glyphs it:
 //   if (!waslit || (flags.dark_room && iflags.use_color))
 //       else if (glyph == S_room && typ == ROOM) glyph = DARKROOMSYM (S_darkroom)
 // DARKROOMSYM = (Is_rogue_level ? S_stone : S_darkroom).  flags.dark_room (flag.h:27)
-// defaults On (optlist.h:261) and iflags.use_color defaults On, and the contest
-// sessions never toggle either, so we treat both as constant-true here (same
 // convention as the rest of this file's always-emit-color rendering).  Dlvl-1
 // rooms are never rogue-level, so DARKROOMSYM resolves to S_darkroom.
-// S_darkroom = char '.' (ASCII) / DEC '~' for the floor body, recolored CLR_BLACK
 // (ANSI 90 — bright black "dark gray"); the underlying char/decgfx is unchanged
 // from S_room, only the color darkens.  RNG-neutral (pure render).
 // Returns true if `rg` (a remembered_glyph {ch,color,decgfx}) was the plain S_room
-// floor glyph and has been mutated in place to S_darkroom; false otherwise.
 export function _darken_room_floor(loc, rg) {
-    // C: typ == ROOM gate.
     if (!loc || loc.typ !== ROOM || !rg)
         return false;
-    // C: glyph == cmap_to_glyph(S_room) — the plain floor glyph, not an object/
-    // trap/engraving/door remembered on this cell.  S_room is NO_COLOR floor:
     // ASCII '.' (decgfx false) or DECgraphics '~' (decgfx true).  Already-dark
     // (CLR_BLACK) cells are left as-is (idempotent re-glyph).
     const isAsciiFloor = rg.ch === '.' && !rg.decgfx;
@@ -955,14 +797,12 @@ export function _darken_room_floor(loc, rg) {
 // the cell was not actually `waslit`:
 //   if (lev->glyph == cmap_to_glyph(S_litcorr) && lev->typ == CORR)
 //       show_glyph(x, y, lev->glyph = cmap_to_glyph(S_corr));
-// This is the corridor analogue of _darken_room_floor and is gated identically
 // (typ==CORR, glyph==S_litcorr).  The C `!waslit` precondition is enforced by
 // the caller: a waslit corridor keeps its lit memory (light-spell litroom path).
 // S_litcorr renders '#' CLR_WHITE; S_corr renders '#' NO_COLOR — only the color
 // darkens, char/decgfx are unchanged.  RNG-neutral (pure render).
 // Returns true if `rg` was the lit-corridor glyph and has been mutated in place.
 export function _darken_corridor(loc, rg) {
-    // C: typ == CORR gate.
     if (!loc || loc.typ !== CORR || !rg)
         return false;
     // C: glyph == cmap_to_glyph(S_litcorr) — the bright-white corridor glyph
@@ -1115,16 +955,6 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
 export function map_invisible(x, y) {
     const u = game?.u;
     if (u && (x | 0) === (u.ux | 0) && (y | 0) === (u.uy | 0)) return; /* skip hero's tile */
-    /* C display.c:381-382 —
-     *     if (svl.level.flags.hero_memory) levl[x][y].glyph = GLYPH_INVISIBLE;
-     * The marker is written into HERO MEMORY, not just the glyph buffer: it is
-     * what makes the "I" survive every later repaint of that tile (newsym's own
-     * `else if (glyph_is_invisible(lev->glyph)) map_invisible(x, y);` at
-     * display.c:1031-1032, docrt, and the out-of-sight remembered branch), until
-     * unmap_invisible() explicitly clears it.  This port painted only the disp
-     * cell, so the first repaint of the tile reverted it to the remembered
-     * terrain: seed0030 segment 1 step 53, where C keeps the I at (49,5) and
-     * this port showed the corridor `#` again. */
     const loc = game?.level?.at(x, y);
     if (loc && game.level?.flags?.hero_memory)
         loc.remembered_glyph = { ch: 'I', color: NO_COLOR, decgfx: false,
@@ -1140,27 +970,19 @@ export function map_invisible(x, y) {
  * because C tests it at four sites outside display.c (mon.c:3170 mondead,
  * mon.c:3358 the statue path, uhitm.c:210/231), and each of those was
  * re-deriving or omitting the test. */
-// wave15/harness (2026-09-05, TASK B): uhitm.c:210/231's calls (cited above)
 // are BOTH `glyph_is_invisible(glyph)` where `glyph = glyph_at(bhitpos.x,
 // bhitpos.y)` -- the TRANSIENT SCREEN BUFFER (gg.gbuf), not hero memory. The
 // memory-only body below is a real approximation for those two call sites
 // -- the difference is visible only when a cell's current gbuf glyph
-// diverges from remembered levl[][].glyph, which an isolated capture-replay
 // can expose but ordinary single-pass gameplay rarely does, since JS
 // repaints memory and screen together in the same call.
-// patches/010-capture-surface.patch capture_emit_gbuf_glyphs() now captures
 // the real gg.gbuf value for do_attack; the replay bridge
 // (js/mapstate_game_bridge.js applyGbufGlyphsToGame) stores it as
 // game.__gbuf__ (a flat {"x,y":glyph} map, present ONLY during a replay of
-// a record that captured it). Consult it FIRST when it covers this exact
 // cell -- more faithful than the memory approximation for the two call
-// sites the constant was measured against -- falling back to hero memory
 // for any cell it does not cover (every other call site, and every record
-// that never captured it, INCLUDING every real game -- game.__gbuf__ is
-// never populated outside this replay harness, so ordinary gameplay is
 // completely unaffected).
 const GBUF_GLYPH_INVISIBLE = 1532; // LOCKSTEP with js/mapstate_game_bridge.js's
-                                    // own GLYPH_INVISIBLE=1532 (same measured
                                     // constant; duplicated rather than
                                     // imported to avoid a display.js <->
                                     // mapstate_game_bridge.js import cycle).
@@ -1197,19 +1019,7 @@ export function unmap_invisible(x, y) {
 
 /* ---- helpers for map_object ---- */
 
-/* C ref: display.h:809 obj_is_generic — an undiscovered (!dknown) potion, real-
- * or-glass gem, or spellbook displays as the CLASS-generic glyph (color CLR_GRAY),
- * NOT its randomized appearance color.  Scrolls/wands/etc. have a fixed per-otyp
- * color regardless of discovery, so they are excluded.  The dknown gate is
- * applied by the caller. */
 const POTION_CLASS_OC = 8;
-/* otyp landmarks below were off by one (anchored to the pre-Wave-D otyp
- * numbering, before the mail scroll insertion at 364 shifted every otyp from
- * SPE_DIG onward by +1 — see js/mklev.js:184, js/zap.js:85, js/spell.js:18-20,
- * js/u_init.js:1000). The stale FIRST_REAL_GEM_OTYP=438 collided with
- * GOLD_PIECE (also 438 in this build's otyp numbering, js/eat.js:1846),
- * wrongly classifying gold as an undiscovered-gem generic glyph (CLR_GRAY)
- * once clear_dknown started correctly zeroing gold's dknown (oc_merge fix). */
 const FIRST_REAL_GEM_OTYP = 439;  /* DILITHIUM_CRYSTAL (js/dokick.js:242, js/makemon.js:1747) */
 const LAST_GLASS_GEM_OTYP = 469;  /* worthless piece of violet glass (js/makemon.js:1749 LUCKSTONE=470, -1) */
 const FIRST_SPELL_OTYP = 366;     /* SPE_DIG (js/zap.js:85, js/spell.js:18) */
@@ -1219,13 +1029,6 @@ function _obj_is_generic(otyp, oclass) {
         || (otyp >= FIRST_REAL_GEM_OTYP && otyp <= LAST_GLASS_GEM_OTYP)
         || (otyp >= FIRST_SPELL_OTYP && otyp <= LAST_SPELL_OTYP);
 }
-/* C ref: display.h:798-802 obj_is_piletop(obj) —
- *     (obj)->where == OBJ_FLOOR
- *     && ((go.otg_otmp = svl.level.objects[(obj)->ox][(obj)->oy]->nexthere) != 0)
- *     && ((obj)->otyp != BOULDER || go.otg_otmp->otyp == BOULDER)
- * Note it tests the TILE HEAD's nexthere, not the object's own: "piletop" means
- * this square carries more than one stack, and a boulder hides the pile unless
- * it is sitting on another boulder. */
 function _obj_is_piletop(obj) {
     if (!obj || (obj.where | 0) !== OBJ_FLOOR)
         return false;
@@ -1236,26 +1039,6 @@ function _obj_is_piletop(obj) {
     return (obj.otyp | 0) !== BOULDER_OTYP
         || (otg_otmp.otyp | 0) === BOULDER_OTYP;
 }
-/* C ref: display.c:2788/2795/2802/2821 — every PILETOP glyph class (obj, body,
- * male/female statue) carries MG_OBJPILE, and win/tty/wintty.c:3930 turns that
- * into term_start_attr(ATR_INVERSE) when iflags.hilite_pile && iflags.use_inverse.
- * ATR_INVERSE == 1 in this port (js/terminal.js:26), the same value the
- * hilite_pet path below uses.
- *
- * THE SPLIT MATTERS.  In C the *glyph* records piletop-ness and print_glyph()
- * re-derives the attribute from the CURRENT option every time the cell is
- * painted, including when it is painted out of hero memory.  So the flag is
- * what gets remembered (`objpile` on this port's glyph objects) and the
- * attribute is computed at paint time.  Baking the attribute into memory
- * instead loses the hilite on every square the hero saw BEFORE turning
- * hilite_pile on — which is exactly seed0012, where the option is toggled on at
- * step ~60 and the pile in the starting room was mapped at step 0.
- *
- * Both options resolve the way the options MENU resolves them (js/optmenu.js
- * flagOn / boolValue): the live value if written, else the optlist.h initval.
- * use_inverse's initval is On (include/optlist.h, iflags.wc_inverse), so an
- * unwritten slot must read TRUE here — reading it as undefined-is-false would
- * silently disable every hilite. */
 function _pile_hilite(objpile) {
     if (!objpile)
         return 0;
@@ -1269,29 +1052,6 @@ function _pile_hilite(objpile) {
         return 0;
     return 1; /* ATR_INVERSE */
 }
-/* C ref: display.c:2940-2945 — the CMAP_A arm of map_glyphinfo():
- *     } else if (cmap == S_engrcorr
- *                && (sym == gs.showsyms[S_corr + SYM_OFF_P]
- *                    || sym == gs.showsyms[S_litcorr + SYM_OFF_P])) {
- *         gmap->glyphflags |= MG_BW_ENGR;
- *     }
- * and win/tty/wintty.c:3930-3936, which turns MG_BW_ENGR (with MG_DETECT and
- * the other three MG_BW_* flags) into term_start_attr(ATR_INVERSE) whenever
- * iflags.use_inverse is on.  NOTE what does NOT gate it: hilite_pile gates only
- * MG_OBJPILE, and — despite the stale comment at wintty.c:3919 claiming
- * "BW_LAVA, BW_ICE, BW_SINK, BW_ENGR won't ever be set when color is on" — the
- * ENGR flag is set OUTSIDE the `if (!iflags.use_color)` block that guards the
- * other three (display.c:2890 vs :2924), so a colour terminal gets it too.
- *
- * An engraving in a CORRIDOR draws S_engrcorr, which is '#' — the same
- * character as S_corr and S_litcorr — so C reverse-videos it to keep it
- * distinguishable, and this port painted it plain.  The room spelling
- * (S_engroom, '`') has no such collision and gets no flag.
- *
- * Re-derived at paint time from a REMEMBERED flag, exactly as MG_OBJPILE is
- * above and for the same reason: C stores the flag on the glyph and print_glyph
- * consults the live option each time the cell is drawn, so a use_inverse toggle
- * must reach squares mapped before the toggle. */
 function _bw_engr_hilite(bwengr) {
     if (!bwengr)
         return 0;
@@ -1314,13 +1074,6 @@ function _obj_to_glyph(obj) {
     const otyp = (obj.otyp | 0);
     /* C display.c:2788-2821 — MG_OBJPILE, applied by the tty as ATR_INVERSE. */
     const pileTop = _obj_is_piletop(obj);
-    /* C display.h:963-968 obj_to_glyph — STATUE is tested first and
-     * statue_to_glyph() carries its OWN Hallucination arm, then
-     * `(Hallucination) ? random_obj_to_glyph(rng)` covers every other object.
-     * _hallucinated_obj_glyph() is both of those arms, so one test here is the
-     * whole hallucinating half of C's chain.  Gated on _hallucinating_dsp(),
-     * the live uprops expression, NOT on `game.Hallucination` — that field has
-     * no writer anywhere in js/, so every reader of it is a dead guard. */
     if (_hallucinating_dsp())
         return _hallucinated_obj_glyph(obj);
     if (otyp === STATUE) {
@@ -1329,15 +1082,6 @@ function _obj_to_glyph(obj) {
         return { ch: DEF_MONSYM_CHARS[smlet] ?? '@', color: CLR_WHITE, decgfx: false,
                  objpile: pileTop, cls: GLYPHCLS_OBJ, otyp };
     }
-    /* objects.h:78 — `OBJECT(OBJ("strange object", NoDes), ..., ILLOBJ_CLASS,
-     * ..., 0, STRANGE_OBJECT)` is objects[0], a REAL row: STRANGE_OBJECT is
-     * otyp 0, its oc_class is ILLOBJ_CLASS (']') and its oc_color is CLR_BLACK.
-     * The guard used to be `otyp > 0`, which sent every otyp-0 object down the
-     * `obj.oclass | 0` fallback; display.c:564-576's mimic zeroobj carries
-     * oclass 0, so a mimic disguised as a strange object -- what
-     * set_mimic_sym()'s `s_sym == S_MIMIC_DEF` arm (makemon.c:2506) gives every
-     * shop mimic on a shallow level -- rendered as RANDOM_CLASS's '?' instead
-     * of ']'.  seed0030 segment 3: the mimic in Maganasipi's general store. */
     const oc = (otyp >= 0 && otyp < MKOBJ_OC_CLASS.length)
         ? MKOBJ_OC_CLASS[otyp] : (obj.oclass | 0);
     const och = oclass_sym(oc) ?? '?';
@@ -1374,24 +1118,6 @@ function _obj_to_glyph(obj) {
              corpsenm: isCorpse ? corpsenm : undefined };
 }
 
-/* C display.h:844 glyph_is_generic_object(obj_to_glyph(obj, rng)) — the exact
- * predicate map_object()'s observe gate uses, expressed on the object rather
- * than on the glyph number this port does not carry.  obj_to_glyph
- * (display.h:963-968) reaches generic_obj_to_glyph ONLY when the object is not
- * a statue, the hero is not hallucinating, the object is not a corpse, and
- * obj_is_generic(obj) holds — and obj_is_generic (display.h:806-812) is
- * `!dknown && (POTION_CLASS || FIRST_REAL_GEM..LAST_GLASS_GEM ||
- * FIRST_SPELL..LAST_SPELL)`, whose own comment says it exists to "hide info
- * such as potion and gem color when not seen yet".
- *
- * This used to be plain `!dknown && otyp !== STATUE`, i.e. EVERY undiscovered
- * object.  Consequence: the observe gates below marked every object class
- * oc_encountered on sight, and interesting_to_discover() (o_init.c:525-536)
- * admits a type on oc_encountered alone, so the '\' discoveries page grew rows
- * C does not have.  Measured on seed0361-archeologist-tour step 358: this port
- * listed a "Scrolls" section (scare monster, identify) that C's page has no
- * trace of, because in C a scroll seen on the floor is NOT generic and
- * map_object never observes it. */
 function _glyph_is_generic_object(obj) {
     const otyp = (obj.otyp | 0);
     if (otyp === STATUE || otyp === CORPSE) return false;
@@ -1416,16 +1142,6 @@ function _glyph_is_generic_object(obj) {
  * seen on the map was never marked oc_encountered and never entered disco[].
  * Imported from js/o_init.js instead — see the import at the head of this file. */
 
-/* The glyph a hallucinating hero SEES for `obj` — C display.h:963-968's first
- * two arms, factored out because this file carries three open-coded copies of
- * map_object.  A statue takes statue_to_glyph's Hallucination arm
- * (random_monster + the male/female range pick, TWO draws, display.h:950-953);
- * everything else takes random_obj_to_glyph().  The gender offset picks between
- * the male and female glyph RANGES, which map_glyphinfo renders with the same
- * symbol and the same mcolor, so it changes no cell — but it IS a display-stream
- * draw and dropping it desynchronises every hallucinated glyph after it.  The
- * statue's REMEMBERED glyph is a separate draw the caller makes under its own
- * hero_memory gate (display.c:354-362). */
 function _hallucinated_obj_glyph(obj) {
     if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         const seq = game.__ff_display_trace_seq = (game.__ff_display_trace_seq | 0) + 1;
@@ -1446,16 +1162,6 @@ function _hallucinated_obj_glyph(obj) {
     return random_obj_to_glyph();
 }
 
-/* C display.h:186-187
- *     #define random_monster(rng) ((*rng)(NUMMONS))
- *     #define random_object(rng)  ((*rng)(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT)
- * objects.h:105-111 puts objects[0] = STRANGE_OBJECT and objects[1..17] = the
- * seventeen GENERIC() rows, so LAST_GENERIC == 17 and FIRST_OBJECT == 18; the
- * table this port carries (MKOBJ_OC_CLASS) is NUM_OBJECTS == 481 rows long, so
- * the draw is rn2(463).  That is the exact modulus the C recorder logs on the
- * DISPLAY channel for seed0383 (81 rn2(463) draws), which is how this arm's
- * absence was found: the JS stream matched C leaf-for-leaf up to the first
- * hallucinated OBJECT and then drew rn2(383) where C drew rn2(463). */
 const FIRST_OBJECT = 18;
 function random_object() {
     return rn2_on_display_rng(MKOBJ_OC_CLASS.length - FIRST_OBJECT) + FIRST_OBJECT;
@@ -1605,15 +1311,6 @@ export function map_object(obj, show) {
                         glyph.corpsenm);
 }
 
-/* see_nearby_objects - ported from display.c:1610-1646.
- * Mark the top object of nearby stacks as having been seen (observe_object sets
- * dknown); if an object was being displayed as generic, redisplay it as
- * specific.  RNG-free.  C caller: dungeon.c u_on_newpos() on the same level and
- * when !Blind && !Hallucination && !u.uswallow (those guards live at the JS call
- * site in cmd.js domove, matching C).  This is the observe path that map_object
- * misses when a generic floor object is already drawn and the hero merely walks
- * close to it: without it dknown stays 0 and identical stacks fail to merge on
- * pickup (the seed0003 GARVEN-DEH scroll-of-light pair). */
 export function see_nearby_objects() {
     const u = game.u;
     const ux = u?.ux | 0, uy = u?.uy | 0;
@@ -1681,9 +1378,6 @@ export function unmap_object(x, y) {
     if (!game.level?.flags?.hero_memory)
         return;
 
-    /* C display.c:417/423 — both arms are gated on !covers_traps(x, y); water
-     * and lava hide a trap the same way they hide an object.  Completes the
-     * same family as the newsym cascade below. */
     const trap = t_at(x, y);
     if (trap && (trap.tseen | 0) && !covers_traps(x, y)) {
         map_trap(trap, 0);
@@ -1727,16 +1421,6 @@ export function unmap_object(x, y) {
 // This is what map_object()/map_trap()/map_background() write to lev->glyph, used
 // for the remembered-terrain layer under a monster and for out-of-sight cells.
 function _map_location_glyph(x, y, loc, tg) {
-    /* C display.c:455/458/463 — EVERY one of the three non-terrain arms is
-     * gated on covers_objects()/covers_traps(): water and lava hide whatever
-     * lies in them, so the square shows the pool, not its contents.  This helper
-     * carried none of the three gates while the OTHER copy of the same cascade
-     * (_map_location, js/display.js:5310) carried all of them — and this one is
-     * the copy the screen is painted from.  Witness: seed0361-archeologist-tour
-     * step 147, the Archeologist quest home, MOAT row y=3 — C paints an unbroken
-     * blue run of water where JS painted `%` at x=32 and x=42 (two food objects
-     * sitting in the moat).  seed0373 step 43 and seed0383 step 42 are the same
-     * defect on their own quest-home moats. */
     const obj = game.level?.levelObjects?.[x]?.[y] ?? null;
     if (obj !== null && !covers_objects(x, y)) {
         const otyp = (obj.otyp | 0);
@@ -1786,19 +1470,6 @@ function _map_location_glyph(x, y, loc, tg) {
         const ep = engr_at(x, y);
         if (ep !== null) {
             const eCh = (styp === CORR) ? '#' : '`';
-            /* C display.c:2942-2945 MG_BW_ENGR — the CORRIDOR spelling of an
-             * engraving draws S_engrcorr, whose symbol '#' collides with S_corr
-             * and S_litcorr, so C flags it and wintty.c:3930-3936 reverse-videos
-             * it.  The OTHER copy of this arm (js/display.js:2547, the newsym
-             * path) has carried `bwengr` since it was written; this copy — the
-             * one that builds loc.remembered_glyph — dropped it, so a corridor
-             * engraving painted from MEMORY came back plain.
-             *
-             * MEASURED on gen446-recombine-seed373399 step 787: `#wizmap` at
-             * step 780 maps the level, the repaint runs through this helper, and
-             * C's cell (36,13) is ESC[7;94m'#' where this port emitted ESC[94m
-             * with no ATR_INVERSE — an ATTR-only miss that then held for the
-             * whole 1,027-step tail of the session.  RNG-free. */
             return { ch: eCh, color: CLR_BRIGHT_BLUE, decgfx: false,
                      bwengr: (styp === CORR), cls: GLYPHCLS_ENGR };
         }
@@ -1819,26 +1490,10 @@ function show_mon_or_warn(x, y, ch, color, decgfx, attr, cls, warning = false) {
 // C ref: display.c:1049/1080 display_monster — render the monster glyph at
 // (x,y) over the terrain, and (when hero_memory) remember the map-location glyph
 // (object/trap/engraving/terrain) beneath, mirroring C's _map_location(x,y,FALSE).
-// Pets/normal monsters share the same map symbol here (the contest corpus does
 // not exercise the pet-vs-normal color distinction that pet_to_glyph adds).
 function _render_monster_glyph(x, y, mon, loc, tg, map_memory, worm_tail, detectedOnly = false) {
-    /* C display.c:520-585 display_monster's mimic block.  `map_memory` is this
-     * port's stand-in for sightflags == PHYSICALLY_SEEN — the correspondence
-     * this file's own call sites already document (js/display.js:4489-4492):
-     * the cansee arm passes true, the sensed/detected arms pass false, and C
-     * takes the mimic block only on PHYSICALLY_SEEN.
-     *
-     * Witness: soko1-[12].lua places two `des.monster({id="giant mimic",
-     * appear_as="obj:boulder"})`; create_monster (js/sp_lev.js) already sets
-     * m_ap_type/mappearance correctly, but nothing read them here, so the two
-     * mimics rendered as `m` where C renders the boulder they are pretending
-     * to be.  seed2600-wizard-custom-binds is RNG-COMPLETE and that one cell
-     * was its whole remaining screen diff. */
     const _apType = (mon.m_ap_type | 0) & M_AP_TYPMASK;
     const mon_mimic = _apType !== M_AP_NOTHING;
-    /* C display.c:523-524 — sensed = mon_mimic && (Protection_from_shape_changers
-     * || sensemon(mon)).  Protection_from_shape_changers has no reader in this
-     * port (no corpus hero wears the ring), so only the sensemon term is live. */
     const sensed = mon_mimic && sensemon(mon);
     if (mon_mimic && map_memory && !detectedOnly) {
         if (_apType === M_AP_OBJECT) {
@@ -1869,22 +1524,6 @@ function _render_monster_glyph(x, y, mon, loc, tg, map_memory, worm_tail, detect
                 return;
         }
         else if (_apType === M_AP_FURNITURE) {
-            /* C display.c:543-562 — "a poor man's version of map_background()":
-             *     int sym = mon->mappearance, glyph = cmap_to_glyph(sym);
-             *     levl[x][y].glyph = glyph;
-             *     if (!sensed) {
-             *         show_glyph(x, y, glyph);
-             *         svl.lastseentyp[x][y] = cmap_to_type(sym);
-             *     }
-             * Note C writes levl[x][y].glyph UNCONDITIONALLY here — that is
-             * the map MEMORY, so the hero remembers the furniture the mimic
-             * was posing as once the square goes out of sight — but only
-             * paints (and only overrides lastseentyp) when !sensed.
-             *
-             * MEASURED, gen094 step 298: a mimic in the bottom wall of a Dlvl
-             * 10 room poses as a closed door; C paints the brown '+', this
-             * port painted the mimic's 'm', and because the mimic never moves
-             * that one cell ran 258 consecutive frames. */
             const _sym = mon.mappearance | 0;
             const _g = cmap_to_glyph_disp(_sym);
             if (_g) {
@@ -1905,32 +1544,6 @@ function _render_monster_glyph(x, y, mon, loc, tg, map_memory, worm_tail, detect
     }
     /* C display.c:587 — `if (!mon_mimic || sensed)`: fall through and draw the
      * monster itself. */
-    /* C display.c:599-618 — every arm of the tail passes rn2_on_display_rng
-     * through what_mon():
-     *     if (mon->mtame && !Hallucination)  num = pet_to_glyph(mon, rng);
-     *     else if (sightflags == DETECTED)   num = detected_mon_to_glyph(mon, rng);
-     *     else                               num = mon_to_glyph(mon, rng);
-     * and display.h:554/557/563 all expand to `what_mon(monsndx(mon->data),
-     * rng) + <class offset>`, with display.h:197 `what_mon(mon, rng) =
-     * Hallucination ? random_monster(rng) : (mon)`.  So a hallucinating hero
-     * draws ONE rn2(NUMMONS) on the DISPLAY stream for EVERY monster glyph
-     * painted — which is what makes allmain.c:457's per-turn see_monsters()
-     * re-randomise the whole map.
-     *
-     * A note here used to read "MEASURED on seed0383: C makes 3,191 display
-     * draws on this session and every one of them is rn2(383)".  Both halves
-     * are wrong, and the tool that measures the channel now exists
-     * (tools/display-rng-diff.mjs): 3,191 counted the recorder's POST-EOF
-     * redraw loop, which never exits and makes display draws forever — the raw
-     * log holds 404,215 such lines and the SESSION is the prefix ending at the
-     * last CORE line, which is 622.  Of those 622, 445 are this rn2(383); the
-     * rest are rn2(463) random_object x81, rn2(5) display_warning x45,
-     * rn2(430) rndmonnam x26, rn2(2) x19, rn2(7640) bogusmon x5 and one
-     * rn2(41) hliquid.
-     *
-     * The pet arm's `&& !Hallucination` is load-bearing beyond the draw: a
-     * hallucinating hero's pet takes the mon_to_glyph branch, which carries no
-     * MG_PET, so the hilite_pet inverse below must not fire either. */
     /* C display.c:599-618 — each of the three arms has a worm_tail twin, and
      * the twin substitutes PM_LONG_WORM_TAIL for the worm's own species:
      *     mtame && !Hallucination : petnum_to_glyph(PM_LONG_WORM_TAIL, gender)
@@ -1955,18 +1568,6 @@ function _render_monster_glyph(x, y, mon, loc, tg, map_memory, worm_tail, detect
     const mlet = (mndx >= 0 && mndx < MON_MLET.length) ? MON_MLET[mndx] : 53; // 53='@' human fallback
     const mch = DEF_MONSYM_CHARS[mlet] ?? '@';
     const mcol = (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7;
-    /* C ref: display.c:3092-3099 — a tame monster's glyph carries MG_PET; with
-     * the 'hilite_pet' option on, map_glyphinfo applies iflags.wc2_petattr
-     * (default ATR_INVERSE) so the pet renders in reverse video.
-     * ATR_INVERSE == 1 (terminal.js).
-     *
-     * The STORAGE is `iflags.wc_hilite_pet` (optlist.h:366; flag.h:508 is the
-     * `#define hilite_pet wc_hilite_pet` alias that makes win/tty/wintty.c:3927
-     * read the same field).  This site read `game.flags.hilite_pet`, a name C
-     * has no field for — it only worked because js/optmenu.js's doset_simple()
-     * wrote the toggle to the same wrong name.  Both moved to C's spelling
-     * together; changing either one alone flips seed0006's pet off (-14) or
-     * leaves seed4500's cmdassist toggle unrecorded (-9). */
     const petAttr = (mon.mtame && !_hallu && game.iflags?.wc_hilite_pet) ? 1 /* ATR_INVERSE */ : 0;
     // C display_monster gives pets precedence over DETECTED; tty applies
     // use_inverse to a detection glyph even when pet highlighting is off.
@@ -1990,24 +1591,6 @@ function _oos_sensed_monster(x, y, loc) {
     if (mon === null) return false;
     /* C display.c:500's is_worm_tail(mon), spelled out at :1054 and :1055. */
     const worm_tail = !!(x !== mon.mx || y !== mon.my);
-    /* C display.c:1072-1076 —
-     *     see_it = (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon)
-     *               || (see_with_infrared(mon) && mon_visible(mon)))
-     *
-     * The comment this replaces said "tp_sensemon / warning are out of corpus
-     * scope (no telepathy / warning heroes reach this cell), so the live term
-     * is infravision", and dropped the tp_sensemon term from the expression.
-     * That claim is false: seed0367-priest-quest-tour's Priest puts on an
-     * amulet of ESP at step 6 and walks a graveyard, so tp_sensemon is the
-     * ONLY live term there — every telepathically sensed monster fell through
-     * to the Warning arm below and painted a red level-digit where C paints
-     * the monster.  27 cells over 11 rows at step 203, that session's first
-     * screen miss.  (Same family as the note now on _oos_warning_monster: an
-     * "out of corpus scope" comment is a claim about 44 sessions, not a fact.)
-     *
-     * mon_visible() is the guard on the INFRAVISION term only, exactly as in C
-     * — it must not gate tp_sensemon, which is how a hero senses an invisible
-     * or hidden monster. */
     const see_it = !!(tp_sensemon(mon) || MATCH_WARN_OF_MON(mon)
                       || (see_with_infrared(mon) && mon_visible(mon)));
     const detected = _newsym_Detect_monsters() && !worm_tail;
@@ -2019,60 +1602,11 @@ function _oos_sensed_monster(x, y, loc) {
     _render_monster_glyph(x, y, mon, loc, tg, false, worm_tail, !see_it);
     return true;
 }
-/* C ref: detect.c:120-134 map_monst(struct monst *mtmp, boolean showtail)
- *   int glyph = (monsym(mtmp->data) == ' ') ? detected_mon_to_glyph(...)
- *             : mtmp->mtame ? pet_to_glyph(...) : mon_to_glyph(...);
- *   show_glyph(mtmp->mx, mtmp->my, glyph);
- *   if (showtail && mtmp->data == &mons[PM_LONG_WORM]) detect_wsegs(mtmp, 0);
- *
- * Paints a monster onto the map buffer WITHOUT any vision test and WITHOUT
- * touching hero memory — that is the whole point of a detection: the glyph
- * goes on the display, and map_redisplay()'s docrt() later wipes it again.
- * _render_monster_glyph with map_memory=false is exactly that painting (it
- * already picks symbol + colour from MON_MLET / MON_MCOLOR and applies the
- * hilite_pet attribute for a tame monster, which is the only observable
- * difference between C's pet_to_glyph and mon_to_glyph).
- *
- * The three glyph variants C picks between differ only in flags the tty
- * renderer folds back into the same symbol+colour here:
- *   - detected_mon_to_glyph is for a monster whose class symbol is ' ' (the
- *     S_MIMIC_DEF "mimicking furniture" case); MON_MLET never yields ' ' for
- *     a real monnum, so this port takes the ordinary arm.
- *   - pet_to_glyph adds MG_PET, honoured via flags.hilite_pet.
- * No RNG: C passes newsym_rn2 into the *_to_glyph macros, which only draw
- * when the hero is hallucinating (random_monster()).  "the detection callers in
- * the corpus are non-hallucinating" reads as a property of the corpus and is
- * false in that form — 43 recorded sessions carry Hallu, and the port itself
- * runs hallucinating in 21.  The property that makes the missing draw safe is
- * the CONJUNCTION (hallucinating AND inside a detection), and that is what has
- * now been measured.  If a detection ever fires on a hallucinating hero this
- * omission is an RNG-stream divergence, not a cosmetic one — Cardinal Rule 2.
- * MEASURED: subject=map_monst-hallucinating-caller value=+0 at=d26664bc
- *           date=2026-08-29 corpus=public+train (44 + 688 sessions)
- *           reach=16 calls over 5 sessions; Hallucination live at the call 0,
- *           against a positive control of HALLUC live in 21 sessions elsewhere
- *           in the same runs
- */
 export function map_monst(mtmp, showtail) {
     const x = mtmp.mx | 0, y = mtmp.my | 0;
     const loc = game.level?.at ? game.level.at(x, y) : null;
     const tg = loc ? terrain_glyph(loc, x, y) : null;
     _render_monster_glyph(x, y, mtmp, loc, tg, false);
-    /* showtail: C detect.c:133 `if (showtail && mtmp->data == &mons[PM_LONG_WORM])
-     * detect_wsegs(mtmp, 0);` — worm.c:503 paints every non-head segment with
-     * what_mon(PM_LONG_WORM_TAIL, newsym_rn2), resolved ONCE for the whole tail
-     * (not once per segment, unlike display_monster's per-glyph what_mon).
-     *
-     * STILL UNPORTED, but the reason this note used to give was wrong and is
-     * removed rather than kept: it said "No long worm is generated in any
-     * corpus session (PM_LONG_WORM is a deep-level monster), so the segment
-     * walk has nothing to paint."  Long worms ARE generated —
-     * gen028-reseed-seed1155683 and gen345-reseed-seed244908
-     * (corpus-generated/v5/train) each make one at level-gen with a two-segment
-     * tail, and those segments are what newsym() was painting floor over until
-     * the worm-tail arm below it was ported.  What is true is narrower: nothing
-     * measured yet reaches map_monst() WITH a long worm, so the omission has no
-     * witness — which is a statement about coverage, not about the game. */
 }
 
 /* C ref: display.c:1180-1189 display_self(void) — paint the hero's own square
@@ -2083,23 +1617,6 @@ export function display_self() {
     show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch, hg.color, false, 0, GLYPHCLS_MON);
 }
 
-/* C ref: display.h:246-249 —
- *     #define maybe_display_usteed(otherwise_self)          \
- *         ((u.usteed && mon_visible(u.usteed))              \
- *              ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) \
- *              : (otherwise_self))
- * display_self() wraps its whole hero_glyph / U_AP_TYPE ladder in this, so a
- * mounted hero's own square shows the STEED, not '@'.  ridden_mon_to_glyph
- * (display.h:560) is what_mon(monsndx(mon->data), rng) + GLYPH_RIDDEN_*_OFF;
- * the tty renders the ridden glyph class with the monster's own symbol and
- * colour (no MG_PET highlight — a ridden monster is not drawn as a pet), which
- * is exactly the mch/mcol pair _render_monster_glyph computes.
- * what_mon()'s rng argument is the DISPLAY stream and only matters while
- * hallucinating; no corpus rider is hallucinating, and reading it here would be
- * a scored-stream-invisible draw, so the identity is used (the same treatment
- * _render_monster_glyph's M_AP_MONSTER arm already gives what_mon).
- * seed0104/seed0103: C paints `u` (CLR_BROWN) at the rider's square from the
- * mount onward; this port painted white '@' on every frame after the mount. */
 function _maybe_display_usteed() {
     const u = game.u || {};
     const steed = u.usteed;
@@ -2121,7 +1638,6 @@ function _maybe_display_usteed() {
 // which is '@'/CLR_WHITE only while un-polymorphed (every player-class monnum
 // is S_HUMAN white).  Upolyd is you.h:554 (u.umonnum != u.umonster) -- NOT
 // u.mtimedone, which is you.h:422, the poly TIMER.  U_AP_TYPE is
-// M_AP_NOTHING for the hero except while mimicking, which no corpus session
 // does, so display_self() reduces to hero_glyph here.
 function _hero_glyph() {
     const u = game.u || {};
@@ -2145,25 +1661,6 @@ function _uprop(idx) {
     return p ? { i: p.intrinsic | 0, e: p.extrinsic | 0, b: p.blocked | 0 }
              : { i: 0, e: 0, b: 0 };
 }
-/* C ref: display.h:174-176
- *     #define canseeself()  (Blind || u.uswallow || (!Invisible && !u.uundetected))
- *     #define senseself()   (Unblind_telepat || Detect_monsters)
- *     #define canspotself() (canseeself() || senseself())
- * "Sensing yourself by touch is treated as seeing yourself, even if unable to
- * see" — hence Blind and u.uswallow make the hero spottable, not unspottable.
- *
- * youprop.h:198-199  Invis = (HInvis || EInvis) && !BInvis
- *                    Invisible = Invis && !See_invisible
- * youprop.h:152      See_invisible = HSee_invisible || ESee_invisible
- * youprop.h:157,190  Unblind_telepat = ETelepat
- *                    Detect_monsters = HDetect_monsters || EDetect_monsters
- * youprop.h:103      Blind = (HBlinded || EBlinded) && !BBlinded
- *
- * This was a file-local `return true` in js/cmd.js: correct only while nothing
- * could make the hero invisible.  Once domagictrap's fate-11 arm landed it was
- * wrong — seed0030 segment 9 step 121, where C stops drawing the hero and shows
- * the '%' of the pile underneath and this port kept painting '@'.  RNG-free. */
- // PARKED-NOTE: session=seed0030 segment=9 citation-only
 export function canspotself() {
     const u = game.u || {};
     const blindP = _uprop(BLINDED);
@@ -2193,8 +1690,6 @@ function _newsym_Detect_monsters() {
     const dmP = _uprop(DETECT_MONSTERS);
     return !!(dmP.i || dmP.e);
 }
-/* C hack.h MATCH_WARN_OF_MON: object and polymorph class masks, or a
- * particular species, all gated by the warning property. */
 export function MATCH_WARN_OF_MON(mon) {
     if (!mon || !Warn_of_mon()) return false;
     const wt = game.context?.warntype;
@@ -2204,23 +1699,6 @@ export function MATCH_WARN_OF_MON(mon) {
         || (species && (species === mon.data
             || (species.pmidx != null && mon.data?.pmidx === species.pmidx))));
 }
-/* C ref: display.c:667-700 mon_overrides_region(mon, mx, my) — "used by
- * newsym() to decide whether to show a monster or a visible gas cloud region
- * when both are at the same spot; caller deals with region".  This is the ONLY
- * exception to the region's precedence over the hero, monsters, objects, traps,
- * engravings and terrain (display.c:993-998), so it has to exist before the
- * region branch below can be ported at all.
- *
- * NO CORPUS WITNESS TAKES THE TRUE ARM.  Every gas cloud our train sessions
- * build is monmove.c:683/:704 with damage 0, and no monster has yet been sensed
- * or stood adjacent inside one.  It is ported faithfully rather than collapsed
- * to "the region always wins", because collapsing it would bake the absence of
- * a witness into the port — the first telepath who walks into a cloud would
- * then show '#' where C shows the monster.
- *
- * _mon_visible(mon) is display.h:92-95, which is exactly what this file exports
- * as mon_visible(); distu() is hack.h:1531 dist2(x, y, u.ux, u.uy), the same
- * squared distance mon_warning() already reads through distu_sensemon(). */
 function mon_overrides_region(mon, mx, my) {
     let r;
 
@@ -2248,8 +1726,6 @@ function mon_overrides_region(mon, mx, my) {
             return true;
     }
 
-    /* if not overriding region for current mon, propagate "remembered,
-       unseen monster" */
     return glyph_is_invisible_at(mx, my);
 }
 // ── newsym ──
@@ -2263,95 +1739,14 @@ export function newsym(x, y) {
         game.__ff_display_newsym_caller = String(new Error().stack || '').split('\n')[2]?.trim()
             .replace(/^at\s+/, '').replace(/\s+\([^)]*\)$/, '') || '?';
     }
-    /* C display.c:925-926 — the FIRST statement of newsym():
-     *     if (_suppress_map_output()) return;
-     * where _suppress_map_output() (display.c:703-708) is
-     *     gi.in_mklev || program_state.saving || program_state.restoring
-     * with the comment "map or status window might not be ready for output
-     * during level creation or game restoration".
-     *
-     * This guard was MISSING here, and feel_location (:5285) already had it —
-     * so every newsym() C skips during level generation ran, and each one wrote
-     * loc.remembered_glyph.  The memory it fabricates is invisible until the
-     * level PERSISTS and is redisplayed: on seed4500 the level-gen
-     * makemon -> hideunder -> newsym at (47,17) of Dlvl 10 remembered the `%`
-     * of the food ration the giant spider was hidden under, and the hero's
-     * revisit at step 869 repainted it from memory — nine frames (869-877)
-     * where C's square is unexplored.  Same failure family as goto_level's
-     * dropped docrt(): a level-generation display side effect is harmless
-     * until level memory survives the trip. */
     if (suppress_map_output())
         return;
-    /* C display.c:928-936 — the "should never happen" guard, which this body
-     * did not have:
-     *     if (!isok(x, y)) {
-     *         errfunc = (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1)
-     *                   ? panic : impossible;
-     *         (*errfunc)("newsym: attempting screen update for <%d,%d>", x, y);
-     *         return;
-     *     }
-     * isok() (hack.h) is `x >= 1 && x < COLNO && y >= 0 && y < ROWNO`, so
-     * COLUMN 0 is not ok: C treats it as the less-severe impossible() rather
-     * than a panic.  Without the early return this port went on to write
-     * loc.remembered_glyph for out-of-range squares.
-     * The 59 spurious column-0 calls this arm used to swallow (seed0367,
-     * seed0373, seed0360) came from vision_recalc's `not_in_sight:` arm, which
-     * was missing C's own `if (col != 0)` guard (vision.c:826-835, comment
-     * "avoid calling it for <0,y>").  That guard is now ported (js/vision.js),
-     * and a corpus-wide re-measure finds ZERO column-0 calls left — which is
-     * what makes the message below safe to emit.
-     *
-     * The message IS emitted now, because C's is the only thing standing
-     * between this port and seed0012-monk-vault-escort's last frame.
-     * VERIFIED against a locally-built 5.0 recorder instrumented with
-     * backtrace(3): seed0012 raises exactly ONE bad newsym in the whole
-     * session, at moves=327, with the stack
-     *     newsym <- postmov(monmove.c:1658) <- m_move(monmove.c:1823)
-     *            <- dochug <- dochugw <- movemon_singlemon <- movemon
-     * on the vault guard (isgd=1, mhp=55, mx=my=0, entered m_move from
-     * <65,6>) that gd_move_cleanup -> parkguard has just moved to <0,0>
-     * mid-call.  C's impossible() then plines its text, which pages the
-     * "Suddenly, the guard disappears." already on the topline — and that
-     * --More-- frame is the one step point seed0012 was missing.
-     *
-     * C's impossible() (pline.c) is inlined here rather than routed through
-     * this file's local `impossible()` no-op (:6017) DELIBERATELY: that stub
-     * is also show_glyph's, and show_glyph's "bad glyph" arm fires 9x on
-     * seed0030-ten-diverse-deaths (measured).  That is a separate, unfixed
-     * defect; making the shared stub speak would print nine toplines C never
-     * prints there. */
     if (!((x | 0) >= 1 && (x | 0) < COLNO && (y | 0) >= 0 && (y | 0) < ROWNO)) {
-        /* C pline.c impossible():
-         *     gp.pline_flags = URGENT_MESSAGE;
-         *     pline("%s", pbuf);
-         *     gp.pline_flags = 0;
-         *     Strcpy(pbuf2, "Program in disorder!");
-         *     if (program_state.something_worth_saving)
-         *         Strcat(pbuf2, "  (Saving and reloading may fix this problem.)");
-         *     pline("%s", pbuf2);
-         *     pline("Please report these messages to %s.", DEVTEAM_EMAIL);
-         * Both of the first two are OBSERVED in the recorder's continuation
-         * past the recording's last key (frames SEQ=309 and SEQ=310);
-         * the DEVTEAM_EMAIL line is NOT — the C binary stops after
-         * "Program in disorder!", so this port stops there too.
-         * (The panic() half of C's errfunc selection is unreachable from the
-         * only site the corpus exercises, which is column 0.) */
         pline('newsym: attempting screen update for <' + (x | 0) + ','
               + (y | 0) + '>');
         pline('Program in disorder!  (Saving and reloading may fix this problem.)');
         return;
     }
-    /* C display.c:948-953 — "only permit updating the hero when swallowed":
-     *     if (u.uswallow) {
-     *         if (u_at(x, y)) display_self();
-     *         return;
-     *     }
-     * A swallowed hero sees the stomach and nothing else, so every newsym the
-     * rest of the world raises while he is inside is a no-op in C.  This port
-     * had no such guard: swallowed(1) cleared the level off the screen and then
-     * the very next monster's move repainted its own glyph onto the blank map.
-     * MEASURED on seed0383 step 141, where the frame C draws as three cage rows
-     * came back with eleven monsters and a room outline still on it. */
     if (game.u?.uswallow | 0) {
         if ((x | 0) === (game.u.ux | 0) && (y | 0) === (game.u.uy | 0))
             display_self();
@@ -2360,16 +1755,6 @@ export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc)
         return;
-    /* C ref: display.c:967 — the FIRST statement of newsym()'s `if (cansee(x,y))`
-     * branch, ahead of the u_at(x,y)/display_self() arm, so the hero's own square
-     * is covered too:
-     *     lev->waslit = (lev->lit != 0);   /_ remember lit condition _/
-     * Nothing in this port ever SET waslit (js/vision.js:713 only ever cleared
-     * it), so every reader treated the whole map as never-lit.  The visible cost
-     * is the corridor: back_to_glyph picks S_litcorr over S_corr on
-     * `waslit || flags.lit_corridor` (js/display.js:452), so a corridor lit by
-     * the scroll of light rendered CLR_GRAY where C renders CLR_WHITE
-     * (seed0002 step 96).  RNG-neutral. */
     if (cansee(x, y)) {
         loc.waslit = (loc.lit != 0) ? 1 : 0;
         /* C ref: display.c:952 and :993-998 — the region branch, which this
@@ -2456,39 +1841,10 @@ export function newsym(x, y) {
          * ever match the head, so the flag had nothing to be true for and the
          * note below said so; the walk is now m_at() and the flag is live. */
         const worm_tail = !!(mon && (x !== mon.mx || y !== mon.my));
-        /* C display.c:1014-1017 —
-         *     see_it = mon && (mon_visible(mon)
-         *                      || (!worm_tail && (tp_sensemon(mon)
-         *                                         || MATCH_WARN_OF_MON(mon))));
-         *     if (mon && (see_it || (!worm_tail && Detect_monsters))) { ... }
-         * `cansee(x,y)` is TRUE here, but that is a property of the SQUARE, not
-         * of the monster: mon_visible() is what screens out an invisible monster
-         * and an undetected HIDER.  The comment this replaces said the gate was
-         * "simplified" because cansee had already been confirmed — it was not a
-         * simplification, it was the whole test.  Every hides_under monster the
-         * level generator hides (makemon.c:1308-1315: a snake/spider gets an
-         * object dropped on its square and then hideunder() sets mundetected)
-         * rendered as the monster where C renders the object it is under.
-         * seed2600-wizard-custom-binds step 20, cell (44,6): C shows the '%' of
-         * the random object under a garter snake (mndx 215, hideunder() returned
-         * TRUE at level-gen), this port showed 'S'.  That single cell was the
-         * session's entire remaining screen diff — its RNG is 11647/11647.
-         *
-         * The `!worm_tail &&` terms are C's own (display.c:1014-1016): a worm's
-         * TAIL is shown only when the worm is physically visible.  Telepathy,
-         * warning and monster-detection each sense the CREATURE, and C shows it
-         * at its head square alone — see_wsegs()/detect_wsegs() are what paint
-         * a body, and neither runs off these arms. */
         if (mon !== null) {
             const see_it = mon_visible(mon)
                 || (!worm_tail && (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon)));
             if (see_it || (!worm_tail && _newsym_Detect_monsters())) {
-                /* C display.c:1049 display_monster — monster glyph wins over
-                 * door/wall/terrain glyph (W18.4 sub-task A verification).
-                 * Verified for seed0105 line 17 col 31 (ant `a` at open door `|`):
-                 * priority logic IS correct; the bug there is fmon entry missing
-                 * (W18.5 fmon.count fix). When W18.5 adds the ant to fmon, this
-                 * path fires and renders `a` over the door terrain. */
                 /* C newsym: map the underlying square before displaying its
                  * monster. map_object must run even with show=false: it updates
                  * memory and consumes hallucinated object glyph draws. */
@@ -2528,13 +1884,6 @@ export function newsym(x, y) {
         // C display.c:1059–1065 — no monster: _map_location(x, y, 1) → MAP_OBJECT_AT.
         // Check for object at (x, y) via per-tile levelObjects table (vobj_at equivalent).
         // C ref: display.c:3035 obj_color(offset) — uses objects[offset].oc_color (per-otyp).
-        /* C display.c:455 — `if ((obj = vobj_at(x, y)) && !covers_objects(x, y))`.
-         * Water and lava hide what lies in them; this is the THIRD copy of the
-         * _map_location cascade in this file and the one the screen is painted
-         * from, and it was the only one carrying no covers_objects() gate at all.
-         * Witness: seed0361-archeologist-tour step 147 (Archeologist quest home),
-         * MOAT row y=3 — C paints an unbroken blue run of water, JS painted `%`
-         * at x=32 and x=42 for two food objects lying in the moat. */
         const obj = game.level?.levelObjects?.[x]?.[y] ?? null;
         if (obj !== null && !covers_objects(x, y)) {
             // oc_class: use per-otyp table (MKOBJ_OC_CLASS[otyp]) when available,
@@ -2547,19 +1896,6 @@ export function newsym(x, y) {
              * resolves it in map_glyphinfo() from the glyph map_object() already
              * chose; dknown does not enter obj_is_piletop(). */
             const pileTop = _obj_is_piletop(obj);
-            /* C display.h:963-968 obj_to_glyph — STATUE is tested first and
-             * statue_to_glyph() carries its OWN Hallucination arm, then the
-             * plain `(Hallucination) ? random_obj_to_glyph(rng)` arm covers
-             * every other object.  This block is one of the file's open-coded
-             * copies of map_object (see map_object() itself at :1327 and
-             * _map_location_glyph at :1500); the arms are spelled out here
-             * rather than delegating so the surrounding cascade is unchanged.
-             *
-             * WITHOUT this, a hallucinating hero drew NOTHING at an object
-             * square while C drew rn2(463) there, so every hallucinated glyph
-             * painted after the first visible object was one draw out of step.
-             * Measured on seed0383 (C recorder, NETHACK_RNGLOG_DISP=1): C makes
-             * 81 rn2(463) display draws this session and this port made zero. */
             if (_hallucinating_dsp()) {
                 const hg = _hallucinated_obj_glyph(obj);
                 if (game.level?.flags?.hero_memory) {
@@ -2578,7 +1914,6 @@ export function newsym(x, y) {
             // = CLR_WHITE — NOT the rock/object-class glyph, and NOT the monster mcolor.
             // (Non-Hallucination, non-rogue-symset path; DECgraphics/default symset
             // both use the ASCII monster-class char.)  Fixes the JS backtick-for-statue
-            // class (seed0014 statue `d`, seed2200 statue `x`).
             if (otyp === STATUE) {
                 const scnm = (obj.corpsenm | 0);
                 const smlet = (scnm >= 0 && scnm < MON_MLET.length) ? MON_MLET[scnm] : 53; // 53='@' fallback
@@ -2613,7 +1948,6 @@ export function newsym(x, y) {
             // and shows its real appearance color.  neardist = r*r*2 - r (a small
             // rounded square around the hero); r = max(2, xray_range).
             //
-            // This inline is a THIRD copy of map_object's observe gate, and it
             // used to write `obj.dknown = 1` with the comment /* observe_object */
             // beside it instead of CALLING observe_object() — so it set dknown
             // and skipped discover_object(oindx, FALSE, TRUE, FALSE), i.e. the
@@ -2623,37 +1957,12 @@ export function newsym(x, y) {
             //     discover_object(oindx, FALSE, TRUE, FALSE);
             // and o_init.c:525-536 interesting_to_discover() admits a type on
             // oc_encountered alone, so '\' must list every appearance the hero
-            // has seen up close.  MEASURED on seed0367-priest-quest-tour step
             // 316: C's discoveries page lists three scroll appearances, three
             // potion appearances and a wand appearance this port omitted
             // entirely, which shifted every later row of the page.
             //
-            // The gate is map_object's own (js/display.js:1249):
             // `_glyph_is_generic_object(obj) && cansee(x,y) && !Hallucination`,
             // and cansee(x,y) is the branch we are standing in.
-            /* C display.c:347 — the gate is `glyph_is_generic_object(glyph)`,
-             * and obj_to_glyph only PRODUCES a generic-object glyph for
-             * display.h:806-812's obj_is_generic(obj):
-             *     !(obj)->dknown
-             *     && ((obj)->oclass == POTION_CLASS
-             *         || ((obj)->otyp >= FIRST_REAL_GEM
-             *             && (obj)->otyp <= LAST_GLASS_GEM)
-             *         || ((obj)->otyp >= FIRST_SPELL
-             *             && (obj)->otyp <= LAST_SPELL))
-             * — potions, gems and spellbooks ONLY.  This site once tested plain
-             * `!obj.dknown`, i.e. EVERY unidentified object, so the port
-             * discovered appearances C leaves unseen.
-             * MEASURED on seed4500-knight-coverage step 1704: C's '\'
-             * discoveries page lists "key" and "looking glass" under Tools and
-             * this port additionally listed "candle" — a TOOL, so C's
-             * map_object never observes it, picked up here during a goto_level
-             * vision_recalc.  Everything else that C does discover on approach
-             * comes through see_nearby_objects (display.c:1575-1604), which has
-             * no class restriction and is ported separately.
-             * NOTE two sessions fixed this independently and the helper form
-             * won: _glyph_is_generic_object() applies the SAME _obj_is_generic
-             * class gate plus the dknown and Hallucination tests, and ALSO
-             * excludes CORPSE and STATUE, which the inline form did not. */
             if (_glyph_is_generic_object(obj)) {
                 const xray = (game.u?.xray_range | 0);
                 const r = (xray > 2) ? xray : 2;
@@ -2677,12 +1986,6 @@ export function newsym(x, y) {
                         : ((otyp >= 0 && otyp < MKOBJ_OC_COLOR.length)
                             ? MKOBJ_OC_COLOR[otyp]
                             : (OCLASS_COLOR[oc] ?? 7))));
-            /* C display.h generic_obj_to_glyph() encodes the object CLASS in
-             * the glyph, not the underlying object's type.  object_from_map()
-             * later decodes that class value and deliberately fails to find a
-             * matching floor object, constructing a temporary generic object
-             * (and consuming next_ident) for farlook.  Keep that encoded value
-             * in both the display buffer and hero memory. */
             const displayedOtyp = isGeneric ? oc : otyp;
             show_glyph_cell(x, y, och, ocol, false,
                             _pile_hilite(pileTop), GLYPHCLS_OBJ, false,
@@ -2750,7 +2053,6 @@ export function newsym(x, y) {
     else if (_oos_sensed_monster(x, y, loc)) {
         // C ref: display.c:1072-1081 — hero can't SEE the cell, but a monster is
         // there and is sensed.  see_it = tp_sensemon(mon) || MATCH_WARN_OF_MON(mon)
-        // || (see_with_infrared(mon) && mon_visible(mon)).  For the contest corpus
         // the live path is infravision: a warm-blooded monster in dark line-of-sight
         // (e.g. an orcish/elven/dwarven/gnomish hero seeing a pet in a dark corridor).
         // Handled inside the predicate, which renders the glyph when true.
@@ -2761,31 +2063,22 @@ export function newsym(x, y) {
         // sense the cell, but Warning floats a level-digit glyph over any
         // nearby hostile.  Handled inside the predicate, which shows the glyph
         // when true.  (The previous comment on _oos_sensed_monster claimed "no
-        // telepathy / warning heroes reach this cell"; seed5500's hero carries
         // intrinsic Warning and falsifies that — C paints '1' at step 822.)
     }
     else if (loc.remembered_glyph) {
         // Out of sight but remembered.
         // C ref: display.c:1116-1123 — the out-of-sight remembered-glyph branch is
-        // gated by `!lev->waslit || (flags.dark_room && iflags.use_color)` (the
         // latter constant-true here).  Inside it C demotes two lit memories back to
         // their dark form so the hero's memory matches `waslit`:
-        //   • S_room  (ROOM) → DARKROOMSYM   — _darken_room_floor
         //   • S_litcorr (CORR) → S_corr      — _darken_corridor
-        // NEITHER demotion is further gated: display.c:1088-1091 sits inside the
         // `else if`, whose condition is a DISJUNCTION, and its right half
         // (dark_room && use_color) is constant-true in this port — so the branch
         // is always taken and both arms are unconditional.  The extra
         // `if (!loc.waslit)` this port wrapped around the corridor arm read the
         // disjunction as a conjunction; it was inert only for as long as nothing
-        // ever set waslit, and became wrong the moment newsym did (seed0002 step
         // 98: the hero steps off a corridor the scroll of light lit, C demotes it
-        // to S_corr, the gate kept it S_litcorr).  We mutate remembered_glyph in
         // place to mirror C's `lev->glyph = …` so docrt's remembered-render and
         // subsequent newsyms stay darkened.
-        /* C display.c:1085-1092 handles the Rogue level separately:
-         * DARKROOMSYM is S_stone there, so an unlit remembered S_room floor
-         * becomes unexplored blank rather than the ordinary dark-room dot. */
         const rg = loc.remembered_glyph;
         const rogueRoom = Is_rogue_level(game.u?.uz) && !loc.waslit
             && loc.typ === ROOM && rg.color === NO_COLOR
@@ -2857,15 +2150,6 @@ export function mon_warning(mon) {
     return Math.trunc((mon.m_lev | 0) / 4) >= _warnlevel();
 }
 
-/* C display.c:639-642 display_warning's warning-level pick:
- *     int wl = Hallucination ? rn2_on_display_rng(WARNCOUNT - 1) + 1
- *                            : warning_of(mon);
- * WARNCOUNT is 6 (the six warning digits 0..5), so the hallucinating arm is
- * rn2(5) + 1 on the DISPLAY stream — never level 0.  Measured on seed0383, C
- * draws rn2(5) 45 times on that channel and this port drew none of them, so
- * every hallucinated glyph after the first warned-of monster was off by one
- * draw.  Both of this file's warning call sites (the cansee arm in
- * _map_location's monster block and _oos_warning_monster) go through here. */
 function _display_warning_level(mon) {
     if (_hallucinating_dsp())
         return rn2_on_display_rng(WARNCOUNT - 1) + 1;
@@ -2909,24 +2193,6 @@ function _oos_warning_monster(x, y) {
         if ((m.mhp | 0) < 1) continue; /* DEADMONSTER — C m_at reads the grid, which m_detach cleared */
         if (m.mx === x && m.my === y) { mon = m; break; }
     }
-    /* C display.c:1082-1084 `mon && mon_warning(mon) && !is_worm_tail(mon)`.
-     * is_worm_tail is NOT "this monster is a worm" — display.c:500 defines it
-     * as `(mon) && ((x != (mon)->mx) || (y != (mon)->my))`, i.e. "the cell being
-     * drawn is not the monster's HEAD square".  C's m_at() answers with the
-     * worm's monst struct for every tail segment too, and that comparison is
-     * the only thing separating head from tail.
-     *
-     * The guard here read `mon.wormno` instead, captioned "mon.wormno is never
-     * set" — a premise that is false: seed0360-wizard-world-tour arrives on
-     * Dlvl 42 (wizard2) at step 344 with a long worm (mnum 114, m_id 3678,
-     * m_lev 13, wormno 2) at (69,7), 68 squares-squared from the hero, and C
-     * paints its Warning digit "3" there.  Because `wormno` was truthy this
-     * port painted nothing, and that ONE cell was the whole remaining diff on
-     * that frame.  Any long worm the hero has Warning of was invisible.
-     *
-     * The loop above matches m.mx/m.my EXACTLY, so what it can return is always
-     * the head and is_worm_tail is false by construction — spelled out rather
-     * than assumed, exactly as the cansee arm at :1700 spells it out. */
     if (!mon) return false;
     const worm_tail = (x !== (mon.mx | 0)) || (y !== (mon.my | 0));
     if (worm_tail) return false;
@@ -3107,13 +2373,6 @@ export function docrt_flags(refresh_flags) {
 export async function docrt() {
     if (!game.level)
         return;
-    /* C display.c:2036-2043 — docrt() is docrt_flags(0), whose FIRST branch is
-     *     if (u.uswallow) { swallowed(1); return; }
-     * A swallowed hero's full-screen repaint is the stomach and nothing else.
-     * This function repaints remembered terrain through show_glyph_cell, so
-     * newsym()'s own swallow guard does not cover it: after the #wizintrinsic
-     * menu closed, C's seed0383 step 164 is a blank map with the cage on it and
-     * this port put the whole level back underneath. */
     if (game.u?.uswallow | 0) {
         swallowed(1);
         return;
@@ -3140,7 +2399,6 @@ export async function docrt() {
     // two levels, the Planes of Water and Air (mkmaze.c:586), where C
     // deliberately remembers the whole map as one glyph ('#', S_cloud) and shows
     // the seen squares from their real terrain (blank, for AIR).  Without this
-    // pair seed0373's Plane of Air arrival painted '#' over the 36-cell
     // line-of-sight wedge C leaves blank.
     vision_recalc(2);
     vision_recalc(0);
@@ -3152,11 +2410,9 @@ export async function docrt() {
     }
     // Step 3: the hero's own square.  C's docrt_flags() has NO separate hero
     // paint: vision_recalc(0) newsym()s the hero's square like any other, and
-    // newsym's u_at arm (display.c:1002-1009) gates display_self() on
     // canspotself() — so an INVISIBLE hero's square shows what lies under her.
     // This step used to paint hero_glyph unconditionally, which is
     // indistinguishable from C only while nothing can turn the hero invisible.
-    // seed0030 segment 9 step 308: the hero drinks herself invisible on the
     // previous level (canspotself() already returns false, and steps 306-307
     // match C with no '@'), descends, and C paints the '<' of the up-staircase
     // she arrives on while this port repainted '@' over it — the segment's
@@ -3177,7 +2433,6 @@ export async function docrt() {
 // message overflows the topline it calls more() *at that instant*, freezing the
 // physical screen at the glyphs painted SO FAR.  Subsequent monster moves /
 // deaths within the same per-turn movemon block update the internal gbuf but are
-// NOT repainted until the more() is dismissed.  So the frame a session captures
 // at such a --More-- is the screen as of the OVERFLOWING pline, not the
 // post-movemon gbuf.
 //
@@ -3187,7 +2442,6 @@ export async function docrt() {
 // MOMENT a pline first overflows the topline *during a movemon block*, and emit
 // that snapshot for the movemon --More-- frame(s).  DISPLAY-ONLY: snapshots a
 // copy of the disp_* cells; consumes no RNG, mutates no game state.
-// Capture a copy of the currently-painted (disp_*) map cells — the analogue of
 // the C tty physical terminal's last flush.  DISPLAY-ONLY: reads disp_* only,
 // consumes no RNG, mutates no game state.  Returns a Map keyed y*COLNO+x.
 function _capture_painted_cells() {
@@ -3225,14 +2479,11 @@ function _capture_painted_cells() {
 // This port re-derives the status row from live state at render time, so the
 // suppressed value has to be latched explicitly: `_timeBotlFrozenMoves' holds the
 // svm.moves the physical line still shows, and is non-null ONLY inside such a
-// suppression window.  Outside a run it is null and every capture below reads
 // live g.moves exactly as before.
 //
-// MEASURED on gen152-reseed-seed891925 step 9: a Tourist rushes three squares
 // west from T:1; the pet's "The kitten bites the jackal.  The jackal is killed!"
 // overflows the topline during the third step's movemon, and C's frozen frame
 // reads T:1 while svm.moves is already 3.  Same shape on
-// gen174-reseed-seed751626 step 30 (C T:70, live 73).
 // DISPLAY-ONLY: no RNG, no game-state mutation beyond this display latch.
 function _painted_moves(live) {
     const g = game;
@@ -3252,11 +2503,6 @@ export function time_botl_moves_incremented(preMoves) {
     if (!g) return;
     const _runTrace = ENV.FF_RUN_TRACE === '1';
     if (!g.flags || !g.flags.time) { g._timeBotlFrozenMoves = null; return; }
-    /* C allmain.c:261-263 gates the time update on context.run alone.  A
-     * travel endpoint re-arms run=8 for domove's final movement checks even
-     * after its multi counter has reached zero, and C keeps T: frozen through
-     * that boundary.  The following ordinary direction clears run via
-     * set_move_cmd(dir, 0), which is mirrored by cmd.js's inline dispatcher. */
     if (g.context && (g.context.run | 0)) {
         // Suppressed: remember what the line still holds.
         if (g._timeBotlFrozenMoves == null) g._timeBotlFrozenMoves = preMoves | 0;
@@ -3295,25 +2541,18 @@ function _maybe_snapshot_painted_screen() {
     // synchronous turn (movemon, then the hero's own command) BEFORE any of
     // its plines are actually paged, a later-in-the-turn state change (e.g.
     // domagicportal's make_stunned()) leaks backward onto an EARLIER movemon
-    // page that predates it.  MEASURED gen345-reseed-seed244908 step 108: C's
     // "The kitten picks up an uncursed spellbook of sleep.--More--" page (the
     // FIRST overflow, frozen before the hero's later magic-portal trap stuns
     // them) carries no Stun; this port rendered live post-stun state and
     // showed it.
     //
     // SIDE EFFECT, declared rather than hidden behind "no game state".
-    // _capture_botl() consumes no RNG — that part is unqualified.  But it is
     // not inert: it ADVANCES three paint-cache fields, and all three are read
-    // somewhere OTHER than the frame being captured, so adding capture points
     // here moves them to the movemon-page instant.
-    //   game._lastPaintedBotl      — what _capture_botl() RETURNS on the
     //                                u.uhp == -1 death path (see its header's
-    //                                seed5002 witness), i.e. the values every
     //                                later death frame renders.
     //   game._botlPaintedCap       — the encumbrance latch every later
-    //   game._botlPaintedDeaf        _capture_botl() reads back.
     // That advance is C-FAITHFUL, and it is C-faithful for the same reason the
-    // capture itself is: these three fields model "what the last bot() left on
     // the physical status line", and C's bot() DOES run at this instant —
     // vpline() calls flush_screen() before putmesg() (pline.c:273-274) and
     // flush_screen() opens with `if (disp.botl || disp.botlx) bot();`
@@ -3324,9 +2563,7 @@ function _maybe_snapshot_painted_screen() {
     //
     // PRE-EXISTING and NOT introduced here: C's bot() clears the dirty flags on
     // the way out (`disp.botl = disp.botlx = disp.time_botl = FALSE;`,
-    // botl.c:270) and _capture_botl() does not, so a second capture in the same
     // command re-latches cap/deaf where C's second flush_screen would have found
-    // the flags already clear and painted nothing.  Every existing capture site
     // has that property; these two add to it rather than create it.
     if (!g._paintedSnapshot)
         g._paintedSnapshot = { cells: _capture_painted_cells(), moves: _painted_moves(),
@@ -3339,7 +2576,6 @@ function _maybe_snapshot_painted_screen() {
     // window's messages and pages them all later at flush_screen, so the single
     // first-overflow snapshot above is correct for page 1 and STALE for pages
     // 2..N.  Record one frame per overflow instant here; flush_screen's paging
-    // loop consumes them in order.  (seed0600: an 88-turn sleep-ray nomul pages
     // ~20 pet pickup/drop messages, and C shows the pet at a different square on
     // every one of them.)  DISPLAY-ONLY: snapshots a copy of the disp_* cells;
     // consumes no RNG.  `botl` pinned for the same reason as the first-overflow
@@ -3396,8 +2632,6 @@ function _movemon_page_frames_reset() {
 // occupation turn (overwriting; the LAST one stands).  occupation_freeze_snapshot()
 // promotes that frame as the painted snapshot (with the current moves as `T:`), to
 // be consumed by the pending --More-- at the next flush_screen.  DISPLAY-ONLY: no
-// RNG, no game-state mutation; gated entirely on the occupation driver calling it,
-// so it has ZERO effect on any session that never runs a multi-turn occupation.
 export function occupation_painted_tick() {
     const g = game;
     if (!g) return;
@@ -3410,7 +2644,6 @@ export function occupation_freeze_snapshot() {
     if (!g) return;
     const frame = g._occCurFrame;
     if (!frame) return;
-    // Do not clobber an already-captured movemon snapshot.
     if (g._paintedSnapshot) return;
     g._paintedSnapshot = { cells: frame, moves: _painted_moves() };
 }
@@ -3435,7 +2668,6 @@ export function occupation_painted_reset() {
 // width-paging loop in flush_screen picks, for each --More-- page, the earliest run
 // turn whose accumulated length reaches that page's committed end (the turn whose
 // pline triggered the page's overflow) and freezes its frame.  DISPLAY-ONLY: snapshots
-// disp_* cells, consumes no RNG, mutates no game state.  Gated on _runPageFrames being
 // populated; an empty log leaves every existing --More-- path byte-identical.
 export function run_page_frame_reset() {
     const g = game;
@@ -3486,17 +2718,14 @@ function _run_page_frame_select(committedEnd) {
 // the LAST flush BEFORE the redraw, i.e. the OLD level's painted map with the OLD
 // Dlvl in the status line (bot() for the new level has not run yet).  Only after
 // the player dismisses the --More-- does docrt() paint the new (vision-masked)
-// level and bot() refresh Dlvl.  Verified on seed0015 step 19: the --More-- frame
 // = the level-1 map + Dlvl:1, identical to step 18's last flush, with the descend
 // topline; step 20 (post-dismiss) = the level-2 vision-masked map + Dlvl:2.
 //
-// level_transition_capture_old_paint() snapshots the OLD level's painted cells +
 // its dlevel BEFORE mklev()/clear_level_structures destroys it.  Then, after the
 // hero is placed on the new level, level_transition_arrival_more(msg) emits the
 // arrival message and drives the forced more() over that frozen frame — reusing
 // the same _paintedSnapshot machinery as the movemon/occupation --More-- windows
 // (render_map_row's _snapCellAt + _statusLine2's snapshot dlevel).  DISPLAY-ONLY:
-// snapshots disp_* cells, consumes no RNG, mutates no game state.  Gated entirely
 // on the goto_level caller invoking it → ZERO effect on any non-transition path.
 export function level_transition_capture_old_paint() {
     const g = game;
@@ -3518,7 +2747,6 @@ export function level_transition_capture_old_paint() {
 // the PHYSICAL screen at the LAST flush BEFORE movemon — the pre-movemon map
 // (pet not yet moved → "@d%#") with the pre-increment svm.moves (T:22).  Only
 // the movemon pline's own page (and everything after) shows the post-movemon
-// map + incremented T:.  This captures that pre-movemon frame so the segment
 // pager in dofire's getdir flush can freeze the swap-prinv page on it.
 // DISPLAY-ONLY: snapshots disp_* cells, consumes no RNG, mutates no game state.
 export function capture_painted_frame() {
@@ -3526,14 +2754,12 @@ export function capture_painted_frame() {
     if (!g || !g.level) return null;
     return { cells: _capture_painted_cells(), moves: _painted_moves() };
 }
-// Force the goto_level arrival --More-- using a previously-captured old-level
 // paint snapshot.  Shows "<msg>--More--" over the frozen OLD-level frame (old map
 // + old Dlvl), consuming the dismiss key via nhgetch (no RNG).  After dismissal
 // the snapshot is dropped so the next flush_screen/docrt renders the live (new)
 // level.  This mirrors the C ordering (pline → more() over last flush → docrt of
 // new level).  msg is the already-formatted arrival line (e.g. "You descend the
 // stairs.").  oldPaint is the object returned by
-// level_transition_capture_old_paint().
 //
 // `msg` is not always ONE C pline: js/cmd.js's caller passes whatever is on
 // _pending_message OR _resultMessage at this point, which can be several
@@ -3547,10 +2773,8 @@ export function capture_painted_frame() {
 // step C's cls() does before a redraw, just for the goto_level arrival rather
 // than a mid-game cls().  Treating `msg` as a single atomic page collapsed
 // however many C pages it represents into one, so this port consumed one
-// dismiss keystroke where C consumed several and read the corpus's next
 // recorded keys as fresh top-level commands instead.
 //
-// MEASURED gen345-reseed-seed244908 steps 108-113: domagicportal's "You
 // activated a magic portal!" + "You feel slightly dizzy." land on a topline
 // already holding two movemon pickup messages; C pages it three times
 // ("The kitten picks up an uncursed spellbook of sleep.--More--", "The kobold
@@ -3595,7 +2819,6 @@ export async function level_transition_arrival_more(msg, oldPaint) {
     // more() blocks mid-movemon, so a LATER page's frame has later monsters'
     // moves painted into it that an EARLIER page must not show).  Preserve
     // whatever that mechanism already recorded before we install anything;
-    // `oldPaint` (captured once, right before this redraw) is exact only for
     // the LAST outstanding page — its overflow instant is "right before the
     // arrival redraw" by construction — and is the fallback everywhere else.
     const _ambientSnap = g._paintedSnapshot;
@@ -3603,29 +2826,11 @@ export async function level_transition_arrival_more(msg, oldPaint) {
     g._pending_message = '';
     // Drive the forced more() over each committed page in turn.  _topl_more shows
     // "<committed>--More--", marks _inMovemonMore (because _paintedSnapshot is
-    // set, topl.c:1262), captures the frame at its nhgetch and consumes the dismiss
     // key, then restores _inMovemonMore.  After the last one, page-cleanup drops the
     // snapshot so the post-dismiss render uses the live new-level buffer.
     for (let i = 0; i < _pages.length; i++) {
         const _pg = _pages[i];
         if (!_pg) continue;
-        /* The ladder the comment above states: the LAST outstanding page is the
-         * one whose more() fires right before the arrival redraw, so oldPaint is
-         * exact for it and nothing else may displace it — including _ambientSnap,
-         * which is _maybe_snapshot_painted_screen's FIRST-overflow frame and is
-         * therefore an EARLIER page's instant.  The `i === 0` arm was not gated
-         * on !_isLast, so a SINGLE-page arrival that had an ambient snapshot
-         * rendered the movemon-overflow frame where the previous code always
-         * rendered oldPaint.
-         *
-         * MEASURED (an instrumented replay of this ladder, 2026-09-10): the
-         * public 44 reach this function ~35 times and EVERY call is
-         * n=1/pf=false/amb=false, so they never took the mis-gated arm — that
-         * is why the floor cannot see this and stands at 11391/11405 either
-         * way.  gen345-reseed-seed244908's one call is n=3 with pf true, true,
-         * false, so its last page already fell through to oldPaint and its
-         * 423/532 is unmoved too.  This is a latent trap being closed, not a
-         * measured behaviour change. */
         const _isLast = (i === _pages.length - 1);
         const _frame = _isLast ? oldPaint
             : (_pageFrames && _pageFrames[i]) ? _pageFrames[i]
@@ -3636,16 +2841,6 @@ export async function level_transition_arrival_more(msg, oldPaint) {
             moves: _frame.moves,
             dlevel: _frame.dlevel ?? oldPaint.dlevel,
             dnum: _frame.dnum ?? oldPaint.dnum,
-            /* C pline.c:274-277 — thread the per-page frame's own frozen botl
-             * (now pinned by _maybe_snapshot_painted_screen) through so
-             * _statusLine2() reads THIS page's status, not the live one.
-             * `oldPaint` carries none (level_transition_capture_old_paint()
-             * is deliberately left un-pinned: it is captured immediately
-             * before this redraw, by which point every effect the turn's
-             * command produced has already applied, so a live read at
-             * render time already equals its own paint instant) — that is
-             * exactly right for the LAST outstanding page (_isLast), whose
-             * more() in C fires after those effects too. */
             botl: _frame.botl ?? null,
         };
         const _morc = await _topl_more(_pg);
@@ -3665,10 +2860,6 @@ export async function level_transition_arrival_more(msg, oldPaint) {
      * every _movemonPageFrames[pageIdx] lookup off by that amount.  Reset
      * through the one helper that owns both halves so the pair cannot be
      * desynchronised by a future edit.  DISPLAY-ONLY. */
-    /* The final transition-page dismissal is C's stable boundary: docrt()
-     * repaints the restored hero immediately afterward.  A render-count budget
-     * expired on internal, unrecorded repaints and exposed AC:7 for gen608's
-     * last five pages while C's physical tutorial status still read AC:10. */
     if (g._tutorialStatusOverride)
         g._tutorialStatusOverride = null;
     _movemon_page_frames_reset();
@@ -3676,17 +2867,6 @@ export async function level_transition_arrival_more(msg, oldPaint) {
 // Snapshot-aware cell accessor: during a movemon --More-- frame returns the
 // snapshot cell (the C-flushed physical paint); otherwise the live disp_* cell.
 function _snapCellAt(x, y) {
-    /* _levelgenPaintFreeze: goto_level's mklev() arm can raise a wizard-mode
-     * query (getbones' "Get bones?" / "Unlink bones?") while the OLD level has
-     * already been handed to savelev() and the NEW one is half-built.  C is a
-     * physical terminal there: nothing has repainted the map since the last
-     * flush on the old level (vision_reset/docrt are do.c:1718/1840, AFTER
-     * mklev), so those query frames still show the old level's cells.  This
-     * port rebuilds the map from game.level on every flush, so it painted a
-     * blank one.  MEASURED, seed5006 segment 1 steps 4-5.
-     * MAP CELLS ONLY — the status row is NOT frozen, because C's bot() has
-     * already run for the new dlevel by then (C shows Dlvl:3 over the old map).
-     */
     const snap = (game._inMovemonMore && game._paintedSnapshot) ? game._paintedSnapshot
                : (game._levelgenPaintFreeze || null);
     if (snap) {
@@ -3752,7 +2932,6 @@ function render_map_row(y) {
             // emitted at the terminal default color in C — close any open
             // color run before the gap so the preceding glyph's color does
             // not bleed onto the adjacent void cell (e.g. the cell right of
-            // the hero @). Verified against all recorded sessions: a literal
             // space never appears inside a foreground color run in the map.
             if (activeInverse) {
                 output += '\x1b[0m'; /* close inverse (resets color+dec too) */
@@ -3999,13 +3178,6 @@ function _upstart_words(s) {
         out += (i === 0 || s[i - 1] === ' ') ? s[i].toUpperCase() : s[i];
     return out;
 }
-/* The three botl.c reads a poly'd status line needs, exported for the SECOND
- * status-line renderer in this port: js/com_pager.js paints rows 22/23 for every
- * frame a tty MENU window covers (its _statusLine1/_statusLine2 are a separate
- * copy of the two below), and it had no Upolyd arm at all — so seed5500's
- * post-polymorph pickup menu rendered "Wizard the Sorcerer"/"Xp:20" where C
- * renders "Wizard the Warhorse"/"HD:7".  Shared rather than re-duplicated so the
- * two copies cannot drift again. */
 export function botl_pmname(mndx, mgender) { return _pmname(mndx, mgender); }
 export function botl_upstart_words(s) { return _upstart_words(s); }
 export function botl_mon_mlevel(mndx) { return _mon_mlevel(mndx); }
@@ -4028,9 +3200,6 @@ function _statusLine1() {
     const lookupName = roleNameM || roleNameF;
     // C ref: botl.c:777 — titl = !Upolyd ? rank() : pmname(&mons[u.umonnum],
     // Ugender); botl.c:788-792 capitalizes every word of the monster name.
-    /* C botl.c:777 titl = !Upolyd ? rank() : pmname(&mons[u.umonnum], Ugender).
-     * On a frozen --More-- frame both the poly flag and the form are the ones
-     * bot() painted at that pline; see _capture_botl(). */
     const _b1s = (game._inMovemonMore && game._paintedSnapshot
                   && game._paintedSnapshot.botl
                   && game._paintedSnapshot.botl.mtimedone != null)
@@ -4048,27 +3217,10 @@ function _statusLine1() {
            || game.urole?.name?.m
            || 'Adventurer');
     const title = `${name} the ${role}`;
-    /* C botl.c bot1str — the status line prints ACURR(A_STR) … ACURR(A_CHA),
-     * and ACURR(x) is acurr(x) = ABON + ATEMP + ABASE clamped to [3,25]
-     * (attrib.c:1206).  These reads were a stand-in on the raw ABASE array
-     * (u.acurr.a IS ABASE — see js/attrib.js getAbase), so every temporary or
-     * bonus attribute delta was invisible on the status line.  seed0014 step
-     * 284: a bear trap fires, trap.c:1520 set_wounded_legs → do.c:2434
-     * ATEMP(A_DEX)--, C prints Dx:11 and this port kept printing Dx:12 for the
-     * rest of the game.  DISPLAY-ONLY — acurr() draws no RNG. */
-    /* During a --More-- page frozen on an exact pline-flush frame, the six
-     * attributes are the ones that flush_screen()'s bot() painted at THAT pline
-     * (display.c:2286, pline.c:276) — not the post-command ones.  _capture_botl
-     * recorded them; read them from there when a frozen frame is in force.
-     * `_a1s` is null for every other render, so those stay byte-identical. */
     const _a1s = (game._inMovemonMore && game._paintedSnapshot
                   && game._paintedSnapshot.botl
                   && game._paintedSnapshot.botl.attrs) || null;
     const _hasAttrs = !!(_a1s || (u.acurr && u.acurr.a));
-    /* C ref order: A_STR=0, A_INT=1, A_WIS=2, A_DEX=3, A_CON=4, A_CHA=5; the
-     * captured array is in DISPLAY order (St Dx Co In Wi Ch), so index it by
-     * that order rather than by the C constant (see the u.acurr.a note in
-     * MEMORY: `u.acurr.a` is ABASE and is display-ordered). */
     const _A1_ORDER = [A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA];
     const _acur = (ci) => {
         if (_a1s) {
@@ -4108,38 +3260,6 @@ function _statusLine2() {
         return '';
     // C ref: botl.c:bot2() — gold via money_cnt(gi.invent); Xp: always shows level;
     //   /exp shown only when showexp set; T: (turn count) shown only when time set.
-    /* C ref: botl.c:837 / hack.c:4478 — `money_cnt(gi.invent)`, the LIVE hero
-     * inventory chain and nothing else.
-     *
-     * This line used to read `money_cnt(game._ini_inv_chain ?? game.invent)`.
-     * `_ini_inv_chain` is a post-u_init SNAPSHOT of the starting inventory, and
-     * because the `??` fired for every game that ran ini_inv (i.e. all of them),
-     * the real inventory was INVISIBLE to the status row for the whole session.
-     * Four sites then had to mirror the snapshot by hand to keep '$:' moving
-     * (addinv-coin in js/pickup_container.js, assigninvlet-coin in
-     * js/wizcmds.js, the dopickup coin merge and freeinv_core's COIN arm in
-     * js/cmd.js); all four are removed in the same commit as this line, because
-     * with gi.invent read directly they are C's own SET_BOTL and nothing more.
-     *
-     * The class of bug the shadow caused is any state change that empties or
-     * replaces gi.invent WITHOUT going through a coin site: C's tutorial entry
-     * (nhlua.c:1926-1937 nhl_gamestate, reached from do.c:1510 tutorial(TRUE))
-     * sequesters the ENTIRE invent chain into gg.gmst_invent, so C's status row
-     * reads `$:0` for the whole tutorial and restores the pile on the way out.
-     * js/cmd.js's goto_level already ported that stash (it nulls g.invent), but
-     * the snapshot survived it, so '$:' kept painting the pre-tutorial pile —
-     * one wrong cell on every tutorial frame.
-     *
-     * `_botlGoldStale` is the OTHER half of C's model and is not a second
-     * shadow: C's '$:' is not live at all, it is whatever the last bot() wrote,
-     * and bot() only runs when a code path raised `disp.botl`.  Almost every
-     * gold-moving site in C raises it, so reading gi.invent live is right for
-     * all of them — but fountain.c:503-528 (the dipfountain "urge to take a
-     * bath" arm) mutates `otmp->quan` directly and raises NOTHING, so C keeps
-     * PAINTING the pre-loss amount.  js/potion.js latches that value there and
-     * the SET_BOTL-equivalent gold sites clear the latch again; see the note at
-     * that site.  Measured on seed0014 step 711: C paints "$:36" for the rest
-     * of the recording after losing 3 of it. */
     const _staleGold = game._botlGoldStale;
     const gold = (_staleGold === undefined || _staleGold === null)
         ? money_cnt(game.invent ?? null)
@@ -4149,28 +3269,9 @@ function _statusLine2() {
     // is more()'d as it is cleared for the redraw).  At that instant the physical
     // bottom status line still shows the OLD Dlvl (bot() has not yet run), so the
     // painted snapshot of the level-transition --More-- carries the OLD dlevel and
-    // the botl must use it.  DISPLAY-ONLY; no RNG.  Gated on a live snapshot with a
     // dlevel override (only set during the descend/climb --More-- window), so it
     // has ZERO effect on any non-transition render.
     const _snap2 = (game._inMovemonMore && game._paintedSnapshot) ? game._paintedSnapshot : null;
-    /* C ref: botl.c:1047 — the BL_LEVELDESC field is
-     *     (void) describe_level(gb.blstats[idx][BL_LEVELDESC].val, 1);
-     * describe_level (botl.c:440-475, ported in js/dungeon.js) picks the level's
-     * NAME over its depth in three branches before falling through to the
-     * "Dlvl:n"/"Tutorial:n" form: Is_knox prints the dungeon's dname, In_quest
-     * prints "Home <dunlev>", In_endgame prints endgamelevelname() with the
-     * "Plane of " prefix stripped.  A comment here used to assert all three were
-     * unreached by the corpus; measured 2026-08-14 against the recorded status
-     * rows, In_quest fires on FIVE sessions (seed0360/0361/0367/0373/4500, "Home
-     * 1".."Home 6") and In_endgame on one (seed0373, "Air" and "Fire").  Only
-     * Is_knox is genuinely unreached — no recorded status row carries a bare
-     * dungeon dname (the "Fort Ludios" hits in the corpus are all overview and
-     * level-teleport menus, not the botl).
-     *
-     * The dlevel used here keeps the existing level-transition --More-- snapshot
-     * semantics (bot() has not re-run yet), and the branch label is read from the
-     * same snapshot when one is in force so the label and the number describe the
-     * same level.  DISPLAY-ONLY; no RNG. */
     const _dnum = (_snap2 && _snap2.dnum != null) ? _snap2.dnum : (u.uz?.dnum);
     const _dlevelRaw = (_snap2 && _snap2.dlevel != null) ? _snap2.dlevel : (u.uz?.dlevel ?? 1);
     /* C ref: wintty.c:4546-4556 — for BL_LEVELDESC the tty windowport strips the
@@ -4182,9 +3283,6 @@ function _statusLine2() {
         .replace(/ +$/, '');
     /* C ref: botl.c:145-146 — hp/hpmax come from u.mh/u.mhmax while polymorphed:
      *   hp = Upolyd ? u.mh : u.uhp;  hpmax = Upolyd ? u.mhmax : u.uhpmax; */
-    /* On a frozen --More-- frame this is the poly flag bot() painted at that
-     * pline, not the live one (see _capture_botl()); _bs is computed below, so
-     * read the snapshot directly here. */
     const _p2s = (game._inMovemonMore && game._paintedSnapshot
                   && game._paintedSnapshot.botl
                   && game._paintedSnapshot.botl.mtimedone != null)
@@ -4192,28 +3290,6 @@ function _statusLine2() {
     /* C you.h:554 (u.umonnum != u.umonster), not the u.mtimedone timer. */
     const Upolyd = (((_p2s ? _p2s.umonnum : u.umonnum) | 0)
                     !== (((_p2s && _p2s.umonster != null) ? _p2s.umonster : u.umonster) | 0));
-    /* C ref: botl.c:823-830 bot_via_windowport()
-     *     i = Upolyd ? u.mh : u.uhp;
-     *     if (i < 0)              / * gameover sets u.uhp to -1 * /
-     *         i = 0;
-     *     blstats[idx][BL_HP].a.a_int = min(i, 9999);
-     *     i = Upolyd ? u.mhmax : u.uhpmax;
-     *     blstats[idx][BL_HPMAX].a.a_int = min(i, 9999);
-     * The `< 0` floor is applied to the DISPLAYED current-hp value ONLY: the
-     * max-hp field, and both power fields (botl.c:863-866, which only apply
-     * min(x, 9999)), carry no such floor.  So a negative u.uhp must render as
-     * "HP:0(<uhpmax>)" while u.uhp itself keeps its negative value. */
-    /* During a --More-- page frozen on an exact pline-flush frame, C's status line
-     * is the one that flush_screen()'s bot() painted at THAT pline (display.c:2286,
-     * pline.c:276) — not the post-command state.  _capture_botl recorded it; read
-     * the hero scalars from there when it is in force.  `_bs` is null for every
-     * other render, so those stay byte-identical. */
-    /* C botl.c:279 — while u.uhp is exactly -1, bot() clears its flags and paints
-     * NOTHING, so every render after that point (frozen page or live) shows the
-     * values of the last paint that DID happen.  See _capture_botl().  Applies to
-     * this row only; do_statusline1 (row 22) is frozen by the same guard in C but
-     * carries no observable difference on this corpus, so it is left alone rather
-     * than changed unmeasured. */
     const _frozenAtMinusOne = (((u.uhp | 0) === -1 || game._botlFrozenDeath)
                                && game._lastPaintedBotl)
         ? game._lastPaintedBotl : null;
@@ -4230,25 +3306,12 @@ function _statusLine2() {
         _hp = 0;
     _hp = Math.min(_hp, 9999);
     const _hpmax = Math.min(Upolyd ? (_bu.mhmax | 0) : (_bu.uhpmax || 0), 9999);
-    /* C ref: botl.c:863-866 — BL_ENE / BL_ENEMAX are min(x, 9999), no `< 0` floor. */
     const _pw = Math.min(_bu.uen || 0, 9999);
     const _pwmax = Math.min(_bu.uenmax || 0, 9999);
-    /* AC comes from the frozen frame when one is in force — see _capture_botl. */
     const _uac = (_bs && _bs.uac != null) ? _bs.uac : (u.uac ?? 10);
-    /* ...and so do the experience level / points — see _capture_botl. */
     const _xpLevel = ((_bs && _bs.ulevel != null) ? _bs.ulevel : u.ulevel) || 1;
-    /* C botl.c:42 `nhsym goldch = gs.showsyms[COIN_CLASS + SYM_OFF_O];` — the
-     * status line's gold field is labelled with the LIVE object-class symbol,
-     * not a literal '$'.  On a Rogue level assign_graphics(ROGUESET) has put
-     * def_r_oc_syms[COIN_CLASS] = GEM_SYM there, so C prints "*:0".  Witness:
-     * seed0360-wizard-world-tour step 302, C "Dlvl:18 *:0 HP:136(136)...". */
     const _goldch = oclass_sym(COIN_CLASS_DISP) ?? '$';
     let s = `${_leveldescField} ${_goldch}:${gold} HP:${_hp}(${_hpmax}) Pw:${_pw}(${_pwmax}) AC:${_uac}`;
-    /* C ref: botl.c:148-154 — the experience field is "HD:<mlevel>" when Upolyd
-     * (mons[u.umonnum].mlevel, cf. botl.c:872 BL_HD), else "Xp:<lvl>/<exp>" when
-     * flags.showexp, else "Xp:<lvl>".  botl.c:1458-1460 gates the same way:
-     * BL_EXP needs (flags.showexp && !Upolyd), BL_XP needs !Upolyd, BL_HD needs
-     * Upolyd. */
     if (Upolyd) {
         s += ` HD:${_mon_mlevel(((_p2s ? _p2s.umonnum : u.umonnum) | 0))}`;
     } else if (game.flags?.showexp) {
@@ -4263,7 +3326,6 @@ function _statusLine2() {
         // --More-- paging window: C runs turn N's movemon and only increments
         // svm.moves AFTER each turn's HEAD, so the physical screen at the
         // overflowing pline shows the svm.moves in effect at that instant.  The
-        // painted-screen snapshot captured exactly that value (game.moves at the
         // overflow); prefer it.  Otherwise fall back to the tagged movemon turn
         // (_movemonMsgTurn) for windows with no snapshot, then live game.moves.
         // DISPLAY-ONLY; no RNG.
@@ -4285,7 +3347,6 @@ function _statusLine2() {
      * FAINTED=5, STARVED=6. */
     // During a forced occupation/post-meal --More-- that froze the hunger state, render
     // the FROZEN uhs (the per-turn bot() value) rather than the live one — C shows the
-    // last-flush status, not the post-message hunger (seed0014 step 3 shows no
     // "Satiated" even though lesshungry's newuhs() has already crossed the threshold).
     let _uhs = (u.uhs | 0);
     /* A fainting transition can finish its countdown in the same dispatch
@@ -4305,14 +3366,6 @@ function _statusLine2() {
                 ? (game._paintedSnapshot.uhs | 0)
                 : (game._paintedSnapshot.botl.uhs | 0);
     }
-    /* During a paged --More-- that froze the bottom line at the last bot() flush,
-     * render the FROZEN cap (e.g. the pickup-encumber prinv page shows the
-     * pre-pickup cap, before encumber_msg's SET_BOTL repaints). Otherwise use
-     * the last bot() paint: inventory changes alone do not repaint status.
-     * Before the first paint the undefined latch permits live initialization.
-     * Two snapshot shapes carry a cap: the pickup-encumber
-     * pre-frame (_paintedSnapshot.cap) and the exact per-pline flush frame
-     * (_paintedSnapshot.botl.cap, _capture_botl). */
     let _cap = game._botlPaintedCap;
     if (game._inMovemonMore && game._paintedSnapshot
         && game._paintedSnapshot.cap != null)
@@ -4333,18 +3386,6 @@ function _statusLine2() {
                                 ? !!_p2s.confused : undefined);
     return fit_status_line_width(s);
 }
-/* C ref: botl.c:186-188 bot2() tail + the conditions[] table (botl.c:635-649) —
- * everything that follows the Xp:/HD: field on status line 2: the hunger word,
- * the encumbrance word, then the condition words in conditions[] order.
- * Exported because this port has TWO status-line renderers: this file's, and
- * js/com_pager.js's copy that paints rows 22/23 for every frame a tty MENU
- * window covers.  The copies had already drifted (com_pager had no Upolyd arm
- * and none of these fields, so seed5500's post-polymorph pickup menu rendered
- * "Wizard the Sorcerer"/"Xp:20" with no " Blind"); sharing the tail is what stops
- * them drifting again.
- * `uhs`/`cap` are the values to PAINT — a caller with a frozen --More-- frame
- * passes the frame's; pass undefined for `cap` to read the live near_capacity().
- * DISPLAY-ONLY: reads u.uprops + the inventory chain, consumes no RNG. */
 export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen,
                                    halluFrozen, confFrozen) {
     const u = game.u;
@@ -4407,31 +3448,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         if (confused)
             s += ' Conf';
     }
-    /* C ref: botl.c:1193 condtests[bl_deaf].test = (Deaf) ? TRUE : FALSE,
-     * rendered as "Deaf" from the conditions[] table (botl.c:787).  Its
-     * useroption name is "deaf" (botl.c:824), so in the ranking-10 alphabetical
-     * tie-break documented above it lands between "conf" and "fly" — i.e.
-     * exactly here.  bot2()'s literal spelling at botl.c:189-195 orders it
-     * Blind/Deaf/Stun/Conf, but that is the no-status-window path; the tty
-     * status field is built from conditions[] through cond_cmp.
-     * C youprop.h:125 Deaf = (HDeaf || EDeaf || u.uroleplay.deaf).  HDeaf is
-     * the flat u.HDeaf slot in this port (js/allmain.js:1591 nh_timeout_deaf
-     * counts it down, js/eat.js:1183 and js/music.js's leather drum set it),
-     * NOT u.uprops[DEAF] — reading the uprops spelling here would report a word
-     * nothing writes.
-     * MEASURED on seed0002 step 582 onward: C's Dlvl row reads
-     * "... Xp:1 Burdened Deaf" for the rest of the recording after the leather
-     * drum's incr_itimeout(&HDeaf, rn1(20,30)), and this port emitted no
-     * condition at all, losing 13 of the session's 14 remaining frames. */
     {
-        /* `deafFrozen` is the value bot() last PAINTED, threaded in for a frozen
-         * --More-- page the same way `blindFrozen` is.  It matters here because
-         * C's LEATHER_DRUM arm (music.c:704-716) sets HDeaf and only flags
-         * `disp.botl` at the END of the arm, so the more() raised in between —
-         * by the pet's "turns to flee." inside awaken_monsters — freezes a
-         * status line that does NOT yet say Deaf.  seed0002 steps 569-579 are
-         * exactly those frames, and step 580 (the first paint after the
-         * command) is where C's " Deaf" appears. */
         const dp = u.uprops?.[DEAF];
         const deaf = (deafFrozen !== undefined) ? !!deafFrozen
             : !!((dp?.intrinsic | 0) || (dp?.extrinsic | 0) || (u.HDeaf | 0)
@@ -4439,13 +3456,6 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         if (deaf)
             s += ' Deaf';
     }
-    /* C ref: botl.c:980 condtests[bl_fly].test = Flying, rendered from the
-     * conditions[] table (botl.c:641) as "Fly" after the encumbrance field.
-     * Flying (youprop.h) = (HFlying || EFlying || (u.usteed && is_flyer)) &&
-     * !BFlying; set_uasmon's PROPSET(FLYING) turns HFlying on for a flying poly
-     * form.  Only the ported conditions are emitted: every other condtest is
-     * FALSE for every state any corpus session reaches at a captured frame, and
-     * emitting an unported one would be an invented field. */
     {
         const fp = u.uprops && u.uprops[FLYING];
         const flying = !!fp && !!((fp.intrinsic | 0) || (fp.extrinsic | 0))
@@ -4453,20 +3463,6 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         if (flying)
             s += ' Fly';
     }
-    /* C ref: botl.c:1196 condtests[bl_hallu].test = (Hallucination) ? TRUE :
-     * FALSE, rendered from conditions[] (botl.c:793) as "Hallu".  Its
-     * useroption name is "hallucinat" (botl.c:830), so in the ranking-10
-     * alphabetical tie-break documented above it lands after "fly" and before
-     * "levitate" — i.e. exactly here.
-     * C youprop.h:120 Hallucination = (HHallucination && !Halluc_resistance),
-     * with Halluc_resistance = (HHalluc_resistance || EHalluc_resistance)
-     * (youprop.h:116-119).  INTRINSIC ONLY on the HALLUC side — there is no
-     * EHallucination term in the macro — which is the same shape the Conf
-     * block above has, and is why this reads .intrinsic and not the triple.
-     * MEASURED on seed0383 step 164: the hero grants itself hallucination
-     * through #wizintrinsic at step 162 and C's Dlvl row carries " Hallu" from
-     * the very next frame; this port emitted no condition at all and lost the
-     * whole 55-frame tail of the session on that one word. */
     {
         /* `halluFrozen` is the value bot() painted at a frozen --More-- pline,
          * threaded in the same way `stunFrozen` is; undefined for every other
@@ -4494,32 +3490,8 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         if (levitating)
             s += ' Lev';
     }
-    /* C ref: botl.c:204-205 —
-     *     / * levitation and flying are mutually exclusive; riding is not * /
-     *     ...
-     *     if (u.usteed)
-     *         Strcpy(nb = eos(nb), " Ride");
-     * conditions[] (botl.c:799) gives bl_ride ranking 10 and useroption name
-     * "ride", so in the alphabetical tie-break documented above it lands after
-     * "levitate" and before "stun" — i.e. exactly here.  The test is the bare
-     * u.usteed pointer, no property triple.
-     * seed0104/seed0103: every frame from the mount on carries " Ride" at the
-     * end of the Dlvl row in C. */
     if (u.usteed)
         s += ' Ride';
-    /* C ref: botl.c:1202 condtests[bl_stun].test = (Stunned) ? TRUE : FALSE,
-     * rendered from conditions[] (botl.c:805) as "Stun".  bl_stun carries
-     * ranking 10 and useroption name "stun" (botl.c:842), which is LAST in the
-     * alphabetical tie-break documented above — after "ride" — so it sits at
-     * the end of the suffix.
-     * C youprop.h:81 `#define Stunned HStun`, and HStun is
-     * u.uprops[STUNNED].intrinsic: intrinsic only, no extrinsic and no blocked
-     * term, the same shape as the Conf block.  The whole word is the truth
-     * test; C tests `Stunned`, not `Stunned & TIMEOUT`.
-     * MEASURED on gen232-reseed-seed1268561 step 1034: the red dragon's
-     * knockback stuns the hero (uhitm.c:5397 make_stunned(knockdistance + 1,
-     * TRUE)), C's Dlvl row carries " Stun" from the next frame, and this port
-     * emitted no condition — 552 frames whose ONLY difference was that word. */
     {
         /* `stunFrozen` is the value bot() painted at a frozen --More-- pline,
          * threaded in the same way `blindFrozen` is; undefined for every other
@@ -4537,9 +3509,6 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
  * second line would overflow.  botl.c supplies the long/medium/short spellings
  * in conditions[]; apply the short spelling one condition at a time, in status
  * order, until the physical line fits. */
-/* C tty status writes reserve the terminal's final column; a field of 80
- * printable cells takes the medium condition spelling (gen413: Blind -> Blnd).
- */
 export function fit_status_line_width(s, width = 79) {
     if (s.length <= width) return s;
     /* C wintty.c make_things_fit() advances cond_shrinklvl globally: it
@@ -4645,14 +3614,12 @@ export function serialize_terminal_grid(display) {
 // Only trailing spaces are removed; embedded and leading spaces (prompt layout)
 // are preserved.  A normal pline never ends in a space, so this is a no-op for
 // every non-getlin frame; it only affects getlin echo of a typed trailing space.
-// The recorder's screen encoding (nomux_capture_screen) applies to EVERY row of
 // the 24x80 dump, row 0 included: a run of MORE THAN FOUR blank cells is emitted
 // as a cursor-forward escape instead of literal spaces.  com_pager.js's map,
 // menu and text-window builders already obey it at `gap > 4`; the topline did
 // not, so any pline with a >=5-space interior gap rendered with literal spaces
 // where C records "\x1b[nC" — dowhatdoes' "%-8s%s." key field is exactly that
 // case ("i" + 7 blanks: C records "i\x1b[7Cshow your inventory (#inventory).",
-// seed2200 step 156).  Audited across the whole 64-session corpus: 0 recorded
 // row-0 lines contain a literal run of >=5 spaces, so the rule is unconditional.
 // Trailing blanks are stripped first (the tty never paints them; the cursor
 // column is tracked independently and set by the getlin/render caller), so only
@@ -4717,7 +3684,6 @@ function _buildScreenOutput() {
     // message glyphs; trailing blanks are never written to the terminal row, so
     // a recorded screen row has trailing spaces trimmed (the cursor column is
     // tracked separately).  This matters for getlin echo: when the typed buffer
-    // ends in a space (e.g. wish "blessed " mid-input, seed5500 step 48), C
     // records "...wish? blessed" (trimmed) with the cursor at the space column,
     // while an untrimmed JS string would carry the trailing " ".  Match C by
     // stripping trailing spaces from the row-0 message text.
@@ -4733,13 +3699,6 @@ function _buildScreenOutput() {
         output += render_map_row(y) + '\n';
     }
     // Row 22-23: status
-    /* `_status_blanked`: a full-screen tty menu overdraws rows 22-23, and
-     * dismissing it repaints only WIN_MAP — the status window is a separate
-     * window that tty rewrites only from bot(), which needs a turn or an
-     * explicit status update.  So a non-menu frame painted between a menu
-     * dismissal and the next bot() shows BLANK status rows.  seed4500 steps
-     * 237-242: the "Set fruit to what?" getlin inside doset() renders the map
-     * with rows 22-23 empty; doset's exit repaints them (step 249). */
     /* C's tutorial gamestate memcpy restores the live hero before the next
      * turn, but every outstanding pre-redraw page is painted while the old
      * tutorial status is still physically on the terminal.  Keep the override
@@ -4917,7 +3876,6 @@ export function _topl_visualLen(s) {
 // Corroborated across all 44 public recordings by tabulating (row-0 length ->
 // recorded cursor) for every step whose topline is >= 70 columns: prompts of
 // written length 70..79 park at [len, 0] without exception, and the single
-// corpus write of length 80 (seed0014 step 383, "Dip a cursed very rusty -4
 // orcish helm (being worn) into the fountain? [yn] (n) ") parks at [1, 1].
 // Neither of update_topl's outcomes can produce that: word-splitting the same
 // string substitutes '\n' for the trailing space and parks at [0, 1].
@@ -4942,7 +3900,6 @@ export function topl_park_cursor(disp, written) {
 // successive physical rows, breaking at a space boundary (the breaking space
 // itself is not painted on either row) rather than raw column-80 overflow.
 //
-// CORRECTED 2026-08-17: this comment used to name topl_putsym as the source of
 // the word wrap.  It is not — topl_putsym hard-wraps at column CO-1 with no
 // regard for word boundaries (see topl_park_cursor below).  The word-splitting
 // is update_topl's `for (tl = gt.toplines; n0 >= CO; )` loop (topl.c:277-291),
@@ -4952,13 +3909,10 @@ export function topl_park_cursor(disp, written) {
 // routes it to show_topl -> addtopl -> putsyms), so it never word-wraps at all.
 // Every yn/getlin prompt is such a message.
 //
-// Verified against the recorded corpus (seed2200 steps 54/66, seed0002 step
-// 345, seed0360 step 603, seed0500/seed0777 book-read steps): every observed
 // wrap point is exactly "would the NEXT space-delimited word push this row
 // past 79 visual columns" — never a mid-word split, and never the CO-1-8=71
 // --More-- reserve (that reserve only governs the separate join-driven
 // _topl_split_for_more decision above, not raw text layout). A single token
-// wider than one row (never observed in the corpus) is placed alone on its
 // own row rather than hard-broken mid-word.
 function _topl_wordwrap(text, width) {
     const tokens = String(text || '').match(/\S+|\s+/g) || [];
@@ -4984,7 +3938,6 @@ function _topl_wordwrap(text, width) {
     // space, and "--More--" lands one column further right whenever the message
     // genuinely ends in one.  godvoice's pline_The("voice of %s %s: %s%s%s", ...)
     // with a NULL `words` formats to "...rings out: " — trimming that space put
-    // seed0106's step-12 topline at "rings out:--More--" where C has
     // "rings out: --More--".  Split rows keep their trim (C consumes the break
     // space at each split).
     if (cur) rows.push(cur);
@@ -5042,17 +3995,6 @@ export function _topl_record_join(prev, joined) {
 // at that offset (see _pline_flush_frame_select).  DISPLAY-ONLY: snapshots a copy
 // of the disp_* cells, consumes no RNG, mutates no game state.  An unmatched
 // offset leaves every existing --More-- path byte-identical.
-/* There is NO minimum offset.  This log used to skip any boundary below column
- * 20, on the assumption that "no page's committed end lands below this" — but a
- * page's committed end is the length of the message that FITTED, and a short
- * first message followed by a long one overflows the 71-column reserve straight
- * away.  Measured on gen040-reseed-seed267324 step 77: kick_ouch's "Ouch!  That
- * hurts!" (18 chars) is committed and set_wounded_legs -> encumber_msg's "Your
- * movements are slowed slightly because of your load." (56) is what does not
- * fit, so the page's committed end is 18 and its frame was never recorded — the
- * --More-- then rendered the LIVE status (post-losehp HP, post-turn T:) instead
- * of the status as of the overflowing pline.  C's vpline() flushes before EVERY
- * putmesg (pline.c:274-277); it has no such threshold and neither do we. */
 const PLINE_FLUSH_FRAME_MAX = 256;      /* bound the per-window log */
 function _pline_flush_frame_tick(prev, joined) {
     const g = game;
@@ -5064,13 +4006,6 @@ function _pline_flush_frame_tick(prev, joined) {
     // caller has already stored the joined string there (cmd.js
     // _result_append_join assigns before recording the join), so `res` matches
     // either `prev` or `joined` and there is no prefix.
-    /* _topl_result_head: when _resultMessage is a SNAPSHOT of this same live
-     * line (domove_core's swap-with-pet copy) it is NOT a separate prefix, and
-     * charging its length here put every frame this turn recorded at an offset
-     * the paging loop never asks for.  gen017-reseed-seed1328024 step 25: the
-     * width-driven page of the engraving reveal looked for offset 79 and the
-     * record had been filed at 118, so its --More-- rendered the LIVE map (the
-     * pet already moved) instead of the map as of that pline. */
     const res = _topl_result_head(g._resultMessage, prev);
     const prefix = (res && res !== prev && res !== joined) ? res.length + 2 : 0;
     const off = prefix + prev.length;
@@ -5092,7 +4027,6 @@ function _pline_flush_frame_tick(prev, joined) {
 // occupies [res.length, res.length+2) and the tick's `prefix` term above (which is
 // added to a NON-EMPTY prev) is the offset of the text AFTER that separator.
 //
-// Measured 2026-08-17 on seed0014 step 415: the take-off's off_msg
 // ("You were wearing a blessed +3 small shield.", 43 chars) is committed as the
 // command result and the water nymph's steal message opens the next world block,
 // so the page-1 select asked for off 43 and the log's earliest record was 108.
@@ -5112,12 +4046,6 @@ function _pline_flush_frame_record(off, msg) {
 /* C youprop.h:125  Deaf = (HDeaf || EDeaf || u.uroleplay.deaf).  HDeaf is the
  * flat u.HDeaf slot in this port (js/allmain.js:1591 nh_timeout_deaf counts it
  * down; js/eat.js:1183 and js/music.js's leather drum set it). */
-/* Exported as Deaf: js/ carries SEVEN readings of youprop.h:125 and they
- * disagree about which slot holds HDeaf (three read u.uprops[DEAF], which has
- * no writer anywhere in js/; two read game.flags.deaf, which is an OPTION, not
- * the property).  This is the one that is measured — the status line's Deaf
- * condition is built from it and checked against C on every step of every
- * session.  The other six are not touched here; only new callers use this. */
 export { _live_deaf as Deaf };
 function _live_deaf() {
     const u = game?.u;
@@ -5126,7 +4054,6 @@ function _live_deaf() {
     return !!((dp?.intrinsic | 0) || (dp?.extrinsic | 0) || (u.HDeaf | 0)
               || (u.uroleplay && u.uroleplay.deaf));
 }
-// Capture the bottom-status scalars as of THIS instant.
 //
 // C ref: display.c:2285-2288 — flush_screen() begins with
 //     if (disp.botl || disp.botlx) bot(); else if (disp.time_botl) timebot();
@@ -5137,19 +4064,16 @@ function _live_deaf() {
 //
 // This port accumulates a whole window's plines and pages them later at
 // flush_screen, by which time u.uhp &c have moved on — so the frozen page renders
-// the LIVE status.  seed5500 step 831: the zap's third message is burnarmor's
 // "Your cloak smoulders!", which zhitu (zap.c:4415-4429) emits BEFORE its closing
 // losehp() (zap.c:4581), so C's status still reads HP:127 while this port had
 // already applied the 19 damage and rendered HP:108.  Both orderings are the same;
 // only the render instant differed.
 //
-// WHICH FRAMES RECORD IT (updated 2026-09-10 — this note used to say "ONLY for
 // pline-flush frames ... the movemon / occupation / run frames keep rendering
 // live status and are byte-unchanged", which stopped being true when the
 // movemon page-freeze started pinning it):
 //   RECORDED, instant exact — the pline-flush frames (_pline_flush_frame_record),
 //     the forced-break frames (topl_force_break_after's display_nhwindow page),
-//     capture_painted_frame_with_status(), this port's own bot() (C botl.c:279's
 //     paint latch), and — since 8605b7bea and its follow-up — BOTH movemon
 //     page-freeze frames: the first-overflow g._paintedSnapshot and every
 //     per-page g._movemonPageFrames[] entry.  A movemon frame's instant is not
@@ -5160,9 +4084,7 @@ function _live_deaf() {
 //     (run_page_frame_tick records no `botl` field), the occupation freeze
 //     (occupation_freeze_snapshot), the per-turn deferred-more frame, the
 //     pickup-encumber pre-frame (it pins `cap` only), and
-//     capture_painted_frame() (deliberately botl-free so its cmdq-fireassist
 //     caller is byte-unchanged).  Those approximate the pline instant at
-//     world-block granularity; pinning them is a separate, unmeasured change.
 //
 // SCOPE — hp/pw and the encumbrance level, deliberately NOT the whole status
 // line.  Freezing a field mid-command is only correct where this port maintains
@@ -5171,15 +4093,12 @@ function _live_deaf() {
 // state at all but a pure function of the inventory chain
 // (near_capacity() -> inv_weight() -> the gi.invent walk), and this port adds to
 // and frees from gi.invent at C's addinv()/freeinv() sites, so its value at the
-// pline instant IS C's value at that instant.  seed5500 step 863: C's drop()
 // plines "You drop a scroll labeled FOOBIE BLETCH." BEFORE dropx()->freeinv()
 // (do.c:773-777), so the frozen page still reads the pre-drop cap and shows
 // " Stressed"; only after dropz()'s encumber_msg (do.c:840, pickup.c:1990) does
 // the next flush repaint " Burdened".  This port paged the accumulated topline
 // after the whole command and rendered the live post-drop cap.
-// PARKED-NOTE: session=seed5500 citation-only
 //
-// u.uac IS captured, and — unlike the encumbrance level — it is captured LIVE, with
 // no painted latch.  The asymmetry is C's, not a heuristic: near_capacity() is a
 // derived quantity that nothing flags the status line for, so its painted value can
 // lag the live one arbitrarily; u.uac is stored state whose ONLY writer is find_ac()
@@ -5187,50 +4106,16 @@ function _live_deaf() {
 // vpline() calls flush_screen() BEFORE putmesg() (pline.c:274-277) and flush_screen
 // opens with `if (disp.botl || disp.botlx) bot();` (display.c:2286), a pline can
 // never observe a stale AC: whatever find_ac last stored is repainted by that
-// pline's own flush.  So live-at-capture-instant IS C's painted value.
-// seed5500 step 869 is the case this buys: polymon (polyself.c:886-890) runs
 // break_armor() BEFORE find_ac(), so the "The clasp on your cloak breaks open!"
 // pline pages a frame that already carries the warhorse's HP:20(20)/HD:7/St:18/**
 // but still the hero's AC:10; find_ac() drops it to the warhorse's mons[].ac == 4
 // (monsters.h LVL(7,24,4)) only afterwards, which is what step 870 shows.
-// This capture is therefore only as good as this port's find_ac() CALL SITES — an
-// earlier attempt at it regressed seed0800 step 100 because the wear path ran
 // find_ac after the "You feel yourself speed up." pline where C had already run it.
 // Fixing a divergence here means moving a find_ac() to its C site, never widening
-// or narrowing the capture rule.
 // DISPLAY-ONLY: reads u + the inventory chain, consumes no RNG, mutates no state.
 function _capture_botl() {
     const u = game?.u;
     if (!u) return null;
-    /* C display.c:2285-2288 — this pline's own flush_screen() opens with
-     *     if (disp.botl || disp.botlx) bot();
-     * so the encumbrance field is REPAINTED at this instant only when something
-     * earlier in the command flagged the status line; otherwise the physical
-     * line still holds whatever the previous bot() put there.  Reproducing that
-     * two-state rule is what separates seed5500's two paged frames:
-     *   step 863 (drop) — encumber_msg (pickup.c:1990) plines BEFORE its
-     *     SET_BOTL and drop() already ran freeinv (do.c:773-777), so nothing has
-     *     flagged botl: the line keeps the PRE-drop " Stressed" even though
-     *     near_capacity() now says " Burdened";
-     *   step 869 (polymorph) — polymon's stat writes flag botl before
-     *     break_armor's "The clasp on your cloak breaks open!", so bot() DOES
-     *     run and the line picks up the warhorse's (unencumbered) capacity. */
-    /* C botl.c:279 — bot() DECLINES TO PAINT while u.uhp is exactly -1:
-     *     if (u.uhp != -1 && gy.youmonst.data && iflags.status_updates
-     *         && !suppress_map_output()) { ...paint... }
-     *     disp.botl = disp.botlx = disp.time_botl = FALSE;
-     * The comment there explains the sentinel as dosave()'s completion flag, but
-     * the guard is unconditional, so it also fires on any ORDINARY death whose
-     * final blow lands the hero on exactly -1 hit points: the flags are cleared,
-     * nothing is drawn, and the physical status line keeps the values the
-     * PREVIOUS bot() put on the terminal for the rest of the game.
-     *
-     * This port re-derives the status from live `u` at render time, so it needs
-     * the previous paint kept explicitly.  Measured on seed5002 segment 1 step
-     * 209: a giant bat bites a 1-HP hero for d(1,6)=2, so u.uhp is -1 and C's
-     * status reads HP:1(12) on the "The giant bat bites!--More--" frame and on
-     * every one of the twelve frames after it, through "You die..." and the
-     * wizard-mode "Die? [yn]" prompt.  This port repainted HP:0(12). */
     if ((u.uhp | 0) === -1)
         return game._lastPaintedBotl || null;
     const _d = game.disp;
@@ -5254,57 +4139,16 @@ function _capture_botl() {
         /* C botl.c:867-869 BL_AC — bot() reads u.uac, which only find_ac() writes
          * and which SET_BOTL()s on every change; see the SCOPE note above. */
         uac: u.uac,
-        /* C botl.c:1458-1460 BL_XP / BL_EXP — bot() reads u.ulevel and u.uexp at
-         * PAINT time, exactly as it reads u.uhp.  They were the only status
-         * fields still re-derived LIVE while every neighbour was frozen, so a
-         * level change inside a paging window rewrote the Xp: field on frames C
-         * had already painted.
-         *
-         * MEASURED on seed0399-wizard-hallu-actions steps 525-527: the prayer's
-         * angrygods (pray.c:725, rn2(6)=3) reaches losexp(NULL) in the SAME
-         * turn whose accumulated toplines page here, and C's three frames read
-         * "Xp:20" — the pre-losexp value — while HP:83(99) and Pw:213(213) on
-         * those very frames were already frozen correctly.  C only shows Xp:19
-         * from step 528, the first frame painted after the level loss. */
         ulevel: (game._botlPaintedLevel != null)
             ? (game._botlPaintedLevel | 0) : (u.ulevel | 0),
         uexp: (game._botlPaintedExp != null)
             ? game._botlPaintedExp : (u.uexp ?? 0n),
-        /* newuhs() retains save_hs until the interrupted meal's deferred
-         * reset runs, but C's stop_occupation() has already raised SET_BOTL.
-         * Once the eat occupation is cleared, bot() therefore paints the live
-         * post-bite hunger state (gen148: Satiated), not save_hs. */
         uhs: game._saved_hs && game.occupation?.name === 'eatfood'
             ? (game._save_hs | 0) : (u.uhs | 0),
-        /* C botl.c bot1str — ACURR(A_STR)…ACURR(A_CHA).  Captured LIVE, on the
-         * same argument u.uac is: attrib.c:190-194 adjattrib sets
-         * `disp.botl = TRUE` and THEN emits its You_feel(), and the other
-         * writers of ABASE/ATEMP/ABON flag the status line at the write too, so
-         * a pline can never observe an attribute the previous bot() has not
-         * already painted.  Live-at-capture-instant IS the painted value.
-         * seed0106 steps 11-12: angrygods (pray.c:2168-2175) plines "The voice
-         * of Amaterasu Omikami rings out: " and verbalizes "Thou must relearn
-         * thy lessons!" BEFORE adjattrib(A_WIS, -1), so C's first two prayer
-         * --More-- frames still read Wi:18 and only the third ("You feel
-         * foolish!", adjattrib's OWN message) reads Wi:17.  This port paged the
-         * whole accumulated window after the command and rendered the
-         * post-prayer 17 on all three.
-         * Null when the hero has no attribute array yet (chargen). */
         attrs: (u.acurr && u.acurr.a)
             ? [acurr(u, A_STR), acurr(u, A_DEX), acurr(u, A_CON),
                acurr(u, A_INT), acurr(u, A_WIS), acurr(u, A_CHA)]
             : null,
-        /* C botl.c:145-154 and :777 — bot() reads Upolyd (you.h:554,
-         * u.umonnum != u.umonster) for the
-         * HP/HPmax source, for the "HD:"-vs-"Xp:" field AND for the title
-         * (pmname(&mons[u.umonnum]) vs rank()), all at PAINT time.  Captured for
-         * the same reason uhp/uac are: a --More-- raised mid-movemon freezes the
-         * physical status line, and rehumanize() can change the hero's FORM
-         * inside that window.  MEASURED on seed4500-knight-coverage steps
-         * 1757-1762: a master lich's psi bolt reverts a brown mold to a Knight
-         * during the paging window and C keeps painting "Wizard the Brown Mold
-         * ... HP:14(14) ... HD:1 ... Blind" on all six frames, while this port
-         * re-derived every one of those fields from the post-revert hero. */
         mtimedone: u.mtimedone | 0,
         umonnum: u.umonnum | 0,
         /* C you.h:554 Upolyd is (u.umonnum != u.umonster); the snapshot carried
@@ -5313,16 +4157,6 @@ function _capture_botl() {
          * u_init.c:991 but is snapshotted with the rest for symmetry. */
         umonster: u.umonster | 0,
         female: !!(game.flags && game.flags.female),
-        /* C botl.c:1193 condtests[bl_deaf] — the Deaf condition, LATCHED at the
-         * last bot() rather than read live.  Unlike Blind (whose only writers,
-         * make_blinded/wipeoff, SET_BOTL at the write) HDeaf has writers that do
-         * NOT flag the status line at the point they store it: music.c:709's
-         * `incr_itimeout(&HDeaf, rn1(20, 30))` sets `disp.botl` only at the end
-         * of the LEATHER_DRUM arm, twelve lines and one awaken_monsters() later.
-         * So a pline raised in between flushes a screen whose status window C
-         * does not repaint, and the physical line still says what the previous
-         * bot() painted.  seed0002 steps 569-579 measure exactly that: the
-         * drum's --More-- frames carry NO " Deaf" and step 580's does. */
         deaf: (game._botlPaintedDeaf != null) ? !!game._botlPaintedDeaf : _live_deaf(),
         confused: game._botlPaintedConfused ?? !!(u.uprops?.[CONFUSION]?.intrinsic | 0),
         /* C botl.c:975 condtests[bl_blind] — same PAINT-time rule. */
@@ -5336,32 +4170,10 @@ function _capture_botl() {
             return (!!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
                     && !(bp.blocked | 0));
         })(),
-        /* C botl.c:1202 condtests[bl_stun] — same PAINT-time rule as Blind: a
-         * live read here reports the stun the hero has ALREADY been given by the
-         * rest of the monster's attack, where C's physical status line still
-         * carries the paint from before it.  gen232-reseed-seed1268561 step 1011
-         * is the witness: C's "The red dragon bites!  The red dragon hits!"
-         * --More-- frame has no Stun (the knockback that stuns is two messages
-         * further on, at step 1025) and this port rendered it on all 23 frames
-         * of the page.  Stunned is youprop.h:81 HStun, intrinsic only. */
         stunned: (() => {
             const sp = u.uprops && u.uprops[STUNNED];
             return !!sp && (sp.intrinsic | 0) !== 0;
         })(),
-        /* C botl.c:1196 condtests[bl_hallu] — the SAME PAINT-time rule as Blind,
-         * Deaf and Stun, and the last condition still read live while all three
-         * neighbours were frozen.  mhitu.c:1643-1650 explmu()'s AD_HALU arm is
-         * the witness: it plines "You are caught in a blast of kaleidoscopic
-         * light!", THEN make_hallucinated(), THEN "You are freaked out." — so
-         * the flush_screen() inside the FIRST of those plines (display.c:2237,
-         * pline.c's vpline) paints a status line with no Hallu, and only the
-         * flush inside "You are freaked out." carries it.
-         * MEASURED gen406-reseed-seed381059: C's " Hallu" first appears at step
-         * 1092, the frame frozen by "You are freaked out."; this port rendered
-         * it from step 1073, the frame frozen by the kaleidoscopic message, and
-         * on all nineteen --More-- pages in between.
-         * Hallucination is youprop.h:120 (HHallucination && !Halluc_resistance)
-         * — intrinsic only on the HALLUC side, like Stunned. */
         hallucinating: (() => {
             const hp = u.uprops && u.uprops[HALLUC];
             const hrp = u.uprops && u.uprops[HALLUC_RES];
@@ -5384,10 +4196,8 @@ function _capture_botl() {
 // bot()'s output, so without this freeze an urgent_pline fired between a lethal
 // state write and done() renders the POST-death status a frame early.
 //
-// Measured on seed0009 step 62: C's "You fall into the wall of lava!  You burn to
 // a crisp...--More--" frame still reads HP:14(14); HP:0(14) is C's NEXT frame.
 //
-// Distinct from capture_painted_frame() (which deliberately carries no botl, so
 // its existing cmdq-fireassist caller keeps rendering the live status).
 // DISPLAY-ONLY: copies disp_* cells and hero scalars, consumes no RNG, mutates
 // no game state.
@@ -5430,7 +4240,6 @@ function _pline_flush_frames_reset() {
 // separate buffers (_resultMessage = a, _pending_message = b) and are string-
 // concatenated at the moveloop merge; the naive `a + "  " + b` DROPS the join
 // side-channel, so a later split sees a single atomic line and never pages
-// (seed4200 step 763: "You fail to cast the spell correctly.  The ettin mummy
 // hits!  ...again!..." shown with no --More-- while C paged at 60 cols).
 //
 // The merged joins are: a's own internal joins (if recorded for `a`), then the
@@ -5439,13 +4248,11 @@ function _pline_flush_frames_reset() {
 // is exactly what the moveloop stores into _resultMessage and later restores into
 // _pending_message unchanged — so the split machinery is armed at flush time.
 //
-// `aJoinsHint` (optional): a's join offsets pre-captured via _topl_joins_snapshot()
 // BEFORE b's own plines ran.  The join side-channel is single-slot ("tracks one
 // string at a time" — see below), so once b (e.g. a movemon window) accumulates
 // its OWN join chain via pline(), `_topl_joins_src` no longer equals `a` and the
 // live lookup below returns [] — silently dropping a's internal boundaries and
 // collapsing a multi-message command result (e.g. a spell's self-hit + pet-kill
-// pline pair) into one opaque atomic pline that never pages (seed4200 step 782:
 // "The cone of cold bounces!  ...hits you!  You kill the poor kitten!  ...thunder..."
 // merged with the following movemon's ettin-mummy plines).  Callers that stash
 // `a` into a longer-lived slot (e.g. _resultMessage) before running b's source
@@ -5469,21 +4276,6 @@ export function _topl_merge_result(a, b, aJoinsHint) {
     joins.push(a.length);                 /* the genuine a→b message boundary */
     const base = a.length + 2;
     for (const j of bJoins) joins.push(j + base);
-    /* _plineFlushFrames uses the same offset coordinate space as the join
-     * side-channel.  Frames recorded while `b` was the live movemon line are
-     * relative to `b`; once an earlier command/occupation line `a` is restored
-     * in front of it, rebase those records along with b's joins.  Otherwise the
-     * pager cannot find the exact vpline flush which raised the page and falls
-     * back to the later whole-movemon snapshot.
-     *
-     * C order witnessed by gen292 step 16:
-     *   "You stop eating..."; dog misses; jackal hitmsg; mdamageu.
-     * The jackal hitmsg's vpline flush freezes HP:16 before mdamageu lowers it
-     * to 14.  Its JS frame was recorded at offset 33 in `b`, but after the
-     * 32-character occupation result was prepended the page lookup asks for
-     * offset 67.  Rebase only records whose message still matches `b` at their
-     * recorded boundary; records belonging to `a` or a stale window remain
-     * untouched.  Display metadata only; no RNG or game state. */
     if (g && Array.isArray(g._plineFlushFrames)) {
         for (const f of g._plineFlushFrames) {
             const fm = String(f?.msg || '');
@@ -5519,7 +4311,6 @@ export function _topl_merge_result(a, b, aJoinsHint) {
 // leave `_resultMessage` = "<earlier swap>  <this swap>" while the live line is
 // "<this swap>  ...", where neither string is a prefix of the other.
 //
-// MEASURED on gen017-reseed-seed1328024 step 15: the hero swaps with the pet
 // (domove_core snapshots "You swap places with your little dog.") and then
 // steps onto an engraving, so read_engr_at's stash appended the live line —
 // which still began with that same swap message — and the topline came out as
@@ -5626,42 +4417,9 @@ function _topl_joins_for(line) {
 // A line with NO joins is a single atomic pline and is NEVER split, regardless of
 // width (C update_topl prints the over-wide line and only more()s when a NEXT
 // message arrives — which, for a lone pline, never does this turn).
-/* C ref: win/tty/wintty.c tty_display_nhwindow(WIN_MESSAGE, blocking):
- *     if (ttyDisplay->toplin == TOPLINE_NEED_MORE) {
- *         more();
- *         ...
- *         tty_clear_nhwindow(window);
- *     } else
- *         ttyDisplay->toplin = TOPLINE_EMPTY;
- * i.e. `display_nhwindow(WIN_MESSAGE, FALSE)` is an UNCONDITIONAL page-ack of
- * whatever is standing on the topline, regardless of width.  This port never
- * needed to model it before because it pages the accumulated movemon topline
- * only where the width reserve says so — but a C caller that flushes the
- * message window mid-window forces a break the width rule cannot predict.
- *
- * MEASURED on seed0383 step 141: gulpmu (mhitu.c:1370) flushes right after
- * "The ice vortex engulfs you!", so C pages that message ALONE and starts the
- * next turn's "You are freezing to death!" on a fresh topline.  The two
- * together are 55 columns — well inside the 71-column reserve — so this port
- * joined them and every page boundary after that point was one message out.
- *
- * The break is registered by MESSAGE TEXT rather than by offset so it survives
- * the re-basing _topl_split_for_more / flush_screen do on every page: the
- * offsets move, the text does not.  A message that C flushes twice in one
- * window is force-broken twice, which is exactly what two display_nhwindow
- * calls do.  Cleared with the topline itself at the next nhgetch. */
 export function topl_force_break_after(msg) {
     const t = String(msg ?? '');
     if (!t) return;
-    /* C's more() freezes the PHYSICAL screen as it stood when the page was
-     * raised.  For a width-overflow page that is what
-     * _maybe_snapshot_painted_screen already records; a FORCED page has no
-     * overflow to hang a snapshot on, so capture the frame here, at the
-     * instant the C caller flushed the message window.  Load-bearing for
-     * gulpmu: its display_nhwindow(WIN_MESSAGE) runs BEFORE swallowed(1)'s
-     * cls(), so C's "The <foo> engulfs you!--More--" frame still carries the
-     * whole level, and without this the page rendered the post-cls cage —
-     * 456 cells C paints and this port left blank on seed0383 step 141. */
     (game._topl_force_breaks ||= []).push({
         text: t,
         /* Registrations are made for the message that is currently last on
@@ -5711,32 +4469,6 @@ function _topl_force_break_entry(committed) {
 function _topl_split_for_more(line, joins) {
     if (joins === undefined) joins = _topl_joins_for(line);
     if (!joins || joins.length === 0) {
-        /* C ref: win/tty/topl.c redotoplin:139 —
-         *     ttyDisplay->toplin = TOPLINE_NEED_MORE;
-         *     if (ttyDisplay->cury && otoplin != TOPLINE_SPECIAL_PROMPT)
-         *         more();
-         * A topline that WRAPPED onto a second row (update_topl:284-297 splits
-         * it at the last space before CO) pages IMMEDIATELY — no second message
-         * is needed, and there is no join to split at.  This arm was missing, so
-         * an over-long single pline was rendered clipped at one row and its
-         * page-ack keystroke leaked to rhack: seed0002 step 345, C
-         *   row0 "You have a little trouble lifting y - a polished silver shield (unpaid, 50"
-         *   row1 "zorkmids).--More--"
-         * against a JS row0 clipped at 79 columns with no --More-- at all.
-         * Committing the whole line with an empty remainder is what C does: the
-         * message is fully shown, the more() is raised over it, and nothing is
-         * left to page afterwards. */
-        /* C ref: win/tty/topl.c redotoplin:139 — the more() above is
-         *     if (ttyDisplay->cury && otoplin != TOPLINE_SPECIAL_PROMPT)
-         * and hooked_tty_getlin() sets ttyDisplay->toplin =
-         * TOPLINE_SPECIAL_PROMPT for the whole of its read loop
-         * (win/tty/getline.c:56).  A getlin echo that runs off the end of the
-         * row therefore does NOT page: it hard-wraps onto the next physical row
-         * (topl_putsym's `if (curx == CO - 1) topl_putsym('\n')`) and keeps
-         * taking keystrokes.  seed0030 segment 9 types 80 characters into the
-         * '#' prompt; C spills three columns onto row 1 and carries on, while
-         * this port raised a --More-- and ate the next keystroke to dismiss it.
-         * `_topl_prompt_echo` is that TOPLINE_SPECIAL_PROMPT state. */
         if (line && !game?._topl_prompt_echo
             && _topl_wordwrap(line, TOPL_CO - 1).length > 1)
             return [line, '', []];
@@ -5761,16 +4493,6 @@ function _topl_split_for_more(line, joins) {
         const segStart = joins[i] + 2;
         const segEnd = (i + 1 < joins.length) ? joins[i + 1] : line.length;
         const nextLen = segEnd - segStart;
-        /* C ref: win/tty/topl.c:264 — the join test's LAST conjunct is
-         *     && (notdied = strncmp(bp, "You die", 7)) != 0
-         * ("But messages like 'You die...' deserve their own line"), so a
-         * message starting "You die" NEVER joins, however much room is left.
-         * _topl_joins_committed already carries this rule for the cross-turn
-         * callers that apply the gate by hand; the shared split point did not,
-         * so a "You die" that fitted was silently joined.  seed5006 step 183:
-         * C pages "You irradiate yourself with pure energy!--More--" and only
-         * then shows "You die." -- 49 columns together, well inside the
-         * 71-column reserve. */
         const diesHere = line.startsWith('You die', segStart);
         /* A display_nhwindow(WIN_MESSAGE) after the segment that ends here —
          * see topl_force_break_after() above. */
@@ -5780,7 +4502,6 @@ function _topl_split_for_more(line, joins) {
             // Appending this pline would meet or exceed the reserve → commit here & more().
             // C ref: win/tty/topl.c update_topl fires more() when total reaches CO-1-8=71
             // (i.e., when combined_length >= TOPL_LIMIT, not > TOPL_LIMIT).
-            // Seed2500 evidence: "The sewer rat misses!  It hits the sewer rat.  It misses
             // the sewer rat." = exactly 71 chars; C fires more() at this length.
             const committed = line.slice(0, cum);
             const remainder = line.slice(segStart);
@@ -5792,26 +4513,12 @@ function _topl_split_for_more(line, joins) {
         }
         cum += 2 + nextLen;
     }
-    /* TRAILING BREAK.  A forced break registered after the LAST segment had no
-     * join to be found at, so it fell out of the loop above and raised no page
-     * at all.  C's display_nhwindow(WIN_MESSAGE, FALSE) is
-     *     if (ttyDisplay->toplin == TOPLINE_NEED_MORE) { more(); ... }
-     * (win/tty/wintty.c) — it pages whatever is un-acknowledged whether or not
-     * another message follows, so a break at the end of the line is a --More--
-     * over the whole line with nothing left over.  Without this arm the break
-     * only ever split a line that happened to have more text after it:
-     * MEASURED on seed0383, gulpmu's display_nhwindow paged correctly at step
-     * 141 (three further messages followed) and silently did nothing at step
-     * 173, where "You hit the black pudding.  The bat engulfs you!" was the
-     * whole line — so C's --More-- frame, which freezes the map BEFORE
-     * swallowed(1) repaints it as the stomach, was never emitted. */
     const _lastSeg = line.slice(joins[joins.length - 1] + 2);
     if (_lastSeg && _topl_force_break_here(_lastSeg, []))
         return [line, '', []];
     return null;                /* every joined pline fits → no more() */
 }
 
-// C ref: win/tty/topl.c update_topl:257-268 — the JOIN-vs-more() gate a fresh
 // pline faces when the topline already holds an un-acknowledged message:
 //     if ((ttyDisplay->toplin == TOPLINE_NEED_MORE || skip) && cw->cury == 0
 //         && n0 + (int) strlen(gt.toplines) + 3 < CO - 8
@@ -5823,7 +4530,6 @@ function _topl_split_for_more(line, joins) {
 // for _topl_split_for_more.  Exported for the cross-turn paging callers (the
 // multi-turn occupation driver), which raise more() themselves rather than
 // letting a single accumulated _pending_message split at flush time, and so have
-// to apply this gate explicitly.  DISPLAY-ONLY: no RNG, no state.
 export function _topl_joins_committed(committed, next) {
     const c = (committed == null) ? '' : String(committed);
     const n = (next == null) ? '' : String(next);
@@ -5843,7 +4549,6 @@ export function _topl_joins_committed(committed, next) {
 // can owe TWO page-acks before the caller's own display_nhwindow(WIN_MESSAGE,
 // FALSE) pages the third.  A caller that force_more()s the whole accumulated
 // string instead shows one over-wide page and swallows the other keystrokes:
-// seed4500 step 1061 rendered "You remember this level as starting level.  You
 // try to feel what is lying here" (91 columns, clipped, no --More--) where C
 // pages the annotation, then the feel line, then opens the pile window.
 // DISPLAY-ONLY: reads only, no RNG, no state mutation.
@@ -5892,10 +4597,8 @@ export function _topline_more_pending() {
 // command; a caller that draws rn2/rnd from a deferred effect would reorder the
 // RNG stream, which is never correct (Cardinal Rule 2).
 //
-// When the recorded session ENDS with the --More-- still undismissed (the
 // player never presses a dismiss key), the queue is never drained — and that is
 // C-faithful: C is still parked in more() there and never runs the effect
-// either (seed1900-wizard-quaff-zap steps 9-11 are exactly this case).
 export function _defer_until_more_dismissed(fn) {
     (game._deferred_post_more ||= []).push(fn);
     if (ENV.FF_MATTACK_TRACE === '1')
@@ -5944,7 +4647,6 @@ async function _topl_more(committed, dismissMore) {
             _buildScreenOutput();
         } else {
             // Wrapped across >=2 rows: game._pending_message keeps the ORIGINAL
-            // (unwrapped) committed text — nhgetch's message-history capture
             // (js/input.js) reads it as the semantic message text, independent
             // of physical row layout — while the actual screen rendering uses
             // the laid-out per-row strings directly.  Mirrors pline_with_more's
@@ -5966,7 +4668,7 @@ async function _topl_more(committed, dismissMore) {
     if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^topl_more_enter[committed=${encodeURIComponent(String(committed).slice(0,80))} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} urgent=${game._topl_urgent_next?1:0} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,80))}]`);
     while (true) {
-        const key = await nhgetch(); /* preNhgetchHook captures the --More-- screen */
+        const key = await nhgetch();
         if (ENV.FF_MLTRACE === '1')
             pushRngLogEntry(`^topl_more_key[key=${key == null ? 'null' : (key | 0)} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} urgent=${game._topl_urgent_next?1:0} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,80))}]`);
         if (key === 10 /* \n */ || key === 13 /* \r */) {
@@ -5981,9 +4683,6 @@ async function _topl_more(committed, dismissMore) {
             morc = key;                    /* getline.c:238 — `c == x` */
             break;
         }
-        /* Non-dismiss key: re-show the same --More-- (C rings the bell & re-loops).
-         * nhgetch cleared _pending_message; restore the committed+More line so the
-         * next capture is identical. */
         _renderMore();
     }
     // Restore the paging-window marker.  (Nested more() calls restore to their
@@ -6093,67 +4792,6 @@ export async function force_more(committed, dismissMore) {
         && String(committed || '').includes('crackles with electricity')) {
         pushRngLogEntry(`^force_more_stack[${encodeURIComponent(String(new Error().stack || '').split('\n').slice(1, 7).join(' <- '))}]`);
     }
-    /* C ref: win/tty/topl.c more():230-246 + update_topl:257/:268/:300, and
-     * win/tty/wintty.c:1873-1879 (tty_display_nhwindow's NHW_MESSAGE arm, which
-     * src/display.c cls() reaches through display_nhwindow(WIN_MESSAGE, FALSE)).
-     *
-     * ESC AT A --More-- ABORTS THE REST OF THE MESSAGE SEQUENCE.  more() reads
-     * its key through xwaitforspace("\033 ") (getline.c:230-257) and on ESC sets
-     * `morc = '\033'`; back in more(), topl.c:232-235 does
-     *     if (morc == '\033') { if (!(cw->flags & WIN_NOSTOP)) cw->flags |= WIN_STOP; }
-     * and topl.c:241-245 additionally does `home(); cl_end()` so the topline is
-     * WIPED.  With WIN_STOP set, update_topl's
-     *     boolean skip = (cw->flags & (WIN_STOP|WIN_NOSTOP)) == WIN_STOP;
-     * is TRUE for every following message: gt.toplines still receives the text,
-     * but addtopl() (:268) and redotoplin() (:300) are both guarded by `!skip`,
-     * so NOTHING is painted and ttyDisplay->toplin is left TOPLINE_EMPTY.  Every
-     * --More-- raiser in the tty layer is gated on `toplin == TOPLINE_NEED_MORE`
-     * (update_topl:274, tty_display_nhwindow:1873), so with nothing painted no
-     * page is raised either.  The window ends at the next tty_nhgetch, which
-     * clears the bit (wintty.c:4065-4066) — see js/input.js.
-     *
-     * force_more() is this port's spelling of "write a message to the topline
-     * and page it", so it has to be gated on WIN_STOP at BOTH ends, and it was
-     * gated at neither: it assigned _pending_message unconditionally and then
-     * always consumed a dismiss key.
-     *
-     * WHY THE ARMED BIT IS TREATED AS LIVE HERE, WHERE pline() DEFERS IT.
-     * pline()'s deferral is right for the shape IT models: there the ESC was
-     * consumed inside the arriving message's OWN update_topl (`else if (!skip)
-     * { if (toplin == NEED_MORE) more(); }`), so `skip` had already been sampled
-     * FALSE for that message and :300 still draws it.  A force_more() site is
-     * the OTHER shape — the page it is about to raise is the page the FOLLOWER
-     * would raise — and on the paths that reach it the ESC was consumed by a
-     * page raised BEFORE this message's update_topl.  C ARBITRATES, from its own
-     * `^getch` channel (patch 009) on corpus-generated/v5/train-getch:
-     *
-     *   gen047-reseed-seed1773779, read_engr_at on the goto_level arrival:
-     *     frames 19-23  "Something is engraved here on the floor.--More--" held
-     *                   across h,h,b,J (xwaitforspace rings the bell and loops)
-     *     frame 23      key ESC -> ^getch[n=23 ctx=more toplin=2 ch=27]
-     *     frame 24      topline EMPTY, cursor back on the hero at [11,7,1],
-     *                   ^getch[n=24 ctx=cmd toplin=0 stop=1 ch=106]
-     *
-     *   Both fields are sampled BEFORE the read (patch 009 says so in its own
-     *   comment): `stop=1` is WIN_STOP live, and `toplin=0` is TOPLINE_EMPTY, so
-     *   C neither PAINTED the "You read: ..." reveal nor paged it.  A painted
-     *   line would read toplin=1, and the cls() whose ^botlx markers sit in that
-     *   same step bucket would then have raised a second page — which is exactly
-     *   what it does on the space path.  This port painted the reveal, raised
-     *   "You read: \"...\".--More--", and ATE the next command key.
-     *
-     * THE COUNTER-CASE IS PUBLIC seed0009 AND IT IS UNTOUCHED.  At its MID-WALK
-     * occurrence (frame 23 -> 24) the same ESC dismisses the same engraving page
-     * and C DOES draw the reveal, unpaged: control-seed0009 reads
-     * ^getch[n=23 ctx=more ch=27] then ^getch[n=24 ctx=cmd toplin=1 stop=1].
-     * That path reaches pline(), not force_more() (js/cmd.js _pline_paged with
-     * redrawPending=false takes its `last` branch), so pline()'s deferral still
-     * runs.  Measured: seed0009 73/73 before and after; public 11,391/11,405 and
-     * 43 of 44 with ZERO per-session differences.
-     *
-     * pline() already implements C's `skip` arm exactly — the gt.toplines
-     * join/replace bookkeeping, the "You die" escape at topl.c:298-299, and the
-     * history push — so route through it rather than restating the rule. */
     if (g._topl_win_stop || g._topl_win_stop_armed) {
         routeTag('force_more', committed); /* telemetry only; inert when env unset */
         g._topl_win_stop_armed = false;
@@ -6175,7 +4813,6 @@ export async function force_more(committed, dismissMore) {
 // _topl_more() already implements this, but several call sites compose their own
 // "<msg>--More--" topline (because they render it onto a still-occupied prompt
 // line via flush_screen) and then did a BARE `await nhgetch()`, which dismisses
-// on any key.  Measured 2026-08-16 on seed1800-tourist-eat-throw: at the apply
 // getobj, C holds the "You don't have that object.--More--" through the keys
 // `i`, `+`, `\`, `^X` and only pages on ESC/space; the port paged on every one
 // of them and lost 9 of its 10 remaining frames.
@@ -6215,81 +4852,6 @@ export async function await_topl_more_dismiss(rerender) {
  * menu's `resp`, so every one of them is CONSUMED at a menu without closing it. */
 export const DEFAULT_MENU_CMDS = '^|><.-@,\\~:';
 
-/* C ref: win/tty/wintty.c process_menu_window (:1336-1765) driving
- * getline.c:230-257 xwaitforspace(resp) — the tty menu's blocking read, as the
- * accept-set predicate a JS menu site needs.
- *
- * A tty menu is NOT "read one key and close".  There are two filters in series
- * and a key must clear BOTH to end the menu:
- *
- *   1. xwaitforspace(resp) (:1547 dmore -> :1170).  It breaks on LF/CR
- *      unconditionally, on ESC in cbreak, and on any char in `resp`; EVERY other
- *      key rings tty_nhbell() and reads again with the same page still up.
- *      `resp` = <selectors of the rows this page added> + <group accelerators>
- *      + " " + "0123456789\033\n\r" + gm.mapped_menu_cmds + default_menu_cmds
- *      (:1416-1431, :1526-1531).
- *   2. the switch at :1563-1755.  Of the keys that got past xwaitforspace, only
- *      ESC (:1663 cancel), CR/LF/NUL (:1676 commit), ' ' on the LAST page
- *      (:1621-1630) and — for PICK_ONE only — an explicit selector or group
- *      accelerator (:1735-1755, `if (cw->how == PICK_ONE) finished = TRUE`)
- *      set `finished`.  Digits accumulate a count, the page commands move or
- *      toggle, PICK_ANY selectors toggle, and a PICK_NONE menu bells at
- *      EVERYTHING (:1738 `if (cw->how == PICK_NONE || !strchr(resp, morc))`).
- *
- * So the rule this helper implements, and it is the whole class:
- *   a key closes the menu iff it is CR, LF, ESC, space,
- *   or (how === PICK_ONE and it is in `selectors` or `gacc`).
- * Everything else is consumed and the read runs again.
- *
- * `selectors` is the selector column of the rows THIS menu actually added, and
- * `gacc` its group accelerators (wintty.c:1352-1379, which drops a gselector
- * equal to its own selector and, for PICK_ONE, any gselector shared by more
- * than one row).  Narrowing these to the rows really added is half the fix: a
- * site that accepts all of a-zA-Z eats keys C bells at.
- *
- * `rerender` re-paints the unchanged page before each re-read.  It is NOT
- * optional: nhgetch() clears _pending_message and the caller owns
- * `_screen_output`, so a re-read without it renders a blank frame where C
- * renders the same menu it was already showing.
- *
- * Returns the key code that closed the menu: 27 ESC, 32 space, 13/10 CR/LF, or
- * the selector/accelerator char code for a PICK_ONE pick.
- *
- * `search`, when supplied, is the MENU_SEARCH ':' case (wintty.c:1700-1730):
- * an async thunk that runs tty_getlin("Search for:") over the caller's own
- * frame and toggles every pmatchi() hit, returning TRUE when a PICK_ONE menu
- * should now finish.  js/com_pager.js menu_search_case() is that thunk's body;
- * the caller supplies it because only the caller knows its mlist and its row
- * state.  WITHOUT it ':' is merely consumed — which is a wrong FRAME *and*, at
- * a PICK_ANY menu, a wrong KEYSTROKE COUNT, because C spends the following
- * keys inside the getlin and this port spends them in the menu's own read.
- * gen513-recombine-seed428318 steps 242-247 are that case: C searches with
- * ".?", commits it with the step-246 CR and takes the step-247 space as the
- * menu's own commit; without the getlin this port committed the menu on the
- * step-246 CR and let the space leak to rhack.
- *
- * C does NOT repaint the page after the search returns (process_menu_window
- * only redraws when page_start is reset), and getline.c:213's
- * clear_nhwindow(WIN_MESSAGE) has blanked screen row 0 — the window's own
- * title text with it.  So a caller that supplies `search` must ALSO keep its
- * row 0 blank in `rerender` from then on; shk.js's `titleErased` is the
- * pattern.
- *
- * NOT MODELLED, and a wrong FRAME rather than a wrong keystroke count (the key
- * is consumed and the menu stays up either way):
- *   - a PICK_ANY toggle repaints that row's third column via set_item_state
- *     (:1176-1192): '+' selected, '#' selected-with-a-count, '-' unselected.
- *     Callers that model their own row state pass `onToggle`.
- *
- * This is deliberately NOT the same thing as js/cmd.js tty_menu_pick_any(),
- * which is a whole tty menu DRIVER (it owns mlist, pagination and the page
- * repaint) for the full-screen menus this port builds itself.  This helper is
- * for the many sites that hand-render their own window and only need the tty's
- * key loop; it owns no window state, which is why the caller supplies both the
- * accept set and the repaint.
- *   - gm.mapped_menu_cmds is the menu_* option remapping; no session in the
- *     corpus sets one, so the default set above is the whole of it.
- */
 export async function await_menu_key(rerender, selectors, gacc, how, onToggle, search) {
     const sel = String(selectors ?? '');
     const grp = String(gacc ?? '');
@@ -6346,7 +4908,6 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
     // level-transition forced more().  framesUhs (optional) is the hunger state (u.uhs)
     // as of the per-turn bot() flush — C froze the status line at that flush, so the
     // --More-- shows the pre-message hunger (e.g. NOT_HUNGRY at the lesshungry page,
-    // before lesshungry's newuhs() bumps it to Satiated): seed0014 step 3.
     const _hadSnap = g._paintedSnapshot;
     if (frame) {
         g._paintedSnapshot = { cells: frame, moves: (framesMoves | 0),
@@ -6374,45 +4935,6 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
  * the test belongs. */
 let _flush_screen_flushing = false;
 export function _flush_screen_in_progress() { return _flush_screen_flushing; }
-/* C's flush_screen() DOES NOT PAGINATE.  display.c:2208-2270 is a repaint —
- * bot()/timebot(), the dirty-cell loop, curs() — and nothing in it looks at
- * gt.toplines.  The --More-- decision lives in win/tty/topl.c update_topl(),
- * which putmesg() reaches AFTER the flush (pline.c:274-276).
- *
- * This port defers that decision: pline() accumulates the whole window's text
- * into _pending_message and the pager loop at the head of flush_screen() splits
- * and pages it once per command.  So js/'s flush_screen() is two C functions in
- * one body — update_topl's pager, then flush_screen's repaint.
- *
- * The pline.c:274 flush point is the FIRST flush-point divergence in 44 of 44
- * public sessions, and it is a call to the REPAINT half only.  Routing it
- * through the pager half is not merely un-C-faithful, it is measurably wrong:
- * MEASURED 2026-09-08, calling the whole of flush_screen() from pline() takes
- * `bash frozen/score.sh` 11,391 -> 9,075 screens and 43 -> 22 passing, because
- * the pager consumes --More-- keystrokes at points C does not, which shifts the
- * keystroke stream and desyncs the RNG (seed4500 8,910/108,275).
- *
- * So the flag below names WHICH C function this call is.  It is set only by
- * pline(), around a call that mirrors C's `if (u.ux) flush_screen(...)`, and it
- * suppresses exactly the half that in C is not in flush_screen at all.  The
- * eventual shape of this migration is to split the two bodies outright and give
- * update_topl's pager its own name at all 159 call sites; the flag is the
- * one-file step that gets the flush POINT right first. */
-/* C's flush_screen() proper — pline.c:274's call.  Runs the repaint and
- * NOTHING else, and is SYNCHRONOUS: there is no await on this path, so the
- * whole call (including the finally) completes before pline() reaches its
- * putmesg, which is what keeps pline() synchronous for its 640 un-awaited call
- * sites.
- *
- * This used to be an arm of the async flush_screen() below, selected by a
- * module-global `_flush_screen_repaint_only` flag that pline_flush_point()
- * set around an UN-AWAITED call.  Same instructions in the same order, but the
- * synchrony was a property of the arm the caller happened to select, invisible
- * to any reader of the call site and to tools/async-boundary-census.mjs, which
- * correctly read pline_flush_point() as a sync caller of a suspending fn.  It
- * was also latently wrong: had the selected arm ever awaited, the caller's own
- * `finally` would have reset the flag before the body finished.  A separate
- * sync function makes the guarantee structural. */
 function flush_screen_point(mode) {
     const wasFlushing = _flush_screen_flushing;
     _flush_screen_flushing = true;
@@ -6428,48 +4950,6 @@ export async function flush_screen(mode) {
         return await _flush_screen_body(mode);
     } finally { _flush_screen_flushing = wasFlushing; }
 }
-/* C ref: pline.c:273-274 — the flush point every vpline() makes immediately
- * before it hands its text to putmesg():
- *
- *     if (u.ux)
- *         flush_screen((gp.pline_flags & NO_CURS_ON_U) ? 0 : 1);
- *
- * It is NOT the pager — putmesg() -> update_topl() is what raises the more().
- * What it does is FREEZE the frame that more() then displays, which is why this
- * port grew _pline_flush_frame_record to reconstruct the same frame from a
- * snapshot later.  Corpus measurement (tools/flush-point-diff.mjs --census,
- * 44 public sessions): pline.c:274 is 4,202 C flush points, the second largest
- * site, and the first flush-point divergence in 44 of 44 sessions.
- *
- * Exported because pline() is not this port's only vpline: js/com_pager.js's
- * startup message path (welcome() and moveloop_preamble()) hand-renders its own
- * frames and never reaches pline(), and in C those ARE plain pline()s.
- *
- * The three guards are C's, one for one, and all three sit BEFORE patch 012's
- * emit, so a flush C skips is one this port must not make either:
- *   u.ux                      pline.c:273
- *   suppress_map_output()     display.c:2220 (the 5.0 save/restore guard)
- *   flushing                  display.c:2226 (the reentrancy static)
- *
- * cursor_on_u is 0 only for NO_CURS_ON_U, whose single caller in all of 5.0 is
- * getpos.c:652's auto_describe custompline. */
-/* C ref: win/tty/topl.c addtopl()/putsyms() and win/tty/getline.c's read
- * loops — C echoes a prompt by writing CHARACTERS to the terminal, and never
- * calls flush_screen() to do it (get_ext_cmd/hooked_tty_getlin contain no
- * flush_screen at all).  This port has no character-level tty layer: its only
- * way to make the terminal show an echo is to rebuild the whole screen, and it
- * reached that rebuild through flush_screen().
- *
- * That made the port look like it flushes where C does not.  MEASURED
- * (tools/flush-point-diff.mjs --census, 44 public sessions, 2026-09-08): an
- * EXTRA-JS-FLUSH at a keystroke boundary is the FIRST flush-point divergence in
- * 16 of 44 sessions, and attributing the JS side by stack shows every one of
- * them landing in js/cmd.js doextcmd's per-character echo.
- *
- * tty_repaint() is the same paint with no flush point attached — the repaint
- * half of flush_screen() and nothing else.  It is deliberately NOT
- * flush_screen(): a caller that needs the topline PAGED is doing update_topl's
- * job, not flush_screen's, and should say so. */
 export function tty_repaint(mode) {
     _flush_screen_repaint(mode);
 }
@@ -6513,12 +4993,10 @@ async function _flush_screen_body(mode) {
     // the per-page painted frame C froze at THAT page's overflowing pline
     // (_maybe_snapshot_painted_screen).  Page 0's frame is identical to
     // _paintedSnapshot, so only pages 1..N-1 install — the single-page path (every
-    // session that pages a movemon window exactly once) is byte-identical.
     let pageIdx = 0;
     while (split) {
         const [committed, remainder, remainderJoins] = split;
         // Install this page's per-run-turn painted frame (if a run-frame log exists) so
-        // _topl_more's nhgetch capture renders the hero at THIS page's run-turn square.
         // The committed end within the full topline = consumed + this page's committed
         // length.  Falls back to any pre-existing _paintedSnapshot (movemon/occupation
         // single-frame path) when no run-frame matches.
@@ -6529,30 +5007,7 @@ async function _flush_screen_body(mode) {
         // frozen frame; it supersedes the coarser per-run-turn / per-page logs,
         // which approximate the same instant at world-block granularity (they froze
         // the LAST message that still fitted, i.e. one hero step early on a counted
-        // walk — seed0600 step 255).
         let plineFrame = _pline_flush_frame_select(consumed + committed.length, fullTopl);
-        /* C ref: win/tty/topl.c update_topl:274 + redotoplin.  The lookup above
-         * finds the frame frozen by the message that begins right AFTER this
-         * page — the ordinary case, where a following pline's update_topl fired
-         * the more().  A page can also be forced by WIDTH alone: when the last
-         * message on the topline does not fit, C pages it from inside its OWN
-         * redotoplin, i.e. after its OWN pline's flush_screen (pline.c:274-277)
-         * and with no later message involved.  For that page the authoritative
-         * frozen frame is the one recorded when THIS page's message was plined,
-         * whose offset is `consumed - 2` — `consumed` has already been advanced
-         * past this page's own "  " message-boundary separator, while the log
-         * keys a message on the END of the text before it (see
-         * _pline_flush_frame_record's note) — rather than
-         * `consumed + committed.length`.
-         *
-         * MEASURED on seed0002 step 345: the pickup's second message ("You have
-         * a little trouble lifting y - a polished silver shield (unpaid, 50
-         * zorkmids).", 87 cols) wraps and pages with nothing after it, and C's
-         * frame shows the shopkeeper still at column 70 — where it stood when
-         * that pline flushed.  This port paged after the world turn and painted
-         * it at 71, the position C only shows on the NEXT frame.
-         * Strictly a fallback: it runs only when the primary lookup found
-         * nothing, so every page that already had an exact frame is untouched. */
         if (!plineFrame)
             plineFrame = _pline_flush_frame_select(consumed - 2, fullTopl);
         const _savedSnap = game._paintedSnapshot;
@@ -6561,7 +5016,6 @@ async function _flush_screen_body(mode) {
         // The dopickup prinv (committed last turn) pages here; C froze the physical
         // screen + the bottom encumbrance status at the pre-movemon / pre-encumber
         // bot() (the pet had not moved, cap not yet repainted).  Install the
-        // captured pre-frame and its frozen cap for THIS page when it is the prinv.
         let _pickupFrozen = false;
         let _pageFrozen = false;
         const _forcedFrameIdx = _topl_force_break_entry(committed);
@@ -6660,56 +5114,13 @@ async function _flush_screen_body(mode) {
             game._topl_joins = [];
             game._topl_joins_src = remainder;
         }
-        /* A forced break is consumed by the page it produced.  It must NOT be
-         * cleared at the nhgetch inside _topl_more above: a movemon window that
-         * pages three times acks three keys before the break's own boundary is
-         * reached, so clearing on input dropped the registration before it
-         * could fire (seed0383 step 141). */
         if (game._topl_force_breaks && game._topl_force_breaks.length) {
             const k = _topl_force_break_entry(committed);
             if (k >= 0) game._topl_force_breaks.splice(k, 1);
         }
-        /* C ref: win/tty/topl.c more():232-235 + update_topl:257 — an ESC at a
-         * --More-- sets WIN_STOP on WIN_MESSAGE, and with WIN_STOP set
-         * update_topl calls NEITHER addtopl() nor redotoplin(), so nothing that
-         * follows reaches the screen (and no further more() is raised) until the
-         * next tty_nhgetch clears the bit.  js/display.js pline() already
-         * implements that for messages that ARRIVE after the more(); this port
-         * accumulates a whole turn's plines and pages them here, so the same
-         * suppression has to apply to the REST of the already-accumulated line —
-         * those are exactly the plines C had not emitted yet when the ESC landed.
-         *
-         * MEASURED on seed4500-knight-coverage step 1786: the player ESCs the
-         * "You hit it.  The silver dragon bites!  The silver dragon hits!--More--"
-         * page and C shows NO further combat page at all — the next frame is the
-         * "Die? [yn] (n)" prompt raised by the death the suppressed attacks
-         * caused ("You die" is topl.c:298's one escape from WIN_STOP, and
-         * redotoplin only more()s when cury != 0, which it is not here).  This
-         * port paged every remaining attack and ran 28 frames behind to the end
-         * of the session.
-         *
-         * The topline itself is cleared, matching more()'s own
-         * `else if (morc == '\033') { curx = cury = 0; home(); cl_end(); }`
-         * (topl.c:241-245).  _topl_more has already armed _topl_win_stop_armed
-         * so any pline that arrives before the next nhgetch is suppressed too. */
         if (_morc === 27 /* ESC */) {
             if (ENV.FF_MLTRACE === '1')
                 pushRngLogEntry(`^topl_stop_after_esc[committed=${encodeURIComponent(String(committed).slice(0,80))} rem=${encodeURIComponent(String(remainder).slice(0,80))} joins=${(remainderJoins || []).join(',')}]`);
-            /* ...but an URGENT message later in this same accumulated topline
-             * ENDS the suppression window before the next input does.
-             * win/tty/wintty.c:2277-2283: `if ((cw->flags & WIN_STOP) != 0) {
-             * tty_clear_nhwindow(WIN_MESSAGE); cw->flags &= ~WIN_STOP; }` — the
-             * topline is WIPED and the urgent message opens a clean one, so
-             * everything between the ESC and it is gone from the screen and
-             * paging RESUMES from the urgent message.
-             *
-             * MEASURED on seed4500-knight-coverage steps 1763-1764: the ESC
-             * lands on "It is mildly chilly.  Something casts a spell at
-             * you!--More--", the psi-bolt line "Your cap area suddenly aches
-             * very painfully!" is drawn and then WIPED by polyman's
-             * urgent_pline, and C's next two frames are "You return to human
-             * form!  You can see again.--More--" and "Your movements are now
-             * unencumbered." */
             const _urgent = game._topl_urgent_marks || [];
             let _rel = -1;
             if (_urgent.length && remainderJoins && remainderJoins.length) {
@@ -6745,22 +5156,6 @@ async function _flush_screen_body(mode) {
             game._pending_message = remainder.slice(0, _keepEnd);
             game._topl_joins = [];
             game._topl_joins_src = game._pending_message;
-            /* ...but gt.toplines KEEPS RECEIVING the suppressed messages.  The
-             * join arm of update_topl (topl.c:266-272) runs its two Strcat()s
-             * whether or not `skip` is set — only addtopl() is guarded — and
-             * when one does not fit, :290's strncpy REPLACES the buffer with it.
-             * Nothing of this reaches the screen, but the resulting LENGTH is
-             * what the next message's fit test is measured against, and that
-             * test is what decides whether a following "You die" clears
-             * WIN_STOP (topl.c:264's short-circuited `notdied`).
-             *
-             * This port has already accumulated those same messages into the
-             * remainder, so replay them here rather than dropping them on the
-             * floor.  MEASURED on seed4500-knight-coverage step 1786: the five
-             * suppressed attack messages leave gt.toplines at 65 columns, so
-             * "You die..." does NOT fit, WIN_STOP survives, and C raises the
-             * "Die? [yn] (n)" prompt with no page.  Keeping only the drawn
-             * message (29 columns) made it fit and cost 27 step points. */
             {
                 let _wsBuf = game._pending_message;
                 const _bounds = (remainderJoins && remainderJoins.length)
@@ -6774,18 +5169,6 @@ async function _flush_screen_body(mode) {
                 }
                 game._topl_win_stop_buf = _wsBuf;
             }
-            /* ...and because that message HAS now been drawn, WIN_STOP is LIVE
-             * from here, not merely armed.  In C both halves happen inside one
-             * update_topl() call: more() sets the bit at topl.c:234 and :300's
-             * `if (!skip) redotoplin()` still paints, because `skip` was sampled
-             * at :257 before more() ran.  So the NEXT update_topl already sees
-             * skip == TRUE.  _topl_win_stop_armed exists for the OTHER shape —
-             * force_more() pages a committed topline and the message that owns
-             * the page arrives as a separate later pline() (seed0009's
-             * read_engr_at) — and there the deferral is right.  Here it is one
-             * message too generous: leaving the bit merely ARMED let the first
-             * pline after the ESC consume the arming and JOIN itself onto the
-             * topline, which C had already suppressed. */
             /* ...unless the message that raised this page was URGENT: C's
              * more() only sets WIN_STOP `if (!(cw->flags & WIN_NOSTOP))`
              * (topl.c:233), and tty_putstr holds NOSTOP across the whole
@@ -6800,14 +5183,12 @@ async function _flush_screen_body(mode) {
         }
         split = remainder ? _topl_split_for_more(remainder, remainderJoins) : null;
     }
-    // pickup-encumber --More-- has been paged; drop the captured pre-frame so a
     // later --More-- does not reuse it.  DISPLAY-ONLY.
     if (hadMore && (game._pickupEncPreFrame || game._pickupEncMorePending)) {
         game._pickupEncPreFrame = null;
         game._pickupEncMorePending = null;
     }
     // The run's accumulated topline has now been fully paged; drop the per-run-turn
-    // frame log so a later non-run --More-- in the same session (e.g. a getpos prompt
     // or a fresh movemon overflow) does not reuse this run's stale frames.  C ref: the
     // topline is cleared at the next tty_nhgetch; the physical terminal tracks the
     // live hero from there.  DISPLAY-ONLY.
@@ -6865,20 +5246,6 @@ async function _flush_screen_body(mode) {
     }
     _flush_screen_repaint(mode);
 }
-/* C ref: display.c:2236-2270 — the WHOLE of flush_screen() after its guards:
- * the status repaint, the dirty-cell loop, and the cursor.  Split out of the
- * body above so pline()'s C flush point (pline.c:274) can reach it.
- *
- * IT IS SYNCHRONOUS AND MUST STAY SO.  pline() runs to its _pending_message
- * assignment with no await today, and 640 of its call sites across js/ do not
- * await it.  Introducing an await before that assignment defers the message
- * past every one of them; MEASURED 2026-09-08, an awaited flush here takes
- * `bash frozen/score.sh` from 11,391 screens / 43 passing to 9,180 / 22, with
- * RNG divergence in four sessions (seed4500 8,914/108,275) — a reordering, not
- * a repaint bug.  bot() and timebot() are declared async but contain NO await
- * (checked: the whole of bot()'s body is straight-line), so calling them
- * without one runs them to completion here, exactly as C does.  If a future
- * change puts a real await inside bot(), THIS is the call site that breaks. */
 function _flush_screen_repaint(mode) {
     // C ref: flush_screen — if status is flagged, update it before rendering
     if (game && game.disp) {
@@ -6969,20 +5336,12 @@ export async function bot() {
     // C's encumber_msg (pickup.c:1990) emits its pline BEFORE its SET_BOTL, and
     // drop() has already run freeinv() by then, so between the drop and the next
     // bot() the screen shows the PRE-drop encumbrance while near_capacity()
-    // already reports the post-drop one (seed5500 step 863 — C " Stressed", live
     // value " Burdened").  DISPLAY-ONLY; near_capacity() consumes no RNG.
     game._botlPaintedCap = near_capacity() | 0;
-    /* Same latch for the Deaf condition word: bot() is the paint, so from here
-     * the physical status line holds THIS Deaf state until the next bot().
-     * See _capture_botl()'s `deaf` field for why a live read is wrong. */
     game._botlPaintedDeaf = _live_deaf();
     /* C botl.c condtests[bl_conf]: retain the last painted condition when
      * HConfusion is restored without SET_BOTL after a magic-trap effect. */
     game._botlPaintedConfused = !!(game.u?.uprops?.[CONFUSION]?.intrinsic | 0);
-    /* C botl.c:279-296 — bot() paints, and the values it paints are what the
-     * physical status line then holds until the NEXT paint.  Latch them, because
-     * botl.c:279's `u.uhp != -1` guard means there may not BE a next paint: see
-     * _capture_botl() for the full note and the seed5002 witness.  DISPLAY-ONLY. */
     if ((game?.u?.uhp | 0) !== -1) {
         game._lastPaintedBotl = _capture_botl();
         /* This IS C's next real paint: whatever done() left pending is now on
@@ -7034,30 +5393,6 @@ export function putmsghistory(msg, _restoring) {
         return;
     h.push(text);
 }
-/* ── nh_sprintf ──
- * C ref: pline.c:196-201 vpline() —
- *     } else {
- *         ln = vsnprintf(pbuf, sizeof pbuf, line, the_args);
- *         line = pbuf;
- *     }
- * The conversion set below is the one the tree's call sites actually use,
- * censused over all 111 findings of tools/format-arity-lint.mjs: %s (171),
- * %d (6), %ld (3), %i (2), %u (1).  Flags/width/precision are parsed and
- * applied because vsnprintf applies them; an unrecognised specifier is left
- * VERBATIM rather than dropped, which is the direction a mismatched
- * vsnprintf errs in and never deletes text that C would have printed.
- *
- * NOTE the deliberate deviation, and it is the whole safety argument for
- * making pline() variadic: C runs vsnprintf whenever the format contains
- * '%' AT ALL, reading garbage off the stack when the caller passed no
- * varargs.  This tree has many `pline(someBuiltString)` call sites whose
- * single pre-formatted argument may legitimately contain a '%' (an
- * engraving, a wish string, a "100% chance" message).  So formatting here
- * is gated on args.length > 0: a one-argument pline() is byte-for-byte what
- * it was before this change, and only calls that were ALREADY dropping
- * arguments on the floor change behaviour.  C's other special case —
- * a format of exactly "%s" uses its argument as-is — falls out of the
- * general path with the identical result. */
 export function nh_sprintf(fmt, args) {
     let i = 0;
     return String(fmt).replace(
@@ -7117,7 +5452,6 @@ export function nh_sprintf(fmt, args) {
 // C's pline is VARIADIC and formats through vsnprintf; this one took a single
 // argument, so every C-transliterated `pline("You see %s here.", doname(obj))`
 // in the tree dropped its arguments and printed the literal "%s" to the
-// topline.  Measured 2026-08-14 by tools/format-arity-lint.mjs: 104 call sites
 // across 15 files resolved to THIS definition with more arguments than it
 // declares.  Restoring the rest parameter fixes all of them at the binding
 // rather than one string-concatenation at a time.
@@ -7134,52 +5468,10 @@ export function gamelog_add(glflags, gltime, msg) {
     const g = game;
     (g.gamelog ||= []).push({ turn: gltime | 0, flags: glflags | 0, text: String(msg) });
 }
-/* C ref: pline.c:514 livelog_printf(ll_type, line, ...) —
- *     vsnprintf(gamelogbuf, ...); gamelog_add(ll_type, svm.moves, gamelogbuf);
- *     strNsubst(gamelogbuf, "\t", "_", 0); livelog_add(ll_type, gamelogbuf);
- * The livelog_add half writes the external livelog FILE, which has no screen
- * channel and is not modelled; the gamelog_add half IS the #chronicle window.
- * js/exper.js carried a `function livelog_printf(...args) {}` no-op stub, so
- * every conduct/achievement event the corpus expects to see in that window was
- * dropped on the floor. */
 export function livelog_printf(ll_type, line, ...args) {
     const msg = (args.length > 0) ? nh_sprintf(line, args) : line;
     gamelog_add(ll_type, game.moves | 0, msg);
 }
-/* C ref: src/pline.c urgent_pline(fmt, ...) -> vpline(PLINE_URGENT) ->
- * putstr(WIN_MESSAGE, ATR_URGENT, line), whose tty handler is
- * win/tty/wintty.c:2273-2300:
- *
- *     if (urgent_message) {
- *         if ((cw->flags & WIN_STOP) != 0) {
- *             tty_clear_nhwindow(WIN_MESSAGE);
- *             cw->flags &= ~WIN_STOP;
- *         }
- *         cw->flags |= WIN_NOSTOP;
- *     }
- *     update_topl(str);
- *     cw->flags &= ~WIN_NOSTOP;    // NOSTOP is a one-shot
- *
- * so an urgent message does TWO things an ordinary pline does not:
- *  (a) it CANCELS a live WIN_STOP and WIPES the topline first, so it starts on
- *      a clean line rather than joining or being swallowed, and
- *  (b) WIN_NOSTOP holds for the duration, and topl.c more():232-234 tests it —
- *      `if (!(cw->flags & WIN_NOSTOP)) cw->flags |= WIN_STOP;` — so an ESC at
- *      the page THIS message raises does not start a new suppression window.
- *
- * MEASURED on seed4500-knight-coverage steps 1763-1764.  A master lich's psi
- * bolt reverts the hero's brown-mold form; the ESC that dismissed
- * "It is mildly chilly.  Something casts a spell at you!--More--" left
- * WIN_STOP set over "Your %s suddenly aches very painfully!" (mcastu.c:619),
- * and polyman's urgent_pline (polyself.c:230) then wiped that line and opened
- * a fresh one.  C's next two frames are "You return to human form!  You can
- * see again.--More--" and "Your movements are now unencumbered."; this port,
- * plining it ordinarily, was still showing the psi-bolt line.
- *
- * (b) is recorded as an offset in _topl_urgent_marks and honoured by the ESC
- * arm of the flush loop; no corpus message reaches that arm today (this one
- * raises no page at all, because the wipe leaves the topline empty), so it is
- * carried for faithfulness rather than for a measured frame. */
 export async function urgent_pline(msg, ...args) {
     const g = game;
     if (args.length > 0)
@@ -7201,47 +5493,6 @@ export async function urgent_pline(msg, ...args) {
     await pline(msg);
 }
 
-/* C invent.c:1950-1953 and invent.c:1989-1993 — getobj()'s TWO cancel arms, and
- * detect.c:1302-1305's copy of the same shape:
- *
- *     if (strchr(quitchars, ilet)) {
- *         if (flags.verbose)
- *             pline1(Never_mind);
- *         return (struct obj *) 0;
- *     }
- *
- * The `flags.verbose` test is C's, and it is LOAD-BEARING, not decoration.  This
- * port has ~10 hand-mirrored copies of getobj's prompt loop (one per caller —
- * throw, drop, wield, quiver, apply, read, drink, wear, adjust, the pickinv
- * menu), and every one of them carried a comment asserting "flags.verbose is On
- * by default and no corpus rc turns it off".  That is FALSE: `OPTIONS=!verbose`
- * is ordinary in the generated corpus (gen040-reseed-seed267324's rc is
- * `OPTIONS=!autopickup,!verbose,!legacy,!tutorial,!splash_screen`) and two of the
- * 44 public sessions clear it too — js/do_wear.js:2417 already corrected the
- * identical claim for on_msg/off_msg.
- *
- * With verbose OFF, C returns from getobj SILENTLY, which leaves the getobj
- * PROMPT itself on the topline; this port overwrote it with "Never mind.".  That
- * is a whole-frame miss on every cancelled prompt in every !verbose session.
- *
- * Only the getobj/look-here arms are gated: the Never_mind at cmd.c:3939
- * (get_adjacent_loc), engrave.c:1123/1207, invent.c:5025/5044/5161 (#adjust),
- * music.c:897, steed.c:47, read.c:3092, polyself.c:524, spell.c:768 and
- * wizcmds.c:438/461 are UNCONDITIONAL in C and must stay unconditional here.
- *
- * `!== false` rather than a truthiness test: C's optlist.h default is TRUE, so an
- * absent flags object must speak, not go silent.
- *
- * `qbuf` is the getobj prompt the caller just painted, and it is the SECOND half
- * of the same fact: C never ERASES the prompt when the answer is read — the next
- * erase is cmd.c parse()'s clear_nhwindow(WIN_MESSAGE), which runs AFTER the next
- * top-level command key — while js/input.js nhgetch() drops _pending_message on
- * every read.  So with verbose off the topline must keep showing the PROMPT, not
- * go blank; hand it to the paint-time fallback _topl_sticky, which a live
- * _pending_message still beats (so the verbose Never_mind wins when it fires).
- * js/potion.js:343 and js/cmd.js:13292/13686/7112 already carried this pairing by
- * hand; passing qbuf here is how the remaining getobj copies get it.  Callers
- * that have already set _topl_sticky may omit it. */
 export async function getobj_never_mind(qbuf) {
     if (qbuf)
         game._topl_sticky = String(qbuf);
@@ -7261,69 +5512,7 @@ export async function pline(msg, ...args) {
         const _p = String(game._pending_message || ''), _r = String(game._resultMessage || '');
         pushRngLogEntry(`^ml_pline[msglen=${String(msg).length} msghead=${encodeURIComponent(String(msg).slice(0,80))} plen=${_p.length} phead=${encodeURIComponent(_p.slice(0,80))} rlen=${_r.length} rhead=${encodeURIComponent(_r.slice(0,80))} joins=${(game._topl_joins || []).join(',')}]`);
     }
-    /* C ref: win/tty/topl.c update_topl:257 —
-     *     boolean skip = (cw->flags & (WIN_STOP | WIN_NOSTOP)) == WIN_STOP;
-     * With skip set, BOTH arms update gt.toplines and NEITHER draws: the join
-     * arm does `Strcat(gt.toplines, bp)` but guards addtopl() with `if (!skip)`
-     * (:268), and the fall-through arm skips the whole `else if (!skip)` block
-     * and then guards redotoplin() with `if (!skip)` (:300).  So a message
-     * plined while WIN_STOP is set never reaches the screen.
-     *
-     * The one escape hatch is topl.c:298-299 — `if (!notdied) cw->flags &=
-     * ~WIN_STOP, skip = FALSE`, i.e. a message starting "You die" cancels the
-     * suppression and prints ("avoid suppressing mesg").
-     *
-     * WIN_STOP is set by more() on an ESC dismiss and cleared by the next
-     * tty_nhgetch (js/input.js), so this window is at most one keystroke long.
-     * gt.toplines still receives the text, and remember_topl() will carry it to
-     * the ^P ring, so record it in the history here — the nhgetch-time capture
-     * cannot, because _pending_message is deliberately left untouched. */
     if (game._topl_win_stop) {
-        /* C ref: win/tty/topl.c update_topl:257-301, read as ONE flow, because
-         * the "You die" escape is NOT unconditional — it hangs off `notdied`,
-         * which is assigned inside a SHORT-CIRCUITED condition:
-         *
-         *     int notdied = 1;
-         *     if ((toplin == TOPLINE_NEED_MORE || skip) && cw->cury == 0
-         *         && n0 + strlen(gt.toplines) + 3 < CO - 8
-         *         && (notdied = strncmp(bp, "You die", 7)) != 0) {
-         *         Strcat(gt.toplines, "  "); Strcat(gt.toplines, bp);
-         *         if (!skip) addtopl(bp);
-         *         return;                       <- JOIN arm
-         *     } else if (!skip) { ...more()... }
-         *     remember_topl(); strncpy(gt.toplines, bp, TBUFSZ);
-         *     if (!notdied) cw->flags &= ~WIN_STOP, skip = FALSE;
-         *     if (!skip) redotoplin(gt.toplines);
-         *
-         * So `notdied` is only ever set to 0 when the message ALSO FIT.  A
-         * "You die" that does NOT fit short-circuits before the strncmp,
-         * leaves notdied == 1, and therefore does NOT clear WIN_STOP and is
-         * NOT drawn.
-         *
-         * And the length it is measured against is gt.toplines, which KEEPS
-         * GROWING while suppressed: the join arm's two Strcat()s run whether or
-         * not `skip` is set — only addtopl() is guarded — so every swallowed
-         * message that fits is appended to the buffer even though nothing
-         * reaches the screen.  `_topl_win_stop_buf` is that buffer; it is
-         * deliberately NOT _pending_message, which models what is PAINTED.
-         *
-         * THE TWO MEASURED CASES, which differ only in that length:
-         *  - seed0399-wizard-hallu-actions step 521: the ESC lands on "Your
-         *    movements are slowed slightly because of your load.--More--",
-         *    "You feel weaker!" (16) is drawn and becomes the buffer, and
-         *    "You die..." then FITS (10+16+3 < 72) -> notdied 0 -> WIN_STOP
-         *    cleared, the line replaced and drawn, and the "Die?" prompt's own
-         *    more() (topl.c:389-391) pages it: C frames 521 and 522 are
-         *    "You die...--More--".
-         *  - seed4500-knight-coverage step 1786: the ESC lands on "You hit it.
-         *    The silver dragon bites!  The silver dragon hits!--More--", and
-         *    the dragon/Olog-hai attacks that follow are swallowed but keep
-         *    appending, so by the time "You die..." arrives the buffer is long
-         *    enough that it does NOT fit -> notdied stays 1 -> WIN_STOP SURVIVES
-         *    -> topl.c:390 declines to more() -> C's very next frame is
-         *    "Die? [yn] (n)" with no "You die..." page at all.
-         * Treating the escape as unconditional cost seed4500 27 step points and
-         * 630 RNG leaves; treating it as absent cost seed0399 11. */
         const _txt = String(msg);
         const _buf = (game._topl_win_stop_buf != null)
             ? String(game._topl_win_stop_buf) : String(game._pending_message || '');
@@ -7367,18 +5556,6 @@ export async function pline(msg, ...args) {
         _maybe_snapshot_painted_screen();
         return;
     } else if (game._topl_win_stop_armed) {
-        /* `skip` is a LOCAL sampled at update_topl ENTRY (topl.c:257), so the
-         * more() this same call raises at :274 cannot suppress its own message:
-         * :300's `if (!skip) redotoplin(...)` still draws it, and only the NEXT
-         * message sees the bit.  In this port the two halves of that one C call
-         * are two JS calls — force_more() pages the committed topline, then the
-         * incoming message arrives as a separate pline() — so the arm-then-fire
-         * step is explicit here.
-         *
-         * Measured on seed0009: read_engr_at pages "Something is engraved here
-         * on the floor." and the recorded key is ESC, but C still shows the
-         * "You read: ..." line that owned that more().  Firing the bit one
-         * message early cost 3 frames there. */
         game._topl_win_stop_armed = false;
         /* C topl.c:298-299: the message that arrives immediately after an
          * ESC-dismissed page is still processed with the old `skip` value.
@@ -7399,61 +5576,8 @@ export async function pline(msg, ...args) {
         }
         if (!_deathEscape) game._topl_win_stop = true;
     }
-    /* C ref: pline.c:266-272 — vpline() recalculates vision BEFORE its
-     * flush_screen()/putmesg():
-     *
-     *     if (gv.vision_full_recalc) {
-     *         int tmp_in_pline = in_pline;
-     *         in_pline = 0;
-     *         vision_recalc(0);
-     *         in_pline = tmp_in_pline;
-     *     }
-     *     if (u.ux) flush_screen(...);
-     *     putmesg(line);
-     *
-     * so the screen a --More-- freezes carries the vision state as of the
-     * message, not as of the last world-block recalc.  This port ran
-     * vision_recalc only at moveloop_core's own recalc points, which is one
-     * world block LATER than the pline in every mid-turn --More-- window.
-     *
-     * MEASURED on seed0014 step 560 (key "H", a run).  The run's turn unblocks
-     * a doorway and sets vision_full_recalc; C's "You stumble." pline recalcs
-     * there and its --More-- frame shows the newly-lit lower-left room (10
-     * cells over rows 12-18).  This port painted them only at step 561.
-     *
-     * RNG-free: vision_recalc draws nothing (js/vision.js:725), and it is a
-     * no-op unless the flag is already set, so a pline in a turn that dirtied
-     * no vision is byte-identical. */
     if (game.vision_full_recalc)
         vision_recalc(0);
-    /* C ref: pline.c:273-274 — the flush point this port did not make.
-     *
-     *     if (u.ux)
-     *         flush_screen((gp.pline_flags & NO_CURS_ON_U) ? 0 : 1);
-     *     putmesg(line);
-     *
-     * It is NOT the pager: putmesg() -> update_topl() is what raises the
-     * more().  What this flush does is FREEZE the frame that more() then
-     * displays, which is why the port grew _pline_flush_frame_record to
-     * reconstruct the same frame later from a snapshot.  Making the call is
-     * the C-faithful half of that pair; the snapshot machinery is left in
-     * place and still supersedes it where it matches, so this step adds the
-     * flush point without removing the stand-in (they are reconciled by the
-     * ORDER: the flush runs first, so a frame recorded by the putmesg below
-     * is recorded AFTER the repaint, exactly as C's is).
-     *
-     * Corpus measurement (tools/flush-point-diff.mjs --census, 44 public
-     * sessions): pline.c:274 is 4,202 C flush points and is the FIRST
-     * flush-point divergence in 44 of 44 sessions.
-     *
-     * The guard is C's, one for one: `if (u.ux)` (no flush before the hero is
-     * placed), the suppress_map_output() early return at display.c:2220, and
-     * the `static int flushing` reentrancy test at display.c:2226 — all three
-     * sit BEFORE patch 012's emit, so a flush C skips is a flush this port
-     * must not make either.
-     *
-     * cursor_on_u: C passes 0 only for NO_CURS_ON_U, which in all of 5.0 has
-     * exactly one caller — getpos.c:652's auto_describe custompline. */
     pline_flush_point();
     /* WIN_NOSTOP is a ONE-SHOT (wintty.c:2300).  Record the urgent message's
      * TEXT so the flush loop's ESC arm can find it among the messages still
@@ -7465,34 +5589,11 @@ export async function pline(msg, ...args) {
     game._topl_urgent_next = false;
     let prev = game._pending_message;
     let adoptedResult = false;
-    /* C's tty has one topline buffer.  A completed command's message therefore
-     * remains the prefix when the first movemon message for that same turn
-     * arrives.  Most timed commands take the incomingMove merge in allmain,
-     * but a page held across input can reach this first fresh pline with the
-     * command result still in our separate result channel.  Merge it here
-     * before the normal per-pline join instead of letting flush_screen prefer
-     * the live suffix and strand the command result until a later world event.
-     *
-     * C ref: win/tty/topl.c update_topl() appends `bp` to gt.toplines when the
-     * pair fits its CO-1-8 reserve.  gen362's painful kick is the observed
-     * case: "Ouch!  That hurts!" must prefix the following barrow-wight swing.
-     */
     if ((!prev || prev.length === 0) && game._resultMessage
         && game._resultMessage !== msg) {
         const result = String(game._resultMessage);
         const joins = game._resultMessageJoins?.src === result
             ? game._resultMessageJoins.joins : _topl_joins_snapshot(result);
-        /* This incoming pline is what makes C's already-painted `result`
-         * overflow.  pline_flush_point() above has just repainted the physical
-         * map/status at the incoming message's instant; retain that frame at
-         * the result boundary before folding the two JS buffers together.
-         *
-         * The no-adoption fresh-message arm below already records this same
-         * boundary.  This arm used to skip it, so the pager fell back to an
-         * earlier whole-turn frame.  gen413 step 1323 is the measured case:
-         * newuhs() prints "You feel weak.", commits WEAK and SET_BOTL, then
-         * encumber_msg's incoming pline raises More.  C's second-pline flush
-         * paints Weak; the fallback retained Hungry from the first pline. */
         _pline_flush_frame_record(result.length, String(msg));
         const joined = _topl_merge_result(result, String(msg), joins || undefined);
         game._resultMessage = null;
@@ -7545,20 +5646,6 @@ export async function pline(msg, ...args) {
     game._topl_unacknowledged = true;
     _maybe_snapshot_painted_screen();
 }
-/* C ref: pline.c:330-337 Norep(fmt, ...) — vpline() with PLINE_NOREPEAT.  The
- * suppression test is pline.c:255, `msgtyp == MSGTYP_NOREP && !strcmp(line,
- * gp.prevmsg)`: it compares against gp.prevmsg, the last message shown by ANY
- * pline, and on a match C `goto pline_done` — nothing is drawn AND prevmsg is
- * not refreshed.  js/cmd.js has a private _norep() that writes
- * _pending_message directly; this one goes through pline() so the message
- * JOINS the topline the same way every other message does, which is what
- * zap_over_floor's water messages need (they land mid-ray, after "You kill
- * it!" and before "The blast of fire hits it!").
- *
- * Measured on seed4500 step 997: a fire breath crosses TWO water squares and
- * C's second "You hear hissing gas." is suppressed here, so the third slot on
- * that topline belongs to the monster-hit message.  Without the suppression
- * this port printed the line twice and pushed the hit message off the frame. */
 export async function Norep(msg, ...args) {
     const text = (args.length > 0) ? nh_sprintf(msg, args) : String(msg);
     if (game._prevmsg === text)
@@ -7566,60 +5653,6 @@ export async function Norep(msg, ...args) {
     await pline(text);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
- * C ref: pline.c:435-467 You_hear(line, ...) and You_see(line, ...).
- *
- * THE ONE BODY for each.  C has 144 call sites for You_hear and js/ had grown
- * ELEVEN hand-derived versions of it, no two of which agreed:
- *   js/mklev.js      threw 'not yet ported: You_hear'   (a live halt)
- *   js/cmd.js        bhp_You_hear threw the same
- *   js/uhitm.js      silent no-op — C prints, we printed NOTHING
- *   js/trap.js       silent no-op, same
- *   js/dig.js
- *   js/fastforward.js
- *   js/shk.js        printed unconditionally, with no guard at all
- *   js/cmd.js        flooreffects_You_hear, same
- *   js/vault.js      gated on Deaf only; no acoustics test, no prefixes
- *   js/makemon.js    prefixes only, no guard, and Unaware read as u.usleep
- *   js/were.js       full guard, but invented Unaware = (usleep || uunaware),
- *                    dropping C's `gm.multi < 0` conjunct entirely
- *   js/dokick.js     full guard, but hardcoded unaware = false
- *   js/cmd.js        _goto_level_You_hear — the only faithful one; this is it
- * plus a twelfth prefix-only copy at js/trap.js _you_hear_prefix.
- *
- * The C guard, verbatim:
- *     if ((Deaf && !Unaware) || !flags.acoustics)
- *         return;
- *     if (Underwater)   YouPrefix(tmp, "You barely hear ", line);
- *     else if (Unaware) YouPrefix(tmp, "You dream that you hear ", line);
- *     else              YouPrefix(tmp, "You hear ", line);   /* Deaf-aware * /
- *     vpline(strcat(tmp, line), the_args);
- * Note what the copies that gate on Deaf alone get wrong: a Deaf AND Unaware
- * hero DOES print — that is what C's own "Deaf-aware" comment marks — because
- * the early return needs BOTH `Deaf` and `!Unaware`.
- *
- * The predicates, and why these spellings:
- *   Deaf       youprop.h:125  (HDeaf || EDeaf || u.uroleplay.deaf).  _live_deaf()
- *              above is this port's measured-live reading: HDeaf is the FLAT
- *              u.HDeaf slot (js/allmain.js nh_timeout_deaf counts it down,
- *              js/eat.js and js/music.js's leather drum set it), NOT
- *              u.uprops[DEAF], which has no writer anywhere in js/ — four of
- *              the copies above read that dead slot, so their guard could
- *              never fire.  The status-line Deaf condition reads the same
- *              _live_deaf(), and it is validated against C on every step of
- *              every session (seed0002 step 582 onward is the drum case).
- *   Unaware    youprop.h:399  gm.multi < 0 && (unconscious() || is_fainted())
- *   Underwater youprop.h:279  u.uinwater
- *   Blind      youprop.h:103  ((HBlinded || EBlinded) && !BBlinded) — _disp_Blind()
- *   flags.acoustics  has no initialiser in this port and C optlist.h:143 gives
- *              it initval On, so an ABSENT value must read as On; reading it
- *              as Off would silence every You_hear in the game.
- *
- * Formatting goes through pline's own nh_sprintf exactly as C's vpline does,
- * and only when there ARE varargs — a pre-formatted line containing a literal
- * '%' must not be run through a conversion pass.  RNG-free: every leaf here is
- * a state read or string formatting.
- * ───────────────────────────────────────────────────────────────────────── */
 /* C youprop.h:399 `#define Unaware (gm.multi < 0 && (unconscious() || is_fainted()))`.
  * Exported so callers outside this file read the SAME predicate rather than
  * growing another private approximation of it (js/mhitm.js:4219's copy tests
@@ -7701,27 +5734,6 @@ export function see_with_infrared(mon) {
     return !!couldsee(mon.mx | 0, mon.my | 0);
 }
 
-/* C ref: worm.c:877-891 worm_known(worm) — "Is any segment of this worm in
- * viewing range?"  C walks wtails[worm->wormno]'s segment chain and returns
- * TRUE for the first segment with cansee(seg->wx, seg->wy).
- *
- * js/worm.js keeps wtails/wheads module-private (worm.c does the same, "It
- * is located here for modularity") and exports only the position->worm
- * reverse lookup its m_at() gap needed, worm_seg_at(x,y) (imported above,
- * see js/uhitm.js m_at's "THE MAP-GRID GAP" note in js/worm.js).  That
- * reverse map's key set is exactly the worm's currently-occupied segment
- * squares, so scanning the map for a cansee()'d square whose occupant is
- * THIS worm computes the identical predicate as C's forward chain walk —
- * addressed from the other direction because the chain itself is not
- * reachable from this file.
- *
- * Was previously a stub returning false unconditionally ("long worms not in
- * corpus"), which the corpus falsifies: rng-trace record #243
- * (probe-reach-zap__gen028-objective-seed91053) has the hero, polymorphed,
- * attacking a wormno=1 monster whose tail IS visible in C, so C's
- * attack_checks() proceeds into hmonas/passive/mhitm_knockback (5 draws)
- * while this stub forced attack_checks() into the "can't see it" early
- * return (0 draws). */
 function worm_known(mon) {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 0; x < COLNO; x++) {
@@ -7784,12 +5796,6 @@ export function tp_sensemon(mon) {
     if (!mon) return 0;
     const u = game.u || {};
 
-    /* C display.h:44 — `!mindless(mon->data)`, i.e. mondata.h's
-     * `(ptr->mflags1 & M1_MINDLESS) != 0`.  This was a COMMENT saying "for now,
-     * assume corpus monsters are not mindless", which is exactly the term that
-     * decides a graveyard: zombies and mummies ARE M1_MINDLESS and a
-     * telepathic hero senses neither, while the ghosts and wraiths beside them
-     * are sensed.  Assuming the term away paints the mindless ones too. */
     const mnum = mon.mnum | 0;
     if (mnum < 0) return 0; // Invalid monster number
     if (_tp_mindless(mon)) return 0;
@@ -7825,7 +5831,6 @@ export function tp_sensemon(mon) {
 //   (   (!u.uswallow || (mon) == u.ustuck)
 //    && (!Underwater || (mdistu(mon) <= 2 && is_pool((mon)->mx, (mon)->my)))
 //    && (Detect_monsters || tp_sensemon(mon) || MATCH_WARN_OF_MON(mon))   )
-// MATCH_WARN_OF_MON not modeled for corpus heroes (needs context.warntype + mon->data->mflags2).
 export function sensemon(mon) {
     if (!mon) return false;
     const u = game.u || {};
@@ -7847,11 +5852,6 @@ export function sensemon(mon) {
     const detect_monsters = !!(u.uprops?.[DETECT_MONSTERS]?.intrinsic
         || u.uprops?.[DETECT_MONSTERS]?.extrinsic);
     if (detect_monsters) return true;
-    /* C display.h:58 — `tp_sensemon(mon) || MATCH_WARN_OF_MON(mon)`.  This
-     * used to be a SECOND, hand-inlined copy of the tp_sensemon macro that had
-     * drifted from the one above: it read the dead string uprops keys and
-     * dropped the !mindless(mon->data) term entirely (its comment said "for
-     * corpus heroes this path is never reached").  Call the one body. */
     return !!(tp_sensemon(mon) || MATCH_WARN_OF_MON(mon));
 }
 
@@ -7902,11 +5902,9 @@ export function check_gold_symbol() {
 // C ref: display.c:719-723 suppress_map_output — check if map output should be suppressed
 // Wrapper around the _suppress_map_output() macro from display.c:710-717.
 // Returns 1 (true) if map output should be suppressed due to level creation, saving,
-// or restoring; 0 (false) otherwise. During normal corpus gameplay, typically returns 0.
 export function suppress_map_output() {
     const g = game || {};
     const program_state = g.program_state || {};
-    // UNIX recorder build defines HANGUPHANDLING (global.h).
     return (g.in_mklev || program_state.saving || program_state.restoring
         || program_state.done_hup) ? 1 : 0;
 }
@@ -7946,7 +5944,6 @@ export function curs_on_u() {
 // unobservable there.  The one place it IS observable is a forced repaint of
 // cells whose glyphs do not change — getpos_sethilite's selection_force_newsyms
 // (getpos.c:60-62 via selvar.c:801-810), whose caller then reads a key with the
-// cursor still sitting where the repaint left it.  Measured: seed4500 step 195
 // (`#jump\n`), cells byte-identical, C cursor [38,16] against this port's
 // [36,14] (the hero) — 38 = the largest map x among the valid knight's-jump
 // targets on the largest such map y (15), and 16 = 15 + 1.
@@ -7990,21 +5987,6 @@ export function feel_newsym(x, y) {
         newsym(x, y);
 }
 
-/* C ref: display.c:1571-1587 see_objects() — redraw every floor object that is
- * the top of its pile.  Called by make_hallucinated() (potion.c:427) when
- * hallucination toggles, so that the random_obj_to_glyph() substitution takes
- * effect on already-displayed objects.
- *
- *     for (obj = fobj; obj; obj = obj->nobj)
- *         if (vobj_at(obj->ox, obj->oy) == obj)
- *             newsym(obj->ox, obj->oy);
- *     update_inventory();
- *
- * RNG-FREE on the scored stream: the only randomness newsym() reaches under
- * hallucination is rn2_on_display_rng(), the separate DISPLAY rng.
- * update_inventory() is C's persistent-inventory hook and is a no-op here (no
- * perm_invent window), so it is left to the caller, which is what the two
- * existing JS see_* siblings above do. */
 export function see_objects() {
     cosmic_push_owner_real("see_objects");
     for (let obj = game.fobj; obj; obj = obj.nobj ?? null) {
@@ -8049,25 +6031,6 @@ function _m_at(x, y) {
         if (m.mx === x && m.my === y)
             return m;
     }
-    /* C's m_at() is ONE read of svl.level.monsters[x][y] (rm.h:534), and that
-     * grid holds a long worm's TAIL SEGMENTS as well as its head: worm.c's
-     * place_worm_seg() (rm.h:533) writes the worm itself into every segment
-     * square.  The fmon walk above cannot see them — a segment is not an fmon
-     * entry — so C's single lookup is two here, exactly as js/uhitm.js m_at()
-     * already spells it (see THE MAP-GRID GAP in js/worm.js).
-     *
-     * Without this second half every caller of C's m_at() in this file was
-     * blind to a worm's body: newsym() found no monster on a tail square and
-     * fell through to _map_location(), i.e. it painted the FLOOR under the
-     * tail.  MEASURED on gen028-reseed-seed1155683 / gen345-reseed-seed244908
-     * (corpus-generated/v5/train), both at step 42: C draws `~~` at map
-     * <31,14> and <32,14> for the two tail segments of the long worm whose
-     * head is at <32,15>, and this port drew room floor on both.  Those two
-     * cells were the sessions' FIRST screen miss and the whole of it — the
-     * segments themselves are placed on the right squares with the right
-     * draws (place_worm_tail_randomly ran and its rnd_nextto_goodpos calls are
-     * in the stream), so this was never a level-generation fault, only a
-     * display one. */
     return worm_seg_at(x, y);
 }
 
@@ -8080,21 +6043,6 @@ function _sobj_at(otyp, x, y) {
 }
 const BOULDER_OTYP = 475; /* objects.h BOULDER (js/cmd.js:8911, js/m_initweap.js:141) */
 
-/*
- * C ref: engrave.c:186-214 can_reach_floor(check_pit).
- *   u.uswallow || (u.ustuck && !sticks && attacktype(AT_HUGS))
- *   || (Levitation && !(Is_airlevel || Is_waterlevel))          -> FALSE
- *   u.usteed && P_SKILL(P_RIDING) < P_BASIC                     -> FALSE
- *   u.uundetected && ceiling_hider                              -> FALSE
- *   Flying || msize >= MZ_HUGE                                  -> TRUE
- *   check_pit && teetering/escaped-shaft                        -> FALSE
- *   otherwise                                                   -> TRUE
- * feel_location's only call passes check_pit = FALSE, so the trap arm is not
- * reachable from here.  The AT_HUGS / uundetected / MZ_HUGE arms need
- * attacktype+ceiling_hider+youmonst.data, none of which this file carries; no
- * corpus hero is swallowed-and-blind or a huge poly form, so they are left to
- * the TRUE fall-through and named here rather than silently dropped.
- */
 function _feel_can_reach_floor() {
     const u = game.u || {};
     if (u.uswallow)
@@ -8103,10 +6051,7 @@ function _feel_can_reach_floor() {
     const levitating = !!lp && !!((lp.intrinsic | 0) || (lp.extrinsic | 0))
                        && !(lp.blocked | 0);
     if (levitating && !Is_waterlevel(u.uz))
-        return false;   /* Is_airlevel is not modelled here; no corpus air level */
-    /* C: u.usteed && P_SKILL(P_RIDING) < P_BASIC.  weapon.c skill state is not
-     * reachable from display.c; a mounted corpus hero (the knight) has basic
-     * riding, so this yields TRUE either way. */
+        return false;
     return true;
 }
 
@@ -8181,12 +6126,6 @@ export function feel_location(x, y) {
         } else if (IS_DOOR(typ)) {
             map_background(x, y, 1);
         } else if (IS_ROOM(typ) || IS_POOL(typ)) {
-            /*
-             * An open room or water location.  Normally we wouldn't touch
-             * this, but we have to get rid of remembered boulder symbols.
-             * Show fountains, pools, etc. underneath if already seen;
-             * otherwise show the appropriate floor symbol.
-             */
             let do_room_glyph = false;
             const rg = lev.remembered_glyph;
             if (_rg_is_boulder(rg) || rg?.cls === GLYPHCLS_INVIS) {
@@ -8195,16 +6134,9 @@ export function feel_location(x, y) {
                 else
                     do_room_glyph = true;
             } else if (_rg_in_stone_to_room_range(rg)) {
-                /* C: lev->glyph >= cmap_to_glyph(S_stone)
-                 *    && lev->glyph < cmap_to_glyph(S_darkroom) — the background
-                 * cmap symbols numbered 0..19 (stone, walls, doorways/doors,
-                 * bars, tree, plain room floor). */
                 do_room_glyph = true;
             }
             if (do_room_glyph) {
-                /* C: flags.dark_room && iflags.use_color && !Is_rogue_level →
-                 * S_darkroom; this file treats dark_room/use_color as
-                 * constant-true (see _darken_room_floor). */
                 const dark = !Is_rogue_level(game.u?.uz);
                 const glyph = dark
                     ? { ch: '.', color: CLR_BLACK, decgfx: false, cls: GLYPHCLS_CMAP }
@@ -8260,11 +6192,6 @@ export function feel_location(x, y) {
                 u.bc_felt = (u.bc_felt | 0) & ~BC_BALL;
         }
 
-        /* Floor spaces are dark if unlit.  Corridors are dark if unlit.
-         * C display.c:893-900 — with flags.dark_room && iflags.use_color
-         * constant-true here, the ROOM arm's `(!waslit || (dark_room &&
-         * use_color))` condition is always satisfied, so the whole arm reduces
-         * to _darken_room_floor's own S_room test. */
         const rg = lev.remembered_glyph;
         const typ = lev.typ | 0;
         if (typ === ROOM && _darken_room_floor(lev, rg))
@@ -8325,7 +6252,6 @@ function _rg_in_stone_to_room_range(rg) {
 }
 
 
-/* GLYPH constants — from C display.h, approximate values for sweep */
 const MAX_GLYPH = 400;
 const GLYPH_NOTHING_OFF = 0;
 const GLYPH_UNEXPLORED_OFF = 1;
@@ -8542,8 +6468,8 @@ export function show_glyph(x, y, glyph) {
 }
 
 export function glyph_to_cmap(glyph) { return glyph_to_cmap_real(glyph); }
-function impossible(msg, ...args) { /* sweep may capture calls */ }
-function pline_xy(x, y, msg, ...args) { /* sweep may capture calls */ }
+function impossible(msg, ...args) { }
+function pline_xy(x, y, msg, ...args) { }
 function map_glyphinfo(x, y, glyph, mgflags, glyphinfo) {
     /* Minimal port: set glyphinfo fields. */
     glyphinfo.glyph = glyph;
@@ -8698,22 +6624,6 @@ function db_under_typ(mask) {
     }
 }
 
-/* ── the cmap inverse (S_* defsym index -> terrain / glyph) ────────────────
- *
- * C keeps two inverses of the defsyms table and this port had NEITHER, which
- * left two separate gap notes claiming a mimic posing as furniture could not
- * be rendered ("this port has no cmap inverse", display.c:543-562 arm; and
- * "no cmap->typ inverse" in update_lastseentyp below).
- *
- * MEASURED, gen094 step 298 (Dlvl 10, arrived by wizard levelport): a mimic
- * stands in the room's bottom wall pretending to be a closed door.  C paints
- * the brown '+' the room wall would show; this port painted the mimic's own
- * 'm'.  That single cell held a 258-frame contiguous miss run, because the
- * mimic does not move and every later frame repaints it.
- *
- * C mkroom.c:912 cmap_to_type(sym) — "convert a display symbol for terrain
- * into topology type; used for remembered terrain when mimics pose as
- * furniture".  Ported whole; it is a pure switch. */
 const S_STONE_C = 0, S_VWALL_C = 1, S_HWALL_C = 2, S_TLCORN_C = 3,
       S_TRCORN_C = 4, S_BLCORN_C = 5, S_BRCORN_C = 6, S_CRWALL_C = 7,
       S_TUWALL_C = 8, S_TDWALL_C = 9, S_TLWALL_C = 10, S_TRWALL_C = 11,
@@ -8850,11 +6760,6 @@ export function update_lastseentyp(x, y) {
     const mtmp = _m_at(x, y);
     if (mtmp && ((mtmp.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_FURNITURE
         && canseemon(mtmp)) {
-        /* C display.c:471 area — `ltyp = cmap_to_type(mtmp->mappearance);`.
-         * The claim this arm used to carry ("no corpus monster mimics
-         * furniture, and this port has no cmap→typ inverse") was wrong on both
-         * counts: gen094 walks onto a level whose room wall holds a
-         * door-mimicking mimic, and cmap_to_type is now ported above. */
         ltyp = cmap_to_type(mtmp.mappearance | 0);
     }
     loc.lastseentyp = ltyp;
@@ -8981,8 +6886,6 @@ export function zapdir_to_glyph(dx, dy, beam_type) {
     return (((beam_type << 2) | dx) | 0) + GLYPH_ZAP_OFF_C;
 }
 
-/* Resolve a cmap-zap glyph to this port's display cell.  Returns null for any
- * glyph outside the zap range (nothing else reaches tmp_at on the corpus). */
 function _zap_glyph_cell(glyph) {
     const off = (glyph | 0) - GLYPH_ZAP_OFF_C;
     if (off < 0 || off >= NUM_ZAP * 4)
@@ -9014,12 +6917,6 @@ export function tmp_at(x, y) {
         _tglyph.sidx = 0;
         _tglyph.style = x;
         _tglyph.glyph = y;
-        /* C: flush_screen(0) — sync the PHYSICAL terminal to the gbuf.  In this
-         * port the map rows are serialized from the disp_* cells at capture time
-         * (render_map_row / _capture_painted_cells), so the physical paint is
-         * implicit and there is nothing to flush here.  This port's flush_screen()
-         * is the frame emitter + topline pager (C's update_topl/more()), NOT C's
-         * gbuf repaint, so calling it here would page the topline mid-animation. */
         return;
 
     case DISP_FREEMEM: /* in case game ends with tmp_at() in progress */
@@ -9143,13 +7040,6 @@ export function tmp_at(x, y) {
     }
 }
 
-/* C ref: display.c:1222 `tmp = (struct tmp_glyph *) alloc(sizeof *tmp);` —
- * the NESTED tmp_at() effect.  C's alloc() is malloc(); the whole port's
- * convention for it is a fresh empty record (js/dungeon.js:266,
- * js/makemon.js:3390, js/region.js:464, js/shk.js:2478, js/timeout.js:198 all
- * carry `function alloc(_size) { return {}; }`).  THIS file carried a throwing
- * stub instead, so any second tmp_at effect raised while one was already live
- * threw, parked on nhGame.replayError and TRUNCATED the session. */
 function alloc(_size) {
     /* C's `alloc(sizeof *tmp)` is malloc typed by the struct it is cast to, and
      * this file's ONLY call site is display.c:1222 `(struct tmp_glyph *)
@@ -9221,15 +7111,6 @@ export function redraw_map(cursor_on_u) {
     }
     flush_screen_point(cursor_on_u ? 1 : 0);
 }
-/* C ref: defsym.h:221-228 — the eight stomach cells of a swallowing monster,
- * in swallow_to_glyph() order (S_sw_tl, tc, tr, ml, mr, bl, bc, br).  `a` is
- * the defsym.h default (ASCII) character; `d` is the `start: DECgraphics`
- * override from dat/symbols, or null where that symset does not override the
- * entry — DECgraphics respells only S_sw_tc (\xef, meta-o), S_sw_ml/S_sw_mr
- * (\xf8, meta-x, the SAME vertical rule S_vwall uses) and S_sw_bc (\xf3,
- * meta-s), leaving the four corners as plain '/' and '\'.  Under the 38 corpus
- * sessions that ask for `symset:DECgraphics` that produces exactly the cage C
- * records — "/o\", "x@x", "\s/".  Same {d, a} pairing as _WALL_SYM above. */
 const _SWALLOW_SYM = [
     { d: null, a: '/'  }, /* S_sw_tl */
     { d: 'o',  a: '-'  }, /* S_sw_tc */
@@ -9250,26 +7131,6 @@ function _show_swallow_sym(x, y, idx, mndx) {
         return;
     const e = _SWALLOW_SYM[idx];
     const useDec = dec_mode() && e.d != null;
-    /* C display.c:2439 swallow_to_glyph():
-     *     int m_3 = what_mon(mnum, rn2_on_display_rng) << 3;
-     * and display.h:197 `what_mon(mon, rng) = Hallucination ? random_monster(rng)
-     * : (mon)`, display.h:186 `random_monster(rng) = (*rng)(NUMMONS)`.  The
-     * draw is INSIDE swallow_to_glyph, which swallowed() calls ONCE PER CELL —
-     * C's own comment at display.c:2433 names the consequence: "If you don't
-     * want a patchwork monster while hallucinating, decide on a random monster
-     * in swallowed() and don't use what_mon() here."  So a hallucinating hero's
-     * stomach is eight INDEPENDENT random monsters and therefore eight
-     * independent colours; the SYMBOL is unaffected (map_glyphinfo's swallow arm
-     * takes symidx from `offset & 7`, the location, and only the colour from
-     * `offset >> 3`, the monster).
-     *
-     * MEASURED on seed0383 step 164, the frame right after #wizintrinsic grants
-     * hallucination: C's top cage row is `\e[36m/ \e[31mo \e[93m\` — cyan,
-     * red, bright yellow — where this port painted all three the ice vortex's
-     * cyan, and step 165 is a different triple again.  That one colour column
-     * was the whole 55-frame tail of the session.
-     *
-     * rn2_on_display_rng is the DISP isaac64 context, not the scored stream. */
     const shown = _hallucinating_dsp()
         ? rn2_on_display_rng(MON_MCOLOR.length)
         : mndx;
@@ -9286,39 +7147,12 @@ function _hallucinating_dsp() {
     if (!hp || !(hp.intrinsic | 0)) return false;
     return !(hrp && ((hrp.intrinsic | 0) || (hrp.extrinsic | 0)));
 }
-/* C ref: display.c:1332-1385 swallowed(int first).
- *
- * `first` is passed 1 by gulpmu() when the hero is first engulfed and by
- * docrt(); every later per-turn repaint passes 0 and must first blank the 3x3
- * block around the PREVIOUS position, because a swallowing monster carries the
- * hero with it.  C keeps that position in two function-static coordxy; this
- * port keeps it on the game object so it survives module reload the same way
- * every other display latch here does.
- *
- * C's `cls()` for the first==1 case is what wipes the whole level off the
- * screen -- the recorded frame at seed0383 step 142 is the three cage rows and
- * the status lines and NOTHING else. */
 export function swallowed(first) {
     const g = game;
     const u = g.u || {};
     const ux = u.ux | 0, uy = u.uy | 0;
 
     if (first) {
-        /* C display.c:1338 cls().  The MAP half of cls() is what is wanted
-         * here — a swallowed hero sees nothing but the stomach, so the level
-         * must come off the screen.  The MESSAGE half is deliberately not
-         * taken: this port's cls() also does `_pending_message = ''`, modelling
-         * C's `display_nhwindow(WIN_MESSAGE, FALSE)`, and gulpmu runs INSIDE
-         * the movemon window, where _pending_message is the accumulator that
-         * flush_screen later pages one --More-- at a time.  Dropping it there
-         * collapses every page the window had earned so far into nothing:
-         * measured on seed0383 step 138, C pages the kitten's two attack
-         * messages, the gnome's death, the ape's three hits and the engulf as
-         * five separate frames, and clearing the accumulator turned all five
-         * into one "Unknown command ' '." run.
-         * bot() is `async` by signature only (no await in its body), so it
-         * completes synchronously; swallowed() itself must stay synchronous
-         * because docrt_flags() (display.js:2316) is not async. */
         game?.nhDisplay?.clearScreen?.();
         clear_glyph_buffer();
         void bot();

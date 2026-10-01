@@ -17,79 +17,9 @@ import { vfsWriteFile } from './storage.js';
 import { done as done_real } from './end.js';
 import { encode_save_graph, decode_save_graph } from './save_graph.js';
 
-/* stubs for helpers not yet exported (macro/libc-ish; not the packet target) */
 function pline1(line) { pline(line); }
 function done(how) { return done_real(how); }
 
-/* ── LEVEL PERSISTENCE ──────────────────────────────────────────────────────
- *
- * C ref: save.c:429 savelev() -> savelev_core() (save.c:452).  When the hero
- * leaves a level, C writes the whole level to its own level file and then, in
- * the same call, FREES the in-memory copy (release_data -> mklev.c
- * clear_level_structures).  On return, do.c:1711 getlev() reads it back rather
- * than regenerating — which is why C's seed4500 step 331 is inside
- * getlev(restore.c:1219) drawing rnd(10) while this port was still inside
- * mklev()'s placement path drawing rn2(79).
- *
- * WHAT THIS PORT DOES INSTEAD OF A FILE.  There is no serialisation here: the
- * level's state is already a graph of live JS objects.  The FREE is real and
- * C-faithful (clear_level_structures() at the tail below, C's release_data
- * arm), but it REPLACES the level-scoped containers — a fresh GameMap, g.fmon
- * = null, a fresh g.smeq array, gr.regions = null — rather than mutating them,
- * so holding a reference to the departing level's containers is equivalent to
- * writing them out and reading them back.  Two containers ARE cleared in place
- * (the engraving map and the hero track); those two are copied, not referenced.
- *
- * SWEEP NOTE.  tools/equiv-test/auto-replay-sweep.mjs --filter savelev reports
- * 130/130 diverged on `fmon.count MISSING (exp=0 got=null)`, and --filter
- * getlev 12/12 on `getlev: no stored level`.  Both are structural, not a defect
- * in the bodies: the captures assert C's file-(de)serialisation result against a
- * fixture state the harness builds itself, and this port's equivalent reads and
- * writes an in-memory store hanging off `game` that the fixture never
- * populates.  A capture-replay row for either function cannot go green until
- * the recorder captures the level store as a side-channel.  Reported rather
- * than dodged by renaming.
- *
- * js/storage.js — the frozen save/bones VFS the judge overwrites — is NOT used:
- * it is the cross-SEGMENT channel that runSegment(input, prevGame) threads, and
- * a level revisit is a within-segment event.  Nothing here writes to it.
- *
- * FIELD LIST, against savelev_core's own write order (save.c:452-530):
- *   savelevl + lastseentyp + level flags + rooms + doors ... g.level (GameMap:
- *       locations[][] carry .lastseentyp per cell, rooms/nroom, doors/doorindex,
- *       levelObjects[][], flags, buriedobjlist, damagelist)
- *   save_stairs .......................... g.stairs  (stored BY REFERENCE;
- *       the C round trip REVERSES the chain — stairway_add prepends
- *       (stairs.c:22), save_stairs walks head->tail (save.c:667,684) and
- *       rest_stairs re-prepends (restore.c:978) — so the reversal is
- *       applied on the READ side, in js/restore.js#getlev.)
- *   svu.updest / svd.dndest .............. g.updest / g.dndest
- *   savemonchn(fmon) ..................... g.fmon
- *   savetrapchn(gf.ftrap) ................ g.ftrap
- *   saveobjchn(fobj) ..................... g.fobj
- *   save_engravings ...................... save_engravings()  (COPIED)
- *   save_regions ......................... regions_save_snapshot()
- *   save_track ........................... g._track            (COPIED)
- *   Sfo_long(lev-timestmp) ............... g.moves, read back as `elapsed`
- *   save_timers(RANGE_LEVEL) ............. save_timers_level()  (UNLINKS them
- *       from gt.timer_base; getlev() puts them back.  Wired the day the timer
- *       queue grew a creator — js/mklev.js start_corpse_timeout — exactly as
- *       the NOT MODELLED note below demanded.)
- * plus the mklev.c-side scalars clear_level_structures resets and makelevel
- * rebuilds: g.smeq, g.made_branch, g.vault_x.
- *
- *   save_light_sources(RANGE_LEVEL) .... light_sources   (light.c:421; the
- *       array save_light_sources() unlinks from gl.light_base, restored by
- *       getlev()'s restore_light_sources().  Monster light sources are
- *       RANGE_LEVEL by mon_is_local(), so leaving them on the global list
- *       across a goto_level would light the NEW level from the OLD level's
- *       gold dragon.)
- *
- * C's worm roots, billing objects, bubbles, and exclusion zones are saved
- * below with their level snapshot and restored by getlev().  Cemetery records
- * remain unmodelled; if that state gains a live writer it must be paired with
- * getlev() rather than silently retaining the wrong level's copy.
- */
 function levelStore() {
     return (game.levelStore || (game.levelStore = new Map()));
 }
@@ -206,37 +136,6 @@ export function tricked_fileremoved(nhfp, whynot) {
     return false;
 }
 
-/* ── WHOLE-GAME SAVE (the cross-SEGMENT channel) ────────────────────────────
- *
- * C ref: save.c:72 dosave0() -> savegamestate() (save.c:246), read back by
- * restore.c:789 dorecover() -> restgamestate() (restore.c:349).  This is the
- * `S`ave command's file-writing half and the thing the NEXT segment restores;
- * js/restore.js is the other end.
- *
- * WHY THIS EXISTS AT ALL.  frozen/ps_test_runner.mjs:311-334 builds ONE
- * Web-Storage-shaped handle per session and threads it into every segment as
- * `input.storage`; that handle is the only channel between segments, and it is
- * what a save file has to travel through.  Without it, a session whose
- * segment 0 ends in `S`ave and whose segment 1 restores replays segment 1 as a
- * WHOLLY DIFFERENT GAME — seed0013-friday13-save-then-fullmoon-restore drew
- * 2794 leaves against C's 2 and matched 1 of its 50 recorded screens.
- *
- * WHAT IS IN THE FILE.  NHSAVE2 stores a versioned header followed by a JSON
- * graph payload.  js/save_graph.js records object identities as reference
- * edges, so aliases and cycles survive; it also restores GameMap and rm
- * prototypes, maps and sets, ArrayBuffers and typed views.  Each call to
- * saved_state_for() decodes a fresh graph, making the file durable across a
- * process or page reload instead of depending on module-local object handles.
- * savelev() still keeps inactive levels in the running game's levelStore, but
- * a whole-game save serialises that Map and its per-level snapshots as part of
- * the same detached graph.
- *
- * The KEY under which it is stored is real, though, and travels through the
- * real handle: `restore_saved_game()` gates on reading it back out of
- * `input.storage`, exactly as C gates on `restore_saved_game()` finding
- * gs.SAVEF on disk.  A segment with no save file in its storage restores
- * nothing and starts a new game, which is every other session in the corpus.
- */
 
 /* C ref: files.c set_savefile_name() — gs.SAVEF is "save/<uid><plname>" (plus
  * a ".gz" once nh_compress runs).  The uid has no meaning in the VFS, so the
@@ -248,41 +147,6 @@ export function savefile_name(plname) {
     return `save/${plname || ''}`;
 }
 
-/*
- * NOT_SAVED — `game` properties that C's save file does NOT carry, so on
- * restore they must keep the values the NEW process computed rather than the
- * ones the old one had.  Everything not listed here is restored.
- *
- * Sources, in C:
- *   program_state ..... hack.h:782 "not saved and restored" (decl_globals_init)
- *   iflags ............ decl.c:1159 ZERO(iflags) + initoptions(); restore.c:404
- *                       only saves/reinstates iflags.perm_invent around the
- *                       restore, so the struct itself is process-scoped
- *   Cmd / _command_binding_statics / menu aliases
- *                  ..... cmd.c bindings/layout backups and options.c menu
- *                        maps, rebuilt by initoptions in each process; neither
- *                        savegamestate nor restgamestate serializes them.
- *   keybindings ....... legacy name, excluded when reading older JS saves too
- *   _config_errors .... startup diagnostics belonging to the current process
- *   sysopt ............ sys.c, from the sysconf file
- *   disp .............. decl.h:123 struct display_hints, a BSS global
- *   env ............... the PROCESS environment.  This one is load-bearing:
- *                       the restoring process has a DIFFERENT
- *                       NETHACK_FIXED_DATETIME, which is the whole point of
- *                       seed0013 (Friday the 13th -> full moon)
- *   nhDisplay / _rawterm / _screen_output / _preNhgetchHook
- *                  ..... the window system (init_sound_disp_gamewindows())
- *   mockStorage ....... the host storage handle (js/storage.js), not game state
- *   currentSeed ....... the PRNG.  C reseeds per process; the save file has no
- *                       RNG state, which is why a restore in this corpus draws
- *                       exactly the 2 leaves of restore_luadata's fresh Lua
- *                       state and nothing else
- *   the _topl_* / _pending_message / _resultMessage* / _prevmsg / _runPageFrames
- *                       family ..... WIN_MESSAGE's live topline, i.e. tty
- *                       window state.  (`_msg_history` IS saved — restore.c:721
- *                       restore_msghistory() — so it is deliberately absent
- *                       from this list.)
- */
 export const NOT_SAVED = [
     'program_state', 'iflags', 'keybindings', 'sysopt', 'disp', 'env',
     'Cmd', '_command_binding_statics', 'nhcb_counts', 'nhcore_call_available', 'mvl_change',
@@ -322,15 +186,6 @@ async function savegamestate() {
     return state;
 }
 
-/* C ref: save.c:72 dosave0() — "returns 1 if save successful".  The C body's
- * work that has no JS counterpart is called out rather than silently dropped:
- * program_state.saving/notice_mon_off() (display suppression during the write),
- * the hangup fixups (u.uinvulnerable, iflags.save_uswallow/uinwater/uburied —
- * none of which this port sets), done_object_cleanup() (no thrown-object
- * transit model here), the "old save file" overwrite prompt (the VFS is
- * per-session and starts empty, so open_savefile() always fails there), and
- * the per-level file writes (savelev() already keeps those in game.levelStore,
- * which travels inside the snapshot). */
 export async function dosave0() {
     const g = game;
     g.program_state = g.program_state || {};

@@ -15,7 +15,6 @@ import { COLNO, ROWNO, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA } from './const.
 import { acurr } from './attrib.js';
 import { describe_level_buf } from './dungeon.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
-// only ever set by tools/input-desync-triage.mjs). See js/route_telemetry.js.
 import { routeTag } from './route_telemetry.js';
 import { NO_COLOR } from './terminal.js';
 import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
@@ -159,19 +158,6 @@ function render_map_row_clipped(y, clipX) {
     let output = '';
     let activeColor = ANSI_DEFAULT;
     let activeDec = false;
-    /* C ref: win/tty/wintty.c:3927-3936 term_start_attr(ATR_INVERSE) — the
-     * hilite_pet / hilite_pile / MG_DETECT / MG_BW_* highlight.  THIS FORK OF
-     * render_map_row DROPPED IT ENTIRELY, so every window-overlay frame (menu,
-     * text window, farlook tip, #wizidentify) painted a highlighted cell plain
-     * while the same cell on an un-overlaid frame was correct.  The bytes and
-     * the ordering below are copied from js/display.js render_map_row so the
-     * two forks agree cell for cell.
-     *
-     * MEASURED on gen446-recombine-seed373399 step 787: `#wizmap` reveals a
-     * corridor engraving (S_engrcorr '#', MG_BW_ENGR -> ATR_INVERSE), frames
-     * 781-786 render it right, and the very first frame with a window over it
-     * (the "Tip: Farlooking" text window) drops the attribute — one ATTR-only
-     * cell that then held for the session's whole 1,027-step tail. */
     let activeInverse = false;
     const gap = firstCol - 1;
     if (gap > 4)
@@ -181,10 +167,6 @@ function render_map_row_clipped(y, clipX) {
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = game.level.at(x, y);
         const ch = loc?.disp_ch ?? ' ';
-        /* C flag.h aliases use_color to wc_color, and map_glyphinfo() drops
-         * every glyph color while that option is off.  Stored JS display cells
-         * retain the color they had before an in-game option toggle, so apply
-         * the live gate again when composing a window over the map. */
         const color = game.iflags?.use_color === false
             ? NO_COLOR : (loc?.disp_color ?? NO_COLOR);
         const dec = !!loc?.disp_decgfx;
@@ -197,7 +179,6 @@ function render_map_row_clipped(y, clipX) {
             // render_map_row() has always applied (js/display.js:1806-1814);
             // this clipped fork of it had dropped the reset entirely, so the
             // preceding glyph's color stayed open across the cursor-forward.
-            // seed0006 step 27 renders the farlook tip window over a map row
             // whose yellow '+' door at col 53 is followed by a 5-cell gap, and
             // that byte-ordering was the whole render divergence there.
             if (activeInverse) {
@@ -324,27 +305,6 @@ function _overlay_status_line(base, col, text) {
     out += text;
     return out;
 }
-/* ── build_text_window_screen — the tty NHW_TEXT (full-screen) window ────────
- * C ref: win/tty tty_create_nhwindow's NHW_TEXT arm gives the window
- * offx = 0, offy = 0, rows = ttyDisplay->rows, cols = ttyDisplay->cols — a TEXT
- * window is ALWAYS full-screen, unlike NHW_MENU which is placed dynamically and
- * overlays the map (build_window_screen above).  tty_display_nhwindow therefore
- * does clear_screen() before process_text_window paints, so the map, both status
- * lines and the topline are all gone while a text window is up.
- *
- * process_text_window then paints line i at row i (tty_curs(window, 1, n) with
- * offx 0 ⇒ column 0) and, having run out of lines, does
- *     tty_curs(BASE_WINDOW, cw->offx + 1, ttyDisplay->rows - 1); cl_end();
- *     dmore(cw, quitchars);
- * i.e. the "--More--" of a TEXT window is pinned to the LAST screen row (23),
- * not to the row after the last text line the way a MENU window's is.  The
- * cursor ends at column strlen("--More--") == 8 of row 23.
- *
- * Verified bit-for-bit against seed2200's four look_all frames (steps 87/90/93/
- * 96, cursor [8,23,1]) and its two look_engrs frames (steps 103/106).
- *
- * Rows are right-trimmed to match the recorder's per-row screen dump (which is
- * why look_all's four-space Qt separator line records as an empty row). */
 export function build_text_window_screen(lines) {
     const rows = new Array(24).fill('');
     for (let i = 0; i < lines.length && i < 23; i++)
@@ -352,44 +312,9 @@ export function build_text_window_screen(lines) {
     rows[23] = '--More--';
     return rows.join('\n');
 }
-/* The recorder's screen encoding (nomux_capture_screen, the same rule the map
- * and menu builders in this file already follow at `gap > 4`): a run of more
- * than four blanks is emitted as a cursor-forward escape rather than as literal
- * spaces.  Text-window rows have to obey it too — doextversion's Lua licence
- * block is indented five columns and records as "\x1b[5C…" while its
- * four-column-indented neighbours record as literal spaces, and dat/help's
- * column layout records interior gaps the same way ("Welcome to NetHack!" then
- * "\x1b[16C( description of version 3.6 )").  Runs of four or fewer — every
- * look_all / look_traps / look_engrs entry — are unaffected. */
 function _encode_blank_runs(row) {
     return row.replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
 }
-/* ── tty_fit_text_lines — tty_putstr()'s over-long-line handling for NHW_TEXT ─
- * C ref: win/tty tty_putstr(), the "line doesn't fit" arm.  A putstr line that
- * would not fit the 80-column terminal is NOT clipped: the tty first squeezes
- * the line with mungspaces() (strip edge blanks, collapse internal runs), and
- * only if it is STILL too wide breaks it at the last blank at or before the last usable
- * column (or, when the line has no blank to break at, at that column), putting
- * the remainder on the following line.
- *
- * Both arms are observable in seed2200's option_help window (steps 158-164),
- * which is the only window in the corpus that emits lines wider than the
- * terminal:
- *   squeeze — options.c:9548 formats compound options as "%-20s - %s%c", so
- *     `glyph' pads to 20 and the line reaches 81 columns; C renders it as
- *     "`glyph' - set representation…" with the whole 14-blank run collapsed
- *     (not merely trimmed to fit), and the 79-column neighbours keep their
- *     padding untouched.  Same for `whatis_filter' at 82.
- *   break — "Set options as OPTIONS=<options> in <configfile>" has no repeated
- *     blanks to squeeze, so it breaks after "in" (the last blank below the
- *     limit) and the path continues on the next line.
- *
- * Every line the rest of the corpus paints through a text window is under 80
- * columns (dat/{help,hh,opthelp,history,license,optmenu,usagehlp} contain no
- * line >= 80, and the generated windows — doextversion, dokeylist,
- * domenucontrols, docontact — are narrower still), so this is a no-op for them.
- *
- * PURE FUNCTION on the display channel: no state, no RNG. */
 export function tty_fit_text_lines(lines) {
     const CO = 80; /* the tty's column count */
     const out = [];
@@ -417,59 +342,13 @@ export function tty_fit_text_lines(lines) {
     return out;
 }
 
-/* ── display_text_window — tty_display_nhwindow(win, FALSE) for an NHW_TEXT ───
- * C ref: win/tty process_text_window paints line i at row i and, each time it is
- * about to write past the last usable row, stops for a "--More--" at row rows-1
- * (23) and clears; after the final line it does one last
- * tty_curs(BASE_WINDOW, offx + 1, rows - 1) + dmore().  So a window of N lines
- * shows ceil(N/23) pages, each ending in a "--More--" at row 23 with the cursor
- * left at column 8.  ESC during a mid-window --More-- sets WIN_CANCELLED and
- * abandons the rest of the window.
- *
- * Lifted here from js/cmd.js (which now delegates) so js/lock.js getdir's
- * help_dir/cmdassist window can share it without a cmd.js <-> lock.js import
- * cycle (cmd.js already imports getdir from lock.js).
- *
- * DISPLAY-CHANNEL ONLY: consumes the dismiss keystroke(s), never any RNG. */
 export async function display_text_window(lines) {
     const g = game;
     const PAGE_ROWS = 23; /* ttyDisplay->rows - 1 */
     lines = tty_fit_text_lines(lines);
-    /* C ref: tty_display_nhwindow — a TEXT window clear_screen()s the terminal,
-     * so an unacknowledged topline message must be page-acked FIRST (the tty's
-     * ttyDisplay->toplin == TOPLINE_NEED_MORE more()).  Without this the
-     * pending pline is simply erased and its dismiss keystroke leaks to rhack
-     * (seed0370 step 144: C shows "You materialize on a different
-     * level!--More--" before the quest firsttime window, JS showed the bare
-     * message and ate the space as a command).  DISPLAY-channel only: consumes
-     * the recorded dismiss key, draws no RNG. */
     if (g._pending_message) {
         await force_more(g._pending_message);
     } else if (g._resultMessage) {
-        /* SAME C statement, the other message channel — the repair commit
-         * 8035e3fe made for look_here's pile window, needed again here for the
-         * identical reason.  C has ONE topline and ONE flag: the page happens
-         * whenever ttyDisplay->toplin == TOPLINE_NEED_MORE, which update_topl
-         * (topl.c:390) sets on EVERY pline of the turn.  This port splits the
-         * topline across two buffers, and a turn whose plines have already been
-         * moved into the command-result channel (js/allmain.js:2251, the
-         * post-rhack wipe) reaches here with _pending_message empty.
-         *
-         * MEASURED on seed0361-archeologist-tour step 177: the hero's travel is
-         * cut short by teleportitis, teleds() plines "You materialize in a
-         * different location!" (js/teleport.js:442) and rhack then hands that
-         * line to _resultMessage; on the very next moveloop pass the quest
-         * leader — now adjacent — speaks, and qt_pager opens this window.  C
-         * paints "You materialize in a different location!--More--" for TWO
-         * frames (the recorded 'y' is not a quitchar, so xwaitforspace swallows
-         * it and repaints) and only then shows the leader's text.  Without this
-         * arm the window opened two frames early over a blank topline and every
-         * later frame in the session was misaligned.
-         *
-         * C's more() is followed by tty_clear_nhwindow(WIN_MESSAGE), so the
-         * result channel is cleared here too — force_more/nhgetch only clear
-         * _pending_message.  The both-channels-set case above is left alone, on
-         * the same reasoning as 8035e3fe.  DISPLAY-ONLY: no RNG. */
         await force_more(g._resultMessage);
         g._resultMessage = '';
         g._resultMessageJoins = null;
@@ -536,7 +415,6 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 //     putstr at offx+1 = col
                 // (wintty.c:1499-1520 process_text_window), so nothing left of
                 // offx is touched and whatever the message row physically held
-                // stays on screen.  seed4500 steps 789/794/811/827/927: the
                 // getpos autodescribe line ("staircase up") is still standing
                 // at column 0 in C's frame when look_here's pile window opens
                 // at column 40; this port blanked it.
@@ -611,7 +489,6 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 // minus one here) is ERASED before the morestr is written one
                 // column further right.  Clipping the status at `col` left that
                 // margin column painted with whatever the status line had
-                // there: seed0116 step 115 rendered "...St:(end)" where C
                 // renders "...St (end)" — the ':' of "St:12" surviving under
                 // the window edge.  The margin is skipped with a cursor-forward
                 // rather than written as a space, because cl_end() ERASES the
@@ -660,19 +537,6 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 output += text;
             }
             else if (statusClipCol != null) {
-                /* Row 23 is cleared by the taller window's dismiss docorner()
-                 * exactly as row 22 is, and NOTHING repaints it: C's bot()
-                 * (display.c:2286) runs only from flush_screen and only when
-                 * disp.botl/botlx is flagged, and merely displaying a menu
-                 * window flags neither.  The comment above used to claim row 23
-                 * "is fully redrawn by bot()" -- measured false on seed5002
-                 * segment 1 step 153, where C's itemactions frame carries an
-                 * EMPTY row 23 and this port painted the whole status line into
-                 * the corner the dismiss had just erased.
-                 *
-                 * Reached only from itemactions (js/cmd.js:4395), the sole
-                 * caller that passes statusClipCol; every other window keeps the
-                 * full-status branch below byte-for-byte. */
                 output += _overlay_status_line(_statusLine2(uacStep0, pwOverride),
                                                statusClipCol, '');
             }
@@ -738,17 +602,13 @@ function make_window_lines(text) {
 // ── tty window origin (C `cw->offx`) ─────────────────────────────────────────
 // There is no ONE offx formula: C reaches a window through two different tty
 // entry points and they differ by one column plus a cap.  Both branches below
-// are ground truth read off the recorder's `^erase_menu_or_text[... offx=N]`
-// markers with tools/window-geometry-extract.mjs (that marker IS C's cw->offx;
 // the CONTENT left edge, which is what WIN_COL means here, is offx + 1):
 //
 //   'more' — tty_display_nhwindow() on a window that ends in "--More--":
 //            content column = COLNO - 1 - maxcol  ( = 79 - maxcol )
-//            seed0500 step 9 (the legacy window): maxcol 58 -> 21.  [cOffx 20]
 //
 //   'end'  — tty_end_menu()/select_menu() on a picklist that ends in "(end)":
 //            content column = min(41, COLNO - 2 - maxcol)  ( = min(41, 78 - w) )
-//            seed0500 step 11 (tutorial menu)  maxcol 57 -> 21   [cOffx 20]
 //                     step 316 (spell menu)    maxcol 58 -> 20   [cOffx 19]
 //                     step 8   (Is this ok?)   maxcol 38 -> 40
 //                     step 173 (container)     maxcol 44 -> 34
@@ -789,18 +649,6 @@ export function tty_window_offx(windowLines, footerKind) {
 }
 // ── Status line helpers (inlined from display.js — not exported there) ──
 // C ref: botl.c — bot(), status line 1 and 2 format.
-/* ── Role rank tables ─────────────────────────────────────────
- * C ref: botl.c rank_of -> xlev_to_rank -> roles[].rank[i].{m,f}.
- *
- * The 15-entry _CP_ROLE_RANKS literal that used to sit here now lives in
- * js/rank_data.js, generated from the 5.0 role.c through the C preprocessor.
- * Its own header said "mirrored from display.js" and "Source:
- * nethack-c/src/role.c" -- the 3.7 tree -- and it was nonetheless the CORRECT
- * one of the three live copies; js/cmd.js _enl_rank_of, which knew only Wizard
- * and knew it wrong, was not.  Keeping one table means the status line and the
- * enlightenment window can no longer disagree about who the hero is: seed0200
- * step 34 renders "Kira the Candidate" from this function and "You are a Monk,
- * level 1 female human." from that one, two rows apart on the same screen. */
 function _cp_rank_of(ulevel, roleName, female) {
     const idx = role_index_by_name(roleName);
     if (idx < 0)
@@ -823,10 +671,6 @@ function _statusLine1() {
     const roleNameM = g.urole?.name?.m || '';
     const roleNameF = g.urole?.name?.f || '';
     const lookupName = roleNameM || roleNameF;
-    /* C ref: botl.c:777 — titl = !Upolyd ? rank() : pmname(&mons[u.umonnum],
-     * Ugender); botl.c:788-792 capitalizes every word of the monster name.
-     * Same arm as js/display.js _statusLine1; this copy paints the rows a menu
-     * window covers, so it needs it too (seed5500's post-polymorph pickup menu). */
     /* C you.h:554 — #define Upolyd (u.umonnum != u.umonster).  Was
      * (u.mtimedone > 0), which is you.h:422, the poly TIMER, a different field. */
     const Upolyd = (u.umonnum | 0) !== (u.umonster | 0);
@@ -838,12 +682,6 @@ function _statusLine1() {
            || g.urole?.name?.m
            || 'Adventurer');
     const title = `${name} the ${role}`;
-    /* C botl.c bot1str — ACURR(A_STR) … ACURR(A_CHA), i.e. acurr() =
-     * ABON + ATEMP + ABASE (attrib.c:1206), NOT the raw ABASE array that
-     * u.acurr.a holds.  Same stand-in, and the same fix, as js/display.js
-     * _statusLine1; this copy paints the rows a menu window covers, so a
-     * pickup menu opened while the hero has wounded legs showed the pre-injury
-     * Dx (seed0014 step 285, one step after the bear trap). */
     const _hasAttrs = !!(u.acurr && u.acurr.a);
     const _acur = (ci) => (_hasAttrs ? acurr(u, ci) : null);
     const _st = _acur(A_STR);
@@ -884,14 +722,6 @@ function _statusLine2(uacOverride, pwOverride) {
      * made the status row read a post-u_init snapshot instead; see the long
      * note at the matching site in js/display.js _statusLine2(). */
     const gold = money_cnt(g.invent ?? null);
-    /* C ref: botl.c:823-826 bot_via_windowport()
-     *     i = Upolyd ? u.mh : u.uhp;
-     *     if (i < 0)              / * gameover sets u.uhp to -1 * /
-     *         i = 0;
-     *     blstats[idx][BL_HP].a.a_int = min(i, 9999);
-     * The ` < 0` floor applies to the DISPLAYED current-hp value only; the
-     * max-hp field (botl.c:827-830) and the power fields (botl.c:863-866) get
-     * min(x, 9999) with no floor. */
     /* C you.h:554 — #define Upolyd (u.umonnum != u.umonster).  Was
      * (u.mtimedone > 0), which is you.h:422, the poly TIMER, a different field. */
     const Upolyd = (u.umonnum | 0) !== (u.umonster | 0);
@@ -900,28 +730,8 @@ function _statusLine2(uacOverride, pwOverride) {
         _hp = 0;
     _hp = Math.min(_hp, 9999);
     const _hpmax = Math.min(Upolyd ? (u.mhmax | 0) : (u.uhpmax || 0), 9999);
-    /* C ref: botl.c:1047 — the BL_LEVELDESC field is
-     *     (void) describe_level(gb.blstats[idx][BL_LEVELDESC].val, 1);
-     * NOT "Dlvl:" + u.uz.dlevel, which is what this line used to build.  Two
-     * things are wrong with the raw dlevel: it is the level's index WITHIN its
-     * dungeon, not depth() (dungeons[dnum].depth_start + dlevel - 1), and it
-     * skips describe_level's three name branches (Is_knox / In_quest "Home n" /
-     * In_endgame, plus the tutorial label).  js/display.js's _statusLine2 has
-     * always gone through describe_level_buf; this copy — which paints the
-     * status rows a MENU window leaves uncovered — did not, so the two renderers
-     * disagreed on every level outside the main dungeon's dlevel==depth run.
-     * Witness: seed2600-wizard-custom-binds step 26, an inventory window opened
-     * one step after a level-teleport into Sokoban (soko1, dnum 3 dlevel 1,
-     * depth 5): C's row 23 reads "Dlvl:5", this renderer wrote "Dlvl:1", and the
-     * map frame either side of it (drawn by display.js) reads Dlvl:5.
-     * wintty.c:4546-4556 strips the field's trailing blanks, same as there. */
     const _leveldescField = describe_level_buf(1, u.uz).replace(/ +$/, '');
     let s = `${_leveldescField} $:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
-    /* C ref: botl.c:148-154 — the experience field is "HD:<mlevel>" when Upolyd
-     * (mons[u.umonnum].mlevel, cf. botl.c:872 BL_HD), else "Xp:<lvl>/<exp>" when
-     * flags.showexp, else "Xp:<lvl>".  botl.c:1458-1460 gates the same way:
-     * BL_EXP needs (flags.showexp && !Upolyd), BL_XP needs !Upolyd, BL_HD needs
-     * Upolyd.  Same arm as js/display.js _statusLine2. */
     if (Upolyd) {
         s += ` HD:${botl_mon_mlevel(u.umonnum | 0)}`;
     }
@@ -935,31 +745,13 @@ function _statusLine2(uacOverride, pwOverride) {
     if (g.flags?.time) {
         s += ` T:${g.moves || 1}`;
     }
-    /* C ref: botl.c:186-188 + conditions[] — the hunger / encumbrance / condition
-     * tail.  Shared with js/display.js _statusLine2 so the two status-line
-     * renderers cannot drift; this copy paints the rows a menu window covers, and
-     * had none of these fields (seed5500's post-polymorph pickup menu dropped
-     * C's " Blind").  No frozen --More-- frame reaches this renderer, so both
-     * values are the live ones. */
     s += botl_status_suffix(u.uhs | 0, undefined);
     return fit_status_line_width(s);
 }
 // ── pline_with_more ──
 // C ref: allmain.c:923 welcome(TRUE) → pline() triggers --More-- in tty after com_pager.
 // In C, the welcome pline appears on the topline (row 0); then nhgetch() is called for
-// the --More-- dismiss (step 1 capture). Below row 0, the map rows 1..21 (game y=0..20)
 // are shown; row 22-23 are status lines (with updated uac from find_ac).
-// C ref: tty more() → bot() → draws updated status before capture.
-/* C ref: allmain.c:914 welcome() / allmain.c:57-68 moveloop_preamble() — the
- * messages this path renders are PLAIN pline()s in C, so each one makes
- * vpline's flush point (pline.c:274) before its putmesg.  This port renders the
- * frame by hand instead of going through pline(), so the flush point has to be
- * made explicitly; it is the first flush-point divergence in 44 of 44 public
- * sessions (tools/flush-point-diff.mjs).
- *
- * The flush is a REPAINT — it paints into the same buffer this function then
- * overwrites with its hand-composed `output`, so it changes no rendered frame;
- * what it does change is when bot() runs and what the botl latch holds. */
 export async function pline_with_more(msg, uacAtCapture) {
     pline_flush_point();
     await topl_more_page(msg, uacAtCapture);
@@ -1034,32 +826,11 @@ export async function topl_more_page(msg, uacAtCapture) {
     // which also sets ttyDisplay->dismiss_more and makes more() raise WIN_STOP)
     // and every char of `s`, which more() passes as "\033 " — i.e. space.
     //
-    // ESC USED TO BE EXCLUDED HERE, citing seed0070 (a v0/3.7 recording that is
-    // not in the v5 corpus at all).  It is a dismiss key, and the v5 recordings
-    // say so directly: gen676-grammar-seed787207's second keystroke is an ESC on
     // the welcome --More--, and C's step-2 frame is already the tutorial menu
     // while this port was still holding the --More-- up and eating every key
     // after it.  js/display.js _topl_more() — the OTHER copy of this loop, used
     // by every non-startup more() — has always had the ESC arm; only this
     // startup-path copy was missing it.
-    /* This loop USED TO BE HAND-ROLLED here, and it was the third copy of
-     * xwaitforspace in the port.  It is now js/display.js await_topl_more_dismiss
-     * — the same dismiss set, plus the half this copy was missing: topl.c:232-235
-     *     if (morc == '\033') { if (!(cw->flags & WIN_NOSTOP)) cw->flags |= WIN_STOP; }
-     * i.e. an ESC dismiss of a TOPLINE more() suppresses the next message.  This
-     * is a startup-path more() on WIN_MESSAGE (it hand-renders "<msg>--More--" on
-     * row 0), so toplMore is TRUE — 94f76c18 landed that model in js/display.js
-     * on 2026-08-16 and this copy was left behind.
-     *
-     * The startup loop uses the returned dismiss key to preserve WIN_STOP
-     * across later queued messages.  update_topl samples skip before the
-     * more() call, so the incoming message still paints on the iteration
-     * which receives ESC; the following messages do not.
-     *
-     * `rerender` re-shows the same --More-- line so a non-dismiss key produces an
-     * identical capture (C re-loops xwaitforspace after ringing the bell): nhgetch
-     * clears _pending_message, so the committed message, the screen and the cursor
-     * all have to be restored. */
     const morc = await await_topl_more_dismiss(() => {
         game._pending_message = msg;
         g._screen_output = output;
@@ -1079,7 +850,6 @@ export async function topl_more_page(msg, uacAtCapture) {
 // C ref: allmain.c:911-913 — if (flags.legacy) com_pager(pauper ? "pauper_legacy" : "legacy")
 // Called after emitMapstate('post_init') in allmain.js.
 // Delivers the Book-of-{god} intro as a NHW_MENU window, then calls nhgetch()
-// to consume the dismiss key (which triggers screen capture at step 0).
 // preInitAc: u.uac value BEFORE find_ac() ran (C: memset zeros u.uac = 0 before init).
 //   In JS, u.uac is undefined before find_ac; pass 0 to mirror C memset semantics.
 export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw = undefined) {
@@ -1100,11 +870,8 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
     const windowLines = make_window_lines(formattedText);
     // The legacy window is shown by tty_display_nhwindow() and ends in
     // "--More--", so it takes the `79 - maxcol` branch of tty_window_offx().
-    // Confirmed against C's own offx marker (seed0500 step 9: maxcol 58 -> 21)
-    // and against all 50+ legacy-window sessions in the corpus.
     const footerKind = 'more';
     const WIN_COL = tty_window_offx(windowLines, footerKind);
-    // Build combined map+window screen and install for capture hook.
     // preInitAc mirrors C's u.uac=0 (from memset) at the time bot() rendered step 0.
     const screenOutput = build_window_screen(windowLines, WIN_COL, preInitAc, undefined, preInitPw);
     // Set cursor to end of --More-- line
@@ -1124,7 +891,6 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
         }
     };
     await _show();
-    // nhgetch() fires capture hook (captures g._screen_output), then reads dismiss key
     await await_more_dismiss(_show);
     // C ref: questpgr.c:597-608 com_pager_core — after deliver_by_window, the
     // "legacy"/"pauper_legacy" entry carries a `synopsis` that is added to the
@@ -1166,17 +932,13 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
 // Loops until 'y', 'n', or ESC. Returns boolean (true=do tutorial).
 //
 // Called only when g.tutorial_set_in_config is falsy (i.e. tutorial option was
-// NOT explicitly set in the session's nethackrc — OPTIONS=tutorial or !tutorial
-// absent). When present (seed8000 has OPTIONS=!tutorial), this function is skipped.
 //
 // WIN_COL computation:
 //   Longest line is the config hint (57 chars): 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.'
 //   C: offx = COLNO - maxwidth - 2 = 80 - 57 - 2 = 21.
-//   Verified from session: step 2 screen shows \x1b[21C prefix on all lines.
 //
 // Cursor: after "(end)" at WIN_COL + len("(end)") + 1 = 21 + 5 + 1 = 27.
 //   C ref: tty select_menu PICK_ONE — cursor ends one past last char of footer.
-//   Verified: session step 2 cursor = [27, 6, 1].
 export async function ask_do_tutorial() {
     const g = game;
     const u = g.u;
@@ -1184,7 +946,6 @@ export async function ask_do_tutorial() {
      * drawing an overlay (wintty.c:1939-1940), including after WIN_STOP. */
     g._pending_message = '';
     // C ref: options.c:463-465 — Snprintf buf with rc basename.
-    // Harness always uses ".nethackrc" as the config file basename (norc=false).
     const configHint = 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.';
     // This is a select_menu()/tty_end_menu() picklist ending in "(end)", so it
     // takes the `min(41, 78 - maxcol)` branch of tty_window_offx() — one column
@@ -1192,7 +953,6 @@ export async function ask_do_tutorial() {
     // hint is the longest line at 57 visible columns (the reverse-video title
     // is 23 once its SGR escapes are discounted, the retry line 27, "(end)" 5),
     // so this evaluates to min(41, 78 - 57) = 21 on every pass.
-    // Confirmed against C's own offx marker: seed0500 steps 11-15, cOffx=20,
     // i.e. content column 21.
     const footerKind = 'end';
     // The real uac at tutorial time (find_ac has already run inside u_init_skills_discoveries).
@@ -1205,22 +965,6 @@ export async function ask_do_tutorial() {
         { selector: 'y', str: 'y - Yes, do a tutorial' },
         { selector: 'n', str: 'n - No, just start play' },
     ];
-    /* C ref: wintty.c:1529-1537 — the response set dmore() hands xwaitforspace.
-     *   resp = <page selectors> + " " + "0123456789\033\n\r"
-     *          + gm.mapped_menu_cmds + default_menu_cmds
-     * with default_menu_cmds (wintty.c:287-292) being MENU_FIRST_PAGE '^',
-     * MENU_LAST_PAGE '|', MENU_NEXT_PAGE '>', MENU_PREVIOUS_PAGE '<',
-     * MENU_SELECT_ALL '.', MENU_UNSELECT_ALL '-', MENU_INVERT_ALL '@',
-     * MENU_SELECT_PAGE ',', MENU_UNSELECT_PAGE '\\', MENU_INVERT_PAGE '~',
-     * MENU_SEARCH ':'.  gm.mapped_menu_cmds is empty unless the rc rebinds a
-     * menu command (OPTIONS=menu_search:... etc.); no corpus rc does.
-     *
-     * Everything NOT in this set rings the bell inside xwaitforspace and is
-     * re-read WITHOUT leaving it, so the menu frame repeats unchanged — which
-     * is why an uppercase 'Y' or 'N' does NOT answer this menu.  That was the
-     * bug: this port accepted 'Y'/'N', so gen594-grammar-seed758889 step 13
-     * ('Y') and gen610-grammar-seed110890 step 20 ('N') left the menu here
-     * while C still had it up. */
     const RESP_EXPLICIT = mlist.map((m) => m.selector).join(''); /* "yn" */
     const RESP = RESP_EXPLICIT + ' ' + '0123456789\x1b\n\r' + '^|><.-@,\\~:';
     let pass = 0;
@@ -1247,15 +991,6 @@ export async function ask_do_tutorial() {
         const endRow = windowLines.length - 1; // 0-indexed screen row of "(end)"
         const endCursorCol = WIN_COL + 5 + 1; // 21 + 5 + 1 = 27
         const disp = g?.nhDisplay;
-        /* C ref: win/tty/getline.c:213 tty_getlin's closing
-         * clear_nhwindow(WIN_MESSAGE) — home(); cl_end() blanks the WHOLE of
-         * screen row 0, including the window's own title text at column
-         * WIN_COL.  process_menu_window only repaints a page when page_start
-         * is reset (a page change), so within ONE select_menu() call the title
-         * row never comes back: gen676-grammar-seed787207 step 25 and
-         * gen582-grammar-seed770253 step 25 both show C's menu with an EMPTY
-         * row 0 after a MENU_SEARCH.  A fresh select_menu() (the do-while
-         * retry) redraws it. */
         let titleErased = false;
         /* C ref: wintty.c:1393-1398 — `counting`/`count` survive exactly one
          * further iteration after a digit (reset_count is cleared by the digit
@@ -1275,7 +1010,6 @@ export async function ask_do_tutorial() {
                 disp.cursorCol = endCursorCol;
                 disp.cursorRow = endRow;
             }
-            // Consume one key via nhgetch (triggers screen capture hook).
             const keyCode = await nhgetch();
             const morc = typeof keyCode === 'number' ? String.fromCharCode(keyCode) : String(keyCode || '');
             /* C ref: getline.c:230-257 xwaitforspace(resp) — '\n'/'\r' always
@@ -1358,28 +1092,6 @@ export async function ask_do_tutorial() {
     }
 }
 
-/* C ref: win/tty/wintty.c:1704 MENU_SEARCH → tty_getlin("Search for:", tmpbuf),
- * i.e. win/tty/getline.c:42 hooked_tty_getlin with no completion hook.
- *
- * This is a getlin drawn OVER a live menu window, which js/wizcmds.js getlin()
- * cannot do: that one renders through _pending_message + flush_screen(), which
- * repaints the map underneath.  C's getlin only touches screen row 0 —
- * custompline() -> update_topl() -> redotoplin() does home(); putsyms(query);
- * cl_end() — so the menu rows below stay exactly as the menu drew them, and
- * the window's own title text at column WIN_COL is erased by that cl_end().
- * gen676-grammar-seed787207 steps 6..24 are the frame-by-frame witness.
- *
- * `frameRows()` must return the CURRENT menu frame as an array of screen rows
- * — exactly what that menu last painted — because everything below row 0 has
- * to survive the getlin untouched.  Row 0 of what it returns is overwritten
- * here and is therefore free to be anything; the CALLER is what has to keep
- * its own row 0 blank AFTERWARDS, since process_menu_window only repaints a
- * page when page_start is reset, so within one select_menu() call the erased
- * title never comes back.
- *
- * Returns the typed string, '' if the player committed an empty line, or
- * '\x1b' when ESC cancelled an already-empty buffer (C: obufp[0] = '\033').
- */
 export async function menu_search_getlin(frameRows) {
     const g = game;
     const disp = g?.nhDisplay;
@@ -1389,12 +1101,6 @@ export async function menu_search_getlin(frameRows) {
      * part of the prompt, and the cursor sits just past what has been typed. */
     const render = async () => {
         const rows = (await frameRows()).slice();
-        /* C ref: getline.c:63 + redotoplin's cl_end() — putsyms() writes the
-         * prompt and the typed text, then cl_end() ERASES the rest of the row,
-         * so a trailing space the player typed is a written-then-erased cell
-         * and does not survive into the recorded frame.  (gen676-grammar-
-         * seed787207 steps 12-15: C's row 0 stays "Search for: izpof" while
-         * four spaces are typed, and its cursor walks 18,19,20,21.) */
         rows[0] = (query + ' ' + buf).replace(/\s+$/, '');
         g._screen_output = rows.join('\n');
         if (disp) {
@@ -1415,13 +1121,6 @@ export async function menu_search_getlin(frameRows) {
         if (keyCode === 10 /* \n */ || keyCode === 13 /* \r */)
             break; /* C ref: getline.c:160-164 */
         if (keyCode === 127 /* erase_char */ || keyCode === 8 /* '\b' */) {
-            /* C ref: getline.c:141-159 `if (c == erase_char || c == '\b')` —
-             * erase one character, ringing the bell at the start of the line.
-             * erase_char is the pty's VERASE (sys/share/unixtty.c:218
-             * `erase_char = inittyb.erase_sym`), which on the Linux pty the
-             * recorder runs under is DEL (0177) — so 0177 takes THIS arm, not
-             * the kill_char arm below, and never reaches the printable test
-             * (which excludes '\177' explicitly). */
             if (buf.length > 0) buf = buf.slice(0, -1);
             continue;
         }

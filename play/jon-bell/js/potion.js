@@ -1,8 +1,6 @@
 // @ts-nocheck
 // potion.js — Potion subsystem + fountain interactions.
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
-// W19.2: uncursed-water dodrink path (seed1900 SCORE-MOVER).
-// W4b: drinkfountain (seed0011 SCORE-MOVER) + dipfountain stub.
 import { game, wizard, discover } from './gstate.js';
 import { newobj } from './game.js';
 import { make_blinded, resist, explode, explode_oil, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
@@ -84,16 +82,6 @@ import { polyself, set_uasmon } from './polyself.js';
 import { create_gas_cloud, gas_cloud_at } from './region.js';
 /* C do_name.c a_monnam(mtmp) => x_monnam(mtmp, ARTICLE_A, NULL, 0, TRUE). */
 function a_monnam(mtmp) { return x_monnam(mtmp, ARTICLE_A, null, 0, true); }
-/* in_town: dryup() (fountain.c:201) calls it, and this file never imported it,
- * so the whole call was a ReferenceError the moment a hero quaffed from a
- * fountain — the throw stops runSegment's moveloop and forfeits every frame
- * after it (seed4500 ended 488 keystrokes early).  Its home is mklev.c, and
- * js/ has exactly one definition of it (js/cmd.js:21863, a not-yet-ported stub
- * returning FALSE, which is correct for every level in the corpus: in_town
- * needs svl.level.flags.has_town).  Imported rather than re-stubbed locally so
- * this file starts telling the truth the day the real one lands — js/dig.js
- * already carries its own `function in_town() { return false; }` and will not.
- * The cmd.js <-> potion.js cycle already exists (getobj_redo_menu). */
 import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromGetobj,
          costly_alteration } from './cmd.js';
 import { cansee, couldsee } from './vision.js';
@@ -207,24 +195,6 @@ const SPBOOK_CLASS = 10;
 const POT_WATER = 322;
 /* C objects.h: POT_OIL otyp = 321 (POT_WATER - 1). */
 const POT_OIL = 321;
-/* C eat.c:3363 newuhs(boolean incr) — recompute hero hunger state.
- * C has exactly ONE newuhs (eat.c:3363); this file used to redeclare it as an
- * EMPTY local stub, which shadowed the real body (js/eat.js:203) for all three
- * of this file's call sites (drinkfountain's cool draught, peffect_water's
- * uncursed arm, and the POT_FRUIT_JUICE arm).  A 64-session probe shows those
- * sites DO execute — 4x in seed0002 (fruit juice) and 1x in seed1900
- * (peffect_water) — so this was a live shadow, not a landmine.
- * The real body is now imported (see the eat.js import at the head of the
- * file).  Behaviour on the current corpus is unchanged and that is expected:
- * all five executions enter with u.uhunger in 723..949 and u.uhs == NOT_HUNGRY,
- * so C's threshold table (eat.c:3369-3373: h>1000 SATIATED, h>150 NOT_HUNGRY)
- * yields newhs == u.uhs and the whole `newhs != u.uhs` block at eat.c:3451 is
- * skipped — no ATEMP, no message, no SET_BOTL.  The C traces agree: neither
- * seed0002 nor seed1900 carries a `^botl[newuhs]` marker at those steps, while
- * the four eat.c-driven sessions (seed0003/0014/0387/0777) do.  The fix
- * matters the moment a potion pushes u.uhunger across 1000 (-> SATIATED, which
- * has no message in C's switch, just u.uhs + SET_BOTL) or a cursed/diluted
- * potion pushes it down across 150. */
 /* ---------------------------------------------------------------------------
  * Attribute helpers for adjattrib (inlined from attrib.js private scope).
  * These mirror the private helpers in attrib.js exactly.
@@ -348,11 +318,6 @@ async function _adjattrib(ndx, incr, msgflg) {
     if (game.disp)
         game.disp.botl = 1;
     if (msgflg <= 0) {
-        /* C attrib.c:195: You_feel("%s%s!", (incr>1||incr<-1)?"very ":"", attrstr).
-         * You_feel (pline.c:392) prefixes "You feel " then prints "%s%s!".
-         * attrstr = plusattr[ndx] / minusattr[ndx] — the EXACT C tables
-         * (attrib.c:11-15): no "more"/"-er" embellishment, no trailing period.
-         * For A_DEX (ndx 3) incr=1 → "You feel agile!" (seed0011 step 5). */
         const _plusattr = ['strong', 'smart', 'wise', 'agile', 'tough', 'charismatic'];
         const _minusattr = ['weak', 'stupid', 'foolish', 'clumsy', 'fragile', 'repulsive'];
         const attrstr = (incr > 0) ? _plusattr[ndx] : _minusattr[ndx];
@@ -369,15 +334,6 @@ async function _adjattrib(ndx, incr, msgflg) {
  * ---------------------------------------------------------------------------
  */
 async function y_n(question) {
-    /* C ref: hack.h:1334 y_n(query) => yn_function(query, ynchars, 'n', TRUE).
-     * tty_yn_function writes "<query> [yn] (n)" to the topline (responses in
-     * brackets, the default response 'n' in parens), positions the cursor one
-     * column past the prompt, then calls nhgetch().
-     *
-     * The prompt MUST be flushed to _screen_output BEFORE nhgetch so the
-     * step-boundary capture hook (jsmain _preNhgetchHook) snapshots the
-     * rendered prompt rather than the previous screen.  (seed0011 step 4:
-     * "Drink from the fountain? [yn] (n)", cursor col 34 = strlen+1.) */
     const prompt = question + ' [yn] (n)';
     /* C tty_yn_function() acknowledges a pending message before painting its
      * query.  First drain any width-driven pages; if their final message is
@@ -411,36 +367,9 @@ async function y_n(question) {
             if (disp) topl_park_cursor(disp, prompt + ' ');
         }
     } while (true);
-    /* C leaves the yn prompt PHYSICALLY on the terminal row after the answer is
-     * read.  win/tty/topl.c tty_yn_function's clean_up (topl.c:533-549) rewrites
-     * gt.toplines to "<prompt><answer>" but deliberately does NOT redraw it
-     * ("addtopl(rtmp); -- rewrite gt.toplines instead"), sets
-     * ttyDisplay->toplin = TOPLINE_NON_EMPTY, and only clears the window when
-     * the message spilled onto a second row (`if (wins[WIN_MESSAGE]->cury)`).
-     * The next erase is cmd.c:5147 parse()'s clear_nhwindow(WIN_MESSAGE), which
-     * runs AFTER the next top-level command key has been read — so a command
-     * that plines nothing after the prompt still shows the prompt at the next
-     * input boundary.  seed0106 step 110: 'y' to "Dip 4 potions of holy water
-     * into the fountain? [yn] (n)" runs dipfountain, which for a blessed potion
-     * of water emits no message, and C's frame still carries the prompt where
-     * this port rendered a blank topline.
-     *
-     * js/input.js nhgetch drops _pending_message on EVERY read, so hand the
-     * prompt to the paint-time fallback (_topl_sticky, js/display.js:3015): a
-     * live _pending_message still beats it (so the "Nothing seems to happen."
-     * of step 117 wins, exactly as C's update_topl redotoplin replaces the row)
-     * and the next nhgetch clears it.  Narrow on purpose — the general form
-     * (sticky = whatever nhgetch just cleared) is falsified at 6064 -> 5688
-     * with 21 sessions lost; this is the same per-prompt shape js/cmd.js's
-     * getobj drop prompt uses. */
     game._topl_sticky = prompt;
     return answer;
 }
-/* ---------------------------------------------------------------------------
- * floating_above(what) — C ref: fountain.c:21 floating_above().
- * Stub: hero can't be levitating in early sessions.
- * ---------------------------------------------------------------------------
- */
 async function floating_above(what) {
     await pline(`You cannot reach the ${what}!`);
 }
@@ -449,17 +378,6 @@ async function floating_above(what) {
  * Checks fountain depletion. RNG: rn2(3) or FOUNTAIN_IS_WARNED check.
  * ---------------------------------------------------------------------------
  */
-/* C ref: fountain.c:180-199 watchman_warn_fountain(mtmp) — the get_iter_mons
- * callback dryup() runs the first time the hero uses a Minetown fountain.
- * RNG-FREE.  Both the callback and get_iter_mons() were NAMED here and defined
- * NOWHERE, so the call was a live ReferenceError: seed0014-dequa-fountain-
- * explore -- the session named for its fountain -- halted at frame 711 of 714
- * inside dodip.  C's last two frames are
- *     712  "You lost some of your gold in the fountain!  A watchman yells:--More--"
- *     713  "\"Hey, stop using that fountain!\""
- * i.e. Amonnam + the verbalize below, which is exactly this body.
- * The Deaf arm (a watchman waving its arms) needs mhis()/mbodypart(); this
- * corpus hero is not deaf, and the arm is named rather than half-built. */
 function _watchman_warn_fountain(mtmp) {
     if (!_pot_is_watch(mtmp) || !couldsee(mtmp.mx | 0, mtmp.my | 0)
         || !mtmp.mpeaceful)
@@ -537,7 +455,6 @@ export async function dryup(x, y, isyou) {
        observable and no RNG rides on it. */
     if (cansee(x, y) && !gas_cloud_at(x, y))
         await pline('The fountain dries up!');
-    /* replace the fountain with ordinary floor */
     set_levltyp(x, y, ROOM); /* updates level.flags.nfountains */
     loc.flags = 0;
     loc.blessedftn = 0;
@@ -588,48 +505,6 @@ async function dofindgem() {
     /* C fountain.c:174 — exercise(A_WIS, TRUE); "a discovery!" */
     await exercise(A_WIS, true);
 }
-/* ---------------------------------------------------------------------------
- * monster_detect(otmp, mclass) — C ref: detect.c:797-861.
- *
- * The shared body behind THREE callers: drinkfountain()'s fate==26 arm
- * (fountain.c:349-353, otmp=NULL mclass=0 — the one the corpus reaches),
- * peffect_monster_detection() (potion.c:913-953), and the detect-monsters
- * spell.  It is RENDER-ONLY: no rn2/rnd anywhere on the path.
- *
- *   mcnt = 0; for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
- *       if (DEADMONSTER(mtmp) || (mtmp->isgd && !mtmp->mx)) continue;
- *       ++mcnt; break;                 // 1-or-more vs 0, not a full count
- *   }
- *   if (!mcnt) { if (otmp) strange_feeling(otmp, ...); return 1; }
- *   cls(); unconstrained = unconstrain_map();
- *   for each live monster: map_monst(mtmp, TRUE);
- *       (and, for a CURSED source, wake every helpless one -> woken)
- *   if (!swallowed) display_self();
- *   You("sense the presence of monsters.");
- *   if (woken) pline("Monsters sense the presence of you.");
- *   if ((otmp && otmp->blessed) && !unconstrained) display_nhwindow(WIN_MAP, TRUE);
- *   else { EDetect_monsters |= I_SPECIAL;
- *          browse_map(TER_DETECT | TER_MON, "monster of interest");
- *          EDetect_monsters &= ~I_SPECIAL; }
- *   map_redisplay();
- *   return 0;
- *
- * browse_map (detect.c:105-118) is just getpos() with autodescribe forced on
- * and terrainmode set, starting on the hero's own square — which is why C's
- * recorded frames go "You sense the presence of monsters.--More--", then the
- * TIP_GETPOS text window, then "(For instructions type a '?')  Move cursor to
- * monster of interest:", then one autodescribe line per cursor key.  All of
- * that already exists in getpos() (js/cmd.js), including handle_tip's
- * force_more of the pending topline.
- *
- * map_redisplay (detect.c:94-102) = reconstrain_map() + docrt(), which wipes
- * the detection overlay and repaints from hero memory.
- *
- * Corpus witness: seed0012 step 137 — quaffing from a fountain rolls fate 26,
- * and this case was an empty `/* TODO *\/` so the whole 171-step tail of the
- * session diverged from that frame on.
- * ---------------------------------------------------------------------------
- */
 export async function monster_detect(otmp, mclass) {
     const g = game;
     const u = g.u;
@@ -654,10 +529,6 @@ export async function monster_detect(otmp, mclass) {
     /* C detect.c:826 — read BEFORE unconstrain_map() clears it. */
     const swallowed = u.uswallow;
     await cls();
-    /* C detect.c:70-82 unconstrain_map(): returns TRUE only when the hero is
-     * Underwater / buried / swallowed, and clears those three flags so the
-     * ordinary map can be drawn.  Nothing in the corpus detects from inside
-     * water, rock, or a monster's belly, so this is the res=FALSE path. */
     const unconstrained = !!(u.uinwater || u.uburied || u.uswallow);
     u.uinwater = 0;
     u.uburied = 0;
@@ -665,13 +536,6 @@ export async function monster_detect(otmp, mclass) {
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
-        /* C detect.c:833-836: mclass 0 means "every class".  Every corpus
-         * caller passes 0 (the fountain arm, peffect_monster_detection, and
-         * the detect-monsters spell); only zap.c's monster-class detection
-         * passes a real mclass, and nothing in the corpus casts it — so the
-         * `mtmp->data->mlet == mclass` and PM_LONG_WORM/S_WORM_TAIL terms are
-         * unreachable here and are left unported rather than transliterated
-         * against a monster-class table this file does not carry. */
         if (!mclass)
             map_monst(mtmp, true);
         /* C detect.c:838-842 — a CURSED detector wakes the helpless. */
@@ -689,8 +553,6 @@ export async function monster_detect(otmp, mclass) {
     if (woken)
         await pline('Monsters sense the presence of you.');
     if ((otmp && otmp.blessed) && !unconstrained) {
-        /* C detect.c:851-853 — persistent detection just shows the updated
-         * map behind a --More--.  No corpus witness (no blessed detector). */
         await flush_screen(1);
         await nhgetch();
     } else {
@@ -712,17 +574,6 @@ export async function monster_detect(otmp, mclass) {
             p.extrinsic = (p.extrinsic | 0) & ~I_SPECIAL;
         }
     }
-    /* C detect.c:94-102 map_redisplay(): reconstrain_map() restores the three
-     * flags unconstrain_map() saved (all zero here) and docrt() repaints.
-     *
-     * C display.c:2064-2072 cls() — which docrt() calls first — opens with
-     * display_nhwindow(WIN_MESSAGE, FALSE), i.e. it FLUSHES the message window:
-     * a topline still standing when the map is redrawn gets its own --More--
-     * and its own dismiss keystroke.  This port's cls() drops _pending_message
-     * instead, so getpos's closing "Done." was joined to dryup()'s "The
-     * fountain dries up!" on one topline where C shows "Done.--More--" and then
-     * "The fountain dries up!" (seed0012 steps 153-154).  Model the flush at
-     * exactly C's instant rather than changing cls() for every caller. */
     if (g._pending_message)
         await force_more(g._pending_message);
     await docrt();
@@ -741,20 +592,6 @@ function _detect_monsters_uprop(u) {
         u.uprops[DETECT_MONSTERS] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     return u.uprops[DETECT_MONSTERS];
 }
-/* ---------------------------------------------------------------------------
- * drinkfountain() — C ref: fountain.c:243-390 drinkfountain().
- * Called when hero quaffs from a fountain (dodrink → fountain path).
- * RNG sequence (C ref matches session seed0011 step 5-6):
- *   rnd(30) → fate
- *   If mgkftn && uluck>=0 && fate>=10:
- *     rn2(A_MAX) → start attribute index for adjattrib loop
- *     exercise(A_WIS, TRUE) → rn2(19) in attrib.js
- *   [else if fate < 10]:
- *     rnd(10) → uhunger += rnd(10)
- *   [switch fate]:
- *     various sub-branches (not all ported; only what seed0011 exercises)
- * ---------------------------------------------------------------------------
- */
 export async function drinkfountain() {
     const g = game;
     const u = g.u;
@@ -764,14 +601,6 @@ export async function drinkfountain() {
     /* C fountain.c:247: int fate = rnd(30) — MUST fire before any branch */
     const fate = rnd(30);
     /* C fountain.c:249-252: Levitation check */
-    /* Stub: assume the hero is not levitating.  "no sessions hit this path yet"
-     * was wrong twice over — sessions DO reach drinkfountain, and the recordings
-     * DO carry Lev — so it is replaced by the measurement that actually licenses
-     * the stub, which is about the state AT THIS CALL, not about the corpus.
-     * MEASURED: subject=drinkfountain-Levitation value=+0 at=d26664bc
-     *           date=2026-08-29 corpus=public+train
-     *           reach=16 calls over 11 sessions; Levitation live at the call 0
-     *           recheck-when=js-levitation-state-exists */
     if (mgkftn && (u.uluck | 0) >= 0 && fate >= 10) {
         /* C fountain.c:254-276: Blessed magical fountain Wow! path */
         const A_MAX = 6;
@@ -844,37 +673,11 @@ export async function drinkfountain() {
                 await pline('The feeling subsides.');
                 break;
             case 20: /* C fountain.c:295-299 — Foul water */
-                /* pline_The("water is foul!  You gag and vomit.");
-                 * morehungry(rn1(20, 11)); vomit();
-                 * The rn1(20,11) was the missing draw: without it dryup()'s
-                 * own roll read the wrong value and the fountain that C dries
-                 * up stayed wet (seed0012 step 165). */
                 await pline('The water is foul!  You gag and vomit.');
                 await morehungry(rn1(20, 11));
                 await vomit();
                 break;
             case 21: /* C fountain.c:300-311 — Poisonous */
-                /* C:
-                 *     pline_The("water is contaminated!");
-                 *     if (Poison_resistance) {
-                 *         pline("Perhaps it is runoff from the nearby %s farm.",
-                 *               fruitname(FALSE));
-                 *         losehp(rnd(4), "unrefrigerated sip of juice",
-                 *                KILLED_BY_AN);
-                 *         break;
-                 *     }
-                 *     poison_strdmg(rn1(4, 3), rnd(10), "contaminated water",
-                 *                   KILLED_BY);
-                 *     exercise(A_CON, FALSE);
-                 * poison_strdmg (attrib.c:274) is losestr(strloss) then
-                 * losehp(dmg); this port has no poison_strdmg, and the eat.c
-                 * caller at js/eat.js:1286 already inlines it the same way.
-                 * The rn1(4,3)-before-rnd(10) order is C's argument-evaluation
-                 * order as the recorded trace fixes it (seed4500 leaves
-                 * 100373/100374), bound to locals so it cannot drift.  The
-                 * exercise(A_CON, FALSE) that follows is the rn2(2) at leaf
-                 * 100375 — dropping it desynchronised dryup()'s own rn2(3)
-                 * two draws later, which is how the whole arm surfaced. */
                 await pline('The water is contaminated!');
                 if (Poison_resistance()) {
                     await pline(`Perhaps it is runoff from the nearby ${fruitname(false)} farm.`);
@@ -971,12 +774,6 @@ export async function drinkfountain() {
                     break;
                 }
             case 30: /* C fountain.c:379-381 — gushing forth in this room */
-                /* dogushforth() and gush() were BOTH already ported in this
-                 * file (below, for dipfountain's own fate 26); only this call
-                 * site was missing, so drinkfountain's fate 30 flooded nothing
-                 * and drew none of gush's per-square rn2(1 + distmin).
-                 * seed4500 step 1329 rolls fate 30 and C draws 26 of them
-                 * starting at leaf 100384. */
                 dogushforth(true);
                 break;
             default:
@@ -997,9 +794,6 @@ async function _display_nhwindow_message() {
     /* If there's a pending message, append --More-- and wait for dismiss. */
     const msg = game._pending_message || '';
     if (msg) {
-        /* C topl.c more() appends "--More--" directly after the topline text,
-         * with no separator and no period.  (seed0011 step 5:
-         * "...You feel agile!--More--".) */
         const full = msg + '--More--';
         /* C ref: getline.c:230-257 xwaitforspace("\033 ") — more() breaks ONLY on
          * space / CR / LF / ESC; every other key rings the bell and re-loops with
@@ -1007,8 +801,6 @@ async function _display_nhwindow_message() {
         const _show = async () => {
             game._pending_message = full;
             await flush_screen(1);
-            /* C tty more() leaves the cursor one past the "--More--" indicator on
-             * the topline (seed0011 step 5 cursor [57,0] = strlen(full)). */
             const disp = game.nhDisplay;
             if (disp) { disp.cursorCol = full.length; disp.cursorRow = 0; }
         };
@@ -1017,35 +809,6 @@ async function _display_nhwindow_message() {
         game._pending_message = '';
     }
 }
-/* C fountain.c:36-59 — staticfn void dowatersnakes(void)  "Fountain of snakes!"
- *
- *   int num = rn1(5, 2);
- *   if (!(svm.mvitals[PM_WATER_MOCCASIN].mvflags & G_GONE)) {
- *       if (!Blind)
- *           pline("An endless stream of %s pours forth!",
- *                 Hallucination ? makeplural(rndmonnam(NULL)) : "snakes");
- *       else
- *           You_hear("%s hissing!", something);
- *       while (num-- > 0)
- *           if ((mtmp = makemon(&mons[PM_WATER_MOCCASIN], u.ux, u.uy,
- *                               MM_NOMSG)) != 0
- *               && t_at(mtmp->mx, mtmp->my))
- *               (void) mintrap(mtmp, NO_TRAP_FLAGS);
- *   } else {
- *       pline_The("fountain bubbles furiously for a moment, then calms.");
- *   }
- *
- * drinkfountain()'s fate-22 arm was a bare `break` with a "not ported (TODO)"
- * label, so seed0007's quaff at step 288 printed nothing and drew nothing where
- * C draws rn1(5,2) and then 2..6 makemon()s: leaf 15983, the session's first
- * RNG divergence once the amulet arm above it landed.  Two of those moccasins
- * bite the hero to death on the very next turn, so the arm owns the whole tail
- * of this recording.
- *
- * rn1(x,y) is rn2(x)+y (hack.h), so the leaf is rn2(5).  The Soundeffect() on
- * the blind and G_GONE arms is audio-only and draws nothing.  Every remaining
- * draw belongs to makemon: the snakes are asked for at the HERO's occupied
- * square, so each one relocates via enexto -> collect_coords. */
 async function dowatersnakes() {
     const g = game, u = g.u;
     let num = rn1(5, 2);
@@ -1068,32 +831,6 @@ async function dowatersnakes() {
     }
 }
 
-/* C fountain.c:62-90 — static void dowaterdemon(void)
- *
- *   if (!(svm.mvitals[PM_WATER_DEMON].mvflags & G_GONE)) {
- *       if ((mtmp = makemon(&mons[PM_WATER_DEMON], u.ux, u.uy, MM_NOMSG)) != 0) {
- *           if (!Blind) You("unleash %s!", a_monnam(mtmp));
- *           else        You_feel("the presence of evil.");
- *           if (rnd(100) > (80 + level_difficulty())) {
- *               pline("Grateful for %s release, %s grants you a wish!",
- *                     mhis(mtmp), mhe(mtmp));
- *               mongrantswish(&mtmp);
- *           } else if (t_at(mtmp->mx, mtmp->my))
- *               (void) mintrap(mtmp, NO_TRAP_FLAGS);
- *       }
- *   } else {
- *       pline_The("fountain bubbles furiously for a moment, then calms.");
- *   }
- *
- * The RNG is almost entirely makemon's: the demon is asked for at the HERO's
- * occupied square, so makemon relocates via enexto -> collect_coords (seed0006
- * step 102 records 45 collect_coords rn2 draws), and a water demon is armed and
- * carries defensive items, so m_initweap/m_initinv follow.  dowaterdemon's OWN
- * draw is the single rnd(100) at fountain.c:78.  The Soundeffect() on the
- * else arm is audio-only and draws nothing.
- *
- * The wish arm is delegated to _mongrantswish(), which preserves the C
- * monster-removal-before-wish ordering and keeps the wish prompt's draws. */
 async function dowaterdemon() {
     const g = game, u = g.u;
 
@@ -1118,22 +855,6 @@ async function dowaterdemon() {
     }
 }
 
-/* C fountain.c:93-116 — static void dowaternymph(void)
- *
- *   if (!(svm.mvitals[PM_WATER_NYMPH].mvflags & G_GONE)
- *       && (mtmp = makemon(&mons[PM_WATER_NYMPH], u.ux, u.uy, MM_NOMSG)) != 0) {
- *       if (!Blind) You("attract %s!", a_monnam(mtmp));
- *       else        You_hear("a seductive voice.");
- *       mtmp->msleeping = 0;
- *       if (t_at(mtmp->mx, mtmp->my)) (void) mintrap(mtmp, NO_TRAP_FLAGS);
- *   } else if (!Blind) { pline("A large bubble rises to the surface and pops."); }
- *   else               { You_hear("a loud pop."); }
- *
- * The RNG here is entirely makemon's: the nymph is asked for at the HERO's
- * square, which is occupied, so makemon relocates via enexto -> collect_coords
- * and seed0014 step 409 records 60 collect_coords rn2 draws before anything
- * else happens.  The Soundeffect() calls on the failure arms are audio-only and
- * draw nothing. */
 async function dowaternymph() {
     const g = game, u = g.u;
     let mtmp = null;
@@ -1178,27 +899,6 @@ export function dogushforth(drinking) {
     }
 }
 
-/* C fountain.c:133-161 — static void gush(coordxy x, coordxy y, genericptr_t poolcnt)
- *
- * The do_clear_area() callback that turns a square into a pool.  The guard is a
- * single short-circuiting || chain and its ORDER is the whole RNG contract:
- *
- *   if (((x + y) % 2) || u_at(x, y)
- *       || (rn2(1 + distmin(u.ux, u.uy, x, y))) || (levl[x][y].typ != ROOM)
- *       || (sobj_at(BOULDER, x, y)) || nexttodoor(x, y))
- *       return;
- *
- * so the rn2 is drawn ONLY on an even-parity square that is not the hero's, and
- * is drawn BEFORE the terrain/boulder/door tests -- a square that fails those
- * three still consumed its leaf.  seed0014 step 394 draws exactly 25 of these,
- * with moduli 7,6,4,4,4,6,3,3,3,5,7,2,2,4,6,8,3,3,5,7,2,2,4,6,8 (i.e.
- * 1 + distmin from the hero), and getting the parity test or the ordering wrong
- * shifts every one of them.
- *
- * water_damage_chain() and minliquid() draw no leaves on this level (the flooded
- * squares are bare and unoccupied), but they are wired anyway because the trace
- * shows the obj_resists() draws that follow this step come from monsters that
- * later walk into these very pools. */
 async function gush(x, y, poolcnt) {
     const u = game.u;
 
@@ -1252,46 +952,17 @@ function lev_typ_at(x, y) {
     return loc ? loc.typ : 0;
 }
 
-/* ---------------------------------------------------------------------------
- * dipfountain(obj) — C ref: fountain.c:393-554 dipfountain().
- * Called when hero dips an object into a fountain (#dip on fountain tile).
- * RNG: rn2() for Excalibur check, water_damage, then rnd(30) for main switch.
- * For seed0011 this is not called (session uses drinkfountain via 'q').
- * Ported for completeness (seed0070 may exercise this path).
- * ---------------------------------------------------------------------------
- */
 // WIRE_PENDING: W4b-dipfountain — caller is dodip() which is not yet ported
 export async function dipfountain(obj) {
     const g = game;
     const u = g.u;
     /* C fountain.c:399-402: Levitation check */
     /* Stub: assume not levitating */
-    /* C fountain.c:410-444: the Excalibur arm.  WIRE_PENDING — it needs
-     * LONG_SWORD + u.ulevel >= 5 + exist_artifact, and CONSUMES
-     * rn2(Role_if(PM_KNIGHT) ? 6 : 30) (plus rn2(3) on the non-lawful branch).
-     * No public session dips a long sword. */
     const ER_NOTHING = 0;
     const ER_DESTROYED = 3;
-    /* C fountain.c:446-448:
-     *     } else if (is_hands || obj == uarmg) { er = wash_hands();
-     *     } else { er = water_damage(obj, NULL, TRUE); }
-     * This was `let er = ER_NOTHING` with the note "water_damage is a stub in
-     * trap.js returning ER_NOTHING (0)" — true when written, and it made the
-     * fountain skip the rusting entirely: seed0014 step 373 dips a worn orcish
-     * helm and C prints "Your orcish helm rusts!", then takes the rn2(2)
-     * early-return at fountain.c:454 and never reaches the rnd(30) switch.  We
-     * fell straight into rnd(30) and dried the fountain up. */
     let er;
-    /* C fountain.c:445 `is_hands || obj == uarmg`, where is_hands is the
-     * POINTER IDENTITY `obj == &hands_obj`.  This port marks the synthetic
-     * hands object with an own `hands` property rather than a singleton, and
-     * a bare `obj.hands` read throws inside the capture-replay marshaller
-     * (the struct proxy rejects any field C did not capture).  Probe for the
-     * property instead of reading it — same test, no struct field read. */
     const _is_hands = !!obj && Object.hasOwn(obj, 'hands') && !!obj.hands;
     if (obj && (_is_hands || obj === u.uarmg)) {
-        /* C fountain.c:446 wash_hands() — WIRE_PENDING; RNG-free, and no corpus
-         * dip is bare-handed or of the worn gloves. */
         er = ER_NOTHING;
     } else {
         er = await water_damage(obj, null, true);
@@ -1305,18 +976,6 @@ export async function dipfountain(obj) {
     const loc = g.level?.at(u.ux, u.uy);
     switch (rnd(30)) {
         case 16: /* Curse the item */
-            /* C fountain.c:459-463 — `if (!is_hands && obj->oclass !=
-             * COIN_CLASS && !obj->cursed) curse(obj);`  The !is_hands guard
-             * was missing, and so was half of curse() itself: mkobj.c:1792-1793
-             * is `otmp->blessed = 0; otmp->cursed = 1;` — BOTH.  Setting only
-             * cursed left the hero's 4 blessed potions of water flagged blessed
-             * AND cursed, and objnam.c:840-843 tests blessed first, so
-             * seed0106's inventory at step 255 read "4 potions of holy water"
-             * where C (which cursed them at this fountain) reads "4 potions of
-             * unholy water".  The rest of curse() — reset_remarm, drop_uswapwep,
-             * set_moreluck, the bag-of-holding weight, the figurine timer and
-             * book_cursed — is per-otyp and inert for a potion; a general
-             * curse() port belongs with those subsystems, not here. */
             if (obj && !_is_hands && obj.oclass !== COIN_CLASS && !obj.cursed) {
                 obj.blessed = false;
                 obj.cursed = true;
@@ -1356,28 +1015,8 @@ export async function dipfountain(obj) {
             break;
         case 28: /* Bath / lose gold — not ported (TODO) */
             await pline('An urge to take a bath overwhelms you.');
-            /* C fountain.c:503-528 — the gold loss.  This arm stopped at the
-             * pline: no money_cnt, no somegold, no exercise(A_WIS, FALSE), so
-             * the whole tail was missing along with its rn2(2).  MEASURED on
-             * seed0014 (the fountain session) global leaf 59074: C draws
-             * rn2(2) @exercise(attrib.c:509) here and its step-712 topline is
-             * "You lost some of your gold in the fountain!  A watchman
-             * yells:--More--". */
             {
                 let money = money_cnt(g.invent) | 0;
-                /* C fountain.c:503-528 raises NO botl flag: it decrements
-                 * otmp->quan in place and the only `disp.botl = TRUE` in
-                 * fountain.c is line 262, a different arm.  C's bot() runs only
-                 * when that flag is up (allmain.c moveloop), so after this arm
-                 * C KEEPS PAINTING the pre-loss amount indefinitely — on
-                 * seed0014 the hero loses 3 of 36 at step 711 and every one of
-                 * the remaining frames still reads "$:36".  This port's status
-                 * row is recomputed live from gi.invent, so it has to latch the
-                 * displayed value to reproduce C's staleness.  Cardinal Rule 1:
-                 * port the bug.  The latch is cleared by the gold sites that
-                 * DO carry C's SET_BOTL (js/cmd.js freeinv_core + dopickup,
-                 * js/pickup_container.js addinv, js/wizcmds.js), because there
-                 * C's bot() would run and overwrite the stale field. */
                 const _goldShownBeforeLoss = money;
                 if (money > 10) {
                     /* "Amount to lose.  Might get rounded up as fountains
@@ -1505,15 +1144,6 @@ async function peffect_water(otmp) {
         }
     }
 }
-/* C ref: potion.c:1261-1296 peffect_oil(struct obj *otmp).
- * Quaffing a potion of oil.  Three message branches, then
- *   exercise(A_WIS, good_for_you);   (attrib.c:489 → rn2(2) when good_for_you
- *                                      is FALSE, rn2(19) when TRUE)
- * which is the per-quaff RNG draw.  good_for_you is TRUE only when the potion
- * is lamplit AND the hero likes fire (S_LIGHT etc.); otherwise FALSE.
- *
- * seed2200 quaffs an uncursed, unlit potion of oil → the final `else` branch
- * ("That was smooth!"), good_for_you = FALSE → exercise(A_WIS, FALSE) → rn2(2). */
 async function peffect_oil(otmp) {
     let good_for_you = false;
     if (otmp.lamplit) {
@@ -1535,7 +1165,6 @@ async function peffect_oil(otmp) {
              * stubbed: fire the RNG draw to align stream. */
             void dmg;
         }
-        /* burn_away_slime() — stubbed; no slime in corpus sessions. */
     } else if (otmp.cursed) {
         /* C potion.c:1291 */
         await pline('This tastes like castor oil.');
@@ -1546,24 +1175,6 @@ async function peffect_oil(otmp) {
     /* C potion.c:1295 — the per-quaff exercise/abuse draw. */
     exercise(A_WIS, good_for_you);
 }
-/* ---------------------------------------------------------------------------
- * drinksink() — C ref: fountain.c:596-681 drinksink().
- *
- * dodrink()'s sink counterpart to drinkfountain(): one rn2(20) picks the arm,
- * and the tail (`case 19` when not hallucinating, plus `default`) draws a
- * further rn2(3) and, when that is non-zero, rn2(2) to choose
- * "cold"/"warm"/"hot".  seed0002 step 185 is exactly that tail — rn2(20)=15,
- * rn2(3)!=0, rn2(2)=1 → "You take a sip of warm water." — and it was reached
- * with NO sink prompt at all, because dodrink had only the fountain arm.
- *
- * THREE ARMS CALL HELPERS THIS PORT DOES NOT HAVE: case 4 (dopotion), case 6
- * (breaksink) and case 9 (vomit).  They are written as C wrote them and call
- * an explicitly-named unported helper, following js/mklev.js:9100's
- * `Monnam_unported()` convention: a loud failure if a session ever rolls one
- * is honest, where a silent no-op would diverge from that point on with no
- * signal.  No session in the current corpus rolls them.
- * ---------------------------------------------------------------------------
- */
 /* Sink-delivered potions use the shared effect dispatcher. */
 async function dopotion_unported(otmp) {
     return await peffects(otmp);
@@ -1781,22 +1392,9 @@ export async function drinksink() {
             } ${hliquid('water')}.`);
     }
 }
-/* C ref: potion.c:528 dodrink — quaff command dispatch.
- * W19.2: handles uncursed POT_WATER (seed1900).
- * W4b: handles drinkfountain path when hero stands on a fountain (seed0011).
- *
- * C ref: potion.c:542-571 — if hero stands on a fountain (IS_FOUNTAIN) and
- * can_reach_floor, ask "Drink from the fountain?" via y_n(); if 'y', call
- * drinkfountain() and return ECMD_TIME.
- *
- * NOTE: can_reach_floor stubbed to TRUE (assumes not levitating).
- * iflags.menu_requested stubbed to FALSE (normal interactive mode). */
 /* C ref: invent.c useup() — consume one potion from gi.invent.  A stack
  * (quan>1) is decremented; a singleton is unlinked from game.invent.  RNG-free.
  * Mirrors read.js:useup for scrolls. */
-/* C hack.h:1409  #define POTION_OCCUPANT_CHANCE(n) (13 + 2 * (n))
- * Read from the header rather than folded into the call site so the modulus
- * the recorder prints (`rn2(13)`) is traceable back to mvitals[].born == 0. */
 function POTION_OCCUPANT_CHANCE(n) { return 13 + 2 * (n | 0); }
 /* C `svm.mvitals[mndx].mvflags` / `.born`.  js keeps the same table on
  * game.mvitals (js/dogmove.js:3467 is its writer); an unvisited row is absent,
@@ -1935,9 +1533,6 @@ function useup_potion(obj) {
  * the rest all call (potion.c:553 getobj("drink", drink_ok, ...)), so a
  * drink-scoped copy could only ever be C-faithful by coincidence. */
 
-/* C ref: mkmaze.c/rm.h surface() — the ground-description word for a tile.  For
- * the paralysis "frozen to the <surface>" message; a plain floor tile → "floor",
- * ice → "ice" (mirrors js/engrave.js surface). */
 function _surface(x, y) {
     const loc = game.level?.at?.(x, y);
     if (loc && loc.typ === ICE) return 'ice';
@@ -1970,7 +1565,6 @@ async function _docall_potion(obj) {
         /* all-spaces → uncall; only relevant if it previously had a name. */
         if (g._oc_uname[obj.otyp]) {
             delete g._oc_uname[obj.otyp];
-            /* C undiscover_object — not needed for the corpus path. */
         }
     } else {
         g._oc_uname[obj.otyp] = name;
@@ -2008,15 +1602,6 @@ export async function dodrink() {
      * feature (fountain / sink / underwater); it selects between "you don't
      * have anything to drink" and "...anything ELSE to drink". */
     drink_ok_extra = 0;
-    /* C potion.c:541 `if (!iflags.menu_requested) {` — the whole
-     * fountain/sink/underwater block below is gated on this: preceding
-     * 'q'/#quaff with the 'm' prefix (menu_requested) skips the dungeon-
-     * feature prompts entirely and goes straight to getobj().  This guard
-     * was absent, so a menu-requested quaff standing on a fountain/sink/
-     * underwater square still asked "Drink from the fountain?" etc. */
-    /* C potion.c:542-551: Fountain check.
-     * IS_FOUNTAIN checks levl[u.ux][u.uy].typ === FOUNTAIN.
-     * can_reach_floor stub: always TRUE (not levitating in early sessions). */
     if (u && g.level && !g.iflags?.menu_requested) {
         const loc = g.level.at(u.ux, u.uy);
         if (loc && IS_FOUNTAIN(loc.typ)) {
@@ -2026,13 +1611,6 @@ export async function dodrink() {
                 await drinkfountain();
                 g.context = g.context || {};
                 g.context.move = 1; /* ECMD_TIME */
-                /* drinkfountain is time-consuming (ECMD_TIME); moveloop clears
-                 * _pending_message after rhack returns when move!=0.  Promote
-                 * the trailing fountain-result pline (e.g. "A wisp of vapor
-                 * escapes the fountain...") to _resultMessage so rhack restores
-                 * it onto the topline for the NEXT nhgetch capture, matching C's
-                 * tty topline that lingers until the next keypress (seed0011
-                 * step 6). */
                 if (g._pending_message) {
                     _topl_stash_result();
                 }
@@ -2042,10 +1620,6 @@ export async function dodrink() {
             ++drink_ok_extra;
             /* Else fall through to inventory potion path */
         }
-        /* C potion.c:553-562: Or a kitchen sink?  Same shape as the fountain
-         * arm above and it was simply absent: seed0002 step 184 stands on a
-         * sink, presses 'q', and C asks "Drink from the sink? [yn] (n)" where
-         * this port went straight to getobj's "What do you want to drink?". */
         if (loc && IS_SINK(loc.typ)) {
             /* C potion.c:557: if (y_n("Drink from the sink?") == 'y') */
             const answer = await y_n('Drink from the sink?');
@@ -2053,9 +1627,6 @@ export async function dodrink() {
                 await drinksink();
                 g.context = g.context || {};
                 g.context.move = 1; /* ECMD_TIME */
-                /* Same trailing-message promotion the fountain arm does: a
-                 * time-consuming command's result pline must survive rhack's
-                 * post-command clear and land on the NEXT capture's topline. */
                 if (g._pending_message) {
                     _topl_stash_result();
                 }
@@ -2094,51 +1665,12 @@ export async function dodrink() {
             ++drink_ok_extra;
         }
     }
-    /* C potion.c:573 getobj("drink", drink_ok, GETOBJ_NOFLAGS):
-     * Prompt for item, consume one nhgetch.
-     *
-     * C ref: invent.c:1916-1935 getobj() — build qbuf "What do you want to
-     * <word>?" then append the suggestable-letter list.  drink_ok
-     * (potion.c:507) returns GETOBJ_SUGGEST for every POTION_CLASS object and
-     * GETOBJ_EXCLUDE for everything else, so the candidate letters are exactly
-     * the invlets of potions in inventory, in invlet (sortloot SORTLOOT_INVLET)
-     * order.  With suggestions present: " [%s or ?*]"; with none: " [*]".
-     * C ref: invent.c:1908-1909 `if (suggested > 5) compactify(bp);` — the
-     * suggestion list is range-compressed once it exceeds five letters.  This
-     * note used to claim the gate was "not reached here"; seed0002 step 54 is a
-     * Healer holding six potions, and C prompts "[d-gnq or ?*]" against this
-     * port's uncompacted "[defgnq or ?*]" (which also parked the cursor one
-     * column too far right, qbuf.length + 1). */
-     // PARKED-NOTE: session=seed0002 citation-only
     let _drinkLets = '';
     for (let o = g.invent; o; o = o.nobj) {
         if ((o.oclass | 0) === POTION_CLASS) {
             _drinkLets += String.fromCharCode(o.invlet || 0x3f);
         }
     }
-    /* C invent.c:1911-1914 getobj() — the NO-CANDIDATES early-out, BEFORE the
-     * for(;;) prompt loop and therefore before any nhgetch:
-     *     if (suggested == 0 && !forceprompt && !allownone) {
-     *         You("don't have anything %sto %s.", inaccess ? "else " : "", word);
-     *         return (struct obj *) 0;
-     *     }
-     * For the drink callback both guards are constants:
-     *   - forceprompt: GETOBJ_NOFLAGS clears GETOBJ_PROMPT, and only a
-     *     GETOBJ_DOWNPLAY invent item sets it — drink_ok (potion.c:507-523)
-     *     returns only SUGGEST/EXCLUDE/EXCLUDE_NONINVENT, never DOWNPLAY.
-     *   - allownone: set only when drink_ok(NULL) answers SUGGEST / DOWNPLAY /
-     *     EXCLUDE_INACCESS / EXCLUDE_SELECTABLE (invent.c:1831-1845); drink_ok's
-     *     obj==NULL arm answers EXCLUDE (drink_ok_extra==0) or
-     *     EXCLUDE_NONINVENT (drink_ok_extra>0), both of which leave it FALSE.
-     * So `suggested == 0` alone decides, and `inaccess` is 1 exactly when
-     * drink_ok(NULL) returned GETOBJ_EXCLUDE_NONINVENT — i.e. drink_ok_extra>0
-     * (invent.c:1846-1850 bumps inaccess for that case).
-     * dodrink then returns ECMD_CANCEL (potion.c:574) — no time passes and, the
-     * point of this branch, NO KEYSTROKE IS CONSUMED.  seed0005 step 36 'q':
-     * a potionless samurai; C prints this and the following 'y' (step 37) stays
-     * a movement command, while JS used to swallow it as the getobj answer —
-     * which stalled the hero for turn 19 (umovement-trace-diff
-     * MISSING-HERO-MOVE, C settles (67,3), JS stuck on turn 18's (68,4)). */
     if (!_drinkLets) {
         /* js pline() takes a pre-formatted string (js/display.js:2723). */
         await pline("You don't have anything "
@@ -2189,14 +1721,6 @@ export async function dodrink() {
             if (itemKey === 0)
                 continue;
         }
-        /* C invent.c:1950-1953 —
-         *     if (strchr(quitchars, ilet)) {
-         *         if (flags.verbose) pline1(Never_mind);
-         *         return (struct obj *) 0;
-         *     }
-         * quitchars is decl.c:96 " \r\n\033" (SPACE, CR, LF, ESC).  This arm tested
-         * only ESC and SPACE and plined nothing; getobj → NULL → dodrink's
-         * ECMD_CANCEL (potion.c:576).  The Never_mind is verbose-gated in C. */
         if (itemKey === 27 || itemKey === 32 || itemKey === 13 || itemKey === 10) {
             await getobj_never_mind(_qbuf);
             g.context.move = 0;
@@ -2213,24 +1737,6 @@ export async function dodrink() {
             }
             if (otmp)
                 break;
-            /* C invent.c:2058-2062 — a letter that names no carried object:
-             *     You("don't have that object.");
-             *     ...
-             *     continue;
-             * The topline is still occupied by the prompt, so the pline raises a
-             * --More-- whose ack key C also eats, and THEN getobj re-prompts.
-             *
-             * This arm did not exist: the loop broke after ONE read, the invlet
-             * walk found nothing, and `if (otmp) {...} else {...}` dropped
-             * through to the no-inventory fallback below — which drinks a
-             * SYNTHETIC UNCURSED POTION OF WATER.  So answering the quaff prompt
-             * with a letter the hero does not carry quaffed water, took a turn,
-             * and consumed neither the more-ack nor the re-prompt's key.
-             * MEASURED on gen525-recombine-seed1393947 step 285: the drink
-             * prompt is answered 'r' (the hero carries only potion 'i'); C pages
-             * "You don't have that object.--More--" across steps 286-289 and
-             * re-prompts at 290, while this port printed "This tastes like
-             * water." and ran 'r'/'?'/'o'/' ' as commands. */
             await force_more("You don't have that object.");
             continue;
         }
@@ -2257,34 +1763,6 @@ export async function dodrink() {
     if (otmp) {
         /* Full dispatch when inventory is available. */
         otmp.in_use = true;
-        /* C potion.c:600-614 — the two BOTTLE-OCCUPANT checks, which sit
-         * between `otmp->in_use = TRUE` and dopotion(otmp) and were absent
-         * entirely (`grep 'milky\|smoky\|djinni\|POTION_OCCUPANT' js/potion.js`
-         * returned nothing):
-         *
-         *   if (objdescr_is(otmp, "milky")
-         *       && !(svm.mvitals[PM_GHOST].mvflags & G_GONE)
-         *       && !rn2(POTION_OCCUPANT_CHANCE(svm.mvitals[PM_GHOST].born))) {
-         *       ghost_from_bottle(); useup(otmp); return ECMD_TIME;
-         *   } else if (objdescr_is(otmp, "smoky")
-         *              && !(svm.mvitals[PM_DJINNI].mvflags & G_GONE)
-         *              && !rn2(POTION_OCCUPANT_CHANCE(svm.mvitals[PM_DJINNI].born))) {
-         *       djinni_from_bottle(otmp); useup(otmp); return ECMD_TIME;
-         *   }
-         *
-         * hack.h:1409 POTION_OCCUPANT_CHANCE(n) == 13 + 2*n, so with no ghost
-         * or djinni yet born the modulus is 13 — which is exactly what the
-         * recorder writes on the one corpus session that reaches this line:
-         * `rn2(13)=12 @ dodrink(potion.c:609)`.  The C && short-circuits, so
-         * the draw happens ONLY for a potion whose (shuffled) description is
-         * "milky"/"smoky"; every other quaff draws nothing here, which is why
-         * the ladder below is otherwise unchanged.
-         *
-         * NOTE the draw is made even when the potion is about to do something
-         * else entirely: on that session the potion is a wished-for CURSED
-         * POTION OF CONFUSION whose appearance happens to be "smoky", and C's
-         * rn2(13) lands on 12 so the guard fails and peffect_confusion runs
-         * one draw later than this port had it. */
         if (objdescr_is(otmp, 'milky')
             && !(_mvflags(PM_GHOST) & G_GONE)
             && !rn2(POTION_OCCUPANT_CHANCE(_mborn(PM_GHOST)))) {
@@ -2337,22 +1815,6 @@ export async function dodrink() {
             g.disp.botl = 1;
         }
         else if (otmp.otyp === POT_PARALYSIS) {
-            /* C potion.c:882-900 peffect_paralysis.  The hero here has no
-             * Free_action, is not levitating / on an air|water level, and has no
-             * steed.  That used to be asserted of "the corpus hero", which is a
-             * claim about 732 recordings and false as stated (Lev on 7, Ride on
-             * 7); it is true of the state AT THIS CALL, which is what the branch
-             * choice needs and is now measured.
-             * MEASURED: subject=peffect_paralysis-Lev/steed value=+0 at=d26664bc
-             *           date=2026-08-29 corpus=public+train
-             *           reach=1 call, seed0002-healer-reflection-drummer;
-             *           Levitation 0, usteed 0
-             *           recheck-when=js-levitation-state-exists
-             * — the else→else branch: "Your feet are frozen to the floor!"
-             * then nomul(-(rn1(10, 25 - 12*bcsign))).  RNG: the rn1 = rn2(10)+25
-             * (uncursed bcsign=0).  The moveloop's gm.multi<0 machinery
-             * (allmain.js:714) runs the frozen turns (movemon each) and fires
-             * unmul→nomovemsg "You can move again." when the countdown reaches 0. */
             const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
             const u2 = g.u;
             /* Your("%s are frozen to the %s!", makeplural(body_part(FOOT)), surface()) */
@@ -2435,13 +1897,6 @@ export async function dodrink() {
             useup_potion(otmp);
         }
         else if (otmp.otyp === POT_BOOZE) {
-            /* C potion.c:769-791 peffect_booze.  This arm did not exist: a
-             * quaffed potion of booze fell out of the whole otyp ladder into
-             * the trailing "Nothing happens." (potion.js's unported-type
-             * fallback), so seed0002 step 241 said "Nothing happens." where C
-             * says "Ooph!  This tastes like liquid fire!" and never drew
-             * peffect_booze's d(2 + u.uhs, 8) — the first RNG-value divergence
-             * of that session (global leaf 10634). */
             g._potion_nothing = 0;
             g._potion_unkn = 0;
             const u2 = g.u;
@@ -2496,12 +1951,6 @@ export async function dodrink() {
             useup_potion(otmp);
         }
         else if (otmp.otyp === POT_SLEEPING) {
-            /* C potion.c:902-913 peffect_sleeping.  The corpus hero has no
-             * Sleep_resistance or Free_action, so the else branch is taken:
-             * "You suddenly fall asleep!" +
-             * fall_asleep(-rn1(10,25-12*bcsign), TRUE).
-             * rn1(x,y) = rn2(x) + y.  fall_asleep calls nomul and sets
-             * multi_reason / nomovemsg. */
             const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
             await pline('You suddenly fall asleep!');
             nomul(-(rn2(10) + (25 - 12 * bcsign)));
@@ -2829,17 +2278,6 @@ export async function dodrink() {
             useup_potion(otmp);
         }
         else if (otmp.otyp === POT_SEE_INVISIBLE) {
-            /* C potion.c:1358-1361:
-             *     case POT_SEE_INVISIBLE:
-             *     case POT_FRUIT_JUICE:
-             *         peffect_see_invisible(otmp);
-             *         break;
-             * ONE C function serves both otyps; the POT_FRUIT_JUICE arm above
-             * inlines its early-return half.  This arm is the OTHER half, which
-             * was absent: gen135-reseed-seed1191299 step 5 quaffs a potion of
-             * see invisible, C prints "This tastes like slime mold juice." and
-             * draws rn1(100, 750) at potion.c:870, and this port printed
-             * "Nothing happens." and drew nothing. */
             g._potion_nothing = 0;
             g._potion_unkn = 0;
             await peffect_see_invisible(otmp);
@@ -2859,18 +2297,6 @@ export async function dodrink() {
             useup_potion(otmp);
         }
         else if (otmp.otyp === POT_GAIN_ENERGY) {
-            /* C potion.c:1222-1253 peffect_gain_energy ("M. Stephenson").
-             * This arm fell into the trailing "Nothing happens." fallback and
-             * drew nothing: num = d(blessed?3:uncursed?2:1, 6) is ONE tape
-             * entry (one aggregate value, per the d(N,M) note), negated when
-             * cursed, then folded into uenmax/uen with the same peak-tracking
-             * and floor-at-0 clamps as C, followed by exercise(A_WIS, TRUE)
-             * (attrib.c:508 — conditionally draws rn2(19)). peffects() falls
-             * through to `break` for this case, so peffects() returns -1 and
-             * dopotion's tail is the plain useup+identify (potion_nothing/
-             * potion_unkn are untouched by this peffect and stay 0, so there
-             * is no docall/trycall arm — mirrors the POT_HEALING branch
-             * above). */
             if (otmp.cursed) {
                 await You_feel('lackluster.');
             } else {
@@ -2954,20 +2380,9 @@ export async function dodrink() {
         }
     }
     else {
-        /* Fallback: no inventory chain. Assume uncursed POT_WATER
-         * (correct for seed1900 item 'h'). */
         const syntheticOtmp = { blessed: false, cursed: false, otyp: POT_WATER };
         await peffect_water(syntheticOtmp);
     }
-    /* C potion.c:616 return ECMD_TIME — quaffing takes a turn.
-     *
-     * dodrink is time-consuming (ECMD_TIME), so on the FF_FAITHFUL path the
-     * moveloop clears _pending_message after rhack returns (allmain.js:485-487).
-     * Mirror the other time-consuming commands (throw/wield/door-open): promote
-     * the quaff-result pline ("This tastes like water." etc.) to _resultMessage
-     * so rhack(0) restores it onto the topline before the next flush+nhgetch,
-     * matching C's tty topline that lingers until the next keypress
-     * (seed1900 step5 "This tastes like water."). */
     if (g._pending_message) {
         _topl_stash_result();
     }
@@ -3014,14 +2429,6 @@ const CORPSE = 265;
 const OIL_LAMP = 227;
 const MAGIC_LAMP = 228;
 
-/* C mondata.h:26 `#define breathless(ptr) (((ptr)->mflags1 & M1_BREATHLESS) != 0L)`
- * and mondata.h:46 `#define haseyes(ptr) (((ptr)->mflags1 & M1_NOEYES) == 0L)`.
- * Both were throwing stubs; potionbreathe()'s POT_RESTORE/GAIN_ABILITY arm and
- * potionhit()'s vapour gate (potion.c:1907) read them, so the throw was on a
- * live path.  Flag values from nethack-c-v5/upstream/include/monflag.h:95,97 —
- * NOT from js/mhitu.js:17604, whose local M1_NOEYES is 0x200 and wrong
- * (monflag-audit WRONG-FLAG).  A missing mondata (the hero's youmonst.data is
- * always set once chargen ran) reads as "breathes, has eyes", C's human case. */
 /* C decl.c:47 — the `You_can_move_again` global ("You can move again.").
  * potionbreathe()'s POT_PARALYSIS and POT_SLEEPING arms referenced the C
  * spelling as a BARE IDENTIFIER, which is a ReferenceError in JS, so both arms
@@ -3058,27 +2465,12 @@ function makeplural(word) {
 function vtense(subj, verb) {
     return vtense_objnam(subj, verb);
 }
-/* C ref: pline.c Your(line, ...) —
- *     vpline(YouMessage(youbuf, "Your ", line), the_args);
- * with pline.h's `#define YouMessage(buf, pfx, msg) \
- *     strcat(strcpy(You_buf(...), pfx), msg)`, i.e. the message with "Your "
- * prepended.  Same body and same %s expansion as You() below, which is this
- * file's own convention for the family; js/read.js:3121 and js/shk.js:2800
- * carry the identical one-liner.
- *
- * This stub HALTED the scored run: seed4500 quaffs from a fountain at step
- * 1326, drinkfountain() -> vomit() reaches the `u.uhs >= FAINTING` arm and
- * calls Your('stomach heaves convulsively!'), which threw and forfeited the
- * remaining 488 recorded frames. */
 async function Your(msg, ...args) {
     let s = msg;
     let ai = 0;
     s = s.replace(/%s/g, () => args[ai++] || '');
     return pline('Your ' + s);
 }
-/* async so the make_*() setters below can await the topline the way every other
- * awaited pline() site in this port does; the existing unawaited callers are
- * unaffected — they already dropped pline()'s promise on the floor. */
 async function You(msg, ...args) {
     let s = msg;
     let ai = 0;
@@ -3091,36 +2483,9 @@ async function You_feel(msg, ...args) {
     s = s.replace(/%s/g, () => args[ai++] || '');
     return pline('You feel ' + s);
 }
-/* C hack.h:1027 `#define Your1(cstr) Your("%s", cstr)` — Your() prefixes
- * "Your ".  js/mhitu.js:384 and js/uhitm.js:3878 already carry this one-liner;
- * this copy threw, and a monster's AD_STON hiss reaches it through
- * make_blinded's caller below.  MEASURED: it TRUNCATED
- * corpus-generated/v5/train/gen172-reseed-seed776356 at step 183. */
 function Your1(msg) {
     return pline('Your ' + msg);
 }
-/* C potion.c:88-104  make_confused(long xtime, boolean talk)
- *     long old = HConfusion;
- *     if (Unaware) talk = FALSE;
- *     if (!xtime && old)
- *         if (talk) You_feel("less %s now.", Hallucination ? "trippy":"confused");
- *     if ((xtime && !old) || (!xtime && old)) disp.botl = TRUE;
- *     set_itimeout(&HConfusion, xtime);
- *
- * RNG-FREE — every caller draws its own duration and passes it in by value.
- *
- * THE STORE IS THE WHOLE POINT.  HConfusion is u.uprops[CONFUSION].intrinsic
- * (youprop.h:83), which is what js/display.js's status line, js/cmd.js's
- * u_maybe_impaired() and js/cmd.js's autoopen/paranoid guards all read.  C has
- * exactly ONE make_confused; this port had FIVE copies of it and not one of
- * them wrote that word: js/mhitu.js:131 and js/sit.js:60 were empty bodies
- * (and js/mhitu.js's was the EXPORTED one this file and js/spell.js imported),
- * while js/read.js:2647 and js/eat.js:971 wrote a flat `game.HConfusion` that
- * only their own file-local readers consult.  Net effect: nothing in the game
- * could make the hero confused.  seed0002 quaffs a potion of confusion at step
- * 237, C paints " Conf" on the status line, and the port painted nothing there
- * for the remaining 358 steps of the run.
- * Exported so the other four copies can delegate here instead of drifting. */
 export function make_confused(xtime, talk) {
     const u = game.u;
     if (!u)
@@ -3169,45 +2534,6 @@ function _potion_Hallucination() {
     const res = (up[HALLUC_RES]?.intrinsic | 0) || (up[HALLUC_RES]?.extrinsic | 0);
     return !!(hallu && !res);
 }
-/* RE-POINTED 2026-08-20, and A/B'd against the floor exactly as the note it
- * replaces asked for.  That note was right about the shadowing (three call
- * sites in this file, all silenced) and right to be cautious — waking
- * toggle_blindness()/vision_recalc on an unmeasured path is how re-pointing a
- * silent stub cost this project 2059 points once.  What it lacked was a
- * session that NEEDED it: seed4500-knight-coverage step 1204 quaffs a wished
- * potion of extra healing while blind, so healup(..., cureblind=TRUE) is
- * supposed to raise the second half of "You feel much better.  You can see
- * again." and clear the status line's Blind.  Through the stub it raised
- * neither, and the hero stayed blind for the remaining 610 frames of the
- * recording.
- * `make_blinded` is imported from js/zap.js (C potion.c:261) rather than
- * re-declared, so there is exactly one body and no fourth spelling. */
-/* ── The make_*() property setters (potion.c:137-467). ───────────────────────
- *
- * All five bodies below were dead no-op stubs with ZERO call sites in this
- * file.  They became load-bearing with the #wizintrinsic port (wizcmds.c:1023-
- * 1078): every arm of that switch is one of these, and cmd.js was throwing
- * rather than guessing at them, which HALTED the scored run of
- * seed0399-wizard-hallu-actions at frame 414/532 and
- * seed0383-wizard-hallucinate at 164/219 (both pick property 23, HALLUC).
- *
- * RNG CONTRACT — measured against the C source, not assumed.  NONE of these
- * bodies draws from the scored stream:
- *   - make_hallucinated's see_monsters()/see_objects()/see_traps() reach
- *     random_monster()/random_object() only via rn2_on_display_rng(), which is
- *     the separate DISPLAY rng (display.c:640 and mapglyph.c), not the game
- *     stream this port scores.
- *   - make_sick() is the ONE exception and it draws INDIRECTLY: exercise(A_CON,
- *     FALSE) is `AEXE(i) -= rn2(2)` (attrib.c:509) whenever |AEXE(A_CON)| <
- *     AVAL.  That draw is real and is on the scored stream.
- *   - the caller's own `typ = !rn2(2) ? ...` (wizcmds.c:1047) is a SECOND draw,
- *     and it happens BEFORE make_sick()'s.  Order: caller rn2(2), then
- *     exercise's rn2(2).
- * Everything else — set_itimeout, the killer list, update_inventory — is pure
- * state.
- *
- * They are `async` because pline() is async in this port; C's are void/boolean.
- */
 
 /* The u.uprops[] row for a property, created on demand.  C's u.uprops[] is a
  * fixed array so every row always exists; this port allocates lazily. */
@@ -3267,15 +2593,6 @@ export async function make_deaf(xtime, talk) {
         talk = false;
 
     _set_prop_itimeout(pd, xtime);
-    /* C `(xtime != 0L) ^ (old != 0L)`.  This used to read `(xtime !== 0)`,
-     * which is a TYPE test as well as a value test in JS: healup() and
-     * peffect_healing() below call in with the BigInt literal `0n`, and
-     * `0n !== 0` is TRUE, so every uncursed potion of healing took the
-     * state-changed branch and printed "You are unable to hear anything." on a
-     * hero who was never deaf.  seed0002 step 315 is exactly that frame — C
-     * "You feel better.", JS "You feel better.  You are unable to hear
-     * anything."  C's test is truthiness of a long, which is `!!x` for a JS
-     * Number and a BigInt alike. */
     if (!!xtime !== !!old) {
         SET_BOTL();
         if (talk)
@@ -3300,11 +2617,6 @@ export async function make_vomiting(xtime, talk) {
             await You_feel("much less nauseated now.");
 }
 
-/* C potion.c:136-192  make_sick(long xtime, const char *cause, boolean talk,
- *                               int type)
- * The `Unaware` early-out is #if 0'd out in C ("tell player even if hero is
- * unconscious"), so talk is NOT suppressed here — and the "deathly sick" line
- * is not even gated on talk. */
 export async function make_sick(xtime, cause, talk, type) {
     const u = game.u || (game.u = {});
     const ps = _uprop(SICK);
@@ -3560,14 +2872,6 @@ export function set_itimeout(which, val) {
      * which truncated every timeout above 255. */
     which.value = (which.value & ~TIMEOUT) | itimeout(val);
 }
-/* C ref: you.h:240 #define Role_if(X) (gu.urole.mnum == (X)).  Mirrors the
- * already-real body at js/cmd.js:355 (not exported from there, so this is a
- * second, byte-identical copy rather than an import — cmd.js already imports
- * from js/potion.js in several places and importing the other way risks a
- * cycle).  MEASURED (dothrow board): breakobj() -> potionbreathe() -> a
- * broken POT_SICKNESS thrown/spilled near the hero hit this stub whenever
- * the hero was not a Healer (the ONLY corpus role this port has ever run —
- * Role_if(PM_HEALER) reads false for it — so the guarded body always runs). */
 function Role_if(pm) {
     return ((game.urole && game.urole.mnum) | 0) === (pm | 0);
 }
@@ -3646,21 +2950,6 @@ export function healup(nhp, nxtra, curesick, cureblind) {
     return;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
- * #dip command — C ref: nethack-c/src/potion.c dodip()/potion_dip()/mixtype().
- *
- * Ported for seed5500 (two dips):
- *   1. dip a potion into a (blessed) potion of water → H2Opotion_dip blesses it
- *      ("Your <obj> glows with a light blue aura.").
- *   2. dip a potion into a different non-water potion → mix branch: mixtype()
- *      reaction (STRANGE_OBJECT here), dip_potion_explosion roll, then the
- *      rnd(8) result switch ("The mixture glows brightly and evaporates.").
- * Branches the corpus does not exercise (fountain/pool/sink, POT_POLYMORPH,
- * POT_ACID/OIL object effects, unicorn-horn/amethyst) are ported faithfully
- * where cheap and stubbed-with-impossible where they would require large
- * unported subsystems; each stub is annotated. RNG order is C-exact on the
- * exercised path.
- * ───────────────────────────────────────────────────────────────────────── */
 
 /* UNICORN_HORN / AMETHYST otyps (not POTION_CLASS) — referenced by mixtype()
  * and by potion_dip's neutralize arm (potion.c:2736).  These used to be the
@@ -3678,16 +2967,6 @@ function _curse(o) { if (o) { o.blessed = false; o.cursed = true; } }
 function _uncurse(o) { if (o) { o.cursed = false; } }
 function _unbless(o) { if (o) { o.blessed = false; } }
 
-/* Bump bridge objs_deleted.count to match C's delobj counter.
- * C ref: invent.c useup()/useupall() -> freeinv() -> obfree() -> delobj() ->
- * dealloc_obj() puts the object on the objs_deleted queue.  js/potion.js's own
- * useup_potion() (dodrink's copy of the same C function, line ~1768) already
- * does this bump; js/read.js's doread copy silently omitted it and was fixed
- * for the identical reason (see its comment).  This dip copy (_useup /
- * _useupall, potion_dip's mixing/poisoning/oil/H2Opotion arms) omitted it too:
- * MEASURED on the dodip capture-replay board — a dipped-into potion of water
- * consumed via _poof()->_useup() left the capture's objs_deleted.count MISSING
- * where C recorded 1. */
 function _bumpObjsDeleted() {
     const store = game.__bridge__ || (game.__bridge__ = {});
     const key = 'objs_deleted.count';
@@ -3794,16 +3073,6 @@ async function _hold_potion(obj) {
          * right where (it was already in invent), so only the fresh-slot arm
          * needs it. */
         obj.where = 3; /* OBJ_INVENT */
-    /* C invent.c:1115-1123 addinv_core0 — under `fixinv`
-     * (flags.invlet_constant, optlist.h initval On and never cleared in this
-     * corpus) C inserts the new node at the HEAD of gi.invent and then calls
-     * reorder_invent(), which bubbles the chain back into inv_rank order
-     * (invent.c:731 `#define inv_rank(o) ((o)->invlet ^ 040)`).  The
-     * tail-append is C's `!flags.invlet_constant` arm, which never runs here.
-     * The two agree only while every new letter sorts after every held letter;
-     * #adjust, a freed slot, or the gl.lastinvnr wrap breaks that, and the
-     * resulting order fault draws no RNG until something walks gi.invent
-     * (destroy_items, dog_goal, the drop/inventory menus). */
         obj.nobj = g.invent ?? null;
         g.invent = obj;
         reorder_invent();
@@ -3828,13 +3097,6 @@ async function _hold_potion(obj) {
         const emsg = _potion_encumber_text(oldcap, newcap);
         if (emsg) {
             await pline(emsg);
-    /* C pickup.c:1992 / :2013 — `disp.botl = TRUE;` at the tail of BOTH arms of
-     * encumber_msg(), AFTER the pline.  It is what tells the NEXT flush_screen
-     * to re-run bot() and repaint the encumbrance field; without it this port's
-     * _capture_botl (js/display.js:3353) never refreshes _botlPaintedCap, so
-     * every later frame renders the stale pre-change capacity.  seed0399 became
-     * Burdened at step 412 and then rendered no encumbrance word at all for the
-     * remaining 119 frames. */
             if (g.disp) g.disp.botl = true;
         }
     }
@@ -3906,10 +3168,6 @@ function _otense(obj, verb) {
     return verb.endsWith('s') || verb.endsWith('x') ? verb + 'es' : verb + 's';
 }
 
-/* C ref: objects[otyp].oc_magic.  All non-water/non-juice potions are magical
- * except POT_WATER and POT_FRUIT_JUICE (oc_magic 0). Used only to pick the
- * mass-dip amt-split formula; on the quan==1 seed5500 path it is not consulted
- * for RNG, but kept faithful. */
 function _potion_oc_magic(otyp) {
     return !(otyp === POT_WATER || otyp === POT_FRUIT_JUICE);
 }
@@ -4000,14 +3258,6 @@ function mixtype(o1, o2) {
     return STRANGE_OBJECT;
 }
 
-/* C ref: potion.c:1500 H2Opotion_dip — dipping targobj into a potion of water.
- * The uncursed-water branch used to be a no-op with a comment claiming
- * water_damage() was "itself a stub elsewhere in this file" — WRONG:
- * water_damage is a real, already-imported export of js/trap.js (5642), and
- * this was simply never wired to it.  Measured (board16-s dodip.jsonl): the
- * plain-uncursed-water dip is the single most common scenario in the corpus
- * and every one of it showed a 1-draw RNG residual matching water_damage's
- * own rn2/rnd sites exactly. */
 async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
     const COST_alter = -2, COST_none = -1, COST_UNCURS = 4, COST_UNBLSS = 3;
     let func = null, glowcolor = 0, costchange = COST_none, altfmt = false, res = false;
@@ -4042,8 +3292,6 @@ async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
 
     if (func) {
         if (useeit) {
-            /* hcolor() = the literal color unless hallucinating; no Hallucination
-             * on the seed5500 path. */
             if (altfmt)
                 await pline(`${objphrase} with ${_an(glowcolor)} aura.`);
             else
@@ -4060,15 +3308,12 @@ async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
 }
 function _an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
 function _Yobjnam2_glow(obj) {
-    /* "Your <obj> glow" form — C Yobjnam2(obj,"glow"). seed5500 dip 1 obj is a
-     * carried potion, so the possessive is "Your". */
     return `Your ${_simpleoname(obj)} glows`;
 }
 
 /* C ref: potion.c:2419 dip_potion_explosion — does the dipped potion explode? */
 async function _dip_potion_explosion(obj, dmg) {
     const u = game.u;
-    /* uarmc ALCHEMY_SMOCK check → 30; else 10. No alchemy smock in seed5500. */
     const cloakSmock = false;
     if (obj.cursed || obj.otyp === POT_ACID
         || (obj.otyp === POT_OIL && obj.lamplit)
@@ -4189,18 +3434,6 @@ async function potion_dip(obj, potion) {
             case 3:
                 obj.otyp = POT_SICKNESS; break;
             case 4: {
-                /* C potion.c:2557-2565 —
-                 *   otmp = mkobj(POTION_CLASS, FALSE);
-                 *   obj->otyp = otmp->otyp;
-                 *   if (obj->otyp == POT_OIL || otmp->otyp == POT_OIL)
-                 *       fixup_oil(obj, otmp);
-                 *   obfree(otmp, NULL);
-                 * mkobj() never places otmp anywhere, so obfree() here never
-                 * unlinks it from any chain — but it IS a delobj()-equivalent
-                 * free, and the bridge's objs_deleted.count counts every
-                 * free, not just inventory removals (measured: record #13
-                 * expects objs_deleted.count +2 — one for _useup(potion)
-                 * above, one for this obfree). */
                 const otmp = await mkobj(POTION_CLASS, false);
                 obj.otyp = otmp.otyp;
                 if (obj.otyp === POT_OIL || otmp.otyp === POT_OIL) {
@@ -4227,10 +3460,6 @@ async function potion_dip(obj, potion) {
         }
         obj.odiluted = (obj.otyp !== POT_WATER);
 
-        /* C potion.c:2581-2587 — describe the result.  Not Blind/Hallucinating
-         * on the seed5500 path: "The mixture looks <appearance>." where the
-         * appearance is the new type's shuffled descr (hcolor() is identity
-         * when not hallucinating). */
         if (obj.otyp === POT_WATER) {
             await pline('The mixture bubbles, then clears.');
         } else {
@@ -4250,12 +3479,6 @@ async function potion_dip(obj, potion) {
     /* ── C potion.c:2597-2606 — acid on a lichen corpse ──────────────────── */
     if (potion.otyp === POT_ACID && (obj.otyp | 0) === CORPSE
         && (obj.corpsenm | 0) === PM_LICHEN) {
-        /* pline("%s %s %s around the edges.", The(cxname(obj)),
-         *       otense(obj, "turn"), Blind ? "wrinkled"
-         *                            : potion->odiluted ? hcolor(NH_ORANGE)
-         *                              : hcolor(NH_RED));
-         * Not Blind on any corpus dip; hcolor() is the identity when not
-         * hallucinating (js/mhitm.js hcolor returns colorpref). */
         await pline(`${The(cxname(obj))} ${otense(obj, 'turn')} `
             + `${obj_dip_hcolor(potion.odiluted ? NH_ORANGE : NH_RED)} around the edges.`);
         potion.in_use = false; /* didn't go poof */
@@ -4310,9 +3533,6 @@ async function potion_dip(obj, potion) {
         let wisx = false;
 
         if (potion.lamplit) { /* burning */
-            /* C potion.c:2654 — fire_damage(obj, TRUE, u.ux, u.uy).
-             * Use the direct-object adapter because this target is carried;
-             * flooreffects() would incorrectly require OBJ_FREE. */
             await fire_damage(obj, true, game.u.ux | 0, game.u.uy | 0);
         } else if (potion.cursed) {
             /* C potion.c:2655-2659 — the spill:
@@ -4335,8 +3555,6 @@ async function potion_dip(obj, potion) {
         } else if ((!_is_rustprone(obj) && !_is_corrodeable(obj))
                    || _is_ammo(obj)
                    || (!obj.oeroded && !obj.oeroded2)) {
-            /* C potion.c:2667-2673 — uses up the potion, doesn't set greased.
-             * Not Blind on any corpus dip. */
             await pline(`${_Yname2(obj)} ${otense(obj, 'gleam')} with an oily sheen.`);
         } else {
             /* C potion.c:2675-2685 — oil removes rust and corrosion. */
@@ -4357,26 +3575,6 @@ async function potion_dip(obj, potion) {
     }
     /* more_dips: (C potion.c:2693) */
 
-    /* obj.h:88 `xint16 timed` is a COUNT of active timers on this object, not
-     * a boolean, and `lamplit` (obj.h:104) is a separate bit — but for a
-     * light-source object (a lamp/lantern/candle or a POT_OIL) the ONLY timer
-     * C ever attaches is begin_burn()'s BURN_OBJECT fuse (timeout.c:1712-1785:
-     * start_timer() sets obj->lamplit=1 on success in the SAME call that
-     * increments obj->timed), so for exactly these two object classes
-     * `timed > 0` and `lamplit` are equivalent. This matters because the
-     * capture-replay sweep's compact obj-chain encoding
-     * (OBJ_CHAIN_FIELD_ORDER, js/struct_reconstructor.js) captures `timed`
-     * but has no `lamplit` slot at all, so any inventory-sourced obj replays
-     * with obj.lamplit === undefined regardless of its true C state — a
-     * capture-schema gap, not a port gap (the same one that silently skips
-     * this arm entirely on the real corpus: measured, board16b dodip record
-     * #1, a lit OIL_LAMP with lamplit=undefined/timed=1 fell through to the
-     * "fill it" arm below and drew exercise(A_WIS)'s rn2(19) where C drew
-     * explode()'s d(6,6)+burnarmor+destroy_items+exercise chain). Restricted
-     * to lamp/POT_OIL objects specifically — for other classes (corpses,
-     * eggs, cameras) `timed>0` means a DIFFERENT timer and this equivalence
-     * does not hold. On the real scored game (not a single-record replay)
-     * obj.lamplit is tracked normally and this is a no-op fallback. */
     const _dip_isLit = o => !!(o && (o.lamplit || (o.timed | 0) > 0));
 
     /* ── C potion.c:2695-2733 — fill an oil lamp / magic lamp ────────────── */
@@ -4405,9 +3603,6 @@ async function potion_dip(obj, potion) {
             potion.in_use = false; /* didn't go poof */
         } else {
             await pline(`You fill ${_yname_dip(obj)} with oil.`);
-            /* C potion.c:2716 check_unpaid(potion) — Yendorian Fuel Tax; the
-             * one JS body (js/cmd.js check_unpaid) is a documented no-op stub,
-             * and it only bills inside a shop, which no corpus dip is in. */
             /* C potion.c:2720-2723 — burns more efficiently in a lamp. */
             obj.age = (obj.age | 0)
                 + Math.trunc((!potion.odiluted ? 4 : 3) * (potion.age | 0) / 2);
@@ -4567,9 +3762,6 @@ const NH_ORANGE = 'orange';
 const NH_RED = 'red';
 function obj_dip_hcolor(pref) { return hcolor(pref); }
 
-/* C ref: invent.c splitobj — split `num` off a stack into a new obj inserted
- * right after the original. Minimal: clone fields, link into invent. Only the
- * mass-dip path uses this; not reached on seed5500 (quan==1). */
 function _splitobj(obj, num) {
     const o = newobj(obj);
     o.quan = num;
@@ -4579,22 +3771,9 @@ function _splitobj(obj, num) {
     return o;
 }
 
-/* C ref: mkobj.c:744-822 costly_alteration(obj, alter_type) — reachable slice
- * only.  The real body lives in js/cmd.js (private, not exported); this file
- * can only ever call it on an object that came out of getobj() restricted to
- * inventory (dodip's dip_ok/drink_ok never suggest a floor item), so `obj`
- * always has where === OBJ_INVENT (or, post-splitobj, the OBJ_FREE-shaped
- * copy of one) — the one branch costly_alteration reduces to:
- *     if (obj->where == OBJ_INVENT || obj->where == OBJ_FREE) {
- *         if (!obj->unpaid) return;
- *         ... shop billing ...
- *     }
- * The unpaid/billing sub-path needs js/cmd.js's bill_dummy_object/verbalize/
- * set_bknown, out of this packet's one-file scope; refuse loudly rather than
- * fabricate a billing outcome. */
 async function _costlyAlterationInventoryDip(obj) {
     if ((obj.where | 0) === OBJ_INVENT || (obj.where | 0) === OBJ_FREE) {
-        if (!obj.unpaid) return; /* C mkobj.c:751-752 — the only corpus path */
+        if (!obj.unpaid) return;
         /* cmd.js now exports the canonical billing implementation, including
          * bill_dummy_object() and the unpaid inventory settlement. */
         await costly_alteration(obj, 10);
@@ -4628,15 +3807,6 @@ function dip_ok(obj) {
         return GETOBJ_EXCLUDE_INACCESS;
     return GETOBJ_SUGGEST;
 }
-/* C potion.c:2227-2233 dip_hands_ok() — chosen over dip_ok when the hero is
- * standing on a pool/fountain/sink and did not use the 'm' prefix.  Its only
- * difference is the null-object arm:
- *     if (!obj && (Glib && can_reach_floor(FALSE))) return GETOBJ_SUGGEST;
- * i.e. greasy hands make "-" a LIKELY choice (listed as "- " in the bracket)
- * rather than merely a legal one.  Glib is u.uprops[GLIB].intrinsic
- * (youprop.h:112); can_reach_floor is the levitation/steed test, which this
- * file has never had a real body for (see dodip's WIRE_PENDING note) — with no
- * levitation and no steed at any corpus dip it is TRUE. */
 
 function dip_hands_ok(obj) {
     if (!obj) {
@@ -4683,28 +3853,14 @@ export async function dodip() {
     const u = g.u;
     const loc = g.level?.at(u.ux, u.uy);
     const here = loc ? loc.typ : 0;
-    const at_pool = false; /* is_pool — no water tile in seed5500 dips */
+    const at_pool = false;
     const at_fountain = loc ? IS_FOUNTAIN(here) : false;
     const at_sink = loc ? IS_SINK(here) : false;
-    const menu_requested = false; /* no 'm' prefix in seed5500 */
+    const menu_requested = false;
     const at_here = (!menu_requested && (at_pool || at_fountain || at_sink));
     /* C potion.c:2288 drink_ok_extra = 0 — reset before the first getobj. */
     drink_ok_extra = 0;
 
-    /* C potion.c:2281 — getobj("dip", at_here ? dip_hands_ok : dip_ok,
-     * GETOBJ_PROMPT).  `at_here` really does select a different callback; this
-     * line used to read `at_here ? _dip_ok : _dip_ok`.
-     *
-     * The prompt loop is now js/cmd.js getObjFromGetobj — i.e. invent.c:1752
-     * itself — instead of this file's private copy, which was missing C's
-     * invent.c:2057-2062 arm: a letter naming no carried object plines "You
-     * don't have that object.", the tty more()s it (ONE recorded dismiss key)
-     * and the for(;;) re-prompts (a SECOND key).  The copy here re-prompted
-     * SILENTLY, so it ate one key where C eats two and every later key ran as a
-     * top-level command.  The comment on that arm said "no corpus session types
-     * an invalid one"; measured 2026-08-24 over corpus-generated/v5/train with
-     * tools/getobj-message-diff.mjs, 451 frames across 15 sessions do, ZERO of
-     * them matched, and 6 of them are a session's FIRST screen miss. */
     const obj = await getObjFromGetobj('dip', at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
     if (!obj) { g.context.move = 0; return ECMD_CANCEL; }
 
@@ -4715,52 +3871,11 @@ export async function dodip() {
      * is used. obuf = doname-with-article (e.g. "a brown potion"). */
     let obuf;
     if (is_hands) obuf = 'your hands';
-    /* C potion.c:2299 short_oname(obj, doname, thesimpleoname, ...) — the FULL
-     * doname, not a potion-only name: seed0014 dips a worn orcish helm and C's
-     * prompt reads "Dip a cursed -4 orcish helm (being worn) into the
-     * fountain?".  Route EVERYTHING through the shared doname body (js/cmd.js
-     * doname_body, the inventory formatter).
-     *
-     * The POTION_CLASS special case that used to sit here sent potions to this
-     * file's own _doname_potion(), which is built on the file-local
-     * _simpleoname() — a potion-only namer that (a) has no POT_WATER
-     * holy/unholy arm (C objnam.c:840-843 puts "holy "/"unholy " INSIDE the
-     * xname body when the type is discovered and the BUC is known) and (b)
-     * pluralizes by appending "s" to the whole string.  seed0106 step 109 dips
-     * a stack of blessed water and C asks "Dip 4 potions of holy water into
-     * the fountain?" where this printed "Dip 4 potion of waters".  doname_body
-     * routes POTION_CLASS to js/objnam.js xname_potion, which is the real
-     * objnam.c:832 arm and carries both. */
-    /* C potion.c:2301-2305 — the doname result is NOT used raw; it goes through
-     * short_oname(obj, doname, thesimpleoname, lenlimit), and lenlimit is
-     *
-     *   QBUFSZ - sizeof "What do you want to dip into? \
-     *                    [abdeghjkmnpqstvwyzBCEFHIKLNOQRTUWXZ#-# or ?*] "
-     *   = 128 - 78 = 50
-     *
-     * (the C comment beside it says "leaves 49", but the literal it cites is 77
-     * characters, so sizeof is 78 and the limit is 50; the corpus agrees with
-     * 50 — seed0014 keeps a 47-character name and strips a 53-character one).
-     * Over that limit, short_oname re-formats with bknown/rknown/greased/
-     * oeroded/oeroded2 zeroed, which is why C's prompt drops "cursed" and
-     * "thoroughly rusty" at seed0014 step 388 with no state change at all. */
     else obuf = (await short_oname(obj,
                             async (o) => (await doname_body(o, (u.uhandedness === RIGHT_HANDED) ? 'right' : 'left')),
                             thesimpleoname,
                             50));
 
-    /* C potion.c:2306-2317 — "preceding #dip with 'm' skips the possibility of
-     * dipping into pools, fountains, and sinks plus the extra prompting which
-     * those entail".  This arm was a comment ("skipped (none here). Port y_n
-     * branches when a session dips at a water tile"); seed0014 step 372 dips at
-     * a fountain, so without it the hero was asked the SECOND question ("What do
-     * you want to dip a potion into?") and the recorded 'y' desynced everything
-     * after.
-     *
-     * WIRE_PENDING: can_reach_floor(FALSE) (potion.c:2308) is not ported — the
-     * hero is never levitating or on a steed at a dip in the public corpus — and
-     * the at_sink / at_pool arms below it are still unported (RNG-free prompts;
-     * their bodies dipsink()/water_damage() would need their own wiring). */
     if (!menu_requested && at_fountain) {
         const qbuf = `Dip ${g.flags?.verbose === false ? shortestname : obuf} into the fountain?`;
         if (await y_n(qbuf) === 'y') {
@@ -4802,63 +3917,6 @@ export async function dodip() {
     return res;
 }
 
-/* ══ C potion.c:1603-1927 potionhit(mon, obj, how) ═══════════════════════════
- * A potion hits `mon` (which may be the hero) and is always used up.
- *
- * Ported for BOTH targets.  The header used to claim "nothing in this port
- * CALLS potionhit with a monster target" — that was WRONG: js/cmd.js:3515
- * thitmonst() already calls `potionhit(mon, obj, THIT_POTHIT_HERO_THROW)`
- * with a real monster target whenever a thrown potion connects.  Measured on
- * board16-s's dothrow.jsonl: 9/123 replayed records reach potionhit with
- * isyou=false (otyp 322 POT_WATER x7, 318 POT_SICKNESS x1, 317 POT_BOOZE x1),
- * and every one was a full RNG-residual miss, because the old `if (!isyou)
- * return;` skipped even bottlename()'s draw.
- *
- * Remaining GAPs in the monster-target half — each throws a documented
- * "not yet ported" error only if actually reached (none of the 9 observed
- * records reach any of them):
- *   - hit_saddle && saddle (potion.c:1706-1726): needs H2Opotion_dip, which is
- *     async in this file (_H2Opotion_dip) while potionhit is sync and its only
- *     caller (js/cmd.js thitmonst) does not await it — an unawaited await
- *     would defer later draws into a microtask and corrupt the RNG stream
- *     silently (same hazard js/zap.js:2870 documents for resist()->killed()).
- *   - any DEADMONSTER(mon) path (potion.c:1841-1844, 1862-1863, 1877-1882):
- *     needs killed()/monkilled(), both async, for the identical sync-caller
- *     reason.
- *   - is_were && !is_human reverting via new_were() (potion.c:1843-1844):
- *     new_were is real (js/were.js:116) but not exported.
- *   - is_were && is_human transforming via new_were() (potion.c:1850-1852):
- *     same gap.
- *   - PM_GREMLIN split_mon() (potion.c:1854-1856): this file's own local
- *     split_mon throws; js/mhitm.js's is a no-op stub. Neither is a real port.
- *   - POT_POLYMORPH on a monster (potion.c:1885-1886): needs bhitm(), which
- *     has no js/ definition anywhere in the tree.
- *   - POT_OIL explode_oil() when obj.lamplit (potion.c:1867-1868): explode_oil
- *     and splatter_burning_oil are NOW REAL (js/zap.js, ported from
- *     explode.c:960-979 — both were previously false "has no js/ definition
- *     anywhere" claims). Still not wired at either potionhit call site: both
- *     are async (explode() awaits pline() repeatedly while still drawing RNG
- *     for hit/burn/destroy rolls), and BOTH of potionhit's real callers —
- *     cmd.js thitmonst() and mhitu.js m_throw() — invoke it synchronously,
- *     unawaited, then immediately run more RNG-drawing code of their own
- *     (potionbreathe() right below, for one). Firing explode_oil without
- *     awaiting would let its deferred draws land AFTER whatever runs next in
- *     the same synchronous tick — the identical hazard already named above
- *     for killed()/monkilled(). Wiring this for real needs thitmonst() and
- *     m_throw() (both in files this session does not own) to go async and
- *     await potionhit(); that is out of scope here and is left as a named
- *     fleet-feedback item rather than an unsafe fire-and-forget call.
- *   - the unpaid-in-a-shop settlement (potion.c:1913-1925): needs
- *     subfrombill/stolen_value/shop_keeper, none of which are wired here.
- *
- * RNG, in C's order (hero target):
- *   bottlename()                     rn2(7)      potion.c:1605
- *   losehp(Maybe_Half_Phys(rnd(2)))  rnd(2)      potion.c:1638
- *   potionbreathe(obj)               [its own]   potion.c:1907
- * The distance<3 rn2((1+ACURR(A_DEX))/2) gate at potion.c:1906 is short-circuit
- * DEAD for a hero target — `distance == 0` is the first disjunct — so it draws
- * nothing here, exactly as in C.
- */
 export async function potionhit(mon, obj, how) {
     const g = game;
     const u = g.u;
@@ -4924,25 +3982,6 @@ export async function potionhit(mon, obj, how) {
         /* C potion.c:1683-1704 — the hero-target per-otyp arms. */
         switch (obj.otyp | 0) {
         case POT_OIL:
-            /* C:1683-1685 `if (obj->lamplit) explode_oil(obj, u.ux, u.uy)`.
-             * explode_oil/splatter_burning_oil are REAL now (js/zap.js,
-             * explode.c:960-979) — see this function's header note for why
-             * they are still not called here: potionhit is invoked
-             * synchronously and unawaited from both real call sites
-             * (cmd.js thitmonst, mhitu.js m_throw), and explode_oil's chain
-             * draws RNG across several internal `await pline()` points, so
-             * firing it here without awaiting would let its draws land out
-             * of order against potionbreathe()/obfree() below. Left as a
-             * (deliberately non-throwing) no-op — obj.lamplit is ALSO not
-             * reliably observable through the capture-replay sweep's
-             * compact obj-chain encoding (OBJ_CHAIN_FIELD_ORDER in
-             * js/struct_reconstructor.js has no lamplit slot; every
-             * inventory-sourced obj replays with obj.lamplit === undefined
-             * regardless of its true C state) — a capture-schema gap, not a
-             * port gap, flagged for the harness rather than papered over
-             * here. Converting this to a throw would risk the floor on any
-             * session that DOES reach it live, for a call this port cannot
-             * yet safely make either way. */
             break;
         case POT_POLYMORPH:
             You_feel(`a little ${_hallucination() ? 'normal' : 'strange'}.`);
@@ -5175,20 +4214,6 @@ export async function potionhit(mon, obj, how) {
      * used up.  m_throw already extracted it from the thrower's minvent and
      * left it OBJ_FREE, so this is the only owner. */
     await obfree(obj, null);
-    /* Bump bridge objs_deleted.count to match C's delobj counter — the same
-     * mirror every other real obfree()/dealloc_obj() call site in this port
-     * carries (js/cmd.js:6305, js/mklev.js:6038, js/makemon.js:5400,
-     * js/sp_lev.js:3759, js/eat.js:2024, js/trap.js:7178, potion.js:1793 &
-     * :3370, js/read.js:1971).  js/dokick.js's obfree() itself must NOT do
-     * this bump — several of those call sites already bump around their OWN
-     * obfree() call, and a bump inside obfree() double-counts every one of
-     * them (MEASURED: dothrow board rec#70, a thrown potion merging into a
-     * floor stack via stackobj -> _merged_floor, which already bumps this
-     * counter itself, went from correct 1 to a doubled 2 the moment obfree()
-     * also bumped it).  MEASURED (dothrow board): a non-gremlin potion
-     * thrown AT a monster and consumed here left `objs_deleted.count`
-     * MISSING against C's captured 1 — this was the one real-deletion call
-     * site with no mirror at all. */
     {
         const store = g.__bridge__ || (g.__bridge__ = {});
         const key = 'objs_deleted.count';
@@ -5326,15 +4351,6 @@ export async function potionbreathe(obj) {
         exercise(4, true);
         break;
     case POT_SICKNESS:
-        /* C potion.c:2008 `if (!Role_if(PM_HEALER))`.  This read the numeral
-         * 342, not PM_HEALER (334 — js/pm.generated.js:337) — a wrong,
-         * hardcoded role mnum, not a stand-in awaiting the real constant.
-         * MEASURED (dothrow board): the corpus hero (probe-blastvapor) is
-         * role mnum 342, not a Healer, so C's real Role_if(PM_HEALER) reads
-         * FALSE and takes the HP-loss + exercise(A_CON, FALSE) branch (its
-         * rn2(2) is on the captured tape) — this port's Role_if(342) read
-         * TRUE for the SAME hero and skipped the whole branch, silently
-         * eating one recorded draw for every POT_SICKNESS potionbreathe. */
         if (!Role_if(PM_HEALER)) {
             if (Upolyd(u)) {
                 if ((u.mh | 0) <= 5)
@@ -5483,97 +4499,9 @@ const SPE_DETECT_MONSTERS = 373;
 const SPE_HASTE_SELF = 388;
 const SPE_LEVITATION = 390;
 
-/* C ref: pline.c impossible(const char *s, ...) — VARIADIC, and it PRINTS:
- * vpline(s, the_args) followed by pline("Program in disorder - perhaps you'd
- * better #quit."), plus a paniclog entry.  This body takes fixed parameters,
- * so its callers silently dropped their arguments (flagged by
- * tools/format-arity-lint.mjs).  The rest parameter fixes the arity.
- * KNOWN GAP, deliberately not closed here: this stub still emits NOTHING
- * where C emits two toplines.  Porting the output is not a safe drive-by —
- * impossible() firing in this port where it does not fire in C would ADD
- * toplines C never printed, which is a regression in the opposite direction.
- * Reported rather than guessed at. */
 function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 
-/* ===========================================================================
- * READ THIS BEFORE PORTING ANY peffect_* ARM.
- *
- * There are TWO potion-effect ladders in this file and only ONE of them runs:
- *
- *   LIVE  — dodrink()'s hand-written `otmp.otyp === POT_*` chain (this file,
- *           ~line 1200-1560).  This is what the scored runSegment() path
- *           actually executes; its tail is `pline('Nothing happens.')`.
- *   SPELL — `peffects(otmp)` below, together with the stub bodies in this
- *           block.  ITS "DEAD" LABEL IS STALE AS OF 2026-09-11 — peffects()
- *           is LIVE: js/spell.js:48
- *           imports it and js/spell.js:1947 does `await peffects(pseudo)` for
- *           every spell that routes through a pseudo-potion.  Re-check the
- *           importers before trusting any "dead ladder" claim here; the
- *           2026-08-14 reading at 4dc3a090 (ZERO callers) was true then.
- *           peffect_full_healing's bare `u` — a free identifier that would
- *           have thrown on first call — is bound to game.u now, and peffects()
- *           itself is async so its six async arms are awaited rather than
- *           fired and forgotten.
- *           dodrink() calls peffect_water / peffect_oil / peffect_sickness /
- *           peffect_extra_healing DIRECTLY, bypassing peffects() entirely.
- *
- * The stub bodies here are still NOT "seventeen missing potion arms" for the
- * QUAFF path — dodrink() never reaches them, which is how peffect_booze stayed
- * empty after booze was fixed in the live ladder (commit for seed0002-booze).
- * They ARE reachable from the SPELL path since js/spell.js started calling
- * peffects(); filling one in changes what a pseudo-potion spell does, and
- * nothing else.
- *
- * When you port an arm: give it a REAL body here (async, awaiting pline), and
- * add a live-ladder arm in dodrink() that CALLS it — see POT_EXTRA_HEALING for
- * the pattern.  One body, two entry points; never two bodies.
- *
- * Corpus reachability, measured 2026-08-14 by instrumenting dodrink and by
- * enumerating every "What do you want to drink?" prompt across all 44 public
- * sessions: the corpus contains NINE quaffs of a potion in inventory, and
- * eight of them land on arms the live ladder already has (fruit juice,
- * paralysis, confusion x2, booze, healing, sickness, oil).  The ONLY quaff
- * that reached the 'Nothing happens.' tail was seed4500 step 1203
- * (POT_EXTRA_HEALING), now ported.  Do not expect the remaining sixteen stubs
- * to have quaff witnesses — they do not.  Their live witnesses, if any, come
- * from potionbreathe() vapours and from fountain.c's drinkfountain() ladder,
- * which share leaves (monster_detect, make_hallucinated, ...) with them.
- * A caller other than dodrink() can still reach these stubs: an absent quaff
- * witness does not establish that a spell or vapour path cannot.
- * =========================================================================== */
 
-/* C potion.c:645-693 peffect_restore_ability(struct obj *otmp) — potion OR
- * spell of restore ability (for the spell, otmp is a temporary spellbook
- * object, blessed if the hero is skilled in healing).
- *
- *     gp.potion_unkn++;
- *     if (otmp->cursed) { pline("Ulch! ..."); return; }
- *     pline("Wow!  This makes you feel %s!",
- *           (!otmp->blessed) ? "good"
- *           : unfixable_trouble_count(FALSE) ? "better" : "great");
- *     i = rn2(A_MAX);
- *     for (ii = 0; ii < A_MAX; ii++) {
- *         int lim = AMAX(i);
- *         if (ABASE(i) < lim) {
- *             ABASE(i) = lim;
- *             AEXE(i) = max(AEXE(i), 0);
- *             disp.botl = TRUE;
- *             if (!otmp->blessed) break;
- *         }
- *         if (++i >= A_MAX) i = 0;
- *     }
- *     if (otmp->otyp == POT_RESTORE_ABILITY && u.ulevel < u.ulevelmax) {
- *         do { pluslvl(FALSE); } while (u.ulevel < u.ulevelmax && otmp->blessed);
- *     }
- *
- * u.acurr.a[]/u.amax.a[]/u.aexe.a[] are DISPLAY order in this port
- * (_C_ATTR_TO_DISP above), while C's own arrays ARE the A_STR..A_CHA order —
- * every ABASE(i)/AMAX(i)/AEXE(i) below therefore translates the C-constant i
- * through _C_ATTR_TO_DISP, the same translation _adjattrib() already applies.
- *
- * RNG: rn2(A_MAX) === rn2(6) (attrib.h:18, A_MAX=6) is the ONE draw — this is
- * the site the recorder's raw (uncorrected) attribution names,
- * peffect_restore_ability(potion.c:662); the search loop itself is RNG-free. */
 async function peffect_restore_ability(otmp) {
     const g = game;
     const u = g.u;
@@ -5686,21 +4614,6 @@ async function peffect_booze(otmp) {
         g.nomovemsg = 'You awake with a headache.';
     }
 }
-/* C zap.c:2525-2532 do_enlightenment_effect(void):
- *     You_feel("self-knowledgeable...");
- *     display_nhwindow(WIN_MESSAGE, FALSE);
- *     enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
- *     pline_The("feeling subsides.");
- *     exercise(A_WIS, TRUE);
- * js/zap.js:4865 has it as `throw new Error('not yet ported')` and js/zap.js
- * never reaches that call on any corpus session; the potion is the live caller.
- * RNG: exercise(A_WIS, TRUE) draws rn2(19) (attrib.c:509) — the ONE draw the
- * recording shows for this whole sequence.  The menu itself draws nothing.
- *
- * display_nhwindow(WIN_MESSAGE, FALSE) is what raises the --More-- on
- * "You feel self-knowledgeable..." — measured on gen263-reseed-seed1423015,
- * where C holds that --More-- across FIFTEEN recorded keystrokes (steps 5-19;
- * only xwaitforspace's quitchars dismiss it) and opens the menu at step 20. */
 export async function do_enlightenment_effect() {
     const g = game;
     await pline('You feel self-knowledgeable...');
@@ -5730,25 +4643,6 @@ async function peffect_enlightenment(otmp) {
         await do_enlightenment_effect();
     }
 }
-/* C ref: potion.c:809-837 peffect_invisibility(struct obj *otmp).
- *
- * WITNESS: gen483-recombine-seed1841527 step 5 quaffs an uncursed potion of
- * invisibility; C's first draw there is d(6,100) at potion.c:828 and this port
- * drew nothing at all, so the whole 225-frame tail was wrong from that frame.
- *
- * The `is_spell` mummy-wrapping early-out (potion.c:815-818) is reached only
- * when otmp->oclass == SPBOOK_CLASS, i.e. from the invisibility SPELL.
- * dodrink() below rejects any non-POTION_CLASS object before it gets here
- * (the drink_ok/silly_thing screen), so on this port's only live entry point
- * is_spell is structurally false; the branch is left as C's shape in comment
- * rather than transliterated against a uarmc/yname plumbing this file lacks.
- * Port it together with the spell entry point, not before.
- *
- *     if (is_spell && BInvis && uarmc->otyp == MUMMY_WRAPPING) {
- *         You_feel("rather itchy under %s.", yname(uarmc));
- *         return;
- *     }
- */
 async function peffect_invisibility(otmp) {
     const g = game;
     const u = g.u;
@@ -5784,19 +4678,6 @@ async function peffect_invisibility(otmp) {
         ip.intrinsic = (ip.intrinsic & ~FROMOUTSIDE) >>> 0;
     }
 }
-/* C potion.c:841-878 peffect_see_invisible(struct obj *otmp).
- *
- * Serves POT_SEE_INVISIBLE and POT_FRUIT_JUICE (peffects() potion.c:1358).
- * The fruit-juice half returns before any RNG; the see-invisible half draws
- * rn1(100, 750) — recorded as `rn2(100)=79 @ peffect_see_invisible(potion.c:870)`
- * on gen135-reseed-seed1191299 step 5 — unless the potion is blessed, in which
- * case a permchance roll comes first.
- *
- * NOT ported here (no corpus reach and no js/ counterpart): set_mimic_blocking()
- * (potion.c:871).  It walks fmon flipping M_AP_* on mimics that are pretending
- * to be objects; it draws nothing, so its absence cannot move the RNG stream,
- * and this file's peffect_invisibility() leaves the same call out for the same
- * reason. */
 async function peffect_see_invisible(otmp) {
     const g = game;
     const u = g.u;
@@ -5876,20 +4757,6 @@ async function peffect_sleeping(otmp) {
         await fall_asleep(-(rn2(10) + 25 - 12 * bcsign(otmp)), true);
     }
 }
-/* C ref: potion.c:913-950 peffect_monster_detection(struct obj *otmp).
- * Returns 1 ("nothing detected") to make peffects() return 1, which makes
- * dopotion() return ECMD_TIME WITHOUT useup or identify; returns 0 to fall
- * through to dopotion's ordinary useup+identify tail.
- *
- * WITNESS: gen059-reseed-seed265744 step 5 quaffs a BLESSED potion of monster
- * detection; C's first draw there is rn2(100) at potion.c:930 (the `i = rn2(100)
- * + 100` timeout roll) and this port drew nothing, so its 225-frame tail was
- * wrong from that frame.
- *
- * RNG: exactly one draw, and only on the blessed path — rn1(40,21) for the
- * spellbook, rn2(100) for the potion, neither when the existing timeout is
- * already >= 300.
- */
 async function peffect_monster_detection(otmp) {
     const g = game;
     const u = g.u;
@@ -5942,8 +4809,6 @@ async function peffect_monster_detection(otmp) {
     await exercise(A_WIS, true);
     return 0;
 }
-/* C ref: detect.c:249-256 observe_recursively(obj) — observe_object(obj),
- * then recurse into a container's contents.  do_dknown-gated caller below. */
 function _observe_recursively_det(obj) {
     observe_object(obj);
     if (Has_contents(obj)) {
@@ -5951,12 +4816,6 @@ function _observe_recursively_det(obj) {
             _observe_recursively_det(o);
     }
 }
-/* C ref: detect.c:260-306 check_map_spot(x, y, oclass, material) — the
- * oclass===ALL_CLASSES half only (object_detect's only caller here always
- * passes ALL_CLASSES; the material/class-match halves serve gold_detect and
- * a class-specific caller neither of which reaches this file). "Stale" means
- * an object glyph is remembered here but nothing (no real floor object, no
- * monster with inventory) actually occupies the square any more. */
 function _check_map_spot_alldetect(x, y) {
     const g = game;
     const loc = g.level && g.level.at ? g.level.at(x, y) : null;
@@ -6066,10 +4925,6 @@ async function object_detect(detector, oclass) {
     }
 
     await cls();
-    /* Map buried objects, then the top of every floor pile, then one item
-     * (plus gold/mimic-disguise) per monster.  Every o_in() branch in C
-     * collapses to "map the object unconditionally" here — see the class=0
-     * note above. */
     for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj)
         map_object(o, 1);
     for (let x = 1; x < COLNO; x++) {
@@ -6088,8 +4943,6 @@ async function object_detect(detector, oclass) {
             otmp.oy = mtmp.my;
             map_object(otmp, 1);
         }
-        /* C detect.c:761-772 — NOT gated on whether the inventory-item map
-         * above fired; every monster gets this second, independent check. */
         if (is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT) {
             const corpsenm = (MCORPSENM(mtmp) !== NON_PM) ? MCORPSENM(mtmp) : PM_TENGU;
             map_object({ otyp: mtmp.mappearance | 0, quan: 1,
@@ -6100,11 +4953,6 @@ async function object_detect(detector, oclass) {
         }
     }
 
-    /* C detect.c:775-778 — TER_MON is added, and the hero's own square is
-     * force-redrawn, only when nothing is currently displayed as an object
-     * there.  Approximated against the floor-object presence this port can
-     * see (rather than the live glyph state), which is the same information
-     * C's check ultimately reduces to once the mapping loop above has run. */
     let ter_typ = TER_DETECT | TER_OBJ;
     const heroHasObjGlyph = !!(g.level && g.level.levelObjects
                                 && g.level.levelObjects[u.ux] && g.level.levelObjects[u.ux][u.uy]);
@@ -6131,12 +4979,6 @@ async function object_detect(detector, oclass) {
         }
     }
 
-    /* C detect.c:94-102 map_redisplay(): reconstrain_map (a no-op here, see
-     * monster_detect's identical note above) then docrt() -> cls(), whose
-     * FIRST statement flushes the message window — a BLOCKING more() if
-     * getpos's non-force quitchar arm left "Done." unacknowledged (the exact
-     * pattern reveal_terrain() at js/cmd.js:11829-11832 documents and gates
-     * the same way, off the same `g._pending_message` predicate). */
     if (g._pending_message)
         await force_more(g._pending_message);
     await docrt();
@@ -6165,38 +5007,6 @@ function Fixed_abil() {
     const p = game.u && game.u.uprops && game.u.uprops[FIXED_ABIL];
     return !!(p && p.extrinsic);
 }
-/* C ref: potion.c:963-1010 peffect_sickness(otmp) — the POT_SICKNESS effect.
- *
- *   pline("Yecch!  This stuff tastes like poison.");
- *   if (otmp->blessed) { ...mildly stale fruit... }
- *   else {
- *       if (Poison_resistance) pline("(But in fact it was biologically contaminated %s.)", fruitname(TRUE));
- *       if (Role_if(PM_HEALER)) pline("Fortunately, you have been immunized.");
- *       else {
- *           int typ = rn2(A_MAX);
- *           Sprintf(contaminant, "%s%s", Poison_resistance ? "mildly " : "",
- *                   otmp->fromsink ? "contaminated tap water" : "contaminated potion");
- *           if (!Fixed_abil) {
- *               poisontell(typ, FALSE);
- *               (void) adjattrib(typ, Poison_resistance ? -1 : -rn1(4, 3), 1);
- *           }
- *           if (!Poison_resistance)
- *               losehp(rnd(10) + 5 * !!(otmp->cursed), contaminant,
- *                      otmp->fromsink ? KILLED_BY : KILLED_BY_AN);
- *           else
- *               losehp(1 + rn2(2), contaminant, otmp->fromsink ? KILLED_BY : KILLED_BY_AN);
- *           exercise(A_CON, FALSE);
- *       }
- *   }
- *   if (Hallucination) { You("are shocked back to your senses!"); make_hallucinated(0L, FALSE, 0L); }
- *
- * RNG ORDER on the live (unblessed, non-Healer, unresistant, non-Fixed_abil)
- * path is rn2(A_MAX), then rn1(4,3) — evaluated as adjattrib's ARGUMENT, so
- * before any draw adjattrib makes — then rnd(10).  poisontell() is RNG-free
- * (attrib.c: it only picks a message out of poiseff[]).
- * KILLED_BY_AN is 0 and KILLED_BY is 1 (hack.h:602-603).
- * This was an empty stub, so seed0014 step 152 printed the dopotion
- * "Nothing happens." fallback where C prints the Yecch line and its --More--. */
 const KILLED_BY_AN_POT = 0, KILLED_BY_POT = 1; /* hack.h:602-603 */
 async function peffect_sickness(otmp) {
     const g = game;
@@ -6337,24 +5147,6 @@ function _can_rise_up_potion(x, y, lev) {
                 && _ledger_no_potion(lev) !== 1
                 && !!stway && !!stway.up));
 }
-/* C potion.c:1082-1115 peffect_gain_level(struct obj *otmp).
- *
- * This body did not exist (`function peffect_gain_level(otmp) {}`) and, more to
- * the point, dodrink()'s hand-written otyp ladder had no POT_GAIN_LEVEL arm at
- * all, so a quaffed potion of gain level fell through to the ladder's trailing
- * `pline('Nothing happens.')` and drew NOTHING.  C runs pluslvl(FALSE), whose
- * newhp() draws rnd(role.hpadv.lornd) + rnd(race.hpadv.lornd) and whose newpw()
- * draws rn2(...) — measured on gen067-reseed-seed1736103 step 5:
- *     rnd(8)=1 @ newhp(attrib.c:1101)
- *     rnd(2)=1 @ newhp(attrib.c:1103)
- *     rn2(7)=3 @ newpw(exper.c:64)
- * and C's topline there is "You feel more experienced.  Welcome to experience
- * level 2." against this port's "Nothing happens."
- *
- * The CURSED arm is transcribed for Cardinal Rule 1 but has ZERO measured reach:
- * `dodrink` reaches peffect_gain_level on 3 of 688 train sessions and all three
- * quaff an uncursed potion (the recorded leaf immediately after the quaff is
- * newhp's rnd, which only the uncursed tail draws). */
 async function peffect_gain_level(otmp) {
     const g = game;
     const u = g.u;
@@ -6372,8 +5164,6 @@ async function peffect_gain_level(otmp) {
                              dlevel: el ? (el.dlevel | 0) : 0 };
             } else {
                 const newlev = depth(u.uz) - 1;
-                /* C get_level(&newlevel, newlev) — the ledger walk.  Every
-                 * corpus level is in the main dungeon, where depth == dlevel. */
                 newlevel = { dnum: u.uz.dnum | 0, dlevel: newlev };
                 if (newlevel.dnum === (u.uz.dnum | 0)
                     && newlevel.dlevel === (u.uz.dlevel | 0)) {
@@ -6394,9 +5184,6 @@ async function peffect_gain_level(otmp) {
     if (otmp.blessed)
         u.uexp = rndexp(true, u.ulevel | 0, u.uexp);
 }
-/* C mkmaze.c ceiling(x, y) — the word for what is overhead.  Same one-line
- * stand-in js/makemon.js:4591 carries; every corpus level is a roofed
- * dungeon level. */
 function _ceiling_potion(_x, _y) { return 'ceiling'; }
 function peffect_healing(otmp) {
     pline('You feel better.');
@@ -6404,23 +5191,6 @@ function peffect_healing(otmp) {
            !!otmp.blessed, !otmp.cursed);
     exercise(A_CON, true);
 }
-/* C ref: potion.c:1127-1141 peffect_extra_healing(struct obj *otmp) — the
- * POT_EXTRA_HEALING effect.  peffects' case breaks (returns -1), so dopotion
- * (potion.c:626-641) runs its full tail: potion_nothing/potion_unkn stay 0,
- * so the identify branch is makeknown + more_experienced, then useup.
- *
- * Unlike the other seventeen `peffect_*` bodies in this block, this one is a
- * REAL body and dodrink()'s live otyp ladder CALLS it — see the note above
- * `peffects()` below.  New arms go here, not into a second copy in dodrink.
- *
- * RNG: d(4 + 2*bcsign, 8) draws 4 rnd(8) for an uncursed potion, then
- * exercise(A_CON) and exercise(A_STR) draw one rn2(19) each.
- * make_hallucinated(0, TRUE, 0) is RNG-free.
- *
- * Corpus witness: seed4500 step 1203 quaffs a wished potion of extra healing
- * while BLIND, so C's healup(..., cureblind=TRUE) prints the second half of
- * "You feel much better.  You can see again."
- */
 async function peffect_extra_healing(otmp) {
     const u = game.u;
     await pline('You feel much better.');
