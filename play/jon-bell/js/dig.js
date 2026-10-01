@@ -31,7 +31,12 @@ import { mon_learns_traps } from './trap.js';
 import { mondied } from './makemon.js';
 import { obj_extract_self, sobj_at, add_to_buried, in_rooms, mksobj_at, mk_tt_object, minliquid, remove_object, del_engr_at, makemon, obj_timer_checks as obj_timer_checks_real } from './mklev.js';
 import { obj_resists } from './dogmove.js';
-import { is_ice } from './engrave.js';
+import { is_ice, cant_reach_floor } from './engrave.js';
+import { uteetering_at_seen_pit, uescaped_shaft } from './pickup.js';
+import { yobjnam, Yobjnam2 } from './objnam.js';
+import { is_pool } from './look.js';
+import { dotrap } from './trap.js';
+import { FORCEBUNGLE } from './const.js';
 /* in_town (hack.c:3562) — this file used to carry its own `return false` stub,
  * which shadowed the real ported body at js/cmd.js.  Same import that
  * js/mklev.js:1 already makes; the cmd.js <-> dig.js cycle resolves through the
@@ -40,6 +45,7 @@ import { in_town, xytodir, useup, goto_level, _spoteffects_pickup,
          fire_damage_chain } from './cmd.js';
 /* bimanual — C obj.h:257.  Needed by pick_can_reach() below (dig.c:141). */
 import { bimanual } from './do_wear.js';
+import { can_reach_floor as can_reach_floor_dg } from './hold_another_object.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { recalc_block_point } from './vision.js';
 import { float_vs_flight } from './mhitm.js';
@@ -1159,7 +1165,47 @@ export async function use_pick_axe2(obj) {
         g.context.move = 1;
         return 1;
     }
-    /* dz > 0: dig downward.  C dig.c:1336-1357. */
+    /* dz > 0: dig downward.  C dig.c:1316-1357 guard chain, in C order. */
+    if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) {
+        /* C dig.c:1316-1318 */
+        await pline(`You swing ${yobjnam(obj)} through thin air.`);
+        g.context = g.context || {};
+        g.context.move = 1;
+        return 1;
+    }
+    if (!can_reach_floor_dg(false)) {
+        /* C dig.c:1319-1320 */
+        await cant_reach_floor(u.ux | 0, u.uy | 0, false, false, false);
+        g.context = g.context || {};
+        g.context.move = 1;
+        return 1;
+    }
+    if (is_pool_or_lava(u.ux | 0, u.uy | 0)) {
+        /* C dig.c:1321-1324 */
+        await pline('You cannot stay under%s long enough.',
+                    is_pool(u.ux | 0, u.uy | 0) ? 'water' : ' the lava');
+        g.context = g.context || {};
+        g.context.move = 1;
+        return 1;
+    }
+    const trap = t_at(u.ux | 0, u.uy | 0);
+    if (trap && (uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
+        /* C dig.c:1325-1330 — might escape the trap and still be teetering. */
+        await dotrap(trap, FORCEBUNGLE);
+        if (!u.utrap)
+            await cant_reach_floor(u.ux | 0, u.uy | 0, false, true, false);
+        g.context = g.context || {};
+        g.context.move = 1;
+        return 1;
+    }
+    if (!ispick && (!trap || (trap.ttyp !== LANDMINE && trap.ttyp !== BEAR_TRAP))) {
+        /* C dig.c:1331-1337 — u_wipe_engr(3) is private to js/dokick.js and
+         * not exported; its erosion is not reproduced here. */
+        await pline('%s merely scratches the %s.', Yobjnam2(obj), surface_(u.ux | 0, u.uy | 0));
+        g.context = g.context || {};
+        g.context.move = 1;
+        return 1;
+    }
     const d = diggingCtx();
     /* C dig.c:1337-1352 — fresh dig vs continue.  Start a new dig run. */
     if (d.pos.x !== (u.ux | 0) || d.pos.y !== (u.uy | 0) || !d.down) {
@@ -1297,6 +1343,36 @@ function pick_can_reach(pick, x, y) {
         return true;
 
     return false;
+}
+
+export function dig_dirsyms(obj) {
+    const u = game.u || {};
+    const DIRCH = ['h', 'y', 'k', 'u', 'l', 'n', 'j', 'b', '<', '>'];
+    const XD = [-1, -1, 0, 1, 1, 1, 0, -1, 0, 0];
+    const YD = [0, -1, -1, -1, 0, 1, 1, 1, 0, 0];
+    const downok = !!can_reach_floor_dg(false);
+    const PM_GRID_BUG = 116;
+    let out = '';
+    for (let dir = 0; dir < 10; dir++) {
+        const dirch = DIRCH[dir];
+        if (u.uswallow) {
+            /* all directions are viable when swallowed */
+        } else if (dir < 8) {
+            const dx = XD[dir], dy = YD[dir];
+            /* dxdy_moveok(): grid bugs can't move diagonally */
+            if (dx && dy && (u.umonnum | 0) === PM_GRID_BUG) continue;
+            const rx = (u.ux | 0) + dx, ry = (u.uy | 0) + dy;
+            if (!isok(rx, ry) || dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE)
+                continue;
+        } else {
+            /* up or down: include only the likely one */
+            const dz = dir === 8 ? -1 : 1;   /* DIRCH[8] is '<' (up), DIRCH[9] '>' */
+            if ((dz > 0) !== downok)
+                continue;
+        }
+        out += dirch;
+    }
+    return out;
 }
 
 // C ref: dig.c:168-193 dig_typ(struct obj *otmp, coordxy x, coordxy y)

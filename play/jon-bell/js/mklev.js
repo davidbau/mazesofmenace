@@ -3,6 +3,11 @@ import { m_useup as lifesave_m_useup } from './trap.js';
 import { discover_object as lifesave_discover_object } from './o_init.js';
 import { s_suffix as lifesave_s_suffix } from './hacklib.js';
 import { wary_dog } from './dog.js';
+import { mondied as mondied_ml } from './makemon.js';
+import { xkilled as xkilled_ml } from './uhitm.js';
+import { XKILL_NOMSG } from './const.js';
+import { water_damage_chain as water_damage_chain_ml } from './cmd.js';
+import { hliquid as hliquid_ml } from './mhitm.js';
 import { W_AMUL } from './const.js';
 import { may_passwall, in_town, breaktest, fire_damage_chain,
          is_mines_prize as is_mines_prize_real,
@@ -14881,7 +14886,31 @@ async function minliquid_core(mtmp) {
                     return 0;
             }
         }
-        return 0;   /* GAP: the drowning tail — see the note above */
+        if ((waterwall || !is_clinger_ml) && !cant_drown_ml) {
+            /* C mon.c:1081-1101 — the drowning tail. */
+            if (cansee(mx, my)) {
+                if (game.context && game.context.mon_moving)
+                    await pline(`${Monnam_wm(mtmp)} drowns.`);
+                else
+                    await pline(`You drown ${mon_nam_wm(mtmp)}.`);
+            }
+            if (engulfing_u(mtmp))
+                await pline(`${Monnam_wm(mtmp)} sinks as ${hliquid_ml('water')} rushes in and flushes you out.`);
+            if (game.context && game.context.mon_moving)
+                await mondied_ml(mtmp); /* ok to leave corpse despite water */
+            else
+                await xkilled_ml(mtmp, XKILL_NOMSG);
+            if (!((mtmp.mhp | 0) < 1)) {
+                if (!m_in_air(mtmp)) {
+                    await water_damage_chain_ml(mtmp.minvent || null, false);
+                    if (!await rloc(mtmp, RLOC_NOMSG))
+                        await deal_with_overcrowding(mtmp);
+                }
+                return 0;
+            }
+            return 1;
+        }
+        return 0;
     }
     if (!inlava)
         return 0;

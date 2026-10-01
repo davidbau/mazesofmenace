@@ -125,6 +125,7 @@ import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree, 
 import { enexto, rloc, goodpos, migrate_to_level, single_level_branch, Inhell } from './teleport.js';
 import { clear_wormdata, flip_worm_segs_horizontal, flip_worm_segs_vertical, remove_worm } from './worm.js';
 import { obj_resists } from './dogmove.js';
+import { breaktest } from './dothrow.js';
 import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
     PM_ARCHEOLOGIST, PM_WIZARD, PM_GIANT_SPIDER, PM_MONK, PM_LICHEN,
@@ -1047,32 +1048,34 @@ export function l_levregion(opts) {
 }
 
 /**
- * C ref: sp_lev.c lspo_exclusion.
- * des.exclusion({ type = "teleport"|"teleport-up"|"teleport-down"|
- *                 "monster-generation", region = { x1,y1,x2,y2 } }).
- * Default type "teleport". get_location(ANY_LOC|NO_LOC_WARN) so packed
- * coords become absolute (map origin, or croom lx/ly). Prepend onto
- * sve.exclusion_zones (persisted via save_exclusions / load_exclusions).
- * Named omit: hellfill rnd_hell_prefab maps.
+ * C ref: sp_lev.c lspo_exclusion `:5498–5532` — des.exclusion opcode in C
+ * order. type via the live get_table_option over ez_types
+ * `:5500–5505` (default "teleport"; an unknown type throws like C's
+ * luaL_checkoption — baked callers pass known types only). region via
+ * get_table_region_unpacked (FALSE: numeric four-tuple, `:5512`).
+ * get_location_coord `:5516–5525` runs on already-unpacked numbers, so
+ * the live get_location arm adds the coder-croom or map origin
+ * (ANY_LOC|NO_LOC_WARN skips the maze-max clamp like C). Prepend onto
+ * sve.exclusion_zones (`:5529–5530`; persisted via save_exclusions /
+ * load_exclusions). Named omit: hellfill rnd_hell_prefab maps.
  */
-const EZ_TYPES = {
-    teleport: LR_TELE,
-    'teleport-up': LR_UPTELE,
-    'teleport-down': LR_DOWNTELE,
-    'monster-generation': LR_MONGEN,
-};
-
 export function lspo_exclusion(opts) {
-    const typeName = opts?.type ?? 'teleport';
-    const zonetype = EZ_TYPES[typeName] ?? LR_TELE;
-    // C sp_lev.c:5514 get_table_region(L, "region", …, FALSE).
-    const region = get_table_region_unpacked(opts ?? {}, 'region', false);
-    const croom = opts.croom ?? null;
+    create_des_coder(); // C :5510
+    const table = lcheck_param_table(arguments); // C :5511
+    // C :5512–5513 — ez_types2i[get_table_option(L, "type", "teleport", ez_types)].
+    const zonetype = [LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN][
+        get_table_option(table, 'type', 'teleport',
+            ['teleport', 'teleport-up', 'teleport-down', 'monster-generation'])];
+    const region = get_table_region_unpacked(table, 'region', false); // C :5514
+    // C :5516–5522 — a1/b1/a2/b2 through get_location_coord with
+    // gc.coder->croom (null at every baked call site: no room opcode runs
+    // before des.exclusion in the soko/themerms loads).
+    const croom = game.gc.coder.croom;
     const a = get_location(region[0], region[1],
         ANY_LOC | NO_LOC_WARN, croom);
     const b = get_location(region[2], region[3],
         ANY_LOC | NO_LOC_WARN, croom);
-    const ez = {
+    const ez = { // C :5524–5530
         zonetype,
         lx: a.x,
         ly: a.y,
@@ -5412,7 +5415,7 @@ function load_medusa_1() {
     // des.object({ id="statue", contents=0 }) × 7 — empty + Medusa invent fill
     // C ref: sp_lev.c create_object Medusa special when o->corpsenm == NON_PM
     for (let i = 0; i < 7; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const otmp = mksobj_at(STATUE, pos.x, pos.y, true, true);
         if (!otmp) continue;
         otmp.cobj = null;
@@ -5720,7 +5723,7 @@ function load_medusa_3() {
     // altloc empty statue + 6 random empty statues
     if (altloc) medusa_empty_statue_at(altloc.x, altloc.y);
     for (let i = 0; i < 6; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         medusa_empty_statue_at(pos.x, pos.y);
     }
 
@@ -5742,12 +5745,12 @@ function load_medusa_3() {
 
     // des.trap rust×2, board×2, random×1
     for (let i = 0; i < 2; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const ttmp = maketrap(pos.x, pos.y, RUST_TRAP);
         mktrap_seen_victim(ttmp, {});
     }
     for (let i = 0; i < 2; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const ttmp = maketrap(pos.x, pos.y, SQKY_BOARD);
         mktrap_seen_victim(ttmp, {});
     }
@@ -6083,7 +6086,7 @@ function load_medusa_4() {
     }
     if (altloc) medusa_empty_statue_at(altloc.x, altloc.y);
     for (let i = 0; i < 6; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         medusa_empty_statue_at(pos.x, pos.y);
     }
     for (let i = 0; i < 8; i++) splev_create_object(null);
@@ -6572,7 +6575,7 @@ function load_bar_strt() {
             splev_discard_default_minvent(mtmp);
             // invent: des.object runesword/chain mail spe=5 (no coord → random)
             for (const [otyp, spe] of [[RUNESWORD, 5], [CHAIN_MAIL, 5]]) {
-                const pos = get_location_random(null);
+                const pos = get_location_random();
                 const otmp = mksobj_at(otyp, pos.x, pos.y, true, true);
                 if (!otmp) continue;
                 otmp.spe = spe;
@@ -6802,7 +6805,7 @@ function load_wiz_strt() {
             splev_discard_default_minvent(mtmp);
             for (const [otyp, spe] of [[ELVEN_CLOAK, 5], [QUARTERSTAFF, 5]]) {
                 if (otyp < 0) continue;
-                const pos = get_location_random(null);
+                const pos = get_location_random();
                 const otmp = mksobj_at(otyp, pos.x, pos.y, true, true);
                 if (!otmp) continue;
                 otmp.spe = spe;
@@ -7052,7 +7055,7 @@ function load_wiz_loca() {
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (ttyp) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const ttmp = maketrap(pos.x, pos.y, ttyp);
         mktrap_seen_victim(ttmp, {});
     };
@@ -7508,7 +7511,7 @@ function load_pri_strt() {
         if (mtmp) {
             splev_discard_default_minvent(mtmp);
             for (const [otyp, spe] of [[ROBE, 4], [MACE, 4]]) {
-                const pos = get_location_random(null);
+                const pos = get_location_random();
                 const otmp = mksobj_at(otyp, pos.x, pos.y, true, true);
                 if (!otmp) continue;
                 otmp.spe = spe;
@@ -7864,7 +7867,7 @@ xxxxx...xxxxxx....xxxxxxxx
         let trycnt = 0;
         let pos;
         do {
-            pos = get_location_random(null);
+            pos = get_location_random();
             const typ = g.level.at(pos.x, pos.y)?.typ;
             if (typ !== STAIRS && typ !== LADDER) break;
         } while (++trycnt <= 100);
@@ -8003,7 +8006,7 @@ function load_arc_strt() {
         if (mtmp) {
             splev_discard_default_minvent(mtmp);
             for (const [otyp, spe] of [[FEDORA, 5], [BULLWHIP, 4]]) {
-                const pos = get_location_random(null);
+                const pos = get_location_random();
                 const otmp = mksobj_at(otyp, pos.x, pos.y, true, true);
                 if (!otmp) continue;
                 otmp.spe = spe;
@@ -8272,7 +8275,7 @@ function load_arc_loca() {
 
     // des.engraving — random DRY spot, type engrave, degrade default
     for (let i = 0; i < 4; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const ep = make_engr_at(
             pos.x, pos.y, 'X marks the spot.', null, 0, ENGRAVE,
         );
@@ -8298,18 +8301,18 @@ function load_arc_loca() {
     placeTrap(MAGIC_TRAP, 60, 4);
     placeTrap(STATUE_TRAP, 72, 7);
     for (let i = 0; i < 2; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const ttmp = maketrap(pos.x, pos.y, STATUE_TRAP);
         mktrap_seen_victim(ttmp, {});
     }
     placeTrap(ANTI_MAGIC, 64, 12);
     for (let i = 0; i < 2; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const ttmp = maketrap(pos.x, pos.y, SLP_GAS_TRAP);
         mktrap_seen_victim(ttmp, {});
     }
     for (let i = 0; i < 3; i++) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const ttmp = maketrap(pos.x, pos.y, DART_TRAP);
         mktrap_seen_victim(ttmp, {});
     }
@@ -8609,7 +8612,7 @@ async function load_kni_strt() {
             splev_discard_default_minvent(mtmp);
             // des.object long sword spe=4 blessed name=Excalibur
             {
-                const pos = get_location_random(null);
+                const pos = get_location_random();
                 const otmp = mksobj_at(LONG_SWORD, pos.x, pos.y, true, false);
                 if (otmp) {
                     otmp.spe = 4;
@@ -8624,7 +8627,7 @@ async function load_kni_strt() {
             }
             // des.object plate mail spe=4
             {
-                const pos = get_location_random(null);
+                const pos = get_location_random();
                 const otmp = mksobj_at(PLATE_MAIL, pos.x, pos.y, true, true);
                 if (otmp) {
                     otmp.spe = 4;
@@ -8683,7 +8686,7 @@ async function load_kni_strt() {
         if (!mtmp) continue;
         splev_discard_default_minvent(mtmp);
         if (!percent(50)) continue;
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         const otmp = mksobj_at(SADDLE, pos.x, pos.y, true, true);
         if (!otmp) continue;
         otmp.oeroded = 0;
@@ -12350,7 +12353,7 @@ function load_mon_strt() {
         if (mtmp) {
             splev_discard_default_minvent(mtmp);
             for (const [otyp, spe] of [[ROBE, 6]]) {
-                const pos = get_location_random(null);
+                const pos = get_location_random();
                 const otmp = mksobj_at(otyp, pos.x, pos.y, true, true);
                 if (!otmp) continue;
                 otmp.spe = spe;
@@ -12616,7 +12619,7 @@ xxxxx...xxxxxx....xxxxxxxx
         let trycnt = 0;
         let pos;
         do {
-            pos = get_location_random(null);
+            pos = get_location_random();
             const typ = g.level.at(pos.x, pos.y)?.typ;
             if (typ !== STAIRS && typ !== LADDER) break;
         } while (++trycnt <= 100);
@@ -13689,7 +13692,7 @@ function load_bar_loca() {
             x = mx + spec.rx;
             y = my + spec.ry;
         } else {
-            const pos = get_location_random(null);
+            const pos = get_location_random();
             x = pos.x;
             y = pos.y;
         }
@@ -15579,7 +15582,7 @@ L.....LLL......................LLLLL.........L.........LLLLLLLL..............LL
         let trycnt = 0;
         let pos;
         do {
-            pos = get_location_random(null);
+            pos = get_location_random();
             const typ = g.level.at(pos.x, pos.y)?.typ;
             if (typ !== STAIRS && typ !== LADDER) break;
         } while (++trycnt <= 100);
@@ -19218,7 +19221,7 @@ function create_mimic_as_boulder() {
     const { mndx, female } = find_montype_gender('giant mimic');
     induced_align(80);
     const pm = (mndx !== NON_PM && mndx >= 0) ? mons(mndx) : null;
-    let pos = get_location_random(null);
+    let pos = get_location_random();
     if (game.fmon) {
         for (const m of game.fmon) {
             if (m.mx === pos.x && m.my === pos.y) {
@@ -21553,9 +21556,33 @@ function splev_map_origin() {
     return { mx: 1, my: 0, sx: COLNO - 1, sy: ROWNO };
 }
 
+/**
+ * C ref: sp_lev.c is_ok_location_func `:1271` — `static boolean
+ * (*is_ok_location_func)(coordxy, coordxy) = NULL`: placement-predicate
+ * override consulted by is_ok_location after the waterlevel accept-any
+ * (C `:1287–1288`). Set only by l_create_stairway's random branch (C
+ * `:4180`) and cleared right after get_location_coord (C `:4186`,
+ * unconditional). File-local like C's static; every set pairs with a
+ * clear in the same synchronous window, so no state leaks between calls.
+ */
+let is_ok_location_func = null;
+
+/**
+ * C ref: sp_lev.c set_ok_location_func `:1273–1277` — install (or clear
+ * with null) the is_ok_location override. File-local like C's staticfn.
+ */
+function set_ok_location_func(func) {
+    is_ok_location_func = func; // C `:1276`
+}
+
+/**
+ * C ref: sp_lev.c good_stair_loc `:4139–4144` — callback for
+ * is_ok_location: stairs at a random spot must not overwrite special
+ * terrain (C `:4136–4137`).
+ */
 function good_stair_loc(x, y) {
-    const typ = game.level.at(x, y)?.typ;
-    return typ === ROOM || typ === CORR || typ === ICE;
+    const typ = game.level.at(x, y)?.typ; // C `:4141`
+    return typ === ROOM || typ === CORR || typ === ICE; // C `:4143`
 }
 
 /**
@@ -21575,17 +21602,24 @@ function pm_to_humidity(pm) {
     return loc;
 }
 
+/** C ref: sp_lev.c pm_good_location `:1310–1314`. Sole C caller
+ * priestini (priest.c:236), wired below. */
+function pm_good_location(x, y, pm) {
+    return is_ok_location(x, y, pm_to_humidity(pm));
+}
+
 /**
  * C ref: sp_lev.c is_ok_location :1280-1308 — Is_waterlevel accept-any,
- * ANY_LOC, SOLID IS_OBSTRUCTED, DRY|SPACELOC SPACE_POS with boulder
- * (bould && SOLID), WET is_pool, HOT is_lava, in C order/conjuncts.
- * isok guard is JS OOB safety (C callers guarantee in-bounds; is_pool /
- * is_lava carry their own isok gates). is_ok_location_func stays emulated
- * via the ok_fn params at get_location_random / get_location_in_room
- * (sole C setter is l_create_stairway good_stair_loc).
+ * is_ok_location_func override, ANY_LOC, SOLID IS_OBSTRUCTED,
+ * DRY|SPACELOC SPACE_POS with boulder (bould && SOLID), WET is_pool,
+ * HOT is_lava, in C order/conjuncts. isok guard is JS OOB safety (C
+ * callers guarantee in-bounds; is_pool / is_lava carry their own isok
+ * gates). The override is module state, set only across the
+ * l_create_stairway random window (C :4180/:4186).
  */
 function is_ok_location(x, y, humidity) {
     if (Is_waterlevel(game.u?.uz)) return true; /* accept any spot */
+    if (is_ok_location_func) return is_ok_location_func(x, y); // C :1287–1288
     if (!isok(x, y)) return false;
     const typ = game.level.at(x, y)?.typ ?? STONE;
     /* TODO: Should perhaps check if wall is diggable/passwall? */
@@ -21605,18 +21639,25 @@ function is_ok_location_dry(x, y) {
     return is_ok_location(x, y, DRY);
 }
 
-function get_location_random(ok_fn, humidity = DRY) {
+/**
+ * C ref: sp_lev.c get_location — random-spot path (rn2 tries, then the
+ * full-map scan). Candidates run is_ok_location directly (C `:1236`,
+ * `:1247`); the stair override is C module state (set_ok_location_func),
+ * not a parameter.
+ */
+function get_location_random(humidity = DRY) {
     const { mx, my, sx, sy } = splev_map_origin();
     let x = 0, y = 0;
     let cpt = 0;
     const flags = humidity | 0;
-    const ok = ok_fn || ((xx, yy) => is_ok_location(xx, yy, flags));
+    const ok = (xx, yy) => is_ok_location(xx, yy, flags);
     do {
         x = mx + rn2(sx);
         y = my + rn2(sy);
         if (ok(x, y)) break;
     } while (++cpt < 100);
     if (cpt >= 100) {
+        // C :1242–1250 last-try scan; a miss leaves x/y at the last cell.
         for (let xx = 0; xx < sx; xx++) {
             for (let yy = 0; yy < sy; yy++) {
                 x = mx + xx;
@@ -21624,8 +21665,12 @@ function get_location_random(ok_fn, humidity = DRY) {
                 if (ok(x, y)) return { x, y };
             }
         }
+        // C :1251–1255 — impossible keeps the last scan coords (sync
+        // caller: un-awaited, lspo_feature :1725 precedent); NO_LOC_WARN
+        // yields -1,-1.
         if (flags & NO_LOC_WARN) return { x: -1, y: -1 };
-        return { x: X_MAZE_MAX, y: Y_MAZE_MAX };
+        void impossible("get_location:  can't find a place!");
+        return { x, y };
     }
     return { x, y };
 }
@@ -21638,9 +21683,9 @@ function get_location_random(ok_fn, humidity = DRY) {
  * Named omission: fixed (non-random) coords; croom/somexy.
  */
 function get_location_coord_random(humidity) {
-    let pos = get_location_random(null, humidity | NO_LOC_WARN);
+    let pos = get_location_random(humidity | NO_LOC_WARN);
     if (pos.x < 0)
-        pos = get_location_random(null, humidity);
+        pos = get_location_random(humidity);
     return pos;
 }
 
@@ -21649,13 +21694,13 @@ function lua_random2(lo, hi) {
 }
 
 function splev_create_object(oclass) {
-    const pos = get_location_random(null);
+    const pos = get_location_random();
     if (oclass == null) mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
     else mkobj_at(oclass, pos.x, pos.y, true);
 }
 
 function splev_create_boulder() {
-    const pos = get_location_random(null);
+    const pos = get_location_random();
     mksobj_at(BOULDER, pos.x, pos.y, true, true);
 }
 
@@ -22086,10 +22131,11 @@ function create_object_delete_contents(obj) {
 }
 
 /**
- * C ref: sp_lev.c get_location. Packed (x>=0): add map/room origin.
- * ANY_LOC skips the !isok maze-max clamp. Random (x<0): existing
- * get_location_random / in-room somexy. levregion_add always passes
- * ANY_LOC and NULL croom.
+ * C ref: sp_lev.c get_location `:1202–1269`. Packed (x>=0): add map/room
+ * origin. ANY_LOC skips the !isok maze-max clamp (`:1260–1268`).
+ * Random (x<0): get_location_random / get_location_in_room hold the
+ * 100-try loop, the unconditional last-try scan and the
+ * impossible-vs-(-1,-1) failure arms (`:1225–1256`).
  */
 function get_location(x, y, humidity, croom) {
     let mx, my;
@@ -22107,7 +22153,7 @@ function get_location(x, y, humidity, croom) {
     } else {
         const pos = croom
             ? get_location_in_room(croom, humidity)
-            : get_location_random(null, humidity);
+            : get_location_random(humidity);
         x = pos.x;
         y = pos.y;
     }
@@ -23322,16 +23368,16 @@ export function splev_create_altar(a, croom = null) {
  */
 export function l_create_stairway(up, rx, ry, croom, using_ladder) {
     create_des_coder(); // C :4159
-    // C :4183–4191 — set_ok_location_func(good_stair_loc) + get_location_coord
-    // DRY + reset(NULL); the ok_fn params below are that emulation (see the
-    // is_ok_location doc — C :1287–1288 replaces the humidity checks, like the
-    // `ok_fn ||` default in get_location_random), so no reset call exists.
+    // C :4179–4186 — the random branch installs good_stair_loc
+    // (set_ok_location_func, C :4180) across the DRY get_location_coord,
+    // cleared unconditionally right after (C :4186), even for fixed coords.
     const random = rx === -1 && ry === -1;
+    if (random) set_ok_location_func(good_stair_loc); // C :4180
     let x, y;
     if (random) {
         const pos = croom
-            ? get_location_coord_in_room(croom, DRY, good_stair_loc)
-            : get_location_random(good_stair_loc);
+            ? get_location_coord_in_room(croom, DRY)
+            : get_location_random();
         x = pos.x;
         y = pos.y;
     } else {
@@ -23345,6 +23391,7 @@ export function l_create_stairway(up, rx, ry, croom, using_ladder) {
             y = Y_MAZE_MAX;
         }
     }
+    set_ok_location_func(null); // C :4186
     const trap = t_at(x, y);
     if (trap) deltrap(trap);
     if (!game.SpLev_Map) game.SpLev_Map = new Set();
@@ -23468,7 +23515,11 @@ export function lspo_altar(o, croom = null) {
 }
 
 function splev_create_stair(up) {
-    const pos = get_location_random(good_stair_loc);
+    // C l_create_stairway :4180/:4186 — random branch installs
+    // good_stair_loc across the DRY lookup, cleared right after.
+    set_ok_location_func(good_stair_loc);
+    const pos = get_location_random();
+    set_ok_location_func(null);
     const trap = t_at(pos.x, pos.y);
     // C l_create_stairway: deltrap(badtrap) before the stair.
     if (trap) deltrap(trap);
@@ -23555,26 +23606,33 @@ function splev_create_trap_coord(croom, kind, absX, absY, opts = {}) {
 
 /**
  * C ref: sp_lev.c get_location with croom — somexy until humidity ok.
- * Optional ok_fn mirrors set_ok_location_func (stairs).
+ * Candidates run is_ok_location directly; the stair override is C module
+ * state (set_ok_location_func), not a parameter.
  */
-function get_location_in_room(croom, humidity = DRY, ok_fn = null) {
+/**
+ * C ref: sp_lev.c get_location `:1225–1256` — the croom (somexy) half of
+ * the random arm. The last-try scan runs regardless of NO_LOC_WARN
+ * (`:1242–1250`); the flag only picks the failure outcome (`:1251–1255`:
+ * impossible keeping the last scan cell, else -1,-1).
+ */
+function get_location_in_room(croom, humidity = DRY) {
     const flags = humidity | 0;
     const c = { x: 0, y: 0 };
     let cpt = 0;
     do {
         if (!somexy(croom, c)) break;
-        if (is_ok_location(c.x, c.y, flags) && (!ok_fn || ok_fn(c.x, c.y)))
+        if (is_ok_location(c.x, c.y, flags))
             return { x: c.x, y: c.y };
     } while (++cpt < 100);
-    if (!(flags & NO_LOC_WARN)) {
-        for (let x = croom.lx; x <= croom.hx; x++) {
-            for (let y = croom.ly; y <= croom.hy; y++) {
-                if (is_ok_location(x, y, flags) && (!ok_fn || ok_fn(x, y)))
-                    return { x, y };
-            }
+    for (let x = croom.lx; x <= croom.hx; x++) {
+        for (let y = croom.ly; y <= croom.hy; y++) {
+            if (is_ok_location(x, y, flags))
+                return { x, y };
         }
     }
-    return { x: -1, y: -1 };
+    if (flags & NO_LOC_WARN) return { x: -1, y: -1 };
+    void impossible("get_location:  can't find a place!");
+    return { x: croom.hx, y: croom.hy };
 }
 
 /**
@@ -23642,10 +23700,10 @@ function get_free_room_loc_coord(croom, rx, ry) {
  * get_location(humidity). Amphibious WET-only thus burns two 100-try
  * loops before create_monster's DRY fallback (D-0618).
  */
-function get_location_coord_in_room(croom, humidity, ok_fn = null) {
-    let pos = get_location_in_room(croom, humidity | NO_LOC_WARN, ok_fn);
+function get_location_coord_in_room(croom, humidity) {
+    let pos = get_location_in_room(croom, humidity | NO_LOC_WARN);
     if (pos.x < 0)
-        pos = get_location_in_room(croom, humidity, ok_fn);
+        pos = get_location_in_room(croom, humidity);
     return pos;
 }
 
@@ -23672,8 +23730,11 @@ function splev_room_monster(croom, id_or_class, peaceful, opts) {
  * C ref: sp_lev.c l_create_stairway with croom (des.stair inside des.room).
  */
 function splev_room_stair(croom, up) {
-    // C: set_ok_location_func(good_stair_loc); get_location_coord(DRY, random)
-    const pos = get_location_coord_in_room(croom, DRY, good_stair_loc);
+    // C l_create_stairway :4180/:4186 — random branch installs
+    // good_stair_loc across the DRY lookup, cleared right after.
+    set_ok_location_func(good_stair_loc);
+    const pos = get_location_coord_in_room(croom, DRY);
+    set_ok_location_func(null);
     if (pos.x < 0) return;
     const trap = t_at(pos.x, pos.y);
     // C l_create_stairway: deltrap(badtrap) before the stair.
@@ -24803,7 +24864,7 @@ function load_valley() {
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
@@ -25082,7 +25143,7 @@ function load_asmodeus() {
         otmp.oerodeproof = 0;
     };
     const placeClassObj = (oclass) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         clearErosion(mkobj_at(oclass, pos.x, pos.y, true));
     };
@@ -25102,7 +25163,7 @@ function load_asmodeus() {
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
@@ -25468,7 +25529,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     splev_create_boulder();
 
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
@@ -25635,7 +25696,7 @@ function load_baalz() {
     placeNamedAt('Baalzebub', 35, 6);
 
     const placeClassObj = (oclass) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         mkobj_at(oclass, pos.x, pos.y, true);
     };
@@ -25651,7 +25712,7 @@ function load_baalz() {
     placeClassObj(SCROLL_CLASS);
 
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
@@ -25856,7 +25917,7 @@ function load_orcus() {
     addRectRoom(12, 0, 15, 4, true, SHOPBASE);
 
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
@@ -25875,7 +25936,7 @@ function load_orcus() {
     // math.random(0,1) → lua_random2 → rn2(2) before create_object loc
     {
         const otyp = lua_random2(0, 1) === 1 ? MAGIC_MARKER : MAGIC_LAMP;
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x >= 0)
             mksobj_at(otyp, pos.x, pos.y, true, true);
     }
@@ -26230,7 +26291,7 @@ function load_wizard1() {
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
@@ -26246,7 +26307,7 @@ function load_wizard1() {
 
     // Some random loot.
     if (RUBY >= 0) {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x >= 0) mksobj_at(RUBY, pos.x, pos.y, true, true);
     }
     splev_create_object(POTION_CLASS);
@@ -26509,7 +26570,7 @@ function load_wizard2() {
 
     // Random traps.
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
@@ -27271,7 +27332,7 @@ function load_sanctum() {
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random(null);
+        const pos = get_location_random();
         if (pos.x < 0) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
@@ -28476,8 +28537,7 @@ function priestini(lvl, sroom, sx, sy, sanctum) {
         const di = ((i + si) % N_DIRS + N_DIRS) % N_DIRS;
         px = (sx | 0) + xdir[di];
         py = (sy | 0) + ydir[di];
-        // C: pm_good_location → is_ok_location(pm_to_humidity); clerics → DRY
-        if (is_ok_location(px, py, DRY)) break;
+        if (pm_good_location(px, py, prim)) break; // C priest.c:236
     }
     if (i === N_DIRS) {
         px = sx | 0;
@@ -30726,7 +30786,7 @@ function selection_grow(sel, dirName) {
  */
 function selection_set_random(sel) {
     const target = sel || selection_new();
-    const pos = get_location_random(null, ANY_LOC);
+    const pos = get_location_random(ANY_LOC);
     if (pos.x >= 0) selection_setpoint(pos.x, pos.y, target, 1);
     return target;
 }
@@ -33497,25 +33557,6 @@ function find_okay_roompos(croom, crd) {
     return true;
 }
 
-// C ref: dothrow.c breaktest() — RNG-consuming; used when landmine → PIT debris.
-function mktrap_breaktest(obj) {
-    if (!obj) return false;
-    const GLASS = 19;
-    const o = game.objects?.[obj.otyp];
-    const oclass = obj.oclass ?? o?.oc_class;
-    let nonbreakchance = 1;
-    if (oclass === ARMOR_CLASS && o?.oc_material === GLASS) nonbreakchance = 90;
-    // C: if (obj_resists(obj, nonbreakchance, 99)) return FALSE;
-    const chance = rn2(100);
-    if (chance < (obj.oartifact ? 99 : nonbreakchance)) return false;
-    if (o?.oc_material === GLASS && !obj.oartifact && oclass !== GEM_CLASS)
-        return true;
-    if (oclass === POTION_CLASS) return true;
-    const n = objectNames[obj.otyp];
-    return n === 'EXPENSIVE_CAMERA' || n === 'EGG' || n === 'CREAM_PIE'
-        || n === 'MELON' || n === 'ACID_VENOM' || n === 'BLINDING_VENOM';
-}
-
 // C ref: mklev.c mktrap_victim — trap ammo + cursed possessions on fobj, then corpse.
 function mktrap_victim(trap) {
     const lvl = level_difficulty();
@@ -33544,8 +33585,10 @@ function mktrap_victim(trap) {
         otmp = mkobj(cls, false);
         if (!otmp) break;
         curse(otmp);
-        // C: for mktrap_victim, PIT is an exploded LANDMINE
-        if (trap.ttyp === PIT && mktrap_breaktest(otmp)) {
+        // C `:1877–1885` — PIT here is an exploded LANDMINE; live
+        // dothrow.js breaktest (local mktrap_breaktest clone retired: it
+        // dropped obj_resists' no-RNG invocation/rider early-true arm, D-0864).
+        if (trap.ttyp === PIT && breaktest(otmp)) {
             dealloc_obj(otmp);
         } else {
             place_object(otmp, x, y);

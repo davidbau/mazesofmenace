@@ -3078,10 +3078,11 @@ export function status_hilite_linestr_gather() {
 // C botl.c:3590–3670 status_hilite2str() (staticfn) — 'field/behavior/color'
 // for one threshold (`:3665–3667`); NULL for a null rule (`:3600–3601`).
 // C returns a static buffer the caller copies at once (`:3580`); JS returns
-// a fresh string. impossible() arms (bad rel per behavior) leave behavebuf
-// empty: C impossible logs and returns (init_blstats precedent above), so
-// nothing observable is dropped. initblstats[].name is the JS field for C
-// initblstats[].fldname (`:112–143` mirror `:703–737`).
+// a fresh string. impossible() arms (bad rel per behavior) are live via
+// `void impossible(...)` (status_initialize `:357` precedent: sync caller,
+// not awaited; corrupt-rule-only arms, no ported path reaches them).
+// initblstats[].name is the JS field for C initblstats[].fldname
+// (`:112–143` mirror `:703–737`).
 function status_hilite2str(hl) {
     if (!hl) return null; // C `:3600–3601`
     let clr = NO_COLOR, attr = ATR_NONE; // C `:3593`
@@ -3095,25 +3096,25 @@ function status_hilite2str(hl) {
     switch (hl.behavior) { // C `:3613`
     case BL_TH_VAL_PERCENTAGE: // C `:3614`
         if (op) behavebuf = `${op}${hl.value?.a_int | 0}%`; // C `:3615–3616`
-        /* else C `:3617` impossible("hl->behavior=percentage, rel error") */
+        else void impossible('hl->behavior=percentage, rel error'); // C `:3617` (not awaited: sync caller, status_initialize :357 precedent)
         break;
     case BL_TH_UPDOWN: // C `:3619`
         if (hl.rel === LT_VALUE) behavebuf = 'down'; // C `:3620–3621`
         else if (hl.rel === GT_VALUE) behavebuf = 'up'; // C `:3622–3623`
         else if (hl.rel === EQ_VALUE) behavebuf = 'changed'; // C `:3624–3625`
-        /* else C `:3627` impossible("hl->behavior=updown, rel error") */
+        else void impossible('hl->behavior=updown, rel error'); // C `:3627` (not awaited: sync caller, status_initialize :357 precedent)
         break;
     case BL_TH_VAL_ABSOLUTE: // C `:3630`
         if (op) behavebuf = `${op}${hl.value?.a_int | 0}`; // C `:3631–3632`
-        /* else C `:3633` impossible("hl->behavior=absolute, rel error") */
+        else void impossible('hl->behavior=absolute, rel error'); // C `:3633` (not awaited: sync caller, status_initialize :357 precedent)
         break;
     case BL_TH_TEXTMATCH: // C `:3635`
         if (hl.rel === TXT_VALUE && hl.textmatch?.[0]) behavebuf = `${hl.textmatch}`; // C `:3636–3637`
-        /* else C `:3639` impossible("hl->behavior=textmatch, rel or textmatch error") */
+        else void impossible('hl->behavior=textmatch, rel or textmatch error'); // C `:3639` (not awaited: sync caller, status_initialize :357 precedent)
         break;
     case BL_TH_CONDITION: // C `:3641`
         if (hl.rel === EQ_VALUE) behavebuf = `${conditionbitmask2str(hl.value?.a_ulong ?? 0)}`; // C `:3642–3643`
-        /* else C `:3645` impossible("hl->behavior=condition, rel error") */
+        else void impossible('hl->behavior=condition, rel error'); // C `:3645` (not awaited: sync caller, status_initialize :357 precedent)
         break;
     case BL_TH_ALWAYS_HILITE: // C `:3647–3648`
         behavebuf = 'always';

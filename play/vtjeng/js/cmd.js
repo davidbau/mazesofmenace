@@ -383,7 +383,6 @@ import {
     dotwoweapon,
     dowieldquiver,
     dowield,
-    UnsupportedTwoWeaponError,
     UnsupportedWieldError,
     cantwield,
 } from './wield.js';
@@ -2875,10 +2874,6 @@ export function failClosedCommandRefusals() {
         // completes normally, so only selected objects reach this refusal.
         UnsupportedReadError,
         UnsupportedSteedError,
-        // wield.c can_twoweapon()'s artifact and slippery-or-cursed arms,
-        // both of which stop before the command prints anything or draws its
-        // rnd(20).
-        UnsupportedTwoWeaponError,
         // The `f` command's three files. dothrow.c collects every branch of
         // the throw itself, wield.c the ones ready_weapon() reaches when the
         // swap-and-retry arm puts a launcher in the hero's hand, zap.c the
@@ -5501,9 +5496,12 @@ export async function rhack(key, state = game) {
                 state,
             );
         } else if (state.multi > 0 && command !== null && command !== 'pay'
+            && command !== 'pickup'
             && !Object.hasOwn(MOVEMENT_INTENTS, command)) {
             // shk.c dopay:1755 clears multi before its first action, so pay
-            // never reaches the repeated-command path refused here.
+            // never reaches the repeated-command path refused here. Likewise,
+            // hack.c dopickup consumes gc.command_count and clears gm.multi
+            // before pickup_checks(), so a counted comma is one pickup.
             // cmd.c's MOVEMENTCMD rows are dispatched below even when gm.multi
             // is positive; their domove() call is the source movement arm and
             // is already wired here. Other rows leave the count for

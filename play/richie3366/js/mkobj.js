@@ -1286,21 +1286,44 @@ export function light_is_local(ls) {
 }
 
 /**
- * C ref: light.c save_light_sources — peel RANGE_LEVEL locals (or
- * RANGE_GLOBAL non-locals) off gl.light_base. Camera flashes discarded.
+ * C ref: light.c save_light_sources `:421–471` — release_data arm
+ * (`:441–469`): peel RANGE_LEVEL locals (or RANGE_GLOBAL non-locals)
+ * off gl.light_base and return them for the caller to serialize (C
+ * frees entries its update_file arm just wrote; FREEING callers drop
+ * the return). Camera flashes discarded (`:427`), vision_full_recalc
+ * cleared (`:432`). The update_file arm (`:433–439`) lives in the
+ * write passes: snapshotGlobal/LocalLights route the shared
+ * maybe_write_ls selector (lev_json.js), and the savelev stash
+ * re-writes this return via serLightList. The NHFILE count/panic half
+ * (`:437–439`) has no JSON analogue (a single-pass callback cannot
+ * diverge between passes); the FREE_ALL_MEMORY free_light_sources
+ * caller (save.c:1117) is exit-time freeing (GC, no JS analogue).
  * LS_MONSTER locality is `mx > 0` (D-1708); LS_OBJECT stays
  * timeout.c `obj_is_local`.
  * @param {number} range RANGE_LEVEL or RANGE_GLOBAL
- * @returns {object[]}
+ * @returns {object[]} peeled entries (C's freed set) for serialization
  */
 export function save_light_sources(range) {
-    discard_flashes();
-    game.vision_full_recalc = 0;
-    const wantLocal = (range | 0) === RANGE_LEVEL;
+    discard_flashes(); // C :427
+    game.vision_full_recalc = 0; // C :432
+    const wantLocal = (range | 0) === RANGE_LEVEL; // C :462
     const saved = [];
     const kept = [];
-    for (const ls of game.light_base || []) {
-        if (light_is_local(ls) === wantLocal) saved.push(ls);
+    for (const ls of game.light_base || []) { // C :443
+        if (!ls) continue; // JS-only: C's intrusive list never holds null
+        const t = ls.type | 0;
+        if (!ls.id) { // C :444–446 — union-null id counts as local
+            void impossible('save_light_sources: no id! [range=%d]', range | 0); // C :445
+        } else if (t !== LS_OBJECT && t !== LS_MONSTER) { // C :454–459
+            void impossible('save_light_sources: bad type (%d) [range=%d]', t, range | 0); // C :456–458
+        }
+        // C :446/:455 — no-id and bad-type are local. light_is_local
+        // only handles LS_OBJECT/LS_MONSTER (its fallthrough is
+        // `return false` = global), so both force local here; id-less
+        // LS_OBJECT via obj_is_local(null) would also read global.
+        const badType = t !== LS_OBJECT && t !== LS_MONSTER;
+        const is_local = (!ls.id || badType) ? true : light_is_local(ls);
+        if (is_local === wantLocal) saved.push(ls); // C :462
         else kept.push(ls);
     }
     game.light_base = kept;

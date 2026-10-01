@@ -19,7 +19,8 @@
 import { game } from './gstate.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import {
-    newsym, pline, You, You_feel, tmp_at, nh_delay_output, verbalize,
+    newsym, pline, You, You_feel, pline_The, impossible, tmp_at,
+    nh_delay_output, verbalize,
     feel_newsym, flush_screen, flush_topl_more, under_ground,
 } from './display.js';
 import {
@@ -761,9 +762,15 @@ export async function liquid_flow(x, y, typ, ttmp, fillmsg) {
  * PIT after wake_nearby and HOLE at_u await switch_terrain then
  * re-read Lev/Fly (D-1269; C dig.c:733 / :757). maketrap PIT/HOLE
  * set_levltyp STONE/SCORR→CORR / wall|SDOOR (D-1280);
- * DRAWBRIDGE_UP ice→floor (D-1296). Named omit:
- * buried_ball_to_punishment; ship_object;
- * shop add_damage; liquid_flow.
+ * DRAWBRIDGE_UP ice→floor (D-1296). TT_BURIEDBALL wires live
+ * buried_ball_to_punishment; !Can_dig_down calls live impossible();
+ * PIT at_u sets game.vision_full_recalc (C :738 — the nested
+ * game.vision object never exists, so the old guarded write never
+ * scheduled the pit 3×3 recalc); wake_nearby awaited (C order);
+ * You/pline_The live channels (text-identical to pline prefix).
+ * shop add_damage / pay_for_damage both live above. Named omit: none —
+ * ship_object/liquid_flow are not C callees of this function (liquid_flow
+ * belongs to the apply.c break-wand caller).
  */
 export async function digactualhole(x, y, madeby, ttyp) {
     const lev = game.level?.at(x, y);
@@ -779,7 +786,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
 
     if (atHero && u.utrap) {
         if ((u.utraptype | 0) === TT_BURIEDBALL) {
-            // buried_ball_to_punishment deferred
+            await buried_ball_to_punishment();
         } else if ((u.utraptype | 0) === TT_INFLOOR) {
             reset_utrap(false);
         }
@@ -788,6 +795,10 @@ export async function digactualhole(x, y, madeby, ttyp) {
     if (await furniture_handled(x, y, madeby_u)) return;
 
     if (ttyp !== PIT && !Can_dig_down(u.uz) && !lev.candig) {
+        await impossible(
+            "digactualhole: can't dig %s on this level.",
+            trapname(ttyp, true),
+        );
         ttyp = PIT;
     }
 
@@ -821,9 +832,9 @@ export async function digactualhole(x, y, madeby, ttyp) {
     const in_thru = ttyp === HOLE ? 'through' : 'in';
     if (madeby_u) {
         if (x !== (u.ux | 0) || y !== (u.uy | 0)) {
-            await pline(`You dig an adjacent ${tname}.`);
+            await You(`dig an adjacent ${tname}.`);
         } else {
-            await pline(`You dig ${an(tname)} ${in_thru} the ${surface_type}.`);
+            await You(`dig ${an(tname)} ${in_thru} the ${surface_type}.`);
         }
     } else if (!madeby_obj && madeby && canseemon(madeby)) {
         await pline(
@@ -831,15 +842,15 @@ export async function digactualhole(x, y, madeby, ttyp) {
         );
     } else if (cansee(x, y) && game.flags?.verbose !== false) {
         if (IS_STWALL(old_typ)) {
-            await pline(
-                `The ${surface_type} crumbles into ${an(tname)}.`,
+            await pline_The(
+                `${surface_type} crumbles into ${an(tname)}.`,
             );
         } else {
             await pline(`${An(tname)} appears in the ${surface_type}.`);
         }
     }
     if (IS_FURNITURE(old_typ) && cansee(x, y)) {
-        await pline(`The ${furniture} falls into the ${tname}!`);
+        await pline_The(`${furniture} falls into the ${tname}!`);
     }
     // C: wrath should immediately follow altar destruction message
     if (heros_fault && IS_ALTAR(old_typ)) {
@@ -855,7 +866,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
             const { add_damage } = await import('./shk.js');
             add_damage(x, y, heros_fault ? SHOP_PIT_COST : 0);
         }
-        if (madeby_u) wake_nearby(false);
+        if (madeby_u) await wake_nearby(false);
         /* C dig.c:731–735 — digging down while encased in solid rock
          * which is blocking levitation or flight. Unconditional on PIT
          * (hero cell, not the hole coords). */
@@ -865,7 +876,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
         if (atHero) {
             if (!wont_fall) {
                 set_utrap(rn1(4, 2), TT_PIT);
-                if (game.vision) game.vision.full_recalc = 1;
+                game.vision_full_recalc = 1; /* vision limits change */
             } else {
                 reset_utrap(true);
             }
@@ -874,7 +885,9 @@ export async function digactualhole(x, y, madeby, ttyp) {
                 await pickup(1);
             }
         } else {
-            const mtmp = mtmp0 || m_at(x, y);
+            /* C reads m_at(x, y) once at entry (desecrate_altar wrath above
+             * may summon onto this cell; C still uses the entry value). */
+            const mtmp = mtmp0;
             if (mtmp) {
                 if (is_flyer(mtmp.data) || is_floater(mtmp.data)) {
                     if (canseemon(mtmp)) {
@@ -899,7 +912,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
             if (!u.ustuck && !wont_fall) {
                 const { next_to_u } = await import('./apply.js');
                 if (!(await next_to_u())) {
-                    await pline('You are jerked back by your pet!');
+                    await You('are jerked back by your pet!');
                     wont_fall = true;
                 }
             }
@@ -925,7 +938,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
                     const { pay_for_damage } = await import('./shk.js');
                     await pay_for_damage('dig into', true);
                 }
-                await pline('You fall through...');
+                await You('fall through...');
                 const newlevel = {
                     dnum: u.uz?.dnum | 0,
                     dlevel: (u.uz?.dlevel | 0) + 1,
@@ -944,7 +957,8 @@ export async function digactualhole(x, y, madeby, ttyp) {
                 const { impact_drop } = await import('./dokick.js');
                 await impact_drop(null, x, y, 0);
             }
-            const mtmp = mtmp0 || m_at(x, y);
+            /* C: entry m_at (see PIT arm above). */
+            const mtmp = mtmp0;
             if (mtmp) {
                 if (!grounded(mtmp.data)
                     || (mtmp.wormno && count_wsegs(mtmp) > 5)
@@ -1981,7 +1995,9 @@ export async function break_statue(obj) {
  * C ref: dig.c dig_up_grave — grave-robbing after digactualhole(PIT).
  * Branch envelope (D-0957): WIS exercise; Archeologist/Samurai/Lawful
  * align; emptygrave→default; rn2(5) corpse/zombie/mummy/empty; typ=ROOM;
- * clear flags/horizontal; del_engr_at; newsym.
+ * clear flags/horizontal; del_engr_at; newsym. Samurai/Lawful/corpse
+ * arms call live You(), the empty arm live pline_The() (C channels;
+ * text-identical to the pline-prefixed forms).
  * Named omit: none in this helper (callers still omit drawbridge/boulder).
  */
 export async function dig_up_grave(cc) {
@@ -2004,10 +2020,10 @@ export async function dig_up_grave(cc) {
         await You_feel('like a despicable grave-robber!');
     } else if (Role_if(PM_SAMURAI)) {
         adjalign(-sgn(alignType));
-        await pline('You disturb the honorable dead!');
+        await You('disturb the honorable dead!');
     } else if (alignType === A_LAWFUL) {
         if ((u.ualign?.record | 0) > -10) adjalign(-1);
-        await pline('You have violated the sanctity of this grave!');
+        await You('have violated the sanctity of this grave!');
     }
 
     // -1: force default case for empty grave (C emptygrave ≡ flags)
@@ -2015,7 +2031,7 @@ export async function dig_up_grave(cc) {
     switch (what_happens) {
     case 0:
     case 1: {
-        await pline('You unearth a corpse.');
+        await You('unearth a corpse.');
         const otmp = mk_tt_object(CORPSE, dig_x, dig_y);
         if (otmp) otmp.age = (otmp.age | 0) - (TAINT_AGE + 1);
         break;
@@ -2049,7 +2065,7 @@ export async function dig_up_grave(cc) {
         break;
     }
     default:
-        await pline('The grave is unoccupied.  Strange...');
+        await pline_The('grave is unoccupied.  Strange...');
         break;
     }
     lev.typ = ROOM;

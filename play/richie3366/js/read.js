@@ -94,8 +94,8 @@
 
 import { game } from './gstate.js';
 import { quest_info } from './questpgr.js';
-import { pline, You, You_cant, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym } from './display.js';
-import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname, singular, tshirt_text, apron_text, hawaiian_design, shk_your } from './objnam.js';
+import { pline, You, You_cant, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym, Hallucination } from './display.js';
+import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname, singular, tshirt_text, apron_text, hawaiian_design, shk_your, simpleonames, candy_wrapper_text } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
@@ -113,7 +113,7 @@ import {
 } from './detect.js';
 import { study_book, can_chant, losespells } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
-import { trycall, hcolor, Monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
+import { trycall, hcolor, Monnam, mon_nam, s_suffix, hliquid, pmname } from './do_name.js';
 import { chwepon, is_weptool } from './wield.js';
 import { destroy_arm, disintegrate_arm, some_armor, any_worn_armor_ok, count_worn_armor, setworn, hard_helmet, Ring_gone, Ring_off, Ring_on, adj_abon, suit_simple_name } from './do_wear.js';
 import { dropy, flooreffects } from './do.js';
@@ -133,12 +133,13 @@ import {
     ALL_SPELLS, DISP_BEAM, DISP_END, S_goodpos, Never_mind,
     In_endgame, Is_earthlevel, IS_OBSTRUCTED, IS_AIR,
     EXPL_FIERY, PLNMSG_TOWER_OF_FLAME, M_SEEN_FIRE, u_at, OBJ_AT,
+    something,
 } from './const.js';
 import { vision_recalc, do_clear_area, cansee } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
-import { dist2, mungspaces, strstri, strncmpi } from './hacklib.js';
+import { dist2, mungspaces, strstri, strncmpi, upwords } from './hacklib.js';
 import { You_hear, closed_door, maybe_half_phys, is_pool } from './hack.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_maniacal_laughter, se_sad_wailing } from './generated/seffects_data.js';
@@ -169,6 +170,8 @@ import { mondied } from './mhitm.js';
 import { losehp } from './hack.js';
 import { done } from './end.js';
 import { livelog_printf } from './pline.js';
+import { is_art } from './artifact.js';
+import { ART_ORB_OF_FATE } from './generated/artifacts_data.js';
 import { uhis } from './roles.js';
 import { can_saddle, put_saddle_on_mon } from './steed.js';
 import { flash_mon } from './muse.js';
@@ -214,11 +217,20 @@ const SCR_SCARE_MONSTER = _on('SCR_SCARE_MONSTER'), SPE_CAUSE_FEAR = _on('SPE_CA
 const SCR_CHARGING = _on('SCR_CHARGING'), SCR_AMNESIA = _on('SCR_AMNESIA');
 const SCR_EARTH = _on('SCR_EARTH'), SCR_STINKING_CLOUD = _on('SCR_STINKING_CLOUD'), SCR_FIRE = _on('SCR_FIRE');
 const ROCK = _on('ROCK'), BOULDER = _on('BOULDER'), CORNUTHAUM = _on('CORNUTHAUM');
+const DUNCE_CAP = _on('DUNCE_CAP'), CREDIT_CARD = _on('CREDIT_CARD'), CANDY_BAR = _on('CANDY_BAR');
 const T_SHIRT = _on('T_SHIRT'), ALCHEMY_SMOCK = _on('ALCHEMY_SMOCK'), HAWAIIAN_SHIRT = _on('HAWAIIAN_SHIRT');
 const ELVEN_LEATHER_HELM = _on('ELVEN_LEATHER_HELM'), ELVEN_MITHRIL_COAT = _on('ELVEN_MITHRIL_COAT'), ELVEN_CLOAK = _on('ELVEN_CLOAK'), ELVEN_SHIELD = _on('ELVEN_SHIELD'), ELVEN_BOOTS = _on('ELVEN_BOOTS');
 const BLACK_DRAGON_SCALE_MAIL = _on('BLACK_DRAGON_SCALE_MAIL'), BLACK_DRAGON_SCALES = _on('BLACK_DRAGON_SCALES'), SILVER_DRAGON_SCALE_MAIL = _on('SILVER_DRAGON_SCALE_MAIL'), SILVER_DRAGON_SCALES = _on('SILVER_DRAGON_SCALES'), SHIELD_OF_REFLECTION = _on('SHIELD_OF_REFLECTION');
 const GRAY_DRAGON_SCALES = _on('GRAY_DRAGON_SCALES'), YELLOW_DRAGON_SCALES = _on('YELLOW_DRAGON_SCALES'), GRAY_DRAGON_SCALE_MAIL = _on('GRAY_DRAGON_SCALE_MAIL');
 const PM_WIZARD = monsterNames.indexOf('PM_WIZARD');
+const PM_TOURIST = monsterNames.indexOf('PM_TOURIST');
+// C ref: read.c doread MAGIC_MARKER — red_mons[14] in C order.
+const RED_MONS = [
+    'PM_FIRE_ANT', 'PM_PYROLISK', 'PM_HELL_HOUND', 'PM_IMP',
+    'PM_LARGE_MIMIC', 'PM_LEOCROTTA', 'PM_SCORPION', 'PM_XAN',
+    'PM_GIANT_BAT', 'PM_WATER_MOCCASIN', 'PM_FLESH_GOLEM',
+    'PM_BARBED_DEVIL', 'PM_MARILITH', 'PM_PIRANHA',
+].map((n) => monsterNames.indexOf(n));
 const PM_YELLOW_LIGHT = monsterNames.indexOf('PM_YELLOW_LIGHT');
 const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
 const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
@@ -280,12 +292,12 @@ function useup(otmp) {
 /**
  * C ref: read.c learnscrolltyp / learnscroll — makeknown + XP when new.
  */
-function learnscroll(scroll) {
+export function learnscroll(scroll) {
     if (!scroll || scroll.oclass === SPBOOK_CLASS) return;
     const otyp = scroll.otyp | 0;
     const oc = game.objects?.[otyp];
     if (!oc) return;
-    if (!game.u?.Blind) scroll.dknown = true;
+    // C learnscroll/learnscrolltyp set no dknown (read.c:72 comment only).
     if (!oc.oc_name_known) {
         makeknown(otyp);
         more_experienced(0, 10);
@@ -2176,6 +2188,8 @@ export async function seffects(sobj) {
  */
 export async function doread() {
     known = false;
+    // C read.c:332 doread — function-static Braille message.
+    const find_any_braille = 'feel any Braille writing.';
     // C ref: hack.c check_capacity — near_capacity >= EXT_ENCUMBER → ECMD_OK
     if (near_capacity() >= EXT_ENCUMBER) {
         await pline("You can't do that while carrying so much stuff.");
@@ -2188,7 +2202,6 @@ export async function doread() {
     const otyp = scroll.otyp;
     // C ref: read.c:359 doread — no longer 'just picked up' (eat.js/apply.js idiom)
     scroll.pickup_prev = 0;
-    // credit / marker / coin / orb / candy deferred
     // C ref: read.c:365-377 doread — cookie reads via outrumor, which owns
     // the Blind gate; first read while !Blind marks the literate conduct.
     if (otyp === FORTUNE_COOKIE) {
@@ -2214,8 +2227,6 @@ export async function doread() {
     // C ref: read.c:376-413 doread — shirt/smock reads (next in C order
     // after the cookie arm; C buf[] scratch collapses to JS strings).
     if (otyp === T_SHIRT || otyp === ALCHEMY_SMOCK || otyp === HAWAIIAN_SHIRT) {
-        // C read.c:332 doread — function-static Braille message.
-        const find_any_braille = 'feel any Braille writing.';
         if (Blind()) { // C :380-383
             await You_cant(find_any_braille);
             return 0;
@@ -2250,12 +2261,136 @@ export async function doread() {
         return 1;
     }
 
+    // C ref: read.c:414-449 doread — dunce cap / cornuthaum readable by
+    // tourists only; o_id % 3 readable third; trycall, never a discovery.
+    if ((otyp === DUNCE_CAP || otyp === CORNUTHAUM) && Role_if(PM_TOURIST)) {
+        const cap_text = otyp === DUNCE_CAP ? 'DUNCE' : 'WIZZARD';
+        if ((scroll.o_id | 0) % 3) {
+            await You_cant(`find anything to read on this ${simpleonames(scroll)}.`);
+            return 0;
+        }
+        await pline(`${!Blind() ? 'There is writing' : 'You feel lettering'} on the ${simpleonames(scroll)}.  It reads:  ${cap_text}.`);
+        if (!game.u) game.u = {};
+        if (!game.u.uconduct) game.u.uconduct = {};
+        if (!(game.u.uconduct.literate | 0)) {
+            livelog_printf(LL_CONDUCT,
+                `became literate by reading ${otyp === DUNCE_CAP ? 'a dunce cap' : 'a cornuthaum'}`);
+        }
+        game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        await trycall(scroll);
+        return 1;
+    }
+
+    // C ref: read.c:450-490 doread — credit card bank line (artifact card
+    // takes the last entry) + embossed number from o_id.
+    if (otyp === CREDIT_CARD) {
+        const card_msgs = [
+            'Leprechaun Gold Tru$t - Shamrock Card',
+            'Magic Memory Vault Charge Card',
+            'Larn National Bank',
+            'First Bank of Omega',
+            'Bank of Zork - Frobozz Magic Card',
+            "Ankh-Morpork Merchant's Guild Barter Card",
+            "Ankh-Morpork Thieves' Guild Unlimited Transaction Card",
+            'Ransmannsby Moneylenders Association',
+            'Bank of Gehennom - 99% Interest Card',
+            'Yendorian Express - Copper Card',
+            'Yendorian Express - Silver Card',
+            'Yendorian Express - Gold Card',
+            'Yendorian Express - Mithril Card',
+            'Yendorian Express - Platinum Card', // last: artifact
+        ];
+        if (Blind()) {
+            await You('feel the embossed numbers:');
+        } else {
+            if (game.flags?.verbose !== false) await pline('It reads:');
+            await pline(`"${(scroll.oartifact | 0) ? card_msgs[card_msgs.length - 1] : card_msgs[(scroll.o_id | 0) % (card_msgs.length - 1)]}"`);
+        }
+        // C "%d0%d %ld%d1 0%d%d0": o_id digits + (verbose||Blind) period.
+        const oid = scroll.o_id | 0;
+        await pline(`"${((oid % 89) + 10)}0${oid % 4} ${(((oid * 499) % 899999) + 100000)}${oid % 10}1 0${oid % 3 === 0 ? 1 : 0}${(oid * 7) % 10}0"${(game.flags?.verbose !== false || Blind()) ? '.' : ''}`);
+        if (!game.u) game.u = {};
+        if (!game.u.uconduct) game.u.uconduct = {};
+        if (!(game.u.uconduct.literate | 0)) {
+            livelog_printf(LL_CONDUCT, 'became literate by reading a credit card');
+        }
+        game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        return 1;
+    }
+
     // C read.c:491–493 doread — a can of grease has no label (ECMD_OK).
-    // Credit card, marker, coin, orb, and candy stay the
-    // "silly thing" fallthrough below.
     if ((otyp | 0) === CAN_OF_GREASE) {
         await pline(`This ${singular(scroll, xname)} has no label.`);
         return 0;
+    }
+
+    // C ref: read.c:494-518 doread — magic marker red-ink monster
+    // (red_mons[o_id % 14]); blind finds no Braille.
+    if (otyp === MAGIC_MARKER) {
+        const pm = RED_MONS[(scroll.o_id | 0) % RED_MONS.length];
+        if (Blind()) {
+            await You_cant(find_any_braille);
+            return 0;
+        }
+        if (game.flags?.verbose !== false) await pline('It reads:');
+        await pline(`"Magic Marker(TM) ${upwords(pmname(pm, NEUTRAL))} Red Ink Marker Pen.  Water Soluble."`);
+        if (!game.u) game.u = {};
+        if (!game.u.uconduct) game.u.uconduct = {};
+        if (!(game.u.uconduct.literate | 0)) {
+            livelog_printf(LL_CONDUCT, 'became literate by reading a magic marker');
+        }
+        game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        return 1;
+    }
+
+    // C ref: read.c:519-530 doread — a coin's Zorkmid engravings.
+    if (scroll.oclass === COIN_CLASS) {
+        if (Blind()) await You('feel the embossed words:');
+        else if (game.flags?.verbose !== false) await You('read:');
+        await pline('"1 Zorkmid.  857 GUE.  In Frobs We Trust."');
+        if (!game.u) game.u = {};
+        if (!game.u.uconduct) game.u.uconduct = {};
+        if (!(game.u.uconduct.literate | 0)) {
+            livelog_printf(LL_CONDUCT, "became literate by reading a coin's engravings");
+        }
+        game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        return 1;
+    }
+
+    // C ref: read.c:531-541 doread — the Orb of Fate is signed by Odin.
+    if (is_art(scroll, ART_ORB_OF_FATE)) {
+        if (Blind()) await You('feel the engraved signature:');
+        else await pline('It is signed:');
+        await pline('"Odin."');
+        if (!game.u) game.u = {};
+        if (!game.u.uconduct) game.u.uconduct = {};
+        if (!(game.u.uconduct.literate | 0)) {
+            livelog_printf(LL_CONDUCT, 'became literate by reading the divine signature of Odin');
+        }
+        game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        return 1;
+    }
+
+    // C ref: read.c:542-557 doread — candy bar wrapper text (blank
+    // wrappers take no time); blind finds no Braille.
+    if (otyp === CANDY_BAR) {
+        const wrapper = candy_wrapper_text(scroll);
+        if (Blind()) {
+            await You_cant(find_any_braille);
+            return 0;
+        }
+        if (!wrapper) {
+            await pline("The candy bar's wrapper is blank.");
+            return 0;
+        }
+        await pline(`The wrapper reads: "${wrapper}".`);
+        if (!game.u) game.u = {};
+        if (!game.u.uconduct) game.u.uconduct = {};
+        if (!(game.u.uconduct.literate | 0)) {
+            livelog_printf(LL_CONDUCT, 'became literate by reading a candy bar wrapper');
+        }
+        game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        return 1;
     }
 
     if (scroll.oclass !== SCROLL_CLASS && scroll.oclass !== SPBOOK_CLASS) {
@@ -2266,9 +2401,7 @@ export async function doread() {
     // C ref: read.c:561-576 doread — Blind gate precedes literate conduct.
     // Dead exempt; novel→words, book→mystic runes, unknown scroll→formula.
     {
-        const ub = game.u || {};
-        const Zblind = !!(ub.Blind || ub.ublind);
-        if (Zblind && otyp !== SPE_BOOK_OF_THE_DEAD) {
+        if (Blind() && otyp !== SPE_BOOK_OF_THE_DEAD) {
             let what = null;
             if (otyp === SPE_NOVEL) what = 'words';
             else if (scroll.oclass === SPBOOK_CLASS) what = 'mystic runes';
@@ -2295,8 +2428,11 @@ export async function doread() {
         && otyp !== SPE_BLANK_PAPER && otyp !== SCR_BLANK_PAPER) {
         if (!game.u) game.u = {};
         if (!game.u.uconduct) game.u.uconduct = {};
+        if (!(game.u.uconduct.literate | 0)) {
+            livelog_printf(LL_CONDUCT,
+                `became literate by reading ${scroll.oclass === SPBOOK_CLASS ? 'a book' : scroll.oclass === SCROLL_CLASS ? 'a scroll' : something}`);
+        }
         game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
-        // livelog deferred
     }
 
     if (scroll.oclass === SPBOOK_CLASS) {
@@ -2324,15 +2460,15 @@ export async function doread() {
     scroll.in_use = true;
     if (otyp !== SCR_BLANK_PAPER) {
         const u = game.u || {};
-        // C: Confusion != 0; Blind; can_chant → silently
-        // C ref: read.c:580 doread — mail overrides confused to FALSE
+        // C: Confusion != 0 (mail overrides confused to FALSE, read.c:580);
+        // Blind(); can_chant → silently
         const confused = !!(u.HConfusion || u.Confusion) && otyp !== SCR_MAIL;
-        const Blind = !!(u.Blind || u.ublind);
+        const blind = Blind();
         const silently = !can_chant();
         // C: nodisappear for SCR_FIRE / cursed SCR_REMOVE_CURSE
         const nodisappear = (otyp === SCR_FIRE
             || (otyp === SCR_REMOVE_CURSE && !!scroll.cursed));
-        if (Blind) {
+        if (blind) {
             const verb = silently ? 'cogitate' : 'pronounce';
             await pline(
                 nodisappear
@@ -2348,7 +2484,7 @@ export async function doread() {
         }
         // C ref: read.c doread — confused pline before seffects (D-0580)
         if (confused) {
-            if (u.HHallucination || u.Hallucination) {
+            if (Hallucination()) {
                 await pline('Being so trippy, you screw up...');
             } else {
                 await pline(
@@ -2370,7 +2506,7 @@ export async function doread() {
             else await trycall(scroll);
         }
         scroll.in_use = false;
-        if (otyp !== SCR_BLANK_PAPER) useup(scroll);
+        if (otyp !== SCR_BLANK_PAPER) useup_live(scroll);
     }
     return 1;
 }

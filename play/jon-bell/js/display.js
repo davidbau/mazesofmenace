@@ -574,7 +574,13 @@ export function terrain_glyph(loc, x, y) {
     if ((typ >= VWALL && typ <= TRWALL) || typ === SDOOR)
         return _wall_angle_glyph(loc, decMode);
     switch (typ) {
-        case STONE: return { ch: ' ', color: NO_COLOR, dec: false };
+        // C ref: display.c:2294-2296 back_to_glyph — SCORR/STONE are
+        // `svl.level.flags.arboreal ? S_tree : S_stone`.
+        case STONE:
+            if (game.level?.flags?.arboreal)
+                return decMode ? { ch: 'g', color: CLR_GREEN, dec: true }
+            : { ch: '#', color: CLR_GREEN, dec: false };
+            return { ch: ' ', color: NO_COLOR, dec: false };
         case ROOM:
             // C ref: defsym.h S_room = '.' (ASCII); DECgraphics S_room = \xfe → DEC '~' (centered dot)
             return decMode ? { ch: '~', color: NO_COLOR, dec: true }
@@ -704,7 +710,11 @@ export function terrain_glyph(loc, x, y) {
             : (decMode ? { ch: 'x', color: wallColor, dec: true } // vertical → VWALL │
                 : { ch: '|', color: wallColor, dec: false });
         // C ref: display.c:2338 back_to_glyph — SCORR falls through to STONE → S_stone = ' '.
-        case SCORR: return { ch: ' ', color: NO_COLOR, dec: false }; // hidden corridor = STONE (invisible)
+        case SCORR:
+            if (game.level?.flags?.arboreal) /* display.c:2296 */
+                return decMode ? { ch: 'g', color: CLR_GREEN, dec: true }
+            : { ch: '#', color: CLR_GREEN, dec: false };
+            return { ch: ' ', color: NO_COLOR, dec: false }; // hidden corridor = STONE (invisible)
         // C ref: defsym.h PCHAR entries — remaining terrain types.
         // HI_METAL=CLR_CYAN, HI_GOLD=CLR_YELLOW (color.h).
         // C ref: dat/symbols:707 S_bars: \xfc (meta-|, not-equals); defsym.h:110 HI_METAL.
@@ -756,6 +766,7 @@ export function terrain_glyph(loc, x, y) {
         case ICE: return decMode ? { ch: '~', color: CLR_CYAN, dec: true }
             : { ch: '.', color: CLR_CYAN, dec: false };
         case DRAWBRIDGE_UP: return { ch: '#', color: CLR_BROWN, dec: false }; // S_vcdbridge (no DEC override)
+        case DBWALL: return { ch: '#', color: CLR_BROWN, dec: false };
         // C ref: dat/symbols:719-720 S_vodbridge/S_hodbridge: \xfe; defsym.h:140 CLR_BROWN.
         case DRAWBRIDGE_DOWN: return decMode ? { ch: '~', color: CLR_BROWN, dec: true }
             : { ch: '.', color: CLR_BROWN, dec: false };
@@ -4090,7 +4101,7 @@ function _pline_flush_frame_tick(prev, joined) {
 // ("You were wearing a blessed +3 small shield.", 43 chars) is committed as the
 // command result and the water nymph's steal message opens the next world block,
 // so the page-1 select asked for off 43 and the log's earliest record was 108.
-function _pline_flush_frame_record(off, msg) {
+export function _pline_flush_frame_record(off, msg) {
     const g = game;
     if (!g || !g.level) return;
     if (!g._plineFlushFrames) g._plineFlushFrames = [];
@@ -4863,12 +4874,17 @@ export async function force_more(committed, dismissMore) {
     const _full = String(committed ?? '');
     const _pages = _topl_more_pages(_full, _topl_joins_snapshot(_full));
     let _morc = 0;
+    const _frameLog = g._movemonPageFrames;
     for (let i = 0; i < _pages.length; ++i) {
         /* _topl_more_pages ends a wrapped single pline with an empty remainder
          * (already fully shown by the page before it); it owes no more(). */
         if (!_pages[i] && i) continue;
         g._pending_message = _pages[i];
+        const _pf = i > 0 ? _frameLog?.[i] : null;
+        const _sv = g._paintedSnapshot;
+        if (_pf && _sv) g._paintedSnapshot = { cells: _pf.cells, moves: _pf.moves, botl: _pf.botl || null };
         _morc = await _topl_more(_pages[i], dismissMore);
+        if (_pf && _sv) g._paintedSnapshot = _sv;
     }
     return _morc;
 }
@@ -4978,6 +4994,8 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
     // as of the per-turn bot() flush — C froze the status line at that flush, so the
     // --More-- shows the pre-message hunger (e.g. NOT_HUNGRY at the lesshungry page,
     const _hadSnap = g._paintedSnapshot;
+    if (frame && g._occ_committed_topl?.postMeal && g._lastFlushFrame)
+        frame = g._lastFlushFrame.cells;
     if (frame) {
         g._paintedSnapshot = { cells: frame, moves: (framesMoves | 0),
             uhs: (framesUhs == null ? null : (framesUhs | 0)),

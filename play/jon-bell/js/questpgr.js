@@ -3059,6 +3059,34 @@ function convert_arg(c) {
     const u = game.u || {};
     switch (c) {
     case 'p': return String(game.plname ?? game.u?.plname ?? '');
+    /* C questpgr.c:243-245 — %c: (flags.female && urole.name.f) ? name.f : name.m */
+    case 'c': {
+        const nm = game.urole?.name;
+        return String((_female() && nm?.f) ? nm.f : (nm?.m ?? ''));
+    }
+    /* C questpgr.c:279-281 — %G: align_gtitle(u.ualignbase[A_ORIGINAL]) */
+    case 'G': {
+        const t = _cmdmod?.align_gtitle((u.ualignbase?.[1]) | 0);
+        if (t == null) {
+            _impossible('convert_arg: %G — cmd.js not loaded');
+            return '';
+        }
+        return String(t);
+    }
+    /* C questpgr.c:299-301 — %D: align_gname(A_LAWFUL); A_LAWFUL == 1 */
+    case 'D': {
+        const gname = _cmdmod?.align_gname(1);
+        if (gname == null) {
+            _impossible('convert_arg: %D — cmd.js not loaded');
+            return '';
+        }
+        return String(gname);
+    }
+    /* C questpgr.c:314-316 — %Z: svd.dungeons[0].dname */
+    case 'Z': {
+        const dg = (game._dungeons_full || game.dungeons || [])[0];
+        return String(dg?.dname ?? 'The Dungeons of Doom');
+    }
     case 'l': return ldrname();
     case 'i': return intermed();
     case 'n': return neminame();
@@ -3107,11 +3135,7 @@ function convert_arg(c) {
     case 'L': return 'lawful';
     case '%': return '%';
     default:
-        /* Unported arg (%c/%G/%D/%Z): C's default arm yields "" for an UNKNOWN
-         * letter, but these are known letters we have not ported.  Emitting ""
-         * here would silently drop text, so report it (the entry is unusable)
-         * and drop, matching the unported msgid policy above. */
-        _impossible(`convert_arg: %${c} not ported`);
+        /* C questpgr.c:317-319: unknown letter yields "". */
         return '';
     }
 }

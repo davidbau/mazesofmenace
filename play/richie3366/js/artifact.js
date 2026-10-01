@@ -111,7 +111,7 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, impossible, You_feel, You_cant, newsym, see_monsters,
     set_sting_effects, glyph_at, glyph_is_trap, canspotmon, map_invisible, shieldeff,
-    verbalize,
+    verbalize, see_objects, see_traps, swallowed,
 } from './display.js';
 import { getrumor, bcsign } from './rumors.js';
 import { SetVoice, voice_talking_artifact } from './sndprocs.js';
@@ -161,6 +161,10 @@ import { clear_bypasses, bypass_obj, nxt_unbypassed_obj, which_armor } from './w
 import { dismount_steed } from './steed.js';
 import { next_to_u } from './apply.js';
 import { select_menu_pick_one } from './options.js';
+// C set_artifact_intrinsic SPFX_HALRES changed arm — hoisted fn, cycle-safe
+// (`imports.mjs --can artifact.js eat.js eatmupdate`: SAFE, same shape as the
+// file's existing steal.js/dothrow.js/do.js cycle edges; runtime-only call).
+import { eatmupdate } from './eat.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -1000,8 +1004,10 @@ function warntype_info() {
  * strips bits still conferred by other invent artifacts (`:771–778`).
  * Callers: invent.c addinv_core1 `:991` / freeinv_core `:1383` W_ART;
  * worn.c setworn/setnotworn weapon/armor masks.
- * C uses make_hallucinated(xtime=!on, talk, wp_mask) which sets
- * EHalluc_resistance |= mask when conferring (xtime==0).
+ * SPFX_HALRES `:788–796` runs the potion.c make_hallucinated(xtime=!on,
+ * talk, wp_mask) mask arm inline (sync fn): extrinsic flip +
+ * Hallucination re-mirror + changed-arm refresh (eatmupdate/see_* when a
+ * timeout is running); only the talk pline stays named (async).
  * SPFX_WARN `:824–839`: spec_m2 → EWarn_of_mon + warntype.obj + see_monsters;
  * else EWarning. MATCH_WARN overlay is display.c (D-1514).
  * SPFX_SEARCH `:781–786` ESearching (Excalibur wield); SPFX_REGEN
@@ -1013,7 +1019,7 @@ function warntype_info() {
  * async `revoke_invoked_property` half (same file; sync `freeinv_core`
  * cannot await — Constitution §2.6), awaited by async W_ART-off envelopes
  * (`dropx`, zap poly `replace`); no-floor drops ride `finesse_ahriman`
- * (own row). Named omissions: message paths.
+ * (own row). Named omissions: HALRES talk pline (async-only).
  * SPFX_REFLECT && W_WEP is D-1342 (not other wp_mask).
  * C artifact.c:886–891 — wielded Sunsword sets EBlnd_resist (W_WEP
  * exact, not bit-test).
@@ -1074,8 +1080,39 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
         set_spfx_extrinsic(SEARCHING, 'ESearching', wp_mask, on);
     }
     if (spfx & SPFX_HALRES) {
-        // C potion.c make_hallucinated mask arm: !xtime → |= ; xtime → &=~
+        // C artifact.c:788–796 → potion.c make_hallucinated(:369–438) with
+        // xtime = !on, talk = !restoring, mask = wp_mask. Mask arm
+        // (:385–392): changed iff a hallucination timeout is running (C
+        // reads raw HHallucination = uprops[HALLUC].intrinsic; JS also
+        // keeps the flat — same OR as the file-local Hallucination());
+        // !xtime → |= ; xtime → &=~.
+        const u = game.u || (game.u = {});
+        const changed = !!((u.HHallucination | 0) || (u.uprops?.[HALLUC]?.intrinsic | 0));
         set_spfx_extrinsic(HALLUC_RES, 'EHalluc_resistance', wp_mask, on);
+        // Re-mirror stored u.Hallucination: C Hallucination is a macro over
+        // the just-flipped mask, but JS readers (apply/detect/display) use
+        // the stored bit — potion.js mask-arm formula, hallucResisted inline.
+        u.Hallucination = !!((u.HHallucination | 0) & TIMEOUT) && !(
+            ((u.uprops?.[HALLUC_RES]?.intrinsic | 0) || (u.uprops?.[HALLUC_RES]?.extrinsic | 0))
+            || (u.Halluc_resistance | 0) || (u.HHalluc_resistance | 0) || (u.EHalluc_resistance | 0)
+        );
+        if (changed) {
+            // C make_hallucinated changed arm (:414–436), sync half only:
+            // the talk pline ("Everything %s SO boring/cosmic") is async
+            // and stays named — this function is sync at every C call site.
+            if (!Hallucination()) eatmupdate(); // C :417–418 orange mimic
+            if (u.uswallow) {
+                swallowed(0); // C :421 redraw swallow display
+            } else {
+                // C :424–427 see_* BEFORE the (named) pline
+                see_monsters();
+                see_objects();
+                see_traps();
+            }
+            update_inventory(); // C :432
+            if (game.disp) game.disp.botl = true; // C :434 disp.botl
+            if (game.flags) game.flags.botl = true; // JS status mirror
+        }
     }
     // C artifact.c:798–805 — SPFX_ESP ETelepat + recalc + see_monsters
     if (spfx & SPFX_ESP) {

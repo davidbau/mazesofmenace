@@ -636,7 +636,8 @@ import { resist } from './zap.js';
  * `export function`s, so the js/mklev.js and js/objnam.js cycles resolve. */
 import { bcsign, upwords, outrumor, BY_COOKIE, wipeout_text } from './mklev.js';
 import { singular } from './objnam.js';
-import { You_cant } from './cmd.js';
+import { You_cant, getobj_cmdq_drain } from './cmd.js';
+import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY } from './const.js';
 import {
     /* read.c:503-507's red_mons[].  Taken from pm.generated.js but VERIFIED BY
      * NAME against js/makemon_pmnames.json (see the marker arm's comment). */
@@ -892,16 +893,28 @@ export async function doread() {
     const prompt = letters
         ? `What do you want to read? [${letters} or ?*]`
         : 'What do you want to read? [*]';
-    g._pending_message = prompt;
-    await flush_screen(1);
-    set_cursor(prompt.length + 1, 0); /* TTY: cursor past prompt + trailing space */
+    /* C invent.c:1779-1825 — getobj FIRST drains the command queue
+     * (cmdq_pop CQ_CANNED); a queued invlet answers the prompt and no prompt
+     * is shown.  Queue empty -> fall through to the prompt below. */
+    const _q = await getobj_cmdq_drain(
+        (o) => !o ? GETOBJ_EXCLUDE
+            : (_read_ok(o) ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY));
+    if (!_q.drained) {
+        g._pending_message = prompt;
+        await flush_screen(1);
+        set_cursor(prompt.length + 1, 0); /* TTY: cursor past prompt + trailing space */
+    }
 
     const _isQuit = (k) => k === 27 /* ESC */ || k === 32 /* space */
         || k === 13 /* CR */ || k === 10 /* LF */;
     let keyCode = -1;
     let scroll = null;
     let cancelled = false;
-    for (;;) {
+    if (_q.drained) {
+        if (_q.obj) { scroll = _q.obj; keyCode = scroll.invlet | 0; }
+        else cancelled = true;
+    }
+    while (!_q.drained) {
         const raw = await nhgetch();
         keyCode = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         /* C invent.c:1937-1948 tests digits before quitchars.  doread's

@@ -24,7 +24,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, _topl_record_join, pline, canseemon,
-         topl_force_break_now, You_hear } from './display.js';
+         topl_force_break_now, You_hear, _pline_flush_frame_record } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -1370,6 +1370,8 @@ function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
                 _topl_record_join(_prev, _joined);
                 game._pending_message = _joined;
             } else {
+                const _rr = game._resultMessage;
+                if (_rr && _rr !== _msg) _pline_flush_frame_record(_rr.length, String(_msg));
                 game._pending_message = _msg;
             }
         }

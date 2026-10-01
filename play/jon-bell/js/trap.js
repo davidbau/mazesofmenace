@@ -64,11 +64,12 @@ ARM, HEAD, MAY_HIT, MAY_DESTROY, MAY_FRACTURE, VIS_EFFECTS, } from './const.js';
 import { ohitmon } from './mhitu.js';
 import { poisoned } from './uhitm.js';
 import { tele_trap, mlevel_tele_trap, mtele_trap, domagicportal, next_to_u } from './teleport.js';
-import { self_invis_message, make_confused } from './potion.js';
+import { self_invis_message, make_confused, potionhit as potionhit_thitu } from './potion.js';
+import { hates_silver as hates_silver_thitu } from './makemon.js';
 /* trapeffect_fire_trap's monster arm (C trap.c:1729-1821).  zap.js already
  * imports this module; both of these are read at CALL time inside a function
  * body, so the cycle resolves through the hoisted function bindings. */
-import { destroy_items_mon, burn_floor_objects, make_blinded, _u_resists_blnd, learnwand, resist, destroy_items } from './zap.js';
+import { destroy_items_mon, burn_floor_objects, melt_ice_zap, make_blinded, _u_resists_blnd, learnwand, resist, destroy_items } from './zap.js';
 import { growl } from './mhitm.js';
 import { p_coaligned } from './priest.js';
 import { newcham } from './mklev.js';
@@ -3636,6 +3637,36 @@ export async function thitu(tlev, dam, otmp, name) {
         await pline(`You are hit${exclam_local(dam)}`);
     else
         await pline(`You are hit by ${onm}${exclam_local(dam)}`);
+    /* C mthrowu.c:121-151 — the post-hit arms, in C order. */
+    const is_acid = !!otmp && (otmp.otyp | 0) === 480; /* ACID_VENOM */
+    const _up = (i) => { const p = u.uprops && u.uprops[i];
+        return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)); };
+    if (is_acid && _up(ACID_RES)) {
+        await pline("It doesn't seem to hurt you.");
+        _monstseesu_stub(0x0080); /* M_SEEN_ACID */
+        return 1;
+    } else if (otmp && _thitu_stone_missile(otmp)
+               && _tr_passes_rocks(_lo_hero_monst().data)) {
+        /* `named` approximates "hitting from above" */
+        await pline(`It ${name ? 'passes harmlessly through' : "doesn't harm"} you.`);
+        return 1;
+    } else if (otmp && (otmp.oclass | 0) === 8) { /* POTION_CLASS */
+        await potionhit_thitu(game.youmonst, otmp, 3 /* POTHIT_OTHER_THROW */);
+        return 1;
+    }
+    if (otmp && (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) === 14 /* SILVER */) {
+        const hs = ((u.ulycn ?? -1) | 0) >= 0
+            || (game.youmonst && game.youmonst.data
+                && !!hates_silver_thitu(game.youmonst.data));
+        if (hs) {
+            await pline('The silver sears your flesh!');
+            exercise(A_CON, false);
+        }
+    }
+    if (is_acid) {
+        await pline('It burns!');
+        _monstunseesu_stub(0x0080);
+    }
     if (u && u.uhp !== undefined) {
         await losehp((dam | 0), _thitu_killer_name(otmp, name), KILLED_BY_THITU);
     }
@@ -3651,6 +3682,10 @@ export async function thitu(tlev, dam, otmp, name) {
 /* C objnam.c:1216 killer_xname(obj), reduced to the arm thitu reaches: no
  * artifact, no CORPSE, no SLIME_MOLD.  `xname` plus the article rule at the
  * end of that function. */
+function _thitu_stone_missile(o) { /* obj.h:274 */
+    const m = MKOBJ_OC_MATERIAL[o.otyp | 0] | 0;
+    return (m === 20 || m === 21) && (o.oclass | 0) !== 4;
+}
 const KILLED_BY_THITU = 1; /* C hack.h KILLED_BY */
 function _thitu_killer_name(otmp, name) {
     if (!otmp)
@@ -3925,7 +3960,7 @@ async function trapeffect_fire_trap_mon(mtmp, trap) {
         && !see_it && distu_ft(tx, ty) <= 3 * 3)
         void pline('You smell smoke.');
     /* C trap.c:1811 — fire melts an ICE square after the trap resolves. */
-    melt_ice_ft(tx, ty);
+    await melt_ice_ft(tx, ty);
     if ((mtmp.mhp | 0) < 1)
         trapkilled = true;
     if (see_it && t_at(tx, ty))
@@ -4049,31 +4084,25 @@ async function dofiretrap(box) {
     if (!box && await burn_floor_objects(u.ux | 0, u.uy | 0, see_it, true) && !see_it)
         await You('smell paper burning.');
     /* C trap.c:4312 — fire melts an ICE square after damage and item effects. */
-    melt_ice_ft(u.ux | 0, u.uy | 0);
+    await melt_ice_ft(u.ux | 0, u.uy | 0);
 }
 
-/* C zap.c:5033-5074 melt_ice(), reduced to the ICE terrain arm used by trap.c.
- * Fire traps pass NULL for msg, so this is entirely stateful and RNG-free. */
-function melt_ice_ft(x, y) {
+/* C trap.c:1810-1811 / 4311-4312: `if (is_ice(x, y)) melt_ice(x, y, NULL)`.
+ * is_ice() is ICE, or a drawbridge square with DB_ICE set (rm.h); the full
+ * melt_ice() tail (trap_ice_effects, unearth_objs, boulder settling,
+ * minliquid / spoteffects) lives in js/zap.js melt_ice_zap. */
+async function melt_ice_ft(x, y) {
     const lev = game.level?.at?.(x, y) ?? game.level?.locations?.[x]?.[y];
     if (!lev)
         return;
-    /* C melt_ice() also clears the temporary ice under an open or lowered
-     * drawbridge.  Fire traps can trigger on those squares; treating them as
-     * ordinary ICE left DB_ICE set and kept the bridge frozen indefinitely. */
-    if ((lev.typ | 0) === DRAWBRIDGE_UP || (lev.typ | 0) === 34 /* DRAWBRIDGE_DOWN */) {
+    const typ = lev.typ | 0;
+    if (typ === DRAWBRIDGE_UP || typ === 34 /* DRAWBRIDGE_DOWN */) {
         if (((lev.drawbridgemask | 0) & DB_ICE) === 0)
             return;
-        lev.drawbridgemask = (lev.drawbridgemask | 0) & ~DB_ICE;
-    } else if ((lev.typ | 0) === ICE_FT) {
-        lev.typ = ((lev.icedpool | 0) === 2 /* ICED_POOL */) ? POOL : MOAT;
-        lev.icedpool = 0;
-    } else {
+    } else if (typ !== ICE_FT) {
         return;
     }
-    spot_stop_timers(x, y, MELT_ICE_AWAY);
-    obj_ice_effects(x, y, false);
-    newsym(x, y);
+    await melt_ice_zap(x, y, null);
 }
 async function trapeffect_fire_trap(trap, _trflags) {
     seetrap(trap);

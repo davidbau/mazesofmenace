@@ -2307,7 +2307,8 @@ export function reset_commands(initial) {
  * keyfirst reads the key up front, else the command menu comes first and the
  * key is read at bindit. C order kept: current-bind header, "nothing" row,
  * extcmd rows (MOVEMENTCMD/INTERNALCMD/CMD_NOT_AVAILABLE skipped, a_int
- * i+1), end_menu prompt as header (perminv precedent), PICK_ONE, -1/param
+ * i+1), end_menu prompt as inverse header + blank (wintty.c tty_end_menu),
+ * PICK_ONE, -1/param
  * arms, bindit key read, prevcmd compare, Changed/Bound/failed plines.
  * Async only because JS menu/getlin/plines await input (Constitution §2);
  * C callers treat it as a plain blocking call. select_menu_pick_one
@@ -2361,10 +2362,13 @@ async function handler_rebind_keys_add(keyfirst) {
         // C `:2342–2345`: a_int = i+1; Sprintf "%s: %s" ef_txt/ef_desc.
         raw.push({ text: `${ec.txt}: ${ec.desc}`, selectable: true, a_int: i + 1 });
     }
-    // C `:2347–2351` end_menu prompt — painted as header (perminv precedent).
+    // C `:2347–2351` end_menu prompt — tty_menu_promptstyle (default
+    // ATR_INVERSE; wintty.c `:2680–2689`) + blank separator (`:2685–2686`).
+    raw.unshift({ text: '', selectable: false });
     raw.unshift({
         text: key ? `Bind '${key2txt(key)}' to what command?` : 'Bind what command?',
         selectable: false,
+        attr: ATR_INVERSE,
     });
     const res = await select_menu_pick_one(raw); // C `:2352–2353` select + destroy (inside the helper)
     if (res.kind !== 'pick') return; // C npick <= 0 `:2354` falls through (no goto)
@@ -2425,10 +2429,13 @@ async function handler_rebind_keys_add(keyfirst) {
 export async function handler_rebind_keys() {
     for (;;) { // redo_rebind: C `:2416`
         // C `:2417–2419` create_nhwindow/start_menu/zeroany — raw menu below.
-        // C `:2432` end_menu "Do what?" painted as header
-        // (handle_add_list_remove precedent — same prompt).
+        // C `:2432` end_menu "Do what?" — tty_end_menu paints the prompt
+        // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE;
+        // wintty.c `:2680–2689`, options.c `:7188–7189`), then a blank
+        // separator item (wintty.c `:2685–2686`; pickup.js precedent).
         const raw = [
-            { text: 'Do what?', selectable: false },
+            { text: 'Do what?', selectable: false, attr: ATR_INVERSE },
+            { text: '', selectable: false },
             { text: 'bind key to a command', selectable: true, a_int: 1 }, // C `:2421–2423`
             { text: 'bind command to a key', selectable: true, a_int: 2 }, // C `:2424–2426`
         ];

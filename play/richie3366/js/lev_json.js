@@ -27,8 +27,8 @@ import { peek_track } from './track.js';
 import { save_engravings } from './engrave.js';
 import { save_worm } from './worm.js';
 import { save_rooms, save_rooms_from } from './mkroom.js';
-import { light_is_local, write_timer, maybe_write_timer } from './mkobj.js';
-import { write_ls } from './light.js';
+import { write_timer, maybe_write_timer } from './mkobj.js';
+import { write_ls, maybe_write_ls, discard_flashes } from './light.js';
 import { restshk } from './shk.js';
 
 /**
@@ -335,18 +335,21 @@ function snapshotLocalTimers() {
     return out;
 }
 
+/**
+ * C ref: light.c save_light_sources `:427–439` RANGE_LEVEL write pass
+ * (live level: bones + dosave current level): discard flashes, then
+ * the shared maybe_write_ls selector with the serLight writer
+ * (D-3060 unification; snapshotLocalTimers precedent). No peel — the
+ * live list stays (bones mid-game; dosave exits).
+ */
 function snapshotLocalLights() {
+    discard_flashes(); // C :427
+    game.vision_full_recalc = 0; // C :432
     const out = [];
-    for (const ls of game.light_base || []) {
-        if (!ls) continue;
-        // C save_light_sources discard_flashes: LS_OBJECT && !id
-        if ((ls.type | 0) === LS_OBJECT && !ls.id) continue;
-        // C maybe_write_ls RANGE_LEVEL: light_is_local (mx > 0)
-        if (!light_is_local(ls)) continue;
-        // write_ls Null ≡ C bad-type arm (impossible-only, unwritten).
-        const rec = serLight(ls);
+    maybe_write_ls(RANGE_LEVEL, (ls) => { // C :434–436
+        const rec = serLight(ls); // C :598 write_ls
         if (rec) out.push(rec);
-    }
+    });
     return out;
 }
 
@@ -534,19 +537,21 @@ export function snapshotGlobalTimers() {
 }
 
 /**
- * C ref: light.c save_light_sources(RANGE_GLOBAL) / maybe_write_ls.
- * Same `light_is_local` as the in-memory peel (LS_MONSTER `mx > 0`).
+ * C ref: light.c save_light_sources `:427–439` RANGE_GLOBAL write pass
+ * (dosave): discard flashes, then the shared maybe_write_ls selector
+ * with the serLight writer (D-3060 unification; snapshotGlobalTimers
+ * precedent). Snapshot; do not peel (C peels because FREEING; JSON
+ * Game dies after S).
  * @returns {object[]}
  */
 export function snapshotGlobalLights() {
+    discard_flashes(); // C :427
+    game.vision_full_recalc = 0; // C :432
     const out = [];
-    for (const ls of game.light_base || []) {
-        if (!ls) continue;
-        if ((ls.type | 0) === LS_OBJECT && !ls.id) continue;
-        if (light_is_local(ls)) continue;
-        const rec = serLight(ls);
+    maybe_write_ls(RANGE_GLOBAL, (ls) => { // C :434–436
+        const rec = serLight(ls); // C :598 write_ls
         if (rec) out.push(rec);
-    }
+    });
     return out;
 }
 

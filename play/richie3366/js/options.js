@@ -1845,7 +1845,7 @@ export function optfn_msg_window(optidx, req, negated, opts, op, iflagsBag) {
             iflags.prevmsg_window = tmp; // C `:2491`
             break;
         default:
-            // Named omission (map): config_error_add("Unknown %s parameter '%s'") — this caller diagnostic is not yet wired.
+            config_error_add("Unknown %s parameter '%s'", allopt_name(optidx), op); // C `:2494–2495`
             retval = OPTN_ERR; // C `:2496`
         }
         return retval; // C `:2499`
@@ -1981,9 +1981,8 @@ export function optfn_menu_objsyms(optidx, req, negated, opts, op, iflagsBag) {
         } else if (op[0] >= '0' && op[0] <= '9') { // C `:2250` digit(*op)
             const i = Number.parseInt(op, 10); // C `:2251` atoi
             if (i >= objsymvals.length) { // C `:2252`
-                // Named omission (map): config_error_add("Illegal %s parameter '%s'",
-                // allopt[optidx].name, op) — this caller diagnostic is not yet wired.
-                void optidx;
+                config_error_add("Illegal %s parameter '%s'", // C `:2253–2254`
+                    allopt_name(optidx), op);
                 return OPTN_ERR; // C `:2255`
             }
             osyms = i; // C `:2257`
@@ -2299,8 +2298,8 @@ export function optfn_whatis_coord(optidx, req, negated, opts, _op, iflagsBag, o
             if (c && gpcoords.includes(c)) // C `:4721`
                 iflags.getpos_coords = c; // C `:4722`
             else {
-                // Named omission (map): config_error_add("Unknown %s parameter '%s'")
-                // — this caller diagnostic is not yet wired.
+                config_error_add("Unknown %s parameter '%s'", // C `:4724–4725`
+                    allopt_name(optidx), op);
                 return OPTN_ERR; // C `:4726`
             }
         } else
@@ -2417,9 +2416,8 @@ export function optfn_number_pad(optidx, req, negated, opts, _op, iflagsBag, opt
             const mode = Number.parseInt(op, 10); // C `:2597` atoi
             if (Number.isNaN(mode) || mode < -1 || mode > 4 // C `:2599`
                 || (mode === 0 && op[0] !== '0')) {
-                // Named omission (map): config_error_add("Illegal %s parameter '%s'",
-                // allopt[optidx].name, op) — this caller diagnostic is not yet wired.
-                void optidx;
+                config_error_add("Illegal %s parameter '%s'", // C `:2600–2601`
+                    allopt_name(optidx), op);
                 return OPTN_ERR; // C `:2602`
             } else if (mode <= 0) { // C `:2603`
                 iflags.num_pad = false; // C `:2604`
@@ -5927,9 +5925,8 @@ function mc_isspace(ch) {
  * copy-then-split at the first '=' (the regexp half is never mungspaced,
  * C `:647`), mungspaced color[&attr] with the color validated before the
  * attr arm runs, then the quote-strip which backs over isspace before
- * matching the closer. Sole C caller is cfgfiles.c cnf_line_MENUCOLOR
- * (`:1166`); no JS read_config_file dispatch exists yet (map-named), so
- * this is wired for that future caller like reset_duplicate_opt_detection.
+ * matching the closer. Sole C caller cfgfiles.c cnf_line_MENUCOLOR
+ * (`:1166`) is wired (js/cfgfiles.js:705, MENUCOLOR dispatch :1017).
  */
 export function add_menu_coloring(tmpstr) {
     let c = NO_COLOR, a = MC_ATR_NONE; // C :619 (C ATR_NONE=0, wintype.h:128)
@@ -5937,8 +5934,8 @@ export function add_menu_coloring(tmpstr) {
     const str = String(tmpstr ?? '').slice(0, BUFSZ - 1);
     const eq = str.indexOf('='); // C :626 strchr(str, '=')
     if (eq === -1) {
-        // Named omission (map): config_error_add("Malformed MENUCOLOR") sink.
-        return false; // C :627-628
+        config_error_add('Malformed MENUCOLOR'); // C :627 (live since D-3173)
+        return false; // C :628
     }
     // C :631-634: mungspace past '=', split at the first '&'.
     let colorPart = mungspaces(str.slice(eq + 1)); // C :631-632
@@ -6748,7 +6745,14 @@ async function handle_add_list_remove(optname, numtotal) {
         { letr: 'r', desc: `remove existing ${name}` },
         { letr: 'x', desc: 'exit this menu' },
     ];
-    const raw = [{ text: 'Do what?', selectable: false }];
+    // C `:9241` end_menu "Do what?" — tty_end_menu paints the prompt with
+    // tty_menu_promptstyle (= menu_headings, default ATR_INVERSE;
+    // wintty.c `:2680–2689`, options.c `:7188–7189`), then a blank
+    // separator item (wintty.c `:2685–2686`; pickup.js precedent).
+    const raw = [
+        { text: 'Do what?', selectable: false, attr: ATR_INVERSE },
+        { text: '', selectable: false },
+    ];
     let a_int = 0; // C: any = cg.zeroany → a_int starts 0
     for (let i = 0; i < rows.length; i++) {
         a_int++; // :9227 any.a_int++ precedes the skip below

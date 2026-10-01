@@ -2326,24 +2326,31 @@ async function done_eating(message) {
 }
 
 /**
- * C ref: eat.c eatfood — occupation each move while eating.
- * Returns 1 to continue, 0 when done.
+ * C ref: eat.c eatfood `:518–541` — occupation each move while eating.
+ * Stolen/vanished piece (`:523–528`: !carried && !obj_here at u.ux/u.uy)
+ * runs do_reset_eat (touchfood reseat + flags + stop_occupation + newuhs)
+ * and returns 0; `!eating` (`:529–530`) returns 0 with victual untouched;
+ * else ++usedtime vs reqtime gates bite (`:532–535`, 1 = still busy) vs
+ * done_eating(TRUE) (`:536–539`). Returns 1 to continue, 0 when done.
  */
 async function eatfood() {
-    const food = game.context?.victual?.piece;
-    if (!food || !game.context?.victual?.eating) {
-        if (game.context) game.context.victual = {};
+    let food = game.context?.victual?.piece; // C `:521`
+    if (food && !carried(food) // C `:523–524`
+        && !obj_here(food, game.u?.ux | 0, game.u?.uy | 0))
+        food = null;
+    if (!food) { // C `:525–528` maybe it was stolen?
+        await do_reset_eat();
         return 0;
     }
-    // floor-moved food: C checks ox/oy still under hero; deferred beyond
-    // leaving the square (occupation cancels). Same-cell floor OK.
-    game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1;
+    if (!game.context?.victual?.eating) // C `:529–530`, no reset
+        return 0;
+    game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1; // C `:532`
     if ((game.context.victual.usedtime | 0)
         <= (game.context.victual.reqtime | 0)) {
-        if (await bite()) return 0;
-        return 1;
+        if (await bite()) return 0; // C `:533–534`
+        return 1; /* still busy */ // C `:535`
     }
-    await done_eating(true);
+    await done_eating(true); // C `:537` done
     return 0;
 }
 
@@ -2360,7 +2367,7 @@ export async function cant_finish_meal(corpse) {
     // C: go.occupation == eatfood && svc.context.victual.piece == corpse
     if (game.occupation === eatfood && game.context?.victual?.piece === corpse) {
         // C: svc.context.victual = zero_victual (piece = 0, o_id = 0);
-        // house idiom for the zeroed victual, as in done_eating/eatfood.
+        // house idiom for the zeroed victual, as in done_eating.
         if (game.context) game.context.victual = {};
         // C: [see consume_oeaten()] — smallest possible positive value
         if (!corpse.oeaten) corpse.oeaten = 1;

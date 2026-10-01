@@ -2735,6 +2735,11 @@ async function moveloop_core_faithful() {
             const r = learn();
             if (r === 0)
                 g.occupation = null;
+            else if (g.occupation !== learn)
+                // The world turn's own stop_occupation() (distfleeck/dochugw,
+                // allmain.c:684) already printed "You stop studying." and cleared
+                // go.occupation: C has no further turn (allmain.c:485-565).
+                interrupted = true;
             // C allmain.c:562-565 — monster_nearby() → stop_occupation() (only while
             // the study is still active).  When a hostile monster is adjacent the
             // study is interrupted; stop_occupation plines "You stop studying." onto
@@ -2743,9 +2748,19 @@ async function moveloop_core_faithful() {
             // last turn — no separate post-occupation turn follows (unlike the
             // normal-completion case, where C runs one more world turn after learn()
             // returns 0).
+            // C allmain.c:503-509 runs this check AFTER the occupation callback and
+            // then `return`s with context.move still 1, so (unlike a stop inside the
+            // world block above) the NEXT moveloop_core runs one more world block
+            // before rhack() reads a key: `interrupted` stays false and the
+            // monster ATTACK already emitted "You stop studying." inside the world
+            // block (g._studyStopMsg, set by js/mhitu.js stop_occupation), C's stop
+            // happened there and no extra block follows; this check is then only the
+            // deferred clear.
             if (g.occupation === learn && monster_nearby()) {
+                const stoppedInBlock = !!g._studyStopMsg;
                 await stop_occupation_learn();
-                interrupted = true;
+                if (stoppedInBlock)
+                    interrupted = true;
             }
             // C win/tty/topl.c — page the accumulated topline now (this turn's
             // movemon map is the frozen frame).  flush_screen more()s every overflow
@@ -3441,7 +3456,10 @@ async function moveloop_core_faithful() {
         // the NEXT moveloop_core invocation.  faithful_moveloop_turn() does the C
         // including the Fast-banked second movemon when u_calc_moveamt banks the
         // bonus (allmain.c:254 break path).
-        await faithful_moveloop_turn();
+        /* C allmain.c moveloop_core: the world block runs only when
+         * svc.context.move is set — a counted move into a door that opens
+         * leaves move 0 and multi > 0 (hack.c:1108-1109, 2843-2848). */
+        if (g.context.move) await faithful_moveloop_turn();
         // C ref: win/tty/topl.c more() during a run — each run turn's movemon plines
         // are painted onto the SAME accumulating topline (no nhgetch clears it between
         // run steps), and the physical terminal is repainted with the hero at THIS

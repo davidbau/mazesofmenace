@@ -55,7 +55,7 @@ import { resists_poison } from './zap.js';
 import { dist2 } from './hacklib.js';
 import { level_mon_at } from './worm.js';
 import { lookup_bones_id } from './bones.js';
-import { selection_getbounds } from './mklev.js';
+import { selection_getbounds, selection_getpoint } from './mklev.js';
 import { find_mid } from './mon.js';
 
 const MAX_CLOUD_SIZE = 150;
@@ -1141,7 +1141,11 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {
         inside_cloud = true;
     }
 
-    if (cloudsize > MAX_CLOUD_SIZE) cloudsize = MAX_CLOUD_SIZE;
+    if (cloudsize > MAX_CLOUD_SIZE) {
+        // C :1238-1241: disorder path — impossible, then clamp.
+        await impossible(`create_gas_cloud: cloud too large (${cloudsize})!`);
+        cloudsize = MAX_CLOUD_SIZE;
+    }
 
     for (let curridx = 0; curridx < newidx; curridx++) {
         if (newidx >= cloudsize) break;
@@ -1201,16 +1205,12 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {
     return cloud;
 }
 
-/** C ref: selvar.c selection_getpoint — Set-backed JS selection. */
-function selection_getpoint_sel(x, y, sel) {
-    if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return 0;
-    return sel.pts?.has(`${x},${y}`) ? 1 : 0;
-}
-
 /**
  * C ref: region.c create_gas_cloud_selection — 1×1 rects from the
  * selection bitmap, then make_gas_cloud. No BFS, no rn1 ttl (stays
  * create_region -1 unless the caller overwrites). x-outer then y.
+ * Membership is the live selvar.c export (sel-scoped wid/hei bounds);
+ * the former local tested COLNO/ROWNO, C-wrong for sub-selections.
  */
 export async function create_gas_cloud_selection(sel, damage) {
     const inside_cloud = is_hero_inside_gas_cloud();
@@ -1222,7 +1222,7 @@ export async function create_gas_cloud_selection(sel, damage) {
     const cloud = create_region(null, 0);
     for (let x = r.lx; x <= r.hx; x++) {
         for (let y = r.ly; y <= r.hy; y++) {
-            if (selection_getpoint_sel(x, y, sel)) {
+            if (selection_getpoint(x, y, sel)) { // C region.c:1329
                 add_rect_to_reg(cloud, { lx: x, hx: x, ly: y, hy: y });
             }
         }

@@ -119,7 +119,8 @@ import { mksobj_at, mksobj, mpickobj, obj_extract_self } from './mklev.js';
  * js/dig.js (a monster-digs-near-a-tree caller already exercises it), which
  * used to keep it file-local; exported there rather than re-derived here so
  * there is only one ROLL_FROM(treefruits) draw site in the tree. */
-import { rnd_treefruit_at, unpunish } from './dig.js';
+import { rnd_treefruit_at, unpunish, cvt_sdoor_to_door } from './dig.js';
+import { feel_newsym } from './display.js';
 import { flooreffects } from './cmd.js';
 /* Historical alias, identical to the shared mkobj extraction above. */
 import { obj_extract_self_general } from './cmd.js';
@@ -413,7 +414,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
     if (maploc.typ === SDOOR) {
         if (!Levitation && rn2(30) < avrg_attrib) {
             /* C: cvt_sdoor_to_door(gm.maploc) — converts SDOOR → DOOR */
-            maploc.typ = DOOR; /* WIRE_PENDING: full cvt_sdoor_to_door */
+            cvt_sdoor_to_door(maploc);
             /* C: Soundeffect(se_crash_door, 40) — no RNG */
             /* C: pline("Crash!  %s a secret door!", ...) */
             const locked_only = (maploc.doormask & (D_LOCKED | D_TRAPPED)) === D_LOCKED;
@@ -427,7 +428,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
                 && !(maploc.doormask & D_LOCKED)) {
                 maploc.doormask = D_ISOPEN;
             }
-            /* C: feel_newsym(x, y); then unblock_point if now passable */
+            feel_newsym(x, y); /* we know it's gone */
             if (maploc.doormask === D_ISOPEN || maploc.doormask === D_NODOOR)
                 unblock_point(x, y); /* vision */
             return ECMD_TIME;
@@ -444,7 +445,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             void pline("Crash!  You kick open a secret passage!");
             exercise(A_DEX, true);
             maploc.typ = CORR;
-            /* C: feel_newsym(x, y); unblock_point(x, y) — vision */
+            feel_newsym(x, y); /* we know it's gone */
             unblock_point(x, y);
             return ECMD_TIME;
         }

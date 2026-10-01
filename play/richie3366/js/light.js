@@ -406,11 +406,11 @@ export function light_sources_sanity_check() {
  * live timeout.c obj_is_local. Sync like C; the impossible arms stay
  * fire-and-forget `void` (write_ls precedent — impossible can reach
  * --More--). Returns the count (C `:602`).
- * Named: C callers save_light_sources `:434`/`:436` — the JS save path
- * (mkobj.js save_light_sources peel + lev_json.js snapshots) predates
- * with inline equivalents and keeps its silent null-id skip (camera
- * flashes can sit on light_base at snapshot time; C runs
- * discard_flashes first in the same function, `:427–432`).
+ * Wired (D-3224): C callers save_light_sources `:434`/`:436` —
+ * lev_json.js snapshotGlobal/LocalLights route this selector with
+ * the serLight writer; the savelev stash re-writes the mkobj.js
+ * peel return via serLightList (entries pre-peel-reported, silent
+ * skip named in D-3224).
  * @param {number} range RANGE_GLOBAL or RANGE_LEVEL
  * @param {(ls: object) => void} [write_it] per-entry writer (C write_ls)
  * @returns {number} entries selected (C count)

@@ -14,7 +14,8 @@
 // `:1267–1493` (teleport/invent stops, carving/marker rate, dull/marker
 // wear, BUFSZ room, truncate, `finish %s.` iff multi-action)
 // via make_engr_at (Elbereth → exercise(A_WIS,TRUE)); look_here/`:` via
-// read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind); `u_wipe_engr`
+// read_engr_at (all six types; blind ENGRAVE/HEADSTONE/BURN feel when
+// can_reach_floor); `u_wipe_engr`
 // → can_reach_floor(TRUE)+wipe_engr_at (D-1051 apply pole/grapple);
 // mklev niche age via wipe_engr_at → wipeout_text (seed==0 RNG path);
 // fill graffiti via
@@ -28,7 +29,7 @@
 // allmain DEX timeout D-1372; dokick(2) D-1360;
 // uhitm do_attack(3) D-1373; dothrow throw_obj(2) D-1374;
 // dig.c still stubbed;
-// Blind feel path for engrave/burn; ceiling(); is_ice is file-local
+// ceiling(); is_ice is file-local
 // (drawbridge-under ice stays the zap.js body). surface() is the
 // dungeon.c:1750 export in sit.js (D-2884), not a floor stub.
 // wipeout_text seeded (non-zero) path; invent lookhere / pickup() still
@@ -209,6 +210,8 @@ export function save_engravings() {
             nowipeout: ep.nowipeout | 0,
             engr_szeach: ep.engr_szeach | 0,
             engr_alloc: ep.engr_alloc | 0,
+            // C `:1565–1570`: the head-wiped blanks are saved (off survives).
+            engr_off: ep.engr_off | 0,
         });
     }
     return out;
@@ -238,14 +241,18 @@ export function rest_engravings(stored) {
         const rawT = s.engr_txt;
         const t = (rawT && typeof rawT === 'object') ? rawT : {};
         const fallback = (typeof rawT === 'string') ? rawT : '';
+        // C `:1610–1613`: skip leading blanks (actual, remembered); the
+        // count recomputes read_engr_at's `:378` off (C `:1565` saved the
+        // blanks; JS saves the sliced live text + the count instead).
+        const loadedActual = String(t.actual_text ?? fallback);
+        const headCut = (loadedActual.match(/^ */) || [''])[0].length;
         const ep = {
             // C `:1597–1599`: prepend to the cleared head.
             nxt_engr: game.head_engr,
             engr_x: s.engr_x | 0,
             engr_y: s.engr_y | 0,
             engr_txt: {
-                // C `:1610–1613`: skip leading blanks (actual, remembered).
-                actual_text: String(t.actual_text ?? fallback).replace(/^ +/, ''),
+                actual_text: loadedActual.slice(headCut),
                 remembered_text: String(t.remembered_text ?? t.actual_text ?? fallback).replace(/^ +/, ''),
                 pristine_text: String(t.pristine_text ?? fallback),
             },
@@ -258,6 +265,8 @@ export function rest_engravings(stored) {
             nowipeout: s.nowipeout | 0,
             engr_szeach: s.engr_szeach | 0,
             engr_alloc: s.engr_alloc | 0,
+            // Saved count + blanks found now (legacy saves lack the field).
+            engr_off: (s.engr_off | 0) + headCut,
         };
         game.head_engr = ep;
     }
@@ -631,7 +640,12 @@ export function wipe_engr_at(x, y, cnt, magical = false) {
     }
     let txt = String(ep.engr_txt?.actual_text ?? '');
     txt = wipeout_text(txt, n, 0);
-    while (txt.startsWith(' ')) txt = txt.slice(1);
+    // C `:284–285`: skip leading blanks (pointer advance ⇔ slice); the
+    // cumulative count is read_engr_at's `:378` off (C saves the blanks
+    // `:1565–1570`, so it survives save/load).
+    let skipped = ep.engr_off | 0;
+    while (txt.startsWith(' ')) { txt = txt.slice(1); skipped++; }
+    ep.engr_off = skipped;
     if (!txt) {
         del_engr(ep);
         return;
@@ -651,10 +665,13 @@ export function u_wipe_engr(cnt) {
 }
 
 /**
- * C ref: engrave.c read_engr_at — sense engraving type + You read/feel text.
- * Branch envelope: DUST/ENGRAVE/HEADSTONE/BURN/MARK/ENGR_BLOOD sighted
- * (non-Blind); Blind feel for engrave/burn when can_reach deferred as
- * non-Blind path only for now. Truncation + pristine endpunct rules.
+ * C ref: engrave.c read_engr_at `:318–405` — sense engraving type + You
+ * read/feel text. Branch envelope: whole body — DUST/ENGRAVE/HEADSTONE/
+ * BURN/MARK/ENGR_BLOOD with the C `:330–364` Blind gates (ENGRAVE/
+ * HEADSTONE/BURN sense while blind iff can_reach_floor(TRUE));
+ * impossible `:366–367` default; truncation `:380–387` + pristine
+ * endpunct `:388–395` with the `:378` head-wipe `off`; remembered stamp
+ * + eread/erevealed + run>0 nomul `:398–402`.
  */
 export async function read_engr_at(x, y) {
     const ep = engr_at(x, y);
@@ -677,13 +694,16 @@ export async function read_engr_at(x, y) {
         break;
     case ENGRAVE:
     case HEADSTONE:
-        if (!blind) {
+        // C `:338`: `!Blind || can_reach_floor(TRUE)` — blind heroes
+        // feel carved types when the floor is reachable (scen-engrave).
+        if (!blind || can_reach_floor(true)) {
             sensed = true;
             await pline(`${Something} is engraved here on the ${eloc}.`);
         }
         break;
     case BURN:
-        if (!blind) {
+        // C `:344`: same blind-or-reach gate as the carved types.
+        if (!blind || can_reach_floor(true)) {
             sensed = true;
             await pline(
                 `Some text has been ${is_ice(x, y) ? 'melted' : 'burned'} into the ${eloc} here.`,
@@ -703,8 +723,9 @@ export async function read_engr_at(x, y) {
         }
         break;
     default:
+        // C `:366–368`: impossible (bogus engr_type), still sensed.
         sensed = true;
-        await pline(`${Something} is written in a very strange way.`);
+        await impossible('%s is written in a very strange way.', Something);
         break;
     }
 
@@ -720,11 +741,15 @@ export async function read_engr_at(x, y) {
         et = et.slice(0, maxelen);
         elen = maxelen;
     }
+    // C `:378`: off = actual - engr_text_space(ep) — head-wiped blanks
+    // skipped by wipe_engr_at `:284–285` (saved with the blanks `:1565`,
+    // recomputed on load `:1610`); JS keeps the count on the record.
     const pristine = ep.engr_txt?.pristine_text || text;
+    const off = ep.engr_off | 0;
     let endpunct = '';
     const last = et[elen - 1];
     if (elen < 2
-        || !(pristine[elen - 1] === last && '.!?'.includes(last))) {
+        || !(pristine[off + elen - 1] === last && '.!?'.includes(last))) {
         endpunct = '.';
     }
     // C engrave.c:396 You("%s: \"%s\"%s", Blind?"feel the words":"read",
@@ -777,6 +802,8 @@ export function make_engr_at(x, y, text, pristine, e_time, e_type) {
         // C `:453–454`: per-state size + total allocation.
         engr_szeach: smem,
         engr_alloc: smem * 3,
+        // C `:435–437`: pointers start at the slot starts → `:378` off = 0.
+        engr_off: 0,
     };
     game.head_engr = ep;
     // C `:435–438`: every state starts as s; pristine overwritten only

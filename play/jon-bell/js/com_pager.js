@@ -19,7 +19,7 @@ import { routeTag } from './route_telemetry.js';
 import { NO_COLOR } from './terminal.js';
 import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
-import { putmsghistory, _strengthStr, force_more, await_more_dismiss,
+import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel,
          botl_status_suffix, fit_status_line_width, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
@@ -347,7 +347,7 @@ export async function display_text_window(lines) {
     const PAGE_ROWS = 23; /* ttyDisplay->rows - 1 */
     lines = tty_fit_text_lines(lines);
     if (g._pending_message) {
-        await force_more(g._pending_message);
+        await force_more_pages(g._pending_message);
     } else if (g._resultMessage) {
         const releaseFlush = use_last_flush_snapshot();
         await force_more(g._resultMessage);
@@ -470,7 +470,14 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                  * the following status row is repainted independently. */
                 /* C leaves the title text from botl row 22 before the window
                  * corner cleanup, but erases the cursor-forward/stat portion. */
-                output += _statusLine1().split('\x1b', 1)[0];
+                /* tty_dismiss_nhwindow -> docorner(cw->offx, ...) (wintty.c:3684)
+                 * clears row 22 from the dismissed menu's offx, so the title
+                 * keeps priorWinCol-2 columns.  The caller (itemactions) took
+                 * priorWinCol from the pickinv window state it set. */
+                const priorCol = game._pickinv_window?.WIN_COL;
+                const title = _statusLine1().split('\x1b', 1)[0];
+                output += priorCol != null
+                    ? title.slice(0, Math.max(0, priorCol - 2)) : title;
                 output += '\n';
                 continue;
             }

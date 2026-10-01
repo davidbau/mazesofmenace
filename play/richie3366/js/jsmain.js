@@ -30,6 +30,32 @@ import { check_special_room } from './hack.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
+//
+// Ephemeral VFS for harnesses that pass no storage (playability runner,
+// startBrowser). C unixmain.c:150 always has the installed SYSCF_FILE on
+// disk; JS seeds the embedded SYSCONF_TEXT into VFS at start. With no
+// backing store the seed silently fails, assure_syscf_file (cfgfiles.c
+// :2031–2068) fatals, and start() early-returns before installing the
+// display — every later nhgetch throws 'Input queue empty'. A per-game
+// Map-backed store keeps the installed sysconf readable and save/record
+// working within the game. Scoring and /play/ always pass storage, so
+// this never triggers there. Inline (not InMemoryStorage) so the fix
+// does not depend on judge-overlaid storage.js exports.
+function createEphemeralStorage() {
+    const map = new Map();
+    return {
+        getItem(k) { return map.has(k) ? map.get(k) : null; },
+        setItem(k, v) { map.set(k, String(v)); },
+        removeItem(k) { map.delete(k); },
+        get length() { return map.size; },
+        key(i) {
+            let n = 0;
+            for (const k of map.keys()) { if (n === i) return k; n++; }
+            return null;
+        },
+    };
+}
+
 export class NethackGame {
     constructor(opts = {}) {
         this._seed = opts.seed || 0;
@@ -39,10 +65,11 @@ export class NethackGame {
         // shared Web-Storage-shaped object here so save / record /
         // bones survive across segments of a session; the browser
         // /play/<owner>/ page passes a localStorage-backed view so
-        // those files also survive page reloads. If a port doesn't
-        // need persistence (no save/restore implemented yet), it can
-        // ignore this; the field just sits unused.
-        this._storage = opts.storage || null;
+        // those files also survive page reloads. When no handle is
+        // provided (playability runner, startBrowser), use an
+        // ephemeral per-game store so the installed sysconf seed and
+        // VFS-backed startup still work (see above).
+        this._storage = opts.storage || createEphemeralStorage();
         this._screens = [];
         this._cursors = [];
         this._rngSlices = [];
@@ -104,6 +131,10 @@ export class NethackGame {
         sys_early_init(); // C allmain.c:43 early_init → sys_early_init (sys.c:20–112)
         reset_display_messages();
         // Frozen VFS contract: the harness shares this handle across segments.
+        // Belt-and-braces: if _storage was nulled after construction, fall
+        // back to an ephemeral store (constructor already does this for a
+        // missing opts.storage; see above).
+        if (this._storage == null) this._storage = createEphemeralStorage();
         setStorageForTesting(this._storage);
         // C unixmain.c:150 → options.c initoptions_init: builtin defaults
         // precede system OPTIONS, which precede the user rc. The installed

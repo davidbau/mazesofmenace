@@ -149,7 +149,7 @@ import { SELL_DELIBERATE, SELL_NORMAL, WT_SPLASH_THRESHOLD, LL_CONDUCT,
          ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, ARTICLE_NONE, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION,
          has_mgivenname } from './const.js';
 import { doopen_indir, doclose, pick_lock, getdir, help_dir, getdir_bad_dir_feedback, doforce, reset_pick, maybe_reset_pick } from './lock.js';
-import { use_pick_axe, use_pick_axe2, is_pick, dig, dig_check_, fillholetyp_, liquid_flow_, digactualhole_, watch_dig, maybe_dunk_boulders } from './dig.js';
+import { dig_dirsyms, use_pick_axe, use_pick_axe2, is_pick, dig, dig_check_, fillholetyp_, liquid_flow_, digactualhole_, watch_dig, maybe_dunk_boulders } from './dig.js';
 import { doset, doset_simple } from './optmenu.js';
 import { option_help, PARANOID_CONFIRMATION_DEFAULT_BITS } from './options.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_OPROP, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
@@ -8939,6 +8939,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await docrt();
         g.vision_full_recalc = 0;
     }
+    g._paintedSnapshot = null;
     // C ref: do.c:1867-1869 — the deferred level-teleport arrival message is
     // delivered HERE, inside goto_level, before the arrival events below (C's
     // comment: "give it before them" because it looks odd afterwards).  Our
@@ -17923,7 +17924,7 @@ export async function doapply() {
             await fastforward_step((g.moves || 1) - 1);
             emitMapstate('turn_end');
         }
-        const dirPrompt = 'In what direction do you want to dig? [ulnj>]';
+        const dirPrompt = `In what direction do you want to ${is_pick(selObj) ? 'dig' : 'chop'}? [${dig_dirsyms(selObj)}]`;
         g._pending_message = dirPrompt;
         await flush_screen(1);
         set_cursor(dirPrompt.length + 1, 0);
@@ -20279,16 +20280,33 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
     const ulevel = u.ulevel | 0;
     const raceNoun = g.urace?.noun ?? 'human';
     const raceAdj = g.urace?.adj ?? 'human';
-    const rankTitl = _enl_rank_of(roleTitl, ulevel, female);
-    const roleRow = ROLE_RANKS[role_index_by_name(roleTitl)] ?? null;
+    /* C ref: insight.c:475-482 — if poly'd, the role/rank/gender below come
+     * from u.mfemale (saved gender-as-human/elf), not the current flags.female. */
+    const _enl_poly = Upolyd(u);
+    const innateFemale = (_enl_poly ? !!u.mfemale : female);
+    const roleTitlInnate = (innateFemale && g.urole?.name?.f) ? roleF : roleM;
+    /* C ref: insight.c:484-509 — report the current shape before the role.
+     * (The vampshifted altphrasing arm is not ported: no vampire-shifted hero.) */
+    if (_enl_poly) {
+        const uasmon = g.youmonst?.data;
+        const mf2 = (uasmon?.mflags2 | 0);
+        let tmpbuf = '';
+        if (!(mf2 & 0x00010000) && !(mf2 & 0x00020000) && !(mf2 & 0x00040000))
+            tmpbuf = `${g.flags?.female ? 'female' : 'male'} `;
+        const form = `in ${tmpbuf}${monPmname(uasmon?.pmidx | 0, g.flags?.female ? 1 : 0)} form`;
+        lines.push(_you_are(`${!_enl_final ? 'currently ' : ''}${form}`, ''));
+    }
+    const rankTitl = _enl_rank_of(roleTitlInnate, ulevel, innateFemale);
+    const roleRow = ROLE_RANKS[role_index_by_name(roleTitlInnate)] ?? null;
     const showGender = roleRow
         ? (!roleRow.name[1] && roleRow.bothGenders)
         : true;
-    const gendPrefix = showGender ? `${female ? 'female' : 'male'} ` : '';
-    if (rankTitl.toLowerCase() === roleTitl.toLowerCase()) {
-        lines.push(_you_are(`${_an(rankTitl)}, level ${ulevel} ${gendPrefix}${raceNoun}`, ''));
+    const gendPrefix = showGender ? `${innateFemale ? 'female' : 'male'} ` : '';
+    const actually = _enl_poly ? 'actually ' : '';
+    if (rankTitl.toLowerCase() === roleTitlInnate.toLowerCase()) {
+        lines.push(_you_are(`${actually}${_an(rankTitl)}, level ${ulevel} ${gendPrefix}${raceNoun}`, ''));
     } else {
-        lines.push(_you_are(`${_an(rankTitl)}, a level ${ulevel} ${gendPrefix}${raceAdj} ${roleTitl}`, ''));
+        lines.push(_you_are(`${actually}${_an(rankTitl)}, a level ${ulevel} ${gendPrefix}${raceAdj} ${roleTitlInnate}`, ''));
     }
     /* alignment + mission (insight.c:509) — no ending period on this line. */
     const aType = u.ualign?.type | 0; /* 0=neutral, 1=lawful, -1=chaotic */
@@ -20323,7 +20341,7 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
         const alignment = difalgn ? _align_str(u.ualignbase?.[A_ORIGINAL] | 0) : '';
         lines.push(` You started out ${gender}${difgend && difalgn ? ' and ' : ''}${alignment}.`);
     }
-    lines.push(_you_are(`${u.uhandedness === RIGHT_HANDED ? 'right' : 'left'}-handed`, ''));
+    lines.push(_you_are(`${body_part(HANDED) === 'handed' ? '' : 'normally '}${u.uhandedness === RIGHT_HANDED ? 'right' : 'left'}-handed`, ''));
     {
         let locbuf;
         if (In_endgame(u.uz)) {
@@ -20387,6 +20405,7 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
         lines.push(` Bad things ${!_enl_final ? 'can happen'
             : (_enl_final === ENL_GAMEOVERALIVE) ? 'could have happened'
             : 'happened'} on Friday the 13th.`);
+    if (!_enl_poly) {
     const uexp = clong(u.uexp);
     let expbuf = `${uexp} experience point${uexp === 1n ? '' : 's'}`;
     const _ulvl = u.ulevel | 0;
@@ -20398,6 +20417,7 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
         expbuf += `, ${delta} ${uexp > 0n ? 'more ' : ''}${tenseinfix}needed ${_ulvl < 18 ? 'to attain' : 'for'} level ${_ulvl + 1}`;
     }
     lines.push(_you_have(expbuf, ''));
+    }
 
     /* ── basics_enlightenment (insight.c:704) ── */
     lines.push('');
@@ -20405,7 +20425,7 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
     /* C ref: insight.c:740 — "all %d hit points" ONLY when hpmax > 1, and the
      * plural of the fallback is plur(hpmax), so a 1-max hero reads
      * "1 out of 1 hit point". */
-    const uhp = Math.max(0, u.uhp | 0), uhpmax = u.uhpmax | 0;
+    const uhp = Math.max(0, (_enl_poly ? u.mh : u.uhp) | 0), uhpmax = (_enl_poly ? u.mhmax : u.uhpmax) | 0;
     lines.push(_you_have((uhp === uhpmax && uhpmax > 1)
         ? `all ${uhpmax} hit points`
         : `${uhp} out of ${uhpmax} hit point${uhpmax === 1 ? '' : 's'}`, ''));
@@ -20417,6 +20437,12 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
             : (uen === uenmax && uenmax > 2)
                 ? `all ${uenmax} ${Power}`
                 : `${uen} out of ${uenmax} ${Power}`, ''));
+    /* C ref: insight.c:756-771 — polymorphed hero's hit dice. */
+    if (_enl_poly) {
+        const mlvl = (g.youmonst?.data?.mlevel ?? permonstTemplate(u.umonnum | 0)?.mlevel ?? 0) | 0;
+        lines.push(_you_have(mlvl === 0 ? '0 hit dice (actually 1/2)'
+            : mlvl === 1 ? '1 hit die' : `${mlvl} hit dice`, ''));
+    }
     /* armor class. */
     lines.push(_enlght_line('Your armor class ', _enl_tense('is ', 'was '), `${u.uac | 0}`, ''));
     {
@@ -20469,6 +20495,8 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
     lines.push('');
     /* C insight.c:962 enlght_out(final ? "Final Status:" : "Status:") */
     lines.push(_enl_final ? 'Final Status:' : 'Status:');
+    if (_enl_poly)
+        lines.push(_you_are('transformed', ''));
     const riding = u.usteed && !(final === ENL_GAMEOVERDEAD
         && game.svk?.killer?.name === 'riding accident');
     const steedname = !riding ? null : x_monnam(u.usteed,
@@ -20710,7 +20738,10 @@ function _check_innate_abil(propidx, fromRace) {
             || (typeof nm === 'string' && _ROLE_ABIL[nm] ? nm : null);
         table = key ? _ROLE_ABIL[key] : null;
     } else {
-        table = _RACE_ABIL[String(g.urace?.noun ?? '').toLowerCase()] || null;
+        /* C Race_switch: the allmain.js newgame scaffold builds g.urace with
+         * `name` ('elf') but no `noun`, so a noun-only lookup found no table. */
+        const rn = g.urace?.noun ?? (typeof g.urace?.name === 'string' ? g.urace.name : g.urace?.name?.m);
+        table = _RACE_ABIL[String(rn ?? '').toLowerCase()] || null;
     }
     if (!table) return null;
     const ulevel = g.u?.ulevel | 0;
@@ -21108,6 +21139,23 @@ async function _attributes_enlightenment() {
      * whether Unchanging currently prevents a form change. */
     if (on(POLYMORPH_CONTROL))
         out.push(_you_have(`polymorph control${(await _from_what(POLYMORPH_CONTROL))}`, ''));
+    if (Upolyd(u) && (u.umonnum | 0) !== (u.ulycn | 0)) {
+        let buf = `polymorphed into ${an(monPmname(game.youmonst?.data?.pmidx | 0, game.flags?.female ? 1 : 0))}`;
+        if (wizard()) buf += ` (${u.mtimedone | 0})`;
+        out.push(_you_are(buf, ''));
+    }
+    if (((game.youmonst?.data?.mflags1 | 0) & 0x00400000) && game.flags?.female)
+        out.push(_you_can('lay eggs', ''));
+    if ((u.ulycn | 0) >= LOW_PM && (u.ulycn | 0) !== 0) {
+        let buf = an(monPmname(u.ulycn | 0, game.flags?.female ? 1 : 0));
+        if ((u.umonnum | 0) === (u.ulycn | 0)) {
+            buf += ' in beast form';
+            if (wizard()) buf += ` (${u.mtimedone | 0})`;
+        }
+        out.push(_you_are(buf, ''));
+    }
+    if (_Unchanging() && Upolyd(u))
+        out.push(_you_can(`not change from your current form${(await _from_what(UNCHANGING))}`, ''));
     if (((u.ulycn | 0) >= LOW_PM && (u.ulycn | 0) !== 0)
         || hates_silver(g.youmonst?.data || {}))
         out.push(_you_are('harmed by silver', ''));
@@ -23583,9 +23631,12 @@ function slippery_ice_fumbling() {
     const onIce = !_Levitation() && _is_ice(u.ux | 0, u.uy | 0);
     const steed = u.usteed;
     const data = steed?.data || _hero_youmonst().data;
+    /* resists_cold(iceskater) is a suppressor (hack.c:2411), unlike the
+     * Cold_resistance in the rn2 denominator, which is the hero's. */
     const coldRes = steed
         ? !!((data?.mresists | 0) & 0x02)
         : _Cold_resistance();
+    const heroColdRes = _Cold_resistance();
     const flyer = steed
         ? !!((data?.mflags1 | 0) & 0x01)
         : _Flying();
@@ -23593,10 +23644,9 @@ function slippery_ice_fumbling() {
     const clinger = _pe_is_clinger(data);
     const whirly = (data?.mlet | 0) === 22;
     const snowBoots = !steed && ((u.uarmf?.otyp | 0) === 172);
-    if (onIce && !snowBoots && !flyer && !floater && !clinger && !whirly) {
-        /* hack.c:2407: Cold_resistance changes the denominator, but does not
-         * suppress the roll. */
-        if (!rn2(coldRes ? 3 : 2)) {
+    if (onIce && !snowBoots && !coldRes && !flyer && !floater && !clinger && !whirly) {
+        /* hack.c:2407: Cold_resistance (hero's) only changes the denominator. */
+        if (!rn2(heroColdRes ? 3 : 2)) {
             p.intrinsic = ((p.intrinsic | 0) & ~TIMEOUT) | FROMOUTSIDE | 1;
         }
     } else if ((p.intrinsic | 0) & FROMOUTSIDE) {
@@ -30466,6 +30516,18 @@ async function _do_look_lookat(x, y) {
             dbaseEntry: null,
         };
     }
+    if (cell && ((cell.typ | 0) === STONE || (cell.typ | 0) === SCORR)
+        && game.level?.flags?.arboreal && cell.remembered_glyph) {
+        const tg = terrain_glyph(cell, x, y);
+        return {
+            kind: 'cmap-tree',
+            glyphChar: tg.ch,
+            glyphDec: !!tg.dec,
+            ...cmapClassDescription(tg.ch, !!tg.dec),
+            firstmatch: 'tree',
+            dbaseEntry: 'tree',
+        };
+    }
     if (cell && (cell.typ | 0) === TREE) {
         const tg = terrain_glyph(cell, x, y);
         return {
@@ -33678,6 +33740,10 @@ async function domove_core(dx, dy) {
      *     svc.context.door_opened = !closed_door(x, y);
      *     svc.context.move = (ux != u.ux || uy != u.uy);  — hero didn't move
      * TEST_MOVE_RETURN(FALSE) at hack.c:1141 — hero stays put after door attempt. */
+    /* C hack.c:998 — test_move() clears door_opened on every entry; this
+     * inline DO_MOVE arm must too, or a stale TRUE from an earlier door open
+     * reaches the moverock() failure test at hack.c:2843-2848. */
+    game.context.door_opened = false;
     const blocksLoc = game.level?.at(newx, newy);
     const isClosedDoor = blocksLoc && blocksLoc.typ === DOOR &&
         (blocksLoc.doormask & (D_CLOSED | D_LOCKED));
@@ -33709,10 +33775,19 @@ async function domove_core(dx, dy) {
         const _impairedOpen = _uprop_active('CONFUSION') || _uprop_active('STUNNED')
             || _uprop_active('FUMBLING');
         if (autoopen && !ctxRun && !_impairedOpen) {
-            await doopen_indir(newx, newy);
-            /* C hack.c:1108 — svc.context.door_opened = !closed_door(x, y) — not tracked yet */
+            const _tmp = await doopen_indir(newx, newy);
+            /* C hack.c:1098-1108 — if 'autounlock' includes Kick, a kick may be
+             * queued after doopen_indir(); the door hasn't opened, but fake it
+             * so the canned kick executes as the next command. */
+            const _cq = cmdq_peek(CQ_CANNED);
+            if (_tmp === ECMD_OK && _cq && _cq.typ === CMDQ_EXTCMD
+                && _cq.ec_entry?.func === 'dokick')
+                game.context.door_opened = true;
+            else
+                game.context.door_opened = !closed_door(newx, newy);
             /* C hack.c:1109 — svc.context.move = (ux != u.ux || uy != u.uy) = 0 (hero didn't move) */
             game.context.move = 0;
+            if (!game.context.door_opened && (game.multi | 0) > 0) nomul(0);
             return;
         }
         if (newx === u.ux || newy === u.uy) {
@@ -39808,10 +39883,27 @@ export async function check_special_room(newlev) {
             pline("It %s rather %s down here.", Blind ? "feels" : "looks",
                   Blind ? "humid" : "muddy");
             break;
-        case COURT:
+        case COURT: {
+            /* C topl.c update_topl:262-265 — a pline that does not fit after the
+             * line already on the topline (n0 + strlen + 3 >= CO - 8) raises
+             * more() at THAT instant, freezing the physical screen as of the
+             * last flush: before the court wake loop below and before movemon.
+             * This port otherwise pages at the end-of-turn flush over the live
+             * (post-movemon) map.  Page the pending line over a frozen frame. */
+            const _court = nh_sprintf("You enter an opulent%s room!",
+                [!furniture_present(THRONE, roomno) ? "" : " throne"]);
+            const _n0 = String(g._pending_message || '').length;
+            if (_n0 > 0 && !g._topl_win_stop && _n0 + _court.length + 3 >= 80 - 8) {
+                const _frozen = capture_painted_frame_with_status();
+                const _prev = g._paintedSnapshot;
+                if (_frozen) g._paintedSnapshot = _frozen;
+                await force_more(g._pending_message);
+                g._paintedSnapshot = _prev || null;
+            }
             You("enter an opulent%s room!",
                 !furniture_present(THRONE, roomno) ? "" : " throne");
             break;
+        }
         case LEPREHALL:
             You("enter a leprechaun hall!");
             break;

@@ -108,7 +108,7 @@ import { couldsee, cansee, recalc_block_point } from './vision.js';
 import { m_useup, seetrap, mintrap, mon_learns_traps, extract_from_minvent, maketrap, fill_pit } from './trap.js';
 import { place_monster, impossible } from './steed.js';
 import { maybe_unhide_at, add_to_minv, obj_extract_self, obfree, is_drawbridge_wall } from './dokick.js';
-import { welded, trycall_noprompt, body_part, freeinv, mbodypart } from './cmd.js';
+import { welded, trycall, body_part, freeinv, mbodypart } from './cmd.js';
 import { remove_worn_item } from './steal.js';
 import { setnotworn } from './worn.js';
 import { dropy } from './cmd.js';
@@ -5195,14 +5195,14 @@ export async function use_misc(mtmp) {
                 if (on_level(tolevel, game.u.uz)) {
                     if (vismon) {
                         pline_mon(mtmp, `${Monnam(mtmp)} looks uneasy.`);
-                        trycall_noprompt(otmp);
+                        await trycall(otmp);
                     }
                     await m_useup(mtmp, otmp);
                     return 2;
                 }
                 if (vismon) {
                     pline_mon(mtmp, `${Monnam(mtmp)} rises up, through the ${ceiling(mtmp.mx, mtmp.my)}!`);
-                    trycall_noprompt(otmp);
+                    await trycall(otmp);
                 }
                 await m_useup(mtmp, otmp);
                 await migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM, null);
@@ -5210,7 +5210,7 @@ export async function use_misc(mtmp) {
             } else {
                 if (vismon) {
                     pline_mon(mtmp, `${Monnam(mtmp)} looks uneasy.`);
-                    trycall_noprompt(otmp);
+                    await trycall(otmp);
                 }
                 await m_useup(mtmp, otmp);
                 return 2;

@@ -57,7 +57,7 @@ import { ATR_INVERSE } from './terminal.js';
 import { dosounds } from './sounds.js';
 import { ckmailstatus } from './mail.js';
 import { invault } from './vault.js';
-import { u_wipe_engr } from './engrave.js';
+import { u_wipe_engr, read_engr_at } from './engrave.js';
 import { nh_timeout, do_storms } from './timeout.js';
 import { amulet, intervene } from './wizard.js';
 import { run_regions, any_visible_region } from './region.js';
@@ -301,7 +301,9 @@ export async function moveloop_preamble(resuming) {
     } else {
         // C restore.c: hero_seq = moves << 3 (not saved)
         game.hero_seq = ((game.moves || 1) | 0) << 3;
-        // C: read_engr_at / fix_shop_damage deferred
+        // C allmain.c:87 — subset of pickup() on restore; fix_shop_damage
+        // stays deferred (shop.c, outside this cluster).
+        await read_engr_at(game.u?.ux, game.u?.uy);
     }
     // C: encumber_msg() — sync go.oldcap (auto-pickup / starting load)
     await encumber_msg();
