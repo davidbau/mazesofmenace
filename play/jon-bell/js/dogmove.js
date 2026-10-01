@@ -50,7 +50,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import { oc_delay, oc_nutrition, mons_cnutrit, eaten_stat } from './food_props.js';
 import monMsoundPack_dm from './makemon_msound.json' with { type: 'json' };
-import { m_at, mhitm_adtyping, mon_wield_item, mon_nam, setmnotwielded, hitval } from './uhitm.js';
+import { corpse_chance as corpse_chance_uh, m_at, mhitm_adtyping, mon_wield_item, mon_nam, setmnotwielded, hitval } from './uhitm.js';
 import { Monnam, perceives as perceives_dm } from './mcastu.js';
 import { attacktype, max_passive_dmg, resist_conflict, poly_when_stoned } from './mhitm.js';
 import { seemimic } from './mhitm.js';
@@ -3022,14 +3022,10 @@ export async function mondied_dm(mdef) {
      *   tmp = 2 + ((mdat->geno & G_FREQ) < 2) + verysmall(mdat);
      *   return !rn2(tmp);
      */
-    const mndx_def = (mdef.mndx ?? mdef.mnum ?? -1) | 0;
-    const msize_def = (mndx_def >= 0 && mndx_def < MONS_MSIZE.length)
-        ? (MONS_MSIZE[mndx_def] | 0) : MZ_SMALL;
-    const geno_def = (mndx_def >= 0 && mndx_def < _MONS.length)
-        ? (_MONS[mndx_def][3] | 0) : 0;
-    const tmp_cc = 2 + (((geno_def & G_FREQ) < 2) ? 1 : 0)
-        + ((msize_def < MZ_SMALL) ? 1 : 0);
-    if (!rn2(tmp_cc) && (accessible(deadMx, deadMy) || is_pool(deadMx, deadMy)))
+    /* corpse_chance's four RNG-free early arms (mon.c:3184-3233: lich, AT_BOOM,
+     * level-nocorpse, bigmonst/golem/mplayer/rider/shk -> TRUE) live in the shared
+     * body; the inlined tail alone drew a spurious rn2(tmp) for them. */
+    if ((await corpse_chance_uh(mdef, null, false)) && (accessible(deadMx, deadMy) || is_pool(deadMx, deadMy)))
         await make_corpse(mdef, deadMx, deadMy, CORPSTAT_NONE);
 }
 

@@ -837,7 +837,7 @@ export function name_to_mon(in_str, gender_name_var = null) {
 }
 
 /** C drawing.c def_char_to_monclass — first def_monsyms[].sym. */
-const DEF_CHAR_TO_MLET = {
+export const DEF_CHAR_TO_MLET = {
     a: 'S_ANT', b: 'S_BLOB', c: 'S_COCKATRICE', d: 'S_DOG', e: 'S_EYE',
     f: 'S_FELINE', g: 'S_GREMLIN', h: 'S_HUMANOID', i: 'S_IMP', j: 'S_JELLY',
     k: 'S_KOBOLD', l: 'S_LEPRECHAUN', m: 'S_MIMIC', n: 'S_NYMPH', o: 'S_ORC',

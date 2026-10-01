@@ -1588,6 +1588,10 @@ export async function m_move(mtmp, after) {
             : ((mndx_mv >= 0 && mndx_mv < _MONS_MV.length)
                 ? (_MONS_MV[mndx_mv][6] >>> 0) : 0);
         const perceives_data = !!(_mf1_perc & M1_SEE_INVIS);
+        const _mf2_greedy = (mtmp.data && mtmp.data.mflags2 != null)
+            ? (mtmp.data.mflags2 >>> 0)
+            : ((mndx_mv >= 0 && mndx_mv < _MONS_MV.length)
+                ? (_MONS_MV[mndx_mv][7] >>> 0) : 0);
         /* C mondata.h ptr->mlet — same two-source lookup as _mf1_perc above:
          * the reconstructed permonst when present, else column 0 of the packed
          * MONS row. */
@@ -1599,9 +1603,14 @@ export async function m_move(mtmp, after) {
         if (!(mtmp.mcansee | 0)
             /* C: || (should_see && Invis && !perceives && rn2(11)) */
             || (should_see && Invis && !perceives_data && rn2(11))
-            /* C: || is_obj_mappear(youmonst, STRANGE_OBJECT) stub: false */
-            /* C: || u.uundetected stub: false */
-            /* C: || (GOLD_PIECE && !likes_gold) stub: false */
+            /* C monmove.c:1867-1869: || is_obj_mappear(&youmonst, STRANGE_OBJECT)
+             *   || u.uundetected
+             *   || (is_obj_mappear(&youmonst, GOLD_PIECE) && !likes_gold(ptr)) */
+            || ((game.youmonst?.m_ap_type | 0) === 2 && (game.youmonst.mappearance | 0) === 0)
+            || !!u?.uundetected
+            || ((game.youmonst?.m_ap_type | 0) === 2
+                && (game.youmonst.mappearance | 0) === GOLD_PIECE_MV
+                && !(_mf2_greedy & M2_GREEDY_MV))
             || (mtmp.mpeaceful | 0) /* || ... && !mtmp->isshk */
             || ((mndx_mv === PM_STALKER_MV
                  || mlet_mv === S_BAT_MV || mlet_mv === S_LIGHT_MV) && !rn2(3))

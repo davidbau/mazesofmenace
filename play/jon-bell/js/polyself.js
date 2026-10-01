@@ -24,7 +24,8 @@ import { pline, urgent_pline, newsym, see_monsters, flush_screen, _topl_stash_re
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
 import { permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
 import { getlin } from './wizcmds.js';
-import { mungspaces, valid_vampshiftform, set_ustuck } from './mklev.js';
+import { mungspaces, valid_vampshiftform, set_ustuck, mksobj } from './mklev.js';
+import * as cmdNS from './cmd.js';
 import { mnexto } from './teleport.js';
 import { rndexp } from './exper_pure.js';
 import { newhp, newpw } from './exper.js';
@@ -63,7 +64,7 @@ import { getdir } from './lock.js';
 import { ubuzz, ubreatheu, make_blinded, set_HBlinded } from './zap.js';
 /* C hack.h Blind — the same reader the status line and vision_recalc use. */
 import { Blind as Blind_vis } from './vision.js';
-import { nomul } from './allmain.js';
+import { nomul, unmul } from './allmain.js';
 import { deadhero, do_death_sequence, done, yn_function } from './end.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { dmgtype } from './dogmove.js';
@@ -442,7 +443,15 @@ export async function polymon(mntmp) {
         if (g.flags) g.flags.female = !!u.mfemale;
     }
 
-    // C polyself.c:777-783 — stop mimicking (non-mimic form).  No RNG; the hero
+    /* C polyself.c:777-783 — if stuck mimicking gold, stop immediately; if
+     * becoming a non-mimic, stop mimicking anything (as in polyman()). */
+    if ((g.multi | 0) < 0 && (g.youmonst?.m_ap_type | 0) === M_AP_OBJECT_local
+        && g.youmonst.data?.mlet !== S_MIMIC)
+        await unmul("");
+    if (ptr.mlet !== S_MIMIC) {
+        g.youmonst.m_ap_type = M_AP_NOTHING_local;
+        g.youmonst.mappearance = 0;
+    }
 
     // C polyself.c:785-792 — gender dochange.  For a form that is neither
     // is_male/is_female/is_neuter and != u.ulycn, sex_change_ok && !rn2(10).
@@ -1089,6 +1098,8 @@ function change_sex() {
 async function polyman(msg) {
     const g = game;
     const u = g.u;
+    /* C polyself.c:198 was_mimicking = (U_AP_TYPE != M_AP_NOTHING) */
+    const was_mimicking = ((g.youmonst?.m_ap_type | 0) !== M_AP_NOTHING_local);
     const was_blind = !!Blind_vis();
     const had_see_invis = !!(u.uprops?.[SEE_INVIS]
         && ((u.uprops[SEE_INVIS].intrinsic | 0)
@@ -1111,7 +1122,12 @@ async function polyman(msg) {
     u.uundetected = 0;
     // sticking/uunstick: hero is not being held — skip.
     find_ac();
-    // was_mimicking: hero is not mimicking an object — skip.
+    /* C polyself.c:219-224 */
+    if (was_mimicking) {
+        if ((g.multi | 0) < 0) await unmul("");
+        g.youmonst.m_ap_type = M_AP_NOTHING_local;
+        g.youmonst.mappearance = 0;
+    }
     newsym(u.ux, u.uy);
     await urgent_pline(msg);
     // C polyself.c:248-250 — refresh invisible-mimic light blocking when the
@@ -1909,6 +1925,43 @@ export async function dobreathe() {
     if (g._pending_message) {
         _topl_stash_result();
     }
+    return ECMD_TIME;
+}
+
+// ── C polyself.c:1450 dospit() — #monster for a form with AT_SPIT. ───────────
+// C: if (!getdir(0)) return ECMD_CANCEL;
+//    mattk = attacktype_fordmg(youmonst.data, AT_SPIT, AD_ANY);
+//    AD_BLND/AD_DRST -> BLINDING_VENOM, default (impossible) / AD_ACID -> ACID_VENOM
+//    otmp = mksobj(venom, TRUE, FALSE); otmp->spe = 1; throwit(otmp, 0L, FALSE, 0);
+//    return ECMD_TIME;
+// throwit() (dothrow.c:1510) has no standalone JS port: it is inlined in the
+// private throw_obj() of js/cmd.js.  Resolve an export by name at call time and
+// fail loudly rather than fake the throw.
+const BLINDING_VENOM_PS = 479, ACID_VENOM_PS = 480;
+const AD_DRST_PS = 7, AD_ACID_PS = 8;
+export async function dospit() {
+    const g = game;
+    const u = g.u;
+
+    if (!(await getdir(null)))
+        return ECMD_CANCEL;
+
+    const mattk = attacktype_fordmg(g.youmonst.data, AT_SPIT, AD_ANY);
+    if (!mattk) {
+        // C: impossible("bad spit attack?") — falls through to ECMD_TIME.
+    } else {
+        const adtyp = mattk.adtyp | 0;
+        const otyp = (adtyp === AD_BLND || adtyp === AD_DRST_PS)
+            ? BLINDING_VENOM_PS
+            : ACID_VENOM_PS; /* default arm: impossible() then FALLTHRU to AD_ACID */
+        const otmp = await mksobj(otyp, true, false);
+        otmp.spe = 1; /* to indicate it's yours */
+        const throwit = cmdNS.throwit;
+        if (typeof throwit !== 'function')
+            throw new Error('polyself: dospit() needs throwit() (dothrow.c:1510), not exported from js/cmd.js');
+        await throwit(otmp, 0, false, null);
+    }
+    void u;
     return ECMD_TIME;
 }
 

@@ -98,11 +98,11 @@ import { level_tele } from './teleport.js';
 import { ttyPline } from './tty_message.js';
 import { makewish } from './zap.js';
 import { docrt, map_engraving, map_trap } from './display.js';
-import { do_mapping } from './detect.js';
+import { do_mapping, findit } from './detect.js';
 import { print_dungeon } from './dungeon.js';
 import {
     incr_itimeout, make_blinded, make_deaf, make_glib, make_hallucinated,
-    make_stoned,
+    make_stoned, make_vomiting,
 } from './potion.js';
 import { rn2 } from './rng.js';
 import { PM_GRID_BUG } from './monsters.js';
@@ -138,6 +138,17 @@ export async function wiz_map(state = game) {
         hallucination.intrinsic = save_Hhallu;
     } else {
         await ttyPline("Unavailable command 'wizmap'.", state);
+    }
+    return ECMD_OK;
+}
+
+// C ref: wizcmds.c wiz_detect() (229-236), the #wizdetect extended command.
+// Like doapply's uncursed Bell branch, this discards findit's integer result.
+export async function wiz_detect(state = game, env = {}) {
+    if (state.wizard) {
+        await findit(state, env);
+    } else {
+        await ttyPline("Unavailable command 'wizdetect'.", state);
     }
     return ECMD_OK;
 }
@@ -420,7 +431,7 @@ export async function wiz_intrinsic(state = game) {
             if (state === game) note_unported('potion.c make_stunned');
         } else if (property === VOMITING) {
             const message = `You are${oldTimeout ? ' still' : ''} vomiting.`;
-            if (state === game) note_unported('potion.c make_vomiting');
+            await make_vomiting(newTimeout, false, state);
             await ttyPline(message, state);
         } else if (property === WARN_OF_MON) {
             if (!(prop.intrinsic || prop.extrinsic)) {

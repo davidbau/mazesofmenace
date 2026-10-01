@@ -99,9 +99,10 @@ import {
     SPBOOK_CLASS, WAND_CLASS, AMULET_CLASS, ROCK_CLASS, COIN_CLASS,
     MAXOCLASSES, NUM_OBJECTS,
     objectNames, objectNameStrs, objectDescrs, objects,
-    def_char_to_objclass,
+    def_char_to_objclass, def_oc_syms,
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
+import { nh_getenv } from './mail.js';
 import { setgemprobs } from './o_init.js';
 import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap, set_levltyp, set_levltyp_lit } from './trap.js';
 import {
@@ -118,7 +119,7 @@ import {
     select_newcham_form, validvamp, mgender_from_permonst, propagate,
 } from './makemon.js';
 import { mk_mplayer } from './mplayer.js';
-import { can_saddle, put_saddle_on_mon, remove_monster } from './steed.js';
+import { can_saddle, put_saddle_on_mon, remove_monster, place_monster } from './steed.js';
 import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
 import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree, discard_minvent, mdrop_special_objs, m_into_limbo } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level, single_level_branch, Inhell } from './teleport.js';
@@ -137,7 +138,7 @@ import {
     resists_ston, poly_when_stoned, pm_resistance, MR_STONE,
     is_vampshifter, vampshifted,
 } from './monsters.js';
-import { name_to_monplus, name_to_mon, set_mon_data } from './mondata.js';
+import { name_to_monplus, name_to_mon, set_mon_data, DEF_CHAR_TO_MLET } from './mondata.js';
 import { fruit_from_name, simpleonames } from './objnam.js';
 import { christen_monst, christen_orc, rndorcname, new_oname, oname, lookup_novel, safe_oname } from './do_name.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
@@ -182,7 +183,7 @@ import { Blind } from './invent.js';
 import { earth_sense } from './cmd.js';
 // imports.mjs --can mklev.js uhitm.js defsym_explanation: hoisted, cycle-safe.
 // C mkstairs impossible uses defsyms[glyph_to_cmap(glyph)].explanation.
-import { defsym_explanation } from './uhitm.js';
+import { defsym_explanation, DEFSYM_EXPLANATION } from './uhitm.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -21737,16 +21738,28 @@ function sp_amask_to_amask(sp_amask) {
 }
 
 /**
- * C ref: sp_lev.c create_monster :1924–2187.
- * Spawn: sp_amask != RANDOM → mk_roamer; else makemon(mm_flags).
- * Post: appear_as shapeshifter fixup (:2002–2123, M_AP_MONSTER arm live);
- * female always; peaceful > BOOL_RANDOM then set_malign (:2125–2129).
- * Named omit: mk_mplayer role-id; appear_as FURNITURE/OBJECT generic arms
- * (live levels use hand-rolled paths: Rog-strt ter:staircase, soko/juiblex
- * obj:boulder/fountain, minend obj:stones, themerms obj:chest); christen;
- * invent DEFAULT/CUSTOM; cancelled/revived/avenge/stun/conf/invis/blind/
- * para/flee; waiting vampshifted newcham; m_lev_adj; G_UNIQ extinct return;
- * G_GONE → random.
+ * C ref: sp_lev.c create_monster :1925–2187 (whole body).
+ * Class :1935–1941 via the canonical DEF_CHAR_TO_MLET (mondata.js;
+ * unknown class panics in C — NORETURN → throw, cf. u_on_newpos);
+ * named id :1947–1953 with the G_UNIQ-extinct early return and G_GONE →
+ * random; mines your_race rn2(3) clear :1959–1961; humidity location +
+ * DRY fallback :1963–1974; occupancy :1977–1978; croom :1980–1981.
+ * Spawn: sp_amask != RANDOM → mk_roamer; role id → mk_mplayer; else
+ * makemon(mm_flags) :1983–1988. Post: christen :1994–1995; appear_as
+ * shapeshifter fixup (:2002–2123, all four switch arms + default live);
+ * female always :2125; peaceful > BOOL_RANDOM then set_malign :2126–2130;
+ * asleep :2131–2132; seentraps :2133–2134; cancelled/revived/avenge/
+ * stunned/confused/invis/blinded/paralyzed/fleeing :2135–2159; waiting
+ * STRAT_WAITFORU + vampshifted newcham :2160–2167; m_lev_adj clamp
+ * :2168–2175; invent drop + CUSTOM_INVENT global :2176–2184.
+ * l_create_monster (the C :3386 caller's twin) applies the table path's
+ * post-spawn arms itself after this returns; the opts below stay dormant
+ * for direct fills. Deviations: m->x/m->y have no JS struct (the :2041
+ * m->x < 0 boulder gate keeps its C-order always-false read); the
+ * :2176–2182 drop runs the sync splev_discard_default_minvent stand-in
+ * (mdrop_obj/rloco awaits can't run in sync level-gen —
+ * l_create_monster awaits the live exports); the wizard-prompt thenable
+ * in select_newcham_form falls to NON_PM (D-1648/D-2245).
  */
 export function splev_create_monster(id_or_class, peaceful, opts) {
     const sp_amask = opts?.sp_amask ?? AM_SPLEV_RANDOM;
@@ -21754,6 +21767,7 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
     const croom = opts?.croom ?? null;
     const rx = opts?.rx ?? -1;
     const ry = opts?.ry ?? -1;
+    const has_invent = opts?.has_invent ?? DEFAULT_INVENT;
     // C: m->appear (M_AP_* int, cf. lsp_monster appear_as "obj:/mon:/ter:"
     // prefix parse :3326–3338) + m->appear_as.str. No caller passes them
     // yet — the arm below is live but dormant until one does.
@@ -21771,12 +21785,25 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
         if (r.mndx !== NON_PM && r.mndx >= 0) {
             mid = r.mndx;
             pm = mons(r.mndx);
+            // C :1949–1953 — an extinct unique never spawns; a genocided
+            // or extinct type falls through to a random monster (mid is
+            // kept for the :1985 mk_mplayer dispatch, like C's m->id).
+            const g_mvflags = game.mvitals?.[mid]?.mvflags ?? 0;
+            if (((pm?.geno ?? 0) & G_UNIQ) && (g_mvflags & G_EXTINCT))
+                return null;
+            if (g_mvflags & G_GONE)
+                pm = null;
         }
     }
     const amask = sp_amask_to_amask(sp_amask);
     if (isClass) {
-        const mlet = monclass_letter_to_mlet(id_or_class);
-        pm = mlet ? mkclass(mlet, G_NOGEN) : null;
+        // C :1935–1941 — def_char_to_monclass is the canonical
+        // DEF_CHAR_TO_MLET (mondata.js); MAXMCLASSES panics in C.
+        const mlet = DEF_CHAR_TO_MLET[id_or_class] ?? null;
+        if (!mlet)
+            throw new Error(
+                `create_monster: unknown monster class '${id_or_class}'`);
+        pm = mkclass(mlet, G_NOGEN);
     }
     pm = splev_mines_maybe_clear_your_race(pm);
     // C: pm_to_humidity then get_location_coord(loc|NO_LOC_WARN); on fail |= DRY
@@ -21807,10 +21834,13 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
     // C: always mtmp->female = m->female after spawn (D-0873). Named id →
     // find_montype gender; des.monster() / class letter → female stays 0.
     if (mtmp) {
+        // C :1994–1995 — christen before the appear fixup.
+        if (opts?.name != null) mtmp = christen_monst(mtmp, opts.name);
         // C sp_lev.c:2002–2123 appear_as fixup — runs BEFORE the :2125
         // female clobber below, so the arm's mgender/gender draws keep C
         // RNG order (the female assignment here overwrites them, like C).
-        splev_create_monster_appear_fixup(mtmp, appear, appear_as);
+        splev_create_monster_appear_fixup(mtmp, appear, appear_as,
+            { x: pos.x, y: pos.y, croom, pm });
         mtmp.female = (typeof id_or_class === 'string' && id_or_class.length > 1)
             ? female
             : 0;
@@ -21820,23 +21850,62 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
         }
         if (opts?.asleep != null && opts.asleep > BOOL_RANDOM)
             mtmp.msleeping = opts.asleep ? 1 : 0;
-        if (opts?.waiting)
+        if (opts?.seentraps) mtmp.mtrapseen = opts.seentraps; // C :2133–2134
+        if (opts?.cancelled) mtmp.mcan = 1; // C :2135–2136
+        if (opts?.revived) mtmp.mrevived = 1; // C :2137–2138
+        if (opts?.avenge) mtmp.mavenge = 1; // C :2139–2140
+        if (opts?.stunned) mtmp.mstun = 1; // C :2141–2142
+        if (opts?.confused) mtmp.mconf = 1; // C :2143–2144
+        if (opts?.invis) mtmp.minvis = mtmp.perminvis = 1; // C :2145–2147
+        if (opts?.blinded) { // C :2148–2151
+            mtmp.mcansee = 0;
+            mtmp.mblinded = (opts.blinded % 127);
+        }
+        if (opts?.paralyzed) { // C :2152–2155
+            mtmp.mcanmove = 0;
+            mtmp.mfrozen = (opts.paralyzed % 127);
+        }
+        if (opts?.fleeing) { // C :2156–2159
+            mtmp.mflee = 1;
+            mtmp.mfleetim = (opts.fleeing % 127);
+        }
+        if (opts?.waiting) { // C :2160–2167
             mtmp.mstrategy = (mtmp.mstrategy || 0) | STRAT_WAITFORU;
+            // A vampire created already shifted into bat/fog/wolf form
+            // shifts back unless the MONSTER appear asked for it.
+            if (vampshifted(mtmp) && (appear | 0) !== M_AP_MONSTER)
+                newcham(mtmp, mons(mtmp.cham), NO_NC_FLAGS);
+        }
+        if (opts?.m_lev_adj) { // C :2168–2175
+            const leveled = (mtmp.m_lev | 0) + opts.m_lev_adj;
+            mtmp.m_lev = leveled > 49 ? 49 : (leveled < 0 ? 0 : leveled);
+        }
+        if (!(has_invent & DEFAULT_INVENT)) { // C :2176–2182
+            // Sync stand-in: mdrop_special_objs + discard_minvent(TRUE).
+            // The live drop awaits mdrop_obj/rloco, which sync level-gen
+            // cannot run; l_create_monster awaits it on the table path.
+            splev_discard_default_minvent(mtmp);
+        }
+        if (has_invent & CUSTOM_INVENT) invent_carrying_monster = mtmp; // C :2183–2184
     }
     return mtmp;
 }
 
 /**
- * C ref: sp_lev.c create_monster :2002–2123 appear_as fixup — the M_AP_MONSTER
- * arm (second C caller of `select_newcham_form`, :2067). Sync: the wizard
- * mon_polycontrol prompt inside `select_newcham_form` returns a Promise that
- * sync level-gen cannot await (cf. newcham D-1648/D-2245) — a thenable falls
- * to NON_PM, i.e. the C ESC-keeps-form path is never taken here. FURNITURE /
- * OBJECT generic arms stay named-deferred (no live JS defsyms/OBJ_NAME table;
- * live levels use the hand-rolled paths cited on `splev_create_monster`).
- * Runs before the :2125 female clobber, like C.
+ * C ref: sp_lev.c create_monster :2002–2123 appear_as fixup — all four
+ * switch arms in C order (NOTHING :2010, FURNITURE :2016, OBJECT :2029,
+ * MONSTER :2063, the second C caller of `select_newcham_form`) + default
+ * :2115. loc carries the :1967–:1988 placement ({x, y, croom, pm}) for
+ * the OBJECT boulder retry. Sync: the wizard mon_polycontrol prompt
+ * inside `select_newcham_form` returns a Promise that sync level-gen
+ * cannot await (cf. newcham D-1648/D-2245) — a thenable falls to NON_PM,
+ * i.e. the C ESC-keeps-form path is never taken here. FURNITURE scans
+ * the raw DEFSYM_EXPLANATION (88 entries = MAXPCHARS, raw[73]
+ * 'trapped chest' = C defsyms[73].explanation); OBJECT scans
+ * objectNameStrs (OBJ_NAME ≡ oc_name). Runs before the :2125 female
+ * clobber, like C.
  */
-function splev_create_monster_appear_fixup(mtmp, appear, appear_as) {
+function splev_create_monster_appear_fixup(mtmp, appear, appear_as, loc) {
     if (!appear_as) return;
     // C :2002–2006 gate: mimic, or cham-valid shifter with a MONSTER appear,
     // and no Protection_from_shape_changers.
@@ -21849,7 +21918,65 @@ function splev_create_monster_appear_fixup(mtmp, appear, appear_as) {
         || prot) {
         return;
     }
-    if ((appear | 0) === M_AP_MONSTER) {
+    let x = loc?.x ?? mtmp.mx;
+    let y = loc?.y ?? mtmp.my;
+    const croom = loc?.croom ?? null;
+    const pm = loc?.pm ?? null;
+    if ((appear | 0) === M_AP_NOTHING) {
+        // C :2010–2014 — appearance string but no type.
+        impossible('create_monster: mon has an appearance, "%s", but no type',
+            appear_as);
+    } else if ((appear | 0) === M_AP_FURNITURE) {
+        // C :2016–2027 — defsyms[].explanation scan.
+        let i = 0;
+        for (; i < DEFSYM_EXPLANATION.length; i++) {
+            if (DEFSYM_EXPLANATION[i] === appear_as) break;
+        }
+        if (i === DEFSYM_EXPLANATION.length) {
+            impossible('create_monster: can\'t find feature "%s"', appear_as);
+        } else {
+            mtmp.m_ap_type = M_AP_FURNITURE;
+            mtmp.mappearance = i;
+        }
+    } else if ((appear | 0) === M_AP_OBJECT) {
+        // C :2029–2061 — OBJ_NAME(objects[]) scan.
+        let i = 0;
+        for (; i < NUM_OBJECTS; i++) {
+            if (objectNameStrs[i] && objectNameStrs[i] === appear_as) break;
+        }
+        if (i === NUM_OBJECTS) {
+            impossible('create_monster: can\'t find object "%s"', appear_as);
+        } else {
+            mtmp.m_ap_type = M_AP_OBJECT;
+            mtmp.mappearance = i;
+            /* try to avoid placing mimic boulder on a trap */
+            // C :2041 reads m->x as assigned at :1992 (the placed x, always
+            // >= 0), so the gate below is verbatim C order — always false.
+            const assigned_x = mtmp.mx | 0;
+            if (i === BOULDER && assigned_x < 0
+                && m_bad_boulder_spot(x, y)) {
+                let retrylimit = 10;
+
+                remove_monster(x, y);
+                do {
+                    x = assigned_x;
+                    y = mtmp.my | 0;
+                    const relocated = get_location(x, y, DRY, croom);
+                    x = relocated.x;
+                    y = relocated.y;
+                    const moved = splev_resolve_occupied(x, y, pm);
+                    x = moved.x;
+                    y = moved.y;
+                } while (m_bad_boulder_spot(x, y)
+                    && --retrylimit > 0);
+                place_monster(mtmp, x, y);
+                /* if we didn't find a good spot
+                   then mimic something else */
+                if (!retrylimit)
+                    set_mimic_sym(mtmp);
+            }
+        }
+    } else if ((appear | 0) === M_AP_MONSTER) {
         // C :2063–2069 — "random" (strcmpi) re-rolls via select_newcham_form,
         // else a named monster with its gendered-name form.
         const gbox = { gender: NEUTRAL };
@@ -21915,21 +22042,14 @@ function splev_create_monster_appear_fixup(mtmp, appear, appear_as) {
                 }
             }
         }
-    } else if ((appear | 0) === M_AP_NOTHING) {
-        // C :2010–2014 — appearance string but no type.
-        impossible('create_monster: mon has an appearance, "%s", but no type',
-            appear_as);
-    } else if ((appear | 0) !== M_AP_FURNITURE
-        && (appear | 0) !== M_AP_OBJECT) {
+    } else {
         // C :2115–2119 — default: unimplemented appear type.
         impossible('create_monster: unimplemented mon appear type [%d,"%s"]',
             appear, appear_as);
     }
-    // C :2024 FURNITURE / :2029 OBJECT generic arms stay named-deferred (see
-    // `splev_create_monster` doc) — neither rewrites the mon here.
     // C :2121–2122 — re-block a square the disguise now closes.
-    if (does_block(mtmp.mx, mtmp.my, game.level?.at?.(mtmp.mx, mtmp.my))) {
-        block_point(mtmp.mx, mtmp.my);
+    if (does_block(x, y, game.level?.at?.(x, y))) {
+        block_point(x, y);
     }
 }
 
@@ -23031,9 +23151,10 @@ function lspo_monster_normalize_table(tmp, inventFn) {
  * C defaults (every other field at its :3223–3244 default, so all
  * post-spawn arms no-op there). Table form normalizes via
  * lspo_monster_normalize_table, spawns through splev_create_monster (the
- * live C create_monster :1924–2190 dispatch: class/id resolution, sp_amask,
- * location, occupancy, mk_roamer/mk_mplayer/makemon, appear fixup,
- * peaceful/asleep/waiting), then applies the post-spawn arms C runs at
+ * live C create_monster :1925–2187 whole body: class/id resolution with
+ * the geno arms, sp_amask, location, occupancy, mk_roamer/mk_mplayer/
+ * makemon, all four appear arms, and the post-spawn arms below in dormant
+ * opts form), then applies the post-spawn arms C runs at
  * :1994–:2186 in C order: christen (:1994), female (:2125, with the
  * :3355–3367 mgend rule over the replayed burn outcome), cancelled/
  * revived/avenge/stunned/confused/invis/blinded/paralyzed/fleeing
@@ -23046,11 +23167,10 @@ function lspo_monster_normalize_table(tmp, inventFn) {
  * is outside croom, like splev_create_monster).
  * C caller: Lua des.monster dispatch (decl sp_lev.c:147); JS has no Lua
  * layer — live fills keep calling splev_create_monster directly.
- * Named omits: seentraps trap list (C TODO :3318, stays 0); G_UNIQ
- * extinct / G_GONE random (:1949–1953, pre-existing splev behavior);
- * FURNITURE/OBJECT appear arms (:2016–2061, pre-existing splev fixup
- * deferral); Lua stack juggling (lua_remove/pop) and GC Free (no JS
- * analog; strings are GC values).
+ * Named omits: seentraps trap list (C TODO :3318, stays 0); Lua stack
+ * juggling (lua_remove/pop) and GC Free (no JS analog; strings are GC
+ * values). The :1949–1953 geno arms and :2016–2061 FURNITURE/OBJECT
+ * arms live in splev_create_monster above.
  */
 export async function l_create_monster(o, arg2, croom = null) {
     if (typeof o === 'string') {
@@ -23111,9 +23231,8 @@ export async function l_create_monster(o, arg2, croom = null) {
         mtmp.mflee = 1;
         mtmp.mfleetim = (tmp.fleeing % 127);
     }
-    if (tmp.waiting && vampshifted(mtmp) && tmp.appear !== M_AP_MONSTER) {
-        newcham(mtmp, mons(mtmp.cham), NO_NC_FLAGS); // C :2162–2166
-    }
+    // C :2160–2167 waiting bit + vampshifted newcham ran inside
+    // splev_create_monster (waiting/appear ride the opts above).
     if (tmp.m_lev_adj) { // C :2168–2175
         const leveled = (mtmp.m_lev | 0) + tmp.m_lev_adj;
         mtmp.m_lev = leveled > 49 ? 49 : (leveled < 0 ? 0 : leveled);
@@ -28540,17 +28659,20 @@ function invalid_shop_shape(sroom) {
  * C ref: mkroom.c mkshop :94-216 — whole-body port in C order.
  * :97-99 decls (i=-1, ep null); :101-155 wizard SHOPTYPE shoptype block —
  * wizard reads game.flags (wizard ≡ flags.debug per flag.h; pick_room
- * precedent); the nh_getenv("SHOPTYPE") endpoint (:103) is a named omit
- * (no environment in scored ESM per Rule #2, same class as the makemaz
- * SPLEVTYPE deferral), so ep stays null, the :104-153 dispatch never
- * fires, and i stays -1; :157-178 gottype room walk (hx<0 sentinel
- * return :163, past-nroom impossible :165-168, OROOM/stairs gates,
- * :173 doorct==1 or wizard&&ep multi-door arm with invalid_shop_shape
- * break); :180-187 light room; :189-201 rnd(100) shtypes pick with the
- * isbig wand/book→general clamp; :203-215 rtype/needfill/topologize
- * (SPECIALIZATION off per global.h:120, so the 1-arg topologize arm).
- * Stocking deferred to fill_special_room (D-0201). Named omissions:
- * SHOPTYPE dispatch endpoint (c-js-map data.md).
+ * precedent); nh_getenv("SHOPTYPE") (:103) is the live mail.js export
+ * (D-3203 roguename precedent; globalThis.process.env, null in Chrome
+ * and when unset), and the :104-153 single-char dispatch is live in C
+ * order (mkzoo ZOO/MORGUE/BEEHIVE/COURT/BARRACKS/ANTHOLE/COCKNEST/
+ * LEPREHALL, mktemple on '_', mkswamp on '}', shtypes def_oc_syms
+ * match → gottype, g/G general, v/V veggy food, else i=-1);
+ * :157-178 gottype room walk (hx<0 sentinel return :163, past-nroom
+ * impossible :165-168, OROOM/stairs gates, :173 doorct==1 or wizard&&ep
+ * multi-door arm with invalid_shop_shape break); :180-187 light room;
+ * :189-201 rnd(100) shtypes pick with the isbig wand/book→general clamp;
+ * :203-215 rtype/needfill/topologize (SPECIALIZATION off per
+ * global.h:120, so the 1-arg topologize arm). Stocking deferred to
+ * fill_special_room (D-0201). Named omissions: none — the D-2569
+ * SHOPTYPE Rule #2 omit is retired (nh_getenv live since D-3203).
  */
 function mkshop() {
     const g = game;
@@ -28558,15 +28680,43 @@ function mkshop() {
     let i = -1;
     // C :102 — wizard ≡ flags.debug (flag.h); playmode:debug sets flags.debug
     const wizard = !!(g.flags?.debug || g.flags?.wizard);
-    // C :103 — ep = nh_getenv("SHOPTYPE"). Named omit: scored ESM has no
-    // environment (Rule #2; makemaz SPLEVTYPE precedent), so the endpoint
-    // is always absent and ep stays null.
-    const ep = null;
-    // C :104-153 — SHOPTYPE single-char dispatch (mkzoo ZOO/MORGUE/BEEHIVE/
-    // COURT/BARRACKS/ANTHOLE/COCKNEST/LEPREHALL, mktemple on '_', mkswamp
-    // on '}', shtypes symb match → gottype, g/v arms). Named omit with the
-    // endpoint above: ep is always null, so this block never fires and i
-    // stays -1 (random pick below). Every callee is live in this file.
+    // C :101-104 — wizard-gated nh_getenv("SHOPTYPE") (live mail.js
+    // export; null in Chrome and when unset, so normal play is unchanged)
+    let ep = null;
+    if (wizard) {
+        ep = nh_getenv('SHOPTYPE');
+        if (ep != null) {
+            // C :104-153 — single-char dispatch on *ep (ep[0]; an empty
+            // string yields undefined, matching nothing like C '\0')
+            const c0 = ep[0];
+            if (c0 === 'z' || c0 === 'Z') { mkzoo(ZOO); return; }
+            if (c0 === 'm' || c0 === 'M') { mkzoo(MORGUE); return; }
+            if (c0 === 'b' || c0 === 'B') { mkzoo(BEEHIVE); return; }
+            if (c0 === 't' || c0 === 'T' || c0 === '\\') { mkzoo(COURT); return; }
+            if (c0 === 's' || c0 === 'S') { mkzoo(BARRACKS); return; }
+            if (c0 === 'a' || c0 === 'A') { mkzoo(ANTHOLE); return; }
+            if (c0 === 'c' || c0 === 'C') { mkzoo(COCKNEST); return; }
+            if (c0 === 'l' || c0 === 'L') { mkzoo(LEPREHALL); return; }
+            if (c0 === '_') { mktemple(); return; }
+            if (c0 === '}') { mkswamp(); return; }
+            // C :104-153 — shtypes def_oc_syms match → gottype (skips the
+            // g/v arms below, hence the matched flag for C's goto)
+            let matched = false;
+            for (i = 0; i < shtypes.length && shtypes[i].name; i++) {
+                if (c0 === def_oc_syms[shtypes[i].symb | 0]?.sym) {
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                // C :104-153 — g/G general store, v/V veggy food shop,
+                // else shoptype undetermined (random pick below)
+                if (c0 === 'g' || c0 === 'G') i = 0;
+                else if (c0 === 'v' || c0 === 'V') i = FODDERSHOP - SHOPBASE;
+                else i = -1;
+            }
+        }
+    }
 
     // C :157-161 gottype — walk rooms: return = none eligible,
     // continue = ineligible, break = eligible.
@@ -28583,8 +28733,8 @@ function mkshop() {
         // C :169-172 — OROOM + no-stairs gates
         if (cand.rtype !== OROOM) continue;
         if (has_dnstairs(cand) || has_upstairs(cand)) continue;
-        // C :173-177 — doorct==1, or the wizard multi-door arm (ep null
-        // per the omit above, so only doorct==1 fires in practice)
+        // C :173-177 — doorct==1, or the wizard&&ep multi-door arm
+        // (fires only with wizard SHOPTYPE set — unset in normal play)
         if ((cand.doorct | 0) === 1
             || (wizard && ep && (cand.doorct | 0) !== 0)) {
             if (invalid_shop_shape(cand)) continue;

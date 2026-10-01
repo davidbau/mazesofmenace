@@ -24,6 +24,7 @@ import { show_nhw_menu_text, show_text_pages } from './pager.js';
 import { mons, M2_PNAME } from './monsters.js';
 import { NON_PM, pmnames } from './generated/monsters_data.js';
 import { QUEST_NEMESIS_SPEECH } from './generated/quest_nemesis_speech.js';
+import { QUEST_GUARDTALK } from './generated/quest_guardtalk.js';
 import { an, An, the, makeplural, makesingular } from './objnam.js';
 
 /** C ref: monflag.h enum ms_sounds — quest_info switch cases. */
@@ -620,6 +621,12 @@ const QUEST_ROLE_TEXT = {
     nemesis_next: QUEST_NEMESIS_SPEECH.nemesis_next,
     nemesis_other: QUEST_NEMESIS_SPEECH.nemesis_other,
     nemesis_wantsit: QUEST_NEMESIS_SPEECH.nemesis_wantsit,
+    // C ref: dat/quest.lua role tables, all 13 filecodes (guardtalk pair).
+    // Both are string arrays (com_pager_core rn2 arm); without them the
+    // role lookup missed and qt_pager burned a second nhl_init shuffle
+    // where C draws the rn2(nelems) pick (scen-quest-Archeologist-94096).
+    guardtalk_after: QUEST_GUARDTALK.guardtalk_after,
+    guardtalk_before: QUEST_GUARDTALK.guardtalk_before,
 };
 
 /** C ref: questpgr.c ldrname */
@@ -662,13 +669,14 @@ function intermed() {
     return game.urole?.intermed || '';
 }
 
-/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, *s→*', else *'s. */
 function s_suffix(s) {
-    if (!s) return s;
-    if (s === 'it') return 'its';
-    if (s === 'you') return 'your';
-    if (s.endsWith('s')) return `${s}'`;
-    return `${s}'s`;
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s')) return `${buf}'`;
+    return `${buf}'s`;
 }
 
 /**
@@ -1097,7 +1105,8 @@ async function deliver_by_window(msg, how) {
  * calls impossible(), so misses stay silent-FALSE; allmain legacy and
  * pauper_legacy still use com_pager_legacy (not this window); TEST_PATTERN (lua self-test
  * only); other-role bodies except the five nemesis msgids (D-2853, all 13
- * filecodes); convert_arg catalogue is D-1649;
+ * filecodes) and the guardtalk pair (all 13 filecodes, extracted);
+ * convert_arg catalogue is D-1649;
  * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
  * Lua helpers with no JS counterpart: nhl_init/nhl_loadlua/nhl_done
  * (no VM — embedded tables), get_table_str_opt/get_table_option

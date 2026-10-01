@@ -82,7 +82,7 @@ import {
 import { xkilled, killed, Hate_silver, dynamic_multi_reason, attacktype_fordmg, can_blnd } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
-    mhis, on_fire,
+    mhis, on_fire, defended,
 } from './mondata.js';
 import { which_armor, find_mac } from './worn.js';
 import {
@@ -391,8 +391,7 @@ export async function mswings(mtmp, otemp, bash) {
 
 /**
  * C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s.
- * C compares only the last char to 's' (not 'S'). Distinct from
- * s_suffix_poison (extra z/x/sh/ch).
+ * C compares only the last char to 's' (not 'S').
  */
 function s_suffix_hitmsg(s) {
     const buf = String(s ?? '');
@@ -754,9 +753,12 @@ function can_blnd_u(magr, aatyp) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_blnd mhitu branch (mdef == youmonst).
+ * C ref: uhitm.c mhitm_ad_blnd mhitu branch (mdef == youmonst) `:2976–2985`.
  * "%s blinds you!" then make_blinded(BlindedTimeout+damage); damage→0.
- * Named omission: Eyes of the Overworld vision_clears; uhitm/mhitm arms.
+ * C `:2982–2983` Eyes of the Overworld: still !Blind after make_blinded →
+ * Your1(vision_clears) (Your("%s",·) macro, hack.h:1027; decl.h:40 common
+ * string), the established `pline('Your vision quickly clears.')` idiom
+ * (detect/dothrow/eat/engrave/mcastu/mhitu×3). uhitm/mhitm arms in mhitm.js.
  */
 async function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
     if (can_blnd_u(mtmp, mattk.aatyp | 0)) {
@@ -765,7 +767,7 @@ async function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
         }
         await make_blinded(BlindedTimeout() + (mhm.damage | 0), false);
         if (!Blind()) {
-            // Eyes of the Overworld — vision_clears deferred
+            await pline('Your vision quickly clears.');
         }
     }
     mhm.damage = 0;
@@ -916,9 +918,9 @@ async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_ad_cold mhitu branch (mdef == youmonst, `:2654–2667`).
- * hitmsg, mgc_negated(TRUE) gate, frost pline, Cold_resistance zero,
- * m_lev > rn2(20) → (void) destroy_items (return discarded).
- * monstseesu / monstunseesu deferred (elec_u body deferred, keep).
+ * hitmsg, mgc_negated(TRUE) gate, frost pline, Cold_resistance zero +
+ * monstseesu(M_SEEN_COLD) else monstunseesu (live mondata.js pair, same
+ * as fire_u), m_lev > rn2(20) → (void) destroy_items (return discarded).
  */
 async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
     const orig_dmg = mhm.damage;
@@ -930,7 +932,10 @@ async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
             || u.ECold_resistance);
         if (Cold_resistance) {
             await pline("The frost doesn't seem cold!");
+            monstseesu(M_SEEN_COLD); // C uhitm.c:2660
             mhm.damage = 0;
+        } else {
+            monstunseesu(M_SEEN_COLD); // C uhitm.c:2663
         }
         // C uhitm.c:2661: if ((int) magr->m_lev > rn2(20))
         // (void) destroy_items(&gy.youmonst, AD_COLD, orig_dmg) — return
@@ -1076,16 +1081,15 @@ function mpoisons_subj(mtmp, mattk) {
     return 'sting';
 }
 
-/** C hacklib.c s_suffix — possessive for poison reason. */
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, lowercase-*s→*', else *'s. */
 function s_suffix_poison(s) {
-    if (!s) return 'the';
-    if (s === 'it') return 'its';
-    if (s === 'you') return 'your';
-    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
-        || s.endsWith('sh') || s.endsWith('ch')) {
-        return `${s}'`;
-    }
-    return `${s}'s`;
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
+    if (low === 'you') return `${buf}r`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only, no z/x/ch/sh arm. */
+    if (buf.endsWith('s')) return `${buf}'`;
+    return `${buf}'s`;
 }
 
 /**
@@ -1993,7 +1997,7 @@ async function gulpmu(mtmp, mattk) {
                 const was_blinded = !!((u.HBlinded | 0) && !(u.BBlinded | 0));
                 if (!was_blinded) await pline("You can't see in here!");
                 await make_blinded(tmp, false);
-                if (!was_blinded && !Blind()) await pline('Your vision clears.');
+                if (!was_blinded && !Blind()) await pline('Your vision quickly clears.');
             } else {
                 // C mhitu.c:1482 + potion.c incr_itimeout(&HBlinded, 1L) —
                 // TIMEOUT bits only. C HBlinded IS uprops[BLINDED].intrinsic
@@ -2721,13 +2725,14 @@ async function mhitm_ad_heal_u(mtmp, mattk, mhm) {
  * The gate (FALSE) always burns rn2(10); then hitmsg; then
  * `!negated && HFast && !rn2(4)` → u_slow_down (leftover d() kept,
  * like FAMN — the slow arm never zeroes damage).
- * C `:3660–3661` defended(mdef, AD_SLOW) early return is a named omit:
- * RNG-free (wielded slow-defending artifact, or blue dragon scales/mail
- * per artifact.c defends `:651–676`), no corpus reach.
+ * C `:3660–3661` defended(mdef, AD_SLOW) early return is live via the
+ * mondata.js export (mdef is youmonst here; RNG-free wielded artifact /
+ * blue dragon scales-mail per artifact.c defends `:651–676`).
  */
 async function mhitm_ad_slow_u(mtmp, mattk, mhm) {
     void mhm; /* leftover d() stays */
     const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
+    if (defended(game.youmonst, AD_SLOW)) return;
     await hitmsg(mtmp, mattk);
     /* C youprop.h:374 HFast = u.uprops[FAST].intrinsic; u.HFast is the
        flat mirror (attrib.js Fast idiom); either nonzero means intrinsic */
@@ -3701,7 +3706,7 @@ export async function gazemu(mtmp, mattk) {
                 await make_blinded(blnd, false);
                 await stop_occupation();
                 if (!Blind()) {
-                    await pline('Your vision clears.');
+                    await pline('Your vision quickly clears.');
                 } else {
                     const oldstun = (game.u?.HStun | 0) & TIMEOUT;
                     const newstun = rnd(3);
@@ -3812,7 +3817,7 @@ export async function explmu(mtmp, mattk, ufound) {
                 || (rnd(tmp = Math.trunc(tmp / 2)) > (u.ulevel | 0))) {
                 await pline('You are blinded by a blast of light!');
                 await make_blinded(tmp, false);
-                if (!Blind()) await pline('Your vision clears.');
+                if (!Blind()) await pline('Your vision quickly clears.');
             } else if (game.flags?.verbose !== false) {
                 await pline(
                     'You get the impression it was not terribly bright.',

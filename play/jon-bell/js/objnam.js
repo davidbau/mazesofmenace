@@ -3140,6 +3140,12 @@ export function just_an(outbuf, str) {
 // ── an (C objnam.c:2143-2154) ─────────────────────────────────────────────────
 // C: prepend the appropriate indefinite article ("a "/"an ") to str, or nothing
 // for pnames/"the ..."/uncountables.  Thin wrapper over just_an().
+const HAWAIIAN_MOTIFS_XN = [
+    'flamingo', 'parrot', 'toucan', 'bird of paradise',
+    'sea turtle', 'tropical fish', 'jellyfish', 'giant eel', 'water nymph',
+    'plumeria', 'orchid', 'hibiscus flower', 'palm tree',
+    'hula dancer', 'sailboat', 'ukulele',
+];
 export function an(str) {
     return just_an({}, str) + str;
 }
@@ -4983,6 +4989,16 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
         if (c.pluralize)
             buf = makeplural(buf);
 
+        /* C:960-994 — end-of-game disclosure text, keyed on o_id (zeroed by
+         * distant_name/minimal_xname so it is skipped there).  Only the
+         * HAWAIIAN_SHIRT arm is ported (read.c:189-221 hawaiian_motif, a
+         * private copy of js/read.js's — the shirt's o_id ^ ubirthday, RNG-free).
+         * KNOWN GAP: T_SHIRT/ALCHEMY_SMOCK " with text", CANDY_BAR " labeled". */
+        if (game.program_state?.gameover && obj.o_id && (obj.otyp | 0) === 136) {
+            const motif = (((obj.o_id | 0) ^ ((game.u?.ubirthday ?? 0) | 0)) >>> 0)
+                % HAWAIIAN_MOTIFS_XN.length;
+            buf += ` with ${an(HAWAIIAN_MOTIFS_XN[motif])} motif`;
+        }
 
         /* C:998-999 */
         if (has_oname(obj) && c.dknown) {

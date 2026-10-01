@@ -37,7 +37,7 @@ import { A_WIS, A_DEX, acurr, exercise, Fumbling } from './attrib.js';
 import { cxname, an, xname, The, the, otense, thesimpleoname, yname } from './objnam.js';
 import {
     mindless, G_UNIQ, is_flyer, is_clinger, humanoid, is_hider, nolimbs,
-    M1_SLITHY, is_mercenary, MR_SLEEP,
+    M1_SLITHY, is_mercenary, MR_SLEEP, is_mplayer,
 } from './monsters.js';
 import { dist2, mungspaces } from './hacklib.js';
 import { Monnam, mon_nam, x_monnam } from './do_name.js';
@@ -162,7 +162,7 @@ function Amonnam(mtmp) {
 }
 
 /**
- * C ref: zap.c resist — TOOL_CLASS alev=10 (instrument); tell/HP deferred.
+ * C ref: zap.c resist — TOOL_CLASS alev=10 (instrument); tell/HP arms inapplicable (callers pass 0/NOTELL); dlev mplayer arm live.
  */
 function resist(mtmp, oclass, _damage, _tell) {
     let alev;
@@ -170,7 +170,7 @@ function resist(mtmp, oclass, _damage, _tell) {
     else alev = game.u?.ulevel | 0;
     let dlev = mtmp.m_lev | 0;
     if (dlev > 50) dlev = 50;
-    else if (dlev < 1) dlev = 1;
+    else if (dlev < 1) dlev = is_mplayer(mtmp.data) ? game.u?.ulevel | 0 : 1;
     const mr = mtmp.data?.mr | 0;
     return rn2(100 + alev - dlev) < mr;
 }

@@ -300,13 +300,14 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
         if ((autounlock & AUTOUNLOCK_APPLY_KEY) !== 0)
             unlocktool = autokey(true);
         const willPrompt = unlocktool != null;
+        const _resuming = willPrompt && game.xlock && game.xlock.usedtime && (unlocktool.otyp|0) === game.xlock.picktyp;
         /* C pickup.c:2100-2103 — locked message; lknown picks "is locked" vs
          * "Hmmm, ... turns out to be locked."  Page it (cross-pline --More--)
          * only when a follow-up unlock prompt will arrive to force the page. */
         const lockedMsg = cobj.lknown
             ? `${_The(_box_xname(cobj))} is locked.`
             : `Hmmm, ${_the(_box_xname(cobj))} turns out to be locked.`;
-        if (willPrompt)
+        if (willPrompt && !_resuming)
             await pline_with_more(lockedMsg);
         else
             await pline(lockedMsg);

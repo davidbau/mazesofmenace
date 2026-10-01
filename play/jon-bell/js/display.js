@@ -9,7 +9,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { observe_object } from './o_init.js';
 import { SEE_INVIS, TELEPAT, DETECT_MONSTERS, INVIS } from './const.js';
-import { PICK_ONE, PICK_ANY } from './const.js';
+import { PICK_ONE, PICK_ANY, DEVTEAM_EMAIL } from './const.js';
 import { u_at } from './const.js';
 /* C ref: include/align.h:29-39 — altar_to_glyph's alignment-mask tests. */
 import { AM_MASK, AM_SANCTUM, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC } from './const.js';
@@ -1220,8 +1220,12 @@ export function show_shield_frame(x, y, frame) {
                     false, 0, GLYPHCLS_CMAP);
 }
 
+function _sparkle_on() {
+    return game.flags?.sparkle !== false;
+}
+
 export function shieldeff(x, y) {
-    if (!game.flags?.sparkle || !cansee(x, y))
+    if (!_sparkle_on() || !cansee(x, y))
         return;
     for (let frame = 0; frame < shield_symbols.length; ++frame) {
         show_shield_frame(x, y, frame);
@@ -1237,7 +1241,7 @@ export function shieldeff(x, y) {
 export function flash_mon(mon) {
     const x = mon.mx | 0, y = mon.my | 0;
     let count = couldsee(x, y) ? 8 : 4;
-    if (!game.flags?.sparkle)
+    if (!_sparkle_on())
         count = Math.trunc(count / 2);
     const row = game.viz_array?.[y];
     const saved = row?.[x] | 0;
@@ -1613,6 +1617,36 @@ export function map_monst(mtmp, showtail) {
  * with hero_glyph, bypassing the canspotself() test the caller already made. */
 export function display_self() {
     const u = game.u || {};
+    /* C display.h:251-261 — the U_AP_TYPE ladder inside maybe_display_usteed's
+     * otherwise_self: a hero polymorphed into a mimic who used #monster to
+     * imitate something (polyself.c:2286, domonability -> dohide) is drawn as
+     * that object / furniture / monster instead of hero_glyph. */
+    const ap = ((game.youmonst?.m_ap_type | 0) & M_AP_TYPMASK);
+    if (ap !== M_AP_NOTHING && !(u.usteed && mon_visible(u.usteed))) {
+        const app = (game.youmonst.mappearance | 0);
+        if (ap === M_AP_OBJECT) {
+            /* objnum_to_glyph(mappearance): the generic object glyph, no pile flag */
+            const og = _obj_to_glyph({ otyp: app, corpsenm: PM_TENGU_DISP, oclass: 0, dknown: 0, quan: 1 });
+            show_glyph_cell(u.ux | 0, u.uy | 0, og.ch, og.color, og.decgfx,
+                            0, og.cls, false, og.otyp, og.corpsenm);
+            return;
+        }
+        if (ap === M_AP_FURNITURE) {
+            const fg = cmap_to_glyph_disp(app);
+            if (fg) {
+                show_glyph_cell(u.ux | 0, u.uy | 0, fg.ch, fg.color, fg.dec,
+                                _glyph_attr({ ch: fg.ch, color: fg.color, decgfx: fg.dec, cls: GLYPHCLS_CMAP }),
+                                GLYPHCLS_CMAP);
+                return;
+            }
+        } else {
+            const mlet = (app >= 0 && app < MON_MLET.length) ? MON_MLET[app] : 53;
+            show_glyph_cell(u.ux | 0, u.uy | 0, DEF_MONSYM_CHARS[mlet] ?? '@',
+                (app >= 0 && app < MON_MCOLOR.length) ? MON_MCOLOR[app] : 7,
+                false, 0, GLYPHCLS_MON);
+            return;
+        }
+    }
     const hg = _maybe_display_usteed();
     show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch, hg.color, false, 0, GLYPHCLS_MON);
 }
@@ -1745,6 +1779,7 @@ export function newsym(x, y) {
         pline('newsym: attempting screen update for <' + (x | 0) + ','
               + (y | 0) + '>');
         pline('Program in disorder!  (Saving and reloading may fix this problem.)');
+        pline('Please report these messages to %s.', DEVTEAM_EMAIL);
         return;
     }
     if (game.u?.uswallow | 0) {
@@ -1817,10 +1852,8 @@ export function newsym(x, y) {
             _map_location(x, y, !see_self);
         else
             feel_location(x, y);
-        if (see_self) {
-            const hg = _maybe_display_usteed();
-            show_glyph_cell(x, y, hg.ch, hg.color, false, 0, GLYPHCLS_MON);
-        }
+        if (see_self)
+            display_self();
         return;
     }
     // C ref: display.c newsym — monster > object > terrain priority (display.c:982-1065).
@@ -2754,6 +2787,32 @@ export function capture_painted_frame() {
     if (!g || !g.level) return null;
     return { cells: _capture_painted_cells(), moves: _painted_moves() };
 }
+/* Install the map as of the last flush_screen() as the frozen frame for ONE
+ * following force_more()/--More-- render.  C ref: tty_display_nhwindow(NHW_TEXT)
+ * does no flush_screen, so the more() in update_topl (topl.c:390) shows the
+ * gbuf as of the last flush, not the live map (later movemon moves unseen).
+ * Returns a release function the caller MUST call right after that frame is
+ * emitted (restores the prior snapshot state); returns a no-op when no flush
+ * has been recorded.  DISPLAY-ONLY: no RNG, no game-state mutation.
+ * Usage (js/com_pager.js display_text_window, g._resultMessage arm, around
+ * force_more at ~471):  const release = use_last_flush_snapshot();
+ * await force_more(...); release(); */
+export function use_last_flush_snapshot() {
+    const g = game;
+    const frame = g?._lastFlushFrame;
+    if (!frame) return () => {};
+    const prevSnap = g._paintedSnapshot;
+    const prevIn = g._inMovemonMore;
+    g._paintedSnapshot = { cells: frame.cells, moves: frame.moves };
+    g._inMovemonMore = true;
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        g._paintedSnapshot = prevSnap;
+        g._inMovemonMore = prevIn;
+    };
+}
 // paint snapshot.  Shows "<msg>--More--" over the frozen OLD-level frame (old map
 // + old Dlvl), consuming the dismiss key via nhgetch (no RNG).  After dismissal
 // the snapshot is dropped so the next flush_screen/docrt renders the live (new)
@@ -3300,7 +3359,8 @@ function _statusLine2() {
     let _hp = Upolyd ? (_bu.mh | 0) : (_bu.uhp || 0);
     /* C paints the pre-reversion physical HP once when rehumanize() runs
      * inside movemon; the live value is already restored for later turns. */
-    if (game._rehumanizeDisplayPending && !Upolyd && !_bs)
+    if (game._rehumanizeDisplayPending && !Upolyd && !_bs
+        && (_bu.uhp | 0) < (_bu.uhpmax | 0))
         _hp = Math.max(0, _hp - 1);
     if (_hp < 0)
         _hp = 0;
@@ -4800,8 +4860,17 @@ export async function force_more(committed, dismissMore) {
         return 0;                          /* no page raised, so no morc */
     }
     routeTag('force_more', committed); /* telemetry only; inert when env unset */
-    g._pending_message = String(committed ?? '');
-    return await _topl_more(g._pending_message, dismissMore);
+    const _full = String(committed ?? '');
+    const _pages = _topl_more_pages(_full, _topl_joins_snapshot(_full));
+    let _morc = 0;
+    for (let i = 0; i < _pages.length; ++i) {
+        /* _topl_more_pages ends a wrapped single pline with an empty remainder
+         * (already fully shown by the page before it); it owes no more(). */
+        if (!_pages[i] && i) continue;
+        g._pending_message = _pages[i];
+        _morc = await _topl_more(_pages[i], dismissMore);
+    }
+    return _morc;
 }
 
 // C ref: win/tty/getline.c:230-257 xwaitforspace(" ") — the key loop inside
@@ -5267,6 +5336,11 @@ function _flush_screen_repaint(mode) {
      * caller has to re-assert.  See getpos()'s prologue (js/cmd.js). */
     _last_flush_forced_cursor = !!(_forcedCurs && !mode);
     _buildScreenOutput();
+    /* Record the map as of THIS flush: C's tty gbuf only changes at
+     * flush_screen, so a window raised before the next flush (e.g. a text
+     * window's more(), topl.c:390) still shows this frame.  DISPLAY-ONLY. */
+    if (game?.level)
+        game._lastFlushFrame = { cells: _capture_painted_cells(), moves: _painted_moves() };
     // Applied after _buildScreenOutput, which is this port's paint step and
     // walks the terminal cursor across every cell it writes; C's repaint loop
     // and the cursor it leaves behind are the same statement.

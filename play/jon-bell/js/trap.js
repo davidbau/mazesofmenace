@@ -1626,6 +1626,10 @@ export async function dotrap(trap, trflags) {
         /* then proceed to normal trap effect */
     } else if (!forcetrap) {
         if (floor_trigger(ttype) && check_in_air(true, trflags)) {
+            if (already_seen)
+                await You(`${_u_locomotion_stub('step')} over `
+                    + `${(ttype === ARROW_TRAP && !trap.madeby_u) ? 'an' : _a_your(trap.madeby_u)} `
+                    + `${_tr_trapname(ttype)}.`);
             return;
         }
         /* C trap.c:3034-3043: already-seen escape check.  rn2(5) only fires
@@ -1642,7 +1646,9 @@ export async function dotrap(trap, trflags) {
                 || (is_pit(ttype)
                     && (() => { const pm = _lo_hero_monst().data;
                                 return !!pm && _imm_is_clinger(pm); })()))) {
-            /* You("escape ...") — no further RNG; turn ends. */
+            /* C trap.c:3043-3046 */
+            await You(`escape ${(ttype === ARROW_TRAP && !trap.madeby_u) ? 'an' : _a_your(trap.madeby_u)} `
+                + `${_tr_trapname(ttype)}.`);
             return;
         }
     }
@@ -2929,6 +2935,11 @@ async function trapeffect_selector(mtmp, trap, trflags, isYou) {
             if (isYou)
                 return await trapeffect_web(trap, trflags);
             return trapeffect_web_mon(mtmp, trap, trflags);
+        case LANDMINE:
+            /* C trap.c:2979 -> trapeffect_landmine, hero arm. */
+            if (isYou)
+                return await trapeffect_landmine_u(trap, trflags);
+            return await trapeffect_landmine_mon(mtmp, trap, trflags);
         case ROLLING_BOULDER_TRAP:
             /* C trap.c:2971 -> trapeffect_rolling_boulder_trap.  Hero branch
              * only; the monster branch stays on the default arm (same choice
@@ -4746,6 +4757,66 @@ async function trapeffect_level_telep_mon(mtmp, trap, trflags) {
  * used by mintrap.  Mirrors the same switch but dispatches only the monster
  * branches of each leaf, which consume RNG but no async screen I/O.  Unported
  * types fall through to Trap_Effect_Finished. */
+let _recursive_mine = false;
+async function trapeffect_landmine_u(trap, trflags) {
+    const u = game.u;
+    let damage = rnd(16);
+    if (_wearing_iron_shoes(game.youmonst))
+        damage = Math.trunc((damage + 3) / 4);
+    const already_seen = !!trap.tseen;
+    const forcetrap = ((trflags & FORCETRAP) !== 0
+                       || (trflags & _FAILEDUNTRAP_BT) !== 0);
+    const forcebungle = (trflags & FORCEBUNGLE) !== 0;
+    if ((uprop_active(LEVITATION) || uprop_active(FLYING)) && !forcetrap) {
+        if (!already_seen && rn2(3))
+            return Trap_Effect_Finished;
+        _feeltrap(trap);
+        await pline(`${already_seen ? 'There is' : 'You discover'} `
+            + `${trap.madeby_u ? 'the trigger of your mine' : 'a trigger'} `
+            + 'in a pile of soil below you.');
+        if (already_seen && rn2(3))
+            return Trap_Effect_Finished;
+        await pline(`KAABLAMM!!!  ${forcebungle ? 'Your inept attempt sets'
+            : 'The air currents set'} ${already_seen ? _a_your(trap.madeby_u) : ''}`
+            + `${already_seen ? ' land mine' : 'it'} off!`);
+    } else {
+        if (_recursive_mine)
+            return Trap_Effect_Finished;
+        _feeltrap(trap);
+        await pline(`KAABLAMM!!!  You triggered ${_a_your(trap.madeby_u)} land mine!`);
+        _recursive_mine = true;
+        steedintrap(trap, null);
+        _recursive_mine = false;
+        await _set_wounded_legs(LEFT_SIDE, rn1(35, 41));
+        await _set_wounded_legs(RIGHT_SIDE, rn1(35, 41));
+        exercise(A_DEX, false);
+    }
+    /* add a pit before losehp so bones won't keep the landmine */
+    trap.ttyp = PIT;
+    trap.madeby_u = 0;
+    await losehp(Maybe_Half_Phys_lo(damage), 'land mine', KILLED_BY_AN);
+    const tx = trap.tx | 0, ty = trap.ty | 0;
+    await scatter(tx, ty, 4,
+        MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS, null);
+    del_engr_at(tx, ty);
+    wake_nearto(tx, ty, 400);
+    const liveTrap = t_at(tx, ty);
+    if (liveTrap) {
+        liveTrap.ttyp = PIT;
+        liveTrap.madeby_u = 0;
+        seetrap(liveTrap);
+    }
+    await fill_pit(tx, ty);
+    recalc_block_point(tx, ty);
+    newsym(u.ux | 0, u.uy | 0); /* update trap symbol */
+    /* fall recursively into the pit... */
+    const t2 = t_at(u.ux | 0, u.uy | 0);
+    if (t2)
+        await dotrap(t2, _RECURSIVETRAP_TR);
+    await fill_pit(u.ux | 0, u.uy | 0);
+    return Trap_Effect_Finished;
+}
+
 async function trapeffect_landmine_mon(mtmp, trap, trflags) {
     /* C trap.c:2533-2537 — rolled BEFORE the hero/monster split. */
     let damage = rnd(16);

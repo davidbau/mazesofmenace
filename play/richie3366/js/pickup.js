@@ -42,7 +42,7 @@ import {
     ysimple_name as ysimple_name_objnam,
     Ysimple_name2 as Ysimple_name2_objnam,
 } from './objnam.js';
-import { can_reach_floor } from './engrave.js';
+import { can_reach_floor, cant_reach_floor } from './engrave.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     OBJ_FREE, OBJ_CONTAINED,
@@ -1647,23 +1647,28 @@ export async function pickup_object(obj, count, telekinesis) {
  * @param {((o: object) => boolean)|null} [extraAllow] C allow_category
  *        for traditional 'm' via_menu==-3; omit/null is C allow_all;
  *        manual `,` passes C all_but_uchain / count-N n_or_more
- * @param {{ how?: number, prompt?: string, autoselect?: boolean }|null} [opts]
- *        how C PICK_ANY/PICK_ONE; autoselect is C AUTOSELECT_SINGLE
+ * @param {{ how?: number, prompt?: string, autoselect?: boolean, sortpack?: boolean, feel_cockatrice?: boolean }|null} [opts]
+ *        how C PICK_ANY/PICK_ONE; autoselect is C AUTOSELECT_SINGLE;
+ *        sortpack overrides flags.sortpack for C INVORDER_SORT (traditional
+ *        'm' via_menu gates it on selective); feel_cockatrice overrides the
+ *        PICK_ANY default for C FEEL_COCKATRICE (via_menu omits it)
  */
 async function query_objlist_pickup(objList, extraAllow = null, opts = null) {
     const how = opts?.how ?? PICK_ANY;
     const prompt = opts?.prompt ?? 'Pick up what?';
     const autoselect = !!opts?.autoselect;
     const flags = game.flags || {};
-    const doSort = flags.sortpack !== false;
+    const doSort = opts?.sortpack ?? (flags.sortpack !== false);
+    const feelCock = opts?.feel_cockatrice ?? (how === PICK_ANY);
     // C: sortflags — sortloot 'l'/'f' + !USE_INVLET → SORTLOOT_LOOT;
     // sortpack → SORTLOOT_PACK; FEEL_COCKATRICE → SORTLOOT_PETRIFY.
     // C query_objlist gates PETRIFY on qflags & FEEL_COCKATRICE, and C
     // pickup.c:774-776 sets FEEL_COCKATRICE only on the PICK_ANY arm
-    // (the count-N PICK_ONE arm at :761-772 omits it) → gate on PICK_ANY.
+    // (the count-N PICK_ONE arm at :761-772 omits it, as does the
+    // traditional 'm' via_menu call) → feelCock.
     // Floor pile is a nexthere chain.
     const sortlootOpt = flags.sortloot ?? 'l';
-    let sortflags = (how === PICK_ANY) ? SORTLOOT_PETRIFY : 0;
+    let sortflags = feelCock ? SORTLOOT_PETRIFY : 0;
     if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
     if (doSort) sortflags |= SORTLOOT_PACK;
 
@@ -1693,8 +1698,9 @@ async function query_objlist_pickup(objList, extraAllow = null, opts = null) {
         // C query_objlist `:1111–1116` — FEEL_COCKATRICE CORPSE will_feel
         // destroys the menu and reverts to look_here(0, LOOKHERE_NOFLAGS).
         // Gated on qflags & FEEL_COCKATRICE, which C pickup.c:774-776 sets
-        // only on the PICK_ANY arm (count-N PICK_ONE at :761-772 omits it).
-        if (how === PICK_ANY && (obj.otyp | 0) === CORPSE && will_feel_cockatrice(obj, false)) {
+        // only on the PICK_ANY arm (count-N PICK_ONE at :761-772 and the
+        // traditional 'm' via_menu call omit it).
+        if (feelCock && (obj.otyp | 0) === CORPSE && will_feel_cockatrice(obj, false)) {
             await look_here(0, LOOKHERE_NOFLAGS);
             return [];
         }
@@ -1894,7 +1900,10 @@ function autopick(olist, followNobj) {
  * autopickup → check_here(n_picked>0) (D-0387).
  * MENU_TRADITIONAL && !menu_requested && ct>=2: There + query_classes
  * then yn/pickup_object (D-1620). 'm' → query_objlist_pickup.
- * Deferred: none in this body — safe_qbuf truncation shipped D-1654.
+ * query_classes cancel (!via_menu) skips the shared tail (C pickupdone);
+ * via_menu query gates INVORDER_SORT on selective, FEEL_COCKATRICE unset.
+ * Named omissions: select_menu digit-count entry (whole-pile picks only —
+ * menu-machinery domain, own row).
  */
 export async function pickup(what) {
     const autopickup = what > 0;
@@ -1948,20 +1957,17 @@ export async function pickup(what) {
         }
     }
 
-    // C ref: pickup.c pickup — multi/!pickup/notake share one gate so
-    // notake still plines under autopickup when flags.pickup is off
-    // (poly brown mold onto loot; D-0928 #1127).
+    /* C pickup multi/!pickup/notake gate — check_here + notake pline,
+     * then return, so notake still plines
+     * under autopickup when flags.pickup is off (poly brown mold onto
+     * loot; D-0928 #1127). C never nomuls here: the stop-running arm
+     * below runs only when this gate is false. */
     if (!u.uswallow) {
         const youdata = game.youmonst?.data;
         const nt = notake(youdata);
         if (((game.multi | 0) && !game.context?.run)
             || (autopickup && !game.flags?.pickup)
             || nt) {
-            if (objects_at(u.ux, u.uy)
-                && game.context?.run && game.context.run !== 8
-                && !game.context?.nopick) {
-                nomul(0);
-            }
             await check_here(false);
             if (nt && objects_at(u.ux, u.uy)
                 && (autopickup || game.flags?.pickup)) {
@@ -1983,9 +1989,11 @@ export async function pickup(what) {
     // C pickup.c:740 add_valid_menu_class(0) before menu vs traditional.
     add_valid_menu_class(0);
     /* C: n_tried counts attempts (menu items), n_picked accumulates
-     * pickup_object results; every arm falls through to the shared tail. */
+     * pickup_object results; every arm falls through to the shared tail
+     * except the traditional query_classes cancel (C goto pickupdone). */
     let n_tried = 0;
     let n_picked = 0;
+    let tail_cancelled = false;
     try {
         /* C pickup.c:741-747 — floor pile via nexthere (BY_NEXTHERE) or
          * engulfer minvent via nobj (traverse_how 0, C FOLLOW). Manual `,`
@@ -2019,6 +2027,9 @@ export async function pickup(what) {
                     objList[0] || null, count, followNobj);
                 n_tried = tr.tried;
                 n_picked = tr.picked;
+                // C: query_classes cancel (!via_menu) jumps to pickupdone,
+                // skipping the hideunder/newsym/check_here tail below.
+                if (tr.cancelled) tail_cancelled = true;
             } else if (count > 0) {
                 /* C pickup.c:761-772 — "Pick N of what?" PICK_ONE with
                  * n_or_more (AUTOSELECT_SINGLE still applies, so one
@@ -2067,8 +2078,10 @@ export async function pickup(what) {
         }
     } finally {
         /* C pickup.c:893-903 — hideunder / newsym_force for every path,
-         * check_here only after autopickup; then the pickupdone reset. */
-        if (!u.uswallow) {
+         * check_here only after autopickup; then the pickupdone reset.
+         * Traditional query_classes cancel jumps straight to pickupdone
+         * (C goto), skipping the hideunder/newsym/check_here tail. */
+        if (!u.uswallow && !tail_cancelled) {
             if (hides_under(game.youmonst?.data)) {
                 hideunder(game.youmonst);
             }
@@ -2505,25 +2518,39 @@ function Levitation_pe() {
  * nested containers / empty pline beyond reportempty=false;
  * sortloot subclass/disco/BUCX. Disclose live-cat line is end.c.
  */
+/**
+ * C ref: end.c container_contents `:1593–1670` as called from use_container
+ * ':' (identified FALSE, all_containers FALSE, reportempty TRUE): single
+ * box; cknown set on look; an empty box plines upstart(thesimpleoname) +
+ * " is empty." instead of a menu; the contents menu lists
+ * doname_with_price (C `:1647`); a live cat hides the corpse.
+ * update_inventory on new cknown deferred like js/end.js (display-only).
+ * BoT skip is out of this call shape (BoT never reaches use_container:
+ * apply routes it to bagotricks, doloot intercepts it).
+ */
 async function container_contents(box) {
     if (!box) return;
-    box.cknown = 1;
+    box.cknown = 1; /* we're looking at the contents now */
+    if (!box.cobj) {
+        // C reportempty arm — pline, no menu.
+        await pline(`${upstart(thesimpleoname_objnam(box))} is empty.`);
+        return;
+    }
     const lines = [`Contents of ${theArt(xname(box))}:`, ''];
-    if (box.cobj) {
-        if (SchroedingersBox(box)) {
-            // C end.c: spe still 1 → live cat; pretend the corpse is not there
-            lines.push("  Schroedinger's cat!");
-        } else {
-            // C: flags.sortloot 'l'/'f' → SORTLOOT_LOOT; sortpack → SORTLOOT_PACK
-            const flags = game.flags || {};
-            const sortlootOpt = flags.sortloot ?? 'l';
-            let sortflags = 0;
-            if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
-            if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
-            const sorted = sortloot(box.cobj, sortflags, false);
-            for (const srtc of sorted) {
-                lines.push(`  ${doname(srtc.obj)}`);
-            }
+    if (SchroedingersBox(box)) {
+        // C end.c: spe still 1 → live cat; pretend the corpse is not there
+        lines.push("  Schroedinger's cat!");
+    } else {
+        // C: flags.sortloot 'l'/'f' → SORTLOOT_LOOT; sortpack → SORTLOOT_PACK
+        const flags = game.flags || {};
+        const sortlootOpt = flags.sortloot ?? 'l';
+        let sortflags = 0;
+        if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
+        if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
+        const sorted = sortloot(box.cobj, sortflags, false);
+        for (const srtc of sorted) {
+            // C end.c:1647 — doname_with_price (unpaid shop goods).
+            lines.push(`  ${doname_with_price(srtc.obj)}`);
         }
     }
     await show_nhw_menu_text(lines);
@@ -3605,12 +3632,13 @@ async function query_classes(action, objs, here, menu_on_demand) {
 /**
  * C pickup.c pickup traditional `:793–891`.
  * MENU_TRADITIONAL && !menu_requested && ct>=2: There + query_classes
- * then live nexthere yn/pickup_object. ESC → pickupdone. 'm' →
- * query_objlist_pickup (allow_all if via_menu==-2 else allow_category).
- * ynaq/ynNaq default 'y'. Named: safe_qbuf (doname); via_menu
- * FEEL_COCKATRICE from query_objlist_pickup; INVORDER_SORT uses
- * existing sortpack. Returns {tried, picked} for the pickup() shared tail
- * (C n_tried / n_picked: ct==1&&count only counts picked when res > 0).
+ * then live nexthere yn/pickup_object. ESC → pickupdone (cancelled: the
+ * shared tail is skipped, only the pickupdone reset runs). 'm' →
+ * query_objlist_pickup (allow_all if via_menu==-2 else allow_category;
+ * INVORDER_SORT iff selective, FEEL_COCKATRICE unset per C).
+ * ynaq/ynNaq default 'y' (hack.h:1331/1334). Returns
+ * {tried, picked, cancelled} for the pickup() shared tail (C n_tried /
+ * n_picked: ct==1&&count only counts picked when res > 0).
  */
 async function pickup_traditional_floor(head, count, followNobj = false) {
     let n_tried = 0;
@@ -3640,11 +3668,17 @@ async function pickup_traditional_floor(head, count, followNobj = false) {
         const via_menu = { n: 0 };
         const q = await query_classes('pick up', head, !followNobj, via_menu);
         if (!q.ok) {
-            if (!via_menu.n) return { tried: 0, picked: 0 };
+            /* C: !via_menu jumps to pickupdone — the shared tail below is
+             * skipped (cancelled), only the pickupdone reset still runs. */
+            if (!via_menu.n) return { tried: 0, picked: 0, cancelled: true };
             const pile = [];
             for (let o = head; o; o = next(o)) pile.push(o);
             const extraAllow = via_menu.n === -2 ? null : allow_category;
-            const pickList = await query_objlist_pickup(pile, extraAllow);
+            /* C traditional via_menu arm — INVORDER_SORT iff selective
+             * (one_at_a_time), FEEL_COCKATRICE unset (unlike the menu
+             * PICK_ANY arm); AUTOSELECT_SINGLE unset (traditional branch). */
+            const pickList = await query_objlist_pickup(pile, extraAllow,
+                { sortpack: !!q.one_at_a_time, feel_cockatrice: false });
             if (!pickList.length) return { tried: 0, picked: 0 };
             reset_justpicked(game.invent);
             n_tried = pickList.length;
@@ -3929,16 +3963,19 @@ async function traditional_loot(put_in) {
 
 /**
  * C ref: pickup.c use_container — held/floor container loot.
- * Branch envelope: u_handsy; unlocked; MENU_FULL/PARTIAL in_or_out_menu
- * (lootabc); TRADITIONAL/COMBINATION yn_function (D-1567); ':' look;
- * '?' explain_container_prompt; 'o' take-out; 'i' put-in; 'b' out then
- * in; 'r' in then out (loot_in_first); 's' stash ALLOWCNT (D-1561);
- * 'q' abort_looting; 'n' next container (more_containers, D-1592);
+ * Branch envelope: u_handsy; unlocked; otrapped chest_trap (held announce,
+ * turn cost); cursed-mbag boh_loss + owe + re-weigh; MENU_FULL/PARTIAL
+ * in_or_out_menu (lootabc); TRADITIONAL/COMBINATION yn_function (D-1567);
+ * ':' look (reportempty pline, doname_with_price); '?'
+ * explain_container_prompt; 'o' take-out; 'i' put-in; 'b' out then in;
+ * 'r' in then out (loot_in_first); 's' stash ALLOWCNT (D-1561); 'q'
+ * abort_looting; 'n' next container (more_containers, D-1592);
  * MENU_TRADITIONAL traditional_loot + askchain (D-1581).
  * Floor TRADITIONAL query_classes is D-1620.
  * ggetobj takeoff/identify askchain is D-1602.
  * ggetobj drop / doddrop is D-1635.
- * Named omissions: chest trap; BoT; mbag explosion body.
+ * Named omissions: *objp writeback (JS takes obj by value; both JS callers
+ * consume the return + abort_looting only — apply sacks, doloot_core).
  *
  * @param {object} obj container
  * @param {boolean} [held=false] applied from invent
@@ -3969,6 +4006,19 @@ export async function use_container(obj, held = false, more_containers = false) 
         await pline(`${Tobjnam(obj, 'are')} locked.`);
         if (held) await pline('You must put it down to unlock.');
         return ECMD_OK;
+    } else if (obj.otrapped) {
+        /* C use_container otrapped arm — held announces the opening, the
+         * trap fires, and the turn is spent even when the trap is a dud
+         * (multi>=0: nomul(-1) + multi_reason + empty nomovemsg). */
+        if (held) await You(`open ${theArt(xname(obj))}...`);
+        await chest_trap(obj, HAND, false);
+        if ((game.multi | 0) >= 0) {
+            nomul(-1);
+            game.multi_reason = 'opening a container';
+            game.nomovemsg = '';
+        }
+        game.abort_looting = true;
+        return ECMD_TIME;
     }
 
     game._current_container = obj;
@@ -3979,15 +4029,25 @@ export async function use_container(obj, held = false, more_containers = false) 
         await observe_quantum_cat(obj, true, true);
         used = ECMD_TIME;
     }
+    /* C use_container cursed-mbag arm — the loss roll runs before
+     * inokay/outokay, so a bag emptied here preformats emptymsg with
+     * "now " below. Short-circuit: boh_loss only on a cursed mbag. */
+    const cursed_mbag = Is_mbag(obj) && !!obj.cursed && Has_contents(obj);
+    const mbag_loss = cursed_mbag ? await boh_loss(obj, held) : 0;
+    if (mbag_loss !== 0) {
+        used = ECMD_TIME;
+        await You(`owe ${mbag_loss} ${currency(mbag_loss)} for lost merchandise.`);
+        obj.owt = weight(obj);
+    }
     let inokay = (game.invent || []).some((o) => o && o !== obj);
     // C: outokay = Has_contents; outmaybe = outokay || !cknown
     const outokay = Has_contents(obj);
     // C: preformat emptymsg when !outokay — Ysimple_name2 + "now " after
-    // quantum_cat (cursed_mbag "now " still named).
+    // quantum_cat or cursed_mbag.
     let emptymsg = '';
     if (!outokay) {
         // C pickup.c:3043–3046 — Ysimple_name2 (known sack → "Your sack").
-        emptymsg = `${Ysimple_name2_objnam(obj)} is ${quantum_cat ? 'now ' : ''}empty.`;
+        emptymsg = `${Ysimple_name2_objnam(obj)} is ${(quantum_cat || cursed_mbag) ? 'now ' : ''}empty.`;
     }
     // C default MENU_FULL (options.c). Unset JS flags must not fall
     // through to TRADITIONAL (0) yn_function — that would break FULL
@@ -4115,8 +4175,12 @@ export async function use_container(obj, held = false, more_containers = false) 
     // C pickup.c:3219 — sellobj_state(SELL_NORMAL) in case in_container()
     // set DELIBERATE/DONTSELL on a shop-floor put-in.
     sellobj_state(SELL_NORMAL);
-    game._current_container = null;
-    void held;
+    /* C: *objp = current_container (might have become null) — JS takes
+     * obj by value (named omission; both JS callers consume the return +
+     * abort_looting only: apply sacks, doloot_core). A null container
+     * here means the mbag explosion took it: abort looting. */
+    if (game._current_container) game._current_container = null;
+    else game.abort_looting = true;
     return used;
 }
 
@@ -4299,7 +4363,10 @@ async function loot_floor_containers(x, y) {
         return { timepassed, c: pick.n !== 0 ? 'y' : -1 };
     }
     let anyfound = false;
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
+    // C `:2283–2285` — cache nexthere before do_loot_cont (a chest trap
+    // or mbag blast may destroy cobj).
+    for (let o = objects_at(x, y), nobj = null; o; o = nobj) {
+        nobj = o.nexthere;
         if (!Is_container(o)) continue;
         anyfound = true;
         timepassed |= await do_loot_cont(o, 1, 1);
@@ -4657,9 +4724,9 @@ function check_capacity(str) {
 }
 
 /**
- * C ref: pickup.c able_to_loot — tip/loot reachability gates.
- * Named omissions: usteed rider_cant_reach; Underwater tip carve-out
- * (`looting || !Underwater`). The pool/lava noun is hliquid.
+ * C ref: pickup.c able_to_loot `:2041–2069` — tip/loot reachability gates.
+ * rider_cant_reach / cant_reach_floor / nolimbs are the live exports
+ * (steed.js, engrave.js, monsters.js); freehand is the in-file clone.
  * @param {number} x
  * @param {number} y
  * @param {boolean} looting true=loot, false=tip
@@ -4667,11 +4734,18 @@ function check_capacity(str) {
 async function able_to_loot(x, y, looting) {
     const verb = looting ? 'loot' : 'tip';
     const t = t_at(x, y);
-    if (!can_reach_floor(!!(t && is_pit(t.ttyp)))) {
-        await pline(`You can't reach the floor.`);
+    if (!can_reach_floor(!!(t && is_pit(t.ttyp)))) { // C `:2050`
+        // C `:2051–2055` — usteed without Basic riding can't reach.
+        if (game.u?.usteed && P_SKILL(P_RIDING) < P_BASIC) {
+            await rider_cant_reach();
+        } else {
+            await cant_reach_floor(x, y, false, true, false);
+        }
         return false;
     }
-    if ((is_pool(x, y) && looting) || is_lava(x, y)) {
+    // C `:2056–2061` — can't loot in water even when Underwater; tip is
+    // allowed underwater, but never over lava. Underwater ≡ u.uinwater.
+    if ((is_pool(x, y) && (looting || !game.u?.uinwater)) || is_lava(x, y)) {
         await pline(
             `You cannot ${verb} things that are deep in the ${
                 hliquid(is_lava(x, y) ? 'lava' : 'water')
@@ -4679,16 +4753,11 @@ async function able_to_loot(x, y, looting) {
         );
         return false;
     }
-    try {
-        const md = await import('./mondata.js');
-        if (md.nolimbs?.(game.youmonst?.data)) {
-            await pline(`Without limbs, you cannot ${verb} anything.`);
-            return false;
-        }
-    } catch {
-        /* mondata optional */
+    if (nolimbs(game.youmonst?.data)) { // C `:2062–2064`
+        await pline(`Without limbs, you cannot ${verb} anything.`);
+        return false;
     }
-    if (looting && !freehand()) {
+    if (looting && !freehand()) { // C `:2065–2068`
         await pline(
             `Without a free ${body_part_latebound(HAND)}, you cannot loot anything.`,
         );

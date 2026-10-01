@@ -40,7 +40,7 @@ import { goodpos as goodpos_tp } from './trap.js';
 import { mon_nam } from './uhitm.js';
 import { noteleport_level, m_in_air, permonstTemplate, Inhell } from './makemon.js';
 import { mon_aligntyp, inhistemple as inhistemple_real } from './priest.js';
-import { remove_worm as remove_worm_real, place_worm_tail_randomly as place_worm_tail_randomly_real } from './worm.js';
+import { worm_seg_at, remove_worm as remove_worm_real, place_worm_tail_randomly as place_worm_tail_randomly_real } from './worm.js';
 import { t_at, mintrap, fill_pit, seetrap, clamp_hole_destination,
          buried_ball_to_punishment } from './trap.js';
 /* ── imports for mlevel_tele_trap / teleport_pet (below) ── */
@@ -177,7 +177,9 @@ function mon_at(x, y) {
         if (m.mx === x && m.my === y)
             return m;
     }
-    return null;
+    /* C's grid also holds long-worm TAIL segments (rm.h:533 place_worm_seg);
+     * they are not fmon entries, so look them up separately. */
+    return worm_seg_at(x, y);
 }
 /* C ref: teleport.c:86-185 goodpos (simplified for enexto_core / monster placement).
  * Checks used with NO_MM_FLAGS / GP_CHECKSCARY for new monster placement:
@@ -248,7 +250,7 @@ function MON_AT(x, y) {
         if (m.mx === x && m.my === y)
             return m;
     }
-    return null;
+    return worm_seg_at(x, y); /* rm.h:533 tail segments live in the grid */
 }
 export function teleok(x, y, trapok) {
     if (!trapok) {

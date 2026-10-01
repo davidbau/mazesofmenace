@@ -119,7 +119,7 @@ import { obj_resists, make_blinded } from './zap.js';
 import { Monnam } from './mcastu.js';
 import { mon_nam } from './uhitm.js';
 import { s_suffix } from './mhitm.js';
-import { objName } from './objnam.js';
+import { objName, Japanese_item_name } from './objnam.js';
 import { mondied } from './makemon.js';
 
 import { PM_FIRE_ELEMENTAL, PM_RUST_MONSTER, PM_GHOUL, PM_GELATINOUS_CUBE, PM_STALKER, PM_FLESH_GOLEM, PM_LEATHER_GOLEM, PM_ACID_BLOB } from './pm.generated.js';
@@ -928,7 +928,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
         }
         return M_ATTK_MISS;
     } else if (magr_is_you) {
-        _emit_eat_pline("You eat " + s_suffix(mon_nam(mdef)) + " brain!");
+        await pline("You eat " + s_suffix(mon_nam(mdef)) + " brain!");
     } else if (mdef_is_you) {
         /* C eat.c:627 emits this directly from mhitm_ad_drin(), after its
          * hitmsg().  Keep it on the same live pline stream so the two
@@ -1449,9 +1449,24 @@ function _emit_eat_pline(msg) {
     if (typeof msg === 'string' && /^This .* corpse (?:tastes|is) /.test(msg)) {
         game._eatPreEffectFrame = capture_painted_frame_with_status();
     }
-    game._resultMessage = game._resultMessage
-        ? game._resultMessage + '  ' + msg
-        : msg;
+    const prev = game._resultMessage;
+    if (!prev) {
+        game._resultMessage = msg;
+        return;
+    }
+    /* Each pline is its own update_topl call (topl.c:257-301): record the join
+     * so a later breach of the CO-1-8 reserve pages at the right boundary
+     * ("tastes terrible!  You finish eating X." fits; the cpostfx line after
+     * it does not) instead of at the first "  " seen. */
+    const stored = game._resultMessageJoins;
+    const prevJoins = (stored?.src === prev && Array.isArray(stored.joins))
+        ? stored.joins.slice() : (_topl_joins_snapshot(prev) || undefined);
+    const merged = _topl_merge_result(prev, msg, prevJoins);
+    game._resultMessage = merged;
+    game._resultMessageJoins = {
+        src: merged,
+        joins: (_topl_joins_snapshot(merged) || []).slice(),
+    };
 }
 
 /* C objclass.h enum obj_material_types — only the two values is_rottable reads. */
@@ -2060,7 +2075,10 @@ function _food_xname(otmp, the_pfx) {
         const mname = _monNameLower(otmp.corpsenm | 0);
         return `${the_pfx ? 'the ' : ''}${mname} corpse`;
     }
-    const nm = objName(otmp.otyp | 0) || 'food';
+    /* C objnam.c xname_flags: Role_if(PM_SAMURAI) && Japanese_item_name(typ)
+     * replaces actualn (FOOD_RATION -> "gunyoki"). roles[] index 9 = Samurai. */
+    const jn = _eat_Role_if(9) ? Japanese_item_name(otmp.otyp | 0) : null;
+    const nm = jn || objName(otmp.otyp | 0) || 'food';
     return the_pfx ? `the ${nm}` : nm;
 }
 function _monNameLower(m) {

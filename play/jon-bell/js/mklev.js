@@ -2748,6 +2748,7 @@ async function shkinit(shp, shpIndx, sroom) {
     shk.msleeping = 0;
     /* C: eshkp->shoproom, shoptype, shoplevel, shd, shk.x/y, etc. */
     eshkp.shoproom = rmno;
+    eshkp.shoplevel = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
     eshkp.shoptype = sroom.rtype;
     eshkp.shd = doors[sh] ? { x: doors[sh].x, y: doors[sh].y } : { x: 0, y: 0 };
     eshkp.shk_x = sx;
@@ -5530,6 +5531,7 @@ export function valid_vampshiftform(base, form) {
 }
 /** Export mksobj/mkobj for use by fastforward.js ini_inv_rng (u_init.c::ini_inv). */
 export { mksobj, mkobj, mksobj_at, place_object };
+export { mk_artifact };
 export { dig_corridor };
 export { sobj_at, next_ident };
 /** Export wipe_engr_at for dochug monster-move engraving wipe (monmove.c:755). */
@@ -10975,6 +10977,10 @@ async function level_finalize_topology() {
     /* C ref: mklev.c level_finalize_topology — mineralize(-1,-1,-1,-1,FALSE) */
     await mineralize(-1, -1, -1, -1, false);
     game.in_mklev = false;
+    /* C mklev.c:1552-1555 — xstart/ystart aren't saved with the level and
+     * would throw off coordinates in later lua-loads: gx.xstart = gy.ystart = 0 */
+    if (game.gx) game.gx.xstart = 0;
+    if (game.gy) game.gy.ystart = 0;
     /* C mklev.c:1564-1568.  A morgue is an event-level marker which is
      * cleared once entered, whereas graveyard persists to reduce undead
      * corpse drops.  Finalization promotes the former to the latter after

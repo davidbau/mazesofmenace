@@ -48,7 +48,7 @@ import {
     ART_VORPAL_BLADE,
 } from './generated/artifacts_data.js';
 import { m_at, wake_nearby } from './mon.js';
-import { revive } from './zap.js';
+import { revive, shieldeff_mon } from './zap.js';
 import {
     A_WIS, A_STR, A_CON, A_MAX, change_luck, adjattrib, adjalign, exercise,
     ALIGNLIM, uchangealign,
@@ -95,7 +95,7 @@ import {
     nohands, throws_rocks, eyecount,
     is_unicorn, your_race, mons,
     MR_ELEC, MR_DISINT,
-    monsterNames,
+    monsterNames, is_mplayer,
 } from './monsters.js';
 import {
     PM_KNIGHT,
@@ -2847,13 +2847,13 @@ function mdistu(mtmp) {
 
 /**
  * C ref: zap.c resist — oclass '\0' → alev = ulevel (doturn uses this).
- * Named omission: TELL/NOTELL shield pline polish (RNG-identical).
+ * TELL shield fires at the turn-undead call site; dlev mplayer arm live.
  */
 function resist(mtmp, _oclass, _damage, _tell) {
     const alev = game.u?.ulevel | 0;
     let dlev = mtmp.m_lev | 0;
     if (dlev > 50) dlev = 50;
-    else if (dlev < 1) dlev = 1;
+    else if (dlev < 1) dlev = is_mplayer(mtmp.data) ? game.u?.ulevel | 0 : 1;
     const mr = mtmp.data?.mr | 0;
     return rn2(100 + alev - dlev) < mr;
 }
@@ -2893,7 +2893,11 @@ async function maybe_turn_mon_iter(mtmp, turn_undead_range, msgCnt) {
         mtmp.mcanmove = 1;
         return;
     }
-    if (resist(mtmp, '\0', 0, TELL)) return;
+    if (resist(mtmp, '\0', 0, TELL)) {
+        /* C zap.c:6143-6144 — TELL shield lives inside resist(). */
+        await shieldeff_mon(mtmp);
+        return;
+    }
 
     let xlev = 6;
     const mlet = data?.mlet;

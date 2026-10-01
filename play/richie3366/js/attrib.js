@@ -34,11 +34,15 @@ import {
     STONE_RES,
     INFRAVISION,
     SEE_INVIS,
+    INVIS,
+    CLAIRVOYANT,
     WARNING,
     FUMBLING,
     TIMEOUT,
     STRANGLED,
     W_ARMF,
+    W_ARMC,
+    W_ARMH,
     KILLED_BY,
     KILLED_BY_AN,
     POISONING,
@@ -1214,19 +1218,37 @@ export function is_innate(propidx) {
  * C ref: attrib.c from_what — wizard-mode intrinsic source suffix.
  * Ported: innate reasons; FAST+Very_fast known speed-boots / worn-
  * equipment arms; what_gives extrinsic worn/artifact; " pair of " strip;
- * negative BLINDED Eyes-of-the-Overworld arm.
- * Named omissions: birth blind/deaf; Blindfolded_only / cream;
- * negative INVIS (mummy wrapping) / CLAIRVOYANT (cornuthaum) blocking.
+ * negative BLINDED Eyes-of-the-Overworld / INVIS mummy-wrapping /
+ * CLAIRVOYANT cornuthaum arms (D-3208).
+ * Named omissions: birth blind/deaf; Blindfolded_only / cream.
  */
 export function from_what(propidx) {
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
     if (!wizard) return '';
     if (propidx < 0) {
-        // C attrib.c from_what negative arm: wearing the Eyes of the
-        // Overworld overrides blindness (insight.c:1564–1566 you_can arm).
+        // C attrib.c:977–997 switch (-propidx), in C order. Blocked masks
+        // read the JS dual store (flat B-mirror OR uprops[].blocked —
+        // apply_w_blocks writes both; readers in do_wear.js/invent.js OR
+        // them too); the tested slot bit is C-exact.
         if (-propidx === BLINDED && (game.u?.BBlinded | 0)
             && is_art(game.u?.ublindf, ART_EYES_OF_THE_OVERWORLD)) {
+            // Eyes of the Overworld override blindness
+            // (insight.c:1564–1566 you_can arm).
             return ` because of ${bare_artifactname(game.u.ublindf)}`;
+        }
+        if (-propidx === INVIS
+            && ((((game.u?.BInvis | 0)
+                | (game.u?.uprops?.[INVIS]?.blocked | 0)) & W_ARMC) !== 0)) {
+            // Mummy wrapping blocks invisibility
+            // (insight.c:1666 "visible" arm).
+            return ` because of ${ysimple_name(game.u.uarmc)}`;
+        }
+        if (-propidx === CLAIRVOYANT && wizard
+            && ((((game.u?.BClairvoyant | 0)
+                | (game.u?.uprops?.[CLAIRVOYANT]?.blocked | 0)) & W_ARMH) !== 0)) {
+            // Cornuthaum blocks clairvoyance
+            // (insight.c:1617 "if not for" arm).
+            return ` because of ${ysimple_name(game.u.uarmh)}`;
         }
         return '';
     }

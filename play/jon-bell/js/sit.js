@@ -29,7 +29,7 @@ import { game } from './gstate.js';
 import { block_point, unblock_point } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, G_GENOD, LOW_PM } from './const.js';
-import { NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON } from './pm.generated.js';
+import { NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST } from './pm.generated.js';
 
 function _hero_resists(prop) {
     const p = game.u?.uprops?.[prop];
@@ -38,7 +38,7 @@ function _hero_resists(prop) {
 /* make_confused's C home is potion.c:88; the file-local copy below it replaced
  * was an empty body, so neither throne arm could confuse the hero. */
 import { make_confused, make_glib, make_sick } from './potion.js';
-import { mkclass, mkclassAligned, newmextra, name_to_mon, permonstTemplate, is_ndemon } from './makemon.js';
+import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon } from './makemon.js';
 import { pline, canspotmon, map_background, newsym, newsym_force, see_monsters } from './display.js';
 import { identify_pack, do_mapping } from './read.js';
 /* rndcurse()'s leaves, each from the file that holds its one real body.  The
@@ -50,7 +50,7 @@ import { identify_pack, do_mapping } from './read.js';
 /* C sit.c:582 uses You()->pline immediately; the deferred eat.js You()
  * leaves the aura in _resultMessage and paints it on a later frame. */
 import { You as You_rc } from './do_wear.js';
-import { Tobjnam as Tobjnam_rc, Yobjnam2 } from './objnam.js';
+import { Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, quest_info } from './objnam.js';
 import { curse, unbless } from './mkobj.js';
 import { spec_ability, adjattrib, change_luck } from './attrib.js';
 import { hcolor } from './mhitm.js';
@@ -64,7 +64,7 @@ import { makewish } from './wizcmds.js';
 import { getlin } from './wizcmds.js';
 /* makemon's C home is makemon.c:1338; the real port lives in js/mklev.js
  * (NOT js/makemon.js — that file only has makemonDomesticSaddle). */
-import { makemon, courtmon as courtmon_real, kill_genocided_monsters } from './mklev.js';
+import { makemon, courtmon as courtmon_real, kill_genocided_monsters, upstart } from './mklev.js';
 import { heal_legs as heal_legs_real } from './cmd.js';
 /* polyself's C home is polyself.c:1306. */
 import { polyself } from './polyself.js';
@@ -147,6 +147,97 @@ function take_gold() {
 /* makewish: LOCAL EMPTY STUB DELETED — see import above. */
 /* makemon: LOCAL EMPTY STUB DELETED — see import above. */
 
+export async function do_class_genocide() {
+    const G_GENO = 0x20, G_NOCORPSE = 0x10, G_UNIQ = 0x1000;
+    const MS_LEADER = 36, MS_NEMESIS = 37, MS_GUARDIAN = 38;
+    const mvitals = (game.mvitals ||= []);
+    const vit = (i) => (mvitals[i] ||= { born: 0, died: 0, mvflags: 0 });
+    const roleM = game.urole?.mnum | 0, raceM = game.urace?.mnum | 0;
+    let gameover = false;
+    for (let j = 0; ; j++) {
+        if (j >= 5) {
+            await pline("That's enough tries!");
+            return;
+        }
+        let prompt = 'What class of monsters do you want to genocide?';
+        if (j > 0)
+            prompt += game.iflags?.cmdassist === false
+                ? " [enter '?' to see previous genocides]"
+                : " [enter the symbol or name representing a class, or '?']";
+        let buf = String(await getlin(prompt));
+        buf = buf.replace(/\s+/g, ' ').trim();
+        if (!buf) {
+            await pline('%s.', (j + 1 < 5)
+                ? 'Type letter (or punctuation) or name used for a class of monsters or \'none\''
+                : 'No class of monsters specified');
+            continue;
+        }
+        if (buf[0] === '\x1b' || /^(?:'?none'?|nothing)$/i.test(buf)) return;
+        let cls = name_to_monclass(buf, null);
+        cls = (cls && typeof cls === 'object') ? (cls.mclass ?? cls.class ?? 0) : (cls | 0);
+        let i;
+        if (cls === 0 && (i = name_to_mon(buf, -1)?.mntmp ?? NON_PM) !== NON_PM)
+            cls = permonstTemplate(i).mlet;
+        let immunecnt = 0, gonecnt = 0, goodcnt = 0;
+        for (i = LOW_PM; i < NUMMONS; i++) {
+            const t = permonstTemplate(i);
+            if (t.mlet === cls) {
+                if (!(t.geno & G_GENO)) immunecnt++;
+                else if (vit(i).mvflags & G_GENOD) gonecnt++;
+                else goodcnt++;
+            }
+        }
+        if (!goodcnt && cls !== permonstTemplate(roleM)?.mlet
+            && cls !== permonstTemplate(raceM)?.mlet) {
+            if (gonecnt) await pline('All such monsters are already nonexistent.');
+            else if (immunecnt || cls === 0 /* S_invisible placeholder */)
+                await You("aren't permitted to genocide such monsters.");
+            else
+                await pline('That %s does not represent any monster.',
+                    buf.length === 1 ? 'symbol' : 'response');
+            continue;
+        }
+        for (i = LOW_PM; i < NUMMONS; i++) {
+            const t = permonstTemplate(i);
+            if (t.mlet !== cls) continue;
+            const nam = makeplural(t.pmnames[2]);
+            if (i === roleM || i === raceM
+                || ((t.geno & G_GENO) && !(vit(i).mvflags & G_GENOD))) {
+                vit(i).mvflags |= (G_GENOD | G_NOCORPSE);
+                await kill_genocided_monsters();
+                update_inventory();
+                await pline('Wiped out all %s.', nam);
+                if (i === roleM || i === raceM) {
+                    game.u.uhp = -1;
+                    if (!game.u.upolyd) {
+                        await pline('You die.');
+                        gameover = true;
+                    }
+                }
+            } else if (vit(i).mvflags & G_GENOD) {
+                if (!gameover) await pline('%s are already nonexistent.', upstart(nam));
+            } else if (!gameover) {
+                const snd = t.msound;
+                if ((snd !== MS_LEADER || quest_info(MS_LEADER) === i)
+                    && (snd !== MS_NEMESIS || quest_info(MS_NEMESIS) === i)
+                    && (snd !== MS_GUARDIAN || quest_info(MS_GUARDIAN) === i)
+                    && (i !== PM_NINJA || game.urole?.mnum === PM_SAMURAI)) {
+                    const named = /^[A-Z]/.test(t.pmnames[2]);
+                    const uniq = !!(t.geno & G_UNIQ);
+                    await You("aren't permitted to genocide %s%s.",
+                        (uniq && !named) ? 'the ' : '',
+                        (uniq || named) ? t.pmnames[2] : nam);
+                }
+            }
+        }
+        if (gameover || game.u.uhp === -1) {
+            game.__bridge__ ||= {};
+            game.__bridge__['killer.name'] = 'scroll of genocide';
+        }
+        return;
+    }
+}
+
 /* C read.c:2826 do_genocide().  The class menu is a separate C helper; this
  * covers the ordinary type-selection path used by scrolls and thrones. */
 export async function do_genocide(flags = 1) {
@@ -189,7 +280,24 @@ export async function do_genocide(flags = 1) {
         || (current != null && selected === (current | 0) && game.u?.unchanging);
     const vital = game.mvitals[selected] ||= { born: 0, died: 0, mvflags: 0 };
     vital.mvflags |= G_GENOD | 0x10; /* G_NOCORPSE */
-    await pline('Wiped out all %s.', data?.pmnames?.[2] || 'such monsters');
+    /* C read.c:2936-2966: which/buf selection, then makeplural unless the
+     * prefix starts with 'a' ("all "). */
+    let which = 'all ';
+    let buf;
+    if ((game.u?.uprops?.[HALLUC]?.intrinsic | 0) && !_hero_resists(HALLUC_RES)) {
+        if (Upolyd(game.u)) {
+            buf = data?.pmnames?.[game.flags?.female ? 1 : 0] || data?.pmnames?.[2];
+        } else {
+            const nm = game.urole?.name;
+            buf = (game.flags?.female && nm?.f) ? nm.f : nm?.m;
+            buf = buf ? buf.charAt(0).toLowerCase() + buf.slice(1) : buf;
+        }
+    } else {
+        buf = data?.pmnames?.[2] || 'such monsters';
+        if ((data.geno & 0x1000) && selected !== PM_HIGH_PRIEST)
+            which = !((data.mflags2 >>> 0) & 0x00080000) ? 'the ' : '';
+    }
+    await pline('Wiped out %s%s.', which, (which.charAt(0) !== 'a') ? buf : makeplural(buf));
     await kill_genocided_monsters();
     update_inventory();
     if (killPlayer) {

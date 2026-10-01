@@ -2686,13 +2686,13 @@ export function learnwand(obj) {
  * C ref: hacklib.c s_suffix — possessive for saddle drop msg.
  */
 function s_suffix_zap(s) {
-    if (!s) return s;
-    if (s === 'it' || s === 'It') return 'its';
-    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
-        || s.endsWith('ch') || s.endsWith('sh')) {
-        return `${s}'`;
-    }
-    return `${s}'s`;
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
+    if (low === 'you') return `${buf}r`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
+    return `${buf}'s`;
 }
 
 /**
@@ -3847,7 +3847,7 @@ export function resists_drli(mon) {
  * if cansee. Display sparkle is display.c shieldeff (D-wired).
  * Caller: bhitm SPE_DRAIN_LIFE resists_drli (D-1436).
  */
-async function shieldeff_mon(mtmp) {
+export async function shieldeff_mon(mtmp) {
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;
     await shieldeff(mx, my);
@@ -4472,7 +4472,7 @@ export async function flashburn(duration, via_lightning) {
         const { make_blinded } = await import('./do.js');
         await make_blinded(duration | 0, false);
         if (!Blind_props()) {
-            await pline('Your vision clears.');
+            await pline('Your vision quickly clears.');
         }
         return true;
     }
@@ -4997,64 +4997,64 @@ function obj_shudders(obj) {
     return !rn2(zap_odds);
 }
 
-  /**
-   * C ref: zap.c do_osshock `:1637–1674`.
-   * MAIL_STRUCTURES mail returns before `obj_zapped`. Otherwise mark the
-   * zap, maybe record `oc_material` via `rn2(Luck+45)`, split a stack
-   * (`rnd(quan-1)`, or `rnd(30000)` above `LARGEST_INT`), bill a costly
-   * spot, then `delobj` the piece that dies.
-   * Shop `addtobill` / `stolen_value` are async. That arm returns a
-   * Promise which already includes `delobj`; a non-shop call stays sync
-   * so `bhito`'s following `hideunder` is not reordered. Caller:
-   * `if (p) await p`.
-   * @returns {Promise<void>|undefined}
-   */
-  function do_osshock(obj) {
-      if (!obj) return;
-      /* C zap.c:1642–1644 — MAIL_STRUCTURES is defined (global.h:430). */
-      if ((obj.otyp | 0) === objectNames.indexOf('SCR_MAIL')) return;
+/**
+ * C ref: zap.c do_osshock `:1637–1674`.
+ * MAIL_STRUCTURES mail returns before `obj_zapped`. Otherwise mark the
+ * zap, maybe record `oc_material` via `rn2(Luck+45)`, split a stack
+ * (`rnd(quan-1)`, or `rnd(30000)` above `LARGEST_INT`), bill a costly
+ * spot, then `delobj` the piece that dies.
+ * Shop `addtobill` / `stolen_value` are async. That arm returns a
+ * Promise which already includes `delobj`; a non-shop call stays sync
+ * so `bhito`'s following `hideunder` is not reordered. Caller:
+ * `if (p) await p`.
+ * @returns {Promise<void>|undefined}
+ */
+function do_osshock(obj) {
+    if (!obj) return;
+    /* C zap.c:1642–1644 — MAIL_STRUCTURES is defined (global.h:430). */
+    if ((obj.otyp | 0) === objectNames.indexOf('SCR_MAIL')) return;
 
-      game._obj_zapped = true; /* C :1646 */
+    game._obj_zapped = true; /* C :1646 */
 
-      /* C :1648–1656 — first shudder of this zap may pick a material.
-         Luck is u.uluck + u.moreluck (you.h:464). */
-      if ((game._poly_zapped ?? -1) < 0) {
-          for (let i = obj.quan | 0; i; i--) {
-              if (!rn2((Luck() + 45) | 0)) {
-                  game._poly_zapped = game.objects?.[obj.otyp]?.oc_material | 0;
-                  break;
-              }
-          }
-      }
+    /* C :1648–1656 — first shudder of this zap may pick a material.
+       Luck is u.uluck + u.moreluck (you.h:464). */
+    if ((game._poly_zapped ?? -1) < 0) {
+        for (let i = obj.quan | 0; i; i--) {
+            if (!rn2((Luck() + 45) | 0)) {
+                game._poly_zapped = game.objects?.[obj.otyp]?.oc_material | 0;
+                break;
+            }
+        }
+    }
 
-      /* C :1658–1664 — quan > 1 leaves a survivor. The returned piece
-         is what gets billed and destroyed. C splitobj panics when it
-         cannot split (mkobj.c:463); no live panic export. */
-      let victim = obj;
-      const q = obj.quan | 0;
-      if (q > 1) {
-          const n = q > LARGEST_INT ? rnd(30000) : rnd((q - 1) | 0);
-          const piece = splitobj(obj, n);
-          if (!piece) {
-              throw new Error(
-                  `splitobj [cobj=${obj.cobj ? 'non-empty container' : '(null)'} num=${n} quan=${q}]`);
-          }
-          victim = piece;
-      }
+    /* C :1658–1664 — quan > 1 leaves a survivor. The returned piece
+       is what gets billed and destroyed. C splitobj panics when it
+       cannot split (mkobj.c:463); no live panic export. */
+    let victim = obj;
+    const q = obj.quan | 0;
+    if (q > 1) {
+        const n = q > LARGEST_INT ? rnd(30000) : rnd((q - 1) | 0);
+        const piece = splitobj(obj, n);
+        if (!piece) {
+            throw new Error(
+                `splitobj [cobj=${obj.cobj ? 'non-empty container' : '(null)'} num=${n} quan=${q}]`);
+        }
+        victim = piece;
+    }
 
-      /* C :1666–1674 — bill, then destroy. costly_spot is sync. */
-      if (costly_spot(victim.ox | 0, victim.oy | 0)) {
-          const piece = victim;
-          return (async () => {
-              if ((game.u?.ushops || '')[0])
-                  await addtobill(piece, false, false, false);
-              else
-                  await stolen_value(piece, piece.ox | 0, piece.oy | 0, false, false);
-              delobj(piece);
-          })();
-      }
-      delobj(victim);
-  }
+    /* C :1666–1674 — bill, then destroy. costly_spot is sync. */
+    if (costly_spot(victim.ox | 0, victim.oy | 0)) {
+        const piece = victim;
+        return (async () => {
+            if ((game.u?.ushops || '')[0])
+                await addtobill(piece, false, false, false);
+            else
+                await stolen_value(piece, piece.ox | 0, piece.oy | 0, false, false);
+            delobj(piece);
+        })();
+    }
+    delobj(victim);
+}
 
 /**
  * C zap.c stone_to_flesh_obj :1991–2112 — mineral/gemstone then

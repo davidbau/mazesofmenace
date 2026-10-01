@@ -552,9 +552,11 @@ async function chat_with_nemesis() {
 
 /**
  * C ref: quest.c chat_with_guardian `:440–448` (staticfn) — the whole body
- * in C order. qt_pager miss (guardtalk_after/guardtalk_before texts not
- * yet extracted) is a no-op deliver — the call still burns the C nhl_init
- * shuffle, so RNG matches C either way (D-2623 pattern).
+ * in C order. guardtalk_after/guardtalk_before role arrays are extracted
+ * (quest_guardtalk.js), so the first filecode lookup hits: one nhl_init
+ * shuffle + the rn2(nelems) pick, exactly like C. A miss here would burn
+ * qt_pager's second shuffle where C draws the pick (not the D-2623
+ * pattern — that claim was wrong and is removed).
  * Sole C caller: quest_chat (`:487`).
  */
 async function chat_with_guardian() {

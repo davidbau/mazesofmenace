@@ -45,6 +45,8 @@ import { make_glib, make_vomiting } from './potion.js';
 import { Armor_off, Shield_off, Helmet_off, Gloves_off, Boots_off, Cloak_off, Shirt_off, Armor_on, Shield_on, Helmet_on, Gloves_on, Boots_on, Cloak_on, Shirt_on, find_ac, set_wear } from './do_wear.js';
 import { picklock, forcelock } from './lock.js';
 import { dig } from './dig.js';
+import { carrying } from './eat.js';
+import { PM_ARCHEOLOGIST } from './pm.generated.js';
 import { eatfood, Hear_again, maybe_finished_meal, reset_eat, is_fainted, opentin } from './eat.js';
 import { do_vicinity_map } from './detect.js';
 import { learn } from './spell.js';
@@ -99,7 +101,7 @@ function _Unblind_telepat() {
 }
 import { isok } from './hacklib.js';
 import { unconscious, reset_justpicked, pickup } from './pickup.js';
-import { change_luck, acurr } from './attrib.js';
+import { change_luck, acurr, stone_luck } from './attrib.js';
 /* C timeout.c slip_or_trip()'s callees — imported rather than re-spelled. */
 import { inv_weight, encumber_msg_sync } from './weight.js';
 import { doname, makeplural } from './objnam.js';
@@ -983,6 +985,28 @@ async function faithful_moveloop_turn() {
             // holds at 119 across them where this port reached 116 — the three
             // #wizintrinsic menus at steps 1151/1152/1167/1168 render that
             // number, and each one was a lost step point.
+            // C timeout.c:595-620 nh_timeout() — Luck times out toward baseluck
+            // every 600 turns (300 with the Amulet or ugangr), BEFORE the
+            // u.uinvulnerable early return below.
+            {
+                let baseluck = (g.flags?.moonphase === FULL_MOON_PHASE) ? 1 : 0;
+                if (g.flags?.friday13)
+                    baseluck -= 1;
+                if (g.svq?.quest_status?.killed_leader)
+                    baseluck -= 4;
+                if (g.urole?.mnum === PM_ARCHEOLOGIST && g.u?.uarmh
+                    && g.u.uarmh.otyp === 92 /* FEDORA */)
+                    baseluck += 1;
+                if (g.u.uluck !== baseluck
+                    && (g.moves | 0) % ((g.u.uhave?.amulet || g.u.ugangr) ? 300 : 600) === 0) {
+                    const time_luck = stone_luck(false);
+                    const nostone = !carrying(470 /* LUCKSTONE */) && !stone_luck(true);
+                    if (g.u.uluck > baseluck && (nostone || time_luck < 0))
+                        g.u.uluck--;
+                    else if (g.u.uluck < baseluck && (nostone || time_luck > 0))
+                        g.u.uluck++;
+                }
+            }
             if (!(g.u && g.u.uinvulnerable)) {
                 /* C timeout.c:628 — vomiting_dialogue() runs before the generic
                  * timed-property decrement loop.  Effects created by the
@@ -2872,6 +2896,7 @@ async function moveloop_core_faithful() {
     // C then runs ONE more post-occupation world turn (context.move still 1)
     if (g.occupation === picklock && (g.multi | 0) >= 0) {
         let pickGuard = 0;
+        let pickInterrupted = false;
         // C ref: allmain.c:209-558 — one moveloop_core invocation per occupation
         // action, in THIS order:
         //     if (svc.context.move) { WORLD BLOCK }      allmain.c:209
@@ -2898,10 +2923,18 @@ async function moveloop_core_faithful() {
         while (g.occupation === picklock && pickGuard++ < 4096) {
             // C allmain.c:209 — the head world block of THIS moveloop_core.
             if (g.context && g.context.move) await faithful_moveloop_turn();
-            // C allmain.c:483 — svc.context.move = 1, unconditionally, ahead of
-            // the occupation call: every later action gets its head world block.
+            // C allmain.c:483-485 — svc.context.move = 1, then the occupation
+            // is only called `if (gm.multi >= 0 && go.occupation)`.  The head
+            // world block may itself have interrupted the pick (dochugw ->
+            // stop_occupation, monmove.c:223-235, "You stop picking the lock."):
+            // then C falls through to rhack for the next key with NO picklock()
+            // call and NO further world block.
             g.context = g.context || {};
             g.context.move = 1;
+            if (g.occupation !== picklock || (g.multi | 0) < 0) {
+                pickInterrupted = true;
+                break;
+            }
             // C allmain.c:493 — (*go.occupation)() == picklock(); 0 ends the pick.
             // picklock()'s success line ("You succeed in picking the lock.") is
             // plined here; it persists on the topline until the next nhgetch.
@@ -2912,7 +2945,7 @@ async function moveloop_core_faithful() {
         // still 1, so the next moveloop_core runs ONE more world block before
         // rhack reads the next key.  Run it here and suppress the next head
         // (context.move = 0 below) — the dig/learn/engrave driver pattern.
-        await faithful_moveloop_turn();
+        if (!pickInterrupted) await faithful_moveloop_turn();
         if (g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;

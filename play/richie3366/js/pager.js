@@ -76,6 +76,7 @@ import {
 } from './dokeylist.js';
 import { trapname, t_at, ice_descr } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
+import { getdir } from './lock.js';
 import { costly_spot, doname_with_price } from './shk.js';
 import { cmdq_pop, cmdq_clear, pmatch } from './cmd.js';
 import {
@@ -102,11 +103,12 @@ import {
     S_vodbridge, S_hcdbridge, MAXTCHARS, VIBRATING_SQUARE, def_warnsyms,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
     HELP, SHELP, KEYHELP, HISTORY, LICENSE, OPTIONFILE, OPTMENUHELP, USAGEHELP, DEBUGHELP,
-    ECMD_OK, BUFSZ, QBUFSZ,
+    ECMD_OK, ECMD_CANCEL, BUFSZ, QBUFSZ,
     OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     M_AP_TYPMASK, M_AP_F_DKNOWN, M_AP_TYPE,
     MCORPSENM, has_mcorpsenm, MALE, FEMALE,
-    ARTICLE_NONE, BEAR_TRAP, WEB, NO_TRAP, is_pit,
+    ARTICLE_NONE, BEAR_TRAP, WEB, NO_TRAP, is_pit, is_hole,
+    HOLE, PIT, ROCKTRAP, TRAPPED_DOOR, TRAPPED_CHEST,
     MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
@@ -307,7 +309,8 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
  * hero is hallucinating, and `trapped_door_at` can call
  * `trapped_chest_at` again — keep chest first, then door.
  * Callers (lookat `:718–721`, `look_traps` `:2093–2094`) pass
- * `glyph_to_trap(glyph_at(x, y))`, not `t_at.ttyp`. `doidtrap` still named.
+ * `glyph_to_trap(glyph_at(x, y))`, not `t_at.ttyp`. `doidtrap` (below,
+ * C `:2336+`) is the third `trapped_chest_at` caller — wired.
  */
 export function trap_description(tnum, x, y) {
     if (trapped_chest_at(tnum, x, y)) {
@@ -2291,7 +2294,7 @@ async function look_all(nearby, do_mons) {
  * `encglyph` reads. `lookbuf` is capped so prefix + text fit BUFSZ (C
  * `lookbuf[sizeof lookbuf - 1 - strlen(outbuf)] = '\0'`). Header is
  * `upstart` (hacklib.c) + the `"    "` separator, like `look_all`.
- * Named: `doidtrap` (the `^` single-cell command, C `:2335+`).
+ * (`doidtrap`, the `^` single-cell command C `:2335+`, is ported below.)
  */
 async function look_traps(nearby) {
     const { lo_x, lo_y, hi_x, hi_y } = look_region(nearby);
@@ -2847,6 +2850,79 @@ export async function dowhatis() {
 /** C ref: pager.c doquickwhatis — ';' glance */
 export async function doquickwhatis() {
     return do_look(1);
+}
+
+/**
+ * C ref: pager.c doidtrap `:2336–2395` — the `^` showtrap command
+ * (cmd.c:1872 IFBURIED|GENERALCMD; MCMD_LOOK_TRAP there-menu arm
+ * cmd.c:4727). Describe an adjacent discovered trap: the glyph arm
+ * first (trapped doors/chests have their own trap types now but are
+ * not on the `ftrap` chain — the hero may be blind), then the
+ * `gf.ftrap` walk for a seen trap at the square, else "can't see".
+ * C order, all arms: getdir abort → ECMD_CANCEL; every other exit →
+ * ECMD_OK ("trap ID'd, but no time elapses").
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function doidtrap() {
+    const u = game.u || {};
+    // C `:2342–2343` — getdir("^") ('^' is the help_dir marker, not
+    // prompt text — cmd.c:3987, mirrored in lock.js getdir).
+    if (!(await getdir('^'))) return ECMD_CANCEL;
+    const x = (u.ux | 0) + (u.dx | 0);
+    const y = (u.uy | 0) + (u.dy | 0);
+
+    // C `:2349–2359` — glyph arm: bear-trap glyphs over trapped
+    // doors/containers are semi-real (`:2350–2353` triple). The C
+    // assignment inside the `||` chain has no side effects in the
+    // comparisons, so hoisting it out is order-identical.
+    const glyph = glyph_at(x, y);
+    if (glyph_is_trap(glyph)) {
+        const tt = glyph_to_trap(glyph);
+        if (tt === BEAR_TRAP || tt === TRAPPED_DOOR || tt === TRAPPED_CHEST) {
+            const chesttrap = trapped_chest_at(tt, x, y);
+            if (chesttrap || trapped_door_at(tt, x, y)) {
+                await pline('That is a trapped %s.', chesttrap ? 'chest' : 'door');
+                return ECMD_OK; /* trap ID'd, but no time elapses */
+            }
+        }
+    }
+
+    // C `:2361–2388` — `gf.ftrap` walk; `return ECMD_OK` sits inside
+    // the coordinate `if`, so non-matching traps `continue` past it.
+    for (let trap = game.ftrap; trap; trap = trap.ntrap) {
+        if ((trap.tx | 0) !== x || (trap.ty | 0) !== y) continue;
+        // C `:2364–2365` — unseen trap breaks to "can't see".
+        if (!trap.tseen) break;
+        const tt = trap.ttyp | 0;
+        // C `:2367–2369` — pointing up (`dz<0`), a hole/trapdoor
+        // (floor feature) breaks; pointing down (`dz>0`), a rocktrap
+        // (ceiling feature) breaks. Each skips the wrong-plane trap.
+        const dz = u.dz | 0;
+        if (dz) {
+            if (dz < 0 ? is_hole(tt) : tt === ROCKTRAP) break;
+        }
+        // C `:2371–2385` — "That is %s%s%s." with the woven/dug/set
+        // infix + " by you" suffix only when made by the hero.
+        await pline(
+            'That is %s%s%s.',
+            an(trapname(tt, false)),
+            !(trap.madeby_u | 0)
+                ? ''
+                : (tt === WEB)
+                    ? ' woven'
+                    /* trap doors & spiked pits can't be made by
+                       player, and should be considered at least
+                       as much "set" as "dug" anyway */
+                    : (tt === HOLE || tt === PIT)
+                        ? ' dug'
+                        : ' set',
+            !(trap.madeby_u | 0) ? '' : ' by you',
+        );
+        return ECMD_OK;
+    }
+    // C `:2389–2390` — no seen trap here (or broke out above).
+    await pline("I can't see a trap there.");
+    return ECMD_OK;
 }
 
 /**

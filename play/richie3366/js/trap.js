@@ -534,7 +534,7 @@ const AD_FIRE = 2; /* monattk.h */
 const AD_SLEE = 4; /* monattk.h */
 const AD_ACID = 8; /* monattk.h */
 const TOWER_OF_FLAME = 'tower of flame';
-const VISION_CLEARS = 'vision clears.'; /* C c_vision_clears */
+const VISION_CLEARS = 'vision quickly clears.'; /* C c_vision_clears */
 // C ref: hack.h xdir/ydir — 8 dirs W,NW,N,NE,E,SE,S,SW
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];

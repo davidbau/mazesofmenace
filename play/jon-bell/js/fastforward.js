@@ -16,7 +16,7 @@ import { newsym, feel_location, feel_newsym, pline, flush_screen, _topl_merge_re
  * end.js does not import this module, so the cycle is one-directional and
  * do_death_sequence is only ever REFERENCED at call time. */
 import { do_death_sequence } from "./end.js";
-import { TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, HALF_PHDAM, DEAF, VOMITING, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel } from "./const.js";
+import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, HALF_PHDAM, DEAF, VOMITING, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel } from "./const.js";
 import { is_pool } from "./look.js";
 import { can_reach_floor } from "./hold_another_object.js";
 /* nomul: C detect.c:2049/2058 calls it from dosearch0 when a hidden door or
@@ -64,13 +64,14 @@ function _m_next2u_ff(mon) {
     const dx = (mon.mx | 0) - (u.ux | 0), dy = (mon.my | 0) - (u.uy | 0);
     return (dx * dx + dy * dy) <= 2;
 }
-import { gd_sound, vault_occupied, invault } from "./vault.js";
+import { gd_sound, vault_occupied, invault, gd_move } from "./vault.js";
 import { consumeDungeonInitRng } from "./dungeon_rng.js";
 import { consumeQuestNemesisGenderRng, consumeRolePantheonPickRng, ROLE_HAS_LGOD, } from "./role_init_rng.js";
 import { NUM_ROLES, resolveRandomChargenInit, role_init, ROLE_GODS } from "./roles.js";
 import { consumeUInitMiscHeroInitRng } from "./exper.js";
 import { randomize_gem_colors, init_objects, shuffle_all } from "./o_init.js";
 import { u_init_inventory_attrs } from "./u_init.js";
+import { wipe_engr_at } from "./mklev.js";
 import { mksobj, mkobj, makemon, place_object, make_corpse, wake_nearto, minliquid } from "./mklev.js";
 /* dosounds()'s shop branch (sounds.c:313-329) needs tended_shop/inhishop, which
  * live in js/shk.js.  shk.js does not import this module, so the edge is safe;
@@ -375,6 +376,15 @@ export async function ff_movemon_one_pass() {
         if ((g.u && (g.u.utotype | 0))) {
             somebody_can_move = false;
             break;
+        }
+        /* C mon.c:1228-1240 movemon_singlemon: a vault guard parked at <0,0>
+         * (not migrating) gets gd_move once per turn and is never dochug'd. */
+        if (m.isgd && !m.mx && !((m.mstate | 0) & MON_MIGRATING)) {
+            if ((game.moves | 0) > (m.mlstmv | 0)) {
+                await gd_move(m);
+                m.mlstmv = game.moves | 0;
+            }
+            continue;
         }
         if ((m.mhp | 0) <= 0)
             continue; /* C mon.c:1223 DEADMONSTER(mtmp) — no RNG (also skips a
@@ -972,8 +982,11 @@ export function dosounds_rng() {
 function u_wipe_engr_rng() {
     const g = game;
     const dex = (g.u) ? (acurr(g.u, A_DEX) | 0) : 14;
-    if (!rn2(40 + dex * 3))
-        rnd(3);
+    if (!rn2(40 + dex * 3)) {
+        const cnt = rnd(3);
+        if (can_reach_floor(true))
+            wipe_engr_at(g.u.ux | 0, g.u.uy | 0, cnt, false);
+    }
 }
 /* C eat.c:3920-3955 Popeye(VOMITING): only an unknown accessible tin
  * might help; no known tin cures vomiting. */

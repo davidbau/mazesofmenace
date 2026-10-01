@@ -651,7 +651,7 @@ import { You_hear } from './display.js';
 /* C hack.h NOTELL — resist()'s `tell` argument. */
 import { NOTELL } from './const.js';
 import { Monnam } from './mcastu.js';
-import { do_genocide } from './sit.js';
+import { do_genocide, do_class_genocide } from './sit.js';
 /* C ref: pline.h:44 `#define You(...)  pline("You " __VA_ARGS__)`.
  *
  * This file used to import You() from js/eat.js.  That export is NOT a port of
@@ -3421,7 +3421,10 @@ async function seffect_genocide(sobj) {
         await You('have found a scroll of genocide!');
     g._gk_known = true;
     /* C read.c:1737 — cursed/confused bits are encoded by the scroll state. */
-    await do_genocide((sobj.cursed ? 0 : 1) | (_Confusion() ? 2 : 0));
+    if (sobj.blessed)
+        await do_class_genocide();
+    else
+        await do_genocide((sobj.cursed ? 0 : 1) | (_Confusion() ? 2 : 0));
 }
 
 /* C ref: read.c:1830 seffect_amnesia(struct obj **sobjp) */

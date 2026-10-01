@@ -59,6 +59,7 @@ import { placebc, unplacebc } from './ball.js';
 import { obj_resists } from './zap.js';
 import { rloco as steal_rloco } from './steal.js';
 import { ENV } from './hostenv.js';
+import { delete_contents } from './shk.js';
 const MONS_PMNAMES = monPmnamesPack.pmnames;
 
 const MONS_ROWS = monsPack.mons;
@@ -3619,8 +3620,9 @@ async function create_object(o, croom) {
     }
 
     if (o.containment & SP_OBJ_CONTAINER) {
-        /* delete_contents(otmp) omitted — a freshly mksobj_at'd object has
-         * no contents, so it is a guaranteed no-op here. */
+        /* C sp_lev.c:2344 — mksobj_at's mkbox_cnts fill is discarded; the
+         * level file's own contents closure refills the container. */
+        await delete_contents(otmp);
         if (container_idx < MAX_CONTAINMENT) {
             container_obj[container_idx] = otmp;
             container_idx++;

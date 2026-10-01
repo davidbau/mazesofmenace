@@ -237,13 +237,31 @@ export function has_shrine(pri) {
         === Amask2align((lev.altarmask | 0) & ~AM_SHRINE);
 }
 
+/* C ref: priest.c:543-554 forget_temple_entry(priest) —
+ *     reset the move counters used to limit temple entry feedback;
+ *     leaving the level and then returning yields a fresh start.
+ * C calls it from savemonchn (save.c:894) for every priest of a level being
+ * saved and from save_mtraits (mkobj.c:2160).  Without it a returning hero
+ * never hears "intones" / "Pilgrim, you enter" again (the d(10,500),
+ * d(10,100), d(10,20) draws at priest.c:443/471/491 are skipped). */
+export function forget_temple_entry(priest) {
+    const epri_p = priest.ispriest ? EPRI(priest) : null;
+    if (!epri_p) {
+        /* impossible("attempting to manipulate shrine data for non-priest?") */
+        return;
+    }
+    epri_p.intone_time = epri_p.enter_time = epri_p.peaceful_time =
+        epri_p.hostile_time = 0;
+}
+
 /* C ref: priest.c:207-212 p_coaligned(priest) —
- *   return (u.ualign.type == (Amask2align(EPRI(priest)->shralign & ~AM_SHRINE)))
+ *   return (boolean) (u.ualign.type == mon_aligntyp(priest));   (5.0, priest.c:370-373;
+ *   the 3.7 form re-ran Amask2align over shralign, which is already an aligntyp,
+ *   turning a neutral priest's 0 into A_NONE)
  * Exported: js/mklev.js's setmangry (mon.c:4299) reads it for an angered
  * priest and had NO binding for it in scope. */
 export function p_coaligned(priest) {
-    return game.u.ualign.type
-        === Amask2align((EPRI(priest).shralign | 0) & ~AM_SHRINE);
+    return game.u.ualign.type === mon_aligntyp(priest);
 }
 
 /* C ref: priest.c:220-276 priestini(lvl, sroom, sx, sy, sanctum) — create the

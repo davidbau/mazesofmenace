@@ -9,7 +9,7 @@ import {
     flush_screen, pline, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
     glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible,
-    You, Your, You_feel, impossible,
+    You, Your, You_feel, impossible, Norep,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -20,6 +20,7 @@ import {
 import {
     losehp, maybe_half_phys, nomul, impact_disturbs_zombies, finish_maybe_wail,
     switch_terrain, in_rooms, stop_occupation, You_hear,
+    Passes_walls_prop, check_special_room, is_pool, is_lava, is_moat,
 } from './hack.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
@@ -54,6 +55,7 @@ import {
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
     GETOBJ_ALLOWCNT,
     WT_TOOMUCH_DIAGONAL,
+    MAGIC_PORTAL, VIBRATING_SQUARE, FIRE_TRAP, NO_TRAP_FLAGS, is_pit, is_hole,
 } from './const.js';
 import { obj_resists, dogfood } from './dogmove.js';
 import {
@@ -69,7 +71,7 @@ import { add_to_minv, mpickobj, makemon, set_malign } from './makemon.js';
 import { finish_quest, is_quest_artifact } from './quest.js';
 import { align_gname } from './roles.js';
 import { find_mac } from './mhitm.js';
-import { digests } from './mhitu.js';
+import { digests, Levitation, Flying } from './mhitu.js';
 import { hitval, weapon_hit_bonus, should_mulch_missile, dmgval, autoreturn_weapon, multishot_class_bonus, is_wet_towel, dry_a_towel } from './weapon.js';
 import { spec_abon, artifact_hit, is_art } from './artifact.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
@@ -83,7 +85,7 @@ import {
     xname, killer_xname, singular, an, An, the, The, vtense, doname, thesimpleoname,
     makeplural, otense, mshot_xname, corpse_xname,
 } from './objnam.js';
-import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond, setmangry, bad_rock } from './mon.js';
+import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond, setmangry, bad_rock, may_passwall } from './mon.js';
 import { mon_nam, Monnam, a_monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname, rndmonnam, s_suffix } from './do_name.js';
 import { noit_mhim, NEUTRAL } from './mondata.js';
 import { which_armor } from './worn.js';
@@ -103,6 +105,7 @@ import { goodpos, rloc_to, tele_restrict, rloc } from './teleport.js';
 import {
     mintrap, t_at, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
     minstapetrify, instapetrify, erode_obj, ceiling,
+    drown, dotrap, trapname,
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
 // imports.mjs --can: steed/monmove/dbridge hoisted-function SAFE.
@@ -111,7 +114,9 @@ import { in_out_region, m_in_out_region } from './region.js';
 import { remove_monster, place_monster } from './steed.js';
 import { u_on_newpos } from './mklev.js';
 import { set_apparxy } from './monmove.js';
-import { is_waterwall } from './dbridge.js';
+import { is_waterwall, hero_Wwalking } from './dbridge.js';
+// imports.mjs --can js/dothrow.js js/ball.js drag_ball move_bc: hoisted, cycle-safe.
+import { drag_ball, move_bc } from './ball.js';
 import { u_wipe_engr } from './engrave.js';
 import { getdir } from './lock.js';
 import { hard_helmet, armor_simple_name, helm_simple_name } from './do_wear.js';
@@ -872,9 +877,10 @@ async function endmultishot(verbose) {
 function s_suffix_throw_gold(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 
@@ -1668,7 +1674,7 @@ export async function toss_up(obj, hitsroof) {
                 u.ucreamed = (u.ucreamed | 0) + blindinc;
                 const { make_blinded } = await import('./do.js');
                 await make_blinded(BlindedTimeout() + blindinc, false);
-                if (!Blind()) await pline('Your vision clears.');
+                if (!Blind()) await pline('Your vision quickly clears.');
             }
             break;
         default:
@@ -2965,17 +2971,18 @@ function closed_door_hurtle(x, y) {
 }
 
 /**
- * C ref: dothrow.c hurtle_step — one cell of hero hurtle.
- * in_out_region after isok, before *range==0 (D-1165; C 787–790).
- * dest-typ ≠ origin after flush_screen → switch_terrain (D-1277;
- * C :916–917). Monster-bump arm in C order (C :855–905): glyph read,
- * x_monnam ARTICLE_A + AUGMENT_IT, find-by-bumping branch, wakeup,
- * canspotmon→map_invisible, setmangry, both petrify checks, wake_nearto.
- * Diagonal bad_rock squeeze is C `:822–832` (weight_cap).
- * Named omit: Passes_walls/may_passwall outer skip and the
- * !may_pass universe-edge arm (may_pass stays true); Sokoban diagonal halt; drag_ball; check_special_room;
- * drown/waterwall; jumping I_SPECIAL; trap
- * pass-over dotrap; nh_delay_output.
+ * C ref: dothrow.c hurtle_step `:772–972` — one cell of hero hurtle, whole
+ * body in C order. Gates: isok → in_out_region (D-1165) → *range==0;
+ * via_jumping/stopping_short from the EWwalking I_SPECIAL bit hurtle_jump
+ * sets; Passes_walls/may_passwall outer skip with the !may_pass
+ * universe-edge arm; obstruction why-chain (tree/wall/door-frame/closed
+ * door, iron bars, boulder, diagonal crevice squeeze); rnd(2+range)
+ * Maybe_Half_Phys losehp + wake_nearto; monster bump (:855–905, #if 0
+ * exceptions excluded); Sokoban diagonal halt; Punished drag_ball/move_bc;
+ * u_on_newpos/newsym/vision/flush + switch_terrain on dest-typ change
+ * (D-1277); check_special_room; pool/lava (drown + Norep move-over);
+ * tested trap subset (portal/vibrating/fire/Sokoban pit-hole/pass-over);
+ * --*range clamp + nh_delay_output while range remains.
  */
 export async function hurtle_step(rangeArg, x, y) {
     const u = game.u || {};
@@ -2987,49 +2994,62 @@ export async function hurtle_step(rangeArg, x, y) {
     } else if ((rangeArg.n | 0) === 0) {
         return false; /* previous step wants to stop now */
     }
+    // C :792-793 — via_jumping reads the I_SPECIAL bit hurtle_jump sets
+    // around this call; stopping_short skips trap/pool text on the last step.
+    const via_jumping = ((u.EWwalking | 0) & I_SPECIAL) !== 0;
+    const stopping_short = via_jumping && (rangeArg.n | 0) < 2;
 
     const loc = game.level?.at?.(x, y);
     const ltyp = loc?.typ | 0;
-    const diagonal = ((u.ux | 0) - x) !== 0 && ((u.uy | 0) - y) !== 0;
-    const open_door = IS_DOOR(ltyp) && ((loc?.doormask || 0) & D_ISOPEN) !== 0;
-    const odoor_diag = open_door && diagonal;
 
-    let why = null;
-    if (IS_OBSTRUCTED(ltyp) || closed_door_hurtle(x, y) || odoor_diag) {
-        why = IS_TREE(ltyp) ? 'bumping into a tree'
-            : IS_OBSTRUCTED(ltyp) ? 'bumping into a wall'
-                : odoor_diag ? 'bumping into a door frame'
-                    : 'bumping into a closed door';
-        if (odoor_diag) await pline('You hit the door frame!');
-        await pline('Ouch!');
-    } else if (ltyp === IRONBARS) {
-        why = 'crashing into iron bars';
-        await pline('You crash into some iron bars.  Ouch!');
-    } else {
-        const obj = sobj_at(BOULDER, x, y);
-        if (obj) {
-            why = 'bumping into a boulder';
-            await pline(`You bump into a ${xname(obj)}.  Ouch!`);
-        } else if (diagonal
-            && bad_rock(game.youmonst?.data, u.ux | 0, y)
-            && bad_rock(game.youmonst?.data, x, u.uy | 0)) {
-            /* C dothrow.c:822–832 — may_pass stayed true (universe-edge
-             * arm omitted). inv_weight() already calls weight_cap. */
-            const too_much = !!((game.invent && game.invent.length)
-                && (inv_weight() + weight_cap() > WT_TOOMUCH_DIAGONAL));
-            if (bigmonst(game.youmonst?.data) || too_much) {
-                why = 'wedging into a narrow crevice';
-                await You(
-                    `${too_much ? 'and all your belongings ' : ''}get forcefully wedged into a crevice.`,
-                );
+    // C :796 — Passes_walls skips the obstruction block only when the
+    // destination is wall-passable; may_pass starts TRUE (C :778).
+    let may_pass = true;
+    if (!Passes_walls_prop() || !(may_pass = may_passwall(x, y))) {
+        const diagonal = ((u.ux | 0) - x) !== 0 && ((u.uy | 0) - y) !== 0;
+        const open_door = IS_DOOR(ltyp) && ((loc?.doormask || 0) & D_ISOPEN) !== 0;
+        const odoor_diag = open_door && diagonal;
+
+        let why = null;
+        if (IS_OBSTRUCTED(ltyp) || closed_door_hurtle(x, y) || odoor_diag) {
+            why = IS_TREE(ltyp) ? 'bumping into a tree'
+                : IS_OBSTRUCTED(ltyp) ? 'bumping into a wall'
+                    : odoor_diag ? 'bumping into a door frame'
+                        : 'bumping into a closed door';
+            if (odoor_diag) await pline('You hit the door frame!');
+            await pline('Ouch!');
+        } else if (ltyp === IRONBARS) {
+            why = 'crashing into iron bars';
+            await pline('You crash into some iron bars.  Ouch!');
+        } else {
+            const obj = sobj_at(BOULDER, x, y);
+            if (obj) {
+                why = 'bumping into a boulder';
+                await pline(`You bump into a ${xname(obj)}.  Ouch!`);
+            } else if (!may_pass) {
+                // C :819-822 — reached only via Passes_walls with a
+                // non-passable destination: the edge of the universe.
+                why = 'touching the edge of the universe';
+                await You('smack into something!');
+            } else if (diagonal
+                && bad_rock(game.youmonst?.data, u.ux | 0, y)
+                && bad_rock(game.youmonst?.data, x, u.uy | 0)) {
+                const too_much = !!((game.invent && game.invent.length)
+                    && (inv_weight() + weight_cap() > WT_TOOMUCH_DIAGONAL));
+                if (bigmonst(game.youmonst?.data) || too_much) {
+                    why = 'wedging into a narrow crevice';
+                    await You(
+                        `${too_much ? 'and all your belongings ' : ''}get forcefully wedged into a crevice.`,
+                    );
+                }
             }
         }
-    }
-    if (why) {
-        const dmg = rnd(2 + (rangeArg.n | 0));
-        losehp(maybe_half_phys(dmg), why, KILLED_BY);
-        await wake_nearto(x, y, 10);
-        return false;
+        if (why) {
+            const dmg = rnd(2 + (rangeArg.n | 0));
+            losehp(maybe_half_phys(dmg), why, KILLED_BY);
+            await wake_nearto(x, y, 10);
+            return false;
+        }
     }
 
     const mon = m_at(x, y);
@@ -3065,6 +3085,29 @@ export async function hurtle_step(rangeArg, x, y) {
         return false;
     }
 
+    // C :878-885 — diagonal squeeze between bad rock halts in Sokoban
+    // (the non-Sokoban diagonal case falls through to the move below).
+    // C Sokoban ≡ level.flags.sokoban_rules (rm.h:538; JS mirrors game.Sokoban).
+    if (((u.ux | 0) - x) && ((u.uy | 0) - y)
+        && bad_rock(game.youmonst?.data, u.ux | 0, y)
+        && bad_rock(game.youmonst?.data, x, u.uy | 0)) {
+        /* Move at a diagonal. */
+        if (game.level?.flags?.sokoban_rules || game.Sokoban) {
+            await You('come to an abrupt halt!');
+            return false;
+        }
+    }
+
+    // C :889-899 — caller (hurtle) already allowed the drag; a FALSE
+    // return only skips move_bc, the hurtle continues regardless.
+    if (u.uball) { // C Punished ≡ (uball != 0), youprop.h:77
+        const drag = await drag_ball(x, y, true);
+        if (drag.ok) {
+            move_bc(0, drag.bc_control | 0, drag.ballx | 0, drag.bally | 0,
+                drag.chainx | 0, drag.chainy | 0);
+        }
+    }
+
     const ox = u.ux | 0;
     const oy = u.uy | 0;
     /* C dothrow.c:907–917 — u_on_newpos then newsym/vision/flush, then
@@ -3077,8 +3120,53 @@ export async function hurtle_step(rangeArg, x, y) {
     flush_screen(1);
     if (ltyp !== originTyp) await switch_terrain();
 
+    // C :924 — first-time room messages / leaving shop with unpaid goods.
+    await check_special_room(false);
+
+    // C :926-937 — pool/lava arrival on the new cell.
+    if (is_pool(x, y) && !u.uinwater) {
+        if (is_waterwall(x, y) || !(Levitation() || Flying() || hero_Wwalking())) {
+            /* couldn't move while hurtling; allow movement now so that
+               drown() will give a chance to crawl out of pool and survive */
+            game.multi = 0;
+            await drown();
+            return false;
+        } else if (!Is_waterlevel(u.uz) && !stopping_short) {
+            await Norep(`You move over ${an(is_moat(x, y) ? 'moat' : 'pool')}.`);
+        }
+    } else if (is_lava(x, y) && !stopping_short) {
+        await Norep('You move over some lava.');
+    }
+
+    // C :944-967 — each trap triggers on the recoil only for the tested
+    // subset; anything else gets a pass-over message when seen.
+    const ttmp = t_at(x, y);
+    if (ttmp) {
+        if (stopping_short) {
+            ; /* see the comment above hurtle_jump() */
+        } else if ((ttmp.ttyp | 0) === MAGIC_PORTAL) {
+            await dotrap(ttmp, NO_TRAP_FLAGS);
+            return false;
+        } else if ((ttmp.ttyp | 0) === VIBRATING_SQUARE) {
+            await pline('The ground vibrates as you pass it.');
+            await dotrap(ttmp, NO_TRAP_FLAGS); /* doesn't print messages */
+        } else if ((ttmp.ttyp | 0) === FIRE_TRAP) {
+            await dotrap(ttmp, NO_TRAP_FLAGS);
+        } else if ((is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp))
+            && (game.level?.flags?.sokoban_rules || game.Sokoban)) {
+            /* air currents overcome the recoil in Sokoban;
+               when jumping, caller performs last step and enters trap */
+            if (!via_jumping) await dotrap(ttmp, NO_TRAP_FLAGS);
+            rangeArg.n = 0;
+            return true;
+        } else if (ttmp.tseen) {
+            await You(`pass right over ${an(trapname(ttmp.ttyp, false))}.`);
+        }
+    }
+
     rangeArg.n = (rangeArg.n | 0) - 1;
     if (rangeArg.n < 0) rangeArg.n = 0;
+    if (rangeArg.n !== 0) await nh_delay_output();
     return true;
 }
 

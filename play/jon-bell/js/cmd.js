@@ -11,7 +11,7 @@ import { game, wizard, discover, questStatusStruct } from './gstate.js';
 import { clong } from './integer.js';
 import { newuexp } from './exper_pure.js';
 import { classifyTerrain } from './terrain-status.js';
-import { Is_earthlevel, RUN_TPORT, RUN_LEAP, RUN_CRAWL, LOW_PM, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MSTR_MNDX, VANQ_MCLS_LTOH, VANQ_MCLS_HTOL, VANQ_COUNT_H_L, VANQ_COUNT_L_H, In_quest, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, LL_DEBUG } from './const.js';
+import { Is_earthlevel, RUN_TPORT, RUN_LEAP, RUN_CRAWL, LOW_PM, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MSTR_MNDX, VANQ_MCLS_LTOH, VANQ_MCLS_HTOL, VANQ_COUNT_H_L, VANQ_COUNT_L_H, In_quest, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, LL_DEBUG, I_SPECIAL } from './const.js';
 import { GameMap, newobj, copy_you } from './game.js';
 import { MAXSPELL } from './spell.js';
 import { extract_nobj } from './mklev.js';
@@ -229,6 +229,7 @@ import { Can_fall_thru } from './mklev.js';
 import { Can_dig_down } from './mklev.js';
 import { mksobj } from './mklev.js';
 import { mkobj_at, rnd_class } from './mklev.js';
+import { mk_artifact } from './mklev.js';
 import { hold_another_object, addinv, addinv_before, addinv_nomerge, merged as merged_object,
          can_reach_floor } from './hold_another_object.js';
 /* C eat.c mons[mndx].cnutrit — the corpse-nutrition column, needed by
@@ -272,7 +273,7 @@ import { Tobjnam, ndemon } from './sit.js';
  * describes), so the real shk.c body has to come in under an alias. */
 import { obfree, sellobj, shop_keeper as shk_shop_keeper, inhishop as shk_inhishop, in_rooms as shk_in_rooms, add_damage as shk_add_damage, billable as shk_billable, pay_for_damage, onbill as shk_onbill, subfrombill as shk_subfrombill, alter_cost as shk_alter_cost, find_objowner as shk_find_objowner, shop_object as shk_shop_object, Hello as shk_Hello, add_to_billobjs as shk_add_to_billobjs } from './shk.js';
 import { stackobj } from './sp_lev.js';
-import { dopay, growl, sellobj_state, block_entry, block_door, u_entered_shop, u_left_shop, IS_SHOP as IS_SHOP_ROOM, addtobill as shk_addtobill, get_cost_of_shop_item, is_unpaid as shk_is_unpaid, unpaid_cost as shk_unpaid_cost, check_unpaid_usage as shk_check_unpaid_usage, COST_CONTENTS as SHK_COST_CONTENTS, costly_spot as shk_costly_spot, currency as shk_currency, record_price_quote, append_price_quote, get_cost as shk_get_cost, contained_cost as shk_contained_cost, contained_gold as shk_contained_gold, donate_gold as shk_donate_gold, get_pricing_units as shk_get_pricing_units, delete_contents as shk_delete_contents } from './shk.js';
+import { shk_chat, dopay, growl, sellobj_state, block_entry, block_door, u_entered_shop, u_left_shop, IS_SHOP as IS_SHOP_ROOM, addtobill as shk_addtobill, get_cost_of_shop_item, is_unpaid as shk_is_unpaid, unpaid_cost as shk_unpaid_cost, check_unpaid_usage as shk_check_unpaid_usage, COST_CONTENTS as SHK_COST_CONTENTS, costly_spot as shk_costly_spot, currency as shk_currency, record_price_quote, append_price_quote, get_cost as shk_get_cost, contained_cost as shk_contained_cost, contained_gold as shk_contained_gold, donate_gold as shk_donate_gold, get_pricing_units as shk_get_pricing_units, delete_contents as shk_delete_contents } from './shk.js';
 import { m_unleash, keepdogs, losedogs } from './dog.js';
 import { make_familiar } from './dog.js';
 import { curr_mon_load, dmgtype, dogfood, extract_from_minvent_dm, possibly_unwield, monstone } from './dogmove.js';
@@ -290,13 +291,24 @@ import { VIBRATING_SQUARE, GFILTER_NONE, GFILTER_VIEW, GFILTER_AREA,
 import { oc_merge } from './oc_merge.generated.js';
 import { worm_cross, count_wsegs as count_wsegs_real, cutworm as cutworm_real } from './worm.js';
 import { Monnam, aggravate } from './mcastu.js';
+import { resists_blnd } from './mhitm.js';
+import { see_monster_closeup } from './mklev.js';
 import { s_suffix, float_vs_flight, distant_monnam, locomotion, noit_mon_nam } from './mhitm.js';
 import { hliquid } from './mhitm.js';
 import { can_chant, Inhell, permonstTemplate, can_saddle, monPmname, olfaction, poly_gender, nonliving, attacktype_fordmg, mkclass, trapname, monsym_explain } from './makemon.js';
 /* C do.c:665 canletgo() — the shared drop/throw refusal test; drop() (do.c:718)
  * and throw_obj() (dothrow.c:118) are C's only non-empty-`word` callers. */
 import { canletgo } from './makemon.js';
-import { polyself, POLY_CONTROLLED, dobreathe, dohide, dopoly, polymon, rehumanize as rehumanize_real } from './polyself.js';
+import { create_mplayers as _fl_create_mplayers, mkmonmoney as _fl_mkmonmoney, rndDefensiveItem as _fl_rndDefensiveItem, rndMiscItem as _fl_rndMiscItem } from './makemon.js';
+import { gain_guardian_angel as _fl_gain_guardian_angel } from './minion.js';
+import { mkobj as _fl_mkobj, mksobj as _fl_mksobj, makemon as _fl_makemon } from './mklev.js';
+import { christen_monst as _fl_christen_monst } from './mhitm.js';
+import { m_dowear as _fl_m_dowear } from './trap.js';
+import { mongets as _fl_mongets, rndOffensiveItem as _fl_rndOffensiveItem } from './m_initweap.js';
+import { monmightthrowwep as _fl_monmightthrowwep } from './uhitm.js';
+import { EMIN as _fl_EMIN } from './const.js';
+import { PM_WIZARD as _FL_PM_WIZARD, PM_ARCHEOLOGIST as _FL_PM_ARCHEOLOGIST } from './pm.generated.js';
+import { polyself, POLY_CONTROLLED, dobreathe, dohide, dospit, dopoly, polymon, rehumanize as rehumanize_real } from './polyself.js';
 import { attacktype, domindblast, x_monnam, y_monnam, m_monnam, wakeup, wakeup_attack, YMonnam, obj_pmname, seemimic, check_caitiff } from './mhitm.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { poly_when_stoned, hcolor } from './mhitm.js';
@@ -871,7 +883,9 @@ async function domonability() {
     if (attacktype(uptr, _MON_AT_BREA))               /* can_breathe */
         return await dobreathe();
     else if (attacktype(uptr, _MON_AT_SPIT))
-        return ECMD_OK;
+        /* C cmd.c:905 `return dospit();` (polyself.c:1450) — getdir, mksobj the
+         * venom, throwit(). */
+        return await dospit();
     else if ((uptr.mlet | 0) === _MON_S_NYMPH)
         return ECMD_OK;                               /* doremove() unported */
     else if (attacktype(uptr, _MON_AT_GAZE))
@@ -2006,6 +2020,357 @@ export async function dothrow() {
     return await throw_obj(thrownObj, shotlimit);
 }
 
+/* C ref: dothrow.c:1510-1843 throwit(obj, wep_mask, twoweap, oldslot) — the
+ * flight, landing and aftermath of ONE thrown object.  Factored out of
+ * throw_obj() (which still owns the split/freeinv transaction and calls this
+ * with the already-detached `obj`) so dospit() (polyself.c:1450) and any other
+ * C caller can reach it by name.  `st` is throw_obj()'s private view of the
+ * pre-split stack (thrownObj is the PARENT stack, which this port's inlined
+ * tail reads in several places); a direct caller passes none and `obj` is both.
+ * Returns { thrownObj, throwResultMsg, early } for throw_obj()'s loop state. */
+export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
+    const g = game;
+    const u = g.u || {};
+    const _landedObj = obj;
+    let thrownObj = st ? st.thrownObj : obj;
+    const _thrownSplits = st ? !!st.thrownSplits : false;
+    const _coinWholeThrow = st ? !!st.coinWholeThrow : false;
+    const _wholeObjectLeft = st ? !!st.wholeObjectLeft : true;
+    const _throwWepMask = wep_mask | 0;
+    const _throwTwoweap = !!twoweap;
+    const _throwOldslot = oldslot || null;
+    let _throwDx = u.dx | 0;
+    let _throwDy = u.dy | 0;
+    let throwResultMsg = null;
+
+    let _throwImpaired = _Blind_cmd()
+        || ['CONFUSION', 'STUNNED', 'FUMBLING'].some(_uprop_active)
+        || (_uprop_active('HALLUC') && !_uprop_active('HALLUC_RES'));
+    if ((thrownObj?.cursed || thrownObj?.greased)
+        && (_throwDx !== 0 || _throwDy !== 0) && !rn2(7)) {
+        const _slipObj = _thrownSplits ? newobj(thrownObj, { quan: 1 }) : thrownObj;
+        let _slipok = true;
+        if (ammo_and_launcher(_slipObj, u.uwep)) {
+            await pline(`${_objnam_Tobjnam(_slipObj, 'misfire')}!`);
+        } else {
+            /* only slip if it's greased or meant to be thrown */
+            if (_slipObj.greased || throwing_weapon(_slipObj))
+                await pline(`${_objnam_Tobjnam(_slipObj, 'slip')} as you throw it!`);
+            else
+                _slipok = false;
+        }
+        if (_slipok) {
+            _throwDx = rn2(3) - 1;
+            _throwDy = rn2(3) - 1;
+            /* dothrow.c:1541-1542 writes u.dx/u.dy directly; keep game.u in
+             * sync the same way the initial getdir resolution above does. */
+            u.dx = _throwDx;
+            u.dy = _throwDy;
+            if (!_throwDx && !_throwDy) u.dz = 1;
+            _throwImpaired = true;
+        }
+    }
+    // C throwit: exhausted throws fall straight down before trajectory selection.
+    if (_landedObj && (_throwDx || _throwDy || u.dz < 1)
+        && calc_capacity(_landedObj.owt | 0) > SLT_ENCUMBER
+        && (Upolyd(u) ? (u.mh < 5 && u.mh !== u.mhmax)
+                     : (u.uhp < 10 && u.uhp !== u.uhpmax))
+        && _landedObj.owt > (Upolyd(u) ? u.mh : u.uhp) * 2
+        && !Is_airlevel(u.uz)) {
+        await pline('You have so little stamina, %s drops from your grasp.', the(xname(_landedObj)));
+        exercise(A_CON, false);
+        _throwDx = u.dx = _throwDy = u.dy = 0;
+        u.dz = 1;
+    }
+    if (!u.uswallow && u.dz && _landedObj) {
+        g.thrownobj = _landedObj;
+        _landedObj.how_lost = LOST_THROWN;
+        const returning = throw_auto_return(_landedObj, _throwWepMask);
+        g.iflags.returning_missile = returning ? _landedObj : null;
+        if (u.dz < 0 && returning && !_throwImpaired) {
+            await pline('%s the %s and returns to your hand!',
+                _objnam_Tobjnam(_landedObj, 'hit'), ceiling(u.ux, u.uy));
+            await return_throw_to_inv(_landedObj, _throwWepMask, _throwTwoweap, _throwOldslot);
+        } else if (u.dz < 0) {
+            await toss_up(_landedObj, !!rn2(5) && !_Underwater());
+        } else if (u.usteed && _landedObj.oclass === 8 && rn2(6)) {
+            await potionhit(u.usteed, _landedObj, THIT_POTHIT_HERO_THROW);
+        } else {
+            await hitfloor(_landedObj, true);
+        }
+        g.iflags.returning_missile = null;
+        g.thrownobj = null;
+        await encumber_msg();
+        if (_wholeObjectLeft) thrownObj = null;
+        return { thrownObj, throwResultMsg, early: true };
+    }
+    /* C dothrow.c:1519/1523 — a tethered aklys's range is limited by its cord. */
+    const _arw = thrownObj ? autoreturn_weapon(thrownObj) : null;
+    const _tethered_weapon = !!(_arw && (_arw.tethered | 0)
+                                && ((_throwWepMask | 0) & W_WEP_C) !== 0);
+    /* C dothrow.c:1612-1614 — crossbow range is independent of strength.
+     * P_CROSSBOW is 22 (skills.h; js/const.js:2697). */
+    const _crossbowing = !!(thrownObj && ammo_and_launcher(thrownObj, u.uwep)
+                            && weapon_type(u.uwep) === 22 /* P_CROSSBOW */);
+    let _urange = Math.trunc((_crossbowing ? 18 : (acurrstr(u) | 0)) / 2);
+    /* C dothrow.c:1621-1624 — obj->owt is the SPLIT-OFF single's weight, which
+     * is what splitobj() (mkobj.c:481) stores and what the quan == 1 arm keeps
+     * from inventory.  Same expression the landed object uses below. */
+    const _throwOwt = !thrownObj ? 0
+        : (_thrownSplits ? (weight(newobj(thrownObj, { quan: 1 })) | 0)
+                         : (thrownObj.owt | 0));
+    const _HEAVY_IRON_BALL_OTYP = 477; /* objects.h; OC_WEIGHT[477] === 480 */
+    const _BOULDER_OTYP = 475;         /* objects.h; OC_WEIGHT[475] === 6000 */
+    const _ART_MJOLLNIR = 3;           /* artilist.h ARTI_ENUM index */
+    let _range = ((thrownObj?.otyp | 0) === _HEAVY_IRON_BALL_OTYP)
+        ? _urange - Math.trunc(_throwOwt / 100)
+        : _urange - Math.trunc(_throwOwt / 40);
+    /* C dothrow.c:1626-1631 — balls are easy to throw or at least roll. */
+    if (thrownObj && thrownObj === u.uball) {
+        if (u.ustuck)
+            _range = 1;
+        else if (_range >= 5)
+            _range = 5;
+    }
+    if (_range < 1)
+        _range = 1;
+    throwResultMsg = null;
+    if (thrownObj && is_ammo(thrownObj)) {
+        if (ammo_and_launcher(thrownObj, u.uwep)) {
+            if (_crossbowing)
+                _range = BOLT_LIM;
+            else
+                _range++;
+        } else if ((thrownObj.oclass | 0) !== OCLASS_GEM) {
+            _range = Math.trunc(_range / 2);
+            throwResultMsg = `You aren't wielding ${an(skill_name(weapon_type(thrownObj)))}, so you throw your ${weapon_descr(thrownObj)} by ${body_part(HAND)}.`;
+            await pline(throwResultMsg);
+        }
+    }
+    /* C dothrow.c:1653-1661 — action, reaction: on the air level or while
+     * levitating the hero recoils, and the object's range is reduced by the
+     * recoil.  The hurtle() that consumes _urange (dothrow.c:1679) is NOT
+     * ported here — hurtle has no js/ body on this path — so the recoil's
+     * effect on the RANGE is modelled and its effect on the HERO is not.  That
+     * is strictly closer to C than the previous state (neither), and it is
+     * flagged rather than faked. */
+    if (Is_airlevel(u.uz) || _Levitation()) {
+        _urange -= _range;
+        if (_urange < 1)
+            _urange = 1;
+        _range -= _urange;
+        if (_range < 1)
+            _range = 1;
+    }
+    /* C dothrow.c:1662-1675 */
+    if ((thrownObj?.otyp | 0) === _BOULDER_OTYP)
+        _range = 20; /* you must be giant */
+    else if (is_art(thrownObj, _ART_MJOLLNIR))
+        _range = Math.trunc((_range + 1) / 2); /* it's heavy */
+    else if (_tethered_weapon)
+        _range = Math.min(_range, isqrt(_arw.range | 0));
+    else if (thrownObj && thrownObj === u.uball && (u.utrap | 0)
+             && (u.utraptype | 0) === TT_INFLOOR)
+        _range = 1;
+    if (_Underwater())
+        _range = 1;
+    const _COLNO = 80, _ROWNO = 21, _POOL = 16; /* C ZAP_POS: passable iff typ >= POOL */
+    const _ux = (u.ux | 0), _uy = (u.uy | 0);
+    /* C ref: zap.c bhit — bhitpos starts at the hero; each step advances by
+     * (dx,dy) until !ZAP_POS(typ) or a closed door, then stops.  The rest
+     * position is the last passable square, which is the hero's OWN tile when
+     * the adjacent square in that direction is a wall. */
+    let _lx = _ux, _ly = _uy;
+    let _hitMon = null;
+    let _boomerangHandled = false;
+    let _boomerangGone = false;
+    /* C dothrow.c:1602-1615 — boomerangs use the dedicated curved
+     * trajectory and return to the inventory only when caught.  The
+     * generic throw walk below is for every other horizontal projectile;
+     * letting a boomerang fall through it loses the curve, self-catch,
+     * and boomerang-specific hit handling. */
+    if ((_landedObj?.otyp | 0) === 26 && !u.uswallow && !u.dz && !_Underwater()) {
+        game.thrownobj = _landedObj;
+        const _boomMon = await boomhit(_landedObj, _throwDx, _throwDy);
+        g.iflags.returning_missile = null;
+        _boomerangHandled = true;
+        if (_boomMon === g.youmonst) {
+            exercise(A_DEX, true);
+            await return_throw_to_inv(_landedObj, _throwWepMask,
+                                      _throwTwoweap, _throwOldslot);
+            game.thrownobj = null;
+            _boomerangGone = true;
+        } else if (!game.thrownobj) {
+            _boomerangGone = true;
+        }
+        _lx = game.bhitpos?.x | 0;
+        _ly = game.bhitpos?.y | 0;
+    }
+    /* C zap.c:3868 — physical throws open a transient missile animation.
+     * obj_to_glyph() is display-RNG backed under hallucination, so this
+     * call must precede the bhit walk even though the animation is short. */
+    const _throwAnim = !!(!_boomerangHandled && !u.uswallow && thrownObj
+        && (thrownObj.oclass | 0) !== 0
+        && (_throwDx !== 0 || _throwDy !== 0));
+    if (u.uswallow && u.ustuck) {
+        /* C dothrow.c:1569-1577 — a swallowed throw does not follow the
+         * requested direction through the map.  It targets the engulfer
+         * directly, making thitmonst()'s engulfing_u() test a guaranteed
+         * hit, and uses the monster's square for gn.notonhead. */
+        _hitMon = u.ustuck;
+        _lx = u.ustuck.mx | 0;
+        _ly = u.ustuck.my | 0;
+        if (_landedObj)
+            _landedObj.how_lost = LOST_THROWN;
+    } else if (_throwAnim) {
+        tmp_at(DISP_FLASH, obj_to_glyph(thrownObj));
+    }
+    if (!_boomerangHandled && !u.uswallow && (_throwDx !== 0 || _throwDy !== 0)) {
+        /* C ref: zap.c:3870 `while (range-- > 0)` — bhitpos starts on the
+         * hero's own square and advances by (ddx,ddy) at the TOP of the loop,
+         * so an unobstructed throw travels exactly `range` squares.  This
+         * bound used to be a bare `_step < 40`: a hand-picked cap standing in
+         * for a range that was never computed, which let every thrown object
+         * fly until it met a wall or a monster.  `_range` above is throwit's
+         * (dothrow.c:1616-1675). */
+        /* C zap.c:3837-3840 — thrown rocks may skip across pools.  The
+         * random skip window is established before the first square; it
+         * is part of the thrown-rock RNG stream even when no pool is
+         * ultimately crossed. */
+        const _skipRock = (thrownObj?.otyp | 0) === 474 /* ROCK */;
+        let _skipStart = 0, _skipEnd = 0, _skipCount = 0;
+        let _inSkip = false;
+        let _allowSkip = false;
+        if (_skipRock) {
+            const _tr = Math.trunc(_range / 4);
+            const _tmp = _range - (_tr > 0 ? rnd(_tr) : 0);
+            _skipStart = _tmp;
+            _skipEnd = _tmp - Math.trunc(_tmp / 4) * rnd(3);
+            if (_skipEnd >= _tmp) _skipEnd = _tmp - 1;
+            _allowSkip = !rn2(3);
+        }
+        for (let _step = 0; _step < _range; _step++) {
+            const _nx = _lx + _throwDx, _ny = _ly + _throwDy;
+            if (_nx < 1 || _nx >= _COLNO || _ny < 0 || _ny >= _ROWNO) break;
+            const _loc = g.level?.locations?.[_nx]?.[_ny];
+            const _typ = (_loc?.typ ?? 0) | 0;
+            if (_typ < _POOL) break;                 /* wall/stone — stop */
+            /* C ref: closed_door — a DOOR tile (typ 23) that is closed/locked
+             * (D_CLOSED 0x04 | D_LOCKED 0x08) also stops the throw. */
+            if (_typ === 23 && (_loc?.doormask & 0x0c)) break;
+            _lx = _nx; _ly = _ny;
+            /* C zap.c:3969 mtmp = m_at(x, y), then :3977-3989 — a shade the
+             * missile passes harmlessly through, or a mimic pretending to be an
+             * object (when the hero has not spotted a monster there), is not a
+             * target and the beam keeps going. */
+            let _m = m_at(_nx, _ny);
+            if (_m && (shade_miss(game.youmonst, _m, thrownObj, true, true)
+                       || ((_m.m_ap_type | 0) === M_AP_OBJECT
+                           && !canspotmon(_m))))
+                _m = null;
+            if (_skipRock && _skipStart && _step === _range - _skipStart
+                && _allowSkip) {
+                if (_typ === 16 /* POOL */ && !_m) {
+                    _inSkip = true;
+                    _skipCount++;
+                    void pline(`The rock skips${_skipCount > 1 ? ' again' : ''}.`);
+                } else if (_skipStart > _skipEnd + 1) {
+                    --_skipStart;
+                }
+            }
+            if (_inSkip) {
+                if ((_range - _step - 1) <= _skipEnd) {
+                    _inSkip = false;
+                } else if (_m && ((_m.data?.mlet | 0) === 22 /* water monster */)) {
+                    _m = null;
+                }
+            }
+            if (_m) {
+                /* C zap.c:4021-4028 — THROWN_WEAPON stops here and reveals an
+                 * unseen monster's square. */
+                if (cansee(_nx, _ny) && !canspotmon(_m))
+                    map_invisible(_nx, _ny);
+                _hitMon = _m;
+                break;
+            }
+            /* C zap.c:4087 — paint each traversed square after the
+             * collision checks.  This is display state only; the glyph
+             * draw above is the RNG-relevant part. */
+            tmp_at(_lx, _ly);
+        }
+    }
+    if (_throwAnim)
+        tmp_at(DISP_END, 0);
+
+    let _objGone = _boomerangGone;
+    if (_hitMon && _landedObj) {
+        game.bhitpos = { x: _lx, y: _ly };
+        if (u.uswallow && (_landedObj.oclass | 0) === OCLASS_COIN) {
+            /* C dothrow.c:2671-2680 throw_gold() has its own swallowed
+             * arm: no ghitm()/wakeup roll, and whirly monsters don't add
+             * "currents" here (only digesters add "entrails"). */
+            let swallower = mon_nam(u.ustuck);
+            if (_digests(u.ustuck.data))
+                swallower = `${s_suffix(swallower)} entrails`;
+            await pline(`The gold disappears into ${swallower}.`);
+            await mpickobj(u.ustuck, _landedObj);
+            _objGone = true;
+            game.thrownobj = null;
+        } else if ((_landedObj.oclass | 0) === OCLASS_COIN) {
+            /* C dothrow.c:112/throw_gold -> ghitm: gold is handled by
+             * the special gold path, so it never enters thitmonst's
+             * rnd(20) to-hit roll.  A non-greedy monster wakes and the
+             * coin misses; the target is named only when visible. */
+            await wakeup_attack(_hitMon, true);
+            const targetVisible = (cansee(_lx, _ly) || canspotmon(_hitMon))
+                && game.flags?.verbose !== false;
+            const target = targetVisible ? mon_nam(_hitMon) : 'it';
+            await pline(`${The(xname(_landedObj))} ${vtense(xname(_landedObj), 'miss')} ${target}.`);
+        } else {
+            game.thrownobj = _landedObj;
+            await throwit_mon_hit(_landedObj, _hitMon);
+            _objGone = !game.thrownobj;
+            game.thrownobj = null;
+        }
+    }
+    /* C dothrow.c:1704-1706 — an ordinary projectile which remains after
+     * hitting the engulfer is swallowed into its inventory rather than
+     * tested for breakage or placed on the level.  mpickobj() performs the
+     * same add_to_minv bookkeeping as C's swallowit(). */
+    if (u.uswallow && u.ustuck && _landedObj && !_objGone
+        && !g.iflags.returning_missile) {
+        if (_landedObj !== u.uball)
+            await mpickobj(u.ustuck, _landedObj);
+        _objGone = true;
+        game.thrownobj = null;
+        g.iflags.returning_missile = null;
+    }
+    const _restLoc = g.level?.locations?.[_lx]?.[_ly];
+    const _restTyp = (_restLoc?.typ ?? 0) | 0;
+    /* C rm.h:140 IS_SOFT(typ) = AIR || CLOUD || IS_POOL(typ), and rm.h:129
+     * IS_POOL(typ) = POOL(16) <= typ <= DRAWBRIDGE_UP(19) — lava (20/21) is
+     * NOT soft. */
+    const _isSoftRest = (_restTyp === 35 /* AIR */ || _restTyp === 36 /* CLOUD */
+                         || (_restTyp >= 16 /* POOL */ && _restTyp <= 19 /* DRAWBRIDGE_UP */));
+    const _broke = _landedObj && !_objGone && !_isSoftRest && !_coinWholeThrow && breaktest(_landedObj);
+    if (_broke) {
+        await _throwit_breakmsg(_landedObj, cansee(_lx, _ly));
+        await _throwit_breakobj(_landedObj, _lx, _ly);
+    }
+    const _floorConsumed = (_landedObj && !_objGone && !_broke)
+        ? await flooreffects(_landedObj, _lx, _ly, 'fall')
+        : false;
+    if (_landedObj && !_objGone && !_broke && !_floorConsumed) {
+        /* C ref: dothrow.c:1825-1843 place_object + stackobj + newsym.  C does
+         * NOT skip a rest position equal to the hero's own tile. */
+        place_object(_landedObj, _lx, _ly);
+        await stackobj(_landedObj);
+        if (cansee(_lx, _ly))
+            newsym(_lx, _ly);
+    }
+    return { thrownObj, throwResultMsg, early: false };
+}
+
 /* C ref: dothrow.c:87-286 throw_obj(struct obj *obj, int shotlimit) — "Throw
  * the selected object, asking for direction".  THE ONE BODY BOTH COMMANDS
  * SHARE.  C has exactly one throw_obj(); dothrow() reaches it after getobj()
@@ -2176,331 +2541,14 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
             ox: 0, oy: 0,
             nobj: null, nexthere: null,
         });
-        let _throwImpaired = _Blind_cmd()
-            || ['CONFUSION', 'STUNNED', 'FUMBLING'].some(_uprop_active)
-            || (_uprop_active('HALLUC') && !_uprop_active('HALLUC_RES'));
-        if ((thrownObj?.cursed || thrownObj?.greased)
-            && (_throwDx !== 0 || _throwDy !== 0) && !rn2(7)) {
-            const _slipObj = _thrownSplits ? newobj(thrownObj, { quan: 1 }) : thrownObj;
-            let _slipok = true;
-            if (ammo_and_launcher(_slipObj, u.uwep)) {
-                await pline(`${_objnam_Tobjnam(_slipObj, 'misfire')}!`);
-            } else {
-                /* only slip if it's greased or meant to be thrown */
-                if (_slipObj.greased || throwing_weapon(_slipObj))
-                    await pline(`${_objnam_Tobjnam(_slipObj, 'slip')} as you throw it!`);
-                else
-                    _slipok = false;
-            }
-            if (_slipok) {
-                _throwDx = rn2(3) - 1;
-                _throwDy = rn2(3) - 1;
-                /* dothrow.c:1541-1542 writes u.dx/u.dy directly; keep game.u in
-                 * sync the same way the initial getdir resolution above does. */
-                u.dx = _throwDx;
-                u.dy = _throwDy;
-                if (!_throwDx && !_throwDy) u.dz = 1;
-                _throwImpaired = true;
-            }
-        }
-        // C throwit: exhausted throws fall straight down before trajectory selection.
-        if (_landedObj && (_throwDx || _throwDy || u.dz < 1)
-            && calc_capacity(_landedObj.owt | 0) > SLT_ENCUMBER
-            && (Upolyd(u) ? (u.mh < 5 && u.mh !== u.mhmax)
-                         : (u.uhp < 10 && u.uhp !== u.uhpmax))
-            && _landedObj.owt > (Upolyd(u) ? u.mh : u.uhp) * 2
-            && !Is_airlevel(u.uz)) {
-            await pline('You have so little stamina, %s drops from your grasp.', the(xname(_landedObj)));
-            exercise(A_CON, false);
-            _throwDx = u.dx = _throwDy = u.dy = 0;
-            u.dz = 1;
-        }
-        if (!u.uswallow && u.dz && _landedObj) {
-            g.thrownobj = _landedObj;
-            _landedObj.how_lost = LOST_THROWN;
-            const returning = throw_auto_return(_landedObj, _throwWepMask);
-            g.iflags.returning_missile = returning ? _landedObj : null;
-            if (u.dz < 0 && returning && !_throwImpaired) {
-                await pline('%s the %s and returns to your hand!',
-                    _objnam_Tobjnam(_landedObj, 'hit'), ceiling(u.ux, u.uy));
-                await return_throw_to_inv(_landedObj, _throwWepMask, _throwTwoweap, _throwOldslot);
-            } else if (u.dz < 0) {
-                await toss_up(_landedObj, !!rn2(5) && !_Underwater());
-            } else if (u.usteed && _landedObj.oclass === 8 && rn2(6)) {
-                await potionhit(u.usteed, _landedObj, THIT_POTHIT_HERO_THROW);
-            } else {
-                await hitfloor(_landedObj, true);
-            }
-            g.iflags.returning_missile = null;
-            g.thrownobj = null;
-            await encumber_msg();
-            if (_wholeObjectLeft) thrownObj = null;
+        const _ti = await throwit(_landedObj, _throwWepMask, _throwTwoweap, _throwOldslot, {
+            thrownObj, thrownSplits: _thrownSplits, coinWholeThrow: _coinWholeThrow,
+            wholeObjectLeft: _wholeObjectLeft,
+        });
+        thrownObj = _ti.thrownObj;
+        if (_ti.early)
             continue;
-        }
-        /* C dothrow.c:1519/1523 — a tethered aklys's range is limited by its cord. */
-        const _arw = thrownObj ? autoreturn_weapon(thrownObj) : null;
-        const _tethered_weapon = !!(_arw && (_arw.tethered | 0)
-                                    && ((_throwWepMask | 0) & W_WEP_C) !== 0);
-        /* C dothrow.c:1612-1614 — crossbow range is independent of strength.
-         * P_CROSSBOW is 22 (skills.h; js/const.js:2697). */
-        const _crossbowing = !!(thrownObj && ammo_and_launcher(thrownObj, u.uwep)
-                                && weapon_type(u.uwep) === 22 /* P_CROSSBOW */);
-        let _urange = Math.trunc((_crossbowing ? 18 : (acurrstr(u) | 0)) / 2);
-        /* C dothrow.c:1621-1624 — obj->owt is the SPLIT-OFF single's weight, which
-         * is what splitobj() (mkobj.c:481) stores and what the quan == 1 arm keeps
-         * from inventory.  Same expression the landed object uses below. */
-        const _throwOwt = !thrownObj ? 0
-            : (_thrownSplits ? (weight(newobj(thrownObj, { quan: 1 })) | 0)
-                             : (thrownObj.owt | 0));
-        const _HEAVY_IRON_BALL_OTYP = 477; /* objects.h; OC_WEIGHT[477] === 480 */
-        const _BOULDER_OTYP = 475;         /* objects.h; OC_WEIGHT[475] === 6000 */
-        const _ART_MJOLLNIR = 3;           /* artilist.h ARTI_ENUM index */
-        let _range = ((thrownObj?.otyp | 0) === _HEAVY_IRON_BALL_OTYP)
-            ? _urange - Math.trunc(_throwOwt / 100)
-            : _urange - Math.trunc(_throwOwt / 40);
-        /* C dothrow.c:1626-1631 — balls are easy to throw or at least roll. */
-        if (thrownObj && thrownObj === u.uball) {
-            if (u.ustuck)
-                _range = 1;
-            else if (_range >= 5)
-                _range = 5;
-        }
-        if (_range < 1)
-            _range = 1;
-        throwResultMsg = null;
-        if (thrownObj && is_ammo(thrownObj)) {
-            if (ammo_and_launcher(thrownObj, u.uwep)) {
-                if (_crossbowing)
-                    _range = BOLT_LIM;
-                else
-                    _range++;
-            } else if ((thrownObj.oclass | 0) !== OCLASS_GEM) {
-                _range = Math.trunc(_range / 2);
-                throwResultMsg = `You aren't wielding ${an(skill_name(weapon_type(thrownObj)))}, so you throw your ${weapon_descr(thrownObj)} by ${body_part(HAND)}.`;
-                await pline(throwResultMsg);
-            }
-        }
-        /* C dothrow.c:1653-1661 — action, reaction: on the air level or while
-         * levitating the hero recoils, and the object's range is reduced by the
-         * recoil.  The hurtle() that consumes _urange (dothrow.c:1679) is NOT
-         * ported here — hurtle has no js/ body on this path — so the recoil's
-         * effect on the RANGE is modelled and its effect on the HERO is not.  That
-         * is strictly closer to C than the previous state (neither), and it is
-         * flagged rather than faked. */
-        if (Is_airlevel(u.uz) || _Levitation()) {
-            _urange -= _range;
-            if (_urange < 1)
-                _urange = 1;
-            _range -= _urange;
-            if (_range < 1)
-                _range = 1;
-        }
-        /* C dothrow.c:1662-1675 */
-        if ((thrownObj?.otyp | 0) === _BOULDER_OTYP)
-            _range = 20; /* you must be giant */
-        else if (is_art(thrownObj, _ART_MJOLLNIR))
-            _range = Math.trunc((_range + 1) / 2); /* it's heavy */
-        else if (_tethered_weapon)
-            _range = Math.min(_range, isqrt(_arw.range | 0));
-        else if (thrownObj && thrownObj === u.uball && (u.utrap | 0)
-                 && (u.utraptype | 0) === TT_INFLOOR)
-            _range = 1;
-        if (_Underwater())
-            _range = 1;
-        const _COLNO = 80, _ROWNO = 21, _POOL = 16; /* C ZAP_POS: passable iff typ >= POOL */
-        const _ux = (u.ux | 0), _uy = (u.uy | 0);
-        /* C ref: zap.c bhit — bhitpos starts at the hero; each step advances by
-         * (dx,dy) until !ZAP_POS(typ) or a closed door, then stops.  The rest
-         * position is the last passable square, which is the hero's OWN tile when
-         * the adjacent square in that direction is a wall. */
-        let _lx = _ux, _ly = _uy;
-        let _hitMon = null;
-        let _boomerangHandled = false;
-        let _boomerangGone = false;
-        /* C dothrow.c:1602-1615 — boomerangs use the dedicated curved
-         * trajectory and return to the inventory only when caught.  The
-         * generic throw walk below is for every other horizontal projectile;
-         * letting a boomerang fall through it loses the curve, self-catch,
-         * and boomerang-specific hit handling. */
-        if ((_landedObj?.otyp | 0) === 26 && !u.uswallow && !u.dz && !_Underwater()) {
-            game.thrownobj = _landedObj;
-            const _boomMon = await boomhit(_landedObj, _throwDx, _throwDy);
-            g.iflags.returning_missile = null;
-            _boomerangHandled = true;
-            if (_boomMon === g.youmonst) {
-                exercise(A_DEX, true);
-                await return_throw_to_inv(_landedObj, _throwWepMask,
-                                          _throwTwoweap, _throwOldslot);
-                game.thrownobj = null;
-                _boomerangGone = true;
-            } else if (!game.thrownobj) {
-                _boomerangGone = true;
-            }
-            _lx = game.bhitpos?.x | 0;
-            _ly = game.bhitpos?.y | 0;
-        }
-        /* C zap.c:3868 — physical throws open a transient missile animation.
-         * obj_to_glyph() is display-RNG backed under hallucination, so this
-         * call must precede the bhit walk even though the animation is short. */
-        const _throwAnim = !!(!_boomerangHandled && !u.uswallow && thrownObj
-            && (thrownObj.oclass | 0) !== 0
-            && (_throwDx !== 0 || _throwDy !== 0));
-        if (u.uswallow && u.ustuck) {
-            /* C dothrow.c:1569-1577 — a swallowed throw does not follow the
-             * requested direction through the map.  It targets the engulfer
-             * directly, making thitmonst()'s engulfing_u() test a guaranteed
-             * hit, and uses the monster's square for gn.notonhead. */
-            _hitMon = u.ustuck;
-            _lx = u.ustuck.mx | 0;
-            _ly = u.ustuck.my | 0;
-            if (_landedObj)
-                _landedObj.how_lost = LOST_THROWN;
-        } else if (_throwAnim) {
-            tmp_at(DISP_FLASH, obj_to_glyph(thrownObj));
-        }
-        if (!_boomerangHandled && !u.uswallow && (_throwDx !== 0 || _throwDy !== 0)) {
-            /* C ref: zap.c:3870 `while (range-- > 0)` — bhitpos starts on the
-             * hero's own square and advances by (ddx,ddy) at the TOP of the loop,
-             * so an unobstructed throw travels exactly `range` squares.  This
-             * bound used to be a bare `_step < 40`: a hand-picked cap standing in
-             * for a range that was never computed, which let every thrown object
-             * fly until it met a wall or a monster.  `_range` above is throwit's
-             * (dothrow.c:1616-1675). */
-            /* C zap.c:3837-3840 — thrown rocks may skip across pools.  The
-             * random skip window is established before the first square; it
-             * is part of the thrown-rock RNG stream even when no pool is
-             * ultimately crossed. */
-            const _skipRock = (thrownObj?.otyp | 0) === 474 /* ROCK */;
-            let _skipStart = 0, _skipEnd = 0, _skipCount = 0;
-            let _inSkip = false;
-            let _allowSkip = false;
-            if (_skipRock) {
-                const _tr = Math.trunc(_range / 4);
-                const _tmp = _range - (_tr > 0 ? rnd(_tr) : 0);
-                _skipStart = _tmp;
-                _skipEnd = _tmp - Math.trunc(_tmp / 4) * rnd(3);
-                if (_skipEnd >= _tmp) _skipEnd = _tmp - 1;
-                _allowSkip = !rn2(3);
-            }
-            for (let _step = 0; _step < _range; _step++) {
-                const _nx = _lx + _throwDx, _ny = _ly + _throwDy;
-                if (_nx < 1 || _nx >= _COLNO || _ny < 0 || _ny >= _ROWNO) break;
-                const _loc = g.level?.locations?.[_nx]?.[_ny];
-                const _typ = (_loc?.typ ?? 0) | 0;
-                if (_typ < _POOL) break;                 /* wall/stone — stop */
-                /* C ref: closed_door — a DOOR tile (typ 23) that is closed/locked
-                 * (D_CLOSED 0x04 | D_LOCKED 0x08) also stops the throw. */
-                if (_typ === 23 && (_loc?.doormask & 0x0c)) break;
-                _lx = _nx; _ly = _ny;
-                /* C zap.c:3969 mtmp = m_at(x, y), then :3977-3989 — a shade the
-                 * missile passes harmlessly through, or a mimic pretending to be an
-                 * object (when the hero has not spotted a monster there), is not a
-                 * target and the beam keeps going. */
-                let _m = m_at(_nx, _ny);
-                if (_m && (shade_miss(game.youmonst, _m, thrownObj, true, true)
-                           || ((_m.m_ap_type | 0) === M_AP_OBJECT
-                               && !canspotmon(_m))))
-                    _m = null;
-                if (_skipRock && _skipStart && _step === _range - _skipStart
-                    && _allowSkip) {
-                    if (_typ === 16 /* POOL */ && !_m) {
-                        _inSkip = true;
-                        _skipCount++;
-                        void pline(`The rock skips${_skipCount > 1 ? ' again' : ''}.`);
-                    } else if (_skipStart > _skipEnd + 1) {
-                        --_skipStart;
-                    }
-                }
-                if (_inSkip) {
-                    if ((_range - _step - 1) <= _skipEnd) {
-                        _inSkip = false;
-                    } else if (_m && ((_m.data?.mlet | 0) === 22 /* water monster */)) {
-                        _m = null;
-                    }
-                }
-                if (_m) {
-                    /* C zap.c:4021-4028 — THROWN_WEAPON stops here and reveals an
-                     * unseen monster's square. */
-                    if (cansee(_nx, _ny) && !canspotmon(_m))
-                        map_invisible(_nx, _ny);
-                    _hitMon = _m;
-                    break;
-                }
-                /* C zap.c:4087 — paint each traversed square after the
-                 * collision checks.  This is display state only; the glyph
-                 * draw above is the RNG-relevant part. */
-                tmp_at(_lx, _ly);
-            }
-        }
-        if (_throwAnim)
-            tmp_at(DISP_END, 0);
-
-        let _objGone = _boomerangGone;
-        if (_hitMon && _landedObj) {
-            game.bhitpos = { x: _lx, y: _ly };
-            if (u.uswallow && (_landedObj.oclass | 0) === OCLASS_COIN) {
-                /* C dothrow.c:2671-2680 throw_gold() has its own swallowed
-                 * arm: no ghitm()/wakeup roll, and whirly monsters don't add
-                 * "currents" here (only digesters add "entrails"). */
-                let swallower = mon_nam(u.ustuck);
-                if (_digests(u.ustuck.data))
-                    swallower = `${s_suffix(swallower)} entrails`;
-                await pline(`The gold disappears into ${swallower}.`);
-                await mpickobj(u.ustuck, _landedObj);
-                _objGone = true;
-                game.thrownobj = null;
-            } else if ((_landedObj.oclass | 0) === OCLASS_COIN) {
-                /* C dothrow.c:112/throw_gold -> ghitm: gold is handled by
-                 * the special gold path, so it never enters thitmonst's
-                 * rnd(20) to-hit roll.  A non-greedy monster wakes and the
-                 * coin misses; the target is named only when visible. */
-                await wakeup_attack(_hitMon, true);
-                const targetVisible = (cansee(_lx, _ly) || canspotmon(_hitMon))
-                    && game.flags?.verbose !== false;
-                const target = targetVisible ? mon_nam(_hitMon) : 'it';
-                await pline(`${The(xname(_landedObj))} ${vtense(xname(_landedObj), 'miss')} ${target}.`);
-            } else {
-                game.thrownobj = _landedObj;
-                await throwit_mon_hit(_landedObj, _hitMon);
-                _objGone = !game.thrownobj;
-                game.thrownobj = null;
-            }
-        }
-        /* C dothrow.c:1704-1706 — an ordinary projectile which remains after
-         * hitting the engulfer is swallowed into its inventory rather than
-         * tested for breakage or placed on the level.  mpickobj() performs the
-         * same add_to_minv bookkeeping as C's swallowit(). */
-        if (u.uswallow && u.ustuck && _landedObj && !_objGone
-            && !g.iflags.returning_missile) {
-            if (_landedObj !== u.uball)
-                await mpickobj(u.ustuck, _landedObj);
-            _objGone = true;
-            game.thrownobj = null;
-            g.iflags.returning_missile = null;
-        }
-        const _restLoc = g.level?.locations?.[_lx]?.[_ly];
-        const _restTyp = (_restLoc?.typ ?? 0) | 0;
-        /* C rm.h:140 IS_SOFT(typ) = AIR || CLOUD || IS_POOL(typ), and rm.h:129
-         * IS_POOL(typ) = POOL(16) <= typ <= DRAWBRIDGE_UP(19) — lava (20/21) is
-         * NOT soft. */
-        const _isSoftRest = (_restTyp === 35 /* AIR */ || _restTyp === 36 /* CLOUD */
-                             || (_restTyp >= 16 /* POOL */ && _restTyp <= 19 /* DRAWBRIDGE_UP */));
-        const _broke = _landedObj && !_objGone && !_isSoftRest && !_coinWholeThrow && breaktest(_landedObj);
-        if (_broke) {
-            await _throwit_breakmsg(_landedObj, cansee(_lx, _ly));
-            await _throwit_breakobj(_landedObj, _lx, _ly);
-        }
-        const _floorConsumed = (_landedObj && !_objGone && !_broke)
-            ? await flooreffects(_landedObj, _lx, _ly, 'fall')
-            : false;
-        if (_landedObj && !_objGone && !_broke && !_floorConsumed) {
-            /* C ref: dothrow.c:1825-1843 place_object + stackobj + newsym.  C does
-             * NOT skip a rest position equal to the hero's own tile. */
-            place_object(_landedObj, _lx, _ly);
-            await stackobj(_landedObj);
-            if (cansee(_lx, _ly))
-                newsym(_lx, _ly);
-        }
+        throwResultMsg = _ti.throwResultMsg;
         await encumber_msg();
         /* C dothrow.c:260-265 — the non-split arm ends with `obj = 0;`: the
          * whole object has left the pack and there is nothing left to split
@@ -6903,7 +6951,12 @@ async function drop(obj) {
     {
         const _dl = _levlAt(u.ux | 0, u.uy | 0);
         if (!(_dl && IS_ALTAR(_dl.typ)) && g.flags && g.flags.verbose)
-            await pline(`You drop ${_drop_doname(obj)}.`);
+            /* objnam.c:1646-1650 — doname_base appends "(unpaid, N zorkmids)"
+             * for a shop object still on the bill; the _drop_doname subset
+             * has no shop arm (see its KNOWN GAPS), so route those through
+             * the real doname(). */
+            await pline(`You drop ${shk_is_unpaid(obj)
+                ? await doname(obj) : _drop_doname(obj)}.`);
     }
     u._oldcap = near_capacity();
     obj.how_lost = 2;            /* LOST_DROPPED (obj.h) */
@@ -8120,6 +8173,123 @@ export async function free_tutorial() {
     gg.gmst_mvitals = null;
 }
 
+/* C mplayer.c:19-40 developers[] — dev_name()'s table (the final "" is real). */
+const _FL_DEVELOPERS = [
+    'Alex', 'Dave', 'Dean', 'Derek', 'Eric', 'Izchak', 'Janet', 'Jessie', 'Ken',
+    'Kevin', 'Michael', 'Mike', 'Pasi', 'Pat', 'Patric', 'Paul', 'Sean', 'Steve',
+    'Timo', 'Warwick',
+    'Bill', 'Eric', 'Keizo', 'Ken', 'Kevin', 'Michael', 'Mike', 'Paul', 'Stephen',
+    'Steve', 'Timo', 'Yitzhak',
+    'Andy', 'Gregg', 'Janne', 'Keni', 'Mike', 'Olaf', 'Richard',
+    'Andy', 'Chris', 'Dean', 'Jon', 'Jonathan', 'Kevin', 'Wang',
+    'Eric', 'Marvin', 'Warwick',
+    'Alex', 'Dion', 'Michael',
+    'Helge', 'Ron', 'Timo',
+    'Joshua', 'Pat', '',
+];
+const _FL_M2_FEMALE = 0x00020000;
+const _FL_PM_ALIGNED_CLERIC = 275;
+
+function _fl_pmidx(mon) {
+    return (mon.data?.pmidx ?? mon.mndx ?? -1) | 0;
+}
+
+/* C mplayer.c:46-68 dev_name() */
+function _fl_dev_name() {
+    const n = _FL_DEVELOPERS.length;
+    let m = 0, i, match;
+    do {
+        match = false;
+        i = rn2(n);
+        for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+            const pmi = _fl_pmidx(mtmp);
+            if (pmi < _FL_PM_ARCHEOLOGIST || pmi > _FL_PM_WIZARD) /* !is_mplayer */
+                continue;
+            const given = has_mgivenname(mtmp) ? mtmp.mextra.mgivenname : '';
+            const dev = _FL_DEVELOPERS[i];
+            if (given.startsWith(dev)) { /* strncmp(dev, given, strlen(dev)) == 0 */
+                match = true;
+                break;
+            }
+        }
+        m++;
+    } while (match && m < 100); /* m for insurance */
+    if (match)
+        return null;
+    return _FL_DEVELOPERS[i];
+}
+
+/* C mplayer.c:70-93 get_mplname() */
+function _fl_get_mplname(mtmp) {
+    const pm = mtmp.data ?? permonstTemplate(mtmp.mndx);
+    const fmlkind = (((pm?.mflags2 | 0) & _FL_M2_FEMALE) !== 0);
+    const devnam = _fl_dev_name();
+    let nam;
+    if (!devnam)
+        nam = fmlkind ? 'Eve' : 'Adam';
+    else if (fmlkind && devnam !== 'Janet')
+        nam = rn2(2) ? 'Maud' : 'Eve';
+    else
+        nam = devnam;
+    mtmp.female = (fmlkind || nam === 'Janet') ? 1 : 0;
+    return nam + ' the ' + rank_of(mtmp.m_lev | 0, _fl_pmidx(mtmp), !!mtmp.female);
+}
+
+/* C priest.c:755-767 reset_hostility() — the iter_mons callback; C keeps it in
+ * priest.c, but do.c's final_level is its only caller and js/ has no body. */
+function _fl_reset_hostility(roamer) {
+    if (!roamer.isminion)
+        return;
+    const pmi = _fl_pmidx(roamer);
+    if (pmi !== _FL_PM_ALIGNED_CLERIC && pmi !== 123 /* PM_ANGEL */)
+        return;
+    if (_fl_EMIN(roamer).min_align !== game.u.ualign.type) {
+        roamer.mpeaceful = roamer.mtame = 0;
+        set_malign(roamer);
+    }
+    newsym(roamer.mx, roamer.my);
+}
+
+/* mkMplayer's callback table (js/sp_lev.js MPLAYER_CBS is private).  mkobj is
+ * async and makemon.js's special arm does not await it, so mpickobj awaits the
+ * pending object. */
+const _FL_MPLAYER_CBS = {
+    makemon: async (mndx, x, y, flags) => await _fl_makemon(mndx, x, y, flags),
+    rlocInsurance: async (x, y) => {
+        const occupant = m_at(x, y);
+        if (occupant)
+            await rloc(occupant, RLOC_ERR | RLOC_NOMSG);
+    },
+    mksobj: async (otyp, init, artif) => (await _fl_mksobj(otyp, init, artif)),
+    mkobj: (oclass, artif) => _fl_mkobj(oclass, artif),
+    mpickobj: async (mon, obj) => (await mpickobj(mon, await obj)),
+    mongets: async (mon, otyp) => (await _fl_mongets(mon, otyp, _fl_mksobj)),
+    mkmonmoney: (mon, n) => _fl_mkmonmoney(mon, n),
+    m_dowear: (mon, force) => _fl_m_dowear(mon, force),
+    christenMonst: (mon, name) => _fl_christen_monst(mon, name),
+    getMplname: _fl_get_mplname,
+    setMalign: (mon) => set_malign(mon),
+    weight: (obj) => weight(obj),
+    /* C obj.h:233 is_spear: WEAPON_CLASS && oc_skill == P_SPEAR(17) */
+    isSpear: (obj) => (obj.oclass | 0) === 2 && (MKOBJ_OC_SKILL[obj.otyp | 0] | 0) === 17,
+    isArt: (obj, art) => !!(obj && (obj.oartifact | 0) === art),
+    monmightthrowwep: (obj) => _fl_monmightthrowwep(obj),
+    rndOffensiveItem: (mon) => _fl_rndOffensiveItem(mon),
+    rndDefensiveItem: (mon) => _fl_rndDefensiveItem(mon),
+    rndMiscItem: (mon) => _fl_rndMiscItem(mon),
+    mkArtifact: (otmp, align, maxgift, adjspe) => mk_artifact(otmp, align, maxgift, adjspe),
+};
+
+/* C do.c:2040-2053 final_level() */
+async function final_level() {
+    /* reset monster hostility relative to player */
+    iter_mons_real(_fl_reset_hostility);
+    /* create some player-monsters */
+    await _fl_create_mplayers(rn1(4, 3), true, _FL_MPLAYER_CBS);
+    /* create a guardian angel next to player, if worthy */
+    await _fl_gain_guardian_angel();
+}
+
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const g = game;
     const u = g.u || (g.u = {});
@@ -8130,6 +8300,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C ref: do.c:1489 — `up = (depth(newlevel) < depth(&u.uz))`, evaluated at
     // goto_level entry while u.uz is still the level being left.
     let up = depth(newlevel) < depth(oldUz);
+    /* C do.c:1497-1498 — `int dist = depth(newlevel) - depth(&u.uz);` and
+     * `boolean do_fall_dmg = FALSE;`, both fixed at goto_level entry. */
+    const dist = depth(newlevel) - depth(oldUz);
+    let do_fall_dmg = false;
     /* C do.c:1499 — schar prev_temperature = svl.level.flags.temperature;
      * Sampled here, while g.level is still the level being left, and read back
      * by temperature_change_msg() near the end of goto_level (do.c:1935). */
@@ -8484,6 +8658,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             // tower branch (port-mklev-u-on-rndspot-001).
             await u_on_rndspot(up ? 1 : 0);
         }
+        /* C do.c:1819-1823 — falling: `do_fall_dmg = TRUE` (the Punished
+         * ballfall() and selftouch("Falling, you") halves are not modelled). */
+        if (falling)
+            do_fall_dmg = true;
     }
     // ══ C do.c:1766-1800 — the arrival-message + fall-down-the-stairs arm ════
     // THIS BLOCK MUST PRECEDE placebc()/losedogs()/u_collide_m() below.  In C the
@@ -8859,7 +9037,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // left empty rather than omitted, for the same reason.  RNG-free.
     if (In_endgame(u.uz)) {
         if (isNew && on_level(u.uz, g.astral_level)) {
-            /* final_level() — guardian angel &c; unported. */
+            await final_level();
             record_achievement(8 /* you.h ACH_ASTR */);
         } else if (newdungeon && (u.uhave && u.uhave.amulet)) {
             await resurrect();
@@ -8936,6 +9114,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await print_level_annotation(); /* do.c:1974 */
     await check_special_room(false);      /* do.c:1977 — room entrance message */
     in_out_region(u.ux | 0, u.uy | 0); /* do.c:1981 */
+    /* C do.c:1989-1993 — fall damage after a trap door / hole descent:
+     *     int dmg = d(max(dist, 1), 6);
+     *     dmg = Maybe_Half_Phys(dmg);
+     *     losehp(dmg, "falling down a mine shaft", KILLED_BY); */
+    if (do_fall_dmg) {
+        const dmg = flooreffects_Maybe_Half_Phys(d(Math.max(dist, 1), 6));
+        await losehp(dmg, 'falling down a mine shaft', KILLED_BY);
+    }
     // C ref: do.c:2015 (void) pickup(1); — unconditional arrival autopickup
     // check_here(FALSE)'s ct==0 branch (read_engr_at) for the common case of
     // an empty arrival square.  Same function as the per-move call above.
@@ -9413,6 +9599,9 @@ async function print_dungeon_menu() {
     for (let i = 0; i < n_dgns; i++) {
         const dptr = dungeonsFull[i];
         if (!dptr) continue;
+        // C dungeon.c:2309 — `if (bymenu && In_endgame(&u.uz) && i != astral_level.dnum)
+        // continue;`: from an elemental plane the menu lists ONLY the Planes.
+        if (In_endgame(g.u?.uz) && i !== g.astral_level?.dnum) continue;
         const unplaced = _pd_unplaced_floater(i, branches);
         const descr = unplaced ? 'depth' : 'level';
         const nlev = dptr.num_dunlevs | 0;
@@ -9471,7 +9660,34 @@ async function print_dungeon_menu() {
 
     let pageIdx = 0;
     let row0Erased = false;
+    /* C ref: wintty.c:1908-1927 tty_display_nhwindow + tty_end_menu — a menu
+     * whose longest line is narrow is NOT full-width: the window is placed at
+     * offx = cols - maxcol - 1 (maxcol = longest str + 2) as an overlay, every
+     * row painted from offx+1, and a single page ends with "(end) " (wintty.c:
+     * 2749), never "(N of M)".  Only the one-page case is modelled here (the
+     * multi-page full-width frames below are verified against recordings).
+     * Non-selectable rows are stored here as ESC[nC + text; the overlay
+     * compositor wants those leading blanks as spaces, and the one-space left
+     * margin every row carries is the column offx itself. */
+    let overlayLines = null, overlayCol = 0;
+    if (npages === 1) {
+        const stripped = lines.map((ln) => {
+            const m = /^\x1b\[(\d+)C/.exec(ln);
+            const t = m ? ' '.repeat(+m[1]) + ln.slice(m[0].length) : ln;
+            return t.replace(/^ /, '');
+        });
+        const wl = [...stripped, '(end)'];
+        const col = tty_window_offx(wl, 'end');
+        if (col > 1) { overlayLines = wl; overlayCol = col; }
+    }
+    const overlayRows = () => build_window_screen(
+        row0Erased ? ['', ...overlayLines.slice(1)] : overlayLines,
+        overlayCol, g.u?.uac ?? 0).split('\n');
     const pageRows = () => {
+        if (overlayLines) {
+            const rows = overlayRows();
+            return { rows, indicator: '(end)', indicatorRow: overlayLines.length - 1 };
+        }
         const pageLines = pages[pageIdx] || [''];
         const indicator = ` (${pageIdx + 1} of ${npages})`;
         const rows = [];
@@ -9493,7 +9709,8 @@ async function print_dungeon_menu() {
     while (true) {
         const { rows, indicator, indicatorRow } = pageRows();
         g._screen_output = rows.join('\n');
-        set_cursor(indicator.length, indicatorRow);
+        if (overlayLines) set_cursor(overlayCol + '(end)'.length + 1, indicatorRow);
+        else set_cursor(indicator.length, indicatorRow);
         g._pending_message = '';
 
         const key = await nhgetch();
@@ -15047,7 +15264,7 @@ async function use_camera(obj) {
         /* C apply.c:103-104: TODO selfie joke; (void) zapyourself(obj, TRUE); */
         await zapyourself(obj, true);
     } else {
-        do_blinding_ray(obj);
+        await do_blinding_ray(obj);
     }
     return ECMD_TIME;
 }
@@ -15185,9 +15402,114 @@ export function ceiling(x, y) {
     /* C dungeon.c:1738 */
     return 'rock cavern';
 }
-function do_blinding_ray(_obj) {
-    /* not yet ported: do_blinding_ray — minimal RNG shell to match C */
-    rnd(30); rnd(30); rnd(30);
+async function flash_hits_mon(mtmp, otmp) {
+    const g = game;
+    let res = 0;
+    const mx = mtmp.mx | 0, my = mtmp.my | 0;
+    if (g.gn && g.gn.notonhead)
+        return 0;
+    const lev = g.level?.locations?.[mx]?.[my];
+    const useeit = canseemon(mtmp);
+
+    if ((mtmp.m_ap_type | 0) !== M_AP_NOTHING)
+        await wakeup(mtmp, false);
+
+    if ((mtmp.msleeping | 0) && _haseyes(mtmp.data)) {
+        mtmp.msleeping = 0;
+        if (useeit) {
+            await pline(`The flash awakens ${mon_nam(mtmp)}.`);
+            res = 1;
+        }
+    } else if ((mtmp.data.mlet | 0) !== S_LIGHT) {
+        if (!resists_blnd(mtmp)) {
+            const tmp = dist2(otmp.ox | 0, otmp.oy | 0, mx, my);
+            if (useeit) {
+                await pline(`${Monnam(mtmp)} is blinded by the flash!`);
+                res = 1;
+            }
+            if ((mtmp.data.pmidx | 0) === PM_GREMLIN) {
+                /* Rule #1: Keep them out of the light. */
+                if ((otmp.otyp | 0) === 410 /* WAN_LIGHT */)
+                    d(1 + (otmp.spe | 0), 4);
+                else
+                    rnd(Math.min(mtmp.mhp | 0, 4));
+            }
+            if (!DEADMONSTER(mtmp)) {
+                if (!(g.context && g.context.mon_moving))
+                    await setmangry(mtmp, true);
+                if (tmp < 9 && !mtmp.isshk && rn2(4))
+                    await monflee(mtmp, rn2(4) ? rnd(100) : 0, false, true);
+                mtmp.mcansee = 0;
+                mtmp.mblinded = (tmp < 3) ? 0 : rnd(1 + Math.trunc(50 / tmp));
+            }
+        } else if (useeit) {
+            /* resists_blnd_by_arti -> shieldeff(mx, my): display-only; the
+             * helper is unexported from js/mhitm.js, so the shield flash is not
+             * drawn (KNOWN GAP). */
+            if (g.flags && g.flags.verbose) {
+                if (lev && lev.lit)
+                    await pline(`The flash of light shines on ${mon_nam(mtmp)}.`);
+                else
+                    await pline(`${Monnam(mtmp)} is illuminated.`);
+                res = 2; /* 'message has been given' temporary value */
+            }
+        }
+    }
+    if (res) {
+        if (!(lev && lev.lit))
+            topl_force_break_now(); /* display_nhwindow(WIN_MESSAGE, TRUE) */
+        res &= 1; /* change temporary 2 back to 0 */
+    }
+    return res;
+}
+/* C ref: apply.c:55-76 do_blinding_ray(obj).  The bhit(FLASHED_LIGHT) walk is
+ * done inline (zap.c:3835-4130 has no JS body): a flash continues THROUGH
+ * invisible monsters, calling flash_hits_mon directly, and stops at the first
+ * visible one.  tmp_at beam / show_transient_light are display-only and not
+ * modelled. */
+async function do_blinding_ray(obj) {
+    const g = game;
+    const u = g.u;
+    const ddx = u.dx | 0, ddy = u.dy | 0;
+    let mtmp = null;
+    let x = u.ux | 0, y = u.uy | 0;
+    g.gb = g.gb || {};
+    g.gb.bhitpos = { x, y };
+    for (let range = COLNO; range-- > 0; ) {
+        x += ddx; y += ddy;
+        g.gb.bhitpos = { x, y };
+        if (!isok(x, y)) {
+            x -= ddx; y -= ddy;
+            g.gb.bhitpos = { x, y };
+            break;
+        }
+        const typ = (g.level?.locations?.[x]?.[y]?.typ ?? 0) | 0;
+        let m = m_at(x, y);
+        /* a flash passes a mimic pretending to be an object */
+        if (m && (m.m_ap_type | 0) === M_AP_OBJECT)
+            m = null;
+        if (m) {
+            g.gn = g.gn || {};
+            g.gn.notonhead = (x !== (m.mx | 0) || y !== (m.my | 0));
+            if (m.minvis) {
+                obj.ox = u.ux; obj.oy = u.uy;
+                await flash_hits_mon(m, obj);
+            } else {
+                mtmp = m;
+                break;
+            }
+        }
+        if (typ < POOL || closed_door(x, y)) {
+            g.gb.bhitpos = { x: x - ddx, y: y - ddy };
+            break;
+        }
+    }
+    obj.ox = u.ux; obj.oy = u.uy; /* flash_hits_mon() wants this */
+    if (mtmp) {
+        await flash_hits_mon(mtmp, obj);
+        if ((obj.otyp | 0) === 229 /* EXPENSIVE_CAMERA */)
+            see_monster_closeup(mtmp, true); /* TRUE for photo */
+    }
 }
 const nothing_happens = "Nothing happens.";
 
@@ -20153,6 +20475,23 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
         u.usteed.mtame ? ARTICLE_YOUR : ARTICLE_THE, null,
         SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION, false);
     if (riding) lines.push(_you_are(`riding ${steedname}`, ''));
+    /* C insight.c:981-989 — "other movement situations that hero should always
+     * know".  youtoo is You_ plus "and <steed> " when riding (insight.c:979).
+     * Lev_at_will is HLevitation & I_SPECIAL (youprop.h). */
+    {
+        const youtoo = riding ? `You and ${steedname} ` : 'You ';
+        const levp = game.u?.uprops?.[LEVITATION];
+        if (_Levitation()) {
+            if (((levp?.intrinsic | 0) & I_SPECIAL) && (mode & MAGICENLIGHTENMENT))
+                lines.push(_you_are('levitating, at will', ''));
+            else
+                lines.push(_enlght_line(youtoo, _enl_tense('are ', 'were '),
+                    'levitating', await _from_what(LEVITATION)));
+        } else if (_Flying()) {
+            lines.push(_enlght_line(youtoo, _enl_tense('are ', 'were '),
+                'flying', await _from_what(FLYING)));
+        }
+    }
     /* C insight.c:1035-1052 — hallucination is reported before blindness,
      * after confusion.  Blindfolds contribute only the extrinsic half, so the
      * deliberate form must be distinguished from timed/intrinsic blindness.
@@ -20270,6 +20609,20 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
     lines.push(_enl_encumbrance_line());
     for (const ln of _enl_weapon_insight())
         lines.push(ln);
+    /* C insight.c:1250-1256 — the monk's suit penalty is too blatant to be
+     * restricted to magical enlightenment: enlght_combatinc("to hit",
+     * -spelarmr) + " due to your <suit>" (absamt > 12 => "huge"). */
+    if (game.iflags?.tux_penalty && !Upolyd(u)) {
+        const _incamt = -((game.urole?.spelarmr) | 0);
+        const _abs = Math.abs(_incamt);
+        const _modif = !_incamt ? 'no'
+            : an(_abs <= 3 ? 'small' : _abs <= 6 ? 'moderate' : _abs <= 12 ? 'large' : 'huge');
+        let _cb = `${_modif} ${_incamt >= 0 ? 'bonus' : 'penalty'} to hit`;
+        if (_enl_final || wizard())
+            _cb += ` (${_incamt > 0 ? '+' : ''}${_incamt})`;
+        _cb += ` due to your ${suit_simple_name(u.uarm)}`;
+        lines.push(_you_have(_cb, ''));
+    }
     if (!u.uarm && !u.uarmu && !u.uarmc && !u.uarms && !u.uarmg && !u.uarmf && !u.uarmh) {
         if (u.uroleplay?.nudist)
             lines.push(_enlght_line('You ', _enl_tense('do', 'did'), ' not wear any armor', ''));
@@ -30472,6 +30825,13 @@ async function look_at_object(x, y) {
          * dknown is clear.  The potion xname arm then deliberately suppresses
          * its shuffled appearance: farlooking at an unseen milky potion says
          * "a potion", not "a potion (milky)". */
+        {
+            const _xr = (game.u?.xray_range | 0), _r = _xr > 2 ? _xr : 2;
+            const _neardist = _r * _r * 2 - _r;
+            if (!obj.dknown && cansee(x, y)
+                && (_odx * _odx + _ody * _ody) <= _neardist)
+                observe_object(obj);
+        }
         if (!obj.dknown && (obj.oclass | 0) === OCLASS_POTION) {
             buf = 'a potion';
         } else if (!obj.dknown && (obj.oclass | 0) === OCLASS_RING) {
@@ -33535,6 +33895,11 @@ async function domove_core(dx, dy) {
     u.uy0 = oldy;
     u.ux = newx;
     u.uy = newy;
+    /* C hack.c:2958-2960 — a mimicking hero who moves stops imitating an
+     * object/furniture; only m_ap_type is reset (mappearance is left). */
+    if ((dx || dy) && (((game.youmonst?.m_ap_type | 0) === M_AP_OBJECT)
+                       || ((game.youmonst?.m_ap_type | 0) === M_AP_FURNITURE)))
+        game.youmonst.m_ap_type = M_AP_NOTHING;
     if (u.usteed) {
         u.usteed.mx = newx;
         u.usteed.my = newy;
@@ -33551,6 +33916,7 @@ async function domove_core(dx, dy) {
 // of the old and new hero squares, wipe_engr_at consumes rnd(5) whenever an
 // engraving exists there and is not a HEADSTONE.
 function _maybe_smudge_engr(x1, y1, x2, y2) {
+    if (!can_reach_floor(true)) return;
     let ep = engr_at(x1, y1);
     if (ep && ep.engr_type !== HEADSTONE)
         wipe_engr_at(x1, y1, rnd(5), false);
@@ -41430,6 +41796,12 @@ async function domonnoise(mtmp) {
      * mute and the quest could never be granted. */
     if (msound === MS_LEADER || msound === MS_NEMESIS || msound === MS_GUARDIAN) {
         await quest_chat(mtmp);
+        return ECMD_TIME;
+    }
+    /* C sounds.c:702-703 — shopkeepers keep their minds: msound = MS_SELL,
+     * then sounds.c:733-735 shk_chat() unless hallucinating. */
+    if (mtmp.isshk && !_uprop_active('HALLUC')) {
+        await shk_chat(mtmp);
         return ECMD_TIME;
     }
     if (msound === _MSNOISE_MS_BARK) {

@@ -184,16 +184,15 @@ export function m_useup(mon, obj) {
     }
 }
 
-/** C ref: hacklib.c s_suffix — local for cancelled-spit dry rattle. */
+/** C ref: hacklib.c s_suffix `:345–359` — local for cancelled-spit dry rattle. */
 function s_suffix(s) {
-    if (!s) return "its";
-    if (s === 'it' || s === 'It') return `${s}s`;
-    if (s === 'you' || s === 'You') return `${s}r`;
-    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
-        || s.endsWith('ch') || s.endsWith('sh')) {
-        return `${s}'`;
-    }
-    return `${s}'s`;
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
+    if (low === 'you') return `${buf}r`;
+    /* C checks trailing 's' only — no z/x/ch/sh arm. */
+    if (buf.endsWith('s')) return `${buf}'`;
+    return `${buf}'s`;
 }
 
 /** C objnam.c Tobjnam — The(xname) + otense (return_from_mtoss plines). */
@@ -1443,7 +1442,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         const uu = game.u || {};
         uu.ucreamed = (uu.ucreamed | 0) + blindinc;
         await make_blinded(BlindedTimeout() + blindinc, false);
-        if (!Blind()) await pline('Your vision clears.');
+        if (!Blind()) await pline('Your vision quickly clears.');
     }
     game._thrownobj = null;
 }

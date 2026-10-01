@@ -28,7 +28,7 @@ import { rn2 } from './rng.js';
 import { isok, dist2 } from './hacklib.js';
 import {
     u_at, IS_STWALL, ROWNO, MSG_OTHER, MSG_MAIL, ONAME_NO_FLAGS, NO_MM_FLAGS,
-    Never_mind,
+    Never_mind, BUFSZ,
 } from './const.js';
 import { couldsee, cansee } from './vision.js';
 import { enexto } from './teleport.js';
@@ -480,16 +480,20 @@ function mailStat() {
 }
 
 /**
- * C `nh_getenv`. Scored ESM has no `node:` import; `globalThis.process.env`
- * is the cfgfiles.js `c_getenv` precedent. Chrome leaves it unset.
+ * C `nh_getenv` (`options.c:6847–6856`): `getenv` gated on
+ * `strlen <= BUFSZ/2`, else NULL. Scored ESM has no `node:` import;
+ * `globalThis.process.env` is the cfgfiles.js `c_getenv` precedent.
+ * Chrome leaves it unset. Exported for `do_name.c` roguename.
  * @param {string} name
  * @returns {string|null}
  */
-function nh_getenv(name) {
+export function nh_getenv(name) {
     const env = (typeof globalThis !== 'undefined' && globalThis.process
         && globalThis.process.env) || null;
     if (!env || env[name] == null) return null;
-    return String(env[name]);
+    const val = String(env[name]);
+    if (val.length > BUFSZ / 2) return null;
+    return val;
 }
 
 /**

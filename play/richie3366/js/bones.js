@@ -179,7 +179,7 @@ export async function fix_ghostly_obj(obj) {
  * @param {object|null} ochain
  * @param {boolean} restore
  */
-function resetobjs(ochain, restore) {
+export function resetobjs(ochain, restore) {
     let nobj;
     for (let otmp = ochain; otmp; otmp = nobj) {
         nobj = otmp.nobj;
@@ -412,46 +412,11 @@ export function write_bonesfile(lev, versionHeader = null) {
     // C: open_bonesfile miss required — do not replace existing
     if (vfsReadFile(vfsPath(filename)) != null) return false;
 
-    // C bones.c:620 update_mlstmv before savelev.
+    // C savebones `:619–621` — savefruitchn, then update_mlstmv stamps
+    // the mlstmv savebones zeroed. (resetobjs, untame, hero-zero and the
+    // level-memory wipe run in savebones itself, in C order.)
+    const fruitchn = savefruitchn();
     update_mlstmv();
-
-    const lvl = game.level;
-    if (lvl?.locations) {
-        for (let x = 0; x < lvl.locations.length; x++) {
-            // C bones.c savebones — clear seenv/waslit/glyph before save
-            for (const cell of lvl.locations[x] || []) {
-                if (!cell) continue;
-                cell.seenv = 0;
-                cell.waslit = false;
-                cell.remembered_glyph = undefined;
-                cell.disp_ch = ' ';
-                cell.disp_color = 8; // NO_COLOR
-                cell.disp_decgfx = false;
-                cell.disp_attr = 0;
-                cell.gnew = 0;
-                cell.glyph_symidx = -1;
-            }
-        }
-    }
-    // C: svl.lastseentyp[x][y] = 0
-    if (game.lastseentyp) game.lastseentyp = null;
-
-    for (const m of game.fmon || []) {
-        // C ref: bones.c savebones — pets lose tame/peaceful for next hero
-        if (m.mtame) {
-            m.mtame = 0;
-            m.mpeaceful = 0;
-        }
-        // C resetobjs(mtmp->minvent, FALSE) — after drop_upon_death
-        resetobjs(m.minvent, false);
-    }
-    // C resetobjs(fobj, FALSE) / resetobjs(buriedobjlist, FALSE)
-    resetobjs(game.fobj, false);
-    if (Array.isArray(lvl?.buriedobjlist)) {
-        for (const o of lvl.buriedobjlist) resetobjs(o, false);
-    } else {
-        resetobjs(lvl?.buriedobjlist, false);
-    }
     // migrating_mons are off-level (mx==0); C savelev does not include them.
 
     // Shared savelev codec (D-1696). Peek track then FREEING-clear.
@@ -461,7 +426,7 @@ export function write_bonesfile(lev, versionHeader = null) {
         version: 1,
         bonesid,
         // C savebones savefruitchn before savelev — fid>=0 only (D-1523)
-        fruitchn: savefruitchn(),
+        fruitchn,
         dnum: lev?.dnum | 0,
         dlevel: lev?.dlevel | 0,
         ...levelBlob,

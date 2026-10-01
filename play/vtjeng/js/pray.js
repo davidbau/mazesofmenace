@@ -236,6 +236,7 @@ import {
     gloves_simple_name, otense, vtense, yname, Yobjnam2,
 } from './objnam.js';
 import { note_unported } from './unported.js';
+import { unpunish } from './read.js';
 
 // Raised where pray.c reaches a branch this port has not translated.
 // js/cmd.js failClosedCommandRefusals() lists it, so the segment keeps every
@@ -296,7 +297,8 @@ function on_altar(state) {
 
 // C ref: pray.c:107 `#define a_align(x, y)`.
 function a_align(x, y, state) {
-    return Amask2align(state.level.at(x, y).altarmask & AM_MASK);
+    // rm.altarmask aliases flags; this is a raw real-tile read, not mimic lookup.
+    return Amask2align(state.level.at(x, y).flags & AM_MASK);
 }
 
 // C ref: pray.c altarmask_at() (2490-2504).  The altar alignment helper is
@@ -310,7 +312,7 @@ export function altarmask_at(x, y, state = game) {
     }
     const location = state.level?.at(x, y);
     return IS_ALTAR(location?.typ)
-        ? location.altarmask ?? location.flags ?? 0
+        ? location.flags ?? 0
         : 0;
 }
 
@@ -334,7 +336,7 @@ export async function dosacrifice(state = game) {
         return ECMD_OK;
     }
     const altar = state.level.at(u.ux, u.uy);
-    const highaltar = Boolean(altar.altarmask & AM_SANCTUM);
+    const highaltar = Boolean(altar.flags & AM_SANCTUM);
     const otmp = await floorfood('sacrifice', 1, state);
     if (!otmp) return ECMD_OK;
 
@@ -510,7 +512,7 @@ async function eval_offering(otmp, altaralign, state) {
                 ? 'chaos'
                 : unicornAlign ? 'law' : 'balance';
             await ttyPline(`Such an action is an insult to ${insult}!`, state);
-            await adjattrib(A_WIS, -1, 0, state, { message: ttyPline });
+            await adjattrib(A_WIS, -1, 1, state, { message: ttyPline });
             return -1;
         }
         if (state.u.ualign.type === altaralign) {
@@ -557,7 +559,7 @@ async function sacrifice_your_race(otmp, highaltar, altaralign, state) {
         await ttyPline(
             `The altar is stained with ${state.urace.adj} blood.`, state,
         );
-        state.level.at(u.ux, u.uy).altarmask = AM_CHAOTIC;
+        state.level.at(u.ux, u.uy).flags = AM_CHAOTIC;
         newsym(u.ux, u.uy, state);
         note_unported('priest.c angry_priest');
     } else {
@@ -569,7 +571,7 @@ async function sacrifice_your_race(otmp, highaltar, altaralign, state) {
             );
             const altar = state.level.at(u.ux, u.uy);
             altar.typ = ROOM;
-            altar.altarmask = 0;
+            altar.flags = 0;
             newsym(u.ux, u.uy, state);
             note_unported('priest.c angry_priest');
             demonlessMessage = 'cloud dissipates';
@@ -635,8 +637,19 @@ async function sacrifice_your_race(otmp, highaltar, altaralign, state) {
     else await useupf(otmp, 1, useupEnv);
 }
 
-// C ref: pray.c:1959-2122 offer_corpse(). Unported helpers at these sites are
-// void in C, so their results are discarded exactly where the source does.
+// C ref: pray.c:1592-1599 offer_negative_valued(). The high-altar
+// desecration result is discarded in C and remains a named void-call gap.
+async function offer_negative_valued(highaltar, altaralign, state) {
+    const { u } = state;
+    if (altaralign !== u.ualign.type && highaltar) {
+        note_unported('pray.c desecrate_altar');
+    } else {
+        await gods_upset(altaralign, state);
+    }
+}
+
+// C ref: pray.c:1959-2122 offer_corpse(). Its two negative-value branches
+// await offer_negative_valued() at the corresponding source call sites.
 async function offer_corpse(otmp, highaltar, altaralign, state) {
     const { u } = state;
     const maxValue = 24;
@@ -665,7 +678,7 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
             await ttyPline('So this is how you repay loyalty?', state);
             adjalign(-3, state);
             u.uprops[AGGRAVATE_MONSTER].intrinsic |= FROMOUTSIDE;
-            note_unported('pray.c offer_negative_valued');
+            await offer_negative_valued(highaltar, altaralign, state);
             return;
         }
     }
@@ -676,7 +689,7 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
         return;
     }
     if (value < 0) {
-        note_unported('pray.c offer_negative_valued');
+        await offer_negative_valued(highaltar, altaralign, state);
         return;
     }
     if (altaralign !== u.ualign.type && highaltar) {
@@ -1215,7 +1228,7 @@ export async function fix_worst_trouble(trouble, state = game) {
         if (state.u.utrap && state.u.utraptype === TT_BURIEDBALL)
             note_unported('dig.c buried_ball_to_freedom');
         else
-            note_unported('ball.c unpunish');
+            unpunish(state);
         break;
     case TROUBLE_FUMBLING:
         if (Cursed_obj(state.uarmg, GAUNTLETS_OF_FUMBLING)) {
@@ -1747,7 +1760,7 @@ export async function pleased(g_align, state = game) {
         action = rn1(
             prayer_luck + (on_altar(state)
                 ? 3 + Number(Boolean(
-                    state.level.at(u.ux, u.uy).altarmask & AM_SHRINE,
+                    state.level.at(u.ux, u.uy).flags & AM_SHRINE,
                 ))
                 : 2),
             1,

@@ -1685,7 +1685,7 @@ export async function doengrave() {
         // do.js already imports engrave; load make_blinded lazily (TDZ).
         const { make_blinded } = await import('./do.js');
         await make_blinded(rnd(50), false);
-        if (!Blind()) await pline('Your vision clears.');
+        if (!Blind()) await pline('Your vision quickly clears.');
     }
 
     if (de.disprefresh) newsym(u.ux, u.uy);

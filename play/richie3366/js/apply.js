@@ -1441,16 +1441,15 @@ function m_next2u(mtmp) {
     return dx * dx + dy * dy <= 2;
 }
 
-/** C hacklib.c s_suffix — possessive for leash snap pline. */
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, lowercase-*s→*', else *'s. */
 function s_suffix_leash(s) {
-    const str = String(s || '');
-    if (!str) return "'s";
-    const last = str.charAt(str.length - 1);
-    if (last === 's' || last === 'x' || last === 'z'
-        || str.endsWith('ch') || str.endsWith('sh')) {
-        return `${str}'`;
-    }
-    return `${str}'s`;
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
+    if (low === 'you') return `${buf}r`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only, no z/x/ch/sh arm. */
+    if (buf.endsWith('s')) return `${buf}'`;
+    return `${buf}'s`;
 }
 
 /** C you.h mhis — hallu rn2 deferred (leash pull-free msg). */
@@ -3220,12 +3219,14 @@ function Role_if(pm) {
     return (game.urole?.mnum | 0) === pm;
 }
 
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, lowercase-*s→*', else *'s. */
 function s_suffix_apply(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 
@@ -4343,13 +4344,14 @@ async function figurine_location_checks(obj, cc, quietly) {
     return true;
 }
 
-/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, lowercase-*s→*', else *'s. */
 function s_suffix_fig(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 

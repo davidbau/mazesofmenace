@@ -329,7 +329,7 @@ async function digactualhole_pit(x, y) {
     g.level = g.level || {};
     if (!Array.isArray(g.level.traps)) g.level.traps = [];
     if (!g.level.traps.some((t) => t.tx === x && t.ty === y)) {
-        g.level.traps.push({ tx: x, ty: y, ttyp: 2 /* PIT */, tseen: 1, madeby_u: true });
+        g.level.traps.push({ tx: x, ty: y, ttyp: PIT, tseen: 1, madeby_u: true });
     }
     /* C dig.c:737-740 — at_u && !wont_fall → set_utrap(rn1(4,2), TT_PIT). */
     set_utrap(rn1(4, 2), TT_PIT);

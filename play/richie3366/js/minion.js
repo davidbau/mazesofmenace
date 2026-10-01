@@ -80,11 +80,12 @@ function sgn(n) {
     return (x > 0) - (x < 0);
 }
 
-/** C ref: hacklib.c s_suffix — possessive for Deaf booming-voice feel. */
+/** C ref: hacklib.c s_suffix `:345–359` — possessive for Deaf booming-voice feel. */
 function s_suffix(s) {
-    const str = String(s || '');
-    if (str === 'it') return 'its';
-    if (str === 'you') return 'your';
+    const str = String(s ?? '');
+    const low = str.toLowerCase();
+    if (low === 'it') return `${str}s`; /* C strcmpi — case-insensitive */
+    if (low === 'you') return `${str}r`;
     if (str.endsWith('s')) return `${str}'`;
     return `${str}'s`;
 }

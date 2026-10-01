@@ -2484,7 +2484,7 @@ async function rottenfood(obj) {
         await pline('Everything suddenly goes dark.');
         // C eat.c:1824-1828 — Blinded timer may be nonzero via Eyes override
         await make_blinded(BlindedTimeout() + d(2, 10), false);
-        if (!Blind()) await pline('Your vision clears.');
+        if (!Blind()) await pline('Your vision quickly clears.');
     } else if (!rn2(3)) {
         const duration = rnd(10);
         await pline('The world spins and goes dark.');
@@ -3392,9 +3392,10 @@ export async function Finish_digestion() {
 function s_suffix_eat(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 

@@ -356,7 +356,7 @@ async function mcast_blind_you() {
         const { make_blinded } = await import('./do.js');
         await make_blinded(Half_spell_damage() ? 100 : 200, false);
         if (!Blind()) {
-            await pline('Your vision clears.');
+            await pline('Your vision quickly clears.');
         }
     } else {
         await impossible('no reason for monster to cast blindness spell?');

@@ -259,27 +259,6 @@ function kick_dumb(x, y) {
         hurtle(-(u.dx | 0), -(u.dy | 0), 1, true);
     }
 }
-/* C hack.c:4156-4206 saving_grace(), kept local to avoid introducing a
- * cmd.js↔dokick.js initialization cycle.  The damage guard is state-only and
- * consumes no RNG; the command module carries the equivalent hero-action path. */
-function monster_saving_grace(dmg) {
-    const g = game;
-    const u = g.u;
-    if (!u || !g.context?.mon_moving || dmg < (u.uhp | 0) || (u.uhp | 0) <= 0)
-        return dmg;
-    if (g.gs?.saving_grace_turn)
-        return (u.uhp | 0) - 1;
-    const start = g.gu?.uhp_at_start_of_monster_turn;
-    if (!u.usaving_grace && Number.isFinite(start)
-        && (start * 100 / (u.uhpmax | 0)) >= 90) {
-        u.usaving_grace = 1;
-        g.gs ||= {};
-        g.gs.saving_grace_turn = true;
-        return (u.uhp | 0) - 1;
-    }
-    return dmg;
-}
-
 /* C ref: hack.c:4219 losehp(n, knam, k_format) — apply hit-point loss to the
  * current monster form or the hero's ordinary HP, then resolve rehumanization
  * or death before returning to the caller. */
@@ -305,8 +284,6 @@ export async function losehp(n, knam, k_format) {
         }
         return;
     }
-    n = (String(knam).toLowerCase().includes('wand'))
-        ? monster_saving_grace(n | 0) : (n | 0);
     u.uhp = (u.uhp | 0) - (n | 0);
     if ((u.uhp | 0) > (u.uhpmax | 0))
         u.uhpmax = u.uhp; /* perhaps n was negative */
@@ -553,6 +530,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
         /* C dokick.c:1071-1074 — kicking an altar invokes the canonical
          * prayer-side wrath logic before the independent 1-in-3 kick injury
          * roll.  altar_wrath() owns its alignment, voice, luck, and RNG arms. */
+        void pline(`You kick ${Blind ? 'something' : 'the altar'}.`);
         await altar_wrath(x, y);
         if (!rn2(3)) {
             await kick_ouch(x, y, "");

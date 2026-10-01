@@ -2267,13 +2267,14 @@ function locomotion_hatch(ptr, def) {
     return def;
 }
 
-/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, lowercase-*s→*', else *'s. */
 function s_suffix_hatch(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 

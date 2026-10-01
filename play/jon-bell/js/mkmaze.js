@@ -21,6 +21,13 @@ import {
 } from './const.js';
 import { load_special } from './sp_lev.js';
 import { obj_ice_effects, count_level_features, wallification } from './mklev.js';
+import { place_object, remove_object, u_on_newpos } from './mklev.js';
+import { stackobj } from './sp_lev.js';
+import { newsym, dec_mode } from './display.js';
+import { t_at } from './trap.js';
+import { remove_worm } from './worm.js';
+import { mnearto, mnexto, elemental_clog } from './teleport.js';
+import { MON_BUBBLEMOVE } from './const.js';
 /* The makemaz maze fallback (mkmaze.c:1197-1222) and populate_maze
  * (mkmaze.c:1095-1124) call these; all are C mklev.c/mkobj.c bodies that
  * already live in js/mklev.js. */
@@ -47,7 +54,7 @@ import { create_gas_cloud, clear_heros_fault } from './region.js';
 import { Norep } from './display.js';
 import { Is_waterlevel, Is_airlevel, WATER, CLOUD, MAGIC_PORTAL } from './const.js';
 import { block_point, unblock_point, recalc_block_point, vision_recalc } from './vision.js';
-import { CLR_GRAY, CLR_CYAN, CLR_BLUE } from './terminal.js';
+import { CLR_GRAY, CLR_CYAN, CLR_BRIGHT_BLUE } from './terminal.js';
 /* stolen_booty() and its statics (C mkmaze.c:712-889) — see the block at the
  * end of this file.  Every one of these is the file's ONE real port; nothing
  * here is a local stand-in. */
@@ -947,11 +954,11 @@ function mk_bubble(x, y, n) {
     }
     b.next = null;
     _ebubbles = b;
-    mv_bubble(b, 0, 0, true);
+    void mv_bubble(b, 0, 0, true); // ini: cons is empty, so nothing awaits
 }
 
 /* C mkmaze.c:1951-2107 mv_bubble(b, dx, dy, ini). */
-function mv_bubble(b, dx, dy, ini) {
+async function mv_bubble(b, dx, dy, ini) {
     let colli = 0;
     const airlev = Is_airlevel(game.u?.uz);
     const waterlev = Is_waterlevel(game.u?.uz);
@@ -1000,8 +1007,52 @@ function mv_bubble(b, dx, dy, ini) {
                 }
             }
 
-    /* C mkmaze.c:2027-2085 — "replace contents of bubble".  Is_waterlevel only;
-     * see this section's header for why the content moves are not ported. */
+    if (waterlev) {
+        /* C mkmaze.c:2027-2085 — replace contents of bubble */
+        let ctemp;
+        for (let cons = b.cons; cons; cons = ctemp) {
+            ctemp = cons.next;
+            cons.x += dx;
+            cons.y += dy;
+
+            switch (cons.what) {
+            case 'obj': {
+                let otmp;
+                for (let olist = cons.list; olist; olist = otmp) {
+                    otmp = olist.nexthere;
+                    place_object(olist, cons.x, cons.y);
+                    await stackobj(olist);
+                }
+                break;
+            }
+            case 'mon': {
+                const mon = cons.list;
+                /* mnearto() might fail; jump right to elemental_clog */
+                if (!await mnearto(mon, cons.x, cons.y, true, RLOC_NOMSG))
+                    await elemental_clog(mon);
+                break;
+            }
+            case 'hero': {
+                const mtmp = m_at(cons.x, cons.y);
+                const ux0 = game.u.ux, uy0 = game.u.uy;
+                u_on_newpos(cons.x, cons.y);
+                newsym(ux0, uy0); /* clean up old position */
+                if (mtmp)
+                    await mnexto(mtmp, RLOC_NOMSG);
+                break;
+            }
+            case 'trap': {
+                const btrap = cons.list;
+                btrap.tx = cons.x;
+                btrap.ty = cons.y;
+                break;
+            }
+            default:
+                break;
+            }
+        }
+        b.cons = null;
+    }
 
     /* boing? */
     switch (colli) {
@@ -1022,6 +1073,15 @@ function mv_bubble(b, dx, dy, ini) {
             b.dy = 1 - rn2(3);
         }
     }
+}
+
+/* S_water (dat/symbols:721 \xe0 under DECgraphics, '}' otherwise;
+ * defsym.h:152 CLR_BRIGHT_BLUE) — same cell js/display.js terrain_glyph
+ * draws for typ WATER. */
+function water_memory_glyph() {
+    return dec_mode()
+        ? { ch: '`', color: CLR_BRIGHT_BLUE, decgfx: true }
+        : { ch: '}', color: CLR_BRIGHT_BLUE, decgfx: false };
 }
 
 /* C mkmaze.c:1836-1880 setup_waterlevel() — called from fixup_special() when
@@ -1045,7 +1105,7 @@ export function setup_waterlevel() {
             const loc = game.level?.at(x, y);
             if (!loc) continue;
             loc.remembered_glyph = waterlev
-                ? { ch: '~', color: CLR_BLUE, decgfx: true }
+                ? water_memory_glyph()
                 : { ch: ' ', color: CLR_CYAN, decgfx: false };
             if ((loc.typ | 0) === STONE)
                 loc.typ = typ;
@@ -1080,9 +1140,64 @@ export async function movebubbles() {
     _hero_bubble = null;
 
     if (Is_waterlevel(uz)) {
-        /* C mkmaze.c:1575-1646 — the pick-up-everything-inside-a-bubble pass.
-         * Water-only and not ported; see this section's header.  It draws no
-         * RNG, so its absence does not shift the stream. */
+        /* C mkmaze.c:1560-1646 — pick up everything inside of a bubble then
+         * fill all bubble locations.  [Punished ball&chain handling
+         * (unplacebc_and_covet_placebc / lift_covet_and_placebc) is not
+         * ported.] */
+        for (let b = _bubbles_up ? _bbubbles : _ebubbles; b;
+             b = _bubbles_up ? b.next : b.prev) {
+            if (b.cons)
+                throw new Error('movebubbles: cons != null');
+            for (let i = 0, x = b.x; i < b.bm[0]; i++, x++)
+                for (let j = 0, y = b.y; j < b.bm[1]; j++, y++)
+                    if (b.bm[j + 2] & (1 << i)) {
+                        if (!isok(x, y))
+                            continue;
+                        const loc = game.level?.at(x, y);
+                        if (!loc)
+                            continue;
+                        /* pick up objects, monsters, hero, and traps */
+                        let otmp;
+                        let olist = null;
+                        while ((otmp = game.level?.levelObjects?.[x]?.[y]) != null) {
+                            remove_object(otmp);
+                            otmp.ox = otmp.oy = 0;
+                            otmp.nexthere = olist;
+                            olist = otmp;
+                        }
+                        if (olist)
+                            b.cons = { x, y, what: 'obj', list: olist, next: b.cons };
+                        const mon = m_at(x, y);
+                        if (mon) {
+                            b.cons = { x, y, what: 'mon', list: mon, next: b.cons };
+                            if (mon.wormno)
+                                remove_worm(mon);
+                            else
+                                mon._mapRemoved = true;
+                            newsym(x, y); /* clean up old position */
+                            mon.mx = mon.my = 0;
+                            mon.mstate = ((mon.mstate | 0) | MON_BUBBLEMOVE) >>> 0;
+                        }
+                        if (!game.u.uswallow && game.u.ux === x && game.u.uy === y) {
+                            b.cons = { x, y, what: 'hero', list: null, next: b.cons };
+                            _hero_bubble = b;
+                        }
+                        const btrap = t_at(x, y);
+                        if (btrap)
+                            b.cons = { x, y, what: 'trap', list: btrap, next: b.cons };
+                        /* levl[x][y] = water_pos */
+                        loc.typ = WATER;
+                        loc.lit = 0;
+                        loc.seenv = 0;
+                        loc.flags = 0;
+                        loc.horizontal = false;
+                        loc.waslit = false;
+                        loc.roomno = 0;
+                        loc.edge = false;
+                        loc.remembered_glyph = water_memory_glyph();
+                        block_point(x, y);
+                    }
+        }
     } else if (Is_airlevel(uz)) {
         for (let x = 1; x <= COLNO - 1; x++)
             for (let y = 0; y <= ROWNO - 1; y++) {
@@ -1127,7 +1242,7 @@ export async function movebubbles() {
     for (let b = _bubbles_up ? _bbubbles : _ebubbles; b;
          b = _bubbles_up ? b.next : b.prev) {
         const rx = rn2(3), ry = rn2(3);
-        mv_bubble(b, b.dx + 1 - (!b.dx ? rx : (rx ? 1 : 0)),
+        await mv_bubble(b, b.dx + 1 - (!b.dx ? rx : (rx ? 1 : 0)),
                   b.dy + 1 - (!b.dy ? ry : (ry ? 1 : 0)), false);
     }
 

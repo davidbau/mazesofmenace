@@ -2966,12 +2966,15 @@ export function unique_corpstat(ptr) {
 }
 
 /**
- * C ref: mon.c iter_mons `:4527–4540` — call vfunc for every living
- * on-level monster. DEADMONSTER is `mhp < 1`; fmon is a JS array (no nmon
- * unlink hazard), so the C mtmp2 snapshot is the loop itself.
+ * C ref: mon.c iter_mons `:4526–4538` — call vfunc for every living
+ * on-level monster. DEADMONSTER is `mhp < 1`, checked at visit time.
+ * C caches `mtmp2 = mtmp->nmon` before each callback so a callback that
+ * unlinks (e.g. mongone via savebones' remove_mon_from_bones) cannot
+ * skip the next monster; fmon is a JS array whose splice shifts later
+ * elements, so the snapshot below is C's mtmp2 chain.
  */
 export async function iter_mons(vfunc) {
-    for (const mtmp of game.fmon || []) {
+    for (const mtmp of [...(game.fmon || [])]) {
         if ((mtmp.mhp | 0) < 1 || mon_offmap(mtmp)) continue;
         await vfunc(mtmp);
     }

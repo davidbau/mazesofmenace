@@ -37,27 +37,28 @@ import {
     PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
     has_oname, LIFESAVED, W_AMUL, ACH_BLND, ACH_NUDE, ACH_UWIN,
     DELPHI, ROOMOFFSET, Is_oracle_level, Is_astralevel, In_endgame,
-    In_quest, ismnum, has_ebones, has_mgivenname, MGIVENNAME, BUFSZ,
-    M_AP_TYPE, M_AP_MONSTER,
+    In_quest, ismnum, has_ebones, EBONES, has_mgivenname, MGIVENNAME, BUFSZ,
+    M_AP_TYPE, M_AP_MONSTER, NUM_ROLES, NUM_RACES, M_SEEN_NOTHING,
+    unhideable_trap, DISMOUNT_BONES,
     FIRE_RES, STONE_RES, INTRINSIC,
     WRITING, NHF_BONESFILE,
     UTOTYPE_ATSTAIRS, fuzzer_off, EXIT_FAILURE,
 } from './const.js';
 import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic, is_vampshifter, is_undead } from './monsters.js';
-import { m_at, mongone, dmonsfree, zombie_maker, m_carrying } from './mon.js';
-import { can_carry, mon_offmap } from './monmove.js';
+import { m_at, mongone, dmonsfree, zombie_maker, m_carrying, iter_mons } from './mon.js';
+import { can_carry } from './monmove.js';
 import { enexto, rloc_to, single_level_branch } from './teleport.js';
 import { oname, christen_monst, free_oname, mon_nam, Monnam, m_monnam, pmname, Ugender, Mgender, type_is_pname } from './do_name.js';
-import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight } from './mkobj.js';
+import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight, obj_attach_mid } from './mkobj.js';
 import { artifact_light, end_burn } from './timeout.js';
 import { obj_is_burning } from './light.js';
 import { make_grave, sticks, forget_engravings } from './engrave.js';
 import { makemon, adj_lev, mongets } from './makemon.js';
 import {
     write_bonesfile, bones_file_exists, delete_bonesfile,
-    goodfruit, savebones_negate_fruit_ids, set_ghostly_objlist,
+    goodfruit, savebones_negate_fruit_ids, set_ghostly_objlist, resetobjs,
 } from './bones.js';
-import { genders, aligns } from './roles.js';
+import { genders, aligns, roles, races } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
@@ -84,8 +85,15 @@ import { init_uhunger } from './eat.js';
 // (imports.mjs --can: SAFE, both hoisted function decls, call-time use only).
 import { unstuck, expels } from './mhitu.js';
 import { setworn } from './do_wear.js';
-import { m_dowear } from './worn.js';
+import { m_dowear, clear_bypasses } from './worn.js';
 import { night, midnight, getnow, yyyymmddhhmmss } from './calendar.js';
+// C: bones.c savebones make_bones head (imports.mjs --can: SAFE, hoisted
+// function decls, call-time use only).
+import { unleash_all } from './apply.js';
+import { unpunish } from './read.js';
+import { dismount_steed } from './steed.js';
+import { newebones } from './restore.js';
+import { Punished } from './pray.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
@@ -1624,29 +1632,36 @@ async function remove_mon_from_bones(mtmp) {
 }
 
 /**
- * C ref: bones.c savebones — ghost envelope + VFS bones file (D-0274).
- * Branch: ordinary `ugrave_arise` NON_PM → drop_upon_death + PM_GHOST
- * MM_NONAME. Wizard Replace when bones file already exists (D-0581).
- * C bones.c:444–445 iter_mons(remove_mon_from_bones) + dmonsfree now live
- * (this file); the statue arm is D-2060.
- * Named omissions: file compress; unleash_all/unpunish/dismount;
- * resetobjs(FALSE) known-strip on minvent/fobj/buriedobjlist (the save
- * arm is live in bones.js; savebones does not call it); map memory clear
- * (ux/uy zero); ebones; obj_attach_mid;
- * binary savelev (overview lists who/how, not when[]).
+ * C ref: bones.c savebones `:403–625` whole body in C order (D-0274 ghost
+ * envelope + VFS bones file; D-0581 wizard Replace; D-2060 statue arm).
+ * Caller checked can_make_bones(). VFS probe stands in for open_bonesfile;
+ * write_bonesfile is the create_bonesfile + savefruitchn + update_mlstmv +
+ * savelev tail.
+ * Named omissions: close_nhfile on the probe hit (no VFS handle);
+ * compress_bonesfile on all three return paths (VFS has no post
+ * compression); create_bonesfile creat/errno/VMS arms (VFS creat cannot
+ * fail, so neither can the wizard pline1(whynot); paniclog is by-design);
+ * commit_bonesfile temp→final rename (VFS write is atomic); binary
+ * savelev record layout (JSON payload carries bonesid/fruitchn/level).
  */
 async function savebones(how, when, corpse) {
     const u = game.u || {};
     const flags = game.flags || {};
     const wizard = !!(flags.wizard || flags.debug);
 
-    // C: open_bonesfile hit → wizard Replace? before make_bones mutations
+    // C `:410` — caller has already checked can_make_bones().
+    clear_bypasses();
+
+    // C `:411–428` open_bonesfile hit → wizard Replace? before any
+    // make_bones mutation. compress_bonesfile() ahead of each return is
+    // named above (no VFS equivalent).
     if (bones_file_exists(u.uz)) {
         if (wizard) {
             if ((await yn_function(
                 'Bones file already exists.  Replace it?', 'yn', 'n',
             )) === 'y') {
                 if (!delete_bonesfile(u.uz)) {
+                    // C `:421–422` plines then falls to compress+return.
                     await pline('Cannot unlink old bones.');
                     return;
                 }
@@ -1659,15 +1674,15 @@ async function savebones(how, when, corpse) {
         }
     }
 
-    // C bones.c:444–445 iter_mons(remove_mon_from_bones) then dmonsfree.
-    // iter_mons skips DEADMONSTER (mhp<1) and mon_offmap (mstate!=MON_FLOOR);
-    // snapshot the list first like C's mtmp2=mtmp->nmon since mongone splices.
-    for (const mtmp of [...(game.fmon || [])]) {
-        if (!mtmp) continue;
-        if ((mtmp.mhp | 0) < 1) continue;
-        if (mon_offmap(mtmp)) continue;
-        await remove_mon_from_bones(mtmp);
-    }
+    // C make_bones `:431–442`: unleash pets, unwear ball+chain while
+    // Punished (disclosure already reported it), dismount the steed
+    // before dead-monster cleanup.
+    unleash_all();
+    if (Punished()) unpunish(); /* unwear uball, destroy uchain */
+    if (u.usteed) await dismount_steed(DISMOUNT_BONES);
+
+    // C `:444–445` iter_mons(remove_mon_from_bones) then dmonsfree.
+    await iter_mons(remove_mon_from_bones);
     await dmonsfree();
 
     // C bones.c:449 forget_engravings — the next hero hasn't read these.
@@ -1678,15 +1693,18 @@ async function savebones(how, when, corpse) {
     // C bones.c:455 — mark carried objects before they leave invent.
     set_ghostly_objlist(game.invent);
 
+    // C `:457–505` arise if / LEAVESTATUE else-if / ghost else — exactly
+    // one arm runs. The mtmp tail below is shared by arise + ghost.
     const arise = u.ugrave_arise;
+    let mtmp = null;
     if (ismnum(arise)) {
-        // C bones.c:457–478 — the hero rises as an undead: create the
+        // C `:457–478` — the hero rises as an undead: create the
         // monster first (makemon draws next_ident/newmonhp before the
         // drop loop's rn2(5) curse draws), then drop the inventory into
         // it, with no rn2(8) nearby-monster gate in that arm.
         const prevMklev = game.in_mklev;
         game.in_mklev = true; /* use <u.ux,u.uy> as-is */
-        let mtmp = makemon(mons(arise), u.ux | 0, u.uy | 0, NO_MINVENT);
+        mtmp = makemon(mons(arise), u.ux | 0, u.uy | 0, NO_MINVENT);
         game.in_mklev = prevMklev;
         if (!mtmp) { /* arise-type might have been genocided */
             await drop_upon_death(null, null, u.ux, u.uy);
@@ -1702,55 +1720,133 @@ async function savebones(how, when, corpse) {
         if (mtmp.data?.mlet === 'S_MUMMY' && !m_carrying(mtmp, MUMMY_WRAPPING))
             mongets(mtmp, MUMMY_WRAPPING);
         await m_dowear(mtmp, true);
-        // C savebones mtmp tail — hero-level HP, hero gender, asleep
-        // (ebones data stays a named omission, as in the ghost arm).
-        mtmp.m_lev = (u.ulevel | 0) || 1;
-        mtmp.mhp = mtmp.mhpmax = u.uhpmax | 0;
-        mtmp.female = game.flags?.female ? 1 : 0;
-        mtmp.msleeping = 1;
-        void corpse;
-    }
-    // C bones.c:480–489 LEAVESTATUE arm — statue instead of corpse; the
-    // drop loop containers inventory in the statue (no rn2(8) gate), then
-    // the shared bones tail below with no ghost (mtmp NULL in C).
-    if ((arise | 0) === LEAVESTATUE) {
+    } else if ((arise | 0) === LEAVESTATUE) {
+        // C `:480–489` — statue instead of corpse; the drop loop
+        // containers inventory in the statue (no rn2(8) gate), then the
+        // shared bones tail with no ghost (mtmp NULL in C).
         const statue = mk_named_object(
             STATUE, mons((u.umonnum | 0)), u.ux | 0, u.uy | 0,
             game.plname || 'Player',
         );
         await drop_upon_death(null, statue, u.ux | 0, u.uy | 0);
-        if (!statue) return;
-    } else {
+        if (!statue) return; /* couldn't make statue */
+        mtmp = null;
+    } else { /* u.ugrave_arise < LEAVESTATUE */
+        // C `:490–505` — drop everything, then trick makemon into
+        // allowing monster creation on the hero's location for the ghost.
         await drop_upon_death(null, null, u.ux, u.uy);
         const prev = game.in_mklev;
         game.in_mklev = true;
-        let mtmp = makemon(mons(PM_GHOST), u.ux | 0, u.uy | 0, MM_NONAME);
+        mtmp = makemon(mons(PM_GHOST), u.ux | 0, u.uy | 0, MM_NONAME);
         game.in_mklev = prev;
         if (!mtmp) return;
         mtmp = christen_monst(mtmp, game.plname || '');
+        if (corpse) obj_attach_mid(corpse, mtmp.m_id);
+    }
+
+    // C `:506–540` shared mtmp tail — hero level, hero-max HP, hero
+    // gender, asleep, then the ebones death record for the next hero.
+    if (mtmp) {
         mtmp.m_lev = (u.ulevel | 0) || 1;
         mtmp.mhp = mtmp.mhpmax = u.uhpmax | 0;
         mtmp.female = game.flags?.female ? 1 : 0;
         mtmp.msleeping = 1;
-        void corpse;
+
+        if (!has_ebones(mtmp)) newebones(mtmp);
+        if (has_ebones(mtmp)) {
+            const eb = EBONES(mtmp);
+            // C `:517–524` role/race index loops (`i <= NUM_*`; a miss
+            // keeps the memset 0 — the impossible()s are commented out).
+            // `?.` only guards the deliberate overrun slot.
+            const rolename = game.urole?.name?.m || '';
+            for (let i = 0; i <= NUM_ROLES; ++i) {
+                if (rolename === roles[i]?.name?.m) {
+                    eb.role = i;
+                    break;
+                }
+            }
+            const racenoun = game.urace?.noun || '';
+            for (let i = 0; i <= NUM_RACES; ++i) {
+                if (racenoun === races[i]?.noun) {
+                    eb.race = i;
+                    break;
+                }
+            }
+            eb.oldalign = {
+                type: u.ualign?.type | 0,
+                record: u.ualign?.record | 0,
+            };
+            eb.deathlevel = u.ulevel | 0;
+            eb.luck = u.uluck | 0; /* moreluck not included */
+            eb.mnum = game.urole?.mnum | 0; /* C Role_switch */
+            eb.female = game.flags?.female ? 1 : 0;
+            eb.demigod = u.uevent?.udemigod ? 1 : 0;
+            eb.crowned = u.uevent?.uhand_of_elbereth ? 1 : 0;
+        }
     }
 
-    // C bones.c:541–558 — ghostly bit on monster inventories, the floor,
-    // and buried objects. resetobjs(FALSE) on those chains stays named.
-    for (const mtmp of game.fmon || []) {
-        if (mtmp) set_ghostly_objlist(mtmp.minvent);
+    // C `:541–551` — ghostly bit + resetobjs(FALSE) on every monster
+    // inventory, untame pets, drop stale hero observations. mlstmv is 0
+    // here; update_mlstmv stamps it at write time (write_bonesfile).
+    for (const m of game.fmon || []) {
+        if (!m) continue;
+        set_ghostly_objlist(m.minvent);
+        resetobjs(m.minvent, false);
+        /* do not zero out m_ids for bones levels any more */
+        m.mlstmv = 0;
+        if (m.mtame) m.mtame = m.mpeaceful = 0;
+        /* observations about the current hero won't apply to future game */
+        m.seen_resistance = M_SEEN_NOTHING;
     }
+    // C `:552–555` — traps lose their maker; only holes stay seen.
+    for (let t = game.ftrap; t; t = t.ntrap) {
+        t.madeby_u = 0;
+        t.tseen = unhideable_trap(t.ttyp);
+    }
+    // C `:556–559` — floor and buried chains like the monster ones.
     set_ghostly_objlist(game.fobj);
+    resetobjs(game.fobj, false);
     set_ghostly_objlist(game.level?.buriedobjlist);
+    if (Array.isArray(game.level?.buriedobjlist)) {
+        for (const o of game.level.buriedobjlist) resetobjs(o, false);
+    } else {
+        resetobjs(game.level?.buriedobjlist, false);
+    }
 
-    // C: bones.c savebones — attach cemetery before create_bonesfile
-    // who = plname-ROL-RAC-GEN-ALI (playmode:debug → plname "wizard")
-    // C: ux0=ux, uy0=uy then ux=uy=0; frpx/frpy from ux0/uy0 (zeroing
-    // the hero + lastseentyp wipe still named).
-    const frpx = u.ux | 0;
-    const frpy = u.uy | 0;
-    u.ux0 = frpx;
-    u.uy0 = frpy;
+    // C `:561–572` — hero leaves the map; the next hero has no memory
+    // of the level. frpx/frpy come from the saved ux0/uy0 below.
+    u.ux0 = u.ux | 0;
+    u.uy0 = u.uy | 0;
+    u.ux = u.uy = 0;
+
+    /* Clear all memory from the level. */
+    {
+        const lvl = game.level;
+        if (lvl?.locations) {
+            // C `:567–572` seenv/waslit/glyph wipe per cell.
+            for (let x = 0; x < lvl.locations.length; x++) {
+                for (const cell of lvl.locations[x] || []) {
+                    if (!cell) continue;
+                    cell.seenv = 0;
+                    cell.waslit = false;
+                    cell.remembered_glyph = undefined;
+                    cell.disp_ch = ' ';
+                    cell.disp_color = 8; // NO_COLOR
+                    cell.disp_decgfx = false;
+                    cell.disp_attr = 0;
+                    cell.gnew = 0;
+                    cell.glyph_symidx = -1;
+                }
+            }
+        }
+        // C `:572` svl.lastseentyp[x][y] = 0.
+        if (game.lastseentyp) game.lastseentyp = null;
+    }
+
+    // C `:574–599` — attach cemetery before create_bonesfile.
+    // who = plname-ROL-RAC-GEN-ALI (playmode:debug → plname "wizard").
+    const frpx = u.ux0 | 0;
+    const frpy = u.uy0 | 0;
     const gidx = game.flags?.female ? 1 : 0;
     const atype = u.ualign?.type | 0;
     const who = [
@@ -1771,11 +1867,18 @@ async function savebones(how, when, corpse) {
     };
     if (!game.level) game.level = {};
     game.level.bonesinfo = newbones;
+    // C `:595–599` — flag wizard-mode bones (a previous bones level may
+    // already carry the flag into a normal-mode game).
+    if (wizard) {
+        if (!game.level.flags) game.level.flags = {};
+        game.level.flags.wizard_bones = 1;
+    }
 
-    // C bones.c:600–613 — create_bonesfile, then mode = WRITING,
-    // store_version. creat / errno / VMS chmod stay named (no POSIX
-    // creat). The handle fields store_version reads match
-    // files.c:849–857. write_bonesfile is the VFS savelev that follows.
+    // C `:600–625` — create_bonesfile, then mode = WRITING,
+    // store_version, bonesid, savefruitchn, update_mlstmv, savelev,
+    // commit + compress. The handle fields store_version reads match
+    // files.c:849–857. write_bonesfile is the VFS savelev that follows
+    // (creat/errno/commit/compress arms named in the doc comment).
     const nhfp = new_nhfile();
     nhfp.ftype = NHF_BONESFILE;
     nhfp.mode = WRITING;

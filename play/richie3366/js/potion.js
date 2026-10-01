@@ -2947,7 +2947,7 @@ export async function potionbreathe(obj) {
             );
         }
         if (!Blind() && !Unaware_pot()) {
-            await pline('Your vision clears.');
+            await pline('Your vision quickly clears.');
         }
         break;
     case POT_WATER:
@@ -3010,9 +3010,10 @@ function aobjnam_pot(otmp, verb) {
 function s_suffix_pot(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 

@@ -56,15 +56,15 @@ import { near_capacity, useup, useupall, hold_another_object, Blind, observe_obj
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_ssex, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_corr, mhitm_ad_fire, mhitm_ad_dren, mhitm_ad_conf, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_ssex, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_corr, mhitm_ad_fire, mhitm_ad_famn, mhitm_ad_dren, mhitm_ad_conf, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
-    mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, erode_armor, engulf_target, golemeffects_mm,
+    mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, erode_armor, engulf_target, golemeffects_mm, stagger,
     attk_protection,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
     AD_DRST, AD_DRDX, AD_DRCO, AD_SAMU, AD_DRLI, AD_SITM, AD_SEDU, AD_SSEX,
-    AD_CONF,
+    AD_CONF, AD_WERE, AD_FAMN,
 } from './mhitm.js';
 import { resists_drli, resists_cold, resists_poison, destroy_items, resist } from './zap.js';
 import {
@@ -78,6 +78,7 @@ import {
     is_human, is_orc, is_elf, always_hostile, is_unicorn, slimeproof,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
     resists_ston, resists_acid, mon_hates_blessings, poly_when_stoned,
+    is_watch,
 } from './monsters.js';
 import {
     mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
@@ -87,7 +88,7 @@ import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
     m_next2u, wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unique_corpstat,
-    iter_mons, anger_quest_guardians, NODIAG,
+    iter_mons, anger_quest_guardians, NODIAG, angry_guards,
 } from './mon.js';
 import { monflee, m_move, accessible } from './monmove.js';
 import { livelog_printf } from './pline.js';
@@ -1900,6 +1901,26 @@ async function hmon_hitmon_do_hit(hmd, mon, obj) {
     }
 }
 
+/**
+ * C ref: uhitm.c hmon_hitmon `:1911–1917` — umconf hand-to-hand tail:
+ * nohandglow, then confuse the target unless already confused or the
+ * spellbook resist roll succeeds. Reached from the normal tail AND from
+ * the melee cream-pie/blinding-venom exit: C's misc_obj case
+ * (`:1265–1317`) ends `break` (no doreturn), so via do_hit (called at
+ * `:1795`) it falls through to `:1911`; the JS pie block's early return
+ * must not skip this gate.
+ */
+async function umconf_tail(mon, hand_to_hand) {
+    if (!((game.u?.umconf | 0) && hand_to_hand)) return;
+    await nohandglow(mon);
+    if (!mon.mconf && !(await resist(mon, SPBOOK_CLASS, 0, NOTELL))) {
+        mon.mconf = 1;
+        if (!mon.mstun && !helpless(mon) && canseemon(mon)) {
+            await pline(`${Monnam(mon)} appears confused.`);
+        }
+    }
+}
+
 async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     // C hmon_hitmon_misc_obj CREAM_PIE / BLINDING_VENOM before weapon dmg
     if (obj && (obj.otyp === CREAM_PIE || obj.otyp === BLINDING_VENOM)) {
@@ -1941,6 +1962,11 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
             obj.quan = 0;
             obj.where = OBJ_FREE;
         }
+        // C `:1265–1317` ends `break`, so a melee pie falls through to the
+        // `:1911` umconf gate before the `:1923` wakeup — gate mirrored from
+        // C `:1780` (melee, or an applied polearm).
+        await umconf_tail(mon, thrown === HMON_MELEE
+            || (thrown === HMON_APPLIED && is_pole(game.u?.uwep)));
         await wakeup(mon, true);
         return true; // mon alive (dmg forced 0)
     }
@@ -2164,16 +2190,9 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
             await killed(mon);
             game.mkcorpstat_norevive = false;
         }
-    } else if ((game.u?.umconf | 0) && hand_to_hand) {
-        /* C :1911–1917 — nohandglow, then confuse unless already
-           confused or the spellbook resist roll succeeds. */
-        await nohandglow(mon);
-        if (!mon.mconf && !(await resist(mon, SPBOOK_CLASS, 0, NOTELL))) {
-            mon.mconf = 1;
-            if (!mon.mstun && !helpless(mon) && canseemon(mon)) {
-                await pline(`${Monnam(mon)} appears confused.`);
-            }
-        }
+    } else {
+        // C :1911 — umconf gate lives in umconf_tail (shared with pie exit).
+        await umconf_tail(mon, hand_to_hand);
     }
     if (unpoisonmsg && obj) {
         const saved = cxname(obj);
@@ -2199,16 +2218,24 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
 }
 
 /**
- * C ref: uhitm.c hmon `:819–836` — wrapper: hmon_hitmon, then the priest-
- * struck god smite (`:829–830`; runs even when the priest died, and the
- * rn2(2) always burns when ispriest). D-2474 wires ghod_hitsu here and in
- * mon.c wakeup.
- * Named: anger_guards tail (`:826–827` + `:831–833`; mon.js angry_guards
- * live, unwired on this path — pre-existing).
+ * C ref: uhitm.c hmon `:819–836` — wrapper: anger_guards snapshot
+ * (`:826–827`, before hmon_hitmon so a kill keeps the pre-strike
+ * peaceful/priest/shk/watch state), hmon_hitmon, then the priest-struck
+ * god smite (`:829–830`; runs even when the priest died, and the rn2(2)
+ * always burns when ispriest; D-2474), then angry_guards(!!Deaf)
+ * (`:831–833`) on the snapshot. Deaf is the house inline
+ * H||E||roleplay||base disjunct.
  */
 async function hmon(mon, obj, thrown, dieroll) {
+    const anger_guards = mon.mpeaceful // C uhitm.c:826–827
+        && (mon.ispriest || mon.isshk || is_watch(mon.data));
     const result = await hmon_hitmon(mon, obj, thrown, dieroll);
     if (mon.ispriest && !rn2(2)) await ghod_hitsu(mon);
+    if (anger_guards) { // C uhitm.c:831–833
+        const u = game.u || {};
+        const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+        await angry_guards(!!Deaf);
+    }
     return result;
 }
 
@@ -2490,13 +2517,13 @@ async function damageum_ad_plys(mdef, mhm) {
  * `:3668–3669`, like the freeze arm above). Leftover damageum d() is
  * kept (the slow rides on top of the hit). No STRAT_WAITFORU here —
  * damageum clears it in its tail for every arm (C `:4859`).
- * Named omissions: defended(mdef, AD_SLOW) early return (`:3659–3660`;
- * the mhitu arm mhitm_ad_slow_u carries the same omit, D-2043);
- * mhitm (mon→mon) arm is mhitm_ad_slow in mhitm.js.
+ * C `:3659–3660` defended(mdef, AD_SLOW) early return is live (cold D-3211
+ * precedent). mhitm (mon→mon) arm is mhitm_ad_slow in mhitm.js.
  */
 async function damageum_ad_slow(mdef, mhm) {
     const magr = game.youmonst;
     const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
+    if (defended(mdef, AD_SLOW)) return;
     void mhm; /* leftover d() stays */
     if (!negated && (mdef.mspeed | 0) !== MSLOW) {
         const oldspeed = mdef.mspeed | 0;
@@ -2512,8 +2539,8 @@ async function damageum_ad_slow(mdef, mhm) {
  * mhitm_mgc_atk_negated(TRUE) burns rn2(10) first (negated → damage 0,
  * return); !Blind "is covered in frost!"; resists_cold zeros leftover
  * after shieldeff + "The frost doesn't chill <mon>!"; leftover +=
- * destroy_items(AD_COLD, orig). Named omissions: defended(mdef, AD_COLD)
- * worn walk (no JS export; same omit on every defended call site);
+ * destroy_items(AD_COLD, orig). resists_cold || defended(AD_COLD) via
+ * the live mondata.js export (same disjunct as the mhitm arm);
  * golemeffects(mdef, AD_COLD, damage) via live golemeffects_mm
  * (C uhitm.c:2644 — heal-or-slow, flesh COLD slows).
  */
@@ -2527,7 +2554,7 @@ async function damageum_ad_cold(mdef, mhm) {
     if (!Blind_that()) {
         await pline(`${Monnam(mdef)} is covered in frost!`);
     }
-    if (resists_cold(mdef) /* || defended(mdef, AD_COLD) */) {
+    if (resists_cold(mdef) || defended(mdef, AD_COLD)) { // C uhitm.c:2641
         await shieldeff(mdef.mx, mdef.my);
         if (!Blind_that()) {
             await pline(`The frost doesn't chill ${mon_nam(mdef)}!`);
@@ -2536,6 +2563,23 @@ async function damageum_ad_cold(mdef, mhm) {
         mhm.damage = 0;
     }
     mhm.damage = (mhm.damage | 0) + ((await destroy_items(mdef, AD_COLD, orig_dmg)) | 0);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_stun `:4388–4402` — uhitm (you→mon) arm.
+ * !Blind "%s %s for a moment." (stagger verb via the shared mhitm.js
+ * export + house makeplural), mstun=1 even if already stunned (no
+ * spec-used / wait-for-hero unlike CONF), then damageum_ad_phys (the
+ * uhitm arm of mhitm_ad_phys — the mhitm.js local is the mhitm arm);
+ * mhm.done is checked by damageum, like C damageum `:4856–4858`.
+ */
+async function damageum_ad_stun(mdef, mattk, mhm) {
+    const pd = mdef?.data;
+    if (!Blind_that()) {
+        await pline(`${Monnam(mdef)} ${makeplural(stagger(pd, 'stagger'))} for a moment.`);
+    }
+    mdef.mstun = 1;
+    damageum_ad_phys(mdef, mattk, mhm);
 }
 
 /**
@@ -2812,6 +2856,12 @@ async function damageum_adtyping(mattk, mdef, mhm) {
     } else if (adtyp === AD_SLOW) {
         /* C ref: uhitm.c mhitm_ad_slow `:3662–3670` — uhitm arm. */
         await damageum_ad_slow(mdef, mhm);
+    } else if (adtyp === AD_STUN) {
+        /* C ref: uhitm.c mhitm_adtyping `:4787` → mhitm_ad_stun `:4393–4402`
+           uhitm (hero as attacker) arm: !Blind stagger pline, mstun=1,
+           then the phys leftover. mhitu arm is mhitm_ad_stun_u in
+           mhitu.js; mhitm arm is mhitm_ad_stun in mhitm.js. */
+        await damageum_ad_stun(mdef, mattk, mhm);
     } else if (adtyp === AD_SAMU) {
         /* C ref: uhitm.c mhitm_ad_samu `:4573–4576` — uhitm (hero as
            attacker) arm zeroes the leftover d(); no message, no steal
@@ -2925,6 +2975,31 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            confused." and mconf=1. Leftover d() stays. mhitu arm is
            mhitm_ad_conf_u. */
         await mhitm_ad_conf(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_WERE) {
+        /* C ref: uhitm.c mhitm_adtyping `:4789` → mhitm_ad_were `:4271–4275`
+           uhitm (hero as attacker) arm: mhitm_ad_phys (C's `if done return`
+           is end-of-function dead). Routed to the uhitm phys home like the
+           AD_PHYS row; mhitu lycanthropy arm is mhitm_ad_were_u. */
+        damageum_ad_phys(mdef, mattk, mhm);
+    } else if (adtyp === AD_FAMN) {
+        /* C ref: uhitm.c mhitm_adtyping `:4826` → mhitm_ad_famn `:3784–3788`
+           uhitm (hero as attacker) arm: `goto mhitm_famn` (C notes the hero
+           can never polymorph into a FAMN attacker). Routed through the
+           shared mhitm.js arm, which ignores magr — exactly C's goto. */
+        await mhitm_ad_famn(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_DGST) {
+        /* C ref: uhitm.c mhitm_adtyping `:4827` → mhitm_ad_dgst `:4499–4501`
+           uhitm (hero as attacker, poly'd digester) arm: leftover d()
+           zeroed, no Rider/Burrrrp/corpse effects (those are the mhitm
+           `:4506–4566` arm). SAMU precedent: inline zero. */
+        mhm.damage = 0;
+    } else if (adtyp === AD_HALU) {
+        /* C ref: uhitm.c mhitm_adtyping `:4828` → mhitm_ad_halu `:3904–3906`
+           uhitm (hero as attacker) arm: leftover d() zeroed, no confusion
+           gaze (that is the mhitm `:3911–3919` arm — routing there would be
+           wrong). No melee owner exists (black-light explosions route
+           mon-mon via explmm); the arm completes the C switch. */
+        mhm.damage = 0;
     }
 }
 
@@ -4305,7 +4380,7 @@ function is_plural_that(otmp) {
  * (DELPHI S_fountain is D-1556). Water/ice/drawbridge/air/cloud +
  * trap cmap 38–73 covered (do_screen_description table scan).
  */
-const DEFSYM_EXPLANATION = [
+export const DEFSYM_EXPLANATION = [
     'stone', 'wall', 'wall', 'wall', 'wall', 'wall', 'wall', 'wall',
     'wall', 'wall', 'wall', 'wall', 'doorway', 'open door', 'open door',
     'closed door', 'closed door', 'iron bars', 'tree', 'floor of a room',

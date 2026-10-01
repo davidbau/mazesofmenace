@@ -1267,6 +1267,11 @@ const EXT_CMDS = [
         run: async () => (await import('./spell.js')).dovspell(),
     },
     {
+        // C: cmd.c '^' IFBURIED|GENERALCMD → doidtrap (pager.c:2336).
+        name: 'showtrap', wiz: false, autocomplete: false,
+        run: async () => (await import('./pager.js')).doidtrap(),
+    },
+    {
         // C: cmd.c C('z') IFBURIED|GENERALCMD|NOFUZZERCMD → dosuspend_core.
         name: 'suspend', wiz: false, autocomplete: false,
         run: async () => (await import('./cmd.js')).dosuspend_core(),

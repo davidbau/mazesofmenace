@@ -622,6 +622,8 @@ export async function mInitweap(mtmp, mksobjFn) {
                     otmpW.spe = rn2(4);
                     if (typ === SILVER_MACE)
                         otmpW.spe = (otmpW.spe | 0) + 3;
+                    /* C makemon.c:350 — (void) mpickobj(mtmp, otmp) */
+                    _add_to_minv(mtmp, otmpW);
                 }
                 const otmpS = await mksobjFn(!rn2(4) || isLordMndx(mndx)
                     ? SHIELD_OF_REFLECTION
@@ -630,6 +632,8 @@ export async function mInitweap(mtmp, mksobjFn) {
                     otmpS.oerodeproof = true;
                     otmpS.spe = 0;
                     blessObj(otmpS);
+                    /* C makemon.c:358 — (void) mpickobj(mtmp, otmp) */
+                    _add_to_minv(mtmp, otmpS);
                 }
             }
             break;

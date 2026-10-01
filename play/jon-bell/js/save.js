@@ -6,6 +6,7 @@ import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH } from './const.js';
 import { save_light_sources, lights_save_snapshot } from './light.js';
 import { save_engravings, clear_level_structures } from './mklev.js';
 import { dmonsfree } from './mkmaze.js';
+import { forget_temple_entry } from './priest.js';
 import { regions_save_snapshot } from './region.js';
 import { worms_save_snapshot } from './worm.js';
 import { object_runtime_save_snapshot } from './o_init.js';
@@ -49,6 +50,12 @@ export function savelev(lev) {
         game.level_info = game.level_info || {};
         const info = (game.level_info[lev] = game.level_info[lev] || { flags: 0 });
         info.flags |= VISITED;
+    }
+    /* C save.c:894 savemonchn — every priest on the level being saved forgets
+     * its temple-entry feedback counters, so a revisit starts fresh. */
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp.ispriest)
+            forget_temple_entry(mtmp);
     }
     const g = game;
     /* C save.c:494 Sfo_long(&svm.moves, "lev-timestmp") — the turn the level

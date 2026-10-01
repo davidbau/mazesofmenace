@@ -2567,7 +2567,7 @@ export async function use_crystal_ball(obj) {
             if (!resists_blnd(game.youmonst || { _youmonst: true })) {
                 await pline(`${Tobjnam(otmp, 'damage')} your vision!`);
                 await make_blinded(BlindedTimeout() + impair, false);
-                if (!Blind()) await pline('Your vision clears.');
+                if (!Blind()) await pline('Your vision quickly clears.');
             } else {
                 await pline(`${Tobjnam(otmp, 'assault')} your vision.`);
                 await pline('You are unaffected!');

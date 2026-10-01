@@ -142,13 +142,14 @@ const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 /** C ref: objclass.h material order — GLASS == 19 (cf. dothrow.js). */
 const GLASS = 19;
 
-/** C ref: hacklib.c s_suffix */
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, *s→*', else *'s. */
 function s_suffix(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 

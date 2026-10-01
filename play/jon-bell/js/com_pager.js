@@ -22,7 +22,7 @@ import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's mat
 import { putmsghistory, _strengthStr, force_more, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel,
-         botl_status_suffix, fit_status_line_width, docrt_flags, flush_screen } from './display.js';
+         botl_status_suffix, fit_status_line_width, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -349,7 +349,9 @@ export async function display_text_window(lines) {
     if (g._pending_message) {
         await force_more(g._pending_message);
     } else if (g._resultMessage) {
+        const releaseFlush = use_last_flush_snapshot();
         await force_more(g._resultMessage);
+        releaseFlush();
         g._resultMessage = '';
         g._resultMessageJoins = null;
     }

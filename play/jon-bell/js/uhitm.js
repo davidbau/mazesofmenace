@@ -1,8 +1,11 @@
+import { xdir, ydir } from './const.js';
+import { unmap_invisible } from './display.js';
 import { lifesaved_monster, wipe_engr_at } from './mklev.js';
 // @ts-nocheck
 import { game, wizard, discover } from './gstate.js';
 import { rehumanize } from './polyself.js';
-import { xname, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
+import { helm_simple_name, cloak_simple_name } from './objnam.js';
+import { xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
          Yobjnam2 as Yobjnam2_real,
          makesingular as makesingular_real } from './objnam.js';
 import { rn2, rnd, d, rn1, pushRngLogEntry } from './rng.js';
@@ -14,7 +17,7 @@ import { pline, canspotmon, newsym, sensemon,
  * site uses the real body. */
          canseemon, livelog_printf, unmap_object, glyph_is_invisible_at,
          map_invisible, You_hear, glyph_is_warning_at, Unaware, shieldeff } from './display.js';
-import { gethungry } from './eat.js';
+import { gethungry, eat_brains } from './eat.js';
 /* C attrib.c:316-408 poisoned() — canonical implementation lives in the
  * hero-defender path in mhitu.js and is safe to call synchronously here. */
 import { poisoned_u as poisoned_real } from './mhitu.js';
@@ -137,7 +140,7 @@ import { PM_BALROG, PM_COCKATRICE, PM_CHICKATRICE, PM_BARBED_DEVIL, PM_SHADE, PM
          PM_VLAD_THE_IMPALER, PM_LIZARD, PM_ARCHEOLOGIST, PM_WIZARD,
          PM_DEATH, PM_FAMINE, PM_PESTILENCE, PM_VAMPIRE, PM_VAMPIRE_LORD } from './pm.generated.js';
 import { hitmsg, hitmsg_je, u_slip_free, make_blinded, mpoisons_subj, magic_negation,
-         could_seduce, mdamageu } from './mhitu.js';
+         could_seduce, mdamageu, mhis_mon } from './mhitu.js';
 import { drain_item } from './zap.js';
 import { deadhero } from './end.js';
 /* C explode.c:1013 mon_explodes — corpse_chance()'s AT_BOOM arm calls it. */
@@ -158,7 +161,7 @@ import { impossible } from './steed.js';
 /* healup(nhp, nxtra, curesick, cureblind) — potion.c real body, RNG-free.
  * artifact_hit's SPFX_DRLI arm (Stormbringer) heals the hero for half the
  * drained HP. */
-import { healup, make_sick, make_stoned } from './potion.js';
+import { healup, make_sick, make_stoned, make_slimed } from './potion.js';
 import { ENV } from './hostenv.js';
 function makesingular(str) { return makesingular_real(str); }
 
@@ -1524,6 +1527,9 @@ async function _hero_mhitm_knockback(mdef, wep) {
     return true;
 }
 
+/* hitum_cleave's `static boolean clockwise` (uhitm.c:659) */
+let _cleave_clockwise = false;
+
 export async function do_attack(mtmpOrX, y) {
     /* Resolve calling convention: (monster_object) vs (x, y) coords. */
     let mtmp;
@@ -1689,7 +1695,11 @@ export async function do_attack(mtmpOrX, y) {
 
     check_caitiff(mtmp);
 
-    const mndx = (mtmp.mndx ?? mtmp.mnum) | 0;
+    let mndx = 0, _tmpBase = 0;
+    /* find_roll_to_hit's target-dependent terms; re-run per target by
+     * hitum_cleave (uhitm.c:703) */
+    const _find_roll_to_hit = () => {
+    mndx = (mtmp.mndx ?? mtmp.mnum) | 0;
     const monAC = find_mac_full_uh(mtmp);
     const abon_val = abon();
     /* luck bonus: sgn(Luck) * ((abs(Luck)+2)/3) — C ref: uhitm.c:378 */
@@ -1724,11 +1734,13 @@ export async function do_attack(mtmpOrX, y) {
         tmp -= (_encumbrance * 2) - 1;
     if (u && u.utrap)
         tmp -= 3;
-    const _tmpBase = tmp;
+    _tmpBase = tmp;
+    };
+    _find_roll_to_hit();
 
     let malive = true; /* monster still alive after this attack */
 
-    const _swing = async (weapon, second, viaHmonas) => {
+    const _swing = async (weapon, second, viaHmonas, cleaving) => {
     let tmp = _tmpBase;
     const uwepForHit = weapon;
     if (uwepForHit)
@@ -1743,7 +1755,7 @@ export async function do_attack(mtmpOrX, y) {
     if (!mhit)
         await missum(mtmp, false);
     if (mhit) {
-        if (!second && tmp > dieroll) exercise(A_DEX, true);
+        if (!second && !cleaving && tmp > dieroll) exercise(A_DEX, true);
 
         if (weapon && ((weapon.oclass | 0) === WEAPON_CLASS || is_weptool(weapon))) {
             const uc = (u.uconduct ||= {});
@@ -2410,7 +2422,7 @@ export async function do_attack(mtmpOrX, y) {
                         || (aatyp === AT_CLAW_H
                             && !!(mtmp.data && ((mtmp.data.mflags1 | 0) & M1_HUMANOID_UH))))
                         verb = 'attack';
-                    Your('%s %s harmlessly through %s.', verb, vtense(verb, 'pass'),
+                    await Your('%s %s harmlessly through %s.', verb, vtense(verb, 'pass'),
                          mon_nam(mtmp));
                 } else {
                     const adtyp = row.adtyp | 0;
@@ -2422,7 +2434,7 @@ export async function do_attack(mtmpOrX, y) {
                             || adtyp === 26 /* AD_DGST */);
                     if (!grabFailed) {
                         if (aatyp === AT_TENT_H) {
-                            Your('tentacles suck %s.', mon_nam(mtmp));
+                            await Your('tentacles suck %s.', mon_nam(mtmp));
                         } else {
                             if (aatyp === AT_CLAW_H)
                                 verb = 'hit';
@@ -2444,6 +2456,42 @@ export async function do_attack(mtmpOrX, y) {
          * used to check the monster is still there before the second swing. */
         const _atkx = mtmp.mx | 0, _atky = mtmp.my | 0;
 
+        /* C uhitm.c:758-760 hitum(): Cleaver attacks three spots, cannot be
+         * part of dual-wielding; hitum_cleave() (uhitm.c:651-722). */
+        if (u && u.uwep && (u.uwep.oartifact | 0) === 4 /* ART_CLEAVER */
+            && !u.twoweap && !u.uswallow && !u.ustuck
+            && (u.umonnum | 0) !== 116 /* NODIAG: PM_GRID_BUG */) {
+            const i0 = xdir.findIndex((xd, k) => k < 8 && xd === (u.dx | 0)
+                                                && ydir[k] === (u.dy | 0));
+            if (i0 >= 0) {
+                let i = _cleave_clockwise ? (i0 + 6) % 8 : (i0 + 2) % 8;
+                const umort = u.umortality | 0;
+                const save_bhitpos = game.gb.bhitpos;
+                const save_notonhead = game.gn.notonhead;
+                for (let count = 3; count > 0; --count) {
+                    i = _cleave_clockwise ? (i + 1) % 8 : (i + 7) % 8;
+                    const tx = (u.ux | 0) + xdir[i], ty = (u.uy | 0) + ydir[i];
+                    if (!isok(tx, ty)) continue;
+                    const m = m_at(tx, ty);
+                    if (!m) {
+                        if (glyph_is_invisible_at(tx, ty)) unmap_invisible(tx, ty);
+                        continue;
+                    }
+                    mtmp = m;
+                    check_caitiff(mtmp);
+                    _find_roll_to_hit();
+                    game.gb.bhitpos = { x: tx, y: ty };
+                    game.gn.notonhead = ((mtmp.mx | 0) !== tx || (mtmp.my | 0) !== ty);
+                    await _swing(u.uwep, false, false, true);
+                    if (!u.uwep || game.multi < 0 || (u.umortality | 0) > umort)
+                        break;
+                }
+                _cleave_clockwise = !_cleave_clockwise;
+                game.gb.bhitpos = save_bhitpos;
+                game.gn.notonhead = save_notonhead;
+                return true;
+            }
+        }
         await _swing(u && u.uwep, false);
 
         /* C uhitm.c:794-814 — the second swing.  C's full guard is
@@ -4443,7 +4491,7 @@ export async function mon_wield_item(mon) {
                     pline(`${mon_nam(mon)} cannot wield that ${xname(obj)}.`);
                 } else {
                     pline(`${Monnam(mon)} tries to wield ${doname_sh(obj)}.`);
-                    pline(`${Yname2_sh(mw_tmp)} ${welded_buf}!`);
+                    pline(`${Yname2_sh(mw_tmp, mon)} ${welded_buf}!`);
                 }
                 mw_tmp.bknown = 1;
             }
@@ -4463,7 +4511,7 @@ export async function mon_wield_item(mon) {
                 let mon_hand = mbodypart(mon, HAND);
                 if (sh_oc_bimanual(obj.otyp)) mon_hand = makeplural(mon_hand);
                 pline(_wieldLine);
-                pline(`${Yname2_sh(obj)} welds itself to ${mhis_sh(mon)} ${mon_hand}!`);
+                pline(`${Tobjnam_sh(obj, 'weld')} ${(obj.quan | 0) !== 1 ? 'themselves' : 'itself'} to ${s_suffix(mon_nam(mon))} ${mon_hand}!`);
             } else {
                 pline(_wieldLine);
             }
@@ -4476,12 +4524,19 @@ export async function mon_wield_item(mon) {
 /* Naming helpers for the three plines above; mon_nam()/Monnam() are the ported
  * do_name.c namers already defined near the top of this file. */
 function mhis_sh(mon) {
-    /* C's mhis(mon) in this callsite is the monster's possessive name. */
-    return s_suffix(mon_nam(mon));
+    /* weapon.c:869 mhis(mon) == genders[pronoun_gender(mon, PRONOUN_HALLU)].his */
+    return mhis_mon(mon);
 }
-function Yname2_sh(obj) {
-    /* objnam.c Yname2(yname(obj)) — capitalize the ordinary article/name. */
-    const s = yname(obj);
+function Yname2_sh(obj, carrier) {
+    /* objnam.c:2377 Yname2 = highc(yname(obj)); yname's shk_your() (shk.c:5862)
+     * takes mon_owns() (shk.c:5902) for an OBJ_MINVENT object: the prefix is
+     * s_suffix(y_monnam(obj->ocarry)) -- "the ogre's club", not "the club". */
+    let s;
+    if ((obj.where | 0) === 4 || carrier) {
+        s = `${s_suffix(mon_nam(obj.ocarry || carrier))} ${cxname_sh(obj)}`;
+    } else {
+        s = yname(obj);
+    }
     return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 function doname_sh(obj) {
@@ -5695,8 +5750,8 @@ async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
 /* Your — C ref: pline.c:375-383. RNG-free "Your " message prefix; this file
  * already imports the plain "You" from js/do_wear.js and carries the same
  * pattern locally for pline_The (below). */
-function Your(fmt, ...args) {
-    pline('Your ' + fmt, ...args);
+async function Your(fmt, ...args) {
+    await pline('Your ' + fmt, ...args);
 }
 
 /* resists_poison_uh — C ref: monst.h:275 resists_poison(mon) =
@@ -5737,6 +5792,78 @@ async function mhitm_ad_drst(magr, mattk, mdef, mhm) {
         if (!negated && !rn2(8))
             mhitm_really_poison(magr, mattk, mdef, mhm);
     }
+}
+
+/* C uhitm.c:2054-2090 m_slips_free — [currently assumes that you are the
+ * attacker].  A greased/oilskin head covering (AD_DRIN) or body armor
+ * makes the hero's grab slip off. */
+function m_slips_free(mdef, mattk) {
+    let obj;
+    if ((mattk.adtyp | 0) === 32 /* AD_DRIN */) {
+        obj = which_armor(mdef, W_ARMH);
+    } else {
+        obj = which_armor(mdef, W_ARMC);
+        if (!obj) obj = which_armor(mdef, W_ARM);
+        if (!obj) obj = which_armor(mdef, W_ARMU);
+    }
+    if (obj && (obj.greased || (obj.otyp | 0) === 142 /* OILSKIN_CLOAK */)
+        && (!obj.cursed || rn2(3))) {
+        You("%s %s %s %s!",
+            ((mattk.adtyp | 0) === 28 /* AD_WRAP */) ? "slip off of"
+                                                    : "grab, but cannot hold onto",
+            s_suffix(mon_nam(mdef)), obj.greased ? "greased" : "slippery",
+            (obj.greased || (game._oc_name_known && game._oc_name_known[obj.otyp]))
+                ? xname(obj) : cloak_simple_name(obj));
+        if (obj.greased && !rn2(2)) {
+            pline_The("grease wears off.");
+            obj.greased = 0;
+        }
+        return true;
+    }
+    return false;
+}
+
+/* C uhitm.c:3167-3320 mhitm_ad_drin — the `magr == &gy.youmonst` (uhitm)
+ * arm: a polymorphed hero's mind-flayer tentacle.  The mhitu / mhitm arms
+ * live in js/mhitu.js and js/mhitm.js. */
+async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
+    game.s = game.s || {};
+    if (magr !== game.youmonst) {
+        mhm.damage = 0;
+        return;
+    }
+    const pd = mdef.data;
+    const hasHead = !pd || (((pd.mflags1 >>> 0) & 0x00008000) === 0);
+    if ((game.gn && game.gn.notonhead) || !hasHead) {
+        pline("%s doesn't seem harmed.", Monnam(mdef));
+        game.s.skipdrin = 1;
+        mhm.damage = 0;
+        const up = game.u && game.u.uprops;
+        const unch = !!(up && up[63] && (up[63].intrinsic || up[63].extrinsic));
+        if (!unch && pd && ((mdef.mnum ?? mdef.mndx ?? -1) | 0) === PM_GREEN_SLIME_UH) {
+            const sl = up && up[22 /* SLIMED */];
+            if (!(sl && (sl.intrinsic | 0))) {
+                You("suck in some slime and don't feel very well.");
+                await make_slimed(10, null);
+            }
+        }
+        return;
+    }
+    if (m_slips_free(mdef, mattk))
+        return;
+    const helmet = which_armor(mdef, W_ARMH);
+    if (helmet && rn2(8)) {
+        pline("%s %s blocks your attack to %s head.",
+              s_suffix(Monnam(mdef)), helm_simple_name(helmet), mhis_mon(mdef));
+        return;
+    }
+    const amu = which_armor(mdef, W_AMUL);
+    const lifsav = !!(amu && (amu.otyp | 0) === 202 /* AMULET_OF_LIFE_SAVING */);
+    const dmg_p = { value: mhm.damage | 0 };
+    await eat_brains(game.youmonst, mdef, true, dmg_p);
+    mhm.damage = dmg_p.value;
+    if (lifsav && !which_armor(mdef, W_AMUL))
+        game.s.skipdrin = 1;
 }
 
 export async function mhitm_adtyping(magr, mattk, mdef, mhm) {
@@ -5800,6 +5927,9 @@ export async function mhitm_adtyping(magr, mattk, mdef, mhm) {
         break;
     case AD_DREN:
         await mhitm_ad_dren(magr, mattk, mdef, mhm);
+        break;
+    case 32: /* AD_DRIN */
+        await mhitm_ad_drin(magr, mattk, mdef, mhm);
         break;
     case AD_DRST:
     case AD_DRDX:

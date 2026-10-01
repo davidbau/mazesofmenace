@@ -332,6 +332,7 @@ import { ILLOBJ_CLASS, LENSES, MAXOCLASSES } from './objects.js';
 import { is_quest_artifact } from './questpgr.js';
 import { artitouch } from './quest.js';
 import { note_unported } from './unported.js';
+import { unpunish } from './read.js';
 import { record_achievement } from './insight.js';
 import { setuqwep } from './worn.js';
 import {
@@ -443,9 +444,9 @@ export function dfeature_at(x, y, state = game) {
         cmap = S_sink;
     } else if (IS_ALTAR(ltyp)) {
         const altarAlignment = Amask2align(
-            (lev.altarmask ?? 0) & ~AM_SHRINE,
+            (lev.flags ?? 0) & ~AM_SHRINE,
         );
-        dfeature = `${(lev.altarmask & AM_SANCTUM) ? 'high ' : ''}altar to `
+        dfeature = `${(lev.flags & AM_SANCTUM) ? 'high ' : ''}altar to `
             + `${altarDeityName(altarAlignment, state)} (${alignmentName(
                 altarAlignment,
             )})`;
@@ -2717,6 +2718,9 @@ function requiredHook(env, name, obj) {
 //
 // Predicates: artifactConfersLuck(obj, env), isReviver(species, env),
 // samePrice(obj, target, env), isDeadSpecies(species, includeGone, env).
+// consume_obj_charge's optional call-site checkUnpaid(obj, state) adapter
+// intercepts only invent.c's discarded void billing call; absent it, the
+// existing check_unpaid implementation remains in effect.
 // Inventory effects: removeSpecialInventoryEffects(obj, env),
 // archeologistDeciphersScroll(obj, env), recordAchievement(id, env),
 // updateInventory(state).
@@ -3417,7 +3421,10 @@ export function delallobj(x, y, env = {}) {
     let obj = state.level?.objects?.[x]?.[y] ?? null;
     while (obj) {
         if (obj === state.uball) {
-            requiredHook(normalized, 'unpunish', obj)(normalized);
+            if (typeof normalized.hooks.unpunish === 'function')
+                normalized.hooks.unpunish(normalized);
+            else
+                unpunish(state, normalized);
         }
         const next = obj.nexthere;
         if (obj !== state.uchain)
@@ -4990,10 +4997,15 @@ export function useup(obj, env = {}) {
 
 // C ref: invent.c consume_obj_charge() (1336-1347).  The optional billing
 // check precedes the decrement, and a known charged object refreshes the
-// permanent inventory immediately after the write.
+// permanent inventory immediately after the write. A caller can replace only
+// that check with `checkUnpaid(obj, state)`; absent the seam, the existing
+// shk.c adapter remains authoritative for every current caller.
 export function consume_obj_charge(obj, maybe_unpaid, env = {}) {
     const normalized = inventoryEnv(env);
-    if (maybe_unpaid) check_unpaid(obj, normalized.state);
+    if (maybe_unpaid) {
+        const checkUnpaid = normalized.checkUnpaid ?? check_unpaid;
+        checkUnpaid(obj, normalized.state);
+    }
     obj.spe -= 1;
     if (obj.known) update_inventory(normalized);
     return obj;

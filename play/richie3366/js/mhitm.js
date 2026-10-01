@@ -139,7 +139,7 @@ import { stairway_find_type_dir } from './mklev.js';
 import { polyself } from './polyself.js';
 import { you_were, you_unwere, were_change } from './were.js';
 import { night } from './calendar.js';
-import { resists_drli } from './zap.js';
+import { resists_drli, shieldeff_mon } from './zap.js';
 import { poisoned, A_STR, A_DEX, A_CON } from './attrib.js';
 import { rloc, tele_restrict, tele, goodpos, u_teleport_mon, enexto, rloc_to } from './teleport.js';
 import { m_unleash } from './apply.js';
@@ -576,14 +576,14 @@ function resists_magm(mon) {
 }
 
 /**
- * C ref: zap.c resist — WAND_CLASS alev=12; tell/shield polish deferred.
+ * C ref: zap.c resist — WAND_CLASS alev=12; TELL shield fires at the mon_poly call site.
  * @returns {boolean} true if resisted
  */
 function resist_poly(mtmp, _tell) {
     const alev = 12; // WAND_CLASS
     let dlev = mtmp.m_lev | 0;
     if (dlev > 50) dlev = 50;
-    else if (dlev < 1) dlev = 1;
+    else if (dlev < 1) dlev = is_mplayer(mtmp.data) ? game.u?.ulevel | 0 : 1;
     const mr = mtmp.data?.mr | 0;
     return rn2(100 + alev - dlev) < mr;
 }
@@ -599,7 +599,7 @@ function is_youmonst(m) {
  * Await `newcham(..., NO_NC_FLAGS)` so mleashed unleash / Elbereth
  * flee finish before the vis pline / tele (D-1648; C `:1174` is
  * sync int). Named omissions: shieldeff / shieldeff_mon flash;
- * ANTIMAGIC gear scan in resists_magm; TELL resist pline polish.
+ * ANTIMAGIC gear scan in resists_magm (TELL resist shield live via shieldeff_mon).
  * @returns {Promise<number>} remaining damage (0 when shape-change applied)
  */
 export async function mon_poly(magr, mdef, dmg) {
@@ -632,7 +632,8 @@ export async function mon_poly(magr, mdef, dmg) {
         if (resists_magm(mdef)) {
             // shieldeff_mon deferred
         } else if (resist_poly(mdef, TELL)) {
-            // general resistance to magic — TELL pline deferred
+            /* C zap.c:6143-6144 — TELL shield lives inside resist(). */
+            await shieldeff_mon(mdef);
         } else if (!rn2(25) && (mdef.cham ?? NON_PM) === NON_PM
                    && (mdef.mcan
                        || pm_to_cham(mdef.data?.mndx ?? mdef.mnum ?? NON_PM)
@@ -1095,9 +1096,11 @@ export async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
  * ("just inflict the normal damage"). No message either way.
  * The uhitm arm cannot happen (hero never polymorphs into a FAMN
  * attacker — C `:3780–3783` comment); the mhitu arm is
- * mhitm_ad_famn_u in mhitu.js.
+ * mhitm_ad_famn_u in mhitu.js. Routed from damageum_adtyping for
+ * AD_FAMN: C's uhitm arm is `goto mhitm_famn` (`:3784–3788`), and this
+ * arm ignores magr, so the shared body is exactly C's goto.
  */
-async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
+export async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
     void magr;
     void mattk;
     const pd = mdef.data;
@@ -1122,9 +1125,10 @@ function mhitm_ad_samu(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: mondata.c stagger :1394–1407 — stun/wobble verb for the
- * mhitm AD_STUN pline. locomotion() itself named.
+ * AD_STUN plines (mhitm arm below + uhitm damageum_ad_stun).
+ * locomotion() itself named.
  */
-function stagger(ptr, def) {
+export function stagger(ptr, def) {
     const s = String(def ?? '');
     const ch = s.charAt(0);
     const code = ch.charCodeAt(0);
@@ -1152,9 +1156,9 @@ function stagger(ptr, def) {
  * Cancelled returns keeping leftover d() (no stun, no phys).
  * Else canseemon pline + mstun=1 even if already stunned (no
  * spec-used / wait-for-hero unlike CONF) then mhitm_ad_phys.
- * Named omit: uhitm you-as-agr (!Blind stagger + phys).
- * mhitu you-as-def lives in mhitu.js as mhitm_ad_stun_u.
- * mhitm_ad_fire leftover is D-1405.
+ * uhitm you-as-agr (!Blind stagger + phys) is damageum_ad_stun in
+ * uhitm.js (shares this file's stagger); mhitu you-as-def lives in
+ * mhitu.js as mhitm_ad_stun_u. mhitm_ad_fire leftover is D-1405.
  */
 async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
     if (magr.mcan) return;
@@ -1364,16 +1368,16 @@ export async function mhitm_ad_plys(magr, mattk, mdef, mhm) {
  * WAITFORU cleared, then "slows down." pline_mon on an actual change
  * when vis && canspotmon. Leftover d() is kept (the slow rides on top
  * of the hit; mdamagem applies it after knockback, like PLYS).
- * Named omissions: defended(mdef, AD_SLOW) early return (`:3659–3660`,
- * RNG-free wielded-artifact / blue-scales arm, deferred with the
- * fire/cold defended omits per D-2043); uhitm you-as-agr arm is
- * damageum_ad_slow in uhitm.js; mhitu you-as-def arm is
- * mhitm_ad_slow_u in mhitu.js (D-2043).
+ * C `:3659–3660` defended(mdef, AD_SLOW) early return is live (cold D-3211
+ * precedent; RNG-free wielded-artifact / blue-scales arm). uhitm
+ * you-as-agr arm is damageum_ad_slow in uhitm.js; mhitu you-as-def arm
+ * is mhitm_ad_slow_u in mhitu.js.
  */
 export async function mhitm_ad_slow(magr, mattk, mdef, mhm) {
     void mattk;
     void mhm; /* leftover d() stays */
     const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
+    if (defended(mdef, AD_SLOW)) return;
     if (!negated && (mdef.mspeed | 0) !== MSLOW) {
         const oldspeed = mdef.mspeed | 0;
         await mon_adjust_speed(mdef, -1, null);
@@ -1403,11 +1407,15 @@ export function resists_sleep_slee(mon) {
 /**
  * C ref: mhitm.c sleep_monst for how=-1 (uhitm.c mhitm_ad_slee caller).
  * how>=0 mimic reveal / resist(how) never runs here (amt is rnd(10)).
- * Named omissions: defended(mon, AD_SLEE) orange-scales/artifact; shieldeff.
+ * resists_sleep || defended(AD_SLEE) → shieldeff + 0 via the live
+ * mondata.js / display.js imports; meal break is the house meating=0.
  */
-function sleep_slee_mm(mon, amt) {
+async function sleep_slee_mm(mon, amt) {
     if (!mon) return 0;
-    if (resists_sleep_slee(mon)) return 0;
+    if (resists_sleep_slee(mon) || defended(mon, AD_SLEE)) {
+        await shieldeff(mon.mx, mon.my); // C mhitm.c:1232–1234
+        return 0;
+    }
     if (mon.mcanmove) {
         mon.meating = 0;
         amt = (amt | 0) + (mon.mfrozen | 0);
@@ -1445,7 +1453,6 @@ async function slept_slee_mm(mon) {
  * sleep(rnd(10),-1) (C as written; second always fails once frozen, but
  * the first still sleeps), then vis&&canspotmon pline + clear WAITFORU +
  * slept. mhitu (mon→you) arm lives in mhitu.js mhitm_ad_slee_u.
- * Named omissions: defended(AD_SLEE); shieldeff on resist.
  */
 export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
     void mattk;
@@ -1453,7 +1460,7 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
     if (is_youmonst(magr)) {
         if (!mdef.msleeping
             && !(await mhitm_mgc_atk_negated(magr, mdef, false))
-            && sleep_slee_mm(mdef, rnd(10))) {
+            && (await sleep_slee_mm(mdef, rnd(10)))) {
             if (!Blind_slee()) {
                 await pline(`${Monnam(mdef)} is put to sleep by you!`);
             }
@@ -1463,8 +1470,8 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
     }
     if (is_youmonst(mdef)) return;
     if (!mdef.msleeping
-        && sleep_slee_mm(mdef, rnd(10))
-        && sleep_slee_mm(mdef, rnd(10))) {
+        && (await sleep_slee_mm(mdef, rnd(10)))
+        && (await sleep_slee_mm(mdef, rnd(10)))) {
         if (_mm_vis && canspotmon(mdef)) {
             await pline(`${Monnam(mdef)} is put to sleep by ${mon_nam(magr)}.`);
         }
@@ -5814,9 +5821,10 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
 function s_suffix_mm(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 

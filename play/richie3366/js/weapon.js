@@ -1819,15 +1819,15 @@ function towel_mcarried(obj) {
     return !!(obj?.ocarry);
 }
 
-/** C hacklib.c s_suffix — possessive for mon towel dry pline. */
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, lowercase-*s→*', else *'s. */
 function s_suffix_towel(s) {
-    if (!s) return s;
-    const last = s.charAt(s.length - 1).toLowerCase();
-    if (last === 's' || last === 'x' || last === 'z'
-        || s.toLowerCase().endsWith('sh') || s.toLowerCase().endsWith('ch')) {
-        return `${s}'`;
-    }
-    return `${s}'s`;
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
+    if (low === 'you') return `${buf}r`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only, no z/x/ch/sh arm. */
+    if (buf.endsWith('s')) return `${buf}'`;
+    return `${buf}'s`;
 }
 
 /** C objnam.c Yobjnam2 thin — "Your <xname>" [+ verb]. */

@@ -99,7 +99,7 @@ import { dosacrifice } from './pray.js';
 import { doinvoke } from './artifact.js';
 import { dotelecmd, goodpos } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon, dotwoweapon } from './wield.js';
-import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion, show_text_pages } from './pager.js';
+import { dowhatis, doquickwhatis, doidtrap, dohelp, dowhatdoes, doversion, show_text_pages } from './pager.js';
 import {
     visctrl, key2txt, cmdbind_get, cmd_from_dir, cmd_from_func,
     bind_param_get, bind_param_set, bind_param_clear, bind_param_swap,
@@ -1434,9 +1434,10 @@ export async function dosh_core() {
  * Effective-bind reads go through the live cmdbind_get export (dokeylist.js);
  * userbind iteration below mirrors C list order (cmdbind_add `:2152`
  * prepends: most recent first, in-place on rebind — same as Map order,
- * reversed). CMD_PARAM arm folds into the plain arm (param stripped at parse).
+ * reversed). CMD_PARAM arm prints BIND=key:cmd(param) from the live
+ * bind_param store (bind_param_get, `?? ''` like keylist_putcmds).
  * Callees: key2txt (dokeylist.js live), strbuf_append (options.js live),
- * cmdbind_get (dokeylist.js live). Callers: options.c all_options_strbuf
+ * cmdbind_get + bind_param_get (dokeylist.js live). Callers: options.c all_options_strbuf
  * `:9734` (live: js/options.js all_options_strbuf); cmd.c handler_rebind_keys
  * `:2442` NULL arm (live: drained via `show_text_pages`, D-2762).
  * @param {{ str: string|null, len: number }|null} sbuf strbuf or null
@@ -1471,12 +1472,17 @@ export function get_changed_key_binds(sbuf) {
                 && ((e.flags | 0) & INTERNALCMD) === 0,
         );
         if (!ext || ext.key === key) continue;
-        // C `:2253–2260`: CMD_PARAM arm prints BIND=key:cmd(param), plain arm
-        // BIND=key:cmd; the param lives in game.Cmd._bindParam (stored at
-        // parsebindings), unread by this emitter, so both arms print
-        // BIND=key:cmd here.
+        // C `:2253–2261`: CMD_PARAM arm prints BIND=key:cmd(param), plain
+        // arm BIND=key:cmd. The param is the live bind_param store (written
+        // by overlay_bind_key `:2706–2708` and the live bind_key), read here
+        // like the keylist_putcmds sibling (dokeylist.js).
         // key2txt(bind->key, buf2) takes the single key.
-        emit(`BIND=${key2txt(key)}:${ext.txt}`);
+        if (((ext.flags | 0) & CMD_PARAM) !== 0) { // C `:2253`
+            const param = bind_param_get(key) ?? ''; // C `:2256` bind->param
+            emit(`BIND=${key2txt(key)}:${ext.txt}(${param})`); // C `:2254–2257`
+        } else {
+            emit(`BIND=${key2txt(key)}:${ext.txt}`); // C `:2259–2261`
+        }
     }
 
     /* commands which should be bound to a key, but aren't */ // C `:2269`
@@ -1934,6 +1940,7 @@ const FUNCT_TXT = new Map([
     [dowhatis, 'whatis'],
     [doquickwhatis, 'glance'],
     [dovspell, 'showspells'],
+    [doidtrap, 'showtrap'],
     [dodiscovered, 'known'],
     [dotogglepickup, 'autopickup'],
     [dobugreport, 'bugreport'], // C cmd.c:1685 (after autopickup, its C predecessor)
@@ -2898,8 +2905,8 @@ const move_funcs_walk = [
  * CQ_CANNED input for a [t]herecmdmenu action at adjacent (dx,dy).
  * C order kept arm by arm; sgn clamp `:4666–4677` (live eat.js sgn ≡
  * hacklib.c:650); MCMD_* ids are the cmd.c:4379 enum.
- * Named: doidtrap (pager.c:2336) is not exported — the look-trap arm
- * still dynamic-imports pager.js and is not an ef_funct lookup.
+ * The look-trap arm dynamic-imports pager.js `doidtrap` (live export,
+ * C pager.c:2336) rather than an ef_funct lookup.
  * C callers cmd.c:4880 (there_cmd_menu K==1 fast path) + :4892 (menu pick):
  * both wired in JS there_cmd_menu below (self/next2u/far/common).
  * @param {number} act MCMD_* action
@@ -5020,6 +5027,7 @@ function rhack_repeat_command(ch, key) {
     case ';': return doquickwhatis;
     case '?': return dohelp;
     case '+': return dovspell;
+    case '^': return doidtrap;
     case '\\': return dodiscovered;
     case '@': return dotogglepickup;
     case 'O': return doset_simple;
@@ -5075,7 +5083,7 @@ function rhack_repeat_txt(ch, key) {
         S: 'save', t: 'throw', T: 'takeoff', V: 'versionshort', w: 'wield', W: 'wear',
         x: 'swap', z: 'zap', Z: 'cast', ',': 'pickup', '.': 'wait',
         '>': 'down', '<': 'up', _: 'travel', ':': 'look', '/': 'whatis',
-        ';': 'glance', '?': 'help', '+': 'showspells', '\\': 'known',
+        ';': 'glance', '?': 'help', '+': 'showspells', '^': 'showtrap', '\\': 'known',
         '@': 'autopickup', O: 'options', $: 'showgold', ')': 'seeweapon',
         '[': 'seearmor', '=': 'seerings', '"': 'seeamulet', '(': 'seetools',
         '*': 'seeall',

@@ -1412,7 +1412,7 @@ function findone(zx, zy, found) {
 
     if (lev.typ === SDOOR) {
         /* C detect.c:1657-1662: cvt_sdoor_to_door → typ=DOOR; reveal. */
-        lev.typ = DOOR;
+        cvt_sdoor_to_door(lev);
         recalc_block_point(zx, zy);
         newsym(zx, zy);
         found.num_sdoors++;

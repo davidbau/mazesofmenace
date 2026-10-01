@@ -90,6 +90,7 @@ import { pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
 import { new_mgivenname } from './restore.js';
+import { nh_getenv } from './mail.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
@@ -406,13 +407,14 @@ export function hliquid(liquidpref) {
     return liquidpref;
 }
 
-/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, *s→*', else *'s. */
 export function s_suffix(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`;
+    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
     if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
+    if (buf.endsWith('s')) return `${buf}'`;
     return `${buf}'s`;
 }
 
@@ -617,10 +619,24 @@ async function do_mgivenname() {
 }
 
 /**
- * C ref: do_name.c roguename — Rogue designer name for makerogueghost.
- * ROGUEOPTS env deferred (no Node env in scored js/).
+ * C ref: do_name.c roguename `:1424–1439` — Rogue designer name for
+ * makerogueghost. ROGUEOPTS `name=` scan first (no RNG), else the
+ * rn2(3)/rn2(2) fallback. C truncates at the first `,` past `name=` by
+ * NUL-writing the env string; the slice below is the same prefix, and no
+ * later read observes the C-side mutation.
  */
 export function roguename() {
+    const opts = nh_getenv('ROGUEOPTS');
+    if (opts != null) {
+        for (let i = 0; i < opts.length; i++) {
+            if (opts.startsWith('name=', i)) {
+                const comma = opts.indexOf(',', i + 5);
+                return comma === -1
+                    ? opts.slice(i + 5)
+                    : opts.slice(i + 5, comma);
+            }
+        }
+    }
     return rn2(3)
         ? (rn2(2) ? 'Michael Toy' : 'Kenneth Arnold')
         : 'Glenn Wichman';

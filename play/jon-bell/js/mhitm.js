@@ -3844,7 +3844,7 @@ export async function ghod_hitsu(priest) {
  * ---------------------------------------------------------------------------
  */
 export function can_blnd(magr, mdef, aatyp, obj) {
-    const is_you = (mdef.m_id | 0) === 0;
+    const is_you = is_youmonst(mdef);
     let check_visor = false;
     let o;
 
@@ -3885,7 +3885,7 @@ export function can_blnd(magr, mdef, aatyp, obj) {
             return true; /* no defense */
         } else
             return false; /* other objects cannot cause blindness yet */
-        if ((magr !== null && (magr.m_id | 0) === 0) && game.u.uswallow)
+        if ((magr !== null && is_youmonst(magr)) && game.u.uswallow)
             return false;
         break;
 
@@ -3899,7 +3899,7 @@ export function can_blnd(magr, mdef, aatyp, obj) {
     case AT_CLAW: /* 1 */
         if (is_you && ublindf_p())
             return false;
-        if ((magr !== null && (magr.m_id | 0) === 0) && game.u.uswallow)
+        if ((magr !== null && is_youmonst(magr)) && game.u.uswallow)
             return false;
         check_visor = true;
         break;
@@ -3916,7 +3916,7 @@ export function can_blnd(magr, mdef, aatyp, obj) {
 
     /* check if wearing a visor (only checked if visor might help) */
     if (check_visor) {
-        o = ((mdef.m_id | 0) === 0) ? game.invent : mdef.minvent;
+        o = is_youmonst(mdef) ? game.invent : mdef.minvent;
         for (; o; o = o.nobj)
             if (((o.owornmask | 0) & W_ARMH)
                 && objdescr_is(o, "visored helmet"))

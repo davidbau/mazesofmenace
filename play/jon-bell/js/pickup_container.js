@@ -781,7 +781,13 @@ async function query_category_takeout(box) {
  * list can populate (pickup_prev is set on things the hero just picked up). */
 async function _query_category(contents, action, withJustPicked) {
 
+    const _ir = (game.flags && game.flags.initrole != null) ? (game.flags.initrole | 0) : -1;
+    /* PM_CLERIC is role index 6 in this port (same shape as js/dogmove.js). */
+    const _isCleric = _ir >= 0 ? _ir === 6
+        : ((game.urole && game.urole.mnum != null) ? (game.urole.mnum | 0) : -1) === 6;
     const _buc = (o) => {
+        /* C invent.c:3554-3555 count_buc: priests always know BUC */
+        if (_isCleric) o.bknown = ((o.oclass | 0) !== COIN_CLASS);
         if ((o.oclass | 0) === COIN_CLASS)
             return (game.flags && game.flags.goldX) ? 'X' : 'U';
         if (!o.bknown) return 'X';
