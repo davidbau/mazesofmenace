@@ -2237,26 +2237,44 @@ function bel_copy1(str, st, out) {
  * Turns a blank-separated name list into English ("a", "a or b",
  * "a, b, or c"). Async only because the case-0 arm awaits the live
  * `impossible` (display.js; JS has no sync abort).
- * Sole live-C caller: cfgfiles.c cnf_line_WIZARDS `:806` (SYSCF WIZARDS
- * parsing has no JS counterpart yet — named omission, map); the other
+ * Live-C caller: cfgfiles.c cnf_line_WIZARDS `:806` uses the shared
+ * config formatter below; its wordless-value diagnostic is a named
+ * omission because the config parser remains synchronous. The other
  * C call site, sys/unix/unixmain.c `:659`, is platform main (never
  * ported — named omission, map). Consumers of the formatted list —
  * end.c panic `:435`, pager.c docontact `:2728`, sys.c exit cleanup
- * `:154` — likewise wait on the SYSCF omission.
+ * `:154` — retain their existing platform-specific omissions.
  * @returns {Promise<string>} the formatted list ('' when wordless, like C).
  */
 export async function build_english_list(input) {
+    const result = english_list_parts(input);
+    if (!result.words) // C :1835–1837, before returning the empty output
+        await impossible('no words in list');
+    return result.out;
+}
+
+/**
+ * Shared C formatter for synchronous cnf_line_WIZARDS configuration.
+ * Named omit: end.c:1836 impossible on a wordless value; CR/VT/FF can
+ * survive mungspaces. The async public wrapper retains that diagnostic.
+ */
+export function build_english_list_config(input) {
+    return english_list_parts(input).out;
+}
+
+function english_list_parts(input) {
     const p = String(input ?? ''); // C `:1826` char *p = in
     // C `:1827–1832`: strlen + wordcount sizing + alloc(len + 1) +
     // *out = '\0' — JS strings grow on append, so the sizing has no
     // representable effect; only the word count is observed.
     const st = { i: 0 };
     let words = wordcount(p);
+    const originalWords = words;
     let out = '';
 
     switch (words) { // C `:1834`
     case 0: // C `:1835–1837`
-        await impossible('no words in list');
+        // The public wrapper emits impossible before returning this output.
         break;
     case 1: // C `:1838–1840` "single"
         out = bel_copy1(p, st, out);
@@ -2275,5 +2293,5 @@ export async function build_english_list(input) {
         out = bel_copy1(p, st, out); // C `:1853`
         break;
     }
-    return out; // C `:1857`
+    return { words: originalWords, out }; // C `:1857`, plus wrapper guard
 }

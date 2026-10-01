@@ -61,6 +61,7 @@ export async function scores_only(argc, argv, dir) {
     if (!game.iflags) game.iflags = {};
     game.iflags.initoptions_noterminate = true; // C `:418`
     initoptions(); // C `:419`
+    if (game.program_state?.gameover) return; // propagate C noreturn before prscore
     game.iflags.initoptions_noterminate = false; // C `:420`
     /* C `:423–427` — PANICTRACE ARGV0 save + panictrace_setsignals(TRUE)
        (config.h:276 live on linux). Platform omit: no signal/stack-trace

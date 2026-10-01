@@ -20,7 +20,7 @@ import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core, welcome, moveloop_preamble, init_sound_disp_gamewindows } from './allmain.js';
 import { getmailstatus } from './mail.js';
 import { try_restore_save } from './save.js';
-import { vision_recalc, init_vision_globals } from './vision.js';
+import { vision_init, vision_recalc, init_vision_globals } from './vision.js';
 import { parseNethackrc, set_playmode, init_fruit_chain, initoptions_init, RC_FILE_OPT, set_configfile_name } from './options.js';
 import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot } from './display.js';
 import { GameDisplay } from './game_display.js';
@@ -192,6 +192,9 @@ export class NethackGame {
         // C ref: unixmain → plnamesuffix → askname when no -u / OPTIONS=name
         await askname_if_needed();
         if (!g.plname) g.plname = 'Hero';
+
+        // C ref: unixmain.c:215 — initialize before mklev or level restore.
+        vision_init();
 
         // C ref: unixmain.c:217 init_sound_disp_gamewindows() after
         // vision_init, before attempt_restore (allmain.c:699–763).

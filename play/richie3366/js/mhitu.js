@@ -3381,11 +3381,11 @@ async function summonmu(mtmp, youseeit) {
         if (is_human(mdat)) {
             if (!Protection_from_shape_changers()
                 && !rn2(5 - ((night() ? 1 : 0) * 2))) {
-                new_were(mtmp);
+                await new_were(mtmp);
             }
         } else {
             if (Protection_from_shape_changers() || !rn2(30)) {
-                new_were(mtmp);
+                await new_were(mtmp);
             }
         }
         mdat = mtmp.data;

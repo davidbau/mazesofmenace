@@ -28,7 +28,7 @@ import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { set_occupation } from './engrave.js';
 import {
     makeknown, observe_object, ggetobj, is_worn, silly_thing, update_inventory,
-    weapon_descr, getobj, useup,
+    weapon_descr, getobj, useup, prinv,
 } from './invent.js';
 import { w_blocks, cantweararm, racial_exception, WrappingAllowed, is_flimsy, has_horns, num_horns, which_armor } from './worn.js';
 import { monstunseesu_prop } from './mondata.js';
@@ -266,11 +266,6 @@ export async function off_msg(otmp) {
     }
 }
 
-/** C ref: invent.c prinv(NULL, otmp, 0) — "ilet - doname." via xprname(dot) */
-async function prinv(otmp) {
-    await pline(xprname(otmp, undefined, true));
-}
-
 /**
  * C ref: objnam.c obj_is_pname — artifact + oname; full ID required unless
  * gameover/override_ID. Named omit: not_fully_identified detail / iflags.
@@ -285,11 +280,11 @@ function obj_is_pname(obj) {
 /** C ref: do_wear.c on_msg — rings/amulets use prinv; armor uses verbose You(). */
 async function on_msg(otmp) {
     if ((otmp.owornmask || 0) & (W_RING | W_AMUL)) {
-        await prinv(otmp);
+        await prinv(null, otmp, 0); // C do_wear.c:83.
         return;
     }
     if (((otmp.owornmask || 0) & W_TOOL) && game.flags?.verbose === false) {
-        await prinv(otmp);
+        await prinv(null, otmp, 0); // Same C on_msg call for terse eyewear.
         return;
     }
     if (game.flags?.verbose !== false) {

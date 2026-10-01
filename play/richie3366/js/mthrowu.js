@@ -180,7 +180,7 @@ export function m_useup(mon, obj) {
         obj.quan = (obj.quan | 0) - 1;
         obj.owt = weight(obj);
     } else {
-        extract_from_minvent(mon, obj, true, false);
+        return extract_from_minvent(mon, obj, true, false);
     }
 }
 

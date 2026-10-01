@@ -17,7 +17,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, impossible, set_bot_disabled, tty_nhbell } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold, process_menu_search, cmdq_add_key } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold, process_menu_search, cmdq_add_key, display_inventory } from './invent.js';
 import { cxname, the, xname, makeplural, singular, is_plural, the_unique_obj, an } from './objnam.js';
 import { body_part } from './polyself.js';
 import { ia_checkfile } from './pager.js';
@@ -923,36 +923,40 @@ export async function dispinv_with_action(
     use_inuse_ordering = false,
     alt_label = null,
 ) {
+    // C invent.c:2972–2977 — compute menu mode before changing flags.
     const flags = game.flags || (game.flags = {});
     const iflags = game.iflags || (game.iflags = {});
-    const save_sortloot = flags.sortloot;
-    const save_accessories = inuse_headers_accessories();
+    const len = lets ? lets.length : 0;
+    const menumode = len !== 1 || !!iflags.menu_requested;
     const save_force_invmenu = iflags.force_invmenu;
+    let save_sortloot;
+    let save_accessories;
+    // C :2979–2984 — install temporary in-use ordering and header.
     if (use_inuse_ordering) {
+        save_accessories = inuse_headers_accessories();
+        save_sortloot = flags.sortloot;
         flags.sortloot = 'i';
-        if (alt_label) inuse_headers_set_accessories(alt_label);
+        if (alt_label != null) inuse_headers_set_accessories(alt_label);
     }
     iflags.force_invmenu = false;
-    const len = lets ? lets.length : 0;
-    const menumode = (len !== 1 || !!iflags.menu_requested);
+    let c;
     try {
-        const { display_pickinv_reply } = await import('./invent.js');
-        const c = await display_pickinv_reply(
-            lets == null ? null : lets,
-            null,
-            null,
-            { want_reply: menumode },
-        );
-        if (c && c !== '\x1b') {
-            const otmp = (game.invent || []).find((o) => o && o.invlet === c);
-            if (otmp) await itemactions(otmp);
-        }
+        // C :2986 — use the wrapper which first consumes canned keys.
+        c = await display_inventory(lets, menumode);
     } finally {
+        // C :2988–2992 — restore BEFORE itemactions, including its input.
         if (use_inuse_ordering) {
             flags.sortloot = save_sortloot;
             inuse_headers_set_accessories(save_accessories);
         }
         iflags.force_invmenu = save_force_invmenu;
+    }
+    // C :2994–3000 — no list mutation occurs before the matching action;
+    // return immediately from that action (the array holds obj identities).
+    if (c && c !== '\x1b') {
+        for (const otmp of game.invent || []) {
+            if (otmp.invlet === c) return await itemactions(otmp);
+        }
     }
     return ECMD_OK;
 }

@@ -1187,7 +1187,7 @@ async function pickup_prinv(obj, count, verb) {
     }
     // C: if (prefix) Sprintf(pbuf, "%s %s", prefix, verb); else pbuf=""
     const pbuf = prefix ? `${prefix} ${verb}` : '';
-    await prinv(pbuf, obj, count | 0);
+    await prinv(pbuf, obj, count); // C pickup.c:1971 passes long count.
 }
 
 /* C pickup.c GOLD_WT / GOLD_CAPACITY — coin weight in carry_count. */

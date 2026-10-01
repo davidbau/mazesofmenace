@@ -123,7 +123,7 @@ const PAGES = [
         { name: 'autopickup', kind: 'bool', flag: 'pickup' },
         { name: 'autopickup exceptions', kind: 'othr', value: () => '(0 currently set)' },
         { name: 'autoquiver', kind: 'bool', flag: 'autoquiver' },
-        { name: 'autounlock', kind: 'comp', value: () => 'apply-key' },
+        { name: 'autounlock', kind: 'comp', value: autounlockStr },
         { name: 'cmdassist', kind: 'bool', flag: 'cmdassist', defOn: true },
         { name: 'dropped_nopick', kind: 'bool', flag: 'dropped_nopick', defOn: true, suffix: '  (for autopickup)' },
         { name: 'fireassist', kind: 'bool', flag: 'fireassist', defOn: true },
@@ -732,6 +732,12 @@ export async function doset_simple() {
                 pageIdx = 0;
                 continue;
             }
+            if (entry.name === 'autounlock') {
+                /* C options.c:8930-8953 -> handler_autounlock (has_handler). */
+                await handler_autounlock(false);
+                pageIdx = 0;
+                continue;
+            }
             // comp/othr options WITH a C handler open their own picker; none of
             // those is selected anywhere in the corpus, so they remain a no-op
             // re-render (no RNG, stream stays aligned).
@@ -817,6 +823,49 @@ export async function handler_menustyle(preserveStatus = false) {
     const chngd = game.flags.menu_style !== old_menu_style;
     if (chngd || game.flags.verbose)
         await pline(`'menustyle' ${chngd ? 'changed to' : 'is still'} "${menutype[game.flags.menu_style][0]}".`);
+}
+
+/* C options.c:207 unlocktypes[] */
+const unlocktypes = [
+    ['untrap', '(might fail)'], ['apply-key', ''],
+    ['kick', '(doors only)'], ['force', '(chests/boxes only)'],
+];
+/* flags.autounlock defaults to AUTOUNLOCK_APPLY_KEY (flag.h:75). */
+function autounlockFlags() {
+    const f = game.flags?.autounlock;
+    return f === undefined ? 2 : f;
+}
+/* C options.c:1145 optfn_autounlock get_val: names joined with '+', or "none". */
+function autounlockStr() {
+    const f = autounlockFlags();
+    if (!f) return 'none';
+    return unlocktypes.filter((_, i) => f & (1 << i)).map(t => t[0]).join('+');
+}
+
+/* C options.c:5624 handler_autounlock. */
+export async function handler_autounlock(preserveStatus = false) {
+    const oldflags = autounlockFlags();
+    const sep = game.iflags?.menu_tab_sep ? '\t' : ' ';
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    unlocktypes.forEach(([n, d], i) => {
+        const buf = n.slice(0, 10).padEnd(10) + sep + d.slice(0, 40);
+        m.add_menu(i + 1, n[0], ATR_NONE, buf, false, !!(oldflags & (1 << i)));
+    });
+    m.end_menu("Select 'autounlock' actions:");
+    const { count, picks } = await m.select_menu(PICK_ANY);
+    game.flags ||= {};
+    if (count > 0) {
+        let nf = 0;
+        for (const p of picks) nf |= (1 << (p - 1));
+        game.flags.autounlock = nf;
+    } else if (count === 0) {
+        game.flags.autounlock = 0;
+    } else {
+        game.flags.autounlock = oldflags;
+    }
+    const chngd = game.flags.autounlock !== oldflags;
+    if (chngd || game.flags.verbose)
+        await pline(`'autounlock' ${chngd ? 'changed to' : 'is still'} '${autounlockStr()}'.`);
 }
 
 export async function doset() {
@@ -960,6 +1009,10 @@ export async function doset() {
                 } else if (ent.row.name === 'number_pad') {
                     await drainTopline();
                     await numberPadSubmenu();
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'autounlock') {
+                    await drainTopline();
+                    await handler_autounlock(statusRefreshed);
                     statusRefreshed = true;
                 } else if (ent.row.name === 'menustyle') {
                     await drainTopline();

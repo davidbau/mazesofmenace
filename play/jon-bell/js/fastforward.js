@@ -12,7 +12,7 @@ import { make_confused, make_stunned, vomit, cantvomit } from "./potion.js";
 import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr } from "./attrib.js";
 import { overexert_hp } from "./uhitm.js";
-import { t_at, registerTrapMksobj, m_dowear } from "./trap.js";
+import { t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
 import { newsym, feel_location, feel_newsym, pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, You_hear } from "./display.js";
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
@@ -26,12 +26,12 @@ import { can_reach_floor } from "./hold_another_object.js";
  * back through this edge at module-init time, and nomul is a hoisted function
  * declaration called only at runtime, so this cycle resolves. */
 import { nomul, stop_occupation, interrupt_multi, night } from "./allmain.js";
-import { obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear } from "./cmd.js";
+import { obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap } from "./cmd.js";
 import { vtense } from "./objnam.js";
 import { rehumanize, polyself, set_uasmon } from "./polyself.js";
 import { you_were } from "./were.js";
 import { tele, next_to_u } from "./teleport.js";
-import { TELEPORT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, CQ_CANNED, CQ_REPEAT, ismnum } from "./const.js";
+import { TELEPORT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, CQ_CANNED, CQ_REPEAT, ismnum, STATUE_TRAP } from "./const.js";
 import { search_special } from "./mkroom.js";
 /* C ref: mon.c:1230 — movemon_singlemon calls monmove.c's m_everyturn_effect
  * for every live monster.  Same runtime-only-reference cycle rule as nomul
@@ -1029,7 +1029,7 @@ function ff_Searching() {
  * dosearch0; the message/vision side-effects are screen-only and omitted.
  * fund stubbed to 0 (no artifact-SPFX_SEARCH uwep or LENSES in the
  * autosearch corpus; same stub as cmd.js dosearch0). */
-function autosearch_rng() {
+async function autosearch_rng() {
     const g = game;
     const u = g.u || {};
     /* C: if (Searching && !noautosearch && gm.multi >= 0) dosearch0(1); */
@@ -1110,14 +1110,18 @@ function autosearch_rng() {
                 /* C: if ((trap = t_at(x,y)) && !trap->tseen && !rnl(8)) {...} */
                 const trap = t_at(x, y);
                 if (trap && !trap.tseen && !rnl(8)) {
-                    /* C detect.c:2087 find_trap(trap): trap->tseen=1 then
-                     * feel_newsym(tx,ty)/map_trap — render the trap glyph so it
-                     * shows on the map (RNG-free; the rnl(8) gate above already
-                     * fired).  Without the newsym the trap stayed invisible on the
-                     * JS map — seed0001 step6 screen divergence (C '^' magenta vs
-                     * JS '.').  nomul(0)/messages are screen-only and omitted. */
-                    trap.tseen = 1;
-                    newsym(x, y);
+                    /* C detect.c:2079-2087: nomul(0); STATUE_TRAP ->
+                     * activate_statue_trap (+exercise) and return; else
+                     * find_trap(trap), which does tseen=1, exercise(A_WIS,
+                     * TRUE) (the rn2(19) attrib.c:509), feel_newsym and the
+                     * "You find ..." message. */
+                    nomul(0);
+                    if ((trap.ttyp | 0) === STATUE_TRAP) {
+                        if (await activate_statue_trap(trap, x, y, false))
+                            exercise(A_WIS, true);
+                        return;
+                    }
+                    await find_trap(trap);
                 }
             }
         }
@@ -1695,7 +1699,7 @@ async function fastforward_step_generic_turn_nodochug() {
     u_calc_moveamt(near_capacity());
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
-    autosearch_rng();
+    await autosearch_rng();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     dosounds_rng();
     /* C ref: allmain.c:407 gethungry(). */
@@ -1730,7 +1734,7 @@ async function fastforward_step_generic_turn() {
     u_calc_moveamt(near_capacity());
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
-    autosearch_rng();
+    await autosearch_rng();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     dosounds_rng();
     /* C ref: allmain.c:407 gethungry(). */
@@ -2162,7 +2166,7 @@ export async function ff_head_phase_post() {
         }
     }
     /* C allmain.c:395-397 — intrinsic autosearch (Searching gate). */
-    autosearch_rng();
+    await autosearch_rng();
     // C allmain.c:348-351: monster or hero were-changes can change innate
     // properties, even when no new hero transformation was requested.
     if (game.gw?.were_changes)

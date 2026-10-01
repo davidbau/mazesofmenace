@@ -51,7 +51,7 @@ import { parseautocomplete } from './cmd.js';
 import { sysopt_seduce_set } from './sys.js';
 import { dupstr } from './dungeon.js'; // C config_erradd `:1572` (imports.mjs SAFE: hoisted fn)
 import { fqname, do_deferred_showpaths } from './files.js'; // C fopen `:234` + assure `:2064` (imports.mjs SAFE: hoisted fns)
-import { nh_terminate } from './end.js'; // C assure `:2067` (imports.mjs SAFE: hoisted fn)
+import { nh_terminate, build_english_list_config } from './end.js'; // live C helpers; hoisted fns
 
 /** C ref: hack.h `:1504–1506` FEATURE_NOTICE_VER(3, 7, 0). */
 const FEATURE_NOTICE_VER_3_7_0 = (3 << 24) | (7 << 16);
@@ -98,7 +98,7 @@ export async function do_write_config_file() {
     // representable trigger (map-named).
     const sbuf = {};
     strbuf_init(sbuf); // C `:199` (all_options_strbuf re-inits too, js/options.js)
-    all_options_strbuf(sbuf); // C `:200`
+    await all_options_strbuf(sbuf); // C :200; oc_to_str errors can prompt.
     const text = sbuf.str ?? ''; // C `:201` strlen
     if (vfsWriteFile(configfile, text)) { // C `:202` fwrite + `:203` fclose
         // Wrote the whole buffer: nothing left to report.
@@ -660,6 +660,21 @@ function cnf_line_catname(bufp) {
     return true;
 }
 
+/** C ref: cfgfiles.c cnf_line_WIZARDS :795–809, whole body in C order. */
+function cnf_line_WIZARDS(bufp) {
+    const sysopt = sysoptBag();
+    // C :797–799 free + dupstr; replacing the JS string releases ownership.
+    sysopt.wizards = dupstr(bufp);
+    if (sysopt.wizards.length && sysopt.wizards !== '*') { // C :800
+        // C :804–806 free + build_english_list. Keep the old formatted list
+        // when the value is empty or '*', exactly as the C guard does.
+        // Named omit: end.c:1836 impossible for a nonempty all-isspace
+        // value (e.g. CR); the config parser cannot await its input boundary.
+        sysopt.fmtd_wizard_list = build_english_list_config(sysopt.wizards);
+    }
+    return true;
+}
+
 /** C ref: cfgfiles.c cnf_line_AUTOPICKUP_EXCEPTION `:611–616`. */
 function cnf_line_AUTOPICKUP_EXCEPTION(bufp) {
     add_autopickup_exception(bufp); // C `:614`
@@ -932,8 +947,9 @@ function cnf_line_ACCESSIBILITY(bufp) {
     return true;
 }
 
-/** WIN32-only body; elsewhere nhUse + TRUE (`:1134–1149`). */
+/** C ref: cfgfiles.c :1134–1150; this target uses the non-WIN32 arm. */
 function cnf_line_PORTABLE_DEVICE_PATHS(_bufp) {
+    config_error_add('PORTABLE_DEVICE_PATHS is not supported'); // C :1147
     return true;
 }
 
@@ -969,7 +985,7 @@ const configLineStmt = [
     { name: 'CHARACTER', len: 4, syscnf: false, origbuf: false, fn: cnf_line_ROLE },
     { name: 'dogname', len: 3, syscnf: false, origbuf: false, fn: cnf_line_dogname },
     { name: 'catname', len: 3, syscnf: false, origbuf: false, fn: cnf_line_catname },
-    { name: 'WIZARDS', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('wizards', b) },
+    { name: 'WIZARDS', len: 7, syscnf: true, origbuf: false, fn: cnf_line_WIZARDS },
     { name: 'SHELLERS', len: 8, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('shellers', b) },
     { name: 'MSGHANDLER', len: 9, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('msghandler', b) },
     { name: 'EXPLORERS', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('explorers', b) },

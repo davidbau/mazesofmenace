@@ -248,7 +248,7 @@ import {
 } from './attrib.js';
 import { ing_suffix, strstri, strsubst, ordin, highc, lcase } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
-import { select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes, set_option_mod_status, SET_GAMEVIEW } from './options.js';
+import { map_menu_cmd, select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes, set_option_mod_status, SET_GAMEVIEW } from './options.js';
 import { rn2 } from './rng.js';
 import { background_enlightenment, enlght_line as enlght_line_txt } from './insight.js';
 import {
@@ -344,7 +344,7 @@ import {
     count_buc, count_justpicked, allow_category,
     query_category, query_objlist, allow_all,
 } from './pickup.js';
-import { is_ammo, is_pole } from './wield.js';
+import { is_ammo, is_pole, empty_handed } from './wield.js';
 import { is_wet_towel, can_advance } from './weapon.js';
 import { shield_simple_name, Boots_on, helm_simple_name, cloak_simple_name, shirt_simple_name, suit_simple_name, boots_simple_name } from './do_wear.js';
 import { float_vs_flight, youhiding } from './polyself.js';
@@ -430,7 +430,8 @@ export function inuse_headers_accessories() {
 
 /** C invent.c inuse_headers[4] = alt_label (or restore "Accessories"). */
 export function inuse_headers_set_accessories(label) {
-    inuse_headers[4] = label || 'Accessories';
+    // C invent.c:2984/2990 stores the pointed-to string, even when empty.
+    inuse_headers[4] = label ?? 'Accessories';
 }
 
 /* C invent.c static wri_info / perminv_flags / in_perm_invent_toggled.
@@ -3212,7 +3213,8 @@ export async function select_menu_pick_none(entries) {
             cursor: [morestr.length + 1, page.length],
         });
         await flush_screen(1);
-        const key = await nhgetch();
+        // C wintty.c:1561 — PICK_NONE has no explicit selectors.
+        const key = map_menu_cmd(await nhgetch());
         // C tty_select_menu `:2796–2797` — ESC is pick_cnt -1; Enter/space is 0.
         if (key === 27) {
             cancelled = true;
@@ -5188,18 +5190,6 @@ function skill_name(skill) {
         if (s) return s;
     }
     return 'weapon';
-}
-
-/**
- * C ref: wield.c empty_handed — gloves imply "empty handed".
- * Local copy avoids invent↔wield import cycle (weapon.js → invent).
- * Missing youmonst.data (set_uasmon deferred) treated as humanoid start form.
- */
-function empty_handed() {
-    if (game.u?.uarmg) return 'empty handed';
-    const ptr = game.youmonst?.data;
-    if (!ptr || humanoid(ptr)) return 'bare handed';
-    return 'not wielding anything';
 }
 
 /** C ref: skills.h P_SKILL — current skill rank. */
@@ -7690,15 +7680,17 @@ export async function doprgold() {
  * Named omissions: none for prefix — pickup_prinv builds load+verb.
  */
 export async function prinv(prefix, obj, quan = 0) {
-    const q = quan | 0;
-    const totalOf = q !== 0 && q < (obj.quan || 1);
+    // C invent.c:2877 — quan is long, not a signed 32-bit int.
+    const totalOf = !!quan && quan < obj.quan;
+    // C :2880–2885 — NULL prefix and the optional total suffix.
+    if (prefix == null) prefix = '';
     let totalbuf = '';
     if (totalOf) totalbuf = ` (${obj.quan} in total).`;
-    const pfx = prefix || '';
-    // C: xprname(..., obj_to_let(obj), !total_of, 0L, quan)
-    const body = xprname(obj, obj_to_let(obj), !totalOf, q);
-    const verb = game.flags?.verbose !== false ? totalbuf : '';
-    await pline(`${pfx}${pfx ? ' ' : ''}${body}${verb}`);
+    // C :2886–2889 — the JS xprname arguments put quan before txt/cost.
+    const body = xprname(obj, obj_to_let(obj), !totalOf, quan, null, 0);
+    await pline(`${prefix}${prefix ? ' ' : ''}${body}${
+        game.flags?.verbose ? totalbuf : ''
+    }`);
 }
 
 /**
@@ -7707,23 +7699,26 @@ export async function prinv(prefix, obj, quan = 0) {
  */
 export async function doprwep() {
     const u = game.u || {};
+    // C invent.c:4552–4558 — no menu without a primary weapon; the
+    // ordinary view prints the secondary only while actually twoweaponing.
     if (!u.uwep) {
-        // C: You("are %s.", empty_handed());
         await pline(`You are ${empty_handed()}.`);
-        return ECMD_OK;
-    }
-    if (!game.iflags?.menu_requested) {
+    } else if (!game.iflags?.menu_requested) {
         await prinv(null, u.uwep, 0);
         if (u.twoweap) {
             await prinv(null, u.uswapwep, 0);
         }
-        return ECMD_OK;
+    } else {
+        // C :4562–4569 — reassign once via the primary, then read the
+        // secondary/quiver letters after that mutation, in C order.
+        let lets = obj_to_let(u.uwep);
+        if (u.uswapwep) lets += u.uswapwep.invlet;
+        if (u.uquiver) lets += u.uquiver.invlet;
+        // C :4571 — this equipment command ignores itemactions' result.
+        const { dispinv_with_action } = await import('./iactions.js');
+        await dispinv_with_action(lets, true, null);
     }
-    let lets = obj_to_let(u.uwep) || '';
-    if (u.uswapwep) lets += u.uswapwep.invlet || '';
-    if (u.uquiver) lets += u.uquiver.invlet || '';
-    const { dispinv_with_action } = await import('./iactions.js');
-    return await dispinv_with_action(lets, true, null);
+    return ECMD_OK; // C :4573.
 }
 
 /** C ref: invent.c wearing_armor */
@@ -7767,21 +7762,25 @@ async function noarmor(report_uskin) {
  */
 export async function doprarm() {
     const u = game.u || {};
+    // C invent.c:4609–4610 — merged skin is reported only when unarmored.
     if (!wearing_armor()) {
         await noarmor(true);
-        return ECMD_OK;
+    } else {
+        // C :4612–4633 — string terminates implicitly; preserve slot order
+        // and obj_to_let per slot because !fixinv reassigns the whole pack.
+        let lets = '';
+        if (u.uarm) lets += obj_to_let(u.uarm);
+        if (u.uarmc) lets += obj_to_let(u.uarmc);
+        if (u.uarms) lets += obj_to_let(u.uarms);
+        if (u.uarmh) lets += obj_to_let(u.uarmh);
+        if (u.uarmg) lets += obj_to_let(u.uarmg);
+        if (u.uarmf) lets += obj_to_let(u.uarmf);
+        if (u.uarmu) lets += obj_to_let(u.uarmu);
+        // C :4635 — deliberately discard the selected action's result.
+        const { dispinv_with_action } = await import('./iactions.js');
+        await dispinv_with_action(lets, true, null);
     }
-    // C SORTPACK_INUSE slot order; obj_to_let once per slot (!fixinv)
-    let lets = '';
-    if (u.uarm) lets += obj_to_let(u.uarm);
-    if (u.uarmc) lets += obj_to_let(u.uarmc);
-    if (u.uarms) lets += obj_to_let(u.uarms);
-    if (u.uarmh) lets += obj_to_let(u.uarmh);
-    if (u.uarmg) lets += obj_to_let(u.uarmg);
-    if (u.uarmf) lets += obj_to_let(u.uarmf);
-    if (u.uarmu) lets += obj_to_let(u.uarmu);
-    const { dispinv_with_action } = await import('./iactions.js');
-    return await dispinv_with_action(lets, true, null);
+    return ECMD_OK; // C :4637, including after a canceled inventory menu.
 }
 
 /**
@@ -7790,28 +7789,33 @@ export async function doprarm() {
  */
 export async function doprring() {
     const u = game.u || {};
+    // C invent.c:4644–4645 — no menu when both slots are empty.
     if (!u.uleft && !u.uright) {
         await pline('You are not wearing any rings.');
-        return ECMD_OK;
+    } else {
+        let lets = '';
+        let use_inuse_mode = false;
+        let ct = 0;
+        // C :4653–4662 — right before left, and meat rings require the
+        // in-use classifier so their header is Rings, not Comestibles.
+        if (u.uright) {
+            lets += obj_to_let(u.uright);
+            ct++;
+            if (u.uright.oclass !== RING_CLASS) use_inuse_mode = true;
+        }
+        if (u.uleft) {
+            lets += obj_to_let(u.uleft);
+            ct++;
+            if (u.uleft.oclass !== RING_CLASS) use_inuse_mode = true;
+        }
+        // C :4666–4672 — multiple rings or menu prefix also use ordering.
+        if (ct > 1 || game.iflags?.menu_requested) use_inuse_mode = true;
+        const { dispinv_with_action } = await import('./iactions.js');
+        await dispinv_with_action(
+            lets, use_inuse_mode, ct === 1 ? 'Ring' : 'Rings',
+        );
     }
-    let lets = '';
-    let use_inuse_mode = false;
-    let ct = 0;
-    if (u.uright) {
-        lets += obj_to_let(u.uright);
-        ct++;
-        if (u.uright.oclass !== RING_CLASS) use_inuse_mode = true;
-    }
-    if (u.uleft) {
-        lets += obj_to_let(u.uleft);
-        ct++;
-        if (u.uleft.oclass !== RING_CLASS) use_inuse_mode = true;
-    }
-    if (ct > 1 || game.iflags?.menu_requested) use_inuse_mode = true;
-    const { dispinv_with_action } = await import('./iactions.js');
-    return await dispinv_with_action(
-        lets, use_inuse_mode, ct === 1 ? 'Ring' : 'Rings',
-    );
+    return ECMD_OK; // C :4674 — discard the action's result.
 }
 
 /**
@@ -7820,13 +7824,17 @@ export async function doprring() {
  */
 export async function dopramulet() {
     const u = game.u || {};
+    // C invent.c:4681–4682 — empty slot reports without opening a menu.
     if (!u.uamul) {
         await pline('You are not wearing an amulet.');
-        return ECMD_OK;
+    } else {
+        // C :4689–4691 — preserve obj_to_let's !fixinv mutation and the
+        // single-item header, with menu_requested handled by the callee.
+        const lets = obj_to_let(u.uamul);
+        const { dispinv_with_action } = await import('./iactions.js');
+        await dispinv_with_action(lets, true, 'Amulet');
     }
-    const lets = obj_to_let(u.uamul);
-    const { dispinv_with_action } = await import('./iactions.js');
-    return await dispinv_with_action(lets, true, 'Amulet');
+    return ECMD_OK; // C :4693 — discard the action's result.
 }
 
 /**
@@ -7834,19 +7842,32 @@ export async function dopramulet() {
  * tool_being_used letters → dispinv_with_action inuse.
  */
 export async function doprtool() {
+    // C invent.c:4718–4720 — up to invlet_basic letters plus NUL.
     const invlet_basic = 52;
+    let ct = 0;
     let lets = '';
-    for (const otmp of game.invent || []) {
-        if (!tool_being_used(otmp)) continue;
-        if (lets.length >= invlet_basic) break;
-        lets += obj_to_let(otmp);
+    let otmp = (game.invent || [])[0];
+    while (otmp) {
+        // C :4722–4729 — test tool usage before the capacity guard;
+        // obj_to_let can move gold to the front of the inventory list.
+        if (tool_being_used(otmp)) {
+            if (ct >= invlet_basic) break;
+            lets += obj_to_let(otmp);
+            ct++;
+        }
+        // C :4721 — read nobj AFTER reassign, using the object's identity
+        // in the array so a newly inserted gold head cannot repeat a tool.
+        const inv = game.invent || [];
+        otmp = inv[inv.indexOf(otmp) + 1];
     }
-    if (!lets) {
+    // C :4730–4733 — the empty view reports without an inventory menu.
+    if (!ct) {
         await pline('You are not using any tools.');
-        return ECMD_OK;
+    } else {
+        const { dispinv_with_action } = await import('./iactions.js');
+        await dispinv_with_action(lets, true, null);
     }
-    const { dispinv_with_action } = await import('./iactions.js');
-    return await dispinv_with_action(lets, true, null);
+    return ECMD_OK; // C :4734 — discard the action's result.
 }
 
 /**
@@ -7879,6 +7900,8 @@ export async function doperminv() {
  * Any is_inuse → dispinv_with_action(NULL, TRUE); else You() not wearing.
  */
 export async function doprinuse() {
+    // C invent.c:4742–4751 — stop after the first object in use; don't
+    // collect letters because the inventory classifier selects the subset.
     let ct = 0;
     for (const otmp of game.invent || []) {
         if (is_inuse(otmp)) {
@@ -7888,10 +7911,12 @@ export async function doprinuse() {
     }
     if (!ct) {
         await pline('You are not wearing or wielding anything.');
-        return ECMD_OK;
+    } else {
+        // C :4755 — NULL selects all in-use items, with in-use ordering.
+        const { dispinv_with_action } = await import('./iactions.js');
+        await dispinv_with_action(null, true, null);
     }
-    const { dispinv_with_action } = await import('./iactions.js');
-    return await dispinv_with_action(null, true, null);
+    return ECMD_OK; // C :4756 — discard the action's result.
 }
 
 /**

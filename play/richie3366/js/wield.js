@@ -606,7 +606,7 @@ async function ready_weapon(wep) {
         wep.owornmask = dummy | W_WEP;
         if ((wep.otyp | 0) === AKLYS && ((wep.owornmask | 0) & W_WEP) !== 0)
             await pline('You secure the tether.'); // C: You("secure the tether.")
-        await pline(xprname(wep, undefined, true)); // C: prinv → xprname(..., TRUE)
+        await prinv(null, wep, 0); // C wield.c:226, including !fixinv.
         wep.owornmask = dummy;
     }
 
@@ -1105,11 +1105,9 @@ export async function doquiver_core(verb) {
 
     if (verb === 'ready') {
         setuqwep(newquiver);
-        await pline(xprname(newquiver, undefined, true));
+        await prinv(null, newquiver, 0); // C wield.c:657, after setuqwep.
     } else {
-        // C wield.c doquiver_core fire arm: prinv("You ready:", q, 0L) →
-        // xprname(..., obj_to_let, dot=!total_of=TRUE) — trailing period.
-        await pline(`You ready: ${xprname(newquiver, undefined, true)}`);
+        await prinv('You ready:', newquiver, 0); // C wield.c:661, before setuqwep.
         setuqwep(newquiver);
     }
 

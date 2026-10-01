@@ -17,14 +17,14 @@ import {
     is_were, is_human, mons, LOW_PM, NON_PM, NEUTRAL,
 } from './monsters.js';
 import { monsterNames, pmnames } from './generated/monsters_data.js';
-import { canseemon, newsym, pline, You_feel } from './display.js';
-import { Monnam } from './do_name.js';
-import { set_mon_data } from './mondata.js';
+import { canseemon, newsym, pline, You_feel, impossible, Hallucination } from './display.js';
+import { Monnam, pmname, Mgender } from './do_name.js';
+import { set_mon_data, monsndx } from './mondata.js';
 import { possibly_unwield } from './weapon.js';
 import { mon_break_armor } from './worn.js';
 import { set_uasmon, polymon, rehumanize } from './polyself.js';
 import { monster_nearby, You_hear } from './hack.js';
-import { wake_nearto, onscary, monnear } from './mon.js';
+import { wake_nearto, onscary, monnear, healmon } from './mon.js';
 import { monflee } from './monmove.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_canine_howl } from './generated/seffects_data.js';
@@ -134,66 +134,43 @@ export function counter_were(pm) {
 }
 
 /**
- * C ref: were.c new_were — flip human ↔ beast form.
- * C tail `:133–137`: moving + hostile + onscary(mux,muy) + monnear →
- * monflee(rn1(9,2), TRUE, TRUE). Named omissions: Soundeffect.
- * possibly_unwield is D-1744; mon_break_armor wired here D-1917
- * (canonical js/worn.js export, C :129 order before possibly_unwield).
+ * C ref: were.c:95–138 new_were — flip human ↔ beast form.
+ * The visible message can block for input before any transformation state
+ * changes; armor, unwield and scared-tail messages finish in C order too.
  */
-export function new_were(mon) {
-    if (!mon?.data) return;
+export async function new_were(mon) {
     if (Protection_from_shape_changers() && is_human(mon.data)) return;
 
-    const pm = counter_were(mon.mnum ?? mon.data?.mndx);
-    if (pm < LOW_PM) return;
-
-    const newptr = mons(pm);
-    if (!newptr) return;
-
-    if (canseemon(mon) && !(game.u?.Hallucination || game.u?.HHallucination)) {
-        const form = is_human(newptr)
-            ? 'human'
-            : (() => {
-                const g = mon.female ? 1 : 0;
-                const nm = pmnames[pm]?.[g] || pmnames[pm]?.[2] || 'beast';
-                // C: pmname()+4 skips "were" prefix
-                return nm.startsWith('were') ? nm.slice(4) : nm;
-            })();
-        void pline(`${Monnam(mon)} changes into a ${form}.`);
+    const pm = counter_were(monsndx(mon.data));
+    if (pm < LOW_PM) {
+        await impossible('unknown lycanthrope %s.',
+            pmnames[monsndx(mon.data)][NEUTRAL]);
+        return;
     }
 
-    // C: set_mon_data — shared with hero poly (D-0717 umovement prorate)
+    const newptr = mons(pm);
+    if (canseemon(mon) && !Hallucination()) {
+        await pline('%s changes into a %s.', Monnam(mon),
+            is_human(newptr) ? 'human' : pmname(newptr, Mgender(mon)).slice(4));
+    }
+
     set_mon_data(mon, newptr);
-    // C: helpless → wake/unfreeze
-    if (mon.msleeping || !mon.mcanmove || (mon.mfrozen | 0) > 0) {
+    // C monst.h helpless: sleeping or unable to move.
+    if (mon.msleeping || !mon.mcanmove) {
         mon.msleeping = 0;
         mon.mfrozen = 0;
         mon.mcanmove = 1;
     }
-    // healmon(mon, (mhpmax - mhp) / 4, 0)
-    const lost = ((mon.mhpmax | 0) - (mon.mhp | 0)) >> 2;
-    if (lost > 0) mon.mhp = (mon.mhp | 0) + lost;
+    healmon(mon, Math.trunc((mon.mhpmax - mon.mhp) / 4), 0);
     newsym(mon.mx, mon.my);
-    // C :129 mon_break_armor(mon, FALSE) before possibly_unwield — same
-    // sync-or-async chaining as newcham after_armor (D-1914): armor
-    // mutations run inline, message thunks flush first, then unwield,
-    // then the C :133–137 scared tail.
-    const mba = mon_break_armor(mon, false);
-    const scared_tail = () => {
-        if (game.context?.mon_moving && !mon.mpeaceful
-            && onscary(mon.mux, mon.muy, mon)
-            && monnear(mon, mon.mux, mon.muy)) {
-            return monflee(mon, rn1(9, 2), true, true);
-        }
-        return null;
-    };
-    const after_armor = () => {
-        const r = possibly_unwield(mon, false);
-        if (r && typeof r.then === 'function') return r.then(scared_tail);
-        return scared_tail() ?? r;
-    };
-    if (mba) return Promise.resolve(mba).then(after_armor);
-    return after_armor();
+    await mon_break_armor(mon, false);
+    await possibly_unwield(mon, false);
+
+    if (game.context?.mon_moving && !mon.mpeaceful
+        && onscary(mon.mux, mon.muy, mon)
+        && monnear(mon, mon.mux, mon.muy)) {
+        await monflee(mon, rn1(9, 2), true, true);
+    }
 }
 
 /**

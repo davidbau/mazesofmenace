@@ -660,7 +660,7 @@ import { some_armor, adj_abon } from './do_wear.js';
 import { destroy_arm, disintegrate_arm, count_worn_armor,
          any_worn_armor_ok } from './do_wear.js';
 /* C objnam.c:574 xname() — actualoname()'s override_ID-bracketed namer below. */
-import { xname } from './objnam.js';
+import { xname, doname_with_price } from './objnam.js';
 /* C invent.c:1752 getobj() — the shared (prompt-less) selector; see the KNOWN
  * GAP at its one call site in seffect_destroy_armor. */
 import { getobj } from './eat.js';
@@ -4586,38 +4586,6 @@ async function identify(otmp) {
     return 1;
 }
 
-/* C ref: objnam.c:1318-1349 doname() BUC prefix.  Once an item is bknown (set by
- * fully_identify_obj), doname prepends the curse-status adjective:
- *   cursed → "cursed ", blessed → "blessed ", otherwise (per the implicit-uncursed
- *   rule) "uncursed " when the item's +/-/charges would NOT already be implied by a
- *   full ID — i.e. for un-charged items (scrolls, potions), and for ARMOR/RING.
- * Coins never carry the prefix.  Returns "" when no prefix applies. */
-function _identify_buc_prefix(obj) {
-    const oclass = obj.oclass | 0;
-    const otyp = obj.otyp | 0;
-    const COIN_CLASS = 12, ARMOR_CLASS = 3; /* objclass.h COIN_CLASS; was 1 = ILLOBJ_CLASS */
-    if (!obj.bknown || oclass === COIN_CLASS) return '';
-    /* C: POT_WATER holy/unholy-water special-case is not load-bearing for the
-     * corpus identify path (potions of water aren't in the menu); the general
-     * branch below covers all corpus items. */
-    if (obj.cursed) return 'cursed ';
-    if (obj.blessed) return 'blessed ';
-    /* "uncursed" branch (objnam.c:1328-1348).  flags.implicit_uncursed defaults
-     * OFF, so the leading !flags.implicit_uncursed short-circuits TRUE and we then
-     * test the charge/class clause.  oc_charged is true only for wands, the
-     * adornment..protection rings (173-178), and charged tools; for everything
-     * else (scrolls, potions, armor) it is false, so "uncursed" is shown. */
-    const oc_charged =
-        (oclass === WAND_CLASS)
-        || (oclass === RING_CLASS && otyp >= RIN_BASE && otyp <= RIN_LAST_CHARGED);
-    /* C clause: (!known || !oc_charged || ARMOR || RING) && not the amulet/cleric
-     * exclusions.  After fully_identify_obj `known` is set, so it reduces to
-     * (!oc_charged || ARMOR || RING). */
-    if (!oc_charged || oclass === ARMOR_CLASS || oclass === RING_CLASS)
-        return 'uncursed ';
-    return '';
-}
-
 /* C ref: invent.c:2875 prinv()/xprname() — the single-line item display.  For
  * identify the prefix is empty, so the line is "<invlet> - <doname>".  doname()
  * for the now-fully-identified item prepends the BUC adjective (the item is
@@ -4626,24 +4594,9 @@ function _identify_buc_prefix(obj) {
  * "n - a blessed scroll of enchant weapon.--More--"). */
 async function _prinv_identify(obj) {
     const letter = obj.invlet ? String.fromCharCode(obj.invlet | 0) : '?';
-    /* The identified type-name body ("scroll of enchant weapon"); _identify_doname
-     * already adds the leading article, so strip it and reinsert after the BUC
-     * adjective so the article agrees with the resulting first word. */
-    const named = _identify_doname(obj);
-    const body = named.replace(/^an?\s+/, '');
-    const buc = _identify_buc_prefix(obj);
-    const withBuc = buc + body;
-    const article = /^[aeiou]/i.test(withBuc) ? 'an' : 'a';
-    /* C objnam.c:1283-1298 — doname_base builds `prefix` in ONE order: the
-     * quantity (or "the "/"a ") goes in FIRST at :1284, and every BUC / erosion
-     * / enchant word is then APPENDED to that same prefix.  So a stack reads
-     * "2 uncursed scrolls of punishment", count first.  Prepending the BUC word
-     * to the whole already-counted string instead produced "uncursed 2 scrolls
-     * of punishment" (seed4500 step 495).  The quantity is already on `named`
-     * for quan > 1 — split it back off and re-join in C's order. */
-    const quanMatch = /^(\d+)\s+([\s\S]*)$/.exec(named);
-    const name = quanMatch ? `${quanMatch[1]} ${buc}${quanMatch[2]}`
-                           : `${article} ${withBuc}`;
+    /* C invent.c:2875 prinv() -> xprname() -> doname(): the real namer, run on
+     * the now-fully-identified object (BUC, enchantment, known type name). */
+    const name = await doname_with_price(obj);
     await pline(`${letter} - ${name}.`);
 }
 
@@ -4719,65 +4672,6 @@ async function menu_identify(id_limit) {
         /* C invent.c:2686 — `first = 0` sits INSIDE the n > 0 arm, so a
          * no-selection round re-asks "identify first?", not "next?". */
         first = false;
-    }
-}
-
-/* ── identify-menu doname ─────────────────────────────────────────────────────
- * The menu shows each not_fully_identified item by its appearance.  For the
- * unidentified case this is "<article> <descr> <class>" (potions/rings/wands) or
- * "a scroll labeled <descr>" (scrolls), with quantity pluralization.  Displaying
- * an item in the menu sets obj->dknown (C doname side effect: the hero now sees
- * the appearance). */
-function _identify_doname(obj) {
-    const g = game;
-    obj.dknown = 1; /* C doname: seeing the item in the menu marks it dknown */
-    const oclass = obj.oclass | 0;
-    const otyp = obj.otyp | 0;
-    const quan = obj.quan | 0 || 1;
-    const nameKnown = !!(g._oc_name_known && g._oc_name_known[otyp]);
-
-    let base;
-    if (oclass === SCROLL_CLASS_OC) {
-        base = xname_scroll(obj); /* "scroll labeled X" / "scroll of Y" */
-    } else if (nameKnown) {
-        /* Known type → "<class> of <name>".  Not needed for the seed5500 menu
-         * (all menu items are unidentified appearances) but kept faithful. */
-        const actualn = getObjName(otyp);
-        const cls = _oclass_word(oclass);
-        base = actualn ? `${cls} of ${actualn}` : cls;
-    } else {
-        const descr = getObjDescr(otyp);
-        const cls = _oclass_word(oclass);
-        base = descr ? `${descr} ${cls}` : cls;
-    }
-    if (quan > 1) {
-        /* C objnam.c:1112 — xname_flags ends
-         *     if (obj->quan != 1L && !(cxn_flags & CXN_SINGULAR))
-         *         Strcpy(buf, makeplural(buf));
-         * makeplural() pluralises the HEAD NOUN of an "<x> of <y>" phrase
-         * (objnam.c:2050 `if ((p = strstri(str, " of ")) != 0) ...`).  This used
-         * to be `base.endsWith('s') ? base : base + 's'`, which appends to the
-         * TAIL: an identified stack of punishment scrolls listed as "2 scroll of
-         * punishments" where C says "2 scrolls of punishment" (seed4500 step
-         * 495).  js/objnam.js's makeplural is a full port — use it. */
-        return `${quan} ${makeplural(base)}`;
-    }
-    const article = /^[aeiou]/i.test(base) ? 'an' : 'a';
-    return `${article} ${base}`;
-}
-
-function _oclass_word(oclass) {
-    switch (oclass) {
-        case 2: return 'weapon';
-        case 3: return 'armor';
-        case 4: return 'ring';
-        case 5: return 'amulet';
-        case 6: return 'tool';
-        case 8: return 'potion';
-        case 9: return 'scroll';
-        case 10: return 'spellbook';
-        case 11: return 'wand';
-        default: return 'object';
     }
 }
 
@@ -4888,12 +4782,21 @@ async function _identify_objlist_menu(promptText) {
             for (const e of entries) {
                 if ((e.obj.oclass | 0) !== oc) continue;
                 const letter = String.fromCharCode(e.obj.invlet | 0);
-                lines.push(`${letter} ${e.selected ? '+' : '-'} ${_identify_doname(e.obj)}`);
+                lines.push(`${letter} ${e.selected ? '+' : '-'} ${e.name}`);
             }
         }
         return lines;
     }
     for (const o of eligible) entries.push({ obj: o, selected: false });
+    /* C pickup.c:1137 query_objlist add_menu(..., doname_with_price(curr), ...):
+     * each row is the REAL doname text (BUC/enchantment/"(being worn)"/known
+     * type names), not the appearance-only partial namer, so the menu width
+     * and hence offx match C.  Names are built once in class order; a toggle
+     * cannot change them. */
+    for (const oc of classOrder)
+        for (const e of entries)
+            if ((e.obj.oclass | 0) === oc)
+                e.name = await doname_with_price(e.obj);
 
     const LETTERSET = new Map(entries.map(e => [e.obj.invlet | 0, e]));
     let escaped = false;
@@ -5003,7 +4906,7 @@ async function _identify_objlist_menu(promptText) {
             await menu_search_case(
                 'ANY',
                 entries.map((en) => ({
-                    str: `${String.fromCharCode(en.obj.invlet | 0)} - ${_identify_doname(en.obj)}`,
+                    str: `${String.fromCharCode(en.obj.invlet | 0)} - ${en.name}`,
                     en,
                 })),
                 () => frameRows().rows,
@@ -5016,7 +4919,13 @@ async function _identify_objlist_menu(promptText) {
     g._pending_message = '';
     await flush_screen(1);
     if (escaped) return null; /* C n == -2 */
-    return entries.filter(e => e.selected).map(e => e.obj);
+    /* C tty_select_menu / process_menu_window hand back the picks in MENU order
+     * (the class-grouped order query_objlist added them), not invent order. */
+    const picked = [];
+    for (const oc of classOrder)
+        for (const e of entries)
+            if (e.selected && (e.obj.oclass | 0) === oc) picked.push(e.obj);
+    return picked;
 }
 
 /* C ref: read.c:2102 seffect_magic_mapping() — the magic-mapping scroll/spell.

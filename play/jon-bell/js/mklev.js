@@ -9241,9 +9241,9 @@ async function themeroom_fill_rng(aroom, difficulty) {
             //    start_timer(250 + rnd(250)) → rnd(250).
             //    C ref: zap.c obj_resists:1458-1472 (rn2(100) for a generated otyp);
             //           dig.c:2031-2034 the organic rot-timer rnd(250).
-            rn2(100); // bury_an_obj obj_resists(chest,0,0)
-            if (is_organic(_chest)) {
-                rn2(100); // bury_an_obj obj_resists(chest,5,95) (organic branch)
+            obj_resists(_chest, 0, 0); // bury_an_obj obj_resists(chest,0,0)
+            // dig.c:2027-2028 — the timer starts only when the 5% resist roll fails.
+            if (is_organic(_chest) && !obj_resists(_chest, 5, 95)) {
                 rnd(250); // start_timer ROT_ORGANIC offset
             }
             // 3. contents callback: for i = 1, d(3,4) do des.object() end.
@@ -9911,6 +9911,8 @@ function themerooms_contents_fake_delphi(outerRoom) {
         // inner contents: des.door({ state="random", wall="all" })
         splev_lspo_door_random_wall_rng(innerRoom);
     }
+    /* C sp_lev.c:4104-4105: a failed subroom sets themeroom_failed */
+    return !!innerRoom;
 }
 // C ref: themerms.lua "Room in a room" (themerms.lua:308-320) contents callback.
 // Outer room (all-random dims, filled=1) is already built as aroom.
@@ -9942,6 +9944,8 @@ function themerooms_contents_room_in_a_room(outerRoom) {
         // inner contents: des.door({ state="random", wall="all" })
         splev_lspo_door_random_wall_rng(innerRoom);
     }
+    /* C sp_lev.c:4104-4105: a failed subroom sets themeroom_failed */
+    return !!innerRoom;
 }
 // C ref: themerms.lua "Huge room with another room inside" (themerms.lua:323-341).
 // Outer room (w=rn2(10)+11, h=rn2(5)+8, filled=1) is already built as aroom.
@@ -9957,6 +9961,7 @@ function themerooms_contents_room_in_a_room(outerRoom) {
 //   end
 // C ref: sp_lev.c lspo_room:4088-4107, themerms.lua:323-341
 function themerooms_contents_huge_room_inner(outerRoom) {
+    let ok = true;
     // nhlib.lua:44: percent(90) = math.random(0,99) < 90 = rn2(100) < 90
     if (rn2(100) < 90) { // themerms.lua:328: if (percent(90))
         const innerSpec = {
@@ -9977,7 +9982,10 @@ function themerooms_contents_huge_room_inner(outerRoom) {
                 splev_lspo_door_random_wall_rng(innerRoom);
             }
         }
+        else
+            ok = false; /* C sp_lev.c:4104-4105 themeroom_failed */
     }
+    return ok;
 }
 // C ref: themerms.lua "Nesting rooms" (themerms.lua:344-373).
 // Outer room (w=9+rn2(4), h=9+rn2(4), filled=1) already built as aroom.
@@ -10027,6 +10035,7 @@ function themerooms_contents_nesting_rooms(outerRoom) {
     };
     // create_subroom with x=-1,y=-1 (w,h fixed): rnd(outerWidth-wid) + rnd(outerHeight-hei) + litstate_rnd
     const midRoom = build_room(midSpec, outerRoom);
+    let ok = !!midRoom; /* C sp_lev.c:4104-4105: failed subroom => themeroom_failed */
     if (midRoom) {
         // Middle room contents:
         // themerms.lua:354: if (percent(90))
@@ -10041,6 +10050,8 @@ function themerooms_contents_nesting_rooms(outerRoom) {
                 xalign: -1, yalign: -1,
             };
             const innerRoom = build_room(innerSpec, midRoom);
+            if (!innerRoom)
+                ok = false;
             if (innerRoom) {
                 // themerms.lua:357: des.door (door A)
                 splev_lspo_door_random_wall_rng(innerRoom);
@@ -10057,6 +10068,7 @@ function themerooms_contents_nesting_rooms(outerRoom) {
             splev_lspo_door_random_wall_rng(midRoom);
         }
     }
+    return ok;
 }
 /* C you.h:297 Race_if(X) = (gu.urace.mnum == (X)); js/roles.js:613 sets
  * game.urace.mnum from RACE_PM_MNUM, i.e. a real PM_ index.  Verified by NAME
@@ -10220,6 +10232,7 @@ async function themerooms_contents_mausoleum(outerRoom) {
             splev_lspo_door_secret_wall_rng(cryptRoom);
         }
     }
+    return !!cryptRoom; /* C sp_lev.c:4104-4105: failed subroom => themeroom_failed */
 }
 /**
  * The des.map() contents callback for the map-first themerooms, up to (but not
@@ -10614,6 +10627,9 @@ async function themerooms_generate(difficulty) {
         xalign: -1, yalign: -1
     };
     const aroom = build_room(roomSpec, null); // mkr=null → top-level room
+    /* C sp_lev.c:4104-4113: a failed (sub)room sets gt.themeroom_failed, which
+     * makerooms() (mklev.c:418-421) reads to decide whether to break out. */
+    let contentsOk = true;
     // C ref: sp_lev.c lspo_room:4099-4103 — contents callback fires immediately after build_room.
     if (aroom && isFillRoom) {
         await themeroom_fill_rng(aroom, difficulty);
@@ -10624,23 +10640,23 @@ async function themerooms_generate(difficulty) {
     // succeeded (aroom != null). See docs/INVESTIGATION_FMON_COUNT.md.
     if (aroom && pick.name === 'Fake Delphi') {
         // C ref: themerms.lua:292-305 — outer des.room contents: inner des.room + des.door
-        themerooms_contents_fake_delphi(aroom);
+        contentsOk = themerooms_contents_fake_delphi(aroom);
     }
     else if (aroom && pick.name === 'Room in a room') {
         // C ref: themerms.lua:308-320 — outer des.room contents: inner des.room + des.door
-        themerooms_contents_room_in_a_room(aroom);
+        contentsOk = themerooms_contents_room_in_a_room(aroom);
     }
     else if (aroom && pick.name === 'Huge room with another room inside') {
         // C ref: themerms.lua:323-341 — percent(90) + inner des.room + 2x des.door + percent(50)
-        themerooms_contents_huge_room_inner(aroom);
+        contentsOk = themerooms_contents_huge_room_inner(aroom);
     }
     else if (aroom && pick.name === 'Nesting rooms') {
         // C ref: themerms.lua:344-373 — math.random dims + nested rooms + doors + percent guards
-        themerooms_contents_nesting_rooms(aroom);
+        contentsOk = themerooms_contents_nesting_rooms(aroom);
     }
     else if (aroom && pick.name === 'Mausoleum') {
         // C ref: themerms.lua:420-443 — 1x1 crypt + percent(50) + shuffle + des.monster + percent(20)
-        await themerooms_contents_mausoleum(aroom);
+        contentsOk = await themerooms_contents_mausoleum(aroom);
     }
     else if (aroom && pick.name === 'Pillars') {
         // C ref: themerms.lua:398-416 — shuffle(terr) (6 draws) + 16 des.terrain
@@ -10651,7 +10667,7 @@ async function themerooms_generate(difficulty) {
         themerooms_contents_random_dungeon_feature(aroom);
     }
     game.in_mk_themerooms = prevLua;
-    return !!aroom;
+    return !!aroom && contentsOk;
 }
 // C ref: sp_lev.c check_room()
 export function check_room(lowx, ddx, lowy, ddy, vault) {

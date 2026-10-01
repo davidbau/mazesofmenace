@@ -119,6 +119,7 @@ import {
     NO_CURS_ON_U,
     OVERRIDE_MSGTYPE,
     URGENT_MESSAGE,
+    fuzzer_impossible_panic,
     SUPPRESS_HISTORY,
     ATR_URGENT,
     ATR_NOHISTORY,
@@ -8028,37 +8029,131 @@ const BIGBUFSZ = 5 * BUFSZ;
 let _vpline_in_pline = 0;
 
 /**
- * C ref: pline.c vpline `:192–212` — vsnprintf-style expansion.
- * C arms: no '%' → as-is; exactly "%s" → first va_arg verbatim
- * (percent signs inside it are NOT expanded); else vsnprintf.
- * JS covers the contest's pline verbs (`%s/%d/%i/%u/%ld/%lu/%x/%X/%o/%c/%%`
- * with optional flags/width/precision, stripped before conversion).
- * Exported for cfgfiles.js vconfig_error_add (same expand-then-chop shape
- * as vraw_printf below).
- * @returns {{ text: string, ln: number }}
+ * C pline.c:192–212: the vsnprintf expansion shared by the message
+ * wrappers. Exactly "%s" takes C's va_arg shortcut; other formats
+ * consume arguments in order, including '*' width and precision.
+ * Integer lengths follow the pinned 64-bit C build: int is 32 bits,
+ * long/long long/size_t are 64 bits. Strings never become new formats.
+ * The actual impossible call sites need more than the simple %s/%d
+ * pair: artifact.c:511 prints an octal origin with %4o, ball.c:1066
+ * and :1079 print worn masks with %08lx, and inventory/wear/monster
+ * checks also use long hexadecimal masks. Width and precision belong
+ * to the format, not to a caller-specific diagnostic rewrite.
+ *
+ * Formatting order is flags, width, precision, length, conversion.
+ * Each '*' consumes an int before the converted value. A negative
+ * width turns on left justification; a negative precision is absent.
+ * Explicit integer precision supplies a minimum number of digits and
+ * disables zero field padding. A sign or hexadecimal base prefix
+ * precedes field zeros. Alternate octal instead guarantees a leading
+ * zero digit, including the otherwise-empty zero-precision result.
+ * None of these operations consume RNG or mutate the argument list.
+ *
+ * Only the integer, character and string conversions used by these C
+ * message sites are supported; floating point, pointers and %n remain
+ * named library omissions. ln is the expanded length before truncation.
  */
 export function vpline_expand(fmt, args) {
     const f = String(fmt);
     if (!f.includes('%')) return { text: f, ln: f.length };
     if (f === '%s') {
-        const s = String(args[0] ?? '');
-        return { text: s, ln: s.length };
+        const text = String(args[0] ?? '').split('\0', 1)[0];
+        return { text, ln: text.length };
     }
-    let i = 0;
-    const text = f.replace(/%%|%[-+ #0-9.]*?(ld|lu|d|i|u|x|X|o|c|s)/g, (m, spec) => {
-        if (m === '%%') return '%';
-        const a = args[i++];
-        switch (spec) {
-            case 's': return String(a ?? '');
-            case 'c': return typeof a === 'number' ? String.fromCharCode(a | 0) : String(a ?? '').charAt(0);
-            case 'x': return ((Number(a) | 0) >>> 0).toString(16);
-            case 'X': return (((Number(a) | 0) >>> 0)).toString(16).toUpperCase();
-            case 'o': return (((Number(a) | 0) >>> 0)).toString(8);
-            case 'u':
-            case 'lu': return (Number(a) >>> 0).toString(10);
-            default: return String(Number(a) | 0);
-        }
-    });
+
+    let arg = 0;
+    const text = f.replace(
+        /%%|%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d*))?(hh|ll|[hljzt])?([diuoxXcs])/g,
+        (match, flags, widthText, precisionText, length, conversion) => {
+            if (match === '%%') return '%';
+            let left = flags.includes('-');
+            let width = 0;
+            if (widthText === '*') {
+                width = Number(args[arg++]) | 0;
+                // C printf: negative width supplies '-' and abs(width).
+                if (width < 0) {
+                    left = true;
+                    width = -width;
+                }
+            } else if (widthText !== undefined) {
+                width = Number(widthText);
+            }
+
+            let precision;
+            if (precisionText === '*') {
+                const supplied = Number(args[arg++]) | 0;
+                // Negative '*' precision is treated as if absent.
+                if (supplied >= 0) precision = supplied;
+            } else if (precisionText !== undefined) {
+                precision = Number(precisionText); // bare '.' means 0
+            }
+
+            const value = args[arg++];
+            let body;
+            let prefix = '';
+            const numeric = !'sc'.includes(conversion);
+            if (conversion === 's') {
+                body = String(value ?? '').split('\0', 1)[0];
+                if (precision !== undefined) body = body.slice(0, precision);
+            } else if (conversion === 'c') {
+                // printf %c narrows a promoted int to unsigned char.
+                body = typeof value === 'number'
+                    ? String.fromCharCode((value | 0) & 0xff)
+                    : String(value ?? '').charAt(0);
+            } else {
+                let integer = typeof value === 'bigint'
+                    ? value : BigInt(Math.trunc(Number(value) || 0));
+                // hh/h arguments are promoted ints, then narrowed by the
+                // conversion. l/ll/j/z/t retain the pinned 64-bit width.
+                const bits = length === 'hh' ? 8 : length === 'h' ? 16
+                    : length ? 64 : 32;
+                const signed = conversion === 'd' || conversion === 'i';
+                integer = signed ? BigInt.asIntN(bits, integer)
+                    : BigInt.asUintN(bits, integer);
+                if (signed && integer < 0n) {
+                    prefix = '-';
+                    integer = -integer;
+                } else if (signed && flags.includes('+')) {
+                    prefix = '+';
+                } else if (signed && flags.includes(' ')) {
+                    prefix = ' ';
+                }
+
+                const radix = conversion === 'o' ? 8
+                    : conversion === 'x' || conversion === 'X' ? 16 : 10;
+                body = integer.toString(radix);
+                if (conversion === 'X') body = body.toUpperCase();
+                // Explicit zero precision suppresses a zero value.
+                if (precision === 0 && integer === 0n) body = '';
+                if (precision !== undefined) body = body.padStart(precision, '0');
+                if (flags.includes('#')) {
+                    if (conversion === 'o') {
+                        // Octal '#' ensures a leading zero, even for
+                        // zero rendered with precision zero.
+                        if (!body.startsWith('0')) body = '0' + body;
+                    } else if (integer !== 0n && radix === 16) {
+                        prefix = conversion === 'X' ? '0X' : '0x';
+                    }
+                }
+            }
+
+            let rendered = prefix + body;
+            if (width > rendered.length) {
+                const padding = width - rendered.length;
+                // '-' overrides '0'; integer precision also overrides
+                // '0'. Zero padding follows the sign/base prefix.
+                if (numeric && flags.includes('0') && !left
+                    && precision === undefined) {
+                    rendered = prefix + '0'.repeat(padding) + body;
+                } else if (left) {
+                    rendered += ' '.repeat(padding);
+                } else {
+                    rendered = ' '.repeat(padding) + rendered;
+                }
+            }
+            return rendered;
+        },
+    );
     return { text, ln: text.length };
 }
 
@@ -8474,33 +8569,51 @@ export async function urgent_pline(fmt, ...args) {
 }
 
 /**
- * C ref: pline.c impossible — urgent bug pline, then disorder / report.
- * Envelope: in_impossible guard; URGENT_MESSAGE first line; skip extra
- * lines when in_sanity_check; something_worth_saving save-hint.
- * Named omit: paniclog file (Rule #2); recursive panic(); debug_fuzzer
- * panic; sysopt.support; CRASHREPORT yn (network).
+ * C pline.c:584–634, impossible: format first, urgent diagnostic, then
+ * recovery/report feedback. Retain the async signature for pline input.
+ * paniclog and CRASHREPORT's network report are excluded by Rule #2.
+ * Fatal panic calls use the existing JS Error idiom; the unavailable
+ * end.c panic shutdown/save/core-dump lifecycle is a named omission.
  */
 export async function impossible(s, ...args) {
     if (!game.program_state) game.program_state = {};
     const ps = game.program_state;
-    /* C: if (in_impossible) panic("impossible called impossible"); */
-    if (ps.in_impossible) return;
+    // C :591–592 is fatal, before changing the recursion latch.
+    if (ps.in_impossible) {
+        throw new Error('impossible called impossible');
+    }
+
     ps.in_impossible = 1;
-    let i = 0;
-    const pbuf = String(s ?? '').replace(/%[%sd]/g, (m) => {
-        if (m === '%%') return '%';
-        return String(args[i++] ?? '');
-    });
-    await urgent_pline('%s', pbuf);
-    if (ps.in_sanity_check) {
+    // C :595–597 vsnprintf(BIGBUFSZ), then NUL at BUFSZ-1. This is
+    // prefix-only chopping, unlike vpline's preservation of the tail.
+    const pbuf = vpline_expand(s, args).text.slice(0, BUFSZ - 1);
+    // C :598 paniclog("impossible", pbuf): filesystem, Rule #2.
+    if (game.iflags?.debug_fuzzer === fuzzer_impossible_panic) {
+        throw new Error(pbuf); // C :599–600, before any pline
+    }
+
+    // C :602–604 calls pline itself with the preformatted text.
+    // putmesg -> putstr owns tty ATR_URGENT's STOP/NOSTOP handling.
+    gp.pline_flags = URGENT_MESSAGE;
+    await pline('%s', pbuf);
+    gp.pline_flags = 0;
+
+    if (ps.in_sanity_check) { // C :606–610
         ps.in_impossible = 0;
         return;
     }
+
     let pbuf2 = 'Program in disorder!';
     if (ps.something_worth_saving) {
         pbuf2 += '  (Saving and reloading may fix this problem.)';
     }
     await pline('%s', pbuf2);
-    await pline('%s', `Please report these messages to ${DEVTEAM_EMAIL}.`);
+    await pline('Please report these messages to %s.', DEVTEAM_EMAIL);
+    // C pointer test: a configured empty string is still non-NULL.
+    if (game.sysopt?.support != null) {
+        await pline('Alternatively, contact local support: %s', game.sysopt.support);
+    }
+    // C :621–631 CRASHREPORT yn/raw_print/submit_web_report are
+    // network-report UI, omitted as a unit under Rule #2.
     ps.in_impossible = 0;
 }

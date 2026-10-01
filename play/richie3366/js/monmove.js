@@ -42,7 +42,7 @@ import {
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
     M_AP_FURNITURE, M_AP_NOTHING, M_AP_MONSTER, KILLED_BY_AN,
     STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE, STRAT_ARRIVE,
-    ROOM, SHOPBASE,
+    ROOM, SHOPBASE, LARGEST_INT,
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
     STAIRS, LADDER, IRONBARS, WEB, W_NONDIGGABLE, ARM, HEAD,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
@@ -233,6 +233,32 @@ export function get_iter_mons(bfunc) {
     return null;
 }
 
+/**
+ * C ref: mon.c:4562–4576 get_iter_mons_xy.
+ * fmon is an array in JS; retain the next monster before a callback can
+ * unlink the current one, just as C retains nmon. The callback may wait
+ * for message input, so its result must be awaited before proceeding.
+ */
+export async function get_iter_mons_xy(bfunc, x, y) {
+    x = (x << 16) >> 16;
+    y = (y << 16) >> 16;
+    const fmon = game.fmon;
+    if (!fmon)
+        return null;
+
+    let mtmp = fmon[0];
+    while (mtmp) {
+        const i = fmon.indexOf(mtmp);
+        const mtmp2 = i >= 0 ? (fmon[i + 1] ?? null) : null;
+        if ((mtmp.mhp | 0) >= 1 && !mon_offmap(mtmp)) {
+            if (await bfunc(mtmp, x, y))
+                return mtmp;
+        }
+        mtmp = mtmp2;
+    }
+    return null;
+}
+
 /** C ref: monst.h is_obj_mappear */
 function is_obj_mappear(mon, otyp) {
     return M_AP_TYPE(mon) === M_AP_OBJECT && mon?.mappearance === otyp;
@@ -278,32 +304,38 @@ const MAGICAL_CLASSES = [
 ];
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
 
-/** C ref: mon.c curr_mon_load */
+/** C ref: mon.c:1913–1924 curr_mon_load — signed-int accumulation. */
 export function curr_mon_load(mtmp) {
     let curload = 0;
     for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
         if (obj.otyp !== BOULDER || !throws_rocks(mtmp.data)) {
-            curload += obj.owt || 0;
+            curload = (curload + (obj.owt | 0)) | 0;
         }
     }
     return curload;
 }
 
-/** C ref: mon.c max_mon_load */
-function max_mon_load(mtmp) {
+/**
+ * C ref: mon.c:1927–1954 max_mon_load. Scale human capacity by corpse
+ * weight (or size for corpseless monsters), then halve for weak monsters.
+ * Each long division truncates before the following division or clamp.
+ */
+export function max_mon_load(mtmp) {
     const ptr = mtmp.data;
-    const cwt = ptr?.cwt ?? 0;
-    const msize = ptr?.msize ?? 2;
     let maxload;
-    if (!cwt) {
-        maxload = Math.trunc((MAX_CARR_CAP * msize) / MZ_HUMAN);
-    } else if (!strongmonst(ptr) || cwt > WT_HUMAN) {
-        maxload = Math.trunc((MAX_CARR_CAP * cwt) / WT_HUMAN);
+    if (!ptr.cwt) {
+        maxload = Math.trunc((MAX_CARR_CAP * ptr.msize) / MZ_HUMAN);
+    } else if (!strongmonst(ptr)
+               || (strongmonst(ptr) && ptr.cwt > WT_HUMAN)) {
+        maxload = Math.trunc((MAX_CARR_CAP * ptr.cwt) / WT_HUMAN);
     } else {
         maxload = MAX_CARR_CAP;
     }
-    if (!strongmonst(ptr)) maxload = Math.trunc(maxload / 2);
-    return Math.max(1, maxload);
+    if (!strongmonst(ptr))
+        maxload = Math.trunc(maxload / 2);
+    if (maxload < 1)
+        maxload = 1;
+    return maxload | 0;
 }
 
 /**
@@ -335,26 +367,29 @@ function can_touch_safely(mtmp, otmp) {
 }
 
 /**
- * C ref: mon.c can_carry — returns max quan the monster may take.
- * quan>1 → return 1 only for M1_NOHANDS non-glompers (dragons gold/gems
- * and AT_ENGL engulfer exceptions). Hands monsters take the full stack
- * when weight allows (D-0186).
+ * C ref: mon.c:1990–2053 can_carry — returns the quantity allowed.
+ * LARGEST_INT is NetHack's portable 32767 limit, not INT_MAX. Large
+ * stacks draw their reduced quantity before the no-hands and steed gates.
  */
 export function can_carry(mtmp, otmp) {
-    if (!mtmp || !otmp) return 0;
+    const otyp = otmp.otyp;
+    const newload = otmp.owt | 0;
     const mdat = mtmp.data;
-    if ((mdat?.mflags1 ?? 0) & M1_NOTAKE) return 0;
-    if (!can_touch_safely(mtmp, otmp)) return 0;
+    if (mdat.mflags1 & M1_NOTAKE)
+        return 0;
+    if (!can_touch_safely(mtmp, otmp))
+        return 0;
 
-    // C: huge quan clamp via rn2 deferred; ordinary stacks fit in int
-    const iquan = otmp.quan || 1;
+    const iquan = otmp.quan > LARGEST_INT
+        ? 20000 + rn2(LARGEST_INT - 20000 + 1)
+        : otmp.quan | 0;
     if (iquan > 1) {
         let glomper = false;
-        if (mdat?.mlet === 'S_DRAGON'
+        if (mdat.mlet === 'S_DRAGON'
             && (otmp.oclass === COIN_CLASS || otmp.oclass === GEM_CLASS)) {
             glomper = true;
         } else {
-            const mattk = mdat?.mattk || [];
+            const mattk = mdat.mattk;
             for (let nattk = 0; nattk < NATTK; nattk++) {
                 if (mattk[nattk]?.aatyp === AT_ENGL) {
                     glomper = true;
@@ -362,21 +397,25 @@ export function can_carry(mtmp, otmp) {
                 }
             }
         }
-        if (nohands(mdat) && !glomper) return 1;
+        if (nohands(mdat) && !glomper)
+            return 1;
     }
 
-    if (mtmp === game.u?.usteed) return 0;
-    if (mtmp.isshk) return iquan;
-    // C: peaceful non-pets refuse loot
-    if (mtmp.mpeaceful && !mtmp.mtame) return 0;
+    if (mtmp === game.u.usteed)
+        return 0;
+    if (mtmp.isshk)
+        return iquan;
+    if (mtmp.mpeaceful && !mtmp.mtame)
+        return 0;
 
-    if (throws_rocks(mdat) && otmp.otyp === BOULDER) return iquan;
-    if (mdat?.mlet === 'S_NYMPH') {
+    if (throws_rocks(mdat) && otyp === BOULDER)
+        return iquan;
+    if (mdat.mlet === 'S_NYMPH') {
         return otmp.oclass === ROCK_CLASS ? 0 : iquan;
     }
 
-    const newload = otmp.owt || 0;
-    if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp)) return 0;
+    if (((curr_mon_load(mtmp) + newload) | 0) > max_mon_load(mtmp))
+        return 0;
     return iquan;
 }
 
@@ -449,52 +488,61 @@ function mon_would_consume_item(mtmp, otmp) {
 }
 
 /**
- * C ref: mon.c:1847-1910 mpickstuff — pick one wanted floor object underfoot.
- * Shopkeeper inhishop gate, non-tame in_rooms shop rn2(25) gate, prize
- * skip, and nymph/corpse specials all live (D-2085).
+ * C ref: mon.c:1847–1910 mpickstuff — take at most one floor object.
+ * Retain nexthere before any predicate or pickup can mutate ownership.
+ * Naming precedes extraction even when verbose messages are disabled.
  */
 async function mpickstuff(mtmp) {
     /* prevent shopkeepers from leaving the door of their shop */
-    if (mtmp.isshk && inhishop(mtmp)) return false;
+    if (mtmp.isshk && inhishop(mtmp))
+        return false;
     /* non-tame monsters normally don't go shopping */
-    if (!mtmp.mtame && in_rooms(mtmp.mx, mtmp.my, SHOPBASE) && rn2(25)) return false;
+    if (!mtmp.mtame && in_rooms(mtmp.mx, mtmp.my, SHOPBASE) && rn2(25))
+        return false;
     /* item in a pool, but monster can't swim */
-    if (!could_reach_item(mtmp, mtmp.mx, mtmp.my)) return false;
+    if (!could_reach_item(mtmp, mtmp.mx, mtmp.my))
+        return false;
 
-    for (let otmp = objects_at(mtmp.mx, mtmp.my); otmp; otmp = otmp.nexthere) {
+    let otmp2;
+    for (let otmp = objects_at(mtmp.mx, mtmp.my); otmp; otmp = otmp2) {
+        otmp2 = otmp.nexthere;
         /* avoid special items; once hero picks them up, they'll cease
            being special, becoming eligible for normal pickup */
-        if (is_mines_prize(otmp) || is_soko_prize(otmp)) continue;
-        /* Nymphs take everything.  Most monsters don't pick up corpses. */
-        if (!mon_would_take_item(mtmp, otmp)) continue;
-        if (otmp.otyp === CORPSE && mtmp.data?.mlet !== 'S_NYMPH'
-            /* let a handful of corpse types thru to can_carry() */
-            && !touch_petrifies(mons(otmp.corpsenm))
-            && otmp.corpsenm !== PM_LIZARD
-            && !acidic(mons(otmp.corpsenm))) {
+        if (is_mines_prize(otmp) || is_soko_prize(otmp))
             continue;
-        }
-        if (!can_touch_safely(mtmp, otmp)) continue;
-        const carryamt = can_carry(mtmp, otmp);
-        if (carryamt === 0) continue;
-        let otmp3 = otmp;
-        if (carryamt !== (otmp.quan || 1)) {
-            otmp3 = splitobj(otmp, carryamt) || otmp;
-        }
-        if (cansee(mtmp.mx, mtmp.my)) {
-            // C mon.c mpickstuff: distant_name(otmp, doname) before extract —
-            // far path suppresses observe so !dknown stays "a potion" (D-0840).
-            const otmpname = distant_name(otmp, doname);
-            if (game.flags?.verbose !== false) {
-                await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
+        /* Nymphs take everything.  Most monsters don't pick up corpses. */
+        if (mon_would_take_item(mtmp, otmp)) {
+            if (otmp.otyp === CORPSE && mtmp.data.mlet !== 'S_NYMPH'
+                /* let a handful of corpse types thru to can_carry() */
+                && !touch_petrifies(mons(otmp.corpsenm))
+                && otmp.corpsenm !== PM_LIZARD
+                && !acidic(mons(otmp.corpsenm))) {
+                continue;
             }
+            if (!can_touch_safely(mtmp, otmp))
+                continue;
+            const carryamt = can_carry(mtmp, otmp);
+            if (carryamt === 0)
+                continue;
+            let otmp3 = otmp;
+            if (carryamt !== otmp.quan) {
+                otmp3 = splitobj(otmp, carryamt);
+            }
+            if (cansee(mtmp.mx, mtmp.my)) {
+                // C mon.c mpickstuff: distant_name(otmp, doname) before extract —
+                // far path suppresses observe so !dknown stays "a potion" (D-0840).
+                const otmpname = distant_name(otmp, doname);
+                if (game.flags.verbose) {
+                    await pline_mon(mtmp, `${Monnam(mtmp)} picks up ${otmpname}.`);
+                }
+            }
+            obj_extract_self(otmp3);
+            mpickobj(mtmp, otmp3);
+            // C: mon.c mpickstuff — check_gear_next_turn after pickup
+            check_gear_next_turn(mtmp);
+            newsym(mtmp.mx, mtmp.my);
+            return true;
         }
-        obj_extract_self(otmp3);
-        mpickobj(mtmp, otmp3);
-        // C: mon.c mpickstuff — check_gear_next_turn after pickup
-        check_gear_next_turn(mtmp);
-        newsym(mtmp.mx, mtmp.my);
-        return true;
     }
     return false;
 }

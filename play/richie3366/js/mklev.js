@@ -6,6 +6,7 @@
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 
 import { game } from './gstate.js';
+import { lua_number_unpacked, lua_integer_unpacked, luaL_checkinteger_unpacked, lua_tointeger_unpacked } from './nhlua.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rnz } from './rng.js';
 import { CLR_CYAN, CLR_GRAY, CLR_BRIGHT_BLUE } from './terminal.js';
@@ -144,7 +145,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower, dupstr, get_table_option, get_table_str_opt,
+    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower, dupstr, get_table_option, get_table_str_opt, get_table_int_opt,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -1090,23 +1091,38 @@ export function lspo_exclusion(opts) {
  * overwrite). If x,y are both -1, C reads the selection field.
  */
 export async function lspo_gas_cloud(opts) {
-    const tx = opts?.x ?? -1;
-    const ty = opts?.y ?? -1;
-    let x = tx | 0;
-    let y = ty | 0;
-    if (tx === -1 && ty === -1 && opts?.coord) {
-        x = opts.coord[0] | 0;
-        y = opts.coord[1] | 0;
-    }
+    // C sp_lev.c:4929–4965, including the argc/type and selection guards.
+    let x = 0, y = 0;
     let sel = null;
-    if (x === -1 && y === -1) sel = opts?.selection ?? null;
-    const damage = opts?.damage | 0;
-    const ttl = opts?.ttl != null ? (opts.ttl | 0) : -2;
-    const reg = sel
-        ? await create_gas_cloud_selection(sel, damage)
-        : await create_gas_cloud(x, y, 1, damage);
-    if (ttl > -2) reg.ttl = ttl;
-    return reg;
+    let damage = 0;
+    let ttl = -2;
+    create_des_coder();
+    if (arguments.length === 1 && opts !== null && typeof opts === 'object'
+        && !(opts.pts instanceof Set)) {
+        const o = lcheck_param_table(arguments);
+        const { x: tx, y: ty } = get_table_xy_or_coord(o);
+        x = (Number(tx) << 16) >> 16; // coordxy, before the lua_Integer test
+        y = (Number(ty) << 16) >> 16;
+        if (tx === -1 && ty === -1) {
+            // nhlsel.c:58–66 l_selection_check: JS selections are Set-backed
+            // objects, the unpacked equivalent of the selection userdata.
+            sel = o.selection;
+            if (!sel || !(sel.pts instanceof Set))
+                nhl_error('selection expected');
+        }
+        damage = get_table_int_opt(o, 'damage', 0);
+        ttl = get_table_int_opt(o, 'ttl', -2);
+        let reg;
+        if (!sel) {
+            reg = await create_gas_cloud(x, y, 1, damage);
+        } else {
+            reg = await create_gas_cloud_selection(sel, damage);
+        }
+        if (ttl > -2) reg.ttl = ttl;
+    } else {
+        nhl_error('wrong parameters');
+    }
+    return 0;
 }
 
 /**
@@ -1188,11 +1204,10 @@ function spo_endroom(_coder) {
 /**
  * C ref: sp_lev.c build_room `:2807–2830` — chance-gated rtype, subroom
  * under the coder parent else top-level room, topologize + fill/join flags.
- * (splev_build_room is the unpacked-opts twin used by direct JS builders;
- * this coder form keeps C's layering: no irregular marking here — lspo_room
+ * This coder form keeps C's layering: no irregular marking here — lspo_room
  * marks the parent like C `:4081–4082`.)
  */
-function splev_coder_build_room(r, parent) {
+export function build_room(r, parent) {
     const rtype = (!r.chance || rn2(100) < r.chance) ? r.rtype : OROOM; // C :2811
     let aroom = null;
     if (parent) {
@@ -1282,12 +1297,8 @@ export function lspo_mazewalk(a, b, c) {
         const mm = get_table_xy_or_coord(o); // C :5793
         mx = mm.x;
         my = mm.y;
-        if (o.typ != null && o.typ !== '') { // C :5794 get_table_mapchr_opt (nhlua.c:256-271: missing/empty → defval)
-            if (typeof o.typ !== 'string' || o.typ.length !== 1)
-                throw new Error('lspo_mazewalk: Erroneous map char');
-            ftyp = splev_chr2typ(o.typ); // C nhlua.c:393-397 check_mapchr
-            if (ftyp === INVALID_TYPE) throw new Error('lspo_mazewalk: Erroneous map char'); // C nhlua.c:265-266
-        }
+        ftyp = get_table_mapchr_opt(o, 'typ', ROOM); // C :5794
+
         fstocked = splev_opt_boolean(o.stocked, 1); // C :5795
         dir = LSPO_MAZEWALK_DIRS2I[splev_opt_index(o.dir, 'random', LSPO_MAZEWALK_DIRS)]; // C :5796
     }
@@ -1825,7 +1836,7 @@ export function lspo_room(opts, contentsFn) {
     create_des_coder(); // C :4030
     const coder = game.gc.coder;
     if (game.in_mk_themerooms && game.themeroom_failed) return 0; // C :4032-4033
-    const o = opts ?? {}; // C :4035 lcheck_param_table
+    const o = lcheck_param_table(arguments); // C :4035
     if (coder.n_subroom > MAX_NESTED_ROOMS) // C :4038-4039 panic
         throw new Error('lspo_room: Too deeply nested rooms?!');
     const left_or_right = ['left', 'half-left', 'center', 'half-right', 'right', 'none', 'random']; // C :4041-4044
@@ -1833,23 +1844,25 @@ export function lspo_room(opts, contentsFn) {
     const top_or_bot = ['top', 'center', 'bottom', 'none', 'random']; // C :4049-4051
     const t_or_b2i = [SPLEV_TOP, SPLEV_CENTER, SPLEV_BOTTOM, -1, -1]; // C :4051-4052
     const xy = get_table_xy_or_coord(o); // C :4057
-    const tmproom = { x: xy.x, y: xy.y }; // C :4058
+    const narrow = v => typeof v === 'bigint'
+        ? Number(BigInt.asIntN(16, v)) : (v << 16) >> 16;
+    const tmproom = { x: narrow(xy.x), y: narrow(xy.y) }; // C :4058 coordxy
     if ((tmproom.x === -1 || tmproom.y === -1) && tmproom.x !== tmproom.y) // C :4059-4060
-        throw new Error('lspo_room: Room must have both x and y');
-    tmproom.w = splev_opt_int(o.w, -1); // C :4062
-    tmproom.h = splev_opt_int(o.h, -1); // C :4063
+        nhl_error('Room must have both x and y');
+    tmproom.w = narrow(get_table_int_opt(o, 'w', -1)); // C :4062 xint16
+    tmproom.h = narrow(get_table_int_opt(o, 'h', -1)); // C :4063
     if ((tmproom.w === -1 || tmproom.h === -1) && tmproom.w !== tmproom.h) // C :4065-4066
-        throw new Error('lspo_room: Room must have both w and h');
-    tmproom.xalign = l_or_r2i[splev_opt_index(o.xalign, 'random', left_or_right)]; // C :4068-4069
-    tmproom.yalign = t_or_b2i[splev_opt_index(o.yalign, 'random', top_or_bot)]; // C :4070-4071
-    tmproom.rtype = get_table_roomtype_opt(o, 'type', OROOM); // C :4072
-    tmproom.chance = splev_opt_int(o.chance, 100); // C :4073
-    tmproom.rlit = splev_opt_int(o.lit, -1); // C :4074
+        nhl_error('Room must have both w and h');
+    tmproom.xalign = l_or_r2i[get_table_option(o, 'xalign', 'random', left_or_right)]; // C :4068-4069
+    tmproom.yalign = t_or_b2i[get_table_option(o, 'yalign', 'random', top_or_bot)]; // C :4070-4071
+    tmproom.rtype = narrow(get_table_roomtype_opt(o, 'type', OROOM)); // C :4072
+    tmproom.chance = narrow(get_table_int_opt(o, 'chance', 100)); // C :4073
+    tmproom.rlit = narrow(get_table_int_opt(o, 'lit', -1)); // C :4074
     // theme rooms default to unfilled (C :4075-4077)
-    tmproom.needfill = splev_opt_int(o.filled, game.in_mk_themerooms ? 0 : 1);
-    tmproom.joined = splev_opt_boolean(o.joined, true); // C :4078 (TRUE)
+    tmproom.needfill = narrow(get_table_int_opt(o, 'filled', game.in_mk_themerooms ? 0 : 1));
+    tmproom.joined = get_table_boolean_opt(o, 'joined', 1) & 0xff; // C :4078 boolean
     if (!coder.failed_room[coder.n_subroom - 1]) { // C :4080
-        const tmpcr = splev_coder_build_room(tmproom, coder.croom); // C :4081 build_room
+        const tmpcr = build_room(tmproom, coder.croom); // C :4081
         if (tmpcr) {
             const n = coder.n_subroom; // C :4083
             coder.tmproomlist[n] = tmpcr; // C :4085
@@ -1858,7 +1871,10 @@ export function lspo_room(opts, contentsFn) {
             if (coder.tmproomlist[n - 1]) coder.tmproomlist[n - 1].irregular = true;
             coder.n_subroom++; // C :4090
             update_croom(); // C :4091
-            if (typeof contentsFn === 'function') contentsFn(tmpcr); // C :4092-4098 contents pcall
+            // C :4092–4098 pushes the public room table, not a mkroom.
+            // A JS callback throw implements NHLpa_panic (no endroom on error).
+            const contents = contentsFn ?? o.contents;
+            if (typeof contents === 'function') contents(l_push_mkroom_table(tmpcr));
             spo_endroom(coder); // C :4099
             add_doors_to_room(tmpcr); // C :4100
             return 0;
@@ -1945,13 +1961,12 @@ export function lspo_terrain(a, b, c) {
         }
         if (typeof o.typ !== 'string' || o.typ.length !== 1) // C :5000 get_table_mapchr
             throw new Error('lspo_terrain: Erroneous map char');
-        tmpterrain.ter = splev_chr2typ(o.typ); // C nhlua.c:393-397 check_mapchr
+        tmpterrain.ter = check_mapchr(o.typ); // C nhlua.c:393-397 check_mapchr
         if (tmpterrain.ter === INVALID_TYPE) throw new Error('lspo_terrain: Erroneous map char'); // C nhlua.c:247-248
         tmpterrain.tlit = splev_opt_int(o.lit, SET_LIT_NOCHANGE); // C :5001
     } else if (argc === 2 && a !== null && typeof a === 'object' // C :5002-5003 LUA_TTABLE
                && !(a.pts instanceof Set) && typeof b === 'string') { // (a selection is LUA_TUSERDATA, not TABLE)
-        if (b.length !== 1) tmpterrain.ter = INVALID_TYPE; // C :5005 check_mapchr(checkstring(2))
-        else tmpterrain.ter = splev_chr2typ(b);
+        tmpterrain.ter = check_mapchr(b); // C :5005
         const out = { x: 0, y: 0 };
         get_coord(a, out); // C :5007 get_coord(L, 1, &tx, &ty)
         x = out.x; // C :5008
@@ -1961,12 +1976,12 @@ export function lspo_terrain(a, b, c) {
             throw new Error('lspo_terrain: selection expected');
         sel = a;
         if (typeof b !== 'string') throw new Error('lspo_terrain: Wrong parameters'); // C :5012 luaL_checkstring
-        tmpterrain.ter = b.length === 1 ? splev_chr2typ(b) : INVALID_TYPE; // C :5012 check_mapchr
+        tmpterrain.ter = check_mapchr(b); // C :5012 check_mapchr
     } else if (argc === 3) { // C :5013
         x = luaL_checkinteger_unpacked(a); // C :5014
         y = luaL_checkinteger_unpacked(b); // C :5015
         if (typeof c !== 'string') throw new Error('lspo_terrain: Wrong parameters'); // C :5016 luaL_checkstring
-        tmpterrain.ter = c.length === 1 ? splev_chr2typ(c) : INVALID_TYPE; // C :5016 check_mapchr
+        tmpterrain.ter = check_mapchr(c); // C :5016 check_mapchr
     } else {
         throw new Error('lspo_terrain: Wrong parameters'); // C :5018 nhl_error
     }
@@ -2021,12 +2036,7 @@ export function lspo_replace_terrain(opts) {
     if (totyp === INVALID_TYPE) throw new Error('lspo_replace_terrain: Erroneous map char'); // C nhlua.c:247-248
     if (totyp >= MAX_TYPE) return 0; // C :5068-5069
     let fromtyp = INVALID_TYPE; // C :5071 get_table_mapchr_opt defval
-    if (o.fromterrain != null && o.fromterrain !== '') { // C nhlua.c:256-271 (missing/empty → defval)
-        if (typeof o.fromterrain !== 'string' || o.fromterrain.length !== 1)
-            throw new Error('lspo_replace_terrain: Erroneous map char');
-        fromtyp = splev_chr2typ(o.fromterrain);
-        if (fromtyp === INVALID_TYPE) throw new Error('lspo_replace_terrain: Erroneous map char'); // C nhlua.c:265-266
-    }
+    fromtyp = get_table_mapchr_opt(o, 'fromterrain', INVALID_TYPE); // C :5072
     let mf = null;
     if (fromtyp === INVALID_TYPE) { // C :5073
         if (typeof o.mapfragment !== 'string') // C :5076 get_table_str
@@ -4202,7 +4212,7 @@ function soko_load_epilogue(allowFlips = 3) {
 function load_bigrm_2() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -4309,7 +4319,7 @@ function load_bigrm_2() {
 function load_bigrm_3() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -4403,7 +4413,7 @@ function load_bigrm_3() {
 function load_bigrm_4() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -4505,7 +4515,7 @@ function splev_non_diggable() {
 function load_bigrm_5() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -4576,7 +4586,7 @@ function load_bigrm_5() {
 function load_bigrm_6() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -4672,7 +4682,7 @@ function load_bigrm_11() {
     // Lua table: corrwid = 3+nh.rn2(3) then deadends=t_or_f()
     const corrwid = 3 + rn2(3);
     const rm_deadends = !percent(50);
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZE,
         corrwid,
         wallthick: 1,
@@ -4721,7 +4731,7 @@ function load_bigrm_11() {
 function load_bigrm_1() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -4826,7 +4836,7 @@ function load_bigrm_1() {
 function load_bigrm_10() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -4912,7 +4922,7 @@ function load_bigrm_10() {
 function load_bigrm_13() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -5247,7 +5257,7 @@ function medusa_mark_nondig(mx, my, x1, y1, x2, y2) {
 function load_medusa_1() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -5544,7 +5554,7 @@ function load_medusa_1() {
 function load_medusa_3() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -5809,7 +5819,7 @@ function load_medusa_3() {
 function load_medusa_2() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -5973,7 +5983,7 @@ function load_medusa_2() {
 function load_medusa_4() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -6130,7 +6140,7 @@ function load_medusa_4() {
 function load_bigrm_7() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -6207,7 +6217,7 @@ function load_bigrm_7() {
 function load_bigrm_8() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -6282,7 +6292,7 @@ function load_bigrm_8() {
 function load_bigrm_9() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -6353,7 +6363,7 @@ function load_bigrm_9() {
 function load_bigrm_12() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -6454,7 +6464,7 @@ function load_bigrm_12() {
 function load_bar_strt() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -6670,7 +6680,7 @@ function load_bar_strt() {
 function load_wiz_strt() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -6906,7 +6916,7 @@ function load_wiz_strt() {
 function load_wiz_loca() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -7195,7 +7205,7 @@ function load_wiz_filb() {
 function load_wiz_goal() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -7370,7 +7380,7 @@ function load_wiz_goal() {
 function load_pri_strt() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -7590,7 +7600,7 @@ async function load_pri_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " }) — lit defaults BOOL_RANDOM
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -7601,7 +7611,7 @@ async function load_pri_loca() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=false, joined=false,
     // lit=1, walled=false — kludge for a lit open field (fg==bg)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: false, joined: false, walled: false,
@@ -7785,7 +7795,7 @@ async function load_pri_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -7795,7 +7805,7 @@ async function load_pri_goal() {
 
     // des.level_init mines: fg="L", bg=".", lit=0, smoothed/joined/walled false
     // C: filling defaults to fg when omitted (sp_lev.c get_table_mapchr_opt)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: LAVAPOOL, bg: ROOM, filling: LAVAPOOL,
         lit: 0, smoothed: false, joined: false, walled: false,
@@ -7893,7 +7903,7 @@ xxxxx...xxxxxx....xxxxxxxx
 function load_arc_strt() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -8102,7 +8112,7 @@ function load_arc_strt() {
 function load_arc_loca() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -8326,7 +8336,7 @@ function load_arc_loca() {
 function load_arc_goal() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -8490,7 +8500,7 @@ async function load_kni_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "." })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ROOM,
         lit: BOOL_RANDOM,
@@ -8502,7 +8512,7 @@ async function load_kni_strt() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=false, joined=false,
     // lit=1, walled=false — kludge for a lit open field (fg==bg)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: false, joined: false, walled: false,
@@ -8714,7 +8724,7 @@ async function load_kni_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -8725,7 +8735,7 @@ async function load_kni_loca() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -8839,7 +8849,7 @@ async function load_kni_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "." })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ROOM,
         lit: BOOL_RANDOM,
@@ -8849,7 +8859,7 @@ async function load_kni_fila() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -8878,7 +8888,7 @@ async function load_kni_filb() {
     const g = game;
     nhlib_shuffle_align();
 
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ROOM,
         lit: BOOL_RANDOM,
@@ -8886,7 +8896,7 @@ async function load_kni_filb() {
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -8916,7 +8926,7 @@ function load_kni_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -9048,7 +9058,7 @@ function load_rog_strt() {
     const g = game;
     nhlib_shuffle_align();
 
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -9228,7 +9238,7 @@ function load_rog_loca() {
     const g = game;
     nhlib_shuffle_align();
 
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -9422,7 +9432,7 @@ function load_rog_goal() {
     const g = game;
     nhlib_shuffle_align();
 
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -9524,7 +9534,7 @@ function load_val_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "I" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ICE,
         lit: BOOL_RANDOM,
@@ -9666,7 +9676,7 @@ async function load_val_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -9678,7 +9688,7 @@ async function load_val_loca() {
 
     // des.level_init mines: fg=".", bg="I", smoothed, joined=false,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ICE, filling: ROOM,
         lit: 1, smoothed: true, joined: false, walled: false,
@@ -9756,7 +9766,7 @@ async function load_val_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "L" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: LAVAPOOL,
         lit: BOOL_RANDOM,
@@ -9767,7 +9777,7 @@ async function load_val_goal() {
 
     // des.level_init mines: fg=".", bg="L", smoothed, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: LAVAPOOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -9876,7 +9886,7 @@ async function load_val_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "I" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ICE,
         lit: BOOL_RANDOM,
@@ -9887,7 +9897,7 @@ async function load_val_fila() {
 
     // des.level_init mines: fg=".", bg="I", smoothed, joined=true,
     // lit=1, walled=false
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ICE, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -9919,7 +9929,7 @@ async function load_val_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "L" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: LAVAPOOL,
         lit: BOOL_RANDOM,
@@ -9930,7 +9940,7 @@ async function load_val_filb() {
 
     // des.level_init mines: fg=".", bg="L", smoothed, joined=true,
     // lit=1, walled=false
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: LAVAPOOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -9967,7 +9977,7 @@ function load_sam_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -10131,7 +10141,7 @@ function load_sam_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -10277,7 +10287,7 @@ function load_sam_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -10397,7 +10407,7 @@ async function load_sam_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -10407,7 +10417,7 @@ async function load_sam_fila() {
 
     // des.level_init mines: fg=".", bg="P", smoothed, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -10440,7 +10450,7 @@ function load_sam_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -10513,7 +10523,7 @@ function load_hea_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -10666,7 +10676,7 @@ async function load_hea_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -10677,7 +10687,7 @@ async function load_hea_loca() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=true, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -10802,7 +10812,7 @@ async function load_hea_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "P" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: POOL,
         lit: BOOL_RANDOM,
@@ -10812,7 +10822,7 @@ async function load_hea_goal() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -10894,7 +10904,7 @@ async function load_hea_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "P" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: POOL,
         lit: BOOL_RANDOM,
@@ -10904,7 +10914,7 @@ async function load_hea_fila() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -10940,7 +10950,7 @@ async function load_hea_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "P" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: POOL,
         lit: BOOL_RANDOM,
@@ -10950,7 +10960,7 @@ async function load_hea_filb() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -10992,7 +11002,7 @@ function load_tou_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -11177,7 +11187,7 @@ function load_tou_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -11387,7 +11397,7 @@ function load_tou_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -11598,7 +11608,7 @@ async function load_tou_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -11608,7 +11618,7 @@ async function load_tou_fila() {
 
     // des.level_init mines: fg=".", bg=" " (no lit key in lua),
     // smoothed/joined/walled — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -11641,7 +11651,7 @@ async function load_tou_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -11651,7 +11661,7 @@ async function load_tou_filb() {
 
     // des.level_init mines: fg=".", bg=" " (no lit key in lua),
     // smoothed/joined/walled — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -11695,7 +11705,7 @@ async function load_ran_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "." })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ROOM,
         lit: BOOL_RANDOM,
@@ -11708,7 +11718,7 @@ async function load_ran_strt() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=true, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -11859,7 +11869,7 @@ function load_ran_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -11965,7 +11975,7 @@ function load_ran_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -12121,7 +12131,7 @@ async function load_ran_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -12131,7 +12141,7 @@ async function load_ran_fila() {
 
     // des.level_init mines: fg=".", bg="T", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: TREE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -12165,7 +12175,7 @@ async function load_ran_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -12175,7 +12185,7 @@ async function load_ran_filb() {
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -12208,7 +12218,7 @@ async function load_ran_filb() {
 function load_mon_strt() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -12443,7 +12453,7 @@ function load_mon_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -12553,7 +12563,7 @@ async function load_mon_goal() {
 
     // des.level_init mines: fg="L", bg=".", lit=0, smoothed/joined/walled false
     // C: filling defaults to fg when omitted (sp_lev.c get_table_mapchr_opt)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: LAVAPOOL, bg: ROOM, filling: LAVAPOOL,
         lit: 0, smoothed: false, joined: false, walled: false,
@@ -12776,7 +12786,7 @@ function load_mon_filb() {
 function load_cav_strt() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -12992,7 +13002,7 @@ function load_cav_strt() {
 function load_cav_loca() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -13128,7 +13138,7 @@ function load_cav_loca() {
 function load_cav_goal() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -13224,7 +13234,7 @@ async function load_cav_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -13234,7 +13244,7 @@ async function load_cav_fila() {
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -13267,7 +13277,7 @@ async function load_cav_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -13277,7 +13287,7 @@ async function load_cav_filb() {
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -13318,7 +13328,7 @@ function load_knox() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -13561,7 +13571,7 @@ function load_knox() {
 function load_bar_loca() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -13730,7 +13740,7 @@ function load_bar_loca() {
 function load_bar_goal() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -13894,7 +13904,7 @@ function splev_map_aligned_start(wid, hei, halign, valign) {
 function load_tower1() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -14097,7 +14107,7 @@ function load_tower1() {
 function load_tower2() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -14299,7 +14309,7 @@ function load_tower2() {
 function load_tower3() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -14496,7 +14506,7 @@ function load_tower3() {
 function load_soko1_1() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -14668,7 +14678,7 @@ function load_soko1_1() {
 function load_soko1_2() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -14830,7 +14840,7 @@ function load_soko1_2() {
 function load_soko3_1() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -14930,7 +14940,7 @@ function load_soko3_1() {
 function load_soko3_2() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -15032,7 +15042,7 @@ function load_soko3_2() {
 function load_soko4_1() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -15164,7 +15174,7 @@ function load_soko4_1() {
 function load_soko4_2() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -15294,7 +15304,7 @@ function load_earth() {
     const g = game;
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — lit defaults BOOL_RANDOM
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -15502,7 +15512,7 @@ function load_earth() {
 function load_fire() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -15676,7 +15686,7 @@ function load_air() {
     const g = game;
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -15790,7 +15800,7 @@ function load_water() {
     const g = game;
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -15861,7 +15871,7 @@ function load_astral() {
     const g = game;
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -16174,7 +16184,7 @@ function load_astral() {
 function load_minend_1() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -16374,7 +16384,7 @@ function load_minend_1() {
 function load_minend_2() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -16626,7 +16636,7 @@ function load_minend_3() {
     const g = game;
     nhlib_shuffle_align();
     // C lspo_level_init solidfill fg="-" → filling HWALL; lit BOOL_RANDOM
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: HWALL,
         lit: BOOL_RANDOM,
@@ -16858,7 +16868,7 @@ async function load_minetn_1() {
 
     // des.level_init({ style="mines", fg=".", bg=" ", smoothed=true,
     // joined=true, walled=true }) — filling defaults to fg; lit BOOL_RANDOM
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: BOOL_RANDOM, smoothed: true, joined: true, walled: true,
@@ -17482,7 +17492,7 @@ function load_minetn_5() {
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -17721,7 +17731,7 @@ async function load_minetn_6() {
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -17733,7 +17743,7 @@ async function load_minetn_6() {
 
     // des.level_init({ style="mines", fg=".", bg="-", smoothed=true,
     // joined=true, lit=1, walled=true }) — filling defaults to fg
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: HWALL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: true,
@@ -18712,7 +18722,7 @@ function Deaf_fumaroles() {
 function load_soko2_1() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -18813,7 +18823,7 @@ function load_soko2_1() {
 function load_soko2_2() {
     const g = game;
     nhlib_shuffle_align();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -19799,7 +19809,7 @@ function load_tut1() {
     // C: load_special loads nhlib.lua → shuffle(align) then runs tut-1.lua
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -20180,7 +20190,7 @@ function load_tut2() {
     // C: load_special loads nhlib.lua → shuffle(align) then runs tut-2.lua
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -20574,75 +20584,169 @@ function lvlfill_swamp(fg, bg, lit) {
 export function lspo_level_flags(...args) {
     create_des_coder(); // C :3764
     if (args.length < 1) // C :3766-3767
-        throw new Error('expected string params');
+        nhl_error('expected string params');
     const flags = game.level.flags || (game.level.flags = {});
     const coder = game.gc.coder;
     for (const a of args) { // C :3769-3828
-        if (typeof a !== 'string') // C :3770 luaL_checkstring
-            throw new Error('bad argument (string expected)');
-        const s = a.toLowerCase(); // C strcmpi per arm
-        if (s === 'noteleport') flags.noteleport = true; // C :3772-3773
-        else if (s === 'hardfloor') flags.hardfloor = true; // C :3774-3775
-        else if (s === 'nommap') flags.nommap = true; // C :3776-3777
-        else if (s === 'shortsighted') flags.shortsighted = true; // C :3778-3779
-        else if (s === 'arboreal') flags.arboreal = true; // C :3780-3781
-        else if (s === 'mazelevel') flags.is_maze_lev = true; // C :3782-3783
-        else if (s === 'shroud') flags.hero_memory = true; // C :3784-3785
-        else if (s === 'graveyard') flags.graveyard = true; // C :3786-3787
-        else if (s === 'icedpools') icedpools = true; // C :3788-3789
-        else if (s === 'corrmaze') flags.corrmaze = true; // C :3790-3791
-        else if (s === 'premapped') coder.premapped = true; // C :3792-3793
-        else if (s === 'solidify') coder.solidify = true; // C :3794-3795
+        // luaL_checkstring accepts numbers too, then unknown-flag reports it.
+        if (typeof a !== 'string' && typeof a !== 'number' && typeof a !== 'bigint')
+            nhl_error('bad argument (string expected)');
+        const text = String(a).split('\0', 1)[0]; // C strcmpi sees the C string
+        const s = text.toLowerCase();
+        if (s === 'noteleport') {
+            flags.noteleport = true; // C :3772-3773
+        }
+        else if (s === 'hardfloor') {
+            flags.hardfloor = true; // C :3774-3775
+        }
+        else if (s === 'nommap') {
+            flags.nommap = true; // C :3776-3777
+        }
+        else if (s === 'shortsighted') {
+            flags.shortsighted = true; // C :3778-3779
+        }
+        else if (s === 'arboreal') {
+            flags.arboreal = true; // C :3780-3781
+        }
+        else if (s === 'mazelevel') {
+            flags.is_maze_lev = true; // C :3782-3783
+        }
+        else if (s === 'shroud') {
+            flags.hero_memory = true; // C :3784-3785
+        }
+        else if (s === 'graveyard') {
+            flags.graveyard = true; // C :3786-3787
+        }
+        else if (s === 'icedpools') {
+            icedpools = true; // C :3788-3789
+        }
+        else if (s === 'corrmaze') {
+            flags.corrmaze = true; // C :3790-3791
+        }
+        else if (s === 'premapped') {
+            coder.premapped = true; // C :3792-3793
+        }
+        else if (s === 'solidify') {
+            coder.solidify = true; // C :3794-3795
+        }
         else if (s === 'sokoban') { // C :3796-3797
             flags.sokoban_rules = true;
             flags.sokoban = true;
             game.Sokoban = true;
-        } else if (s === 'inaccessibles') coder.check_inaccessibles = true; // C :3798-3799
-        else if (s === 'noflipx') coder.allow_flips &= ~2; // C :3800-3801
-        else if (s === 'noflipy') coder.allow_flips &= ~1; // C :3802-3803
-        else if (s === 'noflip') coder.allow_flips = 0; // C :3804-3805
-        else if (s === 'temperate') flags.temperature = 0; // C :3806-3807
-        else if (s === 'hot') flags.temperature = 1; // C :3808-3809
-        else if (s === 'cold') flags.temperature = -1; // C :3810-3811
-        else if (s === 'nomongen') flags.rndmongen = false; // C :3812-3813
-        else if (s === 'nodeathdrops') flags.deathdrops = false; // C :3814-3815
-        else if (s === 'noautosearch') flags.noautosearch = true; // C :3816-3817
-        else if (s === 'fumaroles') flags.fumaroles = true; // C :3818-3819
-        else if (s === 'stormy') flags.stormy = true; // C :3820-3821
-        else throw new Error(`Unknown level flag ${a}`); // C :3822-3826
+        } else if (s === 'inaccessibles') {
+            coder.check_inaccessibles = true; // C :3798-3799
+        }
+        else if (s === 'noflipx') {
+            coder.allow_flips &= ~2; // C :3800-3801
+        }
+        else if (s === 'noflipy') {
+            coder.allow_flips &= ~1; // C :3802-3803
+        }
+        else if (s === 'noflip') {
+            coder.allow_flips = 0; // C :3804-3805
+        }
+        else if (s === 'temperate') {
+            flags.temperature = 0; // C :3806-3807
+        }
+        else if (s === 'hot') {
+            flags.temperature = 1; // C :3808-3809
+        }
+        else if (s === 'cold') {
+            flags.temperature = -1; // C :3810-3811
+        }
+        else if (s === 'nomongen') {
+            flags.rndmongen = false; // C :3812-3813
+        }
+        else if (s === 'nodeathdrops') {
+            flags.deathdrops = false; // C :3814-3815
+        }
+        else if (s === 'noautosearch') {
+            flags.noautosearch = true; // C :3816-3817
+        }
+        else if (s === 'fumaroles') {
+            flags.fumaroles = true; // C :3818-3819
+        }
+        else if (s === 'stormy') {
+            flags.stormy = true; // C :3820-3821
+        }
+        else {
+            nhl_error(`Unknown level flag ${text}`); // C :3822-3826
+        }
     }
     return 0;
 }
 
-/**
- * C ref: sp_lev.c:3834–3875 lspo_level_init — des.level_init table:
- * get_table_*_opt defaults, splev_init_present = TRUE, bg INVALID_TYPE →
- * MOAT (swamp) / STONE, then splev_initlev. JS: the Lua table is the
- * literal object written by the hand-ported level loader (style already
- * mapped to LVLINIT_*, map chars to typ). Named omission:
- * gc.coder->lvl_is_joined (no reader in pinned C).
- */
-async function lspo_level_init(tbl) {
+/** C nhlua.c:393–398: one byte of map text, else INVALID_TYPE. */
+export function check_mapchr(text) {
+    const cstr = text == null ? null : text.split('\0', 1)[0];
+    if (cstr && cstr.length === 1) return splev_chr2typ(cstr[0]);
+    return INVALID_TYPE;
+}
+
+/** C nhlua.c:256–271: optional string, signed-byte result, error on bad text. */
+export function get_table_mapchr_opt(table, name, defval) {
+    const ter = get_table_str_opt(table, name, '');
+    let typ;
+    if (ter && ter[0] !== '\0') {
+        typ = (check_mapchr(ter) << 24) >> 24;
+        if (typ === INVALID_TYPE) nhl_error('Erroneous map char');
+    } else {
+        typ = (defval << 24) >> 24;
+    }
+    // C free(ter): immutable strings are owned by JS/GC.
+    return typ;
+}
+
+/** C sp_lev.c:3837–3875: whole public des.level_init entry in C order. */
+export async function lspo_level_init(...args) {
+    const initstyles = ['solidfill', 'mazegrid', 'maze', 'rogue', 'mines', 'swamp'];
+    const initstyles2i = [LVLINIT_SOLIDFILL, LVLINIT_MAZEGRID, LVLINIT_MAZE,
+        LVLINIT_ROGUE, LVLINIT_MINES, LVLINIT_SWAMP];
+    create_des_coder();
+    const o = lcheck_param_table(args);
     splev_init_present = true;
-    const init_lev = {
-        init_style: tbl.init_style ?? LVLINIT_SOLIDFILL,
-        fg: tbl.fg ?? ROOM,
-        bg: tbl.bg ?? INVALID_TYPE,
-        smoothed: tbl.smoothed ?? false,
-        joined: tbl.joined ?? false,
-        lit: tbl.lit ?? BOOL_RANDOM,
-        walled: tbl.walled ?? false,
-        filling: undefined,
-        corrwid: tbl.corrwid ?? -1,
-        wallthick: tbl.wallthick ?? -1,
-        // C: rm_deadends = !get_table_boolean_opt(L, "deadends", TRUE)
-        rm_deadends: tbl.rm_deadends ?? false,
-        icedpools: false,
-    };
-    init_lev.filling = tbl.filling ?? init_lev.fg;
-    if (init_lev.bg === INVALID_TYPE)
-        init_lev.bg = (init_lev.init_style === LVLINIT_SWAMP) ? MOAT : STONE;
+    const init_lev = {};
+    init_lev.init_style = initstyles2i[get_table_option(o, 'style', 'solidfill', initstyles)];
+    init_lev.fg = get_table_mapchr_opt(o, 'fg', ROOM);
+    init_lev.bg = get_table_mapchr_opt(o, 'bg', INVALID_TYPE);
+    init_lev.smoothed = get_table_boolean_opt(o, 'smoothed', 0) & 0xff;
+    init_lev.joined = get_table_boolean_opt(o, 'joined', 0) & 0xff;
+    init_lev.lit = get_table_boolean_opt(o, 'lit', BOOL_RANDOM);
+    init_lev.walled = get_table_boolean_opt(o, 'walled', 0);
+    init_lev.filling = get_table_mapchr_opt(o, 'filling', init_lev.fg);
+    init_lev.corrwid = get_table_int_opt(o, 'corrwid', -1);
+    init_lev.wallthick = get_table_int_opt(o, 'wallthick', -1);
+    init_lev.rm_deadends = !get_table_boolean_opt(o, 'deadends', 1);
+    game.gc.coder.lvl_is_joined = init_lev.joined;
+    if (init_lev.bg === INVALID_TYPE) {
+        init_lev.bg = init_lev.init_style === LVLINIT_SWAMP ? MOAT : STONE;
+    }
     await splev_initlev(init_lev);
+    return 0;
+}
+
+/** Compiled loaders supply enum/terrain numbers instead of Lua strings. */
+function splev_level_init(tbl) {
+    const styles = {
+        [LVLINIT_SOLIDFILL]: 'solidfill', [LVLINIT_MAZEGRID]: 'mazegrid',
+        [LVLINIT_MAZE]: 'maze', [LVLINIT_ROGUE]: 'rogue',
+        [LVLINIT_MINES]: 'mines', [LVLINIT_SWAMP]: 'swamp',
+    };
+    const o = { style: styles[tbl.init_style ?? LVLINIT_SOLIDFILL] };
+    for (const key of ['fg', 'bg', 'filling']) {
+        const typ = tbl[key];
+        if (typ != null && typ !== INVALID_TYPE)
+            o[key] = SPLEV_CHAR2TYP.find(entry => entry[1] === typ)?.[0];
+    }
+    for (const key of ['smoothed', 'joined', 'walled']) {
+        if (tbl[key] != null) o[key] = !!tbl[key];
+    }
+    // BOOL_RANDOM is the nil default, not a legal explicit Lua boolean.
+    if (tbl.lit != null && tbl.lit !== BOOL_RANDOM) o.lit = !!tbl.lit;
+    if (tbl.rm_deadends != null) o.deadends = !tbl.rm_deadends;
+    o.corrwid = tbl.corrwid;
+    o.wallthick = tbl.wallthick;
+    return lspo_level_init(o);
 }
 
 /** C ref: sp_lev.c:2981–3018 splev_initlev — NONE + SOLIDFILL + MAZEGRID + MAZE + ROGUE + MINES + SWAMP */
@@ -22341,81 +22445,6 @@ function nhl_error(msg) {
 }
 
 /**
- * Lua 5.4.8 lobject.c luaO_str2num/l_str2int and C99 strtod syntax.
- * Preserve integer strings as signed-64 BigInts until the C destination
- * cast; converting "9223372036854775807" to a JS Number loses its low bits.
- * Decimal integer overflow falls back to a float; hex integers wrap u64.
- */
-function lua_number_unpacked(v) {
-    if (typeof v === 'number') return v;
-    if (typeof v !== 'string') return null;
-    const text = v.replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, '');
-    if (/^[+-]?\d+$/.test(text)) {
-        const integer = BigInt(text);
-        if (integer >= -(1n << 63n) && integer < (1n << 63n)) return integer;
-        return Number(text);
-    }
-    if (/^[+-]?0[xX][0-9a-fA-F]+$/.test(text)) {
-        const negative = text[0] === '-';
-        const integer = BigInt(text.replace(/^[+-]/, ''));
-        return BigInt.asIntN(64, negative ? -integer : integer);
-    }
-    if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
-        return Number(text);
-    const hex = /^([+-]?)0[xX]([0-9a-fA-F]*)(?:\.([0-9a-fA-F]*))?(?:[pP]([+-]?\d+))?$/.exec(text);
-    if (!hex || !(hex[2] + (hex[3] ?? '')).length) return null;
-    // Convert the exact hexadecimal significand, rounding once to double
-    // (nearest, ties to even), including the subnormal/underflow boundary.
-    const fraction = hex[3] ?? '';
-    let mantissa = BigInt('0x' + hex[2] + fraction);
-    if (!mantissa) return 0;
-    let exponent = Number(hex[4] ?? 0) - 4 * fraction.length;
-    const bits = mantissa.toString(2).length;
-    const discard = Math.max(0, bits - 53, -1074 - exponent);
-    if (discard > bits) return 0;
-    if (discard) {
-        const shift = BigInt(discard);
-        const remainder = mantissa & ((1n << shift) - 1n);
-        mantissa >>= shift;
-        const half = 1n << (shift - 1n);
-        if (remainder > half || (remainder === half && (mantissa & 1n))) mantissa++;
-        exponent += discard;
-    }
-    const number = Number(mantissa) * (2 ** exponent);
-    return hex[1] === '-' ? -number : number;
-}
-
-// Lua 5.4.8 lvm.c luaV_flttointeger(F2Ieq), luaconf.h
-// lua_numbertointeger: integral floats in [-2^63, 2^63) only.
-function lua_integer_unpacked(number) {
-    if (typeof number === 'bigint') return number;
-    if (typeof number === 'number' && Number.isInteger(number)
-        && number >= -(2 ** 63) && number < 2 ** 63) return BigInt(number);
-    return null;
-}
-
-/**
- * Lua 5.4.8 lauxlib.c luaL_checkinteger/interror: no truncation.
- * The optional width applies a C destination cast before returning a JS
- * Number, so coordinate/table input retains exact low bits of Lua integers.
- */
-function luaL_checkinteger_unpacked(v, width = null) {
-    const number = lua_number_unpacked(v);
-    const integer = lua_integer_unpacked(number);
-    if (integer !== null)
-        return Number(width === null ? integer : BigInt.asIntN(width, integer));
-    if (number !== null) nhl_error('bad argument (number has no integer representation)');
-    const got = (v == null) ? 'nil'
-        : (typeof v === 'object' ? 'table' : typeof v);
-    nhl_error(`bad argument (number expected, got ${got})`);
-}
-
-// Lua 5.4.8 lapi.c lua_tointegerx: a failed conversion returns integer 0.
-function lua_tointeger_unpacked(v) {
-    return lua_integer_unpacked(lua_number_unpacked(v)) ?? 0n;
-}
-
-/**
  * C ref: sp_lev.c cvt_to_abscoord `:4771–4788` — guts of
  * nhl_abs_coord (`:4757` comment): add the map origin (coder-room
  * lx/ly when a coder room is active, else gx.xstart/gy.ystart) onto
@@ -22533,13 +22562,13 @@ export function get_coord(coord, xy) {
 
 /**
  * C ref: sp_lev.c get_table_xy_or_coord :3188–3203 — x/y else coord.
- * get_table_int_opt default -1 is the `!= null` seed. When both are -1,
+ * get_table_int_opt checks integer inputs and defaults to -1. When both are -1,
  * lua_getfield "coord" then get_coord; a missing field is nil and the
  * -1,-1 seed stays (FALSE does not write the outs).
  */
-function get_table_xy_or_coord(o) {
-    let mx = o.x != null ? (o.x | 0) : -1; // C :3193 get_table_int_opt "x", -1
-    let my = o.y != null ? (o.y | 0) : -1; // C :3194
+export function get_table_xy_or_coord(o) {
+    let mx = get_table_int_opt(o, 'x', -1); // C :3193 (int), then lua_Integer
+    let my = get_table_int_opt(o, 'y', -1); // C :3194
     if (mx === -1 && my === -1) { // C :3196
         const out = { x: mx, y: my };
         get_coord(o.coord, out); // C :3198 get_coord(L, -1, &mx, &my)
@@ -23877,10 +23906,29 @@ function splev_build_room(opts, parent) {
  * C ref: sp_lev.c lspo_room — build then run contents then add_doors_to_room.
  */
 function splev_des_room(opts, parent, contentsFn) {
-    const aroom = splev_build_room(opts, parent);
-    if (!aroom) return null;
-    if (typeof contentsFn === 'function') contentsFn(aroom);
-    add_doors_to_room(aroom);
+    create_des_coder();
+    const coder = game.gc.coder;
+    const n = coder.n_subroom;
+    const oldParent = coder.tmproomlist[n - 1];
+    // Hand-ported outer themerooms give their parent explicitly; establish
+    // the coder context which C's outer des.room callback already owns.
+    coder.tmproomlist[n - 1] = parent;
+    update_croom();
+    const o = { ...opts };
+    if (typeof o.xalign === 'number')
+        o.xalign = ['left', 'half-left', 'center', 'half-right', 'right'][
+            [SPLEV_LEFT, SPLEV_H_LEFT, SPLEV_CENTER, SPLEV_H_RIGHT, SPLEV_RIGHT].indexOf(o.xalign)] ?? 'random';
+    if (typeof o.yalign === 'number')
+        o.yalign = ['top', 'center', 'bottom'][
+            [SPLEV_TOP, SPLEV_CENTER, SPLEV_BOTTOM].indexOf(o.yalign)] ?? 'random';
+    let aroom = null;
+    o.contents = () => {
+        aroom = coder.croom;
+        if (typeof contentsFn === 'function') contentsFn(aroom);
+    };
+    lspo_room(o);
+    coder.tmproomlist[n - 1] = oldParent;
+    update_croom();
     return aroom;
 }
 
@@ -24062,7 +24110,7 @@ function load_castle() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -24411,7 +24459,7 @@ function load_valley() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -24795,7 +24843,7 @@ function load_asmodeus() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -25075,7 +25123,7 @@ function load_juiblex() {
 
     // des.level_init({ style = "swamp", lit = 0 })
     // C lspo_level_init: fg defaults ROOM; bg defaults MOAT for SWAMP
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SWAMP,
         fg: ROOM,
         bg: MOAT,
@@ -25351,7 +25399,7 @@ function load_baalz() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " ", lit = 0 })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
@@ -25543,7 +25591,7 @@ function load_orcus() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -25829,7 +25877,7 @@ function load_wizard1() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -26140,7 +26188,7 @@ function load_wizard2() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -26416,7 +26464,7 @@ function load_wizard3() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -26778,7 +26826,7 @@ function load_fakewiz_tower(isFake1) {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg ="-" })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -26930,7 +26978,7 @@ function load_sanctum() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -27316,13 +27364,13 @@ async function hellfill_run_style(hellno) {
 
 /** hellfill.lua hells[1] — mines style with lava. */
 async function hellfill_style_mines_lava() {
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: true,
@@ -27340,13 +27388,13 @@ async function hellfill_style_mines_lava() {
  */
 function hellfill_style_mazegrid_tweaks() {
     const g = game;
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -27370,13 +27418,13 @@ function hellfill_style_mazegrid_tweaks() {
 
 /** hellfill.lua hells[3] — maze wallthick=1, random corrwid. */
 function hellfill_style_maze_wt1() {
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZE,
         corrwid: -1,
         wallthick: 1,
@@ -27390,13 +27438,13 @@ function hellfill_style_maze_wt1() {
  */
 function hellfill_style_maze_wall_replace() {
     const cwid = lua_random2(1, 4); // math.random(4)
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZE,
         corrwid: cwid,
         wallthick: 1,
@@ -27421,13 +27469,13 @@ function hellfill_style_maze_wall_replace() {
 /** hellfill.lua hells[5] — thick walls, optional lava walls. */
 function hellfill_style_maze_thick() {
     const wwid = 1 + lua_random2(1, 2); // 1+math.random(2)
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZE,
         corrwid: lua_random2(1, 2),
         wallthick: wwid,
@@ -27454,14 +27502,14 @@ function hellfill_style_maze_thick() {
  */
 function hellfill_style_cold_maze() {
     const cwid = lua_random2(1, 4);
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
     if (game.level.flags) game.level.flags.temperature = -1; // cold
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_MAZE,
         corrwid: cwid,
         wallthick: 1,
@@ -27494,13 +27542,13 @@ function hellfill_style_cold_maze() {
 /** hellfill.lua hells[7] — open cavern mines. */
 async function hellfill_style_open_cavern() {
     const wter = percent(50) ? STONE : LAVAPOOL;
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: wter, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: false,
@@ -27543,7 +27591,7 @@ async function load_minefill() {
     const g = game;
     nhlib_shuffle_align();
 
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         fg: STONE, bg: STONE, filling: STONE,
         lit: BOOL_RANDOM, smoothed: false, joined: false, walled: false,
@@ -27551,7 +27599,7 @@ async function load_minefill() {
 
     g.level.flags.is_maze_lev = true;
 
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: BOOL_RANDOM, smoothed: true, joined: true, walled: true,
@@ -27597,7 +27645,7 @@ async function load_bar_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -27606,7 +27654,7 @@ async function load_bar_fila() {
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=".", lit=0, walled=false
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: false,
@@ -27635,7 +27683,7 @@ async function load_bar_filb() {
     const g = game;
     nhlib_shuffle_align();
 
-    lspo_level_init({
+    splev_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
@@ -27644,7 +27692,7 @@ async function load_bar_filb() {
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=" ", lit=0, walled=true
-    await lspo_level_init({
+    await splev_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: true,

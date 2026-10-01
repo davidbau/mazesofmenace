@@ -24339,6 +24339,20 @@ async function dowield() {
         g._pending_message = '';
         itemKey = typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 27);
         itemCh = String.fromCharCode(itemKey);
+        /* C invent.c:1937-1949 — the DIGIT arm, which runs BEFORE the quitchar
+         * test.  wield.c:373 passes GETOBJ_PROMPT | GETOBJ_ALLOWCNT, so a digit
+         * is a COUNT, not an invlet: get_count() swallows the digit run (echoing
+         * "Count: N") and returns the first non-digit key as the ilet.  Without
+         * this arm '4' fell into the invlet walk and plined "You don't have that
+         * object.--More--", ringing the bell on the next digit and shifting the
+         * keystream.  The count itself only matters to splitobj (invent.c:2093+),
+         * which wield does not reach for a non-quiver stack. */
+        if (itemKey >= 48 /* '0' */ && itemKey <= 57 /* '9' */) {
+            const gc = await getobj_get_count(itemKey);
+            itemKey = gc.key | 0;
+            itemCh = String.fromCharCode(itemKey);
+            g._topl_sticky = gc.echo || qbuf;
+        }
         /* ── Dispatch on selected key (C ref: dowield:369-453 post-getobj logic) ── */
         if (itemCh === '\x00') {
             g.context.move = 0;
@@ -36949,7 +36963,10 @@ function _is_valid_travelpt(x, y) {
          * display model stores a rendered remembered_glyph rather than a glyph
          * number, and unexplored rock renders as a blank (see auto_describe). */
         const rg = loc && loc.remembered_glyph;
-        if ((!rg || rg.ch === ' ') && !(loc && loc.seenv))
+        /* glyph_is_cmap(glyph) fails for GLYPH_UNEXPLORED (an ABSENT
+         * remembered_glyph here), so only a mapped blank (S_stone) takes the
+         * early-out; an unexplored cell falls through to findtravelpath. */
+        if (rg && rg.ch === ' ' && !(loc && loc.seenv))
             return false;
     }
     /* C ref: hack.c:1538-1543 — u.tx/u.ty are the travel target findtravelpath
@@ -39235,7 +39252,17 @@ async function dowhatis() {
         g._pending_message = '';
         set_cursor(endCursorCol, endRow);
     };
-    await showWhatisMenu();
+    /* C ref: pager.c:1692-1700 — do_look() pops the command queue BEFORE any
+     * menu: a CMDQ_KEY entry is the answer (i = cq.key, itemactions' queued
+     * 'i'), anything else clears CANNED; both goto dowhatiscmd.  A non-key
+     * entry leaves i == 0, which is the switch's default: return ECMD_OK. */
+    let queuedSel = null;
+    const cmdqEnt = cmdq_pop();
+    if (cmdqEnt) {
+        if (cmdqEnt.typ === CMDQ_KEY) queuedSel = cmdqEnt.key | 0;
+        else { cmdq_clear(CQ_CANNED); return ECMD_OK; }
+    }
+    if (queuedSel === null) await showWhatisMenu();
     /* C ref: pager.c:1804 select_menu(win, PICK_ONE, &pick_list) -> win/tty/
      * wintty.c process_menu_window.  This was a BARE nhgetch(): ANY key closed
      * the menu, and 'q' was even given its own return arm.  C rings the bell and
@@ -39257,7 +39284,8 @@ async function dowhatis() {
      * and leave the short menu displayed. */
     const selectors = showMapLists ? '/i?mMoOtTeE' : '/i?';
     const groupSelectors = showMapLists ? 'yn^"`|' : 'yn';
-    const k = await await_menu_key(showWhatisMenu, selectors, groupSelectors, PICK_ONE);
+    const k = queuedSel !== null ? queuedSel
+        : await await_menu_key(showWhatisMenu, selectors, groupSelectors, PICK_ONE);
     const ch_sel = String.fromCharCode(k);
     /* ── Process the menu selection (C ref: pager.c:1804-1878 switch after menu) ──
      * The menu identifier for each entry:
@@ -39333,7 +39361,17 @@ async function dowhatis() {
          * The menu is display_inventory(), shared verbatim with ddoinv(); the
          * selection maps back to the object, so the invlet→invobj walk above is
          * already done by the menu's own accelerator lookup. */
-        const { selectedObj, winRows } = await inventory_menu_legacy();
+        let selectedObj, winRows;
+        if (cmdq_peek(CQ_CANNED)) {
+            /* invent.c:3428 display_inventory() answers from the command queue
+             * (itemactions' queued invlet) with no menu and no window. */
+            const invlet = await display_inventory(null, true);
+            if (!invlet) break;
+            for (let o = g.invent; o; o = o.nobj)
+                if (o.invlet === invlet) { selectedObj = o; break; }
+        } else {
+            ({ selectedObj, winRows } = await inventory_menu_legacy());
+        }
         if (!selectedObj) break;                 /* no selection / ESC */
         const out_str = singular_xname(selectedObj);
         if (out_str)
@@ -39944,6 +39982,29 @@ async function _do_look_from_screen(quick) {
                 if (ans !== LOOK_QUICK && ans !== LOOK_ONCE
                     && (ans === LOOK_VERBOSE || (flagsHelp && !quick))) {
                   for (const entry of entries) {
+                    if (ans === LOOK_VERBOSE) {
+                        /* C pager.c:1949 passes chkfilDontAsk for LOOK_VERBOSE
+                         * (the ':' pick), so checkfile() (pager.c:1056) skips
+                         * the "More info about ...?" y_n and displays the
+                         * entry straight away; the picked description is
+                         * still on the topline and pages with --More-- when
+                         * the text window opens. */
+                        const dbLines = entry.lines ?? dbase_entry_lines(entry.key);
+                        if (dbLines) {
+                            /* tty_display_nhwindow(NHW_TEXT) with the topline
+                             * NEED_MORE pages it first (wintty.c:1920). */
+                            const _showEntryMore = async () => {
+                                g._pending_message = out_str + '--More--';
+                                await flush_screen(1);
+                                set_cursor(_topl_visualLen(g._pending_message), 0);
+                            };
+                            await _showEntryMore();
+                            await await_topl_more_dismiss(_showEntryMore);
+                            await dbase_display_window(dbLines);
+                        }
+                        lookDescriptionPending = false;
+                        continue;
+                    }
                     const question = `More info about "${entry.key}"?`;
                     const questionLine = `${question} [yn] (n)`;
                     if (lookDescriptionPending) {

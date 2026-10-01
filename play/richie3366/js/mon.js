@@ -8,7 +8,7 @@ import { quest_info } from './questpgr.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog,
-    mon_offmap, accessible, Displaced, m_can_break_boulder,
+    mon_offmap, accessible, Displaced, m_can_break_boulder, curr_mon_load,
 } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
@@ -46,7 +46,7 @@ import {
     is_elf, is_dwarf, is_gnome, is_orc, is_undead, amphibious, can_teleport, MR_FIRE,
     mindless, G_UNIQ, is_watch,
     touch_petrifies, flesh_petrifies, slimeproof, resists_ston, poly_when_stoned, vegan,
-    montoostrong, monmax_difficulty, is_vampire,
+    montoostrong, monmax_difficulty, is_vampire, is_were,
 } from './monsters.js';
 import {
     little_to_big, big_to_little, big_little_match, hero_conflict,
@@ -76,7 +76,7 @@ import { fightm, mondead, mondied, grow_up, mon_to_stone, monstone } from './mhi
 import { remove_monster, place_monster } from './steed.js';
 import { engr_at, del_engr_at, sengr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
-import { were_change } from './were.js';
+import { were_change, new_were } from './were.js';
 import {
     set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd,
     newemin, newepri, newedog, freemcorpsenm, mpickobj, makemon, makemon_appear_msg,
@@ -248,12 +248,7 @@ export function cant_squeeze_thru(mon) {
     if (is_u) {
         amt = inv_weight() + weight_cap();
     } else {
-        amt = 0;
-        for (let obj = mon.minvent; obj; obj = obj.nobj) {
-            if (obj.otyp !== BOULDER || !throws_rocks(ptr)) {
-                amt += obj.owt || 0;
-            }
-        }
+        amt = curr_mon_load(mon);
     }
     if (amt > WT_TOOMUCH_DIAGONAL) return 2;
 
@@ -1203,28 +1198,33 @@ export function seemimic(mtmp) {
 }
 
 /**
- * C ref: mon.c normal_shape `:4430–4462` — cham revert / were / seemimic.
- * Await `newcham(..., NC_SHOW_MSG)` so the shapeshift pline/More
- * finish before `cham=NON_PM` / `mcan` restore / `newsym` (D-1594;
- * C `:4438–4443`). Named: `is_were`/`new_were`; `finish_meating`.
+ * C ref: mon.c:4430–4462 normal_shape — restore each kind of disguise.
+ * Message-producing transformations finish before subsequent mutations.
  */
 export async function normal_shape(mon) {
-    if (!mon) return;
-    const mcham = mon.cham;
+    const mcham = mon.cham | 0;
     if (ismnum(mcham)) {
         const mcan = mon.mcan;
         await newcham(mon, mons(mcham), NC_SHOW_MSG);
         mon.cham = NON_PM;
-        if (mcan) mon.mcan = 1;
-        newsym(mon.mx | 0, mon.my | 0);
+        // newcham may uncancel a polymorphing monster; retain cancellation.
+        if (mcan)
+            mon.mcan = 1;
+        newsym(mon.mx, mon.my);
     }
-    // is_were / new_were deferred
+    if (is_were(mon.data) && mon.data.mlet !== 'S_HUMAN') {
+        await new_were(mon);
+    }
     if (M_AP_TYPE(mon) !== M_AP_NOTHING) {
         if (!mon.meating) {
-            if (M_AP_TYPE(mon) !== M_AP_MONSTER) mon.msleeping = 1;
+            // Revealed mimics sleep instead of changing shape.
+            if (M_AP_TYPE(mon) !== M_AP_MONSTER)
+                mon.msleeping = 1;
             seemimic(mon);
+        } else {
+            // A pet eating a mimic corpse ends its meal immediately.
+            finish_meating(mon);
         }
-        // finish_meating deferred
     }
 }
 

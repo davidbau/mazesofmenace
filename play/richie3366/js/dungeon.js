@@ -6,6 +6,7 @@
 // dungeon tables. Here: nhlib shuffle stub + generated dungeonProto + C placement.
 
 import { game } from './gstate.js';
+import { luaL_checkinteger_unpacked } from './nhlua.js';
 import { debugcore } from './files.js';
 import { rn2, rn1, rnd } from './rng.js';
 import { dungeonProto } from './generated/dungeon_data.js';
@@ -271,22 +272,13 @@ export function dupstr(s) {
 /**
  * C lauxlib luaL_checkinteger, then the `(int)` cast in get_table_int.
  * Same stand-in as the file-local helper in mklev.js (not exported;
- * mklev.js already imports this module). A finite number truncates
- * toward 0; a numeric string converts the way lua_isnumber does.
+ * mklev.js already imports this module). An integral Lua value
+ * narrows to signed int32; fractions and values outside int64 error.
  * @param {*} v
  * @returns {number}
  */
 function luaL_checkinteger_dgn(v) {
-    let n;
-    if (typeof v === 'number' && Number.isFinite(v)) n = Math.trunc(v);
-    else if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) {
-        n = Math.trunc(Number(v));
-    } else {
-        const got = (v == null) ? 'nil'
-            : (typeof v === 'object' ? 'table' : typeof v);
-        throw new Error(`bad argument (number expected, got ${got})`);
-    }
-    return n | 0;
+    return luaL_checkinteger_unpacked(v, 32);
 }
 
 /**
@@ -340,7 +332,7 @@ function get_table_int(tbl, name) {
  * @param {number} defval
  * @returns {number}
  */
-function get_table_int_opt(tbl, name, defval) {
+export function get_table_int_opt(tbl, name, defval) {
     let ret = defval | 0; // C :1031 int ret = defval
     const v = lua_field(tbl, name); // C :1033 lua_getfield(L, -1, name)
     if (lua_type(v) !== 'nil') { // C :1034 !lua_isnil

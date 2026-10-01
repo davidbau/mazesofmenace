@@ -39,7 +39,7 @@ import {
     place_object_no_longer_held, fmt_ptr,
 } from './mkobj.js';
 import {
-    canseemon, newsym, impossible, pline, pline_mon,
+    canseemon, newsym, impossible, pline, pline_mon, You,
 } from './display.js';
 import { see_wsegs } from './worm.js';
 import { dist2, strsubst } from './hacklib.js';
@@ -493,186 +493,192 @@ export function which_armor(mon, flag) {
 }
 
 /**
- * C ref: worn.c m_lose_armor `:1039–1051` (static) — extract from
- * minvent, drop at the monster's square, polyspot bypass so this-turn
- * pile zaps skip it, newsym. ("Call stackobj() if we ever drop anything
- * that can merge" — armor never can.)
+ * Run one C call frame inline until a callee actually returns an input
+ * continuation. Resuming the generator continues at that call, before any
+ * subsequent mutation or RNG; there is no accumulated message/action queue.
+ * Silent C paths retain their synchronous return contract for newcham.
  */
+function finish_worn_call(frame) {
+    let step = frame.next();
+    while (!step.done) {
+        if (step.value && typeof step.value.then === 'function') {
+            return step.value.then(() => finish_worn_call(frame));
+        }
+        step = frame.next();
+    }
+    return step.value;
+}
+
+/** C worn.c:1039–1051: complete extraction before placing/bypassing armor. */
 function m_lose_armor(mon, obj, polyspot) {
-    extract_from_minvent(mon, obj, true, false);
-    place_object(obj, mon.mx, mon.my);
-    if (polyspot) bypass_obj(obj);
-    newsym(mon.mx, mon.my);
+    const finish = () => {
+        place_object(obj, mon.mx, mon.my);
+        if (polyspot) bypass_obj(obj);
+        newsym(mon.mx, mon.my);
+    };
+    const extraction = extract_from_minvent(mon, obj, true, false);
+    if (extraction && typeof extraction.then === 'function') {
+        return extraction.then(finish);
+    }
+    return finish();
 }
 
 /**
- * C ref: worn.c mon_break_armor `:1177–1335` — armor a polymorphed
- * monster can no longer wear: breakarm destroys suit/cloak/shirt,
- * sliparm drops them, handless/tiny drops gloves+shield, horns spill
- * non-flimsy helms, slithy/centaur spill boots, unsaddlable spill
- * saddles, unridable dismounts (DISMOUNT_FELL + touch-petrify risk).
- * Caller: mon.c newcham `:5485` with the NC_VIA_WAND_OR_SPELL polyspot.
- * Sync-or-async like weapon.c possibly_unwield: every C message/await
- * site is captured as a thunk (text computed inline, in C order) while
- * sync mutations (m_useup / m_lose_armor / noride flag) run inline;
- * thunks flush sequentially. No thunks ⟺ C awaits nothing, so the
- * return stays non-Promise and newcham NO_NC_FLAGS keeps its boolean
- * contract (D-1648). Soundeffect is a contest no-op (sndprocs.js).
+ * C worn.c:1176–1335: whole armor/riding body in C call order. Each yield
+ * completes that live callee before the next C statement. Both newcham
+ * (mon.c:5485) and new_were (were.c:129) await returned continuations.
+ * Soundeffect is the contest no-op in sndprocs.js.
  * @returns {void|Promise<void>}
  */
 export function mon_break_armor(mon, polyspot) {
-    const mdat = mon.data;
-    const vis = cansee(mon.mx, mon.my);
-    const handless_or_tiny = nohands(mdat) || verysmall(mdat);
-    const pronoun = mhim(mon), ppronoun = mhis(mon);
-    const pending = [];
-    const later = (fn, ...args) => pending.push(() => fn(...args));
-    let noride = false;
+    return finish_worn_call((function* () {
+        const mdat = mon.data;
+        const vis = cansee(mon.mx, mon.my);
+        const handless_or_tiny = nohands(mdat) || verysmall(mdat);
+        const pronoun = mhim(mon), ppronoun = mhis(mon);
+        let noride = false;
 
-    if (breakarm(mdat)) {
-        const mndx = mdat?.mndx ?? -1;
-        let otmp = which_armor(mon, W_ARM);
-        if (otmp) {
-            const t = otmp.otyp | 0;
-            /* C obj.h Is_dragon_scales/mail + Dragon_*_to_pm: melded
-               dragons keep the armor silently, previous form is gone */
-            const merged = (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES
-                    && mndx === PM_GRAY_DRAGON + t - GRAY_DRAGON_SCALES)
-                || (t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL
-                    && mndx === PM_GRAY_DRAGON + t - GRAY_DRAGON_SCALE_MAIL);
-            if (!merged) {
-                Soundeffect(se_cracking_sound, 100);
-                if (vis) {
-                    later(pline_mon, mon, `${Monnam(mon)} breaks out of ${ppronoun} armor!`);
-                } else later(You_hear, 'a cracking sound.');
-            }
-            m_useup(mon, otmp);
-        }
-        otmp = which_armor(mon, W_ARMC);
-        /* C: mummy wrapping adapts to small and very big sizes */
-        if (otmp && (otmp.otyp !== MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
-            if (otmp.oartifact) {
-                if (vis) {
-                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls off!`);
+        if (breakarm(mdat)) {
+            const mndx = mdat?.mndx ?? -1;
+            let otmp = which_armor(mon, W_ARM);
+            if (otmp) {
+                const t = otmp.otyp | 0;
+                /* C obj.h Is_dragon_scales/mail + Dragon_*_to_pm: melded
+                   matching dragons consume the armor silently; previous form is gone */
+                const merged = (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES
+                        && mndx === PM_GRAY_DRAGON + t - GRAY_DRAGON_SCALES)
+                    || (t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL
+                        && mndx === PM_GRAY_DRAGON + t - GRAY_DRAGON_SCALE_MAIL);
+                if (!merged) {
+                    Soundeffect(se_cracking_sound, 100);
+                    if (vis) {
+                        yield pline_mon(mon, `${Monnam(mon)} breaks out of ${ppronoun} armor!`);
+                    } else yield You_hear('a cracking sound.');
                 }
-                m_lose_armor(mon, otmp, polyspot);
-            } else {
-                Soundeffect(se_ripping_sound, 100);
-                if (vis) {
-                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} tears apart!`);
-                } else later(You_hear, 'a ripping sound.');
-                m_useup(mon, otmp);
+                yield m_useup(mon, otmp);
             }
-        }
-        otmp = which_armor(mon, W_ARMU);
-        if (otmp) {
-            if (vis) {
-                later(pline_mon, mon, `${s_suffix(Monnam(mon))} shirt rips to shreds!`);
-            } else later(You_hear, 'a ripping sound.');
-            m_useup(mon, otmp);
-        }
-    } else if (sliparm(mdat)) {
-        /* C: sliparm covers whirly, noncorporeal, and small or under */
-        const passes_thru_clothes = !((mdat?.msize ?? 99) <= MZ_SMALL);
-        let otmp = which_armor(mon, W_ARM);
-        if (otmp) {
-            Soundeffect(se_thud, 50);
-            if (vis) {
-                later(pline_mon, mon, `${s_suffix(Monnam(mon))} armor falls around ${pronoun}!`);
-            } else later(You_hear, 'a thud.');
-            m_lose_armor(mon, otmp, polyspot);
-        }
-        otmp = which_armor(mon, W_ARMC);
-        if (otmp && (otmp.otyp !== MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
-            if (vis) {
-                if (is_whirly(mon.data)) {
-                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls, unsupported!`);
+            otmp = which_armor(mon, W_ARMC);
+            /* C: mummy wrapping adapts to small and very big sizes */
+            if (otmp && (otmp.otyp !== MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
+                if (otmp.oartifact) {
+                    if (vis) {
+                        yield pline_mon(mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls off!`);
+                    }
+                    yield m_lose_armor(mon, otmp, polyspot);
                 } else {
-                    later(pline_mon, mon, `${Monnam(mon)} shrinks out of ${ppronoun} ${cloak_simple_name(otmp)}!`);
+                    Soundeffect(se_ripping_sound, 100);
+                    if (vis) {
+                        yield pline_mon(mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} tears apart!`);
+                    } else yield You_hear('a ripping sound.');
+                    yield m_useup(mon, otmp);
                 }
             }
-            m_lose_armor(mon, otmp, polyspot);
+            otmp = which_armor(mon, W_ARMU);
+            if (otmp) {
+                if (vis) {
+                    yield pline_mon(mon, `${s_suffix(Monnam(mon))} shirt rips to shreds!`);
+                } else yield You_hear('a ripping sound.');
+                yield m_useup(mon, otmp);
+            }
+        } else if (sliparm(mdat)) {
+            /* C: sliparm covers whirly, noncorporeal, and small or under */
+            const passes_thru_clothes = !((mdat?.msize ?? 99) <= MZ_SMALL);
+            let otmp = which_armor(mon, W_ARM);
+            if (otmp) {
+                Soundeffect(se_thud, 50);
+                if (vis) {
+                    yield pline_mon(mon, `${s_suffix(Monnam(mon))} armor falls around ${pronoun}!`);
+                } else yield You_hear('a thud.');
+                yield m_lose_armor(mon, otmp, polyspot);
+            }
+            otmp = which_armor(mon, W_ARMC);
+            if (otmp && (otmp.otyp !== MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
+                if (vis) {
+                    if (is_whirly(mon.data)) {
+                        yield pline_mon(mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls, unsupported!`);
+                    } else {
+                        yield pline_mon(mon, `${Monnam(mon)} shrinks out of ${ppronoun} ${cloak_simple_name(otmp)}!`);
+                    }
+                }
+                yield m_lose_armor(mon, otmp, polyspot);
+            }
+            otmp = which_armor(mon, W_ARMU);
+            if (otmp) {
+                if (vis) {
+                    if (passes_thru_clothes) {
+                        yield pline_mon(mon, `${Monnam(mon)} seeps right through ${ppronoun} shirt!`);
+                    } else {
+                        yield pline_mon(mon, `${Monnam(mon)} becomes much too small for ${ppronoun} shirt!`);
+                    }
+                }
+                yield m_lose_armor(mon, otmp, polyspot);
+            }
         }
-        otmp = which_armor(mon, W_ARMU);
-        if (otmp) {
-            if (vis) {
-                if (passes_thru_clothes) {
-                    later(pline_mon, mon, `${Monnam(mon)} seeps right through ${ppronoun} shirt!`);
-                } else {
-                    later(pline_mon, mon, `${Monnam(mon)} becomes much too small for ${ppronoun} shirt!`);
+        if (handless_or_tiny) {
+            /* C: caller needs to handle weapon checks. */
+            let otmp = which_armor(mon, W_ARMG);
+            if (otmp) {
+                if (vis) {
+                    yield pline_mon(mon, `${Monnam(mon)} drops ${ppronoun} gloves${MON_WEP(mon) ? ' and weapon' : ''}!`);
+                }
+                yield m_lose_armor(mon, otmp, polyspot);
+            }
+            otmp = which_armor(mon, W_ARMS);
+            if (otmp) {
+                Soundeffect(se_clank, 50);
+                if (vis) {
+                    yield pline_mon(mon, `${Monnam(mon)} can no longer hold ${ppronoun} shield!`);
+                } else yield You_hear('a clank.');
+                yield m_lose_armor(mon, otmp, polyspot);
+            }
+        }
+        if (handless_or_tiny || has_horns(mdat)) {
+            const otmp = which_armor(mon, W_ARMH);
+            /* C: flimsy test for horns matches polyself handling */
+            if (otmp && (handless_or_tiny || !is_flimsy(otmp))) {
+                if (vis) {
+                    yield pline_mon(mon, `${s_suffix(Monnam(mon))} helmet falls to the ${surface(mon.mx, mon.my)}!`);
+                } else yield You_hear('a clank.');
+                yield m_lose_armor(mon, otmp, polyspot);
+            }
+        }
+        if (handless_or_tiny || slithy(mdat) || mdat?.mlet === 'S_CENTAUR') {
+            const otmp = which_armor(mon, W_ARMF);
+            if (otmp) {
+                if (vis) {
+                    if (is_whirly(mon.data)) {
+                        yield pline_mon(mon, `${s_suffix(Monnam(mon))} boots fall away!`);
+                    } else {
+                        yield pline_mon(mon, `${s_suffix(Monnam(mon))} boots ${verysmall(mdat) ? 'slide' : 'are pushed'} off ${ppronoun} feet!`);
+                    }
+                }
+                yield m_lose_armor(mon, otmp, polyspot);
+            }
+        }
+        if (!can_saddle(mon)) {
+            const otmp = which_armor(mon, W_SADDLE);
+            if (otmp) {
+                yield m_lose_armor(mon, otmp, polyspot);
+                if (vis) {
+                    yield pline_mon(mon, `${s_suffix(Monnam(mon))} saddle falls off.`);
                 }
             }
-            m_lose_armor(mon, otmp, polyspot);
+            if (mon === game.u?.usteed) noride = true;
         }
-    }
-    if (handless_or_tiny) {
-        /* C: [caller needs to handle weapon checks] — newcham already
-           ran possibly_unwield before us */
-        let otmp = which_armor(mon, W_ARMG);
-        if (otmp) {
-            if (vis) {
-                later(pline_mon, mon, `${Monnam(mon)} drops ${ppronoun} gloves${MON_WEP(mon) ? ' and weapon' : ''}!`);
+        if (noride || (mon === game.u?.usteed && !can_ride(mon))) {
+            yield You(`can no longer ride ${mon_nam(mon)}.`);
+            const u = game.u || {};
+            // C youprop.h Stone_resistance: intrinsic OR extrinsic.
+            const p = u.uprops?.[STONE_RES];
+            const stone_res = !!(p?.intrinsic || p?.extrinsic
+                || u.Stone_resistance || u.HStone_resistance || u.EStone_resistance);
+            if (touch_petrifies(game.u?.usteed?.data) && !stone_res && rnl(3)) {
+                yield You(`touch ${mon_nam(game.u.usteed)}.`);
+                yield instapetrify(`falling off ${an(pmname(game.u.usteed.data, Mgender(game.u.usteed)))}`);
             }
-            m_lose_armor(mon, otmp, polyspot);
+            yield dismount_steed(DISMOUNT_FELL);
         }
-        otmp = which_armor(mon, W_ARMS);
-        if (otmp) {
-            Soundeffect(se_clank, 50);
-            if (vis) {
-                later(pline_mon, mon, `${Monnam(mon)} can no longer hold ${ppronoun} shield!`);
-            } else later(You_hear, 'a clank.');
-            m_lose_armor(mon, otmp, polyspot);
-        }
-    }
-    if (handless_or_tiny || has_horns(mdat)) {
-        const otmp = which_armor(mon, W_ARMH);
-        /* C: flimsy test for horns matches polyself handling */
-        if (otmp && (handless_or_tiny || !is_flimsy(otmp))) {
-            if (vis) {
-                later(pline_mon, mon, `${s_suffix(Monnam(mon))} helmet falls to the ${surface(mon.mx, mon.my)}!`);
-            } else later(You_hear, 'a clank.');
-            m_lose_armor(mon, otmp, polyspot);
-        }
-    }
-    if (handless_or_tiny || slithy(mdat) || mdat?.mlet === 'S_CENTAUR') {
-        const otmp = which_armor(mon, W_ARMF);
-        if (otmp) {
-            if (vis) {
-                if (is_whirly(mon.data)) {
-                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} boots fall away!`);
-                } else {
-                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} boots ${verysmall(mdat) ? 'slide' : 'are pushed'} off ${ppronoun} feet!`);
-                }
-            }
-            m_lose_armor(mon, otmp, polyspot);
-        }
-    }
-    if (!can_saddle(mon)) {
-        const otmp = which_armor(mon, W_SADDLE);
-        if (otmp) {
-            m_lose_armor(mon, otmp, polyspot);
-            if (vis) {
-                later(pline_mon, mon, `${s_suffix(Monnam(mon))} saddle falls off.`);
-            }
-        }
-        if (mon === game.u?.usteed) noride = true;
-    }
-    if (noride || (mon === game.u?.usteed && !can_ride(mon))) {
-        /* C You(): steed.js/makemon.js use pline('You ...') (no You clone) */
-        later(pline, `You can no longer ride ${mon_nam(mon)}.`);
-        const u = game.u || {};
-        const stone_res = !!(u.Stone_resistance || u.HStone_resistance
-            || u.EStone_resistance);
-        if (touch_petrifies(game.u?.usteed?.data) && !stone_res && rnl(3)) {
-            later(pline, `You touch ${mon_nam(game.u.usteed)}.`);
-            later(instapetrify, `falling off ${an(pmname(game.u.usteed.data, Mgender(game.u.usteed)))}`);
-        }
-        later(dismount_steed, DISMOUNT_FELL);
-    }
-    if (!pending.length) return;
-    return (async () => {
-        for (const run of pending) await run();
-    })();
+    })());
 }
 
 /**
@@ -711,52 +717,34 @@ export function bypass_obj(obj) {
 }
 
 /**
- * C ref: worn.c extract_from_minvent `:1376–1417`.
- * `where != OBJ_MINVENT` → impossible + return. The port's string tag
- * `'MINVENT'` is the same object (obj_extract_self accepts it); it is
- * not the mismatch arm. Gold DSM `end_burn` runs while `owornmask`
- * still has `W_ARM` (`artifact_light` reads that bit). Then
- * `obj_extract_self`, `owornmask = 0`, and when the mask was set:
- * `!DEADMONSTER` (`mhp < 1`) and `do_extrinsics` →
- * `update_mon_extrinsics(FALSE, silently)`, clear that bit of
- * `misc_worn_check`, `check_gear_next_turn`. `obj_no_longer_held` is
- * the exported D-2734 sync core (`place_object_no_longer_held`):
- * container recursion, crysknife `rn2(10)`, `otyp = WORM_TOOTH`.
- * `costly_alteration` is floated there (sync callers: `m_lose_armor`,
- * `m_useup`, `discard_minvent`, `mon_break_armor`'s non-Promise
- * contract). `W_WEP` → `mwepgone` (`setmnotwielded` + `NEED_WEAPON`).
- * A light-pline or impossible promise is returned so async callers
- * can await it; the common path returns undefined and stays sync.
+ * C worn.c:1376–1417: extraction, extrinsics and gear flags in C order.
+ * place_object_no_longer_held is the existing synchronous obj_no_longer_held
+ * core; its COST_DEGRD billing continuation remains a named omission.
  * @returns {void|Promise<void>}
  */
 export function extract_from_minvent(mon, obj, do_extrinsics, silently) {
-    if (!mon || !obj) return;
-    const unwornmask = obj.owornmask | 0;
-    /* C `:1391–1394` */
-    if (obj.where !== OBJ_MINVENT && obj.where !== 'MINVENT') {
-        return impossible(
-            'extract_from_minvent called on object not in minvent',
-        );
-    }
-    /* C `:1397–1400` — while owornmask still names the suit. */
-    if ((unwornmask & W_ARM) !== 0 && obj.lamplit && artifact_light(obj)) {
-        end_burn(obj, false);
-    }
-    obj_extract_self(obj); /* C `:1402` */
-    obj.owornmask = 0; /* C `:1403` */
-    if (unwornmask) { /* C `:1404` */
-        /* C `:1405` DEADMONSTER(mon) → mhp < 1 */
-        if (!((mon.mhp | 0) < 1) && do_extrinsics) {
-            update_mon_extrinsics(mon, obj, false, silently);
+    return finish_worn_call((function* () {
+        if (!mon || !obj) return;
+        const unwornmask = obj.owornmask | 0;
+        if (obj.where !== OBJ_MINVENT && obj.where !== 'MINVENT') {
+            yield impossible('extract_from_minvent called on object not in minvent');
+            return;
         }
-        mon.misc_worn_check = (mon.misc_worn_check || 0) & ~unwornmask;
-        check_gear_next_turn(mon); /* C `:1411` */
-    }
-    /* C `:1413` obj_no_longer_held — sync core, COST_DEGRD floated. */
-    place_object_no_longer_held(obj);
-    if (unwornmask & W_WEP) { /* C `:1414–1416` */
-        return mwepgone(mon);
-    }
+        if ((unwornmask & W_ARM) !== 0 && obj.lamplit && artifact_light(obj)) {
+            yield end_burn(obj, false);
+        }
+        obj_extract_self(obj);
+        obj.owornmask = 0;
+        if (unwornmask) {
+            if (!(mon.mhp < 1) && do_extrinsics) {
+                yield update_mon_extrinsics(mon, obj, false, silently);
+            }
+            mon.misc_worn_check = (mon.misc_worn_check | 0) & ~unwornmask;
+            check_gear_next_turn(mon);
+        }
+        place_object_no_longer_held(obj);
+        if (unwornmask & W_WEP) yield mwepgone(mon);
+    })());
 }
 
 /** C ref: worn.c extra_pref — speed boots bias */
@@ -781,139 +769,117 @@ export function racial_exception(mon, obj) {
 }
 
 /**
- * C ref: worn.c update_mon_extrinsics `:579–712` — armor put on or taken
- * off; might be magical variety. Delivers the whole body in C order:
- * unseen snapshot (`:591`); early maybe_blocks when neither oprop nor
- * altprop (`:592–593`); again-loop over which then altwhich (`:595`,
- * `:688–690`); on-switch (`:597–632`) / off-switch (`:634–683`);
- * w_blocks INVIS (`:697–704`); saddle-off-steed dismount (`:706–707`);
- * visibility newsym (`:709–711`).
- * FAST arms (`:601–607`, `:638–644`) call the live muse.js
- * mon_adjust_speed(mon, 0, obj) under the C in_mklev guard (imports.mjs:
- * hoisted, cycle-safe). Its sync prefix applies the boots recheck
- * immediately in C order; only the pline tail is async — it is returned
- * so async callers can await exact C order, sync callers float the
- * same-tick tail. Same for the dismount arm (live steed.js
- * dismount_steed). Stays a sync-through `function` so the 6 C callers'
- * state effects keep C order whether awaited or floated.
- * altprop is the C `:572–575` macro verbatim (alchemy smock dual
- * poison/acid pass; dragon-scale TODO is C's own note).
+ * C worn.c:578–712: whole extrinsics on/off and altprop loop. Speed
+ * messages finish before in_mklev restoration and the maybe_blocks tail;
+ * dismount completes before the final visibility redraw.
  */
 export function update_mon_extrinsics(mon, obj, on, silently) {
-    if (!mon || !obj) return undefined;
-    let which = game.objects?.[obj.otyp]?.oc_oprop | 0; // C `:588`
-    const altwhich = altprop(obj); // C `:589` (`:572–575` macro)
-    const unseen = !canseemon(mon); // C `:591`
-    let tail = null;
+    return finish_worn_call((function* () {
+        if (!mon || !obj) return undefined;
+        let which = game.objects?.[obj.otyp]?.oc_oprop | 0; // C `:588`
+        const altwhich = altprop(obj); // C `:589` (`:572–575` macro)
+        const unseen = !canseemon(mon); // C `:591`
 
-    if (!which && !altwhich) // C `:592–593` goto maybe_blocks
-        return update_mon_maybe_blocks(mon, obj, on, silently, unseen, tail);
+        if (!which && !altwhich) // C `:592–593` goto maybe_blocks
+            return update_mon_maybe_blocks(mon, obj, on, silently, unseen);
 
-    while (true) { // C `again:` `:595`
-        if (on) {
-            switch (which) { // C `:597–632`
-            case INVIS: // C `:598–599`
-                mon.minvis = !mon.invis_blkd;
-                break;
-            case FAST: { // C `:601–607`
-                const save_in_mklev = game.in_mklev;
-                if (silently) game.in_mklev = true;
-                tail = mon_adjust_speed(mon, 0, obj);
-                game.in_mklev = save_in_mklev;
-                break;
-            }
-            case ANTIMAGIC: // C `:610–612` handled elsewhere
-            case REFLECTING:
-            case PROTECTION:
-                break;
-            case CLAIRVOYANT: // C `:614–616` no effect for monsters
-            case STEALTH:
-            case TELEPAT:
-                break;
-            case LEVITATION: // C `:618–620` should-have-effect, unimplemented
-            case FLYING:
-            case WWALKING:
-                break;
-            case DISPLACED: // C `:622–624` maybe-should, don't
-            case FUMBLING:
-            case JUMPING:
-                break;
-            default: // C `:629–630`
-                mon.mextrinsics = (mon.mextrinsics | 0) | res_to_mr(which);
-                break;
-            }
-        } else {
-            switch (which) { // C `:634–683`
-            case INVIS: // C `:635–637`
-                mon.minvis = mon.perminvis;
-                break;
-            case FAST: { // C `:638–644`
-                const save_in_mklev = game.in_mklev;
-                if (silently) game.in_mklev = true;
-                tail = mon_adjust_speed(mon, 0, obj);
-                game.in_mklev = save_in_mklev;
-                break;
-            }
-            case FIRE_RES: // C `:646–680` rescan worn gear for an
-            case COLD_RES: // alternate source (smock dual pass `:655–676`
-            case SLEEP_RES: // comment); clear only when none confers it
-            case DISINT_RES:
-            case SHOCK_RES:
-            case POISON_RES:
-            case ACID_RES:
-            case STONE_RES: {
-                const mask = res_to_mr(which); // C `:667`
-                let otmp; // C `:669–677`
-                for (otmp = mon.minvent; otmp; otmp = otmp.nobj) {
-                    if (otmp === obj || !otmp.owornmask) continue; // C `:669`
-                    if ((game.objects?.[otmp.otyp]?.oc_oprop | 0) === which) break; // C `:671–672`
-                    if (altprop(otmp) === which) break; // C `:675–676`
+        while (true) { // C `again:` `:595`
+            if (on) {
+                switch (which) { // C `:597–632`
+                case INVIS: // C `:598–599`
+                    mon.minvis = !mon.invis_blkd;
+                    break;
+                case FAST: { // C `:601–607`
+                    const save_in_mklev = game.in_mklev;
+                    if (silently) game.in_mklev = true;
+                    yield mon_adjust_speed(mon, 0, obj);
+                    game.in_mklev = save_in_mklev;
+                    break;
                 }
-                if (!otmp) // C `:678–679`
-                    mon.mextrinsics = (mon.mextrinsics | 0) & ~mask;
-                break;
+                case ANTIMAGIC: // C `:610–612` handled elsewhere
+                case REFLECTING:
+                case PROTECTION:
+                    break;
+                case CLAIRVOYANT: // C `:614–616` no effect for monsters
+                case STEALTH:
+                case TELEPAT:
+                    break;
+                case LEVITATION: // C `:618–620` should-have-effect, unimplemented
+                case FLYING:
+                case WWALKING:
+                    break;
+                case DISPLACED: // C `:622–624` maybe-should, don't
+                case FUMBLING:
+                case JUMPING:
+                    break;
+                default: // C `:629–630`
+                    mon.mextrinsics = ((mon.mextrinsics | 0) | (res_to_mr(which) & 0xffff)) & 0xffff;
+                    break;
+                }
+            } else {
+                switch (which) { // C `:634–683`
+                case INVIS: // C `:635–637`
+                    mon.minvis = mon.perminvis;
+                    break;
+                case FAST: { // C `:638–644`
+                    const save_in_mklev = game.in_mklev;
+                    if (silently) game.in_mklev = true;
+                    yield mon_adjust_speed(mon, 0, obj);
+                    game.in_mklev = save_in_mklev;
+                    break;
+                }
+                case FIRE_RES: // C `:646–680` rescan worn gear for an
+                case COLD_RES: // alternate source (smock dual pass `:655–676`
+                case SLEEP_RES: // comment); clear only when none confers it
+                case DISINT_RES:
+                case SHOCK_RES:
+                case POISON_RES:
+                case ACID_RES:
+                case STONE_RES: {
+                    const mask = res_to_mr(which) & 0xff; // C uchar mask `:585`, `:667`
+                    let otmp; // C `:669–677`
+                    for (otmp = mon.minvent; otmp; otmp = otmp.nobj) {
+                        if (otmp === obj || !otmp.owornmask) continue; // C `:669`
+                        if ((game.objects?.[otmp.otyp]?.oc_oprop | 0) === which) break; // C `:671–672`
+                        if (altprop(otmp) === which) break; // C `:675–676`
+                    }
+                    if (!otmp) // C `:678–679`
+                        mon.mextrinsics = ((mon.mextrinsics | 0) & ~mask) & 0xffff;
+                    break;
+                }
+                default: // C `:681–682`
+                    break;
+                }
             }
-            default: // C `:681–682`
-                break;
+            // C `:686–690`: the alchemy-smock altprop takes a second pass.
+            if (altwhich && which !== altwhich) {
+                which = altwhich;
+                continue;
             }
+            break;
         }
-        // C `:686–690` smock/apron second pass; FAST is never an altwhich
-        // (altprop is nonzero only for ALCHEMY_SMOCK → poison/acid), so at
-        // most one FAST tail exists and plain assignment keeps C order.
-        if (altwhich && which !== altwhich) {
-            which = altwhich;
-            continue;
-        }
-        break;
-    }
 
-    return update_mon_maybe_blocks(mon, obj, on, silently, unseen, tail);
+        return update_mon_maybe_blocks(mon, obj, on, silently, unseen);
+    })());
 }
 
-/**
- * C ref: worn.c update_mon_extrinsics `:693–711` (maybe_blocks label).
- * owornmask was cleared by the caller (`:694–696`), so the blanket ~0L
- * mask stands in for the worn slot. Returns the floated async tail (speed
- * pline and/or steed dismount) for async callers to await.
- */
-function update_mon_maybe_blocks(mon, obj, on, silently, unseen, tail) {
-    switch (w_blocks(obj, ~0)) { // C `:697` (~0L ≡ all-bit mask)
-    case INVIS: // C `:698–701`
+/** C worn.c:693–711: maybe_blocks label shared by the early goto and loop. */
+function update_mon_maybe_blocks(mon, obj, on, silently, unseen) {
+    switch (w_blocks(obj, ~0)) {
+    case INVIS:
         mon.invis_blkd = on ? 1 : 0;
         mon.minvis = on ? 0 : mon.perminvis;
         break;
-    default: // C `:702–703`
+    default:
         break;
     }
-
-    if (!on && mon === game.u?.usteed && (obj.otyp | 0) === SADDLE) // C `:706–707`
-        tail = tail ? tail.then(() => dismount_steed(DISMOUNT_FELL)) : dismount_steed(DISMOUNT_FELL);
-
-    /* C `:709–710` if couldn't see it but now can, or vice versa */
-    if (!silently && (unseen !== !canseemon(mon))) // C `:710–711`
-        newsym(mon.mx, mon.my);
-
-    return tail ?? undefined;
+    const finish = () => {
+        if (!silently && (unseen !== !canseemon(mon))) newsym(mon.mx, mon.my);
+    };
+    if (!on && mon === game.u?.usteed && (obj.otyp | 0) === SADDLE) {
+        return dismount_steed(DISMOUNT_FELL).then(finish);
+    }
+    return finish();
 }
 
 /**

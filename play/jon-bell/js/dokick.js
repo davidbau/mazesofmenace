@@ -1662,6 +1662,12 @@ async function really_kick_object(x, y, kickedobj) {
         mon = m_at(bx, by);
         if (mon)
             break;
+        /* C zap.c:4076-4080 bhit(): a wall/stone or closed door stops the
+         * object and bhitpos backs up one square. */
+        if (!ZAP_POS(bloc.typ | 0) || closed_door(bx, by)) {
+            bx -= dxTo; by -= dyTo;
+            break;
+        }
     }
     g.gb = g.gb || {};
     g.gb.bhitpos = { x: bx, y: by };
@@ -1805,16 +1811,10 @@ export async function dokick_resolve() {
          * called off before kick_monster -- the pet arm below is not reached. */
         if (!await maybe_kick_monster(mtmp, x, y))
             return (g.context.move ? ECMD_TIME : ECMD_OK);
-        /* SCOPED, and NOW AFTER the confirmation rather than in front of it: a
-         * TAME target that survives maybe_kick_monster keeps the old
-         * no-resolution early return.  kickdmg's pet arm is abuse_dog()
-         * (dog.c:1145), whose yelp() and m_unleash() are still throwing stubs
-         * here, so routing a pet through kick_monster would turn a silent no-op
-         * into a halt.  Named, not hidden behind an "unreached" claim. */
-        if (mtmp.mtame) {
-            g.context.move = 1;
-            return ECMD_TIME;
-        }
+        /* A TAME target that survives maybe_kick_monster goes on to
+         * kick_monster like any other (dokick.c:1383 onward); kickdmg's pet arm
+         * is abuse_dog() (dog.c:1381), and yelp()/m_unleash() are real bodies
+         * now (js/mhitm.js yelp, js/dog.js m_unleash). */
     }
     /* C ref: dokick.c:1383-1384 — wake_nearby(FALSE); u_wipe_engr(2);
      * wake_nearby is RNG-free here (it only clears msleeping / disturbs buried

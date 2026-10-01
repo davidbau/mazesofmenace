@@ -7,8 +7,9 @@
 // those are remembered *cells* here, not int ids, because this port's
 // map memory stores rendered cells). `unplacebc` refuses a live
 // `bcrestriction`; the core is what covet calls after the pin.
-// Named omissions: BREADCRUMBS Placebc/Unplacebc/Lift_covet
-// (config.h leaves BREADCRUMBS undefined); **ballfall D-1778**
+// BREADCRUMBS Unplacebc/Lift_covet wrappers are available explicitly;
+// config.h leaves BREADCRUMBS undefined for the ordinary callers.
+// Named omissions: BREADCRUMBS Placebc; **ballfall D-1778**
 // (C `:42–67`; `hard_helmet` is one export now, `js/do_wear.js`);
 // **drop_ball D-2329** (C `:881–961`; callers do.c:834 dropz +
 // dothrow.c:1840 throw land wired); litter hitfloor/shop/impact
@@ -546,6 +547,44 @@ export async function lift_covet_and_placebc(pin) {
     const u = game.u || {};
     const uchain = u.uchain;
     if (uchain && uchain.where != null && uchain.where !== OBJ_FREE) {
+        await impossible('bc already placed?');
+        return;
+    }
+    await placebc_core();
+}
+
+/**
+ * C ref: ball.c:287–303, BREADCRUMBS Unplacebc. Unlike the ordinary
+ * unplacebc wrapper, a restriction logs a diagnostic and still unplaces.
+ * C's zero-initialized static breadcrumb structs live on the game state.
+ * config.h:644 disables the macro callers in the contest build.
+ */
+export async function Unplacebc(funcnm, linenum) {
+    const bcpbreadcrumbs = game.bcpbreadcrumbs ||= {
+        in_effect: false, funcnm: null, linenum: 0,
+    };
+    const bcubreadcrumbs = game.bcubreadcrumbs ||= {
+        in_effect: false, funcnm: null, linenum: 0,
+    };
+    // C :290–297: the restricted panicbuf/paniclog diagnostic is omitted.
+    // It has no gameplay effect or early return; the writes below follow it.
+    bcpbreadcrumbs.in_effect = false;
+    bcubreadcrumbs.in_effect = true;
+    bcubreadcrumbs.funcnm = funcnm;
+    bcubreadcrumbs.linenum = linenum | 0;
+    await unplacebc_core();
+}
+
+/**
+ * C ref: ball.c:327–346, BREADCRUMBS Lift_covet_and_placebc.
+ * NH_DEVEL_STATUS == NH_STATUS_RELEASED compiles out :330–338 paniclog;
+ * funcnm/linenum are retained for the C signature. This wrapper does not
+ * change breadcrumbs: only the placement core clears the restriction.
+ */
+export async function Lift_covet_and_placebc(pin, funcnm, linenum) {
+    if (!check_restriction(pin | 0)) return;
+    const uchain = game.u?.uchain;
+    if (uchain && uchain.where !== OBJ_FREE) {
         await impossible('bc already placed?');
         return;
     }

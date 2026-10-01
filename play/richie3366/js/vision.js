@@ -95,6 +95,31 @@ const cs_rmax0 = new Int16Array(ROWNO).fill(0);
 const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax1 = new Int16Array(ROWNO).fill(0);
 
+/**
+ * C ref: vision.c:121–142 vision_init, called before newgame or restore.
+ * The arrays above already contain the row references that C assigns to
+ * cs_rows0, cs_rows1 and viz_clear_rows. cs_buf0/1 are those row-pointer
+ * arrays, backed by the two could_see planes; viz_clear is read directly.
+ */
+export function vision_init() {
+    game.viz_array = cs_buf0;
+    game.active_buf = 0; // JS alias for the current C could-see plane.
+    game._viz_rmin = cs_rmin0;
+    game._viz_rmax = cs_rmax0;
+
+    game.vision_full_recalc = 0;
+    for (let i = 0; i < ROWNO; i++) {
+        cs_buf0[i].fill(0);
+        cs_buf1[i].fill(0);
+    }
+
+    view_init();
+}
+
+// C ref: vision.c:1651–1653 — Algorithm C needs no further initialization.
+export function view_init() {
+}
+
 function mark_visible_range(row, left, right) {
     if (left > right) return;
     // C: vis_func path (do_clear_area off-hero) vs set_cs COULD_SEE
@@ -727,7 +752,7 @@ function left_side(row, left_mark, right, limitsIdx) {
  * when C passes a null limit pointer. C leaves `vis_func` / `varg` set;
  * the next `view_from` overwrites them.
  *
- * `is_clear` is `viz_clear_rows[row][col]` and `view_init` points each
+ * `is_clear` is `viz_clear_rows[row][col]` and `vision_init` points each
  * row at `viz_clear[row]`, so the JS reads `viz_clear` directly.
  */
 function view_from(srow, scol, loc_cs_rows, left_most, right_most, range = 0,

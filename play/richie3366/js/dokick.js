@@ -61,7 +61,7 @@ import {
     maybe_mnexto,
 } from './mon.js';
 import { abuse_dog } from './dog.js';
-import { monflee, set_apparxy, maybe_unhide_at } from './monmove.js';
+import { monflee, set_apparxy, maybe_unhide_at, get_iter_mons_xy } from './monmove.js';
 import { m_in_out_region } from './region.js';
 import { mon_nam, Monnam, christen_orc, free_oname, hliquid } from './do_name.js';
 import { martial_bonus, use_skill, special_dmgval } from './weapon.js';
@@ -372,18 +372,6 @@ async function get_iter_mons(bfunc) {
         if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
         if ((mtmp.mx | 0) <= 0) continue;
         if (await bfunc(mtmp)) return mtmp;
-    }
-    return null;
-}
-
-/**
- * C ref: mon.c get_iter_mons_xy — first living mon where bfunc(mtmp,x,y).
- */
-async function get_iter_mons_xy(bfunc, x, y) {
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
-        if ((mtmp.mx | 0) <= 0) continue;
-        if (await bfunc(mtmp, x, y)) return mtmp;
     }
     return null;
 }
