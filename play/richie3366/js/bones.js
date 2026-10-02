@@ -39,6 +39,7 @@ import { mons, monsterNames, SPECIAL_PM } from './monsters.js';
 import { cant_revive } from './zap.js';
 import { rest_regions } from './region.js';
 import { load_exclusions } from './dungeon.js';
+import { place_monster } from './steed.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
@@ -658,11 +659,23 @@ function getlev_bones(payload) {
     // ghostly re-link via restmonchn set_residency is a separate gap).
     rest_rooms({ nroom: map.nroom, rooms: map.rooms });
     game.fmon = fmon;
+    // C restore.c getlev ghostly `:1177` — memset level.monsters
+    // occupancy: the detached level's grid must not survive under the
+    // bones fmon (stale cells read back as phantom occupants via m_at).
+    game._level_monsters = new Map();
     game.fobj = info.fobj;
     game.billobjs = info.billobjs;
     game.ftrap = map.traps;
     game.head_engr = rest_engravings(info.head_engr); // C restore.c:1174 ghostly getlev.
     rest_worm(info.worm_data); // C restore.c:1147 ghostly getlev → rest_worm.
+    // C restore.c getlev ghostly `:1178–1198` — place each restored mon
+    // (steed/dead/isok guards inside place_monster match C's; seg cells
+    // stay rest_worm's output above). Residency / hideunder stay as this
+    // path handles them (see the rest_rooms gap note above).
+    for (const mtmp of fmon) {
+        if (!mtmp) continue;
+        place_monster(mtmp, mtmp.mx, mtmp.my);
+    }
     game.stairs = info.stairs;
     rebuildObjectsAt(info.fobj);
     // C restore.c getlev `:1225` rest_regions ghostly — install the bones

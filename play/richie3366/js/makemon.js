@@ -1563,9 +1563,13 @@ export function mgender_from_permonst(mtmp, mdat) {
 }
 
 /**
- * C ref: makemon.c mbirth_limit — Nazgul 9 / Erinys 3 / else MAXMONNO.
+ * C ref: makemon.c:1541–1551 `mbirth_limit(int mndx)` — whole body.
+ * Canonical export (C home file). High priests of a deity keep the
+ * default limit (aligned priests grow into them); Nazgul 9, Erinys 3,
+ * else MAXMONNO. C callers: dog.c:117 pick_familiar_pm, makemon.c:961
+ * propagate, mon.c:5298 newcham.
  */
-function mbirth_limit(mndx) {
+export function mbirth_limit(mndx) {
     const PM_NAZGUL = monsterNames.indexOf('PM_NAZGUL');
     const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
     if (mndx === PM_NAZGUL) return 9;
@@ -3468,14 +3472,10 @@ export function makemon(mdat, x, y, mmflags = 0) {
         || In_V_tower(game.u?.uz) || In_quest(game.u?.uz))
         mtmp.mwandexp = true;
 
-    // C: makemon.c:1295–1301 — grid place deferred (see map): writing
-    // the 2D occupancy here regresses the fortress (dismount More +
-    // missing death draws) because normal movement leaves stale grid
-    // heads (mx/my-only; level readers ignore them but the extra birth
-    // cells shift later dismount/enexto behaviour). m_at falls back to
-    // fmon so the fortress holds without the grid write; a
-    // movement-parity iteration (remove+place on every move) lands first.
-    // place_monster(mtmp, x, y) — re-queue as its own Open row.
+    // C: makemon.c:1295 — place_monster(mtmp, x, y) before mcansee
+    // (D-1565 grid; m_move/dog_move remove+place parity lands with it so
+    // normal movement clears the birth cell like C).
+    place_monster(mtmp, x, y);
     mtmp.mcansee = 1;
     mtmp.mcanmove = 1;
     mtmp.mgenmklev = game.in_mklev ? 1 : 0;

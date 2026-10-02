@@ -87,7 +87,6 @@ import {
     ROLL,
     ROLLING_BOULDER_TRAP,
     RUST_TRAP,
-    SLIMED,
     SLEEP_RES,
     SEE_INVIS,
     M_SEEN_SLEEP,
@@ -2158,12 +2157,8 @@ export async function dofiretrap(box, rawEnv = {}) {
     else
         await losehp(num, towerOfFlame, KILLED_BY_AN, state, env);
 
-    // timeout.c:burn_away_slime() is a void helper. Its ordinary path is a
-    // no-op; the active make_slimed() branch remains a named source gap.
-    if (u.uprops?.[SLIMED]?.intrinsic)
-        note_unported('timeout.c burn_away_slime');
-    else
-        burn_away_slime(state);
+    // trap.c calls burn_away_slime before the remaining fire-trap effects.
+    await burn_away_slime(state, env);
 
     if (await burnarmor(state.youmonst, env)
         || random.rn2(3)) {
@@ -3863,8 +3858,13 @@ export function preflight_dotrap(trap, state = game, trflags = 0) {
             );
         }
     }
-    if (trap.tseen && trap.ttyp !== WEB && trap.ttyp !== LANDMINE
-        && trap.ttyp !== ROCKTRAP
+    // trap.c:dotrap() treats FORCETRAP, FAILEDUNTRAP, and fixed tele traps
+    // as forcetrap before the seen-trap escape gate. This preflight runs before
+    // nomul(0), so compute the same pure predicate without applying that write.
+    const forcetrap = (trflags & (FORCETRAP | FAILEDUNTRAP)) !== 0
+        || fixed_tele_trap(trap);
+    if (trap.tseen && !forcetrap && trap.ttyp !== WEB
+        && trap.ttyp !== LANDMINE && trap.ttyp !== ROCKTRAP
         && trap.ttyp !== ANTI_MAGIC && trap.ttyp !== STATUE_TRAP
         && !pitTrap && !is_hole(trap.ttyp)) {
         throw new UnsupportedHeroMoveBoundaryError(

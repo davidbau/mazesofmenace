@@ -73,6 +73,7 @@ import { touch_artifact_mon, bare_artifactname } from './artifact.js';
 import { quest_talk, quest_stat_check } from './quest.js';
 import { stairway_at, u_on_newpos } from './mklev.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
+import { place_monster } from './steed.js';
 import { check_gear_next_turn, extract_from_minvent } from './worn.js';
 import { picking_lock } from './lock.js';
 import { mbodypart } from './polyself.js';
@@ -2354,10 +2355,16 @@ export async function m_move(mtmp, after) {
     // C: m_postmove_effect before place (Hezrou/Steam at old mx/my)
     await m_postmove_effect(mtmp);
 
-    // C: place_monster + msg_mon_movement then worm_move /
-    // maybe_unhide_at + mon_track_add then postmov
-    mtmp.mx = nix;
-    mtmp.my = niy;
+    // C monmove.c:2051–2053 — remove_monster(omx,omy) +
+    // place_monster(nix,niy) then msg_mon_movement, worm_move /
+    // maybe_unhide_at + mon_track_add then postmov. C rm.h
+    // remove_monster clears only the grid cell; the OFFMAP fmon mark
+    // in steed.js remove_monster is for mons leaving the map (gulpmm),
+    // so a mid-move clear must not mark a stacked non-mover — clear
+    // only this mon's own cell (mixed-mode guard; C is always exact).
+    if (game._level_monsters?.get(`${omx},${omy}`) === mtmp)
+        game._level_monsters.delete(`${omx},${omy}`);
+    place_monster(mtmp, nix, niy);
     await msg_mon_movement(mtmp, omx, omy);
     // C: reconnect dummy head as a visible seg; grow or shrink (D-1491)
     if (mtmp.wormno) worm_move(mtmp);

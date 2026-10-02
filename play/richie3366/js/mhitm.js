@@ -2632,7 +2632,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                     if (canseemon(magr)) {
                         await pline_mon(
                             magr,
-                            `${Monnam(magr)} ${makeplural('stagger')}...`,
+                            `${Monnam(magr)} ${makeplural(stagger(magr.data, 'stagger'))}...`,
                         );
                     }
                 }

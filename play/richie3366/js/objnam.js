@@ -61,6 +61,7 @@ import {
     FIRE_RES,
 } from './const.js';
 import { currency } from './invent.js';
+import { bogon_is_pname } from './do_name.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const POT_OIL = objectNames.indexOf('POT_OIL');
@@ -1519,10 +1520,8 @@ function unpadline_objnam(line) {
     return String(line ?? '').replace(/_+$/, '');
 }
 
-/** C ref: do_name.c bogon_is_pname — "-+=" personal; "_|" type. */
-function bogon_is_pname_objnam(code) {
-    return !!code && '-+='.includes(code);
-}
+/* do_name.c bogon_is_pname lives in js/do_name.js (C home); the local
+ * bogon_is_pname_objnam duplicate was deleted for the canonical import. */
 
 /**
  * C ref: rumors.c free_CapMons `:938–954` — release the capitalized-name
@@ -1603,7 +1602,7 @@ function init_CapMons() {
                     startp = xbuf.slice(1);
                 }
                 if (startp && startp[0] !== startp[0].toLowerCase() // C :890
-                    && !bogon_is_pname_objnam(code)) { // C :890 `!bogon_is_pname(code)`
+                    && !bogon_is_pname(code)) { // C :890 `!bogon_is_pname(code)`
                     if (pass === 2) // C :891-892
                         CapMons[CapMonstCnt + CapBogonCnt] = startp; // C dupstr folded: JS strings are immutable
                     ++CapBogonCnt; // C :893

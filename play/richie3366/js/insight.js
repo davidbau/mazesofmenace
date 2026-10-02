@@ -94,6 +94,7 @@ import { an, just_an, makeplural } from './objnam.js';
 import { upstart, ordin, strncmpi, depth, lowc, strstri, strsubst } from './hacklib.js';
 import { align_str, align_gname, u_gname, rank_of, rank_to_xlev, genders } from './roles.js';
 import { x_monnam, a_monnam, pmname } from './do_name.js';
+import { mon_aligntyp } from './priest.js';
 import { newuexp } from './exper.js';
 import { SCORE_ON_BOTL, botl_score } from './botl.js';
 import { find_mac } from './mhitm.js';
@@ -1656,20 +1657,8 @@ function size_str(msize) {
     }
 }
 
-/**
- * C ref: priest.c mon_aligntyp :280–290 — ispriest ? EPRI shralign
- * : isminion ? EMIN min_align : data.maligntyp; A_NONE passthrough,
- * else sign → LAWFUL/CHAOTIC/NEUTRAL. Caller: insight.c mstatusline :3277.
- */
-function mon_aligntyp(mon) {
-    const algn = mon?.ispriest ? (EPRI(mon)?.shralign ?? 0)
-        : mon?.isminion ? (EMIN(mon)?.min_align ?? 0)
-            : (mon?.data?.maligntyp ?? 0);
-    if (algn === A_NONE) return A_NONE;
-    if (algn > 0) return A_LAWFUL;
-    if (algn < 0) return A_CHAOTIC;
-    return A_NEUTRAL;
-}
+/* priest.c mon_aligntyp lives in js/priest.js (C home); the local clone
+ * was deleted and mstatusline imports the canonical export. */
 
 /**
  * C ref: insight.c mstatusline :3275–3398 — stethoscope/probe monster status.

@@ -91,6 +91,7 @@ import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
 import { new_mgivenname } from './restore.js';
 import { nh_getenv } from './mail.js';
+import { priestname } from './priest.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
@@ -288,8 +289,14 @@ export function bogusmon(codeOut = null) {
     return mnam;
 }
 
-/** C ref: do_name.c bogon_is_pname */
-function bogon_is_pname(code) {
+/**
+ * C ref: do_name.c bogon_is_pname `:1415–1420` — bogon code is a
+ * personal-name marker (`-+='). Canonical export (C home). C callers:
+ * do_name.c:955 (x_monnam name_at_start, below), priest.c:323
+ * (priestname, js/priest.js import), rumors.c:890 (objnam.js CapMons
+ * pass, rewired to this export); do_name.c:1362 is a comment.
+ */
+export function bogon_is_pname(code) {
     return !!code && '-+='.includes(code);
 }
 
@@ -907,78 +914,9 @@ export function coyotename(mtmp) {
     return `${base} - ${pick}`;
 }
 
-/**
- * C ref: priest.c mon_aligntyp `:280–289` — epri.shralign / emin.min_align
- * else mdat.maligntyp; A_NONE stays; else sign → LAWFUL/CHAOTIC/NEUTRAL.
- */
-export function mon_aligntyp_nam(mon) {
-    let algn = mon?.ispriest ? (EPRI(mon)?.shralign)
-        : mon?.isminion ? (EMIN(mon)?.min_align)
-          : (mon?.data?.maligntyp);
-    algn = algn | 0;
-    if (algn === A_NONE) return A_NONE;
-    return (algn > 0) ? A_LAWFUL : (algn < 0) ? A_CHAOTIC : A_NEUTRAL;
-}
-
-/**
- * C ref: priest.c priestname `:302–367` — aligned priest / minion name
- * with `" of "` + `halu_gname(mon_aligntyp)`. Hallu `rndmonnam` /
- * poohbah; high priestess; renegade; Astral conceal unless
- * `reveal_high_priest` / adjacent / gameover.
- */
-function priestname(mon, article, reveal_high_priest) {
-    const do_hallu = Hallucination();
-    const mndx = mon?.data?.mndx ?? (mon?.mnum | 0);
-    const aligned_priest = mndx === PM_ALIGNED_CLERIC;
-    const high_priest = mndx === PM_HIGH_CLERIC;
-    const whatcode = { c: '' };
-    let what = do_hallu ? rndmonnam(whatcode) : mon_pmname(mon);
-
-    if (!mon.ispriest && !mon.isminion) return what;
-
-    if (mon.ispriest || aligned_priest || high_priest) {
-        what = do_hallu ? 'poohbah' : (mon.female ? 'priestess' : 'priest');
-    }
-
-    let pname = '';
-    if (article !== ARTICLE_NONE && (!do_hallu || !bogon_is_pname(whatcode.c))) {
-        if (article === ARTICLE_YOUR || (article === ARTICLE_A && high_priest)) {
-            article = ARTICLE_THE;
-        }
-        if (article === ARTICLE_THE) {
-            pname = 'the ';
-        } else if (what === 'Angel') {
-            pname = 'an ';
-        } else {
-            pname = just_an(what);
-        }
-    }
-    if (mon.minvis) {
-        if (pname === 'a ') pname = 'an ';
-        pname += 'invisible ';
-    }
-    if (mon.isminion && EMIN(mon)?.renegade) {
-        if (pname === 'an ' && !mon.minvis) pname = 'a ';
-        pname += 'renegade ';
-    }
-
-    if (mon.ispriest || aligned_priest) {
-        if (high_priest) pname += do_hallu ? 'grand ' : 'high ';
-    } else if (mon.mtame && what.toLowerCase() === 'angel') {
-        pname += 'guardian ';
-    }
-
-    pname += what;
-    const u = game.u || {};
-    const next2u = distmin(u.ux | 0, u.uy | 0, mon.mx | 0, mon.my | 0) <= 1;
-    if (do_hallu || !high_priest || reveal_high_priest
-        || !Is_astralevel(u.uz) || next2u
-        || game.program_state?.gameover) {
-        pname += ' of ';
-        pname += align_gname(game.urole, mon_aligntyp_nam(mon));
-    }
-    return pname;
-}
+/* priest.c mon_aligntyp / priestname live in js/priest.js (C home);
+ * the do_name.js clones (mon_aligntyp_nam, priestname) were deleted and
+ * x_monnam imports the canonical priestname. */
 
 /**
  * C ref: do_name.c x_monnam `:826–1032` — generic monster naming.

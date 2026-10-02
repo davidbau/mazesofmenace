@@ -1537,8 +1537,11 @@ function is_hero_spell(type) {
     return (type | 0) >= ZT_SPELL_0 && (type | 0) < 20;
 }
 
-/** C ref: zap.c exclam */
-function exclam(force) {
+/**
+ * C ref: zap.c exclam `:3546–3553` — punctuation by damage force.
+ * Canonical export; mthrowu/uhitm/spell/muse import it (no local clones).
+ */
+export function exclam(force) {
     if (force < 0) return '?';
     if (force <= 4) return '.';
     return '!';

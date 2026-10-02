@@ -1042,6 +1042,26 @@ export async function nh_timeout() {
     if (intr_bits(u, SLEEPY, 'HSleepy') & TIMEOUT) {
         await sleep_dialogue();
     }
+    /* C timeout.c :641–648 — mtimedone tick before the uprops `--` loop
+     * (`:668+`), not after it: a polymon() during uprops expiry (slimed
+     * → green slime, `:686–688`) sets mtimedone for future turns — the
+     * set-turn must not decrement it (Tourist-92095 rehumanized one
+     * turn early, unblinding into a missed mfind0 exercise draw).
+     * ucreamed (`:649`) / ugallop (named omissions above) stay unported. */
+    if (u.mtimedone) {
+        u.mtimedone = (u.mtimedone | 0) - 1;
+        if (!(u.mtimedone | 0)) {
+            if (hero_unchanging(u)) {
+                const mlvl = game.youmonst?.data?.mlevel | 0;
+                u.mtimedone = rnd(100 * mlvl + 1);
+            } else if (is_were(game.youmonst?.data)) {
+                // C: you_unwere(FALSE) — polycontrl may ask rehumanize
+                await you_unwere(false);
+            } else {
+                await rehumanize();
+            }
+        }
+    }
     // C: for (upp = u.uprops; …) if ((intrinsic & TIMEOUT) && !(--intrinsic & TIMEOUT))
 
     // C HWounded_legs ≡ uprops[WOUNDED_LEGS].intrinsic (youprop.h:136,
@@ -1424,22 +1444,6 @@ export async function nh_timeout() {
                 const sleeptime = rnd(20);
                 await fall_asleep(-sleeptime, true);
                 incr_itimeout_HSleepy(sleeptime + rnd(100));
-            }
-        }
-    }
-
-    // C: u.mtimedone && !--u.mtimedone → Unchanging refresh / were / rehumanize
-    if (u.mtimedone) {
-        u.mtimedone = (u.mtimedone | 0) - 1;
-        if (!(u.mtimedone | 0)) {
-            if (hero_unchanging(u)) {
-                const mlvl = game.youmonst?.data?.mlevel | 0;
-                u.mtimedone = rnd(100 * mlvl + 1);
-            } else if (is_were(game.youmonst?.data)) {
-                // C: you_unwere(FALSE) — polycontrl may ask rehumanize
-                await you_unwere(false);
-            } else {
-                await rehumanize();
             }
         }
     }

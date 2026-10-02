@@ -185,6 +185,10 @@ import { earth_sense } from './cmd.js';
 // imports.mjs --can mklev.js uhitm.js defsym_explanation: hoisted, cycle-safe.
 // C mkstairs impossible uses defsyms[glyph_to_cmap(glyph)].explanation.
 import { defsym_explanation, DEFSYM_EXPLANATION } from './uhitm.js';
+// imports.mjs --can mklev.js priest.js p_coaligned: VERDICT SAFE (hoisted
+// function, call-time use only; priest.js has no mklev edge).
+// C priest.c:270 priestini robe arm calls the canonical p_coaligned.
+import { p_coaligned } from './priest.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -28512,14 +28516,7 @@ function which_armor_local(mtmp, mask) {
     return null;
 }
 
-/**
- * C ref: priest.c p_coaligned — hero align vs priest shrine align.
- */
-function p_coaligned(priest) {
-    const shralign = priest?.mextra?.epri?.shralign;
-    const algn = shralign != null ? (shralign | 0) : (priest?.data?.maligntyp | 0);
-    return (game.u?.ualign?.type | 0) === (algn | 0);
-}
+/* p_coaligned: canonical import from ./priest.js (C priest.c:270, below). */
 
 /**
  * C ref: priest.c priestini — place aligned/high cleric beside shrine,
@@ -34228,7 +34225,7 @@ function set_crosswall(x, y) {
     return wmode;
 }
 
-function xy_set_wall_state(x, y) {
+export function xy_set_wall_state(x, y) {
     const lev = game.level?.at(x, y);
     if (!lev) return;
     let wmode;

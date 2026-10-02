@@ -63,7 +63,7 @@ import {
 import { dropy, make_blinded, flooreffects } from './do.js';
 import {
     learnwand, lightdamage, buzz, dobuzz, unturn_you, unturn_dead, resist,
-    zhitm, is_ice, bhito,
+    zhitm, is_ice, bhito, exclam,
 } from './zap.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
@@ -1809,9 +1809,8 @@ async function muse_unslime(mon, obj, trap, by_you) {
                 await monkilled(mon, 'fire', AD_FIRE);
             }
         } else if (vis) {
-            /* non-fatal damage occurred; C zap.c exclam(): <0 "?", <=4 ".", else "!" */
-            const bang = dmg < 0 ? '?' : dmg <= 4 ? '.' : '!';
-            await pline_mon(mon, `${Monnam(mon)} is burned${bang}`);
+            /* non-fatal damage occurred (C muse.c:3229 via zap.c exclam) */
+            await pline_mon(mon, `${Monnam(mon)} is burned${exclam(dmg)}`);
         }
     }
     if (vis) {

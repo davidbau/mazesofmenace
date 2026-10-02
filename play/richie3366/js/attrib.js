@@ -205,17 +205,22 @@ export function get_strength_str() {
     return String(st);
 }
 
-// C ref: attrib.c exercise()
+/* C ref: attrib.c exercise `:489–518` — INT/CHA + poly guards, then
+ * |AEXE| < AVAL (`:486`, 50) gates `(rn2(19) > ACURR) : -rn2(2)`.
+ * Named omissions: debugpline0/3 (`:491`, `:510–514`, D_DEBUG-only);
+ * the `:516–517` encumber_msg() tail for STR/CON (message-only, no RNG;
+ * async pline cannot run in this sync 297-site fan-out — same shape as
+ * the redist_attr note below: a caller-side flush if ever observed). */
 export function exercise(i, inc_or_dec) {
     if (i === A_INT || i === A_CHA) return;
     const u = game.u;
-    // C: no physical exercise while polymorphed (WIS still allowed)
+    // C `:496`: no physical exercise while polymorphed (WIS still allowed)
     if (Upolyd(u) && i !== A_WIS) return;
     if (!u.aexe) u.aexe = { a: [0, 0, 0, 0, 0, 0] };
     const ax = u.aexe.a[i] || 0;
-    const AVAL = 50; // attrib.h
+    const AVAL = 50; // C attrib.c:486 tune value for exercise gains
     if (Math.abs(ax) < AVAL) {
-        // C: AEXE(i) += (inc_or_dec) ? (rn2(19) > ACURR(i)) : -rn2(2);
+        // C `:509`: AEXE(i) += (inc_or_dec) ? (rn2(19) > ACURR(i)) : -rn2(2);
         if (inc_or_dec) {
             u.aexe.a[i] = ax + (rn2(19) > acurr(i) ? 1 : 0);
         } else {

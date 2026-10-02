@@ -5,16 +5,18 @@
 // Named omissions: mapseen_temple; SetVoice pitch in intemple.
 
 import { game } from './gstate.js';
-import { rn2, rn1, d } from './rng.js';
+import { rn2, rn1, d, rn2_on_display_rng } from './rng.js';
 import {
     EPRI, EMIN, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE, AM_MASK,
     Amask2align, ACH_TMPL, In_endgame,
     CLAIRVOYANT, PROTECTION, FROMOUTSIDE, INTRINSIC, LL_CONDUCT,
     IS_DOOR, u_at, BZ_OFS_AD, BZ_M_SPELL,
+    ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
+    A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL, Is_astralevel,
 } from './const.js';
-import { pline, You_feel, canseemon, canspotmon, verbalize, newsym, Hallucination } from './display.js';
+import { pline, You_feel, canseemon, canspotmon, verbalize, newsym, Hallucination, impossible } from './display.js';
 import { makemon, set_malign, newemin } from './makemon.js';
-import { mongone, wakeup, setmangry } from './mon.js';
+import { mongone, wakeup, setmangry, m_next2u } from './mon.js';
 import { mons, is_rider } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { in_rooms, nomul } from './hack.js';
@@ -27,9 +29,13 @@ import { bribe } from './minion.js';
 import { incr_itimeout } from './potion.js';
 import { currency } from './invent.js';
 import { mhis } from './mondata.js';
-import { Monnam, mon_nam, s_suffix } from './do_name.js';
+import { Monnam, mon_nam, s_suffix, rndmonnam, mon_pmname, bogon_is_pname, Hallucination as do_name_Hallucination } from './do_name.js';
 import { linedup } from './mthrowu.js';
 import { buzz } from './zap.js';
+import { just_an } from './objnam.js';
+import { align_gname, roles } from './roles.js';
+import { HALU_GODS } from './pray.js';
+import { assign_level } from './do.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
@@ -134,13 +140,147 @@ export function reset_hostility(roamer) {
     newsym(roamer.mx | 0, roamer.my | 0);
 }
 
-/** C ref: priest.c p_coaligned — shrine align matches hero. */
+/**
+ * C ref: priest.c mon_aligntyp `:280–289` — ispriest ? EPRI shralign
+ * : isminion ? EMIN min_align : data.maligntyp; A_NONE passthrough,
+ * else sign → LAWFUL/CHAOTIC/NEUTRAL. Canonical export (C home):
+ * replaces the insight.js and do_name.js (mon_aligntyp_nam) clones;
+ * teleport.js keeps its D-1110 cycle-avoidance clone. C callers:
+ * artifact.c:933 (artifact.js touch_artifact), insight.c:3277
+ * (insight.js mstatusline), priest.c:364 (priestname, below),
+ * priest.c:372 (p_coaligned, below),
+ * monst.h:282 is_lminion (teleport.js clone).
+ * JS `?? 0` guards: C derefs EPRI/EMIN directly (non-null when set).
+ */
+export function mon_aligntyp(mon) {
+    const algn = mon?.ispriest ? (EPRI(mon)?.shralign ?? 0)
+        : mon?.isminion ? (EMIN(mon)?.min_align ?? 0)
+            : (mon?.data?.maligntyp ?? 0);
+    if (algn === A_NONE) return A_NONE; /* negative but differs from chaotic */
+    return (algn > 0) ? A_LAWFUL : (algn < 0) ? A_CHAOTIC : A_NEUTRAL;
+}
+
+/**
+ * C ref: priest.c priestname `:302–367` — aligned priest / minion name
+ * with `" of "` + `halu_gname(mon_aligntyp)`. Canonical export (C home):
+ * replaces the do_name.js clone. Sole C caller do_name.c:898
+ * (x_monnam; js/do_name.js) — wired via import.
+ * Hallu reader is do_name's sticky-first `Hallucination` (aliased import),
+ * not display's youprop reader: preserves the clone and honors x_monnam's
+ * `EHalluc_resistance` suppression around the call.
+ * `halu_gname` tail: sync mirror of the pray.js halu_gname Hallu arm
+ * (C pray.c:2577–2619) — same draw sequence (`rn2_on_display_rng` role
+ * loop + `rn2_on_display_rng(9)` slot over the shared HALU_GODS table);
+ * the live halu_gname is async-only via unreachable impossible()s,
+ * unwirable from the sync x_monnam path (`void impossible` precedent:
+ * do_name.js `obj_pmname`, trap.js, rumors.js getrumor).
+ * `m_next2u` is the live mon.js export (3×3 square, as the clone's
+ * distmin≤1 inline); `pname` buffer returns become string returns.
+ */
+export function priestname(mon, article, reveal_high_priest) {
+    const do_hallu = do_name_Hallucination();
+    const mndx = mon?.data?.mndx ?? (mon?.mnum | 0);
+    const aligned_priest = mndx === PM_ALIGNED_CLERIC;
+    const high_priest = mndx === PM_HIGH_CLERIC;
+    const whatcode = { c: '' };
+    let what = do_hallu ? rndmonnam(whatcode) : mon_pmname(mon);
+
+    if (!mon.ispriest && !mon.isminion) return what;
+
+    if (mon.ispriest || aligned_priest || high_priest) {
+        what = do_hallu ? 'poohbah' : (mon.female ? 'priestess' : 'priest');
+    }
+
+    let pname = '';
+    if (article !== ARTICLE_NONE && (!do_hallu || !bogon_is_pname(whatcode.c))) {
+        if (article === ARTICLE_YOUR || (article === ARTICLE_A && high_priest)) {
+            article = ARTICLE_THE;
+        }
+        if (article === ARTICLE_THE) {
+            pname = 'the ';
+        } else if (what === 'Angel') {
+            pname = 'an ';
+        } else {
+            pname = just_an(what);
+        }
+    }
+    if (mon.minvis) {
+        if (pname === 'a ') pname = 'an ';
+        pname += 'invisible ';
+    }
+    if (mon.isminion && EMIN(mon)?.renegade) {
+        if (pname === 'an ' && !mon.minvis) pname = 'a ';
+        pname += 'renegade ';
+    }
+
+    if (mon.ispriest || aligned_priest) {
+        if (high_priest) pname += do_hallu ? 'grand ' : 'high ';
+    } else if (mon.mtame && what.toLowerCase() === 'angel') {
+        pname += 'guardian ';
+    }
+
+    pname += what;
+    if (do_hallu || !high_priest || reveal_high_priest
+        || !Is_astralevel(game.u?.uz) || m_next2u(mon)
+        || game.program_state?.gameover) {
+        pname += ' of ';
+        const algn = mon_aligntyp(mon); /* C: halu_gname(mon_aligntyp(mon)) arg */
+        if (!do_hallu) {
+            pname += align_gname(game.urole, algn);
+        } else {
+            /* C pray.c halu_gname Hallu arm — sync mirror, same draw order. */
+            let which;
+            do {
+                which = rn2_on_display_rng(roles.length);
+            } while (!roles[which]?.lgod);
+            let gnam;
+            switch (rn2_on_display_rng(9)) {
+            case 0:
+            case 1:
+                gnam = roles[which].lgod;
+                break;
+            case 2:
+            case 3:
+                gnam = roles[which].ngod;
+                break;
+            case 4:
+            case 5:
+                gnam = roles[which].cgod;
+                break;
+            case 6:
+            case 7:
+                gnam = HALU_GODS[rn2_on_display_rng(HALU_GODS.length)];
+                break;
+            case 8:
+                gnam = 'Moloch'; // C: static Moloch (pray.c:58)
+                break;
+            default:
+                void impossible('rn2 broken in halu_gname?!?');
+                break;
+            }
+            if (!gnam) {
+                void impossible('No random god name?');
+                gnam = 'your Friend the Computer'; // C: Paranoia fallback
+            }
+            if (gnam.charAt(0) === '_') gnam = gnam.slice(1);
+            pname += gnam;
+        }
+    }
+    return pname;
+}
+
+/**
+ * C ref: priest.c p_coaligned `:370–373` — hero align equals
+ * mon_aligntyp(priest). Canonical export (C home): the raw-shralign
+ * compare skipped mon_aligntyp's isminion branch, A_NONE passthrough
+ * and sign normalization; the mklev.js priestini clone is rewired here.
+ * C callers: mon.c:3697/3699 (xkilled), mon.c:4298 (setmangry),
+ * pray.c:1684, priest.c:270 (priestini), priest.c:474/477 (intemple),
+ * priest.c:560 (priest_talk), priest.c:790 (in_your_sanctuary),
+ * sounds.c:557/561 (maybe_gasp).
+ */
 export function p_coaligned(priest) {
-    const shralign = EPRI(priest)?.shralign;
-    const algn = shralign != null
-        ? (shralign | 0)
-        : (priest?.data?.maligntyp | 0);
-    return (game.u?.ualign?.type | 0) === (algn | 0);
+    return (game.u?.ualign?.type | 0) === mon_aligntyp(priest);
 }
 
 /**
@@ -632,6 +772,23 @@ export async function clearpriests() {
         if ((mtmp.mhp | 0) < 1) continue;
         if (mtmp.ispriest && !on_level(EPRI(mtmp)?.shrlevel, u.uz)) {
             await mongone(mtmp);
+        }
+    }
+}
+
+/**
+ * C ref: priest.c restpriest `:933–939` — ghostly bones priest keeps the
+ * current level as its shrine level. C caller restore.c:449 (binary
+ * save/restore, by-design — no live JS caller; live export for wiring).
+ * `assign_level` is the live do.js export; the `shrlevel` guard is
+ * JS-null-safety (C derefs EPRI directly on ispriest mons).
+ */
+export function restpriest(mtmp, ghostly) {
+    const uz = game.u?.uz;
+    if ((uz?.dlevel | 0)) {
+        if (ghostly) {
+            const shrlevel = EPRI(mtmp)?.shrlevel;
+            if (shrlevel) assign_level(shrlevel, uz);
         }
     }
 }

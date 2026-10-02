@@ -1226,6 +1226,9 @@ export function place_monster(mon, x, y) {
  * unchanged. JS fmon occupancy still needs MON_OFFMAP so m_at skips
  * the head like C's empty grid cell (D-1231 gulpmm). Worm tail cells
  * keep `worm.js` `remove_monster_xy` (head mx/my is not the tail).
+ * Direct movement/combat callers only: mon_leaving_level must use the
+ * flag-free `remove_monster_xy` (C sets MON_OFFMAP only at
+ * mnearto:4051 + wizcmds:99; the flag stuck on live migrants — D-3279).
  */
 export function remove_monster(x, y) {
     x = x | 0;

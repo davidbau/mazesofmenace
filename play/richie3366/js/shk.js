@@ -347,6 +347,29 @@ export function set_residency(shkp, zero_out) {
 }
 
 /**
+ * C ref: shk.c replshk `:280–286` — replacement shopkeeper takes over
+ * residency and the bill. rooms[shoproom-ROOMOFFSET].resident = mtmp2;
+ * when mtmp is in its shop and the hero's first shop letter is mtmp's
+ * shoproom, mtmp2's bill_p restarts at bill[0]. C caller mon.c:2551
+ * (replmon isshk arm); zap.c:810 copies eshk mtmp2→mtmp first so both
+ * structs exist. JS: bill_p re-aliases the bill array (restshk `:281–283`
+ * shape); ushops0 charCodeAt matches the resident-scan `:6033` pattern.
+ */
+export function replshk(mtmp, mtmp2) {
+    const eshk2 = ESHK(mtmp2);
+    if (!eshk2) return;
+    // C :282 — the replacement becomes the shop's resident.
+    const rooms = game.level?.rooms;
+    const idx = (eshk2.shoproom | 0) - ROOMOFFSET;
+    if (rooms && idx >= 0 && idx < rooms.length) rooms[idx].resident = mtmp2;
+    // C :283–285 — hero standing in mtmp's shop: restart mtmp2's bill.
+    const ushops0 = (game.u?.ushops || '').charCodeAt(0) || 0;
+    if (inhishop(mtmp) && ushops0 === (ESHK(mtmp)?.shoproom | 0)) {
+        eshk2.bill_p = eshk2.bill || [];
+    }
+}
+
+/**
  * C ref: shk.c u_left_shop `:578–625` — leave/boundary bill prompts.
  * Boundary unpaid: verbalize (or Deaf/mute pline) then return so the
  * pay-before-leaving warning is not skipped. Outright leave: rob_shop
@@ -5036,6 +5059,11 @@ function mongone_nonlocal(mtmp) {
     const fmon = game.fmon || [];
     const i = fmon.indexOf(mtmp);
     if (i >= 0) fmon.splice(i, 1);
+    // Leaving fmon leaves the grid (C level.monsters⟺fmon invariant;
+    // the cell would otherwise read back as a phantom occupant via
+    // m_at once movers grid-place). Full mongone still deferred.
+    if (game._level_monsters?.get(`${mtmp.mx},${mtmp.my}`) === mtmp)
+        game._level_monsters.delete(`${mtmp.mx},${mtmp.my}`);
     const eshk = ESHK(mtmp);
     if (eshk) {
         const room = game.level?.rooms?.[((eshk.shoproom | 0) - ROOMOFFSET)];

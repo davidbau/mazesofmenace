@@ -1073,6 +1073,14 @@ export function find_hell(lev) {
     lev.dlevel = 1;
 }
 
+/**
+ * C ref: dungeon.c dunlev `:1325–1328` — the dlevel within its dungeon.
+ * Canonical export (C home); local clones in dokick/fountain/trap predate it.
+ */
+export function dunlev(lev) {
+    return lev?.dlevel ?? 1;
+}
+
 /** C dungeon.c dunlevs_in_dungeon / ledger_no. */
 export function dunlevs_in_dungeon(lev) {
     return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 1;

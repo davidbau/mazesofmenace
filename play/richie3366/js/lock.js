@@ -1177,7 +1177,7 @@ export async function doclose() {
         if (u.usteed || rn2(25) < chance) {
             await pline('The door closes.');
             loc.doormask = D_CLOSED;
-            newsym(x, y);
+            feel_newsym(x, y); /* C lock.c:1042 — Blind maps it felt */
             recalc_block_point(x, y); // C: block_point
             vision_recalc(1);
         } else {

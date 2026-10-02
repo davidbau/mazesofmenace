@@ -62,7 +62,7 @@ import { hero_conflict, resist_conflict, monsndx, same_race } from './mondata.js
 import { is_pool, is_lava, stop_occupation } from './hack.js';
 import { m_unleash } from './apply.js';
 import { lose_guardian_angel } from './minion.js';
-import { dismount_steed } from './steed.js';
+import { dismount_steed, place_monster } from './steed.js';
 import { whimper, beg, domonnoise } from './sounds.js';
 import { Is_qstart } from './quest.js';
 import { goodpos } from './teleport.js';
@@ -1591,12 +1591,15 @@ export async function dog_move(mtmp, after) {
         if (await m_digweapon_check(mtmp, nix, niy)) return MMOVE_NOTHING;
 
         /* insert a worm_move() if worms ever begin to eat things */
-        // C: wasseen before place; cursemsg pline after place_monster.
-        // remove_monster/place_monster keep direct mx/my set (pre-existing
-        // shape: m_at scans fmon; the grid map tolerates mx/my-only moves).
+        // C dogmove.c:1295–1297 — wasseen before place; cursemsg pline
+        // after place_monster.
         const wasseen = canseemon(mtmp);
-        mtmp.mx = nix;
-        mtmp.my = niy;
+        // C rm.h remove_monster is grid-only; clear only this mon's own
+        // cell (the OFFMAP fmon mark in steed.js remove_monster would
+        // stick on a stacked non-mover mid-move — gulpmm-only shape).
+        if (game._level_monsters?.get(`${omx},${omy}`) === mtmp)
+            game._level_monsters.delete(`${omx},${omy}`);
+        place_monster(mtmp, nix, niy);
         if (chi >= 0 && cursemsg[chi] && (wasseen || canseemon(mtmp))) {
             /* top item of the pile, not necessarily the cursed item;
                vobj_at ≡ level.objects (display.js); the remembered-glyph
@@ -1649,8 +1652,11 @@ export async function dog_move(mtmp, after) {
             }
         }
         if (!m_in_out_region(mtmp, nix, niy)) return MMOVE_MOVED;
-        mtmp.mx = cc.x;
-        mtmp.my = cc.y;
+        // C dogmove.c:1351–1352 — remove at current mx/my, place at cc
+        // (grid-only clear; see the newdogpos site above).
+        if (game._level_monsters?.get(`${mtmp.mx},${mtmp.my}`) === mtmp)
+            game._level_monsters.delete(`${mtmp.mx},${mtmp.my}`);
+        place_monster(mtmp, cc.x, cc.y);
         newsym(cc.x, cc.y);
         set_apparxy(mtmp);
     }

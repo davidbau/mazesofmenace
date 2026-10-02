@@ -28,7 +28,7 @@ import {
     objects_at, sobj_at, splitobj, nxtobj, add_to_migration,
     obj_ice_effects, spot_stop_timers, stop_timer, spot_time_left,
 } from './mkobj.js';
-import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone, monkilled, AT_MAGC, AT_BREA } from './mhitm.js';
+import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone, monkilled, AT_MAGC, AT_BREA, stagger } from './mhitm.js';
 import { scatter } from './explode.js';
 import {
     newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
@@ -8214,7 +8214,7 @@ export async function chest_trap(obj, bodypart, disarm) {
                     const Halluc_resistance = !!(u.Halluc_resistance
                         || u.HHalluc_resistance || u.EHalluc_resistance);
                     await pline(
-                        `You stagger${Halluc_resistance ? ''
+                        `You ${stagger(game.youmonst?.data, 'stagger')}${Halluc_resistance ? ''
                             : Blind() ? ' and get dizzy'
                                 : ' and your vision blurs'}...`,
                     );

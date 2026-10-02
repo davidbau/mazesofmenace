@@ -46,8 +46,11 @@ export function place_worm_seg(worm, x, y) {
     game._level_monsters.set(key, worm);
 }
 
-/** C ref: rm.h remove_monster — clear level.monsters[x][y]. */
-function remove_monster_xy(x, y) {
+/** C ref: rm.h remove_monster — clear level.monsters[x][y].
+ * Pure grid clear, no mstate change (C touches no flags here) —
+ * mon_leaving_level's take-off uses this, never the steed.js
+ * flagging variant (D-3279: flag stuck on live migrants). */
+export function remove_monster_xy(x, y) {
     game._level_monsters?.delete(`${x},${y}`);
 }
 

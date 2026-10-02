@@ -30,7 +30,7 @@ import {
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
     NO_MM_FLAGS, NO_NC_FLAGS, EXPL_FIERY, NATTK, PROT_FROM_SHAPE_CHANGERS, NO_WEAPON_WANTED, engulfing_u,
     W_SADDLE, OBJ_MINVENT,
-    FM_FMON, FM_MIGRATE, FM_MYDOGS, FM_YOU,
+    FM_FMON, FM_MIGRATE, FM_MYDOGS, FM_YOU, LS_MONSTER,
 } from './const.js';
 import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain, fixed_tele_trap } from './trap.js';
 import {
@@ -67,13 +67,13 @@ import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, m
 import { may_dig, fill_pit } from './dig.js';
 import { newsym, pline, pline_mon, pline_The, verbalize, You_feel, sensemon, canseemon, canspotmon, impossible, describe_level } from './display.js';
 import { online2, level_difficulty } from './hacklib.js';
-import { worm_cross, level_mon_at, remove_worm, place_wsegs, count_wsegs } from './worm.js';
+import { worm_cross, level_mon_at, remove_worm, remove_monster_xy, place_wsegs, count_wsegs } from './worm.js';
 import { On_W_tower_level, In_W_tower } from './dungeon.js';
 import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender, s_suffix } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point, vision_recalc } from './vision.js';
-import { any_light_source } from './light.js'; // C: mon.c movemon :1332 arm (same 99-module SCC; hoisted fn, runtime use only)
+import { any_light_source, emits_light, new_light_source, del_light_source } from './light.js'; // C: mon.c movemon :1332 arm (same 99-module SCC; hoisted fn, runtime use only)
 import { fightm, mondead, mondied, grow_up, mon_to_stone, monstone } from './mhitm.js';
-import { remove_monster, place_monster } from './steed.js';
+import { place_monster } from './steed.js';
 import { engr_at, del_engr_at, sengr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change, new_were } from './were.js';
@@ -82,8 +82,9 @@ import {
     newemin, newepri, newedog, freemcorpsenm, mpickobj, makemon, makemon_appear_msg,
 } from './makemon.js';
 import { in_your_sanctuary, p_coaligned, ghod_hitsu, inhistemple } from './priest.js';
-import { inhishop } from './shk.js';
-import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation, You_hear } from './hack.js';
+import { inhishop, replshk } from './shk.js';
+import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation, You_hear, monst_to_any } from './hack.js';
+import { set_ustuck } from './mhitu.js'; // C: mon.c replmon :2546 arm (same SCC; hoisted fn, runtime use only — imports.mjs SAFE)
 import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mon_set_minvis, which_armor, res_to_mr, clear_bypasses } from './worn.js';
 import { adjalign } from './attrib.js';
@@ -2112,6 +2113,12 @@ export async function maybe_mnexto(mtmp) {
  * keeps the stale coords valid). `m_at` is the rm.h grid read (heads
  * on fmon, segs on _level_monsters — D-1565). Async only because the
  * port's unstuck awaits docrt on swallow release.
+ * Grid removal is the flag-free `remove_monster_xy` (C rm.h:534 is a
+ * pure grid clear; C sets MON_OFFMAP only at mnearto:4051 and
+ * wizcmds:99, both explicit at the call site). The steed.js flagging
+ * variant would stick MON_OFFMAP on a live migrant (D-3279: pet
+ * arrived off-grid + flagged, m_at skipped it) — it stays for direct
+ * movement/combat callers only (D-1231).
  */
 export async function mon_leaving_level(mon) {
     const mx = mon.mx | 0, my = mon.my | 0;
@@ -2139,7 +2146,8 @@ export async function mon_leaving_level(mon) {
         if (mon.wormno) {
             remove_worm(mon);
         } else {
-            remove_monster(mx, my);
+            /* C rm.h:534 — pure grid clear, no mstate change. */
+            remove_monster_xy(mx, my);
         }
     }
     if (onmap) {
@@ -3661,12 +3669,60 @@ export async function mongone(mtmp) {
 }
 
 /**
+ * C ref: mon.c relmon `:2561–2594` — release mon from the display and
+ * the map's monster list, maybe onto mydogs/migrating_mons (or the
+ * mon_arrive failed_arrivals list), else orphan it. C order: panic
+ * when fmon is empty, mon_leaving_level take-off-map, unlink from
+ * fmon (head or scan; panic when absent), then prepend onto the target
+ * list with the nmon link, or orphan nmon. JS level lists are arrays:
+ * unlink by identity, prepend by unshift; C panics stay impossible
+ * (fire-and-forget, execution continues). The `!mon` guard is
+ * defensive (C declares NONNULLARG1; every call site passes live mtmp).
+ * Canonical export (C home; promoted from the dog.js local clone).
+ * Live C callers wired: dog.c:618 mon_arrive failed_arrivals +
+ * dog.c:863 keepdogs follower arm (js/dog.js awaits this; the take-off
+ * uses flag-free remove_monster_xy — D-3279). Named: dog.c:906
+ * migrate_to_level (js/teleport.js inline, sync), mon.c:2531 replmon
+ * below (sync; inline fmon splice without the panics).
+ */
+export async function relmon(mon, list) {
+    if (!mon) return;
+    // C :2565–2566 — no fmon at all.
+    if (!(game.fmon || []).length) {
+        await impossible('relmon: no fmon available.');
+    }
+    // C :2569 — take 'mon' off the map.
+    await mon_leaving_level(mon);
+    // C :2571–2584 — remove 'mon' from the 'fmon' list (C splits the
+    // head case :2572–2573 from the scan :2577–2581; one indexOf covers
+    // both; :2583 absent → panic).
+    const fmon = game.fmon || [];
+    const i = fmon.indexOf(mon);
+    if (i < 0) {
+        await impossible('relmon: mon not in list.');
+    } else {
+        fmon.splice(i, 1);
+    }
+    // C :2586–2593 — insert into the target list (:2588–2589
+    // `mon->nmon = *monst_list`) or orphan (:2592 `mon->nmon = 0`).
+    if (list) {
+        mon.nmon = list[0] || null;
+        list.unshift(mon);
+    } else {
+        mon.nmon = null;
+    }
+}
+
+/**
  * C ref: mon.c replmon `:2515–2563` — swap map mon for larger/traits
  * replacement. relmon off-map + fmon removal, then place_monster the
  * replacement (unless it is the steed), worm segs via place_wsegs,
  * light-source swap, fmon prepend, ustuck/usteed, replshk, dealloc.
- * place_wsegs live (D-2300); light sources + full replshk bill +
- * set_ustuck botl stay named.
+ * place_wsegs live (D-2300); light swap + replshk + set_ustuck live.
+ * Named: :2530 relmon(mtmp, NULL) stays an inline fmon splice — this
+ * stays sync like C, so the async mon_leaving_level take-off-map
+ * (remove_monster / seemimic / fill_pit / newsym) and both C panics
+ * are not run here.
  * `impossible()` stays fire-and-forget so this stays sync like C.
  */
 export function replmon(mtmp, mtmp2) {
@@ -3701,12 +3757,24 @@ export function replmon(mtmp, mtmp2) {
         place_monster(mtmp2, mtmp2.mx, mtmp2.my);
     // C :2536–2537 — the replacement takes over every body seg cell.
     if ((mtmp2.wormno | 0)) place_wsegs(mtmp2, mtmp);
+    // C :2538–2543 — light-source swap for a light-emitting
+    // replacement: new source on mtmp2 first (too rare for a
+    // mon_move_light_source), then delete mtmp's (mtmp not yet freed).
+    if (emits_light(mtmp2.data)) {
+        new_light_source(mtmp2.mx, mtmp2.my, emits_light(mtmp2.data),
+                         LS_MONSTER, monst_to_any(mtmp2));
+        del_light_source(LS_MONSTER, monst_to_any(mtmp));
+    }
+    // C :2544–2545 — the replacement heads fmon.
     if (!list.includes(mtmp2)) list.unshift(mtmp2);
     game.fmon = list;
 
-    if (game.u?.ustuck === mtmp) game.u.ustuck = mtmp2;
+    // C :2546–2547 — the replacement takes over the grab (botl).
+    if (game.u?.ustuck === mtmp) set_ustuck(mtmp2);
+    // C :2548–2549 — the replacement takes over the steed slot.
     if (game.u?.usteed === mtmp) game.u.usteed = mtmp2;
-    // replshk deferred beyond isshk flag already on mtmp2
+    // C :2550–2551 — shop residency + bill follow the replacement.
+    if (mtmp2.isshk) replshk(mtmp, mtmp2);
 
     mtmp.mx = 0;
     mtmp.my = 0;

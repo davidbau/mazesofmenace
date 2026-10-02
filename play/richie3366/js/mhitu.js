@@ -98,7 +98,7 @@ import {
     AT_HUGS,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
     AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN, AD_SLEE, AD_TLPT, AD_FAMN,
-    AD_SAMU,
+    AD_SAMU, stagger,
 } from './mhitm.js';
 import { morehungry, is_fainted } from './eat.js';
 import { castmu, buzzmu } from './mcastu.js';
@@ -3223,7 +3223,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
         case AD_STUN:
             if (!mtmp.mstun) {
                 mtmp.mstun = 1;
-                await pline(`${Monnam(mtmp)} staggers.`);
+                await pline(`${Monnam(mtmp)} ${makeplural(stagger(mtmp.data, 'stagger'))}.`);
             }
             tmp = 0;
             break;

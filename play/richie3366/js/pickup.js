@@ -149,6 +149,7 @@ import { scatter } from './explode.js';
 import { doaltarobj, dropy, dropx } from './do.js';
 import { surface } from './sit.js';
 import { removed_from_icebox } from './muse.js';
+import { container_contents } from './end.js';
 
 /** C ref: mondata.h notake — M1_NOTAKE. */
 function notake(ptr) {
@@ -2512,50 +2513,8 @@ function Levitation_pe() {
         && !(u.BLevitation | 0));
 }
 
-/**
- * C ref: end.c container_contents — NHW_MENU "Contents of %s:" + doname lines
- * via invent.c sortloot(SORTLOOT_LOOT|SORTLOOT_PACK). display_nhwindow(TRUE).
- * Named omissions: identified discover path; unpaid doname (D-0461);
- * nested containers / empty pline beyond reportempty=false;
- * sortloot subclass/disco/BUCX. Disclose live-cat line is end.c.
- */
-/**
- * C ref: end.c container_contents `:1593–1670` as called from use_container
- * ':' (identified FALSE, all_containers FALSE, reportempty TRUE): single
- * box; cknown set on look; an empty box plines upstart(thesimpleoname) +
- * " is empty." instead of a menu; the contents menu lists
- * doname_with_price (C `:1647`); a live cat hides the corpse.
- * update_inventory on new cknown deferred like js/end.js (display-only).
- * BoT skip is out of this call shape (BoT never reaches use_container:
- * apply routes it to bagotricks, doloot intercepts it).
- */
-async function container_contents(box) {
-    if (!box) return;
-    box.cknown = 1; /* we're looking at the contents now */
-    if (!box.cobj) {
-        // C reportempty arm — pline, no menu.
-        await pline(`${upstart(thesimpleoname_objnam(box))} is empty.`);
-        return;
-    }
-    const lines = [`Contents of ${theArt(xname(box))}:`, ''];
-    if (SchroedingersBox(box)) {
-        // C end.c: spe still 1 → live cat; pretend the corpse is not there
-        lines.push("  Schroedinger's cat!");
-    } else {
-        // C: flags.sortloot 'l'/'f' → SORTLOOT_LOOT; sortpack → SORTLOOT_PACK
-        const flags = game.flags || {};
-        const sortlootOpt = flags.sortloot ?? 'l';
-        let sortflags = 0;
-        if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
-        if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
-        const sorted = sortloot(box.cobj, sortflags, false);
-        for (const srtc of sorted) {
-            // C end.c:1647 — doname_with_price (unpaid shop goods).
-            lines.push(`  ${doname_with_price(srtc.obj)}`);
-        }
-    }
-    await show_nhw_menu_text(lines);
-}
+// end.c container_contents: single-box clone deleted — the use_container ':'
+// call below uses the canonical js/end.js export (C pickup.c:3122).
 
 /**
  * C ref: pickup.c explain_container_prompt — NHW_TEXT help for ':'/'o'/'i'/
@@ -4088,7 +4047,8 @@ export async function use_container(obj, held = false, more_containers = false) 
         }
         if (c === ':') {
             if (!obj.cknown) used = ECMD_TIME;
-            await container_contents(obj);
+            // C pickup.c:3122 — (current_container, FALSE, FALSE, TRUE).
+            await container_contents(obj, false, false, true);
             continue;
         }
         break;

@@ -208,6 +208,7 @@ import {
     control_teleport,
     defended,
     your_race,
+    flaming,
     name_to_monclass,
     name_to_monplus,
     num_horns,
@@ -244,7 +245,7 @@ import {
 } from './trap.js';
 import { dotrap, feeltrap } from './trap_effects.js';
 import {
-    make_blinded, make_glib, make_sick, set_itimeout,
+    make_blinded, make_glib, make_sick, make_slimed, set_itimeout,
 } from './potion.js';
 import { cantwield, untwoweapon, uwepgone, uswapwepgone } from './wield.js';
 import { _doWearInternals } from './do_wear.js';
@@ -307,11 +308,12 @@ import { in_rooms } from './rooms.js';
 import { destroy_items } from './zap_destroy_items.js';
 import { ignite_items } from './apply_catch_lit.js';
 import {
-    counter_were, killed, set_ustuck, setmangry, wakeup,
+    counter_were, egg_type_from_parent, killed, set_ustuck, setmangry, wakeup,
 } from './mon.js';
 import { were_beastie, were_summon } from './were.js';
 import { note_unported } from './unported.js';
 import { unpunish } from './read.js';
+import { learn_egg_type } from './timeout.js';
 
 // Boundary error for polyself branches that fall outside the current goal.
 // failClosedCommand() in cmd.js converts this to an
@@ -1044,9 +1046,9 @@ async function selftouch(_arg, state) {
 
 // ---------- polymon ----------------------------------------------------
 // C ref: polyself.c polymon() (735-1071). Transform the hero into the given
-// monster type. This port covers the ordinary-monster happy path (no
-// engulfment, steed, traps, eggs, death from petrification/sickness/slime,
-// cockatrice corpse, or artifact equipment).
+// monster type. This port covers the ordinary-monster path plus egg-type
+// learning; engulfment, steed, traps, death from petrification/sickness/slime,
+// cockatrice corpse, and artifact equipment still have named gaps.
 export async function polymon(mntmp, state = game, rawEnv = {}) {
     const random = {
         d,
@@ -1162,7 +1164,14 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
         await make_sick(0, null, false, SICK_ALL, state, env);
         await message('You no longer feel sick.', state, env);
     }
-    // Slimed — not exercised for gnome
+    if (u.uprops[SLIMED].intrinsic) {
+        if (flaming(state.youmonst.data)) {
+            await make_slimed(0, 'The slime burns away!', state, env);
+        } else if (mntmp === M.PM_GREEN_SLIME) {
+            // C silently cures when polymorphing into a green slime.
+            await make_slimed(0, null, state, env);
+        }
+    }
 
     await check_strangling(false, state, env); // maybe stop strangling
 
@@ -1216,7 +1225,12 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
     // was_blind && !Blind — eyeless revert, not exercised for gnome
     redraw(u.ux, u.uy, state);
 
-    // lays_eggs — not exercised for gnome
+    // C polyself.c:907-910. Learn both this form's egg and its ordinary
+    // offspring type after the redraw; the forced-ordinary call skips RNG.
+    if (lays_eggs(state.youmonst.data)) {
+        learn_egg_type(u.umonnum, state, env);
+        learn_egg_type(egg_type_from_parent(u.umonnum, true), state, env);
+    }
 
     // u.uswallow — not exercised for gnome
     // u.ustuck — not exercised for gnome
@@ -1592,7 +1606,7 @@ export async function newman(state = game) {
         await ttyPline(
             'Your body transforms, but there is still slime on you.', state,
         );
-        note_unported('potion.c make_slimed');
+        await make_slimed(10, null, state);
     }
 
     state.disp ??= {};

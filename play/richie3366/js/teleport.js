@@ -18,7 +18,7 @@ import {
     A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL, AM_SHRINE, Amask2align,
     ESHK, EPRI, EMIN, DISPLACED,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT, TELEDS_ALLOW_DRAG,
-    M_AP_NOTHING,
+    M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE,
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_PORTAL, TIMEOUT,
     OBJ_FREE, SLT_ENCUMBER, EXT_ENCUMBER, TT_BURIEDBALL,
     DIED, NO_KILLER_PREFIX,
@@ -51,7 +51,7 @@ import {
     invocation_message, notice_mon_off, notice_mon_on, notice_all_mons,
     set_msg_xy, Passes_walls_prop, check_capacity,
 } from './hack.js';
-import { remove_worm, place_worm_tail_randomly, level_mon_at } from './worm.js';
+import { remove_worm, place_worm_tail_randomly, level_mon_at, remove_monster_xy } from './worm.js';
 import { makeknown, prinv, near_capacity, paint_corner_nhw_menu } from './invent.js';
 import { nhgetch } from './input.js';
 import { ATR_INVERSE } from './terminal.js';
@@ -59,7 +59,7 @@ import { more_experienced } from './exper.js';
 import { getlin, yn_function, ynq } from './getline.js';
 import {
     get_level, find_hell, In_W_tower, On_W_tower_level, In_tutorial,
-    lev_by_name,
+    lev_by_name, ledger_to_dnum, ledger_to_dlev,
 } from './dungeon.js';
 import { depth, distmin } from './hacklib.js';
 import { addinv } from './u_init.js';
@@ -70,10 +70,11 @@ import { in_out_region, update_player_regions, update_monster_region } from './r
 import { SetVoice, voice_deity } from './sndprocs.js';
 import { uhis } from './roles.js';
 /* Canonical callees (hoisted, call-time use only — cycle-safe per imports.mjs):
- * seetrap + clamp_hole_destination (trap.js), mon_has_amulet (apply.js),
- * is_home_elemental (makemon.js). Local onscary stays (D-1110). */
+ * seetrap + clamp_hole_destination (trap.js), mon_has_amulet + m_unleash +
+ * mhis_leash (apply.js), is_home_elemental (makemon.js). Local onscary
+ * stays (D-1110). */
 import { seetrap, clamp_hole_destination, t_at, reset_utrap } from './trap.js';
-import { mon_has_amulet } from './apply.js';
+import { mon_has_amulet, m_unleash, mhis_leash } from './apply.js';
 import { is_home_elemental } from './makemon.js';
 /* dog.js back-edge (same SCC; hoisted function, call-time use only). */
 import { mon_leave } from './dog.js';
@@ -81,6 +82,16 @@ import { mon_leave } from './dog.js';
 import { get_iter_mons } from './monmove.js';
 /* mondata.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
 import { set_mon_data } from './mondata.js';
+/* light.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
+import { emits_light } from './light.js';
+/* mon.js (same SCC; hoisted functions, call-time use only — imports.mjs SAFE).
+ * m_at rides aliased: the local m_at below is a steed-finding clone kept
+ * for its existing sites (out of cluster); the take-off gate needs the
+ * canonical steed-skipping grid read (C removes the steed from the grid
+ * while mounted, so C's :2699 gate is false for it). */
+import { m_at as mon_m_at, seemimic } from './mon.js';
+/* dig.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
+import { fill_pit } from './dig.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
@@ -2841,53 +2852,110 @@ function ledger_no(lev) {
     return ((dun?.ledger_start | 0) + dlevel) | 0;
 }
 
-function ledger_to_dnum(tolev) {
-    const duns = game.dungeons || [];
-    const want = tolev | 0;
-    for (let i = 0; i < duns.length; i++) {
-        const d = duns[i];
-        if (!d) continue;
-        const start = d.ledger_start | 0;
-        const n = d.num_dunlevs | 0;
-        // C dungeon.c:1408–1411 — ledger numbers run
-        // ledger_start+1 .. ledger_start+num_dunlevs (cf. ledger_no), so
-        // the last level belongs to its own dungeon, not the next one.
-        if (start < want && want <= start + n) return i;
-    }
-    return 0;
-}
-
-function ledger_to_dlev(tolev) {
-    const dnum = ledger_to_dnum(tolev);
-    const start = game.dungeons?.[dnum]?.ledger_start | 0;
-    return (tolev - start) | 0;
-}
-
 /**
- * C ref: dog.c migrate_to_level — take mon off map onto migrating_mons.
- * Envelope: remove from fmon, encode destination, mx=my=0.
+ * C ref: dog.c migrate_to_level `:887–932` — take mon off map onto
+ * migrating_mons. Envelope: leash snap, mon_leave, relmon take-off +
+ * fmon→migrating_mons move, destination encode, mx=my=0, light tail.
  * D-1198: xyflags bit 2 when In_W_tower(mx,my,&u.uz) using pre-relmon
  * coords (C dog.c:913–915). Arrival copies flags into my (D-1199).
- * Named omissions: leash (`:898–901` mtame--/m_unleash); light sources
- * (`:928–931` vision_recalc); relmon's mon_leaving_level take-off-map
- * (C `:906` →
- * mon.c:2696–2732 mtrapped/unstuck/remove_monster/seemimic/fill_pit/
- * newsym/mundetected/polearm-forget — sync caller, cannot await the
- * async live export). Whole mon_leave live (D-2296 worm arm + no_charge
- * loop + residency clear).
+ * D-3280: `:928–931` light tail live (`emits_light(mtmp.data)` →
+ * `vision_recalc(0)`); C keeps a migrating mobile light global.
+ * D-3281: `:898–901` leash arm live (mtame--, TRUE message initiated,
+ * FALSE state clear run sync — see body); `:906` relmon(mtmp,
+ * &gm.migrating_mons) live as a sync mirror in C mon.c:2561–2594
+ * order (fire-and-forget panics + the mon_leaving_level :2696–2732
+ * sync core). Stays sync like C (replmon precedent js/mon.js:3722):
+ * live relmon/mon_leaving_level await unstuck→docrt and the
+ * migrate_orc level-gen path (js/mklev.js:2506 ← stolen_booty ←
+ * fixup_special_tail) cannot await. ledger_to_dnum/ledger_to_dlev
+ * are the canonical dungeon.js exports (local clones retired).
+ * Whole mon_leave live (D-2296 worm arm + no_charge loop + residency
+ * clear).
+ * Named omissions: mon.c:2703 unstuck (async-only: awaits docrt on
+ * swallow release; no static mon↔mhitu edge — D-3280). The C `#if 0`
+ * :2711–2713 mx/my zeroing stays out (C keeps stale coords valid).
  */
 export function migrate_to_level(mtmp, tolev, xyloc, cc) {
     if (!mtmp) return;
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;
 
+    /* C dog.c:898–901 — a leashed migrant yanks free: tameness drops,
+     * then m_unleash(TRUE). The live export's feedback pline is
+     * async-only and floating the whole call would float the leash
+     * clear (D-1648), so the shape is D-1914's: the TRUE message is
+     * initiated first (C print-then-mutate order; delivery floats
+     * like replmon's `void impossible`), then the FALSE arm runs
+     * fully sync — no await reached — for the leashmon/mleashed
+     * clear (C apply.c:736–741). */
+    if (mtmp.mleashed) {
+        mtmp.mtame--;
+        if (canseemon(mtmp)) {
+            void pline_mon(
+                mtmp,
+                `${Monnam(mtmp)} pulls free of ${mhis_leash(mtmp)} leash!`,
+            );
+        } else {
+            void pline('Your leash falls slack.');
+        }
+        void m_unleash(mtmp, false);
+    }
+
     // C dog.c:904 — mon_leave before relmon; seg count rides in wormno.
     const numSegs = mon_leave(mtmp);
 
+    /* C dog.c:906 relmon(mtmp, &gm.migrating_mons) — sync mirror in C
+     * mon.c:2561–2594 order (see doc for why not the live await). */
+    // C :2565–2566 — no fmon at all (JS relmon continues past it too).
+    if (!(game.fmon || []).length) {
+        void impossible('relmon: no fmon available.');
+    }
+    // C :2569 → mon_leaving_level :2696–2732 sync core (:2703 unstuck
+    // named — async-only).
+    // C :2698–2699 — on this level's grid (canonical m_at is the
+    // rm.h grid read: seg map + the fmon coord scan; steed/dead/
+    // OFFMAP skips match C's empty cell — D-1565/D-1231).
+    const onmap = isok(mx, my) && mon_m_at(mx, my) === mtmp;
+    /* to prevent an infinite relobj-flooreffects-hmon-killed loop */
+    mtmp.mtrapped = 0;
+    /* vault guard might be at <0,0> */
+    if (onmap || mon_m_at(0, 0) === mtmp) {
+        if (mtmp.wormno) {
+            remove_worm(mtmp);
+        } else {
+            /* C rm.h:534 — pure grid clear, no mstate change
+             * (flag-free remove_monster_xy — D-3279). */
+            remove_monster_xy(mx, my);
+        }
+    }
+    if (onmap) {
+        mtmp.mundetected = 0; /* for migration; doesn't matter for death */
+        /* unhide mimic in case its shape has been blocking line of sight
+           or it is accompanying the hero to another level */
+        if (M_AP_TYPE(mtmp) !== M_AP_NOTHING
+            && M_AP_TYPE(mtmp) !== M_AP_MONSTER) {
+            seemimic(mtmp);
+        }
+        /* if mon is pinned by a boulder, removing mon lets boulder drop */
+        fill_pit(mx, my);
+        newsym(mx, my);
+    }
+    /* if mon is a remembered target, forget it since it isn't here anymore */
+    if (game.context?.polearm && mtmp === game.context.polearm.hitmon) {
+        game.context.polearm.hitmon = null;
+    }
+
+    // C :2571–2584 — remove from fmon (head or scan; one indexOf
+    // covers both; :2583 absent → panic, fire-and-forget).
     const list = game.fmon || [];
     const idx = list.indexOf(mtmp);
-    if (idx >= 0) list.splice(idx, 1);
+    if (idx < 0) {
+        void impossible('relmon: mon not in list.');
+    } else {
+        list.splice(idx, 1);
+    }
 
+    // C :2586–2589 — insert into migrating_mons with the nmon link.
     if (!game.migrating_mons) game.migrating_mons = [];
     mtmp.nmon = game.migrating_mons[0] || null;
     game.migrating_mons.unshift(mtmp);
@@ -2924,6 +2992,11 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
     mtmp.mlstmv = game.moves | 0;
     mtmp.mx = 0;
     mtmp.my = 0;
+
+    /* C dog.c:928–931 — don't extinguish a mobile light; it still
+     * exists but changed from local (mx > 0) to global (mx == 0). */
+    if (emits_light(mtmp.data))
+        vision_recalc(0);
 }
 
 /* seetrap / mon_has_amulet / is_home_elemental: canonical static imports

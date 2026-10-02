@@ -134,7 +134,7 @@ import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
 import { SPBOOK_CLASS, NODIR } from './objects.js';
 import { d, rnd, rn2, rn1, rnl, rn2_on_display_rng } from './rng.js';
 import { morehungry, poison_strdmg, sgn } from './eat.js';
-import { zapyourself, spell_damage_bonus, weffects, zhitm, resists_elec, unturn_dead } from './zap.js';
+import { zapyourself, spell_damage_bonus, weffects, zhitm, resists_elec, unturn_dead, exclam } from './zap.js';
 import { tele } from './teleport.js';
 import { make_blinded } from './do.js';
 import { aggravate } from './wizard.js';
@@ -2256,16 +2256,6 @@ function BZ_U_SPELL(bztyp) {
 }
 
 /**
- * C ref: zap.c exclam — punctuation for "You shock %s%s".
- * Local copy (zap.js helper is not exported).
- */
-function exclam_chain(force) {
-    if (force < 0) return '?';
-    if (force <= 4) return '.';
-    return '!';
-}
-
-/**
  * C ref: spell.c CHAIN_LIGHTNING_TYP — open space / pool / moat /
  * drawbridge-up / lavapool; not WATER or LAVAWALL.
  */
@@ -2387,7 +2377,7 @@ async function cast_chain_lightning() {
                         await xkilled(mon, XKILL_GIVEMSG);
                     } else {
                         await pline(
-                            `You shock ${mon_nam(mon)}${exclam_chain(dmg)}`,
+                            `You shock ${mon_nam(mon)}${exclam(dmg)}`,
                         );
                         if (!canseemon(mon) && !game.notonhead) {
                             map_invisible(zap.x, zap.y);

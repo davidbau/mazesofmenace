@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { makemon, set_malign, rndmonst_adj, newedog } from './makemon.js';
+import { makemon, set_malign, rndmonst_adj, newedog, mbirth_limit } from './makemon.js';
 import { deliver_obj_to_mon } from './dokick.js';
 import {
     mons, NON_PM, is_human, is_covetous, is_demon,
@@ -40,7 +40,7 @@ import { christen_monst, Monnam, mon_pmname, s_suffix } from './do_name.js';
 import {
     monnear, m_at, see_monster_closeup, minliquid, restore_cham,
     wake_nearto, discard_minvent, mdrop_special_objs,
-    mon_leaving_level, m_into_limbo, healmon, dealloc_monst, mnexto,
+    m_into_limbo, healmon, dealloc_monst, mnexto, relmon,
 } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import {
@@ -73,8 +73,6 @@ import { emits_light, del_light_source } from './light.js';
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
 const PM_PONY = monsterNames.indexOf('PM_PONY');
-const PM_NAZGUL = monsterNames.indexOf('PM_NAZGUL');
-const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const SPE_CREATE_FAMILIAR = objectNames.indexOf('SPE_CREATE_FAMILIAR');
@@ -159,13 +157,6 @@ export function initedog(mtmp, everything) {
             uhis(), an(mon_pmname(mtmp)));
     }
     game.u.uconduct.pets = (game.u.uconduct.pets | 0) + 1;
-}
-
-/** C ref: makemon.c mbirth_limit — Nazgul 9 / Erinys 3 / else MAXMONNO. */
-function mbirth_limit(mndx) {
-    if (mndx === PM_NAZGUL) return 9;
-    if (mndx === PM_ERINYS) return 3;
-    return MAXMONNO;
 }
 
 /** C ref: mondata.h attacktype — any mattk slot with aatyp. */
@@ -448,9 +439,10 @@ export function mon_leave(mtmp) {
  * `mon_leave` (`:725–763`) is live above (minvent `no_charge` /
  * `picked_container` loop, shk `set_residency`, worm-seg count riding in
  * `wormno`).
- * Named omissions: `relmon` `mon.c:2561` itself, so the follower arm
- * splices `fmon` inline and never runs `mon_leaving_level`'s
- * take-off-map (`remove_monster` / `seemimic` / `fill_pit` / `newsym`).
+ * The follower arm awaits the canonical `relmon` (js/mon.js) —
+ * `mon_leaving_level` take-off-map (`remove_monster` / `seemimic` /
+ * `fill_pit` / `newsym`), fmon unlink, mydogs prepend with the nmon
+ * link. Named omissions: none in-body — whole C body live.
  * @param {boolean} pets_only true for ascension or final escape
  */
 export async function keepdogs(pets_only = false) {
@@ -527,17 +519,11 @@ export async function keepdogs(pets_only = false) {
             }
 
             // C `:861` mon_leave (seg count rides in wormno) then
-            // `:862–863` relmon(mtmp, &gm.mydogs) — unlink from fmon,
-            // then prepend (LIFO, so the last kept arrives first).
-            // Named omissions: relmon's mon_leaving_level take-off-map
-            // (remove_monster / seemimic / fill_pit / newsym) — wiring
-            // this arm to `await relmon` regressed the fortress (6
-            // REACH sessions + a public-session RNG shift); the rewire
-            // ships as its own row once the delta is measured.
+            // `:862–863` relmon(mtmp, &gm.mydogs) — take-off-map,
+            // fmon unlink, mydogs prepend with the nmon link (LIFO,
+            // so the last kept arrives first).
             const numSegs = mon_leave(mtmp);
-            const gone = (game.fmon || []).indexOf(mtmp);
-            if (gone >= 0) game.fmon.splice(gone, 1);
-            game.mydogs.unshift(mtmp);
+            await relmon(mtmp, game.mydogs);
             mtmp.mx = 0; /* mx==0 implies migrating */
             mtmp.my = 0;
             mtmp.wormno = numSegs; /* C `:865` — seg count rides in wormno */
@@ -737,44 +723,9 @@ const Wiz_arrive = -1;
    part of struct 'g'`; losedogs() zeroes it on entry. */
 let failed_arrivals = [];
 
-/**
- * C ref: mon.c relmon `:2561–2594` — release mon from the display and
- * the map's monster list, maybe onto mydogs/migrating_mons (or the
- * mon_arrive failed_arrivals list), else orphan it. C order: panic
- * when fmon is empty, mon_leaving_level take-off-map, unlink from
- * fmon (head or scan; panic when absent), then prepend onto the target
- * list with the nmon link, or orphan nmon. JS level lists are arrays:
- * unlink by identity, prepend by unshift; C panics stay impossible
- * (fire-and-forget, execution continues). The `!mon` guard is
- * defensive (C declares NONNULLARG1; every call site passes live mtmp).
- */
-async function relmon(mon, list) {
-    if (!mon) return;
-    // C :2565–2566 — no fmon at all.
-    if (!(game.fmon || []).length) {
-        await impossible('relmon: no fmon available.');
-    }
-    // C :2569 — take 'mon' off the map.
-    await mon_leaving_level(mon);
-    // C :2571–2584 — remove 'mon' from the 'fmon' list (C splits the
-    // head case :2572–2573 from the scan :2577–2581; one indexOf covers
-    // both; :2583 absent → panic).
-    const fmon = game.fmon || [];
-    const i = fmon.indexOf(mon);
-    if (i < 0) {
-        await impossible('relmon: mon not in list.');
-    } else {
-        fmon.splice(i, 1);
-    }
-    // C :2586–2593 — insert into the target list (:2588–2589
-    // `mon->nmon = *monst_list`) or orphan (:2592 `mon->nmon = 0`).
-    if (list) {
-        mon.nmon = list[0] || null;
-        list.unshift(mon);
-    } else {
-        mon.nmon = null;
-    }
-}
+/* C ref: mon.c relmon — canonical `export async function relmon` now
+ * lives in js/mon.js (C home); this file's local clone is retired and
+ * the mon_arrive failed_arrivals caller below awaits that export. */
 
 /** C ref: stairs.c stairway_find_dir — first stairway with matching up.
  * Local mirror of the mklev.js clone (dog cannot import mklev:
@@ -1298,6 +1249,15 @@ export async function losedogs() {
 const LARGEST_INT = 2147483647;
 
 /**
+ * C ref: dog.c set_mon_lastmove `:287–290` (staticfn) — stamp
+ * `mtmp->mlstmv = svm.moves`. Sole C caller dog.c:723
+ * (mon_catchup_elapsed_time tail). Non-exported like C.
+ */
+function set_mon_lastmove(mtmp) {
+    mtmp.mlstmv = game.moves | 0;
+}
+
+/**
  * C ref: dog.c mon_catchup_elapsed_time `:626–724` — heal/status for time
  * spent off-level, in C order. Devel-only nmv guards (`:632–640`, compiled
  * out in release): nmv < 0 → panic (loud throw per the lev_json.js
@@ -1311,8 +1271,8 @@ const LARGEST_INT = 2147483647;
  * non-minion carni/herbi, moves > hungrytime+500 && mhp<3 or moves >
  * hungrytime+750); leashed → impossible + m_unleash(FALSE) (`:704–709`,
  * apply.js async); heal via live healmon (`:712–714`, mon.js sync,
- * non-regen imv/20); set_mon_lastmove tail (`:715`, mon.c — mlstmv =
- * moves, the update_mlstmv idiom). Async for impossible/m_unleash; all
+ * non-regen imv/20); set_mon_lastmove tail (`:723`, dog.c staticfn —
+ * mlstmv = moves). Async for impossible/m_unleash; all
  * three C callers await. Named: none — every arm and callee live.
  */
 export async function mon_catchup_elapsed_time(mtmp, nmv) {
@@ -1384,8 +1344,8 @@ export async function mon_catchup_elapsed_time(mtmp, nmv) {
     if (!regenerates(mtmp.data)) imv = Math.trunc(imv / 20);
     healmon(mtmp, imv, 0);
 
-    /* C `:715` set_mon_lastmove(mtmp) */
-    mtmp.mlstmv = game.moves | 0;
+    /* C `:723` set_mon_lastmove(mtmp). */
+    set_mon_lastmove(mtmp);
 }
 
 /**
@@ -1466,7 +1426,8 @@ export async function wary_dog(mtmp, was_dead) {
 
 /**
  * C ref: dog.c abuse_dog — reduce tameness; yelp/growl when on-map.
- * Called from hmon_hitmon_pet (and kick/zap/trap/hack callers deferred).
+ * All 5 C call sites wired: hmon_hitmon_pet (uhitm) + kick/zap/trap/hack
+ * (dokick D-1349; D-3272 corrected the stale "deferred" note).
  * redraw_worm on untame is D-1577.
  */
 export async function abuse_dog(mtmp) {

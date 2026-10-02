@@ -55,6 +55,14 @@ const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
 const MS_SILENT = 0;
 const MS_BUZZ = 10;
 
+/**
+ * C ref: mondata.h is_silent `:62` — msound == MS_SILENT.
+ * Canonical home of the C macro (region.js-local copy removed).
+ */
+export function is_silent(ptr) {
+    return (ptr?.msound | 0) === MS_SILENT;
+}
+
 /* C ref: monattk.h AD_* used by cvt_adtyp_to_mseenres / get_atkdam_type */
 const AD_MAGM = 1;
 const AD_FIRE = 2;

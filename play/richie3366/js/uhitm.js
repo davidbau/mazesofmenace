@@ -67,7 +67,7 @@ import {
     AD_DRST, AD_DRDX, AD_DRCO, AD_SAMU, AD_DRLI, AD_SITM, AD_SEDU, AD_SSEX,
     AD_CONF, AD_WERE, AD_FAMN,
 } from './mhitm.js';
-import { resists_drli, resists_cold, resists_poison, destroy_items, resist, drain_item } from './zap.js';
+import { resists_drli, resists_cold, resists_poison, destroy_items, resist, drain_item, exclam } from './zap.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes, dmgtype, hides_under,
@@ -435,13 +435,6 @@ export function can_blnd(magr, mdef, aatyp, obj) {
         }
     }
     return true; // C :398
-}
-
-/** C ref: zap.c exclam `:3546–3553` — punctuation by damage force. */
-function exclam(force) {
-    if (force < 0) return '?';
-    if (force <= 4) return '.';
-    return '!';
 }
 
 // C ref: display.h _is_safemon — peaceful + canspotmon + !conf/hallu/stun
@@ -1132,7 +1125,7 @@ async function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skil
  * use/train_weapon_skill, hittxt, doreturn, retval, dieroll, hand_to_hand,
  * thrown, jousting, ispoisoned).
  * Silver (:1035–1036) sets silvermsg/silverobj like the ranged/misc
- * arms; the :1877 msg_silver call stays hmon_hitmon's named omit.
+ * arms; the :1877 msg_silver call is hmon_hitmon's :1876–1877 gate.
  * lightobj is set here (C `:1038–1040`) and printed by
  * hmon_hitmon_msg_lightobj.
  */
@@ -1266,9 +1259,10 @@ async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
  * useup/useupall/obfree still consume the object itself.
  * Named: muse.c munstone :2884 (monster eats a cure; treat as FALSE, the
  * mhitm.js do_stone_mon idiom) so petrify arms always minstapetrify;
- * hmon_hitmon_msg_silver :1876 (silvermsg/silverobj set, no plumbing —
- * same as the ranged arm); get_dmg_bonus recalc gate :1447 now live
- * (hmon_hitmon_dmg_recalc), shade bump :1817 still pre-existing named;
+ * hmon_hitmon_msg_silver :1876–1877 gate now wired in hmon_hitmon
+ * (silvermsg/silverobj set here, same as the ranged arm);
+ * get_dmg_bonus recalc gate :1447 now live
+ * (hmon_hitmon_dmg_recalc), shade bump :1817 live (D-3253);
  * C's commented-out learn_egg_type (:1206) stays commented out.
  * Caller: hmon_hitmon's non-weapon branch (C hmon_hitmon_do_hit :1429).
  * The pie/venom arms are ported here in full, but hmon_hitmon's D-0693
@@ -1640,8 +1634,9 @@ async function hmon_hitmon_jousting(hmd, mon, obj) {
 /**
  * C ref: uhitm.c hmon_hitmon_msg_silver `:1663–1699`.
  * Flesh suffix is applied to the %s after the format is chosen.
- * saved_oname is empty unless a caller filled it (do_hit cxname is
- * still unnamed); an empty name falls through to "The silver sears".
+ * saved_oname is do_hit's :1410–1413 snapshot (cxname, or
+ * bare_artifactname for a lit light-artifact); an empty name falls
+ * through to "The silver sears".
  */
 async function hmon_hitmon_msg_silver(hmd, mon) {
     let whom = mon_nam(mon);
@@ -1992,6 +1987,8 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     let poiskilled = false;
     let already_killed = false;
     let barehand_silver_rings = 0;
+    let silvermsg = false; // C hmon_hitmon :1771 (set by do_hit arms)
+    let silverobj = false; // C hmon_hitmon :1772 (set by do_hit arms)
     let lightobj = false;
     let offmap = false;
     let mdat = mon.data;
@@ -2043,6 +2040,8 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     lightobj = !!hmdHit.lightobj;
     get_dmg_bonus = !!hmdHit.get_dmg_bonus;
     barehand_silver_rings = hmdHit.barehand_silver_rings | 0;
+    silvermsg = !!hmdHit.silvermsg; // C `:1771` via do_hit (:881/:897/:1036/:1378)
+    silverobj = !!hmdHit.silverobj; // C `:1772` via do_hit
     dryit = !!hmdHit.dryit;
     // C `:1793` saved_oname now filled by do_hit for the silver/light lines.
     let saved_oname = hmdHit.saved_oname || '';
@@ -2171,13 +2170,17 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     // after the hit message; dryit implies obj is still intact.
     if (dryit) await dry_a_towel(obj, -1, true);
 
-    // C :1877 — barehand silver rings use do_hit's saved_oname; calling
-    // msg_silver for weapon silvermsg stays named (flags now set).
-    if (barehand_silver_rings > 0) {
+    // C uhitm.c hmon_hitmon :1876–1877 — silvermsg (barehand rings via
+    // do_hit/barehands :881, or weapon silver via melee :1036 / ranged
+    // :897 / misc :1378) prints the sear line. C passes &hmd and obj
+    // (UNUSED inside msg_silver); the JS callee takes the hmd fields it
+    // reads. Barehand behavior is unchanged: barehands sets silvermsg
+    // exactly when barehand_silver_rings > 0.
+    if (silvermsg) {
         await hmon_hitmon_msg_silver({
             barehand_silver_rings,
-            silvermsg: true,
-            silverobj: false,
+            silvermsg,
+            silverobj,
             saved_oname,
             mdat,
         }, mon);

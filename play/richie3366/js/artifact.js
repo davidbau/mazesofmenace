@@ -116,7 +116,8 @@ import {
 import { getrumor, bcsign } from './rumors.js';
 import { SetVoice, voice_talking_artifact } from './sndprocs.js';
 import { cansee } from './vision.js';
-import { mon_nam, s_suffix, Monnam, mon_aligntyp_nam, hcolor, oname } from './do_name.js';
+import { mon_nam, s_suffix, Monnam, hcolor, oname } from './do_name.js';
+import { mon_aligntyp } from './priest.js';
 import { wake_nearto, healmon } from './mon.js';
 import { burn_away_slime } from './timeout.js';
 import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj, observe_object, freeinv } from './invent.js';
@@ -1545,7 +1546,7 @@ export function touch_artifact_mon(obj, mon) {
             && oart !== list[ART_EXCALIBUR];
         badalign = ((oart.spfx & SPFX_RESTR) !== 0)
             && oart.alignment !== A_NONE
-            && oart.alignment !== mon_aligntyp_nam(mon);
+            && oart.alignment !== mon_aligntyp(mon);
     } else {
         // C: covetous monsters and fake players touch anything except
         // spec_applies artifacts — badclass/badalign stay FALSE.

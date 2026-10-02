@@ -7,10 +7,10 @@
 //        paygd (D-1812; vault.c :1204–1247; really_done);
 //        move_gold (D-1946; vault.c :632–643; live, wallify_vault wired);
 //        wallify_vault (this iter; vault.c :646–731; cleanup-awaited).
-// Named omissions: wallify_vault xy_set_wall_state (mklev.js-local);
+// Named omissions: wallify_vault xy_set_wall_state (live js/mklev.js export; wallify still defers);
 // Croesus mon_wield;
-// SetVoice (no-op stub);
-// spot_stop_timers; xy_set_wall_state; mimic_obj_name; gd_move debugpline1;
+// SetVoice (no-op stub; invault wires the C-order calls);
+// gd_move debugpline1;
 // clear_fcorr: Punished/uball (occupant yelp/rloc/m_into_limbo live);
 // defensive !isok/!crm early-0 in the gd_move dig loop (C in-bounds
 // by construction).
@@ -28,8 +28,8 @@ import {
     Monnam, noit_Monnam, noit_mon_nam, pmname, Some_Monnam, x_monnam,
 } from './do_name.js';
 import { adjalign } from './attrib.js';
-import { nomul, in_rooms, You_hear } from './hack.js';
-import { an, makeplural, simpleonames } from './objnam.js';
+import { nomul, in_rooms, You_hear, stop_occupation, unmul } from './hack.js';
+import { an, makeplural, simpleonames, mimic_obj_name } from './objnam.js';
 import {
     cansee, couldsee, recalc_block_point, block_point, unblock_point,
 } from './vision.js';
@@ -40,6 +40,7 @@ import { rloc, enexto } from './teleport.js';
 import { yelp } from './sounds.js';
 import {
     place_object, stackobj, obj_extract_self, g_at, sobj_at, add_to_minv,
+    spot_stop_timers,
 } from './mkobj.js';
 import {
     VAULT, VAULT_GUARD_TIME, ROOMOFFSET, COLNO, ROWNO,
@@ -50,18 +51,19 @@ import {
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
     GD_EATGOLD, GD_DESTROYGOLD, ARTICLE_A, FCSIZ,
     RLOC_NOMSG, RLOC_MSG, RLOC_ERR, FEMALE, MALE, IN_SIGHT, COULD_SEE,
-    NEED_HTH_WEAPON,
+    NEED_HTH_WEAPON, MELT_ICE_AWAY,
 } from './const.js';
 import { MON_WEP, mon_wield_item } from './weapon.js';
-import { m_at, m_carrying, mnexto, mpickgold, setmangry } from './mon.js';
+import { m_at, m_carrying, mnexto, mpickgold, setmangry, mongone } from './mon.js';
 import { upstart, dist2, mungspaces, strncmpi } from './hacklib.js';
 import { SetVoice } from './sndprocs.js';
 import { is_fainted, reset_faint } from './eat.js';
 
 import { remove_monster, place_monster } from './steed.js';
-import { obfree } from './shk.js';
+import { obfree, money_cnt } from './shk.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
-import { m_canseeu, mhe } from './mondata.js';
+import { m_canseeu, mhe, noit_mhis, is_silent } from './mondata.js';
+import { xy_set_wall_state } from './mklev.js';
 import { objectNames } from './generated/objects_data.js';
 import { fracture_rock } from './dig.js';
 
@@ -71,15 +73,6 @@ const TIN_WHISTLE = objectNames.indexOf('TIN_WHISTLE');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
-
-/** C ref: invent.c money_cnt — invent is a JS array. */
-function money_cnt(invent) {
-    let sum = 0;
-    for (const o of invent || []) {
-        if (o.oclass === COIN_CLASS) sum += o.quan || 0;
-    }
-    return sum;
-}
 
 /** C ref: shk.c contained_gold `:3045–3061` — COIN_CLASS (+ nested). */
 function contained_gold(obj, even_if_unknown) {
@@ -678,7 +671,7 @@ export async function invault() {
         if (Math.abs(gdx - x) >= Math.abs(gdy - y)) x += dx;
         else y += dy;
     }
-    if (u.ux === x && u.uy === y) {
+    if (u_at(x, y)) {
         if (typAt(x + 1, y) === HWALL || typAt(x + 1, y) === DOOR) x += 1;
         else if (typAt(x - 1, y) === HWALL || typAt(x - 1, y) === DOOR) x -= 1;
         else if (typAt(x, y + 1) === VWALL || typAt(x, y + 1) === DOOR) y += 1;
@@ -734,35 +727,45 @@ export async function invault() {
     }
 
     if (u.uswallow) {
-        if (!Deaf()) await verbalize("What's going on here?");
+        // C vault.c:456–466 — can't interrogate hero, don't interrogate engulfer.
+        if (!Deaf()) {
+            SetVoice(guard, 0, 80, 0);
+            await verbalize("What's going on here?");
+        }
         if (!spotted) await pline('The other presence vanishes.');
-        mongone_guard(guard);
+        await mongone(guard);
         return;
     }
     if (M_AP_TYPE(game.youmonst) === M_AP_OBJECT || u.uundetected) {
+        // C vault.c:467–479 — mimicking an object (not gold) or hidden.
         if (M_AP_TYPE(game.youmonst) === M_AP_OBJECT
             && (game.youmonst?.mappearance | 0) !== GOLD_PIECE
             && !Deaf()) {
-            await verbalize('Hey!  Who left that object in here?');
+            SetVoice(guard, 0, 80, 0);
+            await verbalize('Hey!  Who left that %s in here?', mimic_obj_name(game.youmonst));
         }
         await pline(`Puzzled, ${mhe(guard)} turns around and leaves.`);
-        mongone_guard(guard);
+        await mongone(guard);
         return;
     }
-    // Strangled / is_silent / multi<0 — leave and return
-    if (u.Strangled || (game.multi | 0) < 0) {
+    // C vault.c:480 — Strangled / silent form / occupation: leave and return.
+    if (u.Strangled || is_silent(game.youmonst?.data) || (game.multi | 0) < 0) {
         if (Deaf()) {
             await pline(`${noit_Monnam(guard)} huffs and turns to leave.`);
         } else {
+            SetVoice(guard, 0, 80, 0);
             await verbalize("I'll be back when you're ready to speak to me!");
         }
-        mongone_guard(guard);
+        await mongone(guard);
         return;
     }
 
-    if (typeof game.occupation === 'function') game.occupation = null;
+    // C vault.c:494–498 — stop any occupation *now*, then close a counted
+    // repeat with nomul(0) + unmul(NULL) (prints nomovemsg or the default).
+    await stop_occupation();
     if ((game.multi | 0) > 0) {
         nomul(0);
+        await unmul(null);
     }
 
     let buf = '';
@@ -786,8 +789,16 @@ export async function invault() {
     if (strncmpi(buf, 'Croesus', -1) === 0 || strncmpi(buf, 'Kroisos', -1) === 0
         || strncmpi(buf, 'Creosote', -1) === 0) { /* Discworld; C `:513–514` !strcmpi */
         if (!((game.mvitals?.[PM_CROESUS]?.died | 0))) {
-            // Croesus alive → leave (C waves-goodbye/sorry dialogue omitted)
-            mongone_guard(guard);
+            // C vault.c:515–524 — Croesus lives: the guard apologises and leaves.
+            if (Deaf()) {
+                if (!Blind()) {
+                    await pline(`${noit_Monnam(guard)} waves goodbye.`);
+                }
+            } else {
+                SetVoice(guard, 0, 80, 0);
+                await verbalize('Oh, yes, of course.  Sorry to have disturbed you.');
+            }
+            await mongone(guard);
             return;
         }
         // C vault.c:526 — Croesus dead → the guard gets angry
@@ -815,9 +826,11 @@ export async function invault() {
             `${noit_Monnam(guard)} doesn't ${Blind() ? '' : 'appear to '}recognize you.`,
         );
     } else {
+        SetVoice(guard, 0, 80, 0);
         await verbalize("I don't know you.");
     }
 
+    // C vault.c:551 — first gold stack (C money_cnt returns, not sums).
     const umoney = money_cnt(game.invent);
     if (!umoney && !hidden_gold(true)) {
         if (Deaf()) {
@@ -825,22 +838,36 @@ export async function invault() {
                 `${noit_Monnam(guard)} stomps${Blind() ? '' : ' and beckons'}.`,
             );
         } else {
+            SetVoice(guard, 0, 80, 0);
             await verbalize('Please follow me.');
         }
     } else {
+        // C vault.c:561 — hidden gold only: Deaf sees the glare
+        // ("your stuff" iff any invent; the container guarantees it).
         if (!umoney) {
-            if (!Deaf()) await verbalize('You have hidden gold.');
+            if (Deaf()) {
+                if (!Blind()) {
+                    await pline(
+                        `${noit_Monnam(guard)} glares at you${game.invent?.length ? 'r stuff' : ''}.`,
+                    );
+                }
+            } else {
+                SetVoice(guard, 0, 80, 0);
+                await verbalize('You have hidden gold.');
+            }
         }
         if (Deaf()) {
             if (!Blind()) {
                 await pline(
-                    `${noit_Monnam(guard)} holds out his palm and beckons with his other hand.`,
+                    `${noit_Monnam(guard)} holds out ${noit_mhis(guard)} palm and beckons with ${noit_mhis(guard)} other hand.`,
                 );
             }
         } else {
+            SetVoice(guard, 0, 80, 0);
             await verbalize(
                 'Most likely all your gold was stolen from this vault.',
             );
+            SetVoice(guard, 0, 80, 0);
             await verbalize('Please drop that gold and follow me.');
         }
         egd.dropgoldcnt = (egd.dropgoldcnt | 0) + 1;
@@ -876,16 +903,18 @@ export async function invault() {
             else if (x === lowx - 1 || x === hix + 1) typ = VWALL;
             loc.typ = typ;
             loc.wall_info = 0;
-            // xy_set_wall_state deferred
+            xy_set_wall_state(x, y); /* WA_MASK bits (C :617) */
         }
     }
     egd.fakecorr[0].ftyp = typ;
     egd.fakecorr[0].flags = loc?.flags | 0;
+    /* guard's entry point where confrontation with hero takes place */
+    spot_stop_timers(x, y, MELT_ICE_AWAY); // C :622
     if (loc) {
         loc.typ = DOOR;
         loc.doormask = D_NODOOR;
     }
-    recalc_block_point(x, y);
+    unblock_point(x, y); /* empty doorway doesn't block light (C :625) */
     egd.fcend = 1;
     egd.warncnt = 1;
 }

@@ -25,7 +25,7 @@ import {
     WRITING, FREEING,
     UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
     MAGIC_PORTAL, TIMEOUT, BLINDED, STONED, SLIMED, STRANGLED, SICK,
-    RLOC_NOMSG, EYE, FACE, HAND, STOMACH, FROMOUTSIDE, HMON_THROWN, NO_TRAP,
+    RLOC_NOMSG, TELEDS_NO_FLAGS, EYE, FACE, HAND, STOMACH, FROMOUTSIDE, HMON_THROWN, NO_TRAP,
     WARN_OF_MON, TELEPAT, INFRAVISION,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
     LL_ACHIEVE, LL_DEBUG,
@@ -94,6 +94,8 @@ import {
     In_tutorial, at_dgn_entrance, print_level_annotation,
     recalc_mapseen, recbranch_mapseen, remdun_mapseen,
     maxledgerno, ledger_to_dnum, find_hell,
+    dunlev, dunlevs_in_dungeon, assign_rnd_level,
+    On_W_tower_level, In_W_tower,
     save_exclusions, load_exclusions,
 } from './dungeon.js';
 import { record_achievement } from './insight.js';
@@ -102,7 +104,7 @@ import { com_pager, deliver_by_pline } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
 import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon } from './mon.js';
-import { enexto, rloc } from './teleport.js';
+import { enexto, rloc, safe_teleds } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
     check_special_room, is_pool, is_lava, waterbody_name,
@@ -184,7 +186,7 @@ import { delete_levelfile, open_levelfile } from './files.js';
 import { strange_feeling } from './detect.js';
 import { surface } from './sit.js';
 import { use_pick_axe2, bury_objs, fill_pit } from './dig.js';
-import { set_move_cmd, u_rooted, nhl_callback } from './cmd.js';
+import { set_move_cmd, u_rooted, nhl_callback, wizardOn } from './cmd.js';
 import { cmd_from_func, visctrl } from './dokeylist.js';
 import { newcham, mpickobj } from './makemon.js';
 import { grow_up, mondied } from './mhitm.js';
@@ -1529,12 +1531,18 @@ export async function getlev_catchup_monsters(elapsed) {
  * → "mysterious force prevents you from descending" (D-0798).
  * Ported: `ledger_no <= 0` → `done(ESCAPED)` after tutorial (D-1764;
  * C `:1517–1519`; heaven escape dlevel 0).
- * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
- * RMPORTAL, migrating-Wizard resurrect arm,
- * Punished `ballfall` on trap-door falling, W-tower `u_on_rndspot` bit 2
- * (rndspot itself awaits switch_terrain D-1278; stairs u_on_sstairs
- * fallback is D-1287; cmd.c makemap_prepost amulet|wiztower is D-1288),
- * Lua NHCB_LVL_LEAVE, MICRO display_nhwindow after Valley odor;
+ * Ported: Gehennom amulet mysteryforce arm (C `:1541–1570`; rn2 gate,
+ * assign_rnd_level, W-tower diff=0, same-level safe_teleds/next_to_u).
+ * Ported: W-tower `u_on_rndspot` bit 2 at C `:1804` (D-1179 retired;
+ * rndspot itself awaits switch_terrain D-1278; stairs u_on_sstairs
+ * fallback is D-1287; cmd.c makemap_prepost amulet|wiztower is D-1288).
+* Ported: entry dlevel clamp (C `:1501–1502`) + endgame-entry arm (C
+* `:1504–1509`: no-Amulet return, wizard ^V bypasses Earth redirect) +
+* plain-`else` arrival (C `:1803`: at_stairs endgame arrivals rndspot).
+ * Trap-door `ballfall` was already live; D-3261 omit text corrected.
+ * Deferred: binary NHFILE, quest gate seal RMPORTAL, migrating-Wizard
+ * resurrect arm, Lua NHCB_LVL_LEAVE, MICRO display_nhwindow after
+ * Valley odor;
  * poly `locomotion()` climb verb / steed-flyer Flying;
  * u_collide_m full limbo. Ported: Punished climb
  * `great_effort` + Flying ladder "along" (D-0928 #1159);
@@ -1647,10 +1655,23 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     let do_fall_dmg = false;
     const newdungeon = (u.uz.dnum | 0) !== (newlevel.dnum | 0);
     let leaving_tutorial = false;
+    // C do.c:1492 — captured at entry, before u.uz is reassigned.
+    const was_in_W_tower = In_W_tower(u.ux | 0, u.uy | 0, u.uz);
+
+    // C do.c:1501–1502 — clamp an over-deep target (wizard ^V /
+    // level-teleport overshoot); up/dist/newdungeon above already read
+    // the unclamped level, like C's declaration inits.
+    if (dunlev(newlevel) > dunlevs_in_dungeon(newlevel))
+        newlevel.dlevel = dunlevs_in_dungeon(newlevel);
 
     // C: do.c — tutorial(TRUE/FALSE) via nhcore when crossing tutorial branch.
     if (newdungeon) {
-        if (In_tutorial(newlevel)) {
+        // C do.c:1504–1509 — 1st Endgame Level: the Amulet is required
+        // (plain return, no message); wizard ^V bypasses the Earth redirect.
+        if (In_endgame(newlevel)) {
+            if (!(u.uhave?.amulet || u.uhave_amulet)) return;
+            if (!wizardOn()) assign_level(newlevel, game.earth_level);
+        } else if (In_tutorial(newlevel)) {
             game.flags = game.flags || {};
             game.flags.in_tutorial_branch = true;
             await tutorial(true);
@@ -1663,16 +1684,54 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
     // C do.c :1517–1519 — after tutorial; ledger_no <= 0 is done(ESCAPED)
     // (noreturn). JS done() returns after really_done so stop here.
-    const new_ledger = ledger_no(newlevel);
+    // `let`: the mysteryforce arm below may redirect newlevel (C :1600).
+    let new_ledger = ledger_no(newlevel);
     if (new_ledger <= 0) {
         const { done } = await import('./end.js');
         await done(ESCAPED);
         return;
     }
 
+    // C do.c:1541–1570 — Gehennom amulet mysteryforce: climbing up with
+    // the Amulet, above the Valley floor, sometimes redirects the trip
+    // (same level → safe_teleds + next_to_u and return; deeper → the
+    // redirected newlevel with at_stairs cleared).
+    if (In_hell(u.uz) && up && (u.uhave?.amulet || u.uhave_amulet)
+        && !newdungeon && !portal
+        && (dunlev(u.uz) < dunlevs_in_dungeon(u.uz) - 3)) {
+        if (!rn2(4 + (game.context?.mysteryforce | 0))) {
+            // C :1553–1554 — odds 3 + align.type (2..4); paranoia 0 arm.
+            const odds = 3 + (u.ualign?.type ?? 0);
+            let diff = (odds <= 1) ? 0 : rn2(odds);
+            if (diff !== 0) {
+                assign_rnd_level(newlevel, u.uz, diff);
+                // C :1558 — assign_rnd_level may have clamped; actual descent.
+                diff = (newlevel.dlevel | 0) - (u.uz.dlevel | 0);
+                // C :1560–1561 — inside the tower, stay inside.
+                if (was_in_W_tower && !On_W_tower_level(newlevel))
+                    diff = 0;
+            }
+            if (diff === 0)
+                assign_level(newlevel, u.uz);
+            await pline('A mysterious force momentarily surrounds you...');
+            // C :1567 — the kick-in chance drops as it kicks in.
+            if (!game.context) game.context = {};
+            game.context.mysteryforce =
+                (game.context.mysteryforce | 0) + rn2(diff + 2);
+            if (on_level(newlevel, u.uz)) {
+                await safe_teleds(TELEDS_NO_FLAGS);
+                const { next_to_u } = await import('./apply.js');
+                await next_to_u();
+                return;
+            }
+            new_ledger = ledger_no(newlevel);
+            at_stairs = false;
+            game.at_ladder = false;
+        }
+    }
+
     // C: prevent leaving quest Home deeper in-branch until ok_to_quest
     // (leader assigned / thanks / killed_leader). Same-dungeon only.
-    // Named omission: Gehennom amulet mysteryforce arm above this gate.
     if (on_level(u.uz, game.qstart_level) && !newdungeon && !ok_to_quest()) {
         await pline('A mysterious force prevents you from descending.');
         return;
@@ -2106,10 +2165,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                     : 'You descend the stairs.');
             }
         }
-    } else if (!at_stairs) {
-        // C: trap door / level_tele / In_endgame → u_on_rndspot
-        // Named omit: was_in_W_tower bit 2 (D-1179).
-        await u_on_rndspot(up ? 1 : 0);
+    } else { // C do.c:1803 — trap door or level_tele or In_endgame
+        // (at_stairs endgame arrivals take rndspot too — plain else, not
+        // `else if (!at_stairs)`); W-tower bit 2 (D-1179 retired).
+        await u_on_rndspot((up ? 1 : 0) | (was_in_W_tower ? 2 : 0));
         if (falling) {
             // C do.c `:1805–1809` — Punished ≡ (uball != 0) (youprop.h:77)
             // && !welded(uball) then ballfall, then selftouch, then

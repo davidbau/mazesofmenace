@@ -106,7 +106,7 @@ import { zappable, release_hold, revive } from './zap.js';
 import { explode } from './explode.js';
 import {
     flash_hits_mon, xkilled, attack_checks, check_caitiff,
-    force_attack, stumble_onto_mimic, killed,
+    force_attack, stumble_onto_mimic, killed, defsym_explanation,
 } from './uhitm.js';
 import { digests, set_ustuck, Flying, mon_reflects } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
@@ -468,8 +468,7 @@ async function its_dead(rx, ry, resp) {
  * map_invisible), unmap_invisible, SDOOR/SCORR hollow reveal, its_dead tail
  * (C `You`, not `You_hear`, on "hear nothing special"). Caller
  * apply.c:4328 wired js/apply.js doapply STETHOSCOPE (res > 0).
- * Named omissions: M_AP_FURNITURE defsyms[].explanation (no JS defsyms
- * table — keeps C default 'thing'; map-named).
+ * Whole C body live (M_AP_FURNITURE via defsym_explanation).
  * @returns {number} 1 = ECMD_TIME, 0 = ECMD_OK, -1 = ECMD_CANCEL
  */
 async function use_stethoscope(obj) {
@@ -596,9 +595,11 @@ async function use_stethoscope(obj) {
                 what = pmname(mons(mtmp.mappearance | 0), Mgender(mtmp));
                 break;
             case M_AP_FURNITURE:
-                /* Named omit (map): defsyms[mappearance].explanation —
-                   no JS defsyms table; keeps C default 'thing'. */
-                what = 'thing';
+                /* C `:430–431` defsyms[mappearance].explanation via the
+                   live table (uhitm.js DEFSYM_EXPLANATION, C-exact 0–87
+                   per defsym.h; furniture-mimic appearances are all ≤ 37
+                   — makemon.c set_mimic_sym; same helper as dogmove.js). */
+                what = defsym_explanation(mtmp.mappearance | 0);
                 break;
             }
             seemimic(mtmp);
@@ -1461,8 +1462,10 @@ function s_suffix_leash(s) {
     return `${buf}'s`;
 }
 
-/** C you.h mhis — hallu rn2 deferred (leash pull-free msg). */
-function mhis_leash(mtmp) {
+/** C you.h mhis — hallu rn2 deferred (leash pull-free msg).
+ * Exported: migrate_to_level's sync leash arm initiates the TRUE-arm
+ * message while the live m_unleash(FALSE) runs the state clear (D-3281). */
+export function mhis_leash(mtmp) {
     if (mtmp?.female) return 'her';
     return 'his';
 }

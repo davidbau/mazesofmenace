@@ -2771,6 +2771,30 @@ function Role_if(pm) {
 }
 
 /**
+ * C ref: pray.c static hallu_gods[] `:2558–2573` — Hallu-only god-name pool.
+ * Module scope (was function-local): priest.c priestname's sync mirror of
+ * the halu_gname Hallu arm (priest.js) draws from this same table — the live
+ * halu_gname is async-only via unreachable impossible()s, unwirable from
+ * the sync priestname←x_monnam path.
+ */
+export const HALU_GODS = [
+    'the Flying Spaghetti Monster',
+    'Eris',
+    'the Martians',
+    'Xom',
+    'AnDoR dRaKoN',
+    'the Central Bank of Yendor',
+    'Tooth Fairy',
+    'Om',
+    'Yawgmoth',
+    'Morgoth',
+    'Cthulhu',
+    'the Ori',
+    'destiny',
+    'your Friend the Computer',
+];
+
+/**
  * C ref: pray.c halu_gname `:2577–2619` — non-Hallu → align_gname;
  * Hallu → randrole(TRUE) pantheon pick (roles with null lgod, e.g. Priest,
  * re-rolled) + rn2_on_display_rng(9) god slot. All Hallu draws are on the
@@ -2787,23 +2811,6 @@ export async function halu_gname(alignment) {
     do {
         which = rn2_on_display_rng(roles.length);
     } while (!roles[which]?.lgod);
-    // C: static hallu_gods[] (pray.c:2558–2573).
-    const hallu_gods = [
-        'the Flying Spaghetti Monster',
-        'Eris',
-        'the Martians',
-        'Xom',
-        'AnDoR dRaKoN',
-        'the Central Bank of Yendor',
-        'Tooth Fairy',
-        'Om',
-        'Yawgmoth',
-        'Morgoth',
-        'Cthulhu',
-        'the Ori',
-        'destiny',
-        'your Friend the Computer',
-    ];
     let gnam;
     switch (rn2_on_display_rng(9)) {
     case 0:
@@ -2820,7 +2827,7 @@ export async function halu_gname(alignment) {
         break;
     case 6:
     case 7:
-        gnam = hallu_gods[rn2_on_display_rng(hallu_gods.length)];
+        gnam = HALU_GODS[rn2_on_display_rng(HALU_GODS.length)];
         break;
     case 8:
         gnam = 'Moloch'; // C: static Moloch (pray.c:58)

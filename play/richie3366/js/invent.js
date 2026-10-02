@@ -327,7 +327,7 @@ import {
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
-import { magic_negation_you } from './mhitm.js';
+import { magic_negation_you, stagger } from './mhitm.js';
 import { t_at, trapname, ice_descr } from './trap.js';
 import { is_pool, is_lava } from './hack.js';
 import { is_ice } from './zap.js';
@@ -1167,9 +1167,9 @@ export function max_capacity() {
 }
 
 /**
- * C ref: pickup.c encumber_msg — pline when near_capacity crosses go.oldcap.
- * Envelope: all SLT..OVERLOADED up/down arms; stagger() poly deferred
- * (humanoid uses verb as-is).
+ * C ref: pickup.c encumber_msg :1977–2020 — pline when near_capacity
+ * crosses go.oldcap. Envelope: all SLT..OVERLOADED up/down arms; both
+ * HVY arms call stagger(gy.youmonst.data, "stagger") (D-3283).
  */
 export async function encumber_msg() {
     const newcap = near_capacity();
@@ -1183,7 +1183,7 @@ export async function encumber_msg() {
             await pline('You rebalance your load.  Movement is difficult.');
             break;
         case HVY_ENCUMBER:
-            await pline('You stagger under your heavy load.  Movement is very hard.');
+            await pline(`You ${stagger(game.youmonst?.data, 'stagger')} under your heavy load.  Movement is very hard.`);
             break;
         default:
             await pline(
@@ -1205,7 +1205,7 @@ export async function encumber_msg() {
             await pline('You rebalance your load.  Movement is still difficult.');
             break;
         case HVY_ENCUMBER:
-            await pline('You stagger under your load.  Movement is still very hard.');
+            await pline(`You ${stagger(game.youmonst?.data, 'stagger')} under your load.  Movement is still very hard.`);
             break;
         default:
             break;

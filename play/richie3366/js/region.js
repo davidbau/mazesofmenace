@@ -50,7 +50,7 @@ import { objectNames } from './objects.js';
 import { makeplural } from './objnam.js';
 import { body_part } from './polyself.js';
 import { Monnam, m_monnam } from './do_name.js';
-import { monstseesu, monstunseesu } from './mondata.js';
+import { monstseesu, monstunseesu, is_silent } from './mondata.js';
 import { resists_poison } from './zap.js';
 import { dist2 } from './hacklib.js';
 import { level_mon_at } from './worm.js';
@@ -306,11 +306,6 @@ function Blind() {
 function Half_gas_damage() {
     const t = game.u?.ublindf;
     return !!(t && TOWEL >= 0 && t.otyp === TOWEL && (t.spe | 0) > 0);
-}
-
-/** C mondata.h is_silent — msound == MS_SILENT. */
-function is_silent(ptr) {
-    return (ptr?.msound | 0) === MS_SILENT;
 }
 
 /** C mondata.h immune_poisongas — Hezrou or Vrock (mndx; JS mons() allocs). */

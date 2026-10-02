@@ -155,7 +155,7 @@ import { which_armor } from './worn.js';
 import { linedup } from './mthrowu.js';
 
 /** C flag.h:30,33 — `wizard` is `flags.debug`, `discover` is `flags.explore`. */
-function wizardOn() {
+export function wizardOn() {
     return !!(game.flags?.debug || game.flags?.wizard || game.wizard);
 }
 
