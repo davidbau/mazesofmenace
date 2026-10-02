@@ -5,12 +5,12 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { pline, You, You_cant, There, pline_The, newsym, feel_newsym, canseemon, canspotmon, map_invisible, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
-import { yn_function } from './getline.js';
-import { vision_recalc, recalc_block_point, cansee } from './vision.js';
+import { yn_function, y_n, ynq } from './getline.js';
+import { vision_recalc, recalc_block_point, unblock_point, cansee } from './vision.js';
 import { stop_occupation, in_rooms, closed_door, confdir, is_lava, is_pool, You_hear } from './hack.js';
 import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
-    DOOR, SDOOR, Is_rogue_level, SHOPBASE,
+    DOOR, SDOOR, Is_rogue_level, SHOPBASE, COST_BRKLCK, SHOP_DOOR_COST,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
@@ -25,12 +25,13 @@ import {
 } from './const.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { rnl, rn2, rnd } from './rng.js';
-import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
+import { acurr, acurrstr, A_STR, A_DEX, A_CON, A_WIS, exercise } from './attrib.js';
 import { verysmall, nohands, passes_walls, G_UNIQ, breathless, haseyes } from './monsters.js';
 import {
     objects_at, place_object, stackobj, obj_extract_self, delobj,
+    start_corpse_timeout,
 } from './mkobj.js';
-import { can_reach_floor, set_occupation } from './engrave.js';
+import { can_reach_floor, cant_reach_floor, set_occupation } from './engrave.js';
 import {
     WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, POTION_CLASS, WAND_CLASS,
     objectNames,
@@ -55,7 +56,7 @@ import { m_at, wake_nearto } from './mon.js';
 // (KABOOM/hear, wake_nearto 49, mstun, rnd(15), mondied/lifesave,
 // mon_learns_traps TRAPPED_DOOR); hoisted fn, cycle-safe per imports.mjs.
 import { mb_trapped } from './monmove.js';
-import { b_trapped, t_at, could_untrap, untrap } from './trap.js';
+import { b_trapped, t_at, could_untrap, untrap, chest_trap } from './trap.js';
 import { currency, cmdq_add_key, update_inventory } from './invent.js';
 import { show_text_pages, dowhatdoes_core } from './pager.js';
 import { visctrl, cmdbind_get, show_direction_keys } from './dokeylist.js';
@@ -289,6 +290,8 @@ const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const CHEST = objectNames.indexOf('CHEST');
+const ICE_BOX = objectNames.indexOf('ICE_BOX');
+const CORPSE = objectNames.indexOf('CORPSE');
 const WAN_LOCKING = objectNames.indexOf('WAN_LOCKING');
 const SPE_WIZARD_LOCK = objectNames.indexOf('SPE_WIZARD_LOCK');
 const WAN_OPENING = objectNames.indexOf('WAN_OPENING');
@@ -456,9 +459,10 @@ export function picking_at(x, y) {
 }
 
 /**
- * C ref: lock.c picklock — occupation callback; rn2(100) vs xlock.chance.
- * Door + floor-box paths. Deferred: magic-key trap disarm yn, b_trapped
- * door destroy, chest_trap on trapped box unlock.
+ * C ref: lock.c picklock `:68–159` — occupation callback; rn2(100) vs
+ * xlock.chance. Door + floor-box paths; magic-key trap-find/disarm yn;
+ * trapped-door b_trapped → D_NODOOR + shop damage; chest_trap on
+ * trapped box unlock. No named omissions.
  * @returns {number} 1 = still busy, 0 = done (C occupation continue)
  */
 async function picklock() {
@@ -490,7 +494,7 @@ async function picklock() {
             xl.usedtime = 0;
             return 0;
         case D_ISOPEN:
-            await pline('You cannot lock an open door.');
+            await You('cannot lock an open door.');
             xl.usedtime = 0;
             return 0;
         case D_BROKEN:
@@ -502,9 +506,11 @@ async function picklock() {
         }
     }
 
-    xl.usedtime = (xl.usedtime || 0) + 1;
-    if (xl.usedtime >= 50 || nohands(game.youmonst?.data)) {
-        await pline(`You give up your attempt at ${lock_action()}.`);
+    // C: post-increment — the give-up test sees the old usedtime
+    const oldtime = xl.usedtime | 0;
+    xl.usedtime = oldtime + 1;
+    if (oldtime >= 50 || nohands(game.youmonst?.data)) {
+        await You('give up your attempt at %s.', lock_action());
         exercise(A_DEX, true);
         xl.usedtime = 0;
         return 0;
@@ -515,8 +521,41 @@ async function picklock() {
         return 1;
     }
 
-    // magic_key trap find / disarm deferred (ordinary pick → magic_key false)
-    await pline(`You succeed in ${lock_action()}.`);
+    // C: a Master Key of Thievery setup with adequate bless/curse state
+    // (xlock.magic_key) finds the trap; disarming with it always succeeds.
+    if ((!xl.door ? (xl.box.otrapped | 0) : ((xl.door.doormask & D_TRAPPED) !== 0))
+        && xl.magic_key) {
+        xl.chance = (xl.chance | 0) + 20; // less effort needed next time
+        if (!xl.door) {
+            if (!xl.box.tknown) {
+                await You('find a trap!');
+            }
+            xl.box.tknown = 1;
+        }
+        if ((await y_n('Do you want to try to disarm it?')) === 'y') {
+            let what;
+            let alreadyunlocked;
+            if (xl.door) {
+                xl.door.doormask &= ~D_TRAPPED;
+                what = 'door';
+                alreadyunlocked = !(xl.door.doormask & D_LOCKED);
+            } else {
+                xl.box.otrapped = 0;
+                xl.box.tknown = 0;
+                what = xl.box.otyp === CHEST ? 'chest' : 'box';
+                alreadyunlocked = !xl.box.olocked;
+            }
+            await You('succeed in disarming the trap.  The %s is still %slocked.', what, alreadyunlocked ? 'un' : '');
+            exercise(A_WIS, true);
+        } else {
+            await You('stop %s.', lock_action());
+            exercise(A_WIS, false);
+        }
+        xl.usedtime = 0;
+        return 0;
+    }
+
+    await You('succeed in %s.', lock_action());
     if (xl.door) {
         const dx = (u.dx | 0);
         const dy = (u.dy | 0);
@@ -524,22 +563,28 @@ async function picklock() {
         const ty = (u.uy | 0) + dy;
         const door = xl.door;
         if (door.doormask & D_TRAPPED) {
-            // C: b_trapped("door", FINGER) → D_NODOOR + unblock
-            door.doormask = D_NODOOR;
+            // C order: the trap fires before the door is destroyed
             await b_trapped('door', FINGER);
-            recalc_block_point(tx, ty);
-            vision_recalc(1);
+            door.doormask = D_NODOOR;
+            unblock_point(tx, ty);
+            if (in_rooms(tx, ty, SHOPBASE)) {
+                const { add_damage } = await import('./shk.js');
+                add_damage(tx, ty, SHOP_DOOR_COST);
+            }
+            newsym(tx, ty);
         } else if (door.doormask & D_LOCKED) {
             door.doormask = D_CLOSED;
+            newsym(tx, ty);
         } else {
             door.doormask = D_LOCKED;
+            newsym(tx, ty);
         }
-        // C: locked↔closed still blocks vision — no unblock_point
-        newsym(tx, ty);
     } else if (xl.box) {
-        // C: toggle olocked; chest_trap(FINGER) deferred when otrapped
         xl.box.olocked = !xl.box.olocked;
         xl.box.lknown = 1;
+        if (xl.box.otrapped) {
+            await chest_trap(xl.box, FINGER, false);
+        }
     }
     exercise(A_DEX, true);
     xl.usedtime = 0;
@@ -1832,14 +1877,21 @@ async function chest_shatter_msg(otmp) {
 }
 
 /**
- * C ref: lock.c breakchestlock — unlock+break or destroy box + spill.
- * Named omissions: costly_alteration COST_BRKLCK; ice-box
- * corpse age / start_corpse_timeout; potionbreathe on shatter.
- * Shop stolen_value on shatter/destroy (D-0983).
+ * C ref: lock.c breakchestlock `:162–212` — unlock+break or destroy
+ * box + spill. Every arm live: COST_BRKLCK billing hides cobj; the
+ * destroy path bills shattered + box contents, spills survivors, and
+ * resets ICE_BOX corpse age via start_corpse_timeout. useup stays the
+ * local async-capable clone (useup_invent: setuwep may return a
+ * promise); quan==1 obfree is inline (quan=0, where=OBJ_FREE).
  */
 export async function breakchestlock(box, destroyit) {
     if (!destroyit) {
-        // C: costly_alteration(COST_BRKLCK) deferred
+        // C: bill for the box but not for its contents
+        const hide_contents = box.cobj;
+        box.cobj = null;
+        const { costly_alteration } = await import('./shk.js');
+        await costly_alteration(box, COST_BRKLCK);
+        box.cobj = hide_contents;
         box.olocked = 0;
         box.obroken = 1;
         box.lknown = 1;
@@ -1879,7 +1931,10 @@ export async function breakchestlock(box, destroyit) {
             // remaining stack still placed below when quan>1 after useup
             if ((otmp.quan || 0) <= 0) continue;
         }
-        // ICE_BOX corpse age deferred
+        if ((box.otyp | 0) === ICE_BOX && (otmp.otyp | 0) === CORPSE) {
+            otmp.age = (game.moves | 0) - (otmp.age | 0); // actual age
+            start_corpse_timeout(otmp);
+        }
         place_object(otmp, u.ux | 0, u.uy | 0);
         stackobj(otmp);
     }
@@ -1889,9 +1944,7 @@ export async function breakchestlock(box, destroyit) {
         );
     }
     if (loss) {
-        await pline(
-            `You owe ${loss} ${currency(loss)} for objects destroyed.`,
-        );
+        await You('owe %ld %s for objects destroyed.', loss, currency(loss));
     }
     delobj(box);
 }
@@ -1912,10 +1965,12 @@ async function forcelock() {
         return 0;
     }
 
-    xl.usedtime = (xl.usedtime || 0) + 1;
+    // C: post-increment — the give-up test sees the old usedtime
+    const oldtime = xl.usedtime | 0;
+    xl.usedtime = oldtime + 1;
     const uwep = u.uwep;
-    if (xl.usedtime >= 50 || !uwep || nohands(game.youmonst?.data)) {
-        await pline('You give up your attempt to force the lock.');
+    if (oldtime >= 50 || !uwep || nohands(game.youmonst?.data)) {
+        await You('give up your attempt to force the lock.');
         if (xl.usedtime >= 50) {
             exercise(xl.picktyp ? A_DEX : A_STR, true);
         }
@@ -1936,7 +1991,7 @@ async function forcelock() {
                 const used = useup_invent(uwep);
                 if (used) await used;
             }
-            await pline('You give up your attempt to force the lock.');
+            await You('give up your attempt to force the lock.');
             exercise(A_DEX, true);
             xl.usedtime = 0;
             return 0;
@@ -1951,7 +2006,7 @@ async function forcelock() {
         return 1;
     }
 
-    await pline('You succeed in forcing the lock.');
+    await You('succeed in forcing the lock.');
     exercise(xl.picktyp ? A_DEX : A_STR, true);
     // C: destroyit = !picktyp && !rn2(3) — rn2 only when blunt
     const destroyit = !xl.picktyp && !rn2(3);
@@ -1984,7 +2039,7 @@ export async function doforce() {
     if (!u) return ECMD_OK;
 
     if (u.uswallow) {
-        await pline("You can't force anything from inside here.");
+        await You_cant('force anything from inside here.');
         return ECMD_OK;
     }
     if (!u_have_forceable_weapon()) {
@@ -1997,13 +2052,11 @@ export async function doforce() {
         } else {
             mid = use_plural ? 'with those' : 'with that';
         }
-        await pline(
-            `You can't force anything ${mid} weapon${use_plural ? 's' : ''}.`,
-        );
+        await You_cant('force anything %s weapon%s.', mid, use_plural ? 's' : '');
         return ECMD_OK;
     }
     if (!can_reach_floor(true)) {
-        await pline("You can't reach the floor.");
+        await cant_reach_floor(u.ux, u.uy, false, true, false);
         return ECMD_OK;
     }
 
@@ -2012,7 +2065,7 @@ export async function doforce() {
 
     // C: resume interrupted attempt when usedtime && same picktyp
     if ((game.xlock?.usedtime | 0) && game.xlock.box && picktyp === !!game.xlock.picktyp) {
-        await pline('You resume your attempt to force the lock.');
+        await You('resume your attempt to force the lock.');
         set_occupation(forcelock, 'forcing the lock', 0);
         return ECMD_TIME;
     }
@@ -2023,28 +2076,24 @@ export async function doforce() {
     for (let otmp = objects_at(u.ux, u.uy); otmp; otmp = otmp.nexthere) {
         if (!Is_box(otmp)) continue;
         if (otmp.obroken || !otmp.olocked) {
+            // C: lknown=0 forces doname() to omit the redundant prefix
             otmp.lknown = 0;
-            await pline(
-                `There is ${doname(otmp)} here, but its lock is already ${
-                    otmp.obroken ? 'broken' : 'unlocked'
-                }.`,
-            );
+            await There('is %s here, but its lock is already %s.', doname(otmp), otmp.obroken ? 'broken' : 'unlocked');
             otmp.lknown = 1;
             continue;
         }
+        // C order: the prompt names the box BEFORE lknown is set, so an
+        // unexamined lock is not called "locked" in the question.
+        const qbuf = safe_qbuf(null, 'There is ', ' here; force its lock?', otmp, doname, ansimpleoname, 'a box');
         otmp.lknown = 1;
-        const { yn_function } = await import('./getline.js');
-        const c = await yn_function(
-            `There is ${doname(otmp)} here; force its lock?`,
-            'ynq',
-            'q', // C: ynq() → yn_function(..., 'q', TRUE)
-        );
+
+        const c = await ynq(qbuf);
         if (c === 'q') return ECMD_OK;
         if (c === 'n') continue;
         if (picktyp) {
-            await pline(`You force ${yname(uwep)} into a crack and pry.`);
+            await You('force %s into a crack and pry.', yname(uwep));
         } else {
-            await pline(`You start bashing it with ${yname(uwep)}.`);
+            await You('start bashing it with %s.', yname(uwep));
         }
         game.xlock.box = otmp;
         // C: chance = objects[uwep->otyp].oc_wldam * 2
@@ -2052,14 +2101,13 @@ export async function doforce() {
         game.xlock.picktyp = picktyp;
         game.xlock.magic_key = false;
         game.xlock.usedtime = 0;
-        game.xlock.door = null;
         break;
     }
 
     if (game.xlock.box) {
         set_occupation(forcelock, 'forcing the lock', 0);
     } else {
-        await pline('You decide not to force the issue.');
+        await You('decide not to force the issue.');
     }
     return ECMD_TIME;
 }

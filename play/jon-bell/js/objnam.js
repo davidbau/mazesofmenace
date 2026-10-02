@@ -1,5 +1,5 @@
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency } from './shk.js';
-import { COST_CONTENTS } from './const.js';
+import { COST_CONTENTS, BURN_OBJECT } from './const.js';
 // @ts-nocheck
 // objnam.js — readobjnam and helpers for wish parsing.
 // C ref: nethack-c/src/objnam.c
@@ -78,7 +78,7 @@ import { tin_details } from './eat.js';
  * on.  Only ever called at runtime (never at module-evaluation time), which is
  * what makes the cycle safe in ESM. */
 import { body_part, obj_extract_self_general } from './cmd.js';
-import { begin_burn } from './timeout.js';
+import { begin_burn, peek_timer } from './timeout.js';
 /* distant_name()'s near/far test (objnam.c:387).  js/vision.js imports only
  * gstate/const/display, so this edge closes no cycle back into objnam.js. */
 import { cansee as cansee_on } from './vision.js';
@@ -1771,14 +1771,52 @@ function _singularize_word(word) {
     ];
     for (const [pl, sg] of irreg)
         if (wl === pl) return sg;
-    /* C objnam.c:3122-3126: words ending in -us are already singular, except
-     * plural tengus and hezrous.  This matters before the alternate-spelling
-     * scan: "eucalyptus" must remain intact to match that table. */
-    if (wl.endsWith('us') && !wl.endsWith('tengus') && !wl.endsWith('hezrous'))
-        return word;
-    /* Strip trailing 's' for most words */
-    if (word.endsWith("s") && word.length > 2)
-        return word.slice(0, -1);
+    /* C objnam.c:3078-3160: suffix stripping on the (compound-trimmed) word. */
+    const ends = (n, t) => wl.length >= n && wl.endsWith(t);
+    const L = wl.length;
+    const lc = (k) => (L - k >= 0 ? wl[L - k] : '');
+    const cut = (n, rep) => word.slice(0, L - n) + rep;
+    /* a "start of string or space" guard: p - k == bp || p[-(k+1)] == ' ' */
+    const atWordStart = (k) => L - k === 0 || wl[L - k - 1] === ' ';
+    if (L >= 1 && lc(1) === 's') {
+        if (L >= 2 && lc(2) === 'e') {
+            if (L >= 3 && lc(3) === 'i') { /* "ies" */
+                if (ends(7, 'cookies')
+                    || (ends(4, 'pies') && atWordStart(4))
+                    || (ends(6, 'genies') && atWordStart(6))
+                    || ends(5, 'mbies') || ends(5, 'yries'))
+                    return cut(1, '');
+                return cut(3, 'y');
+            }
+            /* wolves, but f to ves isn't fully reversible */
+            if (L - 4 >= 0 && ('lr'.includes(lc(4)) || 'aeiou'.includes(lc(4)))
+                && ends(3, 'ves')) {
+                if (ends(6, 'cloves') || ends(6, 'nerves'))
+                    return cut(1, '');
+                return cut(3, 'f');
+            }
+            if (ends(4, 'eses') || ends(4, 'oxes') || ends(4, 'nxes')
+                || ends(4, 'ches') || ends(4, 'uses') || ends(4, 'shes')
+                || ends(4, 'sses') || ends(5, 'atoes') || ends(7, 'dingoes')
+                || ends(7, 'aleaxes'))
+                return cut(2, '');
+            return cut(1, '');
+        } else if (ends(2, 'us')) { /* lotus, fungus... */
+            if (!ends(6, 'tengus') && !ends(7, 'hezrous'))
+                return word;
+            return cut(1, '');
+        } else if (ends(2, 'ss') || ends(5, ' lens') || wl === 'lens') {
+            return word;
+        }
+        return cut(1, '');
+    }
+    /* input doesn't end in 's' */
+    if (ends(3, 'men') && !badman(word, false))
+        return cut(2, 'an');
+    if (ends(6, 'matzot') || ends(2, 'ae') || ends(4, 'eaux'))
+        return cut(1, '');
+    if (L - 4 >= 0 && ends(2, 'ia') && 'lr'.includes(lc(3)) && lc(4) === 'e')
+        return cut(1, 'um');
     return word;
 }
 
@@ -4789,11 +4827,15 @@ async function doname_base(obj, doname_flags) {
         } else if (otyp === OIL_LAMP || otyp === MAGIC_LAMP
                    || otyp === BRASS_LANTERN || _Is_candle(otyp)) {
             if (_Is_candle(otyp)) {
-                /* C:1459-1476 — "partly used " when age < 20 * oc_cost.
-                 * GAP: oc_cost is not carried in js/; js/shk.js:467 has the two
-                 * candle costs (wax 10, tallow 10 -> 200 turns) but not as a
-                 * table this file can read, so the prefix is omitted rather
-                 * than guessed. */
+                /* C:1459-1476 — "partly used " when the burn time left is
+                 * under 20 * oc_cost; a lit candle adds its BURN_OBJECT
+                 * timer's remaining time (the age is adjusted at begin_burn). */
+                const full_burn_time = 20 * Number(OC_COST[otyp]);
+                let turns_left = Number(obj.age ?? 0);
+                if (obj.lamplit)
+                    turns_left += peek_timer(BURN_OBJECT, { a_obj: obj })
+                        - ((game.moves ?? 0) | 0);
+                if (turns_left < full_burn_time) prefix += 'partly used ';
             }
             if (obj.lamplit) bp += ' (lit)';
             break;

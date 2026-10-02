@@ -3057,14 +3057,23 @@ function m_initinv(mtmp) {
             case pm('CAPTAIN'): mac = -3; break;
             case pm('WATCHMAN'): mac = 3; break;
             case pm('WATCH_CAPTAIN'): mac = -2; break;
-            default: mac = 0; break;
+            default:
+                // C: impossible("odd mercenary %d?", monsndx(ptr))
+                void impossible('odd mercenary %d?', ptr.mndx | 0);
+                mac = 0;
+                break;
             }
+            // C ref: makemon.c m_initinv add_ac + hack.h ARM_BONUS —
+            //   a_ac + spe - min(greatest_erosion, a_ac);
+            //   greatest_erosion is obj.h max(oeroded, oeroded2).
             const armBonus = (otmp) => {
                 if (!otmp) return 0;
                 const a_ac = objects()?.[otmp.otyp]?.a_ac
                     ?? game.objects?.[otmp.otyp]?.a_ac
                     ?? 0;
-                return (a_ac | 0) + (otmp.spe | 0);
+                const erosion = Math.max(otmp.oeroded | 0, otmp.oeroded2 | 0);
+                return (a_ac | 0) + (otmp.spe | 0)
+                    - Math.min(erosion, a_ac | 0);
             };
             let otmp = null;
             // round 1: body armor
@@ -3155,7 +3164,6 @@ function m_initinv(mtmp) {
             mongets(mtmp, rn2(11) ? otyp('ROBE')
                 : otyp('CLOAK_OF_MAGIC_RESISTANCE'));
         }
-        // elf / guardian invent arms deferred
         break;
     default:
         break;

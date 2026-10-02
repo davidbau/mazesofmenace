@@ -3,7 +3,7 @@ import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { discover_object } from './o_init.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { game } from './gstate.js';
-import { pline, getobj_never_mind, bot as bot_read, gamelog_add } from './display.js';
+import { pline, getobj_never_mind, bot as bot_read, gamelog_add, obj_to_glyph } from './display.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import {
     PM_GUARD, PM_SHOPKEEPER, PM_PRIEST as PM_ALIGNED_CLERIC,
@@ -587,7 +587,9 @@ import { inside_shop } from './mklev.js';
 import { shkname } from './dokick.js';
 import { erosion_matters, mkobj, place_object, makemon } from './mklev.js';
 /* seffect_light's confused arm only (read.c:1762-1780). */
-import { initedog } from './dog.js';
+import { initedog, tamedog } from './dog.js';
+import { setmangry } from './mklev.js';
+import { isok } from './const.js';
 import { canspotmon, _topl_stash_result } from './display.js';
 import { MM_EDOG, NO_MINVENT, MM_NOMSG, G_GONE } from './const.js';
 /* C ref: ball.c:193 placebc() — punish()'s ball&chain placement lives in
@@ -995,6 +997,9 @@ export async function doread() {
      * the turn IS consumed either way.  outrumor's own Blind arm prints the
      * two-line "scrap of paper" / "What a pity" pair and draws NOTHING -- which
      * is the branch all three cookie members of this row take. */
+    /* C read.c:362 `scroll->pickup_prev = 0;` — reading clears the
+     * just-picked-up mark from the whole stack (the remainder keeps none). */
+    if (scroll) scroll.pickup_prev = 0;
     if (scroll && (scroll.otyp | 0) === FORTUNE_COOKIE_RD) {
         if (game.flags?.verbose)
             await pline('You break up the cookie and throw away the pieces.');
@@ -3001,6 +3006,195 @@ async function food_detect(sobj) {
     return 0;
 }
 
+/* ── gold_detect (detect.c:341-475, scroll arm of read.c:2035-2043) ──────────
+ * Only the NON-confused, NON-cursed arm is ported; seffect_gold_detection's
+ * (confused || scursed) ? trap_detect(sobj) arm is still unported and falls
+ * through silently as before.  check_map_spot's glyph decode uses the rendered
+ * '$' symbol for COIN_CLASS (same approximation as _check_map_spot_rd). */
+import { hidden_gold as hidden_gold_gd } from './vault.js';
+import { money_cnt as money_cnt_gd } from './com_pager.js';
+import { findgold as findgold_gd } from './makemon.js';
+import { x_monnam as x_monnam_gd } from './mhitm.js';
+import { currency as currency_gd } from './shk.js';
+import { ARTICLE_THE as ARTICLE_THE_GD, ARTICLE_YOUR as ARTICLE_YOUR_GD,
+         SUPPRESS_SADDLE as SUPPRESS_SADDLE_GD } from './const.js';
+import { MKOBJ_OC_MATERIAL as MKOBJ_OC_MATERIAL_GD } from './mkobj_erosion_meta.js';
+import { FOOT as FOOT_GD } from './const.js';
+import { PM_GOLD_GOLEM as PM_GOLD_GOLEM_GD } from './pm.generated.js';
+const COIN_CLASS_GD = 12, GOLD_MAT_GD = 15, GOLD_PIECE_GD = 438;
+function _oc_material_gd(o) { return MKOBJ_OC_MATERIAL_GD[o.otyp | 0] | 0; }
+/* C detect.c:229-246 o_material() */
+function o_material_gd(obj, material) {
+    if (_oc_material_gd(obj) === material)
+        return obj;
+    if (Has_contents(obj)) {
+        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+            if (_oc_material_gd(otmp) === material)
+                return otmp;
+            else if (Has_contents(otmp)) {
+                const temp = o_material_gd(otmp, material);
+                if (temp) return temp;
+            }
+        }
+    }
+    return null;
+}
+/* C detect.c:262-306 check_map_spot(x, y, COIN_CLASS, material) */
+function _check_map_spot_gd(x, y, material) {
+    const g = game;
+    const loc = g.level && g.level.at ? g.level.at(x, y) : null;
+    const rg = loc && loc.remembered_glyph;
+    if (!rg || rg.cls !== GLYPHCLS_OBJ || rg.ch !== '$')
+        return false;
+    const here = g.level.levelObjects?.[x]?.[y] ?? null;
+    if (material) {
+        for (let o = here; o; o = o.nexthere)
+            if (o_material_gd(o, GOLD_MAT_GD)) return false;
+        const mt = m_at(x, y);
+        if (mt) for (let o = mt.minvent; o; o = o.nobj)
+            if (o_material_gd(o, GOLD_MAT_GD)) return false;
+        return true;
+    }
+    for (let o = here; o; o = o.nexthere)
+        if (o_in_rd(o, COIN_CLASS_GD)) return false;
+    const mt = m_at(x, y);
+    if (mt) for (let o = mt.minvent; o; o = o.nobj)
+        if (o_in_rd(o, COIN_CLASS_GD)) return false;
+    return true;
+}
+function _clear_stale_map_gd(material) {
+    let change_made = false;
+    for (let zx = 1; zx < COLNO; zx++)
+        for (let zy = 0; zy < ROWNO; zy++)
+            if (_check_map_spot_gd(zx, zy, material)) {
+                unmap_object(zx, zy);
+                change_made = true;
+            }
+    return change_made;
+}
+/* C detect.c:341-475 gold_detect(sobj): returns 1 if nothing was detected. */
+async function gold_detect(sobj) {
+    const g = game, u = g.u || {};
+    let temp = null, ugold = false, steedgold = false;
+    let ter_typ = TER_DETECT | TER_OBJ;
+    const blessed = !!sobj.blessed;
+    const stale = _clear_stale_map_gd(blessed ? GOLD_MAT_GD : 0);
+    g._gk_known = stale;
+    let outgoldmap = false;
+
+    for (let mtmp = g.fmon; mtmp && !outgoldmap; mtmp = mtmp.nmon) {
+        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx)) continue;
+        if (findgold_gd(mtmp.minvent) || (mtmp.mnum | 0) === PM_GOLD_GOLEM_GD) {
+            if (mtmp === u.usteed) steedgold = true;
+            else { g._gk_known = true; outgoldmap = true; }
+        } else {
+            for (let obj = mtmp.minvent; obj && !outgoldmap; obj = obj.nobj)
+                if ((blessed && o_material_gd(obj, GOLD_MAT_GD))
+                    || o_in_rd(obj, COIN_CLASS_GD)) {
+                    if (mtmp === u.usteed) steedgold = true;
+                    else { g._gk_known = true; outgoldmap = true; }
+                }
+        }
+    }
+    if (!outgoldmap) {
+        for (let obj = g.fobj; obj; obj = obj.nobj) {
+            if (blessed && o_material_gd(obj, GOLD_MAT_GD)) {
+                g._gk_known = true;
+                if ((obj.ox | 0) !== (u.ux | 0) || (obj.oy | 0) !== (u.uy | 0)) { outgoldmap = true; break; }
+            } else if (o_in_rd(obj, COIN_CLASS_GD)) {
+                g._gk_known = true;
+                if ((obj.ox | 0) !== (u.ux | 0) || (obj.oy | 0) !== (u.uy | 0)) { outgoldmap = true; break; }
+            }
+        }
+    }
+
+    if (!outgoldmap) {
+        if (!g._gk_known) {
+            let buf;
+            if ((u.umonnum | 0) === PM_GOLD_GOLEM_GD && u.umonnum != null)
+                buf = `You feel like a million ${currency_gd(2)}!`;
+            else if (money_cnt_gd(g.invent) || hidden_gold_gd(true))
+                buf = 'You feel worried about your future financial situation.';
+            else if (steedgold)
+                buf = `You feel interested in ${s_suffix(x_monnam_gd(u.usteed,
+                    u.usteed.mtame ? ARTICLE_YOUR_GD : ARTICLE_THE_GD, null,
+                    SUPPRESS_SADDLE_GD, false))} financial situation.`;
+            else
+                buf = 'You feel materially poor.';
+            await _strange_feeling(sobj, buf);
+            return 1;
+        }
+        if (stale) await docrt();
+        await You('notice some gold between your %s.', makeplural(food_body_part(FOOT_GD)));
+        return 0;
+    }
+
+    /* outgoldmap: */
+    if (g._pending_message) await force_more(g._pending_message);
+    await cls();
+    const wasConstrained = unconstrain_map_rd();
+    try {
+        for (let obj = g.fobj; obj; obj = obj.nobj) {
+            if (blessed && (temp = o_material_gd(obj, GOLD_MAT_GD)) != null) {
+                if (temp !== obj) { temp.ox = obj.ox; temp.oy = obj.oy; }
+                map_object(temp, 1);
+            } else if ((temp = o_in_rd(obj, COIN_CLASS_GD)) != null) {
+                if (temp !== obj) { temp.ox = obj.ox; temp.oy = obj.oy; }
+                map_object(temp, 1);
+            }
+            if (temp && u_at(temp.ox | 0, temp.oy | 0)) ugold = true;
+        }
+        for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
+            if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx)) continue;
+            temp = null;
+            if (findgold_gd(mtmp.minvent) || (mtmp.mnum | 0) === PM_GOLD_GOLEM_GD) {
+                const gold = { otyp: GOLD_PIECE_GD, oclass: COIN_CLASS_GD, quan: rnd(10),
+                               ox: mtmp.mx, oy: mtmp.my, o_id: 0, nobj: null, cobj: null };
+                map_object(gold, 1);
+                temp = gold;
+            } else {
+                for (let obj = mtmp.minvent; obj; obj = obj.nobj)
+                    if (blessed && (temp = o_material_gd(obj, GOLD_MAT_GD)) != null) {
+                        temp.ox = mtmp.mx; temp.oy = mtmp.my;
+                        map_object(temp, 1);
+                        break;
+                    } else if ((temp = o_in_rd(obj, COIN_CLASS_GD)) != null) {
+                        temp.ox = mtmp.mx; temp.oy = mtmp.my;
+                        map_object(temp, 1);
+                        break;
+                    }
+            }
+            if (temp && u_at(temp.ox | 0, temp.oy | 0)) ugold = true;
+        }
+        if (!ugold) {
+            newsym(u.ux | 0, u.uy | 0);
+            ter_typ |= TER_MON;
+        }
+        await You_feel('very greedy, and sense gold!');
+        exercise(2 /* A_WIS */, true);
+
+        await browse_map_rd(ter_typ, 'gold');
+
+        await map_redisplay_rd();
+    } finally {
+        if (wasConstrained && (g.iflags?.save_uinwater
+                               || g.iflags?.save_uburied
+                               || g.iflags?.save_uswallow))
+            reconstrain_map_rd();
+    }
+    return 0;
+}
+
+/* C ref: read.c:2035-2043 seffect_gold_detection(&sobj) — gold_detect arm only;
+ * the confused/cursed trap_detect arm is not ported (no-op, as before). */
+async function seffect_gold_detection(sobjp) {
+    const sobj = sobjp.obj;
+    if (sobj.cursed || _Confusion() !== 0)
+        return;
+    if (await gold_detect(sobj))
+        sobjp.obj = null;
+}
+
 /* C ref: read.c:2050-2054 seffect_food_detection(&sobj).
  *
  *     if (food_detect(sobj))
@@ -3061,6 +3255,11 @@ export async function seffects(sobj) {
     case SCR_LIGHT:
         await seffect_light(sobj);
         break;
+    case SCR_TAMING:
+    case SPE_CHARM_MONSTER:
+        /* C read.c:2229-2231 seffect_taming(&sobj); never clears *sobjp. */
+        await seffect_taming(sobj);
+        break;
     case SCR_AMNESIA:
         await seffect_amnesia(sobj);
         break;
@@ -3120,6 +3319,13 @@ export async function seffects(sobj) {
         if (!holder.obj) return 1;
         break;
     }
+    case SCR_GOLD_DETECTION: {
+        /* C read.c:2250-2251 seffect_gold_detection(&sobj) */
+        const holder = { obj: sobj };
+        await seffect_gold_detection(holder);
+        if (!holder.obj) return 1;
+        break;
+    }
     case SCR_IDENTIFY:
     case SPE_IDENTIFY: {
         /* C read.c:2055 seffect_identify(&sobj).  Uses up the scroll itself
@@ -3143,10 +3349,12 @@ export async function seffects(sobj) {
 const A_DEX = 3; /* attrib.h A_DEX */
 /* objects.h scroll block, verified against js/mklev.js:2345's own comment
  * ("SCR_FOOD_DETECTION: base 323 + pos 12") and js/spell.js:69. */
+const SCR_GOLD_DETECTION = 334;
 const SCR_FOOD_DETECTION = 335;
 const SPE_DETECT_FOOD = 383;
 const SCR_IDENTIFY = 336;
 const SPE_IDENTIFY = 397; /* objects.h spellbook block (magic mapping = 396) */
+const SCR_TAMING = 330, SPE_CHARM_MONSTER = 387; /* objects.h */
 const SCR_LIGHT = 332; /* objects.h scroll block; also used as -332 in js/mklev.js shop tables */
 const SCR_AMNESIA = 338;
 /* objects.h:1189 SCROLL("destroy armor", "JUYED AWK YACC", ...) — the row
@@ -3157,6 +3365,65 @@ const SCR_DESTROY_ARMOR = 324;
 /* objects.h scroll block; confirmed by js/oc_name_data.js[331] === 'genocide'. */
 const SCR_GENOCIDE = 331;
 const ALL_SPELLS = 0x2; /* bitmask for all spells; value doesn't matter since forget is stubbed */
+
+/* C read.c:1044 maybe_tame — monster is hit by scroll of taming's effect */
+async function maybe_tame(mtmp, sobj) {
+    const was_tame = mtmp.mtame;
+    const was_peaceful = mtmp.mpeaceful;
+
+    if (sobj.cursed) {
+        await setmangry(mtmp, false);
+        if (was_peaceful && !mtmp.mpeaceful)
+            return -1;
+    } else {
+        /* for a shopkeeper, tamedog() calls make_happy_shk() but does not
+           tame the target, so call it even if taming gets resisted */
+        if (!(await resist(mtmp, sobj.oclass, 0, NOTELL)) || mtmp.isshk)
+            await tamedog(mtmp, sobj, false);
+
+        if ((!was_peaceful && mtmp.mpeaceful) || was_tame !== mtmp.mtame)
+            return 1;
+    }
+    return 0;
+}
+
+/* C read.c:1678 seffect_taming */
+async function seffect_taming(sobj) {
+    const g = game;
+    const u = g.u;
+    const confused = (_Confusion() !== 0);
+    let candidates, results, vis_results;
+
+    if (u.uswallow) {
+        candidates = 1;
+        results = vis_results = await maybe_tame(u.ustuck, sobj);
+    } else {
+        const bd = confused ? 5 : 1;
+
+        /* maybe_tame() can return positive or negative, not both */
+        candidates = results = vis_results = 0;
+        for (let i = -bd; i <= bd; i++)
+            for (let j = -bd; j <= bd; j++) {
+                if (!isok(u.ux + i, u.uy + j))
+                    continue;
+                let mtmp = m_at(u.ux + i, u.uy + j);
+                if (mtmp || (!i && !j && (mtmp = u.usteed))) {
+                    ++candidates;
+                    const res = await maybe_tame(mtmp, sobj);
+                    results += res;
+                    if (canspotmon(mtmp))
+                        vis_results += res;
+                }
+            }
+    }
+    if (!results) {
+        await pline(`Nothing interesting ${!candidates ? "happens" : "seems to happen"}.`);
+    } else {
+        await pline(`The neighborhood ${vis_results ? "is" : "seems"} ${(results < 0) ? "un" : ""}friendlier.`);
+        if (vis_results > 0)
+            g._gk_known = true;
+    }
+}
 
 async function seffect_light(sobj) {
     const g = game;
@@ -3890,7 +4157,7 @@ async function _identify_objlist_menu(promptText) {
         }
         return lines;
     }
-    for (const o of eligible) entries.push({ obj: o, selected: false });
+    for (const o of eligible) { obj_to_glyph(o); entries.push({ obj: o, selected: false }); }
     /* C pickup.c:1137 query_objlist add_menu(..., doname_with_price(curr), ...):
      * each row is the REAL doname text (BUC/enchantment/"(being worn)"/known
      * type names), not the appearance-only partial namer, so the menu width

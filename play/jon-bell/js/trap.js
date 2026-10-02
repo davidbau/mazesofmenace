@@ -76,6 +76,7 @@ import { newcham } from './mklev.js';
 import { NC_SHOW_MSG, NOTELL } from './const.js';
 import { ignite_items } from './mhitu.js';
 import { nomul } from './allmain.js';
+import { unconscious } from './pickup.js';
 import { schedule_goto } from './cmd.js';
 import { stop_occupation } from './allmain.js';
 import { fall_asleep, spot_stop_timers, stop_timer } from './timeout.js';
@@ -271,6 +272,12 @@ async function t_missile(otyp, trap) {
 async function thitm(tlev, mon, obj, d_override, nocorpse) {
     let strike;
     let trapkilled = false;
+    /* C trap.c:6710-6751 reads mon->mx,my AFTER monkilled(): C's
+     * mon_leaving_level leaves the stale coordinates in place (the
+     * zeroing is #if 0'd, mon.c:2711-2715), so a killed monster's missile
+     * lands on its death square.  This port's monkilled_trap zeroes them,
+     * so remember the square. */
+    const _tx = mon.mx | 0, _ty = mon.my | 0;
     if (d_override) {
         strike = 1;
     } else if (obj) {
@@ -302,6 +309,7 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
             mon.mhp = (mon.mhp | 0) - dam;
             if ((mon.mhp | 0) <= 0) {
                 await monkilled_trap(mon);
+                newsym(_tx, _ty); /* C trap.c:6738 newsym(xx, yy) */
                 trapkilled = true;
             }
         } else {
@@ -314,7 +322,7 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
     if (obj && (!strike || d_override)) {
         const place_object = _trapFns.place_object_fn;
         if (place_object) {
-            place_object(obj, mon.mx | 0, mon.my | 0);
+            place_object(obj, _tx, _ty);
             await stackobj(obj);
         }
     } else if (obj) {
@@ -4866,6 +4874,23 @@ async function trapeffect_landmine_mon(mtmp, trap, trflags) {
      * earlier monster-action message, so update_topl() can page that earlier
      * message before painting this one. */
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    if (_gp_m_in_air(mtmp)) {
+        const already_seen = !!trap.tseen;
+        if (in_sight && !already_seen) {
+            await pline(`A trigger appears in a pile of soil below ${mon_nam(mtmp)}.`);
+            seetrap(trap);
+        }
+        if (rn2(3))
+            return Trap_Effect_Finished;
+        if (in_sight) {
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+            await pline(`The air currents set ${already_seen ? 'a land mine' : 'it'} off!`);
+        }
+    } else if (in_sight) {
+        newsym(mtmp.mx | 0, mtmp.my | 0);
+        await pline(`${!_hero_Deaf() ? 'KAABLAMM!!!  ' : ''}${await Monnam(mtmp)} `
+            + `triggers ${_a_your(trap.madeby_u)} land mine!`);
+    }
     if (!in_sight && !_hero_Deaf())
         void pline('Kaablamm!  You hear an explosion in the distance!');
 
@@ -4892,6 +4917,10 @@ async function trapeffect_landmine_mon(mtmp, trap, trflags) {
     await fill_pit(tx, ty);
     if ((mtmp.mhp | 0) < 1)
         trapkilled = true;
+    if (unconscious()) {
+        game.multi = -1;
+        game.nomovemsg = "The explosion awakens you!";
+    }
     return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
         ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
@@ -5492,15 +5521,37 @@ export async function mintrap(mtmp, mintrapflags) {
         /* C trap.c:3721-3769: monster currently stuck in a trap.
          * RNG: rn2(40) escape check (+ conditional rn2(2) boulder-pit). */
         /* C trap.c:3722-3729: reveal trap if newly visible — no RNG. */
-        const isPit = (trap.ttyp === 11 || trap.ttyp === 12); /* PIT, SPIKED_PIT */
-        if (!rn2(40)) {
-            /* sobj_at(BOULDER,...) is the project stub (false) → take else. */
-            mtmp.mtrapped = 0;
+        if (!trap.tseen && cansee(mtmp.mx | 0, mtmp.my | 0) && canseemon(mtmp)
+            && (is_pit(trap.ttyp) || trap.ttyp === BEAR_TRAP
+                || trap.ttyp === HOLE || trap.ttyp === WEB)) {
+            seetrap(trap);
+        }
+        /* C trap.c:3726-3730 m_easy_escape_pit */
+        const _mx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
+        const easyPit = (_mx === PM_PIT_FIEND
+                         || (_mx >= 0 && trap_msize(_mx) >= MZ_HUGE_TR));
+        /* C trap.c:3751: !rn2(40) || (is_pit && m_easy_escape_pit) */
+        if (!rn2(40) || (is_pit(trap.ttyp) && easyPit)) {
+            if (sobj_at(BOULDER_OTYP, mtmp.mx | 0, mtmp.my | 0) && is_pit(trap.ttyp)) {
+                if (!rn2(2)) {
+                    mtmp.mtrapped = 0;
+                    if (canseemon(mtmp))
+                        await pline(`${Monnam(mtmp)} pulls free...`);
+                    await fill_pit(mtmp.mx | 0, mtmp.my | 0);
+                }
+            } else {
+                if (canseemon(mtmp)) {
+                    if (is_pit(trap.ttyp))
+                        await pline(`${Monnam(mtmp)} climbs ${easyPit ? 'easily ' : ''}out of the pit.`);
+                    else if (trap.ttyp === BEAR_TRAP || trap.ttyp === WEB)
+                        await pline(`${Monnam(mtmp)} pulls free of the ${_tr_trapname(trap.ttyp)}.`);
+                }
+                mtmp.mtrapped = 0;
+            }
         }
         else if (is_metallivorous(mtmp)) {
             /* BEAR_TRAP / SPIKED_PIT eating — no RNG. */
         }
-        void isPit;
         trap_result = mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     else {

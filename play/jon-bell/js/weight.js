@@ -162,7 +162,9 @@ export function weight_cap() {
     const BLevitation = levProp ? ((levProp.blocked | 0) & ~I_SPECIAL_BIT) : 0;
     const Levitation = (HLevitation || ELevitation) && !BLevitation;
     const Is_airlevel_wc = Is_airlevel(game.u?.uz);
-    const strongSteed = false;
+    /* C hack.c:4326 `u.usteed && strongmonst(u.usteed->data)` */
+    const _steedData = u.usteed ? (u.usteed.data || null) : null;
+    const strongSteed = !!(_steedData && ((_steedData.mflags2 | 0) & M2_STRONG));
     if (Levitation || Is_airlevel_wc || strongSteed) {
         carrcap = MAX_CARR_CAP;
     } else {

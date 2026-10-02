@@ -82,7 +82,7 @@ import {
 import { xkilled, killed, Hate_silver, dynamic_multi_reason, attacktype_fordmg, can_blnd } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
-    mhis, on_fire, defended,
+    mhis, on_fire, defended, get_atkdam_type,
 } from './mondata.js';
 import { which_armor, find_mac } from './worn.js';
 import {
@@ -3076,6 +3076,24 @@ async function assess_dmg(mtmp, tmp) {
         return M_ATTK_AGR_DIED;
     }
     return M_ATTK_HIT;
+}
+
+/**
+ * C ref: mhitu.c:2390–2405 mon_avoiding_this_attack — TRUE when the hero
+ * has seen-resisted the damage type of mattk[attkidx] (C's documented
+ * ranged_attk_assessed callback; assessed itself is #if 0'd out at
+ * mhitu.c:2367–2388). C order: attkidx gate, then get_atkdam_type
+ * (its AD_RBRE roll fires only past the gate), then m_seenres.
+ */
+export function mon_avoiding_this_attack(mtmp, attkidx) {
+    const idx = attkidx | 0;
+    if (idx >= 0) {
+        const typ = get_atkdam_type(mtmp?.data?.mattk?.[idx]?.adtyp | 0);
+        if (typ >= 0 && m_seenres(mtmp, cvt_adtyp_to_mseenres(typ))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**

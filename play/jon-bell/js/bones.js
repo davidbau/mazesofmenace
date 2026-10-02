@@ -421,17 +421,18 @@ async function getbones_load(f) {
      *
      * getlev() must see the snapshot through the normal store, which is where
      * the bones file's copy is installed first. */
+    for (let m = f.snap.fmon; m; m = m.nmon) {
+        m.m_id = next_ident_bones();
+        renumber_objchn(m.minvent);
+    }
+    renumber_objchn(f.snap.fobj);
+    renumber_objchn(f.snap.level?.buriedobjlist);
+    renumber_objchn(f.snap.billobjs);
+
     const ledger = ledger_no(u.uz);
     (game.levelStore || (game.levelStore = new Map())).set(ledger, f.snap);
     const { getlev } = await import('./restore.js');
     await getlev(ledger);
-
-    for (let m = g.fmon; m; m = m.nmon) {
-        m.m_id = next_ident_bones();
-        renumber_objchn(m.minvent);
-    }
-    renumber_objchn(g.fobj);
-    renumber_objchn(g.level?.buriedobjlist);
 
     for (let m = g.fmon; m; m = m.nmon)
         resetobjs(m.minvent, true);

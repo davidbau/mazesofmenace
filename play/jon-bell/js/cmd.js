@@ -1,3 +1,4 @@
+import { impact_drop, obj_delivery } from './dokick.js';
 import { toss_up } from './throw_vertical.js';
 import { use_magic_whistle } from './magic_whistle.js';
 import { spoteffects } from './landing-effects.js';
@@ -14,7 +15,8 @@ import { classifyTerrain } from './terrain-status.js';
 import { Is_earthlevel, RUN_TPORT, RUN_LEAP, RUN_CRAWL, LOW_PM, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MSTR_MNDX, VANQ_MCLS_LTOH, VANQ_MCLS_HTOL, VANQ_COUNT_H_L, VANQ_COUNT_L_H, In_quest, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, LL_DEBUG, I_SPECIAL } from './const.js';
 import { GameMap, newobj, copy_you } from './game.js';
 import { MAXSPELL } from './spell.js';
-import { extract_nobj } from './mklev.js';
+import { extract_nobj, getrumor, add_to_minv, wake_nearby as wake_nearby_mk } from './mklev.js';
+import { findgold } from './makemon.js';
 import { FF_FAITHFUL, fastforward_step } from './fastforward.js';
 import { emitMapstate } from './mapstate.js';
 import { nhgetch } from './input.js';
@@ -28,7 +30,7 @@ import { routeTag } from './route_telemetry.js';
 import { noattacks_mndx, magic_negation, mhis_mon, expels_gu } from './mhitu.js';
 import { do_death_sequence, done2, done, yn_function, nh_terminate } from './end.js';
 import { urgent_pline, force_more_pages, flush_pending_messages } from './display.js';
-import { STONING } from './const.js';
+import { STONING, MENU_TRADITIONAL, BURN_OBJECT as _BURN_OBJECT_PU } from './const.js';
 import { PARANOID_CONFIRM, PARANOID_PRAY, PARANOID_BREAKWAND } from './const.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
@@ -43,8 +45,11 @@ export { l_nhcore_call } from './nhlua.js';
  * file; both sides are hoisted function declarations, so the cycle resolves. */
 import { drag_ball, move_bc, placebc, unplacebc, drop_ball } from './ball.js';
 import { OC_CHARGED, OC_COST } from './oc_cost_data.js';
+import { WEB, ROCKTRAP } from './const.js';
 import { STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, D_TRAPPED, WM_MASK, IS_WALL, A_WIS, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING, M_AP_MONSTER, COLNO, ROWNO, Is_rogue_level, isok, IS_STWALL, ACCESSIBLE, SDOOR, SCORR, THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, IS_ALTAR, IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, AM_MASK, AM_SHRINE, AM_SANCTUM, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, WEAK, HUNGRY, STAIRS, LFILE_EXISTS, VISITED, CQ_REPEAT, CQ_CANNED, CMDQ_EXTCMD, CMDQ_KEY, W_NONPASSWALL, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, MV_ANY, MV_WALK, MV_RUN, MV_RUSH, N_MOVEMODES, ACH_RNK1, ACH_RNK2, ACH_RNK3, ACH_RNK4, ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8, N_ACH, ACH_BLND, ACH_NUDE, ACH_MINE, ACH_TOWN, ACH_SHOP, ACH_ORCL, ACH_NOVL, ACH_SOKO, ACH_BGRM, ACH_MEDU, ACH_TUNE, ACH_INVK, ACH_ENDG, ACH_ASTR, ACH_UWIN, SICK_VOMITABLE, SICK_NONVOMITABLE, NON_PM, BRK_FROM_INV, BRK_KNOWN_OUTCOME, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, LR_DOWNTELE, LR_UPTELE, ROOMOFFSET, OROOM, SHOPBASE, ZOO, SWAMP, COURT, LEPREHALL, MORGUE, BEEHIVE, COCKNEST, ANTHOLE, BARRACKS, DELPHI, TEMPLE, VAULT, In_mines, TRAPPED_CHEST, TRAPPED_DOOR, STATUE_TRAP, HALLUC, u_at, Is_waterlevel, Is_astralevel, Is_airlevel, Is_juiblex_level, Upolyd, PLNMSG_BACK_ON_GROUND, DISMOUNT_FELL, DISMOUNT_GENERIC, DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED, DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, TREE, IRONBARS, NHW_MENU, WIN_ERR, A_DEX, WOUNDED_LEGS, ROOM, DB_UNDER, DB_FLOOR, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, IS_WATERWALL, KILLED_BY, LAVAPOOL, LAVAWALL, DB_LAVA, HMON_THROWN, NO_KILLER_PREFIX, ER_DESTROYED, is_pit, is_hole, HOLE, TRAPDOOR, DOMOVE_WALK, DOMOVE_RUSH, LEVITATION, FLYING, FROMOUTSIDE, STUNNED, CONFUSION, DEAF, SICK, STONED, STRANGLED, VOMITING, SLIMED, HALLUC_RES, TIMEOUT, A_STR, BOLT_LIM, GEHENNOM, Has_contents, CORR, IS_TREE, JUMPING, INTRINSIC, TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, TRAVP_TRAVEL, TRAVP_GUESS, TRAVP_VALID, PIT, DIGCHECK_FAILED, DIGCHECK_FAIL_BOULDER } from './const.js';
 import { CLR_BLACK, CLR_WHITE, NO_COLOR } from './terminal.js';
+import { monster_detect } from './potion.js';
+import { def_char_to_monclass } from './drawing.js';
 import { rn2, rnd, rnl, rnz, rn1, d, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
 import { find_mac, t_at, dotrap, water_damage, rnd_nextto_goodpos, into_vs_onto, immune_to_trap, buried_ball, buried_ball_to_freedom, buried_ball_to_punishment as buried_ball_to_punishment_real, reset_utrap, deltrap, delfloortrap, fill_pit, sokoban_guilt, crawl_destination, mintrap, seetrap, climb_pit, goodpos, clamp_hole_destination, openholdingtrap, openfallingtrap, mon_adjust_speed, maketrap, feeltrap, activate_statue_trap, erode_obj as erode_obj_bo, bypass_objlist, nxt_unbypassed_obj, split_mon_rt, launch_obj } from './trap.js';
 /* C steed.c:141-164 put_saddle_on_mon — the real body lives in js/steed.js.
@@ -99,7 +104,7 @@ import { docast, dovspell, dowizcast, known_spell, num_spells, isqrt,
 import { doread, study_book, do_mapping, identify_pack, litroom } from './read.js';
 import { doengrave, freehand } from './engrave.js';
 import { CMDQ_INT, CMDQ_DIR, CMDQ_USER_INPUT } from './const.js';
-import { doloot, able_to_loot, uescaped_shaft, uteetering_at_seen_pit, unconscious, container_at, reset_justpicked, add_valid_menu_class, lift_object } from './pickup.js';
+import { pickup as pickup_c, doloot, able_to_loot, uescaped_shaft, uteetering_at_seen_pit, unconscious, container_at, reset_justpicked, add_valid_menu_class, lift_object } from './pickup.js';
 import { SchroedingersBox, observe_quantum_cat } from './pickup_container.js';
 import { MIN_QUEST_ALIGN, MIN_QUEST_LEVEL, A_ORIGINAL, A_CURRENT, EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, BURNING_OIL, LOST_EXPLODING, ESCAPED, DIED, MAX_OIL_IN_FLASK, MAXULEV } from './const.js';
 import { otrapped_of, COST_DSTROY } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
@@ -143,7 +148,7 @@ import { UNCHANGING, A_MAX, EXT_ENCUMBER, HVY_ENCUMBER, W_SADDLE, W_ARMOR, W_ACC
 import { A_INT, A_CHA, STR18, FIXED_ABIL, FULL_MOON, NEW_MOON } from './const.js';
 /* insight.c attributes_enlightenment reads one u.uprops entry per arm; the
  * property indices are const.js's, and u.uprops is NUMERICALLY keyed here. */
-import { INVULNERABLE, ANTIMAGIC, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, DRAIN_RES, SICK_RES, STONE_RES, SEE_INVIS, TELEPAT, WARNING, WARN_UNDEAD, SEARCHING, CLAIRVOYANT, INFRAVISION, DETECT_MONSTERS, INVIS, DISPLACED, STEALTH, AGGRAVATE_MONSTER, CONFLICT, TELEPORT, TELEPORT_CONTROL, POLYMORPH_CONTROL, SWIMMING, MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
+import { PROTECTION, INVULNERABLE, ANTIMAGIC, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, DRAIN_RES, SICK_RES, STONE_RES, SEE_INVIS, TELEPAT, WARNING, WARN_UNDEAD, SEARCHING, CLAIRVOYANT, INFRAVISION, DETECT_MONSTERS, INVIS, DISPLACED, STEALTH, AGGRAVATE_MONSTER, CONFLICT, TELEPORT, TELEPORT_CONTROL, POLYMORPH_CONTROL, SWIMMING, MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
 const RIN_SUSTAIN_ABILITY = 182, GAUNTLETS_OF_POWER = 161, DUNCE_CAP = 94;
 import { SELL_DELIBERATE, SELL_NORMAL, WT_SPLASH_THRESHOLD, LL_CONDUCT,
          ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, ARTICLE_NONE, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION,
@@ -169,7 +174,7 @@ import { corpse_floor_xname, doeat, getobj, morehungry, is_fainted, reset_faint,
 import { curse as curse_obj } from './mkobj.js';
 import { oc_nutrition } from './food_props.js';
 import { bones_include_name } from './bones.js';
-import { nxtobj, ing_suffix, In_hell, level_difficulty, place_object, remove_object, mklev, mungspaces, u_on_upstairs, u_on_dnstairs, u_on_sstairs, u_on_newpos, stairway_find_from, u_on_rndspot, place_lregion, wake_msg, sobj_at, set_ustuck, kill_genocided_monsters, engr_at, wipe_engr_at, del_engr_at, in_rooms, upstart, digit, Is_special, sp_levchn_lookup, shop_string, dealloc_obj, hideunder, can_hide_under_obj, maybe_unhide_at, clear_splitobjs, engravings_list, inside_shop, erosion_matters, set_bknown, wake_nearto, setmangry, letter, minliquid, mpickobj, set_corpsenm, egg_type_from_parent, revive_corpse, add_to_migration, rescham, iter_mons as iter_mons_real } from './mklev.js';
+import { shtype_name, bcsign, nxtobj, ing_suffix, In_hell, level_difficulty, place_object, remove_object, mklev, mungspaces, u_on_upstairs, u_on_dnstairs, u_on_sstairs, u_on_newpos, stairway_find_from, u_on_rndspot, place_lregion, wake_msg, sobj_at, set_ustuck, kill_genocided_monsters, engr_at, wipe_engr_at, del_engr_at, in_rooms, upstart, digit, Is_special, sp_levchn_lookup, shop_string, dealloc_obj, hideunder, can_hide_under_obj, maybe_unhide_at, clear_splitobjs, engravings_list, inside_shop, erosion_matters, set_bknown, wake_nearto, setmangry, letter, minliquid, mpickobj, set_corpsenm, egg_type_from_parent, revive_corpse, add_to_migration, rescham, iter_mons as iter_mons_real } from './mklev.js';
 import { obj_ice_effects, attach_fig_transform_timeout as attach_fig_transform_timeout_real } from './mklev.js';
 import { add_to_container as mklev_add_to_container } from './mklev.js';
 export { inside_shop };
@@ -190,10 +195,13 @@ import { ESHK } from './const.js';
 import { in_out_region } from './region.js';
 import { canwearobj, dotakeoff, dotakeoff_obj, wornArmorPieces, wornAccessoryPieces, doremove_obj, dowear, doputon, doremove, encumber_msg, xname, float_up, float_down, You, yname, reset_remarm, stuck_ring, bimanual, silly_thing_dw, Blindf_on, Blindf_off, Boots_off, fingers_or_gloves, inaccessible_equipment } from './do_wear.js';
 import { ia_dotakeoff, remarm_swapwep, doremring } from './do_wear.js';
+import { W_ARM as W_ARM_TO, W_ARMC as W_ARMC_TO, W_ARMH as W_ARMH_TO, W_ARMS as W_ARMS_TO, W_ARMG as W_ARMG_TO, W_ARMF as W_ARMF_TO, W_ARMU as W_ARMU_TO, W_RINGL as W_RINGL_TO, W_RINGR as W_RINGR_TO, W_AMUL as W_AMUL_TO, W_TOOL as W_TOOL_TO, W_WEP as W_WEP_TO, W_SWAPWEP as W_SWAPWEP_TO, W_QUIVER as W_QUIVER_TO, I_SPECIAL as I_SPECIAL_TO } from './const.js';
+import { do_takeoff, off_msg } from './do_wear.js';
+import { is_boots, is_gloves } from './do_wear.js';
 import { Yobjnam2, objName as _objName_full, is_poisonable as _is_poisonable_on, thesimpleoname } from './objnam.js';
 import { dec_mode, see_monsters, Norep as _Norep } from './display.js';
 import { PICK_NONE, PICK_ONE, PICK_ANY } from './const.js';
-import { def_oc_syms_chars } from './drawing.js';
+import { def_oc_syms_chars, def_char_to_objclass } from './drawing.js';
 import { not_fully_identified, obj_typename, getObjDescr, vtense, otense, an, just_an, obj_is_pname, the_unique_obj, simple_typename, makeplural as makeplural_objnam, xname_amulet, xname_armor, xname_weapon, xname_potion, xname_scroll, xname_spellbook, xname_wand, xname_ring, xname_flags, CXN_SINGULAR, CXN_NORMAL, Japanese_item_name, corpse_xname, armor_simple_name, gloves_simple_name, cloak_simple_name, suit_simple_name, shirt_simple_name, helm_simple_name, boots_simple_name, shield_simple_name, deliver_splev_message, doname, oname, artifact_name as artifact_name_exported, aobjnam, ansimpleoname, maybereleaseobuf as maybereleaseobuf_real } from './objnam.js';
 import { getObjName, discover_object, undiscover_object, oinit, observe_object, object_tough } from './o_init.js';
 /* observe_object()'s home is o_init.c, i.e. js/o_init.js.  It is re-exported
@@ -213,11 +221,14 @@ import { dokick_resolve, is_waterwall, ship_object, container_impact_dmg, losehp
  * _attributes_enlightenment).  Imported under _fw_/_FW_ aliases because several
  * of these names are already bound in this file from other modules and a
  * duplicate top-level binding is a SyntaxError. */
+import { MKOBJ_OC_COLOR } from './mkobj_data.js';
+import { doname_with_price as _doname_with_price } from './objnam.js';
 import { xname as _fw_xname, distant_name as _fw_distant_name } from './objnam.js';
 /* C ref: objnam.c:4651 singular(otmp, func) — throw_obj's volley message names
  * a one-item volley in the singular (dothrow.c:247). */
 import { singular } from './objnam.js';
-import { Tobjnam as _objnam_Tobjnam } from './objnam.js';
+import { Tobjnam as _objnam_Tobjnam, The as _objnam_The } from './objnam.js';
+import { MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { the as _the_objnam } from './objnam.js';
 /* itemactions (iactions.c) formats its title with the(cxname(otmp)) and four of
  * its rows with simpleonames(otmp); both pluralise on quan, which the file-local
@@ -294,7 +305,7 @@ import { Monnam, aggravate } from './mcastu.js';
 import { resists_blnd } from './mhitm.js';
 import { see_monster_closeup } from './mklev.js';
 import { s_suffix, float_vs_flight, distant_monnam, locomotion, noit_mon_nam } from './mhitm.js';
-import { hliquid } from './mhitm.js';
+import { hliquid, l_monnam as _l_monnam } from './mhitm.js';
 import { can_chant, Inhell, permonstTemplate, can_saddle, monPmname, olfaction, poly_gender, nonliving, attacktype_fordmg, mkclass, trapname, monsym_explain } from './makemon.js';
 /* C do.c:665 canletgo() — the shared drop/throw refusal test; drop() (do.c:718)
  * and throw_obj() (dothrow.c:118) are C's only non-empty-`word` callers. */
@@ -308,7 +319,7 @@ import { mongets as _fl_mongets, rndOffensiveItem as _fl_rndOffensiveItem } from
 import { monmightthrowwep as _fl_monmightthrowwep } from './uhitm.js';
 import { EMIN as _fl_EMIN } from './const.js';
 import { PM_WIZARD as _FL_PM_WIZARD, PM_ARCHEOLOGIST as _FL_PM_ARCHEOLOGIST } from './pm.generated.js';
-import { polyself, POLY_CONTROLLED, dobreathe, dohide, dospit, dopoly, polymon, rehumanize as rehumanize_real } from './polyself.js';
+import { polyself, POLY_CONTROLLED, dobreathe, dohide, dospit, dospinweb, dopoly, polymon, rehumanize as rehumanize_real } from './polyself.js';
 import { attacktype, domindblast, x_monnam, y_monnam, m_monnam, wakeup, wakeup_attack, YMonnam, obj_pmname, seemimic, check_caitiff } from './mhitm.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { poly_when_stoned, hcolor } from './mhitm.js';
@@ -710,9 +721,197 @@ async function doextcmd() {
     return outcome.value;
 }
 
+/* C ref: cmd.c:752-880 extcmd_via_menu() — the tty `extmenu` option's pick-list
+ * of extended commands, reached from tty_get_ext_cmd() (getline.c:300).  It
+ * narrows by first letter: each round lists the AUTOCOMPLETE commands whose
+ * name starts with the letters chosen so far, one menu line per next letter
+ * ("t - terrain or therecmdmenu or tip or turn"), PICK_ONE; a round that is
+ * down to one command returns it.  ESC after the first letter restarts from
+ * the top (matchlevel = 0, ret = 0) with the OLD cbuf still in the title,
+ * since C only ever overwrites cbuf[matchlevel] — kept faithfully below.
+ * Returns an EXTCMDLIST index, or -1.  DISPLAY-ONLY: no RNG. */
+const MAX_EXT_CMD = 200;
+async function extcmd_via_menu() {
+    const g = game;
+    const wizard = !!g.flags?.debug;
+    let ret = 0, biggest = 0, matchlevel = 0;
+    let cbuf = '', prevFullScreen = false;
+    while (!ret) {
+        /* populate choices */
+        const choices = [];
+        for (let k = 0; k < EXTCMDLIST.length; k++) {
+            const efp = EXTCMDLIST[k];
+            const flags = efp.flags | 0;
+            if ((flags & (CMD_NOT_AVAILABLE_F | INTERNALCMD_F))
+                || !(flags & AUTOCOMPLETE_F)
+                || (!wizard && (flags & WIZMODECMD_F)))
+                continue;
+            if (!matchlevel || efp.name.startsWith(cbuf.slice(0, matchlevel))) {
+                choices.push(k);
+                if (efp.desc.length > biggest)
+                    biggest = efp.desc.length;
+                if (choices.length > MAX_EXT_CMD) {
+                    g.iflags.extmenu = false;
+                    return -1;
+                }
+            }
+        }
+        const nchoices = choices.length;
+        /* if we're down to one, we have our selection */
+        if (nchoices <= 1) {
+            ret = (nchoices === 1) ? choices[0] : -1;
+            break;
+        }
+        const fmtw = biggest + 15; /* "%-%ds" */
+        const pad = (t) => (t.length < fmtw ? t + ' '.repeat(fmtw - t.length) : t);
+        const entries = []; /* { acc, text } in add_menu order */
+        let prompt = '', wastoolong = false, acount = 0, prevaccelerator = '';
+        /* -3: two line menu header, 1 line menu footer (for prompt) */
+        const one_per_line = nchoices < ROWNO - 3;
+        for (let i = 0; i < nchoices; i++) {
+            const c = EXTCMDLIST[choices[i]];
+            const accelerator = c.name[matchlevel] ?? '';
+            if (accelerator !== prevaccelerator || one_per_line)
+                wastoolong = false;
+            if (accelerator !== prevaccelerator || one_per_line
+                || (acount >= 2
+                    /* +4: + sizeof " or " - sizeof "" */
+                    && (prompt.length + 4 + c.name.length
+                        /* -6: enough room for 1 space left margin
+                         *   + "%c - " menu selector + 1 space right margin */
+                        >= Math.min(QBUFSZ_CMD, COLNO - 6)))) {
+                if (acount) {
+                    /* flush extended cmds for that letter already in buf */
+                    entries.push({ acc: prevaccelerator, text: pad(prompt) });
+                    acount = 0;
+                    if (!(accelerator !== prevaccelerator || one_per_line))
+                        wastoolong = true;
+                }
+            }
+            prevaccelerator = accelerator;
+            if (!acount || one_per_line) {
+                prompt = `${wastoolong ? 'or ' : ''}${c.name} [${c.desc}]`;
+            } else if (acount === 1) {
+                prompt = `${wastoolong ? 'or ' : ''}${EXTCMDLIST[choices[i - 1]].name} or ${c.name}`;
+            } else {
+                prompt += ' or ' + c.name;
+            }
+            ++acount;
+        }
+        if (acount)
+            entries.push({ acc: prevaccelerator, text: pad(prompt) });
+        const title = `Extended Command: ${cbuf}`;
+        /* A full-screen menu's dismissal (docrt) leaves both status rows
+         * blank, and merely displaying the next menu flags no botl redraw. */
+        const picked = await tty_menu_pick_one_ext(entries, title,
+                                                   prevFullScreen ? 0 : undefined);
+        prevFullScreen = entries.length + 2 > 23;
+        if (picked != null) {
+            if (matchlevel > (QBUFSZ_CMD - 2)) {
+                ret = -1;
+            } else {
+                cbuf = cbuf.slice(0, matchlevel) + picked;
+                matchlevel++;
+            }
+        } else if (matchlevel) {
+            ret = 0;
+            matchlevel = 0;
+        } else {
+            ret = -1;
+        }
+    }
+    return ret;
+}
+const QBUFSZ_CMD = 128;
+/* The tty PICK_ONE driver extcmd_via_menu's select_menu(win, PICK_ONE) runs
+ * (wintty.c process_menu_window), modelled on print_dungeon's.  `entries` is
+ * [{ acc, text }] where acc is the item's own accelerator (any.a_char).
+ * Returns the chosen accelerator or null (ESC / CR / SPACE past the end). */
+async function tty_menu_pick_one_ext(entries, title, statusClipCol) {
+    const g = game;
+    const lines = [` \x1b[7m${title}\x1b[0m`, ''];
+    const lineAccel = [];
+    const mlist = [];
+    for (const e of entries) {
+        lineAccel[lines.length] = e.acc;
+        lines.push(` ${e.acc} - ${e.text}`);
+        mlist.push({ str: `${e.acc} - ${e.text}`, acc: e.acc });
+    }
+    const SCREEN_ROWS = 24, PER_PAGE = SCREEN_ROWS - 1;
+    const pages = [];
+    for (let i = 0; i < lines.length; i += PER_PAGE)
+        pages.push(lines.slice(i, i + PER_PAGE));
+    const npages = pages.length;
+    const pageHasLetter = (p, ch) => {
+        const end = Math.min(p * PER_PAGE + PER_PAGE, lines.length);
+        for (let i = p * PER_PAGE; i < end; i++)
+            if (lineAccel[i] === ch) return true;
+        return false;
+    };
+    const _dismiss = async () => { g._prevmsg = null; await docrt(); };
+    let pageIdx = 0, row0Erased = false;
+    /* A single-page menu is an overlay at offx = cols - maxcol - 1 with
+     * maxcol = longest stored str ("%c - " + padded text), trailing blanks
+     * included (tty_end_menu); multi-page menus are full-width. */
+    let overlayLines = null, overlayCol = 0;
+    if (npages === 1) {
+        const wl = lines.map((ln) => ln.replace(/^ /, '').replace(/ +$/, ''));
+        const maxlen = Math.max(...entries.map((e) => 4 + e.text.length),
+                                title.length, 5);
+        const col = Math.min(41, 78 - maxlen);
+        if (col > 1) { overlayLines = [...wl, '(end)']; overlayCol = col; }
+    }
+    const pageRows = () => {
+        if (overlayLines) {
+            const rows = build_window_screen(
+                row0Erased ? ['', ...overlayLines.slice(1)] : overlayLines,
+                overlayCol, g.u?.uac ?? 0, statusClipCol).split('\n');
+            return { rows, indicator: '(end)', indicatorRow: overlayLines.length - 1 };
+        }
+        const pageLines = pages[pageIdx] || [''];
+        const indicator = ` (${pageIdx + 1} of ${npages})`;
+        const rows = pageLines.slice();
+        const indicatorRow = (pageIdx === npages - 1) ? pageLines.length : (SCREEN_ROWS - 1);
+        while (rows.length < indicatorRow) rows.push('');
+        rows.push(indicator);
+        if (row0Erased && rows.length) rows[0] = '';
+        return { rows, indicator, indicatorRow };
+    };
+    while (true) {
+        const { rows, indicator, indicatorRow } = pageRows();
+        g._screen_output = rows.join('\n');
+        if (overlayLines) set_cursor(overlayCol + '(end)'.length + 1, indicatorRow);
+        else set_cursor(indicator.length, indicatorRow);
+        g._pending_message = '';
+        const key = await nhgetch();
+        const ch = (key >= 32 && key < 127) ? String.fromCharCode(key) : '';
+        if (key === 27 || key === 10 || key === 13) { await _dismiss(); return null; }
+        if (key === 32 || ch === '>') {
+            if (pageIdx !== npages - 1) { pageIdx++; row0Erased = false; continue; }
+            if (key === 32) { await _dismiss(); return null; }
+            continue;
+        }
+        if (ch === '<') { if (pageIdx !== 0) { pageIdx--; row0Erased = false; } continue; }
+        if (ch === '^') { if (pageIdx !== 0) { pageIdx = 0; row0Erased = false; } continue; }
+        if (ch === '|') { if (pageIdx !== npages - 1) { pageIdx = npages - 1; row0Erased = false; } continue; }
+        if (ch && pageHasLetter(pageIdx, ch)) { await _dismiss(); return ch; }
+        if (key === 0x3a /* ':' MENU_SEARCH */) {
+            let picked = null;
+            const finished = await menu_search_case('ONE', mlist,
+                () => pageRows().rows, (curr) => { picked = curr.acc; });
+            row0Erased = true;
+            if (finished && picked != null) { await _dismiss(); return picked; }
+            continue;
+        }
+    }
+}
+
 async function tty_get_ext_cmd() {
     const g = game;
     const ESC = 27;
+    /* C ref: win/tty/getline.c:300-301 */
+    if (g.iflags?.extmenu)
+        return await extcmd_via_menu();
     let buf = '';
     /* C ref: win/tty/getline.c:11 `#define NEWAUTOCOMP` (it is defined on every
      * platform but MACOS9, so the NEWAUTOCOMP arms are the live ones).  Under
@@ -895,7 +1094,7 @@ async function domonability() {
     else if (might_hide)                              /* c == '\0' here */
         return await dohide();
     else if (webmaker)
-        return ECMD_OK;                               /* dospinweb() unported */
+        return await dospinweb();                     /* C cmd.c domonability (polyself.c:1497) */
     else
         return await domonability_tail(uptr);
 }
@@ -909,8 +1108,26 @@ async function domonability_tail(uptr) {
     const pmidx = uptr ? (uptr.pmidx | 0) : NON_PM;
     if (pmidx === PM_MIND_FLAYER || pmidx === PM_MASTER_MIND_FLAYER)
         return await domindblast();
-    if (pmidx === PM_GREMLIN || (uptr && (uptr.msound | 0) === _MON_MS_SHRIEK))
+    if (pmidx === PM_GREMLIN)
         return ECMD_OK;
+    /* C cmd.c:929-931 — `else if (is_unicorn(uptr)) { use_unicorn_horn(
+     * (struct obj **) 0); return ECMD_TIME; }` (apply.c:2259: a null optr means
+     * the polyself unicorn's own horn, so the cursed/blessed tests read as
+     * uncursed). */
+    if (thit_is_unicorn(uptr)) {
+        await use_unicorn_horn(null);
+        return ECMD_TIME;
+    }
+    /* C cmd.c:932-937 — `else if (uptr->msound == MS_SHRIEK)`: You("shriek."),
+     * then aggravate() (or the buried-in-rock line); falls to return ECMD_OK. */
+    if (uptr && (uptr.msound | 0) === _MON_MS_SHRIEK) {
+        await You('shriek.');
+        if (u.uburied)
+            await pline('Unfortunately sound does not carry well through rock.');
+        else
+            aggravate();
+        return ECMD_OK;
+    }
     if (pmidx === PM_VAMPIRE || pmidx === PM_VAMPIRE_LORD
         || pmidx === PM_VLAD_THE_IMPALER)
         return await dopoly();
@@ -990,7 +1207,9 @@ async function docallcmd() {
     // C do_name.c:560-600: item/type names and level annotations share
     // the same dispatcher for queued and interactive choices. Monster,
     const selCh = String.fromCharCode(selKey);
-    if (selCh === 'a' || selCh === 'l') {
+    if (selCh === 'm' || selCh === 'C') {
+        await do_mgivenname();               /* do_name.c:563-564 */
+    } else if (selCh === 'a' || selCh === 'l') {
         await donamelevel();
     } else if (selCh === 'i' || selCh === 'y') {
         /* C ref: do_name.c's 'i' arm —
@@ -1041,6 +1260,67 @@ const SPE_NOVEL_OTYP = 408;
 
 function is_plural_obj(o) { return (o.quan | 0) !== 1; }
 
+async function do_mgivenname() {
+    const g = game;
+    const u = g.u;
+    if (_cmd_Hallucination()) {
+        await You('would never recognize it anyway.');
+        return;
+    }
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    if ((await getpos(cc, false, 'the monster you want to name')) < 0
+        || !isok(cc.x, cc.y))
+        return;
+    const cx = cc.x, cy = cc.y;
+    let mtmp = null;
+    if (cx === (u.ux | 0) && cy === (u.uy | 0)) {
+        /* C: `This %s creature is called %s and cannot be renamed.` */
+        const beautiful = (acurr(A_CHA) > 14) ? (g.flags?.female ? 'beautiful' : 'handsome') : 'ugly';
+        await pline(`This ${beautiful} creature is called ${g.plname} and cannot be renamed.`);
+        return;
+    }
+    mtmp = m_at(cx, cy);
+    if (!mtmp
+        || (!sensemon(mtmp)
+            && (!(cansee(cx, cy) || see_with_infrared(mtmp))
+                || mtmp.mundetected || M_AP_TYPE(mtmp) === M_AP_FURNITURE
+                || M_AP_TYPE(mtmp) === M_AP_OBJECT
+                || ((mtmp.minvis | 0) && !_uprop_active('SEE_INVIS'))))) {
+        await pline('I see no monster there.');
+        return;
+    }
+    const monnambuf = distant_monnam(mtmp, ARTICLE_THE);
+    const qbuf = `What do you want to call ${monnambuf}?`;
+    let buf = await getlin(qbuf);
+    /* name_from_player: empty or ESC -> NULL -> return. */
+    if (!buf || buf === '\x1b')
+        return;
+    buf = mungspaces(buf);
+    if (!buf)
+        return;
+    if (buf.length >= PL_PSIZ_CMD)
+        buf = buf.slice(0, PL_PSIZ_CMD - 1);
+    const GENO_UNIQ = 0x1000; /* monflag.h G_UNIQ */
+    if (((mtmp.data?.geno | 0) & GENO_UNIQ) && !mtmp.ispriest) {
+        if (!_alreadynamed(mtmp, monnambuf, buf))
+            await pline(`${monnambuf.charAt(0).toUpperCase()}${monnambuf.slice(1)} doesn't like being called names!`);
+    } else if (mtmp.ispriest || mtmp.isminion || mtmp.isshk
+               || ((mtmp.mndx ?? mtmp.mnum) | 0) === PM_GHOST) {
+        if (!_alreadynamed(mtmp, monnambuf, buf))
+            await pline(`${monnambuf.charAt(0).toUpperCase()}${monnambuf.slice(1)} will not accept the name ${buf}.`);
+    } else {
+        await _fl_christen_monst(mtmp, buf);
+    }
+}
+/* C do_name.c:157-195 alreadynamed(), the fuzzymatch(usrbuf, monnambuf, " -_",
+ * TRUE) half and its "the "-stripped twin.  NOT ported: the "invisible " strstri
+ * arm and the empty-name "would rather keep" arm (name_from_player has already
+ * returned for an empty buffer, so that arm is unreachable from here). */
+function _alreadynamed(mtmp, monnambuf, usrbuf) {
+    const norm = (t) => t.toLowerCase().replace(/[ \-_]/g, '');
+    if (norm(usrbuf) === norm(monnambuf)) return true;
+    return /^the /i.test(monnambuf) && norm(usrbuf) === norm(monnambuf.slice(4));
+}
 /* C ref: do_name.c:566 do_oname(obj) — name one specific object.
  *   Sprintf(qbuf, "What do you want to name %s ", is_plural ? "these":"this");
  *   safe_qbuf(qbuf, qbuf, "?", obj, xname, simpleonames, "item");
@@ -2082,6 +2362,12 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
         _throwDx = u.dx = _throwDy = u.dy = 0;
         u.dz = 1;
     }
+    /* C dothrow.c:1563 — every throw marks the object LOST_THROWN (pickup_thrown
+     * relies on it), not only the up/down and swallowed arms. */
+    if (_landedObj) {
+        g.thrownobj = _landedObj;
+        _landedObj.how_lost = LOST_THROWN;
+    }
     if (!u.uswallow && u.dz && _landedObj) {
         g.thrownobj = _landedObj;
         _landedObj.how_lost = LOST_THROWN;
@@ -2465,10 +2751,6 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
         const _shotName = (multishot === 1)
             ? (await singular(thrownObj, _fw_xname)) : _fw_xname(thrownObj);
         await pline(`You ${g.gm.m_shot.s ? 'shoot' : 'throw'} ${multishot} ${_shotName}.`);
-        /* The topline persists to the next nhgetch the same way throwit's own
-         * plines do (see throwResultMsg below). */
-        g._resultMessage = g._pending_message;
-        _topl_snapshot_result(g._pending_message);
     }
     const _throwWepMask = (thrownObj?.owornmask | 0);
     const _throwOldslot = thrownObj?.nobj || null;
@@ -3759,6 +4041,14 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
     g._pending_message = '';
     if (WIN_COL === 0)
         docrt_flags(0);
+    /* C wintty.c:3718-3722 docorner(): when the dismissed window reached the
+     * status rows (ymax = maxrow + 1 >= wins[WIN_STATUS]->offy = 22), "we have
+     * wrecked the bottom line": disp.botlx = TRUE; bot().  T: repaints from
+     * live moves, discharging the run-suppression latch. */
+    if (WIN_COL !== 0 && endRow + 1 >= 22) {
+        if (g.disp) g.disp.botlx = 1;
+        await bot();
+    }
     await flush_screen(1);
     /* winRows: the number of screen rows this menu window occupied (its
      * "(end)" row is endRow).  itemactions needs it because C's docorner()
@@ -3797,6 +4087,50 @@ async function _dispinv_one(obj) {
     await pline((await xprname(obj, null, String.fromCharCode(obj.invlet | 0), true, 0, 0)));
 }
 
+/* C ref: shk.c:989 shop_debt(eshkp) — itemized debit plus the open bill. */
+function shop_debt(eshkp) {
+    let debt = eshkp.debit | 0;
+    const bill = eshkp.bill_p || eshkp.bill || [];
+    for (let i = 0; i < (eshkp.billct | 0); i++) {
+        const bp = bill[i];
+        if (bp) debt += (bp.price | 0) * (bp.bquan | 0);
+    }
+    return debt;
+}
+/* C ref: shk.c:1003 shopper_financial_report() — called in response to the
+ * '$' command. */
+async function shopper_financial_report() {
+    const g = game;
+    const u = g.u || {};
+    const rmno = inside_shop(u.ux | 0, u.uy | 0) | 0;
+    let this_shkp = rmno >= ROOMOFFSET ? shk_shop_keeper(rmno) : null;
+    const eshk0 = this_shkp ? ESHK(this_shkp) : null;
+    if (eshk0 && !((eshk0.credit | 0) || shop_debt(eshk0))) {
+        await pline('You have no credit or debt in here.');
+        this_shkp = null; /* skip first pass */
+    }
+    /* pass 0: report for the shop we're currently in, if any;
+       pass 1: report for all other shops on this level. */
+    for (let pass = this_shkp ? 0 : 1; pass <= 1; pass++) {
+        for (let shkp = g.fmon; shkp; shkp = shkp.nmon) {
+            if ((shkp.mhp | 0) <= 0 || !shkp.isshk)
+                continue;
+            if (((shkp !== this_shkp) ? 1 : 0) ^ pass)
+                continue;
+            const eshkp = ESHK(shkp);
+            let amt;
+            if ((amt = eshkp.credit | 0) !== 0)
+                await pline(`You have ${amt} ${currency(amt)} credit at ${s_suffix(dokick_shkname(shkp))} ${shtype_name((eshkp.shoptype | 0) - SHOPBASE)}.`);
+            else if (shkp === this_shkp)
+                await pline('You have no credit in here.');
+            if ((amt = shop_debt(eshkp)) !== 0)
+                await pline(`You owe ${dokick_shkname(shkp)} ${amt} ${currency(amt)}.`);
+            else if (shkp === this_shkp)
+                await pline("You don't owe any gold here.");
+        }
+    }
+}
+
 /* C ref: invent.c:1560 doprgold() — the '$' command. */
 async function doprgold() {
     const g = game;
@@ -3818,6 +4152,8 @@ async function doprgold() {
         else
             await pline('You have no money.');
     }
+    /* C invent.c:1589 shopper_financial_report() (shk.c:1003) */
+    await shopper_financial_report();
     /* C invent.c:1591-1597 — the 'm $' form displays the carried coin stack
      * through dispinv_with_action("$", FALSE, NULL).  The shared inventory
      * renderer supplies the same menu placement, dismissal, and coin line;
@@ -5770,6 +6106,7 @@ const INV_ORDER = [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16];
 /* C ref: objclass.h COIN_CLASS; role.c roles[] index of the Priest role
  * (this port's Role_if(PM_CLERIC) — see js/m_initweap.js:24, js/read.js:995). */
 const COIN_CLASS_C = 12;
+const MAXOCLASSES_C = 18;
 const PM_CLERIC_ROLEIDX = 6;
 
 const BUCT_BLESSED = 'B', BUCT_CURSED = 'C', BUCT_UNCURSED = 'U', BUCT_UNKNOWN = 'X';
@@ -5917,6 +6254,15 @@ async function dotypeinv() {
         if (ucnt) windowLines.push('U - Items known to be Uncursed');
         if (xcnt) windowLines.push('X - Items of unknown Bless/Curse status');
     }
+    /* C invent.c:3853-3868 tally_BUCX's jcnt -> JUSTPICKED; pickup.c:1433-1445
+     * adds the 'P' row last, after the BUC cluster (and its separator). */
+    const jcnt = g.invent ? count_justpicked(g.invent) : 0;
+    if (jcnt) {
+        if (!(bcnt || ccnt || ucnt || xcnt)) windowLines.push('');
+        windowLines.push(jcnt === 1
+            ? `P - Just picked up: ${(await doname(find_justpicked(g.invent)))}`
+            : 'P - Items you just picked up');
+    }
     windowLines.push('(end)');
     const maxLen = windowLines.reduce((max, ln) => {
         const vis = ln.replace(/\x1b\[[0-9;]*m/g, '');
@@ -5935,7 +6281,7 @@ async function dotypeinv() {
     /* C pickup.c:1280-1309 — one category with at most one BUC category is
      * returned directly, so no category window or dismissal key is consumed. */
     const directCategory = g.invent && carried.length === 1
-        && [bcnt, ccnt, ucnt, xcnt].filter(n => n > 0).length <= 1
+        && [bcnt, ccnt, ucnt, xcnt, jcnt].filter(n => n > 0).length <= 1
         && count_unpaid(g.invent) === 0
         // Billed/used-up items still lack a dotypeinv menu arm. Keep that
         // existing menu path while in a shop, where C may have a bill.
@@ -5958,7 +6304,8 @@ async function dotypeinv() {
      * wintty.c:1373-1376 admits all of them even for a PICK_ONE. */
     const typeinvSelectors =
         carried.map((_, i) => String.fromCharCode(97 + i)).join('')
-        + (bcnt ? 'B' : '') + (ccnt ? 'C' : '') + (ucnt ? 'U' : '') + (xcnt ? 'X' : '');
+        + (bcnt ? 'B' : '') + (ccnt ? 'C' : '') + (ucnt ? 'U' : '') + (xcnt ? 'X' : '')
+        + (jcnt ? 'P' : '');
     const typeinvGacc = carried.map((oc) => def_oc_syms_chars[oc] ?? '').join('');
     const choice = directCategory ? String.fromCharCode(97)
         : String.fromCharCode(await await_menu_key(
@@ -5973,9 +6320,11 @@ async function dotypeinv() {
     const selectedClass = classIndex >= 0 && classIndex < carried.length
         ? carried[classIndex]
         : carried.find(oc => def_oc_syms_chars[oc] === choice);
-    const bucChoice = 'BUCX'.includes(choice) && typeinvSelectors.includes(choice);
+    const bucChoice = 'BUCXP'.includes(choice) && typeinvSelectors.includes(choice);
     if (selectedClass != null || bucChoice) {
         const filter = (o) => {
+            /* C invent.c:3796-3798 this_type_only: 'P' selects pickup_prev. */
+            if (choice === 'P') return !!o.pickup_prev;
             if (!bucChoice) return (o.oclass | 0) === selectedClass;
             if ((o.oclass | 0) === COIN_CLASS_C)
                 return choice === (g.flags?.goldX ? 'X' : 'U');
@@ -5988,6 +6337,7 @@ async function dotypeinv() {
             B: 'Items known to be blessed:', C: 'Items known to be cursed:',
             U: 'Items known to be uncursed:',
             X: 'Items whose blessed/uncursed/cursed status is unknown:',
+            P: 'Items that were just picked up:',
         }[choice] : null;
         const { selectedObj, WIN_COL, winRows } = await inventory_menu_legacy({
             filter, title, queryObjlist: true,
@@ -7147,6 +7497,166 @@ async function _dodrop_with(obj) {
     }
     return result ? ECMD_TIME : ECMD_FAIL;
 }
+
+/* C win/tty/topl.c:478-531 tty_yn_function's '#' arm: echo '#', read digits
+ * until a non-digit; 'y', SPACE, CR or ESC end the number.  Returns the count
+ * (> 0), 0 for "no", or -1 for an abort (C re-asks; here that answers 'n'). */
+async function yn_count_tail(qbuf) {
+    const g = game;
+    let text = qbuf + ' #';
+    let value = 0, n_len = 1;
+    for (;;) {
+        g._pending_message = text;
+        await flush_screen(1);
+        if (g.nhDisplay) topl_park_cursor(g.nhDisplay, text);
+        const raw = await nhgetch();
+        const key = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+        if (key >= 48 && key <= 57) {
+            value = value * 10 + (key - 48);
+            text += String.fromCharCode(key); n_len++;
+        } else if (key === 121 || key === 32 || key === 13 || key === 10) {
+            break;
+        } else if (key === 27) {
+            value = -1;
+            break;
+        } else if (key === 8 || key === 127) {
+            if (n_len <= 1) { value = -1; break; }
+            value = Math.trunc(value / 10);
+            text = text.slice(0, -1); n_len--;
+        } else {
+            value = -1;
+            break;
+        }
+    }
+    return value;
+}
+/* C invent.c:2202-2395 ggetobj("drop", drop, 0, FALSE, NULL) — the traditional
+ * menustyle's "What kinds of thing do you want to drop? [..]" question,
+ * followed by askchain() (invent.c:2397-2530) over the typed classes.  Only the
+ * drop word is modelled (no takeoff/identify arms); the 'i' inventory-peek loop
+ * and the '#' count answer are not.  Returns ggetobj's value: the number of
+ * successful drops, 0 on cancel, -2/-3 for the 'm' menu request. */
+async function ggetobj_drop() {
+    const g = game;
+    const word = 'drop';
+    /* invent.c:2236-2262 collect_obj_classes() then the extras. */
+    let ilets = '';
+    const seen = new Set();
+    /* collect_obj_classes (invent.c:2133): classes in order of first
+     * appearance on the invent chain. */
+    for (let o = g.invent; o; o = o.nobj) {
+        const oc = o.oclass | 0;
+        if (!seen.has(oc)) {
+            seen.add(oc);
+            ilets += def_oc_syms_chars[oc];
+        }
+    }
+    ilets += ' ';
+    if (count_unpaid(g.invent)) ilets += 'u';
+    if (count_buc(g.invent, BUCT_BLESSED, null)) ilets += 'B';
+    if (count_buc(g.invent, BUCT_UNCURSED, null)) ilets += 'U';
+    if (count_buc(g.invent, BUCT_CURSED, null)) ilets += 'C';
+    if (count_buc(g.invent, BUCT_UNKNOWN, null)) ilets += 'X';
+    if (count_justpicked(g.invent)) ilets += 'P';
+    ilets += 'a';
+    ilets += 'i';
+    ilets += 'm'; /* !combo */
+    const buf = await getlin(`What kinds of thing do you want to ${word}? [${ilets}]`);
+    if (!buf || buf.charCodeAt(0) === 27)
+        return 0;
+    /* invent.c:2327-2369 — parse the typed symbols. */
+    let allflag = false, m_seen = false, bucs = '', unpaidOnly = false;
+    const olets = [];
+    for (const ch of buf) {
+        if (ch === ' ') continue;
+        const oc = def_char_to_objclass(ch.charCodeAt(0));
+        if (ch === 'a') allflag = true;
+        else if (ch === 'A') { /* same as the default */ }
+        else if (ch === 'u') unpaidOnly = true;
+        else if ('BUCXP'.includes(ch)) bucs += ch;
+        else if (ch === 'm') m_seen = true;
+        else if (oc === MAXOCLASSES_C)
+            await You(`don't have any ${ch}'s.`);
+        else if (!olets.includes(oc))
+            olets.push(oc);
+    }
+    if (m_seen)
+        return (allflag || (!olets.length && !unpaidOnly && !bucs)) ? -2 : -3;
+    /* askchain(&invent, olets, allflag, drop, ckfn, 0, "drop") */
+    const ckvalid = (o) => {
+        if (unpaidOnly && !(o.unpaid)) return false;
+        if (!bucs) return true;
+        if ((o.oclass | 0) === COIN_CLASS_C)
+            return bucs.includes(g.flags?.goldX ? 'X' : 'U');
+        if (bucs.includes('P') && o.pickup_prev) return true;
+        let c;
+        if (!o.bknown) c = 'X';
+        else if (o.blessed) c = 'B';
+        else if (o.cursed) c = 'C';
+        else c = 'U';
+        return bucs.includes(c);
+    };
+    if (u_ushops_active())
+        sellobj_state(SELL_DELIBERATE);
+    let cnt = 0, dud = 0, done = false, yn_number = 0;
+    const classes = olets.length ? olets : [null];
+    for (const cls of classes) {
+        bypass_objlist(g.invent, false);
+        for (const otmp of sortloot_invlet_chain(g.invent)) {
+            /* nxt_unbypassed_loot over the sorted chain: skip anything the
+             * drops already unlinked. */
+            let live = false;
+            for (let o = g.invent; o; o = o.nobj) if (o === otmp) { live = true; break; }
+            if (!live) continue;
+            if (cls !== null && (otmp.oclass | 0) !== cls) continue;
+            if (!ckvalid(otmp)) continue;
+            let sym = 'y';
+            yn_number = 0;
+            if (!allflag) {
+                const q = await xprname(otmp, undefined, String.fromCharCode(otmp.invlet | 0), false, 0, 0);
+                const rs = (otmp.quan | 0) < 2 ? 'ynaq' : 'yn#aq';
+                sym = await yn_function(q + '?', rs, 'n', false);
+                if (sym === '#')
+                    yn_number = await yn_count_tail(`${q}? [${rs}] (n)`);
+                if (yn_number < 0) { sym = 'n'; yn_number = 0; }
+            }
+            const otmpo = otmp;
+            let split = null;
+            if (sym === '#') {
+                if (!yn_number) sym = 'n';
+                else {
+                    sym = 'y';
+                    if (yn_number < (otmp.quan | 0) && splittable(otmp))
+                        split = await splitobj(otmp, yn_number);
+                }
+            }
+            if (sym === 'q' || sym === '\x1b') { done = true; break; }
+            if (sym === 'a' || sym === 'y') {
+                if (sym === 'a') allflag = true;
+                const tmp = (await drop(split || otmpo)) ? 1 : 0;
+                if (!tmp && split) await unsplitobj(split);
+                cnt += tmp;
+            }
+            if (sym === 'a' || sym === 'y' || sym === 'n') dud++;
+        }
+        if (done) break;
+    }
+    if (!done) {
+        if (dud || cnt) await pline('That was all.');
+        else await pline('No applicable objects.');
+    }
+    clear_bypasses_inv();
+    if (u_ushops_active())
+        sellobj_state(SELL_NORMAL);
+    return cnt;
+}
+function u_ushops_active() {
+    const us = game.u?.ushops;
+    return !!(us && us.length && us[0]);
+}
+function clear_bypasses_inv() {
+    bypass_objlist(game.invent, false);
+}
 // C ref: do.c:924 doddrop() — the 'D' command.
 //   doddrop() → (flags.menu_style != MENU_TRADITIONAL) → menu_drop(0)
 //   (do.c:980). With flags.menu_style == MENU_FULL (the default), menu_drop
@@ -7170,6 +7680,25 @@ async function doddrop() {
     const g = game;
     const u = g.u || {};
     const initrole = (g.flags?.initrole ?? -1) | 0;
+    /* C do.c:931-936 — `if (flags.menu_style != MENU_TRADITIONAL
+     *     || (result = ggetobj("drop", drop, 0, FALSE, 0)) < -1)
+     *     result = menu_drop(result);`.  MENU_TRADITIONAL (hack.h, 0) skips the
+     * category menu and asks the typed-letters question instead. */
+    if (g.invent && (g.flags?.menu_style | 0) === 0 && g.flags?.menu_style !== undefined) {
+        const result = await ggetobj_drop();
+        /* result >= -1 ends the command (C: only `< -1` falls into menu_drop;
+         * the 'm' request is not modelled and ends the command here too). */
+        if (result < -1) {
+            /* fall through to the menu path below */
+        } else {
+            /* C do.c:938-940 — `return result`: the raw count is the command's
+             * ECMD_* bit set, so two drops read as ECMD_CANCEL and spend no
+             * time (ECMD_TIME is 1). */
+            g.context.move = (result & ECMD_TIME) ? 1 : 0;
+            if (result) reset_occupations();
+            return;
+        }
+    }
     /* C ref: do.c:928 — "have nothing to drop" if gi.invent is empty. */
     /* Determine carried object classes + BUC counts.  Prefer the live invent
      * chain; fall back to the role's deterministic starting kit (same logic as
@@ -7493,16 +8022,142 @@ async function doddrop() {
         g.context.move = 0;  /* cancelled menu — no turn, no RNG */
 }
 
+const TAKEOFF_ORDER = [W_TOOL_TO, W_WEP_TO, W_ARMS_TO, W_ARMG_TO, W_RINGL_TO,
+    W_RINGR_TO, W_ARMC_TO, W_ARMH_TO, W_AMUL_TO, W_ARM_TO,
+    W_ARMU_TO, W_ARMF_TO, W_SWAPWEP_TO, W_QUIVER_TO];
+
+/* C ref: do_wear.c:2696 select_off(otmp) — guards, then mark takeoff.mask. */
+async function select_off_cmd(otmp) {
+    const g = game;
+    const u = g.u || {};
+    if (!otmp) return 0;
+    g.context.takeoff = g.context.takeoff || { what: 0, mask: 0, delay: 0, disrobing: '' };
+    const doff = g.context.takeoff;
+    let why = null;
+    let buf = '';
+    if (otmp === u.uright || otmp === u.uleft) {
+        if (welded(u.uwep) && (bimanual(u.uwep)
+            || otmp === (u.uhandedness === RIGHT_HANDED ? u.uright : u.uleft))) {
+            buf = `free a weapon ${body_part(HAND)}`;
+            why = u.uwep;
+        } else if (u.uarmg && u.uarmg.cursed) {
+            buf = `take off your ${gloves_simple_name(u.uarmg)}`;
+            why = u.uarmg;
+        }
+        if (why) {
+            await You(`cannot ${buf} to remove the ring.`);
+            set_bknown(why, 1);
+            return 0;
+        }
+    }
+    if (otmp === u.uarmg && welded(u.uwep)) {
+        await You(`are unable to take off your ${gloves_simple_name(otmp)} while wielding that ${is_sword(u.uwep) ? 'sword' : 'weapon'}.`);
+        set_bknown(u.uwep, 1);
+        return 0;
+    }
+    if (otmp === u.uarm || otmp === u.uarmu) {
+        why = null;
+        if (u.uarmc && u.uarmc.cursed) {
+            buf = `remove your ${cloak_simple_name(u.uarmc)}`;
+            why = u.uarmc;
+        } else if (otmp === u.uarmu && u.uarm && u.uarm.cursed) {
+            buf = 'remove your suit';
+            why = u.uarm;
+        } else if (welded(u.uwep) && bimanual(u.uwep)) {
+            buf = `release your ${is_sword(u.uwep) ? 'sword' : 'weapon'}`;
+            why = u.uwep;
+        }
+        if (why) {
+            await You(`cannot ${buf} to take off ${the(xname(otmp))}.`);
+            set_bknown(why, 1);
+            return 0;
+        }
+    }
+    if (!(otmp === u.uquiver || (otmp === u.uswapwep && !u.twoweap))) {
+        if (otmp.cursed) {
+            await You(`can't.  ${(otmp.quan > 1 || is_boots(otmp) || is_gloves(otmp)) ? 'They are' : 'It is'} cursed.`);
+            set_bknown(otmp, 1);
+            return 0;
+        }
+    }
+    if (otmp === u.uarm) doff.mask |= W_ARM_TO;
+    else if (otmp === u.uarmc) doff.mask |= W_ARMC_TO;
+    else if (otmp === u.uarmf) doff.mask |= W_ARMF_TO;
+    else if (otmp === u.uarmg) doff.mask |= W_ARMG_TO;
+    else if (otmp === u.uarmh) doff.mask |= W_ARMH_TO;
+    else if (otmp === u.uarms) doff.mask |= W_ARMS_TO;
+    else if (otmp === u.uarmu) doff.mask |= W_ARMU_TO;
+    else if (otmp === u.uleft) doff.mask |= W_RINGL_TO;
+    else if (otmp === u.uright) doff.mask |= W_RINGR_TO;
+    else if (otmp === u.uamul) doff.mask |= W_AMUL_TO;
+    else if (otmp === u.ublindf) doff.mask |= W_TOOL_TO;
+    else if (otmp === u.uwep) doff.mask |= W_WEP_TO;
+    else if (otmp === u.uswapwep) doff.mask |= W_SWAPWEP_TO;
+    else if (otmp === u.uquiver) doff.mask |= W_QUIVER_TO;
+    else impossible('select_off: %s???', await doname(otmp));
+    return 0;
+}
+
+/* C ref: do_wear.c:2900 take_off(void) — occupation callback for 'A'. */
+export async function take_off_occ() {
+    const g = game;
+    const u = g.u || {};
+    const doff = g.context.takeoff;
+    const delayOf = (o) => (o && ARMOR_DATA[o.otyp] ? (ARMOR_DATA[o.otyp].delay | 0) : 0);
+    if (doff.what) {
+        if (doff.delay > 0) {
+            doff.delay--;
+            return 1; /* still busy */
+        }
+        const done = await do_takeoff();
+        if (done) await off_msg(done);
+        doff.mask &= ~doff.what;
+        doff.what = 0;
+    }
+    for (const bit of TAKEOFF_ORDER)
+        if (doff.mask & bit) { doff.what = bit; break; }
+    let otmp = null;
+    doff.delay = 0;
+    if (doff.what === 0) {
+        await You(`finish ${doff.disrobing}.`);
+        return 0;
+    } else if (doff.what === W_WEP_TO || doff.what === W_SWAPWEP_TO
+               || doff.what === W_QUIVER_TO) {
+        doff.delay = 1;
+    } else if (doff.what === W_ARM_TO) {
+        otmp = u.uarm;
+        if (u.uarmc) doff.delay += 2 * delayOf(u.uarmc) + 1;
+    } else if (doff.what === W_ARMC_TO) otmp = u.uarmc;
+    else if (doff.what === W_ARMF_TO) otmp = u.uarmf;
+    else if (doff.what === W_ARMG_TO) otmp = u.uarmg;
+    else if (doff.what === W_ARMH_TO) otmp = u.uarmh;
+    else if (doff.what === W_ARMS_TO) otmp = u.uarms;
+    else if (doff.what === W_ARMU_TO) {
+        otmp = u.uarmu;
+        if (u.uarm) doff.delay += 2 * delayOf(u.uarm);
+        if (u.uarmc) doff.delay += 2 * delayOf(u.uarmc) + 1;
+    } else if (doff.what === W_AMUL_TO || doff.what === W_RINGL_TO
+               || doff.what === W_RINGR_TO || doff.what === W_TOOL_TO) {
+        doff.delay = 1;
+    } else {
+        impossible('take_off: taking off %lx', doff.what);
+        return 0;
+    }
+    if (otmp) doff.delay += delayOf(otmp);
+    if (doff.delay > 0) doff.delay--;
+    set_occupation(take_off_occ, doff.disrobing, 0);
+    return 1; /* get busy */
+}
+
 async function doddoremarm() {
     const g = game;
     const u = g.u || {};
     g.context = g.context || {};
     const to = g.context.takeoff || {};
     if (to.what || to.mask) {
-        /* C do_wear.c:3026-3029 — resume an interrupted disrobe.  Unreachable
-         * while take_off() is unported (nothing ever sets takeoff.mask), and
-         * ported in C's structure per Cardinal Rule 1. */
+        /* C do_wear.c:3026-3029 — resume an interrupted disrobe. */
         await You(`continue ${to.disrobing || ''}.`);
+        set_occupation(take_off_occ, to.disrobing || '', 0);
         return ECMD_OK;
     } else if (!u.uwep && !u.uswapwep && !u.uquiver && !u.uamul && !u.ublindf
                && !u.uleft && !u.uright && !wearing_armor()) {
@@ -7512,10 +8167,13 @@ async function doddoremarm() {
     }
     add_valid_menu_class(0); /* reset */
     await menu_remarm(0);
-    /* C do_wear.c:3041-3052 — takeoff.mask is never set while select_off() is
-     * unported, so take_off() is not reached.  ECMD_OK either way: the comment
-     * at do_wear.c:3053 says the command's time is already accounted for inside
-     * take_off(). */
+    /* C do_wear.c:3041-3052 */
+    if (g.context.takeoff && g.context.takeoff.mask) {
+        const tk = g.context.takeoff;
+        tk.disrobing = ((tk.mask & ~W_WEAPONS) !== 0) ? 'disrobing' : 'disarming';
+        await take_off_occ();
+    }
+    /* The time is already accounted for in take_off() (do_wear.c:3053). */
     return ECMD_OK;
 }
 
@@ -7689,12 +8347,15 @@ async function menu_remarm(retry) {
         }
         return false;
     };
-    await inventory_menu_legacy({
+    const { selectedEntries: takeoffPicks = [] } = await inventory_menu_legacy({
         title: 'What do you want to take off?',
         queryObjlist: true,
         pickAny: true,
         filter,
     });
+    /* C do_wear.c:3140-3142 */
+    for (const entry of takeoffPicks)
+        await select_off_cmd(entry.obj);
     return 0;
 }
 // C ref: dungeon.c:3286 dooverview() — the '^O' (C('o')) overview command.
@@ -8367,11 +9028,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     g.iflags = g.iflags || {};
     g.iflags.travelcc = { x: 0, y: 0 };            /* do.c:1606 */
     if (g.svc?.context?.polearm) g.svc.context.polearm.hitmon = null; /* do.c:1607 */
-    // do.c:1611-1612 `if (falling) impact_drop(NULL, u.ux, u.uy, newlevel->dlevel)`
-    // is NOT wired: js/dokick.js#impact_drop walks the migrating-object chain,
-    // which this port does not maintain across a level change (obj_delivery is
-    // likewise unwired below), so calling it would read a structure that is
-    // always empty.  UNPORTED-CALLEE, same idiom as the rest of this function.
+    // do.c:1612-1613 `if (falling) impact_drop(NULL, u.ux, u.uy, newlevel->dlevel)`
+    // — objects on the hole square fall with the hero (draws + 'falls through
+    // the hole' message).  Their arrival-side obj_delivery is still unwired.
+    if (falling)
+        await impact_drop(null, g.u.ux | 0, g.u.uy | 0, newlevel?.dlevel | 0);
     await check_special_room(true);       /* do.c:1614 */
     if (_st_Punished()) unplacebc();
     await reset_utrap(false);             /* do.c:1617 */
@@ -8768,6 +9429,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // down under the hero at her arrival square on the new level.  Pairs with
     // the unplacebc() above; both halves are required or the pair leaks.
     if (_st_Punished()) await placebc();
+    // C do.c:1815 — obj_delivery(FALSE): objects that migrated to this level
+    // (kicked / fell down a hole or trap door) arrive before the monsters do.
+    await obj_delivery(false);
     // C do.c:1816 — Before_you, With_you, After_you; consumes mydogs.
     await losedogs();
     /* C's save/restore creates a fresh monster struct for a level.  The JS
@@ -8940,6 +9604,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         g.vision_full_recalc = 0;
     }
     g._paintedSnapshot = null;
+    /* C flush_screen(-1) (display.c:2236-2240): `if (gc.context.botl ||
+     * gc.context.botlx) bot();` — docrt()'s cls() raised botlx, so the status
+     * line is painted HERE, at the pre-increment svm.moves, rather than by the
+     * moveloop's deferred paint after moves++. */
+    if (g.disp && ((g.disp.botl | 0) || (g.disp.botlx | 0)))
+        await bot();
     // C ref: do.c:1867-1869 — the deferred level-teleport arrival message is
     // delivered HERE, inside goto_level, before the arrival events below (C's
     // comment: "give it before them" because it looks odd afterwards).  Our
@@ -9114,6 +9784,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     notice_all_mons(true);          /* do.c:1973 */
     await print_level_annotation(); /* do.c:1974 */
     await check_special_room(false);      /* do.c:1977 — room entrance message */
+    await obj_delivery(true);             /* do.c:1978 — objects traveling with the hero */
     in_out_region(u.ux | 0, u.uy | 0); /* do.c:1981 */
     /* C do.c:1989-1993 — fall damage after a trap door / hole descent:
      *     int dmg = d(max(dist, 1), 6);
@@ -10333,12 +11004,67 @@ export async function dodown() {
     // forces dz=-1 for the mirror-image DIR_UP discrepancy.
     set_move_cmd(DIR_DOWN, 0);
     u.dz = 1;
+    // C do.c:1138-1143 — u_rooted() and stucksteed(TRUE), the same two
+    // leading guards doup() carries.
+    if (u_rooted())
+        return (g.context.move = 1, ECMD_TIME);
+    if (stucksteed(true)) {
+        g.context.move = 0; // ECMD_OK
+        return ECMD_OK;
+    }
     let stairs_down = false, ladder_down = false;
     const stway = stairway_at(u.ux, u.uy);
     // C do.c:1147 — stairway_at && !stway->up → a downstair/ladder here.
     if (stway && !stway.up) {
         stairs_down = !stway.isladder;
         ladder_down = !stairs_down;
+    }
+    // C do.c:1153-1202 — "Levitation might be blocked, but player can still
+    // use '>' to turn off controlled levitation".
+    const _hlev = _hprop(LEVITATION), _elev = _eprop(LEVITATION);
+    if (_hlev || _elev) {
+        // The ELevitation & W_ARTI artifact-age loop (do.c:1158-1169) is not
+        // levitating artifact.
+        if ((_hlev & I_SPECIAL) || (_elev & W_ARTI_FW)) {
+            if (await float_down(I_SPECIAL | TIMEOUT, W_ARTI_FW)) {
+                g.context.move = 1;
+                return ECMD_TIME; // came down, so moved
+            } else if (!_hprop(LEVITATION) && !_eprop(LEVITATION)) {
+                await Your('latent levitation ceases.');
+                g.context.move = 1;
+                return ECMD_TIME; // did something, effectively moved
+            }
+        }
+        const p = u.uprops?.[LEVITATION];
+        if ((p?.blocked | 0)) {
+            ; // BLevitation: weren't actually floating after all
+        } else if (_Blind_cmd()) {
+            // C do.c:1180-1193 — avoid alerting the player to an unknown
+            // stair or ladder: only the PAINTED glyph counts.
+            const sym = _glyph_cmap_sym(u.ux, u.uy, _glyph_at(u.ux, u.uy));
+            if (stairs_down)
+                stairs_down = (sym === S_dnstair);
+            else if (ladder_down)
+                ladder_down = (sym === S_dnladder);
+        }
+        if (Is_airlevel(u.uz))
+            await You(`are floating in the ${surface(u.ux, u.uy)}.`);
+        else if (Is_waterlevel(u.uz))
+            await You(`are floating in ${is_pool(u.ux, u.uy) ? 'the water' : 'a bubble of air'}.`);
+        else {
+            // C fountain.c:21 floating_above(what)
+            let umsg = 'are floating high above the';
+            let what = stairs_down ? 'stairs' : ladder_down ? 'ladder'
+                : surface(u.ux, u.uy);
+            if (u.utrap && ((u.utraptype | 0) === TT_INFLOOR
+                            || (u.utraptype | 0) === TT_LAVA)) {
+                umsg = 'are trapped in the';
+                what = surface(u.ux, u.uy);
+            }
+            await You(`${umsg} ${what}.`);
+        }
+        g.context.move = 0; // ECMD_OK — didn't move
+        return ECMD_OK;
     }
     let trap = null;
     // C do.c:1224-1237 — no downstair/ladder here: check for a fallable
@@ -11067,17 +11793,37 @@ async function doprev_message() {
     // C topl.c: single mode (the default) walks maxcol backwards through the
     // history, beginning with the current toplines. Our history array includes
     // that current line. Recalling a line must not insert it into history again.
-    if ((g.iflags?.prevmsg_window || 's')[0] === 's') {
+    const _pmw = (g.iflags?.prevmsg_window || 's')[0];
+    /* C topl.c:42-74 combination: first ^P recalls the current toplines, the
+     * second the one before, then the whole window (maxcol back at maxrow). */
+    let _comboWindow = false;
+    if (_pmw === 'c' && history.length) {
+        if (g._prevmsg_history_length !== history.length) {
+            g._prevmsg_combo = 0;
+            g._prevmsg_history_length = history.length;
+        }
+        if ((g._prevmsg_combo || 0) >= 2) {
+            _comboWindow = true;
+            g._prevmsg_combo = 0;
+        }
+    }
+    if (_pmw === 's' || (_pmw === 'c' && !_comboWindow)) {
         if (!history.length) return ECMD_OK;
-        if (g._prevmsg_history_length !== history.length || g._prevmsg_next == null) {
+        if (_pmw === 'c') {
+            const k = g._prevmsg_combo || 0;
+            g._prevmsg_next = Math.max(0, history.length - 1 - k);
+            g._prevmsg_combo = k + 1;
+        } else if (g._prevmsg_history_length !== history.length || g._prevmsg_next == null) {
             g._prevmsg_next = history.length - 1;
             g._prevmsg_history_length = history.length;
         }
         let morc;
         do {
             const text = history[g._prevmsg_next];
-            g._prevmsg_next--;
-            if (g._prevmsg_next < 0) g._prevmsg_next = history.length - 1;
+            if (_pmw === 's') {
+                g._prevmsg_next--;
+                if (g._prevmsg_next < 0) g._prevmsg_next = history.length - 1;
+            }
             g._pending_message = text;
             g._topl_history_recall = text;
             g._topl_unacknowledged = true;
@@ -11090,12 +11836,24 @@ async function doprev_message() {
         } while (morc === 16);
         return ECMD_OK;
     }
-    // Newest-first: reverse the emission-order ring.
-    const reversed = history.slice().reverse();
+    // C topl.c:27-41 full / 75-96 reversed: 'f' (and the combination window)
+    // lists oldest-first; only 'r' is newest-first.
+    /* C topl.c:170-191 remember_topl() — the history is a RING of cw->rows
+     * (iflags.msg_history, default 20) slots, so the window lists at most that
+     * many remembered lines plus gt.toplines (the last entry here).  The window
+     * width, and so its wintty.c:1908 offx, follows the widest of THOSE lines. */
+    const _ring = (g.iflags?.msg_history ?? 20) | 0;
+    const _recent = history.slice(-(_ring + 1));
+    const reversed = _pmw === 'r' ? _recent.slice().reverse() : _recent;
     // C ref: tty_doprev_message builds "Message History", blank line, then the
     // recalled lines.  WIN_COL=7 matches the recorded reference (col-7 indent).
-    const WIN_COL = 7;
-    const windowLines = ['Message History', '', ...reversed, '--More--'];
+    const _histLines = ['Message History', '', ...reversed];
+    /* C wintty.c:1908-1911 (H2344_BROKEN): offx = min(min(82, cols/2),
+     * cols - maxcol - 1), maxcol being the widest putstr'd line (the --More--
+     * is dmore's, not part of the window text).  The old fixed 7 was only right
+     * for a 72-column widest line. */
+    const WIN_COL = Math.max(0, Math.min(40, 79 - _histLines.reduce((m, l) => Math.max(m, l.length), 0)));
+    const windowLines = [..._histLines, '--More--'];
     const uac = g.u?.uac ?? 0;
     const screenOutput = build_window_screen(windowLines, WIN_COL, uac);
     // Cursor at end of "--More--": WIN_COL + len("--More--") on the last row.
@@ -11726,6 +12484,16 @@ async function dohelp() {
             await flush_screen(1);
             return ECMD_OK;
         }
+        /* pager.c:2813-2818 hmenu_doextlist() — a bare doextlist(), the same
+         * 'A'-less listing '#?' reaches; it is its own NHW_MENU, not a text
+         * window, and it returns once the menu is dismissed. */
+        if (picked && picked.f === 'hmenu_doextlist') {
+            g._pending_message = '';
+            await doextlist(false);
+            g._pending_message = '';
+            await flush_screen(1);
+            return ECMD_OK;
+        }
         /* pager.c:2820-2827 domenucontrols() and pager.c:2714-2744 docontact():
          * each builds one NHW_TEXT window and display_nhwindow()s it, exactly
          * like the dispfile_* arm below but from generated text rather than a
@@ -11954,7 +12722,10 @@ const _plur_name = makeplural_objnam;
 // C ref: objnam.c An()/an() — choose "a"/"an" by the following word's sound.
 // Simplified: "an" before a word starting with a vowel letter, else "a".
 function _an_article(word) {
-    return /^[aeiou]/i.test(word) ? 'an' : 'a';
+    /* objnam.c just_an (2106-2141): unicorn/uranium/useful/one/eu/uke... take
+     * "a"; x + consonant takes "an". */
+    const a = String(just_an({}, String(word || ''))).trim();
+    return a || (/^[aeiou]/i.test(word) ? 'an' : 'a');
 }
 // ── C oc_charged otyps that need the "(recharged:spe)" charge suffix ──
 // C ref: objnam.c:1480-1486 — WAND_CLASS and oc_charged tools show " (%d:%d)".
@@ -12547,6 +13318,17 @@ export async function doname_body(obj, hand, with_price) {
         } else if (otyp === _IA_OIL_LAMP_OTYP || otyp === _IA_MAGIC_LAMP_OTYP
                    || otyp === _IA_BRASS_LANTERN_OTYP
                    || otyp === _IA_TALLOW_CANDLE_OTYP || otyp === _IA_WAX_CANDLE_OTYP) {
+            if (otyp === _IA_TALLOW_CANDLE_OTYP || otyp === _IA_WAX_CANDLE_OTYP) {
+                /* C objnam.c:1459-1476 — "partly used " when burn time left is
+                 * under 20 * oc_cost; a lit candle adds its BURN_OBJECT timer's
+                 * remaining time. */
+                let turns_left = Number(obj.age ?? 0);
+                if (obj.lamplit)
+                    turns_left += peek_timer_real(_BURN_OBJECT_PU, { a_obj: obj })
+                        - ((game.moves ?? 0) | 0);
+                if (turns_left < 20 * Number(OC_COST[otyp]))
+                    prefix += 'partly used ';
+            }
             if (obj.lamplit)
                 lightSourceSuffix = ' (lit)';
         }
@@ -12773,7 +13555,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null) {
     }
     /* invent.c:3140-3143 — n==0 → pline("Not carrying anything.") and return 0. */
     if (items.length === 0) {
-        await pline('Not carrying anything.');
+        await force_more('Not carrying anything.');
         return 0;
     }
     /* flags.inv_order / let_to_name tables — module scope (see their
@@ -14857,7 +15639,216 @@ export async function dowrite(pen) {
         return ECMD_TIME;
     }
 
-    return ECMD_CANCEL;
+    /* C write.c:122 */
+    makeknown(_WRITE_SCR_BLANK_PAPER);
+
+    /* C write.c:124-132 — what to write. */
+    const qbuf = `What type of ${typeword} do you want to write?`;
+    let namebuf = await getlin(qbuf);
+    namebuf = mungspaces(namebuf || '');
+    if (namebuf[0] === '\x1b' || !namebuf)
+        return ECMD_TIME;
+    let nm = namebuf;
+    if (/^scroll /i.test(nm)) nm = nm.slice(7);
+    else if (/^spellbook /i.test(nm)) nm = nm.slice(10);
+    if (/^of /i.test(nm)) nm = nm.slice(3);
+    /* C write.c:140-143 — " armour" -> " armor " then mungspaces. */
+    {
+        const lc = nm.toLowerCase();
+        const k = lc.indexOf(' armour');
+        if (k >= 0)
+            nm = nm.slice(0, k) + mungspaces(' armor ' + nm.slice(k + 7));
+    }
+
+    const g2 = game;
+    let by_descr = false, deferred = 0, real = 0, deferralchance = 0, i = 0;
+    let found = false;
+    const pclass = paper.oclass | 0;
+    const first = MKOBJ_SVB_BASES[pclass];
+    const last = MKOBJ_SVB_BASES[pclass + 1] - 1;
+    const nml = nm.toLowerCase();
+    /* first loop: name/description (write.c:151-176) */
+    for (i = first; i <= last; i++) {
+        const oname_ = _objName_full(i);
+        if (oname_ == null)
+            continue;
+        if (oname_.toLowerCase() === nml) {
+            if ((g2._oc_name_known && g2._oc_name_known[i]) || pclass === OCLASS_SPBOOK) {
+                found = true;
+                break;
+            } else {
+                real = deferred = i;
+                break;
+            }
+        }
+        const od = getObjDescr(i);
+        if (od != null && od.toLowerCase() === nml) {
+            by_descr = true;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        /* second loop: user-assigned names (write.c:181-205) */
+        for (i = first; i <= last; i++) {
+            const un = g2._oc_uname && g2._oc_uname[i];
+            if (un != null && String(un).toLowerCase() === nml
+                && !(real && g2._oc_name_known && g2._oc_name_known[i])
+                && !rn2(++deferralchance)) {
+                deferred = i;
+                by_descr = true;
+            }
+        }
+        if (deferred) {
+            i = deferred;
+        } else {
+            await pline(`There is no such ${typeword}!`);
+            return ECMD_TIME;
+        }
+    }
+
+    /* found: (write.c:209) */
+    if (i === _WRITE_SCR_BLANK_PAPER || i === _WRITE_SPE_BLANK_PAPER) {
+        await You_cant("write that!");
+        await pline("It's obscene!");
+        return ECMD_TIME;
+    } else if (i === _WRITE_SPE_NOVEL) {
+        const fanfic = !rn2(3), tearup = !rn2(3);
+        if (!fanfic) {
+            await You(`${!tearup ? 'prepare' : 'try'} to write the Great Yendorian Novel, but ${!_cmd_Hallucination() ? 'lack' : 'have too much'} inspiration.`);
+        } else {
+            await You(`${!tearup ? 'start to ' : ''}produce really ${!_cmd_Hallucination() ? 'lame' : 'awesome'} fan-fiction.`);
+        }
+        if (!tearup) {
+            await You('give up on the idea.');
+        } else {
+            await You('tear it up.');
+            await useup(paper);
+        }
+        return ECMD_TIME;
+    } else if (i === 409 /* SPE_BOOK_OF_THE_DEAD */) {
+        await pline('No mere dungeon adventurer could write that.');
+        return ECMD_TIME;
+    } else if (by_descr && pclass === OCLASS_SPBOOK
+               && !(g2._oc_name_known && g2._oc_name_known[i])) {
+        await pline("Unfortunately you don't have enough information to go on.");
+        return ECMD_TIME;
+    }
+
+    /* KMH, conduct (write.c:241) */
+    u.uconduct = u.uconduct || {};
+    if (!(u.uconduct.literate | 0)) {
+        u.uconduct.literate = 1;
+        livelog_printf(LL_CONDUCT, `became literate by writing ${an(typeword)}`);
+    } else {
+        u.uconduct.literate++;
+    }
+
+    const new_obj = await mksobj(i, false, false);
+    new_obj.bknown = !!(paper.bknown && pen.bknown);
+
+    /* shk imposes a flat rate per use (write.c:250) */
+    check_unpaid(pen);
+
+    /* see if there's enough ink (write.c:253) */
+    const basecost = _write_cost(new_obj);
+    if ((pen.spe | 0) < Math.trunc(basecost / 2)) {
+        await Your('marker is too dry to write that!');
+        await obfree(new_obj, null);
+        return ECMD_TIME;
+    }
+
+    /* write.c:261 — really going to write now */
+    const actualcost = rn1(Math.trunc(basecost / 2), Math.trunc(basecost / 2));
+    const curseval = bcsign(pen) + bcsign(paper);
+    exercise(A_WIS, true);
+    /* dry out marker */
+    if ((pen.spe | 0) < actualcost) {
+        pen.spe = 0;
+        await Your('marker dries out!');
+        if (pclass === OCLASS_SPBOOK) {
+            await pline('The spellbook is left unfinished and your writing fades.');
+            update_inventory();
+        } else {
+            await pline('The scroll is now useless and disappears!');
+            await useup(paper);
+        }
+        await obfree(new_obj, null);
+        return ECMD_TIME;
+    }
+    pen.spe = (pen.spe | 0) - actualcost;
+
+    /* write.c:313 */
+    const spell_knowledge = (pclass === OCLASS_SPBOOK) ? known_spell(new_obj.otyp) : 0;
+    const nk = new_obj.otyp | 0;
+    if (!(g2._oc_name_known && g2._oc_name_known[nk])
+        && !(by_descr && g2._oc_encountered && g2._oc_encountered[nk])
+        && spell_knowledge !== 1 /* spe_Fresh */
+        && rnl(((Role_if(_FL_PM_WIZARD) && pclass !== OCLASS_SPBOOK)
+                || spell_knowledge === 2 /* spe_GoingStale */) ? 5 : 15)) {
+        await You(`${by_descr ? 'fail' : "don't know how"} to write that.`);
+        if (pclass === OCLASS_SPBOOK) {
+            await You('write in your best handwriting:  "My Diary", but it quickly fades.');
+            update_inventory();
+        } else {
+            if (by_descr) {
+                namebuf = wipeout_text(getObjDescr(nk), Math.trunc((6 + MAXULEV - (u.ulevel | 0)) / 6), 0);
+            } else
+                namebuf = `${g2.plname} was here!`;
+            await You(`write "${namebuf}" and the scroll disappears.`);
+            await useup(paper);
+        }
+        await obfree(new_obj, null);
+        return ECMD_TIME;
+    }
+    /* write.c:344 — blind writing needs luck too */
+    if (_hero_Blind() && rnl(3)) {
+        await You('fail to write the scroll correctly and it disappears.');
+        await useup(paper);
+        await obfree(new_obj, null);
+        return ECMD_TIME;
+    }
+
+    /* use up old scroll / spellbook (write.c:358) */
+    await useup(paper);
+
+    /* success */
+    if (new_obj.oclass === OCLASS_SPBOOK) {
+        const descr = getObjDescr(nk);
+        const comp = ['parchment', 'vellum', 'cloth'].includes(String(descr).toLowerCase());
+        await pline(`The spellbook warps strangely, then turns ${comp ? 'into ' : ''}${descr}.`);
+    }
+    new_obj.blessed = curseval > 0;
+    new_obj.cursed = curseval < 0;
+    if (nk === 364 /* SCR_MAIL */)
+        new_obj.spe = 2;
+    new_obj.dknown = false;
+    if ((g2._oc_name_known && g2._oc_name_known[nk]) || by_descr)
+        observe_object(new_obj);
+
+    await hold_another_object(new_obj, 'Oops!  %s out of your grasp!',
+                              _objnam_The(await aobjnam(new_obj, 'slip')), null);
+    return ECMD_TIME;
+}
+/* C ref: write.c:16-60 cost(otmp) — base ink cost of a scroll or spellbook. */
+const _WRITE_SPBOOK_LEVEL = [5,2,4,4,3,7,1,1,1,1,1,1,2,2,2,2,2,2,3,3,3,5,3,3,4,3,4,4,4,3,5,3,6,6,6,6,7,1,1,3,2,0,1,7];
+const _WRITE_COST_BY_NAME = {
+    'mail': 2,
+    'light': 8, 'gold detection': 8, 'food detection': 8, 'magic mapping': 8,
+    'amnesia': 8, 'fire': 8, 'earth': 8,
+    'destroy armor': 10, 'create monster': 10, 'punishment': 10,
+    'confuse monster': 12, 'identify': 14,
+    'enchant armor': 16, 'remove curse': 16, 'enchant weapon': 16, 'charging': 16,
+    'scare monster': 20, 'stinking cloud': 20, 'taming': 20, 'teleportation': 20,
+    'genocide': 30,
+};
+function _write_cost(otmp) {
+    if ((otmp.oclass | 0) === OCLASS_SPBOOK) {
+        const k = (otmp.otyp | 0) - 366;
+        return 10 * ((k >= 0 && k < _WRITE_SPBOOK_LEVEL.length) ? _WRITE_SPBOOK_LEVEL[k] : 1);
+    }
+    const c = _WRITE_COST_BY_NAME[_objName_full(otmp.otyp | 0)];
+    return c != null ? c : 1000;
 }
 /* C ref: apply.c:2679 use_stone(struct obj *tstone) — the touchstone / flint
  * "apply" path.  Rub the stone on another object.
@@ -15016,7 +16007,7 @@ async function use_stone(tstone) {
                 break;
             }
         }
-        streak_color = _c_obj_colors[MKOBJ_OC_MATERIAL[obj.otyp | 0] === _MAT_GEMSTONE ? 7 : 0];
+        streak_color = _c_obj_colors[MKOBJ_OC_COLOR[obj.otyp | 0]];
         break; /* gem or ring */
 
     default:
@@ -15049,7 +16040,7 @@ async function use_stone(tstone) {
                scratch a stone.  They will leave streaks on
                non-touchstones and touchstones alike. */
             if (is_flimsy(obj))
-                streak_color = _c_obj_colors[7]; /* gray */
+                streak_color = _c_obj_colors[MKOBJ_OC_COLOR[obj.otyp | 0]];
             else
                 do_scratch = ((tstone.otyp | 0) !== _TOUCHSTONE);
             break;
@@ -16703,7 +17694,12 @@ function _count_wsegs_local(mtmp) { return count_wsegs_real(mtmp); }
 function _wseg_at_local(mtmp, x, y) { return 1; }
 function _enfolds_local(data) { return !!data && !!attacktype_fordmg(data, 11, 28); }
 function _mhidden_description_local(mtmp, flags, buf) { /* no-op */ }
-function _size_str_local(msize) { return 'medium'; }
+/* C insight.c:3203 size_str(msize) */
+function _size_str_local(msize) {
+    const names = ['tiny', 'small', 'medium', 'large', 'huge', 'gigantic'];
+    return (Number.isInteger(msize) && msize >= 0 && msize < 6)
+        ? names[msize] : `unknown size (${msize})`;
+}
 function _mbodypart_local(mtmp, part) { return 'leg'; }
 function _ismnum_local(pm) { return Number.isInteger(pm) && pm >= 0; }
 function _EDOG_local(mtmp) { return mtmp?.mextra?.edog || {}; }
@@ -17375,7 +18371,7 @@ function _lsh_leashable(mtmp) {
  * omits the article for those — the same reason js/cmd.js:19700's Shk_Your
  * neighbour gives for its own simplification). */
 function _lsh_lmonnam(mtmp) {
-    return mon_nam(mtmp).replace(/^(the |The )/, '');
+    return _l_monnam(mtmp);
 }
 /* C ref: apply.c:816-863 use_leash_core. glyph_is_invisible (the !spotmon
  * guard's other half) has no port and is UNVERIFIED by any record here. */
@@ -18235,6 +19231,13 @@ export async function doapply() {
     if (selObj && ((selObj.otyp | 0) === _IA_BELL_OTYP
         || (selObj.otyp | 0) === _IA_BELL_OF_OPENING_OTYP)) {
         await use_bell(selObj);
+        g.context.move = 1;
+        return ECMD_TIME;
+    }
+    /* C ref: apply.c:4256-4258 — CRYSTAL_BALL → use_crystal_ball(&obj); res stays
+     * ECMD_TIME (void callee). */
+    if (selObj && (selObj.otyp | 0) === CRYSTAL_BALL_OTYP) {
+        await use_crystal_ball(selObj);
         g.context.move = 1;
         return ECMD_TIME;
     }
@@ -20278,7 +21281,8 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
     /* role line — rank title.  Level-1 Wizard rank = "Evoker" (role.c
      * roles[].rank).  rank != role ⇒ "a level N male human Wizard". */
     const ulevel = u.ulevel | 0;
-    const raceNoun = g.urace?.noun ?? 'human';
+    const raceNoun = g.urace?.noun
+        ?? (typeof g.urace?.name === 'string' ? g.urace.name : g.urace?.name?.m) ?? 'human';
     const raceAdj = g.urace?.adj ?? 'human';
     /* C ref: insight.c:475-482 — if poly'd, the role/rank/gender below come
      * from u.mfemale (saved gender-as-human/elf), not the current flags.female. */
@@ -20529,6 +21533,10 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
      * youprop.h defines Stunned as HStun, the intrinsic property word. */
     if (_hprop(STUNNED))
         lines.push(_you_are('stunned', ''));
+    /* C insight.c:1055-1056 `if (Confusion) you_are("confused", "")`;
+     * youprop.h Confusion = HConfusion || EConfusion. */
+    if (_hprop(CONFUSION) || _eprop(CONFUSION))
+        lines.push(_you_are('confused', ''));
     // C insight.c:1057-1058; youprop.h defines hallucination as a timeout
     // suppressed by either intrinsic or extrinsic hallucination resistance.
     if (_hprop(HALLUC) && !(_hprop(HALLUC_RES) || _eprop(HALLUC_RES)))
@@ -21108,7 +22116,8 @@ async function _attributes_enlightenment() {
     if (on(JUMPING)) out.push(_you_can(`jump${(await _from_what(JUMPING))}`, ''));
     if (on(TELEPORT)) out.push(_you_can(`teleport${(await _from_what(TELEPORT))}`, ''));
     if (on(TELEPORT_CONTROL)) out.push(_you_have(`teleport control${(await _from_what(TELEPORT_CONTROL))}`, ''));
-    if (on(FLYING)) out.push(_you_can(`fly${(await _from_what(FLYING))}`, ''));
+    /* C insight.c:1687-1735 — no you_can("fly") arm: active flight is a Status
+     * line (insight.c:987-988) and only blocked flight (BFlying) is reported here. */
     if (on(SWIMMING)) out.push(_you_can(`swim${(await _from_what(SWIMMING))}`, ''));
     if (on(MAGICAL_BREATHING)) out.push(_you_can(`survive without air${(await _from_what(MAGICAL_BREATHING))}`, ''));
     if (on(PASSES_WALLS)) out.push(_you_can(`walk through walls${(await _from_what(PASSES_WALLS))}`, ''));
@@ -24256,7 +25265,7 @@ async function _burn_away_slime() {
     if (_Slimed())
         await make_slimed(0, "The slime that covers you is burned away!");
 }
-function _Flying() { const u = game.u; const p = u?.uprops?.[FLYING]; const base = _uprop_active('FLYING') || !!(u.usteed); return base && !(p?.blocked | 0); }
+function _Flying() { const u = game.u; const p = u?.uprops?.[FLYING]; const base = _uprop_active('FLYING') || !!(u.usteed && _st_is_flyer(u.usteed.data)); return base && !(p?.blocked | 0); }
 /* was `return false` — C: mondata.h:78 eggs_in_water(ptr) = (lays_eggs(ptr)
  * && ptr->mlet == S_EEL && is_swimmer(ptr)), is_swimmer(ptr) = ((ptr->mflags1
  * & M1_SWIM) != 0). Called here with no arg == eggs_in_water(gy.youmonst.data). */
@@ -24723,13 +25732,292 @@ function invoke_ok(obj) {
     return GETOBJ_EXCLUDE;
 }
 
+/* C ref: detect.c:198-223 o_in(obj, oclass) — recursive first-of-class search. */
+function _cb_o_in(obj, oclass) {
+    if ((obj.oclass | 0) === oclass)
+        return obj;
+    if (Has_contents(obj) && !SchroedingersBox(obj)) {
+        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+            if ((otmp.oclass | 0) === oclass)
+                return otmp;
+            if (Has_contents(otmp)) {
+                const temp = _cb_o_in(otmp, oclass);
+                if (temp)
+                    return temp;
+            }
+        }
+    }
+    return null;
+}
+
+/* C ref: detect.c:262-306 check_map_spot(x, y, oclass, 0), class arm.  C
+ * decodes glyph_to_obj() -> oc_class; this port's remembered_glyph carries only
+ * the rendered symbol, so the class's default symbol stands in (js/read.js
+ * _check_map_spot_rd documents the same equivalence and its hallucination gap). */
+function _cb_check_map_spot(x, y, oclass) {
+    const g = game;
+    const loc = g.level && g.level.at ? g.level.at(x, y) : null;
+    const rg = loc && loc.remembered_glyph;
+    if (!rg || rg.cls !== GLYPHCLS_OBJ || rg.ch !== def_oc_syms_chars[oclass])
+        return false;
+    for (let otmp = g.level.levelObjects?.[x]?.[y] ?? null; otmp; otmp = otmp.nexthere)
+        if (_cb_o_in(otmp, oclass))
+            return false;
+    const mtmp = m_at(x, y);
+    if (mtmp)
+        for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
+            if (_cb_o_in(otmp, oclass))
+                return false;
+    return true;
+}
+
+/* defsym.h OBJCLASS "name" column (def_oc_syms[].name), indexed by class. */
+const _CB_OC_NAMES = [null, 'illegal objects', 'weapons', 'armor', 'rings', 'amulets',
+    'tools', 'food', 'potions', 'scrolls', 'spellbooks', 'wands', 'coins', 'rocks',
+    'large stones', 'iron balls', 'chains', 'venoms'];
+const _CB_COIN_CLASS = 12;
+const _CB_TER_DETECT = 0x20;
+
+async function _cb_object_detect_class(oclass) {
+    const g = game, u = g.u;
+    const stuff = _uprop_active('HALLUC') ? 'something' : _CB_OC_NAMES[oclass];
+    let ct = 0, ctu = 0;
+
+    for (let obj = g.fobj; obj; obj = obj.nobj)
+        if (_cb_o_in(obj, oclass)) {
+            if (u_at(obj.ox, obj.oy)) ctu++; else ct++;
+        }
+    for (let obj = g.level?.buriedobjlist; obj; obj = obj.nobj)
+        if (_cb_o_in(obj, oclass)) {
+            if (u_at(obj.ox, obj.oy)) ctu++; else ct++;
+        }
+    if (u.usteed) {
+        u.usteed.mx = u.ux;
+        u.usteed.my = u.uy;
+    }
+    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
+        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
+            continue;
+        for (let obj = mtmp.minvent; obj; obj = obj.nobj)
+            if (_cb_o_in(obj, oclass))
+                ct++;
+        if (findgold(mtmp.minvent) && oclass === _CB_COIN_CLASS) {
+            ct++;
+            break;
+        }
+    }
+
+    /* clear_stale_map(class, 0), detect.c:311-330 */
+    let stale = false;
+    for (let zx = 1; zx < COLNO; zx++)
+        for (let zy = 0; zy < ROWNO; zy++)
+            if (_cb_check_map_spot(zx, zy, oclass)) {
+                unmap_object(zx, zy);
+                stale = true;
+            }
+    if (!stale && !ct) {
+        if (!ctu)
+            return 1;       /* detector is null: no strange_feeling */
+        await You(`sense ${stuff} nearby.`);
+        return 0;
+    }
+
+    /* display.c:2196 cls() -> display_nhwindow(WIN_MESSAGE, FALSE): a fresh
+     * topline ("You peer into ...") is acknowledged with --More-- first. */
+    if (g._pending_message)
+        await force_more(g._pending_message);
+    await display_cls();
+    let ter_typ = _CB_TER_DETECT | TER_OBJ;
+    /* glyph_at(u.ux, u.uy) is an object glyph only if THIS pass mapped one there
+     * (cls() reset the glyph buffer). */
+    let heroObj = false;
+    const mapObj = (o) => {
+        if ((o.ox | 0) === (u.ux | 0) && (o.oy | 0) === (u.uy | 0)) heroObj = true;
+        map_object(o, 1);
+    };
+    for (let obj = g.level?.buriedobjlist; obj; obj = obj.nobj) {
+        const otmp = _cb_o_in(obj, oclass);
+        if (otmp) {
+            if (otmp !== obj) { otmp.ox = obj.ox; otmp.oy = obj.oy; }
+            mapObj(otmp);
+        }
+    }
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            for (let obj = g.level?.levelObjects?.[x]?.[y] ?? null; obj; obj = obj.nexthere) {
+                const otmp = _cb_o_in(obj, oclass);
+                if (otmp) {
+                    if (otmp !== obj) { otmp.ox = obj.ox; otmp.oy = obj.oy; }
+                    mapObj(otmp);
+                    break;
+                }
+            }
+    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
+        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
+            continue;
+        for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+            const otmp = _cb_o_in(obj, oclass);
+            if (otmp) {
+                otmp.ox = mtmp.mx;
+                otmp.oy = mtmp.my;
+                mapObj(otmp);
+                break;
+            }
+        }
+        if (findgold(mtmp.minvent) && oclass === _CB_COIN_CLASS) {
+            /* detect.c:766-772 — a fresh gold object, quan rnd(10) */
+            mapObj({ otyp: 438 /* GOLD_PIECE */, oclass: _CB_COIN_CLASS,
+                     quan: rnd(10), ox: mtmp.mx, oy: mtmp.my });
+        }
+    }
+    if (!heroObj) {
+        newsym(u.ux, u.uy);
+        ter_typ |= TER_MON;
+    }
+    await You(`detect the ${ct ? 'presence' : 'absence'} of ${stuff}.`);
+    /* `!ct` is display_nhwindow(WIN_MAP, TRUE) in C; browse_map stands in
+     * (js/potion.js object_detect makes the same substitution). */
+    await browse_map(ter_typ, 'object');
+    if (g._pending_message)
+        await force_more(g._pending_message);
+    await docrt();
+    return 0;
+}
+
+/* C ref: detect.c:1078-1330 use_crystal_ball(optr).  void; the caller's turn
+ * accounting is doapply's.  UNPORTED arms (recorded as sentinels, not thrown):
+ * furniture_detect (detect.c:1103), trap_detect (detect.c:1033) and the
+ * level_distance() "Delphi / Medusa / castle / tower" fallthrough. */
+async function use_crystal_ball(obj) {
+    const g = game, u = g.u;
+    const charged = (obj.spe | 0) > 0;
+
+    if (_Blind_cmd()) {
+        await pline(`Too bad you can't see ${await the(await xname(obj))}.`);
+        return;
+    }
+    const intl = acurr(u, A_INT);
+    const oops = is_quest_artifact(obj) ? 8 : obj.blessed ? 16 : 20;
+    if (charged && (obj.cursed || rnd(oops) > intl)) {
+        const impair = rnd(100 - 3 * intl);
+        switch (rnd((obj.oartifact || obj.blessed) ? 4 : 5)) {
+        case 1:
+            await pline(`${await _objnam_Tobjnam(obj, 'are')} too much to comprehend!`);
+            break;
+        case 2:
+            await pline(`${await _objnam_Tobjnam(obj, 'confuse')} you!`);
+            make_confused(((u.uprops?.[CONFUSION]?.intrinsic | 0) & TIMEOUT) + impair, false);
+            break;
+        case 3:
+            if (!resists_blnd(g.youmonst)) {
+                await pline(`${await _objnam_Tobjnam(obj, 'damage')} your vision!`);
+                make_blinded(BlindedTimeout() + impair, false);
+                if (!_Blind_cmd())
+                    await pline('Your vision clears.');
+            } else {
+                await pline(`${await _objnam_Tobjnam(obj, 'assault')} your vision.`);
+                await You('are unaffected!');
+            }
+            break;
+        case 4:
+            await pline(`${await _objnam_Tobjnam(obj, 'zap')} your mind!`);
+            await make_hallucinated(((u.uprops?.[HALLUC]?.intrinsic | 0) & TIMEOUT) + impair, false, 0);
+            break;
+        case 5:
+            await pline(`${await _objnam_Tobjnam(obj, 'explode')}!`);
+            await useup(obj);
+            obj = null;
+            await losehp(rnd(30) /* Maybe_Half_Phys */, 'exploding crystal ball', KILLED_BY_AN);
+            break;
+        }
+        if (obj)
+            consume_obj_charge(obj, true);
+        return;
+    }
+
+    let implode = false;
+    if (_uprop_active('HALLUC')) {
+        nomul(-rnd(charged ? 4 : 2));
+        g.multi_reason = 'gazing into a Magic 8-Ball (tm)';
+        g.nomovemsg = '';
+        if (!charged) {
+            await pline(`All you see is funky ${hcolor(null)} haze.`);
+            if ((obj.spe | 0) < 0)
+                implode = true; /* destroy it when it has been cancelled */
+        } else {
+            switch (rnd(6)) {
+            case 1: await You('grok some groovy globs of incandescent lava.'); break;
+            case 2: await pline(`Whoa!  Psychedelic colors, ${poly_gender() === 1 ? 'babe' : 'dude'}!`); break;
+            case 3: await pline(`The crystal pulses with sinister ${hcolor(null)} light!`); break;
+            case 4: await You_see('goldfish swimming above fluorescent rocks.'); break;
+            case 5: await You_see('tiny snowflakes spinning around a miniature farmhouse.'); break;
+            default: await pline('Oh wow... like a kaleidoscope!'); break;
+            }
+            consume_obj_charge(obj, true);
+        }
+        if (!implode)
+            return;
+    }
+    if (!implode) {
+        /* read a single character */
+        if (g.flags?.verbose !== false)
+            await You('may look for an object, monster, or special map symbol.');
+        let ch = await yn_function('What do you look for?', null, '\0', true);
+        /* Don't filter out ' ' here; it has a use */
+        if (ch !== ' ' && ' \x1b\n\r'.includes(ch)) {
+            if (g.flags?.verbose !== false)
+                await pline('Never mind.');
+            return;
+        }
+        await You(`peer into ${await the(await xname(obj))}...`);
+        nomul(-rnd(charged ? 10 : 2));
+        g.multi_reason = 'gazing into a crystal ball';
+        g.nomovemsg = '';
+        if (!charged) {
+            await pline('The vision is unclear.');
+            if ((obj.spe | 0) < 0)
+                implode = true; /* destroy ball if used after being cancelled */
+        } else {
+            let ret = 0, cls_;
+            makeknown(CRYSTAL_BALL_OTYP);
+            consume_obj_charge(obj, true);
+            if (ch === ']')             /* DEF_MIMIC_DEF -> DEF_MIMIC */
+                ch = 'm';
+            const cc = ch.charCodeAt(0);
+            if ('<>_|\\#{'.includes(ch)) {
+                g._uncomputable_invoke = 'furniture_detect';
+            } else if ((cls_ = def_char_to_objclass(cc)) !== 18) {
+                ret = await _cb_object_detect_class(cls_);
+            } else if ((cls_ = def_char_to_monclass(cc)) !== 61) {
+                ret = await monster_detect(null, cls_);
+            } else if (ch === '^') {
+                g._uncomputable_invoke = 'trap_detect';
+            } else {
+                g._uncomputable_invoke = 'crystal_ball level_distance';
+            }
+            if (ret) {
+                if (!rn2(100)) /* make them nervous */
+                    await You_see('the Wizard of Yendor gazing out at you.');
+                else
+                    await pline('The vision is unclear.');
+            }
+        }
+    }
+    if (implode) {
+        /* no damage to hero but 'multi' has a small negative value */
+        await pline(`${await _objnam_Tobjnam(obj, 'implode')}!`);
+        await useup(obj);
+    }
+}
+
 async function arti_invoke(obj) {
     const arti = (obj && (obj.oartifact | 0)) || 0;
     const inv_prop = ARTI_INV_PROP[arti] | 0;
 
     if (!arti || !inv_prop) {
         if ((obj.otyp | 0) === CRYSTAL_BALL_OTYP) {
-            game._uncomputable_invoke = 'use_crystal_ball';
+            /* C artifact.c:2143 use_crystal_ball(&obj) (detect.c:1078). */
+            await use_crystal_ball(obj);
         } else {
             await pline("Nothing happens.");
         }
@@ -26141,8 +27429,9 @@ function _throw_obj_multishot(obj, launcher) {
     const weakmultishot = (initrole === PM_WIZARD_R
         || initrole === PM_CLERIC_R
         || (initrole === PM_HEALER_R && skill !== P_KNIFE_SKILL)
-        || (initrole === PM_TOURIST_R && skill !== P_DART_SKILL));
-    /* Fumbling || ACURR(A_DEX) <= 6 — treat as false (starting hero) */
+        || (initrole === PM_TOURIST_R && skill !== P_DART_SKILL)
+        /* poor dexterity also inhibits multishot */
+        || _uprop_active('FUMBLING') || (acurr(u, A_DEX) | 0) <= 6);
 
     /* Skill bonus (dothrow.c:176-188): P_SKILL(weapon_type(obj)).
      * weapon_type(ammo) = abs(oc_skill) = P_BOW for arrows.
@@ -26203,12 +27492,10 @@ function _throw_obj_multishot(obj, launcher) {
     const P_CROSSBOW_BOLT_SKILL = -22;
     if (multishot > 1 && skill === P_CROSSBOW_BOLT_SKILL
             && ammo_and_launcher(obj, launcher)) {
-        /* C ref: dothrow.c:230 — low-STR gnome or below-18 STR crossbow slow load.
-         * ACURRSTR check omitted (no attr tracking); conservative: skip the rnd()
-         * here and let only the line-233 rnd fire. The crossbow path fires
-         * rnd(multishot) here AND again at line 233; for arrows neither fires. */
-        /* Actually: only fire rnd(multishot) at line 231 if strength < threshold.
-         * Since we don't track strength, skip this branch for safety. */
+        const str = acurr(u, A_STR) | 0;  /* acurrstr(), attrib.c:1235 */
+        const acurrstr = str <= 18 ? str : (str <= 121 ? 19 + Math.trunc(str / 50) : str - 100);
+        if (acurrstr < (initrace === 3 /* PM_GNOME */ ? 16 : 18))
+            multishot = rnd(multishot);
     }
 
     /* Final multishot roll (dothrow.c:233) */
@@ -26456,6 +27743,8 @@ function _ensure_ranger_weapons(u) {
         return; /* only Ranger needs this lazy init */
     if (u.uwep || u.uswapwep || u.uquiver)
         return; /* already set */
+    if (!game.invent)
+        return;
     /* C ref: TROBJ_RANGER: dagger(spe=1), bow(spe=1), arrow(spe=2, quivered).
      * C ref: u_init.c:1176-1198 ini_inv_obj_substitution() — apply race substitution.
      * inv_subs[] for PM_ELF: DAGGER→ELVEN_DAGGER, BOW→ELVEN_BOW, ARROW→ELVEN_ARROW.
@@ -26945,7 +28234,7 @@ async function _dolook() {
         }
         g.context = g.context || {};
         g.context.move = Blind ? 1 : 0;
-        return;
+        return Blind ? ECMD_TIME : ECMD_OK; /* invent.c:4249 */
     }
 
     /* C invent.c:4161-4176 — the !skip_objects region/trap preamble.
@@ -26972,7 +28261,7 @@ async function _dolook() {
         if (bp.cant_reach) {
             g.context = g.context || {};
             g.context.move = 0;
-            return;
+            return ECMD_OK; /* invent.c:4215 can't reach it */
         }
     }
 
@@ -26988,7 +28277,7 @@ async function _dolook() {
         /* C invent.c:4249 — return (!!Blind ? ECMD_TIME : ECMD_OK). */
         g.context = g.context || {};
         g.context.move = Blind ? 1 : 0;
-        return;
+        return Blind ? ECMD_TIME : ECMD_OK; /* invent.c:4249 */
     }
     /* we know there is something here (C invent.c:4250) */
 
@@ -27009,6 +28298,7 @@ async function _dolook() {
     }
     g.context = g.context || {};
     g.context.move = Blind ? 1 : 0;
+    return Blind ? ECMD_TIME : ECMD_OK; /* invent.c:4315 */
 }
 
 function _container_pickup_doname(obj) {
@@ -27275,7 +28565,7 @@ async function _pickup_menu(atTile) {
      * by the page paint and by the "%c - %s" string tty_add_menu STORES, which
      * is what MENU_SEARCH's pmatchi() matches against (wintty.c:1714). */
     const _pickup_nameOf = async (it) =>
-        (await doname(it.obj))
+        (await _doname_with_price(it.obj))
         || _drop_doname(it.obj)
         || _pile_doname(it.obj) || _floor_look_doname(it.obj) || 'an object';
     /* Render helper: the menu window lines with current selection state. */
@@ -27287,7 +28577,7 @@ async function _pickup_menu(atTile) {
             out.push(`\x1b[7m${CLASS_NAME[oc] ?? 'Items'}\x1b[0m`);
             for (const it of lettered) {
                 if ((it.obj.oclass | 0) !== oc) continue; /* already in menu order */
-                out.push(`${String.fromCharCode(it.letter)} ${it.selected ? '+' : '-'} ${(await _pickup_nameOf(it))}`);
+                out.push(`${String.fromCharCode(it.letter)} ${it.selected ? (it.count > 0 ? '#' : '+') : '-'} ${(await _pickup_nameOf(it))}`);
             }
         }
         out.push('(end)');
@@ -27304,6 +28594,7 @@ async function _pickup_menu(atTile) {
     const endCursorCol = WIN_COL + '(end)'.length + 1;
     const LETTERSET = new Map(lettered.map(it => [it.letter, it]));
     let cancelled = false;
+    let _pickCount = 0;
     /* C ref: getline.c:213 — a MENU_SEARCH's tty_getlin ends with
      * clear_nhwindow(WIN_MESSAGE), blanking screen row 0 (the window's title
      * text with it) for the rest of this select_menu() call. */
@@ -27320,8 +28611,27 @@ async function _pickup_menu(atTile) {
         if (k === 27 /* ESC */) { cancelled = true; break; }
         /* RETURN / ENTER / SPACE confirms on the single page. */
         if (k === 10 || k === 13 || k === 32) break;
+        /* C wintty.c process_menu_window: digits build a count (a leading '0'
+         * is not a count); the next item accelerator selects WITH that count,
+         * shown as '#' rather than '+' (set_item_state / tty_add_menu). */
+        if ((k >= 0x31 && k <= 0x39) || (k === 0x30 && _pickCount > 0)) {
+            _pickCount = _pickCount * 10 + (k - 0x30);
+            continue;
+        }
         const it = LETTERSET.get(k);
-        if (it) { it.selected = !it.selected; continue; }
+        if (it) {
+            const counting = _pickCount > 0;
+            if (it.selected) {
+                if (counting) it.count = _pickCount;
+                else { it.selected = false; it.count = -1; }
+            } else {
+                it.selected = true;
+                it.count = counting ? _pickCount : -1;
+            }
+            _pickCount = 0;
+            continue;
+        }
+        _pickCount = 0;
         if (k === 0x3a /* ':' MENU_SEARCH */) {
             /* C ref: wintty.c:1700-1730.  query_objlist opens this menu
              * PICK_ANY (pickup.c:1101), so every pmatchi() hit toggles and the
@@ -27358,13 +28668,19 @@ async function _pickup_menu(atTile) {
     g._pending_message = '';
     await flush_screen(1);
     if (cancelled) return null;
-    return lettered.filter(it => it.selected).map(it => it.obj);
+    /* C pickup.c:1106 menu_item.count — a count typed before the accelerator
+     * rides along to pickup_object(obj, count); carried here per object. */
+    return lettered.filter(it => it.selected).map((it) => {
+        if (it.count > 0) _pickupMenuCounts.set(it.obj, it.count);
+        else _pickupMenuCounts.delete(it.obj);
+        return it.obj;
+    });
 }
+const _pickupMenuCounts = new WeakMap();
 function _pickup_oc_merge(obj) {
-    /* class-wide oc_merge (objnam.js _OC_MERGE_CLASSES): FOOD 7 / POTION 8 /
-     * SCROLL 9 / GEM 13.  Coins merge via the dedicated gold-pile path. */
-    const oc = obj.oclass | 0;
-    return oc === 7 || oc === 8 || oc === 9 || oc === 13;
+    /* C objects[otyp].oc_merge — the per-otyp table (weapons: darts, arrows,
+     * daggers... merge too; the old class-wide proxy missed them). */
+    return !!oc_merge(obj.otyp | 0);
 }
 function _pickup_mergable(otmp, obj) {
     if (obj === otmp || (obj.otyp | 0) !== (otmp.otyp | 0)
@@ -27372,7 +28688,10 @@ function _pickup_mergable(otmp, obj) {
         return false;
     if ((obj.cursed | 0) !== (otmp.cursed | 0) || (obj.blessed | 0) !== (otmp.blessed | 0))
         return false;
-    if ((obj.how_lost | 0) !== (otmp.how_lost | 0))
+    /* C invent.c:4398-4402 — addinv has already cleared obj->how_lost. */
+    if ((obj.how_lost | 0) === LOST_EXPLODING || (otmp.how_lost | 0) === LOST_EXPLODING)
+        return false;
+    if ((otmp.how_lost | 0) !== 0 && (obj.how_lost | 0) !== (otmp.how_lost | 0))
         return false;
     if (obj.globby)
         return true;
@@ -27496,11 +28815,21 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
     if (pickOrder.length)
         reset_justpicked(game.invent);
     let picked = 0;
-    for (const obj of pickOrder) {
-        const _liftCount = { v: obj.quan | 0 };
+    for (let obj of pickOrder) {
+        const _menuCount = _pickupMenuCounts.get(obj);
+        _pickupMenuCounts.delete(obj);
+        const _liftCount = { v: (_menuCount > 0 && _menuCount < (obj.quan | 0))
+            ? _menuCount : (obj.quan | 0) };
         const _liftResult = await lift_object(obj, null, _liftCount, false);
-        if (_liftResult <= 0)
+        /* C pickup.c:882-891 — `n_tried++` precedes pickup_object(), and a
+         * negative result ('q' at the lift prompt) ends the loop. */
+        if (_liftResult < 0)
+            break;
+        if (_liftResult === 0)
             continue;
+        /* C pickup.c:1873-1874 — a partial count splits that many off the pile. */
+        if ((obj.quan | 0) !== _liftCount.v && (obj.otyp | 0) !== LOADSTONE)
+            obj = await splitobj(obj, _liftCount.v);
         {
             const _robshop = !game.u?.uswallow && obj !== game.u?.uball
                 && costly_spot(ux, uy);
@@ -27549,6 +28878,10 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
              * inventory stack, no new node/invlet is created and prinv reports
              * the combined stack with a "(N in total)" suffix (C prinv). */
             let _mergeStack = null;
+            /* C invent.c:1074-1075 addinv — remember a throw, then clear how_lost
+             * so a once-dropped/thrown pile merges like any other. */
+            const _objWasThrown = (obj.how_lost | 0) === LOST_THROWN;
+            obj.how_lost = 0;
             let _addedInvNode = obj;
             let _mergeLiftedQuan = 1;
             /* set on every arm that LINKS A NEW NODE into gi.invent (as opposed
@@ -27589,6 +28922,9 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                  * bot(), which also clears any '$:' staleness latched by
                  * js/potion.js's dipfountain bath arm. */
                 game._botlGoldStale = undefined;
+                /* ...and that bot() repaints T: at the pre-increment moves,
+                 * so the run-suppression latch is discharged (pline.c:273). */
+                game._timeBotlFrozenMoves = null;
             } else if (!game.invent) {
                 game.invent = obj;
                 _freshInvNode = true;
@@ -27607,7 +28943,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                      *         && otmp->how_lost != LOST_THROWN)
                      *         pline("You learn more about your items by comparing them.");
                      * otmp is an inventory stack on this path by construction. */
-                    if (_discovered && (obj.how_lost | 0) !== LOST_THROWN
+                    if (_discovered && !_objWasThrown
                         && (_mergeStack.how_lost | 0) !== LOST_THROWN)
                         _result_append_join(game,
                             'You learn more about your items by comparing them.');
@@ -27648,6 +28984,16 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                 const _added = _mergeStack || _addedInvNode;
                 if (_added) _added.pickup_prev = 1;
             }
+            /* C ref: invent.c:1024 addinv_core2 — runs inside addinv_core0, before
+             * pickup_prinv names the object: Archeologists decipher an unknown
+             * scroll label ("You decipher the label on ...", makeknown, literate
+             * conduct), so the prinv below names the identified type.  The line
+             * goes through the result channel like the prinv it precedes. */
+            if (obj.oclass !== OCLASS_COIN) {
+                const _decSink = [];
+                addinv_core2(_mergeStack || obj, _decSink);
+                for (const _d of _decSink) _result_append_join(game, _d);
+            }
             {
                 /* C ref: pickup_prinv → prinv "<let> - <doname>.".  Corpse,
                  * gem, weapon and container doname are ported; the encumbrance
@@ -27661,9 +29007,11 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                      * the specialized helper is needed for known contents or
                      * lock state, while _drop_doname already carries C's
                      * "empty uncursed" wording for an emptied sack. */
-                    const cdn = (obj.cknown && !obj.cobj)
+                    const cdn0 = (obj.cknown && !obj.cobj)
                         ? _drop_doname(obj)
                         : (_container_pickup_doname(obj) ?? _drop_doname(obj));
+                    /* prinv -> xprname -> doname: objnam.c:1655-1662 unpaid tail */
+                    const cdn = cdn0 ? cdn0 + (await _doname_price_tail(obj, false)) : cdn0;
                     if (cdn && obj.invlet) {
                         const line = `${_pickup_prinv_prefix('lifting')}${String.fromCharCode(obj.invlet | 0)} - ${cdn}.`;
                         _lastPrinvLine = line;
@@ -27681,9 +29029,10 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                      * the two partials stay as the fallback for what it declines. */
                     const _savequan = _mergeStack.quan;
                     _mergeStack.quan = _mergeLiftedQuan;
-                    const cn = _drop_doname(_mergeStack) ?? _pile_doname(_mergeStack)
-                        ?? corpse_floor_xname(_mergeStack)
-                        ?? _look_here_doname_generic(_mergeStack);
+                    /* xprname -> doname(): the full namer, so worn/wielded/quivered
+                     * suffixes ('(at the ready)') ride along (invent.c:2924). */
+                    const cn = (await doname(_mergeStack)) ?? _drop_doname(_mergeStack)
+                        ?? _pile_doname(_mergeStack);
                     _mergeStack.quan = _savequan;
                     if (cn && _mergeStack.invlet) {
                         const line = `${_pickup_prinv_prefix('lifting')}${String.fromCharCode(_mergeStack.invlet | 0)} - ${cn} (${_mergeStack.quan | 0} in total).`;
@@ -27763,6 +29112,21 @@ async function dopickup() {
      * non-coin items consume no rn2). */
     const atTile = [];
     for (let o = lvlObjs?.[ux]?.[uy] ?? null; o; o = o.nexthere) atTile.push(o);
+    if (atTile.length >= 1 && !u.uswallow
+        && game.flags?.menu_style === MENU_TRADITIONAL
+        && !game.iflags?.menu_requested) {
+        /* C hack.c:3876-3892 dopickup() → pickup(-count) → pickup.c:787-902: with
+         * menustyle:traditional (and no 'm' prefix) the old-style interface runs —
+         * "There are several objects here" / "What kinds of thing do you want to
+         * pick up? [..]" and the per-object ynaq loop — implemented by js/pickup.js
+         * pickup().  Its own pickup_object path does the lifting and encumbrance. */
+        const tried = await pickup_c(0);
+        if (FF_FAITHFUL)
+            game.context.move = tried ? 1 : 0;
+        else
+            game.context.move = 0;
+        return;
+    }
     let pickOrder;
     if (atTile.length >= 2) {
         pickOrder = await _pickup_menu(atTile);
@@ -27782,6 +29146,10 @@ async function dopickup() {
         pickOrder = atTile.slice();
     }
     const picked = await _pickup_lift_list(pickOrder, _oldcap);
+    if (picked === 0 && pickOrder.length > 0) {
+        game.context.move = FF_FAITHFUL ? 1 : 0;
+        return;
+    }
     if (picked === 0) {
         const lev = game.level?.at(ux, uy);
         const typ = lev?.typ | 0;
@@ -28115,7 +29483,9 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         // level.objects chain and shares the ct==1 namer and the ct>=2 window
         // with check_here.  js/look.js's dolook() hard-codes "no objects here"
         // (its `otmp` is a null placeholder), which is why ':' never saw a
-        await _dolook();
+        /* cmd.c:3810-3822 rhack tail: net move and reset_cmd_vars key off the
+         * handler return, which is what zeroes context.run after a travel. */
+        outcome.value = _rhack_cmd_move(await _dolook());
     }
         return true;
     case "doapply": {
@@ -28536,7 +29906,8 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         // C ref: cmd.c extcmdlist { '&', "whatdoes", dowhatdoes } (pager.c:2656).
         // GENERALCMD | IFBURIED: prompts for a key and describes it.  No turn,
         // (hmenu_dowhatdoes), but the key binding is C's, so bind it here too.
-        await dowhatdoes();
+        // rhack derives context.move from the return (cmd.c:3805-3825): ECMD_OK.
+        outcome.value = _rhack_cmd_move(await dowhatdoes() ?? ECMD_OK);
     }
         return true;
     case "dowhatis": {
@@ -28596,12 +29967,23 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     }
         return true;
     case "doidtrap": {
-        if (await getdir(null)) {
+        /* C pager.c:2336-2389 doidtrap.  The trapped door/chest glyph arm is
+         * carried by the dedicated TRAPPED_* trap types in the chain here. */
+        if (await getdir('^')) {
             const x = (game.u?.ux | 0) + (game.u?.dx | 0);
             const y = (game.u?.uy | 0) + (game.u?.dy | 0);
-            const t = game.ftrap ? (() => { for (let q = game.ftrap; q; q = q.ntrap)
-                if ((q.tx | 0) === x && (q.ty | 0) === y) return q; return null; })() : null;
-            if (t) await pline(`That is ${an(_trapname(t.ttyp | 0))}.`);
+            const dz = game.u?.dz | 0;
+            for (let q = game.ftrap; q; q = q.ntrap) {
+                if ((q.tx | 0) !== x || (q.ty | 0) !== y) continue;
+                if (!q.tseen) break;
+                const tt = q.ttyp | 0;
+                if (dz && (dz < 0 ? is_hole(tt) : tt === ROCKTRAP)) break;
+                await pline(`That is ${an(_trapname(tt))}${!q.madeby_u ? '' : (tt === WEB) ? ' woven'
+                    : (tt === HOLE || tt === PIT) ? ' dug' : ' set'}${!q.madeby_u ? '' : ' by you'}.`);
+                game.context.move = 0;
+                return true;
+            }
+            await pline("I can't see a trap there.");
         }
         game.context.move = 0;
     }
@@ -28665,6 +30047,13 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         return true;
     case "doherecmdmenu": {
         const res = outcome.value = await doherecmdmenu();
+        g.context.move = (res & ECMD_TIME) ? 1 : 0;
+    }
+        return true;
+    case "dotherecmdmenu": {
+        /* C ref: cmd.c:1900 { '\0', "therecmdmenu", ..., dotherecmdmenu,
+         * AUTOCOMPLETE | GENERALCMD | MOUSECMD } -> cmd.c:4343. */
+        const res = outcome.value = await dotherecmdmenu();
         g.context.move = (res & ECMD_TIME) ? 1 : 0;
     }
         return true;
@@ -29682,7 +31071,11 @@ async function auto_describe(cx, cy) {
      * getpos caller installed a validity predicate (jump, teleport) and it
      * rejects this spot, " (invalid target)" is appended.  The coord_desc tail
      * stays empty here (see the header note). */
-    let describe = firstmatch;
+    /* C ref: getpos.c:650 coord_desc(cx, cy, tmpbuf, iflags.getpos_coords);
+     * the %s%s%s pair is firstmatch, " " when tmpbuf is non-empty, tmpbuf. */
+    const _gpc = game.iflags?.getpos_coords;
+    const _coords = coord_desc(cx, cy, _gpc);
+    let describe = firstmatch + (_coords ? ' ' + _coords : '');
     if (getpos_getvalid && !(await getpos_getvalid(cx, cy)))
         describe += ' (invalid target)';
     if (game.iflags?.getloc_travelmode && !_is_valid_travelpt(cx, cy))
@@ -29752,7 +31145,10 @@ async function _getpos_menu(gloc) {
     const entries = [];
     for (let i = 1; i < gathered.length; i++) {
         const p = gathered[i];
-        const description = await _autodescribe_firstmatch(p.x | 0, p.y | 0);
+        const firstmatch = await _autodescribe_firstmatch(p.x | 0, p.y | 0);
+        /* C getpos.c:700-704 — firstmatch, then " " + coord_desc() when non-empty. */
+        const _cd = coord_desc(p.x | 0, p.y | 0, g.iflags?.getpos_coords);
+        const description = firstmatch ? firstmatch + (_cd ? ' ' + _cd : '') : firstmatch;
         if (description)
             entries.push({ accel: '', x: p.x | 0, y: p.y | 0, description });
     }
@@ -30620,14 +32016,20 @@ const BEAR_TRAP_TTYP = 5, WEB_TTYP = 18;
 /* C ref: flag.h:165-169 iflags.getpos_coords modes.  Never set away from
  * GPCOORDS_NONE in this port (no options path writes it), so cmode below is
  * always GPCOORDS_MAP. */
-const GPCOORDS_NONE = 'n', GPCOORDS_MAP = 'm', GPCOORDS_SCREEN = 's';
+const GPCOORDS_NONE = 'n', GPCOORDS_MAP = 'm', GPCOORDS_SCREEN = 's',
+      GPCOORDS_COMPASS = 'c', GPCOORDS_COMFULL = 'f';
 
 /* C ref: getpos.c:594-635 coord_desc(x, y, outbuf, cmode).  The two compass
  * modes need dxdy_to_dist_descr(), which is unported; they are unreachable here
  * because iflags.getpos_coords is never assigned, and C's own `default:` arm
  * likewise leaves outbuf empty. */
 function coord_desc(x, y, cmode) {
+    const u = game.u || {};
     switch (cmode) {
+    case GPCOORDS_COMFULL:
+    case GPCOORDS_COMPASS: /* "east", "3s", "2n,4w" */
+        return `(${dxdy_to_dist_descr(x - (u.ux | 0), y - (u.uy | 0),
+                                      cmode === GPCOORDS_COMFULL)})`;
     case GPCOORDS_MAP: /* x,y — upper left corner of the map is <1,0> */
         return `<${x},${y}>`;
     case GPCOORDS_SCREEN: /* y+2,x, fixed-width so /m /M /o /O line up */
@@ -30894,7 +32296,12 @@ async function look_at_object(x, y) {
                 && (_odx * _odx + _ody * _ody) <= _neardist)
                 observe_object(obj);
         }
-        if (!obj.dknown && (obj.oclass | 0) === OCLASS_POTION) {
+        if (_Role_if_samurai_cmd() && Japanese_item_name(obj.otyp | 0) != null
+            && (obj.oclass | 0) !== OCLASS_COIN
+            && ((obj.quan | 0) === 1 || obj.dknown)) {
+            const _jn = await xname(obj);
+            buf = ((obj.quan | 0) === 1) ? an(_jn) : `${obj.quan | 0} ${_jn}`;
+        } else if (!obj.dknown && (obj.oclass | 0) === OCLASS_POTION) {
             buf = 'a potion';
         } else if (!obj.dknown && (obj.oclass | 0) === OCLASS_RING) {
             /* C objnam.c:xname_flags' RING_CLASS arm returns the generic
@@ -30916,7 +32323,9 @@ async function look_at_object(x, y) {
             /* doname for this object kind is not ported yet; fall back to
              * objnam.c's plain type name with an article rather than inventing
              * a decorated name.  Wrong text shows up as a screen divergence. */
-            buf = an(obj_typename(obj.otyp | 0) ?? 'object');
+            /* C pager.c:379-418: distant_name(otmp, xname) — the GEM_CLASS
+             * !dknown arm of xname_flags names it "gem", not "gem gem". */
+            buf = an(await _fw_distant_name(obj, _fw_xname));
         }
         buf += (await _doname_price_tail(obj, !!obj.dknown));
         if (fakeobj) {
@@ -31451,6 +32860,7 @@ async function _do_look_from_screen(quick) {
     let cx = u.ux | 0, cy = u.uy | 0; /* getpos.c:848 cx=cy=ccp->x/y (hero) */
     let esc = false;
     let lookDescriptionPending = false;
+    let lookDescriptionWrapped = false;
     for (;;) {
         /* C ref: pager.c:1904-1908 — the pre-getpos pline, chosen by the
          * CURRENT flags.verbose. */
@@ -31620,6 +33030,14 @@ async function _do_look_from_screen(quick) {
             if (gtmp >= 0) {
                 eaten = true;
                 const gloc = gtmp >> 1;
+                if (g.iflags.getloc_usemenu) {
+                    /* C getpos.c:1021-1027 — gather_locs menu (PICK_ONE). */
+                    const pk = await _getpos_menu(gloc);
+                    if (pk) { cx = pk.x; cy = pk.y; }
+                    moved = true;   /* `goto nxtc` either way (getpos.c:1019-1025) */
+                    g._pending_message = '';   /* menu window destroyed */
+                    await flush_screen(1);
+                } else {
                 if (!garr[gloc]) { garr[gloc] = _gather_locs(gloc); gidx[gloc] = 0; }
                 if (garr[gloc].length) {
                     if (!(gtmp & 1))
@@ -31629,6 +33047,7 @@ async function _do_look_from_screen(quick) {
                     cx = garr[gloc][gidx[gloc]].x;
                     cy = garr[gloc][gidx[gloc]].y;
                     moved = true;
+                }
                 }
             }
             if (!moved && !eaten && c === 0x23 /* '#' NHKF_GETPOS_AUTODESC */) {
@@ -31673,8 +33092,13 @@ async function _do_look_from_screen(quick) {
                 moved = true;
             }
             if (!moved && !eaten && c === 0x21 /* '!' NHKF_GETPOS_MENU */) {
-                /* getpos_menu() is unported — see getpos()'s header.  Eat the
-                 * key rather than letting the symbol search answer it. */
+                /* C getpos.c:989-996 — toggles iflags.getloc_usemenu. */
+                g.iflags.getloc_usemenu = !g.iflags.getloc_usemenu;
+                await pline(`${g.iflags.getloc_usemenu ? 'Using' : 'Not using'} a menu to show possible targets`
+                    + (g.iflags.getloc_usemenu ? " for 'm|M', 'o|O', 'd|D', and 'x|X'" : '') + '.');
+                msgGiven = true;
+                await flush_screen(1);
+                set_cursor(cx - 1, cy + 1);
                 eaten = true;
             }
             if (!moved && !eaten && c === 0x3f /* '?' NHKF_GETPOS_HELP */) {
@@ -31704,6 +33128,7 @@ async function _do_look_from_screen(quick) {
                     cx = found.x; cy = found.y;
                     if (msgGiven) {
                         g._pending_message = '';   /* clear_nhwindow(WIN_MESSAGE) */
+                        await flush_screen(1);
                         msgGiven = false;
                     }
                     moved = true;
@@ -31783,6 +33208,7 @@ async function _do_look_from_screen(quick) {
                 const out_str = `${glyphPrefix}${target.classText}${detail}${seen}`;
                 if (quick) {
                     g._pending_message = out_str;
+                    lookDescriptionWrapped = _topline_more_pending();
                     await flush_screen(1);
                 } else {
                     /* C pager.c:1922 putmixed(WIN_MESSAGE, 0, out_str) does
@@ -31792,6 +33218,12 @@ async function _do_look_from_screen(quick) {
                      * requires it. */
                     g._pending_message = out_str;
                     lookDescriptionPending = true;
+                    /* A description too wide for one row pages by itself
+                     * (topl.c:139 redotoplin more()); that --More-- is the one
+                     * tty_display_nhwindow(NHW_TEXT) would have raised
+                     * (wintty.c:1920), so a checkfile window must not raise a
+                     * second one over it. */
+                    lookDescriptionWrapped = _topline_more_pending();
                     await flush_screen(1);
                 }
 
@@ -31820,8 +33252,13 @@ async function _do_look_from_screen(quick) {
                                 await flush_screen(1);
                                 set_cursor(_topl_visualLen(g._pending_message), 0);
                             };
-                            await _showEntryMore();
-                            await await_topl_more_dismiss(_showEntryMore);
+                            if (lookDescriptionWrapped) {
+                                /* flush_screen() above already blocked on that
+                                 * --More-- and consumed its dismiss key. */
+                            } else {
+                                await _showEntryMore();
+                                await await_topl_more_dismiss(_showEntryMore);
+                            }
                             await dbase_display_window(dbLines);
                         }
                         lookDescriptionPending = false;
@@ -33793,8 +35230,13 @@ async function domove_core(dx, dy) {
         if (newx === u.ux || newy === u.uy) {
             if (_uprop_active('BLINDED') || _uprop_active('STUNNED')
                 || acurr(u, A_DEX) < 10 || _uprop_active('FUMBLING')) {
-                await pline('Ouch!  You bump into a door.');
-                exercise(A_DEX, false);
+                if (u.usteed) {
+                    /* hack.c:1114-1115 */
+                    await pline(`You can't lead ${y_monnam(u.usteed)} through that closed door.`);
+                } else {
+                    await pline('Ouch!  You bump into a door.');
+                    exercise(A_DEX, false);
+                }
                 game.context.door_opened = true;
                 game.context.move = 1;
                 nomul(0);
@@ -33987,6 +35429,10 @@ async function domove_core(dx, dy) {
         vision_recalc(1);
     }
     await _domove_spot_tail(newx, newy);
+    /* C hack.c:2990 — domove_core ends with runmode_delay_output(): while
+     * running/travelling it sets time_botl and curs_on_u() -> flush_screen(1)
+     * -> bot() paints the status BEFORE moveloop's moves++. */
+    await runmode_delay_output();
 }
 // of the old and new hero squares, wipe_engr_at consumes rnd(5) whenever an
 // engraving exists there and is not a HEADSTONE.
@@ -36351,6 +37797,143 @@ async function doherecmdmenu() {
     g._pending_message = '';
     await flush_screen(1);
     /* C cmd.c:4336-4338 — here_cmd_menu always returns '\0', so ECMD_OK. */
+    return ECMD_OK;
+}
+
+/* C ref: cmd.c:4343 dotherecmdmenu(void) + there_cmd_menu_next2u (4524-4620) +
+ * there_cmd_menu (4856-4900) — `#therecmdmenu': getdir, then a PICK_ONE
+ * "What do you want to do?" of the actions available at the adjacent spot.
+ * A keyboard direction leaves iflags.getdir_click at 0 (getdir clears it), so
+ * the CLICK_2 door-close arm, there_cmd_menu_far and there_cmd_menu_common's
+ * "Look at map symbol" are all inert; a self direction is here_cmd_menu.
+ * The K == 0 move/travel arm and the K == 1 direct arm are ported; the choice
+ * is queued like act_on_act (4700-4800) for the arms whose commands this port
+ * dispatches by name, and the rest record the uncomputable sentinel exactly
+ * as doherecmdmenu does.  The menu geometry is the same overlay every
+ * PICK_ONE here uses; entries carry no accelerator (add_menu '\0'), so
+ * tty_add_menu assigns a, b, c ... in order.  RNG-free until the queued
+ * command runs. */
+const _TRM_SADDLE_OTYP = 235;
+async function dotherecmdmenu() {
+    const g = game;
+    const u = g.u || {};
+    const dir = await getdir(null);
+    if (!dir || !isok((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0)))
+        return ECMD_CANCEL;
+    if (!(u.dx | 0) && !(u.dy | 0)) {
+        await doherecmdmenu();
+        return ECMD_OK;
+    }
+    const dx = u.dx | 0, dy = u.dy | 0;
+    const x = (u.ux | 0) + dx, y = (u.uy | 0) + dy;
+    const loc = g.level?.at(x, y);
+    const typ = loc ? (loc.typ | 0) : STONE;
+    const items = [];
+    let act = null;
+    /* there_cmd_menu_next2u: x,y is adjacent by construction (|dx|,|dy| <= 1). */
+    if (IS_DOOR(typ)) {
+        const dm = (loc.doormask | 0);
+        if (dm & (D_CLOSED | D_LOCKED)) {
+            items.push({ act: 'OPEN_DOOR', txt: 'Open the door' });
+            const key_or_pick = !!(carrying(_IA_SKELETON_KEY_OTYP) || carrying(_IA_LOCK_PICK_OTYP));
+            const card = !!carrying(_IA_CREDIT_CARD_OTYP);
+            if (key_or_pick || card)
+                items.push({ act: 'LOCK_DOOR',
+                             txt: key_or_pick ? 'Lock or unlock the door' : 'Unlock the door' });
+            items.push({ act: 'UNTRAP_DOOR', txt: 'Search the door for a trap' });
+            items.push({ act: 'KICK_DOOR', txt: 'Kick the door' });
+        }
+    }
+    if (typ <= SCORR)
+        items.push({ act: 'SEARCH', txt: 'Search for secret doors' });
+    const ttmp = t_at(x, y);
+    if (ttmp && ttmp.tseen) {
+        items.push({ act: 'LOOK_TRAP', txt: 'Examine trap' });
+        if ((ttmp.ttyp | 0) !== VIBRATING_SQUARE)
+            items.push({ act: 'UNTRAP_TRAP', txt: 'Attempt to disarm trap' });
+        items.push({ act: 'MOVE_DIR', txt: 'Move on the trap' });
+    }
+    const gl = _glyph_at(x, y);
+    if (gl && gl.cls === GLYPHCLS_OBJ && (gl.otyp | 0) === _FW_BOULDER)
+        items.push({ act: 'MOVE_DIR', txt: 'Push the boulder' });
+    let mtmp = m_at(x, y);
+    if (mtmp && !canspotmon(mtmp))
+        mtmp = null;
+    if (mtmp && which_armor(mtmp, W_SADDLE)) {
+        const mnam = await x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false);
+        if (!u.usteed)
+            items.push({ act: 'RIDE', txt: `Ride ${mnam}` });
+        items.push({ act: 'REMOVE_SADDLE', txt: `Remove saddle from ${mnam}` });
+    }
+    if (mtmp && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)
+        && carrying(_TRM_SADDLE_OTYP))
+        items.push({ act: 'APPLY_SADDLE', txt: `Put saddle on ${await mon_nam(mtmp)}` });
+    if (mtmp && (mtmp.mpeaceful || mtmp.mtame)) {
+        const nm = await mon_nam(mtmp);
+        items.push({ act: 'TALK', txt: `Talk to ${nm}` });
+        items.push({ act: 'MOVE_DIR', txt: `Swap places with ${nm}` });
+        items.push({ act: 'NAME', txt: `${!has_mgivenname(mtmp) ? 'Name' : 'Rename'} ${nm}` });
+    }
+    if ((mtmp && !(mtmp.mpeaceful || mtmp.mtame)) || glyph_is_invisible_at(x, y)) {
+        items.push({ act: 'ATTACK_NEXT2U',
+                     txt: `Attack ${mtmp ? await mon_nam(mtmp) : 'unseen creature'}` });
+        act = 'ATTACK_NEXT2U'; /* attacking overrides any other automatic action */
+    }
+    const K = items.length;
+    let chosen = null;
+    if (!K) {
+        /* no menu options, try to move / travel — queued, not performed here */
+        g._uncomputable_therecmdmenu = 'K == 0 move/travel';
+        return ECMD_OK;
+    } else if (K === 1 && act != null) {
+        chosen = act;
+    } else {
+        const CH_a = 97;
+        const windowLines = ['\x1b[7mWhat do you want to do?\x1b[0m', '',
+            ...items.map((it, i) => `${String.fromCharCode(CH_a + i)} - ${it.txt}`), '(end)'];
+        const WIN_COL = tty_window_offx(windowLines, 'end');
+        const endRow = windowLines.length - 1;
+        const _show = () => {
+            g._screen_output = build_window_screen(windowLines, WIN_COL, g.u?.uac ?? 0);
+            set_cursor(WIN_COL + '(end)'.length + 1, endRow);
+        };
+        _show();
+        for (;;) {
+            const c = await nhgetch();
+            if (c === 27 || c === 32 || c === 10 || c === 13) break; /* no pick */
+            if (c >= CH_a && c < CH_a + K) { chosen = items[c - CH_a].act; break; }
+            _show();
+        }
+        g._pending_message = '';
+        await docrt();
+        if (chosen == null)
+            return ECMD_OK; /* ch = '\033' */
+    }
+    /* act_on_act(act, dx, dy): dx,dy forced to sgn() for these arms. */
+    const sdx = Math.sign(dx), sdy = Math.sign(dy);
+    switch (chosen) {
+    case 'TALK':
+        cmdq_add_ec(CQ_CANNED, 'dotalk');
+        cmdq_add_dir(CQ_CANNED, sdx, sdy, 0);
+        break;
+    case 'NAME':
+        cmdq_add_ec(CQ_CANNED, 'docallcmd');
+        cmdq_add_key(CQ_CANNED, 109 /* 'm' */);
+        cmdq_add_dir(CQ_CANNED, sdx, sdy, 0);
+        break;
+    case 'RIDE':
+        cmdq_add_ec(CQ_CANNED, 'doride');
+        cmdq_add_dir(CQ_CANNED, sdx, sdy, 0);
+        break;
+    case 'SEARCH':
+        cmdq_add_ec(CQ_CANNED, 'dosearch');
+        break;
+    default:
+        g._uncomputable_therecmdmenu = `act_on_act ${chosen}`;
+        break;
+    }
+    /* C cmd.c:4376-4377 — there_cmd_menu returns '\0' after a pick, so
+     * dotherecmdmenu returns ECMD_OK; the queued command spends the turn. */
     return ECMD_OK;
 }
 
@@ -40950,9 +42533,10 @@ export function addinv_core1(obj) {
  * owns the scored monster wake/message/state transition.  The pet-only
  * whistletime bookkeeping is outside this port's state model, but waking the
  * nearby monsters is observable and must not remain an empty stub. */
-function wake_nearby(_petcall) {
-    const u = game.u || {};
-    wake_nearto(u.ux | 0, u.uy | 0, (u.ulevel | 0) * 20);
+function wake_nearby(petcall) {
+    /* The faithful body (mon.c:4367-4395, incl. EDOG whistletime for a pet
+     * call) lives in js/mklev.js; this local copy used to drop petcall. */
+    return wake_nearby_mk(petcall);
 }
 /* C vault.c:237 vault_summon_gd().  A cursed whistle does not create the
  * guard immediately; it arms the next vault-guard arrival timer when the hero
@@ -41862,6 +43446,268 @@ function _msnoise_is_mplayer(ptr) {
     const n = (ptr?.pmidx ?? -1) | 0;
     return n >= _MSNOISE_PM_ARCHEOLOGIST && n <= _MSNOISE_PM_WIZARD;
 }
+async function _money2mon(mon, amount) {
+    const ygold = findgold(game.invent);
+    if (amount <= 0) return 0;
+    if (!ygold || ygold.quan < amount) return 0;
+    let paidgold = ygold;
+    if (paidgold.quan > amount)
+        paidgold = await splitobj(paidgold, amount);
+    else if (paidgold.owornmask)
+        await _remove_worn_item_thrown(paidgold, false);
+    freeinv(paidgold);
+    await add_to_minv(mon, paidgold);
+    if (game.disp) game.disp.botl = true;
+    return amount;
+}
+/* C ref: minion.c bribe(mtmp, prompt) — getlin the amount, sscanf "%ld",
+ * then hand the gold over with money2mon().  Returns the amount paid. */
+async function _bribe(mtmp, prompt) {
+    const umoney = money_cnt(game.invent);
+    const buf = await getlin(prompt);
+    const m = /^\s*([+-]?\d+)/.exec(buf || '');
+    let offer = m ? parseInt(m[1], 10) : 0;
+    if (offer < 0) {
+        await pline(`You try to shortchange ${mon_nam(mtmp)}, but fumble.`);
+        return 0;
+    } else if (offer === 0) {
+        await pline('You refuse.');
+        return 0;
+    } else if (offer >= umoney) {
+        await pline(`You give ${mon_nam(mtmp)} all your gold.`);
+        offer = umoney;
+    } else {
+        await pline(`You give ${mon_nam(mtmp)} ${offer} ${currency(offer)}.`);
+    }
+    await _money2mon(mtmp, offer);
+    if (game.disp) game.disp.botl = true;
+    return offer;
+}
+/* C ref: shk.c money2u(mon, amount) — monster's gold to the hero (shk.js's copy
+ * is module-private).  invlet_basic is 52. */
+async function _money2u_priest(mon, amount) {
+    let mongold = findgold(mon.minvent);
+    if (amount <= 0 || !mongold || (mongold.quan | 0) < amount)
+        return;
+    if ((mongold.quan | 0) > amount)
+        mongold = await splitobj(mongold, amount);
+    obj_extract_self(mongold);
+    if (!merge_choice(game.invent, mongold) && inv_cnt(false) >= 52) {
+        await pline('You have no room for the gold!');
+        await dropy(mongold);
+    } else {
+        await addinv(mongold);
+        if (game.disp) game.disp.botl = true;
+    }
+}
+/* C ref: priest.c:561-745 priest_talk(priest) — domonnoise()'s MS_PRIEST arm.
+ * Not exported from priest.js (which has no body for it), so it lives here. */
+async function priest_talk(priest) {
+    const g = game;
+    const u = g.u;
+    const coaligned = p_coaligned(priest);
+    const strayed = (u.ualign.record | 0) < 0;
+    const epri = EPRI(priest);
+
+    /* KMH, conduct */
+    u.uconduct = u.uconduct || {};
+    const prevGnostic = u.uconduct.gnostic | 0;
+    u.uconduct.gnostic = prevGnostic + 1;
+    if (!prevGnostic)
+        livelog_printf(LL_CONDUCT, 'rejected atheism by consulting with %s', mon_nam(priest));
+
+    if (priest.mflee || (!priest.ispriest && coaligned && strayed)) {
+        await pline(`${Monnam(priest)} doesn't want anything to do with you!`);
+        priest.mpeaceful = 0;
+        return;
+    }
+
+    /* priests don't chat unless peaceful and in their own temple */
+    if (!inhistemple(priest) || !priest.mpeaceful || _helpless_mon(priest)) {
+        const cranky_msg = [
+            'Thou wouldst have words, eh?  I\'ll give thee a word or two!',
+            'Talk?  Here is what I have to say!',
+            'Pilgrim, I would speak no longer with thee.'
+        ];
+        if (_helpless_mon(priest)) {
+            await pline(`${Monnam(priest)} breaks out of ${_um_mhis(priest)} reverie!`);
+            priest.mfrozen = priest.msleeping = 0;
+            priest.mcanmove = 1;
+        }
+        priest.mpeaceful = 0;
+        SetVoice(priest, 0, 80, 0);
+        await verbalize(cranky_msg[rn2(3)]);
+        return;
+    }
+
+    /* you desecrated the temple and now you want to chat? */
+    const troom = in_rooms(priest.mx | 0, priest.my | 0, TEMPLE);
+    if (priest.mpeaceful && troom && troom.length && !has_shrine(priest)) {
+        SetVoice(priest, 0, 80, 0);
+        await verbalize('Begone!  Thou desecratest this holy place with thy presence.');
+        priest.mpeaceful = 0;
+        return;
+    }
+    if (!money_cnt(g.invent)) {
+        if (coaligned && !strayed) {
+            const pmoney = money_cnt(priest.minvent);
+            if (pmoney > 0) {
+                const bits = _uprop_active('HALLUC') ? currency(pmoney)
+                           : (pmoney === 1) ? 'bit' : 'bits';
+                await pline(`${Monnam(priest)} gives you ${pmoney === 1 ? 'one ' : 'two '}${bits} for an ale.`);
+                await _money2u_priest(priest, pmoney > 1 ? 2 : 1);
+            } else
+                await pline(`${Monnam(priest)} preaches the virtues of poverty.`);
+            exercise(A_WIS, true);
+        } else
+            await pline(`${Monnam(priest)} is not interested.`);
+        return;
+    } else {
+        /* randomized donation base; more gold on hand raises it */
+        const cheapskate = (epri ? (epri.cheapskate_count | 0) : 0);
+        const suggested = ((u.ulevelpeak | 0) ? (u.ulevelpeak | 0) : 1)
+                          * rn1(101, 150 + cheapskate * 40);
+        let quan = Math.trunc(money_cnt(g.invent) / (suggested * 3));
+        if (quan < 1)
+            quan = 1;
+        const buf = `How much will you offer (suggested: ${suggested * quan} or ${suggested * quan * 2})?`;
+        if (g.flags && g.flags.debug)
+            await pline(`${Monnam(priest)} asks you for a contribution for the temple (base ${suggested}).`);
+        else
+            await pline(`${Monnam(priest)} asks you for a contribution for the temple.`);
+        let offer = await _bribe(priest, buf);
+        if (offer === 0) {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize('Thou shalt regret thine action!');
+            if (coaligned)
+                adjalign(-1);
+            if (epri) epri.cheapskate_count = (epri.cheapskate_count | 0) + 1;
+        } else if (offer < suggested * quan) {
+            if (money_cnt(g.invent) > offer * 2) {
+                SetVoice(priest, 0, 80, 0);
+                await verbalize('Cheapskate.');
+                if (epri) epri.cheapskate_count = (epri.cheapskate_count | 0) + 1;
+            } else {
+                SetVoice(priest, 0, 80, 0);
+                await verbalize('I thank thee for thy contribution.');
+                /* give player some token */
+                exercise(A_WIS, true);
+            }
+        } else if (offer < suggested * quan * 2) {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize('Thou art indeed a pious individual.');
+            if (money_cnt(g.invent) < offer * 2) {
+                if (coaligned && (u.ualign.record | 0) <= ALGN_SINNED)
+                    adjalign(1);
+            }
+            await verbalize('I bestow upon thee a blessing.');
+            const amt = Math.trunc(500 * offer / suggested);
+            incr_itimeout_prop(u.uprops[CLAIRVOYANT], rn1(amt, amt));
+        } else if (offer < suggested * quan * 3) {
+            let orig_ublessed = u.ublessed | 0;
+            const prot = u.uprops[PROTECTION];
+            /* u.ublessed is only active when Protection is enabled via
+               something other than worn gear */
+            if (!((prot.intrinsic | 0) & INTRINSIC)) {
+                prot.intrinsic = (prot.intrinsic | 0) | FROMOUTSIDE;
+                orig_ublessed = -1; /* force "rewarded" message */
+            }
+            for (; offer >= (2 * suggested); offer -= (2 * suggested)) {
+                if (!(u.ublessed | 0))
+                    u.ublessed = rn1(3, 2);
+                else if ((u.ublessed | 0) < 20
+                         && ((u.ublessed | 0) < 9 || !rn2(u.ublessed | 0)))
+                    u.ublessed = (u.ublessed | 0) + 1;
+            }
+            SetVoice(priest, 0, 80, 0);
+            if ((u.ublessed | 0) > orig_ublessed)
+                await verbalize('Thou hast been rewarded for thy devotion.');
+            else
+                await verbalize('Thy selfless generosity is deeply appreciated.');
+        } else {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize('Thy selfless generosity is deeply appreciated.');
+            if (money_cnt(g.invent) < offer * 2 && coaligned) {
+                if (strayed && ((g.moves | 0) - (u.ucleansed | 0)) > 5000) {
+                    u.ualign.record = 0; /* cleanse thee */
+                    u.ucleansed = g.moves | 0;
+                } else {
+                    adjalign(2);
+                }
+            }
+        }
+    }
+}
+async function doconsult(oracl) {
+    const g = game;
+    const u = g.u;
+    const minor_cost = 50, major_cost = 500 + 50 * (u.ulevel | 0);
+    let u_pay;
+    g.multi = 0;
+    const umoney = money_cnt(g.invent);
+    if (!oracl) {
+        await pline('There is no one here to consult.');
+        return ECMD_OK;
+    } else if (!oracl.mpeaceful) {
+        await pline('%s is in no mood for consultations.', Monnam(oracl));
+        return ECMD_OK;
+    } else if (!umoney) {
+        await pline('You have no gold.');
+        return ECMD_OK;
+    }
+    let qbuf = `"Wilt thou settle for a minor consultation?" (${minor_cost} ${currency(minor_cost)})`;
+    const ans = await yn_function(qbuf, 'ynq', 'q');
+    if (ans === 'y') {
+        if (umoney < minor_cost) {
+            await pline("You don't even have enough gold for that!");
+            return ECMD_OK;
+        }
+        u_pay = minor_cost;
+    } else if (ans === 'n') {
+        const oc = g.oracle_cnt;
+        if (umoney <= minor_cost || oc === 1 || (g.oracle_flg | 0) < 0)
+            return ECMD_OK;
+        qbuf = `"Then dost thou desire a major one?" (${major_cost} ${currency(major_cost)})`;
+        if ((await yn_function(qbuf, 'yn', 'n')) !== 'y') {
+            /* C rumors.c:733-737 returns without clear_nhwindow, so the
+             * answered prompt stays physically on the topline (tty leaves
+             * TOPLINE_NON_EMPTY); keep it painted via the sticky fallback. */
+            g._topl_sticky = `${qbuf} [yn] (n)`;
+            return ECMD_OK;
+        }
+        u_pay = umoney < major_cost ? umoney : major_cost;
+    } else {
+        return ECMD_OK;
+    }
+    await _money2mon(oracl, u_pay);
+    if (g.disp) g.disp.botl = true;
+    u.uevent = u.uevent || {};
+    if (!u.uevent.major_oracle && !u.uevent.minor_oracle)
+        record_achievement(ACH_ORCL);
+    let add_xpts = 0;
+    if (u_pay === minor_cost) {
+        const line = getrumor(1, true) || 'NetHack rumors file closed for renovation.';
+        await pline('True to her word, the Oracle %ssays: ',
+                    (!rn2(4) ? 'offhandedly '
+                             : (!rn2(3) ? 'casually '
+                                        : (rn2(2) ? 'nonchalantly ' : ''))));
+        await verbalize('%s', line);
+        if (!u.uevent.minor_oracle)
+            add_xpts = Math.trunc(u_pay / (u.uevent.major_oracle ? 25 : 10));
+        u.uevent.minor_oracle = true;
+    } else {
+        const cheapskate = u_pay < major_cost;
+        if (!cheapskate && !u.uevent.major_oracle)
+            add_xpts = Math.trunc(u_pay / (u.uevent.minor_oracle ? 25 : 10));
+        u.uevent.major_oracle = true;
+        exercise(A_WIS, !cheapskate);
+    }
+    if (add_xpts) {
+        more_experienced(add_xpts, Math.trunc(u_pay / 50));
+        await newexplevel();
+    }
+    return ECMD_TIME;
+}
 async function domonnoise(mtmp) {
     const g = game;
     const ptr = mtmp?.data;
@@ -41894,6 +43740,13 @@ async function domonnoise(mtmp) {
      * then sounds.c:733-735 shk_chat() unless hallucinating. */
     if (mtmp.isshk && !_uprop_active('HALLUC')) {
         await shk_chat(mtmp);
+        return ECMD_TIME;
+    }
+    if (msound === 40)
+        return doconsult(mtmp);
+    /* C sounds.c:725-726 — case MS_PRIEST: priest_talk(mtmp). */
+    if (msound === 41 /* MS_PRIEST */) {
+        await priest_talk(mtmp);
         return ECMD_TIME;
     }
     if (msound === _MSNOISE_MS_BARK) {
@@ -41932,9 +43785,30 @@ async function domonnoise(mtmp) {
         else
             pline_msg = 'squawks.';
     }
+    /* C sounds.c:855-878 — MS_MEW (tame cats) and MS_GROWL; an untame MS_MEW
+     * falls through to MS_GROWL. */
+    else if (msound === 2 /* MS_MEW */ && mtmp.mtame) {
+        const _ed = _EDOG_local(mtmp);
+        const _mv = g.moves | 0;
+        if (mtmp.mconf || mtmp.mflee || mtmp.mtrapped || (mtmp.mtame | 0) < 5)
+            pline_msg = 'yowls.';
+        else if (_mv > (_ed.hungrytime | 0))
+            pline_msg = 'meows.';
+        else if ((_ed.hungrytime | 0) > _mv + 1000)
+            pline_msg = 'purrs.';
+        else
+            pline_msg = 'mews.';
+    }
+    else if (msound === 2 /* MS_MEW, untame */ || msound === 5 /* MS_GROWL */) {
+        pline_msg = mtmp.mpeaceful ? 'snarls.' : 'growls!';
+    }
     else if (msound === _MSNOISE_MS_GROAN) {
         if (!rn2(3))
             pline_msg = 'groans.';
+    }
+    /* C sounds.c:987-990 — MS_ORC (no longer an alias for MS_GRUNT). */
+    else if (msound === 24 /* MS_ORC */) {
+        pline_msg = 'grunts.';
     }
     else if (msound === _MSNOISE_MS_SEDUCE
              /* the non-nymph doseduce() escape is unported; leave those
@@ -42066,8 +43940,10 @@ async function domonnoise(mtmp) {
 async function price_quote(first) {
     const g = game;
     const upstart_quote = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-    const room = (shk_in_rooms(g.u.ux | 0, g.u.uy | 0, IS_SHOP_ROOM) || [])[0] ?? -1;
-    const shkp = shk_shop_keeper(room);
+    /* shk.c:5416 shkp = shop_keeper(inside_shop(u.ux, u.uy)) — in_rooms(…, IS_SHOP_ROOM)
+     * is not inside_shop(): IS_SHOP_ROOM is no room-type argument, so the lookup
+     * found no room, no shopkeeper, and the quote returned silently. */
+    const shkp = shk_shop_keeper(inside_shop(g.u.ux | 0, g.u.uy | 0));
     if (!shkp || !shk_inhishop(shkp)) return;
     const rows = [];
     let lastCost = 0, lastContents = false;
@@ -42078,6 +43954,7 @@ async function price_quote(first) {
         let contents = !cost;
         if (Has_contents(o)) cost += shk_contained_cost(o, shkp, 0, false, false);
         if (o.globby) cost *= shk_get_pricing_units(o);
+        if (!cost) contents = false; /* shk.c:5427: "no charge" resets contentsonly */
         lastCost = cost; lastContents = contents;
         const price = cost ? `${cost} ${shk_currency(cost)}${(o.quan | 0) > 1 ? ' each' : ''}` : 'no charge';
         rows.push(`${contents ? 'the contents of ' : ''}${(await doname(o))}, ${price}`);
@@ -42093,18 +43970,42 @@ async function price_quote(first) {
         const o = first;
         if (!lastCost) await verbalize('%s!', upstart_quote(rows[0]));
         else {
-            let embellish = '.';
-            if (!rn2(3)) {
-                let choice = rn2(5);
-                if (choice === 0) choice = lastCost < 100 ? 1 : lastCost < 500 ? 2 : 3;
-                embellish = choice === 4 ? (lastCost < 10 ? '.' : ', superb craftsmanship!')
-                    : choice === 3 ? ', finest quality.' : choice === 2 ? ', an excellent choice.' : choice === 1 ? ', a real bargain.' : '.';
-            } else if (o.oartifact) embellish = ', one of a kind!';
+            const embellish = shk_embellish(o, lastCost);
             const base = `${lastContents ? 'the contents of ' : ''}${(await doname(o))}`;
             await verbalize('%s, price %ld %s%s%s', upstart_quote(base), lastCost, shk_currency(lastCost),
                 (o.quan | 0) > 1 ? ' each' : '', lastContents ? '.' : embellish);
         }
     }
+}
+/* C shk.c:5469 shk_embellish(itm, cost) — draws rn2(3), then rn2(5) on the hit arm. */
+function shk_embellish(itm, cost) {
+    if (!rn2(3)) {
+        let choice = rn2(5);
+        if (choice === 0)
+            choice = cost < 100 ? 1 : cost < 500 ? 2 : 3;
+        switch (choice) {
+        case 4: {
+            if (cost < 10)
+                break;
+            const o = itm.oclass | 0;
+            if (o === 7 /* FOOD_CLASS */)
+                return ", gourmets' delight!";
+            if (game._oc_name_known?.[itm.otyp | 0]
+                ? MKOBJ_OC_MAGIC[itm.otyp | 0]
+                : (o === 5 /* AMULET */ || o === 4 /* RING */ || o === 11 /* WAND */
+                   || o === 8 /* POTION */ || o === 9 /* SCROLL */ || o === 10 /* SPBOOK */))
+                return ", painstakingly developed!";
+            return ", superb craftsmanship!";
+        }
+        case 3: return ', finest quality.';
+        case 2: return ', an excellent choice.';
+        case 1: return ', a real bargain.';
+        default: break;
+        }
+    } else if (itm.oartifact) {
+        return ', one of a kind!';
+    }
+    return '.';
 }
 function shop_object(x, y) { return shk_shop_object(x, y); }
 

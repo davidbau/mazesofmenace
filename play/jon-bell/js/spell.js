@@ -1638,8 +1638,6 @@ export async function docast() {
     if (!await getspell(spell_no)) return ECMD_FAIL;
     cmdq_add_key(CQ_REPEAT, spellet(spell_no.value).charCodeAt(0));
     const res = await spelleffects(game.spl_book[spell_no.value].sp_id, false, false);
-    // Preserve the existing terminal-adapter handoff for the next input frame.
-    if (game._pending_message) game._resultMessage = game._pending_message;
     return res;
 }
 

@@ -116,14 +116,16 @@ import {
     A_LAWFUL, XKILL_NOMSG, SHOP_HOLE_COST,
     COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK, COST_DECHNT,
     TEST_MOVE,
-    SET_LIT_RANDOM, SET_LIT_NOCHANGE,
+    SET_LIT_RANDOM, SET_LIT_NOCHANGE, LS_MONSTER,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination, SURFACE_AT,
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms, set_uinwater, test_move, fall_asleep, You_hear, spot_checks,
+    monst_to_any,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
+import { emits_light, del_light_source } from './light.js'; // mongone_statue_donor del arm (same SCC; hoisted fns, runtime use only)
 import { get_level, on_level, at_dgn_entrance, update_lastseentyp } from './dungeon.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
@@ -275,7 +277,11 @@ function is_unicorn(ptr) {
 
 /**
  * C ref: trap.c mongone subset — drop from fmon after invent emptied.
- * Full mongone (timers, worm, shop, light) deferred.
+ * Full mongone (timers, worm, shop) deferred; the m_detach light arm
+ * (mon.c:2745) is live (D-3246): an emitting donor (black-light
+ * statue trap) would otherwise orphan its light onto an mx=0 donor,
+ * and dosave writes id 0 for it (restore throws
+ * `relink_light_sources: no monster 0`).
  */
 function mongone_statue_donor(mtmp) {
     if (!mtmp) return;
@@ -284,6 +290,9 @@ function mongone_statue_donor(mtmp) {
         const i = list.indexOf(mtmp);
         if (i >= 0) list.splice(i, 1);
     }
+    // C mongone → m_detach (mon.c:2745) del arm, before the mx zero
+    // below (C reads mx>0 at m_detach entry; the donor is placed).
+    if (emits_light(mtmp.data)) del_light_source(LS_MONSTER, monst_to_any(mtmp));
     mtmp.mx = 0;
     mtmp.my = 0;
 }
@@ -981,6 +990,18 @@ export function maketrap(x, y, typ) {
         // C: undestroyable existing trap → refuse overwrite
         if (undestroyable_trap(ttmp.ttyp)) return null;
         oldplace = true;
+        // C trap.c:466-473 — replacing the trap under a trapped hero
+        // frees them when the new type can't hold that trap kind
+        // (self-dug pit -> HOLE mid-digactualhole; vision restored by
+        // the pline-time recalc, D-3247).
+        const u = game.u || {};
+        if ((u.utrap | 0) && u_at(x, y)
+            && (((u.utraptype | 0) === TT_BEARTRAP && typ !== BEAR_TRAP)
+                || ((u.utraptype | 0) === TT_WEB && typ !== WEB)
+                || ((u.utraptype | 0) === TT_PIT && !is_pit(typ))
+                || ((u.utraptype | 0) === TT_LAVA && !is_lava(x, y)))) {
+            reset_utrap(false);
+        }
     } else {
         const lev = game.level?.at?.(x, y);
         const ltyp = lev?.typ;

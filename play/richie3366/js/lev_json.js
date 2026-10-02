@@ -362,15 +362,81 @@ function serTimerList(list) {
     return out;
 }
 
-function serLightList(list) {
+function serLightList(list, roots) {
     const out = [];
     for (const ls of list || []) {
         if (!ls) continue;
-        if ((ls.type | 0) === LS_OBJECT && !ls.id) continue;
-        const rec = serLight(ls);
+        // C maybe_write_ls `:576–578` — a null id is impossible'd and
+        // UNWRITTEN for either type. The stash-time peel already
+        // reported it (save_light_sources `:444–446`), so the dosave
+        // re-write skips silently (D-3224 named the LS_OBJECT arm;
+        // LS_MONSTER is the same C arm — routing it to write_ls would
+        // impossible a second time and emit id 0, which restore
+        // throws on).
+        if (!ls.id) continue;
+        const rec = serStashLight(ls, roots);
         if (rec) out.push(rec);
     }
     return out;
+}
+
+/**
+ * C ref: light.c write_ls `:633–702` as it runs at STASH time
+ * (save_light_sources update_file arm `:433–439`, chains live): the
+ * persisted id is the pointer's o_id/m_id. JS defers the numeric write
+ * to dosave (serOtherLevels → serLevel(src) → serLightList), when the
+ * stashed monsters/objects are no longer in the live chains — routing
+ * stashed entries through write_ls's live find_oid/find_mid/whereis_mon
+ * verification impossibles on healthy entries and, for LS_MONSTER,
+ * writes id 0 (the `:684–687` arm leaves auint 0), which restore
+ * throws on (`relink_light_sources: no monster 0`; D-3246:
+ * scen-special-Samurai-94217, healthy m_id 383 emitter on stashed
+ * ledger 25). C's dosave never re-verifies (it copies level files),
+ * so resolve against the STASH roots (the frozen stash-time chains):
+ * a pointer the stash resolves writes its o_id/m_id silently — C is
+ * silent there too when the pointer resolves. Anything else (a peeled
+ * youmonst player light, FM_YOU-live; genuine garbage) falls back to
+ * serLight, i.e. today's live write_ls behavior bit-for-bit.
+ * Bad-type entries route to serLight as well (C `:699–701`
+ * impossible-only, unwritten). Already-numeric ids (the C `:641–642`
+ * NEEDS_FIXUP shape — unreachable via serLevel, whose stash infos
+ * always carry relinked pointers) write through untouched.
+ * Sync like C. Sole caller serLightList above (stash re-write only;
+ * live snapshots keep serLight → write_ls).
+ * @param {object} ls stashed light_base entry (id = pointer)
+ * @param {{ fobj?: object, buried?: object, fmon?: object[] }} [roots]
+ * @returns {{type:number,x:number,y:number,range:number,id:number}|null}
+ */
+function serStashLight(ls, roots) {
+    const t = ls.type | 0;
+    // C `:640` / `:699–701` — bad type is impossible-only, unwritten.
+    if (t !== LS_OBJECT && t !== LS_MONSTER) return serLight(ls);
+    if (typeof ls.id === 'number') {
+        // C `:641–642` — NEEDS_FIXUP entries write untouched.
+        return { type: t, x: ls.x | 0, y: ls.y | 0, range: ls.range | 0, id: ls.id | 0 };
+    }
+    const stash = roots || {};
+    if (t === LS_OBJECT) {
+        // C `:646–654` transposed onto the stash: find_oid over the
+        // frozen fobj/buried/minvent, then the `:650` identity check
+        // (never billobjs — find_oid_in_blob, C find_oid).
+        const otmp = ls.id;
+        const auint = otmp ? otmp.o_id | 0 : 0;
+        if (otmp && auint && find_oid_in_blob(auint, stash) === otmp) {
+            return { type: t, x: ls.x | 0, y: ls.y | 0, range: ls.range | 0, id: auint };
+        }
+        return serLight(ls);
+    }
+    // C `:655–687` transposed: whereis_mon + the `:677` find_mid
+    // identity check over the stash fmon (a level stash holds no
+    // migrating/mydogs entries — mx 0 sorts RANGE_GLOBAL — and never
+    // youmonst, which falls through to the live FM_YOU arm below).
+    const mtmp = ls.id;
+    const auint = mtmp ? mtmp.m_id | 0 : 0;
+    if (mtmp && auint && find_mid_in_blob(auint, stash.fmon) === mtmp) {
+        return { type: t, x: ls.x | 0, y: ls.y | 0, range: ls.range | 0, id: auint };
+    }
+    return serLight(ls);
 }
 
 /**
@@ -692,7 +758,7 @@ export function serLevel(src) {
         : serTimerList(src.timers);
     const lights = live
         ? snapshotLocalLights()
-        : serLightList(src.lights);
+        : serLightList(src.lights, { fobj, buried, fmon });
     const track = live
         ? peek_track()
         : jsonClone(src.track, { utcnt: 0, utpnt: 0, utrack: [] });

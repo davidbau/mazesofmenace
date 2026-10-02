@@ -9,7 +9,7 @@ import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_STONE_GOLEM, PM_CLAY_GOLEM, PM_WOOD_G
          PM_LEATHER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_GOLD_GOLEM, PM_GLASS_GOLEM,
          PM_PAPER_GOLEM, PM_STRAW_GOLEM } from './pm.generated.js';
 import { splitobj, ureflects, create_critters, which_armor, permonstTemplate } from './makemon.js';
-import { is_demon, nonliving } from './makemon.js';
+import { is_demon, nonliving, check_gear_next_turn } from './makemon.js';
 import { resists_magm, Resists_Elem, defended, sleep_monst, seemimic,
          erode_armor } from './mhitm.js';
 import { x_monnam } from './mhitm.js';
@@ -2785,10 +2785,8 @@ export async function resist(mtmp, oclass, damage, tell) {
             if (_m_using_now())
                 await _resist_monkilled(mtmp, '', AD_RBRE);
             else
-                /* Preserve the synchronous resist contract by detaching the
-                 * dead monster immediately.  The async xkilled path cannot be
-                 * fired-and-forgotten without reordering RNG and state. */
-                await mondead_zap(mtmp);
+                /* C zap.c:6154 killed(mtmp) -> xkilled(mtmp, XKILL_GIVEMSG) */
+                await xkilled(mtmp, XKILL_GIVEMSG);
         }
     }
     return resisted;
@@ -5611,6 +5609,26 @@ async function _bhitm_wand(mtmp, obj) {
         if (learn_it)
             learnwand(obj);
         return ret;
+    }
+    if (otyp === WAN_SLOW_MONSTER || otyp === SPE_SLOW_MONSTER) {
+        /* C zap.c:218-232: resist() saving throw, then mon_adjust_speed(-1).
+         * seemimic() is the same message-only named gap as the arms below;
+         * the engulfing_u whirly expels() tail is likewise a named gap
+         * (expels lives in uhitm.c, outside this file's scope). */
+        if (!await resist(mtmp, (obj.oclass | 0), 0, 0 /* NOTELL */)) {
+            mon_adjust_speed(mtmp, -1, obj);
+            check_gear_next_turn(mtmp);
+        }
+        return _bhitm_wand_epilogue(mtmp, false, false, false, obj);
+    }
+    if (otyp === WAN_SPEED_MONSTER) {
+        /* C zap.c:233-242: resist(), mon_adjust_speed(+1); helpful_gesture
+         * is set unconditionally (wake but don't anger a peaceful). */
+        if (!await resist(mtmp, (obj.oclass | 0), 0, 0 /* NOTELL */)) {
+            mon_adjust_speed(mtmp, 1, obj);
+            check_gear_next_turn(mtmp);
+        }
+        return _bhitm_wand_epilogue(mtmp, true, false, false, obj);
     }
     if (otyp === WAN_CANCELLATION || otyp === SPE_CANCELLATION) {
         /* C zap.c:335-339:

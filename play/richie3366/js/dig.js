@@ -38,7 +38,7 @@ import {
     Passes_walls_prop, spot_checks,
 } from './hack.js';
 import { currency, cmdq_add_key } from './invent.js';
-import { objectNames } from './generated/objects_data.js';
+import { objectNames, objectNameStrs } from './generated/objects_data.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS, COIN_CLASS, is_axe,
 } from './objects.js';
@@ -60,9 +60,10 @@ import {
     t_at, maketrap, seetrap, feeltrap, set_utrap, reset_utrap, deltrap,
     delfloortrap, trapname, mintrap, b_trapped, conjoined_pits,
     activate_statue_trap, ceiling, fire_damage_chain, water_damage_chain,
-    cnv_trap_obj, sokoban_guilt,
+    cnv_trap_obj, sokoban_guilt, uteetering_at_seen_pit, uescaped_shaft,
+    dotrap,
 } from './trap.js';
-import { set_occupation, can_reach_floor, del_engr_at, u_wipe_engr } from './engrave.js';
+import { set_occupation, can_reach_floor, cant_reach_floor, del_engr_at, u_wipe_engr } from './engrave.js';
 import { wield_tool, welded } from './wield.js';
 import {
     Fumbling, adjalign, acurr, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, exercise,
@@ -100,6 +101,9 @@ import { altarmask_at } from './pray.js';
 // C ref: teleport.c dotele — escape_tomb teleport arm (hoisted fn,
 // cycle-safe per imports.mjs --can dig.js teleport.js).
 import { dotele } from './teleport.js';
+// C dig.c Soundeffect sites — contest !SND_LIB build, no RNG
+// (cycle-safe per imports.mjs --can dig.js sndprocs.js).
+import { Soundeffect, se_clash, se_bang_weapon_side } from './sndprocs.js';
 import {
     IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FOUNTAIN,
     IS_THRONE, IS_ALTAR, IS_ROOM, IS_SINK, IS_FURNITURE, IS_GRAVE,
@@ -131,7 +135,7 @@ import {
     ICE, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
     ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE, OBJ_FLOOR,
     CORPSTAT_HISTORIC, STATUE_TRAP, CQ_CANNED,
-    TELEPORT, TELEPORT_CONTROL, STRANGLED,
+    TELEPORT, TELEPORT_CONTROL, STRANGLED, FORCEBUNGLE,
 } from './const.js';
 
 const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
@@ -2236,8 +2240,8 @@ export async function dighole(pit_only, by_magic, cc) {
  * Branch envelope: weapon/level/pos gates; dig_check / petrified / hard wall;
  * Fumbling; effort + dwarf ×2; down → traps / dighole; lateral finish
  * statue/boulder/rock/wall/door/tree + shop pay; mid-effort hit msg.
- * Named omit: earth elemental debris; drawbridge wall string;
- * steed fumble.
+ * Whole C body live in C order (D-3247): fumble Soundeffect, statue /
+ * boulder fall-through, earth debris, drawbridge noun, steed fumble.
  * @returns {number} 1 continue, 0 done
  */
 async function dig() {
@@ -2309,6 +2313,7 @@ async function dig() {
             }
             break;
         case 1:
+            Soundeffect(se_bang_weapon_side, 100);
             await pline(
                 `Bang!  You hit with the broad side of ${the(xname(uwep))}!`,
             );
@@ -2410,23 +2415,23 @@ async function dig() {
         const shopedge = !!in_rooms(dpx, dpy, SHOPBASE);
         const digtyp = dig_typ(uwep, dpx, dpy);
 
-        if (digtyp === DIGTYP_STATUE) {
-            const obj = sobj_at(STATUE, dpx, dpy);
-            if (obj) {
-                if (await break_statue(obj)) digtxt = 'The statue shatters.';
-                else digtxt = null;
+        /* C dig.c:474-490 — the sobj_at presence is part of each
+           else-if condition: a vanished statue/boulder falls through to
+           the rock/wall/door arms or the taken return below. */
+        let statueBoulderObj;
+        if (digtyp === DIGTYP_STATUE
+            && (statueBoulderObj = sobj_at(STATUE, dpx, dpy))) {
+            if (await break_statue(statueBoulderObj)) digtxt = 'The statue shatters.';
+            else digtxt = null;
+        } else if (digtyp === DIGTYP_BOULDER
+            && (statueBoulderObj = sobj_at(BOULDER, dpx, dpy))) {
+            await fracture_rock(statueBoulderObj);
+            const bobj = sobj_at(BOULDER, dpx, dpy);
+            if (bobj) {
+                obj_extract_self(bobj);
+                place_object(bobj, dpx, dpy);
             }
-        } else if (digtyp === DIGTYP_BOULDER) {
-            const obj = sobj_at(BOULDER, dpx, dpy);
-            if (obj) {
-                await fracture_rock(obj);
-                const bobj = sobj_at(BOULDER, dpx, dpy);
-                if (bobj) {
-                    obj_extract_self(bobj);
-                    place_object(bobj, dpx, dpy);
-                }
-                digtxt = 'The boulder falls apart.';
-            }
+            digtxt = 'The boulder falls apart.';
         } else if (lev.typ === STONE || lev.typ === SCORR || IS_TREE(lev.typ)) {
             // C dig.c earth-level mkcavearea before ordinary rock/tree finish
             if (Is_earthlevel(u.uz)) {
@@ -2627,26 +2632,34 @@ export async function use_pick_axe(obj) {
 /**
  * C ref: dig.c use_pick_axe2 — act on u.dx/dy/dz; set dig occupation.
  * Branch envelope (D-0962): conjoined pit debris join; autodig quiet
- * on repeated rock dig; boulder/statue reach failures.
- * Named omit: Underwater; swallowed attack polish;
- * uteetering/uescaped_shaft dotrap; cant_reach_floor messaging.
+ * on repeated rock dig; boulder/statue reach failures. Whole C body
+ * live in C order (D-3247): swallowed &&-fallthrough, Underwater,
+ * teetering/shaft dotrap, cant_reach_floor, lava fire_damage.
  */
 export async function use_pick_axe2(obj) {
     const u = game.u || {};
     const ispick = is_pick(obj);
     const verbing = ispick ? 'digging' : 'chopping';
     /* C use_pick_axe2 — trap is function-scoped; assigned in the
-       teetering else-if (named) and reused for axe-down LANDMINE /
-       BEAR_TRAP. */
+       teetering else-if and reused for axe-down LANDMINE / BEAR_TRAP. */
     let trap;
     const d_action = [
         'swinging', 'digging', 'chipping the statue', 'hitting the boulder',
         'chopping at the door', 'cutting the tree',
     ];
 
-    if (u.uswallow) {
+    /* C dig.c:1169-1171 — swallowed hero fights the swallower; a miss
+       (do_attack false) falls through to the arms below via the &&
+       short-circuit — it is not a swallowed-only block. */
+    let swallowedFought = false;
+    if (u.uswallow && u.ustuck) {
         const { do_attack } = await import('./uhitm.js');
-        if (u.ustuck) await do_attack(u.ustuck);
+        swallowedFought = !!(await do_attack(u.ustuck));
+    }
+    if (swallowedFought) {
+        ; /* C empty arm (return 1) — ECMD_TIME via the tail below */
+    } else if (u.uinwater) { /* C youprop.h:279 Underwater is (u.uinwater) */
+        await pline(`Turbulence torpedoes your ${verbing} attempts.`);
     } else if (u.dz < 0) {
         if (Levitation()) await pline("You don't have enough leverage.");
         else await pline(`You can't reach the ${ceiling(u.ux | 0, u.uy | 0)}.`);
@@ -2654,7 +2667,12 @@ export async function use_pick_axe2(obj) {
         let dam = rnd(2) + dbon() + (obj.spe | 0);
         if (dam <= 0) dam = 1;
         await pline(`You hit yourself with ${yname(u.uwep)}.`);
-        await losehp(maybe_half_phys(dam), 'own pick-axe', KILLED_BY);
+        // C dig.c:1184-1186 — killer names the actual tool via OBJ_NAME.
+        await losehp(
+            maybe_half_phys(dam),
+            `${uhis()} own ${objectNameStrs[obj.otyp | 0]}`,
+            KILLED_BY,
+        );
         if (game.flags) game.flags.botl = true;
         return ECMD_TIME;
     } else if ((u.dz | 0) === 0) {
@@ -2664,6 +2682,7 @@ export async function use_pick_axe2(obj) {
         const rx = (u.ux | 0) + (u.dx | 0);
         const ry = (u.uy | 0) + (u.dy | 0);
         if (!isok(rx, ry)) {
+            Soundeffect(se_clash, 40);
             await pline('Clash!');
             return ECMD_TIME;
         }
@@ -2695,6 +2714,9 @@ export async function use_pick_axe2(obj) {
                 await pline('Splash!');
             } else if (lev?.typ === LAVAWALL) {
                 await pline('Splash!');
+                // C dig.c:1214 — lava splash also burns the wielded tool.
+                const { fire_damage } = await import('./do.js');
+                await fire_damage(u.uwep, false, rx, ry);
             } else if (lev && IS_TREE(lev.typ)) {
                 await pline('You need an axe to cut down a tree.');
             } else if (lev && IS_OBSTRUCTED(lev.typ)) {
@@ -2786,21 +2808,28 @@ export async function use_pick_axe2(obj) {
     } else if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) {
         await pline(`You swing ${yobjnam_dig(obj)} through thin air.`);
     } else if (!can_reach_floor(false)) {
-        await pline("You can't reach the floor.");
+        await cant_reach_floor(u.ux | 0, u.uy | 0, false, false, false);
     } else if (is_pool_or_lava(u.ux | 0, u.uy | 0)) {
         await pline(
             `You cannot stay under${is_pool(u.ux | 0, u.uy | 0) ? 'water' : ' the lava'} long enough.`,
         );
+    } else if ((trap = t_at(u.ux | 0, u.uy | 0))
+        && (uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
+        /* C dig.c:1323-1327 — teetering at a seen pit / escaped shaft:
+           forced tumble, then the floor-reach check if left free. */
+        await dotrap(trap, FORCEBUNGLE);
+        if (!u.utrap) {
+            await cant_reach_floor(u.ux | 0, u.uy | 0, false, true, false);
+        }
     } else if (!ispick
         /* C dig.c use_pick_axe2 `:1328–1335` — axe only digs down to
            trigger/disarm LANDMINE/BEAR_TRAP; else scratch +
-           u_wipe_engr(3) (D-1375; callee D-1051). uteetering /
-           uescaped_shaft still named. */
+           u_wipe_engr(3) (D-1375; callee D-1051). */
         && (!(trap = t_at(u.ux | 0, u.uy | 0))
             || ((trap.ttyp | 0) !== LANDMINE
                 && (trap.ttyp | 0) !== BEAR_TRAP))) {
         await pline(
-            `Your ${xname(obj)} merely scratches the ${surface(u.ux | 0, u.uy | 0)}.`,
+            `${Yobjnam2(obj, null)} merely scratches the ${surface(u.ux | 0, u.uy | 0)}.`,
         );
         u_wipe_engr(3);
     } else {

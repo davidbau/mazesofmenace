@@ -36,7 +36,7 @@ import { rnd } from './rng.js';
 import { yn_function } from './end.js';
 import {
     ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok,
-    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
+    OBJ_CONTAINED, OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, LOST_EXPLODING,
     STONE, MENU_TRADITIONAL, MENU_FULL,
     AUTOSELECT_SINGLE, INVORDER_SORT, FEEL_COCKATRICE, BY_NEXTHERE,
@@ -65,13 +65,13 @@ import { freehand, cant_reach_floor } from './engrave.js';
 import { rider_cant_reach } from './steed.js';
 import { P_SKILL } from './skills.js';
 import {
-    costly_spot, in_rooms, addtobill, shop_keeper, inhishop, remote_burglary,
+    safe_qbuf as safe_qbuf_shk, costly_spot, in_rooms, addtobill, shop_keeper, inhishop, remote_burglary,
 } from './shk.js';
 import { remove_object, upstart, engr_at, On_stairs } from './mklev.js';
 import {
     max_capacity, calc_capacity, near_capacity, weight,
 } from './weight.js';
-import { an, doname, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
+import { ansimpleoname, an, doname, cxname_singular, getObjDescr, xname, the, otense } from './objnam.js';
 import { observe_object } from './o_init.js';
 /* C ref: describe_decor()'s own callees (invent.c dfeature_at, dungeon.c
  * waterbody_name, trap.c back_on_ground) are all real, tested bodies that
@@ -89,7 +89,10 @@ import {
     waterbody_name as _cmd_waterbody_name,
     pooleffects_back_on_ground as _cmd_back_on_ground,
     body_part,
+    count_unpaid,
 } from './cmd.js';
+import { getlin } from './wizcmds.js';
+import { def_oc_syms_chars, def_char_to_objclass } from './drawing.js';
 
 /* Container types: Is_container checks otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS.
  * From nethack-c/include/obj.h:
@@ -905,7 +908,7 @@ function autopick_testobj(otmp, calc_costly) {
     if (_autopick_costly && !otmp.no_charge)
         return false;
 
-    if (g.flags?.pickup_thrown && (otmp.how_lost | 0) === LOST_THROWN)
+    if ((g.flags?.pickup_thrown ?? true) /* default On, optlist.h:579 */ && (otmp.how_lost | 0) === LOST_THROWN)
         return true;
     if (g.flags?.pickup_stolen && (otmp.how_lost | 0) === LOST_STOLEN)
         return true;
@@ -1488,6 +1491,283 @@ async function pickup_object(obj, count, telekinesis) {
     return 1;
 }
 
+/* C ref: pickup.c:517 allow_all() — query_objlist callback. */
+function allow_all(obj) { void obj; return true; }
+
+const _PM_CLERIC_ROLEIDX = 6;
+function _is_cleric() {
+    return ((game.flags?.initrole ?? -1) | 0) === _PM_CLERIC_ROLEIDX;
+}
+
+/* C ref: pickup.c:523-590 allow_category() — query_objlist callback driven by
+ * add_valid_menu_class()'s filters.  (ParanoidAutoAll is not modelled.) */
+function allow_category(obj) {
+    const g = game;
+    if (!g.gc?.class_filter && !g.gs?.shop_filter && !g.gb?.bucx_filter
+        && !g.gp?.picked_filter)
+        return false;
+    const vmc = g.gv?.valid_menu_classes || '';
+    const oc = obj.oclass | 0;
+    if (oc === _COIN_CLASS && g.gc?.class_filter)
+        return vmc.includes(String.fromCharCode(_COIN_CLASS));
+    if (_is_cleric() && !obj.bknown)
+        obj.bknown = 1;
+    if (g.gc?.class_filter && !vmc.includes(String.fromCharCode(oc)))
+        return false;
+    if (g.gs?.shop_filter && !obj.unpaid
+        && !(obj.cobj && count_unpaid(obj.cobj) > 0))
+        return false;
+    if (g.gb?.bucx_filter) {
+        let bucx;
+        if (oc === _COIN_CLASS) {
+            bucx = g.flags?.goldX ? 'X' : 'U';
+        } else {
+            bucx = !obj.bknown ? 'X' : obj.blessed ? 'B' : obj.cursed ? 'C' : 'U';
+        }
+        if (!vmc.includes(bucx))
+            return false;
+    }
+    if (g.gp?.picked_filter && !obj.pickup_prev)
+        return false;
+    return true;
+}
+
+/* C ref: invent.c:3580 tally_BUCX() */
+function tally_BUCX(list, by_nexthere) {
+    const t = { b: 0, u: 0, c: 0, x: 0, o: 0, j: 0 };
+    const goldX = !!game.flags?.goldX;
+    for (; list; list = by_nexthere ? list.nexthere : list.nobj) {
+        if (_is_cleric())
+            list.bknown = ((list.oclass | 0) !== _COIN_CLASS) ? 1 : 0;
+        if (list.pickup_prev) t.j++;
+        if ((list.oclass | 0) === _COIN_CLASS) {
+            if (goldX) t.x++; else t.u++;
+            continue;
+        }
+        if (!list.bknown) t.x++;
+        else if (list.blessed) t.b++;
+        else if (list.cursed) t.c++;
+        else t.u++;
+    }
+    return t;
+}
+
+/* C ref: pickup.c:97-117 collect_obj_classes() */
+function collect_obj_classes(otmp, here) {
+    let ilets = '', itemcount = 0;
+    while (otmp) {
+        const c = def_oc_syms_chars[otmp.oclass | 0];
+        if (!ilets.includes(c)) ilets += c;
+        itemcount++;
+        otmp = here ? otmp.nexthere : otmp.nobj;
+    }
+    return { ilets, itemcount };
+}
+
+/* C ref: pickup.c:74-95 simple_look() — a lone object is a pline; the
+ * multi-object text window is not modelled. */
+async function simple_look(otmp, here) {
+    if (!(here ? otmp.nexthere : otmp.nobj))
+        await pline('%s', await doname(otmp));
+}
+
+/* C ref: win/tty/topl.c tty_yn_function's '#' arm (see js/cmd.js
+ * yn_count_tail): returns the count (>0), 0 for "no", -1 for abort. */
+async function _yn_count_tail(qbuf) {
+    const g = game;
+    let text = qbuf + ' #';
+    let value = 0, n_len = 1;
+    for (;;) {
+        g._pending_message = text;
+        await flush_screen(1);
+        if (g.nhDisplay) topl_park_cursor(g.nhDisplay, text);
+        const raw = await nhgetch();
+        const key = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+        if (key >= 48 && key <= 57) {
+            value = value * 10 + (key - 48);
+            text += String.fromCharCode(key); n_len++;
+        } else if (key === 121 || key === 32 || key === 13 || key === 10) {
+            break;
+        } else if (key === 27) {
+            value = -1;
+            break;
+        } else if (key === 8 || key === 127) {
+            if (n_len <= 1) { value = -1; break; }
+            value = Math.trunc(value / 10);
+            text = text.slice(0, -1); n_len--;
+        } else {
+            value = -1;
+            break;
+        }
+    }
+    return value;
+}
+
+/* C ref: pickup.c:141-262 query_classes().  Returns
+ * { ok, oclasses, one_at_a_time, everything, via_menu }. */
+async function query_classes(action, objs, here, menu_on_demand) {
+    const r = { ok: true, oclasses: [], one_at_a_time: false,
+                everything: false, via_menu: 0 };
+    let { ilets, itemcount } = collect_obj_classes(objs, here);
+    if (ilets.length === 0) { r.ok = false; return r; }
+    if (ilets.length === 1) {
+        r.oclasses = [def_char_to_objclass(ilets.charCodeAt(0))];
+    } else {
+        ilets += ' aA' + (objs === game.invent ? 'i' : ':');
+    }
+    if (itemcount && menu_on_demand) ilets += 'm';
+    if (count_unpaid(objs)) ilets += 'u';
+    const t = tally_BUCX(objs, here);
+    if (t.b) ilets += 'B';
+    if (t.u) ilets += 'U';
+    if (t.c) ilets += 'C';
+    if (t.x) ilets += 'X';
+    if (t.j) ilets += 'P';
+
+    if (ilets.length > 1) {
+        let where = null;
+        for (;;) { /* ask_again */
+            r.oclasses = [];
+            r.one_at_a_time = r.everything = false;
+            let not_everything = false, filtered = false, m_seen = false;
+            let again = false;
+            const inbuf = await getlin(`What kinds of thing do you want to ${action}? [${ilets}]`);
+            if (inbuf && inbuf.charCodeAt(0) === 27) { r.ok = false; return r; }
+            for (const sym of (inbuf || '')) {
+                if (sym === ' ') continue;
+                else if (sym === 'A') r.one_at_a_time = true;
+                else if (sym === 'a') r.everything = true;
+                else if (sym === ':') {
+                    await simple_look(objs, here);
+                    if (objs.where === OBJ_CONTAINED && objs.ocontainer)
+                        objs.ocontainer.cknown = 1;
+                    again = true;
+                    break;
+                } else if (sym === 'i') {
+                    const { display_inventory } = await _cmdModule();
+                    await display_inventory(null, true);
+                    again = true;
+                    break;
+                } else if (sym === 'm') m_seen = true;
+                else if ('uBUCXP'.includes(sym)) {
+                    add_valid_menu_class(sym.charCodeAt(0));
+                    filtered = true;
+                } else {
+                    const oc_of_sym = def_char_to_objclass(sym.charCodeAt(0));
+                    if (ilets.includes(sym)) {
+                        add_valid_menu_class(oc_of_sym);
+                        r.oclasses.push(oc_of_sym);
+                    } else {
+                        if (where === null)
+                            where = action === 'pick up' ? 'here'
+                                  : action === 'take out' ? 'inside' : '';
+                        if (where)
+                            await pline('There are no %s\'s %s.', sym, where);
+                        else
+                            await pline('You have no %s\'s.', sym);
+                        not_everything = true;
+                    }
+                }
+            }
+            if (again) continue;
+            if (m_seen && menu_on_demand) {
+                r.via_menu = ((r.everything || !r.oclasses.length) && !filtered)
+                             ? -2 : -3;
+                r.ok = false;
+                return r;
+            }
+            if (!r.oclasses.length && (!r.everything || not_everything)) {
+                r.one_at_a_time = true;
+                r.everything = false;
+            }
+            break;
+        }
+    }
+    return r;
+}
+
+/* C ref: pickup.c:787-902 — pickup()'s "old style interface" (menustyle
+ * traditional/combination).  Returns { pickupdone } for C's `goto
+ * pickupdone`, { pick_list } for `goto menu_pickup`, else the tallies. */
+async function _pickup_old_style(objchain, traverse_how, count) {
+    const g = game;
+    let oclasses = [];
+    let all_of_a_type = true, selective = false;
+    let n_tried = 0, n_picked = 0;
+    let ct = 0;
+    for (let obj = objchain; obj; obj = _follow(obj, traverse_how)) ct++;
+
+    if (ct === 1 && count) {
+        const obj = objchain;
+        const lcount = Math.min(obj.quan | 0, count);
+        n_tried++;
+        reset_justpicked(g.invent);
+        if ((await pickup_object(obj, lcount, false)) > 0)
+            n_picked++;
+        return { n_tried, n_picked };
+    } else if (ct >= 2) {
+        await pline('There are %s objects here.', (ct <= 10) ? 'several' : 'many');
+        const q = await query_classes('pick up', objchain,
+                                      !!(traverse_how & BY_NEXTHERE), true);
+        selective = q.one_at_a_time;
+        all_of_a_type = q.everything;
+        oclasses = q.oclasses;
+        if (!q.ok) {
+            if (!q.via_menu)
+                return { pickupdone: true, n_tried: 0, n_picked: 0 };
+            if (selective)
+                traverse_how |= INVORDER_SORT;
+            const pick_list = await query_objlist('Pick up what?', objchain,
+                traverse_how, PICK_ANY,
+                (q.via_menu === -2) ? allow_all : allow_category);
+            return { pick_list };
+        }
+    }
+    const bycat = menu_class_present(66) || menu_class_present(85)
+                  || menu_class_present(67) || menu_class_present(88);
+    let obj2;
+    for (let obj = objchain; obj; obj = obj2) {
+        obj2 = _follow(obj, traverse_how);
+        if (bycat ? !allow_category(obj)
+                  : (!selective && oclasses.length
+                     && !oclasses.includes(obj.oclass | 0)))
+            continue;
+        let lcount = -1;
+        if (!all_of_a_type) {
+            const base = await safe_qbuf_shk('', 'Pick up ', '?', obj, doname,
+                                             ansimpleoname, 'something');
+            const rs = ((obj.quan | 0) < 2) ? 'ynaq' : 'yn#aq';
+            /* C hack.h ynaq()/ynNaq(): default 'y' (pickup.c:854) */
+            let sym = await yn_function(base, rs, 'y', false);
+            let yn_number = 0;
+            if (sym === '#') {
+                yn_number = await _yn_count_tail(`${base} [${rs}] (y)`);
+                if (yn_number < 0) { sym = 'n'; yn_number = 0; }
+            }
+            if (sym === 'q' || sym === '\x1b') return { n_tried, n_picked };
+            if (sym === 'n') continue;
+            if (sym === 'a') {
+                all_of_a_type = true;
+                if (selective) {
+                    selective = false;
+                    oclasses = [obj.oclass | 0];
+                }
+            } else if (sym === '#') {
+                if (!yn_number) continue;
+                lcount = Math.min(yn_number, obj.quan | 0);
+            }
+        }
+        if (lcount === -1) lcount = obj.quan | 0;
+        if (!n_tried)
+            reset_justpicked(g.invent);
+        n_tried++;
+        const res = await pickup_object(obj, lcount, false);
+        if (res < 0) break;
+        n_picked += res;
+    }
+    return { n_tried, n_picked };
+}
+
 /* ---------------------------------------------------------------------------
  * C ref: pickup.c:671-786 pickup(int what).
  * "Have the hero pick things from the ground or a monster's inventory if
@@ -1563,38 +1843,24 @@ export async function pickup(what) {
     }
 
     let pick_list = [];
+    let old_style = false, old_tried = 0, old_picked = 0;
     if (autopickup) {
         pick_list = autopick(objchain, traverse_how);
     } else if ((g.flags?.menu_style ?? MENU_FULL) === MENU_TRADITIONAL
                && !g.iflags?.menu_requested) {
-        /* C pickup.c:793-804 — in the traditional interface, a request for
-         * N items with exactly one object skips query_classes and picks the
-         * requested prefix immediately.  This is the non-interactive leaf of
-         * the old-style path, so it remains usable without a query_classes
-         * implementation or a second input prompt. */
-        let ct = 0, only = null;
-        for (let obj = objchain; obj; obj = _follow(obj, traverse_how)) {
-            ct++;
-            only = obj;
+        /* C pickup.c:787-902 — old style interface. */
+        const r = await _pickup_old_style(objchain, traverse_how, count);
+        if (r.pickupdone) {
+            g.pickup_encumbrance = 0;
+            add_valid_menu_class(0);
+            return (r.n_tried > 0) ? 1 : 0;
         }
-        if (count && ct === 1) {
-            pick_list = [{ obj: only, count: Math.min(only.quan | 0, count) }];
+        if (r.pick_list) {
+            pick_list = r.pick_list;
         } else {
-            /* The object-list engine supplies the same selection semantics
-             * for the multi-object traditional path while retaining the
-             * caller's menu style and filtering rules.  This replaces the
-             * old query_classes()/ynaq prompt loop without terminating the
-             * pickup command when more than one object is present. */
-            traverse_how |= AUTOSELECT_SINGLE
-                            | (g.flags?.sortpack ? INVORDER_SORT : 0);
-            if (count) {
-                pick_list = await query_objlist(`Pick ${count} of what?`, objchain,
-                    traverse_how, PICK_ONE, (o) => n_or_more(o, count));
-                for (const p of pick_list) p.count = count;
-            } else {
-                pick_list = await query_objlist('Pick up what?', objchain,
-                    traverse_how | FEEL_COCKATRICE, PICK_ANY, all_but_uchain);
-            }
+            old_tried = r.n_tried;
+            old_picked = r.n_picked;
+            old_style = true;
         }
     } else {
         traverse_how |= AUTOSELECT_SINGLE
@@ -1609,15 +1875,20 @@ export async function pickup(what) {
         }
     }
 
-    const n_tried = pick_list.length;
+    let n_tried = pick_list.length;
     let n_picked = 0;
-    if (n_tried > 0)
-        reset_justpicked(g.invent);
-    for (let i = 0; i < n_tried; i++) {
-        const res = await pickup_object(pick_list[i].obj, pick_list[i].count,
-                                        false);
-        if (res < 0) break;
-        n_picked += res;
+    if (old_style) {
+        n_tried = old_tried;
+        n_picked = old_picked;
+    } else {
+        if (n_tried > 0)
+            reset_justpicked(g.invent);
+        for (let i = 0; i < n_tried; i++) {
+            const res = await pickup_object(pick_list[i].obj, pick_list[i].count,
+                                            false);
+            if (res < 0) break;
+            n_picked += res;
+        }
     }
 
     if (!u.uswallow) {

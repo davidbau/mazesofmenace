@@ -30,7 +30,7 @@ import {
     glyph_is_body, glyph_is_normal_object, glyph_is_piletop_generic_obj,
     glyph_is_invisible_id, glyph_is_nothing, glyph_is_unexplored,
     glyph_is_cmap, glyph_to_cmap, glyph_to_obj, glyph_to_warning,
-    canspotself, mon_to_glyph, monsym, cmap_to_glyph, glyph_to_mon,
+    canspotself, senseself, mon_to_glyph, monsym, cmap_to_glyph, glyph_to_mon,
     hero_Invisible, NO_GLYPH, GLYPH_TRAP_OFF,
     GLYPH_STATUE_MALE_OFF, GLYPH_STATUE_FEM_OFF,
     GLYPH_STATUE_MALE_PILETOP_OFF, GLYPH_STATUE_FEM_PILETOP_OFF,
@@ -55,7 +55,8 @@ import {
     makeplural, makesingular, fruit_from_name,
 } from './objnam.js';
 import { strstri, lcase, upstart, strsubst, tabexpand } from './hacklib.js';
-import { distant_monnam, coyotename, PM_COYOTE, pmname, Mgender, Ugender, mon_nam, rndmonnam } from './do_name.js';
+import { distant_monnam, coyotename, PM_COYOTE, pmname, Mgender, Ugender, mon_nam, rndmonnam, y_monnam } from './do_name.js';
+import { Invis } from './timeout.js'; // C youprop.h Invis for self_lookat `:118` (imports.mjs --can: SAFE, hoisted)
 import { hides_under, is_hider, is_clinger, is_flyer, is_orc, mons,
     M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON, pmnames, NEUTRAL,
 } from './monsters.js';
@@ -373,10 +374,11 @@ function youmonst_for_hidden() {
 }
 
 /**
- * C ref: pager.c self_lookat — race adj + pmname(umonnum,Ugender) + called
- * plname + mhidden_description (D-1554) + Punished ", chained to %s" +
- * utrap ", <trap_predicament>" (pager.c:131).
- * Steed (y_monnam) deferred, own row on a falsifier.
+ * C ref: pager.c self_lookat `:108–133` whole body in C order — race adj
+ * (`:114–115`) + pmname(umonnum,Ugender) + called plname (`:116–119`,
+ * invis `:118`) + steed ", mounted on %s" (`:120–121`) + mhidden_description
+ * (D-1554, `:122–126`) + Punished ", chained to %s" (`:127–129`) + utrap
+ * ", <trap_predicament>" (`:130–131`).
  */
 function self_lookat() {
     const u = game.u || {};
@@ -389,9 +391,13 @@ function self_lookat() {
     const mndx = u.umonnum ?? game.urole?.mnum;
     const form = pmname(mndx, Ugender());
     const plname = game.plname || 'hero';
+    // C :118 — Invis (timeout.js live macro) && (senseself() || !Blind);
+    // Blind_look is the same-module Blind (youprop.h + uroleplay.blind).
     const invis =
-        u.Invis && (u.senseself || !u.Blind) ? 'invisible ' : '';
+        Invis() && (senseself() || !Blind_look()) ? 'invisible ' : '';
     let buf = `${invis}${race}${form} called ${plname}`;
+    // C :120-121 — steed arm precedes the mhidden/Punished/utrap arms.
+    if (u.usteed) buf += `, mounted on ${y_monnam(u.usteed)}`;
     const youm = youmonst_for_hidden();
     const u_ap = (youm.m_ap_type | 0) & M_AP_TYPMASK;
     // C: if (u.uundetected || (Upolyd && U_AP_TYPE) || visible_region_at)
@@ -407,7 +413,6 @@ function self_lookat() {
     // C pager.c:131 — bear trap, pit, web, in-floor, in-lava, tethered.
     // final=0, no wizard suffix (self_lookat is never a final disclosure).
     if ((u.utrap | 0)) buf += `, ${trap_predicament(0, false)}`;
-    // Steed arm (y_monnam) deferred, own row on a falsifier.
     return buf;
 }
 

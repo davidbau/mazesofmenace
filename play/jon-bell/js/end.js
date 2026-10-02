@@ -1529,7 +1529,9 @@ async function really_done(how) {
                  * acknowledges the wizard Save-bones window after savebones
                  * returns.  The y_n read cleared the prompt text, so this is
                  * the bare --More-- form. */
-                if (_wizard_bones && g.urole?.filecode === 'Wiz') {
+                const _disclosePrompted = _end_disclose() !== 'none'
+                    && [...DISCLOSURE_OPTIONS].some((cat) => should_query_disclose_option(cat)[0]);
+                if (_wizard_bones && (g.urole?.filecode === 'Wiz' || _disclosePrompted)) {
                     const _oldPaint = g._paintedSnapshot;
                     if (_bonesPaint) g._paintedSnapshot = _bonesPaint;
                     await force_more('');

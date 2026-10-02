@@ -311,7 +311,6 @@ import {
 import { get_obj_location } from './light.js';
 import {
     an,
-    assertObjectNameable,
     assertPricedObjectNameable,
     cxname,
     donameFresh,
@@ -1954,13 +1953,6 @@ export async function display_pickinv(
         overlay: state.iflags?.menu_overlay !== false,
     }));
 
-    // C's name and glyph calls can mutate discovery and consume display RNG.
-    for (let otmp = state.invent; otmp; otmp = otmp.nobj) {
-        if (requestedLets && !requestedLets.includes(otmp.invlet)) continue;
-        if (wizid && !not_fully_identified(otmp, state)) continue;
-        assertObjectNameable(otmp, state);
-    }
-
     let sortflags = state.flags.sortloot === 'f'
         ? SORTLOOT_LOOT : SORTLOOT_INVLET;
     if (state.flags.sortpack) sortflags |= SORTLOOT_PACK;
@@ -2183,7 +2175,6 @@ export async function display_used_invlets(
             if (state.flags.sortpack && !classcount++)
                 items.push(add_menu_heading(
                     let_to_name(oclass, false, false), state));
-            assertObjectNameable(otmp, state);
             // C computes the glyph before doname() while building this menu.
             const glyphInfo = obj_to_glyph(otmp, state);
             items.push({
@@ -2425,36 +2416,27 @@ export function preflight_look_here(
 
     // C returns from the blind tactile arm when the floor cannot be reached,
     // and from the lava/inaccessible-pool arm before naming any object. Keep
-    // those source boundaries ahead of all naming and pricing assertions: an
-    // object on an unreachable or liquid square is not passed to doname().
+    // those source boundaries ahead of the pricing check: C does not format
+    // an object on an unreachable or liquid square.
     const inaccessibleLiquid = is_lava(ux, uy, state)
         || (is_pool(ux, uy, state) && !state.u.uinwater);
-    const skipsObjectNaming = inaccessibleLiquid
+    const skipsObjectPriceCheck = inaccessibleLiquid
         || (blind && cannotReachObjects);
-    if (!skipsObjectNaming && hasPile && !skip_objects) {
+    if (!skipsObjectPriceCheck && hasPile && !skip_objects) {
         for (const object of objectList) {
             const tactileCockatrice = object.otyp === CORPSE
                 && will_feel_cockatrice(object, false, state);
-            // C's pile arm uses ordinary doname() for the first tactile
-            // cockatrice and breaks immediately; later objects are never
-            // named or priced.
-            if (tactileCockatrice) {
-                assertObjectNameable(object, state);
-                break;
-            }
+            // C names the first tactile cockatrice and breaks; this projection
+            // stops there before checking any later object's price.
+            if (tactileCockatrice) break;
             if (withShopPrice)
                 assertPricedObjectNameable(object, state);
-            else
-                assertObjectNameable(object, state);
         }
     }
 
-    if (!skipsObjectNaming && otmp && !hasPile && !skip_objects) {
-        if (withShopPrice)
-            assertPricedObjectNameable(otmp, state);
-        else
-            assertObjectNameable(otmp, state);
-    }
+    if (!skipsObjectPriceCheck && otmp && !hasPile && !skip_objects
+        && withShopPrice)
+        assertPricedObjectNameable(otmp, state);
     return {
         blind,
         cant_reach,
@@ -3205,19 +3187,9 @@ export function container_weight(container, env) {
 
 function preflightFreeinvCore(obj, env) {
     if (obj.oclass === COIN_CLASS) return { confersLuck: false };
-    if (obj.otyp === AMULET_OF_YENDOR
-        || obj.otyp === CANDELABRUM_OF_INVOCATION
-        || obj.otyp === BELL_OF_OPENING
-        || obj.otyp === SPE_BOOK_OF_THE_DEAD
-        || obj.oartifact) {
-        requiredHook(env, 'removeSpecialInventoryEffects', obj);
-    }
-    let confersLuck = obj.otyp === LUCKSTONE;
-    if (obj.oartifact && obj.otyp !== LUCKSTONE) {
-        confersLuck = Boolean(
-            requiredHook(env, 'artifactConfersLuck', obj)(obj, env),
-        );
-    }
+    // artifact.c:confers_luck() is pure; use its source implementation while
+    // preflighting the later C freeinv_core() branch.
+    const confersLuck = confers_luck(obj, env.state);
     if (!confersLuck && obj.otyp === FIGURINE && obj.timed) {
         requiredHook(env, 'stopFigurineTimer', obj);
     }
@@ -3225,36 +3197,50 @@ function preflightFreeinvCore(obj, env) {
 }
 
 function freeinv_core(obj, env, facts) {
+    const { state } = env;
     if (obj.oclass === COIN_CLASS) {
-        env.state.disp ??= {};
-        env.state.disp.botl = true;
+        state.disp ??= {};
+        state.disp.botl = true;
         return;
     }
-    if (obj.otyp === AMULET_OF_YENDOR
-        || obj.otyp === CANDELABRUM_OF_INVOCATION
-        || obj.otyp === BELL_OF_OPENING
-        || obj.otyp === SPE_BOOK_OF_THE_DEAD
-        || obj.oartifact) {
-        requiredHook(env, 'removeSpecialInventoryEffects', obj)(obj, env);
+    const have = state.u.uhave;
+    if (obj.otyp === AMULET_OF_YENDOR) {
+        if (!have?.amulet) note_unported('pline.c impossible');
+        if (have) have.amulet = 0;
+    } else if (obj.otyp === CANDELABRUM_OF_INVOCATION) {
+        if (!have?.menorah) note_unported('pline.c impossible');
+        if (have) have.menorah = 0;
+    } else if (obj.otyp === BELL_OF_OPENING) {
+        if (!have?.bell) note_unported('pline.c impossible');
+        if (have) have.bell = 0;
+    } else if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+        if (!have?.book) note_unported('pline.c impossible');
+        if (have) have.book = 0;
+    } else if (obj.oartifact) {
+        if (is_quest_artifact(obj, state)) {
+            if (!have?.questart) note_unported('pline.c impossible');
+            if (have) have.questart = 0;
+        }
+        // invent.c:freeinv_core() discards this void helper's result. Its
+        // carried-artifact removal branch is not ported in artifacts.js.
+        note_unported('artifact.c set_artifact_intrinsic');
     }
 
     if (obj.otyp === LOADSTONE) {
         curse(obj, env);
-    } else if (obj.otyp === LUCKSTONE || obj.oartifact) {
-        if (facts.confersLuck) {
-            set_moreluck(env.state);
-            env.state.disp ??= {};
-            env.state.disp.botl = true;
-        }
+    } else if (facts.confersLuck) {
+        set_moreluck(state);
+        state.disp ??= {};
+        state.disp.botl = true;
     } else if (obj.otyp === FIGURINE && obj.timed) {
         requiredHook(env, 'stopFigurineTimer', obj)(obj, env);
         if (obj.timed)
             throw new Error('stopFigurineTimer must clear obj.timed');
     }
 
-    if (env.state.context?.tin?.tin === obj) {
-        env.state.context.tin.tin = null;
-        env.state.context.tin.o_id = 0;
+    if (state.context?.tin?.tin === obj) {
+        state.context.tin.tin = null;
+        state.context.tin.o_id = 0;
     }
 }
 

@@ -3,6 +3,8 @@
 //
 // For browser play, see nethack.js.
 import { game, resetGame } from './gstate.js';
+import { vfsDeleteFile } from './storage.js';
+import { savefile_name } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
 import { newgame, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
 import { FF_FAITHFUL } from './fastforward.js';
@@ -257,6 +259,16 @@ export class NethackGame {
             const save = restore_saved_game((this._rcName || g.flags.debug) ? g.plname : '');
             if (save) {
                 await dorecover(save);
+                /* C decl.h gl.luathemes is process state and is NOT in the save
+                 * file; the restoring process starts with it empty, so its first
+                 * makelevel() loads themerms.lua (nhlib.lua shuffle).  restgamestate()
+                 * here copies every own property of the save onto game. */
+                game._luathemes_loaded = {};
+                /* C restore.c:902-903 dorecover() — `if (!wizard && !discover)
+                 * (void) delete_savefile();`.  Wizard/explore restores keep it
+                 * until restore_preamble()'s "keep the save file?" prompt. */
+                if (!game.flags?.debug && !game.flags?.explore)
+                    vfsDeleteFile(savefile_name(game.plname));
                 this._resuming = true;
                 await restore_preamble();
                 return;

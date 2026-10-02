@@ -22,7 +22,7 @@ import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's mat
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel,
-         botl_status_suffix, fit_status_line_width, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
+         botl_status_suffix, fit_status_line_width, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -388,6 +388,18 @@ export async function display_text_window(lines) {
 }
 export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCol, pwOverride,
                                     fullScreen = false) {
+    const _prevRows = (typeof game._screen_output === 'string')
+        ? game._screen_output.split('\n') : null;
+    /* wintty.c:4289-4298 / 3814: with statuslines:3 the status rows are
+     * 21/22/23 and the map loses its last row. */
+    const rows3 = _threeStatusLines();
+    const st3 = rows3 ? _statusRows3() : null;
+    const rowStatus = (r) => rows3 ? st3[r - 21]
+        : (r === 22 ? _statusLine1() : _statusLine2(uacStep0, pwOverride));
+    const statusStillBlank = !!_prevRows && _prevRows.length >= 24
+        && (rows3 ? _prevRows[21] === '' : true)
+        && _prevRows[22] === '' && _prevRows[23] === '' && statusClipCol == null
+        && _prevRows.slice(1, 22).some((r) => r.includes('\x0e'));
     const winRows = windowLines.length;
     // CLIP_X: 1-indexed max map column to render when window covers this row.
     const CLIP_X = WIN_COL - 1;
@@ -463,7 +475,12 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 output += '\n';
             continue;
         }
-        if (screenRow === 22) {
+        if (statusStillBlank && (screenRow === 22 || screenRow === 23
+                                 || (rows3 && screenRow === 21))) {
+            if (screenRow < 23) output += '\n';
+            continue;
+        }
+        if (screenRow === 22 || (rows3 && screenRow === 21)) {
             // Status line 1: render regardless of window coverage.
             if (statusClipCol === -1) {
                 /* A dismissed 22-row tty window erases this row completely;
@@ -513,7 +530,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 const leftStatus = statusClipCol != null
                     ? Math.min(statusClipCol, Math.max(0, col - 1))
                     : Math.max(0, col - 1);
-                output += _overlay_status_line(_statusLine1(), leftStatus, '')
+                output += _overlay_status_line(rowStatus(screenRow), leftStatus, '')
                     + `\x1b[${Math.max(1, col - leftStatus)}C` + text;
             }
             else if (statusClipCol != null) {
@@ -521,10 +538,10 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 // keep only the leftmost statusClipCol visible columns (clip,
                 // pad nothing — _overlay_status_line with empty text and the
                 // clip width gives exactly the truncated-left status line).
-                output += _overlay_status_line(_statusLine1(), statusClipCol, '');
+                output += _overlay_status_line(rowStatus(screenRow), statusClipCol, '');
             }
             else {
-                output += _statusLine1();
+                output += rowStatus(screenRow);
             }
             output += '\n';
             continue;
@@ -532,25 +549,28 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
         if (screenRow === 23) {
             // Status line 2: render regardless of window coverage
             if (statusClipCol === -1 || statusClipCol > 30) {
-                output += _statusLine2(uacStep0, pwOverride);
+                output += rowStatus(23);
                 continue;
             }
             if (inWindow && winLine) {
                 const indent = (winLine.match(/^ +/) || [''])[0].length;
                 const col = WIN_COL + indent;
                 const text = winLine.trim();
-                if (col > 4)
-                    output += `\x1b[${col}C`;
-                else
-                    output += ' '.repeat(col);
+                /* Same as row 22 (wintty.c:1543-1545): the footer row erases
+                 * only offx..79, so status line 2 survives LEFT of the window. */
+                const leftStatus = statusClipCol != null
+                    ? Math.min(statusClipCol, Math.max(0, col - 1))
+                    : Math.max(0, col - 1);
+                output += _overlay_status_line(rowStatus(23), leftStatus, '')
+                    + `\x1b[${Math.max(1, col - leftStatus)}C`;
                 output += text;
             }
             else if (statusClipCol != null) {
-                output += _overlay_status_line(_statusLine2(uacStep0, pwOverride),
+                output += _overlay_status_line(rowStatus(23),
                                                statusClipCol, '');
             }
             else {
-                output += _statusLine2(uacStep0, pwOverride);
+                output += rowStatus(23);
             }
             continue; // no trailing \n for last row
         }
@@ -752,7 +772,11 @@ function _statusLine2(uacOverride, pwOverride) {
     }
     // C ref: botl.c — T: (turn count) only shown when time option set.
     if (g.flags?.time) {
-        s += ` T:${g.moves || 1}`;
+        /* Same display value as js/display.js _painted_moves(): the physical
+         * status keeps the run-suppressed T: (allmain.c:261-263) until bot(). */
+        const _tut = g._tutorialStatusOverride?.moves;
+        const _tm = _tut != null ? _tut : (g._timeBotlFrozenMoves != null ? g._timeBotlFrozenMoves : g.moves);
+        s += ` T:${_tm || 1}`;
     }
     s += botl_status_suffix(u.uhs | 0, undefined);
     return fit_status_line_width(s);
@@ -812,9 +836,15 @@ export async function topl_more_page(msg, uacAtCapture) {
         }
     }
     // Row 22: status line 1
-    output += _statusLine1() + '\n';
-    // Row 23: status line 2 (with uac = actual post-find_ac value)
-    output += _statusLine2(uacAtCapture);
+    if (_threeStatusLines()) {
+        /* wintty.c:4289-4298: three status rows at 21/22/23; map row 21 gone */
+        const st3 = _statusRows3();
+        output = output.replace(/[^\n]*\n$/, '') + st3[0] + '\n' + st3[1] + '\n' + st3[2];
+    } else {
+        output += _statusLine1() + '\n';
+        // Row 23: status line 2 (with uac = actual post-find_ac value)
+        output += _statusLine2(uacAtCapture);
+    }
     g._screen_output = output;
     // Cursor at end of '--More--'
     const disp = g?.nhDisplay;

@@ -85,7 +85,7 @@ import { food_disappears } from './eat.js';
 import { t_at } from './trap.js';
 import { deadhero, do_death_sequence } from './end.js';
 import { set_wounded_legs, ok_to_quest, breaktest, breakmsg, breakobj, altar_wrath, _delobj_useupf as delobj_core, currency as cmd_currency, snuff_candle, thitmonst } from './cmd.js';
-import { hurtle } from './cmd.js';
+import { hurtle, showdamage } from './cmd.js';
 import { RIGHT_SIDE } from './const.js';
 import { UNCHANGING } from './const.js';
 import { rehumanize } from './polyself.js';
@@ -275,6 +275,7 @@ export async function losehp(n, knam, k_format) {
     end_running(true);
     if (Upolyd(u)) {
         u.mh = (u.mh | 0) - (n | 0);
+        showdamage(n); /* C hack.c:4269 */
         if ((u.mhmax | 0) < (u.mh | 0)) u.mhmax = u.mh;
         if ((u.mh | 0) < 1) {
             await rehumanize();
@@ -286,6 +287,7 @@ export async function losehp(n, knam, k_format) {
         return;
     }
     u.uhp = (u.uhp | 0) - (n | 0);
+    showdamage(n); /* C hack.c:4280 */
     if ((u.uhp | 0) > (u.uhpmax | 0))
         u.uhpmax = u.uhp; /* perhaps n was negative */
     if ((u.uhp | 0) < 1) {

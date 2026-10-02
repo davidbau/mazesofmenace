@@ -339,6 +339,17 @@ export function parseNethackrc(rc) {
                 }
                 else if (key === 'symset')
                     result.symset = val;
+                else if (key === 'whatis_coord') {
+                    if (negated)
+                        result.iflags.getpos_coords = 'n';
+                    else {
+                        const c = val.charAt(0).toLowerCase();
+                        if (c && 'ncfms'.includes(c))
+                            result.iflags.getpos_coords = c;
+                        else
+                            config_error_add(`Unknown whatis_coord parameter '${val}'`);
+                    }
+                }
                 else if (key === 'msg_window')
                     result.iflags.prevmsg_window = val;
                 /* C options.c:3627-3656 optfn_runmode().  str_start_is()
@@ -364,6 +375,11 @@ export function parseNethackrc(rc) {
                     } else {
                         result.flags.pickup_types = parse_pickup_types(val);
                     }
+                }
+                else if (key === 'statuslines') {
+                    const itmp = negated ? 2 : (val ? (parseInt(val, 10) || 0) : 0);
+                    if (!negated && itmp >= 2 && itmp <= 3)
+                        result.iflags.wc2_statuslines = itmp;
                 }
                 else if (key === 'disclose') {
                     result.flags.disclose = val;

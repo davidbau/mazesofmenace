@@ -1,3 +1,4 @@
+import { change_luck } from './attrib.js';
 // save.js — C ref: nethack-c/src/save.c
 
 import { game } from './gstate.js';
@@ -164,6 +165,13 @@ export const NOT_SAVED = [
     '_topl_sticky', '_topl_win_stop', '_topl_win_stop_armed', '_topl_win_stop_buf',
     '_topl_urgent_marks', '_topl_urgent_next',
     '_runPageFrames', '_botlPaintedCap',
+    /* go.occupation / gt.timed_occ_fn / go.occtxt: code pointers, which
+     * savegamestate() never writes (a counted `20s` armed when `S` is typed
+     * leaves timed_occ_fn = a closure the graph encoder rejects). */
+    'occupation', 'timed_occ_fn', 'occtxt',
+    /* The PRNG contexts (C rnd.c's CORE/DISP isaac64 states) are not in the
+     * save file; the restoring process keeps the ones initRng() just seeded. */
+    'coreCtx', 'dispCtx',
 ];
 
 /* C ref: save.c:246 savegamestate() — everything between the current level and
@@ -172,7 +180,7 @@ export const NOT_SAVED = [
 async function savegamestate() {
     const state = {};
     for (const k of Object.keys(game))
-        if (!NOT_SAVED.includes(k))
+        if (!NOT_SAVED.includes(k) && typeof game[k] !== 'function')
             state[k] = game[k];
     // C save_luadata serializes the Lua variables, never the interpreter or
     // its closures. Preserve the other gl fields (including light roots).
@@ -204,6 +212,13 @@ export async function dosave0() {
         g.program_state.saving = 0;
         return 0;
     }
+    /* C save.c:141-145 — undo the date-dependent luck that moveloop_preamble
+     * applied at startup, so the FILE carries Luck without it; the restoring
+     * process's own preamble re-applies its date. */
+    if ((g.flags?.moonphase | 0) === 4 /* FULL_MOON */)
+        change_luck(-1);
+    if (g.flags?.friday13)
+        change_luck(1);
     try {
         /* Detach before C's inactive-level copy pass: those getlev/savelev
          * operations work on file records, not on the live current level. */

@@ -2235,8 +2235,9 @@ export async function m_move(mtmp, after) {
     }
     let mmoved = MMOVE_NOTHING;
     let chi = -1;
-    // C: should_displace — MDISP last-resort; omitted → never prefer displace
-    const better_with_displacing = false;
+    // C monmove.c:1945–1946 — MDISP last-resort: a displace-only square
+    // competes only when one beats every plain square (D-3248).
+    const better_with_displacing = should_displace(mtmp, mfp, ggx, ggy);
 
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x;
@@ -2330,8 +2331,8 @@ export async function m_move(mtmp, after) {
     }
 
     // C: ALLOW_MDISP → mdisplacem (mhitm.c); region update is inside
-    // mdisplacem after both places (D-1174). should_displace still named
-    // (better_with_displacing stays false → MDISP-only squares skipped).
+    // mdisplacem after both places (D-1174). better_with_displacing is
+    // the live should_displace call above (monmove.c:1945–1946, D-3248).
     if ((chiInfo & ALLOW_MDISP) !== 0) {
         const mtmp2 = m_at(nix, niy); /* ALLOW_MDISP implies m_at is set */
         const mstatus = await mdisplacem(mtmp, mtmp2, false);

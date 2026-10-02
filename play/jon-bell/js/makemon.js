@@ -3083,7 +3083,7 @@ export async function stealgold(mtmp) {
         fgold = fgold.nexthere;
 
     /* Do you have real gold? */
-    ygold = findgold(game.u.invent);
+    ygold = findgold(game.invent);
 
     if (fgold && (!ygold || fgold.quan > ygold.quan || !rn2(5))) {
         obj_extract_self(fgold);
@@ -3113,7 +3113,7 @@ export async function stealgold(mtmp) {
         }
     } else if (ygold) {
         const gold_price = OC_COST[GOLD_PIECE_OTYP] | 0;
-        tmp = Math.trunc((somegold(money_cnt(game.u.invent)) + gold_price - 1) / gold_price);
+        tmp = Math.trunc((somegold(money_cnt(game.invent)) + gold_price - 1) / gold_price);
         tmp = Math.min(tmp, ygold.quan);
         if (tmp < ygold.quan)
             ygold = (await splitobj(ygold, tmp));

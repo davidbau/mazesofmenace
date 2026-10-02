@@ -72,7 +72,13 @@ import { float_vs_flight, breakarm, num_horns, update_inventory, hliquid, defend
 import { is_pool } from './look.js';
 /* Shared trap timer/status bookkeeping (C trap.c:set_utrap). */
 import { set_utrap, unpunish } from './dig.js';
-import { buried_ball_to_freedom, reset_utrap, selftouch } from './trap.js';
+import { buried_ball_to_freedom, reset_utrap, selftouch, t_at, deltrap, maketrap, dotrap, feeltrap } from './trap.js';
+import { On_stairs } from './mklev.js';
+import { is_pool_or_lava } from './look.js';
+import { mon_nam } from './uhitm.js';
+import { expels_gu } from './mhitu.js';
+import { bhp_bury_objs } from './cmd.js';
+import { in_rooms, add_damage } from './shk.js';
 import { set_mimic_blocking } from './sit.js';
 import { sticks } from './dog.js';
 import {
@@ -1964,6 +1970,104 @@ export async function dospit() {
     void u;
     return ECMD_TIME;
 }
+
+// ── C polyself.c:1497 dospinweb() — webmaker spins a web ─────────────────────
+export async function dospinweb() {
+    const g = game;
+    const u = g.u;
+    const x = u.ux, y = u.uy;
+    const ttmp0 = t_at(x, y);
+    const levtyp = g.level?.at?.(x, y)?.typ | 0;
+    const reject_terrain = is_pool_or_lava(x, y) || IS_AIR_ps(levtyp);
+    const lev = u.uprops?.[LEVITATION];
+    const Lev = !!((lev?.intrinsic | 0) || (lev?.extrinsic | 0)) && !(lev?.blocked | 0);
+
+    if (Lev || reject_terrain) {
+        await pline(`You must be on ${reject_terrain ? 'solid' : 'the'} ground to spin a web.`);
+        return ECMD_OK;
+    }
+    if (u.uswallow) {
+        const sw = u.ustuck;
+        await pline(`You release web fluid inside ${mon_nam(sw)}.`);
+        if (((sw.data.mflags1 | 0) & 0x00040000) !== 0) { /* is_animal */
+            await expels_gu(sw, sw.data?.pmidx, true);
+            return ECMD_OK;
+        }
+        if ((sw.data.mlet | 0) === 22 /* S_VORTEX */ || (sw.data.pmidx | 0) === PM_AIR_ELEMENTAL) { /* is_whirly */
+            const mattk = attacktype_fordmg(sw.data, 11 /* AT_ENGL */, AD_ANY);
+            if (mattk) {
+                let sweep = '';
+                switch (mattk.adtyp | 0) {
+                case 2: sweep = 'ignites and '; break;            /* AD_FIRE */
+                case 6: sweep = 'fries and '; break;              /* AD_ELEC */
+                case 3: sweep = 'freezes, shatters and '; break;  /* AD_COLD */
+                }
+                await pline(`The web ${sweep}is swept away!`);
+            }
+            return ECMD_OK;
+        } /* default: a nasty jelly-like creature */
+        await pline(`The web dissolves into ${mon_nam(sw)}.`);
+        return ECMD_OK;
+    }
+    if (u.utrap) {
+        await pline('You cannot spin webs while stuck in a trap.');
+        return ECMD_OK;
+    }
+    exercise(1 /* A_DEX */, true);
+    if (ttmp0) {
+        switch (ttmp0.ttyp | 0) {
+        case 11: case 12: /* PIT, SPIKED_PIT */
+            await pline('You spin a web, covering up the pit.');
+            deltrap(ttmp0);
+            await bhp_bury_objs(x, y);
+            newsym(x, y);
+            return ECMD_TIME;
+        case 4: /* SQKY_BOARD */
+            await pline('The squeaky board is muffled.');
+            deltrap(ttmp0);
+            newsym(x, y);
+            return ECMD_TIME;
+        case 15: case 16: case 17: case 23: /* TELEP_TRAP LEVEL_TELEP MAGIC_PORTAL VIBRATING_SQUARE */
+            await pline('Your webbing vanishes!');
+            return ECMD_OK;
+        case 18: /* WEB */
+            await pline('You make the web thicker.');
+            return ECMD_TIME;
+        case 13: case 14: /* HOLE, TRAPDOOR */
+            await pline(`You web over the ${(ttmp0.ttyp | 0) === 14 ? 'trap door' : 'hole'}.`);
+            deltrap(ttmp0);
+            newsym(x, y);
+            return ECMD_TIME;
+        case 7: /* ROLLING_BOULDER_TRAP */
+            await pline('You spin a web, jamming the trigger.');
+            deltrap(ttmp0);
+            newsym(x, y);
+            return ECMD_TIME;
+        case 1: case 2: case 5: case 3: case 10: case 6: case 8: case 9:
+        case 20: case 21: case 22:
+            /* ARROW DART BEAR ROCK FIRE LANDMINE SLP_GAS RUST MAGIC ANTI_MAGIC POLY */
+            await pline('You have triggered a trap!');
+            await dotrap(ttmp0, 0);
+            return ECMD_TIME;
+        default:
+            throw new Error(`Webbing over trap type ${ttmp0.ttyp}?`); /* impossible() */
+        }
+    } else if (On_stairs(x, y)) {
+        /* cop out: don't let them hide the stairs */
+        await pline(`Your web fails to impede access to the ${levtyp === 26 /* STAIRS */ ? 'stairs' : 'ladder'}.`);
+        return ECMD_TIME;
+    }
+    const ttmp = await maketrap(x, y, 18 /* WEB */);
+    if (ttmp) {
+        await pline('You spin a web.');
+        ttmp.madeby_u = 1;
+        await feeltrap(ttmp);
+        if (in_rooms(x, y, 14 /* SHOPBASE */).length)
+            add_damage(x, y, 30 /* SHOP_WEB_COST */);
+    }
+    return ECMD_TIME;
+}
+const IS_AIR_ps = (typ) => typ === 35 || typ === 36; /* const.js AIR, CLOUD */
 
 // Constants needed locally (not yet in module scope)
 const S_MIMIC = 13;                  /* defsym.h:309 MONSYM(13, 'm', MIMIC, ...) */

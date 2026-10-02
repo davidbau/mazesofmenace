@@ -2324,22 +2324,22 @@ export function food_disappears(obj) {
  * Index is the tin variety type (ROTTEN_TIN=0, HOMEMADE_TIN=1, etc.).
  * TTSZ = 16 (0 through 15). */
 const TINTXTS = [
-    { txt: "rotten", fodder: 0 }, /* 0 ROTTEN_TIN */
-    { txt: "homemade", fodder: 1 }, /* 1 HOMEMADE_TIN */
-    { txt: "soup made from", fodder: 1 }, /* 2 */
-    { txt: "french fried", fodder: 0 }, /* 3 */
-    { txt: "pickled", fodder: 1 }, /* 4 */
-    { txt: "boiled", fodder: 1 }, /* 5 */
-    { txt: "smoked", fodder: 1 }, /* 6 */
-    { txt: "dried", fodder: 1 }, /* 7 */
-    { txt: "deep fried", fodder: 0 }, /* 8 */
-    { txt: "szechuan", fodder: 1 }, /* 9 */
-    { txt: "broiled", fodder: 0 }, /* 10 */
-    { txt: "stir fried", fodder: 0 }, /* 11 */
-    { txt: "sauteed", fodder: 0 }, /* 12 */
-    { txt: "candied", fodder: 1 }, /* 13 */
-    { txt: "pureed", fodder: 1 }, /* 14 */
-    { txt: "", fodder: 0 }, /* 15 (empty) */
+    { txt: "rotten", nut: -50, fodder: 0, greasy: 0 }, /* 0 */
+    { txt: "homemade", nut: 50, fodder: 1, greasy: 0 }, /* 1 */
+    { txt: "soup made from", nut: 20, fodder: 1, greasy: 0 }, /* 2 */
+    { txt: "french fried", nut: 40, fodder: 0, greasy: 1 }, /* 3 */
+    { txt: "pickled", nut: 40, fodder: 1, greasy: 0 }, /* 4 */
+    { txt: "boiled", nut: 50, fodder: 1, greasy: 0 }, /* 5 */
+    { txt: "smoked", nut: 50, fodder: 1, greasy: 0 }, /* 6 */
+    { txt: "dried", nut: 55, fodder: 1, greasy: 0 }, /* 7 */
+    { txt: "deep fried", nut: 60, fodder: 0, greasy: 1 }, /* 8 */
+    { txt: "szechuan", nut: 70, fodder: 1, greasy: 0 }, /* 9 */
+    { txt: "broiled", nut: 80, fodder: 0, greasy: 0 }, /* 10 */
+    { txt: "stir fried", nut: 80, fodder: 0, greasy: 1 }, /* 11 */
+    { txt: "sauteed", nut: 95, fodder: 0, greasy: 0 }, /* 12 */
+    { txt: "candied", nut: 100, fodder: 1, greasy: 0 }, /* 13 */
+    { txt: "pureed", nut: 500, fodder: 1, greasy: 0 }, /* 14 */
+    { txt: "", nut: 0, fodder: 0, greasy: 0 }, /* 15 */
 ];
 const TTSZ = TINTXTS.length; /* 16 */
 
@@ -2526,7 +2526,7 @@ function _tin_ctx() {
 /* C eat.c:1516 use_up_tin: consume the tin, then clear its context. */
 async function use_up_tin(tin) {
     if (!tin) return;
-    if (tin.where === OBJ_INVENT)
+    if (_eat_carried(tin)) /* carried(): where may be stamped with either OBJ_INVENT value */
         await useup(tin);
     else
         await useupf(tin, 1);
@@ -2671,7 +2671,7 @@ async function consume_tin(mesg) {
 
         _zero_victual(); /* C eat.c:1598 svc.context.victual = zero_victual */
 
-        await pline(`You consume ${TINTXTS[r | 0].txt} ${monPmname(mnum, 2)}.`);
+        _emit_eat_pline(`You consume ${TINTXTS[r | 0].txt} ${monPmname(mnum, 2)}.`);
 
         eating_conducts(ptr);
 

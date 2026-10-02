@@ -3,6 +3,7 @@ import { bubbles_rest_snapshot, bubbles_copy_snapshot } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
 import { worms_rest_snapshot } from './worm.js';
 import { role_init } from './roles.js';
+import { peaceMinded, set_malign } from './makemon.js';
 // restore.js — C ref: nethack-c/src/restore.c
 //
 // TWO halves of restore.c live here, at two different scopes:
@@ -21,8 +22,8 @@ import { regions_rest_snapshot } from './region.js';
 import { restore_timers_level, run_timers } from './timeout.js';
 import { mon_catchup_elapsed_time } from './dog.js';
 import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
-import { vfsReadFile } from './storage.js';
-import { docrt, cls, bot, see_monsters } from './display.js';
+import { vfsReadFile, vfsDeleteFile } from './storage.js';
+import { docrt, cls, bot, see_monsters, pline } from './display.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
@@ -136,8 +137,18 @@ export async function getlev(lev) {
         if (!(u.uz?.dlevel | 0))
             continue;
         if (ghostly) {
-            if (!mtmp.isshk)
-                mtmp.mpeaceful = 0;
+            /* restore.c:1204-1212 — reset peaceful/malign relative to the new
+             * character; shopkeepers reset based on name.  peace_minded() draws
+             * (makemon.c:2306-2307) for every non-shk, non-matching-unicorn. */
+            if (!mtmp.isshk) {
+                const md = mtmp.data;
+                const sgn = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
+                const uni = !!md && (md.mlet | 0) === 21
+                    && ((md.mflags2 >>> 0) & 0x20000000) !== 0
+                    && sgn((u.ualign?.type ?? 0) | 0) === sgn((md.maligntyp ?? md.alignment ?? 0) | 0);
+                mtmp.mpeaceful = uni ? 1 : (peaceMinded(md.pmidx ?? md.mndx) ? 1 : 0);
+            }
+            set_malign(mtmp);
         } else if (elapsed > 0) {
             mon_catchup_elapsed_time(mtmp, elapsed);
         }
@@ -194,6 +205,11 @@ async function restgamestate(state) {
             continue;
         game[k] = state[k];
     }
+    /* C decl.h:536 marks `int lastinvnr` "(never saved&restored)": the restoring
+     * process keeps decl.c:458's initial 51 (u_init.c:1375 re-sets it only for a
+     * NEW game), so assigninvlet() (invent.c:721) scans from 'a' again instead of
+     * continuing after the old process's last letter. */
+    game._lastinvnr = 51;
     rest_engravings(state.__engravings);
     regions_rest_snapshot(state.__regions);
     worms_rest_snapshot(state.__worms);
@@ -333,6 +349,25 @@ export async function restore_preamble() {
     const g = game;
     await l_nhcore_call(NHCORE_RESTORE_OLD_GAME);
     const msgs = [welcome_back_message()];
+    let keptPrompt = '';
+    /* C unixmain.c:264-274 — after a successful dorecover(), wizard and
+     * explore-mode restores ask whether to keep the save file; this precedes
+     * moveloop_preamble()'s moon/Friday-13th messages. */
+    if (g.flags?.debug || g.flags?.explore) {
+        /* welcome(FALSE) is dorecover's own tail (restore.c:936), so it is on
+         * the topline, paged by the prompt that follows. */
+        const { pline_with_more } = await import('./com_pager.js');
+        await pline_with_more(msgs.shift(), g.u?.uac ?? 0);
+        if (!g.flags.debug && g.flags.explore)
+            await pline('You are in non-scoring explore/discovery mode.');
+        const { yn_function } = await import('./end.js');
+        if (await yn_function('Do you want to keep the save file?', 'yn', 'n', true) === 'n')
+            vfsDeleteFile(savefile_name(g.plname));
+        /* C topl.c:538-546 tty_yn_function clean_up leaves the answered prompt
+         * on the topline (TOPLINE_NON_EMPTY); the first moveloop frame still
+         * shows it until rhack's clear_nhwindow(WIN_MESSAGE). */
+        keptPrompt = 'Do you want to keep the save file? [yn] (n)';
+    }
     /* C allmain.c:57-68.  change_luck() is RNG-free but Luck is RNG-VISIBLE
      * through rnl(); see the same note on the new-game copy. */
     const phase = phase_of_the_moon();
@@ -355,15 +390,26 @@ export async function restore_preamble() {
         else
             g._pending_message = msgs[i];
     }
-    /* C allmain.c:86-89, the `if (resuming)` arm — read_engr_at(u.ux, u.uy)
-     * and fix_shop_damage().  NOT MODELLED, and precisely: the engraving STATE
-     * exists (js/mklev.js `_engr_map`, with make_engr_at/del_engr_at writers
-     * and an engr_at(x, y) lookup, all of which this restore round-trips via
-     * save_engravings/rest_engravings); what has no port is read_engr_at()
-     * itself, engrave.c:520, the reader that turns an engraving into a
-     * "Something is written here in the dust." message.  js/look.js:271 is the
-     * other call site and carries the same gap.  fix_shop_damage() has no
-     * shop-damage model to repair.  Both are message-only on this path.
+    if (keptPrompt && !msgs.length)
+        g._pending_message = keptPrompt;
+    /* C allmain.c:86-89: read_engr_at(u.ux, u.uy) after the welcome-back
+     * message.  The welcome is still parked in _pending_message; when an
+     * engraving is going to print, page it first so the read follows it. */
+    {
+        const { read_engr_at } = await import('./look.js');
+        const { engr_at } = await import('./mklev.js');
+        const ep = engr_at(g.u.ux, g.u.uy);
+        if (ep && ep.text) {
+            if (g._pending_message) {
+                const pm = g._pending_message;
+                g._pending_message = '';
+                await pline_with_more(pm, g.u?.uac ?? 0);
+            }
+            await read_engr_at(g.u.ux, g.u.uy);
+        }
+    }
+    /* C allmain.c:86-89, the `if (resuming)` arm — read_engr_at is above;
+     * fix_shop_damage() has no shop-damage model to repair (message-only).
      * C allmain.c:91-96 encumber_msg() / defer_see_monsters -> see_monsters()
      * are covered by the see_monsters() in dorecover() above. */
     /* C allmain.c:98-99 */

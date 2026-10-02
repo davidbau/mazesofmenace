@@ -38,7 +38,7 @@ const PM_TENGU_DISP = 55;
  * js/makemon_pmnames.json[330] = "long worm tail" and cross-checked against
  * js/pm.generated.js:333 PM_LONG_WORM_TAIL = 330. */
 const PM_LONG_WORM_TAIL_DISP = 330;
-import { engr_at } from './mklev.js';
+import { engr_at, engravings_list } from './mklev.js';
 import { acurr } from './attrib.js';
 import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA } from './const.js';
 import { t_at } from './trap.js';
@@ -1803,6 +1803,11 @@ export function newsym(x, y) {
         return;
     if (cansee(x, y)) {
         loc.waslit = (loc.lit != 0) ? 1 : 0;
+        {
+            const ep = engr_at(x, y);
+            if (ep !== null && ep !== undefined)
+                ep.erevealed = 1;
+        }
         /* C ref: display.c:952 and :993-998 — the region branch, which this
          * newsym() did not have at all:
          *     NhRegion *reg = visible_region_at(x, y);
@@ -2567,6 +2572,15 @@ export function time_botl_run_ended() {
     if (ENV.FF_RUN_TRACE === '1')
         pushRngLogEntry(`^time_botl_run_ended[moves=${g.moves|0} run=${g.context?.run|0} multi=${g.multi|0} timeBotl=${g.disp?.time_botl|0}]`);
 }
+function _snap_key_stamp() {
+    const g = game;
+    return { nk: g._ff_last_input_frame ?? -1, mk: g._snapMoreKeys | 0 };
+}
+function _snap_is_stale(snap) {
+    const g = game;
+    if (!snap || snap.nk == null) return false;
+    return ((g._ff_last_input_frame ?? -1) - snap.nk) > ((g._snapMoreKeys | 0) - snap.mk);
+}
 function _maybe_snapshot_painted_screen() {
     const g = game;
     if (!g) return;
@@ -2611,7 +2625,7 @@ function _maybe_snapshot_painted_screen() {
     // has that property; these two add to it rather than create it.
     if (!g._paintedSnapshot)
         g._paintedSnapshot = { cells: _capture_painted_cells(), moves: _painted_moves(),
-            botl: _capture_botl() };
+            botl: _capture_botl(), ..._snap_key_stamp() };
     // ── Per-PAGE painted frames (a multi-page movemon window) ────────────────
     // C ref: win/tty/topl.c update_topl() — EVERY pline that does not fit the
     // remaining topline calls more() AT THAT INSTANT, so a movemon window that
@@ -2735,6 +2749,7 @@ export function run_page_frame_tick() {
         cells: _capture_painted_cells(),
         moves: _painted_moves(((g.moves | 0) - 1) || 1),
         len,
+        ..._snap_key_stamp(),
     });
 }
 // Select the run-turn painted frame whose accumulated topline length first reaches
@@ -2745,6 +2760,7 @@ function _run_page_frame_select(committedEnd) {
     const g = game;
     const frames = g && g._runPageFrames;
     if (!frames || !frames.length) return null;
+    if (_snap_is_stale(frames[frames.length - 1])) return null;
     for (const f of frames) {
         if (f.len >= committedEnd) return f;
     }
@@ -3325,9 +3341,18 @@ function money_cnt(otmp) {
     return 0;
 }
 function _statusLine2() {
+    const p = _statusLine2Parts();
+    if (p === null)
+        return '';
+    return fit_status_line_width(`${p.desc} ${p.mid}${p.time}${p.hunger}${p.conds}`);
+}
+/* C wintty.c:4277-4298 — the 3-row layout (iflags.wc2_statuslines == 3) moves
+ * Align to row 2 and puts Leveldesc + Time + Conditions on row 3, so the pieces
+ * of the 2-row bottom line are kept apart. */
+function _statusLine2Parts() {
     const u = game.u;
     if (!u)
-        return '';
+        return null;
     // C ref: botl.c:bot2() — gold via money_cnt(gi.invent); Xp: always shows level;
     //   /exp shown only when showexp set; T: (turn count) shown only when time set.
     const _staleGold = game._botlGoldStale;
@@ -3382,7 +3407,8 @@ function _statusLine2() {
     const _uac = (_bs && _bs.uac != null) ? _bs.uac : (u.uac ?? 10);
     const _xpLevel = ((_bs && _bs.ulevel != null) ? _bs.ulevel : u.ulevel) || 1;
     const _goldch = oclass_sym(COIN_CLASS_DISP) ?? '$';
-    let s = `${_leveldescField} ${_goldch}:${gold} HP:${_hp}(${_hpmax}) Pw:${_pw}(${_pwmax}) AC:${_uac}`;
+    let s = `${_goldch}:${gold} HP:${_hp}(${_hpmax}) Pw:${_pw}(${_pwmax}) AC:${_uac}`;
+    let _timeStr = '';
     if (Upolyd) {
         s += ` HD:${_mon_mlevel(((_p2s ? _p2s.umonnum : u.umonnum) | 0))}`;
     } else if (game.flags?.showexp) {
@@ -3409,7 +3435,7 @@ function _statusLine2() {
             displayMoves = game._movemonMsgTurn;
         else
             displayMoves = (_painted_moves() || game.moves || 1);
-        s += ` T:${displayMoves || 1}`;
+        _timeStr = ` T:${displayMoves || 1}`;
     }
     /* C botl.c:186-187 — hunger status: if (u.uhs != NOT_HUNGRY) append " <hu_stat[uhs]>".
      * hu_stat[] (eat.c:70) carries trailing spaces; the tty trims trailing blanks
@@ -3447,7 +3473,7 @@ function _statusLine2() {
      * status repaint.  That specific page is post-update in C; don't let the
      * pre-message snapshot hide the new Deaf condition. */
     const _faintingPage = _faintTop.includes('You faint from lack of food.');
-    s += botl_status_suffix(_uhs, _cap, _p2s ? !!_p2s.blinded : undefined,
+    const _suffix = botl_status_suffix(_uhs, _cap, _p2s ? !!_p2s.blinded : undefined,
                             (!_faintingPage && _p2s && _p2s.deaf !== undefined)
                                 ? !!_p2s.deaf : undefined,
                             (_p2s && _p2s.stunned !== undefined) ? !!_p2s.stunned : undefined,
@@ -3455,7 +3481,33 @@ function _statusLine2() {
                                 ? !!_p2s.hallucinating : undefined,
                             (_p2s && _p2s.confused !== undefined)
                                 ? !!_p2s.confused : undefined);
-    return fit_status_line_width(s);
+    const _m = /^((?: (?:Satiated|Hungry|Weak|Fainting|Fainted|Starved))?(?: (?:Burdened|Stressed|Strained|Overtaxed|Overloaded))?)(.*)$/.exec(_suffix);
+    return { desc: _leveldescField, mid: s, time: _timeStr, hunger: _m[1], conds: _m[2] };
+}
+/* C wintty.c:4289-4298 threelineorder: row 1 Title+attrs, row 2 Align Gold HP Pw
+ * AC Xp Hunger Cap, row 3 Leveldesc Time Conditions. */
+export function _statusRows3() {
+    const p = _statusLine2Parts();
+    const l1 = _statusLine1();
+    if (p === null)
+        return ['', '', ''];
+    const ai = l1.lastIndexOf(' ');
+    const align = l1.slice(ai + 1);
+    const row1 = l1.slice(0, ai).replace(/\x1b\[(\d+)C/g, (m, n) => ' '.repeat(+n));
+    return [row1, `${align} ${p.mid}${p.hunger}`, `${p.desc}${p.time}${p.conds}`];
+}
+export function _threeStatusLines() {
+    /* C options.c optfn_statuslines sets iflags.wc2_statuslines; js/options.js
+     * does not parse it yet (out-of-file), so until it does fall back to the
+     * last OPTIONS statuslines:N of the startup rc, which is what C read. */
+    const f = game?.iflags?.wc2_statuslines;
+    if (f)
+        return (f | 0) === 3;
+    if (game._statuslines_rc === undefined) {
+        const m = [...String(game._nethackrc || '').matchAll(/statuslines\s*:\s*(\d)/g)].pop();
+        game._statuslines_rc = m ? (+m[1] === 3) : false;
+    }
+    return game._statuslines_rc;
 }
 export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen,
                                    halluFrozen, confFrozen) {
@@ -3766,7 +3818,9 @@ function _buildScreenOutput() {
      * getpos()'s exitgetpos when C's msg_given is FALSE (getpos.c:1156). */
     output += _toplStr(game._pending_message || game._topl_sticky || '') + '\n';
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
-    for (let y = 0; y < ROWNO; y++) {
+    /* wintty.c:3814 — with 3 status rows the map window loses its last row. */
+    const _rows3 = _threeStatusLines();
+    for (let y = 0; y < (_rows3 ? ROWNO - 1 : ROWNO); y++) {
         output += render_map_row(y) + '\n';
     }
     // Row 22-23: status
@@ -3790,8 +3844,12 @@ function _buildScreenOutput() {
         _status1 = _statusLine1();
         _status2 = _statusLine2();
     }
+    let _status3 = '';
+    if (_rows3 && !_promptStatusRows && !game._status_blanked && !_tutorialStatusOverride)
+        [_status1, _status2, _status3] = _statusRows3();
     output += _status1 + '\n';
     output += _status2;
+    if (_rows3) output += '\n' + _status3;
     game._screen_output = output;
     // Also write to grid for serialize_terminal_grid
     if (display.grid) {
@@ -3801,7 +3859,7 @@ function _buildScreenOutput() {
         for (let c = 0; c < Math.min(msg.length, display.cols); c++)
             display.setCell(c, 0, msg[c], NO_COLOR, 0);
         // Map — write characters to grid (DEC → Unicode for browser display)
-        for (let y = 0; y < ROWNO; y++) {
+        for (let y = 0; y < (_rows3 ? ROWNO - 1 : ROWNO); y++) {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
                 if (!loc?.disp_ch || loc.disp_ch === ' ')
@@ -3811,12 +3869,15 @@ function _buildScreenOutput() {
             }
         }
         // Status lines
+        const _r0 = _rows3 ? 21 : 22;
         const s1 = _status1.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m => m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
         for (let c = 0; c < Math.min(s1.length, display.cols); c++)
-            display.setCell(c, 22, s1[c], NO_COLOR, 0);
+            display.setCell(c, _r0, s1[c], NO_COLOR, 0);
         const s2 = _status2;
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
-            display.setCell(c, 23, s2[c], NO_COLOR, 0);
+            display.setCell(c, _r0 + 1, s2[c], NO_COLOR, 0);
+        for (let c = 0; _rows3 && c < Math.min(_status3.length, display.cols); c++)
+            display.setCell(c, 23, _status3[c], NO_COLOR, 0);
         // Cursor at hero
         if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
@@ -4693,6 +4754,8 @@ async function _topl_more(committed, dismissMore) {
     // movemon turn for these pages; fresh-screen (non-paging) renders keep using
     // the head-ahead game.moves.  DISPLAY-ONLY: no RNG.
     const _wasInMovemonMore = game._inMovemonMore;
+    if (_snap_is_stale(game._paintedSnapshot))
+        game._paintedSnapshot = null;
     if (game._movemonMsgTurn != null || game._paintedSnapshot) {
         game._inMovemonMore = true;
     }
@@ -4740,6 +4803,7 @@ async function _topl_more(committed, dismissMore) {
         pushRngLogEntry(`^topl_more_enter[committed=${encodeURIComponent(String(committed).slice(0,80))} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} urgent=${game._topl_urgent_next?1:0} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,80))}]`);
     while (true) {
         const key = await nhgetch();
+        game._snapMoreKeys = (game._snapMoreKeys | 0) + 1;
         if (ENV.FF_MLTRACE === '1')
             pushRngLogEntry(`^topl_more_key[key=${key == null ? 'null' : (key | 0)} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} urgent=${game._topl_urgent_next?1:0} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,80))}]`);
         if (key === 10 /* \n */ || key === 13 /* \r */) {
@@ -4913,6 +4977,7 @@ export async function force_more(committed, dismissMore) {
 export async function await_more_dismiss(rerender, toplMore) {
     for (;;) {
         const raw = await nhgetch();
+        game._snapMoreKeys = (game._snapMoreKeys | 0) + 1;
         const c = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         if (c === 32 /* space */ || c === 10 /* \n */ ||
             c === 13 /* \r */ || c === 27 /* ESC */) {
@@ -6632,6 +6697,12 @@ export function glyph_is_normal_generic_obj(glyph) {
  * PCHAR2).  Same glyph the newsym/_map_location engraving branches above build. */
 export function map_engraving(ep, show) {
     if (!ep) return;
+    /* The coordinate-keyed engraving store (mklev.js engr_at) hands back a
+     * record without C's struct fields engr_x/engr_y; engravings_list() tags
+     * every live record with them.  Callers such as read.js show_map_spot
+     * (detect.c:1410) pass engr_at()'s result straight in, and without the
+     * tag the glyph was silently never mapped. */
+    if (ep.engr_x === undefined) engravings_list();
     const x = ep.engr_x, y = ep.engr_y;
     const loc = game.level?.at(x, y);
     if (!loc) return;

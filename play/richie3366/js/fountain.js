@@ -48,7 +48,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
-    pline, newsym, You_feel, You_see, flush_topl_more, canspotmon, verbalize,
+    pline, newsym, You, You_feel, You_see, flush_topl_more, canspotmon, verbalize,
     glyph_is_invisible, tmp_at,
 } from './display.js';
 import {
@@ -95,7 +95,7 @@ import { m_at, angry_guards, minliquid } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at, make_grave } from './engrave.js';
-import { monstseesu, monstunseesu } from './mondata.js';
+import { monstseesu, monstunseesu, mhis, mhe } from './mondata.js';
 import { observe_object, enlightenment, update_inventory, useup } from './invent.js';
 import {
     hliquid, hcolor, x_monnam, Hallucination, rndmonnam, oname,
@@ -575,7 +575,9 @@ async function dowatersnakes() {
 }
 
 /**
- * C ref: fountain.c dowaterdemon — makemon water demon; maybe wish / mintrap.
+ * C ref: fountain.c dowaterdemon `:64–90` — makemon water demon; maybe wish / mintrap.
+ * mhis/mhe are the live mondata.js exports (C you.h `:322–324`); the
+ * unleash line is the live display.js You (C pline.c You), not pline+prefix.
  */
 async function dowaterdemon() {
     const u = game.u || {};
@@ -585,7 +587,7 @@ async function dowaterdemon() {
         if (mtmp) {
             const Blind = !!(u.Blind || u.ublind);
             if (!Blind) {
-                await pline(`You unleash ${a_monnam(mtmp)}!`);
+                await You(`unleash ${a_monnam(mtmp)}!`);
             } else {
                 await You_feel('the presence of evil.');
             }

@@ -17,7 +17,7 @@ import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
 import { clear_bypasses } from './trap.js';
-import { rhack, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output } from './cmd.js';
+import { rhack, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
 import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
@@ -107,7 +107,7 @@ import { inv_weight, encumber_msg_sync } from './weight.js';
 import { doname, makeplural } from './objnam.js';
 import { is_ice } from './engrave.js';
 import { wake_nearto } from './mklev.js';
-import { which_armor } from './makemon.js';
+import { which_armor, onscary } from './makemon.js';
 import { ENV } from './hostenv.js';
 
 // ── calendar.c port (subset): getnow/getlt/phase_of_the_moon/friday_13th ──
@@ -1984,7 +1984,7 @@ export function monster_nearby() {
             const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
             // C: skip mimicked furniture/objects (M_AP_FURNITURE/OBJECT).
             const apType = mtmp.m_ap_type | 0;
-            if (apType === 2 /* M_AP_FURNITURE */ || apType === 3 /* M_AP_OBJECT */)
+            if (apType === 1 /* M_AP_FURNITURE */ || apType === 2 /* M_AP_OBJECT */)
                 continue;
             // C: hostile-and-can-attack (or hallucinating).  noattacks_mndx is
             // the mndx-keyed form of noattacks(mtmp->data).
@@ -1996,6 +1996,10 @@ export function monster_nearby() {
             // C: not helpless (asleep/frozen).  Our roster tracks mcanmove.
             if (mtmp.mcanmove === false || (mtmp.mfrozen | 0) > 0
                 || (mtmp.msleeping | 0))
+                continue;
+            // C hack.c:4123: !onscary(u.ux, u.uy, mtmp) — a monster scared by
+            // the hero's square (Elbereth, scare monster) does not interrupt.
+            if (onscary(ux, uy, mtmp))
                 continue;
             // C: canspotmon — hero can see or sense it.
             if (!canspotmon(mtmp))
@@ -2544,8 +2548,14 @@ async function moveloop_core_faithful() {
                 g._resultMessage = g._pending_message;
                 const _j = _topl_joins_snapshot(g._resultMessage) || [];
                 g._resultMessageJoins = { src: g._resultMessage, joins: _j.slice() };
-            } else if ((!_preRhackMsg || g._attackPublished)
+            } else if ((!_preRhackMsg || g._attackPublished
+                        || !String(g._pending_message || '').startsWith(_preRhackMsg))
                 && g._pending_message && !g._resultMessage) {
+                /* A pre-existing line that an input read (getdir's nhgetch,
+                 * input.js) cleared during this rhack is no longer on the
+                 * channel; whatever is pending now was produced by the command
+                 * ("The door resists!", lock.c:918).  A leftover that was NOT
+                 * cleared stays as the prefix of the pending text. */
                 g._resultMessage = g._pending_message;
             }
             g._pending_message = '';
@@ -2619,13 +2629,28 @@ async function moveloop_core_faithful() {
             g.context = g.context || {};
             g.context.move = 0;
         } else {
+        let digInterrupted = false;
         while (g.occupation === dig && digGuard++ < 4096) {
             // C allmain.c:243-446 — a full new per-turn world block for this
             // occupation turn (movemon + HEAD; svm.moves++ inside).
             await faithful_moveloop_turn();
+            // The world block's own stop_occupation() (distfleeck/dochugw,
+            // then false, dig() does not run, and no further world block follows
+            // (rhack reads the next key).
+            if (g.occupation !== dig) {
+                digInterrupted = true;
+                break;
+            }
             // C allmain.c:556 — (*go.occupation)() == dig(); 0 ends the occupation.
             const r = await dig();
             if (r === 0) g.occupation = null;
+            // C allmain.c:504-507 — monster_nearby() → stop_occupation() +
+            // reset_eat(); the return leaves context.move 1, so the next
+            // moveloop_core runs one more world block (the post-occupation turn).
+            if (g.occupation === dig && monster_nearby()) {
+                await stop_occupation();
+                reset_eat();
+            }
         }
         // C ref: win/tty/topl.c — the dig occupation's terminating message
         // topline as the occupation's begin-message ("You start digging
@@ -2660,7 +2685,7 @@ async function moveloop_core_faithful() {
         // turn; the next key is the next command).  Skip the extra turn here, else
         // JS runs one turn too many and the hero's subsequent moves lag C by one
         // post-occupation turn (its breaking turn ran movemon-then-dig).
-        if (!_digHorizontal) {
+        if (!_digHorizontal && !digInterrupted) {
             await faithful_moveloop_turn();
         }
         // The post-occupation turn's movemon plines (if any) share the dig topline
@@ -2970,6 +2995,53 @@ async function moveloop_core_faithful() {
         g.context = g.context || {};
         g.context.move = 0;
     }
+    // ===================== go.occupation DRIVER — SET_TRAP (apply.c:2908) =========
+    // C ref: allmain.c:484-507 with apply.c:2908 set_trap().  use_trap armed
+    // go.occupation = set_trap ("You begin setting your land mine.") and doapply
+    // returned ECMD_TIME; each later action is one moveloop_core invocation: the
+    // head world block (if context.move), then (*go.occupation)(), 0 ends it
+    // ("You finish arming the land mine." plined inside the callback), else the
+    // monster_nearby() interrupt (allmain.c:504-507).  set_trap is private to
+    // cmd.js, so the occupation is recognised by its function name rather than
+    // imported (an export would be an out-of-file edit).  Modelled on the picklock
+    if (typeof g.occupation === 'function' && g.occupation.name === 'set_trap'
+        && (g.multi | 0) >= 0) {
+        const setTrapFn = g.occupation;
+        let trapGuard = 0;
+        let trapInterrupted = false;
+        while (g.occupation === setTrapFn && trapGuard++ < 4096) {
+            // C allmain.c:209 — the head world block of THIS moveloop_core.
+            if (g.context && g.context.move) await faithful_moveloop_turn();
+            g.context = g.context || {};
+            g.context.move = 1; // allmain.c:483
+            // A stop_occupation() inside the world block clears the occupation:
+            // C falls through to rhack with no callback and no further block.
+            if (g.occupation !== setTrapFn || (g.multi | 0) < 0) {
+                trapInterrupted = true;
+                break;
+            }
+            // C allmain.c:493 — (*go.occupation)() == set_trap(); 0 ends it.
+            const r = await setTrapFn();
+            g.context.move = 1; // the callback's return is not an ECMD_* code
+            if (r === 0) g.occupation = null;
+            // allmain.c:504-507 — monster_nearby() interrupt.
+            if (g.occupation === setTrapFn && monster_nearby()) {
+                await stop_occupation();
+                trapInterrupted = false;
+            }
+        }
+        // allmain.c:209 — context.move still 1: ONE more post-occupation world
+        // block runs before rhack reads the next key (picklock/dig pattern).
+        if (!trapInterrupted) await faithful_moveloop_turn();
+        if (g.vision_full_recalc) {
+            vision_recalc(0);
+            g.vision_full_recalc = 0;
+        }
+        await moveloop_status_paint(); // C allmain.c:474
+        await flush_screen(1);
+        g.context = g.context || {};
+        g.context.move = 0;
+    }
     // ===================== go.occupation DRIVER — FORCELOCK (faithful) ============
     // C ref: allmain.c:543-558 — rhack just dispatched '#force' → doforce, which
     // (on the ynq 'y' answer) plined "You start bashing it with <weapon>." and set
@@ -3125,6 +3197,62 @@ async function moveloop_core_faithful() {
         }
         await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
         await flush_screen(1);
+        g.context = g.context || {};
+        g.context.move = 0;
+    }
+    // ===================== go.occupation DRIVER — TAKE_OFF ('A') =================
+    // C ref: allmain.c:484-507 with do_wear.c:2900 take_off().  doddoremarm ran the
+    // first take_off() and armed go.occupation = take_off; every later removal is
+    // one moveloop_core invocation: world block, then (*go.occupation)(), 0 ends it,
+    // else the monster_nearby() interrupt (allmain.c:504-507).
+    if (g.occupation === take_off_occ && (g.multi | 0) >= 0) {
+        let takeoffGuard = 0;
+        let toInterrupted = false;
+        while (g.occupation === take_off_occ && takeoffGuard++ < 4096) {
+            // doddoremarm returns ECMD_OK (context.move 0): C's first invocation
+            // runs the callback with NO world block (do_wear.c:3053).
+            if (takeoffGuard > 1 || (g.context && g.context.move))
+                await faithful_moveloop_turn();
+            // A stop_occupation() inside the world block (hitmu etc.) clears the
+            // occupation; C then falls through to rhack with no further turn.
+            if (g.occupation !== take_off_occ) { toInterrupted = true; break; }
+            // C allmain.c:453-474 — the once-per-invocation tail: find_ac() (the
+            // ONLY place the AC of a just-removed piece lands), vision, botl.
+            find_ac();
+            faithful_input_redraw();
+            if (g.vision_full_recalc) {
+                vision_recalc(0);
+                g.vision_full_recalc = 0;
+            }
+            await moveloop_status_paint(); // C allmain.c:474
+            g.context = g.context || {};
+            g.context.move = 1; // allmain.c:483
+            await flush_screen(1);
+            const r = await take_off_occ();
+            g.context.move = 1; // callback's ECMD_* return is discarded
+            if (r === 0)
+                g.occupation = null;
+            // allmain.c:504-507 — unconditional, not only when the callback continues.
+            if (monster_nearby()) {
+                await stop_occupation();
+                reset_eat();
+            }
+            if (g.vision_full_recalc) {
+                vision_recalc(0);
+                g.vision_full_recalc = 0;
+            }
+        }
+        // C re-enters moveloop_core once more with context.move still 1 before
+        // rhack reads a key (the wipeoff/learn shape).
+        if (!toInterrupted) {
+            await faithful_moveloop_turn();
+            if (g.vision_full_recalc) {
+                vision_recalc(0);
+                g.vision_full_recalc = 0;
+            }
+            await moveloop_status_paint();
+            await flush_screen(1);
+        }
         g.context = g.context || {};
         g.context.move = 0;
     }

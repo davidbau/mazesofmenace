@@ -2776,7 +2776,11 @@ async function _hmon_hitmon_pet(hmd, mon) {
 
 /* uhitm.c:1638 hmon_hitmon_msg_hit — message only, no RNG / no state-diff */
 function _hmon_hitmon_msg_hit(hmd, mon, obj) {
-    if (!hmd.hittxt && !hmd.destroyed) {
+    /* C uhitm.c:1640-1642: the killing missile of a multishot volley still
+     * gets its 'The 1st <missile> hits <mon>.' line. */
+    const _ms = game.gm?.m_shot || {};
+    if (!hmd.hittxt && (!hmd.destroyed
+            || (hmd.thrown && (_ms.n | 0) > 1 && obj && (_ms.o | 0) === (obj.otyp | 0)))) {
         if (hmd.thrown)
             hit(mshot_xname(obj), mon, exclam(hmd.dmg));
     }

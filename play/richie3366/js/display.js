@@ -4930,7 +4930,9 @@ function canseeself() {
     const u = game.u || {};
     return !!(hero_Blind() || u.uswallow || (!hero_Invisible() && !u.uundetected));
 }
-function senseself() {
+/* Exported for pager.c self_lookat `:118` (Invis && (senseself() || !Blind));
+ * the u.senseself flat is never written, so readers must call this. */
+export function senseself() {
     const u = game.u || {};
     // Unblind_telepat = ETelepat; Detect_monsters = H|E
     return !!(u.ETelepat || u.Unblind_telepat || Detect_monsters());

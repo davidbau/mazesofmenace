@@ -129,7 +129,7 @@ import {
 import { findgold, stealarm, unstolenarm } from './steal.js';
 import { flooreffects } from './do.js';
 import { end_burn } from './timeout.js';
-import { obj_resists } from './dogmove.js';
+import { obj_resists, finish_meating } from './dogmove.js';
 import { munslime, mon_adjust_speed, munstone } from './muse.js';
 import { Monnam, mon_nam, mon_nam_too, Adjmonnam, Amonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, Mgender, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam, noit_mon_nam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames, doname } from './objnam.js';
@@ -2213,7 +2213,10 @@ function mhis_disp(mtmp) {
  * update_monster_region both after both place_monster and the
  * defender's worm tail (mhitm.c:251–257, D-1174). Not rloc_to
  * (that updates the relocating mon before tail, D-1161).
- * dogmove caller / should_displace / dbridge still named.
+ * Live exports throughout (D-3248): finish_meating, mhis, pline_mon,
+ * deadmonster, You(brief_feeling). Callers wired: dogmove.c:1176 →
+ * dogmove.js:1493, monmove.c:2030 → monmove.js:2338, gate
+ * monmove.c:1945–1946 → monmove.js:2240 should_displace call. dbridge named.
  */
 export async function mdisplacem(magr, mdef, quietly) {
     if (!magr || !mdef || magr === mdef) return M_ATTK_MISS;
@@ -2237,8 +2240,9 @@ export async function mdisplacem(magr, mdef, quietly) {
     }
     mdef.msleeping = 0;
     mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITMASK;
-    // C finish_meating — dogmove.js export would cycle; mimic AP named there
-    mdef.meating = 0;
+    // C dogmove.c:1450–1455 — meating=0 + mimic-AP reset (live export;
+    // the mhitm↔dogmove edge pre-exists, D-3248).
+    finish_meating(mdef);
 
     const vis = !!(canspotmon(magr) && canspotmon(mdef));
 
@@ -2250,18 +2254,21 @@ export async function mdisplacem(magr, mdef, quietly) {
             }
             if (!quietly && canspotmon(magr)) {
                 if (vis) {
-                    const whose = is_rider(pa) ? 'the' : mhis_disp(magr);
+                    const whose = is_rider(pa) ? 'the' : mhis(magr);
                     await pline(
                         `${Monnam(magr)} tries to move ${mon_nam(mdef)} out of ${whose} way.`,
                     );
                 }
-                await pline(`${Monnam(magr)} turns to stone!`);
+                await pline_mon(magr, '%s turns to stone!', Monnam(magr));
             }
             await monstone(magr);
-            if ((magr.mhp | 0) > 0) return M_ATTK_HIT;
-            if (magr.mtame && !vis) {
-                await pline(
-                    'You have a peculiarly sad feeling for a moment, then it passes.',
+            if (!deadmonster(magr)) {
+                return M_ATTK_HIT; /* lifesaved */
+            } else if (magr.mtame && !vis) {
+                /* mhitm.c:9 brief_feeling */
+                await You(
+                    'have a %s feeling for a moment, then it passes.',
+                    'peculiarly sad',
                 );
             }
             return M_ATTK_AGR_DIED;
@@ -2290,7 +2297,7 @@ export async function mdisplacem(magr, mdef, quietly) {
     update_monster_region(mdef);
 
     if (vis && !quietly) {
-        const whose = is_rider(pa) ? 'the' : mhis_disp(magr);
+        const whose = is_rider(pa) ? 'the' : mhis(magr);
         await pline(
             `${Monnam(magr)} moves ${mon_nam(mdef)} out of ${whose} way!`,
         );
@@ -6182,7 +6189,7 @@ async function mswingsm(magr, mdef, otemp) {
         && dist2(magr.mx, magr.my, mdef.mx, mdef.my) <= 2);
     await pline(
         `${Monnam(magr)} ${mswings_verb(otemp, bash)} `
-        + `${((otemp.quan | 0) > 1) ? 'one of ' : ''}${mhis(magr)}${xname(otemp)} `
+        + `${((otemp.quan | 0) > 1) ? 'one of ' : ''}${mhis(magr)} ${xname(otemp)} `
         + `at ${mon_nam(mdef)}.`,
     );
 }

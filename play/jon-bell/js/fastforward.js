@@ -386,6 +386,7 @@ export async function ff_movemon_one_pass() {
             }
             continue;
         }
+        if ((m.mstate | 0) !== 0) continue;
         if ((m.mhp | 0) <= 0)
             continue; /* C mon.c:1223 DEADMONSTER(mtmp) — no RNG (also skips a
                        * monster killed earlier in this same pass) */

@@ -110,9 +110,8 @@ export async function nhgetch() {
             if (!game._msg_history)
                 game._msg_history = [];
             const h = game._msg_history;
-            // C ref: topl.c — an exact repeat of the most recent line is not re-stored.
-            if (h.length === 0 || h[h.length - 1] !== text)
-                h.push(text);
+            // C ref: topl.c:170-191 remember_topl — exact repeats are kept.
+            h.push(text);
         }
     }
     game._topl_history_recall = null;

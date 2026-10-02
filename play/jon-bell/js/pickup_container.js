@@ -450,7 +450,7 @@ function _loot_classify(obj) {
     /* C invent.c:170-171 — the dknown side effect; Blind is not tracked on
      * this path (a blind hero cannot read a container menu's item names
      * either, so the gap is self-cancelling here). */
-    observe_object(obj);
+    if (!Blind()) observe_object(obj);   /* C invent.c:170-171 */
     /* C invent.c:174-181 — class order.  flags.sortpack is On by default
      * (optlist.h:687 opt_out/On), so the table is flags.inv_order. */
     const k = _QC_INV_ORDER.indexOf(obj.oclass | 0);

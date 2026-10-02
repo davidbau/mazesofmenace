@@ -13,21 +13,27 @@
 // engraving and the post-setup world turn run in the occupation driver in
 // allmain.js (modelled on the dig/learn drivers).  C ref: allmain.c:543-558.
 
+import { check_unpaid_usage } from './shk.js';
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
+import { goodpos } from './trap.js';
 import { nhgetch } from './input.js';
 import { pline, flush_screen, newsym } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { getlin } from './wizcmds.js';
+import { zappable, zapnodir, learnwand, make_blinded } from './zap.js';
+import { resists_blnd } from './mhitm.js';
 import { yn_function } from './end.js';
 import { getObjFromGetobj, welded, body_part, surface as surface_real, ceiling,
          Yname2, is_blade, is_art } from './cmd.js';
 import { bimanual, is_boots } from './do_wear.js';
-import { Yobjnam2, doname } from './objnam.js';
+import { Yobjnam2, doname, xname, Tobjnam, otense } from './objnam.js';
+import { useup } from './cmd.js';
 import { GETOBJ_PROMPT, HAND } from './const.js';
 import { exercise } from './attrib.js';
+import { more_experienced } from './exper.js';
 import { can_reach_floor as can_reach_floor_real } from './hold_another_object.js';
-import { make_engr_at, del_engr_at, engr_at } from './mklev.js';
+import { make_engr_at, del_engr_at, engr_at, random_engraving } from './mklev.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
          ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE,
          DRAWBRIDGE_UP, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC } from './const.js';
@@ -182,6 +188,132 @@ function compactify(lets) {
 }
 
 
+const GRAVE_TYP = 31; /* const.js GRAVE */
+
+async function The_xname(obj) {
+    const x = await xname(obj);
+    return 'The ' + x;
+}
+
+/* C engrave.c:583 doengrave_sfx_item_WAN — special effects for wands.
+ * Not ported: WAN_POLYMORPH's random_engraving/blengr rewrite, doknown's
+ * learnwand(), and the lightning blindness (doblind) — no JS bodies here. */
+function wandNameKnown(o) {
+    return !!game._oc_name_known?.[o.otyp | 0];
+}
+
+/* C engrave.c:1663-1677 rloc_engr — the store is keyed by (x,y), so "move" is
+ * delete-at-old + recreate-at-new (mirrors js/zap.js _zap_rloc_engr). */
+function rloc_engr(ep, x, y) {
+    let tx, ty, tryct = 200;
+    do {
+        if (--tryct < 0)
+            return null;
+        tx = rn1(80 - 3, 2);
+        ty = rn2(21);
+    } while (engr_at(tx, ty) || !goodpos(tx, ty, null, 0));
+    del_engr_at(x, y);
+    make_engr_at(tx, ty, ep.text, ep.pristine, 0, ep.engr_type);
+    newsym(tx, ty);
+    return engr_at(tx, ty);
+}
+
+async function doengrave_sfx_item_WAN(de) {
+    const u = game.u || {};
+    const blind = uBlind(u);
+    const surf = surface_real(u.ux, u.uy);
+    switch (de.otmp.otyp) {
+    case 410: case 411: case 415: case 413: case 414: case 412:
+        await zapnodir(de.otmp);
+        break;
+    case 417:
+        de.post_engr_text = 'The wand unsuccessfully fights your attempt to write!';
+        break;
+    case 424: /* WAN_TELEPORTATION (engrave.c:675-682) */
+        if (de.oep && de.oep.engr_type !== HEADSTONE) {
+            if (!blind) await pline(`The engraving on the ${surf} vanishes!`);
+            de.teleengr = true;
+        }
+        break;
+    case 422: /* WAN_POLYMORPH (engrave.c:618-634) */
+        if (de.oep) {
+            if (!blind) {
+                de.type = 0; /* random */
+                const re = random_engraving();
+                de.buf = re.text;
+                de.ebuf = re.pristine;
+            }
+            /* blind arm (blengr/xcrypt) not ported */
+            de.dengr = true;
+        }
+        break;
+    case 419:
+        if (!blind) de.post_engr_text = `The bugs on the ${surf} slow down!`;
+        break;
+    case 420:
+        if (!blind) de.post_engr_text = `The bugs on the ${surf} speed up!`;
+        break;
+    case 429:
+        de.ptext = true;
+        if (!blind) de.post_engr_text = `The ${surf} is riddled by bullet holes!`;
+        break;
+    case 432: case 433:
+        if (!blind) de.post_engr_text = `The bugs on the ${surf} stop moving!`;
+        break;
+    case 431:
+        if (!blind) de.post_engr_text = 'A few ice cubes drop from the wand.';
+        if (!de.oep || de.oep.engr_type !== BURN) break;
+        /* FALLTHRU */
+    case 423: case 418:
+        if (de.oep && de.oep.engr_type !== HEADSTONE) {
+            if (!blind) await pline(`The engraving on the ${surf} vanishes!`);
+            de.dengr = true;
+        }
+        break;
+    case 428: /* WAN_DIGGING */
+        de.ptext = true;
+        de.type = ENGRAVE;
+        if (!wandNameKnown(de.otmp)) {
+            if (game.flags?.verbose !== false)
+                await pline(`This ${await xname(de.otmp)} is a wand of digging!`);
+            de.doknown = true;
+        }
+        de.post_engr_text = blind ? 'You feel tremors.'
+            : game.level?.locations?.[u.ux]?.[u.uy]?.typ === GRAVE_TYP
+                ? 'Chips fly out from the headstone.'
+            : de.frosted ? 'Ice chips fly up from the ice surface!'
+            : 'Gravel flies up from the floor.';
+        break;
+    case 430: /* WAN_FIRE */
+        de.ptext = true;
+        de.type = BURN;
+        if (!wandNameKnown(de.otmp)) {
+            if (game.flags?.verbose !== false)
+                await pline(`This ${await xname(de.otmp)} is a wand of fire!`);
+            de.doknown = true;
+        }
+        de.post_engr_text = blind ? 'You feel the wand heat up.' : 'Flames fly from the wand.';
+        break;
+    case 434: /* WAN_LIGHTNING */
+        de.ptext = true;
+        de.type = BURN;
+        if (!wandNameKnown(de.otmp)) {
+            if (game.flags?.verbose !== false)
+                await pline(`This ${await xname(de.otmp)} is a wand of lightning!`);
+            de.doknown = true;
+        }
+        if (!blind) {
+            de.post_engr_text = 'Lightning arcs from the wand.';
+            de.doblind = true;
+        } else {
+            de.post_engr_text = 'You hear crackling!';
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 /* doengrave — the 'E' command.  C ref: engrave.c:958.
  * Returns an ECMD_* code; sets g.occupation = 'engrave' when text is to be written.
  * The hero state struct `de` mirrors C's _doengrave_ctx. */
@@ -197,7 +329,7 @@ export async function doengrave() {
     const de = {
         dengr: false, doblind: false, doknown: false, eow: false, jello: false,
         ptext: true, teleengr: false, zapwand: false, disprefresh: false,
-        adding: false,
+        adding: false, post_engr_text: '',
         ret: ECMD_OK, type: DUST, oetype: 0,
         otmp: null, oep: engr_at(u.ux, u.uy),
         buf: '', ebuf: '', writer: '', everb: '', eloc: '',
@@ -229,7 +361,29 @@ export async function doengrave() {
     /* C engrave.c:doengrave_sfx_item. Fingers leave the type unchanged. */
     if (!de.otmp.hands) {
         const oc = de.otmp.oclass | 0;
-        if (oc === FOOD_CLASS || oc === SCROLL_CLASS || oc === SPBOOK_CLASS) {
+        if (oc === WAND_CLASS) {
+            /* C engrave.c:791-815.  zappable() spends the charge HERE, before
+             * the "You write in the dust with <wand>" message doname()s it. */
+            if (zappable(de.otmp)) {
+                /* C engrave.c:793 check_unpaid() = check_unpaid_usage(otmp, FALSE)
+                 * (shk.c:5739).  The cursed WAND_BACKFIRE_CHANCE wand_explode()
+                 * arm (engrave.c:794-798) is not ported: wand_explode has no JS body. */
+                check_unpaid_usage(de.otmp, false);
+                if (de.otmp.cursed && !rn2(100)) { /* WAND_BACKFIRE_CHANCE */
+                    de.ret = ECMD_TIME;
+                    return doengr_exit(de);
+                }
+                de.zapwand = true;
+                if (!can_reach_floor_real(true)) de.ptext = false;
+                await doengrave_sfx_item_WAN(de);
+            } else {
+                de.ptext = false;
+                if (can_reach_floor_real(true)) {
+                    if ((de.otmp.spe | 0) < 0) de.zapwand = true;
+                    else await pline('The wand is too worn out to engrave.');
+                }
+            }
+        } else if (oc === FOOD_CLASS || oc === SCROLL_CLASS || oc === SPBOOK_CLASS) {
             /* engrave.c:774-780 — "Objects too silly to engrave with":
              *     pline("%s would get %s.", Yname2(de->otmp),
              *           de->frosted ? "all frosty" : "too dirty");
@@ -257,11 +411,54 @@ export async function doengrave() {
             }
         }
     }
+    if (de.teleengr) {
+        const moved = rloc_engr(de.oep, u.ux, u.uy);
+        const o = moved || de.oep;
+        o.eread = 0;
+        o.erevealed = 0;
+        de.disprefresh = true;
+        de.oep = null;
+    }
+    if (de.dengr) {
+        del_engr_at(u.ux, u.uy);
+        de.oep = null;
+        de.disprefresh = true;
+    }
+    if (de.buf) {
+        make_engr_at(u.ux, u.uy, de.buf, de.ebuf, game.moves | 0, de.type);
+        const tmp_ep = engr_at(u.ux, u.uy);
+        if (!uBlind(u) && tmp_ep) {
+            await pline(`The engraving now reads: "${de.buf}".`);
+            tmp_ep.eread = 1;
+            tmp_ep.erevealed = 1;
+            de.disprefresh = true;
+        }
+        de.ptext = false;
+    }
+    /* C engrave.c:1087-1097 — a cancelled wand turns to dust. */
+    if (de.zapwand && (de.otmp.spe | 0) < 0) {
+        await pline(`${await The_xname(de.otmp)} ${uBlind(u) ? '' : 'glows violently, then '}turns to dust.`);
+        if (game.level?.locations?.[u.ux]?.[u.uy]?.typ !== GRAVE_TYP)
+            await pline('You are not going to get anywhere trying to write in the '
+                        + `${de.frosted ? 'frost' : 'dust'} with your dust.`);
+        await useup(de.otmp);
+        de.otmp = null;
+        de.ptext = false;
+    }
     if (!de.ptext) {
+        if (de.otmp && (de.otmp.oclass | 0) === WAND_CLASS
+            && !can_reach_floor_real(true))
+            await cant_reach_floor(u.ux, u.uy, false, true, true);
         de.ret = ECMD_TIME;
         return doengr_exit(de);
     }
 
+    /* C engrave.c:1053-1057 — identify stylus. */
+    if (de.doknown) {
+        learnwand(de.otmp);
+        if (game._oc_name_known?.[de.otmp.otyp | 0])
+            more_experienced(0, 10);
+    }
     if (de.oep) {
         /* C engrave.c:907-954 — decide whether to append, wipe, or
          * overwrite the existing engraving. */
@@ -339,6 +536,12 @@ export async function doengrave() {
 
     /* C engrave.c:1201-1212 — empty / ESC text → "Never mind." (no wand here). */
     if (len === 0 || de.ebuf.indexOf('\x1b') >= 0) {
+        if (de.zapwand) {
+            if (!uBlind(u))
+                await pline(`${await Tobjnam(de.otmp, 'glow')}, then ${otense(de.otmp, 'fade')}.`);
+            de.ret = ECMD_TIME;
+            return doengr_exit(de);
+        }
         await pline('Never mind.');
         return doengr_exit(de);
     }
@@ -399,8 +602,13 @@ export async function doengrave() {
     g.occtxt = 'engraving';
     g.occtime = 0;
 
-    /* C engrave.c:1248-1255 — post_engr_text / doblind: only set by wand/marker
-     * stylus effects, not the fingertip path. */
+    if (de.post_engr_text) await pline(de.post_engr_text);
+    /* C engrave.c:1248-1255 */
+    if (de.doblind && !resists_blnd(game.youmonst)) {
+        await pline('You are blinded by the flash!');
+        await make_blinded(rnd(50), false);
+        if (!uBlind(u)) await pline('Your vision quickly clears.');
+    }
 
     /* C engrave.c:1257 comment — engraving takes time via the occupation, so the
      * setup itself does NOT consume a turn (doengrave returns ECMD_OK). */
@@ -470,7 +678,18 @@ export function engrave() {
     /* C engrave.c:1477 — finished engraving. */
     if (!firsttime) {
         /* "You finish writing in the dust." — only when engraving took >1 action. */
-        const finishverb = is_ice(u.ux, u.uy) ? 'writing in the frost' : 'writing in the dust';
+        /* C engrave.c:1411-1432 */
+        const ice = is_ice(u.ux, u.uy);
+        let finishverb;
+        switch (eng.type) {
+        case DUST: finishverb = ice ? 'writing in the frost' : 'writing in the dust'; break;
+        case HEADSTONE: case ENGRAVE: finishverb = 'engraving'; break;
+        case BURN: finishverb = ice ? 'melting your message into the ice'
+                                    : 'burning your message into the floor'; break;
+        case MARK: finishverb = 'defacing the dungeon'; break;
+        case ENGR_BLOOD: finishverb = 'scrawling'; break;
+        default: finishverb = 'your weird engraving';
+        }
         void pline(`You finish ${finishverb}.`);
     }
     eng.text = '';

@@ -5,7 +5,8 @@
 import { stop_occupation } from './allmain.js';
 import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { game } from './gstate.js';
-import { PM_LEPRECHAUN } from './pm.generated.js';
+import { PM_LEPRECHAUN, PM_VROCK } from './pm.generated.js';
+import { bare_artifactname, xname } from './objnam.js';
 import { acurr } from './attrib.js';
 import { money_cnt } from './com_pager.js';
 import { dist2, isok } from './hacklib.js';
@@ -24,7 +25,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, _topl_record_join, pline, canseemon,
-         topl_force_break_now, You_hear, _pline_flush_frame_record } from './display.js';
+         topl_force_break_now, You_hear, _pline_flush_frame_record, Unaware } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -43,11 +44,11 @@ import { artifact_light } from './light.js';
  * cycle is fine, they are hoisted function declarations). */
 import { rloc, mnexto } from './teleport.js';
 import { RLOC_MSG, has_edog, SHOPBASE } from './const.js';
-import { can_track, resist_conflict, can_blow, y_monnam } from './mhitm.js';
+import { can_track, resist_conflict, can_blow, y_monnam, Adjmonnam } from './mhitm.js';
 import { see_wsegs, worm_nomove } from './worm.js';
 import { ranged_attk_available } from './mhitu.js';
 import { mon_wield_item, sticks } from './dog.js';
-import { mwelded, is_pole } from './cmd.js';
+import { mwelded, is_pole, is_mines_prize, is_soko_prize } from './cmd.js';
 import { is_pick, mdig_tunnel, mb_trapped } from './dig.js';
 import { fracture_rock } from './zap.js';
 /* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
@@ -64,10 +65,10 @@ import { OC_WEIGHT } from './oc_weight.generated.js';
  * move_special in priest.js).  This forms a call-time cycle monmove→shk→
  * priest→monmove; ES module live bindings resolve it because shk_move is only
  * referenced inside m_move's body (never at module-init time). */
-import { shk_move, in_rooms, inhishop, add_damage, after_shk_move } from './shk.js';
+import { shk_move, in_rooms, inhishop, add_damage, after_shk_move, costly_spot } from './shk.js';
 /* pri_move — same late-bound cycle as shk_move above (priest.js imports
  * _allow_rock_mv from this file); it is only ever called at runtime. */
-import { pri_move } from './priest.js';
+import { pri_move, in_your_sanctuary } from './priest.js';
 /* C ref: region.c — create_gas_cloud/visible_region_at/m_in_out_region are
  * region.c functions called from monmove.c:682-683, :702-704 and :2063. */
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
@@ -137,6 +138,51 @@ function _Invis_mv() {
     const BInvis = p?.blocked | 0;
     return !!((HInvis || EInvis) && !BInvis);
 }
+/* C ref: monmove.c:461-533 monflee, synchronous body for distfleeck (whose
+ * callers in js/dochug.js do not await).  js/makemon.js's async monflee is the
+ * same body; its only await is the u.ustuck release (monmove.c:473-474), which
+ * is a no-op stub there too (unstuck/expels in js/dog.js). */
+function monflee_sync(mtmp, fleetime, first, fleemsg) {
+    if ((mtmp.mhp | 0) < 1)
+        return;
+    if (!first || !mtmp.mflee) {
+        if (!fleetime) {
+            mtmp.mfleetim = 0;
+        } else if (!mtmp.mflee || mtmp.mfleetim) {
+            fleetime += (mtmp.mfleetim | 0);
+            if (fleetime === 1)
+                fleetime++;
+            mtmp.mfleetim = Math.min(fleetime, 127);
+        }
+        const apt = (mtmp.m_ap_type | 0) & M_AP_TYPMASK;
+        if (!mtmp.mflee && fleemsg && canseemon(mtmp) && apt !== 1 /* M_AP_FURNITURE */ && apt !== 2 /* M_AP_OBJECT */) {
+            if (!mtmp.mcanmove || !(mtmp.data ? mtmp.data.mmove | 0 : 0)) {
+                pline(`${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
+            } else if (flees_light(mtmp)) {
+                const u = game.u || {};
+                const p = u.uprops ? u.uprops[DEAF] : null;
+                const deaf = !!((p && ((p.intrinsic | 0) || (p.extrinsic | 0))) || (u.uroleplay && u.uroleplay.deaf));
+                if (Unaware()) {
+                    pline(`${Monnam_dm(mtmp)} is frightened.`);
+                } else if (rn2(10) || deaf) {
+                    const lsrc = (u.uwep && artifact_light(u.uwep)) ? bare_artifactname(u.uwep)
+                        : (u.uarm && artifact_light(u.uarm)) ? xname(u.uarm) : '[its imagination?]';
+                    pline(`${Monnam_dm(mtmp)} flees from the painful light of ${lsrc}.`);
+                } else {
+                    pline('Bright light!');
+                }
+            } else {
+                pline(`${Monnam_dm(mtmp)} turns to flee.`);
+            }
+        }
+        if (mtmp.data && (mtmp.data.pmidx | 0) === PM_VROCK && !mtmp.mspec_used) {
+            mtmp.mspec_used = 75 + rn2(25);
+            create_gas_cloud(mtmp.mx | 0, mtmp.my | 0, 5, 8);
+        }
+        mtmp.mflee = 1;
+    }
+    mon_track_clear(mtmp);
+}
 export function distfleeck(mtmp) {
     const u = game.u;
     if (!u || !mtmp)
@@ -175,8 +221,8 @@ export function distfleeck(mtmp) {
             fleelight = (flees_light(mtmp) && !bravegremlin) ? 1 : 0;
             if (!fleelight) {
                 /* C monmove.c:565-567: sanctuary = !mpeaceful && in_your_sanctuary(mtmp,0,0) */
-                /* in_your_sanctuary stub: false — altar/temple tracking not yet in JS */
-                sanctuary = 0;
+                sanctuary = (!mtmp.mpeaceful && typeof game.u?.urooms === 'string'
+                             && in_your_sanctuary(mtmp, 0, 0)) ? 1 : 0;
             }
         }
     }
@@ -187,15 +233,7 @@ export function distfleeck(mtmp) {
          * rn2(7) and rnd() must fire even if monflee side-effects are skipped.
          * Minimal port: consume the RNG; set mtmp.mflee=1 for state parity. */
         const flee_rn2_7 = rn2(7);
-        const fleetime = rnd(flee_rn2_7 ? 10 : 100);
-        /* Partial monflee: set mflee and mfleetim on mtmp (no message/no vrock RNG). */
-        mtmp.mflee = 1;
-        /* C monflee: fleetime += mtmp->mfleetim; min(fleetime,127) */
-        const prev = (mtmp.mfleetim | 0);
-        let ft = fleetime + (mtmp.mflee && prev ? prev : 0);
-        if (ft === 1)
-            ft = 2;
-        mtmp.mfleetim = Math.min(ft, 127);
+        monflee_sync(mtmp, rnd(flee_rn2_7 ? 10 : 100), true, true);
     }
     return { inrange, nearby, scared };
 }
@@ -1162,14 +1200,16 @@ async function m_search_items(mtmp, ggx, ggy, mmoved, appr) {
                 /* found an object closer already */
                 if (minr < distmin_mv(omx, omy, xx, yy)) continue;
                 if (!could_reach_item(mtmp, xx, yy)) continue;
-                /* hides_under(ptr) && cansee — stub: collectors here aren't hiders. */
+                /* C monmove.c:1363: hiders avoid hero's line of sight */
+                if (hides_under_mv(mtmp.data || mrow) && cansee(xx, yy)) continue;
                 const mtoo = m_at(xx, yy);
                 if (mtoo
                     && (helpless_mv(mtoo) || (mtoo.mundetected | 0)
                         || ((mtoo.mappearance | 0) && !(mtoo.iswiz | 0))
                         || !((mtoo.data?.mmove) | 0)))
                     continue;
-                /* onscary — stub false. */
+                /* C monmove.c:1378: don't get stuck circling an Elbereth */
+                if (onscary(xx, yy, mtmp)) continue;
                 /* trap-known guard */
                 const ttmp = t_at(xx, yy);
                 if (ttmp && mon_knows_traps(mtmp, ttmp.ttyp | 0)) {
@@ -1181,13 +1221,12 @@ async function m_search_items(mtmp, ggx, ggy, mmoved, appr) {
                  * repaint, consuming display RNG during hallucination.
                  * Map mutations must update their blockers at the mutation. */
                 if (!clear_path(omx, omy, xx, yy)) continue;
-                /* costly_spot — shop check; treated as false (no SHOPBASE tracking). */
-                const costly = false;
+                const costly = costly_spot(xx, yy);
 
                 for (let otmp = firstObj; otmp; otmp = otmp.nexthere) {
                     const otyp = otmp.otyp | 0;
                     if (otyp === ROCK_OTYP_MV) continue;
-                    /* mines/soko prize skip — stub false. */
+                    if (is_mines_prize(otmp) || is_soko_prize(otmp)) continue;
                     if (costly && !(otmp.no_charge | 0)) continue;
                     if (((mon_would_take_item(mtmp, otmp) && can_carry(mtmp, otmp) > 0)
                          || mon_would_consume_item(mtmp, otmp))
@@ -1360,8 +1399,14 @@ function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
             const _couldsee = !!couldsee(nix, niy);
             const _range = _couldsee ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
             const _nearfar = (_dist2 <= _range * _range) ? 'nearby' : 'in the distance';
-            /* You_hear → pline("You hear %s.", ...) inline (sync pline equivalent) */
-            _msg = `You hear ${trapnote} squeak ${_nearfar}.`;
+            /* You_hear (pline.c) inline, keeping this arm's own join bookkeeping:
+             * silent when Deaf and aware or !acoustics; 'You barely hear' under
+             * water; 'You dream that you hear' while Unaware (asleep/fainted). */
+            const _ua = Unaware();
+            if (!((_deaf && !_ua) || !(game.flags?.acoustics ?? true)))
+                _msg = (game.u?.uinwater ? 'You barely hear '
+                        : _ua ? 'You dream that you hear ' : 'You hear ')
+                    + `${trapnote} squeak ${_nearfar}.`;
         }
         if (_msg) {
             const _prev = game._pending_message;
@@ -1460,9 +1505,14 @@ export async function m_move(mtmp, after) {
                 /* C postmov (monmove.c:1535-1540): trapret = mintrap(mtmp,0); if
                  * the trap killed or moved the monster, newsym + return MMOVE_DIED
                  * so dochug stops (no post-move distfleeck recalc for a dead pet). */
+                const _pmx = mtmp.mx | 0, _pmy = mtmp.my | 0;
+                const _pttyp = _trap.ttyp;
                 const trapret = await mintrap(mtmp, 0);
                 if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
                     if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
+                    else if (trapret === TRAP_KILLED_MON_MV && _pmx > 0
+                             && (_pttyp === 1 || _pttyp === 2 || _pttyp === 3)) /* ARROW/DART/ROCKTRAP */
+                        newsym(_pmx, _pmy);
                     return MMOVE_DIED_MV;
                 }
             } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
@@ -1933,9 +1983,14 @@ export async function m_move(mtmp, after) {
         {
             const _trap = t_at(nix, niy);
             if (_trap && _trap.ttyp !== SQKY_BOARD_MV) {
+                const _pmx = mtmp.mx | 0, _pmy = mtmp.my | 0;
+                const _pttyp = _trap.ttyp;
                 const trapret = await mintrap(mtmp, 0);
                 if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
                     if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
+                    else if (trapret === TRAP_KILLED_MON_MV && _pmx > 0
+                             && (_pttyp === 1 || _pttyp === 2 || _pttyp === 3)) /* ARROW/DART/ROCKTRAP */
+                        newsym(_pmx, _pmy);
                     return MMOVE_DIED_MV;
                 }
             } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {

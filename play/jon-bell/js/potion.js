@@ -34,7 +34,7 @@ import { silly_thing_dw, inaccessible_equipment, float_up, hard_helmet } from '.
 import { getlin } from './wizcmds.js';
 import { nomul } from './allmain.js';
 import { fall_asleep } from './timeout.js';
-import { bcsign, makemon, mkobj, mkobj_at, mksobj_at, rnd_class, healmon, wake_nearto } from './mklev.js';
+import { mkgold, bcsign, makemon, mkobj, mkobj_at, mksobj_at, rnd_class, healmon, wake_nearto } from './mklev.js';
 import { curse } from './mkobj.js';
 import { heal_legs, unfixable_trouble_count, doup, body_part as body_part_cmd, ceiling, altar_wrath } from './cmd.js';
 import { WOUNDED_LEGS } from './const.js';
@@ -1052,7 +1052,11 @@ export async function dipfountain(obj) {
                 break;
             if (loc)
                 loc.flags |= F_LOOTED;
-            /* mkgold + pline not ported */
+            /* C fountain.c:526-535: mkgold(rnd((dunlevs_in_dungeon - dunlev + 1) * 2) + 5) */
+            await mkgold(rnd(((g.dungeons?.[u.uz?.dnum | 0]?.num_dunlevs | 0)
+                              - (u.uz?.dlevel | 0) + 1) * 2) + 5, u.ux, u.uy);
+            if (!_potion_Blind())
+                await pline(`Far below you, you see coins glistening in the ${hliquid('water')}.`);
             await exercise(A_WIS, true);
             if (loc)
                 newsym(u.ux, u.uy);

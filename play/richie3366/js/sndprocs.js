@@ -10,9 +10,14 @@ export {
     se_scratching,
     se_alarm,
     se_blast,
+    se_boulder_drop,
+    se_crashing_boulder,
     se_drain_noises,
+    se_item_tumble_downwards,
     se_ring_in_drain,
     se_zero_invalid,
+    se_clash,
+    se_bang_weapon_side,
     number_of_se_entries,
 } from './generated/seffects_data.js';
 

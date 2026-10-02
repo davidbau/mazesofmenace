@@ -25,7 +25,7 @@ import {
     WRITING, FREEING,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
     MAGIC_PORTAL, TIMEOUT, BLINDED, STONED, SLIMED, STRANGLED, SICK,
-    RLOC_NOMSG, EYE, HAND, STOMACH, FROMOUTSIDE,
+    RLOC_NOMSG, EYE, HAND, STOMACH, FROMOUTSIDE, HMON_THROWN, NO_TRAP,
     WARN_OF_MON, TELEPAT, INFRAVISION,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
     LL_ACHIEVE, LL_DEBUG,
@@ -62,7 +62,7 @@ import {
 } from './objects.js';
 import {
     pline, Norep, You, Your, You_cant, pline_The, You_see, docrt,
-    flush_screen, flush_topl_more, newsym, glyph_to_cmap,
+    flush_screen, flush_topl_more, newsym, glyph_to_cmap, map_background,
     assign_graphics, check_gold_symbol,
     You_feel, canseemon, canspotmon, impossible, describe_level,
     see_monsters,
@@ -124,9 +124,9 @@ import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, rndmonnam, tryc
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
-    freeinv_core, getobj, ggetobj, useup, useupall,
+    freeinv_core, getobj, ggetobj, useup, useupall, useupf,
 } from './invent.js';
-import { can_reach_floor, set_occupation, engr_at, sticks, save_engravings, rest_engravings } from './engrave.js';
+import { can_reach_floor, set_occupation, engr_at, sticks, save_engravings, rest_engravings, unskip_engravings_for_save } from './engrave.js';
 import { rest_rooms } from './mkroom.js';
 import {
     pickup, pooleffects, query_category, query_objlist, add_valid_menu_class,
@@ -168,24 +168,27 @@ import { bones_include_name } from './bones.js';
 import {
     olfaction, passes_walls, throws_rocks, is_flyer, is_floater,
     amorphous, nolimbs, M1_SLITHY, MZ_SMALL, MZ_HUGE, mons, is_rider, hides_under,
-    haseyes, eyecount, touch_petrifies,
+    haseyes, eyecount, touch_petrifies, nonliving, is_vampshifter, is_whirly,
 } from './monsters.js';
 import {
     placebc, unplacebc, drag_down, ballrelease, set_bc, ballfall, drop_ball,
 } from './ball.js';
 import { obj_resists } from './dogmove.js';
-import { Soundeffect, se_scratching, se_alarm, se_drain_noises, se_ring_in_drain } from './sndprocs.js';
+import { Soundeffect, se_scratching, se_alarm, se_drain_noises, se_ring_in_drain, se_boulder_drop, se_crashing_boulder, se_item_tumble_downwards } from './sndprocs.js';
 import { polymorph_sink, dipsink_set_levltyp, floating_above } from './fountain.js';
 import { fruitname } from './potion.js';
 import { delete_levelfile, open_levelfile } from './files.js';
 import { strange_feeling } from './detect.js';
 import { surface } from './sit.js';
-import { use_pick_axe2 } from './dig.js';
+import { use_pick_axe2, bury_objs } from './dig.js';
 import { set_move_cmd, u_rooted, nhl_callback } from './cmd.js';
 import { cmd_from_func, visctrl } from './dokeylist.js';
 import { newcham, mpickobj } from './makemon.js';
-import { grow_up } from './mhitm.js';
+import { grow_up, mondied } from './mhitm.js';
 import { mcureblindness } from './muse.js';
+import { hmon } from './uhitm.js';
+import { dmgval } from './weapon.js';
+import { breakobj } from './dothrow.js';
 
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
@@ -756,12 +759,13 @@ export async function doaltarobj(obj) {
 }
 
 /**
- * C ref: do.c flooreffects — special landings for free objects.
- * Branch envelope: boulder_hits_pool; boulder plugs pit/hole; lava_damage;
- * pool water_damage + splash; uteetering pit tumble; uescaped shaft ship_object;
- * globby pudding_merge/obj_meld (D-0993); mon_moving doaltarobj;
- * hot-ground potion shatter (D-0992).
- * Named omit: boulder+pit hmon/mondied; Soundeffect; shrink ice polish.
+ * C ref: do.c flooreffects `:162–359` — whole body in C order.
+ * Branch envelope: boulder_hits_pool; boulder plugs pit/hole/trapdoor
+ * (trapped-monster dmgval/hmon + mondied, hero squish goto, verb
+ * messages, delfloortrap/useupf/bury/newsym tail); lava_damage; pool
+ * splash + water_damage; teeter/shaft pit-tumble or ship_object; globby
+ * pudding_merge/obj_meld; mon_moving doaltarobj; hot-ground potion
+ * shatter. Named omissions: none.
  * @returns {Promise<boolean>} true if object is gone (caller must not place)
  */
 export async function flooreffects(obj, x, y, verb) {
@@ -775,69 +779,100 @@ export async function flooreffects(obj, x, y, verb) {
     const save = game._bhitpos ? { ...game._bhitpos } : null;
     game._bhitpos = { x: x | 0, y: y | 0 };
 
+    // C: struct trap *t; struct monst *mtmp; int ttyp = NO_TRAP, res = FALSE.
+    // t/levl are read per-branch like C (no hoist past boulder_hits_pool).
+    let t = null;
+    let mtmp = null;
+    let ttyp = NO_TRAP;
     let res = false;
-    const t0 = t_at(x, y);
-    const lev = game.level?.at?.(x, y);
-    const ltyp = lev?.typ;
 
     if ((obj.otyp | 0) === BOULDER
         && await boulder_hits_pool(obj, x, y, false)) {
         res = true;
-    } else if ((obj.otyp | 0) === BOULDER && t0
-        && (is_pit(t0.ttyp) || is_hole(t0.ttyp))) {
-        const ttyp = t0.ttyp;
-        const tseen = !!t0.tseen;
-        const mtmp = m_at(x, y);
-        if ((mtmp && mtmp.mtrapped) || (game.u?.utrap && u_at(x, y))) {
+    } else if ((obj.otyp | 0) === BOULDER && (t = t_at(x, y)) !== null
+               && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
+        ttyp = t.ttyp;
+        const tseen = !!t.tseen; // C: t->tseen ? TRUE : FALSE
+        // C goto deletedwithboulder (hero squish) skips the verb block.
+        let squished = false;
+        if (((mtmp = m_at(x, y)) && mtmp.mtrapped)
+            || (game.u?.utrap && u_at(x, y))) {
             if (verb && (cansee(x, y) || distu(x, y) === 0)) {
                 await pline(
-                    `${Blind() ? 'A' : 'The'} boulder ${vtense(null, verb)} into the pit${
-                        mtmp ? '' : ' with you'
-                    }.`,
+                    '%s boulder %s into the pit%s.',
+                    Blind() ? 'A' : 'The',
+                    vtense(null, verb),
+                    mtmp ? '' : ' with you',
                 );
             }
             if (mtmp) {
+                if (!passes_walls(mtmp.data) && !throws_rocks(mtmp.data)) {
+                    // C: dieroll was rnd(20); 1 — trapped target is a
+                    // sitting duck. Since 3.6.2 the hero is blamed only
+                    // when not mon_moving (giant-thrown boulder &c).
+                    const dieroll = 1;
+                    if (game.context?.mon_moving) {
+                        // C: ohitmon() avoided — it can call drop_throw()
+                        // which calls flooreffects().
+                        const damage = dmgval(obj, mtmp);
+                        mtmp.mhp = (mtmp.mhp | 0) - damage;
+                        if ((mtmp.mhp | 0) <= 0) { // C mon.h DEADMONSTER
+                            if (canspotmon(mtmp)) {
+                                await pline(
+                                    '%s is %s!',
+                                    Monnam(mtmp),
+                                    (nonliving(mtmp.data)
+                                        || is_vampshifter(mtmp))
+                                        ? 'destroyed' : 'killed',
+                                );
+                            }
+                            await mondied(mtmp);
+                        }
+                    } else {
+                        await hmon(mtmp, obj, HMON_THROWN, dieroll);
+                    }
+                    if ((mtmp.mhp | 0) > 0 && !is_whirly(mtmp.data)) {
+                        res = false; // still alive, boulder still intact
+                    }
+                }
                 mtmp.mtrapped = 0;
-                // hmon / mondied deferred
             } else if (!Passes_walls()
-                && !throws_rocks(game.youmonst?.data)) {
+                       && !throws_rocks(game.youmonst?.data)) {
                 await losehp(
                     maybe_half_phys(rnd(15)),
                     'squished under a boulder',
                     NO_KILLER_PREFIX,
                 );
+                squished = true; // C: goto deletedwithboulder
             } else {
                 reset_utrap(true);
             }
         }
-        if (verb) {
+        if (verb && !squished) {
             if (Blind() && u_at(x, y)) {
+                Soundeffect(se_crashing_boulder, 100);
                 await You_hear('a CRASH! beneath you.');
             } else if (!Blind() && cansee(x, y)) {
-                await pline(
-                    `The boulder ${
-                        (ttyp === TRAPDOOR && !tseen) ? 'triggers and ' : ''
-                    }${
-                        ttyp === TRAPDOOR ? 'plugs a trap door'
-                            : ttyp === HOLE ? 'plugs a hole'
-                                : 'fills a pit'
-                    }.`,
+                await pline_The(
+                    'boulder %s%s.',
+                    (ttyp === TRAPDOOR && !tseen) ? 'triggers and ' : '',
+                    ttyp === TRAPDOOR ? 'plugs a trap door'
+                        : ttyp === HOLE ? 'plugs a hole'
+                            : 'fills a pit',
                 );
             } else {
-                await You_hear(`a boulder ${verb}.`);
+                Soundeffect(se_boulder_drop, 100);
+                await You_hear('a boulder %s.', verb);
             }
         }
-        const t = t_at(x, y);
-        if (t) {
+        // C deletedwithboulder: trap may have gone away via
+        // hmon -> killed -> xkilled / mondied -> m_detach -> fill_pit.
+        if ((t = t_at(x, y)) !== null) {
             delfloortrap(t);
             if (game.u?.utrap && u_at(x, y)) reset_utrap(false);
         }
-        // useupf → delobj (obj already free; still burns resists rn2)
-        delobj(obj);
-        try {
-            const { bury_objs } = await import('./dig.js');
-            await bury_objs(x, y);
-        } catch { /* optional */ }
+        useupf(obj, 1);
+        await bury_objs(x, y);
         newsym(x, y);
         res = true;
     } else if (is_lava(x, y)) {
@@ -851,23 +886,26 @@ export async function flooreffects(obj, x, y, verb) {
                     await pline('Plop!');
                 }
             }
-            // map_background deferred
+            map_background(x, y, 0);
             newsym(x, y);
         }
         res = (await water_damage(obj, null, false)) === ER_DESTROYED;
-    } else if (u_at(x, y) && t0
-        && (uteetering_at_seen_pit(t0) || uescaped_shaft(t0))) {
-        if (is_pit(t0.ttyp)) {
-            const the_your = t0.madeby_u ? 'your' : 'the';
+    } else if (u_at(x, y) && (t = t_at(x, y)) !== null
+               && (uteetering_at_seen_pit(t) || uescaped_shaft(t))) {
+        if (is_pit(t.ttyp)) {
             if (Blind() && !Deaf()) {
-                await You_hear(`${the(xname(obj))} tumble downwards.`);
+                Soundeffect(se_item_tumble_downwards, 50);
+                await You_hear('%s tumble downwards.', the(xname(obj)));
             } else {
                 await pline(
-                    `${The(xname(obj))} ${otense(obj, 'tumble')} into ${the_your} pit.`,
+                    '%s into %s pit.',
+                    Tobjnam(obj, 'tumble'),
+                    t.madeby_u ? 'your' : 'the', // C the_your[madeby_u]
                 );
             }
-            // object still places into pit (C does not destroy here)
+            // C: object still places into the pit (not destroyed here).
         } else if (await ship_object(obj, x, y, false)) {
+            // C: ship_object prints the fall-through-hole message.
             res = true;
         }
     } else if (obj.globby) {
@@ -883,17 +921,19 @@ export async function flooreffects(obj, x, y, verb) {
             globbyobj = r1.obj;
         }
         res = !globbyobj;
-    } else if (game.context?.mon_moving && IS_ALTAR(ltyp) && cansee(x, y)) {
+    } else if (game.context?.mon_moving
+               && IS_ALTAR(game.level?.at?.(x, y)?.typ) && cansee(x, y)) {
         await doaltarobj(obj);
     } else if ((obj.oclass | 0) === POTION_CLASS
-        && (game.level?.flags?.temperature | 0) > 0
-        && (ltyp === ROOM || ltyp === CORR)) {
-        // C: heat-up message always when visible, then survival chance
+               && (game.level?.flags?.temperature | 0) > 0
+               && (game.level?.at?.(x, y)?.typ === ROOM
+                   || game.level?.at?.(x, y)?.typ === CORR)) {
         if (cansee(x, y)) {
+            // C: unconditional "ground" is safe — room/corridor only.
             await pline(
-                `${Tobjnam(obj, 'heat')} up as ${
-                    is_plural(obj) ? 'they hit' : 'it hits'
-                } the hot ground.`,
+                '%s up as %s the hot ground.',
+                Tobjnam(obj, 'heat'),
+                is_plural(obj) ? 'they hit' : 'it hits',
             );
         }
         let survival_chance = obj.blessed ? 70 : 50;
@@ -902,12 +942,12 @@ export async function flooreffects(obj, x, y, verb) {
         if (!obj_resists(obj, survival_chance, 100)) {
             if (cansee(x, y)) {
                 await pline(
-                    `${is_plural(obj) ? 'They shatter' : 'It shatters'} from the heat!`,
+                    '%s from the heat!',
+                    is_plural(obj) ? 'They shatter' : 'It shatters',
                 );
             } else {
                 await You_hear('a shattering noise.');
             }
-            const { breakobj } = await import('./dothrow.js');
             await breakobj(obj, x, y, false, false);
             res = true;
         }
@@ -1563,7 +1603,14 @@ export function save_currentstate() {
         // C `:1385` bufon(nhfp->fd) when structlevel — sfstruct.c by-design.
         // C `:1386`
         nhfp.mode = WRITING;
-        // C `:1387–1388` savelev(nhfp, lev) and close_nhfile(nhfp) stay named.
+        // C `:1387–1388` savelev(nhfp, lev): WRITING-only checkpoint of the
+        // live level — the file write and close stay named, but savelev's
+        // live side-effect ships: save.c:548 save_engravings resets every
+        // live engr_txt pointer to its slot start (engrave.c:1565–1567),
+        // so head-wiped blanks reappear (off→0) with no reload to re-skip
+        // them. Other savelev arms are pure writes in WRITING mode, except
+        // update_mlstmv timestamps (named: unobserved, no RNG impact here).
+        unskip_engravings_for_save();
     }
     // C `:1393` savestateinlock — file body named (save.c:369–421).
     ps.saving = (ps.saving | 0) + 1;

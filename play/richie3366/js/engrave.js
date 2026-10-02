@@ -218,6 +218,36 @@ export function save_engravings() {
 }
 
 /**
+ * C ref: engrave.c save_engravings `:1565–1567` live side-effect, reached
+ * via save_currentstate's WRITING-only checkpoint savelev (do.c emits no
+ * FREEING there): C resets every live engr_txt[actual_text] (and
+ * remembered) pointer to its slot start, so head-wiped blanks reappear
+ * (off→0) with no reload to re-skip them — the game continues on the
+ * unskipped texts. JS stores skipped text + engr_off count, so unskipping
+ * prepends the blanks back and zeroes the count. Called from JS
+ * save_currentstate() (do.js), which runs at the same three C sites
+ * (newgame, goto_level arrival, makemap post). Not called on restore:
+ * C restores without checkpointing, so the re-skip stands.
+ * Named omission: remembered_text unskip (C `:1566`; JS load strips
+ * remembered without a count (rest_engravings), so its blanks are
+ * unrecoverable — unobservable: wipes and reads use actual_text).
+ */
+export function unskip_engravings_for_save() {
+    // C save_engravings `:1559–1560` gate: engr_alloc && actual[0]
+    // (update_file is always true; JS has no file).
+    for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
+        if (!(ep.engr_alloc | 0)) continue;
+        const t = (ep.engr_txt && typeof ep.engr_txt === 'object') ? ep.engr_txt : null;
+        const actual = t ? String(t.actual_text ?? '') : '';
+        if (!actual) continue;
+        const off = ep.engr_off | 0;
+        if (off <= 0) continue;
+        t.actual_text = ' '.repeat(off) + actual;
+        ep.engr_off = 0;
+    }
+}
+
+/**
  * C ref: engrave.c rest_engravings `:1584–1619` — getlev reader (sole C
  * caller restore.c:1174): drop the live chain (`:1590`), rebuild each
  * stored record head-first with prepend (`:1597–1599` — live order ends
@@ -420,48 +450,55 @@ export function make_grave(x, y, str) {
 }
 
 /**
- * C ref: engrave.c wipeout_text — degrade characters in-place (returns string).
- * Branch envelope: seed==0 random path (rn2(lth), rn2(4), optional rn2(ln)).
- * Named omission: non-zero seed deterministic path.
+ * C ref: engrave.c wipeout_text `:119–183` — degrade cnt chars of the text
+ * (C mutates the buffer in place; JS takes/returns a string). Whole body:
+ * strlen once; the degrade loop gated on lth && cnt>0 (`:129`) with the
+ * seed==0 random path (rn2(lth), rn2(4), optional rn2(ln)) and the seeded
+ * deterministic path (seed*31 % (BUFSZ-1), u32 wraparound); space-skip,
+ * punctuation-blank, rubout-table substitute else '?'; the trailing-space
+ * trim (`:180–182`) runs unconditionally, even when the loop is skipped.
  */
 export function wipeout_text(engr, cnt, seed = 0) {
     const s = String(engr || '').split('');
     let lth = s.length;
-    if (!lth || cnt <= 0) return s.join('');
-    let n = cnt;
-    let seedu = seed >>> 0;
-    while (n--) {
-        let nxt;
-        let use_rubout;
-        if (!seedu) {
-            nxt = rn2(lth);
-            use_rubout = rn2(4);
-        } else {
-            nxt = seedu % lth;
-            seedu = (seedu * 31) % (BUFSZ - 1);
-            use_rubout = seedu & 3;
-        }
-        if (s[nxt] === ' ') continue;
-        if ("?.,'`-|_".includes(s[nxt])) {
-            s[nxt] = ' ';
-            continue;
-        }
-        if (!use_rubout) {
-            s[nxt] = '?';
-            continue;
-        }
-        const wipeto = RUBOUTS[s[nxt]];
-        if (wipeto) {
-            let j;
+    // C `:129`: only the loop is gated — the trim below always runs.
+    if (lth && cnt > 0) {
+        let n = cnt;
+        let seedu = seed >>> 0;
+        while (n--) {
+            let nxt;
+            let use_rubout;
             if (!seedu) {
-                j = rn2(wipeto.length);
+                nxt = rn2(lth);
+                use_rubout = rn2(4);
             } else {
-                seedu = (seedu * 31) % (BUFSZ - 1);
-                j = seedu % wipeto.length;
+                nxt = seedu % lth;
+                // C `:141`: unsigned seed*31 wraps mod 2^32 before % (BUFSZ-1).
+                seedu = ((Math.imul(seedu, 31) >>> 0) % (BUFSZ - 1));
+                use_rubout = seedu & 3;
             }
-            s[nxt] = wipeto[j];
-        } else {
-            s[nxt] = '?';
+            if (s[nxt] === ' ') continue;
+            if ("?.,'`-|_".includes(s[nxt])) {
+                s[nxt] = ' ';
+                continue;
+            }
+            if (!use_rubout) {
+                s[nxt] = '?';
+                continue;
+            }
+            const wipeto = RUBOUTS[s[nxt]];
+            if (wipeto) {
+                let j;
+                if (!seedu) {
+                    j = rn2(wipeto.length);
+                } else {
+                    seedu = ((Math.imul(seedu, 31) >>> 0) % (BUFSZ - 1));
+                    j = seedu % wipeto.length;
+                }
+                s[nxt] = wipeto[j];
+            } else {
+                s[nxt] = '?';
+            }
         }
     }
     while (lth && s[lth - 1] === ' ') {

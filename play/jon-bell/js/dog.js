@@ -145,8 +145,9 @@ function pet_type() {
 }
 export function initedog(mtmp, everything) {
     /* C dog.c:49 — schar minimumtame = is_domestic(mtmp->data) ? 10 : 5;
-     * All three starter pets (LITTLE_DOG, KITTEN, PONY) have M2_DOMESTIC. */
-    const isDomestic = (mtmp.mnum === PM_LITTLE_DOG || mtmp.mnum === PM_KITTEN || mtmp.mnum === PM_PONY);
+     * is_domestic() is the M2_DOMESTIC flag (dogs, cats, horses of every size). */
+    const _dptr = mtmp.data || permonstTemplate((mtmp.mnum ?? mtmp.mndx ?? 0) | 0);
+    const isDomestic = !!_dptr && ((_dptr.mflags2 >>> 0) & 0x00400000 /* M2_DOMESTIC */) !== 0;
     const minimumtame = isDomestic ? 10 : 5;
     /* C dog.c:51 — mtmp->mtame = max(minimumtame, mtmp->mtame); */
     mtmp.mtame = Math.max(minimumtame, (mtmp.mtame ?? 0) | 0);

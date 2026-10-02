@@ -316,6 +316,11 @@ export async function getlin(prompt) {
     g._prevmsg = prompt;
     const _saved_prompt_echo = g._topl_prompt_echo;
     g._topl_prompt_echo = true;
+    /* C getline.c:67 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) and the
+     * echo loop (getline.c:97 gt.toplines rebuild) never reach message
+     * history; only the final "query answer" line is stored (see below). */
+    const _saved_suppress = g._topl_suppress_history;
+    g._topl_suppress_history = true;
     try {
     renderPrompt();
     await flush_screen(1);
@@ -346,8 +351,17 @@ export async function getlin(prompt) {
         placeCursor();
     }
     g._pending_message = '';
+    /* C getline.c:97 leaves "query answer" in gt.toplines; the history ring
+     * receives that single line (tty_getlin is not suppress_history here). */
+    if (!_saved_suppress) {
+        const line = prompt + ' ' + buf;
+        if (!g._msg_history) g._msg_history = [];
+        const h = g._msg_history;
+        if (h.length === 0 || h[h.length - 1] !== line) h.push(line);
+    }
     return buf;
     } finally {
+        g._topl_suppress_history = _saved_suppress;
         /* C getline.c:319 — the read loop is over; the topline stops being a
          * TOPLINE_SPECIAL_PROMPT.  Restored rather than cleared, because
          * js/cmd.js's '#' prompt calls getlin-shaped code with the flag

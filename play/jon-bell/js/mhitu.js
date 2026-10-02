@@ -98,7 +98,7 @@ import { mbodypart as mbodypart_mu, snuff_candle as snuff_candle_mu } from './cm
 import { subfrombill as subfrombill_real, shop_keeper as shop_keeper_real } from './shk.js';
 /* mwelded (C wield.c:1072) is used at the autoreturn_weapon arm below; the
    binding was never imported, so reaching that arm threw a ReferenceError. */
-import { mwelded } from './cmd.js';
+import { mwelded, showdamage as showdamage_mu } from './cmd.js';
 import { make_confused, make_stoned, make_sick, potionhit } from './potion.js';
 import { SICK_RES as SICK_RES_MU, SICK_NONVOMITABLE as SICK_NONVOMITABLE_MU } from './const.js';
 import { PM_MEDUSA, PM_ARCHON, PM_STONE_GOLEM, PM_INCUBUS, PM_HIGH_PRIEST, PM_PRIEST as PM_ALIGNED_CLERIC, PM_BARBED_DEVIL as PM_BARBED_DEVIL_MU, } from './pm.generated.js';
@@ -409,12 +409,14 @@ export async function mdamageu(mtmp, n) {
     if (n < 0) n = 0;
     if (Upolyd_fn(u)) {
         u.mh = (u.mh | 0) - n;
+        showdamage_mu(n);                      /* C mhitu.c:1912 */
         if ((u.mhmax | 0) && u.mh > u.mhmax) u.mh = u.mhmax;
         if ((u.mh | 0) < 1) return await rehumanize();
     }
     else {
         /* C: n = saving_grace(n) — returns n unchanged unless near-death */
         u.uhp = (u.uhp | 0) - n;
+        showdamage_mu(n);                      /* C mhitu.c:1920 */
         if ((u.uhpmax | 0) && u.uhp > u.uhpmax) u.uhp = u.uhpmax;
         /* C mhitu.c:1925 — if (u.uhp < 1) done_in_by(mtmp, DIED).  This used
          * to call deadhero() directly, which flags the death but records no
@@ -1541,7 +1543,9 @@ function monnear_mu(mon, x, y) {
 /* C monattk.h:65 AD_SSEX. */
 const AD_SSEX_ = 23;
 
-const AD_SITM_ = 21;       /* monattk.h:63 — steals item (nymphs) */
+const AD_SGLD_ = 20;      /* monattk.h:62 — steals gold (leprechaun) */
+import { stealgold as stealgold_mu } from './makemon.js';
+const AD_SITM_ = 21;      /* monattk.h:63 — steals item (nymphs) */
 const AD_SEDU_ = 22;       /* monattk.h:64 */
 const S_NYMPH_ = 14;       /* monsym.h — matches js/makemon.js:1890 */
 const COIN_CLASS_ = 12;
@@ -1928,6 +1932,16 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         /* C uhitm.c:4798-4799 — AD_SITM and AD_SEDU share mhitm_ad_sedu. */
         case AD_SITM_: case AD_SEDU_:
             await mhitm_ad_sedu_u(mtmp, mattk, mhm); break;
+        /* C uhitm.c:2815-2821 `mhitm_ad_sgld`, mdef == &gy.youmonst arm:
+         * hitmsg, nothing more against the same monster class, else
+         * stealgold unless the thief is cancelled. */
+        case AD_SGLD_:
+            await hitmsg(mtmp, mattk);
+            if ((game.youmonst?.data ?? game.u?.data)?.mlet === mtmp.data?.mlet)
+                break;
+            if (!(mtmp.mcan | 0))
+                await stealgold_mu(mtmp);
+            break;
         case AD_BLND_U:
             mhitm_ad_blnd_u(mtmp, mattk, mhm); break;
         case AD_STON:

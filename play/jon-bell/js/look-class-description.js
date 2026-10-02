@@ -14,9 +14,9 @@ const OBJSYMS = ['', ']', ')', '[', '=', '"', '(', '%', '!', '?', '+', '/', '$',
 // src/symbols.c init_rogue_symbols(): def_r_oc_syms[].  Monster classes keep
 // their ordinary symbols on Rogue levels; only these object classes differ.
 const ROGUE_OBJSYMS = ['', ']', ')', ']', '=', ',', '(', ':', '!', '?', '+', '/', '*', '*', '`', '0', '_', '.'];
-const OBJEXPLAIN = ['', 'illegal object', 'weapon', 'suit or piece of armor',
-    'ring', 'amulet', 'tool', 'piece of food', 'potion', 'scroll', 'spellbook',
-    'wand', 'coin', 'gem or rock', 'boulder or statue', 'iron ball', 'iron chain',
+const OBJEXPLAIN = ['', 'strange object', 'weapon', 'suit or piece of armor',
+    'ring', 'amulet', 'useful item (pick-axe, key, lamp...)', 'piece of food', 'potion', 'scroll', 'spellbook',
+    'wand', 'pile of coins', 'gem or rock', 'boulder or statue', 'iron ball', 'iron chain',
     'splash of venom'];
 const PCHARS = [
     ' ', '|', '-', '-', '-', '-', '-', '-', '-', '-', '|', '|', '.', '-', '|', '+', '+', '#', '#', '.', '.', '`', '#', '#', '#',

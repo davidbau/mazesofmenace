@@ -1,3 +1,4 @@
+import { Norep } from './display.js';
 import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './trap.js';
 import { discover_object as lifesave_discover_object } from './o_init.js';
@@ -132,7 +133,7 @@ import { MON_DETACH } from './const.js';
 /* prop.h property indices for the Blind/Hallucination macros below.  Aliased
  * because this file already has locals named BLINDED-ish in other scopes. */
 import { BLINDED as MK_BLINDED, HALLUC as MK_HALLUC, HALLUC_RES as MK_HALLUC_RES, TELEPAT as MK_TELEPAT, INVIS as MK_INVIS } from './const.js';
-import { um_dist } from './cmd.js';
+import { um_dist, verbalize, display_text_window } from './cmd.js';
 /* mpickobj (steal.c:616) callees */
 import { carry_obj_effects, count_unpaid, mergable, obj_no_longer_held, freeinv } from './cmd.js';
 import { merged } from './hold_another_object.js';
@@ -4532,6 +4533,12 @@ export async function makemon(mdat, x, y, mmflags) {
              || mndx === PM_LONG_WORM || mndx === PM_GIANT_EEL)
             && !(game.u?.uhave?.amulet) && rn2(5))
             mon.msleeping = 1;
+    } else if (byyou) {
+        /* C makemon.c:1393-1394 — newsym(mx,my); set_apparxy(mtmp).  Runs BEFORE
+         * m_initweap/m_initinv (makemon.c:1442-1445); a Displaced hero makes
+         * set_apparxy draw (monmove.c:2239). */
+        newsym(mon.mx | 0, mon.my | 0);
+        set_apparxy(mon);
     }
     const _dpPtr = permonstTemplate(mndx);
     if (_dpPtr && is_dprince(_dpPtr) && (_dpPtr.msound | 0) === MS_BRIBE_MK) {
@@ -4603,18 +4610,6 @@ export async function makemon(mdat, x, y, mmflags) {
         const DF_NONE = 0; /* dungeon.h — neither DF_RANDOM nor DF_ALL */
         await deliver_obj_to_mon(mon, 1, DF_NONE);
     }
-    /* C makemon.c:1387-1396 — in_mklev branch: maybe msleeping; else byyou branch:
-     * newsym(mx,my) + set_apparxy(mtmp).
-     * set_apparxy (monmove.c:2222-2290): for a typical hero (not invisible, not
-     * displaced, not underwater) displ=0 → mux=u.ux, muy=u.uy.  W23.3 will export
-     * the full set_apparxy from monmove.js; until then mirror the normal-hero result
-     * inline (same approach as dog.js W19.5). */
-    if (!game.in_mklev && byyou) {
-        /* C makemon.c:1393 — newsym(mtmp->mx, mtmp->my): display update, no RNG */
-        /* C makemon.c:1395 — set_apparxy(mtmp): mux/muy ← hero position */
-        mon.mux = (game.u?.ux ?? 0) | 0;
-        mon.muy = (game.u?.uy ?? 0) | 0;
-    }
     if (!game.in_mklev) {
         newsym(mon.mx | 0, mon.my | 0);
         /* C makemon.c:1475-1500 — the appearance message, previously unported:
@@ -4655,7 +4650,9 @@ export async function makemon(mdat, x, y, mmflags) {
                 const distu = dx * dx + dy * dy;
                 const where = (distu < 3) ? ' next to you'
                             : (distu <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
-                pline(`${what}${exclaim ? ' suddenly' : ''} `
+                /* C makemon.c:1492 uses Norep(): a repeat of the previous
+                 * message (e.g. #wizgenesis 4 jackals) is not printed again. */
+                Norep(`${what}${exclaim ? ' suddenly' : ''} `
                       + `${vtense(what, 'appear')}${where}${exclaim ? '!' : '.'}`);
             }
         }
@@ -5278,6 +5275,8 @@ export async function outrumor(truth, mechanism) {
                     (!rn2(4) ? 'offhandedly '
                              : (!rn2(3) ? 'casually '
                                         : (rn2(2) ? 'nonchalantly ' : ''))));
+        await verbalize('%s', line);
+        /* [WIS exercised by getrumor()] */
         return;
     case BY_COOKIE:
         await pline(fortune_msg);
@@ -5287,6 +5286,136 @@ export async function outrumor(truth, mechanism) {
         break;
     }
     await pline(line);      /* C pline1(line) */
+}
+
+const ORACLE_RECORDS = [
+    ["If thy wand hath run out of charges, thou mayst zap it again and again; though",
+     "naught will happen at first, verily, thy persistence shall be rewarded, as",
+     "one last charge may yet be wrested from it!"],
+    ["Though the shopkeepers be wary, thieves have nevertheless stolen much by using",
+     "their digging wands to hasten exits through the pavement."],
+    ["If thou hast had trouble with rust on thine armor or weapons, thou shouldst",
+     "know that thou canst prevent this by, while in a confused state, reading the",
+     "magical parchments which normally are used to cause their enchantment.",
+     "Unguents of lubrication may provide similar protection, albeit of a",
+     "transitory nature."],
+    ["Behold the cockatrice, whose diminutive stature belies its hidden might.  The",
+     "cockatrice can petrify any ordinary being it contacts--save those wise",
+     "adventurers who eat a dead lizard or blob of acid when they feel themselves",
+     "slowly turning to stone."],
+    ["While some wayfarers rely on scrounging finished armour in the dungeon, the",
+     "resourceful know the mystical means by which mail may be fashioned out of",
+     "scales from a dragon's hide."],
+    ["It is customarily known among travelers that extra-healing draughts may clear",
+     "thy senses when thou art addled by delusory visions.  But never forget, the",
+     "lowly potion which makes one sick may be used for the same purpose."],
+    ["While the consumption of lizard flesh or water beloved of the gods may clear",
+     "the muddled head, the application of the horn of a creature of utmost purity",
+     "can alleviate many other afflictions as well."],
+    ["If thou wouldst travel quickly between distant locations, thou must be",
+     "able to control thy teleports, and in a confused state misread the scroll",
+     "which usually teleports thyself locally.  Daring adventurers have also",
+     "performed the same feat sans need for scrolls or potions by stepping into",
+     "a particular ambuscade."],
+    ["Almost all adventurers who come this way hope to pass the dread Medusa.  To",
+     "do this, the best advice is to keep thine eyes blindfolded and to cause the",
+     "creature to espy its own reflection in a mirror."],
+    ["And where it is written \"ad aerarium\", diligent searching will often reveal",
+     "the way to a trap which sends one to the Magic Memory Vault, where the riches",
+     "of Croesus are stored; however, escaping from the vault with its gold is much",
+     "harder than getting in."],
+    ["It is well known that wily shopkeepers raise their prices whene'er they",
+     "espy the garish apparel of the approaching tourist or the countenance of a",
+     "disfavored patron.  They favor the gentle of manner and the fair of face.",
+     "The boor may expect unprofitable transactions."],
+    ["The cliche of the kitchen sink swallowing any unfortunate rings that contact",
+     "its pernicious surface reflecteth greater truth than many homilies, yet",
+     "even so, few have developed the skill to identify enchanted rings by the",
+     "transfigurations effected upon the voracious device's frame."],
+    ["The meat of enchanted creatures ofttimes conveyeth magical properties",
+     "unto the consumer.  A fresh corpse of floating eye doth fetch a high",
+     "price among wizards for its utility in conferring Telepathy, by which",
+     "the sightless may locate surrounding minds."],
+    ["The detection of blessings and curses is in the domain of the gods.  They will",
+     "make this information available to mortals who request it at their places of",
+     "worship, or elsewhere for those mortals who devote themselves to the service",
+     "of the gods."],
+    ["At times, the gods may favor worthy supplicants with named blades whose",
+     "powers echo throughout legend.  Learned wayfarers can reproduce blades of",
+     "elven lineage, hated of the orcs, without the need for such intervention."],
+    ["There are many stories of a mighty amulet, the origins of which are said",
+     "to be ancient Yendor.  This amulet doth have awesome power, and the gods",
+     "desire it greatly.  Mortals mayst tap only portions of its terrible",
+     "abilities.  The stories tell of mortals seeing what their eyes cannot",
+     "see and seeking places of magical transportation, while having this",
+     "amulet in their possession.  Others say a mortal must wear the amulet to",
+     "obtain these powers.  But verily, such power comes at great cost, to",
+     "preserve the balance."],
+    ["It is said that thou mayst gain entry to Moloch's sanctuary, if thou",
+     "darest, from a place where the ground vibrateth in the deepest depths of",
+     "Gehennom.  Thou needs must have the aid of three magical items.  The",
+     "pure sound of a silver bell shall announce thee.  The terrible runes,",
+     "read from Moloch's book, shall cause the earth to tremble mightily.  The",
+     "light of an enchanted candelabrum shall show thee the way."],
+    ["In the deepest recesses of the Dungeons of Doom, guarding access to the",
+     "nether regions, there standeth a castle, wherein lieth a wand of wishes.",
+     "If thou wouldst gain entry, bear with thee an instrument of music, for the",
+     "pontlevis may be charmed down with the proper melody.  What notes comprise",
+     "it only the gods know, but a musical mastermind may yet succeed by witful",
+     "improvisation.  However, the less perspicacious are not without recourse,",
+     "should they be prepared to circumambulate the castle to the postern."],
+    ["The gods are said to be pleased when offerings are given to the",
+     "priests who attend their temples, and they may grant various favors to",
+     "those who do so.  But beware!  To be young and frugal is better than to",
+     "be old and miserly."],
+    ["The name of Elbereth may strike fear into the hearts of thine enemies, if",
+     "thou dost write it upon the ground at thy feet.  If thou maintainest the",
+     "utmost calm, thy safety will be aided greatly, but beware lest thy clumsy",
+     "feet scuff the inscription, cancelling its potence, or thy wayward",
+     "sword-arm break the truce."],
+];
+
+const SPECIAL_ORACLE = [
+    '"...it is rather disconcerting to be confronted with the',
+    'following theorem from [Baker, Gill, and Solovay, 1975].',
+    '',
+    'Theorem 7.18  There exist recursive languages A and B such that',
+    '  (1)  P(A) == NP(A), and',
+    '  (2)  P(B) != NP(B)',
+    '',
+    'This provides impressive evidence that the techniques that are',
+    'currently available will not suffice for proving that P != NP or' + '          ',
+    'that P == NP."  [Garey and Johnson, p. 185.]',
+];
+export async function outoracle(special, delphi) {
+    const g = game;
+    /* early return if all the oracularities are already exhausted */
+    if ((g.oracle_flg | 0) < 0 || ((g.oracle_flg | 0) > 0 && !g.oracle_cnt))
+        return;
+
+    if ((g.oracle_flg | 0) === 0) {
+        g.oracle_loc = [SPECIAL_ORACLE, ...ORACLE_RECORDS];
+        g.oracle_cnt = g.oracle_loc.length;
+        g.oracle_flg = 1;
+    }
+    if (g.oracle_cnt <= 1 && !special)
+        return; /*(shouldn't happen)*/
+    const oracle_idx = special ? 0 : rnd(g.oracle_cnt - 1);
+    const rec = g.oracle_loc[oracle_idx];
+    if (!special) /* move offset of very last one into this slot */
+        g.oracle_loc[oracle_idx] = g.oracle_loc[--g.oracle_cnt];
+
+    const lines = [];
+    if (delphi)
+        lines.push(special
+                   ? 'The Oracle scornfully takes all your gold and says:'
+                   : 'The Oracle meditates for a moment and then intones:');
+    else
+        lines.push('The message reads:');
+    lines.push('');
+    for (const l of rec)
+        lines.push(l);
+    await display_text_window(lines);   /* display_nhwindow(tmpwin, TRUE) */
 }
 
 // C ref: rumors.c get_rnd_text(ENGRAVEFILE, ...) — pick a random engraving text.
@@ -6202,7 +6331,7 @@ async function makelevel_generate() {
         // the nhlib.lua align shuffle.
         if (!g._luathemes_loaded)
             g._luathemes_loaded = {};
-        if (g.u?.uz0 && g.u.uz0.dnum === dnum)
+        if (g._captureReplay && g.u?.uz0 && g.u.uz0.dnum === dnum)
             g._luathemes_loaded[dnum] = true;
         if (!g._luathemes_loaded[dnum]) {
             const themedAlign = ['law', 'neutral', 'chaos'];
@@ -7221,11 +7350,29 @@ async function themeroom_fill_rng(aroom, difficulty) {
             //    start_timer(250 + rnd(250)) → rnd(250).
             //    C ref: zap.c obj_resists:1458-1472 (rn2(100) for a generated otyp);
             //           dig.c:2031-2034 the organic rot-timer rnd(250).
+            // at <x,y>, then a container has its auto-stocked contents thrown away
+            // (delete_contents, sp_lev.c:2342-2345) before the callback restocks it.
+            if (_chestPos) {
+                _chest.ox = _chestPos.x | 0;
+                _chest.oy = _chestPos.y | 0;
+                place_object(_chest, _chest.ox, _chest.oy);
+            }
+            while (_chest.cobj) {
+                const _old = _chest.cobj;
+                obj_extract_self(_old);
+                obj_stop_timers(_old);
+            }
+            _chest.owt = weight(_chest);
             obj_resists(_chest, 0, 0); // bury_an_obj obj_resists(chest,0,0)
             // dig.c:2027-2028 — the timer starts only when the 5% resist roll fails.
             if (is_organic(_chest) && !obj_resists(_chest, 5, 95)) {
                 rnd(250); // start_timer ROT_ORGANIC offset
             }
+            // dig.c:2045 bury_an_obj: obj_extract_self + add_to_buried(chest).  The
+            // chest and each content object it later receives ride the buried chain
+            // (restobjchn numbers every one of them with next_ident on a bones load).
+            obj_extract_self(_chest);
+            add_to_buried(_chest);
             // 3. contents callback: for i = 1, d(3,4) do des.object() end.
             //    d(3,4) is nhlib.lua d(): 3 dice each rn2(4)+1.  C ref: nhlib.lua:36/10.
             let nContents = 0;
@@ -7245,8 +7392,14 @@ async function themeroom_fill_rng(aroom, difficulty) {
                 //   ARMOR_CLASS one (mkobj.c:1098) — so JS left mksobj_init one draw
                 //   early and ran into mkobj_erosions while C was still inside it.
                 somexy(aroom, {});
-                await mkobj(RANDOM_CLASS, true);
+                const _content = await mkobj(RANDOM_CLASS, true);
+                // sp_lev.c:2330-2340: the object lands in the buried chest.
+                if (_content) {
+                    obj_extract_self(_content);
+                    await add_to_container(_chest, _content);
+                }
             }
+            _chest.owt = weight(_chest);
         }
         else if (pick.name === 'Buried zombies') {
             // C ref: themerms.lua themeroom_fills["Buried zombies"].contents (lines 150-169)

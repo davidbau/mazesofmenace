@@ -2443,6 +2443,11 @@ export async function do_attack(mtmpOrX, y) {
                         _sumI = await _damageum(row, 0);
                     }
                 }
+            } else {
+                /* C uhitm.c:5667-5668 `else { !dhit: missum(mon, mattk,
+                 * (tmp + armorpenalty > dieroll)); }` — armorpenalty is 0
+                 * here (find_roll_to_hit sets it only for !Upolyd Monks). */
+                await missum(mtmp, tmp > dieroll);
             }
             await _passiveAndKnockback(aatyp, _sumI !== M_ATTK_MISS, null);
         }
@@ -2935,6 +2940,11 @@ export async function xkilled(mtmp, xkflags) {
               : x_monnam(mtmp, namedpet ? ARTICLE_NONE : ARTICLE_THE,
                          'poor', namedpet ? SUPPRESS_SADDLE : 0, false);
         await pline('You ' + verb + ' ' + name + '!');
+        /* The command (fire/throw/zap/apply, not only melee) published this
+         * line: the rhack-tail stash in allmain.js must not discard it as a
+         * stale leftover when the topline already held an earlier message
+         * ("The jackal bites!" before `f`+`l`: C shows "You kill the jackal!"). */
+        game._attackPublished = true;
     }
 
 

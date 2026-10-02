@@ -242,7 +242,7 @@ function _surface_lk(x, y) {
     return 'ground';
 }
 
-async function _read_engr_at(x, y) {
+export async function read_engr_at(x, y) {
     const ep = engr_at(x, y);
     if (!ep || !ep.text) return;
     const eloc = _surface_lk(x, y);
@@ -306,7 +306,7 @@ async function _read_engr_at(x, y) {
     ep.eread = 1;
     ep.erevealed = 1;
 }
-/* Local is_ice(x,y) helper for _read_engr_at (engrave.c is_ice). */
+/* Local is_ice(x,y) helper for read_engr_at (engrave.c is_ice). */
 function lev_is_ice_lk(x, y) {
     const lev = game.level && game.level.at ? game.level.at(x, y) : null;
     return !!lev && lev.typ === ICE;
@@ -452,7 +452,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
     /* C invent.c:4241-4250 — no object, or lava, or (pool && !Underwater). */
     if (!otmp || _is_lava_local(x, y) || (is_pool(x, y) && !_Underwater())) {
         if (fbuf) await pline(fbuf);
-        await _read_engr_at(x, y);
+        await read_engr_at(x, y);
         if (!skip_objects && (blind || !dfeature))
             await pline(`You ${verb} no objects here.`);
         return Blind() ? ECMD_TIME : ECMD_OK;
@@ -462,7 +462,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
     if (skip_objects) {
         /* C invent.c:4252-4276 */
         if (fbuf) await pline(fbuf);
-        await _read_engr_at(x, y);
+        await read_engr_at(x, y);
         const quan1 = (otmp.quan == null ? 1 : (otmp.quan | 0)) === 1;
         if (obj_cnt === 1 && quan1) {
             await pline(`There is ${picked_some ? 'another' : 'an'} object here.`);
@@ -486,7 +486,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
     } else if (!otmp.nexthere) {
         /* C invent.c:4278-4285 — only one object. */
         if (fbuf) await pline(fbuf);
-        await _read_engr_at(x, y);
+        await read_engr_at(x, y);
         await pline(`You ${verb} here ${(await doname_with_price(otmp))}.`);
         g.iflags = g.iflags || {};
         g.iflags.last_msg = PLNMSG_ONE_ITEM_HERE;
@@ -510,7 +510,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
         }
         await displayLookWindow(lines);
         if (felt) await _feel_cockatrice_lk(o, false); /* C reuses the loop var itself */
-        await _read_engr_at(x, y);
+        await read_engr_at(x, y);
     }
     return Blind() ? ECMD_TIME : ECMD_OK;
 }

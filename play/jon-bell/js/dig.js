@@ -11,6 +11,7 @@
 // effort formula (NOT hardcoded): for the level-1 archeologist (abon()==1,
 // pick-axe spe 0) the cumulative effort crosses 50 on the 4th turn.
 import { rn2, rn1, rnd } from './rng.js';
+import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
 import { end_burn, start_timer } from './timeout.js';
 import { pline, feel_newsym, canseemon, newsym, You_hear, Unaware as Unaware_real } from './display.js';
@@ -33,7 +34,8 @@ import { obj_extract_self, sobj_at, add_to_buried, in_rooms, mksobj_at, mk_tt_ob
 import { obj_resists } from './dogmove.js';
 import { is_ice, cant_reach_floor } from './engrave.js';
 import { uteetering_at_seen_pit, uescaped_shaft } from './pickup.js';
-import { yobjnam, Yobjnam2 } from './objnam.js';
+import { yobjnam, Yobjnam2, an } from './objnam.js';
+import { trapname } from './makemon.js';
 import { is_pool } from './look.js';
 import { dotrap } from './trap.js';
 import { FORCEBUNGLE } from './const.js';
@@ -82,7 +84,7 @@ import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap,
 import { On_stairs, stairway_at, In_hell } from './mklev.js';
 import { Monnam } from './mcastu.js';
 import { is_pool_or_lava } from './look.js';
-import { water_damage_chain, pooleffects, switch_terrain, boulder_hits_pool } from './cmd.js';
+import { water_damage_chain, pooleffects, switch_terrain, boulder_hits_pool, check_special_room } from './cmd.js';
 import { is_drawbridge_wall, find_drawbridge, delobj, impact_drop } from './dokick.js';
 import { hliquid, mon_has_amulet } from './mhitm.js';
 import { distmin } from './hacklib.js';
@@ -96,6 +98,8 @@ import { explode } from './zap.js';
  * (mondata.h:159). */
 import { get_iter_mons, angry_guards } from './mklev.js';
 import { m_canseeu } from './dochug.js';
+import { seetrap, feeltrap } from './trap.js';
+import { cansee } from './vision.js';
 import { PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_ARCHEOLOGIST, PM_SAMURAI } from './pm.generated.js';
 import { mkclass } from './makemon.js';
 /* C fountain.c furniture handlers: these bodies are shared with potion.js. */
@@ -330,7 +334,10 @@ export function set_utrap(tim, typ) {
 async function digactualhole_pit(x, y) {
     const g = game;
     /* C dig.c:703-707 — madeby_u, at the hero's square. */
-    await pline('You dig a pit in the floor.');
+    await pline('You dig a pit in the %s.', surface_(x, y)); /* dig.c:626-637 surface() */
+    /* maketrap() PIT arm -> unearth_objs() (trap.c:552, dig.c:2110) ends in
+     * del_engr_at(x, y): digging the pit erases any engraving on the square. */
+    del_engr_at(x, y);
     /* record the PIT trap so t_at(x,y) is consistent for any later dig resume. */
     g.level = g.level || {};
     if (!Array.isArray(g.level.traps)) g.level.traps = [];
@@ -487,7 +494,7 @@ function wake_nearby_(_flag) {
 function surface_(x, y) {
     const lev = game.level?.at(x, y);
     const typ = lev ? (lev.typ | 0) : 0;
-    return (typ === ROOM || typ === CORR) ? 'floor' : 'ground';
+    return (typ >= ROOM) ? 'floor' : 'ground';
 }
 
 // C ref: dig.c:571-582 furniture_handled(x,y,madeby_u) — TRUE (and handled)
@@ -746,13 +753,33 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
     const shopdoor = IS_DOOR(old_typ) && in_rooms(x, y, SHOPBASE)[0];
     const oldobjs = floorObjsAt_(x, y);
 
+    const surface_type = surface_(x, y); /* computed before maketrap (dig.c:626-637) */
     const ttmp = await maketrap(x, y, ttyp);
     if (!ttmp) return;
     const newobjs = floorObjsAt_(x, y);
     ttmp.madeby_u = heros_fault;
     ttmp.tseen = 0;
-    /* seetrap/feeltrap (dig.c:648-651) — display-only bookkeeping, no RNG. */
+    /* dig.c:657-660 */
+    if (cansee(x, y))
+        seetrap(ttmp);
+    else if (madeby_u)
+        feeltrap(ttmp);
 
+    /* dig.c:653-669 — the hero/monster dig message (furniture/altar
+     * arms and cansee-only arms remain unported). */
+    {
+        const tname = trapname(ttyp, true);
+        const in_thru = ttyp === HOLE ? 'through' : 'in';
+        if (madeby_u) {
+            if (x !== (u.ux | 0) || y !== (u.uy | 0))
+                await pline('You dig an adjacent %s.', tname);
+            else
+                await pline('You dig %s %s the %s.', an(tname), in_thru, surface_type);
+        } else if (!madeby_obj && canseemon(madeby)) {
+            await pline('%s digs %s %s the %s.', Monnam(madeby), an(tname),
+                in_thru, surface_type);
+        }
+    }
 
     if (ttyp === PIT) {
         if (shopdoor && heros_fault) await pay_for_damage('ruin', false);
@@ -809,9 +836,9 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
                     dlevel: (u.uz.dlevel | 0) + 1,
                 };
                 await goto_level(newlevel, false, true, false);
-                /* C dig.c:804 — spoteffects(FALSE).  The shared arrival
-                 * pickup subroutine is the live portion of that path. */
-                await _spoteffects_pickup();
+                /* C dig.c:793-804 — the fall's arrival does not pick up or
+                 * look_here again (goto_level's own arrival already did). */
+                await check_special_room(false);
             }
         } else {
             /* C dig.c:809-834: objects get a chance to fall before a monster
@@ -997,22 +1024,29 @@ export async function dig() {
     d.effort += 10 + rn2(5) + abon() + (tool.spe | 0)
               - greatest_erosion(tool) + (u.udaminc | 0);
     /* C dig.c:367-368 — dwarves dig twice as fast (Race_if(PM_DWARF)). */
-    if (g.urace && (g.urace.name?.m === 'dwarf' || g.urace.name?.f === 'dwarf'))
+    if (g.urace && (g.urace.mnum | 0) === PM_DWARF_)
         d.effort *= 2;
 
     if (d.down) {
         /* C dig.c:372-378 — effort > 250 → full hole (not reached: pit first). */
-        if (d.effort > 250) {
-            await dighole_pit();
-            g.context.digging = null;
-            return 0;
+        const ttmp = t_at(d.pos.x | 0, d.pos.y | 0);
+        if (d.effort > 250 || (ttmp && is_hole(ttmp.ttyp))) {
+            await dighole(false, false, null);
+            d.effort = 0; d.pos = { x: 0, y: 0 }; d.level = { dnum: 0, dlevel: 0 };
+            d.down = false; d.chew = false; d.warned = false; d.quiet = false;
+            return 0; /* done with digging */
         }
-        /* C dig.c:380-382 — effort <= 50 → keep digging. */
-        if (d.effort <= 50) {
+        /* C dig.c:380-382 — effort <= 50, or already in a pit/trapdoor → keep
+         * digging (the pit is made once; further turns only add effort). */
+        if (d.effort <= 50 || (ttmp && (ttmp.ttyp === TRAPDOOR || is_pit(ttmp.ttyp)))) {
             return 1;
         }
         /* C dig.c:432-437 — make the pit at <u.ux,u.uy>, occupation ends. */
-        await dighole_pit();
+        if (await dighole_pit()) {
+            /* C dig.c:432-435 — the pit is made; forget the dig level so the
+             * next apply starts a fresh dig (effort 0). */
+            d.level = { dnum: 0, dlevel: -1 };
+        }
         return 0;
     }
     const dpx = d.pos.x | 0, dpy = d.pos.y | 0;
@@ -1208,7 +1242,9 @@ export async function use_pick_axe2(obj) {
     }
     const d = diggingCtx();
     /* C dig.c:1337-1352 — fresh dig vs continue.  Start a new dig run. */
-    if (d.pos.x !== (u.ux | 0) || d.pos.y !== (u.uy | 0) || !d.down) {
+    const _dl = g.u && g.u.uz ? g.u.uz : { dnum: 0, dlevel: 0 };
+    if (d.pos.x !== (u.ux | 0) || d.pos.y !== (u.uy | 0)
+        || (d.level.dnum | 0) !== (_dl.dnum | 0) || (d.level.dlevel | 0) !== (_dl.dlevel | 0) || !d.down) {
         d.chew = false;
         d.down = true;
         d.warned = false;
@@ -1276,11 +1312,11 @@ function is_axe(obj) {
     return (MKOBJ_OC_SKILL[obj.otyp | 0] | 0) === P_AXE_DG;
 }
 
-// C ref: do.c — closed_door(x,y): IS_DOOR(levl[x][y].typ) && (levl[x][y].doormask & D_CLOSED)
+// C ref: closed_door(x,y): IS_DOOR(levl[x][y].typ) && (doormask & (D_LOCKED | D_CLOSED))
 function closed_door(x, y) {
     const loc = game.level && game.level.at ? game.level.at(x, y) : null;
     if (!loc) return false;
-    return IS_DOOR(loc.typ) && (loc.doormask & D_CLOSED) !== 0;
+    return IS_DOOR(loc.typ) && (loc.doormask & (D_LOCKED | D_CLOSED)) !== 0;
 }
 
 // C dig.c enum dig_types: DIGTYP_UNDIGGABLE=0, DIGTYP_ROCK=1, DIGTYP_STATUE=2,

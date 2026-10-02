@@ -6,11 +6,10 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { pline, canseemon, canspotmon, verbalize, You_feel, newsym, impossible } from './display.js';
-import { Monnam, mon_nam, x_monnam } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, Amonnam } from './do_name.js';
 import { getlin } from './getline.js';
 import { currency } from './invent.js';
 import { money_cnt, money2mon } from './shk.js';
-import { an } from './objnam.js';
 import { makemon, mkclass, mkclass_aligned, newemin, mongets, mpickobj, set_malign } from './makemon.js';
 import { is_lminion, enexto, tele_restrict, rloc } from './teleport.js';
 import { mongone } from './mon.js';
@@ -166,14 +165,6 @@ export function msummon_environ(mptr) {
     return { cloud, what };
 }
 
-/** C ref: do_name.c Amonnam — highc(a_monnam); ordinary type article. */
-function Amonnam(mtmp) {
-    const raw = mtmp?.data?.name || 'monster';
-    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-    const withArt = an(plain);
-    return withArt.charAt(0).toUpperCase() + withArt.slice(1);
-}
-
 /** C ref: minion.c ndemon — mkclass_aligned(S_DEMON) that is_ndemon. */
 export function ndemon(atyp) {
     const ptr = mkclass_aligned('S_DEMON', 0, atyp);
@@ -213,6 +204,8 @@ export async function summon_minion(alignment, talk) {
         mnum = ndemon(alignment);
         break;
     default:
+        // C: alignment is always lawful/neutral/chaotic/none here
+        await impossible('unaligned player?');
         mnum = ndemon(A_NONE);
         break;
     }
@@ -302,9 +295,11 @@ export function dprince(atyp) {
 }
 
 /**
- * C ref: minion.c msummon — summon help for demon fight (or WoY-like).
- * Named omissions: show_transient_light / transient_light_cleanup for
- * S_ANGEL; full EPRI/EMIN align when unset.
+ * C ref: minion.c msummon `:59–195` — summon help for demon fight (or WoY-like).
+ * Whole body in C order: dtype/cnt selection per summoner class, G_UNIQ /
+ * G_GONE gates, makemon loop with angel emin+renegade, S_ANGEL
+ * show_transient_light + transient_light_cleanup, canseemon Amonnam pline
+ * (live do_name.js export), census-diff result. No named omissions.
  */
 export async function msummon(mon) {
     let ptr;

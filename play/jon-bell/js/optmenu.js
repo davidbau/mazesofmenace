@@ -186,9 +186,113 @@ function padTo(prefix, prefixLen, targetCol, tail) {
     return prefix + fill + tail;
 }
 
+/* C optlist.h — the trailing `desc`/`descr` argument of each NHOPT* row.  doset_simple
+ * shows it under the option while gs.simple_options_help is set (options.c:8635-8639). */
+const OPT_DESCR = {
+    fruit: 'name of a fruit you enjoy eating',
+    number_pad: 'use the number pad for movement',
+    price_quotes: 'display prices you have seen for unidentified objects',
+    autodig: 'dig if moving and wielding a digging tool',
+    autoopen: 'walking into a door attempts to open it',
+    autopickup: 'automatically pick up objects',
+    'autopickup exceptions': 'edit autopickup exceptions',
+    autoquiver: 'fill empty quiver automatically when firing',
+    autounlock: 'action to take when encountering locked door or chest',
+    cmdassist: 'give help for errors on direction input',
+    dropped_nopick: "don't autopickup dropped items",
+    fireassist: 'fire-command tries to be helpful',
+    pickup_stolen: 'autopickup stolen items',
+    pickup_thrown: 'autopickup thrown items',
+    pickup_types: 'types of objects to pick up automatically',
+    pushweapon: 'previous weapon goes to secondary slot',
+    bgcolors: 'use background color for some map hilighting',
+    color: 'use color in map',
+    customcolors: 'use custom colors in map',
+    customsymbols: 'use custom utf8 symbols in map',
+    hilite_pet: 'use highlight for pets',
+    hilite_pile: 'highlight piles of items',
+    showrace: 'show your character by race rather than role',
+    sparkle: 'display sparkly effect when resisting magic',
+    symset: 'load a set of display symbols from symbols file',
+    hitpointbar: 'show colored bar for hit points',
+    'menu colors': 'change colors used in menus',
+    showexp: 'show experience points in status line',
+    'status condition fields': 'change status condition highlighting',
+    'status highlight rules': 'change status line highlighting',
+    statuslines: '2 or 3 lines for status display',
+    time: 'display game turns in status line',
+};
+
+/* C options.c:8566-8574 — "show help" adds this note ahead of the '?' row. */
+const HELP_NOTE = " Use command '#optionsfull' to get the complete options list.";
+const MENU_PAGE_ROWS = SCREEN_ROWS - 1;   /* tty keeps the last row for "(N of M)" */
+
+function helpOn() { return !!game.simple_options_help; }
+
+function sectionLines(section) {
+    // blank line then reverse-video section header padded to HEADER_COL.
+    const visible = ' ' + section; // visible text after the SGR start (incl leading space)
+    const prefixVisLen = 1 /*margin*/ + visible.length;
+    const body = ' \x1b[7m' + visible;
+    return ['', padTo(body, prefixVisLen, HEADER_COL, '\x1b[0m')];
+}
+
+function entryLine(entry, acc) {
+    const label = `${acc} - ${entry.name}`;
+    const prefix = ' ' + label;           // 1-space margin + label
+    const prefixLen = prefix.length;       // visible length (no escapes here)
+    const tail = `[${valueStr(entry)}]` + (entry.suffix || '');
+    // C fmtstr_tab_doset_simple uses an unpadded name and a literal tab.
+    return game.iflags?.menu_tab_sep ? prefix + '\x1b[1C' + tail
+           : padTo(prefix, prefixLen, VALUE_COL, tail);
+}
+
+/* C options.c:8566-8639 with gs.simple_options_help set: the flat menu line list
+ * (note, "hide help" row, each option followed by "    <descr>" and a blank) cut
+ * into tty pages of MENU_PAGE_ROWS lines.  Accelerators restart at 'a' per page
+ * (wintty.c:2721), so each page carries its own letter -> entry map. */
+function helpPages() {
+    const items = [
+        { line: ' \x1b[7mOptions\x1b[0m' }, { line: '' },
+        { line: HELP_NOTE }, { line: ' ? - hide help' },
+    ];
+    for (const page of PAGES) {
+        for (const entry of page) {
+            if (entry.section) {
+                for (const l of sectionLines(entry.section)) items.push({ line: l });
+                continue;
+            }
+            items.push({ entry });
+            const d = OPT_DESCR[entry.name];
+            if (d) { items.push({ line: '\x1b[5C' + d }); items.push({ line: '' }); }
+        }
+    }
+    const pages = [];
+    for (let i = 0; i < items.length; i += MENU_PAGE_ROWS) {
+        const lines = [];
+        const accel = new Map();
+        let letter = 'a'.charCodeAt(0);
+        for (const it of items.slice(i, i + MENU_PAGE_ROWS)) {
+            if (it.entry) {
+                const acc = String.fromCharCode(letter++);
+                accel.set(acc, it.entry);
+                lines.push(entryLine(it.entry, acc));
+            } else lines.push(it.line);
+        }
+        pages.push({ lines, accel });
+    }
+    return pages;
+}
+
+function pageCount() { return helpOn() ? helpPages().length : PAGES.length; }
+
 // Build the rendered text lines for one menu page (no leading 24-row framing).
 // Returns array of line strings (each already includes its 1-space left margin).
 function buildPageLines(pageIdx) {
+    if (helpOn()) {
+        const hp = helpPages();
+        return [...hp[pageIdx].lines, ` (${pageIdx + 1} of ${hp.length})`];
+    }
     const page = PAGES[pageIdx];
     const lines = [];
     // Page 1 carries the title + "? - show help" header rows; page 2 does not.
@@ -200,23 +304,10 @@ function buildPageLines(pageIdx) {
     let letter = 'a'.charCodeAt(0);
     for (const entry of page) {
         if (entry.section) {
-            // blank line then reverse-video section header padded to HEADER_COL.
-            lines.push('');
-            // " " margin + "\x1b[7m" + " <section>" then fill to HEADER_COL then "\x1b[0m"
-            const visible = ' ' + entry.section; // visible text after the SGR start (incl leading space)
-            const prefixVisLen = 1 /*margin*/ + visible.length;
-            const body = ' \x1b[7m' + visible;
-            lines.push(padTo(body, prefixVisLen, HEADER_COL, '\x1b[0m'));
+            lines.push(...sectionLines(entry.section));
             continue;
         }
-        const acc = String.fromCharCode(letter++);
-        const label = `${acc} - ${entry.name}`;
-        const prefix = ' ' + label;           // 1-space margin + label
-        const prefixLen = prefix.length;       // visible length (no escapes here)
-        const tail = `[${valueStr(entry)}]` + (entry.suffix || '');
-        // C fmtstr_tab_doset_simple uses an unpadded name and a literal tab.
-        lines.push(game.iflags?.menu_tab_sep ? prefix + '\x1b[1C' + tail
-                   : padTo(prefix, prefixLen, VALUE_COL, tail));
+        lines.push(entryLine(entry, String.fromCharCode(letter++)));
     }
     // footer "(N of M)"
     lines.push(` (${pageIdx + 1} of ${PAGES.length})`);
@@ -225,6 +316,7 @@ function buildPageLines(pageIdx) {
 
 // Map a page's selectable letters to their entry objects (skipping sections).
 function pageAccelMap(pageIdx) {
+    if (helpOn()) return helpPages()[pageIdx].accel;
     const page = PAGES[pageIdx];
     const map = new Map();
     let letter = 'a'.charCodeAt(0);
@@ -254,7 +346,7 @@ function renderPage(pageIdx, row0Erased) {
     // Cursor: just past the footer line ("(N of M)").  C tty leaves the cursor
     // at the end of the last drawn menu line.  Footer is at row lines.length-1.
     const footerRow = lines.length - 1;
-    const footerVis = ` (${pageIdx + 1} of ${PAGES.length})`.length;
+    const footerVis = ` (${pageIdx + 1} of ${pageCount()})`.length;
     set_cursor(footerVis, footerRow);
     game._pending_message = '';
 }
@@ -471,8 +563,9 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false) {
  * cw->mlist head-first and is not page-scoped (wintty.c:1716-1729). */
 const DOSET_SIMPLE_HELP_ROW = Symbol('doset_simple help row');
 function dosetSimpleSearchList() {
-    const list = [{ str: '? - show help', entry: DOSET_SIMPLE_HELP_ROW }];
-    for (let p = 0; p < PAGES.length; p++)
+    const list = [{ str: helpOn() ? '? - hide help' : '? - show help',
+                    entry: DOSET_SIMPLE_HELP_ROW }];
+    for (let p = 0; p < pageCount(); p++)
         for (const [letter, entry] of pageAccelMap(p))
             list.push({
                 str: dosetRow(`${letter} - `, entry.name, valueStr(entry))
@@ -502,11 +595,11 @@ export async function doset_simple() {
         if (key === 27 /* ESC */) break;
         if (key === 10 || key === 13 /* Enter: exit */) break;
         if (key === 32 /* space: next page (wraps off the end → exit) */) {
-            if (pageIdx + 1 < PAGES.length) { pageIdx++; titleErased = false; continue; }
+            if (pageIdx + 1 < pageCount()) { pageIdx++; titleErased = false; continue; }
             break;
         }
         if (ch === '>') {
-            if (pageIdx + 1 < PAGES.length) { pageIdx++; titleErased = false; continue; }
+            if (pageIdx + 1 < pageCount()) { pageIdx++; titleErased = false; continue; }
             break;
         }
         if (ch === '<') {
@@ -524,10 +617,8 @@ export async function doset_simple() {
             if (!searchPick) continue;   /* no match: menu stays up, row 0 blank */
             if (searchPick === DOSET_SIMPLE_HELP_ROW) {
                 /* C options.c:8657-8659 — k == -2 toggles gs.simple_options_help
-                 * and `goto redo_opt_help` rebuilds the menu.  The per-option
-                 * description rows that flag adds are NOT modelled by this port,
-                 * so this reproduces the KEYSTROKE accounting (a fresh
-                 * select_menu from page 1) and not the added rows. */
+                 * and `goto redo_opt_help` rebuilds the menu from page 1. */
+                g.simple_options_help = !g.simple_options_help;
                 pageIdx = 0; titleErased = false; continue;
             }
         }
@@ -571,6 +662,14 @@ export async function doset_simple() {
             // comp/othr options WITH a C handler open their own picker; none of
             // re-render (no RNG, stream stays aligned).
             pageIdx = 0;
+            continue;
+        }
+        /* '?' is the help row's selector, which only exists on page 1
+         * (wintty.c process_menu_window matches within the current page).
+         * C options.c:8657-8659 toggles gs.simple_options_help and rebuilds. */
+        if (ch === '?' && pageIdx === 0) {
+            g.simple_options_help = !g.simple_options_help;
+            titleErased = false;
             continue;
         }
         // any other key: ignore, menu stays displayed.
@@ -643,6 +742,51 @@ export async function handler_menustyle(preserveStatus = false) {
     const chngd = game.flags.menu_style !== old_menu_style;
     if (chngd || game.flags.verbose)
         await pline(`'menustyle' ${chngd ? 'changed to' : 'is still'} "${menutype[game.flags.menu_style][0]}".`);
+}
+
+/* C options.c:195 msgwind[] */
+const msgwind = [
+    ['single', '[show one old message at a time,', ' most recent first]'],
+    ['combination', '[for consecutive ^P requests, use', " 'single' for first two, then 'full']"],
+    ['full', '[show all available messages,', ' oldest first and most recent last]'],
+    ['reversed', '[show all available messages,', ' most recent first]'],
+];
+
+/* C options.c:5831 handler_msg_window (tty). */
+export async function handler_msg_window(preserveStatus = false) {
+    const iflags = game.iflags ||= {};
+    const sep = iflags.menu_tab_sep ? '\t' : ' ';
+    const old_prevmsg_window = iflags.prevmsg_window ?? 's';
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    for (let i = 0; i < msgwind.length; i++) {
+        const [name, first, second] = msgwind[i];
+        m.add_menu(i + 1, name[0], ATR_NONE, name.slice(0, 12).padEnd(12) + sep + first.slice(0, 60),
+            false, name[0] === old_prevmsg_window);
+        m.add_menu_str(' '.repeat(16) + sep + second.slice(0, 60));
+    }
+    m.end_menu('Select message history display type:');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    if (count > 0) {
+        let i = picks[0] - 1;
+        if (count > 1 && msgwind[i][0][0] === old_prevmsg_window) i = picks[1] - 1;
+        iflags.prevmsg_window = msgwind[i][0][0];
+    }
+    const chngd = iflags.prevmsg_window !== old_prevmsg_window;
+    if (chngd || game.flags.verbose) {
+        /* optfn_msg_window get_val */
+        const cur = msgwind.find(w => w[0][0] === iflags.prevmsg_window)?.[0] ?? 'single';
+        await pline(`'msg_window' ${chngd ? 'changed to' : 'is still'} "${cur}".`);
+    }
+}
+
+/* C options.c:6123 handler_runmode. */
+const runmodes = ['teleport', 'run', 'walk', 'crawl'];
+export async function handler_runmode(preserveStatus = false) {
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    runmodes.forEach((n, i) => m.add_menu(i + 1, n[0], ATR_NONE, n, false, false));
+    m.end_menu('Select run/travel display mode:');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    if (count > 0) game.flags.runmode = picks[0] - 1;
 }
 
 /* C options.c:207 unlocktypes[] */
@@ -819,6 +963,14 @@ export async function doset() {
                 } else if (ent.row.name === 'autounlock') {
                     await drainTopline();
                     await handler_autounlock(statusRefreshed);
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'msg_window') {
+                    await drainTopline();
+                    await handler_msg_window(statusRefreshed);
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'runmode') {
+                    await drainTopline();
+                    await handler_runmode(statusRefreshed);
                     statusRefreshed = true;
                 } else if (ent.row.name === 'menustyle') {
                     await drainTopline();

@@ -2458,8 +2458,7 @@ async function precheck(mon, obj) {
 /**
  * C ref: muse.c use_defensive `:796–1219` — horn/bugle/wand
  * dig/tele-self/tele/undead/create arms + D-1809 scroll/stair/trap/
- * heal/lizard envelope. `default` returns 2 (dead while find_defensive
- * stays honest; C `impossible`s then returns 0).
+ * heal/lizard envelope. `default` is C `:1212–1217`: impossible + return 0.
  */
 export async function use_defensive(mtmp) {
     const m = museState();
@@ -2792,7 +2791,7 @@ export async function use_defensive(mtmp) {
         const heal = d(6 + 2 * bcsign(otmp), 4);
         healmon(mtmp, heal, 1);
         if (!otmp.cursed && !mtmp.mcansee) await mcureblindness(mtmp, vismon);
-        if (vismon) await pline(`${Monnam(mtmp)} looks better.`);
+        if (vismon) await pline_mon(mtmp, `${Monnam(mtmp)} looks better.`); // C `:1170`
         if (oseen) makeknown(POT_HEALING);
         m_useup(mtmp, otmp);
         return 2;
@@ -2803,7 +2802,7 @@ export async function use_defensive(mtmp) {
         const heal = d(6 + 2 * bcsign(otmp), 8);
         healmon(mtmp, heal, otmp.blessed ? 5 : 2);
         if (!mtmp.mcansee) await mcureblindness(mtmp, vismon);
-        if (vismon) await pline(`${Monnam(mtmp)} looks much better.`);
+        if (vismon) await pline_mon(mtmp, `${Monnam(mtmp)} looks much better.`); // C `:1184`
         if (oseen) makeknown(POT_EXTRA_HEALING);
         m_useup(mtmp, otmp);
         return 2;
@@ -2811,12 +2810,12 @@ export async function use_defensive(mtmp) {
     case MUSE_POT_FULL_HEALING: {
         if (!otmp) return 0;
         await mquaffmsg(mtmp, otmp);
-        if ((otmp.otyp | 0) === POT_SICKNESS) unbless(otmp);
+        if ((otmp.otyp | 0) === POT_SICKNESS) await unbless(otmp); // C `:1193–1194` Pestilence
         healmon(mtmp, mtmp.mhpmax | 0, otmp.blessed ? 8 : 4);
         if (!mtmp.mcansee && otmp.otyp !== POT_SICKNESS) {
             await mcureblindness(mtmp, vismon);
         }
-        if (vismon) await pline(`${Monnam(mtmp)} looks completely healed.`);
+        if (vismon) await pline_mon(mtmp, `${Monnam(mtmp)} looks completely healed.`); // C `:1199`
         if (oseen) makeknown(otmp.otyp);
         m_useup(mtmp, otmp);
         return 2;
@@ -2827,11 +2826,13 @@ export async function use_defensive(mtmp) {
         return 2;
     }
     case 0:
-        return 0;
+        return 0; /* C `:1210–1211` — i.e. an exploded wand */
     default:
-        // Dead while find_defensive only sets ported codes (C impossible).
-        return 2;
+        /* C `:1212–1215` — unknown defense code. */
+        await impossible('%s wanted to perform action %d?', Monnam(mtmp), m.has_defense);
+        break;
     }
+    return 0; /* C `:1217` */
 }
 
 /**

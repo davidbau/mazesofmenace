@@ -51,12 +51,13 @@ const SPE_POLYMORPH_OTYP_LK = 399;
  * the mons[] index 343 (js/pm.generated.js:345), the same reader js/dokick.js
  * maybe_wail() and js/cmd.js msnoise use: `game.urole.mnum === PM_WIZARD`. */
 const PM_WIZARD_LK = 343;
-import { simple_typename, xname_flags, cxname } from './objnam.js';
+import { simple_typename, xname_flags, cxname, doname, ansimpleoname } from './objnam.js';
+import { safe_qbuf } from './shk.js';
 import { weapon_type, WEAPON_WLDAM, m_at, mon_nam } from './uhitm.js';
 import { place_object } from './mklev.js';
 import { potionbreathe } from './potion.js';
 import { obj_resists } from './dogmove.js';
-import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { SHOPBASE, SDOOR, DOOR, D_CLOSED, D_ISOPEN, D_TRAPPED, D_NODOOR, D_BROKEN, D_LOCKED, A_STR, A_DEX, A_CON, ECMD_TIME, ECMD_OK, ECMD_CANCEL,
          P_DAGGER, P_SABER, P_PICK_AXE, P_FLAIL, P_LANCE, PASSES_WALLS, BLINDED, CXN_NORMAL, MV_ANY } from './const.js';
 /* C mons[] rows (permonst) — row[6] = mflags1; makemon_msize.json carries
@@ -845,12 +846,17 @@ export async function picklock() {
 /* C ref: lock.c:649 u_have_forceable_weapon(void) — uwep is a forceable melee
  * weapon (not a launcher/projectile/flail/lance-beyond, or a rock).  Uses
  * weapon_type(uwep) = abs(objects[uwep->otyp].oc_skill). */
+/* C obj.h:249 is_weptool(o) — TOOL_CLASS && oc_skill != P_NONE. */
+function _is_weptool_lk(o) {
+    return !!o && (o.oclass | 0) === TOOL_CLASS_OC && (MKOBJ_OC_SKILL[o.otyp | 0] | 0) !== 0;
+}
 function u_have_forceable_weapon() {
     const uwep = game.u?.uwep ?? null;
     if (!uwep) return false;
     const oclass = uwep.oclass | 0;
-    if (oclass === WEAPON_CLASS_OC /* || is_weptool */) {
-        const skill = weapon_type(uwep);
+    if (oclass === WEAPON_CLASS_OC || _is_weptool_lk(uwep)) {
+        /* C uses the raw (signed) objects[].oc_skill, not weapon_type's abs() */
+        const skill = MKOBJ_OC_SKILL[uwep.otyp | 0] | 0;
         if (skill < P_DAGGER_SK || skill === P_FLAIL_SK || skill > P_LANCE_SK)
             return false;
         return true;
@@ -1065,7 +1071,7 @@ export async function doforce() {
         const uwep = u.uwep;
         const usePlural = uwep && (uwep.quan | 0) > 1;
         const phrase = !uwep ? 'when not wielding a'
-            : ((uwep.oclass | 0) !== WEAPON_CLASS_OC) ? (usePlural ? 'without proper' : 'without a proper')
+            : ((uwep.oclass | 0) !== WEAPON_CLASS_OC && !_is_weptool_lk(uwep)) ? (usePlural ? 'without proper' : 'without a proper')
             : (usePlural ? 'with those' : 'with that');
         await pline(`You can't force anything ${phrase} weapon${usePlural ? 's' : ''}.`);
         return ECMD_OK;
@@ -1097,8 +1103,9 @@ export async function doforce() {
             continue;
         }
         /* C lock.c:730 — "There is <box> here; force its lock?" [ynq] (q). */
+        const qbuf = `There is ${_force_box_doname(otmp)} here; force its lock?`;
         otmp.lknown = 1;
-        const c = await _ynq(`There is ${_force_box_doname(otmp)} here; force its lock?`);
+        const c = await _ynq(qbuf);
         if (c === 'q') return ECMD_OK;
         if (c === 'n') continue;
         /* C lock.c:740-743 — begin message.  Leave it in _resultMessage (the
@@ -1207,8 +1214,26 @@ export async function pick_lock(pick, rx, ry, container) {
                     c = ans;
                 }
                 if (c !== 'y') return PICKLOCK_DID_NOTHING;
+            } else {
+                /* C lock.c:496-509 — "There is <a box> here; <verb> <it|its lock>?" */
+                let verb, it = false;
+                if (otmp.obroken) verb = 'fix';
+                else if (!otmp.olocked) { verb = 'lock'; it = true; }
+                else if (picktyp !== LOCK_PICK_OTYP) { verb = 'unlock'; it = true; }
+                else verb = 'pick';
+                const qsfx = ` here; ${verb} ${it ? 'it' : 'its lock'}?`;
+                const qbuf = await safe_qbuf('', 'There is ', qsfx, otmp, doname,
+                                             ansimpleoname, 'a box');
+                otmp.lknown = 1;
+                c = await _ynq(qbuf);
+                if (c === 'q') return PICKLOCK_DID_NOTHING;
+                if (c === 'n') continue; /* try next box */
             }
-            /* C lock.c:506 — obroken: can't fix; not reached (box not broken). */
+            /* C lock.c:511 — obroken: can't fix its lock. */
+            if (otmp.obroken) {
+                await pline(`You can't fix its broken lock with ${ansimpleoname(pick)}.`);
+                return PICKLOCK_LEARNED_SOMETHING;
+            }
             /* C lock.c:510 — credit card can only UNLOCK (box is locked → ok). */
             if (picktyp === CREDIT_CARD_OTYP && !otmp.olocked) {
                 await pline(`You can't do that with ${_an(simple_typename(picktyp))}.`);

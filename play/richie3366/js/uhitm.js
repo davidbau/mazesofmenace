@@ -3073,6 +3073,8 @@ export async function damageum(mdef, mattk, specialdmg) {
  * C ref: uhitm.c known_hitum — missum or hmon; flee rn2(25) if survives low.
  * cutworm when wormno && *mhit after Vorpal-converted-miss (oldhp).
  * slice_or_chop is obj.h is_blade||is_axe remembered before hmon.
+ * Stormbringer override pline `:602–607` (verbose only); miss via live
+ * missum `:609–610`; ustuck release `:630–632`.
  */
 async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, dieroll) {
     let malive = true;
@@ -3083,14 +3085,16 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
         || ((weapon.oclass === WEAPON_CLASS || weapon.oclass === TOOL_CLASS)
             && sk === P_AXE)
     ));
+    // C `:602–607` — Stormbringer override_confirmation (verbose only)
+    if (game.override_confirmation) {
+        /* this may need to be generalized if weapons other than
+           Stormbringer acquire similar anti-social behavior... */
+        if (game.flags?.verbose !== false) await Your('bloodthirsty blade attacks!');
+    }
     if (!mhit.v) {
-        // missum — near-miss flavor when rollneeded+penalty > dieroll
-        void (rollneeded + armorpenalty > dieroll);
-        await pline(`You miss ${mon_nam(mon)}.`);
-        // C missum: if (!helpless(mdef)) wakeup(mdef, TRUE)
-        if (!mon.msleeping && mon.mcanmove !== 0) {
-            await wakeup(mon, true);
-        }
+        // C `:609–610` — live missum: near-miss armor pline, seduce
+        // pretend, canspotmon/verbose miss gate, helpless-gated wakeup
+        await missum(mon, uattk, (rollneeded + armorpenalty > dieroll));
     } else {
         const oldhp = mon.mhp | 0;
         if (!game.u.uconduct) game.u.uconduct = {};
@@ -3111,7 +3115,12 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
                 && !engulfing_u(mon)) {
                 // C: monflee(mon, !rn2(3) ? rnd(100) : 0, FALSE, TRUE)
                 await monflee(mon, !rn2(3) ? rnd(100) : 0, false, true);
-                // C: ustuck release when !uswallow && !sticks — deferred
+                // C `:630–632` — ustuck release when !uswallow && !sticks
+                const uu = game.u || {};
+                if (uu.ustuck === mon && !uu.uswallow
+                    && !sticks(game.youmonst?.data)) {
+                    set_ustuck(null);
+                }
             }
             /* Vorpal Blade hit converted to miss — could be headless or tail */
             if ((mon.mhp | 0) === oldhp) {
@@ -3123,7 +3132,6 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
             }
         }
     }
-    void uattk;
     return malive;
 }
 
@@ -3160,8 +3168,11 @@ async function passive_obj(mon, obj, mattk) {
         }
         break;
     case AD_ACID:
+        // C uhitm.c passive_obj :6164-6168 — rn2(6) corrode of the hitting
+        // weapon, no mcan gate (unlike AD_CORR below; same erode_obj call).
         if (!rn2(6)) {
-            // erode_obj ERODE_CORRODE deferred
+            const { erode_obj } = await import('./trap.js');
+            await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE);
         }
         break;
     case AD_RUST:
@@ -3405,10 +3416,9 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
             }
             break;
-        case AD_STUN:
-            if (!u.Stunned) {
-                // make_stunned(tmp, TRUE) deferred
-                u.Stunned = tmp | 0;
+        case AD_STUN: /* C uhitm.c:6085-6088 yellow mold; Stunned is HStun (youprop.h:81) */
+            if (!hero_Stunned()) {
+                await (await import('./potion.js')).make_stunned(tmp | 0, true);
             }
             break;
         case AD_FIRE:

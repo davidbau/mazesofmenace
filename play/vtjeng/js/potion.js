@@ -2,7 +2,8 @@
 // C ref: src/potion.c dodrink() (526-615), drink_ok() (505-521),
 //        dopotion() (618-641), peffects() (1333-1425),
 //        make_confused() (89-104), self_invis_message() (471-478),
-//        peffect_booze() (771-792), peffect_confusion() (1014-1027),
+//        peffect_booze() (771-792), peffect_enlightenment() (794-808),
+//        peffect_confusion() (1014-1027),
 //        peffect_gain_ability() (1030-1051),
 //        peffect_restore_ability() (646-695),
 //        peffect_gain_energy() (1224-1258),
@@ -29,7 +30,7 @@
 // the ordinary POT_PARALYSIS and POT_SLEEPING arms,
 // POT_POLYMORPH,
 // POT_INVISIBILITY (also SPE_INVISIBILITY), POT_HALLUCINATION, POT_WATER,
-// POT_RESTORE_ABILITY and SPE_RESTORE_ABILITY,
+// POT_RESTORE_ABILITY and SPE_RESTORE_ABILITY, POT_ENLIGHTENMENT,
 // are ported. Remaining unported arms throw UnsupportedQuaffError.
 //
 // toggle_blindness() is called by Blindf_on() and Blindf_off() when blindness
@@ -41,6 +42,7 @@ import {
     ANTIMAGIC,
     A_CON,
     A_DEX,
+    A_INT,
     A_LAWFUL,
     A_STR,
     A_MAX,
@@ -208,7 +210,8 @@ import {
 import { stairway_at } from './stairs.js';
 import { cansee, canseemon, vision_recalc } from './vision.js';
 import {
-    Cold_resistance, Fire_resistance, makewish, resist,
+    bhitm, Cold_resistance, do_enlightenment_effect, Fire_resistance, makewish,
+    resist,
 } from './zap.js';
 import {
     OBJ_DESCR,
@@ -1065,6 +1068,29 @@ async function peffect_booze(otmp, state = game) {
     }
 }
 
+// C ref: potion.c peffect_enlightenment() (794-808). The two adjattrib()
+// results and both effect-helper results are discarded by C; keep their side
+// effects and await their source order.
+async function peffect_enlightenment(otmp, state = game, env = {}) {
+    const { message, random, encumberMessage } = env;
+
+    if (otmp.cursed) {
+        state.gp.potion_unkn++;
+        await message('You have an uneasy feeling...', state);
+        await exercise(A_WIS, false, state, random, { encumberMessage });
+    } else {
+        if (otmp.blessed) {
+            await adjattrib(A_INT, 1, false, state, {
+                message, random, encumberMessage,
+            });
+            await adjattrib(A_WIS, 1, false, state, {
+                message, random, encumberMessage,
+            });
+        }
+        await do_enlightenment_effect(state, random);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // peffect_confusion
 // C ref: potion.c peffect_confusion() (1014-1027).
@@ -1829,7 +1855,10 @@ export async function peffects(otmp, state = game, env = {}) {
         await peffect_booze(otmp, state);
         break;
     case POT_ENLIGHTENMENT:
-        throw new UnsupportedQuaffError('peffect_enlightenment()');
+        await peffect_enlightenment(
+            otmp, state, potionEffectEnvironment(env),
+        );
+        break;
     case SPE_INVISIBILITY:
     case POT_INVISIBILITY:
         await peffect_invisibility(otmp, state);
@@ -2277,7 +2306,12 @@ async function H2Opotion_dip(potion, target, useeit, objphrase, state, env) {
 // reach, optional calling, shop disposition, and final object release.
 export async function potionhit(mon, obj, how, rawEnv = {}) {
     const state = rawEnv.state ?? game;
-    const random = rawEnv.random ?? { d, rn1, rn2, rnd, rnl, rne, rnz };
+    // C uses the process RNG. Merge method overrides so downstream callees
+    // retain the complete draw bundle when a caller injects only a subset.
+    const random = {
+        d, rn1, rn2, rnd, rnl, rne, rnz,
+        ...(rawEnv.random ?? {}),
+    };
     const message = rawEnv.message ?? ttyPline;
     const env = { ...rawEnv, state, random, message };
     const botlnam = bottlename(state, random);
@@ -2564,9 +2598,8 @@ export async function potionhit(mon, obj, how, rawEnv = {}) {
             }
             break;
         case POT_POLYMORPH:
-            // C explicitly discards bhitm()'s return. The potion path in
-            // zap.c remains a named gap until that source arm is ported.
-            note_unported('zap.c bhitm potion polymorph');
+            // C discards bhitm()'s return after applying its effects.
+            await bhitm(mon, obj, state, random, env);
             break;
         }
 
