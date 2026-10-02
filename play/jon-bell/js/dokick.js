@@ -237,7 +237,7 @@ function martial() {
  * RNG: rn2(3) — maybe kick at empty space vs. strain a muscle.
  *      rnd(5)  — wounded legs duration if strained.
  *      rn2(2)  — hurtle direction (if Is_airlevel || Levitation). */
-function kick_dumb(x, y) {
+async function kick_dumb(x, y) {
     const g = game;
     const u = g.u || {};
     /* C: exercise(A_DEX, FALSE) — consumes rn2(2) (the AEXE decrement roll) */
@@ -257,7 +257,7 @@ function kick_dumb(x, y) {
     const airlevel = Is_airlevel(u.uz);
     const Levitation = Levitation_dk(u);
     if ((airlevel || Levitation) && rn2(2)) {
-        hurtle(-(u.dx | 0), -(u.dy | 0), 1, true);
+        await hurtle(-(u.dx | 0), -(u.dy | 0), 1, true);
     }
 }
 /* C ref: hack.c:4219 losehp(n, knam, k_format) — apply hit-point loss to the
@@ -391,7 +391,7 @@ async function kick_ouch(x, y, kickobjnam) {
     const Levitation = Levitation_dk(u);
     if (airlevel || Levitation) {
         const range = rn1(2, 4);
-        hurtle(-(u.dx | 0), -(u.dy | 0), range, true);
+        await hurtle(-(u.dx | 0), -(u.dy | 0), range, true);
     }
 }
 /* C ref: dokick.c:972-1253 kick_nondoor(x, y, avrg_attrib)
@@ -460,7 +460,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
     if (IS_THRONE(maploc.typ)) {
         let i;
         if (Levitation) {
-            kick_dumb(x, y);
+            await kick_dumb(x, y);
             return ECMD_TIME;
         }
         /* C: if ((Luck < 0 || gm.maploc->looted) && !rn2(3)) */
@@ -527,7 +527,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
     /* ── ALTAR ── C ref: dokick.c:1065-1078 */
     if (IS_ALTAR(maploc.typ)) {
         if (Levitation) {
-            kick_dumb(x, y);
+            await kick_dumb(x, y);
             return ECMD_TIME;
         }
         /* C dokick.c:1071-1074 — kicking an altar invokes the canonical
@@ -545,7 +545,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
     /* ── FOUNTAIN ── C ref: dokick.c:1079-1097 */
     if (IS_FOUNTAIN(maploc.typ)) {
         if (Levitation) {
-            kick_dumb(x, y);
+            await kick_dumb(x, y);
             return ECMD_TIME;
         }
         /* C: You("kick %s.", (Blind ? something : "the fountain")) — no RNG */
@@ -566,7 +566,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
     /* ── GRAVE ── C ref: dokick.c:1098-1130 */
     if (IS_GRAVE(maploc.typ)) {
         if (Levitation) {
-            kick_dumb(x, y);
+            await kick_dumb(x, y);
         }
         else if (rn2(4)) {
             /* minor injury */
@@ -689,7 +689,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
         /* C: int gend = poly_gender() — no RNG */
         const gend = 0; /* stub: poly_gender — WIRE_PENDING */
         if (Levitation) {
-            kick_dumb(x, y);
+            await kick_dumb(x, y);
             return ECMD_TIME;
         }
         /* C: if (rn2(5)) — 80% chance klunk */
@@ -749,14 +749,14 @@ export async function kick_nondoor(x, y, avrg_attrib) {
         || IS_STWALL(maploc.typ)) {
         /* C: if (!IS_STWALL(maploc.typ) && maploc.ladder == LA_DOWN) */
         if (!IS_STWALL(maploc.typ) && maploc.ladder === LA_DOWN) {
-            kick_dumb(x, y);
+            await kick_dumb(x, y);
             return ECMD_TIME;
         }
         await kick_ouch(x, y, "");
         return ECMD_TIME;
     }
     /* ── fallthrough ── C ref: dokick.c:1251-1252 */
-    kick_dumb(x, y);
+    await kick_dumb(x, y);
     return ECMD_TIME;
 }
 /* C ref: dokick.c:909-971 kick_door(x, y, avrg_attrib) — kick a closed/locked door.
@@ -771,7 +771,7 @@ async function kick_door(x, y, avrg_attrib) {
     /* C: if (doormask == D_ISOPEN || D_BROKEN || D_NODOOR) kick_dumb; return */
     if (maploc.doormask === D_ISOPEN || maploc.doormask === D_BROKEN
         || maploc.doormask === D_NODOOR) {
-        kick_dumb(x, y);
+        await kick_dumb(x, y);
         return;
     }
     /* C: if (Levitation) { kick_ouch; return; } */

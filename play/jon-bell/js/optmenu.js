@@ -14,7 +14,7 @@
 import { game } from './gstate.js';
 import { ECMD_OK } from './const.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, force_more } from './display.js';
+import { flush_screen, pline, force_more, docrt } from './display.js';
 /* C options.c:8944 — the generic compound-option path reads its value with
  * getlin(); mungspaces (objnam.c) normalises it before it is stored. */
 import { getlin } from './wizcmds.js';
@@ -630,6 +630,15 @@ export async function doset_simple() {
                 obj[fld] = !flagOn(entry);
                 if (entry.name === 'color')
                     g.iflags.use_color = !!obj[fld];
+                if (entry.name === 'hilite_pet') {
+                    /* C options.c:3109 (optfn_boolean/hilite_pet): petattr
+                     * defaults to ATR_INVERSE and opt_need_redraw is set, so
+                     * doset_simple()'s reset_needed_visuals() (options.c:8997)
+                     * docrt()s the map before the menu is re-offered. */
+                    if (g.iflags.wc_hilite_pet && !g.iflags.wc2_petattr)
+                        g.iflags.wc2_petattr = 7; /* ATR_INVERSE (wintype.h) */
+                    await docrt();
+                }
                 pageIdx = 0;
                 continue;
             }
@@ -799,11 +808,11 @@ function autounlockFlags() {
     const f = game.flags?.autounlock;
     return f === undefined ? 2 : f;
 }
-/* C options.c:1145 optfn_autounlock get_val: names joined with '+', or "none". */
+/* C options.c:1145 optfn_autounlock get_val: names joined with ' + ', or "none". */
 function autounlockStr() {
     const f = autounlockFlags();
     if (!f) return 'none';
-    return unlocktypes.filter((_, i) => f & (1 << i)).map(t => t[0]).join('+');
+    return unlocktypes.filter((_, i) => f & (1 << i)).map(t => t[0]).join(' + ');
 }
 
 /* C options.c:5624 handler_autounlock. */

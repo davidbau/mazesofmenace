@@ -613,7 +613,7 @@ export async function buried_ball_to_punishment() {
  * C ref: dig.c buried_ball_to_freedom — unbury ball, reset TT_BURIEDBALL.
  * Named omit: RUST_METAL timer stop (C #if 0).
  */
-export function buried_ball_to_freedom() {
+export async function buried_ball_to_freedom() {
     const u = game.u || {};
     const cc = { x: u.ux | 0, y: u.uy | 0 };
     const ball = buried_ball(cc);
@@ -621,7 +621,7 @@ export function buried_ball_to_freedom() {
         obj_extract_self(ball);
         place_object(ball, cc.x, cc.y);
         stackobj(ball);
-        reset_utrap(true);
+        await reset_utrap(true);
         del_engr_at(cc.x, cc.y);
         newsym(cc.x, cc.y);
     }
@@ -727,7 +727,7 @@ export async function liquid_flow(x, y, typ, ttmp, fillmsg) {
     const u_spot = u_at(x, y);
     if (!is_pool_or_lava(x, y)) return;
     /* C `:857` delfloortrap untraps a monster caught in the trap. */
-    if (ttmp) delfloortrap(ttmp);
+    if (ttmp) await delfloortrap(ttmp);
     obj_ice_effects(x, y, true);
     await unearth_objs(x, y);
     if (fillmsg) {
@@ -882,7 +882,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
                 set_utrap(rn1(4, 2), TT_PIT);
                 game.vision_full_recalc = 1; /* vision limits change */
             } else {
-                reset_utrap(true);
+                await reset_utrap(true);
             }
             if (oldobjs !== newobjs) {
                 const { pickup } = await import('./pickup.js');
@@ -2158,7 +2158,7 @@ export async function dighole(pit_only, by_magic, cc) {
         } else {
             await pline('KADOOM!  The boulder falls in!');
             wake_nearby(false);
-            delfloortrap(ttmp);
+            await delfloortrap(ttmp);
         }
         delobj(boulder_here);
         spot_checks(dig_x, dig_y, old_typ);
@@ -2378,7 +2378,7 @@ async function dig() {
                     `You destroy the bear trap with ${yobjnam_dig(uwep)}.`,
                 );
                 deltrap(ttmp);
-                reset_utrap(true);
+                await reset_utrap(true);
             }
             digging.effort = 0;
             return 0;

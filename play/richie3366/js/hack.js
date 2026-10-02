@@ -24,7 +24,7 @@ import {
     TRAP_CLEARLY_IMMUNE, TRAPNUM, WEB,
     xdir, ydir, N_DIRS, xytodir, directionname,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
-    OVERLOADED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, Is_airlevel, Is_waterlevel,
+    OVERLOADED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, Is_airlevel, Is_waterlevel,
     Is_earthlevel, Is_medusa_level, Is_juiblex_level, Is_rogue_level,
     TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
     SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
@@ -41,7 +41,7 @@ import {
     NEUTRAL,
 } from './const.js';
 import {
-    pline, vpline, You, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
+    pline, vpline, You, You_cant, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
     set_msg_xy, feel_location, map_object, unmap_object, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
     impossible, raw_printf,
@@ -71,7 +71,7 @@ import {
     monsterNames, pmnames,
 } from './generated/monsters_data.js';
 import { ART_STING } from './generated/artifacts_data.js';
-import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam } from './do_name.js';
+import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam, pmname, Ugender } from './do_name.js';
 import { decl_globals_init } from './decl.js';
 import { init_objects } from './o_init.js';
 import { get_level } from './dungeon.js';
@@ -198,6 +198,26 @@ export async function You_hear(line, ...the_args) {
     else
         prefix = 'You hear '; /* Deaf-aware */
     await vpline(`${prefix}${line}`, ...the_args);
+}
+
+/**
+ * C ref: hack.c check_capacity `:4399–4409` — near_capacity() >=
+ * EXT_ENCUMBER blocks with an immediate message: pline1(str) ≡
+ * pline("%s", str) (hack.h `:1026`) when str, else You_cant.
+ * C callers (13): apply/dothrow/eat×2/engrave/pickup×2/read/spell/
+ * teleport/trap/uhitm/zap — all wired to this export.
+ * @param {string|null} [str]
+ * @returns {Promise<boolean>} true when overloaded (C returns 1)
+ */
+export async function check_capacity(str) {
+    if (near_capacity() >= EXT_ENCUMBER) {
+        if (str)
+            await pline('%s', str);
+        else
+            await You_cant('do that while carrying so much stuff.');
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -1778,6 +1798,16 @@ export async function unmul(msg_override) {
     else if (game.nomovemsg == null) game.nomovemsg = 'You can move again.';
     if (game.nomovemsg != null && game.nomovemsg.length) {
         await pline(game.nomovemsg);
+        // C hack.c:4192–4194 — follow "you survived that attempt on your
+        // life" with a current-form reminder when poly'd (primarily
+        // lifesaving while turning into green slime; also poly'd +
+        // Unchanging wizard/explore Die? decline). (Ignore Hallu —
+        // pmname direct, no rndmonnam.) strncmpi 18: short strings miss.
+        const _nmm = game.nomovemsg || '';
+        if (Upolyd(game.u) && _nmm.length >= 18
+            && _nmm.slice(0, 18).toLowerCase() === 'you survived that ') {
+            await You('are %s.', an(pmname(game.u?.umonnum | 0, Ugender())));
+        }
     }
     game.nomovemsg = null;
     /* C hack.c unmul `:4197` — trap.c notes unmul clears usleep */

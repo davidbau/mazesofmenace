@@ -491,7 +491,7 @@ export async function invault() {
             }
             if (!spotted)
                 pline("The other presence vanishes.");
-            await mongone(guard);
+            await gd_mongone(guard);
             return;
         }
         if (U_AP_TYPE() === M_AP_OBJECT || u.uundetected) {
@@ -507,7 +507,7 @@ export async function invault() {
                 }
             /* C: pline("Puzzled, %s turns around and leaves.", mhe(guard)); */
             pline(`Puzzled, ${mhe(guard)} turns around and leaves.`);
-            await mongone(guard);
+            await gd_mongone(guard);
             return;
         }
         if (Strangled() || is_silent(guard) || (game.multi | 0) < 0) {
@@ -517,7 +517,7 @@ export async function invault() {
                 SetVoice(guard, 0, 80, 0);
                 verbalize("I'll be back when you're ready to speak to me!");
             }
-            await mongone(guard);
+            await gd_mongone(guard);
             return;
         }
 
@@ -558,7 +558,7 @@ export async function invault() {
                     SetVoice(guard, 0, 80, 0);
                     verbalize("Oh, yes, of course.  Sorry to have disturbed you.");
                 }
-                await mongone(guard);
+                await gd_mongone(guard);
             } else {
                 await setmangry(guard, false);
                 if (Deaf()) {
@@ -827,6 +827,15 @@ async function clear_fcorr(grd, forceshow) {
         && (u.uhp | 0) > 0)
         pline("You are encased in rock.");
     return true;
+}
+
+/* C mon.c:2784-2790 m_detach(): a monster leaving the map has its square
+ * redrawn (remove_monster + newsym).  This port's mongone() does not vacate the
+ * map (monster-lifetime keystone), so redraw the vacated square here. */
+async function gd_mongone(grd) {
+    const ox = grd.mx | 0, oy = grd.my | 0;
+    await mongone(grd);
+    if (ox && m_at(ox, oy) !== grd) newsym(ox, oy);
 }
 
 /* C ref: vault.c:144-151 restfakecorr(grd) — "it seems you left the corridor,

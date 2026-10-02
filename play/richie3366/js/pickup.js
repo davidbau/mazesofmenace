@@ -26,6 +26,7 @@ import {
 import {
     nomul, check_special_room, set_uinwater, is_pool, is_lava, in_rooms, dosinkfall,
     SURFACE_AT, switch_terrain, maybe_half_phys, waterbody_name, losehp, carrying,
+    check_capacity,
 } from './hack.js';
 import {
     flush_screen, pline, newsym, newsym_force, docrt, bot, flush_topl_more, canseemon,
@@ -4477,13 +4478,9 @@ async function doloot_core() {
     // C: ga.abort_looting = FALSE;
     game.abort_looting = false;
 
-    // C: check_capacity(NULL) then nohands → "You have no hands!"
-    if (check_capacity(null)) {
-        await pline(
-            game._check_capacity_msg
-            || "You can't do that while carrying so much stuff.",
-        );
-        game._check_capacity_msg = null;
+    // C pickup.c:2194 — check_capacity(NULL) (live js/hack.js).
+    if (await check_capacity(null)) {
+        /* "Can't do that while carrying so much stuff." */
         return ECMD_OK;
     }
     if (nohands(game.youmonst?.data)) {
@@ -4704,21 +4701,6 @@ function mon_beside(x, y) {
             const ny = y + j;
             if (isok(nx, ny) && m_at(nx, ny)) return true;
         }
-    }
-    return false;
-}
-
-/**
- * C ref: hack.c check_capacity — near_capacity >= EXT_ENCUMBER blocks.
- * @param {string|null} [str]
- * @returns {boolean} true when overloaded (C returns 1)
- */
-function check_capacity(str) {
-    if (near_capacity() >= EXT_ENCUMBER) {
-        // caller may await pline; sync path uses fire-and-forget via game
-        game._check_capacity_msg = str
-            || "You can't do that while carrying so much stuff.";
-        return true;
     }
     return false;
 }
@@ -5329,13 +5311,11 @@ export async function dotip() {
         // C `:3592–3593` — !verbose names "a container"; else one/it.
         let tipWhat = boxes > 1 ? 'one' : 'it';
         if (game.flags?.verbose === false) tipWhat = 'a container';
-        const overloaded = check_capacity(
+        // C pickup.c:3594 — !check_capacity(buf) && able_to_loot (live js/hack.js).
+        const overloaded = await check_capacity(
             `You can't tip ${tipWhat} while carrying so much.`,
         );
-        if (overloaded) {
-            await pline(game._check_capacity_msg);
-            game._check_capacity_msg = null;
-        } else if (await able_to_loot(ccx, ccy, false)) {
+        if (!overloaded && (await able_to_loot(ccx, ccy, false))) {
             if (boxes > 1) {
                 const res = await choose_tip_container_menu();
                 if (res !== ECMD_OK) return res;

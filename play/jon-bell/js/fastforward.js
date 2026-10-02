@@ -24,13 +24,16 @@ import { can_reach_floor } from "./hold_another_object.js";
  * back through this edge at module-init time, and nomul is a hoisted function
  * declaration called only at runtime, so this cycle resolves. */
 import { nomul, stop_occupation, interrupt_multi, night } from "./allmain.js";
-import { obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap } from "./cmd.js";
+import { halu_gname, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap } from "./cmd.js";
 import { vtense } from "./objnam.js";
 import { rehumanize, polyself, set_uasmon } from "./polyself.js";
 import { you_were } from "./were.js";
 import { tele, next_to_u } from "./teleport.js";
 import { TELEPORT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, CQ_CANNED, CQ_REPEAT, ismnum, STATUE_TRAP } from "./const.js";
 import { search_special } from "./mkroom.js";
+import { inhistemple, temple_occupied } from "./priest.js";
+import { helpless } from "./mhitm.js";
+import { EPRI, Is_astralevel } from "./const.js";
 /* C ref: mon.c:1230 — movemon_singlemon calls monmove.c's m_everyturn_effect
  * for every live monster.  Same runtime-only-reference cycle rule as nomul
  * above (monmove.js does not import fastforward.js at module-init time). */
@@ -838,6 +841,47 @@ function morgue_mon_sound(mtmp) {
     }
     return false;
 }
+/* dungeon.h Is_sanctum(lev) = on_level(lev, &sanctum_level) */
+function _is_sanctum(uz) {
+    const s = game?.sanctum_level;
+    return !!uz && !!s && uz.dnum === s.dnum && uz.dlevel === s.dlevel;
+}
+/* C sounds.c:147-198 temple_priest_sound(mtmp) — get_iter_mons predicate. */
+function temple_priest_sound(mtmp) {
+    if (mtmp.ispriest && inhistemple(mtmp)
+        && !helpless(mtmp)
+        && temple_occupied(game.u?.urooms || "") !== EPRI(mtmp).shroom) {
+        const temple_msg = [
+            "*someone praising %s.", "*someone beseeching %s.",
+            "#an animal carcass being offered in sacrifice.",
+            "*a strident plea for donations.",
+        ];
+        const hallu = Hallucination() ? 1 : 0;
+        let trycount = 0;
+        const ax = EPRI(mtmp).shrpos.x, ay = EPRI(mtmp).shrpos.y;
+        const speechless = ((mtmp.data?.msound | 0) <= 17); /* MS_ANIMAL */
+        const in_sight = canseemon_ff(mtmp) || cansee_ff(ax, ay);
+        let msg;
+        do {
+            msg = temple_msg[rn2(temple_msg.length - 1 + hallu)];
+            if (msg.includes('*') && speechless)
+                continue;
+            if (msg.includes('#') && in_sight)
+                continue;
+            break;
+        } while (++trycount < 50);
+        let i = 0;
+        while (!/[A-Za-z]/.test(msg[i])) ++i; /* skip control flags */
+        msg = msg.slice(i);
+        if (msg.includes('%'))
+            You_hear(msg.replace('%s', halu_gname(EPRI(mtmp).shralign)));
+        else
+            You_hear(msg);
+        return true;
+    }
+    return false;
+}
+
 export function dosounds_rng() {
     const lf = game.level && game.level.flags;
     if (!lf)
@@ -963,14 +1007,11 @@ export function dosounds_rng() {
         }
         return; /* C sounds.c:328 */
     }
-    if (lf.has_temple && !rn2(200)) {
-        /* C sounds.c:330-334 — `has_temple && !rn2(200)
-         *   && !(Is_astralevel || Is_sanctum)) { if (get_iter_mons(...)) return; }`.
-         * The rn2(200) draw fires regardless of astral/sanctum (C's && evaluates
-         * left-to-right, so the draw happens before that conjunct is checked);
-         * only the RETURN is conditional on finding a qualifying priest, so this
-         * falls through on Astral/Sanctum or no qualifying monster
-         * (WIRE_PENDING: temple_priest_sound port). */
+    if (lf.has_temple && !rn2(200)
+        && !(Is_astralevel(game.u?.uz) || _is_sanctum(game.u?.uz))) {
+        /* C sounds.c:330-334 */
+        if (get_iter_mons(temple_priest_sound))
+            return;
     }
     if (Is_oracle_level(game.u?.uz) && !rn2(400)) {
         return;

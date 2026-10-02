@@ -489,6 +489,12 @@ async function make_itemized_bill(shkp) {
 
 async function menu_pick_pay_items(ibillct, ibill) {
     const g = game;
+    /* C wintty.c:1921 — tty_display_nhwindow(NHW_MENU) pages an unacknowledged
+     * topline (TOPLINE_NEED_MORE, set by update_topl topl.c:390) before the
+     * menu is drawn: dopay's "You owe ... for the use of merchandise."
+     * (shk.c:1967) must show --More-- first.  DISPLAY-ONLY. */
+    if (g._pending_message)
+        await force_more(g._pending_message);
     /* C:1682-1687 — first pass over ibill[] purely to width-align the prices. */
     let largest_amt = 0;
     for (let i = 0; i < ibillct; i++)
@@ -561,6 +567,19 @@ async function menu_pick_pay_items(ibillct, ibill) {
              * incremental repaint marks a plain selection '+'. */
             e.selected = !e.selected;
             e.mark = e.selected ? '+' : '-';
+            continue;
+        }
+        /* C wintty.c process_menu_window() menu_* defaults (defaults.nh):
+         * select_all '.', unselect_all '-', select_page ',', unselect_page
+         * '\\', invert_all '@', invert_page '~'.  The one-page menu makes
+         * page == all.  Each marks '+' / '-' like set_item_state(). */
+        if (k === 0x2e || k === 0x2c || k === 0x2d || k === 0x5c
+            || k === 0x40 || k === 0x7e) {
+            for (const en of entries) {
+                en.selected = (k === 0x2e || k === 0x2c) ? true
+                    : (k === 0x2d || k === 0x5c) ? false : !en.selected;
+                en.mark = en.selected ? '+' : '-';
+            }
             continue;
         }
         if (k === 0x3a /* ':' MENU_SEARCH */) {
@@ -4280,6 +4299,29 @@ export async function alter_cost(obj, amt) {
             update_inventory();
         }
         break;
+    }
+}
+
+/* C shk.c:3198 gem_learned(oindx) — "identifying or forgetting a gem causes
+ * all unpaid gems of its type to change value".  Walks every shopkeeper's bill
+ * and re-prices the entries whose object is of type oindx (or any gem when
+ * oindx is STRANGE_OBJECT).  Called by o_init.c discover_object (:489) and
+ * undiscover_object (:521).  RNG-free. */
+export function gem_learned(oindx) {
+    for (let shkp = next_shkp(game.fmon, true); shkp;
+         shkp = next_shkp(shkp.nmon, true)) {
+        const eshkp = ESHK(shkp);
+        if (!eshkp || !eshkp.bill_p) continue;
+        let ct = eshkp.billct | 0;
+        while (--ct >= 0) {
+            const bp = eshkp.bill_p[ct];
+            const obj = find_oid(bp.bo_id >>> 0);
+            if (!obj) /* shouldn't happen */
+                continue;
+            if ((oindx | 0) !== 0 ? ((obj.otyp | 0) === (oindx | 0))
+                                  : ((obj.oclass | 0) === GEM_CLASS_SHK))
+                bp.price = get_cost(obj, shkp);
+        }
     }
 }
 

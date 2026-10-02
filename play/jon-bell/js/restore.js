@@ -28,6 +28,7 @@ import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
+import { HALLUC, HALLUC_RES } from './const.js';
 import { phase_of_the_moon, friday_13th } from './allmain.js';
 
 /* C ref: mondata.h:90 hides_under(ptr) — ((ptr)->mflags1 & M1_CONCEAL). */
@@ -210,6 +211,14 @@ async function restgamestate(state) {
      * NEW game), so assigninvlet() (invent.c:721) scans from 'a' again instead of
      * continuing after the old process's last letter. */
     game._lastinvnr = 51;
+    /* C restore.c:691-699: re-run setuwep() and, for no weapon or a pick-axe /
+     * grappling hook, force the "You begin bashing" reminder for the next fight.
+     * The saved unweapon already holds setuwep()'s value for the restored uwep. */
+    {
+        const w = game.u?.uwep;
+        if (!w || (w.otyp | 0) === 259 /* PICK_AXE */ || (w.otyp | 0) === 260 /* GRAPPLING_HOOK */)
+            game.unweapon = true;
+    }
     rest_engravings(state.__engravings);
     regions_rest_snapshot(state.__regions);
     worms_rest_snapshot(state.__worms);
@@ -276,10 +285,10 @@ export async function dorecover(save) {
     g.program_state.beyond_savefile_load = 1;
     /* C restore.c:932 docrt() — repaint the whole screen from the restored
      * level's remembered glyphs, monsters and hero. */
-    cls();
-    vision_recalc(0);
+    /* C restore.c:684 defer_see_monsters is TRUE through docrt() (see_monsters
+     * is a no-op there); docrt's own vision_recalc(0) is the only pass. */
+    g.defer_see_monsters = 1;
     await docrt();
-    see_monsters();
     bot();
     /* C restore.c:933 clear_nhwindow(WIN_MESSAGE) — see the note above. */
     g._pending_message = '';
@@ -348,7 +357,17 @@ function welcome_back_message() {
 export async function restore_preamble() {
     const g = game;
     await l_nhcore_call(NHCORE_RESTORE_OLD_GAME);
-    const msgs = [welcome_back_message()];
+    const msgs = [];
+    /* C allmain.c:869-870 welcome(): the Hallucination line precedes the
+     * welcome-back line.  Hallucination = HHallucination && !Halluc_resistance
+     * (youprop.h:120). */
+    {
+        const up = g.u?.uprops;
+        const res = ((up?.[HALLUC_RES]?.intrinsic | 0) !== 0) || ((up?.[HALLUC_RES]?.extrinsic | 0) !== 0);
+        if (((up?.[HALLUC]?.intrinsic | 0) !== 0) && !res)
+            msgs.push('NetHack is filmed in front of an undead studio audience.');
+    }
+    msgs.push(welcome_back_message());
     let keptPrompt = '';
     /* C unixmain.c:264-274 — after a successful dorecover(), wizard and
      * explore-mode restores ask whether to keep the save file; this precedes
@@ -357,7 +376,8 @@ export async function restore_preamble() {
         /* welcome(FALSE) is dorecover's own tail (restore.c:936), so it is on
          * the topline, paged by the prompt that follows. */
         const { pline_with_more } = await import('./com_pager.js');
-        await pline_with_more(msgs.shift(), g.u?.uac ?? 0);
+        while (msgs.length)
+            await pline_with_more(msgs.shift(), g.u?.uac ?? 0);
         if (!g.flags.debug && g.flags.explore)
             await pline('You are in non-scoring explore/discovery mode.');
         const { yn_function } = await import('./end.js');
@@ -410,8 +430,12 @@ export async function restore_preamble() {
     }
     /* C allmain.c:86-89, the `if (resuming)` arm — read_engr_at is above;
      * fix_shop_damage() has no shop-damage model to repair (message-only).
-     * C allmain.c:91-96 encumber_msg() / defer_see_monsters -> see_monsters()
-     * are covered by the see_monsters() in dorecover() above. */
+     * C allmain.c:91-96 encumber_msg(); then the deferred see_monsters() runs
+     * AFTER the welcome and moon/Friday-13th plines and their --More-- frames. */
+    if (g.defer_see_monsters) {
+        g.defer_see_monsters = 0;
+        see_monsters();
+    }
     /* C allmain.c:98-99 */
     g.u.uz0 = { ...(g.u.uz || {}) };
     g.context = g.context || {};

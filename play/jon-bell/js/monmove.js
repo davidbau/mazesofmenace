@@ -1458,8 +1458,9 @@ export async function m_move(mtmp, after) {
     if ((mtmp.meating | 0) > 0) {
         mtmp.meating--;
         if (mtmp.meating <= 0) {
-            mtmp.meating = 0;
-            /* C: finish_meating(mtmp) — no RNG */
+            /* C monmove.c:1748 finish_meating(mtmp): a pet that mimicked the mimic
+             * corpse it ate sheds the appearance and repaints (dogmove.c:1448-1458) */
+            finish_meating_real(mtmp);
         }
         return MMOVE_DONE_MV; /* still eating */
     }
@@ -1552,6 +1553,13 @@ export async function m_move(mtmp, after) {
          * move_special; postmov's shk-on-trap mintrap is not yet needed. */
         /* C monmove.c:1823 — `return postmov(..., (xm != 1) ? MMOVE_NOTHING
          * : MMOVE_MOVED, ...)`; the tail runs for the MMOVE_MOVED case. */
+        /* C postmov (monmove.c:1508, :1656) — the MMOVED redraw pair around
+         * mintrap: newsym(omx,omy) then newsym(mtmp->mx,mtmp->my).  move_special
+         * (priest.c:122-124) itself only does newsym(nix,niy). */
+        if (xm === 1) {
+            newsym(_entry_omx, _entry_omy);
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+        }
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
     }
     if ((mtmp.ispriest | 0)) {
@@ -1560,6 +1568,13 @@ export async function m_move(mtmp, after) {
         if (xm === -1) return MMOVE_NOTHING_MV;
         /* C monmove.c:1823 — postmov(..., (xm != 1) ? MMOVE_NOTHING
          * : MMOVE_MOVED, ...) */
+        /* C postmov (monmove.c:1508, :1656) — the MMOVED redraw pair around
+         * mintrap: newsym(omx,omy) then newsym(mtmp->mx,mtmp->my).  move_special
+         * (priest.c:122-124) itself only does newsym(nix,niy). */
+        if (xm === 1) {
+            newsym(_entry_omx, _entry_omy);
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+        }
         return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
     }
     if ((mtmp.isgd | 0)) {

@@ -671,7 +671,7 @@ async function gush(x, y, poolcnt) {
     }
 
     const ttmp = t_at(x, y);
-    if (ttmp && !delfloortrap(ttmp)) return;
+    if (ttmp && !await delfloortrap(ttmp)) return;
 
     if (!(poolcnt.n++)) {
         await pline('Water gushes forth from the overflowing fountain!');

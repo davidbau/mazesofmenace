@@ -840,27 +840,35 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             await flush_screen(1);
             const d = g.nhDisplay;
             if (d) topl_park_cursor(d, qbuf + ' ');
-            const raw = await nhgetch();
+            /* C topl.c:537-539 rewrites gt.toplines as prompt + key2txt(q), and THAT
+             * is what remember_topl() files: the answered prompt, never the bare
+             * question.  The answer is filed by _answered() on return. */
+            const savedHist = g._topl_suppress_history;
+            g._topl_suppress_history = true;
+            let raw;
+            try { raw = await nhgetch(); }
+            finally { g._topl_suppress_history = savedHist; }
             const key = typeof raw === 'number' ? raw
                       : (raw && raw.charCodeAt ? raw.charCodeAt(0) : 0);
+            const _answered = (c) => { putmsghistory(qbuf + ' ' + key2txt(c.charCodeAt(0))); return c; };
             if (key === 27) {
                 /* C win/tty/topl.c:463-470 — ESC resolves to 'q' when the response
                  * string offers one, else 'n', else the default. */
-                if (choices.indexOf('q') >= 0) return 'q';
-                if (choices.indexOf('n') >= 0) return 'n';
-                return defchoice;
+                if (choices.indexOf('q') >= 0) return _answered('q');
+                if (choices.indexOf('n') >= 0) return _answered('n');
+                return _answered(String(defchoice));
             }
             /* C win/tty/topl.c:471-473 `else if (strchr(quitchars, q)) { q = def; break; }`
              * — quitchars is " \r\n\033" (src/decl.c:96), so SPACE answers with the
              * default just as CR/LF do.  The space was missing here, so C's
              * space-answered prompt was eaten and re-prompted instead. */
             if (key === 32 || key === 13 || key === 10)
-                return defchoice;
+                return _answered(String(defchoice));
             const ch = String.fromCharCode(key);
             if (choices.indexOf(ch) >= 0)
-                return ch;
+                return _answered(ch);
             if (choices.indexOf(ch.toLowerCase()) >= 0)
-                return ch.toLowerCase();
+                return _answered(ch.toLowerCase());
             /* anything else: C rings the bell and re-loops, repainting the same
                frame — which is why C records step 85 identical to step 84. */
         }

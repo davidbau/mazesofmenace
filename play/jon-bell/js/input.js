@@ -102,7 +102,15 @@ export async function nhgetch() {
     // indicator, which is not part of the stored message text) before clearing.
     // ^P (doprev_message) recalls this ring.  Append-only; never displayed unless
     // the player invokes ^P, so this cannot perturb any existing screen render.
-    if (game._pending_message && !game._topl_suppress_history) {
+    /* C wintty.c:2290-2299 tty_putstr: a SUPPRESS_HISTORY line is remember_topl()'d
+     * out of gt.toplines and written with show_topl(), so gt.toplines is EMPTY
+     * until the next ordinary message (topl.c:280).  doprev_message (^P) reads
+     * this: topl.c:84-85 putstr(gt.toplines) is a blank row when it is empty. */
+    const _suppressHist = !!(game._topl_suppress_history || game._topl_suppress_once);
+    game._topl_suppress_once = false;
+    if (game._pending_message)
+        game._toplEmptyAfterSuppress = _suppressHist;
+    if (game._pending_message && !_suppressHist) {
         let text = String(game._pending_message);
         if (text.endsWith('--More--'))
             text = text.slice(0, -8);

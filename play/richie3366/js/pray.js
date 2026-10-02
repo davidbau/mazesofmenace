@@ -680,7 +680,7 @@ async function fix_worst_trouble(trouble) {
     }
     case TROUBLE_LAVA:
         if (!(await safe_teleds(TELEDS_NO_FLAGS))) {
-            reset_utrap(true);
+            await reset_utrap(true);
         }
         await rescued_from_terrain(DISSOLVED);
         break;
@@ -790,7 +790,7 @@ async function fix_worst_trouble(trouble) {
     case TROUBLE_PUNISHED:
         await pline('Your chain disappears.');
         if (u.utrap && (u.utraptype | 0) === TT_BURIEDBALL) {
-            buried_ball_to_freedom();
+            await buried_ball_to_freedom();
         } else {
             unpunish();
         }

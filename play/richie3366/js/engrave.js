@@ -72,7 +72,7 @@ import {
     FLYING, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
     ECMD_OK, ECMD_TIME, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, DRAWBRIDGE_DOWN,
 } from './const.js';
-import { nomul, is_lava, is_pool, SURFACE_AT } from './hack.js';
+import { nomul, is_lava, is_pool, SURFACE_AT, check_capacity } from './hack.js';
 import { t_at, uteetering_at_seen_pit, uescaped_shaft, ceiling } from './trap.js';
 import { goodpos } from './teleport.js';
 import { makemon } from './makemon.js';
@@ -1268,13 +1268,8 @@ async function u_can_engrave() {
         await You_cant('even hold anything!');
         return false;
     }
-    /* C `:539–540` check_capacity(NULL) — inlined per the trap.js
-       help_monster_out precedent (pickup.js clone stays sync for sync
-       callers): near_capacity() >= EXT_ENCUMBER prints and blocks. */
-    if (near_capacity() >= EXT_ENCUMBER) {
-        await You_cant('do that while carrying so much stuff.');
-        return false;
-    }
+    /* C `:539–540` check_capacity(NULL) (live js/hack.js). */
+    if (await check_capacity(null)) return false;
     return true; // C `:541`
 }
 

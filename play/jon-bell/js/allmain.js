@@ -11,7 +11,7 @@ import { nh_timeout_spell_protection, run_timers, fall_asleep } from './timeout.
 import { decrement_property_timeout, timeout_terrain_property,
     terrain_timeout_dialogues } from './terrain_timeout.js';
 import { FIRE_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES,
-    STONE_RES, DRAIN_RES, SICK_RES, ANTIMAGIC, WARN_OF_MON, DISPLACED, WWALKING,
+    STONE_RES, DRAIN_RES, SICK_RES, ANTIMAGIC, WARN_OF_MON, DETECT_MONSTERS, DISPLACED, WWALKING,
     MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
@@ -1076,6 +1076,8 @@ async function faithful_moveloop_turn() {
                 await nh_timeout_wounded_legs();
                 await nh_timeout_sleepy();
                 await timeout_terrain_property(WARN_OF_MON);
+                // C timeout.c:751 generic loop: DETECT_MONSTERS (37) counts down; no expiry arm.
+                decrement_property_timeout(DETECT_MONSTERS);
                 // C timeout.c:858 — DISPLACED is property index 41, after
                 // WARN_OF_MON and before the transportation-property block.
                 await timeout_terrain_property(DISPLACED);
@@ -1831,7 +1833,7 @@ async function slip_or_trip() {
                 confdir(true);
             if ((u.ux | 0) + (u.dx | 0) !== ux0
                 || (u.uy | 0) + (u.dy | 0) !== uy0)
-                hurtle(u.dx | 0, u.dy | 0, 1, false);
+                await hurtle(u.dx | 0, u.dy | 0, 1, false);
         }
         return;
     }
@@ -2589,7 +2591,9 @@ async function moveloop_core_faithful() {
     // rn1(4,2) at dig.c:739).  The number of turns falls out of the C effort
     if (g.occupation === dig && (g.multi | 0) >= 0) {
         let digGuard = 0;
-        const _digHorizontal = !!(g.context && g.context.digging && !g.context.digging.down);
+        const _digHorizontal = !!(g.context && g.context.digging && !g.context.digging.down)
+            && !g._digFromApply;
+        g._digFromApply = false;
         if (_digHorizontal) {
             // ── HORIZONTAL (wall) autodig — per-turn paged like the learn driver ──
             // C: each occupation turn runs dig() (effort rn2(5), occasionally a
@@ -2904,6 +2908,14 @@ async function moveloop_core_faithful() {
         // Each callback is followed by its own world block.  A continuing
         // occupation must complete that block before the next input is read.
         while (g.occupation === 'engrave' && (g.multi | 0) >= 0 && engrGuard++ < 4096) {
+            /* C allmain.c:453-470 — the moveloop_core invocation that runs the
+             * occupation callback first executes the once-per-input redraw tail
+             * (see_monsters/see_objects/see_traps when hallucinating).  For the
+             * first callback that is the tail of the no-time doengrave
+             * invocation; for a continuing one, the tail after the previous
+             * world block.  Hallucinating, each is a run of DISPLAY-stream
+             * draws, so omitting it shifts every later hallucinated name. */
+            faithful_input_redraw();
             const r = engrave();
             if (r === 0) g.occupation = null;
             // C allmain.c:485-509 checks interruption after the callback,
@@ -3094,7 +3106,21 @@ async function moveloop_core_faithful() {
         // occupation turn's world block (this turn's movemon) BEFORE rhack reads the
         // next key.  Run it eagerly, then suppress the next head's spurious block
         // (context.move = 0) — the dig/picklock driver pattern.
+        // Its plines (e.g. a confusion timeout) come AFTER forcelock()'s own
+        // staged messages in C, so hold them back and append them last.
+        const _res0 = g._resultMessage ?? null;
+        const _pend0 = g._pending_message || '';
         await faithful_moveloop_turn();
+        let _postTail = '';
+        {
+            const _p1 = g._pending_message || '';
+            const _pre = [_res0, _pend0].filter(Boolean).join('  ');
+            if (_p1.length > _pre.length && _p1.startsWith(_pre)) {
+                _postTail = _p1.slice(_pre.length).trim();
+                g._resultMessage = _res0;
+                g._pending_message = _pend0;
+            }
+        }
         if (g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;
@@ -3127,9 +3153,32 @@ async function moveloop_core_faithful() {
                 ? _topl_merge_result(g._resultMessage, g._pending_message, _resHint)
                 : (g._resultMessage || g._pending_message || '');
             for (const m of (g._forceMsgs || [])) {
+                const _prevLen = full.length;
                 full = full
                     ? _topl_merge_result(full, m, _topl_joins_snapshot(full) || undefined)
                     : m;
+                if (forceFrame && _prevLen > 0) {
+                    if (!Array.isArray(g._plineFlushFrames)) g._plineFlushFrames = [];
+                    g._plineFlushFrames.push({ off: _prevLen, msg: m, cells: forceFrame,
+                        moves: forceFrameMoves | 0, botl: null });
+                }
+            }
+            if (_postTail) {
+                /* The post-occupation turn's pline recorded its flush frame
+                 * (pline.c:274) at an offset relative to the pre-force text
+                 * (_res0 + _pend0); forcelock's staged messages now sit ahead
+                 * of it, so rebase that frame to where the tail lands. */
+                if (full && Array.isArray(g._plineFlushFrames)) {
+                    const _preLen = [_res0, _pend0].filter(Boolean).join('  ').length;
+                    for (const f of g._plineFlushFrames) {
+                        if (f && (f.off | 0) === _preLen
+                            && _postTail.startsWith(String(f.msg || '\0')))
+                            f.off = full.length;
+                    }
+                }
+                full = full
+                    ? _topl_merge_result(full, _postTail, _topl_joins_snapshot(full) || undefined)
+                    : _postTail;
             }
             g._forceMsgs = null;
             g._resultMessage = null;
@@ -3389,6 +3438,10 @@ async function moveloop_core_faithful() {
                 await stop_occupation();
                 reset_eat();
             }
+            // C allmain.c:509 — runmode_delay_output() before `return`: in
+            // RUN_LEAP mode it sets time_botl and repaints every 7th turn, even
+            // with a stale context.run (e.g. left by a finished travel).
+            await runmode_delay_output();
             if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
                 pushRngLogEntry(
                     `^ml_occ[phase=post guard=${occGuard | 0} moves=${g.moves | 0}`
@@ -3588,6 +3641,11 @@ async function moveloop_core_faithful() {
          * svc.context.move is set — a counted move into a door that opens
          * leaves move 0 and multi > 0 (hack.c:1108-1109, 2843-2848). */
         if (g.context.move) await faithful_moveloop_turn();
+        // C ref: allmain.c:474-480 — every run turn is its own moveloop_core
+        // invocation, so the guarded status paint runs after the world block.
+        // A regen_hp() botl flag raised this turn repaints `T:' at THIS turn's
+        // 219: the --More-- frame shows T:36, not the run's later T:38).
+        await moveloop_status_paint();
         // C ref: win/tty/topl.c more() during a run — each run turn's movemon plines
         // are painted onto the SAME accumulating topline (no nhgetch clears it between
         // run steps), and the physical terminal is repainted with the hero at THIS
@@ -4140,6 +4198,7 @@ async function moveloop_core_impl() {
                  * the last paint put there; see js/display.js
                  * time_botl_moves_incremented(). */
                 time_botl_moves_incremented((g.moves | 0) - 1);
+        if (g.u.ublesscnt) g.u.ublesscnt = (g.u.ublesscnt | 0) - 1; /* C allmain.c:276-277, the once-per-turn block this legacy path stands in for */
                 // C ref: allmain.c:245 — u.umovement -= NORMAL_SPEED per turn.
                 g.u.umovement = ((g.u.umovement || 0) - NORMAL_SPEED) | 0;
                 await fastforward_step((g.moves || 1) - 1);
@@ -4212,6 +4271,7 @@ async function moveloop_core_impl() {
          * the last paint put there; see js/display.js
          * time_botl_moves_incremented(). */
         time_botl_moves_incremented((g.moves | 0) - 1);
+        if (g.u.ublesscnt) g.u.ublesscnt = (g.u.ublesscnt | 0) - 1; /* C allmain.c:276-277, the once-per-turn block this legacy path stands in for */
         // C ref: allmain.c:464-470 — seer check uses the POST-increment moves;
         // step 41 seer_turn is far ahead so this fires no RNG, but we include it
         g.context = g.context || {};
@@ -4266,6 +4326,7 @@ async function moveloop_core_impl() {
          * the last paint put there; see js/display.js
          * time_botl_moves_incremented(). */
         time_botl_moves_incremented((g.moves | 0) - 1);
+        if (g.u.ublesscnt) g.u.ublesscnt = (g.u.ublesscnt | 0) - 1; /* C allmain.c:276-277, the once-per-turn block this legacy path stands in for */
         // C ref: allmain.c:464-470 — seer check uses POST-increment moves.
         // The seer fires when C's svm.moves >= seer_turn.  JS's g.moves carries a
         // +1 head off-by-one (g.moves init 1 vs C svm.moves init 0; the head

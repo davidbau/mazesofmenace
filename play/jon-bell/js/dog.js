@@ -155,7 +155,8 @@ export function initedog(mtmp, everything) {
     mtmp.mpeaceful = 1;
     /* C dog.c:53 — mtmp->mavenge = 0; */
     mtmp.mavenge = 0;
-    /* C dog.c:54 — set_malign(mtmp): recalc mtmp->malign; no RNG, skip for now */
+    /* C dog.c:54 — set_malign(mtmp) */
+    _set_malign_real(mtmp);
     if (everything) {
         /* C dog.c:56–68 — clear mleashed, meating and edog struct fields */
         mtmp.mleashed = 0;

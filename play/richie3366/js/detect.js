@@ -8,9 +8,10 @@
 //
 // Branch envelope: 8-neighbour SDOOR/SCORR/trap search with fund
 // (lenses + artifact SPFX_SEARCH spe); findit clear-area reveal of SDOOR/SCORR/unseen traps +
-// empty "don't find anything" path; do_mapping hero_memory path
-// (no browse_map) + show_map_spot SCORR uncover / seenv=SVALL /
-// magic_map_background; **#terrain / doterrain** View which? PICK_ONE
+// empty "don't find anything" path; do_mapping whole body (browse arm +
+// reconstrain) + show_map_spot SCORR uncover / seenv=SVALL /
+// oldglyph trap/object restore / magic_map_background;
+// **#terrain / doterrain** View which? PICK_ONE
 // (a/b/c + explore/wizard extras) + Esc cancel; reveal_terrain
 // impairment gate + getglyph/show rewrite + Showing pline +
 // browse_map/getpos + docrt;
@@ -29,9 +30,11 @@
 // Named omissions: Hallucination/cls
 // map_trap wait;
 // map_trap + map_engraving after furniture (D-0928 #1158); oldglyph
-// trap/object restore deferred; unconstrain still named for
-// do_mapping/reveal_terrain/monster_detect (do_vicinity_map D-1391
-// has save/restore; display_trap_map unconstrain+reconstrain);
+// trap/object restore live via gbuf snapshot + show_glyph_cell /
+// remember_shown_glyph; unconstrain_map/reconstrain_map live for
+// do_mapping (still named for reveal_terrain/monster_detect;
+// do_vicinity_map D-1391 has save/restore; display_trap_map
+// unconstrain+reconstrain);
 // **findone** flash_glyph_at / foundone viz-pulse + mimic / hider /
 // invis tail + findit detect/paranoid messages (D-1775).
 // Named omissions: notice_mon_off/on; FOUND_FLASH_COUNT==0 tmp_at path;
@@ -58,6 +61,7 @@ import {
     map_invisible, glyph_is_invisible, glyph_is_monster, warning_of, You_feel,
     feel_location, feel_newsym, unmap_invisible, map_object, Norep, You_see,
     see_monsters, flush_screen, docrt, cls, more, set_msg_xy, unmap_object, flush_topl_more,
+    remember_shown_glyph,
     glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at, glyph_to_cmap,
     There, Your, under_water, under_ground,
     Hallucination, random_object, random_monster,
@@ -932,77 +936,99 @@ export function premap_detect() {
 }
 
 /**
- * C ref: detect.c show_map_spot — magic mapping / clairvoyance cell update.
- * Confusion path rolls rn2(7) skip; oldglyph trap/object restore deferred.
+ * C ref: detect.c show_map_spot `:1371–1419` — magic mapping / clairvoyance
+ * cell update. Whole body in C order: confusion rn2(7) skip; seenv=SVALL;
+ * SCORR uncover via unblock_point; oldglyph snapshot before the background
+ * repaint; hero_memory magic_map_background + newsym else display-only;
+ * !IS_FURNITURE tseen-trap / engraving / oldglyph trap/object restore
+ * (furniture > traps > objects, opposite to normal vision); room_discovered.
  */
 export function show_map_spot(x, y, cnf) {
-    if (cnf && rn2(7)) return;
+    if (cnf && rn2(7)) return; // C `:1378–1379`
     const lev = game.level?.at(x, y);
     if (!lev) return;
 
-    lev.seenv = SVALL;
+    lev.seenv = SVALL; // C `:1382`
 
-    // Secret corridors are found, but not secret doors.
+    /* Secret corridors are found, but not secret doors. */ // C `:1384–1388`
     if (lev.typ === SCORR) {
         lev.typ = CORR;
-        recalc_block_point(x, y); // C: unblock_point
+        unblock_point(x, y);
     }
 
-    if (game.level?.flags?.hero_memory) {
+    /*
+     * C `:1396–1404` — force the real background, then restore a known
+     * trap / engraving / shown trap-or-object glyph over it. Snapshot the
+     * gbuf render before the repaint: C's show_glyph(x, y, oldglyph)
+     * repaints glyphmap[oldglyph], which is exactly what the cell shows
+     * now (every paint of one id renders identically; hallucination
+     * randomizes the id at map time, not at show_glyph).
+     */
+    const oldglyph = glyph_at(x, y); // C `:1396` gg.gbuf id
+    const oldtty = {
+        ch: lev.disp_ch ?? '',
+        color: lev.disp_color ?? null,
+        dec: !!lev.disp_decgfx,
+    };
+    const hero_memory = !!game.level?.flags?.hero_memory;
+    if (hero_memory) {
         magic_map_background(x, y, 0);
-        newsym(x, y);
+        newsym(x, y); /* show it, if not blocked */
     } else {
-        magic_map_background(x, y, 1);
+        magic_map_background(x, y, 1); /* display it */
     }
-
-    // C: !IS_FURNITURE → tseen trap else engraving (even !erevealed)
-    // else oldglyph trap/object restore. newsym alone would keep floor
-    // when erevealed is still clear (D-0814 / D-0928 #1158).
-    if (!IS_FURNITURE(lev.typ)) {
-        const trap = t_at(x, y);
+    if (!IS_FURNITURE(lev.typ)) { // C `:1405`
+        const trap = t_at(x, y); // C `:1406` t_at + tseen
         if (trap && trap.tseen) {
             map_trap(trap, 1);
         } else {
-            const ep = engr_at(x, y);
+            const ep = engr_at(x, y); // C `:1408` (even !erevealed: D-0814 / D-0928 #1158)
             if (ep && !cnf) {
                 map_engraving(ep, 1);
+            } else if (glyph_is_trap(oldglyph) || glyph_is_object(oldglyph)) { // C `:1410`
+                // C `:1411` show_glyph — fire-and-forget like map_trap /
+                // map_engraving (show_glyph_cell is async; disp stores land
+                // synchronously, only the announce emit defers).
+                show_glyph_cell(x, y, oldtty.ch, oldtty.color, oldtty.dec, 0, oldglyph);
+                if (hero_memory) remember_shown_glyph(lev, oldtty, oldglyph); // C `:1413` lev->glyph
             }
-            // else glyph_is_trap/object(oldglyph) restore deferred
         }
     }
-    // C: possibly update #overview when mapping a room cell
+    /* possibly update #overview */ // C `:1416–1418`
     if (!cnf && ((lev.roomno | 0) >= ROOMOFFSET)) {
         room_discovered((lev.roomno | 0) - ROOMOFFSET);
     }
 }
 
 /**
- * C ref: detect.c do_mapping — full-level magic mapping.
- * hero_memory path (default): no browse_map. notice_mon_off/on live
- * in caller seffect_magic_mapping (D-1407), not here (C do_mapping
- * does not wrap them).
+ * C ref: detect.c do_mapping `:1421–1444` — full-level magic mapping.
+ * Whole body in C order: live unconstrain_map; show_map_spot sweep;
+ * !hero_memory||unconstrained flush_screen + browse_map + map_redisplay
+ * else reconstrain_map (a no-op there, called anyway); exercise(A_WIS).
+ * Async only because the browse arm reaches getpos/docrt (C blocks in
+ * browse_map); the hero_memory path awaits nothing. notice_mon_off/on
+ * live in caller seffect_magic_mapping (D-1407), not here.
  */
-export function do_mapping() {
+export async function do_mapping() {
+    const unconstrained = unconstrain_map(); // C `:1427`
     const u = game.u || {};
-    // C: unconstrain_map — underwater/buried/swallow; return if any change
-    const unconstrained = !!(u.uinwater || u.uburied || u.uswallow);
-    if (unconstrained) {
-        // save/clear flags deferred — ordinary start is never constrained
-    }
-
     const confused = !!(u.Confusion);
-    for (let zx = 1; zx < COLNO; zx++) {
-        for (let zy = 0; zy < ROWNO; zy++) {
+    for (let zx = 1; zx < COLNO; zx++) // C `:1428–1430`
+        for (let zy = 0; zy < ROWNO; zy++)
             show_map_spot(zx, zy, confused);
-        }
-    }
 
-    if (!game.level?.flags?.hero_memory || unconstrained) {
-        // browse_map / map_redisplay deferred
+    if (!game.level?.flags?.hero_memory || unconstrained) { // C `:1432`
+        await flush_screen(1);                 /* flush temp screen */ // C `:1433`
+        /* browse_map() instead of display_nhwindow(WIN_MAP, TRUE) */ // C `:1434–1436`
+        await browse_map(TER_DETECT | TER_MAP | TER_TRP | TER_OBJ,
+            'anything of interest');
+        await map_redisplay(); /* calls reconstrain_map() and docrt() */ // C `:1437`
+    } else {
+        /* we only get here when unconstrained is False, so reconstrain_map
+           will be a no-op; call it anyway */ // C `:1439–1441`
+        reconstrain_map();
     }
-    // reconstrain_map no-op when unconstrained was false
-
-    exercise(A_WIS, true);
+    exercise(A_WIS, true); // C `:1443`
 }
 
 /** C youprop.h Clairvoyant — (H||E) && !B. */

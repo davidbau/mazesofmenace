@@ -11,10 +11,10 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnz, d } from './rng.js';
-import { depth, builds_up, level_difficulty } from './hacklib.js';
+import { depth, builds_up, level_difficulty, upstart } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
-    DIR_DOWN, I_SPECIAL, W_ARTI, W_ART, TOOKPLUNGE, VIBRATING_SQUARE,
+    DIR_DOWN, DIR_UP, I_SPECIAL, W_ARTI, W_ART, TOOKPLUNGE, VIBRATING_SQUARE,
     S_dnstair, S_dnladder, LEVITATION, Can_fall_thru, Is_stronghold,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_AMUL, W_TOOL,
@@ -23,9 +23,9 @@ import {
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS, RANGE_LEVEL, REST_LEVELS,
     WRITING, FREEING,
-    UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
+    UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
     MAGIC_PORTAL, TIMEOUT, BLINDED, STONED, SLIMED, STRANGLED, SICK,
-    RLOC_NOMSG, EYE, HAND, STOMACH, FROMOUTSIDE, HMON_THROWN, NO_TRAP,
+    RLOC_NOMSG, EYE, FACE, HAND, STOMACH, FROMOUTSIDE, HMON_THROWN, NO_TRAP,
     WARN_OF_MON, TELEPAT, INFRAVISION,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
     LL_ACHIEVE, LL_DEBUG,
@@ -34,6 +34,7 @@ import {
     CONTAINED_TOO, BURIED_TOO, ER_DESTROYED, WT_SPLASH_THRESHOLD, COST_DEGRD,
     TT_PIT, FIRE_RES, PIT,
     ROOM, SINK, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
+    DB_FLOOR, DB_UNDER,
     IS_WATERWALL, IS_ALTAR, IS_SINK, is_pit, is_hole, u_at, Has_contents,
     Is_container, Is_waterlevel, Is_airlevel,
     In_quest, In_endgame, In_mines, In_sokoban, Is_rogue_level,
@@ -120,7 +121,7 @@ import {
     doname, xname, the, The, vtense, an, yname, yobjnam, corpse_xname, is_plural,
     otense, makeplural, body_part_latebound, Tobjnam,
 } from './objnam.js';
-import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, rndmonnam, trycall, obj_pmname } from './do_name.js';
+import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, rndmonnam, trycall, obj_pmname, y_monnam } from './do_name.js';
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
@@ -155,9 +156,11 @@ import { more_experienced, newexplevel } from './exper.js';
 import {
     PM_TOURIST, PM_ROGUE, monsterNames,
 } from './generated/monsters_data.js';
+import { se_sizzling, se_splash } from './generated/seffects_data.js';
 import { dismount_steed, place_monster, stucksteed } from './steed.js';
 import { place_wsegs, rest_worm, save_worm } from './worm.js';
-import { set_residency, costly_alteration, is_unpaid, stolen_value } from './shk.js';
+import { set_residency, costly_alteration, is_unpaid, stolen_value, obfree } from './shk.js';
+import { burn_away_slime } from './timeout.js';
 import { set_ustuck, gulp_blnd_check, digests, Flying } from './mhitu.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
@@ -180,7 +183,7 @@ import { fruitname } from './potion.js';
 import { delete_levelfile, open_levelfile } from './files.js';
 import { strange_feeling } from './detect.js';
 import { surface } from './sit.js';
-import { use_pick_axe2, bury_objs } from './dig.js';
+import { use_pick_axe2, bury_objs, fill_pit } from './dig.js';
 import { set_move_cmd, u_rooted, nhl_callback } from './cmd.js';
 import { cmd_from_func, visctrl } from './dokeylist.js';
 import { newcham, mpickobj } from './makemon.js';
@@ -845,7 +848,7 @@ export async function flooreffects(obj, x, y, verb) {
                 );
                 squished = true; // C: goto deletedwithboulder
             } else {
-                reset_utrap(true);
+                await reset_utrap(true);
             }
         }
         if (verb && !squished) {
@@ -868,7 +871,7 @@ export async function flooreffects(obj, x, y, verb) {
         // C deletedwithboulder: trap may have gone away via
         // hmon -> killed -> xkilled / mondied -> m_detach -> fill_pit.
         if ((t = t_at(x, y)) !== null) {
-            delfloortrap(t);
+            await delfloortrap(t);
             if (game.u?.utrap && u_at(x, y)) reset_utrap(false);
         }
         useupf(obj, 1);
@@ -960,15 +963,19 @@ export async function flooreffects(obj, x, y, verb) {
 
 /**
  * C ref: do.c boulder_hits_pool — boulder fills/sinks in pool or lava.
- * Branch envelope: fills_up chance; ROOM morph / bury_objs; splash msgs;
- * wake_nearto; adjacent lava dmg; obfree (!pushing).
- * Named omit: DRAWBRIDGE_UP mask polish; pushing useupf; steed whobuf;
- * Fire_resistance lava dmg; burn_away_slime. Dry-land set_uinwater is
- * D-1267.
+ * Branch envelope: fills_up chance; DRAWBRIDGE_UP mask morph / ROOM morph
+ * + bury_objs; splash msgs; wake_nearto; adjacent lava dmg + burn_away_slime;
+ * pushing useupf / obfree; steed whobuf; impossible non-boulder arm.
+ * Ported: DRAWBRIDGE_UP drawbridgemask floor morph (C :74–77) + mondied
+ * (C :89–91; DEADMONSTER/m_in_air gate). Dry-land set_uinwater is D-1267.
  * @returns {Promise<boolean>}
  */
 export async function boulder_hits_pool(otmp, rx, ry, pushing) {
-    if (!otmp || (otmp.otyp | 0) !== BOULDER) return false;
+    if (!otmp || (otmp.otyp | 0) !== BOULDER) {
+        /* C do.c:57 — impossible, then fall through to return FALSE */
+        await impossible('Not a boulder?');
+        return false;
+    }
     if (!(is_pool(rx, ry) || is_lava(rx, ry))) return false;
 
     const lava = is_lava(rx, ry);
@@ -990,9 +997,9 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
     const u = game.u || {};
     if (fills_up && lev) {
         if (ltyp === DRAWBRIDGE_UP) {
-            // drawbridgemask floor morph deferred — treat as ROOM
-            lev.typ = ROOM;
-            lev.flags = 0;
+            // C do.c:74–77 — clear the under-bits (lava), lay floor;
+            // typ/flags and recalc_block_point stay untouched in this arm.
+            lev.drawbridgemask = ((lev.drawbridgemask | 0) & ~DB_UNDER) | DB_FLOOR;
         } else {
             lev.typ = ROOM;
             lev.flags = 0;
@@ -1000,11 +1007,12 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
         }
         const mtmp = m_at(rx, ry);
         if (mtmp && !(mtmp.mhp <= 0) && !m_in_air(mtmp)) {
-            // mondied deferred — clear trapped only for thin fortress
-            mtmp.mtrapped = 0;
+            // C do.c:89–91 — DEADMONSTER (mhp<1) + !m_in_air gate, then kill
+            // (m_in_air is the file-local clone; clone-drift debt, untouched).
+            await mondied(mtmp);
         }
         const ttmp = t_at(rx, ry);
-        if (ttmp) delfloortrap(ttmp);
+        if (ttmp) await delfloortrap(ttmp);
         try {
             const { bury_objs } = await import('./dig.js');
             await bury_objs(rx, ry);
@@ -1013,7 +1021,10 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
         }
         newsym(rx, ry);
         if (pushing) {
-            await pline(`You push ${the(xname(otmp))} into the ${what}.`);
+            /* C do.c:103–109 — whobuf is the steed's y_monnam when mounted */
+            let whobuf = 'you';
+            if (u.usteed) whobuf = y_monnam(u.usteed);
+            await pline(`${upstart(whobuf)} ${vtense(whobuf, 'push')} ${the(xname(otmp))} into the ${what}.`);
             if (game.flags?.verbose && !Blind()) {
                 await pline('Now you can cross it!');
             }
@@ -1028,6 +1039,8 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
                     } the ${what}.`,
                 );
             } else if (!Deaf()) {
+                /* C do.c:117–121 — sfx id differs by lava, message shared */
+                Soundeffect(lava ? se_sizzling : se_splash, 100);
                 await You_hear(`a${lava ? ' sizzling' : ''} splash.`);
             }
             await wake_nearto(rx, ry, 40);
@@ -1042,19 +1055,17 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
             const Fire_resistance = !!(u.Fire_resistance
                 || u.HFire_resistance || u.EFire_resistance);
             await pline(`You are hit by molten ${hliquid('lava')}${Fire_resistance ? '.' : '!'}`);
-            let dmg = 0;
-            const ndice = Fire_resistance ? 1 : 3;
-            for (let i = 0; i < ndice; i++) dmg += 1 + rn2(6);
+            await burn_away_slime(); /* C do.c:137 — before the damage roll */
+            const dmg = d(Fire_resistance ? 1 : 3, 6);
             await losehp(maybe_half_phys(dmg), 'molten lava', KILLED_BY);
         } else if (!fills_up && game.flags?.verbose
             && (pushing ? !Blind() : cansee(rx, ry))) {
             await pline('It sinks without a trace!');
         }
     }
-    // boulder gone — !pushing uses obfree (no obj_resists)
-    otmp.quan = 0;
-    otmp.where = OBJ_FREE;
-    otmp.nobj = otmp.nexthere = null;
+    /* C do.c:148–151 — boulder is now gone */
+    if (pushing) useupf(otmp, otmp.quan | 0);
+    else obfree(otmp, null);
     return true;
 }
 
@@ -1510,6 +1521,8 @@ export async function getlev_catchup_monsters(elapsed) {
  * kill_genocided_monsters (D-1190) → run_timers (D-1191) →
  * vision/docrt → pickup(1).
  * Ported: `set_uinwater(0)` on leave and after getlev/mklev (D-1267).
+ * Ported: `fill_pit` / `set_ustuck(NULL)` / `u.uundetected = 0` on leave
+ * (C `:1619–1622`, in order around the D-1267 `set_uinwater`).
  * Ported: portal MAGIC_PORTAL find / missing → u_on_rndspot (D-0594).
  * Ported: quest entrance `com_pager(quest_portal*)` (D-0650).
  * Ported: quest-home gate — on qstart && !newdungeon && !ok_to_quest()
@@ -1694,9 +1707,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // are not left on the departing floor (D-0915).
     // C: Punished ≡ (uball != 0)
     if (u.uball || u.Punished) await unplacebc();
-    // C: reset_utrap / fill_pit / set_ustuck / u.uundetected still named.
+    // C do.c:1618 goto_level — needed in level_tele
+    reset_utrap(false);
+    // C do.c:1619–1620 — fill the departure pit, clear u.ustuck/u.uswallow.
+    fill_pit(u.ux | 0, u.uy | 0);
+    set_ustuck(null);
     // set_uinwater(0) (D-1267; C do.c:1621). Same-value is a no-op.
     await set_uinwater(0);
+    // C do.c:1622 — not hidden, even if means are available.
+    u.uundetected = 0;
     // Snapshot sight before vision_recalc(2) clears viz — getbones yn
     // needs prior IN_SIGHT to mon→memory newsym the leave-level gbuf.
     if (game.viz_array) {
@@ -3429,18 +3448,21 @@ export async function dodown() {
 }
 
 /**
- * C ref: do.c doup — '<' go up staircase (ordinary stairs path).
- *
- * Omits: rooted, stucksteed, encumbrance load gate
- * (ledger 1 escape yn live). u_stuck_cannot_go is wired (do.c:1321).
+ * C ref: do.c doup `:1298–1344` — '<' go up staircase, whole body in C order.
+ * stairway_at; set_move_cmd(DIR_UP,0); u_rooted; pit climb; missing-stair
+ * You_cant; stucksteed; u_stuck_cannot_go; near_capacity load gate; ledger-1
+ * escape yn; next_to_u pet hold; at_ladder + prev_level.
  */
 export async function doup() {
     const u = game.u;
     if (!u) return ECMD_OK;
 
-    u.dz = -1;
-    u.dx = 0;
-    u.dy = 0;
+    const stway = stairway_at(u.ux, u.uy);
+
+    set_move_cmd(DIR_UP, 0);
+
+    if (await u_rooted())
+        return ECMD_TIME;
 
     /* "up" to get out of a pit... */
     if ((u.utrap | 0) && (u.utraptype | 0) === TT_PIT) {
@@ -3448,15 +3470,22 @@ export async function doup() {
         return ECMD_TIME;
     }
 
-    const stway = stairway_at(u.ux, u.uy);
     if (!stway || !stway.up) {
-        await pline("You can't go up here.");
+        await You_cant('go up here.');
+        return ECMD_OK;
+    }
+    if (await stucksteed(true)) {
         return ECMD_OK;
     }
 
-    // C do.c:1321 — after the missing-stair return (stucksteed still omitted).
     if (await u_stuck_cannot_go('up')) return ECMD_TIME;
 
+    if (near_capacity() > SLT_ENCUMBER) {
+        /* No levitation check; inv_weight() already allows for it */
+        const ltyp = game.level?.at(u.ux, u.uy)?.typ | 0;
+        await Your(`load is too heavy to climb the ${ltyp === STAIRS ? 'stairs' : 'ladder'}.`);
+        return ECMD_TIME;
+    }
     // C do.c :1330–1335 — ledger 1: no return; 'y' climbs out (prev_level
     // escapes via goto_level ledger<=0 → done(ESCAPED)), else stay.
     if (ledger_no(u.uz) === 1) {
@@ -3643,17 +3672,17 @@ async function wipeoff() {
 }
 
 /**
- * C ref: do.c dowipe — #wipe face cream / BlindedTimeout.
- * Named omissions: body_part poly face noun.
+ * C ref: do.c dowipe `:2390–2404` — #wipe face cream / BlindedTimeout.
+ * Both arms use live body_part(FACE) (polyself.js), the poly face noun.
  * @returns {number} ECMD_TIME
  */
 export async function dowipe() {
     const u = game.u || {};
     if (u.ucreamed | 0) {
-        set_occupation(wipeoff, 'wiping off your face', 0);
+        set_occupation(wipeoff, `wiping off your ${body_part(FACE)}`, 0);
         return ECMD_TIME;
     }
-    await pline('Your face is already clean.');
+    await Your(`${body_part(FACE)} is already clean.`);
     return ECMD_TIME;
 }
 

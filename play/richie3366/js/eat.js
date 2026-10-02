@@ -112,6 +112,7 @@ import {
 import {
     nomul, unmul, losehp, finish_maybe_wail, still_chewing, is_pool, is_lava,
     stop_occupation, end_running, You_hear, fall_asleep, rounddiv,
+    check_capacity,
 } from './hack.js';
 import { Blind, near_capacity, observe_object, makeknown, getobj, freeinv,
     encumber_msg, update_inventory, useupall, useup, useupf,
@@ -1263,13 +1264,13 @@ async function floorfood_eat() {
                 const c = await yn_function(qbuf, 'ynq', 'n');
                 if (c === 'y') {
                     deltrap(ttmp);
-                    if (u_in_beartrap) reset_utrap(true);
+                    if (u_in_beartrap) await reset_utrap(true);
                     const beartrap = mksobj(BEARTRAP, true, false);
                     const msg = `You only manage to ${
                         u_in_beartrap ? 'free yourself from' : 'disarm'
                     } the bear trap.`;
-                    if (near_capacity() >= EXT_ENCUMBER && beartrap) {
-                        await pline(msg);
+                    // C eat.c:3623 — check_capacity(qbuf) && beartrap (live js/hack.js).
+                    if ((await check_capacity(msg)) && beartrap) {
                         obj_extract_self(beartrap);
                         await dropy(beartrap);
                         return null;
@@ -4309,12 +4310,8 @@ export async function doeat() {
     let otmp0 = await floorfood_eat();
     if (!otmp0) return 0;
 
-    // C ref: eat.c doeat — check_capacity((char *)0) before is_edible
-    // (hack.c: near_capacity >= EXT_ENCUMBER → You_cant carry stuff).
-    if (near_capacity() >= EXT_ENCUMBER) {
-        await pline("You can't do that while carrying so much stuff.");
-        return 0;
-    }
+    // C eat.c:2831 — check_capacity((char *)0) before is_edible (live js/hack.js).
+    if (await check_capacity(null)) return 0;
 
     // C eat.c:2834-2845 — blessed food-detection smell prompts.
     if ((game.u?.uedibility | 0)) {

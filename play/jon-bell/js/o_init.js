@@ -8,6 +8,7 @@
 import { game } from './gstate.js';
 import { rn2, pushRngLogEntry } from './rng.js';
 import { exercise } from './attrib.js';
+import { gem_learned } from './shk.js';
 import { MKOBJ_OC_PROB, MKOBJ_SVB_BASES, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_OC_CLASS, MKOBJ_OC_COLOR, } from './mkobj_data.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { SHUFFLED_RANGES, WEAPON_TABLE, FIXED_DESCRS } from './o_init_data.js';
@@ -381,6 +382,11 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered, credi
             const A_WIS = 2;
             if (credit_hero)
                 exercise(A_WIS, true);
+            /* C o_init.c:486-489: !in_moveloop => initial inventory,
+             * gameover => final disclosure */
+            if ((g.program_state?.in_moveloop | 0) && !g.program_state?.gameover
+                && (MKOBJ_OC_CLASS[oindx | 0] | 0) === 13 /* GEM_CLASS */)
+                gem_learned(oindx); /* could affect price of unpaid gems */
         }
         if (trace)
             pushRngLogEntry(`^discover_state[otyp=${oindx | 0} class=${oclass} added=${list.includes(oindx) ? 1 : 0}`
@@ -400,10 +406,8 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered, credi
  * property dodiscovered's display order depends on.  The guard is C's: nothing
  * happens while the type is still name_known or encountered.
  *
- * C's gem_learned(oindx) tail (o_init.c:520-521, "ok, it's actually been
- * unlearned") maintains the gem-price-quote memory; js/shk.js's price-quote
- * store has no gem_learned counterpart, so that arm is a stated gap and not a
- * fabrication.  RNG-free. */
+ * C's gem_learned(oindx) tail (o_init.c:520-521) re-prices unpaid gems.
+ * RNG-free. */
 export function undiscover_object(oindx) {
     const g = game;
     const idx = oindx | 0;
@@ -416,6 +420,9 @@ export function undiscover_object(oindx) {
     const at = list.indexOf(idx);
     if (at >= 0)
         list.splice(at, 1);
+    /* C o_init.c:520-521 */
+    if ((MKOBJ_OC_CLASS[idx] | 0) === 13 /* GEM_CLASS */)
+        gem_learned(idx); /* ok, it's actually been unlearned */
 }
 
 /* C o_init.c:441-452 observe_object(obj) — "make the object dknown and mark it

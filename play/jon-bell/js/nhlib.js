@@ -204,10 +204,12 @@ export function nhlib_fill_buried_treasure_rng(roomWidth, roomHeight) {
  *     end)
  *   end
  */
-export function nhlib_fill_ice_room_rng(floorCellCount) {
+export function nhlib_fill_ice_room_rng(floorCellCount, melter, mintime) {
     if (rn2(100) < 25) {
-        for (let i = 0; i < (floorCellCount | 0); i++)
-            rn2(1000);
+        for (let i = 0; i < (floorCellCount | 0); i++) {
+            const when = (mintime | 0) + rn2(1000);
+            if (melter) melter(i, when); /* nh.start_timer_at(x,y,"melt-ice",when) */
+        }
     }
 }
 /* mons[] row indices, taken from the extracted 5.0 name table

@@ -97,7 +97,6 @@
 // + bhitm spell_damage_bonus (D-1388; Knight questart dbldam named).
 // zap_map lateral drawbridge + bhit ZAPPED_WAND zap_map (D-1489);
 // Named omissions: zap_map uswallow pile;
-// Invocation_lev vibrating-square "the";
 // bhito opening chain / uchain unpunish is D-1481;
 // bhito poly-arm boxlock reset_pick is D-1483;
 // bhit doorlock WAN_STRIKING/SPE_FORCE_BOLT is D-1482;
@@ -186,7 +185,7 @@
 // zap_steed WAN_SPEED_MONSTER via bhitm (D-1479);
 // zap_steed SPE_CURE_SICKNESS via bhitm (D-1480);
 // montraits/omonst/ghost recorporealize (D-0982);
-// trap_ice_effects; Underwater/utrap lava arms.
+// trap_ice_effects; zap_over_floor uinwater/TT_LAVA underfoot arms live.
 // spell.c skilled SPE_FIREBALL scatter is D-1378 (this callee
 // spell_damage_bonus); unskilled FIREBALL/CONE FALLTHROUGH weffects
 // is D-1386 (this callee SPE ubuzz). SPE_FORCE_BOLT IMMEDIATE bhit
@@ -226,8 +225,8 @@ import { livelog_printf } from './pline.js';
 import {
     flush_screen, flush_topl_more, pline, pline_dir, pline_mon, pline_The, Norep, You, Your, You_feel, newsym, newsym_force,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon, canspotmon, shieldeff,
-    obj_glyph, cmap_to_glyph, glyph_is_invisible, map_invisible, unmap_object,
-    bot, set_msg_xy, impossible,
+    obj_glyph, cmap_to_glyph, glyph_at, glyph_is_invisible, map_invisible, unmap_object,
+    bot, set_msg_xy, impossible, docrt,
 } from './display.js';
 import { show_text_pages } from './pager.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
@@ -245,7 +244,7 @@ import { doname, xname, yname, Yname2, distant_name, cxname_singular, vtense, Th
 import { uhim, uhis } from './roles.js';
 import { str_start_is, upstart, mungspaces, strncmpi } from './hacklib.js';
 import { Soundeffect } from './sndprocs.js';
-import { se_crumbling_sound } from './generated/seffects_data.js';
+import { se_crumbling_sound, se_soft_crackling } from './generated/seffects_data.js';
 import { fix_wall_spines } from './mklev.js';
 import {
     A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise, acurr, adjalign, poisoned,
@@ -254,7 +253,7 @@ import { findit, cvt_sdoor_to_door, show_map_spot } from './detect.js';
 import {
     fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
     is_lava, is_moat, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
-    SURFACE_AT, You_hear, long_to_any,
+    SURFACE_AT, You_hear, long_to_any, set_uinwater, check_capacity,
 } from './hack.js';
 import {
     nonliving, is_demon, nohands, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
@@ -264,7 +263,7 @@ import {
 } from './monsters.js';
 import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown, minliquid, dealloc_monst } from './mon.js';
 import { find_mac, monkilled, mlifesaver, shade_miss, resists_sleep_slee, resists_blnd_mm, erode_armor } from './mhitm.js';
-import { update_mapseen_for } from './dungeon.js';
+import { update_mapseen_for, Invocation_lev } from './dungeon.js';
 import {
     find_drawbridge, open_drawbridge, close_drawbridge, is_db_wall,
     is_drawbridge_wall, destroy_drawbridge,
@@ -282,7 +281,7 @@ import { rnd_hallublast } from './mthrowu.js';
 import { finish_losehp_done, done } from './end.js';
 import {
     burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap, deltrap,
-    trap_ice_effects,
+    trap_ice_effects, set_utrap, reset_utrap,
     NO_TRAP_FLAGS, ignite_items, openholdingtrap, closeholdingtrap,
     openfallingtrap, self_invis_message, trapname, animate_statue,
     activate_statue_trap,
@@ -374,6 +373,7 @@ import {
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
     IS_FURNITURE, IS_GRAVE, SCORR, VAULT, TEMPLE, In_quest, Is_firelevel,
     VIBRATING_SQUARE, MAGIC_PORTAL, HEADSTONE, TRAP_EXPLODE, is_magical_trap,
+    TT_LAVA, TT_INFLOOR,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
@@ -1051,7 +1051,8 @@ export async function melt_ice_away(where) {
  * obj_ice_effects; ZT_POISON_GAS cloud; ZT_LIGHTNING/ZT_ACID IRONBARS;
  * SDOOR; closed_door shop; fire burn_floor_objects; ignoremon wakeup;
  * lavawall→wall + fix_wall_spines (D-0975).
- * Named omit: Underwater/utrap lava arms; dotrap polish.
+ * Whole C body live: u_at uinwater/TT_LAVA underfoot arms (:5293–5308)
+ * + Soundeffect crackling (:5246/:5278). Named omit: dotrap polish.
  */
 /**
  * C ref: zap.c zap_over_floor — also called from explode.c explode.
@@ -1072,7 +1073,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
         let t = t_at(x, y);
         if (t && (t.ttyp | 0) === WEB) {
             if (see_it) await Norep('A web bursts into flames!');
-            delfloortrap(t);
+            await delfloortrap(t);
             t = null;
             if (see_it) newsym(x, y);
         }
@@ -1096,6 +1097,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
             }
 
             if ((loc.typ | 0) !== POOL) {
+                t = null; /* C zap.c:5192 (dead: typ can't be ROOM below) */
                 if (on_water_level) {
                     msgtxt = (see_it || !Deaf()) ? 'Some water boils.' : null;
                 } else if (see_it) {
@@ -1139,6 +1141,8 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
             );
 
             if (IS_WATERWALL(loc.typ) || (lavawall && rn2(chance))) {
+                /* C zap.c:5246 — no-op without SND_LIB, no RNG. */
+                Soundeffect(se_soft_crackling, 100);
                 if (see_it) {
                     await pline(
                         `The ${hliquid(lavawall ? 'lava' : 'water')} `
@@ -1176,6 +1180,9 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                     }
                 }
                 await bury_objs(x, y);
+                if (!lava) { /* C zap.c:5278–5280 */
+                    Soundeffect(se_soft_crackling, 30);
+                }
                 if (see_it) {
                     if (lava) {
                         await Norep(
@@ -1191,7 +1198,26 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                     await You_hear('a crackling sound.');
                 }
                 if (u_at(x, y)) {
-                    // uinwater / utrap lava arms deferred
+                    /* C zap.c:5293–5308 — freeze underfoot. */
+                    const uu = game.u || {};
+                    if (uu.uinwater) { /* not just `if (Underwater)' */
+                        /* leave the no longer existent water */
+                        await set_uinwater(0); /* u.uinwater = 0 */
+                        uu.uundetected = 0;
+                        await docrt();
+                        game.vision_full_recalc = 1;
+                    } else if ((uu.utrap | 0)
+                        && (uu.utraptype | 0) === TT_LAVA) {
+                        /* C youprop.h:286 Passes_walls, read at site. */
+                        if (uu.Passes_walls || uu.HPasses_walls
+                            || uu.EPasses_walls) {
+                            await You('pass through the now-solid rock.');
+                            await reset_utrap(true);
+                        } else {
+                            set_utrap(rn1(50, 20), TT_INFLOOR);
+                            await You('are firmly stuck in the cooling rock.');
+                        }
+                    }
                 } else {
                     const mon = m_at(x, y);
                     if (mon && is_swimmer(mon.data) && mon.mundetected) {
@@ -6430,7 +6456,8 @@ async function maybe_explode_trap(ttmp, otmp, learn) {
  * WAN_PROBING terrain/trap (D-1444). Caller zap_updown down
  * (D-1444/D-1485) and bhit ZAPPED_WAND (D-1489 `:3919–3924`).
  * C zap.c:3746 Rogue !cansee SDOOR → live dig.js draft_message(false);
- * Invocation_lev vibrating-square "the".
+ * Probing: glyph_at int compare (:3730/:3732), SCORR unblock_point
+ * (:3753), Invocation_lev vibrating-square "the" (:3786–3788).
  */
 async function zap_map(x, y, obj) {
     if (!obj) return;
@@ -6525,16 +6552,11 @@ async function zap_map(x, y, obj) {
 
     if ((obj.otyp | 0) === WAN_PROBING) {
         const oldtyp = game.lastseentyp?.[x]?.[y] | 0;
-        const loc0 = game.level?.at?.(x, y);
-        const oldglyph = loc0
-            ? `${loc0.disp_ch ?? ''}|${loc0.disp_kind ?? ''}|${loc0.disp_color ?? ''}`
-            : '';
+        const oldglyph = glyph_at(x, y); /* C zap.c:3730 int id */
         show_map_spot(x, y, false);
         const loc1 = game.level?.at?.(x, y);
-        const newglyph = loc1
-            ? `${loc1.disp_ch ?? ''}|${loc1.disp_kind ?? ''}|${loc1.disp_color ?? ''}`
-            : '';
-        if ((game.lastseentyp?.[x]?.[y] | 0) !== oldtyp || newglyph !== oldglyph) {
+        if ((game.lastseentyp?.[x]?.[y] | 0) !== oldtyp
+            || glyph_at(x, y) !== oldglyph) { /* C :3732 */
             learn.v = true;
         }
         const ltyp = SURFACE_AT(x, y);
@@ -6550,7 +6572,7 @@ async function zap_map(x, y, obj) {
             }
         } else if (ltyp === SCORR) {
             if (loc1) loc1.typ = CORR;
-            recalc_block_point(x, y);
+            unblock_point(x, y); /* C zap.c:3753, unconditional */
             newsym(x, y);
             await pline('Probing exposes a secret corridor.');
             learn.v = true;
@@ -6568,8 +6590,11 @@ async function zap_map(x, y, obj) {
             newsym(x, y);
             if (!t_already_seen || hallu) {
                 const ttmpname = trapname(ttmp.ttyp, false);
-                /* Invocation_lev vibrating-square "the" named */
-                const use_the = hallu ? !rn2(4) : false;
+                /* C zap.c:3786–3788 — vibrating square on the sanctum level. */
+                const use_the = !hallu
+                    ? ((ttmp.ttyp | 0) === VIBRATING_SQUARE
+                        && Invocation_lev(game.u?.uz))
+                    : !rn2(4);
                 // C zap.c:3790 You("find %s%c", use_the?the:an, '!'/'.').
                 await You('find %s%c', use_the ? the(ttmpname) : an(ttmpname), use_the ? '!' : '.');
                 /* C :3793 — assign, not OR */
@@ -7089,7 +7114,8 @@ export async function dozap() {
         await pline("You aren't able to zap anything in your current form.");
         return 0;
     }
-    // check_capacity deferred
+    // C zap.c:2636 — check_capacity((char *)0) (live js/hack.js).
+    if (await check_capacity(null)) return 0;
     const obj = await getobj_zap();
     if (!obj) return 0;
 

@@ -588,17 +588,20 @@ export function role_init() {
         qstat.nemgend = questMonsterGender(neminum);
     }
 
-    // role.c:2066-2076 — pantheon resolution (also new-game-only, see above).
-    let trycnt = 0;
-    flags.pantheon = ROLE;
-    while (!ROLE_HAS_LGOD[flags.pantheon] && ++trycnt < 100) {
-        flags.pantheon = randrole(false);
-    }
-    if (!ROLE_HAS_LGOD[flags.pantheon]) {
-        for (let i = 0; i < NUM_ROLES; i++) {
-            if (ROLE_HAS_LGOD[i]) {
-                flags.pantheon = i;
-                break;
+    // role.c:2063-2077 — pantheon resolution, `if (flags.pantheon == -1)  /* new game */`.
+    // A restore (restore.c:596 role_init) keeps the saved pantheon and draws nothing.
+    if (flags.pantheon == null || flags.pantheon === -1) {
+        let trycnt = 0;
+        flags.pantheon = ROLE;
+        while (!ROLE_HAS_LGOD[flags.pantheon] && ++trycnt < 100) {
+            flags.pantheon = randrole(false);
+        }
+        if (!ROLE_HAS_LGOD[flags.pantheon]) {
+            for (let i = 0; i < NUM_ROLES; i++) {
+                if (ROLE_HAS_LGOD[i]) {
+                    flags.pantheon = i;
+                    break;
+                }
             }
         }
     }

@@ -227,8 +227,10 @@ export function formatkiller(buf, siz, how, incl_helpless) {
     }
 
     /* Handle incl_helpless — add multi_reason suffix if appropriate */
-    if (incl_helpless && gs.gm && gs.gm.multi < 0) {
-        const multi_reason = gs.gm.multi_reason;
+    /* gm.multi / gm.multi_reason live flat on game in this port (g.gm is not populated) */
+    const multi = gs.gm?.multi ?? gs.multi;
+    if (incl_helpless && multi < 0) {
+        const multi_reason = gs.gm?.multi_reason ?? gs.multi_reason;
         const suffix = ", while " + (multi_reason || "helpless");
         const suffix_bytes = suffix.length + 1; /* +1 for null terminator */
 

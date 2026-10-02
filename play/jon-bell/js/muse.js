@@ -320,7 +320,7 @@ async function mbhit(mon, range, fhitm, fhito, obj) {
             /* C muse.c:1783-1800 — monsters never zap opening/locking magic, so
              * WAN_STRIKING is the only case that does anything here. */
             if (otyp === WAN_STRIKING) {
-                if (doorlock(obj, x, y)) {
+                if (await doorlock(obj, x, y)) {
                     if (game.zap_oseen)
                         makeknown(otyp);
                     /* C muse.c:1794-1797 — a shop door broken by the beam goes

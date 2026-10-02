@@ -4882,8 +4882,17 @@ export function magic_map_background(x, y, show) {
     }
 
     if (game.level?.flags?.hero_memory) {
-        // C: only overwrite unexplored/cmap memory — JS remembered is cmap-like
-        remember_shown_glyph(lev, tg, glyph);
+        // C display.c:250–252 — only unexplored/cmap memory is
+        // overwritten; a remembered unseen-monster I (GLYPH_INVISIBLE),
+        // object or trap glyph survives mapping. Unclassified memory
+        // (absent, NO_GLYPH, non-numeric id) keeps the old overwrite.
+        const mem = lev.remembered_glyph;
+        const memId = mem && typeof mem.glyph === 'number'
+            ? (mem.glyph | 0) : NO_GLYPH;
+        if (memId === NO_GLYPH || glyph_is_unexplored(memId)
+            || glyph_is_cmap(memId)) {
+            remember_shown_glyph(lev, tg, glyph);
+        }
     }
     if (show) {
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0, glyph);

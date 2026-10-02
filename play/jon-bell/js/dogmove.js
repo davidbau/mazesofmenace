@@ -9,7 +9,15 @@ import { rn1, rn2, rnd, d } from './rng.js';
 /* C zap.c:1458 obj_resists — the single body (see the re-export below). */
 import { obj_resists } from './zap.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
-import { unstuck as unstuck_dm, m_unleash, sticks } from './dog.js';
+import { unstuck as unstuck_dm, m_unleash, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
+import { topl_force_break_after as topl_force_break_after_qm } from './display.js';
+import { y_monnam as y_monnam_qm, mon_hates_silver } from './mhitm.js';
+import { an as an_qm } from './objnam.js';
+import { OC_DESCR as OC_DESCR_QM } from './oc_descr_data.js';
+import { OC_NAME as OC_NAME_QM } from './oc_name_data.js';
+import { DEFSYM_EXPLANATION as DEFSYM_EXPL_QM } from './defsym_data.js';
+import { monPmname as monPmname_qm } from './makemon.js';
+import { PROT_FROM_SHAPE_CHANGERS as PROT_SHAPE_QM } from './const.js';
 import { mon_mattk_raw, could_seduce, mattacku, mswings_verb,
          breamm as breamm_mu, spitmm as spitmm_mu } from './mhitu.js';
 import { x_monnam, You } from './mhitm.js';
@@ -24,7 +32,7 @@ import { place_object, set_ustuck, resists_ston, resists_poison,
          mkcorpstat, mksobj_at, mondead, add_to_container, dealloc_obj, newcham, mongone, makemon } from './mklev.js';
 import { closed_door, accessible, is_pool } from './look.js';
 import { erode_obj, mintrap as mintrap_real } from './trap.js';
-import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_STONE_GOLEM, PM_ANGEL } from './pm.generated.js';
+import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL } from './pm.generated.js';
 import { dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate } from './makemon.js';
 import { pline, newsym, _topline_more_pending, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
 import { xname_scroll, xname_armor, xname_amulet, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
@@ -377,6 +385,19 @@ export function can_carry(mtmp, otmp) {
     if (mflags1 & M1_NOTAKE)
         return 0;
 
+    if (otyp === CORPSE_OTYP) {
+        const cn = (otmp.corpsenm ?? -1) | 0;
+        if ((cn === PM_COCKATRICE || cn === PM_CHICKATRICE)
+            && !((mtmp.misc_worn_check | 0) & 0x10 /* W_ARMG */)
+            && !resists_ston(mtmp))
+            return 0;
+        if (is_rider_dm({ pmidx: cn }))
+            return 0;
+    }
+    if (((MKOBJ_OC_MATERIAL[otyp] | 0) === 14 /* SILVER */) && mon_hates_silver(mtmp)
+        && (otyp !== 263 /* BELL_OF_OPENING */
+            || (((mtmp.data?.mflags3 | 0) & 0x001f) === 0)))
+        return 0;
 
     const quanRaw = (otmp.quan ?? 1) | 0;
     const iquan = (quanRaw > LARGEST_INT)
@@ -624,6 +645,20 @@ export function dogfood(mtmp, obj) {
         const herbi = !!(mf1 & M1_HERBIVORE);
         const carni = !!(mf1 & M1_CARNIVORE);
         const otyp = obj.otyp | 0;
+        /* C dog.c:1017-1023 — fptr = mons[corpsenm] for CORPSE/TIN/EGG; a Rider
+         * corpse is TABU, and a c*ckatrice/Medusa corpse or egg is POISON to a pet
+         * that is not stone resistant.  (flesh_petrifies, mondata.h:203.)  Missing
+         * here, a fresh cockatrice corpse read CADAVER and the dog_goal scan took
+         * the preferred-food arm instead of C's rn2(8) apport arm. */
+        if (otyp === CORPSE_OTYP || otyp === EGG_OTYP || otyp === TIN_OTYP) {
+            const fxp = (obj.corpsenm ?? -1) | 0;
+            if (otyp === CORPSE_OTYP && ismnum_js(fxp) && is_rider_dm({ pmidx: fxp }))
+                return TABU;
+            if ((otyp === CORPSE_OTYP || otyp === EGG_OTYP) && ismnum_js(fxp)
+                && (fxp === PM_COCKATRICE || fxp === PM_CHICKATRICE || fxp === PM_MEDUSA)
+                && !resists_ston(mtmp))
+                return POISON;
+        }
         /* C dog.c:1033-1034 — neither carni nor herbi: APPORT (or UNDEF if cursed) */
         if (!carni && !herbi)
             return (obj.cursed | 0) ? UNDEF : APPORT;
@@ -2966,6 +3001,10 @@ async function monkilled_dm(mdef, mattk) {
     if (cansee(mdef.mx | 0, mdef.my | 0)) {
         const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
         pline(`${Monnam_dm(mdef)} is ${verb}!`);
+    } else {
+        /* C mon.c:3390-3391 — the sad feeling is deferred until mondead()
+         * has ruled out life-saving. */
+        (game.iflags ||= {}).sad_feeling = !!mdef.mtame;
     }
     await mondied_dm(mdef);
 }
@@ -2984,9 +3023,16 @@ async function monkilled_dm(mdef, mattk) {
  * ("mondied is still a throw-stub") while this file had the whole body.
  * monkilled_dm() is now monkilled()'s pline plus a call to this. */
 export async function mondied_dm(mdef) {
+    /* C mon.c:3088-3089 mondead(): potential pet message; always clear the
+     * global flag. */
+    const be_sad = !!game.iflags?.sad_feeling;
+    if (game.iflags) game.iflags.sad_feeling = false;
     mdef.mhp = 0;
     await lifesaved_monster(mdef);
     if ((mdef.mhp | 0) > 0) return;
+    /* C mon.c:3100-3101 — a pet killed out of sight (monkilled's else arm). */
+    if (be_sad)
+        await You('have a sad feeling for a moment, then it passes.');
     const deadMx = mdef.mx | 0;
     const deadMy = mdef.my | 0;
     if (typeof process !== 'undefined' && ENV?.FF_DEATH_TRACE === '1') {
@@ -3721,6 +3767,87 @@ export async function rustm(mdef, obj) {
 
     if (dmgtyp !== ERODE_NONE && !rn2(chance))
         await erode_obj(obj, null, dmgtyp, EF_GREASE | EF_VERBOSE);
+}
+
+
+/* C dogmove.c:1430-1440 qm[] — "Things that some pets might be thinking about".
+ * PM ids (pm.generated.js): LITTLE_DOG 16, DOG 18, LARGE_DOG 19, KITTEN 32,
+ * HOUSECAT 33, LARGE_CAT 37, GIANT_RAT 89; S_DOG 4; S_sink = cmap "sink";
+ * TRIPE_RATION otyp 264. */
+const QM_S_SINK = DEFSYM_EXPL_QM.indexOf('sink');
+const QM_TABLE = [
+    [16, 0, 32, 3], [18, 0, 33, 3], [19, 0, 37, 3], [32, 0, 16, 3],
+    [33, 0, 18, 3], [37, 0, 19, 3], [33, 0, 89, 3],
+    [0, 4, QM_S_SINK, 1], [0, 0, 264, 2],
+];
+
+/* C dogmove.c:1461 mnum_leashable() */
+function mnum_leashable_qm(mnum) {
+    const d = permonstTemplate(mnum);
+    if (!d) return false;
+    const f1 = d.mflags1 >>> 0;
+    const nolimbs = (f1 & 0x6000) === 0x6000, has_head = !(f1 & 0x8000);
+    return !!(mnum >= 0 && d.pmnames?.[2] !== 'long worm' && !(f1 & 0x100000)
+              && (!nolimbs || has_head));
+}
+
+export async function quickmimic(mtmp) {
+    const u = game.u;
+    const prot = u?.uprops?.[PROT_SHAPE_QM];
+    if ((prot && ((prot.intrinsic | 0) || (prot.extrinsic | 0))) || !(mtmp.meating | 0))
+        return;
+    const was_leashed = !!(mtmp.mleashed | 0);
+    if (mtmp === u?.usteed)
+        await dismount_steed_qm(8 /* DISMOUNT_POLY */);
+
+    let idx = 0, trycnt = 5;
+    const mndx = (mtmp.data?.pmidx ?? mtmp.mnum) | 0;
+    do {
+        idx = rn2(QM_TABLE.length);
+        const q = QM_TABLE[idx];
+        if (q[0] !== 0 && mndx === q[0]) break;
+        if (q[1] !== 0 && (mtmp.data.mlet | 0) === q[1]) break;
+        if (q[0] === 0 && q[1] === 0) break;
+    } while (--trycnt > 0);
+    if (trycnt === 0)
+        idx = QM_TABLE.length - 1;
+
+    const buf = y_monnam_qm(mtmp);
+    const spotted = canspotmon(mtmp);
+    const seeloc = cansee(mtmp.mx | 0, mtmp.my | 0);
+
+    mtmp.m_ap_type = QM_TABLE[idx][3];
+    mtmp.mappearance = QM_TABLE[idx][2];
+
+    if (spotted || seeloc || canspotmon(mtmp)) {
+        const x = mtmp.mx | 0, y = mtmp.my | 0;
+        const gl = () => {
+            const l = game.level?.at(x, y);
+            return l ? [l.disp_ch, l.disp_color, l.disp_cls, l.disp_obj_otyp,
+                        l.disp_obj_corpsenm, l.disp_attr].join('|') : '';
+        };
+        const prev_glyph = gl();
+        const apt = mtmp.m_ap_type | 0, app = mtmp.mappearance | 0;
+        const what = (apt === 1) ? DEFSYM_EXPL_QM[app]
+            : (apt === 2 && OC_DESCR_QM[app]) ? OC_DESCR_QM[app]
+            : (apt === 2 && OC_NAME_QM[app]) ? OC_NAME_QM[app]
+            : (apt === 3) ? monPmname_qm(app, Mgender_dm(mtmp))
+            : 'something';
+
+        newsym(x, y);
+        if (was_leashed && (apt !== 3 || !mnum_leashable_qm(app))) {
+            await pline('Your leash goes slack.');
+            m_unleash(mtmp, false);
+        }
+        let msg;
+        if (gl() !== prev_glyph)
+            msg = `You ${seeloc ? 'see' : 'sense that'} ${what !== 'something' ? an_qm(what) : what} ${seeloc ? 'appear' : 'has appeared'} where ${buf} was!`;
+        else
+            msg = `You sense that ${buf} feels rather ${what}-ish.`;
+        await pline(msg);
+        /* display_nhwindow(WIN_MAP, TRUE) */
+        topl_force_break_after_qm(msg);
+    }
 }
 
 /* C dogmove.c:1448-1458 finish_meating(mtmp).  Besides ending the meal, a

@@ -11,7 +11,7 @@ import { visctrl } from './cmd_binds.js';
 import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2 } from './const.js';
 import { impossible } from './pline.js';
 import { pline, force_more, newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon } from './display.js';
-import { topl_park_cursor } from './display.js';
+import { topl_park_cursor, putmsghistory } from './display.js';
 import { block_point, recalc_block_point, vision_recalc } from './vision.js';
 import { nhgetch } from './input.js';
 import { yn_function } from './end.js';
@@ -689,17 +689,25 @@ async function _ynq(query) {
         await flush_screen(1);
         const disp = g.nhDisplay;
         if (disp) topl_park_cursor(disp, prompt + ' ');
-        const key = await nhgetch();
+        /* C topl.c:537-539 files prompt + key2txt(q) in the history, not the bare
+         * prompt nhgetch() would commit. */
+        const _sh = g._topl_suppress_history;
+        g._topl_suppress_history = true;
+        let key;
+        try { key = await nhgetch(); } finally { g._topl_suppress_history = _sh; }
         const ch = (typeof key === 'number') ? String.fromCharCode(key).toLowerCase() : '';
+        const _filed = (a) => putmsghistory(prompt + ' ' + a);
         /* C ynq: only y/n/q are accepted; ESC/space/CR/LF → default 'q'. */
         if (key === 27 || key === 32 || key === 13 || key === 10) {
             g._pending_message = '';
             g._topl_sticky = prompt;
+            _filed('q');
             return 'q';
         }
         if (ch === 'y' || ch === 'n' || ch === 'q') {
             g._pending_message = '';
             if (ch !== 'y') g._topl_sticky = prompt;
+            _filed(ch);
             return ch;
         }
     }
@@ -1010,7 +1018,20 @@ async function chest_shatter_msg(otmp) {
         /* C lock.c:1284 — "You see a <bottle> shatter!" (bottlename rn2(7)). */
         _forceEmit(`You see ${_an(bottlename())} shatter!`);
         /* C lock.c:1286 — potionbreathe(otmp) (hero not breathless/has eyes). */
+        /* potionbreathe()'s plines go straight to the topline, but the force
+         * messages are staged and merged later; move what it printed into the
+         * stage so generation order (succeed, destroyed, shatter, dizzy) holds. */
+        const res0 = game._resultMessage ?? null;
+        const before = game._pending_message || '';
         await potionbreathe(otmp);
+        /* pline() may have folded the committed result into the live line. */
+        const after = game._pending_message || '';
+        const prefix = [res0, before].filter(Boolean).join('  ');
+        if (after.startsWith(prefix) && after.length > prefix.length) {
+            game._resultMessage = res0;
+            game._pending_message = before;
+            _forceEmit(after.slice(prefix.length).trim());
+        }
         return;
     }
     const uprops = (game.u && game.u.uprops) ? game.u.uprops : null;
@@ -1472,7 +1493,7 @@ export function picking_at(x, y) {
  * monster's striking beam reaches via mbhit); the other arms throw so that a
  * wand of opening/locking beam fails loudly rather than silently reporting
  * "nothing happened". */
-export function doorlock(otmp, x, y) {
+export async function doorlock(otmp, x, y) {
     const door = game.level?.at(x, y);
     if (!door)
         return false;
@@ -1491,6 +1512,7 @@ export function doorlock(otmp, x, y) {
 
     switch (otmp.otyp | 0) {
     case WAN_STRIKING_OTYP:
+    case 376: /* SPE_FORCE_BOLT */
         if ((door.doormask | 0) & (D_LOCKED | D_CLOSED)) {
             if ((door.doormask | 0) & D_TRAPPED) {
                 /* KNOWN GAP — lock.c:1105-1135: a trapped door explodes
@@ -1507,9 +1529,9 @@ export function doorlock(otmp, x, y) {
             newsym(x, y);
             if (game.flags?.verbose) {
                 if (sawit || seeit)
-                    pline("The door crashes open!");
+                    await pline("The door crashes open!");
                 else if (!_lock_Deaf())
-                    pline("You hear a crashing sound.");
+                    await pline("You hear a crashing sound.");
             }
             loudness = 20;
         } else {

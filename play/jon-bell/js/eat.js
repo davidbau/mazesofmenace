@@ -26,13 +26,13 @@ import { FOOD_PROPS } from './food_props.js';
 import { pline, canseemon, canspotmon, nh_sprintf, newsym, You_hear,
          Deaf as hero_Deaf, livelog_printf,
          _topl_merge_result, _topl_joins_snapshot, _topl_stash_result,
-         _topl_record_join, capture_painted_frame_with_status } from './display.js';
+         _topl_record_join, capture_painted_frame_with_status, bot } from './display.js';
 import { stop_occupation } from './allmain.js';
 import { end_running, is_pool_or_lava } from './look.js';
 import { PM_ELF as PM_ELF_EAT } from './pm.generated.js';
 import { eos, getrumor, outrumor, BY_COOKIE, mksobj as mksobj_real } from './mklev.js';
 import { discover_object } from './o_init.js';
-import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER, CONFLICT, SLOW_DIGESTION, REGENERATION, W_ARTI, W_WEP, FROMFORM, W_RINGL, W_RINGR, SPINACH_TIN, HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, NON_PM, A_STR, A_INT, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DIED, DIED, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, LIFESAVED, EDOG, STRANGLED, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, ECMD_OK, ECMD_TIME, GENOCIDED, PANICKED, POISONING, Upolyd, COST_BITE, LL_CONDUCT, CHOKING, MAGICAL_BREATHING, A_LAWFUL } from './const.js';
+import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER, CONFLICT, SLOW_DIGESTION, REGENERATION, W_ARTI, W_WEP, FROMFORM, W_RINGL, W_RINGR, SPINACH_TIN, HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, NON_PM, A_STR, A_INT, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DIED, DIED, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, LIFESAVED, EDOG, STRANGLED, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, ECMD_OK, ECMD_TIME, GENOCIDED, PANICKED, POISONING, STONING, Upolyd, COST_BITE, LL_CONDUCT, CHOKING, STARVING, MAGICAL_BREATHING, A_LAWFUL } from './const.js';
 /* C ref: invent.c:1752 getobj() — the ONE real (keystroke-consuming) getobj
  * body in this port; js/cmd.js:14406.  eat.js<->cmd.js is already a proven
  * circular import (js/potion.js<->js/cmd.js is the same shape) — safe because
@@ -43,11 +43,11 @@ import { getObjFromGetobj, wield_tool as wield_tool_real, costly_alteration,
          obj_extract_self_general, useup, useupf } from './cmd.js';
 import { sellobj_state } from './shk.js';
 import { g_at } from './cmd.js';
-import { flush_screen, force_more, topl_park_cursor } from './display.js';
+import { flush_screen, force_more, topl_park_cursor, _pline_flush_frame_record } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
 import { nhgetch } from './input.js';
 import { yn_function, savelife, deadhero, pending_death_is_final,
-         do_death_sequence } from './end.js';
+         do_death_sequence, done as done_end } from './end.js';
 /* C trap.c:1046 reset_utrap(msg) — real body lives in js/trap.js (which
  * already imports You from this file, so this is also a circular import,
  * same safety argument as the js/end.js edge above). Not async: it does not
@@ -357,13 +357,24 @@ export async function newuhs(incr) {
                     void selftouch('Falling, you');
             }
         } else if (uh < -(100 + 10 * (acurr(u, A_CON) | 0))) {
-            /* C eat.c:3436-3447 — starvation death.  done(STARVING) has no JS
-             * counterpart anywhere in this project (see file header); the
-             * state fields that do exist are still set for consistency, but
-             * this port cannot end the game here. */
+            /* C eat.c:3436-3447 — starvation death. */
             u.uhs = STARVED;
             if (g.disp)
                 g.disp.botl = 1;
+            await bot();
+            /* teleds() parks its "You materialize" line in _resultMessage
+             * before dotele()'s morehungry(100) runs; C's single topline
+             * buffer still holds it, so the death pline must follow it. */
+            if (g._teleportResultPublished && g._resultMessage && !g._pending_message) {
+                g._pending_message = g._resultMessage;
+                g._resultMessage = '';
+            }
+            await You('die from starvation.');
+            g.svk = g.svk || { killer: { format: 0, name: '' } };
+            g.svk.killer.format = KILLED_BY;
+            g.svk.killer.name = 'starvation';
+            await done_end(STARVING);
+            /* if we return, we lifesaved, and that calls newuhs */
             return;
         }
     }
@@ -1799,7 +1810,7 @@ async function _fprefx(otmp) {
         _emit_eat_pline('Core dumped.');
     } else {
         const bland = (otyp === CRAM_RATION_OTYP || otyp === K_RATION_OTYP_E || otyp === C_RATION_OTYP_E);
-        _emit_eat_pline(`This ${_food_xname(otmp)} is ${cursed ? 'terrible!' : bland ? 'bland.' : 'delicious!'}`);
+        _emit_eat_pline(`This ${_food_xname(otmp)} is ${cursed ? (_eat_Hallucination() ? 'grody!' : 'terrible!') : bland ? 'bland.' : (_eat_Hallucination() ? 'gnarly!' : 'delicious!')}`);
     }
     return true;
 }
@@ -2121,11 +2132,41 @@ export function eating_dangerous_corpse(res) {
         || (res === STONE_RES && _flesh_petrifies(permonstTemplate(mnum)));
 }
 
+/* C eat.c:793-811 cprefx() flesh_petrifies arm. */
+async function _cprefx_petrify(pm) {
+    if (!_ismnum(pm) || !_flesh_petrifies(permonstTemplate(pm))) return;
+    if (_Stone_resistance()
+        || (poly_when_stoned_eat(game.youmonst?.data)
+            && await polymon(PM_STONE_GOLEM)))
+        return;
+    game.svk = game.svk || {};
+    game.svk.killer = game.svk.killer
+        || { id: 0, format: 0, name: '', next: null };
+    game.svk.killer.name = `tasting ${monPmname(pm, 2)} meat`;
+    game.svk.killer.format = KILLED_BY;
+    /* eatcorpse's pending flavor line must reach the real topline before
+     * done()'s Die? query, so route through pline rather than the
+     * command-message channel. */
+    const pending = game._resultMessage;
+    game._resultMessage = null;
+    if (pending) await pline(pending);
+    await pline('You turn to stone.');
+    await done_end(STONING);
+    const v = _victual();
+    if (v.piece) v.eating = 0;
+}
+
 /* C eat.c:2022 start_eating(otmp, already_partly_eaten) — begin the meal. */
 export async function start_eating(otmp, already_partly_eaten) {
     const v = _victual();
     v.fullwarn = 0; v.doreset = 0;
     v.eating = 1;
+    /* C eat.c:2040-2045 — cprefx for corpses; only its petrification arm
+     * (eat.c:793-811) is ported here. */
+    if ((otmp.otyp | 0) === CORPSE_OTYP) {
+        await _cprefx_petrify(otmp.corpsenm | 0);
+        if (!v.piece || !v.eating) return; /* lifesaved */
+    }
     /* C eat.c:2049 — first bite. */
     if (await bite()) {
         v.usedtime = (v.usedtime | 0) + 1;
@@ -3565,6 +3606,11 @@ export function eatmupdate() {
 
 export function You(line, ...args) {
     const msg = 'You ' + (args.length > 0 ? nh_sprintf(line, args) : String(line));
+    /* topl.c:257 update_topl: while WIN_STOP is live (an ESC-dismissed --More--
+     * earlier this turn, not yet cleared by an nhgetch) the text only reaches
+     * gt.toplines and never the screen.  pline() owns that suppression. */
+    if (game._topl_win_stop || game._topl_win_stop_armed)
+        return pline(msg);
     /* C has one topline.  If a prior pline is still live in the pending
      * channel (for example a pet-swap message before its landing trap), this
      * direct You() writer must extend that same line.  Writing resultMessage
@@ -3574,9 +3620,14 @@ export function You(line, ...args) {
         game._pending_message = prev + '  ' + msg;
         _topl_record_join(prev, game._pending_message);
     } else {
-        game._resultMessage = game._resultMessage
-            ? game._resultMessage + '  ' + msg
-            : msg;
+        /* topl.c:257-301 — each pline is its own update_topl decision; record
+         * the join so the reserve rule can page between teleport/kick result
+         * and this line (teleport.c:1155 morehungry -> eat.c:3422). */
+        /* pline.c:274-277 — the flush before this message freezes the frame
+         * the overflow --More-- will show. */
+        if (game._resultMessage)
+            _pline_flush_frame_record(game._resultMessage.length, msg);
+        _emit_eat_pline(msg);
     }
 }
 export function carrying(otyp) {

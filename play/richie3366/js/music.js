@@ -555,7 +555,7 @@ async function do_pit(x, y, tu_pit) {
         const u = game.u || {};
         if (u.utrap && (u.utraptype | 0) === TT_BURIEDBALL) {
             await pline('Your chain breaks!');
-            reset_utrap(true);
+            await reset_utrap(true);
         }
         if (Levitation() || Flying() || is_clinger(game.youmonst?.data)) {
             if (!tu_pit) {

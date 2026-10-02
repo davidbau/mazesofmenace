@@ -21,6 +21,7 @@ import {
     losehp, maybe_half_phys, nomul, impact_disturbs_zombies, finish_maybe_wail,
     switch_terrain, in_rooms, stop_occupation, You_hear,
     Passes_walls_prop, check_special_room, is_pool, is_lava, is_moat,
+    check_capacity,
 } from './hack.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
@@ -194,7 +195,7 @@ function notake(ptr) {
 
 /**
  * C ref: dothrow.c ok_to_throw — shared gate for #throw / #fire.
- * Named omission: check_capacity((char *)0).
+ * check_capacity((char *)0) via live js/hack.js (C `:310–311`).
  * @param {{n:number}|null} [shotlimit_p] C `int *shotlimit_p`
  * @returns {Promise<boolean>} false → ECMD_OK (no time)
  */
@@ -219,7 +220,8 @@ async function ok_to_throw(shotlimit_p) {
         mark_topline_seen();
         return false;
     }
-    // check_capacity deferred
+    // C dothrow.c:310 — check_capacity((char *)0) (live js/hack.js).
+    if (await check_capacity(null)) return false;
     return true;
 }
 
@@ -853,10 +855,13 @@ function ordin(n) {
 }
 
 /**
- * C dothrow.c endmultishot — stop remaining volley (boomhit self-hit /
- * hurtle). Verbose pline only when hero is not mon_moving.
+ * C ref: dothrow.c endmultishot `:590–601` — stop remaining volley
+ * (boomhit self-hit / hurtle / lifesave). Verbose You only when hero
+ * is not mon_moving; `ms.n = ms.i` makes the current shot the last.
+ * Callers: dothrow.c:1119 → :3210, end.c:745 savelife (imports),
+ * zap.c:4209 bhit boomerang (no JS boomerang arm — named omit).
  */
-async function endmultishot(verbose) {
+export async function endmultishot(verbose) {
     const ms = game.m_shot;
     if (!ms || (ms.i | 0) >= (ms.n | 0)) return;
     if (verbose && !game.context?.mon_moving) {

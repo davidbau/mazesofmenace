@@ -452,8 +452,8 @@ export async function attrcurse() {
         }
         /*FALLTHRU*/
     case 8:
-        if ((u.HFast | 0) & INTRINSIC) {
-            u.HFast = (u.HFast | 0) & ~INTRINSIC;
+        if ((u.uprops?.[FAST]?.intrinsic | 0) & INTRINSIC) {
+            u.uprops[FAST].intrinsic = (u.uprops[FAST].intrinsic | 0) & ~INTRINSIC;
             You_feel("slower.");
             ret = FAST;
             break;

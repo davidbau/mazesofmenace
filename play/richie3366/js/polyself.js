@@ -1843,13 +1843,13 @@ export async function polymon(mntmp) {
             await pline('The rock seems to no longer trap you.');
         } else {
             await pline('The buried ball is no longer bound to you.');
-            buried_ball_to_freedom();
+            await buried_ball_to_freedom();
         }
-        reset_utrap(true);
+        await reset_utrap(true);
     } else if (likes_lava(game.youmonst?.data) && (u.utrap | 0)
                && ((u.utraptype | 0) === TT_LAVA)) {
         await pline(`The ${hliquid('lava')} now feels soothing.`);
-        reset_utrap(true);
+        await reset_utrap(true);
     }
     // C :980-986 — amorphous/whirly/unsolid new forms slip chains and balls.
     const newdat = game.youmonst?.data;
@@ -1859,7 +1859,7 @@ export async function polymon(mntmp) {
             unpunish();
         } else if ((u.utrap | 0) && ((u.utraptype | 0) === TT_BURIEDBALL)) {
             await pline('You slip free of the buried ball and chain.');
-            buried_ball_to_freedom();
+            await buried_ball_to_freedom();
         }
     }
     // C :987-994 — webs and bear traps can't hold the insubstantial (nor a
@@ -1869,12 +1869,12 @@ export async function polymon(mntmp) {
             || (((newdat?.msize | 0) <= MZ_SMALL) && ((u.utraptype | 0) === TT_BEARTRAP)))) {
         await pline(`You are no longer stuck in the ${((u.utraptype | 0) === TT_WEB) ? 'web' : 'bear trap'}.`);
         /* probably should burn webs too if PM_FIRE_ELEMENTAL */
-        reset_utrap(true);
+        await reset_utrap(true);
     }
     // C :995-998 — web spinners settle onto webs instead of being stuck.
     if (webmaker(newdat) && (u.utrap | 0) && ((u.utraptype | 0) === TT_WEB)) {
         await pline('You orient yourself on the web.');
-        reset_utrap(true);
+        await reset_utrap(true);
     }
     await check_strangling(true); /* maybe start strangling */
 

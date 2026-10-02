@@ -5,7 +5,7 @@
 // light-source hook: vision.c:702 `do_light_sources(next_array)` plus the two
 // TEMP_LIT tests it feeds (vision.c:756 and vision.c:772).
 import { game } from './gstate.js';
-import { COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
+import { Is_rogue_level, ROOMOFFSET, COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
 import { newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon, MATCH_WARN_OF_MON } from './display.js';
 import { worm_known } from './worm.js';
 import { do_light_sources } from './light.js';
@@ -686,6 +686,43 @@ export async function do_clear_area_async(scol, srow, range, func, arg) {
     }
 }
 // C ref: vision_recalc(control)
+/* C vision.c:314-375 rogue_vision(): the Rogue level sees to the room
+ * boundaries (lit rooms IN_SIGHT, dark ones only COULD_SEE) and always sees
+ * adjacent squares; no shadow-casting.  Without it a corridor hero "could
+ * see" down the row into a room, so pets' in_masters_sight (dogmove.c:501)
+ * read true where C's is false. */
+function rogue_vision(next, rmin, rmax) {
+    const u = game.u;
+    const rnum = ((game.level.at(u.ux, u.uy)?.roomno | 0) - ROOMOFFSET);
+    const room = rnum >= 0 ? game.level.rooms?.[rnum] : null;
+    if (room) {
+        for (let zy = room.ly - 1; zy <= room.hy + 1; zy++) {
+            rmin[zy] = room.lx - 1;
+            rmax[zy] = room.hx + 1;
+            for (let zx = room.lx - 1; zx <= room.hx + 1; zx++) {
+                if (room.rlit) {
+                    next[zy][zx] = COULD_SEE | IN_SIGHT;
+                    const l = game.level.at(zx, zy);
+                    if (l) l.seenv = SVALL; /* see the walls */
+                } else
+                    next[zy][zx] = COULD_SEE;
+            }
+        }
+    }
+    const in_door = game.level.at(u.ux, u.uy)?.typ === DOOR;
+    const ylo = Math.max(u.uy - 1, 0), yhi = Math.min(u.uy + 1, ROWNO - 1);
+    const xlo = Math.max(u.ux - 1, 1), xhi = Math.min(u.ux + 1, COLNO - 1);
+    for (let zy = ylo; zy <= yhi; zy++) {
+        if (xlo < rmin[zy]) rmin[zy] = xlo;
+        if (xhi > rmax[zy]) rmax[zy] = xhi;
+        for (let zx = xlo; zx <= xhi; zx++) {
+            next[zy][zx] = COULD_SEE | IN_SIGHT;
+            if (in_door && (zx === u.ux || zy === u.uy))
+                newsym(zx, zy);
+        }
+    }
+}
+
 export function vision_recalc(control = 0) {
     const u = game.u;
     if (!u || !game.level)
@@ -776,6 +813,8 @@ export function vision_recalc(control = 0) {
                 for (let col = next_rmin[row]; col <= next_rmax[row]; col++)
                     next[row][col] = IN_SIGHT | COULD_SEE;
             }
+        } else if (Is_rogue_level(u.uz)) {
+            rogue_vision(next, next_rmin, next_rmax);
         } else {
             view_from(u.uy, u.ux, next, next_rmin, next_rmax);
         }

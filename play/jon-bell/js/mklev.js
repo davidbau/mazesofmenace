@@ -144,7 +144,8 @@ import { subfrombill, find_objowner, onbill } from './shk.js';
 import { in_rooms } from './shk.js';
 import { add_damage } from './shk.js';
 import { spot_stop_timers } from './timeout.js';
-import { IS_ROOM, DB_UNDER, DB_ICE, DB_FLOOR, DB_MOAT, DB_LAVA, MELT_ICE_AWAY, SHOP_HOLE_COST, Is_juiblex_level } from './const.js';
+import { long_to_any } from './cmd.js';
+import { IS_ROOM, DB_UNDER, DB_ICE, DB_FLOOR, DB_MOAT, DB_LAVA, MELT_ICE_AWAY, TIMER_LEVEL, SHOP_HOLE_COST, Is_juiblex_level } from './const.js';
 import { shop_keeper } from './shk.js';
 /* C shknam.c:793's on_level(&u.uz, &orcus_level); the real body, NOT
  * js/shk.js's or js/priest.js's throw-stub of the same name. */
@@ -153,7 +154,7 @@ import { on_level } from './dungeon.js';
  * under an alias only because this file also declared a file-local
  * `function obj_resists(otmp, a, b) { return false; }` stub that shadowed it
  * for meatobj(); that stub is gone, so the plain name is the real body now. */
-import { obj_resists, finish_meating as finish_meating_mk, monstone } from './dogmove.js';
+import { obj_resists, quickmimic as quickmimic_mk, monstone } from './dogmove.js';
 export { in_rooms };
 import { attacktype, x_monnam, noname_monnam, poly_when_stoned } from './mhitm.js';
 /* ── newcham()'s equipment half, C mon.c:5484-5518.  Every import below is a
@@ -167,12 +168,15 @@ import { bypass_obj, setnotworn } from './worn.js';            /* C worn.c:1090 
 import { flooreffects } from './cmd.js';                      /* C do.c:161 */
 import { stackobj } from './sp_lev.js';                       /* C mkobj.c:2411 */
 import { check_gear_next_turn } from './makemon.js';          /* C mon.c:5915 */
-import { set_apparxy } from './monmove.js';                   /* C monmove.c:1421 */
+import { set_apparxy, dochugw } from './monmove.js';           /* C monmove.c:1421, 3735 */
 /* C weapon.c:766's `distant_name(obj, doname)`.  This file used to carry local
  * THROW stubs for both names; the real bodies live in js/objnam.js and are
  * imported here under _nc names.  The stubs are GONE as of the shadow-body
  * audit — every call site in this file now goes through these aliases. */
 import { distant_name as distant_name_nc, doname as doname_nc, Tobjnam } from './objnam.js';
+import { simpleonames as simpleonames_mk, an as an_mk } from './objnam.js';
+import { observe_object as observe_object_mk } from './o_init.js';
+import { OC_NAME as OC_NAME_MK } from './oc_name_data.js';
 import { obfree, delobj as delobj_real, deliver_obj_to_mon } from './dokick.js';
 import { js_makemaz, mazexy, set_levltyp_lit, set_levltyp, bughack, bubbles_clear_level } from './mkmaze.js';
 /* maybe_reset_pick — C lock.c:268; add_to_migration() below calls it when the
@@ -4569,7 +4573,7 @@ export async function makemon(mdat, x, y, mmflags) {
         const ualType = (game.u?.ualign?.type ?? 0) | 0;
         mon.mpeaceful = (min_align === ualType) ? (renegade ? 0 : 1) : (renegade ? 1 : 0);
     }
-    /* C makemon.c:1430 — set_malign(mtmp): recalc malign; no RNG, field-only (skipped). */
+    set_malign(mon); /* C makemon.c:1429 — having finished peaceful changes */
     /* C makemon.c:1431-1440 — group spawn: random monsters (anymon) of a grouping
      * species spawn an accompanying group (small via m_initsgrp n=3, large via
      * m_initlgrp n=10).  MM_NOGRP suppresses (prevents infinite recursion). */
@@ -4641,6 +4645,29 @@ export async function makemon(mdat, x, y, mmflags) {
                 what = Amonnam(mon);
                 if (apType === M_AP_MONSTER)
                     exclaim = true;
+            } else if (canseemon(mon) && apType === 2 /* M_AP_OBJECT */
+                       && Number.isInteger(mon.mappearance)
+                       && OC_NAME_MK[mon.mappearance | 0] != null) {
+                /* C makemon.c:1486-1489 — mimic masquerading as an object:
+                 * mhidden_description(MHID_ARTICLE|MHID_ALTMON) (pager.c:205-233)
+                 * names the object via object_from_map (pager.c:284-360), which
+                 * for a mimic always makes a temporary mksobj(otyp, FALSE, FALSE)
+                 * (the next_ident rnd(2) leaf).  The M_AP_FURNITURE arm needs
+                 * defsyms explanations, which js/ lacks; it is left out. */
+                const fake = await mksobj(mon.mappearance | 0, false, false);
+                if ((fake.oclass | 0) === 12 /* COIN_CLASS */)
+                    fake.quan = 2;
+                fake.where = 1;
+                fake.ox = mon.mx | 0;
+                fake.oy = mon.my | 0;
+                const odx = (mon.mx | 0) - ((game.u?.ux ?? 0) | 0);
+                const ody = (mon.my | 0) - ((game.u?.uy ?? 0) | 0);
+                if (odx * odx + ody * ody <= 2) /* pager.c:1043 next2u */
+                    observe_object_mk(fake);
+                let nm = simpleonames_mk(fake);
+                if ((fake.quan | 0) === 1)
+                    nm = an_mk(nm);
+                what = upstart(nm);
             }
             if (what) {
                 /* C hack.h next2u(x,y) = (distu(x,y) < 3); distu is the squared
@@ -4656,6 +4683,13 @@ export async function makemon(mdat, x, y, mmflags) {
                       + `${vtense(what, 'appear')}${where}${exclaim ? '!' : '.'}`);
             }
         }
+        /* C makemon.c:1495-1497 — "if discernable and a threat, stop fiddling
+         * while Rome burns":  `if (go.occupation) (void) dochugw(mtmp, FALSE);`.
+         * chug=FALSE skips dochug(); only the stop_occupation() test runs, so
+         * a counted search is interrupted the moment the spawn lands (C's
+         * stop appears in the SAME window as the appearance message). */
+        if (game.occupation)
+            await dochugw(mon, false);
     }
     return mon;
 }
@@ -7265,7 +7299,21 @@ async function themeroom_fill_rng(aroom, difficulty) {
             // themerms.lua:49-57 — `local ice = selection.room()` then, under
             // percent(25), `ice:iterate(ice_melter)` draws one nh.rn2(1000) per
             // SET point.  Same selection.room() cell count as Storeroom below.
-            nhlib_fill_ice_room_rng(roomRndcoordCells(aroom).length);
+            // themerms.lua:50 des.terrain(ice, "I") runs BEFORE the melt draws:
+            // sel_set_ter -> set_levltyp_lit(ICE); sp_lev.c:4625 icedpool only
+            // when splev_init_present (not for a themeroom).
+            const iceCells = roomRndcoordCells(aroom);
+            for (const c of iceCells) {
+                const loc = game.level?.at(c.x, c.y);
+                if (loc) loc.typ = ICE;
+            }
+            /* themerms.lua:52-54 nh.start_timer_at -> nhlua.c:1635-1639:
+             * spot_stop_timers + start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY). */
+            nhlib_fill_ice_room_rng(iceCells.length, (i, when) => {
+                const c = iceCells[i];
+                spot_stop_timers(c.x, c.y, MELT_ICE_AWAY);
+                start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, long_to_any((c.x << 16) | c.y));
+            }, 1000 - levelDifficulty() * 100);
         }
         else if (pick.name === 'Cloud room') {
             // C themerms.lua:62-70 — des.monster({id="fog cloud", asleep=true})
@@ -8478,7 +8526,10 @@ async function themerooms_generate(difficulty) {
                 const loc = game.level.at(mapPos.x + txx, mapPos.y + tyy);
                 if (loc) {
                     loc.typ = mptyp;
-                    loc.lit = 0; // lit=FALSE from des.map({}) with no 'lit' param
+                    /* lit=FALSE from des.map({}) with no 'lit' param, but sel_set_ter ->
+                     * set_levltyp_lit keeps lava lit (mkmaze.c:99-100, 136-137); a later
+                     * L->P replace_terrain (NOCHANGE) leaves those pools lit. */
+                    loc.lit = (mptyp === LAVAPOOL || mptyp === LAVAWALL) ? 1 : 0;
                     loc.flags = 0;
                     loc.horizontal = (mptyp === HWALL || mptyp === IRONBARS);
                     loc.roomno = 0;
@@ -13181,7 +13232,7 @@ export async function m_consume_obj(mtmp, otmp) {
      * disguise meal immediately.  The shared dogmove helper performs the
      * meal/taming state cleanup and redraw. */
     if (ispet && deadmimic)
-        finish_meating_mk(mtmp);
+        await quickmimic_mk(mtmp);
     if (corpsenm !== NON_PM)
         mon_givit(mtmp, permonstTemplate(corpsenm));
 }

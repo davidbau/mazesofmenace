@@ -654,7 +654,7 @@ export async function wiz_map() {
     for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
         map_engraving(ep, true);
     }
-    do_mapping();
+    await do_mapping();
     // C: notice_mon_on(); restore conf/hallu
     u.HConfusion = save_Hconf;
     u.HHallucination = save_Hhallu;

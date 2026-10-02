@@ -142,7 +142,7 @@ import { make_confused, make_stunned, healup, make_slimed, peffects } from './po
 import { trycall, hcolor, hliquid, Hallucination, mon_nam, Monnam } from './do_name.js';
 import { an, makeplural, Tobjnam } from './objnam.js';
 import { is_whirly, is_animal, eyecount, mons, is_undead, is_vampshifter, has_head } from './monsters.js';
-import { nomul, losehp, maybe_half_phys, fall_asleep, You_hear, invocation_pos, On_stairs, stop_occupation } from './hack.js';
+import { nomul, losehp, maybe_half_phys, fall_asleep, You_hear, invocation_pos, On_stairs, stop_occupation, check_capacity } from './hack.js';
 import { uhim } from './roles.js';
 import { erode_obj } from './trap.js';
 import { set_occupation, freehand } from './engrave.js';
@@ -2063,11 +2063,10 @@ async function spelleffects_check(spell) {
     } else if (acurr(A_STR) < 4 && spellid(spell) !== SPE_RESTORE_ABILITY) {
         await pline('You lack the strength to cast spells.');
         return { abort: true, res: ECMD_OK, energy };
-    } else if (near_capacity() >= EXT_ENCUMBER) {
+    } else if (await check_capacity(
+        'Your concentration falters while carrying so much stuff.',
+    )) {
         /* C spell.c:1279–1283 check_capacity — TIME, unlike hunger/STR */
-        await pline(
-            'Your concentration falters while carrying so much stuff.',
-        );
         return { abort: true, res: ECMD_TIME, energy };
     }
 

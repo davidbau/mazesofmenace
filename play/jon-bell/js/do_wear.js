@@ -2454,10 +2454,10 @@ async function on_msg(otmp) {
     const g = game;
     const W_RING = 0x00060000; /* W_RINGL|W_RINGR */
     if ((otmp.owornmask | 0) & W_RING) {
-        const body = ringDonameBody(otmp);
-        const article = /^[aeiou]/i.test(body) ? 'an' : 'a';
+        /* prinv -> xprname -> doname (do_wear.c:76-80): the real namer, so the BUC
+         * word and article come from objnam.c, not a hand-scoped ring partial. */
         const invlet = String.fromCharCode(otmp.invlet | 0);
-        const line = `${invlet} - ${article} ${body}.`;
+        const line = `${invlet} - ${(await doname(otmp))}.`;
         /* C on_msg -> prinv -> pline.  Using the canonical pline path here is
          * what makes update_topl evaluate overflow at this exact call boundary,
          * before the wear command's world turn.  Preserve the surviving final

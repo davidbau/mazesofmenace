@@ -122,7 +122,7 @@ import {
     is_pool, is_lava, waterbody_name, crawl_destination, SURFACE_AT,
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms, set_uinwater, test_move, fall_asleep, You_hear, spot_checks,
-    monst_to_any,
+    monst_to_any, check_capacity,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
 import { emits_light, del_light_source } from './light.js'; // mongone_statue_donor del arm (same SCC; hoisted fns, runtime use only)
@@ -1514,7 +1514,7 @@ export function uescaped_shaft(trap) {
  * C ref: trap.c delfloortrap — destroy floor-emanating trap types.
  * Clears hero utrap (unless buried ball) or mon mtrapped, then deltrap.
  */
-export function delfloortrap(ttmp) {
+export async function delfloortrap(ttmp) {
     if (!ttmp) return false;
     const ttyp = ttmp.ttyp | 0;
     if (ttyp === SQKY_BOARD || ttyp === BEAR_TRAP || ttyp === LANDMINE
@@ -1523,7 +1523,7 @@ export function delfloortrap(ttmp) {
         || ttyp === WEB || ttyp === MAGIC_TRAP || ttyp === ANTI_MAGIC) {
         if (u_at(ttmp.tx, ttmp.ty)) {
             if ((game.u?.utraptype | 0) !== TT_BURIEDBALL) {
-                reset_utrap(true);
+                await reset_utrap(true);
             }
         } else {
             const mtmp = m_at(ttmp.tx, ttmp.ty);
@@ -3028,10 +3028,21 @@ export function set_utrap(tim, typ) {
 }
 
 /**
- * C ref: trap.c reset_utrap — clear utrap; optional Lev/Fly restore msgs deferred.
+ * C ref: trap.c reset_utrap :1044–1057 — snapshot Levitation/Flying (the
+ * youprop.h macros via same-file hero_Levitation/hero_Flying, D-1070),
+ * set_utrap(0,0), then the msg arm: float_up when Levitation unblocks,
+ * You("can fly.") when Flying unblocks.
  */
-export function reset_utrap(_msg) {
+export async function reset_utrap(msg) {
+    const was_Lev = hero_Levitation();
+    const was_Fly = hero_Flying();
+
     set_utrap(0, 0);
+
+    if (msg) {
+        if (!was_Lev && hero_Levitation()) await float_up();
+        if (!was_Fly && hero_Flying()) await You('can fly.');
+    }
 }
 
 /**
@@ -3747,7 +3758,7 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
                 `${A_Your[trap.madeby_u ? 1 : 0]} bear trap closes on ${s_suffix(mon_nam(u.usteed))} ${mbodypart(u.usteed, FOOT)}!`,
             );
             if (await thitm(0, u.usteed, null, dmg, false)) {
-                reset_utrap(true);
+                await reset_utrap(true);
             }
         } else {
             await pline(
@@ -4809,13 +4820,16 @@ export async function ignite_items(objchn) {
 }
 
 /**
- * C ref: trap.c trapeffect_fire_trap — monster branch (hero → dofiretrap).
- * Envelope: d(2,4); resists_fire shield; else thitm / rn2(num+1) mhpmax;
- * golem alt HP; burnarmor || rn2(3) → destroy_items(AD_FIRE) + ignite + HP.
- * Named omissions: surface(); shieldeff.
+ * C ref: trap.c:1730–1822 trapeffect_fire_trap, whole body in C order.
+ * Hero: seetrap + dofiretrap. Monster: d(2,4); surface() erupt wording
+ * via pline_mon (seen) / You_see (unseen); resists_fire shieldeff;
+ * else golem alt HP + thitm / rn2(num+1) mhpmax; burnarmor || rn2(3) →
+ * destroy_items(AD_FIRE) + ignite + xtradmg; burn_floor_objects smell;
+ * melt_ice; DEADMONSTER + seetrap tail.
  */
 export async function trapeffect_fire_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
+        seetrap(trap); // C :1736
         await dofiretrap(null);
         return Trap_Effect_Finished;
     }
@@ -4826,12 +4840,10 @@ export async function trapeffect_fire_trap(mtmp, trap, _trflags) {
     let trapkilled = false;
     const mptr = mtmp.data;
     const orig_dmg = d(2, 4);
-    const surf = 'floor'; // surface() deferred
+    const surf = surface(mtmp.mx, mtmp.my); // C :1746–1753
 
     if (in_sight) {
-        await pline(
-            `A ${TOWER_OF_FLAME} erupts from the ${surf} under ${mon_nam(mtmp)}!`,
-        );
+        await pline_mon(mtmp, 'A %s erupts from the %s under %s!', TOWER_OF_FLAME, surf, mon_nam(mtmp));
     } else if (see_it) {
         set_msg_xy(mtmp.mx, mtmp.my);
         await You_see('a %s erupt from the %s!', TOWER_OF_FLAME, surf);
@@ -4839,6 +4851,7 @@ export async function trapeffect_fire_trap(mtmp, trap, _trflags) {
 
     if (resists_fire(mtmp)) {
         if (in_sight) {
+            await shieldeff(mtmp.mx, mtmp.my); // C :1756
             await pline(`${Monnam(mtmp)} is uninjured.`);
         }
     } else {
@@ -4891,7 +4904,7 @@ export async function trapeffect_fire_trap(mtmp, trap, _trflags) {
         if (await burn_floor_objects(tx, ty, see_it, false)
             && !see_it
             && dist2(game.u?.ux | 0, game.u?.uy | 0, tx, ty) <= 3 * 3) {
-            await pline('You smell smoke.');
+            await You('smell smoke.'); // C :1809
         }
         if (is_ice(tx, ty)) await melt_ice(tx, ty, null);
     }
@@ -7040,7 +7053,7 @@ export async function sink_into_lava() {
             await burn_away_slime(); /* add insult to injury? */
             await done(DISSOLVED);
             /* can only get here via life-saving; try to get away from lava */
-            reset_utrap(true);
+            await reset_utrap(true);
             /* levitation or flight have become unblocked, otherwise Tport */
             if (!hero_Levitation() && !hero_Flying())
                 await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT);
@@ -7172,7 +7185,7 @@ export async function openholdingtrap(mon) {
         }
         await pline(`${buf} released from ${whichSpaced}${trapdescr}.`);
         game.vision_full_recalc = 1;
-        reset_utrap(true);
+        await reset_utrap(true);
         if (game.vision_full_recalc) vision_recalc(0);
     } else {
         if (!(mon.mtrapped | 0)) return { happened: false, noticed: false };
@@ -7377,7 +7390,7 @@ export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
     }
     newsym(ttmp.tx, ttmp.ty);
     const u = game.u || {};
-    if (u.utrap && u_at(ttmp.tx, ttmp.ty)) reset_utrap(true);
+    if (u.utrap && u_at(ttmp.tx, ttmp.ty)) await reset_utrap(true);
     const mtmp = m_at(ttmp.tx, ttmp.ty);
     if (mtmp && mtmp.mtrapped) mtmp.mtrapped = 0;
     deltrap(ttmp);
@@ -7657,7 +7670,7 @@ async function disarm_shooting_trap(ttmp, otyp) {
 
 /**
  * C ref: trap.c help_monster_out `:5699–5791` — lift from pit/spiked pit.
- * check_capacity inlined (C hack.c; pickup.js clone stays).
+ * check_capacity((char *)0) via live js/hack.js (C `:5722–5723`).
  */
 async function help_monster_out(mtmp, ttmp) {
     const u = game.u || {};
@@ -7665,10 +7678,8 @@ async function help_monster_out(mtmp, ttmp) {
         await pline(`${Monnam(mtmp)} isn't trapped.`);
         return 0;
     }
-    if (near_capacity() >= EXT_ENCUMBER) {
-        await pline("You can't do that while carrying so much stuff.");
-        return 1;
-    }
+    // C trap.c:5722 — check_capacity((char *)0) (live js/hack.js).
+    if (await check_capacity(null)) return 1;
     const uprob = untrap_prob(ttmp);
     if (uprob && !helpless(mtmp)) {
         await pline(`You try to reach out your ${makeplural(body_part(ARM))}, but ${mon_nam(mtmp)} backs away skeptically.`);

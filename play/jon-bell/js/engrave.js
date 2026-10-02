@@ -397,6 +397,36 @@ export async function doengrave() {
             /* engrave.c:768-772 — "Objects too large to engrave with". */
             await pline("You can't engrave with such a large object!");
             de.ptext = false;
+        } else if (oc === TOOL_CLASS) {
+            /* C engrave.c:836-880 */
+            if (de.otmp === (game.u || {}).ublindf) {
+                await pline("That is a bit difficult to engrave with, don't you think?");
+                de.ret = ECMD_FAIL;
+                return doengr_exit(de);
+            }
+            if (de.otmp.otyp === MAGIC_MARKER) {
+                if ((de.otmp.spe | 0) <= 0)
+                    await pline('Your marker has dried out.');
+                else
+                    de.type = MARK;
+            } else if (de.otmp.otyp === TOWEL) {
+                /* Can't really engrave with a towel.  The wet-towel
+                 * dry_a_towel() arm (engrave.c:858-859) has no JS body. */
+                de.ptext = false;
+                const verbs = `${await Yobjnam2(de.otmp, 'get')} ${de.frosted ? 'frosty' : 'dusty'}.`;
+                if (de.oep) {
+                    if (de.oep.engr_type === DUST || de.oep.engr_type === ENGR_BLOOD
+                        || de.oep.engr_type === MARK) {
+                        if (!uBlind(game.u || {})) await pline('You wipe out the message here.');
+                        else await pline(verbs);
+                        de.dengr = true;
+                    } else {
+                        await pline(`${await Yname2(de.otmp)} can't wipe out this engraving.`);
+                    }
+                } else {
+                    await pline(verbs);
+                }
+            }
         } else if (oc === WEAPON_CLASS) {
             if (is_art(de.otmp, ART_FIRE_BRAND)) {
                 de.type = BURN;
@@ -641,14 +671,41 @@ export function engrave() {
 
     /* C engrave.c:1322-1331 — compute rate.  DUST/fingertip → default rate 10. */
     let rate = 10;
+    const stylus = eng.stylus;
+    const marker = !!(stylus && stylus.otyp === MAGIC_MARKER && eng.type === MARK);
+    if (marker) {
+        /* C engrave.c:1326-1328 — one charge / 2 letters */
+        rate = Math.min(rate, (stylus.spe | 0) * 2);
+    }
 
     /* C engrave.c:1333-1339 — endc = last char engraved this action. */
-    const text = eng.text;
+    let text = eng.text;
     let i = rate;
     let endc = eng.nextc;
     while (endc < text.length && i > 0) {
         if (text[endc] !== ' ') i--;
         endc++;
+    }
+
+    /* C engrave.c:1394-1408 — marker ink: max(rate/2, 1) charges per action */
+    let truncate = false;
+    if (marker) {
+        let ink_cost = Math.max(Math.trunc(rate / 2), 1);
+        if ((stylus.spe | 0) < ink_cost) {
+            ink_cost = stylus.spe | 0;
+            truncate = true;
+        }
+        stylus.spe = (stylus.spe | 0) - ink_cost;
+        if ((stylus.spe | 0) === 0) {
+            void pline('Your marker dries out.');
+            truncate = true;
+        }
+    }
+    /* C engrave.c:1455-1460 — worn-out stylus truncates the input */
+    if (truncate && endc < text.length) {
+        text = text.slice(0, endc);
+        eng.text = text;
+        void pline(`You are only able to write "${text.slice(0, endc)}".`);
     }
 
     /* C engrave.c:1438-1462 — append the engraved slice to any existing engraving. */

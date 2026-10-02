@@ -36,7 +36,7 @@ import { is_ice, cant_reach_floor } from './engrave.js';
 import { uteetering_at_seen_pit, uescaped_shaft } from './pickup.js';
 import { yobjnam, Yobjnam2, an } from './objnam.js';
 import { trapname } from './makemon.js';
-import { is_pool } from './look.js';
+import { is_pool, may_dig } from './look.js';
 import { dotrap } from './trap.js';
 import { FORCEBUNGLE } from './const.js';
 /* in_town (hack.c:3562) — this file used to carry its own `return false` stub,
@@ -85,7 +85,7 @@ import { On_stairs, stairway_at, In_hell } from './mklev.js';
 import { Monnam } from './mcastu.js';
 import { is_pool_or_lava } from './look.js';
 import { water_damage_chain, pooleffects, switch_terrain, boulder_hits_pool, check_special_room } from './cmd.js';
-import { is_drawbridge_wall, find_drawbridge, delobj, impact_drop } from './dokick.js';
+import { is_drawbridge_wall, find_drawbridge, delobj, impact_drop, is_db_wall } from './dokick.js';
 import { hliquid, mon_has_amulet } from './mhitm.js';
 import { distmin } from './hacklib.js';
 import { pickup } from './pickup.js';
@@ -344,6 +344,8 @@ async function digactualhole_pit(x, y) {
     if (!g.level.traps.some((t) => t.tx === x && t.ty === y)) {
         g.level.traps.push({ tx: x, ty: y, ttyp: PIT, tseen: 1, madeby_u: true });
     }
+    /* C dig.c:730 — if (madeby_u) wake_nearby(FALSE); (before the at_u set_utrap). */
+    wake_nearby_(false);
     /* C dig.c:737-740 — at_u && !wont_fall → set_utrap(rn1(4,2), TT_PIT). */
     set_utrap(rn1(4, 2), TT_PIT);
     g.vision_full_recalc = 1;
@@ -1018,6 +1020,26 @@ export async function dig() {
      * differ from C's (the pick-axe is the C uwep). */
     const tool = d.tool || u.uwep || {};
 
+    /* C dig.c:326-334 — the horizontal-dig nondiggable checks, before the
+     * Fumbling test and before any effort is added. */
+    if (!d.down) {
+        const dpx0 = d.pos.x | 0, dpy0 = d.pos.y | 0;
+        const lev0 = g.level && g.level.at ? g.level.at(dpx0, dpy0) : null;
+        const uw = u.uwep || tool;
+        const verb = (!uw || is_pick(uw)) ? 'dig into' : 'chop through';
+        if (lev0 && IS_TREE(lev0.typ) && !may_dig(dpx0, dpy0)
+            && dig_typ(uw, dpx0, dpy0) === DIGTYP_TREE) {
+            await pline('This tree seems to be petrified.');
+            return 0;
+        }
+        if (lev0 && IS_OBSTRUCTED(lev0.typ) && !may_dig(dpx0, dpy0)
+            && dig_typ(uw, dpx0, dpy0) === DIGTYP_ROCK) {
+            await pline('This %s is too hard to %s.',
+                        is_db_wall(dpx0, dpy0) ? 'drawbridge' : 'wall', verb);
+            return 0;
+        }
+    }
+
 
     /* C dig.c:365-366 — effort += 10 + rn2(5) + abon() + uwep->spe
      *                              - greatest_erosion(uwep) + u.udaminc. */
@@ -1295,7 +1317,13 @@ export async function use_pick_axe(obj, dirCh) {
         }
         u.dx = DX[dirCh]; u.dy = DY[dirCh]; u.dz = 0;
     }
-    return await use_pick_axe2(obj);
+    /* Marks an APPLY-started dig (command returned ECMD_TIME, context.move=1):
+     * allmain's occupation driver runs movemon BEFORE dig() for these, unlike
+     * domove's autodig (allmain.c moveloop_core order). */
+    g._digFromApply = true;
+    const res = await use_pick_axe2(obj);
+    if (!g.occupation) g._digFromApply = false;
+    return res;
 }
 
 // ── dig_typ helpers ──

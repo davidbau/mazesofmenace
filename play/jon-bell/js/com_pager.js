@@ -22,7 +22,7 @@ import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's mat
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel,
-         botl_status_suffix, fit_status_line_width, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
+         oclass_sym, rogue_graphics, botl_status_suffix, fit_status_line_width, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -159,6 +159,9 @@ function render_map_row_clipped(y, clipX) {
     let activeColor = ANSI_DEFAULT;
     let activeDec = false;
     let activeInverse = false;
+    /* C display.c:3077-3081 / symbols.c:217-233 — on a Rogue level every glyph
+     * colour is NO_COLOR and the symbols are plain ASCII (no DEC mode). */
+    const rogueMap = rogue_graphics();
     const gap = firstCol - 1;
     if (gap > 4)
         output += `\x1b[${gap}C`;
@@ -167,9 +170,9 @@ function render_map_row_clipped(y, clipX) {
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = game.level.at(x, y);
         const ch = loc?.disp_ch ?? ' ';
-        const color = game.iflags?.use_color === false
+        const color = (rogueMap || game.iflags?.use_color === false)
             ? NO_COLOR : (loc?.disp_color ?? NO_COLOR);
-        const dec = !!loc?.disp_decgfx;
+        const dec = !rogueMap && !!loc?.disp_decgfx;
         const inverse = !!((loc?.disp_attr | 0) & 1 /* ATR_INVERSE */);
         if (ch === ' ') {
             // A blank map cell (S_stone / dark void) is always emitted at the
@@ -760,7 +763,7 @@ function _statusLine2(uacOverride, pwOverride) {
     _hp = Math.min(_hp, 9999);
     const _hpmax = Math.min(Upolyd ? (u.mhmax | 0) : (u.uhpmax || 0), 9999);
     const _leveldescField = describe_level_buf(1, u.uz).replace(/ +$/, '');
-    let s = `${_leveldescField} $:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
+    let s = `${_leveldescField} ${oclass_sym(12 /* COIN_CLASS */) ?? "$"}:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
     if (Upolyd) {
         s += ` HD:${botl_mon_mlevel(u.umonnum | 0)}`;
     }
@@ -813,8 +816,9 @@ export async function topl_more_page(msg, uacAtCapture) {
     if (inlineMore) {
         // Row 0: message + '--More--' on the same line
         output += (msg || '') + '--More--\n';
-        // Row 1: empty
-        output += '\n';
+        // Row 1: map game y=0 (tty map window offy=1; C paints a y=0 corridor
+        // square here, which a restore's docrt() can leave remembered)
+        output += render_map_row_clipped(0, COLNO - 1).str + '\n';
         // Rows 2..21: map game y=1..20
         for (let y = 1; y < ROWNO; y++) {
             output += render_map_row_clipped(y, COLNO - 1).str + '\n';

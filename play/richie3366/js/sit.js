@@ -899,7 +899,7 @@ async function throne_sit_effect() {
                 } else {
                     await pline('An image forms in your mind.');
                     const { do_mapping } = await import('./detect.js');
-                    do_mapping();
+                    await do_mapping();
                 }
             } else {
                 if (!Blind()) {

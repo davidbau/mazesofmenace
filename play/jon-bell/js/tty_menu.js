@@ -169,7 +169,9 @@ export class TtyMenu {
         const ch = curr.selected ? (curr.count === -1 ? '+' : '#') : '-';
         const l = this._lines[lineIdx];
         /* keep any leading escape untouched: selectable lines never carry one */
-        this._lines[lineIdx] = l.slice(0, 3) + ch + l.slice(4);
+        /* a row the MENU_SEARCH getlin blanked is still painted at column 3
+         * (tty_curs + putchar on an otherwise empty row) */
+        this._lines[lineIdx] = l.padEnd(3).slice(0, 3) + ch + l.slice(4);
     }
 
     /* Publish the current frame and park the cursor where dmore() leaves it. */
@@ -212,8 +214,12 @@ export class TtyMenu {
         let curr_page = 0;
         let fresh = true;
         let finished = false;
+        /* C wintty.c:1334-1399 counting/count/reset_count */
+        let counting = false, count = 0, reset_count = true;
 
         while (!finished) {
+            if (reset_count) { counting = false; count = 0; }
+            else reset_count = true;
             if (fresh) { this._renderPage(curr_page); fresh = false; }
             else this._publish();
 
@@ -221,7 +227,14 @@ export class TtyMenu {
             const morc = String.fromCharCode(key);
             const from = this.plist[curr_page], to = this.plist[curr_page + 1];
 
-            if (key === 27 /* '\033' */) {
+            if (morc >= '0' && morc <= '9') {
+                /* C wintty.c:1570-1602: digits build a count; leading zeros
+                 * are ignored. */
+                count = count * 10 + (key - 48);
+                if (count !== 0) { counting = true; reset_count = false; }
+            } else if (key === 27 && counting) {
+                /* C: ESC only stops the count. */
+            } else if (key === 27 /* '\033' */) {
                 /* C: deselect everything, WIN_CANCELLED, finished. */
                 for (const c of this.mlist) { c.selected = false; c.count = -1; }
                 this.cancelled = true;
@@ -242,6 +255,36 @@ export class TtyMenu {
                 if (this.npages > 0 && curr_page !== this.npages - 1) {
                     curr_page = this.npages - 1; fresh = true;
                 }
+            } else if (morc === ',' || morc === '\\' || morc === '~'
+                       || morc === '.' || morc === '-' || morc === '@') {
+                /* C wintty.c:1646-1695 — page/all select, unselect, invert.
+                 * The *_PAGE forms repaint each changed in-view line through
+                 * set_item_state; the *_ALL forms update the rest silently.
+                 * PICK_ONE/PICK_NONE: select and invert are PICK_ANY-only. */
+                const sel = (c) => { c.selected = true; };
+                const uns = (c) => { c.selected = false; c.count = -1; };
+                const inv = (c) => { if (c.selected) uns(c); else sel(c); };
+                const op = (morc === ',' || morc === '.') ? sel
+                    : (morc === '\\' || morc === '-') ? uns : inv;
+                if (op !== uns && how !== PICK_ANY) continue;
+                const all = morc === '.' || morc === '-' || morc === '@';
+                for (let i = from; i < to; i++) {
+                    const c = this.mlist[i];
+                    if (!c.aInt) continue;
+                    if (op === sel ? c.selected : (op === uns && !c.selected)) continue;
+                    if (op !== uns && c.skipinvert && !c.selected) continue; /* menuitem_invert_test, menuinvertmode 1 */
+                    op(c);
+                    this._setItemState(i - from, c);
+                }
+                if (all)
+                    for (let i = 0; i < this.mlist.length; i++) {
+                        const c = this.mlist[i];
+                        if (i >= from && i < to) continue;
+                        if (!c.aInt) continue;
+                        if (op === sel ? c.selected : (op === uns && !c.selected)) continue;
+                        if (op !== uns && c.skipinvert && !c.selected) continue;
+                        op(c);
+                    }
             } else if (morc === ':') {
                 /* C ref: wintty.c:1700-1730 MENU_SEARCH.  PICK_NONE bells and
                  * never opens the getlin; otherwise tty_getlin("Search for:")
@@ -290,8 +333,13 @@ export class TtyMenu {
                         // C toggle_menu_curr toggles this entry even in
                         // PICK_ONE; a preselected entry can remain alongside
                         // the new pick. The option handler resolves that pair.
-                        curr.selected = !curr.selected;
-                        curr.count = -1;
+                        /* C toggle_menu_curr(.., counting, count) */
+                        if (curr.selected) {
+                            if (counting && count > 0) curr.count = count;
+                            else { curr.selected = false; curr.count = -1; }
+                        } else if (counting && count > 0) {
+                            curr.count = count; curr.selected = true;
+                        } else if (!counting) curr.selected = true;
                         this._setItemState(i - from, curr);
                         if (how === PICK_ONE) finished = true;
                         break;

@@ -31,7 +31,7 @@ import {
     TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, INTRINSIC, STONE, LAVAWALL, TT_PIT,
     TT_BEARTRAP, TT_WEB, TT_LAVA, TT_INFLOOR, FORCETRAP, TOOKPLUNGE,
     LEFT_SIDE, RIGHT_SIDE, UNENCUMBERED,
-    EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, HEAD, HAND, NOSE, LEG, NON_PM,
+    EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, HEAD, HAND, NOSE, LEG, NON_PM, STOMACH,
     KILLED_BY, NO_KILLER_PREFIX, W_WEP, STATUE_TRAP,
     EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, PARANOID_BREAKWAND,
     RLOC_NOMSG, RLOC_MSG, RLOC_NONE, XKILL_NOMSG, ARTICLE_NONE, ARTICLE_A,
@@ -67,7 +67,7 @@ import {
     PM_ARCHEOLOGIST, PM_GNOME, bigmonst, verysmall, strongmonst,
     touch_petrifies, poly_when_stoned, is_rider,
 } from './monsters.js';
-import { can_blow, little_to_big, big_to_little, hero_conflict, pronoun_gender, PRONOUN_NO_IT } from './mondata.js';
+import { can_blow, little_to_big, big_to_little, hero_conflict, pronoun_gender, PRONOUN_NO_IT, mhe, mhis } from './mondata.js';
 import { wield_tool, welded, is_pole, mwelded } from './wield.js';
 import {
     splitobj, unsplitobj, delobj, objects_at, sobj_at, nxtobj, unbless, attach_egg_hatch_timeout, kill_egg,
@@ -78,9 +78,9 @@ import {
 import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, shk_your, Tobjnam, gloves_simple_name, otense } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
-import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam, obj_pmname } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam, obj_pmname, hcolor, s_suffix, Ugender } from './do_name.js';
 import { monflee } from './monmove.js';
-import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear } from './hack.js';
+import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear, check_capacity } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path, walk_path_async, hurtle_jump, thitmonst, hurtle } from './dothrow.js';
 import { uhim, uhis, genders } from './roles.js';
@@ -90,7 +90,7 @@ import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { P_SKILL, weapon_type, uwep_skill_type, dbon, MON_WEP, is_wet_towel, dry_a_towel, hands_obj, possibly_unwield, setmnotwielded } from './weapon.js';
 import { pickup_object, spoteffects } from './pickup.js';
 import { select_menu_pick_one } from './options.js';
-import { teleds, tele_to_rnd_pet, noteleport_level, enexto, rloc_to } from './teleport.js';
+import { teleds, tele_to_rnd_pet, noteleport_level, enexto, rloc_to, tele_restrict, rloc } from './teleport.js';
 import {
     morehungry, use_tin_opener, floorfood, set_tin_variety,
     carried, vomit,
@@ -106,9 +106,9 @@ import { zappable, release_hold, revive } from './zap.js';
 import { explode } from './explode.js';
 import {
     flash_hits_mon, xkilled, attack_checks, check_caitiff,
-    force_attack, stumble_onto_mimic,
+    force_attack, stumble_onto_mimic, killed,
 } from './uhitm.js';
-import { digests, set_ustuck, Flying } from './mhitu.js';
+import { digests, set_ustuck, Flying, mon_reflects } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
 import { Soundeffect, SetVoice } from './sndprocs.js';
 import { se_wall_of_force, se_faint_splashing, se_heart_beat, se_typing_noise, se_hollow_sound, se_crackling_of_hellfire } from './generated/seffects_data.js';
@@ -125,7 +125,7 @@ import { begin_burn, end_burn, Is_candle, obj_merge_light_sources,
     get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { set_occupation, u_wipe_engr, freehand, can_reach_floor, cant_reach_floor } from './engrave.js';
-import { makemon, mkclass } from './makemon.js';
+import { makemon, mkclass, mpickobj } from './makemon.js';
 import { make_familiar } from './dog.js';
 import { addinv, addinv_nomerge } from './u_init.js';
 import { stairway_at, morguemon } from './mklev.js';
@@ -144,6 +144,7 @@ import { findit, openit, cvt_sdoor_to_door } from './detect.js';
 import { surface } from './sit.js';
 import { level_difficulty, isqrt } from './hacklib.js';
 import { mon_adjust_speed } from './muse.js';
+import { paralyze_monst } from './mhitm.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -686,12 +687,6 @@ export function beautiful() {
     return 'hideous';
 }
 
-/** C objnam.c simpleonames — known mirror → "mirror". */
-function simpleonames_mirror(obj) {
-    const oc = game.objects?.[obj?.otyp];
-    return oc?.oc_name || 'mirror';
-}
-
 /**
  * C zap.c bhit INVIS_BEAM arm — walk until mon / !ZAP_POS / closed_door.
  * Continues through minvis unless perceives; returns first usable mon.
@@ -730,10 +725,13 @@ function bhit_invis_beam(ddx, ddy, range) {
 }
 
 /**
- * C apply.c use_mirror — getdir then reflect self / beam mon reactions.
- * Named omissions: Hallucination hcolor self; mon_reflects Medusa;
- * nymph steal+rloc; monverbself polish; Underwater / swallow / dz
- * surface|ceiling wording; See_invisible / Invis edge cases.
+ * C apply.c use_mirror `:1018–1199` — getdir then reflect self / beam mon
+ * reactions, in C order. Medusa mon_reflects gate + stoned/killed, nymph
+ * takes-it + setnotworn/freeinv/mpickobj/tele_restrict/rloc, floating-eye
+ * paralyze_monst, hcolor/mhis/s_suffix+mbodypart/pmname+an wording, live
+ * simpleonames ("mirror" or "looking glass").
+ * Named omissions: full zap.c bhit (Open row; INVIS_BEAM mon-targeting
+ * via file-local bhit_invis_beam, whose own omissions stand).
  * howmonseen is D-1562.
  * @returns {number} ECMD_*
  */
@@ -746,7 +744,7 @@ async function use_mirror(obj) {
         || u.ESee_invisible);
     const useeit = !Blind() && (!invis_mirror || See_invisible);
     const uvisage = beautiful();
-    const mirror = simpleonames_mirror(obj);
+    const mirror = simpleonames(obj); /* C: "mirror" or "looking glass" */
 
     // C: if (obj->cursed && !rn2(2))
     if (obj.cursed && !rn2(2)) {
@@ -790,18 +788,17 @@ async function use_mirror(obj) {
                 await pline("You don't have a reflection.");
             } else if (umonnum === PM_UMBER_HULK) {
                 await pline("Huh?  That doesn't look like you!");
-                const { make_confused } = await import('./potion.js');
                 await make_confused((u.HConfusion | 0) + d(3, 4), false);
             } else if (u.Hallucination) {
-                // hcolor deferred → generic
-                await pline('You look scintillating.');
+                // C: You(look_str, hcolor((char *) 0))
+                await pline(`You look ${hcolor(null)}.`);
             } else if (u.Sick) {
                 await pline('You look peaked.');
             } else if ((u.uhs | 0) >= WEAK) {
                 await pline('You look undernourished.');
             } else if (u.Upolyd) {
-                const nm = game.youmonst?.data?.mname || 'a monster';
-                await pline(`You look like ${nm}.`);
+                // C: You("look like %s.", an(pmname(&mons[u.umonnum], Ugender)))
+                await pline(`You look like ${an(pmname(game.youmonst?.data, Ugender()))}.`);
             } else {
                 await pline(`You look as ${uvisage} as ever.`);
             }
@@ -810,8 +807,10 @@ async function use_mirror(obj) {
     }
 
     if (u.uswallow) {
+        // C: You("reflect %s %s.", s_suffix(mon_nam(u.ustuck)),
+        //        mbodypart(u.ustuck, STOMACH))
         if (useeit) {
-            await pline(`You reflect ${mon_nam(u.ustuck)}'s stomach.`);
+            await pline(`You reflect ${s_suffix(mon_nam(u.ustuck))} ${mbodypart(u.ustuck, STOMACH)}.`);
         }
         return ECMD_TIME;
     }
@@ -869,8 +868,14 @@ async function use_mirror(obj) {
             await pline(`${Monnam(mtmp)} doesn't have a reflection.`);
         }
     } else if (monable && mndx === PM_MEDUSA) {
-        // mon_reflects / stoned/killed deferred — still spend TIME
+        // C apply.c :1132-1138 — reflecting gaze bounces back, else stone
+        if (await mon_reflects(mtmp, 'The gaze is reflected away by %s %s!')) {
+            return ECMD_TIME;
+        }
         if (vis) await pline(`${Monnam(mtmp)} is turned to stone!`);
+        if (!game.context) game.context = {};
+        game.context.stoned = true;
+        await killed(mtmp);
     } else if (monable && mndx === PM_FLOATING_EYE) {
         let tmp = d(mtmp.m_lev | 0, mtmp.data?.mattk?.[0]?.damd | 0 || 1);
         if (!rn2(4)) tmp = 120;
@@ -879,20 +884,24 @@ async function use_mirror(obj) {
         } else {
             await You_hear('%s stop moving.', 'something');
         }
-        mtmp.mfrozen = (mtmp.mfrozen | 0) + tmp;
-        mtmp.mcanmove = 0;
+        // C: paralyze_monst(mtmp, mtmp->mfrozen + tmp)
+        paralyze_monst(mtmp, (mtmp.mfrozen | 0) + tmp);
     } else if (monable && mndx === PM_UMBER_HULK) {
         if (vis) await pline(`${Monnam(mtmp)} confuses itself!`);
         mtmp.mconf = 1;
     } else if (monable && (mlet === 'S_NYMPH' || mndx === PM_AMOROUS_DEMON)) {
-        // steal + rloc deferred — pline only
+        // C apply.c :1155-1166 — admire, steal the mirror, teleport away
         if (vis) {
-            // C apply.c `:1156–1159` — "<mon> admires self in your mirror"
             await pline(`${monverbself(mtmp, Monnam(mtmp), 'admire', null)
                 } in your ${mirror}.`);
+            await pline(`${upstart(mhe(mtmp))} takes it!`);
         } else {
             await pline(`It steals your ${mirror}!`);
         }
+        setnotworn(obj); /* in case mirror was wielded */
+        freeinv(obj);
+        mpickobj(mtmp, obj);
+        if (!(await tele_restrict(mtmp))) await rloc(mtmp, RLOC_MSG);
     } else if (!is_unicorn(mtmp.data) && !humanoid(mtmp.data)
         && !is_demon(mtmp.data)
         && (!mtmp.minvis || perceives(mtmp.data)) && rn2(5)) {
@@ -919,10 +928,10 @@ async function use_mirror(obj) {
         } else if ((mtmp.minvis && !perceives(mtmp.data))
             || !haseyes(mtmp.data) || game.notonhead || !mtmp.mcansee) {
             await pline(
-                `${Monnam(mtmp)} doesn't seem to notice its reflection.`,
+                `${Monnam(mtmp)} doesn't seem to notice ${mhis(mtmp)} reflection.`,
             );
         } else {
-            await pline(`${Monnam(mtmp)} ignores its reflection.`);
+            await pline(`${Monnam(mtmp)} ignores ${mhis(mtmp)} reflection.`);
         }
     }
     return ECMD_TIME;
@@ -2495,11 +2504,8 @@ export async function doapply() {
         await pline("You aren't able to use or apply tools in your current form.");
         return false; // ECMD_OK
     }
-    // C ref: hack.c check_capacity — near_capacity >= EXT_ENCUMBER
-    if (near_capacity() >= EXT_ENCUMBER) {
-        await pline("You can't do that while carrying so much stuff.");
-        return false; // ECMD_OK
-    }
+    // C apply.c:4223 — check_capacity((char *)0) (live js/hack.js).
+    if (await check_capacity(null)) return false; // ECMD_OK
 
     // C doapply: struct obj *obj is mutated via &obj (light_cocktail, …)
     // C apply.c:4226 getobj("use or apply", apply_ok, GETOBJ_NOFLAGS)
@@ -3427,7 +3433,7 @@ export async function use_whip(obj) {
             if (proficient && rn2(proficient + 2)) {
                 if (!mtmp || enexto(cc, rx, ry, game.youmonst?.data)) {
                     await pline('You yank yourself out of the pit!');
-                    reset_utrap(true);
+                    await reset_utrap(true);
                     await teleds(cc.x, cc.y, TELEDS_ALLOW_DRAG);
                     game.vision_full_recalc = 1;
                 }
@@ -4267,7 +4273,7 @@ export async function use_bell(obj) {
                 unpunish();
                 res = 1;
             } else if ((u.utrap | 0) && (u.utraptype | 0) === TT_BURIEDBALL) {
-                buried_ball_to_freedom();
+                await buried_ball_to_freedom();
                 res = 1;
             }
             res += await openit();
@@ -5675,7 +5681,7 @@ export async function jump(magic) {
                 break;
             }
             /* C :2112 — hero is no longer trapped. */
-            reset_utrap(true);
+            await reset_utrap(true);
         }
         /* C :2116–2136 — same-spot arms (riding handled above). */
         if (u_at(cc.x, cc.y)) {

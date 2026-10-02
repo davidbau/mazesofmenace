@@ -2494,6 +2494,17 @@ export function sortloot_cmp(sli1, sli2) {
 }
 
 /**
+ * C ref: invent.c unsortloot `:647–651` — free the Loot[] view; GC in JS.
+ * No-op by design (same as sortloot's `:638–640` str free); called at
+ * C-order sites so the C sequence stays visible. Callers: end.c:1650
+ * container_contents (wired); invent.c:1900/2535/3368 + pickup.c:1115/1144
+ * (free-only — GC, unwired).
+ */
+export function unsortloot(_lootArray) {
+    // C: `if (*loot_array_p) free(...), *loot_array_p = 0` — GC owns it.
+}
+
+/**
  * C ref: invent.c sortloot `:592–643` — Loot[] view; does not relink.
  * Branch envelope: SORTLOOT_PACK class + SORTLOOT_INVLET + SORTLOOT_LOOT
  * + SORTLOOT_INUSE (inuse_classify; bigger inuse first) + optional

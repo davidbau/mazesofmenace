@@ -559,6 +559,7 @@ import { room_discovered, browse_map, body_part as food_body_part,
 import { nhgetch } from './input.js';
 import { study_book_learn } from './spell.js';
 import { exercise } from './attrib.js';
+import { study_book_dull } from './spell.js';
 import { cansee } from './vision.js';
 import { COLNO, ROWNO, CORR, SCORR, ROOM, SVALL, IS_FURNITURE, TER_DETECT, TER_OBJ, TER_MON, Has_contents, u_at, NOSE } from './const.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, INVIS, SEE_INVIS } from './const.js';
@@ -811,6 +812,12 @@ export async function study_book(spellbook) {
     const g = game;
     const spl_book = g.spl_book || [];
     const booktype = (typeof spellbook?.otyp === 'number') ? (spellbook.otyp | 0) : -1;
+    /* C ref: spell.c:474-493 — dull-book sleep check, BEFORE the already-known test. */
+    if (await study_book_dull(spellbook)) {
+        g.context = g.context || {};
+        g.context.move = 1;
+        return true;
+    }
     /* C ref: spell.c:561 — find spell slot matching this book's otyp. */
     let sb = null;
     for (const s of spl_book) {

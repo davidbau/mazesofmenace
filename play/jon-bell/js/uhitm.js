@@ -9,6 +9,7 @@ import { xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleon
          Yobjnam2 as Yobjnam2_real,
          makesingular as makesingular_real } from './objnam.js';
 import { rn2, rnd, d, rn1, pushRngLogEntry } from './rng.js';
+import { m_move } from './monmove.js';
 import { pline, canspotmon, newsym, sensemon,
 /* canseemon is the real _canseemon macro from js/display.js (display.h:117-120).
  * A file-local stub returning false for every monster used to shadow it here;
@@ -2453,6 +2454,21 @@ export async function do_attack(mtmpOrX, y) {
         }
     };
 
+    /* C uhitm.c:556-563 — a leprechaun may dodge: `mdat->mlet == S_LEPRECHAUN
+     * && !mfrozen && !helpless && !mconf && mcansee && !rn2(7) &&
+     * (m_move(mtmp, 0) == MMOVE_DIED || it moved)` -> "You miss wildly and
+     * stumble forwards." and do_attack returns FALSE.  The rn2(7) comes
+     * before the to-hit roll. */
+    if (mtmp.data && (mtmp.data.mlet | 0) === 12 /* S_LEPRECHAUN */
+        && !(mtmp.mfrozen | 0) && !helpless(mtmp)
+        && !(mtmp.mconf | 0) && (mtmp.mcansee | 0) && !rn2(7)
+        && (((await m_move(mtmp, 0)) | 0) === 2 /* MMOVE_DIED */
+            || (mtmp.mx | 0) !== ((u.ux | 0) + (u.dx | 0))
+            || (mtmp.my | 0) !== ((u.uy | 0) + (u.dy | 0)))) {
+        await You('miss wildly and stumble forwards.');
+        return false;
+    }
+
     if (Upolyd(u)) {
         await _hmonas();
     } else {
@@ -2511,6 +2527,14 @@ export async function do_attack(mtmpOrX, y) {
             await _swing(_secondwep, true);
         }
     }
+
+    /* C uhitm.c:570-581 atk_done — an F-fight at a monster the hero cannot
+     * spot leaves the 'I' marker AFTER the blow (attack_checks skips it for
+     * forcefight, uhitm.c:201-214), unless the monster died. */
+    if (game.context?.forcefight && (mtmp.mhp | 0) > 0 && !canspotmon(mtmp)
+        && !glyph_is_invisible_at((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0))
+        && !((game.u.uswallow | 0) && game.u.ustuck === mtmp))
+        map_invisible((game.u.ux | 0) + (game.u.dx | 0), (game.u.uy | 0) + (game.u.dy | 0));
 
     return true; /* attack happened (C returns TRUE from do_attack) */
 }
@@ -3093,7 +3117,6 @@ async function _xkilled_adjust_alignment(mtmp, mndx) {
 
     /* C mon.c:3714-3715 — malign was already adjusted for u.ualign.type and
      * randomization; apply it.  Fires for EVERY kill. */
-    set_malign(mtmp);
     adjalign(mtmp.malign | 0);
 }
 

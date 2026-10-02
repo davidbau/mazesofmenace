@@ -86,7 +86,7 @@ function obj_to_any(o) { return { a_obj: o, a_long: null }; }
 import { set_levltyp } from './mkmaze.js';
 import { mon_nam, m_at, dmgval } from './uhitm.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-import { cloak_simple_name, helm_simple_name, gloves_simple_name, suit_simple_name, an, the, obj_is_pname, doname, mshot_xname, vtense, xname, distant_name, simpleonames, otense, Yobjnam2 } from './objnam.js';
+import { cloak_simple_name, helm_simple_name, gloves_simple_name, suit_simple_name, an, the, obj_is_pname, doname, mshot_xname, vtense, xname, distant_name, simpleonames, otense, Yobjnam2, cxname } from './objnam.js';
 import { chooseTrapnote } from './mklev_choose_trapnote.js';
 import { set_utrap, bury_an_obj } from './dig.js';
 import { float_up, bimanual, hard_helmet } from './do_wear.js';
@@ -159,7 +159,7 @@ import { block_door } from './shk.js';
  * and trap.c:1902).  js/cmd.js:17048 already carries the real ceiling() body —
  * the one that dereferences in_rooms() the way C does — so it is imported here
  * rather than twinned, per the WRONG TWIN note on this file's other helpers. */
-import { bad_rock, cant_squeeze_thru, cxname, body_part, ceiling, Yname2,
+import { bad_rock, cant_squeeze_thru, body_part, ceiling, Yname2,
          observe_object, xytodir, mbodypart, level_tele } from './cmd.js';
 import { losehp, down_gate, ship_object, delobj, stolen_value, scatter } from './dokick.js';
 /* m_useupall's real body — C mthrowu.c:1154 is `extract_from_minvent(...)` +
@@ -2407,9 +2407,9 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
             if (cansee(x1, y1)) {
                 void pline(`You see ${an(cxname(singleobj))} start to roll.`);
             } else if (_lo_hallucinating()) {
-                void pline('You hear someone bowling.');
+                await You_hear('someone bowling.');
             } else {
-                void pline(`You hear rumbling ${(_lo_distu(x1, y1) <= 4 * 4) ? 'nearby'
+                await You_hear(`rumbling ${(_lo_distu(x1, y1) <= 4 * 4) ? 'nearby'
                              : 'in the distance'}.`);
             }
         }
@@ -3367,7 +3367,9 @@ async function hero_missile_lands(otmp) {
     const ux = game.u.ux | 0, uy = game.u.uy | 0;
     otmp.ox = ux; otmp.oy = uy;
     if (place_object) place_object(otmp, ux, uy);
-    /* observe_object(otmp) when !Blind — display-only, no RNG. */
+    /* C trap.c:1218-1219 — dknown must be set before stackobj so the missile
+     * merges with an observed pile (mergable compares dknown). */
+    if (!Blind()) observe_object(otmp);
     await stackobj(otmp);
     newsym(ux, uy);
 }
@@ -4719,7 +4721,7 @@ async function trapeffect_pit_mon(mtmp, trap) {
     }
     const _pit_in_sight = canseemon(mtmp);
     if (_pit_in_sight) {
-        void pline(`${Monnam_t(mtmp)} falls into a pit!`);
+        void pline(`${Monnam_t(mtmp)} falls into ${_a_your(trap.madeby_u)} pit!`);
         /* C trap.c:2019 `seetrap(trap);` — after the pline, and it newsyms. */
         seetrap(trap);
     }

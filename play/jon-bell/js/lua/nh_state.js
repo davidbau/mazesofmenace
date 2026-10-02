@@ -20,6 +20,9 @@ import { cmd_from_ecname } from '../cmd_binds.js';
  * parser and assigns into the live flags — see the binding below. */
 import { parseNethackrc } from '../options.js';
 import { game } from '../gstate.js';
+import { spot_stop_timers, start_timer } from '../timeout.js';
+import { long_to_any } from '../cmd.js';
+import { TIMER_LEVEL, MELT_ICE_AWAY, COLNO, ROWNO } from '../const.js';
 import { nhl_gamestate } from '../cmd.js';
 import { nhl_callback, nhl_variable, nhl_text, nhl_loadlua, lua_checkstring, lua_toboolean } from '../nhlua.js';
 import { l_obj_register } from '../nhlobj.js';
@@ -288,7 +291,22 @@ export async function createLevelLuaState() {
     });
     interp.defineGlobal('nh.is_genocided', lua_is_genocided);
     interp.defineGlobal('nh.level_difficulty', () => levelDifficulty());
-    interp.defineGlobal('nh.start_timer_at', () => undefined);
+    /* C ref: nhlua.c:1610-1641 nhl_timer_start_at — nh.start_timer_at(x,y,
+     * "melt-ice", when).  (x,y) arrive room/map-relative and are made absolute
+     * by cvt_to_abscoord; the Ice room theme's per-cell melter lands here. */
+    interp.defineGlobal('nh.start_timer_at', (x, y, timer, when) => {
+        if (timer !== 'melt-ice') throw new Error('nhl_get_timertype: Unknown timer type');
+        if (x == null || y == null) throw new Error('nhl_timer_start_at: Wrong args');
+        if (!game.gx || game.gx.xstart === undefined) SPLEV.reset_xystart_size();
+        const c = SPLEV.cvt_to_abscoord(Number(x), Number(y),
+                                        { xstart: game.gx.xstart, ystart: game.gy.ystart });
+        if (c.x >= 1 && c.x <= COLNO - 1 && c.y >= 0 && c.y <= ROWNO - 1) {
+            const where = (c.x << 16) | c.y;
+            spot_stop_timers(c.x, c.y, MELT_ICE_AWAY);
+            start_timer(Number(when) | 0, TIMER_LEVEL, MELT_ICE_AWAY, long_to_any(where));
+        }
+        return undefined;
+    });
 
     // --- des global table (stubs — Phase 2 provides real bodies) ---
     // Fields are the lspo_* / des.* API used by level .lua scripts.

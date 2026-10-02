@@ -145,7 +145,7 @@ import {
     air_turbulence, slippery_ice_fumbling,
     test_move, doorless_door, crawl_destination,
 } from './hack.js';
-import { t_at, dountrap } from './trap.js';
+import { t_at, dountrap, reset_utrap } from './trap.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
 import { in_out_region } from './region.js';
@@ -6189,9 +6189,8 @@ async function domove(dx, dy) {
         if (!(u.utrap | 0)) {
             if (game.disp) game.disp.botl = true;
             if (game.flags) game.flags.botl = true;
-            // C: reset_utrap(TRUE) — Lev/Fly restore msgs deferred
-            u.utrap = 0;
-            u.utraptype = 0;
+            // C hack.c:2835 domove_core — might resume levitation or flight
+            await reset_utrap(true);
         }
         if (!moved) return;
     }

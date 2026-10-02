@@ -532,7 +532,7 @@ function _wall_color() {
     return NO_COLOR;       /* wallcolors[main_walls] = CLR_GRAY */
 }
 
-function rogue_graphics() {
+export function rogue_graphics() {
     return !!Is_rogue_level(game?.u?.uz);
 }
 /* the DEC line-drawing set is in force only when the PRIMARY symset is (C:
@@ -550,7 +550,7 @@ const ROGUE_OCLASS_CHAR = {
     12: '*',  /* COIN_CLASS   */
 };
 const COIN_CLASS_DISP = 12; /* objclass.h COIN_CLASS */
-function oclass_sym(oc) {
+export function oclass_sym(oc) {
     if (rogue_graphics()) {
         const r = ROGUE_OCLASS_CHAR[oc | 0];
         if (r)
@@ -2453,6 +2453,7 @@ export async function docrt() {
     vision_recalc(0);
     // Step 2: overlay visible monsters (mirrors C see_monsters() → newsym(mon->mx, mon->my))
     // C ref: display.c:1539-1549 see_monsters() — walk fmon chain, call newsym per monster.
+    if (!game.defer_see_monsters) /* C display.c see_monsters(): deferred during dorecover */
     for (let m = game.fmon; m != null; m = m.nmon) {
         if (m.mx != null && m.my != null)
             newsym(m.mx, m.my);
@@ -3404,7 +3405,10 @@ function _statusLine2Parts() {
     const _hpmax = Math.min(Upolyd ? (_bu.mhmax | 0) : (_bu.uhpmax || 0), 9999);
     const _pw = Math.min(_bu.uen || 0, 9999);
     const _pwmax = Math.min(_bu.uenmax || 0, 9999);
-    const _uac = (_bs && _bs.uac != null) ? _bs.uac : (u.uac ?? 10);
+    const _lp = game._lastPaintedBotl;
+    const _uac = (_bs && _bs.uac != null) ? _bs.uac
+        : (_lp && _lp.uacUnset && u.uac != null && game.disp && (game.disp.botl | 0))
+            ? _lp.uac : (u.uac ?? 10);
     const _xpLevel = ((_bs && _bs.ulevel != null) ? _bs.ulevel : u.ulevel) || 1;
     const _goldch = oclass_sym(COIN_CLASS_DISP) ?? '$';
     let s = `${_goldch}:${gold} HP:${_hp}(${_hpmax}) Pw:${_pw}(${_pwmax}) AC:${_uac}`;
@@ -3451,7 +3455,14 @@ function _statusLine2Parts() {
      * the subsequent unfaint callback, so retain the FAINTED label while the
      * faint message is still the committed topline. */
     const _faintTop = `${game._resultMessage || ''} ${game._pending_message || ''}`;
-    if (_uhs === 4 && _faintTop.includes('You faint from lack of food.'))
+    /* ...but a lone faint pline with no frozen frame behind it is the frame
+     * AFTER the countdown ran out: unfaint (eat.c:3336-3343) has already
+     * clamped u.uhs to FAINTING and Hear_again may have cleared Deaf, and C's
+     * status row shows exactly that ("Fainting", no Deaf). */
+    const _postUnfaint = !game._resultMessage && !game._paintedSnapshot
+        && (game._pending_message || '') === 'You faint from lack of food.';
+    if (_uhs === 4 && !_postUnfaint
+        && _faintTop.includes('You faint from lack of food.'))
         _uhs = 5;
     if (game._inMovemonMore && game._paintedSnapshot
         && (game._paintedSnapshot.uhs != null
@@ -3472,10 +3483,19 @@ function _statusLine2Parts() {
     /* newuhs() sets HDeaf after its fainting message has begun but before the
      * status repaint.  That specific page is post-update in C; don't let the
      * pre-message snapshot hide the new Deaf condition. */
-    const _faintingPage = _faintTop.includes('You faint from lack of food.');
+    /* A --More-- raised by the wake-up pline (unmul's nomovemsg, after the whole
+     * countdown ran) paints the status of the LAST bot(): the final turn's
+     * nh_timeout already cleared HDeaf, so no Deaf (HDeaf is 0 here). */
+    const _wakeMore = !game._resultMessage && !!game._paintedSnapshot
+        && (game._pending_message || '').endsWith('--More--') && !(u.HDeaf | 0);
+    const _faintingPage = !_postUnfaint && !_wakeMore && _faintTop.includes('You faint from lack of food.');
     const _suffix = botl_status_suffix(_uhs, _cap, _p2s ? !!_p2s.blinded : undefined,
                             (!_faintingPage && _p2s && _p2s.deaf !== undefined)
-                                ? !!_p2s.deaf : undefined,
+                                ? !!_p2s.deaf
+                                /* eat.c:3421-3423: the page is flushed before newuhs's
+                                 * incr_itimeout(&HDeaf, duration) lands here, but C paints
+                                 * it post-update (duration = 10 - uhunger/10 > 0). */
+                                : ((_faintingPage && (u.uhs | 0) === 4) ? true : undefined),
                             (_p2s && _p2s.stunned !== undefined) ? !!_p2s.stunned : undefined,
                             (_p2s && _p2s.hallucinating !== undefined)
                                 ? !!_p2s.hallucinating : undefined,
@@ -4270,7 +4290,12 @@ function _capture_botl() {
         uen: u.uen, uenmax: u.uenmax,
         /* C botl.c:867-869 BL_AC — bot() reads u.uac, which only find_ac() writes
          * and which SET_BOTL()s on every change; see the SCOPE note above. */
-        uac: u.uac,
+        uac: u.uac ?? 0,
+        /* u.uac is still unset (C: memset-zero, u_init.c:954) when newgame's
+         * first bot() (allmain.c:819) paints; find_ac() then runs inside
+         * u_init_skills_discoveries() (allmain.c:821) and only flags the line.
+         * Marks that paint so the first frame keeps AC:0. */
+        uacUnset: u.uac == null,
         ulevel: (game._botlPaintedLevel != null)
             ? (game._botlPaintedLevel | 0) : (u.ulevel | 0),
         uexp: (game._botlPaintedExp != null)

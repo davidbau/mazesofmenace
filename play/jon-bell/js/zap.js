@@ -38,7 +38,7 @@ import { unbless, uncurse } from './mkobj.js';
 import { find_ac, disintegrate_arm } from './do_wear.js';
 import { rehumanize } from './polyself.js';
 import { NOTELL, ANTIMAGIC, UNCHANGING, SLIMED, INVIS, DRAIN_RES, STONED } from './const.js';
-import { FAST, TIMEOUT, INTRINSIC, LEG, STUNNED } from './const.js';
+import { FAST, TIMEOUT, INTRINSIC, LEG, STUNNED, SEE_INVIS, TELEPAT, DETECT_MONSTERS } from './const.js';
 import { is_fainted } from './eat.js';
 import { do_clear_area, unblock_point, recalc_block_point, vision_recalc, does_block, block_point } from './vision.js';
 import { t_at, burnarmor, monkilled_trap, extract_from_minvent as disint_extract, fill_pit, delfloortrap, closeholdingtrap, openholdingtrap, openfallingtrap, find_mac, m_useup, sokoban_guilt, goodpos, mon_adjust_speed, thitu, animate_statue, activate_statue_trap, dotrap, maketrap, mintrap, erode_obj, grease_protect, trap_ice_effects, unearth_objs } from './trap.js';
@@ -119,7 +119,7 @@ import { Monnam, monstseesu, monstunseesu,
 import { s_suffix, ugolemeffects } from './mhitm.js';
 import { rndmonnam } from './priest.js';
 import { end_burn, fall_asleep } from './timeout.js';
-import { monPmname, nonlivingMon } from './makemon.js';
+import { monPmname, nonlivingMon, mon_set_minvis } from './makemon.js';
 import { setmangry, wake_nearto } from './mklev.js';
 /* C explode.c:1048-1051 — mon_explodes kills the exploder BEFORE explode() so
  * it "won't appear to be caught in its own explosion".  This was a throw on the
@@ -138,7 +138,7 @@ import { You_hear } from './display.js';
 import { docrt } from './display.js';
 import { couldsee } from './vision.js';
 import { in_rooms, add_damage, shop_keeper, costly_spot, currency, billable } from './shk.js';
-import { picking_at, reset_pick, getdir, boxlock } from './lock.js';
+import { picking_at, reset_pick, getdir, boxlock, doorlock } from './lock.js';
 import { stop_occupation } from './allmain.js';
 import { fix_wall_spines, obj_ice_effects, maybe_unhide_at } from './mklev.js';
 import { set_ustuck } from './mklev.js';
@@ -5400,6 +5400,24 @@ async function _bhit_zapped_wand(ddx, ddy, range, obj) {
         if (await bhitpile(obj, bhito, x, y, 0))
             range--;
         const typ = _buzz_typ(x, y);
+        /* C zap.c:4056-4075: a ZAPPED_WAND crossing a door (or secret door)
+         * runs doorlock() for opening/locking/striking/knock/wizard lock/
+         * force bolt; a broken shop door is put on the repair list. */
+        if ((typ === DOOR || typ === SDOOR)) {
+            switch (obj.otyp | 0) {
+            case WAN_OPENING: case WAN_LOCKING: case WAN_STRIKING:
+            case SPE_KNOCK: case SPE_WIZARD_LOCK: case SPE_FORCE_BOLT:
+                if (await doorlock(obj, x, y)) {
+                    if (cansee(x, y) || ((obj.otyp | 0) === WAN_STRIKING && !Deaf_zap()))
+                        learnwand(obj);
+                    const dl = game.level?.at?.(x, y);
+                    if (dl && (dl.doormask | 0) === D_BROKEN
+                        && in_rooms(x, y, SHOPBASE).length)
+                        add_damage(x, y, SHOP_DOOR_COST);
+                }
+                break;
+            }
+        }
         if (!ZAP_POS(typ) || (closed_door(x, y) && range >= 0)) {
             /* C zap.c:4098: ray stops at wall/closed door (no bounce for wands). */
             break;
@@ -5620,6 +5638,36 @@ async function _bhitm_wand(mtmp, obj) {
             check_gear_next_turn(mtmp);
         }
         return _bhitm_wand_epilogue(mtmp, false, false, false, obj);
+    }
+    if (otyp === WAN_MAKE_INVISIBLE) {
+        /* C zap.c:348-367 */
+        const oldinvis = mtmp.minvis | 0;
+        const couldsee = canseemon(mtmp);
+        const disguised_mimic = ((mtmp.data?.mlet | 0) === 18 /* S_MIMIC */)
+            && (mtmp.m_ap_type | 0) !== 0;
+        let learn_it = false, reveal_invis = false;
+        if (disguised_mimic)
+            seemimic(mtmp);
+        /* format monster's name before altering its visibility */
+        const nambuf = Monnam(mtmp);
+        mon_set_minvis(mtmp, false);
+        /* display.h _knowninvisible(mon) */
+        const bl = _Blind();
+        const knowninv = !!(mtmp.minvis
+            && ((cansee(mtmp.mx | 0, mtmp.my | 0)
+                 && (_uhas(SEE_INVIS) || _uhas(DETECT_MONSTERS)))
+                || (!bl && ((game.u?.uprops?.[TELEPAT]?.extrinsic | 0)
+                            || ((game.u?.uprops?.[TELEPAT]?.intrinsic | 0) & ~INTRINSIC))
+                    && dist2(mtmp.mx | 0, mtmp.my | 0, game.u.ux | 0, game.u.uy | 0)
+                        <= BOLT_LIM * BOLT_LIM)));
+        if (!oldinvis && knowninv) {
+            await pline(`${nambuf} turns transparent!`);
+            reveal_invis = true;
+            learn_it = true;
+        } else if (couldsee && !canseemon(mtmp)) {
+            await pline(`${nambuf} vanishes!`);
+        }
+        return _bhitm_wand_epilogue(mtmp, false, reveal_invis, learn_it, obj);
     }
     if (otyp === WAN_SPEED_MONSTER) {
         /* C zap.c:233-242: resist(), mon_adjust_speed(+1); helpful_gesture

@@ -66,7 +66,9 @@ import { NO_KILLER_PREFIX, CLOUD, IS_TREE, IS_STWALL } from './const.js';
 import { Blind } from './vision.js';
 import { find_ac } from './do_wear.js';
 import { hcolor, hliquid } from './mhitm.js';
-import { an, Tobjnam as Tobjnam_real } from './objnam.js';
+import { an, Tobjnam as Tobjnam_real, getObjDescr, makeplural } from './objnam.js';
+import { fall_asleep } from './timeout.js';
+import { EYE } from './const.js';
 import { dmgtype_fromattack } from './makemon.js';
 import { PM_FOG_CLOUD, PM_AIR_ELEMENTAL } from './pm.generated.js';
 /* C spell.c:1570 dispatches directly to dog.c:137 make_familiar(). */
@@ -962,6 +964,29 @@ async function cursed_book(bp) {
         break;
     }
     return false;
+}
+
+// C ref: spell.c:474-493 — attempting to read a "dull" book may make the hero fall
+// asleep.  Returns true when it did (study_book returns 1, a turn is used).
+export async function study_book_dull(spellbook) {
+    const g = game;
+    const u = g.u;
+    const booktype = spellbook ? (spellbook.otyp | 0) : -1;
+    const confused = !!(u?.uprops?.[CONFUSION]?.intrinsic);
+    const sleepres = !!((u?.uprops?.[3 /* SLEEP_RES */]?.intrinsic | 0)
+                        || (u?.uprops?.[3]?.extrinsic | 0));
+    if (confused || sleepres || getObjDescr(booktype) !== 'dull') return false;
+    const lvl = _spbook_oc(booktype, SPBOOK_OC_LEVEL);
+    let dullbook = rnd(25) - acurr_real(u, 2 /* A_WIS */);
+    const sp = g.context?.spbook;
+    /* adjust chance if hero stayed awake, got interrupted, retries */
+    if (sp && sp.delay && spellbook === sp.book)
+        dullbook -= rnd(lvl);
+    if (dullbook <= 0) return false;
+    await pline(`This book is so dull that you can't keep your ${makeplural(body_part(EYE))} open.`);
+    dullbook += rnd(2 * lvl);
+    await fall_asleep(-dullbook, true);
+    return true;
 }
 
 // C ref: spell.c:468 study_book(spellbook).  The learn-occupation entry: covers

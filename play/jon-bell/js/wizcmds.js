@@ -2,6 +2,7 @@
 // wizcmds.js — Wizard-mode extended commands.
 // C ref: nethack-c/src/wizcmds.c — wiz_level_change() and related.
 // Hand-maintained JS (not tsc-emitted). Sibling imports from js/*.js.
+import { u_safe_from_fatal_corpse } from './pickup.js';
 import { game, wizard } from './gstate.js';
 import { s_suffix as _ta_s_suffix } from './hacklib.js';
 import { nhgetch } from './input.js';
@@ -673,6 +674,13 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
         return;
     }
 
+    if ((otmp.otyp | 0) === 265 && !u_safe_from_fatal_corpse(otmp, 0x0F) && otmp.wishedfor) {
+        otmp.wishedfor = 0;
+        otmp = (await addinv_core0(otmp, null, false));
+        await _wish_drop_overburdened(otmp, dropSpec);
+        return;
+    }
+
     /* C invent.c:1108-1114 addinv_core0 — merge into the first mergable stack
      * (reusing its invlet) before falling back to a new letter.  When merged,
      * the wished object's quantity folds into the existing node and NO new
@@ -1114,6 +1122,9 @@ export async function makewish() {
      * hold_another_object before that helper observes, touches, or merges the
      * object.  Keep the rendered argument immutable so an overburdened wish
      * cannot disclose an appearance learned during addinv(). */
+    /* C zap.c:6401-6402 */
+    if (otmp && (otmp.otyp | 0) === 265 /* CORPSE */ && !u_safe_from_fatal_corpse(otmp, 0x0F /* st_all */))
+        otmp.wishedfor = 1;
     const _wishDropSpec = otmp ? _wish_drop_spec(otmp) : null;
 
     if (otmp && (otmp.oartifact | 0)) {

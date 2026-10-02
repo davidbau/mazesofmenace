@@ -463,7 +463,6 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
          * mx/my + newsym old & new cell. */
         mtmp.mx = nix;
         mtmp.my = niy;
-        newsym(omx, omy);
         newsym(nix, niy);
         return 1;
     }

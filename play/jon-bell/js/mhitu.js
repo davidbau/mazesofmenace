@@ -124,7 +124,7 @@ import { Amonnam as Amonnam_mu } from './mhitm.js';
 import { mksobj } from './mklev.js';
 /* C mthrowu.c:190 drop_throw -> stackobj(obj) (mkobj.c:2170). */
 import { stackobj } from './sp_lev.js';
-import { nomul, night, stop_occupation as real_stop_occupation } from './allmain.js';
+import { nomul, night, midnight, stop_occupation as real_stop_occupation } from './allmain.js';
 import { is_were as is_were_real, new_were as new_were_real,
          were_summon as were_summon_real, set_ulycn as set_ulycn_real } from './were.js';
 /* The real canseemon — this file also declares a file-local
@@ -1509,7 +1509,7 @@ import { ENV } from './hostenv.js';
 
 /* C mondata.h is_animal(ptr) — M1_ANIMAL. */
 function is_animal_mu(data) { return !!data && ((data.mflags1 | 0) & M1_ANIMAL_MU) !== 0; }
-const M1_ANIMAL_MU = 0x00000040; /* monflag.h M1_ANIMAL */
+const M1_ANIMAL_MU = 0x00040000; /* monflag.h:103 M1_ANIMAL (0x40 is M1_NEEDPICK) */
 /* C mondata.h throws_rocks(ptr) — M2_ROCKTHROW. */
 const M2_ROCKTHROW_MU = 0x08000000; /* monflag.h; mirrors js/makemon.js:3612 */
 function throws_rocks_mu(mdat) { return ((mdat?.mflags2 | 0) & M2_ROCKTHROW_MU) !== 0; }
@@ -1726,7 +1726,7 @@ async function steal(mtmp, objnambuf) {
         const worn = !!((otmp.owornmask | 0) & W_ARMOR_MU);
         const what = worn ? `your ${armor_simple_name_mu(otmp)}` : yname_mu(otmp);
         pline(`${Monnambuf} tries to ${verb} ${what} but gives up.`);
-        return !rn2(Math.trunc(inv_cnt_mu(false) / 5) + 2);
+        return rn2(Math.trunc(inv_cnt_mu(false) / 5) + 2) ? 0 : 1;
     };
     const icnt = inv_cnt_mu(false); /* don't include gold */
     if (!icnt || (icnt === 1 && u.uskin))
@@ -1849,6 +1849,14 @@ async function steal(mtmp, objnambuf) {
              * `gm.multi >= 0 ? FALSE : (unconscious() || is_fainted() || ...)`
              * — this port has no multi < 0 state at a monster's attack, so the
              * seduction branch is the one C takes. */
+            if (monkey_business) {
+                /* C:517-523 — animals lack the patience for slow armor; this
+                 * is the rn2(10) @steal(steal.c:521).  olddelay is 0 here. */
+                if (armordelay >= 1 && rn2(10))
+                    return cant_take();
+                await worn_item_removal(mtmp, otmp);
+                break;
+            }
             const curssv = otmp.cursed;
             otmp.cursed = 0;
             /* C:527 slowly = (armordelay >= 1 || gm.multi < 0) */
@@ -2464,6 +2472,16 @@ async function hitmu_je(mtmp, mattk) {
     const mhm = newMhm(0);
     /* C mhitu.c:1185 — base damage d(damn, damd). */
     mhm.damage = d(mattk.damn | 0, mattk.damd | 0);
+    /* C mhitu.c:1186-1187 — undead (or a vampshifter) hit at midnight() roll
+     * the dice a second time for extra damage, BEFORE mhitm_adtyping. */
+    {
+        const mi = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
+        const mf2 = (mi >= 0 && mi < _KB_MONS.length) ? (_KB_MONS[mi][7] | 0) : 0;
+        const c = mtmp.cham | 0;
+        const vampshifter = c === 226 || c === 227 || c === 228; /* PM_VAMPIRE, _LORD, VLAD */
+        if (((mf2 & 0x00000002 /* M2_UNDEAD */) !== 0 || vampshifter) && midnight())
+            mhm.damage += d(mattk.damn | 0, mattk.damd | 0);
+    }
     await mhitm_adtyping_u(mtmp, mattk, mhm);
     /* C mhitu.c:1191 mhitm_knockback. */
     mhitm_knockback_u(mtmp, mattk);
@@ -4158,9 +4176,11 @@ async function summonmu_mu(mtmp, youseeit = false) {
      * draws, and reports how many were visible. */
     if (!rn2(10)) {
         const visible = { value: 0 };
+        /* C:994-995 — the announcement precedes were_summon's makemon calls */
+        if (youseeit)
+            await pline(`${Monnam(mtmp)} summons help!`);
         const numhelp = await were_summon_real(mtmp.data, false, visible, 'creature');
         if (youseeit) {
-            await pline(`${Monnam(mtmp)} summons help!`);
             if (numhelp > 0) {
                 if ((visible.value | 0) === 0)
                     await pline('You feel hemmed in.');
@@ -5138,7 +5158,7 @@ export async function mattacku(mtmp) {
             if ((game.u?.usleep | 0) && (game.u.usleep | 0) < (game.moves | 0)
                 && !rn2(10)) {
                 game.multi = -1;
-                (game.gn ||= {}).nomovemsg = 'The combat suddenly awakens you.';
+                game.nomovemsg = 'The combat suddenly awakens you.';
             }
         }
         if (sum[i] & M_ATTK_AGR_DIED) return 1;

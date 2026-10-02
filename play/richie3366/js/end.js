@@ -6,17 +6,19 @@ import { game } from './gstate.js';
 // C: end.c really_done ESCAPED fake-Amulet arm — carrying() is a hoisted
 // function decl in the shared SCC; call-time use only (no TDZ read).
 import { carrying, nomul } from './hack.js';
+import { reset_utrap } from './trap.js';
 import { rn2, d } from './rng.js';
-import { deepest_lev_reached, depth, strstri } from './hacklib.js';
+import { deepest_lev_reached, depth, strstri, upstart } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
     canspotmon, Hallucination, curs_on_u, newsym, impossible, You,
 } from './display.js';
 import { yn_function, y_n, ynq, paranoid_query } from './getline.js';
+import { livelog_printf } from './pline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
 import { Goodbye } from './roles.js';
-import { an, xname, the as theArt, the_unique_obj, the_unique_pm } from './objnam.js';
+import { an, xname, the as theArt, the_unique_obj, the_unique_pm, thesimpleoname } from './objnam.js';
 import {
     COIN_CLASS, objectNameStrs, objects,
     AMULET_CLASS, GEM_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM,
@@ -35,6 +37,7 @@ import {
     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
     Is_container, IS_GRAVE, SORTLOOT_LOOT, SORTLOOT_PACK,
     PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
+    PLNMSG_OK_DONT_DIE, LL_LIFESAVE,
     has_oname, LIFESAVED, W_AMUL, ACH_BLND, ACH_NUDE, ACH_UWIN,
     DELPHI, ROOMOFFSET, Is_oracle_level, Is_astralevel, In_endgame,
     In_quest, ismnum, has_ebones, EBONES, has_mgivenname, MGIVENNAME, BUFSZ,
@@ -43,6 +46,7 @@ import {
     FIRE_RES, STONE_RES, INTRINSIC,
     WRITING, NHF_BONESFILE,
     UTOTYPE_ATSTAIRS, fuzzer_off, EXIT_FAILURE,
+    TIMEOUT, SICK_ALL,
 } from './const.js';
 import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic, is_vampshifter, is_undead } from './monsters.js';
 import { m_at, mongone, dmonsfree, zombie_maker, m_carrying, iter_mons } from './mon.js';
@@ -69,6 +73,7 @@ import { clearpriests } from './priest.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
     enlightenment, display_inventory, discover_object, makeknown, sortloot,
+    unsortloot, update_inventory,
     currency, free_pickinv_cache, perm_invent_toggled,
 } from './invent.js';
 import {
@@ -79,7 +84,7 @@ import { show_overview, In_tutorial } from './dungeon.js';
 // C: end.c done2 abandon arm → do.c schedule_goto (imports.mjs --can:
 // SAFE, hoisted function decl, call-time use only).
 import { schedule_goto } from './do.js';
-import { A_CON, acurr, adjattrib } from './attrib.js';
+import { A_CON, acurr, adjattrib, minuhpmax } from './attrib.js';
 import { init_uhunger } from './eat.js';
 // C: end.c savelife release arms call mon.c unstuck + mhitu.c expels
 // (imports.mjs --can: SAFE, both hoisted function decls, call-time use only).
@@ -94,6 +99,12 @@ import { unpunish } from './read.js';
 import { dismount_steed } from './steed.js';
 import { newebones } from './restore.js';
 import { Punished } from './pray.js';
+// C: end.c savelife `:713–715` setuhpmax / `:724–726` make_sick / `:745`
+// endmultishot (imports.mjs --can: SAFE, hoisted function decls,
+// call-time use only).
+import { setuhpmax } from './exper.js';
+import { make_sick } from './potion.js';
+import { endmultishot } from './dothrow.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
@@ -737,10 +748,17 @@ async function identify_invent_for_disclose() {
 }
 
 /**
- * C ref: end.c container_contents — walk invent/container list after
- * disclose invent 'y'. Live-cat line when spe still 1 after
- * observe_quantum_cat(FALSE, FALSE). Named omissions: nested identify
- * polish beyond discover_object; update_inventory; doname_with_price.
+ * C ref: end.c container_contents `:1594–1670` — walk invent/container
+ * list after disclose invent 'y'. Live-cat line when spe still 1 after
+ * observe_quantum_cat(FALSE, FALSE). Whole body live: cknown/lknown +
+ * update_inventory, Bag-of-Tricks skip, sorted menu (doname_with_price),
+ * Schroedinger's-cat line, recursion, reportempty upstart(thesimpleoname).
+ * Named omissions: in_dumplog arms (DUMPLOG retired D-1776 — !dumping
+ * path live); display_nhwindow(WIN_MESSAGE) after reportempty (the
+ * message window live-displays).
+ * Callers: end.c:639 disclose → disclose(), end.c:1660 recursion;
+ * end.c:593 dump_everything (dumplog, retired — named); pickup.c:3122
+ * via the js/pickup.js local clone (pre-existing drift — named).
  * @param {object[]|object|null} list invent array or cobj chain head
  * @param {boolean} identified
  * @param {boolean} all_containers
@@ -761,15 +779,14 @@ async function container_contents(list, identified, all_containers, reportempty)
             if (!all_containers) break;
             continue;
         }
-        if (!box.cknown || (identified && !box.lknown)) {
-            box.cknown = 1;
+        if (!box.cknown || (identified && !box.lknown)) { // C `:1605–1609`
+            box.cknown = 1; /* we're looking at the contents now */
             if (identified) box.lknown = 1;
-            // update_inventory deferred
+            update_inventory(); // C `:1609`
         }
-        if (box.otyp === BAG_OF_TRICKS) {
-            if (!all_containers) break;
-            continue;
-        }
+        // C `:1611–1613` — `continue` skips the bottom `!all_containers`
+        // break: C keeps scanning past a Bag of Tricks.
+        if (box.otyp === BAG_OF_TRICKS) continue;
         if (box.cobj) {
             const lines = [`Contents of ${theArt(xname(box))}:`, ''];
             // C: SchroedingersBox flag only if the cat is still live
@@ -796,6 +813,7 @@ async function container_contents(list, identified, all_containers, reportempty)
                     // C end.c:1647 — container_contents lists doname_with_price.
                     lines.push(`  ${doname_with_price(obj)}`);
                 }
+                unsortloot(sorted); // C `:1650` — free-only; GC no-op in JS.
             } else {
                 lines.push("  Schroedinger's cat!");
             }
@@ -803,9 +821,10 @@ async function container_contents(list, identified, all_containers, reportempty)
             if (all_containers) {
                 await container_contents(box.cobj, identified, true, reportempty);
             }
-        } else if (reportempty) {
-            // C: pline("%s is empty.", …) — rarely used on disclose (FALSE)
-            await pline(`${theArt(xname(box))} is empty.`);
+        } else if (reportempty) { // C `:1662–1665`
+            await pline(`${upstart(thesimpleoname(box))} is empty.`);
+            // C `:1664` display_nhwindow(WIN_MESSAGE, FALSE) — the message
+            // window live-displays; no JS counterpart needed.
         }
         if (!all_containers) break;
     }
@@ -2023,59 +2042,56 @@ function done_hangup() {
 }
 
 /**
- * C ref: end.c savelife — restore viable state after wizard/discover
- * decline-to-die (or Lifesaved). Named omissions: make_sick TIMEOUT==1;
- * endmultishot (!mon_moving gate arm); livelog.
+ * C ref: end.c savelife `:704–755` — restore viable state after
+ * wizard/discover decline-to-die (or Lifesaved). Whole body live, in
+ * C order: ulevel bulletproof, minuhpmax/setuhpmax, givehp, uhunger,
+ * make_sick TIMEOUT==1 cure, nomovemsg/move/multi, lava reset_utrap,
+ * botl/ugrave/HUnchanging, curs_on_u, !mon_moving endmultishot(FALSE),
+ * uswallow expels / ustuck release + unstuck.
+ * Callers: end.c:1094 amulet lifesave, end.c:1115 wizard/discover Die?;
+ * end.c:952 fuzzer_savelife (debug-fuzz only, no JS counterpart — named).
  */
 async function savelife(how) {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
-    if ((u.ulevel | 0) < 1) u.ulevel = 1;
-    // C: minuhpmax(10) ≡ max(ulevel, 10)
-    const uhpmin = Math.max(u.ulevel | 0, 10);
-    if ((u.uhpmax | 0) < uhpmin) {
-        u.uhpmax = uhpmin;
-        if ((u.uhppeak | 0) < u.uhpmax) u.uhppeak = u.uhpmax;
-        flags.botl = true;
-    }
-    // C: givehp = 50 + 10 * (ACURR(A_CON) / 2)
-    const givehp = 50 + 10 * ((acurr(A_CON) / 2) | 0);
-    u.uhp = Math.min(u.uhpmax | 0, givehp);
-    if (Upolyd(u)) u.mh = Math.min(u.mhmax | 0, givehp);
-    if ((u.uhunger | 0) < 500 || how === CHOKING) await init_uhunger();
-    game.nomovemsg = 'You survived that attempt on your life.';
+    const givehp = 50 + 10 * ((acurr(A_CON) / 2) | 0); // C `:707`
+    if ((u.ulevel | 0) < 1) u.ulevel = 1; // C `:711–712`
+    const uhpmin = minuhpmax(10); // C `:713`
+    if ((u.uhpmax | 0) < uhpmin) setuhpmax(uhpmin, true); // C `:714–715`
+    u.uhp = Math.min(u.uhpmax | 0, givehp); // C `:716`
+    if (Upolyd(u)) u.mh = Math.min(u.mhmax | 0, givehp); // C `:717–718`
+    if ((u.uhunger | 0) < 500 || how === CHOKING) await init_uhunger(); // C `:719–721`
+    // C `:724–726` — cure sickness expiring next turn (no time to fix).
+    if (((u.Sick | 0) & TIMEOUT) === 1) await make_sick(0, null, false, SICK_ALL);
+    game.nomovemsg = 'You survived that attempt on your life.'; // C `:727`
     if (!game.context) game.context = {};
-    game.context.move = 0;
-    // C: gm.multi = -1 (direct, not nomul); Tourist multi_reason differs
-    game.multi = -1;
+    game.context.move = 0; // C `:728`
+    game.multi = -1; // C `:730` — can't move again during the current turn
     const rolePm = game.urole?.malenum;
-    game.multi_reason = (rolePm === PM_TOURIST)
+    game.multi_reason = (rolePm === PM_TOURIST) // C `:735–736`
         ? 'being toyed with by Fate'
         : 'attempting to cheat Death';
     if (game.context) {
+        // No direct C counterpart (pre-existing stop-travel assist).
         game.context.run = 0;
         game.context.mv = 0;
     }
-    if (u.utrap && (u.utraptype | 0) === TT_LAVA) {
-        u.utrap = 0;
-        u.utraptype = 0;
-    }
-    flags.botl = true;
-    u.ugrave_arise = NON_PM;
-    u.HUnchanging = 0;
-    // C end.c:743 — cursor back on hero before the release messages.
-    await curs_on_u();
-    // C end.c:744-745 — !mon_moving endmultishot(FALSE) stays named (not live).
-    if ((u.uswallow | 0)) {
-        // C end.c:746-749 — might drop hero onto a trap that kills her again.
+    // C `:738–739` — lava untrap has no restore message.
+    if (u.utrap && (u.utraptype | 0) === TT_LAVA) await reset_utrap(false);
+    flags.botl = true; // C `:740`
+    u.ugrave_arise = NON_PM; // C `:741`
+    u.HUnchanging = 0; // C `:742`
+    await curs_on_u(); // C `:743` — cursor back on hero first.
+    // C `:744–745` — stop a cross-death volley (non-verbose).
+    if (!game.context.mon_moving) await endmultishot(false);
+    if ((u.uswallow | 0)) { // C `:746–748` — may drop hero onto a trap again.
         await expels(u.ustuck, u.ustuck.data, true);
-    } else if (u.ustuck) {
-        // C end.c:750-755 — poly'd sticker releases it, else it releases hero.
+    } else if (u.ustuck) { // C `:749–754`
         if (Upolyd(u) && sticks(game.youmonst?.data))
-            await pline(`You release ${mon_nam(u.ustuck)}.`);
+            await You('release %s.', mon_nam(u.ustuck)); // C `:750–751`
         else
-            await pline(`${Monnam(u.ustuck)} releases you.`);
-        await unstuck(u.ustuck);
+            await pline('%s releases you.', Monnam(u.ustuck)); // C `:752–753`
+        await unstuck(u.ustuck); // C `:754`
     }
 }
 
@@ -2084,8 +2100,10 @@ async function savelife(how) {
  * Ordinary deaths fall through to really_done.
  * bot() before HP zero so You die more() (no bot) keeps prior botl when
  * uhp was -1 at pline flush (D-0310/D-0314).
- * Named omissions: livelog_printf; formatkiller; CHOKING vomit arm;
- * GENOCIDED still-genocided pline polish.
+ * Ported: done_seq catch-up (C :1050–1051), hangup Die? gate (C :1110),
+ * last_msg PLNMSG_OK_DONT_DIE (C :1113; read by timeout.c:507 slime arm).
+ * Named omissions: paniclog file write (Rule #2); fuzzer_savelife
+ * (debug-fuzz only).
  */
 export async function done(how) {
     const flags = game.flags || (game.flags = {});
@@ -2109,6 +2127,10 @@ export async function done(how) {
         flags.botlx = true;
         await bot();
     }
+    // C end.c:1050–1054 — done_seq catches up to hero_seq (hero_seq lives
+    // on game via allmain.js; done_seq is read by the debug-fuzz
+    // fuzzer_savelife, named, and by the hangup Die? gate below).
+    if ((game.done_seq | 0) < (game.hero_seq | 0)) game.done_seq = game.hero_seq | 0;
     if (!game.killer) game.killer = { name: '', format: 0 };
     // C: ASCENDED / empty GENOCIDED → NO_KILLER_PREFIX
     if (how === ASCENDED || (!game.killer.name && how === GENOCIDED)) {
@@ -2150,7 +2172,10 @@ export async function done(how) {
         if (how === GENOCIDED) {
             await pline('Unfortunately you are still genocided...');
         } else {
-            // livelog_printf deferred
+            // C end.c:1098–1100 — formatkiller + livelog LL_LIFESAVE
+            // "averted death" (same-file formatkiller :518; pline.js live).
+            const killbuf = formatkiller(how, false);
+            livelog_printf(LL_LIFESAVE, 'averted death (%s)', killbuf);
             survive = true;
         }
     }
@@ -2159,10 +2184,22 @@ export async function done(how) {
     const discover = !!(flags.explore || flags.discover);
     if (!survive && (wizard || discover) && how <= GENOCIDED) {
         const paranoidDie = ((flags.paranoia_bits | 0) & PARANOID_DIE) !== 0;
-        if (!(await paranoid_query(paranoidDie, 'Die?'))) {
+        // C end.c:1110 (HANGUPHANDLING, global.h:278) — on hangup the
+        // unanswerable Die? defaults 'no', but only once per hero_seq;
+        // the post-increment compare runs only when done_hup is set.
+        let hangupNo = false;
+        if ((game.program_state?.done_hup | 0)) {
+            const seq = game.done_seq | 0;
+            game.done_seq = seq + 1;
+            hangupNo = (seq === (game.hero_seq | 0));
+        }
+        if (!hangupNo && !(await paranoid_query(paranoidDie, 'Die?'))) {
             await pline(
                 `OK, so you don't ${how === CHOKING ? 'choke' : 'die'}.`,
             );
+            // C end.c:1113 — timeout.c:507 slimed_to_death reads this for
+            // the "Yes, you do." vs "Unfortunately," genocide follow-up.
+            if (game.iflags) game.iflags.last_msg = PLNMSG_OK_DONT_DIE;
             await savelife(how);
             survive = true;
         }

@@ -49,7 +49,7 @@ import { stagger, hliquid, hcolor, monstunseesu, x_monnam, update_inventory,
 import { float_vs_flight } from './mhitm.js';
 import { monkilled_trap, split_mon_rt } from './trap.js';
 import { ERODE_CORRODE, ER_NOTHING, EF_GREASE, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
-         ROOM, ALTAR, IS_FOUNTAIN, IS_SINK, A_WIS, A_DEX, A_CON, A_MAX, POISON_RES, FIXED_ABIL, HALLUC, HALLUC_RES, SEE_INVIS, FAST, ICE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, Is_earthlevel, FROMOUTSIDE, INTRINSIC, STUNNED, CONFUSION, BLINDED, FIRE_RES, UNCHANGING, KILLED_BY, G_GONE, MM_NOMSG, S_LRING, M_SEEN_FIRE, POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, ARTICLE_A, DETECT_MONSTERS, I_SPECIAL, LEVITATION, HALF_PHDAM, HEAD, FAINTING, SICK_VOMITABLE, FREE_ACTION, SLEEP_RES } from './const.js';
+         ROOM, ALTAR, IS_FOUNTAIN, FOUNTAIN, IS_SINK, A_WIS, A_DEX, A_CON, A_MAX, POISON_RES, FIXED_ABIL, HALLUC, HALLUC_RES, SEE_INVIS, FAST, ICE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, Is_earthlevel, FROMOUTSIDE, INTRINSIC, STUNNED, CONFUSION, BLINDED, FIRE_RES, UNCHANGING, KILLED_BY, G_GONE, MM_NOMSG, S_LRING, M_SEEN_FIRE, POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, ARTICLE_A, DETECT_MONSTERS, I_SPECIAL, LEVITATION, HALF_PHDAM, HEAD, FAINTING, SICK_VOMITABLE, FREE_ACTION, SLEEP_RES } from './const.js';
 /* prop.h indices + you.h/end.h flags the make_*() setters below need. */
 import { DEAF, SICK, SICK_RES, STONED, VOMITING, GLIB, SLIMED, KILLED_BY_AN,
          M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPMASK } from './const.js';
@@ -86,6 +86,7 @@ import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromG
          costly_alteration } from './cmd.js';
 import { cansee, couldsee } from './vision.js';
 import { water_damage, erode_obj } from './trap.js';
+import { fingers_or_gloves } from './do_wear.js';
 import { t_at, delfloortrap, mon_adjust_speed } from './trap.js';
 import { do_clear_area } from './vision.js';
 import { distmin, depth, dist2, s_suffix } from './hacklib.js';
@@ -1094,7 +1095,7 @@ async function peffect_water(otmp) {
     /* C potion.c:727: gp.potion_unkn++ */
     g._potion_unkn = (g._potion_unkn || 0) + 1;
     /* C potion.c:728-729: mon_hates_blessings(&gy.youmonst) || u.ualign.type == A_CHAOTIC */
-    if (mon_hates_blessings(g.youmonst) || u.ualign.type === 2 /* A_CHAOTIC */) {
+    if (mon_hates_blessings(g.youmonst) || u.ualign.type === -1 /* A_CHAOTIC */) {
         if (otmp.blessed) {
             /* C potion.c:731-742: blessed, hates blessings → burns */
             await pline('This burns like acid!');
@@ -1137,7 +1138,7 @@ async function peffect_water(otmp) {
                 await you_unwere_real(true);
         } else {
             /* C potion.c:759-766: cursed, likes blessings → dread/burns */
-            if (u.ualign.type === 0 /* A_LAWFUL */) {
+            if (u.ualign.type === 1 /* A_LAWFUL */) {
                 await pline('This burns like acid!');
                 await losehp(d(2, 6), 'potion of unholy water', 35 /* KILLED_BY_AN */);
             } else
@@ -1188,7 +1189,7 @@ export async function breaksink(x, y) {
     const loc = game.level?.at(x, y);
     if (cansee(x, y) || u_at(x, y))
         await pline('The pipes break!  Water spurts out!');
-    set_levltyp(x, y, IS_FOUNTAIN);
+    set_levltyp(x, y, FOUNTAIN);
     if (loc) {
         loc.flags = 1; /* SET_FOUNTAIN_LOOTED */
         loc.blessedftn = 0;
@@ -1955,11 +1956,9 @@ export async function dodrink() {
             useup_potion(otmp);
         }
         else if (otmp.otyp === POT_SLEEPING) {
-            const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
-            await pline('You suddenly fall asleep!');
-            nomul(-(rn2(10) + (25 - 12 * bcsign)));
-            g.multi_reason = 'sleeping';
-            g.nomovemsg = 'You wake up.';
+            /* fall_asleep (timeout.c:966-973) also sets u.usleep, which
+             * Unaware/unconscious() (gethungry's rn2(10)) reads. */
+            await peffect_sleeping(otmp);
             /* dopotion tail: peffects returned -1 → useup + identify */
             if (otmp.dknown
                 && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
@@ -2078,9 +2077,9 @@ export async function dodrink() {
             } else {
                 speed_up(rn1(10, 100 + 60 * bcsign_val));
                 /* non-cursed potion grants intrinsic speed */
-                if (!otmp.cursed && !(u.HFast & INTRINSIC)) {
+                if (!otmp.cursed && !(_fastrec(u).intrinsic & INTRINSIC)) {
                     Your("quickness feels very natural.");
-                    u.HFast |= FROMOUTSIDE;
+                    _fastrec(u).intrinsic |= FROMOUTSIDE;
                 }
             }
             /* dopotion tail: peffects returns -1 → useup + identify */
@@ -2571,7 +2570,7 @@ function _potion_Invisible() {
 }
 function _potion_Fast() {
     const u = game.u || {};
-    return !!((u.HFast | 0) & (TIMEOUT | INTRINSIC))
+    return !!((_fastrec(u).intrinsic | 0) & (TIMEOUT | INTRINSIC))
         || !!(u.uprops?.[FAST]?.extrinsic | 0);
 }
 /* C youprop.h:125  Deaf (HDeaf || EDeaf || u.uroleplay.deaf). */
@@ -3852,6 +3851,74 @@ export async function dip_into() {
 }
 
 /* C ref: potion.c:2269 dodip() — the #dip command. */
+/* C fountain.c:722-799 dipsink(obj) — #dip while standing on a sink.
+ * WIRE_PENDING: wash_hands() (is_hands arm), polymorph_sink() and
+ * sink_backs_up() are not ported; those arms only do their messages here. */
+export async function dipsink(obj) {
+    const g = game;
+    const u = g.u;
+    const loc = g.level?.at(u.ux, u.uy);
+    let try_call = false;
+    const not_looted_yet = !((loc?.looted | 0) & S_LRING);
+    const is_hands = !!obj && ((Object.hasOwn(obj, 'hands') && !!obj.hands) || obj === u.uarmg);
+
+    if (!rn2(not_looted_yet ? 25 : 15)) {
+        await breaksink(u.ux, u.uy);
+        if (_prop_active(GLIB) && is_hands)
+            await pline(`Your ${fingers_or_gloves(true)} are still slippery.`);
+        return;
+    } else if (is_hands) {
+        /* C:732 wash_hands() — unported */
+        return;
+    } else if ((obj.oclass | 0) !== 8 /* POTION_CLASS */) {
+        await pline(`You hold ${await the(await xname(obj))} under the tap.`);
+        if ((await water_damage(obj, null, true)) === 0 /* ER_NOTHING */)
+            await pline(nothing_seems_to_happen);
+        return;
+    }
+    await pline(`You pour ${(obj.quan | 0) > 1 ? 'one of ' : ''}${await the(await xname(obj))} down the drain.`);
+    switch (obj.otyp | 0) {
+    case POT_POLYMORPH:
+        /* polymorph_sink() — unported */
+        try_call = true;
+        break;
+    case POT_OIL:
+        if (!_potion_Blind()) {
+            await pline('It leaves an oily film on the basin.');
+            try_call = true;
+        } else await pline(nothing_seems_to_happen);
+        break;
+    case POT_ACID:
+        try_call = true;
+        if (!_potion_Blind()) await pline('The drain seems less clogged.');
+        else if (!_potion_Deaf()) await pline('You hear a sucking sound.');
+        else { await pline(nothing_seems_to_happen); try_call = false; }
+        break;
+    case POT_LEVITATION:
+        /* sink_backs_up() — unported */
+        try_call = true;
+        break;
+    case POT_OBJECT_DETECTION:
+        if (not_looted_yet) {
+            await pline('You sense a ring lost down the drain.');
+            try_call = true;
+            break;
+        }
+        /* FALLTHRU */
+    case POT_GAIN_LEVEL: case POT_GAIN_ENERGY: case POT_MONSTER_DETECTION:
+    case POT_FRUIT_JUICE: case POT_WATER:
+        await pline(nothing_seems_to_happen);
+        break;
+    default:
+        await pline('A wisp of vapor rises up...');
+        if (!breathless(g.youmonst.data) || haseyes(g.youmonst.data))
+            await potionbreathe(obj);
+        break;
+    }
+    if (try_call && obj.dknown) await trycall_cmd(obj);
+    await useup(obj);
+}
+
 export async function dodip() {
     const g = game;
     const u = g.u;
@@ -3898,6 +3965,17 @@ export async function dodip() {
          * drink_ok's obj==NULL answer from GETOBJ_EXCLUDE to
          * GETOBJ_EXCLUDE_NONINVENT, which bumps getobj's `inaccess` and makes
          * the no-candidates message read "anything ELSE to dip <obj> into". */
+        ++drink_ok_extra;
+    } else if (!menu_requested && at_sink) {
+        /* C potion.c:2325-2333 */
+        const qbuf = `Dip ${g.flags?.verbose === false ? shortestname : obuf} into the sink?`;
+        if (await y_n(qbuf) === 'y') {
+            if (!is_hands) obj.pickup_prev = 0;
+            await dipsink(obj);
+            g.context.move = 1;
+            if (g._pending_message) _topl_stash_result();
+            return ECMD_TIME;
+        }
         ++drink_ok_extra;
     }
 
@@ -4420,13 +4498,13 @@ export async function potionbreathe(obj) {
         if (!_potion_Fast())
             Your("knees seem more flexible now.");
         /* C potion.c:2070  incr_itimeout(&HFast, rnd(5)) — mutating, on the
-         * property word itself.  u.HFast is a plain number in this module (see
+         * property word itself.  _fastrec(u).intrinsic is a plain number in this module (see
          * make_fast() below and the peffect_speed test at line ~1089), so wrap
          * it in the {value} ref incr_itimeout() takes and store back. */
         {
-            const HFast_ref = { value: u.HFast | 0 };
+            const HFast_ref = { value: _fastrec(u).intrinsic | 0 };
             incr_itimeout(HFast_ref, rnd(5));
-            u.HFast = HFast_ref.value;
+            _fastrec(u).intrinsic = HFast_ref.value;
         }
         exercise(3, true);
         break;
@@ -5109,9 +5187,9 @@ async function peffect_speed(otmp) {
         return;
     }
     speed_up(rn1(10, 100 + 60 * bcsign(otmp)));
-    if (is_speed && !otmp.cursed && !(u.HFast & INTRINSIC)) {
+    if (is_speed && !otmp.cursed && !(_fastrec(u).intrinsic & INTRINSIC)) {
         Your('quickness feels very natural.');
-        u.HFast |= FROMOUTSIDE;
+        _fastrec(u).intrinsic |= FROMOUTSIDE;
     }
 }
 
@@ -5434,7 +5512,7 @@ export function speed_up(duration) {
     const u = g.u;
     /* C potion.c:2925 — Very_fast = ((HFast & ~INTRINSIC) || EFast).
      * There is no mutable u.Very_fast field in the JS state. */
-    const very_fast = !!((u.HFast & ~INTRINSIC)
+    const very_fast = !!((_fastrec(u).intrinsic & ~INTRINSIC)
         || (u.uprops?.[FAST]?.extrinsic | 0));
     if (!very_fast)
         pline("You are suddenly moving %sfaster.", _potion_Fast() ? "" : "much ");
@@ -5442,14 +5520,14 @@ export function speed_up(duration) {
         pline("Your %s get new energy.", makeplural(body_part(LEG)));
     exercise(3, true);
     /* C potion.c:2929  incr_itimeout(&HFast, duration) — inlined here because
-     * u.HFast is a plain number, not a {value} ref.  Uses the module-scope
+     * _fastrec(u).intrinsic is a plain number, not a {value} ref.  Uses the module-scope
      * TIMEOUT (0x00ffffff, prop.h:135); a local 0xFF copy previously truncated
      * HFast's timeout at 255 turns. */
-    let old_to = u.HFast & TIMEOUT;
+    let old_to = _fastrec(u).intrinsic & TIMEOUT;
     let new_to = old_to + duration;
     if (new_to >= TIMEOUT) new_to = TIMEOUT;
     else if (new_to < 1) new_to = 0;
-    u.HFast = (u.HFast & ~TIMEOUT) | new_to;
+    _fastrec(u).intrinsic = (_fastrec(u).intrinsic & ~TIMEOUT) | new_to;
 }
 
 function SET_BOTL() {
@@ -5496,4 +5574,10 @@ export function make_stunned(xtime, talk) {
         SET_BOTL();
 
     _set_prop_itimeout(ps, xtime);
+}
+
+function _fastrec(u) {
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[FAST]) u.uprops[FAST] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    return u.uprops[FAST];
 }
