@@ -26,7 +26,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          DRAWBRIDGE_UP, ROOMOFFSET,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL, IS_AIR,
-         AIR,
+         AIR, MAX_TYPE,
          isok, Upolyd, Is_container, CLICK_1, CLICK_2,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
          CMDQ_EXTCMD, CMDQ_KEY, CMDQ_DIR, CMDQ_USER_INPUT, CMDQ_INT, CQ_CANNED, CQ_REPEAT,
@@ -410,6 +410,25 @@ function cmdq_copy(q) {
 }
 
 /**
+ * C ref: cmd.c cmdq_reverse `:373–384` (extern.h:435) — iterative
+ * in-place reversal of a `_cmd_queue` chain. Sole C caller cmdq_copy
+ * `:401`; the JS cmdq_copy above slices order-preserving arrays, so
+ * no live JS caller yet — kept for C-order callers to come.
+ * @param {{ next: object|null } | null} head C `struct _cmd_queue *head`
+ * @returns {{ next: object|null } | null} C `prev`, the new head
+ */
+export function cmdq_reverse(head) {
+    let prev = null, curr = head; // C `:375`
+    while (curr) { // C `:377`
+        const next = curr.next; // C `:378`
+        curr.next = prev; // C `:379`
+        prev = curr; // C `:380`
+        curr = next; // C `:381`
+    }
+    return prev; // C `:383`
+}
+
+/**
  * C ref: cmd.c cmdq_shift(q) `:354–370` — last node becomes head
  * (doextcmd records the resolved command after getobj keys).
  * @param {number} q CQ_CANNED or CQ_REPEAT
@@ -580,6 +599,55 @@ function do_move_east() { set_move_cmd(DIR_E, 0); return ECMD_TIME; }
 function do_move_southeast() { set_move_cmd(DIR_SE, 0); return ECMD_TIME; }
 function do_move_south() { set_move_cmd(DIR_S, 0); return ECMD_TIME; }
 function do_move_southwest() { set_move_cmd(DIR_SW, 0); return ECMD_TIME; }
+
+/* C cmd.c do_rush_west `:1461–1465` — extcmdlist "rushwest" `:2026` (:2025
+   rush comment: m prefix but not g/G/F) + move_funcs[][MV_RUSH] `:2071`. */
+function do_rush_west() { set_move_cmd(DIR_W, 3); return ECMD_TIME; }
+
+/* C cmd.c do_run_* `:1517–1571` — run family, C order. extcmdlist
+   "run*" rows `:2042–2057` (`:2041` run comment: m prefix but not g/G/F)
+   + move_funcs[][MV_RUN] `:2071–2078`. Callers dispatch on ef_txt
+   (FUNCT_TXT rows below; movecmd/cmd_from_dir/getpos_help use the txt). */
+function do_run_west() { set_move_cmd(DIR_W, 1); return ECMD_TIME; }
+function do_run_northwest() { set_move_cmd(DIR_NW, 1); return ECMD_TIME; }
+function do_run_north() { set_move_cmd(DIR_N, 1); return ECMD_TIME; }
+function do_run_northeast() { set_move_cmd(DIR_NE, 1); return ECMD_TIME; }
+function do_run_east() { set_move_cmd(DIR_E, 1); return ECMD_TIME; }
+function do_run_southeast() { set_move_cmd(DIR_SE, 1); return ECMD_TIME; }
+function do_run_south() { set_move_cmd(DIR_S, 1); return ECMD_TIME; }
+function do_run_southwest() { set_move_cmd(DIR_SW, 1); return ECMD_TIME; }
+
+/**
+ * C cmd.c levltyp[MAX_TYPE + 2] `:1072–1086` — "temporary? hack, since
+ * level type codes aren't the same as screen symbols" (`:1069–1071`).
+ * Indices 0..36 are the rm.h terrain types in order; [37] is the
+ * undiggable-stone name for wiz_map_levltyp, [38] the odd-count pad.
+ */
+export const levltyp = [
+    'stone', 'vertical wall', 'horizontal wall', 'top-left corner wall',
+    'top-right corner wall', 'bottom-left corner wall',
+    'bottom-right corner wall', 'cross wall', 'tee-up wall', 'tee-down wall',
+    'tee-left wall', 'tee-right wall', 'drawbridge wall', 'tree',
+    'secret door', 'secret corridor', 'pool', 'moat', 'water',
+    'drawbridge up', 'lava pool', 'lava wall', 'iron bars', 'door',
+    'corridor', 'room', 'stairs', 'ladder', 'fountain', 'throne', 'sink',
+    'grave', 'altar', 'ice', 'drawbridge down', 'air', 'cloud',
+    /* not a real terrain type, but used for undiggable stone
+       by wiz_map_levltyp() */
+    'unreachable/undiggable',
+    /* padding in case the number of entries above is odd */
+    '',
+];
+
+/**
+ * C ref: cmd.c levltyp_to_name `:1089–1094` (extern.h:425).
+ * @param {number} typ C `int typ`
+ * @returns {string|null} C `levltyp[typ]` or NULL
+ */
+export function levltyp_to_name(typ) {
+    if (typ >= 0 && typ < MAX_TYPE) return levltyp[typ]; // C `:1092–1093`
+    return null; // C `:1094` NULL
+}
 
 /**
  * C ref: cmd.c do_rush `:1589–1602` — 'g' PREFIXCMD.
@@ -889,6 +957,19 @@ export async function pgetchar() {
     if (game.iflags?.debug_fuzzer)
         return randomkey();
     return await nhgetch();
+}
+
+/**
+ * C ref: cmd.c extcmd_initiator `:456–460` — '#' or whatever was bound to
+ * doextcmd() in its place (`:455`). Returns the key code
+ * (C char; JS stores codes — set by reset_commands `:3475`,
+ * js/cmd.js reset_commands below).
+ * Sole C caller: win/tty/getline.c:310 tty_get_ext_cmd (prompt + "unknown
+ * extended command" pline), wired in JS get_ext_cmd.
+ * @returns {number} key code
+ */
+export function extcmd_initiator() {
+    return game.Cmd?.extcmd_char ?? 0; // C `:459` gc.Cmd.extcmd_char
 }
 
 /* C ref: cmd.c randomkey `:3521–3522` — static fuzz-cycle state. */
@@ -1966,6 +2047,15 @@ const FUNCT_TXT = new Map([
     [do_move_southeast, 'movesoutheast'],
     [do_move_south, 'movesouth'],
     [do_move_southwest, 'movesouthwest'],
+    [do_rush_west, 'rushwest'],
+    [do_run_west, 'runwest'],
+    [do_run_northwest, 'runnorthwest'],
+    [do_run_north, 'runnorth'],
+    [do_run_northeast, 'runnortheast'],
+    [do_run_east, 'runeast'],
+    [do_run_southeast, 'runsoutheast'],
+    [do_run_south, 'runsouth'],
+    [do_run_southwest, 'runsouthwest'],
     [dotalk, 'chat'],
     [docallcmd, 'call'],
     [dodip, 'dip'],

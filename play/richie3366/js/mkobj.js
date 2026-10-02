@@ -1992,6 +1992,21 @@ export async function insane_object(obj, fmt, mesg, mon) {
 }
 
 /**
+ * C ref: mkobj.c nomerge_exception `:3278–3286` (staticfn) — 'nomerge'
+ * persists on prize objects until hero pickup, so the insane_obj_bits
+ * gate (`:3259`) exempts them. No live JS caller (insane_obj_bits is a
+ * by-design debug path); both callees are same-file exports.
+ */
+function nomerge_exception(obj) {
+    /* special prize objects for achievement tracking are set 'nomerge'
+       until they get picked up by the hero */
+    if (is_mines_prize(obj) || is_soko_prize(obj))
+        return true;
+
+    return false;
+}
+
+/**
  * C ref: mkobj.c check_contained `:3374–3416` (staticfn) — recurse over a
  * container's cobj chain asserting every member is OBJ_CONTAINED with its
  * ocontainer pointing back (`:3392–3398`: wrong where → insane_object with
@@ -3354,7 +3369,11 @@ export function obj_nexto_xy(obj, x, y, recurs) {
 
 /** C ref: mkobj.c obj_nexto — wrapper around obj_nexto_xy at obj coords. */
 export function obj_nexto(otmp) {
-    if (!otmp) return null;
+    if (!otmp) {
+        /* C `:3645` — impossible() is async in JS: fire-and-forget. */
+        void impossible("obj_nexto: wasn't given an object to check");
+        return null;
+    }
     return obj_nexto_xy(otmp, otmp.ox | 0, otmp.oy | 0, true);
 }
 

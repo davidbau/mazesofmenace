@@ -679,6 +679,8 @@ export function cmap_to_glyph(cmap_idx) {
 
 /* C defsym.h PCHAR S_sw_tl is the first swallow cmap after S_goodpos. */
 export const S_sw_tl = S_goodpos + 1;
+/* C defsym.h:221–228 — S_sw_tl..S_sw_br consecutive (88–95). */
+export const S_sw_br = S_sw_tl + 7;
 /* C sym.h enum cmap_symbols fencepost after S_expl_br. */
 export const MAXPCHARS = S_expl_br + 1;
 /* C sym.h:24 enum mon_syms tail after the MONSYM S_ entries (idx 1..60). */
@@ -5477,12 +5479,33 @@ function swallow_sym(part) {
     return dec[part];
 }
 
-function swallow_cell(x, y, part, swallowerMnum) {
-    // C: swallow_to_glyph → what_mon(mnum, rn2_on_display_rng) under Hallu
-    let mnum = swallowerMnum;
-    if (game.u?.Hallucination) {
-        mnum = rn2_on_display_rng(NUMMONS);
+/**
+ * C ref: display.c swallow_to_glyph `:2437–2446` (C staticfn: same-file
+ * callers only — module-local here). what_mon(mnum, display rng) << 3,
+ * bad-loc impossible arm, then the swallow-bank packing. The impossible
+ * report stays a cite: impossible() is async in JS (t_warn convention).
+ */
+function swallow_to_glyph(mnum, loc) {
+    const m_3 = what_mon(mnum, rn2_on_display_rng) << 3;
+    let l = loc | 0;
+    if (l < S_sw_tl || S_sw_br < l) {
+        // C: impossible("swallow_to_glyph: bad swallow location");
+        l = S_sw_br;
     }
+    return (m_3 | (l - S_sw_tl)) + GLYPH_SWALLOW_OFF;
+}
+
+/* C defsym.h:221–228 order — part name to S_sw_* offset. */
+const SWALLOW_PART_LOCS = { tl: 0, tc: 1, tr: 2, ml: 3, mr: 4, bl: 5, bc: 6, br: 7 };
+
+function swallow_cell(x, y, part, swallowerMnum) {
+    // C swallowed `:1360–1380` — every stomach cell goes through
+    // swallow_to_glyph (what_mon display-RNG burn under Hallucination()).
+    // JS paints cells, not integer glyphs, so unpack the monster bits
+    // (>> 3) for the stomach color — C's paint-time path. An unknown
+    // part yields NaN → |0 → 0 → the bad-loc arm, as in C.
+    const glyph = swallow_to_glyph(swallowerMnum, S_sw_tl + SWALLOW_PART_LOCS[part]);
+    const mnum = (glyph - GLYPH_SWALLOW_OFF) >> 3;
     const color = (mnum != null && mnum >= 0)
         ? (mcolors[mnum] ?? CLR_GREEN)
         : CLR_GREEN;
@@ -5597,7 +5620,9 @@ export function see_objects() {
         const top = objects_at(obj.ox | 0, obj.oy | 0);
         if (top === obj) newsym(obj.ox | 0, obj.oy | 0);
     }
-    // update_inventory deferred (no glyph invent UI)
+    // C `:1570` — Qt paper-doll note notwithstanding, C calls this for
+    // all interfaces (update_inventory no-ops outside moveloop/map).
+    update_inventory();
 }
 
 /**

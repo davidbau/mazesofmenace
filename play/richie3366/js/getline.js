@@ -36,7 +36,7 @@ import {
 } from './const.js';
 import { select_menu_pick_one } from './options.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
-import { cmdq_pop, cmdq_clear } from './cmd.js';
+import { cmdq_pop, cmdq_clear, extcmd_initiator } from './cmd.js';
 import { cmdq_add_key } from './invent.js';
 
 /**
@@ -1557,8 +1557,9 @@ export async function extcmd_via_menu() {
 }
 
 /**
- * C ref: getline.c tty_get_ext_cmd — '#' prompt with NEWAUTOCOMP hook.
- * Returns ext-cmd index or -1.
+ * C ref: getline.c tty_get_ext_cmd — extcmd_initiator() prompt ('#'
+ * unless rebound, `:310`) with NEWAUTOCOMP hook. Returns ext-cmd index
+ * or -1.
  *
  * Autocomplete expands the buffer but leaves the edit cursor after the
  * last typed character (C putsyms + backspace). The next key overwrites
@@ -1579,10 +1580,14 @@ export async function get_ext_cmd() {
     hooked_getlin_begin();
     const st = { buf: '', cursor: 0 };
     let doprev = false;
+    // C getline.c:310 extcmd_char[0] = extcmd_initiator() — '#' unless rebound.
+    const initiatorCode = extcmd_initiator() & 0xff;
+    const initiator = String.fromCharCode(initiatorCode);
     const paint = async () => {
-        // C hooked_tty_getlin("#", …) shows "# " + buffer (expanded name);
-        // empty prompt is still "# " (custompline "%s ") with cursor at col 2.
-        const raw = `# ${st.buf}`;
+        // C hooked_tty_getlin(extcmd_char, …) shows "# " + buffer (expanded
+        // name); empty prompt is still "# " (custompline "%s ") with cursor
+        // at col 2.
+        const raw = `${initiator} ${st.buf}`;
         const { text, col, row } = topl_wrap_echo(raw, 2 + st.cursor);
         mark_topline_special_prompt(raw);
         game._pending_message = text;
@@ -1627,13 +1632,14 @@ export async function get_ext_cmd() {
        INTERNALCMD (#altdip) is skipped — unknown even with a runner. */
     const matches = extcmds_match(name, ECM_IGNOREAC | ECM_EXACTMATCH);
     if (matches.length !== 1) {
-        await pline(`#${st.buf}: unknown extended command.`);
+        // C getline.c:320–321 visctrl(extcmd_char[0]).
+        await pline(`${visctrl(initiatorCode)}${st.buf}: unknown extended command.`);
         return -1;
     }
     const txt = EXTCMDLIST[matches[0]].txt.toLowerCase();
     const idx = availableExtCmds().findIndex((ec) => ec.name === txt);
     if (idx < 0) {
-        await pline(`#${st.buf}: unknown extended command.`);
+        await pline(`${visctrl(initiatorCode)}${st.buf}: unknown extended command.`);
         return -1;
     }
     return idx;

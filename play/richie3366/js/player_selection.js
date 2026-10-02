@@ -44,8 +44,10 @@ import {
     PICK_RIGID,
     BUFSZ,
     QBUFSZ,
+    EXIT_SUCCESS,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
+import { nh_terminate } from './end.js';
 
 /** C: gr.rfilter — role/race/gend/align exclusion masks for chargen. */
 export const rfilter = { roles: [], mask: 0 };
@@ -1310,6 +1312,22 @@ async function shall_i_pick_prompt(prompt) {
         if (ch === '@' || ch === '*') return 'a';
         if (ch === 'y' || ch === 'n' || ch === 'a') return ch;
     }
+}
+
+/**
+ * C ref: role.c genl_player_selection `:2177–2185` — generic (non-tty)
+ * entry: setup with screen height 0, terminate with EXIT_SUCCESS when
+ * the player cancels. Async because genl_player_setup is async in JS.
+ * (The tty entry player_selection() below passes nhDisplay rows and
+ * throws on quit instead.)
+ */
+export async function genl_player_selection() {
+    if (await genl_player_setup(0))
+        return;
+
+    /* player cancelled role/race/&c selection, so quit */
+    nh_terminate(EXIT_SUCCESS);
+    /*NOTREACHED*/
 }
 
 /**

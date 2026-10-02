@@ -3306,7 +3306,10 @@ export function makemon(mdat, x, y, mmflags = 0) {
     const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
         | GP_CHECKSCARY | GP_AVOID_MONPOS;
 
-    if (!game.level?.flags?.rndmongen && !ptr) return null;
+    // C makemon.c:1168 — wizard debug_mongen vetoes all creation (game.iflags
+    // carries the NHOPTB bool; wizcmds.js toggles it around ^G genesis).
+    if ((game.iflags?.debug_mongen) || (!game.level?.flags?.rndmongen && !ptr))
+        return null;
 
     // C: x==0 && y==0 → random location via makemon_rnd_goodpos
     if (x === 0 && y === 0) {
@@ -3323,6 +3326,13 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
         x = cc.x;
         y = cc.y;
+    }
+
+    // C makemon.c:1188–1191 — sanity check (fire-and-forget impossible is the
+    // sync-file convention, cf. rndmonst :648 / m_initweap :3066).
+    if (!isok(x, y)) {
+        void impossible('makemon trying to create a monster at <%d,%d>?', x | 0, y | 0);
+        return null;
     }
 
     // C: MON_AT(x,y) via level.monsters[][] — includes worm body segs
@@ -3348,12 +3358,19 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     }
 
-    if (!ptr) {
+    // C makemon.c:1204–1212 — ptr arm: a specific monster that has already
+    // been genocided vetoes creation (return NULL before propagate). The
+    // wizard G_EXTINCT debugpline1 is D_DEBUG-only (D-2586 precedent).
+    if (ptr) {
+        const mndx0 = monsndx(ptr);
+        if (((game.mvitals?.[mndx0]?.mvflags ?? 0) & G_GENOD) !== 0)
+            return null;
+    } else {
         // random common monster that can survive here
         let tryct = 0;
         do {
             ptr = rndmonst();
-            if (!ptr) return null;
+            if (!ptr) return null; // C debugpline0("Warning: no monster.") is D_DEBUG-only
             // C: fakemon.data = ptr for goodpos (JS fakemon is { data: ptr })
         } while (++tryct <= 50
             /* in Sokoban, don't accept a giant on first try;
@@ -3367,8 +3384,8 @@ export function makemon(mdat, x, y, mmflags = 0) {
 
     // C makemon.c:1233 — (void) propagate(mndx, countbirth, FALSE) once mndx
     // is known (both ptr and random arms), before newmonst. Draw-free; still
-    // marks uniques / extinct-at-limit when tally is skipped. Named omit:
-    // ptr-arm G_GENOD veto + wizard extinct debugpline (:1204-1212, own row).
+    // marks uniques / extinct-at-limit when tally is skipped. The ptr-arm
+    // GENOD veto fired above (:1204–1212; wizard debugpline D_DEBUG-only).
     propagate(ptr.mndx, countbirth, false);
 
     // C: *mtmp = cg.zeromonst — mux/muy stay 0 until set_apparxy (not spawn xy)
@@ -3413,11 +3430,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
         wormno: 0,
     };
 
-    // C: MM_EGD / MM_EPRI / MM_ESHK / MM_EMIN / MM_EDOG → new* before m_id
+    // C makemon.c:1237–1246 order EGD/EPRI/ESHK/EMIN/EDOG before m_id
+    // (draw-free; live callers set one flag, so order is unobservable).
     if (mmflags & MM_EGD) newegd(mtmp);
+    if (mmflags & MM_EPRI) newepri(mtmp);
     if (mmflags & MM_ESHK) neweshk(mtmp);
     if (mmflags & MM_EMIN) newemin(mtmp);
-    if (mmflags & MM_EPRI) newepri(mtmp);
     if (mmflags & MM_EDOG) newedog(mtmp);
 
     mtmp.m_id = next_ident();
@@ -3723,7 +3741,13 @@ export function makemon(mdat, x, y, mmflags = 0) {
             && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {
             put_saddle_on_mon(null, mtmp);
         }
-    } /* else C discard_minvent — named */
+    } else {
+        // C makemon.c:1454–1459 — no initial inventory is allowed: discard
+        // anything already there (dead for fresh births — mitem mongets is
+        // allow_minvent-gated — but the caller expects minvent NULL).
+        if (mtmp.minvent) discard_minvent(mtmp, true);
+        mtmp.minvent = null;
+    }
 
     // C makemon.c:1469–1470 after invent / mflags3, before !in_mklev
     // newsym. JS already applied mflags3 earlier (D-0928 #1128).

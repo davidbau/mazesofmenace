@@ -29,7 +29,7 @@ import {
     has_emin, has_epri, has_eshk, has_egd, has_edog, EDOG, has_mcorpsenm, MCORPSENM, OBJ_AT,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
     NO_MM_FLAGS, NO_NC_FLAGS, EXPL_FIERY, NATTK, PROT_FROM_SHAPE_CHANGERS, NO_WEAPON_WANTED, engulfing_u,
-    W_SADDLE, OBJ_MINVENT,
+    W_SADDLE, OBJ_MINVENT, ONAME_NO_FLAGS,
     FM_FMON, FM_MIGRATE, FM_MYDOGS, FM_YOU, LS_MONSTER,
 } from './const.js';
 import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain, fixed_tele_trap } from './trap.js';
@@ -69,7 +69,7 @@ import { newsym, pline, pline_mon, pline_The, verbalize, You_feel, sensemon, can
 import { online2, level_difficulty } from './hacklib.js';
 import { worm_cross, level_mon_at, remove_worm, remove_monster_xy, place_wsegs, count_wsegs } from './worm.js';
 import { On_W_tower_level, In_W_tower } from './dungeon.js';
-import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender, s_suffix } from './do_name.js';
+import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender, s_suffix, safe_oname } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point, vision_recalc } from './vision.js';
 import { any_light_source, emits_light, new_light_source, del_light_source } from './light.js'; // C: mon.c movemon :1332 arm (same 99-module SCC; hoisted fn, runtime use only)
 import { fightm, mondead, mondied, grow_up, mon_to_stone, monstone } from './mhitm.js';
@@ -82,7 +82,7 @@ import {
     newemin, newepri, newedog, freemcorpsenm, mpickobj, makemon, makemon_appear_msg,
 } from './makemon.js';
 import { in_your_sanctuary, p_coaligned, ghod_hitsu, inhistemple } from './priest.js';
-import { inhishop, replshk } from './shk.js';
+import { inhishop, replshk, obfree } from './shk.js';
 import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation, You_hear, monst_to_any } from './hack.js';
 import { set_ustuck } from './mhitu.js'; // C: mon.c replmon :2546 arm (same SCC; hoisted fn, runtime use only — imports.mjs SAFE)
 import { inv_weight, weight_cap } from './invent.js';
@@ -92,7 +92,7 @@ import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
 import { vtense, doname, distant_name, makeplural, xname, The, set_find_mid } from './objnam.js';
 import { obj_resists, cursed_object_at, finish_meating, quickmimic } from './dogmove.js';
-import { touch_artifact } from './artifact.js';
+import { touch_artifact, artifact_exists } from './artifact.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { hastrack } from './track.js';
 import { MON_WEP } from './weapon.js';
@@ -415,8 +415,22 @@ export function onscary(x, y, mtmp) {
             || Inhell() || In_endgame(game.u?.uz)));
 }
 
-/** C ref: invent.c m_carrying — first matching otyp in minvent chain. */
+/**
+ * C mthrowu.c:1405–1414 m_carrying — first otyp match in the carrier's
+ * chain: the hero (`mtmp == &gy.youmonst`) walks `gi.invent`, monsters
+ * walk `minvent`. JS stores the hero inventory as an array
+ * (`game.invent`; cf. hack.js carrying), so the hero arm iterates the
+ * array while the monster arm walks the `nobj` chain. Hero identity
+ * uses the `game.youmonst || _youmonst` idiom (cf. uhitm.js
+ * m_is_steadfast); a null carrier still returns null (C NONNULLARG1).
+ */
 export function m_carrying(mon, otyp) {
+    if (mon != null && (mon === game.youmonst || mon._youmonst)) {
+        for (const o of game.invent || []) {
+            if (o && o.otyp === otyp) return o;
+        }
+        return null;
+    }
     for (let o = mon?.minvent; o; o = o.nobj) {
         if (o.otyp === otyp) return o;
     }
@@ -3621,19 +3635,24 @@ export function find_mid(nid, fmflags = 0) {
 set_find_mid(find_mid);
 
 /**
- * C ref: mkobj.c discard_minvent `:2524–2536` — remaining invent leaves
- * the game. `extract_from_minvent(TRUE, TRUE)` first (worn extrinsics,
- * held-core, mwepgone). Untagged minvent (where not OBJ_MINVENT) makes
- * extract impossible-and-return; unlink so the loop still terminates.
- * mongone passes FALSE. Named omit: artifact_exists + obfree.
+ * C ref: mkobj.c discard_minvent `:2524–2536` — whole body in C order:
+ * `extract_from_minvent(TRUE, TRUE)` per item (worn extrinsics,
+ * held-core, mwepgone), artifact un-create when the flag is set, then
+ * `obfree` (C: "dealloc_obj() isn't sufficient"). Untagged minvent
+ * (where not OBJ_MINVENT) makes extract impossible-and-return; unlink
+ * so the loop still terminates. mongone passes FALSE; makemon and
+ * sp_lev create_monster pass TRUE.
  */
-export function discard_minvent(mtmp, _uncreate_artifacts) {
+export function discard_minvent(mtmp, uncreate_artifacts) {
     if (!mtmp) return;
     while (mtmp.minvent) {
         const otmp = mtmp.minvent;
         /* C `:2531` — sync; a light/impossible promise floats. */
         extract_from_minvent(mtmp, otmp, true, true);
         if (mtmp.minvent === otmp) unlink_minvent(mtmp, otmp);
+        if (uncreate_artifacts && otmp.oartifact) /* C `:2532–2533` */
+            artifact_exists(otmp, safe_oname(otmp), false, ONAME_NO_FLAGS);
+        obfree(otmp, null); /* C `:2534` */
         otmp.nobj = null;
         otmp.nexthere = null;
     }
@@ -3643,8 +3662,7 @@ export function discard_minvent(mtmp, _uncreate_artifacts) {
  * C ref: mon.c mongone — unstuck, mdrop_special_objs, discard_minvent,
  * then m_detach subset (D-1149). Clog victim must not vanish specials.
  * Named omit: isgd && !grddead; m_detach wizdead/shkgone/wormgone/
- * MON_DETACH/dismount_steed. discard_minvent calls extract_from_minvent;
- * artifact_exists and obfree stay omitted there.
+ * MON_DETACH/dismount_steed.
  */
 export async function mongone(mtmp) {
     if (!mtmp) return;

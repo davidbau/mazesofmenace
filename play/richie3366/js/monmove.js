@@ -48,6 +48,7 @@ import {
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG, TRAPPED_DOOR,
     EDOG, has_edog, ACCFOOD, MANFOOD, Is_container,
+    NC_SHOW_MSG, NO_NC_FLAGS,
 } from './const.js';
 import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms } from './hack.js';
 import {
@@ -61,7 +62,7 @@ import {
     type_is_pname,
 } from './do_name.js';
 import { doname, distant_name, ansimpleoname, vtense, an, xname, makeplural, yname } from './objnam.js';
-import { mpickobj, set_malign } from './makemon.js';
+import { mpickobj, set_malign, newcham } from './makemon.js';
 import { may_dig, mdig_tunnel, bury_an_obj, fracture_rock } from './dig.js';
 import { MON_WEP, mon_wield_item, select_rwep, autoreturn_weapon } from './weapon.js';
 import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
@@ -73,7 +74,7 @@ import { touch_artifact_mon, bare_artifactname } from './artifact.js';
 import { quest_talk, quest_stat_check } from './quest.js';
 import { stairway_at, u_on_newpos } from './mklev.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
-import { place_monster } from './steed.js';
+import { place_monster, remove_monster } from './steed.js';
 import { check_gear_next_turn, extract_from_minvent } from './worn.js';
 import { picking_lock } from './lock.js';
 import { mbodypart } from './polyself.js';
@@ -917,6 +918,34 @@ export function can_fog(mtmp) {
 }
 
 /**
+ * C ref: monmove.c vamp_shift `:2377–2394` (C staticfn) — shift a
+ * vampshifter into the requested form (postmov passes fog cloud for a
+ * closed door). Already that shape → 1; else newcham with NC_SHOW_MSG
+ * iff domsg, then the tty message flush. Async: JS newcham may await
+ * (pline → more → nhgetch). C int 1/0 preserved at the return.
+ */
+async function vamp_shift(mon, ptr, domsg) {
+    let reslt = 0;
+
+    // C compares mon->data == ptr (&mons[] pointer); JS mons() mints a
+    // fresh object per call, so compare by mndx (file idiom, cf. mnum
+    // at m_everyturn_effect; D-2348: factory breaks object identity).
+    const monmndx = mon.data?.mndx ?? mon.mnum ?? -1;
+    if (monmndx === (ptr?.mndx ?? -2)) {
+        /* already right shape */
+        reslt = 1;
+    } else if (is_vampshifter(mon)) {
+        reslt = (await newcham(mon, ptr, domsg ? NC_SHOW_MSG : NO_NC_FLAGS)) ? 1 : 0;
+        /* shape-change message is given when vampshifter turns into a
+           fog cloud in order to move under a closed door */
+        // C `:2392` display_nhwindow(WIN_MESSAGE, FALSE): tty message
+        // flush — no-op in JS (pline paints synchronously; there is no
+        // deferred message window to display).
+    }
+    return reslt;
+}
+
+/**
  * C ref: monmove.c undesirable_disp `:2277–2312` — barging creature avoids
  * swapping onto seen-trap squares (pets: tseen 1/40; others: known-type
  * 1/40), cursed piles (pets), and non-accessible spots (pool-for-pool
@@ -1646,7 +1675,8 @@ export async function m_postmove_effect(mtmp) {
  * mpickstuff one-object pickup; hides_under / S_EEL rn2(5) → hideunder
  * (D-0496); maybe_spin_web (D-0595); door/flee/web/itsstuck pline_mon
  * D-1227; IRONBARS eat/Norep (D-1247).
- * Named omissions: vampshift fog; shop add_damage;
+ * vampshift fog is D-3292 (vamp_shift + seenflgs below, C order).
+ * Named omissions: shop add_damage;
  * has_magic_key disarm;
  * hideunder You_see (ported); check_gear_next_turn; swallowed() display polish.
  * ALLOW_BARS is D-1258; dissolve_bars switch_terrain is D-1259;
@@ -1654,15 +1684,50 @@ export async function m_postmove_effect(mtmp) {
  * meatcorpse is D-1285.
  * (shk/gd/priest via shk.js D-0205)
  */
-export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
+export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open, seenflgs = 0) {
     if (mmoved !== MMOVE_MOVED && mmoved !== MMOVE_DONE) return mmoved;
 
-    const ptr = mtmp.data;
+    // let: C refreshes the cached ptr after vamp_shift (:1498) and
+    // mintrap (:1517); the vamp arm below assigns, the mintrap
+    // refresh stays deferred (pre-existing).
+    let ptr = mtmp.data;
 
     if (mmoved === MMOVE_MOVED) {
     // notice_mon deferred
     let canseeit = cansee(mtmp.mx, mtmp.my);
     const didseeit = canseeit;
+
+    // C ref: monmove.c postmov `:1473–1506` — a vampshifter that just
+    // stepped onto a closed door shifts to fog cloud *before*
+    // newsym/mintrap; when seen, it is moved back to (omx,omy) first
+    // so the shape-change message happens at the right time, then
+    // back to the door (message sequencing, C comment `:1474–1485`).
+    {
+        const nix = mtmp.mx;
+        const niy = mtmp.my;
+        const doorloc = game.level?.at(nix, niy);
+        if (is_vampshifter(mtmp) && !amorphous(mtmp.data)
+            && doorloc && IS_DOOR(doorloc.typ)
+            && (((doorloc.doormask | 0) & (D_LOCKED | D_CLOSED)) !== 0)
+            && can_fog(mtmp)) {
+            /* note: remove_monster()+place_monster is not right for
+               long worms but they won't reach here */
+            if (seenflgs) {
+                remove_monster(nix, niy);
+                place_monster(mtmp, omx, omy);
+                newsym(nix, niy); newsym(omx, omy);
+            }
+            if (await vamp_shift(mtmp, mons(PM_FOG_CLOUD),
+                                 ((seenflgs & 1) !== 0))) {
+                ptr = mtmp.data; /* update cached value */
+            }
+            if (seenflgs) {
+                remove_monster(omx, omy);
+                place_monster(mtmp, nix, niy);
+                newsym(omx, omy); newsym(nix, niy);
+            }
+        }
+    }
 
     newsym(omx, omy); // update the old position
     const trapret = await mintrap(mtmp, NO_TRAP_FLAGS);
@@ -2080,13 +2145,17 @@ export async function m_move(mtmp, after) {
         }
     }
 
+    // C ref: monmove.c m_move `:1756–1757` — pre-move visibility flags,
+    // threaded to postmov for the vamp_shift door dance (D-3292).
+    const seenflgs = (canseemon(mtmp) ? 1 : 0) | (canspotmon(mtmp) ? 2 : 0);
+
     // C: set_apparxy before mtame / covetous / shk|gd|priest specials
     set_apparxy(mtmp);
 
     // C: if (mtmp->mtame) return postmov(..., dog_move(...), ...)
     if (mtmp.mtame) {
         const mmoved = await dog_move(mtmp, after);
-        return postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open);
+        return postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open, seenflgs);
     }
 
     // C ref: monmove.c m_move — shopkeeper / guard / priest special
@@ -2101,7 +2170,7 @@ export async function m_move(mtmp, after) {
             return postmov(
                 mtmp, omx, omy,
                 (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED,
-                can_tunnel, can_unlock, can_open,
+                can_tunnel, can_unlock, can_open, seenflgs,
             );
         }
         // xm === -1: fall through to normal AI (follow outside shop)
@@ -2130,7 +2199,7 @@ export async function m_move(mtmp, after) {
         } else {
             await mnexto(mtmp, RLOC_MSG);
         }
-        return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
+        return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open, seenflgs);
     }
 
     // C: not_special — other monsters keep moving while hero is swallowed
@@ -2189,7 +2258,7 @@ export async function m_move(mtmp, after) {
     if (getitems) {
         const gg = { x: ggx, y: ggy, appr };
         if (m_search_items(mtmp, gg)) {
-            return postmov(mtmp, omx, omy, MMOVE_DONE, can_tunnel, can_unlock, can_open);
+            return postmov(mtmp, omx, omy, MMOVE_DONE, can_tunnel, can_unlock, can_open, seenflgs);
         }
         ggx = gg.x;
         ggy = gg.y;
@@ -2299,7 +2368,7 @@ export async function m_move(mtmp, after) {
         }
         // C: worm_nomove shrinks the tail when the head did not move
         if (mtmp.wormno) worm_nomove(mtmp);
-        return postmov(mtmp, omx, omy, MMOVE_NOTHING, can_tunnel, can_unlock, can_open);
+        return postmov(mtmp, omx, omy, MMOVE_NOTHING, can_tunnel, can_unlock, can_open, seenflgs);
     }
 
     // C ref: monmove.c m_move post-select — early returns before place
@@ -2372,7 +2441,7 @@ export async function m_move(mtmp, after) {
     // so postmov hide rn2(5) sees cleared mundetected when dest has no cover.
     await maybe_unhide_at(mtmp.mx, mtmp.my);
     mon_track_add(mtmp, omx, omy);
-    return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
+    return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open, seenflgs);
 }
 
 /**

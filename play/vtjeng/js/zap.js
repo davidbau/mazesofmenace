@@ -26,7 +26,11 @@
 // js/zap_destroy_items.js, which the C file separates as its own group of
 // functions.
 
-import { artifact_origin } from './artifacts.js';
+import {
+    artifact_origin,
+    defends,
+    defends_when_carried,
+} from './artifacts.js';
 import {
     ACID_RES,
     A_INT,
@@ -110,6 +114,7 @@ import {
     REVIVE_MON,
     ROT_CORPSE,
     COST_CANCEL,
+    COST_DRAIN,
     COST_UNCURS,
     COST_UNBLSS,
     thats_enough_tries,
@@ -382,6 +387,7 @@ import {
     AD_COLD,
     AD_DGST,
     AD_DISN,
+    AD_DRLI,
     AD_ELEC,
     AD_FIRE,
     AD_DRST,
@@ -635,7 +641,8 @@ import {
 } from './polyself.js';
 import { P_SKILL, spell_skilltype } from './startup_skills.js';
 import {
-    healup, make_blinded, incr_itimeout, speed_up, self_invis_message,
+    healup, make_blinded, incr_itimeout, make_stunned, speed_up,
+    self_invis_message,
 } from './potion.js';
 import {
     d, rn1, rn2, rn2_on_display_rng, rnd, rne, rnl, rnz,
@@ -1601,8 +1608,7 @@ export async function unturn_dead(monster, state = game, rawEnv = {}) {
     return revivedCount;
 }
 
-// C ref: zap.c unturn_you() (1225-1234). The duration argument to the still
-// unported make_stunned() is evaluated before the discarded void call.
+// C ref: zap.c unturn_you() (1225-1234).
 async function unturn_you(state = game) {
     await unturn_dead(state.youmonst, state);
     if (is_undead(state.youmonst?.data)) {
@@ -1611,8 +1617,9 @@ async function unturn_you(state = game) {
             `You feel frightened and ${already ? 'even more ' : ''}stunned.`,
             state,
         );
-        rnd(30);
-        note_unported('potion.c make_stunned');
+        const stunTimeout = (state.u?.uprops?.[STUNNED]?.intrinsic ?? 0)
+            & TIMEOUT;
+        await make_stunned(stunTimeout + rnd(30), false, state);
     } else {
         await ttyPline('You shudder in dread.', state);
     }
@@ -3409,6 +3416,86 @@ export async function cancel_item(obj, state = game, rawEnv = {}) {
     await uncurse(obj, alterationEnv);
 }
 
+// C ref: zap.c drain_item() (1382-1455). Drain one positive enchantment or
+// charge and update the hero-side bonuses tied to rings and armor. `state`,
+// `random`, status refresh and inventory output stay with this invocation so
+// a planning clone never writes through the live game.
+export function drain_item(obj, byYou, state = game, rawEnv = {}) {
+    const random = { rn2, ...(rawEnv.random ?? {}) };
+    const statusRefresh = rawEnv.statusRefresh
+        ?? (rawEnv.planning ? () => {} : () => bot());
+    if (!obj
+        || (!state.objects?.[obj.otyp]?.oc_charged
+            && obj.oclass !== WEAPON_CLASS
+            && obj.oclass !== ARMOR_CLASS
+            && !is_weptool(obj, state))
+        || obj.spe <= 0)
+        return false;
+    if (defends(AD_DRLI, obj, state)
+        || defends_when_carried(AD_DRLI, obj, state)
+        || obj_resists(obj, 10, 90, { ...rawEnv, state, random }))
+        return false;
+
+    if (byYou) {
+        const hooks = { ...(rawEnv.hooks ?? {}) };
+        hooks.costlyAlteration ??= () => {
+            if (!rawEnv.planning)
+                note_unported('mkobj.c costly_alteration');
+        };
+        costly_alteration(obj, COST_DRAIN, { ...rawEnv, state, hooks });
+    }
+
+    obj.spe--;
+    const uRing = obj === state.uleft || obj === state.uright;
+    switch (obj.otyp) {
+    case RIN_GAIN_STRENGTH:
+        if ((obj.owornmask & W_RING) && uRing) {
+            state.u.abon[A_STR]--;
+            state.disp.botl = true;
+        }
+        break;
+    case RIN_GAIN_CONSTITUTION:
+        if ((obj.owornmask & W_RING) && uRing) {
+            state.u.abon[A_CON]--;
+            state.disp.botl = true;
+        }
+        break;
+    case RIN_ADORNMENT:
+        if ((obj.owornmask & W_RING) && uRing) {
+            state.u.abon[A_CHA]--;
+            state.disp.botl = true;
+        }
+        break;
+    case RIN_INCREASE_ACCURACY:
+        if ((obj.owornmask & W_RING) && uRing) state.u.uhitinc--;
+        break;
+    case RIN_INCREASE_DAMAGE:
+        if ((obj.owornmask & W_RING) && uRing) state.u.udaminc--;
+        break;
+    case RIN_PROTECTION:
+        if (uRing) state.disp.botl = true;
+        break;
+    case HELM_OF_BRILLIANCE:
+        if ((obj.owornmask & W_ARMH) && obj === state.uarmh) {
+            state.u.abon[A_INT]--;
+            state.u.abon[A_WIS]--;
+            state.disp.botl = true;
+        }
+        break;
+    case GAUNTLETS_OF_DEXTERITY:
+        if ((obj.owornmask & W_ARMG) && obj === state.uarmg) {
+            state.u.abon[A_DEX]--;
+            state.disp.botl = true;
+        }
+        break;
+    default:
+        break;
+    }
+    if (state.disp.botl) statusRefresh();
+    if (carried(obj, state)) update_inventory({ ...rawEnv, state });
+    return true;
+}
+
 // C ref: zap.c bhito() (2119-2427), complete floor-object callback. Void
 // callees without a JS owner are recorded and skipped at their source sites.
 export async function bhito(obj, wand, state = game,
@@ -3564,7 +3651,7 @@ export async function bhito(obj, wand, state = game,
             newsym(obj.ox, obj.oy, state);
             break;
         case SPE_DRAIN_LIFE:
-            note_unported('zap.c drain_item');
+            drain_item(obj, true, state, { ...rawEnv, random });
             break;
         case WAN_TELEPORTATION:
         case SPE_TELEPORT_AWAY: {

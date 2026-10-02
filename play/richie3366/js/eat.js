@@ -49,6 +49,7 @@ import {
 import {
     weight, splitobj, objects_at, stackobj,
     g_at, is_metallic, is_organic, is_flammable, is_rustprone,
+    is_rottable,
     mksobj, obj_extract_self, set_bknown, peek_at_iced_corpse_age,
 } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
@@ -2477,8 +2478,8 @@ export function Hear_again() {
  * @returns {number} 1 if fainted (dont_start), else 0
  */
 async function rottenfood(obj) {
-    // C: "Blecch!  Rotten/Awful foodword!" — foodword poly deferred
-    await pline('Blecch!  Rotten food!');
+    // C `:1815–1816` — Rotten when rottable else Awful; foodword poly deferred
+    await pline('Blecch!  %s food!', is_rottable(obj) ? 'Rotten' : 'Awful');
     if (!rn2(4)) {
         const u = game.u || {};
         if (u.Hallucination || u.HHallucination) {

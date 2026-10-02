@@ -227,6 +227,44 @@ export function lowc(c) {
 }
 
 /**
+ * C ref: hacklib.c digit `:62–65` — ASCII '0'..'9' (boolean).
+ * Char-or-code param, highc/lowc idiom. Single-char string compare
+ * is code compare; all of '0'..'9' sit below 128 (no signed-char trap).
+ * @param {string|number} c
+ * @returns {boolean}
+ */
+export function digit(c) {
+    const ch = typeof c === 'string' ? c.charAt(0) : String.fromCharCode(c);
+    return ch >= '0' && ch <= '9'; // C `:64`
+}
+
+/**
+ * C ref: hacklib.c letter `:69–72` — '@'..'Z' or 'a'..'z' (boolean).
+ * '@' counts as a letter; '[' does not. Same param idiom as digit.
+ * @param {string|number} c
+ * @returns {boolean}
+ */
+export function letter(c) {
+    const ch = typeof c === 'string' ? c.charAt(0) : String.fromCharCode(c);
+    return (ch >= '@' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'); // C `:71`
+}
+
+/**
+ * C ref: hacklib.c onlyspace `:419–425` — every char is ' ' or '\t'.
+ * Empty string is TRUE; an embedded NUL ends the walk like C.
+ * @param {string} s
+ * @returns {boolean}
+ */
+export function onlyspace(s) {
+    const str = String(s ?? ''); // C NONNULL; guard is the file idiom
+    for (let i = 0; i < str.length; i++) { // C `:422`
+        if (str[i] === '\0') break;
+        if (str[i] !== ' ' && str[i] !== '\t') return false; // C `:423–424`
+    }
+    return true; // C `:425`
+}
+
+/**
  * C ref: hacklib.c eos `:193–199` — walk to the terminating NUL and
  * return that pointer. JS strings are immutable, so this returns the
  * end index (where C's pointer would sit). An embedded NUL stops the
@@ -280,8 +318,7 @@ export function copynchars(src, n) {
 /**
  * C ref: hacklib.c upwords `:122–138` — uppercase the first letter of
  * each blank-separated word, in place, returning `s`. The `letter()`
- * guard (`:68–72`: '@'..'Z' or 'a'..'z') is expanded inline; `highc` is
- * identity outside a-z so the fold below is exact. JS strings are
+ * guard (`:68–72`) is the live export above. JS strings are
  * immutable; return a new string.
  * @param {string} s
  * @returns {string}
@@ -294,7 +331,7 @@ export function upwords(s) {
         if (ch === ' ') { // C `:127`
             space = true; // C `:128`
             out += ch;
-        } else if (space && ((ch >= '@' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'))) { // C `:129` letter(*p)
+        } else if (space && letter(ch)) { // C `:129` letter(*p)
             out += highc(ch); // C `:130`
             space = false; // C `:131`
         } else { // C `:133`

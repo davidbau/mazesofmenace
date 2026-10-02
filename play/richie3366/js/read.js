@@ -139,7 +139,7 @@ import { vision_recalc, do_clear_area, cansee, unblock_point } from './vision.js
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
-import { dist2, mungspaces, strstri, strncmpi, upwords } from './hacklib.js';
+import { dist2, mungspaces, strstri, strncmpi, upwords, digit } from './hacklib.js';
 import { You_hear, closed_door, maybe_half_phys, is_pool, check_capacity } from './hack.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_maniacal_laughter, se_sad_wailing } from './generated/seffects_data.js';
@@ -2947,12 +2947,10 @@ function create_particular_parse(str, d) {
     d.maketame = d.makepeaceful = d.makehostile = false; // C `:3151`
     d.sleeping = d.saddled = d.invisible = d.hidden = false; // C `:3152`
     // C `:3155–3160` quantity: leading digit run, then spaces.
-    // C hacklib.c digit(): '0' <= c && c <= '9' (no JS export; 1-line pred).
-    const isDigit = (c) => c >= '0' && c <= '9';
-    if (isDigit(bufp[0])) {
+    if (digit(bufp[0])) { // C `:3155` hacklib.c digit()
         d.quan = parseInt(bufp, 10); // C `:3156` atoi — bufp[0] is a digit
         let i = 0;
-        while (isDigit(bufp[i])) i++; // C `:3157–3158`
+        while (digit(bufp[i])) i++; // C `:3157–3158`
         while (bufp[i] === ' ') i++; // C `:3159` spaces only, not tabs
         bufp = bufp.slice(i);
     }

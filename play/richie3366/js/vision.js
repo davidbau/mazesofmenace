@@ -14,7 +14,7 @@ import {
     ROOMOFFSET, Is_rogue_level, Is_waterlevel, Is_airlevel,
     TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, SEE_INVIS,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
-    MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
+    MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON, isok,
 } from './const.js';
 import {
     newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon,
@@ -94,6 +94,18 @@ const cs_rmin0 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax0 = new Int16Array(ROWNO).fill(0);
 const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax1 = new Int16Array(ROWNO).fill(0);
+
+/**
+ * C ref: vision.c:105–110 get_viz_clear — 1 when (x,y) is in bounds and
+ * its viz_clear flag is clear (the cell blocks vision), else 0. C
+ * short-circuit order kept: isok guards the viz_clear[y][x] read.
+ * Sole C caller: levl_sanity_check (wizcmds.c:1453, unported — named omit).
+ */
+export function get_viz_clear(x, y) {
+    if (isok(x, y) && !viz_clear[y][x])
+        return 1;
+    return 0;
+}
 
 /**
  * C ref: vision.c:121–142 vision_init, called before newgame or restore.

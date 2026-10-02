@@ -39,6 +39,21 @@
 import { game } from './gstate.js';
 import { WIN_ERR } from './const.js';
 
+/**
+ * C ref: decl.c `program_state_init` `:1074–1077` (extern) — whole body
+ * in C order. `program_state = init_program_state` (`:1001`, `{ 0 }` —
+ * every `struct sinfo` int reads 0, `hack.h:776+`); JS models
+ * zero-valued namespaces as bare `{}` with falsy-default reads at every
+ * use site (same idiom as `reset_instance_globals` below), so the whole
+ * assignment lands as a fresh `{}`. Unconditional assign, never merge,
+ * like C. Sole C caller: `allmain.c:35` `early_init` (first call, before
+ * `decl_globals_init` `:40`) — JS caller is `jsmain.js start()`,
+ * immediately after `resetGame()`, before `decl_globals_init()`.
+ */
+export function program_state_init() {
+    game.program_state = {}; // C `:1076`
+}
+
 // C `:1085–1110` — `ga = g_init_a` … `gz = g_init_z`. Every modeled
 // namespace returns to the fresh-table baseline; the ten namespaces
 // with no JS readers/writers (`ge,gj,gk,gl,gq,gt,gv,gx,gy,gz`) have no

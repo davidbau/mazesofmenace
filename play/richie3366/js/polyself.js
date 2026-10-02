@@ -1344,10 +1344,31 @@ async function drop_weapon(alone) {
 }
 
 /**
+ * C ref: polyself.c dropp `:1123–1154` — dropx() jacket for break_armor().
+ * Dropping worn armor while polymorphing can dunk the hero into water
+ * (levitation/water-walking boots the new form can't wear), where
+ * emergency_disrobe() may already have removed the piece from inventory;
+ * hypothetically obj could also have merged. So scan hero invent for obj
+ * instead of trusting obj.where, and drop only when found. The loop
+ * breaks right after dropx because dropx→dropy→dropz→place_object
+ * re-links nobj onto fobj (C note). Async: dropx is async in JS.
+ * @param {object} obj
+ */
+async function dropp(obj) {
+    for (const otmp of game.invent || []) {
+        if (otmp === obj) {
+            await dropx(obj);
+            break;
+        }
+    }
+}
+
+/**
  * C ref: polyself.c break_armor `:1157–1302` — breakarm destroy order
  * (uarm useup, cloak 3-way, shirt useup), sliparm shed order (racial
  * gate, whirly cloak/shirt), horns helm pierce/drop, nohands gloves /
- * shield / helm, boots, ublindf eyewear. dropx is the dropp equivalent;
+ * shield / helm, boots, ublindf eyewear. Drops go through dropp
+ * (invent-scan guard);
  * the one raw setworn keeps {skip_find_ac} (C worn.c has no find_ac;
  * polymon's own find_ac pair runs in C order: after drop_weapon (:890)
  * and before encumber_msg (:967), arming botl for the post-strip paints).
@@ -1384,11 +1405,11 @@ async function break_armor() {
             } else if ((cloak.otyp | 0) === ALCHEMY_SMOCK) {
                 await pline(`The knot on your ${cloak_simple_name(cloak)} is pulled apart!`);
                 await Cloak_off();
-                await dropx(cloak);
+                await dropp(cloak);
             } else {
                 await pline(`The clasp on your ${cloak_simple_name(cloak)} breaks open!`);
                 await Cloak_off();
-                await dropx(cloak);
+                await dropp(cloak);
             }
         }
         // C :1196–1199 — shirt is destroyed with no _off call (useupall
@@ -1404,7 +1425,7 @@ async function break_armor() {
             await pline('Your armor falls around you!');
             await Armor_gone();
             // C dropp→dropx→dropz→encumber_msg mid-break_armor (before gloves)
-            await dropx(otmp);
+            await dropp(otmp);
         }
         // C :1212–1220 — same wrapping gate as the breakarm cloak arm.
         const cloak = u.uarmc;
@@ -1417,7 +1438,7 @@ async function break_armor() {
                 await pline(`You shrink out of your ${cloak_simple_name(cloak)}!`);
             }
             await Cloak_off();
-            await dropx(cloak);
+            await dropp(cloak);
         }
         if (u.uarmu) {
             const shirt = u.uarmu;
@@ -1427,7 +1448,7 @@ async function break_armor() {
                 await pline('You become much too small for your shirt!');
             }
             setworn(null, W_ARMU, noAc);
-            await dropx(shirt);
+            await dropp(shirt);
         }
     }
     // C :1230–1251 — horned forms pierce flimsy helms, else the helm
@@ -1441,7 +1462,7 @@ async function break_armor() {
             } else {
                 await pline(`Your ${helm_simple_name(hornhelm)} falls to the ${surface(u.ux, u.uy)}!`);
                 await Helmet_off();
-                await dropx(hornhelm);
+                await dropp(hornhelm);
             }
         }
     }
@@ -1454,19 +1475,19 @@ async function break_armor() {
             await pline(`You drop your gloves${u.uwep ? ' and weapon' : ''}!`);
             await drop_weapon(0);
             await Gloves_off();
-            await dropx(gloves);
+            await dropp(gloves);
         }
         const shield = u.uarms;
         if (shield) {
             await pline('You can no longer hold your shield!');
             await Shield_off();
-            await dropx(shield);
+            await dropp(shield);
         }
         const helm = u.uarmh;
         if (helm) {
             await pline(`Your ${helm_simple_name(helm)} falls to the ${surface(u.ux, u.uy)}!`);
             await Helmet_off();
-            await dropx(helm);
+            await dropp(helm);
         }
     }
 
@@ -1482,7 +1503,7 @@ async function break_armor() {
                 await pline(`Your boots ${how} off your feet!`);
             }
             await Boots_off();
-            await dropx(boots);
+            await dropp(boots);
         }
     }
     // C :1294–1307 — eyewear cannot stay worn without a head to wear
@@ -1494,7 +1515,7 @@ async function break_armor() {
         if (eyewear.startsWith('pair of ')) eyewear = eyewear.slice(8);
         await pline(`Your ${eyewear} ${vtense(eyewear, 'fall')} off!`);
         await Blindf_off(null);
-        await dropx(blindf);
+        await dropp(blindf);
     }
     // C :1308 — rings stay worn even when no hands
 }

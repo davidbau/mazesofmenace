@@ -21,7 +21,7 @@ import {
     flush_screen, flush_screen_getpos_dirty, pline, You, coord_desc, custompline,
     docrt, docrt_flags, docrtRefresh,
     terrain_glyph,
-    look_shown_at, newsym_force, glyph_is_invisible,
+    look_shown_at, glyph_is_invisible,
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
     glyph_is_monster, GLYPH_MON_MALE_OFF, GLYPH_MON_FEM_OFF,
 } from './display.js';
@@ -68,6 +68,10 @@ import { objectNames } from './objects.js';
 import { an } from './objnam.js';
 import { select_menu_pick_one } from './options.js';
 import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
+import {
+    selection_new, selection_setpoint, selection_force_newsyms,
+    selection_free,
+} from './mklev.js';
 
 export const LOOK_TRADITIONAL = 0;
 export const LOOK_QUICK = 1;
@@ -90,14 +94,17 @@ let getpos_hilite_state = HiliteNormalMap;
 let defaultHiliteState = HiliteNormalMap;
 
 /**
- * C ref: getpos.c getpos_getvalids_selection + selection_force_newsyms —
- * dirty every cell where validf is true so flush_screen(0) reprints them.
+ * C ref: getpos.c getpos_getvalids_selection `:102–115` (C staticfn) —
+ * whole body in C order: null-guard (`:108–109`), then mark every
+ * sel-scoped cell where validf is true (`:111–114`; x from 1, y from 0,
+ * like C). Called twice by getpos_sethilite (old∪new valids) before the
+ * single selection_force_newsyms.
  */
-function force_getvalid_newsyms(validf) {
-    if (typeof validf !== 'function') return;
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            if (validf(x, y)) newsym_force(x, y);
+function getpos_getvalids_selection(sel, validf) {
+    if (!sel || typeof validf !== 'function') return; // C `:108–109`
+    for (let x = 1; x < sel.wid; x++) { // C `:111`
+        for (let y = 0; y < sel.hei; y++) { // C `:112`
+            if (validf(x, y)) selection_setpoint(x, y, sel, 1); // C `:113–114`
         }
     }
 }
@@ -163,18 +170,23 @@ function getpos_toggle_hilite_state() {
  * cursor side-effect.
  */
 export function getpos_sethilite(hilitef, getvalidf) {
-    const old_getvalid = getpos_getvalid;
-    // C `:46` old_map_frame_color; the store inits NO_COLOR (decl.c:820).
+    const old_getvalid = getpos_getvalid; // C `:44`
+    // C `:45` old_map_frame_color; the store inits NO_COLOR (decl.c:820).
     const old_map_frame_color = game.gw?.wsettings?.map_frame_color ?? NO_COLOR;
+    const sel = selection_new(); // C `:46`
     const new_getvalid = typeof getvalidf === 'function' ? getvalidf : null;
-    // C `:49` defaultHiliteState recomputed on every call.
+    // C `:48` defaultHiliteState recomputed on every call.
     defaultHiliteState = game.iflags?.bgcolors ? HiliteBackground : HiliteNormalMap;
     // C `:50–51` a getvalid change resets hilite_state to the default.
     if (new_getvalid !== old_getvalid) {
         getpos_hilite_state = defaultHiliteState;
     }
-    getpos_hilitefunc = typeof hilitef === 'function' ? hilitef : null;
-    getpos_getvalid = new_getvalid;
+    // C `:53` gather the OLD valids (getpos_getvalid still installed).
+    getpos_getvalids_selection(sel, old_getvalid);
+    getpos_hilitefunc = typeof hilitef === 'function' ? hilitef : null; // C `:54`
+    getpos_getvalid = new_getvalid; // C `:55`
+    // C `:56` gather the NEW valids into the same sel.
+    getpos_getvalids_selection(sel, new_getvalid);
     // C `:57–58` store the frame color for the Background state. C home
     // is `gw.wsettings` (wintype.h:258–261); `wdmode` stays unset (tiled
     // mode unsupported) while the frame store is maintained exactly.
@@ -183,13 +195,12 @@ export function getpos_sethilite(hilitef, getvalidf) {
     if (!game.gw) game.gw = {};
     if (!game.gw.wsettings) game.gw.wsettings = { map_frame_color: NO_COLOR };
     game.gw.wsettings.map_frame_color = new_map_frame_color;
-    // C `:60–62` force-newsym the old∪new valid cells (C gathers both
-    // into one selvar; the force_getvalid_newsyms loop is that union).
+    // C `:60–62` one force-newsym over the gathered old∪new cells.
     if (getpos_getvalid !== old_getvalid
         || new_map_frame_color !== old_map_frame_color) {
-        force_getvalid_newsyms(old_getvalid);
-        force_getvalid_newsyms(getpos_getvalid);
+        selection_force_newsyms(sel);
     }
+    selection_free(sel, true); // C `:63` selection_free(sel, TRUE)
 }
 
 /**

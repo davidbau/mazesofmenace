@@ -25,6 +25,28 @@ export function initRng(seed) {
     _rngLog = [];
 }
 
+// C ref: rnd.c rnglist :26-29 — fn→stream table (CORE=0, DISP=1).
+// JS keeps the two isaac64_ctx in game.coreCtx/game.dispCtx; the table
+// carries the fn/index dispatch C's init_isaac64 selects through.
+const rnglist = [
+    { fn: rn2, init: false },                  /* CORE */
+    { fn: rn2_on_display_rng, init: false },   /* DISP */
+];
+
+/*
+ * C ref: rnd.c whichrng :32-40 — index of fn in rnglist, -1 if absent.
+ * C staticfn → module-local (function declarations hoist, so the table
+ * above may cite rn2/rn2_on_display_rng before their definitions).
+ * Sole C caller init_isaac64 (rnd.c:47) is split into initRng (D-3033),
+ * which seeds both streams unconditionally — no live JS caller.
+ */
+function whichrng(fn) {
+    for (let i = 0; i < rnglist.length; ++i)
+        if (rnglist[i].fn === fn)
+            return i;
+    return -1;
+}
+
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }

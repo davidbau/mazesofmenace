@@ -32,7 +32,7 @@ import {
     NON_PM, ismnum, In_mines, RLOC_NOMSG, ALL_TRAPS,
 } from './const.js';
 import { makemon, mkmonmoney, mongets, mkclass, neweshk, set_malign } from './makemon.js';
-import { mksobj_at, mkobj_at, obj_extract_self } from './mkobj.js';
+import { mksobj_at, mkobj_at } from './mkobj.js';
 import {
     mons, monsterNames, vegetarian, is_rider, PM_LICHEN, PM_ACID_BLOB,
     mon_learns_traps,
@@ -47,6 +47,7 @@ import { obj_resists } from './dogmove.js';
 import { in_town } from './hack.js';
 import { rloc } from './teleport.js';
 import { noit_mon_nam } from './do_name.js';
+import { discard_minvent } from './mon.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
 const VEGGY = 3; // objclass.h
@@ -822,11 +823,7 @@ export async function stock_room(shp_indx, sroom) {
                     // ochance 0 → never drops ordinary; quest art deferred
                     obj = next;
                 }
-                // discard_minvent(FALSE) — remove invent from game
-                while (mtmp.minvent) {
-                    const obj = mtmp.minvent;
-                    obj_extract_self(obj);
-                }
+                discard_minvent(mtmp, false); /* C mongone → mon.c:3281. */
                 // m_detach lite: clear resident / map / fmon
                 sroom.resident = null;
                 mtmp.isshk = 0;

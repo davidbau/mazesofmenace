@@ -147,7 +147,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower, dupstr, get_table_option, get_table_str_opt, get_table_int_opt,
+    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower, On_W_tower_level, dupstr, get_table_option, get_table_str_opt, get_table_int_opt,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -155,7 +155,7 @@ import {
     clear_heros_fault,
 } from './region.js';
 import {
-    Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output, monsym,
+    Norep, newsym, newsym_force, impossible, pline, You, flush_screen, nh_delay_output, monsym,
     describe_level, cliparound, map_location, see_nearby_objects, Hallucination,
     glyph_is_cmap, glyph_to_cmap, back_to_glyph, terrain_glyph, remember_shown_glyph,
 } from './display.js';
@@ -725,8 +725,8 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
  * C ref: dungeon.c u_on_rndspot — place hero via updest/dndest after
  * goto_level. After place_lregion, switch_terrain (D-1278; C :1636–1637)
  * so leftover Lev/Fly FROMOUTSIDE from solid rock unblocks. Unconditional
- * (not dest-typ gated like teleds / hurtle_step). Named: On_W_tower_level
- * gate; W-tower bit 2 at goto_level (D-1179).
+ * (not dest-typ gated like teleds / hurtle_step). W-tower bit 2 at
+ * goto_level (D-1179); On_W_tower_level gate is live below (C :1614).
  * stairs.c u_on_sstairs fallback is D-1287. cmd.c makemap_prepost
  * amulet|wiztower flags is D-1288. objnam wish is a separate caller.
  */
@@ -735,10 +735,12 @@ export async function u_on_rndspot(upflag) {
     const was_in_W_tower = !!(upflag & 2);
     const dndest = game.dndest || {};
     const updest = game.updest || {};
-    if (was_in_W_tower && dndest.nlx) {
-        // On_W_tower_level gate deferred — use exclusion region when present
+    /* C dungeon.c:1614 — stay inside the Wizard's tower when feasible;
+       the tower branch keys off the destination level, not nlx presence
+       (nlx==0 on-tower still takes it; place_lregion !lx → whole level). */
+    if (was_in_W_tower && On_W_tower_level(game.u?.uz)) {
         await place_lregion(
-            dndest.nlx, dndest.nly, dndest.nhx, dndest.nhy,
+            dndest.nlx | 0, dndest.nly | 0, dndest.nhx | 0, dndest.nhy | 0,
             0, 0, 0, 0, LR_DOWNTELE, null,
         );
     } else if (up) {
@@ -4117,7 +4119,7 @@ function splev_discard_default_minvent(mtmp) {
         // with ochance 0, so they stay for discard_minvent → obfree.
         obj = next;
     }
-    while (mtmp.minvent) obj_extract_self(mtmp.minvent);
+    discard_minvent(mtmp, true); /* C `:2181` — canonical; was extract-only. */
 }
 
 /** Apply CENTER-aligned des.map string; sets game.splev_* origin/size. */
@@ -5179,6 +5181,16 @@ export function lspo_non_diggable(sel) {
  */
 export function lspo_non_passwall(sel) {
     set_wallprop_in_selection(sel, W_NONPASSWALL);
+}
+
+/**
+ * C ref: sp_lev.c sel_set_wallify `:5954–5958` (C staticfn) — wallify the
+ * single cell (x, y). The `genericptr_t arg UNUSED` param is dropped (sel
+ * callback idiom, cf. sel_set_wall_property). Dead in C too: only the
+ * forward declaration (:89) and this definition reference it.
+ */
+function sel_set_wallify(x, y) {
+    wallify_map(x, y, x, y);
 }
 
 // C ref: sp_lev.c lspo_wall_property static tables `:5878–5881`.
@@ -28299,7 +28311,7 @@ async function makelevel_ordinary() {
                 mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
                 // C: if (!noteleport && !rn2(3)) makevtele();
                 if (!g.level.flags.noteleport && !rn2(3))
-                    await makeniche(TELEP_TRAP);
+                    await makevtele();
             };
             if (check_room(vx, vw, vy, vh, true)) {
                 await fill_vault();
@@ -30167,6 +30179,18 @@ export function selection_setpoint(x, y, sel, c) {
     } else {
         sel.bounds_dirty = true; // C `:203-204`
         sel.pts.delete(key); // C `:207` map = c + 1
+    }
+}
+
+// C ref: selvar.c selection_force_newsyms `:801-810` — whole body in C
+// order: newsym_force every set cell of the sel-scoped rect (x from 1,
+// y from 0, like C; no NULL guard — C marks it NONNULLARG1). Sole C
+// caller is getpos_sethilite (getpos.c:62), wired via getpos.js.
+export function selection_force_newsyms(sel) {
+    for (let x = 1; x < sel.wid; x++) { // C `:806`
+        for (let y = 0; y < sel.hei; y++) { // C `:807`
+            if (selection_getpoint(x, y, sel)) newsym_force(x, y); // C `:808-809`
+        }
     }
 }
 
@@ -32407,13 +32431,20 @@ function do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, _rtype, special, i
     }
 }
 
+// C ref: mklev.c mkroom_cmp() `:60-69` — qsort comparator sorting rooms
+// left-to-right on lx; C `:215` passes it to qsort from sort_rooms().
+function mkroom_cmp(x, y) {
+    const xlx = x?.lx || 0, ylx = y?.lx || 0; // JS guard: C sorts valid structs only
+    if (xlx < ylx) return -1;
+    return (xlx > ylx) ? 1 : 0; // C: return (x->lx > y->lx)
+}
+
 // C ref: mklev.c sort_rooms()
 function sort_rooms() {
     const g = game;
     const n = g.level.nroom;
     const oldToNew = new Array(n).fill(0);
-    const liveRooms = g.level.rooms.slice(0, n)
-        .sort((a, b) => (a?.lx || 0) - (b?.lx || 0));
+    const liveRooms = g.level.rooms.slice(0, n).sort(mkroom_cmp); // C :215 qsort(..., mkroom_cmp)
     g.level.rooms = liveRooms;
     if (n < MAXNROFROOMS) g.level.rooms[n] = { hx: -1 };
     for (let i = 0; i < n; i++) {
@@ -33176,6 +33207,12 @@ function place_niche(aroom) {
     return { dy, xx, yy };
 }
 
+// C ref: mklev.c makevtele() `:821-824` — vault escape niche with a
+// teleport trap; sole C caller makelevel() `:1333`.
+async function makevtele() {
+    await makeniche(TELEP_TRAP);
+}
+
 async function makeniche(trap_type) {
     const g = game;
     let vct = 8;
@@ -33297,6 +33334,17 @@ function mkportal(x, y, todnum, todlevel) {
     ttmp.dst = { dnum: todnum | 0, dlevel: todlevel | 0 };
 }
 
+// C ref: mklev.c pos_to_room() `:1677-1687` — scan svr.rooms for the room
+// containing (x, y); NULL (0) when none. Sole C caller place_branch() `:1714`.
+function pos_to_room(x, y) {
+    const g = game;
+    for (let i = 0; i < g.level.nroom; i++) {
+        const curr = g.level.rooms[i];
+        if (curr && inside_room(curr, x, y)) return curr; // JS guard: C rooms are valid structs
+    }
+    return null; // C: return (struct mkroom *) 0
+}
+
 function place_branch(branchp, x = 0, y = 0) {
     const g = game;
     // C ref: mklev.c place_branch — early-out if none or already placed
@@ -33312,6 +33360,8 @@ function place_branch(branchp, x = 0, y = 0) {
             g.made_branch = true;
             return;
         }
+    } else {
+        pos_to_room(x, y); // C :1713-1714 — (void) pos_to_room(x, y); pure scan, result discarded
     }
 
     const on_end1 = (branchp.end1?.dnum === g.u?.uz?.dnum

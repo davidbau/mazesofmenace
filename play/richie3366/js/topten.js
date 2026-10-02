@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { yyyymmdd } from './calendar.js';
-import { deepest_lev_reached, depth, ordin, strNsubst, lcase } from './hacklib.js';
+import { deepest_lev_reached, depth, ordin, strNsubst, lcase, onlyspace } from './hacklib.js';
 import {
     genders, aligns, roles, str2role, str2race,
     rank_of, rank_to_xlev,
@@ -62,9 +62,8 @@ function highc_first(s) {
     return t[0].toUpperCase() + t.slice(1);
 }
 
-function onlyspace(s) {
-    return !String(s || '').trim();
-}
+/* onlyspace: canonical import from hacklib.js (hacklib.c:419–425) — the
+   local `!trim()` clone also stripped \n\r\f\v, which C counts non-space. */
 
 function observable_depth(lev) {
     return depth(lev);
