@@ -10,7 +10,7 @@ import { peace_minded, set_malign, propagate } from './makemon.js';
 import {
     OBJ_FLOOR, OBJ_CONTAINED, SHOPBASE, ROOMOFFSET, ONAME_BONES,
     DEFUNCT_MONSTER, NON_PM, TRICKED, LOST_NONE, has_oname, has_omonst,
-    has_mgivenname, ismnum, RIGHT_HANDED,
+    has_mgivenname, ismnum, RIGHT_HANDED, EBONES,
 } from './const.js';
 import { FOOD_CLASS } from './objects.js';
 import { save_track, rest_track } from './track.js';
@@ -34,7 +34,7 @@ import { no_bones_level, done } from './end.js';
 import { sanitize_engravings, rest_engravings } from './engrave.js';
 import { rest_worm } from './worm.js';
 import { rest_rooms } from './mkroom.js';
-import { delete_convertedfile } from './files.js';
+import { delete_convertedfile, compress_bonesfile } from './files.js';
 import { mons, monsterNames, SPECIAL_PM } from './monsters.js';
 import { cant_revive } from './zap.js';
 import { rest_regions } from './region.js';
@@ -42,7 +42,7 @@ import { load_exclusions } from './dungeon.js';
 import { place_monster } from './steed.js';
 import { reset_oattached_mids } from './restore.js';
 
-const BONES_VFS_PREFIX = 'bones/';
+export const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 const STATUE = objectNames.indexOf('STATUE');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
@@ -544,6 +544,19 @@ export function clear_bones_ids() {
 }
 
 /**
+ * C ref: bones.c free_ebones `:832–839` — release the ghost's ebones bag
+ * and null the slot. `free()` is GC in JS; the `= 0` free sentinel matches
+ * `dealloc_mextra` (mon.js), which clears `x.ebones` the same way.
+ * C has no live callers (decl-only extern.h:260); the sfctool.c:1050 dup
+ * body is the standalone tool, not the game.
+ */
+export function free_ebones(mtmp) {
+    if (mtmp.mextra && EBONES(mtmp)) {
+        mtmp.mextra.ebones = 0;
+    }
+}
+
+/**
  * C ref: restore.c restmonchn ghostly `:399–416` — next_ident per mon,
  * then propagate(mndx, TRUE, ghostly) on the true form (cham, else the
  * saved mnum == monsndx(data)); a species that can no longer be born
@@ -702,9 +715,11 @@ function getlev_bones(payload) {
 /**
  * C ref: bones.c getbones `:629–756`. Rule #2 analogue of the NHFILE:
  * open_bonesfile → frozen-VFS read; validate() → JSON parse + payload
- * version; Sfi_char bonesid → payload.bonesid; close_nhfile and
- * compress_bonesfile have nothing to do on the VFS. Wizard debugpline
- * ("Abandoning bones", "Removing defunct monster") is debug-file only.
+ * version; Sfi_char bonesid → payload.bonesid; close_nhfile has nothing
+ * to do on the VFS (no handle). compress_bonesfile is live at the
+ * three C sites (`:673` Get bones, `:688` bonesid-length, `:741`
+ * Unlink bones). Wizard debugpline ("Abandoning bones", "Removing
+ * defunct monster") is debug-file only.
  * @returns {Promise<number>} ok — mklev returns when nonzero
  */
 export async function getbones() {
@@ -772,6 +787,7 @@ export async function getbones() {
             ok = 1;
             if (wizard) {
                 if ((await yn_function('Get bones?', 'yn', 'n')) === 'n') {
+                    compress_bonesfile(); // C `:673` (close above named: no handle)
                     ps.reading_bonesfile = 0;
                     return 0;
                 }
@@ -780,6 +796,7 @@ export async function getbones() {
             // (40) → abandon without reading the level.
             const oldbonesid = String(payload.bonesid ?? '');
             if (oldbonesid.length + 1 > 40) {
+                compress_bonesfile(); // C `:688` (close above named: no handle)
                 /* ToDo: maybe unlink these problematic bones? */
                 ps.reading_bonesfile = 0;
                 return 0;
@@ -827,6 +844,7 @@ export async function getbones() {
 
         if (wizard) {
             if ((await yn_function('Unlink bones?', 'yn', 'n')) === 'n') {
+                compress_bonesfile(); // C `:741`
                 return ok;
             }
         }

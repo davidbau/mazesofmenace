@@ -678,6 +678,14 @@ export function cmap_to_glyph(cmap_idx) {
     return NO_GLYPH;
 }
 
+/*
+ * C display.c:3796–3800 fn_cmap_to_glyph — C++-compat function version
+ * of the display.h macro (Qt sources); 0 C refs. Whole body.
+ */
+export function fn_cmap_to_glyph(cmap) {
+    return cmap_to_glyph(cmap);
+}
+
 /* C defsym.h PCHAR S_sw_tl is the first swallow cmap after S_goodpos. */
 export const S_sw_tl = S_goodpos + 1;
 /* C defsym.h:221–228 — S_sw_tl..S_sw_br consecutive (88–95). */
@@ -5346,6 +5354,10 @@ export function newsym_force(x, y) {
 
 // ── newsym ──
 export function newsym(x, y) {
+    // C display.c:928–929 — don't produce map output when the level is
+    // in a state of flux (in_mklev/saving/restoring; same gate as
+    // feel_location :754–758 and show_glyph).
+    if (suppress_map_output()) return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
@@ -5353,6 +5365,18 @@ export function newsym(x, y) {
     if (game.u?.uswallow) {
         if (game.u.ux === x && game.u.uy === y) display_self();
         return;
+    }
+
+    // C display.c:943–948 — Underwater (u.uinwater, youprop.h:279) off
+    // the water level: skip unless <x,y> is an adjacent pool, lava or
+    // ice square (next2u ≡ distu <= 2, you.h:558; dist2 in-file import).
+    {
+        const u = game.u || {};
+        if ((u.uinwater | 0) && !Is_waterlevel(u.uz)
+            && (!(is_pool_or_lava_disp(x, y) || is_ice_disp(x, y))
+                || !(dist2(x | 0, y | 0, u.ux | 0, u.uy | 0) <= 2))) {
+            return;
+        }
     }
 
     if (game.u?.ux === x && game.u?.uy === y) {
@@ -5791,9 +5815,10 @@ export async function curs_on_u() {
  * (`cmd.c:1819` `C('r')` "redraw screen", IFBURIED | GENERALCMD |
  * CMD_INSANE): docrt() then return ECMD_OK. Async: `docrt` awaits
  * (nhgetch reach), so the int C body rides one await plus the status.
- * Named: `cmd.c:1819` ext-table wiring (JS ext lookup has no redraw row)
- * + `cmd.c:3917` redraw_cmd ef_funct check (`js/getpos.js:97` keeps its
- * local C('r')/C('l') key clone).
+ * Named: `cmd.c:1819` ext-table wiring (JS ext lookup has no redraw row).
+ * `cmd.c:3917` redraw_cmd ef_funct check is live at both C call sites
+ * (js/getpos.js redraw_cmd + js/lock.js getdir_is_redraw, both via live
+ * cmdbind_get `txt === 'redraw'`).
  */
 export async function doredraw() {
     // C `:1696` docrt().

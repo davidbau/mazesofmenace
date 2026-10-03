@@ -3,7 +3,7 @@
 //        poisoned / poisontell, adjabil / role_abil (partial).
 
 import { game } from './gstate.js';
-import { strstri } from './hacklib.js';
+import { strstri, strncmpi } from './hacklib.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import {
     FROMEXPER,
@@ -54,13 +54,14 @@ import {
     A_CG_HELM_OFF,
     LL_ALIGNMENT,
     WEAK,
+    ismnum,
 } from './const.js';
 import { objectNames } from './objects.js';
-import { pline, You_feel, impossible, Hallucination, see_monsters } from './display.js';
+import { pline, pline_The, You_feel, impossible, Hallucination, see_monsters, shieldeff } from './display.js';
 import { aligns } from './roles.js';
-import { make_confused } from './potion.js';
+import { make_confused, Half_gas_damage } from './potion.js';
 import { livelog_printf } from './pline.js';
-import { ysimple_name } from './objnam.js';
+import { ysimple_name, the } from './objnam.js';
 import { carrying } from './hack.js';
 import { what_gives, bare_artifactname, confers_luck, u_wield_art, is_art, retouch_equipment } from './artifact.js';
 import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
@@ -85,7 +86,9 @@ import {
     monsterNames,
 } from './generated/monsters_data.js';
 import { ART_OGRESMASHER, ART_EYES_OF_THE_OVERWORLD } from './generated/artifacts_data.js';
-import { adj_erinys } from './monsters.js';
+import { adj_erinys, G_UNIQ, mons, haseyes } from './monsters.js';
+import { name_to_mon } from './mondata.js';
+import { type_is_pname } from './do_name.js';
 import { uasmon_maxStr } from './polyself.js';
 import { summon_furies } from './makemon.js';
 
@@ -400,11 +403,12 @@ export async function losestr(num, knam, k_format) {
 }
 
 /**
- * C ref: attrib.c poisoned() — attack/trap poison on hero.
- * Arms: resist early-out; rn2(fatal) gate; instant-kill / HP / attrib-loss;
- * done(POISONING|DIED) when uhp<1; encumber_msg.
- * Named omissions: name_to_mon G_UNIQ / the() killer-prefix polish;
- * Half_gas_damage towel; Fixed_abil via adjattrib.
+ * C ref: attrib.c poisoned() `:317-408` — attack/trap poison on hero.
+ * Arms in C order: poisoned-message; resist early-out (blast shieldeff);
+ * G_UNIQ / the() killer-prefix polish; rn2(fatal) gate; instant-kill /
+ * HP (blast/cloud towel halving) / attrib-loss; done(POISONING|DIED)
+ * when uhp<1; encumber_msg.
+ * Named omissions: none — whole C body live.
  * @param {string} reason
  * @param {number} typ
  * @param {string} pkiller
@@ -425,19 +429,31 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
     const Poison_resistance = !!((u.HPoison_resistance | 0)
         || (u.EPoison_resistance | 0) || u.Poison_resistance);
     if (Poison_resistance) {
-        // shieldeff for blast deferred
-        await pline("The poison doesn't seem to affect you.");
+        // C attrib.c:339-340 — blast shield pyrotechnics even when resisted.
+        if (blast)
+            await shieldeff(u.ux, u.uy);
+        await pline_The("poison doesn't seem to affect you.");
         return;
     }
 
-    // Killer prefix: G_UNIQ / the()/an()/a() polish deferred — keep C default
+    // C attrib.c:346-350 — suppress killer prefix if it already has one.
     let kprefix = KILLED_BY_AN;
     let killer = pkiller || 'poison';
-    const kl = String(killer).toLowerCase();
-    if (kl.startsWith('the ') || kl.startsWith('an ') || kl.startsWith('a ')) {
+    const kpmon = name_to_mon(killer, null);
+    if (ismnum(kpmon) && (((mons(kpmon)?.geno | 0) & G_UNIQ) !== 0)) {
+        kprefix = KILLED_BY;
+        if (!type_is_pname(mons(kpmon)))
+            killer = the(killer);
+    } else if (!strncmpi(killer, 'the ', 4) || !strncmpi(killer, 'an ', 3)
+               || !strncmpi(killer, 'a ', 2)) {
+        /*[ does this need a plural check too? ]*/
         kprefix = KILLED_BY;
     }
 
+    /*
+     * FIXME:
+     *  this operates on u.uhp[max] even when hero is polymorphed....
+     */
     // C: i = !fatal ? 1 : rn2(fatal + (thrown_weapon ? 20 : 0));
     const i = !fatal ? 1 : rn2((fatal | 0) + (thrown_weapon ? 20 : 0));
     if (i === 0 && (typ | 0) !== A_CHA) {
@@ -447,7 +463,7 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
             u.uhp = -1;
             if (game.flags) game.flags.botl = true;
             if (game.disp) game.disp.botl = true;
-            await pline('The poison was deadly...');
+            await pline_The('poison was deadly...');
         } else {
             const { setuhpmax } = await import('./exper.js');
             const { losehp } = await import('./hack.js');
@@ -465,9 +481,12 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
         }
     } else if (i > 5) {
         const { losehp } = await import('./hack.js');
+        const cloud = reason === 'gas cloud';
+
         // HP damage; more likely—but less severe—with missiles
         let loss = thrown_weapon ? rnd(6) : rn1(10, 6);
-        // Half_gas_damage (worn towel) for blast/cloud deferred
+        if ((blast || cloud) && Half_gas_damage()) // worn towel
+            loss = Math.trunc((loss + 1) / 2);
         losehp(loss, killer, kprefix);
         /* C attrib.c:391 losehp is noreturn when fatal (done(DIED) inside);
            drain the deferred death here so the trailing done() below —
@@ -1197,10 +1216,10 @@ function innately(propField) {
 }
 
 /**
- * C ref: attrib.c is_innate(propidx)
- * Named omissions: knight JUMPING extrinsic override; !haseyes BLINDED /
- * BLND_RES FROMFORM arms beyond H-field; lycanthrope DRAIN_RES only when
- * ulycn set.
+ * C ref: attrib.c is_innate(propidx) `:880-900` — whole C body in C order:
+ * DRAIN_RES lycn / FAST / innately / knight-JUMPING / eyeless-BLIND +
+ * BLND_RES-FROMFORM arms.
+ * Named omissions: none.
  */
 export function is_innate(propidx) {
     if (propidx === DRAIN_RES && (game.u?.ulycn | 0) > 0) return FROM_LYCN;
@@ -1216,6 +1235,11 @@ export function is_innate(propidx) {
     ) {
         return FROM_ROLE_REASON;
     }
+    // C attrib.c:896-898 — eyeless form is innately blind; BLND_RES with
+    // FROMFORM (dead in C: innately() above already returned FROM_FORM).
+    if ((propidx === BLINDED && !haseyes(game.youmonst?.data))
+        || (propidx === BLND_RES && (((game.u?.HBlnd_resist | 0) & FROMFORM) !== 0)))
+        return FROM_FORM_REASON;
     return FROM_NONE;
 }
 

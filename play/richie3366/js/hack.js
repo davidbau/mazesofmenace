@@ -48,7 +48,7 @@ import {
 } from './display.js';
 import { gethungry, morehungry, is_fainted, maybe_finished_meal } from './eat.js';
 import { unconscious, enexto, goodpos, rloc_to, rloco, random_teleport_level } from './teleport.js';
-import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary } from './mon.js';
+import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary, wake_msg } from './mon.js';
 import { recalc_block_point, cansee } from './vision.js';
 import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly, G_UNIQ } from './monsters.js';
 import {
@@ -128,6 +128,10 @@ const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
 const WAN_DIGGING_OTYP = objectNames.indexOf('WAN_DIGGING');
 const WATER_WALKING_BOOTS_OTYP = objectNames.indexOf('WATER_WALKING_BOOTS');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
+const PM_SOLDIER = monsterNames.indexOf('PM_SOLDIER');
+const PM_SERGEANT = monsterNames.indexOf('PM_SERGEANT');
+const PM_LIEUTENANT = monsterNames.indexOf('PM_LIEUTENANT');
+const PM_CAPTAIN = monsterNames.indexOf('PM_CAPTAIN');
 /** C hack.h invlet_basic — a-zA-Z slots; overflow '#' is extra. */
 const INVLET_BASIC = 52;
 const CORPSE = objectNames.indexOf('CORPSE');
@@ -1861,21 +1865,31 @@ async function maybe_wail() {
  * C ref: hack.c losehp() — subtract HP (or mh when Upolyd).
  * Fatal: set killer + gameover + `_losehp_needs_done` so callers must not
  * continue (C `done(DIED)` is noreturn). Callers in async paths await
- * `finish_losehp_done` from end.js; showdamage / rehumanize deferred.
+ * `finish_losehp_done` from end.js. C `:4269`/:4280 showdamage(n) capture
+ * into `_losehp_showdamage` and the Upolyd mh<1 `:4276` rehumanize arm
+ * sets `_losehp_needs_rehumanize` (C returns to normal form — callers
+ * continue); both drain first inside `finish_losehp_done` /
+ * `finish_maybe_wail` (C order: showdamage precedes the branch action).
  * Low-HP `maybe_wail` sets `_needs_maybe_wail` — callers must
  * `await finish_maybe_wail()` (C blocks inside losehp on You_hear).
  */
 /**
  * C ref: hack.c showdamage `:4247–4253` — `[HP -dmg, uhp left]` when
  * iflags.showdamage (default off). Async: JS pline awaits. Wired:
- * mdamageu (mhitu.js); losehp's C `:4269`/:4280 sites stay deferred —
- * JS losehp is sync, async conversion cascades (D-3105).
+ * mdamageu (mhitu.js) + losehp's C `:4269`/:4280 sites via
+ * `_losehp_showdamage` queue + `finish_losehp_showdamage` (JS losehp is
+ * sync — async conversion cascades to 124 sites, D-3105). `hpLeft`
+ * carries the at-losehp HP snapshot for the deferred sites (C prints
+ * post-decrement HP); live callers pass nothing and read live HP.
  */
-export async function showdamage(dmg) {
+export async function showdamage(dmg, hpLeft = null) {
     if (!game.iflags?.showdamage || !dmg) return; // C guard
     const u = game.u || {};
     // C `pline("[HP %i, %i left]", -dmg, Upolyd ? u.mh : u.uhp)`
-    await pline(`[HP ${-(dmg | 0)}, ${Upolyd(u) ? (u.mh | 0) : (u.uhp | 0)} left]`);
+    const left = (hpLeft === null || hpLeft === undefined)
+        ? (Upolyd(u) ? (u.mh | 0) : (u.uhp | 0))
+        : (hpLeft | 0);
+    await pline(`[HP ${-(dmg | 0)}, ${left} left]`);
 }
 
 export function losehp(n, knam, k_format = KILLED_BY) {
@@ -1892,16 +1906,20 @@ export function losehp(n, knam, k_format = KILLED_BY) {
 
     if (Upolyd(u)) {
         u.mh = (u.mh || 0) - n;
+        // C `:4269` showdamage(n) — deferred: capture post-decrement mh
+        // (C prints before the max clamp; the clamp never lowers current).
+        if (game.iflags?.showdamage && n) {
+            if (!game._losehp_showdamage) game._losehp_showdamage = [];
+            game._losehp_showdamage.push({ dmg: n, hp: u.mh | 0 });
+        }
         if ((u.mhmax || 0) < (u.mh || 0)) u.mhmax = u.mh;
         if ((u.mh || 0) < 1) {
-            // rehumanize deferred — treat as fatal for now
-            u.mh = 0;
-            if (!game.program_state) game.program_state = {};
-            game.program_state.gameover = true;
-            game._losehp_needs_done = true;
-            if (!game.killer) game.killer = { name: '', format: 0 };
-            game.killer.name = knam || '';
-            game.killer.format = k_format;
+            // C `:4275–4276` rehumanize() — return to normal form, NOT
+            // fatal (C sets no killer/gameover here). Async in JS
+            // (pline/`--More--`); deferred like done/wail — drained by
+            // `finish_losehp_rehumanize` inside both finishers. C does not
+            // clamp mh; callers continue (C rehumanize returns).
+            game._losehp_needs_rehumanize = true;
         } else if (n > 0 && (u.mh | 0) * 10 < (u.mhmax | 0) && Unchanging(u)) {
             game._needs_maybe_wail = true;
         }
@@ -1909,6 +1927,11 @@ export function losehp(n, knam, k_format = KILLED_BY) {
     }
 
     u.uhp = (u.uhp || 0) - n;
+    // C `:4280` showdamage(n) — deferred like the `:4269` site.
+    if (game.iflags?.showdamage && n) {
+        if (!game._losehp_showdamage) game._losehp_showdamage = [];
+        game._losehp_showdamage.push({ dmg: n, hp: u.uhp | 0 });
+    }
     if ((u.uhp || 0) > (u.uhpmax || 0)) u.uhpmax = u.uhp;
     // C hack.c losehp: do not clamp uhp on fatal — leave negative so bot()
     // no-ops when uhp==-1 (exact overkill) and prior botl stays through the
@@ -1928,10 +1951,45 @@ export function losehp(n, knam, k_format = KILLED_BY) {
 }
 
 /**
+ * C ref: hack.c losehp `:4269`/:4280 showdamage(n) (pline may `--More--`).
+ * Drains the `_losehp_showdamage` queue in capture order with the
+ * at-losehp HP snapshots. Runs first inside both finishers (C prints
+ * showdamage before the branch action).
+ */
+export async function finish_losehp_showdamage() {
+    const q = game._losehp_showdamage;
+    if (!q || q.length === 0) return;
+    game._losehp_showdamage = [];
+    for (const { dmg, hp } of q) {
+        await showdamage(dmg, hp);
+    }
+}
+
+/**
+ * C ref: hack.c losehp `:4275–4276` rehumanize() (pline may `--More--`).
+ * Lazy polyself import: polyself.js statically imports hack.js (D-2349),
+ * so no static back-edge. If rehumanize newly dies (C noreturn via
+ * done), drop done/wail flags set by JS-continued calls C never reached.
+ */
+export async function finish_losehp_rehumanize() {
+    if (!game._losehp_needs_rehumanize) return;
+    game._losehp_needs_rehumanize = false;
+    const wasGameover = !!game.program_state?.gameover;
+    const { rehumanize } = await import('./polyself.js');
+    await rehumanize();
+    if (!wasGameover && game.program_state?.gameover) {
+        game._losehp_needs_done = false;
+        game._needs_maybe_wail = false;
+    }
+}
+
+/**
  * C ref: hack.c losehp → maybe_wail (You_hear / pline may `--More--`).
  * Call after losehp when `_needs_maybe_wail` may be set.
  */
 export async function finish_maybe_wail() {
+    await finish_losehp_showdamage();
+    await finish_losehp_rehumanize();
     if (!game._needs_maybe_wail) return;
     game._needs_maybe_wail = false;
     await maybe_wail();
@@ -2937,9 +2995,9 @@ export async function domove_fight_web(x, y) {
  * plines; DELPHI oracle verbalize (peaceful welcome vs hostile taunt,
  * msg_given FALSE only with no oracle); TEMPLE→intemple; rtype→OROOM +
  * has_* clear; COURT/SWAMP/MORGUE/ZOO wake `!Stealth && !rn2(3)`
- * (wake_msg pline deferred).
- * Named omissions: BARRACKS monstinroom occupied vs abandoned;
- * wake_msg canseemon text.
+ * (wake_msg then sleep clear, C `:3773`).
+ * BARRACKS military iff a soldier is in the room (C `:3702–3710`),
+ * else abandoned. Named omissions: none.
  */
 /**
  * C ref: hack.c monstinroom (staticfn) — first live mon of type mdat
@@ -3051,8 +3109,15 @@ export async function check_special_room(newlev) {
             await pline('You enter an anthole!');
             break;
         case BARRACKS:
-            // monstinroom soldier check deferred — treat as occupied
-            await pline('You enter a military barracks!');
+            // C `:3702–3710`: military iff a soldier is in the room.
+            if (monstinroom(PM_SOLDIER, roomno)
+                || monstinroom(PM_SERGEANT, roomno)
+                || monstinroom(PM_LIEUTENANT, roomno)
+                || monstinroom(PM_CAPTAIN, roomno)) {
+                await pline('You enter a military barracks!');
+            } else {
+                await pline('You enter an abandoned barracks.');
+            }
             break;
         case DELPHI: {
             // C: monstinroom(PM_ORACLE); peaceful → welcome, hostile →
@@ -3111,7 +3176,7 @@ export async function check_special_room(newlev) {
                     // C: roomno (0-based) != levl[].roomno (same compare)
                     if (roomno !== mroom) continue;
                     if (!Stealth && !rn2(3)) {
-                        // wake_msg deferred — still clear sleep
+                        await wake_msg(mtmp, false); // C `:3773`
                         mtmp.msleeping = 0;
                     }
                 }

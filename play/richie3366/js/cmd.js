@@ -1520,6 +1520,16 @@ export async function dosh_core() {
 }
 
 /**
+ * C ref: cmd.c dummyfunction `:5698–5702` (staticfn) — whole body:
+ * return ECMD_CANCEL. C declares it at cmd.c:151 with no live call
+ * sites (placeholder command function); ported for coverage.
+ * @returns {number} ECMD_CANCEL
+ */
+export function dummyfunction() {
+    return ECMD_CANCEL; // C `:5701`
+}
+
+/**
  * C ref: cmd.c get_changed_key_binds `:2235–2287` [campaign 4/7] — BIND= lines
  * for changed key bindings: user-rebound commands plus default-key commands
  * left unbound. sbuf non-null appends (the #saveoptions path); sbuf null

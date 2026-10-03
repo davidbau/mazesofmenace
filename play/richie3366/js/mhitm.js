@@ -5650,7 +5650,9 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         }
     }
 
-    if (!damage) return hitflags === M_ATTK_AGR_DIED ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    // C mhitm.c:1070–1071 — zero leftover returns hitflags as-is (MISS
+    // when unset, e.g. a negated AD_STCK fall-through), not HIT.
+    if (!damage) return hitflags;
 
     mdef.mhp -= damage;
     if (mdef.mhp < 1) {

@@ -22,12 +22,12 @@ import {
     losehp, maybe_half_phys, nomul, impact_disturbs_zombies, finish_maybe_wail,
     switch_terrain, in_rooms, stop_occupation, You_hear,
     Passes_walls_prop, check_special_room, is_pool, is_lava, is_moat,
-    check_capacity,
+    check_capacity, test_move,
 } from './hack.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
     POTION_CLASS, SCROLL_CLASS, RING_CLASS, VENOM_CLASS, objectNames, objectNameStrs,
-    is_sword, is_axe,
+    is_sword, is_axe, is_pick,
 } from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
@@ -58,6 +58,7 @@ import {
     GETOBJ_ALLOWCNT,
     WT_TOOMUCH_DIAGONAL,
     MAGIC_PORTAL, VIBRATING_SQUARE, FIRE_TRAP, NO_TRAP_FLAGS, is_pit, is_hole,
+    TEST_MOVE,
 } from './const.js';
 import { obj_resists, dogfood } from './dogmove.js';
 import {
@@ -85,7 +86,7 @@ import {
 } from './generated/monsters_data.js';
 import {
     xname, killer_xname, singular, an, An, the, The, vtense, doname, thesimpleoname,
-    makeplural, otense, mshot_xname, corpse_xname,
+    makeplural, otense, mshot_xname, corpse_xname, distant_name,
 } from './objnam.js';
 import { m_at, wakeup, seemimic, wake_nearto, monnear, m_respond, setmangry, bad_rock, may_passwall } from './mon.js';
 import { distmin } from './hacklib.js';
@@ -2478,6 +2479,37 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
             hitmon = mon;
             break;
         }
+        // C zap.c bhit :4095–4119 — limit range of a thrown ball so the
+        // hero won't make an invalid move. The non-tethered THROWN_WEAPON
+        // path inlines bhit here, so the stops live here too, in C order
+        // after the monster stop (js/zap.js:6469 holds the bhit-home copy).
+        // A boulder stops it with a message; a chained uball jerks to a
+        // halt when the hero can't follow (test_move from the previous
+        // square) or over a Sokoban pit/hole. range is C range.
+        if (range > 0 && obj && (obj.otyp | 0) === HEAVY_IRON_BALL) {
+            const bobj = sobj_at(BOULDER, x, y);
+            if (bobj) {
+                if (cansee(x, y)) {
+                    await pline(`${The(distant_name(obj, xname))} hits ${an(xname(bobj))}.`);
+                }
+                range = 0;
+            } else if (obj === u.uball) {
+                if (!await test_move(x - dx, y - dy, dx, dy, TEST_MOVE)) {
+                    /* nb: it didn't hit anything directly */
+                    if (cansee(x, y)) {
+                        await pline(`${The(distant_name(obj, xname))} jerks to an abrupt halt.`);
+                    }
+                    range = 0;
+                } else if (game.level?.flags?.sokoban_rules || game.Sokoban) {
+                    // C: Sokoban = level.flags.sokoban_rules (trap.js:582)
+                    const t = t_at(x, y);
+                    if (t && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
+                        /* hero falls into the trap, so ball stops */
+                        range = 0;
+                    }
+                }
+            }
+        }
     }
     }
     // C throwit :1680–1682 — after bhit so ux,uy are correct
@@ -2543,14 +2575,19 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
             return;
         }
     }
-    // C: Splash/Plop before flooreffects when landing in pool/lava
+    // C dothrow.c throwit :1793–1801 — !Deaf && !Underwater pool/lava
+    // landing: Soundeffect(se_splash, 50) then Splash!/Plop! before
+    // flooreffects (sndprocs edge is cycle-free; seffects is data-leaf).
     {
         const { is_pool, is_lava } = await import('./hack.js');
         const { weight } = await import('./mkobj.js');
         const { WT_SPLASH_THRESHOLD } = await import('./const.js');
+        const { Soundeffect } = await import('./sndprocs.js');
+        const { se_splash } = await import('./generated/seffects_data.js');
         if (!Deaf() && !game.u?.Underwater
             && (is_pool(x, y)
                 || (is_lava(x, y) && !is_flammable(obj)))) {
+            Soundeffect(se_splash, 50);
             await pline(
                 (weight(obj) > WT_SPLASH_THRESHOLD) ? 'Splash!' : 'Plop!',
             );
@@ -2565,23 +2602,40 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
         }
     }
     // C dothrow.c throwit :1808 — obj no longer held between flooreffects
-    // and the shk pick-snatch (named omit, is_pick/mpickobj) / snuff arm.
+    // and the shk pick-snatch / snuff arm.
     {
         const { obj_no_longer_held } = await import('./do.js');
         await obj_no_longer_held(obj);
     }
+    // C dothrow.c throwit :1809–1817 — a pick landing at a shopkeeper's
+    // square is snatched: bill it when the hero shops or it is unpaid,
+    // then mpickobj (may merge and free obj). hitmon is C mon here —
+    // bhit stopped at it and throwit_mon_hit missed (x,y already moved
+    // onto hitmon above, like C gb.bhitpos).
+    if (hitmon && hitmon.isshk && is_pick(obj)) {
+        if (cansee(x, y)) {
+            await pline(`${Monnam(hitmon)} snatches up ${the(xname(obj))}.`);
+        }
+        if (u.ushops || obj.unpaid) {
+            await check_shop_obj(obj, x, y, false);
+        }
+        mpickobj(hitmon, obj); /* may merge and free obj */
+        throwit_return(true);
+        return;
+    }
     // C dothrow.c throwit :1818 — land snuff after flooreffects (and
-    // pick-snatch, named) before ship_object. Candles / candelabrum
+    // pick-snatch) before ship_object. Candles / candelabrum
     // only, not snuff_lit. throwit_mon_hit snuffs only when mon!=NULL
     // (D-1313); miss-land never hits that helper. mthrowu :942 is D-1334.
     {
         const { snuff_candle } = await import('./apply.js');
         await snuff_candle(obj);
     }
-    // C: !mon && ship_object(obj, bhitpos, FALSE) before place
+    // C dothrow.c throwit :1819–1822 — !mon && ship_object before place
+    // (a missed monster keeps the landing local; no ship draft).
     {
         const { ship_object, container_impact_dmg } = await import('./dokick.js');
-        if (await ship_object(obj, x, y, false)) {
+        if (!hitmon && await ship_object(obj, x, y, false)) {
             throwit_return(true);
             return;
         }
@@ -2612,6 +2666,11 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
     }
     // C dothrow.c throwit: if (cansee(bhitpos)) newsym — land glyph
     if (cansee(x, y)) newsym(x, y);
+    // C dothrow.c throwit :1843–1844 — a light source landing here relights
+    {
+        const { obj_sheds_light } = await import('./light.js');
+        if (obj_sheds_light(obj)) game.vision_full_recalc = 1;
+    }
     throwit_return(false);
 }
 

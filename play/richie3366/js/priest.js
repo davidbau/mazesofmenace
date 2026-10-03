@@ -61,7 +61,14 @@ function helpless(mtmp) {
  */
 export function forget_temple_entry(priest) {
     const epri_p = priest?.ispriest ? EPRI(priest) : null;
-    if (!epri_p) return;
+    if (!epri_p) {
+        /* C priest.c:550 — unreachable by construction: both C callers
+         * (mkobj.c:2159 save_mtraits, save.c:893 savemonchn) and both JS
+         * call sites (do.js savemonchn, lev_json.js serMon) guard with
+         * ispriest. `void` keeps the sync signature (in-file precedent). */
+        void impossible('attempting to manipulate shrine data for non-priest?');
+        return;
+    }
     epri_p.intone_time = epri_p.enter_time =
         epri_p.peaceful_time = epri_p.hostile_time = 0;
 }

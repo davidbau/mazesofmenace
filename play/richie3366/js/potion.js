@@ -321,8 +321,8 @@ function compact_lets(lets) {
     return out;
 }
 
-/** C ref: potion.c dip_ok — suggest non-coin invent. */
-function dippable_lets() {
+/** C ref: potion.c dip_ok — suggest non-coin invent, uncompacted. */
+function dippable_lets_raw() {
     const inv = game.invent || [];
     const lets = [];
     for (const o of inv) {
@@ -330,7 +330,12 @@ function dippable_lets() {
         if (o.invlet) lets.push(o.invlet);
     }
     lets.sort();
-    return compact_lets(lets);
+    return lets.join('');
+}
+
+/** C ref: potion.c dip_ok — suggest non-coin invent. */
+function dippable_lets() {
+    return compact_lets(dippable_lets_raw().split(''));
 }
 
 /** C ref: invent.c useup() — consume one from a stack / remove if gone. */
@@ -2389,12 +2394,19 @@ export async function dodrink() {
  * (potion.c `:2279`: at_here ? dip_hands_ok : dip_ok). Hands `-` is listed
  * in the prompt only when the NULL verdict is SUGGEST (invent.c
  * `:1833–1837`), accepted-but-unlisted on DOWNPLAY; both set allownone.
- * Loop on missing letter.
+ * Canned CMDQ_KEY answers before the prompt (invent.c `:1776–1820`;
+ * HANDS_SYM `:1790–1794`). `?`/`*` → pickinv menu (invent.c
+ * `:1963–1992`). Loop on missing letter.
  */
-async function getobj_dip(at_here) {
+export async function getobj_dip(at_here) {
     // C potion.c:2279 — obj_ok selected once, NULL verdict before the loop
     const obj_ok = at_here ? dip_hands_ok : dip_ok;
+    // C invent.c:1776-1820 — canned CMDQ_KEY answers before the prompt
+    // (shared verdict helper, like sibling getobj_dip_ok).
+    const canned = cmdq_pop_getobj_key(obj_ok);
+    if (canned !== undefined) return canned;
     const handsListed = obj_ok(null) === GETOBJ_SUGGEST; // C invent.c:1832
+    const { getobj_display_pickinv } = await import('./invent.js');
     for (;;) {
         await flush_topl_more();
         // C invent.c:1835-1836 + :1905: '- ' prefix, '-' alone when empty
@@ -2422,8 +2434,35 @@ async function getobj_dip(at_here) {
             return hands_obj;
         }
         if (ch === '?' || ch === '*') {
-            await pline('Never mind.');
-            return null;
+            // C invent.c:1963-1992 — pickinv menu over the SUGGEST lets
+            // (uncompacted `lets`; the prompt compacts `buf` only).
+            // Mirror of sibling getobj_dip_ok; GETOBJ_NOFLAGS → no count.
+            const counted = { cnt: 0, cntgiven: false };
+            const ilet = await getobj_display_pickinv(
+                ch, dippable_lets_raw(), false, counted,
+                { word: 'dip', allownone: true, promptHasHands: handsListed },
+            );
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return null;
+            }
+            if (!ilet) continue;
+            if (ilet === HANDS_SYM) return hands_obj;
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            if (picked.oclass === COIN_CLASS) {
+                await pline('You cannot dip gold.');
+                return null;
+            }
+            if (obj_ok(picked) === GETOBJ_EXCLUDE) {
+                await pline('That is a silly thing to dip.');
+                return null;
+            }
+            game._pending_message = '';
+            return picked;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
         if (!otmp) {

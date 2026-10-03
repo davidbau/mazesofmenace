@@ -34,7 +34,7 @@ import {
 } from './roles.js';
 import { discover_object, Blind, makeknown, observe_object, update_inventory, invlet_constant, inv_weight } from './invent.js';
 import { setworn } from './do_wear.js';
-import { setuwep, setuswapwep, setuqwep } from './wield.js';
+import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
 import { otyp_uses_known, otyp_is_charged, Japanese_item_name, yname } from './objnam.js';
 import {
@@ -42,6 +42,7 @@ import {
     W_WEP, W_SWAPWEP, W_QUIVER,
     RIGHT_HANDED, LEFT_HANDED,
     A_NEUTRAL,
+    A_CHAOTIC,
     LOST_THROWN,
     LOST_NONE,
     LOST_EXPLODING,
@@ -86,6 +87,8 @@ import { throwing_weapon } from './dothrow.js';
 import { picked_container } from './shk.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
 import { is_quest_artifact, artitouch } from './quest.js';
+import { max_rank_sz } from './botl.js';
+import { hidden_gold } from './vault.js';
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
 const ARM_SUIT = 0;
@@ -836,6 +839,9 @@ function ini_inv_adjust_obj(trop, obj) {
             obj.otrapped = 0;
         }
         obj.cursed = false;
+        // C u_init.c:1225 — poisoned starters are for chaotics only
+        if (obj.opoisoned && game.u?.ualign?.type !== A_CHAOTIC)
+            obj.opoisoned = 0;
         if (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) {
             obj.quan = trquan(trop);
             stop = true;
@@ -846,8 +852,9 @@ function ini_inv_adjust_obj(trop, obj) {
         }
         if (trop.trspe !== UNDEF_SPE) {
             obj.spe = trop.trspe;
-            // C: trop->trotyp == MAGIC_MARKER (defined kit entry)
-            if (objectNames[obj.otyp] === 'MAGIC_MARKER' && obj.spe < 96) {
+            // C u_init.c:1235 — the kit entry's trotyp, not post-substitution otyp
+            const trotyp = typeof trop.trotyp === 'function' ? trop.trotyp() : trop.trotyp;
+            if (trotyp === otypByName('MAGIC_MARKER') && obj.spe < 96) {
                 obj.spe += rn2(4);
             }
         } else {
@@ -1273,8 +1280,11 @@ function has_descr(otyp) {
     return objectDescrs[idx] != null;
 }
 
-// C ref: u_init.c knows_object()
-function knows_object(otyp, _override_pauper) {
+// C ref: u_init.c knows_object() `:575–581`
+function knows_object(otyp, override_pauper) {
+    // C :577 — paupers discover nothing unless the caller overrides
+    if (game.u?.uroleplay?.pauper && !override_pauper)
+        return;
     // discover_object(otyp, TRUE, FALSE, FALSE) — known but not encountered
     discover_object(otyp, true, false);
 }
@@ -1284,6 +1294,9 @@ function knows_object(otyp, _override_pauper) {
 // walk bases[] like C (weapons + armor; skip CORNUTHAUM/DUNCE_CAP/SMALL_SHIELD;
 // non-Knight/Samurai skip polearms/lances; Ranger: launchers/ammo/spears).
 function knows_class(sym) {
+    // C u_init.c:591 — paupers discover nothing through class walks
+    if (game.u?.uroleplay?.pauper)
+        return;
     const roleMnum = game.urole?.mnum;
     const objects = game.objects;
     if (!objects) return;
@@ -1346,9 +1359,10 @@ function ini_inv_use_obj(obj) {
     if (obj.oclass === ARMOR_CLASS) {
         // C ref: u_init.c ini_inv_use_obj — setworn confers oc_oprop
         // (e.g. cloak of MR → Antimagic extrinsic for from_what).
-        if (is_shield(obj) && !game.u.uarms) {
-            // C also gates !(uwep && bimanual) + set_twoweap(FALSE); starters
-            // never begin two-weapon — named omit for non-start paths.
+        // C u_init.c:1263 — no shield over a two-handed wield
+        if (is_shield(obj) && !game.u.uarms && !(game.u.uwep && bimanual(game.u.uwep))) {
+            // C :1268 — academic (no one starts two-weaponing), kept for fidelity
+            set_twoweap(false); /* u.twoweap = FALSE */
             setworn(obj, W_ARMS);
         } else if (is_helmet(obj) && !game.u.uarmh) {
             setworn(obj, W_ARMH);
@@ -1942,11 +1956,20 @@ export async function u_init_misc() {
     const g = game;
     g.u = g.u || {};
     g.flags = g.flags || {};
+    // C u_init.c:949 — gender from role resolution (role_init ran first);
+    // C assigns into boolean flags.female, JS keeps the boolean idiom
+    // (setup true/false; allmain strict `!== false` would misread 0)
+    g.flags.female = !!g.flags.initgend;
     g.flags.beginner = true;
 
     g.u.uz = { dnum: 0, dlevel: 1 };
     g.u.uz0 = { dnum: 0, dlevel: 0 };
     g.u.utolev = { dnum: 0, dlevel: 1 };
+
+    // C u_init.c:987–989
+    g.u.umoved = false;
+    g.u.umortality = 0;
+    g.u.ugrave_arise = NON_PM;
 
     // C u_init.c:991–993 — umonnum, ulycn, then set_uasmon().
     const roleMnum = g.urole?.mnum;
@@ -1987,11 +2010,18 @@ export async function u_init_misc() {
     g.u.xray_range = -1;
     g.u.unblind_telepat_range = -1;
 
+    // C u_init.c:1027–1028 — OPTIONS:blind is permanent (PermaBlind)
+    if (g.u.uroleplay?.blind)
+        g.u.HBlinded = (g.u.HBlinded || 0) | FROMOUTSIDE;
+
     // C: for (i = 0; i <= MAXSPELL; i++) svs.spl_book[i].sp_id = NO_SPELL;
     init_spl_book();
 
     // C: u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
     g.u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
+
+    // C u_init.c:1033 — widest rank-title width for the status line
+    max_rank_sz();
 }
 
 // C ref: u_init.c u_init_inventory_attrs()
@@ -2020,6 +2050,8 @@ export async function u_init_inventory_attrs() {
     if (game.flags?.explore || game.flags?.discover) await ini_inv(Wishing);
 
     if (game.u.umoney0) await ini_inv(Money);
+    // C u_init.c:1388 — in case the starting sack has gold in it
+    game.u.umoney0 += hidden_gold(true);
 
     init_attr(75);
     await vary_init_attr();

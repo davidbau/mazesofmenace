@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 // C: end.c really_done ESCAPED fake-Amulet arm — carrying() is a hoisted
 // function decl in the shared SCC; call-time use only (no TDZ read).
-import { carrying, nomul } from './hack.js';
+import { carrying, nomul, finish_losehp_showdamage, finish_losehp_rehumanize } from './hack.js';
 import { reset_utrap } from './trap.js';
 import { rn2, d } from './rng.js';
 import { deepest_lev_reached, depth, strstri, upstart } from './hacklib.js';
@@ -68,7 +68,7 @@ import { objectNames } from './generated/objects_data.js';
 import { monsterNames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
 import { paybill, money2mon, money_cnt, obfree, doname_with_price } from './shk.js';
 import { hidden_gold, paygd } from './vault.js';
-import { clearlocks, debugcore, new_nhfile, store_version, FNIDX_HISTORICAL } from './files.js';
+import { clearlocks, debugcore, new_nhfile, store_version, FNIDX_HISTORICAL, compress_bonesfile } from './files.js';
 import { clearpriests } from './priest.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
@@ -1636,8 +1636,7 @@ async function remove_mon_from_bones(mtmp) {
  * write_bonesfile is the create_bonesfile + savefruitchn + update_mlstmv +
  * savelev tail.
  * Named omissions: close_nhfile on the probe hit (no VFS handle);
- * compress_bonesfile on all three return paths (VFS has no post
- * compression); create_bonesfile creat/errno/VMS arms (VFS creat cannot
+ * create_bonesfile creat/errno/VMS arms (VFS creat cannot
  * fail, so neither can the wizard pline1(whynot); paniclog is by-design);
  * commit_bonesfile temp→final rename (VFS write is atomic); binary
  * savelev record layout (JSON payload carries bonesid/fruitchn/level).
@@ -1651,8 +1650,9 @@ async function savebones(how, when, corpse) {
     clear_bypasses();
 
     // C `:411–428` open_bonesfile hit → wizard Replace? before any
-    // make_bones mutation. compress_bonesfile() ahead of each return is
-    // named above (no VFS equivalent).
+    // make_bones mutation. Each return below is C `:430`
+    // compress_bonesfile()+return (the single C site covers all three
+    // JS early returns).
     if (bones_file_exists(u.uz)) {
         if (wizard) {
             if ((await yn_function(
@@ -1661,13 +1661,16 @@ async function savebones(how, when, corpse) {
                 if (!delete_bonesfile(u.uz)) {
                     // C `:421–422` plines then falls to compress+return.
                     await pline('Cannot unlink old bones.');
+                    compress_bonesfile(); // C `:430`
                     return;
                 }
                 // fall through to make_bones
             } else {
+                compress_bonesfile(); // C `:430`
                 return;
             }
         } else {
+            compress_bonesfile(); // C `:430`
             return;
         }
     }
@@ -1876,7 +1879,7 @@ async function savebones(how, when, corpse) {
     // store_version, bonesid, savefruitchn, update_mlstmv, savelev,
     // commit + compress. The handle fields store_version reads match
     // files.c:849–857. write_bonesfile is the VFS savelev that follows
-    // (creat/errno/commit/compress arms named in the doc comment).
+    // (creat/errno/commit arms named in the doc comment).
     const nhfp = new_nhfile();
     nhfp.ftype = NHF_BONESFILE;
     nhfp.mode = WRITING;
@@ -1889,6 +1892,7 @@ async function savebones(how, when, corpse) {
     nhfp.fd = 0;
     store_version(nhfp);
     write_bonesfile(u.uz, nhfp.sf || null);
+    compress_bonesfile(); // C `:624` (commit above named: atomic VFS write)
 }
 
 /**
@@ -1896,6 +1900,11 @@ async function savebones(how, when, corpse) {
  * Call after losehp when `_losehp_needs_done` is set (C noreturn).
  */
 export async function finish_losehp_done() {
+    // C hack.c losehp: showdamage (`:4269`/:4280) precedes the branch
+    // action, and the Upolyd `:4276` rehumanize arm precedes any later
+    // branch — drain both first (no-ops when unset).
+    await finish_losehp_showdamage();
+    await finish_losehp_rehumanize();
     if (!game._losehp_needs_done) return;
     game._losehp_needs_done = false;
     await pline('You die...');

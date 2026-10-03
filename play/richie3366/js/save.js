@@ -572,7 +572,8 @@ export function save_bc() {
 /**
  * C ref: save.c dosave0 — write current game to VFS (JSON subset of savelev).
  * Named omissions: binary NHFILE format; hangup arms; overwrite yn;
- * compress; uid/nhuuid/wreserve.
+ * compress (+nh_sfconvert pair at :224 — ships with that arm; :119 rides
+ * the HUP/overwrite arms); uid/nhuuid/wreserve.
  * mapseenchn cemetery JSON is save_dungeon/save_mapseen (D-1685);
  * current-level bonesinfo is savelev savecemetery.
  * save_bc loose ball when swallowed + savelevchn ride the payload

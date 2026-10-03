@@ -4362,6 +4362,39 @@ export async function display_inventory(lets, want_reply) {
     return picked;
 }
 
+/**
+ * C ref: invent.c repopulate_perminvent `:3455–3460` — (void)
+ * display_pickinv(NULL, 0, 0, FALSE, FALSE, 0). `:3084` usextra=FALSE;
+ * `:3094` dispatch on (wizid || WIN_INVEN==WIN_ERR): the cached_pickinv_win
+ * branch mirrors display_inventory's post-cmdq sequence (reassign `:3145–3147`,
+ * wizid pre-dispatch, PICK_NONE reply — C calls display_pickinv directly,
+ * so no cmdq_pop; sortloot=='i' inuse_only lives inside the reply); else
+ * the WIN_INVEN PERMINV branch (D-1559 split: pickinv_build_perm + the
+ * sync_perminvent gi epilogue). DUMPLOG in_dumplog (`:3089–3093`) is
+ * compiled out (D-1776). Async: the menu branch awaits display (nhgetch);
+ * 0 C callers, no cascade.
+ */
+export async function repopulate_perminvent() {
+    const wizard = !!(game.flags?.debug || game.flags?.wizard); // :4348 idiom
+    if ((wizard && (game.iflags?.override_ID | 0))
+        || (game.WIN_INVEN ?? WIN_ERR) === WIN_ERR) {
+        // C display_pickinv `:3102–3106` cached-win branch.
+        if ((game.invent || []).length && !invlet_constant()) reassign();
+        if (wizard && (game.iflags?.override_ID | 0)) {
+            await display_pickinv_wizid();
+        } else {
+            await display_pickinv_reply(null, null, null, { want_reply: false });
+        }
+        return;
+    }
+    // C display_pickinv `:3108–3113` WIN_INVEN PERMINV branch.
+    game.gi.in_sync_perminvent = 1;
+    const built = pickinv_build_perm();
+    game.gi.perminvent_entries = built.entries;
+    game.gi.perminvent_listed = built.listed;
+    game.gi.in_sync_perminvent = 0;
+}
+
 /** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, lowercase-*s→*', else *'s. */
 function s_suffix_inv(s) {
     const buf = String(s ?? '');
@@ -4524,11 +4557,20 @@ async function query_objlist_pick_none_binv(title, items, invorder_sort) {
 }
 
 /**
+ * C invent.c only_here `:5476–5480` (staticfn) — query_objlist filter for
+ * display_binventory `:5541`: TRUE if obj is buried at go.only (decl.h:721,
+ * instance_globals_o flattens onto game — cf. game.occtime js/engrave.js:1281).
+ */
+function only_here(obj) {
+    return ((obj?.ox | 0) === (game.only?.x | 0)
+        && (obj?.oy | 0) === (game.only?.y | 0));
+}
+
+/**
  * C invent.c display_binventory :5488–5546 — buried / underwater overlay.
  * Only caller: zap.c zap_updown WAN_PROBING down (D-1444).
  * as_if_seen → observe_object on buried at <x,y>. Return n+n2.
- * Named omit: query_objlist PICK_ONE/ANY; go.only coord filter
- * (we pre-filter buried by ox/oy).
+ * Named omit: query_objlist PICK_ONE/ANY.
  */
 export async function display_binventory(x, y, as_if_seen) {
     let n2 = 0;
@@ -4562,15 +4604,21 @@ export async function display_binventory(x, y, as_if_seen) {
         }
     }
 
-    const buried = [];
+    // C display_binventory `:5527–5533` — count buried here (direct compare).
+    let n = 0;
     for (let obj = game.level?.buriedobjlist || null; obj; obj = obj.nobj) {
         if ((obj.ox | 0) === (x | 0) && (obj.oy | 0) === (y | 0)) {
             if (as_if_seen) observe_object(obj);
-            buried.push(obj);
+            n++;
         }
     }
-    const n = buried.length;
     if (n) {
+        game.only = { x: x | 0, y: y | 0 }; // C `:5536–5537`
+        const buried = [];
+        for (let obj = game.level?.buriedobjlist || null; obj; obj = obj.nobj) {
+            if (only_here(obj)) buried.push(obj); // C `:5540–5541` filter
+        }
+        game.only = { x: 0, y: 0 }; // C `:5543`
         await query_objlist_pick_none_binv(
             `Things that are buried ${underwhat}:`,
             buried,

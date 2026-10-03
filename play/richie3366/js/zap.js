@@ -254,6 +254,7 @@ import {
     fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
     is_lava, is_moat, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
     SURFACE_AT, You_hear, long_to_any, set_uinwater, check_capacity,
+    test_move,
 } from './hack.js';
 import {
     nonliving, is_demon, nohands, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
@@ -373,6 +374,7 @@ import {
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
     IS_FURNITURE, IS_GRAVE, SCORR, VAULT, TEMPLE, In_quest, Is_firelevel,
     VIBRATING_SQUARE, MAGIC_PORTAL, HEADSTONE, TRAP_EXPLODE, is_magical_trap,
+    is_pit, is_hole, TEST_MOVE,
     TT_LAVA, TT_INFLOOR,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
     has_mcorpsenm, ERODE_CORRODE,
@@ -451,6 +453,7 @@ const FIRE_HORN = objectNames.indexOf('FIRE_HORN');
 const FROST_HORN = objectNames.indexOf('FROST_HORN');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 /** C objclass.h ARM_HELM — oc_armcat; JS oc_skill stand-in. */
 const ARM_HELM = 2;
 const STATUE = objectNames.indexOf('STATUE');
@@ -6153,8 +6156,8 @@ function bhit_skiprange(range) {
  * callee staticfn `:3579–3588` file-local `bhit_skiprange`;
  * M_IN_WATER is zap.c:61 `S_EEL || cant_drown`, canonical import).
  * Named omit: THROWN_WEAPON fly callers (throwit still inlines those
- * and still skips WEB / shade / mimic-object); HEAVY_IRON_BALL
- * boulder/uball stop (`:4102–4121`, needs sobj_at export + test_move).
+ * and still skips WEB / shade / mimic-object).
+ * HEAVY_IRON_BALL boulder/uball stop is `:4095–4119` below (r = 0).
  * shkcatch is `shk.c:4362` (`:3885–3890`), before terrain.
  * show_transient_light is D-1597; bhit `!Blind` is youprop.h:103 (D-1604).
  * pobj is `{ obj }` — may set `.obj = null` when destroyed (kicked).
@@ -6457,6 +6460,36 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
                     break;
                 }
                 if (IS_SINK(typ) && weapon !== FLASHED_LIGHT) break;
+            }
+            // C zap.c bhit :4095–4119 — limit range of a thrown ball so the
+            // hero won't make an invalid move. A boulder stops it with a
+            // message; a chained uball jerks to a halt when the hero can't
+            // follow (test_move from the previous square) or over a
+            // Sokoban pit/hole the hero would fall into. r is C range.
+            if (weapon === THROWN_WEAPON && r > 0
+                && obj && (obj.otyp | 0) === HEAVY_IRON_BALL) {
+                const bobj = sobj_at(BOULDER, x, y);
+                if (bobj) {
+                    if (cansee(x, y)) {
+                        await pline(`${The(distant_name(obj, xname))} hits ${an(xname(bobj))}.`);
+                    }
+                    r = 0;
+                } else if (obj === game.u?.uball) {
+                    if (!await test_move(x - ddx, y - ddy, ddx, ddy, TEST_MOVE)) {
+                        /* nb: it didn't hit anything directly */
+                        if (cansee(x, y)) {
+                            await pline(`${The(distant_name(obj, xname))} jerks to an abrupt halt.`);
+                        }
+                        r = 0;
+                    } else if (!!(game.level?.flags?.sokoban_rules || game.Sokoban)) {
+                        // C: Sokoban = level.flags.sokoban_rules (trap.js:582)
+                        const t = t_at(x, y);
+                        if (t && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
+                            /* hero falls into the trap, so ball stops */
+                            r = 0;
+                        }
+                    }
+                }
             }
             point_blank = false;
         }

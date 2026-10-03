@@ -336,8 +336,10 @@ function nomul_clear() {
 /**
  * C ref: detect.c find_trap `:1936–1962` — mark seen, exercise, reveal,
  * message, and the clutter redraw wait.
+ * Callers wired: dokick.c:524 really_kick_object pit/web arm (below
+ * the t_at gate); detect.c search paths (in-file).
  */
-async function find_trap(trap) {
+export async function find_trap(trap) {
     trap.tseen = true;
     exercise(A_WIS, true);
     feel_newsym(trap.tx, trap.ty);

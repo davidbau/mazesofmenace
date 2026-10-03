@@ -87,7 +87,7 @@ import { dog_move, finish_meating, cursed_object_at, dogfood, could_reach_item }
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import {
     shk_move, gd_move, pri_move, costly_spot, inhishop, bill_dummy_object,
-    money_cnt,
+    money_cnt, after_shk_move,
 } from './shk.js';
 import { cuss, tactics } from './wizard.js';
 import { Protection_from_shape_changers } from './were.js';
@@ -1875,7 +1875,10 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
         }
         newsym(mtmp.mx, mtmp.my);
     }
-    // after_shk_move deferred
+    // C ref: monmove.c postmov :1700–1702 — shk re-entry reset + occupancy.
+    if (mtmp.isshk) {
+        await after_shk_move(mtmp);
+    }
 
     return mmoved;
 }

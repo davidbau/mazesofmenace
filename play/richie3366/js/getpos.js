@@ -62,7 +62,7 @@ import { invocation_pos, handle_tip } from './hack.js';
 import { is_valid_travelpt, lock_mouse_buttons } from './cmd.js';
 import { ok_to_quest } from './quest.js';
 import { on_level } from './dungeon.js';
-import { visctrl, cmd_from_func } from './dokeylist.js';
+import { visctrl, cmd_from_func, cmdbind_get } from './dokeylist.js';
 import { distmin } from './hacklib.js';
 import { engr_at } from './engrave.js';
 import { objectNames } from './objects.js';
@@ -111,12 +111,20 @@ function getpos_getvalids_selection(sel, validf) {
 }
 
 /**
- * C ref: cmd.c redraw_cmd — key bound to doredraw.
- * Default: extcmdlist C('r'); commands_init also binds C('l').
- * (C('l') is handled earlier as MV_RUSH via CTRL_DIR when num_pad off.)
+ * C ref: cmd.c redraw_cmd `:3910–3918` — whole body in C order: uchar
+ * cast, live cmdbind_get lookup, ef_funct == doredraw test. JS
+ * cmdbind_get returns the extcmd itself (C `bind->cmd`), and txt is
+ * 1:1 with ef_funct (dokeylist.js), so `txt === 'redraw'` is the C
+ * ef_funct comparison — same predicate as js/lock.js getdir_is_redraw
+ * for the C `:4013` getdir site; this covers the C getpos.c:945 site.
+ * C('r') stays true under default binds; C('l') is now correctly false
+ * (C never bound it to redraw — and it never reaches here, consumed
+ * earlier as CTRL_DIR rush). Rebound redraw keys now match C.
  */
 function redraw_cmd(key) {
-    return key === 0x12 || key === 0x0c; // C('r'), C('l')
+    const uc = key & 0xff; // C `:3913` uchar uc
+    const bind = cmdbind_get(uc); // C `:3914` (JS returns C `bind->cmd`)
+    return !!(bind && bind.txt === 'redraw'); // C `:3915–3917` ef_funct == doredraw
 }
 
 /**

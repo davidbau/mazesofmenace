@@ -28,7 +28,7 @@ import {
 import {
     pline, newsym, canspotmon, canseemon, map_invisible, unmap_invisible,
     flush_topl_more, verbalize, feel_newsym, feel_location, Norep,
-    glyph_at, glyph_is_invisible_id, show_glyph_cell,
+    glyph_at, glyph_is_invisible_id, show_glyph_cell, You_cant, Hallucination,
 } from './display.js';
 import { vision_recalc, recalc_block_point, couldsee, cansee } from './vision.js';
 // C ref: dungeon.c on_level `:1438–1443` — canonical dnum+dlevel equality
@@ -114,7 +114,7 @@ import {
     make_angry_shk, make_happy_shk, costly_gold, donate_gold, contained_gold,
 } from './shk.js';
 import { shkname, Shknam } from './shknam.js';
-import { cvt_sdoor_to_door } from './detect.js';
+import { cvt_sdoor_to_door, find_trap } from './detect.js';
 import { find_drawbridge, is_drawbridge_wall } from './dbridge.js';
 import { altar_wrath } from './pray.js';
 import { del_engr_at, disturb_grave, u_wipe_engr } from './engrave.js';
@@ -1269,9 +1269,15 @@ async function really_kick_object(x, y) {
     const trap = t_at(x, y);
     if (trap) {
         if ((is_pit(trap.ttyp) && !Passes_walls()) || (trap.ttyp | 0) === WEB) {
-            // find_trap deferred — still refuse kick
-            const where = (trap.ttyp | 0) === WEB ? 'web' : 'pit';
-            await pline(`You can't kick something that's in a ${where}!`);
+            // C dokick.c:523–524 — reveal an unseen trap before refusing
+            if (!trap.tseen) await find_trap(trap);
+            // C dokick.c:525–528 — Hallucination sees a 'tizzy', not web/pit
+            await You_cant(
+                "kick %s that's in a %s!",
+                something,
+                Hallucination() ? 'tizzy'
+                    : ((trap.ttyp | 0) === WEB ? 'web' : 'pit'),
+            );
             return 1;
         }
         if ((trap.ttyp | 0) === STATUE_TRAP) {
