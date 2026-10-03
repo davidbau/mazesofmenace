@@ -124,7 +124,13 @@ export async function com_pager_legacy() {
     disp.putstr(textCol, moreRow, '--More--', NO_COLOR, 0);
     disp.setCursor(textCol + 8, moreRow);
 
-    await nhgetch();
+    // C ref: win/tty/wintty.c dmore() -> getline.c xwaitforspace(quitchars):
+    // only space/return/escape dismiss a text window's --More--; any other
+    // key just rings the bell and leaves the window up.
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2879,6 +2885,19 @@ export async function com_pager(msgid) {
     await com_pager_core('common', msgid);
 }
 
+// C ref: quest.c artitouch() — the first time the hero gains the quest
+// artifact (invent.c addinv_core1), page "gotit" and exercise wisdom.  The
+// caller has already done C's observe_object(obj).
+export async function artitouch(_obj) {
+    const q = game.quest_status || (game.quest_status = {});
+    if (!q.touched_artifact) {
+        /* only give this message once */
+        q.touched_artifact = true;
+        await qt_pager('gotit');
+        exercise(A_WIS, true);
+    }
+}
+
 // C ref: questpgr.c deliver_splev_message() (do.c:1858) — ported at the bottom
 // of this file now; js/do.js:1162 still open-codes it inline.  Note that
 // sp_lev.js:5529 DOES fill gl.lev_message from des.message() these days.
@@ -3156,6 +3175,8 @@ export async function quest_talk(mtmp) {
 // resolved back out of those strings once, by name.  Resolving by name is the
 // house rule here: a mons[] or artilist[] reshuffle cannot silently re-point it.
 let _qnums = new Map();
+// C ref: gu.urole.questarti -- the hero's quest artifact index (0 if none).
+export function quest_artifact_num() { return quest_nums().questarti; }
 function quest_nums() {
     const code = urole_filecode();
     if (_qnums.has(code)) return _qnums.get(code);

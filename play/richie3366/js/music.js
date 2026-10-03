@@ -59,6 +59,7 @@ import { PM_ARCHEOLOGIST, monsterNames } from './generated/monsters_data.js';
 import { getdir } from './lock.js';
 import { tamedog } from './dog.js';
 import { zapyourself, ubuzz, flash_str } from './zap.js';
+import { slept_monst } from './mhitm.js';
 import {
     find_drawbridge, is_drawbridge_wall,
     open_drawbridge, close_drawbridge,
@@ -262,21 +263,7 @@ async function sleep_monst_music(mon, amt, how) {
     return 0;
 }
 
-/**
- * C ref: mhitm.c slept_monst — grabber release; sticks/pline_mon thin.
- */
-async function slept_monst(mon) {
-    const u = game.u || {};
-    const helpless = !!(mon?.msleeping || !mon?.mcanmove);
-    if (helpless && mon === u.ustuck && !u.uswallow) {
-        // sticks(youmonst) deferred → treat as non-sticking
-        await pline(`${Monnam(mon)}'s grip relaxes.`);
-        u.ustuck = null;
-        if (game.youmonst) game.youmonst.ustuck = null;
-    }
-}
-
-/** C ref: music.c put_monsters_to_sleep */
+/** C ref: music.c put_monsters_to_sleep — slept_monst is the canonical mhitm.js import (D-3368). */
 async function put_monsters_to_sleep(distance) {
     for (const mtmp of game.fmon || []) {
         if (!mtmp || (mtmp.mhp | 0) <= 0) continue;

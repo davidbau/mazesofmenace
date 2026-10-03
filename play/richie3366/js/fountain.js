@@ -830,7 +830,9 @@ export async function drinkfountain() {
             // clang LTR: poison_strdmg(rn1(4,3), rnd(10), ...)
             const strloss = rn1(4, 3);
             const dmg = rnd(10);
-            await poison_strdmg(strloss, dmg);
+            // C fountain.c:307 "contaminated water", KILLED_BY.
+            await poison_strdmg(strloss, dmg,
+                'contaminated water', KILLED_BY);
             exercise(A_CON, false);
             break;
         }

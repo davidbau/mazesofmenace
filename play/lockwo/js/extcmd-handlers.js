@@ -16,7 +16,7 @@ import {
     obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_INVLET, SORTLOOT_PACK, mergable,
     name_inventory_object, call_inventory_object, doorganize,
     addinv, prinv, prinv_fmt, let_to_name, report_merge_discovery,
-    wiz_identify, renderWindowScreen, renderMenuLines, useup, xname,
+    wiz_identify, renderWindowScreen, renderMenuLines, select_command_menu, useup, xname,
     doattributes, dodrop, doremring, dotravel_target, dopay, doperminv,
     dopickup, doputon, dowieldquiver, dothrow, dotravel, dowear, dowield,
     doprinuse, dofire, ddoinv, dotypeinv, dodiscovered, dolook, doswapweapon,
@@ -24,11 +24,10 @@ import {
     doprarm, near_capacity,
 } from './invent.js';
 import { pluslvl, losexp } from './exper.js';
-import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM, STRAT_WAITMASK,
+import { MAXULEV, IS_WALL, SDOOR, BOLT_LIM, STRAT_WAITMASK,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, COLNO, ROWNO,
          QBUFSZ, VIBRATING_SQUARE, D_NODOOR, D_BROKEN, D_ISOPEN,
-         D_CLOSED, D_LOCKED, D_TRAPPED, IS_GRAVE } from './const.js';
-import { create_particular_monster } from './makemon.js';
+         D_CLOSED, D_LOCKED, D_TRAPPED, IS_GRAVE, TIMEOUT } from './const.js';
 import { mon_mr } from './monmr_data.js';
 import { is_undead_flag, is_demon_flag, humanoid, nohands } from './monflags_data.js';
 import { couldsee, Blind } from './vision.js';
@@ -36,11 +35,12 @@ import { align_gname } from './role.js';
 import { map_invisible, doredraw } from './display.js';
 import { STATUE, objects, place_object, weight, COIN_CLASS, CORPSE } from './mkobj.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
-import { delobj, stackobj, doddrop } from './invent.js';
+import { delobj, stackobj, doddrop, yname, ysimple_name,
+         flush_addinv_plines } from './invent.js';
 import { count_unpaid, is_worn, wearing_armor, inventoryArray, takeoff_worn_obj,
          dismiss_invent_screen } from './invent.js';
 import { exercise } from './attrib.js';
-import { livelog_printf, LL_WISH, LL_CONDUCT } from './livelog.js';
+import { livelog_printf, LL_WISH, LL_CONDUCT, LL_ARTIFACT } from './livelog.js';
 import { rn2 } from './rng.js';
 import { A_STR, A_WIS, A_DEX, POLY_CONTROLLED, UNENCUMBERED } from './const.js';
 import { getpos, get_valid_jump_position, is_valid_jump_pos, getpos_render, jump_landing, jump_hilite_first_cursor, do_run, do_run_prefixed, do_look_full, do_farlook } from './hack.js';
@@ -50,24 +50,40 @@ import { doenhance } from './enhance.js';
 import { dorub, dowipe, doapply, ECMD as APPLY_ECMD } from './apply.js';
 import { readobjnam } from './readobjnam.js';
 import { hold_another_object, encumber_msg, objects_at, otense, will_feel_cockatrice,
-         feel_cockatrice } from './invent.js';
+         feel_cockatrice, obj_extract_self } from './invent.js';
+import { cxname, The, thesimpleoname } from './objnam.js';
+import { artifact_origin } from './artifact.js';
+import { ONAME_WISH, ONAME_KNOW_ARTI, IRONBARS, ICE, Is_airlevel,
+         Is_waterlevel } from './const.js';
+import { begin_burn } from './timeout.js';
 import { rn1 } from './rng.js';
+import { HORN_OF_PLENTY, TALLOW_CANDLE, WAX_CANDLE, POT_OIL, OIL_LAMP, MAGIC_LAMP,
+         CAN_OF_GREASE, FOOD_RATION, CRAM_RATION, LEMBAS_WAFER, VENOM_CLASS,
+         POTION_CLASS } from './mkobj.js';
+import { getobj, GETOBJ_PROMPT, consume_obj_charge, ansimpleoname } from './invent.js';
+import { container_at, able_to_loot, tipcontainer, tip_ok, menu_style,
+         u_handsy } from './pickup.js';
+import { MENU_TRADITIONAL, EXT_ENCUMBER } from './const.js';
+import { is_pool, is_lava } from './dbridge.js';
+import { vtense } from './dothrow.js';
+import { tiphat } from './sounds.js';
 import { dopray as pray_dopray, dosacrifice } from './pray.js';
 import { dosit } from './sit.js';
+import { do_mgivenname } from './do_name.js';
 import { dodip, dodrink } from './potion.js';
 import { dogenocided, do_gamelog, doconduct, dovanquished, doborn } from './insight.js';
 import { isok } from './hacklib.js';
-import { Monnam, canspotmon, x_monnam, mon_nam, oc_wldam, killed } from './uhitm.js';
+import { Monnam, canspotmon, mon_nam, oc_wldam, killed } from './uhitm.js';
 import { domonnoise } from './sounds.js';
 import { build_overview_lines, surface, print_dungeon_lines } from './dungeon.js';
 import { doextversion } from './version.js';
 import { name_to_pmidx, monster_by_pmidx } from './makemon.js';
 import { polyok_flag } from './monflags_data.js';
 import { polymon, newman, domonability, PM_HUMAN } from './polyself.js';
-import { obj_resists, dozap } from './zap.js';
+import { obj_resists, dozap, wishcmdassist, wish_history_add } from './zap.js';
 import { timed_prop, wiz_timeout_queue } from './timeout.js';
 import { dobugreport } from './report.js';
-import { docast } from './spell.js';
+import { docast, dowizcast } from './spell.js';
 import { dodown, doup } from './do.js';
 import { doengrave } from './engrave.js';
 import { dotogglepickup } from './options.js';
@@ -367,6 +383,10 @@ export async function hooked_tty_getlin(query, hook) {
         game._toplin = 0;
         game._toplinSoft = null;
     }
+    // C ref: getline.c:67 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY,
+    // "%s ", query) — vpline() still copies the prompt into gp.prevmsg, so a
+    // Norep() message identical to the one before this getlin is shown again.
+    game._prevmsg = `${query} `;
 
     let typed = '';   // what the user actually typed (obufp/bufp content)
     let shown = '';   // what is displayed (typed, possibly autocompleted)
@@ -773,18 +793,33 @@ async function doturn() {
         return 0;
     }
 
-    // halu_gname(): the hero's god, or a hallucinatory one.  align_gname reads
-    // the role's deity names; no RNG while not hallucinating.
-    const Gname = align_gname(g.urole?.mnum ?? 0, u?.ualign?.type ?? 0);
+    u.uconduct ||= {};
+    if (!u.uconduct.gnostic++)
+        livelog_printf(LL_CONDUCT, 'rejected atheism by turning undead');
 
-    // can_chant(): only a Strangled hero fails, which none of these do.
-    // The demon/undead-self and ugangr > 6 "seems to ignore you" arms and the
-    // Inhell arm all end the command early; Inhell is the reachable one.
+    // halu_gname(): the hero's god, or a hallucinatory one.  align_gname()
+    // takes the roles[] index (flags.initrole), not urole.mnum.
+    const Gname = align_gname(g.initrole ?? 0, u?.ualign?.type ?? 0);
+
+    // C ref: pray.c doturn(). A lawful or neutral hero in demon, undead or
+    // vampshifter form, or one whose god is very angry, is ignored: aggravate()
+    // and abuse wisdom, using a move.
+    const ydata = u?.Upolyd ? (u.data || null) : null;
+    const { is_vampshifter, aggravate } = await import('./monmove.js');
+    if (((u?.ualign?.type ?? 0) !== -1 /* A_CHAOTIC */
+         && ((ydata && (is_demon_flag(ydata) || is_undead_flag(ydata)))
+             || (g.youmonst && is_vampshifter(g.youmonst))))
+        || (u?.ugangr | 0) > 6) {
+        await pline(`For some reason, ${Gname} seems to ignore you.`);
+        aggravate();
+        exercise(A_WIS, false);
+        return 1;
+    }
     const { In_hell } = await import('./dungeon.js');
     if (In_hell(u?.uz)) {
-        await update_topl(`Since you are in Gehennom, ${Gname} can't help you.`);
-        // aggravate() wakes every monster on the level; no RNG.
-        for (const m of g.level?.monsters || []) m.msleeping = 0;
+        await update_topl(`Since you are in Gehennom, ${Gname} ${
+            Gname === 'Moloch' ? "won't" : "can't"} help you.`);
+        aggravate();
         return 1;
     }
 
@@ -1184,7 +1219,20 @@ const MAXWISHTRY = 5;
 // addition to the '#wizwish' extended command both route here.
 export async function wiz_wish() {
     if (!isWizard()) return 0;
-    await makewish();
+    // C ref: wizcmds.c:33-39 — wiz_wish() saves flags.verbose, clears it for
+    // the duration of makewish(), then restores it.  Besides suppressing the
+    // "You may wish for an object." line (which makewish() itself prints under
+    // flags.verbose), this silences every other verbose-gated message the wish
+    // reaches, most visibly xprname()'s " (<N> in total)." suffix when the
+    // wished stack merges into one already carried (invent.c prinv/xprname).
+    const flags = (game.flags ||= {});
+    const save_verbose = flags.verbose;
+    flags.verbose = false;
+    try {
+        await makewish();
+    } finally {
+        flags.verbose = save_verbose;
+    }
     // C ref: wizcmds.c:40 — wiz_wish() calls encumber_msg() itself right after
     // makewish() returns.  The wish costs no game time, so the moveloop's own
     // encumber_msg() (allmain.c:208, inside `if (context.move)`) never runs for
@@ -1194,159 +1242,127 @@ export async function wiz_wish() {
     return 0;
 }
 
-// Exported for zap.js's WAN_WISHING zap, which reaches the same C function.
-// The "You may wish for an object." line stays OUT of here: C's wiz_wish()
-// clears flags.verbose across the call to suppress it, so emitting it here
-// would add a line to every #wizwish.  zapnodir() prints it itself.
+// Exported for zap.js's WAN_WISHING zap, potion.js's djinni and allmain.js's
+// Amulet wish, which all reach the same C function.
+// C ref: zap.c:6314 makewish().
 export async function makewish() {
+    const u = game.u || {};
+    const uc = (u.uconduct ||= {});
+    const oldwisharti = uc.wisharti || 0;
+    const cmdassist = game.iflags?.cmdassist !== false;   /* C default on */
     let tries = 0;
-    let result = null, bufcpy = '';
+    let r = null, bufcpy = '';
+
+    if (game.flags?.verbose !== false)
+        await pline('You may wish for an object.');
     for (;;) {
-        const prompt = (game.iflags?.cmdassist && tries > 0)
+        const prompt = (cmdassist && tries > 0)
             ? 'For what do you wish (enter \'help\' for assistance)?'
             : 'For what do you wish?';
         let buf = mungspaces(await getlin_top(prompt));
-        if (buf === '\x1b' || (buf.length && buf[0] === '\x1b')) buf = '';
-        if (strcmpi_eq(buf, 'help')) { continue; }
-
-        const r = readobjnam(buf);
+        if (buf.length && buf[0] === '\x1b') {
+            buf = '';
+        } else if (strcmpi_eq(buf, 'help')) {
+            await wishcmdassist(MAXWISHTRY - tries);
+            continue;
+        }
+        bufcpy = buf;
+        r = readobjnam(buf);
         if (!r || r.kind == null) {
             await pline('Nothing fitting that description exists in the game.');
             if (++tries < MAXWISHTRY) continue;
             await pline("That's enough tries!");
-            // C: otmp = readobjnam(0,0) -> random object; not exercised.
+            r = readobjnam(null);
+            if (!r || r.kind !== 'obj') return; /* for safety; should never happen */
+        } else if (r.kind === 'nothing') {
+            /* explicitly wished for "nothing", presumably attempting
+               to retain wishless conduct */
+            livelog_printf(LL_WISH, 'declined to make a wish');
             return;
-        }
-        if (r.kind === 'nothing') return; /* declined to make a wish */
-        if (r.kind === 'hands') {
-            // C ref: zap.c makewish() `else if (otmp == &hands_obj)` — a wizard
-            // -mode trap/terrain wish created no object, so the wish is over
-            // (no hold, and no ublesscnt bump).  readobjnam() is synchronous,
-            // so wizterrainwish()'s pline()s come back as a list.
+        } else if (r.kind === 'hands') {
+            // C ref: zap.c makewish() `else if (otmp == &hands_obj)` — a
+            // wizard-mode trap/terrain wish or a denied artifact: no object,
+            // so no hold and no ublesscnt bump.  readobjnam() is synchronous,
+            // so its pline()s come back as a list.
             for (const m of r.messages || []) await pline(m);
+            wish_history_add(bufcpy);
             return;
         }
-        result = r.obj;
-        bufcpy = buf;
         break;
     }
+    wish_history_add(bufcpy);
+    const otmp = r.obj;
 
-    // C ref: zap.c makewish():6386-6397 — the wish is chronicled BEFORE the
-    // object is held: request echoed verbatim, result rendered by doname() (an
-    // unheld, letter-less object).  `uhis()` is genders[flags.female].his
-    // (you.h:316).  Without this, #chronicle/gamelog listed only "entered the
-    // dungeon" for a wishing session.
+    // The two readobjnam() steps that need input or async work here; both
+    // are RNG-free and silent, so performing them right after the parse keeps
+    // C's message and RNG order.
+    // C ref: objnam.c:5062-5066 — y_n("Override glob weight limit?").
+    if (r.globweight && await y_n('Override glob weight limit?') === 'y')
+        otmp.owt = r.globweight.base_owt * r.globweight.cnt;
+    // C ref: objnam.c:5086-5092 — a wished-for lit light source is placed on
+    // the hero's square so begin_burn() can attach its light source and burn
+    // timer, then extracted again for the caller.
+    if (r.lightit) {
+        place_object(otmp, u.ux, u.uy);
+        await begin_burn(otmp, false);
+        obj_extract_self(otmp);
+    }
+
+    if (otmp.oartifact) {
+        /* update artifact bookkeeping; doesn't produce a livelog event */
+        artifact_origin(otmp, ONAME_WISH | ONAME_KNOW_ARTI);
+    }
+
+    // C ref: zap.c makewish() — the wish is chronicled BEFORE the object is
+    // held: request echoed verbatim, result rendered by doname() (an unheld,
+    // letter-less object).  uhis() is genders[flags.female].his (you.h).
     {
-        const u0 = game.u || {};
-        u0.uconduct = u0.uconduct || {};
-        const wish = `"${bufcpy}", got "${obj_doname(result)}"`;
+        const maybe_LL_arti = (oldwisharti < (uc.wisharti || 0)) ? LL_ARTIFACT : 0;
+        const wish = `"${bufcpy}", got "${obj_doname(otmp)}"`;
         const uhis = game.flags?.female ? 'her' : 'his';
-        if (!(u0.uconduct.wishes || 0))
-            livelog_printf(LL_CONDUCT | LL_WISH, `made ${uhis} first wish - ${wish}`);
+        if (!(uc.wishes || 0))
+            livelog_printf(LL_CONDUCT | LL_WISH | maybe_LL_arti,
+                           `made ${uhis} first wish - ${wish}`);
+        else if (!oldwisharti && uc.wisharti)
+            livelog_printf(LL_CONDUCT | LL_WISH | LL_ARTIFACT,
+                           `made ${uhis} first artifact wish - ${wish}`);
         else
-            livelog_printf(LL_WISH, `wished for ${wish}`);
-        u0.uconduct.wishes = (u0.uconduct.wishes || 0) + 1;
+            livelog_printf(LL_WISH | maybe_LL_arti, `wished for ${wish}`);
+        uc.wishes = (uc.wishes || 0) + 1;
     }
 
-    // hold the wished object (addinv).  C ref: zap.c makewish() —
-    // hold_another_object(otmp, <uswallow/airlevel-or-floor-object -> reach/
-    // away/floor message>, The(aobjnam(otmp,"drop")), NULL).  The hold_msg arg
-    // only shows when the wish is too heavy to hold (pickup_burden), which is
-    // why it used to be passed as null.
-    {
-        const here = objects_at(game.u?.ux, game.u?.uy);
-        const fmt = game.u?.uswallow ? 'Oops!  %s out of your reach!'
-            : here.length ? 'Oops!  %s away from you!'
-                : 'Oops!  %s to the floor!';
-        /* objnam.c aobjnam(obj, verb) then The() */
-        let bp = xname(result);
-        if ((result.quan || 1) !== 1) bp = `${result.quan} ${bp}`;
-        bp = `${bp} ${otense(result, 'drop')}`;
-        await hold_another_object(result, fmt, `The ${bp}`, null);
-    }
+    // readobjnam() already set otmp.wishedfor for an unsafe corpse (C does it
+    // here; the result is the same since nothing in between reads it).
+    const airlevel = Is_airlevel(u.uz);
+    const corpse_wished = otmp.otyp === CORPSE && !!otmp.wishedfor;
+    const verb = (airlevel || u.uinwater) ? 'slip'
+        : corpse_wished ? 'materialize' : 'drop';
+    const typ = game.level?.at(u.ux, u.uy)?.typ;
+    const oops_msg = u.uswallow ? 'Oops!  %s out of your reach!'
+        : (airlevel || Is_waterlevel(u.uz) || typ == null
+           || typ < IRONBARS || typ >= ICE)
+            ? 'Oops!  %s away from you!'
+            : !corpse_wished ? 'Oops!  %s to the floor!'
+                : 'Careful! %s on the floor!';
+    /* The(aobjnam()) is safe since otmp is unidentified -dlc */
+    let bp = cxname(otmp);
+    if ((otmp.quan ?? 1) !== 1) bp = `${otmp.quan} ${bp}`;
+    bp = `${bp} ${otense(otmp, verb)}`;
+    await hold_another_object(otmp, oops_msg, The(bp), null);
 
-    // u.ublesscnt += rn1(100, 50);  /* the gods take notice */
-    const u = game.u;
-    if (u) u.ublesscnt = (u.ublesscnt || 0) + rn1(100, 50);
-    else rn1(100, 50);
+    if (game.u) game.u.ublesscnt = (game.u.ublesscnt || 0) + rn1(100, 50);
+    else rn1(100, 50); /* the gods take notice */
 }
 
 function strcmpi_eq(a, b) { return String(a).toLowerCase() === String(b).toLowerCase(); }
 
 // ── #wizgenesis / ^G (wizcmds.c wiz_genesis -> read.c create_particular) ──
 //
-// C ref: wizcmds.c:203 wiz_genesis() clears iflags.debug_mongen then calls
-// create_particular(): prompts "Create what kind of monster?" via getlin,
-// parses the reply (create_particular_parse, RNG-free), and on a valid single
-// named monster calls create_particular_creation() -> makemon(whichpm, u.ux,
-// u.uy, MM_NOEXCLAM).
-//
-// Recorded seed5002 sessions create exactly one named monster per ^G (no
-// quantity/gender/disposition prefixes), so only that common case is modelled:
-// resolve the name, place via enexto next to the hero (collect_coords RNG), run
-// makemon, then print "<Mon> appears next to you."  Unknown names print "I've
-// never heard of such monsters." (the !*bufp branch).
-const CP_TRYLIM = 5;
-async function create_particular() {
-    let prompt = 'Create what kind of monster?';
-    let tryct = CP_TRYLIM, altmsg = 0;
-    let made = null, buf = '';
-    do {
-        buf = mungspaces(await getlin_top(prompt));
-        if (buf === '\x1b' || (buf.length && buf[0] === '\x1b')) return; // ESC -> abort
-
-        made = await create_particular_monster(buf, MM_NOEXCLAM);
-        if (made) break;
-
-        // no good; try again (mirror C's altmsg/prompt expansion)
-        if (buf || altmsg || tryct < 2) {
-            await pline("I've never heard of such monsters.");
-        } else {
-            await pline('Try again (type * for random, ESC to cancel).');
-            ++altmsg;
-        }
-        if (tryct === CP_TRYLIM) prompt += ' [type name or symbol]';
-    } while (--tryct > 0);
-
-    if (!tryct) {
-        await pline("That's enough tries!");
-        return;
-    }
-    if (!made) return;
-
-    // C makemon.c:1473-1508 — "<Mon> appears<place>." (MM_NOEXCLAM: no
-    // " suddenly", trailing '.').  what = Amonnam(mtmp) when spottable.
-    // makemon() already ran newsym()+set_apparxy() at C's exact point (its
-    // byyou tail, makemon.c:1390-1394 via MM_APPARXY_BYYOU — see makemon.js):
-    // calling newsym() again here would double an RNG draw (extra hallucination
-    // glyph pick), and set_apparxy() was missing entirely until that fix,
-    // offsetting every later RNG draw by one.
-    // C ref: makemon.c:1479 — gated on `canseemon(mtmp) || sensemon(mtmp)`: a
-    // BLIND hero who ^G's a monster gets NO message (C leaves the top line
-    // empty); printing unconditionally emitted a phantom "It appears close by."
-    if (canspotmon(made.mtmp)) {
-        const what = capitalize(x_monnam(made.mtmp, /*ARTICLE_A*/ 2, null, 0, false));
-        const place = made.next2u ? ' next to you'
-            : (distu_xy(made.x, made.y) <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
-        await pline(`${what} appears${place}.`);
-    }
-}
-
-// C ref: hacklib.c upstart() — capitalize first letter.
-function capitalize(s) {
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
-
-// C ref: hack.c distu(x,y) — squared distance from the hero.
-function distu_xy(x, y) {
-    const u = game.u;
-    const dx = x - u.ux, dy = y - u.uy;
-    return dx * dx + dy * dy;
-}
-
-// Wizard ^G handler (also reachable via #wizgenesis).  C ref: wiz_genesis().
+// C ref: wizcmds.c:203 wiz_genesis() — create_particular() (read.js owns the
+// getlin loop, parse and creation; create_critters() shares it).
 export async function wiz_genesis() {
     if (!isWizard()) return 0;
+    const { create_particular } = await import('./read.js');
     await create_particular();
     return 0;
 }
@@ -1482,7 +1498,9 @@ export async function docallcmd() {
     case 'q':
     default:
         break;
-    case 'm': // name a visible monster (do_mgivenname)
+    case 'm': // name a visible monster
+        await do_mgivenname();
+        break;
     case 'f': // name a type of object on the floor (namefloorobj)
     case 'd': // rename a discovered type (rename_disco)
         break;
@@ -1631,24 +1649,38 @@ export function draw_corner_window(lines, maxcol, morestr, curPad) {
     game._modal_screen = 'container';
 }
 
+// C ref: hacklib.c upstart().
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+// C ref: objnam.c safe_qbuf() — "<prefix><name><suffix>", falling back to the
+// shorter name and then `lastR` when the result would not fit in QBUFSZ - 1.
+function loot_safe_qbuf(qprefix, qsuffix, obj, func, altfunc, lastR) {
+    const budget = QBUFSZ - 1 - qprefix.length - qsuffix.length;
+    let name = func(obj);
+    if (name.length > budget) name = altfunc(obj);
+    if (name.length > budget) name = lastR;
+    return qprefix + name + qsuffix;
+}
+
 // C ref: pickup.c in_or_out_menu().  Build and render the "Do what with <box>?"
 // PICK_ONE corner menu.  The menu always offers ':' (look inside) and 'q'
 // (quit, pre-selected default when there is no next container); 'o'/'b' appear
 // when the container has contents (outokay) and 'i'/'r'/'s' when the hero
 // carries other inventory (inokay).
-function render_in_or_out_menu(box, outokay, inokay, alreadyused, more_containers, held,
+function render_in_or_out_menu(box, outokay, inokay, alreadyused, more_containers,
                                deselected = false) {
-    const name = `the ${box_basename(box.otyp)}`;
-    // C ref: use_container()'s safe_qbuf(..., yname, ...) for the prompt vs
-    // in_or_out_menu()'s thesimpleoname(obj) for the entries: a CARRIED
-    // container is "your bag" in the title but still "the bag" in the lines.
-    // pickup.c:3076 — when nothing can be taken out and contents are already
-    // known, the prompt instead reads "Your sack is empty.  Do what with it?"
-    // (two spaces after the period), gated by the same `outmaybe` that hides
-    // the o/b entries.
+    // C ref: in_or_out_menu()'s entries name the box with thesimpleoname().
+    const name = thesimpleoname(box);
+    // C ref: use_container():3075-3082 — the prompt is safe_qbuf() over
+    // yname()/ysimple_name() ("Do what with <the/your/Shk's box>?"), or, when
+    // nothing can be taken out and contents are already known (`outmaybe`,
+    // which also hides the o/b entries), Yname2()/Ysimple_name2() with " is
+    // empty.  Do what with it?" (two spaces after the period).
     const title = outokay
-        ? `Do what with ${held ? `your ${box_basename(box.otyp)}` : name}?`
-        : `${held ? 'Your' : 'The'} ${box_basename(box.otyp)} is empty.  Do what with it?`;
+        ? loot_safe_qbuf('Do what with ', '?', box, yname, ysimple_name, 'it')
+        : loot_safe_qbuf('', ' is empty.  Do what with it?', box,
+                         (o) => capitalize(yname(o)),
+                         (o) => capitalize(ysimple_name(o)), 'This');
     // C ref: menuselector = flags.lootabc ? abc_chars : lootchars.  With the
     // 'lootabc' option on, the entries are lettered a/b/c/d/e in place of the
     // mnemonic o/i/b/r/s.  a.a_int (1..8) indexes the selector; element [0]
@@ -1719,7 +1751,7 @@ function render_container_contents(box) {
 // Take-out ('o'/'b') and put-in ('i'/'r'/'s') aren't modelled: picking them
 // ends the loop without moving items (container state untouched, no false
 // RNG/screen divergence).  Returns 1 (ECMD_TIME) iff a turn elapsed, else 0.
-async function use_container(box, more_containers, held = false) {
+async function use_container(box, more_containers) {
     let used = 0;
     box.lknown = 1;
     // C ref: use_container() outmaybe = outokay || !cknown — the take-out
@@ -1757,7 +1789,7 @@ async function use_container(box, more_containers, held = false) {
     let deselected = false;
     let c = 'q';
     for (;;) { // repeats iff ':' (look inside) gets chosen
-        render_in_or_out_menu(box, outmaybe, inokay, used !== 0, !!more_containers, held,
+        render_in_or_out_menu(box, outmaybe, inokay, used !== 0, !!more_containers,
                               deselected);
         let ch = '';
         for (;;) { // xwaitforspace(resp): ignore keys outside the response set
@@ -1807,8 +1839,8 @@ async function use_container(box, more_containers, held = false) {
     const loot_in = (action === 'i' || action === 'b' || action === 'r');
     const loot_in_first = (action === 'r');
     // C ref: use_container() emptymsg — Ysimple_name2(): "Your bag" for a
-    // carried container, "The chest" for one on the floor.
-    const emptymsg = `${held ? 'Your' : 'The'} ${box_basename(box.otyp)} is empty.`;
+    // carried container, "The chest" (or "<Shk>'s chest") for one on the floor.
+    const emptymsg = `${capitalize(ysimple_name(box))} is empty.`;
     const do_out = async () => {
         if (box.cobj && box.cobj.length) {
             if (await menu_loot_out(box)) used = 1;
@@ -2225,6 +2257,7 @@ async function menu_loot_out(box) {
         obj.where = 'free';
         box.owt = weight(box);
         const otmp = addinv(obj);
+        await flush_addinv_plines();
         await report_merge_discovery();
         // No encumbrance change here, so pickup_prinv's load prefix is absent.
         // prinv_fmt() renders "<letter> - <name>." without touching the topline
@@ -2398,7 +2431,7 @@ async function menu_loot_in(box) {
 // C ref: apply.c doapply()'s SACK/OILSKIN_SACK/BAG_OF_HOLDING arm —
 // use_container(&obj, TRUE, FALSE) on a CARRIED container.
 export async function use_container_held(obj) {
-    return await use_container(obj, false, true);
+    return await use_container(obj, false);
 }
 
 // C ref: lock.c autokey(opening=TRUE) — pick an unlocking tool from inventory:
@@ -3160,6 +3193,7 @@ const HANDLERS = {
     wizgenesis: wiz_genesis,
     wizidentify: wiz_identify_extcmd,
     wizintrinsic: wiz_intrinsic,
+    wizcast: dowizcast,
     overview: dooverview,
     version: doextversion,
     quit: doquit_extcmd,
@@ -4010,68 +4044,13 @@ function wizIntrinsicEntries() {
     return entries;
 }
 
-// C ref: win/tty/wintty.c process_menu_window() — a multi-page NHW_MENU:
-// lmax == min(52, rows-1) == 23 lines per page, accelerators restart at 'a' on
-// every page and are only spent on selectable entries, the morestr is
-// "(N of M)", and a selected entry's '-' marker becomes '+' (set_item_state;
-// '#' when a count was given, which this port does not model).
-async function wizIntrinsicMenu(entries) {
-    const rows = game.nhDisplay?.rows ?? 24;
-    const lmax = Math.min(52, rows - 1);
-    const npages = Math.ceil(entries.length / lmax) || 1;
-    for (let i = 0; i < entries.length; i++) {
-        if (i % lmax === 0) var acc = 97;                              // 'a'
-        if (entries[i].item) {
-            entries[i].item.sel = String.fromCharCode(acc);
-            acc = (acc === 122) ? 65 : acc + 1;                        // z -> A
-        }
-    }
-    let page = 0;
-    for (;;) {
-        const pageEntries = entries.slice(page * lmax, (page + 1) * lmax);
-        renderWindowScreen(pageEntries.map((e) => ({
-            text: e.item ? `${e.item.sel} ${e.item.selected ? '+' : '-'} ${e.text}` : e.text,
-            attr: e.attr,
-        })), {
-            menu: true,
-            footer: npages > 1 ? `(${page + 1} of ${npages})` : '(end)',
-            footerRow: pageEntries.length,
-            footerCol: 1,
-            modal: 'wizintwin',
-        });
-        const c = await nhgetch();
-        const ch = String.fromCharCode(c);
-        const hit = pageEntries.find((e) => e.item && e.item.sel === ch);
-        if (hit) { hit.item.selected = !hit.item.selected; continue; }
-        if (c === 27) return false;                                    // cancel
-        if (c === 13 || c === 10) return true;                         // commit
-        if (ch === ' ' || ch === '>') {
-            if (page < npages - 1) page++;
-            else if (ch === ' ') return true;   // ' ' finishes, '>' does not
-            continue;
-        }
-        if (ch === '<') { if (page > 0) page--; continue; }
-        if (ch === '^') { page = 0; continue; }
-        if (ch === '|') { page = npages - 1; continue; }
-        if (ch === ',') { for (const e of pageEntries) if (e.item) e.item.selected = true; continue; }
-        if (ch === '\\') { for (const e of pageEntries) if (e.item) e.item.selected = false; continue; }
-        if (ch === '~') { for (const e of pageEntries) if (e.item) e.item.selected = !e.item.selected; continue; }
-        if (ch === '.') { for (const e of entries) if (e.item) e.item.selected = true; continue; }
-        if (ch === '-') { for (const e of entries) if (e.item) e.item.selected = false; continue; }
-        if (ch === '@') { for (const e of entries) if (e.item) e.item.selected = !e.item.selected; continue; }
-        // Digits start a count (which would override DEFAULT_TIMEOUT_INCR) and
-        // ':' opens a search prompt; neither is modelled.  Any other key rings
-        // the bell and leaves the page up.
-    }
-}
-
 // C ref: wizcmds.c wiz_intrinsic() — a PICK_ANY menu of every timeable
 // property; each pick adds DEFAULT_TIMEOUT_INCR to its intrinsic timeout and
 // plines "Timeout for <prop> set to/increased by N.".
 async function wiz_intrinsic() {
     const entries = wizIntrinsicEntries();
-    const committed = await wizIntrinsicMenu(entries);
-    delete game._modal_screen;
+    const committed = await select_command_menu(entries);
+    await dismiss_invent_screen();
     if (!committed) {
         // ESC deselects everything and cancels; the map is repainted.
         await flush_screen(1);
@@ -4085,7 +4064,9 @@ async function wiz_intrinsic() {
         if (!it || !it.selected) continue;
         const slot = timed_prop(it.propId);
         const oldtimeout = slot ? (slot.get(u) || 0) : (u.uprops[it.key] || 0);
-        let newtimeout = oldtimeout + DEFAULT_TIMEOUT_INCR;
+        const amount = it.count == null || it.count === -1 ? DEFAULT_TIMEOUT_INCR : it.count | 0;
+        if (amount <= 0) continue;
+        let newtimeout = Math.min(oldtimeout + amount, TIMEOUT);
         // C: SICK/SLIMED/STONED never have their existing timeout extended.
         if ((it.propId === 'SICK' || it.propId === 'SLIMED' || it.propId === 'STONED')
             && oldtimeout > 0 && newtimeout > oldtimeout)
@@ -4105,11 +4086,51 @@ async function wiz_intrinsic() {
             await make_blinded_hero(newtimeout, true);
             continue;
         }
-        if (slot) slot.set(u, newtimeout); else u.uprops[it.key] = newtimeout;
+        const potion = await import('./potion.js');
+        switch (it.propId) {
+        case 'DEAF':
+            await potion.make_deaf(newtimeout, true);
+            continue;
+        case 'SICK':
+            await potion.make_sick(newtimeout, '#wizintrinsic', true, rn2(2) ? 2 : 1);
+            continue;
+        case 'SLIMED':
+            await potion.make_slimed(newtimeout, `You are${oldtimeout ? ' still' : ''} turning into slime.`);
+            continue;
+        case 'STONED': {
+            const { KILLED_BY } = await import('./const.js');
+            await potion.make_stoned(newtimeout, `You are${oldtimeout ? ' still' : ''} turning into stone.`,
+                                     KILLED_BY, '#wizintrinsic');
+            continue;
+        }
+        case 'STUNNED':
+            await (await import('./mhitu.js')).make_stunned_u(newtimeout);
+            continue;
+        case 'VOMITING':
+            await potion.make_vomiting(newtimeout, false);
+            await update_topl(`You are${oldtimeout ? ' still' : ''} vomiting.`);
+            continue;
+        case 'GLIB':
+            await potion.make_glib(newtimeout);
+            break;
+        default:
+            if (slot) slot.set(u, newtimeout); else u.uprops[it.key] = newtimeout;
+            break;
+        }
         game.botl = true;
         // update_topl, not pline: the two "Timeout for ..." lines share one
         // topline (C update_topl appends with two spaces while it fits).
-        await update_topl(`Timeout for ${it.name} ${oldtimeout ? 'increased by' : 'set to'} ${DEFAULT_TIMEOUT_INCR}.`);
+        await update_topl(`Timeout for ${it.name} ${oldtimeout ? 'increased by' : 'set to'} ${amount}.`);
+        // C ref: wizcmds.c:1081-1088 — after the timeout change.
+        if (it.propId === 'LEVITATION' || it.propId === 'FLYING')
+            (await import('./polyself.js')).float_vs_flight();
+        else if (it.propId === 'PROT_FROM_SHAPE_CHANGERS')
+            await (await import('./mon.js')).rescham();
+        if ((it.propId === 'WWALKING' || it.propId === 'LEVITATION' || it.propId === 'FLYING')
+            && u.uinwater) {
+            await (await import('./trap.js')).pooleffects(false);
+            if (game.program_state?.gameover) return 0;
+        }
     }
     // C ref: display.c docrt():1727 — `if (u.uswallow) { swallowed(1); goto
     // post_map; }`, skipping cls()/the message flush entirely.  This is a
@@ -4244,17 +4265,226 @@ async function doinvoke() {
     return 1;                                            // ECMD_TIME
 }
 
-// C ref: pickup.c:3562 dotip() — the floor-container branch.  tipcontainer() is
-// not ported; no recorded session answers anything but 'q'/'n' here.
-async function dotip() {
-    for (const cobj of floor_lockboxes_here()) {
-        const nm = `${cobj.obroken ? 'broken ' : (cobj.olocked ? 'locked ' : '')}${box_basename(cobj.otyp)}`;
-        const c = await yn_function(`There is a ${nm} here, tip it?`, 'ynq', 'q');
-        if (c === 'q') return 0;                         // ECMD_OK
-        if (c === 'n') continue;
-        return 1;                                        // ECMD_TIME (tipcontainer TODO)
+// C ref: pickup.c:3505 choose_tip_container_menu() — PICK_ONE over the floor
+// containers here, plus a preselected "tip something being carried" entry.
+// Returns 1 (ECMD_TIME) after tipping a floor container, 0 (ECMD_OK) to fall
+// through to the inventory getobj(), or -1 (ECMD_CANCEL) on ESC.
+async function choose_tip_container_menu() {
+    const dummyobj = {};
+    const entries = [];
+    let menu_ch = 'a';
+    for (const otmp of objects_at(game.u.ux, game.u.uy)) {
+        if (!is_container_otyp(otmp.otyp)) continue;
+        entries.push({ sel: menu_ch, text: obj_doname(otmp), value: otmp });
+        menu_ch = nextMenuCh(menu_ch);
     }
-    // C then falls through to getobj("tip", tip_ok, GETOBJ_PROMPT).
+    if (inventoryArray().length) {
+        entries.push({ sel: null, text: '' });
+        /* use 'i' for inventory unless there are so many
+           containers that it's already being used */
+        const n_boxes = entries.length - 1;
+        const ch = (n_boxes <= 'i'.charCodeAt(0) - 'a'.charCodeAt(0)
+                    && !game.flags?.lootabc) ? 'i' : menu_ch;
+        entries.push({ sel: ch, text: 'tip something being carried', value: dummyobj,
+                       selected: true });
+    }
+    const picks = await run_pickone_corner_menu('Tip which container?', entries);
+    const n = picks ? picks.length : -1;
+    let otmp = (n <= 0) ? null : picks[0];
+    if (n > 1 && otmp === dummyobj) otmp = picks[1];
+    if (otmp && otmp !== dummyobj) {
+        await tipcontainer_c(otmp);
+        return 1;
+    }
+    return n === -1 ? -1 : 0;
+}
+
+// C ref: pickup.c:3871 tipcontainer_gettarget(). The "Where to tip the
+// contents of <box>" menu: the preselected '-' floor entry, then every other
+// carried container (indented and unselectable when hands are unavailable or
+// it is known to be locked).  Returns { target, cancelled }.
+async function tipcontainer_gettarget(box) {
+    const dummyobj = {};
+    /* tip to floor does not require free hands */
+    const entries = [{ sel: '-', text: 'on the floor', value: dummyobj, selected: true },
+                     { sel: null, text: '' }];
+    let n_conts = 0, hands_available = true;
+    for (const otmp of inventoryArray()) {
+        if (otmp === box) continue;
+        /* bag of tricks passes Is_container(); only include it if it isn't
+           known to be a bag of tricks */
+        if (!is_container_otyp(otmp.otyp)
+            || (otmp.otyp === BAG_OF_TRICKS_OTYP && otmp.dknown
+                && objects[otmp.otyp]?.oc_name_known))
+            continue;
+        if (!n_conts++) hands_available = await u_handsy(); /* might issue message */
+        /* container-to-container tip requires free hands; exclude a
+           container known to be locked */
+        const exclude_it = !hands_available || (otmp.olocked && otmp.lknown);
+        entries.push(exclude_it ? { sel: null, text: `    ${obj_doname(otmp)}` }
+                                : { sel: otmp.invlet, text: obj_doname(otmp), value: otmp });
+    }
+    const picks = await run_pickone_corner_menu(
+        `Where to tip the contents of ${obj_doname(box)}`, entries);
+    const n = picks ? picks.length : -1;
+    let target = null;
+    if (n > 0) {
+        target = picks[0];
+        /* PICK_ONE with a preselected item might return 2; if so, choose
+           the one that wasn't preselected */
+        if (n > 1 && target === dummyobj) target = picks[1];
+        if (target === dummyobj) target = null;
+    }
+    return { target, cancelled: n === -1 };
+}
+
+// C ref: win/tty/wintty.c process_menu_window()/tty_select_menu() for a
+// single-page PICK_ONE corner menu whose entries may be preselected.
+// entries: { sel (null for a non-selectable line), text, value, selected }.
+// The first paint marks a preselected entry '*'.  An explicit selector
+// toggles that entry and finishes, return/space finish, ESC cancels,
+// '-'/'\\' (when not selectors) clear every selection, other keys ring the
+// bell.  Returns the selected values in menu order, or null when cancelled.
+async function run_pickone_corner_menu(title, entries) {
+    if (game._toplin === 1 || game._yn_need_more) await topl_more();
+    game._yn_need_more = false;
+    game._pending_message = '';
+    game._toplin = 0;
+    const sels = entries.filter((e) => e.sel).map((e) => e.sel).join('');
+    let result;
+    for (;;) {
+        const lines = [{ text: title, attr: ATR_INVERSE }, { text: '' }];
+        for (const e of entries)
+            lines.push({ text: e.sel ? `${e.sel} ${e.selected ? '*' : '-'} ${e.text}` : e.text });
+        let maxcol = '(end) '.length;
+        for (const ln of lines) maxcol = Math.max(maxcol, ln.text.length + 2);
+        draw_corner_window(lines, maxcol, '(end)', 1);
+        let redraw = false;
+        for (;;) {
+            const key = await nhgetch();
+            const ch = key === 27 ? '\x1b' : String.fromCharCode(key);
+            if (sels.includes(ch)) {                     /* explicit choice */
+                const e = entries.find((x) => x.sel === ch);
+                e.selected = !e.selected;
+                result = entries.filter((x) => x.sel && x.selected).map((x) => x.value);
+                break;
+            }
+            if (ch === '\x1b') { result = null; break; }
+            if (ch === '\n' || ch === '\r' || ch === ' ') {
+                result = entries.filter((x) => x.sel && x.selected).map((x) => x.value);
+                break;
+            }
+            if ((ch === '-' || ch === '\\') && entries.some((x) => x.selected)) {
+                for (const x of entries) x.selected = false;
+                redraw = true;
+                break;
+            }
+            /* digits start a count; anything else is tty_nhbell() */
+        }
+        if (!redraw) break;
+    }
+    delete game._modal_screen;
+    return result;
+}
+
+// C ref: pickup.c:3688 tipcontainer(). The destination menu comes first,
+// then js/pickup.js tipcontainer() runs the checks and the spill.
+async function tipcontainer_c(box) {
+    const { target, cancelled } = await tipcontainer_gettarget(box);
+    if (cancelled) return;
+    await tipcontainer(box, target);
+}
+
+// C ref: pickup.c:3562 dotip() — tip a floor container here (asking about each
+// one, or via a menu when there are several), otherwise fall through to
+// getobj("tip") for a carried container or some other tippable item.
+async function dotip() {
+    const u = game.u;
+    /* check floor container(s) first; at most one will be accessed */
+    const boxes = container_at(u.ux, u.uy, true);
+    if (boxes > 0
+        && (!game.iflags?.menu_requested
+            || (menu_style() === MENU_TRADITIONAL && boxes > 1))) {
+        const buf = `You can't tip ${game.flags?.verbose === false ? 'a container'
+            : boxes > 1 ? 'one' : 'it'} while carrying so much.`;
+        /* hack.c check_capacity(str) */
+        const overloaded = near_capacity() >= EXT_ENCUMBER;
+        if (overloaded) await pline(buf);
+        if (!overloaded && await able_to_loot(u.ux, u.uy, false)) {
+            if (boxes > 1) {
+                /* pick one container via menu or ... */
+                const res = await choose_tip_container_menu();
+                if (res !== 0) return res > 0 ? 1 : 0;
+                /* else pick-from-invent below */
+            } else {
+                for (const cobj of objects_at(u.ux, u.uy)) {
+                    if (!is_container_otyp(cobj.otyp)) continue;
+                    const c = await yn_function(
+                        loot_safe_qbuf('There is ', ' here, tip it?', cobj,
+                                       obj_doname, ansimpleoname, 'container'),
+                        'ynq', 'q');
+                    if (c === 'q') return 0;                 // ECMD_OK
+                    if (c === 'n') continue;
+                    await tipcontainer_c(cobj);
+                    /* can only tip one container at a time */
+                    return 1;                                // ECMD_TIME
+                }
+            }
+        }
+    }
+
+    /* either no floor container(s) or 'm' prefix was used to ignore such
+       or couldn't tip one or didn't tip any */
+    const cobj = await getobj('tip', tip_ok, GETOBJ_PROMPT);
+    if (!cobj) return 0;                                     // ECMD_CANCEL
+
+    /* normal case */
+    if (is_container_otyp(cobj.otyp) || cobj.otyp === HORN_OF_PLENTY) {
+        await tipcontainer_c(cobj);
+        return 1;
+    }
+    /* assorted other cases */
+    let spillage = null;
+    const otyp = cobj.otyp;
+    if ((otyp === TALLOW_CANDLE || otyp === WAX_CANDLE) && cobj.lamplit) {
+        /* note "wax" even for tallow candles to avoid giving away info */
+        spillage = 'wax';
+    } else if ((otyp === POT_OIL && cobj.lamplit)
+               || (otyp === OIL_LAMP && (cobj.age | 0) !== 0)
+               || (otyp === MAGIC_LAMP && (cobj.spe | 0) !== 0)) {
+        spillage = 'oil';
+    } else if (otyp === CAN_OF_GREASE && cobj.spe > 0) {
+        /* charge consumed below */
+        spillage = 'grease';
+    } else if (otyp === FOOD_RATION || otyp === CRAM_RATION
+               || otyp === LEMBAS_WAFER) {
+        spillage = 'crumbs';
+    } else if (cobj.oclass === VENOM_CLASS) {
+        spillage = 'venom';
+    }
+    if (spillage) {
+        let buf = '';
+        if (is_pool(u.ux, u.uy))
+            buf = ` and gradually ${vtense(spillage, 'dissipate')}`;
+        else if (is_lava(u.ux, u.uy))
+            buf = ` and immediately ${vtense(spillage, 'burn')} away`;
+        await pline(`Some ${spillage} ${vtense(spillage, 'spill')} onto the `
+                    + `${surface(u.ux, u.uy)}${buf}.`);
+        /* shop usage message comes after the spill message */
+        if (otyp === CAN_OF_GREASE && cobj.spe > 0)
+            consume_obj_charge(cobj, true);
+        /* something [useless] happened */
+        return 1;
+    }
+    /* anything not covered yet */
+    if (cobj.oclass === POTION_CLASS) /* can't pour potions... */
+        await pline(`The ${xname(cobj)} ${otense(cobj, 'are')} securely sealed.`);
+    else if (game.uarmh && cobj === game.uarmh)
+        return await tiphat() ? 1 : 0;
+    else if (otyp === STATUE)
+        await pline('Nothing interesting happens.');
+    else
+        await pline('Nothing happens.');
     return 0;
 }
 

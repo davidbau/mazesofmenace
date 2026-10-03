@@ -72,7 +72,7 @@ import {
     A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA,
     acurr, get_strength_str,
 } from './attrib.js';
-import { describe_level, objnum_to_glyph, Hallucination, impossible } from './display.js';
+import { describe_level, objnum_to_glyph, Hallucination, impossible, SYM_OFF_O } from './display.js';
 import { rank_of, roles } from './roles.js';
 import { money_cnt } from './shk.js';
 import { hidden_gold } from './vault.js';
@@ -83,7 +83,7 @@ import { unconscious } from './teleport.js';
 import { classify_terrain } from './hack.js';
 import { near_capacity, weapon_descr, Blind } from './invent.js';
 import { weapon_type } from './weapon.js';
-import { is_sword, objectNames } from './objects.js';
+import { is_sword, objectNames, COIN_CLASS } from './objects.js';
 import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
 import {
@@ -998,12 +998,12 @@ export function eval_notify_windowport_field(fld, valsetlist, idx) {
     // C :1556-1581 temporary hack — moveloop's new-game prolog sets
     // svc.context.rndencode after the status window init, so gold's \G
     // sequence was already encoded/cached; a symset change likewise alters
-    // the glyph half of the encoding. svc/gs state has no JS port yet
-    // (COIN_CLASS/SYM_OFF_O have no const.js export either), so the reads
-    // are undefined-safe and the arm pins off until that state lands.
+    // the glyph half of the encoding. svc rndencode has no JS port yet so
+    // that read stays undefined-safe; the gold showsyms slot landed with
+    // assign_graphics (display.js) and reads the C :1579 slot.
     {
         const rndencode = game.svc?.context?.rndencode;
-        const goldsym = game.gs?.showsyms?.[0]; // C :1579 gs.showsyms[COIN_CLASS + SYM_OFF_O]
+        const goldsym = game.gs?.showsyms?.[COIN_CLASS + SYM_OFF_O]; // C :1579
         if (fld === BL_GOLD && (rndencode !== oldrndencode || goldsym !== oldgoldsym)) { // C :1582-1584
             if (!game.gu) game.gu = {};
             game.gu.update_all = true; // C :1585 (chg = 2 variant abandoned)

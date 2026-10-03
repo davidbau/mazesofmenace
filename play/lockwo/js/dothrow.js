@@ -139,7 +139,7 @@ function closed_door(x, y) {
 }
 // C ref: youprop.h Fumbling / Glib.
 function Fumbling() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
-function Glib() { return ((game.u?.Glib || 0) > 0) || ((game.u?.uprops?.Glib || 0) > 0); }
+function Glib() { return (game.u?.uprops?.Glib || 0) > 0; }
 // C ref: role.c Role_if(PM_ARCHEOLOGIST) — role 0 in u_init.c's ordering.
 const PM_ARCHEOLOGIST = 0;
 // C ref: svl.level.objects[x][y] — the top of the floor pile at (x,y).
@@ -564,7 +564,7 @@ export function befriend_with_obj(ptr, obj) {
 
 // C ref: dog.c initedog(mtmp, everything) — consumes no RNG.  u.uconduct.pets++
 // and the livelog line are the only side effects outside the edog struct.
-function initedog(mtmp, everything) {
+export function initedog(mtmp, everything) {
     const edogp = mtmp.edog;
     const minhungry = (game.moves || 0) + 1000;
     const minimumtame = is_domestic(mtmp.data) ? 10 : 5;
@@ -772,7 +772,14 @@ export async function throw_gold(obj) {
         } else {
             const land = I.bhit_thrown_landing(u.dx, u.dy, range, obj);
             bx = land.x; by = land.y;
-            if (land.mon && (await ghitm(land.mon, obj))) return ECMD_TIME;
+            if (land.mon) {
+                if (await ghitm(land.mon, obj)) return ECMD_TIME;
+            } else {
+                // C ref: dothrow.c:2715 — thrown gold that lands on a hole or
+                // trap door rides it to the level below.
+                const { ship_object } = await import('./dokick.js');
+                if (await ship_object(obj, bx, by, false)) return ECMD_TIME;
+            }
         }
     }
 

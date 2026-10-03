@@ -9,7 +9,7 @@
 //
 // Hero placement is shared by jumping, teleport commands, scrolls, and traps.
 
-import { game } from './gstate.js';
+import { game, hooks } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { isok, dist2 } from './hacklib.js';
 import { newsym, m_at, update_topl, y_n } from './display.js';
@@ -262,6 +262,28 @@ export async function rloc_to(mtmp, x, y) {
 //
 // RNG: up to 50 tries of `rnd(COLNO - 1)` then `rn2(ROWNO)`, both consumed on
 // every iteration, stopping at the first square rloc_pos_ok() accepts.
+// C ref: teleport.c rloc(mtmp, RLOC_NOMSG) as used by level-creation
+// "insurance" (shknam.c shkinit): during mklev rloc_to_core() prints nothing,
+// so the relocation is synchronous: up to 50 rnd(COLNO-1)/rn2(ROWNO) tries.
+export function rloc_mklev(mtmp) {
+    for (let trycount = 0; trycount < 50; ++trycount) {
+        const x = rnd(COLNO - 1), y = rn2(ROWNO);
+        if (rloc_pos_ok(x, y, mtmp)) {
+            const oldx = mtmp.mx, oldy = mtmp.my;
+            mtmp.mx = 0; mtmp.my = 0;
+            if (oldx) newsym(oldx, oldy);
+            mtmp.mtrack = [];
+            mtmp.mx = x; mtmp.my = y;
+            update_monster_region(mtmp);
+            newsym(x, y);
+            set_apparxy(mtmp);
+            return true;
+        }
+    }
+    return false;
+}
+hooks.rloc_mklev = rloc_mklev;
+
 export async function rloc(mtmp, rlocflags) {
     // The u.usteed / iswiz special cases don't apply here: the teleporting
     // monsters are ordinary hostiles, never the player's steed or the Wizard
@@ -1394,9 +1416,9 @@ const S_MIMIC_MCLS = 13;                       /* defsym.h MONSYM(13,'m',MIMIC) 
 function HProp_tp(name) { return (game.u?.uprops?.[name] | 0); }
 function Levitation_() { return HProp_tp('HLevitation') > 0 || HProp_tp('ELevitation') > 0; }
 function Flying_() { return HProp_tp('HFlying') > 0 || HProp_tp('EFlying') > 0; }
-function Passes_walls_() { return HProp_tp('HPasses_walls') > 0; }
+function Passes_walls_() { return !!game.u?.formprops?.Passes_walls || HProp_tp('HPasses_walls') > 0; }
 function Punished_() { return !!game.u?.uball; }
-function Teleportation_() { return HProp_tp('HTeleportation') > 0 || HProp_tp('ETeleportation') > 0; }
+function Teleportation_() { return !!game.u?.formprops?.Teleportation || HProp_tp('HTeleportation') > 0 || HProp_tp('ETeleportation') > 0; }
 function HTeleportation_() { return HProp_tp('HTeleportation'); }
 function ETeleportation_() { return HProp_tp('ETeleportation'); }
 function setHTeleportation_(v) { if (game.u?.uprops) game.u.uprops.HTeleportation = v; }
@@ -1406,7 +1428,7 @@ const I_SPECIAL_TP = 0x20000000;
 function uball_() { return game.u?.uball || null; }
 function uchain_() { return game.u?.uchain || null; }
 function carried_(obj) { return obj?.where === 'invent'; }
-function Stunned_tp() { return !!(game.u?.uprops?.HStun || game.u?.Stunned); }
+function Stunned_tp() { return !!game.u?.formprops?.Stunned || !!(game.u?.uprops?.HStun || game.u?.Stunned); }
 function HStun_tp() { return HProp_tp('HStun'); }
 function Confusion_tp() { return HProp_tp('HConfusion') > 0; }
 async function make_stunned_tp(_xtime, _talk) { }   /* js/read.js:1538, private */

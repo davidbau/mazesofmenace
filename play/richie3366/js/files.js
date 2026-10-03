@@ -14,7 +14,7 @@
 // embedded (extract-tribute.py), not dlb disk.
 
 import { game } from './gstate.js';
-import { vfsReadFile } from './storage.js';
+import { vfsReadFile, vfsDeleteFile } from './storage.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { addinv } from './u_init.js';
 import { add_to_migration, mergable } from './mkobj.js';
@@ -27,7 +27,8 @@ import { NUM_OBJECTS } from './generated/objects_data.js';
 import { NROFARTIFACTS } from './generated/artifacts_data.js';
 import {
     BUFSZ, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_WITH_HERO, WIZKIT_MAX,
-    LFILE_EXISTS, NHF_LEVELFILE, READING, WRITING, COUNTING, LEVELPREFIX,
+    LFILE_EXISTS, NHF_LEVELFILE, NHF_SAVEFILE, READING, WRITING, FREEING,
+    COUNTING, LEVELPREFIX, SAVEPREFIX,
     PREFIX_COUNT, FQN_MAX_FILENAME, SF_UPTODATE, SF_OUTDATED,
     SF_CRITICAL_BYTE_COUNT_MISMATCH, SF_DM_IL32LLP64_ON_ILP32LL64,
     SF_DM_I32LP64_ON_ILP32LL64, SF_DM_ILP32LL64_ON_I32LP64,
@@ -49,6 +50,7 @@ import { maxledgerno } from './dungeon.js';
 import { pmatch } from './cmd.js';
 import { wish_history_add } from './zap.js';
 import { after_opt_showpaths } from './earlyarg.js'; // C do_deferred_showpaths `:3101` (imports.mjs SAFE: hoisted fn)
+import { set_savefile_name } from './save.js'; // C restore_saved_game `:1276` (imports.mjs: same 101-module SCC, hoisted binding — cycle-safe)
 
 const INVLET_BASIC = 52;
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
@@ -682,6 +684,46 @@ export function free_nhfile(nhfp) {
 }
 
 /**
+ * C ref: files.c close_nhfile `:518–531` — drain the open descriptor,
+ * then free the handle. C order: structlevel + live fd → nhclose +
+ * fd = -1 (`:520–521`); else fpdef → fclose + NULL (`:522–523`);
+ * fplog "# closing" fprintf (`:524–525`) then fclose (`:526–527`);
+ * fpdebug fclose (`:528–529`); free_nhfile (`:530`).
+ * Rule #2 analogues (init_nhfile precedent above): nhclose, fclose and
+ * the fplog fprintf are named omits (pseudo-fd, no stdio, no fs log);
+ * the fd/fpdef resets and free_nhfile are live.
+ * Callers wired: do.c:1712 → js/do.js goto_level stash arm;
+ * save.c:211 → js/save.js serOtherLevels; save.c:216 → js/save.js
+ * dosave0 tail; files.c:1282 → restore_saved_game below (in-cluster).
+ * Named: bones.c savebones/getbones (VFS splits, no NHFILE), unported
+ * dorecover/restlevelfile/savestateinlock/recover_savefile/
+ * plname_from_file/check_panic_save, INSURANCE save_currentstate (inline
+ * record, do.js:1619 doc), FREE_ALL_MEMORY free_dungeons, unix-only
+ * freedynamicdata (no JS counterpart), makemap_prepost freeing arm
+ * (wizcmds.js:823 doc), goto_level leave path (mode consts, no handle).
+ * @param {object} nhfp
+ */
+export function close_nhfile(nhfp) {
+    if (nhfp.structlevel && nhfp.fd !== -1) { // `:520`
+        /* C nhclose(nhfp->fd) — named omit: pseudo-fd, nothing to close. */
+        nhfp.fd = -1; // `:521`
+    } else if (nhfp.fpdef) { // `:522`
+        /* C fclose(nhfp->fpdef) — named omit: no stdio in JS. */
+        nhfp.fpdef = null; // `:523`
+    }
+    if (nhfp.fplog) { // `:524`
+        /* C fprintf(fplog, "# closing\n") — named omit (Rule #2, no fs log). */
+    }
+    if (nhfp.fplog) { // `:526`
+        /* C fclose(nhfp->fplog) — named omit: no stdio. */
+    }
+    if (nhfp.fpdebug) { // `:528`
+        /* C fclose(nhfp->fpdebug) — named omit: no stdio. */
+    }
+    free_nhfile(nhfp); // `:530`
+}
+
+/**
  * C ref: files.c viable_nhfile `:549–581` (staticfn → module-local) —
  * sanity gate before handing the handle back: no open file at all, a
  * structlevel handle with no fd, or a fieldlevel handle with no FILE
@@ -722,6 +764,26 @@ function viable_nhfile(nhfp) {
         }
     }
     return nhfp;
+}
+
+/**
+ * C ref: files.c nhclose `:583–594` — close a structlevel fd through the
+ * buffered registry (close_check → bclose) else POSIX close. The fd >= 0
+ * gate and retval are live; both sinks are named: close_check/bclose are
+ * by-design (sfstruct buffered registry, no scored analogue) and POSIX
+ * close has no VFS counterpart (pseudo-fds reference stash slots —
+ * init_nhfile precedent).
+ * @param {number} fd
+ * @returns {number}
+ */
+export function nhclose(fd) {
+    let retval = 0; // `:585`
+    if ((fd | 0) >= 0) { // `:587`
+        /* C `:588` close_check(fd) — by-design (sfstruct registry). */
+        /* C `:589–591` bclose(fd) / close(fd) — named omits (no buffered
+           registry, no POSIX fds under Rule #2). */
+    }
+    return retval; // `:593`
 }
 
 /**
@@ -865,6 +927,259 @@ export function create_levelfile(lev, errbuf) {
         /* C `:663–667` MSDOS/WIN32 setmode(fd, O_BINARY) — named omit (platform). */
     }
     return viable_nhfile(nhfp); /* C `:668–669` */
+}
+
+// ---------------------------------------------------------------------------
+// C ref: files.c savefile NHFILE family — create_savefile `:1159–1213`,
+// open_savefile `:1217–1255`, delete_savefile `:1259–1266`,
+// restore_saved_game `:1270–1287`, get_freeing_nhfile `:1299–1308`,
+// nh_compress `:1787–1792`, nh_uncompress `:1796–1801`,
+// problematic_savefile `:2015–2046` (staticfn → module-local).
+// JSON/VFS analogues (Rule #2, no POSIX open/creat/unlink): the levelfile
+// open/create pair above is the precedent — fd carries an opaque success
+// token, VFS miss ≡ C ENOENT → NULL (fopen_wizkit_file precedent).
+// ---------------------------------------------------------------------------
+
+/**
+ * C ref: files.c create_savefile `:1159–1213` — create/truncate the save
+ * file for writing into an NHFILE handle, or NULL via viable_nhfile.
+ * Handle fields in C order; the creat arm is the VFS analogue: ensuring
+ * the path always succeeds (no quota or dir-writable failure in VFS —
+ * create_levelfile precedent), so fd takes the savefile success token
+ * (0, the dosave0 inline-handle convention) instead of a creat fd.
+ * Named omits: MICRO/WIN32 open(O_TRUNC) vs MACOS9 maccreat vs UNIX
+ * creat + MSDOS/WIN32 setmode + FCMASK mode bits + POSIX errno
+ * (platform; no POSIX creat under VFS); VMS chown (platform);
+ * SAVEFILE_DEBUGGING fplog (compiled out, savefile.h:8).
+ * dosave0 (save.c:128) keeps its inline handle (save.js:628 doc, fd 0 —
+ * same token); files.c:2975 recover_savefile is unported.
+ * @returns {object|null}
+ */
+export function create_savefile() {
+    const fq_save = fqname(game.SAVEF, SAVEPREFIX, 0); // `:1163`
+    /* Kept in C order for the prefix/impossible arms; the VFS ensure
+       below always succeeds, so fq_save feeds no JS branch (open_levelfile
+       fq_lock precedent). */
+    void fq_save;
+    const nhfp = new_nhfile(); // `:1164`
+    if (nhfp) {
+        nhfp.ftype = NHF_SAVEFILE; // `:1166`
+        nhfp.mode = WRITING; // `:1167`
+        const do_historical = true; // `:1161`
+        if (game.program_state?.in_self_recover || do_historical) { // `:1168`
+            /* C nhUse(do_historical) — no-op by definition. */
+            nhfp.structlevel = true; // `:1169`
+            nhfp.fieldlevel = false; // `:1170`
+            nhfp.addinfo = false; // `:1171`
+            nhfp.style.deflt = false; // `:1172`
+            nhfp.style.binary = true; // `:1173`
+            nhfp.fnidx = FNIDX_HISTORICAL; // `:1174` historical
+            nhfp.fd = -1; // `:1175`
+            nhfp.fpdef = null; // `:1176`
+            /* C `:1177–1179` SAVEFILE_DEBUGGING fplog — compiled out. */
+            /* C `:1180–1192` MICRO/WIN32 open vs MACOS9 maccreat vs UNIX
+               creat(fq_save, FCMASK) — Rule #2 VFS analogue: the ensure
+               always succeeds, so fd takes the success token. */
+            nhfp.fd = 0;
+            /* C `:1193–1196` MSDOS/WIN32 setmode(fd, O_BINARY) — platform. */
+        }
+    }
+    /* C `:1198–1210` VMS chown — platform (compiled out). */
+    return viable_nhfile(nhfp); // `:1211–1212`
+}
+
+/**
+ * C ref: files.c open_savefile `:1217–1255` — open the save file for
+ * reading into an NHFILE handle, or NULL via viable_nhfile. Handle
+ * fields in C order (note the open arm sits OUTSIDE the do_historical
+ * if, unlike create_savefile above — `:1242–1246`).
+ * JSON analogue (Rule #2, no POSIX open): the VFS read probe —
+ * vfsReadFile(fq_save) miss ≡ C ENOENT → fd -1 → viable_nhfile NULL
+ * (fopen_wizkit_file precedent); a hit takes the savefile success
+ * token (0, dosave0 convention).
+ * Named omits: MACOS9 macopen vs UNIX open + MSDOS/WIN32 setmode
+ * (platform); SAVEFILE_DEBUGGING fplog (compiled out, savefile.h:8).
+ * Callers: files.c:1280 restore_saved_game (in-cluster, below);
+ * save.c:113 dosave0 HUP arm (hangup arms named, save.js:573 doc);
+ * files.c:1378 plname_from_file (unported — ships with that function).
+ * @returns {object|null}
+ */
+export function open_savefile() {
+    const fq_save = fqname(game.SAVEF, SAVEPREFIX, 0); // `:1221`
+    const nhfp = new_nhfile(); // `:1222`
+    if (nhfp) {
+        nhfp.ftype = NHF_SAVEFILE; // `:1224`
+        nhfp.mode = READING; // `:1225`
+        let do_historical = true; // `:1220`
+        if (game.program_state?.in_self_recover || do_historical) { // `:1226`
+            do_historical = true; /* force it */ // `:1227`
+            /* C nhUse(do_historical) — no-op by definition. */ // `:1228`
+            nhfp.structlevel = true; // `:1229`
+            nhfp.fieldlevel = false; // `:1230`
+            nhfp.addinfo = false; // `:1231`
+            nhfp.style.deflt = false; // `:1232`
+            nhfp.style.binary = true; // `:1233`
+            nhfp.fnidx = FNIDX_HISTORICAL; // `:1234` historical
+            nhfp.fd = -1; // `:1235`
+            nhfp.fpdef = null; // `:1236`
+            /* C `:1237–1239` SAVEFILE_DEBUGGING fplog — compiled out. */
+        }
+        /* C `:1240–1244` MACOS9 macopen vs UNIX open(fq_save, O_RDONLY)
+           — Rule #2 VFS read probe instead. */
+        nhfp.fd = (vfsReadFile(fq_save) != null) ? 0 : -1;
+        /* C `:1245–1248` MSDOS/WIN32 setmode(fd, O_BINARY) — platform. */
+    }
+    return viable_nhfile(nhfp); // `:1253–1254`
+}
+
+/**
+ * C ref: files.c delete_savefile `:1259–1266` — unlink the save file
+ * plus converted-file cleanup, always returning 0. unlink is the VFS
+ * analogue (delete_bonesfile precedent); delete_convertedfile is live.
+ * (util/sfctool.c:667 carries a tool-build stub of the same name —
+ * not the game, named not ported.)
+ * Callers: save.c:131/:205 dosave0 (HUP arms named, save.js:573 doc),
+ * restore.c:819/:904 dorecover, files.c recover_savefile, sfstruct.c:585
+ * (all unported — ship with those functions), unixmain.c:269 (not scored).
+ * @returns {number}
+ */
+export function delete_savefile() {
+    const sfname = fqname(game.SAVEF, SAVEPREFIX, 0); // `:1261`
+    vfsDeleteFile(sfname); // `:1263` unlink — VFS analogue
+    delete_convertedfile(sfname); // `:1264`
+    return 0; // `:1265`
+}
+
+/**
+ * C ref: files.c nh_compress `:1787–1792` — COMPRESS-gated
+ * docompress_file(filename, FALSE). COMPRESS is defined in the contest
+ * build (config.h:390), so the call is live in C — but docompress_file
+ * is by-design (external compressor, Rule #2). The gate is live, the
+ * sink named.
+ * @param {string} filename
+ */
+export function nh_compress(filename) {
+    /* C `:1790` docompress_file(filename, FALSE) — by-design (Rule #2). */
+    void filename;
+}
+
+/**
+ * C ref: files.c nh_uncompress `:1796–1801` — COMPRESS-gated
+ * docompress_file(filename, TRUE). Same shape as nh_compress above:
+ * live gate, by-design sink.
+ * @param {string} filename
+ */
+export function nh_uncompress(filename) {
+    /* C `:1799` docompress_file(filename, TRUE) — by-design (Rule #2). */
+    void filename;
+}
+
+// C ref: files.c sf2msg `:1998–2011` (static, `#ifndef SFCTOOL`) —
+// sfstatus → message rows for problematic_savefile below.
+const SF2MSG = [
+    { sfstatus: SF_UPTODATE, msg: 'everything matches' }, // `:2002`
+    { sfstatus: SF_OUTDATED, msg: 'outdated savefile' }, // `:2003`
+    { sfstatus: SF_CRITICAL_BYTE_COUNT_MISMATCH, // `:2004–2005`
+      msg: 'savefile critical byte-count mismatch' },
+    { sfstatus: SF_DM_IL32LLP64_ON_ILP32LL64, // `:2006`
+      msg: 'Windows x64 savefile on x86' },
+    { sfstatus: SF_DM_I32LP64_ON_ILP32LL64, // `:2007`
+      msg: 'Unix 64 savefile on x86' },
+    { sfstatus: SF_DM_ILP32LL64_ON_I32LP64, // `:2008`
+      msg: 'x86 savefile on Unix 64' },
+    { sfstatus: SF_DM_ILP32LL64_ON_IL32LLP64, // `:2009`
+      msg: 'x86 savefile on Windows x64' },
+    { sfstatus: SF_DM_I32LP64_ON_IL32LLP64, // `:2010`
+      msg: 'Unix 64 savefile on Windows x64' },
+    { sfstatus: SF_DM_IL32LLP64_ON_I32LP64, // `:2011`
+      msg: 'Windows x64 savefile on Unix 64' },
+    { sfstatus: SF_DM_MISMATCH, msg: 'generic savefile mismatch' }, // `:2012`
+];
+
+/**
+ * C ref: files.c problematic_savefile `:2015–2046` (staticfn →
+ * module-local) — report a non-current savefile, always yield NULL.
+ * The switch (UPTODATE break; six datamodel cases falling through to
+ * the MISMATCH/OUTDATED/CRITICAL/default arm) and the sf2msg scan are
+ * live in C order; raw_printf is live (sync, display.js).
+ * Sole caller files.c:1283 restore_saved_game (in-cluster, below).
+ * @param {number} sfstatus
+ * @param {string} savefilenm
+ * @returns {null}
+ */
+function problematic_savefile(sfstatus, savefilenm) {
+    const st = sfstatus | 0;
+    const nhfp = null; // `:2018`
+    switch (st) { // `:2020`
+    case SF_UPTODATE: // `:2021`
+        break; // `:2022`
+    case SF_DM_IL32LLP64_ON_ILP32LL64: // `:2023`
+    case SF_DM_I32LP64_ON_ILP32LL64: // `:2024`
+    case SF_DM_ILP32LL64_ON_I32LP64: // `:2025`
+    case SF_DM_ILP32LL64_ON_IL32LLP64: // `:2026`
+    case SF_DM_I32LP64_ON_IL32LLP64: // `:2027`
+    case SF_DM_IL32LLP64_ON_I32LP64: // `:2028`
+        /* FALLTHROUGH */ // `:2029`
+        /*FALLTHRU*/
+    case SF_DM_MISMATCH: // `:2030`
+    case SF_OUTDATED: // `:2031`
+    case SF_CRITICAL_BYTE_COUNT_MISMATCH: // `:2032`
+    default: // `:2033`
+        for (let i = 0; i < SF2MSG.length; ++i) { // `:2035`
+            if (SF2MSG[i].sfstatus === st) { // `:2036`
+                raw_printf('\n%s is %s %s\n', // `:2037–2040`
+                    savefilenm,
+                    (st === SF_OUTDATED) ? 'an' : 'a', // `:2039`
+                    SF2MSG[i].msg);
+                break; // `:2041`
+            }
+        }
+    }
+    return nhfp; // `:2044`
+}
+
+/**
+ * C ref: files.c get_freeing_nhfile `:1299–1308` — fresh handle with
+ * mode FREEING for savelev's release pass (fd stays -1 via new_nhfile).
+ * Callers: cmd.c:1036 makemap_prepost (freeing arm named, wizcmds.js:823
+ * doc), restore.c:813 dorecover (unported), save.c:1063 free_dungeons
+ * (FREE_ALL_MEMORY gate) and save.c:1079 freedynamicdata (no JS
+ * counterpart) — all named, ship with those functions.
+ * @returns {object}
+ */
+export function get_freeing_nhfile() {
+    let nhfp = null; // `:1301`
+    nhfp = new_nhfile(); /* also sets fd to -1 */ // `:1303`
+    if (nhfp) { // `:1304`
+        nhfp.mode = FREEING; // `:1305`
+    }
+    return nhfp; // `:1307`
+}
+
+/**
+ * C ref: files.c restore_saved_game `:1270–1287` — name + open the save
+ * file, validate it, and either hand back the handle or close it and
+ * report via problematic_savefile (NULL). Async: validate is async in
+ * JS (display.js chain); awaited in C order. set_savefile_name via the
+ * live save.js export (imports.mjs: same 101-module SCC, hoisted
+ * binding — cycle-safe).
+ * No scored caller (unixmain.c:243 only) — named.
+ * @returns {Promise<object|null>}
+ */
+export async function restore_saved_game() {
+    let nhfp = null; // `:1273`
+    let sfstatus = 0; // `:1274`
+    set_savefile_name(1); // `:1276` C TRUE (dosave0 precedent)
+    const fq_save = fqname(game.SAVEF, SAVEPREFIX, 0); // `:1277`
+    nh_uncompress(fq_save); // `:1279`
+    if ((nhfp = open_savefile()) !== null) { // `:1280`
+        if ((sfstatus = await validate(nhfp, fq_save, false)) // `:1281`
+                !== SF_UPTODATE) {
+            close_nhfile(nhfp); // `:1282`
+            nhfp = problematic_savefile(sfstatus, fq_save); // `:1283`
+        }
+    }
+    return nhfp; // `:1286`
 }
 
 // ---------------------------------------------------------------------------

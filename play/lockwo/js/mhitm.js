@@ -30,7 +30,7 @@
 
 import { game } from './gstate.js';
 import { s_suffix } from './hacklib.js';
-import { hitval } from './weapon.js';
+import { hitval, possibly_unwield } from './weapon.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     NATTK, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
@@ -256,47 +256,10 @@ function attacktype_at(mon, aatyp) {
 }
 
 // weapon_check states (C ref: monst.h wpn_chk_flags).
-const NO_WEAPON_WANTED = 0, NEED_WEAPON = 1, NEED_RANGED_WEAPON = 2, NEED_HTH_WEAPON = 3;
-// Hand-to-hand weapon priority (C ref: weapon.c hwep[]), restricted to the
-// otyps the contest's armed monsters carry; the orcish "crude" dagger (36) is
-// the only one reachable for the low-level orc/kobold slice.
-const HWEP_PRIORITY_MM = [55, 45, 54, 52, 50, 46, 48, 73, 44, 27, 30, 28, 77,
-    34, 35, 36, 40];
-const ORCISH_DAGGER_MM = 36;
+const NEED_WEAPON = 1, NEED_HTH_WEAPON = 3;
 
 // C ref: mondata.h MON_WEP(mon) — the monster's wielded weapon (mw).
 function MON_WEP_MM(mon) { return mon?.mw || null; }
-
-// C ref: weapon.c select_hwep — first carried weapon in hwep[] priority.  No RNG.
-function select_hwep_mm(mtmp) {
-    for (const otyp of HWEP_PRIORITY_MM)
-        for (const o of (mtmp?.minvent || []))
-            if (o.otyp === otyp) return o;
-    return null;
-}
-
-// C ref: weapon.c mon_wield_item(mon) — wield the best melee weapon.  Returns 1
-// if the monster wielded a (different) weapon this turn, 0 otherwise.  No RNG;
-// only the "<Mon> wields <weapon>!" message + mw set.
-async function mon_wield_item_mm(mon) {
-    if (mon.weapon_check === NO_WEAPON_WANTED) return 0;
-    const obj = select_hwep_mm(mon);
-    if (obj) {
-        const mw_tmp = MON_WEP_MM(mon);
-        if (mw_tmp && mw_tmp.otyp === obj.otyp) {
-            mon.weapon_check = NEED_WEAPON;
-            return 0;
-        }
-        mon.mw = obj;
-        mon.weapon_check = NEED_WEAPON;
-        if (mm_can_see_mon(mon)) {
-            const nm = (obj.otyp === ORCISH_DAGGER_MM) ? 'a crude dagger' : 'a weapon';
-            await emitMMmsg(`${Monnam(mon)} wields ${nm}!`);
-        }
-        return 1;
-    }
-    return 0;
-}
 
 // C ref: canseemon(mon) — (cansee || see_with_infrared) && mon_visible.
 const mm_can_see_mon = canseemon_shared;
@@ -382,9 +345,8 @@ function mm_ops() {
 //     omitting both deps here just always takes C's `&&` short-circuit to the
 //     ordinary make_stoned() arm, which is exactly right whenever the hero
 //     isn't currently polymorphed into a stone golem.
-// tmp_at_flash/tmp_at_step/tmp_at_end are cosmetic beam-glyph overlays (no
-// RNG, not part of scored PRNG/screen text) and are likewise left unwired.
-async function thrwmmDeps() {
+// tmp_at_flash/tmp_at_step/tmp_at_end draw the in-flight missile (DISP_FLASH).
+export async function thrwmmDeps() {
     const MM = await import('./monmove.js');
     const { shade_miss, passive_obj } = await import('./uhitm.js');
     const { potionhit, make_blinded_hero, BlindedTimeout, make_stoned }
@@ -402,6 +364,8 @@ async function thrwmmDeps() {
     void killer_xname; // reserved for a future poisoned() message refinement
 
     const an_ = (s) => (/^[aeiouAEIOU]/.test(s) ? `an ${s}` : `a ${s}`);
+    const { flash_obj_glyph, show_glyph_cell } = await import('./display.js');
+    const flash = { glyph: null, x: -1, y: -1 };
 
     return {
         // weapon selection / wielding — mon_wield_item() handles the
@@ -448,8 +412,22 @@ async function thrwmmDeps() {
         Stone_resistance: () => !!(game.u?.uprops?.StoneResistance),
         make_stoned,
         stop_occupation,
-        // C ref: mthrowu.c:813 pline("%s misses.", The(mshot_xname(singleobj))).
-        miss_msg: async (obj) => { await emitMMmsg(`${MM.The_mm(MM.mshot_xname(obj))} misses.`); },
+        // C ref: mthrowu.c:804-813 — "onto the sink" when a sink stops it in
+        // view, else "%s misses." only for a multishot volley the hero watches.
+        miss_msg: async (obj, pos, range) => {
+            const ms = game.m_shot || {};
+            const typ = game.level?.at?.(pos.x, pos.y)?.typ;
+            const { IS_SINK } = await import('./const.js');
+            const { otense } = await import('./invent.js');
+            if (range && cansee(pos.x, pos.y) && IS_SINK(typ))
+                await emitMMmsg(`${MM.The_mm(MM.mshot_xname(obj))} ${
+                    otense(obj, 'drop')} onto the sink.`);
+            else if ((ms.n | 0) > 1
+                     && (!game.mesg_given || pos.x !== game.u.ux || pos.y !== game.u.uy)
+                     && (cansee(pos.x, pos.y)
+                         || (game.marcher && mm_can_see_mon(game.marcher))))
+                await emitMMmsg(`${MM.The_mm(MM.mshot_xname(obj))} misses.`);
+        },
         make_blinded: make_blinded_hero, BlindedTimeout,
         vision_clears: async () => { await emitMMmsg('Your vision clears.'); },
         pline_slip: async (mon, obj) => {
@@ -459,6 +437,27 @@ async function thrwmmDeps() {
         delobj,
         flooreffects,
         passive_obj,
+        // C ref: display.c tmp_at() DISP_FLASH (display.c:1278-1292): each step
+        // restores (newsym) the previously flashed cell, then draws the
+        // missile glyph on the new square only when cansee() it; DISP_END
+        // restores the last one.  So thitu()'s "You are hit by ..." --More--
+        // shows the missile on the square just before the hero.  (A tethered
+        // aklys uses DISP_TETHER's trail, not drawn here.)
+        tmp_at_flash: (obj, tethered) => {
+            flash.glyph = tethered ? null : flash_obj_glyph(obj);
+            flash.x = flash.y = -1;
+        },
+        tmp_at_step: (x, y) => {
+            if (!flash.glyph) return;
+            if (flash.x >= 0) { newsym(flash.x, flash.y); flash.x = flash.y = -1; }
+            if (!cansee(x, y)) return;
+            show_glyph_cell(x, y, flash.glyph.ch, flash.glyph.color, flash.glyph.dec);
+            flash.x = x; flash.y = y;
+        },
+        tmp_at_end: () => {
+            if (flash.x >= 0) newsym(flash.x, flash.y);
+            flash.glyph = null; flash.x = flash.y = -1;
+        },
     };
 }
 
@@ -713,6 +712,20 @@ async function killMonster(mdef) {
     // remembered contents instead of keeping the 'I'.
     const loc0 = game.level?.at(mdef.mx, mdef.my);
     if (loc0?.invisMon) unmap_object(mdef.mx, mdef.my);
+    // C ref: mon.c:3147 mondead() — "Dead Kops may come back."  mondied()
+    // runs mondead() (this rnd(5)) before corpse_chance().
+    if (permonst(mdef)?.mcls === 37 /* S_KOP */) {
+        let stway = game.stairs;
+        while (stway && (stway.isladder || stway.up)) stway = stway.next;
+        const r = rnd(5);
+        if (r === 1 || r === 2) {
+            const MK = await import('./makemon.js');
+            const ptr = permonst(mdef);
+            const kop = (r === 1 && stway) ? MK.makemon(ptr, stway.sx, stway.sy, 0)
+                                           : MK.makemon(ptr, 0, 0, 0);
+            if (kop) await MK.makemon_appears_msg(kop, kop.mx, kop.my, 0);
+        }
+    }
     const dropCorpse = await corpse_chance(mdef); // mon.c:3181
     const mx = mdef.mx, my = mdef.my;
     // Detach from the level so the renderer (m_at / MON_AT) stops drawing it.
@@ -837,7 +850,10 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
         } else {
             tmp = 0;
         }
-        rn2(30);   /* erode_armor(magr, ERODE_CORRODE) — no monster body armour */
+        if (!rn2(30)) {                        /* mhitm.c:1345 */
+            const { erode_armor } = await import('./mhitm_ad.js');
+            await erode_armor(magr, 3 /* ERODE_CORRODE */);
+        }
         if (!rn2(6)) {
             const { acid_damage } = await import('./trap.js');
             await acid_damage(MON_WEP_MM(magr));
@@ -999,22 +1015,25 @@ async function failed_grab(magr, mdef, mattk) {
 // this used to emit that (hero-directed) wording with a hardcoded "crude
 // dagger" as the weapon name.
 async function mswingsm(magr, mdef, otemp) {
-    if (!mm_can_see_mon(magr)) return;
-    // mswings_verb(otemp, bash): SLASH weapons swing, everything else the
-    // monsters here wield thrusts; a polearm used at reach bashes (no monster
-    // in this port wields one).
-    const verb = SLASH_OTYPS_MM.has(otemp.otyp) ? 'swings' : 'thrusts';
-    const hisher = mhis(magr);
-    const many = ((otemp.quan | 0) > 1) ? 'one of ' : '';
-    await emitMMmsg(`${Monnam(magr)} ${verb} ${many}${hisher} ${xname(otemp)}`
-        + ` at ${mon_nam(mdef)}.`);
+    const MM = await import('./monmove.js');
+    const { Blind } = await import('./vision.js');
+    const u = game.u || {};
+    const seeInvis = !!(u.see_invis || u.uprops?.See_invisible
+                        || u.uprops?.HSee_invisible || u.uprops?.ESee_invisible);
+    // C: flags.verbose && !Blind && mon_visible(magr)
+    if (game.flags?.verbose === false || Blind()
+        || (magr.minvis && !seeInvis) || magr.mundetected)
+        return;
+    const bash = MM.is_pole(otemp) && otemp.oartifact !== ART_SNICKERSNEE_MM
+        && dist2_mm(magr.mx, magr.my, mdef.mx, mdef.my) <= 2;
+    const ON = await import('./objnam.js');
+    await emitMMmsg(`${Monnam(magr)} ${MM.mswings_verb(otemp, bash)} `
+        + `${((otemp.quan | 0) > 1) ? 'one of ' : ''}${mhis(magr)} `
+        + `${ON.xname_flags(otemp, 0)} at ${mon_nam(mdef)}.`);
 }
-// C ref: objects[].oc_dir & SLASH for the edged weapons monsters can wield
-// (otyps per mkobj.js).  Everything else they carry is PIERCE.
-const SLASH_OTYPS_MM = new Set([
-    43 /*scimitar*/, 44 /*silver saber*/, 45 /*broadsword*/, 46 /*long sword*/,
-    47 /*two-handed sword*/, 48 /*katana*/, 51 /*axe*/, 52 /*battle-axe*/,
-]);
+// C ref: artilist.h ART_SNICKERSNEE.
+const ART_SNICKERSNEE_MM = 19;
+function dist2_mm(x0, y0, x1, y1) { return (x0 - x1) ** 2 + (y0 - y1) ** 2; }
 
 // C ref: weapon.c hitval(otmp, mon) — spe + oc_hitbon, +2 for a blessed weapon
 // against undead/demons.  (The spear-vs-kebabable, trident-vs-swimmer,
@@ -1160,10 +1179,10 @@ export async function mattackm(magr, mdef) {
                 // (the turn was spent wielding).
                 if (magr.weapon_check === NEED_WEAPON || !MON_WEP_MM(magr)) {
                     magr.weapon_check = NEED_HTH_WEAPON;
-                    if (await mon_wield_item_mm(magr)) return M_ATTK_MISS;
+                    const { mon_wield_item } = await import('./monmove.js');
+                    if (await mon_wield_item(magr)) return M_ATTK_MISS;
                 }
-                // possibly_unwield(magr, FALSE) — only fires for a monster
-                // wielding something that isn't a weapon; not modelled.
+                possibly_unwield(magr, false);         // mhitm.c:409
                 mwep = MON_WEP_MM(magr);
                 if (mwep) {
                     if (mm_visible(magr, mdef)) await mswingsm(magr, mdef, mwep);
@@ -1236,12 +1255,22 @@ export async function mattackm(magr, mdef) {
 
         case AT_BREA:
         case AT_SPIT:                                  // mhitm.c:527
-            // Ranged attacks aren't allowed at point blank range, which is the
-            // only distance mon-vs-mon melee reaches here; breamm()/spitmm()
-            // for the non-adjacent case aren't modelled.
-            strike = 0; attk = 0;
+            // Ranged attacks aren't allowed at point blank range.
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
+                const MT = await import('./mthrowu.js');
+                const deps = await thrwmmDeps();
+                const mmtmp = (mattk.aatyp === AT_BREA)
+                    ? await MT.breamm(magr, mattk, mdef, deps)
+                    : await MT.spitmm(magr, mattk, mdef, deps);
+                strike = (mmtmp === M_ATTK_MISS) ? 0 : 1;
+                /* We don't really know if we hit or not; pretend we did. */
+                if (strike) res[i] |= M_ATTK_HIT;
+                if (DEADMONSTER(mdef)) res[i] = M_ATTK_DEF_DIED;
+                if (DEADMONSTER(magr)) res[i] |= M_ATTK_AGR_DIED;
+            } else {
+                strike = 0; attk = 0;
+            }
             break;
-
         default: /* AT_NONE, AT_MAGC, ... — no attack */
             strike = 0; attk = 0;
             break;
@@ -1468,7 +1497,7 @@ function is_youmonst_mm(mon) {
     return mon === YOUMONST || mon === game.youmonst || mon?.isyou === true;
 }
 // C ref: you.h Passes_walls — the hero's intrinsic/extrinsic wall-walking.
-function Passes_walls_u() { return !!game.u?.uprops?.Passes_walls; }
+function Passes_walls_u() { return !!game.u?.formprops?.Passes_walls || !!game.u?.uprops?.Passes_walls; }
 // C ref: rm.h closed_door(x, y) — IS_DOOR && (D_CLOSED | D_LOCKED).
 function closed_door_mm(x, y) {
     const loc = game.level?.at(x, y);
@@ -1692,7 +1721,7 @@ function pm_to_cham_mm(mon) {
     return (p?.pmidx != null) ? pm_to_cham(p.pmidx) : NON_PM;
 }
 // C ref: you.h Antimagic / Unchanging.
-function Antimagic_u() { return !!game.u?.uprops?.Antimagic; }
+function Antimagic_u() { return !!game.u?.formprops?.Antimagic || !!game.u?.uprops?.Antimagic; }
 function Unchanging_u() { return !!game.u?.uprops?.Unchanging; }
 async function you_were_mm() {
     const { you_were } = await import('./polyself.js');

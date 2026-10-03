@@ -40,7 +40,7 @@ import {
     MENU_SEARCH, MENU_SHIFT_RIGHT, MENU_SHIFT_LEFT,
     CMD_NOT_AVAILABLE,
 } from './const.js';
-import { copynchars } from './hacklib.js';
+import { copynchars, highc } from './hacklib.js';
 import { game } from './gstate.js';
 import {
     default_menu_cmd_info, get_menu_cmd_key, wc2_supported,
@@ -48,11 +48,7 @@ import {
 
 const C = (ch) => 0x1f & (typeof ch === 'string' ? ch.charCodeAt(0) : ch);
 const M = (ch) => 0x80 | (typeof ch === 'string' ? ch.charCodeAt(0) : ch);
-const highc = (ch) => {
-    const c = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
-    if (c >= 0x61 && c <= 0x7a) return c - 0x20;
-    return c & 0xff;
-};
+/* highc is the live js/hacklib.js export (D-3373 removed the numeric-code clone). */
 
 function fmtLeft(s, width) {
     s = String(s);
@@ -337,7 +333,9 @@ function build_default_cmdbinds() {
     for (let dir = 0; dir < 8; dir++) {
         const di = sdir.charCodeAt(dir);
         set(di, byTxt.get(MOVE_WALK_ECNAMES[dir]));
-        set(highc(di), byTxt.get(MOVE_RUN_ECNAMES[dir]));
+        /* C cmd.c:3445 `di = highc(di)` — live highc returns the char;
+           charCodeAt adapts back to this table's numeric-code domain. */
+        set(highc(di).charCodeAt(0), byTxt.get(MOVE_RUN_ECNAMES[dir]));
         set(C(di), byTxt.get(MOVE_RUSH_ECNAMES[dir]));
     }
     return binds;

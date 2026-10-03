@@ -167,7 +167,7 @@ export function artifact_light(obj) {
 // (js/invent.js:1077 has a private copy that reads obj.ox/obj.oy for every
 // `where`; this is the full switch.  Belongs to zap.c's owner.)
 const BURIED_TOO = 0x2, CONTAINED_TOO = 0x1;
-function get_obj_location(obj, locflags) {
+export function get_obj_location(obj, locflags) {
     if (!obj) return null;
     switch (obj.where) {
     case 'invent':
@@ -749,7 +749,7 @@ export function snuff_light_source(x, y) {
 // below — cannot be taken.  Both arms end with the light source deleted and
 // lamplit cleared, which is what this does.  Replace the body with a call to
 // timeout.js end_burn() once the burn timer exists (see `deferred`).
-function end_burn(obj, timer_attached) {
+export function end_burn(obj, timer_attached) {
     if (!obj.lamplit) {
         impossible('end_burn: obj not lit');
         return;

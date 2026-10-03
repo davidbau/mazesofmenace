@@ -25,7 +25,7 @@ import {
 } from './mkobj.js';
 import {
     invlet_basic, inventoryArray, near_capacity, inv_weight, xname,
-    obj_doname as doname, otense, currency, merge_choice, addinv, freeinv,
+    obj_doname as doname, otense, currency, merge_choice, addinv, freeinv, flush_artitouch,
     obj_here, prinv, is_worn, count_unpaid, count_buc, look_here, tally_BUCX,
     ansimpleoname, display_inventory_interactive,
     describe_decor, sortloot, unsortloot, will_feel_cockatrice, feel_cockatrice,
@@ -258,7 +258,7 @@ function freehand() {
 }
 /* wield.c welded():1051 -> will_weld():68 — a cursed erodeable weapon (or tin
    opener) in the wielded slot.  welded() also sets bknown. */
-const HEAVY_IRON_BALL = 474, IRON_CHAIN = 473, TIN_OPENER = 250;
+const HEAVY_IRON_BALL = 477, IRON_CHAIN = 478, TIN_OPENER = 239;
 function welded(obj) {
     if (obj && obj === game.uwep && obj.cursed
         && (obj.oclass === WEAPON_CLASS_P || is_weptool(obj)
@@ -313,7 +313,7 @@ function Maybe_Half_Phys(dmg) {
 }
 /* obj.h age_is_relative(o) — only lit/burnable tools track relative age. */
 const TALLOW_CANDLE = 224, WAX_CANDLE = 225, BRASS_LANTERN = 226,
-    OIL_LAMP = 227, MAGIC_LAMP = 228, POT_OIL = 297, LEASH = 236,
+    OIL_LAMP = 227, MAGIC_LAMP = 228, POT_OIL = 321, LEASH = 236,
     CANDELABRUM_OF_INVOCATION = 262, SPE_BOOK_OF_THE_DEAD = 409;
 function age_is_relative(obj) {
     const t = obj?.otyp;
@@ -1406,7 +1406,9 @@ export async function pick_obj(otmp) {
         const { addtobill } = await import('./shkroom.js');
         await addtobill(otmp, true, false, false);
     }
-    return addinv(otmp);
+    const res = addinv(otmp);
+    await flush_artitouch();     /* C: addinv_core1() -> artitouch() */
+    return res;
 }
 
 /* pickup.c:1948 pickup_prinv() — the added-to-invent message, with the
@@ -1918,6 +1920,7 @@ export async function out_container(obj) {
     }
 
     const otmp = addinv(obj);
+    await flush_artitouch();
     pickup_prinv(otmp, count, 'removing');
 
     if (is_gold) await bot();

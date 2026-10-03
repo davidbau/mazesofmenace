@@ -704,7 +704,10 @@ async function doengrave_sfx_item_WAN(de) {
         de.ptext = true;
         de.type = ENGRAVE;
         if (!objects[de.otmp.otyp]?.oc_name_known) {
-            await engravePline(`This ${await xname_of(de.otmp)} is a wand of digging!`);
+            // C ref: engrave.c:688 `if (flags.verbose)` — the naming line is
+            // suppressed under !verbose, but doknown (learnwand) still fires.
+            if (game.flags?.verbose !== false)
+                await engravePline(`This ${await xname_of(de.otmp)} is a wand of digging!`);
             de.doknown = true;
         }
         de.post_engr_text = (Blind && !isDeaf()) ? 'You hear drilling!'
@@ -720,7 +723,8 @@ async function doengrave_sfx_item_WAN(de) {
         de.ptext = true;
         de.type = BURN;
         if (!objects[de.otmp.otyp]?.oc_name_known) {
-            await engravePline(`This ${await xname_of(de.otmp)} is a wand of fire!`);
+            if (game.flags?.verbose !== false)
+                await engravePline(`This ${await xname_of(de.otmp)} is a wand of fire!`);
             de.doknown = true;
         }
         de.post_engr_text = Blind ? 'You feel the wand heat up.' : 'Flames fly from the wand.';
@@ -729,7 +733,8 @@ async function doengrave_sfx_item_WAN(de) {
         de.ptext = true;
         de.type = BURN;
         if (!objects[de.otmp.otyp]?.oc_name_known) {
-            await engravePline(`This ${await xname_of(de.otmp)} is a wand of lightning!`);
+            if (game.flags?.verbose !== false)
+                await engravePline(`This ${await xname_of(de.otmp)} is a wand of lightning!`);
             de.doknown = true;
         }
         if (!Blind) {
@@ -1586,20 +1591,17 @@ export async function feel_engraving(ep) {
     if (engr_can_be_felt(ep)) {
         ep.eread = 1;
         ep.erevealed = 1;
-        // UNPORTED: map_engraving(ep, 1) (display.c:313) has no js/ counterpart;
-        // its two statements are `if (level.flags.hero_memory) levl[x][y].glyph
-        // = engraving_to_glyph(ep)` then `show_glyph(x, y, glyph)`.  Spelled out
-        // here with display.js's exported pieces rather than stubbed; when
-        // display.js gains map_engraving() this should call it instead.
-        const { newsym, engraving_glyph, show_glyph_cell }
+        const { newsym, engraving_glyph, show_glyph_cell, bg_attr }
             = await import('./display.js');
         const loc = game.level?.at(ep.engr_x, ep.engr_y);
         if (loc) {
             const g = engraving_glyph(loc);
             if (game.level?.flags?.hero_memory)
                 loc.remembered_glyph = { ch: g.ch, color: g.color,
-                                         decgfx: g.dec, pile: false };
-            show_glyph_cell(ep.engr_x, ep.engr_y, g.ch, g.color, g.dec);
+                                         decgfx: g.dec, pile: false,
+                                         bwEngr: g.bwEngr };
+            show_glyph_cell(ep.engr_x, ep.engr_y, g.ch, g.color, g.dec,
+                            bg_attr(g));
         }
         /* in case it's beneath something, redisplay the something */
         newsym(ep.engr_x, ep.engr_y);

@@ -181,7 +181,7 @@ import { get_sortdisco, choose_disco_sort } from './o_init.js';
 import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces, strncmpi } from './hacklib.js';
-import { name_to_mon } from './mondata.js';
+import { name_to_mon, DEF_CHAR_TO_MLET, mlet_class_explain } from './mondata.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics } from './display.js';
 import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
@@ -5502,28 +5502,6 @@ const OC_SYM = {
     [CHAIN_CLASS]: '_',
 };
 
-/** Default inv_order symbols for choose_classes_menu (matches C session menu). */
-const DEFAULT_PICKUP_CLASS_SYMS = '$")[%?+!=/(*`0_';
-
-const OC_EXPLAIN = {
-    $: 'pile of coins',
-    '"': 'amulet',
-    ')': 'weapon',
-    '[': 'suit or piece of armor',
-    '%': 'piece of food',
-    '?': 'scroll',
-    '+': 'spellbook',
-    '!': 'potion',
-    '=': 'ring',
-    '/': 'wand',
-    '(': 'useful item (pick-axe, key, lamp...)',
-    '*': 'gem or rock',
-    '`': 'boulder or statue',
-    '0': 'iron ball',
-    _: 'iron chain',
-    '.': 'splash of venom',
-};
-
 /**
  * C ref: options.c dotogglepickup — @ command.
  * JS stores pickup_types as the display-symbol string (invent.js convention).
@@ -5550,23 +5528,49 @@ export async function dotogglepickup() {
 }
 
 /**
- * C ref: windows.c choose_classes_menu(category=1, way=TRUE) — PICK_ANY.
- * Letter a–o and class-symbol group accelerators toggle; Enter confirms.
- * Returns symbol string (empty ⇒ all). Esc restores prior selection.
+ * C windows.c choose_classes_menu :1644–1761 — whole C body in C order.
+ * (prompt, category, way, class_list, class_select); category 0 lists
+ * monster classes (def_monsyms explain, accelerator = class char),
+ * category 1 object classes (def_oc_syms explain, a–z/A–Z accelerators).
+ * C's (int ret, class_select out-buffer) pair projects onto the returned
+ * string: Esc → classSelect unchanged (C n==-1, :1757–1759), confirm →
+ * picks joined (C n>=0 writes, :1755; empty ⇒ all for category 1).
+ * select_menu/add_menu have no scored analogue (seed by-design); the
+ * paint_corner_nhw_menu key loop below is the pre-existing tty
+ * PICK_ANY/PICK_ONE analogue, extended to category 0 and way=FALSE.
+ * Sole C caller: options.c:3360 (JS handler_pickup_types).
  */
-async function choose_classes_menu(prompt, priorSelect, classList = DEFAULT_PICKUP_CLASS_SYMS) {
+export async function choose_classes_menu(prompt, category, way, classList, classSelect) {
+    if (classList == null || classSelect == null) return classSelect ?? ''; // C :1660–1661 (buffer untouched, ret 0)
     const items = [];
-    let nextAcc = 'a'.charCodeAt(0);
-    for (const sym of classList) {
-        const letch = String.fromCharCode(nextAcc++);
-        items.push({
-            sym,
-            letch,
-            selected: !!(priorSelect && priorSelect.includes(sym)),
-            explain: OC_EXPLAIN[sym] || sym,
-        });
+    let nextAcc = 'a'.charCodeAt(0); // C :1662
+    for (const sym of classList) { // C :1666 while (*class_list)
+        let text; // C buf — the add_menu row text
+        let accelerator; // C add_menu accelerator
+        if (category === 0) { // C :1670–1680
+            const mlet = DEF_CHAR_TO_MLET[sym]; // C def_char_to_monclass + IndexOk
+            if (mlet === undefined) throw new Error(`choose_classes_menu: invalid monclass '${sym}'`); // C :1673–1675 panic (throw ≡ panic, dungeon.js:548)
+            text = mlet_class_explain(mlet); // C :1676–1678 def_monsyms[idx].explain, buf "%s"
+            accelerator = sym; // C :1677
+        } else if (category === 1) { // C :1681–1691
+            const idx = def_char_to_objclass(sym);
+            if (idx < 1 || idx >= def_oc_syms.length) throw new Error(`choose_classes_menu: invalid objclass '${sym}'`); // C :1684–1686 panic; IndexOk
+            text = `${sym}  ${def_oc_syms[idx].explain}`; // C :1689 "%c  %s"
+            accelerator = String.fromCharCode(nextAcc); // C :1688
+        } else {
+            throw new Error(`choose_classes_menu: invalid category ${category}`); // C :1693–1695 panic
+            /*NOTREACHED*/
+        }
+        const selected = !!(way && classSelect && String(classSelect).includes(sym)); // C :1697–1701
+        items.push({ sym, letch: accelerator, selected, text });
+        if (category > 0) { // C :1705–1711
+            if (nextAcc === 'Z'.charCodeAt(0)) break; // the item above is already added
+            else if (nextAcc === 'z'.charCodeAt(0)) nextAcc = 'A'.charCodeAt(0);
+            else nextAcc += 1;
+        }
+        // C :1712 ++class_list via for..of
     }
-
+    const showAll = category === 1 && nextAcc <= 'z'.charCodeAt(0); // C :1714
     for (;;) {
         // C: tty_end_menu prompt uses menu_headings (ATR_INVERSE)
         const entries = [
@@ -5576,55 +5580,59 @@ async function choose_classes_menu(prompt, priorSelect, classList = DEFAULT_PICK
         for (const it of items) {
             const mark = it.selected ? '+' : '-';
             entries.push({
-                text: `${it.letch} ${mark} ${it.sym}  ${it.explain}`,
+                text: `${it.letch} ${mark} ${it.text}`,
                 attr: 0,
             });
         }
-        entries.push({ text: '', attr: 0 });
-        entries.push({
-            text: 'A -    All classes of objects',
-            attr: 0,
-        });
-        entries.push({
-            text: 'Note: when no choices are selected, "all" is implied.',
-            attr: 0,
-        });
-        entries.push({
-            text: game.flags?.pickup
-                ? "Toggle off 'autopickup' to not pick up anything."
-                : "Toggle on 'autopickup' to automatically pick these things up.",
-            attr: 0,
-        });
-        await paint_corner_nhw_menu(entries, '(end) ');
+        if (showAll) { // C :1715–1725 separator + "A - ' ' all classes"
+            entries.push({ text: '', attr: 0 }); // C :1716 add_menu_str(win, "")
+            entries.push({ text: 'A -    All classes of objects', attr: 0 }); // C :1719–1720 "%c  %s", accelerator 'A'
+            if (prompt === 'Autopickup what?') { // C :1726 !strcmp
+                entries.push({ text: 'Note: when no choices are selected, "all" is implied.', attr: 0 });
+                entries.push({
+                    text: game.flags?.pickup
+                        ? "Toggle off 'autopickup' to not pick up anything."
+                        : "Toggle on 'autopickup' to automatically pick these things up.",
+                    attr: 0,
+                });
+            }
+        }
+        await paint_corner_nhw_menu(entries, '(end) '); // C :1744 end_menu
         await flush_screen(1);
-        const key = await nhgetch();
+        const key = await nhgetch(); // C :1745 select_menu, way ? PICK_ANY : PICK_ONE
+        const dismiss = async () => { // C :1746 destroy_nhwindow
+            game._menu_overlay = false;
+            await docrt();
+            await flush_screen(1);
+        };
 
         // C process_menu_window: letter toggles stay inside the menu —
         // no dismiss/docrt until the menu returns.
-        if (key === 27) {
-            game._menu_overlay = false;
-            await docrt();
-            await flush_screen(1);
-            return priorSelect ?? '';
+        if (key === 27) { // C :1757–1759 n==-1 → eos (unchanged), ret -1
+            await dismiss();
+            return String(classSelect ?? '');
         }
-        if (key === 13 || key === 10) {
-            game._menu_overlay = false;
-            await docrt();
-            await flush_screen(1);
+        if (key === 13 || key === 10) { // confirm: C :1748–1755 picks; '' when n==0
+            await dismiss();
             const sel = items.filter((it) => it.selected).map((it) => it.sym);
             return sel.join('');
         }
         if (key === 32) continue;
         const ch = String.fromCharCode(key);
-        if (ch === 'A') {
-            for (const it of items) it.selected = false;
-            game._menu_overlay = false;
-            await docrt();
-            await flush_screen(1);
+        // C tty order: class rows (accelerator, then gacc sym) before the
+        // trailing All-classes 'A' — unreachable while ≤ 26 classes, but
+        // the 27th row would shadow it.
+        const hit = items.find((it) => it.letch === ch || it.sym === ch);
+        if (hit) {
+            if (!way) { // C PICK_ONE: the accelerator finishes with that one pick
+                await dismiss();
+                return hit.sym;
+            }
+            hit.selected = !hit.selected; // C PICK_ANY toggle
+        } else if (showAll && ch === 'A') { // C :1749–1754 ' ' pick collapses to the blank list
+            await dismiss();
             return '';
         }
-        const hit = items.find((it) => it.letch === ch || it.sym === ch);
-        if (hit) hit.selected = !hit.selected;
         // invalid / toggle → re-paint same menu (keep overlay; no docrt)
     }
 }
@@ -5670,7 +5678,7 @@ function pickup_types_apply(flags, optidx, negated, op) {
 
 /**
  * Class-symbol list for the pickup_types prompt. Unset inv_order is
- * DEFAULT_PICKUP_CLASS_SYMS (C def_inv_order via oc_to_str).
+ * the oc_to_str(inv_order) default (C def_inv_order via oc_to_str).
  */
 function pickup_class_syms() {
     return oc_to_str(game.flags?.inv_order || DEF_INV_ORDER);
@@ -5716,7 +5724,7 @@ async function handler_pickup_types() {
         const venom = def_oc_syms[VENOM_CLASS]?.sym || '.'; // C VENOM_SYM
         if (game.wizard && !ocl.includes(venom)) // C `:3358`
             ocl = strkitten(ocl, venom); // C `:3359`
-        const next = await choose_classes_menu('Autopickup what?', prior, ocl); // C `:3360–3361`
+        const next = await choose_classes_menu('Autopickup what?', 1, true, ocl, prior); // C `:3360–3361`
         flags.pickup_types = next;
         return OPTN_OK; // C `:6120`
     }
@@ -8983,8 +8991,9 @@ export function initoptions() {
  * C options.c initoptions_finish `:7323–7384` — post-config pass.
  * Sole live C caller is initoptions `:7114` (options.c:1216 cites it
  * in a comment); wired there. Named omits: the `:7343–7347` boulder
- * showsyms write (get_othersym by-design; showsyms has no JS home) and
- * `:7349` reset_glyphmap(gm_optionchange) (by-design, CURRENT.md
+ * showsyms write (get_othersym by-design; the table itself is live at
+ * game.gs.showsyms via display.js assign_graphics) and `:7349`
+ * reset_glyphmap(gm_optionchange) (by-design, CURRENT.md
  * Do-not fortress guard).
  */
 export function initoptions_finish() {

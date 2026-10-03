@@ -61,7 +61,7 @@ import {
     FIRE_RES,
 } from './const.js';
 import { currency } from './invent.js';
-import { bogon_is_pname } from './do_name.js';
+import { bogon_is_pname, hcolor } from './do_name.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const POT_OIL = objectNames.indexOf('POT_OIL');
@@ -2693,10 +2693,10 @@ function doname_glow_verb(count, ingsfx) {
     return DONAME_GLOW_VERBS[i] + (ingsfx ? 'ing' : '');
 }
 
-/** C artifact.c glow_color via artilistRaw.acolor; Hallu hcolor named omit. */
+/** C artifact.c glow_color via artilistRaw.acolor + hcolor (do_name.js:347). */
 function doname_glow_color(arti_indx) {
     const colornum = artilistRaw[arti_indx | 0]?.acolor | 0;
-    return DONAME_CLR2COLORNAME[colornum] || '';
+    return hcolor(DONAME_CLR2COLORNAME[colornum] || '');
 }
 
 /**

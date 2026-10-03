@@ -755,7 +755,7 @@ export async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
     if (((mdef.misc_worn_check | 0) & W_ARMH) && rn2(8)) {
         if (_mm_vis && canspotmon(magr) && canseemon(mdef)) {
             await pline(
-                `${s_suffix_mm(Monnam(mdef))} helmet blocks ${s_suffix_mm(mon_nam(magr))} attack to ${mhis_disp(mdef)} head.`,
+                `${s_suffix(Monnam(mdef))} helmet blocks ${s_suffix(mon_nam(magr))} attack to ${mhis_disp(mdef)} head.`,
             );
         }
         return;
@@ -849,7 +849,7 @@ export async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
         if (_mm_vis && (mdef.mcansee | 0) && canspotmon(mdef)) {
             let buf = `${Monnam(mdef)} is blinded`;
             if ((mdef.data?.mndx | 0) === PM_ARCHON && canseemon(mdef)) {
-                buf += ` by ${s_suffix_mm(mon_nam(magr))} radiance`;
+                buf += ` by ${s_suffix(mon_nam(magr))} radiance`;
             }
             await pline(`${buf}.`);
         }
@@ -1414,10 +1414,10 @@ async function sleep_slee_mm(mon, amt) {
 /**
  * C ref: mhitm.c slept_monst `:1249–1257` — a grabber that just went
  * helpless (monst.h:251 msleeping || !mcanmove) releases the hero unless
- * sticky youmonst keeps hold or the hero is swallowed. C callers:
- * music.c:95 + potion.c:1806 (JS clones remain, queued next),
- * uhitm.c:3490/3519 (wired below), zap.c:486 (JS bhitm lacks the WAN_SLEEP
- * arm — no call site), zap.c:4946 dobuzz (wired zap.js).
+ * sticky youmonst keeps hold or the hero is swallowed. C callers, all
+ * wired (D-3368): music.c:95 put_monsters_to_sleep, potion.c:1806
+ * potionhit POT_SLEEPING, uhitm.c:3490/3519 mhitm_ad_slee,
+ * zap.c:486 bhitm WAN_SLEEP, zap.c:4946 dobuzz.
  */
 export async function slept_monst(mon) {
     if (!mon) return;
@@ -1906,7 +1906,7 @@ export function resists_poison_mm(mtmp) {
 async function mhitm_really_poison(magr, mattk, mdef, mhm) {
     if (_mm_vis && canspotmon(magr)) {
         await pline(
-            `${s_suffix_mm(Monnam(magr))} ${mpoisons_subj_mm(magr, mattk)} was poisoned!`,
+            `${s_suffix(Monnam(magr))} ${mpoisons_subj_mm(magr, mattk)} was poisoned!`,
         );
     }
     if (resists_poison_mm(mdef)) {
@@ -2392,27 +2392,27 @@ export async function golemeffects_mm(mon, damtype, dam) {
 async function mon_reflects_mm(mon, fmt) {
     let orefl = which_armor(mon, W_ARMS);
     if (orefl && (orefl.otyp | 0) === SHIELD_OF_REFLECTION) {
-        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'shield'));
+        if (fmt) await pline(fmt(s_suffix(mon_nam(mon)), 'shield'));
         return true;
     }
     if (arti_reflects(MON_WEP(mon))) {
-        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'weapon'));
+        if (fmt) await pline(fmt(s_suffix(mon_nam(mon)), 'weapon'));
         return true;
     }
     orefl = which_armor(mon, W_AMUL);
     if (orefl && (orefl.otyp | 0) === AMULET_OF_REFLECTION) {
-        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'amulet'));
+        if (fmt) await pline(fmt(s_suffix(mon_nam(mon)), 'amulet'));
         return true;
     }
     orefl = which_armor(mon, W_ARM);
     if (orefl && ((orefl.otyp | 0) === SILVER_DRAGON_SCALES
             || (orefl.otyp | 0) === SILVER_DRAGON_SCALE_MAIL)) {
-        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'armor'));
+        if (fmt) await pline(fmt(s_suffix(mon_nam(mon)), 'armor'));
         return true;
     }
     const mndx = mon?.data?.mndx ?? mon?.mnum ?? -1;
     if (mndx === PM_SILVER_DRAGON || mndx === PM_CHROMATIC_DRAGON) {
-        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'scales'));
+        if (fmt) await pline(fmt(s_suffix(mon_nam(mon)), 'scales'));
         return true;
     }
     return false;
@@ -2529,7 +2529,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
         if (mhitb && !rn2(2)) {
             if (canseemon(magr)) {
                 await pline(
-                    `${Monnam(magr)} is splashed by ${s_suffix_mm(mon_nam(mdef))} ${hliquid('acid')}!`,
+                    `${Monnam(magr)} is splashed by ${s_suffix(mon_nam(mdef))} ${hliquid('acid')}!`,
                 );
             }
             if (resists_acid(magr)) {
@@ -2569,14 +2569,14 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                         && (perceives(madat) || !mdef.minvis)) {
                         const gazeFmt = canseemon(magr)
                             ? (who, what) =>
-                                `${s_suffix_mm(Monnam(mdef))} gaze is reflected by ${who} ${what}.`
+                                `${s_suffix(Monnam(mdef))} gaze is reflected by ${who} ${what}.`
                             : null;
                         if (await mon_reflects_mm(magr, gazeFmt)) {
                             return mdead | mhit;
                         }
                         if (canseemon(magr)) {
                             await pline(
-                                `${Monnam(magr)} is frozen by ${s_suffix_mm(mon_nam(mdef))} gaze!`,
+                                `${Monnam(magr)} is frozen by ${s_suffix(mon_nam(mdef))} gaze!`,
                             );
                         }
                         paralyze_monst(magr, tmp);
@@ -5706,7 +5706,7 @@ export async function shade_miss(magr, mdef, obj, thrown, verbose) {
         const thru = ' harmlessly through ';
         const pass = vtense(what, 'pass');
         if (!thrown) {
-            const whose = youagr ? 'Your' : s_suffix_mm(Monnam(magr));
+            const whose = youagr ? 'Your' : s_suffix(Monnam(magr));
             await pline(`${whose} ${what} ${pass}${thru}${target}.`);
         } else {
             await pline(`${The(what)} ${pass}${thru}${target}.`);
@@ -5754,7 +5754,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
             if ((mattk.aatyp | 0) === AT_TENT) {
                 /* C `:687–689` — s_suffix(Monnam) tentacles suck */
                 await pline(
-                    `${s_suffix_mm(magr_name)} tentacles suck ${mon_nam_too(mdef, magr)}.`,
+                    `${s_suffix(magr_name)} tentacles suck ${mon_nam_too(mdef, magr)}.`,
                 );
             } else if ((mattk.aatyp | 0) === AT_HUGS
                 && magr !== game.u?.ustuck) {
@@ -5781,10 +5781,10 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
             /* C `:706–726` — vis, !compat, after the hit pline. */
             if (mon_hates_silver(mdef) && silverhit) {
                 let mdef_name = mon_nam_too(mdef, magr);
-                magr_name = s_suffix_mm(magr_name);
+                magr_name = s_suffix(magr_name);
                 if (!noncorporeal(mdef.data) && !amorphous(mdef.data)) {
                     if (mdef !== magr) {
-                        mdef_name = s_suffix_mm(mdef_name);
+                        mdef_name = s_suffix(mdef_name);
                     } else {
                         /* C strsubst first occurrence: himself/herself/itself. */
                         mdef_name = mdef_name.replace('himself', 'his own');
@@ -5804,16 +5804,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     return mdamagem(magr, mdef, mattk, mwep, dieroll);
 }
 
-/** C ref: hacklib.c s_suffix — local for shade futile / failed_grab. */
-function s_suffix_mm(s) {
-    const buf = String(s ?? '');
-    const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
-    if (low === 'you') return `${buf}r`;
-    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
-    if (buf.endsWith('s')) return `${buf}'`;
-    return `${buf}'s`;
-}
+/* s_suffix is the live js/do_name.js export (D-3373 removed the s_suffix_mm clone). */
 
 /** C ref: mondata.h enfolds — AT_ENGL + AD_WRAP. */
 function enfolds(ptr) {
@@ -6351,7 +6342,7 @@ export async function mattackm(magr, mdef) {
                 if ((mdef.data?.mndx ?? mdef.mnum) === PM_SHADE) {
                     if (_mm_vis) {
                         await pline(
-                            `${s_suffix_mm(Monnam(magr))} attempt to engulf ${mon_nam(mdef)} is futile.`,
+                            `${s_suffix(Monnam(magr))} attempt to engulf ${mon_nam(mdef)} is futile.`,
                         );
                     }
                     strike = 0;

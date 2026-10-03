@@ -41,9 +41,9 @@ import {
     HI_GOLD, HI_METAL, HI_ZAP, HI_WOOD,
     WEB, TRAPNUM, BEAR_TRAP, NO_TRAP, is_pit,
     trap_to_defsym, defsym_to_trap, MAXTCHARS, explodecolors, NUM_ZAP, MAXEXPCHARS,
-    S_stone, S_vwall, S_trwall, S_ndoor, S_brdnladder, S_grave, S_altar, S_room,
+    S_stone, S_vwall, S_trwall, S_ndoor, S_hodoor, S_vodoor, S_brdnladder, S_grave, S_altar, S_room,
     S_tree, S_darkroom, S_corr, S_litcorr, S_pool, S_ice, S_lava, S_lavawall,
-    S_air, S_cloud, S_water,
+    S_air, S_cloud, S_water, S_upstair, S_dnstair,
     S_arrow_trap, S_polymorph_trap, S_hcdoor, S_web, S_vibrating_square,
     S_vbeam, S_hbeam, S_lslant, S_rslant,
     S_digbeam, S_flashbeam, S_boomleft, S_boomright,
@@ -151,6 +151,7 @@ import {
 } from './attrib.js';
 import { depth, dist2 } from './hacklib.js';
 import { monsterNames } from './generated/monsters_data.js';
+import { DEFSYMS } from './generated/defsyms_data.js';
 import { observe_object, near_capacity, update_inventory, Blind } from './invent.js';
 import { visible_region_at, show_region } from './region.js';
 import { see_wsegs, worm_known, level_mon_at } from './worm.js';
@@ -3093,10 +3094,65 @@ function use_decgraphics() {
     return !!game.iflags?.decgraphics;
 }
 
+// C drawing.c def_monsyms[1..60].sym — defsym.h MONSYM letters in class
+// order ([0] is the C `:33` placeholder; S_ANT=1 .. S_MIMIC_DEF=60 per the
+// `sym = idx` expansion). Same order as the MLET_CH render table above,
+// positional here: slot SYM_OFF_M + m reads [m - 1].
+const DEF_MONSYM_CH = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ '&;:~]";
+
+// C symbols.c get_othersym `:146–160` switch defaults — the X-range values
+// gp/gr carry (ov and self slots are 0 when the init loop runs, so the
+// `:136–143` read-through always falls through to the switch).
+// NOTHING/UNEXPLORED → DEF_NOTHING ' ' (hack.h:51); BOULDER →
+// def_oc_syms[ROCK] '`'; INVISIBLE → DEF_INVISIBLE 'I' (defsym.h
+// MONSYM(35) enum, preprocessor-measured); PET/HERO_OVERRIDE → 0
+// (C `#if 0`: intentionally no default).
+const DEF_X_SYM = [' ', ' ', '`', 'I', 0, 0];
+
+// C gp.primary_syms / gr.rogue_syms default row for one set, from the live
+// carriers (const gp/gr stay null — init_primary/rogue_symbols are
+// by-design unported; the values below are what those inits write).
+function showsyms_defaults(set) {
+    const rogue = set === ROGUESET;
+    const d = new Array(SYM_MAX).fill(0);
+    // P range — C init_primary_symbols `:171–172` /
+    // init_rogue_symbols `:194–195`: defsyms[i].sym.
+    for (let i = 0; i < DEFSYMS.length && i < SYM_OFF_O; i++) d[i] = DEFSYMS[i][0];
+    if (rogue) {
+        // C init_rogue_symbols `:196–198`.
+        d[S_vodoor] = d[S_hodoor] = d[S_ndoor] = '+';
+        d[S_upstair] = d[S_dnstair] = '%';
+    }
+    // O range — C `:173–174` def_oc_syms / `:201–202` def_r_oc_syms
+    // (drawing.c `:72–82`: same as primary except armor ']', amulet ',',
+    // food ':', gold GEM_SYM '*'; [0] is '\0' on both).
+    for (let i = SYM_OFF_O; i < SYM_OFF_M; i++) {
+        const c = i - SYM_OFF_O;
+        if (rogue) {
+            d[i] = DEF_R_OC_SYM[c] ?? (c === COIN_CLASS ? '*' : null) ?? DEF_OC_SYM[c] ?? 0;
+        } else {
+            d[i] = DEF_OC_SYM[c] ?? 0;
+        }
+    }
+    // M range — C `:175–176` / `:203–204` def_monsyms[i].sym (both sets).
+    for (let i = SYM_OFF_M; i < SYM_OFF_W; i++) {
+        const m = i - SYM_OFF_M;
+        d[i] = m === 0 ? 0 : DEF_MONSYM_CH[m - 1];
+    }
+    // W range — C `:178` / `:205–206` def_warnsyms[i].sym (both sets).
+    for (let i = SYM_OFF_W; i < SYM_OFF_X; i++) d[i] = def_warnsyms[i - SYM_OFF_W].ch;
+    // X range — C `:180` / `:207` get_othersym(i, set) at init (both sets).
+    for (let i = SYM_OFF_X; i < SYM_MAX; i++) d[i] = DEF_X_SYM[i - SYM_OFF_X];
+    return d;
+}
+
 /**
- * C ref: symbols.c assign_graphics — swap showsyms between Primary and
- * Rogue sets. JS keeps DEC/ASCII via use_decgraphics + goldsym; full
- * showsyms table / RogueIBM color sets deferred.
+ * C ref: symbols.c assign_graphics `:217–250` — swap showsyms between
+ * Primary and Rogue sets. JS keeps DEC/ASCII via use_decgraphics +
+ * goldsym; the showsyms table copy (`:224–227` / `:236–239`) lands on
+ * game.gs.showsyms (ov tables live here; defaults from the carriers
+ * above). RogueIBM color sets deferred. Named omission: `:249`
+ * reset_glyphmap(gm_symchange) — by-design unported (fortress guard).
  */
 export function assign_graphics(whichset) {
     const set = (whichset | 0) === ROGUESET ? ROGUESET : PRIMARYSET;
@@ -3117,6 +3173,14 @@ export function assign_graphics(whichset) {
     } else {
         game._goldsym = '$';
     }
+    // C `:224–227` / `:236–239` — gs.showsyms[i] = ov ? ov : default.
+    const ov = set === ROGUESET ? ov_rogue_table() : ov_primary_table();
+    const def = showsyms_defaults(set);
+    let sh = game.gs.showsyms;
+    if (!Array.isArray(sh) || sh.length !== SYM_MAX) {
+        sh = game.gs.showsyms = new Array(SYM_MAX).fill(0);
+    }
+    for (let i = 0; i < SYM_MAX; i++) sh[i] = ov[i] ? ov[i] : def[i];
 }
 
 /**
@@ -3953,6 +4017,9 @@ export const MG_HERO = 0x00001;
 // MAXMCLASSES 61 (defsym.h MONSYM 1..60, so fencepost 61) + WARNCOUNT 6
 // gives SYM_OFF_O 105, SYM_OFF_M 123, SYM_OFF_W 184, SYM_OFF_X 190;
 // C sym.h `:111–119` MAXOTHER 6 gives SYM_MAX 196.
+export const SYM_OFF_O = 105;
+const SYM_OFF_M = 123;
+const SYM_OFF_W = 184;
 export const SYM_OFF_X = 190;
 export const SYM_MAX = 196;
 
@@ -4021,8 +4088,9 @@ export function update_ov_rogue_symset(idx, val) {
  * 0, so every paint — hero included — takes these arms; the `:2489`
  * glyphinfo_at call is the UNBUFFERED build, JS gbuf is buffered).
  * Named omissions: glyphmap[] base copy + sym.symidx/tileidx (no
- * showsyms/tile machinery); get_othersym base + assign_graphics showsyms
- * copy (ov tables live here; hero arm reads them directly);
+ * glyphmap/tile machinery); get_othersym base (the assign_graphics
+ * showsyms copy itself is live at game.gs.showsyms; hero arm reads
+ * the ov tables directly);
  * HAS_ROGUE_IBM_GRAPHICS MSDOS/TILES variant (compiled out upstream).
  * @param {number} x map x, C coordxy
  * @param {number} y map y, C coordxy
@@ -4386,18 +4454,29 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
                         if (cansee(x, y) || (rg && rg.ch === tg.ch)) {
                             kind = 'trap';
                             glyph = { ch: tg.ch, color: tg.color, dec: !!tg.dec };
+                            // C glyph_at int travels with the cell (trap_glyph
+                            // carries .glyph via cmap_idx_to_glyph; same guard
+                            // as the keep_traps restore below).
+                            if (typeof tg.glyph === 'number') glyph.glyph = tg.glyph | 0;
                         }
                     }
                 }
                 if (kind === 'other') {
                     // C glyph_at for terrain/engraving — prefer memory / back_to_glyph
-                    // over disp_* (disp_color is already tty-mapped).
+                    // over disp_* (disp_color is already tty-mapped). The int id
+                    // travels with the cell: C returns glyph_at untouched when no
+                    // strip arm fires, and lookat during browse reads it (a dropped
+                    // id paints NO_GLYPH, which lookat reports as "unexplored area").
                     if (hero_memory && loc.remembered_glyph && !loc.remembered_glyph.invisible) {
-                        glyph = copy_glyph(loc.remembered_glyph);
+                        glyph = copy_glyph_id(loc.remembered_glyph);
                     } else if (seenv) {
-                        glyph = terrain_glyph(loc, x, y);
+                        glyph = {
+                            ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y),
+                        };
                     } else {
-                        glyph = copy_glyph(levl_glyph);
+                        // C glyph_at for a never-seen cell is GLYPH_UNEXPLORED
+                        // (never the stone default).
+                        glyph = attach_glyph(copy_glyph(levl_glyph), GLYPH_UNEXPLORED);
                     }
                 }
             }

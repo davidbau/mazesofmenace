@@ -157,7 +157,7 @@ import { rn2, rnd, d, rn1, rnl } from './rng.js';
 import { losehp, finish_maybe_wail, nomul, maybe_half_phys, is_pool, waterbody_name, fall_asleep, in_rooms } from './hack.js';
 import { burn_away_slime } from './timeout.js';
 import { monstseesu, monstunseesu, Resists_Elem } from './mondata.js';
-import { cansee } from './vision.js';
+import { cansee, set_mimic_blocking } from './vision.js';
 import {
     mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames, likes_fire,
     has_head, is_were, is_vampshifter, is_human, breathless, haseyes,
@@ -193,6 +193,7 @@ import { which_armor, mon_set_minvis } from './worn.js';
 import { polyself, body_part } from './polyself.js';
 import { permapoisoned } from './artifact.js';
 import { poly_obj, obj_unpolyable, Cold_resistance } from './zap.js';
+import { slept_monst } from './mhitm.js';
 import { obj_resists } from './dogmove.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
@@ -429,11 +430,14 @@ export function fruitname(juice) {
 }
 
 /**
- * C ref: potion.c peffect_see_invisible — also POT_FRUIT_JUICE.
- * See-invisible: make_blinded / set_mimic_blocking / see_monsters /
- * newsym / Invisible self-msg deferred; timeout via rn1 when unblessed.
+ * C ref: potion.c peffect_see_invisible `:840–878` — also POT_FRUIT_JUICE.
+ * msg is the top snapshot Invisible && !Blind (C `:843`; Invisible ≡
+ * Invis && !See_invisible, youprop.h `:199`) taken before make_blinded
+ * clears Blind; tail set_mimic_blocking / see_monsters / newsym /
+ * self-msg / unkn-- (C `:871–877`); timeout via rn1 when unblessed.
  */
 async function peffect_see_invisible(otmp) {
+    const msg = Invis() && !See_invisible() && !Blind(); // C :843
     potion_unkn++;
     const u = game.u || {};
     if (otmp.cursed) {
@@ -471,7 +475,13 @@ async function peffect_see_invisible(otmp) {
         u.HSee_invisible = (u.HSee_invisible || 0) + add;
         u.See_invisible = true;
     }
-    // set_mimic_blocking / see_monsters / newsym deferred
+    set_mimic_blocking(); /* C :871 do special mimic handling */
+    see_monsters(); /* C :872 see invisible monsters */
+    newsym(u.ux, u.uy); /* C :873 see yourself! */
+    if (msg && !Blind()) { /* C :874 Blind possible if polymorphed */
+        await You('can see through yourself, but you are visible!');
+        potion_unkn--; // C :876
+    }
 }
 
 /**
@@ -2376,14 +2386,20 @@ export async function dodrink() {
 
 /**
  * C ref: invent.c getobj("dip", dip_ok / dip_hands_ok, GETOBJ_PROMPT)
- * Hands `-` only when Glib (dip_hands_ok); otherwise invent letters.
+ * (potion.c `:2279`: at_here ? dip_hands_ok : dip_ok). Hands `-` is listed
+ * in the prompt only when the NULL verdict is SUGGEST (invent.c
+ * `:1833–1837`), accepted-but-unlisted on DOWNPLAY; both set allownone.
  * Loop on missing letter.
  */
 async function getobj_dip(at_here) {
-    void at_here; // Glib hands suggest deferred
+    // C potion.c:2279 — obj_ok selected once, NULL verdict before the loop
+    const obj_ok = at_here ? dip_hands_ok : dip_ok;
+    const handsListed = obj_ok(null) === GETOBJ_SUGGEST; // C invent.c:1832
     for (;;) {
         await flush_topl_more();
-        const lets = dippable_lets();
+        // C invent.c:1835-1836 + :1905: '- ' prefix, '-' alone when empty
+        const rawLets = dippable_lets();
+        const lets = handsListed ? (rawLets ? `- ${rawLets}` : '-') : rawLets;
         const query = lets
             ? `What do you want to dip? [${lets} or ?*]`
             : 'What do you want to dip? [*]';
@@ -2400,7 +2416,8 @@ async function getobj_dip(at_here) {
             return null;
         }
         if (ch === '-') {
-            // hands only meaningful with Glib; still accept letter
+            // C invent.c:1955-1958 — allownone is TRUE under SUGGEST or
+            // DOWNPLAY alike, so '-' always returns &hands_obj
             game._pending_message = '';
             return hands_obj;
         }
@@ -2612,6 +2629,17 @@ function dip_ok(obj, inacc) {
     if (obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
     if (inacc && inacc(obj, false)) return GETOBJ_EXCLUDE_INACCESS;
     return GETOBJ_SUGGEST;
+}
+
+/**
+ * C potion.c dip_hands_ok `:2229–2237` — getobj callback for #dip when the
+ * hero stands at a pool, fountain or sink (sole C caller dodip `:2279`).
+ * Null (hands) is SUGGEST when Glib and the floor is reachable, so C
+ * getobj lists '-' in the prompt (invent.c `:1833–1837`); else dip_ok.
+ */
+function dip_hands_ok(obj) {
+    if (!obj && Glib() && can_reach_floor(false)) return GETOBJ_SUGGEST;
+    return dip_ok(obj);
 }
 
 /**
@@ -3741,16 +3769,6 @@ function sleep_monst_pot(mon, amt, how) {
     return 0;
 }
 
-/** C mhitm.c slept_monst :1250–1257. sticks(youmonst) named. */
-async function slept_monst_pot(mon) {
-    const u = game.u || {};
-    if ((mon?.msleeping || !mon?.mcanmove) && mon === u.ustuck && !u.uswallow) {
-        await pline(`${Monnam(mon)}'s grip relaxes.`);
-        u.ustuck = null;
-        if (game.youmonst) game.youmonst.ustuck = null;
-    }
-}
-
 /** C mhitm.c paralyze_monst — clamp 127; clear meating + STRAT_WAITFORU. */
 function paralyze_monst_pot(mon, amt) {
     if ((amt | 0) > 127) amt = 127;
@@ -3998,9 +4016,10 @@ export async function potionhit(mon, obj, how) {
             break;
         }
         case POT_SLEEPING:
+            // slept_monst is the canonical mhitm.js import (D-3368).
             if (sleep_monst_pot(mon, rnd(12), POTION_CLASS)) {
                 await pline(`${Monnam(mon)} falls asleep.`);
-                await slept_monst_pot(mon);
+                await slept_monst(mon);
             }
             break;
         case POT_PARALYSIS:

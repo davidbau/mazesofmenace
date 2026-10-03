@@ -23,6 +23,7 @@ import { objects, base_oc_cost, base_oc_weight, weight, next_ident,
          DRUM_OF_EARTHQUAKE, CAN_OF_GREASE, TINNING_KIT, EXPENSIVE_CAMERA,
          POT_OIL, ROCK, BOULDER, LEASH,
          CANDELABRUM_OF_INVOCATION } from './mkobj.js';
+import { arti_cost } from './artifact.js';
 import { acurr_eff, adjalign, exercise } from './attrib.js';
 import { monster_by_pmidx, mpickobj } from './makemon.js';
 import { rn2 } from './rng.js';
@@ -56,7 +57,7 @@ const RANDOM_CLASS = 0, WEAPON_CLASS = 2, ARMOR_CLASS = 3, TOOL_CLASS = 6,
 // which is SPBOOK_CLASS — see the deferred note.
 
 // objects.h otyps referenced by name in shk.c.
-const DUNCE_CAP = 94, MIRROR = 218, TALLOW_CANDLE = 224, WAX_CANDLE = 225,
+const DUNCE_CAP = 94, MIRROR = 230, TALLOW_CANDLE = 224, WAX_CANDLE = 225,
       CORPSE = 265, EGG = 266, TIN = 296, POT_WATER = 322;
 const FIRST_REAL_GEM = 439;         // objects.h MARKER(FIRST_REAL_GEM, DILITHIUM_CRYSTAL)
 const FIRST_GLASS_GEM = 461;        // objects.h MARKER(FIRST_GLASS_GEM, WORTHLESS_WHITE_GLASS)
@@ -226,13 +227,6 @@ export function oid_price_adjustment(obj, oid) {
         && (obj.oclass !== GEM_CLASS || o?.material !== GLASS))
         return (oid % 4) === 0 ? 1 : 0;
     return 0;
-}
-
-// C ref: artifact.c arti_cost(otmp).  artilist[] is not ported, so an artifact
-// with no listed cost is the only branch we can evaluate; see the deferred note.
-function arti_cost(obj) {
-    if (!obj.oartifact) return base_oc_cost(obj.otyp);
-    return 100 * base_oc_cost(obj.otyp);
 }
 
 // C ref: shk.c getprice(obj, shk_buying):4318 — list price before the shk's
@@ -409,6 +403,22 @@ export function inhishop(shkp) {
     return in_rooms(shkp.mx, shkp.my, SHOPBASE).includes(eshk.shoproom);
 }
 
+// C ref: decl.c `struct mkroom svr.rooms[(MAXNROFROOMS + 1) * 2]` with
+// `gs.subrooms = &svr.rooms[MAXNROFROOMS + 1]` — C's rooms[] and subrooms[]
+// are ONE array, so every `svr.rooms[rno - ROOMOFFSET]` in shk.c resolves a
+// SUBroom's roomno too.  This port keeps two arrays; indexing rooms[] alone
+// made every Mine Town shop (its rooms are subrooms of the town) invisible to
+// inside_shop()/IS_SHOP(), so "You see here a key" lost its "(for sale, 20
+// zorkmids)" suffix, no_charge never cleared, and block_door() never fired.
+const MAXNROFROOMS_SHK = 40;            // global.h MAXNROFROOMS
+function room_by_index(idx) {
+    if (!(idx >= 0)) return null;
+    if (idx > MAXNROFROOMS_SHK)
+        return (game.level?.subrooms || [])[idx - (MAXNROFROOMS_SHK + 1)] || null;
+    return (game.level?.rooms || [])[idx] || null;
+}
+function room_by_rno(rno) { return room_by_index(rno - ROOMOFFSET); }
+
 // C ref: shk.c inside_shop(x, y) — the shop's room number, 0 if not inside.
 // levl[x][y].edge marks the wall ring, which is NOT "inside".
 export function inside_shop(x, y) {
@@ -416,7 +426,7 @@ export function inside_shop(x, y) {
     if (!loc) return 0;
     const rno = loc.roomno ?? NO_ROOM;
     if (rno < ROOMOFFSET || loc.edge) return 0;
-    const rtype = game.level?.rooms?.[rno - ROOMOFFSET]?.rtype ?? 0;
+    const rtype = room_by_rno(rno)?.rtype ?? 0;
     return rtype >= SHOPBASE ? rno : 0;
 }
 
@@ -599,7 +609,7 @@ export function is_unpaid(obj) {
 
 // C ref: shk.c picked_container(obj) — clear no_charge through every nesting
 // level, not just the top one.
-function picked_container(obj) {
+export function picked_container(obj) {
     for (const otmp of (obj.cobj || [])) {
         if (otmp.no_charge) otmp.no_charge = 0;
         if (Has_contents(otmp)) picked_container(otmp);
@@ -1333,7 +1343,7 @@ function nmon(mon) {
 }
 
 // C ref: shk.c:56 IS_SHOP(x) — x is a rooms[] INDEX (roomno - ROOMOFFSET).
-const IS_SHOP = (i) => ((game.level?.rooms?.[i]?.rtype ?? 0) >= SHOPBASE);
+const IS_SHOP = (i) => ((room_by_index(i)?.rtype ?? 0) >= SHOPBASE);
 
 // C ref: dungeon.c on_level(&ESHK(shkp)->shoplevel, &u.uz).  eshk.shoplevel is
 // never populated by this port's shkinit, so a missing one reads as "same
@@ -1563,7 +1573,7 @@ export function next_shkp(shkp, withbill) {
 // rooms and ordinary objects.  Called from mon.c.
 export function shkgone(mtmp) {
     const eshk = mtmp.eshk;
-    const sroom = game.level?.rooms?.[eshk.shoproom - ROOMOFFSET];
+    const sroom = room_by_rno(eshk.shoproom);
     if (!on_shoplevel(eshk)) return;
 
     discard_damage_owned_by(mtmp);
@@ -1589,7 +1599,7 @@ export function shkgone(mtmp) {
 // C ref: shk.c set_residency(shkp, zero_out):272.
 export function set_residency(shkp, zero_out) {
     if (!on_shoplevel(shkp.eshk)) return;
-    const room = game.level?.rooms?.[shkp.eshk.shoproom - ROOMOFFSET];
+    const room = room_by_rno(shkp.eshk.shoproom);
     if (room) room.resident = zero_out ? null : shkp;
 }
 
@@ -1597,7 +1607,7 @@ export function set_residency(shkp, zero_out) {
 // new monst struct).  eshk.bill_p is not modelled separately by this port
 // (onbill() reads eshk.bill directly), so the assignment is nominal.
 export function replshk(mtmp, mtmp2) {
-    const room = game.level?.rooms?.[mtmp2.eshk.shoproom - ROOMOFFSET];
+    const room = room_by_rno(mtmp2.eshk.shoproom);
     if (room) room.resident = mtmp2;
     if (inhishop(mtmp) && (game.u?.ushops || [])[0] === mtmp.eshk.shoproom)
         mtmp2.eshk.bill_p = mtmp2.eshk.bill;
@@ -1647,7 +1657,7 @@ export function clear_no_charge_obj(shkp, otmp) {
         || !isok(loc.x, loc.y)
         || rno < ROOMOFFSET
         || !IS_SHOP(rno - ROOMOFFSET)
-        || !(rm_shkp = game.level?.rooms?.[rno - ROOMOFFSET]?.resident)
+        || !(rm_shkp = room_by_rno(rno)?.resident)
         || rm_shkp === shkp)
         otmp.no_charge = 0;
 }
@@ -1717,7 +1727,7 @@ export async function remote_burglary(x, y) {
 // CHARACTER is the roomno; this port passes the roomno itself (u.ushops is an
 // array of numbers here, not a string).
 export async function deserted_shop(enterstring) {
-    const r = game.level?.rooms?.[enterstring - ROOMOFFSET];
+    const r = room_by_rno(enterstring);
     const { sensemon } = await import('./mon.js');
     let m = 0, n = 0;
 
@@ -2012,7 +2022,7 @@ const RING_CLASS = 4, AMULET_CLASS = 5, CHAIN_CLASS = 16;
 // DWARVISH_MATTOCK match js/invent.js:8464 (js/dogmove.js's PICK_AXE = 66 is a
 // different, unrelated numbering).
 const PICK_AXE = 259, DWARVISH_MATTOCK = 71, LAND_MINE = 243, BEARTRAP = 244;
-const LARGE_BOX = 216;
+const LARGE_BOX = 214;
 const MS_HUMANOID = 25;
 const PM_KNIGHT = 4;                /* roles[].mnum, as PM_TOURIST/PM_ROGUE */
 // C ref: mkobj.c SchroedingersBox(obj) — a LARGE_BOX with spe == 1.
@@ -3510,8 +3520,11 @@ export function cost_per_charge(shkp, otmp, altusage) {
 // first's decision).  Those draws happen before the Deaf test, so they are
 // spent even when nothing is said.
 export async function check_unpaid_usage(otmp, altusage) {
+    // objects[].oc_charged lives in the row's `flags` word (BITS() bit 1) in
+    // this port, so read the bit rather than a nonexistent column.
+    const F_CHARGED = 1;
     if (!otmp.unpaid || !(game.u?.ushops || []).length
-        || (otmp.spe <= 0 && objects[otmp.otyp]?.oc_charged))
+        || (otmp.spe <= 0 && (objects[otmp.otyp]?.flags & F_CHARGED)))
         return;
     const shkp = shop_keeper((game.u.ushops)[0]);
     if (!shkp || !inhishop(shkp)) return;
@@ -3581,26 +3594,37 @@ export async function costly_gold(x, y, amount, silent) {
 // C's `IS_SHOP(roomno)` here indexes svr.rooms[] with an UNADJUSTED roomno (the
 // ROOMOFFSET is not subtracted, unlike clear_no_charge_obj()'s use of the same
 // macro).  Reproduced as-is: "fixing" it would change which room is tested.
-export async function block_door(x, y) {
+// block_door() is the predicate (shk_blocking_door) followed by the "blocks
+// your way!" feedback (block_door_feedback).  The halves are exported for
+// synchronous callers such as hack.c crawl_destination(), which must decide
+// at once but publish the shopkeeper's line from their asynchronous caller.
+export function shk_blocking_door(x, y) {
     const roomno = in_rooms(x, y, SHOPBASE)[0] ?? 0;
 
-    if (roomno < 0 || !IS_SHOP(roomno)) return false;
-    if (!IS_DOOR(game.level?.at(x, y)?.typ ?? 0)) return false;
-    if (roomno !== (game.u?.ushops || [])[0]) return false;
+    if (roomno < 0 || !IS_SHOP(roomno)) return null;
+    if (!IS_DOOR(game.level?.at(x, y)?.typ ?? 0)) return null;
+    if (roomno !== (game.u?.ushops || [])[0]) return null;
 
     const shkp = shop_keeper(roomno);
-    if (!shkp || !inhishop(shkp)) return false;
+    if (!shkp || !inhishop(shkp)) return null;
 
     const eshkp = shkp.eshk;
     if (shkp.mx === eshkp.shk?.x && shkp.my === eshkp.shk?.y
         && eshkp.shd?.x === x && eshkp.shd?.y === y
         && !helpless(shkp)
-        && (eshkp.debit || eshkp.billct || eshkp.robbed)) {
-        await update_topl(`${Shknam(shkp)}${
-            Invis() ? ' senses your motion and' : ''} blocks your way!`);
-        return true;
-    }
-    return false;
+        && (eshkp.debit || eshkp.billct || eshkp.robbed))
+        return shkp;
+    return null;
+}
+export async function block_door_feedback(shkp) {
+    await update_topl(`${Shknam(shkp)}${
+        Invis() ? ' senses your motion and' : ''} blocks your way!`);
+}
+export async function block_door(x, y) {
+    const shkp = shk_blocking_door(x, y);
+    if (!shkp) return false;
+    await block_door_feedback(shkp);
+    return true;
 }
 
 // C ref: shk.c block_entry(x, y):5826 — the shk blocks a diagonal entry through

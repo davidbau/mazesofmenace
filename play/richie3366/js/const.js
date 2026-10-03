@@ -2913,14 +2913,13 @@ export function update_rogue_symset(symp, val) {
 
 // symset_is_compatible — moved to drawing.js
 
-// Autotranslated from symbols.c:656
-const known_handling = ["UNKNOWN", "IBM", "DEC", "UTF8", null];
-
+// Autotranslated from symbols.c:656 — iterates KNOWN_HANDLING above (C
+// known_handling[] symbols.c:376–384: UNKNOWN/IBM/DEC/CURS/MAC/UTF8 + NUL).
 export function set_symhandling(handling, which_set) {
   let i = 0;
   gs.symset[which_set].handling = H_UNK;
-  while (known_handling[i]) {
-    if (known_handling[i].toLowerCase() === handling.toLowerCase()) { gs.symset[which_set].handling = i; return; }
+  while (KNOWN_HANDLING[i]) {
+    if (KNOWN_HANDLING[i].toLowerCase() === handling.toLowerCase()) { gs.symset[which_set].handling = i; return; }
     i++;
   }
 }

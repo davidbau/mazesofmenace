@@ -34,7 +34,7 @@ import { Unaware,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     A_ORIGINAL, A_CURRENT, Upolyd,
     Is_waterlevel, Is_airlevel, ismnum, POLY_NOFLAGS, TT_LAVA } from './const.js';
-import { near_capacity, reroll_menu, setnotworn, freeinv } from './invent.js';
+import { near_capacity, reroll_menu, setnotworn, freeinv, worn_extrinsic } from './invent.js';
 import { is_pool } from './dbridge.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { settrack } from './track.js';
@@ -196,6 +196,11 @@ export async function newgame() {
         // for every reader in js/ (eat.js your_race, bones.js filecode,
         // invent.js, end.js, display.js showrace).
         if (!g.urace) g.urace = { ...(races[game.initrace] || races[0]) };
+        // C ref: role.c role_init() `gu.urole = roles[flags.initrole]` also
+        // runs before mklev(); mksobj()'s G_NOCORPSE fallback reads
+        // gu.urole.mnum for a corpse made during level creation (makeniche's
+        // iron-bars corpse).  newgame_real() replaces this after mklev.
+        if (roles[game.initrole]) g.urole = { ...roles[game.initrole] };
     }
 
     // C ref: u_init.c u_init_misc() sets u.umonnum = u.umonster =
@@ -218,9 +223,9 @@ export async function newgame() {
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
 
-    // Fill rooms + mineralize: replayed by fastforward
-    // These create objects/monsters that don't affect terrain display
-    await fastforward_fill_mineralize();
+    // C ref: mklev.c mklev(): getbones() returns before makelevel() and its
+    // fill/mineralize phase when it loaded a legacy level.
+    if (!g._bones_loaded) await fastforward_fill_mineralize();
 
     // C ref: dog.c makedog() - create the starting pet after level fill.
     u_on_upstairs();
@@ -301,6 +306,10 @@ async function newgame_real() {
     // feed pray.c can_pray()/angrygods() (p_type, maxanger) when the hero prays.
     g.u.ualign = { type: alignType, record: role?.initrecord ?? 0 };
     g.u.ublesscnt = 300;
+    // C ref: allmain.c newgame() init_artifacts() -> artifact.c
+    // hack_artifacts(): the hero's role-gift and quest artifacts take the
+    // hero's alignment.  Existence bookkeeping is left to mklev's own use.
+    (await import('./artifact.js')).hack_artifacts();
     g.u.uluck = g.u.uluck ?? 0;
     g.u.moreluck = g.u.moreluck ?? 0;
     g.u.ugangr = g.u.ugangr ?? 0;
@@ -456,29 +465,10 @@ async function moveloop_preamble_messages() {
 
     if (msgs.length === 0) return false;
 
-    // Each preamble message can't share the top line with the one before it
-    // (the moon "You are lucky!" line starts with "You " so C forces a fresh
-    // line; the Friday-13th warning is too long to concatenate).  So each new
-    // message pages the current top-line message with --More-- first: the
-    // welcome line is paged before the first preamble message, and (when both
-    // hold) the moon message is paged before the Friday-13th warning.
-    // C ref: win/tty/topl.c more():231 — a --More-- dismissed with ESC sets
-    // WIN_STOP, and update_topl() reads `skip` BEFORE calling more(): the
-    // message whose own --More-- was ESC'd is still drawn, every LATER one is
-    // only accumulated into gt.toplines.  Tracked locally rather than off
-    // game._winStop so an ESC that dismissed some earlier window can't leak in.
-    let win_stop = false;
-    for (const m of msgs) {
-        if (win_stop) { game._toplines = m; continue; } // C: skip -> no more(), no redraw
-        // A wrapped welcome line already paged ITSELF (pline()'s own
-        // wrap_topl().length>1 check) and cleared _pending_message; calling
-        // topl_more() again here would consume a second, phantom keystroke.
-        if (game._pending_message) {
-            await topl_more();
-            win_stop = !!game._winStop; // more() set it iff this --More-- was ESC'd
-        }
-        await pline(m);
-    }
+    // C ref: allmain.c moveloop_preamble() -> pline(). The topline writer
+    // snapshots WIN_STOP before paging the previous message. Paging here first
+    // would suppress the new message when that pager is dismissed with ESC.
+    for (const m of msgs) await pline(m);
     return true;
 }
 
@@ -640,19 +630,74 @@ async function ask_do_tutorial() {
                 disp.putstr(offx + 1, i, lines[i].text, NO_COLOR, lines[i].attr || 0);
         }
         const endRow = lines.length - 1;
+        menuOffx = offx; menuEndRow = endRow;
         disp.setCursor(offx + 7, endRow);
     };
+    let menuOffx = 0, menuEndRow = 0;
+
+    // C ref: getline.c hooked_tty_getlin() ends with
+    // clear_nhwindow(WIN_MESSAGE) ("clean up after ourselves"), which wipes the
+    // message row the prompt occupied (here, the menu's own title row); then
+    // process_menu_window()'s non-redraw arm just puts the cursor back at
+    // tty_curs(window, strlen(morestr) + 2, page_lines).
+    const after_getlin = () => {
+        for (let c = 0; c < cols; c++) disp.setCell(c, 0, ' ', NO_COLOR, 0);
+        disp.setCursor(menuOffx + 7, menuEndRow);
+    };
+
+    // C ref: win/tty/wintty.c process_menu_window() for this PICK_ONE menu.
+    // resp[] holds the page's selectors ("yn", the explicit choices), then
+    // " 0123456789\033\n\r" and default_menu_cmds; xwaitforspace() bells on
+    // anything else without redrawing.  Digits accumulate a count, and ESC
+    // while counting only stops the count (wintty.c:1604) instead of
+    // cancelling the menu.
+    const SELECTORS = 'yn';
+    const DEFAULT_MENU_CMDS = '^|><.-@,\\~:';
+    const RESP = SELECTORS + ' ' + '0123456789\x1b\n\r' + DEFAULT_MENU_CMDS;
+    const { hooked_tty_getlin, pmatchi } = await import('./extcmd-handlers.js');
+    const ITEMS = [{ sel: 'y', str: 'y - Yes, do a tutorial' },
+                   { sel: 'n', str: 'n - No, just start play' }];
 
     let pass = 0;
     renderMenu(pass++);
+    let counting = false, count = 0, reset_count = true;
     for (;;) {
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
         const c = await nhgetch();
         const ch = String.fromCharCode(c);
-        if (ch === 'y') { game._tutorial_yes = true; await do_tutorial_goto(); break; }
-        if (ch === 'n' || c === 27) break;       // No / Escape => start play
-        // space / return confirm with no selection => re-prompt; any other
-        // key is ignored (the menu just waits for the next key).
-        if (c === 32 || c === 13 || c === 10) renderMenu(pass++);
+        const idx = RESP.indexOf(ch);
+        if (idx < 0) continue;                  // tty_nhbell(), re-read
+        if (idx < SELECTORS.length) {           // MENU_EXPLICIT_CHOICE
+            if (ch === 'y') { game._tutorial_yes = true; await do_tutorial_goto(); }
+            break;
+        }
+        if (ch >= '0' && ch <= '9') {
+            count = count * 10 + (c - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
+        if (c === 27) {                         // cancel, or just stop a count
+            if (!counting) break;               // ESC => no tutorial
+            continue;
+        }
+        if (c === 32 || c === 13 || c === 10) { // commit with nothing selected
+            renderMenu(pass++);                 // select_menu() returned 0
+            continue;
+        }
+        if (ch === ':') {                       // MENU_SEARCH
+            const tmpbuf = await hooked_tty_getlin('Search for:', null);
+            after_getlin();
+            if (!tmpbuf || tmpbuf[0] === '\x1b') continue;
+            const searchbuf = '*' + tmpbuf + '*';
+            const hit = ITEMS.find((it) => pmatchi(searchbuf, it.str));
+            if (hit) {                          // PICK_ONE finishes on first hit
+                if (hit.sel === 'y') { game._tutorial_yes = true; await do_tutorial_goto(); }
+                break;
+            }
+            continue;
+        }
+        // The remaining default_menu_cmds are page moves on a one-page menu or
+        // PICK_ANY-only bulk selections: no-ops here.
     }
     game._pending_message = '';
 }
@@ -730,6 +775,9 @@ const FAST_AT_LEVEL = Object.freeze({
 // handled separately by youHaveVeryFast(); since Very_fast takes priority in
 // u_calc_moveamt's else-if chain, the two never both fire on the same turn.
 export function youHaveFast() {
+    // sit.c attrcurse() can clear the role-granted FAST (angry god); js/pray.js
+    // records that in u.lost_innate.
+    if (game.u?.lost_innate?.has('HFast')) return false;
     const mnum = gameRoleMnum();
     const lvl = FAST_AT_LEVEL[mnum];
     if (lvl == null) return false;
@@ -776,20 +824,23 @@ function youHaveSearching() {
 }
 export { youHaveSearching };
 
-// C ref: youprop.h Teleportation == (HTeleportation || ETeleportation).
-// Nothing in this port currently sets either half (no role table or item grants
-// it yet), so this always reads false today; kept faithful for moveloop_core's
-// per-turn teleport-intrinsic check below.
+// C ref: youprop.h Teleportation == (HTeleportation || ETeleportation).  The
+// extrinsic half is the worn-item store invent.js maintains
+// (worn_extrinsics_on/off, prop.h TELEPORT=46); the flat u.uprops aliases only
+// ever hold the intrinsic half, so a worn ring of teleportation never rolled
+// moveloop_core()'s per-turn rn2(85).
 function youHaveTeleportationIntrinsic() {
     const p = game.u?.uprops;
-    return !!(p?.HTeleportation || p?.ETeleportation);
+    /* FROMFORM bit: polyself.js set_uasmon() u.formprops */
+    return !!(p?.HTeleportation || p?.ETeleportation || worn_extrinsic(46 /*TELEPORT*/)
+        || game.u?.formprops?.Teleportation);
 }
 
 // C ref: youprop.h Polymorph == (HPolymorph || EPolymorph).  Same story as
-// Teleportation above: never set anywhere in this port yet.
+// Teleportation above (prop.h POLYMORPH=61, i.e. a worn ring of polymorph).
 function youHavePolymorph() {
     const p = game.u?.uprops;
-    return !!(p?.HPolymorph || p?.EPolymorph);
+    return !!(p?.HPolymorph || p?.EPolymorph || worn_extrinsic(61 /*POLYMORPH*/));
 }
 
 // C ref: youprop.h Unchanging == (HUnchanging || EUnchanging).
@@ -1000,11 +1051,10 @@ export async function moveloop_turn() {
 
             g.moves = (g.moves || 1) + 1;
 
-            // C ref: allmain.c moveloop_core():273 — nh_timeout() runs at the very
-            // top of the once-per-turn block (before run_regions / ublesscnt).  It
-            // expires timed properties; the contest hero's only case is the bear
-            // trap's WOUNDED_LEGS -> heal_legs(0), which restores the -1 Dx BEFORE
-            // the later u_wipe_engr rn2(40 + ACURR(A_DEX)*3) roll depends on it.
+            // C ref: allmain.c:271-273 — slippery fingers drop rings/weapons
+            // before the timer decrements, including its final active turn.
+            if (g.u.uprops?.Glib)
+                await (await import('./do_wear.js')).glibr();
             await nh_timeout();
 
             // C ref: allmain.c moveloop_core():274 — run_regions() ages every
@@ -1235,15 +1285,18 @@ export async function moveloop_turn() {
     if (g.context.seer_turn != null && g.moves >= g.context.seer_turn) {
         g.context.seer_turn = g.moves + rn1(31, 15);
     }
-    // C ref: allmain.c:424 — `if (u.utrap && u.utraptype == TT_LAVA)
-    // sink_into_lava(); else if (!u.umoved) (void) pooleffects(FALSE);`.
-    // Only the sink_into_lava() arm is ported (js/trap.js sink_into_lava);
-    // pooleffects(FALSE), the leaving-water/lava half, has no js/ port at all
-    // (only pooleffects(TRUE)'s arrival half exists, js/trap.js
-    // pooleffects_enter), so the `else` arm is left unwired here.
+    // C ref: allmain.c:424-432 — sink into lava, else re-evaluate water/lava
+    // under a hero who did not move, then redraw the underwater view.
     if (g.u?.utrap && g.u.utraptype === TT_LAVA) {
         const { sink_into_lava } = await import('./trap.js');
         await sink_into_lava();
+    } else if (!g.u?.umoved) {
+        const { pooleffects } = await import('./trap.js');
+        await pooleffects(false);
+    }
+    if (g.u?.uinwater) {
+        const { under_water } = await import('./display.js');
+        await under_water(0);
     }
 }
 
@@ -1496,7 +1549,8 @@ const RIN_REGENERATION_OTYP = 179;
 function u_can_regen() {
     const g = game;
     return (g.uleft && g.uleft.otyp === RIN_REGENERATION_OTYP)
-        || (g.uright && g.uright.otyp === RIN_REGENERATION_OTYP);
+        || (g.uright && g.uright.otyp === RIN_REGENERATION_OTYP)
+        || HRegeneration();
 }
 
 const PM_MONK = 5;
@@ -1578,13 +1632,14 @@ function Wounded_legs() {
 }
 function HClairvoyant() { return false; }
 function BClairvoyant() { return false; }
-function HRegeneration() { return false; }
+// HRegeneration: the current polyform's FROMFORM bit (polyself.js set_uasmon).
+function HRegeneration() { return !!game.u?.formprops?.Regeneration; }
 function Sick() { return ((game.u?.uprops?.Sick || 0) > 0) || !!(game.u?.sick); }
 function Vomiting() { return (game.u?.uprops?.Vomiting || 0) > 0; }
-function Confusion() { return !!(game.u?.uconf || game.u?.HConfusion); }
+function Confusion() { return ((game.u?.uprops?.Confusion || 0) > 0) || !!(game.u?.uconf || game.u?.HConfusion); }
 function Hallucination() { return ((game.u?.uprops?.Hallucination || 0) > 0) || !!(game.u?.HHallucination) || !!game.u?.uhallu; }
 function Fumbling() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
-function HStun() { return ((game.u?.uprops?.Stun || 0) > 0) || !!game.u?.Stunned || !!(game.u?.HStun || game.u?.ustun); }
+function HStun() { return ((game.u?.uprops?.Stun || 0) > 0) || !!game.u?.Stunned || !!(game.u?.HStun || game.u?.ustun) || !!game.u?.formprops?.Stunned; }
 
 // C ref: attrib.c plusattr[]/minusattr[] (the adjattrib "You feel <x>!" word)
 // and exertext[A_MAX][2] (exerchk's own explanation, in attribute order).
@@ -1799,11 +1854,8 @@ export async function moveloop_core() {
         g.u.uevent.amulet_wish = 1;
         const D = await import('./display.js');
         await D.display_nhwindow_message();
-        await update_topl('The Amulet is bestowing a wish upon you!');
-        // C: makewish() itself; zap.c's wand path adds the verbose
-        // "You may wish for an object." line, and so does this one.
-        if (game.flags?.verbose !== false)
-            await update_topl('You may wish for an object.');
+        await D.urgent_topl('The Amulet is bestowing a wish upon you!');
+        // makewish() prints the verbose "You may wish for an object." itself.
         const { makewish } = await import('./extcmd-handlers.js');
         await makewish();
     }

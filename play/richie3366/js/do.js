@@ -51,6 +51,7 @@ import {
     USE_INVLET, INVORDER_SORT, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
     BUC_UNKNOWN, SELL_DELIBERATE, SELL_NORMAL,
     NO_NC_FLAGS, NC_SHOW_MSG,
+    EXIT_FAILURE,
 } from './const.js';
 import {
     seetrap, t_at, delfloortrap, deltrap, reset_utrap, water_damage, erode_obj,
@@ -182,7 +183,9 @@ import { obj_resists } from './dogmove.js';
 import { Soundeffect, se_scratching, se_alarm, se_drain_noises, se_ring_in_drain, se_boulder_drop, se_crashing_boulder, se_item_tumble_downwards } from './sndprocs.js';
 import { polymorph_sink, dipsink_set_levltyp, floating_above } from './fountain.js';
 import { fruitname } from './potion.js';
-import { delete_levelfile, open_levelfile } from './files.js';
+import { delete_levelfile, open_levelfile, close_nhfile } from './files.js';
+import { tricked_fileremoved } from './save.js';
+import { nh_terminate } from './end.js';
 import { strange_feeling } from './detect.js';
 import { surface } from './sit.js';
 import { use_pick_axe2, bury_objs, fill_pit } from './dig.js';
@@ -1989,13 +1992,21 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // C: familiar = bones_include_name(plname) after first-time mklev
         familiar = bones_include_name(game.plname || '');
     } else {
-        // C do.c:1704 — nhfp = open_levelfile(new_ledger, whynot): the
-        // LFILE_EXISTS gate above is the open() probe (stash ⟺ flag, so
-        // the handle is non-null here); getlev reads the stash below.
-        // C's tricked_fileremoved arm (pline1/error/done-TRICKED on a
-        // vanished file) is named in c-js-map/data.md — unreachable while
-        // the flag implies openable, and JS has no pline1/error().
-        open_levelfile(new_ledger, null);
+        // C do.c:1704–1708 — nhfp = open_levelfile(new_ledger, whynot);
+        // tricked_fileremoved (live js/save.js): the LFILE_EXISTS gate
+        // above is the open() probe (stash ⟺ flag, so the handle is
+        // non-null here and the TRUE arm below is unreachable); getlev
+        // reads the stash below.
+        const whynot = { s: '' };
+        const nhfp = open_levelfile(new_ledger, whynot);
+        if (await tricked_fileremoved(nhfp, whynot.s)) {
+            // C :1706–1708 — reached in wizard mode (done(TRICKED)
+            // spares wizards); sys/share error(): message, then
+            // exit(EXIT_FAILURE) — nh_terminate, earlyarg.js precedent.
+            await pline('Cannot continue this game.');
+            nh_terminate(EXIT_FAILURE);
+            return;
+        }
         // C: getlev — restore in-memory stash + place/catchup/restore_cham/hide_monst + rest_track
         // C restore.c Sfi_dest_area updest/dndest after rest_stairs.
         game.level = info.level;
@@ -2042,6 +2053,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             || game.level?.flags?.sokoban);
         getlev_place_monsters();
         await getlev_catchup_monsters(elapsed);
+        close_nhfile(nhfp); // C do.c:1712 — after getlev (`:1713` oinit has no counterpart on this path — pre-existing)
     }
 
     await set_uinwater(0); /* C do.c:1716 — after getlev/mklev, before vision_reset */

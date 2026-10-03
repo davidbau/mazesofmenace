@@ -691,7 +691,9 @@ async function cursed_book(bp) {
         // clang LTR: rn1 then rnd before poison_strdmg
         const strloss = Poison_resistance() ? rn1(2, 1) : rn1(4, 3);
         const pdmg = rnd(Poison_resistance() ? 6 : 10);
-        await poison_strdmg(strloss, pdmg);
+        // C spell.c:164 "contact-poisoned spellbook", KILLED_BY_AN.
+        await poison_strdmg(strloss, pdmg,
+            'contact-poisoned spellbook', KILLED_BY_AN);
         bp.in_use = was_in_use;
         break;
     }

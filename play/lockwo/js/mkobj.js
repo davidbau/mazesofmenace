@@ -920,11 +920,23 @@ for (const [lo, hi] of OC_MAGIC_RANGES)
 // and only "egg" and "tin" pass 1 there while chrg is always 0.  Deriving it
 // this way rather than listing the otyps that happen to matter here keeps it
 // right for every object the held-out corpus can reach.
+// The rows whose explicit BITS() pass uskn=1 although chrg is 0: the
+// invocation items, both Amulets of Yendor and the novel (objects.h).
+const USKN_EXPLICIT = new Set(['AMULET_OF_YENDOR', 'FAKE_AMULET_OF_YENDOR',
+    'CANDELABRUM_OF_INVOCATION', 'BELL_OF_OPENING', 'SPE_BOOK_OF_THE_DEAD', 'SPE_NOVEL']);
 for (const o of objects) {
     if (!o) continue;
-    o.oc_uses_known = (o.oclass === FOOD_CLASS)
-        ? ((o.otyp === EGG || o.otyp === TIN) ? 1 : 0)
-        : ((o.flags & F_CHARGED) ? 1 : 0);
+    o.oc_uses_known = USKN_EXPLICIT.has(o.sym) ? 1
+        : (o.oclass === FOOD_CLASS)
+            ? ((o.otyp === EGG || o.otyp === TIN) ? 1 : 0)
+            : ((o.flags & F_CHARGED) ? 1 : 0);
+}
+// The hand-written OBJECT() rows with uskn=1 that the rule above misses:
+// both Amulets of Yendor, the Candelabrum, the novel and the Book of the Dead.
+for (const sym of ['FAKE_AMULET_OF_YENDOR', 'AMULET_OF_YENDOR',
+                   'CANDELABRUM_OF_INVOCATION', 'SPE_NOVEL', 'SPE_BOOK_OF_THE_DEAD']) {
+    const o = objects.find((x) => x?.sym === sym);
+    if (o) o.oc_uses_known = 1;
 }
 
 const objectsByClass = Array.from({ length: MAXOCLASSES + 1 }, () => []);
@@ -1290,13 +1302,13 @@ function hasFlag(otmp, flag) {
 // C ref: objclass.h:209 is_damageable(otmp) — the OR of the five erosion
 // predicates.  It used to re-derive all five inline, which is how the
 // is_flammable FIRE_RES arm came to be missing from one copy and not the other.
-function is_damageable(otmp) {
+export function is_damageable(otmp) {
     if (!objects[otmp.otyp]) return false;
     return is_rustprone(otmp) || is_flammable(otmp) || is_rottable(otmp)
         || is_corrodeable(otmp) || is_crackable(otmp);
 }
 
-function erosion_matters(otmp) {
+export function erosion_matters(otmp) {
     return otmp.oclass === WEAPON_CLASS || otmp.oclass === ARMOR_CLASS
         || otmp.oclass === BALL_CLASS || otmp.oclass === CHAIN_CLASS
         || (otmp.oclass === TOOL_CLASS && hasFlag(otmp, F_WEPTOOL));
@@ -1315,23 +1327,23 @@ function may_generate_eroded(otmp) {
 // (they can't take fire damage and can't be fireproofed), and neither is
 // anything whose oc_oprop is FIRE_RES -- the arm the old copy dropped, so a red
 // dragon scale mail / ring of fire resistance answered by material alone.
-function is_flammable(otmp) {
+export function is_flammable(otmp) {
     const obj = objects[otmp.otyp];
     const mat = obj?.material ?? NO_MATERIAL;
     if (otmp.otyp === TALLOW_CANDLE || otmp.otyp === WAX_CANDLE) return false;
     if (obj?.oc_oprop === 1 /* FIRE_RES */ || otmp.otyp === WAN_FIRE) return false;
     return (mat <= WOOD && mat !== LIQUID) || mat === PLASTIC;
 }
-function is_rottable(otmp) {
+export function is_rottable(otmp) {
     const mat = objects[otmp.otyp]?.material ?? NO_MATERIAL;
     return ((mat <= WOOD && mat !== LIQUID) || mat === DRAGON_HIDE);
 }
-function is_rustprone(otmp) { return objects[otmp.otyp]?.material === IRON; }
-function is_corrodeable(otmp) {
+export function is_rustprone(otmp) { return objects[otmp.otyp]?.material === IRON; }
+export function is_corrodeable(otmp) {
     const mat = objects[otmp.otyp]?.material;
     return mat === COPPER || mat === IRON;
 }
-function is_crackable(otmp) {
+export function is_crackable(otmp) {
     return objects[otmp.otyp]?.material === GLASS && otmp.oclass === ARMOR_CLASS;
 }
 
@@ -1547,7 +1559,7 @@ export function stop_object_timer(obj, action) {
 // C ref: timeout.c attach_fig_transform_timeout(figurine):1204 — replace any
 // existing FIG_TRANSFORM timer with one that fires in rnd(9000)+200 turns.
 // The draw is rnd(9000), NOT rn1(9000,1000).
-function attach_fig_transform_timeout(figurine) {
+export function attach_fig_transform_timeout(figurine) {
     if (!figurine) return;
     stop_object_timer(figurine, FIG_TRANSFORM);
     const i = rnd(9000) + 200;

@@ -562,6 +562,7 @@ const MAGIC_COOKIE = 1000; // zap.c local #define
 const AD_MAGM = 1; // C ref: monattk.h AD_MAGM (magic missiles)
 const AD_COLD = 3;
 const AD_FIRE = 2;
+const AD_SLEE = 4; // C ref: monattk.h AD_SLEE (sleep; bhitm WAN_SLEEP gate)
 const AD_DISN = 5; // C ref: monattk.h AD_DISN (disintegration)
 const AD_ELEC = 6;
 const AD_ACID = 8; // C ref: monattk.h AD_ACID (acid damage)
@@ -2428,8 +2429,9 @@ export async function dobuzz(
                 mon = m_at(sx, sy); // C :4861 — re-fetch after floor effects
                 // C zap.c `buzzmonst:` (:4867) — the mon-hit core, also
                 // entered by the steed redirect (:4956–4959, which skips the
-                // fireball break + STRAT clear above the label). Returns true
-                // when the beam ends (Rider/PM_DEATH absorb).
+                // fireball break + STRAT clear above the label and the u_at
+                // flashburn/stop_occupation/nomul tail below the branch).
+                // Returns true when the beam ends (Rider/PM_DEATH absorb).
                 const buzzmonst = async (target) => {
                     game.notonhead = ((target.mx | 0) !== (game.bhitpos?.x | 0)
                         || (target.my | 0) !== (game.bhitpos?.y | 0));
@@ -2577,61 +2579,67 @@ export async function dobuzz(
                 } else if (u_at(sx, sy) && range >= 0) {
                     nomul(0);
                     // C zap.c:4956–4959 — the bolt meets the steed first
-                    // (silent reflection test); the redirect skips the
-                    // hero-hit and blind-miss arms but still runs
-                    // flashburn/stop_occupation below
+                    // (silent reflection test); `goto buzzmonst` exits the
+                    // u_at branch, skipping the flashburn/stop_occupation/
+                    // nomul tail below
                     const usteed = (game.u || {}).usteed;
                     if (usteed && !rn2(3)
                         && !(await mon_reflects(usteed, null))) {
                         if (await buzzmonst(usteed)) break;
-                    } else if (!forcemiss && zap_hit(game.u?.uac ?? 10, 0)) {
-                        range -= 2;
-                        // C zap.c:4964 pline_dir(xytodir(-dx,-dy), "%s hits you!",
-                        // The(flash_str)) (D-1216). Steed rn2(3) still named.
-                        await pline_dir(
-                            xytodir(-dx, -dy),
-                            `The ${flash_str(fltyp)} hits you!`,
-                        );
-                        if (Reflecting()) {
-                            if (!Blind()) {
-                                await ureflects(
-                                    'But %s reflects from your %s!',
-                                    'it',
-                                );
+                    } else {
+                        if (!forcemiss && zap_hit(game.u?.uac ?? 10, 0)) {
+                            range -= 2;
+                            // C zap.c:4964 pline_dir(xytodir(-dx,-dy),
+                            // "%s hits you!", The(flash_str)) (D-1216)
+                            await pline_dir(
+                                xytodir(-dx, -dy),
+                                `The ${flash_str(fltyp)} hits you!`,
+                            );
+                            if (Reflecting()) {
+                                if (!Blind()) {
+                                    await ureflects(
+                                        'But %s reflects from your %s!',
+                                        'it',
+                                    );
+                                } else {
+                                    await pline(
+                                        'For some reason you are not affected.',
+                                    );
+                                }
+                                // C zap.c:4972 — monsters remember the
+                                // reflection
+                                monstseesu(M_SEEN_REFL);
+                                dx = -dx;
+                                dy = -dy;
+                                // C zap.c:4975 — shield flash; its closing
+                                // newsym restores the beam-painted cell
+                                await shieldeff(sx, sy);
+                                gas_hit = false;
                             } else {
-                                await pline(
-                                    'For some reason you are not affected.',
-                                );
+                                await zhitu(type, nd, flash_str(fltyp), sx, sy);
+                                // C: fatal losehp never returns into dobuzz
+                                if (game.program_state?.gameover) break;
+                                // C zap.c:4981 — seen-state clears past the hit
+                                monstunseesu(M_SEEN_REFL);
                             }
-                            // C zap.c:4972 — monsters remember the reflection
-                            monstseesu(M_SEEN_REFL);
-                            dx = -dx;
-                            dy = -dy;
-                            // C zap.c:4975 — shield flash; its closing
-                            // newsym restores the beam-painted cell
-                            await shieldeff(sx, sy);
-                            gas_hit = false;
-                        } else {
-                            await zhitu(type, nd, flash_str(fltyp), sx, sy);
-                            // C: fatal losehp never returns into dobuzz
-                            if (game.program_state?.gameover) break;
-                            // C zap.c:4981 — seen-state clears past the hit
-                            monstunseesu(M_SEEN_REFL);
+                        } else if (!Blind()) {
+                            await pline(
+                                `The ${flash_str(fltyp)} whizzes by you!`,
+                            );
+                        } else if (damgtype === ZT_LIGHTNING) {
+                            // C zap.c:4985–4986 — blind miss still tingles
+                            await Your('%s tingles.', body_part(ARM));
                         }
-                    } else if (!Blind()) {
-                        await pline(`The ${flash_str(fltyp)} whizzes by you!`);
-                    } else if (damgtype === ZT_LIGHTNING) {
-                        // C zap.c:4985–4986 — blind miss still tingles
-                        await Your('%s tingles.', body_part(ARM));
+                        // C zap.c:4988–4989 — lightning blinds via flashburn
+                        // on any non-steed pass through the hero, hit or
+                        // missed or reflected
+                        if (damgtype === ZT_LIGHTNING) {
+                            await flashburn(d(nd, 50), true);
+                        }
+                        // C zap.c:4990
+                        await stop_occupation();
+                        nomul(0);
                     }
-                    // C zap.c:4988–4989 — lightning blinds via flashburn on
-                    // any pass through the hero, hit or missed or reflected
-                    if (damgtype === ZT_LIGHTNING) {
-                        await flashburn(d(nd, 50), true);
-                    }
-                    // C zap.c:4990
-                    await stop_occupation();
-                    nomul(0);
                 }
 
                 if (gas_hit) {
@@ -2787,18 +2795,7 @@ export function learnwand(obj) {
     }
 }
 
-/**
- * C ref: hacklib.c s_suffix — possessive for saddle drop msg.
- */
-function s_suffix_zap(s) {
-    const buf = String(s ?? '');
-    const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
-    if (low === 'you') return `${buf}r`;
-    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
-    if (buf.endsWith('s')) return `${buf}'`;
-    return `${buf}'s`;
-}
+/* s_suffix is the live js/do_name.js export (D-3373 removed the s_suffix_zap clone). */
 
 /**
  * C dungeon.c surface :1750–1787 — swallow named (zap_updown is
@@ -3769,7 +3766,7 @@ export async function cancel_monst(
             || (mdef.data?.mndx | 0) === PM_CLAY_GOLEM) {
             if (canseemon(mdef)) {
                 await pline(
-                    `Some writing vanishes from ${s_suffix_zap(mon_nam(mdef))} head!`,
+                    `Some writing vanishes from ${s_suffix(mon_nam(mdef))} head!`,
                 );
             }
             if (allow_cancel_kill) {
@@ -3898,7 +3895,7 @@ export async function probe_monster(mtmp) {
     if (mtmp.minvent) {
         probe_objchain(mtmp.minvent);
         // C display_minventory NULL title → s_suffix(noit_Monnam)+" possessions:"
-        const title = `${s_suffix_zap(noit_Monnam(mtmp))} possessions:`;
+        const title = `${s_suffix(noit_Monnam(mtmp))} possessions:`;
         await display_minventory(
             mtmp, MINV_ALL | MINV_NOLET | PICK_NONE, title,
         );
@@ -4382,7 +4379,7 @@ export async function bhitm(mtmp, otmp) {
             } else {
                 const saddle = which_armor(mtmp, W_SADDLE);
                 if (saddle) {
-                    let buf = `${s_suffix_zap(Monnam(mtmp))} ${
+                    let buf = `${s_suffix(Monnam(mtmp))} ${
                         distant_name(saddle, xname)}`;
                     const mx = mtmp.mx | 0;
                     const my = mtmp.my | 0;
@@ -4457,6 +4454,34 @@ export async function bhitm(mtmp, otmp) {
         } else {
             await resist(mtmp, otmp.oclass, (healamt / 2) | 0, TELL);
         }
+        break;
+    }
+    case WAN_SLEEP: {
+        // C zap.c bhitm :480–489 — (broken wand). wake stays TRUE:
+        // wakeup() doesn't rouse temporary sleep; the concealed-mimic
+        // reveal rides inside sleep_monst. how=WAND_CLASS: d(1+spe,12)
+        // drawn first (call args), mimic reveal unless already
+        // asleep/paralyzed, then resists_sleep || defended(AD_SLEE) ||
+        // resist(WAND_CLASS) → shieldeff, else the mfrozen/msleeping
+        // tail (sleep_monst_zap, zhitm ZT_SLEEP precedent); slept_monst
+        // on success; !Blind learns.
+        reveal_invis = true;
+        const sleepAmt = d(1 + (otmp.spe | 0), 12);
+        if (!mtmp.msleeping && !(mtmp.mfrozen | 0)
+            && mtmp.data?.mlet === 'S_MIMIC'
+            && (M_AP_TYPE(mtmp) === M_AP_FURNITURE
+                || M_AP_TYPE(mtmp) === M_AP_OBJECT)) {
+            seemimic(mtmp);
+        }
+        let fellAsleep = false;
+        if (resists_sleep_slee(mtmp) || defended(mtmp, AD_SLEE)
+            || (await resist(mtmp, WAND_CLASS, 0, NOTELL))) {
+            await shieldeff(mtmp.mx, mtmp.my);
+        } else {
+            fellAsleep = !!sleep_monst_zap(mtmp, sleepAmt);
+        }
+        if (fellAsleep) await slept_monst(mtmp);
+        if (!Blind_props()) learn_it = true;
         break;
     }
     default:

@@ -40,6 +40,7 @@ import { cant_revive } from './zap.js';
 import { rest_regions } from './region.js';
 import { load_exclusions } from './dungeon.js';
 import { place_monster } from './steed.js';
+import { reset_oattached_mids } from './restore.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
@@ -687,6 +688,11 @@ function getlev_bones(payload) {
     load_exclusions(info.exclusion_zones);
     // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
     rest_track(info.track);
+    // C restore.c getlev `:1301` reset_oattached_mids(ghostly) in C order —
+    // after all mons & objs are restored, before clear_id_mapping `:1304`:
+    // ghostly omonst m_id zeroing + peace reset, omid remap through the
+    // bones id map (recorded by remapMonChainIds above, cleared below).
+    reset_oattached_mids(true);
     // C getlev ghostly: freefruitchn(oldfruit) after restobjchn / rest_track.
     game.oldfruit = null;
     // C restore.c `:1304` clear_id_mapping at end of getlev.

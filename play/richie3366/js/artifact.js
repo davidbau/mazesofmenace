@@ -883,14 +883,15 @@ export function clr2colorname(clr) {
 
 /**
  * C ref: artifact.c glow_color `:2427–2433` — artilist[arti].acolor then
- * clr2colorname then hcolor. Hallu hcolor display-rng named omit (identity).
- * doname inlines the same C functions (objnam cannot import this module:
- * artifact→invent→shk calls set_doname_shop_suffix during objnam init).
+ * clr2colorname then hcolor (Hallu → display-rng hcolors[] word, else pref;
+ * do_name.js:347). doname inlines the same C functions (objnam cannot
+ * import this module: artifact→invent→shk calls set_doname_shop_suffix
+ * during objnam init) — doname_glow_color wraps the same import.
  */
 export function glow_color(arti_indx) {
     const list = artilist();
     const colornum = list[arti_indx | 0]?.acolor | 0;
-    return clr2colorname(colornum);
+    return hcolor(clr2colorname(colornum));
 }
 
 // C artifact.c glow_verbs[] — [0] is the blind / no-creatures verb.
@@ -943,7 +944,6 @@ function maybe_lvltport_feedback() {
  * C ref: artifact.c Sting_effects `:2466–2501` — glow messages for
  * Sting / Orcrist / Grimtooth when warn_obj_cnt strength changes.
  * orc_count -1 is blindness toggle (toggle_blindness / make_blinded).
- * Hallu hcolor inside glow_color named omit.
  */
 export async function Sting_effects(orc_count) {
     if (!u_wield_art(ART_STING)

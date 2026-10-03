@@ -107,7 +107,8 @@ import {
     GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_DOWNPLAY,
 } from './const.js';
 import {
-    adjattrib, gainstr, acurr, acurrstr, change_luck, exercise, adjalign,
+    adjattrib, gainstr, losestr, acurr, acurrstr, change_luck, exercise,
+    adjalign,
     A_STR, A_DEX, A_CHA, A_WIS, A_INT, A_CON,
 } from './attrib.js';
 import {
@@ -124,7 +125,7 @@ import {
 } from './potion.js';
 import { addinv_nomerge } from './u_init.js';
 import { dropy, dropx, make_blinded, BlindedTimeout, revive_corpse, donull } from './do.js';
-import { type_is_pname, rndmonnam, pmname, Ugender, mon_nam, Monnam } from './do_name.js';
+import { type_is_pname, rndmonnam, pmname, Ugender, mon_nam, Monnam, s_suffix } from './do_name.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
 import {
@@ -1380,32 +1381,14 @@ async function touchfood(otmp) {
 }
 
 /**
- * C ref: attrib.c poison_strdmg → losestr + losehp.
- * losestr rn1(4,3) only when ABASE-strloss would go below ATTRMIN.
+ * C ref: attrib.c poison_strdmg `:274–278` — whole C body, in C order:
+ * losestr then losehp with the shared killer. C losestr's frailty damage
+ * can done(DIED) (noreturn), so the losehp call is skipped once gameover
+ * is set — JS losestr returns after finish_losehp_done instead.
  */
-export async function poison_strdmg(strloss, dmg) {
-    const u = game.u || (game.u = {});
-    if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
-    const amin = game.urace?.attrmin?.[A_STR] ?? 3;
-    let n = strloss | 0;
-    let ustr = (u.acurr.a[A_STR] | 0) - n;
-    let frailty = 0;
-    while (ustr < amin) {
-        ustr++;
-        n--;
-        frailty += rn1(4, 3);
-    }
-    if (frailty) {
-        u.uhp = (u.uhp | 0) - frailty;
-    }
-    if (n > 0) await adjattrib(A_STR, -n, 1);
-    u.uhp = (u.uhp | 0) - (dmg | 0);
-    if ((u.uhp | 0) < 1) {
-        u.uhp = 0;
-        if (game.program_state) game.program_state.gameover = true;
-    }
-    if (!game.flags) game.flags = {};
-    game.flags.botl = true;
+export async function poison_strdmg(strloss, dmg, knam, k_format) {
+    await losestr(strloss, knam, k_format);
+    if (!game.program_state?.gameover) losehp(dmg, knam, k_format);
 }
 
 /**
@@ -2555,10 +2538,20 @@ export async function eatcorpse(otmp) {
         const poisRes = !!(game.u?.HPoison_resistance || game.u?.EPoison_resistance
             || game.u?.Poison_resistance);
         if (!poisRes) {
-            // C: poison_strdmg(rnd(4), rnd(15), ...) — clang LTR arg eval
+            // C eat.c:1932 poison_strdmg(rnd(4), rnd(15),
+            // !glob ? "poisonous corpse" : "poisonous glob", KILLED_BY_AN)
+            // — clang LTR arg eval; canonical losestr+losehp death path.
             const strloss = rnd(4);
             const dmg = rnd(15);
-            await poison_strdmg(strloss, dmg);
+            await poison_strdmg(strloss, dmg,
+                !glob ? 'poisonous corpse' : 'poisonous glob', KILLED_BY_AN);
+            if (game._losehp_needs_done || game.program_state?.gameover) {
+                // C losehp → done(DIED) is noreturn; do not start eating.
+                const { finish_losehp_done } = await import('./end.js');
+                await finish_losehp_done();
+                return 1;
+            }
+            await finish_maybe_wail();
         } else {
             await pline('You seem unaffected by the poison.');
         }
@@ -3299,7 +3292,16 @@ async function doeat_nonfood(otmp) {
         const poisRes = !!(game.u?.HPoison_resistance || game.u?.EPoison_resistance
             || game.u?.Poison_resistance);
         if (!poisRes) {
-            await poison_strdmg(rnd(4), rnd(15));
+            // C eat.c:2798 poison_strdmg(rnd(4), rnd(15), xname(otmp),
+            // KILLED_BY_AN) — canonical losestr+losehp death path.
+            await poison_strdmg(rnd(4), rnd(15), xname(otmp), KILLED_BY_AN);
+            if (game._losehp_needs_done || game.program_state?.gameover) {
+                // C losehp → done(DIED) is noreturn; do not continue eating.
+                const { finish_losehp_done } = await import('./end.js');
+                await finish_losehp_done();
+                return 1;
+            }
+            await finish_maybe_wail();
         } else {
             await pline('You seem unaffected by the poison.');
         }
@@ -3366,16 +3368,7 @@ export async function Finish_digestion() {
     return 0;
 }
 
-/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
-function s_suffix_eat(s) {
-    const buf = String(s ?? '');
-    const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
-    if (low === 'you') return `${buf}r`;
-    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
-    if (buf.endsWith('s')) return `${buf}'`;
-    return `${buf}'s`;
-}
+/* s_suffix is the live js/do_name.js export (D-3373 removed the s_suffix_eat clone). */
 
 function add_brain_dmg(dmg_p, xtra) {
     if (!dmg_p) return;
@@ -3408,16 +3401,16 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
         if (visflag) {
             const whose = (mdef === youmonst)
                 ? 'Your'
-                : s_suffix_eat(Monnam(mdef));
+                : s_suffix(Monnam(mdef));
             await pline(`${whose} brain is unharmed.`);
         }
         return M_ATTK_MISS;
     } else if (magr === youmonst) {
-        await pline(`You eat ${s_suffix_eat(mon_nam(mdef))} brain!`);
+        await pline(`You eat ${s_suffix(mon_nam(mdef))} brain!`);
     } else if (mdef === youmonst) {
         await pline('Your brain is eaten!');
     } else if (visflag && canspotmon(mdef)) {
-        await pline(`${s_suffix_eat(Monnam(mdef))} brain is eaten!`);
+        await pline(`${s_suffix(Monnam(mdef))} brain is eaten!`);
     }
 
     if (flesh_petrifies(pd)) {
@@ -3524,7 +3517,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             give_nutrit = true;
             if ((dmg_p?.damage | 0) >= (mdef.mhp | 0)
                 && visflag && canspotmon(mdef)) {
-                await pline(`${s_suffix_eat(Monnam(mdef))} last thought fades away...`);
+                await pline(`${s_suffix(Monnam(mdef))} last thought fades away...`);
             }
         }
     }

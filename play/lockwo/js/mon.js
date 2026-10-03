@@ -429,8 +429,8 @@ export async function were_summon(ptr) {
         // branch (x==u.ux, y==u.uy, !in_mklev): the exact square is the
         // HERO's, so it resolves through enexto_spawn (collect_coords ring
         // shuffle) to a nearby free square rather than placing there directly
-        // — makemon() itself has no byyou branch of its own (see
-        // create_particular_monster's note), so the search runs here first.
+        // — makemon() itself has no byyou branch of its own, so the search
+        // runs here first.
         const u = game.u;
         const spot = enexto_spawn(u?.ux ?? 0, u?.uy ?? 0, monster_by_pmidx(name_to_pmidx(typ)));
         const mtmp = spot
@@ -442,8 +442,8 @@ export async function were_summon(ptr) {
             if (canseemon_mon(mtmp)) numseen++;
             // C ref: makemon.c:1472-1501 — every in-game (non-mklev) makemon()
             // prints its own "X suddenly appears next to you!" arrival line;
-            // this port's makemon() defers that to the caller (see
-            // create_particular_monster), so were_summon's own caller-side
+            // this port's makemon() defers that to the caller (as read.js
+            // create_particular_creation does), so were_summon's own caller-side
             // makemon() call needs it too.
             await makemon_appears_msg(mtmp, spot.x, spot.y, 0);
         }
@@ -1054,6 +1054,7 @@ function slithy_mon(ptr) { return (mflags1_of(ptr) & M1_SLITHY) !== 0; }
 // C ref: youprop.h See_invisible.  js/display.js:335 has the shared reader but
 // does not export it; this port spells the hero's copy several ways.
 function See_invisible_mon() {
+    if (game.u?.formprops?.See_invisible) return true; /* FROMFORM: polyself.js set_uasmon() */
     const u = game.u || {}, p = u.uprops || {};
     return !!(u.see_invis || p.HSee_invisible || u.HSee_invisible
         || p.ESee_invisible || u.ESee_invisible || p.See_invisible || u.See_invisible);
@@ -1739,8 +1740,8 @@ const G_UNIQ_M = 0x1000;
 const D_NODOOR_M = 0x00, D_TRAPPED_M = 0x10;
 // C ref: objects.h SADDLE / CANDELABRUM_OF_INVOCATION /
 // SPE_BOOK_OF_THE_DEAD / SPE_HEALING / SPE_EXTRA_HEALING (js/mkobj.js otyps).
-const SADDLE_OTYP = 322, CANDELABRUM_OTYP = 217, BOOK_OF_THE_DEAD_OTYP = 228,
-    SPE_HEALING_OTYP = 385, SPE_EXTRA_HEALING_OTYP = 386;
+const SADDLE_OTYP = 235, CANDELABRUM_OTYP = 262, BOOK_OF_THE_DEAD_OTYP = 409,
+    SPE_HEALING_OTYP = 374, SPE_EXTRA_HEALING_OTYP = 391;
 // C ref: monattk.h NATTK.  monattk_data.js exports it, but js/const.js (which
 // this file already imports) exports a same-named binding, so it is restated.
 const NATTK_MON = 6;

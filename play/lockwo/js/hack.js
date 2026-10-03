@@ -19,6 +19,7 @@ import { domove, blocksMove, test_move_quiet, getpos_walkdir, getpos_rushdir, ge
 import { moveloop_turn, moveloop_input_redraw } from './allmain.js';
 import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, wrap_topl, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature, is_cmap_engraving_at, engraving_glyph, bg_attr, feel_location, canspotself } from './display.js';
 import { do_screen_description } from './pager.js';
+import { fruit_from_name } from './objnam.js';
 import { def_monsyms } from './symbols.js';
 import { obj_doname, whatis_pick_inventory, carried_weight, inv_weight,
          inventoryArray, is_pick, ansimpleoname,
@@ -617,7 +618,7 @@ function doorless_door(x, y) {
 // C ref: hack.h Passes_walls.  No polyform in this port sets it, and cmd.js's
 // blocksMove()/domove() ignore phasing too, so the BFS and the actual walk
 // agree; kept as a named predicate so the guards below read like C.
-function Passes_walls() { return !!game.u?.uprops?.Passes_walls; }
+function Passes_walls() { return !!game.u?.formprops?.Passes_walls || !!game.u?.uprops?.Passes_walls; }
 
 // C ref: monst.h gy.youmonst.data == &mons[u.umonnum], where u_init.c:991 sets
 // umonnum = urole.mnum — a real mons[] index.  THIS port stores the 0-based ROLE
@@ -1148,10 +1149,20 @@ function render_getpos_tip() {
 }
 
 // C ref: hack.c handle_tip(TIP_GETPOS): show the farlook tip the first time
-// getpos() is used.  A tty NHW_TEXT window blocks until a window-dismiss key
-// (space/return/escape); other keys redraw and wait again.  Each redraw is a
-// recorded screen because every readchar fires the capture hook.  Returns
-// TRUE if the tip was shown (so the caller forces the goal message).
+// getpos() is used.  dat/nhcore.lua's show_getpos_tip() routes through
+// nhlua.c nhl_text(), which builds an NHW_MENU and runs it through
+// select_menu(PICK_NONE) -> wintty.c process_menu_window().  That loop is
+// what decides which keys dismiss the window:
+//   * resp[] is " " + "0123456789\033\n\r" + default_menu_cmds ("^|><.-@,\\~:");
+//     xwaitforspace() swallows everything else (bell, wait again) without
+//     advancing the menu state machine.
+//   * digits accumulate a count and set `counting`;
+//   * ESC with `counting` set "only stop[s] count" (wintty.c:1604) — it takes a
+//     SECOND ESC to cancel the window;
+//   * space finishes because this menu is a single page.
+// Each readchar is a recorded screen, so the key accounting has to match
+// exactly.  Returns TRUE if the tip was shown (caller forces the goal message).
+const MENU_RESP_CMDS = '^|><.-@,\\~:';
 async function getpos_tip() {
     const c = game.context;
     c.tips = c.tips || 0;
@@ -1159,10 +1170,26 @@ async function getpos_tip() {
     if (c.tips & TIP_GETPOS) return false;
     c.tips |= TIP_GETPOS;
 
-    for (;;) {
-        render_getpos_tip();
-        const k = await nhgetch();
-        if (k === 32 || k === 13 || k === 10 || k === 27) break;
+    let counting = false, count = 0, reset_count = true, finished = false;
+    while (!finished) {
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
+        let k;
+        for (;;) { // xwaitforspace(resp)
+            render_getpos_tip();
+            k = await nhgetch();
+            if (k === 32 || k === 13 || k === 10 || k === 27
+                || (k >= 48 && k <= 57)
+                || MENU_RESP_CMDS.includes(String.fromCharCode(k))) break;
+        }
+        if (k >= 48 && k <= 57) {
+            count = count * 10 + (k - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+        } else if (k === 27) {
+            if (!counting) finished = true; // else only stop count
+        } else if (k === 13 || k === 10 || k === 32) {
+            finished = true;
+        }
+        // every other resp[] member is a menu command that PICK_NONE ignores
     }
     return true;
 }
@@ -1807,7 +1834,14 @@ export function gather_locs_interesting(x, y, gloc, validfn) {
         // C excludes BOULDER and ROCK; look_at_object_here() reports the object
         // that is actually DRAWN on the cell.
         if (mtmp && canspotmon(mtmp)) return false;
-        return !!look_at_object_here(x, y) && !covers_objects(x, y);
+        if (!look_at_object_here(x, y) || covers_objects(x, y)) return false;
+        {
+            // glyph_is_object(glyph_at(x,y)): the DISPLAYED glyph must be the
+            // object (a level revealed by mapping shows terrain only).
+            const o = vobj_at(x, y);
+            if (o.otyp === 475 /*BOULDER*/ || o.otyp === 474 /*ROCK*/) return false;
+            return object_glyph(o).ch === loc.disp_ch;
+        }
     case GLOC_DOOR:
         return isDoorSym;
     case GLOC_EXPLORE:
@@ -2330,13 +2364,9 @@ export async function do_farlook() {
 
     // do_screen_description: describe the chosen cell.  Monster/object naming
     // is not modelled here; the terrain description covers the recorded cases.
-    const mtmp = m_at(cc.x, cc.y);
-    let desc;
-    if (mtmp && canspotmon(mtmp)) {
-        desc = mtmp.data?.mname || mtmp.data?.pmname || 'a monster';
-    } else {
-        desc = look_pick_description(cc.x, cc.y).text;
-    }
+    // C ref: pager.c do_look(quick) — the same do_screen_description() out_str
+    // as '/' ("<sym>        <class> (<lookat>)"), monsters included.
+    const desc = look_pick_description(cc.x, cc.y).text;
     // C ref: pager.c:1919 `putmixed(WIN_MESSAGE, 0, out_str)` — tty routes that
     // through update_topl(), so a description too wide for one row wraps and
     // blocks on --More-- before do_look returns.
@@ -2839,6 +2869,15 @@ function look_pick_description(x, y) {
         };
     }
 
+    // C ref: pager.c do_screen_description() — every monster class, object
+    // class and cmap entry sharing the displayed symbol ("a spellbook or a
+    // closed door (closed door)").  Cells drawn with DEC line-drawing keep the
+    // single-description fallback.
+    if (!loc.disp_decgfx && loc.disp_ch && loc.disp_ch !== ' ') {
+        const text = { s: '' }, firstmatch = { s: '' };
+        const found = do_screen_description({ x, y }, true, '', text, firstmatch, {});
+        if (found) return { text: text.s, firstmatch: firstmatch.s, found };
+    }
     // Fallback: single terrain description with the cmap symbol prefix.
     const desc = terrain_description(x, y);
     return { text: `${prefix}${an(desc)}`, firstmatch: desc, found: 1 };
@@ -3115,6 +3154,8 @@ async function checkfile(inp, chkflags) {
 
     if (!dbase_str) return false;
 
+    // offset of dbase_str inside C's newstr[] (only front prefixes stripped)
+    const dbase_off = String(inp).length - dbase_str.length;
     // "named"/"called"/", " -> truncate to base name; the tail becomes 'alt'.
     let alt = null;
     let ep = dbase_str.indexOf(' named ');
@@ -3140,6 +3181,14 @@ async function checkfile(inp, chkflags) {
     if (par > 0) dbase_str = dbase_str.slice(0, par);
     if (alt) { par = alt.indexOf(' ('); if (par > 0) alt = alt.slice(0, par); }
 
+    // C ref: pager.c:981 — the hero's fruit name looks up obj_descr[SLIME_MOLD]
+    // .oc_name, which options.c initoptions_finish() renamed to "fruit".
+    // strcpy(newstr, ...) also overwrites the head of dbase_str, which points
+    // into newstr: from the start of the buffer it now reads "fruit" as well.
+    if (!alt && fruit_from_name(dbase_str, true, null)) {
+        alt = 'fruit';
+        if (dbase_off < 6) dbase_str = alt.slice(dbase_off);
+    }
     if (!alt) alt = db_makesingular(dbase_str);
     if (!dbase_str) return false;
 
@@ -3412,7 +3461,20 @@ export async function do_look_full() {
             game.context.move = 0;
             return;
         }
-        // single-char symbol path not modelled; cancel.
+        // C ref: pager.c do_look() — a single character is looked up by symbol
+        // (do_screen_description with looked=FALSE), then checkfile() offers
+        // the data.base entry since flags.help is on.
+        const text = { s: '' }, firstmatch = { s: '' };
+        const found = do_screen_description({ x: 0, y: 0 }, false, out_str, text, firstmatch, {});
+        if (found) {
+            game._pending_message = text.s;
+            game._toplin = 1;        // NEED_MORE
+            game._yn_need_more = true;
+            if (found === 1) await checkfile(firstmatch.s, 0);
+            game._yn_need_more = false;
+        } else {
+            await update_topl("I've never heard of such things.");
+        }
         game.context.move = 0;
         return;
     }

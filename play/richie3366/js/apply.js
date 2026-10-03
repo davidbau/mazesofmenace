@@ -31,7 +31,7 @@ import {
     TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, INTRINSIC, STONE, LAVAWALL, TT_PIT,
     TT_BEARTRAP, TT_WEB, TT_LAVA, TT_INFLOOR, FORCETRAP, TOOKPLUNGE,
     LEFT_SIDE, RIGHT_SIDE, UNENCUMBERED,
-    EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, HEAD, HAND, NOSE, LEG, NON_PM, STOMACH,
+    EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, COST_SPLAT, HEAD, HAND, NOSE, LEG, NON_PM, STOMACH,
     KILLED_BY, NO_KILLER_PREFIX, W_WEP, STATUE_TRAP,
     EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, PARANOID_BREAKWAND,
     RLOC_NOMSG, RLOC_MSG, RLOC_NONE, XKILL_NOMSG, ARTICLE_NONE, ARTICLE_A,
@@ -1075,18 +1075,10 @@ function can_blnd_cream_self(obj) {
     return true;
 }
 
-/** Remove obj from invent array (C freeinv / obj_extract_self OBJ_INVENT). */
-function freeinv_pie(obj) {
-    const inv = game.invent || [];
-    const idx = inv.indexOf(obj);
-    if (idx >= 0) inv.splice(idx, 1);
-    obj.where = OBJ_FREE;
-}
-
 /**
  * C ref: apply.c use_cream_pie — immerse face; blindinc rnd(25); splat+delobj.
- * Named omissions: costly_alteration COST_SPLAT shop bill; invent-array
- * wiring when splitobj child is not pushed (quan>1 rare for wish).
+ * Named omissions: invent-array wiring when splitobj child is not pushed
+ * (quan>1 rare for wish).
  * @returns {number} ECMD_OK (C never spends a turn)
  */
 async function use_cream_pie(obj) {
@@ -1139,8 +1131,9 @@ async function use_cream_pie(obj) {
     }
 
     setnotworn(pie);
-    // costly_alteration(COST_SPLAT) deferred — shop unpaid message only
-    freeinv_pie(pie);
+    /* useup() is appropriate, but we want costly_alteration()'s message */
+    await costly_alteration(pie, COST_SPLAT);
+    obj_extract_self(pie);
     delobj(pie); // obj_resists rn2(100) then extract+free
     return ECMD_OK;
 }
@@ -2790,6 +2783,12 @@ export async function doapply() {
     if ((LAND_MINE >= 0 && obj.otyp === LAND_MINE)
         || (BEARTRAP >= 0 && obj.otyp === BEARTRAP)) {
         await use_trap(obj);
+        return true; // ECMD_TIME
+    }
+
+    // C apply.c case BANANA: hallu "It rings!" (D-3378); else FALLTHROUGH to default
+    if (BANANA >= 0 && obj.otyp === BANANA && game.u?.Hallucination) {
+        await pline('It rings! ... But no-one answers.');
         return true; // ECMD_TIME
     }
 

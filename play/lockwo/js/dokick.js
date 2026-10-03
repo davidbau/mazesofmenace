@@ -10,7 +10,7 @@
 
 import { game, hooks } from './gstate.js';
 import { rn2, rnd, rnl, rn1 } from './rng.js';
-import { pline, newsym, m_at, topl_more, unmap_object, y_n, update_topl } from './display.js';
+import { pline, newsym, m_at, topl_more, unmap_object, y_n, update_topl, urgent_topl } from './display.js';
 import { Blind, couldsee, cansee, recalc_block_point, unblock_point } from './vision.js';
 import { exercise, acurr_eff, adjalign } from './attrib.js';
 import {
@@ -21,9 +21,10 @@ import {
     IS_DOOR, IS_STWALL, IS_OBSTRUCTED, IS_THRONE, IS_ALTAR, IS_FOUNTAIN,
     IS_GRAVE, IS_SINK, IS_TREE, IS_DRAWBRIDGE, IS_POOL,
     isok, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, SLT_ENCUMBER, SHOPBASE,
-    TT_PIT, TT_WEB, TT_BEARTRAP, TRAPDOOR, HOLE,
+    TT_PIT, TT_WEB, TT_BEARTRAP, TRAPDOOR, HOLE, CXN_PFX_THE, Has_contents,
     MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP, MIGR_SSTAIRS,
-    MIGR_TO_SPECIES, NON_PM, OBJ_FREE, DF_RANDOM, DF_ALL, In_mines,
+    MIGR_WITH_HERO,
+    MIGR_TO_SPECIES, NON_PM, OBJ_FREE, OBJ_MIGRATING, DF_RANDOM, DF_ALL, In_mines,
     has_oname, ONAME, has_mgivenname,
     In_endgame, Is_stronghold, Is_botlevel,
     MM_ANGRY, MM_NOMSG, MM_MALE, MM_FEMALE, ER_NOTHING,
@@ -33,13 +34,15 @@ import {
 } from './const.js';
 import { KICKING_BOOTS, BOULDER, ROCK, DILITHIUM_CRYSTAL, LUCKSTONE,
          RING_CLASS, GEM_CLASS, EGG, BAG_OF_HOLDING, BAG_OF_TRICKS,
-         COIN_CLASS, CORPSE, LARGE_BOX, CHEST, ICE_BOX, place_object, next_ident,
+         COIN_CLASS, CORPSE, LARGE_BOX, CHEST, ICE_BOX, EXPENSIVE_CAMERA,
+         place_object, next_ident, add_to_migration,
          mkgold, mksobj_at, mkobj_at, rnd_class, objects, weight, base_oc_cost } from './mkobj.js';
 import { makemon, monster_by_pmidx, name_to_pmidx, enexto_spawn, mpickobj } from './makemon.js';
 import { in_rooms, shop_keeper } from './shkroom.js';
 import { water_damage, set_wounded_legs, t_at } from './trap.js';
 import { near_capacity, sobj_at, useup, body_part, inv_weight, makeplural,
          objects_at, obj_extract_self, stackobj, splitobj, xname, otense,
+         obfree, remove_worn_item,
          obj_doname, thitmonst } from './invent.js';
 import { obj_resists } from './zap.js';
 import { surface, hliquid, dunlevs_in_dungeon, Is_special } from './dungeon.js';
@@ -65,14 +68,20 @@ import { getdir, wake_nearby, wake_nearto, b_trapped } from './cmd.js';
 import { goto_level } from './do.js';
 import { is_pool, is_lava, is_pool_or_lava, is_ice } from './dbridge.js';
 import { scatter } from './explode.js';
-import { hero_breaks } from './dothrow.js';
+import { hero_breaks, breaktest } from './dothrow.js';
 import { is_art, ART_MJOLLNIR } from './artifact.js';
 import { costly_spot, addtobill } from './shkroom.js';
 import { canseemon_shared } from './display.js';
 import { finish_meating } from './dogmove.js';
-import { hidden_gold, money_cnt_invent, make_happy_shk } from './shk.js';
+import { hidden_gold, money_cnt_invent, make_happy_shk, is_unpaid } from './shk.js';
 import { currency } from './invent.js';
 import { set_voice } from './sounds.js';
+import { corpse_xname } from './objnam.js';
+import { You_hear } from './display.js';
+
+// C ref: hacklib.c upstart(s) — capitalise the first letter in place
+// (pickup.js/invent.js each keep the same one-liner).
+function upstart(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
 const ECMD_OK = 0, ECMD_TIME = 1, ECMD_FAIL = 0, ECMD_CANCEL = 0;
 const S_LIZARD = 58;      // defsym.h S_LIZARD, as numbered in permonst.mcls
@@ -103,7 +112,7 @@ function Wounded_legs() {
     return !!((u?.HWounded_legs || 0) || (u?.EWounded_legs || 0));
 }
 // C ref: youprop.h Passes_walls.
-function Passes_walls() { return !!game.u?.uprops?.Passes_walls; }
+function Passes_walls() { return !!game.u?.formprops?.Passes_walls || !!game.u?.uprops?.Passes_walls; }
 
 // C ref: dokick.c martial() == (martial_bonus() || is_bigfoot(youmonst)
 //   || (uarmf && uarmf->otyp == KICKING_BOOTS)), where
@@ -233,14 +242,23 @@ export async function altar_wrath(x, y) {
     const lev = game.level?.at(x, y);
     const altaralign = Amask2align((lev?.altarmask ?? 0) & AM_MASK);
     if ((u?.ualign?.type ?? 0) === altaralign && (u?.ualign?.record ?? 0) > -rn2(4)) {
-        await pline('"How darest thou desecrate my altar!"');
+        // C ref: pray.c altar_wrath() -> godvoice(altaralign, "How darest ...").
+        // godvoice() names the god and draws ROLL_FROM(godvoices) == rn2(4);
+        // the old inline string had neither.
+        const { godvoice } = await import('./pray.js');
+        await godvoice(altaralign, 'How darest thou desecrate my altar!');
         // adjattrib(A_WIS, -1, FALSE): no RNG, lowers the attribute.
         const a = u?.acurr?.a;
         if (a && a[A_WIS] > 3) a[A_WIS] -= 1;
         if (u?.ualign) u.ualign.record--;
         game.botl = true;
     } else {
-        await pline('A voice whispers:  "Thou shalt pay, infidel!"');
+        // C ref: pray.c altar_wrath() — the whisper names the altar's god, and
+        // goes Deaf-aware ("Despite your deafness, you seem to hear <god> say").
+        const { align_gname } = await import('./role.js');
+        const gname = align_gname(game.urole?.mnum ?? -1, altaralign);
+        await pline(`${!Deaf() ? 'A voice (could it be' : 'Despite your deafness, you seem to hear'} `
+            + `${gname}${!Deaf() ? '?) whispers' : ' say'}:  "Thou shalt pay, infidel!"`);
         // higher luck is more likely to be reduced
         if (Luck() > -5 && rn2(Luck() + 6)) change_luck(rn2(20) ? -1 : -2);
     }
@@ -403,7 +421,7 @@ export async function kick_ouch(x, y, kickobjnam, maploc) {
         u.uhp = (u.uhp ?? 0) - dmg;
         game.botl = true;
         if (u.uhp < 1) {
-            await update_topl('You die...');
+            await urgent_topl('You die...');
             // C: losehp(..., kickstr(...), KILLED_BY) — KILLED_BY (not
             // KILLED_BY_AN) means the killer text is used verbatim with a
             // plain "killed by " prefix, no article (const.js KILLED_BY=1).
@@ -1086,8 +1104,11 @@ async function bhit_kicked(ddx, ddy, range, obj) {
             result = mtmp;
             break;
         }
-        /* KICKED_WEAPON with no fhito: coins join a pile they land on */
-        if (obj.oclass === COIN_CLASS && objects_at(bx, by).length) break;
+        /* C ref: zap.c:4049 — KICKED_WEAPON with no fhito: coins join a pile
+           they land on, and anything else rides a hole/trap door down. */
+        if ((obj.oclass === COIN_CLASS && objects_at(bx, by).length)
+            || (await ship_object(obj, bx, by, costly_spot(bx, by))))
+            break;
         if (!ZAP_POS(typ) || closed_door(bx, by)) { bx -= ddx; by -= ddy; break; }
         /* kicked objects fall in pools; physical objects fall onto sinks */
         if (is_pool_or_lava(bx, by)) break;
@@ -1314,8 +1335,9 @@ async function really_kick_object(x, y) {
             return 1;
     }
 
-    // ship_object() (the object falls down a hole) is not ported, so
-    // kickedobj->where can never be OBJ_MIGRATING here.
+    /* the object might have fallen down a hole;
+       ship_object() will have taken care of shop billing */
+    if (gk_kickedobj.where === OBJ_MIGRATING) return 1;
 
     const bhitroom = in_rooms(land.x, land.y, SHOPBASE)[0];
     if (costly && (!costly_spot(land.x, land.y)
@@ -1741,6 +1763,183 @@ export function drop_to(cc, loc, x, y) {
         cc.y = cc.x = 0;
         break;
     }
+}
+
+// C ref: dokick.c:1511 impact_drop(missile, x, y, dlev) — something landed on
+// <x,y> hard enough to knock the pile there down the hole/stairs below.  Each
+// object gets rn2(3) (rn2(30) for a boulder) to stay put, and those draws are
+// part of the stream even when nothing ends up falling.
+export async function impact_drop(missile, x, y, dlev) {
+    const here = objects_at(x, y);
+    if (!here.length) return;
+
+    let toloc = down_gate(x, y);
+    const cc = { x: 0, y: 0 };
+    drop_to(cc, toloc, x, y);
+    if (!cc.y) return;
+
+    if (dlev) {
+        /* send objects next to player falling through trap door */
+        toloc = MIGR_WITH_HERO;
+        cc.y = dlev;
+    }
+
+    // The shopkeeper bookkeeping (stolen_value/picked_container) has no port;
+    // costly_spot() still decides nothing else here, so the loop below is the
+    // whole function for a non-shop square.
+    const costly = costly_spot(x, y);
+    const isrock = !!missile && missile.otyp === ROCK;
+    let oct = 0, dct = 0;
+    for (const obj of here) {
+        if (obj === missile) continue;
+        oct += (obj.quan || 1);
+        if (obj === game.uball || obj === game.uchain) continue;
+        /* boulders can fall too, but rarely & never due to rocks */
+        if ((isrock && obj.otyp === BOULDER)
+            || rn2(obj.otyp === BOULDER ? 30 : 3))
+            continue;
+        obj_extract_self(obj);
+        if (costly && obj.oclass !== COIN_CLASS) obj.no_charge = 0;
+        add_to_migration(obj);
+        obj.ox = cc.x;
+        obj.oy = cc.y;
+        obj.owornmask = toloc;
+        dct += (obj.quan || 1);
+    }
+
+    if (dct && cansee(x, y)) { /* at least one object fell */
+        const what = (dct === 1) ? 'object falls' : 'objects fall';
+        if (missile)
+            await pline(`From the impact, ${
+                dct === oct ? 'the ' : dct === 1 ? 'an' : ''}other ${what}.`);
+        else if (oct === dct)
+            await pline(`${dct === 1 ? 'The' : 'All the'} adjacent ${what} ${
+                game.gate_str}.`);
+        else
+            await pline(`${dct === 1 ? 'One of the' : 'Some of the'} adjacent ${
+                dct === 1 ? 'objects falls' : what} ${game.gate_str}.`);
+    }
+}
+
+// C ref: shk.c picked_container(obj) — clear no_charge through every nesting
+// level (shk.js keeps the same private copy).
+function picked_container_(obj) {
+    for (const otmp of (obj.cobj || [])) {
+        if (otmp.no_charge) otmp.no_charge = 0;
+        if (Has_contents(otmp)) picked_container_(otmp);
+    }
+}
+
+// C ref: dokick.c:1909 otransit_msg(otmp, nodrop, chainthere, num) — the
+// "<Object> falls through the hole." line, with the "hits another object"
+// prefix when the square had a pile on it.
+async function otransit_msg(otmp, nodrop, chainthere, num) {
+    // C ref: Tobjnam(otmp, (char *) 0) is just The(xname(otmp)).
+    const obuf = (otmp.otyp === CORPSE)
+        ? upstart(corpse_xname(otmp, null, CXN_PFX_THE))
+        : The_k(xname(otmp));
+    if (num || chainthere) {
+        let xbuf;
+        if (num)
+            xbuf = ` ${otense(otmp, 'hit')} ${num === 1 ? 'another' : 'other'
+                   } object${num > 1 ? 's' : ''}`;
+        else
+            xbuf = ` ${otense(otmp, 'rattle')} your chain`;
+        xbuf += nodrop ? '.' : ` and ${otense(otmp, 'fall')} ${game.gate_str}.`;
+        await pline(`${obuf}${xbuf}`);
+    } else if (!nodrop) {
+        await pline(`${obuf} ${otense(otmp, 'fall')} ${game.gate_str}.`);
+    }
+}
+
+// C ref: dokick.c:1639 ship_object(otmp, x, y, shop_floor_obj) — an object that
+// was kicked/thrown/dropped onto a hole, trap door, down stairs or ladder rides
+// it to the level below.  otmp must already be off the floor/inventory chain.
+// RNG: the rn2(3) "stays put anyway" roll fires for EVERY gate that is not a
+// ladder (a boulder included, before the boulder-plugs-the-hole early return),
+// then breaktest()'s obj_resists() for anything fragile.
+export async function ship_object(otmp, x, y, shop_floor_obj) {
+    if (!otmp) return false;
+    const toloc = down_gate(x, y);
+    if (toloc === MIGR_NOWHERE) return false;
+    const cc = { x: 0, y: 0 };
+    drop_to(cc, toloc, x, y);
+    if (!cc.y) return false;
+
+    /* objects other than attached iron ball always fall down ladder,
+       but have a chance of staying otherwise */
+    const nodrop = (otmp === game.uball) || (otmp === game.uchain)
+                   || (toloc !== MIGR_LADDER_UP && rn2(3) !== 0);
+
+    const container = Has_contents(otmp);
+    const unpaid = is_unpaid(otmp);
+
+    let n = 0, chainthere = false;
+    for (const obj of objects_at(x, y)) {
+        if (obj === game.uchain) chainthere = true;
+        else if (obj !== otmp) n += (obj.quan || 1);
+    }
+    const impact = n > 0;
+
+    /* boulders never fall through trap doors, but they might knock
+       other things down before plugging the hole */
+    const t = t_at(x, y);
+    if (otmp.otyp === BOULDER && t && (t.ttyp === HOLE || t.ttyp === TRAPDOOR)) {
+        if (impact) await impact_drop(otmp, x, y, 0);
+        return false; /* let caller finish the drop */
+    }
+
+    if (cansee(x, y)) await otransit_msg(otmp, nodrop, chainthere, n);
+
+    if (nodrop) {
+        if (impact) {
+            await impact_drop(otmp, x, y, 0);
+            const MM = await import('./monmove.js');
+            if (typeof MM.maybe_unhide_at === 'function')
+                await MM.maybe_unhide_at(x, y);
+        }
+        return false;
+    }
+
+    // stolen_value()/picked_container() shop billing has no port; clearing
+    // no_charge is the part of that arm this engine can honour.
+    if (unpaid || shop_floor_obj) {
+        if (container) picked_container_(otmp);
+        if (otmp.oclass !== COIN_CLASS) otmp.no_charge = 0;
+    }
+
+    if (otmp.owornmask) await remove_worn_item(otmp, true);
+
+    /* some things break rather than ship */
+    if (breaktest(otmp)) {
+        const result = (objects[otmp.otyp].oc_material === GLASS
+                        || otmp.otyp === EXPENSIVE_CAMERA) ? 'crash' : 'splat';
+        if (result === 'crash') {
+            if (otmp.otyp === MIRROR) change_luck(-2);
+        } else if (otmp.otyp === EGG && otmp.spe
+                   && (otmp.corpsenm ?? NON_PM) !== NON_PM) {
+            /* penalty for breaking eggs laid by you */
+            change_luck(-Math.min(otmp.quan || 1, 5));
+        }
+        await You_hear(`a muffled ${result}.`);
+        obj_extract_self(otmp);
+        obfree(otmp, null);
+        return true;
+    }
+
+    add_to_migration(otmp);
+    otmp.ox = cc.x;
+    otmp.oy = cc.y;
+    otmp.owornmask = toloc;
+
+    /* boulder from rolling boulder trap, no longer part of the trap */
+    if (otmp.otyp === BOULDER) otmp.otrapped = 0;
+
+    if (impact) {
+        await impact_drop(otmp, x, y, 0);
+        newsym(x, y);
+    }
+    return true;
 }
 
 // C dokick.c:1854: transfer matching species-targeted loot in chain order.

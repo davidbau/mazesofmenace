@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { A_STR, A_INT, A_WIS, A_CON, A_CHA, A_MAX, POISONING } from './const.js';
-import { adj_erinys } from './makemon.js';
+import { adj_erinys, monster_by_pmidx, name_to_pmidx } from './makemon.js';
 import { has_innate } from './exper.js';
 
 const AVAL = 50; // C ref: attrib.c — tune value for exercise gains.
@@ -14,35 +14,45 @@ const AVAL = 50; // C ref: attrib.c — tune value for exercise gains.
 // currently-modeled race (role.c races[].attrmin is uniformly {3,3,3,3,3,3}).
 const ATTRMIN_STR = 3;
 
-// C ref: attrib.h ACURR(x) — current attribute value.  acurr.a is in
-// [Str,Int,Wis,Dex,Con,Cha] order.
+// C ref: attrib.h ACURR(x) == acurr(x) — current effective attribute.
 function ACURR(i) {
-    return game.u?.acurr?.a?.[i] ?? 0;
+    return acurr_eff(i);
 }
 
-// C ref: attrib.c acurr(chridx) — the effective attribute = abon+atemp+acurr,
-// clamped to [3,25] for the non-STR characteristics.  Wounded legs lower
-// atemp[A_DEX] by 1, so the effective Dex (used by e.g. the allmain.c:360
-// u_wipe_engr roll) drops accordingly.  STR's encoded value is not adjusted
-// here (its hunger/loss path is modelled elsewhere); callers that need STR use
-// acurrstr().  abon/atemp default to 0 so this is a no-op for unaffected heroes.
-// C ref: attrib.c acurr() `if (x == A_STR) { if (uarmg && uarmg->otyp ==
-// GAUNTLETS_OF_POWER && !Upolyd) return 125; ... }` — worn gauntlets of power
-// PIN the encoded strength at 125 (displayed "St:25"), overriding abase/abon
-// entirely.  Missing here, the status line kept showing the hero's own Str and
-// every ACURR(A_STR) predicate read the wrong number.
-const GAUNTLETS_OF_POWER_OTYP = 161;
+// C ref: attrib.c acurr(chridx) — the effective attribute = abon+atemp+acurr.
+// Strength is encoded (3..18, 19..118 for 18/xx, 119..125 for 19..25) and is
+// pinned at STR19(25) by worn gauntlets of power (polymorphed or not); the
+// others clamp to [3,25] after their special cases: a nymph or amorous-demon
+// form has at least 18 Cha, Ogresmasher fixes Con at 25, a dunce cap fixes
+// Int and Wis at 6.
+const GAUNTLETS_OF_POWER_OTYP = 161, DUNCE_CAP_OTYP = 94, ART_OGRESMASHER = 16;
+let _pmAmorousDemon = null;
 export function acurr_str_encoded() {
-    const u = game.u;
-    if (game.uarmg?.otyp === GAUNTLETS_OF_POWER_OTYP && !u?.Upolyd) return 125;
-    return u?.acurr?.a?.[A_STR] ?? 0;
+    return acurr_eff(A_STR);
 }
 export function acurr_eff(i) {
     const u = game.u;
-    const base = u?.acurr?.a?.[i] ?? 0;
-    if (i === A_STR) return acurr_str_encoded();
-    const v = base + (u?.atemp?.a?.[i] || 0) + (u?.abon?.a?.[i] || 0);
-    return v > 25 ? 25 : v < 3 ? 3 : v;
+    const tmp = (u?.abon?.a?.[i] || 0) + (u?.atemp?.a?.[i] || 0) + (u?.acurr?.a?.[i] ?? 0);
+    let result = 0;
+    if (i === A_STR) {
+        result = (tmp >= 125 || game.uarmg?.otyp === GAUNTLETS_OF_POWER_OTYP)
+            ? 125 : Math.max(tmp, 3);
+    } else if (i === A_CHA) {
+        if (tmp < 18 && u?.Upolyd) {
+            _pmAmorousDemon ??= name_to_pmidx('amorous demon');
+            if (monster_by_pmidx(u.umonnum)?.mlet === 'n' || u.umonnum === _pmAmorousDemon)
+                result = 18;
+        }
+    } else if (i === A_CON) {
+        if (game.uwep?.oartifact === ART_OGRESMASHER)
+            result = 25;
+    } else if (i === A_INT || i === A_WIS) {
+        if (game.uarmh?.otyp === DUNCE_CAP_OTYP)
+            result = 6;
+    }
+    if (result === 0)
+        result = (tmp >= 25) ? 25 : (tmp <= 3) ? 3 : tmp;
+    return result;
 }
 
 // C ref: attrib.h AEXE(x) — exercise accumulator; lazily allocated to zeros.
@@ -244,7 +254,10 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
         // below (never lethal via HP directly).  Without this, the death
         // check just below silently opened the "Die?" wizard-mode prompt
         // with no "You die..." line ever shown.
-        if ((u.uhp | 0) < 1) await update_topl('You die...');
+        if ((u.uhp | 0) < 1) {
+            const { urgent_topl } = await import('./display.js');
+            await urgent_topl('You die...');
+        }
     } else {
         loss = (thrown_weapon || !fatal) ? 1 : d(2, 2);              // attrib.c:395
         if (await adjattrib(typ, -loss, 1))
@@ -260,6 +273,7 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
     await encumber_msg();
 }
 function Poison_resistance() {
+    if (game.u?.formprops?.Poison_resistance) return true; /* FROMFORM: polyself.js set_uasmon() */
     const u = game.u || {};
     // A race-innate grant (e.g. every orc, from level 1) is never persisted as
     // a stored flag anywhere in js/ — OR in the pure has_innate() derivation.
@@ -409,6 +423,18 @@ function confers_luck_at(obj) {
     if (!obj) return false;
     if (obj.otyp === LUCKSTONE) return true;
     return !!obj.oartifact && SPFX_LUCK_ARTIFACTS.has(obj.oname);
+}
+
+// C ref: attrib.c set_moreluck(). There has just been an inventory change
+// affecting a luck-granting item. LUCKADD is 3 (you.h).
+export function set_moreluck() {
+    const u = game.u;
+    if (!u) return;
+    const luckbon = stone_luck(true);
+    const carrying_luckstone = (game.invent || []).some((o) => o.otyp === LUCKSTONE);
+    if (!luckbon && !carrying_luckstone) u.moreluck = 0;
+    else if (luckbon >= 0) u.moreluck = 3;
+    else u.moreluck = -3;
 }
 
 // ─── attrib.c:455 restore_attrib() ─────────────────────────────────────────

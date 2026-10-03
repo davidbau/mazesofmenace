@@ -59,7 +59,7 @@ import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
          UTOTYPE_DEFERRED, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
          UTOTYPE_RMPORTAL, DIED, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX,
          MIGR_EXACT_XY } from './const.js';
-import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
+import { docrt, flush_screen, pline, update_topl, urgent_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
 import { seetrap, dotrap } from './trap.js';
 import { check_special_room } from './shkroom.js';
@@ -610,7 +610,7 @@ export async function losehp_do(n, knam, k_format = KILLED_BY_AN) {
     else game.botl = true;
     if (u.uhp < 1) {
         // C ref: hack.c:4287 `urgent_pline("You die..."); done(DIED);`
-        await update_topl('You die...');
+        await urgent_topl('You die...');
         game._killer_name = knam ? format_do_killer(knam, k_format) : null;
         const { done } = await import('./end.js');
         await done(DIED);
@@ -1003,6 +1003,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // a revisit lands inside the same des.teleport_region() box as the first
         // arrival.  Stashed here (before goto_level zeroes them) by reference.
         updest: g.updest, dndest: g.dndest,
+        // C ref: save.c savelev_core() -> save_exclusions() / restore.c getlev()
+        // -> load_exclusions(): des.exclusion() zones are part of the LEVEL's
+        // save file.  Stash them by reference (mklev()'s clear_level_structures
+        // frees the live list for a newly generated level) so a revisit still
+        // refuses monster generation / teleport inside the same rectangles.
+        exclusion_zones: g.exclusion_zones,
     };
     clear_regions();
     // C ref: save_track() release_data() -> initrack().  Clear the live ring so
@@ -1285,16 +1291,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // In_mines / In_sokoban / else.  Only the quest and Knox arms have output
     // here; onquest() draws no RNG (it opens com_pager text windows).
     if (In_endgame(u.uz)) {
-        // C ref: do.c:1881-1890 — the endgame arm.  Astral gets final_level()
-        // (not ported); every other plane entered while carrying the Amulet
-        // forces the confrontation with the Wizard of Yendor.
+        // C ref: do.c goto_level():1882 — only the first Astral visit
+        // populates the final-level adventurers and guardian angel.
         const astral = g.astral_level;
         const onAstral = !!astral && u.uz.dnum === astral.dnum
                          && u.uz.dlevel === astral.dlevel;
         if (newdungeon) await record_ach(7 /* ACH_ENDG */);
-        if (firstVisit && onAstral) await record_ach(8 /* ACH_ASTR */);
-        if (!(firstVisit && onAstral) && newdungeon && u.uhave?.amulet)
+        if (firstVisit && onAstral) {
+            await final_level();
+            await record_ach(8 /* ACH_ASTR */);
+        } else if (newdungeon && u.uhave?.amulet) {
             await resurrect();
+        }
     } else if (In_quest(u.uz)) {
         await onquest(); /* might be reaching locate|goal level */
     } else if (Is_knox_level(u.uz)) {
@@ -1508,6 +1516,11 @@ async function getlev_restore(ledger) {
     // rn2(21) over the entire map.
     g.updest = store.updest ?? null;
     g.dndest = store.dndest ?? null;
+
+    // C ref: restore.c getlev() -> load_exclusions(): the level's des.exclusion()
+    // rectangles come back with it, so Sokoban's monster-generation zone (and a
+    // hell prefab's no-teleport keep) is back in force on a revisit.
+    g.exclusion_zones = store.exclusion_zones ?? null;
 
     // C ref: track.c rest_track() (called from getlev()) — restore this level's
     // saved footprint ring.  goto_level() cleared the live ring (initrack) when
@@ -1853,8 +1866,47 @@ export async function wiz_level_tele(readLevel) {
         return 0;
     }
 
-    // Negative levels (heaven/clouds) are not modelled.
-    if (newlev < 0) return 0;
+    // C ref: teleport.c level_tele() negative destination.  Unless levitating
+    // or flying, the hero falls from above the clouds and dies; a lifesaved or
+    // debug-mode survivor then escapes to the surface rather than teleporting
+    // back into the dungeon.  done() handles the "Die?" and disclosure prompts.
+    if (newlev < 0) {
+        const { done, DIED: DEATH, ESCAPED } = await import('./end.js');
+        let escape = null;
+        game._killer_name = null;
+        if (newlev <= -10) {
+            await pline('You arrive in heaven.');
+            await pline('"Thou art early, but we\'ll admit thee."');
+            game._killer_name = 'went to heaven prematurely';
+        } else if (newlev === -9) {
+            await pline('You feel deliriously happy.');
+            await pline("(In fact, you're on Cloud 9!)");
+        } else {
+            await pline('You are now high above the clouds...');
+        }
+        if (!game._killer_name) {
+            if (u.uprops?.Levitation) escape = 'float gently down to earth';
+            else if (u.uprops?.Flying) escape = 'fly down to the ground';
+            else {
+                await pline("Unfortunately, you don't know how to fly.");
+                await pline('You plummet a few thousand feet to your death.');
+                game._killer_name = `teleported out of the dungeon and fell to ${game.flags?.female ? 'her' : 'his'} death`;
+            }
+        }
+        if (game._killer_name) {
+            const saved = u.uz;
+            u.uz = { dnum: 0, dlevel: newlev <= -10 ? -10 : 0 };
+            await done(DEATH);
+            // C's done(DIED) terminates on an accepted death; only a
+            // life-saved or debug-mode survivor reaches the surface escape.
+            if (game.program_state?.gameover) return 0;
+            u.uz = saved;
+            escape = 'find yourself back on the surface';
+        }
+        await pline(`You ${escape}.`);
+        await done(ESCAPED);
+        return 0;
+    }
 
     // C ref: teleport.c level_tele() — in Quest the status line shows "Home N"
     // instead of logical depth, so a typed destination is relative to that
@@ -2439,9 +2491,11 @@ function Hallucination_do() {
 }
 function Underwater_do() { return !!(game.u?.uinwater || game.u?.uunderwater); }
 function Fire_resistance_do() {
+    if (game.u?.formprops?.Fire_resistance) return true; /* FROMFORM: polyself.js set_uasmon() */
     return uprop_do('Fire_resistance', 'HFire_resistance', 'EFire_resistance') > 0;
 }
 function Passes_walls_do() {
+    if (game.u?.formprops?.Passes_walls) return true; /* FROMFORM: polyself.js set_uasmon() */
     return uprop_do('Passes_walls', 'HPasses_walls', 'EPasses_walls') > 0;
 }
 function Stoned_do() { return uprop_do('Stoned') > 0; }
@@ -2844,9 +2898,10 @@ export async function flooreffects(obj, x, y, verb) {
             }
         } else {
             // C ref: do.c:298 `else if (ship_object(obj, x, y, FALSE)) res=TRUE;`
-            // — dig.c ship_object() has no port in js/; it drops the object to
-            // the level below and prints its own message.
-            void 0;
+            // — the hero is teetering at the edge of a hole/trap door, so the
+            // object rides it to the level below (and prints its own message).
+            const { ship_object } = await import('./dokick.js');
+            if (await ship_object(obj, x, y, false)) res = true;
         }
     } else if (obj.globby) {
         /* Globby things like puddings might stick together.  C passes &globbyobj
@@ -3454,18 +3509,18 @@ export async function maybe_lvltport_feedback() {
 // ── final_level (C ref: do.c:2043) ──────────────────────────────────────────
 // Arrival on the Astral Plane.
 export async function final_level() {
-    /* reset monster hostility relative to player */
-    // C ref: do.c:2046 iter_mons(reset_hostility) — mon.c reset_hostility() has
-    // no port in js/; it clears mpeaceful/mtame for player-monsters and Riders.
-    void 0;
+    // C ref: do.c final_level() -> priest.c reset_hostility(), only for
+    // roaming aligned minions (not every peaceful monster).
+    const { reset_hostility } = await import('./priest.js');
+    for (const mon of game.level?.monsters || []) reset_hostility(mon);
 
-    /* create some player-monsters */
-    // C ref: do.c:2049 create_mplayers(rn1(4, 3), TRUE).  The rn1(4,3) count is
-    // C's ARGUMENT, drawn here, so keep the draw even though makemon.c
-    // create_mplayers() has no port in js/ — the stream position is C's.
-    const nplayers = rn1(4, 3);
-    void nplayers;
-
+    // C ref: do.c final_level():2049 -> mplayer.c create_mplayers().
+    // mplayer.js already ports the placement and equipment draw sequence;
+    // use the established makemon inventory helpers instead of silently
+    // omitting each adventurer's fake amulet, weapons and gold.
+    const { create_mplayers } = await import('./mplayer.js');
+    const { mongets_pub, mkmonmoney } = await import('./makemon.js');
+    create_mplayers(rn1(4, 3), true, { mongets: mongets_pub, mkmonmoney });
     /* create a guardian angel next to player, if worthy */
     // C ref: do.c:2052 gain_guardian_angel() — js/minion.js exports the
     // faithful port; dynamic import avoids a static cycle.

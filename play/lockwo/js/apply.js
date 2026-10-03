@@ -37,7 +37,7 @@ import { mflags1_of, mflags2_of, msound_of } from './monflags_data.js';
 import { find_mac, species } from './worn.js';
 import {
     SDOOR, SCORR, DOOR, CORR, D_LOCKED, D_CLOSED,
-    IS_AIR, IS_ROOM, IS_WALL, IS_DOOR,
+    IS_AIR, IS_ROOM, IS_WALL, IS_DOOR, HAND,
 } from './const.js';
 // C ref: apply.c do_break_wand() — the shared explode() call, its direction
 // table, the dig-a-pit-vs-hole choice, and the room type the digging branch
@@ -53,7 +53,7 @@ import { surface as surface_word } from './dungeon.js';
 // row [237, "STETHOSCOPE", ...]).  Defined locally to avoid threading a new
 // export through mkobj.js.
 const STETHOSCOPE = 237;
-const SPE_NOVEL = 406; // mkobj.js OBJECT_DATA — novel (a spellbook subtype)
+const SPE_NOVEL = 408; // mkobj.js OBJECT_DATA — novel (a spellbook subtype)
 
 // C ref: include/onames.h — lamp/lantern object types rubbed by dorub().
 const BRASS_LANTERN = 226, OIL_LAMP = 227, MAGIC_LAMP = 228;
@@ -73,6 +73,9 @@ const P_SKILLED = 3, P_EXPERT = 4;
 const SKELETON_KEY = 221, LOCK_PICK = 222, CREDIT_CARD = 223;
 // C ref: include/onames.h SACK/OILSKIN_SACK/BAG_OF_HOLDING (mkobj.js rows).
 const SACK_OTYP = 217, OILSKIN_SACK_OTYP = 218, BAG_OF_HOLDING_OTYP = 219;
+// C ref: include/onames.h LARGE_BOX/CHEST/ICE_BOX/BAG_OF_TRICKS.
+const LARGE_BOX_OTYP = 214, CHEST_OTYP = 215, ICE_BOX_OTYP = 216,
+      BAG_OF_TRICKS_OTYP = 220;
 
 // ECMD result codes (cmd.h).  doapply() returns one of these; the caller maps
 // ECMD_TIME -> game turn elapsed.
@@ -747,10 +750,53 @@ export async function doapply() {
     // the "Do what with your bag?" loot menu (use_container(&obj, TRUE, FALSE)).
     // Falling through to the yafm below handed the menu's keystrokes to the
     // command parser instead (seed0012 steps 259-264).
+    // C ref apply.c:4271-4278 `case LARGE_BOX: case CHEST: case ICE_BOX:
+    // case SACK: case BAG_OF_HOLDING: case OILSKIN_SACK: res =
+    // use_container(&obj, TRUE, FALSE);` — applying ANY carried container opens
+    // the loot menu, boxes included (they are carryable and appliable even
+    // though they can only be unlocked on the floor).
     if (obj.otyp === SACK_OTYP || obj.otyp === OILSKIN_SACK_OTYP
-        || obj.otyp === BAG_OF_HOLDING_OTYP) {
+        || obj.otyp === BAG_OF_HOLDING_OTYP
+        || obj.otyp === LARGE_BOX_OTYP || obj.otyp === CHEST_OTYP
+        || obj.otyp === ICE_BOX_OTYP) {
+        // C ref: pickup.c use_container() head — a held container that is
+        // locked never reaches the "Do what with" menu, and a trapped one
+        // springs its trap instead.  (js/extcmd-handlers.js owns the menu
+        // half of use_container(); this preamble is the part a carried BOX
+        // needs, since bags are never locked or trapped.)
+        if (!obj.lknown) {
+            obj.lknown = 1;
+            _invent.update_inventory();
+        }
+        if (obj.olocked) {
+            await _display.pline(`${Tobjnam(obj, 'are')} locked.`);
+            await _display.pline('You must put it down to unlock.');
+            return ECMD_OK;
+        }
+        if (obj.otrapped) {
+            await _display.pline(`You open ${the_of(obj)}...`);
+            const { chest_trap } = await import('./trap.js');
+            await chest_trap(obj, HAND, false);
+            // C: even if the trap fails, this turn is used up.
+            if ((game.multi ?? 0) >= 0) {
+                const { nomul } = await import('./hack.js');
+                nomul(-1);
+                game.multi_reason = 'opening a container';
+                game.nomovemsg = '';
+            }
+            return ECMD_TIME;
+        }
         const { use_container_held } = await import('./extcmd-handlers.js');
         return await use_container_held(obj) ? ECMD_TIME : ECMD_OK;
+    }
+
+    // C ref apply.c:4279 `case BAG_OF_TRICKS: (void) bagotricks(obj, FALSE,
+    // (int *) 0); break;` — res stays ECMD_TIME (the default), so applying it
+    // always costs the turn, empty or not.
+    if (obj.otyp === BAG_OF_TRICKS_OTYP) {
+        const { bagotricks } = await import('./makemon.js');
+        await bagotricks(obj, false, null);
+        return ECMD_TIME;
     }
 
     if (obj.otyp === LOCK_PICK || obj.otyp === SKELETON_KEY || obj.otyp === CREDIT_CARD) {
@@ -911,7 +957,7 @@ async function flip_coin(obj) {
     await _display.pline(`You flip a ${_invent.cxname_singular(obj)}.`);
     let lose_coin = false;
     // Underwater is never true here.  Glib/Fumbling are the other slip causes.
-    const slippery = ((game.u?.Glib || 0) > 0) || ((game.u?.uprops?.Glib || 0) > 0)
+    const slippery = ((game.u?.uprops?.Glib || 0) > 0)
         || ((game.u?.uprops?.Fumbling || 0) > 0);
     if (slippery || (dex < 10 && !rn2(dex))) {
         await _display.pline(`It slips between your ${
@@ -1802,7 +1848,7 @@ function ap_prop(name) {
 function ap_Underwater() { return !!game.u?.uinwater; }
 function ap_Levitation() { return ap_prop('Levitation') > 0; }
 function ap_Fumbling() { return ap_prop('Fumbling') > 0; }
-function ap_Glib() { return ((game.u?.Glib | 0) > 0) || ap_prop('Glib') > 0; }
+function ap_Glib() { return ap_prop('Glib') > 0; }
 function ap_Confusion() { return ((game.u?.uconf | 0) > 0) || ap_prop('Confusion') > 0; }
 function ap_Stunned() { return ((game.u?.ustun | 0) > 0) || ap_prop('Stun') > 0; }
 function ap_Hallucination() {
@@ -2035,14 +2081,6 @@ function ap_set_occupation(_fn, _txt, _xtime) {}
 // bookkeeping, RNG-free, no port.
 function ap_add_damage(_x, _y, _cost) {}
 function ap_use_unpaid_trapobj(_otmp, _x, _y) {}
-// C ref: potion.c make_glib(xtime) — set the slippery-fingers timer.  RNG-free.
-function ap_make_glib(xtime) {
-    const u = game.u;
-    if (!u) return;
-    u.uprops = u.uprops || {};
-    u.uprops.Glib = xtime;
-    u.Glib = xtime;
-}
 // C ref: timeout.c incr_itimeout/set_itimeout on a named property timer.
 function ap_incr_itimeout(name, incr) {
     const u = game.u;
@@ -2307,7 +2345,7 @@ export async function use_towel(obj) {
         switch (rn2(3)) {
         case 2:
             old = ap_prop('Glib');
-            ap_make_glib(old + rn1(10, 3)); /* + 3..12 */
+            await A.potion.make_glib(old + rn1(10, 3)); /* + 3..12 */
             await A.display.pline(`Your ${A.invent.makeplural(AP_HAND)} ${
                 old ? 'are filthier than ever' : 'get slimy'}!`);
             if (A.weapon.is_wet_towel(obj))
@@ -2345,7 +2383,7 @@ export async function use_towel(obj) {
     }
 
     if (ap_Glib()) {
-        ap_make_glib(0);
+        await A.potion.make_glib(0);
         await A.display.pline(`You wipe off your ${
             !game.uarmg ? A.invent.makeplural(AP_HAND)
                         : A.do_wear.gloves_simple_name(game.uarmg)}.`);
@@ -3388,7 +3426,7 @@ export async function use_lamp(obj) {
         if ((obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) && !rn2(3)) {
             await A.display.pline(`The lamp spills and covers your ${
                 A.do_wear.fingers_or_gloves(true)} with oil.`);
-            ap_make_glib(ap_prop('Glib') + d(2, 10));
+            await A.potion.make_glib(ap_prop('Glib') + d(2, 10));
         } else if (!A.vision.Blind()) {
             await A.display.pline(`${Tobjnam(obj, 'flicker')} for a moment, then ${
                 A.invent.otense(obj, 'die')}.`);
@@ -3944,12 +3982,12 @@ export async function use_grease(obj) {
             await A.display.pline(`You cover ${A.invent.yname(otmp)} with a thick layer of grease.`);
             otmp.greased = 1;
             if (obj.cursed && !ap_nohands(game.youmonst?.data)) {
-                ap_make_glib(oldglib + rn1(6, 10)); /* + 10..15 */
+                await A.potion.make_glib(oldglib + rn1(6, 10)); /* + 10..15 */
                 await A.display.pline(`Some of the grease gets all over your ${
                     A.do_wear.fingers_or_gloves(true)}.`);
             }
         } else {
-            ap_make_glib(oldglib + rn1(11, 5)); /* + 5..15 */
+            await A.potion.make_glib(oldglib + rn1(11, 5)); /* + 5..15 */
             await A.display.pline(`You coat your ${
                 A.do_wear.fingers_or_gloves(true)} with grease.`);
         }

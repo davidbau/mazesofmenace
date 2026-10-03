@@ -1856,8 +1856,9 @@ export function wizcustom_callback(win, glyphnum, id) {
             const bufa = `[${String(glyphnum).padStart(4, '0')}] ${id.padEnd(44, ' ')}`;
             // C `:2005–2006` Sprintf(bufb, "'\\%03d' %02d",
             // gs.showsyms[cgm->sym.symidx], cgm->sym.color). nhsym is uchar
-            // (global.h:108); game.gs.showsyms is still null
-            // (init_symbols unported), so this reads 0 until that state lands.
+            // (global.h:108); game.gs.showsyms lands on the first
+            // assign_graphics call (init_symbols itself stays unported),
+            // so pre-transition reads are still 0.
             const sh = game.gs?.showsyms?.[cgm.sym.symidx];
             const symch = ((typeof sh === 'string' ? sh.codePointAt(0) : sh) | 0) & 0xff;
             const bufb = `'\\${String(symch).padStart(3, '0')}' ${String(cgm.sym.color | 0).padStart(2, '0')}`;

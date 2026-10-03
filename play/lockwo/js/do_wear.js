@@ -21,7 +21,7 @@ import {
     update_inventory, bimanual, is_sword, welded, adj_abon_attrib, learnring,
     silly_thing, dropx, canletgo, setuwep_slot, setuswapwep, setuqwep,
     Ring_off, Ring_on, Amulet_off, off_msg, curse_blocks_removal, oc_delay,
-    otense, weapon_descr_for, makeknown_credit, cmdq_pop,
+    otense, weapon_descr_for, makeknown_credit, cmdq_pop, worn_extrinsic,
 } from './invent.js';
 import { youHaveFast, youHaveVeryFast } from './allmain.js';
 import { acurr_eff } from './attrib.js';
@@ -60,8 +60,8 @@ const LOW_BOOTS = 163, IRON_SHOES = 164, HIGH_BOOTS = 165, SPEED_BOOTS = 166,
     WATER_WALKING_BOOTS = 167, JUMPING_BOOTS = 168, ELVEN_BOOTS = 169,
     KICKING_BOOTS = 170, FUMBLE_BOOTS = 171, LEVITATION_BOOTS = 172;
 const RIN_STEALTH = 181;
-const BATTLE_AXE = 33, AKLYS = 44, TIN_OPENER = 240, HEAVY_IRON_BALL = 302,
-    IRON_CHAIN = 303;
+const BATTLE_AXE = 45, AKLYS = 80, TIN_OPENER = 239, HEAVY_IRON_BALL = 477,
+    IRON_CHAIN = 478;
 
 /* enum obj_armor_types (objclass.h) */
 const ARM_SUIT = 0, ARM_SHIELD = 1, ARM_HELM = 2, ARM_GLOVES = 3,
@@ -228,10 +228,19 @@ function Hallucination() {
 }
 function Glib() {
     const u = game.u || {};
-    return ((u.Glib | 0) > 0) || ((u.uprops?.Glib | 0) > 0) || ((u.uprops?.HGlib | 0) > 0);
+    return (u.uprops?.Glib | 0) > 0;
 }
-function Levitation() { return !!(game.u?.uprops?.Levitation); }
-function Flying() { return !!(game.u?.uprops?.Flying); }
+// C ref: youprop.h Levitation == (HLevitation || ELevitation), Flying likewise.
+// The EXTRINSIC half is invent.js's worn_extrinsic() store (prop.h
+// LEVITATION=48, FLYING=49); the flat u.uprops field holds only the
+// intrinsic/timer half, so a worn levitation ring or levitation boots used to
+// read as "not levitating" here.
+function Levitation() {
+    return !!((game.u?.uprops?.Levitation | 0) || worn_extrinsic(48 /*LEVITATION*/));
+}
+function Flying() {
+    return !!((game.u?.uprops?.Flying | 0) || worn_extrinsic(49 /*FLYING*/));
+}
 function Blind() { const u = game.u || {}; return !!(u.ublindf_blind || (u.uprops?.Blinded | 0) > 0 || game.ublindf); }
 function Role_if(pm) { return (game.urole?.mnum ?? game.u?.umonnum) === pm; }
 const PM_ARCHEOLOGIST = 0, PM_WIZARD = 12;
@@ -696,9 +705,7 @@ export async function Gloves_off() {
     /* encumber_msg(): immediate feedback for gauntlets of power; the caller's
        once-per-input encumbrance check covers it. */
     if (Glib()) {
-        const u = u_();
-        u.Glib = 0;
-        if (u.uprops) { u.uprops.Glib = 0; u.uprops.HGlib = 0; }
+        await (await import('./potion.js')).make_glib(0);
     }
     if (game.uwep && game.uwep.otyp === CORPSE)
         await wielding_corpse(game.uwep, gloves, on_purpose);
@@ -1153,12 +1160,12 @@ export async function glibr() {
         xfl++;
         if (leftfall) {
             const otmp = game.uleft;
-            Ring_off(otmp);
+            await Ring_off(otmp);
             await dropx(otmp);
         }
         if (rightfall) {
             const otmp = game.uright;
-            Ring_off(otmp);
+            await Ring_off(otmp);
             await dropx(otmp);
         }
     }
@@ -1255,10 +1262,10 @@ export async function do_takeoff() {
         if (!(await cursed_blocks(otmp))) await Amulet_off(otmp);
     } else if (doff.what === W_RINGL) {
         otmp = game.uleft;
-        if (!(await cursed_blocks(otmp))) Ring_off(game.uleft);
+        if (!(await cursed_blocks(otmp))) await Ring_off(game.uleft);
     } else if (doff.what === W_RINGR) {
         otmp = game.uright;
-        if (!(await cursed_blocks(otmp))) Ring_off(game.uright);
+        if (!(await cursed_blocks(otmp))) await Ring_off(game.uright);
     }
     doff.mask &= ~I_SPECIAL;
     return otmp;
@@ -1374,6 +1381,64 @@ export async function wornarm_destroyed(wornarm) {
         const m = await import('./invent.js');
         m.useup(wornarm);
     }
+}
+
+// C ref: do_wear.c:3190 maybe_destroy_armor(armor, atmp, &resisted).
+// obj_resists(armor, 0, 90) is the rn2(100) draw (zap.c:1469).
+async function maybe_destroy_armor(armor, atmp, res) {
+    const Z = await import('./zap.js');
+    if (armor && (!atmp || atmp === armor)
+        && (res.resisted = Z.obj_resists(armor, 0, 90)) === false) {
+        armor.in_use = 1;
+        return armor;
+    }
+    return null;
+}
+
+// C ref: do_wear.c:3201 disintegrate_arm(atmp) — black dragon breath, a
+// wide-angle disintegration beam, &c destroy ONE worn armour piece (the
+// outermost one that fails its save).  Returns true if something was destroyed.
+export async function disintegrate_arm(atmp) {
+    let otmp = null;
+    const rc = { resisted: false }, rs = { resisted: false }, r = { resisted: false };
+    if ((otmp = await maybe_destroy_armor(game.uarmc, atmp, rc)) != null) {
+        await pline(`Your ${cloak_simple_name(otmp)} crumbles and turns to dust!`);
+    } else if (!rc.resisted
+               && (otmp = await maybe_destroy_armor(game.uarm, atmp, rs)) != null) {
+        const suit = suit_simple_name(otmp);
+        if (otmp.lamplit) otmp.lamplit = 0; // light.c end_burn(otmp, FALSE)
+        await pline(`Your ${suit} ${vtense_dw(suit, 'turn')} to dust and `
+            + `${vtense_dw(suit, 'fall')} to the ${await surface_dw()}!`);
+    } else if (!rc.resisted && !rs.resisted
+               && (otmp = await maybe_destroy_armor(game.uarmu, atmp, r)) != null) {
+        await pline(`Your ${shirt_simple_name(otmp)} crumbles into tiny threads`
+            + ' and falls apart!');
+    } else if ((otmp = await maybe_destroy_armor(game.uarmh, atmp, r)) != null) {
+        await pline(`Your ${helm_simple_name(otmp)} turns to dust and is blown away!`);
+    } else if ((otmp = await maybe_destroy_armor(game.uarmg, atmp, r)) != null) {
+        await pline(`Your ${gloves_simple_name(otmp)} vanish!`);
+
+    } else if ((otmp = await maybe_destroy_armor(game.uarmf, atmp, r)) != null) {
+        await pline(`Your ${boots_simple_name(otmp)} disintegrate!`);
+    } else if ((otmp = await maybe_destroy_armor(game.uarms, atmp, r)) != null) {
+        await pline(`Your ${shield_simple_name(otmp)} crumbles away!`);
+    } else {
+        return false;
+    }
+    await wornarm_destroyed(otmp);
+    // C: `if (losing_gloves) selftouch("You");` — js/trap.js's selftouch() is a
+    // no-op in this port (no wielded cockatrice corpse is reachable here), so
+    // the glove branch needs no extra call.
+    return true;
+}
+// C ref: hacklib.c vtense(subj, verb) — only the "turn"/"fall" forms are
+// needed here; a plural subject ("dragon scales") keeps the bare verb.
+function vtense_dw(subj, verb) {
+    return /s$/.test(subj) && !/ss$/.test(subj) ? verb : verb + 's';
+}
+async function surface_dw() {
+    const D = await import('./dungeon.js');
+    return D.surface(game.u.ux, game.u.uy);
 }
 
 // C ref: do_wear.c:3062 remarm_swapwep() — #altunwield / the '-' item action on

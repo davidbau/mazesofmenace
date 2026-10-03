@@ -8,6 +8,7 @@ import { depth as depth_of_level } from './hacklib.js';
 import { christen_monst, mhim, mhis } from './do_name.js';
 import { builds_up, In_hell, Is_special, level_difficulty_c } from './dungeon.js';
 import { roles } from './role.js';
+import { has_innate } from './exper.js';
 import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless,
          rnd_class, objects, set_corpsenm, add_to_container,
          // Both spellings are imported on purpose: the pre-existing call sites
@@ -40,6 +41,7 @@ import {
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, W_SADDLE,
     IS_ALTAR, HEADSTONE, LR_MONGEN, MM_APPARXY_BYYOU,
     NO_MINVENT, MM_NOMSG, MM_NOEXCLAM, M_AP_NOTHING, M_AP_MONSTER,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK,
     MHID_ARTICLE, MHID_ALTMON, BOLT_LIM, DF_NONE, NO_NC_FLAGS, NC_SHOW_MSG,
     NC_VIA_WAND_OR_SPELL,
 } from './const.js';
@@ -86,6 +88,10 @@ export const MM_ASLEEP = 0x00001000; // monsters should be generated asleep
 export const MM_NOGRP = 0x00002000; // suppress creation of monster groups
 const MM_ANGRY = 0x00000020; // monster is created angry
 const MM_ADJACENTOK = 0x00000010; // C ref: makemon.h — ok to displace to an adjacent square
+const MM_EDOG = 0x00000800; // C ref: makemon.h MM_EDOG — allocate a pet extension.
+// C ref: makemon.c makemon() — dog.js registers newedog via the shared hook,
+// avoiding a makemon.js <-> dog.js static import cycle.
+const newedog_mm = (mtmp) => hooks.newedog(mtmp);
 // C ref: hack.h:1155-1163 — the caller-supplied mextra/gender flags.
 const MM_EPRI = 0x00000100;
 export const MM_EMIN = 0x00000400;
@@ -1596,10 +1602,14 @@ function m_initweap_angel(mtmp, ptr) {
     // C: `if ((!rn2(20) || is_lord(ptr)) && sgn(...maligntyp) == A_LAWFUL)
     //      otmp = oname(otmp, nam, ONAME_RANDOM);`
     // A non-minion angel uses ptr->maligntyp (we do not model EMIN min_align).
-    // Artifact promotion proper is not modelled — C's oname() only attaches the
-    // name here and consumes no RNG, so recording the name is RNG-faithful.
-    if ((!rn2(20) || is_lord) && Math.sign(ptr.maligntyp ?? 0) === A_LAWFUL)  // makemon.c:338
+    // C ref: do_name.c oname(): skip if that artifact already exists, else
+    // name it and artifact_exists() marks it created (nartifact_exist()
+    // then raises every later random-artifact roll).  No RNG.
+    if ((!rn2(20) || is_lord) && Math.sign(ptr.maligntyp ?? 0) === A_LAWFUL  // makemon.c:338
+        && !otmp.oartifact && !hooks.exist_artifact?.(otmp.otyp, nam)) {
         otmp.oname = nam;
+        hooks.artifact_exists?.(otmp, nam, true, 0x0080 /* ONAME_RANDOM */);
+    }
     bless(otmp);
     otmp.oerodeproof = true;
     // long sword ends up +0..+3, silver mace +3..+6 to offset being much weaker
@@ -2112,8 +2122,16 @@ function rnd_misc_item(mtmp) {
     case 0: if (mtmp.isgd) return 0; return rn2(6) ? 302 : 420;
     // POT_INVISIBILITY is 305 (303 is POT_LEVITATION).  C also lets the item
     // through for a peaceful monster when the hero has See_invisible.
-    case 1:
-        if (mtmp.mpeaceful && !game.u?.uprops?.See_invisible) return 0;
+    case 1: {
+        // C ref: youprop.h See_invisible (HSee_invisible || ESee_invisible);
+        // a Monk has the intrinsic from XL1.  The hero's copy is spelled
+        // several ways in this port (see js/mon.js See_invisible_mon).
+        const u = game.u || {}, p = u.uprops || {};
+        const seeInvis = !!(u.see_invis || p.HSee_invisible || u.HSee_invisible
+            || p.ESee_invisible || u.ESee_invisible || p.See_invisible || u.See_invisible
+            || has_innate('HSee_invisible'));
+        if (mtmp.mpeaceful && !seeInvis) return 0;
+    }
         return rn2(6) ? 305 : 418;
     case 2: return 309;
     }
@@ -3460,6 +3478,8 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
 
     const mtmp = { data: ptr, mx: x, my: y, mmflags };
     if (globalThis.__NHMONDBG) globalThis.__NHMONDBG.push([globalThis.__NHRNGLEN(), ptr.name, ptr.mcls, ptr.gcode]);
+    // C ref: makemon.c makemon() — newedog precedes the m_id assignment.
+    if (mmflags & MM_EDOG) newedog_mm(mtmp);
     // C ref: makemon.c:1245 `if (mmflags & MM_ASLEEP) mtmp->msleeping = 1;`.
     // No RNG, but msleeping gates every monster's turn in dochug(), so a caller
     // that asked for a sleeping monster got a wide-awake one instead.
@@ -4257,7 +4277,18 @@ export async function makemon_appears_msg(mtmp, x, y, mmflags = 0) {
     const D = await import('./display.js');
     const MO = await import('./mon.js');
     const DN = await import('./do_name.js');
-    const apt = mtmp.m_ap_type | 0;
+    // DIVERGENCE: this port stores m_ap_type as a STRING for the appearances
+    // set_mimic_sym() assigns ('obj'/'furniture'), and as the numeric M_AP_*
+    // constant elsewhere (js/display.js M_AP_TYPE normalises both the same
+    // way).  `| 0` read every disguised mimic back as M_AP_NOTHING, so a
+    // `^G giant mimic` announced "A giant mimic appears next to you." where
+    // C names the disguise: "An opulent throne appears next to you."
+    const t_ap = mtmp.m_ap_type;
+    const apt = !t_ap ? M_AP_NOTHING
+        : (typeof t_ap === 'number') ? (t_ap & M_AP_TYPMASK)
+        : (t_ap === 'furniture') ? M_AP_FURNITURE
+        : (t_ap === 'obj') ? M_AP_OBJECT
+        : (t_ap === 'mon') ? M_AP_MONSTER : M_AP_NOTHING;
     let exclaim = !(mmflags & MM_NOEXCLAM);
     let what = null;
     if ((D.canseemon_shared(mtmp) && (apt === M_AP_NOTHING || apt === M_AP_MONSTER))
@@ -4287,70 +4318,6 @@ export async function makemon_appears_msg(mtmp, x, y, mmflags = 0) {
     // inside #lookaround.  Setting it here is therefore inert for this message
     // but survives to prefix its coordinates onto #lookaround's next pline().
     await D.update_topl(msg);
-}
-
-// C ref: read.c create_particular_creation() for the ^G (#wizgenesis) command
-// with a single named monster.  wiz_genesis() clears iflags.debug_mongen, then
-// create_particular() parses the name and create_particular_creation() loops
-// d->quan (==1 here) times calling makemon(whichpm, u.ux, u.uy, mmflags) with
-// mmflags = MM_NOEXCLAM (no gender term, no surprise).
-//
-// makemon(ptr, u.ux, u.uy, ...) takes the `byyou && !gi.in_mklev` branch:
-//   enexto_core(&cc, u.ux, u.uy, ptr, GP_CHECKSCARY|GP_AVOID_MONPOS)
-// to find a square next to the hero (collect_coords ring shuffle = the RNG),
-// then proceeds with next_ident -> newmonhp -> gender -> [no group, ptr given]
-// -> m_initweap (if armed) -> m_initinv -> saddle rn2(100).  We reproduce that
-// order by running enexto_spawn() first (placement RNG) and then the existing
-// makemon() with MM_NOGRP (a specific ptr never spawns a group anyway).
-//
-// Returns { mtmp, x, y, next2u } so the caller can print the C "appears"
-// message; null if no monster could be made (bad name, no good spot, genocided).
-export async function create_particular_monster(name, mmflags = 0) {
-    const pmidx = name_to_pmidx(name);
-    let ptr, firstchoice = NON_PM;
-    if (pmidx >= 0) {
-        const { create_particular_species } = await import('./read.js');
-        firstchoice = pmidx;
-        ptr = MONS[await create_particular_species(pmidx)];
-    } else {
-        // C ref: read.c:3231 create_particular_parse() — when `name` does not
-        // exactly name a species, C falls back to name_to_monclass() (a bare
-        // class symbol like 'y' for S_LIGHT, or a class description) before
-        // giving up.  create_particular_creation()'s per-iteration order then
-        // draws mkclass()'s RNG (makemon.c:1934 gn_mask rn2(9), :1969 rnd(num))
-        // BEFORE the placement search below, so that must happen here first.
-        const { create_particular_parse } = await import('./read.js');
-        const d = {};
-        const ok = await create_particular_parse(name, d);
-        if (!ok) return null;
-        ptr = d.randmonst ? rndmonst()
-            : d.monclass !== MAXMCLASSES ? mkclass(d.monclass, 0)
-            : monster_by_pmidx(d.which);
-    }
-    if (!ptr) return null;
-
-    const u = game.u;
-    // makemon byyou branch: enexto_core near the hero (collect_coords RNG).
-    const spot = enexto_spawn(u.ux, u.uy, ptr);
-    if (!spot) return null;
-
-    // The placement RNG has been spent; makemon must not re-run it, so pass the
-    // resolved (x,y).  MM_NOGRP keeps it from drawing group RNG (a named ptr is
-    // anymon==FALSE in C, which already skips groups).
-    // MM_APPARXY_BYYOU tells makemon() that byyou was true in C (this caller
-    // IS the byyou placement search), so it still runs the `if (byyou) {
-    // newsym(); set_apparxy(); }` tail at the right point in its own body.
-    const mtmp = makemon(ptr, spot.x, spot.y,
-                         MM_NOGRP | MM_APPARXY_BYYOU | mmflags);
-    if (!mtmp) return null;
-    placeOnLevel(mtmp, spot.x, spot.y);
-    if (mtmp.cham != null && mtmp.cham !== NON_PM && firstchoice !== NON_PM
-        && mtmp.cham !== firstchoice)
-        newcham(mtmp, monster_by_pmidx(firstchoice));
-
-    // next2u(x,y): chebyshev distance <= 1 from the hero.
-    const next2u = Math.max(Math.abs(spot.x - u.ux), Math.abs(spot.y - u.uy)) <= 1;
-    return { mtmp, x: spot.x, y: spot.y, next2u, ptr };
 }
 
 // ── adj_erinys (C ref: mon.c:5922) ───────────────────────────────────────
@@ -4709,6 +4676,11 @@ export async function bagotricks(bag, tipping, seencount) {
             creatcnt += rnd(7);
         do {
             const mtmp = makemon(null, game.u.ux, game.u.uy, 0 /* NO_MM_FLAGS */);
+            // C ref: makemon.c:1472 — makemon()'s own tail announces the new
+            // monster ("A newt suddenly appears next to you!").  makemon() is
+            // sync in this port, so the async announcement runs here, at the
+            // same point in the sequence (see makemon_appears_msg's note).
+            if (mtmp) await makemon_appears_msg(mtmp, mtmp.mx, mtmp.my, 0);
             if (mtmp) {
                 ++moncount;
                 if ((await bagotricks_canseemon(mtmp)

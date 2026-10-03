@@ -23,8 +23,8 @@
 import { game } from './gstate.js';
 import { rnd, rn1, rn2 } from './rng.js';
 import { nhgetch } from './input.js';
-import { pline, flush_screen, newsym, update_topl, unmap_object,
-         canseemon_shared } from './display.js';
+import { pline, flush_screen, newsym, update_topl, urgent_topl, unmap_object,
+         canseemon_shared, y_n } from './display.js';
 import { m_at } from './display.js';
 import { DEADMONSTER, mvitals_died, m_detach } from './mon.js';
 import { killed, corpse_chance, make_corpse } from './uhitm.js';
@@ -41,34 +41,12 @@ import { vision_recalc } from './vision.js';
 import { x_monnam } from './uhitm.js';
 import { isok, MAXULEV, W_SADDLE, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED,
          D_NODOOR, D_BROKEN, Is_rogue_level } from './const.js';
-import { pickup_after_move, getdir_confdir } from './cmd.js';
+import { pickup_after_move, getdir } from './cmd.js';
 
-// C ref: cmd.c getdir() — read a direction.  Renders "In what direction?",
-// reads one key; '.'/'s' = self.  Returns {dx,dy,dz} or null on cancel/ESC.
-// Ends with confdir(FALSE) like C's (cmd.c:4116) — see cmd.js getdir_confdir.
-async function getdir() {
-    const prompt = 'In what direction?';
-    game._pending_message = prompt;
-    await flush_screen(1);
-    game._modal_screen = 'topl';
-    const disp = game.nhDisplay;
-    // C tty yn_function parks the cursor one column past the prompt + space.
-    if (disp?.setCursor) disp.setCursor(Math.min(prompt.length + 1, 79), 0);
-    const key = await nhgetch();
-    delete game._modal_screen;
-    game._pending_message = '';
-    const ch = String.fromCharCode(key);
-    if (ch === '.' || ch === 's')
-        return getdir_confdir({ dx: 0, dy: 0, dz: 0 });
-    if (ch === '\x1b' || ch === ' ')
-        return null;
-    const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1, '<': 0, '>': 0 };
-    const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1, '<': 0, '>': 0 };
-    const DZ = { '<': -1, '>': 1 };
-    if (ch in DX)
-        return getdir_confdir({ dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 });
-    return null;
-}
+// C ref: steed.c doride()/kick_steed() call the SHARED cmd.c getdir(); this
+// file used to carry a cut-down copy that ignored the command queue, the
+// number_pad keymap, '\r'/'\n' quitchars and the cmdassist "Invalid direction
+// key!" window.  Use the real one.
 
 // C ref: do_name.c mon_nam() == x_monnam(ARTICLE_THE).  x_monnam now models the
 // "saddled " adjective for a saddle-wearing steed, so this is a thin wrapper.
@@ -101,7 +79,7 @@ async function losehp(n) {
         // C pline() marks the top line NEED_MORE; mirror it so update_topl pages
         // the "You slip..." line before printing "You die...".
         game._toplin = 1; // TOPLIN_NEED_MORE
-        await update_topl('You die...');
+        await urgent_topl('You die...');
         const { done, DIED } = await import('./end.js');
         await done(DIED);
     }
@@ -556,6 +534,7 @@ function u_locomotion_std(def) {
 }
 // C ref: youprop.h Stunned.
 function Stunned_std() {
+    if (game.u?.formprops?.Stunned) return true; /* FROMFORM: polyself.js set_uasmon() */
     const u = game.u;
     return (u?.uprops?.Stun || u?.ustun || 0) > 0;
 }
@@ -644,12 +623,23 @@ export async function doride() {
     if (dir && isok(u.ux + dir.dx, u.uy + dir.dy)) {
         u.dx = dir.dx;
         u.dy = dir.dy;
-        // wizard force-mount prompt is skipped (not wizard mode here).
-        const ok = await mount_steed(m_at(u.ux + dir.dx, u.uy + dir.dy), false);
+        // C ref: steed.c doride():185 — `if (wizard && y_n("Force the mount to
+        // succeed?") == 'y') forcemount = TRUE;`.  The prompt fires for EVERY
+        // wizard-mode #ride, so skipping it swallowed a keystroke and shifted
+        // the rest of the session.
+        let forcemount = false;
+        if (is_wizard_steed()
+            && await y_n('Force the mount to succeed?', 'yn\x1b', 'n') === 'y')
+            forcemount = true;
+        const ok = await mount_steed(m_at(u.ux + dir.dx, u.uy + dir.dy), forcemount);
         return ok ? 1 : 0;
     }
     return 0; // ECMD_CANCEL
 }
+
+// C ref: decl.h `wizard` — debug (wizard) mode, which is what gates #ride's
+// force-mount query.
+function is_wizard_steed() { return !!game.flags?.debug; }
 
 // ===========================================================================
 // steed.c: the remaining top-level functions, translated.  APPEND-ONLY —
@@ -994,7 +984,7 @@ export async function poly_steed(steed, oldshape) {
 function u_handsy_std() { return true; }
 // C ref: you.h Underwater / Stone_resistance / Confusion / Fumbling / Glib.
 function Underwater_std() { return !!game.u?.uprops?.Underwater; }
-function Stone_resistance_std() { return !!game.u?.uprops?.Stone_resistance; }
+function Stone_resistance_std() { return !!game.u?.formprops?.Stone_resistance || !!game.u?.uprops?.Stone_resistance; }
 function Confusion_std() { return !!(game.u?.uconf || game.u?.HConfusion); }
 function Fumbling_std() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
 function Glib_std() { return !!game.u?.uprops?.Glib; }

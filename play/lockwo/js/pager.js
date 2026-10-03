@@ -14,7 +14,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { render_map_to_grid, pline, topl_more, flush_screen, canspotself } from './display.js';
+import { render_map_to_grid, pline, topl_more, flush_screen, canspotself, useDECgraphics } from './display.js';
 import { renderWindowScreen, dismiss_invent_screen } from './invent.js';
 import { doextversion } from './version.js';
 import { option_help_lines } from './options.js';
@@ -928,6 +928,7 @@ import { COLNO, ROWNO, BOLT_LIM, BUFSZ, isok, STONE, SCORR, SDOOR, ROOM, CORR,
          NO_TRAP, BEAR_TRAP, TRAPPED_DOOR, TRAPPED_CHEST, ROCKTRAP, HOLE, PIT,
          WEB, VIBRATING_SQUARE, STRAT_WAITMASK, I_SPECIAL,
          MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
+         M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPMASK,
          GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_SCREEN, GPCOORDS_COMPASS,
          GPCOORDS_COMFULL, WARNCOUNT, TRAPNUM, def_warnsyms, Is_waterlevel,
          Is_airlevel, SYM_OFF_P, SYM_NOTHING, SYM_UNEXPLORED, SYM_BOULDER,
@@ -945,15 +946,16 @@ import { defsyms, def_oc_syms, def_monsyms, MAXPCHARS, MAXMCLASSES,
     from './symbols.js';
 import { m_at, vobj_at, covers_objects, object_glyph, trap_glyph,
          update_topl, Hallucination_u, impossible as pg_impossible_async,
-         stairway_at, known_branch_stairs, stairs_go_down }
+         stairway_at, known_branch_stairs, stairs_go_down, mimic_object_glyph }
     from './display.js';
 import { cansee, couldsee, Blind } from './vision.js';
 import { engr_at } from './engrave.js';
 import { t_at, trap_explanation } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { objects, BOULDER, CHEST, LARGE_BOX, STRANGE_OBJECT, ROCK_CLASS,
-         VENOM_CLASS, COIN_CLASS } from './mkobj.js';
+         VENOM_CLASS, COIN_CLASS, mksobj, mkobj } from './mkobj.js';
 import { monster_by_pmidx } from './makemon.js';
+import { simpleonames } from './objnam.js';
 import { distant_monnam, ARTICLE_NONE, mon_nam } from './do_name.js';
 import { visible_region_at } from './region.js';
 import { doextlist, cmd_from_func } from './cmd.js';
@@ -1044,9 +1046,17 @@ function is_cmap_engraving(i) { return i === S_engroom || i === S_engrcorr; }
 // C ref: symbols.c gs.showsyms[] — falls back to the compiled-in default when
 // init_showsyms() has not run (no SYMBOLS= in the rc).
 function showsym(idx, fallback) {
+    // dat/symbols DECgraphics remaps these cmap entries to VT100 line-drawing
+    // codes; no plain map character can equal them.
+    if (idx >= SYM_OFF_P && idx < SYM_OFF_P + MAXPCHARS
+        && DEC_REMAPPED.has(idx - SYM_OFF_P) && useDECgraphics())
+        return '\u0001';
     const v = gs?.showsyms?.[idx];
     return (v && v !== 0) ? v : fallback;
 }
+const DEC_REMAPPED = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18,
+    19, 27, 28, 31, 32, 33, 38, 39, 40, 41, 42, 43, 48, 74, 75, 89, 91, 92, 94,
+    97, 99, 101, 103]);
 
 // C ref: display.h glyph_at(x,y).  See the banner: a tagged descriptor, not an
 // int.  `kind` is 'monster' | 'object' | 'trap' | 'invisible' | 'warning' |
@@ -1320,18 +1330,19 @@ export function mhidden_description(mon, mhid_flags) {
         /* C dealloc_obj()s the fake object here; nothing to do in JS. */
     };
 
-    if (mon.m_ap_type === 'furniture' || mon.m_ap_type === 'obj') {
+    const apt = pg_M_AP_TYPE(mon);
+    if (apt === M_AP_FURNITURE || apt === M_AP_OBJECT) {
         if (incl_prefix) out = ', mimicking ';
-        if (mon.m_ap_type === 'furniture') {
+        if (apt === M_AP_FURNITURE) {
             let what = defsyms[mon.mappearance]?.explanation || 'something';
             if (incl_article) what = pg_an(what);
             out += what;
-        } else if (mon.m_ap_type === 'obj' && pg_glyph_is_object(glyph)) {
+        } else if (apt === M_AP_OBJECT && pg_glyph_is_object(glyph)) {
             objfrommap();
         } else {
             out += 'something';
         }
-    } else if (mon.m_ap_type === 'monster') {
+    } else if (apt === M_AP_MONSTER) {
         if (show_altmon) {
             if (incl_prefix) out += ', masquerading as ';
             let what = monster_by_pmidx(mon.mappearance)?.name || 'creature';
@@ -1365,6 +1376,16 @@ export function mhidden_description(mon, mhid_flags) {
     return out;
 }
 
+// C ref: monst.h M_AP_TYPE(mon).  This port stores m_ap_type as the numeric
+// M_AP_* constant on some paths and as 'furniture'/'obj'/'mon' on others.
+function pg_M_AP_TYPE(mon) {
+    const t = mon?.m_ap_type;
+    if (!t) return M_AP_NOTHING;
+    if (typeof t === 'number') return t & M_AP_TYPMASK;
+    return t === 'furniture' ? M_AP_FURNITURE : t === 'obj' ? M_AP_OBJECT
+        : t === 'mon' ? M_AP_MONSTER : M_AP_NOTHING;
+}
+
 // The REMEMBERED glyph at <x,y> (levl[x][y].glyph), which "will never be a
 // monster (unless it is the invisible monster glyph)".
 function pg_remembered_glyph(x, y) {
@@ -1375,6 +1396,17 @@ function pg_remembered_glyph(x, y) {
     if (!rg) return { kind: 'unexplored', sym: ' ', x, y };
     if (loc.mapped_trap_ttyp)
         return { kind: 'trap', trap: null, ttyp: loc.mapped_trap_ttyp, sym: rg.ch, x, y };
+    // C ref: display.c display_monster() M_AP_OBJECT -> map_object(): a seen
+    // mimic posing as an object wrote its fake object's glyph into
+    // levl[x][y].glyph, so the memory decodes to that object type
+    // (glyph_to_obj), not to whatever really lies on the square.
+    const mtmp = m_at(x, y);
+    if (mtmp && mtmp.mappearance != null && pg_M_AP_TYPE(mtmp) === M_AP_OBJECT) {
+        const { otyp, glyph: og } = mimic_object_glyph(mtmp);
+        if (og && og.ch === rg.ch && og.color === rg.color)
+            return { kind: 'object', obj: null, otyp,
+                     corpsenm: mtmp.mcorpsenm, sym: rg.ch, x, y };
+    }
     const otmp = vobj_at(x, y);
     if (otmp && !covers_objects(loc)) {
         const og = object_glyph(otmp);
@@ -1403,10 +1435,6 @@ function pg_surface(x, y) {
     if (t === ICE) return 'ice';
     return 'floor';
 }
-/* objnam.c simpleonames(obj) */
-function simpleonames(obj) {
-    return objects[obj?.otyp]?.name || objects[obj?.otyp]?.desc || 'something';
-}
 
 // C ref: pager.c:284 object_from_map(glyph, x, y, &obj_p) — "extracted from
 // lookat(); also used by namefloorobj()".  Returns { fakeobj, obj }: when
@@ -1427,7 +1455,7 @@ export function object_from_map(glyph, x, y) {
 
     /* there might be a mimic here posing as an object */
     let mtmp = m_at(x, y);
-    if (mtmp && mtmp.m_ap_type === 'obj' && mtmp.mappearance === glyphotyp) {
+    if (mtmp && pg_M_AP_TYPE(mtmp) === M_AP_OBJECT && mtmp.mappearance === glyphotyp) {
         otmp = null;
         mimic_obj = true;
     } else {
@@ -1435,13 +1463,18 @@ export function object_from_map(glyph, x, y) {
     }
 
     if (!otmp || otmp.otyp !== glyphotyp) {
-        // C mksobj()s (or mkobj()s, for a class placeholder otyp) a temporary
-        // object to name.  Both consume RNG, which is why C stops the timers
-        // and frees it again; this port synthesises a plain descriptor instead,
-        // so a wiring pass has to decide whether the RNG draws matter here.
-        otmp = { otyp: glyphotyp, oclass: objects[glyphotyp]?.oc_class,
-                 quan: 1, spe: 0, corpsenm: -1, dknown: 0, where: 'floor',
-                 ox: x, oy: y };
+        /* this used to exclude STRANGE_OBJECT; now caller deals with it */
+        if (objects[glyphotyp]?.name) {
+            /* map shows a regular object, but one that's not actually here */
+            otmp = mksobj(glyphotyp, false, false);
+        } else {
+            /* a non-item that holds an extra object type: pick another item
+               that is a regular one in same object class */
+            otmp = mkobj(objects[glyphotyp]?.oclass, false);
+        }
+        /* C obj_stop_timers()es the corpse-rot / egg-hatch / figurine timers
+           mksobj() starts even with init False; this port keeps those timers
+           on the object itself (mkobj.js start_timer), so they die with it */
         fakeobj = true;
         if (otmp.oclass === COIN_CLASS) otmp.quan = 2;   /* force pluralization */
         else if (otmp.otyp === 419 /* SLIME_MOLD */)
@@ -1455,6 +1488,9 @@ export function object_from_map(glyph, x, y) {
             otmp.corpsenm = glyph.corpsenm;
         }
         if (otmp.otyp === 218 /* LEASH */) otmp.leashmon = 0;
+        /* extra fields needed for shop price with doname() formatting */
+        otmp.where = 'floor';
+        otmp.ox = x; otmp.oy = y;
         otmp.no_charge = (otmp.otyp === STRANGE_OBJECT) && costly_spot(x, y);
     }
     /* mark an adjacent object as having been seen up close */

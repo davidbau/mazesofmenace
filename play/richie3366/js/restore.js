@@ -20,6 +20,10 @@ import {
     EMIN,
     EDOG,
     EBONES,
+    has_omonst,
+    OMONST,
+    has_omid,
+    OMID,
 } from './const.js';
 import {
     newegd,
@@ -28,6 +32,8 @@ import {
     newemin,
     newedog,
 } from './makemon.js';
+import { lookup_bones_id } from './bones.js';
+import { free_omid } from './mkobj.js';
 
 /**
  * C ref: makemon.c init_mextra `:1059–1063` (staticfn → file-local;
@@ -131,6 +137,24 @@ export function relative_time_to_moves(holder, key) {
 }
 
 /**
+ * C ref: restore.c rest_adjust_levelflags `:1314–1318`.
+ * C: relative_time_to_moves(&svl.level.flags.stasis_until) — the wire
+ * holds stasis_until relative to moves, so the add-back runs after the
+ * read. Whole 1-line body, live above. Both C call sites are named
+ * wire-format omissions, not wired: the JSON codec stores absolute
+ * stasis_until (lev_json.js serLevel `:800` spreads lvl.flags verbatim,
+ * deserLevel `:859` copies it back), so a literal add-back would double
+ * (review 2326; restmon `:355–356` edog precedent above). C callers:
+ * getlev `:1117` (post-Sfi_levelflags add-back ⇔ deserLevel `:859`
+ * absolute install) and savelev save.c:522 (post-write in-memory
+ * restore of the `:520` relativize ⇔ serLevel `:800` never relativizes,
+ * so no restore step exists).
+ */
+export function rest_adjust_levelflags() {
+    relative_time_to_moves(game.level && game.level.flags, 'stasis_until'); // C `:1317`
+}
+
+/**
  * C ref: restore.c restmon `:307–373` (staticfn).
  * C signature restmon(NHFILE *nhfp, struct monst *mtmp); JS takes the
  * already-parsed monster blob — base fields are the Sfi_monst `:311`
@@ -214,4 +238,98 @@ export function restmon(mtmp) {
     // else: keep NON_PM from newmextra (C file always carries the word;
     // absent key = pre-port JSON without the chunk)
     return mtmp;
+}
+
+/**
+ * C ref: restore.c reset_oattached_mids `:1510–1530` (staticfn → exported:
+ * both getlev tails call it — bones.js getlev_bones ghostly, save.js Sy
+ * restore non-ghostly). Whole body in C order. Sole C caller getlev
+ * `:1301`, after relink_timers / relink_light_sources, before
+ * clear_id_mapping `:1304`. Walks the floor chain (game.fobj — installed
+ * before both tails run); both arms are ghostly-gated, so the Sy call is
+ * a faithful no-op walk. lookup_id_mapping `:1484–1507` ⇔ bones.js
+ * lookup_bones_id (ledger-split shape: boolean+out-param collapsed to
+ * id-or-null — region.js reset_region_mids precedent); OMID assign ⇔
+ * oextra.omid (shk.js:4228 precedent; has_omid guarantees oextra).
+ */
+export function reset_oattached_mids(ghostly) {
+    for (let otmp = game.fobj; otmp; otmp = otmp.nobj) {
+        if (ghostly && has_omonst(otmp)) {
+            const mtmp = OMONST(otmp);
+
+            mtmp.m_id = 0;
+            mtmp.mpeaceful = mtmp.mtame = 0; /* pet's owner died! */
+        }
+        if (ghostly && has_omid(otmp)) {
+            const oldid = OMID(otmp);
+            const nid = lookup_bones_id(oldid);
+            if (nid != null)
+                otmp.oextra.omid = nid;
+            else
+                free_omid(otmp);
+        }
+    }
+}
+
+/**
+ * C ref: restore.c restlevchn `:130–150` (staticfn → exported: sole C
+ * caller restgamestate `:703`, after restore_dungeon, before quest_status
+ * `:706` — JS caller: save.js try_restore_save after dungeon_topology).
+ * Whole body in C order. C reads an int count (`Sfi_int lev_count`) then
+ * per-node raw structs (`Sfi_s_level` — SFO_CBODY wire, dungeon.h:25–32
+ * field order: dlevel, proto[15], boneid, rndlevs, d_flags); the JSON
+ * analogue takes savelevchn's array (js/save.js:466 — length is the
+ * count, each entry the struct fields) and rebuilds live nodes.
+ * `alloc(sizeof(s_level))` is a GC object literal (alloc.js renders raw
+ * bytes and has no struct call sites); the tail-append + `tmplev->next =
+ * 0` is `next: null` + push (array order is chain order — dungeon.js
+ * add_level/dumpit precedent). `unconnected` is a dungeon-level bit,
+ * never set on s_level (savelevchn precedent) — not read.
+ * @param {object[]} blobs savelevchn entries (missing ⇔ empty chain)
+ */
+export function restlevchn(blobs) {
+    game.sp_levchn = []; // C `:136` svs.sp_levchn = 0
+    // C `:137` Sfi_int lev_count — the JSON array length is the count
+    const list = Array.isArray(blobs) ? blobs : [];
+    for (let i = 0; i < list.length; i++) { // C `:138` for (; cnt > 0; cnt--)
+        const src = list[i] || {};
+        // C `char boneid` (dungeon.h:29): the wire holds savelevchn's
+        // 1-char string ('' ⇔ 0); the live shape is numeric (init_level
+        // copies boneschar, dungeon.js:693), so convert back.
+        let boneid = src.boneid;
+        if (typeof boneid === 'number') boneid |= 0;
+        else boneid = boneid ? String(boneid).charCodeAt(0) : 0;
+        // C `:139` alloc(sizeof(s_level)) + `:140` Sfi_s_level field read
+        const tmplev = {
+            dlevel: {
+                dnum: src.dlevel?.dnum | 0,
+                dlevel: src.dlevel?.dlevel | 0,
+            },
+            proto: String(src.proto || ''),
+            boneid,
+            rndlevs: src.rndlevs | 0,
+            flags: {
+                town: !!src.flags?.town,
+                hellish: !!src.flags?.hellish,
+                maze_like: !!src.flags?.maze_like,
+                rogue_like: !!src.flags?.rogue_like,
+                align: src.flags?.align | 0,
+            },
+            next: null, // C `:148` tmplev->next = 0
+        };
+        // C `:142–147` append at tail (reset head ⇔ push in wire order)
+        game.sp_levchn.push(tmplev);
+    }
+}
+
+/**
+ * C ref: restore.c restlevelstate `:742–749` (staticfn → exported: both
+ * C callers are dorecover `:827` + `:900` — JS caller: save.js
+ * try_restore_save, wired at both analogues). The C body is intentionally
+ * empty (steed and engulfer/holder/holdee restore moved into getlev —
+ * C `:744–747`, `:748` bare return), so the port is a no-op call keeping
+ * the dorecover sequence complete (reset_oattached_mids `:1301` precedent).
+ */
+export function restlevelstate() {
+    // C `:744–748`: nothing left to do — steed/engulfer handled in getlev.
 }

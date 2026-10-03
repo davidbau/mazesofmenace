@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { pline, newsym, terrain_background_glyph, show_glyph_cell,
-         object_glyph, vobj_at, trap_glyph, engraving_glyph } from './display.js';
+         object_glyph, vobj_at, trap_glyph, engraving_glyph, bg_attr } from './display.js';
 import { engr_at } from './engrave.js';
 import { couldsee } from './vision.js';
 import { exercise } from './attrib.js';
@@ -170,8 +170,9 @@ function show_map_spot(x, y, cnf) {
             ep.erevealed = 1;                     /* map_engraving(ep, 1) */
             const g = engraving_glyph(lev);
             if (game.level?.flags?.hero_memory)
-                lev.remembered_glyph = { ch: g.ch, color: g.color, decgfx: g.dec };
-            show_glyph_cell(x, y, g.ch, g.color, g.dec);
+                lev.remembered_glyph = { ch: g.ch, color: g.color, decgfx: g.dec,
+                                         bwEngr: g.bwEngr };
+            show_glyph_cell(x, y, g.ch, g.color, g.dec, bg_attr(g));
         } else if (glyph_is_trap(oldglyph) || glyph_is_object(oldglyph)) {
             if (game.level?.flags?.hero_memory) {
                 lev.invisMon = false;
@@ -505,9 +506,11 @@ function magic_map_background(x, y, show) {
     if (!cansee(x, y) && !loc.waslit) {
         if (loc.typ === ROOM && g.ch === defsyms[S_room].sym) {
             // flags.dark_room and iflags.use_color both default on, so the
-            // DARKROOMSYM ('.' at CLR_BLACK, defsyms[S_darkroom]) arm is taken
-            // rather than GLYPH_NOTHING.
-            g = (game.flags?.dark_room !== false && game.flags?.color !== false)
+            // DARKROOMSYM arm is taken rather than GLYPH_NOTHING.  C ref:
+            // sym.h DARKROOMSYM is S_stone on the Rogue level, else
+            // S_darkroom ('.' at CLR_BLACK).
+            g = (game.flags?.dark_room !== false && game.flags?.color !== false
+                 && !Is_rogue_level(game.u?.uz))
                 ? { ch: defsyms[S_darkroom].sym, color: defsyms[S_darkroom].color,
                     dec: false }
                 : { ch: ' ', color: NO_COLOR, dec: false };
@@ -557,7 +560,7 @@ function map_object(obj, show) {
     if (!loc) return;
     let g;
     const halluc = Hallucination_u();
-    const STATUE_OTYP_D = 481;                 /* objects.h STATUE */
+    const STATUE_OTYP_D = 476;                 /* objects.h STATUE */
     if (halluc) {
         // obj_to_glyph -> random_obj_to_glyph / statue_to_glyph on the display
         // rng; the exact glyph does not matter to the callers here, only that
@@ -1681,8 +1684,9 @@ function show_map_spot_cnf(x, y, cnf) {
             ep.erevealed = 1;                       /* map_engraving(ep, 1) */
             const g = engraving_glyph(lev);
             if (game.level?.flags?.hero_memory)
-                lev.remembered_glyph = { ch: g.ch, color: g.color, decgfx: g.dec };
-            show_glyph_cell(x, y, g.ch, g.color, g.dec);
+                lev.remembered_glyph = { ch: g.ch, color: g.color, decgfx: g.dec,
+                                         bwEngr: g.bwEngr };
+            show_glyph_cell(x, y, g.ch, g.color, g.dec, bg_attr(g));
         } else if (glyph_is_trap(oldglyph) || glyph_is_object(oldglyph)) {
             if (oldglyph.cell)
                 show_glyph_cell(x, y, oldglyph.cell.ch, oldglyph.cell.color,

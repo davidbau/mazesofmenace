@@ -7,7 +7,7 @@
 import { game } from './gstate.js';
 import { Goodbye } from './role.js';
 // C ref: monflag.h G_GENOD / G_EXTINCT — the two mvitals[].mvflags "gone" bits.
-import { G_GENOD, G_EXTINCT, COUNTING, WRITING, FREEING, NON_PM, LOW_PM } from './const.js';
+import { G_GENOD, G_EXTINCT, COUNTING, WRITING, FREEING, NON_PM, LOW_PM, STRAT_WAITFORU } from './const.js';
 
 // end.h death codes (subset).  DIED=0; GENOCIDED separates the death codes
 // that leave a tombstone/bones from the ones that don't (QUIT/ESCAPED/
@@ -453,16 +453,12 @@ async function done(how) {
         await d.bot();
         await d.flush_screen(1);
     }
-    if (how < PANICKED) {
-        // MEASURED NEGATIVE, do not re-add: C's end.c:1071 also sets
-        // disp.botl = TRUE after zeroing HP, so a later refresh redraws the
-        // status with HP:0 even when the bot() above drew nothing (u.uhp was
-        // exactly -1, botl.c's dosave() sentinel).  Re-freezing the botl here
-        // wins seed0030's step 582 but costs seed5002 -12, the held-out proxy
-        // -14 and seed0030's own step 779.  The extra release point is the
-        // botl-is-a-snapshot trap; some other frame must be re-releasing it.
+    if (how < PANICKED
+        && (u.uhp !== 0 || (u.Upolyd && u.mh !== 0))) {
+        // C ref: end.c:1072-1078. A later pline can publish the zeroed HP.
         u.uhp = 0;
         if (u.mh != null) u.mh = 0;
+        game.botl = true;
     }
 
     // C ref: end.c:1081 — `if (Lifesaved && (how <= GENOCIDED))`.  Lifesaved is
@@ -589,9 +585,15 @@ async function done(how) {
             // display_nhwindow(WIN_MESSAGE, FALSE) pages the still-unseen
             // "You die..." top line with --More--, then disclose() offers its
             // six end-of-game queries before the tombstone/topten teardown.
-            if (game._toplin === 1) { // display_nhwindow(WIN_MESSAGE): more()
+            // C ref: end.c really_done() display_nhwindow(WIN_MESSAGE,
+            // FALSE): a death notice or the turn-one "Do not pass Go" is
+            // pending even when its writer used pline's soft topline state.
+            if (game._toplin === 1
+                || (game._pending_message
+                    && game._toplinSoft === game._pending_message)) {
                 await d.topl_more();
                 game._toplin = 0;
+                game._toplinSoft = null;
                 game._pending_message = '';
             }
             // Acking that --More-- is where the deferred status redraw lands:
@@ -845,7 +847,15 @@ async function disclose(how, taken = false) {
         const c = await query('i', qbuf);
         if (c === 'y') {
             const invmod = await import('./invent.js');
-            await invmod.display_inventory_interactive(null);
+            // C ref: end.c disclose() / wintty.c tty_display_nhwindow(): when
+            // disclosure is automatic, no query clears the prior tty screen.
+            // The menu overlays the existing map and quit/death topline.
+            game._disclose_inventory_auto = !should_query_disclose_option(end_disclose, 'i').ask;
+            try {
+                await invmod.display_inventory_interactive(null);
+            } finally {
+                delete game._disclose_inventory_auto;
+            }
             // C ref: end.c:641 `container_contents(gi.invent, TRUE, TRUE,
             // FALSE)` — one "Contents of the <box>:" window per carried
             // container, recursing into nested ones.
@@ -980,7 +990,23 @@ async function real_death_epilogue(how, scoreSkipped = false, stopprint = false)
     if (how < PANICKED) tmp -= Math.trunc(tmp / 10);
     tmp += 50 * (deepest2 - 1);
     if (deepest2 > 20) tmp += 1000 * ((deepest2 > 30) ? 10 : deepest2 - 20);
-    const urexp = (u?.urexp || 0) + tmp;
+    // C ref: end.c really_done() -> keepdogs(TRUE), then outrip_and_score():
+    // an adjacent living pet escapes with the hero and its current HP adds
+    // to the score.  The JS monster list is insertion-ordered; fmon is newest
+    // first, so walk it in reverse before composing the farewell line.
+    const pets = [];
+    if (how === ESCAPED || how === ASCENDED) {
+        const { monnear } = await import('./dogmove.js');
+        for (let i = (game.level?.monsters?.length || 0) - 1; i >= 0; i--) {
+            const mon = game.level.monsters[i];
+            if (mon.mtame && mon.mhp > 0 && monnear(mon, u.ux, u.uy)
+                && !((mon.mstrategy || 0) & STRAT_WAITFORU)) {
+                pets.push(mon);
+            }
+        }
+    }
+    let urexp = (u?.urexp || 0) + tmp;
+    for (const pet of pets) urexp += pet.mhp;
     u.urexp = urexp; // really_done() persists this before topten() reads it
 
     const deathText = game._killer_name || DEATHS[how] || 'died';
@@ -1009,11 +1035,22 @@ async function real_death_epilogue(how, scoreSkipped = false, stopprint = false)
         }
         lines.push(`${Goodbye(game.urole?.mnum)} ${plname} the ${roleName}...`);
         lines.push('');
-        lines.push((how !== ESCAPED && how !== ASCENDED)
-            ? `You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
-              + ` with ${urexp} point${plur(urexp)},`
-            : `You ${how === ASCENDED ? 'went to your reward' : 'escaped from the dungeon'}`
-              + ` with ${urexp} point${plur(urexp)},`);
+        if (how === ESCAPED || how === ASCENDED) {
+            if (pets.length) {
+                const { mon_nam } = await import('./do_name.js');
+                lines.push(`You${pets.map((pet) => ` and ${mon_nam(pet)}`).join('')}`);
+            }
+            lines.push(`${pets.length ? '' : 'You '}${how === ASCENDED ? 'went to your reward' : 'escaped from the dungeon'}`
+                + ` with ${urexp} point${plur(urexp)},`);
+        } else {
+            // C ref: end.c outrip_and_score():1523 — a fatal sky teleport
+            // leaves the hero outside the dungeon, not on dungeon level 0.
+            const outside = uz.dnum === 0 && uz.dlevel <= 0;
+            lines.push(`You ${outside ? (uz.dlevel < 0 ? 'passed away' : ENDS[how]) : ENDS[how]}`
+                + (outside ? ' beyond the confines of the dungeon'
+                   : ` in ${dungeonName} on dungeon level ${depth}`)
+                + ` with ${urexp} point${plur(urexp)},`);
+        }
         lines.push(`and ${umoney} piece${plur(umoney)} of gold, after ${moves} move${plur(moves)}.`);
         lines.push(`You were level ${u?.ulevel || 1} with a maximum of ${u?.uhpmax || 0}`
             + ` hit point${plur(u?.uhpmax || 0)} when you ${ENDS[how]}.`);

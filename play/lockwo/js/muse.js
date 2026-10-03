@@ -49,6 +49,7 @@ import { humanoid, is_male_flag, is_female_flag, is_shapeshifter_flag }
     from './monflags_data.js';
 import { mondied_mm, monkilled_mm } from './mhitm.js';
 import { find_mac as worn_find_mac } from './worn.js';
+import { hard_helmet } from './do_wear.js';
 // onscary() is an `export function` declaration in monmove.js, so the
 // monmove -> muse -> monmove import cycle resolves through a hoisted binding
 // (unlike a `const` arrow, which would be in its temporal dead zone here).
@@ -62,7 +63,7 @@ import { base_mmove, healmon, DEADMONSTER, monsterList, mon_hates_silver, can_ca
 // --More-- for the UNACKNOWLEDGED previous one first (or appends to it when both
 // fit).  js/display.js pline() only overwrites the pending text, so monster
 // messages that land mid-turn must go through update_topl() to get C's boundary.
-import { update_topl, newsym, map_invisible, see_with_infrared, stairway_at, You_hear } from './display.js';
+import { update_topl, urgent_topl, newsym, map_invisible, see_with_infrared, stairway_at, You_hear } from './display.js';
 import { Monnam, mon_nam, monflee } from './uhitm.js';
 import { YMonnam } from './do_name.js';
 import { cansee, couldsee } from './vision.js';
@@ -424,12 +425,6 @@ function SchroedingersBox(obj) {
     // C: (o)->otyp == LARGE_BOX && (o)->spe == 1 — the bones-file cat box.  No
     // level this port generates makes one, but the test costs nothing.
     return obj?.otyp === LARGE_BOX && (obj?.spe | 0) === 1;
-}
-// C ref: obj.h hard_helmet(o) — a metal/hard helm that blocks falling rock.
-function hard_helmet(obj) {
-    if (!obj) return false;
-    const nm = OBJECTS[obj.otyp]?.name || '';
-    return /helmet|helm$|dwarvish iron helm|orcish helm|dented pot/.test(nm);
 }
 // C ref: hack.h Sokoban.
 function Sokoban() {
@@ -1746,7 +1741,7 @@ function hero_is_naked() {
 }
 // C ref: hack.h Teleport_control — the hero has no control source in the
 // recorded sessions (no ring/intrinsic teleport control).
-function Teleport_control() { return !!game.u?.utelecontrol; }
+function Teleport_control() { return !!game.u?.formprops?.Teleport_control || !!game.u?.utelecontrol; }
 // C ref: mondata.h resists_blnd(&youmonst) / hates_light(youmonst.data).
 function hero_resists_blnd() { return !!game.u?.ublindresist; }
 function hero_hates_light() { return false; }
@@ -1761,6 +1756,7 @@ function hero_hates_light() { return false; }
 // property accessors are converted this collapses to
 // `worn_extrinsic(ANTIMAGIC) || HAntimagic`.
 function Antimagic_muse() {
+    if (game.u?.formprops?.Antimagic) return true; /* FROMFORM: polyself.js set_uasmon() */
     const W_ARMOR_MASK = 0x7f;  // monst.h W_ARMOR: the seven armour slots
     for (const o of (game.invent || []))
         if (((o.owornmask || 0) & W_ARMOR_MASK)
@@ -1830,7 +1826,7 @@ async function mbhitm(mtmp, otmp, hits_you) {
                 learnit = true;
                 if (u.uhp < 1) {
                     const endm = await import('./end.js');
-                    await update_topl('You die...');
+                    await urgent_topl('You die...');
                     game._killer_name = 'killed by a wand';
                     await endm.done(0 /*DIED*/);
                 }
@@ -2171,7 +2167,7 @@ export function find_misc(mtmp) {
 }
 
 // C ref: hack.h See_invisible.
-function See_invisible() { return !!game.u?.see_invis; }
+function See_invisible() { return !!game.u?.formprops?.See_invisible || !!game.u?.see_invis; }
 // C ref: worn.c wearing_iron_shoes(mon).
 function wearing_iron_shoes(mon) {
     const boots = which_armor(mon, W_ARMF);

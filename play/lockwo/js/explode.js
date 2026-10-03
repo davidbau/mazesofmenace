@@ -12,6 +12,7 @@ import { game } from './gstate.js';
 import { d, rn2, rnd, rn1 } from './rng.js';
 import {
     isok, A_STR, ZAP_POS,
+    FIRE_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, ANTIMAGIC,
     EXPL_NOXIOUS, EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY,
     MAY_HITMON, MAY_HITYOU, MAY_DESTROY, MAY_FRACTURE,
     N_DIRS, xdir, ydir,
@@ -23,10 +24,12 @@ import {
     AD_ACID, AD_SPC2, AD_SPEL, AD_DREN, AD_ENCH, AD_DRDX, AD_DRCO, AD_DISE,
     AD_PEST,
 } from './monattk_data.js';
-import { m_at, newsym, update_topl, map_invisible } from './display.js';
+import { m_at, newsym, update_topl, map_invisible, Hallucination_u } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { is_undead_flag, is_demon_flag } from './monflags_data.js';
 import { has_innate } from './exper.js';
+import { rndmonnam } from './do_name.js';
+import { s_suffix } from './hacklib.js';
 
 // C ref: hack.h:1471 PHYS_EXPL_TYPE; objclass.h:154-156 BURNING_OIL /
 // MON_EXPLODE / TRAP_EXPLODE are MAXOCLASSES+1..+3 and MAXOCLASSES is 18
@@ -62,18 +65,26 @@ function uprop(...names) {
     for (const n of names) if ((p[n] | 0) > 0 || p[n] === true) return true;
     return false;
 }
-function Antimagic() { return uprop('Antimagic', 'HAntimagic', 'EAntimagic') || !!game.u?.Antimagic; }
-function Fire_resistance() { return uprop('Fire_resistance', 'HFire_resistance', 'EFire_resistance'); }
-function Cold_resistance() { return uprop('Cold_resistance', 'HCold_resistance', 'ECold_resistance'); }
-function Shock_resistance() { return uprop('Shock_resistance', 'HShock_resistance', 'EShock_resistance'); }
+// C ref: youprop.h E<Prop> — the worn/wielded half of each property, kept in
+// u.uprops_extrinsic (js/invent.js worn_extrinsic()).  Reading only the
+// intrinsic spellings answered FALSE for e.g. a Wizard in a cloak of magic
+// resistance, so explosionmask() never set EXPL_HERO and the hero took the
+// full blast C shrugs off.  Read the store directly: js/invent.js cannot be
+// imported here without an import cycle.
+function wornprop(prop) { return ((game.u?.uprops_extrinsic || {})[prop] | 0) !== 0; }
+function Antimagic() { return !!game.u?.formprops?.Antimagic || uprop('Antimagic', 'HAntimagic', 'EAntimagic') || !!game.u?.Antimagic || wornprop(ANTIMAGIC); }
+function Fire_resistance() { return !!game.u?.formprops?.Fire_resistance || uprop('Fire_resistance', 'HFire_resistance', 'EFire_resistance') || wornprop(FIRE_RES); }
+function Cold_resistance() { return !!game.u?.formprops?.Cold_resistance || uprop('Cold_resistance', 'HCold_resistance', 'ECold_resistance') || wornprop(COLD_RES); }
+function Shock_resistance() { return !!game.u?.formprops?.Shock_resistance || uprop('Shock_resistance', 'HShock_resistance', 'EShock_resistance') || wornprop(SHOCK_RES); }
 // A race-innate grant (e.g. every orc, from level 1) is never persisted as a
 // stored flag anywhere in js/ — OR in the pure has_innate() derivation.
 function Poison_resistance() {
+    if (game.u?.formprops?.Poison_resistance) return true; /* FROMFORM: polyself.js set_uasmon() */
     return uprop('Poison_resistance', 'HPoison_resistance', 'EPoison_resistance')
-        || has_innate('HPoison_resistance');
+        || has_innate('HPoison_resistance') || wornprop(POISON_RES);
 }
-function Acid_resistance() { return uprop('Acid_resistance', 'HAcid_resistance', 'EAcid_resistance', 'AcidResistance'); }
-function Disint_resistance() { return uprop('Disint_resistance', 'HDisint_resistance', 'EDisint_resistance'); }
+function Acid_resistance() { return !!game.u?.formprops?.Acid_resistance || uprop('Acid_resistance', 'HAcid_resistance', 'EAcid_resistance', 'AcidResistance') || wornprop(ACID_RES); }
+function Disint_resistance() { return !!game.u?.formprops?.Disint_resistance || uprop('Disint_resistance', 'HDisint_resistance', 'EDisint_resistance') || wornprop(DISINT_RES); }
 function Invulnerable() { return uprop('Invulnerable') || !!game.u?.uinvulnerable; }
 function Deaf() { return uprop('Deaf', 'HDeaf', 'EDeaf') || !!game.u?.Deaf; }
 // C ref: you.h Upolyd == (u.mtimedone != 0).
@@ -246,6 +257,15 @@ function next2u(x, y) {
 }
 function dist2(x0, y0, x1, y1) { return (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0); }
 
+// C ref: explode.c:490,595. Monster targets stop retrying after 20 names.
+function hallucinated_explosion(limit = Infinity) {
+    let str, tries = 0;
+    do {
+        str = `${s_suffix(rndmonnam().name)} explosion`;
+    } while (str[0] !== str[0].toLowerCase() && ++tries < limit);
+    return str;
+}
+
 // C ref: explode.c:199 explode(x, y, type, dam, olet, expltype).
 //
 // `expltype` is a glyph-colour selector; the blast animation (tmp_at DISP_BEAM
@@ -258,7 +278,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
     let damu = dam;
     let str = null, adtyp;
     let mdef = null;
-    let visible = false, didmsg = false, generic = false, uhurt = 0;
+    let visible = false, didmsg = false, generic = false, do_hallu = false, uhurt = 0;
     let exploding_wand_typ = 0;
     const you_exploding = (olet === MON_EXPLODE && type >= 0);
     const explmask = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
@@ -305,6 +325,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
 
     if (olet === MON_EXPLODE && !you_exploding) {
         str = game.killer?.name || null;
+        do_hallu = Hallucination_u() && /(?:'s|s') explosion/i.test(str || '');
     }
     if (type === PHYS_EXPL_TYPE) {
         adtyp = AD_PHYS;
@@ -380,6 +401,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
                 let mtmp = m_at(xx, yy);
                 if (!mtmp && u && xx === u.ux && yy === u.uy) mtmp = u.usteed;
                 if (!mtmp) continue;
+                if (do_hallu) str = hallucinated_explosion(20);
                 if (engulfing_u(mtmp)) {
                     await engulfer_explosion_msg(adtyp, olet);
                 } else if (cansee(xx, yy)) {
@@ -418,6 +440,10 @@ export async function explode(x, y, type, dam, olet, expltype) {
                                       : nonliving(mdata(mtmp)) ? 'destroyed' : 'killed'}!`);
                         await killed(mtmp, { nomsg: true, nocorpse: xkflg });
                     } else {
+                        if (cansee(mtmp.mx, mtmp.my))
+                            await update_topl(`${Monnam(mtmp)} is ${nonliving(mdata(mtmp)) ? 'destroyed' : 'killed'}!`);
+                        else if (mtmp.mtame)
+                            await update_topl('You have a sad feeling for a moment, then it passes.');
                         const { mon_kill_leaving } = await import('./monmove.js');
                         await mon_kill_leaving(mtmp, xkflg);
                     }
@@ -430,6 +456,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
     /* Do your injury last */
     if (uhurt) {
         if (game.flags?.verbose !== false && (type < 0 || olet !== SCROLL_CLASS)) {
+            if (do_hallu) str = hallucinated_explosion();
             await update_topl(`You are caught in the ${str}!`);
             // C ref: explode.c:603 — the fatal line below reads this back to
             // decide between "It is fatal." and "The <str> is fatal.".

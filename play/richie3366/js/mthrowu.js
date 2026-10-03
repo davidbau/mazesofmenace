@@ -28,7 +28,7 @@ import { cansee, couldsee, clear_path } from './vision.js';
 import { worm_known } from './worm.js';
 import {
     place_object, splitobj, stackobj, obj_extract_self, delobj, objects_at, sobj_at,
-    mksobj, weight, is_flammable,
+    mksobj, weight, is_flammable, clear_dknown,
 } from './mkobj.js';
 import { observe_object, makeknown, hold_another_object } from './invent.js';
 import {
@@ -38,7 +38,7 @@ import {
 import { find_mac, mondied, monkilled, shade_miss, AT_WEAP, AT_SPIT } from './mhitm.js';
 import { xkilled, can_blnd, Hate_silver, passive_obj } from './uhitm.js';
 import { mswings_verb } from './mhitu.js';
-import { ammo_and_launcher, is_launcher, is_pole, mwelded } from './wield.js';
+import { ammo_and_launcher, is_launcher, is_pole, mwelded, is_ammo } from './wield.js';
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
 import { calc_capacity, Blind } from './invent.js';
 import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation, You_hear } from './hack.js';
@@ -378,9 +378,11 @@ export function lined_up(mtmp) {
 }
 
 /**
- * C ref: mthrowu.c breathwep_name — Hallucination path deferred.
+ * C ref: mthrowu.c:1083–1089 breathwep_name — Hallucination returns
+ * rnd_hallublast (in-file), else the breathwep[] row.
  */
 function breathwep_name(typ) {
+    if (game.u?.Hallucination) return rnd_hallublast();
     return BREATHWEP[BZ_OFS_AD(typ)] || 'strange breath';
 }
 
@@ -1144,8 +1146,9 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
  * Tethered AKLYS sets return_flightpath instead of drop_throw, then
  * return_from_mtoss (D-1334). shade_miss caller D-1382 (`:680–686`).
  * MT_FLIGHTCHECK IRONBARS via hits_bars + IS_SINK + sink/misses plines
- * (`:552-569`, `:798-823`). thrwmu polearm still named; always_toss live
- * in thrwmu_body below.
+ * (`:552-569`, `:798-823`). clear_dknown when thrower unseen (`:619-620`)
+ * + cursed/greased rn2(7) misfire pline and re-roll (`:622-637`).
+ * thrwmu polearm still named; always_toss live in thrwmu_body below.
  */
 export async function m_throw(mon, x, y, dx, dy, range, obj) {
     // C :584–587 — arw / tethered before setmnotwielded
@@ -1169,9 +1172,17 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     }
     game._thrownobj = singleobj;
     singleobj.owornmask = 0;
+    // C mthrowu.c:619–620 — unseen thrower: missile identity not known
+    if (!canseemon(mon)) clear_dknown(singleobj);
 
-    // cursed slip rn2(7) deferred unless cursed
+    // C mthrowu.c:622–637 — cursed/greased rn2(7) misfire: verbose
+    // canseemon pline (ammo "misfires" else "slips as ... throws it"),
+    // then dx/dy rn2(3)-1 re-roll; (0,0) drops at the launch point.
     if ((singleobj.cursed || singleobj.greased) && (dx || dy) && !rn2(7)) {
+        if (canseemon(mon) && game.flags?.verbose !== false) {
+            if (is_ammo(singleobj)) await pline(`${Monnam(mon)} misfires!`);
+            else await pline(`${Tobjnam(singleobj, 'slip')} as ${mon_nam(mon)} throws it!`);
+        }
         dx = rn2(3) - 1;
         dy = rn2(3) - 1;
         if (!dx && !dy) {
