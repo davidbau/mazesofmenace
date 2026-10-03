@@ -2378,6 +2378,21 @@ export async function handler_whatis_coord() {
 }
 
 /**
+ * C options.c handler_symset `:6320–6328` (staticfn) — do_handler body
+ * shared by optfn_roguesymset (`:3583`) and optfn_symset (`:4228`).
+ * do_symset (`:6325`, symbols.c `:908–1099`) is the SYMBOLS-file menu
+ * browser — by-design, no scored analogue — and returns TRUE on all six
+ * C paths, so the live remainder is the redraw flag plus OPTN_OK (C
+ * optn_ok = 1 = TRUE, options.c `:84`).
+ * @param {number} _optidx C optidx (feeds only the named do_symset rogueflag)
+ */
+export function handler_symset(_optidx) {
+    /* Named: do_symset(_optidx == opt_roguesymset) — symbols.c browser by-design. */
+    mark_opt_need_redraw(); // C `:6326`
+    return OPTN_OK; // C `:6327` reslt — do_symset TRUE on every path
+}
+
+/**
  * C options.c optfn_number_pad `:2574–2645` (staticfn; NHOPT_PARSE wires
  * &optfn_number_pad into the number_pad allopt row, optlist.h `:535`).
  * do_handler (`:2641–2643`) returns handler_number_pad() — async in JS
@@ -3510,6 +3525,12 @@ async function doset_optfn_do_handler(name) {
             mark_opt_need_redraw(); // C `:4531`
         return OPTN_OK; // C `:4533`
     }
+    if (name === 'symset') {
+        return optfn_symset(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR); // C `:8935–8938` optfn do_handler
+    }
+    if (name === 'roguesymset') {
+        return optfn_roguesymset(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR); // C `:8935–8938` optfn do_handler
+    }
     return OPTN_OK;
 }
 
@@ -3536,9 +3557,9 @@ function doset_compopt_get_val(optfn, name) {
  * the `:3567–3568` flags are gated like the sibling's `:3076` (no JS
  * startup consumer); get_val/get_cnf_val stay combined per C (`:3574` —
  * no ', handler=' tail, symset-only `:4211–4214`); do_handler (`:3582`)
- * is named (handler_symset → do_symset by-design, sibling `:3049`).
- * No do_handler branch here (optfn_perminv_mode precedent).
- * @param {number} _optidx C optidx (unused: only feeds the named do_handler)
+ * returns handler_symset(optidx) (`:6320–6328`; do_symset browser
+ * by-design inside, sibling `:3049`).
+ * @param {number} optidx C optidx (feeds the do_handler arm)
  * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
  * @param {boolean} _negated C UNUSED — even "!roguesymset:foo" stores
  * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only)
@@ -3546,7 +3567,7 @@ function doset_compopt_get_val(optfn, name) {
  * @param {object|null} [store] name home (rc result at parse; game in game)
  * @param {boolean} [optInitial] C go.opt_initial — skip redraw flags at init
  */
-export function optfn_roguesymset(_optidx, req, _negated, opts, op, store, optInitial) {
+export function optfn_roguesymset(optidx, req, _negated, opts, op, store, optInitial) {
     const st = store || game;
     if (req === REQ_DO_INIT) { // C `:3549–3551`
         return OPTN_OK;
@@ -3581,6 +3602,9 @@ export function optfn_roguesymset(_optidx, req, _negated, opts, op, store, optIn
         set_optbuf(opts, s);
         return OPTN_OK; // C `:3580`
     }
+    if (req === REQ_DO_HANDLER) { // C `:3582–3584`
+        return handler_symset(optidx);
+    }
     return OPTN_OK; // C `:3585`
 }
 
@@ -3589,9 +3613,8 @@ export function optfn_roguesymset(_optidx, req, _negated, opts, op, store, optIn
  * &optfn_symset into the symset allopt row, optlist.h `:743`).
  * do_handler (`:4223–4233`) is handler_symset (`:6320–6328`) around the
  * do_symset browser (symbols.c `:908–1099`, 192 lines over the SYMBOLS
- * file) — named map omission with the glyphid cache wrap; no do_handler
- * branch here (optfn_perminv_mode precedent).
- * @param {number} _optidx C optidx (unused: only feeds the named do_handler)
+ * file — by-design inside the handler); the glyphid cache wrap is live.
+ * @param {number} optidx C optidx (feeds the do_handler arm)
  * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
  * @param {boolean} _negated C UNUSED — even "!symset:foo" stores
  * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only)
@@ -3599,7 +3622,7 @@ export function optfn_roguesymset(_optidx, req, _negated, opts, op, store, optIn
  * @param {object|null} [store] name home (rc result at parse; game in game)
  * @param {boolean} [optInitial] C go.opt_initial — skip redraw flags at init
  */
-export function optfn_symset(_optidx, req, _negated, opts, op, store, optInitial) {
+export function optfn_symset(optidx, req, _negated, opts, op, store, optInitial) {
     const st = store || game;
     if (req === REQ_DO_INIT) { // C `:4171–4173`
         return OPTN_OK;
@@ -3641,6 +3664,15 @@ export function optfn_symset(_optidx, req, _negated, opts, op, store, optInitial
         const nm = gsname || st.symset || game._parsed_rc?.symset || game.flags?.symset;
         set_optbuf(opts, nm ? String(nm) : 'default'); // C `:4219–4221`
         return OPTN_OK; // C `:4222`
+    }
+    if (req === REQ_DO_HANDLER) { // C `:4223–4233`
+        if (!glyphid_cache_status()) // C `:4226`
+            fill_glyphid_cache(); // C `:4227`
+        const reslt = handler_symset(optidx); // C `:4228`
+        if (glyphid_cache_status()) // C `:4229`
+            free_glyphid_cache(); // C `:4230`
+        /* C `:4231–4232` apply_customizations commented out in C. */
+        return reslt; // C `:4233`
     }
     return OPTN_OK; // C `:4235`
 }
@@ -6106,6 +6138,23 @@ export function closest_color(lcolor, closecolor, clridx) {
         retbool = true; // C :1018
     }
     return retbool; // C :1020
+}
+
+/**
+ * C ref: coloratt.c get_nhcolor_from_256_index `:1024–1031` — 256-color
+ * table lookup by 0-based slot (IndexOk = 0 <= idx < SIZE,
+ * hack.h:1498); out-of-range yields NO_COLOR | NH_BASIC_COLOR. 0 C
+ * callers in pinned C (dead in C); live export on the D-2776
+ * base_soundname_to_filename precedent (compiles in contest C), no JS
+ * caller wired (D-2393). Retires the D-2777 "table's other C reader"
+ * omit leg.
+ */
+export function get_nhcolor_from_256_index(idx) {
+    let retcolor = NO_COLOR | NH_BASIC_COLOR; // C :1026
+    const i = idx | 0; // C int idx
+    if (i >= 0 && i < color_256_definitions.length) // C :1028 IndexOk/SIZE
+        retcolor = color_256_definitions[i].value; // C :1029
+    return retcolor; // C :1030
 }
 
 /* C color.h:61 — `enum nhcolortype` (lowercase in C; unrelated to the
@@ -9311,9 +9360,10 @@ async function doset_compound_via_getlin(opt) {
             // C optfn_o_status_hilites do_handler `:8464–8471` status_hilite_menu (doset precedent); TRUE → optn_ok.
             reslt = await optfn_o_status_hilites(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
         } else if (name === 'symset') {
-            // Named omission: handler_symset `:6320–6328` → symbols.c
-            // do_symset (no live JS port; symset-file IO under Rule #2).
-            reslt = OPTN_ERR;
+            // C `:8663–8666` optfn(idx, do_handler) → optfn_symset
+            // `:4223–4233` (glyphid wrap + handler_symset; do_symset
+            // browser by-design inside the handler).
+            reslt = await optfn_symset(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
         }
         // C `:8668–8670`: optn_ok marks the row (no simple-menu option is
         // pfx_cond_, so no `:8669` guard).

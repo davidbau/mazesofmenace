@@ -95,6 +95,7 @@ import {
     touch_petrifies,
     resists_ston,
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK, M3_COVETOUS,
+    monst_globals_init,
 } from './monsters.js';
 import { big_to_little, set_mon_data, name_to_mon, name_to_monclass, monsndx } from './mondata.js';
 import {
@@ -867,9 +868,9 @@ function monSi(i) {
 /**
  * C ref: makemon.c dump_mongen `:1835–1866` — the `--dump=mongen`
  * (ARG_DUMPMONGEN) stdout table. Caller: earlyarg.js argcheck `:536–538`.
- * Named omissions: monst_globals_init `:1842` (memcpy of the static
- * mons_init table — the JS mons table is module-initialized, no re-copy
- * channel); the three raw_print sinks `:1849`/`:1863–1864` (D-3086
+ * `monst_globals_init` `:1841` is live (monsters.js — clears the pm_fixup
+ * overlay, D-3308). Named omissions: the three raw_print sinks
+ * `:1849`/`:1863–1864` (D-3086
  * dump_enums precedent: raw_print text has no pre-window channel and no
  * counter effect, so the calls are dropped while raw_printf stays 1:1);
  * freedynamicdata `:1865` (by-design: save-freeing).
@@ -879,8 +880,8 @@ function monSi(i) {
 export function dump_mongen() {
     const nmwidth = 27; // C `:1839`
     let prev_mlet = 0; // C `:1838` (NUL — first-iteration guard below)
-    // C `:1842` monst_globals_init() — named omission (see doc).
-    init_mongen_order(); // C `:1843`
+    monst_globals_init(); // C `:1841`
+    init_mongen_order(); // C `:1842`
     raw_printf('int mongen_order[] = {'); // C `:1844`
     for (let i = LOW_PM; i < SPECIAL_PM; ++i) { // C `:1845`
         const ptr = mons(monSi(i));

@@ -125,7 +125,7 @@ import { intrinsic_possible } from './eat.js';
 import { Soundeffect, se_alarm, SetVoice } from './sndprocs.js';
 import { livelog_printf } from './pline.js';
 import { enexto, rloc_to_flag, migrate_to_level } from './teleport.js';
-import { ledger_no } from './dungeon.js';
+import { ledger_no, on_level } from './dungeon.js';
 import { Is_candle, Invis, get_obj_location as shk_full_get_obj_location } from './timeout.js';
 import { addinv } from './u_init.js';
 import { SchroedingersBox } from './pickup.js';
@@ -339,6 +339,7 @@ export function shop_keeper(rmno) {
 export function set_residency(shkp, zero_out) {
     const eshk = ESHK(shkp);
     if (!eshk) return;
+    // C shk.c:274 set_residency gate (C positive, JS early-return) — live on_level (js/dungeon.js).
     if (!on_level(eshk.shoplevel, game.u?.uz)) return;
     const rooms = game.level?.rooms;
     const idx = (eshk.shoproom | 0) - ROOMOFFSET;
@@ -2046,6 +2047,7 @@ export async function make_happy_shk(shkp, silentkops) {
     if (!inhishop(shkp)) {
         const shk_nam = shkname(shkp);
         let vanished = canseemon(shkp);
+        // C shk.c:1410 make_happy_shk — live on_level (js/dungeon.js).
         if (on_level(eshkp?.shoplevel, game.u?.uz)) {
             await home_shk(shkp, false);
             if (canspotmon(shkp)) {
@@ -4748,13 +4750,6 @@ function m_next2u(mtmp) {
     return dx * dx + dy * dy <= 2;
 }
 
-/** C ref: dungeon.c on_level */
-function on_level(a, b) {
-    return !!a && !!b
-        && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
-}
-
 /** C: strchr(u.ushops, shoproom) */
 function uin_shoproom(shoproom) {
     const ushops = game.u?.ushops || '';
@@ -5200,6 +5195,7 @@ export async function paybill(croaked, silently) {
     let { shkp: mtmp, nextIdx } = next_shkp(0, false);
     while (mtmp) {
         const eshkp = ESHK(mtmp);
+        // C shk.c:2523 paybill — live on_level (js/dungeon.js).
         const local = on_level(eshkp?.shoplevel, game.u?.uz);
         if (local && uin_shoproom(eshkp.shoproom)) {
             if (!resident || (eshkp.billct | 0) || (eshkp.debit | 0)
@@ -5233,6 +5229,7 @@ export async function paybill(croaked, silently) {
     }
     for (const m of shks) {
         const eshkp = ESHK(m);
+        // C shk.c:2560 paybill — live on_level (js/dungeon.js).
         const local = on_level(eshkp?.shoplevel, game.u?.uz);
         if (m !== firstshk) {
             numsk++;

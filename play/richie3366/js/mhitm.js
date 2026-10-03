@@ -4,14 +4,14 @@
 
 import { rn2, rnd, rn1, d, rnl } from './rng.js';
 import {
-    distmin, m_at, record_mvitals_died, undead_to_corpse, monnear, seemimic,
+    m_at, record_mvitals_died, undead_to_corpse, monnear, seemimic,
     zombie_maker, zombie_form, minliquid, healmon, wake_nearto, mon_givit,
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unlink_minvent,
 } from './mon.js';
 import { game } from './gstate.js';
 import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You, Your, pline_The, You_feel, You_see, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
 import { cansee } from './vision.js';
-import { dist2, isok } from './hacklib.js';
+import { dist2, distmin, isok } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended, monsndx, Resists_Elem } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval, possibly_unwield } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art, protects } from './artifact.js';
@@ -148,7 +148,7 @@ import { bury_an_obj } from './dig.js';
 import { is_pole, is_weptool } from './wield.js';
 import { mswings_verb, Conflict, unstuck, set_ustuck, digests, hitmsg, diseasemu, doseduce, mhitm_ad_sedu_u } from './mhitu.js';
 import { sticks } from './engrave.js';
-import { mon_offmap, set_apparxy, mb_trapped, itsstuck } from './monmove.js';
+import { mon_offmap, set_apparxy, mb_trapped, itsstuck, accessible } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_confused, make_stunned } from './potion.js';
 // imports.mjs --can mhitm.js mcastu.js touch_of_death Antimagic: SAFE
@@ -185,7 +185,7 @@ import { livelog_printf } from './pline.js';
 import { shtypes } from './shknam.js';
 import { obfree, setpaid, discard_damage_owned_by } from './shk.js';
 import { search_special } from './sounds.js';
-import { closed_door, Passes_walls_prop, test_move, u_locomotion, You_hear, doorless_door } from './hack.js';
+import { closed_door, Passes_walls_prop, test_move, u_locomotion, You_hear, doorless_door, is_pool } from './hack.js';
 import { surface } from './sit.js';
 import { emits_light, del_light_source } from './light.js';
 import { on_level } from './dungeon.js';
@@ -3974,13 +3974,15 @@ export async function mondead(mtmp) {
 }
 
 /**
- * C ref: mon.c mondied() — mondead + maybe make_corpse (no kill pline).
- * Named omission: accessible||is_pool gate (floor tiles always attempt).
+ * C ref: mon.c mondied `:3252–3263` — mondead + maybe make_corpse (no
+ * kill pline). Corpse only on accessible ground or pool (`:3258–3260`).
  */
 export async function mondied(mdef) {
     await mondead(mdef);
     if ((mdef.mhp | 0) > 0) return; /* lifesaved */
-    if (await corpse_chance(mdef)) await make_corpse(mdef);
+    if (await corpse_chance(mdef)
+        && (accessible(mdef.mx, mdef.my) || is_pool(mdef.mx, mdef.my)))
+        await make_corpse(mdef);
 }
 
 /**

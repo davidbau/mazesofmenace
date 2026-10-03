@@ -61,6 +61,7 @@ import { t_at } from './trap.js';
 import { invocation_pos, handle_tip } from './hack.js';
 import { is_valid_travelpt, lock_mouse_buttons } from './cmd.js';
 import { ok_to_quest } from './quest.js';
+import { on_level } from './dungeon.js';
 import { visctrl, cmd_from_func } from './dokeylist.js';
 import { distmin } from './hacklib.js';
 import { engr_at } from './engrave.js';
@@ -552,11 +553,6 @@ function truncate_to_map(cx, cy, dx, dy) {
     return { x: x + dx, y: y + dy };
 }
 
-/** C dungeon.h on_level — dnum+dlevel equality. */
-function on_level(a, b) {
-    return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
-}
-
 /**
  * C ref: pager.c do_screen_description after lookat — qstart Home
  * downstairs are "blocked staircase down" until ok_to_quest().
@@ -565,7 +561,7 @@ function on_level(a, b) {
 export function maybe_blocked_staircase_down(look_buf) {
     if (
         look_buf === 'staircase down'
-        && on_level(game.u?.uz, game.qstart_level)
+        && on_level(game.u?.uz, game.qstart_level) // C pager.c:1605 — live on_level (js/dungeon.js).
         && !ok_to_quest()
     ) {
         return 'blocked staircase down';

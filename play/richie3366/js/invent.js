@@ -10,8 +10,8 @@
 //        display_minventory MINV_ALL|PICK_NONE (D-1426; zap.c
 //        probe_monster); display_binventory buried/pool (D-1444;
 //        zap.c zap_updown WAN_PROBING); display_cinventory container
-//        contents (D-1445; zap.c bhito WAN_PROBING); worn_wield_only /
-//        PICK_ONE / INCLUDE_HERO named;
+//        contents (D-1445; zap.c bhito WAN_PROBING); PICK_ONE /
+//        INCLUDE_HERO named; worn_wield_only wired (D-3315);
 //        o_init.c dodiscovered / discover_object / gem_learned;
 //        invent.c o_on (D-1691);
 //        insight.c enlightenment (BASIC ^X + MAGIC-only in-progress D-1116).
@@ -4379,12 +4379,23 @@ function s_suffix_inv(s) {
  * look_here swallowed MINV_ALL|PICK_NONE (title supplied).
  * Branch envelope: MINV_ALL → query_objlist analog (INVORDER_SORT
  * class headings + doname under suppress_price + PICK_NONE).
+ * !MINV_ALL → worn_wield_only armament filter (D-3315).
  * youmonst.data swap for "weapon in claw". Empty → "(none)".
- * Named omit: worn_wield_only / !MINV_ALL armament; PICK_ONE/ANY;
- * INCLUDE_HERO fake youmonst; sortloot loot-name; USE_INVLET letters
- * (MINV_NOLET / PICK_NONE skip them); invdisp_nothing NHW_MENU polish.
+ * Named omit: PICK_ONE/ANY; INCLUDE_HERO fake youmonst; sortloot
+ * loot-name; USE_INVLET letters (MINV_NOLET / PICK_NONE skip them);
+ * invdisp_nothing NHW_MENU polish.
  * @returns {Promise<object|null>} selected object (PICK_NONE → null)
  */
+/**
+ * C invent.c worn_wield_only `:5308–5325` (staticfn) — query_objlist
+ * filter for display_minventory `:5370`: worn or wielded only (monster
+ * chains, so W_CHAIN/W_ARTI-likes need no exclusion). The `#else` arm
+ * is compiled out in C (documented here, not ported).
+ */
+function worn_wield_only(obj) {
+    return (obj.owornmask | 0) !== 0;
+}
+
 export async function display_minventory(mon, dflags, title) {
     if (!mon) return null;
     const do_all = (dflags & MINV_ALL) !== 0;
@@ -4403,7 +4414,14 @@ export async function display_minventory(mon, dflags, title) {
     // INCLUDE_HERO fake-hero row named
     void incl_hero;
     const have_any = items.length > 0;
-    if (!(do_all ? have_any : false)) {
+    // C display_minventory `:5359–5370` — without MINV_ALL only worn or
+    // wielded items are displayed (worn_wield_only filter). The C
+    // `(mon->misc_worn_check || MON_WEP(mon))` predicate is the
+    // observable equivalent of a nonempty filter result (wielded ⇒
+    // owornmask W_WEP; the misc_worn_check cache field has no JS
+    // counterpart — Named omission).
+    const shown = do_all ? items : items.filter(worn_wield_only);
+    if (!(do_all ? have_any : shown.length > 0)) {
         await select_menu_pick_none([
             { text: hdr, attr: headingAttr },
             { text: '', attr: 0 },
@@ -4423,7 +4441,7 @@ export async function display_minventory(mon, dflags, title) {
             ? [...DEF_INV_ORDER]
             : [...DEF_INV_ORDER, VENOM_CLASS];
         for (const oclass of classes) {
-            const group = items.filter((o) => (o.oclass | 0) === oclass);
+            const group = shown.filter((o) => (o.oclass | 0) === oclass);
             if (!group.length) continue;
             entries.push({ text: let_to_name(oclass), attr: headingAttr });
             for (const otmp of group) {

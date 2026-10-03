@@ -4,10 +4,11 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    dist2, distmin, mon_allowflags, mfndpos, m_at, monnear, onscary, ALLOW_M,
+    mon_allowflags, mfndpos, m_at, monnear, onscary, ALLOW_M,
     ALLOW_U, ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
     m_consume_obj, perceives,
 } from './mon.js';
+import { distmin, dist2 } from './hacklib.js';
 import {
     objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
     eaten_stat, peek_at_iced_corpse_age, is_organic, is_metallic, is_rustprone,

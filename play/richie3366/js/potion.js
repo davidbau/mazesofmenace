@@ -168,13 +168,13 @@ import {
 import { rider_cant_reach } from './steed.js';
 import { PM_HUMAN, PM_HEALER, PM_LICHEN } from './generated/monsters_data.js';
 import { makemon, set_malign } from './makemon.js';
-import { mongone, wakeup, healmon, wake_nearto, dist2, m_at, seemimic } from './mon.js';
+import { mongone, wakeup, healmon, wake_nearto, m_at, seemimic } from './mon.js';
 import { tamedog } from './dog.js';
 import { can_reach_floor } from './engrave.js';
 import { surface } from './sit.js';
 import { bcsign } from './rumors.js';
 import { more_experienced, pluslvl, rndexp } from './exper.js';
-import { depth, strstri } from './hacklib.js';
+import { depth, strstri, dist2 } from './hacklib.js';
 import {
     trycall, docall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
     Hallucination, rndmonnam,
@@ -198,7 +198,7 @@ import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import { hard_helmet } from './do_wear.js';
 import { strange_feeling } from './detect.js';
-import { In_W_tower } from './dungeon.js';
+import { In_W_tower, has_ceiling, on_level } from './dungeon.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
@@ -638,11 +638,7 @@ function incr_itimeout_HDetect_monsters(incr) {
     set_HDetect_monsters((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
 }
 
-/** C dungeon.c has_ceiling — endgame non-earth has no ceiling. */
-function has_ceiling(lev) {
-    if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
-    return true;
-}
+/* C dungeon.c has_ceiling — imported live from dungeon.js. */
 
 /* C dungeon.c ceiling — imported live from trap.js; do not re-clone here. */
 
@@ -1739,10 +1735,7 @@ function ledger_no(lev) {
     return ((lev?.dlevel | 0) + (dun?.ledger_start | 0)) | 0;
 }
 
-/** C dungeon.c on_level — same dnum/dlevel. */
-function on_level(a, b) {
-    return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
-}
+/* C dungeon.c on_level — imported live from dungeon.js (clone was already the unguarded |0 shape). */
 
 /** C dungeon.h Lassigned — dlevel or dnum nonzero. */
 function Lassigned(z) {

@@ -4,6 +4,7 @@
 // throw_obj u_wipe_engr(2) D-1374 (C `:138`).
 
 import { game } from './gstate.js';
+import { has_ceiling } from './dungeon.js';
 import { surface } from './sit.js';
 import {
     flush_screen, pline, newsym, mark_topline_seen,
@@ -86,7 +87,8 @@ import {
     xname, killer_xname, singular, an, An, the, The, vtense, doname, thesimpleoname,
     makeplural, otense, mshot_xname, corpse_xname,
 } from './objnam.js';
-import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond, setmangry, bad_rock, may_passwall } from './mon.js';
+import { m_at, wakeup, seemimic, wake_nearto, monnear, m_respond, setmangry, bad_rock, may_passwall } from './mon.js';
+import { distmin } from './hacklib.js';
 import { mon_nam, Monnam, a_monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname, rndmonnam, s_suffix } from './do_name.js';
 import { noit_mhim, NEUTRAL } from './mondata.js';
 import { which_armor } from './worn.js';
@@ -1218,11 +1220,7 @@ function Doname2(obj) {
     return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-/** C dungeon.c has_ceiling — endgame non-earth has no ceiling. */
-function has_ceiling(lev) {
-    if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
-    return true;
-}
+/* C dungeon.c has_ceiling — imported live from dungeon.js. */
 
 /** C youprop.h BlindedTimeout — HBlinded & TIMEOUT. */
 function BlindedTimeout() {

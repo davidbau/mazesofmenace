@@ -71,7 +71,7 @@ import {
     monsterNames, pmnames,
 } from './generated/monsters_data.js';
 import { ART_STING } from './generated/artifacts_data.js';
-import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam, pmname, Ugender } from './do_name.js';
+import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam, pmname, Ugender, a_monnam } from './do_name.js';
 import { decl_globals_init } from './decl.js';
 import { init_objects } from './o_init.js';
 import { get_level } from './dungeon.js';
@@ -291,19 +291,6 @@ export function rounddiv(x, y) {
     const m = xx % yy; // C `:4567`
     if (2 * m >= yy) r++; // C `:4568–4569`
     return divsgn * r; // C `:4571`
-}
-
-/**
- * C ref: do_name.c a_monnam — ARTICLE_A subtype name (uhitm local twin).
- * Hallu / invisible / named-pet arms deferred.
- */
-function a_monnam(mtmp) {
-    if (!mtmp) return 'a monster';
-    if (mtmp.mextra?.mgivenname) return mtmp.mextra.mgivenname;
-    const raw = mtmp?.data?.name || 'monster';
-    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-    const an = /^[aeiou]/i.test(plain) ? 'an' : 'a';
-    return `${an} ${plain}`;
 }
 
 /**
@@ -1053,6 +1040,7 @@ async function moverock_core(sx, sy) {
                 // canspotmon / You_hear (D-1749).
                 if (Blind_im()) feel_location(sx, sy);
                 if (canspotmon(mtmp)) {
+                    // C hack.c:462 a_monnam (live do_name.js export).
                     await pline(`There's ${a_monnam(mtmp)} on the other side.`);
                     deliver_part1 = true;
                 } else {

@@ -87,6 +87,7 @@ import { dog_move, finish_meating, cursed_object_at, dogfood, could_reach_item }
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import {
     shk_move, gd_move, pri_move, costly_spot, inhishop, bill_dummy_object,
+    money_cnt,
 } from './shk.js';
 import { cuss, tactics } from './wizard.js';
 import { Protection_from_shape_changers } from './were.js';
@@ -97,8 +98,6 @@ import { SetVoice } from './sndprocs.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { game } from './gstate.js';
 import {
-    dist2,
-    distmin,
     monnear,
     mon_allowflags,
     mfndpos,
@@ -117,6 +116,7 @@ import {
     onscary,
     hideunder as hideunderHero,
 } from './mon.js';
+import { distmin, dist2 } from './hacklib.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -739,14 +739,7 @@ export function mon_track_clear(mtmp) {
     }
 }
 
-/** C ref: invent.c money_cnt — sum COIN_CLASS quan. */
-function money_cnt(invent) {
-    let sum = 0;
-    for (const o of invent || []) {
-        if (o.oclass === COIN_CLASS) sum += o.quan || 0;
-    }
-    return sum;
-}
+/* money_cnt: canonical import from shk.js (hack.c:4513–4522 — first stack). */
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -1018,6 +1011,7 @@ export function set_apparxy(mtmp) {
     const u = game.u || {};
     let mx = mtmp.mux;
     let my = mtmp.muy;
+    // C `:2203` — first COIN_CLASS stack (hack.c:4513–4522), not a sum.
     const umoney = money_cnt(game.invent);
 
     // pet / grabber / still believes hero at current mux,muy

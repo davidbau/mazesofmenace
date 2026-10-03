@@ -29,7 +29,12 @@ import { makemon, reset_align_shift_cache } from './makemon.js';
 import {
     mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, see_nearby_monsters,
 } from './mon.js';
-import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD, PM_MONK, reset_erinys, breathless } from './monsters.js';
+import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD, PM_MONK, reset_erinys, breathless, monst_globals_init } from './monsters.js';
+import { program_state_init, decl_globals_init } from './decl.js';
+import { crashreport_init } from './report.js';
+import { objects_globals_init } from './objects.js';
+import { sys_early_init } from './sys.js';
+import { runtime_info_init } from './version.js';
 import {
     A_DEX, A_STR, A_CON, A_WIS, A_INT, A_MAX, acurr, exercise, adjattrib,
     change_luck, Fast, Very_fast, Searching, Fumbling,
@@ -752,6 +757,30 @@ export async function welcome(new_game) {
         await hellish_smoke_mesg();
         await print_level_annotation();
     }
+}
+
+/**
+ * C ref: allmain.c early_init `:32–45` — whole body in C order.
+ * Process-start global reset; sole C caller unixmain.c:66 (port entry —
+ * JS caller is jsmain.js start(), immediately after resetGame()).
+ * `:36–39` CRASHREPORT is active in the contest Linux build (config.h:249
+ * defines it for __linux__ unless NOCRASHREPORT, which unixconf.h does
+ * not set), so the `:38` call is live, not compiled out. (argc, argv) are
+ * C pass-through (USED_FOR_CRASHREPORT); the JS entry has no argv
+ * (Rule #2: no process plumbing — earlyarg.js), so jsmain passes (0, [])
+ * and crashreport voids them (report.js).
+ * Sync like C (pure startup init, no window/RNG work).
+ * @param {number} argc C argc (nhUse: unread)
+ * @param {string[]} argv C argv (nhUse: unread)
+ */
+export function early_init(argc, argv) {
+    program_state_init(); // C `:35`
+    crashreport_init(argc, argv); // C `:38`
+    decl_globals_init(); // C `:40`
+    objects_globals_init(); // C `:41`
+    monst_globals_init(); // C `:42`
+    sys_early_init(); // C `:43`
+    runtime_info_init(); // C `:44`
 }
 
 // C ref: allmain.c newgame()

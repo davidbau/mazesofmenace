@@ -23,7 +23,7 @@ import {
     distant_name, vtense, Yname2, simpleonames,
 } from './objnam.js';
 import {
-    dist2, distmin, m_at, m_carrying, mongone, onscary, monnear,
+    m_at, m_carrying, mongone, onscary, monnear,
     wakeup, wake_nearto,
 } from './mon.js';
 import { lined_up, linedup_callback, m_throw } from './mthrowu.js';
@@ -91,8 +91,8 @@ import {
 import { MON_WEP, dmgval, hands_obj } from './weapon.js';
 import { welded, mwelded } from './wield.js';
 import { remove_worn_item } from './steal.js';
-import { depth, strsubst, upstart } from './hacklib.js';
-import { get_level, dunlevs_in_dungeon, On_W_tower_level } from './dungeon.js';
+import { depth, distmin, dist2, strsubst, upstart } from './hacklib.js';
+import { get_level, dunlevs_in_dungeon, On_W_tower_level, on_level } from './dungeon.js';
 import { seetrap, t_at, trapname, mintrap, ceiling, wearing_iron_shoes, maketrap, Trap_Killed_Mon } from './trap.js';
 import { stairway_at } from './mklev.js';
 import { place_monster, remove_monster } from './steed.js';
@@ -2205,10 +2205,6 @@ function ledger_no(lev) {
     return ((dun?.ledger_start | 0) + dlevel) | 0;
 }
 
-function on_level(a, b) {
-    return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
-}
-
 /** C youprop.h See_invisible */
 function See_invisible() {
     const u = game.u || {};
@@ -3112,6 +3108,7 @@ export async function use_misc(mtmp) {
                 const tolev = depth(u.uz) - 1;
                 const tolevel = { dnum: 0, dlevel: 0 };
                 get_level(tolevel, tolev);
+                // C muse.c:2410 use_misc gate (C: if-on_level goto skipmsg; JS inverted) — live on_level (js/dungeon.js).
                 if (!on_level(tolevel, u.uz)) {
                     if (vismon) {
                         // C muse.c:2414-2416 pline_mon + ceiling() + trycall.

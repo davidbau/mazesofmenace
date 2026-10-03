@@ -6,8 +6,9 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    distmin, dist2, m_at, m_carrying, seemimic, setmangry, wake_nearto,
+    m_at, m_carrying, seemimic, setmangry, wake_nearto,
 } from './mon.js';
+import { distmin, dist2 } from './hacklib.js';
 import {
     COLNO, ROWNO, BOLT_LIM, MON_POLE_DIST, PET_MISSILE_RANGE2, IS_OBSTRUCTED, IS_DOOR,
     D_CLOSED, D_LOCKED, IRONBARS, IS_SINK,

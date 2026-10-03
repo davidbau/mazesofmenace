@@ -58,7 +58,7 @@ const PICK_AXE_OTYP = objectNames.indexOf('PICK_AXE');
 const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
 const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
 const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
-import { dist2, bad_rock, cant_squeeze_thru, wake_nearto, minliquid, m_at } from './mon.js';
+import { bad_rock, cant_squeeze_thru, wake_nearto, minliquid, m_at } from './mon.js';
 import { is_hider, hides_under, tunnels, needspick, monsterNames } from './monsters.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
@@ -91,7 +91,7 @@ import { rehumanize, body_part, domonability } from './polyself.js';
 import { Levitation, Flying } from './mhitu.js';
 import { doopen, doopen_indir, doclose, doforce, getdir } from './lock.js';
 import { doextcmd, getlin, mungspaces, extcmd_run_by_txt, paranoid_query } from './getline.js';
-import { strstri, strsubst, upstart, trimspaces } from './hacklib.js';
+import { strstri, strsubst, upstart, trimspaces, dist2 } from './hacklib.js';
 import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, doddoremarm, dowear, doputon, doremring, remarm_swapwep, ia_dotakeoff } from './do_wear.js';
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
@@ -545,6 +545,16 @@ export async function cmdq_print(q) {
 }
 
 /**
+ * C ref: cmd.c rnd_extcmd_idx `:3601–3604` (extern.h:417). Dead in C (no
+ * callers) but extern, so a live export. EXTCMDLIST.length ≡
+ * extcmdlist_length (generated table omits the C null terminator).
+ * @returns {number} C `rn2(extcmdlist_length + 1) - 1`, in [-1, length-1]
+ */
+export function rnd_extcmd_idx() {
+    return rn2(EXTCMDLIST.length + 1) - 1; // C `:3603`
+}
+
+/**
  * C ref: cmd.c reset_cmd_vars `:3606–3624`. travelmap selection_free named.
  * @param {boolean} reset_cmdq
  */
@@ -600,9 +610,18 @@ function do_move_southeast() { set_move_cmd(DIR_SE, 0); return ECMD_TIME; }
 function do_move_south() { set_move_cmd(DIR_S, 0); return ECMD_TIME; }
 function do_move_southwest() { set_move_cmd(DIR_SW, 0); return ECMD_TIME; }
 
-/* C cmd.c do_rush_west `:1461–1465` — extcmdlist "rushwest" `:2026` (:2025
-   rush comment: m prefix but not g/G/F) + move_funcs[][MV_RUSH] `:2071`. */
+/* C cmd.c do_rush_* `:1461–1514` — rush family, C order. extcmdlist
+   "rush*" rows `:2026–2049` (`:2025` rush comment: m prefix but not g/G/F)
+   + move_funcs[][MV_RUSH] `:2071–2078`. Callers dispatch on ef_txt
+   (FUNCT_TXT rows below; MOVE_FUNC_TXT carries the txt column). */
 function do_rush_west() { set_move_cmd(DIR_W, 3); return ECMD_TIME; }
+function do_rush_northwest() { set_move_cmd(DIR_NW, 3); return ECMD_TIME; }
+function do_rush_north() { set_move_cmd(DIR_N, 3); return ECMD_TIME; }
+function do_rush_northeast() { set_move_cmd(DIR_NE, 3); return ECMD_TIME; }
+function do_rush_east() { set_move_cmd(DIR_E, 3); return ECMD_TIME; }
+function do_rush_southeast() { set_move_cmd(DIR_SE, 3); return ECMD_TIME; }
+function do_rush_south() { set_move_cmd(DIR_S, 3); return ECMD_TIME; }
+function do_rush_southwest() { set_move_cmd(DIR_SW, 3); return ECMD_TIME; }
 
 /* C cmd.c do_run_* `:1517–1571` — run family, C order. extcmdlist
    "run*" rows `:2042–2057` (`:2041` run comment: m prefix but not g/G/F)
@@ -2048,6 +2067,13 @@ const FUNCT_TXT = new Map([
     [do_move_south, 'movesouth'],
     [do_move_southwest, 'movesouthwest'],
     [do_rush_west, 'rushwest'],
+    [do_rush_northwest, 'rushnorthwest'],
+    [do_rush_north, 'rushnorth'],
+    [do_rush_northeast, 'rushnortheast'],
+    [do_rush_east, 'rusheast'],
+    [do_rush_southeast, 'rushsoutheast'],
+    [do_rush_south, 'rushsouth'],
+    [do_rush_southwest, 'rushsouthwest'],
     [do_run_west, 'runwest'],
     [do_run_northwest, 'runnorthwest'],
     [do_run_north, 'runnorth'],

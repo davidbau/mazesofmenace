@@ -59,7 +59,7 @@ import { more_experienced } from './exper.js';
 import { getlin, yn_function, ynq } from './getline.js';
 import {
     get_level, find_hell, In_W_tower, On_W_tower_level, In_tutorial,
-    lev_by_name, ledger_to_dnum, ledger_to_dlev,
+    lev_by_name, ledger_to_dnum, ledger_to_dlev, on_level,
 } from './dungeon.js';
 import { depth, distmin } from './hacklib.js';
 import { addinv } from './u_init.js';
@@ -355,13 +355,6 @@ export function is_exclusion_zone(type, x, y) {
     return false;
 }
 
-/** C ref: dungeon.c on_level. Local (priest/shk cycle). */
-function on_level(a, b) {
-    return !!a && !!b
-        && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
-}
-
 /**
  * C ref: priest.c mon_aligntyp — ispriest EPRI / isminion EMIN / data.
  * Local clone avoids priest.js → makemon.js → teleport cycle (D-1110).
@@ -398,6 +391,7 @@ function Displaced() {
 function inhishop(shkp) {
     const eshk = ESHK(shkp);
     if (!eshk) return false;
+    // C shk.c:1044 inhishop gate — live on_level (js/dungeon.js).
     if (!on_level(eshk.shoplevel, game.u?.uz)) return false;
     const shkrooms = in_rooms(shkp.mx, shkp.my, SHOPBASE);
     if (!shkrooms) return false;
@@ -414,6 +408,7 @@ function histemple_at(priest, x, y) {
     if (!epri) return false;
     const rooms = in_rooms(x, y, TEMPLE);
     if (!rooms || (rooms.charCodeAt(0) | 0) !== (epri.shroom | 0)) return false;
+    // C priest.c:157 histemple_at — live on_level (js/dungeon.js).
     return on_level(epri.shrlevel, game.u?.uz);
 }
 
@@ -2603,6 +2598,7 @@ export async function level_tele() {
                 newlev = depth(game.qstart_level);
             }
             get_level(newlevel, newlev);
+            // C teleport.c:1419 level_tele gate — live on_level (js/dungeon.js).
             if (on_level(newlevel, u.uz) && newlev !== depth(u.uz)) {
                 await pline(
                     `You can't get there from ${newlev > deepest ? 'anywhere' : 'here'}.`,
@@ -2648,6 +2644,7 @@ export async function domagicportal(ttmp) {
 
     /* if landed from another portal, do nothing */
     /* problem: level teleport landing escapes the check */
+    // C teleport.c:1460 domagicportal gate — live on_level (js/dungeon.js).
     if (!on_level(u.uz, u.uz0)) return;
 
     await pline('You activated a magic portal!');

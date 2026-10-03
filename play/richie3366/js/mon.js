@@ -66,9 +66,9 @@ import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele, goodpos, is_lminion, Inhell } from './teleport.js';
 import { may_dig, fill_pit } from './dig.js';
 import { newsym, pline, pline_mon, pline_The, verbalize, You_feel, sensemon, canseemon, canspotmon, impossible, describe_level } from './display.js';
-import { online2, level_difficulty } from './hacklib.js';
+import { online2, level_difficulty, dist2 } from './hacklib.js';
 import { worm_cross, level_mon_at, remove_worm, remove_monster_xy, place_wsegs, count_wsegs } from './worm.js';
-import { On_W_tower_level, In_W_tower } from './dungeon.js';
+import { On_W_tower_level, In_W_tower, has_ceiling } from './dungeon.js';
 import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender, s_suffix, safe_oname } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point, vision_recalc } from './vision.js';
 import { any_light_source, emits_light, new_light_source, del_light_source } from './light.js'; // C: mon.c movemon :1332 arm (same 99-module SCC; hoisted fn, runtime use only)
@@ -1121,15 +1121,7 @@ export async function mcalcdistress() {
     }
 }
 
-export function dist2(x0, y0, x1, y1) {
-    const dx = x0 - x1;
-    const dy = y0 - y1;
-    return dx * dx + dy * dy;
-}
-
-export function distmin(x0, y0, x1, y1) {
-    return Math.max(Math.abs(x0 - x1), Math.abs(y0 - y1));
-}
+/* C hacklib.c dist2 — live export js/hacklib.js (imported above); duplicate deleted. */
 
 /**
  * C ref: mon.c monnear — close enough to move/attack into.
@@ -3942,13 +3934,7 @@ export function ceiling_hider(ptr) {
     return (is_clinger(ptr) && ptr.mlet !== 'S_MIMIC') || is_flyer(ptr);
 }
 
-/**
- * C ref: dungeon.c has_ceiling — endgame non-earth has no ceiling.
- */
-function has_ceiling(lev) {
-    if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
-    return true;
-}
+/* C dungeon.c has_ceiling — imported live from dungeon.js. */
 
 /**
  * C ref: mon.c restrap — unwatched hiders may hide again; True if hid.

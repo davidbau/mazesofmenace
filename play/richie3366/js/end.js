@@ -20,7 +20,7 @@ import { genl_outrip_lines } from './rip.js';
 import { Goodbye } from './roles.js';
 import { an, xname, the as theArt, the_unique_obj, the_unique_pm, thesimpleoname } from './objnam.js';
 import {
-    COIN_CLASS, objectNameStrs, objects,
+    objectNameStrs, objects,
     AMULET_CLASS, GEM_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM,
 } from './objects.js';
 import { arti_cost, artiname } from './artifact.js';
@@ -66,7 +66,7 @@ import { genders, aligns, roles, races } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
-import { paybill, money2mon, obfree, doname_with_price } from './shk.js';
+import { paybill, money2mon, money_cnt, obfree, doname_with_price } from './shk.js';
 import { hidden_gold, paygd } from './vault.js';
 import { clearlocks, debugcore, new_nhfile, store_version, FNIDX_HISTORICAL } from './files.js';
 import { clearpriests } from './priest.js';
@@ -80,7 +80,7 @@ import {
     list_vanquished, list_genocided, show_conduct, count_achievements,
     record_achievement,
 } from './insight.js';
-import { show_overview, In_tutorial } from './dungeon.js';
+import { show_overview, In_tutorial, Is_special, Is_branchlev } from './dungeon.js';
 // C: end.c done2 abandon arm → do.c schedule_goto (imports.mjs --can:
 // SAFE, hoisted function decl, call-time use only).
 import { schedule_goto } from './do.js';
@@ -454,14 +454,7 @@ function fixup_death(how) {
     }
 }
 
-/** C ref: invent.c money_cnt */
-function money_cnt(invent) {
-    let sum = 0;
-    for (const o of invent || []) {
-        if (o.oclass === COIN_CLASS) sum += o.quan | 0;
-    }
-    return sum;
-}
+/* money_cnt: canonical import from shk.js (hack.c:4513–4522 — first stack). */
 
 /* deepest_lev_reached: canonical import from hacklib.js (dungeon.c:1338–1371). */
 
@@ -612,28 +605,7 @@ export async function done_object_cleanup() {
     }
 }
 
-/** C ref: dungeon.c on_level — same dnum+dlevel. */
-function on_level(a, b) {
-    return !!a && !!b
-        && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
-}
-
-/** C ref: dungeon.c Is_special — match in sp_levchn. */
-function Is_special(lev) {
-    for (const s of game.sp_levchn || []) {
-        if (on_level(lev, s.dlevel)) return s;
-    }
-    return null;
-}
-
-/** C ref: dungeon.c Is_branchlev — branch end1/end2 match. */
-function Is_branchlev(lev) {
-    for (const br of game.branches || []) {
-        if (on_level(lev, br.end1) || on_level(lev, br.end2)) return br;
-    }
-    return null;
-}
+/* C dungeon.c on_level / Is_branchlev — imported live from dungeon.js. */
 
 /**
  * C ref: bones.c no_bones_level — special/dungeon boneid, botlevel,
@@ -641,6 +613,7 @@ function Is_branchlev(lev) {
  * Named omission: save_dlevel reassignment before the checks.
  */
 export function no_bones_level(lev) {
+    // C bones.c:25 (sptr = Is_special(lev)) — live dungeon.js export.
     const sptr = Is_special(lev);
     if (sptr && !sptr.boneid) return true;
     const dun = game.dungeons?.[lev.dnum | 0];
@@ -1222,6 +1195,7 @@ async function really_done(how) {
     // C: score before bones [container gold]. deepest_lev_reached(FALSE);
     // net umoney0 gain less tithe below PANICKED; depth bonus; ascension
     // bonus for keeping the original deity (half via helm-of-OA return).
+    // money_cnt is C's first COIN_CLASS stack (hack.c:4513–4522), not a sum.
     let umoney = money_cnt(game.invent);
     // C: umoney += hidden_gold(TRUE)
     umoney += hidden_gold(true);
@@ -1312,8 +1286,9 @@ async function really_done(how) {
 }
 
 /**
- * C ref: shk.c finish_paybill — drop invent at repo loc (no messages).
- * Named omissions: impossible off-map arm.
+ * C ref: shk.c finish_paybill `:2723–2755` — repo-loc fallback (C tests
+ * u.ux even when setting oy), unleash_all, invent gold → shkp, then
+ * drop invent at ox,oy (no messages). Whole body live.
  */
 async function finish_paybill() {
     const repo = game.repo || {};
@@ -1322,12 +1297,15 @@ async function finish_paybill() {
     let oy = repo.location?.y | 0;
     const u = game.u || {};
     if (!isok(ox, oy)) {
+        // C `:2735–2737` — off-map repo loc with a live shkp is impossible.
+        if (shkp) await impossible('finish_paybill: bad location <%d,%d>.', ox, oy);
         ox = u.ux ? u.ux : (u.ux0 | 0);
         oy = u.ux ? u.uy : (u.uy0 | 0);
     }
     /* C shk.c:2745 — normally done by savebones, too late here */
     unleash_all();
     if (shkp) {
+        // C `:2749` — first stack (hack.c:4513–4522), not a sum.
         const umoney = money_cnt(game.invent);
         if (umoney) money2mon(shkp, umoney);
     }

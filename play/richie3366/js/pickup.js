@@ -3755,6 +3755,35 @@ function container_gone(fn) {
 }
 
 /**
+ * C invent.c safeq_xprn_ctx `:2173–2176` — context for the safe_qbuf
+ * callbacks below, written by askchain `:2451–2452` (ilet + nodot).
+ * C zero-init; always rewritten before the callbacks run.
+ */
+const safeq_xprn_ctx = { let: '\0', dot: false };
+
+/**
+ * C invent.c safeq_xprname `:2179–2184` (staticfn) — safe_qbuf() func
+ * callback for invent chains (askchain `:2463`): xprname with no
+ * override text. JS xprname arg order is (obj, let, dot, quan, txt,
+ * cost) vs C (obj, txt, let, dot, cost, quan).
+ */
+function safeq_xprname(obj) {
+    return xprname(obj, safeq_xprn_ctx.let, safeq_xprn_ctx.dot, 0, null, 0);
+}
+
+/**
+ * C invent.c safeq_shortxprname `:2187–2192` (staticfn) — safe_qbuf()
+ * altfunc callback for invent chains (askchain `:2464`): xprname over
+ * the short name.
+ */
+function safeq_shortxprname(obj) {
+    return xprname(
+        obj, safeq_xprn_ctx.let, safeq_xprn_ctx.dot, 0,
+        ansimpleoname(obj), 0,
+    );
+}
+
+/**
  * C invent.c askchain `:2376–2541`. Live: put-in/take-out, take off,
  * identify (D-1602), drop (D-1635), ret: global clear_bypasses `:2539`
  * (unsortloot `:2535` frees the Loot array — GC here).
@@ -3804,6 +3833,9 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
 
             let sym;
             if (!allflag) {
+                // C askchain `:2451–2452` — safeq callback context.
+                safeq_xprn_ctx.let = iletCh;
+                safeq_xprn_ctx.dot = !nodot;
                 let qpfx = '';
                 if (first) {
                     if (take_out || put_in) {
@@ -3811,13 +3843,14 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
                     }
                     first = false;
                 }
-                const letch = (ininv && game.flags?.invlet_constant !== false
-                    && otmp.invlet)
-                    ? otmp.invlet : iletCh;
-                const shown = ininv
-                    ? xprname(otmp, letch, !nodot)
-                    : doname(otmp);
-                const qbuf = `${qpfx}${shown}?`;
+                // C `:2462–2465` — safe_qbuf with the safeq callbacks on
+                // invent chains (doname/ansimpleoname on floor chains).
+                const qbuf = safe_qbuf(
+                    null, qpfx, '?', otmp,
+                    ininv ? safeq_xprname : doname,
+                    ininv ? safeq_shortxprname : ansimpleoname,
+                    'item',
+                );
                 const resp = (takeoff || ident || otmp.quan < 2)
                     ? ynaqchars : ynNaqchars;
                 /* C invent.c askchain `:2466–2470` FALSE — not ^A canned. */

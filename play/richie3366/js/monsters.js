@@ -200,6 +200,30 @@ export function commit_pm_fixup(mndx, patch) {
     };
 }
 
+/**
+ * C ref: monst.c `monst_globals_init` `:71–76` — whole body in C order:
+ * `memcpy(mons, mons_init, sizeof mons)`. Two live-game divergence
+ * channels model the C in-place writers of `mons[]`: the `game.pm_fixup`
+ * overlay (`commit_pm_fixup`, modeling role.c role_init `:2029–2056`
+ * in-place fixups of mons[ldr/guard/nem]: msound, M2/M3 flags,
+ * maligntyp; the role.c `:2109` infravision fixup is `#if 0`) and the
+ * `adj_erinys` mutations of the generated baseline arrays (mon.c
+ * `:5918–5966`: mflags1, mattk[0..2], mlevel, difficulty of
+ * mons[PM_ERINYS]). Clearing the overlay plus `reset_erinys()` restores
+ * baseline, exactly like the memcpy. Genocide state is NOT part
+ * of `mons[]`: every C G_GENOD/G_EXTINCT writer targets
+ * `svm.mvitals[].mvflags` (makemon.c:968/979/1529, mon.c:3144, read.c,
+ * timeout.c, wizcmds.c:80; `mk_gen_ok` reads both), so `game.mvitals` is
+ * untouched here — as are `mongen_order[]`/`mclass_maxf[]` (makemon.js
+ * module state, separate C globals).
+ * Callers: jsmain.js start() (C allmain.c:42 early_init), makemon.js
+ * dump_mongen (C makemon.c:1841); makedefs.c:306 by-design (build tool).
+ */
+export function monst_globals_init() {
+    game.pm_fixup = Object.create(null);
+    reset_erinys();
+}
+
 export function mons(mndx) {
     if (mndx == null || mndx < 0 || mndx >= NUMMONS) return null;
     const fix = game.pm_fixup?.[mndx];
@@ -514,7 +538,7 @@ export function is_whirly(ptr) {
     if (ptr.mlet === 'S_VORTEX') return true;
     return (ptr.mndx ?? -1) === PM_AIR_ELEMENTAL;
 }
-/** C: grounded — not flyer/floater; clingers need ceiling (always assume has). */
+/** C: grounded — not flyer/floater; clingers need ceiling (always assume has). Static edge to dungeon.js has_ceiling TDZs (monsters→dungeon→dbridge→uhitm→monsters breaks uhitm.js MZ_MEDIUM top-level read) — omission named in the D-log. */
 export function grounded(ptr) {
     if (!ptr) return true;
     if (is_flyer(ptr) || is_floater(ptr)) return false;

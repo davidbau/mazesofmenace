@@ -11,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnz, d } from './rng.js';
-import { depth, builds_up, level_difficulty, upstart } from './hacklib.js';
+import { depth, builds_up, level_difficulty, upstart, dist2 } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
     DIR_DOWN, DIR_UP, I_SPECIAL, W_ARTI, W_ART, TOOKPLUNGE, VIBRATING_SQUARE,
@@ -96,14 +96,14 @@ import {
     maxledgerno, ledger_to_dnum, find_hell,
     dunlev, dunlevs_in_dungeon, assign_rnd_level,
     On_W_tower_level, In_W_tower,
-    save_exclusions, load_exclusions,
+    save_exclusions, load_exclusions, on_level,
 } from './dungeon.js';
 import { record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
 import { com_pager, deliver_by_pline } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
-import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon } from './mon.js';
+import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon } from './mon.js';
 import { enexto, rloc, safe_teleds } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
@@ -1371,9 +1371,7 @@ function ledger_no(lev) {
     return ((dun?.ledger_start | 0) + dlevel) | 0;
 }
 
-function on_level(a, b) {
-    return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
-}
+/* C dungeon.c on_level — imported live from dungeon.js (clone was already the unguarded |0 shape; C NONNULLARG12). */
 
 /** C ref: dungeon.h In_hell — dungeon hellish flag. */
 function In_hell(lev) {
@@ -2793,7 +2791,7 @@ export async function better_not_try_to_drop_that(otmp) {
 /**
  * C ref: do.c teleport_sink `:459–494` (staticfn) — teleport the sink at
  * the hero to a random ROOM square; TRUE if the sink moved (D-2527).
- * `dipsink_set_levltyp` (fountain.js) is the shared sink-count analog.
+ * `dipsink_set_levltyp` (fountain.js) is the shared sink-count alias (live set_levltyp; D-3319).
  * @returns {boolean}
  */
 function teleport_sink() {

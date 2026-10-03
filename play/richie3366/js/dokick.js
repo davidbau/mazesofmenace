@@ -31,6 +31,9 @@ import {
     glyph_at, glyph_is_invisible_id, show_glyph_cell,
 } from './display.js';
 import { vision_recalc, recalc_block_point, couldsee, cansee } from './vision.js';
+// C ref: dungeon.c on_level `:1438–1443` — canonical dnum+dlevel equality
+// (hoisted fn, cycle-safe per imports.mjs --can dokick.js dungeon.js).
+import { on_level } from './dungeon.js';
 import { getdir, breakchestlock } from './lock.js';
 import { yn_function } from './getline.js';
 import { kick_steed } from './steed.js';
@@ -1776,11 +1779,9 @@ export async function dokick() {
     return await kick_nondoor(x, y, avrg_attrib);
 }
 
-function on_level(a, b) {
-    return !!(a && b
-        && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0));
-}
+/* dungeon.c on_level now imported from dungeon.js (live export) — local
+   guarded clone deleted (D-3330). C never passes NULL (lev1->dnum would
+   fault); the sole site passes u.uz + qstart_level, both non-null. */
 
 /**
  * C ref: dokick.c down_gate — migration dest for objects falling down.
@@ -1789,6 +1790,7 @@ function on_level(a, b) {
 export function down_gate(x, y) {
     const u = game.u || {};
     game.gate_str = null;
+    // C dokick.c:1950 — down_gate quest-level gate (live dungeon.js import).
     if (on_level(u.uz, game.qstart_level) && !ok_to_quest()) {
         return MIGR_NOWHERE;
     }

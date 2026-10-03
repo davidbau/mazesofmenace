@@ -12,7 +12,7 @@
 // drinkfountain case 24 buc_changed → update_inventory (D-1126).
 // drinkfountain fate<10 uhunger += rnd(10) + newuhs(FALSE) (D-1359).
 // gush m_at → minliquid else newsym (D-1117).
-// Deferred: set_levltyp side effects beyond typ/flags.
+// set_levltyp sites call the live trap.js export (D-3319).
 // mongrantswish tmp_at(DISP_ALWAYS, glyph_at) hide (D-1136).
 // dowatersnakes Hallucination makeplural(rndmonnam(NULL)) (D-1125).
 // dryup wizard y_n after town warn (D-1096).
@@ -57,13 +57,14 @@ import {
 } from './mkobj.js';
 import {
     water_damage, water_damage_chain, t_at, deltrap, delfloortrap, mintrap, NO_TRAP_FLAGS,
+    set_levltyp,
 } from './trap.js';
 import {
     COIN_CLASS, RING_CLASS, POTION_CLASS, POT_WATER,
-    objectNames, objectNameStrs, objectDescrs, objects,
+    objectNames, objectDescrs, objects,
 } from './objects.js';
 import {
-    ROOM, FOUNTAIN, IS_FOUNTAIN, IS_SINK, SINK, THRONE, ALTAR, GRAVE,
+    ROOM, FOUNTAIN, IS_FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     IS_DOOR, SDOOR, POOL, u_at, isok,
     ER_NOTHING, ER_GREASED, ER_DESTROYED, GLIB,
     F_LOOTED, F_WARNED, FROMOUTSIDE, S_LRING, T_LOOTED, MM_NOMSG,
@@ -73,7 +74,8 @@ import {
     KILLED_BY, G_GONE, M_SEEN_FIRE,
     SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP,
     TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP, ANTI_MAGIC,
-    is_pit, is_hole, ARTICLE_A, ARM, HEAD, HAND, FINGER,
+    TT_INFLOOR, TT_LAVA,
+    is_pit, is_hole, ARTICLE_A, ARM, HEAD, HAND, FACE,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
     POLY_NOFLAGS, UNCHANGING,
     DISP_ALWAYS, DISP_END,
@@ -99,7 +101,7 @@ import { monstseesu, monstunseesu, mhis, mhe } from './mondata.js';
 import { observe_object, enlightenment, update_inventory, useup } from './invent.js';
 import {
     hliquid, hcolor, x_monnam, Hallucination, rndmonnam, oname,
-    trycall,
+    trycall, a_monnam,
 } from './do_name.js';
 import {
     exist_artifact, artiname, discover_artifact, ART_EXCALIBUR,
@@ -112,6 +114,9 @@ import { somegold } from './steal.js';
 import { yn_function } from './getline.js';
 import { visible_region_at, create_gas_cloud } from './region.js';
 import { fruitname } from './potion.js';
+import { surface } from './sit.js';
+import { money_cnt } from './shk.js';
+import { fingers_or_gloves } from './do_wear.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
@@ -237,15 +242,6 @@ async function get_iter_mons(bfunc) {
     return null;
 }
 
-/** C ref: invent.c money_cnt — sum COIN_CLASS quan (invent is a JS array). */
-function money_cnt(invent) {
-    let sum = 0;
-    for (const o of invent || []) {
-        if (o.oclass === COIN_CLASS) sum += o.quan | 0;
-    }
-    return sum;
-}
-
 /**
  * C ref: fountain.c dofindgem — gem in sparkling waters.
  * mksobj_at(..., FALSE, FALSE): next_ident only (no mksobj_init).
@@ -269,19 +265,22 @@ async function dofindgem() {
     exercise(A_WIS, true);
 }
 
-/** C ref: fountain.c floating_above — dip/drink while levitating. */
+/**
+ * C ref: fountain.c floating_above `:21–32` — dip/drink/dodown while
+ * levitating. Default "floating high above"; the `:25–30` arm (utrap &&
+ * utraptype INFLOOR/LAVA, only reachable via dodown since fountains and
+ * sinks never sit on such traps) overrides with "trapped in the %s" +
+ * surface(u.ux,u.uy). You(umsg, what) in C order.
+ */
 export async function floating_above(what) {
-    await pline(`You are floating high above the ${what}.`);
-}
-
-/** C ref: do_name.c a_monnam — ARTICLE_A (hallu deferred). */
-function a_monnam(mtmp) {
-    if (!mtmp) return 'a monster';
-    if (mtmp.mextra?.mgivenname) return mtmp.mextra.mgivenname;
-    const raw = mtmp?.data?.name || 'monster';
-    const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-    const art = /^[aeiou]/i.test(plain) ? 'an' : 'a';
-    return `${art} ${plain}`;
+    const u = game.u || {};
+    let umsg = 'are floating high above the %s.';
+    if (u.utrap && ((u.utraptype | 0) === TT_INFLOOR
+        || (u.utraptype | 0) === TT_LAVA)) {
+        umsg = 'are trapped in the %s.';
+        what = surface(u.ux, u.uy); /* probably redundant */
+    }
+    await You(umsg, what);
 }
 
 /** Potion appearance string for faucet liquid (OBJ_DESCR). */
@@ -312,16 +311,15 @@ export async function breaksink(x, y) {
     if (cansee(x, y) || (u.ux === x && u.uy === y)) {
         await pline('The pipes break!  Water spurts out!');
     }
+    // C fountain.c:586 — set_levltyp(x,y,FOUNTAIN) via the live export
+    // (D-3319): SINK→FOUNTAIN moves nsinks--/nfountains++ there.
+    set_levltyp(x, y, FOUNTAIN);
     const loc = game.level?.at(x, y);
     if (loc) {
-        loc.typ = FOUNTAIN;
+        // C :587–589 — looted/blessedftn reset + SET_FOUNTAIN_LOOTED.
         loc.looted = 0;
         loc.blessedftn = 0;
         SET_FOUNTAIN_LOOTED(x, y);
-    }
-    if (game.level?.flags) {
-        if ((game.level.flags.nsinks | 0) > 0) game.level.flags.nsinks--;
-        game.level.flags.nfountains = (game.level.flags.nfountains | 0) + 1;
     }
     newsym(x, y);
 }
@@ -330,7 +328,7 @@ export async function breaksink(x, y) {
  * C ref: fountain.c sink_backs_up — kick/drink mud + once-per-sink ring.
  * Branch envelope: Blind/Deaf msg; Flupp prefix when !Deaf; S_LRING gate
  * → You_see ring + mkobj_at RING_CLASS + exercise DEX/WIS.
- * Named omit: body_part(FACE) poly forms (humanoid "face").
+ * Blind+Deaf arm uses live body_part(FACE) (D-3318; was humanoid "face").
  */
 export async function sink_backs_up(x, y) {
     const u = game.u || {};
@@ -339,7 +337,7 @@ export async function sink_backs_up(x, y) {
     let buf;
     if (!Blind) buf = 'Muddy waste pops up from the drain';
     else if (!Deaf) buf = 'You hear a sloshing sound';
-    else buf = 'Something splashes you in the face';
+    else buf = `Something splashes you in the ${body_part(FACE)}`;
     await pline(`${!Deaf ? 'Flupp!  ' : ''}${buf}.`);
 
     const loc = game.level?.at(x, y);
@@ -659,7 +657,7 @@ export function nexttodoor(sx, sy) {
  * D-1148: occupied minliquid survivor failed rloc → deal_with_overcrowding.
  * delfloortrap is the canonical trap.js export (C trap.c); its hero
  * reset_utrap arm is unreachable here — gush returns early on u_at cells.
- * Named omissions: full set_levltyp side effects (typ/flags only).
+ * set_levltyp via the live trap.js export (D-3319).
  */
 async function gush(x, y, poolcnt) {
     const u = game.u || {};
@@ -677,9 +675,11 @@ async function gush(x, y, poolcnt) {
         await pline('Water gushes forth from the overflowing fountain!');
     }
 
+    // C fountain.c:152 — set_levltyp(x,y,POOL) via the live export
+    // (D-3319); ROOM→POOL touches no fountain/sink counts. :153 flags=0.
+    set_levltyp(x, y, POOL);
     const loc = game.level?.at(x, y);
     if (loc) {
-        loc.typ = POOL;
         loc.flags = 0;
     }
     del_engr_at(x, y);
@@ -743,12 +743,11 @@ export async function dryup(x, y, isyou) {
     if (cansee(x, y) && !glyph_at_cmap_is_s_cloud(x, y)) {
         await pline('The fountain dries up!');
     }
-    loc.typ = ROOM;
+    // C fountain.c:231 — set_levltyp(x,y,ROOM) via the live export
+    // (D-3319); :232–233 clear flags + blessedftn like C.
+    set_levltyp(x, y, ROOM);
     loc.flags = 0;
     loc.blessedftn = 0;
-    if (game.level?.flags && (game.level.flags.nfountains | 0) > 0) {
-        game.level.flags.nfountains--;
-    }
     newsym(x, y);
     // C fountain.c:236–237 — after ROOM/newsym, not on the town-warn return.
     if (isyou && in_town(x, y)) {
@@ -930,31 +929,6 @@ function wash_Glib() {
 }
 
 /**
- * C ref: objnam.c gloves_simple_name — "gauntlets" iff dknown and
- * (oc_name_known ? OBJ_NAME : OBJ_DESCR) contains "gauntlets".
- */
-function gloves_simple_name(gloves) {
-    if (gloves && gloves.dknown) {
-        const otyp = gloves.otyp | 0;
-        const ocl = objects()?.[otyp];
-        const actualn = objectNameStrs[otyp] || '';
-        const descrpn = objectDescrs[otyp] || '';
-        const s = ocl?.oc_name_known ? actualn : descrpn;
-        if (String(s).toLowerCase().includes('gauntlets')) return 'gauntlets';
-    }
-    return 'gloves';
-}
-
-/**
- * C ref: do_wear.c fingers_or_gloves — gloves vs makeplural(FINGER).
- */
-function fingers_or_gloves(check_gloves) {
-    const u = game.u || {};
-    if (check_gloves && u.uarmg) return gloves_simple_name(u.uarmg);
-    return makeplural(body_part(FINGER));
-}
-
-/**
  * C ref: fountain.c wash_hands — dip '-' or worn gloves in fountain.
  * Always You-wash pline; clear Glib + slippery pline; water_damage(uarmg);
  * was_glib && ER_NOTHING → ER_GREASED so dipfountain's er!=NOTHING / !rn2(2)
@@ -1013,33 +987,14 @@ function dunlevs_in_dungeon(lev) {
 }
 
 /**
- * Incremental analog of mkmaze.c set_levltyp fountain/sink counts.
- * Named omit: ice timers, CAN_OVERWRITE, full count_level_features scan.
- * Exported for do.c teleport_sink (D-2527).
+ * Thin alias over the live mkmaze.c set_levltyp export (D-3319):
+ * identical typ write + fountain/sink counts, plus C's
+ * isok/range/CAN_OVERWRITE guards and ice/lava arms. Retires the
+ * incremental analog (ice timers, CAN_OVERWRITE, rescan omits).
+ * Kept as a named export for do.c teleport_sink (D-2527).
  */
 export function dipsink_set_levltyp(x, y, newtyp) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return;
-    const oldtyp = loc.typ | 0;
-    loc.typ = newtyp;
-    const lf = game.level?.flags;
-    if (!lf) return;
-    if (IS_FOUNTAIN(oldtyp) !== IS_FOUNTAIN(newtyp)
-        || IS_SINK(oldtyp) !== IS_SINK(newtyp)) {
-        if (IS_FOUNTAIN(oldtyp) && !IS_FOUNTAIN(newtyp)
-            && (lf.nfountains | 0) > 0) {
-            lf.nfountains--;
-        }
-        if (!IS_FOUNTAIN(oldtyp) && IS_FOUNTAIN(newtyp)) {
-            lf.nfountains = (lf.nfountains | 0) + 1;
-        }
-        if (IS_SINK(oldtyp) && !IS_SINK(newtyp) && (lf.nsinks | 0) > 0) {
-            lf.nsinks--;
-        }
-        if (!IS_SINK(oldtyp) && IS_SINK(newtyp)) {
-            lf.nsinks = (lf.nsinks | 0) + 1;
-        }
-    }
+    return set_levltyp(x, y, newtyp);
 }
 
 /**
@@ -1251,16 +1206,17 @@ export async function dipfountain(obj) {
         // Default perm_invent Off: tty without TTY_PERM_INVENT no-ops
         // (D-1126). Not artidisco save/rest.
         update_inventory();
+        // C fountain.c:442 — set_levltyp(u.ux,u.uy,ROOM) via the live
+        // mkmaze.c export (D-3319): typ + incremental counts (≡ C's
+        // count_level_features rescan while counts are consistent) plus
+        // C's isok/range/CAN_OVERWRITE guards and ice/lava arms.
+        set_levltyp(u.ux, u.uy, ROOM);
         const loc = game.level?.at(u.ux, u.uy);
         if (loc) {
-            // C set_levltyp(u.ux,u.uy,ROOM) + levl[].flags=0.
-            // Full set_levltyp (ice/lava/count_level_features) still named.
-            loc.typ = ROOM;
+            // C :443 — flags=0. looted=0 retained (pre-existing; C keeps
+            // the dormant fountain bits, unobservable once ROOM).
             loc.flags = 0;
             loc.looted = 0;
-            if (game.level?.flags && (game.level.flags.nfountains | 0) > 0) {
-                game.level.flags.nfountains--;
-            }
         }
         newsym(u.ux, u.uy);
         if (in_town(u.ux, u.uy)) {

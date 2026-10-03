@@ -75,7 +75,7 @@ import {
 import { same_race, cantvomit, defended } from './mondata.js';
 import { were_beastie, set_ulycn, you_unwere } from './were.js';
 import { monflee } from './monmove.js';
-import { dist2, rescham } from './mon.js';
+import { rescham } from './mon.js';
 import { set_occupation, can_reach_floor } from './engrave.js';
 import {
     OBJ_FREE, OBJ_INVENT,
@@ -139,7 +139,7 @@ import {
     wield_tool, uwepgone, uswapwepgone, uqwepgone, welded,
 } from './wield.js';
 import { pluslvl, more_experienced, newexplevel, setuhpmax } from './exper.js';
-import { toggle_displacement, setworn, Ring_gone } from './do_wear.js';
+import { toggle_displacement, setworn, Ring_gone, fingers_or_gloves } from './do_wear.js';
 import { attrcurse, surface } from './sit.js';
 import { dismount_steed } from './steed.js';
 import { unpunish } from './read.js';
@@ -148,7 +148,7 @@ import { set_mimic_blocking } from './vision.js';
 import {
     PM_KNIGHT, PM_WIZARD, PM_ELF, PM_VALKYRIE,
 } from './generated/monsters_data.js';
-import { str_start_is } from './hacklib.js';
+import { str_start_is, dist2 } from './hacklib.js';
 import { retouch_object, touch_artifact, retouch_equipment } from './artifact.js';
 import { remove_worn_item } from './steal.js';
 
@@ -2714,11 +2714,6 @@ function the_unique_pm(ptr) {
         uniq = true;
     }
     return uniq;
-}
-
-/** C ref: potion.c / youprop fingers_or_gloves — gloves vs fingers. */
-function fingers_or_gloves(_capitalize) {
-    return game.u?.uarmg ? 'gloves' : 'fingers';
 }
 
 /**

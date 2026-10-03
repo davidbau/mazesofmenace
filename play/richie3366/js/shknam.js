@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { depth as depth_of_level } from './hacklib.js';
+import { depth as depth_of_level, distmin } from './hacklib.js';
 import {
     RANDOM_CLASS,
     ARMOR_CLASS,
@@ -47,7 +47,7 @@ import { obj_resists } from './dogmove.js';
 import { in_town } from './hack.js';
 import { rloc } from './teleport.js';
 import { noit_mon_nam } from './do_name.js';
-import { discard_minvent } from './mon.js';
+import { discard_minvent, m_at } from './mon.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
 const VEGGY = 3; // objclass.h
@@ -264,18 +264,6 @@ export const shtypes = [
         ],
     },
 ];
-
-function distmin(x0, y0, x1, y1) {
-    return Math.max(Math.abs(x0 - x1), Math.abs(y0 - y1));
-}
-
-function m_at(x, y) {
-    for (const m of (game.fmon || [])) {
-        if (m && m.mx === x && m.my === y) return m;
-    }
-    return null;
-}
-
 
 function ledger_no(lev) {
     const dun = game.dungeons?.[lev?.dnum | 0];
@@ -625,6 +613,8 @@ function mkshobj_at(shp, sx, sy, mkspecl) {
     }
 
     const dep = Math.abs(depth_of_level(game.u?.uz) | 0);
+    // C shknam.c:470 !MON_AT(sx, sy) — no JS MON_AT export; live m_at
+    // (mon.js) is null iff the square is unoccupied at stock time.
     if (rn2(100) < dep && !m_at(sx, sy)) {
         const ptr = mkclass('S_MIMIC', 0);
         if (ptr && makemon(ptr, sx, sy, 0)) return;
@@ -645,6 +635,7 @@ function stock_room_goodpos(sroom, rmno, sh, sx, sy) {
     const door = game.level?.doors?.[sh];
     if (sroom.irregular) {
         const loc = game.level.at(sx, sy);
+        // C shknam.c:700 — distmin(sx, sy, svd.doors[sh].x, svd.doors[sh].y) <= 1.
         if (!loc || loc.edge || (loc.roomno | 0) !== rmno
             || !door || distmin(sx, sy, door.x, door.y) <= 1) {
             return false;

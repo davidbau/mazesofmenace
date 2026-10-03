@@ -40,7 +40,7 @@ import {
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM, Fumbling } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks, check_capacity } from './hack.js';
-import { ing_suffix, upstart, highc, strstri } from './hacklib.js';
+import { ing_suffix, upstart, highc, strstri, dist2 } from './hacklib.js';
 import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
 import {
@@ -86,10 +86,10 @@ import {
     weight, obj_stop_timers, objects_at, splitobj,
 } from './mkobj.js';
 import {
-    monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
+    monnear, record_mvitals_died, seemimic, wakeup, setmangry,
     m_next2u, wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unique_corpstat,
-    iter_mons, anger_quest_guardians, NODIAG, angry_guards,
+    iter_mons, anger_quest_guardians, NODIAG, angry_guards, m_at,
 } from './mon.js';
 import { monflee, m_move, accessible } from './monmove.js';
 import { livelog_printf } from './pline.js';
@@ -462,12 +462,7 @@ export function mundisplaceable(mon) {
     return false;
 }
 
-function m_at(x, y) {
-    for (const m of game.fmon || []) {
-        if (m.mx === x && m.my === y) return m;
-    }
-    return null;
-}
+/* rm.h m_at now imported from mon.js (live export) — fmon-only clone deleted (D-3330). */
 
 /* weapon.c abon now imported from weapon.js (canonical home). */
 
@@ -3613,6 +3608,7 @@ async function hitum_cleave(target, uattk) {
         const tx = x + xdir[i], ty = y + ydir[i];
         if (!isok(tx, ty))
             continue;
+        // C uhitm.c:699 — cleave sweep reads m_at(tx, ty) (live mon.js import).
         const mtmp = m_at(tx, ty);
         if (!mtmp) {
             if (memory_glyph_is_invisible(game.level?.at?.(tx, ty)))
@@ -3688,6 +3684,7 @@ async function hitum(mon, uattk) {
 
     // Second swing: twoweapon or skilled bare-hand; skip if Stormbringer
     // override, paralyzed, life-saved, or target dead/moved.
+    // C uhitm.c:799 m_at(x, y) != mon — target still on its square.
     if (gt_twohits && !(game.override_confirmation
         || (game.multi | 0) < 0
         || (u.umortality | 0) > oldumort
@@ -4212,6 +4209,7 @@ export async function hmonas(mon) {
     for (let i = 0; i < NATTK; i++) {
         if (i > 0) {
             const bp = game.bhitpos || {};
+            // C uhitm.c:5459 m_at(bhitpos) != mon — knocked back out of range.
             if (m_at(bp.x, bp.y) !== mon || (mon.mhp | 0) < 1) continue;
         }
         const mattk = get_mattk(ym, i, mon, sum);
@@ -4258,7 +4256,7 @@ export async function hmonas(mon) {
                 sum[i] = M_ATTK_DEF_DIED;
             } else {
                 sum[i] = dhit ? M_ATTK_HIT : M_ATTK_MISS;
-                // C: worm cut in half → i=NATTK; goto passivedone
+                // C uhitm.c:5539 m_at(ux+dx, uy+dy) != mon — worm cut in half → skip.
                 if (m_at((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))
                     !== mon) {
                     skip_passive = true;
@@ -5097,5 +5095,6 @@ export async function do_attack(mtmp) {
 }
 
 export function mon_at(x, y) {
+    // C rm.h:510–511 — delegates to the live m_at grid lookup.
     return m_at(x, y);
 }

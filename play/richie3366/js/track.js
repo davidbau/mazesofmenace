@@ -14,7 +14,7 @@
 
 import { game } from './gstate.js';
 import { objectNames } from './objects.js';
-import { distmin } from './mon.js';
+import { distmin } from './hacklib.js';
 
 const UTSZ = 100;
 const RIN_STEALTH = objectNames.indexOf('RIN_STEALTH');

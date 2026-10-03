@@ -132,6 +132,9 @@ import { burn_away_slime } from './timeout.js';
 import { hliquid, christen_monst, mon_nam, Monnam, s_suffix } from './do_name.js';
 import { mhis } from './mondata.js';
 import { digests, enfolds } from './mhitu.js';
+// C ref: hack.c money_cnt `:4513–4522` — first COIN_CLASS quan, not a sum.
+// imports.mjs SAFE (hoisted fn; cycle alone is not a blocker).
+import { money_cnt } from './shk.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const TOWEL = objectNames.indexOf('TOWEL');
@@ -1076,19 +1079,6 @@ async function You_sit_message(what) {
 }
 
 /**
- * C ref: hack.c money_cnt — first COIN_CLASS quan on the invent
- * chain (gold merges, so first pile is the wallet). Not a sum.
- * Local: sit cannot import the other money_cnt clones (end/shk
- * cycles). JS invent is an array ≡ C nobj walk.
- */
-function money_cnt(invent) {
-    for (const otmp of invent || []) {
-        if (otmp.oclass === COIN_CLASS) return otmp.quan | 0;
-    }
-    return 0;
-}
-
-/**
  * C objects.h FOOD("egg", …, 80, …). Extractor may omit oc_nutrition.
  */
 function egg_oc_nutrition() {
@@ -1220,7 +1210,8 @@ export async function dosit() {
         if (youdata?.mlet === 'S_DRAGON' && obj.oclass === COIN_CLASS) {
             // C sit.c dosit: You("coil up around your %shoard.",
             // (obj->quan + money_cnt(gi.invent) < u.ulevel * 1000)
-            // ? "meager " : "") — first invent gold pile, not a sum.
+            // ? "meager " : "") — first invent gold pile, not a sum
+            // (live hack.c money_cnt via js/shk.js: null-guard + |0 arms).
             const meager =
                 ((obj.quan | 0) + money_cnt(game.invent)
                     < (u.ulevel | 0) * 1000)

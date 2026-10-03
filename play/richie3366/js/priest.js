@@ -36,6 +36,7 @@ import { just_an } from './objnam.js';
 import { align_gname, roles } from './roles.js';
 import { HALU_GODS } from './pray.js';
 import { assign_level } from './do.js';
+import { on_level } from './dungeon.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
@@ -49,13 +50,6 @@ const ALGN_DEVOUT = 14;
 /** C: helpless — msleeping || !mcanmove */
 function helpless(mtmp) {
     return !!(mtmp?.msleeping || mtmp?.mcanmove === 0);
-}
-
-/** C ref: dungeon.c on_level */
-function on_level(a, b) {
-    return !!a && !!b
-        && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
 }
 
 /**
@@ -95,6 +89,7 @@ function histemple_at(priest, x, y) {
     if (!epri) return false;
     const rooms = in_rooms(x, y, TEMPLE);
     if (!rooms || (rooms.charCodeAt(0) | 0) !== (epri.shroom | 0)) return false;
+    // C priest.c:157 histemple_at — live on_level (js/dungeon.js).
     return on_level(epri.shrlevel, game.u?.uz);
 }
 
@@ -770,6 +765,7 @@ export async function clearpriests() {
     const u = game.u || {};
     for (const mtmp of [...(game.fmon || [])]) {
         if ((mtmp.mhp | 0) < 1) continue;
+        // C priest.c:926 clearpriests — live on_level (js/dungeon.js).
         if (mtmp.ispriest && !on_level(EPRI(mtmp)?.shrlevel, u.uz)) {
             await mongone(mtmp);
         }

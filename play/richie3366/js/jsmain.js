@@ -11,13 +11,11 @@
 // For browser play, see nethack.js (uses NethackGame directly).
 
 import { game, resetGame } from './gstate.js';
-import { decl_globals_init, program_state_init } from './decl.js';
-import { sys_early_init } from './sys.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { setStorageForTesting, vfsReadFile, vfsWriteFile } from './storage.js';
 import { SYSCONF_TEXT } from './generated/sysconf_data.js';
 import { pushKey, nhgetch } from './input.js';
-import { newgame, moveloop_core, welcome, moveloop_preamble, init_sound_disp_gamewindows } from './allmain.js';
+import { newgame, moveloop_core, welcome, moveloop_preamble, init_sound_disp_gamewindows, early_init } from './allmain.js';
 import { getmailstatus } from './mail.js';
 import { try_restore_save } from './save.js';
 import { vision_init, vision_recalc, init_vision_globals } from './vision.js';
@@ -127,9 +125,11 @@ export class NethackGame {
 
     async start() {
         const g = resetGame();
-        program_state_init(); // C allmain.c:35 early_init → program_state_init (decl.c:1074–1077)
-        decl_globals_init(); // C allmain.c:41 early_init → decl_globals_init (decl.c:1080–1187)
-        sys_early_init(); // C allmain.c:43 early_init → sys_early_init (sys.c:20–112)
+        // C allmain.c:33–45 early_init (sole C caller unixmain.c:66, the port
+        // entry): program_state `:35`, crashreport `:38`, decl `:40`,
+        // objects `:41`, monst `:42`, sys `:43`, runtime `:44`. (0, []):
+        // no argv in dual-runtime ESM (Rule #2); crashreport voids them.
+        early_init(0, []);
         reset_display_messages();
         // Frozen VFS contract: the harness shares this handle across segments.
         // Belt-and-braces: if _storage was nulled after construction, fall

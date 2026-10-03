@@ -38,6 +38,7 @@ import { del_engr_at, make_grave, sticks } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
 import { rloc, enexto } from './teleport.js';
 import { yelp } from './sounds.js';
+import { on_level } from './dungeon.js';
 import {
     place_object, stackobj, obj_extract_self, g_at, sobj_at, add_to_minv,
     spot_stop_timers,
@@ -138,13 +139,6 @@ function mongone_guard(mtmp) {
     if (ox || oy) newsym(ox, oy);
 }
 
-/** C ref: dungeon.c on_level */
-function on_level(a, b) {
-    return !!a && !!b
-        && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
-}
-
 /**
  * C ref: vault.c blackout — unlit STONE + clear seenv from restored cell
  * and its 8-neighbourhood (scroll/wand of light must not linger).
@@ -175,6 +169,7 @@ export async function clear_fcorr(grd, forceshow) {
     const egrd = EGD(grd);
     if (!egrd) return true;
     const u = game.u;
+    // C vault.c:58 clear_fcorr gate — live on_level (js/dungeon.js).
     if (!on_level(egrd.gdlevel, u?.uz)) return true;
 
     let sawcorridor = false;
@@ -1089,7 +1084,8 @@ export async function gd_move(grd) {
     if (!egrd) return -1;
     const u = game.u || {};
 
-    if (!on_level(egrd.gdlevel, u.uz)) return -1; // :893-894
+    // C vault.c:901 gd_move gate — live on_level (js/dungeon.js).
+    if (!on_level(egrd.gdlevel, u.uz)) return -1;
 
     const semi_dead = (grd.mhp | 0) < 1;
     if (semi_dead || !(grd.mx | 0) || egrd.gddone) { // :896-899

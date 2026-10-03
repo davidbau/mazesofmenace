@@ -147,7 +147,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower, On_W_tower_level, dupstr, get_table_option, get_table_str_opt, get_table_int_opt,
+    on_level, init_dungeons, Is_special, Is_branchlev, Invocation_lev, In_W_tower, On_W_tower_level, dupstr, get_table_option, get_table_str_opt, get_table_int_opt,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -714,7 +714,7 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
         mkstairs(x, y, rtype, null, false);
         break;
     case LR_BRANCH:
-        place_branch(is_branchlev(), x, y);
+        place_branch(Is_branchlev(game.u?.uz), x, y);
         break;
     }
     return true;
@@ -779,7 +779,7 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
          * the branch location (to avoid putting branches in corridors).
          */
         if (rtype === LR_BRANCH && (game.level?.nroom | 0)) {
-            place_branch(is_branchlev(), 0, 0);
+            place_branch(Is_branchlev(game.u?.uz), 0, 0);
             return;
         }
         lx = 1; /* column 0 is not used */
@@ -2763,7 +2763,7 @@ function fixup_special() {
            (mklev.c): a loader that already placed the branch must not
            re-enter place_lregion, which burns 200 rn1 when nroom is 0
            before that early-out. */
-        const p = (!added_branch && !game.made_branch && is_branchlev())
+        const p = (!added_branch && !game.made_branch && Is_branchlev(game.u?.uz))
             ? place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null)
             : undefined;
         return afterPending(p, () => {
@@ -3255,7 +3255,7 @@ function makemaz_maze_fallback() {
     /* place branch stair or portal */
     // C :1219 — place_branch(Is_branchlev(&u.uz), 0, 0); Is_branchlev has
     // no live export, so the same-file local stands (named in the map).
-    place_branch(is_branchlev(), 0, 0);
+    place_branch(Is_branchlev(game.u?.uz), 0, 0);
     // C :1221 — populate_maze()
     populate_maze();
 }
@@ -28285,7 +28285,7 @@ async function makelevel_ordinary() {
     await generate_stairs();
 
     // Branch check
-    const branchp = is_branchlev();
+    const branchp = Is_branchlev(game.u?.uz);
 
     // C: Is_rogue_level → goto skip0 (no corridors/niches/vault/specials)
     if (!isRogue) {
@@ -29224,7 +29224,7 @@ function mk_knox_portal(x, y) {
         source = br.end2;
     } else {
         /* disallow Knox branch on a level with one branch already */
-        if (is_branchlev()) return;
+        if (Is_branchlev(game.u?.uz)) return;
         source = br.end1;
     }
     if (!source) return;
@@ -33294,15 +33294,7 @@ async function make_niches() {
 // Branch placement
 // ============================================================
 
-function is_branchlev() {
-    const g = game;
-    if (!g.branches) return null;
-    for (const br of g.branches) {
-        if (br?.end1?.dnum === (g.u?.uz?.dnum ?? 0) && br?.end1?.dlevel === (g.u?.uz?.dlevel ?? 1)) return br;
-        if (br?.end2?.dnum === (g.u?.uz?.dnum ?? 0) && br?.end2?.dlevel === (g.u?.uz?.dlevel ?? 1)) return br;
-    }
-    return null;
-}
+/* C dungeon.c Is_branchlev — imported live from dungeon.js (C passes &u.uz). */
 
 /* C ref: mklev.c find_branch_room `:1660-1673` — whole body in C order. */
 function find_branch_room(mp) {
@@ -33901,7 +33893,7 @@ async function fill_ordinary_room(croom, bonus_items) {
         // Bonus items: Mines-entrance food, or the pre-Oracle supply chest.
         let skip_chests = false;
         if (bonus_items && somexyspace(croom, pos)) {
-            const branchp = is_branchlev();
+            const branchp = Is_branchlev(game.u?.uz);
             const mines_dnum = g.mines_dnum ?? 2;
             const oracle_dnum = g.oracle_level?.dnum ?? 0;
             const oracle_dlevel = g.oracle_level?.dlevel ?? 5;

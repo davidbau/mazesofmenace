@@ -49,7 +49,7 @@ import {
 import { pick_lock, getdir } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
 import {
-    m_at, dist2, seemimic, see_monster_closeup, find_mid, mnexto, wake_nearby,
+    m_at, seemimic, see_monster_closeup, find_mid, mnexto, wake_nearby,
     wakeup, wake_nearto, mdistu,
 } from './mon.js';
 import {
@@ -142,7 +142,7 @@ import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
 import { findit, openit, cvt_sdoor_to_door } from './detect.js';
 import { surface } from './sit.js';
-import { level_difficulty, isqrt } from './hacklib.js';
+import { level_difficulty, isqrt, dist2 } from './hacklib.js';
 import { mon_adjust_speed } from './muse.js';
 import { paralyze_monst } from './mhitm.js';
 

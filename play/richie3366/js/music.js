@@ -40,7 +40,7 @@ import {
     M1_SLITHY, is_mercenary, MR_SLEEP, is_mplayer,
 } from './monsters.js';
 import { dist2, mungspaces } from './hacklib.js';
-import { Monnam, mon_nam, x_monnam } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, a_monnam, Amonnam } from './do_name.js';
 import { cansee, recalc_block_point, unblock_point } from './vision.js';
 import { m_at, wakeup, seemimic, onscary } from './mon.js';
 import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch } from './trap.js';
@@ -155,12 +155,6 @@ function incr_itimeout_HDeaf(incr) {
     u.HDeaf = (cur & ~TIMEOUT) | next;
 }
 
-/** C ref: do_name.c Amonnam — highc(a_monnam). */
-function Amonnam(mtmp) {
-    const s = x_monnam(mtmp, ARTICLE_A, null, 0, false) || 'it';
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 /**
  * C ref: zap.c resist — TOOL_CLASS alev=10 (instrument); tell/HP arms inapplicable (callers pass 0/NOTELL); dlev mplayer arm live.
  */
@@ -262,11 +256,6 @@ function Yname2(obj) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** C ref: do_name.c a_monnam */
-function a_monnam(mtmp) {
-    return x_monnam(mtmp, ARTICLE_A, null, 0, false) || 'it';
-}
-
 /**
  * C ref: mhitm.c sleep_monst — music TOOL_CLASS path (D-0974).
  * C order: resists_sleep || defended(AD_SLEE) || (how>=0 && resist)
@@ -346,6 +335,7 @@ async function charm_snakes(distance) {
             newsym(mtmp.mx, mtmp.my);
             if (canseemon(mtmp)) {
                 if (!could_see_mon) {
+                    // C music.c:124 — live a_monnam (SUPPRESS_SADDLE when named).
                     await pline(
                         `You notice ${a_monnam(mtmp)}, swaying with the music.`,
                     );
@@ -628,6 +618,7 @@ async function do_earthquake(force) {
                     newsym(x, y);
                     if (ceiling_hider(mtmp.data)) {
                         if (cansee(x, y)) {
+                            // C music.c:376 — live Amonnam (highc of live a_monnam).
                             await pline(
                                 `${Amonnam(mtmp)} is shaken loose from the ceiling!`,
                             );

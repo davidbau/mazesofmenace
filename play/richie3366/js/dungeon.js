@@ -259,14 +259,23 @@ function strcmp(a, b) {
 }
 
 /**
- * C dupstr — copy up to the first NUL. JS strings are immutable, so the
- * copy is the slice; free() of that copy is GC.
+ * C ref: alloc.c:238–247 `dupstr` — copy up to the first NUL. JS strings
+ * are immutable, so the copy is the slice; alloc()/free() of that copy
+ * is GC.
  * @param {string} s
  * @returns {string}
  */
 export function dupstr(s) {
-    const i = String(s).indexOf('\0');
-    return i >= 0 ? String(s).slice(0, i) : String(s);
+    const str = String(s);
+    const i = str.indexOf('\0');
+    const len = i >= 0 ? i : str.length;
+    /* C :241–244 `len > (unsigned) (~0U - 1U)` overflow guard (throw ≡ C
+     * panic, insert_branch idiom); unreachable in JS — engine strings cap
+     * near 2^30 chars, below the 2^32−1 threshold (nhdupstr 1951-debt
+     * precedent for the same class of guard). */
+    if (len > 0xfffffffe)
+        throw new Error('dupstr: string length overflow');
+    return i >= 0 ? str.slice(0, i) : str;
 }
 
 /**
@@ -1795,7 +1804,9 @@ function OF_INTEREST(feat) {
 /**
  * C ref: dungeon.c on_level `:1438–1443` — same dnum/dlevel.
  * Exported so `dog.c` `keep_mon_accessible` uses the real one instead
- * of a fourteenth copy; the other 13 local clones are their own row.
+ * of a fourteenth copy; 0 local clones remain (teleport/shk/muse via
+ * ALREADY edges + priest/getpos/vault via new SAFE edges D-3331;
+ * quest/dig/do/potion D-3329, end retired in-head, dokick D-3330).
  */
 export function on_level(a, b) {
     return (a?.dnum | 0) === (b?.dnum | 0)
@@ -2862,6 +2873,18 @@ function br_string2(br) {
 export function Is_special(lev) {
     for (const s of game.sp_levchn || []) {
         if (on_level(lev, s.dlevel)) return s;
+    }
+    return null;
+}
+
+/**
+ * C ref: dungeon.c Is_branchlev `:1464–1473` — first branch whose end1
+ * or end2 is lev, else null (C `:1472` return 0). Short-circuit order
+ * matches C (`:1469` end1 before end2); svb.branches is game.branches.
+ */
+export function Is_branchlev(lev) {
+    for (const br of game.branches || []) {
+        if (on_level(lev, br.end1) || on_level(lev, br.end2)) return br;
     }
     return null;
 }

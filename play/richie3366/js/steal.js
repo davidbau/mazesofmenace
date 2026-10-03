@@ -46,7 +46,7 @@ import {
     COIN_CLASS, ARMOR_CLASS, WEAPON_CLASS, TOOL_CLASS, AMULET_CLASS, RING_CLASS,
     FOOD_CLASS, ROCK_CLASS, objectNames, objects,
 } from './objects.js';
-import { monnear, dist2 } from './mon.js';
+import { monnear } from './mon.js';
 import { is_animal, throws_rocks, can_teleport, slithy, dmgtype, touch_petrifies, mons } from './monsters.js';
 import { subfrombill, shop_keeper, money_cnt } from './shk.js';
 import { tele_restrict, rloc } from './teleport.js';
@@ -76,7 +76,7 @@ import { Levitation, Flying } from './mhitu.js';
 import { obj_resists } from './dogmove.js';
 import { touch_artifact } from './artifact.js';
 import { cansee } from './vision.js';
-import { upstart, copynchars, strsubst, strstri } from './hacklib.js';
+import { upstart, copynchars, strsubst, strstri, dist2 } from './hacklib.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const BOULDER = objectNames.indexOf('BOULDER');

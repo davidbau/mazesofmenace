@@ -7331,6 +7331,24 @@ export function wish_history_add(buf) {
 }
 
 /**
+ * C ref: zap.c wish_history_flush :6259–6270 (caller save.c:1136 freedynamicdata).
+ * `DEBUG` is defined (patchlevel.h:36), so this body is compiled — same
+ * DEBUG-on treatment as wish_history_add above (D-2873). C frees each
+ * ring slot and resets the index; JS strings are GC'd, so nulling the
+ * slots is the free. Sole C caller freedynamicdata has no JS counterpart
+ * (save-freeing teardown, map-named) — see Callers in the D-log.
+ */
+export function wish_history_flush() {
+    // C :6263–6266 — free each stored line (GC: null the slot).
+    const hist = game.wish_history;
+    if (Array.isArray(hist)) {
+        for (let idx = 0; idx < MAX_WISH_HISTORY; ++idx) hist[idx] = null;
+    }
+    // C :6268 — reset the ring index.
+    game.wish_history_idx = 0;
+}
+
+/**
  * C ref: zap.c wish_history_menu :6275–6309 (staticfn; caller makewish :6335).
  * `DEBUG` is defined (patchlevel.h:36), so the menu is in the C build.
  * C order: window lifecycle is owned by the live PICK_ONE picker below
