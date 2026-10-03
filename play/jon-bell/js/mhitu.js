@@ -1930,6 +1930,67 @@ async function steal(mtmp, objnambuf) {
     return 1;
 }
 
+/* C ref: steal.c:688-766 stealamulet(mtmp) — AD_SAMU (the Wizard and quest
+ * nemeses).  Targets any quest artifact (obj.h:271 oartifact >= 21), else the
+ * Amulet / Bell / Book / Candelabrum the hero carries. */
+async function stealamulet_mu(mtmp) {
+    const g = game;
+    const isQA = (o) => (o.oartifact | 0) >= 21; /* ART_ORB_OF_DETECTION */
+    let otmp = null, n = 0, real = 0, fake = 0;
+    for (let o = g.invent; o; o = o.nobj)
+        if (isQA(o)) { ++n; otmp = o; }
+    if (n > 1) {
+        n = rnd(n);
+        for (otmp = g.invent; otmp; otmp = otmp.nobj)
+            if (isQA(otmp) && !--n) break;
+    }
+    if (!otmp) {
+        const uh = g.u?.uhave || {};
+        if (uh.amulet) { real = 213; fake = 212; }
+        else if (uh.bell) { real = 263; fake = 255; }
+        else if (uh.book) { real = 409; }
+        else if (uh.menorah) { real = 262; }
+        else return;
+        const match = (o) => (o.otyp | 0) === real
+            || ((o.otyp | 0) === fake && fake && !mtmp.iswiz);
+        for (let o = g.invent; o; o = o.nobj)
+            if (match(o)) { ++n; otmp = o; }
+        if (n > 1) {
+            n = rnd(n);
+            for (otmp = g.invent; otmp; otmp = otmp.nobj)
+                if (match(otmp) && !--n) break;
+        }
+    }
+    if (!otmp) return;
+    const u = g.u;
+    if ((otmp === u.uarm || otmp === u.uarmu) && u.uarmc)
+        await worn_item_removal(mtmp, u.uarmc);
+    if (otmp === u.uarmu && u.uarm)
+        await worn_item_removal(mtmp, u.uarm);
+    if ((otmp === u.uarmg || ((otmp === u.uright || otmp === u.uleft) && u.uarmg))
+        && u.uwep) {
+        if (u.twoweap)
+            await worn_item_removal(mtmp, u.uswapwep);
+        await worn_item_removal(mtmp, u.uwep);
+    }
+    if ((otmp === u.uright || otmp === u.uleft) && u.uarmg)
+        await worn_item_removal(mtmp, u.uarmg);
+    if (otmp.owornmask)
+        await worn_item_removal(mtmp, otmp);
+    if (otmp.unpaid) {
+        const shops = u.ushops || '';
+        await subfrombill_real(otmp, shops.length ? shop_keeper_real(shops[0]) : null);
+    }
+    freeinv_mu(otmp);
+    const buf = await doname_mu(otmp);
+    await mpickobj_mu(mtmp, otmp);
+    pline(`${Some_Monnam_mu(mtmp)} steals ${buf}!`);
+    if (((mtmp.data?.mflags1 | 0) & 0x02000000) /* M1_TPORT: can_teleport */
+        && !tele_restrict_mu(mtmp))
+        await rloc(mtmp, RLOC_MSG_MU);
+    encumber_msg_mu();
+}
+
 export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp) {
         case AD_PHYS_: mhitm_ad_phys_u(mtmp, mattk, mhm); break;
@@ -2020,6 +2081,12 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         /* C uhitm.c:3557 `case AD_SLIM: mhitm_ad_slim(...)`. */
         case AD_SLIM_MU:
             await mhitm_ad_slim_u(mtmp, mattk, mhm); break;
+        /* C uhitm.c:4583 mhitm_ad_samu, mhitu arm: hitmsg, then 1/20 stealamulet. */
+        case 252 /* AD_SAMU */:
+            await hitmsg(mtmp, mattk);
+            if (!rn2(20))
+                await stealamulet_mu(mtmp);
+            break;
         case AD_CURS_MU:
             hitmsg_je(mtmp, mattk);
             if (!night() && ((mtmp.mndx ?? mtmp.mnum ?? -1) | 0) === PM_GREMLIN_MU)
@@ -3299,9 +3366,41 @@ function rounddiv_mu(x, y) {
 }
 const ELVEN_ARROW_MU = 19, ORCISH_ARROW_MU = 20, CROSSBOW_BOLT_MU = 23,
       ELVEN_BOW_MU = 84, ORCISH_BOW_MU = 85, CROSSBOW_MU = 88;
+/* C ref: dothrow.c:39-83 multishot_class_bonus(pm, ammo, launcher) — pm is the
+ * MONSTER index (monsndx), so the role-named arms match fake players and the
+ * quest ninja.  Indices from js/makemon_pmnames.json; skills per skills.h.
+ * (js/cmd.js's copy is keyed on hero role indices and is not interchangeable.)
+ * RNG-free. */
 function multishot_class_bonus_mu(mtmp, otmp, mwep) {
-    void otmp; void mwep;
-    return is_mplayer_mu(mtmp.data) ? 0 : 0;
+    const PM_CAVE_DWELLER = 333, PM_MONK = 336, PM_RANGER = 338,
+          PM_ROGUE = 339, PM_SAMURAI = 340, PM_NINJA = 378;
+    const P_DAGGER = 1, P_SLING = 21, P_DART = 23, P_SHURIKEN = 24;
+    const YA = 22, YUMI = 86;
+    let multishot = 0;
+    const skill = MKOBJ_OC_SKILL[otmp.otyp | 0] | 0;
+    switch (_mndx_of(mtmp.data)) {
+    case PM_CAVE_DWELLER:
+        if (skill === -P_SLING || skill === P_SPEAR_MHU) multishot++;
+        break;
+    case PM_MONK:
+        if (skill === -P_SHURIKEN) multishot++;
+        break;
+    case PM_RANGER:
+        if (skill !== P_DAGGER) multishot++;
+        break;
+    case PM_ROGUE:
+        if (skill === P_DAGGER) multishot++;
+        break;
+    case PM_NINJA:
+        if (skill === -P_SHURIKEN || skill === -P_DART) multishot++;
+        /* FALLTHRU */
+    case PM_SAMURAI:
+        if ((otmp.otyp | 0) === YA && mwep && (mwep.otyp | 0) === YUMI) multishot++;
+        break;
+    default:
+        break;
+    }
+    return multishot;
 }
 
 /* C mthrowu.c:1498 hits_bars() — classify whether an object collides with
@@ -3473,8 +3572,15 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
             return true;
         }
     } else if ((otmp.oclass | 0) === POTION_CLASS_MU) {
+        /* C mthrowu.c:361-370 — a thrown potion hitting a MONSTER:
+         *   if (ismimic) seemimic(mtmp);
+         *   mtmp->msleeping = 0;
+         *   potionhit(mtmp, otmp, POTHIT_OTHER_THROW);
+         *   return 1;
+         * potionhit's monster-target arms live in js/potion.js. */
         if (ismimic) seemimic_mu(mtmp);
         mtmp.msleeping = 0;
+        await potionhit(mtmp, otmp, POTHIT_OTHER_THROW_MU);
         return true;
     } else {
         /* ── HIT ── C:371-500 */
@@ -4040,6 +4146,7 @@ function nh_delay_output_mu() { }
 const CREAM_PIE_M_THROW_MU = 287, EGG_M_THROW_MU = 266;
 /* C obj.h:477 POTHIT_MONST_THROW (POTION_CLASS_MU is declared at :2516). */
 const POTHIT_MONST_THROW_MU = 2;
+const POTHIT_OTHER_THROW_MU = 3;
 
 async function u_catch_thrown_obj(otmp) {
     const u = game.u || {};

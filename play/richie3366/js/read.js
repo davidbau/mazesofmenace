@@ -139,7 +139,7 @@ import { vision_recalc, do_clear_area, cansee, unblock_point } from './vision.js
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
-import { dist2, mungspaces, strstri, strncmpi, upwords, digit } from './hacklib.js';
+import { dist2, mungspaces, strstri, strncmpi, upwords, digit, upstart } from './hacklib.js';
 import { You_hear, closed_door, maybe_half_phys, is_pool, check_capacity } from './hack.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_maniacal_laughter, se_sad_wailing } from './generated/seffects_data.js';
@@ -2555,10 +2555,7 @@ function type_is_pname_ptr(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_PNAME);
 }
 
-function upstart(str) {
-    if (!str) return str;
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
+/* C hacklib.c upstart — live export from './hacklib.js' (clone removed D-3356). */
 
 /** C ref: polyself.c udeadinside — dead / condemned / empty. */
 export function udeadinside() {

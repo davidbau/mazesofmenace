@@ -112,6 +112,7 @@ import { attacktype } from './mhitm.js';
  * arm (Stormbringer's "The black blade draws the life..." message uses
  * hcolor(NH_BLACK)); real body already lives in js/mhitm.js. */
 import { hcolor } from './mhitm.js';
+import { erode_armor } from './mhitm.js';
 /* a_monnam / x_monnam's ARTICLE_A form and the M_AP_* enum both come from
  * const.js, which is byte-identical to the C header values (monst.h:52-55). */
 import { ARTICLE_A, EXACT_NAME, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK,
@@ -132,7 +133,7 @@ import { mwelded, body_part, flooreffects, _drop_doname, set_wounded_legs, is_po
          mhurtle, will_hurtle } from './cmd.js';
 /* C wield.c:543 yname(obj) -- "your <xname>" / "the <xname>"; the one body
  * lives in js/do_wear.js.  do_attack's gu.unweapon line needs it. */
-import { yname, You, is_shield } from './do_wear.js';
+import { yname, You, is_shield, bimanual } from './do_wear.js';
 import { obj_resists, dmgtype, slept_monst, engulf_target } from './dogmove.js';
 import { destroy_items as destroy_items_zap,
          destroy_items_mon as destroy_items_mon_zap } from './zap.js';
@@ -1696,10 +1697,11 @@ export async function do_attack(mtmpOrX, y) {
 
     check_caitiff(mtmp);
 
-    let mndx = 0, _tmpBase = 0;
+    let mndx = 0, _tmpBase = 0, _armorpenalty = 0;
     /* find_roll_to_hit's target-dependent terms; re-run per target by
      * hitum_cleave (uhitm.c:703) */
     const _find_roll_to_hit = () => {
+    _armorpenalty = 0; /* C uhitm.c:374 *role_roll_penalty = 0 */
     mndx = (mtmp.mndx ?? mtmp.mnum) | 0;
     const monAC = find_mac_full_uh(mtmp);
     const abon_val = abon();
@@ -1724,8 +1726,9 @@ export async function do_attack(mtmpOrX, y) {
         const uarmsShield = u && u.uarms;    /* shield */
         const uwepHeld = u && u.uwep;
         if (uarmBody) {
-            /* tmp -= urole.spelarmr (monk spellcasting armor penalty) — not
-             * modelled for the armored-monk case yet; no RNG impact here. */
+            /* C uhitm.c:399 tmp -= (*role_roll_penalty = urole.spelarmr) */
+            _armorpenalty = (game.urole?.spelarmr ?? 0) | 0;
+            tmp -= _armorpenalty;
         } else if (!uwepHeld && !uarmsShield) {
             tmp += ((ulevel / 3) | 0) + 2;
         }
@@ -1753,8 +1756,9 @@ export async function do_attack(mtmpOrX, y) {
     const dieroll = rnd(20);
     const mhit = (tmp > dieroll) || !!(u && u.uswallow); /* uswallow = always hits */
 
+    /* C uhitm.c:610 missum(mon, uattk, (rollneeded + armorpenalty > dieroll)) */
     if (!mhit)
-        await missum(mtmp, false);
+        await missum(mtmp, tmp + _armorpenalty > dieroll);
     if (mhit) {
         if (!second && !cleaving && tmp > dieroll) exercise(A_DEX, true);
 
@@ -1836,6 +1840,14 @@ export async function do_attack(mtmpOrX, y) {
             else if (str2 <= 108) dbon_val = 4;  /* <= STR18(90) */
             else if (str2 < 118) dbon_val = 5;   /* < STR18(100) */
             else dbon_val = 6;
+        }
+        const _twohitsDmg = second || (!viaHmonas && uwep && u.twoweap);
+        if (dbon_val !== 0) {
+            const _abs = Math.abs(dbon_val);
+            if (_twohitsDmg)
+                dbon_val = Math.trunc((3 * _abs + 2) / 4) * Math.sign(dbon_val);
+            else if (uwep && bimanual(uwep))
+                dbon_val = Math.trunc((3 * _abs + 1) / 2) * Math.sign(dbon_val);
         }
         /* C uhitm.c:1015-1023, the tail of hmon_hitmon_weapon_melee:
          *     if (obj->oartifact
@@ -2448,7 +2460,7 @@ export async function do_attack(mtmpOrX, y) {
                 /* C uhitm.c:5667-5668 `else { !dhit: missum(mon, mattk,
                  * (tmp + armorpenalty > dieroll)); }` — armorpenalty is 0
                  * here (find_roll_to_hit sets it only for !Upolyd Monks). */
-                await missum(mtmp, tmp > dieroll);
+                await missum(mtmp, tmp + _armorpenalty > dieroll);
             }
             await _passiveAndKnockback(aatyp, _sumI !== M_ATTK_MISS, null);
         }
@@ -4877,28 +4889,6 @@ async function monkilled(mon, msg, adtyp) {
 }
 /* DEADMONSTER: C macro — true if monster is dead (mhp < 1) */
 function DEADMONSTER(mon) { return (mon.mhp | 0) < 1; }
-/* erode_armor: faithful port of C's armor erosion (uhitm.c:126-185).
- * Loops rn2(5) until it finds a suitable armor piece to erode.
- * Case 1 (W_ARMC / W_ARM / W_ARMU) always exits the loop.
- * Other cases loop unless a target is found and eroded. */
-function erode_armor(mdef, hurt) {
-    while (true) {
-        switch (rn2(5)) {
-        case 0: /* W_ARMH - helm */
-            /* which_armor + erode_obj not ported; loop continues */
-            continue;
-        case 1: /* W_ARMC / W_ARM / W_ARMU - cloak/body/shirt */
-            break; /* always exits */
-        case 2: /* W_ARMS - shield */
-            continue;
-        case 3: /* W_ARMG - gloves */
-            continue;
-        case 4: /* W_ARMF - boots */
-            continue;
-        }
-        break; /* out of while */
-    }
-}
 /* C timeout.c:448-452.  The canonical async body is exported by mcastu.js;
  * this caller is already async, so preserve the cure and its message rather
  * than silently dropping it through the old local no-op. */
@@ -4927,7 +4917,7 @@ export async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
             await xkilled(mdef, XKILL_NOMSG);
             mhm.hitflags |= M_ATTK_DEF_DIED;
         }
-        erode_armor(mdef, ERODE_RUST);
+        await erode_armor(mdef, ERODE_RUST);
         mhm.damage = 0; /* damageum(), int tmp */
     } else if (mdef === game.youmonst) {
         /* mhitu */
@@ -4941,7 +4931,7 @@ export async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
             await rehumanize();
             return;
         }
-        erode_armor(game.youmonst, ERODE_RUST);
+        await erode_armor(game.youmonst, ERODE_RUST);
     } else {
         /* mhitm */
         if (magr.mcan)
@@ -4961,7 +4951,7 @@ export async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
             mhm.done = true;
             return;
         }
-        erode_armor(mdef, ERODE_RUST);
+        await erode_armor(mdef, ERODE_RUST);
         mdef.mstrategy &= ~STRAT_WAITFORU;
         mhm.damage = 0; /* mdamagem(), int tmp */
     }

@@ -163,7 +163,7 @@ import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
 import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
-import { monst_to_any, is_pool, is_lava, in_rooms } from './hack.js';
+import { monst_to_any, is_pool, is_lava, in_rooms, invocation_pos } from './hack.js';
 import { begin_burn, end_burn } from './timeout.js';
 import { o_unleash } from './apply.js';
 import { is_ice } from './zap.js';
@@ -20834,33 +20834,11 @@ function maze_y_max() {
     return game.y_maze_max != null ? (game.y_maze_max | 0) : Y_MAZE_MAX;
 }
 
-/**
- * C dungeon.c Invocation_lev — In_hell && dlevel == num_dunlevs-1.
- * Local clone (hack.js / apply.js still have theirs; shared dungeon.c
- * export named).
- */
-function Invocation_lev_mk(lev) {
-    if (!lev) return false;
-    const dun = game.dungeons?.[lev.dnum | 0];
-    if (!dun?.flags?.hellish) return false;
-    return (lev.dlevel | 0) === ((dun.num_dunlevs | 0) - 1);
-}
-
 /** C decl.c svi.inv_pos — always a coord, never missing. */
 function svi_inv_pos() {
     if (!game.svi) game.svi = {};
     if (!game.svi.inv_pos) game.svi.inv_pos = { x: 0, y: 0 };
     return game.svi.inv_pos;
-}
-
-/**
- * C hack.c invocation_pos — Invocation_lev && (x,y)==svi.inv_pos.
- * occupied uses this; unset {0,0} matches C (not a legal maze cell).
- */
-function invocation_pos_mk(x, y) {
-    if (!Invocation_lev_mk(game.u?.uz)) return false;
-    const ip = svi_inv_pos();
-    return (x | 0) === (ip.x | 0) && (y | 0) === (ip.y | 0);
 }
 
 /**
@@ -27480,7 +27458,7 @@ async function load_hellfill() {
     splev_create_stair(true);
     // hellfill.lua:437 — u.invocation_level → des.trap("vibrating square")
     // else des.stair("down"). C create_trap VS = pick_vibrasquare + maketrap.
-    if (Invocation_lev_mk(g.u?.uz))
+    if (Invocation_lev(g.u?.uz))
         splev_create_trap(VIBRATING_SQUARE);
     else
         splev_create_stair(false);
@@ -33044,7 +33022,7 @@ export function occupied(x, y) {
         || IS_FURNITURE(loc.typ)
         || loc.typ === LAVAPOOL || loc.typ === LAVAWALL
         || IS_POOL(loc.typ)
-        || invocation_pos_mk(x, y));
+        || invocation_pos(x, y));
 }
 
 function somexyspace(croom, c) {

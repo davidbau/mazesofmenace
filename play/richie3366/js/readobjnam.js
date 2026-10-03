@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { str_start_is, strstri, strsubst, mungspaces, strncmpi, fuzzymatch, copynchars } from './hacklib.js';
+import { str_start_is, strstri, strsubst, mungspaces, strncmpi, fuzzymatch, copynchars, upstart } from './hacklib.js';
 import { ALT_SPELLINGS } from './generated/alt_spellings.js';
 import { LAST_REAL_GEM } from './generated/objects_data.js';
 import {
@@ -253,11 +253,7 @@ function set_wallprop_from_str(bp) {
     }
 }
 
-function upstart(str) {
-    const s = String(str || '');
-    if (!s) return s;
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
+/* C hacklib.c upstart — live export from './hacklib.js' (clone removed D-3358). */
 
 function CAN_OVERWRITE_TERRAIN(ttyp) {
     return ttyp !== LADDER && ttyp !== STAIRS;

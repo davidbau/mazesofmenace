@@ -3145,8 +3145,11 @@ function getmattk(magr, mdef, i, res, alt_attk) {
         const a = row[i];
         return { aatyp: a[0] | 0, adtyp: a[1] | 0, damn: a[2] | 0, damd: a[3] | 0 };
     }
-    if (i === 0)
-        return { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 };
+    const dm = magr.data?.mattk;
+    if (dm && dm[i]) {
+        const d = dm[i];
+        return { aatyp: d.aatyp | 0, adtyp: d.adtyp | 0, damn: d.damn | 0, damd: d.damd | 0 };
+    }
     return { aatyp: AT_NONE, adtyp: 0, damn: 0, damd: 0 };
 }
 function gulpmm(magr, mdef, mattk) { return M_ATTK_HIT; }

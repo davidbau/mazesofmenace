@@ -41,12 +41,16 @@ import { canspotmon, Hallucination, impossible } from './display.js';
 import { Blind } from './invent.js';
 import { Unaware } from './eat.js';
 import {
-    dmgtype_fromattack, AT_EXPL, AT_GAZE, AD_BLND,
+    AT_EXPL, AT_GAZE, AD_BLND,
     AT_SPIT, AT_BREA, AT_WEAP, AT_MAGC,
     AD_PHYS, AD_DRLI, AD_STON, AD_DRDX, AD_DRCO, AD_WERE,
 } from './mhitm.js';
 import { title_to_mon } from './botl.js';
 import { resists_drli } from './zap.js';
+// C mondata.c attacktype — hoisted fn, cycle-safe (`imports.mjs --can
+// mondata.js uhitm.js attacktype_fordmg`: SAFE; uhitm.js already imports
+// mondata.js, runtime-only calls, no top-level reads either way).
+import { attacktype_fordmg } from './uhitm.js';
 
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
 /** C objects.c ALCHEMY_SMOCK — worn cloak, poison and acid. */
@@ -61,6 +65,40 @@ const MS_BUZZ = 10;
  */
 export function is_silent(ptr) {
     return (ptr?.msound | 0) === MS_SILENT;
+}
+
+/** C monattk.h:41 AD_ANY — fake damage; attacktype_fordmg wildcard. */
+const AD_ANY = -1;
+/** C monattk.h:11 AT_ANY — fake attack; dmgtype_fromattack wildcard. */
+const AT_ANY = -1;
+
+/**
+ * C ref: mondata.c attacktype `:54–57` — attacktype_fordmg(ptr, atyp,
+ * AD_ANY) ? TRUE : FALSE. Canonical home of the C function
+ * (artifact/dog/eat/wizard/engrave/makemon/muse/polyself/trap/mhitm.js
+ * clones removed).
+ */
+export function attacktype(ptr, atyp) {
+    return attacktype_fordmg(ptr, atyp, AD_ANY) ? true : false;
+}
+
+/**
+ * C ref: mondata.c dmgtype_fromattack `:700–708` — first mattk slot with
+ * adtyp and (AT_ANY wildcard or) aatyp. Canonical home of the C function
+ * (mhitm/mhitu.js boolean clones removed). Boolean shape: every C call
+ * site (mondata.c:260-261, :714; polyself.c:108-109; mondata.h:72/:74
+ * `!= 0`) uses it in boolean context, as do the resists_blnd wrappers;
+ * restores the clones' dropped `atyp == AT_ANY` arm (C :705).
+ */
+export function dmgtype_fromattack(ptr, dtyp, atyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    const ad = dtyp | 0;
+    const at = atyp | 0;
+    for (const a of slots) {
+        if ((a.adtyp | 0) === ad && (at === AT_ANY || (a.aatyp | 0) === at)) return true;
+    }
+    return false;
 }
 
 /* C ref: monattk.h AD_* used by cvt_adtyp_to_mseenres / get_atkdam_type */

@@ -51,6 +51,8 @@ import { rn2, rn1, rnd } from './rng.js';
 import { dist2, highc, online2, upstart, depth, strncmpi } from './hacklib.js';
 import { choose_stairs } from './wizard.js';
 import { in_rooms, stop_occupation, You_hear } from './hack.js';
+/* priest.js (same 101-module SCC; hoisted function, call-time use only — imports.mjs IN-SCC, verify judges TDZ). */
+import { histemple_at } from './priest.js';
 import {
     ESHK, has_eshk, has_mgivenname, MGIVENNAME, EPRI, BEFORE, NOW, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, ALLOW_ROCK, u_at, isok,
     ROOMOFFSET, SHOPBASE, ACH_SHOP, SVALL, ROWNO, COLNO,
@@ -73,7 +75,7 @@ import {
     hero_conflict, resist_conflict, m_canseeu,
     noit_mhe, noit_mhim, noit_mhis,
 } from './mondata.js';
-import { mon_nam, x_monnam, y_monnam, Monnam, a_monnam } from './do_name.js';
+import { mon_nam, x_monnam, y_monnam, Monnam, a_monnam, s_suffix } from './do_name.js';
 import {
     COIN_CLASS, FOOD_CLASS, WAND_CLASS, POTION_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
@@ -238,16 +240,7 @@ export function is_fshk(mtmp) {
     return !!(mtmp?.isshk && ESHK(mtmp)?.following);
 }
 
-/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, *s→*', else *'s. */
-function s_suffix(s) {
-    const buf = String(s ?? '');
-    const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
-    if (low === 'you') return `${buf}r`;
-    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
-    if (buf.endsWith('s')) return `${buf}'`;
-    return `${buf}'s`;
-}
+/* C hacklib.c s_suffix — live export from './do_name.js' (clone removed D-3360). */
 
 /** C ref: shk.c pacify_shk `:1344–1358` — peaceful + optional surcharge undo. */
 function pacify_shk(shkp, clear_surcharge) {
@@ -4675,18 +4668,6 @@ function Displaced() {
     if (u.uprops?.[DISPLACED]?.extrinsic) return true;
     const cloak = u.uarmc;
     return !!(cloak && cloak.otyp === CLOAK_OF_DISPLACEMENT);
-}
-
-/**
- * C ref: priest.c histemple_at — priest on shrine level inside temple room.
- */
-function histemple_at(priest, x, y) {
-    if (!priest || !priest.ispriest) return false;
-    const epri = EPRI(priest);
-    if (!epri) return false;
-    const rooms = in_rooms(x, y, TEMPLE);
-    if (!rooms || (rooms.charCodeAt(0) | 0) !== (epri.shroom | 0)) return false;
-    return on_level(epri.shrlevel, game.u?.uz);
 }
 
 /**

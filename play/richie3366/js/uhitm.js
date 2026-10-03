@@ -111,7 +111,7 @@ import { obj_resists } from './dogmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
 import { m_unleash, objdescr_is } from './apply.js';
-import { mhe, mhis, defended, resists_blnd, monstseesu, monstunseesu } from './mondata.js';
+import { mhe, mhis, defended, resists_blnd, monstseesu, monstunseesu, attacktype } from './mondata.js';
 import { Unaware, carried } from './eat.js';
 import { helm_simple_name, cloak_simple_name } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
@@ -619,10 +619,7 @@ export function attacktype_fordmg(ptr, atyp, dtyp) {
     return null;
 }
 
-/** C ref: mondata.h attacktype — any mattk slot matches aatyp. */
-function attacktype_aatyp(ptr, aatyp) {
-    return !!attacktype_fordmg(ptr, aatyp, -1);
-}
+/* attacktype_aatyp: deleted — live attacktype via ./mondata.js (C mondata.c:54–57). */
 
 /**
  * C ref: mon.c corpse_chance — AT_BOOM then always-TRUE arms then !rn2(tmp).
@@ -633,7 +630,7 @@ async function corpse_chance(mon, magr = null, was_swallowed = false) {
     const mdat = mon.data;
     if (!mdat) return false;
     if (!magr && game.mswallower
-        && attacktype_aatyp(game.mswallower.data, AT_ENGL)) {
+        && attacktype(game.mswallower.data, AT_ENGL)) {
         magr = game.mswallower;
         was_swallowed = true;
     }
@@ -3938,8 +3935,8 @@ function m_useup_you(mon, obj) {
 /** C mhitm.c xdrainenergym; mon.c golemeffects flesh/iron heal (MSLOW named). */
 export async function xdrainenergym(mon, givemsg) {
     if ((mon.mspec_used | 0) < 20
-        && (attacktype_aatyp(mon.data, AT_MAGC)
-            || attacktype_aatyp(mon.data, AT_BREA))) {
+        && (attacktype(mon.data, AT_MAGC)
+            || attacktype(mon.data, AT_BREA))) {
         mon.mspec_used = (mon.mspec_used | 0) + d(2, 2);
         if (givemsg) await pline_mon(mon, `${Monnam(mon)} seems lethargic.`);
     }

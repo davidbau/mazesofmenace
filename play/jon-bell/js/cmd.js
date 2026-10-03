@@ -15,7 +15,7 @@ import { classifyTerrain } from './terrain-status.js';
 import { Is_earthlevel, RUN_TPORT, RUN_LEAP, RUN_CRAWL, LOW_PM, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MSTR_MNDX, VANQ_MCLS_LTOH, VANQ_MCLS_HTOL, VANQ_COUNT_H_L, VANQ_COUNT_L_H, In_quest, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, LL_DEBUG, I_SPECIAL } from './const.js';
 import { GameMap, newobj, copy_you } from './game.js';
 import { MAXSPELL } from './spell.js';
-import { extract_nobj, getrumor, add_to_minv, wake_nearby as wake_nearby_mk } from './mklev.js';
+import { single_level_branch, extract_nobj, getrumor, add_to_minv, wake_nearby as wake_nearby_mk } from './mklev.js';
 import { findgold } from './makemon.js';
 import { FF_FAITHFUL, fastforward_step } from './fastforward.js';
 import { emitMapstate } from './mapstate.js';
@@ -258,7 +258,7 @@ import { fumaroles, movebubbles,
           * than swapped in wholesale because the local copy's two other call
           * sites (js/cmd.js:9719, :36315) are a separate, behaviour-changing
           * repair that this target does not scope. */
-         Invocation_lev as Invocation_lev_dgn } from './mkmaze.js';
+         Invocation_lev as Invocation_lev_dgn, maybe_adjust_hero_bubble } from './mkmaze.js';
 /* priest.c helpers for intemple() — real bodies at their C home in js/priest.js. */
 import { findpriest, has_shrine, temple_occupied, p_coaligned, inhistemple, mon_aligntyp as mon_aligntyp_real } from './priest.js';
 import { makemon as mklev_makemon, m_consume_obj } from './mklev.js';
@@ -286,7 +286,8 @@ import { Tobjnam, ndemon } from './sit.js';
 import { obfree, sellobj, shop_keeper as shk_shop_keeper, inhishop as shk_inhishop, in_rooms as shk_in_rooms, add_damage as shk_add_damage, billable as shk_billable, pay_for_damage, onbill as shk_onbill, subfrombill as shk_subfrombill, alter_cost as shk_alter_cost, find_objowner as shk_find_objowner, shop_object as shk_shop_object, Hello as shk_Hello, add_to_billobjs as shk_add_to_billobjs } from './shk.js';
 import { stackobj } from './sp_lev.js';
 import { shk_chat, dopay, growl, sellobj_state, block_entry, block_door, u_entered_shop, u_left_shop, IS_SHOP as IS_SHOP_ROOM, addtobill as shk_addtobill, get_cost_of_shop_item, is_unpaid as shk_is_unpaid, unpaid_cost as shk_unpaid_cost, check_unpaid_usage as shk_check_unpaid_usage, COST_CONTENTS as SHK_COST_CONTENTS, costly_spot as shk_costly_spot, currency as shk_currency, record_price_quote, append_price_quote, get_cost as shk_get_cost, contained_cost as shk_contained_cost, contained_gold as shk_contained_gold, donate_gold as shk_donate_gold, get_pricing_units as shk_get_pricing_units, delete_contents as shk_delete_contents } from './shk.js';
-import { m_unleash, keepdogs, losedogs } from './dog.js';
+import { m_unleash, keepdogs, losedogs, mon_catchup_elapsed_time, mon_arrive } from './dog.js';
+import { mon_has_amulet } from './mhitm.js';
 import { make_familiar } from './dog.js';
 import { curr_mon_load, dmgtype, dogfood, extract_from_minvent_dm, possibly_unwield, monstone } from './dogmove.js';
 import { paralyze_monst } from './dogmove.js';
@@ -663,6 +664,9 @@ function reset_cmd_vars(reset_cmdq) {
     g.iflags = g.iflags || {};
     g.iflags.menu_requested = false;
     g.context.travel = g.context.travel1 = 0;
+    /* C ref: cmd.c:3616-3619 */
+    if (g.gt && g.gt.travelmap)
+        g.gt.travelmap = null;
     if (reset_cmdq) {
         cmdq_clear(CQ_CANNED);
         cmdq_clear(CQ_REPEAT);
@@ -764,7 +768,7 @@ async function extcmd_via_menu() {
             break;
         }
         const fmtw = biggest + 15; /* "%-%ds" */
-        const pad = (t) => (t.length < fmtw ? t + ' '.repeat(fmtw - t.length) : t);
+        const pad = (t) => (t.length < fmtw ? t + ' '.repeat(Math.max(0, fmtw - t.length)) : t);
         const entries = []; /* { acc, text } in add_menu order */
         let prompt = '', wastoolong = false, acount = 0, prevaccelerator = '';
         /* -3: two line menu header, 1 line menu footer (for prompt) */
@@ -4185,6 +4189,8 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
         if (g.disp) g.disp.botlx = 1;
         await bot();
     }
+    if (WIN_COL === 0 && opts?.statusStaysBlank)
+        g._status_blanked = true;
     await flush_screen(1);
     /* winRows: the number of screen rows this menu window occupied (its
      * "(end)" row is endRow).  itemactions needs it because C's docorner()
@@ -9921,8 +9927,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     } else if (In_quest(u.uz)) {
         await onquest();
     } else if (Is_knox_level(u.uz)) {
-        /* do.c:1899-1904 — "You have penetrated a high security area!" plus the
-         * alarm and the wake-every-monster loop; unported. */
+        /* C do.c:1893-1904 — alarm stops working once Croesus has died. */
+        if (isNew || !((g.mvitals?.[286 /* PM_CROESUS */]?.died) | 0)) {
+            await _goto_level_You('have penetrated a high security area!');
+            await pline('An alarm sounds!');
+            for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
+                if (DEADMONSTER(mtmp))
+                    continue;
+                mtmp.msleeping = 0;
+            }
+        }
     } else if (In_mines(u.uz)) {
         if (newdungeon)
             record_achievement(ACH_MINE);
@@ -10550,7 +10564,7 @@ async function print_dungeon_menu() {
     if (npages === 1) {
         const stripped = lines.map((ln) => {
             const m = /^\x1b\[(\d+)C/.exec(ln);
-            const t = m ? ' '.repeat(+m[1]) + ln.slice(m[0].length) : ln;
+            const t = m ? ' '.repeat(Math.max(0, +m[1])) + ln.slice(m[0].length) : ln;
             return t.replace(/^ /, '');
         });
         const wl = [...stripped, '(end)'];
@@ -10980,8 +10994,12 @@ export async function level_tele() {
             newlev = parseInt(buf, 10) || 0;
         } while (!newlev && !(buf.length > 0 && (buf[0] === '-' ? (buf.length > 1 && buf[1] >= '0' && buf[1] <= '9') : (buf[0] >= '0' && buf[0] <= '9'))) && trycnt < 10);
         // C teleport.c:1254 — if (newlev == 0) { if trycnt>=10 goto random; ynq "Go to Nowhere" ... }
-        // C teleport.c:1278 — if (single_level_branch && newlev > 0 && !force_dest) return
-        // Knox check — false for main dungeon
+        // C teleport.c:1277-1281 — if in Knox and the requested level > 0, stay put.
+        if (single_level_branch(g.u.uz) && newlev > 0 && !force_dest) {
+            await You('shudder for a moment.');
+            g.context.move = 0;
+            return;
+        }
         // C teleport.c:1380 — else if (force_dest) { /* wizard mode menu; no
         // further validation needed */ ; }  The menu already produced a concrete
         // (dnum,dlevel); use it directly and skip get_level relativization.
@@ -12074,7 +12092,7 @@ async function doprev_message() {
     /* A history entry may carry putmixed's tty blank-run escape (\x1b[NC, the
      * pager.c:1271 glyph + 8-space pad); the window's width is its expanded text. */
     const _hw = _histLines.reduce((m, l) => Math.max(m,
-        l.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n)).length), 0);
+        l.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(Math.max(0, +n))).length), 0);
     const WIN_COL = _hw >= 78 ? 0 : Math.max(0, Math.min(40, 79 - _hw));
     const _moreLead = WIN_COL === 0 ? ' ' : '';
     const windowLines = [..._histLines, _moreLead + '--More--'];
@@ -27506,7 +27524,8 @@ export async function dosearch0(aflag) {
                 }
 
                 /* C: if (!aflag && !mtmp && !Blind) (void) unmap_invisible(x, y); */
-                /* No RNG; stub. */
+                if (!aflag && !mtmp && !_uprop_active('BLINDED'))
+                    unmap_invisible(x, y);
 
                 /* C: if ((trap = t_at(x, y)) && !trap->tseen && !rnl(8)) {
                  *        nomul(0);
@@ -28285,7 +28304,7 @@ function _look_here_blind_preamble(x, y, dfeature, viaPline) {
         skip_dfeature = true; /* ice already described */
     } else {
         /* C invent.c:4199-4212 */
-        const cant_reach0 = !_can_reach_floor(true);
+        const cant_reach0 = !can_reach_floor(true);
         const surf = (game.level?.at?.(x, y)?.typ === CLOUD)
             ? 'cloud' : surface(x, y);
         const where = cant_reach0 ? 'lying beneath you' : 'lying here on the ';
@@ -28297,7 +28316,7 @@ function _look_here_blind_preamble(x, y, dfeature, viaPline) {
     }
     /* C invent.c:4213-4218 */
     const trap = t_at(x, y);
-    if (!_can_reach_floor(!!(trap && is_pit(trap.ttyp | 0)))) {
+    if (!can_reach_floor(!!(trap && is_pit(trap.ttyp | 0)))) {
         emit("But you can't reach it!");
         return { skip_dfeature, cant_reach: true };
     }
@@ -32431,7 +32450,7 @@ function _coord_field(coordbuf, cmode) {
         return coordbuf;
     const width = (cmode === GPCOORDS_MAP) ? 8 : 12;
     return coordbuf.length >= width ? coordbuf
-                                    : ' '.repeat(width - coordbuf.length) + coordbuf;
+                                    : ' '.repeat(Math.max(0, width - coordbuf.length)) + coordbuf;
 }
 /* C ref: hacklib.c strkitten(buf, c) — append one character. */
 function strkitten(s, c) { return s + c; }
@@ -33159,13 +33178,15 @@ async function dowhatis() {
             for (let o = g.invent; o; o = o.nobj)
                 if (o.invlet === invlet) { selectedObj = o; break; }
         } else {
-            ({ selectedObj, winRows, WIN_COL: invWinCol } = await inventory_menu_legacy());
+            ({ selectedObj, winRows, WIN_COL: invWinCol } = await inventory_menu_legacy({ statusStaysBlank: true }));
         }
+        g._status_blanked = false;
         if (!selectedObj) break;                 /* no selection / ESC */
         const out_str = singular_xname(selectedObj);
         if (out_str)
             await checkfile_usrtyped(out_str,
-                winRows >= 23 ? (invWinCol > 0 ? invWinCol - 2 : 20) : (winRows >= 22 ? -1 : undefined));
+                invWinCol === 0 ? undefined
+                    : winRows >= 23 ? invWinCol - 2 : (winRows >= 22 ? -1 : undefined));
         break;
     }
     case '?': {
@@ -33182,7 +33203,25 @@ async function dowhatis() {
         }
         /* C ref: pager.c:1857 sym = out_str[0]; break; — a single typed
          * character falls through to do_screen_description()'s symbol-lookup
-         * path (from_screen FALSE), which is likewise unported. */
+         * path (from_screen FALSE).  do_screen_description(cc, FALSE, sym, ...)
+         * (pager.c:1247-1607) builds "<sym>        <class> or <class>..." from the
+         * symbol-class scan, and do_look putmixed()s it (pager.c:1922) or, with
+         * found == 0, says "I've never heard of such things." (pager.c:1951).
+         * The found == 1 data.base follow-up (pager.c:1936-1950) is not ported
+         * here; a symbol shared by several classes (e.g. '{') never reaches it. */
+        {
+            const classes = collectScreenDescriptionClasses({
+                ch: out_str[0], dec: false, /* !looked: def_* symbols, not gs.showsyms */
+                terrainmode: g.iflags?.terrainmode, blind: _vision_Blind(),
+            });
+            if (classes.matchCount) {
+                g._pending_message = `${out_str[0]}        ${classes.classes.join(' or ')}`;
+                await flush_screen(1);
+            } else {
+                await pline("I've never heard of such things.");
+            }
+            keepTopline = true;
+        }
         break;
     }
     /* C ref: pager.c:1888-1908 — the eight map-scan arms, each of which builds
@@ -34477,6 +34516,7 @@ export async function domove(dx, dy) {
     /* C hack.c:2711-2713 */
     if (((g.gd.domove_succeeded | 0) & (DOMOVE_RUSH | DOMOVE_WALK)) !== 0) {
         _maybe_smudge_engr(_ux1, _uy1, u.ux | 0, u.uy | 0);
+        maybe_adjust_hero_bubble(); /* C hack.c:2712 */
     }
     /* C hack.c:2715 — gd.domove_attempting = 0L. */
     g.gd.domove_attempting = 0;
@@ -40400,6 +40440,9 @@ export async function mfind0(mtmp, via_warning) {
                 set_msg_xy(x, y);
                 await pline('Your danger sense causes you to take a second '
                     + (_Blind_cmd() ? 'to check nearby' : 'look close by') + '.');
+                /* C detect.c:1988 display_nhwindow(WIN_MESSAGE, FALSE) — page-ack
+                 * BEFORE the newsym below repaints the revealed hider. */
+                topl_force_break_now();
             }
             mtmp.mundetected = 0;
             found_something = true;
@@ -41873,9 +41916,35 @@ async function resurrect() {
         if (mtmp)
             mtmp.mrevived = 1;
     } else {
-        /* look for a migrating Wizard — see the header: unported, and C's
-           `verb` for that branch is "elude". */
+        /* look for a migrating Wizard (wizard.c:727-758) */
         verb = 'elude';
+        let prev = null;
+        while ((mtmp = prev ? prev.nmon : g.migrating_mons) != null) {
+            let elapsed;
+            if (mtmp.iswiz
+                /* if he has the Amulet, he won't bring it to you */
+                && !mon_has_amulet(mtmp)
+                && (elapsed = (g.moves | 0) - (mtmp.mlstmv | 0)) > 0) {
+                mon_catchup_elapsed_time(mtmp, elapsed);
+                if (elapsed >= 32767)
+                    elapsed = 32767 - 1;
+                elapsed = Math.trunc(elapsed / 50);
+                if (mtmp.msleeping && rn2(elapsed + 1))
+                    mtmp.msleeping = 0;
+                if (mtmp.mfrozen === 1) /* would unfreeze on next move */
+                    mtmp.mfrozen = 0, mtmp.mcanmove = 1;
+                if (!helpless(mtmp)) {
+                    if (prev) prev.nmon = mtmp.nmon;
+                    else g.migrating_mons = mtmp.nmon;
+                    await mon_arrive(mtmp, -1); /* -1: Wiz_arrive (dog.c) */
+                    /* mx: mon_arrive() might have sent mtmp into limbo */
+                    if (!mtmp.mx)
+                        mtmp = null;
+                    break;
+                }
+            }
+            prev = mtmp;
+        }
     }
 
     if (mtmp) {

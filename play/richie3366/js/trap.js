@@ -43,7 +43,7 @@ import {
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
     s_suffix, obj_pmname, a_monnam,
 } from './do_name.js';
-import { m_at, wakeup, seemimic, m_carrying, bad_rock, setmangry } from './mon.js';
+import { m_at, wakeup, seemimic, m_carrying, bad_rock, setmangry, m_in_air, unique_corpstat } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
 import { del_engr_at, can_reach_floor } from './engrave.js';
 import {
@@ -126,7 +126,7 @@ import {
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
 import { emits_light, del_light_source } from './light.js'; // mongone_statue_donor del arm (same SCC; hoisted fns, runtime use only)
-import { get_level, on_level, at_dgn_entrance, update_lastseentyp, has_ceiling } from './dungeon.js';
+import { get_level, on_level, at_dgn_entrance, update_lastseentyp, has_ceiling, dunlev, dunlevs_in_dungeon } from './dungeon.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, WAND_CLASS, is_blade,
@@ -143,9 +143,9 @@ import {
 import { tamedog, wary_dog, abuse_dog } from './dog.js';
 import { welded, uwepgone, uswapwepgone } from './wield.js';
 import { count_wsegs, worm_known } from './worm.js';
-import { level_difficulty, depth, distmin, dist2, ordin, strsubst } from './hacklib.js';
+import { level_difficulty, depth, distmin, dist2, ordin, strsubst, upstart } from './hacklib.js';
 import { make_stunned, make_hallucinated } from './potion.js';
-import { monstseesu, monstunseesu, defended, resists_magm } from './mondata.js';
+import { monstseesu, monstunseesu, defended, resists_magm, attacktype } from './mondata.js';
 import { get_obj_location, burn_away_slime } from './timeout.js';
 import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sellobj, costly_alteration, obfree } from './shk.js';
 import { unpunish, seffects } from './read.js';
@@ -222,16 +222,8 @@ const KICKING_BOOTS = objectNames.indexOf('KICKING_BOOTS');
 const IRON_SHOES = objectNames.indexOf('IRON_SHOES');
 const something = 'something';
 
-/** C ref: hacklib.c upstart — capitalize first letter. */
-function upstart(str) {
-    if (!str) return str;
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
+/* C hacklib.c upstart — live export from './hacklib.js' (clone removed D-3358). */
 
-/** C ref: mondata.h unique_corpstat — G_UNIQ. */
-function unique_corpstat(ptr) {
-    return !!((ptr?.geno | 0) & G_UNIQ);
-}
 
 /** C ref: objnam.c / shk.c shk_your thin — carried → "your ", else "the ". */
 function shk_your_statue(statue) {
@@ -632,13 +624,7 @@ export function m_harmless_trap(mtmp, ttmp) {
     }
 }
 
-// C ref: dungeon.c dunlev / dunlevs_in_dungeon / In_hell
-function dunlev(lev) {
-    return lev?.dlevel ?? 1;
-}
-function dunlevs_in_dungeon(lev) {
-    return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 1;
-}
+// C ref: dungeon.c dunlev_reached / In_hell (dunlev + dunlevs_in_dungeon now live-imported from dungeon.js)
 function dunlev_reached(lev) {
     return game.dungeons?.[lev?.dnum]?.dunlev_ureached ?? 0;
 }
@@ -648,6 +634,7 @@ function In_hell(lev) {
 
 // C ref: trap.c dng_bottom — quest locate / Gehennom invocation cutoffs
 function dng_bottom(lev) {
+    // C trap.c:420 bottom via live dunlevs_in_dungeon.
     let bottom = dunlevs_in_dungeon(lev);
     if (In_quest(lev)) {
         const qlocate_depth = game.qlocate_level?.dlevel;
@@ -672,6 +659,7 @@ export function hole_destination(dst) {
     const uz = game.u?.uz ?? { dnum: 0, dlevel: 1 };
     const bottom = dng_bottom(uz);
     dst.dnum = uz.dnum;
+    // C trap.c:447 hole_destination dst dlevel via live dunlev.
     dst.dlevel = dunlev(uz);
     while (dst.dlevel < bottom) {
         dst.dlevel++;
@@ -1154,15 +1142,6 @@ function canseemon(mtmp) {
         ? worm_known(mtmp)
         : (cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp));
     return loc_seen && mon_visible(mtmp);
-}
-
-// C ref: mon.c:2130–2135 m_in_air — flyer, floater, or a clinger that is
-// mundetected under a ceiling (live dungeon.c has_ceiling).
-function m_in_air(mtmp) {
-    const ptr = mtmp?.data;
-    if (!ptr) return false;
-    if (is_flyer(ptr) || is_floater(ptr)) return true;
-    return !!(is_clinger(ptr) && has_ceiling(game.u?.uz) && mtmp.mundetected);
 }
 
 // C ref: trap.c trapnote — "an F note" / "a C note" (+ noprefix bare name)
@@ -4213,6 +4192,7 @@ export async function fall_through(td, ftflags = 0) {
     // C: Blind && Levitation && !Sokoban → return early
     if (Blind && Levitation && !Sokoban) return;
 
+    // C trap.c:618 fall_through newlevel (+1 below C's ++ line) via live dunlev.
     const newlevel = dunlev(u.uz) + 1;
     const loc = game.level?.at(ux, uy);
 
@@ -5583,17 +5563,7 @@ export async function blow_up_landmine(trap) {
     spot_checks(x, y, old_typ); // C `:3218`
 }
 
-/**
- * C ref: monattk.h attacktype — any mattk slot with this aatyp.
- * File-local like muse.js/polyself.js/eat.js (no shared exporter).
- */
-function attacktype(ptr, aatyp) {
-    const mattk = ptr?.mattk || [];
-    for (let i = 0; i < mattk.length; i++) {
-        if ((mattk[i]?.aatyp | 0) === (aatyp | 0)) return true;
-    }
-    return false;
-}
+/* C mondata.c attacktype — live mondata.js export (local clone removed). */
 
 /**
  * C ref: trap.c trapeffect_anti_magic `:2322–2450` — hero + monster.

@@ -2474,6 +2474,7 @@ async function moveloop_core_faithful() {
     // post-rhack clear below, where it separates the command's OWN result line
     // from plines that were already on the channel when rhack was entered.
     const _preRhackMsg = g._pending_message || '';
+    g._preMsgCleared = false;
     await rhack(0);
     // C ref: allmain.c:608-609 — if (u.utotype) deferred_goto(); /* after rhack() */
     // Executes any level change scheduled by schedule_goto() (e.g. wiz_level_tele /
@@ -2551,6 +2552,7 @@ async function moveloop_core_faithful() {
                 const _j = _topl_joins_snapshot(g._resultMessage) || [];
                 g._resultMessageJoins = { src: g._resultMessage, joins: _j.slice() };
             } else if ((!_preRhackMsg || g._attackPublished
+                        || g._preMsgCleared
                         || !String(g._pending_message || '').startsWith(_preRhackMsg))
                 && g._pending_message && !g._resultMessage) {
                 /* A pre-existing line that an input read (getdir's nhgetch,

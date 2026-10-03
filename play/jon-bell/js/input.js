@@ -123,6 +123,8 @@ export async function nhgetch() {
         }
     }
     game._topl_history_recall = null;
+    if (game._pending_message)
+        game._preMsgCleared = true;
     game._pending_message = '';
     game._topl_unacknowledged = false;
     if (!game._inMovemonMore)

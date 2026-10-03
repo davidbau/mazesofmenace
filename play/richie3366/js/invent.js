@@ -4864,7 +4864,7 @@ export function useup(obj) {
  * (burn_floor_objects may call again on the remainder); delobj.
  * If the pile was under the hero and uundetected && hides_under,
  * hideunder(&youmonst). Named: !mon_moving && costly_spot shop
- * addtobill vs stolen_value (both async); zap.js local clone.
+ * addtobill vs stolen_value (both async).
  */
 export function useupf(obj, numused) {
     const atHero = u_at(obj.ox, obj.oy);

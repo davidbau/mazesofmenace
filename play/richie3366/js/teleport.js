@@ -16,7 +16,7 @@ import {
     is_xport,
     ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP, TEMPLE,
     A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL, AM_SHRINE, Amask2align,
-    ESHK, EPRI, EMIN, DISPLACED,
+    ESHK, EPRI, DISPLACED,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT, TELEDS_ALLOW_DRAG,
     M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE,
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_PORTAL, TIMEOUT,
@@ -28,7 +28,7 @@ import {
     HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP,
     MAGIC_PORTAL, VIBRATING_SQUARE, RLOC_MSG, RLOC_NOMSG, RLOC_ERR, NO_TRAP_FLAGS,
     FORCETRAP, VIASITTING,
-    BOLT_LIM, STRAT_APPEARMSG, ARTICLE_A, engulfing_u,
+    BOLT_LIM, STRAT_APPEARMSG, engulfing_u,
     MON_FLOOR, MON_OFFMAP, Upolyd,
     FIRE_RES, ANTIMAGIC, LEVITATION, FLYING, WWALKING, SWIMMING,
     MAGICAL_BREATHING, I_SPECIAL, ECMD_TIME,
@@ -38,7 +38,7 @@ import { objectNames, SPBOOK_CLASS } from './objects.js';
 import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
     amphibious, monsterNames, mons, passes_walls, is_dlord, is_dprince,
-    is_rider, control_teleport, can_teleport, haseyes, G_UNIQ,
+    is_rider, control_teleport, can_teleport, haseyes,
     is_minion, is_vampshifter, is_covetous,
 } from './monsters.js';
 import {
@@ -59,11 +59,12 @@ import { more_experienced } from './exper.js';
 import { getlin, yn_function, ynq } from './getline.js';
 import {
     get_level, find_hell, In_W_tower, On_W_tower_level, In_tutorial,
-    lev_by_name, ledger_to_dnum, ledger_to_dlev, on_level,
+    lev_by_name, ledger_to_dnum, ledger_to_dlev, on_level, ledger_no,
+    dunlevs_in_dungeon,
 } from './dungeon.js';
 import { depth, distmin } from './hacklib.js';
 import { addinv } from './u_init.js';
-import { mon_nam, Monnam, x_monnam, noit_mon_nam, Hallucination } from './do_name.js';
+import { mon_nam, Monnam, Amonnam, noit_mon_nam, Hallucination } from './do_name.js';
 import { placebc, unplacebc, drag_ball, move_bc } from './ball.js';
 import { acurr, A_STR, A_WIS, exercise } from './attrib.js';
 import { in_out_region, update_player_regions, update_monster_region } from './region.js';
@@ -85,23 +86,20 @@ import { set_mon_data } from './mondata.js';
 /* light.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
 import { emits_light } from './light.js';
 /* mon.js (same SCC; hoisted functions, call-time use only — imports.mjs SAFE).
- * m_at rides aliased: the local m_at below is a steed-finding clone kept
- * for its existing sites (out of cluster); the take-off gate needs the
- * canonical steed-skipping grid read (C removes the steed from the grid
- * while mounted, so C's :2699 gate is false for it). */
-import { m_at as mon_m_at, seemimic } from './mon.js';
+ * m_at rides aliased as mon_m_at (local fmon-scan clone deleted — it
+ * lacked the live steed-skip arm; C rm.h:510–511 reads the MON_AT grid
+ * from which the mounted steed is removed). */
+import { m_at as mon_m_at, seemimic, m_in_air, unique_corpstat } from './mon.js';
 /* dig.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
 import { fill_pit } from './dig.js';
+/* mklev.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
+import { somex } from './mklev.js';
+/* priest.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
+import { mon_aligntyp, histemple_at } from './priest.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
 const PM_WIZARD = monsterNames.indexOf('PM_WIZARD');
-
-/** C ref: do_name.c Amonnam — highc(a_monnam). */
-function Amonnam(mtmp) {
-    const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'A monster';
-}
 
 /** Squared distance from hero to (x,y). C ref: you.h distu. */
 function distu_xy(x, y) {
@@ -134,23 +132,7 @@ function u_at(x, y) {
     return game.u?.ux === x && game.u?.uy === y;
 }
 
-function m_at(x, y) {
-    // C: level.monsters[][] — worm segs via place_worm_seg; heads via
-    // place_monster (D-1565). Dead mons stay on fmon until dmonsfree
-    // but are off the map grid. gulpmm remove_monster leaves mx/my;
-    // JS MON_OFFMAP matches C's empty cell so goodpos occupancy after
-    // digest death is not the corpse (D-1243; D-1231). Stale grid
-    // heads are ignored by level_mon_at.
-    const seg = level_mon_at(x, y);
-    if (seg) return seg;
-    const list = game.fmon || [];
-    for (const m of list) {
-        if ((m.mhp | 0) <= 0) continue; // DEADMONSTER — not on map
-        if ((m.mstate | 0) & MON_OFFMAP) continue;
-        if (m.mx === x && m.my === y) return m;
-    }
-    return null;
-}
+/** C rm.h:510–511 m_at — imported live as mon_m_at from mon.js (local clone deleted; it lacked the steed-skip arm). */
 
 /** C ref: monmove.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
 function closed_door(x, y) {
@@ -169,10 +151,6 @@ function accessible(x, y) {
     return ACCESSIBLE(loc.typ) && !closed_door(x, y);
 }
 
-/** C ref: mondata.h unique_corpstat — G_UNIQ. Local (trap.js cycle). */
-function unique_corpstat(ptr) {
-    return !!((ptr?.geno | 0) & G_UNIQ);
-}
 
 /**
  * C ref: engrave.c engr_at / sengr_at.
@@ -218,16 +196,6 @@ function goodpos_onscary(x, y, mptr) {
     if (Inhell() || In_endgame(game.u?.uz)) return false;
     if ((mptr.mndx ?? -1) === PM_MINOTAUR || !haseyes(mptr)) return false;
     return !!sengr_at('Elbereth', x, y, true);
-}
-
-/**
- * C ref: mon.c m_in_air — flyer/floater; cling+ceiling mundetected deferred.
- * Local copy avoids mon.js ↔ teleport cycle.
- */
-function m_in_air(mtmp) {
-    const ptr = mtmp?.data;
-    if (!ptr) return false;
-    return !!(is_flyer(ptr) || is_floater(ptr));
 }
 
 /** C youprop.h H/E/blocked via flat + uprops[idx] (confer may not mirror E*). */
@@ -355,22 +323,8 @@ export function is_exclusion_zone(type, x, y) {
     return false;
 }
 
-/**
- * C ref: priest.c mon_aligntyp — ispriest EPRI / isminion EMIN / data.
- * Local clone avoids priest.js → makemon.js → teleport cycle (D-1110).
- */
-function mon_aligntyp(mon) {
-    let algn;
-    if (mon?.ispriest) algn = EPRI(mon)?.shralign ?? mon?.data?.maligntyp ?? 0;
-    else if (mon?.isminion) algn = EMIN(mon)?.min_align ?? mon?.data?.maligntyp ?? 0;
-    else algn = mon?.data?.maligntyp ?? 0;
-    if (algn === A_NONE) return A_NONE;
-    if (algn > 0) return A_LAWFUL;
-    if (algn < 0) return A_CHAOTIC;
-    return A_NEUTRAL;
-}
-
-/** C monst.h is_lminion — is_minion(data) && mon_aligntyp == A_LAWFUL. */
+/** C monst.h is_lminion — is_minion(data) && mon_aligntyp == A_LAWFUL.
+ * mon_aligntyp is the live priest.js export (C home priest.c:280–289). */
 export function is_lminion(mon) {
     return is_minion(mon?.data) && mon_aligntyp(mon) === A_LAWFUL;
 }
@@ -399,19 +353,10 @@ function inhishop(shkp) {
 }
 
 /**
- * C ref: priest.c histemple_at / has_shrine / inhistemple.
+ * C ref: priest.c has_shrine / inhistemple.
  * Local clones — priest.js → makemon.js → teleport cycle.
+ * (histemple_at rewired to the canonical js/priest.js export.)
  */
-function histemple_at(priest, x, y) {
-    if (!priest || !priest.ispriest) return false;
-    const epri = EPRI(priest);
-    if (!epri) return false;
-    const rooms = in_rooms(x, y, TEMPLE);
-    if (!rooms || (rooms.charCodeAt(0) | 0) !== (epri.shroom | 0)) return false;
-    // C priest.c:157 histemple_at — live on_level (js/dungeon.js).
-    return on_level(epri.shrlevel, game.u?.uz);
-}
-
 function has_shrine(pri) {
     if (!pri || !pri.ispriest) return false;
     const epri = EPRI(pri);
@@ -494,7 +439,8 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
             return false;
         }
     }
-    if (avoid_monpos && m_at(x, y)) return false;
+    // C rm.h:510–511 m_at via live mon_m_at (steed off-grid while mounted).
+    if (avoid_monpos && mon_m_at(x, y)) return false;
 
     const loc = game.level?.at(x, y);
     if (!loc) return false;
@@ -502,7 +448,8 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
     let mdat = mtmp?.data ?? null;
 
     if (mtmp) {
-        const mtmp2 = m_at(x, y);
+        // C rm.h:510–511 m_at via live mon_m_at (steed off-grid while mounted).
+        const mtmp2 = mon_m_at(x, y);
         // C: occupied by another mon (fakemon mx=0 never equals occupant)
         if (mtmp2 && (mtmp2 !== mtmp || mtmp.wormno)) return false;
 
@@ -602,7 +549,8 @@ export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter) {
             for (let x = Math.max(lox, 1); x <= hix; ++x) {
                 if (x > COLNO - 1) break;
                 if (x !== lox && x !== hix && y !== loy && y !== hiy) continue;
-                if (skip_mons && m_at(x, y)) continue;
+                // C teleport.c:684 skip_mons m_at via live mon_m_at.
+                if (skip_mons && mon_m_at(x, y)) continue;
                 const loc = game.level?.at(x, y);
                 if (skip_inaccessible && loc && !ZAP_POS(loc.typ)) continue;
                 if (filter && !filter(x, y)) continue;
@@ -775,10 +723,10 @@ export async function rloc_to(mtmp, x, y, rloc_opts = null) {
     // C: resident_shk = isshk && inhishop — before same-cell return / pickup
     const resident_shk = !!(mtmp.isshk && inhishop(mtmp));
     // C: if (x == mx && y == my && m_at(x, y) == mtmp) return;
-    if (x === oldx && y === oldy && m_at(x, y) === mtmp) return null;
+    if (x === oldx && y === oldy && mon_m_at(x, y) === mtmp) return null;
 
     if (oldx) {
-        /* JS m_at scans fmon by mx/my; zero coords before newsym so the
+        /* Canonical m_at scans fmon by mx/my; zero coords before newsym so the
          * head is not still “on” the old cell (C occupancy is the grid). */
         mtmp.mx = 0;
         mtmp.my = 0;
@@ -942,9 +890,6 @@ function occupied(x, y) {
         || IS_POOL(loc.typ));
 }
 
-function somex(croom) {
-    return rn1((croom.hx | 0) - (croom.lx | 0) + 1, croom.lx | 0);
-}
 function somey(croom) {
     return rn1((croom.hy | 0) - (croom.ly | 0) + 1, croom.ly | 0);
 }
@@ -956,11 +901,11 @@ function somey(croom) {
 function somexy(croom, c) {
     if (croom.irregular || (croom.nsubrooms | 0)) {
         // Named omission: irregular edge/roomno + subroom inside_room reject
-        c.x = somex(croom);
+        c.x = somex(croom); // C mkroom.c:666–669 live js/mklev.js export
         c.y = somey(croom);
         return true;
     }
-    c.x = somex(croom);
+    c.x = somex(croom); // C mkroom.c:666–669 live js/mklev.js export
     c.y = somey(croom);
     return true;
 }
@@ -1137,6 +1082,7 @@ async function rloc_post_move_msg(mtmp, x, y, state) {
         // C youprop.h Blind — poly brown mold is blind (D-0928 #1128).
         const Blind = !!(((u.HBlinded | 0) || (u.EBlinded | 0) || u.Blind || u.ublind)
             && !(u.BBlinded | 0));
+        // C teleport.c:1722 — appearmsg ? Amonnam : Monnam (live do_name.js export; SUPPRESS_SADDLE-when-named).
         const who = appearmsg ? Amonnam(mtmp) : Monnam(mtmp);
         const sud = appearmsg ? 'suddenly ' : '';
         const verb = Blind ? 'arrives' : 'appears';
@@ -1166,7 +1112,7 @@ async function rloc_post_move_msg(mtmp, x, y, state) {
 export async function rloc_to_core(mtmp, x, y, rlocflags) {
     if (!mtmp) return null;
     // C rloc_to_core: same-cell return before vanish/appear (1658–1659).
-    if (x === (mtmp.mx | 0) && y === (mtmp.my | 0) && m_at(x, y) === mtmp) {
+    if (x === (mtmp.mx | 0) && y === (mtmp.my | 0) && mon_m_at(x, y) === mtmp) {
         return null; /* that was easy */
     }
     const state = await rloc_pre_move_msg(mtmp, x, y, rlocflags);
@@ -1386,7 +1332,8 @@ export async function mtele_trap(mtmp, trap) {
     } else if (isok(trap.teledest?.x, trap.teledest?.y)) {
         const dx = trap.teledest.x | 0;
         const dy = trap.teledest.y | 0;
-        if (!(m_at(dx, dy) || u_at(dx, dy))) {
+        // C teleport.c:1986 teledest m_at via live mon_m_at.
+        if (!(mon_m_at(dx, dy) || u_at(dx, dy))) {
             await rloc_to_core(mtmp, dx, dy, RLOC_MSG);
         }
     } else {
@@ -2251,10 +2198,7 @@ export function single_level_branch(lev) {
     return Is_knox_level(lev);
 }
 
-/** C ref: dungeon.c dunlevs_in_dungeon. */
-function dunlevs_in_dungeon(lev) {
-    return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 1;
-}
+/** C dungeon.c dunlevs_in_dungeon — imported live from dungeon.js (local clone deleted). */
 
 /** C ref: dungeon.h Inhell — hellish dungeon flag (dungeon.c In_hell). */
 export function Inhell() {
@@ -2279,6 +2223,7 @@ export function random_teleport_level() {
     let min_depth;
     let max_depth;
     if (In_quest(uz)) {
+        // C teleport.c:2219 quest bottom via live dunlevs_in_dungeon.
         let bottom = dunlevs_in_dungeon(uz);
         const qlocate_depth = game.qlocate_level?.dlevel;
         const reached = game.dungeons?.[uz.dnum]?.dunlev_ureached ?? 0;
@@ -2289,6 +2234,7 @@ export function random_teleport_level() {
         max_depth = bottom + (((game.dungeons?.[uz.dnum]?.depth_start | 0) || 1) - 1);
     } else {
         min_depth = 1;
+        // C teleport.c:2230 max_depth via live dunlevs_in_dungeon.
         max_depth = dunlevs_in_dungeon(uz)
             + (((game.dungeons?.[uz.dnum]?.depth_start | 0) || 1) - 1);
         if (Inhell() && !u.uevent?.invoked) max_depth -= 1;
@@ -2580,6 +2526,7 @@ export async function level_tele() {
         const dun = game.dungeons?.[u.uz?.dnum | 0];
         const pastMain = medusa
             && (u.uz?.dnum | 0) === (medusa.dnum | 0)
+            // C teleport.c:1390 medusa past-main gate via live dunlevs_in_dungeon.
             && newlev >= ((dun?.depth_start | 0) + dunlevs_in_dungeon(u.uz));
         if (pastMain) {
             find_hell(newlevel);
@@ -2588,6 +2535,7 @@ export async function level_tele() {
                 : In_mines(u.uz) ? game.mineend_level
                   : game.sanctum_level;
             const qdun = game.dungeons?.[qbranch?.dnum | 0];
+            // C teleport.c:1401 deepest clamp via live dunlevs_in_dungeon.
             const deepest = ((qdun?.depth_start | 0)
                 + dunlevs_in_dungeon(qbranch || u.uz) - 1) | 0;
             if (!wizard && Inhell() && !u.uevent?.invoked && newlev >= deepest) {
@@ -2731,7 +2679,8 @@ export async function tele_trap(trap) {
             } else if (isok(trap?.teledest?.x, trap?.teledest?.y)) {
                 const dx = trap.teledest.x | 0;
                 const dy = trap.teledest.y | 0;
-                let mtmp = m_at(dx, dy);
+                // C teleport.c:1514 teledest m_at via live mon_m_at.
+                let mtmp = mon_m_at(dx, dy);
                 const { settrack } = await import('./track.js');
                 settrack();
                 if (mtmp) {
@@ -2842,12 +2791,7 @@ export async function teleport_pet(mtmp, force_it) {
     return true;
 }
 
-function ledger_no(lev) {
-    const dnum = lev?.dnum | 0;
-    const dlevel = lev?.dlevel | 0;
-    const dun = game.dungeons?.[dnum];
-    return ((dun?.ledger_start | 0) + dlevel) | 0;
-}
+/* C dungeon.c ledger_no `:1376–1379` — imported live from dungeon.js (local clone deleted). */
 
 /**
  * C ref: dog.c migrate_to_level `:887–932` — take mon off map onto
@@ -3099,6 +3043,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
     if (is_xport(tt) && !control_teleport(mtmp.data)) {
         mtmp.mconf = 1;
     }
+    /* C teleport.c:2094 — ledger_no(&tolevel) via live dungeon.js export. */
     migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
     return Trap_Moved_Mon;
 }

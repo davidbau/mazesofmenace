@@ -1084,7 +1084,8 @@ export function find_hell(lev) {
 
 /**
  * C ref: dungeon.c dunlev `:1325–1328` — the dlevel within its dungeon.
- * Canonical export (C home); local clones in dokick/fountain/trap predate it.
+ * Canonical export (C home); all local clones rewired to it
+ * (fountain/trap dunlev, dokick/fountain/teleport/trap dunlevs_in_dungeon).
  */
 export function dunlev(lev) {
     return lev?.dlevel ?? 1;
@@ -2384,7 +2385,7 @@ function Sokoban() {
 
 /**
  * C dungeon.c Invocation_lev `:2016–2021` — In_hell && deepest-1.
- * Canonical export (hack.js / apply.js still have local clones).
+ * Canonical export (clones rewired: hack.js D-3344, mklev.js + apply.js D-3349).
  * @param {{ dnum?: number, dlevel?: number }|null|undefined} lev
  * @returns {boolean}
  */

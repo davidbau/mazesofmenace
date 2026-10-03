@@ -96,14 +96,14 @@ import {
     maxledgerno, ledger_to_dnum, find_hell,
     dunlev, dunlevs_in_dungeon, assign_rnd_level,
     On_W_tower_level, In_W_tower,
-    save_exclusions, load_exclusions, on_level,
+    save_exclusions, load_exclusions, on_level, ledger_no,
 } from './dungeon.js';
 import { record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
 import { com_pager, deliver_by_pline } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
-import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon } from './mon.js';
+import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon, m_in_air } from './mon.js';
 import { enexto, rloc, safe_teleds } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
@@ -556,10 +556,6 @@ function distu(x, y) {
     const u = game.u || {};
     return dist2(u.ux | 0, u.uy | 0, x | 0, y | 0);
 }
-/** C mondata.h m_in_air subset — flyer/floater. */
-function m_in_air(mtmp) {
-    return is_flyer(mtmp?.data) || is_floater(mtmp?.data);
-}
 /**
  * C ref: hack.c u_locomotion `:1817–1829` — Levitation, then youprop.h
  * Flying (mhitu.js export: H/E or a flying steed, unless BFlying).
@@ -1008,7 +1004,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
         const mtmp = m_at(rx, ry);
         if (mtmp && !(mtmp.mhp <= 0) && !m_in_air(mtmp)) {
             // C do.c:89–91 — DEADMONSTER (mhp<1) + !m_in_air gate, then kill
-            // (m_in_air is the file-local clone; clone-drift debt, untouched).
+            // (m_in_air is the live mon.js export: flyer/floater/clinger).
             await mondied(mtmp);
         }
         const ttmp = t_at(rx, ry);
@@ -1364,14 +1360,8 @@ export async function donull() {
     return true; // ECMD_TIME
 }
 
-function ledger_no(lev) {
-    const dnum = lev?.dnum | 0;
-    const dlevel = lev?.dlevel | 0;
-    const dun = game.dungeons?.[dnum];
-    return ((dun?.ledger_start | 0) + dlevel) | 0;
-}
-
 /* C dungeon.c on_level — imported live from dungeon.js (clone was already the unguarded |0 shape; C NONNULLARG12). */
+/* C dungeon.c ledger_no `:1376–1379` — imported live from dungeon.js (local clone deleted). */
 
 /** C ref: dungeon.h In_hell — dungeon hellish flag. */
 function In_hell(lev) {
@@ -1610,6 +1600,7 @@ export function save_currentstate() {
         // create_levelfile is not called: it sets LFILE_EXISTS and
         // rewrites game.lock, and goto_level treats that flag as a stash.
         // VFS creat cannot fail (D-2555), so the handle is non-null.
+        /* C do.c:1357 — create_levelfile(ledger_no(&u.uz)) via live dungeon.js export. */
         const lev = ledger_no(game.u?.uz);
         const nhfp = {
             structlevel: true,
@@ -1683,6 +1674,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C do.c :1517–1519 — after tutorial; ledger_no <= 0 is done(ESCAPED)
     // (noreturn). JS done() returns after really_done so stop here.
     // `let`: the mysteryforce arm below may redirect newlevel (C :1600).
+    /* C do.c:1517 — new_ledger = ledger_no(newlevel) via live dungeon.js export. */
     let new_ledger = ledger_no(newlevel);
     if (new_ledger <= 0) {
         const { done } = await import('./end.js');
@@ -1722,6 +1714,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 await next_to_u();
                 return;
             }
+            /* C do.c:1570 — mysteryforce recompute via live dungeon.js export. */
             new_ledger = ledger_no(newlevel);
             at_stairs = false;
             game.at_ladder = false;
@@ -1833,6 +1826,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
     // C: save_track before release/initrack (track.c) — per-level utrack.
     if (!game.level_info) game.level_info = [];
+    /* C do.c:1650 — savelev(ledger_no(&u.uz)) level tag via live dungeon.js export. */
     const old_ledger = ledger_no(u.uz);
     const trackSnap = save_track(); // clears live ring (C release_data arm)
     if (old_ledger > 0) {
@@ -3562,6 +3556,7 @@ export async function doup() {
     }
     // C do.c :1330–1335 — ledger 1: no return; 'y' climbs out (prev_level
     // escapes via goto_level ledger<=0 → done(ESCAPED)), else stay.
+    /* C do.c:1330 — ledger_no(&u.uz) == 1 via live dungeon.js export. */
     if (ledger_no(u.uz) === 1) {
         if (game.iflags?.debug_fuzzer) return ECMD_OK;
         if ((await y_n('Beware, there will be no return!  Still climb?')) !== 'y')

@@ -118,7 +118,7 @@ import {
 } from './monsters.js';
 import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { yn_function, getlin, paranoid_ynq } from './getline.js';
-import { highc, dist2 } from './hacklib.js';
+import { highc, dist2, upstart } from './hacklib.js';
 import { show_nhw_menu_text } from './pager.js';
 import { cansee } from './vision.js';
 import { touch_artifact, youmonst } from './artifact.js';
@@ -287,11 +287,7 @@ export function reset_justpicked(olist) {
     }
 }
 
-/** C ref: hacklib.c upstart — capitalize first letter. */
-function upstart(str) {
-    if (!str) return str;
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
+/* C hacklib.c upstart — live export from './hacklib.js' (clone removed D-3358). */
 
 /** C ref: pickup.c count_justpicked / find_justpicked. */
 export function count_justpicked(olist) {

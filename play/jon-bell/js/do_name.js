@@ -33,7 +33,8 @@ function Mgender(mtmp) {
 }
 
 export function mon_pmname(mon) {
-    return monPmname(mon.data_mndx | 0, Mgender(mon));
+    const pmidx = mon.data?.pmidx;
+    return monPmname(typeof pmidx === 'number' ? (pmidx | 0) : (mon.data_mndx | 0), Mgender(mon));
 }
 
 

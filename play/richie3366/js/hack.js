@@ -74,7 +74,7 @@ import { ART_STING } from './generated/artifacts_data.js';
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam, pmname, Ugender, a_monnam } from './do_name.js';
 import { decl_globals_init } from './decl.js';
 import { init_objects } from './o_init.js';
-import { get_level } from './dungeon.js';
+import { get_level, Invocation_lev } from './dungeon.js';
 import { costly_spot, shop_keeper, addtobill, subfrombill, onshopbill, find_objowner, stolen_value, block_entry, block_door } from './shk.js';
 import { se_monster_behind_boulder, se_kerplunk_boulder_gone } from './generated/seffects_data.js';
 import { near_capacity, inv_weight, freeinv, weapon_descr, useupf } from './invent.js';
@@ -3388,17 +3388,6 @@ export async function set_uinwater(in_out) {
         u.uinwater = in_out ? 1 : 0;
         await switch_terrain();
     }
-}
-
-/**
- * C dungeon.c Invocation_lev — In_hell && dlevel == num_dunlevs-1.
- * Local clone (apply.js still has its own); dungeon.c export named.
- */
-function Invocation_lev(lev) {
-    if (!lev) return false;
-    const dun = game.dungeons?.[lev.dnum | 0];
-    if (!dun?.flags?.hellish) return false;
-    return (lev.dlevel | 0) === ((dun.num_dunlevs | 0) - 1);
 }
 
 /**

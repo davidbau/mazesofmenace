@@ -6,7 +6,7 @@ import { stop_occupation } from './allmain.js';
 import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { game } from './gstate.js';
 import { PM_LEPRECHAUN, PM_VROCK } from './pm.generated.js';
-import { bare_artifactname, xname } from './objnam.js';
+import { bare_artifactname, xname, makeplural } from './objnam.js';
 import { acurr } from './attrib.js';
 import { money_cnt } from './com_pager.js';
 import { dist2, isok } from './hacklib.js';
@@ -25,7 +25,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, _topl_record_join, pline, canseemon,
-         topl_force_break_now, You_hear, _pline_flush_frame_record, Unaware } from './display.js';
+         topl_force_break_now, Norep, You_hear, sensemon, _pline_flush_frame_record, Unaware } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -44,8 +44,11 @@ import { artifact_light } from './light.js';
  * cycle is fine, they are hoisted function declarations). */
 import { rloc, mnexto } from './teleport.js';
 import { RLOC_MSG, has_edog, SHOPBASE } from './const.js';
-import { can_track, resist_conflict, can_blow, y_monnam, Adjmonnam } from './mhitm.js';
-import { see_wsegs, worm_nomove } from './worm.js';
+import { can_track, resist_conflict, can_blow, y_monnam, Adjmonnam, wakeup, locomotion } from './mhitm.js';
+import { losehp } from './dokick.js';
+import { monkilled_trap } from './trap.js';
+import { TELEPAT as TELEPAT_MV, HALF_SPDAM as HALF_SPDAM_MV, KILLED_BY_AN as KILLED_BY_AN_MV } from './const.js';
+import { see_wsegs, worm_nomove, worm_move } from './worm.js';
 import { ranged_attk_available } from './mhitu.js';
 import { mon_wield_item, sticks } from './dog.js';
 import { mwelded, is_pole, is_mines_prize, is_soko_prize } from './cmd.js';
@@ -449,6 +452,61 @@ export function mon_allowflags(mtmp) {
         allowflags |= NOGARLIC_MAF;
 
     return allowflags;
+}
+
+/* C monmove.c:581-651 mind_blast — a mind flayer unleashes a mind blast. */
+export async function mind_blast(mtmp) {
+    const g = game;
+    const u = g.u;
+    if (canseemon(mtmp))
+        await pline(`${Monnam_dm(mtmp)} concentrates.`);
+    const mdx = (u.ux | 0) - (mtmp.mx | 0), mdy = (u.uy | 0) - (mtmp.my | 0);
+    if (mdx * mdx + mdy * mdy > BOLT_LIM * BOLT_LIM) {
+        await pline('You sense a faint wave of psychic energy.');
+        return;
+    }
+    await pline('A wave of psychic energy pours over you!');
+    const _on = (id) => { const p = u.uprops?.[id]; return !!(p && (p.intrinsic || p.extrinsic)); };
+    if (mtmp.mpeaceful && (!_on(CONFLICT_MAF) || resist_conflict(mtmp))) {
+        await pline('It feels quite soothing.');
+    } else if (!u.uinvulnerable) {
+        const m_sen = !!sensemon(mtmp);
+        const blind_telepat = _on(TELEPAT_MV);
+        if (m_sen || (blind_telepat && rn2(2)) || !rn2(10)) {
+            const ym = g.youmonst;
+            if (u.uundetected) {
+                u.uundetected = 0;
+                newsym(u.ux, u.uy);
+            } else if (ym && (ym.m_ap_type | 0) !== M_AP_NOTHING && (ym.m_ap_type | 0) !== M_AP_MONSTER) {
+                ym.m_ap_type = M_AP_NOTHING;
+                ym.mappearance = 0;
+                newsym(u.ux, u.uy);
+            }
+            await pline(`It locks on to your ${m_sen ? 'telepathy' : blind_telepat ? 'latent telepathy' : 'mind'}!`);
+            let dmg = rnd(15);
+            if (_on(HALF_SPDAM_MV))
+                dmg = Math.trunc((dmg + 1) / 2);
+            await losehp(dmg, 'psychic blast', KILLED_BY_AN_MV);
+        }
+    }
+    for (let m2 = g.fmon, nmon; m2; m2 = nmon) {
+        nmon = m2.nmon;
+        if ((m2.mhp | 0) <= 0) continue;
+        if (!!m2.mpeaceful === !!mtmp.mpeaceful) continue;
+        const pm = (m2.mndx ?? m2.mnum ?? -1) | 0;
+        const mrow = (pm >= 0 && pm < _MONS_MV.length) ? _MONS_MV[pm] : null;
+        if (mrow && ((mrow[6] | 0) & M1_MINDLESS_MV)) continue;
+        if (m2 === mtmp) continue;
+        const telepathic = (pm === 28 || pm === 48 || pm === 49); /* floating eye, mind flayers */
+        if ((telepathic && (rn2(2) || m2.mblinded)) || !rn2(10)) {
+            await wakeup(m2, false);
+            if (cansee(m2.mx, m2.my))
+                await pline(`It locks on to ${mon_nam(m2)}.`);
+            m2.mhp -= rnd(15);
+            if ((m2.mhp | 0) <= 0)
+                await monkilled_trap(m2, '');
+        }
+    }
 }
 /* C ref: mfndpos.h — the bits mon_allowflags sets that had no local name yet. */
 const ALLOW_WALL_MAF = 0x04000000;
@@ -1409,6 +1467,9 @@ function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
                     + `${trapnote} squeak ${_nearfar}.`;
         }
         if (_msg) {
+            /* C pline.c:282 — gp.prevmsg = line on every shown message; Norep()
+             * (pline.c:255) reads it, so a later identical Norep must print. */
+            game._prevmsg = String(_msg);
             const _prev = game._pending_message;
             if (_prev && _prev.length > 0) {
                 const _joined = _prev + '  ' + _msg;
@@ -1941,6 +2002,10 @@ export async function m_move(mtmp, after) {
         /* C monmove.c:2073-2086: actual move — update position */
         mtmp.mx = nix;
         mtmp.my = niy;
+        /* C monmove.c:2057-2058: for a long worm, insert a new segment to
+         * reconnect the head with the tail (rnd(5)/rn1 growth draws). */
+        if (mtmp.wormno)
+            worm_move(mtmp);
 
         maybe_unhide_at(mtmp.mx | 0, mtmp.my | 0);
 
@@ -2124,6 +2189,27 @@ export async function m_move(mtmp, after) {
                     }
                     if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV).length)
                         add_damage(mtmp.mx | 0, mtmp.my | 0, 0);
+                }
+            }
+        }
+
+        /* C monmove.c:1623-1639 — the IRONBARS arm of "doors and bars".  The
+         * metal-eating arm (dissolve_bars, MMOVE_DONE) is not ported here;
+         * the else-if Norep arm is: "%s %s %s the iron bars." */
+        {
+            const _bloc = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0];
+            if (_bloc && (_bloc.typ | 0) === IRONBARS
+                && game.flags?.verbose !== false && canseemon(mtmp)) {
+                const _bn = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+                const _bptr = permonstTemplate(_bn);
+                const _eats = !(((_bloc.wall_info ?? 0) | 0) & 0x08 /* W_NONDIGGABLE */)
+                    && (dmgtype({ pmidx: _bn }, AD_RUST_BARS_MV)
+                        || dmgtype({ pmidx: _bn }, AD_CORR_BARS_MV)
+                        || metallivorous_mv(_bptr));
+                if (!_eats) {
+                    await Norep('%s %s %s the iron bars.', Monnam_dm(mtmp),
+                          makeplural(locomotion(_bptr, 'pass')),
+                          ((_bptr.mflags1 | 0) & M1_WALLWALK_MV) ? 'through' : 'between');
                 }
             }
         }

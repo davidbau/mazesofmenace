@@ -80,7 +80,7 @@ import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam, obj_pmname, hcolor, s_suffix, Ugender } from './do_name.js';
 import { monflee } from './monmove.js';
-import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear, check_capacity } from './hack.js';
+import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear, check_capacity, invocation_pos, On_stairs } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path, walk_path_async, hurtle_jump, thitmonst, hurtle } from './dothrow.js';
 import { uhim, uhis, genders } from './roles.js';
@@ -107,6 +107,7 @@ import { explode } from './explode.js';
 import {
     flash_hits_mon, xkilled, attack_checks, check_caitiff,
     force_attack, stumble_onto_mimic, killed, defsym_explanation,
+    attacktype_fordmg,
 } from './uhitm.js';
 import { digests, set_ustuck, Flying, mon_reflects } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
@@ -142,7 +143,7 @@ import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
 import { findit, openit, cvt_sdoor_to_door } from './detect.js';
 import { surface } from './sit.js';
-import { level_difficulty, isqrt, dist2 } from './hacklib.js';
+import { level_difficulty, isqrt, dist2, upstart } from './hacklib.js';
 import { mon_adjust_speed } from './muse.js';
 import { paralyze_monst } from './mhitm.js';
 
@@ -1823,11 +1824,7 @@ function Yobjnam2_apply(obj, verb) {
     return `Your ${nam} ${v}`;
 }
 
-/** C hacklib.c upstart. */
-function upstart(str) {
-    if (!str) return str;
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
+/* C hacklib.c upstart — live export from './hacklib.js' (clone removed D-3358). */
 
 /** C apply.c HowMany for magic_whistled cumulative pline. */
 function HowMany(n) {
@@ -4142,28 +4139,6 @@ function carrying_apply(otyp) {
     return null;
 }
 
-/** C dungeon.c Invocation_lev — In_hell && dlevel == num_dunlevs-1. */
-function Invocation_lev_apply(lev) {
-    const uz = lev || game.u?.uz;
-    if (!uz) return false;
-    const dun = game.dungeons?.[uz.dnum | 0];
-    if (!dun?.flags?.hellish) return false;
-    return (uz.dlevel | 0) === ((dun.num_dunlevs | 0) - 1);
-}
-
-/** C hack.c invocation_pos — Invocation_lev && (x,y)==inv_pos. */
-function invocation_pos_apply(x, y) {
-    if (!Invocation_lev_apply()) return false;
-    const ip = game.inv_pos || game.svi?.inv_pos;
-    if (!ip) return false;
-    return (x | 0) === (ip.x | 0) && (y | 0) === (ip.y | 0);
-}
-
-/** C stairs.c On_stairs — stairway_at != NULL. */
-function On_stairs_apply(x, y) {
-    return !!stairway_at(x, y);
-}
-
 /** C music.c Hero_playnotes — tty/sound deferred (no RNG). */
 function Hero_playnotes_bell(_instr, _notes, _vol) {}
 
@@ -4208,8 +4183,8 @@ export async function use_bell(obj) {
     const ordinary = obj.otyp !== BELL_OF_OPENING || !(obj.spe | 0);
     const u = game.u || {};
     const invoking = obj.otyp === BELL_OF_OPENING
-        && invocation_pos_apply(u.ux, u.uy)
-        && !On_stairs_apply(u.ux, u.uy);
+        && invocation_pos(u.ux, u.uy)
+        && !On_stairs(u.ux, u.uy);
 
     Hero_playnotes_bell(obj.otyp, 'C', 100);
     await pline(`You ring ${the(xname(obj))}.`);
@@ -4553,23 +4528,6 @@ const AT_ENGL_UNI = 11;
 const AD_BLND_UNI = 11;
 
 /**
- * C ref: mondata.c attacktype_fordmg — first mattk with aatyp and adtyp
- * (AD_ANY==-1 wildcard). Local copy to avoid makemon/mhitu import cycles.
- */
-function attacktype_fordmg(ptr, atyp, dtyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return null;
-    for (let i = 0; i < slots.length; i++) {
-        const a = slots[i];
-        if ((a?.aatyp | 0) === atyp
-            && (dtyp === -1 || (a?.adtyp | 0) === dtyp)) {
-            return a;
-        }
-    }
-    return null;
-}
-
-/**
  * C youprop.h TimedTrouble — timeout-only intrinsic (no I_SPECIAL/extrinsic
  * high bits): ((P) && !((P) & ~TIMEOUT)) ? (P & TIMEOUT) : 0.
  */
@@ -4682,6 +4640,7 @@ export async function use_unicorn_horn(obj) {
     if (TimedTrouble(u.Sick)) trouble_list.push(SICK);
     if (TimedTrouble(u.HBlinded) > (u.ucreamed | 0)
         && !(u.uswallow
+            // C apply.c:2316 — engulfer AT_ENGL/AD_BLND keeps TimedTrouble blind.
             && attacktype_fordmg(u.ustuck?.data, AT_ENGL_UNI, AD_BLND_UNI))) {
         trouble_list.push(BLINDED);
     }
@@ -4803,8 +4762,8 @@ export async function use_candelabrum(obj) {
             `${The(xname(obj))}'s ${s} burn${Blind() ? '.' : ' brightly!'}`,
         );
     }
-    if (!invocation_pos_apply(u.ux | 0, u.uy | 0)
-        || On_stairs_apply(u.ux | 0, u.uy | 0)) {
+    if (!invocation_pos(u.ux | 0, u.uy | 0)
+        || On_stairs(u.ux | 0, u.uy | 0)) {
         await pline(
             `The ${s} ${vtense(s, 'are')} being rapidly consumed!`,
         );

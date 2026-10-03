@@ -957,6 +957,18 @@ function mk_bubble(x, y, n) {
     void mv_bubble(b, 0, 0, true); // ini: cons is empty, so nothing awaits
 }
 
+/* C mkmaze.c:1927-1939 maybe_adjust_hero_bubble — maybe change the movement
+ * direction of the bubble the hero is in. */
+export function maybe_adjust_hero_bubble() {
+    const u = game.u;
+    if (!Is_waterlevel(u?.uz)) return;
+    if (!u.dx && !u.dy) return;
+    if (_hero_bubble && !rn2(2)) {
+        _hero_bubble.dx = u.dx;
+        _hero_bubble.dy = u.dy;
+    }
+}
+
 /* C mkmaze.c:1951-2107 mv_bubble(b, dx, dy, ini). */
 async function mv_bubble(b, dx, dy, ini) {
     let colli = 0;

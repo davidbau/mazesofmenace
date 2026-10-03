@@ -244,8 +244,11 @@ function _surface_lk(x, y) {
 
 export async function read_engr_at(x, y) {
     const ep = engr_at(x, y);
-    if (!ep || !ep.text) return;
+    /* C engrave.c:321 — eloc = surface(x, y) is computed before the engraving
+     * test; under hallucination over a pool it draws hliquid's rn2(41) on the
+     * DISPLAY stream even when nothing is engraved here. */
     const eloc = _surface_lk(x, y);
+    if (!ep || !ep.text) return;
     const blind = Blind();
     let sensed = false;
     switch (ep.engr_type) {

@@ -4274,7 +4274,7 @@ export async function potionhit(mon, obj, how) {
         && (!breathless(g.youmonst?.data) || haseyes(g.youmonst?.data)))
         await potionbreathe(obj);
     else if (obj.dknown && cansee(tx, ty))
-        trycall_noprompt(obj);
+        await trycall(obj); /* C potion.c:1911; all potionhit callers await */
 
     /* C potion.c:1913-1925 — settle an unpaid potion after it is thrown.
      * Monsters can throw inventory objects too, so use subfrombill for that

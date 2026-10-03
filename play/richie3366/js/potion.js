@@ -174,10 +174,10 @@ import { can_reach_floor } from './engrave.js';
 import { surface } from './sit.js';
 import { bcsign } from './rumors.js';
 import { more_experienced, pluslvl, rndexp } from './exper.js';
-import { depth, strstri, dist2 } from './hacklib.js';
+import { depth, strstri, dist2, upstart } from './hacklib.js';
 import {
     trycall, docall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
-    Hallucination, rndmonnam,
+    Hallucination, rndmonnam, s_suffix,
 } from './do_name.js';
 import { objdescr_is } from './apply.js';
 import { explode_oil } from './explode.js';
@@ -198,7 +198,7 @@ import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import { hard_helmet } from './do_wear.js';
 import { strange_feeling } from './detect.js';
-import { In_W_tower, has_ceiling, on_level } from './dungeon.js';
+import { In_W_tower, has_ceiling, on_level, ledger_no } from './dungeon.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
@@ -1729,11 +1729,7 @@ async function peffect_acid(otmp) {
     potion_unkn++;
 }
 
-/** C dungeon.c ledger_no — dlevel + dungeons[dnum].ledger_start. */
-function ledger_no(lev) {
-    const dun = game.dungeons?.[lev?.dnum | 0];
-    return ((lev?.dlevel | 0) + (dun?.ledger_start | 0)) | 0;
-}
+/* C dungeon.c ledger_no `:1376–1379` — imported live from dungeon.js (local clone deleted). */
 
 /* C dungeon.c on_level — imported live from dungeon.js (clone was already the unguarded |0 shape). */
 
@@ -1775,7 +1771,7 @@ function Can_rise_up(x, y, lev) {
     }
     return (lev?.dlevel | 0) > 1
         || ((game.dungeons?.[lev?.dnum | 0]?.entry_lev | 0) === 1
-            && ledger_no(lev) !== 1
+            && ledger_no(lev) !== 1 /* C dungeon.c ledger_no — live dungeon.js export */
             && stway && stway.up);
 }
 
@@ -1800,6 +1796,7 @@ function assign_level(dest, src) {
 async function peffect_gain_level(otmp) {
     const u = game.u || (game.u = {});
     if (otmp.cursed) {
+        /* C potion.c:1086 — on_lvl_1 = (ledger_no(&u.uz) == 1) via live dungeon.js export. */
         const on_lvl_1 = ledger_no(u.uz) === 1;
 
         potion_unkn++;
@@ -2225,8 +2222,8 @@ export async function djinni_from_bottle(obj) {
  * cureblind → make_blinded(0,TRUE) (learn_unseen_invent via toggle)
  * then make_deaf(0,TRUE) (D-1399; SPE_CURE_BLINDNESS).
  * curesick → make_vomiting(0,TRUE) + make_sick(0,NULL,TRUE,SICK_ALL)
- * (D-1398; SPE_CURE_SICKNESS). zap.js keeps a local copy for SPE_HEALING
- * zapyourself (avoids import cycle).
+ * (D-1398; SPE_CURE_SICKNESS). zap.js zapyourself imports this live export
+ * (clone removed; zap→potion edge already static).
  */
 export async function healup(nhp, nxtra, curesick, cureblind) {
     const u = game.u;
@@ -2999,22 +2996,9 @@ function aobjnam_pot(otmp, verb) {
     return bp;
 }
 
-/** C hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
-function s_suffix_pot(s) {
-    const buf = String(s ?? '');
-    const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
-    if (low === 'you') return `${buf}r`;
-    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
-    if (buf.endsWith('s')) return `${buf}'`;
-    return `${buf}'s`;
-}
+/* C hacklib.c s_suffix — live export from './do_name.js' (clone removed D-3360). */
 
-/** C hacklib.c upstart — capitalize first letter. */
-function upstart_pot(str) {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
+/* C hacklib.c upstart — live export from './hacklib.js' (clone removed D-3360). */
 
 /** C youprop.h Blind — H||E blinded unless blocked. */
 function Blind_pot() {
@@ -3882,10 +3866,10 @@ export async function potionhit(mon, obj, how) {
             const mnam = mon_nam(mon);
             let buf;
             if (hit_saddle && saddle) {
-                buf = `${s_suffix_pot(x_monnam(mon, ARTICLE_THE, null,
+                buf = `${s_suffix(x_monnam(mon, ARTICLE_THE, null,
                     SUPPRESS_IT | SUPPRESS_SADDLE, false))} saddle`;
             } else if (has_head(mon.data)) {
-                buf = `${s_suffix_pot(mnam)} ${game.notonhead ? 'body' : 'head'}`;
+                buf = `${s_suffix(mnam)} ${game.notonhead ? 'body' : 'head'}`;
             } else {
                 buf = mnam;
             }
@@ -3931,7 +3915,7 @@ export async function potionhit(mon, obj, how) {
         const useeit = !Blind_pot() && canseemon(mon) && cansee(tx, ty);
         const mnam = x_monnam(mon, ARTICLE_THE, null,
             SUPPRESS_IT | SUPPRESS_SADDLE, false);
-        const buf = upstart_pot(s_suffix_pot(mnam));
+        const buf = upstart(s_suffix(mnam));
         let affected = false;
         if ((obj.otyp | 0) === POT_WATER) {
             const saddle_glows = `${buf} ${aobjnam_pot(saddle, 'glow')}`;

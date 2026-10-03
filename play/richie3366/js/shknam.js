@@ -41,7 +41,7 @@ import { make_engr_at } from './engrave.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { inside_shop, shop_keeper } from './shk.js';
 import { in_rooms } from './hack.js';
-import { Is_special } from './dungeon.js';
+import { Is_special, ledger_no } from './dungeon.js';
 import { newsym, Hallucination } from './display.js';
 import { obj_resists } from './dogmove.js';
 import { in_town } from './hack.js';
@@ -265,10 +265,7 @@ export const shtypes = [
     },
 ];
 
-function ledger_no(lev) {
-    const dun = game.dungeons?.[lev?.dnum | 0];
-    return ((dun?.ledger_start | 0) + (lev?.dlevel | 0)) | 0;
-}
+/* C dungeon.c ledger_no `:1376–1379` — imported live from dungeon.js (local clone deleted). */
 
 /** C ref: shknam.c get_shop_item */
 export function get_shop_item(type) {
@@ -516,6 +513,7 @@ function nameshk(shk, nlpIn) {
         return;
     }
     const nseed = Math.trunc((Number(game.ubirthday) || 0) / 257);
+    /* C shknam.c:507 — name_wanted += ledger_no(&u.uz) via live dungeon.js export. */
     let nameWanted = (shk.m_id | 0) + ledger_no(game.u?.uz)
         + (nseed % 13) - (nseed % 5);
     if (nameWanted < 0) nameWanted += 13 + 5;

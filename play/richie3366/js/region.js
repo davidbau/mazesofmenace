@@ -57,6 +57,8 @@ import { level_mon_at } from './worm.js';
 import { lookup_bones_id } from './bones.js';
 import { selection_getbounds, selection_getpoint } from './mklev.js';
 import { find_mid } from './mon.js';
+/* uhitm.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
+import { attacktype_fordmg } from './uhitm.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // JS inside_f tag (C callbacks[] uses 0)
@@ -314,22 +316,6 @@ function immune_poisongas(ptr) {
     return n === PM_HEZROU || n === PM_VROCK;
 }
 
-/**
- * C ref: mondata.c attacktype_fordmg — first mattk with aatyp+adtyp.
- */
-function attacktype_fordmg(ptr, atyp, dtyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return null;
-    for (let i = 0; i < slots.length; i++) {
-        const a = slots[i];
-        if ((a?.aatyp | 0) === atyp
-            && (dtyp === -1 || (a?.adtyp | 0) === dtyp)) {
-            return a;
-        }
-    }
-    return null;
-}
-
 function distu(x, y) {
     const u = game.u || {};
     return dist2(x, y, u.ux | 0, u.uy | 0);
@@ -353,6 +339,8 @@ function m_poisongas_ok(mtmp) {
     if ((ptr?.mlet === 'S_EEL' || Is_waterlevel(u.uz)) && is_pool(px, py)) {
         return M_POISONGAS_OK;
     }
+    // C mon.c:350–351 (via the local m_poisongas_ok clone) — gas/ray breathers
+    // ignore poisonclouds; attacktype_fordmg is the live uhitm.js export.
     if (attacktype_fordmg(ptr, AT_BREA, AD_DRST)
         || attacktype_fordmg(ptr, AT_BREA, AD_RBRE)) {
         return M_POISONGAS_OK;

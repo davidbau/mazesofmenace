@@ -75,7 +75,7 @@ import {
     SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP,
     TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP, ANTI_MAGIC,
     TT_INFLOOR, TT_LAVA,
-    is_pit, is_hole, ARTICLE_A, ARM, HEAD, HAND, FACE,
+    is_pit, is_hole, ARM, HEAD, HAND, FACE,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
     POLY_NOFLAGS, UNCHANGING,
     DISP_ALWAYS, DISP_END,
@@ -100,8 +100,8 @@ import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu, mhis, mhe } from './mondata.js';
 import { observe_object, enlightenment, update_inventory, useup } from './invent.js';
 import {
-    hliquid, hcolor, x_monnam, Hallucination, rndmonnam, oname,
-    trycall, a_monnam,
+    hliquid, hcolor, Hallucination, rndmonnam, oname,
+    trycall, a_monnam, Amonnam,
 } from './do_name.js';
 import {
     exist_artifact, artiname, discover_artifact, ART_EXCALIBUR,
@@ -117,6 +117,8 @@ import { fruitname } from './potion.js';
 import { surface } from './sit.js';
 import { money_cnt } from './shk.js';
 import { fingers_or_gloves } from './do_wear.js';
+/* dungeon.js (same SCC; hoisted functions, call-time use only — imports.mjs SAFE). */
+import { dunlev, dunlevs_in_dungeon } from './dungeon.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
@@ -193,12 +195,6 @@ function CLEAR_FOUNTAIN_LOOTED(x, y) {
     if (loc) loc.looted = (loc.looted || 0) & ~F_LOOTED;
 }
 
-/** C ref: do_name.c Amonnam — highc(a_monnam). */
-function Amonnam(mtmp) {
-    const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'A monster';
-}
-
 /**
  * C ref: fountain.c watchman_warn_fountain
  * Deaf → visual shake/wave (D-1105); !Deaf yell + verbalize (D-0894).
@@ -211,6 +207,7 @@ async function watchman_warn_fountain(mtmp) {
         const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
             || u.uroleplay?.deaf || u.Deaf);
         if (!Deaf) {
+            // C fountain.c:184 — Amonnam(mtmp) yells (live do_name export).
             await pline(`${Amonnam(mtmp)} yells:`);
             await verbalize('Hey, stop using that fountain!');
         } else {
@@ -978,13 +975,7 @@ function Inhell() {
     return (game.u?.uz?.dnum | 0) === GEHENNOM;
 }
 
-/** C dungeon.c dunlev / dunlevs_in_dungeon — dipfountain case 29 gold. */
-function dunlev(lev) {
-    return lev?.dlevel ?? 1;
-}
-function dunlevs_in_dungeon(lev) {
-    return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 1;
-}
+/** C dungeon.c dunlev / dunlevs_in_dungeon — imported live from dungeon.js (local clones deleted; dipfountain case-29 gold). */
 
 /**
  * Thin alias over the live mkmaze.c set_levltyp export (D-3319):
@@ -1329,6 +1320,7 @@ export async function dipfountain(obj) {
         // glistening pline but still places gold.
         if (FOUNTAIN_IS_LOOTED(u.ux, u.uy)) break;
         SET_FOUNTAIN_LOOTED(u.ux, u.uy);
+        // C fountain.c:538 — live dunlevs_in_dungeon/dunlev from dungeon.js.
         mkgold(
             rnd((dunlevs_in_dungeon(u.uz) - dunlev(u.uz) + 1) * 2) + 5,
             u.ux, u.uy,

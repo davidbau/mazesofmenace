@@ -557,7 +557,7 @@ function emitLeading(firstCol, currentCol) {
     const gap = firstCol - currentCol;
     if (gap <= 0) return '';
     if (gap > 4) return `\x1b[${gap}C`;
-    return ' '.repeat(gap);
+    return ' '.repeat(Math.max(0, gap));
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1031,7 +1031,7 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
             if (grid[r][col] === ' ') {
                 let g = 0;
                 while (col + g <= last && grid[r][col + g] === ' ') g++;
-                s += g > 4 ? `\x1b[${g}C` : ' '.repeat(g);
+                s += g > 4 ? `\x1b[${g}C` : ' '.repeat(Math.max(0, g));
                 col += g;
             } else {
                 let run = '';
@@ -1090,7 +1090,7 @@ function buildAsknameOverBanner(typed, row12Name, bannerClip) {
             if (grid[r][col] === ' ') {
                 let g = 0;
                 while (col + g <= last && grid[r][col + g] === ' ') g++;
-                str += g > 4 ? `\x1b[${g}C` : ' '.repeat(g);
+                str += g > 4 ? `\x1b[${g}C` : ' '.repeat(Math.max(0, g));
                 col += g;
             } else {
                 let run = '';
@@ -1670,7 +1670,7 @@ function runGamePicksConfirmLoop(screens, cursors, menuKeys, originalName, confi
                 if (grid[r][col] === ' ') {
                     let g = 0;
                     while (col + g <= last && grid[r][col + g] === ' ') g++;
-                    s += g > 4 ? `\x1b[${g}C` : ' '.repeat(g);
+                    s += g > 4 ? `\x1b[${g}C` : ' '.repeat(Math.max(0, g));
                     col += g;
                 } else {
                     let run = '';

@@ -62,7 +62,7 @@ function fnv1a64(str) {
 // matching C's "%016llx" specifier used in event_log("mapstate[... hash=%016llx ...").
 function hex16(u64) {
     const s = u64.toString(16);
-    return s.length >= 16 ? s : '0'.repeat(16 - s.length) + s;
+    return s.length >= 16 ? s : '0'.repeat(Math.max(0, 16 - s.length)) + s;
 }
 // Coerce undefined / null / boolean / numeric to the long integer the
 // C dumper would emit. Mirrors `pb_num(b, key, (long) value)` semantics:

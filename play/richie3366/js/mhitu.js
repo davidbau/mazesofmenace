@@ -10,7 +10,7 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
     Upolyd, DIED, P_WHIP, NON_PM, XKILL_NOMSG, NEW_MOON,
-    DISPLACED, CONFLICT, INVIS, IS_WATERWALL, RLOC_MSG, RLOC_NOMSG, TIMEOUT, FAST, ARTICLE_A,
+    DISPLACED, CONFLICT, INVIS, IS_WATERWALL, RLOC_MSG, RLOC_NOMSG, TIMEOUT, FAST,
     LEFT_SIDE, RIGHT_SIDE, LEFT_RING, RIGHT_RING, LEG, HAND, HAIR,
     POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel, is_pit,
@@ -36,8 +36,8 @@ import {
 } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import {
-    Adjmonnam, Monnam, mon_nam, pmname, hliquid, x_monnam, Hallucination,
-    noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam, Mgender,
+    Adjmonnam, Monnam, mon_nam, pmname, hliquid, Hallucination,
+    noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam, Mgender, Amonnam,
 } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art, defends, retouch_equipment } from './artifact.js';
@@ -66,7 +66,7 @@ import {
     hides_under, is_flyer, thick_skinned, nolimbs, touch_petrifies,
     poly_when_stoned, has_head, slithy, amphibious, breathless, is_swimmer,
     is_hider, likes_gold, mons, noncorporeal,
-    MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
+    MR_FIRE, MR_COLD, MR_ELEC, MR_ACID, dmgtype,
 } from './monsters.js';
 import { done_in_by, done, finish_losehp_done, delayed_killer } from './end.js';
 import { make_blinded, reset_occupations } from './do.js';
@@ -82,7 +82,7 @@ import {
 import { xkilled, killed, Hate_silver, dynamic_multi_reason, attacktype_fordmg, can_blnd } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
-    mhis, on_fire, defended, get_atkdam_type,
+    mhis, on_fire, defended, get_atkdam_type, dmgtype_fromattack, attacktype,
 } from './mondata.js';
 import { which_armor, find_mac } from './worn.js';
 import {
@@ -651,19 +651,7 @@ function Unaware() {
     return !!(u.usleep || u.Unaware);
 }
 
-/**
- * C ref: mondata.c dmgtype_fromattack — mattk slot matches adtyp+aatyp.
- */
-function dmgtype_fromattack(ptr, adtyp, aatyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    const ad = adtyp | 0;
-    const at = aatyp | 0;
-    for (const a of slots) {
-        if ((a.adtyp | 0) === ad && (a.aatyp | 0) === at) return true;
-    }
-    return false;
-}
+/* C mondata.c dmgtype_fromattack — live export from './mondata.js' (clone removed D-3357). */
 
 /**
  * C ref: mondata.c resists_blnd youmonst arm :248–272.
@@ -1092,17 +1080,7 @@ function s_suffix_poison(s) {
     return `${buf}'s`;
 }
 
-/**
- * C ref: mondata.h dmgtype — any mattk slot matches adtyp.
- */
-function dmgtype(ptr, adtyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (const a of slots) {
-        if ((a.adtyp | 0) === (adtyp | 0)) return true;
-    }
-    return false;
-}
+/* C mondata.c dmgtype — live export from './monsters.js' (clone removed D-3357). */
 
 
 /**
@@ -1139,16 +1117,12 @@ function flaming(ptr) {
 
 /**
  * C ref: mondata.c sticks — AD_STCK, non-engulf AD_WRAP, or AT_HUGS.
- * Local clone (C AT_HUGS=7 / AT_ENGL=11). Do not import monmove.js sticks.
+ * Do not import monmove.js sticks. attacktype via ./mondata.js live export.
  */
-function attacktype_aatyp(ptr, aatyp) {
-    const at = aatyp | 0;
-    return !!(ptr?.mattk || []).some((a) => (a.aatyp | 0) === at);
-}
 function sticks(ptr) {
     return dmgtype(ptr, AD_STCK)
-        || (dmgtype(ptr, AD_WRAP) && !attacktype_aatyp(ptr, AT_ENGL))
-        || attacktype_aatyp(ptr, AT_HUGS);
+        || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
+        || attacktype(ptr, AT_HUGS);
 }
 
 /* cloak_simple_name: canonical export from ./do_wear.js (objnam.c:5491–5509);
@@ -1635,8 +1609,8 @@ export async function unstuck(mtmp) {
     }
     if (!(mtmp.mspec_used | 0)
         && (dmgtype(ptr, AD_STCK)
-            || attacktype_aatyp(ptr, AT_ENGL)
-            || attacktype_aatyp(ptr, AT_HUGS))) {
+            || attacktype(ptr, AT_ENGL)
+            || attacktype(ptr, AT_HUGS))) {
         mtmp.mspec_used = rnd(2);
     }
 }
@@ -3257,12 +3231,6 @@ async function passiveum(olduasmon, mtmp, mattk) {
     return assess_dmg(mtmp, tmp);
 }
 
-/** C ref: do_name.c Amonnam — highc(a_monnam). */
-function Amonnam(mtmp) {
-    const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'It';
-}
-
 /**
  * C ref: mhitu.c hitmu `:1144–1267` — base d() + midnight undead extra +
  * adtyping + knockback + AC + Half/Mitre + permdmg hpmax cut + mdamageu
@@ -3300,6 +3268,7 @@ async function hitmu(mtmp, mattk) {
                 } else {
                     what = doname(obj);
                 }
+                // C mhitu.c:1176 Strcpy(Amonbuf, Amonnam) (live do_name export).
                 let Amonbuf = Amonnam(mtmp);
                 // C: if (!strcmp(Amonbuf, "It")) → Something
                 if (Amonbuf === 'It') Amonbuf = 'Something';

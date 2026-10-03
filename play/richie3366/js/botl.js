@@ -88,7 +88,7 @@ import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
 import {
     upstart, strNsubst, stripchars, str_start_is, fuzzymatch, lowc,
-    deepest_lev_reached, eos,
+    deepest_lev_reached, eos, highc,
 } from './hacklib.js';
 import { clr2colorname } from './artifact.js';
 import { humanoid, mons, is_flyer, NON_PM } from './monsters.js';
@@ -2227,10 +2227,7 @@ let cache_reslt = [false, false, false];
 let cache_nomovemsg = null;
 let cache_multi_reason = null;
 
-// C traditional highc() — ASCII uppercase only.
-function highc(c) {
-    return (c >= 'a' && c <= 'z') ? String.fromCharCode(c.charCodeAt(0) - 32) : c;
-}
+/* C hacklib.c highc — live export from './hacklib.js' (clone removed D-3360). */
 
 // C botl.c:1147 test_if_enabled(c) — assign only when the option enables it.
 function setIfEnabled(c, v) {

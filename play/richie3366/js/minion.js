@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { pline, canseemon, canspotmon, verbalize, You_feel, newsym, impossible } from './display.js';
-import { Monnam, mon_nam, x_monnam, Amonnam } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, Amonnam, s_suffix } from './do_name.js';
 import { getlin } from './getline.js';
 import { currency } from './invent.js';
 import { money_cnt, money2mon } from './shk.js';
@@ -79,15 +79,7 @@ function sgn(n) {
     return (x > 0) - (x < 0);
 }
 
-/** C ref: hacklib.c s_suffix `:345–359` — possessive for Deaf booming-voice feel. */
-function s_suffix(s) {
-    const str = String(s ?? '');
-    const low = str.toLowerCase();
-    if (low === 'it') return `${str}s`; /* C strcmpi — case-insensitive */
-    if (low === 'you') return `${str}r`;
-    if (str.endsWith('s')) return `${str}'`;
-    return `${str}'s`;
-}
+/* C hacklib.c s_suffix — live export from './do_name.js' (clone removed D-3360). */
 
 /** C ref: dungeon.h Inhell — In_hell(&u.uz) / Gehennom. */
 export function Inhell() {

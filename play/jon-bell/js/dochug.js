@@ -13,7 +13,7 @@ import { game } from './gstate.js';
 // distfleeck and their PM_* imports as dead. Static import = same runtime
 // binding (RNG-identical), but the call edge dochug→m_move→dog_move is now
 // statically visible. No circular dep: monmove/dogmove do not import dochug.)
-import { distfleeck, set_apparxy, m_move } from './monmove.js';
+import { distfleeck, set_apparxy, m_move, mind_blast } from './monmove.js';
 import { mattacku, noattacks_mndx, mon_mattk_raw, ranged_attk_available } from './mhitu.js';
 import { find_offensive, find_defensive, find_misc, use_misc, use_defensive } from './makemon.js';
 import { Upolyd, engulfing_u, CONFLICT, INVIS as INVIS_DH, NEED_WEAPON, NEED_HTH_WEAPON } from './const.js';
@@ -356,10 +356,8 @@ export async function dochug(mtmp) {
     if (is_watch_mndx(mndx)) {
         await watch_on_duty(mtmp);
     } else if (is_mind_flayer_mndx(mndx) && !rn2(20)) {
-        const mdx = (game.u?.ux | 0) - (mtmp.mx | 0);
-        const mdy = (game.u?.uy | 0) - (mtmp.my | 0);
-        if (mdx * mdx + mdy * mdy > (BOLT_LIM | 0) * (BOLT_LIM | 0))
-            await pline('You sense a faint wave of psychic energy.');
+        /* C monmove.c:853-855 — mind_blast(mtmp), then recompute apparent target/flags. */
+        await mind_blast(mtmp);
         set_apparxy(mtmp);
         ({ inrange, nearby, scared } = distfleeck(mtmp));
     }

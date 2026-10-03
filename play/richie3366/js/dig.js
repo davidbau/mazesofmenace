@@ -70,7 +70,7 @@ import {
 } from './attrib.js';
 import { dbon, dmgval, abon } from './weapon.js';
 import { depth, dist2 } from './hacklib.js';
-import { get_level, on_level } from './dungeon.js';
+import { get_level, ledger_no, on_level } from './dungeon.js';
 import { align_str, uhis } from './roles.js';
 import { count_wsegs, worm_known } from './worm.js';
 import {
@@ -301,14 +301,6 @@ function is_pool_or_lava(x, y) {
  * the file-local clone printed "ground" on DRAWBRIDGE_UP moat/lava/ice
  * (review 1289). Hoisted fn, cycle-safe per imports.mjs. */
 import { surface } from './sit.js';
-
-/** C: dungeon.c ledger_no — local copy (avoid dig↔do cycle). */
-function ledger_no(lev) {
-    const dnum = lev?.dnum | 0;
-    const dlevel = lev?.dlevel | 0;
-    const dun = game.dungeons?.[dnum];
-    return ((dun?.ledger_start | 0) + dlevel) | 0;
-}
 
 /**
  * C ref: dig.c furniture_handled — dig destroys fountain/sink/drawbridge
@@ -1000,6 +992,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
                         const { make_angry_shk } = await import('./shk.js');
                         await make_angry_shk(mtmp, 0, 0);
                     }
+                    /* C dig.c:823 — ledger_no(&tolevel) via live dungeon.js export. */
                     migrate_to_level(
                         mtmp, ledger_no(tolevel), MIGR_RANDOM, null,
                     );

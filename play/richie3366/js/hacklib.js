@@ -491,8 +491,9 @@ export function ucase(s) {
 
 /**
  * C ref: hacklib.c upstart `:113–119` — highc the first character.
- * Callers that already have a local clone (do_name/apply/…) keep theirs;
- * newcham uses this C-home export (do not add clone #9).
+ * Clone-removal campaign complete: mthrowu/read (D-3356) + trap/pickup/
+ * apply/do_name/monmove/readobjnam (D-3358) rewired; newcham uses this
+ * C-home export — do not add clone #9.
  */
 export function upstart(s) {
     if (s == null || s === '') return s;

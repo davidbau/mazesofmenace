@@ -31,6 +31,7 @@ import { rank_of } from './rank_data.js';
 import { putmsghistory } from './display.js';
 import { roles as ROLES } from './roles.js';
 import { nhlib_load_toplevel_rng } from './nhlib.js';
+import { rn2 } from './rng.js';
 
 /* C monflag.h M2_PNAME — "the " is omitted for a proper-name monster. */
 const M2_PNAME = 0x00080000;
@@ -755,6 +756,54 @@ magic portal which brought you here."`,
         },
     },
     Cav: {
+        /* dat/quest.lua:696-764 — array-form entries: com_pager_core picks
+         * rn2(nelems)+1 (questpgr.c:566). */
+        discourage: {
+            lines: [
+                `"You are weak, %c.  No challenge for the Mother of all Dragons."`,
+                `"I grow hungry, %r.  You look like a nice appetizer!"`,
+                `"Join me for lunch?  You're the main course, %c."`,
+                `"With %o, I am invincible!  You cannot succeed."`,
+                `"Your mentor, %l has failed.  You are nothing to fear."`,
+                `"You shall die here, %c.  %rA cannot hope to defeat me."`,
+                `"You, a mere %r challenge the might of %n?  Hah!"`,
+                `"I am the Mother of all Dragons!  You cannot hope to defeat me."`,
+                `"My claws are sharp now.  I shall rip you to shreds!"`,
+                `"%d has deserted you, %c.  This is my domain."`,
+            ],
+        },
+        encourage: {
+            lines: [
+                `"%nC is immune to her own breath weapons. You should use magic upon her that she does not use herself."`,
+                `"When you encounter %n, call upon %d for assistance."`,
+                `"There will be nowhere to hide inside %ns inner sanctum."`,
+                `"Your best chance with %n will be to keep moving."`,
+                `"Do not be distracted by the great treasures in %ns lair. Concentrate on %o."`,
+                `"%oC is the only object that %n truly fears."`,
+                `"Do not be fooled by %ns size.  She is fast, and it is rumored that she uses magic."`,
+                `"I would send a party of %gP with you, but we will need all of our strength to defend ourselves."`,
+                `"Remember, be %a at all times.  This is your strength."`,
+                `"If only we had an amulet of reflection, this would not have happened."`,
+            ],
+        },
+        guardtalk_after: {
+            lines: [
+                `"The rains have returned and the land grows lush again."`,
+                `"Peace has returned, give thanks to %d!"`,
+                `"Welcome back!  Did you find %o?"`,
+                `"So, %p, tell us the story of your fight with %n."`,
+                `"%lC grows old.  Perhaps you will guide us after he ascends."`,
+            ],
+        },
+        guardtalk_before: {
+            lines: [
+                `"We have not been able to gather as much food since the Giants sealed off our access to the outer world."`,
+                `"Since %n sent her minions, we have been constantly fighting."`,
+                `"I have heard your vision quest was successful.  Is this so?"`,
+                `"So, tell me, %p, how have you fared?"`,
+                `"%lC grows old.  We know not who will guide us after he ascends."`,
+            ],
+        },
         /* dat/quest.lua:720-728 */
         firsttime: {
             output: 'text',
@@ -3322,6 +3371,17 @@ async function com_pager_core(section, msgid, showerror) {
     /* howtoput2i: pline->1, window->2, text->2, menu->3, default->0 */
     let output = { pline: 1, window: 2, text: 2, menu: 3 }[entry.output] ?? 0;
     let text = entry.text;
+    if (!text) {
+        /* C questpgr.c:557-570 — array-form entry: nelems < 2 is an error,
+         * else text = elems[rn2(nelems) + 1]. */
+        const nelems = entry.lines ? entry.lines.length : 0;
+        if (nelems < 2) {
+            if (showerror)
+                _impossible(`com_pager: questtext[${section}][${msgid}] is not an array of strings`);
+            return false;
+        }
+        text = entry.lines[rn2(nelems)];
+    }
     let synopsis = entry.synopsis;
     /* C questpgr.c:573-590 — by_pline promotes to by_window for multi-line or
      * over-long text, synthesizing a bracketed one-line synopsis. */

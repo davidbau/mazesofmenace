@@ -36,13 +36,14 @@ import {
 import { A_WIS, A_DEX, acurr, exercise, Fumbling } from './attrib.js';
 import { cxname, an, xname, The, the, otense, thesimpleoname, yname } from './objnam.js';
 import {
-    mindless, G_UNIQ, is_flyer, is_clinger, humanoid, is_hider, nolimbs,
+    mindless, is_flyer, is_clinger, humanoid, is_hider, nolimbs,
     M1_SLITHY, is_mercenary, MR_SLEEP, is_mplayer,
 } from './monsters.js';
 import { dist2, mungspaces } from './hacklib.js';
 import { Monnam, mon_nam, x_monnam, a_monnam, Amonnam } from './do_name.js';
 import { cansee, recalc_block_point, unblock_point } from './vision.js';
-import { m_at, wakeup, seemimic, onscary } from './mon.js';
+import { m_at, wakeup, seemimic, onscary, unique_corpstat } from './mon.js';
+import { monflee } from './monmove.js';
 import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch } from './trap.js';
 import {
     fillholetyp, liquid_flow,
@@ -169,45 +170,11 @@ function resist(mtmp, oclass, _damage, _tell) {
     return rn2(100 + alev - dlev) < mr;
 }
 
-/** C ref: music.c unique_corpstat gate via G_UNIQ (long-worm-tail polish deferred). */
-function unique_corpstat(ptr) {
-    return !!((ptr?.geno ?? 0) & G_UNIQ);
-}
 
 /** C ref: monmove.c / muse.c mdistu — squared distance to hero. */
 function mdistu(mtmp) {
     const u = game.u;
     return dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0);
-}
-
-/**
- * C ref: monmove.c monflee(fleetime=0, first=FALSE, fleemsg) — set mflee;
- * flees_light rn2(10)/verbalize and Vrock gas deferred.
- */
-async function monflee(mtmp, fleetime, first, fleemsg) {
-    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
-    if (!first || !mtmp.mflee) {
-        if (!fleetime) mtmp.mfleetim = 0;
-        else if (!mtmp.mflee || mtmp.mfleetim) {
-            fleetime += mtmp.mfleetim | 0;
-            if (fleetime === 1) fleetime++;
-            mtmp.mfleetim = Math.min(fleetime, 127);
-        }
-        if (!mtmp.mflee && fleemsg) {
-            const ap = mtmp.m_ap_type | 0;
-            if (canseemon(mtmp) && ap !== M_AP_FURNITURE && ap !== M_AP_OBJECT) {
-                // flees_light / immobile flinch deferred
-                await pline(`${Monnam(mtmp)} turns to flee.`);
-            }
-        }
-        mtmp.mflee = 1;
-    }
-    // C: monflee always mon_track_clear — local music copy
-    if (mtmp.mtrack) {
-        for (let j = 0; j < mtmp.mtrack.length; j++) {
-            mtmp.mtrack[j] = { x: 0, y: 0 };
-        }
-    }
 }
 
 /**
@@ -224,6 +191,7 @@ async function awaken_scare(mtmp, scary) {
         && !mindless(mtmp.data)
         && !resist(mtmp, TOOL_CLASS, 0, NOTELL)
         && onscary(0, 0, mtmp)) {
+        // C music.c:59 monflee(mtmp, 0, FALSE, TRUE) — live js/monmove.js export
         await monflee(mtmp, 0, false, true);
     }
 }

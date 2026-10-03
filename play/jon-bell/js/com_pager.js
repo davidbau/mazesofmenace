@@ -166,7 +166,7 @@ function render_map_row_clipped(y, clipX) {
     if (gap > 4)
         output += `\x1b[${gap}C`;
     else if (gap > 0)
-        output += ' '.repeat(gap);
+        output += ' '.repeat(Math.max(0, gap));
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = game.level.at(x, y);
         const ch = loc?.disp_ch ?? ' ';
@@ -202,7 +202,7 @@ function render_map_row_clipped(y, clipX) {
             if (run > 4)
                 output += `\x1b[${run}C`;
             else
-                output += ' '.repeat(run);
+                output += ' '.repeat(Math.max(0, run));
             x += run - 1;
             continue;
         }
@@ -303,7 +303,7 @@ function _overlay_status_line(base, col, text) {
     if (visCol < col) {
         const gap = col - visCol;
         if (gap > 4) out += `\x1b[${gap}C`;
-        else out += ' '.repeat(gap);
+        else out += ' '.repeat(Math.max(0, gap));
     }
     out += text;
     return out;
@@ -453,7 +453,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                 // the threshold the empty-topline frames were validated at).
                 if (gap > 0)
                     output += (left || gap > 4) ? `\x1b[${gap}C`
-                                                : ' '.repeat(gap);
+                                                : ' '.repeat(Math.max(0, gap));
                 output += text;
             }
             output += '\n';
@@ -472,7 +472,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
             if (col > 4)
                 output += `\x1b[${col}C`;
             else
-                output += ' '.repeat(col);
+                output += ' '.repeat(Math.max(0, col));
             output += text;
             if (screenRow < 23)
                 output += '\n';
@@ -604,7 +604,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
             if (targetCol > 4)
                 output += `\x1b[${targetCol}C`;
             else
-                output += ' '.repeat(targetCol);
+                output += ' '.repeat(Math.max(0, targetCol));
             output += text + '\n';
             continue;
         }
@@ -614,7 +614,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
             if (gap > 4)
                 output += mapStr + `\x1b[${gap}C` + text + '\n';
             else if (gap > 0)
-                output += mapStr + ' '.repeat(gap) + text + '\n';
+                output += mapStr + ' '.repeat(Math.max(0, gap)) + text + '\n';
             else
                 output += mapStr + text + '\n';
         }
@@ -723,7 +723,7 @@ function _statusLine1() {
     const gap = Math.max(1, 31 - title.length);
     if (gap > 4)
         return `${title}\x1b[${gap}C${stats} ${align}`;
-    return `${title}${' '.repeat(gap)}${stats} ${align}`;
+    return `${title}${' '.repeat(Math.max(0, gap))}${stats} ${align}`;
 }
 /** C ref: hack.c:4478 money_cnt — walk invent chain, return COIN_CLASS (12) obj quan. */
 export function money_cnt(otmp) {

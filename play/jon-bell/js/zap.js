@@ -574,22 +574,12 @@ function _u_resists_blnd_by_arti() {
 export async function flashburn(duration, via_lightning) {
     if (!_u_resists_blnd()) {
         await pline('You are blinded by the flash!');   /* zap.c:3058 */
-        const _apply_blindness = () => {
-            make_blinded(duration, false);              /* zap.c:3059 */
-            /* zap.c:3060-3061 — BOTH statements are downstream of the blocking
-             * You() above, so both stay together.  Hoisting this one out would
-             * print "Your vision quickly clears." on exactly the runs where
-             * make_blinded had not yet run (Blind still false), which is a
-             * message C never emits here: in C the hero IS blind by this point,
-             * so !Blind is false and the line is skipped. */
-            if (!_Blind())
-                return pline('Your vision quickly clears.');
-            return undefined;
-        };
-        if (!_topline_more_pending())
-            await _apply_blindness();
-        else
-            _defer_until_more_dismissed(_apply_blindness);
+        /* C runs make_blinded right after the pline returns (zap.c:3059-3061);
+         * the page frame of the message above is frozen at its own flush, so
+         * it still shows the pre-blind status. */
+        make_blinded(duration, false);                  /* zap.c:3059 */
+        if (!_Blind())                                  /* zap.c:3060-3061 */
+            await pline('Your vision quickly clears.');
         return true;                                    /* zap.c:3062 */
     }
     if (!via_lightning && _u_resists_blnd_by_arti()) {

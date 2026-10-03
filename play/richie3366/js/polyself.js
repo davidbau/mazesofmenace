@@ -19,7 +19,7 @@ import { Unaware, newuhs } from './eat.js';
 import { attacktype_fordmg, killed } from './uhitm.js';
 import {
     AT_SPIT, AT_GAZE, AT_EXPL, AT_ENGL, AD_BLND, AD_DRST, AD_ACID,
-    AD_CONF, AD_FIRE, AD_ELEC, AD_COLD, dmgtype_fromattack,
+    AD_CONF, AD_FIRE, AD_ELEC, AD_COLD,
 } from './mhitm.js';
 import { mksobj, objects_at, maybe_adjust_light } from './mkobj.js';
 import { throwit } from './dothrow.js';
@@ -37,7 +37,7 @@ import { dryup } from './fountain.js';
 import { aggravate } from './wizard.js';
 import { wakeup, egg_type_from_parent, setmangry, perceives, valid_vampshiftform } from './mon.js';
 import { Punished } from './pray.js';
-import { name_to_mon, name_to_monclass, set_mon_data } from './mondata.js';
+import { name_to_mon, name_to_monclass, set_mon_data, attacktype, dmgtype_fromattack } from './mondata.js';
 import {
     exercise, acurr, A_STR, A_CON, A_WIS, A_DEX, adjabil, redist_attr, newhp,
 } from './attrib.js';
@@ -364,18 +364,7 @@ function mdistu(mtmp) {
     return dist2(u.ux | 0, u.uy | 0, mtmp?.mx | 0, mtmp?.my | 0);
 }
 
-/**
- * C ref: mondata.c attacktype — any mattk slot with aatyp.
- * Local copy to avoid makemon import cycles.
- */
-function attacktype(ptr, aatyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (let i = 0; i < slots.length; i++) {
-        if (slots[i]?.aatyp === aatyp) return true;
-    }
-    return false;
-}
+/* C mondata.c attacktype — live mondata.js export (local clone removed). */
 
 /** C ref: mondata.h can_breathe — attacktype(ptr, AT_BREA) */
 function can_breathe(ptr) {

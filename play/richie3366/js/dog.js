@@ -55,7 +55,7 @@ import { redraw_worm, count_wsegs, wormgone, get_wormno, initworm } from './worm
 import { set_residency, make_happy_shoppers, is_fshk, picked_container } from './shk.js';
 import { Is_qstart } from './quest.js';
 import { builds_up } from './hacklib.js';
-import { hero_conflict } from './mondata.js';
+import { hero_conflict, attacktype } from './mondata.js';
 import { cansee } from './vision.js';
 import { night } from './calendar.js';
 import { Tobjnam, the, xname, an } from './objnam.js';
@@ -69,6 +69,7 @@ import { mintrap } from './trap.js';
 import { m_unleash, mon_has_amulet } from './apply.js';
 import { sticks } from './engrave.js';
 import { emits_light, del_light_source } from './light.js';
+import { somex } from './mklev.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
@@ -159,15 +160,7 @@ export function initedog(mtmp, everything) {
     game.u.uconduct.pets = (game.u.uconduct.pets | 0) + 1;
 }
 
-/** C ref: mondata.h attacktype — any mattk slot with aatyp. */
-function attacktype(ptr, aatyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (let i = 0; i < slots.length; i++) {
-        if (slots[i]?.aatyp === aatyp) return true;
-    }
-    return false;
-}
+/* C mondata.c attacktype — live mondata.js export (local clone removed). */
 
 /** C ref: minion.c free_emin — drop emin and isminion. */
 function free_emin(mtmp) {
@@ -270,6 +263,7 @@ export async function make_familiar(otmp, x, y, quietly) {
     set_malign(mtmp);
     newsym(mtmp.mx, mtmp.my);
 
+    // C dog.c:210 — mtame && attacktype(mtmp->data, AT_WEAP)
     if (mtmp.mtame && attacktype(mtmp.data, AT_WEAP)) {
         mtmp.weapon_check = NEED_HTH_WEAPON;
         await mon_wield_item(mtmp);
@@ -704,6 +698,7 @@ export async function tamedog(mtmp, obj, givemsg = true) {
     newsym(mtmp.mx, mtmp.my);
     // C :1275–1276 — redraw_worm after head newsym (D-1577)
     if (mtmp.wormno) redraw_worm(mtmp);
+    // C dog.c:1277 — attacktype(mtmp->data, AT_WEAP)
     if (attacktype(mtmp.data, AT_WEAP)) {
         mtmp.weapon_check = NEED_HTH_WEAPON;
         await mon_wield_item(mtmp);
@@ -870,12 +865,9 @@ function arrive_track_clear(mtmp) {
 }
 
 /**
- * C ref: mkroom.c somex / somey — rn1(hx-lx+1, lx). Clone: mklev exports
- * these; dog cannot import mklev (mklev → trap → dog).
+ * C ref: mkroom.c somey — rn1(hy-ly+1, ly). Local clone (mklev exports
+ * it; kept: no queued row — cf. live somex import above, D-3343).
  */
-function somex(croom) {
-    return rn1((croom.hx | 0) - (croom.lx | 0) + 1, croom.lx | 0);
-}
 function somey(croom) {
     return rn1((croom.hy | 0) - (croom.ly | 0) + 1, croom.ly | 0);
 }
@@ -904,7 +896,7 @@ function somexy(croom, c) {
     if (croom.irregular) {
         const i = (croom.roomnoidx ?? -1) + ROOMOFFSET;
         while (try_cnt++ < 100) {
-            c.x = somex(croom);
+            c.x = somex(croom); // C mkroom.c:669 live js/mklev.js
             c.y = somey(croom);
             const loc = game.level?.at(c.x, c.y);
             if (loc && !loc.edge && (loc.roomno | 0) === i) return true;
@@ -919,13 +911,13 @@ function somexy(croom, c) {
     }
 
     if (!(croom.nsubrooms | 0)) {
-        c.x = somex(croom);
+        c.x = somex(croom); // C mkroom.c:669 live js/mklev.js
         c.y = somey(croom);
         return true;
     }
 
     while (try_cnt++ < 100) {
-        c.x = somex(croom);
+        c.x = somex(croom); // C mkroom.c:669 live js/mklev.js
         c.y = somey(croom);
         const loc = game.level?.at(c.x, c.y);
         if (loc && IS_WALL(loc.typ)) continue;

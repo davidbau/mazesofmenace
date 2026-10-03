@@ -12,7 +12,7 @@ import { game } from './gstate.js';
 import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You, Your, pline_The, You_feel, You_see, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2, distmin, isok } from './hacklib.js';
-import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended, monsndx, Resists_Elem } from './mondata.js';
+import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended, monsndx, Resists_Elem, attacktype, dmgtype_fromattack } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval, possibly_unwield } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art, protects } from './artifact.js';
 import { find_mac, which_armor, bypass_obj, is_flimsy, extract_from_minvent } from './worn.js';
@@ -116,7 +116,7 @@ import {
     unsolid, is_whirly, passes_walls, haseyes, flaming, slimeproof,
     is_male, is_female, is_shapeshifter, has_head, mon_hates_silver,
     noncorporeal, carnivorous, herbivorous, metallivorous,
-    is_undead, is_were,
+    is_undead, is_were, dmgtype,
 } from './monsters.js';
 import { objectNames, WEAPON_CLASS } from './objects.js';
 import { ART_TROLLSBANE, ART_STORMBRINGER, ART_VORPAL_BLADE, ART_SNICKERSNEE, ART_OGRESMASHER } from './generated/artifacts_data.js';
@@ -774,34 +774,15 @@ export {
     AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
     AD_STON, AD_CONF, AD_STUN, AD_WRAP, AD_SLEE,
     AD_SGLD, AD_TLPT, AD_WERE, AD_SLIM, AD_FAMN, AD_SAMU, AD_DRLI,
-    could_seduce, failed_grab, dmgtype_fromattack,
+    could_seduce, failed_grab,
 };
 
 function deadmonster(m) {
     return !m || (m.mhp != null && m.mhp < 1);
 }
 
-/** C ref: mondata.h dmgtype — any mattk slot matches adtyp. */
-function dmgtype(ptr, adtyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (const a of slots) {
-        if ((a.adtyp | 0) === (adtyp | 0)) return true;
-    }
-    return false;
-}
-
-/** C ref: mondata.c dmgtype_fromattack — mattk slot matches adtyp+aatyp. */
-function dmgtype_fromattack(ptr, adtyp, aatyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    const ad = adtyp | 0;
-    const at = aatyp | 0;
-    for (const a of slots) {
-        if ((a.adtyp | 0) === ad && (a.aatyp | 0) === at) return true;
-    }
-    return false;
-}
+/* C mondata.c dmgtype — live export from './monsters.js' (clone removed D-3357). */
+/* C mondata.c dmgtype_fromattack — live export from './mondata.js' (clone removed D-3357). */
 
 /**
  * C ref: mondata.c resists_blnd monster arm :248–272.
@@ -1431,17 +1412,22 @@ async function sleep_slee_mm(mon, amt) {
 }
 
 /**
- * C ref: mhitm.c slept_monst — sleeping grabber releases (uhitm.c caller).
- * Named omission: sticks(youmonst.data) engulfer keeps hold (treated as release).
+ * C ref: mhitm.c slept_monst `:1249–1257` — a grabber that just went
+ * helpless (monst.h:251 msleeping || !mcanmove) releases the hero unless
+ * sticky youmonst keeps hold or the hero is swallowed. C callers:
+ * music.c:95 + potion.c:1806 (JS clones remain, queued next),
+ * uhitm.c:3490/3519 (wired below), zap.c:486 (JS bhitm lacks the WAN_SLEEP
+ * arm — no call site), zap.c:4946 dobuzz (wired zap.js).
  */
-async function slept_slee_mm(mon) {
-    const u = game.u || {};
+export async function slept_monst(mon) {
     if (!mon) return;
+    const u = game.u || {};
     const helpless = !!(mon.msleeping || !mon.mcanmove);
-    if (helpless && mon === u.ustuck && !u.uswallow) {
+    if (helpless && mon === u.ustuck
+        && !(game.youmonst?.data && sticks(game.youmonst.data))
+        && !u.uswallow) {
         await pline_mon(mon, `${s_suffix(Monnam(mon))} grip relaxes.`);
-        u.ustuck = null;
-        if (game.youmonst) game.youmonst.ustuck = null;
+        await unstuck(mon);
     }
 }
 
@@ -1464,7 +1450,7 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
             if (!Blind_slee()) {
                 await pline(`${Monnam(mdef)} is put to sleep by you!`);
             }
-            await slept_slee_mm(mdef);
+            await slept_monst(mdef);
         }
         return;
     }
@@ -1476,7 +1462,7 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
             await pline(`${Monnam(mdef)} is put to sleep by ${mon_nam(magr)}.`);
         }
         mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
-        await slept_slee_mm(mdef);
+        await slept_monst(mdef);
     }
 }
 
@@ -2862,9 +2848,9 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     // C: don't knockback if attacker also wants to grab or engulf
     // (sticks() is mondata.c:653-659: AD_STCK, AD_WRAP w/o AT_ENGL, AT_HUGS)
     const pa = magr?.data;
-    if (attacktype_mm(pa, AT_ENGL) || attacktype_mm(pa, AT_HUGS)
+    if (attacktype(pa, AT_ENGL) || attacktype(pa, AT_HUGS)
         || dmgtype(pa, AD_STCK)
-        || (dmgtype(pa, AD_WRAP) && !attacktype_mm(pa, AT_ENGL))) {
+        || (dmgtype(pa, AD_WRAP) && !attacktype(pa, AT_ENGL))) {
         return false;
     }
 
@@ -2988,15 +2974,7 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     return true;
 }
 
-/** C ref: mondata.h attacktype — any mattk slot matches aatyp. */
-function attacktype_mm(ptr, aatyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (const a of slots) {
-        if ((a.aatyp | 0) === (aatyp | 0)) return true;
-    }
-    return false;
-}
+/* C mondata.c attacktype — live export from './mondata.js' (attacktype_mm clone removed D-3357). */
 
 /** C ref: mondata.h completelyburns — paper or straw golem. */
 function completelyburns_mm(data) {
@@ -3052,7 +3030,7 @@ function m_useup_mm(mon, obj) {
 async function corpse_chance(mon, magr = null, was_swallowed = false) {
     const mdat = mon.data;
     if (!mdat) return false;
-    if (!magr && game.mswallower && attacktype_mm(game.mswallower.data, AT_ENGL)) {
+    if (!magr && game.mswallower && attacktype(game.mswallower.data, AT_ENGL)) {
         magr = game.mswallower;
         was_swallowed = true;
     }
@@ -3547,7 +3525,7 @@ function set_mon_min_mhpmax(mon, minimum_mhpmax) {
  * (messages only if cansee; no canseemon/invis check — the medallion glows),
  * m_useup + check_gear_next_turn, wary_dog for tame, mhp restore, and the
  * genocided arm (still dies with a pline). mlifesaver/m_useup_mm are the
- * module-local C-named helpers; attacktype_mm is the mondata.h macro.
+ * module-local C-named helpers; attacktype (live mondata.js import) is the mondata.h macro.
  */
 export async function lifesaved_monster(mtmp) {
     const lifesave = mlifesaver(mtmp);
@@ -3557,8 +3535,8 @@ export async function lifesaved_monster(mtmp) {
         await pline(`${s_suffix(Monnam(mtmp))} medallion begins to glow!`);
         makeknown(AMULET_OF_LIFE_SAVING);
         if (canseemon(mtmp)) {
-            if (attacktype_mm(mtmp.data, AT_EXPL)
-                || attacktype_mm(mtmp.data, AT_BOOM)) {
+            if (attacktype(mtmp.data, AT_EXPL)
+                || attacktype(mtmp.data, AT_BOOM)) {
                 await pline(`${Monnam(mtmp)} reconstitutes!`);
             } else {
                 await pline(`${Monnam(mtmp)} looks much better!`);

@@ -666,8 +666,9 @@ export function priestname(mon, article, reveal_high_priest, pname) {
     const hp = game.u?.uprops || {};
     const do_hallu = !!(((hp[HALLUC]?.intrinsic | 0) || (hp[HALLUC]?.extrinsic | 0))
               && !((hp[HALLUC_RES]?.intrinsic | 0) || (hp[HALLUC_RES]?.extrinsic | 0)));
-    const aligned_priest = (mon.data_mndx | 0) === PM_PRIEST;      /* PM_ALIGNED_CLERIC */
-    const high_priest = (mon.data_mndx | 0) === PM_HIGH_PRIEST;    /* PM_HIGH_CLERIC */
+    const mndx = (typeof mon.data?.pmidx === 'number') ? (mon.data.pmidx | 0) : (mon.data_mndx | 0);
+    const aligned_priest = mndx === PM_PRIEST;      /* PM_ALIGNED_CLERIC */
+    const high_priest = mndx === PM_HIGH_PRIEST;    /* PM_HIGH_CLERIC */
     /* C priest.c:311-312 — `char whatcode = '\0';` is an OUT-parameter here:
      *   const char *what = do_hallu ? rndmonnam(&whatcode) : mon_pmname(mon);
      * and :323 reads it back through bogon_is_pname(whatcode).  It used to be

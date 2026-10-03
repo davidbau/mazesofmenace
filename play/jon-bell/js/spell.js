@@ -1165,8 +1165,8 @@ function collapseGaps(text) {
 }
 
 // ── padLeft / padRight (sprintf %Nd / %-Ns) ──────────────────────────────────
-function padR(s, n) { s = String(s); return s.length >= n ? s : s + ' '.repeat(n - s.length); }
-function padL(s, n) { s = String(s); return s.length >= n ? s : ' '.repeat(n - s.length) + s; }
+function padR(s, n) { s = String(s); return s.length >= n ? s : s + ' '.repeat(Math.max(0, n - s.length)); }
+function padL(s, n) { s = String(s); return s.length >= n ? s : ' '.repeat(Math.max(0, n - s.length)) + s; }
 
 // ── spellknow ────────────────────────────────────────────────────────────────
 // C ref: spell.h:33 — #define spellknow(spell) svs.spl_book[spell].sp_know

@@ -97,7 +97,7 @@ import {
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK, M3_COVETOUS,
     monst_globals_init,
 } from './monsters.js';
-import { big_to_little, set_mon_data, name_to_mon, name_to_monclass, monsndx } from './mondata.js';
+import { big_to_little, set_mon_data, name_to_mon, name_to_monclass, monsndx, attacktype } from './mondata.js';
 import {
     NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
     MM_EMIN, MM_EPRI, MM_EDOG, MM_ANGRY, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
@@ -2249,7 +2249,7 @@ export function peace_minded(ptr) {
  * C ref: steal.c mpickobj `:618–685` — monster takes an object into minvent.
  * Returns add_to_minv's freed flag (1 when otmp merged and was freed).
  * impossible/pline are fire-and-forget (sync file convention, cf. classmon).
- * attacktype is the module-local mondata.h port below; AT_ENGL is `:1720`.
+ * attacktype is the live mondata.js export; AT_ENGL is `:1720`.
  */
 export function mpickobj(mtmp, otmp) {
     // C steal.c:620 — deferred until otmp is in mtmp's inventory
@@ -2842,15 +2842,7 @@ export function mkmonmoney(mtmp, amount) {
     }
 }
 
-// C ref: mondata.h attacktype — true if any mattk slot has aatyp
-function attacktype(ptr, aatyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (let i = 0; i < slots.length; i++) {
-        if (slots[i]?.aatyp === aatyp) return true;
-    }
-    return false;
-}
+/* C mondata.c attacktype — live mondata.js export (local clone removed). */
 
 /**
  * C ref: muse.c rnd_defensive_item

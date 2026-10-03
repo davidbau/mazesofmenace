@@ -160,13 +160,6 @@ function distu(x, y) {
     return dx * dx + dy * dy;
 }
 
-function t_at(x, y) {
-    for (let t = game.ftrap; t; t = t.ntrap) {
-        if (t.tx === x && t.ty === y) return t;
-    }
-    return null;
-}
-
 /** C ref: steed.c can_saddle — steeds[] + size/humanoid/amorphous gates. */
 export function can_saddle(mtmp) {
     const ptr = mtmp?.data;
@@ -570,7 +563,10 @@ export function landing_spot(spot, reason, forceit) {
                 || (distance === min_distance && !rn2(viable));
             if (!better) continue;
 
-            const t = t_at(x, y);
+            // C steed.c:545 — kn_trap reads the live t_at (trap.c:6502), not the
+            // deleted local clone (game.ftrap is null in fresh games; the live
+            // list is game.level.traps, trap.js:1380).
+            const t = trap_t_at(x, y);
             const kn_trap = i === 0 && t && t.tseen
                 && (t.ttyp | 0) !== VIBRATING_SQUARE;
             const boulder = i <= 1 && sobj_at(BOULDER, x, y)

@@ -26,6 +26,7 @@ import { NON_PM, pmnames } from './generated/monsters_data.js';
 import { QUEST_NEMESIS_SPEECH } from './generated/quest_nemesis_speech.js';
 import { QUEST_GUARDTALK } from './generated/quest_guardtalk.js';
 import { an, An, the, makeplural, makesingular } from './objnam.js';
+import { s_suffix } from './do_name.js';
 
 /** C ref: monflag.h enum ms_sounds — quest_info switch cases. */
 const MS_LEADER = 36;
@@ -669,15 +670,7 @@ function intermed() {
     return game.urole?.intermed || '';
 }
 
-/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, *s→*', else *'s. */
-function s_suffix(s) {
-    const buf = String(s ?? '');
-    const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
-    if (low === 'you') return `${buf}r`;
-    if (buf.endsWith('s')) return `${buf}'`;
-    return `${buf}'s`;
-}
+/* C hacklib.c s_suffix — live export from './do_name.js' (clone removed D-3360). */
 
 /**
  * C ref: questpgr.c convert_arg `:235–325` — fills gc.cvt_buf; JS returns it.

@@ -1227,7 +1227,7 @@ function create_particular_parse(str) {
     const strip = (word) => {
         const i = bufp.toLowerCase().indexOf(word);
         if (i < 0) return false;
-        bufp = bufp.slice(0, i) + ' '.repeat(word.length) + bufp.slice(i + word.length);
+        bufp = bufp.slice(0, i) + ' '.repeat(Math.max(0, word.length)) + bufp.slice(i + word.length);
         return true;
     };
     d.saddled   = strip('saddled ');

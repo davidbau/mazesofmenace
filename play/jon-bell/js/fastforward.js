@@ -11,12 +11,12 @@ import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr } from "./attrib.js";
 import { overexert_hp } from "./uhitm.js";
 import { t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
-import { newsym, feel_location, feel_newsym, pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, You_hear } from "./display.js";
+import { Warning, newsym, feel_location, feel_newsym, pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, You_hear } from "./display.js";
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
  * do_death_sequence is only ever REFERENCED at call time. */
 import { do_death_sequence } from "./end.js";
-import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, HALF_PHDAM, DEAF, VOMITING, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel } from "./const.js";
+import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, HALF_PHDAM, DEAF, VOMITING, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel, Is_airlevel } from "./const.js";
 import { is_pool } from "./look.js";
 import { can_reach_floor } from "./hold_another_object.js";
 /* nomul: C detect.c:2049/2058 calls it from dosearch0 when a hidden door or
@@ -24,7 +24,7 @@ import { can_reach_floor } from "./hold_another_object.js";
  * back through this edge at module-init time, and nomul is a hoisted function
  * declaration called only at runtime, so this cycle resolves. */
 import { nomul, stop_occupation, interrupt_multi, night } from "./allmain.js";
-import { halu_gname, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap } from "./cmd.js";
+import { warnreveal, halu_gname, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap } from "./cmd.js";
 import { vtense } from "./objnam.js";
 import { rehumanize, polyself, set_uasmon } from "./polyself.js";
 import { you_were } from "./were.js";
@@ -45,7 +45,7 @@ import { restrap, mcalcdistress, hideunder as hideunder_ff, get_iter_mons } from
  * (MON_DETACH / mhp<1, non-guard) monsters from fmon.  mkmaze.js does not
  * import fastforward.js, so this static edge introduces no cycle (same rule
  * as the mklev/monmove imports above). */
-import { dmonsfree } from "./mkmaze.js";
+import { dmonsfree, movebubbles, fumaroles } from "./mkmaze.js";
 import { vision_recalc } from "./vision.js";
 import { any_light_source } from "./light.js";
 /* C prop.h:44 I_SPECIAL — mon.c:1269 borrows the bit in misc_worn_check as the
@@ -1153,6 +1153,8 @@ async function fastforward_step_generic_turn_nodochug() {
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
     await autosearch_rng();
+    /* C ref: allmain.c:345-346 — if (Warning) warnreveal(). */
+    if (Warning()) await warnreveal();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     dosounds_rng();
     /* C ref: allmain.c:407 gethungry(). */
@@ -1188,6 +1190,8 @@ async function fastforward_step_generic_turn() {
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
     await autosearch_rng();
+    /* C ref: allmain.c:345-346 — if (Warning) warnreveal(). */
+    if (Warning()) await warnreveal();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     dosounds_rng();
     /* C ref: allmain.c:407 gethungry(). */
@@ -1417,6 +1421,8 @@ export async function ff_head_phase_post() {
         }
     }
     await autosearch_rng();
+    /* C ref: allmain.c:345-346 — if (Warning) warnreveal(). */
+    if (Warning()) await warnreveal();
     // C allmain.c:348-351: monster or hero were-changes can change innate
     // properties, even when no new hero transformation was requested.
     if (game.gw?.were_changes)
@@ -1431,6 +1437,13 @@ export async function ff_head_phase_post() {
     exerchk();
     await invault();
     u_wipe_engr_rng();
+    /* C allmain.c:374-377 — "vision will be updated as bubbles move":
+     *     if (Is_waterlevel(&u.uz) || Is_airlevel(&u.uz)) movebubbles();
+     *     else if (svl.level.flags.fumaroles) fumaroles(); */
+    if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz))
+        await movebubbles();
+    else if (game.level?.flags?.fumaroles)
+        await fumaroles();
 }
 
 /* Convenience wrapper: the full HEAD block as one call (PART A + svm.moves++ is

@@ -70,9 +70,9 @@ import {
     is_clinger, breathless, is_flyer,
     PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames, G_UNIQ,
     MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON, MR_ACID, MR_STONE,
-    M1_SEE_INVIS, M2_SHAPESHIFTER, is_were,
+    M1_SEE_INVIS, M2_SHAPESHIFTER, is_were, dmgtype,
 } from './monsters.js';
-import { same_race, cantvomit, defended } from './mondata.js';
+import { same_race, cantvomit, defended, attacktype } from './mondata.js';
 import { were_beastie, set_ulycn, you_unwere } from './were.js';
 import { monflee } from './monmove.js';
 import { rescham } from './mon.js';
@@ -151,6 +151,8 @@ import {
 import { str_start_is, dist2 } from './hacklib.js';
 import { retouch_object, touch_artifact, retouch_equipment } from './artifact.js';
 import { remove_worn_item } from './steal.js';
+/* uhitm.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
+import { attacktype_fordmg } from './uhitm.js';
 
 /** C hack.h invlet_basic — a-zA-Z slots before invent-full dropy. */
 const INVLET_BASIC = 52;
@@ -379,40 +381,9 @@ const AT_MAGC = 255;
 const AT_BREA = 12;
 const AD_ACID = 8;
 
-/**
- * C ref: mondata.h attacktype — true if any mattk slot has aatyp.
- * Local copy to avoid makemon export / import cycles.
- */
-function attacktype(ptr, aatyp) {
-    return !!attacktype_fordmg(ptr, aatyp, -1);
-}
+/* C mondata.c attacktype — live mondata.js export (local wrapper removed). */
 
-/**
- * C ref: mondata.c attacktype_fordmg — first mattk with aatyp and adtyp
- * (AD_ANY==-1 wildcard). Local copy to avoid makemon import cycles.
- */
-function attacktype_fordmg(ptr, atyp, dtyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return null;
-    for (let i = 0; i < slots.length; i++) {
-        const a = slots[i];
-        if ((a?.aatyp | 0) === atyp
-            && (dtyp === -1 || (a?.adtyp | 0) === dtyp)) {
-            return a;
-        }
-    }
-    return null;
-}
-
-/** C ref: mondata.h dmgtype — true if any mattk slot has adtyp. */
-function dmgtype(ptr, adtyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (let i = 0; i < slots.length; i++) {
-        if (slots[i]?.adtyp === adtyp) return true;
-    }
-    return false;
-}
+/* C mondata.c dmgtype — live monsters.js export (local clone removed). */
 
 /** C monattk.h AD_POLY — genetic-engineer tin/corpse for Popeye(SLIMED). */
 const AD_POLY = 43;
@@ -869,6 +840,7 @@ export async function vomit() {
     }
 
     if (spewed) {
+        // C eat.c:3767 — vomited acid breath while poly'd into an acid breather.
         const mattk = attacktype_fordmg(ptr, AT_BREA, AD_ACID);
         if (mattk) {
             await pline('You breathe acid on yourself...');
@@ -2119,6 +2091,7 @@ async function cpostfx(pm) {
                 0,
             );
         }
+        // C eat.c:1311 — attacktype(ptr, AT_MAGC) || pm == PM_NEWT
         if (attacktype(ptr, AT_MAGC) || (pm | 0) === PM_NEWT) {
             await eye_of_newt_buzz();
         }
@@ -2148,8 +2121,8 @@ async function cpostfx(pm) {
  * (`:2529–2559`); EGG petrify make_stoned (`:2560–2575`); EUCALYPTUS_LEAF
  * sick/vomit cure (`:2576–2581`); APPLE cursed Snow-White sleep
  * (`:2582–2599`).
- * attacktype_fordmg is the in-file clone (`:364`, kept per its doc to avoid
- * a makemon-cycle edge); AT_ENGL/AD_BLND locals per monattk.h `:21`/`:53`.
+ * attacktype_fordmg is the live uhitm.js export (mondata.c:42–50);
+ * AT_ENGL/AD_BLND locals per monattk.h `:21`/`:53`.
  * Deaf is the youprop.h `:125` triple (HDeaf/EDeaf/uroleplay.deaf), matching
  * apply.js Deaf_hero (module-local there) and hack.js You_hear.
  */
@@ -2167,6 +2140,7 @@ async function fpostfx(otmp) {
         // C `:2517–2521` — carrot ends blindness, unless swallowed by an
         // engulfer whose attack blinds (AT_ENGL/AD_BLND); then it stays.
         const u = game.u || {};
+        // C eat.c:2519 — carrot cure blocked when the engulfer blinds.
         if (!u.uswallow || !attacktype_fordmg(u.ustuck?.data, AT_ENGL, AD_BLND))
             await make_blinded(u.ucreamed | 0, true);
         break;

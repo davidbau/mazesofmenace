@@ -182,7 +182,7 @@ function padTo(prefix, prefixLen, targetCol, tail) {
     let fill;
     if (gap <= 0) fill = '';
     else if (gap > 4) fill = `\x1b[${gap}C`;
-    else fill = ' '.repeat(gap);
+    else fill = ' '.repeat(Math.max(0, gap));
     return prefix + fill + tail;
 }
 

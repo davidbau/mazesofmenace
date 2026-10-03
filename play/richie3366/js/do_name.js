@@ -85,7 +85,7 @@ import {
 import { get_rnd_text } from './rumors.js';
 import { m_at } from './mon.js';
 import { cansee } from './vision.js';
-import { fuzzymatch, strstri, highc, lcase, distmin, mungspaces } from './hacklib.js';
+import { fuzzymatch, strstri, highc, lcase, distmin, mungspaces, upstart } from './hacklib.js';
 import { pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
@@ -1443,11 +1443,7 @@ export function new_oname(obj, lth) {
     }
 }
 
-/** C ref: hacklib.c upstart — capitalize first letter. */
-function upstart(str) {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
+/* C hacklib.c upstart — live export from './hacklib.js' (clone removed D-3358). */
 
 /* C do_name.c rndorcname syllable tables */
 const ORC_V = ['a', 'ai', 'og', 'u'];

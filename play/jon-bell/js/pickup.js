@@ -768,11 +768,13 @@ async function describe_decor() {
 
 async function read_engr_at(x, y) {
     const ep = engr_at(x, y);
+    /* C engrave.c:321 — eloc = surface(x, y) is evaluated before the engraving
+     * test (hliquid draws on the DISPLAY stream when hallucinating over a pool). */
+    const eloc = _surface_word(x, y);
     if (!ep || !ep.text || !ep.text[0])
         return;
     const isBlind = Blind();
     const isIce = game.level?.at ? game.level.at(x, y)?.typ === ICE : false;
-    const eloc = _surface_word(x, y);
     let sensed = false;
     switch (ep.engr_type) {
     case DUST:

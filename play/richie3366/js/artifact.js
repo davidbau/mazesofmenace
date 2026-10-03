@@ -144,7 +144,7 @@ import { mksobj, obj_extract_self, uncurse } from './mkobj.js';
 import { P_MAX_SKILL } from './weapon.js';
 // C mondata.c defended — hoisted fn, cycle-safe (mondata.js already imports
 // artifact.js; runtime-only calls, no top-level reads either way).
-import { defended } from './mondata.js';
+import { defended, attacktype } from './mondata.js';
 // C retouch_object unwear arm — hoisted fn, cycle-safe (`imports.mjs --can
 // artifact.js steal.js remove_worn_item`: SAFE, same shape as the file's
 // existing do_wear.js/mkobj.js/mondata.js cycle edges; runtime-only call).
@@ -2842,18 +2842,7 @@ const MB_VERB = [
 const PM_CLAY_GOLEM = monsterNames.indexOf('PM_CLAY_GOLEM');
 /* C monattk.h AT_MAGC — JS mattk encoding 255 (mhitm.js:217; eat.js precedent). */
 const AT_MAGC = 255;
-/**
- * C ref: mondata.h attacktype — true if any mattk slot has aatyp.
- * File-local per eat.js/engrave.js precedent (uhitm.js edge would cycle).
- */
-function attacktype(ptr, aatyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (const a of slots) {
-        if ((a?.aatyp | 0) === (aatyp | 0)) return true;
-    }
-    return false;
-}
+/* C mondata.c attacktype — live mondata.js export (local clone removed). */
 
 /**
  * C ref: artifact.c Mb_hit :1248–1434 — called when someone is hit by
@@ -2927,6 +2916,7 @@ export async function Mb_hit(magr, mdef, mb, dmgBox, dieroll, vis, hittee) {
             } else {
                 if (mdef?.data !== old_mdat) hb = mon_nam(mdef);
                 if (((mdef?.data?.mndx ?? mdef?.mnum ?? -1) | 0) === PM_CLAY_GOLEM) mdef.mhp = 1;
+                // C artifact.c:1342 — youattack && attacktype(mdef->data, AT_MAGC)
                 if (youattack && attacktype(mdef?.data, AT_MAGC)) {
                     u.uenmax = (u.uenmax | 0) + 1;
                     if ((u.uenmax | 0) > (u.uenpeak | 0)) u.uenpeak = u.uenmax;

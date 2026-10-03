@@ -280,10 +280,10 @@ const ROLE_LDRNUM = [
     344, 345, 346, 347, 348, 349, 350, 352, 351, 353, 354, 355, 356,
 ];
 const ROLE_NEMNUM = [
-    357, 358, 359, 360, 361, 362, 363, 365, 364, 366, 367, 368, 369,
+    357, 358, 359, 360, 361, 362, 363, 365, 364, 366, 352, 367, 368,
 ];
 const ROLE_GUARDNUM = [
-    379, 380, 381, 383, 384, 385, 386, 388, 387, 390, 391, 392, 393,
+    369, 370, 371, 372, 373, 374, 375, 377, 376, 379, 380, 381, 382,
 ];
 
 // ── wrpsym / wrp tables (objnam.c:2515-2525) ─────────────────────────────────
@@ -1295,8 +1295,13 @@ export function rnd_otyp_by_namedesc_js(name, oclass, xtra_prob) {
                         matched = true;
                 }
             }
-            /* oc_uname (user-called name) — not tracked in JS for wish paths;
-             * always null here, matching C when no type has been #named. */
+        }
+        /* oc_uname (user-called name) — objnam.c:3510-3511 */
+        if (!matched) {
+            const un = (game._oc_uname && game._oc_uname[i] != null)
+                ? game._oc_uname[i] : null;
+            if (un && wishymatch(name, un, false))
+                matched = true;
         }
 
         if (matched) {
@@ -2075,6 +2080,12 @@ export async function readobjnam(bp, no_wish) {
         const wname = WRP_NAMES[i];
         const wcls = WRP_CLASSES[i];
 
+        /* bare class word: C objnam.c:4566-4577 strncmpi prefix leaves bp "" */
+        if (bplc === wname && wcls !== AMULET_CLASS) {
+            oclass = wcls;
+            actualn = '';
+            break;
+        }
         /* "<class> of something" prefix */
         if (bplc.startsWith(wname + " ")) {
             oclass = wcls;

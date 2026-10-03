@@ -30,7 +30,7 @@ import { defsym_explanation } from './uhitm.js';
 import { mpickobj, is_vampshifter } from './makemon.js';
 import { t_at } from './trap.js';
 import {
-    COLNO, ROWNO, ROOM, STAIRS,
+    COLNO, ROWNO, ROOM,
     DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT, POISON, UNDEF, TABU,
     MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_MISS,
@@ -60,7 +60,7 @@ import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam, y_monnam, pmname, Mgender } from './do_name.js';
 import { gettrack } from './track.js';
 import { hero_conflict, resist_conflict, monsndx, same_race } from './mondata.js';
-import { is_pool, is_lava, stop_occupation } from './hack.js';
+import { is_pool, is_lava, stop_occupation, On_stairs } from './hack.js';
 import { m_unleash } from './apply.js';
 import { lose_guardian_angel } from './minion.js';
 import { dismount_steed, place_monster } from './steed.js';
@@ -144,20 +144,6 @@ function mon_track_add(mtmp, x, y) {
     }
     for (let j = MTSZ - 1; j > 0; j--) mtmp.mtrack[j] = { ...mtmp.mtrack[j - 1] };
     mtmp.mtrack[0] = { x, y };
-}
-
-// C ref: stairs.c On_stairs — stairs/ladder endpoints only
-function On_stairs(x, y) {
-    const L = game.level;
-    if (!L) return false;
-    if ((x === L.upstair?.x && y === L.upstair?.y)
-        || (x === L.dnstair?.x && y === L.dnstair?.y)
-        || (x === L.upladder?.x && y === L.upladder?.y)
-        || (x === L.dnladder?.x && y === L.dnladder?.y))
-        return true;
-    // Also typ-based: hero standing on STAIRS glyph (ladder flag)
-    const loc = L.at?.(x, y);
-    return !!(loc && (loc.typ === STAIRS || loc.ladder));
 }
 
 // C ref: rm.h IS_ROOM — typ >= ROOM (includes STAIRS / furniture)

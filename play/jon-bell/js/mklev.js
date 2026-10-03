@@ -23,6 +23,8 @@ import { unstuck as unstuck_mk } from './dog.js';
 // room placement, corridors, doors, stairs, niches, and fill.
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 import { game, wizard } from './gstate.js';
+import { PM_PIRANHA, PM_ELECTRIC_EEL } from './pm.generated.js';
+import { nexttodoor } from './mkroom.js';
 import { OBJ_MINVENT } from './const.js';
 import { fill_supply_chest } from './mkobj.js';
 import { init_fruit_chain } from './options.js';
@@ -3756,6 +3758,9 @@ const FILL_READY = new Set(['minefill', 'hellfill', 'tower']);
 const QUEST_FILL_READY = new Set([
     'Arc-fila', 'Arc-filb', 'Bar-fila', 'Bar-filb',
     'Pri-fila', 'Pri-filb', 'Wiz-fila', 'Wiz-filb',
+    'Cav-fila', 'Hea-fila', 'Hea-filb', 'Kni-fila', 'Kni-filb', 'Mon-fila', 'Mon-filb',
+    'Ran-fila', 'Ran-filb', 'Rog-fila', 'Rog-filb', 'Sam-fila', 'Sam-filb',
+    'Tou-fila', 'Tou-filb', 'Val-filb', 'Cav-filb', 'Val-fila',
 ]);
 function curse(otmp) {
     if (!otmp)
@@ -4521,7 +4526,13 @@ export async function makemon(mdat, x, y, mmflags) {
         else if (mndx === PM_CROESUS_MK) {
             mitem = TWO_HANDED_SWORD_MK;
         }
-        else if ((permonstTemplate(mndx)?.msound | 0) === MS_NEMESIS_MK) {
+        /* C role.c:2050-2052 role_init() rewrites mons[neminum].msound to
+         * MS_NEMESIS, so the hero's own nemesis qualifies even when monsters.h
+         * has another sound (Master of Thieves is static MS_LEADER; Tourist
+         * nemesis).  mons[] is not mutated here; quest_info(MS_NEMESIS) is the
+         * same test (see peaceMinded). */
+        else if ((permonstTemplate(mndx)?.msound | 0) === MS_NEMESIS_MK
+                 || quest_info(MS_NEMESIS_MK) === mndx) {
             mitem = BELL_OF_OPENING;
         }
         else if (mndx === PM_PESTILENCE) {
@@ -10062,6 +10073,44 @@ async function mktemple() {
         lev.altarmask = (lev.altarmask | 0) | AM_SHRINE;
     g.level.flags.has_temple = 1;
 }
+// C ref: mkroom.c:567-... mkswamp() — turn up to 5 rooms swampy.
+async function mkswamp() {
+    const g = game;
+    let eelct = 0;
+    for (let i = 0; i < 5; i++) {
+        const sroom = g.level.rooms[rn2(g.level.nroom | 0)];
+        if (!sroom || sroom.hx < 0 || sroom.rtype !== OROOM || has_upstairs(sroom)
+            || has_dnstairs(sroom))
+            continue;
+        const rmno = g.level.rooms.indexOf(sroom) + ROOMOFFSET;
+        sroom.rtype = SWAMP;
+        for (let sx = sroom.lx; sx <= sroom.hx; sx++)
+            for (let sy = sroom.ly; sy <= sroom.hy; sy++) {
+                const lev = g.level.at(sx, sy);
+                if (!IS_ROOM(lev.typ) || (lev.roomno | 0) !== rmno)
+                    continue;
+                let monAt = false;
+                for (let m = g.fmon; m; m = m.nmon)
+                    if ((m.mhp | 0) >= 1 && m.mx === sx && m.my === sy) { monAt = true; break; }
+                if (!g.level.levelObjects?.[sx]?.[sy] && !monAt && !t_at(sx, sy)
+                    && !nexttodoor(sx, sy)) {
+                    if ((sx + sy) % 2) {
+                        del_engr_at(sx, sy);
+                        lev.typ = POOL;
+                        if (!eelct || !rn2(4)) {
+                            await makemon(rn2(5) ? PM_GIANT_EEL
+                                : rn2(2) ? PM_PIRANHA : PM_ELECTRIC_EEL,
+                                sx, sy, 0);
+                            eelct++;
+                        }
+                    } else if (!rn2(4)) { /* swamps tend to be moldy */
+                        await makemon(mkclass(32 /* S_FUNGUS */, 0), sx, sy, 0);
+                    }
+                }
+            }
+        g.level.flags.has_swamp = 1;
+    }
+}
 async function do_mkroom(roomtype) {
     if (roomtype >= SHOPBASE) {
         await mkshop();
@@ -10077,6 +10126,7 @@ async function do_mkroom(roomtype) {
     case COCKNEST:  mkzoo(COCKNEST);  break;
     case ANTHOLE:   mkzoo(ANTHOLE);   break;
     case SWAMP:
+        await mkswamp();
         break;
     case TEMPLE:
         await mktemple();
@@ -11614,7 +11664,12 @@ export async function can_touch_safely(mtmp, otmp) {
     }
 
     /* Second check: SILVER material && mon_hates_silver && (not BELL_OF_OPENING or !is_covetous) */
-    if (MKOBJ_OC_MATERIAL[otyp | 0] === SILVER_MATERIAL && mon_hates_silver(mtmp)) {
+    /* objects[otyp].oc_material is the RUNTIME value: o_init.c:141-146 swaps it with
+     * the description when shuffling whole classes (wands, rings, ...), so a wand
+     * whose appearance is "silver" is silver whatever its otyp. */
+    const _ocMat = (game._objMaterials && game._objMaterials[otyp] != null)
+        ? (game._objMaterials[otyp] | 0) : MKOBJ_OC_MATERIAL[otyp | 0];
+    if (_ocMat === SILVER_MATERIAL && mon_hates_silver(mtmp)) {
         if (otyp !== BELL_OF_OPENING
             || (((mdat?.mflags3 | 0) & 0x001f) === 0)) {
             return false;

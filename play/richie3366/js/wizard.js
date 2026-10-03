@@ -38,6 +38,10 @@ import { cansee } from './vision.js';
 import { msummon, monster_census, Inhell } from './minion.js';
 import { builds_up, dist2 } from './hacklib.js';
 import { stairway_find_type_dir } from './mklev.js';
+// C wizard.c nasty — hoisted fn, cycle-safe (`imports.mjs --can wizard.js
+// mondata.js attacktype`: hoisted export, sites read it only inside nasty()
+// bodies, no top-level reads either way; verify judges TDZ).
+import { attacktype } from './mondata.js';
 
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
@@ -61,15 +65,7 @@ function sgn(n) {
     return (n > 0) ? 1 : (n < 0) ? -1 : 0;
 }
 
-/** C ref: mondata.h attacktype — any mattk slot with aatyp. */
-function attacktype(ptr, aatyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (let i = 0; i < slots.length; i++) {
-        if (slots[i]?.aatyp === aatyp) return true;
-    }
-    return false;
-}
+/* C mondata.c attacktype — live mondata.js export (local clone removed). */
 
 /**
  * C ref: wizard.c nasty — summon nasties aligned with caster (or neutral
@@ -108,6 +104,7 @@ export async function nasty(summoner) {
                     if (!--trylimit) continue jloop; // C: goto nextj
                     makeindex = pick_nasty(difcap);
                     m_cls = mons(makeindex)?.mlet;
+                // C wizard.c:650 — attacktype(&mons[makeindex], AT_MAGC)
                 } while ((difcap > 0
                         && (mons(makeindex)?.difficulty | 0) >= difcap
                         && attacktype(mons(makeindex), AT_MAGC))
@@ -144,6 +141,7 @@ export async function nasty(summoner) {
                             mtmp, mtmp.mx | 0, mtmp.my | 0, mmflags,
                         );
                         m_cls = mtmp.data?.mlet;
+                        // C wizard.c:674 — attacktype(mtmp->data, AT_MAGC)
                         if ((difcap > 0
                                 && (mtmp.data?.difficulty | 0) >= difcap
                                 && rn2(In_endgame(u.uz) ? 3 : 7)

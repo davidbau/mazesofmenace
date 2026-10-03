@@ -44,7 +44,7 @@ import {
 } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, setmangry, seemimic, hideunder } from './mon.js';
-import { Monnam, rndmonnam } from './do_name.js';
+import { Monnam, rndmonnam, s_suffix } from './do_name.js';
 import { strstri, dist2 } from './hacklib.js';
 import {
     monstseesu, monstunseesu, cvt_adtyp_to_mseenres, resists_magm,
@@ -142,16 +142,7 @@ const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 /** C ref: objclass.h material order — GLASS == 19 (cf. dothrow.js). */
 const GLASS = 19;
 
-/** C ref: hacklib.c s_suffix `:345–359` — it→its, you→your, *s→*', else *'s. */
-function s_suffix(s) {
-    const buf = String(s ?? '');
-    const low = buf.toLowerCase();
-    if (low === 'it') return `${buf}s`; /* C strcmpi — case-insensitive */
-    if (low === 'you') return `${buf}r`;
-    /* C `*(eos(buf)-1) == 's'` — lowercase 's' only. */
-    if (buf.endsWith('s')) return `${buf}'`;
-    return `${buf}'s`;
-}
+/* C hacklib.c s_suffix — live export from './do_name.js' (clone removed D-3360). */
 
 /** C ref: permonst pmname — neutral slot for ordinary monsters. */
 function pmname_mon(mon) {

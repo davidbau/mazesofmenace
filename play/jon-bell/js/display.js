@@ -526,7 +526,7 @@ function _wall_color() {
     if (uz && !!(game?.dungeons?.[uz.dnum]?.flags?.hellish))
         return CLR_RED;
     if (Is_knox_level(uz))
-        return NO_COLOR;   /* wallcolors[knox_walls] = CLR_GRAY */
+        return CLR_YELLOW; /* dat/symbols G_*_knox: /yellow -> wallcolors[knox_walls] */
     if (In_sokoban(uz))
         return CLR_BLUE;
     return NO_COLOR;       /* wallcolors[main_walls] = CLR_GRAY */
@@ -3002,7 +3002,7 @@ function render_map_row(y) {
     if (gap > 4)
         output += `\x1b[${gap}C`;
     else if (gap > 0)
-        output += ' '.repeat(gap);
+        output += ' '.repeat(Math.max(0, gap));
     for (let x = firstCol; x <= lastCol; x++) {
         const cell = _snapCellAt(x, y);
         const ch = cell.ch ?? ' ';
@@ -3038,7 +3038,7 @@ function render_map_row(y) {
             if (run > 4)
                 output += `\x1b[${run}C`;
             else
-                output += ' '.repeat(run);
+                output += ' '.repeat(Math.max(0, run));
             x += run - 1;
             continue;
         }
@@ -3325,7 +3325,7 @@ function _statusLine1() {
     const gap = Math.max(1, 31 - title.length);
     if (gap > 4)
         return `${title}\x1b[${gap}C${stats} ${align}`;
-    return `${title}${' '.repeat(gap)}${stats} ${align}`;
+    return `${title}${' '.repeat(Math.max(0, gap))}${stats} ${align}`;
 }
 /* C ref: botl.c:872 — mons[u.umonnum].mlevel, read from the shared mons pack
  * (the same table js/makemon.js permonstTemplate builds from). */
@@ -3513,7 +3513,7 @@ export function _statusRows3() {
         return ['', '', ''];
     const ai = l1.lastIndexOf(' ');
     const align = l1.slice(ai + 1);
-    const row1 = l1.slice(0, ai).replace(/\x1b\[(\d+)C/g, (m, n) => ' '.repeat(+n));
+    const row1 = l1.slice(0, ai).replace(/\x1b\[(\d+)C/g, (m, n) => ' '.repeat(Math.max(0, +n)));
     return [row1, `${align} ${p.mid}${p.hunger}`, `${p.desc}${p.time}${p.conds}`];
 }
 export function _threeStatusLines() {
@@ -3742,7 +3742,7 @@ export function serialize_terminal_grid(display) {
         if (firstCol > 4)
             output += `\x1b[${firstCol}C`;
         else if (firstCol > 0)
-            output += ' '.repeat(firstCol);
+            output += ' '.repeat(Math.max(0, firstCol));
         for (let c = firstCol; c <= lastCol; c++)
             output += display.grid[r][c].ch;
         if (r < lastRow)
@@ -3890,7 +3890,7 @@ function _buildScreenOutput() {
         }
         // Status lines
         const _r0 = _rows3 ? 21 : 22;
-        const s1 = _status1.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m => m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+        const s1 = _status1.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m => m.match(/\x1b\[\d+C/) ? ' '.repeat(Math.max(0, parseInt(m.slice(2)))) : '');
         for (let c = 0; c < Math.min(s1.length, display.cols); c++)
             display.setCell(c, _r0, s1[c], NO_COLOR, 0);
         const s2 = _status2;
@@ -3944,7 +3944,7 @@ function _buildScreenOutputWithMoreRows(rows) {
                 display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
             }
         }
-        const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m => m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+        const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m => m.match(/\x1b\[\d+C/) ? ' '.repeat(Math.max(0, parseInt(m.slice(2)))) : '');
         for (let c = 0; c < Math.min(s1.length, display.cols); c++)
             display.setCell(c, 22, s1[c], NO_COLOR, 0);
         const s2 = _statusLine2();
@@ -4964,12 +4964,33 @@ export async function force_more(committed, dismissMore) {
     const _pages = _topl_more_pages(_full, _topl_joins_snapshot(_full));
     let _morc = 0;
     const _frameLog = g._movemonPageFrames;
+    const _flushFrames = g._plineFlushFrames?.slice() || [];
+    let _consumed = 0;
+    let _prevEnd = -1;
     for (let i = 0; i < _pages.length; ++i) {
+        const _end = _consumed + _pages[i].length;
+        const _ownOff = _prevEnd;
+        _prevEnd = _end;
+        _consumed = _end + 2;
         /* _topl_more_pages ends a wrapped single pline with an empty remainder
          * (already fully shown by the page before it); it owes no more(). */
         if (!_pages[i] && i) continue;
         g._pending_message = _pages[i];
-        const _pf = i > 0 ? _frameLog?.[i] : null;
+        /* C vpline() flushes the screen before the putmesg() whose update_topl
+         * raises this page's more() (pline.c:273-274), so a page that was
+         * raised by a pline of the COMMAND (teleds' "You materialize..." then
+         * intemple's "intones:") froze the map as of that pline — not the
+         * map after the world block's movemon, which is what the movemon
+         * snapshot installed below holds.  The pline-flush log records the
+         * exact frame (the same select force_more_pages uses); a page with no
+         * record falls through to the existing per-page / ambient choice. */
+        let _pf = _pline_flush_frame_select(_end, _full, _flushFrames);
+        /* The LAST page has no later pline; its more() comes from its OWN
+         * pline's redotoplin/yn prompt, after that pline's flush_screen
+         * (pline.c:273-277), so the frame is the one keyed at the end of the
+         * text before it. */
+        if (!_pf && i > 0) _pf = _pline_flush_frame_select(_ownOff, _full, _flushFrames);
+        if (!_pf && i > 0) _pf = _frameLog?.[i];
         const _sv = g._paintedSnapshot;
         if (_pf && _sv) g._paintedSnapshot = { cells: _pf.cells, moves: _pf.moves, botl: _pf.botl || null };
         _morc = await _topl_more(_pages[i], dismissMore);
@@ -5187,6 +5208,11 @@ async function _flush_screen_body(mode) {
         let plineFrame = _pline_flush_frame_select(consumed + committed.length, fullTopl);
         if (!plineFrame)
             plineFrame = _pline_flush_frame_select(consumed - 2, fullTopl);
+        else if (committed.length >= 80
+                 && !(_topl_joins_for(fullTopl) || []).some((j) => j > consumed && j < consumed + committed.length)) {
+            const ownFrame = _pline_flush_frame_select(consumed - 2, fullTopl);
+            if (ownFrame) plineFrame = ownFrame;
+        }
         const _savedSnap = game._paintedSnapshot;
         const _savedInMM = game._inMovemonMore;
         // ── pickup-encumber prinv page: freeze on the pre-movemon frame + cap ────
@@ -5811,6 +5837,12 @@ export async function pline(msg, ...args) {
         const _res = game._resultMessage;
         if (_res && _res !== msg)
             _pline_flush_frame_record(_res.length, String(msg));
+        else if (!_res && String(msg).length >= 80)
+            /* A lone message that wraps onto a second row raises more() from
+             * inside its OWN redotoplin (topl.c:157-160), after its own
+             * flush_screen (pline.c:274) and before the turn's movemon.  Its
+             * frame is keyed -2: the "  " separator would end at 0. */
+            _pline_flush_frame_record(-2, String(msg));
         game._pending_message = msg;
     }
     /* C ref: pline.c:282 — `(void) strncpy(gp.prevmsg, line, BUFSZ)`, run after
@@ -6321,7 +6353,7 @@ export function feel_location(x, y) {
             if (do_room_glyph) {
                 const dark = !Is_rogue_level(game.u?.uz);
                 const glyph = dark
-                    ? { ch: '.', color: CLR_BLACK, decgfx: false, cls: GLYPHCLS_CMAP }
+                    ? { ch: dec_mode() ? '~' : '.', color: CLR_BLACK, decgfx: dec_mode(), cls: GLYPHCLS_CMAP }
                     : (lev.waslit
                         ? { ch: '.', color: NO_COLOR, decgfx: false, cls: GLYPHCLS_CMAP }
                         : { ch: ' ', color: NO_COLOR, decgfx: false, cls: GLYPHCLS_CMAP });
