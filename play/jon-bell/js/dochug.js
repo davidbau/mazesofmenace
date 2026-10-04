@@ -78,7 +78,8 @@ import { builds_up } from './dungeon.js';
 import { within_bounded_area } from './rect.js';
 import { dist2 } from './hacklib.js';
 import { mon_has_amulet } from './sit.js';
-import { healmon, mpickobj } from './mklev.js';
+import { healmon, mpickobj, m_respond } from './mklev.js';
+const DEADMONSTER_dc = (m) => (m.mhp | 0) <= 0;
 import { obj_extract_floor, distant_obj_name, Monnam_dm } from './dogmove.js';
 import { pline } from './display.js';
 import { ENV } from './hostenv.js';
@@ -309,7 +310,11 @@ export async function dochug(mtmp) {
             await leppie_stash(mtmp);
         return 0;
     }
-    /* C monmove.c:777 — m_respond (special abilities). L14: stub-skipped. */
+    /* C monmove.c:752-755 — some monsters have special abilities;
+     * m_respond gaze can kill medusa. */
+    await m_respond(mtmp);
+    if (DEADMONSTER_dc(mtmp))
+        return 1;
     /* C monmove.c:781 — fleeing monsters might regain courage. */
     if ((mtmp.mflee | 0) && !(mtmp.mfleetim | 0) && mtmp.mhp === mtmp.mhpmax) {
         if (!rn2(25))
@@ -540,8 +545,10 @@ export async function dochug(mtmp) {
         switch (status) {
             case MMOVE_NOMOVES:
                 if (pf_scared) panicattk = true;
-                /* fallthrough to NOTHING/DONE → PHASE FOUR */
-                break;
+                /* C monmove.c:943-946 FALLTHRU into NOTHING/DONE: the
+                 * hallucination newsym below still runs for a monster with
+                 * no valid squares (a queen bee boxed in on her jelly). */
+                // falls through
             case MMOVE_NOTHING:
             case MMOVE_DONE:
                 /* C monmove.c:961-964, inside this same switch arm:

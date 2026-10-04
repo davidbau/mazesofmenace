@@ -1486,12 +1486,19 @@ function rloc_pos_ok(x, y, mtmp) {
                 && (!d.nlx || !within_bounded_area(x, y, d.nlx, d.nly, d.nhx, d.nhy));
         }
     } else {
+        /* C teleport.c:1622-1633: keep a shopkeeper/priest in his room, then
+           respect the restricted dndest/updest regions between the monster's
+           CURRENT square <xx,yy> and <x,y> (the hero-only 'u' squares used by
+           teleok are not involved here). */
+        const roomno = game.level?.locations?.[x]?.[y]?.roomno | 0;
         if (mtmp.isshk && inhishop(mtmp)) {
-            /* unreached: isshk always 0 in scope */
+            if (roomno !== ((mtmp.mextra?.eshk?.shoproom ?? mtmp.eshk?.shoproom) | 0))
+                return false;
         } else if (mtmp.ispriest && inhistemple_local(mtmp)) {
-            /* unreached: ispriest always 0 in scope */
+            if (roomno !== ((mtmp.mextra?.epri?.shroom ?? mtmp.epri?.shroom) | 0))
+                return false;
         }
-        if (!isok(x, y)) return false; /* tele_jump_ok reduces to isok() */
+        if (!tele_jump_ok(xx, mtmp.my | 0, x, y)) return false;
     }
     return true;
 }

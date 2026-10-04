@@ -133,7 +133,11 @@ import {
     VIBRATING_SQUARE,
     Is_astralevel,
     Is_earthlevel,
+    Is_waterlevel,
+    Is_firelevel,
+    Is_airlevel,
     Is_knox,
+    MAGIC_PORTAL,
     Is_rogue_level,
     Is_stronghold,
     Is_bigroom,
@@ -154,6 +158,9 @@ import { shop_keeper, inhishop } from './shk.js';
 import { m_at } from './mon.js';
 import { canseemon, impossible } from './display.js';
 import { within_bounded_area } from './rect.js';
+import { Is_qstart } from './quest.js';
+import { findpriest, inhistemple } from './priest.js';
+import { shtypes } from './shknam.js';
 
 // C dungeon.c:747–752 flagstrs / flagstrs2i. Index is luaL_checkoption's.
 const DGN_FLAG_STRS = ['town', 'hellish', 'mazelike', 'roguelike', 'unconnected'];
@@ -1133,7 +1140,8 @@ export function assign_rnd_level(dest, src, range) {
 
 /**
  * C ref: dungeon.c ledger_to_dnum :1401–1416 —
- * ledger_start < ledgerno ≤ ledger_start + num_dunlevs.
+ * ledger_start < ledgerno ≤ ledger_start + num_dunlevs. Out of range is
+ * C panic (throw ≡ panic — sibling ports throw; no silent dnum 0).
  */
 export function ledger_to_dnum(ledgerno) {
     const n = game.n_dgns | 0;
@@ -1145,7 +1153,7 @@ export function ledger_to_dnum(ledgerno) {
         const count = d.num_dunlevs | 0;
         if (start < want && want <= start + count) return i;
     }
-    return 0;
+    throw new Error(`level number out of range [ledger_to_dnum(${want})]`);
 }
 
 /**
@@ -2509,9 +2517,10 @@ export function recalc_mapseen() {
             const shkp = shop_keeper(urooms.charCodeAt(i));
             mptr.msrooms[ridx].untended = (!shkp || !inhishop(shkp)) ? 1 : 0;
         } else if (rt === TEMPLE) {
-            // findpriest/inhistemple detail deferred — resident priest ⇒ tended
-            const priest = rooms[ridx]?.resident || null;
-            mptr.msrooms[ridx].untended = priest ? 0 : 1;
+            /* C `:3142–3143` — (!(mtmp = findpriest(uroom))
+               || !inhistemple(mtmp)); live priest.js exports. */
+            const priest = findpriest(urooms.charCodeAt(i));
+            mptr.msrooms[ridx].untended = (!priest || !inhistemple(priest)) ? 1 : 0;
         } else {
             mptr.msrooms[ridx].untended = 0;
         }
@@ -2616,8 +2625,12 @@ export function room_discovered(roomno) {
 }
 
 /**
- * C ref: dungeon.c recbranch_mapseen — note forward branch taken by
- * stairs/fall/portal (not level-teleport / Eye).
+ * C ref: dungeon.c recbranch_mapseen `:2445–2475` — note forward branch
+ * taken by stairs/fall/portal (not level-teleport / Eye). Same-dungeon
+ * returns; reverse trips return; unfound branches return. Two-branches
+ * impossibles but still overwrites mptr.br (C `:2468–2470`); unseen
+ * source impossibles with coords (C `:2471–2474`). `void impossible`:
+ * predicate stays sync (In_W_tower `:1284` precedent).
  */
 export function recbranch_mapseen(source, dest) {
     if ((source?.dnum | 0) === (dest?.dnum | 0)) return;
@@ -2632,15 +2645,15 @@ export function recbranch_mapseen(source, dest) {
         }
     }
     if (!br) return;
-    const mptr = (game.mapseenchn || []).find(
-        (m) => on_level(m.lev, source),
-    );
-    if (!mptr) return;
-    if (mptr.br && mptr.br !== br) {
-        // C: impossible("Two branches on the same level?")
-        return;
+    const mptr = find_mapseen(source);
+    if (mptr) {
+        if (mptr.br && mptr.br !== br) {
+            void impossible('Two branches on the same level?');
+        }
+        mptr.br = br;
+    } else {
+        void impossible(`Can't note branch for unseen level (${source?.dnum | 0}, ${source?.dlevel | 0})`);
     }
-    mptr.br = br;
 }
 
 /**
@@ -2771,27 +2784,19 @@ function plur(n) {
 }
 
 /**
- * C ref: dungeon.c shop_string — short shop description for #overview.
- * Uses shtypes[].name (annotation null in upstream for common shops);
- * SHOPBASE-1 → untended. Keep names aligned with shknam.c shtypes[].
+ * C ref: dungeon.c shop_string `:3440–3455` (staticfn) — short shop
+ * description for #overview. Live shknam.js shtypes: annotation when
+ * non-null (11 of 12), else name, else the "shop?" catchall; negative
+ * shoptype (SHOPBASE-1 untended) → "untended shop". The read is lazy
+ * (inside the body — CHECK-safe for the const binding).
  */
 function shop_string(rtype) {
     const shoptype = (rtype | 0) - SHOPBASE;
     if (shoptype < 0) return 'untended shop';
-    const NAMES = [
-        'general store',
-        'used armor dealership',
-        'second-hand bookstore',
-        'liquor emporium',
-        'antique weapons outlet',
-        'delicatessen',
-        'jewelers',
-        'quality apparel and accessories',
-        'hardware store',
-        'rare books',
-        'lighting store',
-    ];
-    return NAMES[shoptype] || 'shop';
+    const sh = shtypes[shoptype];
+    if (sh?.annotation) return sh.annotation;
+    if (sh?.name) return sh.name;
+    return 'shop?';
 }
 
 /** Local an() for shop overview — avoid objnam import cycle. */
@@ -3416,8 +3421,8 @@ function print_branch(out, dnum, lowerBound, upperBound, bymenu, lchoices) {
  * (#wizwhere / D-0928 #1115/#1183 — not NHW_TEXT show_text_pages).
  * Sets dest.lev / dest.dgn and returns logical depth (playerlev), or 0
  * on cancel.
- * Named omissions: floating-branch detail beyond stub; Invocation/portal
- * debug lines; endgame amulet grant after pick (level_tele).
+ * Named omissions: none — the endgame amulet grant after pick is the
+ * teleport.c caller's arm and is live there (js/teleport.js level_tele).
  *
  * @param {boolean} bymenu
  * @param {{ lev?: number, dgn?: number } | null} dest
@@ -3483,7 +3488,38 @@ export async function print_dungeon(bymenu, dest = null) {
             const destName = game.dungeons?.[br.end2?.dnum | 0]?.dname || '?';
             lines.push(`   ${br_string(br.type)} to ${destName}`);
         }
-        // Invocation / portal debug lines deferred
+        /* C `:2434–2462` — "I hate searching for the invocation pos
+           while debugging. -dean": Invocation position, else the level's
+           magic portal (at most one per level assumed), else "No portal
+           found." only when a portal is expected. */
+        if (Invocation_lev(uz)) {
+            const ip = game.svi?.inv_pos || game.inv_pos || { x: 0, y: 0 };
+            lines.push('');
+            lines.push(`Invocation position @ (${ip.x | 0},${ip.y | 0}), hero @ (${game.u?.ux | 0},${game.u?.uy | 0})`);
+        } else {
+            let buf = '';
+            const ftrap = game.ftrap;
+            let trap = null;
+            if (Array.isArray(ftrap)) {
+                trap = ftrap.find(t => (t?.ttyp | 0) === MAGIC_PORTAL) || null;
+            } else {
+                for (let t = ftrap; t; t = t.ntrap) {
+                    if ((t.ttyp | 0) === MAGIC_PORTAL) { trap = t; break; }
+                }
+            }
+            if (trap) {
+                buf = `Portal @ (${trap.tx | 0},${trap.ty | 0}), hero @ (${game.u?.ux | 0},${game.u?.uy | 0})`;
+            } else if (Is_earthlevel(uz) || Is_waterlevel(uz)
+                    || Is_firelevel(uz) || Is_airlevel(uz)
+                    || Is_qstart(uz) || at_dgn_entrance('The Quest')
+                    || Is_knox(uz)) {
+                buf = 'No portal found.';
+            }
+            if (buf) {
+                lines.push('');
+                lines.push(buf);
+            }
+        }
         await show_nhw_menu_text(lines);
         return 0;
     }

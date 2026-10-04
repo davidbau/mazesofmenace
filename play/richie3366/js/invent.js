@@ -10,8 +10,9 @@
 //        display_minventory MINV_ALL|PICK_NONE (D-1426; zap.c
 //        probe_monster); display_binventory buried/pool (D-1444;
 //        zap.c zap_updown WAN_PROBING); display_cinventory container
-//        contents (D-1445; zap.c bhito WAN_PROBING); PICK_ONE /
-//        INCLUDE_HERO named; worn_wield_only wired (D-3315);
+//        contents (D-1445; zap.c bhito WAN_PROBING); PICK_ONE/ANY
+//        via query_objlist; INCLUDE_HERO rows named;
+//        worn_wield_only wired (D-3315);
 //        o_init.c dodiscovered / discover_object / gem_learned;
 //        invent.c o_on (D-1691);
 //        insight.c enlightenment (BASIC ^X + MAGIC-only in-progress D-1116).
@@ -59,13 +60,13 @@ import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xna
 import { yn_function, y_n, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj, curse } from './mkobj.js';
-import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report, costly_spot } from './shk.js';
+import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report, costly_spot, addtobill, stolen_value } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { setnotworn, dropy } from './do.js';
-import { s_suffix, a_monnam, pmname, x_monnam, hliquid } from './do_name.js';
+import { s_suffix, a_monnam, pmname, x_monnam, hliquid, mon_nam } from './do_name.js';
 import { inv_cnt } from './steal.js';
 import { temp_resist } from './eat.js'; // C eat.c:453 — enlightenment "temporarily " prefix; call-time use only (same-SCC edge)
-import { assigninvlet, find_ac, addinv_core2 } from './u_init.js';
+import { assigninvlet, find_ac, addinv_core2, reorder_invent } from './u_init.js';
 import { cansee } from './vision.js';
 import {
     WEAPON_CLASS,
@@ -239,6 +240,8 @@ import {
     FEMALE,
     MALE,
     QBUFSZ,
+    STOMACH, ICE, PLNMSG_ONE_ITEM_HERE, is_pit,
+    MINV_PICKMASK, INCLUDE_HERO,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -329,7 +332,7 @@ import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { magic_negation_you, stagger } from './mhitm.js';
 import { t_at, trapname, ice_descr } from './trap.js';
-import { is_pool, is_lava } from './hack.js';
+import { is_pool, is_lava, in_rooms } from './hack.js';
 import { is_ice } from './zap.js';
 import { is_drawbridge_wall, hero_Wwalking } from './dbridge.js';
 import { Levitation, Flying } from './mhitu.js';
@@ -345,7 +348,7 @@ import { is_quest_artifact } from './quest.js';
 import {
     askchain, add_valid_menu_class, collect_obj_classes,
     count_buc, count_justpicked, allow_category,
-    query_category, query_objlist, allow_all,
+    query_category, query_objlist, allow_all, force_decor,
 } from './pickup.js';
 import { is_ammo, is_pole, empty_handed } from './wield.js';
 import { is_wet_towel, can_advance } from './weapon.js';
@@ -4414,8 +4417,9 @@ function s_suffix_inv(s) {
  * class headings + doname under suppress_price + PICK_NONE).
  * !MINV_ALL → worn_wield_only armament filter (D-3315).
  * youmonst.data swap for "weapon in claw". Empty → "(none)".
- * Named omit: PICK_ONE/ANY; INCLUDE_HERO fake youmonst; sortloot
- * loot-name; USE_INVLET letters (MINV_NOLET / PICK_NONE skip them);
+ * PICK_ONE/ANY delegate to query_objlist like C (return selected[0]).
+ * Named omit: INCLUDE_HERO fake youmonst rows; sortloot loot-name;
+ * USE_INVLET letters (MINV_NOLET / PICK_NONE skip them);
  * invdisp_nothing NHW_MENU polish.
  * @returns {Promise<object|null>} selected object (PICK_NONE → null)
  */
@@ -4444,8 +4448,30 @@ export async function display_minventory(mon, dflags, title) {
     const items = [];
     for (let otmp = mon.minvent; otmp; otmp = otmp.nobj) items.push(otmp);
     const incl_hero = do_all && engulfing_u(mon);
-    // INCLUDE_HERO fake-hero row named
-    void incl_hero;
+    const pickings = dflags & MINV_PICKMASK;
+    // C: query_objlist(title, &minvent, INVORDER_SORT|INCLUDE_HERO,
+    // pickings, allow_all|worn_wield_only); return selected[0].
+    // INCLUDE_HERO fake-hero rows stay named (query_objlist's flag
+    // bit passes through inertly — named there too).
+    if (pickings !== PICK_NONE) {
+        if (!game.youmonst) game.youmonst = { _youmonst: true };
+        if (!game.iflags) game.iflags = {};
+        const savedData = game.youmonst.data;
+        game.youmonst.data = mon.data;
+        // C iflags.suppress_price++ so doname_with_price ≡ doname
+        game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
+        try {
+            const res = await query_objlist(
+                hdr, mon.minvent,
+                INVORDER_SORT | (incl_hero ? INCLUDE_HERO : 0),
+                pickings, do_all ? allow_all : worn_wield_only);
+            const sel = res.pick_list || [];
+            return sel.length > 0 ? sel[0].obj ?? null : null;
+        } finally {
+            game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
+            game.youmonst.data = savedData;
+        }
+    }
     const have_any = items.length > 0;
     // C display_minventory `:5359–5370` — without MINV_ALL only worn or
     // wielded items are displayed (worn_wield_only filter). The C
@@ -4909,12 +4935,13 @@ export function useup(obj) {
 /**
  * C ref: invent.c useupf `:4762–4783` — consume numused from a floor
  * pile. Snapshot at_u before split; splitobj when quan > numused
- * (burn_floor_objects may call again on the remainder); delobj.
+ * (burn_floor_objects may call again on the remainder); shop billing
+ * (!mon_moving && costly_spot → addtobill vs stolen_value); delobj.
  * If the pile was under the hero and uundetected && hides_under,
- * hideunder(&youmonst). Named: !mon_moving && costly_spot shop
- * addtobill vs stolen_value (both async).
+ * hideunder(&youmonst). Async: the shop arms bill (addtobill can
+ * reach nhgetch via shop plines).
  */
-export function useupf(obj, numused) {
+export async function useupf(obj, numused) {
     const atHero = u_at(obj.ox, obj.oy);
     let otmp;
     if ((obj.quan | 0) > (numused | 0)) {
@@ -4922,8 +4949,19 @@ export function useupf(obj, numused) {
     } else {
         otmp = obj;
     }
-    delobj(otmp);
     const u = game.u || {};
+    if (!game.context?.mon_moving && costly_spot(otmp.ox | 0, otmp.oy | 0)) {
+        /* C: strchr(u.urooms, *in_rooms(...)) — a NUL first char still
+           matches (points at the terminator); addtobill's billable()
+           no-ops off-shop either way. */
+        const roomCh = in_rooms(otmp.ox | 0, otmp.oy | 0, 0)[0] ?? '';
+        if ((u.urooms || '').includes(roomCh)) {
+            await addtobill(otmp, false, false, false);
+        } else {
+            await stolen_value(otmp, otmp.ox | 0, otmp.oy | 0, false, false);
+        }
+    }
+    delobj(otmp);
     if (atHero && (u.uundetected | 0)
         && hides_under(game.youmonst?.data)) {
         hideunder(game.youmonst);
@@ -8963,11 +9001,12 @@ function dfeatureExplanation(cmap) {
  * **doname_with_price** (D-0460). **feel_cockatrice** D-1599 (skip_objects
  * / single / multi `doname...` then feel). **Return contract**
  * (invent.c:4216/4248/4314): Blind feel costs a turn (ECMD_TIME), sight is
- * free (ECMD_OK); can't-reach is ECMD_OK even when Blind. Named omissions:
- * altar/ice Blind variants beyond floor, engulfer stomach minvent feel
- * (incl. its :4160 Blind-gated return); blanket xname observe /
- * distant_name. Furniture with ct==0 uses pickup.describe_decor (D-0356),
- * not this path.
+ * free (ECMD_OK); can't-reach is ECMD_OK even when Blind. Swallowed
+ * engulfer-stomach arm live (Contents + display_minventory); lava/pool
+ * early return live; ICE Blind force_decor arm live; single-item
+ * last_msg live. Named: Blind surface() envelope (hardcoded 'floor';
+ * C surface room/corr); blanket xname observe / distant_name.
+ * Furniture with ct==0 uses pickup.describe_decor (D-0356), not this path.
  * @returns {Promise<number>} ECMD_TIME when Blind, else ECMD_OK
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
@@ -8984,6 +9023,33 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     // pile_limit is unset or obj_cnt is below it.
     const pile_limit = game.flags?.pile_limit ?? 5;
     const skip_objects = pile_limit > 0 && obj_cnt >= pile_limit;
+
+    // C `:4122–4161` — swallowed: engulfer-stomach contents.
+    if (u?.uswallow) {
+        const mtmp = u.ustuck;
+        /* C FIXME: the engulfer's minvent can include worn items (Juiblex
+           amulet); they list under "Contents of <mon>'s stomach" anyway —
+           rare enough to turn a blind eye. */
+        const { mbodypart } = await import('./polyself.js');
+        const fbuf_sw = `Contents of ${s_suffix(mon_nam(mtmp))} ${mbodypart(mtmp, STOMACH)}`;
+        // C: skip "Contents of " via fbuf index 12.
+        await pline(`You ${blind ? 'try' : 'look around'} to ${verb} what is lying in ${fbuf_sw.slice(12)}.`);
+        const minv = mtmp?.minvent;
+        if (minv) {
+            for (let o = minv; o; o = o.nobj) {
+                /* If swallower is an animal, it should have become stone
+                 * but... */
+                if ((o.otyp | 0) === OTYP_CORPSE) await feel_cockatrice(o, false);
+            }
+            let title = fbuf_sw;
+            if (blind) title = 'You feel';
+            title += ':';
+            await display_minventory(mtmp, MINV_ALL | PICK_NONE, title);
+        } else {
+            await pline(`You ${verb} no objects here.`);
+        }
+        return blind ? ECMD_TIME : ECMD_OK;
+    }
 
     // C invent.c look_here `:4162–4177` — seen trap / visible region
     // before dfeature ("There is a pit here." then the object list).
@@ -9004,8 +9070,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
 
     const otmp = objects_at(u?.ux, u?.uy);
     let dfeature = dfeature_at(u?.ux, u?.uy);
-    // C `:4182–4183` — no pool feature while Underwater
-    if (dfeature === 'pool of water' && u?.Underwater) dfeature = null;
+    // C `:4182–4183` — no pool feature while Underwater (youprop.h:279
+    // u.uinwater; the u.Underwater flat is never written — D-3400).
+    if (dfeature === 'pool of water' && (u?.uinwater | 0)) dfeature = null;
     let fbuf = null;
 
     // C invent.c Blind arm — feel-floor pline before object list (forces
@@ -9015,9 +9082,20 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         const { can_reach_floor } = await import('./engrave.js');
         const drift = Is_airlevel(u?.uz) || Is_waterlevel(u?.uz);
         if (dfeature && dfeature.startsWith('altar ')) {
+            /* don't say "altar" twice, dfeature has more info */
             await pline('You try to feel what is here.');
+        } else if (is_ice(u?.ux, u?.uy)) {
+            /* C SURFACE_AT == ICE — using describe_decor() to handle ice
+               is simpler than replicating it in the conditional message
+               construction */
+            if (!game.flags?.mention_decor || (game.iflags?.prev_decor | 0) === ICE)
+                await force_decor(false);
+            /* plain "ice" if blind and levitating, otherwise "solid ice"
+               &c; "There is [thin ]ice here.  You try to feel what is
+               on it." */
+            await pline('You try to feel what is on it.');
+            skip_dfeature = true; /* ice already described */
         } else {
-            // ICE / force_decor Blind arm deferred — ordinary floor path
             const cant_reach = !can_reach_floor(true);
             const surf = 'floor'; // C surface() room/corr envelope
             const where = cant_reach ? 'lying beneath you' : 'lying here on the ';
@@ -9029,9 +9107,10 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
             }
             if (dfeature && !drift && dfeature === surf) skip_dfeature = true;
         }
-        // C: !can_reach_floor(pit) → "But you can't reach it!" (pit trap deferred)
-        // C returns ECMD_OK here even when Blind (invent.c:4216).
-        if (!can_reach_floor(false)) {
+        // C: trap = t_at(); !can_reach_floor(trap && is_pit) →
+        // "But you can't reach it!". Returns ECMD_OK even when Blind.
+        const trapHere = t_at(u?.ux, u?.uy);
+        if (!can_reach_floor(!!(trapHere && is_pit(trapHere.ttyp)))) {
             await pline("But you can't reach it!");
             return ECMD_OK;
         }
@@ -9052,11 +9131,14 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         fbuf = `There ${vtense(feat, 'are')} ${feat} here.`;
     }
 
-    if (!otmp) {
+    // C `:4240–4242` — nothing to list on lava, or in water the hero
+    // is not swimming in (Underwater = u.uinwater, youprop.h:279).
+    if (!otmp || is_lava(u?.ux, u?.uy)
+        || (is_pool(u?.ux, u?.uy) && !(u?.uinwater | 0))) {
         if (dfeature && !skip_dfeature && fbuf)
             await pline(fbuf);
         const { read_engr_at } = await import('./engrave.js');
-        await read_engr_at(u?.ux, u?.uy);
+        await read_engr_at(u?.ux, u?.uy); /* Eric Backus */
         // C: (!skip_objects && (Blind || !dfeature))
         if (!skip_objects && (blind || !dfeature))
             await pline(`You ${verb} no objects here.`);
@@ -9114,6 +9196,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         if (!blind) observe_object(otmp);
         // C: You("%s here %s.", verb, doname_with_price(otmp))
         await pline(`You ${verb} here ${doname_with_price(otmp)}.`);
+        // C `:4294` — single-item record (polyself's "not for eating" arm
+        // re-reads it).
+        if (game.iflags) game.iflags.last_msg = PLNMSG_ONE_ITEM_HERE;
         if ((otmp.otyp | 0) === OTYP_CORPSE) await feel_cockatrice(otmp, false);
         // C invent.c:4314 tail (see skip arm above).
         return blind ? ECMD_TIME : ECMD_OK;
@@ -10066,7 +10151,7 @@ async function getobj_typed_hands(word, allownone, hands) {
  * gacc / `'0'` ball is D-1580. putmsghistory is D-1588.
  * Named omit: display_pickinv body (not this cluster); readchar_core
  * fuzzer / readchar_queue / ALTMETA; getobj_* clones in drop/wield/
- * apply/write/takeoff/dip (wear/puton/throw/drink use this getobj).
+ * apply/takeoff/dip (wear/puton/throw/drink/read/write use this getobj).
  * @param {string} word
  * @param {(obj: object|null) => number} obj_ok
  * @param {number} ctrlflags
@@ -10292,29 +10377,8 @@ function extract_invent(obj) {
     }
 }
 
-/** C ref: invent.c reorder_invent `:738–767` + inv_rank `:735` — bubble by
- * invlet ^ 040 with no gold exception ('$' ranks 4, after '#' = 3). */
-function reorder_invent_adjust() {
-    const inv = game.invent;
-    if (!inv || inv.length < 2) return;
-    const rank = (o) => {
-        const ilet = o.invlet;
-        if (typeof ilet === 'string' && ilet.length === 1) return ilet.charCodeAt(0) ^ 0x20;
-        return 999;
-    };
-    let need = true;
-    while (need) {
-        need = false;
-        for (let i = 0; i < inv.length - 1; i++) {
-            if (rank(inv[i + 1]) < rank(inv[i])) {
-                const t = inv[i];
-                inv[i] = inv[i + 1];
-                inv[i + 1] = t;
-                need = true;
-            }
-        }
-    }
-}
+/* reorder_invent_adjust: deleted — live u_init.js reorder_invent export
+ * (C invent.c:739; doorganize_core is C's second caller :5266/:5275). */
 
 /**
  * Absorb obj into otmp via C invent.c merged() (doadjust `:5205–5247`).
@@ -10519,7 +10583,7 @@ function is_c_letter(ch) {
  * inv_cnt live (steal.js); assigninvlet live (u_init.js); prinv/Your live
  * (display.js); yn_function live (getline.js); display_used_invlets live
  * (same file, D-1591); compactify → compactify_invlets (`:8086`,
- * C invent.c `:1627`); reorder_invent → reorder_invent_adjust (`:8898`,
+ * C invent.c `:1627`); reorder_invent live (u_init.js export,
  * C `:739`); extract_nobj → extract_invent (`:8888`, array-model unlink,
  * C mkobj.c `:2596`); eos() → string concat; letter() → is_c_letter
  * above (C hacklib.c `:69`).
@@ -10705,14 +10769,14 @@ async function doorganize_core(obj) {
     obj.nobj = game.invent[0] || null;
     obj.where = OBJ_INVENT;
     game.invent.unshift(obj);
-    reorder_invent_adjust();
+    reorder_invent(); // C `:5266`
     if (bumped) {
         // C `:5270–5277` — the bumped occupant takes an open slot.
         assigninvlet(bumped);
         bumped.nobj = game.invent[0] || null;
         bumped.where = OBJ_INVENT;
         game.invent.unshift(bumped);
-        reorder_invent_adjust();
+        reorder_invent(); // C `:5275`
     }
 
     // C `:5279–5285` — messages only after the pack is reestablished.

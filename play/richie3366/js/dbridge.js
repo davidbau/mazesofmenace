@@ -18,7 +18,7 @@ import { game } from './gstate.js';
 import { pline, newsym, canseemon, Hallucination, canspotmon, You_see } from './display.js';
 import { cansee, recalc_block_point, vision_recalc, does_block, unblock_point } from './vision.js';
 import { obj_extract_self, delobj, objects_at, sobj_at, mksobj_at } from './mkobj.js';
-import { m_at, minliquid } from './mon.js';
+import { m_at, minliquid, wake_nearto } from './mon.js';
 import { scatter } from './explode.js';
 import { flooreffects } from './do.js';
 import {
@@ -89,18 +89,7 @@ function delallobj(x, y) {
     }
 }
 
-/** C ref: mon.c wake_nearto — clear sleep/wait within dist2 (no RNG). */
-function wake_nearto(x, y, distance) {
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null) continue;
-        const dx = (mtmp.mx | 0) - (x | 0);
-        const dy = (mtmp.my | 0) - (y | 0);
-        if (distance === 0 || dx * dx + dy * dy < distance) {
-            mtmp.msleeping = 0;
-            if (mtmp.mstrategy != null) mtmp.mstrategy &= ~0x01;
-        }
-    }
-}
+/* wake_nearto: deleted — live mon.js export (C mon.c:4402–4405). */
 
 /**
  * C ref: dbridge.c is_waterwall `:37–43` — WATER typ at a valid spot.
@@ -903,7 +892,7 @@ export async function destroy_drawbridge(x, y) {
         lev1.icedpool = iceUnder ? ICED_MOAT : 0;
     }
 
-    wake_nearto(x, y, 500);
+    await wake_nearto(x, y, 500);
     lev2.typ = DOOR;
     lev2.doormask = D_NODOOR;
 

@@ -89,7 +89,7 @@ import {
 import { dig_typ, use_pick_axe2 } from './dig.js';
 import { rehumanize, body_part, domonability } from './polyself.js';
 import { Levitation, Flying } from './mhitu.js';
-import { doopen, doopen_indir, doclose, doforce, getdir } from './lock.js';
+import { doopen, doopen_indir, doclose, doforce, getdir, dxdy_moveok } from './lock.js';
 import { doextcmd, getlin, mungspaces, extcmd_run_by_txt, paranoid_query } from './getline.js';
 import { strstri, strsubst, upstart, trimspaces, dist2 } from './hacklib.js';
 import { dosearch, doterrain } from './detect.js';
@@ -3038,8 +3038,8 @@ const move_funcs_walk = [
  * CQ_CANNED input for a [t]herecmdmenu action at adjacent (dx,dy).
  * C order kept arm by arm; sgn clamp `:4666–4677` (live eat.js sgn ≡
  * hacklib.c:650); MCMD_* ids are the cmd.c:4379 enum.
- * The look-trap arm dynamic-imports pager.js `doidtrap` (live export,
- * C pager.c:2336) rather than an ef_funct lookup.
+ * The look-trap arm queues pager.js `doidtrap` (live export,
+ * C pager.c:2336) directly, like every other arm.
  * C callers cmd.c:4880 (there_cmd_menu K==1 fast path) + :4892 (menu pick):
  * both wired in JS there_cmd_menu below (self/next2u/far/common).
  * @param {number} act MCMD_* action
@@ -3109,10 +3109,7 @@ function act_on_act(act, dx, dy) {
         cmdq_add_ec(CQ_CANNED, dosearch);
         break;
     case MCMD_LOOK_TRAP: // `:4726–4729`
-        cmdq_add_ec(CQ_CANNED, async () => {
-            const { doidtrap } = await import('./pager.js');
-            return doidtrap();
-        });
+        cmdq_add_ec(CQ_CANNED, doidtrap);
         cmdq_add_dir(CQ_CANNED, dx, dy, 0);
         break;
     case MCMD_UNTRAP_TRAP: // `:4730–4733`
@@ -5543,6 +5540,14 @@ export async function rhack(key) {
     if (ch !== 'm' && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== '-'
         && !accepts_m_prefix && !isMovementKey(ch) && !isRunKey(ch)
         && !rushDir && game.iflags?.menu_requested) {
+        // C `:3703–3711` — m-prefix + command lacking CMD_M_PREFIX: the
+        // reject pline (bound keys only; unbound fall to Unknown below).
+        if (bindTab?.txt) {
+            const pfx = cmd_from_func('reqmenu');
+            const which = pfx ? visctrl(pfx) : 'move-no-pickup or request-menu';
+            await custompline(SUPPRESS_HISTORY,
+                `The ${bindTab.txt} command does not accept '${which}' prefix.`);
+        }
         game.iflags.menu_requested = false;
     }
 
@@ -5584,6 +5589,21 @@ export async function rhack(key) {
             if (game.u) game.u.last_str_turn = 0;
             game.context.mv = 1;
         }
+        // C rhack grid-bug arm (`:3778–3784`) — diagonal as a grid bug
+        // goes nowhere: You_cant + reset_cmd_vars, no domove. The
+        // attempting/travel conjuncts always hold here (WALK/RUSH set,
+        // travel cleared above); dxdy_moveok reads u.dx/u.dy
+        // (set_move_cmd in C), seeded here.
+        {
+            const mu = game.u || (game.u = {});
+            mu.dx = DIR_DX[ch];
+            mu.dy = DIR_DY[ch];
+        }
+        if (!dxdy_moveok()) {
+            await You_cant('get there from here...');
+            reset_cmd_vars(true);
+            return;
+        }
         await domove(DIR_DX[ch], DIR_DY[ch]);
         // C: forcefight cleared after DOMOVE_WALK domove
         if (game.context) game.context.forcefight = 0;
@@ -5617,6 +5637,17 @@ export async function rhack(key) {
         if (game.context.forcefight) {
             game.context.travel = 0;
             game.context.travel1 = 0;
+            // C rhack grid-bug arm (`:3778–3784`) — see the walk arm above.
+            {
+                const mu = game.u || (game.u = {});
+                mu.dx = DIR_DX[low];
+                mu.dy = DIR_DY[low];
+            }
+            if (!dxdy_moveok()) {
+                await You_cant('get there from here...');
+                reset_cmd_vars(true);
+                return;
+            }
             await domove(DIR_DX[low], DIR_DY[low]);
             game.context.forcefight = 0;
             if (game.context.move !== 0) game.context.move = 1;
@@ -5633,6 +5664,17 @@ export async function rhack(key) {
             game.context.mv = 1;
             if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
             game.u.last_str_turn = 0;
+            // C rhack grid-bug arm (`:3778–3784`) — see the walk arm above.
+            {
+                const mu = game.u || (game.u = {});
+                mu.dx = DIR_DX[low];
+                mu.dy = DIR_DY[low];
+            }
+            if (!dxdy_moveok()) {
+                await You_cant('get there from here...');
+                reset_cmd_vars(true);
+                return;
+            }
             await domove(DIR_DX[low], DIR_DY[low]);
             if (game.context.move !== 0) game.context.move = 1;
         }

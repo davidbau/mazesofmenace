@@ -11,6 +11,7 @@ import { game } from './gstate.js';
 import { Is_rogue_level, Is_earthlevel, A_LAWFUL, OBJ_MINVENT, ONAME_RANDOM } from './const.js';
 import { oname } from './objnam.js';
 import { hard_helmet } from './do_wear.js';
+import { curse } from './mkobj.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { PM_ABBOT, PM_ACOLYTE, PM_APPRENTICE, PM_ATTENDANT, PM_BALROG, PM_CAPTAIN, PM_CHIEFTAIN, PM_DISPATER, PM_DWARF, PM_ETTIN, PM_ELVENKING, PM_FOREST_CENTAUR, PM_GUIDE, PM_HIGH_PRIEST, PM_HOBBIT, PM_HORNED_DEVIL, PM_HUNTER, PM_LIEUTENANT, PM_NEANDERTHAL, PM_NINJA, PM_ORCUS, PM_OGRE_KING, PM_OGRE_LORD, PM_PAGE, PM_PRIEST, PM_ROSHI, PM_SALAMANDER, PM_SERGEANT, PM_SOLDIER, PM_STUDENT, PM_THUG, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WARRIOR, PM_YEENOGHU, PM_GOBLIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN, PM_ORC_CAPTAIN, } from './pm.generated.js';
 /** @typedef {[number, number, number, number, number, number, number, number, number]} MonRow */
@@ -404,6 +405,11 @@ export async function mongets(mtmp, otyp, mksobjFn) {
     if (!otyp)
         return null;
     const otmp = await mksobjFn(otyp, true, false);
+    /* C makemon.c:2204-2207 — demons never get blessed objects.  Without it a
+     * demon's blessed misc potion of invisibility skips you_aggravate()
+     * (muse.c:2477-2479, cursed only). */
+    if (otmp && monMlet(monsndx(mtmp)) === S_DEMON && otmp.blessed)
+        curse(otmp);
     /* C makemon.c:2218-2223 — princes do not tolerate inferior gear.
      * This adjustment is after the demon/minion/mplayer special cases in C
      * and before mpickobj; it is stateful because weapon damage reads spe. */

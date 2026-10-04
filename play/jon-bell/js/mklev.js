@@ -23,7 +23,7 @@ import { unstuck as unstuck_mk } from './dog.js';
 // room placement, corridors, doors, stairs, niches, and fill.
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 import { game, wizard } from './gstate.js';
-import { PM_PIRANHA, PM_ELECTRIC_EEL } from './pm.generated.js';
+import { PM_PIRANHA, PM_ELECTRIC_EEL, PM_GREMLIN as PM_GREMLIN_ML, PM_IRON_GOLEM as PM_IRON_GOLEM_ML } from './pm.generated.js';
 import { nexttodoor } from './mkroom.js';
 import { OBJ_MINVENT } from './const.js';
 import { fill_supply_chest } from './mkobj.js';
@@ -31,7 +31,8 @@ import { init_fruit_chain } from './options.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_SVB_BASES, } from './mkobj_data.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL, } from './mkobj_erosion_meta.js';
 import { GameMap, newobj } from './game.js';
-import { rn2, rnd, rn1, rne, rnz, pushRngLogEntry } from './rng.js';
+import { rn2, rnd, rn1, rne, rnz, d as d_ml, pushRngLogEntry } from './rng.js';
+import { put_saddle_on_mon } from './steed.js';
 import { rndmonstAdj, rndmonnumAdj, newMonHp, assignMakemonFemale, isArmedMndx, mInitweap, mInitinv, makemonDomesticSaddle, levelDifficulty, Inhell, mkclass, mkclassAligned, peaceMinded, monGeno, permonstTemplate, dmgtype_fromattack, splitobj as splitobj_real, m_in_air, noteleport_level, newmextra, is_ndemon, is_dprince, propagate, olfaction, mon_set_minvis, set_mon_data, grow_up } from './makemon.js';
 import { more_experienced } from './exper.js';
 import { dng_bottom } from './trap.js';
@@ -112,6 +113,7 @@ AM_SHRINE,
 /* selection_do_grow() direction mask — themerms.lua make_garden_walls' `data.sel:grow()`
  * defaults to "all" (nhlsel.c:631-640 growdirs2i[0] = W_ANY). */
 W_ANY, W_ARM, } from './const.js';
+import { themerooms_contents_twin_businesses } from './sp_lev.js';
 import { is_pool_or_lava, may_dig, closed_door } from './look.js';
 import { t_at, deltrap, mon_knows_traps, mon_learns_traps, m_carrying, linedup, goodpos, mon_adjust_speed, m_dowear, unearth_objs,
          extract_from_minvent as extract_from_minvent_md,
@@ -199,7 +201,7 @@ import { in_your_sanctuary, p_coaligned, priestini, mon_aligntyp } from './pries
  * both already live in js/wizcmds.js; the monster branch below reads them there
  * rather than carrying a second copy. */
 import { ARTI_PROPS, touch_artifact_youmonst } from './wizcmds.js';
-import { healup } from './potion.js';
+import { healup, dryup as dryup_ml } from './potion.js';
 import { Upolyd } from './const.js';
 /* getrumor()'s post-selection exercise(A_WIS, ...) — C rumors.c:175. */
 import { A_WIS } from './const.js';
@@ -4610,7 +4612,8 @@ export async function makemon(mdat, x, y, mmflags) {
         }
         await mInitinv(mon, async (otyp, init, artif) => (await mksobj(otyp, init, artif)));
         await m_dowear(mon, true);
-        makemonDomesticSaddle(mon, mndx, mmflags);
+        if (makemonDomesticSaddle(mon, mndx, mmflags))
+            await put_saddle_on_mon(null, mon); /* C makemon.c:1448-1453 */
     }
     const _mflags3 = (mon.data?.mflags3 ?? 0) >>> 0;
     if (_mflags3 && !(mmflags & MM_NOWAIT)) {
@@ -4844,6 +4847,8 @@ export async function mongone(mdef) {
         const _bcur = _bstore[_bkey] !== undefined ? Number(_bstore[_bkey]) : 0;
         _bstore[_bkey] = String(_bcur + 1);
     }
+    if (mdef.wormno)
+        remove_worm_mk(mdef);
     if ((mdef.mstate | 0) & MON_DETACH) {
         /* C mon.c:2789-2792 `impossible("m_detach: ... already detached?")` —
          * mongone is never called twice on the same monster from any live
@@ -4852,6 +4857,9 @@ export async function mongone(mdef) {
     } else {
         mdef.mstate = (mdef.mstate | 0) | MON_DETACH;
     }
+    /* C mon.c:2786-2787 m_detach(): `if (mtmp->wormno) wormgone(mtmp);` */
+    if (mdef.wormno)
+        wormgone_mk(mdef);
 }
 /* C ref: trap.c:3600-3626 isclearpath(cc, distance, dx, dy) — walk `distance`
  * steps from *cc in direction (dx,dy); on success *cc becomes the far endpoint.
@@ -8719,6 +8727,10 @@ async function themerooms_generate(difficulty) {
         // C ref: themerms.lua:420-443 — 1x1 crypt + percent(50) + shuffle + des.monster + percent(20)
         contentsOk = await themerooms_contents_mausoleum(aroom);
     }
+    else if (aroom && pick.name === 'Twin businesses') {
+        // C ref: themerms.lua:818-866
+        contentsOk = themerooms_contents_twin_businesses(aroom);
+    }
     else if (aroom && pick.name === 'Pillars') {
         // C ref: themerms.lua:398-416 — shuffle(terr) (6 draws) + 16 des.terrain
         themerooms_contents_pillars(aroom);
@@ -9141,7 +9153,16 @@ function sort_rooms() {
     const oldToNew = new Array(n).fill(0);
     const liveRooms = g.level.rooms.slice(0, n)
         .sort((a, b) => (a?.lx || 0) - (b?.lx || 0));
+    /* C mklev.c:210-216 qsorts only svr.rooms[0..nroom); the subroom half
+     * (gs.subrooms = &svr.rooms[MAXNROFROOMS + 1], decl.c:1169) is untouched.
+     * Themed rooms build their subrooms before sort_rooms runs (mklev.c:1295-1301),
+     * so carry that half across the slice or rooms[roomno - ROOMOFFSET] reads
+     * undefined for every subroom cell. */
+    const oldRooms = g.level.rooms;
     g.level.rooms = liveRooms;
+    for (let i = MAXNROFROOMS + 1; i < oldRooms.length; i++)
+        if (oldRooms[i])
+            g.level.rooms[i] = oldRooms[i];
     if (n < MAXNROFROOMS)
         g.level.rooms[n] = { hx: -1 };
     for (let i = 0; i < n; i++) {
@@ -15074,6 +15095,78 @@ export async function minliquid(mtmp) {
     return res;
 }
 
+/* C ref: makemon.c:837 clone_mon(mon, x, y) — the shared body behind split_mon
+ * and cutworm.  Placement goes through enexto (it DRAWS: collect_coords
+ * shuffles rings) because MON_AT(mon's own square) is always true for x == 0.
+ * Not ported here: the tame re-init (tamedog) and isminion/emin copy arms,
+ * unreachable for the gremlin/mold callers (never tame, never a minion). */
+async function clone_mon_ml(mon, x, y) {
+    const G_EXTINCT_BIT = 0x01;
+    const mndx = (mon.data?.pmidx ?? mon.mndx ?? mon.mnum ?? -1) | 0;
+    if ((mon.mhp | 0) <= 1
+        || (((game.mvitals?.[mndx]?.mvflags | 0) & G_EXTINCT_BIT) !== 0))
+        return null;
+    let mm = x === 0 ? { x: mon.mx | 0, y: mon.my | 0 } : { x, y };
+    if (!isok(mm.x, mm.y))
+        return null;
+    if (m_at(mm.x, mm.y)) {
+        const cc = enexto_out(mm.x, mm.y, mon.data);
+        if (!cc || m_at(cc.x, cc.y))
+            return null;
+        mm = cc;
+    }
+    const m2 = { ...mon };
+    m2.mextra = null;
+    m2.nmon = game.fmon;
+    game.fmon = m2;
+    m2.m_id = next_ident();
+    m2.mx = mm.x;
+    m2.my = mm.y;
+    m2.mundetected = 0;
+    m2.mtrapped = 0;
+    m2.mcloned = 1;
+    m2.minvent = null;
+    m2.mleashed = 0;
+    m2.mhpmax = mon.mhpmax;
+    m2.mhp = Math.trunc((mon.mhp | 0) / 2);
+    mon.mhp = (mon.mhp | 0) - m2.mhp;
+    m2.isshk = 0;
+    m2.isgd = 0;
+    m2.ispriest = 0;
+    mon_track_clear(m2);
+    if (emits_light(m2.data))
+        new_light_source(m2.mx, m2.my, emits_light(m2.data), LS_MONSTER,
+                         monst_to_any(m2));
+    if (mon.mextra?.mgivenname)
+        christen_monst(m2, mon.mextra.mgivenname);
+    if (!game.context?.mon_moving && mon.mpeaceful) {
+        const luck = game.u?.uluck | 0;
+        if (mon.mtame)
+            m2.mtame = rn2(Math.max(2 + luck, 2)) ? mon.mtame : 0;
+        else
+            m2.mpeaceful = rn2(Math.max(2 + luck, 2)) ? 1 : 0;
+    }
+    set_malign(m2);
+    newsym(m2.mx, m2.my);
+    return m2;
+}
+
+/* C ref: potion.c:2873 split_mon(mon, mtmp) — monster arm only (the hero arm
+ * is cloneu).  Clone a gremlin or mold; HP halved, odd point stays. */
+async function split_mon_ml(mon, mtmp) {
+    void mtmp;
+    if ((mon.mhp | 0) > (mon.mhpmax | 0))
+        mon.mhp = mon.mhpmax | 0;
+    const m2 = (mon.mhp | 0) > 1 ? await clone_mon_ml(mon, 0, 0) : null;
+    if (m2) {
+        m2.mhpmax = Math.trunc((mon.mhpmax | 0) / 2);
+        mon.mhpmax = (mon.mhpmax | 0) - m2.mhpmax;
+        if (canspotmon(mon))
+            await pline(`${Monnam_wm(mon)} multiplies!`);
+    }
+    return m2;
+}
+
 const M1_FLY_ML = 0x00000001;     /* C monflag.h */
 const M1_CLING_ML = 0x00000010;
 const M1_TPORT_ML = 0x02000000;
@@ -15125,6 +15218,41 @@ async function minliquid_core(mtmp) {
             + ` cling=${(mf1 & M1_CLING_ML) !== 0 ? 1 : 0}`
             + ` drown=${(mf1 & (M1_SWIM_ML | M1_AMPHIBIOUS_ML
                 | M1_BREATHLESS_ML)) !== 0 ? 0 : 1}]`);
+    /* C mon.c:990-1001 — `else if (mtmp->data == &mons[PM_IRON_GOLEM] && inpool
+     * && !rn2(5))`: an iron golem in a pool rusts for d(2,6).  The PM_GREMLIN
+     * split arm that precedes it (mon.c:983-989) stays a documented gap
+     * (split_mon is not a faithful clone_mon here). */
+    /* C mon.c:983-989 — gremlin in water/fountain multiplies:
+     *     if (mtmp->data == &mons[PM_GREMLIN] && (inpool || infountain)
+     *         && rn2(3)) {
+     *         if (split_mon(mtmp, NULL)) dryup(mtmp->mx, mtmp->my, FALSE);
+     *         if (inpool) water_damage_chain(mtmp->minvent, FALSE);
+     *         return 0; }
+     * (infountain = IS_FOUNTAIN(levl[x][y].typ), mon.c:1124.) */
+    if ((ptr.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) === PM_GREMLIN_ML
+        && (inpool || typ === FOUNTAIN) && rn2(3)) {
+        if (await split_mon_ml(mtmp, null))
+            await dryup_ml(mx, my, false);
+        if (inpool)
+            await water_damage_chain_ml(mtmp.minvent || null, false);
+        return 0;
+    }
+    if (inpool && (ptr.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) === PM_IRON_GOLEM_ML
+        && !rn2(5)) {
+        const dam = d_ml(2, 6);
+        if (cansee(mx, my))
+            await pline(`${Monnam_wm(mtmp)} rusts.`);
+        mtmp.mhp = (mtmp.mhp | 0) - dam;
+        if ((mtmp.mhpmax | 0) > dam)
+            mtmp.mhpmax = (mtmp.mhpmax | 0) - dam;
+        if ((mtmp.mhp | 0) < 1) {
+            await mondied_ml(mtmp);
+            if ((mtmp.mhp | 0) < 1)
+                return 1;
+        }
+        await water_damage_chain_ml(mtmp.minvent || null, false);
+        return 0;
+    }
     if (!inlava && !inpool && !waterwall) {
         if (mlet === S_EEL_ML && !Is_waterlevel(game.u?.uz)
             && (mf1 & M1_BREATHLESS_ML) === 0) {
@@ -15942,7 +16070,7 @@ const MS_SILENT_SM = 0, MS_HUMANOID_SM = 25, MS_ARREST_SM = 26,
       MS_ORC_SM = 24, MS_GRUNT_SM = 11, MS_LAUGH_SM = 20, MS_ROAR_SM = 3,
       MS_BELLOW_SM = 4;
 /* C monflag.h M1_HUMANOID / M1_MINDLESS. */
-const M1_HUMANOID_SM = 0x00020000, M1_MINDLESS_SM = 0x00100000;
+const M1_HUMANOID_SM = 0x00020000, M1_MINDLESS_SM = 0x00010000;
 
 /* C pline.c:466-481 verbalize(line, ...) — a pline wrapped in double quotes
  * (the PLINE_VERBALIZE flag is a message-colour channel this port does not

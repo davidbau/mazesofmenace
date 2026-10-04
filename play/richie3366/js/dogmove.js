@@ -1231,7 +1231,7 @@ function best_target(mtmp, forced) {
 // bhitpos/notonhead, and a seeing target may retaliate in kind. Only a
 // real attack (not M_ATTK_MISS) costs the rest of the move; a forced call
 // with no shot makes noise via domonnoise.
-async function pet_ranged_attk(mtmp, forced) {
+export async function pet_ranged_attk(mtmp, forced) {
     let hungry = 0;
 
     /* How hungry is the pet? */

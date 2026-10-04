@@ -51,7 +51,7 @@ import { maybe_absorb_item } from './steal.js';
 import { Protection_from_shape_changers } from './were.js';
 import { update_mapseen_for } from './dungeon.js';
 import { is_drawbridge_wall, is_db_wall } from './dbridge.js';
-import { m_at, wake_nearto } from './mon.js';
+import { m_at, wake_nearto, wake_nearby } from './mon.js';
 // C ref: monmove.c mb_trapped `:54–74` — canonical trapped-door export
 // (KABOOM/hear, wake_nearto 49, mstun, rnd(15), mondied/lifesave,
 // mon_learns_traps TRAPPED_DOOR); hoisted fn, cycle-safe per imports.mjs.
@@ -1783,30 +1783,7 @@ function useup_invent(otmp) {
     finish();
 }
 
-/**
- * C ref: mon.c wake_nearby / wake_nearto_core — clear sleep/wait within
- * ulevel*20. G_UNIQ keep STRAT_WAITMASK (quest leaders stay meditating).
- * Named omissions: wake_msg; disturb_buried_zombies; petcall whistletime.
- */
-function wake_nearby(_petcall) {
-    const u = game.u || {};
-    const x = u.ux | 0;
-    const y = u.uy | 0;
-    const distance = ((u.ulevel | 0) * 20) | 0;
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null) continue;
-        const dx = (mtmp.mx | 0) - x;
-        const dy = (mtmp.my | 0) - y;
-        if (distance === 0 || dx * dx + dy * dy < distance) {
-            mtmp.msleeping = 0;
-            const geno = mtmp.data?.geno | 0;
-            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
-                mtmp.mstrategy &= ~STRAT_WAITMASK;
-            }
-        }
-    }
-    void _petcall;
-}
+/* wake_nearby: deleted — live mon.js export (C mon.c:4367–4370). */
 
 /* C objclass.h enum obj_material_types — shatter disposition subset. */
 const MAT_WAX = 2;
@@ -1998,7 +1975,7 @@ async function forcelock() {
         }
     } else {
         // blunt — hammering wakes nearby monsters (no RNG)
-        wake_nearby(false);
+        await wake_nearby(false);
     }
 
     // C ref: lock.c forcelock — if (rn2(100) >= gx.xlock.chance) still busy

@@ -17,7 +17,7 @@ import {
     NOGARLIC, IRONBARS, IS_ALTAR, DISPLACED, W_NONDIGGABLE,
     IS_WATERWALL, LAVAWALL, Is_waterlevel, POOL, MOAT, WATER, LAVAPOOL,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
-    MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD, PLNMSG_GROWL, HEADSTONE,
+    MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD, PLNMSG_GROWL, PLNMSG_HIDE_UNDER, HEADSTONE,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
     ROOM, IN_SIGHT, COULD_SEE, is_pit, TT_PIT, In_endgame, Is_earthlevel,
     Is_astralevel, Is_airlevel, Is_firelevel,
@@ -69,12 +69,12 @@ import { newsym, pline, pline_mon, pline_The, verbalize, You_feel, sensemon, can
 import { online2, level_difficulty, dist2 } from './hacklib.js';
 import { worm_cross, level_mon_at, remove_worm, remove_monster_xy, place_wsegs, count_wsegs } from './worm.js';
 import { On_W_tower_level, In_W_tower, has_ceiling, ledger_no } from './dungeon.js';
-import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender, s_suffix, safe_oname } from './do_name.js';
+import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender, s_suffix, safe_oname, y_monnam } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point, vision_recalc } from './vision.js';
 import { any_light_source, emits_light, new_light_source, del_light_source } from './light.js'; // C: mon.c movemon :1332 arm (same 99-module SCC; hoisted fn, runtime use only)
-import { fightm, mondead, mondied, grow_up, mon_to_stone, monstone } from './mhitm.js';
+import { fightm, mondead, mondied, grow_up, mon_to_stone, monstone, m_detach, grddead } from './mhitm.js';
 import { place_monster } from './steed.js';
-import { engr_at, del_engr_at, sengr_at } from './engrave.js';
+import { del_engr_at, sengr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change, new_were } from './were.js';
 import {
@@ -90,7 +90,7 @@ import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mo
 import { adjalign } from './attrib.js';
 import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
-import { vtense, doname, distant_name, makeplural, xname, The, set_find_mid } from './objnam.js';
+import { vtense, doname, distant_name, makeplural, xname, The, set_find_mid, ansimpleoname } from './objnam.js';
 import { obj_resists, cursed_object_at, finish_meating, quickmimic } from './dogmove.js';
 import { touch_artifact, artifact_exists } from './artifact.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
@@ -1102,9 +1102,8 @@ async function m_calcdistress(mtmp) {
  * C ref: mon.c mcalcdistress — iter_mons over fmon.
  */
 export async function mcalcdistress() {
-    for (const mtmp of game.fmon || []) {
-        await m_calcdistress(mtmp);
-    }
+    // C mon.c:1176 — iter_mons(m_calcdistress): dead/offmap skip.
+    await iter_mons(m_calcdistress);
 }
 
 /* C hacklib.c dist2 — live export js/hacklib.js (imported above); duplicate deleted. */
@@ -1225,10 +1224,8 @@ export async function normal_shape(mon) {
  * C ref: mon.c rescham — iter_mons(normal_shape) when PfSC turns on.
  */
 export async function rescham() {
-    for (const mon of game.fmon || []) {
-        if (!mon || (mon.mhp | 0) <= 0) continue;
-        await normal_shape(mon);
-    }
+    // C mon.c:4623 — iter_mons(normal_shape): dead/offmap skip.
+    await iter_mons(normal_shape);
 }
 
 /**
@@ -1250,8 +1247,11 @@ function m_restartcham(mtmp) {
  * C ref: mon.c restartcham — after removing PfSC protection.
  */
 export function restartcham() {
+    // C mon.c:4642 — iter_mons(m_restartcham); sync walk with C's
+    // DEADMONSTER + mon_offmap skips (iter_mons itself is async).
     for (const mon of game.fmon || []) {
         if (!mon || (mon.mhp | 0) <= 0) continue;
+        if (mon_offmap(mon)) continue;
         m_restartcham(mon);
     }
 }
@@ -1415,8 +1415,8 @@ async function qst_guardians_respond() {
  * humanoid/shk/gd couldsee pline_mon else victim growl (`:4304–4309`,
  * D-2124); quest-leader → qst_guardians_respond (`:4311–4313`);
  * peacefuls_respond when !mon_moving (`:4316–4317`, D-1772).
- * sengr_at strict (engrave.c:250–261) is inline via live engr_at —
- * teleport.js:175 keeps its own module-local clone, no second clone here.
+ * sengr_at strict is the live engrave.js export (same call onscary
+ * uses); teleport.js keeps its own module-local clone.
  * onscary is the live same-module export (full C body).
  */
 export async function setmangry(mtmp, via_attack) {
@@ -1424,20 +1424,17 @@ export async function setmangry(mtmp, via_attack) {
     const u = game.u || {};
     const ux = u.ux | 0;
     const uy = u.uy | 0;
-    if (via_attack) {
-        const ep = engr_at(ux, uy);
-        const txt = ep ? String(ep.engr_txt?.actual_text ?? ep.engr_txt ?? '') : '';
-        if (ep && ep.engr_type !== HEADSTONE && (ep.engr_time | 0) <= (game.moves | 0)
-            && txt.toLowerCase() === 'elbereth'
-            && (onscary(ux, uy, mtmp) || mtmp.mpeaceful)) {
-            await You_feel('like a hypocrite.');
-            /* AIS: larger than the usual 1s and 2s; average when already low */
-            adjalign(((u.ualign?.record | 0) > 5) ? -5 : -rnd(5));
-            if (!Blind()) {
-                await pline('The engraving beneath you fades.');
-            }
-            del_engr_at(ux, uy);
+    // C `:4272–4277` — via_attack + strict sengr_at (live engrave.js
+    // export, same call onscary uses) + onscary/mpeaceful.
+    if (via_attack && sengr_at('Elbereth', ux, uy, true)
+        && (onscary(ux, uy, mtmp) || mtmp.mpeaceful)) {
+        await You_feel('like a hypocrite.');
+        /* AIS: larger than the usual 1s and 2s; average when already low */
+        adjalign(((u.ualign?.record | 0) > 5) ? -5 : -rnd(5));
+        if (!Blind()) {
+            await pline('The engraving beneath you fades.');
         }
+        del_engr_at(ux, uy);
     }
 
     /* AIS: Should this be in both places, or just in wakeup()? */
@@ -2344,8 +2341,10 @@ export function healmon(mtmp, amt, overheal) {
  * spill message and flooreffects (Constitution §2).
  */
 export async function meatbox(mon, otmp) {
-    // C mon.c:1356 — cube eater engulfs, everything else spills
-    const engulf_contents = mon?.data === mons(PM_GELATINOUS_CUBE);
+    // C mon.c:1356 — data == &mons[PM_GELATINOUS_CUBE]. Fresh mons()
+    // objects carry mndx, so compare that (C compares the pointer).
+    const engulf_contents = (mon?.data?.mndx ?? mon?.mnum ?? NON_PM)
+        === PM_GELATINOUS_CUBE;
     const x = mon?.mx | 0, y = mon?.my | 0;
     if (!Has_contents(otmp) || !isok(x, y)) return;
     // C mon.c:1363-1367 — visible spill message before unwrapping
@@ -3634,31 +3633,31 @@ export function discard_minvent(mtmp, uncreate_artifacts) {
 }
 
 /**
- * C ref: mon.c mongone — unstuck, mdrop_special_objs, discard_minvent,
- * then m_detach subset (D-1149). Clog victim must not vanish specials.
- * Named omit: isgd && !grddead; m_detach wizdead/shkgone/wormgone/
- * MON_DETACH/dismount_steed.
+ * C ref: mon.c mongone `:3267–3283` — mhp = 0, isgd/grddead gate,
+ * unstuck, mdrop_special_objs, discard_minvent, then the live
+ * m_detach(mdef, data, FALSE) (m_unleash, light, mon_leaving_level,
+ * wizdead/thief/shk/worm, MON_DETACH + purge, dismount_steed).
+ * C calls unstuck unconditionally but its whole body is guarded by
+ * u.ustuck == mtmp (mon.c:3441) — the same test gates the call here.
  */
 export async function mongone(mtmp) {
     if (!mtmp) return;
-    mtmp.mhp = 0;
+    mtmp.mhp = 0; /* can skip some inventory bookkeeping */
+
+    /* dead vault guard is actually kept at <0,0> until his temporary
+       corridor to/from the vault has been removed */
+    if (mtmp.isgd && !(await grddead(mtmp))) return;
+    /* stuck to you? release */
     if (game.u?.ustuck === mtmp) {
         const { unstuck } = await import('./mhitu.js');
         await unstuck(mtmp);
     }
+    /* drop special items like the Amulet so that a dismissed Kop or nurse
+       can't remove them from the game */
     await mdrop_special_objs(mtmp);
+    /* release rest of monster's inventory — it is removed from game */
     discard_minvent(mtmp, false);
-    const list = game.fmon;
-    if (list) {
-        const i = list.indexOf(mtmp);
-        if (i >= 0) list.splice(i, 1);
-    }
-    if (game.u?.usteed === mtmp) game.u.usteed = null;
-    const mx = mtmp.mx | 0;
-    const my = mtmp.my | 0;
-    mtmp.mx = 0;
-    mtmp.my = 0;
-    if (mx > 0) newsym(mx, my);
+    await m_detach(mtmp, mtmp.data, false);
 }
 
 /**
@@ -3712,11 +3711,9 @@ export async function relmon(mon, list) {
  * replacement (unless it is the steed), worm segs via place_wsegs,
  * light-source swap, fmon prepend, ustuck/usteed, replshk, dealloc.
  * place_wsegs live (D-2300); light swap + replshk + set_ustuck live.
- * Named: :2530 relmon(mtmp, NULL) stays an inline fmon splice — this
- * stays sync like C, so the async mon_leaving_level take-off-map
- * (remove_monster / seemimic / fill_pit / newsym) and both C panics
- * are not run here.
- * `impossible()` stays fire-and-forget so this stays sync like C.
+ * Named: :2530 relmon(mtmp, NULL) is a sync mirror (stays sync like
+ * C; migrate_to_level precedent) — :2703 unstuck is async-only via
+ * docrt. `impossible()` stays fire-and-forget so this stays sync.
  */
 export function replmon(mtmp, mtmp2) {
     if (!mtmp || !mtmp2) return;
@@ -3734,16 +3731,55 @@ export function replmon(mtmp, mtmp2) {
         game.context.polearm.m_id = mtmp2.m_id | 0;
     }
 
-    // C :2530 relmon(mtmp, NULL) — off the map and out of fmon.
-    // Grid: worm heads clear segs, else clear the head cell when it
-    // still holds the old mon (C mon_leaving_level :2696–2720).
+    // C :2530 relmon(mtmp, NULL) — sync mirror in C mon.c:2561–2594
+    // order (stays sync like C; migrate_to_level precedent): fire-and-
+    // forget panics + the mon_leaving_level :2696–2732 sync core (:2703
+    // unstuck is async-only via docrt — named).
+    if (!(game.fmon || []).length) {
+        void impossible('relmon: no fmon available.');
+    }
+    // C :2698–2699 — onmap grid read (canonical m_at, D-1565/D-1231).
     const omx = mtmp.mx | 0, omy = mtmp.my | 0;
-    if ((mtmp.wormno | 0)) remove_worm(mtmp);
-    else if (game._level_monsters?.get(`${omx},${omy}`) === mtmp)
-        game._level_monsters.delete(`${omx},${omy}`);
+    const onmap = isok(omx, omy) && m_at(omx, omy) === mtmp;
+    /* to prevent an infinite relobj-flooreffects-hmon-killed loop */
+    mtmp.mtrapped = 0;
+    /* vault guard might be at <0,0> */
+    if (onmap || m_at(0, 0) === mtmp) {
+        if (mtmp.wormno) {
+            remove_worm(mtmp);
+        } else {
+            /* C rm.h:534 — pure grid clear, no mstate change. */
+            remove_monster_xy(omx, omy);
+        }
+    }
+    if (onmap) {
+        mtmp.mundetected = 0; /* for migration; doesn't matter for death */
+        /* unhide mimic in case its shape has been blocking line of sight
+           or it is accompanying the hero to another level */
+        if (M_AP_TYPE(mtmp) !== M_AP_NOTHING
+            && M_AP_TYPE(mtmp) !== M_AP_MONSTER) {
+            seemimic(mtmp);
+        }
+        /* if mon is pinned by a boulder, removing mon lets boulder drop */
+        fill_pit(omx, omy);
+        newsym(omx, omy);
+    }
+    /* remembered target was redirected to mtmp2 above (C :2525–2527),
+       so this forget no-ops — kept for C :2730–2732 order. */
+    if (game.context?.polearm && mtmp === game.context.polearm.hitmon) {
+        game.context.polearm.hitmon = null;
+    }
+    // C :2571–2584 — remove from fmon (head or scan; :2583 absent →
+    // panic, fire-and-forget like the live relmon's continue).
     const list = game.fmon || [];
     const i = list.indexOf(mtmp);
-    if (i >= 0) list.splice(i, 1);
+    if (i < 0) {
+        void impossible('relmon: mon not in list.');
+    } else {
+        list.splice(i, 1);
+    }
+    // C :2591–2592 — orphan has no next monster.
+    mtmp.nmon = null;
 
     // C :2533–2535 — finish adding the replacement (steed stays off-map).
     if (mtmp !== game.u?.usteed)
@@ -3769,10 +3805,8 @@ export function replmon(mtmp, mtmp2) {
     // C :2550–2551 — shop residency + bill follow the replacement.
     if (mtmp2.isshk) replshk(mtmp, mtmp2);
 
-    mtmp.mx = 0;
-    mtmp.my = 0;
-    // C mon.c:2554–2555 — relmon(..., NULL) orphans nmon, then dealloc.
-    mtmp.nmon = null;
+    // C :2554 — discard the old monster (nmon orphaned in the relmon
+    // mirror above; stale mx/my stay valid per the C #if 0 note).
     dealloc_monst(mtmp);
 }
 
@@ -3955,8 +3989,10 @@ export function restrap(mtmp) {
  * Used by hide_monst, teleds(&youmonst) (D-1131), and
  * hack.js hero_hideunder_after_move (D-1245). monmove.js keeps
  * a parallel local for postmov.
- * Named omissions: You_see "%s %s under %s" pline + set_msg_xy /
- * PLNMSG_HIDE_UNDER / last_hider (async boundary; both locals stay silent).
+ * Named omissions: You_see "%s %s under %s" pline + set_msg_xy
+ * (async boundary; the monmove.js clone shows it). The last-hide
+ * record (iflags.last_msg + gl.last_hider) is sync and live here
+ * under C's exact condition.
  */
 export function hideunder(mtmp) {
     if (!mtmp?.data) return false;
@@ -3965,6 +4001,11 @@ export function hideunder(mtmp) {
     const x = is_u ? (u.ux | 0) : (mtmp.mx | 0);
     const y = is_u ? (u.uy | 0) : (mtmp.my | 0);
     let undetected = false;
+    // C mon.c:4731 — seeit before any mutation (canseemon fails once
+    // hidden). C evaluates it for is_u too, but only the non-is_u
+    // branch reads it, so the hero skips the call (same value unused).
+    const seeit = !is_u && !game.in_mklev && canseemon(mtmp) ? 1 : 0;
+    let seenobj = null;
     const t = t_at(x, y);
 
     if (mtmp === u.ustuck) {
@@ -3976,6 +4017,7 @@ export function hideunder(mtmp) {
         /* C: is_pool && !Is_waterlevel && (!Underwater || !couldsee) */
         undetected = !!(is_pool(x, y) && !Is_waterlevel(u.uz)
             && (!(u.Underwater) || !couldsee(x, y)));
+        if (seeit) seenobj = 'the water';
     } else if (hides_under(mtmp.data)) {
         const otmp = objects_at(x, y);
         /* C: most things can be hidden under (can_hide_under_obj coins);
@@ -3983,6 +4025,7 @@ export function hideunder(mtmp) {
         if (otmp && can_hide_under_obj(otmp)
             && (!mtmp.mtame || !cursed_object_at(x, y))
             && !is_pool(x, y) && !is_lava(x, y)) {
+            if (seeit) seenobj = ansimpleoname(otmp);
             /* C: most monsters won't hide under a cockatrice corpse but
                they can hide under a pile containing more than just such
                corpses; hero arm reads Stone_resistance */
@@ -4005,8 +4048,17 @@ export function hideunder(mtmp) {
         oldundetctd = !!(u.uundetected);
         u.uundetected = undetected ? 1 : 0;
     } else {
+        const seenmon = seeit ? y_monnam(mtmp) : null;
         oldundetctd = !!mtmp.mundetected;
         mtmp.mundetected = undetected ? 1 : 0;
+        /* C mon.c:4787–4796 — the You_see message needs pline (async;
+           the monmove.js clone shows it), but the last-hide record is
+           sync and lives here under C's exact condition. */
+        if (undetected && seenmon && seenobj) {
+            if (!game.iflags) game.iflags = {};
+            game.iflags.last_msg = PLNMSG_HIDE_UNDER;
+            game.last_hider = mtmp.m_id | 0;
+        }
     }
     if (undetected !== oldundetctd) newsym(x, y);
     return undetected;

@@ -52,7 +52,7 @@ import {
     impossible,
 } from './display.js';
 import { redraw_worm, count_wsegs, wormgone, get_wormno, initworm } from './worm.js';
-import { set_residency, make_happy_shoppers, is_fshk, picked_container } from './shk.js';
+import { set_residency, make_happy_shoppers, is_fshk, picked_container, obfree } from './shk.js';
 import { Is_qstart } from './quest.js';
 import { builds_up } from './hacklib.js';
 import { hero_conflict, attacktype } from './mondata.js';
@@ -1341,13 +1341,18 @@ export async function mon_catchup_elapsed_time(mtmp, nmv) {
 }
 
 /**
- * C ref: dog.c wary_dog — pet revive / lifesave tameness gate.
- * Named omit: pline_mon SetVoice.
+ * C ref: dog.c wary_dog `:1291–1359` — pet revive / lifesave
+ * tameness gate: finish_meating, starving-heal, killed/abuse untame
+ * (gaze pline when visible), Pet-Sematary wild chance, feral newsym +
+ * unleash + dismount, clean pet-slate. Named omit: pline_mon SetVoice
+ * (voice-render polish).
  */
 export async function wary_dog(mtmp, was_dead) {
     if (!mtmp) return;
     const quietly = !!was_dead;
-    mtmp.meating = 0; // finish_meating subset
+    /* C `:1296` — full finish_meating (meating=0 + mimic-appearance
+       reset m_ap_type→M_AP_NOTHING + newsym inside dogmove.js). */
+    finish_meating(mtmp);
 
     if (!mtmp.mtame) return;
     const edog = !mtmp.isminion ? (mtmp.edog || mtmp.mextra?.edog) : null;
@@ -1464,8 +1469,9 @@ export async function abuse_dog(mtmp) {
  * C ref: dog.c discard_migrations `:935–990` — drop migrating mons/objs
  * whose dest is not the endgame (Wizard kept). Call after cant_go_back
  * delete_levelfile. C bypasses mongone/m_detach; JS unlinks and drops.
- * Named omit: full obfree (timers / LS_OBJECT / contents walk) — drop
- * the chain; GC collects cobj when the parent is unreachable.
+ * Object arm: unlink + OBJ_FREE + owornmask zero (C warns if nonzero),
+ * then live obfree(otmp, NULL) — contents freed, timers stopped,
+ * LS_OBJECT deleted (C `:981–989`). Named: none.
  */
 export function discard_migrations() {
     const dest = { dnum: 0, dlevel: 0 };
@@ -1501,7 +1507,10 @@ export function discard_migrations() {
         else game.migrating_objs = next;
         otmp.nobj = null;
         otmp.where = OBJ_FREE;
-        otmp.owornmask = 0;
+        otmp.owornmask = 0; /* overloaded for destination; obfree warns if nonzero */
+        /* C `:981–989` — obfree releases contents too (timers stopped,
+           LS_OBJECT deleted inside dealloc_obj). */
+        obfree(otmp, null);
         otmp = next;
     }
 }

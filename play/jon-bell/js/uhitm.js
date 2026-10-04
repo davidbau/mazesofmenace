@@ -73,7 +73,8 @@ import monMsoundPack from './makemon_msound.json' with { type: 'json' };
 import { set_malign, levelDifficulty, which_armor, grow_up, monflee, nonlivingMon, is_demon, monhp_per_lvl, monPmname } from './makemon.js';
 import { noteleport_level as noteleport_level_uh, emits_light, permonstTemplate } from './makemon.js';
 import { ureflects as ureflects_uh } from './makemon.js';
-import { PM_FLOATING_EYE as PM_FLOATING_EYE_UH } from './pm.generated.js';
+import { PM_FLOATING_EYE as PM_FLOATING_EYE_UH, PM_JABBERWOCK as PM_JABBERWOCK_UH } from './pm.generated.js';
+import { observe_object } from './o_init.js';
 /* C mon.c:2744's m_detach light-source teardown (light.c:98, hack.c:97). */
 import { del_light_source, monst_to_any, artifact_light } from './light.js';
 import { end_burn, fall_asleep as fall_asleep_real } from './timeout.js';
@@ -143,7 +144,11 @@ import { PM_BALROG, PM_COCKATRICE, PM_CHICKATRICE, PM_BARBED_DEVIL, PM_SHADE, PM
          PM_DEATH, PM_FAMINE, PM_PESTILENCE, PM_VAMPIRE, PM_VAMPIRE_LORD } from './pm.generated.js';
 import { hitmsg, hitmsg_je, u_slip_free, make_blinded, mpoisons_subj, magic_negation,
          could_seduce, mdamageu, mhis_mon } from './mhitu.js';
-import { drain_item } from './zap.js';
+import { drain_item, resist, cancel_monst } from './zap.js';
+import { make_stunned, make_confused } from './potion.js';
+import { mstatusline } from './cmd.js';
+import { upstart } from './mklev.js';
+import { noit_Monnam } from './mhitm.js';
 import { deadhero } from './end.js';
 /* C explode.c:1013 mon_explodes — corpse_chance()'s AT_BOOM arm calls it. */
 import { mon_explodes } from './zap.js';
@@ -710,15 +715,103 @@ export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1
         }
         return { dmg, special: realizesDamage };
     }
-    if (arti_attacks(AD_MAGM_UH, otmp)
-        || (arti_attacks(AD_STUN_UH, otmp) && dieroll <= MB_MAX_DIEROLL_UH))
-        return { dmg, special: false }; /* KNOWN GAPS above, no RNG owed */
+    if (arti_attacks(AD_MAGM_UH, otmp))
+        return { dmg, special: false }; /* KNOWN GAP above, no RNG owed */
+
+    /* artifact.c:1538-1541 */
+    if (arti_attacks(AD_STUN_UH, otmp) && dieroll <= MB_MAX_DIEROLL_UH) {
+        const mb = await Mb_hit(magr, mdef, otmp, dmg, dieroll, vis, hittee);
+        return { dmg: mb.dmg, special: mb.result };
+    }
 
     if (!gs_spec_dbon_applies)
         return { dmg, special: false };
 
-    if (spec_ability(otmp, SPFX_BEHEAD_UH))
-        return { dmg, special: false }; /* KNOWN GAP, no RNG owed (see header) */
+    /* artifact.c:1550-1644 — "We really want 'on a natural 20' but Nethack does
+     * it in reverse from AD&D."  Tsurugi 30, Vorpal Blade 18 (artilist index). */
+    if (spec_ability(otmp, SPFX_BEHEAD_UH)) {
+        const M1_NOHEAD_UH = 0x00008000, M1_AMORPHOUS_UH = 0x00000004;
+        const S_GHOST_UH = 54;
+        const hasHead = (ptr) => !((ptr.mflags1 | 0) & M1_NOHEAD_UH);
+        const noncorpAmorph = (ptr) => (ptr.mlet | 0) === S_GHOST_UH
+            || !!((ptr.mflags1 | 0) & M1_AMORPHOUS_UH);
+        const notonhead = !!(game.gn && game.gn.notonhead);
+        const uhp = () => (Upolyd(game.u) ? game.u.mh : game.u.uhp) | 0;
+        let wepdesc;
+        if (sr_is_art(otmp, 30) && (dieroll | 0) === 1) {
+            wepdesc = 'The razor-sharp blade';
+            if (youattack && engulfing_u(mdef)) {
+                await pline(`You slice ${mon_nam(mdef)} wide open!`);
+                return { dmg: 2 * (mdef.mhp | 0) + FATAL_DAMAGE_MODIFIER_UH, special: true };
+            }
+            if (!youdefend) {
+                /* allow normal cutworm() call to add extra damage */
+                if (notonhead)
+                    return { dmg, special: false };
+                if ((mdef.data.msize | 0) >= MZ_LARGE) {
+                    if (youattack)
+                        await pline(`You slice deeply into ${mon_nam(mdef)}!`);
+                    else if (vis)
+                        await pline(`${Monnam(magr)} cuts deeply into ${hittee}!`);
+                    return { dmg: dmg * 2, special: true };
+                }
+                dmg = 2 * (mdef.mhp | 0) + FATAL_DAMAGE_MODIFIER_UH;
+                await pline(`${wepdesc} cuts ${mon_nam(mdef)} in half!`);
+                observe_object(otmp);
+                return { dmg, special: true };
+            }
+            const ydata = game.youmonst.data;
+            if ((ydata.msize | 0) >= MZ_LARGE) {
+                await pline(`${magr ? Monnam(magr) : wepdesc} cuts deeply into you!`);
+                return { dmg: dmg * 2, special: true };
+            }
+            dmg = 2 * uhp() + FATAL_DAMAGE_MODIFIER_UH;
+            await pline(`${wepdesc} cuts you in half!`);
+            observe_object(otmp);
+            return { dmg, special: true };
+        } else if (sr_is_art(otmp, 18)
+                   && ((dieroll | 0) === 1
+                       || (mdef && (mdef.data.pmidx | 0) === PM_JABBERWOCK_UH))) {
+            const behead_msg = ['%s beheads %s!', '%s decapitates %s!'];
+            if (youattack && engulfing_u(mdef))
+                return { dmg, special: false };
+            wepdesc = 'Vorpal Blade';
+            if (!youdefend) {
+                if (!hasHead(mdef.data) || notonhead || game.u.uswallow) {
+                    if (youattack)
+                        await pline(`Somehow, you miss ${mon_nam(mdef)} wildly.`);
+                    else if (vis)
+                        await pline(`Somehow, ${mon_nam(magr)} misses wildly.`);
+                    return { dmg: 0, special: !!(youattack || vis) };
+                }
+                if (noncorpAmorph(mdef.data)) {
+                    await pline(`${wepdesc} slices through ${s_suffix(mon_nam(mdef))} ${mbodypart(mdef, 11 /* NECK */)}.`);
+                    return { dmg, special: true };
+                }
+                dmg = 2 * (mdef.mhp | 0) + FATAL_DAMAGE_MODIFIER_UH;
+                const fmt = behead_msg[rn2(2)]; /* ROLL_FROM(behead_msg) */
+                await pline(fmt.replace('%s', wepdesc).replace('%s', mon_nam(mdef)));
+                if (_xk_hallu() && !game.flags?.female)
+                    await pline("Good job Henry, but that wasn't Anne.");
+                observe_object(otmp);
+                return { dmg, special: true };
+            }
+            const ydata = game.youmonst.data;
+            if (!hasHead(ydata)) {
+                await pline(`Somehow, ${magr ? mon_nam(magr) : wepdesc} misses you wildly.`);
+                return { dmg: 0, special: true };
+            }
+            if (noncorpAmorph(ydata)) {
+                await pline(`${wepdesc} slices through your ${body_part(11 /* NECK */)}.`);
+                return { dmg, special: true };
+            }
+            dmg = 2 * uhp() + FATAL_DAMAGE_MODIFIER_UH;
+            const fmt = behead_msg[rn2(2)];
+            await pline(fmt.replace('%s', wepdesc).replace('%s', 'you'));
+            observe_object(otmp);
+            return { dmg, special: true };
+        }
+    }
 
     if (spec_ability(otmp, SPFX_DRLI_UH)) {
         /* artifact.c:1645-1720. `life` names the message noun; nonliving
@@ -791,6 +884,164 @@ export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1
     /* artifact.c:1721 */
     return { dmg, special: false };
 }
+/* C ref: artifact.c:1252-1440 Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis,
+ * hittee) — Magicbane's special effects.  `dmg` is C's *dmgptr, returned in
+ * `{dmg, result}`.  probe_monster() (zap.c:626) is unported: its
+ * non-empty-minvent arm throws rather than guessing. */
+async function Mb_hit(magr, mdef, mb, dmg, dieroll, vis, hittee) {
+    const youattack = !magr;
+    const youdefend = !mdef;
+    const u = game.u;
+    let resisted = false, do_stun, do_confuse, result = false;
+    let scare_dieroll = (MB_MAX_DIEROLL_UH / 2) | 0;
+    const spe = mb.spe | 0;
+
+    if (spe >= 3)
+        scare_dieroll = (scare_dieroll / (1 << ((spe / 3) | 0))) | 0;
+    if (!gs_spec_dbon_applies)
+        dieroll += 1;
+
+    do_stun = (Math.max(spe, 0) < rn2(gs_spec_dbon_applies ? 11 : 7));
+
+    let attack_indx = 0; /* MB_INDEX_PROBE */
+    dmg += rnd(4);
+    if (do_stun) {
+        attack_indx = 1; /* STUN */
+        dmg += rnd(4);
+    }
+    if (dieroll <= scare_dieroll) {
+        attack_indx = 2; /* SCARE */
+        dmg += rnd(4);
+    }
+    if (dieroll <= ((scare_dieroll / 2) | 0)) {
+        attack_indx = 3; /* CANCEL */
+        dmg += rnd(4);
+    }
+
+    const MB_VERB = [["probe", "stun", "scare", "cancel"],
+                     ["prod", "amaze", "tickle", "purge"]];
+    const verb = MB_VERB[_xk_hallu() ? 1 : 0][attack_indx];
+    if (youattack || youdefend || vis) {
+        result = true;
+        await pline_The("magic-absorbing blade %s %s!",
+                        vtense(null, verb), hittee);
+        if (attack_indx === 0 && !canspotmon(mdef))
+            map_invisible(mdef.mx, mdef.my);
+    }
+
+    switch (attack_indx) {
+    case 3: { /* CANCEL */
+        const old_mdat = youdefend ? game.youmonst.data : mdef.data;
+        if (!await cancel_monst(youdefend ? game.youmonst : mdef, mb,
+                                youattack, false, false)) {
+            resisted = true;
+        } else {
+            do_stun = false;
+            if (youdefend) {
+                if (game.youmonst.data !== old_mdat)
+                    dmg = 0; /* rehumanized, so no more damage */
+                if ((u.uenmax | 0) > 0) {
+                    u.uenmax--;
+                    if ((u.uen | 0) > 0)
+                        u.uen--;
+                    game.disp && (game.disp.botl = true);
+                    await You("lose magical energy!");
+                }
+            } else {
+                if (mdef.data !== old_mdat)
+                    hittee = mon_nam(mdef);
+                if ((mdef.data?.pmidx | 0) === PM_CLAY_GOLEM_UH)
+                    mdef.mhp = 1; /* cancelled clay golems will die */
+                if (youattack && attacktype(mdef.data, AT_MAGC_UH)) {
+                    u.uenmax++;
+                    if (u.uenmax > u.uenpeak)
+                        u.uenpeak = u.uenmax;
+                    u.uen++;
+                    game.disp && (game.disp.botl = true);
+                    await You("absorb magical energy!");
+                }
+            }
+        }
+        break;
+    }
+    case 2: /* SCARE */
+        if (youdefend) {
+            if (Antimagic_uh()) {
+                resisted = true;
+            } else {
+                nomul(-3);
+                game.multi_reason = "being scared stiff";
+                game.nomovemsg = "";
+                if (magr && magr === u.ustuck && sticks(game.youmonst.data)) {
+                    set_ustuck(null);
+                    await You("release %s!", mon_nam(magr));
+                }
+            }
+        } else {
+            if (rn2(2) && await resist(mdef, WEAPON_CLASS_UH, 0, NOTELL_UH))
+                resisted = true;
+            else
+                await monflee(mdef, 3, false, (mdef.mhp | 0) > dmg);
+        }
+        if (!resisted)
+            do_stun = false;
+        break;
+    case 1: /* STUN */
+        do_stun = true;
+        break;
+    case 0: /* PROBE */
+        if (youattack && (spe === 0 || !rn2(3 * Math.abs(spe)))) {
+            await pline_The("%s is insightful.", verb);
+            if (mdef.minvent)
+                throw new Error('not yet ported: probe_monster (zap.c:626) minvent arm');
+            await mstatusline(mdef);
+            await pline("%s is not carrying anything%s.", noit_Monnam(mdef),
+                        engulfing_u(mdef) ? " besides you" : "");
+        }
+        break;
+    }
+    if (do_stun) {
+        if (youdefend) {
+            const ps = u.uprops[STUNNED] || (u.uprops[STUNNED] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
+            make_stunned(((ps.intrinsic | 0) & TIMEOUT) + 3, false);
+        } else
+            mdef.mstun = 1;
+        if (attack_indx === 1)
+            do_stun = false;
+    }
+    do_confuse = !rn2(12);
+    if (do_confuse) {
+        if (youdefend) {
+            const pc = u.uprops[CONFUSION] || (u.uprops[CONFUSION] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
+            make_confused(((pc.intrinsic | 0) & TIMEOUT) + 4, false);
+        } else
+            mdef.mconf = 1;
+    }
+
+    const fakename = youdefend ? "You" : "Someone"; /* decl.c c_fakename */
+    if (youattack || youdefend || vis) {
+        hittee = upstart(hittee);
+        if (resisted) {
+            await pline("%s %s!", hittee, vtense(fakename, "resist"));
+            shieldeff(youdefend ? u.ux : mdef.mx, youdefend ? u.uy : mdef.my);
+        }
+        if ((do_stun || do_confuse) && (game.flags?.verbose ?? true)) {
+            let buf = '';
+            if (do_stun)
+                buf += "stunned";
+            if (do_stun && do_confuse)
+                buf += " and ";
+            if (do_confuse)
+                buf += "confused";
+            await pline("%s %s %s%s", hittee, vtense(fakename, "are"), buf,
+                        (do_stun && do_confuse) ? '!' : '.');
+        }
+    }
+    return { dmg, result };
+}
+const PM_CLAY_GOLEM_UH = 256; /* pm.generated.js PM_CLAY_GOLEM */
+const WEAPON_CLASS_UH = 2; /* objclass.h WEAPON_CLASS */
+const NOTELL_UH = 0; /* const.js NOTELL */
 /* C artifact.c:63 FATAL_DAMAGE_MODIFIER — enough to guarantee xkilled(). */
 const FATAL_DAMAGE_MODIFIER_UH = 200;
 /* C decl.c:17 c_color_names.c_black. */
@@ -1545,7 +1796,11 @@ export async function do_attack(mtmpOrX, y) {
     if (!mtmp)
         return false;
     const forcefight = (game.context?.forcefight | 0);
-    if (is_safemon(mtmp) && !forcefight) {
+    /* C uhitm.c:462-463 — `if (is_safemon(mtmp) && !forcefight) { if
+     * (!u_wield_art(ART_STORMBRINGER)) {...} }`: an intelligent chaotic
+     * weapon skips the swap/stop block and falls through to the attack. */
+    if (is_safemon(mtmp) && !forcefight
+        && !_ac_is_art(game.u?.uwep, _AC_ART_STORMBRINGER)) {
         /* C uhitm.c:475-478:
          *   boolean foo = (Punished || !rn2(7)
          *                  || (is_longworm(mtmp->data) && mtmp->wormno)
@@ -1641,6 +1896,8 @@ export async function do_attack(mtmpOrX, y) {
      * JS defers this until first attack so it also covers cmd.js dofire path. */
     _ensure_role_weapons_uhitm(game.u);
 
+    /* C uhitm.c:515 — go.override_confirmation = FALSE (set by attack_checks) */
+    (game.go ||= {}).override_confirmation = false;
     {
         const _u = game.u || {};
         const _bx = ((_u.ux | 0) + (_u.dx | 0)) | 0;
@@ -1755,6 +2012,10 @@ export async function do_attack(mtmpOrX, y) {
     /* hitum() rnd(20) dieroll [uhitm.c:781 / uhitm.c:804] */
     const dieroll = rnd(20);
     const mhit = (tmp > dieroll) || !!(u && u.uswallow); /* uswallow = always hits */
+
+    /* C uhitm.c:602-606 known_hitum — Stormbringer's override announces itself */
+    if (game.go?.override_confirmation && (game.flags?.verbose ?? true))
+        await pline('Your bloodthirsty blade attacks!');
 
     /* C uhitm.c:610 missum(mon, uattk, (rollneeded + armorpenalty > dieroll)) */
     if (!mhit)
@@ -2515,6 +2776,10 @@ export async function do_attack(mtmpOrX, y) {
                     _find_roll_to_hit();
                     game.gb.bhitpos = { x: tx, y: ty };
                     game.gn.notonhead = ((mtmp.mx | 0) !== tx || (mtmp.my | 0) !== ty);
+                    /* C hitum_cleave passes !DEADMONSTER(mtmp) of THIS target to
+                     * passive() (uhitm.c:710); malive is shared, so reset it or a
+                     * prior target's kill suppresses passive()'s rn2(3). */
+                    malive = true;
                     await _swing(u.uwep, false, false, true);
                     if (!u.uwep || game.multi < 0 || (u.umortality | 0) > umort)
                         break;

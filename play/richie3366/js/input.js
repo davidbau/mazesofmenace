@@ -27,7 +27,12 @@ export async function nhgetch() {
     if (hook) await hook();
 
     let key;
-    if (_inputQueue.length > 0) {
+    if (game.iflags?.debug_fuzzer) {
+        // C wintty.c tty_nhgetch `:4068` — the fuzzer feeds random keys
+        // at the tty bottom (covers direct nhgetch readers too).
+        const { randomkey } = await import('./cmd.js');
+        key = randomkey();
+    } else if (_inputQueue.length > 0) {
         key = _inputQueue.shift();
     } else {
         // Browser mode: wait for keypress from the display

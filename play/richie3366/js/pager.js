@@ -30,6 +30,7 @@ import {
     glyph_is_body, glyph_is_normal_object, glyph_is_piletop_generic_obj,
     glyph_is_invisible_id, glyph_is_nothing, glyph_is_unexplored,
     glyph_is_cmap, glyph_to_cmap, glyph_to_obj, glyph_to_warning,
+    glyph_is_swallow, glyph_to_swallow, S_sw_tl,
     canspotself, senseself, mon_to_glyph, monsym, cmap_to_glyph, glyph_to_mon,
     hero_Invisible, NO_GLYPH, GLYPH_TRAP_OFF,
     GLYPH_STATUE_MALE_OFF, GLYPH_STATUE_FEM_OFF,
@@ -63,6 +64,7 @@ import { hides_under, is_hider, is_clinger, is_flyer, is_orc, mons,
 import { mlet_class_explain, DEF_MONSYM_MLET } from './mondata.js';
 import { is_pool, is_lava, closed_door, waterbody_name } from './hack.js';
 import { altarmask_at } from './pray.js';
+import { surface } from './sit.js'; // C dungeon.c surface for mhidden_description trapper (imports.mjs --can: cycle-safe, hoisted)
 import { align_str } from './roles.js';
 import { is_drawbridge_wall } from './dbridge.js';
 import { PM_WIZARD, PM_GNOME, PM_HUMAN, PM_ELF, NUMMONS } from './generated/monsters_data.js';
@@ -1342,6 +1344,12 @@ function glyph_showsym_code(glyph) {
         return cmap_showsym_code(((glyph | 0) - GLYPH_TRAP_OFF) + S_arrow_trap);
     }
     if (glyph_is_cmap(glyph)) return cmap_showsym_code(glyph_to_cmap(glyph));
+    // C map_glyphinfo ttychar for a swallow glyph — showsyms[S_sw_*] of the
+    // part (packed low 3 bits), DEC high-bit under decSymsActive; the
+    // stomach cell's sym feeds is_swallow_sym → mon_interior.
+    if (glyph_is_swallow(glyph)) {
+        return cmap_showsym_code(S_sw_tl + glyph_to_swallow(glyph));
+    }
     if (glyph_is_warning(glyph)) {
         const wch = def_warnsyms[glyph_to_warning(glyph)]?.ch;
         return (typeof wch === 'string' && wch.length) ? wch.charCodeAt(0) : 0x3F;
@@ -1384,11 +1392,9 @@ function rendered_glyph_char(x, y) {
  * high bit and never collide with monster letters). The prefix renders the
  * glyph through the DEC→Unicode paint rule, as C's encglyph/putmixed does.
  * Named omissions: rogue_syms table (Is_rogue_level showsyms; Primary used);
- * non-boulder `go.ov_*_syms` option overrides (boulder arm live);
- * `program_state.gameover` in the hallucinate gate; the
- * `looked && sym == showsyms[SYM_*+SYM_OFF_X]` halves of the
- * dark-room/unexplored arms (subsumed by the glyph-bank sym resolution);
- * `gw.warnsyms[]` (def_warnsyms defaults stand in).
+ * non-boulder `go.ov_*_syms` option overrides (boulder arm live).
+ * The `looked && sym == showsyms[SYM_*+SYM_OFF_X]` halves of the
+ * dark-room/unexplored arms resolve via the showsym_x_code slots.
  */
 export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSupplement) {
     const u = game.u || {};
@@ -1398,9 +1404,10 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
     let skippedVenom = 0;
     let found = 0;
     let needToLook = false;
-    // C `:1261–1264` — Underwater/waterlevel; Hallucination (gameover unread).
+    // C `:1261–1264` — Underwater/waterlevel; Hallucination (dead men
+    // hallucinate no longer: gameover gate).
     const submerged = !!(u.Underwater && !Is_waterlevel(u.uz));
-    const hallucinate = !!Hallucination();
+    const hallucinate = !!Hallucination() && !game.program_state?.gameover;
     if (looked) {
         // C `:1268–1271` — glyph_at + map_glyphinfo ttychar (showsyms byte).
         glyph = glyph_at(cc.x, cc.y);
@@ -1594,12 +1601,18 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
                     }
                 }
             }
-            // C `:1522–1542` — warning symbols.
+            // C `:1522–1542` — warning symbols: looked compares the live
+            // gw.warnsyms (WARNINGS-customizable, options.js), unlooked the
+            // def_warnsyms default (.ch ≡ C .sym).
             for (let i = 1; i < WARNCOUNT; i++) {
                 const w = def_warnsyms[i];
-                const wch = w?.ch ?? w?.sym;
-                if (typeof wch === 'string' && wch.length
-                    && sym === wch.charCodeAt(0)) {
+                const defCode = (typeof w?.ch === 'string' && w.ch.length)
+                    ? w.ch.charCodeAt(0) : -1;
+                const gwCode = game.gw?.warnsyms?.[i];
+                const want = looked
+                    ? ((typeof gwCode === 'number') ? gwCode : defCode)
+                    : defCode;
+                if (sym === want) {
                     xStr = w?.desc || w?.explanation
                         || 'unknown creature causing you worry';
                     if (!found) {
@@ -1916,8 +1929,7 @@ function hidden_objfrommap(incl_article, glyphotyp, x, y) {
  * Returns the suffix C writes into outbuf (callers append).
  * Callers: self_lookat / look_at_monster; insight mstatusline;
  * makemon appear; uhitm flash_hits_mon.
- * Named: dungeon.c surface ice/pool/altar/swallow (trapper uses
- * "floor"); long-worm tail coords (C FIXME); glyph_is_cmap region
+ * Named: long-worm tail coords (C FIXME); glyph_is_cmap region
  * ids (JS string 'S_poisoncloud').
  */
 export function mhidden_description(mon, mhid_flags) {
@@ -1969,8 +1981,9 @@ export function mhidden_description(mon, mhid_flags) {
             // C ceiling_hider macro — inline, no fourth named clone.
             const ceil = (is_clinger(ptr) && ptr.mlet !== 'S_MIMIC')
                 || is_flyer(ptr);
-            // C surface() ice/pool/altar/swallow named; trapper floor.
-            outbuf += ` on the ${ceil ? 'ceiling' : 'floor'}`;
+            // C `:269–271` — surface(x, y) (dungeon.c, live in sit.js):
+            // ice/pool/altar/bridge/stairs/wall/ground, not just floor.
+            outbuf += ` on the ${ceil ? 'ceiling' : surface(x, y)}`;
         } else if (ptr?.mlet === 'S_EEL' && is_pool(x, y)) {
             outbuf += ' in murky water';
         }
@@ -3196,18 +3209,31 @@ export function dowhatdoes_core(q) {
  */
 export async function dowhatdoes() {
     if (!game._whatdoes_once) {
-        await pline("Ask about '&' or '?' to get more info.");
+        // C `:2665–2670` — ALTMETA is defined (unixconf.h:224): append the
+        // ESC-twice hint when the altmeta option is on.
+        await pline(`Ask about '&' or '?' to get more info.${game.iflags?.altmeta ? '  (For ESC, type it twice.)' : ''}`);
         // C: previous topline / yn_function path surfaces --More-- before prompt
         await more();
         game._whatdoes_once = true;
     }
-    // C: yn_function("What command?", NULL, '\0', TRUE) — prompt + one key
+    // C: yn_function("What command?", NULL, '\0', TRUE) — prompt + one key.
+    // introff/intron (Unix ^C mask) is platform by-design.
     game._pending_message = 'What command? ';
     await flush_screen(1);
     const disp = game.nhDisplay;
     if (disp?.setCursor) disp.setCursor(14, 0); // after "What command? "
-    const q = await nhgetch();
+    let q = await nhgetch();
     game._pending_message = '';
+    // C `:2682–2691` — ALTMETA ESC-doubling: ESC may start a meta key, so
+    // ask again with the "]" prompt; a non-ESC second key ORs in 0200.
+    if (q === 27 && game.iflags?.altmeta) {
+        game._pending_message = '] ';
+        await flush_screen(1);
+        if (disp?.setCursor) disp.setCursor(2, 0); // after "] "
+        const q2 = await nhgetch();
+        game._pending_message = '';
+        if (q2 !== 27) q = ((q2 | 0) | 0x80) & 0xFF;
+    }
     const reslt = dowhatdoes_core(q);
     if (reslt) {
         if (q === 38 || q === 63) await whatdoes_help(); // '&' or '?'
@@ -3401,41 +3427,48 @@ export async function docontact() {
  */
 export async function dohelp() {
     await flush_topl_more();
-    const items = [
-        { key: 'a', text: 'About NetHack (version information).', fn: hmenu_doextversion },
-        { key: 'b', text: 'Long description of the game and commands.', fn: dispfile_help },
-        { key: 'c', text: 'List of game commands.', fn: dispfile_shelp },
-        { key: 'd', text: 'Concise history of NetHack.', fn: hmenu_dohistory },
-        { key: 'e', text: 'Info on a character in the game display.', fn: hmenu_dowhatis },
-        { key: 'f', text: 'Info on what a given key does.', fn: hmenu_dowhatdoes },
+    // C `:2873–2881` — table order; '%' rows format with PORT_ID (only the
+    // PORT_HELP row, compiled out on unix); optmenu row formats setopt_cmd.
+    // C `:2874–2877` gates: debughelp iff wizard; usagehelp unless
+    // sysopt.hideusage. Keys are positional (a + row index) so a skipped
+    // row shifts later keys, like C's accelerator-less menu.
+    const rows = [
+        { text: 'About NetHack (version information).', fn: hmenu_doextversion },
+        { text: 'Long description of the game and commands.', fn: dispfile_help },
+        { text: 'List of game commands.', fn: dispfile_shelp },
+        { text: 'Concise history of NetHack.', fn: hmenu_dohistory },
+        { text: 'Info on a character in the game display.', fn: hmenu_dowhatis },
+        { text: 'Info on what a given key does.', fn: hmenu_dowhatdoes },
         // C ref: options.c option_help via pager.c dohelp help_menu
-        { key: 'g', text: 'List of game options.', fn: async () => {
+        { text: 'List of game options.', fn: async () => {
             await show_text_pages(option_help_lines());
         } },
-        { key: 'h', text: 'Longer explanation of game options.', fn: dispfile_optionfile },
+        { text: 'Longer explanation of game options.', fn: dispfile_optionfile },
         // C pager.c:2882 — "Using the %s command to set options.", setopt_cmd
-        { key: 'i', text: `Using the ${setopt_cmd()} command to set options.`, fn: dispfile_optmenu },
+        { text: `Using the ${setopt_cmd()} command to set options.`, fn: dispfile_optmenu },
         // C ref: cmd.c dokeylist
-        { key: 'j', text: 'Full list of keyboard commands.', fn: async () => {
+        { text: 'Full list of keyboard commands.', fn: async () => {
             await show_text_pages(dokeylist_lines());
         } },
-        { key: 'k', text: 'List of extended commands.', fn: hmenu_doextlist },
+        { text: 'List of extended commands.', fn: hmenu_doextlist },
         // C ref: pager.c domenucontrols → options.c show_menu_controls
-        { key: 'l', text: 'List menu control keys.', fn: async () => {
+        { text: 'List menu control keys.', fn: async () => {
             await show_text_pages(domenucontrols_lines());
         } },
-        { key: 'm', text: "Description of NetHack's command line.", fn: dispfile_usagehelp },
-        { key: 'n', text: 'The NetHack license.', fn: dispfile_license },
+        { text: "Description of NetHack's command line.", fn: dispfile_usagehelp, hideusage: true },
+        { text: 'The NetHack license.', fn: dispfile_license },
         // C ref: pager.c docontact `:2848` table row
-        { key: 'o', text: 'Support information.', fn: docontact },
+        { text: 'Support information.', fn: docontact },
     ];
     if (game.flags?.debug || game.wizard) {
-        items.push({
-            key: 'p',
+        rows.push({
             text: 'List of wizard-mode commands.',
             fn: dispfile_debughelp,
         });
     }
+    const items = rows
+        .filter((r) => !(r.hideusage && game.sysopt?.hideusage))
+        .map((r, idx) => ({ key: String.fromCharCode(97 + idx), ...r }));
 
     const entries = [
         { text: 'Select one item:', attr: ATR_INVERSE },

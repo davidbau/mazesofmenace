@@ -10,7 +10,7 @@ import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { observe_object } from './o_init.js';
 import { SEE_INVIS, TELEPAT, DETECT_MONSTERS, INVIS } from './const.js';
 import { PICK_ONE, PICK_ANY, DEVTEAM_EMAIL } from './const.js';
-import { u_at } from './const.js';
+import { u_at, is_pit, BEAR_TRAP, WEB } from './const.js';
 /* C ref: include/align.h:29-39 — altar_to_glyph's alignment-mask tests. */
 import { AM_MASK, AM_SANCTUM, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC } from './const.js';
 import { BLINDED, CONFUSION, STUNNED, INFRAVISION, WARNING, WARN_OF_MON, FLYING, LEVITATION, HALLUC, HALLUC_RES, DEAF, Is_rogue_level, Is_waterlevel, LA_DOWN, In_mines, In_sokoban, Is_knox_level } from './const.js';
@@ -533,6 +533,9 @@ function _wall_color() {
 }
 
 export function rogue_graphics() {
+    const snap = game?._inMovemonMore ? game._paintedSnapshot : null;
+    if (snap && snap.dlevel !== undefined && snap.dnum !== undefined)
+        return !!Is_rogue_level({ dnum: snap.dnum, dlevel: snap.dlevel });
     return !!Is_rogue_level(game?.u?.uz);
 }
 /* the DEC line-drawing set is in force only when the PRIMARY symset is (C:
@@ -765,7 +768,12 @@ export function terrain_glyph(loc, x, y) {
         // C ref: dat/symbols:716 S_ice: \xfe (meta-~, centered dot); defsym.h:137 CLR_CYAN.
         case ICE: return decMode ? { ch: '~', color: CLR_CYAN, dec: true }
             : { ch: '.', color: CLR_CYAN, dec: false };
-        case DRAWBRIDGE_UP: return { ch: '#', color: CLR_BROWN, dec: false }; // S_vcdbridge (no DEC override)
+        case DRAWBRIDGE_UP: {
+            const under = ((loc.drawbridgemask ?? loc.flags ?? 0) | 0) & DB_UNDER;
+            const utyp = under === DB_MOAT ? MOAT : under === DB_LAVA ? LAVAPOOL
+                : under === DB_ICE ? ICE : ROOM;
+            return terrain_glyph({ ...loc, typ: utyp }, x, y);
+        }
         case DBWALL: return { ch: '#', color: CLR_BROWN, dec: false };
         // C ref: dat/symbols:719-720 S_vodbridge/S_hodbridge: \xfe; defsym.h:140 CLR_BROWN.
         case DRAWBRIDGE_DOWN: return decMode ? { ch: '~', color: CLR_BROWN, dec: true }
@@ -1897,6 +1905,14 @@ export function newsym(x, y) {
                 /* C newsym: map the underlying square before displaying its
                  * monster. map_object must run even with show=false: it updates
                  * memory and consumes hallucinated object glyph draws. */
+                /* C display.c:1017-1024: if monster is in a physical trap, you see
+                 * the trap too (tseen set before the location is mapped). */
+                if (mon.mtrapped) {
+                    const trap = t_at(x, y);
+                    if (trap && (trap.ttyp === BEAR_TRAP || is_pit(trap.ttyp)
+                                 || trap.ttyp === WEB))
+                        trap.tseen = true;
+                }
                 _map_location(x, y, false);
                 _render_monster_glyph(x, y, mon, loc, tg, true, worm_tail, !see_it);
                 return;
@@ -3174,6 +3190,12 @@ export function rank_of(lev, monnum, female) {
     let roleIdx = -1;
     let roleNameM = null;
     let roleNameF = null;
+    /* C botl.c:338-340 scans roles[] for monnum == role->mnum; the mnums are
+     * PM_ARCHEOLOGIST (331 in js/pm.generated.js) .. PM_WIZARD in roles[] order,
+     * so a player-monster index maps to its role ordinal.  Callers that already
+     * hold a role ordinal pass 0..12. */
+    if (monnum >= 331 && monnum <= 343)
+        monnum -= 331;
     if (monnum >= 0 && monnum <= 12) {
         roleIdx = monnum;
         roleNameM = _ROLE_IDX_TO_NAMES[roleIdx].m;
@@ -4824,6 +4846,7 @@ async function _topl_more(committed, dismissMore) {
      * space each set morc to themselves.  This loop used to `break` and return
      * undefined, which made morc unreadable at every caller. */
     let morc = 0;
+    game._topl_last_more_committed = String(committed ?? '');
     if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^topl_more_enter[committed=${encodeURIComponent(String(committed).slice(0,80))} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} urgent=${game._topl_urgent_next?1:0} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,80))}]`);
     while (true) {
@@ -5317,9 +5340,10 @@ async function _flush_screen_body(mode) {
             game._topl_joins = [];
             game._topl_joins_src = remainder;
         }
+        let _pageWasForcedBreak = false;
         if (game._topl_force_breaks && game._topl_force_breaks.length) {
             const k = _topl_force_break_entry(committed);
-            if (k >= 0) game._topl_force_breaks.splice(k, 1);
+            if (k >= 0) { game._topl_force_breaks.splice(k, 1); _pageWasForcedBreak = true; }
         }
         if (_morc === 27 /* ESC */) {
             if (ENV.FF_MLTRACE === '1')
@@ -5354,7 +5378,7 @@ async function _flush_screen_body(mode) {
              * comes AFTER it is suppressed.  It is drawn WITHOUT a further
              * --More--: redotoplin (topl.c:139) more()s only when cury != 0,
              * and this line starts at column 0. */
-            const _keepEnd = (remainderJoins && remainderJoins.length)
+            const _keepEnd = _pageWasForcedBreak ? 0 : (remainderJoins && remainderJoins.length)
                 ? remainderJoins[0] : remainder.length;
             game._pending_message = remainder.slice(0, _keepEnd);
             game._topl_joins = [];
@@ -5397,6 +5421,19 @@ async function _flush_screen_body(mode) {
     // live hero from there.  DISPLAY-ONLY.
     if (hadMore && game._runPageFrames) {
         game._runPageFrames = null;
+    }
+    /* C ref: win/tty/topl.c more():218-247 — a dismissed page is GONE from
+     * gt.toplines; only the undismissed remainder stays on the topline.  A
+     * command-result SNAPSHOT of the whole accumulated line (domove_core's
+     * pet-swap stash copies _pending_message without clearing it) therefore
+     * still carries text this loop just paged, and the next stash/merge would
+     * re-join the dismissed pages (and lose their join record) in front of the
+     * new plines.  Drop the snapshot: the live remainder now owns the line.
+     * DISPLAY-ONLY: no RNG, no game state. */
+    if (hadMore && fullTopl && game._resultMessage === fullTopl) {
+        game._resultMessage = null;
+        game._resultMessageJoins = null;
+        game._toplResultSnapshot = null;
     }
     // Same for the per-message flush frames: this window's topline has been paged
     // and the terminal tracks the live gbuf from the next nhgetch on.  DISPLAY-ONLY.
@@ -5723,7 +5760,8 @@ export async function pline(msg, ...args) {
     if (game._topl_win_stop) {
         const _txt = String(msg);
         const _buf = (game._topl_win_stop_buf != null)
-            ? String(game._topl_win_stop_buf) : String(game._pending_message || '');
+            ? String(game._topl_win_stop_buf)
+            : String(game._pending_message || game._topl_last_more_committed || '');
         /* C: n0 + strlen(gt.toplines) + 3 < CO - 8, i.e. buf + 2 + msg < 71. */
         const _fits = (_buf.length + 2 + _txt.length) < TOPL_LIMIT;
         const _notdied = (_fits && _txt.startsWith('You die')) ? 0 : 1;

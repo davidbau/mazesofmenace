@@ -104,7 +104,7 @@ import { livelog_printf } from './pline.js';
 import { com_pager, deliver_by_pline } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
-import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon, m_in_air } from './mon.js';
+import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon, m_in_air, iter_mons } from './mon.js';
 import { enexto, rloc, safe_teleds } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
@@ -873,7 +873,7 @@ export async function flooreffects(obj, x, y, verb) {
             await delfloortrap(t);
             if (game.u?.utrap && u_at(x, y)) reset_utrap(false);
         }
-        useupf(obj, 1);
+        await useupf(obj, 1);
         await bury_objs(x, y);
         newsym(x, y);
         res = true;
@@ -1063,7 +1063,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
         }
     }
     /* C do.c:148–151 — boulder is now gone */
-    if (pushing) useupf(otmp, otmp.quan | 0);
+    if (pushing) await useupf(otmp, otmp.quan | 0);
     else obfree(otmp, null);
     return true;
 }
@@ -1565,12 +1565,8 @@ export async function getlev_catchup_monsters(elapsed) {
  * after this returns (D-1644). reset_hostility is D-1616.
  */
 async function final_level() {
-    const live = [...(game.fmon || [])];
-    for (const mtmp of live) {
-        if ((mtmp.mhp | 0) < 1) continue; /* DEADMONSTER */
-        if ((mtmp.mstate | 0) !== MON_FLOOR) continue; /* mon_offmap */
-        reset_hostility(mtmp);
-    }
+    // C do.c:2046 — iter_mons(reset_hostility).
+    await iter_mons(reset_hostility);
     create_mplayers(rn1(4, 3), true);
     await gain_guardian_angel();
 }

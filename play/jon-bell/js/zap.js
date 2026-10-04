@@ -13,8 +13,9 @@ import { is_demon, nonliving, check_gear_next_turn } from './makemon.js';
 import { resists_magm, Resists_Elem, defended, sleep_monst, seemimic,
          erode_armor } from './mhitm.js';
 import { x_monnam } from './mhitm.js';
+import { INFRAVISION } from './const.js';
 import { BLINDED, HALLUC, HALLUC_RES, WAND_BACKFIRE_CHANCE, MSLOW, ANIMATE_SPELL, LIFESAVED } from './const.js';
-import { ENGRAVE, HEADSTONE } from './const.js';
+import { ENGRAVE, HEADSTONE, ARM } from './const.js';
 import { GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS } from './const.js';
 import { LARGEST_INT, ARTICLE_A, SUPPRESS_SADDLE, has_mgivenname, G_GENOD, MM_NOMSG } from './const.js';
 import { addtobill } from './shk.js';
@@ -25,7 +26,7 @@ import { xdir, ydir, N_DIRS, FUMBLING, IS_SINK } from './const.js';
 import { game } from './gstate.js';
 import { pline, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real } from './display.js';
 import { topl_park_cursor, _topl_stash_result, flush_pending_messages } from './display.js';
-import { bot } from './display.js';
+import { bot, see_monsters } from './display.js';
 import { deadhero, pending_death_is_final, do_death_sequence } from './end.js';
 /* unconscious()/is_fainted() — the two halves of youprop.h:399 Unaware, used by
  * resists_blnd's hero arm (mondata.c:253).  Real ported bodies, not stubs. */
@@ -466,6 +467,16 @@ function toggle_blindness() {
     game.disp.botl = 1;                 /* SET_BOTL */
     game.vision_full_recalc = 1;
     vision_recalc(0);
+    /* C potion.c:355-356 — `if (Blind_telepat || Infravision || Stinging)
+     * see_monsters();`.  A hero seeing by infravision loses those monsters the
+     * moment sight goes: vision_recalc's blind arm only repaints IN_SIGHT
+     * cells, and an infravisible monster in a dark spot is COULD_SEE only. */
+    {
+        const up = game.u?.uprops;
+        const has = (p) => !!(up?.[p]?.intrinsic || up?.[p]?.extrinsic);
+        if (has(TELEPAT) || has(INFRAVISION))
+            see_monsters();
+    }
     /* C potion.c:362-363 — "update dknown flag for inventory picked up while
      * blind": `if (!Blind) learn_unseen_invent();`. */
     if (!_Blind())
@@ -2128,7 +2139,8 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
             } else if (!_uhas(15 /* BLINDED */)) {
                 await pline(`The ${flash_str(fltyp)} whizzes by you!`);
             } else if (damgtype === ZT_LIGHTNING) {
-                /* C zap.c:4977: Your("%s tingles.", body_part(ARM)) — display. */
+                /* C zap.c:4986-4987 */
+                await pline(`Your ${body_part(ARM)} tingles.`);
             }
             /* C zap.c:4979-4980: ZT_LIGHTNING → flashburn((long) d(nd,50), TRUE).
              * Fires after the hit/miss branch, regardless of hit, for lightning
@@ -3748,6 +3760,7 @@ async function _zhitm(mon, type, nd) {
     const damgtype = zaptype(type) % 10;
     const spellcaster = is_hero_spell(type);
     let tmp = 0, orig_dmg = 0;
+    let sho_shieldeff = false; /* C zap.c:4246 */
 
     /* zhitm() hands the caller a second result (ootmp) for the disintegration
      * breath arm.  Keep that result out of the replay schema while preserving
@@ -3757,6 +3770,11 @@ async function _zhitm(mon, type, nd) {
 
     switch (damgtype) {
     case ZT_MAGIC_MISSILE:
+        /* C zap.c:4247-4250 — resists_magm/defended: no damage, no draw. */
+        if (resists_magm(mon) || defended(mon, AD_MAGM)) {
+            sho_shieldeff = true;
+            break;
+        }
         tmp = d(nd, 6);
         if (spellcaster) tmp = spell_damage_bonus(tmp);
         break;
@@ -3765,7 +3783,8 @@ async function _zhitm(mon, type, nd) {
          * importantly, draws NOTHING: the d(nd,6)/burnarmor/rn2(3) below are all
          * inside the non-resistant arm. */
         if (_resists_elem_zap(mon, MR_FIRE_ZAP)) {
-            tmp = 0; /* sho_shieldeff — display only */
+            tmp = 0;
+            sho_shieldeff = true;
             break;
         }
         tmp = d(nd, 6);
@@ -3780,6 +3799,14 @@ async function _zhitm(mon, type, nd) {
         }
         break;
     case ZT_COLD:
+        /* C zap.c:4279-4282 — a cold-resistant target takes NO damage and
+         * draws NOTHING (d(nd,6), d(nd,3) and the rn2(3) are all past the
+         * guard).  Missing guard made a breath ray at an ettin zombie draw
+         * d(2,6) where C went straight on to the next square. */
+        if (_resists_elem_zap(mon, MR_COLD_ZAP) || defended(mon, AD_COLD)) {
+            sho_shieldeff = true;
+            break;
+        }
         tmp = d(nd, 6);
         if (spellcaster) tmp = spell_damage_bonus(tmp);
         orig_dmg = tmp;
@@ -3803,9 +3830,19 @@ async function _zhitm(mon, type, nd) {
         if (!rn2(3)) tmp += (await destroy_items_mon(mon, AD_ELEC, orig_dmg));
         break;
     case ZT_POISON_GAS:
+        /* C zap.c:4358-4362 */
+        if (_resists_elem_zap(mon, 0x20 /* MR_POISON */) || defended(mon, AD_DRST)) {
+            sho_shieldeff = true;
+            break;
+        }
         tmp = d(nd, 6);
         break;
     case ZT_ACID:
+        /* C zap.c:4364-4368 */
+        if (_resists_elem_zap(mon, 0x40 /* MR_ACID */) || defended(mon, AD_ACID)) {
+            sho_shieldeff = true;
+            break;
+        }
         tmp = d(nd, 6);
         if (!rn2(6)) { /* acid_damage(MON_WEP(mon)) — no wep, no RNG */ }
         if (!rn2(6)) { /* erode_armor(mon, CORRODE) — deferred */ }
@@ -3876,6 +3913,11 @@ async function _zhitm(mon, type, nd) {
         tmp = 0;
         break;
     }
+
+    /* C zap.c:4385-4386 — if (sho_shieldeff) shieldeff(mon->mx, mon->my); its
+     * closing newsym() is what restores the monster over the ray glyph. */
+    if (sho_shieldeff)
+        shieldeff_real(mon.mx | 0, mon.my | 0);
 
     /* C zap.c:4380 — Knight quest-artifact double (not on this path). */
     /* C zap.c:4382-4384 — resist saving throw (only for type >= 0, tmp > 0).
@@ -6198,7 +6240,7 @@ async function cancel_item(obj) {
  *
  * RETURN VALUE: FALSE means "resisted cancellation".  For youdefend &&
  * youattack C never reaches resist(), so the hero self-zap always proceeds. */
-async function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self_cancel) {
+export async function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self_cancel) {
     const youdefend = (mdef === game.youmonst) || !mdef;
 
     if (youdefend ? (!youattack && _cm_Antimagic())

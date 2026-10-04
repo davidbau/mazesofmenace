@@ -17,9 +17,9 @@ import {
     SCROLL_CLASS, SPBOOK_CLASS, objectNames, objectNameStrs, objectDescrs,
 } from './objects.js';
 import {
-    ECMD_OK, ECMD_TIME, ECMD_CANCEL, MAXULEV,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, MAXULEV, GETOBJ_NOFLAGS,
 } from './const.js';
-import { compactify_invlets, makeknown, observe_object, hold_another_object, getobj_display_pickinv, useup } from './invent.js';
+import { compactify_invlets, makeknown, observe_object, hold_another_object, getobj_display_pickinv, useup, getobj } from './invent.js';
 import { obfree } from './shk.js';
 import { getlin } from './getline.js';
 import { rn2, rn1, rnl } from './rng.js';
@@ -135,93 +135,12 @@ function write_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
-function write_suggest_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (o?.invlet && write_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-    }
-    return lets.join('');
-}
-
-function write_has_downplay() {
-    for (const o of game.invent || []) {
-        if (write_ok(o) === GETOBJ_DOWNPLAY) return true;
-    }
-    return false;
-}
-
-/**
- * C ref: invent.c getobj("write on", write_ok, GETOBJ_NOFLAGS)
- * DOWNPLAY-only → forceprompt `[*]`; EXCLUDE → silly thing + cancel.
+/* write_suggest_lets/write_has_downplay: deleted — getobj_write_on
+ * delegates to live getobj (write.c:98). *//**
+ * C ref: write.c dowrite `:98` — getobj("write on", write_ok, GETOBJ_NOFLAGS).
  */
 async function getobj_write_on() {
-    const lets0 = write_suggest_lets();
-    if (!lets0 && !write_has_downplay()) {
-        await pline("You don't have anything to write on.");
-        return null;
-    }
-    for (;;) {
-        await flush_topl_more();
-        const rawLets = write_suggest_lets();
-        if (!rawLets && !write_has_downplay()) {
-            await pline("You don't have anything to write on.");
-            return null;
-        }
-        const lets = rawLets.length > 5 ? compactify_invlets(rawLets) : rawLets;
-        const query = lets
-            ? `What do you want to write on? [${lets} or ?*]`
-            : 'What do you want to write on? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            // '?' uses SUGGEST lets; '*' shows full invent (altlets + rest)
-            const counted = { cnt: 0, cntgiven: false };
-            const ilet = await getobj_display_pickinv(
-                ch, rawLets, false, counted,
-                { word: 'write on', allownone: false, promptHasHands: false },
-            );
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) {
-                if (game.iflags?.force_invmenu) return null;
-                continue;
-            }
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            if (write_ok(picked) === GETOBJ_EXCLUDE) {
-                await pline('That is a silly thing to write on.');
-                return null;
-            }
-            game._pending_message = '';
-            return picked;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        if (write_ok(otmp) === GETOBJ_EXCLUDE) {
-            await pline('That is a silly thing to write on.');
-            return null;
-        }
-        game._pending_message = '';
-        return otmp;
-    }
+    return getobj('write on', write_ok, GETOBJ_NOFLAGS);
 }
 
 /**

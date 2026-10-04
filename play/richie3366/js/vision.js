@@ -15,6 +15,7 @@ import {
     TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, SEE_INVIS,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON, isok,
+    MON_FLOOR,
 } from './const.js';
 import {
     newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon,
@@ -25,7 +26,7 @@ import { objectNames } from './objects.js';
 import { do_light_sources } from './light.js';
 import { visible_region_at } from './region.js';
 import { detecting } from './detect.js';
-import { is_moat } from './hack.js';
+import { is_moat, is_pool } from './hack.js';
 import { m_at } from './mon.js';
 import { objects_at } from './mkobj.js';
 
@@ -193,8 +194,11 @@ function mimic_light_blocking(mtmp) {
  * Call when See_invisible state changes.
  */
 export function set_mimic_blocking() {
+    // C display.c:1550 — iter_mons(mimic_light_blocking); sync walk with
+    // C's DEADMONSTER + mon_offmap skips (iter_mons itself is async).
     for (const mtmp of game.fmon || []) {
         if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
+        if ((mtmp.mstate | 0) !== MON_FLOOR) continue;
         mimic_light_blocking(mtmp);
     }
 }
@@ -656,7 +660,15 @@ function right_side(row, left, right_mark, limitsIdx) {
             }
             if (left > lim_max) return;
             if (left === lim_max) {
-                mark_visible_range(row, lim_max, lim_max);
+                // C vision.c:1768–1774 check (2): vis_func single-col
+                // call, else set_cs + set_max only — NO set_min.
+                if (game.vis_func) {
+                    game.vis_func(lim_max, row, game.vis_arg);
+                } else {
+                    const rowp = game.cs_rows?.[row];
+                    if (rowp) rowp[lim_max] = COULD_SEE;
+                    if (game.cs_right[row] < lim_max) game.cs_right[row] = lim_max;
+                }
                 return;
             }
             if (left >= right_edge) { left = right_edge; continue; }
@@ -722,7 +734,16 @@ function left_side(row, left_mark, right, limitsIdx) {
             }
             if (right < lim_min) return;
             if (right === lim_min) {
-                mark_visible_range(row, lim_min, lim_min);
+                // C vision.c:1927–1934 check: vis_func single-col call,
+                // else set_cs + set_min only — NO set_max (right_side
+                // mirror does set_cs + set_max).
+                if (game.vis_func) {
+                    game.vis_func(lim_min, row, game.vis_arg);
+                } else {
+                    const rowp = game.cs_rows?.[row];
+                    if (rowp) rowp[lim_min] = COULD_SEE;
+                    if (game.cs_left[row] > lim_min) game.cs_left[row] = lim_min;
+                }
                 return;
             }
             if (right <= left_edge) { right = left_edge; continue; }
@@ -1062,7 +1083,9 @@ export function vision_recalc(control = 0) {
     const u = game.u;
     if (!u || !game.level) return;
     game.vision_full_recalc = 0;
-    if (game.in_mklev) return;
+    // C vision.c:531 — gi.in_mklev || program_state.in_getlev ||
+    // !iflags.vision_inited. program_state has no JS counterpart (named).
+    if (game.in_mklev || !game.iflags?.vision_inited) return;
 
     /* C vision.c:542 — unused could-see, row min, and row max. */
     const unused = get_unused_cs();
@@ -1110,10 +1133,23 @@ export function vision_recalc(control = 0) {
         if (Is_rogue_level(u.uz)) {
             rogue_vision(next, next_rmin, next_rmax);
         } else {
-            // C: has_night_vision = 1; Underwater && !Is_waterlevel → 0
-            // and replaces view_from with pool 3×3 (still named omission).
-            const has_night_vision = 1;
-            if ((u.utrap | 0) && ((u.utraptype | 0) === TT_PIT)) {
+            // C vision.c:587–607 — has_night_vision = 1; Underwater
+            // (youprop.h:279 u.uinwater) && !Is_waterlevel → 0 and
+            // replaces view_from with the underwater pool 3×3. This
+            // overrides night vision but not xray (below, unconditional).
+            let has_night_vision = 1;
+            if ((u.uinwater | 0) && !Is_waterlevel(u.uz)) {
+                has_night_vision = 0;
+                const lo_col = Math.max(u.ux - 1, 1);
+                for (let row = u.uy - 1; row <= u.uy + 1; row++)
+                    for (let col = lo_col; col <= u.ux + 1; col++) {
+                        if (!isok(col, row) || !is_pool(col, row))
+                            continue;
+                        next_rmin[row] = Math.min(next_rmin[row], col);
+                        next_rmax[row] = Math.max(next_rmax[row], col);
+                        next[row][col] = IN_SIGHT | COULD_SEE;
+                    }
+            } else if ((u.utrap | 0) && ((u.utraptype | 0) === TT_PIT)) {
                 // C vision.c:609 — in a pit: only the immediate 3×3 is
                 // IN_SIGHT|COULD_SEE (D-1863). xray/night-vision below
                 // still apply, as in C.
@@ -1234,8 +1270,11 @@ export function vision_recalc(control = 0) {
                     loc.waslit = 0;
                     newsym(col, row);
                 } else {
-                    if ((ov & IN_SIGHT)
-                        || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
+                    // C vision.c not_in_sight: col != 0 guard — col 0
+                    // is always stone (!isok); newsym would impossible().
+                    if (((ov & IN_SIGHT)
+                        || ((nv & COULD_SEE) ^ (ov & COULD_SEE)))
+                        && col !== 0) {
                         newsym(col, row);
                     }
                 }

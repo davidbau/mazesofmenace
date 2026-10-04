@@ -34,6 +34,7 @@ import {
     G_EXTINCT, MON_OFFMAP, MON_MIGRATING, MON_LIMBO, MON_ENDGAME_MIGR,
     ESHK, EPRI, EGD, UTOTYPE_NONE,
     fuzzer_impossible_panic, fuzzer_impossible_continue,
+    ACH_MINE_PRIZE, ACH_SOKO_PRIZE,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { make_blinded, save_currentstate, assign_level } from './do.js';
@@ -488,8 +489,8 @@ export async function wiz_load_splua() {
         let buf = String(buf0 ?? '');
         if (buf[0] === '\x1b' || buf.length === 0) return ECMD_CANCEL; /* C :382–383 */
         if (!buf.includes('.')) buf += '.lua'; /* C :384–386 */
-        // C `:389` lspo_reset_level(NULL) — named omit (no scored analogue).
-        const { load_special, lspo_finalize_level } = await import('./mklev.js');
+        const { load_special, lspo_finalize_level, lspo_reset_level } = await import('./mklev.js');
+        await lspo_reset_level(false); /* C `:389` NULL form */
         await load_special(buf); /* C :390 */
         await lspo_finalize_level(false); /* C :391 NULL form */
     } else {
@@ -818,10 +819,8 @@ export async function makemap_remove_mons() {
  * ((amulet?1:0)|(wiztower?2:0)) (D-1288; C :1043–1046) instead of
  * safe_teleds, then losedogs / kill_genocided / u_collide_m / initrack /
  * Punished placebc / docrt / flush / splev / check_special_room(FALSE).
- * Named omissions: mine·soko prize;
- * digging memset; polearm.hitmon;
- * savelev freeing nhfile;
- * sp_lev.c lspo_reset_level / lspo_finalize_level.
+ * Named omissions: savelev freeing nhfile (`:1035–1038` — no JS
+ * level-save; GC releases the discarded level).
  */
 export async function makemap_prepost(pre, wiztower) {
     const u = game.u || (game.u = {});
@@ -829,8 +828,28 @@ export async function makemap_prepost(pre, wiztower) {
         // C cmd.c:992-993 — makemap_remove_mons then rm_mapseen:
         // discard monsters and overview info for the level being remade.
         await makemap_remove_mons();
-        const { rm_mapseen, ledger_no } = await import('./dungeon.js');
+        const { rm_mapseen, ledger_no, on_level } = await import('./dungeon.js');
         rm_mapseen(ledger_no(game.u?.uz));
+        // C `:1000–1008` — prize-level remake revokes the achievement
+        // (Unachieve "%s achievement revoked.") and zeroes the prize
+        // oid for the new instance.
+        const { Is_mineend_level, Is_sokoend_level } = await import('./mklev.js');
+        const { remove_achievement } = await import('./insight.js');
+        if (Is_mineend_level(u.uz)) {
+            if (remove_achievement(ACH_MINE_PRIZE)) {
+                await pline('%s achievement revoked.', "Mine's-end");
+            }
+            if (!game.context) game.context = {};
+            if (!game.context.achieveo) game.context.achieveo = {};
+            game.context.achieveo.mines_prize_oid = 0;
+        } else if (Is_sokoend_level(u.uz)) {
+            if (remove_achievement(ACH_SOKO_PRIZE)) {
+                await pline('%s achievement revoked.', 'Soko-prize');
+            }
+            if (!game.context) game.context = {};
+            if (!game.context.achieveo) game.context.achieveo = {};
+            game.context.achieveo.soko_prize_oid = 0;
+        }
         const { ballrelease, unplacebc } = await import('./ball.js');
         const { reset_utrap } = await import('./trap.js');
         const { check_special_room, set_uinwater } = await import('./hack.js');
@@ -841,10 +860,19 @@ export async function makemap_prepost(pre, wiztower) {
         }
         /* C cmd.c:1014–1015 — reset lock picking unless the box is carried. */
         maybe_reset_pick(null);
+        // C `:1016–1019` — reset interrupted digging on this level
+        // ({} is the codebase digging-reset idiom; lazy re-init re-zeroes).
+        if (on_level(game.context?.digging?.level, u.uz)) {
+            game.context.digging = {};
+        }
         if (!game.iflags) game.iflags = {};
         if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
         game.iflags.travelcc.x = 0;
         game.iflags.travelcc.y = 0;
+        // C `:1022` — polearm target reset (hitmon only; m_id untouched).
+        if (!game.context) game.context = {};
+        if (!game.context.polearm) game.context.polearm = {};
+        game.context.polearm.hitmon = null;
         reset_utrap(false);
         await check_special_room(true);
         game.dndest = zero_dest_area();

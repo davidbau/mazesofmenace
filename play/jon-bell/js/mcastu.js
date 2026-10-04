@@ -12,7 +12,7 @@ import { is_waterwall } from './dokick.js';
  * js/zap.js (their C home is zap.c); ureflects' one real body is js/makemon.js
  * (js/mhitu.js:217 and js/mhitm.js:235 are constant-FALSE stubs of it). */
 import { destroy_items, flashburn } from './zap.js';
-import { ureflects } from './makemon.js';
+import { ureflects, lined_up } from './makemon.js';
 import { couldsee, cansee } from './vision.js';
 import { M_ATTK_MISS, M_ATTK_HIT, u_at, A_LAWFUL, EMIN, ismnum, MALE, FEMALE, NEUTRAL, NUM_MGENDERS, STRAT_WAITFORU, STRAT_APPEARMSG, SLIMED, MM_NOWAIT, HEADSTONE } from './const.js';
 import { an } from './objnam.js';
@@ -485,8 +485,19 @@ export async function mcast_clone_wiz(mtmp) {
         const fake = await mksobj(212, true, false);
         if (fake) await add_to_minv(clone, fake);
     }
+    /* C wizard.c:528-531 — unless protected from shape changers, the clone
+     * is disguised as a random monster: ROLL_FROM(wizapp) is one rn2(12). */
+    const _p = u.uprops?.[PROT_FROM_SHAPE_CHANGERS_MC];
+    if (!(_p && ((_p.intrinsic | 0) || (_p.extrinsic | 0)))) {
+        clone.m_ap_type = 3; /* M_AP_MONSTER */
+        clone.mappearance = _WIZAPP[rn2(_WIZAPP.length)];
+    }
     newsym(clone.mx | 0, clone.my | 0);
 }
+/* C wizard.c:52 wizapp[] */
+const _WIZAPP = [PM_HUMAN_WA, PM_WATER_DEMON_WA, PM_VAMPIRE_WA, PM_RED_DRAGON_WA,
+    PM_TROLL_WA, PM_UMBER_HULK_WA, PM_XORN_WA, PM_XAN_WA, PM_COCKATRICE_WA,
+    PM_FLOATING_EYE_MC, PM_GUARDIAN_NAGA_WA, PM_TRAPPER_WA];
 export async function mcast_summon_mons(mtmp) {
     const count = await nasty(mtmp);
     const u = game.u || {};
@@ -729,7 +740,8 @@ import { make_blinded } from './zap.js';
 import { unconscious } from './pickup.js';
 import { is_fainted } from './eat.js';
 import { PM_CYCLOPS as PM_CYCLOPS_MC, PM_FLOATING_EYE as PM_FLOATING_EYE_MC } from './pm.generated.js';
-import { PM_WIZARD_OF_YENDOR as PM_WIZARD_OF_YENDOR_MC } from './pm.generated.js';
+import { PM_WIZARD_OF_YENDOR as PM_WIZARD_OF_YENDOR_MC, PM_HUMAN as PM_HUMAN_WA, PM_WATER_DEMON as PM_WATER_DEMON_WA, PM_VAMPIRE as PM_VAMPIRE_WA, PM_RED_DRAGON as PM_RED_DRAGON_WA, PM_TROLL as PM_TROLL_WA, PM_UMBER_HULK as PM_UMBER_HULK_WA, PM_XORN as PM_XORN_WA, PM_XAN as PM_XAN_WA, PM_COCKATRICE as PM_COCKATRICE_WA, PM_GUARDIAN_NAGA as PM_GUARDIAN_NAGA_WA, PM_TRAPPER as PM_TRAPPER_WA } from './pm.generated.js';
+import { PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MC } from './const.js';
 
 /* defsym.h:295/:346 monster-class symbols. */
 const S_ANT_MC = 1, S_SNAKE_MC = 45;
@@ -1228,8 +1240,16 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         dmg = 0;
         break;
     }
-    if (dmg)
+    if (dmg) {
+        /* C mcastu.c:896 mdamageu -> done(): in wizard/explore mode done()
+         * opens its blocking "Die?" prompt right here and RETURNS, so the
+         * caster's remaining attacks follow it.  Drain the deferred death in
+         * place (same as js/mhitu.js:3699). */
+        const _deathBefore = game._pendingDeath || null;
         await mdamageu(mtmp, dmg);
+        if (game._pendingDeath && game._pendingDeath !== _deathBefore)
+            await drain_pending_death_in_place();
+    }
 }
 
 // C ref: nethack-c/src/mcastu.c:177 castmu()
@@ -1379,9 +1399,6 @@ function flash_str(idx, _something) {
                    "disintegration", "lightning", "poison gas", "acid"];
     return types[idx] || "energy";
 }
-function lined_up(mtmp) {
-    return (mtmp.mx === game.u.ux || mtmp.my === game.u.uy);
-}
 function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 
 // ── BZ_ macros from zap.h ──
@@ -1483,21 +1500,17 @@ export function cuss(mtmp) {
         } else if (uhaveAmulet() && !rn2(random_insult.length)) {
             verbalize(`Relinquish the amulet, ${random_insult[rn2(random_insult.length)]}!`);
         } else if (game.u.uhp < 5 && !rn2(2)) { /* Panic */
-            // verbalize(cond ? A : B, ROLL_FROM(random_insult)): the callee's
-            // variadic args are evaluated right-to-left by this reference
-            // build, so the insult draw precedes the format-selecting draw.
-            const insult = random_insult[rn2(random_insult.length)];
+            // the format-selecting rn2(2) precedes the insult draw.
             const panicked = rn2(2);
+            const insult = random_insult[rn2(random_insult.length)];
             verbalize(panicked
                 ? `Even now thy life force ebbs, ${insult}!`
                 : `Savor thy breath, ${insult}, it be thy last!`);
         } else if (mtmp.mhp < 5 && !rn2(2)) { /* Parthian shot */
             verbalize(rn2(2) ? 'I shall return.' : "I'll be back.");
         } else {
-            // Same right-to-left evaluation as above: insult (last arg)
-            // drawn before malediction.
-            const insult = random_insult[rn2(random_insult.length)];
             const maledict = random_malediction[rn2(random_malediction.length)];
+            const insult = random_insult[rn2(random_insult.length)];
             verbalize(`${maledict} ${insult}!`);
         }
     } else if (is_lminion(mtmp)

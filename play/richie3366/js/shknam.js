@@ -1,8 +1,7 @@
 // shknam.js — Shop types, shopkeeper init, and room stocking.
 // C ref: shknam.c shtypes[] / shkinit / stock_room / mkshobj_at / get_shop_item.
 // Named omissions: wizard SHOPTYPE (nh_getenv; Rule #2);
-// irregular-shop edge cases; platform ifdef shktools names;
-// full mongone/shkgone beyond Orcus invent+detach;
+// irregular-shop edge cases; platform ifdef shktools names.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -47,7 +46,7 @@ import { obj_resists } from './dogmove.js';
 import { in_town } from './hack.js';
 import { rloc } from './teleport.js';
 import { noit_mon_nam } from './do_name.js';
-import { discard_minvent, m_at } from './mon.js';
+import { discard_minvent, m_at, mongone } from './mon.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
 const VEGGY = 3; // objclass.h
@@ -172,36 +171,36 @@ const shkhealthfoods = [
 /** C ref: shknam.c shtypes[] */
 export const shtypes = [
     {
-        name: 'general store', symb: RANDOM_CLASS, prob: 42, shknms: shkgeneral,
+        name: 'general store', annotation: null, symb: RANDOM_CLASS, prob: 42, shknms: shkgeneral,
         iprobs: [{ iprob: 100, itype: RANDOM_CLASS }],
     },
     {
-        name: 'used armor dealership', symb: ARMOR_CLASS, prob: 14, shknms: shkarmors,
+        name: 'used armor dealership', annotation: 'armor shop', symb: ARMOR_CLASS, prob: 14, shknms: shkarmors,
         iprobs: [
             { iprob: 90, itype: ARMOR_CLASS },
             { iprob: 10, itype: WEAPON_CLASS },
         ],
     },
     {
-        name: 'second-hand bookstore', symb: SCROLL_CLASS, prob: 10, shknms: shkbooks,
+        name: 'second-hand bookstore', annotation: 'scroll shop', symb: SCROLL_CLASS, prob: 10, shknms: shkbooks,
         iprobs: [
             { iprob: 90, itype: SCROLL_CLASS },
             { iprob: 10, itype: SPBOOK_CLASS },
         ],
     },
     {
-        name: 'liquor emporium', symb: POTION_CLASS, prob: 10, shknms: shkliquors,
+        name: 'liquor emporium', annotation: 'potion shop', symb: POTION_CLASS, prob: 10, shknms: shkliquors,
         iprobs: [{ iprob: 100, itype: POTION_CLASS }],
     },
     {
-        name: 'antique weapons outlet', symb: WEAPON_CLASS, prob: 5, shknms: shkweapons,
+        name: 'antique weapons outlet', annotation: 'weapon shop', symb: WEAPON_CLASS, prob: 5, shknms: shkweapons,
         iprobs: [
             { iprob: 90, itype: WEAPON_CLASS },
             { iprob: 10, itype: ARMOR_CLASS },
         ],
     },
     {
-        name: 'delicatessen', symb: FOOD_CLASS, prob: 5, shknms: shkfoods,
+        name: 'delicatessen', annotation: 'food shop', symb: FOOD_CLASS, prob: 5, shknms: shkfoods,
         iprobs: [
             { iprob: 83, itype: FOOD_CLASS },
             { iprob: 5, itype: otypNeg('POT_FRUIT_JUICE') },
@@ -211,7 +210,7 @@ export const shtypes = [
         ],
     },
     {
-        name: 'jewelers', symb: RING_CLASS, prob: 3, shknms: shkrings,
+        name: 'jewelers', annotation: 'ring shop', symb: RING_CLASS, prob: 3, shknms: shkrings,
         iprobs: [
             { iprob: 85, itype: RING_CLASS },
             { iprob: 10, itype: GEM_CLASS },
@@ -219,7 +218,7 @@ export const shtypes = [
         ],
     },
     {
-        name: 'quality apparel and accessories', symb: WAND_CLASS, prob: 3,
+        name: 'quality apparel and accessories', annotation: 'wand shop', symb: WAND_CLASS, prob: 3,
         shknms: shkwands,
         iprobs: [
             { iprob: 90, itype: WAND_CLASS },
@@ -228,18 +227,18 @@ export const shtypes = [
         ],
     },
     {
-        name: 'hardware store', symb: TOOL_CLASS, prob: 3, shknms: shktools,
+        name: 'hardware store', annotation: 'tool shop', symb: TOOL_CLASS, prob: 3, shknms: shktools,
         iprobs: [{ iprob: 100, itype: TOOL_CLASS }],
     },
     {
-        name: 'rare books', symb: SPBOOK_CLASS, prob: 3, shknms: shkbooks,
+        name: 'rare books', annotation: 'bookstore', symb: SPBOOK_CLASS, prob: 3, shknms: shkbooks,
         iprobs: [
             { iprob: 90, itype: SPBOOK_CLASS },
             { iprob: 10, itype: SCROLL_CLASS },
         ],
     },
     {
-        name: 'health food store', symb: FOOD_CLASS, prob: 2, shknms: shkhealthfoods,
+        name: 'health food store', annotation: 'vegetarian food shop', symb: FOOD_CLASS, prob: 2, shknms: shkhealthfoods,
         iprobs: [
             { iprob: 70, itype: VEGETARIAN_CLASS },
             { iprob: 20, itype: otypNeg('POT_FRUIT_JUICE') },
@@ -250,7 +249,7 @@ export const shtypes = [
         ],
     },
     {
-        name: 'lighting store', symb: TOOL_CLASS, prob: 0, shknms: shklight,
+        name: 'lighting store', annotation: 'lighting shop', symb: TOOL_CLASS, prob: 0, shknms: shklight,
         iprobs: [
             { iprob: 30, itype: otypNeg('WAX_CANDLE') },
             { iprob: 44, itype: otypNeg('TALLOW_CANDLE') },
@@ -804,29 +803,9 @@ export async function stock_room(shp_indx, sroom) {
             && (uz.dnum | 0) === (ol.dnum | 0)
             && (uz.dlevel | 0) === (ol.dlevel | 0)) {
             const mtmp = shop_keeper(rmno);
-            if (mtmp) {
-                // mdrop_special_objs — always obj_resists(0,0) per invent
-                for (let obj = mtmp.minvent; obj; ) {
-                    const next = obj.nobj;
-                    obj_resists(obj, 0, 0);
-                    // ochance 0 → never drops ordinary; quest art deferred
-                    obj = next;
-                }
-                discard_minvent(mtmp, false); /* C mongone → mon.c:3281. */
-                // m_detach lite: clear resident / map / fmon
-                sroom.resident = null;
-                mtmp.isshk = 0;
-                const ox = mtmp.mx | 0;
-                const oy = mtmp.my | 0;
-                if (game._level_monsters)
-                    game._level_monsters.delete(`${ox},${oy}`);
-                const list = game.fmon || [];
-                const i = list.indexOf(mtmp);
-                if (i >= 0) list.splice(i, 1);
-                mtmp.mx = 0;
-                mtmp.my = 0;
-                mtmp.mhp = 0;
-            }
+            // C shknam.c:797 — live mongone (mdrop_special_objs /
+            // discard_minvent / m_detach → shkgone clears resident).
+            if (mtmp) await mongone(mtmp);
         }
     }
 

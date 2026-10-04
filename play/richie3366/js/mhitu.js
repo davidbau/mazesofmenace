@@ -38,6 +38,7 @@ import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './visio
 import {
     Adjmonnam, Monnam, mon_nam, pmname, hliquid, Hallucination,
     noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam, Mgender, Amonnam,
+    type_is_pname,
 } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art, defends, retouch_equipment } from './artifact.js';
@@ -65,6 +66,7 @@ import {
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
     hides_under, is_flyer, thick_skinned, nolimbs, touch_petrifies,
     poly_when_stoned, has_head, slithy, amphibious, breathless, is_swimmer,
+    G_UNIQ,
     is_hider, likes_gold, mons, noncorporeal,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID, dmgtype,
 } from './monsters.js';
@@ -105,7 +107,7 @@ import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part, Unchanging } from './polyself.js';
 import { set_wounded_legs, burnarmor, ignite_items, ceiling, drain_en, t_at, reset_utrap, minstapetrify } from './trap.js';
 import { mon_explodes } from './explode.js';
-import { make_hallucinated, make_confused, make_stunned, make_sick, make_slimed } from './potion.js';
+import { make_hallucinated, make_confused, make_stunned, make_sick, make_slimed, make_stoned } from './potion.js';
 import { SetVoice, Soundeffect } from './sndprocs.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { se_rushing_wind_noise, se_laughter } from './generated/seffects_data.js';
@@ -805,7 +807,7 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
                 mtmp,
                 `${Monnam(mtmp)} hits you with the ${pmname(otmp.corpsenm, NEUTRAL)} corpse.`,
             );
-            if (!(u.Stoned || u.HStoned) && do_stone_u(mtmp)) {
+            if (!(u.Stoned || u.HStoned) && await do_stone_u(mtmp)) {
                 mhm.hitflags = M_ATTK_HIT;
                 mhm.done = true;
                 return;
@@ -2168,20 +2170,28 @@ export async function mhitm_ad_sedu_u(mtmp, mattk, mhm) {
 }
 
 /**
- * C ref: uhitm.c do_stone_u — start delayed stoning unless resisted/poly.
- * Named omissions: make_stoned body / polymon stone-golem; sets Stoned stub.
+ * C ref: uhitm.c do_stone_u `:3924–3942` — start delayed stoning unless
+ * already stoned, stone-resistant, or poly_when_stoned escapes into a
+ * stone golem. Killer: pmname (+the for non-pname uniques, KILLED_BY).
  * Returns 1 if stoning started (caller may mark done).
  */
-function do_stone_u(mtmp) {
+async function do_stone_u(mtmp) {
     const u = game.u || {};
     const Stoned = !!(u.Stoned || u.HStoned);
     const Stone_resistance = !!(u.Stone_resistance || u.HStone_resistance
         || u.EStone_resistance);
-    if (!Stoned && !Stone_resistance) {
-        // poly_when_stoned → polymon(PM_STONE_GOLEM) deferred
-        u.Stoned = 5;
-        void mtmp;
+    if (!Stoned && !Stone_resistance
+        && !(poly_when_stoned(game.youmonst?.data)
+             && await polymon(PM_STONE_GOLEM))) {
+        let kformat = KILLED_BY_AN;
+        let kname = pmname(mtmp.data, Mgender(mtmp));
+        if ((mtmp.data?.geno | 0) & G_UNIQ) {
+            if (!type_is_pname(mtmp.data)) kname = the(kname);
+            kformat = KILLED_BY;
+        }
+        await make_stoned(5, null, kformat, kname);
         return 1;
+        /* done_in_by(mtmp, STONING); — commented out in C */
     }
     return 0;
 }
@@ -2212,7 +2222,7 @@ async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
                 await pline(`${Monnam(mtmp)} seems to grimace.`);
             }
             if (!rn2(10) || (game.flags?.moonphase | 0) === NEW_MOON) {
-                if (do_stone_u(mtmp)) {
+                if (await do_stone_u(mtmp)) {
                     mhm.hitflags = M_ATTK_HIT;
                     mhm.done = true;
                     return;

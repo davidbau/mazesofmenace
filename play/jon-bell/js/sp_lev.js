@@ -10,6 +10,7 @@
 // call in this file must match C's sp_lev.c in order and argument.
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
+import { FILL_NORMAL } from './const.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
 import { find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal, worm_seg_swap, wormgone } from './worm.js';
@@ -626,6 +627,54 @@ export function create_door(dd, broom) {
     // that decision here as it is the established in-tree convention.
     add_door(x, y, broom);
     pushRngLogEntry('<create_door');
+}
+
+// C ref: themerms.lua "Twin businesses" (themerms.lua:818-866) — the outer
+// des.room (w=9,h=5, themed) is already built as aroom; this is its contents.
+// Draw order: the 8 placements table evaluates southeast()/northeast()/... eagerly
+// (12 percent(50) calls), then percent(50) for ltype/rtype, then d(8), then each
+// shop room: build_room (rn2(100) + litstate) and its contents' shopdoorstate()
+// (percent(1), percent(50) as needed) + des.door with a fixed wall.
+export function themerooms_contents_twin_businesses(outerRoom) {
+    const pct = (n) => rn2(100) < n;
+    const southeast = () => (pct(50) ? 'south' : 'east');
+    const northeast = () => (pct(50) ? 'north' : 'east');
+    const northwest = () => (pct(50) ? 'north' : 'west');
+    const southwest = () => (pct(50) ? 'south' : 'west');
+    const placements = [
+        { lx: 1, ly: 1, rx: 4, ry: 1, lwall: 'south', rwall: southeast() },
+        { lx: 1, ly: 2, rx: 4, ry: 2, lwall: 'north', rwall: northeast() },
+        { lx: 1, ly: 1, rx: 5, ry: 1, lwall: southeast(), rwall: southwest() },
+        { lx: 1, ly: 1, rx: 5, ry: 2, lwall: southeast(), rwall: northwest() },
+        { lx: 1, ly: 2, rx: 5, ry: 1, lwall: northeast(), rwall: southwest() },
+        { lx: 1, ly: 2, rx: 5, ry: 2, lwall: northeast(), rwall: northwest() },
+        { lx: 2, ly: 1, rx: 5, ry: 1, lwall: southwest(), rwall: 'south' },
+        { lx: 2, ly: 2, rx: 5, ry: 2, lwall: northwest(), rwall: 'north' },
+    ];
+    // ltype, rtype = "weapon shop", "armor shop"; swapped on percent(50)
+    let ltype = WEAPONSHOP, rtype = ARMORSHOP;
+    if (pct(50)) {
+        const t = ltype; ltype = rtype; rtype = t;
+    }
+    const shopdoorstate = () => {
+        if (pct(1)) return D_LOCKED;
+        if (pct(50)) return D_CLOSED;
+        return D_ISOPEN;
+    };
+    const wallmask = { north: W_NORTH, south: W_SOUTH, west: W_WEST, east: W_EAST };
+    const p = placements[rn2(placements.length)]; // d(#placements) = 1 + rn2(8) (themerms.lua:854)
+    const shops = [[ltype, p.lx, p.ly, p.lwall], [rtype, p.rx, p.ry, p.rwall]];
+    for (const [rt, sx, sy, wall] of shops) {
+        const shop = build_room({
+            chance: 100, rtype: rt, x: sx, y: sy, w: 3, h: 3,
+            rlit: -1, needfill: FILL_NORMAL, joined: false,
+            xalign: -1, yalign: -1,
+        }, outerRoom);
+        if (!shop)
+            return false; // C sp_lev.c:4104-4105: failed subroom => themeroom_failed
+        create_door({ secret: 0, mask: shopdoorstate(), pos: -1, wall: wallmask[wall] }, shop);
+    }
+    return true;
 }
 
 /* sp_lev.c:4678-4740 — argc==3 positional form: door(state, x, y), e.g.

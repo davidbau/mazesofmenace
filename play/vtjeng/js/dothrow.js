@@ -173,6 +173,7 @@ import {
 } from './const.js';
 import {
     is_pool,
+    is_lava,
 } from './dbridge.js';
 import { isok } from './cmd_isok.js';
 import {
@@ -190,6 +191,7 @@ import {
     glyph_is_invisible,
     glyph_is_monster,
     map_invisible,
+    map_invisible_planning,
     newsym,
     obj_to_glyph,
     tmp_at,
@@ -230,6 +232,7 @@ import {
     prinv,
     stackobj,
     update_inventory,
+    sobj_at,
 } from './invent.js';
 import { obj_sheds_light } from './light.js';
 import { MZ_HUGE, MZ_MEDIUM } from './monsters.js';
@@ -257,7 +260,7 @@ import {
     your_race,
 } from './mondata.js';
 import {
-    closed_door, m_in_air, monnear, set_apparxy, youHear,
+    closed_door, monnear, set_apparxy, youHear,
 } from './monmove.js';
 import { dogfood } from './dogfood.js';
 import { tamedog } from './dog.js';
@@ -311,7 +314,6 @@ import {
     isCrackable,
     place_object,
     remove_object,
-    sobj_at,
     splitobj,
     stone_missile,
     uslinging,
@@ -425,7 +427,6 @@ import {
     Flying,
     Levitation,
     drown,
-    is_lava,
     t_at,
     trapname,
 } from './trap.js';
@@ -440,7 +441,7 @@ import {
 import { bhit, boomhit, hit, miss } from './zap.js';
 import { hmon, passive_obj } from './uhitm.js';
 import { m_at, place_monster, remove_monster } from './monst.js';
-import { minliquid, setmangry, wake_nearto, wakeup } from './mon.js';
+import { m_in_air, minliquid, setmangry, wake_nearto, wakeup } from './mon.js';
 import { mpickobj, remove_worn_item } from './steal.js';
 import { goodpos, rloc, tele_restrict } from './teleport.js';
 import { is_quest_artifact } from './questpgr.js';
@@ -978,7 +979,13 @@ export async function hurtle_step(arg, x, y) {
             await message(`You bump into ${mnam}.`, state);
         }
         await wakeup(mon, false, { state, random, message });
-        if (!canspotmon(mon, state)) map_invisible(mon.mx, mon.my, state);
+        if (!canspotmon(mon, state)) {
+            // C's map write belongs to the planned level, but map_invisible()
+            // also paints the module-global display. Keep that live half out
+            // of this cloned-state pass.
+            if (planning) map_invisible_planning(mon.mx, mon.my, state);
+            else map_invisible(mon.mx, mon.my, state);
+        }
         await setmangry(mon, false, { state, random, message });
         if (touch_petrifies(mon.data) && !state.uarmu && !state.uarm
             && !state.uarmc) {

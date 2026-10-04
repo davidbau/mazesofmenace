@@ -93,7 +93,7 @@ import {
     mons, is_watch, nolimbs,
     breathless, haseyes,
 } from './monsters.js';
-import { m_at, angry_guards, minliquid } from './mon.js';
+import { m_at, angry_guards, minliquid, mongone } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at, make_grave } from './engrave.js';
@@ -499,8 +499,8 @@ export { mhe, mhis } from './mondata.js';
  * Capture gbuf glyph_at before removal, then tmp_at(DISP_ALWAYS)
  * so the map still shows the monster during the wish prompt
  * (D-1136). Not a recomputed mon_to_glyph (no extra Hallu rng).
- * Full C mongone (mdrop_special_objs / discard_minvent / m_detach)
- * still named. djinni_from_bottle calls this (D-1144); dodrink smoky
+ * Live mongone (mdrop_special_objs / discard_minvent / m_detach).
+ * djinni_from_bottle calls this (D-1144); dodrink smoky
  * occupant chance still named.
  */
 export async function mongrantswish(mtmp) {
@@ -517,14 +517,9 @@ export async function mongrantswish(mtmp) {
         }
         : { ch: '.', color: 0, dec: false };
 
-    // C mongone subset (D-0472): off fmon + newsym. C keeps stale
-    // mx/my; JS zeros like the prior peel so later m_at misses.
-    const list = game.fmon || [];
-    const i = list.indexOf(mtmp);
-    if (i >= 0) list.splice(i, 1);
-    mtmp.mx = 0;
-    mtmp.my = 0;
-    if (mx || my) newsym(mx, my);
+    // C potion.c:2803 — live mongone (mdrop_special_objs /
+    // discard_minvent / m_detach; grid cleared, stale mx/my kept).
+    await mongone(mtmp);
 
     // C: hide that removal from player — map is visible during wish.
     tmp_at(DISP_ALWAYS, glyph);

@@ -64,7 +64,7 @@ import { dist2, ing_suffix, strsubst, strstri, upstart, highc } from './hacklib.
 import { Popeye, morehungry, vomit, Unaware, eating_dangerous_corpse } from './eat.js';
 import { toggle_displacement } from './do_wear.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
-import { zombie_form, NODIAG, m_at } from './mon.js';
+import { zombie_form, NODIAG, m_at, wake_nearby } from './mon.js';
 import { maybe_unhide_at } from './monmove.js';
 import { cry_sound } from './sounds.js';
 import { Soundeffect } from './sndprocs.js';
@@ -155,30 +155,7 @@ function hero_unchanging(u = game.u || {}) {
         || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
-/**
- * C ref: mon.c wake_nearby / wake_nearto_core — clear sleep/wait within
- * ulevel*20. G_UNIQ keep STRAT_WAITMASK (quest leaders stay meditating).
- * Named omissions: wake_msg; disturb_buried_zombies; petcall whistletime.
- */
-function wake_nearby(_petcall) {
-    const u = game.u || {};
-    const x = u.ux | 0;
-    const y = u.uy | 0;
-    const distance = ((u.ulevel | 0) * 20) | 0;
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null) continue;
-        const dx = (mtmp.mx | 0) - x;
-        const dy = (mtmp.my | 0) - y;
-        if (distance === 0 || dx * dx + dy * dy < distance) {
-            mtmp.msleeping = 0;
-            const geno = mtmp.data?.geno | 0;
-            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
-                mtmp.mstrategy &= ~STRAT_WAITMASK;
-            }
-        }
-    }
-    void _petcall;
-}
+/* wake_nearby: deleted — live mon.js export (C mon.c:4367–4370). */
 
 /** C ref: dbridge.c / rm.h is_ice — ICE terrain; drawbridge-under deferred. */
 function is_ice(x, y) {
@@ -1175,7 +1152,7 @@ export async function nh_timeout() {
                     if (!(u.HDeaf | u.Deaf)) {
                         await pline('You make a lot of noise!');
                     }
-                    wake_nearby(false);
+                    await wake_nearby(false);
                 }
             }
             // C: HFumbling &= ~FROMOUTSIDE; if (Fumbling) incr_itimeout rnd(20)

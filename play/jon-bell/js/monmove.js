@@ -378,8 +378,13 @@ export function _passes_bars_mv(mtmp) {
     /* dmgtype()/dmgtype_fromattack() (js/makemon.js) index by ptr.pmidx, not
      * mlet/mflags1 — a minimal pmidx-only shim is all it reads. */
     const mdatShim = { pmidx: mndx };
+    /* mondata.c:560-562: rock moles eat bars; small slithy things slip through */
+    const metallivorous = !!(mf1 & 0x80000000);
+    const slithy = !!(mf1 & 0x00080000);
+    const bigmonst = msize >= MZ_LARGE_MV;
     const passes_bars = passes_walls || amorphous || unsolid || is_whirly || verysmall
-        || dmgtype(mdatShim, AD_RUST_BARS_MV) || dmgtype(mdatShim, AD_CORR_BARS_MV);
+        || dmgtype(mdatShim, AD_RUST_BARS_MV) || dmgtype(mdatShim, AD_CORR_BARS_MV)
+        || metallivorous || (slithy && !bigmonst);
     return passes_bars ? ALLOW_BARS_MV : 0;
 }
 
@@ -1216,6 +1221,12 @@ function is_armed_mv(mndx) {
  * and js/do_wear.js read); this was a constant-1 stub. */
 function _oc_material_mv(otyp) {
     const i = otyp | 0;
+    /* o_init.c:141-146 shuffle(..., domaterial) swaps oc_material with the
+     * description for rings/wands, so objects[otyp].oc_material is per-game.
+     * o_init.js publishes the post-shuffle values in game._objMaterials. */
+    const sh = game._objMaterials;
+    if (sh && sh[i] != null)
+        return sh[i] | 0;
     return (i >= 0 && i < MKOBJ_OC_MATERIAL.length) ? (MKOBJ_OC_MATERIAL[i] | 0) : 0;
 }
 

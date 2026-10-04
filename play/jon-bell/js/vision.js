@@ -250,7 +250,14 @@ function _vision_rebuild_grid() {
     const level = game.level;
     if (!level)
         return;
-    for (let y = 0; y < ROWNO; y++) {
+    for (let y = 0; y < ROWNO; y++)
+        _vision_rebuild_row(level, y);
+}
+/* One row of the rebuild above; rows are independent (each reads only
+ * _blocks(level, x, y) for its own y), so block_point() & co. rebuild just the
+ * row they touch instead of the whole 21x80 grid. */
+function _vision_rebuild_row(level, y) {
+    {
         viz_clear[y].fill(0);
         let dig_left = 0;
         let block = true;
@@ -838,7 +845,9 @@ export function vision_recalc(control = 0) {
             if (!loc)
                 continue;
             // Night vision: adjacent cells always IN_SIGHT
-            if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
+            /* C vision.c:648-669 night-vision loop: start = max(1, u.ux - range),
+             * so column 0 (never isok) is never given IN_SIGHT here. */
+            if (col >= 1 && Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
                 next[row][col] |= IN_SIGHT;
                 continue;
             }
@@ -1049,7 +1058,8 @@ export function howmonseen(mon) {
 // (C: "if (viz_array[y][x]) vision_full_recalc = 1") so the next vision_recalc
 // re-derives visibility through the now-changed cell.
 function _block_or_unblock(x, y) {
-    _vision_rebuild_grid();
+    if (game.level && y >= 0 && y < ROWNO)
+        _vision_rebuild_row(game.level, y);
     if (game.viz_array?.[y]?.[x]) {
         game.vision_full_recalc = 1;
         if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {

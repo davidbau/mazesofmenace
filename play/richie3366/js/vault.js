@@ -122,22 +122,7 @@ function guard_pmname(guard) {
     return 'guard';
 }
 
-/**
- * Remove guard from fmon (full mongone deferred).
- * C ref: mon.c mongone — subset for invault early exits / restfakecorr.
- */
-function mongone_guard(mtmp) {
-    if (!mtmp) return;
-    const ox = mtmp.mx | 0;
-    const oy = mtmp.my | 0;
-    const list = game.fmon || [];
-    const i = list.indexOf(mtmp);
-    if (i >= 0) list.splice(i, 1);
-    mtmp.mx = 0;
-    mtmp.my = 0;
-    mtmp.isgd = 0;
-    if (ox || oy) newsym(ox, oy);
-}
+/* mongone_guard: deleted — restfakecorr calls live mongone (C vault.c:149). */
 
 /**
  * C ref: vault.c blackout — unlit STONE + clear seenv from restored cell
@@ -239,9 +224,10 @@ export async function clear_fcorr(grd, forceshow) {
  * C ref: vault.c restfakecorr — clear temporary corridor; mongone guard.
  */
 async function restfakecorr(grd) {
+    /* it seems you left the corridor - let the guard disappear */
     if (await clear_fcorr(grd, false)) {
-        grd.isgd = 0;
-        mongone_guard(grd);
+        grd.isgd = 0; /* dmonsfree() should delete this mon */
+        await mongone(grd);
     }
 }
 

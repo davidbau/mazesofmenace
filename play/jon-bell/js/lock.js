@@ -10,7 +10,7 @@ import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, r
 import { visctrl } from './cmd_binds.js';
 import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2 } from './const.js';
 import { impossible } from './pline.js';
-import { pline, force_more, newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon } from './display.js';
+import { pline, force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon } from './display.js';
 import { topl_park_cursor, putmsghistory } from './display.js';
 import { block_point, recalc_block_point, vision_recalc } from './vision.js';
 import { nhgetch } from './input.js';
@@ -245,7 +245,7 @@ export async function doopen_indir(x, y) {
             loc.doormask = D_ISOPEN;
         }
         /* C lock.c:914 — feel_newsym(cc.x, cc.y): update display for hero */
-        newsym(cx, cy);
+        feel_newsym(cx, cy);
         /* C lock.c:916 — recalc_block_point(cc.x, cc.y): the now-open door no
          * longer blocks light, so vision can see through it.  recalc_block_point
          * rebuilds the block arrays (open door -> transparent) and sets
@@ -594,7 +594,7 @@ export async function doclose() {
         if (u.usteed || rn2(25) < threshold) {
             await pline('The door closes.');
             door.doormask = D_CLOSED;
-            newsym(x, y); /* feel_newsym → newsym for sighted */
+            feel_newsym(x, y); /* feel_newsym → newsym for sighted */
             block_point(x, y); /* C lock.c:1044 — close the line of sight. */
         } else {
             exercise(A_STR, true);

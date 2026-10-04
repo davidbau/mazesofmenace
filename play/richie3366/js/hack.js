@@ -74,7 +74,7 @@ import { ART_STING } from './generated/artifacts_data.js';
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam, pmname, Ugender, a_monnam } from './do_name.js';
 import { decl_globals_init } from './decl.js';
 import { init_objects } from './o_init.js';
-import { get_level, Invocation_lev } from './dungeon.js';
+import { get_level, Invocation_lev, Is_special } from './dungeon.js';
 import { costly_spot, shop_keeper, addtobill, subfrombill, onshopbill, find_objowner, stolen_value, block_entry, block_door } from './shk.js';
 import { se_monster_behind_boulder, se_kerplunk_boulder_gone } from './generated/seffects_data.js';
 import { near_capacity, inv_weight, freeinv, weapon_descr, useupf } from './invent.js';
@@ -1124,7 +1124,7 @@ async function moverock_core(sx, sy) {
                             `${Tobjnam(otmp, ttmp.ttyp === TRAPDOOR ? 'trigger' : 'fall')}${ttmp.ttyp === TRAPDOOR ? '' : ' into'} and ${otense(otmp, 'plug')} a ${ttmp.ttyp === TRAPDOOR ? 'trap door' : 'hole'} in the ${surface(rx, ry)}!`,
                         );
                     deltrap(ttmp);
-                    useupf(otmp, 1);
+                    await useupf(otmp, 1);
                     await bury_objs(rx, ry);
                     {
                         const holelev = game.level?.at(rx, ry);
@@ -3259,13 +3259,8 @@ function may_dig_local(x, y) {
     return !((IS_STWALL(typ) || IS_TREE(typ)) && (wi & W_NONDIGGABLE));
 }
 
-/** C dungeon.c Is_special — match in sp_levchn (dissolve_bars). */
-function Is_special_local(lev) {
-    for (const s of game.sp_levchn || []) {
-        if (on_level_dig(lev, s.dlevel)) return s;
-    }
-    return null;
-}
+/* C dungeon.c Is_special — local clone retired; dissolve_bars calls the
+ * live dungeon.js export (same on_level walk of sp_levchn). */
 
 /** C youprop.h H/E via flat + uprops[idx] (confer may not mirror E*). */
 function _uprop_he_st(u, flatH, flatE, idx) {
@@ -3678,7 +3673,7 @@ export async function dissolve_bars(x, y) {
     const u = game.u || {};
     if ((lev.edge | 0) === 1) {
         lev.typ = DOOR;
-    } else if (Is_special_local(u.uz) || in_rooms(x, y, 0)) {
+    } else if (Is_special(u.uz) || in_rooms(x, y, 0)) {
         lev.typ = ROOM;
     } else {
         lev.typ = CORR;

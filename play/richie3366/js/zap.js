@@ -932,7 +932,7 @@ export async function burn_floor_objects(x, y, give_feedback, u_caused) {
                 }
                 if (u_caused) {
                     // C zap.c:4636 useupf(obj, delquan) — live invent.js export
-                    useupf(obj, delquan);
+                    await useupf(obj, delquan);
                 } else if (delquan < scrquan) {
                     obj.quan = scrquan - delquan;
                     obj.owt = weight(obj);

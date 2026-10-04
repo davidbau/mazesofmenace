@@ -108,6 +108,7 @@ async function maybe_generate_rnd_mon() {
 }
 import { nhlib_com_pager_rng } from "./nhlib.js";
 import { ENV } from './hostenv.js';
+import { do_storms } from './timeout.js';
 /* C ref: nethack-c-v5/upstream/src/role.c roles[] [lgod, ngod, cgod].  The
  * table itself now lives with roles[] in js/roles.js (ROLE_GODS) so role_init()
  * and this legacy replay arm cannot drift apart. */
@@ -846,6 +847,21 @@ function _is_sanctum(uz) {
     const s = game?.sanctum_level;
     return !!uz && !!s && uz.dnum === s.dnum && uz.dlevel === s.dlevel;
 }
+function oracle_sound(mtmp) {
+    const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
+    if (mndx !== 274)
+        return false;
+    /* and don't produce silly effects when she's clearly visible */
+    if (Hallucination() || !canseemon_ff(mtmp)) {
+        const hallu = Hallucination() ? 1 : 0;
+        const ora_msg = [
+            "a strange wind.", "convulsive ravings.", "snoring snakes.",
+            "someone say \"No more woodchucks!\"", "a loud ZOT!",
+        ];
+        You_hear(ora_msg[rn2(3) + hallu * 2]);
+    }
+    return true;
+}
 /* C sounds.c:147-198 temple_priest_sound(mtmp) — get_iter_mons predicate. */
 function temple_priest_sound(mtmp) {
     if (mtmp.ispriest && inhistemple(mtmp)
@@ -1014,7 +1030,8 @@ export function dosounds_rng() {
             return;
     }
     if (Is_oracle_level(game.u?.uz) && !rn2(400)) {
-        return;
+        if (get_iter_mons(oracle_sound))
+            return;
     }
 }
 /* C ref: allmain.c:413 u_wipe_engr condition — rn2(40 + ACURR(A_DEX)*3).
@@ -1157,6 +1174,8 @@ async function fastforward_step_generic_turn_nodochug() {
     if (Warning()) await warnreveal();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     dosounds_rng();
+    /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
+    await do_storms();
     /* C ref: allmain.c:407 gethungry(). */
     await gethungry();
     /* C ref: allmain.c:408 age_spells() — decrement spell retention (no RNG). */
@@ -1194,6 +1213,8 @@ async function fastforward_step_generic_turn() {
     if (Warning()) await warnreveal();
     /* C ref: allmain.c:405 dosounds() — dynamic level-flag dispatch. */
     dosounds_rng();
+    /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
+    await do_storms();
     /* C ref: allmain.c:407 gethungry(). */
     await gethungry();
     /* C ref: allmain.c:408 age_spells() — decrement spell retention (no RNG). */
@@ -1429,6 +1450,8 @@ export async function ff_head_phase_post() {
         set_uasmon();
     /* C allmain.c:405 — dosounds(). */
     dosounds_rng();
+    /* C ref: allmain.c:353 do_storms() — Plane of Air lightning. */
+    await do_storms();
     /* C allmain.c:407 — gethungry(). */
     await gethungry();
     /* C allmain.c:408 — age_spells() — decrement spell retention (no RNG). */

@@ -2411,6 +2411,25 @@ export function lspo_map(a, contentsFn) {
 
 
 /**
+ * C ref: sp_lev.c lspo_reset_level `:5993–6011` — des reset in C order.
+ * fromDes ≡ C `L` non-null; the coder block (`:5998–6004`) runs only for
+ * non-null L (Lua des-coder state — no JS analogue; the NULL form from
+ * wiz_load_splua skips it in C too). makemap_prepost(TRUE) discards the
+ * current level before the des load.
+ */
+export async function lspo_reset_level(fromDes = true) {
+    const u = game.u || {};
+    const wtower = In_W_tower(u.ux | 0, u.uy | 0, u.uz); // C `:5995`
+    if (!game.iflags) game.iflags = {};
+    game.iflags.lua_testing = true; // C `:5997`
+    await makemap_prepost(true, wtower); // C `:6005`
+    game.in_mklev = true; // C `:6006` gi.in_mklev
+    oinit(); // C `:6007` level-dependent obj probabilities
+    clear_level_structures(); // C `:6008`
+    return 0; // C `:6009`
+}
+
+/**
  * C ref: sp_lev.c lspo_finalize_level `:6014–6064` — des finalize in C
  * order. fromDes ≡ C `L` non-null (des interpreter context); false is the
  * C NULL form (wizard-debug wiz_load_splua, js/wizcmds.js).
@@ -22218,13 +22237,13 @@ function get_location_coord(humidity, croom, rx, ry) {
 
 /* C ref: dungeon.h Is_mineend_level `:136` — Lcheck(x, &mineend_level);
  * const.js Is_medusa_level idiom (dnum + dlevel match). */
-function Is_mineend_level(uz) {
+export function Is_mineend_level(uz) {
     const m = game.mineend_level;
     return !!m && ((uz?.dnum | 0) === (m.dnum | 0) && (uz?.dlevel | 0) === (m.dlevel | 0));
 }
 
 /* C ref: dungeon.h Is_sokoend_level `:137` — Lcheck(x, &sokoend_level). */
-function Is_sokoend_level(uz) {
+export function Is_sokoend_level(uz) {
     const m = game.sokoend_level;
     return !!m && ((uz?.dnum | 0) === (m.dnum | 0) && (uz?.dlevel | 0) === (m.dlevel | 0));
 }
@@ -28189,9 +28208,7 @@ async function makelevel() {
     const fill = dun?.fill_lvl || '';
     // C ref: mklev.c:1267-1289 — Is_special / proto / fill_lvl / In_quest
     // before ordinary. Medusa rn2(5) only in hell/medusa else-if.
-    const slev = (g.sp_levchn || []).find(s =>
-        (s.dlevel?.dnum | 0) === (g.u?.uz?.dnum | 0)
-        && (s.dlevel?.dlevel | 0) === (g.u?.uz?.dlevel | 0));
+    const slev = Is_special(g.u?.uz);
     if (slev && !Is_rogue_level(g.u?.uz)) {
         await makemaz(slev.proto);
     } else if (dun?.proto) {
@@ -29792,10 +29809,7 @@ function percent(threshold) {
 // C ref: dungeon.c induced_align — Is_special then dungeon then rn2(3)
 function induced_align(pct) {
     const uz = game.u?.uz;
-    const slev = (game.sp_levchn || []).find(s =>
-        s?.dlevel
-        && (s.dlevel.dnum | 0) === (uz?.dnum | 0)
-        && (s.dlevel.dlevel | 0) === (uz?.dlevel | 0));
+    const slev = Is_special(uz);
     if (slev?.flags?.align) {
         if (rn2(100) < pct) return slev.flags.align;
     }
@@ -34025,16 +34039,10 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_che
         return;
     mineralize_kelp(kelp_pool, kelp_moat);
     // C ref: mklev.c mineralize — hell / V_tower / rogue / arboreal / most
-    // specials skip rock deposits after kelp. Is_special is on_level walk
-    // of sp_levchn (dungeon.c); dlevel 0 must still match.
+    // specials skip rock deposits after kelp. Live Is_special export
+    // (on_level walk of sp_levchn, dungeon.c); dlevel 0 still matches.
     const uz = game.u?.uz;
-    let slev = null;
-    for (const s of game.sp_levchn || []) {
-        if (on_level(uz, s.dlevel)) {
-            slev = s;
-            break;
-        }
-    }
+    const slev = Is_special(uz);
     const inHell = !!(game.dungeons?.[uz?.dnum]?.flags?.hellish);
     if (!skip_lvl_checks
         && (inHell || In_V_tower(uz) || Is_rogue_level(uz)

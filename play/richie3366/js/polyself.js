@@ -23,6 +23,7 @@ import {
 } from './mhitm.js';
 import { mksobj, objects_at, maybe_adjust_light } from './mkobj.js';
 import { throwit } from './dothrow.js';
+import { pet_ranged_attk } from './dogmove.js';
 import { ubuzz, ubreatheu, resists_fire, destroy_items, resists_drli } from './zap.js';
 import { were_summon, were_beastie, counter_were, Protection_from_shape_changers } from './were.js';
 import { unpunish } from './read.js';
@@ -2974,8 +2975,7 @@ export async function dospinweb() {
  * Envelope: hide/web prompt; breathe → spit → nymph → gaze → were →
  * hide → web → mindflayer → gremlin → unicorn → shriek → vampire →
  * steed → reflexive/normal.
- * Named omissions: steed breath via pet_ranged_attk (missing).
- * Deferred arms keep the old reflexive/normal fallthrough.
+ * Steed breath (`:940–942`) via live pet_ranged_attk (dogmove.js).
  * @returns {Promise<number>} ECMD_OK | ECMD_TIME
  */
 export async function domonability() {
@@ -3042,8 +3042,9 @@ export async function domonability() {
         }
     } else if (is_vampire(uptr) || is_vampshifter(game.youmonst)) {
         return dopoly();
-    } else if (u.usteed && can_breathe(u.usteed?.data)) {
-        return tail(); // steed breath via pet_ranged_attk deferred
+    } else if (u.usteed && can_breathe(u.usteed?.data)) { // C `:940–942`
+        await pet_ranged_attk(u.usteed, true);
+        return ECMD_TIME;
     }
     return tail();
 }

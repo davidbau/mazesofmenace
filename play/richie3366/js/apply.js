@@ -2427,7 +2427,7 @@ export async function use_tinning_kit(obj) {
                 SetVoice(shkp, 0, 80, 0);
                 await verbalize(you_buy_it);
             }
-            useupf(corpse, 1);
+            await useupf(corpse, 1);
         }
         await hold_another_object(
             can, 'You make, but cannot pick up, %s.', doname(can), null,

@@ -31,7 +31,7 @@ import monKbMsizePack from './makemon_msize.json' with { type: 'json' };
 import monKbMattkPack from './makemon_mattk.json' with { type: 'json' };
 import monKbMonsPack from './makemon_mons.json' with { type: 'json' };
 import { rn2, rn1, rnd, d, pushRngLogEntry } from './rng.js';
-import { pline, urgent_pline as urgent_pline_disp, newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, flush_pending_messages } from './display.js';
+import { pline, urgent_pline as urgent_pline_disp, newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, glyph_is_invisible_at, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, flush_pending_messages } from './display.js';
 import { m_at as uhitm_m_at, hitval, mon_wield_item, dmgval, select_rwep } from './uhitm.js';
 import { burnarmor as burnarmor_real, erode_obj, drain_en as drain_en_trap } from './trap.js';
 import { msummon as msummon_real } from './sit.js';
@@ -178,6 +178,7 @@ import { isok as isok_mu, IS_OBSTRUCTED as IS_OBSTRUCTED_MU, IRONBARS as IRONBAR
 import { BACKTRACK as BACKTRACK_MU, W_WEP as W_WEP_MU, HAND as HAND_MU,
          FOOT as FOOT_MU, LEG as LEG_MU } from './const.js';
 import { closed_door as closed_door_mu, is_pool as is_pool_mu } from './look.js';
+import { Is_waterlevel as Is_waterlevel_mu, DROWNING as DROWNING_MU } from './const.js';
 import { observe_object as observe_object_mu } from './o_init.js';
 import { hold_another_object } from './hold_another_object.js';
 /* C objnam.c:2424 simpleonames(obj) — minimal_xname made plural for quan>1.
@@ -231,7 +232,7 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 function seemimic_mu(mtmp) { return seemimic_real(mtmp); }
 
 /* thrwmu/monshoot/m_throw dependencies (C mthrowu.c). */
-import { autoreturn_weapon, setmnotwielded } from './uhitm.js';
+import { autoreturn_weapon, setmnotwielded, artifact_hit } from './uhitm.js';
 import { splitobj } from './makemon.js';
 /* C mhitu.c:1917 — mdamageu()'s Upolyd arm. */
 import { rehumanize } from './polyself.js';
@@ -746,9 +747,9 @@ export async function gazemu(mtmp, mattk) {
                     }
                     await burn_away_slime();
                     if (lev > rn2(20))
-                        await burnarmor(gy.youmonst || {});
+                        await burnarmor(game.youmonst);
                     if (lev > rn2(20)) {
-                        destroy_items(gy.youmonst || {}, AD_FIRE, orig_dmg);
+                        destroy_items(game.youmonst, AD_FIRE, orig_dmg);
                         await ignite_items(gs.invent || null);
                     }
                     if (dmg)
@@ -959,12 +960,13 @@ export async function hitmsg(mtmp, mattk) {
             default:
                 verb = 'hits';
         }
-        const prev = gh.hitmsg_prev;
-        again = (mtmp.m_id === gh.hitmsg_mid
-            && prev != null
-            && mattk._ai != null && prev._ai != null
-            && (mattk._ai | 0) === (prev._ai | 0) + 1
-            && mattk.aatyp === prev.aatyp) ? ' again' : '';
+        /* one shared "last attack" record with hitmsg_je/missmu_je (the
+         * attack-slot index stands in for C's struct attack pointer) */
+        again = (mtmp.m_id === gs._hitmsg_mid
+            && gs._hitmsg_prev_ai != null
+            && mattk._ai != null
+            && (mattk._ai | 0) === (gs._hitmsg_prev_ai | 0) + 1
+            && mattk.aatyp === gs._hitmsg_prev_aatyp) ? ' again' : '';
         await pline('%s %s%s%s', Monst_name, verb, again, punct);
     }
     /* C win/tty/topl.c update_topl() calls blocking more() at this exact
@@ -974,8 +976,9 @@ export async function hitmsg(mtmp, mattk) {
      * allmain reaches unmul() and prints a delayed-action completion message. */
     if (_topline_more_pending())
         await flush_pending_messages();
-    gh.hitmsg_mid = mtmp.m_id;
-    gh.hitmsg_prev = mattk;
+    gs._hitmsg_mid = mtmp.m_id;
+    gs._hitmsg_prev_ai = (mattk._ai != null ? (mattk._ai | 0) : null);
+    gs._hitmsg_prev_aatyp = mattk.aatyp;
 }
 
 /* C ref: mhitu.c hitmsg() — emit the "<Monster> bites/butts/..." message. */
@@ -1048,7 +1051,7 @@ function newMhm(dmg) {
 /* C ref: uhitm.c:3982 mhitm_ad_phys, mdef == &youmonst branch (no weapon,
  * non-HUGS hand-to-hand): emits hit message, sets M_ATTK_HIT, no RNG.
  * (Weapon/HUGS/corpse paths are deferred — see DEFERRED note.) */
-function mhitm_ad_phys_u(mtmp, mattk, mhm) {
+async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
     if (mattk.aatyp === AT_HUGS_) {
         const u = game.u || (game.u = {});
         if (!_kb_sticks(_hero_form_mndx_mu())) {
@@ -1085,8 +1088,19 @@ function mhitm_ad_phys_u(mtmp, mattk, mhm) {
          * mis-firing; left out (it is guarded in C too). */
         if (mhm.damage <= 0)
             mhm.damage = 1;
-        /* C:4067-4072 — a non-artifact weapon always prints the hit message. */
-        if (!(otmp.oartifact | 0)) {
+        /* C:4067-4072 — if (!otmp->oartifact || !artifact_hit(magr, mdef,
+         * otmp, &mhm->damage, gm.mhitu_dieroll)) hitmsg().  artifact_hit adds
+         * spec_dbon to the damage and may print its own message (e.g. the
+         * Staff of Aesculapius' "drains your life!" + losexp). */
+        let arti_special = false;
+        if (otmp.oartifact | 0) {
+            const ah = await artifact_hit(mtmp, null, otmp, mhm.damage,
+                                          (game.gm ||= {}).mhitu_dieroll,
+                                          (game.u?.umonnum ?? -1) | 0);
+            mhm.damage = ah.dmg;
+            arti_special = ah.special;
+        }
+        if (!(otmp.oartifact | 0) || !arti_special) {
             hitmsg_je(mtmp, mattk);
             mhm.hitflags |= M_ATTK_HIT;
         }
@@ -1390,13 +1404,25 @@ function hurtle_u(dx, dy, range) {
         }
         const bumpMon = uhitm_m_at(x, y);
         if (bumpMon) {
-            pline(`You bump into ${a_monnam_kb(bumpMon)}.`);
+            /* C dothrow.c:855-867 (noit_mhim is "it" for an unspotted monster) — a square whose shown glyph is neither a
+             * monster nor the remembered-unseen 'I' gives "You find %s by
+             * bumping into %s", then map_invisible() if !canspotmon().  A
+             * monster glyph is on screen exactly when canspotmon(). */
+            const _spot = !!canspotmon_disp(bumpMon);
+            if (!_spot && !glyph_is_invisible_at(x, y)) {
+                pline(`You find ${a_monnam_kb(bumpMon)} by bumping into it.`);
+            } else
+                pline(`You bump into ${a_monnam_kb(bumpMon)}.`);
+            if (!_spot)
+                map_invisible(x, y);
             return;
         }
         /* C dothrow.c:907-910 — move the hero one square. */
         u.ux = x; u.uy = y;
         newsym(ox, oy);
-        newsym(x, y);
+        /* dothrow.c:912 — vision_recalc's own tail newsym()s the hero's square; C has
+         * no second newsym(x, y) (it drew an extra hallucinated object glyph). */
+        vision_recalc_mu(1);
         rem -= 1;
     }
 }
@@ -1682,7 +1708,7 @@ async function steal(mtmp, objnambuf) {
     /* C:361 — remember the name NOW: stealing a worn item can drop the hero
      * into water, or remove the Eyes of the Overworld, either of which changes
      * whether the thief is visible by the time the message is printed. */
-    const Monnambuf = Some_Monnam_mu(mtmp);
+    let Monnambuf = Some_Monnam_mu(mtmp);
     const seen = canspotmon_disp(mtmp);
 
     /* C:365-367 — food being eaten may be used up but not yet removed from
@@ -1897,6 +1923,10 @@ async function steal(mtmp, objnambuf) {
         default:
             break; /* C impossible("Tried to steal a strange worn thing.") */
         }
+        /* C steal.c:559-562 — hero's blindfold might have just been stolen;
+         * if so, replace cached "Someone" or "Something" with Monnam. */
+        if (!seen && canspotmon_disp(mtmp))
+            Monnambuf = Monnam(mtmp);
     } else if (otmp.owornmask | 0) {
         const item = (otmp === g.uball && g.uchain) ? g.uchain : otmp;
         await worn_item_removal(mtmp, item);
@@ -1993,7 +2023,7 @@ async function stealamulet_mu(mtmp) {
 
 export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp) {
-        case AD_PHYS_: mhitm_ad_phys_u(mtmp, mattk, mhm); break;
+        case AD_PHYS_: await mhitm_ad_phys_u(mtmp, mattk, mhm); break;
         case AD_ELEC_: await mhitm_ad_elec_u(mtmp, mattk, mhm); break;
         /* C uhitm.c:4809-4811 — AD_DRST/AD_DRDX/AD_DRCO share mhitm_ad_drst. */
         case AD_DRST_: case AD_DRDX_: case AD_DRCO_:
@@ -2020,7 +2050,7 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         /* C uhitm.c:4813 `case AD_WRAP: mhitm_ad_wrap(...)` — see
          * mhitm_ad_wrap_u's header for what its absence cost. */
         case AD_WRAP_:
-            mhitm_ad_wrap_u(mtmp, mattk, mhm); break;
+            await mhitm_ad_wrap_u(mtmp, mattk, mhm); break;
         case AD_LEGS_MU:
             await mhitm_ad_legs_uh(mtmp, mattk, game.youmonst, mhm); break;
         /* C uhitm.c:4795 `case AD_COLD: mhitm_ad_cold(...)` — see
@@ -2341,7 +2371,7 @@ function mhitm_ad_stck_u(mtmp, mattk, mhm) {
     }
     void mhm;
 }
-function mhitm_ad_wrap_u(mtmp, mattk, mhm) {
+async function mhitm_ad_wrap_u(mtmp, mattk, mhm) {
     const u = game.u || (game.u = {});
     const pd_mndx = _hero_form_mndx_mu();
     const pa_mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
@@ -2361,6 +2391,26 @@ function mhitm_ad_wrap_u(mtmp, mattk, mhm) {
                     + `${coil ? 'coils' : 'swings'} itself around you!`);
             }
         } else if (u.ustuck === mtmp) {
+            /* uhitm.c:3387-3406: drown test comes BEFORE the crush message. */
+            if (is_pool_mu(mtmp.mx, mtmp.my) && !_Swimming_wrap()
+                && !_Amphibious_wrap() && !_Breathless_wrap()) {
+                const typ = game.level?.locations?.[mtmp.mx]?.[mtmp.my]?.typ | 0;
+                const moat = typ !== POOL_WRAP && !is_waterwall_mu(mtmp.mx, mtmp.my)
+                    && !Is_waterlevel_mu(game.u?.uz);
+                urgent_pline(`${Monnam(mtmp)} drowns you...`);
+                const svk = game.svk || (game.svk = {});
+                svk.killer ||= { id: 0, format: 0, name: '', next: null };
+                svk.killer.format = KILLED_BY_AN_MU;
+                svk.killer.name = `${moat ? 'moat' : 'pool of water'} by `
+                    + an(monPmname_mu((mtmp.mnum ?? mtmp.mndx ?? 0) | 0,
+                                      mtmp.female ? 1 : 0));
+                done(DROWNING_MU);
+                /* done() blocks here in C (wizard "Die?" prompt); drain now so
+                 * later text and mdamageu land after it. */
+                await drain_pending_death_in_place();
+            } else if (mattk.aatyp === AT_HUGS_) {
+                pline(`You are being crushed.`);
+            }
         } else {
             mhm.damage = 0;
             if (game.flags?.verbose) {
@@ -2374,6 +2424,24 @@ function mhitm_ad_wrap_u(mtmp, mattk, mhm) {
     } else {
         mhm.damage = 0;
     }
+}
+const POOL_WRAP = 16; /* const.js POOL */
+function _uprop_wrap(idx) {
+    const p = game.u?.uprops?.[idx];
+    return !!(p && (p.intrinsic || p.extrinsic) && !(p.blocked | 0));
+}
+function _Swimming_wrap() {
+    const st = game.u?.usteed;
+    return _uprop_wrap(51 /* SWIMMING */)
+        || !!(st && ((st.data?.mflags1 | 0) & 0x00000002 /* M1_SWIM */));
+}
+function _Amphibious_wrap() {
+    return _uprop_wrap(52 /* MAGICAL_BREATHING */)
+        || !!(((game.youmonst?.data?.mflags1 | 0) & 0x00000200 /* M1_AMPHIBIOUS */));
+}
+function _Breathless_wrap() {
+    return _uprop_wrap(52 /* MAGICAL_BREATHING */)
+        || !!(((game.youmonst?.data?.mflags1 | 0) & 0x00000400 /* M1_BREATHLESS */));
 }
 const M1_SLITHY_MU = 0x00080000, S_SNAKE_MU = 45, S_NAGA_MU = 40;
 function _failed_grab_u(mtmp, mattk) {
@@ -4303,7 +4371,7 @@ async function summonmu_mu(mtmp, youseeit = false) {
 /* Helpers this engulf port needs from other modules.  Aliased on import in the
  * file's own idiom (mon_nam_uh / bot_mu / ...) so the local file-scope names
  * above are not shadowed. */
-const A_CON_GU = 2; /* attrib.h A_CON */
+const A_CON_GU = 4; /* attrib.h A_CON (A_STR 0, A_INT 1, A_WIS 2, A_DEX 3, A_CON 4, A_CHA 5) */
 const AT_ENGL_MU = 11;
 const AD_DGST_GU = 26, AD_PHYS_GU = 0, AD_ACID_GU = 8, AD_BLND_GU = 11,
       AD_ELEC_GU = 6, AD_COLD_GU = 3, AD_FIRE_GU = 2, AD_DISE_GU = 33,
@@ -4427,6 +4495,16 @@ export async function expels_gu(mtmp, mndx, message) {
         if (_line) {
             game._resultMessage = '';
             await force_more_pages_mu(_line);
+            /* This more() comes from cls()'s display_nhwindow(WIN_MESSAGE) (a
+             * flush), not from update_topl, so topl.c:232-235's WIN_STOP is live
+             * for the very next pline -- there is no incoming owner message that
+             * "skip" was sampled for.  force_more() only ARMS the bit (the
+             * update_topl shape); promote it so "The trapper hits!" after an
+             * ESC'd "You get released!--More--" stays hidden. */
+            if (game._topl_win_stop_armed) {
+                game._topl_win_stop_armed = false;
+                game._topl_win_stop = true;
+            }
         }
     }
     /* C mon.c:3478-3480 — still inside unstuck(): `gv.vision_full_recalc = 1;

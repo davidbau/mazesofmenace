@@ -39,13 +39,13 @@ import {
 } from './makemon.js';
 import {
     undead_to_corpse, can_be_hatched, dead_species, copy_mextra,
-    zombie_form,
+    zombie_form, m_at, hideunder,
 } from './mon.js';
 import { oname, safe_oname, x_monnam } from './do_name.js';
 import { confers_luck, nartifact_exist, mk_artifact, permapoisoned } from './artifact.js';
 import {
     mons, is_male, is_female, is_neuter, is_human, verysmall, PM_LICHEN, monsterNames,
-    G_NOCORPSE, NON_PM as MON_NON_PM,
+    G_NOCORPSE, NON_PM as MON_NON_PM, hides_under,
 } from './monsters.js';
 import { PM_CLERIC, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD } from './generated/monsters_data.js';
 /* C mkobj.c mk_tt_object → topten.c tt_oname. Hoisted function, called
@@ -76,6 +76,7 @@ import {
     LS_OBJECT, LS_MONSTER, ONAME, has_oname, OMONST, has_omonst, OMID, has_omid,
     OMAILCMD, has_omailcmd, ONAME_SKIP_INVUPD, MON_DETACH,
     IRONBARS, ROOM, IS_ALTAR, Is_airlevel, Is_waterlevel,
+    OBJ_AT, u_at,
     MAX_OIL_IN_FLASK, nothing_happens, EPRI, PLNMSG_OBJ_GLOWS,
     A_NONE, ONAME_NO_FLAGS,
     In_quest, SPINACH_TIN, RANDOM_TIN,
@@ -1796,7 +1797,16 @@ export async function rot_corpse(obj) {
     obj.where = OBJ_FREE;
     obj.timed = 0;
     if (onFloor) {
-        // hideunder / mundetected expose deferred
+        // C dig.c:2177–2186 — a hiding monster may be exposed.
+        const mtmp = m_at(x, y);
+        if (mtmp && !OBJ_AT(x, y) && mtmp.mundetected
+            && hides_under(mtmp.data)) {
+            mtmp.mundetected = 0;
+        } else if (u_at(x, y)
+            && (game.u?.uundetected | 0)
+            && hides_under(game.youmonst?.data)) {
+            hideunder(game.youmonst);
+        }
         // Dynamic import avoids display.js ↔ mkobj.js cycle (objects_at).
         const { newsym } = await import('./display.js');
         newsym(x, y);
@@ -3179,13 +3189,8 @@ export function mergable(otmp, obj) {
     /* known may differ sight unseen (reconciled in merged()); else match */
     if (!!obj.known !== !!otmp.known && (Blind() || Hallucination()))
         return false;
-    // JS-only (D-2207): floor pickups merge into quivered/wielded stacks and
-    // addinv_core0 tries the quiver first (`:1098–1106`). Reject only a worn
-    // combine stack (`obj`): absorbing one needs merged()'s `:878–913`
-    // setworn/setnotworn slot fixup, which only fires on a worn `obj`
-    // (D-2324 owns lifting this gate). An unworn `obj` into a worn `otmp`
-    // needs no fixup on either side.
-    if ((obj.owornmask | 0)) return false;
+    /* C has no worn gate: a worn combine stack merges and merged()'s
+       :878-913 slot fixup (live below) re-seats wield/swap/quiver. */
     return true;
 }
 
@@ -3257,8 +3262,7 @@ export function merged(potmp, pobj) {
         if ((game.urole?.mnum | 0) !== (PM_CLERIC | 0)) discovered = true;
     }
     // C `:878–913` — `#adjust` merging wielded stacks: W_WEP > W_SWAPWEP >
-    // W_QUIVER; impossible() keeps otmp's mask otherwise. Reachable only
-    // once mergable() stops rejecting a worn `obj` (D-2324 owns that gate).
+    // W_QUIVER; impossible() keeps otmp's mask otherwise.
     if ((obj.owornmask | 0) && (otmp.where | 0) === OBJ_INVENT) {
         let wmask = (otmp.owornmask | 0) | (obj.owornmask | 0);
         if (wmask & W_WEP) {

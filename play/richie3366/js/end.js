@@ -2106,11 +2106,15 @@ export async function done(how) {
             return;
         }
     }
-    // C: skip bot when panicking / hangup / QUIT with done_stopprint
+    // C `:1036–1044` — skip status update when panicking, on hangup
+    // (done_hup; HANGUPHANDLING is defined, global.h:278), or QUIT with
+    // done_stopprint ('q' to "Really quit?"): all three bot flags FALSE.
     const stopprint = game.program_state?.done_stopprint | 0;
-    if (game.program_state?.panicking || (how === QUIT && stopprint)) {
+    if (game.program_state?.panicking || (game.program_state?.done_hup | 0)
+        || (how === QUIT && stopprint)) {
         flags.botl = false;
         flags.botlx = false;
+        flags.time_botl = false;
     } else {
         flags.botlx = true;
         await bot();

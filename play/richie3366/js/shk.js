@@ -28,7 +28,6 @@
 // inhistemple callers; mapseen_temple;
 // ACH_SHOP mapseen;
 // remaining SetVoice pick_pick / kops / pay-bill;
-// mongone full;
 // mnearto full (door yank uses enexto/rloc; home_shk still coord set);
 // losedogs make_happy_shoppers; paygd; M1_NOHEAD has_head;
 // get_obj_location buried (minvent via distant_name); sell-side quotes partial;
@@ -121,7 +120,7 @@ import {
 import { ATR_INVERSE } from './terminal.js';
 import { yn_function } from './getline.js';
 import { getpos } from './getpos.js';
-import { m_at, angry_guards, unique_corpstat, mnearto } from './mon.js';
+import { m_at, angry_guards, unique_corpstat, mnearto, mongone } from './mon.js';
 import { intrinsic_possible } from './eat.js';
 import { Soundeffect, se_alarm, SetVoice } from './sndprocs.js';
 import { livelog_printf } from './pline.js';
@@ -1985,7 +1984,6 @@ async function kops_gone(silent) {
         mtmp && (mtmp.mhp | 0) >= 1 && mtmp.data?.mlet === 'S_KOP'
     ));
     if (kops.length) {
-        const { mongone } = await import('./mon.js');
         for (const mtmp of kops) {
             if (canspotmon(mtmp)) cnt++;
             await mongone(mtmp);
@@ -5039,22 +5037,7 @@ function set_repo_loc(shkp) {
     game.repo.shopkeeper = shkp;
 }
 
-/** Remove nonlocal shk from fmon (full mongone deferred). */
-function mongone_nonlocal(mtmp) {
-    const fmon = game.fmon || [];
-    const i = fmon.indexOf(mtmp);
-    if (i >= 0) fmon.splice(i, 1);
-    // Leaving fmon leaves the grid (C level.monsters⟺fmon invariant;
-    // the cell would otherwise read back as a phantom occupant via
-    // m_at once movers grid-place). Full mongone still deferred.
-    if (game._level_monsters?.get(`${mtmp.mx},${mtmp.my}`) === mtmp)
-        game._level_monsters.delete(`${mtmp.mx},${mtmp.my}`);
-    const eshk = ESHK(mtmp);
-    if (eshk) {
-        const room = game.level?.rooms?.[((eshk.shoproom | 0) - ROOMOFFSET)];
-        if (room?.resident === mtmp) room.resident = null;
-    }
-}
+/* mongone_nonlocal: deleted — paybill calls live mongone (C shk.c:2567). */
 
 /**
  * C ref: shk.c inherits — first shk may take invent; pline possessions.
@@ -5225,7 +5208,8 @@ export async function paybill(croaked, silently) {
             numsk++;
             taken = (await inherits(m, numsk, croaked, silently)) || taken;
         }
-        if (!local) mongone_nonlocal(m);
+        // C shk.c:2567 — for bones: no shopless shk around.
+        if (!local) await mongone(m);
     }
     return taken;
 }

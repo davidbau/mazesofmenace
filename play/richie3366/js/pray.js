@@ -47,7 +47,7 @@ import {
     ART_STORMBRINGER,
     ART_VORPAL_BLADE,
 } from './generated/artifacts_data.js';
-import { m_at, wake_nearby } from './mon.js';
+import { m_at, wake_nearby, iter_mons } from './mon.js';
 import { revive, shieldeff_mon } from './zap.js';
 import {
     A_WIS, A_STR, A_CON, A_MAX, change_luck, adjattrib, adjalign, exercise,
@@ -2178,7 +2178,7 @@ async function consume_offering(otmp) {
         await pline(`Your sacrifice is consumed in a ${how}!`);
     }
     if (carried(otmp)) useup(otmp);
-    else useupf(otmp, 1);
+    else await useupf(otmp, 1);
     exercise(A_WIS, true);
 }
 
@@ -2283,7 +2283,7 @@ async function sacrifice_your_race(otmp, highaltar, altaralign) {
         adjalign(5);
     }
     if (carried(otmp)) useup(otmp);
-    else useupf(otmp, 1);
+    else await useupf(otmp, 1);
 }
 
 /**
@@ -2638,7 +2638,7 @@ async function offer_real_amulet(otmp, altaralign) {
     /* The final Test.  Did you win? */
     if (u.uamul === otmp) await Amulet_off();
     if (carried(otmp)) useup(otmp); /* well, it's gone now */
-    else useupf(otmp, 1);
+    else await useupf(otmp, 1);
 
     await pline(`You offer the Amulet of Yendor to ${a_gname()}...`);
 
@@ -2992,9 +2992,9 @@ export async function doturn() {
     let turn_undead_range = BOLT_LIM + Math.trunc((u.ulevel | 0) / 5);
     turn_undead_range *= turn_undead_range;
     const msgCnt = { cnt: 0 };
-    for (const mtmp of game.fmon || []) {
-        await maybe_turn_mon_iter(mtmp, turn_undead_range, msgCnt);
-    }
+    // C pray.c:2466 — iter_mons over maybe_turn_mon_iter (extra args
+    // ride a closure; the walk skips dead/offmap per C).
+    await iter_mons((mtmp) => maybe_turn_mon_iter(mtmp, turn_undead_range, msgCnt));
 
     nomul(-(5 - Math.trunc(((u.ulevel | 0) - 1) / 6)));
     game.multi_reason = 'trying to turn the monsters';

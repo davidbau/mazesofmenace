@@ -3290,7 +3290,7 @@ async function in_container(obj) {
         if (!floor_container) { // C `:2685–2686`
             useup(cont);
         } else if (obj_here_bag(cont, u.ux, u.uy)) { // C `:2687–2688`
-            useupf(cont, cont.quan);
+            await useupf(cont, cont.quan);
         } else { // C `:2690` (no live panic export — impossible)
             await impossible('in_container:  bag not found.');
         }
@@ -5099,7 +5099,7 @@ export async function tipcontainer(box) {
                 if (dstheld) {
                     useup(targetbox);
                 } else {
-                    useupf(targetbox, targetbox.quan);
+                    await useupf(targetbox, targetbox.quan);
                 }
                 targetbox = null;
                 nobj = null;

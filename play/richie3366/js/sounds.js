@@ -75,7 +75,7 @@ import { p_coaligned, priest_talk, inhistemple, temple_occupied } from './priest
 import { uhis } from './roles.js';
 import { halu_gname } from './pray.js';
 import { cansee, couldsee } from './vision.js';
-import { genus, perceives } from './mon.js';
+import { genus, perceives, wake_nearto } from './mon.js';
 import { doconsult } from './rumors.js';
 import { shk_chat, money_cnt, shop_object, price_quote } from './shk.js';
 import { is_weptool } from './wield.js';
@@ -619,23 +619,8 @@ export function tended_shop(sroom) {
 }
 
 /**
- * C ref: mon.c wake_nearto / wake_nearto_core (zombie/petcall deferred).
- * Clears msleeping + non-G_UNIQ STRAT_WAITMASK inside dist2 < distance.
- * wake_msg via dynamic import (avoids sounds↔mon↔uhitm static cycle).
+ * wake_nearto: deleted — live mon.js export (C mon.c:4402–4405).
  */
-async function wake_nearto(x, y, distance) {
-    const { wake_msg } = await import('./mon.js');
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null || (mtmp.mhp | 0) <= 0) continue;
-        if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
-            await wake_msg(mtmp, false);
-            mtmp.msleeping = 0;
-            if (!((mtmp.data?.geno | 0) & G_UNIQ) && mtmp.mstrategy != null) {
-                mtmp.mstrategy &= ~STRAT_WAITMASK;
-            }
-        }
-    }
-}
 
 async function noisy_shop(sroom) {
     const mtmp = sroom?.resident;

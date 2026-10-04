@@ -21,7 +21,7 @@ import { cansee, couldsee } from './vision.js';
 import { m_at, mon_nam, exclam } from './uhitm.js';
 import { Monnam } from './mcastu.js';
 import { find_mac } from './trap.js';
-import { resist, miss, dobuzz } from './zap.js';
+import { resist, miss, dobuzz, bhito } from './zap.js';
 import { The, vtense, an, xname_wand, simple_typename, xname } from './objnam.js';
 import { doname, singular } from './objnam.js';
 import { distmin } from './hacklib.js';
@@ -263,15 +263,6 @@ async function fhito_loc(obj, tx, ty, fhito) {
         hitanything += await fhito(otmp, obj);
     }
     return hitanything ? true : false;
-}
-
-async function bhito(otmp, zap) {
-    if (!otmp || !zap || (zap.otyp | 0) !== WAN_STRIKING)
-        return 0;
-    if ((otmp === zap) || (otmp.where | 0) !== OBJ_FLOOR)
-        return 0;
-    await breaks(otmp, otmp.ox | 0, otmp.oy | 0);
-    return 0;
 }
 
 async function mbhit(mon, range, fhitm, fhito, obj) {

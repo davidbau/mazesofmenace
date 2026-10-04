@@ -31,7 +31,7 @@ import {
     POTHIT_HERO_BASH, POTHIT_HERO_THROW,
     isok, xytodir, xdir, ydir,
     DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2, DIR_ERR,
-    something,
+    something, SHOPBASE, ROOMOFFSET,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS, POTION_CLASS,
@@ -39,7 +39,7 @@ import {
     objectNames, is_poisonable,
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM, Fumbling } from './attrib.js';
-import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks, check_capacity } from './hack.js';
+import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks, check_capacity, in_rooms, end_running } from './hack.js';
 import { ing_suffix, upstart, highc, strstri, dist2 } from './hacklib.js';
 import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
@@ -52,6 +52,7 @@ import {
 import {
     ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
     is_pole, drop_uswapwep, uwepgone, set_twoweap, setuwep,
+    can_twoweapon, untwoweapon,
 } from './wield.js';
 import { near_capacity, useup, useupall, hold_another_object, Blind, observe_object, freeinv, update_inventory } from './invent.js';
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
@@ -77,6 +78,7 @@ import {
     is_swimmer, slithy,
     amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, mon_hates_light, humanoid,
     is_human, is_orc, is_elf, always_hostile, is_unicorn, slimeproof,
+    is_longworm,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
     resists_ston, resists_acid, mon_hates_blessings, poly_when_stoned,
     is_watch,
@@ -96,7 +98,7 @@ import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
-import { mon_nam, l_monnam, Monnam, Adjmonnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix, hcolor, hliquid } from './do_name.js';
+import { mon_nam, l_monnam, Monnam, Adjmonnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix, hcolor, hliquid, YMonnam } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact, u_wield_art, permapoisoned, bare_artifactname } from './artifact.js';
 // imports.mjs --can uhitm.js timeout.js artifact_light: SAFE (hoisted).
 import { artifact_light } from './timeout.js';
@@ -121,10 +123,11 @@ import { Protection_from_shape_changers } from './were.js';
 import { merge_choice_invent } from './pickup.js';
 import { addinv } from './u_init.js';
 import { dropy, flooreffects } from './do.js';
-import { obfree } from './shk.js';
+import { obfree, dopay } from './shk.js';
+import { tended_shop } from './sounds.js';
 import { breaktest, release_camera_demon, mhurtle, stone_missile } from './dothrow.js';
 import { potionhit } from './potion.js';
-import { munslime, mon_adjust_speed } from './muse.js';
+import { munslime, mon_adjust_speed, munstone } from './muse.js';
 import { night } from './calendar.js';
 import { p_coaligned, ghod_hitsu } from './priest.js';
 import { Soundeffect } from './sndprocs.js';
@@ -159,6 +162,7 @@ const FIGURINE = objectNames.indexOf('FIGURINE');
 const CORPSE = objectNames.indexOf('CORPSE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_VLAD_THE_IMPALER = monsterNames.indexOf('PM_VLAD_THE_IMPALER');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 // C monflag.h — quest msound ranks (makemon.js:701–702 keeps the same values)
@@ -624,7 +628,7 @@ export function attacktype_fordmg(ptr, atyp, dtyp) {
 /**
  * C ref: mon.c corpse_chance — AT_BOOM then always-TRUE arms then !rn2(tmp).
  * magr + was_swallowed: contained boom inside an engulfer (gulpum D-1264).
- * Named omissions: Vlad/lich dust; gulpmu you-as-mdef boom.
+ * Vlad/lich dust live (C :3191–3196). Named: gulpmu you-as-mdef boom.
  */
 async function corpse_chance(mon, magr = null, was_swallowed = false) {
     const mdat = mon.data;
@@ -633,6 +637,13 @@ async function corpse_chance(mon, magr = null, was_swallowed = false) {
         && attacktype(game.mswallower.data, AT_ENGL)) {
         magr = game.mswallower;
         was_swallowed = true;
+    }
+    // C mon.c:3191–3196 — Vlad/liches crumble to dust, never a corpse.
+    if ((mdat.mndx ?? -1) === PM_VLAD_THE_IMPALER || mdat.mlet === 'S_LICH') {
+        if (cansee(mon.mx, mon.my) && !was_swallowed) {
+            await pline_mon(mon, `${s_suffix(Monnam(mon))} body crumbles into dust.`);
+        }
+        return false;
     }
     // Gas spores always explode upon death
     const slots = mdat.mattk;
@@ -732,9 +743,8 @@ async function xkilled_treasure_drop(mtmp, mdat, x, y, nomsg) {
  * corpse_chance → make_corpse, wasinside museum + spoteffects, newsym,
  * cleanup (murder/peaceful/unicorn luck), experience, quest/priest/tame/
  * peaceful adjalign arms, malign. C `#if 0` HARDFOUGHT livelog stays out.
- * Named omissions: wiz_kill (`wizcmds.c:315`, unported) — own coverage
- * row. (mhitm_ad_fire uhitm `:2529–2560` and mhitm_ad_rust uhitm `:2294`
- * are live via damageum_adtyping AD_FIRE / AD_RUST.)
+ * Callers mhitm_ad_rust/fire live in mhitm.js (C uhitm.c homes);
+ * wiz_kill wired (wizcmds.js).
  */
 export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     // C `:3485–3498` — flag unpack; sad_feeling saved and always cleared
@@ -818,15 +828,11 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         await mondead(mtmp);
     }
     game.disintegested = false; /* reset */
-    // C mon.c mon_leaving_level :2702-2703 via m_detach/mondead — death
-    // releases a holder before xkilled's lifesave check, on every dead path
-    // including lifesaved; never on the monstone path (:3286–3373 has no
-    // unstuck call). JS mondead covers only relobj/unmap/newsym, so wire
-    // unstuck here. Dynamic import: uhitm<->mhitu cycle idiom; call-time use.
-    if (!was_stoned) {
-        mtmp.mtrapped = 0;
-        await (await import('./mhitu.js')).unstuck(mtmp);
-    }
+    // C: holder release rides inside mondead → m_detach →
+    // mon_leaving_level :2702–2703 (live) — including mtrapped = 0.
+    // No direct call here: C mondead returns lifesaved/vamprises
+    // before m_detach, so a saved holder keeps its grip; a direct
+    // call would wrongly release on the lifesaved path.
     // C `:3553–3562` — lifesaved: stoned reset + unseen "Maybe not..."
     if ((mtmp.mhp | 0) >= 1) {
         if (game.context) game.context.stoned = false;
@@ -1249,9 +1255,7 @@ async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
  * silvermsg, silverobj. C's local `obj = 0` after useup is not
  * propagated (caller keeps its reference, as the ranged arm below notes);
  * useup/useupall/obfree still consume the object itself.
- * Named: muse.c munstone :2884 (monster eats a cure; treat as FALSE, the
- * mhitm.js do_stone_mon idiom) so petrify arms always minstapetrify;
- * hmon_hitmon_msg_silver :1876–1877 gate now wired in hmon_hitmon
+ * Named: hmon_hitmon_msg_silver :1876–1877 gate now wired in hmon_hitmon
  * (silvermsg/silverobj set here, same as the ranged arm);
  * get_dmg_bonus recalc gate :1447 now live
  * (hmon_hitmon_dmg_recalc), shade bump :1817 live (D-3253);
@@ -1295,8 +1299,8 @@ async function hmon_hitmon_misc_obj(mon, obj, ctx) {
             ctx.hittxt = true;
             await You(`hit ${mon_nam(mon)} with ${corpse_xname(obj, null, (obj.dknown | 0) ? CXN_PFX_THE : CXN_ARTICLE)}.`);
             observe_object(obj);
-            /* munstone named (see header): treat as FALSE */
-            await minstapetrify(mon, true);
+            if (!(await munstone(mon, true))) // C `:1160`
+                await minstapetrify(mon, true);
             if (resists_ston(mon)) break;
             /* note: hp may be <= 0 even if munstoned==TRUE */
             ctx.doreturn = true;
@@ -1334,8 +1338,8 @@ async function hmon_hitmon_misc_obj(mon, obj, ctx) {
             await pline(`Splat!  You hit ${mon_nam(mon)} with ${art} ${nm} egg${cnt !== 1 ? 's' : ''}!`);
             obj.known = 1; /* (not much point...) */
             useup_eggs();
-            /* munstone named (see header): treat as FALSE */
-            await minstapetrify(mon, true);
+            if (!(await munstone(mon, true))) // C egg arm
+                await minstapetrify(mon, true);
             if (resists_ston(mon)) break;
             ctx.doreturn = true;
             ctx.retval = (mon.mhp | 0) >= 1; /* !DEADMONSTER(mon) */
@@ -4936,43 +4940,61 @@ export async function do_attack(mtmp) {
 
     // C: is_safemon && !forcefight → try to avoid attacking pets/peacefuls
     if (is_safemon(mtmp) && !game.context?.forcefight) {
-        // Stormbringer path omitted
-        const loc = game.level?.at(game.u?.ux, game.u?.uy);
-        const obstructed = loc && IS_OBSTRUCTED(loc.typ);
-        // C: Punished || !rn2(7) || longworm || (obstructed && !passes_walls)
-        const foo = !!(game.u?.Punished || !rn2(7)
-            || (mtmp.wormno && /* longworm */ false)
-            || (obstructed /* && !passes_walls(mtmp) */));
-        // inshop check skipped when foo (no RNG); deferred when !foo
-        if (foo) {
-            // C: !travel && !run && canspotmon && isshk → dopay (deferred)
-            // C: monflee(mtmp, rnd(6), FALSE, FALSE) when tame. Does NOT
-            // clear context.move — turn still spends so moveloop runs
-            // movemon/distfleeck (D-0442). Then stop pline + end_running.
-            if (mtmp.mtame) {
-                // C: monflee(mtmp, rnd(6), FALSE, FALSE) — includes mon_track_clear
-                await monflee(mtmp, rnd(6), false, false);
+        // C `:459` — Stormbringer overrides safemon protection (falls
+        // through to the hostile path below).
+        if (!u_wield_art(ART_STORMBRINGER)) {
+            const loc = game.level?.at(game.u?.ux, game.u?.uy);
+            // C `:469–473` — Punished || !rn2(7) || longworm+tail ||
+            // (IS_OBSTRUCTED(here) && !passes_walls).
+            const foo = !!(game.u?.Punished || !rn2(7)
+                || (is_longworm(mdat) && mtmp.wormno)
+                || (loc && IS_OBSTRUCTED(loc.typ) && !passes_walls(mdat)));
+            // C `:478–484` — inshop scan only when !foo (no RNG either way).
+            let inshop = false;
+            if (!foo) {
+                const prooms = in_rooms(mtmp.mx, mtmp.my, SHOPBASE);
+                for (let i = 0; i < prooms.length; i++) {
+                    const rno = prooms.charCodeAt(i) - ROOMOFFSET;
+                    if (tended_shop(game.level?.rooms?.[rno])) {
+                        inshop = true;
+                        break;
+                    }
+                }
             }
-            // C: Strcpy(buf, y_monnam); buf[0]=highc; You("stop.  %s is in the way!", buf)
-            let buf = x_monnam_tame(mtmp);
-            if (buf.length) buf = buf.charAt(0).toUpperCase() + buf.slice(1);
-            await pline(`You stop.  ${buf} is in the way!`);
-            // C: end_running(TRUE) — clear run/travel/mv/multi
-            if (!game.context) game.context = {};
-            if (game.context.run) game.context.run = 0;
-            game.context.travel = 0;
-            game.context.travel1 = 0;
-            game.context.mv = 0;
-            if ((game.multi | 0) > 0) game.multi = 0;
-            return true;
+            if (inshop || foo) { // C `:489`
+                // C `:492–494` — shopkeeper payment (ECMD_TIME|dopay() is
+                // nonzero, so TRUE in this boolean function).
+                if (!game.context?.travel && !game.context?.run
+                    && canspotmon(mtmp) && mtmp.isshk) {
+                    await dopay();
+                    return true;
+                }
+                // C: monflee(mtmp, rnd(6), FALSE, FALSE) when tame. Does NOT
+                // clear context.move — turn still spends so moveloop runs
+                // movemon/distfleeck (D-0442). Then stop pline + end_running.
+                if (mtmp.mtame) {
+                    await monflee(mtmp, rnd(6), false, false);
+                }
+                // C: Strcpy(buf, y_monnam); buf[0]=highc (YMonnam);
+                // You("stop.  %s is in the way!", buf).
+                await pline(`You stop.  ${YMonnam(mtmp)} is in the way!`);
+                end_running(true); // C `:502`
+                return true;
+            } else if (mtmp.mfrozen || helpless(mtmp) // C `:503–504`
+                       || ((mdat?.mmove | 0) === 0 && rn2(6))) {
+                await pline(`${Monnam(mtmp)} doesn't seem to move!`); // C `:505`
+                end_running(true); // C `:506`
+                return true;
+            }
+            // C: else return FALSE → allow swap/displace.
+            return false;
         }
-        // Frozen / helpless / mmove==0 rn2(6) pline deferred
-        // C: else return FALSE → allow swap
-        return false;
     }
 
-    // Hostile / forcefight path — C do_attack → attack_checks then hitum
-    if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+    // Hostile / forcefight path — C do_attack → attack_checks then hitum.
+    // (No mstrategy clear here: C clears it only on the pacifist path
+    // `:529` and after hmonas/hitum `:573`, never when attack_checks or
+    // the capacity/overexertion gates abort.)
 
     // C: gb.bhitpos = u.ux+u.dx, u.uy+u.dy before attack_checks (hmonas contract)
     if (!game.bhitpos) game.bhitpos = {};
@@ -4982,7 +5004,9 @@ export async function do_attack(mtmp) {
     game.notonhead = (game.bhitpos.x !== (mtmp.mx | 0)
         || game.bhitpos.y !== (mtmp.my | 0));
 
-    // C: attack_checks before overexertion / hitum
+    // C: attack_checks before overexertion / hitum.
+    // C `:515` — possibly set in attack_checks, examined in known_hitum.
+    game.override_confirmation = false;
     if (await attack_checks(mtmp, game.u?.uwep || null)) {
         return true;
     }
@@ -5024,7 +5048,10 @@ export async function do_attack(mtmp) {
         return true; // fainted
     }
 
-    // C: u.twoweap && !can_twoweapon() → untwoweapon() deferred
+    // C `:537–538` — two-weaponing without the skill drops a weapon.
+    if (game.u?.twoweap && !(await can_twoweapon())) {
+        await untwoweapon();
+    }
 
     // C: gu.unweapon → first-melee "begin bashing" reminder (D-0892)
     if (game.gu?.unweapon) {

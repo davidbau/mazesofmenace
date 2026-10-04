@@ -310,6 +310,56 @@ essential in locating the Amulet of Yendor."`,
         },
     },
     Arc: {
+        /* dat/quest.lua Arc.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"Try your best, %p.  You cannot defeat me."`,
+                `"I shall rend the flesh from your body whilst you still breathe!"`,
+                `"First you, %p, then I shall destroy your mentor, %l."`,
+                `"Tiring yet, %p?  I draw my power from my master and cannot falter!"`,
+                `"I shall rend thy soul from thy body and consume it!"`,
+                `"You are far too %a -- it weakens you.  You shall die in this place."`,
+                `"%d has forsaken you!  You are lost now!"`,
+                `"A mere %r cannot hope to defeat me!"`,
+                `"If you are the best %l can send, I have nothing to fear."`,
+                `"Die %c!  I shall exhibit your carcass as a trophy."`,
+            ],
+        },
+        /* dat/quest.lua Arc.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"Beware, for %n is powerful and cunning."`,
+                `"To locate the entrance to %i, you must pass many traps."`,
+                `"A %nt may be vulnerable to attacks by magical cold."`,
+                `"Call upon %d when you encounter %n."`,
+                `"You must destroy %n.  It will pursue you otherwise."`,
+                `"%oC is a mighty talisman.  With it you can destroy %n."`,
+                `"Go forth with the blessings of %d."`,
+                `"I will have my %gP watch for your return."`,
+                `"Remember not to stray from the true %a path."`,
+                `"You may be able to sense %o when you are near."`,
+            ],
+        },
+        /* dat/quest.lua Arc.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"Did you see Lash LaRue in 'Song of Old Wyoming' the other night?"`,
+                `"Hey man, got any potions of hallucination for sale?"`,
+                `"I guess you are guaranteed to make full professor now."`,
+                `"So, what was worse, %n or your entrance exams?"`,
+                `"%oC is impressive, but nothing like the bones I dug up!"`,
+            ],
+        },
+        /* dat/quest.lua Arc.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"Did you see Lash LaRue in 'Song of Old Wyoming' the other night?"`,
+                `"Hey man, got any potions of hallucination for sale?"`,
+                `"Did you see the artifact %l brought back from the last dig?"`,
+                `"So what species do *you* think we evolved from?"`,
+                `"So you're %ls prize pupil!  I don't know what he sees in you."`,
+            ],
+        },
         /* dat/quest.lua:256-267 */
         firsttime: {
             output: 'text',
@@ -517,6 +567,56 @@ regain the Amulet of Yendor for %d?"`,
         },
     },
     Bar: {
+        /* dat/quest.lua Bar.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"My pets will dine on your carcass tonight!"`,
+                `"You are a sorry excuse for %ra."`,
+                `"Run while you can, %c.  My next spell will be your last."`,
+                `"I shall use your very skin to bind my next grimoire."`,
+                `"%d cannot protect you now.  Here, you die."`,
+                `"Your %a nature makes you weak.  You cannot defeat me."`,
+                `"Come, %c.  I shall kill you, then unleash the horde on your tribe."`,
+                `"Once you are dead, my horde shall finish off %l, and your tribe."`,
+                `"Fight, %c, or are you afraid of the mighty %n?"`,
+                `"You have failed, %c.  Now, my victory is complete."`,
+            ],
+        },
+        /* dat/quest.lua Bar.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"%nC is strong in the dark arts, but not immune to cold steel."`,
+                `"Remember that %n is a great sorcerer.  He lived in the time of Atlantis."`,
+                `"If you fail, %p, I will not be able to protect these people long."`,
+                `"To enter %i, you must be very stealthy.  The horde will be on guard."`,
+                `"Call upon %d in your time of need."`,
+                `"May %d protect you, and guide your steps."`,
+                `"If you can lay hands upon %o, carry it for good fortune."`,
+                `"I cannot stand against %ns sorcery.  But %d will help you."`,
+                `"Do not fear %n.  I know you can defeat %ni."`,
+                `"You have a great road to travel, %p, but only after you defeat %n."`,
+            ],
+        },
+        /* dat/quest.lua Bar.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"The battles here have been good -- our enemies' blood soaks the soil!"`,
+                `"Remember that glory is crushing your enemies beneath your feet!"`,
+                `"Times will be good again, now that the horde is vanquished."`,
+                `"You have brought our clan much honor in defeating %n."`,
+                `"You will be a worthy successor to %l."`,
+            ],
+        },
+        /* dat/quest.lua Bar.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"The battles here have been good -- our enemies' blood soaks the soil!"`,
+                `"Remember that glory is crushing your enemies beneath your feet!"`,
+                `"There has been little treasure to loot, since the horde arrived."`,
+                `"The horde is mighty in numbers, but they have little courage."`,
+                `"%lC is a strange one, but he has helped defend us."`,
+            ],
+        },
         /* dat/quest.lua:482-496 */
         firsttime: {
             output: 'text',
@@ -1013,6 +1113,56 @@ How goes your quest to recover the Amulet for %d?"`,
         },
     },
     Hea: {
+        /* dat/quest.lua Hea.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"They might as well give scalpels to wizards as to let you try to use %o!"`,
+                `"If I could strike %l, surrounded by %lj %gP, imagine what I can do to you here by yourself."`,
+                `"I will put my %Rp to work making a physic out of your ashes."`,
+                `"As we speak, Hades gathers your patients to join you."`,
+                `"After I'm done with you, I'll destroy %l as well."`,
+                `"You will have to kill me if you ever hope to leave this place."`,
+                `"I will impale your head on my caduceus for all to see."`,
+                `"There is no materia medica in your sack which will cure you of me!"`,
+                `"Do not fight too hard, I want your soul strong, not weakened!"`,
+                `"You should have stopped studying at veterinary."`,
+            ],
+        },
+        /* dat/quest.lua Hea.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"Remember, %p, to always wash your hands before operating."`,
+                `"%nC has no real magic of %nj own.  To this %nh is vulnerable."`,
+                `"If you have been true to %d, you can draw on the power of %o."`,
+                `"Bring with you antidotes for poisons."`,
+                `"Remember this, %n can twist the powers of %o to hurt instead of heal."`,
+                `"I have sent for Chiron, but I am afraid he will come too late."`,
+                `"Maybe when you return the snakes will once again begin to shed."`,
+                `"The plague grows worse as we speak.  Hurry, %p!"`,
+                `"Many times %n has caused trouble in these lands.  It is time that %nh was eradicated like the diseases %nh has caused."`,
+                `"With but one eye, %n should be easy to blind.  Remember this."`,
+            ],
+        },
+        /* dat/quest.lua Hea.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"Did you read that new treatise on the therapeutic use of leeches?"`,
+                `"Paint a red caduceus on your shield and monsters won't hit you."`,
+                `"How are you feeling?  Perhaps a good bleeding will improve your spirits."`,
+                `"Have you heard the absurd new theory that diseases are caused by microscopic organisms, and not ill humors?"`,
+                `"I see that you bring %o, now you can cure this plague!"`,
+            ],
+        },
+        /* dat/quest.lua Hea.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"Did you read that new treatise on the therapeutic use of leeches?"`,
+                `"Paint a red caduceus on your shield and monsters won't hit you."`,
+                `"I passed handwriting so they are demoting me a rank."`,
+                `"I've heard that even %l has not been able to cure Chiron."`,
+                `"We think %n has used %nj alchemists, and %o, to unleash a new disease we call 'the cold' on Gehennom."`,
+            ],
+        },
         /* dat/quest.lua:941-952 */
         firsttime: {
             output: 'text',
@@ -1234,6 +1384,56 @@ absence, yes?  How fare you upon your quest for the Amulet?"`,
         },
     },
     Kni: {
+        /* dat/quest.lua Kni.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"A mere %r can never withstand me!"`,
+                `"I shall kill thee now, and feast!"`,
+                `"Puny %c.  What manner of death dost thou wish?"`,
+                `"First thee, %p, then I shall feast upon %l."`,
+                `"Hah!  Thou hast failed, %r.  Now thou shalt die."`,
+                `"Die, %c.  Thou art as nothing against my might."`,
+                `"I shall suck the marrow from thy bones, %c."`,
+                `"Let's see...  Baked?  No.  Fried?  Nay.  Broiled?  Yea verily, that is the way I like my %c for dinner."`,
+                `"Thy strength waneth, %p.  The time of thy death draweth near."`,
+                `"Call upon thy precious %d, %p.  It shall not avail thee."`,
+            ],
+        },
+        /* dat/quest.lua Kni.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"Remember, %p, follow always the path of %d."`,
+                `"Though %n is verily a mighty foe, We have confidence in thy victory."`,
+                `"Beware, for %n hath surrounded %niself with hordes of foul creatures."`,
+                `"Great treasure, 'tis said, is hoarded in the lair of %n."`,
+                `"If thou possessest %o, %p, %ns magic shall therewith be thwarted."`,
+                `"The gates of %i are guarded by forces unseen, %p. Go carefully."`,
+                `"Return %o to Us quickly, %p."`,
+                `"Destroy %n, %p, else %H shall surely fall."`,
+                `"Call upon %d when thou art in need."`,
+                `"To find %i, thou must keep thy heart pure."`,
+            ],
+        },
+        /* dat/quest.lua Kni.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"Hail, %p!  Verily, thou lookest well."`,
+                `"So, %p, didst thou find %n in the fens near %i?"`,
+                `"Worthy %p, hast thou proven thy right purpose on the body of %n?"`,
+                `"Verily, %l could have no better champion, %p."`,
+                `"Hast thou indeed recovered %o?"`,
+            ],
+        },
+        /* dat/quest.lua Kni.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"Hail, %p!  Verily, thou lookest well."`,
+                `"There is word, %p, that %n hath been sighted in the fens near %i."`,
+                `"Thou art our only hope now, %p."`,
+                `"Verily, %l could have no better champion, %p."`,
+                `"Many brave %cP died when %n attacked."`,
+            ],
+        },
         goal_first: {
             output: 'text',
             synopsis: '[You %x the entrance to a cavern inside a hill.]',
@@ -1434,6 +1634,56 @@ may be the last time you stand before %l.`,
         },
     },
     Mon: {
+        /* dat/quest.lua Mon.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"Submit to my will, %c, and I shall spare you."`,
+                `"Your puny powers are no match for me, %c."`,
+                `"I shall have you turned into a zombie for my pleasure!"`,
+                `"Despair now, %r.  %d cannot help you."`,
+                `"I shall feast upon your soul for many days, %c."`,
+                `"Your death will be slow and painful.  That I promise!"`,
+                `"You cannot defeat %n, you fool.  I shall kill you now."`,
+                `"Your precious %lt will be my next victim."`,
+                `"I feel your powers failing you, %r.  You shall die now."`,
+                `"With %o, nothing can stand in my way."`,
+            ],
+        },
+        /* dat/quest.lua Mon.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"You can prevail, if you rely on %d."`,
+                `"Remember that %n has great magic at his command."`,
+                `"Be pure, my %S."`,
+                `"Beware, %i is surrounded by hordes of earth elementals."`,
+                `"Remember your studies, and you will prevail!"`,
+                `"Acquire and wear %o if you can.  They will aid you against %n."`,
+                `"Call upon %d when your need is greatest.  You will be answered."`,
+                `"Remember to use the elementals' strength against them!"`,
+                `"Do not lose faith, %p.  If you do so, %n will grow stronger."`,
+                `"Wear %o.  They will assist you in your efforts."`,
+            ],
+        },
+        /* dat/quest.lua Mon.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"Greetings, honorable %r.  It is good to see you again."`,
+                `"Ah, %p!  Our deepest gratitude for all of your help."`,
+                `"Greetings, %s.  Perhaps you will take some time to meditate with us?"`,
+                `"With this test behind you, may %d bring you enlightenment."`,
+                `"May %d be with you, %s."`,
+            ],
+        },
+        /* dat/quest.lua Mon.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"Greetings, honorable %r.  It is good to see you."`,
+                `"Ah, %p!  Surely you can help us in our hour of need."`,
+                `"Greetings, %s.  %lC has great need of your help."`,
+                `"Alas, it seems as if even %d has deserted us."`,
+                `"May %d be with you, %s."`,
+            ],
+        },
         /* dat/quest.lua:1388-1395 */
         firsttime: {
             output: 'text',
@@ -1632,6 +1882,56 @@ that brought you here."`,
         },
     },
     Pri: {
+        /* dat/quest.lua Pri.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"Submit to my will, %c, and I shall spare you."`,
+                `"Your puny powers are no match for me, %c."`,
+                `"I shall have you turned into a zombie for my pleasure!"`,
+                `"Despair now, %r.  %d cannot help you."`,
+                `"I shall feast upon your soul for many days, %c."`,
+                `"Your death will be slow and painful.  That I promise!"`,
+                `"You cannot defeat %n, you fool.  I shall kill you now."`,
+                `"Your precious %lt will be my next victim."`,
+                `"I feel your powers failing you, %r.  You shall die now."`,
+                `"With %o, nothing can stand in my way."`,
+            ],
+        },
+        /* dat/quest.lua Pri.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"You can prevail, if you rely on %d."`,
+                `"Remember that %n has great magic at his command."`,
+                `"Be pure, my %S."`,
+                `"Beware, %i is surrounded by a great graveyard."`,
+                `"You may be able to affect %n with magical cold."`,
+                `"Acquire and wear %o if you can.  It will aid you against %n."`,
+                `"Call upon %d when your need is greatest.  You will be answered."`,
+                `"The undead legions are weakest during the daylight hours."`,
+                `"Do not lose faith, %p.  If you do so, %n will grow stronger."`,
+                `"Wear %o.  It will assist you against the undead."`,
+            ],
+        },
+        /* dat/quest.lua Pri.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"Greetings, %r.  It is good to see you again."`,
+                `"Ah, %p!  Our deepest gratitude for all of your help."`,
+                `"Welcome back, %s!  With %o, no undead can stand against us."`,
+                `"Praise be to %d, for delivering us from %n."`,
+                `"May %d be with you, %s."`,
+            ],
+        },
+        /* dat/quest.lua Pri.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"Greetings, honored %r.  It is good to see you."`,
+                `"Ah, %p!  Surely you can help us in our hour of need."`,
+                `"Greetings, %s.  %lC has great need of your help."`,
+                `"Alas, it seems as if even %d has deserted us."`,
+                `"May %d be with you, %s."`,
+            ],
+        },
         /* dat/quest.lua:1601-1609 */
         firsttime: {
             output: 'text',
@@ -1843,6 +2143,56 @@ that brought you here."`,
         },
     },
     Ran: {
+        /* dat/quest.lua Ran.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"Your %d is nothing, %c.  You are mine now!"`,
+                `"Run away little %c!  You can never hope to defeat %n!"`,
+                `"My servants will rip you to shreds!"`,
+                `"I shall display your head as a trophy.  What do you think about that wall?"`,
+                `"I shall break your %ls grove, and destroy all the %gP!"`,
+                `"%d has abandoned you, %c.  You are doomed."`,
+                `"%rA?  %lC sends a mere %r against me?  Hah!"`,
+                `"%lC has failed, %c.  %oC will never leave here."`,
+                `"You really think you can defeat me, eh %c?  You are wrong!"`,
+                `"You weaken, %c.  I shall kill you now."`,
+            ],
+        },
+        /* dat/quest.lua Ran.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"It is rumored that the Forest and Mountain Centaurs have resolved their ancient feud and now band together against us."`,
+                `"%nC is strong, and very smart."`,
+                `"Use %o, when you find it.  It will help you survive to reach us."`,
+                `"Remember, let %d be your guide."`,
+                `"Call upon %d when you face %n. The very act of doing so will infuriate him, and give you advantage."`,
+                `"%n and his kind have always hated us."`,
+                `"We cannot hold the grove much longer, %p.  Hurry!"`,
+                `"To infiltrate %i, you must be very stealthy."`,
+                `"Remember that %n is a braggart.  Trust not what he says."`,
+                `"You can triumph, %p, if you trust in %d."`,
+            ],
+        },
+        /* dat/quest.lua Ran.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"%pC!  I have not seen you in many moons.  How do you fare?"`,
+                `"Birdsong has returned to the grove, surely this means you have defeated %n."`,
+                `"%lC seems to have regained some of his strength."`,
+                `"So, tell us how you entered %i, in case some new evil arises there."`,
+                `"Is that truly %o that I see you carrying?"`,
+            ],
+        },
+        /* dat/quest.lua Ran.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"%pC!  I have not seen you in many moons.  How do you fare?"`,
+                `"%nC continues to threaten the grove.  But we hold fast."`,
+                `"%lC is growing weak.  The magic required to defend the grove drains us."`,
+                `"Remember %i is hard to enter.  Beware the distraction of leatherwings."`,
+                `"We must regain %o.  Without it we will be overrun."`,
+            ],
+        },
         /* dat/quest.lua:1824-1831 */
         firsttime: {
             output: 'text',
@@ -2061,6 +2411,56 @@ of Yendor?"`,
         },
     },
     Rog: {
+        /* dat/quest.lua Rog.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"May I suggest a compromise.  Are you interested in gold or gems?"`,
+                `"Please don't force me to kill you."`,
+                `"Grim times are upon us all.  Will you not see reason?"`,
+                `"I knew %l, and you're no %lt, thankfully."`,
+                `"It is a shame that we are not meeting under more pleasant circumstances."`,
+                `"I was once like you are now, %p.  Believe in me -- our way is better."`,
+                `"Stay with me, and I will make you %os guardian."`,
+                `"When you return, with or without %o, %l will have you killed."`,
+                `"Do not be fooled; I am prepared to kill to defend %o."`,
+                `"I can reunite you with the Twain.  Oh, the stories you can swap."`,
+            ],
+        },
+        /* dat/quest.lua Rog.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"You don't seem to understand, %o isn't here so neither should you be!"`,
+                `"May %d curse you with lead fingers.  Get going!"`,
+                `"We don't have all year.  GET GOING!"`,
+                `"How would you like a scar necklace?  I'm just the jeweler to do it!"`,
+                `"Lazy S.O.B.  Maybe I should call up someone else..."`,
+                `"Maybe I should open your skull and see if my instructions are inside?"`,
+                `"This is not a task you can complete in the afterlife, you know."`,
+                `"Inside every living person is a dead person trying to get out, and I have your key!"`,
+                `"We're almost out of hell-hound chow, so why don't you just get moving!"`,
+                `"You know, %o isn't going to come when you whistle.  You must get it yourself."`,
+            ],
+        },
+        /* dat/quest.lua Rog.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"I was sure wrong about Lady Tyvefelle's house; I barely got away with my life and lost my lock pick in the process."`,
+                `"You're back?  Even the Twain don't come back anymore."`,
+                `"Can you spare an old cutpurse a zorkmid for some grog?"`,
+                `"Fritz tried to join the other side, and now he's hell-hound chow."`,
+                `"Be careful what you steal, I hear the boss has perfected turning rocks into worthless pieces of glass."`,
+            ],
+        },
+        /* dat/quest.lua Rog.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"I hear that Lady Tyvefelle's household is lightly guarded."`,
+                `"You're back?  Even the Twain don't come back anymore."`,
+                `"Can you spare an old cutpurse a zorkmid for some grog?"`,
+                `"Fritz tried to join the other side, and now he's hell-hound chow."`,
+                `"Be careful what you steal, I hear the boss has perfected turning rocks into worthless pieces of glass."`,
+            ],
+        },
         /* dat/quest.lua:2044-2049 */
         firsttime: {
             output: 'text',
@@ -2255,6 +2655,56 @@ evidently chickens out.
         },
     },
     Sam: {
+        /* dat/quest.lua Sam.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"Ahh, I finally meet the daimyo of the kyokaku!"`,
+                `"There is no honor for me in your death."`,
+                `"You know that I cannot resash my swords until they have killed."`,
+                `"Your presence only compounds the dishonor of %l in not coming %liself."`,
+                `"I will make tea with your hair and serve it to %l."`,
+                `"Your fear shows in your eyes, coward!"`,
+                `"I have not heard of you, %p-san; has your life been that unworthy?"`,
+                `"If you will not obey me, you will die."`,
+                `"Kneel now and make the two cuts of honor.  I will tell your %sp of your honorable death."`,
+                `"Your master was a poor teacher.  You will pay for his mistakes in your teaching."`,
+            ],
+        },
+        /* dat/quest.lua Sam.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"To defeat %n you must overcome the seven emotions: hate, adoration, joy, anxiety, anger, grief, and fear."`,
+                `"Remember your honor is my honor, you perform in my name."`,
+                `"I will go to the temple and burn incense for your safe return."`,
+                `"Sayonara."`,
+                `"There can be honor in defeat, but no gain."`,
+                `"Your kami must be strong in order to succeed."`,
+                `"You are indeed a worthy %R, but now you must be a worthy samurai."`,
+                `"If you fail, %n will be like a tai-fun on the land."`,
+                `"If you are truly %a, %d will listen."`,
+                `"Sharpen your swords and your wits for the task before you."`,
+            ],
+        },
+        /* dat/quest.lua Sam.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"Come, join us in celebrating with some sake."`,
+                `"Ikaga desu ka?"`,
+                `"You have brought our clan and %l much honor."`,
+                `"Please %r, sit for a while and tell us how you overcame the Ninja."`,
+                `"%lC still lives!  You have saved us from becoming ronin."`,
+            ],
+        },
+        /* dat/quest.lua Sam.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"To succeed, you must walk like a butterfly on the wind."`,
+                `"Ikaga desu ka?"`,
+                `"I fear for The Land of The Gods."`,
+                `"%nC has hired the Ninja -- be careful."`,
+                `"If %o is not returned, we will all be ronin."`,
+            ],
+        },
         /* dat/quest.lua:2260-2272 */
         firsttime: {
             output: 'text',
@@ -2474,6 +2924,56 @@ the kami of %H before you return again.`,
         },
     },
     Tou: {
+        /* dat/quest.lua Tou.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"I defeated %l and I will defeat you, %p."`,
+                `"Where is %d now!  You must realize no one can help you here."`,
+                `"Beg for mercy now and I may be lenient on you."`,
+                `"If you were not so %a, you might have stood a chance."`,
+                `"Vengeance is mine at last, %p."`,
+                `"I only wish that %l had a more worthy %r to send against me."`,
+                `"With %o in my possession you cannot hope to defeat me."`,
+                `"%nC has never been defeated, NEVER!"`,
+                `"Are you truly the best %H has to send against me?  I pity %l."`,
+                `"How do you spell %p?  I want to ensure the marker on your grave is correct as a warning to your %sp."`,
+            ],
+        },
+        /* dat/quest.lua Tou.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"Do not be fooled by the false promises of %n."`,
+                `"To enter %i you must pass many traps."`,
+                `"If you do not return with %o, your quest will be in vain."`,
+                `"Do not be afraid to call upon %d if you truly need help."`,
+                `"If you do not destroy %n, he will follow you back here!"`,
+                `"Take %o from %n and you may be able to defeat him."`,
+                `"You must hurry, %p!"`,
+                `"You are like %Sa to me, %p.  Do not let me down."`,
+                `"If you are %a at all times you may succeed, %p."`,
+                `"Let all who meet you on your journey know that you are on a quest for %l and grant safe passage."`,
+            ],
+        },
+        /* dat/quest.lua Tou.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"Gehennom on 5 zorkmids a day -- more like 500 a day if you ask me."`,
+                `"Do you know where I could find some nice postcards of The Gnomish Mines?"`,
+                `"Have you tried the weird toilets?"`,
+                `"If you stick around, I'll show you the pictures from my latest trip."`,
+                `"Did you bring me back any souvenirs?"`,
+            ],
+        },
+        /* dat/quest.lua Tou.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"Gehennom on 5 zorkmids a day -- more like 500 a day if you ask me."`,
+                `"Do you know where I could find some nice postcards of The Gnomish Mines?"`,
+                `"Have you tried the weird toilets?"`,
+                `"Don't stay at the Inn, I hear the food is terrible and it has rats."`,
+                `"They told me that this was the off season!"`,
+            ],
+        },
         /* dat/quest.lua:2492-2502 */
         firsttime: {
             output: 'text',
@@ -2682,6 +3182,56 @@ Tell me of your adventures in quest of the Amulet of Yendor."`,
         },
     },
     Val: {
+        /* dat/quest.lua Val.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"I am your death, %c."`,
+                `"You cannot prevail, %r.  I have foreseen your every move."`,
+                `"With you out of the way, Valhalla will be mine for the taking."`,
+                `"I killed scores of %ds best when I took %o. Do you really think that one %c can stand against me?"`,
+                `"Who bears the souls of %cP to Valhalla, %r?"`,
+                `"No, %d cannot help you here."`,
+                `"Some instrument of %d you are, %p.  You are a weakling!"`,
+                `"Never have I seen %ca so clumsy in battle."`,
+                `"You die now, little %s."`,
+                `"Your body I destroy now, your soul when my hordes overrun Valhalla!"`,
+            ],
+        },
+        /* dat/quest.lua Val.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"Go with the blessings of %d."`,
+                `"Call upon %d when you are in need."`,
+                `"Use %o if you can.  It will protect you."`,
+                `"Magical cold is very effective against %n."`,
+                `"To face %n, you will need to be immune to fire."`,
+                `"May %d strengthen your sword-arm."`,
+                `"Trust in %d.  He will not desert you."`,
+                `"It becomes more likely that Ragnarok will come with every passing moment. You must hurry, %p."`,
+                `"If %n can master %o, he will be powerful enough to face %d far earlier than is fated.  This must not be!"`,
+                `"Remember your training, %p.  You can succeed."`,
+            ],
+        },
+        /* dat/quest.lua Val.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"Hail, and well met, brave %c."`,
+                `"May %d guide your steps, %p."`,
+                `"%lC told us you had succeeded!"`,
+                `"You recovered %o just in time, %p."`,
+                `"Hail %d, for delivering %o back to us."`,
+            ],
+        },
+        /* dat/quest.lua Val.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"Hail, and well met, brave %c."`,
+                `"May %d guide your steps, %p."`,
+                `"%lC weakens.  Without %o, her foresight is dim."`,
+                `"You must hurry, %p, else Ragnarok may well come."`,
+                `"I would deal with this foul %n myself, but %d forbids it."`,
+            ],
+        },
         /* dat/quest.lua:2713-2723 */
         firsttime: {
             output: 'text',
@@ -2879,6 +3429,56 @@ your search for the Amulet as I have wished.  How do you fare?"`,
         },
     },
     Wiz: {
+        /* dat/quest.lua Wiz.discourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        discourage: {
+            lines: [
+                `"Your puny powers are no match for me, fool!"`,
+                `"When you are defeated, your torment will last for a thousand years."`,
+                `"After your downfall, %p, I shall devour %l for dessert!"`,
+                `"Are you ready yet to beg for mercy?  I could be lenient..."`,
+                `"Your soul shall join the enslaved multitude I command!"`,
+                `"Your lack of will is evident, and you shall die as a result."`,
+                `"Your faith in %d is for naught!  Come, submit to me now!"`,
+                `"A mere %r is nothing compared to my skill!"`,
+                `"So, you are the best hope of %l?  How droll."`,
+                `"Feel my power, %c!  My victory is imminent!"`,
+            ],
+        },
+        /* dat/quest.lua Wiz.encourage — array form: rn2(nelems)+1 (questpgr.c:566) */
+        encourage: {
+            lines: [
+                `"Beware, for %n is immune to most magical attacks."`,
+                `"To enter %i you must pass many traps."`,
+                `"%nC may be vulnerable to physical attacks."`,
+                `"%d will come to your aid when you call."`,
+                `"You must utterly destroy %n.  He will pursue you otherwise."`,
+                `"%oC is a mighty artifact.  With it you can destroy %n."`,
+                `"Go forth with the blessings of %d."`,
+                `"I will have my %gP watch for your return."`,
+                `"Feel free to take any items in that chest that might aid you."`,
+                `"You will know when %o is near.  Proceed with care!"`,
+            ],
+        },
+        /* dat/quest.lua Wiz.guardtalk_after — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_after: {
+            lines: [
+                `"I have some eye of newt to trade, do you have a spare blind-worm's sting?"`,
+                `"The magic portal now seems like it will remain stable for quite some time."`,
+                `"Have you noticed how much stronger %l is since %o was recovered?"`,
+                `"Thank %d!  We weren't positive you would defeat %n."`,
+                `"I, too, will venture into the world, because %n was but one of many evils to be vanquished."`,
+            ],
+        },
+        /* dat/quest.lua Wiz.guardtalk_before — array form: rn2(nelems)+1 (questpgr.c:566) */
+        guardtalk_before: {
+            lines: [
+                `"Would you happen to have some eye of newt in that overstuffed pack, %s?"`,
+                `"Ah, the spell to create the magic portal worked.  Outstanding!"`,
+                `"Hurry!  %lC may not survive that casting of the portal spell!"`,
+                `"The spells of %n were just too powerful for us to withstand."`,
+                `"I, too, will venture into the world, because %n is but one of many evils to be vanquished."`,
+            ],
+        },
         /* dat/quest.lua:2930-2942 */
         firsttime: {
             output: 'text',

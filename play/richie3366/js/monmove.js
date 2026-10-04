@@ -48,7 +48,7 @@ import {
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG, TRAPPED_DOOR,
     EDOG, has_edog, ACCFOOD, MANFOOD, Is_container,
-    NC_SHOW_MSG, NO_NC_FLAGS,
+    NC_SHOW_MSG, NO_NC_FLAGS, PLNMSG_HIDE_UNDER,
 } from './const.js';
 import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms } from './hack.js';
 import {
@@ -1428,9 +1428,10 @@ export async function msg_mon_movement(mtmp, omx, omy) {
 /**
  * C ref: mon.c hideunder — set mundetected under object / pool for eels.
  * You_see "%s %s under %s" when canseemon before hide (forces --More--
- * when prior topline cannot append), after set_msg_xy. Named omissions:
- * youmonst path (is_u Stone_resistance / u.uundetected; mon.js covers
- * the sync half); PLNMSG_HIDE_UNDER / last_hider.
+ * when prior topline cannot append), after set_msg_xy; last-hide
+ * record (iflags.last_msg + gl.last_hider) live. Named: youmonst
+ * path (is_u Stone_resistance / u.uundetected; mon.js covers it —
+ * postmov routes the hero to hideunderHero).
  */
 async function hideunder(mtmp) {
     if (!mtmp?.mx) return false;
@@ -1489,6 +1490,11 @@ async function hideunder(mtmp) {
         if (!locomo) locomo = locomotion(mtmp.data, 'hide');
         set_msg_xy(mtmp.mx | 0, mtmp.my | 0);
         await You_see('%s %s under %s.', seenmon, locomo, seenobj);
+        // C mon.c:4793–4794 — last-hide record (mattackm's notice arm
+        // reads iflags.last_msg + gl.last_hider, mhitm.c:343–345).
+        if (!game.iflags) game.iflags = {};
+        game.iflags.last_msg = PLNMSG_HIDE_UNDER;
+        game.last_hider = mtmp.m_id | 0;
     }
     if (undetected !== oldundetctd) newsym(x, y);
     return undetected;

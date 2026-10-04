@@ -75,7 +75,7 @@ import {
 import { same_race, cantvomit, defended, attacktype } from './mondata.js';
 import { were_beastie, set_ulycn, you_unwere } from './were.js';
 import { monflee } from './monmove.js';
-import { rescham } from './mon.js';
+import { rescham, iter_mons } from './mon.js';
 import { set_occupation, can_reach_floor } from './engrave.js';
 import {
     OBJ_FREE, OBJ_INVENT,
@@ -1416,7 +1416,7 @@ async function fprefx(otmp) {
     if (otmp.otyp === EGG) {
         if ((otmp.corpsenm | 0) === PM_PYROLISK) {
             if (carried(otmp)) useup(otmp);
-            else useupf(otmp, 1);
+            else await useupf(otmp, 1);
             await explode(u.ux | 0, u.uy | 0, -11, d(3, 6), 0, EXPL_FIERY);
             return false;
         } else if ((((game.moves | 0) - (otmp.age | 0)) | 0) > 2 * 400) {
@@ -1466,9 +1466,8 @@ async function fprefx(otmp) {
             await make_vomiting(
                 rn1(game.context.victual.reqtime | 0, 5), false);
         } else {
-            for (const mtmp of game.fmon || []) {
-                await garlic_breath(mtmp);
-            }
+            // C eat.c:2167 — iter_mons(garlic_breath): dead/offmap skip.
+            await iter_mons(garlic_breath);
             // FALLTHROUGH to default
             feedback = true;
         }
@@ -2016,7 +2015,7 @@ async function cpostfx(pm) {
             await You_feel('momentarily different.');
         } else {
             if (game.context?.tin?.tin) {
-                use_up_tin(game.context.tin.tin);
+                await use_up_tin(game.context.tin.tin);
                 await lesshungry(200 + (metallivorous(hero_form_data()) ? 5 : 0));
             }
             if ((pm | 0) === PM_GENETIC_ENGINEER) {
@@ -2280,7 +2279,7 @@ async function done_eating(message) {
         await fpostfx(piece);
     }
     if (carried(piece)) useup(piece);
-    else useupf(piece, 1);
+    else await useupf(piece, 1);
     if (game.context) game.context.victual = {};
 }
 
@@ -2514,7 +2513,7 @@ export async function eatcorpse(otmp) {
             } was tainted!`,
         );
         if (carried(otmp)) useup(otmp);
-        else useupf(otmp, 1);
+        else await useupf(otmp, 1);
         return 2;
     } else if (acidic(ptr) && !(game.u?.HAcid_resistance || game.u?.EAcid_resistance
         || game.u?.Acid_resistance)) {
@@ -2597,7 +2596,7 @@ export async function eatcorpse(otmp) {
         if (!(cm?.cnutrit)) {
             if (!retcode) await pline('The corpse rots away completely.');
             if (carried(otmp)) useup(otmp);
-            else useupf(otmp, 1);
+            else await useupf(otmp, 1);
             return 2;
         }
         if (!retcode) consume_oeaten(otmp, 2); /* oeaten >>= 2 */
@@ -2797,9 +2796,9 @@ async function costly_tin(alter_type) {
 }
 
 /** C ref: eat.c use_up_tin — invent useup or floor useupf; clear tin ctx. */
-function use_up_tin(tin) {
+async function use_up_tin(tin) {
     if (carried(tin)) useup(tin);
-    else useupf(tin, 1);
+    else await useupf(tin, 1);
     if (!game.context) game.context = {};
     game.context.tin = { tin: null, o_id: 0, reqtime: 0, usedtime: 0 };
 }
@@ -3177,7 +3176,7 @@ async function eatspecial() {
 
     if (otmp.oclass === COIN_CLASS) {
         if (carried(otmp)) useupall(otmp);
-        else useupf(otmp, otmp.quan || 1);
+        else await useupf(otmp, otmp.quan || 1);
         vault_gd_watching(GD_EATGOLD);
         return;
     }
@@ -3233,7 +3232,7 @@ async function eatspecial() {
     } else if (carried(otmp)) {
         useup(otmp);
     } else {
-        useupf(otmp, 1);
+        await useupf(otmp, 1);
     }
 }
 
@@ -3603,7 +3602,7 @@ async function cprefx(pm) {
         }
         if (!Stone_resistance && !polyed) {
             if (game.context?.tin?.tin) {
-                use_up_tin(game.context.tin.tin);
+                await use_up_tin(game.context.tin.tin);
             }
             if (!game.killer) game.killer = { name: '', format: 0 };
             const meat = pmnames[pm]?.[NEUTRAL] || 'strange';
@@ -3690,7 +3689,7 @@ async function consume_tin(mesg) {
     if (tin.otrapped || (tin.cursed && r !== HOMEMADE_TIN && !rn2(8))) {
         await b_trapped('tin', NO_PART);
         tin = await costly_tin(COST_DSTROY);
-        use_up_tin(tin);
+        await use_up_tin(tin);
         return;
     }
 
@@ -3710,7 +3709,7 @@ async function consume_tin(mesg) {
             observe_object(tin);
             tin.known = 1;
             tin = await costly_tin(COST_OPEN);
-            use_up_tin(tin);
+            await use_up_tin(tin);
             if (always_eat) await lesshungry(5);
             return;
         }
@@ -3745,7 +3744,7 @@ async function consume_tin(mesg) {
                     tin.known = 1;
                 }
                 tin = await costly_tin(COST_OPEN);
-                use_up_tin(tin);
+                await use_up_tin(tin);
                 return;
             }
         }
@@ -3774,7 +3773,7 @@ async function consume_tin(mesg) {
                 if (nutamt > cnut) nutamt = cnut;
             }
             if (always_eat) nutamt += 5;
-            use_up_tin(tin);
+            await use_up_tin(tin);
             tin = null;
             await lesshungry(nutamt);
         }
@@ -3810,7 +3809,7 @@ async function consume_tin(mesg) {
                 await pline('You discard the open tin.');
             }
             tin = await costly_tin(COST_OPEN);
-            use_up_tin(tin);
+            await use_up_tin(tin);
             return;
         }
 
@@ -3831,11 +3830,11 @@ async function consume_tin(mesg) {
             : !tin.cursed ? (400 + rnd(200))
                 : (200 + rnd(400));
         if (always_eat) nutamt += 5;
-        use_up_tin(tin);
+        await use_up_tin(tin);
         tin = null;
         await lesshungry(nutamt);
     }
-    if (tin) use_up_tin(tin);
+    if (tin) await use_up_tin(tin);
 }
 
 /**

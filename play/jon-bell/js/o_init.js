@@ -11,6 +11,13 @@ import { exercise } from './attrib.js';
 import { gem_learned } from './shk.js';
 import { MKOBJ_OC_PROB, MKOBJ_SVB_BASES, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_OC_CLASS, MKOBJ_OC_COLOR, } from './mkobj_data.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+
+/* Pre-shuffle objects[].oc_material.  MKOBJ_OC_MATERIAL stands in for C's
+ * global objects[] array, which init_objects() mutates in place (o_init.c:141-146),
+ * so every `MKOBJ_OC_MATERIAL[otyp]` read in js/ sees the shuffled value.
+ * Reset from this copy on each init so a second game in one process starts
+ * from the canonical table. */
+const _PRISTINE_OC_MATERIAL = Uint8Array.from(MKOBJ_OC_MATERIAL);
 import { SHUFFLED_RANGES, WEAPON_TABLE, FIXED_DESCRS } from './o_init_data.js';
 import { OC_NAME } from './oc_name_data.js';
 /* C objects[].oc_descr — OBJ_DESCR(objects[i]) presence is what o_init.c's
@@ -264,6 +271,7 @@ export function shuffle_all() {
      * game is made of — themerms.lua's 'Water-surrounded vault' does exactly
      * that (`itmcls["material"] == "glass"`). */
     g._objMaterials = g._objMaterials || {};
+    MKOBJ_OC_MATERIAL.set(_PRISTINE_OC_MATERIAL);
     /* Runtime objects[].oc_descr_idx is also consumed by glyphs.c when it
      * transfers object customizations.  Keep the numeric permutation beside
      * the human-readable description map; equal description strings (gems)
@@ -292,8 +300,10 @@ export function shuffle_all() {
             /* oc_color follows oc_descr_idx (C o_init.c:137-139). */
             g._objColors[rng.base + k] = MKOBJ_OC_COLOR[rng.base + descrIdx[k]];
             /* oc_material likewise, but only when domaterial (C o_init.c:141-146). */
-            if (DOMATERIAL.has(key))
-                g._objMaterials[rng.base + k] = MKOBJ_OC_MATERIAL[rng.base + descrIdx[k]];
+            if (DOMATERIAL.has(key)) {
+                g._objMaterials[rng.base + k] = _PRISTINE_OC_MATERIAL[rng.base + descrIdx[k]];
+                MKOBJ_OC_MATERIAL[rng.base + k] = g._objMaterials[rng.base + k];
+            }
             if (key === 'RING')
                 g._objTough[rng.base + k] = RING_CANONICAL_TOUGH[descrIdx[k]];
         }

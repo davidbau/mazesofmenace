@@ -3256,13 +3256,17 @@ export function Is_botlevel(uz) {
     const dun = game?.dungeons?.[lev.dnum];
     return !!dun && lev.dlevel === dun.num_dunlevs;
 }
-/** C ref: dungeon.c Can_dig_down — !hardfloor && !botlevel && !invocation. */
+/** C ref: dungeon.c Can_dig_down `:1649–1654` — !hardfloor && !botlevel && !invocation. */
 export function Can_dig_down(uz) {
     const lev = uz ?? game?.u?.uz;
     if (!lev) return false;
     if (game?.level?.flags?.hardfloor) return false;
     if (Is_botlevel(lev)) return false;
-    // Invocation_lev deferred — ordinary Dungeons of Doom never matches
+    /* C `:1653` !Invocation_lev(lev) — In_hell && deepest-1 (dungeon.c
+       :2017–2021). Inlined like the other dungeon.h macros here: const.js
+       is the bottom layer and cannot import dungeon.js. */
+    const dun = game?.dungeons?.[lev.dnum];
+    if (dun?.flags?.hellish && lev.dlevel === (dun.num_dunlevs | 0) - 1) return false;
     return true;
 }
 /** C ref: dungeon.c Can_fall_thru — dig-down or castle stronghold. */

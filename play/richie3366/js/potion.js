@@ -144,7 +144,8 @@ import {
     POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, UNCHANGING, ACID_RES,
     POISON_RES,
     M_SEEN_SLEEP, FIXED_ABIL, ANTIMAGIC, SHOPBASE, STRAT_WAITFORU,
-    M_AP_FURNITURE, M_AP_OBJECT, BURNING_OIL, LOST_EXPLODING, EXPL_FIERY,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE,
+    BURNING_OIL, LOST_EXPLODING, EXPL_FIERY,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, COST_NUTRLZ,
     COST_UNCURS, COST_UNBLSS, PLNMSG_OBJ_GLOWS,
     P_CROSSBOW, P_NONE, FINGER, FOOT, LL_CONDUCT,
@@ -200,6 +201,8 @@ import { uhis } from './roles.js';
 import { hard_helmet } from './do_wear.js';
 import { strange_feeling } from './detect.js';
 import { In_W_tower, has_ceiling, on_level, ledger_no } from './dungeon.js';
+
+const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
@@ -961,8 +964,8 @@ export async function make_stunned(xtime, talk) {
 }
 
 /**
- * C ref: potion.c make_slimed — Slimed TIMEOUT; clear delayed SLIMED killer.
- * Named omissions: U_AP_TYPE green-slime fake appearance clear.
+ * C ref: potion.c make_slimed — Slimed TIMEOUT; clear delayed SLIMED killer;
+ * slime-cure clears the late-countdown green-slime fake appearance.
  */
 export async function make_slimed(xtime, msg) {
     const u = game.u || (game.u = {});
@@ -981,7 +984,14 @@ export async function make_slimed(xtime, msg) {
     }
     if (!(u.Slimed & TIMEOUT)) {
         dealloc_killer(find_delayed_killer(SLIMED));
-        // U_AP_TYPE green-slime appearance clear deferred
+        // C `:210–216` — fake appearance is set late in the
+        // turn-to-slime countdown; clear it on cure.
+        const ym = game.youmonst;
+        if (ym && M_AP_TYPE(ym) === M_AP_MONSTER
+            && (ym.mappearance | 0) === PM_GREEN_SLIME) {
+            ym.m_ap_type = M_AP_NOTHING;
+            ym.mappearance = 0;
+        }
     }
 }
 

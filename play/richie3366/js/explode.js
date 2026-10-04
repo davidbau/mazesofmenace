@@ -43,7 +43,7 @@ import {
     canspotmon, Hallucination, impossible,
 } from './display.js';
 import { cansee } from './vision.js';
-import { m_at, setmangry, seemimic, hideunder } from './mon.js';
+import { m_at, setmangry, seemimic, hideunder, wake_nearto } from './mon.js';
 import { Monnam, rndmonnam, s_suffix } from './do_name.js';
 import { strstri, dist2 } from './hacklib.js';
 import {
@@ -332,21 +332,7 @@ export async function adtyp_to_expltype(adtyp) {
     }
 }
 
-/** C ref: mon.c wake_nearto — clear sleep in radius (no RNG). */
-function wake_nearto(x, y, distance) {
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null) continue;
-        const dx = (mtmp.mx | 0) - (x | 0);
-        const dy = (mtmp.my | 0) - (y | 0);
-        if (distance === 0 || dx * dx + dy * dy < distance) {
-            mtmp.msleeping = 0;
-            const geno = mtmp.data?.geno | 0;
-            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
-                mtmp.mstrategy &= ~STRAT_WAITMASK;
-            }
-        }
-    }
-}
+/* wake_nearto: deleted — live mon.js export (C mon.c:4402–4405). */
 
 function Role_if(pm) {
     return game.urole?.mnum === pm;
@@ -802,7 +788,7 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
     let i = dam * dam;
     if (i < 50) i = 50;
     if (inside_engulfer) i = Math.trunc((i + 3) / 4);
-    wake_nearto(x, y, i);
+    await wake_nearto(x, y, i);
 }
 
 /**

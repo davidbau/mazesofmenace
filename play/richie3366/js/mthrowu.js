@@ -22,7 +22,7 @@ import {
     BRK_BY_HERO, BRK_MELEE, W_NONDIGGABLE, WT_IRON_BALL_INCR,
     P_BOW, P_CROSSBOW, P_DART, P_SHURIKEN, P_SPEAR, P_KNIFE,
     Has_contents, KILLED_BY, KILLED_BY_AN, TIMEOUT, STONED, EYE, FACE,
-    M_SEEN_ACID, ACID_RES,
+    M_SEEN_ACID, ACID_RES, engulfing_u,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import { worm_known } from './worm.js';
@@ -812,15 +812,16 @@ export async function miss(str, mtmp) {
 /**
  * C ref: zap.c hit `:3555–3568` — The(str) vtense "hit", then the
  * target name or "it", then force (usually exclam).
- * Named omissions: `mtmp == &gy.youmonst` is always verbose; `engulfing_u`
- * counts as seen. Callers: ohitmon (`mthrowu.c:479`) and
+ * Callers: ohitmon (`mthrowu.c:479`) and
  * hmon_hitmon_msg_hit (`uhitm.c:1647`).
  */
 export async function hit(str, mtmp, force) {
     const bx = game.bhitpos?.x ?? mtmp.mx;
     const by = game.bhitpos?.y ?? mtmp.my;
-    const verbosely = game.flags?.verbose !== false
-        && (cansee(bx, by) || canspotmon(mtmp));
+    // C `:3561–3564` — hero target is always verbose; engulfing_u seen.
+    const verbosely = mtmp === game.youmonst
+        || (game.flags?.verbose !== false
+            && (cansee(bx, by) || canspotmon(mtmp) || engulfing_u(mtmp)));
     const whom = verbosely ? mon_nam(mtmp) : 'it';
     await pline(`${The(str)} ${vtense(str, 'hit')} ${whom}${force}`);
 }

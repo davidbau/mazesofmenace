@@ -26,7 +26,7 @@ import {
     objectNames,
     objectDescrs,
 } from './objects.js';
-import { init_attr, vary_init_attr, adjabil, adjattrib, A_STR, A_CON, newhp } from './attrib.js';
+import { init_attr, vary_init_attr, adjabil, adjattrib, A_STR, A_CON, newhp, set_moreluck } from './attrib.js';
 import { newpw } from './exper.js';
 import { getnow } from './calendar.js';
 import {
@@ -80,7 +80,7 @@ import {
 import { mons } from './monsters.js';
 import { set_uasmon } from './polyself.js';
 import { skill_init, P_SKILL } from './weapon.js';
-import { set_artifact_intrinsic } from './artifact.js';
+import { set_artifact_intrinsic, confers_luck } from './artifact.js';
 import { record_achievement } from './insight.js';
 import { reset_justpicked } from './pickup.js';
 import { throwing_weapon } from './dothrow.js';
@@ -923,8 +923,9 @@ function inv_rank(o) {
     return 999;
 }
 
-// C ref: invent.c reorder_invent()
-function reorder_invent() {
+// C ref: invent.c reorder_invent() — bubble by inv_rank. Exported:
+// doorganize_core (invent.js) is C's second caller (:5266/:5275).
+export function reorder_invent() {
     const inv = game.invent;
     if (!inv || inv.length < 2) return;
     let need = true;
@@ -944,13 +945,16 @@ function reorder_invent() {
 /**
  * C ref: invent.c addinv_core2 `:1025–1050` — luckstone set_moreluck, then
  * the Archeologist scroll-label decipher (observe + decipher pline +
- * makeknown→exercise(A_WIS) credit + literate conduct). Called at the
- * `added:` label for merged and fresh takes alike.
- * Named omit: set_moreluck luck recompute (no JS Luck engine yet).
+ * makeknown + literate conduct). Called at the `added:` label for
+ * merged and fresh takes alike.
  */
 export async function addinv_core2(obj) {
     if (!obj) return;
-    // C: confers_luck(obj) → set_moreluck() — named omit (see above).
+    if (confers_luck(obj)) {
+        /* new luckstone must be in inventory by this point
+           for correct calculation */
+        set_moreluck();
+    }
     const oc = game.objects?.[obj.otyp];
     if ((game.urole?.mnum | 0) === PM_ARCHEOLOGIST
         && (obj.oclass | 0) === SCROLL_CLASS
@@ -1047,7 +1051,6 @@ export async function addinv_core1(obj) {
  * Async because addinv_core1 / addinv_core2 can reach nhgetch.
  * JS pack is an array (nobj walk named in the map). _goldCount is the
  * botl cache those writers already maintain; C has no such field.
- * Named: addinv_core2 luck (set_moreluck); worn-obj merge gate (D-2324).
  */
 export async function addinv_core0(obj, other_obj, update_perm_invent) {
     const saved_otyp = obj.otyp | 0;

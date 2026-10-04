@@ -97,7 +97,7 @@ import { breakobj } from './dothrow.js';
 import { mb_trapped, maybe_unhide_at } from './monmove.js';
 // C ref: rm.h m_at `:510–511` — canonical grid lookup (hoisted fn,
 // cycle-safe per imports.mjs --can dig.js mon.js).
-import { m_at } from './mon.js';
+import { m_at, wake_nearby } from './mon.js';
 // C ref: pray.c altarmask_at `:2489–2504` — dig_check reads the mimic-aware
 // mask like C (static; hoisted fn, cycle-safe per imports.mjs).
 import { altarmask_at } from './pray.js';
@@ -1670,18 +1670,7 @@ function ensure_digging() {
     return d;
 }
 
-/** C mon.c wake_nearby stub — clear nearby sleep (subset). */
-function wake_nearby(_petcall) {
-    const u = game.u || {};
-    for (const m of game.fmon || []) {
-        if (!m || (m.mhp | 0) <= 0) continue;
-        const dx = (m.mx | 0) - (u.ux | 0);
-        const dy = (m.my | 0) - (u.uy | 0);
-        if (dx * dx + dy * dy > 100) continue;
-        if (m.msleeping) m.msleeping = 0;
-        if (m.mstrategy) m.mstrategy &= ~0x01; /* WAIT deferred polish */
-    }
-}
+/* wake_nearby: deleted — live mon.js export (C mon.c:4367–4370). */
 
 /**
  * C ref: dig.c rm_waslit — ROOM waslit at hero or nearby waslit.
@@ -2118,7 +2107,7 @@ export async function dighole(pit_only, by_magic, cc) {
             `The ${hliquid(is_lava(dig_x, dig_y) ? 'lava' : 'water')} `
             + 'sloshes furiously for a moment, then subsides.',
         );
-        wake_nearby(false);
+        await wake_nearby(false);
         spot_checks(dig_x, dig_y, old_typ);
         return false;
     }
@@ -2145,7 +2134,7 @@ export async function dighole(pit_only, by_magic, cc) {
             ttmp.ttyp = PIT; // crush spikes
         } else {
             await pline('KADOOM!  The boulder falls in!');
-            wake_nearby(false);
+            await wake_nearby(false);
             await delfloortrap(ttmp);
         }
         delobj(boulder_here);
@@ -2305,7 +2294,7 @@ async function dig() {
             await pline(
                 `Bang!  You hit with the broad side of ${the(xname(uwep))}!`,
             );
-            wake_nearby(false);
+            await wake_nearby(false);
             break;
         default:
             await pline('Your swing misses its mark.');
@@ -2532,7 +2521,7 @@ async function dig() {
     }
     if (!game.did_dig_msg) {
         await pline(`You hit the ${d_target[dig_target]} with all your might.`);
-        wake_nearby(false);
+        await wake_nearby(false);
         game.did_dig_msg = true;
     }
     return 1;
@@ -2698,7 +2687,7 @@ export async function use_pick_axe2(obj) {
                 game.nomovemsg = 'You pull free.';
             } else if (lev?.typ === IRONBARS) {
                 await pline('Clang!');
-                wake_nearby(false);
+                await wake_nearby(false);
             } else if (lev && IS_WATERWALL(lev.typ)) {
                 await pline('Splash!');
             } else if (lev?.typ === LAVAWALL) {
@@ -2728,7 +2717,7 @@ export async function use_pick_axe2(obj) {
                             KILLED_BY,
                         );
                     }
-                    wake_nearby(false);
+                    await wake_nearby(false);
                 } else {
                     await pline(`You can't reach the ${what}.`);
                 }

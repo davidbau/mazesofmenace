@@ -128,7 +128,7 @@ import { PM_ARCHEOLOGIST, PM_DOPPELGANGER, PM_FLESH_GOLEM, PM_VAMPIRE, PM_VAMPIR
 import { M_AP_TYPE, ismnum, NO_NC_FLAGS, NO_MINVENT, MM_NOWAIT, MM_NOTAIL, MM_NOMSG, MM_MALE, MM_FEMALE, MM_NOCOUNTBIRTH, MM_ADJACENTOK, OBJ_INVENT, ARTICLE_A, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_HISTORIC, A_LAWFUL } from './const.js';
 import { cant_revive } from './read.js';
 import { permonstTemplate, set_malign, set_mon_data } from './makemon.js';
-import { obj_resists, inventory_resistance_check } from './zap.js';
+import { obj_resists, inventory_resistance_check, poly_obj } from './zap.js';
 import { costly_alteration, obj_extract_self_general as obj_extract_self } from './cmd.js';
 /* C invent.c:1438-1460 delobj_core(obj, FALSE) — the single real body, which
  * ends in obfree() and reaches obj_extract_self through it.  See _stat_delobj. */
@@ -2968,10 +2968,41 @@ async function trapeffect_selector(mtmp, trap, trflags, isYou) {
             return await trapeffect_statue_trap(mtmp, trap, trflags, isYou);
         case MAGIC_PORTAL:
             return await trapeffect_magic_portal(mtmp, trap, trflags, isYou);
+        case POLY_TRAP:
+            if (isYou)
+                return await trapeffect_poly_trap_u(trap, trflags);
+            return await trapeffect_poly_trap_mon(mtmp, trap);
         default:
             /* Unported trap types: no RNG, no effect yet. */
             return Trap_Effect_Finished;
     }
+}
+
+/* C ref: trap.c:2451-2490 trapeffect_poly_trap — hero branch (the steed
+ * wording is not ported: u.usteed text only). */
+async function trapeffect_poly_trap_u(trap, trflags) {
+    const u = game.u;
+    seetrap(trap);
+    const verbbuf = (trflags & _VIASITTING_BT) ? 'trigger'
+        : `${_u_locomotion_stub('step')} onto`;
+    await You(`${verbbuf} a polymorph trap!`);
+    const uprop = (id) => { const p = u.uprops?.[id];
+        return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0))); };
+    if (u.uarmf && (u.uarmf.otyp | 0) === 164 /* IRON_SHOES */) {
+        /* uarmf swap: poly_obj(IRON_SHOES <-> KICKING_BOOTS) — not ported */
+        deltrap(trap);
+        await pline(`${_yname2(u.uarmf)} warps strangely.`);
+    } else if (_tr_antimagic_u() || uprop(63 /* UNCHANGING */)) {
+        (await import('./display.js')).shieldeff(u.ux, u.uy);
+        await pline('You feel momentarily different.');
+    } else {
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+        await pline('You feel a change coming over you.');
+        const { polyself } = await import('./polyself.js');
+        await polyself(0);
+    }
+    return Trap_Effect_Finished;
 }
 
 /* C ref: trap.c:2323-2398 trapeffect_anti_magic — hero branch. */
@@ -3772,8 +3803,8 @@ async function level_tele_trap_u(trap, trflags) {
     const intentional = ((trflags | 0) & (_VIASITTING_BT | FORCETRAP)) !== 0;
     const antimagic = _tr_antimagic_u();
 
-    You(intentional ? 'trigger a level teleport trap!'
-                     : `${_u_locomotion_stub('step')} onto a level teleport trap!`);
+    await pline(intentional ? 'You trigger a level teleport trap!'
+                     : `You ${_u_locomotion_stub('step')} onto a level teleport trap!`);
     /* shieldeff(u.ux, u.uy) — display-only, no RNG. */
     if ((antimagic && !intentional) || In_endgame(u?.uz)) {
         You('feel a wrenching sensation.');
@@ -4980,8 +5011,24 @@ const ART_MAGICBANE_TAM = 8; /* artilist.h ARTI_ENUM ordinal — js/makemon.js:2
 async function trapeffect_poly_trap_mon(mtmp, trap) {
     const in_sight = canseemon(mtmp) || mtmp === game.u?.usteed;
 
-    if (_wearing_iron_shoes(mtmp)) {
-        /* documented gap above — structurally unreached by this port */
+    /* C trap.c:1098 wearing_iron_shoes: which_armor(W_ARMF) material == IRON */
+    const armf_ps = which_armor(mtmp, W_ARMF);
+    if (armf_ps && (MKOBJ_OC_MATERIAL[armf_ps.otyp | 0] | 0) === 11 /* IRON */) {
+        /* C trap.c:2496-2515: remove and readd the shoes to forcibly unwear
+         * them, poly_obj them (IRON_SHOES <-> KICKING_BOOTS), re-equip */
+        let shoes = armf_ps;
+        await extract_from_minvent(mtmp, shoes, true, true);
+        if (await mpickobj(mtmp, shoes)) {
+            impossible_("re-equipping iron shoes destroyed them?");
+            return Trap_Effect_Finished;
+        }
+        shoes = await poly_obj(shoes, (shoes.otyp | 0) === 164 /* IRON_SHOES */
+            ? 170 /* KICKING_BOOTS */ : 164);
+        if (shoes) {
+            mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) | W_ARMF;
+            shoes.owornmask = W_ARMF;
+            update_mon_extrinsics(mtmp, shoes, true, true);
+        }
     } else if (resists_magm(mtmp)) {
         await shieldeff_mon(mtmp);
     } else if (!await resist(mtmp, WAND_CLASS_TAM, 0, NOTELL)) {
@@ -5833,7 +5880,7 @@ export async function water_damage(obj, ostr, force) {
         if (otyp === _SCR_BLANK_PAPER_OTYP)
             return ER_NOTHING;
         if (in_invent)
-            await pline(`Your ${ostr} fade${((obj.quan ?? 1) | 0) === 1 ? 's' : ''}.`);
+            await pline(`Your ${ostr} ${vtense(ostr, 'fade')}.`);
         obj.otyp = _SCR_BLANK_PAPER_OTYP;
         obj.dknown = 0;
         obj.spe = 0;
@@ -5845,7 +5892,7 @@ export async function water_damage(obj, ostr, force) {
         if (otyp === _SPE_BLANK_PAPER_OTYP)
             return ER_NOTHING;
         if (in_invent)
-            await pline(`Your ${ostr} fade${((obj.quan ?? 1) | 0) === 1 ? 's' : ''}.`);
+            await pline(`Your ${ostr} ${vtense(ostr, 'fade')}.`);
         obj.otyp = _SPE_BLANK_PAPER_OTYP;
         /* C obj.h aliases spestudied to usecount, including after a restore. */
         if (obj.spestudied)
@@ -5858,14 +5905,14 @@ export async function water_damage(obj, ostr, force) {
         if (otyp === _POT_ACID_OTYP)
             return ER_DESTROYED;
         if (obj.odiluted) {
-            if (in_invent) await pline(`Your ${ostr} dilutes further.`);
+            if (in_invent) await pline(`Your ${ostr} ${vtense(ostr, 'dilute')} further.`);
             obj.otyp = _POT_WATER_OTYP;
             obj.dknown = 0;
             obj.blessed = obj.cursed = 0;
             obj.odiluted = 0;
             return ER_DAMAGED;
         } else if (otyp !== _POT_WATER_OTYP) {
-            if (in_invent) await pline(`Your ${ostr} dilutes.`);
+            if (in_invent) await pline(`Your ${ostr} ${vtense(ostr, 'dilute')}.`);
             obj.odiluted = (obj.odiluted | 0) + 1;
             return ER_DAMAGED;
         }

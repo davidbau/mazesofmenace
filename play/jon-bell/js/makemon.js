@@ -75,7 +75,11 @@ import { PM_GUARD, PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN,
 import { ARMOR_DATA } from './armor_data.js';
 import { MKOBJ_OC_PROB } from './mkobj_data.js';
 /* mquaffmsg (muse.c:292) helpers — see the port below. */
-import { DEAF } from './const.js';
+import { DEAF, MM_NOMSG } from './const.js';
+import { verbalize } from './cmd.js';
+import { a_monnam } from './mhitm.js';
+import { rndmonnam } from './do_name.js';
+import { paralyze_monst } from './dogmove.js';
 import { observe_object, discover_object } from './o_init.js';
 import { g_at, surface, ceiling as ceiling_real, docall } from './cmd.js';
 import { sp_levchn_lookup, mksobj, next_ident, set_corpsenm, add_to_container, engr_at, set_bknown, makemon, Can_dig_down, start_corpse_timeout, start_glob_timeout } from './mklev.js';
@@ -84,13 +88,13 @@ import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
 import { oid_price_adjustment, inhishop, shop_keeper, onbill } from './shk.js';
 import { inhistemple } from './priest.js';
-import { pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, display_self } from './display.js';
+import { force_more, pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, display_self } from './display.js';
 /* create_critters (makemon.c:1556) reaches these two; both are cyclic imports
  * (teleport.js and wizcmds.js each import this file) but every binding used is
  * a hoisted function declaration, so the cycle resolves. */
 import { enexto_out } from './teleport.js';
 import { create_particular } from './wizcmds.js';
-import { YMonnam, little_to_big, update_inventory, Some_Monnam, mon_hates_silver, locomotion, s_suffix, Adjmonnam, poly_when_stoned, y_monnam, can_blow, resists_blnd, helpless, noit_mon_nam } from './mhitm.js';
+import { YMonnam, little_to_big, update_inventory, Some_Monnam, mon_hates_silver, locomotion, s_suffix, Adjmonnam, poly_when_stoned, y_monnam, can_blow, resists_blnd, helpless, noit_mon_nam, mon_nam_too } from './mhitm.js';
 import { mon_nam, m_at } from './uhitm.js';
 import { unconscious } from './pickup.js';
 import { an, makeplural, makesingular, vtense, doname_potion, doname, distant_name, ansimpleoname, bare_artifactname } from './objnam.js';
@@ -1027,7 +1031,8 @@ export function can_saddle(mtmp) {
  * `if (!rn2(100) && is_domestic(ptr) && can_saddle(mtmp)
  *     && !which_armor(mtmp, W_SADDLE)) put_saddle_on_mon(...)`.
  * RNG: always consumes `rn2(100)` when inventory is allowed.
- * put_saddle_on_mon → mksobj(SADDLE) not modeled (extremely rare 1/100 hit).
+ * Returns true when C would call put_saddle_on_mon((struct obj *) 0, mtmp); the
+ * caller (js/mklev.js makemon) runs it (js/steed.js, async mksobj).
  *
  * @param {{ misc_worn_check?: number, minvent?: any }} mtmp
  * @param {number} mndx
@@ -1036,15 +1041,16 @@ export function can_saddle(mtmp) {
 export function makemonDomesticSaddle(mtmp, mndx, mmflags) {
     mmflags |= 0;
     if ((mmflags & NO_MINVENT) !== 0)
-        return;
+        return false;
     if (rn2(100) !== 0)
-        return;
+        return false;
     if (!isDomesticMndx(mndx))
-        return;
+        return false;
     if (!canSaddleMndx(mtmp, mndx))
-        return;
+        return false;
     if (monsterWearingSaddle(mtmp))
-        return;
+        return false;
+    return true;
 }
 /** @param {number} mndx */
 function mkGenOk(mndx, mvflagsmask, genomask) {
@@ -2425,25 +2431,15 @@ export async function mInitinv(mtmp, mksobjFn) {
     const mlev = mtmp.m_lev | 0;
     if (mlev > rn2(50)) {
         const otyp = rndDefensiveItem(mtmp);
-        if (otyp) {
-            const otmp = await mksobjFn(otyp, true, false);
-            /* C makemon.c m_initinv: mpickobj → add_to_minv */
-            if (otmp) {
-                otmp.nobj = mtmp.minvent ?? null;
-                mtmp.minvent = otmp;
-            }
-        }
+        /* C makemon.c:826 mongets() — applies the demon/prince adjustments. */
+        if (otyp)
+            await mongets(mtmp, otyp, mksobjFn);
     }
     if (mlev > rn2(100)) {
         const otyp2 = rndMiscItem(mtmp);
-        if (otyp2) {
-            const otmp2 = await mksobjFn(otyp2, true, false);
-            /* C makemon.c m_initinv: mpickobj → add_to_minv */
-            if (otmp2) {
-                otmp2.nobj = mtmp.minvent ?? null;
-                mtmp.minvent = otmp2;
-            }
-        }
+        /* C makemon.c:829 mongets() */
+        if (otyp2)
+            await mongets(mtmp, otyp2, mksobjFn);
     }
     if (likesGoldMndx(mndx) &&
         !findGold(mtmp.minvent) &&
@@ -2603,7 +2599,7 @@ export async function mkMplayer(ptr, x, y, special, cbs) {
     if (!uz || !In_endgame(uz))
         special = false;
     /* C mplayer.c:132 makemon(ptr, x, y, special ? MM_NOMSG : NO_MM_FLAGS) */
-    const MM_NOMSG = 0x00020000; /* C monflag.h MM_NOMSG */
+
     const NO_MM_FLAGS = 0;
     let mtmp = await cbs.makemon(ptr, x, y, special ? MM_NOMSG : NO_MM_FLAGS);
     if (mtmp) {
@@ -3930,8 +3926,13 @@ export function find_misc(mtmp) {
                     if ((t = t_at(xx, yy)) !== null
                         && (ignore_boulders || !sobj_at(BOULDER_OTYP, xx, yy))
                         && !onscary(xx, yy, mtmp)) {
-                        /* use trap if it's the correct type */
-                        if (t.ttyp === POLY_TRAP) {
+                        /* use trap if it's the correct type and will
+                         * polymorph the monster (muse.c:2136-2137);
+                         * trap.c:1098 wearing_iron_shoes: which_armor(W_ARMF)
+                         * material == IRON (objclass.h IRON = 11) */
+                        const armf_ws = which_armor(mtmp, W_ARMF);
+                        if (t.ttyp === POLY_TRAP
+                            && !(armf_ws && (MKOBJ_OC_MATERIAL[armf_ws.otyp | 0] | 0) === 11)) {
                             game.trapx = xx;
                             game.trapy = yy;
                             game.has_misc = MUSE_POLY_TRAP;
@@ -4020,20 +4021,63 @@ export function find_misc(mtmp) {
     return !!game.has_misc;
 }
 
-function precheck(mtmp, otmp) {
+async function precheck(mtmp, otmp) {
     if (!otmp)
         return 0;
     const descr = game._objDescriptions ? game._objDescriptions[otmp.otyp | 0] : undefined;
     const occupant_chance = (mndx) => 13 + 2 * ((game.mvitals?.[mndx]?.born | 0));
     const gone = (mndx) => (((game.mvitals?.[mndx]?.mvflags | 0) & G_GONE) !== 0);
+    const vis = cansee(mtmp.mx | 0, mtmp.my | 0);
     if ((otmp.oclass | 0) === POTION_CLASS_MM) {
+        /* C muse.c:1104-1160 — milky ghost / smoky djinni occupants. */
+        const empty = 'The potion turns out to be empty.';
         if (descr === 'milky' && !gone(PM_GHOST_MM)
             && !rn2(occupant_chance(PM_GHOST_MM))) {
-            return 0;
+            const cc = enexto_out(mtmp.mx | 0, mtmp.my | 0, permonstTemplate(PM_GHOST_MM));
+            if (!cc)
+                return 0;
+            mquaffmsg(mtmp, otmp);
+            m_useup(mtmp, otmp);
+            const mon = await makemon(permonstTemplate(PM_GHOST_MM), cc.x | 0, cc.y | 0, MM_NOMSG);
+            if (!mon) {
+                if (vis)
+                    pline(empty);
+            } else {
+                if (vis) {
+                    pline(`As ${mon_nam(mtmp)} opens the bottle, an enormous ${Hallucination_mm() ? rndmonnam() : 'ghost'} emerges!`);
+                    pline(`${Monnam(mtmp)} is frightened to death, and unable to move.`);
+                }
+                paralyze_monst(mtmp, 3);
+            }
+            return 2;
         }
         if (descr === 'smoky' && !gone(PM_DJINNI_MM)
             && !rn2(occupant_chance(PM_DJINNI_MM))) {
-            return 0;
+            const cc = enexto_out(mtmp.mx | 0, mtmp.my | 0, permonstTemplate(PM_DJINNI_MM));
+            if (!cc)
+                return 0;
+            mquaffmsg(mtmp, otmp);
+            m_useup(mtmp, otmp);
+            const mon = await makemon(permonstTemplate(PM_DJINNI_MM), cc.x | 0, cc.y | 0, MM_NOMSG);
+            if (!mon) {
+                if (vis)
+                    pline(empty);
+            } else {
+                if (vis)
+                    pline_mon(mon, `In a cloud of smoke, ${a_monnam(mon)} emerges!`);
+                pline(`${vis ? Monnam(mon) : 'Something'} speaks.`);
+                if (rn2(2)) {
+                    await verbalize('You freed me!');
+                    mon.mpeaceful = 1;
+                    set_malign(mon);
+                } else {
+                    await verbalize('It is about time.');
+                    if (vis)
+                        pline(`${Monnam(mon)} vanishes.`);
+                    await mongone(mon);
+                }
+            }
+            return 2;
         }
     }
     if ((otmp.oclass | 0) === WAND_CLASS_MM && (otmp.cursed | 0)
@@ -4165,7 +4209,7 @@ async function mreadmsg(mtmp, otmp) {
 const PLNMSG_UNKNOWN_MM = 0; /* const.js PLNMSG_UNKNOWN */
 const ARTICLE_A_MM = 2, SUPPRESS_IT_MM = 0x01, SUPPRESS_INVISIBLE_MM = 0x02,
       SUPPRESS_SADDLE_MM = 0x08, AUGMENT_IT_MM = 0x40; /* const.js */
-function mzapwand(mtmp, otmp, self) {
+async function mzapwand(mtmp, otmp, self) {
     if (!otmp)
         return;
     if ((otmp.spe | 0) < 1) {
@@ -4182,6 +4226,21 @@ function mzapwand(mtmp, otmp, self) {
         const near = dist2(mtmp.mx | 0, mtmp.my | 0,
                            game.u.ux | 0, game.u.uy | 0) <= range * range;
         mquaffmsg_You_hear(`a ${near ? 'nearby' : 'distant'} zap.`);
+    } else if (self) {
+        /* C muse.c:182-184 — monverbself (do_name.c:1221-1248) inlined. */
+        const selfbuf = mon_nam_too(mtmp, mtmp);
+        const verbs = vtense(selfbuf, 'zap');
+        let monnamtext = Monnam(mtmp);
+        if (verbs === 'zap') {
+            monnamtext = makeplural(monnamtext);
+            if (monnamtext.toLowerCase() === 'they')
+                monnamtext = monnamtext[0] === 'T' ? 'Them' : 'them';
+        }
+        pline(`${monnamtext} ${verbs} ${selfbuf} with ${await doname(otmp)}!`);
+    } else {
+        pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
+        if (game.occupation)
+            game.occupation = null; /* stop_occupation, as js/muse.js:94 */
     }
     otmp.spe = (otmp.spe | 0) - 1;
 }
@@ -4254,16 +4313,28 @@ const _YELLOW_DRAGON_SCALES = 120;
  * to force an immediate page exists outside this file's scope, so this port
  * leaves the pending "You feel aggravated..." message to the normal per-turn
  * flush path instead of forcing it early here.  RNG-free either way. */
-function you_aggravate(mtmp) {
-    pline(`For some reason, ${s_suffix(noit_mon_nam(mtmp))} presence is known to you.`);
-    cls();
+async function you_aggravate(mtmp) {
+    const _agg1 = `For some reason, ${s_suffix(noit_mon_nam(mtmp))} presence is known to you.`;
+    /* C topl.c update_topl:268-ish — a pending topline that cannot join the new
+     * message (n0 + strlen(toplines) + 3 >= CO - 8) is paged with --More-- first. */
+    const _prev = String(game._pending_message || '');
+    const _overflow = _prev && (_agg1.length + _prev.length + 3 >= 72);
+    if (_overflow)
+        await force_more(_prev);
+    await pline(_agg1);
+    /* display.c:2196 cls() -> display_nhwindow(WIN_MESSAGE, FALSE) pages the pending topline */
+    await force_more(String(game._pending_message || _agg1));
+    await cls();
     const mndx = Hallucination() ? rn2_on_display_rng(NUMMONS) : monsndx(mtmp);
     const glyph = mndx + (((mtmp.female | 0) === 0) ? 38 /* GLYPH_MON_MALE_OFF */
                                                      : 37 /* GLYPH_MON_FEM_OFF */);
     show_glyph(mtmp.mx | 0, mtmp.my | 0, glyph);
     display_self();
-    pline(`You feel aggravated at ${noit_mon_nam(mtmp)}.`);
-    docrt();
+    const _agg2 = `You feel aggravated at ${noit_mon_nam(mtmp)}.`;
+    await pline(_agg2);
+    /* wintty.c:1884-1889 display_nhwindow(WIN_MAP, TRUE) pages the pending topline */
+    await force_more(String(game._pending_message || _agg2));
+    await docrt();
     if (unconscious()) {
         game.multi = -1;
         game.nomovemsg = "Aggravated, you are jolted into full consciousness.";
@@ -4735,7 +4806,7 @@ export async function use_defensive(mtmp) {
     let vis, vismon, oseen;
     let t, stway;
 
-    if ((i = precheck(mtmp, otmp)) !== 0)
+    if ((i = await precheck(mtmp, otmp)) !== 0)
         return i;
     vis = cansee(mtmp.mx, mtmp.my);
     vismon = canseemon(mtmp);
@@ -4780,7 +4851,7 @@ export async function use_defensive(mtmp) {
         if ((mtmp.isshk && inhishop(mtmp)) || mtmp.isgd || mtmp.ispriest)
             return 2;
         await m_flee(mtmp);
-        mzapwand(mtmp, otmp, true);
+        await mzapwand(mtmp, otmp, true);
         await m_tele(mtmp, vismon, oseen, WAN_TELEPORTATION_OTYP);
         return 2;
     case MUSE_WAN_TELEPORTATION:
@@ -4870,7 +4941,7 @@ export async function use_defensive(mtmp) {
         if (!otmp)
             throw new Error("use_defensive: no wand of digging");
         await m_flee(mtmp);
-        mzapwand(mtmp, otmp, false);
+        await mzapwand(mtmp, otmp, false);
         if (oseen)
             makeknown(WAN_DIGGING);
         const dg_typ = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0]?.typ | 0;
@@ -4948,7 +5019,7 @@ export async function use_defensive(mtmp) {
         const cm_cc = enexto_out(mtmp.mx | 0, mtmp.my | 0, cm_pm);
         if (!cm_cc)
             return 0;
-        mzapwand(mtmp, otmp, false);
+        await mzapwand(mtmp, otmp, false);
         /* C muse.c:991 — makemon((struct permonst *) 0, cc.x, cc.y, NO_MM_FLAGS) */
         const cm_mon = await makemon(null, cm_cc.x | 0, cm_cc.y | 0, NO_MM_FLAGS);
         if (cm_mon && canspotmon(cm_mon) && oseen)
@@ -5176,7 +5247,7 @@ export async function use_misc(mtmp) {
     let t;
     let otmp = game.misc;
 
-    if ((i = precheck(mtmp, otmp)) !== 0)
+    if ((i = await precheck(mtmp, otmp)) !== 0)
         return i;
     vis = cansee(mtmp.mx, mtmp.my);
     vismon = canseemon(mtmp);
@@ -5230,7 +5301,7 @@ export async function use_misc(mtmp) {
         if (!otmp)
             throw new Error("use_misc: no potion of invisibility");
         if (otmp.otyp === WAN_MAKE_INVISIBLE_OTYP) {
-            mzapwand(mtmp, otmp, true);
+            await mzapwand(mtmp, otmp, true);
         } else {
             mquaffmsg(mtmp, otmp);
         }
@@ -5253,7 +5324,7 @@ export async function use_misc(mtmp) {
         }
         if (otmp.otyp === POT_INVISIBILITY_OTYP) {
             if (otmp.cursed)
-                you_aggravate(mtmp);
+                await you_aggravate(mtmp);
             await m_useup(mtmp, otmp);
         }
         return 2;
@@ -5261,7 +5332,7 @@ export async function use_misc(mtmp) {
     case MUSE_WAN_SPEED_MONSTER:
         if (!otmp)
             throw new Error("use_misc: no wand of speed monster");
-        mzapwand(mtmp, otmp, true);
+        await mzapwand(mtmp, otmp, true);
         mon_adjust_speed(mtmp, 1, otmp);
         return 2;
 
@@ -5276,7 +5347,7 @@ export async function use_misc(mtmp) {
     case MUSE_WAN_POLYMORPH:
         if (!otmp)
             throw new Error("use_misc: no wand of polymorph");
-        mzapwand(mtmp, otmp, true);
+        await mzapwand(mtmp, otmp, true);
         await newcham(mtmp, muse_newcham_mon(mtmp), NC_VIA_WAND_OR_SPELL | NC_SHOW_MSG);
         if (oseen)
             makeknown(WAN_POLYMORPH_OTYP);

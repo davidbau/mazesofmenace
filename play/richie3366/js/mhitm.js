@@ -239,6 +239,7 @@ const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
 const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_VLAD_THE_IMPALER = monsterNames.indexOf('PM_VLAD_THE_IMPALER');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const PM_SHADE = monsterNames.indexOf('PM_SHADE');
 const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
@@ -1684,8 +1685,8 @@ export async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
  * attempt, then newcham to green slime (NC_SHOW_MSG when vis&&canseemon),
  * WAITFORU cleared, hitflags HIT; attacker/defender deaths OR into
  * hitflags; leftover dice zeroed.
- * Named omissions: uhitm you-as-agr (You() turn-to-slime + newcham);
- * mhitu you-as-def (hitmsg + flaming/Unchanging/Slimed/make_slimed envelope).
+ * Split: uhitm you-as-agr is damageum_ad_slim (uhitm.js); mhitu
+ * you-as-def is mhitm_ad_slim_u (mhitu.js).
  */
 export async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
     void mattk;
@@ -3025,7 +3026,9 @@ function m_useup_mm(mon, obj) {
 /**
  * C ref: mon.c corpse_chance() — AT_BOOM then always-TRUE arms then !rn2(tmp).
  * magr + was_swallowed: contained boom inside an engulfer (D-1244).
- * Named omissions: Vlad/lich dust; youmonst stomach boom (gulpmu).
+ * Vlad/lich dust live (C :3191–3196). Named: youmonst stomach boom —
+ * the uhitm.js clone owns it (gulpum); this clone's magr is a monster
+ * (mondied/mhitm_ad_dgst paths).
  */
 async function corpse_chance(mon, magr = null, was_swallowed = false) {
     const mdat = mon.data;
@@ -3033,6 +3036,13 @@ async function corpse_chance(mon, magr = null, was_swallowed = false) {
     if (!magr && game.mswallower && attacktype(game.mswallower.data, AT_ENGL)) {
         magr = game.mswallower;
         was_swallowed = true;
+    }
+    // C mon.c:3191–3196 — Vlad/liches crumble to dust, never a corpse.
+    if ((mdat.mndx ?? -1) === PM_VLAD_THE_IMPALER || mdat.mlet === 'S_LICH') {
+        if (cansee(mon.mx, mon.my) && !was_swallowed) {
+            await pline_mon(mon, `${s_suffix(Monnam(mon))} body crumbles into dust.`);
+        }
+        return false;
     }
     const slots = mdat.mattk;
     if (slots) {

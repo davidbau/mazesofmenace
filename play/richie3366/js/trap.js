@@ -43,7 +43,7 @@ import {
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
     s_suffix, obj_pmname, a_monnam,
 } from './do_name.js';
-import { m_at, wakeup, seemimic, m_carrying, bad_rock, setmangry, m_in_air, unique_corpstat } from './mon.js';
+import { m_at, wakeup, seemimic, m_carrying, bad_rock, setmangry, m_in_air, unique_corpstat, wake_nearby, wake_nearto } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
 import { del_engr_at, can_reach_floor } from './engrave.js';
 import {
@@ -1155,19 +1155,7 @@ function trapnote(trap, noprefix) {
     return noprefix ? tn : an(tn);
 }
 
-// C ref: mon.c wake_nearto — clear sleep/wait within dist2; zombies deferred
-function wake_nearto(x, y, distance) {
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null) continue;
-        if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
-            mtmp.msleeping = 0;
-            const geno = mtmp.data?.geno | 0;
-            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
-                mtmp.mstrategy &= ~STRAT_WAITMASK;
-            }
-        }
-    }
-}
+// wake_nearto: deleted — live mon.js export (C mon.c:4402–4405).
 
 // mon.c monkilled / mondied / corpse_chance live in mhitm.js.
 // Trap callers use that export (thitm, rust, fire, anti-magic).
@@ -2865,7 +2853,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                     singleobj.otrapped = 0;
                     place_object(singleobj, x, y);
                     singleobj = otmp2;
-                    wake_nearto(x, y, 10 * 10);
+                    await wake_nearto(x, y, 10 * 10);
                 }
             }
 
@@ -2903,7 +2891,10 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                     }
                 } else if (IS_STWALL(typ) || IS_TREE(typ) || IS_OBSTRUCTED(typ)) {
                     xRest = x;
-                    yRest = y;
+                    yRest = y; /* object stops here */
+                    // C trap.c:3558–3561 — Thump (Deaf-gated) + wake (not).
+                    if (!Deaf()) await pline('Thump!');
+                    await wake_nearto(xRest, yRest, 16);
                     break;
                 }
             }
@@ -3473,30 +3464,7 @@ function surface_fd(x, y) {
     return 'ground';
 }
 
-/**
- * C ref: mon.c wake_nearby / wake_nearto_core — clear sleep/wait within
- * ulevel*20. G_UNIQ keep STRAT_WAITMASK.
- * Named omissions: wake_msg; disturb_buried_zombies; petcall whistletime.
- */
-function wake_nearby(_petcall) {
-    const u = game.u || {};
-    const x = u.ux | 0;
-    const y = u.uy | 0;
-    const distance = ((u.ulevel | 0) * 20) | 0;
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null) continue;
-        const dx = (mtmp.mx | 0) - x;
-        const dy = (mtmp.my | 0) - y;
-        if (distance === 0 || dx * dx + dy * dy < distance) {
-            mtmp.msleeping = 0;
-            const geno = mtmp.data?.geno | 0;
-            if (!(geno & G_UNIQ) && mtmp.mstrategy != null) {
-                mtmp.mstrategy &= ~STRAT_WAITMASK;
-            }
-        }
-    }
-    void _petcall;
-}
+/* wake_nearby: deleted — live mon.js export (C mon.c:4367–4370). */
 
 /**
  * C ref: trap.c b_trapped — booby-trap explosion (doors, tins, …).
@@ -3508,7 +3476,7 @@ export async function b_trapped(item, bodypart = NO_PART) {
     const lvl = level_difficulty(game.u?.uz) || 1;
     const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
     await pline(`KABOOM!!  ${The(item)} was booby-trapped!`);
-    wake_nearby(false);
+    await wake_nearby(false);
     await losehp(maybe_half_phys(dmg), 'explosion', KILLED_BY_AN);
     exercise(A_STR, false);
     if ((bodypart | 0) !== NO_PART) exercise(A_CON, false);
@@ -4105,7 +4073,7 @@ async function trapeffect_sqky_board(mtmp, trap, trflags) {
             } else {
                 await pline('A board beneath you vibrates.');
             }
-            wake_nearby(false);
+            await wake_nearby(false);
         }
         return Trap_Effect_Finished;
     }
@@ -4136,7 +4104,7 @@ async function trapeffect_sqky_board(mtmp, trap, trflags) {
             `${trapnote(trap, false)} squeak ${near ? 'nearby' : 'in the distance'}.`,
         );
     }
-    wake_nearto(mtmp.mx, mtmp.my, 40);
+    await wake_nearto(mtmp.mx, mtmp.my, 40);
     return Trap_Effect_Finished;
 }
 
@@ -5097,7 +5065,7 @@ async function domagictrap() {
         while (cnt--) {
             makemon(null, u.ux, u.uy, NO_MM_FLAGS);
         }
-        wake_nearto(u.ux, u.uy, 7 * 7);
+        await wake_nearto(u.ux, u.uy, 7 * 7);
     } else {
         switch (fate) {
         case 10:
@@ -5524,7 +5492,7 @@ export async function blow_up_landmine(trap) {
         null,
     );
     del_engr_at(x, y);
-    wake_nearto(x, y, 400);
+    await wake_nearto(x, y, 400);
     if (lev && IS_DOOR(lev.typ)) lev.doormask = D_BROKEN;
     /* destroy drawbridge if present (C `:3186–3192`): under-portcullis
        bridges are adjacent, so resolve via find_drawbridge. */
@@ -8082,7 +8050,7 @@ export async function chest_trap(obj, bodypart, disarm) {
                 delobj(otmp);
                 otmp = otmp2;
             }
-            wake_nearby(false);
+            await wake_nearby(false);
             losehp(maybe_half_phys(d(6, 6)), buf, KILLED_BY_AN);
             exercise(A_STR, false);
             if (costly && loss) {

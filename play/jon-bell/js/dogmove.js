@@ -35,7 +35,7 @@ import { erode_obj, mintrap as mintrap_real } from './trap.js';
 import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL } from './pm.generated.js';
 import { dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate } from './makemon.js';
 import { pline, newsym, _topline_more_pending, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
-import { xname_scroll, xname_armor, xname_amulet, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
+import { Japanese_item_name, xname_scroll, xname_armor, xname_amulet, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
  * call has, and the reason distant_name() exists at all.  Imported here
  * because _dm_doname() below reproduces xname_flags()'s prologue for the
@@ -1174,7 +1174,11 @@ async function _dm_doname(obj) {
     }
     if ((obj.oclass | 0) === POTION_CLASS_DM)
         return doname_potion(obj);
-    const fn = FOOD_OTYP_NAMES[otyp];
+    /* C objnam.c:866-872 xname_flags: Role_if(PM_SAMURAI) swaps in
+     * Japanese_item_name() ("gunyoki"); this hand table knows only the
+     * English OBJ_NAME, so a Samurai falls through to the real doname(). */
+    const fn = (_dm_Role_if_samurai() && Japanese_item_name(otyp) != null)
+        ? null : FOOD_OTYP_NAMES[otyp];
     if (fn) {
         const q = (obj.quan | 0);
         return (q > 1) ? `${q} ${fn}s` : an_dm(fn);
@@ -1219,6 +1223,13 @@ function _dm_Role_if_cleric() {
     const ir = (g.flags && g.flags.initrole != null) ? (g.flags.initrole | 0) : -1;
     if (ir >= 0) return ir === _ROLE_IDX_PRIEST_DM;
     return ((g.urole && g.urole.mnum != null) ? (g.urole.mnum | 0) : -1) === _ROLE_IDX_PRIEST_DM;
+}
+const _ROLE_IDX_SAMURAI_DM = 9; /* roles[] index of PM_SAMURAI (js/eat.js uses 9) */
+function _dm_Role_if_samurai() {
+    const g = game;
+    const ir = (g.flags && g.flags.initrole != null) ? (g.flags.initrole | 0) : -1;
+    if (ir >= 0) return ir === _ROLE_IDX_SAMURAI_DM;
+    return ((g.urole && g.urole.mnum != null) ? (g.urole.mnum | 0) : -1) === _ROLE_IDX_SAMURAI_DM;
 }
 const _ARMOR_CLASS_DM = 3; /* C ARMOR_CLASS */
 const _AMULET_CLASS_DM = 5; /* C AMULET_CLASS */

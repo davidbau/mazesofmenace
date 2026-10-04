@@ -191,7 +191,8 @@ import { miss } from './zap.js';
 import { engulfing_u, HMON_APPLIED, HMON_KICKED } from './const.js';
 import { AIR, CLOUD, ICE, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, DB_ICE, MELT_ICE_AWAY, nothing_seems_to_happen, GETOBJ_PROMPT, GETOBJ_NOFLAGS, GETOBJ_ALLOWCNT, BLINDED, ONAME_VIA_NAMING, ONAME_KNOW_ARTI, has_oname, ONAME, PLNMSG_OBJNAM_ONLY } from './const.js';
 import { enexto_core, enexto_out, rloc_to, tele, teleds, safe_teleds, next_to_u as next_to_u_real } from './teleport.js';
-import { tele_restrict, rloc } from './teleport.js';
+import { tele_restrict, rloc, mnexto as mnexto_arrival, RLOC_NOMSG } from './teleport.js';
+import { m_into_limbo } from './dog.js';
 import { ESHK } from './const.js';
 import { in_out_region } from './region.js';
 import { canwearobj, dotakeoff, dotakeoff_obj, wornArmorPieces, wornAccessoryPieces, doremove_obj, dowear, doputon, doremove, encumber_msg, xname, float_up, float_down, You, yname, reset_remarm, stuck_ring, bimanual, silly_thing_dw, Blindf_on, Blindf_off, Boots_off, fingers_or_gloves, inaccessible_equipment } from './do_wear.js';
@@ -4064,19 +4065,7 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
             break;
         }
         if (keyCode === 0x3a /* ':' MENU_SEARCH */) {
-            /* C ref: wintty.c:1700-1730.  invent.c:3480-3484 display_pickinv
-             * ends in `select_menu(win, wizid ? PICK_ANY : want_reply ?
-             * PICK_ONE : PICK_NONE)`.  ddoinv() and the itemactions caller both
-             * arrive with want_reply TRUE, so the FIRST pmatchi hit toggles and
-             * finishes and invent.c:2998 runs itemactions() on it, exactly as
-             * an accelerator would.  end.js's disclosure copy passes
-             * want_reply FALSE, i.e. PICK_NONE, and wintty.c:1700-1703 rings
-             * the bell there instead of opening any tty_getlin.
-             *
-             * pmatchi walks the WHOLE mlist, not just the visible page, against
-             * what tty_add_menu stored ("%c - %s", wintty.c:2596-2600) — which
-             * is the line this menu composed for that item. */
-            const how = opts?.gameover || opts?.pickNone ? 'NONE' : (pickAny ? 'ANY' : 'ONE');
+            const how = opts?.pickNone ? 'NONE' : (pickAny ? 'ANY' : 'ONE');
             let hit = null;
             const finished = await menu_search_case(
                 how,
@@ -8534,7 +8523,15 @@ async function menu_remarm(retry) {
      * menu_remarm opens a second PICK_ANY query_objlist over worn inventory.
      * The eventual take_off occupation is still unported, but this menu must
      * consume and render exactly as C does. */
-    const allSelected = show_a && selected.has('a');
+    /* C do_wear.c:3121-3124 — any of u/B/U/C/X selected clears
+     * all_worn_categories, so is_worn_by_type (is_worn && allow_category,
+     * pickup.c:609/540-591) filters instead of is_worn. */
+    /* C do_wear.c:3112-3113 — an empty selection (n == 0) returns 0. */
+    if (selected.size === 0) return 0;
+    const hasUnpaid = selected.has('u');
+    const hasBuc = ['B', 'U', 'C', 'X'].some((ch) => selected.has(ch));
+    const allSelected = show_a && selected.has('a')
+        && !hasUnpaid && !hasBuc;
     const selectedClasses = new Set();
     for (const row of rows) {
         if (!selected.has(row.selector) || !row.gsym) continue;
@@ -8542,21 +8539,25 @@ async function menu_remarm(retry) {
             (def_oc_syms_chars[candidate] ?? '') === row.gsym);
         if (oc != null) selectedClasses.add(oc);
     }
-    const selectedBuc = new Set(
-        [...selected].filter((ch) => 'BCUX'.includes(ch)));
     const filter = (obj) => {
         if (!is_worn(obj)) return false;
         if (allSelected) return true;
-        if (selectedClasses.has(obj.oclass | 0)) return true;
-        if (selectedBuc.size) {
+        /* pickup.c:526-528 — no filter active matches nothing */
+        if (!selectedClasses.size && !hasUnpaid && !hasBuc) return false;
+        /* allow_category: class, unpaid and bucx filters are ANDed */
+        if (selectedClasses.size && !selectedClasses.has(obj.oclass | 0))
+            return false;
+        if (hasUnpaid && !obj.unpaid) return false;
+        if (hasBuc) {
+            let bucx;
             if ((obj.oclass | 0) === COIN_CLASS_C)
-                return selectedBuc.has(g.flags?.goldX ? 'X' : 'U');
-            if (!obj.bknown) return selectedBuc.has('X');
-            if (obj.blessed) return selectedBuc.has('B');
-            if (obj.cursed) return selectedBuc.has('C');
-            return selectedBuc.has('U');
+                bucx = g.flags?.goldX ? 'X' : 'U';
+            else
+                bucx = !obj.bknown ? 'X' : obj.blessed ? 'B'
+                    : obj.cursed ? 'C' : 'U';
+            if (!selected.has(bucx)) return false;
         }
-        return false;
+        return true;
     };
     const { selectedEntries: takeoffPicks = [] } = await inventory_menu_legacy({
         title: 'What do you want to take off?',
@@ -9676,36 +9677,26 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const ux = (u.ux | 0), uy = (u.uy | 0);
         let collMon = m_at(ux, uy);
         if (collMon && collMon !== u.usteed) {
+            /* C do.c:1412-1446 u_collide_m: `!rn2(2) && enexto(&cc, ...) &&
+             * next2u(cc.x, cc.y)` moves the hero; otherwise (including an
+             * enexto() hit more than one square away, which still drew its
+             * whole collect_coords shuffle) mnexto() runs a SECOND enexto. */
+            let moved = false;
             if (!rn2(2)) {
-                // C: enexto(&cc, u.ux, u.uy, youmonst.data) && next2u(cc.x, cc.y) → u_on_newpos
                 const cc = enexto_core(ux, uy);
-                if (cc) {
-                    u.ux = cc.x;
-                    u.uy = cc.y;
-                } else {
-                    // enexto failed — hero stays; mnexto the monster instead
-                    const cc2 = enexto_core(ux, uy);
-                    if (cc2) {
-                        collMon.mx = cc2.x;
-                        collMon.my = cc2.y;
-                    }
+                if (cc && ((cc.x - ux) ** 2 + (cc.y - uy) ** 2) <= 2) {
+                    u_on_newpos(cc.x, cc.y);
+                    moved = true;
                 }
-            } else {
-                // C: mnexto(mtmp, RLOC_NOMSG) → enexto_core → move monster
-                const cc = enexto_core(ux, uy);
-                if (cc) {
-                    collMon.mx = cc.x;
-                    collMon.my = cc.y;
-                    /* C's mnexto() reaches rloc_to_core(), which refreshes
-                     * both the old square and the monster's new square even
-                     * though the level-transition docrt() follows.  That
-                     * intermediate repaint is observable under Hallucination:
-                     * its out-of-sight warning arm consumes the display RNG
-                     * before docrt starts. */
-                    newsym(ux, uy);
-                    newsym(cc.x, cc.y);
-                }
-                // C: if still m_at(u.ux,u.uy): rloc or m_into_limbo (edge case; skip for now)
+            }
+            if (!moved) {
+                await mnexto_arrival(collMon, RLOC_NOMSG);
+            }
+            /* C do.c:1435-1445: still sharing the hero's square → rloc, else limbo */
+            collMon = m_at(u.ux | 0, u.uy | 0);
+            if (collMon) {
+                if (!await rloc(collMon, RLOC_NOMSG) || (collMon = m_at(u.ux | 0, u.uy | 0)))
+                    await m_into_limbo(collMon);
             }
         }
     }
@@ -10945,7 +10936,7 @@ export async function level_tele() {
             /* An empty Return is an invalid destination and loops back to the
              * getlin prompt in C; only ESC cancels level teleport. */
             if (buf === '\x1b') {
-                g.context.move = 0;
+                /* C level_tele() is void; the ^V handler's ECMD_OK maps to move=0 in rhack */
                 return;
             }
             // C teleport.c:1221 — if (wizard && !strcmp(buf, "?")) → levTport_menu.
@@ -10955,7 +10946,6 @@ export async function level_tele() {
                 const sel = await print_dungeon_menu();
                 if (!sel || !sel.newlev) {
                     // C: if (!newlev) return;  (ESC / no selection cancels)
-                    g.context.move = 0;
                     return;
                 }
                 menuNewlevel = { dnum: sel.dnum, dlevel: sel.dlevel };
@@ -10997,7 +10987,6 @@ export async function level_tele() {
         // C teleport.c:1277-1281 — if in Knox and the requested level > 0, stay put.
         if (single_level_branch(g.u.uz) && newlev > 0 && !force_dest) {
             await You('shudder for a moment.');
-            g.context.move = 0;
             return;
         }
         // C teleport.c:1380 — else if (force_dest) { /* wizard mode menu; no
@@ -11029,7 +11018,6 @@ export async function level_tele() {
             if (newlev === depth(u.uz)) {
                 // C teleport.c:1296 You1(shudder_for_moment).
                 await You('shudder for a moment.');
-                g.context.move = 0;
                 return;
             }
         }
@@ -11037,12 +11025,10 @@ export async function level_tele() {
             const llimit = dunlevs_in_dungeon(u.uz);
             if (newlev >= 0 || newlev <= -llimit) {
                 await You_cant('get there from here.');
-                g.context.move = 0;
                 return;
             }
             schedule_goto({ dnum: (u.uz?.dnum ?? 0), dlevel: llimit + newlev },
                           UTOTYPE_NONE, null, null);
-            g.context.move = 0;
             return;
         }
         /* C teleport.c:1293-1377 — a negative controlled destination from
@@ -11138,7 +11124,6 @@ export async function level_tele() {
                 && newlevel.dlevel === (u.uz?.dlevel ?? 0)
                 && newlev !== depth(u.uz)) {
                 await You_cant(`get there from ${(newlev > deepest) ? 'anywhere' : 'here'}.`);
-                g.context.move = 0;
                 return;
             }
         }
@@ -11152,7 +11137,6 @@ export async function level_tele() {
     // However, the C rhack context for wiz_level_tele is ECMD_OK (returns 0), so
     // context.move stays 0 here (the turn counter and movemon fire in goto_level's
     // level entry, not from this command's context.move).
-    g.context.move = 0;
 }
 async function wiz_level_tele() {
     if (wizard())
@@ -11289,6 +11273,11 @@ export async function dodown() {
         g.context.move = 0; // ECMD_OK — didn't move
         return ECMD_OK;
     }
+    // C do.c:1221-1222.
+    if (await u_stuck_cannot_go("down")) {
+        g.context.move = 1;
+        return ECMD_TIME;
+    }
     let trap = null;
     // C do.c:1224-1237 — no downstair/ladder here: check for a fallable
     // trap door / hole underfoot before giving up.
@@ -11375,7 +11364,7 @@ export async function doup() {
         return ECMD_OK;
     }
 
-    if (u_stuck_cannot_go("up")) {
+    if (await u_stuck_cannot_go("up")) {
         g.context.move = 1; /* ECMD_TIME */
         return ECMD_TIME;
     }
@@ -16914,8 +16903,25 @@ async function hurtle_step(arg, x, y, via_jumping) {
 
     /* dothrow.c:934-943 — pool/lava Norep messages.  is_pool_or_lava covers
      * both; a jump that lands short (stopping_short) stays silent. */
-    if (is_pool_or_lava(x, y) && !stopping_short)
-        await pline('You move over some water.');
+    if (flooreffects_is_pool(x, y) && !u.uinwater) {
+        /* dothrow.c:928-939; hurtle_jump's EWwalking |= I_SPECIAL (dothrow.c:747)
+           makes Wwalking true, so a jump never drowns here. */
+        if (is_waterwall(x, y)
+            || !(_Levitation() || _Flying() || via_jumping
+                 || pooleffects_Wwalking())) {
+            game.multi = 0;
+            await drown();
+            return false;
+        } else if (!Is_waterlevel(u.uz) && !stopping_short) {
+            const _lt = _levlAt(x, y);
+            const _moat = _lt && (((_lt.typ | 0) === MOAT)
+                || ((_lt.typ | 0) === DRAWBRIDGE_UP
+                    && ((_lt.drawbridgemask | 0) & DB_UNDER) === DB_MOAT_WB));
+            await pline(`You move over ${_moat ? 'a moat' : 'a pool'}.`);
+        }
+    } else if (flooreffects_is_lava(x, y) && !stopping_short) {
+        await pline('You move over some lava.');
+    }
 
     const ttmp = t_at(x, y);                             /* dothrow.c:952-965 */
     if (ttmp && !stopping_short && ttmp.tseen)
@@ -20795,6 +20801,13 @@ function ammo_and_launcher(ammo, launcher) {
 // Format: "<invlet> - <article> <+spe><name> (<worn_status>)"
 // Mirrors the output of ready_weapon() when weapon is temporarily marked W_WEP.
 function _weapon_prinv_line(obj, wornMsg) {
+    /* C ref: prinv() -> xprname() -> doname() -> xname_flags() objnam.c:627-628
+     * `if (!Blind && !gd.distantname) observe_object(obj)` -> o_init.c:446
+     * discover_object(otyp, FALSE, TRUE, FALSE): naming the weapon marks its type
+     * oc_encountered, which dodiscovered renders as "  " rather than "* "
+     * (o_init.c:844).  xname_weapon() below runs without side effects. */
+    if (!_vision_Blind())
+        observe_object(obj);
     const invlet = String.fromCharCode(obj.invlet || 97); /* 'a' fallback */
     const spe = obj.spe | 0;
     const speClass = is_weptool(obj) ? OCLASS_WEAPON : (obj.oclass | 0);
@@ -20938,9 +20951,32 @@ async function _doswapweapon() {
         // twoweap_primary predicate still sees the old weapon. Reuse the
         // same worn phrase as the ordinary wield command (objnam.c:1561).
         const hand = (u.uhandedness === RIGHT_HANDED) ? 'right' : 'left';
+        /* C wield.c:186 ready_weapon: `!retouch_object(&wep, FALSE)` runs before
+         * the weapon is wielded (touch_artifact, artifact.c:945 rn2(4) for a
+         * cross-aligned artifact).  A refusal takes the turn but wields nothing,
+         * and doswapweapon (wield.c:486-488) restores uswapwep. */
+        if (!await touch_artifact_youmonst(oldswap)) {
+            await setuswapwep(oldswap);
+            return 1;
+        }
+        const _blastMsg = g._touch_artifact_blast_msg;
+        if (_blastMsg) {
+            g._touch_artifact_blast_msg = null;
+            await force_more(_blastMsg);
+        }
         const bowLine = _weapon_prinv_line(oldswap, _wep_worn_phrase(oldswap, hand));
         await setuwep(oldswap);   /* new primary (was secondary) */
         await setuswapwep(oldwep); /* new secondary (was primary) */
+        /* C update_topl joins the ready_weapon prinv and the "no secondary
+         * weapon" pline when they fit the 71-column reserve (wield.c:488-491);
+         * only the overflowing case raises more() between them. */
+        const _joinNoSec = !u.uswapwep && !g._wieldToolSwap
+            && `${bowLine}.  You have no secondary weapon readied.`.length <= 70;
+        if (_joinNoSec) {
+            g._resultMessage = `${bowLine}.  You have no secondary weapon readied.`;
+            g._pending_message = '';
+            return 1;
+        }
         const _swapMorc = await _topline_more(bowLine);
         if (_swapMorc !== 27)
             g._swapMoreFrame = bowLine + '.--More--';
@@ -20948,8 +20984,8 @@ async function _doswapweapon() {
             const _wtSwapLine = _weapon_prinv_line(u.uswapwep,
                 `(alternate weapon${((u.uswapwep.quan ?? 1) | 0) === 1 ? '' : 's'}; not wielded)`);
             await _topline_more(_wtSwapLine);
-        } else if (_swapMorc === 27 && !is_pole(oldswap)) {
-            /* message suppressed by WIN_STOP */
+        } else if (_swapMorc === 27 && !is_pole(oldswap)
+                   && cmdq_peek(CQ_CANNED)?.ec_entry?.func === 'dofire') {
         } else if (u.uswapwep) {
             const _swapQuan = (u.uswapwep.quan ?? 1) | 0;
             const daggerLine = _weapon_prinv_line(u.uswapwep,
@@ -20983,7 +21019,8 @@ async function _doswapweapon() {
         await setuswapwep(oldwep);
         /* C ref: wield.c:488-491 — if uswapwep: prinv(uswapwep); else "no secondary" */
         if (u.uswapwep) {
-            const newSecLine = _weapon_prinv_line(u.uswapwep, '(alternate weapon; not wielded)') + '.';
+            const newSecLine = _weapon_prinv_line(u.uswapwep,
+                `(alternate weapon${((u.uswapwep.quan ?? 1) | 0) === 1 ? '' : 's'}; not wielded)`) + '.'; /* objnam.c:1619 plur(quan) */
             /* C update_topl joins these two plines when they fit the 71-column
              * reserve; only the overflowing case raises more() between them. */
             const joinedSwap = `${emptyMsg}.  ${newSecLine}`;
@@ -22344,6 +22381,15 @@ async function _from_what(propidx) {
              * what_gives()'s artifact branch above. */
             if (obj)
                 buf = ` because of ${obj.oartifact ? bare_artifactname(obj) : (await _ysimple_name(obj))}`;
+            /* C attrib.c:962-969 — the two BLINDED arms after what_gives().
+             * The goop string has NO leading space (C bug, ported). */
+            else if (propidx === BLINDED && _Blindfolded_only())
+                buf = ` because of ${await _ysimple_name(u.ublindf)}`;
+            else if (propidx === BLINDED && u.ucreamed
+                     && (BlindedTimeout() | 0) === (u.ucreamed | 0)
+                     && !(_eprop(BLINDED) | 0)
+                     && !((_hprop(BLINDED) | 0) & ~TIMEOUT_FW))
+                buf = `due to goop covering your ${body_part(FACE)}`;
         }
         /* C:966-969 — "a pair of gauntlets" → "gauntlets". */
         const at = buf.indexOf(' pair of ');
@@ -22402,7 +22448,13 @@ async function _attributes_enlightenment() {
     if (on(STONE_RES)) out.push(_you_are(`petrification resistant${(await _from_what(STONE_RES))}`, ''));
     if (on(HALLUC_RES)) out.push(_enlght_line('You ', _enl_tense('resist', 'resisted'), ' hallucinations', (await _from_what(HALLUC_RES))));
     /* C:1565-1638 — vision and senses. */
-    if (on(SEE_INVIS) && !_u_blind()) out.push(_enlght_line('You ', _enl_tense('see', 'saw'), ' invisible', (await _from_what(SEE_INVIS))));
+    if (on(SEE_INVIS)) {
+        /* C insight.c:1572-1580 — three arms keyed on Blind / PermaBlind. */
+        if (!_u_blind()) out.push(_enlght_line('You ', _enl_tense('see', 'saw'), ' invisible', (await _from_what(SEE_INVIS))));
+        else if (!((game.u?.uprops?.[BLINDED]?.intrinsic | 0) & FROMOUTSIDE))
+            out.push(_enlght_line('You ', _enl_tense('will see', 'would have seen'), ' invisible when not blind', ''));
+        else out.push(_enlght_line('You ', _enl_tense('would see', 'would have seen'), ' invisible if not blind', ''));
+    }
     if (on(TELEPAT)) out.push(_you_are(`telepathic${(await _from_what(TELEPAT))}`, ''));
     if (on(WARNING)) out.push(_you_are(`warned${(await _from_what(WARNING))}`, ''));
     if (on(WARN_UNDEAD)) out.push(_you_are(`warned of undead${(await _from_what(WARN_UNDEAD))}`, ''));
@@ -24933,6 +24985,27 @@ export function u_maybe_impaired() {
     return !!(Stunned || (Confusion && !rn2(5)));
 }
 
+/* C hack.c:2342 air_turbulence() — does the plane of air disturb movement? */
+async function air_turbulence() {
+    if (Is_airlevel(game.u.uz) && rn2(4) && !_Levitation() && !_Flying()) {
+        switch (rn2(3)) {
+        case 0:
+            await pline('You tumble in place.');
+            exercise(A_DEX, false);
+            break;
+        case 1:
+            await You_cant('control your movements very well.');
+            break;
+        case 2:
+            await pline("It's hard to walk in thin air.");
+            exercise(A_DEX, true);
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
 function impaired_movement(dx, dy) {
     const u = game.u;
     if (!u_maybe_impaired())
@@ -27431,6 +27504,7 @@ export async function dosearch0(aflag) {
     /* C: if (u.uswallow) { if (!aflag) Norep("..."); } */
     if (u.uswallow) {
         if (!aflag) {
+            await _Norep("What are you looking for?  The exit?");
         }
         return 1;
     }
@@ -33904,6 +33978,35 @@ function _ansimpleoname(obj) {
     return ((obj.quan | 0) === 1) ? an(s) : s;
 }
 
+/* C hack.c:2310-2311 — the(defsyms[glyph_to_cmap(back_to_glyph(x, y))].explanation)
+ * for a solid square.  js/ has no back_to_glyph returning a cmap index, so map
+ * the terrain typ to the S_* row display.c:2294-2420 would pick and read
+ * DEFSYM_EXPLANATION (drawing.c defsyms) for it. */
+function _fight_terrain_explanation(typ, x, y) {
+    let sym;
+    if (typ === STONE || typ === SCORR) sym = 0;            // S_stone
+    else if (typ === SDOOR) sym = 1;                        // S_vwall/S_hwall -> "wall"
+    else if (IS_WALL(typ)) sym = 1;                         // S_vwall..S_trwall -> "wall"
+    else if (typ === TREE) sym = 18;                        // S_tree
+    else if (typ === IRONBARS) sym = 17;                    // S_bars
+    else if (typ === POOL || typ === MOAT || typ === WATER) sym = 38; // S_pool / S_water
+    else if (typ === LAVAPOOL) sym = 40;                    // S_lava
+    else if (typ === LAVAWALL) sym = 41;                    // S_lavawall
+    else if (typ === FOUNTAIN) sym = 37;                    // S_fountain
+    else if (typ === SINK) sym = 36;                        // S_sink
+    else if (typ === THRONE) sym = 35;                      // S_throne
+    else if (typ === GRAVE) sym = 34;                       // S_grave
+    else if (typ === ALTAR) sym = 33;                       // S_altar
+    else if (typ === DRAWBRIDGE_UP || typ === DBWALL) sym = 44; // raised drawbridge
+    else if (typ === STAIRS || typ === LADDER) {
+        const sw = stairway_at(x, y);
+        const up = !!(sw && sw.up);
+        const br = !!(sw && sw.tolev && (sw.tolev.dnum | 0) !== ((game.u.uz && game.u.uz.dnum) | 0));
+        sym = (typ === STAIRS ? 25 : 27) + (up ? 0 : 1) + (br ? 4 : 0);
+    } else if (typ === DOOR) sym = 15;                      // closed door
+    else return 'an unknown obstacle';
+    return the(DEFSYM_EXPLANATION[sym]);
+}
 async function domove_fight_empty(x, y, dx, dy) {
     const u = game.u;
     const unknown_obstacle = 'an unknown obstacle';
@@ -33975,9 +34078,7 @@ async function domove_fight_empty(x, y, dx, dy) {
         if (typ === DOOR && closed_door(x, y)) {
             buf = 'the closed door';
         } else if (seenv || IS_STWALL(typ) || typ === SDOOR || typ === SCORR) {
-            buf = IS_WALL(typ) ? 'the wall'
-                : typ === STONE ? 'the stone'
-                : 'an unknown obstacle';
+            buf = _fight_terrain_explanation(typ, x, y);
         } else {
             buf = unknown_obstacle;
         }
@@ -35462,6 +35563,8 @@ async function domove_core(dx, dy) {
         u_on_newpos_cmd(u.ustuck.mx | 0, u.ustuck.my | 0);
         swallowed_mon = u.ustuck;
     } else {
+        if (await air_turbulence())
+            return;
         slippery_ice_fumbling();
         const im = impaired_movement(dx, dy);
         if (im.blocked)
@@ -35502,7 +35605,9 @@ async function domove_core(dx, dy) {
     const mtmp = swallowed_mon || m_at(newx, newy);
     let _petSwapMon = null;
     if (mtmp) {
-        if (game.context?.run && !is_safemon(mtmp)) {
+        /* C hack.c:2768 sits inside domove_core's NOT-swallowed arm (:2739-2784);
+         * a swallowed hero's mtmp = u.ustuck skips it, so a run key attacks. */
+        if (game.context?.run && !swallowed_mon && !is_safemon(mtmp)) {
             const blindCheck = _uprop_active('BLINDED');
             /* named for the C macro it is (youprop.h:359) — this file's other
              * ported guards keep the C spelling, and it keeps the guard
@@ -36006,6 +36111,17 @@ export async function _spoteffects_pickup(redrawPending = false) {
                 describe_decor();
             await read_engr_at(ux2, uy2, redrawPending);
             return;
+        }
+        {
+            const _t = t_at(ux2, uy2);
+            if (!can_reach_floor(!!(_t && is_pit(_t.ttyp)))) {
+                describe_decor();
+                if (((g.multi | 0) && !(game.context?.run | 0))
+                    || !game.flags?.pickup
+                    || (_t && (uteetering_at_seen_pit(_t) || uescaped_shaft(_t))))
+                    await read_engr_at(ux2, uy2, redrawPending);
+                return;
+            }
         }
         let ct = 0, only = null;
         const _uchain = u.uchain || null;
@@ -41616,7 +41732,37 @@ export function record_achievement(achidx) {
         if (Math.abs(ach[i] | 0) === absidx)
             return;   /* C: repeat_achievement -> don't duplicate it */
     ach[i] = achidx | 0;
+    /* C insight.c:2444-2470 — livelog the new achievement (feeds #chronicle).
+     * Rank achievements and the two prizes need role/otyp text and are not
+     * logged here. */
+    if (game.program_state?.gameover) return;
+    if (absidx >= ACH_RNK1 && absidx <= ACH_RNK8) return;
+    if (achidx === ACH_SOKO_PRIZE || achidx === ACH_MINE_PRIZE) return;
+    const am = _ACHIEVE_MSG[absidx];
+    if (am && am[1]) livelog_printf(am[0], '%s', am[1]);
 }
+/* C insight.c:58-93 achieve_msg[] (llflag, msg), indexed by achievement. */
+const _ACHIEVE_MSG = {
+    [ACH_BELL]: [0x0002, 'acquired the Bell of Opening'],
+    [ACH_HELL]: [0x0002, 'entered Gehennom'],
+    [ACH_CNDL]: [0x0002, 'acquired the Candelabrum of Invocation'],
+    [ACH_BOOK]: [0x0002, 'acquired the Book of the Dead'],
+    [ACH_INVK]: [0x0002, 'performed the invocation'],
+    [ACH_AMUL]: [0x0002, 'acquired The Amulet of Yendor'],
+    [ACH_ENDG]: [0x0002, 'entered the Elemental Planes'],
+    [ACH_ASTR]: [0x0002, 'entered the Astral Plane'],
+    [ACH_UWIN]: [0x0002, 'ascended'],
+    [ACH_MEDU]: [0x0002 | 0x0004, 'killed Medusa'],
+    [ACH_MINE]: [0x1000 | 0x4000, 'entered the Gnomish Mines'],
+    [ACH_TOWN]: [0x0002, 'reached Mine Town'],
+    [ACH_SHOP]: [0x1000, 'entered a shop'],
+    [ACH_TMPL]: [0x1000, 'entered a temple'],
+    [ACH_ORCL]: [0x0002, 'consulted the Oracle'],
+    [ACH_NOVL]: [0x1000 | 0x4000, 'read a Discworld novel'],
+    [ACH_SOKO]: [0x0002, 'entered Sokoban'],
+    [ACH_BGRM]: [0x0002, 'entered the Bigroom'],
+    [ACH_TUNE]: [0x1000, "learned castle drawbridge's tune"],
+};
 /* achieve_rank(rank) is already ported above (C insight.c:2504). */
 
 function furniture_present(typ, roomno) {
@@ -43477,6 +43623,27 @@ export async function quest_chat(mtmp) {
         impossible(`quest_chat: Unknown quest character ${mon_nam(mtmp)}.`);
     }
 }
+/* C ref: quest.c:403-424 nemesis_speaks() */
+async function nemesis_speaks() {
+    const q = _quest_status();
+    if (!q.in_battle) {
+        if (game.u?.uhave?.questart)
+            await qt_pager('nemesis_wantsit');
+        else if ((q.made_goal | 0) === 1 || !q.met_nemesis)
+            await qt_pager('nemesis_first');
+        else if ((q.made_goal | 0) < 4)
+            await qt_pager('nemesis_next');
+        else if ((q.made_goal | 0) < 7)
+            await qt_pager('nemesis_other');
+        else if (!rn2(5))
+            await qt_pager('discourage');
+        if ((q.made_goal | 0) < 7)
+            q.made_goal = (q.made_goal | 0) + 1;
+        q.met_nemesis = true;
+    } else /* he will spit out random maledictions */
+        if (!rn2(5))
+            await qt_pager('discourage');
+}
 /* C ref: quest.c:494-511 quest_talk(mtmp) — the monster-turn entry point, called
  * from dochug() at monmove.c:722 (the STRAT_WAITMASK arm, which is how a WAITING
  * leader speaks to an adjacent hero) and monmove.c:981.
@@ -43490,7 +43657,7 @@ export async function quest_talk(mtmp) {
     }
     switch (mtmp.data?.msound | 0) {
     case MS_NEMESIS:
-        impossible('not yet ported: nemesis_speaks');
+        await nemesis_speaks();
         break;
     case MS_DJINNI:
         impossible('not yet ported: prisoner_speaks');
@@ -43953,7 +44120,21 @@ function align_str(align) {
 }
 
 // ── Stubs for unported helpers used by doup ─────────────────────────────────
-function u_stuck_cannot_go(dir) { return false; }
+/* C do.c:1110-1127 u_stuck_cannot_go(). */
+async function u_stuck_cannot_go(updn) {
+    const u = game.u || {};
+    if (u.ustuck) {
+        if (u.uswallow || !sticks(game.youmonst?.data)) {
+            await You(`are ${!u.uswallow ? 'being held'
+                : _digests(u.ustuck.data) ? 'swallowed' : 'engulfed'}, and cannot go ${updn}.`);
+            return true;
+        }
+        const mtmp = u.ustuck;
+        set_ustuck(null);
+        await You(`release ${mon_nam(mtmp)}.`);
+    }
+    return false;
+}
 /* prev_level: the real body is above, beside next_level (its C home,
  * dungeon.c:1518).  The empty stub that used to sit here silently swallowed
  * every up-staircase transition. */
@@ -44525,6 +44706,20 @@ async function domonnoise(mtmp) {
             "My feet hurt, I've been on them all day!"];
         verbl_msg = mtmp.mpeaceful ? soldier_pax_msg[rn2(3)] : soldier_foe_msg[rn2(3)];
     }
+    /* C sounds.c:1170-1175 — MS_GUARD (vault guard). */
+    else if (msound === 28 /* MS_GUARD */) {
+        verbl_msg = money_cnt(g.invent ?? null)
+            ? 'Please drop that gold and follow me.'
+            : 'Please follow me.';
+    }
+    /* C sounds.c:1179-1189 — MS_SOLDIER (army and watchmen); one rn2(3) pick. */
+    else if (msound === 27 /* MS_SOLDIER */) {
+        const soldier_foe_msg = ['Resistance is useless!', "You're dog meat!", 'Surrender!'];
+        const soldier_pax_msg = ["What lousy pay we're getting here!",
+            "The food's not fit for Orcs!",
+            "My feet hurt, I've been on them all day!"];
+        verbl_msg = mtmp.mpeaceful ? soldier_pax_msg[rn2(3)] : soldier_foe_msg[rn2(3)];
+    }
     /* NOT PORTED: every other msound arm (sounds.c:722-1230). */
 
     /* sounds.c:1232-1236 tail —
@@ -44712,8 +44907,11 @@ async function swim_move_danger(x, y) {
     const newtyp = _u_simple_floortyp(x, y);
     const liquid_wall = IS_WATERWALL(newtyp) || newtyp === LAVAWALL;
     const _up = u.uprops || {};
-    const Stunned = (_up.STUNNED?.intrinsic) || 0;
-    const Confusion = (_up.CONFUSION?.intrinsic) || 0;
+    /* uprops is keyed by the NUMERIC prop index (see u_maybe_impaired); the
+       string keys STUNNED/CONFUSION are never written, so a confused hero
+       wrongly got "You avoid stepping into ..." where C walks in. */
+    const Stunned = (_up[STUNNED]?.intrinsic) | 0;
+    const Confusion = (_up[CONFUSION]?.intrinsic) | 0;
     const loc = _levlAt(x, y);
     /* PARANOID_SWIM — see the block comment above. */
     const ParanoidSwim = true;
