@@ -155,8 +155,9 @@ export async function nasty(summoner) {
                 }
 
                 if (mtmp) {
-                    if (mtmp.data === mons(PM_ARCH_LICH)
-                        || mtmp.data === mons(PM_ARCHON)) {
+                    // C wizard.c:687-688 — mndx; mons() allocs fresh.
+                    if ((mtmp.data?.mndx ?? -1) === PM_ARCH_LICH
+                        || (mtmp.data?.mndx ?? -1) === PM_ARCHON) {
                         tmp = Math.min(
                             mons(PM_ARCHON)?.difficulty | 0,
                             mons(PM_ARCH_LICH)?.difficulty | 0,
@@ -426,7 +427,8 @@ function strategy(mtmp) {
     case 0: /* panic time - mtmp is almost snuffed */
         return STRAT_HEAL;
     case 1: /* the wiz is less cautious */
-        if (mtmp.data !== mons(PM_WIZARD_OF_YENDOR)) {
+        // C wizard.c:288 — mndx; mons() allocs fresh per call.
+        if ((mtmp.data?.mndx ?? -1) !== PM_WIZARD_OF_YENDOR) {
             return STRAT_HEAL;
         }
         /* FALLTHRU */

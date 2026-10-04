@@ -679,9 +679,17 @@ export function do_light_sources(cs_rows) {
                     ls.y = obj.oy | 0;
                     ls.flags |= LSF_SHOW;
                 } else if (obj.where === OBJ_MINVENT && obj.ocarry) {
-                    ls.x = obj.ocarry.mx | 0;
-                    ls.y = obj.ocarry.my | 0;
-                    ls.flags |= LSF_SHOW;
+                    // C zap.c:669–674 — migrating carrier (mx==0) is
+                    // FALSE: no SHOW, x,y reset (else SHOW at (0,0)
+                    // paints corner TEMP_LIT).
+                    if (obj.ocarry.mx | 0) {
+                        ls.x = obj.ocarry.mx | 0;
+                        ls.y = obj.ocarry.my | 0;
+                        ls.flags |= LSF_SHOW;
+                    } else {
+                        ls.x = 0;
+                        ls.y = 0;
+                    }
                 } else {
                     ls.x = 0;
                     ls.y = 0;

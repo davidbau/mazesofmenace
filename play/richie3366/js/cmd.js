@@ -68,6 +68,7 @@ import {
     cmdq_add_key, Blind, free_pickinv_cache,
 } from './invent.js';
 import { dovspell, docast, num_spells } from './spell.js';
+import { doclassdisco } from './o_init.js'; // SAFE per imports.mjs (hoisted fn, cycle-safe)
 import { doeat, sgn } from './eat.js';
 import { dodrink, dodip, dip_into } from './potion.js';
 import { dozap } from './zap.js';
@@ -2053,6 +2054,7 @@ const FUNCT_TXT = new Map([
     [dovspell, 'showspells'],
     [doidtrap, 'showtrap'],
     [dodiscovered, 'known'],
+    [doclassdisco, 'knownclass'], // C cmd.c:1752 '`' knownclass
     [dotogglepickup, 'autopickup'],
     [dobugreport, 'bugreport'], // C cmd.c:1685 (after autopickup, its C predecessor)
     [doset_simple, 'options'],
@@ -5168,6 +5170,7 @@ function rhack_repeat_command(ch, key) {
     case '+': return dovspell;
     case '^': return doidtrap;
     case '\\': return dodiscovered;
+    case '`': return doclassdisco; // C cmd.c:1752
     case '@': return dotogglepickup;
     case 'O': return doset_simple;
     case '$': return doprgold;
@@ -5223,6 +5226,7 @@ function rhack_repeat_txt(ch, key) {
         x: 'swap', z: 'zap', Z: 'cast', ',': 'pickup', '.': 'wait',
         '>': 'down', '<': 'up', _: 'travel', ':': 'look', '/': 'whatis',
         ';': 'glance', '?': 'help', '+': 'showspells', '^': 'showtrap', '\\': 'known',
+        '`': 'knownclass',
         '@': 'autopickup', O: 'options', $: 'showgold', ')': 'seeweapon',
         '[': 'seearmor', '=': 'seerings', '"': 'seeamulet', '(': 'seetools',
         '*': 'seeall',
@@ -5976,6 +5980,10 @@ export async function rhack(key) {
     } else if (ch === '\\') {
         // C ref: o_init.c dodiscovered
         await dodiscovered();
+        game.context.move = 0;
+    } else if (ch === '`') {
+        // C ref: o_init.c doclassdisco (cmd.c:1752 knownclass)
+        await doclassdisco();
         game.context.move = 0;
     } else if (key === 16) { // ^P — C('p') doprev_message
         // C ref: cmd.c doprev_message / topl.c tty_doprev_message (D-1601)

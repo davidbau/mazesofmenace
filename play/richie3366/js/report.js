@@ -155,7 +155,7 @@ export function swr_add_uricoded(str, st) {
  * trace. Sync like C, boolean like C.
  * Callers end.c:1921,1923 (NH_abort) are by-design unported (C runtime)
  * — exported unwired (named).
- * @returns {boolean} FALSE — the compiled arm (below)
+ * @returns {boolean} FALSE — the only reachable JS outcome (below)
  */
 export function NH_panictrace_libc() {
     // C `:487–490` — `#if 0` submit_web_report arm ("XXX how did this
@@ -163,11 +163,12 @@ export function NH_panictrace_libc() {
     // C `:492–508` — `#ifdef PANICTRACE_LIBC` backtrace(3) arm
     // (raw_print banner, backtrace/backtrace_symbols over 20 frames,
     // copynchars + double strsubst blank-strip, raw_printf per frame):
-    // the unix contest build never defines PANICTRACE_LIBC (no -D in
-    // sys/unix Makefiles or hints; sysconf PANICTRACE_LIBC=2 is only the
-    // end.c:1921 runtime priority), so the compiled function is the
-    // `#else` arm:
-    return false; // C `:510` (FALSE)
+    // the define holds on contest Linux (global.h:448–450, automatic
+    // on __linux__+__GLIBC__), so it IS the compiled arm — but
+    // backtrace(3) has no dual-runtime analogue (Rule #2: no native
+    // frame capture in plain ESM), hence unreachable here. The only
+    // reachable JS outcome is failure:
+    return false; // C `:510` (FALSE — the `#else` shape, by-design here)
 }
 
 /**
@@ -175,17 +176,18 @@ export function NH_panictrace_libc() {
  * trace. Sync like C, boolean like C.
  * Callers end.c:1920,1924 (NH_abort) are by-design unported (C runtime)
  * — exported unwired (named).
- * @returns {boolean} FALSE — the compiled arm (below)
+ * @returns {boolean} FALSE — the only reachable JS outcome (below)
  */
 export function NH_panictrace_gdb() {
     // C `:531–556` — `#ifdef PANICTRACE_GDB` arm (gdbpath/greppath
     // NULL-or-empty gates, Snprintf the `gdb -n -q … | grep '^#'`
     // pipeline, popen + raw_print banner + `bt\\nquit\\ny`, sleep(4),
-    // pclose): the unix contest build never defines PANICTRACE_GDB (no
-    // -D in sys/unix Makefiles or hints; sysconf PANICTRACE_GDB=1 is
-    // only the end.c:1920 runtime priority), so the compiled function
-    // is the `#else` arm:
-    return false; // C `:558` (FALSE)
+    // pclose): the define holds on contest unix (global.h:453–455,
+    // automatic on UNIX non-WASM), so it IS the compiled arm — but
+    // popen/gdb has no dual-runtime analogue (Rule #2: no subprocess
+    // in plain ESM), hence unreachable here. The only reachable JS
+    // outcome is failure:
+    return false; // C `:558` (FALSE — the `#else` shape, by-design here)
 }
 
 /**

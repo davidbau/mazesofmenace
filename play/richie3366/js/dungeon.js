@@ -149,7 +149,7 @@ import {
     VISITED,
     In_V_tower,
 } from './const.js';
-import { builds_up, strsubst, trimspaces, strstri } from './hacklib.js';
+import { builds_up, strsubst, trimspaces, strstri, strncmpi } from './hacklib.js';
 import { align_gname } from './roles.js';
 import { altarmask_at } from './pray.js';
 import { is_drawbridge_wall } from './dbridge.js';
@@ -594,7 +594,7 @@ function find_branch(name, pd) {
         const dnam = String(game.dungeons?.[br?.end2?.dnum]?.dname ?? '');
         const low = dnam.toLowerCase();
         if (low === want
-            || (low.slice(0, 4) === 'the ' && low.slice(4) === want)) {
+            || (strncmpi(dnam, 'The ', 4) === 0 && low.slice(4) === want)) { // C dungeon.c:331
             return ((ledger_no(br.end1) << 8) | ledger_no(br.end2)) | 0;
         }
     }
@@ -1230,7 +1230,7 @@ export function lev_by_name(nam0) {
         dlev = mseen.lev;
     } else {
         /* allow strings like "the oracle level" to find "oracle" */
-        if (nam.slice(0, 4).toLowerCase() === 'the ') nam = nam.slice(4);
+        if (strncmpi(nam, 'the ', 4) === 0) nam = nam.slice(4); // C dungeon.c:2115
         // C dungeon.c:2117 — strstri(" level") and p == eos(nam) - 6.
         const levelTail = strstri(nam, ' level');
         if (levelTail != null && levelTail.length === 6) {

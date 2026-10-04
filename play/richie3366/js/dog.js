@@ -745,7 +745,9 @@ function mon_arrive_link(mtmp) {
     game.fmon.unshift(mtmp);
     if (mtmp.isshk) set_residency(mtmp, false);
     const num_segs = mtmp.wormno | 0;
-    if (mtmp.data === mons(PM_LONG_WORM)) {
+    // C dog.c:437 `mtmp->data == &mons[PM_LONG_WORM]` — mons() allocs
+    // fresh per call, so compare mndx (meatbox/newcham idiom).
+    if ((mtmp.data?.mndx ?? -1) === PM_LONG_WORM) {
         mtmp.wormno = get_wormno();
         if (mtmp.wormno) initworm(mtmp, num_segs);
     } else {

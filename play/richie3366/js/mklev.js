@@ -11,7 +11,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rnz } from './rng.js';
 import { CLR_CYAN, CLR_GRAY, CLR_BRIGHT_BLUE } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level, dist2, distmin, level_difficulty, strstri, upstart, swapbits, stripdigits, str_lines_maxlen } from './hacklib.js';
+import { depth as depth_of_level, dist2, distmin, level_difficulty, strstri, upstart, swapbits, stripdigits, str_lines_maxlen, strncmpi } from './hacklib.js';
 import { getbones, sanitize_name } from './bones.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -497,9 +497,8 @@ export function known_branch_stairs(sway) {
 }
 
 /**
- * C ref: stairs.c stairs_description — ordinary / Dlvl1-up / known-branch.
- * Deferred: Elemental Planes destination string when amulet + on_level planes
- * (C uses "to the Elemental Planes" vs generic "to the end game").
+ * C ref: stairs.c stairs_description `:186–235` — ordinary / Dlvl1-up /
+ * known-branch, whole in C order.
  */
 export function stairs_description(sway, stcase = true) {
     if (!sway) return '';
@@ -524,7 +523,13 @@ export function stairs_description(sway, stcase = true) {
         const haveAmulet = !!(game.u?.uhave?.amulet);
         if (!haveAmulet)
             return `${stairs} ${updown} out of the dungeon`;
-        return `branch ${stairs} ${updown} to the end game`;
+        // C `:227–231`: amulet + Dlvl1-up — planes-destination stairs say
+        // "to the Elemental Planes", otherwise "to the end game".
+        const toPlanes = on_level(tolev, game.earth_level)
+            || on_level(tolev, game.air_level)
+            || on_level(tolev, game.fire_level)
+            || on_level(tolev, game.water_level);
+        return `branch ${stairs} ${updown} ${toPlanes ? 'to the Elemental Planes' : 'to the end game'}`;
     }
     const dname = (game.dungeons?.[sway.tolev.dnum]?.dname || 'elsewhere')
         .replace(/^The /, 'the ');
@@ -22806,7 +22811,7 @@ function find_objtype(s, oclass) {
             ['wand of ', WAND_CLASS],
         ];
         for (const [p, cls] of prefixes) {
-            if (name.slice(0, p.length).toLowerCase() === p.toLowerCase()) {
+            if (strncmpi(name, p, p.length) === 0) { // C sp_lev.c:3498
                 classv = cls;
                 name = name.slice(p.length);
                 break;

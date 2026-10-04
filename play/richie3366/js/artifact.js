@@ -133,7 +133,7 @@ import { monflee } from './monmove.js';
 import { make_stunned, make_confused, healup } from './potion.js';
 import { losexp } from './exper.js';
 import { monhp_per_lvl, race_hostile } from './makemon.js';
-import { upstart, depth } from './hacklib.js';
+import { upstart, depth, strncmpi } from './hacklib.js';
 import { exercise, A_WIS, A_CON } from './attrib.js';
 // C mk_artifact by_align — mksobj/obj_extract_self are hoisted fns, cycle-safe
 // (mkobj.js already imports artifact.js; runtime-only calls, no top-level
@@ -933,7 +933,7 @@ set_can_track_excalibur_hook(u_wield_art, ART_EXCALIBUR);
 function maybe_lvltport_feedback() {
     const msg = game.dfr_post_msg;
     if (!msg) return Promise.resolve();
-    if (String(msg).slice(0, 15).toLowerCase() !== 'you materialize') {
+    if (strncmpi(msg, 'You materialize', 15) !== 0) { // C do.c:2035
         return Promise.resolve();
     }
     game.dfr_post_msg = null;
@@ -1210,13 +1210,13 @@ export async function revoke_invoked_property(otmp) {
 export function artifact_name(name, out, fuzzy = false) {
     if (!name) return null;
     let n = name;
-    if (n.length >= 4 && n.slice(0, 4).toLowerCase() === 'the ') n = n.slice(4);
+    if (strncmpi(n, 'the ', 4) === 0) n = n.slice(4); // C artifact.c:337
     const list = artilist();
     for (let i = 1; i < list.length; i++) {
         const a = list[i];
         if (a.otyp < 0) continue;
         let aname = a.name;
-        if (aname.length >= 4 && aname.slice(0, 4).toLowerCase() === 'the ') {
+        if (strncmpi(aname, 'the ', 4) === 0) { // C artifact.c:342
             aname = aname.slice(4);
         }
         const match = fuzzy
@@ -1391,7 +1391,7 @@ export function exist_artifact(otyp, name) {
 export function restrict_name(otmp, name) {
     if (!name) return false;
     let n = name;
-    if (n.length >= 4 && n.slice(0, 4).toLowerCase() === 'the ') n = n.slice(4);
+    if (strncmpi(n, 'the ', 4) === 0) n = n.slice(4); // C artifact.c:584
 
     const objects = game.objects;
     const otyp = otmp.otyp | 0;
@@ -1417,7 +1417,7 @@ export function restrict_name(otmp, name) {
         const a = list[i];
         if (!a || !sametype[a.otyp]) continue;
         let aname = a.name;
-        if (aname.length >= 4 && aname.slice(0, 4).toLowerCase() === 'the ') {
+        if (strncmpi(aname, 'the ', 4) === 0) { // C artifact.c:615
             aname = aname.slice(4);
         }
         if (aname === n) {

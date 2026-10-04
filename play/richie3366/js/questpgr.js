@@ -10,7 +10,7 @@ import {
 } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { align_gname, align_gtitle, align_str, rank_of, genders } from './roles.js';
-import { copynchars, eos, highc, strstri } from './hacklib.js';
+import { copynchars, eos, highc, strstri, strncmpi } from './hacklib.js';
 import { rn2 } from './rng.js';
 import { artiname } from './artifact.js';
 import {
@@ -851,7 +851,7 @@ export function convert_line(inLine) {
                     }
                     piece = s_suffix(piece);
                 } else if (mod === 't') {
-                    if (/^the /i.test(piece)) {
+                    if (strncmpi(piece, 'the ', 4) === 0) { // C questpgr.c:394
                         out += piece.slice(4);
                         continue;
                     }

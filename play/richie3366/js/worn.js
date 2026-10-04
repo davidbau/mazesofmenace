@@ -43,7 +43,7 @@ import {
     canseemon, newsym, impossible, pline, pline_mon, You,
 } from './display.js';
 import { see_wsegs } from './worm.js';
-import { dist2, strsubst } from './hacklib.js';
+import { dist2, strsubst, strncmpi } from './hacklib.js';
 import {
     Monnam, mon_nam, s_suffix, pmname, Mgender, hcolor,
 } from './do_name.js';
@@ -986,12 +986,10 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
             }
             newarm = distant_name(best, doname);
             // C: identical descriptions → "another <newarm>" for "a|an <newarm>".
-            // strcmpi/strncmpi have no exported home (local clones only);
-            // the comparison is inline, strsubst is the canonical import.
             if (newarm.toLowerCase() === oldarm.toLowerCase()) {
-                if (newarm.slice(0, 2).toLowerCase() === 'a ') {
+                if (strncmpi(newarm, 'a ', 2) === 0) { // C worn.c:944
                     newarm = strsubst(newarm, 'a ', 'another ');
-                } else if (newarm.slice(0, 3).toLowerCase() === 'an ') {
+                } else if (strncmpi(newarm, 'an ', 3) === 0) { // C :946
                     newarm = strsubst(newarm, 'an ', 'another ');
                 }
                 // C newarm[BUFSZ-1] = '\0': no fixed buffer in JS.

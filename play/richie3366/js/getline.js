@@ -10,7 +10,7 @@
 // D-1639.
 
 import { game } from './gstate.js';
-import { mungspaces } from './hacklib.js';
+import { mungspaces, strncmpi } from './hacklib.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, mark_topline_prompt, clear_win_stop,
@@ -1211,6 +1211,11 @@ const EXT_CMDS = [
         run: async () => (await import('./invent.js')).dodiscovered(),
     },
     {
+        // C cmd.c:1752 knownclass → doclassdisco (o_init.c:891).
+        name: 'knownclass', wiz: false, autocomplete: false,
+        run: async () => (await import('./o_init.js')).doclassdisco(),
+    },
+    {
         name: 'look', wiz: false, autocomplete: false,
         run: async () => (await import('./invent.js')).dolook(),
     },
@@ -1221,6 +1226,11 @@ const EXT_CMDS = [
     {
         name: 'options', wiz: false, autocomplete: false,
         run: async () => (await import('./options.js')).doset_simple(),
+    },
+    {
+        // C cmd.c:1783 optionsfull → doset (options.c:8758).
+        name: 'optionsfull', wiz: false, autocomplete: false,
+        run: async () => (await import('./options.js')).doset(),
     },
     {
         name: 'pickup', wiz: false, autocomplete: false,
@@ -1376,7 +1386,7 @@ export function extcmds_match(findstr, ecmflags) {
             out.push(i);
         } else if (exactmatch) {
             if (e.txt.toLowerCase() === needle) out.push(i);
-        } else if (e.txt.toLowerCase().startsWith(needle)) {
+        } else if (strncmpi(findstr, e.txt, String(findstr).length) === 0) { // C cmd.c:2548, fslen
             out.push(i);
         }
     }

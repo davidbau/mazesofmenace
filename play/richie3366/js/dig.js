@@ -21,7 +21,7 @@ import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import {
     newsym, pline, You, You_feel, pline_The, impossible, tmp_at,
     nh_delay_output, verbalize,
-    feel_newsym, flush_screen, flush_topl_more, under_ground,
+    feel_newsym, flush_screen, flush_topl_more, under_ground, canseemon,
 } from './display.js';
 import {
     cansee, does_block, recalc_block_point, unblock_point, vision_recalc,
@@ -204,16 +204,9 @@ function closed_door(x, y) {
     return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
 }
 
-function canseemon(mtmp) {
-    if (!mtmp) return false;
-    if (mtmp.wormno) {
-        if (!worm_known(mtmp)) return false;
-        return !mtmp.minvis;
-    }
-    if (!mtmp.mx) return false;
-    if (!cansee(mtmp.mx, mtmp.my)) return false;
-    return !mtmp.minvis;
-}
+/* C display.h _canseemon — live display.js export (divergent local clone
+ * removed D-3424: it dropped the see_with_infrared arm and used !minvis
+ * instead of mon_visible's See_invisible + !mundetected). */
 
 function Unaware() {
     return ((game.u?.multi | 0) < 0) && !!game.u?.usleep;

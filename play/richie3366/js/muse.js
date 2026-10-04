@@ -10,8 +10,8 @@ import { cansee, couldsee, unblock_point, recalc_block_point } from './vision.js
 import {
     pline, mon_visible, see_with_infrared, pline_mon, verbalize,
     map_invisible, newsym, sensemon, flash_glyph_at, mon_to_glyph,
-    canspotmon, impossible, cls, docrt, display_self, You_feel, Norep,
-    more, show_glyph_cell,
+    canspotmon, canseemon, impossible, cls, docrt, display_self, You_feel, Norep,
+    more, show_glyph_cell, shieldeff,
 } from './display.js';
 import { worm_known, worm_move } from './worm.js';
 import {
@@ -24,11 +24,12 @@ import {
 } from './objnam.js';
 import {
     m_at, m_carrying, mongone, onscary, monnear,
-    wakeup, wake_nearto,
+    wakeup, wake_nearto, seemimic,
 } from './mon.js';
-import { lined_up, linedup_callback, m_throw, m_useup } from './mthrowu.js'; // C mthrowu.c:1162–1170 m_useup: live import serves all 18 in-file sites (D-3338)
+import { lined_up, linedup_callback, m_throw, m_useup, hit, miss } from './mthrowu.js'; // C mthrowu.c:1162–1170 m_useup: live import serves all 18 in-file sites (D-3338)
+import { in_your_sanctuary } from './priest.js'; // hoisted fn; IN-SCC cycle-safe per imports.mjs --can
 import {
-    is_animal, mindless, nohands, is_floater, needspick, nonliving,
+    is_animal, mindless, nohands, is_floater, needspick, nonliving, dmgtype,
     is_vampshifter, is_mercenary, monsterNames, mons, haseyes, mon_hates_silver,
     verysmall, throws_rocks, passes_walls, is_bat, acidic, resists_acid,
     slimeproof, resists_ston, touch_petrifies, is_unicorn, poly_when_stoned,
@@ -46,11 +47,11 @@ import {
     stop_occupation, maybe_half_phys,
 } from './hack.js';
 import { doorlock } from './lock.js';
-import { find_drawbridge, is_drawbridge_wall } from './dbridge.js';
+import { find_drawbridge, is_drawbridge_wall, destroy_drawbridge } from './dbridge.js';
 import { finish_losehp_done } from './end.js';
 import {
     m_seenres, monstseesu, monstunseesu, same_race, mhe, mhim, can_blow,
-    attacktype,
+    attacktype, resists_magm,
 } from './mondata.js';
 import { bcsign } from './rumors.js';
 import { enexto, migrate_to_level, tele_restrict, rloc,
@@ -64,7 +65,7 @@ import {
 import { dropy, make_blinded, flooreffects } from './do.js';
 import {
     learnwand, lightdamage, buzz, dobuzz, unturn_you, unturn_dead, resist,
-    zhitm, is_ice, bhito, exclam,
+    zhitm, is_ice, bhito, exclam, cancel_monst,
 } from './zap.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
@@ -85,7 +86,7 @@ import {
     is_hole, is_pit, Can_fall_thru, Is_botlevel, TELEP_TRAP, FIRE_TRAP, FORCETRAP, FORCEBUNGLE,
     EXPL_FIERY,
     RLOC_MSG, XKILL_NOMSG, XKILL_NOCONDUCT, COULD_SEE, IN_SIGHT,
-    P_DAGGER, P_KNIFE, NOTELL, TEMPLE, IS_OBSTRUCTED, IS_AIR,
+    P_DAGGER, P_KNIFE, NOTELL, TELL, TEMPLE, IS_OBSTRUCTED, IS_AIR,
     BZ_M_WAND, BZ_OFS_AD, DIR_LEFT2, DIR_RIGHT2, DIR_CLAMP, xytodir,
     dirtocoord, engulfing_u,
 } from './const.js';
@@ -105,7 +106,7 @@ import { SchroedingersBox } from './pickup.js';
 import { age_is_relative, begin_burn } from './timeout.js';
 import { Inhell } from './minion.js';
 import { mon_has_amulet, objdescr_is } from './apply.js';
-import { extract_from_minvent, which_armor, mon_set_minvis } from './worn.js';
+import { extract_from_minvent, which_armor, mon_set_minvis, find_mac } from './worn.js';
 import { hard_helmet } from './do_wear.js';
 import { obfree, inhishop } from './shk.js';
 import { xkilled, killed, attacktype_fordmg } from './uhitm.js';
@@ -117,7 +118,7 @@ import { explode } from './explode.js';
 import { fill_pit } from './dig.js';
 import { surface } from './sit.js';
 import { Soundeffect, SetVoice } from './sndprocs.js';
-import { se_bugle_playing_reveille, se_crash_through_floor, se_zap_then_explosion } from './generated/seffects_data.js';
+import { se_bugle_playing_reveille, se_crash_through_floor, se_zap_then_explosion, se_boing } from './generated/seffects_data.js';
 import { awaken_soldiers } from './music.js';
 
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
@@ -149,6 +150,8 @@ const WAN_COLD = objectNames.indexOf('WAN_COLD');
 const WAN_LIGHTNING = objectNames.indexOf('WAN_LIGHTNING');
 const WAN_MAGIC_MISSILE = objectNames.indexOf('WAN_MAGIC_MISSILE');
 const WAN_CREATE_MONSTER = objectNames.indexOf('WAN_CREATE_MONSTER');
+const WAN_CANCELLATION = objectNames.indexOf('WAN_CANCELLATION');
+const SPE_CANCELLATION = objectNames.indexOf('SPE_CANCELLATION');
 const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
 const SCR_CREATE_MONSTER = objectNames.indexOf('SCR_CREATE_MONSTER');
 const SCR_EARTH = objectNames.indexOf('SCR_EARTH');
@@ -198,6 +201,7 @@ const NH_GREEN = 'green'; // c_color_names.c_green (decl.h NH_GREEN)
 const RAY = 3; // objclass.h oc_dir
 const AD_FIRE = 2; // monattk.h
 const AD_COLD = 3;
+const AD_HEAL = 27; // monattk.h — heals opponent's wounds (nurse)
 
 /** C muse.c defense codes. */
 const MUSE_SCR_TELEPORTATION = 1, MUSE_WAN_TELEPORTATION_SELF = 2,
@@ -328,13 +332,7 @@ function sgn(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
 }
 
-function canseemon(mtmp) {
-    if (!mtmp) return false;
-    const loc_seen = mtmp.wormno
-        ? worm_known(mtmp)
-        : (cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp));
-    return loc_seen && mon_visible(mtmp);
-}
+/* C display.h _canseemon — live display.js export (exact local dupe removed D-3424). */
 
 /* C mondata.c attacktype — live mondata.js export (local clone removed). */
 
@@ -642,7 +640,12 @@ export function find_offensive(mtmp) {
     }
     const u = game.u || {};
     if (u.uswallow) return false;
-    // in_your_sanctuary / AD_HEAL naked-heal deferred → treat as open
+    if (in_your_sanctuary(mtmp, 0, 0)) return false; // C `:1431–1432`
+    if (dmgtype(data, AD_HEAL) // C `:1433–1437`: healer vs naked hero
+        && !u.uwep && !u.uarmu && !u.uarm && !u.uarmh
+        && !u.uarms && !u.uarmg && !u.uarmc && !u.uarmf) {
+        return false;
+    }
     if (!lined_up(mtmp)) return false;
 
     /* C: m_seenres returns the masked bits; JS helper is already boolean. */
@@ -777,25 +780,26 @@ export function find_offensive(mtmp) {
 }
 
 /**
- * C ref: muse.c mbhitm `:1596`.
- * Named omit: WAN_CANCELLATION/SPE_CANCELLATION; seemimic; shieldeff;
- * mon-target resists_magm / find_mac / hit/miss/resist plines (dice still
- * burn on striking); stop_occupation on hero striking.
+ * C ref: muse.c mbhitm `:1596–1703`.
+ * hits_you arrives as a parameter (sole caller mbhit passes null mtmp
+ * for the hero, so C's `mtmp == &youmonst` test cannot run here).
  */
 async function mbhitm(mtmp, otmp, hits_you) {
     let reveal_invis = false;
     let learnit = false;
     if (!hits_you && mtmp && (otmp.otyp | 0) !== WAN_UNDEAD_TURNING) {
-        mtmp.msleeping = 0;
-        // seemimic named
+        mtmp.msleeping = 0; // C `:1602`
+        if (mtmp.m_ap_type) seemimic(mtmp); // C `:1603–1604`
     }
     switch (otmp.otyp) {
     case WAN_STRIKING:
         reveal_invis = true;
         if (hits_you) {
             const u = game.u || {};
-            if (Antimagic()) {
+            if (Antimagic()) { // C `:1611–1616`
                 monstseesu(M_SEEN_MAGR);
+                await shieldeff(u.ux, u.uy);
+                Soundeffect(se_boing, 40);
                 await pline('Boing!');
                 learnit = true;
             } else if (
@@ -818,11 +822,22 @@ async function mbhitm(mtmp, otmp, hits_you) {
             } else {
                 await pline('The wand misses you.');
             }
+            await stop_occupation(); // C `:1635`
             nomul(0);
         } else if (mtmp) {
-            if (rnd(20) < 10 + 10) {
-                d(2, 12);
+            // C `:1637–1651` — caller guards mtmp non-null when !hits_you
+            if (resists_magm(mtmp)) {
+                await shieldeff(mtmp.mx, mtmp.my);
+                Soundeffect(se_boing, 40);
+                await pline('Boing!');
                 learnit = true;
+            } else if (rnd(20) < 10 + find_mac(mtmp)) {
+                const tmp = d(2, 12);
+                await hit('wand', mtmp, exclam(tmp));
+                await resist(mtmp, otmp.oclass, tmp, TELL);
+                learnit = true;
+            } else {
+                await miss('wand', mtmp);
             }
         }
         if (learnit && game._zap_oseen && (hits_you
@@ -843,6 +858,13 @@ async function mbhitm(mtmp, otmp, hits_you) {
                 await rloc(mtmp, RLOC_MSG);
             }
         }
+        break;
+    case WAN_CANCELLATION: // C `:1669–1672`
+    case SPE_CANCELLATION:
+        // C passes mtmp (== &youmonst for the hero); JS caller passes
+        // null mtmp when hits_you, so substitute game.youmonst there.
+        await cancel_monst(hits_you ? game.youmonst : mtmp, otmp,
+            false, true, false);
         break;
     case WAN_UNDEAD_TURNING:
         if (hits_you) {
@@ -908,7 +930,8 @@ async function fhito_loc(obj, tx, ty, fhito) {
  * callee lock.c doorlock already live D-1462/D-1475/D-1482). zap_oseen
  * makeknown (not hero bhit learnwand / !Deaf). Shop D_BROKEN
  * add_damage(0) (not SHOP_DOOR_COST / pay_for_damage).
- * Named omissions: destroy_drawbridge; map_invisible.
+ * No omissions — whole (D-3422): STRIKING destroy_drawbridge + unseen-mon
+ * map_invisible shipped above.
  */
 async function mbhit(mon, range, obj) {
     const bhitpos = game._bhitpos || (game._bhitpos = { x: 0, y: 0 });
@@ -937,6 +960,8 @@ async function mbhit(mon, range, obj) {
         } else {
             const mtmp = m_at(x, y);
             if (mtmp) {
+                // C `:1764–1765` — unseen monster on a visible spot paints I.
+                if (cansee(x, y) && !canspotmon(mtmp)) map_invisible(x, y);
                 await mbhitm(mtmp, obj, false);
                 r -= 3;
             }
@@ -946,12 +971,13 @@ async function mbhit(mon, range, obj) {
         const loc = game.level?.at?.(x, y);
         const ltyp = loc?.typ;
         /* C muse.c mbhit :1776–1803 — STRIKING find_drawbridge then
-         * else-if IS_DOOR||SDOOR doorlock. destroy_drawbridge named. */
+         * destroy, else-if IS_DOOR||SDOOR doorlock. */
         const dbxy = { x, y };
         if (otyp === WAN_STRIKING
             && ltyp !== DRAWBRIDGE_UP
             && find_drawbridge(dbxy)) {
-            /* destroy_drawbridge(dbxy.x, dbxy.y) deferred. */
+            // C `:1783` — may kill mon; mon/obj stay accessible for fhitm/fhito.
+            await destroy_drawbridge(dbxy.x, dbxy.y);
         } else if (IS_DOOR(ltyp) || ltyp === SDOOR) {
             switch (otyp) {
             /* C :1787–1788 — monsters don't use opening/locking magic

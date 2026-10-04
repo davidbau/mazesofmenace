@@ -66,7 +66,7 @@ import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele, goodpos, is_lminion, Inhell } from './teleport.js';
 import { may_dig, fill_pit } from './dig.js';
 import { newsym, pline, pline_mon, pline_The, verbalize, You_feel, sensemon, canseemon, canspotmon, impossible, describe_level } from './display.js';
-import { online2, level_difficulty, dist2 } from './hacklib.js';
+import { online2, level_difficulty, dist2, strncmpi } from './hacklib.js';
 import { worm_cross, level_mon_at, remove_worm, remove_monster_xy, place_wsegs, count_wsegs } from './worm.js';
 import { On_W_tower_level, In_W_tower, has_ceiling, ledger_no } from './dungeon.js';
 import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender, s_suffix, safe_oname, y_monnam } from './do_name.js';
@@ -1291,7 +1291,7 @@ async function peacefuls_respond(mtmp) {
                         const gasp = maybe_gasp(mon);
                         if (gasp) {
                             /* C strncmpi(gasp, "gasp", 4) — Exclam[0] is Gasp! */
-                            if (String(gasp).slice(0, 4).toLowerCase() === 'gasp') {
+                            if (strncmpi(gasp, 'gasp', 4) === 0) {
                                 buf = `${Monnam(mon)} gasps`;
                                 needpunct = true;
                             } else {

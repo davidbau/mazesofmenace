@@ -548,3 +548,43 @@ export function norm_ptrs_u_have(d_u_have) {
 export function norm_ptrs_u_realtime(d_u_realtime) {
     void d_u_realtime; // C UNUSED
 }
+
+/**
+ * C ref: sfbase.c norm_ptrs_u_roleplay `:1087–1089` — empty no-op body.
+ * @param {*} d_u_roleplay C `struct u_roleplay *d_u_roleplay UNUSED`
+ */
+export function norm_ptrs_u_roleplay(d_u_roleplay) {
+    void d_u_roleplay; // C UNUSED
+}
+
+/**
+ * C ref: sfbase.c norm_ptrs_version_info `:1092–1094` — empty no-op body.
+ * @param {*} d_version_info C `struct version_info *d_version_info UNUSED`
+ */
+export function norm_ptrs_version_info(d_version_info) {
+    void d_version_info; // C UNUSED
+}
+
+/**
+ * C ref: sfbase.c norm_ptrs_vlaunchinfo `:1097–1099` — empty no-op body.
+ * @param {*} d_vlaunchinfo C `union vlaunchinfo *d_vlaunchinfo UNUSED`
+ */
+export function norm_ptrs_vlaunchinfo(d_vlaunchinfo) {
+    void d_vlaunchinfo; // C UNUSED
+}
+
+/**
+ * C ref: sfbase.c norm_ptrs_vptrs `:1102–1104` — empty no-op body.
+ * @param {*} d_vptrs C `union vptrs *d_vptrs UNUSED`
+ */
+export function norm_ptrs_vptrs(d_vptrs) {
+    void d_vptrs; // C UNUSED
+}
+
+/**
+ * C ref: sfbase.c norm_ptrs_you `:1107–1109` — empty no-op body.
+ * @param {*} d_you C `struct you *d_you UNUSED`
+ */
+export function norm_ptrs_you(d_you) {
+    void d_you; // C UNUSED
+}

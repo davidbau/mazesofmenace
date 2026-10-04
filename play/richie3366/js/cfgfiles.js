@@ -822,9 +822,9 @@ function cnf_line_SEDUCE(bufp) {
         cnf_error('Illegal value in SEDUCE'); // C `:935`
         n = 0; // C `:936`
     }
-    sysoptBag().seduce = n; // C `:938` sys.h int
-    sysopt_seduce_set(sysoptBag().seduce); // C `:939`
-    return true; // C `:940`
+    sysoptBag().seduce = n; // C `:940` sys.h int
+    sysopt_seduce_set(sysoptBag().seduce); // C `:941`
+    return true; // C `:942`
 }
 
 /** C ref: cfgfiles.c cnf_line_HIDEUSAGE `:945–952` (staticfn → file-local). */

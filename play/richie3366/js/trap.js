@@ -34,7 +34,7 @@ import {
     newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     bot,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
-    obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible, under_water,
+    obj_glyph, flush_topl_more, feel_newsym, canspotmon, canseemon, map_invisible, under_water,
     set_msg_xy, shieldeff, Hallucination, Norep, impossible, You, You_see,
 } from './display.js';
 import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, otense, simpleonames, ansimpleoname, safe_qbuf, gloves_simple_name, aobjnam, Yname2, Yobjnam2 } from './objnam.js';
@@ -144,7 +144,7 @@ import {
 import { tamedog, wary_dog, abuse_dog } from './dog.js';
 import { welded, uwepgone, uswapwepgone } from './wield.js';
 import { count_wsegs, worm_known } from './worm.js';
-import { level_difficulty, depth, distmin, dist2, ordin, strsubst, upstart } from './hacklib.js';
+import { level_difficulty, depth, distmin, dist2, ordin, strsubst, upstart, strncmpi } from './hacklib.js';
 import { make_stunned, make_hallucinated } from './potion.js';
 import { monstseesu, monstunseesu, defended, resists_magm, attacktype } from './mondata.js';
 import { get_obj_location, burn_away_slime } from './timeout.js';
@@ -340,7 +340,8 @@ export async function animate_statue(statue, x, y, cause, fail_reason = null) {
         if (mnum !== PM_DOPPELGANGER) mptr = mons(mnum);
         use_saved_traits = false;
     } else if (is_golem(mptr) && cause === ANIMATE_SPELL) {
-        golem_xform = mptr !== mons(PM_FLESH_GOLEM);
+        // C trap.c:752 — mndx; mons() allocs fresh per call.
+        golem_xform = (mptr?.mndx ?? -1) !== PM_FLESH_GOLEM;
         mnum = PM_FLESH_GOLEM;
         mptr = mons(PM_FLESH_GOLEM);
         use_saved_traits = has_omonst(statue) && !golem_xform;
@@ -1128,14 +1129,7 @@ function t_missile(otyp, trap) {
     return otmp;
 }
 
-// C ref: display.h _canseemon — wormno ? worm_known : cansee||infrared.
-function canseemon(mtmp) {
-    if (!mtmp) return false;
-    const loc_seen = mtmp.wormno
-        ? worm_known(mtmp)
-        : (cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp));
-    return loc_seen && mon_visible(mtmp);
-}
+/* C display.h _canseemon — live display.js export (exact local dupe removed D-3424). */
 
 // C ref: trap.c trapnote — "an F note" / "a C note" (+ noprefix bare name)
 const TN_NAMES = [
@@ -4462,7 +4456,7 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
 
     if (!ostr) ostr = cxname(otmp);
     /* C: 'visobj' messages insert "the"; probably ought to switch to the() */
-    if (visobj && !(uvictim || vismon) && ostr.slice(0, 4).toLowerCase() === 'the ') {
+    if (visobj && !(uvictim || vismon) && strncmpi(ostr, 'the ', 4) === 0) { // C trap.c:243
         ostr = ostr.slice(4);
     }
 

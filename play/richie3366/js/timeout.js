@@ -80,7 +80,7 @@ import { Monnam, s_suffix, x_monnam, hcolor, rndmonnam, hliquid, type_is_pname, 
 import { find_ac } from './u_init.js';
 import { any_visible_region, visible_region_summary, region_danger } from './region.js';
 import { done, find_delayed_killer, dealloc_killer } from './end.js';
-import { obfree } from './shk.js';
+import { obfree, Shk_Your } from './shk.js';
 import { Flying } from './mhitu.js';
 import { spoteffects } from './pickup.js';
 import { stuck_in_wall } from './pray.js';
@@ -1789,15 +1789,7 @@ export function get_mon_location(mon, locflags = 0) {
     return null;
 }
 
-/**
- * C ref: shk.c Shk_Your `:5876–5882` — shk_your(buf, obj) then highc(*buf).
- * File-local one-liner over the live objnam.js shk_your export (D-3097);
- * no live Shk_Your export exists and C's other callers are shop paths
- * outside this file, so the name stays local (cf. D-3010).
- */
-function Shk_Your(obj) {
-    return upstart(shk_your(obj));
-}
+
 
 /**
  * C ref: timeout.c burn_away_slime — clear Slimed TIMEOUT with message.

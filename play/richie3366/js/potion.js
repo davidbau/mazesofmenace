@@ -3780,7 +3780,8 @@ function resists_elem_pot(mon, mask) {
 /** C potion.c potionhit Pestilence pointer vs mons[PM_PESTILENCE]. */
 function is_pestilence_pot(mon) {
     const n = mon?.data?.mndx ?? mon?.mnum ?? -1;
-    return n === PM_PESTILENCE || mon?.data === mons(PM_PESTILENCE);
+    // Dead identity arm trimmed (D-3425): mons() allocs fresh, always false.
+    return n === PM_PESTILENCE;
 }
 
 /** C monst.h mon_perma_blind — !mcansee && !mblinded. */

@@ -4,6 +4,7 @@
 //         uhitm.c mhitm_ad_phys (mhitu bare / weapon subset).
 
 import { game } from './gstate.js';
+import { is_waterwall } from './dbridge.js'; // SAFE per imports.mjs (hoisted fn, cycle-safe)
 import { monnear, mnexto, mtrapped_in_pit, wake_nearto, m_at, mongone, um_dist, mon_give_prop } from './mon.js';
 import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
@@ -569,7 +570,7 @@ export async function wildmiss(mtmp, mattk) {
             case 2: {
                 const mux = mtmp.mux | 0;
                 const muy = mtmp.muy | 0;
-                const wall = IS_WATERWALL(game.level?.at?.(mux, muy)?.typ);
+                const wall = is_waterwall(mux, muy); // C mhitu.c:227
                 await pline(
                     `${Monst_name} strikes at ${wall ? 'empty water' : 'thin air'}!`,
                 );

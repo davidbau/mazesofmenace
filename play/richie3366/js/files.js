@@ -17,6 +17,7 @@
 // embedded (extract-tribute.py), not dlb disk.
 
 import { game } from './gstate.js';
+import { strncmpi } from './hacklib.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { addinv } from './u_init.js';
@@ -215,31 +216,15 @@ const PASSAGESCOPE = 3;
 /** C `MAXPASSAGES SIZE(svc.context.novel.pasg)` — context.h pasg[30]. */
 const MAXPASSAGES = 30;
 
-function tribute_lowc(code) {
-    return (code >= 65 && code <= 90) ? code + 32 : code;
-}
-
 /**
  * C ref: hacklib.c strncmpi — used here for tribute % tags / strcmpi
  * (`#define strcmpi(a,b) strncmpi((a),(b),-1)`). n<0 ≡ C -1 (until NUL).
  */
 function tribute_ncmpi(s1, s2, n) {
-    const a = String(s1 ?? '');
-    const b = String(s2 ?? '');
-    let i = 0;
-    let left = n | 0;
-    const untilNul = left < 0;
-    while (untilNul || left--) {
-        const c1 = i < a.length ? a.charCodeAt(i) : 0;
-        const c2 = i < b.length ? b.charCodeAt(i) : 0;
-        if (!c2) return c1 !== 0 ? 1 : 0;
-        if (!c1) return -1;
-        const t1 = tribute_lowc(c1);
-        const t2 = tribute_lowc(c2);
-        if (t1 !== t2) return t1 > t2 ? 1 : -1;
-        i++;
-    }
-    return 0;
+    // Live hacklib export (C hacklib.c:717–734; n<0 ≡ C strcmpi until NUL).
+    // The lowc_signed fold also fixes non-ASCII order vs the old ASCII-only
+    // tribute_lowc (C `char` is signed under gcc).
+    return strncmpi(s1, s2, n);
 }
 
 /** C atoi on the tribute `(n)` / `%passage k` fields. */

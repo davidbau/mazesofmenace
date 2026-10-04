@@ -57,7 +57,7 @@ import {
     ok_role, ok_race, ok_gend, ok_align,
     validrace, validgend, validalign,
 } from './player_selection.js';
-import { findword, strNsubst } from './hacklib.js';
+import { findword, strNsubst, strncmpi } from './hacklib.js';
 import { tty_askname } from './askname.js';
 import {
     mons, is_male, is_female, is_neuter, commit_pm_fixup,
@@ -949,9 +949,8 @@ const randomstr = 'random';
  * case-insensitive) on the male name, then the female name, then an exact
  * case-insensitive filecode match; "*", "@" or a prefix of "random" yields
  * ROLE_RANDOM; null/empty yields ROLE_NONE. Roles are checked before the
- * random fallback, so "r" finds Rogue. No strncmpi helper is imported: the
- * three local clones (insight/vault/write) return boolean, not C int, so the
- * comparison is written out to preserve the C 0-on-match order.
+ * random fallback, so "r" finds Rogue. Prefix arms use the live strncmpi
+ * export (C 0-on-match); the filecode arms are C strcmpi, kept inline.
  */
 export function str2role(str) {
     if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
@@ -959,15 +958,15 @@ export function str2role(str) {
     const low = str.toLowerCase();
     for (let i = 0; i < roles.length; i++) {
         // Does it match the male name?
-        if (low === roles[i].name.m.slice(0, len).toLowerCase()) return i;
+        if (strncmpi(str, roles[i].name.m, len) === 0) return i; // C role.c:759
         // Or the female name?
-        if (roles[i].name.f && low === roles[i].name.f.slice(0, len).toLowerCase())
+        if (roles[i].name.f && strncmpi(str, roles[i].name.f, len) === 0) // C :762
             return i;
         // Or the filecode?
         if (low === (roles[i].filecode || '').toLowerCase()) return i;
     }
     if ((len === 1 && (str === '*' || str === '@'))
-        || low === randomstr.slice(0, len).toLowerCase())
+        || strncmpi(str, randomstr, len) === 0) // C role.c:770
         return ROLE_RANDOM;
     // Couldn't find anything appropriate
     return ROLE_NONE;
@@ -983,15 +982,15 @@ export function str2race(str) {
     const low = str.toLowerCase();
     for (let i = 0; i < races.length; i++) {
         // Does it match the noun?
-        if (low === races[i].noun.slice(0, len).toLowerCase()) return i;
+        if (strncmpi(str, races[i].noun, len) === 0) return i; // C role.c:825
         // check adjective too
-        if (races[i].adj && low === races[i].adj.slice(0, len).toLowerCase())
+        if (races[i].adj && strncmpi(str, races[i].adj, len) === 0) // C :828
             return i;
         // Or the filecode?
         if (low === (races[i].filecode || '').toLowerCase()) return i;
     }
     if ((len === 1 && (str === '*' || str === '@'))
-        || low === randomstr.slice(0, len).toLowerCase())
+        || strncmpi(str, randomstr, len) === 0) // C role.c:836
         return ROLE_RANDOM;
     // Couldn't find anything appropriate
     return ROLE_NONE;
@@ -1007,12 +1006,12 @@ export function str2gend(str) {
     const low = str.toLowerCase();
     for (let i = 0; i < ROLE_GENDERS; i++) {
         // Does it match the adjective?
-        if (low === genders[i].adj.slice(0, len).toLowerCase()) return i;
+        if (strncmpi(str, genders[i].adj, len) === 0) return i; // C role.c:892
         // Or the filecode?
         if (low === (genders[i].filecode || '').toLowerCase()) return i;
     }
     if ((len === 1 && (str === '*' || str === '@'))
-        || low === randomstr.slice(0, len).toLowerCase())
+        || strncmpi(str, randomstr, len) === 0) // C role.c:899
         return ROLE_RANDOM;
     // Couldn't find anything appropriate
     return ROLE_NONE;

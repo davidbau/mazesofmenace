@@ -85,7 +85,7 @@ import {
 import { get_rnd_text } from './rumors.js';
 import { m_at } from './mon.js';
 import { cansee } from './vision.js';
-import { fuzzymatch, strstri, highc, lcase, distmin, mungspaces, upstart } from './hacklib.js';
+import { fuzzymatch, strstri, highc, lcase, distmin, mungspaces, upstart, strncmpi } from './hacklib.js';
 import { pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
@@ -240,8 +240,7 @@ async function do_oname(obj) {
         buf = aname;
         const bufcpy = buf;
         do {
-            const prefix = buf.length >= 4
-                && buf.slice(0, 4).toLowerCase() === 'the ' ? 4 : 0;
+            const prefix = strncmpi(buf, 'the ', 4) === 0 ? 4 : 0; // C do_name.c:347
             buf = buf.slice(0, prefix)
                 + wipeout_text(buf.slice(prefix), rnd_on_display_rng(2), 0);
         } while (buf === bufcpy);
@@ -498,8 +497,7 @@ async function alreadynamed(mtmp, monnambuf, usrbuf) {
     }
     const pInv = strstri(shown, 'invisible ');
     const pOf = strstri(shown, ' of ');
-    const thePref = shown.length >= 4
-        && shown.slice(0, 4).toLowerCase() === 'the ';
+    const thePref = strncmpi(shown, 'the ', 4) === 0; // C do_name.c:172
     if (fuzzymatch(name, shown, ' -_', true)
         || (thePref && fuzzymatch(name, shown.slice(4), ' -_', true))
         || (pInv && fuzzymatch(name, pInv.slice(10), ' -_', true))

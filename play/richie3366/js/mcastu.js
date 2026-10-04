@@ -3,6 +3,7 @@
 //         is_undirected_spell / spell_would_be_useless.
 
 import { game } from './gstate.js';
+import { is_waterwall } from './dbridge.js'; // SAFE per imports.mjs (hoisted fn, cycle-safe)
 import { rn2, rnd, d } from './rng.js';
 import { couldsee, cansee } from './vision.js';
 import {
@@ -962,10 +963,12 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         mtmp.mspec_used = (ml < 8) ? (10 - ml) : 2;
     }
 
-    // C: mis-aimed directed spell pline then miss (waterwall wording deferred)
+    // C mcastu.c:199–204 — mis-aimed directed spell pline then miss.
     if (!foundyou && thinks_it_foundyou && !is_undirected_spell(spellnum)) {
-        const who = canspotmon(mtmp) ? Monnam(mtmp) : 'Something';
-        await pline(`${who} casts a spell at thin air!`);
+        const who = canseemon(mtmp) ? Monnam(mtmp) : 'Something'; // C `:201`
+        const where = is_waterwall(mtmp.mux | 0, mtmp.muy | 0) // C `:202`
+            ? 'empty water' : 'thin air';
+        await pline_mon(mtmp, `${who} casts a spell at ${where}!`); // C `:200`
         return M_ATTK_MISS;
     }
 

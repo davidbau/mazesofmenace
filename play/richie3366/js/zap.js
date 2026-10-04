@@ -3560,7 +3560,8 @@ export async function unturn_dead(mon) {
         const mtmp2 = await revive(otmp, !game.context?.mon_moving);
         if (mtmp2) {
             res++;
-            const different_type = mtmp2.data !== mons(corpsenm);
+            // C zap.c:1195 — mndx; mons() allocs fresh per call.
+            const different_type = (mtmp2.data?.mndx ?? -1) !== corpsenm;
             if ((game.iflags?.last_msg | 0) === PLNMSG_OBJ_GLOWS) {
                 corpse = 'It';
                 owner = '';
@@ -3825,8 +3826,8 @@ export async function cancel_monst(
     } else {
         mdef.mcan = 1;
         await normal_shape(mdef);
-        if (mdef.data === mons(PM_CLAY_GOLEM)
-            || (mdef.data?.mndx | 0) === PM_CLAY_GOLEM) {
+        // Dead identity arm trimmed (D-3425): mons() allocs fresh.
+        if ((mdef.data?.mndx ?? -1) === PM_CLAY_GOLEM) {
             if (canseemon(mdef)) {
                 await pline(
                     `Some writing vanishes from ${s_suffix(mon_nam(mdef))} head!`,
@@ -4476,8 +4477,8 @@ export async function bhitm(mtmp, otmp) {
          * D-1469; zap_steed via bhitm. */
         const healamt = d(6, otyp === SPE_EXTRA_HEALING ? 8 : 4);
         reveal_invis = true;
-        const pest = (mtmp.data?.mndx | 0) === PM_PESTILENCE
-            || mtmp.data === mons(PM_PESTILENCE);
+        // Dead identity arm trimmed (D-3425): mons() allocs fresh.
+        const pest = (mtmp.data?.mndx ?? -1) === PM_PESTILENCE;
         if (!pest) {
             const delta = (mtmp.mhpmax | 0) - (mtmp.mhp | 0);
             wake = false;
@@ -5273,7 +5274,8 @@ async function stone_to_flesh_obj(obj) {
             let ptr = mons(obj.corpsenm);
             let mon = null;
             if (is_golem(ptr)) {
-                golem_xform = ptr !== mons(PM_FLESH_GOLEM);
+                // C zap.c:2020 — mndx; mons() allocs fresh per call.
+                golem_xform = (ptr?.mndx ?? -1) !== PM_FLESH_GOLEM;
             } else if (vegetarian(ptr)) {
                 obj = await poly_obj(obj, MEATBALL);
                 smell = true;
@@ -5310,7 +5312,8 @@ async function stone_to_flesh_obj(obj) {
             }
             if (mon) {
                 ptr = mon.data;
-                if (is_golem(ptr) && ptr !== mons(PM_FLESH_GOLEM)) {
+                // C zap.c:2055 — mndx; mons() allocs fresh per call.
+                if (is_golem(ptr) && (ptr?.mndx ?? -1) !== PM_FLESH_GOLEM) {
                     await newcham(
                         mon, mons(PM_FLESH_GOLEM), NC_VIA_WAND_OR_SPELL,
                     );

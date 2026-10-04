@@ -704,9 +704,9 @@ export function nokiller() {
 }
 
 /**
- * C ref: dbridge.c close_drawbridge — raise bridge at (x,y).
- * Terrain + Soundeffect/messages + revive_nasty + delallobj +
- * traps/engr + vision + nokiller. Crush/entity deferred (D-1967).
+ * C ref: dbridge.c close_drawbridge `:775–834` — raise bridge at (x,y).
+ * Terrain + Soundeffect/messages + entity crush/jump/relocation +
+ * revive_nasty + delallobj + traps/engr + vision + nokiller, in C order.
  */
 export async function close_drawbridge(x, y) {
     const lev1 = game.level?.at(x, y);
@@ -721,8 +721,9 @@ export async function close_drawbridge(x, y) {
 
     const u = game.u || {};
     if (cansee(x, y) || cansee(x2, y2)) {
+        // C `:788` Underwater ≡ u.uinwater (D-3400 idiom; u.Underwater unwritten).
         const coming = (((u.ux | 0) === (x | 0) || (u.uy | 0) === (y | 0))
-                && !u.Underwater)
+                && !(u.uinwater | 0))
             || distu(x2, y2) < distu(x, y);
         await You_see(`a drawbridge ${coming ? 'coming' : 'going'} up!`);
     } else {
@@ -743,7 +744,14 @@ export async function close_drawbridge(x, y) {
         break;
     }
     lev2.wall_info = W_NONDIGGABLE;
-    // set_entity / do_entity deferred
+    // C `:809–813` — entity crush/jump/relocation (span, then portcullis
+    // with the worm-tail re-set between the two do_entity calls).
+    const occ = occupants(); // C go.occupants
+    set_entity(x, y, occ[0]);
+    set_entity(x2, y2, occ[1]);
+    await do_entity(occ[0]);
+    set_entity(x2, y2, occ[1]);
+    await do_entity(occ[1]);
 
     if (objects_at(x, y) && !(u.Deaf || game.flags?.acoustics === false)) {
         Soundeffect(se_smashing_and_crushing, 75);
@@ -771,10 +779,10 @@ export async function close_drawbridge(x, y) {
 }
 
 /**
- * C ref: dbridge.c open_drawbridge — lower bridge at (x,y).
- * Terrain + Soundeffect/messages + revive_nasty + delallobj +
- * traps/engr + vision + stronghold uopened_dbridge + nokiller.
- * Crush/entity deferred (D-1967).
+ * C ref: dbridge.c open_drawbridge `:840–882` — lower bridge at (x,y).
+ * Terrain + Soundeffect/messages + entity crush/jump/relocation +
+ * revive_nasty + delallobj + traps/engr + vision + stronghold
+ * uopened_dbridge + nokiller, in C order.
  */
 export async function open_drawbridge(x, y) {
     const lev1 = game.level?.at(x, y);
@@ -798,7 +806,14 @@ export async function open_drawbridge(x, y) {
     lev1.typ = DRAWBRIDGE_DOWN;
     lev2.typ = DOOR;
     lev2.doormask = D_NODOOR;
-    // set_entity / do_entity deferred
+    // C `:858–862` — entity crush/jump/relocation (span, then portcullis
+    // with the worm-tail re-set between the two do_entity calls).
+    const oocc = occupants(); // C go.occupants
+    set_entity(x, y, oocc[0]);
+    set_entity(x2, y2, oocc[1]);
+    await do_entity(oocc[0]);
+    set_entity(x2, y2, oocc[1]);
+    await do_entity(oocc[1]);
 
     await revive_nasty(x, y, null);
     delallobj(x, y);

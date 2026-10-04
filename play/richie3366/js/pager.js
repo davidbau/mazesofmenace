@@ -55,7 +55,7 @@ import {
     distant_name, simpleonames,
     makeplural, makesingular, fruit_from_name,
 } from './objnam.js';
-import { strstri, lcase, upstart, strsubst, tabexpand } from './hacklib.js';
+import { strstri, lcase, upstart, strsubst, tabexpand, strncmpi } from './hacklib.js';
 import { distant_monnam, coyotename, PM_COYOTE, pmname, Mgender, Ugender, mon_nam, rndmonnam, y_monnam } from './do_name.js';
 import { Invis } from './timeout.js'; // C youprop.h Invis for self_lookat `:118` (imports.mjs --can: SAFE, hoisted)
 import { hides_under, is_hider, is_clinger, is_flyer, is_orc, mons,
@@ -3144,7 +3144,7 @@ function key2extcmddesc(key) {
         buf = `${cmdbind.desc} (#${cmdbind.txt})`; // C `:2604`
         /* C `:2606–2614` — reqmenu "prefix: ..." becomes the two-line
            movement/non-movement prefix text (C relies on literal concat) */
-        if (buf.slice(0, 7).toLowerCase() === 'prefix:' // C strncmpi
+        if (strncmpi(buf, 'prefix:', 7) === 0 // C cmd.c:2608
             && cmdbind.txt.toLowerCase() === 'reqmenu') { // C strcmpi
             buf = strsubst(buf, 'prefix:',
                 'movement prefix: move without autopickup and without attacking'

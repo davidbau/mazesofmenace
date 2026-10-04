@@ -1891,8 +1891,10 @@ export function eatmupdate() {
  * Branch envelope (D-0943/D-0944/D-0945): named specials + check_intrinsics
  * hallu/newt + corpse_intrinsic → givit / gainstr; were* set_ulycn;
  * mimic gold eatmdone/afternmv; disenchanter attrcurse.
- * Named omissions: display_nhwindow(WIN_MAP, TRUE) map flush after
- * curs_on_u (more() approx).
+ * No omissions — whole (D-3422): the mimic :1224 display_nhwindow(WIN_MAP,
+ * TRUE) is the house more() idiom (detect.js:372/dogmove.js:1801) — C
+ * wintty.c tty_display_nhwindow NHW_MAP+blocking is end_glyphout (covered
+ * by curs_on_u's flush_screen) + force topline --More--.
  */
 async function cpostfx(pm) {
     let tmp = 0;
@@ -1993,8 +1995,8 @@ async function cpostfx(pm) {
             game.youmonst.m_ap_type = M_AP_OBJECT;
             game.youmonst.mappearance = hallu ? ORANGE_OTYP : GOLD_PIECE;
             newsym(u.ux | 0, u.uy | 0);
-            // C `:1222–1224` — cursor on hero, then the map flush
-            // (more() approx; see doc).
+            // C `:1222–1224` — cursor on hero, then the blocking map
+            // display (house more() idiom; see doc).
             await curs_on_u();
             await more();
         }

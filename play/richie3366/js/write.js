@@ -29,7 +29,7 @@ import { A_WIS, exercise } from './attrib.js';
 import { bcsign } from './rumors.js';
 import { wipeout_text } from './engrave.js';
 import { dropx } from './do.js';
-import { doname } from './objnam.js';
+import { doname, Ysimple_name2 } from './objnam.js';
 import { PM_WIZARD } from './generated/monsters_data.js';
 
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
@@ -186,7 +186,8 @@ export async function dowrite(pen) {
             return ECMD_OK;
         }
         if (paper.oclass === SPBOOK_CLASS) {
-            await pline("Your marker can't create braille text.");
+            // C write.c:112-114 — upstart(ysimple_name(pen)), not "Your marker".
+            await pline(`${Ysimple_name2(pen)} can't create braille text.`);
             return ECMD_OK;
         }
     }

@@ -3250,8 +3250,8 @@ export function assign_graphics(whichset) {
  * Named omission: clear_symsetentry desc/purge/glyphmap (`:289` tail —
  * no JS home). No reset_glyphmap call in C (assign_graphics-only,
  * by-design unported). C callers: cfgfiles.c:1194/:1205 (wired);
- * options.c:664/:1370/:1419/:1943/:4197 + symbols.c:682/:1088 (unported
- * sites, named).
+ * options.c:664 (wired: parseoptions S_ arm); options.c:1370/:1419/:1943/
+ * :4197 + symbols.c:682/:1088 (unported sites, named).
  */
 export function switch_symbols(nondefault) {
     if (!game.gs) game.gs = {};

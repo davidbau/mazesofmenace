@@ -13,7 +13,7 @@ import { yn_function, y_n } from './getline.js';
 import { visctrl } from './dokeylist.js';
 import { disco_typename, Japanese_item_name } from './objnam.js';
 import { append_price_quote, gem_learned } from './shk.js';
-import { let_to_name, DEF_INV_ORDER } from './invent.js';
+import { let_to_name, DEF_INV_ORDER, sortloot_descr } from './invent.js';
 import { docall, objtyp_is_callable } from './do_name.js';
 import { select_menu_pick_one } from './options.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
@@ -707,9 +707,8 @@ export async function choose_disco_sort(mode) {
  * menulet-order selectors, C group accelerators as gselector); text display
  * via show_text_pages (dodiscovered idiom). C strkitten/dupstr fold into
  * string ops (immutable JS strings).
- * Named omissions: discosort 's' sortloot order (sortloot_descr needs
- * loot_classify, invent.c:149–305); extcmd '`' knownclass caller wiring
- * (cmd.c:1752; the extcmdlist row exists, no dispatch arm yet).
+ * Callers: '`' key + #knownclass extcmd (cmd.c:1752; wired via cmd.js
+ * key dispatch + getline.js EXT_CMDS).
  */
 export async function doclassdisco() {
     const objects = objs();
@@ -725,8 +724,7 @@ export async function doclassdisco() {
         if ((await choose_disco_sort(2)) < 0) return ECMD_OK;
     }
     const alphabetized = game.flags.discosort === 'a' || game.flags.discosort === 'c';
-    // C `:916` lootsort is (discosort == 's'); deferred (see above).
-    const lootsort = false;
+    const lootsort = game.flags.discosort === 's'; // C `:917`
 
     const traditional = game.flags.menu_style === MENU_TRADITIONAL
         || game.flags.menu_style === MENU_COMBINATION;
@@ -874,6 +872,7 @@ export async function doclassdisco() {
             if (dis !== 0 && interesting_to_discover(dis)) {
                 ct++;
                 let buf = objects[dis].oc_encountered ? '  ' : '* ';
+                if (lootsort) buf += sortloot_descr(dis); // C `:1095–1096`
                 buf = disco_append_typename(buf, dis);
                 if (!alphabetized && !lootsort) lines.push({ text: buf, attr: 0 });
                 else sorted.push(buf);

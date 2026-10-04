@@ -1283,7 +1283,7 @@ function shuffle_customizations() {
 /**
  * C glyphs.c wizcustom_glyphids `:807–821` (global; extern.h:1177) —
  * `#wizcustom` menu fill (sole C caller wiz_custom, wizcmds.c:1967,
- * unported): every cached glyph id goes through wizcustom_callback
+ * wired: wizcmds.js wiz_custom): every cached glyph id goes through wizcustom_callback
  * (wizcmds.c:1987, js/wizcmds.js — reads the live glyphmap array via
  * ensure_glyphmap; `reset_glyphmap` still does not fill `sym` /
  * `tileidx`, so uncustomized entries format from the zero-fill).

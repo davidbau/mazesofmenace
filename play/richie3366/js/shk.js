@@ -101,7 +101,7 @@ import {
 } from './mkobj.js';
 import { add_to_minv, mpickobj, makemon } from './makemon.js';
 import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attrib.js';
-import { simpleonames, makeplural, xprname, set_shk_owns_prefix, obj_typename } from './objnam.js';
+import { simpleonames, makeplural, xprname, set_shk_owns_prefix, obj_typename, shk_your } from './objnam.js';
 import {
     xname, doname, doname_base, DONAME_WITH_PRICE, paydoname,
     set_doname_shop_suffix,
@@ -693,7 +693,7 @@ export async function u_entered_shop(enterstring) {
     const plname = game.plname || '';
     const cust = eshkp.customer || '';
     if ((!eshkp.visitct || cust)
-        && cust.toLowerCase() !== plname.toLowerCase().slice(0, 32)) {
+        && strncmpi(cust, plname, PL_NSIZ) !== 0) { // C shk.c:788
         eshkp.visitct = 0;
         eshkp.following = 0;
         eshkp.customer = plname.slice(0, 32);
@@ -1134,6 +1134,16 @@ export function shk_owns_prefix(obj) {
 // Late-bind into objnam.js shk_your (like do_name.js set_y_monnam): no new
 // module edge, and no static objnam→shk edge (eval-order TDZ, D-2349).
 set_shk_owns_prefix(shk_owns_prefix);
+
+/**
+ * C ref: shk.c Shk_Your `:5877–5882` — shk_your into buf, highc the
+ * first char. JS returns the string (buf mechanics elided).
+ * Callers: apply.c:1484/:1644/:1683 (snuff/lamp), pickup.c:4041 (box),
+ * timeout.c:1430 (burn-out whose), wield.c:436/:602 (quiver/uwep).
+ */
+export function Shk_Your(obj) {
+    return upstart(shk_your(obj)); // C `:5880` highc(*buf)
+}
 
 function Role_if(pm) {
     return game.urole?.mnum === pm;

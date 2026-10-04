@@ -75,11 +75,11 @@ import {
     start_timer, hornoplenty, spot_stop_timers, get_mtraits, obj_has_timer,
     init_dummyobj,
 } from './mkobj.js';
-import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, shk_your, Tobjnam, gloves_simple_name, otense, safe_qbuf } from './objnam.js';
+import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, Yname2, shk_your, Tobjnam, gloves_simple_name, otense, safe_qbuf } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam, obj_pmname, hcolor, s_suffix, Ugender } from './do_name.js';
-import { monflee } from './monmove.js';
+import { monflee, accessible } from './monmove.js';
 import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear, check_capacity, invocation_pos, On_stairs } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path, walk_path_async, hurtle_jump, thitmonst, hurtle } from './dothrow.js';
@@ -100,7 +100,7 @@ import { yn_function, paranoid_query } from './getline.js';
 import { cmdq_add_ec } from './cmd.js';
 import {
     costly_alteration, costly_spot, add_damage, bill_dummy_object, shop_keeper,
-    check_unpaid_usage, check_unpaid, obfree, find_objowner, muteshk,
+    check_unpaid_usage, check_unpaid, obfree, find_objowner, muteshk, Shk_Your,
 } from './shk.js';
 import { zappable, release_hold, revive } from './zap.js';
 import { explode } from './explode.js';
@@ -109,7 +109,7 @@ import {
     force_attack, stumble_onto_mimic, killed, defsym_explanation,
     attacktype_fordmg,
 } from './uhitm.js';
-import { digests, set_ustuck, Flying, mon_reflects } from './mhitu.js';
+import { digests, set_ustuck, Flying, mon_reflects, gulp_blnd_check } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
 import { Soundeffect, SetVoice } from './sndprocs.js';
 import { se_wall_of_force, se_faint_splashing, se_heart_beat, se_typing_noise, se_hollow_sound, se_crackling_of_hellfire } from './generated/seffects_data.js';
@@ -1010,13 +1010,13 @@ export async function do_blinding_ray(obj) {
 }
 
 /**
- * C apply.c use_camera — getdir; charge; cursed/self zapyourself; ray.
- * Named omissions: Underwater warranty polish; swallow/dz photos;
- * full zapyourself CAMERA; flash_hits_mon mimic/gremlin polish.
+ * C apply.c use_camera `:79–109` — getdir; charge; cursed/self
+ * zapyourself; ray. Named omissions: full zapyourself CAMERA;
+ * flash_hits_mon mimic/gremlin polish (callee rows).
  * @returns {number} ECMD_*
  */
 async function use_camera(obj) {
-    if (game.u?.Underwater) {
+    if ((game.u?.uinwater | 0)) { // C `:81` Underwater (D-3400 idiom)
         await pline('Using your camera underwater would void the warranty.');
         return ECMD_OK;
     }
@@ -1807,9 +1807,9 @@ function Deaf_hero() {
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.Deaf || u.uroleplay?.deaf);
 }
 
-/** C youprop.h Underwater. */
+/** C youprop.h Underwater ≡ u.uinwater (D-3400 idiom; u.Underwater unwritten). */
 function Underwater_hero() {
-    return !!game.u?.Underwater;
+    return !!((game.u?.uinwater | 0));
 }
 
 /** C objnam.c Yobjnam2 thin. */
@@ -2000,8 +2000,8 @@ function freehand_towel() {
 }
 
 /**
- * C ref: apply.c use_towel — wipe glib / cream / cursed slapstick.
- * dry_a_towel when wet (weapon.c). gulp_blnd_check swallow arm deferred.
+ * C ref: apply.c use_towel `:112–194` — wipe glib / cream / cursed
+ * slapstick, dry_a_towel when wet, gulp_blnd_check swallow re-blind.
  * @returns {number} ECMD_OK | ECMD_TIME
  */
 async function use_towel(obj) {
@@ -2095,9 +2095,12 @@ async function use_towel(obj) {
         // not !Blind() (a worn blindfold with H==0 takes the glop-off path).
         if (!((u.HBlinded | 0) && !(u.BBlinded | 0))) {
             await pline("You've got the glop off.");
-            // gulp_blnd_check deferred → always false
-            await make_blinded(1, false);
-            await make_blinded(0, true);
+            // C `:180–183` — swallowed-by-AD_BLND gulpmu re-blinds and
+            // skips the unblind (live mhitu.js export).
+            if (!(await gulp_blnd_check())) {
+                await make_blinded(1, false); // C `:181` set 1
+                await make_blinded(0, true); // C `:182`
+            }
         } else {
             await pline(`Your ${body_part(FACE)} feels clean now.`);
         }
@@ -3283,17 +3286,6 @@ function is_pool_or_lava_apply(x, y) {
     return is_pool(x, y) || is_lava(x, y);
 }
 
-function accessible_apply(x, y) {
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return false;
-    if (!ACCESSIBLE(loc.typ)) return false;
-    if (IS_DOOR(loc.typ)) {
-        const m = loc.doormask | 0;
-        if (m & (D_CLOSED | D_LOCKED)) return false;
-    }
-    return true;
-}
-
 function bimanual_apply(obj) {
     if (!obj) return false;
     const oc = game.objects?.[obj.otyp];
@@ -3900,7 +3892,7 @@ export async function use_pole(obj, autohit) {
             && sobj_at(BOULDER, cc.x, cc.y)) {
             await pline(thump.replace('%s', 'boulder'));
             await wake_nearto(cc.x, cc.y, 25);
-        } else if (!accessible_apply(cc.x, cc.y)
+        } else if (!accessible(cc.x, cc.y) // C `:3546` (live monmove.js export)
             || IS_FURNITURE(game.level?.at?.(cc.x, cc.y)?.typ)) {
             const typ = game.level?.at?.(cc.x, cc.y)?.typ | 0;
             const what = (typ === STONE || typ === SCORR)
@@ -4093,11 +4085,6 @@ function carried_apply(obj) {
 function shk_your_apply(obj) {
     return carried_apply(obj) ? 'your ' : 'the ';
 }
-function Shk_Your_apply(obj) {
-    const s = shk_your_apply(obj);
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 /** C objnam.c Yname2 / otense / Tobjnam thin. */
 function Yname2_oil(obj) {
     const s = `${shk_your_apply(obj)}${xname(obj)}`;
@@ -4921,7 +4908,7 @@ export async function use_lamp(obj) {
 
     if (obj.lamplit) {
         if (lamp) {
-            await pline(`${Shk_Your_apply(obj)}${lamp} is now off.`);
+            await pline(`${Shk_Your(obj)}${lamp} is now off.`); // C `:1644` (live shk.js export)
         } else {
             await pline(`You snuff out ${yname(obj)}.`);
         }
@@ -4962,7 +4949,7 @@ export async function use_lamp(obj) {
     if (lamp) {
         // C apply.c:1683-1685 — check_unpaid before the "is now on" pline
         await check_unpaid(obj);
-        await pline(`${Shk_Your_apply(obj)}${lamp} is now on.`);
+        await pline(`${Shk_Your(obj)}${lamp} is now on.`); // C `:1683` (live shk.js export)
     } else {
         await pline(
             `${s_suffix_apply(Yname2_oil(obj))} flame${plur_quan(obj.quan)} ${otense(obj, 'burn')}${Blind() ? '.' : ' brightly!'}`,
@@ -5707,24 +5694,6 @@ export async function jump(magic) {
     }
 }
 
-/** C objnam.c Yname2 — capitalized yname (minvent uses shk_your mon_owns). */
-function Yname2_snuff(obj) {
-    const s = yname(obj);
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
-
-/** C shk.c Shk_Your — capitalized shk_your (trailing space). */
-function Shk_Your_snuff(obj) {
-    const s = shk_your(obj);
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
-
-/** C objnam.c otense — plural verb if quan!=1, else vtense(NULL, verb). */
-function otense_snuff(obj, verb) {
-    if ((obj?.quan | 0) !== 1) return verb;
-    return vtense(null, verb);
-}
-
 /**
  * C ref: apply.c snuff_candle — lit candles / candelabrum; end_burn TRUE.
  * Callers: snuff_lit; throwit_mon_hit (D-1313); really_kick_object (D-1325);
@@ -5740,7 +5709,7 @@ export async function snuff_candle(otmp) {
         const many = candle ? ((otmp.quan | 0) > 1) : ((otmp.spe | 0) > 1);
         if (otmp.where === OBJ_MINVENT ? cansee(loc.x, loc.y) : !Blind()) {
             await pline(
-                `${Shk_Your_snuff(otmp)}${candle ? '' : "candelabrum's "}candle${
+                `${Shk_Your(otmp)}${candle ? '' : "candelabrum's "}candle${
                     many ? "s'" : "'s"
                 } flame${many ? 's are' : ' is'} extinguished.`,
             );
@@ -5767,7 +5736,7 @@ export async function snuff_lit(obj) {
         const loc = get_obj_location(obj, 0) || { x: 0, y: 0 };
         if (obj.where === OBJ_MINVENT ? cansee(loc.x, loc.y) : !Blind()) {
             await pline(
-                `${Yname2_snuff(obj)} ${otense_snuff(obj, 'go')} out!`,
+                `${Yname2(obj)} ${otense(obj, 'go')} out!`,
             );
         }
         end_burn(obj, true);
@@ -5829,7 +5798,7 @@ export async function splash_lit(obj) {
 
         if (useeit || uhearit) {
             await pline(
-                `${Yname2_snuff(obj)} ${uhearit ? 'crackles' : ''}${
+                `${Yname2(obj)} ${uhearit ? 'crackles' : ''}${
                     (uhearit && useeit) ? ' and ' : ''
                 }${useeit ? 'flickers' : ''}.`,
             );
@@ -5847,9 +5816,9 @@ export async function splash_lit(obj) {
 }
 
 /**
- * C ref: apply.c catch_lit — fire-damage ignition of light sources.
- * Shop arm: carried unpaid costly_spot → check_unpaid / verbalize / bill.
- * Named omit: set_msg_xy floor msg cursor.
+ * C ref: apply.c catch_lit `:1577–1624` — fire-damage ignition of light
+ * sources. Shop arm: carried unpaid costly_spot → check_unpaid /
+ * verbalize / bill.
  * @returns {Promise<boolean>}
  */
 export async function catch_lit(obj) {
@@ -5879,23 +5848,9 @@ export async function catch_lit(obj) {
     const invent = obj.where === OBJ_INVENT
         || (game.invent || []).includes(obj);
     if (invent || cansee(loc.x, loc.y)) {
-        // set_msg_xy deferred
-        const nm = invent
-            ? (() => {
-                const s = `your ${xname(obj)}`;
-                return s.charAt(0).toUpperCase() + s.slice(1);
-            })()
-            : (() => {
-                const s = xname(obj);
-                return s.charAt(0).toUpperCase() + s.slice(1);
-            })();
-        const verb = Blind ? 'feel' : 'catch';
-        const tensed = ((obj.quan | 0) !== 1)
-            ? verb
-            : (/[sxz]$/.test(verb) || /(?:ch|sh)$/.test(verb)
-                ? `${verb}es`
-                : `${verb}s`);
-        await pline(`${nm} ${tensed} ${Blind ? 'warm.' : 'light!'}`);
+        if (obj.where === OBJ_FLOOR && cansee(loc.x, loc.y)) // C `:1600`
+            set_msg_xy(loc.x, loc.y);
+        await pline(`${Yname2(obj)} ${otense(obj, Blind ? 'feel' : 'catch')} ${Blind ? 'warm.' : 'light!'}`); // C `:1601–1604`
     }
     if (t === POT_OIL) makeknown(obj.otyp);
     // C apply.c:1608–1618 — carried unpaid on a costly spot

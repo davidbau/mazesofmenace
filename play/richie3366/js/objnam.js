@@ -1955,6 +1955,16 @@ export function makesingular(oldstr) {
             return bp + excess;
         }
     }
+    /* C objnam.c singplur_lookup `:2719–2724` — as_is[] runs the collective
+       half too (bison…Bordeaux); without it "haggis" fell through to s-strip
+       ("haggi") where C keeps it. Same whole-or-after-space match as above. */
+    for (const as of AS_IS_COLLECTIVE) {
+        const sl = as.toLowerCase();
+        if (lower === sl || (lower.length > sl.length && lower.endsWith(sl)
+            && bp[bp.length - sl.length - 1] === ' ')) {
+            return bp + excess;
+        }
+    }
     // C: singplur_lookup special_subjs
     for (const sp of SPECIAL_SUBJS) {
         const sl = sp.toLowerCase();

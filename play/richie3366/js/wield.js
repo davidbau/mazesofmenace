@@ -32,7 +32,7 @@ import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.
 import { trycall } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
 import { inv_cnt } from './steal.js';
-import { alter_cost, costly_alteration, shop_keeper, inside_shop } from './shk.js';
+import { alter_cost, costly_alteration, shop_keeper, inside_shop, Shk_Your } from './shk.js';
 import { shkname } from './shknam.js';
 
 /** C: are_no_longer_twoweap / can_no_longer_twoweap */
@@ -831,8 +831,8 @@ export async function dowield() {
                 ? 'Wield all of them instead?'
                 : `You have ${use_plural ? 'those' : 'that'} readied.  Wield ${use_plural ? 'them' : 'it'} instead?`;
             if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
-                await pline(
-                    `Your ${simpleonames(qobj)} ${otense(qobj, 'remain')} readied.`,
+                await pline( // C `:436–438` Shk_Your(qbuf, uquiver)
+                    `${Shk_Your(qobj)}${simpleonames(qobj)} ${otense(qobj, 'remain')} readied.`,
                 );
                 return 0;
             }
@@ -1065,8 +1065,8 @@ export async function doquiver_core(verb) {
                 ? 'Ready all of them instead?'
                 : `You are wielding ${use_plural ? 'those' : 'that'}.  Ready ${use_plural ? 'them' : 'it'} instead?`;
             if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
-                await pline(
-                    `Your ${simpleonames(uw)} ${otense(uw, 'remain')} wielded.`,
+                await pline( // C `:602–604` Shk_Your(qbuf, uwep)
+                    `${Shk_Your(uw)}${simpleonames(uw)} ${otense(uw, 'remain')} wielded.`,
                 );
                 return 0;
             }

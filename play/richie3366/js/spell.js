@@ -120,6 +120,7 @@
 // Wizard turns column in dospellmenu ported (D-0586).
 
 import { game } from './gstate.js';
+import { check_unpaid } from './shk.js'; // SAFE per imports.mjs (hoisted fn, cycle-safe)
 import { nhgetch } from './input.js';
 import {
     flush_screen, pline, You, Your, pline_The, You_feel, impossible, canspotmon, tmp_at,
@@ -934,12 +935,11 @@ export function book_cursed(book) {
 }
 
 /**
- * C ref: spell.c learn() — occupation while studying a spellbook.
- * Branch envelope: delay++ while nonzero; finish → learn/relearn spell
- * + makeknown; cursed_book on finish may destroy; Confusion →
- * confused_book then nomul of the remaining delay.
- * Named omissions: lenses rn2(2) faster read; faded-blank
- * update_inventory; check_unpaid.
+ * C ref: spell.c learn `:356–463` — occupation while studying a
+ * spellbook. Branch envelope: lenses delay++ while nonzero; finish →
+ * learn/relearn spell + makeknown (+ update_inventory when faded);
+ * cursed_book on finish may destroy; check_unpaid shop charge;
+ * Confusion → confused_book then nomul of the remaining delay.
  * @returns {Promise<number>} 1 = still busy, 0 = done
  */
 async function learn() {
@@ -948,7 +948,9 @@ async function learn() {
     const spbook = game.context.spbook;
     const book = spbook.book;
 
-    // lenses faster-read deferred (ublindf LENSES && rn2(2) → delay++)
+    // C `:363–366` — lenses give 50% faster reading (delay++).
+    if (spbook.delay && game.u?.ublindf?.otyp === LENSES && rn2(2))
+        spbook.delay++;
     if (game.u?.Confusion) {
         // C spell.c `:368–376` — confused_book while spbook.book is
         // still this object ("next"), then drop the study.
@@ -988,7 +990,7 @@ async function learn() {
 
     let faded_to_blank = false;
     if (i === MAXSPELL) {
-        // C: impossible("Too many spells memorized!");
+        await impossible('Too many spells memorized!'); // C `:398`
     } else if (spellid(i) === booktype) {
         if ((book.spestudied | 0) > MAX_SPELL_STUDY) {
             await pline('This spellbook is too faint to be read any more.');
@@ -1028,8 +1030,9 @@ async function learn() {
     if (i < MAXSPELL) {
         // C: makeknown(booktype) — credit_hero exercises WIS when newly named
         makeknown(booktype);
-        // update_inventory on faded_to_blank deferred
-        void faded_to_blank;
+        // C `:451` — makeknown is a no-op for already-known blank paper,
+        // so refresh persistent inventory explicitly when faded.
+        if (faded_to_blank) update_inventory();
     }
 
     if (book.cursed) {
@@ -1040,7 +1043,7 @@ async function learn() {
             return 0;
         }
     }
-    // check_unpaid deferred
+    await check_unpaid(book); // C `:459–460` (costly is always TRUE)
     spbook.book = null;
     spbook.o_id = 0;
     return 0;

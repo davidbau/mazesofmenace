@@ -8,7 +8,7 @@ import { game } from './gstate.js';
 import { rn2, rn1, d, rn2_on_display_rng } from './rng.js';
 import {
     EPRI, EMIN, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE, AM_MASK,
-    Amask2align, ACH_TMPL, In_endgame,
+    Amask2align, ACH_TMPL, In_endgame, Is_sanctum,
     CLAIRVOYANT, PROTECTION, FROMOUTSIDE, INTRINSIC, LL_CONDUCT,
     IS_DOOR, u_at, BZ_OFS_AD, BZ_M_SPELL,
     ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
@@ -479,9 +479,9 @@ export function in_your_sanctuary(mon, x = 0, y = 0) {
 import { record_achievement } from './insight.js';
 
 /**
- * C ref: priest.c intemple — enter TEMPLE room (from check_special_room).
- * Named omissions: mapseen_temple; SetVoice pitch; sanctum Is_sanctum
- * (treated false unless In_endgame High Cleric path matters).
+ * C ref: priest.c intemple `:410–538` — enter TEMPLE room (from
+ * check_special_room). Named omissions: SetVoice pitch (voice-macro
+ * no-op).
  */
 export async function intemple(roomno) {
     const u = game.u;
@@ -502,11 +502,11 @@ export async function intemple(roomno) {
         if (epri.hostile_time == null) epri.hostile_time = 0;
 
         const shrined = has_shrine(priest);
-        const sanctum = (priest.data === mons(PM_HIGH_CLERIC)
-            || (priest.mnum | 0) === PM_HIGH_CLERIC)
-            && In_endgame(u.uz); // Is_sanctum deferred → endgame High Cleric only
+        // C `:430–432` — mons() allocates fresh, so mndx/mnum only (never ===).
+        const sanctum = (priest.mnum | 0) === PM_HIGH_CLERIC
+            && (Is_sanctum(u.uz) || In_endgame(u.uz));
         const can_speak = !helpless(priest);
-        const Deaf = !!(u.Deaf || u.HDeaf);
+        const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf); // C youprop.h:125 (u.Deaf flat unwritten)
         const moves = game.moves | 0;
 
         if (can_speak && !Deaf && moves >= (epri.intone_time | 0)) {
@@ -524,7 +524,7 @@ export async function intemple(roomno) {
 
         let msg1 = null;
         let msg2 = null;
-        if (sanctum) {
+        if (sanctum && Is_sanctum(u.uz)) { // C `:452`
             if (priest.mpeaceful) {
                 msg1 = "Infidel, you have entered Moloch's Sanctum!";
                 msg2 = 'Be gone!';

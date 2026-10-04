@@ -184,7 +184,7 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces, strncmpi } from './hacklib.js';
 import { name_to_mon, DEF_CHAR_TO_MLET, mlet_class_explain } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics } from './display.js';
+import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, switch_symbols, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics } from './display.js';
 import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none, DEF_INV_ORDER } from './invent.js';
 import {
@@ -4567,30 +4567,29 @@ const OPT_GLYPH_RESET = new Set([
 ]);
 
 /**
- * C options.c can_set_perm_invent `:5487–5527`.
- * InvOptOn from const.js (D-1666; C `:5507–5508`).
- * Named omissions: check_tty_wincap body; optfn_boolean perm_invent
- * gate; check_perm_invent_again pending retry.
+ * C options.c can_set_perm_invent `:5487–5527` (staticfn) — contest-compiled
+ * shape (TTY_PERM_INVENT undefined, config.h:612): the `:5499–5503`
+ * check_tty_wincap escape and the `:5511–5522` toggled/WIN_INVEN restore
+ * block are compiled out (`:5524` nhUse's old_perminv_mode), so a wincap
+ * without the bit returns FALSE. Contest tty_procs.wincap lacks the bit
+ * (wintty.c tty_procs, same ifdef), hence FALSE here; the mode arm below
+ * runs only if a wincap ever carries it. InvOptOn from const.js (D-1666).
+ * Callers: optfn_boolean `:5266` (wired below), handler_perminv_mode
+ * `:6065` (wired), check_perm_invent_again `:5536` (#ifdef'd out),
+ * initoptions `#if 0` `:7398` (compiled out).
  * @param {object} [iflags]
  * @param {boolean} [optInitial]
  * @returns {boolean}
  */
 function can_set_perm_invent(iflags, optInitial) {
     const bag = perminv_iflags(iflags);
-    const old_perminv_mode = bag.perminv_mode | 0;
+    void optInitial; // C `:5512` — inside the compiled-out TTY block
     const wincap = game.windowprocs?.wincap | 0;
-    if (!(wincap & WC_PERM_INVENT) && !windowport_tty()) return false;
+    if (!(wincap & WC_PERM_INVENT)) return false; // C `:5496–5504`
 
-    if ((bag.perminv_mode | 0) === InvOptNone) bag.perminv_mode = InvOptOn;
+    if ((bag.perminv_mode | 0) === InvOptNone) bag.perminv_mode = InvOptOn; // C `:5507–5508`
 
-    if (windowport_tty() && !optInitial) {
-        perm_invent_toggled(false);
-        if ((game.WIN_INVEN ?? WIN_ERR) === WIN_ERR) {
-            bag.perminv_mode = old_perminv_mode;
-            return false;
-        }
-    }
-    return true;
+    return true; // C `:5525`
 }
 
 /**
@@ -6705,7 +6704,7 @@ export async function query_color(prompt, dflt_color) {
  */
 export async function query_attr(prompt, dflt_attr) {
     const dflt = dflt_attr | 0;
-    const allow_many = !!prompt && str_start_is(String(prompt), 'Choose', true);
+    const allow_many = !!prompt && strncmpi(String(prompt), 'Choose', 6) === 0; // C coloratt.c:402
     const raw = [
         { text: prompt ? String(prompt) : 'Pick an attribute', selectable: false },
     ];
@@ -10294,10 +10293,9 @@ function format_doset_opt_line(name, value, indent = '') {
  * is the `:9060–9064` tail (indent `"    "` ⟺ a_int 0 ⟺ indexoffset 0,
  * Sprintf fmt, add_menu SKIPINVERT → row object). The `:9045–9058`
  * invalid-idx else arm (PREFIXES_IN_USE fqn_prefix loop `:9050–9054`,
- * "unknown" default `:9055–9057`) follows doset's named PREFIXES omission
- * — no JS caller passes an invalid row. Callers: `:8875` (Compounds),
- * `:8892` (Other settings), `:8901` (Variable playground locations —
- * named omission with the section, doset docblock).
+ * "unknown" default `:9055–9057`) is compiled out with doset's PREFIXES
+ * section (hack.h:1055 ifdef) — no JS caller passes an invalid row.
+ * Callers: `:8875` (Compounds), `:8892` (Other settings).
  */
 function doset_add_menu(name, value, indexoffset, extra = {}) {
     const indent = indexoffset === 0 ? '    ' : '';
@@ -10868,9 +10866,9 @@ function doset_bool_term(name) {
  * '?' help + rerun, bool toggles, handler + getlin compounds, othr rows
  * (D-3403 ports the getlin arms, help/rerun, preference_update calls).
  * CompOpt perminv_mode is in C allopt order; doset skips it when
- * !wc_supported (contest tty !TTY_PERM_INVENT). Named omissions:
- * PREFIXES section (fqn_prefix values unset in JS — game.gf has no
- * writer); wc2_supported skips (minimal-wincap2 model gap — see
+ * !wc_supported (contest tty !TTY_PERM_INVENT). `:8897–8902` PREFIXES
+ * section compiled out (hack.h:1055 ifdef).
+ * Named omissions: wc2_supported skips (minimal-wincap2 model gap — see
  * doset_skip_unsupported); optfn_boolean perm_invent can_set gate
  * (caller-side). reset_needed_visuals subset is D-1701 (no reset_glyphmap).
  */
@@ -11047,7 +11045,10 @@ export async function doset() {
             // indexoffset is nonzero — optlist.h NHOPTO rows are selectable).
             raw.push(doset_add_menu(t.name, t.get_val ? t.get_val() : t.val, 1, { kind: 'othr' }));
         }
-    
+        // C `:8897–8902` PREFIXES_IN_USE section (Variable playground
+        // locations) is compiled out (hack.h:1055 — needs
+        // NOCWD_ASSUMPTIONS or VAR_PLAYGROUND, both undefined).
+
         if (!game.go) game.go = {};
         game.go.opt_need_redraw = false;
         game.go.opt_need_glyph_reset = false;
@@ -12154,14 +12155,9 @@ function isOptSpace(ch) {
  * symbol is introduced (insight/vault/write keep their local clones). Only
  * the zero/nonzero distinction is observed, like C's `!strncmpi(...)`. */
 function optStrncasecmp(a, b, n) {
-    for (let k = 0; k < n; k++) {
-        const ca = k < a.length ? a[k] : '\0';
-        const cb = k < b.length ? b[k] : '\0';
-        const la = lowc(ca), lb = lowc(cb);
-        if (la !== lb) return la < lb ? -1 : 1;
-        if (ca === '\0') return 0;
-    }
-    return 0;
+    // Live hacklib export (C hacklib.c:717–734); the 16 call sites below
+    // are C options.c strncmpi arms. Same 0/-1/1 order, lowc fold.
+    return strncmpi(a, b, n);
 }
 
 /* C options.c `length_without_val` `:6739–6758` (staticfn) — length of the
@@ -12489,8 +12485,8 @@ export function parseoptions(opts, tinitial, tfromFile) {
 
     if (!gotMatch) { // C `:662–663`
         if (opts.startsWith('S_') && parsesymbols(opts, PRIMARYSET)) { // C `:663`
-            // Named omission (map): switch_symbols(TRUE) application.
-            check_gold_symbol(); // C `:664`
+            switch_symbols(true); // C `:664` (TRUE arm live, display.js)
+            check_gold_symbol(); // C `:665`
             optresult = OPTN_OK; // C `:666`
         }
     }
@@ -12767,22 +12763,6 @@ const SYM_ALTERNATES = [
     ['S_explode8', 'S_expl_bc'], ['S_explode9', 'S_expl_br'],
 ];
 
-/* C strncmpi on NUL-terminated strings, ASCII-only fold like C tolower.
- * match_sym calls it with len = cut position; len past the name compares
- * buf chars against the name's NUL, so a match needs len === name length
- * plus a case-insensitive prefix hit (the `len >= strlen` + strncmpi pair
- * at `:885`/`:890`). */
-function symNameCiEq(a, b) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-        let ca = a.charCodeAt(i), cb = b.charCodeAt(i);
-        if (ca >= 65 && ca <= 90) ca |= 0x20;
-        if (cb >= 65 && cb <= 90) cb |= 0x20;
-        if (ca !== cb) return false;
-    }
-    return true;
-}
-
 /**
  * C ref: symbols.c match_sym `:852–901` — resolve a config symbol name to
  * its loadsyms row. G_ lines never match (`:871–873`); a trailing space
@@ -12810,13 +12790,13 @@ export function match_sym(buf) {
     // in LOADSYMS, per the generated header).
     for (let i = 0; i < LOADSYMS.length && LOADSYMS[i][0]; i++) {
         const name = LOADSYMS[i][2];
-        if (len === name.length && symNameCiEq(buf.slice(0, len), name)) {
+        if (len >= name.length && strncmpi(buf, name, len) === 0) { // C symbols.c:885
             return { range: LOADSYMS[i][0], idx: LOADSYMS[i][1], name };
         }
     }
     // C `:889–899` alternates, then exact strcmp on the canonical name.
     for (const [altnm, nm] of SYM_ALTERNATES) {
-        if (len === altnm.length && symNameCiEq(buf.slice(0, len), altnm)) {
+        if (len >= altnm.length && strncmpi(buf, altnm, len) === 0) { // C symbols.c:891
             for (let i = 0; i < LOADSYMS.length && LOADSYMS[i][0]; i++) {
                 if (nm === LOADSYMS[i][2]) {
                     return {

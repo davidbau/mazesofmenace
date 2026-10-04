@@ -59,7 +59,7 @@ import { which_armor, extract_from_minvent } from './worn.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam, y_monnam, pmname, Mgender } from './do_name.js';
 import { gettrack } from './track.js';
-import { hero_conflict, resist_conflict, monsndx, same_race } from './mondata.js';
+import { hero_conflict, resist_conflict, monsndx, same_race, mhis } from './mondata.js';
 import { is_pool, is_lava, stop_occupation, On_stairs } from './hack.js';
 import { m_unleash } from './apply.js';
 import { lose_guardian_angel } from './minion.js';
@@ -1567,7 +1567,7 @@ export async function dog_move(mtmp, after) {
                 // C dogmove.c `:1281–1284` pline_mon then m_unleash(FALSE)
                 await pline_mon(
                     mtmp,
-                    `${Monnam(mtmp)} breaks loose of ${mtmp.female ? 'her' : 'his'} leash!`,
+                    `${Monnam(mtmp)} breaks loose of ${mhis(mtmp)} leash!`, // C `:1283` mhis (live mondata.js export)
                 );
                 await m_unleash(mtmp, false);
             }

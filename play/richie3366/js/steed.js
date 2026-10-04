@@ -7,6 +7,7 @@
 // exercise_steed (riding-skill training every 100 turns).
 
 import { game } from './gstate.js';
+import { accessible } from './monmove.js'; // SAFE per imports.mjs (hoisted fn, cycle-safe)
 import { mksobj, sobj_at, is_metallic } from './mkobj.js';
 import { makeknown, near_capacity, encumber_msg, Blind } from './invent.js';
 import {
@@ -122,16 +123,6 @@ function you_data() {
     return game.youmonst?.data || { mflags1: M1_HUMANOID, msize: MZ_MEDIUM };
 }
 
-/** C ref: monmove.c accessible — ACCESSIBLE && !closed_door (subset). */
-function accessible_cell(x, y) {
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return false;
-    if (!ACCESSIBLE(loc.typ)) return false;
-    if (IS_DOOR(loc.typ) && ((loc.doormask || 0) & (D_CLOSED | D_LOCKED))) {
-        return false;
-    }
-    return true;
-}
 
 /**
  * C ref: hack.c test_move(TEST_MOVE) — terrain/doorway subset for ride.
@@ -143,7 +134,7 @@ export function test_move_ok(x, y, dx, dy) {
     const nx = x + dx;
     const ny = y + dy;
     if (!isok(nx, ny)) return false;
-    if (!accessible_cell(nx, ny)) return false;
+    if (!accessible(nx, ny)) return false; // live monmove.js export
     if (dx && dy) {
         const dest = game.level?.at?.(nx, ny);
         if (dest && IS_DOOR(dest.typ) && !doorless_door(nx, ny)) return false;
@@ -552,7 +543,7 @@ export function landing_spot(spot, reason, forceit) {
             const y = (u.uy | 0) + tryPos[j].y;
             if (!isok(x, y)) continue;
             if (u.ux === x && u.uy === y) continue;
-            if (!accessible_cell(x, y)) continue;
+            if (!accessible(x, y)) continue; // C steed.c:532 (live monmove.js export)
             if (m_at(x, y)) continue;
             if (!test_move_ok(u.ux, u.uy, tryPos[j].x, tryPos[j].y)) continue;
 

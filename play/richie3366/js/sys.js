@@ -14,9 +14,8 @@ import { game } from './gstate.js';
 
 /**
  * C ref: sys.c sys_early_init `:20–112` — whole body in C order.
- * Sole C caller: allmain.c early_init `:43` (no JS counterpart; wired in
- * jsmain.js start() before rc/sysconf parsing, matching C's
- * early-init-before-config order).
+ * Sole C caller: allmain.c early_init `:43` (wired: allmain.js start
+ * path before rc/sysconf parsing, matching C's early-init order).
  *
  * Build-shape notes (pinned headers): SYSCF is defined (config.h:232–235)
  * so the `:30–36` wizards arm takes the `= 0` branch and the `:44–45`
@@ -126,8 +125,7 @@ export function sysopt_release() {
  * in getmattk, mhitu.c — the JS get_mattk SEDUCE=0 arm is the named omit
  * at mhitm.js:446); the compiled body (`:179–182`) is a bare return.
  * C callers: sys.c `:101` (wired in sys_early_init above); cfgfiles.c
- * `:941` SEDUCE sysconf handler (JS still routes SEDUCE through the
- * `cnf_line_named_true` stub — named omission, not this commit).
+ * `:941` SEDUCE sysconf handler (wired: cfgfiles.js cnf_line_SEDUCE).
  * @param {number} _val unused (C `int val UNUSED`)
  */
 export function sysopt_seduce_set(_val) {

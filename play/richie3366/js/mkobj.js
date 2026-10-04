@@ -1252,17 +1252,20 @@ export function save_timers(range) {
  * alloc+Sfi_fe per element); the JSON analogues live at the call sites —
  * timer_id at save.js restgamestate, per-element hydration at lev_json.js
  * deserTimerList — and this function is the `:2718–2726` insert loop.
- * Ghostly `timeout += adjust` (`:2722–2723`, bones) is deferred (Named).
  * Callees: live `insert_timer` above (C `:2724`, `#ifndef SFCTOOL` always
  * true in JS).
  * @param {object[]} list hydrated timer entries (deserTimerList shape)
+ * @param {boolean} [ghostly] bones-load remap (C `:2722`; no JS caller
+ * passes true — ghostly ⇔ getlev_bones, which never restores timers)
+ * @param {number} [adjust] bones timeout skew (C `:2723`)
  */
-export function restore_timers(list) {
+export function restore_timers(list, ghostly = false, adjust = 0) {
     if (!list) return;
     // C :2718 — `while (count-- > 0)`: one element per iteration (alloc +
     // read collapsed into the hydrated record).
     for (const t of list) {
         if (!t) continue;
+        if (ghostly) t.timeout = (t.timeout | 0) + (adjust | 0); // C `:2722–2723`
         t.next = null;
         insert_timer(t); // C :2724.
     }

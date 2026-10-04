@@ -50,7 +50,7 @@ import {
 } from './const.js';
 import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic, is_vampshifter, is_undead } from './monsters.js';
 import { m_at, mongone, dmonsfree, zombie_maker, m_carrying, iter_mons } from './mon.js';
-import { can_carry } from './monmove.js';
+import { can_carry, accessible } from './monmove.js';
 import { enexto, rloc_to, single_level_branch } from './teleport.js';
 import { oname, christen_monst, free_oname, mon_nam, Monnam, m_monnam, pmname, Ugender, Mgender, type_is_pname } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight, obj_attach_mid } from './mkobj.js';
@@ -551,8 +551,6 @@ export function formatkiller(how, incl_helpless = false) {
  * Callers: end.c:1157 really_done (below); save.c:98 dosave0
  * (js/save.js); save.c:1111 freedynamicdata has no JS counterpart
  * (save-freeing teardown — named, not wired).
- * Named omissions: closed_door rejection inside accessible()
- * (ACCESSIBLE-only approx below).
  */
 export async function done_object_cleanup() {
     // C `:854` — killed while using a disposable item: finish it off
@@ -566,8 +564,7 @@ export async function done_object_cleanup() {
     let oy = (u.uy | 0) + (u.dy | 0);
     const spotOk = (x, y) => {
         if (!isok(x, y)) return false;
-        const loc = game.level?.at?.(x, y);
-        return !!(loc && ACCESSIBLE(loc.typ));
+        return accessible(x, y); // C `:875` (live monmove.js export)
     };
     if (!spotOk(ox, oy)) {
         ox = u.ux | 0;

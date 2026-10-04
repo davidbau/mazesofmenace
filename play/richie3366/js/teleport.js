@@ -95,7 +95,7 @@ import { fill_pit } from './dig.js';
 /* mklev.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
 import { somex } from './mklev.js';
 /* priest.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
-import { mon_aligntyp, histemple_at } from './priest.js';
+import { mon_aligntyp, histemple_at, inhistemple } from './priest.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
@@ -367,12 +367,6 @@ function has_shrine(pri) {
     }
     return (epri.shralign | 0)
         === (Amask2align((lev.altarmask | 0) & ~AM_SHRINE) | 0);
-}
-
-function inhistemple(priest) {
-    if (!priest || !priest.ispriest) return false;
-    if (!histemple_at(priest, priest.mx, priest.my)) return false;
-    return has_shrine(priest);
 }
 
 /**

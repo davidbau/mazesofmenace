@@ -109,7 +109,7 @@ import { ATR_INVERSE } from './terminal.js';
 import {
     addtobill, costly_spot, check_unpaid_usage, doname_with_price,
     remote_burglary, shop_keeper, subfrombill, stolen_value, obfree, sellobj, sellobj_state,
-    money_cnt, pick_pick, inside_shop, inhishop,
+    money_cnt, pick_pick, inside_shop, inhishop, Shk_Your,
 } from './shk.js';
 import {
     nohands, nolimbs, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider,
@@ -4985,8 +4985,7 @@ async function tipcontainer_checks(box, targetbox, allowempty) {
         let empty_it = false;
         await observe_quantum_cat(box, true, true);
         if (!Has_contents(box)) {
-            // C: Shk_Your — 'Your ' when carried, 'The ' otherwise.
-            await pline(`${carried(box) ? 'Your' : 'The'} box is now empty.`);
+            await pline(`${Shk_Your(box)}box is now empty.`); // C `:4041`
         } else {
             empty_it = true; // holds cat corpse
         }

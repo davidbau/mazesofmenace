@@ -249,7 +249,7 @@ import {
     from_what, stone_luck, set_moreluck,
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
-import { ing_suffix, strstri, strsubst, ordin, highc, lcase } from './hacklib.js';
+import { ing_suffix, strstri, strsubst, ordin, highc, lcase, strncmpi } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
 import { map_menu_cmd, select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes, set_option_mod_status, SET_GAMEVIEW } from './options.js';
 import { rn2 } from './rng.js';
@@ -4996,11 +4996,12 @@ export async function consume_obj_charge(obj, maybe_unpaid) {
  * NON_PM so statue/figurine details stay suppressed, slime-mold spe =
  * current_fruit); loot_classify fills the Loot record (observe_object
  * runs inside it when !Blind, as in C `:171`) and the "%02d%02d%1d "
- * key is what disco_output_sorted strips on print.
+ * key is what disco_output_sorted strips on print. Exported: doclassdisco
+ * (o_init.js) keys the same way (C `:1095–1096`).
  * @param {number} otyp object type index
  * @returns {string} 6-char sort key (orderclass/subclass/disco + space)
  */
-function sortloot_descr(otyp) {
+export function sortloot_descr(otyp) {
     const oc = game.objects?.[otyp | 0] || {};
     // C `:572–581` — cg.zeroobj + otyp/oclass/dknown/known/corpsenm/spe.
     const o = {
@@ -8711,9 +8712,9 @@ async function noarmor(report_uskin) {
         return;
     }
     // C: strcpy(buf, simpleonames(uskin)); then strncmpi "set of " +
-    // strstri " dragon " in-place (p[1]=p[8]). Do not add strncmpi #4.
+    // strstri " dragon " in-place (p[1]=p[8]).
     let uskinname = simpleonames(uskin);
-    if (uskinname.slice(0, 7).toLowerCase() === 'set of ') {
+    if (strncmpi(uskinname, 'set of ', 7) === 0) { // C invent.c:4588
         uskinname = uskinname.slice(7);
     }
     const p = strstri(uskinname, ' dragon ');

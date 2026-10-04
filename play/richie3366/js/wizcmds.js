@@ -1150,10 +1150,8 @@ export async function wiz_map_levltyp() {
         // C `:820–824` unexpected branch — svd.dungeons[dnum].dname.
         let brname = game.dungeons?.[uz.dnum]?.dname || '';
         if (!brname) brname = 'unknown';
-        // C `:823` if (!strncmpi(brname, "the ", 4)) brname += 4 — inline
-        // prefix strip (no 4th strncmpi clone: write.js:82, insight.js:743,
-        // vault.js:128 stay the only copies).
-        if (/^the /i.test(brname)) brname = brname.slice(4);
+        // C `:823` if (!strncmpi(brname, "the ", 4)) brname += 4.
+        if (strncmpi(brname, 'the ', 4) === 0) brname = brname.slice(4);
         dsc += ` ${brname}`;
     }
     // C `:827–828` limit the line length to map width.

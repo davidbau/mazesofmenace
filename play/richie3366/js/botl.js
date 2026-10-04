@@ -88,7 +88,7 @@ import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
 import {
     upstart, strNsubst, stripchars, str_start_is, fuzzymatch, lowc,
-    deepest_lev_reached, eos, highc,
+    deepest_lev_reached, eos, highc, strncmpi,
 } from './hacklib.js';
 import { clr2colorname } from './artifact.js';
 import { humanoid, mons, is_flyer, NON_PM } from './monsters.js';
@@ -1650,7 +1650,7 @@ function fldname_to_bl_indx(name) {
             const len = name.length; // C :2243
             for (let i = 0; i < initblstats.length; i++) {
                 // C :2246 !strncmpi(name, fldname, len) — name prefixes fldname.
-                if (initblstats[i].name.slice(0, len).toLowerCase() === name.toLowerCase()) {
+                if (strncmpi(name, initblstats[i].name, len) === 0) {
                     fld = initblstats[i].fld;
                     nmatches++;
                 }
@@ -2082,7 +2082,7 @@ function match_str2conditionbitmask(str) {
             const len = s.length; // C :3195
             for (let i = 0; i < condition_aliases.length; i++) {
                 // C :3197 !strncmpi(str, id, len) — str prefixes the alias.
-                if (condition_aliases[i].id.slice(0, len).toLowerCase() === s.toLowerCase()) {
+                if (strncmpi(s, condition_aliases[i].id, len) === 0) {
                     mask |= condition_aliases[i].bitmask;
                     nmatches++;
                 }
@@ -2370,7 +2370,7 @@ export function status_version(bufsz, indent) {
     if (showname && showbranch) { // C :116-128
         // C :117 !strncmpi(name, altname, strlen(name)) — game name is a
         // prefix of (or same as) the branch name, omit the game name.
-        if (altname.slice(0, name.length).toLowerCase() === name.toLowerCase())
+        if (strncmpi(name, altname, name.length) === 0)
             showname = false;
     } else if (!showname && !showbranch) { // C :129-132
         shownum = true;
@@ -2444,7 +2444,7 @@ export function weapon_status() {
         // numbered ("2...") or "two...".
         let out = ((uwep.oclass === WEAPON_CLASS || is_weptool(uwep))
                    && bimanual(uwep) && res.charAt(0) !== '2'
-                   && res.slice(0, 3).toLowerCase() !== 'two') ? '2H-' : '';
+                   && strncmpi(res, 'two', 3) !== 0) ? '2H-' : '';
         // C :547-548 append res, capitalize its first letter (p = eos).
         out += (res.length ? highc(res.charAt(0)) + res.slice(1) : res);
         // C :551 no embedded spaces on the status line.
