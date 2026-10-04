@@ -1,5 +1,5 @@
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency } from './shk.js';
-import { COST_CONTENTS, BURN_OBJECT } from './const.js';
+import { COST_CONTENTS, BURN_OBJECT, otrapped_of } from './const.js';
 // @ts-nocheck
 // objnam.js — readobjnam and helpers for wish parsing.
 // C ref: nethack-c/src/objnam.c
@@ -2096,6 +2096,16 @@ export async function readobjnam(bp, no_wish) {
                 actualn = rest;
             break;
         }
+        /* C objnam.c:4571 tests the prefix with strncmpi(bp, wrp[i], j) and NO
+         * trailing-space requirement, so "wand. of lightning" is class WAND
+         * with bp ". of lightning"; ' of ' does not follow, so actualn stays
+         * NULL (objnam.c:4575).  No object name matches, and the class-only
+         * fallthrough grants mkobj(WAND_CLASS) (rnd(1000) @ mkobj.c:289). */
+        if (wcls !== AMULET_CLASS && bplc.startsWith(wname)) {
+            oclass = wcls;
+            actualn = '';
+            break;
+        }
         /* "<class> something" prefix (for amulet — not stripped) */
         if (wcls === AMULET_CLASS && bplc.startsWith(wname)) {
             oclass = AMULET_CLASS;
@@ -2335,6 +2345,10 @@ export async function readobjnam(bp, no_wish) {
                 otmp.oextra = otmp.oextra || {};
                 otmp.oextra.oname = arti.name;
                 otmp.quan = 1;
+                /* objnam.c:5364 u.uconduct.wisharti++ (KMH conduct); counted before
+                 * the objnam.c:5369 downgrade check, as in C. */
+                const _uc = (game.u.uconduct = game.u.uconduct || {});
+                _uc.wisharti = (_uc.wisharti | 0) + 1;
                 /* C oname()->artifact_exists()->artifact_origin() (artifact.c:488)
                  * sets artiexist[a].exists = 1 for the just-created artifact. */
                 _artiexist()[arti.arti] = true;
@@ -4216,7 +4230,7 @@ function _xname_arm(obj, c) {
             buf = `${c.dn} amulet`;
         break;
     case WEAPON_CLASS:
-        if (is_poisonable(obj) && obj.opoisoned)
+        if (is_poisonable(obj) && otrapped_of(obj))
             buf = 'poisoned ';
         /* FALLTHROUGH — C objnam.c:690-692 */
     case VENOM_CLASS:
@@ -4722,7 +4736,7 @@ async function doname_base(obj, doname_flags) {
     }
 
     /* C:1266-1272 — "poisoned arrow" (xname) vs "poisoned +0 arrow" (doname). */
-    if (bp.startsWith('poisoned ') && (obj.opoisoned | 0)) {
+    if (bp.startsWith('poisoned ') && otrapped_of(obj)) {
         bp = bp.slice(9);
         ispoisoned = true;
     }

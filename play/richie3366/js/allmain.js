@@ -25,7 +25,7 @@ import { obj_delivery } from './dokick.js';
 import { read_wizkit } from './files.js';
 import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries, find_ac } from './u_init.js';
 import { makedog } from './dog.js';
-import { makemon, reset_align_shift_cache } from './makemon.js';
+import { makemon, makemon_appear_msg, reset_align_shift_cache } from './makemon.js';
 import {
     mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, see_nearby_monsters,
 } from './mon.js';
@@ -370,7 +370,7 @@ function u_calc_moveamt(wtcap) {
 
 // C ref: allmain.c maybe_generate_rnd_mon()
 // C: !rn2(udemigod ? 25 : (depth(&u.uz) > depth(&stronghold_level)) ? 50 : 70)
-function maybe_generate_rnd_mon() {
+async function maybe_generate_rnd_mon() {
     const u = game.u || {};
     let rate = 70;
     if (u.uevent?.udemigod) {
@@ -379,7 +379,9 @@ function maybe_generate_rnd_mon() {
         rate = 50;
     }
     if (!rn2(rate)) {
-        makemon(null, 0, 0, NO_MM_FLAGS);
+        const rndmon = makemon(null, 0, 0, NO_MM_FLAGS);
+        // C: the appear Norep is inside makemon (:1476–1500).
+        if (rndmon) await makemon_appear_msg(rndmon, rndmon.mx | 0, rndmon.my | 0, NO_MM_FLAGS);
     }
 }
 
@@ -1194,7 +1196,7 @@ export async function moveloop_core() {
                 for (const mtmp of g.fmon || []) {
                     mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
                 }
-                maybe_generate_rnd_mon();
+                await maybe_generate_rnd_mon();
                 u_calc_moveamt(mvl_wtcap);
                 // C: settrack() before svm.moves++
                 settrack();

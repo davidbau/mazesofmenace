@@ -71,22 +71,36 @@ async function read_yn(prompt, acceptQ) {
         await flush_screen(1);
     if (unacknowledged && g._pending_message)
         await force_more(g._pending_message);
+    /* tty_yn_function sets TOPLINE_SPECIAL_PROMPT: custompline hard-wraps a
+     * long prompt (topl.c:412-420, topl_putsym) with no --More--. */
+    const savedEcho = g._topl_prompt_echo;
+    /* Only a prompt wider than the row takes the hard-wrap layout; a short
+     * one keeps the ordinary topline/status path. */
+    const wraps = topl_park_cursor(null, `${shown} `)[1] > 0;
+    if (wraps) g._topl_prompt_echo = true;
+    try {
     g._pending_message = shown;
     await flush_screen(1);
     if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${shown} `);
+    } finally { g._topl_prompt_echo = savedEcho; }
+    /* topl.c:545-546 — a prompt that wrapped (wins[WIN_MESSAGE]->cury) is
+     * cleared on cleanup rather than left on the terminal. */
+    const stick = () => {
+        g._topl_sticky = topl_park_cursor(null, `${shown} `)[1] ? null : shown;
+    };
     for (;;) {
         const key = await nhgetch();
         const c = String.fromCharCode(key).toLowerCase();
         if (c === 'y' || c === 'n' || (acceptQ && c === 'q')) {
-            g._topl_sticky = shown;
+            stick();
             return c;
         }
         if (key === 27) {
-            g._topl_sticky = shown;
+            stick();
             return acceptQ ? 'q' : 'n';
         }
         if (key === 32 || key === 10 || key === 13) {
-            g._topl_sticky = shown;
+            stick();
             return 'n';
         }
         /* nhgetch clears the logical topline, but tty keeps the already-painted

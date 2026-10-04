@@ -4,6 +4,7 @@
 // Hand-maintained JS (not tsc-emitted). Sibling imports from js/*.js.
 import { u_safe_from_fatal_corpse } from './pickup.js';
 import { game, wizard } from './gstate.js';
+import { COLNO } from './const.js';
 import { s_suffix as _ta_s_suffix } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { pline, flash_mon, canspotmon, unmap_invisible, gamelog_add } from './display.js';
@@ -344,7 +345,9 @@ export async function getlin(prompt) {
         }
         if (keyCode === 8 /* BS */ || keyCode === 127 /* DEL */) {
             if (buf.length > 0) buf = buf.slice(0, -1);
-        } else if (keyCode >= 32 && keyCode < 127) {
+        } else if (keyCode >= 32 && keyCode < 127 && buf.length < COLNO) {
+            /* getline.c:165-167 — bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO;
+             * a longer line is refused (tty_nhbell) and the frame is unchanged. */
             buf += String.fromCharCode(keyCode);
         }
         renderPrompt();
@@ -434,7 +437,10 @@ export async function wiz_level_change() {
     }
 
     /* C wizcmds.c:458: ret = sscanf(buf, "%d%c", &newlevel, &dummy) */
-    const parsed = parseInt(buf, 10);
+    /* mungspaces (trim + collapse) first; "%d%c" yields 2 when any char
+     * follows the number (e.g. "2.0"), so only a whole-string integer passes. */
+    const m = /^[+-]?\d+$/.exec(buf.replace(/\s+/g, ' ').trim());
+    const parsed = m ? parseInt(m[0], 10) : NaN;
     if (isNaN(parsed)) {
         /* C wizcmds.c:460-463: ret != 1 → pline1(Never_mind) */
         await pline('Never mind.');
@@ -719,7 +725,8 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 const dot = total_of ? '' : '.';
                 /* prinv prints the merged stack with quan=oquan (xprname's quan
                  * arg), not the merged total. */
-                prinvLine = `${String.fromCharCode(o.invlet | 0)} - ${(await _wish_doname(o, oquan))}${dot}`;
+                const totalbuf = (total_of && g.flags?.verbose) ? ` (${o.quan | 0} in total).` : '';
+                prinvLine = `${String.fromCharCode(o.invlet | 0)} - ${(await _wish_doname(o, oquan))}${dot}${totalbuf}`;
                 g._resultMessage = g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
             }
             await _wish_encumber_msg(_oldcap, prinvLine);

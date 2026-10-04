@@ -401,6 +401,17 @@ function _add_to_minv(mtmp, obj) {
     obj.nobj = mtmp.minvent ?? null;
     mtmp.minvent = obj;
 }
+/* C monst.h is_lminion(mon): is_minion(mon->data) && mon_aligntyp(mon) ==
+ * A_LAWFUL && mon->data->mlet != S_HUMAN (mon_aligntyp is priest.c:
+ * a minion's own emin alignment, else sgn(maligntyp)). */
+function _is_lminion(mtmp) {
+    const mndx = monsndx(mtmp);
+    if ((monMflags2(mndx) & 0x00001000) === 0) /* M2_MINION */
+        return false;
+    const algn = (mtmp.isminion && mtmp.mextra?.emin)
+        ? mtmp.mextra.emin.min_align : (MONS[mndx][4] | 0);
+    return algn > 0 && algn !== -128 && monMlet(mndx) !== S_HUMAN;
+}
 export async function mongets(mtmp, otyp, mksobjFn) {
     if (!otyp)
         return null;
@@ -408,8 +419,18 @@ export async function mongets(mtmp, otyp, mksobjFn) {
     /* C makemon.c:2204-2207 — demons never get blessed objects.  Without it a
      * demon's blessed misc potion of invisibility skips you_aggravate()
      * (muse.c:2477-2479, cursed only). */
-    if (otmp && monMlet(monsndx(mtmp)) === S_DEMON && otmp.blessed)
-        curse(otmp);
+    if (otmp && monMlet(monsndx(mtmp)) === S_DEMON) {
+        if (otmp.blessed)
+            curse(otmp);
+    } else if (otmp && _is_lminion(mtmp)) {
+        /* C makemon.c:2193-2199 — lawful minions don't get cursed, bad, or
+         * rusting objects. */
+        otmp.cursed = false;
+        if ((otmp.spe | 0) < 0)
+            otmp.spe = 0;
+        otmp.oerodeproof = 1;
+        otmp.oeroded = otmp.oeroded2 = 0;
+    }
     /* C makemon.c:2218-2223 — princes do not tolerate inferior gear.
      * This adjustment is after the demon/minion/mplayer special cases in C
      * and before mpickobj; it is stateful because weapon damage reads spe. */
@@ -435,6 +456,9 @@ async function mInitthrow(mtmp, otyp, oquan, mksobjFn) {
     const otmp = await mksobjFn(otyp, true, false);
     if (otmp) {
         otmp.quan = rn1(oquan, 3) | 0;
+        /* C makemon.c:155-156 */
+        if (otyp === ORCISH_ARROW)
+            otmp.opoisoned = 1;
         /* C makemon.c:159 — mpickobj → add_to_minv */
         _add_to_minv(mtmp, otmp);
     }

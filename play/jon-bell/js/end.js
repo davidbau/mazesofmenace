@@ -42,17 +42,19 @@ import { routeTag } from './route_telemetry.js';
 import { acurr, minuhpmax, setuhpmax } from './attrib.js';
 import { rn2, d } from './rng.js';
 import { A_CON, A_CURRENT, A_ORIGINAL, Upolyd, DIED, CHOKING, STARVING, DROWNING, BURNING, STONING, TURNED_SLIME, QUIT, GENOCIDED, PANICKED, TRICKED, ESCAPED, ASCENDED, LIFESAVED, KILLED_BY, NO_KILLER_PREFIX, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, PARANOID_QUIT, PARANOID_DIE, PARANOID_BONES } from './const.js';
-import { KILLED_BY_AN, MALE, FEMALE } from './const.js';
+import { KILLED_BY_AN, MALE, FEMALE, In_quest, In_endgame, Is_astralevel } from './const.js';
+import { dunlev } from './dungeon.js';
 import { MGIVENNAME, has_mgivenname } from './const.js';
 import { SICK, SICK_ALL, TIMEOUT, TT_LAVA, UNCHANGING } from './const.js';
-import { PM_TOURIST, PM_HUMAN_MUMMY } from './pm.generated.js';
+import { PM_TOURIST, PM_HUMAN_MUMMY, PM_ELF_MUMMY, PM_DWARF_MUMMY, PM_GNOME_MUMMY, PM_ORC_MUMMY, PM_HUMAN_ZOMBIE, PM_ELF_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE, PM_ORC_ZOMBIE, PM_WRAITH, PM_VAMPIRE, PM_GHOUL, PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
+import { G_GENOD } from './const.js';
 import { shkname, free_oname } from './dokick.js';
 import { paybill, finish_paybill, currency, obfree } from './shk.js';
 import { m_monnam } from './mhitm.js';
 import { expels_gu } from './mhitu.js';
 import { unstuck, sticks, keepdogs } from './dog.js';
 import { mon_nam } from './uhitm.js';
-import { monPmname, the_unique_pm, adjLev } from './makemon.js';
+import { monPmname, the_unique_pm, adjLev, zombie_maker } from './makemon.js';
 import { PM_HOUSECAT } from './pm.generated.js';
 import { exit_nhwindows, raw_print } from './rawterm.js';
 import { topten, formatkiller } from './topten.js';
@@ -247,13 +249,32 @@ export function done_in_by(mtmp, how) {
     if (!g.svk) g.svk = {};
     if (!g.svk.killer) g.svk.killer = { id: 0, format: 0, name: '', next: null };
     const mptr = mtmp?.data;
-    /* C end.c:327-329 — a mummy killer raises the hero as the role's
-     * mummy. Keep this state on the same done_in_by path that records the
-     * killer; really_done() emits the corresponding blocking message. */
-    if (mptr && (mptr.mlet | 0) === 39) {
-        const mnum = Number.isInteger(g.urace?.mummynum)
-            ? (g.urace.mummynum | 0) : PM_HUMAN_MUMMY;
-        g.u.ugrave_arise = mnum;
+    /* C end.c:317-340 — an undead killer raises the hero as the race's
+     * mummy/zombie (role.c races[].mummynum/zombienum), a wraith, a vampire
+     * (human only) or a ghoul; really_done() emits the "rises from the dead"
+     * message.  Keep this state on the same path that records the killer. */
+    if (mptr) {
+        const rm = g.urace?.mnum | 0;
+        const mummynum = Number.isInteger(g.urace?.mummynum) ? (g.urace.mummynum | 0)
+            : ({ [PM_ELF]: PM_ELF_MUMMY, [PM_DWARF]: PM_DWARF_MUMMY,
+                 [PM_GNOME]: PM_GNOME_MUMMY, [PM_ORC]: PM_ORC_MUMMY })[rm] ?? PM_HUMAN_MUMMY;
+        const zombienum = Number.isInteger(g.urace?.zombienum) ? (g.urace.zombienum | 0)
+            : ({ [PM_ELF]: PM_ELF_ZOMBIE, [PM_DWARF]: PM_DWARF_ZOMBIE,
+                 [PM_GNOME]: PM_GNOME_ZOMBIE, [PM_ORC]: PM_ORC_ZOMBIE })[rm] ?? PM_HUMAN_ZOMBIE;
+        const mlet = mptr.mlet | 0;
+        if (mlet === 49 /* S_WRAITH */)
+            g.u.ugrave_arise = PM_WRAITH;
+        else if (mlet === 39 /* S_MUMMY */)
+            g.u.ugrave_arise = mummynum;
+        else if (zombie_maker(mtmp))
+            g.u.ugrave_arise = zombienum;
+        else if (mlet === 48 /* S_VAMPIRE */ && (rm === 0 || rm === PM_HUMAN))
+            g.u.ugrave_arise = PM_VAMPIRE;
+        else if ((mptr.pmidx | 0) === PM_GHOUL)
+            g.u.ugrave_arise = PM_GHOUL;
+        const ua = g.u.ugrave_arise | 0;
+        if (ua >= 0 && ((g.mvitals?.[ua]?.mvflags | 0) & G_GENOD))
+            g.u.ugrave_arise = -1; /* NON_PM */
     }
     /* C end.c:186-190 — champtr/imitator/mimicker.  A chameleon stores its
      * original species in cham, while a mimic's monster appearance is held in
@@ -1644,10 +1665,11 @@ async function really_done(how) {
             } else {
             /* C end.c:1524-1541 — "You <ends[how]> in <dungeon>[ on dungeon
                level N] with <urexp> point(s)," */
-            const dname = String(g.dungeons?.[u.uz?.dnum | 0]?.dname ?? '');
+            let dname = String(g.dungeons?.[u.uz?.dnum | 0]?.dname ?? '');
+            if (Is_astralevel(u.uz)) dname = 'The Astral Plane';
             let pbuf = `You ${_ENDS[how] ?? 'died'} in ${dname}`;
-            if (!_single_level_branch(u.uz))
-                pbuf += ` on dungeon level ${depth(u.uz)}`;
+            if (!In_endgame(u.uz) && !_single_level_branch(u.uz))
+                pbuf += ` on dungeon level ${In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz)}`;
             const urexp = clong(u.urexp);
             pbuf += ` with ${urexp} point${urexp === 1n ? '' : 's'},`;
             if (!done_stopprint()) lines.push(pbuf);

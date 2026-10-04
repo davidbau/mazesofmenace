@@ -827,7 +827,7 @@ export async function mcast_insects(mtmp) {
     const u = game.u;
     let pm = mkclass(S_ANT_MC, 0);
     let mtmp2 = null;
-    const sym = pm ? S_ANT_MC : S_SNAKE_MC;
+    const sym = pm !== null ? S_ANT_MC : S_SNAKE_MC; /* PM_GIANT_ANT is 0 */
     let success = false;
     const bypos = { x: 0, y: 0 };
 

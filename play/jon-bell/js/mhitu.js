@@ -213,7 +213,7 @@ import { xname, bimanual as bimanual_mu } from './do_wear.js';
 import { miss as miss_mu, hit as hit_mu,
          make_blinded as make_blinded_real,
          incr_HBlinded as incr_HBlinded_mu } from './zap.js';
-import { distant_name as distant_name_mu } from './objnam.js';
+import { distant_name as distant_name_mu, killer_xname as killer_xname_mu } from './objnam.js';
 import { find_mac as find_mac_mu } from './trap.js';
 import { omon_adj as omon_adj_mu } from './cmd.js';
 import { exclam as exclam_mu } from './uhitm.js';
@@ -1427,11 +1427,19 @@ function hurtle_u(dx, dy, range) {
     }
 }
 
-function mhitm_knockback_u(mtmp, mattk) {
+function mhitm_knockback_u(mtmp, mattk, hitflags) {
     const u = game.u || (game.u = {});
     /* C uhitm.c:5259 — int knockdistance = rn2(3) ? 1 : 2;  (unconditional) */
     const knockdistance = rn2(3) ? 1 : 2;
-    const chance = 6;
+    let chance = 6;
+    /* C uhitm.c:5256-5257 — wep = weapon_used ? MON_WEP(magr) : NULL, where
+     * mhitu.c:1193 passes weapon_used = (MON_WEP(mtmp) != 0). */
+    let wep = null;
+    for (let o = mtmp.minvent; o; o = o.nobj)
+        if (((o.owornmask | 0) & W_WEP_MU) !== 0) { wep = o; break; }
+    /* C uhitm.c:5262-5263 — ART_OGRESMASHER (artifact index 16). */
+    if (wep && (wep.oartifact | 0) === 16)
+        chance = 2;
     /* C uhitm.c:5270 — if (rn2(chance)) return FALSE; */
     if (rn2(chance))
         return false;
@@ -1466,13 +1474,25 @@ function mhitm_knockback_u(mtmp, mattk) {
     if (!(_kb_msize(magrMndx) > (heroMsize + 1)))
         return false;
 
+    /* C uhitm.c:5329-5331 — no knockback with a flimsy or non-blunt weapon.
+     * is_flimsy: oc_material <= LEATHER or RUBBER_HOSE; is_blunt_weapon: WHACK
+     * rows (otyp 69..81 minus 72, plus pick-axe 259 / grappling hook 260). */
+    if (wep) {
+        const wo = wep.otyp | 0;
+        const blunt = (wo >= 69 && wo <= 81 && wo !== 72) || wo === 259 || wo === 260;
+        if ((MKOBJ_OC_MATERIAL[wo] | 0) <= 7 /* LEATHER */ || wo === 78 /* RUBBER_HOSE */ || !blunt)
+            return false;
+    }
 
     /* C uhitm.c:5334 — unsolid attacker can't deliver a solid hit. */
     if ((_kb_mflags1(magrMndx) & M1_UNSOLID_) !== 0)
         return false;
 
-    /* C uhitm.c:5339 — for u_def the attack must have hit; hitmu only calls this
-     * after a successful hit, so M_ATTK_HIT is set. */
+    /* C uhitm.c:5339-5341 — (u_agr || u_def) && !(*hitflags & M_ATTK_HIT) ->
+     * FALSE.  artifact_hit() returning TRUE (e.g. the Staff of Aesculapius'
+     * life drain) leaves M_ATTK_HIT unset in mhitm_ad_phys (uhitm.c:4067-4072). */
+    if (!((hitflags | 0) & M_ATTK_HIT))
+        return false;
 
     const knockedhow = will_hurtle_hero(defx + dx, defy + dy) ? 'backward' : 'back';
 
@@ -1501,7 +1521,7 @@ import { W_ARMOR as W_ARMOR_MU, W_ACCESSORY as W_ACCESSORY_MU,
          W_WEAPONS as W_WEAPONS_MU, ADORNED as ADORNED_MU, RLOC_MSG as RLOC_MSG_MU,
          M_ATTK_AGR_DONE,
          PLNMSG_MON_TAKES_OFF_ITEM as PLNMSG_MON_TAKES_OFF_ITEM_MU } from './const.js';
-import { remove_worn_item as remove_worn_item_mu } from './steal.js';
+import { remove_worn_item as remove_worn_item_mu, unresponsive as unresponsive_mu } from './steal.js';
 import { maybe_finished_meal as maybe_finished_meal_mu, is_fainted as is_fainted_mu,
          morehungry as morehungry_mu } from './eat.js';
 import { inv_cnt as inv_cnt_mu, freeinv as freeinv_mu,
@@ -1875,10 +1895,10 @@ async function steal(mtmp, objnambuf) {
              * `gm.multi >= 0 ? FALSE : (unconscious() || is_fainted() || ...)`
              * — this port has no multi < 0 state at a monster's attack, so the
              * seduction branch is the one C takes. */
-            if (monkey_business) {
+            if (monkey_business || unresponsive_mu()) {
                 /* C:517-523 — animals lack the patience for slow armor; this
                  * is the rn2(10) @steal(steal.c:521).  olddelay is 0 here. */
-                if (armordelay >= 1 && rn2(10))
+                if (armordelay >= 1 && !olddelay && rn2(10))
                     return cant_take();
                 await worn_item_removal(mtmp, otmp);
                 break;
@@ -2116,6 +2136,15 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
             await hitmsg(mtmp, mattk);
             if (!rn2(20))
                 await stealamulet_mu(mtmp);
+            break;
+        /* C uhitm.c:4606-4608 mhitm_ad_dise, mhitu arm: hitmsg, then
+         * diseasemu(pa); resistance zeroes the damage.  This adtyp fell into
+         * the default arm below, so a sting AD_DISE (Scorpius) skipped the
+         * make_sick rn1(ACURR(A_CON),20) draw and its "deathly sick" message. */
+        case AD_DISE_MK:
+            await hitmsg(mtmp, mattk);
+            if (!(await diseasemu_gu({ mnum: (mtmp.mnum ?? mtmp.mndx ?? 0) | 0 })))
+                mhm.damage = 0;
             break;
         case AD_CURS_MU:
             hitmsg_je(mtmp, mattk);
@@ -2619,7 +2648,7 @@ async function hitmu_je(mtmp, mattk) {
     }
     await mhitm_adtyping_u(mtmp, mattk, mhm);
     /* C mhitu.c:1191 mhitm_knockback. */
-    mhitm_knockback_u(mtmp, mattk);
+    mhitm_knockback_u(mtmp, mattk, mhm.hitflags);
     if (mhm.done)
         return mhm.hitflags;
     /* C mhitu.c:1206 — negative AC reduces damage: rnd(-uac). */
@@ -2966,7 +2995,6 @@ function wildmiss(mtmp, mattk) {
 
 /* C ref: mhitu.c:85 missmu — monster missed the hero. */
 async function missmu_je(mtmp, nearmiss, mattk) {
-    void mattk;
     /* C ref: mhitu.c:88-89 — a miss clears the hitmsg "again" tracking so the
      * next hit does not spuriously say "again". */
     game._hitmsg_mid = 0;
@@ -2982,7 +3010,12 @@ async function missmu_je(mtmp, nearmiss, mattk) {
      * flags.verbose; a !verbose game prints the plain "misses!" for a roll that
      * lands exactly on the to-hit threshold. */
     const nearmiss_verbose = nearmiss && (game.flags?.verbose ?? true);
-    pline(`${Monst_name} ${nearmiss_verbose ? 'just ' : ''}misses!`);
+    /* C mhitu.c:93-94 — a seductive attacker (nymph/incubus) that misses a
+     * hero it could seduce "pretends to be friendly" instead. */
+    if (could_seduce(mtmp, game.youmonst ?? game.u, mattk) && !mtmp.mcan)
+        pline(`${Monst_name} pretends to be friendly.`);
+    else
+        pline(`${Monst_name} ${nearmiss_verbose ? 'just ' : ''}misses!`);
     /* C mhitu.c:100 — stop_occupation() (RNG-neutral); emits "You stop studying."
      * into the combat stream when a miss interrupts the study. */
     await stop_occupation();
@@ -3956,6 +3989,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             }
 
             let hitu;
+            const oldumort = (game.u?.umortality | 0); /* C mthrowu.c:702 */
             /* C mthrowu.c:732-771 — EGG / CREAM_PIE / BLINDING_VENOM take the
              * flat thitu(8, 0, ...) arm; everything else takes `default:`. */
             if ((singleobj.otyp | 0) === BLINDING_VENOM_MU
@@ -3987,6 +4021,13 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                 if ((singleobj.otyp | 0) !== ACID_VENOM_MU)
                     dam = maybe_half_phys_mu(dam);
                 hitu = await thitu_mu(hitv, dam, singleobj, null);
+            }
+            /* C mthrowu.c:741-753 — a poisoned missile that hit the hero. */
+            if (hitu && (singleobj.opoisoned | 0) && is_poisonable_mu(singleobj)) {
+                const onmbuf = await xname(singleobj);
+                const knmbuf = await killer_xname_mu(singleobj);
+                await poisoned_u(onmbuf, 0 /* A_STR */, knmbuf,
+                                 ((game.u?.umortality | 0) > oldumort) ? 0 : 10, true);
             }
             if (ENV.FF_MATTACK_TRACE === '1')
                 pushRngLogEntry(`^mthrow_hit[id=${mon.m_id|0} otyp=${singleobj.otyp|0} hit=${hitu ? 1 : 0} mesg=${gm.mesg_given|0} hp=${game.u?.uhp|0}]`);
@@ -4487,7 +4528,7 @@ export async function expels_gu(mtmp, mndx, message) {
         }
     }
     /* C: unstuck(mtmp) — ball&chain returned in unstuck(). */
-    await unstuck_mu(mtmp);
+    await unstuck_mu(mtmp, true);
     {
         const _joins = _topl_joins_snapshot_mu(game._resultMessage || '');
         const _line = _topl_merge_result_mu(game._resultMessage || '',
@@ -4906,6 +4947,11 @@ function getmattk(magr, udefend, mdef, indx, prev_result) {
         attk.damn *= 2;
     }
 
+    /* C hands back &alt_attk_buf for a substituted attack, never a pointer
+     * into mptr->mattk[], so hitmsg()'s `mattk == hitmsg_prev + 1` can't hold
+     * for it (nor for the attack after it): mattacku leaves _ai unstamped. */
+    if (substituted)
+        attk._alt = true;
     return attk;
 }
 
@@ -5146,13 +5192,14 @@ export async function mattacku(mtmp) {
         /* C mhitu.c:786-790 — skipnonmagc suppresses everything but AT_MAGC;
          * skipdrin suppresses a mind flayer's remaining brain-drain tentacles
          * after an ineffective or terminal one. */
-        if ((skipnonmagc && mattk.aatyp !== AT_MAGC)
+        if (((game.u.uswallow | 0) && mattk.aatyp !== AT_ENGL_MU)
+            || (skipnonmagc && mattk.aatyp !== AT_MAGC)
             || (game.s.skipdrin && mattk.aatyp === AT_TENT_
                 && mattk.adtyp === AD_DRIN_))
             continue;
         /* C ref: mhitu.c hitmsg "again" tracking — record this attack's slot
          * index so hitmsg_je can test mattk == hitmsg_prev + 1. */
-        mattk._ai = i;
+        mattk._ai = mattk._alt ? null : i;
         switch (mattk.aatyp) {
             case AT_CLAW_:
             case AT_KICK_:

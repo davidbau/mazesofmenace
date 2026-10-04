@@ -433,7 +433,8 @@ export async function litroom(on, obj) {
     const u = game.u || {};
     const Blind = !!(u.Blind || u.ublind);
     const blessed_effect = !!(obj && obj.oclass === SCROLL_CLASS && obj.blessed);
-    const no_op = !!(u.uswallow || u.Underwater || Is_waterlevel(u.uz));
+    // C `:2498` — no_op ≡ uswallow || Underwater || waterlevel.
+    const no_op = !!(u.uswallow || (u.uinwater | 0) || Is_waterlevel(u.uz));
 
     if (!on) {
         let still_lit = 0;

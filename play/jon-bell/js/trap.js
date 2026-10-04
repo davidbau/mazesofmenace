@@ -77,9 +77,11 @@ import { NC_SHOW_MSG, NOTELL } from './const.js';
 import { ignite_items } from './mhitu.js';
 import { nomul } from './allmain.js';
 import { unconscious } from './pickup.js';
+import { u_locomotion as u_locomotion_real } from './cmd.js';
 import { schedule_goto } from './cmd.js';
 import { stop_occupation } from './allmain.js';
-import { fall_asleep, spot_stop_timers, stop_timer } from './timeout.js';
+import { fall_asleep, spot_stop_timers, stop_timer, begin_burn, end_burn } from './timeout.js';
+import { artifact_light, arti_light_radius } from './light.js';
 /* C hack.h obj_to_any(obj) — the `anything` union wrapper; local copy, same
  * per-file convention as js/dig.js:619 and js/mklev.js:886. */
 function obj_to_any(o) { return { a_obj: o, a_long: null }; }
@@ -137,7 +139,7 @@ import { COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK, ERODE_CRACK }
 import { remove_worn_item } from './steal.js';
 import { x_monnam, christen_monst } from './mhitm.js';
 import { quest_info } from './objnam.js';
-import { shop_keeper, costly_spot } from './shk.js';
+import { shop_keeper, costly_spot, shk_your } from './shk.js';
 import { has_oname, ONAME } from './const.js';
 import { nxtobj } from './mklev.js';
 import { bypass_obj } from './worn.js';
@@ -2078,8 +2080,16 @@ function _mdw_curse(obj) {
     obj.blessed = 0;
     obj.cursed = 1;
 }
-function _mdw_artifact_light(obj) {
-    return false && obj;
+/* C light.c:915-931 arti_light_description(obj) */
+function _mdw_arti_light_description(obj) {
+    switch (arti_light_radius(obj)) {
+    case 4: return 'radiantly'; /* blessed gold dragon scale mail */
+    case 3: return 'brilliantly'; /* blessed artifact, uncursed gold DSM */
+    case 2: return 'brightly'; /* uncursed artifact, cursed gold DSM */
+    case 1: return 'dimly'; /* cursed artifact, embedded scales */
+    default: break;
+    }
+    return 'strangely';
 }
 
 async function m_dowear_type(mon, flag, creation, racialexception) {
@@ -2245,17 +2255,31 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
 
         /* owornmask was cleared above but artifact_light() expects it */
         old.owornmask = oldmask;
-        /* C worn.c:966-967 `if (old->lamplit && artifact_light(old))
-           end_burn(old, FALSE);` — unreachable while _mdw_artifact_light() is
-           constant-false, and deliberately NOT spelled as a call to an
-           end_burn this file does not import (an unbound identifier is a
-           latent ReferenceError the moment artifact_light lands). */
+        if ((old.lamplit | 0) && artifact_light(old))
+            end_burn(old, false);
         old.owornmask = 0;
     }
     mon.misc_worn_check = (mon.misc_worn_check | 0) | flag;
     best.owornmask = (best.owornmask | 0) | flag;
     if (autocurse)
         _mdw_curse(best);
+    /* C worn.c:974-991 */
+    if (artifact_light(best) && !(best.lamplit | 0)) {
+        begin_burn(best, false);
+        vision_recalc(1);
+        if (!creation && (best.lamplit | 0) && cansee(mon.mx | 0, mon.my | 0)) {
+            const adesc = _mdw_arti_light_description(best);
+
+            if (sawmon) /* could already see monster */
+                pline(`${Yname2(best)} ${otense(best, 'begin')} to shine ${adesc}.`);
+            else if (canseemon(mon)) /* didn't see it until new light */
+                pline(`${Yname2(best)} ${otense(best, 'are')} shining ${adesc}.`);
+            else if (sawloc) /* saw location but not invisible monster */
+                pline(`Something begins to shine ${adesc}.`);
+            else /* didn't see location until new light */
+                pline(`Something is shining ${adesc}.`);
+        }
+    }
     update_mon_extrinsics(mon, best, true, creation);
     /* if couldn't see it but now can, or vice versa */
     if (!creation && (!!sawmon !== !!canseemon(mon))) {
@@ -2659,7 +2683,7 @@ function _stat_upstart(s) {
     return s;
 }
 function _stat_shk_your(obj) {
-    return u_at(obj.ox | 0, obj.oy | 0) ? 'your ' : 'the ';
+    return shk_your('', obj); /* shk.c:5862 */
 }
 async function _stat_delobj(obj) {
     await delobj_core(obj);
@@ -3473,7 +3497,7 @@ function _mu_maybe_destroy_web(mtmp, domsg, trap) {
     }
     return false;
 }
-function _u_locomotion_stub(word) { return word; }
+function _u_locomotion_stub(word) { return u_locomotion_real(word); }
 function _x_monnam_stub(mtmp, article, adj, suppress, called) {
     void suppress; void called;
     let s = _monnam_safe(mtmp);
@@ -3947,7 +3971,10 @@ async function trapeffect_fire_trap_mon(mtmp, trap) {
 
     if (Resists_Elem(mtmp, FIRE_RES)) {
         if (in_sight) {
-            /* C trap.c:1763 shieldeff(mx,my) — display-only. */
+            /* C trap.c:1763 shieldeff(mx,my): its closing newsym() (display.c:1122)
+             * is what paints the monster on its new square before the
+             * "is uninjured" --More-- frame. */
+            shieldeff(mtmp.mx | 0, mtmp.my | 0);
             void pline(`${Monnam_t(mtmp)} is uninjured.`);
         }
     } else {

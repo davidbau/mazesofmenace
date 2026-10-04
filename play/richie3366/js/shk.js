@@ -1314,7 +1314,8 @@ export function subfrombill(obj, shkp) {
 }
 
 /**
- * C ref: shk.c alter_cost — bump/force bill price for obj on any shk bill.
+ * C ref: shk.c alter_cost `:3237–3256` — bump/force bill price for obj
+ * on any shk bill. A raise refreshes the bill display (`:3251`).
  */
 export function alter_cost(obj, amt) {
     if (!obj) return;
@@ -1326,6 +1327,7 @@ export function alter_cost(obj, amt) {
         const newPrice = !amt ? get_cost(obj, shkp) : (amt < 0 ? -amt : amt);
         if (newPrice > (bp.price | 0) || amt < 0) {
             bp.price = newPrice | 0;
+            update_inventory(); // C `:3251`
         }
         break;
     }
@@ -3432,8 +3434,9 @@ function append_doname_unpaid_suffix(obj, bp, with_price) {
 }
 
 /**
- * C ref: shk.c get_cost_of_shop_item — price of floor/shop goods for doname.
- * Named omissions: contained_cost for Has_contents; globby weight units.
+ * C ref: shk.c get_cost_of_shop_item `:2809–2843` — price of floor/shop
+ * goods for doname. Has_contents adds contained_cost (`:2840–2841`).
+ * Named omission: globby weight units (get_pricing_units).
  * @returns {{ cost: number, nochrg: number }}
  *   nochrg: 1 no charge, 0 shop-owned, -1 not in shop
  */
@@ -3470,7 +3473,8 @@ export function get_cost_of_shop_item(obj) {
     if (carriedTop ? !!obj.unpaid : !nochrg) {
         cost = get_pricing_units(obj) * get_cost(obj, shkp);
     }
-    // Has_contents && !freespot → contained_cost deferred
+    if (Has_contents(obj) && !freespot) // C `:2840–2841`
+        cost += contained_cost(obj, shkp, 0, false, true);
     return { cost, nochrg };
 }
 
@@ -3556,8 +3560,8 @@ function corpsenm_price_adj(obj) {
 }
 
 /**
- * C ref: shk.c getprice — base oc_cost + class tweaks.
- * Named omissions: full candle Is_candle.
+ * C ref: shk.c getprice `:4319–4358` — base oc_cost + class tweaks,
+ * incl. the burning-candle halve (`:4351–4353`).
  */
 function getprice(obj, shk_buying) {
     const oc = objects()?.[obj?.otyp | 0];
@@ -3587,7 +3591,9 @@ function getprice(obj, shk_buying) {
         if ((obj.spe | 0) > 0) tmp += 10 * (obj.spe | 0);
         break;
     case TOOL_CLASS:
-        // Is_candle age < 20*oc_cost → /2 deferred (needs candle predicate)
+        if (Is_candle(obj) // C `:4351–4353`
+            && (obj.age | 0) < 20 * (oc?.oc_cost | 0))
+            tmp = Math.trunc(tmp / 2);
         break;
     default:
         break;

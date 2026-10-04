@@ -883,7 +883,7 @@ export async function uchangealign(newalign, reason) {
             );
             await make_confused(rn1(2, 3), false);
             if (Is_astralevel(u.uz) || rn2(50) < (u.ualign.abuse | 0)) {
-                summon_furies(Is_astralevel(u.uz) ? 0 : 1); // C `:1348`
+                await summon_furies(Is_astralevel(u.uz) ? 0 : 1); // C `:1348`
             }
             /* don't livelog taking it back off */
             livelog_printf(

@@ -76,7 +76,7 @@ import {
 import { nomul, is_lava, is_pool, SURFACE_AT, check_capacity } from './hack.js';
 import { t_at, uteetering_at_seen_pit, uescaped_shaft, ceiling, set_levltyp } from './trap.js';
 import { goodpos } from './teleport.js';
-import { makemon } from './makemon.js';
+import { makemon, makemon_appear_msg } from './makemon.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
     mons, is_hider, is_clinger, is_flyer, is_demon, is_vampire, MZ_HUGE,
@@ -1808,6 +1808,8 @@ export async function disturb_grave(x, y) {
     }
     await You('disturb the undead!');
     lev.horizontal = 1;
-    makemon(mons(PM_GHOUL), x, y, NO_MM_FLAGS);
+    const ghoul = makemon(mons(PM_GHOUL), x, y, NO_MM_FLAGS);
+    // C: the appear Norep is inside makemon (:1476–1500).
+    if (ghoul) await makemon_appear_msg(ghoul, ghoul.mx | 0, ghoul.my | 0, NO_MM_FLAGS);
     exercise(A_WIS, false);
 }

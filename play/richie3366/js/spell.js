@@ -149,7 +149,7 @@ import { set_occupation, freehand } from './engrave.js';
 import { objdescr_is, mkundead } from './apply.js';
 import { tamedog } from './dog.js';
 import { monflee } from './monmove.js';
-import { makemon, set_malign } from './makemon.js';
+import { makemon, makemon_appear_msg, set_malign } from './makemon.js';
 import { mkinvokearea } from './mklev.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_faint_chime } from './generated/seffects_data.js';
@@ -781,6 +781,8 @@ async function deadbook(book2) {
                 NO_MINVENT)) != null
                 || (mtmp = makemon(mons(PM_NALFESHNEE), u.ux | 0, u.uy | 0,
                     NO_MINVENT)) != null)) {
+            // C: the appear Norep is inside makemon (:1476–1500).
+            await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, NO_MINVENT);
             mtmp.mpeaceful = 0;
             set_malign(mtmp);
         }

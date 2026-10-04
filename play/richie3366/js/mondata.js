@@ -1087,7 +1087,8 @@ export function m_canseeu(m) {
     const Invis = !!(u.Hinvis || u.Einvis || u.Invis);
     const perceives = ((m?.data?.mflags1 | 0) & M1_SEE_INVIS) !== 0;
     if (Invis && !perceives) return false;
-    if (u.Underwater) return false;
+    // C vision.h:52 — !Underwater; Underwater ≡ u.uinwater (youprop.h:279).
+    if ((u.uinwater | 0) !== 0) return false;
     return couldsee(m.mx, m.my);
 }
 

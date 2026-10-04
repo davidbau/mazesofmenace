@@ -38,7 +38,7 @@ import { delete_convertedfile, compress_bonesfile } from './files.js';
 import { mons, monsterNames, SPECIAL_PM } from './monsters.js';
 import { cant_revive } from './zap.js';
 import { rest_regions } from './region.js';
-import { load_exclusions } from './dungeon.js';
+import { load_exclusions, Is_special } from './dungeon.js';
 import { place_monster } from './steed.js';
 import { reset_oattached_mids } from './restore.js';
 
@@ -369,8 +369,9 @@ export function loadfruitchn(arr) {
 }
 
 /**
- * C ref: files.c set_bonesfile_name — "bon" + dungeon boneid + "0" + "." + dlevel.
- * Named omissions: bones_pools digit; quest filecode; Is_special boneid letter.
+ * C ref: files.c set_bonesfile_name — "bon" + dungeon boneid + "0" + "."
+ * + dlevel, or the Is_special boneid letter on special levels (`:801`).
+ * Named omissions: bones_pools digit; quest filecode.
  */
 export function set_bonesfile_name(lev) {
     const dnum = lev?.dnum | 0;
@@ -379,7 +380,11 @@ export function set_bonesfile_name(lev) {
     let boneid = dun?.boneid;
     if (typeof boneid === 'number') boneid = String.fromCharCode(boneid);
     if (!boneid || boneid === '\0') boneid = 'D';
-    const bonesid = `${boneid}0.${dlevel}`;
+    // C `:801–804` — special levels tag the bones name with the level's
+    // boneid letter (char code on sp_levchn) instead of the dlevel.
+    const sptr = Is_special(lev);
+    const tail = sptr ? String.fromCharCode(sptr.boneid | 0) : String(dlevel);
+    const bonesid = `${boneid}0.${tail}`;
     return { filename: `bon${bonesid}`, bonesid };
 }
 

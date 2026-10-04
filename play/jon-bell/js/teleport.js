@@ -41,7 +41,7 @@ import { mon_nam } from './uhitm.js';
 import { noteleport_level, m_in_air, permonstTemplate, Inhell } from './makemon.js';
 import { mon_aligntyp, inhistemple as inhistemple_real } from './priest.js';
 import { worm_seg_at, remove_worm as remove_worm_real, place_worm_tail_randomly as place_worm_tail_randomly_real } from './worm.js';
-import { t_at, mintrap, fill_pit, seetrap, clamp_hole_destination,
+import { dotrap, t_at, mintrap, fill_pit, seetrap, clamp_hole_destination,
          buried_ball_to_punishment } from './trap.js';
 /* ── imports for mlevel_tele_trap / teleport_pet (below) ── */
 import { migrate_to_level } from './dog.js';        /* C dog.c:886 */
@@ -417,8 +417,15 @@ export async function teleds(nux, nuy, teleds_flags) {
          * already-published teleport result instead of dropping it. */
         game._teleportResultPublished = true;
     }
-    if (!game.in_steed_dismounting)
-        await _spoteffects_pickup();
+    if (!game.in_steed_dismounting) {
+        /* hack.c:3375-3394 — pickup(1) before dotrap unless the trap is a pit
+         * (then after); a hero who jumps/teleports onto a trap springs it. */
+        const _trap = t_at(u.ux | 0, u.uy | 0);
+        const _pit = _trap && is_pit(_trap.ttyp | 0);
+        if (!_pit) await _spoteffects_pickup();
+        if (_trap) await dotrap(_trap, 0);
+        if (_pit) await _spoteffects_pickup();
+    }
     if (is_teleport && (game.flags?.verbose !== false)
         && game._resultMessage && game._pending_message) {
         const _rmj = game._resultMessageJoins;

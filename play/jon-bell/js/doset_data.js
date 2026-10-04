@@ -237,7 +237,7 @@ export const DOSET_COMPOUNDS = [
     /* C: options.c optfn_roguesymset get_val — no rogue symset loaded */
     { name: "roguesymset", sel: true, hasHandler: true, val: () => "default" },
     /* C: options.c:3658 runmodes[flags.runmode]; init RUN_LEAP -> "run" */
-    { name: "runmode", sel: true, hasHandler: true, val: () => "run" },
+    { name: "runmode", sel: true, hasHandler: true, val: () => ["teleport", "run", "walk", "crawl"][F().runmode ?? 1] ?? "run" },
     /* C: options.c:3745 — flags.end_top 3, end_around 2, end_own FALSE */
     { name: "scores", sel: true, hasHandler: false, val: () => "3 top/2 around" },
     /* C: options.c:3902 get_sortdisco(); init SORTDISCO_DFLT */

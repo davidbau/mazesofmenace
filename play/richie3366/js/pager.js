@@ -1407,7 +1407,7 @@ export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSu
     let needToLook = false;
     // C `:1261–1264` — Underwater/waterlevel; Hallucination (dead men
     // hallucinate no longer: gameover gate).
-    const submerged = !!(u.Underwater && !Is_waterlevel(u.uz));
+    const submerged = !!((u.uinwater | 0) && !Is_waterlevel(u.uz));
     const hallucinate = !!Hallucination() && !game.program_state?.gameover;
     if (looked) {
         // C `:1268–1271` — glyph_at + map_glyphinfo ttychar (showsyms byte).
@@ -2096,7 +2096,8 @@ export function lookat(x, y) {
     } else if (glyph_is_nothing(glyph)) {
         buf = 'dark part of a room';
     } else if (glyph_is_unexplored(glyph)) {
-        if (u.Underwater && !Is_waterlevel(u.uz)) {
+        // C `:731` — Underwater && !waterlevel (≡ u.uinwater).
+        if ((u.uinwater | 0) && !Is_waterlevel(u.uz)) {
             buf = next2u_look(x, y) ? 'land' : 'unknown';
         } else {
             buf = 'unexplored area';
@@ -2143,7 +2144,7 @@ export function lookat(x, y) {
             if (!loc?.seenv) {
                 buf = 'unexplored';
                 break;
-            } else if (u.Underwater && !Is_waterlevel(u.uz)) {
+            } else if ((u.uinwater | 0) && !Is_waterlevel(u.uz)) { // C `:783`
                 buf = next2u_look(x, y) ? 'land' : 'unknown';
                 break;
             } else if ((loc?.typ | 0) === STONE || (loc?.typ | 0) === SCORR) {

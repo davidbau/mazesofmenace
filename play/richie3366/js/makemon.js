@@ -905,13 +905,15 @@ export function dump_mongen() {
 // C ref: makemon.c summon_furies `:2604–2611` — create some or all
 // remaining erinyes around the player (limit 0 = until extinct).
 // Caller: attrib.js uchangealign `:1348` (helm-on arm).
-export function summon_furies(limit) {
+export async function summon_furies(limit) {
     const erinys = pm('ERINYS'); // PM_ERINYS const
     let i = 0; // C `:2607`
     // C `:2608` mk_gen_ok(PM_ERINYS, G_GONE, 0U) && (i < limit || !limit)
     while (mk_gen_ok(erinys, G_GONE, 0) && (i < limit || !limit)) {
         // C `:2609` makemon(&mons[PM_ERINYS], u.ux, u.uy, ADJACENTOK|NOWAIT)
-        makemon(mons(erinys), game.u.ux, game.u.uy, MM_ADJACENTOK | MM_NOWAIT);
+        const fury = makemon(mons(erinys), game.u.ux, game.u.uy, MM_ADJACENTOK | MM_NOWAIT);
+        // C: the appear Norep is inside makemon (:1476–1500).
+        if (fury) await makemon_appear_msg(fury, fury.mx | 0, fury.my | 0, MM_ADJACENTOK | MM_NOWAIT);
         i++; // C `:2610`
     }
 }
@@ -1650,6 +1652,8 @@ export async function create_critters(cnt, mptr, neverask) {
 
         const mon = makemon(mptr, x, y, NO_MM_FLAGS);
         if (!mon) continue;
+        // C: the appear Norep is inside makemon (:1476–1500).
+        await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0, NO_MM_FLAGS);
 
         const ap = M_AP_TYPE(mon);
         if ((canseemon(mon) && (ap === M_AP_NOTHING || ap === M_AP_MONSTER))
@@ -3253,6 +3257,17 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {
 // blocks (`:87–104` cnttmp/cntdiv debug, `:107–112` cnt check pline,
 // `:115–120` cnt clamp) are compiled out — HP-UX/DG-UX predefined
 // macros, never defined on contest builds (patchlevel.h:397).
+//
+// C ref: makemon.c `:1476–1504` — every nested makemon inside m_initgrp
+// runs the appear-Norep + occupation check, members before the primary's
+// own. JS makemon is sync (level gen) so members cannot await it inline;
+// queue them tagged by primary, drained members-first by
+// makemon_appear_msg (below), which every mid-game caller already awaits
+// after makemon (D-0559). in_mklev members are never queued (C emits
+// nothing there); entries for a primary whose caller never awaits the
+// drain are dropped as stale by the next drain (that primary's own
+// message is missing too — pre-existing).
+const _grpAppearPending = [];
 function m_initgrp(mtmp, x, y, n, mmflags) {
     let cnt = rnd(n);
     const ulevel = game.u?.ulevel ?? 1;
@@ -3268,6 +3283,12 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
                 mon.mpeaceful = 0;
                 mon.mavenge = 0;
                 set_malign(mon);
+                // C `:1432–1437` → nested makemon `:1476–1500`: queue the
+                // member for its appear-Norep + dochugw; the drain passes
+                // the member's inherited flags (incl. MM_NOMSG).
+                if (!game.in_mklev) {
+                    _grpAppearPending.push({ mon, flags: mmflags | MM_NOGRP, primary: mtmp });
+                }
             }
         }
     }
@@ -3353,7 +3374,8 @@ export function makemon(mdat, x, y, mmflags = 0) {
 
     // C makemon.c:1204–1212 — ptr arm: a specific monster that has already
     // been genocided vetoes creation (return NULL before propagate). The
-    // wizard G_EXTINCT debugpline1 is D_DEBUG-only (D-2586 precedent).
+    // wizard G_EXTINCT debugpline1 compiles empty (`#ifndef DEBUG`,
+    // lint.h:67; D-2586 precedent).
     if (ptr) {
         const mndx0 = monsndx(ptr);
         if (((game.mvitals?.[mndx0]?.mvflags ?? 0) & G_GENOD) !== 0)
@@ -3363,7 +3385,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
         let tryct = 0;
         do {
             ptr = rndmonst();
-            if (!ptr) return null; // C debugpline0("Warning: no monster.") is D_DEBUG-only
+            // C `:1221` debugpline0("Warning: no monster.") compiles empty
+            // (`#ifndef DEBUG`, lint.h:67).
+            if (!ptr) return null;
             // C: fakemon.data = ptr for goodpos (JS fakemon is { data: ptr })
         } while (++tryct <= 50
             /* in Sokoban, don't accept a giant on first try;
@@ -3587,8 +3611,10 @@ export function makemon(mdat, x, y, mmflags = 0) {
             mtmp.mpeaceful = 1;
         }
     } else if (ptr.mlet === 'S_BAT') {
-        // C: Inhell && is_bat(ptr) → mon_adjust_speed(mtmp, 2, NULL)
-        // (case 2: permspeed=MFAST, no creation msg; boots check empty)
+        // C `:1343–1346` — Inhell && is_bat(ptr) →
+        // mon_adjust_speed(mtmp, 2, NULL), exact inline: case 2 sets
+        // permspeed=MFAST with give_msg=FALSE (worn.c:500–504), the
+        // boots scan then yields mspeed=MFAST either way, no message.
         const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
         if (inhell && is_bat(ptr)) {
             mtmp.permspeed = MFAST;
@@ -3729,6 +3755,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
     if (allow_minvent_local) {
         if (is_armed(ptr)) m_initweap(mtmp);
         m_initinv(mtmp);
+        // C `:1445` — m_dowear is async in JS (worn.js) but makemon is
+        // sync (level gen); fire-and-forget (D-1648 shape). Awaiting
+        // needs an async cascade through mklev, out of scope.
         m_dowear(mtmp, true);
         if (!rn2(100) && is_domestic(ptr)
             && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {
@@ -3805,6 +3834,29 @@ export async function unmakemon(mon, mmflags = 0) {
  */
 export async function makemon_appear_msg(mtmp, x, y, mmflags = 0) {
     if (!mtmp || game.in_mklev) return;
+
+    // C makemon.c:1432–1437 + :1476–1500 — nested group-member makemons
+    // complete (appear + occupation check) before the outer primary's
+    // own. Drain this primary's queued members first, in creation order
+    // (one m_initgrp call per makemon, so the run is contiguous); older
+    // entries belong to primaries whose caller never awaited this drain —
+    // drop them as stale. With no match the queue stays for its owners.
+    if (_grpAppearPending.length) {
+        let first = -1;
+        for (let i = 0; i < _grpAppearPending.length; i++) {
+            if (_grpAppearPending[i].primary === mtmp) { first = i; break; }
+        }
+        if (first >= 0) {
+            if (first > 0) _grpAppearPending.splice(0, first);
+            let last = 1;
+            while (last < _grpAppearPending.length
+                && _grpAppearPending[last].primary === mtmp) last++;
+            const run = _grpAppearPending.splice(0, last);
+            for (const e of run) {
+                await makemon_appear_msg(e.mon, e.mon.mx | 0, e.mon.my | 0, e.flags);
+            }
+        }
+    }
 
     // C makemon.c:1476–1500 — appear Norep only when !MM_NOMSG and seen.
     if ((mmflags & MM_NOMSG) === 0) {

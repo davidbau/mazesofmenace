@@ -11,7 +11,7 @@ import { visctrl } from './cmd_binds.js';
 import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2 } from './const.js';
 import { impossible } from './pline.js';
 import { pline, force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon } from './display.js';
-import { topl_park_cursor, putmsghistory } from './display.js';
+import { topl_park_cursor, putmsghistory, feel_location } from './display.js';
 import { block_point, recalc_block_point, vision_recalc } from './vision.js';
 import { nhgetch } from './input.js';
 import { yn_function } from './end.js';
@@ -25,7 +25,7 @@ import { wake_nearto } from './mklev.js';
 import { in_rooms, add_damage } from './shk.js';
 import { cansee, Blind } from './vision.js';
 import { closed_door } from './look.js';
-import { DEAF, HALLUC, DBWALL, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH,
+import { DEAF, HALLUC, STUNNED, CONFUSION, DBWALL, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH,
          IS_DRAWBRIDGE } from './const.js';
 /* C ref: objects.h — WAN_STRIKING otyp (js/makemon.js and js/muse.js pin the
  * same value); SPE_FORCE_BOLT shares doorlock's arm in C but is not reachable
@@ -541,6 +541,17 @@ export async function doclose() {
         portcullis = _is_drawbridge_wall_stub(x, y) >= 0;
         /* C lock.c:998 — Blind path: feel_location may flip glyph */
         if (_blind_stub()) {
+            /* C lock.c:998-1004 — feel_location; a changed glyph or
+             * lastseentyp means "learned something" → ECMD_TIME. */
+            const _fl = door;
+            const _rg = _fl ? _fl.remembered_glyph : null;
+            const _og = _rg ? `${_rg.ch}|${_rg.color}|${_rg.cls}|${_rg.decgfx}` : '';
+            const _ot = _fl ? (_fl.lastseentyp | 0) : 0;
+            feel_location(x, y);
+            const _ng0 = _fl ? _fl.remembered_glyph : null;
+            const _ng = _ng0 ? `${_ng0.ch}|${_ng0.color}|${_ng0.cls}|${_ng0.decgfx}` : '';
+            if (_ng !== _og || (_fl ? (_fl.lastseentyp | 0) : 0) !== _ot)
+                res = ECMD_TIME;
         }
     }
     /* C lock.c:1008 — portcullis || !IS_DOOR(door->typ) — also the goto nodoor target */
@@ -1414,8 +1425,15 @@ function _Passes_walls_lk() {
 }
 
 function _stumble_on_door_mimic_stub(_x, _y) { return false; }
-function _confusion_stub() { return false; }
-function _stunned_stub() { return false; }
+/* C youprop.h Confusion / Stunned: (HProp || EProp).  These were hardcoded
+ * `false`, so doclose (lock.c:992-993) never forced ECMD_TIME for an impaired
+ * hero and a confused "You see no door there." cost no turn. */
+function _hero_prop_on_lk(prop) {
+    const p = game.u?.uprops?.[prop];
+    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
+}
+function _confusion_stub() { return _hero_prop_on_lk(CONFUSION); }
+function _stunned_stub() { return _hero_prop_on_lk(STUNNED); }
 function _blind_stub() { return Blind(); }
 /* C ref: dbridge.c:136-162 is_drawbridge_wall().  Keep this local rather
  * than importing dokick.js: dokick.js imports breakchestlock from lock.js,

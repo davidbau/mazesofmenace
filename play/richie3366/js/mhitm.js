@@ -134,7 +134,7 @@ import { munslime, mon_adjust_speed, munstone } from './muse.js';
 import { Monnam, mon_nam, mon_nam_too, Adjmonnam, Amonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, Mgender, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam, noit_mon_nam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames, doname } from './objnam.js';
 import { mon_explodes } from './explode.js';
-import { makemon, newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
+import { makemon, makemon_appear_msg, newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
 import { stairway_find_type_dir } from './mklev.js';
 import { polyself } from './polyself.js';
 import { you_were, you_unwere, were_change } from './were.js';
@@ -3947,13 +3947,17 @@ export async function mondead(mtmp) {
         switch (rnd(5)) {
         case 1:
             if (stway) {
-                makemon(mtmp.data, stway.sx | 0, stway.sy | 0, NO_MM_FLAGS);
+                // C: the appear Norep is inside makemon (:1476–1500).
+                const kop1 = makemon(mtmp.data, stway.sx | 0, stway.sy | 0, NO_MM_FLAGS);
+                if (kop1) await makemon_appear_msg(kop1, kop1.mx | 0, kop1.my | 0, NO_MM_FLAGS);
                 break;
             }
             // FALLTHROUGH
-        case 2:
-            makemon(mtmp.data, 0, 0, NO_MM_FLAGS);
+        case 2: {
+            const kop2 = makemon(mtmp.data, 0, 0, NO_MM_FLAGS);
+            if (kop2) await makemon_appear_msg(kop2, kop2.mx | 0, kop2.my | 0, NO_MM_FLAGS);
             break;
+        }
         default:
             break;
         }

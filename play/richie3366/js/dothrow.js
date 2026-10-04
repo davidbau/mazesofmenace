@@ -88,10 +88,10 @@ import {
     xname, killer_xname, singular, an, An, the, The, vtense, doname, thesimpleoname,
     makeplural, otense, mshot_xname, corpse_xname, distant_name,
 } from './objnam.js';
-import { m_at, wakeup, seemimic, wake_nearto, monnear, m_respond, setmangry, bad_rock, may_passwall } from './mon.js';
+import { m_at, wakeup, seemimic, wake_nearto, monnear, m_respond, setmangry, bad_rock, may_passwall, NODIAG, minliquid } from './mon.js';
 import { distmin } from './hacklib.js';
 import { mon_nam, Monnam, a_monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname, rndmonnam, s_suffix } from './do_name.js';
-import { noit_mhim, NEUTRAL } from './mondata.js';
+import { noit_mhim, NEUTRAL, monsndx } from './mondata.js';
 import { which_armor } from './worn.js';
 import {
     is_domestic, nohands, M1_NOTAKE, MZ_HUGE, MZ_MEDIUM,
@@ -897,15 +897,21 @@ function s_suffix_throw_gold(s) {
  * freeinv then add_to_minv(ustuck) — not swallowit/mpickobj — with
  * pline_The entrails when digests(ustuck->data). After swallow: dz /
  * bhit THROWN_WEAPON / ghitm (D-1751 hidden_gold(TRUE) kick site) /
- * ship_object / flooreffects / sellobj. Named omit: unsplitobj (D-0720);
- * quivered gold via throwit; full surface().
+ * ship_object / flooreffects / sellobj. Self-cancel merges a stack
+ * split back (`:2665–2667`, throw_obj idiom). Named omit: quivered
+ * gold via throwit; full surface().
  */
 export async function throw_gold(obj) {
     const u = game.u || {};
     // C :2661 — self before freeinv. Do not ingest gold thrown at `.`.
     if (!(u.dx || 0) && !(u.dy || 0) && !(u.dz || 0)) {
         await pline('You cannot throw gold at yourself.');
-        // C You() + unsplitobj named (D-0720).
+        /* C `:2665–2667` — a stack split must merge back (throw_obj
+           idiom; essential for gold). */
+        const split = game.context?.objsplit;
+        if ((obj.o_id | 0) === (split?.parent_oid | 0)
+            || (obj.o_id | 0) === (split?.child_oid | 0))
+            unsplitobj(obj);
         return 0; // C ECMD_CANCEL; JS cmd.js treats truthy as time
     }
     // Local freeinv above already decrements the _goldCount cache for
@@ -3376,9 +3382,10 @@ async function mhurtle_step(mon, x, y) {
 }
 
 /**
- * C ref: dothrow.c mhurtle — knock monster through air for range steps.
- * mhurtle_step region gate is D-1176. Named omit: NODIAG grid-bug;
- * minliquid after path.
+ * C ref: dothrow.c mhurtle `:1128–1179` — knock monster through air
+ * for range steps. mhurtle_step region gate is D-1176; NODIAG
+ * grid-bug diagonal gate (`:1154–1155`) and the minliquid else-arm
+ * after the path (`:1174–1175`) live.
  */
 export async function mhurtle(mon, dx, dy, range) {
     if (!mon) return;
@@ -3397,6 +3404,9 @@ export async function mhurtle(mon, dx, dy, range) {
     dx = sgn_hurtle(dx);
     dy = sgn_hurtle(dy);
     if (!(range | 0) || (!dx && !dy)) return;
+    /* C `:1154–1155` — don't let grid bugs be hurtled diagonally. */
+    if (dx && dy && NODIAG(monsndx(mon.data)))
+        return;
 
     if (mon.mundetected) {
         mon.mundetected = 0;
@@ -3424,10 +3434,11 @@ export async function mhurtle(mon, dx, dy, range) {
         cury = mon.my | 0;
         if (curx !== nx || cury !== ny) break;
     }
-    if ((mon.mhp | 0) > 0) {
+    if ((mon.mhp | 0) > 0) { // C `:1171–1176`
         if (t_at(mon.mx | 0, mon.my | 0)) {
             await mintrap(mon, FORCEBUNGLE);
+        } else {
+            await minliquid(mon);
         }
-        // minliquid deferred
     }
 }

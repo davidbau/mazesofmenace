@@ -88,7 +88,7 @@ import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
 import { oid_price_adjustment, inhishop, shop_keeper, onbill } from './shk.js';
 import { inhistemple } from './priest.js';
-import { force_more, pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, display_self } from './display.js';
+import { force_more, pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
 /* create_critters (makemon.c:1556) reaches these two; both are cyclic imports
  * (teleport.js and wizcmds.js each import this file) but every binding used is
  * a hoisted function declaration, so the cycle resolves. */
@@ -803,6 +803,16 @@ export function peaceMinded(mndx) {
         return true;
     const mal = row[4] | 0; // maligntyp (schar)
     const mf2 = row[7] | 0; // mflags2
+    /* C role.c:2049-2054 role_init() rewrites the hero's quest nemesis row:
+     * mflags2 &= ~M2_PEACEFUL, |= M2_HOSTILE.  A nemesis that is statically
+     * another role's leader (Master of Thieves: Rogue leader, Tourist
+     * nemesis) carries M2_PEACEFUL in MONS[], so the nemesis test must run
+     * before the static flag reads or it is peaceful (makemon.c:2272). */
+    {
+        const ri = (game.flags?.initrole ?? -1) | 0;
+        if (ri >= 0 && ri < ROLE_NEMNUM.length && ROLE_NEMNUM[ri] === mndx)
+            return false;
+    }
     if ((mf2 & M2_PEACEFUL) !== 0)
         return true;
     if ((mf2 & M2_HOSTILE) !== 0)
@@ -1389,6 +1399,21 @@ export function permonstTemplate(mndx) {
     const i = mndx | 0;
     if (i < 0 || i >= NUMMONS) return null;
     const row = MONS[i];
+    /* C role.c:2049-2056 role_init() "Fix up the quest nemesis" MUTATES
+     * mons[neminum] once per game; these rows are immutable, so the same
+     * rewrite is applied when the hero's nemesis template is minted.  Without
+     * M3_WANTSARTI the nemesis is not is_covetous(), so tactics() never runs
+     * and it never fetches the quest artifact (wizard.c:441-447). */
+    const _ri = (game.flags?.initrole ?? -1) | 0;
+    const isNem = _ri >= 0 && _ri < ROLE_NEMNUM.length && ROLE_NEMNUM[_ri] === i;
+    let f2 = row[7] >>> 0, f3 = row[8] >>> 0, snd = MONS_MSOUND[i] | 0;
+    if (isNem) {
+        snd = MS_NEMESIS;
+        f2 = ((f2 & ~M2_PEACEFUL) | 0x02000000 /* M2_NASTY */
+              | 0x01000000 /* M2_STALK */ | M2_HOSTILE) >>> 0;
+        f3 = ((f3 & ~0x0080 /* M3_CLOSE */) | 0x0010 /* M3_WANTSARTI */
+              | 0x0040 /* M3_WAITFORU */) >>> 0;
+    }
     return {
         pmidx: i,
         mlet: row[0] | 0,
@@ -1398,12 +1423,12 @@ export function permonstTemplate(mndx) {
         mresists: row[5] | 0, // row[5]=mr1 (resist BITFIELD), NOT the mr% field (absent from MONS table)
         mr: MONS_MR[i] | 0,
         mflags1: row[6] >>> 0,  // unsigned uint32 bitfield — | 0 wraps high-bit values negative (raceptr V26)
-        mflags2: row[7] >>> 0,
-        mflags3: row[8] >>> 0,
+        mflags2: f2,
+        mflags3: f3,
         mmove: row[9] | 0,
         msize: MONS_MSIZE[i] | 0,
         mattk: MONS_MATTK[i],
-        msound: MONS_MSOUND[i] | 0,
+        msound: snd,
         pmnames: MONS_PMNAMES[i],
         mconveys: MONS_MCONVEYS[i] | 0,
     };
@@ -2140,13 +2165,7 @@ export async function mInitinv(mtmp, mksobjFn) {
                     if (otmp) {
                         otmp.quan = rn1(2, 3);
                         otmp.owt = weight(otmp);
-                        /* mpickobj → add_to_minv: prepend to mon->minvent, the
-                         * same reduction every sibling case in this switch (and
-                         * m_initweap.js mongets/m_initthrow) already uses —
-                         * add_to_minv's merged() pass consumes no RNG and
-                         * js/mklev.js mpickobj is still a throwing stub. */
-                        otmp.nobj = mtmp.minvent ?? null;
-                        mtmp.minvent = otmp;
+                        await mpickobj(mtmp, otmp);
                     }
                 }
             }
@@ -4322,13 +4341,17 @@ async function you_aggravate(mtmp) {
     if (_overflow)
         await force_more(_prev);
     await pline(_agg1);
-    /* display.c:2196 cls() -> display_nhwindow(WIN_MESSAGE, FALSE) pages the pending topline */
+    /* display.c:2196 cls() -> display_nhwindow(WIN_MESSAGE, FALSE) pages the pending topline.
+     * vpline's flush_screen()/bot() (pline.c:273-277) ran at THIS pline, so the page
+     * shows the live status, not the movemon first-overflow snapshot still installed
+     * from an earlier page of the same turn (HP 115 vs C 78). */
+    const _agg_sv = game._paintedSnapshot;
+    game._paintedSnapshot = null;
     await force_more(String(game._pending_message || _agg1));
+    if (game._paintedSnapshot == null) game._paintedSnapshot = _agg_sv;
     await cls();
     const mndx = Hallucination() ? rn2_on_display_rng(NUMMONS) : monsndx(mtmp);
-    const glyph = mndx + (((mtmp.female | 0) === 0) ? 38 /* GLYPH_MON_MALE_OFF */
-                                                     : 37 /* GLYPH_MON_FEM_OFF */);
-    show_glyph(mtmp.mx | 0, mtmp.my | 0, glyph);
+    show_monster_glyph_at(mtmp.mx | 0, mtmp.my | 0, mndx);
     display_self();
     const _agg2 = `You feel aggravated at ${noit_mon_nam(mtmp)}.`;
     await pline(_agg2);

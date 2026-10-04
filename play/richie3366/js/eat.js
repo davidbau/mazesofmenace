@@ -60,7 +60,7 @@ import { se_sinister_laughter } from './generated/seffects_data.js';
 import {
     singular, xname, doname, the, makeplural, obj_is_pname, thesimpleoname,
     an, killer_xname, yobjnam, Tobjnam, corpse_xname, otense, safe_qbuf,
-    ansimpleoname,
+    ansimpleoname, the_unique_pm,
 } from './objnam.js';
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
@@ -69,7 +69,7 @@ import {
     can_teleport, control_teleport, telepathic,
     flesh_petrifies, slimeproof, your_race, poly_when_stoned,
     is_clinger, breathless, is_flyer,
-    PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames, G_UNIQ,
+    PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames,
     MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON, MR_ACID, MR_STONE,
     M1_SEE_INVIS, M2_SHAPESHIFTER, is_were, dmgtype,
 } from './monsters.js';
@@ -234,9 +234,6 @@ const PM_TIGER = monsterNames.indexOf('PM_TIGER');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 const PM_COCKATRICE = monsterNames.indexOf('PM_COCKATRICE');
 const PM_CHICKATRICE = monsterNames.indexOf('PM_CHICKATRICE');
-const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
-const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
-const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 const PM_NEWT = monsterNames.indexOf('PM_NEWT');
@@ -2690,7 +2687,7 @@ export async function eatcorpse(otmp) {
         const use_is = !!(game.u?.Hallucination)
             || (!!palatable && palat_msg[0] === 'I');
         // C `:2000–2004` — strip a leading "the ", then the pname/unique/
-        // plain prefix (in-file the_unique_pm; C objnam.c).
+        // plain prefix (live the_unique_pm import; C objnam.c).
         let pmxnam = food_xname(otmp, false);
         if (!strncmpi(pmxnam, 'the ', 4)) pmxnam = pmxnam.slice(4);
         const tastePrefix = type_is_pname(ptr) ? ''
@@ -2732,23 +2729,6 @@ function obj_here(obj, x, y) {
         if (o === obj) return true;
     }
     return false;
-}
-
-/**
- * C ref: objnam.c the_unique_pm — G_UNIQ "the Name" article gate.
- * High priest / worm-tail / Wizard-of-Yendor exceptions match C.
- */
-function the_unique_pm(ptr) {
-    if (!ptr || type_is_pname(ptr)) return false;
-    let uniq = !!((ptr.geno | 0) & G_UNIQ);
-    if (PM_HIGH_CLERIC >= 0 && ptr === mons(PM_HIGH_CLERIC)) uniq = false;
-    if (PM_LONG_WORM_TAIL >= 0 && ptr === mons(PM_LONG_WORM_TAIL)) {
-        uniq = false;
-    }
-    if (PM_WIZARD_OF_YENDOR >= 0 && ptr === mons(PM_WIZARD_OF_YENDOR)) {
-        uniq = true;
-    }
-    return uniq;
 }
 
 /**

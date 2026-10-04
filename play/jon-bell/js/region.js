@@ -2,11 +2,22 @@
 
 import { NHF_BONESFILE, DOOR } from './const.js';
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
+const HALF_PHYSICAL_DAMAGE = 74; /* C prop.h HALF_PHYS_DAM */
+import { Monnam, monstseesu, monstunseesu } from './mcastu.js';
+import { You, Your } from './do_wear.js';
+import { makeplural } from './objnam.js';
+import { body_part } from './cmd.js';
+import { losehp } from './dokick.js';
+import { killed } from './mhitm.js';
+import { monkilled_trap } from './trap.js';
+import { make_blinded } from './zap.js';
+import { EYE, LUNG, POISON_RES, KILLED_BY_AN, M_SEEN_POISON, M_POISONGAS_OK } from './const.js';
+import { wake_nearto, resists_poison, setmangry } from './mklev.js';
 import { isok } from './hacklib.js';
 import { m_at } from './uhitm.js';
-import { cansee, block_point, unblock_point, does_block } from './vision.js';
-import { newsym, _topl_record_join } from './display.js';
+import { cansee, Blind, block_point, unblock_point, does_block } from './vision.js';
+import { newsym, pline, _topl_record_join } from './display.js';
 import { m_poisongas_ok } from './mklev.js';
 import { is_pool_or_lava } from './look.js';
 
@@ -598,7 +609,7 @@ export function rest_regions(nhfp) {
 // draws rnd(dam) ONLY for a damaging cloud (arg.a_int >= 1); every cloud
 // create_gas_cloud produces from monmove.c:683/704 is damage 0 (vapor) and
 // consumes nothing.
-export function run_regions() {
+export async function run_regions() {
     let i, j, k;
     let f_indx;
 
@@ -611,7 +622,7 @@ export function run_regions() {
     for (i = svn.n_regions - 1; i >= 0; i--) {
         if (gr.regions[i].ttl === 0) {
             if ((f_indx = gr.regions[i].expire_f) === NO_CALLBACK
-                || call_callback(f_indx, gr.regions[i], null))
+                || await call_callback(f_indx, gr.regions[i], null))
                 remove_region(gr.regions[i]);
         }
     }
@@ -624,14 +635,14 @@ export function run_regions() {
         /* Check if player is inside region */
         f_indx = gr.regions[i].inside_f;
         if (f_indx !== NO_CALLBACK && hero_inside(gr.regions[i]))
-            call_callback(f_indx, gr.regions[i], null);
+            await call_callback(f_indx, gr.regions[i], null);
         /* Check if any monster is inside region */
         if (f_indx !== NO_CALLBACK) {
             for (j = 0; j < gr.regions[i].n_monst; j++) {
                 const mtmp = find_mid_fmon(gr.regions[i].monsters[j]);
 
                 if (!mtmp || DEADMONSTER(mtmp)
-                    || call_callback(f_indx, gr.regions[i], mtmp)) {
+                    || await call_callback(f_indx, gr.regions[i], mtmp)) {
                     /* The monster died, remove it from list */
                     k = (gr.regions[i].n_monst -= 1);
                     gr.regions[i].monsters[j] = gr.regions[i].monsters[k];
@@ -834,6 +845,14 @@ export function visible_region_at(x, y) {
     return null;
 }
 
+/* C mon.c:2173-2174, :2240-2242 — the mfndpos test
+ * `(gas_reg = visible_region_at(x,y)) != 0 && gas_reg->glyph == gas_glyph`,
+ * gas_glyph = cmap_to_glyph(S_poisoncloud) (mon.c:2144). */
+export function poisoncloud_at(x, y) {
+    const gas_reg = visible_region_at(x, y);
+    return gas_reg !== null && gas_reg.glyph === cmap_to_glyph(S_poisoncloud);
+}
+
 /*--------------------------------------------------------------*
  *                      Gas cloud related code                  *
  *--------------------------------------------------------------*/
@@ -887,7 +906,7 @@ export function expire_gas_cloud(p1, _p2) {
 // are the only ones, and both sit behind `if (dam < 1) return FALSE`.  Every
 // cloud this port can currently create is damage 0, so this function is
 // RNG-free in practice; the damaging arms are the KNOWN GAP below.
-export function inside_gas_cloud(p1, p2) {
+export async function inside_gas_cloud(p1, p2) {
     const reg = p1;
     const mtmp = p2;
     const umon = mtmp ? mtmp : (game.youmonst || game.gy?.youmonst);
@@ -901,18 +920,63 @@ export function inside_gas_cloud(p1, p2) {
     if (dam < 1)
         return false; /* if no damage then there's nothing to do here... */
 
-    /* KNOWN GAP — nethack-c/src/region.c:1110-1162, the damaging-cloud arms.
-     * They need make_blinded / losehp / wake_nearto / monstunseesu / setmangry
-     * / killed / monkilled, none of which is reachable from this file's
-     * synchronous m_move caller chain (js/display.js pline is async).
-     * C DOES draw RNG on this path: rnd(dam) at region.c:1122 (hero, via
-     * Maybe_Half_Phys) and rnd(dam) at region.c:1152 (monster).  It is
-     * reached only by a cloud with arg.a_int >= 1, i.e. only from the
-     * monmove.c:702 hezrou / read.c / zap.c / mkmaze.c creators — never from
-     * the monmove.c:683 fog-cloud and monmove.c:704 steam-vortex vapor
-     * creators, which are the only two wired in this port.  C's own
-     * no-kill return for a survivor is FALSE, which is what is returned. */
-    return false;
+    if (!mtmp) { /* hero is indicated by Null rather than by &youmonst */
+        if (m_poisongas_ok(game.youmonst || game.gy?.youmonst) === M_POISONGAS_OK)
+            return false;
+        if (!Blind()) {
+            await Your(makeplural(body_part(EYE)) + " sting.");
+            make_blinded(1, false);
+        }
+        const pr = game.u?.uprops?.[POISON_RES];
+        if (!(pr && ((pr.intrinsic | 0) || (pr.extrinsic | 0)))) {
+            await pline("Something is burning your " + makeplural(body_part(LUNG)) + "!");
+            await You("cough and spit blood!");
+            wake_nearto(game.u.ux | 0, game.u.uy | 0, 2);
+            const hp = game.u?.uprops?.[HALF_PHYSICAL_DAMAGE];
+            let d = rnd(dam) + 5;
+            if (hp && ((hp.intrinsic | 0) || (hp.extrinsic | 0)) && !(hp.blocked | 0))
+                d = (d + 1) >> 1;
+            /* Half_gas_damage (worn towel) is not modeled; C region.c:1123 */
+            await losehp(d, "gas cloud", KILLED_BY_AN);
+            /* monstunseesu(M_SEEN_POISON) — C region.c:1126 */
+            monstunseesu(M_SEEN_POISON);
+            return false;
+        }
+        await You("cough!");
+        wake_nearto(game.u.ux | 0, game.u.uy | 0, 2);
+        monstseesu(M_SEEN_POISON);
+        return false;
+    }
+
+    /* C region.c:1134-1165 — a monster is inside the cloud */
+    if (m_poisongas_ok(mtmp) !== M_POISONGAS_OK_REG) {
+        const data = mtmp.data;
+        if ((data?.msound | 0) !== 0) { /* !is_silent */
+            const ux = game.u ? (game.u.ux | 0) : 0, uy = game.u ? (game.u.uy | 0) : 0;
+            const dx = (mtmp.mx | 0) - ux, dy = (mtmp.my | 0) - uy;
+            if (cansee(mtmp.mx | 0, mtmp.my | 0) || (dx * dx + dy * dy) < 8)
+                await pline(Monnam(mtmp) + " coughs!");
+            wake_nearto(mtmp.mx | 0, mtmp.my | 0, 2);
+        }
+        if (heros_fault(reg))
+            await setmangry(mtmp, true);
+        if (((data?.mflags1 | 0) & 0x1000) === 0 && mtmp.mcansee) { /* haseyes */
+            mtmp.mblinded = 1;
+            mtmp.mcansee = 0;
+        }
+        if (resists_poison(mtmp))
+            return false;
+        mtmp.mhp = (mtmp.mhp | 0) - (rnd(dam) + 5);
+        if (DEADMONSTER(mtmp)) {
+            if (heros_fault(reg))
+                await killed(mtmp);
+            else
+                await monkilled_trap(mtmp, "gas cloud");
+            if (DEADMONSTER(mtmp)) /* not lifesaved */
+                return true;
+        }
+    }
+    return false; /* Monster is still alive */
 }
 
 // C ref: region.c:1167-1177 is_hero_inside_gas_cloud(void)

@@ -994,11 +994,15 @@ export async function dipfountain(obj) {
                 await pline('A feeling of loss comes over you.');
             }
             break;
-        case 21: /* Water Demon — not ported (TODO) */ break;
+        case 21: /* C fountain.c:475-477 — Water Demon */
+            await dowaterdemon();
+            break;
         case 22: /* C fountain.c:478-480 — water nymph */
             await dowaternymph();
             break;
-        case 23: /* Snakes — not ported (TODO) */ break;
+        case 23: /* C fountain.c:481-483 — an Endless Stream of Snakes */
+            await dowatersnakes();
+            break;
         case 24: /* C fountain.c:498-503 — find gem */
             if (!(((loc && loc.flags) | 0) & F_LOOTED)) {
                 await dofindgem();

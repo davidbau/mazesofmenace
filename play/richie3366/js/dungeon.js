@@ -2456,8 +2456,9 @@ function clone_cemetery_chain(head) {
  * flags.castle / flags.ludios stick. Blind bigroom / oracle DELPHI /
  * valley / sanctum / vibrating_square (D-1707). Cemetery when[] is
  * yyyymmddhhmmss (D-1710). sokosolved / roguelevel / quest_summons /
- * questing / notreachable (D-1724). Named: DRAWBRIDGE_UP lastseentyp
- * is D-1711; display_monster M_AP_FURNITURE lastseentyp still named.
+ * questing / notreachable (D-1724). DRAWBRIDGE_UP lastseentyp is
+ * D-1711; the display_monster M_AP_FURNITURE lastseentyp write is
+ * live in js/display.js display_monster.
  */
 export function recalc_mapseen() {
     const mptr = ensure_mapseen(null);

@@ -126,7 +126,7 @@ import { touch_artifact, youmonst } from './artifact.js';
 import { exercise, A_WIS } from './attrib.js';
 import { inv_cnt, remove_worn_item } from './steal.js';
 import { trycall, Monnam, christen_monst, oname, rndmonnam, Amonnam, a_monnam, x_monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
-import { makemon, set_malign } from './makemon.js';
+import { makemon, makemon_appear_msg, set_malign } from './makemon.js';
 import { courtmon } from './mklev.js';
 import { fix_ghostly_obj } from './bones.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -1059,7 +1059,8 @@ export async function describe_decor() {
     const doorhere = !!(dfeature && (dfeature === 'open door'
         || dfeature === 'doorway'));
     const waterhere = !!(dfeature && dfeature === 'pool of water');
-    if (doorhere || u.Underwater
+    // C `:384` — doorhere || Underwater (≡ u.uinwater, youprop.h:279).
+    if (doorhere || (u.uinwater | 0)
         || (ltyp === ICE && IS_POOL(iflags.prev_decor))) {
         dfeature = null;
     }
@@ -1083,7 +1084,7 @@ export async function describe_decor() {
         } else {
             await pline(outbuf);
         }
-    } else if (!u.Underwater) {
+    } else if (!(u.uinwater | 0)) { // C `:411` — !Underwater
         if (IS_POOL(iflags.prev_decor)
             || IS_LAVA(iflags.prev_decor)
             || iflags.prev_decor === ICE) {
@@ -1962,7 +1963,7 @@ export async function pickup(what) {
              * is_lava, D-1077/D-1090), not the IS_POOL/IS_LAVA macro range:
              * MOAT/WATER/is_moat count as pool, DRAWBRIDGE_UP only over
              * moat (pool) or lava. */
-            const poolish = is_pool(u.ux, u.uy) && !u.Underwater;
+            const poolish = is_pool(u.ux, u.uy) && !(u.uinwater | 0);
             const lavaish = is_lava(u.ux, u.uy);
             if (game.context?.nopick || !objects_at(u.ux, u.uy)
                 || poolish || lavaish) {
@@ -4696,6 +4697,8 @@ async function reverse_loot() {
             }
         } else if ((lev?.looted | 0) !== T_LOOTED
             && (mon = makemon(courtmon(), x, y, NO_MM_FLAGS))) {
+            // C: the appear Norep is inside makemon (:1476–1500).
+            await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0, NO_MM_FLAGS);
             // C `:2421–2428` — exchequer accepts the contribution
             freeinv(goldob);
             add_to_minv(mon, goldob);

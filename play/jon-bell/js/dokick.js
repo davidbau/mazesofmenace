@@ -151,7 +151,7 @@ import { MAY_HITMON, MAY_HITYOU, MAY_HIT, MAY_DESTROY, MAY_FRACTURE, VIS_EFFECTS
 /* C const.js u_at(x,y) — the hero-at-square predicate. */
 import { u_at, HALF_PHDAM } from './const.js';
 /* C mon.c hideunder(mtmp) — the one body lives in js/mklev.js. */
-import { hideunder } from './mklev.js';
+import { hideunder, shkname_halluc_pick } from './mklev.js';
 /* C allmain.c nomul(nval) / stop_occupation() — the one bodies. */
 import { nomul, stop_occupation } from './allmain.js';
 export { ok_to_quest };
@@ -2180,17 +2180,18 @@ export function picked_container(obj) {
  * its list); it is not ported, so it throws rather than silently returning the
  * true name and skipping two RNG draws. */
 export function shkname(mtmp) {
-    /* KNOWN GAP — shknam.c:874-890, the Hallucination arm: C picks a random
-     * non-unique shop type and then a random name from that shop's list,
-     * drawing TWO rn2 calls, so a hallucinating hero sees some other
-     * shopkeeper's name.  Missing dependency: the shtypes[] probability table
-     * exposed as a name-list array (js/mklev.js has the name arrays but not
-     * the shtypes indirection).  The true name is returned instead of
-     * throwing; the two skipped draws are the cost.
-     * C youprop.h Hallucination = (HHallucination || EHallucination). */
+    /* C shknam.c:874-890: Hallucination (HHallucination && !Halluc_resistance)
+     * and not gameover picks a random shop type, then a random name from its
+     * list (two rn2 draws, js/mklev.js shkname_halluc_pick). */
     const hp = game.u?.uprops?.[HALLUC];
-    void hp;
-    const shknm = mtmp?.mextra?.eshk?.shknam;
+    const hr = game.u?.uprops?.[24]; /* HALLUC_RES */
+    let shknm = mtmp?.mextra?.eshk?.shknam;
+    if (hp && (hp.intrinsic | 0) && !((hr?.intrinsic | 0) || (hr?.extrinsic | 0))
+        && !game.program_state?.gameover) {
+        const pick = shkname_halluc_pick();
+        if (pick)
+            shknm = pick;
+    }
     if (typeof shknm !== 'string' || !shknm.length) {
         /* C shknam.c:867-868 panics here ("shopkeeper lacks 'eshk' data").
          * A corrupt-state panic is not worth discarding a whole replay for;

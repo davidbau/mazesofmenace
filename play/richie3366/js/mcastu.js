@@ -418,7 +418,7 @@ async function mcast_summon_mons(mtmp) {
 }
 
 /** C ref: mcastu.c death_inflicted_by */
-function death_inflicted_by(deathreason, mtmp) {
+export function death_inflicted_by(deathreason, mtmp) {
     let out = deathreason;
     if (mtmp) {
         const mptr = mtmp.data;
@@ -496,7 +496,7 @@ async function mcast_death_touch(mtmp) {
 async function mcast_clone_wiz(mtmp) {
     if (mtmp.iswiz && ((game.context?.no_of_wizards | 0) === 1)) {
         await pline('Double Trouble...');
-        clonewiz();
+        await clonewiz();
     } else {
         await impossible('bad wizard cloning?');
     }

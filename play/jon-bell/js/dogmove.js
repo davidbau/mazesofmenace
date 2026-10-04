@@ -20,7 +20,7 @@ import { monPmname as monPmname_qm } from './makemon.js';
 import { PROT_FROM_SHAPE_CHANGERS as PROT_SHAPE_QM } from './const.js';
 import { mon_mattk_raw, could_seduce, mattacku, mswings_verb,
          breamm as breamm_mu, spitmm as spitmm_mu } from './mhitu.js';
-import { x_monnam, You } from './mhitm.js';
+import { x_monnam, You, hliquid } from './mhitm.js';
 import { game } from './gstate.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { couldsee as couldsee_vision, clear_path, do_clear_area, cansee, recalc_block_point } from './vision.js';
@@ -2451,7 +2451,18 @@ function passivemm_rng(magr, mdef, mhitb, mdead) {
 
     /* C mhitm.c:1331-1358 — top switch.  Only AD_ACID / AD_ENCH special-case. */
     if (slot.adtyp === _AD_ACID) {
-        if (mhitb) rn2(2); /* C:1333 — only rolled on a hit */
+        /* C:1332-1342 — `if (mhitb && !rn2(2))` splash message; the damage
+         * itself (tmp / assess_dmg) stays unmodelled in this RNG-only body. */
+        if (mhitb && !rn2(2)) {
+            if (canseemon(magr)) {
+                pline(`${Monnam_dm(magr)} is splashed by ${s_suffix(mon_nam_dm(mdef))} ${hliquid('acid')}!`);
+            }
+            const MR_ACID_PM = 0x08; /* monst.h:276 Resists_Elem(ACID_RES) */
+            if (canseemon(magr)
+                && (((magr.data?.mresists | 0) | (magr.mextrinsics | 0)
+                     | (magr.mintrinsics | 0)) & MR_ACID_PM))
+                pline(`${Monnam_dm(magr)} is not affected.`);
+        }
         rn2(30);           /* C:1345 */
         rn2(6);            /* C:1347 */
         /* goto assess_dmg — skips the rn2(3) block entirely */

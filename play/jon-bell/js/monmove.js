@@ -2718,9 +2718,11 @@ export async function mpickstuff(mtmp) {
          otmp; otmp = otmp2) {
         otmp2 = otmp.nexthere;
 
-        /* C:1868-1871 avoid special items — is_mines_prize/is_soko_prize are
-         * FALSE everywhere in js/ today (no prize tracking); same stub the
-         * m_search_items scan above and js/dogmove.js both carry. */
+        /* C:1868-1871 avoid special items; once hero picks them up, they'll
+         * cease being special, becoming eligible for normal pickup.  The
+         * Mines' End luckstone sat under a dwarf and was taken here. */
+        if (is_mines_prize(otmp) || is_soko_prize(otmp))
+            continue;
 
         /* C:1873-1874 Nymphs take everything.  Most monsters don't pick up
          * corpses. */
@@ -2750,7 +2752,7 @@ export async function mpickstuff(mtmp) {
             /* C:1892-1901 — distant_name()'s side effects run even when the
              * message is not printed, so it is called before the extract. */
             if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
-                const otmpname = await distant_obj_name(otmp3);
+                const otmpname = await distant_obj_name(otmp); /* mon.c:1895 names otmp, not otmp3 */
                 if (game.flags?.verbose !== false)
                     void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
             }

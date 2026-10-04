@@ -136,7 +136,7 @@ import { thitu, ohitmon, hits_bars } from './mthrowu.js';
 import { count_level_features } from './mklev.js';
 import { dmgval, MON_WEP, mwepgone, wet_a_towel, dry_a_towel, is_wet_towel, P_SKILL } from './weapon.js';
 import { observe_object, encumber_msg, near_capacity, makeknown, update_inventory, currency, calc_capacity, inv_weight, weight_cap, prinv, getobj, useup, consume_obj_charge, inventory_resistance_check } from './invent.js';
-import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
+import { makemon, makemon_appear_msg, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
 import {
     A_CHA, A_STR, A_DEX, A_CON, A_WIS, adjattrib, exercise, adjalign,
     poisoned, change_luck, Fumbling, acurr, minuhpmax,
@@ -5056,7 +5056,9 @@ async function domagictrap() {
             if (game.flags) game.flags.botl = true;
         }
         while (cnt--) {
-            makemon(null, u.ux, u.uy, NO_MM_FLAGS);
+            const trapmon = makemon(null, u.ux, u.uy, NO_MM_FLAGS);
+            // C: the appear Norep is inside makemon (:1476–1500).
+            if (trapmon) await makemon_appear_msg(trapmon, trapmon.mx | 0, trapmon.my | 0, NO_MM_FLAGS);
         }
         await wake_nearto(u.ux, u.uy, 7 * 7);
     } else {

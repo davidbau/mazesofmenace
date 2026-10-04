@@ -341,7 +341,7 @@ export function max_mon_load(mtmp) {
  * sync monster decision shared with async touch_artifact). Returns whether
  * the monster may safely handle the object.
  */
-function can_touch_safely(mtmp, otmp) {
+export function can_touch_safely(mtmp, otmp) {
     if (!otmp) return false;
     const otyp = otmp.otyp | 0;
     const mdat = mtmp?.data;
@@ -1014,7 +1014,9 @@ export function set_apparxy(mtmp) {
     // C: youprop.h Invis macro is live ((HInvis||EInvis) && !BInvis;
     // monmove.c:2223). The u.Invis flat is stale (only the magic-trap
     // toggle syncs it), so call the live timeout.js Invis().
-    const Underwater = !!(u.Underwater);
+    // C `:2220` — Underwater ≡ u.uinwater (youprop.h:279); u.Underwater
+    // is never written port-wide.
+    const Underwater = (u.uinwater | 0) !== 0;
     const notseen = (!mtmp.mcansee || (Invis() && !perceives(mtmp.data)));
     const notthere = (
         Displaced() && mtmp.data?.mndx !== PM_DISPLACER_BEAST
@@ -1448,8 +1450,9 @@ async function hideunder(mtmp) {
         if (t && !is_pit(t.ttyp)) {
             // non-pit trap site — cannot hide
         } else if (mtmp.data?.mlet === 'S_EEL') {
+            // C mon.c:4746 — (!Underwater || !couldsee); Underwater ≡ u.uinwater.
             undetected = !!(is_pool(x, y) && !Is_waterlevel(u.uz)
-                && (!(u.Underwater) || !couldsee(x, y)));
+                && (!(u.uinwater | 0) || !couldsee(x, y)));
             if (seeit) {
                 seenobj = 'the water';
                 locomo = 'dive';

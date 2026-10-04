@@ -685,6 +685,21 @@ export async function stop_occupation(options) {
     if (g.occupation) {
         if (!options?.silent && !(await maybe_finished_meal(true)))
             await pline(`You stop ${g.occtxt}.`);
+        /* The fprefx taste line ("This cram ration is bland.") plined by the
+         * starting rhack is still the committed topline when the first eating
+         * turn's movemon plines something before the interrupting monster moves
+         * (here a monster-vs-monster "The elf-lord is hit by an arrow!"); C joins
+         * or pages [taste][event][You stop eating] on one topline (allmain.c
+         * 202-460 vs 485).  Fold it in FRONT of this turn's pending plines. */
+        {
+            const _oc = g._occ_committed_topl;
+            const _pm = g._pending_message;
+            if (_oc && !_oc.postMeal && _pm && !_pm.startsWith(_oc.text)) {
+                g._pending_message = _topl_merge_result(_oc.text, _pm,
+                                                        _topl_joins_snapshot(_oc.text));
+                g._occ_committed_topl = null;
+            }
+        }
         g.occupation = null;
         if (g.disp) g.disp.botl = 1;
         nomul(0);
@@ -1105,7 +1120,7 @@ async function faithful_moveloop_turn() {
             // fires expire_gas_cloud on the ones that hit 0, and dispatches
             // inside_gas_cloud for the hero and each monster still inside.  RNG:
             // none for a damage-0 cloud, which is every cloud this port creates.
-            run_regions();
+            await run_regions();
             // C allmain.c:276-277 — `if (u.ublesscnt) u.ublesscnt--;`, the very
             // next statement after run_regions().  u_init.c:1005 seeds it at 300
             // and NOTHING in this port decremented it, so u.ublesscnt read 300
@@ -2229,6 +2244,21 @@ async function moveloop_core_faithful() {
         } else if (!g._resultMessage && g._pending_message) {
             g._resultMessage = g._pending_message;
             g._pending_message = '';
+        }
+        /* C allmain.c:202-460 vs 485: the fprefx taste line ("This cram ration is
+         * bland.") was plined by the starting rhack and is still the committed
+         * topline when the first eating turn's movemon interrupts the meal
+         * (dochugw -> stop_occupation, "You stop eating X.").  eat_occupation_turn
+         * never runs for that turn (the occupation is already cleared), so fold the
+         * committed line in FRONT of this turn's plines here, joined or paged by
+         * update_topl's fit test. */
+        {
+            const _oc = g._occ_committed_topl;
+            if (_oc && !_oc.postMeal && !g.occupation && g._resultMessage) {
+                g._resultMessage = _topl_merge_result(_oc.text, g._resultMessage,
+                                                      _topl_joins_snapshot(_oc.text));
+                g._occ_committed_topl = null;
+            }
         }
         /* Preserve the per-pline boundaries when this turn's merged result is
          * handed to a later flush_pending_messages() call.  The live join
@@ -3487,6 +3517,17 @@ async function moveloop_core_faithful() {
     // position, so a Fast-banked MOVEMON-only pass does NOT tick the countdown
     // (matching C — the bug the prior unconditional outer ++multi introduced).
     let countdownGuard = 0;
+    // C ref: allmain.c:453/:524/:530-537 — a command that spent no time but left
+    // gm.multi < 0 (savelife(): `svc.context.move = 0; gm.multi = -1`, reached by
+    // a declined wizard-mode death) makes the NEXT moveloop_core skip the world
+    // once-per-input find_ac() and repaint the status, then set context.move = 1
+    // and fall through every dispatch arm (multi < 0).  Only the following call
+    // runs the countdown turn, so the AC lost to the burst gear (lava_effects ->
+    // remove_worn_item) is already on the status line when that turn's unmul()
+    if ((g.multi | 0) < 0 && !(g.context.move | 0)) {
+        find_ac();
+        g.context.move = 1;
+    }
     while ((g.multi | 0) < 0) {
         // C ref: allmain.c:243-446 — one more delayed turn: the full faithful
         // per-turn do-while (umv-=NORMAL_SPEED; movemon; HEAD with mcalcmove/makemon/
@@ -3643,6 +3684,7 @@ async function moveloop_core_faithful() {
          * svc.context.move is set — a counted move into a door that opens
          * leaves move 0 and multi > 0 (hack.c:1108-1109, 2843-2848). */
         if (g.context.move) await faithful_moveloop_turn();
+        g.context.move = 1;
         // C ref: allmain.c:474-480 — every run turn is its own moveloop_core
         // invocation, so the guarded status paint runs after the world block.
         // A regen_hp() botl flag raised this turn repaints `T:' at THIS turn's

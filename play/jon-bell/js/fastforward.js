@@ -16,7 +16,7 @@ import { Warning, newsym, feel_location, feel_newsym, pline, flush_screen, _topl
  * end.js does not import this module, so the cycle is one-directional and
  * do_death_sequence is only ever REFERENCED at call time. */
 import { do_death_sequence } from "./end.js";
-import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, HALF_PHDAM, DEAF, VOMITING, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel, Is_airlevel } from "./const.js";
+import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, HALF_PHDAM, DEAF, VOMITING, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, BARRACKS, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel, Is_airlevel } from "./const.js";
 import { is_pool } from "./look.js";
 import { can_reach_floor } from "./hold_another_object.js";
 /* nomul: C detect.c:2049/2058 calls it from dosearch0 when a hidden door or
@@ -67,6 +67,7 @@ function _m_next2u_ff(mon) {
     const dx = (mon.mx | 0) - (u.ux | 0), dy = (mon.my | 0) - (u.uy | 0);
     return (dx * dx + dy * dy) <= 2;
 }
+import { amulet } from "./sit.js";
 import { gd_sound, vault_occupied, invault, gd_move } from "./vault.js";
 import { consumeDungeonInitRng } from "./dungeon_rng.js";
 import { consumeQuestNemesisGenderRng, consumeRolePantheonPickRng, ROLE_HAS_LGOD, } from "./role_init_rng.js";
@@ -770,6 +771,29 @@ function mon_in_room(mon, rmtyp) {
     }
     return false;
 }
+/* C sounds.c:29-57 throne_mon_sound(mtmp) — the get_iter_mons predicate behind
+ * dosounds' has_court branch; one rn2(3) for the first qualifying monster. */
+function throne_mon_sound(mtmp) {
+    const f1 = (mtmp.data?.mflags1 | 0), f2 = (mtmp.data?.mflags2 | 0);
+    if (((mtmp.msleeping | 0) || (f2 & 0x00000400) /* is_lord */
+         || (f2 & 0x00000800) /* is_prince */)
+        && !(f1 & 0x00040000) /* is_animal */
+        && mon_in_room(mtmp, 2 /* COURT; const.js */)) {
+        const throne_msg = [
+            "the tones of courtly conversation.",
+            "a sceptre pounded in judgment.",
+            "Someone shouts \"Off with %s head!\"",
+            "Queen Beruthiel's cats!",
+        ];
+        const which = rn2(3) + (Hallucination() ? 1 : 0);
+        if (which !== 2)
+            You_hear(throne_msg[which]);
+        else
+            pline(throne_msg[2].replace('%s', game.flags?.female ? 'her' : 'his'));
+        return true;
+    }
+    return false;
+}
 /* C sounds.c:68-91 beehive_mon_sound(). */
 function beehive_mon_sound(mtmp) {
     const data = mtmp.data;
@@ -927,6 +951,10 @@ export function dosounds_rng() {
         You_hear(sink_msg[rn2(2) + hallu]);
     }
     if (lf.has_court && !rn2(200)) {
+        /* C sounds.c:226-229 — `if (get_iter_mons(throne_mon_sound)) return;`;
+         * falls through to has_swamp when no qualifying monster exists. */
+        if (get_iter_mons(throne_mon_sound))
+            return;
     }
     if (lf.has_swamp && !rn2(200)) {
         /* C sounds.c:230-236 — You1(swamp_msg[rn2(2) + hallu]).  Note C uses
@@ -994,10 +1022,24 @@ export function dosounds_rng() {
             return;
     }
     if (lf.has_barracks && !rn2(200)) {
-        /* C sounds.c:286-308 — the mercenary loop only `return`s once it finds
-         * a qualifying mercenary (drawing barracks_msg's rn2(3) at that point);
-         * with no such monster it falls through to has_zoo, same as above
-         * (WIRE_PENDING: the fmon mercenary scan). */
+        /* C sounds.c:286-308 — first mercenary in a barracks that is asleep
+         * or beyond the fifth counted one draws rn2(3)+hallu and returns;
+         * otherwise fall through to has_zoo. */
+        const barracks_msg = [
+            "blades being honed.", "loud snoring.", "dice being thrown.",
+            "General MacArthur!",
+        ];
+        let count = 0;
+        if (get_iter_mons((mtmp) => {
+            if ((((mtmp.data?.mflags2) | 0) & 0x00000200) !== 0 /* is_mercenary */
+                && mon_in_room(mtmp, BARRACKS)
+                && ((mtmp.msleeping | 0) || ++count > 5)) {
+                You_hear(barracks_msg[rn2(3) + (Hallucination() ? 1 : 0)]);
+                return true;
+            }
+            return false;
+        }))
+            return;
     }
     if (lf.has_zoo && !rn2(200)) {
         if (get_iter_mons(zoo_mon_sound))
@@ -1459,6 +1501,9 @@ export async function ff_head_phase_post() {
     /* C allmain.c:409 — exerchk() (reads the POST-increment svm.moves). */
     exerchk();
     await invault();
+    /* C allmain.c:358-359 — `if (u.uhave.amulet) amulet();` (wizard.c:60). */
+    if (game.u?.uhave?.amulet)
+        await amulet();
     u_wipe_engr_rng();
     /* C allmain.c:374-377 — "vision will be updated as bubbles move":
      *     if (Is_waterlevel(&u.uz) || Is_airlevel(&u.uz)) movebubbles();

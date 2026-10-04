@@ -350,7 +350,9 @@ export async function display_text_window(lines) {
     const PAGE_ROWS = 23; /* ttyDisplay->rows - 1 */
     lines = tty_fit_text_lines(lines);
     if (g._pending_message) {
-        await force_more_pages(g._pending_message);
+        const releaseFlush = g._paintedSnapshot ? () => {} : use_last_flush_snapshot();
+        await force_more_pages(g._pending_message, true, true);
+        releaseFlush();
     } else if (g._resultMessage) {
         const releaseFlush = use_last_flush_snapshot();
         await force_more(g._resultMessage);

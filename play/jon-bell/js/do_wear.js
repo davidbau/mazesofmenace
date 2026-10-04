@@ -38,7 +38,8 @@ import { discover_object } from './o_init.js';
 import { exercise, change_luck, acurr, C_ATTR_TO_DISP } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE } from './pm.generated.js';
-import { float_vs_flight, breakarm, num_horns, obj_pmname } from './mhitm.js';
+import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam } from './mhitm.js';
+import { s_suffix } from './hacklib.js';
 /* C mondata.c:632 sliparm(ptr) — the real one, exported by js/makemon.js:462.
  * canwearobj's cantweararm(ptr) is breakarm(ptr) || sliparm(ptr) (mondata.h:133);
  * both halves are imported rather than re-derived here. */
@@ -3797,6 +3798,10 @@ export function yname(obj) {
             if (o === obj) { owned = true; break; }
         }
     }
+    /* C shk.c:5871,5899-5905 mon_owns(): an object in a monster's minvent is
+     * "<monster>'s " (s_suffix(y_monnam(obj->ocarry))), not "the ". */
+    if (!owned && obj && (obj.where | 0) === 4 /* OBJ_MINVENT */ && obj.ocarry)
+        return s_suffix(y_monnam(obj.ocarry)) + ' ' + cxname(obj);
     return (owned ? 'your ' : 'the ') + cxname(obj);
 }
 export { xname };

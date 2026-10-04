@@ -91,7 +91,7 @@ import { is_art, attacks, bare_artifactname } from './artifact.js';
 import { breaktest } from './dothrow.js';
 import { hit_bars } from './mthrowu.js';
 import { setuwep } from './wield.js';
-import { P_SKILL, weapon_type, use_skill } from './weapon.js';
+import { P_SKILL, weapon_type, use_skill, uwep_skill_type } from './weapon.js';
 import { surface } from './sit.js';
 import { autopick_testobj } from './pickup.js';
 import { Hello } from './roles.js';
@@ -2317,7 +2317,8 @@ export async function swim_move_danger(x, y) {
     const liquidWall = IS_WATERWALL(newtyp) || newtyp === LAVAWALL;
     const loc = game.level?.at(x, y);
 
-    if (u.Underwater && (is_pool(x, y) || IS_WATERWALL(newtyp))) return false;
+    // C `:1890` — Underwater ≡ u.uinwater (youprop.h:279).
+    if ((u.uinwater | 0) && (is_pool(x, y) || IS_WATERWALL(newtyp))) return false;
 
     if (newtyp !== u_simple_floortyp(u.ux, u.uy)
         && !u.Stunned && !u.Confusion && loc?.seenv
@@ -2953,7 +2954,7 @@ export async function domove_fight_ironbars(x, y) {
 /**
  * C hack.c domove_fight_web `:2020–2094` — F a seen WEB. Sting / fire
  * artifact guaranteed; non-blade "can't cut"; else rn2 vs acurrstr.
- * uwep_skill_type / u_wield_art inlined (do not add clone #2 / #6).
+ * u_wield_art stays inlined (do not add clone #6).
  */
 export async function domove_fight_web(x, y) {
     const trap = t_at(x, y);
@@ -2963,7 +2964,7 @@ export async function domove_fight_web(x, y) {
     }
     const u = game.u || {};
     const uwep = u.uwep;
-    const wtype = u.twoweap ? P_TWO_WEAPON_COMBAT : weapon_type(uwep);
+    const wtype = uwep_skill_type(); // C `:2026`
     const wskill_minus_2 = Math.max(P_SKILL(wtype), P_UNSKILLED) - 2;
     const roll = rn2(uwep ? 20 : (45 - 5 * wskill_minus_2));
 

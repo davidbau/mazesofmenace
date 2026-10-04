@@ -2527,6 +2527,18 @@ let _win_stop = false;
 let _win_nostop = false;
 // C ref: pline.c gp.prevmsg — last message that actually reached putmesg
 let _prevmsg = '';
+/**
+ * C ref: win/tty getline.c:67 / topl.c:420,425 — the tty prompt painters
+ * route the prompt through custompline → vpline, so gp.prevmsg becomes
+ * the prompt text (echo-free: `query + " "` for getlin, the full
+ * `query [resp] (def) ` for yn). JS paints prompts directly; mirror
+ * the write once at prompt setup so a later Norep compares against
+ * the prompt instead of a stale message (makemon appear Norep after
+ * a repeated ^G creation).
+ */
+export function prevmsg_set_prompt(text) {
+    _prevmsg = String(text ?? '').slice(0, BUFSZ - 1);
+}
 // C pline.c execplinehandler — disabled after failed spawn; start enabled.
 let use_pline_handler = true;
 // C ref: wintty.h ttyDisplay->dismiss_more / getline.c morc — extra key

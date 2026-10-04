@@ -28,7 +28,7 @@ import { acurr } from './attrib.js';
  * mon_leave / migrate_to_level, below).  Each names its C home. ── */
 import { isok, Has_contents, MON_MIGRATING, MAX_NUM_WORMS } from './const.js';
 import { within_bounded_area } from './rect.js';   /* C rect.c */
-import { newsym } from './display.js';             /* C display.c */
+import { newsym, force_more, docrt } from './display.js';             /* C display.c */
 import { see_wsegs as see_wsegs_dog, remove_worm, wormgone, count_wsegs } from './worm.js';  /* C worm.c redraw_worm's stand-in */
 import { yelp, growl, helpless, levl_follower, mon_has_amulet, seemimic } from './mhitm.js';
 import { vision_recalc } from './vision.js';       /* C vision.c */
@@ -1494,7 +1494,7 @@ export function sticks(ptr) {
             || (_dmgtype_real(ptr, AD_WRAP) && !_attacktype_real(ptr, AT_ENGL))
             || _attacktype_real(ptr, AT_HUGS)) ? true : false;
 }
-export async function unstuck(mtmp) {
+export async function unstuck(mtmp, skipDocrt = false) {
     const u = game.u;
     const stuck = u && u.ustuck;
     const same = !!(stuck && mtmp
@@ -1513,8 +1513,17 @@ export async function unstuck(mtmp) {
         u.uy = mtmp.my;
         if (u.uball && u.uchain && ((u.uchain.where | 0) !== OBJ_FLOOR))
             await placebc();
-        /* GAP: docrt() repaint — see the note above. */
         game.vision_full_recalc = 1;
+        /* C mon.c:3455 docrt() -> cls() -> display_nhwindow(WIN_MESSAGE, FALSE)
+         * (display.c:2196) pages a pending topline with --More-- first
+         * ("You destroy the dust vortex!--More--"). */
+        /* skipDocrt: js/mhitu.js expels() pages and repaints itself at C's
+         * position right after this call (mhitu.js:6177-6240). */
+        if (!skipDocrt) {
+            if (game._pending_message)
+                await force_more(String(game._pending_message));
+            await docrt();
+        }
     }
     const hold = _dmgtype_real(ptr, AD_STCK)
         || _attacktype_real(ptr, AT_ENGL)

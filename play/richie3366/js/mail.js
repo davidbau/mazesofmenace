@@ -33,7 +33,7 @@ import {
 import { couldsee, cansee } from './vision.js';
 import { enexto } from './teleport.js';
 import { accessible } from './monmove.js';
-import { makemon } from './makemon.js';
+import { makemon, makemon_appear_msg } from './makemon.js';
 import { mons, monsterNames } from './monsters.js';
 import { objectNames } from './objects.js';
 import { Hello } from './roles.js';
@@ -413,6 +413,8 @@ export async function newmail(info) {
     const md = (md_start(start) && md_stop(stop, start))
         ? makemon(mons(PM_MAIL_DAEMON), start.x, start.y, NO_MM_FLAGS)
         : null;
+    // C: the appear Norep is inside makemon (:1476–1500).
+    if (md) await makemon_appear_msg(md, md.mx | 0, md.my | 0, NO_MM_FLAGS);
     if (md) {
         if (await md_rush(md, stop.x, stop.y)) {
             message_seen = true;

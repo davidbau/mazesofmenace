@@ -3939,6 +3939,9 @@ async function deliver_by_pline(text) {
     }
 }
 
+/* dat/quest.lua:31-33 questtext.msg_fallbacks */
+const msg_fallbacks = { goal_alt: 'goal_next' };
+
 /* C questpgr.c:467 com_pager_core(section, msgid, showerror, rawtext).
  * rawtext is unused here (only stinky_nemesis passes it).  Returns TRUE when a
  * message was delivered. */
@@ -3962,11 +3965,19 @@ async function com_pager_core(section, msgid, showerror) {
      * no such msgid (C reads the table only after nhl_init succeeds), and
      * qt_pager()'s role-then-"common" retry therefore pays them TWICE. */
     nhlib_load_toplevel_rng();
-    const entry = QUESTTEXT[section]?.[msgid];
+    let entry = QUESTTEXT[section]?.[msgid];
     if (!entry) {
-        if (showerror)
-            _impossible(`com_pager: questtext[${section}][${msgid}] not ported`);
-        return false;
+        /* C questpgr.c:518-531 tryagain — questtext[msg_fallbacks][msgid]
+         * (dat/quest.lua:31-33: goal_alt -> goal_next) names a replacement
+         * msgid looked up in the SAME section. */
+        const fallback_msgid = msg_fallbacks[msgid];
+        if (fallback_msgid)
+            entry = QUESTTEXT[section]?.[fallback_msgid];
+        if (!entry) {
+            if (showerror)
+                _impossible(`com_pager: questtext[${section}][${msgid}] not ported`);
+            return false;
+        }
     }
     /* howtoput2i: pline->1, window->2, text->2, menu->3, default->0 */
     let output = { pline: 1, window: 2, text: 2, menu: 3 }[entry.output] ?? 0;

@@ -28,8 +28,8 @@
 import { game } from './gstate.js';
 import { block_point, unblock_point } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, G_GENOD, LOW_PM } from './const.js';
-import { NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST } from './pm.generated.js';
+import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM } from './const.js';
+import { PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE_VORTEX, PM_FREEZING_SPHERE, PM_STEAM_VORTEX, PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE, PM_EARTH_ELEMENTAL, PM_DUST_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_YELLOW_LIGHT, NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST } from './pm.generated.js';
 
 function _hero_resists(prop) {
     const p = game.u?.uprops?.[prop];
@@ -39,7 +39,7 @@ function _hero_resists(prop) {
  * was an empty body, so neither throne arm could confuse the hero. */
 import { make_confused, make_glib, make_sick } from './potion.js';
 import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon } from './makemon.js';
-import { pline, canspotmon, map_background, newsym, newsym_force, see_monsters } from './display.js';
+import { pline, canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters } from './display.js';
 import { identify_pack, do_mapping } from './read.js';
 /* rndcurse()'s leaves, each from the file that holds its one real body.  The
  * aliases exist because this file already carries same-named LOCAL stubs
@@ -53,7 +53,7 @@ import { You as You_rc } from './do_wear.js';
 import { Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, quest_info } from './objnam.js';
 import { curse, unbless } from './mkobj.js';
 import { spec_ability, adjattrib, change_luck } from './attrib.js';
-import { hcolor } from './mhitm.js';
+import { hcolor, Amonnam } from './mhitm.js';
 import { update_inventory } from './mhitm.js';
 import { which_armor } from './makemon.js';
 import { shieldeff as shieldeff_rc, aggravate } from './mcastu.js';
@@ -545,6 +545,13 @@ function _is_lminion(mon, d) {
         : d.maligntyp;
     return Math.sign(a | 0) === 1;
 }
+/* C mondata.c:1449 msummon_environ */
+const _ENV = (n, c, w) => n.forEach(k => { _ENV_T[k] = [c, w]; });
+const _ENV_T = {};
+_ENV([PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE_VORTEX, PM_FREEZING_SPHERE], 'cloud', 'vapor');
+_ENV([PM_STEAM_VORTEX], 'cloud', 'steam'); _ENV([PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE], 'shower', 'sparks');
+_ENV([PM_EARTH_ELEMENTAL, PM_DUST_VORTEX], 'cloud', 'dust'); _ENV([PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE], 'ball', 'flame');
+_ENV([PM_ANGEL, PM_YELLOW_LIGHT], 'flash', 'light');
 export async function msummon(mon) {
     const ptr = mon?.data || permonstTemplate(PM_WIZARD_OF_YENDOR);
     const atyp = Math.sign((mon?.ispriest && mon.mextra?.epri ? mon.mextra.epri.shralign
@@ -571,14 +578,40 @@ export async function msummon(mon) {
         dtype = !rn2(6) && atyp !== 1 ? ndemon(atyp) : PM_ANGEL;
         cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
     }
-    if (dtype === NON_PM) return null;
-    const x = (mon?.mux ?? game.u?.ux ?? 1) | 0, y = (mon?.muy ?? game.u?.uy ?? 1) | 0;
-    let first = null;
-    while (cnt-- > 0) {
-        const m = await makemon(dtype, x, y, MM_ANGRY);
-        if (m && !first) first = m;
+    if (dtype === NON_PM) return 0;
+    /* C minion.c:137-148 — sanity checks */
+    if (cnt > 1 && (permonstTemplate(dtype).geno & 0x1000 /* G_UNIQ */)) cnt = 1;
+    if ((game.mvitals?.[dtype]?.mvflags & G_GONE) !== 0) {
+        dtype = ndemon(atyp);
+        if (dtype === NON_PM) return 0;
     }
-    return first;
+    /* C:152 — "some candidates can generate a group of monsters, so simple
+       count of non-null makemon() result is not sufficient" */
+    const census = monster_census(false);
+    let result = 0;
+    while (cnt-- > 0) {
+        const m = await makemon(dtype, game.u.ux | 0, game.u.uy | 0, MM_EMIN | MM_NOMSG);
+        if (m) {
+            result++;
+            /* C:159-167 — an angel's alignment should match the summoner */
+            if (dtype === PM_ANGEL) {
+                m.isminion = 1;
+                if (!m.mextra) m.mextra = newmextra();
+                if (!m.mextra.emin) m.mextra.emin = { min_align: 0, renegade: 0, parentmid: m.m_id };
+                m.mextra.emin.min_align = atyp;
+                m.mextra.emin.renegade = ((atyp !== game.u.ualign.type) ^ !m.mpeaceful) ? 1 : 0;
+            }
+            /* C:170-178 (show_transient_light is display-only, not ported) */
+            if (cnt === 0 && canseemon(m)) {
+                const d = m.data, k = d.mlet === 27 ? PM_ANGEL : d.mlet === 26 ? PM_YELLOW_LIGHT : (d.pmidx | 0);
+                const [cloud, what] = _ENV_T[k] || ['cloud', 'smoke'];
+                pline(`${Amonnam(m)} appears in a ${cloud} of ${what}!`);
+            }
+        }
+    }
+    /* C:196-197 */
+    if (result) result = monster_census(false) - census;
+    return result;
 }
 /* seffects: LOCAL EMPTY STUB DELETED — see import above.  Its call site
  * (special_throne_effect case 10) needs a real `fake_spellbook` argument now,

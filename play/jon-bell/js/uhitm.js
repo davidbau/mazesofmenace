@@ -5,7 +5,7 @@ import { lifesaved_monster, wipe_engr_at } from './mklev.js';
 import { game, wizard, discover } from './gstate.js';
 import { rehumanize } from './polyself.js';
 import { helm_simple_name, cloak_simple_name } from './objnam.js';
-import { xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
+import { the as the_sh, xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
          Yobjnam2 as Yobjnam2_real,
          makesingular as makesingular_real } from './objnam.js';
 import { rn2, rnd, d, rn1, pushRngLogEntry } from './rng.js';
@@ -104,7 +104,7 @@ import { Resists_Elem, sleep_monst } from './mhitm.js';
 import { y_monnam, helpless } from './mhitm.js';
 /* C uhitm.c:331 check_caitiff / mon.c:4331 wakeup — both live in js/mhitm.js,
  * which this file already imports from (see above). */
-import { check_caitiff, wakeup, wakeup_attack, seemimic } from './mhitm.js';
+import { check_caitiff, wakeup, wakeup_attack, seemimic, ghod_hitsu } from './mhitm.js';
 import { Adjmonnam as Adjmonnam_uh } from './mhitm.js';
 import { defended as defended_real } from './mhitm.js';
 import { passive as passive_uh } from './mhitm.js';
@@ -113,10 +113,11 @@ import { attacktype } from './mhitm.js';
  * arm (Stormbringer's "The black blade draws the life..." message uses
  * hcolor(NH_BLACK)); real body already lives in js/mhitm.js. */
 import { hcolor } from './mhitm.js';
+import { on_fire as on_fire_real } from './mhitm.js';
 import { erode_armor } from './mhitm.js';
 /* a_monnam / x_monnam's ARTICLE_A form and the M_AP_* enum both come from
  * const.js, which is byte-identical to the C header values (monst.h:52-55). */
-import { ARTICLE_A, EXACT_NAME, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK,
+import { M_AP_F_DKNOWN, ARTICLE_A, EXACT_NAME, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK,
          PROT_FROM_SHAPE_CHANGERS } from './const.js';
 /* end_running: hack.c's run/travel terminator (hack.c:1360), imported the same
  * way js/cmd.js does. */
@@ -147,6 +148,7 @@ import { hitmsg, hitmsg_je, u_slip_free, make_blinded, mpoisons_subj, magic_nega
 import { drain_item, resist, cancel_monst } from './zap.js';
 import { make_stunned, make_confused } from './potion.js';
 import { mstatusline } from './cmd.js';
+import { ysimple_name as ysimple_name_hit, release_camera_demon as release_camera_demon_hit, useup } from './cmd.js';
 import { upstart } from './mklev.js';
 import { noit_Monnam } from './mhitm.js';
 import { deadhero } from './end.js';
@@ -1056,14 +1058,23 @@ export function hitval(weapon, mtmp, mndx) {
     const row = (mndx >= 0 && mndx < _MONS.length) ? _MONS[mndx] : null;
     const mlet = row ? (row[0] | 0) : -1;
     /* Is_weapon: starting weapons here are all WEAPON_CLASS, so spe applies. */
-    tmp += (weapon.spe | 0);
-    tmp += (otyp === PICK_AXE_HITBON_UH || otyp === GRAPPLING_HOOK_HITBON_UH) ? 4
+    const _isArmor = (weapon.oclass | 0) === 3; /* ARMOR_CLASS */
+    if (!_isArmor) tmp += (weapon.spe | 0);
+    /* oc_hitbon is the objclass union field oc_oc1 (objclass.h), which for
+     * ARMOR_CLASS holds a_ac: a wielded armor piece adds its base AC to hit
+     * (weapon.c:159), and spe only for Is_weapon (weapon.c:155-156). */
+    if (_isArmor) tmp += (ARMOR_DATA[otyp]?.a_ac | 0);
+    else tmp += (otyp === PICK_AXE_HITBON_UH || otyp === GRAPPLING_HOOK_HITBON_UH) ? 4
          : (otyp === UNICORN_HORN_HITBON_UH) ? 1
          : (otyp >= 0 && otyp < WEAPON_HITBON.length) ? (WEAPON_HITBON[otyp] | 0) : 0;
     /* C weapon.c:164-165 — blessed weapon vs undead or demon.
      * mon_hates_blessings(mon) = mon_hates_material(mon, ...)-style predicate
      * over the DEFENDER; js/ has no definition for it, so this term is a
      * KNOWN GAP (weapon.c:164).  Named rather than silently absent. */
+    /* C weapon.c:164-165 — Is_weapon && blessed && mon_hates_blessings(mon).
+     * hitval's caller passes mtmp null for the hero as defender; skip then. */
+    if (!_isArmor && weapon.blessed && mtmp && mon_hates_blessings(mtmp))
+        tmp += 2;
     /* is_spear(weapon) && strchr(kebabable, ptr->mlet) */
     if (SPEAR_OTYPS.has(otyp)) {
         if (KEBABABLE_MLET.has(mlet)) tmp += 2;
@@ -1454,6 +1465,14 @@ export async function attack_checks(mtmp, wep) {
         && !(!Blind && (mtmp.mundetected | 0) && _ac_hides_under(mtmp.data))) {
         void pline(`Wait!  There's ${_AC_SOMETHING} there you can't see!`);
         map_invisible(bx, by);
+        /* C uhitm.c:236-243 — if it was an invisible mimic, treat it as if we
+         * stumbled onto a visible mimic (it sticks the hero; "applied pole-arm
+         * attack is too far to get stuck"). */
+        if (M_AP_TYPE(mtmp) && !_ac_prot_from_shape_changers()) {
+            if (!u.ustuck && !(mtmp.mflee | 0) && dmgtype(mtmp.data, _AC_AD_STCK)
+                && _ac_m_next2u(mtmp))
+                set_ustuck(mtmp);
+        }
         await wakeup_attack(mtmp, true); /* "always necessary; also un-mimics mimics" */
         return true;
     }
@@ -1575,6 +1594,15 @@ async function _mimic_object_from_map(mtmp, glyphotyp) {
     otmp.where = 3;
     otmp.ox = mtmp.mx | 0;
     otmp.oy = mtmp.my | 0;
+    /* C pager.c:361-368 — a fake object seen up close (adjacent, !Blind,
+     * !Hallucination) gets dknown, so the name carries its description
+     * ("scroll labeled X"); a prior look recorded in M_AP_F_DKNOWN does too. */
+    if (_ac_m_next2u(mtmp) && !_ac_blind() && !_xk_hallu())
+        observe_object(otmp);
+    if (otmp.dknown || ((mtmp.m_ap_type | 0) & M_AP_F_DKNOWN)) {
+        mtmp.m_ap_type |= M_AP_F_DKNOWN;
+        observe_object(otmp);
+    }
     return otmp;
 }
 
@@ -2011,7 +2039,8 @@ export async function do_attack(mtmpOrX, y) {
     mon_maybe_unparalyze(mtmp);
     /* hitum() rnd(20) dieroll [uhitm.c:781 / uhitm.c:804] */
     const dieroll = rnd(20);
-    const mhit = (tmp > dieroll) || !!(u && u.uswallow); /* uswallow = always hits */
+    let mhit = (tmp > dieroll) || !!(u && u.uswallow); /* uswallow = always hits */
+    let _wepDestroyed = false; /* C: wepbefore && !uwep */
 
     /* C uhitm.c:602-606 known_hitum — Stormbringer's override announces itself */
     if (game.go?.override_confirmation && (game.flags?.verbose ?? true))
@@ -2033,6 +2062,28 @@ export async function do_attack(mtmpOrX, y) {
          * Armed: the real dmgval(obj, mon) below, which derives bigmonst
          * from mon.data internally (weapon.c:224). */
         const uwep = weapon; /* C: known_hitum(mon, <this swing's weapon>, ...) */
+        hit_body: {
+        /* C uhitm.c:1341-1347 hmon_hitmon_misc_obj EXPENSIVE_CAMERA: the wielded
+         * camera breaks, release_camera_demon draws rn2(3) (dothrow.c:2460),
+         * hmon returns TRUE with no damage.  known_hitum then still runs its
+         * flee check and the Vorpal "mhp == oldhp -> miss" conversion. */
+        if (uwep && (uwep.otyp | 0) === 229 /* EXPENSIVE_CAMERA */) {
+            You(`succeed in destroying ${await ysimple_name_hit(uwep)}.  Congratulations!`);
+            await release_camera_demon_hit(uwep, u.ux, u.uy);
+            await useup(uwep);
+            _wepDestroyed = true;
+            if (!rn2(25) && (mtmp.mhp | 0) < Math.trunc((mtmp.mhpmax | 0) / 2)
+                && !(u && u.uswallow && u.ustuck
+                     && ((u.ustuck.m_id | 0) === (mtmp.m_id | 0)))) {
+                await monflee(mtmp, !rn2(3) ? rnd(100) : 0, false, true);
+                if (u && u.ustuck && ((u.ustuck.m_id | 0) === (mtmp.m_id | 0))
+                    && !u.uswallow
+                    && !sticks(game.youmonst ? game.youmonst.data : null))
+                    set_ustuck(null);
+            }
+            mhit = false; /* mon->mhp == oldhp */
+            break hit_body;
+        }
         const isWeaponClassHit = !!uwep && ((uwep.oclass | 0) === WEAPON_CLASS
             || is_weptool(uwep) || (uwep.oclass | 0) === GEM_CLASS);
         /* C uhitm.c:1071-1080 hmon_hitmon_weapon's dispatch — see
@@ -2185,8 +2236,15 @@ export async function do_attack(mtmpOrX, y) {
         const skillDmgBonus = useWeaponSkillHit ? weapon_dam_bonus(uwep || null) : 0;
         if (trainWeaponSkill)
             await use_skill(uwep_skill_type(), 1);
-        const totalDmg = Math.max(1, dmgvalResult + (u.udaminc | 0)
-            + dbon_val + skillDmgBonus);
+        /* C uhitm.c:1806-1822: `if (hmd.dmg > 0) hmon_hitmon_dmg_recalc()`
+         * adds the strength/skill bonuses (clamping at 1) only for a nonzero
+         * dmgval; a zero one (a shade struck by a non-silver weapon,
+         * weapon.c dmgval) stays 0 -- `(get_dmg_bonus && !mon_is_shade) ? 1
+         * : 0` -- so `dmg > 1` fails and maybe_knockback is never set. */
+        const totalDmg = dmgvalResult > 0
+            ? Math.max(1, dmgvalResult + (u.udaminc | 0)
+                + dbon_val + skillDmgBonus)
+            : ((mtmp.data?.pmidx | 0) === PM_SHADE ? 0 : 1);
 
         const heroUnarmed = !uwep && !(u && u.uarm) && !(u && u.uarms);
         if (heroUnarmed && totalDmg > 1 && !Upolyd(u)) {
@@ -2249,6 +2307,12 @@ export async function do_attack(mtmpOrX, y) {
                 await _hero_mhitm_knockback(mtmp, uwep);
             }
 
+            /* C uhitm.c:829-830 hmon(): `if (mon->ispriest && !rn2(2))
+             * ghod_hitsu(mon);` runs after hmon_hitmon returns, before
+             * known_hitum's flee check below. */
+            if (mtmp.ispriest && !rn2(2))
+                await ghod_hitsu(mtmp);
+
             /* known_hitum monflee check — C ref: nethack-c/src/uhitm.c:625-634:
              *   if (!rn2(25) && mon->mhp < mon->mhpmax / 2
              *       && !engulfing_u(mon)) {
@@ -2287,10 +2351,11 @@ export async function do_attack(mtmpOrX, y) {
                     set_ustuck(null);
             }
         }
+        } /* hit_body */
     }
 
     if (!viaHmonas && (!second || mhit)) {
-        await passive_uh(mtmp, weapon, mhit, malive, 254 /* AT_WEAP, uhitm.c aatyp enum */, false);
+        await passive_uh(mtmp, weapon, mhit, malive, 254 /* AT_WEAP, uhitm.c aatyp enum */, _wepDestroyed);
     }
     return mhit;
     }; /* end _swing */
@@ -4679,7 +4744,8 @@ const SH_BIMANUAL = new Set([
     SH_TSURUGI, SH_DWARVISH_MATTOCK, SH_TWO_HANDED_SWORD, SH_BATTLE_AXE,
     SH_QUARTERSTAFF, SH_UNICORN_HORN,
 ]);
-function sh_oc_bimanual(otyp) { return SH_BIMANUAL.has(otyp | 0); }
+/* objects.h bi=1 also covers every polearm but the lance (SR_BIMANUAL). */
+function sh_oc_bimanual(otyp) { return SH_BIMANUAL.has(otyp | 0) || SR_BIMANUAL.has(otyp | 0); }
 /* mondata.h:107 is_giant(ptr) — M2_GIANT. */
 function sh_is_giant(data) { return ((data?.mflags2 | 0) & SH_M2_GIANT) !== 0; }
 function sh_resists_ston(mtmp) { return resists_ston_real(mtmp); }
@@ -4817,13 +4883,19 @@ export async function mon_wield_item(mon) {
             /* C weapon.c:905-918 — a cursed weapon welds as it is picked up.
              * Set W_WEP below before testing mwelded(), then retain the
              * second pline on the same topline as the wield announcement. */
+            /* C weapon.c:895-897 -- the tether line follows the wield line. */
+            const _arw = autoreturn_weapon(obj);
+            const _tetherLine = (_arw && _arw.tethered)
+                ? `${Monnam(mon)} secures the tether on ${the_sh(xname(obj))}.` : null;
             if (mwelded(obj)) {
                 let mon_hand = mbodypart(mon, HAND);
                 if (sh_oc_bimanual(obj.otyp)) mon_hand = makeplural(mon_hand);
                 pline(_wieldLine);
+                if (_tetherLine) pline(_tetherLine);
                 pline(`${Tobjnam_sh(obj, 'weld')} ${(obj.quan | 0) !== 1 ? 'themselves' : 'itself'} to ${s_suffix(mon_nam(mon))} ${mon_hand}!`);
             } else {
                 pline(_wieldLine);
+                if (_tetherLine) pline(_tetherLine);
             }
         }
         return 1;
@@ -5115,13 +5187,8 @@ function resists_fire(mon) {
     return (bits & MR_FIRE) !== 0;
 }
 
-/* on_fire: C ref mhitm.c — returns "on fire" or flaming-monster variant.
- * Ported locally because the mhitm.js import can't resolve pd.pmidx. */
 function on_fire_local(pd, mattk) {
-    if (!pd) return "on fire";
-    /* C: if completelyburns(pd) return "burning"; else return "on fire"; */
-    /* But C also checks for fire-based monsters that are already "burning" */
-    return "on fire";
+    return on_fire_real(pd, mattk);
 }
 
 /* C mon.c:5668-5704 golemeffects(mon, adtyp, dam) — elemental damage can

@@ -2440,8 +2440,11 @@ export async function wakeup(mtmp, via_attack, defer_priest = false) {
  * paths are synchronous; those callers cannot await ghod_hitsu without a
  * broad control-flow conversion. */
 export async function wakeup_attack(mtmp, via_attack) {
+    /* wakeup()'s own was_peaceful (mon.c:4350): setmangry() clears mpeaceful,
+     * so it must be sampled before the call, not after. */
+    const was_peaceful = mtmp.mpeaceful;
     await wakeup(mtmp, via_attack, true);
-    if (via_attack && mtmp.mpeaceful && mtmp.ispriest)
+    if (via_attack && was_peaceful && mtmp.ispriest)
         await ghod_hitsu(mtmp);
 }
 
@@ -3835,7 +3838,7 @@ export async function ghod_hitsu(priest) {
     const oldBuzzer = game.gb?.buzzer;
     game.gc_current_wand = 0;
     if (game.gb) game.gb.buzzer = 0;
-    await buzz(17, 6, x, y, Math.sign(game.gt?.tbx || 0), Math.sign(game.gt?.tby || 0));
+    await buzz(-15 /* BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)) */, 6, x, y, Math.sign(game.gt?.tbx || 0), Math.sign(game.gt?.tby || 0));
     if (game.gb) game.gb.buzzer = oldBuzzer;
     game.gc_current_wand = oldWand;
     exercise(A_WIS, false);

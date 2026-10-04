@@ -16,6 +16,7 @@ import { x_monnam } from './mhitm.js';
 import { INFRAVISION } from './const.js';
 import { BLINDED, HALLUC, HALLUC_RES, WAND_BACKFIRE_CHANCE, MSLOW, ANIMATE_SPELL, LIFESAVED } from './const.js';
 import { ENGRAVE, HEADSTONE, ARM } from './const.js';
+import { In_mines } from './const.js';
 import { GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS } from './const.js';
 import { LARGEST_INT, ARTICLE_A, SUPPRESS_SADDLE, has_mgivenname, G_GENOD, MM_NOMSG } from './const.js';
 import { addtobill } from './shk.js';
@@ -2186,7 +2187,7 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
 async function _make_bounce(sx, sy, lsx, lsy, range, dir, damgtype, fireball, hdmgtype, setdir, typeIn) {
     void damgtype;
     const typ = _buzz_typ(sx, sy);
-    const inMines = false;
+    const inMines = In_mines(game.u.uz); /* C zap.c:5003 */
     const bchance = (!isok(sx, sy) || typ === STONE) ? 10
                   : (inMines && IS_WALL(typ)) ? 20 : 75;
     if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy)) || fireball) {
@@ -4395,7 +4396,7 @@ const ZP_MAGIC_LAMP = 228, ZP_OIL_LAMP = 227, ZP_MAGIC_MARKER = 242,
       ZP_SPE_BLANK_PAPER = 407, ZP_SPE_NOVEL = 408, ZP_MAX_SPELL_STUDY = 3,
       ZP_BOULDER = 475, ZP_ROCK = 474, ZP_MINERAL = 21, ZP_CORPSE = 265,
       ZP_EGG = 273, ZP_LEASH = 231;
-const ZP_OBJ_FREE = 0, ZP_OBJ_FLOOR = 1, ZP_OBJ_INVENT = 3;
+const ZP_OBJ_FREE = 0, ZP_OBJ_FLOOR = 1, ZP_OBJ_INVENT = 3, ZP_OBJ_MINVENT = 4;
 /* zap.c:1687 charged_objs[] = { WAND_CLASS, WEAPON_CLASS, ARMOR_CLASS,
  * TOOL_CLASS, RING_CLASS, 0 } — the classes whose spe is carried across a
  * polymorph. */
@@ -4488,6 +4489,26 @@ function _zp_replace_object(obj, otmp) {
                 }
             }
         }
+        return;
+    }
+    if ((obj.where | 0) === ZP_OBJ_MINVENT) {
+        /* C mkobj.c:662-666 replace_object OBJ_MINVENT arm:
+         *     otmp->nobj = obj->nobj; otmp->ocarry = obj->ocarry;
+         *     obj->nobj = otmp; extract_nobj(obj, &obj->ocarry->minvent);
+         * Reached from trapeffect_poly_trap's iron-shoes arm (trap.c:2496-2510). */
+        const mon = obj.ocarry;
+        otmp.nobj = obj.nobj;
+        otmp.ocarry = mon;
+        obj.nobj = otmp;
+        let prev = null;
+        for (let o = mon.minvent; o; prev = o, o = o.nobj) {
+            if (o === obj) {
+                if (prev) prev.nobj = o.nobj; else mon.minvent = o.nobj;
+                break;
+            }
+        }
+        obj.where = ZP_OBJ_FREE;
+        obj.nobj = null;
         return;
     }
     if ((obj.where | 0) !== ZP_OBJ_FLOOR) {

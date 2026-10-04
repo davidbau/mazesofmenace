@@ -31,7 +31,7 @@ import { se_canine_howl } from './generated/seffects_data.js';
 import { an } from './objnam.js';
 import { paranoid_query } from './getline.js';
 import { tamedog } from './dog.js';
-import { makemon } from './makemon.js';
+import { makemon, makemon_appear_msg } from './makemon.js';
 import {
     PARANOID_WERECHANGE, POLYMORPH_CONTROL, UNCHANGING, NO_MM_FLAGS,
     PROT_FROM_SHAPE_CHANGERS,
@@ -210,6 +210,8 @@ export async function were_summon(ptr, yours, visible, genbuf) {
         const mtmp = makemon(mons(typ), u.ux | 0, u.uy | 0, NO_MM_FLAGS);
         if (mtmp) {
             total++;
+            // C: the appear Norep is inside makemon (:1476–1500).
+            await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, NO_MM_FLAGS);
             if (canseemon(mtmp) && visible) visible.n += 1;
         }
         if (yours && mtmp) await tamedog(mtmp, null, false);

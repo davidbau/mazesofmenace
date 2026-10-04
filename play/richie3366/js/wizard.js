@@ -231,9 +231,11 @@ function Protection_from_shape_changers() {
 }
 
 /** C ref: wizard.c clonewiz — Double Trouble; caller checks no_of_wizards==1. */
-export function clonewiz() {
+export async function clonewiz() {
     const u = game.u || {};
     const mtmp2 = makemon(mons(PM_WIZARD_OF_YENDOR), u.ux, u.uy, MM_NOWAIT);
+    // C: the appear Norep is inside makemon (:1476–1500).
+    if (mtmp2) await makemon_appear_msg(mtmp2, mtmp2.mx | 0, mtmp2.my | 0, MM_NOWAIT);
     if (mtmp2) {
         mtmp2.msleeping = mtmp2.mtame = mtmp2.mpeaceful = 0;
         if (!u.uhave?.amulet && rn2(2)) {
@@ -637,6 +639,8 @@ export async function resurrect() {
             u.uy | 0,
             MM_NOWAIT,
         );
+        // C: the appear Norep is inside makemon (:1476–1500).
+        if (mtmp) await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, MM_NOWAIT);
         if (mtmp) mtmp.mrevived = 1;
     } else {
         /* C wizard.c:730–756 — an existing migrating Wizard without the

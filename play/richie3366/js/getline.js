@@ -16,7 +16,7 @@ import {
     flush_screen, flush_topl_more, pline, mark_topline_prompt, clear_win_stop,
     clear_nhwindow_message, tty_doprev_message,
     get_tty_inread, set_tty_inread, get_tty_intr, set_tty_intr,
-    prevmsg_reset_maxcol,
+    prevmsg_reset_maxcol, prevmsg_set_prompt,
     mark_topline_special_prompt, hooked_getlin_release_prompt,
     hooked_getlin_epilogue, tty_yn_rewrite_toplines, tty_nhbell,
     tty_yn_note_msg_cursor, tty_yn_clean_up_tty,
@@ -268,6 +268,10 @@ export async function getlin(query, bufp) {
     };
     const restorePrompt = () => hooked_getlin_restore_prompt(paint);
     try {
+        // C getline.c:67 — the prompt paint is custompline → vpline, so
+        // gp.prevmsg becomes `query + " "` (echo-free, preloaded text
+        // arrives via addtopl, not the prompt line).
+        prevmsg_set_prompt(`${query} `);
         await paint();
         for (;;) {
             const c = await nhgetch();
@@ -1597,6 +1601,9 @@ export async function get_ext_cmd() {
     };
     const restorePrompt = () => hooked_getlin_restore_prompt(paint);
     try {
+        // C hooked_tty_getlin custompline — gp.prevmsg is the initiator
+        // prompt (`"# "`, echo-free) like getlin above.
+        prevmsg_set_prompt(`${initiator} `);
         await paint();
         for (;;) {
             const c = await nhgetch();
@@ -2066,6 +2073,9 @@ async function tty_yn_function(query, resp = 'yn', def = 'n') {
     } else {
         prompt = `${query} `;
     }
+    // C topl.c:420,425 — the yn prompt is custompline → vpline, so
+    // gp.prevmsg becomes the full prompt text (getlin precedent above).
+    prevmsg_set_prompt(prompt);
     const allow_num = !!(resp && resp.includes('#'));
     const preserve = !!(resp && /[A-Z]/.test(resp));
     let doprev = false;

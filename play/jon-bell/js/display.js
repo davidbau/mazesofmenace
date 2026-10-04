@@ -8,11 +8,13 @@ import { cansee, couldsee, vision_recalc, Blind } from './vision.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { observe_object } from './o_init.js';
+import { sticks } from './dog.js';
 import { SEE_INVIS, TELEPAT, DETECT_MONSTERS, INVIS } from './const.js';
 import { PICK_ONE, PICK_ANY, DEVTEAM_EMAIL } from './const.js';
 import { u_at, is_pit, BEAR_TRAP, WEB } from './const.js';
 /* C ref: include/align.h:29-39 — altar_to_glyph's alignment-mask tests. */
 import { AM_MASK, AM_SANCTUM, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC } from './const.js';
+import { SICK, STONED, STRANGLED, SLIMED, SICK_VOMITABLE, SICK_NONVOMITABLE } from './const.js';
 import { BLINDED, CONFUSION, STUNNED, INFRAVISION, WARNING, WARN_OF_MON, FLYING, LEVITATION, HALLUC, HALLUC_RES, DEAF, Is_rogue_level, Is_waterlevel, LA_DOWN, In_mines, In_sokoban, Is_knox_level } from './const.js';
 
 function _display_hallucinating() {
@@ -1597,7 +1599,7 @@ function _render_monster_glyph(x, y, mon, loc, tg, map_memory, worm_tail, detect
     const detectedAttr = detectedOnly && !(mon.mtame && !_hallu)
         && game.iflags?.wc_inverse !== false ? 1 : 0;
     show_mon_or_warn(x, y, mch, mcol, false, petAttr || detectedAttr, GLYPHCLS_MON);
-
+    mon.meverseen = 1; /* C display.c:620 */
 }
 // C ref: display.c:1072-1081 — "can't see the location" sensed-monster branch.
 // Walk fmon for a monster at (x,y); render it when
@@ -1795,7 +1797,7 @@ export function newsym(x, y) {
     if (suppress_map_output())
         return;
     if (!((x | 0) >= 1 && (x | 0) < COLNO && (y | 0) >= 0 && (y | 0) < ROWNO)) {
-        pline('newsym: attempting screen update for <' + (x | 0) + ','
+        urgent_pline('newsym: attempting screen update for <' + (x | 0) + ','
               + (y | 0) + '>');
         pline('Program in disorder!  (Saving and reloading may fix this problem.)');
         pline('Please report these messages to %s.', DEVTEAM_EMAIL);
@@ -3522,7 +3524,10 @@ function _statusLine2Parts() {
                             (_p2s && _p2s.hallucinating !== undefined)
                                 ? !!_p2s.hallucinating : undefined,
                             (_p2s && _p2s.confused !== undefined)
-                                ? !!_p2s.confused : undefined);
+                                ? !!_p2s.confused : undefined,
+                            (_p2s && _p2s.flying !== undefined) ? !!_p2s.flying : undefined,
+                            (_p2s && _p2s.sickType !== undefined) ? _p2s.sickType | 0 : undefined,
+                            (_p2s && _p2s.levitating !== undefined) ? !!_p2s.levitating : undefined);
     const _m = /^((?: (?:Satiated|Hungry|Weak|Fainting|Fainted|Starved))?(?: (?:Burdened|Stressed|Strained|Overtaxed|Overloaded))?)(.*)$/.exec(_suffix);
     return { desc: _leveldescField, mid: s, time: _timeStr, hunger: _m[1], conds: _m[2] };
 }
@@ -3551,8 +3556,13 @@ export function _threeStatusLines() {
     }
     return game._statuslines_rc;
 }
+/* Flying (youprop.h:253) as the status line tests it. */
+function _live_flying() {
+    const u = game.u, fp = u?.uprops?.[FLYING];
+    return !!fp && !!((fp.intrinsic | 0) || (fp.extrinsic | 0)) && !(fp.blocked | 0);
+}
 export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen,
-                                   halluFrozen, confFrozen) {
+                                   halluFrozen, confFrozen, flyFrozen, sickTypeFrozen, levFrozen) {
     const u = game.u;
     if (!u) return '';
     let s = '';
@@ -3577,6 +3587,33 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         const c = (cap != null) ? (cap | 0) : (near_capacity() | 0);
         if (c > 0 && ENC_STAT[c])
             s += ` ${ENC_STAT[c]}`;
+    }
+    /* C ref: botl.c:1149-1153,1198-1200 + conditions[] (botl.c:789-807): the
+     * rank-4 and rank-6 conditions sort ahead of every rank-10 one in cond_cmp
+     * (botl.c:1332): Strngl(4), then rank 6 alphabetical by useroption —
+     * foodpois, slime, stone, termIll.  Sick is HSick-intrinsic (youprop.h:108)
+     * split by u.usick_type; Stoned/Slimed/Strangled are the intrinsic words. */
+    {
+        const ip = (p) => !!(u.uprops?.[p]?.intrinsic | 0);
+        /* C ref: botl.c:792 conditions[] bl_grab ranking 2 (sorts first) and
+         * botl.c:1164-1188: with u.ustuck and !u.uswallow and not a
+         * Upolyd sticks() form, Grab == (u.ustuck->data->mlet == S_EEL). */
+        if (u.ustuck && !u.uswallow
+            && !(((u.umonnum | 0) !== (u.umonster | 0)) && sticks(game.youmonst?.data))
+            && (u.ustuck.data?.mlet | 0) === 57 /* S_EEL */)
+            s += ' Grab';
+        if (ip(STRANGLED)) s += ' Strngl';
+        /* `sickTypeFrozen` is the usick_type bits bot() had painted at a frozen
+         * --More-- pline (0 when not sick); undefined reads the live state.
+         * make_sick (potion.c:292-302) plines "You feel deathly sick" BEFORE it
+         * sets Sick and SET_BOTL()s, so the earlier engulf --More-- page keeps
+         * the status line without TermIll. */
+        const sick = (sickTypeFrozen !== undefined) ? (sickTypeFrozen | 0) !== 0 : ip(SICK);
+        const sty = (sickTypeFrozen !== undefined) ? (sickTypeFrozen | 0) : (u.usick_type | 0);
+        if (sick && (sty & SICK_VOMITABLE)) s += ' FoodPois';
+        if (ip(SLIMED)) s += ' Slime';
+        if (ip(STONED)) s += ' Stone';
+        if (sick && (sty & SICK_NONVOMITABLE)) s += ' TermIll';
     }
     /* C ref: botl.c:975 condtests[bl_blind].test = (Blind) ? TRUE : FALSE,
      * rendered as "Blind" from the conditions[] table (botl.c:635).  bl_blind is
@@ -3623,8 +3660,11 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     }
     {
         const fp = u.uprops && u.uprops[FLYING];
-        const flying = !!fp && !!((fp.intrinsic | 0) || (fp.extrinsic | 0))
-                       && !(fp.blocked | 0);
+        /* flyFrozen: the value the last bot() PAINTED — polymorph's set_uasmon
+         * grants HFlying before the --More-- pline, whose flush does not repaint. */
+        const flying = (flyFrozen !== undefined) ? flyFrozen
+            : (!!fp && !!((fp.intrinsic | 0) || (fp.extrinsic | 0))
+               && !(fp.blocked | 0));
         if (flying)
             s += ' Fly';
     }
@@ -3650,8 +3690,12 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
      * no mask here. */
     {
         const lp = u.uprops && u.uprops[LEVITATION];
-        const levitating = !!lp && !!((lp.intrinsic | 0) || (lp.extrinsic | 0))
-                           && !(lp.blocked | 0);
+        /* levFrozen: the value bot() PAINTED at the frozen --More-- pline —
+         * steal.c's seduce arm remove_worn_item()s the levitation boots
+         * after its pline, so the page's status still says Lev. */
+        const levitating = (levFrozen !== undefined) ? levFrozen
+            : (!!lp && !!((lp.intrinsic | 0) || (lp.extrinsic | 0))
+               && !(lp.blocked | 0));
         if (levitating)
             s += ' Lev';
     }
@@ -3682,7 +3726,7 @@ export function fit_status_line_width(s, width = 79) {
      * disagree even when only one condition is present (for example Blind ->
      * Blnd at the medium level). */
     const conditions = [
-        ['Stone', 'Ston', 'Sto'], ['Slime', 'Slim', 'Slm'],
+        ['Grab', 'Grb', 'Gr'], ['Stone', 'Ston', 'Sto'], ['Slime', 'Slim', 'Slm'],
         ['Strngl', 'Stngl', 'Str'], ['FoodPois', 'Fpois', 'Poi'],
         ['TermIll', 'Ill', 'Ill'], ['Blind', 'Blnd', 'Bl'],
         ['Deaf', 'Def', 'Df'], ['Stun', 'Stun', 'St'],
@@ -4298,6 +4342,7 @@ function _capture_botl() {
         /* Same PAINT-time rule for the Deaf condition — see the `deaf` field
          * below and botl_status_suffix's note. */
         game._botlPaintedDeaf = _live_deaf();
+        game._botlPaintedFlying = _live_flying();
         game._botlPaintedConfused = !!(u.uprops?.[CONFUSION]?.intrinsic | 0);
         game._botlPaintedLevel = u.ulevel | 0;
         game._botlPaintedExp = u.uexp ?? 0n;
@@ -4352,6 +4397,12 @@ function _capture_botl() {
         stunned: (() => {
             const sp = u.uprops && u.uprops[STUNNED];
             return !!sp && (sp.intrinsic | 0) !== 0;
+        })(),
+        flying: (game._botlPaintedFlying != null) ? !!game._botlPaintedFlying : _live_flying(),
+        sickType: (u.uprops?.[SICK]?.intrinsic | 0) ? (u.usick_type | 0) : 0,
+        levitating: (() => {
+            const lq = u.uprops && u.uprops[LEVITATION];
+            return !!lq && !!((lq.intrinsic | 0) || (lq.extrinsic | 0)) && !(lq.blocked | 0);
         })(),
         hallucinating: (() => {
             const hp = u.uprops && u.uprops[HALLUC];
@@ -4888,7 +4939,7 @@ async function _topl_more(committed, dismissMore) {
 }
 
 // C tty display_nhwindow: acknowledge all pending message pages in order.
-export async function force_more_pages(full, retainFinalFrame = true) {
+export async function force_more_pages(full, retainFinalFrame = true, textWindowOpens = false) {
     const pages = _topl_more_pages(full, _topl_joins_snapshot(full));
     const frames = game._plineFlushFrames?.slice() || [];
     let consumed = 0;
@@ -4936,7 +4987,9 @@ export async function force_more_pages(full, retainFinalFrame = true) {
             game._inMovemonMore = false;
         }
         if (frame) game._paintedSnapshot = {
-            cells: frame.cells, moves: frame.moves, botl: frame.botl || null,
+            cells: frame.cells, moves: frame.moves,
+            botl: (textWindowOpens && i === pages.length - 1) ? _capture_botl()
+                : (frame.botl || null),
         };
         try {
             if (page) await force_more(page);
@@ -5350,7 +5403,16 @@ async function _flush_screen_body(mode) {
                 pushRngLogEntry(`^topl_stop_after_esc[committed=${encodeURIComponent(String(committed).slice(0,80))} rem=${encodeURIComponent(String(remainder).slice(0,80))} joins=${(remainderJoins || []).join(',')}]`);
             const _urgent = game._topl_urgent_marks || [];
             let _rel = -1;
-            if (_urgent.length && remainderJoins && remainderJoins.length) {
+            /* The head of the remainder is the message that RAISED this page.
+             * If it is urgent, wintty.c:2282 holds WIN_NOSTOP across its
+             * update_topl, so more() (topl.c:233) did not set WIN_STOP and
+             * nothing after it is suppressed: it is drawn and the next
+             * message pages it (impossible()'s "newsym: ..." line, whose
+             * successor does not fit, wears its own --More--). */
+            if (_urgent.length && _urgent.includes(remainder.slice(0, (remainderJoins && remainderJoins.length)
+                ? remainderJoins[0] : remainder.length)))
+                _rel = 0;
+            else if (_urgent.length && remainderJoins && remainderJoins.length) {
                 for (const _j of remainderJoins) {
                     const _start = _j + 2;
                     const _end = remainderJoins.find((k) => k > _j) ?? remainder.length;
@@ -5565,6 +5627,11 @@ export async function cls() {
      * buffer — which is every detection caller. */
     clear_glyph_buffer();
     game._pending_message = '';
+    /* The physical screen is now blank, so a painted-screen snapshot taken
+     * BEFORE the clear (movemon's per-overflow frame, topl.c:1262) no longer
+     * describes what a later more() shows: C's gbuf holds only what was
+     * painted since (you_aggravate's engineer + hero, display.c:2196-2201). */
+    game._paintedSnapshot = null;
 }
 // ── bot ──
 export async function bot() {
@@ -5584,6 +5651,7 @@ export async function bot() {
     // value " Burdened").  DISPLAY-ONLY; near_capacity() consumes no RNG.
     game._botlPaintedCap = near_capacity() | 0;
     game._botlPaintedDeaf = _live_deaf();
+    game._botlPaintedFlying = _live_flying();
     /* C botl.c condtests[bl_conf]: retain the last painted condition when
      * HConfusion is restored without SET_BOTL after a magic-trap effect. */
     game._botlPaintedConfused = !!(game.u?.uprops?.[CONFUSION]?.intrinsic | 0);
@@ -5597,6 +5665,10 @@ export async function bot() {
     /* C botl.c:260-269 — bot() repaints the WHOLE status line, `T:' included, so
      * the run-suppression latch above is discharged by any paint that gets here. */
     if (game) game._timeBotlFrozenMoves = null;
+    /* ...and it repaints '$:' from money_cnt(gi.invent), ending the stale-gold
+     * latch js/potion.js's dipfountain bath arm sets (fountain.c:503-528 raises
+     * no SET_BOTL; docorner's botlx/bot() after the menu dismiss repaints). */
+    if (game) game._botlGoldStale = undefined;
     // C ref: botl.c:277 — bot() resets disp flags after rendering
     if (game && game.disp) {
         game.disp.botl = 0;
@@ -6545,6 +6617,15 @@ const GLYPH_PET_MALE_OFF = 36;
 const GLYPH_MON_FEM_OFF = 37;
 const GLYPH_MON_MALE_OFF = 38;
 
+/* show_glyph(x, y, mon_to_glyph(...)) for a plain monster glyph, rendered
+ * through the same disp_* cell buffer newsym()'s monster arm writes (the
+ * numeric show_glyph() below feeds a separate gbuf the screen never reads).
+ * C ref: display.c:2196-2201 you_aggravate(). */
+export function show_monster_glyph_at(x, y, mndx) {
+    const mlet = (mndx >= 0 && mndx < MON_MLET.length) ? MON_MLET[mndx] : 53;
+    const mcol = (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7;
+    show_glyph_cell(x, y, DEF_MONSYM_CHARS[mlet] ?? '@', mcol, false, 0, GLYPHCLS_MON);
+}
 export function show_glyph(x, y, glyph) {
     const gbuf = game["gg.gbuf"] || [];
     const gbuf_start = game["gg.gbuf_start"] || [];

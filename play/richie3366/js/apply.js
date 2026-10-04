@@ -126,7 +126,7 @@ import { begin_burn, end_burn, Is_candle, obj_merge_light_sources,
     get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { set_occupation, u_wipe_engr, freehand, can_reach_floor, cant_reach_floor } from './engrave.js';
-import { makemon, mkclass, mpickobj } from './makemon.js';
+import { makemon, makemon_appear_msg, mkclass, mpickobj } from './makemon.js';
 import { make_familiar } from './dog.js';
 import { addinv, addinv_nomerge } from './u_init.js';
 import { stairway_at, morguemon } from './mklev.js';
@@ -816,7 +816,8 @@ async function use_mirror(obj) {
         }
         return ECMD_TIME;
     }
-    if (u.Underwater) {
+    // C `:1083` — Underwater mirror arm (≡ u.uinwater, youprop.h:279).
+    if ((u.uinwater | 0) !== 0) {
         if (useeit) {
             await pline(u.Hallucination
                 ? 'You give the fish a chance to fix their makeup.'
@@ -1323,7 +1324,7 @@ async function do_break_wand(obj) {
         SHOPBASE, NO_MM_FLAGS, NO_KILLER_PREFIX, MELT_ICE_AWAY,
     } = await import('./const.js');
     const { in_rooms, losehp, maybe_half_phys } = await import('./hack.js');
-    const { makemon } = await import('./makemon.js');
+    const { makemon, makemon_appear_msg: zap_appear_msg } = await import('./makemon.js');
     const { pay_for_damage } = await import('./shk.js');
     const { recalc_block_point } = await import('./vision.js');
     const { t_at } = await import('./trap.js');
@@ -1388,7 +1389,9 @@ async function do_break_wand(obj) {
         }
         if (obj.otyp === WAN_CREATE_MONSTER) {
             // near hero — x,y might be rock
-            makemon(null, u.ux | 0, u.uy | 0, NO_MM_FLAGS);
+            const zapmon = makemon(null, u.ux | 0, u.uy | 0, NO_MM_FLAGS);
+            // C: the appear Norep is inside makemon (:1476–1500).
+            if (zapmon) await zap_appear_msg(zapmon, zapmon.mx | 0, zapmon.my | 0, NO_MM_FLAGS);
             continue;
         }
         if (x !== (u.ux | 0) || y !== (u.uy | 0)) {
@@ -4157,7 +4160,11 @@ export async function mkundead(mm, revive_corpses, mm_flags) {
                 const otmp = sobj_at(CORPSE, cc.x, cc.y);
                 if (otmp && await revive(otmp, false)) skipMakemon = true;
             }
-            if (!skipMakemon) makemon(mdat, cc.x, cc.y, mm_flags);
+            if (!skipMakemon) {
+                const mdatmon = makemon(mdat, cc.x, cc.y, mm_flags);
+                // C: the appear Norep is inside makemon (:1476–1500).
+                if (mdatmon) await makemon_appear_msg(mdatmon, mdatmon.mx | 0, mdatmon.my | 0, mm_flags);
+            }
         }
     }
     if (game.level) {
@@ -5195,6 +5202,9 @@ export async function bagotricks(bag, tipping = false, seencount = null) {
         const mtmp = makemon(null, game.u?.ux | 0, game.u?.uy | 0, NO_MM_FLAGS);
         if (mtmp) {
             moncount++;
+            // C: the appear Norep is inside makemon (:1476–1500); sync
+            // makemon can't await it, so each caller emits it (D-2096).
+            await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, NO_MM_FLAGS);
             const ap = M_AP_TYPE(mtmp);
             if ((canseemon(mtmp) && (ap === M_AP_NOTHING || ap === M_AP_MONSTER))
                 || sensemon(mtmp)) {

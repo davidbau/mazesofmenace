@@ -23,6 +23,7 @@ import { unstuck as unstuck_mk } from './dog.js';
 // room placement, corridors, doors, stairs, niches, and fill.
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 import { game, wizard } from './gstate.js';
+import { PM_PURPLE_WORM as PM_PURPLE_WORM_MK } from './pm.generated.js';
 import { PM_PIRANHA, PM_ELECTRIC_EEL, PM_GREMLIN as PM_GREMLIN_ML, PM_IRON_GOLEM as PM_IRON_GOLEM_ML } from './pm.generated.js';
 import { nexttodoor } from './mkroom.js';
 import { OBJ_MINVENT } from './const.js';
@@ -57,7 +58,7 @@ import { mongets } from './m_initweap.js';
 import { monhaskey, m_can_break_boulder, can_fog, mon_track_clear } from './monmove.js';
 import { attacktype_fordmg, emits_light, monflee, onscary, set_malign, mbirth_limit, MAXMONNO, which_armor, findgold } from './makemon.js';
 /* C wizard.c:605 nasty()'s before/after monster count. */
-import { monster_census } from './sit.js';
+import { monster_census, msummon } from './sit.js';
 import { aggravate as aggravate_real } from './mcastu.js';
 /* C makemon.c:1347-1349's light-source registration (light.c / monflag.h). */
 import { new_light_source, del_light_source, monst_to_any, artifact_light, obj_merge_light_sources } from './light.js';
@@ -93,7 +94,7 @@ import { grddead } from './vault.js';
 /* C ref: mklev.c:928 — clear_level_structures() calls region.c's
  * clear_regions().  region.js imports m_poisongas_ok back from this file;
  * both edges are runtime-only function references, so the cycle resolves. */
-import { clear_regions, create_gas_cloud_selection } from './region.js';
+import { clear_regions, create_gas_cloud_selection, poisoncloud_at } from './region.js';
 /* C mon.c:5485 newcham() invokes the shared worn.c mon_break_armor helper
  * even during creation (its pronoun locals are evaluated before armor tests). */
 import { mon_break_armor } from './trap.js';
@@ -171,14 +172,16 @@ import { mwelded } from './cmd.js';                           /* C obj.h:434 */
 import { bypass_obj, setnotworn } from './worn.js';            /* C worn.c:1090 */
 import { flooreffects } from './cmd.js';                      /* C do.c:161 */
 import { stackobj } from './sp_lev.js';                       /* C mkobj.c:2411 */
-import { check_gear_next_turn } from './makemon.js';          /* C mon.c:5915 */
+import { check_gear_next_turn, zombie_maker } from './makemon.js';          /* C mon.c:5915 */
 import { set_apparxy, dochugw } from './monmove.js';           /* C monmove.c:1421, 3735 */
 /* C weapon.c:766's `distant_name(obj, doname)`.  This file used to carry local
  * THROW stubs for both names; the real bodies live in js/objnam.js and are
  * imported here under _nc names.  The stubs are GONE as of the shadow-body
  * audit — every call site in this file now goes through these aliases. */
 import { distant_name as distant_name_nc, doname as doname_nc, Tobjnam } from './objnam.js';
-import { simpleonames as simpleonames_mk, an as an_mk } from './objnam.js';
+import { simpleonames as simpleonames_mk, an as an_mk, corpse_xname as corpse_xname_rc, The as The_rc } from './objnam.js';
+import { Monnam as Monnam_rc } from './mcastu.js';
+import { Adjmonnam as Adjmonnam_rc } from './mhitm.js';
 import { observe_object as observe_object_mk } from './o_init.js';
 import { OC_NAME as OC_NAME_MK } from './oc_name_data.js';
 import { obfree, delobj as delobj_real, deliver_obj_to_mon } from './dokick.js';
@@ -2267,6 +2270,22 @@ const _shtypes = [
  * file-local; only the name is exported. */
 export function shtype_name(i) {
     return _shtypes[i | 0]?.name ?? 'shop';
+}
+/* C shknam.c:874-890 shkname() Hallucination arm — pick a random non-unique
+ * shop type (shtypes[rn2(num)], prob==0 ends the list), then a random name
+ * from that type's list.  Returns the name, or null when C keeps the true one. */
+export function shkname_halluc_pick() {
+    let num;
+    for (num = 0; num < _shtypes.length; num++)
+        if (_shtypes[num].prob === 0)
+            break;
+    if (num <= 0)
+        return null;
+    const nlp = _shtypes[rn2(num)].shknms;
+    num = nlp.length;
+    if (num <= 0)
+        return null;
+    return nlp[rn2(num)];
 }
 /* C shknam.c:439 shop_string(rtype) — actually dungeon.c:3441, the "short shop
  * description" #overview's print_mapseen annotates a level's shop with.  It
@@ -4431,6 +4450,9 @@ export async function makemon(mdat, x, y, mmflags) {
     /* C makemon.c:1298 — mtmp->mcansee = mtmp->mcanmove = TRUE */
     mon.mcansee = 1;
     mon.mcanmove = 1;
+    /* C makemon.c:1297 — mtmp->mgenmklev = gi.in_mklev (read by
+     * mm_2way_aggression's zombie arm, mon.c:2413) */
+    mon.mgenmklev = game.in_mklev ? 1 : 0;
     /* C makemon.c:1300 — mtmp->mpeaceful = (mmflags & MM_ANGRY) ? FALSE : peace_minded(ptr) */
     mon.mpeaceful = (mmflags & MM_ANGRY) !== 0 ? 0 : peaceMinded(mndx) ? 1 : 0;
     /* C makemon.c:1302 — MM_MINVIS is used by #wizgenesis.  It must run
@@ -4579,10 +4601,13 @@ export async function makemon(mdat, x, y, mmflags) {
             ? (mmflags & (MM_EPRI | MM_EMIN)) === 0
             : (mndx === PM_ANGEL && (mmflags & MM_EMIN) === 0 && !rn2(3))) {
         /* C makemon.c:1418-1428 — newemin(mtmp); EMIN(mtmp)->... */
+        newemin(mon);
+        const eminp = mon.mextra.emin;
+        mon.isminion = 1;
         const min_align = rn2(3) - 1; /* C: no A_NONE */
         const renegade = (mmflags & MM_ANGRY) !== 0 ? 1 : (!rn2(3) ? 1 : 0);
-        mon.isminion = 1;
-        mon.emin = { min_align, renegade };
+        eminp.min_align = min_align;
+        eminp.renegade = renegade;
         const ualType = (game.u?.ualign?.type ?? 0) | 0;
         mon.mpeaceful = (min_align === ualType) ? (renegade ? 0 : 1) : (renegade ? 1 : 0);
     }
@@ -6487,7 +6512,7 @@ async function makelevel_generate() {
         else if (u_depth > 11 && !rn2(6)) {
             await do_mkroom(MORGUE);
         }
-        else if (u_depth > 12 && !rn2(8) && antholemon()) {
+        else if (u_depth > 12 && !rn2(8) && antholemon() !== null) {
             await do_mkroom(ANTHOLE);
         }
         else if (u_depth > 14 && !rn2(4) /* && !(mvitals[SOLDIER] & G_GONE) */) {
@@ -8739,8 +8764,58 @@ async function themerooms_generate(difficulty) {
         // C ref: themerms.lua:450-457 — shuffle(feature) (4 draws) + 1 des.terrain
         themerooms_contents_random_dungeon_feature(aroom);
     }
+    /* C sp_lev.c:4100 — lspo_room calls add_doors_to_room(tmpcr) after the
+     * contents callback and spo_endroom, for the top-level themed room too.
+     * That links a subroom's door (already added to the subroom by
+     * splev_create_door_rng) to the PARENT as well, so the parent's doorct is
+     * 2 where this port left it 1 and makeniche's `doorct == 1 && rn2(5)`
+     * (mklev.c:741) drew a spurious rn2(5). */
+    if (aroom)
+        add_doors_to_room(aroom);
     game.in_mk_themerooms = prevLua;
     return !!aroom && contentsOk;
+}
+// C ref: sp_lev.c:1090-1106 shared_with_room()
+function shared_with_room(x, y, droom) {
+    const map = game.level;
+    const rmno = (droom.roomnoidx ?? map.rooms.indexOf(droom)) + ROOMOFFSET;
+    if (!isok(x, y))
+        return false;
+    const loc0 = map.at(x, y);
+    if ((loc0.roomno | 0) === rmno && !loc0.edge)
+        return false;
+    if (isok(x - 1, y) && (map.at(x - 1, y).roomno | 0) === rmno && x - 1 <= droom.hx)
+        return true;
+    if (isok(x + 1, y) && (map.at(x + 1, y).roomno | 0) === rmno && x + 1 >= droom.lx)
+        return true;
+    if (isok(x, y - 1) && (map.at(x, y - 1).roomno | 0) === rmno && y - 1 <= droom.hy)
+        return true;
+    if (isok(x, y + 1) && (map.at(x, y + 1).roomno | 0) === rmno && y + 1 >= droom.ly)
+        return true;
+    return false;
+}
+// C ref: sp_lev.c:1109-1120 maybe_add_door()
+function maybe_add_door(x, y, droom) {
+    const map = game.level;
+    const rmno = (droom.roomnoidx ?? map.rooms.indexOf(droom)) + ROOMOFFSET;
+    if (droom.hx >= 0
+        && ((!droom.irregular && inside_room(droom, x, y))
+            || (map.at(x, y).roomno | 0) === rmno
+            || shared_with_room(x, y, droom))) {
+        add_door(x, y, droom);
+    }
+}
+// C ref: sp_lev.c:5544-5555 add_doors_to_room()
+function add_doors_to_room(croom) {
+    const map = game.level;
+    for (let x = croom.lx - 1; x <= croom.hx + 1; x++)
+        for (let y = croom.ly - 1; y <= croom.hy + 1; y++) {
+            const loc = isok(x, y) ? map.at(x, y) : null;
+            if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR))
+                maybe_add_door(x, y, croom);
+        }
+    for (let i = 0; i < (croom.nsubrooms | 0); i++)
+        add_doors_to_room(croom.sbrooms[i]);
 }
 // C ref: sp_lev.c check_room()
 export function check_room(lowx, ddx, lowy, ddy, vault) {
@@ -13207,6 +13282,47 @@ function mm_displacement_mk(magr, mdef) {
     return ALLOW_MDISP;
 }
 
+/* C mon.c:2385-2448 mm_2way_aggression() — the half of mm_aggression that
+ * applies in both directions.  Only the W-tower pairing and the
+ * zombie-maker-vs-zombifiable arm exist in 5.0. */
+function mm_2way_aggression_mk(magr, mdef) {
+    const uz = game.u?.uz;
+    const same = (a, b) => !!a && !!b && (a.dnum | 0) === (b.dnum | 0)
+        && (a.dlevel | 0) === (b.dlevel | 0);
+    const wlev = same(uz, game.wiz1_level) || same(uz, game.wiz2_level)
+        || same(uz, game.wiz3_level);
+    if (wlev) {
+        const dn = game.dndest;
+        const inTower = (x, y) => !!dn && !!(dn.nlx | 0)
+            && x >= (dn.nlx | 0) && x <= (dn.nhx | 0)
+            && y >= (dn.nly | 0) && y <= (dn.nhy | 0);
+        const hin = inTower(game.u.ux | 0, game.u.uy | 0);
+        const ain = inTower(magr.mx | 0, magr.my | 0);
+        const din = inTower(mdef.mx | 0, mdef.my | 0);
+        if (hin ? (!ain || !din) : (ain || din))
+            return 0;
+    }
+    if (zombie_maker(magr) && zombie_form(mdef.data) !== NON_PM) {
+        if ((magr.mgenmklev | 0) && (mdef.mgenmklev | 0))
+            return 0;
+        const uniq = (m) => ((monGeno(m.data?.pmidx ?? m.mndx ?? m.mnum) | 0) & 0x1000) !== 0;
+        if (!Is_stronghold(uz) && !uniq(magr) && !uniq(mdef))
+            return ALLOW_M | ALLOW_TM;
+    }
+    return 0;
+}
+
+/* C mon.c:2451-2468 mm_aggression() */
+function mm_aggression_mk(magr, mdef) {
+    const mndx = (magr.data?.pmidx ?? magr.mndx ?? magr.mnum) | 0;
+    if ((magr.mtame | 0) && (mdef.mtame | 0))
+        return 0;
+    if ((mndx === PM_PURPLE_WORM_MK || mndx === PM_BABY_PURPLE_WORM)
+        && (mdef.data?.pmidx ?? mdef.mndx ?? mdef.mnum) === PM_SHRIEKER)
+        return ALLOW_M | ALLOW_TM;
+    return mm_2way_aggression_mk(magr, mdef) | mm_2way_aggression_mk(mdef, magr);
+}
+
 /* C ref: pline.c:435-452 You_hear — imported from js/display.js, which is this
  * port's pline.c.  It was `throw new Error('not yet ported: You_hear')`, and
  * the three call sites above (:13921 "a slurping sound.", :13937 "%s slurping
@@ -13321,6 +13437,13 @@ export async function revive_corpse(otmp) {
     const mdat = permonstTemplate(mnum);
     if (!mdat || mnum < 0)
         return false;
+    /* C do.c:2121-2133: name, location and wield state are read BEFORE
+     * revive() consumes the corpse. */
+    const where0 = otmp.where | 0;
+    const chewed = (otmp.oeaten | 0) !== 0;
+    const is_uwep = otmp === game.u?.uwep;
+    const cname = corpse_xname_rc(otmp, chewed ? 'bite-covered' : null, 1 /* CXN_SINGULAR */);
+    const corpsex = otmp.ox | 0, corpsey = otmp.oy | 0;
     let x = otmp.ox | 0, y = otmp.oy | 0;
     if (otmp.where === OBJ_FLOOR && !isok(x, y))
         return false;
@@ -13361,6 +13484,28 @@ export async function revive_corpse(otmp) {
      * unearths and stacks every other buried object on that square. */
     if (wasBuried && (mdat.mlet | 0) === S_ZOMBIE)
         await maketrap(mon.mx | 0, mon.my | 0, PIT);
+    /* C do.c:2151-2183: revival messages. */
+    if (where0 === OBJ_INVENT) {
+        if (is_uwep)
+            await pline(`The ${cname} writhes out of your grasp!`);
+        else
+            await pline('You feel squirming in your backpack!');
+    } else if (where0 === OBJ_FLOOR) {
+        if (cansee(corpsex, corpsey) || canseemon(mon)) {
+            const pmi = mon.mnum ?? mon.pmidx;
+            let effect = '';
+            if (pmi === PM_DEATH_R)
+                effect = ' in a whirl of spectral skulls';
+            else if (pmi === PM_PESTILENCE)
+                effect = ' in a churning pillar of flies';
+            else if (pmi === PM_FAMINE)
+                effect = ' in a ring of withered crops';
+            if (canseemon(mon))
+                await pline(`${chewed ? Adjmonnam_rc(mon, 'bite-covered') : Monnam_rc(mon)} rises from the dead${effect}!`);
+            else
+                await pline(`${The_rc(cname)} disappears${effect}!`);
+        }
+    }
     return mon;
 }
 
@@ -14170,10 +14315,8 @@ export async function nasty(summoner) {
     const census = monster_census(false);
 
     if (!rn2(10) && Inhell()) {
-        /* C:608-609 — this might summon a demon prince or lord.  msummon() has
-         * no js body (js/sit.js:223 is an empty stub); surface rather than
-         * silently return a wrong count. */
-        throw new Error('nasty: the Inhell msummon() arm is unported (wizard.c:609)');
+        /* C:608-609 — this might summon a demon prince or lord */
+        count = await msummon(null); /* summons like WoY */
     } else {
         count = 0;
         const sdata = summoner ? MONS_ROWS[(summoner.mnum ?? summoner.mndx ?? 0) | 0] : null;
@@ -15600,8 +15743,9 @@ export function mfndpos(mon, data, flag) {
     let lavaok = (m_in_air(mon) || likes_lava_mv(mndx));
     if (mndx === PM_FLOATING_EYE) lavaok = false; /* prefers to avoid heat */
     let thrudoor = ((flag & (ALLOW_WALL | BUSTDOOR)) !== 0);
-    // poisongas_ok/in_poisongas: computing these faithfully is moot — see
-    // the file-header note above (visible_region_at always returns null).
+    // C mon.c:2172-2174 — a damaging (poison) cloud makes the avoidance live.
+    const poisongas_ok = (m_poisongas_ok(mon) === M_POISONGAS_OK);
+    const in_poisongas = poisoncloud_at(x, y);
 
     let rockok = false, treeok = false;
     if (flag & ALLOW_DIG) {
@@ -15686,7 +15830,11 @@ export function mfndpos(mon, data, flag) {
                     continue;
                 }
 
-                /* avoid poison gas? — moot, see file-header note. */
+                /* avoid poison gas? (mon.c:2240-2243) */
+                if (!poisongas_ok && !in_poisongas && poisoncloud_at(nx, ny)) {
+                    traceReject(nx, ny, 'poisongas');
+                    continue;
+                }
 
                 /* first diagonal checks (tight squeezes handled below) */
                 if (nx !== x && ny !== y
@@ -15741,7 +15889,9 @@ export function mfndpos(mon, data, flag) {
                     } else {
                         const mtmp2 = m_at(nx, ny);
                         if (mtmp2) {
-                            let mmflag = flag;
+                            /* C mon.c:2287-2305.  mm_aggression_mk / mm_displacement_mk above are
+                             * the ports of mon.c:2385-2468. */
+                            let mmflag = flag | mm_aggression_mk(mon, mtmp2);
                             if (mmflag & ALLOW_M) {
                                 data.info[cnt] |= ALLOW_M;
                                 if (mtmp2.mtame) {

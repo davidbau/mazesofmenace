@@ -859,9 +859,11 @@ async function throne_sit_effect() {
                 `Thine audience hath been summoned, ${game.flags?.female ? 'Dame' : 'Sire'}!`,
             );
             const { courtmon } = await import('./mklev.js');
-            const { makemon } = await import('./makemon.js');
+            const { makemon, makemon_appear_msg } = await import('./makemon.js');
             while (cnt--) {
-                makemon(courtmon(), tx, ty, NO_MM_FLAGS);
+                const courtier = makemon(courtmon(), tx, ty, NO_MM_FLAGS);
+                // C: the appear Norep is inside makemon (:1476–1500).
+                if (courtier) await makemon_appear_msg(courtier, courtier.mx | 0, courtier.my | 0, NO_MM_FLAGS);
             }
             break;
         }

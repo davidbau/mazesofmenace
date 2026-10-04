@@ -1156,8 +1156,7 @@ async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
         && obj.oclass === WEAPON_CLASS
         && (bimanual(obj)
             || (Role_if(PM_SAMURAI) && obj.otyp === KATANA && !u.uarms))
-        && (((ctx.wtype = (u.twoweap
-            ? P_TWO_WEAPON_COMBAT : weapon_type(u.uwep))) | 0) !== P_NONE
+        && (((ctx.wtype = uwep_skill_type()) | 0) !== P_NONE // C `:971`
             && P_SKILL(ctx.wtype) >= P_SKILLED)
         && (((ctx.monwep = MON_WEP(mon)) || null) !== null
             && !is_flimsy(ctx.monwep)

@@ -47,7 +47,7 @@ import { minimal_monnam, mon_nam, x_monnam } from './do_name.js';
 import { strsubst, strkitten, depth, mungspaces, strncmpi, upstart, dist2 } from './hacklib.js';
 import { getpos } from './getpos.js';
 import { usmellmon, makemon, rndmonst } from './makemon.js';
-import { check_invent_gold, select_menu_pick_none } from './invent.js';
+import { check_invent_gold, select_menu_pick_none, encumber_msg } from './invent.js';
 /* C worn.c check_wornmask_slots — hoisted async fn, called only from
    you_sanity_check (imports.mjs --can wizcmds.js worn.js cycle-safe
    once the export is a function declaration). */
@@ -342,9 +342,10 @@ export async function wiz_intrinsic() {
  * C ref: wizcmds.c wiz_level_change — #levelchange
  * Drain via losexp("#levelchange") then u.ulevelmax = u.ulevel (D-1203).
  * Raise via pluslvl(FALSE) (D-0061).
- * Named omissions: +N sscanf; livelog/SoundAchievement inside losexp;
- * Upolyd mh strip; level-1 done(DIED) (caller returns at ulevel==1;
- * override also nulls drainer so never fatal).
+ * sscanf accepts a leading +/- like C `%d`. Named omissions:
+ * livelog/SoundAchievement inside losexp; Upolyd mh strip; level-1
+ * done(DIED) (caller returns at ulevel==1; override also nulls
+ * drainer so never fatal).
  */
 export async function wiz_level_change() {
     const u = game.u || (game.u = {});
@@ -352,7 +353,7 @@ export async function wiz_level_change() {
     // C `:454–458` mungspaces then sscanf("%d%c"); ESC/empty → ret=0 → Never_mind.
     let newlevel = 0;
     let ret = 0;
-    if (buf && buf !== '\x1b' && /^-?\d+$/.test(buf)) {
+    if (buf && buf !== '\x1b' && /^[+-]?\d+$/.test(buf)) {
         newlevel = parseInt(buf, 10);
         if (Number.isFinite(newlevel)) ret = 1;
     }
@@ -392,14 +393,14 @@ export async function wiz_level_change() {
  */
 export async function wiz_wish() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
-        await pline("You can't do that.");
+        await pline(UNAVAILCMD, ecname_from_fn('wizwish')); // C `:254`
         return ECMD_OK;
     }
     const save_verbose = game.flags.verbose;
     game.flags.verbose = false;
     await makewish();
     game.flags.verbose = save_verbose;
-    // encumber_msg deferred
+    await encumber_msg(); // C `:251`
     return ECMD_OK;
 }
 
@@ -411,7 +412,7 @@ export async function wiz_wish() {
  */
 export async function wiz_genesis() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
-        await pline("You can't do that.");
+        await pline(UNAVAILCMD, ecname_from_fn('wizgenesis')); // C `:289`
         return ECMD_OK;
     }
     // C: iflags.debug_mongen = FALSE around create_particular
@@ -428,7 +429,7 @@ export async function wiz_genesis() {
  */
 export async function wiz_level_tele() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
-        await pline("You can't do that.");
+        await pline(UNAVAILCMD, ecname_from_fn('wizlevelport')); // C `:301`
         return ECMD_OK;
     }
     await level_tele();
@@ -614,17 +615,20 @@ export async function wiz_fuzzer() {
 /**
  * C ref: wizcmds.c wiz_map — #wizmap / ^F
  * Reveal traps + engravings then do_mapping (exercise A_WIS). ECMD_OK.
- * Named omissions: notice_mon_off/on; full engraving_to_glyph; unavailcmd
- * ecname_from_fn wording (generic "You can't do that.").
+ * notice_mon_off/on bracket the mapping (`:182`/`:192`); else
+ * unavailcmd (`:195`).
+ * Named omission: full engraving_to_glyph.
  */
 export async function wiz_map() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
-        await pline("You can't do that.");
+        await pline(UNAVAILCMD, ecname_from_fn('wizmap')); // C `:195`
         return ECMD_OK;
     }
     const { map_trap, map_engraving } = await import('./display.js');
     const { do_mapping } = await import('./detect.js');
+    const { notice_mon_off, notice_mon_on } = await import('./hack.js');
     const u = game.u || (game.u = {});
+    notice_mon_off(); // C `:182`
     // C: notice_mon_off(); save/clear HConfusion + HHallucination
     const save_Hconf = u.HConfusion | 0;
     const save_Hhallu = u.HHallucination | 0;
@@ -655,6 +659,7 @@ export async function wiz_map() {
         map_engraving(ep, true);
     }
     await do_mapping();
+    notice_mon_on(); // C `:192`
     // C: notice_mon_on(); restore conf/hallu
     u.HConfusion = save_Hconf;
     u.HHallucination = save_Hhallu;
@@ -923,11 +928,11 @@ export async function makemap_prepost(pre, wiztower) {
 /**
  * C ref: wizcmds.c wiz_makemap — #wizmakemap recreate current level.
  * wizard → In_W_tower snapshot, makemap_prepost(TRUE), mklev,
- * makemap_prepost(FALSE). Else unavailcmd (generic "You can't do that.").
+ * makemap_prepost(FALSE). Else unavailcmd `ecname_from_fn` (`:1064`).
  */
 export async function wiz_makemap() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
-        await pline("You can't do that.");
+        await pline(UNAVAILCMD, ecname_from_fn('wizmakemap')); // C `:1064`
         return ECMD_OK;
     }
     const { In_W_tower } = await import('./dungeon.js');

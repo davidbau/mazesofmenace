@@ -429,9 +429,12 @@ function _levlAt(x, y) {
     return null;
 }
 
-// C ref: zap.h BZ_OFS_AD/BZ_M_SPELL — local copies, same as js/mcastu.js's.
-function _BZ_OFS_AD(adtyp) { return adtyp - 1; }
-function _BZ_M_SPELL(ofs) { return ofs + 12; }
+// C ref: hack.h:1476,1486 BZ_OFS_AD(adtyp) = abs(adtyp - AD_MAGM) % 10;
+// BZ_M_SPELL(bztyp) = -10 - bztyp (monster spells are NEGATIVE types, so
+// buzz() treats the ray as monster-fired and `type < 0` returns early when swallowed).
+const AD_MAGM = 1; /* monattk.h */
+function _BZ_OFS_AD(adtyp) { return Math.abs(adtyp - AD_MAGM) % 10; }
+function _BZ_M_SPELL(ofs) { return -10 - ofs; }
 const AD_ELEC = 6; /* monattk.h */
 
 /* C timeout.h incr_itimeout(&HDeaf, incr) — add to the TIMEOUT bits of the

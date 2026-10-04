@@ -150,21 +150,22 @@
 // potion peffect_enlightenment is D-1413;
 // dozap spe<0 dust useupall (backfire is D-1416);
 // wrest pline; check_capacity;
-// check_unpaid; update_inventory; shieldeff/monstunseesu; setworn
+// check_unpaid + update_inventory live (dozap); shieldeff/monstunseesu; setworn
 // EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/dragon
 // D-1353 (shared muse.c clone); mcastu ureflects named; create_polymon after poly_zapped;
 // do_osshock shop bill; invent poly_obj worn remap is D-1510;
 // poly_obj Has_contents → shk.c delete_contents D-1770
 // (trap.js delete_contents_chest / mklev.js create_object_delete_contents named);
 // poly-arm boxlock reset_pick is D-1483; bhito polypiles/livelog is D-2807;
-// debugpline pulsate stays named (no JS debugpline);
-// blank_novel / corpse revive→rot timer;
-// cant_finish_meal; animate_statue montraits wire; defended(); resists_magm
-// body; ignite_items body; burnarmor worn erode ported (D-0741);
-// acid_damage/erode_armor; death-breath disintegrate_arm;
+// debugpline pulsate compiles empty (#ifndef DEBUG, lint.h:67);
+// blank_novel / corpse revive→rot timer ported;
+// cant_finish_meal; animate_statue montraits wire; defended() + resists_magm
+// live (zhitm/bhitm import the mondata exports); ignite_items body;
+// burnarmor worn erode ported (D-0741);
+// acid_damage/erode_armor live (zhitm); death-breath disintegrate_arm;
 // potionbreathe invis flash (D-0741); inventory_resistance_check;
 // ugolemeffects; burn_away_slime;
-// spell_damage_bonus zhitm / Knight questart double; Rider/Death specials;
+// spell_damage_bonus zhitm + Knight questart double live; Rider/Death specials;
 // disintegrate_mon; fire completelyburns XKILL_NOCORPSE; mon_reflects;
 // flash_hits WAN_LIGHT bhitm (D-0979); openholding/openfalling +
 // Punished/boxlock_invent/SPE_KNOCK hurtle/saddle (D-0981);
@@ -240,9 +241,10 @@ import {
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn, boulder_hits_pool } from './do.js';
-import { doname, xname, yname, Yname2, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural, simple_typename } from './objnam.js';
+import { doname, xname, yname, Yname2, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural, simple_typename, Tobjnam } from './objnam.js';
 import { uhim, uhis } from './roles.js';
-import { str_start_is, upstart, mungspaces, strncmpi } from './hacklib.js';
+import { str_start_is, upstart, mungspaces, strncmpi, strsubst } from './hacklib.js';
+import { death_inflicted_by } from './mcastu.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_crumbling_sound, se_soft_crackling } from './generated/seffects_data.js';
 import { fix_wall_spines } from './mklev.js';
@@ -253,7 +255,7 @@ import { findit, cvt_sdoor_to_door, show_map_spot } from './detect.js';
 import {
     fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
     is_lava, is_moat, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
-    SURFACE_AT, You_hear, long_to_any, set_uinwater, check_capacity,
+    SURFACE_AT, You_hear, long_to_any, obj_to_any, set_uinwater, check_capacity,
     test_move,
 } from './hack.js';
 import {
@@ -261,6 +263,7 @@ import {
     MR_ACID, M1_SEE_INVIS, is_undead, is_were, is_vampshifter, monsterNames, mons,
     G_UNIQ, G_NOCORPSE, is_rider, is_swimmer, mindless, MZ_MEDIUM, is_whirly,
     hides_under, is_golem, is_mplayer, vegetarian, carnivorous, NUMMONS, dmgtype, eyecount,
+    breathless, haseyes,
 } from './monsters.js';
 import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown, minliquid, dealloc_monst, unique_corpstat } from './mon.js';
 import { find_mac, monkilled, mlifesaver, shade_miss, resists_sleep_slee, resists_blnd_mm, erode_armor, slept_monst } from './mhitm.js';
@@ -272,12 +275,12 @@ import {
 import { ok_to_quest } from './quest.js';
 import { more_experienced, losexp, newexplevel } from './exper.js';
 import { obj_resists, is_quest_artifact } from './dogmove.js';
-import { zap_dig, fracture_rock, break_statue, bury_objs, unearth_objs, draft_message } from './dig.js';
+import { zap_dig, fracture_rock, fill_pit, break_statue, bury_objs, unearth_objs, draft_message } from './dig.js';
 import {
     killed, xkilled, flash_hits_mon, m_is_steadfast, that_is_a_mimic,
     disguised_as_mon, disguised_as_non_mon,
 } from './uhitm.js';
-import { mon_nam, Monnam, a_monnam, noit_Monnam, noname_monnam, type_is_pname, christen_monst, hliquid, Hallucination, rndmonnam, free_oname, Amonnam, s_suffix } from './do_name.js';
+import { mon_nam, Monnam, a_monnam, noit_Monnam, noname_monnam, type_is_pname, christen_monst, hliquid, Hallucination, rndmonnam, free_oname, Amonnam, s_suffix, hcolor } from './do_name.js';
 import { rnd_hallublast, m_useup } from './mthrowu.js';
 import { finish_losehp_done, done } from './end.js';
 import {
@@ -302,7 +305,7 @@ import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv,
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac, addinv_core1, addinv_core2 } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
-import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents, addtobill, inside_shop, shkcatch, inhishop, contained_cost, make_angry_shk } from './shk.js';
+import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents, addtobill, inside_shop, shkcatch, inhishop, contained_cost, make_angry_shk, check_unpaid } from './shk.js';
 import { Shknam } from './shknam.js';
 import { dryup } from './fountain.js';
 import { explode, completelyburns } from './explode.js';
@@ -321,7 +324,7 @@ import {
     mkobj, mksobj, delobj, delobj_core, objects_at, sobj_at, replace_object, rnd_class, weight, splitobj, container_weight,
     corpse_revive_type,
     oc_merge_of, uncurse, unbless, attach_egg_hatch_timeout, obj_extract_self,
-    eaten_stat, start_timer, spot_stop_timers, spot_time_left, obj_stop_timers,
+    eaten_stat, start_timer, stop_timer, peek_timer, spot_stop_timers, spot_time_left, obj_stop_timers,
     obj_ice_effects, place_object, recreate_pile_at, stackobj, mergable, merged, set_corpsenm, kill_egg,
     get_mtraits, free_omonst, free_omid, is_metallic, is_crackable,
     mksobj_at, is_flammable, is_rottable, is_rustprone, is_corrodeable,
@@ -360,6 +363,7 @@ import {
     def_warnsyms, S_flashbeam,
     W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_ART, W_ARTI,
     W_WEP, W_SWAPWEP, W_QUIVER, W_WEAPONS,
+    W_ARMS, W_ARM, W_ARMC, W_ARMU,
     REFLECTING, ANTIMAGIC, SHOCK_RES, POISON_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_ACID, LEVITATION, FLYING,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
@@ -380,11 +384,11 @@ import {
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
-    FM_FMON,
+    FM_FMON, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT, thats_enough_tries,
 } from './const.js';
-import { monstseesu, monstunseesu, defended, Resists_Elem } from './mondata.js';
+import { monstseesu, monstunseesu, defended, Resists_Elem, resists_blnd_by_arti, resists_magm } from './mondata.js';
 import { spell_skilltype } from './spell.js';
-import { P_SKILL } from './weapon.js';
+import { P_SKILL, MON_WEP } from './weapon.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -569,6 +573,7 @@ const AD_FIRE = 2;
 const AD_SLEE = 4; // C ref: monattk.h AD_SLEE (sleep; bhitm WAN_SLEEP gate)
 const AD_DISN = 5; // C ref: monattk.h AD_DISN (disintegration)
 const AD_ELEC = 6;
+const AD_DRST = 7; // C ref: monattk.h AD_DRST (drains str, poison)
 const AD_ACID = 8; // C ref: monattk.h AD_ACID (acid damage)
 const AD_DRLI = 15;
 const DMG_DESTROY_SCALE = 5;
@@ -855,10 +860,10 @@ function BZ_U_SPELL(bztyp) {
 /**
  * C ref: zap.c flash_types — wand 0..9 / spell 10..19 / breath 20..29.
  * Empty slots match C. C: flash_str(typ, nohallu) — Hallucination &&
- * !nohallu → "blast of <rnd_hallublast()>" (core rn2). Only callers that
- * pass an explicit `false` get the hallu arm; the one-arg dobuzz/zhitu
- * sites keep the plain name (their eager-evaluation order vs C's
- * message guards is unaudited — named in c-js-map zap.c).
+ * !nohallu → "blast of <rnd_hallublast()>" (core rn2). Every dobuzz
+ * hit/miss/bounce site passes explicit `false` like C, each inside
+ * the same message guard (C-eager order); the zhitu killer and
+ * ubreatheu keep TRUE like C (`:4980`, `:3021`).
  */
 export function flash_str(fltyp, nohallu = true) {
     if (Hallucination() && nohallu === false) {
@@ -1518,9 +1523,6 @@ export function resists_elec(mon) { return mon_resists_bit(mon, MR_ELEC); }
 export function resists_poison(mon) { return Resists_Elem(mon, POISON_RES); }
 function resists_acid(mon) { return mon_resists_bit(mon, MR_ACID); }
 function resists_disint(mon) { return mon_resists_bit(mon, MR_DISINT); }
-/** C: resists_magm — Antimagic-style; deferred → false (no shield RNG). */
-function resists_magm(_mon) { return false; }
-
 /** C ref: zap.c is_hero_spell */
 function is_hero_spell(type) {
     return (type | 0) >= ZT_SPELL_0 && (type | 0) < 20;
@@ -1628,15 +1630,20 @@ async function recharge_elec_ring(obj) {
 }
 
 /**
- * C ref: zap.c maybe_destroy_item — AD_COLD potions + AD_FIRE potion/scroll/
- * spbook + AD_ELEC ring/wand (D-1368). Shock_resistance via
- * uprops[SHOCK_RES] (D-1371). Named omissions:
- * inventory_resistance_check; Book-of-Dead glow; mult forms beyond 1-of-1.
+ * C ref: zap.c maybe_destroy_item `:5798–5952` — AD_COLD potions +
+ * AD_FIRE potion/scroll/spbook/food + AD_ELEC ring/wand (D-1368).
+ * Shock_resistance via uprops[SHOCK_RES] (D-1371). Live: worn-ward
+ * early-out (`:5816`), monster `resists_fire` xresist (`:5826–5828`),
+ * Book-of-Dead glow (`:5831–5835`), potionbreathe nose/eyes gate
+ * (`:5914–5916`), exploding-glob killer (`:5945–5946`).
  */
 async function maybe_destroy_item(carrier, obj, dmgtyp) {
     if (!obj) return 0;
     const u_carry = is_youmonst_carrier(carrier);
-    // inventory_resistance_check deferred → never early-out
+    const vis = !u_carry && canseemon(carrier); // C `:5808`
+    /* C `:5816` — external worn item protects inventory. */
+    if (u_carry && inventory_resistance_check(dmgtyp))
+        return 0;
 
     let quan = 0;
     let dmg = 0;
@@ -1650,11 +1657,16 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
         dindx = 0;
         dmg = rnd(4);
     } else if (dmgtyp === AD_FIRE) {
-        xresist = obj.oclass !== POTION_CLASS
+        xresist = obj.oclass !== POTION_CLASS // C `:5826–5828`
             && (obj.otyp | 0) !== GLOB_OF_GREEN_SLIME
-            && (u_carry ? Fire_resistance() : false);
-        if ((obj.otyp | 0) === SPE_BOOK_OF_THE_DEAD) {
-            // glow pline deferred; item remains
+            && (u_carry ? Fire_resistance() : resists_fire(carrier));
+        if ((obj.otyp | 0) === SPE_BOOK_OF_THE_DEAD) { // C `:5830–5838`
+            skip = true;
+            if (u_carry ? !Blind() : vis) {
+                await pline(`${The(u_carry ? xname(obj)
+                    : distant_name(obj, xname))} glows a strange ${
+                    hcolor('dark red')}, but remains intact.`);
+            }
             return 0;
         }
         quan = obj.quan | 0;
@@ -1710,7 +1722,6 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
         if (!cnt) return 0;
 
         // C: pline("%s%s %s!", mult, Yname2/yname, destroy_strings[dindx][cnt>1])
-        const vis = !u_carry && canseemon(carrier);
         if (u_carry || vis) {
             const mult = (cnt === 1)
                 ? ((quan === 1) ? '' : 'One of ')
@@ -1723,9 +1734,11 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
         }
 
         if (u_carry) {
-            // C: potionbreathe before useup (fire/elec potions, not cold)
-            if (osym === POTION_CLASS && dmgtyp !== AD_COLD) {
-                // breathless/haseyes deferred — wizard/human always qualifies
+            // C `:5914–5916` — potionbreathe before useup (fire/elec
+            // potions, not cold; breathers or the eyed smell it).
+            if (osym === POTION_CLASS && dmgtyp !== AD_COLD
+                && (!breathless(game.youmonst?.data)
+                    || haseyes(game.youmonst?.data))) {
                 await potionbreathe(obj);
             }
             if (obj.owornmask) {
@@ -1747,9 +1760,12 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
             if (xresist) {
                 await pline("You aren't hurt!");
             } else {
-                const how = DESTROY_STRINGS[dindx]?.[2] || 'destroyed item';
+                let how = DESTROY_STRINGS[dindx]?.[2] || 'destroyed item';
                 const one = cnt === 1;
-                losehp(dmg, one ? how : `${how}s`, one ? KILLED_BY_AN : KILLED_BY);
+                if (dmgtyp === AD_FIRE && osym === FOOD_CLASS) // C `:5945`
+                    how = 'exploding glob of slime';
+                losehp(dmg, one ? how : makeplural(how),
+                       one ? KILLED_BY_AN : KILLED_BY);
                 exercise(A_STR, false);
                 // C losehp → urgent_pline + done noreturn
                 if (game._losehp_needs_done || game.program_state?.gameover) {
@@ -1885,13 +1901,14 @@ export async function resist(mtmp, oclass, damage, tell) {
 }
 
 /**
- * C ref: zap.c zhitm — wand/spell/breath hit on monster.
- * Envelope: ZT_MAGIC_MISSILE..ZT_ACID dice + cold/fire/elec destroy_items
- * + resist halve + ZT_LIGHTNING spell_damage_bonus + rnd(50) blind
- * (D-2127). Named omissions: defended(); resists_magm body;
- * MAGIC_MISSILE/FIRE/COLD spell_damage_bonus (helper lives D-1378);
- * burnarmor/ignite; acid_damage/erode; death-breath
- * armor strip; Rider/Death; Knight questart double; shieldeff.
+ * C ref: zap.c zhitm `:4238–4398` — wand/spell/breath hit on monster.
+ * Every arm in C order: MM/fire/cold/lightning `spell_damage_bonus`
+ * for hero spells, `defended()` OR-gates, death-breath armor strip via
+ * ootmp, PM_DEATH heal, vampshifter immunity, acid erode gates,
+ * Knight questart double, resist halve, `shieldeff` tail
+ * (`debugpline3` compiles empty — `#ifndef DEBUG`, lint.h:67).
+ * The SLEEP arm keeps its ported shape (sleep_monst_zap + resist gate).
+ * Caller kills on fatal damage.
  * @returns {Promise<number>} damage applied (MAGIC_COOKIE = disintegrate)
  */
 export async function zhitm(mon, type, nd, ootmp) {
@@ -1899,28 +1916,29 @@ export async function zhitm(mon, type, nd, ootmp) {
     let orig_dmg = 0;
     const damgtype = zaptype(type) % 10;
     let sho_shieldeff = false;
-    const spellcaster = is_hero_spell(type);
-    if (ootmp) ootmp.otmp = null;
+    const spellcaster = is_hero_spell(type); // C `:4247` maybe get a bonus!
+    if (ootmp) ootmp.otmp = null; // C `:4249`
 
     switch (damgtype) {
     case ZT_MAGIC_MISSILE:
-        if (resists_magm(mon) /* || defended(mon, AD_MAGM) */) {
+        if (resists_magm(mon) || defended(mon, AD_MAGM)) { // C `:4252`
             sho_shieldeff = true;
             break;
         }
         tmp = d(nd, 6);
-        // zhitm spell_damage_bonus still named (helper D-1378)
-        void spellcaster;
+        if (spellcaster)
+            tmp = spell_damage_bonus(tmp); // C `:4257`
         break;
     case ZT_FIRE:
-        if (resists_fire(mon) /* || defended(mon, AD_FIRE) */) {
+        if (resists_fire(mon) || defended(mon, AD_FIRE)) { // C `:4261`
             sho_shieldeff = true;
             break;
         }
         tmp = d(nd, 6);
+        if (spellcaster)
+            tmp = spell_damage_bonus(tmp); // C `:4266`
         orig_dmg = tmp;
         if (resists_cold(mon)) tmp += 7;
-        // C: burnarmor → maybe destroy_items+ignite_items
         if (await burnarmor(mon)) {
             if (!rn2(3)) {
                 tmp += await destroy_items(mon, AD_FIRE, orig_dmg);
@@ -1929,11 +1947,13 @@ export async function zhitm(mon, type, nd, ootmp) {
         }
         break;
     case ZT_COLD:
-        if (resists_cold(mon) /* || defended(mon, AD_COLD) */) {
+        if (resists_cold(mon) || defended(mon, AD_COLD)) { // C `:4279`
             sho_shieldeff = true;
             break;
         }
         tmp = d(nd, 6);
+        if (spellcaster)
+            tmp = spell_damage_bonus(tmp); // C `:4284`
         orig_dmg = tmp;
         if (resists_fire(mon)) tmp += d(nd, 3);
         if (!rn2(3)) tmp += await destroy_items(mon, AD_COLD, orig_dmg);
@@ -1953,23 +1973,46 @@ export async function zhitm(mon, type, nd, ootmp) {
         break;
     }
     case ZT_DEATH: {
-        // breath disintegration arms deferred — wand death only
         const absType = Math.abs(type | 0);
-        if (absType !== (20 + ZT_DEATH)) { // ZT_BREATH(ZT_DEATH)
-            if (nonliving(mon.data) || is_demon(mon.data)
-                || resists_magm(mon)) {
+        if (absType !== (20 + ZT_DEATH)) { // C `:4299` ZT_BREATH(ZT_DEATH)
+            /* C `:4301–4307` — Death drinks death rays. */
+            if ((mon.data?.mndx | 0) === PM_DEATH) {
+                healmon(mon, Math.trunc((mon.mhpmax | 0) * 3 / 2),
+                        Math.trunc((mon.mhpmax | 0) / 2));
+                if ((mon.mhpmax | 0) >= MAGIC_COOKIE)
+                    mon.mhpmax = MAGIC_COOKIE - 1;
+                tmp = 0;
+                break;
+            }
+            if (nonliving(mon.data) || is_demon(mon.data) // C `:4308–4312`
+                || is_vampshifter(mon) || resists_magm(mon)) {
                 sho_shieldeff = true;
                 break;
             }
-            type = -1; // no saving throw
+            type = -1; // C `:4314` so they don't get saving throws
         } else {
-            if (resists_disint(mon)) {
+            let otmp2;
+            if (resists_disint(mon) || defended(mon, AD_DISN)) { // C `:4320`
                 sho_shieldeff = true;
+            } else if (((mon.misc_worn_check | 0) & W_ARMS) !== 0) {
+                /* C `:4323–4325` destroy shield; victim survives */
+                if (ootmp) ootmp.otmp = which_armor(mon, W_ARMS);
+            } else if (((mon.misc_worn_check | 0) & W_ARM) !== 0) {
+                /* C `:4326–4330` destroy suit, also cloak if present */
+                if (ootmp) ootmp.otmp = which_armor(mon, W_ARM);
+                if ((otmp2 = which_armor(mon, W_ARMC)) != null)
+                    m_useup(mon, otmp2);
             } else {
+                /* C `:4331–4338` no suit, victim dies; destroy cloak
+                   and shirt now in case target gets life-saved */
                 tmp = MAGIC_COOKIE;
+                if ((otmp2 = which_armor(mon, W_ARMC)) != null)
+                    m_useup(mon, otmp2);
+                if ((otmp2 = which_armor(mon, W_ARMU)) != null)
+                    m_useup(mon, otmp2);
             }
-            type = -1;
-            break;
+            type = -1; // C `:4340` no saving throw wanted
+            break;     // not ordinary damage
         }
         tmp = (mon.mhp | 0) + 1;
         break;
@@ -1980,7 +2023,7 @@ export async function zhitm(mon, type, nd, ootmp) {
         if (spellcaster)
             tmp = spell_damage_bonus(tmp);
         orig_dmg = tmp;
-        if (resists_elec(mon) /* || defended(mon, AD_ELEC) */) {
+        if (resists_elec(mon) || defended(mon, AD_ELEC)) { // C `:4348`
             sho_shieldeff = true;
             tmp = 0;
             /* can still blind the monster */
@@ -2000,35 +2043,38 @@ export async function zhitm(mon, type, nd, ootmp) {
         if (!rn2(3)) tmp += await destroy_items(mon, AD_ELEC, orig_dmg);
         break;
     case ZT_POISON_GAS:
-        // C zap.c:4367 also ORs defended(mon, AD_DRST). That call stays
-        // named: Resists_Elem covers wielded/worn/carried poison, not
-        // the adult-dragon suit arm inside defended().
-        if (resists_poison(mon)) {
+        if (resists_poison(mon) || defended(mon, AD_DRST)) { // C `:4367`
             sho_shieldeff = true;
             break;
         }
         tmp = d(nd, 6);
         break;
     case ZT_ACID:
-        if (resists_acid(mon) /* || defended(mon, AD_ACID) */) {
+        if (resists_acid(mon) || defended(mon, AD_ACID)) { // C `:4375`
             sho_shieldeff = true;
             break;
         }
         tmp = d(nd, 6);
-        // acid_damage / erode_armor rn2(6) deferred
+        if (!rn2(6)) // C `:4379–4380`
+            await acid_damage(MON_WEP(mon));
+        if (!rn2(6)) // C `:4381–4382`
+            await erode_armor(mon, ERODE_CORRODE);
         break;
     default:
         break;
     }
 
-    // shieldeff deferred
-    void sho_shieldeff;
-    // Knight questart double deferred
+    if (sho_shieldeff) // C `:4385–4386`
+        await shieldeff(mon.mx | 0, mon.my | 0);
+    if (is_hero_spell(type) && Role_if(PM_KNIGHT) // C `:4387–4388`
+        && game.u?.uhave?.questart)
+        tmp *= 2;
     if (tmp > 0 && (type | 0) >= 0
         && await resist(mon, (type | 0) < ZT_SPELL_0 ? WAND_CLASS : 0, 0, NOTELL)) {
         tmp = Math.trunc(tmp / 2);
     }
     if (tmp < 0) tmp = 0;
+    /* C `debugpline3` (`:4394–4395`) compiles empty (`#ifndef DEBUG`). */
     mon.mhp = (mon.mhp | 0) - tmp;
     return tmp;
 }
@@ -2042,10 +2088,10 @@ export async function zhitm(mon, type, nd, ootmp) {
  * arms, ugrave_arise breath conditional, done(DIED) (C :4503–4509);
  * POISON_GAS poisoned; ACID hliquid + erosion gates (D-2232);
  * killer verb + "by self" arm, Half_spell_damage halve, losehp (D-0737).
- * Named omissions: death_inflicted_by monster-name render + strsubst
- * (C :4574–4577; mcastu-local, zap↔mcastu cycle) — with no buzzer C
- * keeps fltxt, kept. losehp keeps the `if (dam)` gate (C losehp(0)
- * moves no HP/killer/death; JS losehp writes botl/run state anyway).
+ * death_inflicted_by + "inflicted"→verb live (C :4574–4577; mcastu.js
+ * export, runtime call — same-SCC edge, no top-level read). losehp
+ * keeps the `if (dam)` gate (C losehp(0) moves no HP/killer/death;
+ * JS losehp writes botl/run state anyway).
  */
 async function zhitu(type, nd, fltxt, sx, sy) {
     let dam = 0;
@@ -2231,10 +2277,11 @@ async function zhitu(type, nd, fltxt, sx, sy) {
                 : 'imagined'; // should never happen
     let kbuf;
     if (type < 0 || (type === 0 && game._buzzer)) { // C :4572
-        /* C :4574–4577 — death_inflicted_by + "inflicted"→verb is a named
-           omission (mcastu-local, zap↔mcastu cycle); with no buzzer C
-           keeps fltxt (:4573), which is what we keep. */
-        kbuf = fltxt || 'ray';
+        /* C :4573–4577 — with no buzzer the killer keeps fltxt;
+           else the monster name renders and "inflicted"→verb. */
+        kbuf = death_inflicted_by(fltxt || 'ray', game._buzzer || null);
+        if (game._buzzer)
+            kbuf = strsubst(kbuf, 'inflicted', verb);
     } else {
         // C :4579–4582 — FIXME kept: "by herself" even on explicit self-target
         kbuf = `${fltxt || 'ray'} ${verb} by ${uhim()}self`;
@@ -2323,9 +2370,11 @@ async function disintegrate_mon(mon, type, fltxt) {
  * bhitpos save/restore (`:4819`/`:5035`). Hero-hit arm live: reflect
  * monstseesu+shieldeff (`:4972`/:4975), zhitu monstunseesu (`:4981`),
  * blind-miss tingles (`:4985–4986`), lightning flashburn (`:4988–4989`),
- * stop_occupation (`:4990`). Named omit: AD_MAGM..ACID explode combat
- * → explode.js (D-0973); flash_str nohallu args stay suppressed (C
- * FALSE = Hallu text; message-text-only, queued next).
+ * stop_occupation (`:4990`). Every `flash_str` hit/miss/bounce site
+ * passes FALSE like C (Hallu "blast of …"; each sits inside the same
+ * cansee/canseemon/Blind guard, so the hallu RNG draws in C order);
+ * the zhitu killer keeps TRUE (`:4980` suppresses hallucination).
+ * Explode combat internals live in explode.js (D-0973).
  */
 export async function dobuzz(
     type, nd, sx0, sy0, dx0, dy0, sayhit, saymiss, forcemiss,
@@ -2352,7 +2401,7 @@ export async function dobuzz(
                 game.u.uswallow = 0;
             } else {
                 await pline(
-                    `${The(flash_str(fltyp))} rips into ${mon_nam(swallower)}${exclam(tmp)}`,
+                    `${The(flash_str(fltyp, false))} rips into ${mon_nam(swallower)}${exclam(tmp)}`,
                 );
                 /* Using disintegration from the inside only makes a hole... */
                 if (tmp === MAGIC_COOKIE) swallower.mhp = 0;
@@ -2446,7 +2495,7 @@ export async function dobuzz(
                             // the reversal runs regardless
                             if (cansee(target.mx, target.my)) {
                                 await hit_zap(
-                                    flash_str(fltyp), target, exclam(0),
+                                    flash_str(fltyp, false), target, exclam(0),
                                 );
                                 await shieldeff(target.mx, target.my);
                                 await mon_reflects(
@@ -2468,7 +2517,7 @@ export async function dobuzz(
                                 // Rider: reintegrate + resurrect, beam ends
                                 if (canseemon(target)) {
                                     await hit_zap(
-                                        flash_str(fltyp), target, '.',
+                                        flash_str(fltyp, false), target, '.',
                                     );
                                     await pline(
                                         `${Monnam(target)} disintegrates.`,
@@ -2492,7 +2541,7 @@ export async function dobuzz(
                                 // C :4906–4911 — Death absorbs death, beam ends
                                 if (canseemon(target)) {
                                     await hit_zap(
-                                        flash_str(fltyp), target, '.',
+                                        flash_str(fltyp, false), target, '.',
                                     );
                                     await pline(
                                         `${Monnam(target)} absorbs the deadly ${
@@ -2509,7 +2558,7 @@ export async function dobuzz(
                             if (tmp === MAGIC_COOKIE) {
                                 // C `:4916–4918` — disintegration runs disintegrate_mon
                                 await disintegrate_mon(
-                                    target, type, flash_str(fltyp),
+                                    target, type, flash_str(fltyp, false),
                                 );
                             } else if ((target.mhp | 0) < 1) {
                                 // C `:4919–4931` — monster-cast → monkilled AD_RBRE;
@@ -2532,7 +2581,7 @@ export async function dobuzz(
                             } else if (!ootmp.otmp) {
                                 if (sayhit || canseemon(target)) {
                                     await hit_zap(
-                                        flash_str(fltyp), target, exclam(tmp),
+                                        flash_str(fltyp, false), target, exclam(tmp),
                                     );
                                 }
                                 // C :4942–4943 — a grabber put to sleep lets go
@@ -2567,7 +2616,7 @@ export async function dobuzz(
                     ) {
                         // C zap.c:4952–4955 — report the miss when asked
                         // or the target is visibly not a disguised non-mon.
-                        await miss_msg(flash_str(fltyp), target);
+                        await miss_msg(flash_str(fltyp, false), target);
                     }
                     return false;
                 };
@@ -2597,7 +2646,7 @@ export async function dobuzz(
                             // "%s hits you!", The(flash_str)) (D-1216)
                             await pline_dir(
                                 xytodir(-dx, -dy),
-                                `The ${flash_str(fltyp)} hits you!`,
+                                `The ${flash_str(fltyp, false)} hits you!`,
                             );
                             if (Reflecting()) {
                                 if (!Blind()) {
@@ -2628,7 +2677,7 @@ export async function dobuzz(
                             }
                         } else if (!Blind()) {
                             await pline(
-                                `The ${flash_str(fltyp)} whizzes by you!`,
+                                `The ${flash_str(fltyp, false)} whizzes by you!`,
                             );
                         } else if (damgtype === ZT_LIGHTNING) {
                             // C zap.c:4985–4986 — blind miss still tingles
@@ -2668,7 +2717,7 @@ export async function dobuzz(
                     || fireball) {
                     if (Is_airlevel(game.u?.uz)) {
                         await pline(
-                            `The ${flash_str(fltyp)} vanishes into the aether!`,
+                            `The ${flash_str(fltyp, false)} vanishes into the aether!`,
                         );
                         // C: type = ZT_WAND(ZT_FIRE); fireball flag stays
                         if (fireball) fireball_type = ZT_FIRE;
@@ -2678,7 +2727,7 @@ export async function dobuzz(
                         sy = lsy;
                         break;
                     } else {
-                        await pline(`The ${flash_str(fltyp)} bounces!`);
+                        await pline(`The ${flash_str(fltyp, false)} bounces!`);
                     }
                 }
                 if (!fireball) {
@@ -3557,8 +3606,8 @@ export async function unturn_you() {
 /**
  * C ref: zap.c cancel_item — strip charges/enchant + blank scrolls/books
  * + water potions; unbless/uncurse. Worn ABON / uhitinc/udaminc before
- * spe clear. `blank_novel` on SPE_NOVEL (C `:1330`). Named omit:
- * corpse revive→rot timer swap.
+ * spe clear. `blank_novel` on SPE_NOVEL (C `:1330`); troll-corpse
+ * REVIVE_MON→ROT_CORPSE timer swap (C `:1348–1357`, riders exempt).
  */
 async function cancel_item(obj) {
     if (!obj) return;
@@ -3683,7 +3732,17 @@ async function cancel_item(obj) {
             break;
         }
     }
-    // corpse revive→rot timer deferred
+    /* C `:1348–1357` — cancelling a troll's corpse prevents it from
+       reviving on its own (undead-turning revival unaffected). */
+    if ((obj.otyp | 0) === CORPSE && obj.timed
+        && !is_rider(mons(obj.corpsenm))) {
+        const a = obj_to_any(obj);
+        const timout = peek_timer(REVIVE_MON, a);
+        if (timout) {
+            stop_timer(REVIVE_MON, a);
+            start_timer(timout, TIMER_OBJECT, ROT_CORPSE, a);
+        }
+    }
     await unbless(obj);
     await uncurse(obj);
 }
@@ -4004,13 +4063,14 @@ async function mimic_hit_msg(mtmp, otyp) {
  * that_is_a_mimic(MIM_REVEAL|MIM_OMIT_WAIT); else wake FALSE),
  * SPE_HEALING/SPE_EXTRA_HEALING (D-1469; healmon + skilled/extra
  * mcureblindness; Pestilence resist TELL; wake FALSE).
- * Named omit: Knight questart double
- * on striking; mhurtle petrify/steed; that_is_a_mimic MIM_REVEAL
- * pline (box_or_door+seemimic wired);
+ * Live: striking Knight dbldam + shieldeff/Boing; poly shieldeff_mon;
+ * locking/opening that_is_a_mimic MIM_REVEAL plines;
+ * defended(AD_DRLI) via the resists_drli tail. mhurtle thinness lives
+ * on the dothrow.c:mhurtle row.
  * zap_steed WAN_MAKE_INVISIBLE is D-1473; zap_map engraving
  * WAN_MAKE_INVISIBLE is D-1476; zap_steed WAN_PROBING
  * is D-1443; bhito WAN_PROBING is
- * D-1445; SPE_DRAIN_LIFE drain_item is D-1453; worm see_wsegs; defended(AD_DRLI).
+ * D-1445; SPE_DRAIN_LIFE drain_item is D-1453; worm see_wsegs.
  * zapyourself WAN_LOCKING is D-1434; zapyourself WAN_PROBING is D-1435;
  * zapyourself SPE_DRAIN_LIFE is D-1446.
  * SPE_TURN_UNDEAD wand-duplicate weffects is D-1458
@@ -4044,22 +4104,22 @@ export async function bhitm(mtmp, otmp) {
     case SPE_FORCE_BOLT: {
         // C zap.c bhitm :189–217. zap_steed WAN_STRIKING/
         // SPE_FORCE_BOLT routes here (D-1474). resists_magm
-        // Boing (shieldeff named); else rnd(20)<10+find_mac
-        // then d(2,12) + SPE spell_damage_bonus (D-1388) +
-        // resist TELL; miss skips learn_it. Knight dbldam named.
+        // seemimic + shieldeff + Boing; else rnd(20)<10+find_mac
+        // then d(2,12) + Knight dbldam + SPE spell_damage_bonus
+        // (D-1388) + resist TELL; miss skips learn_it.
         reveal_invis = true;
         learn_it = cansee(bhitpos.x | 0, bhitpos.y | 0);
-        if (resists_magm(mtmp)) {
+        if (resists_magm(mtmp)) { // C `:195–200`
             // C zap.c:197 — no reveal when the mimicry already
             // appears as a monster.
             if (disguised_mimic && !disguised_as_mon(mtmp)) seemimic(mtmp);
+            await shieldeff(mtmp.mx | 0, mtmp.my | 0);
             await pline('Boing!');
         } else if (game.u?.uswallow || rnd(20) < 10 + find_mac(mtmp)) {
             if (disguised_mimic) seemimic(mtmp);
             let dmg = d(2, 12);
-            // Knight questart dbldam named
-            void Role_if;
-            void PM_KNIGHT;
+            if (Role_if(PM_KNIGHT) && game.u?.uhave?.questart) // C `:205–207`
+                dmg *= 2;
             if (otyp === SPE_FORCE_BOLT) {
                 /* C zap.c bhitm :208–209 */
                 dmg = spell_damage_bonus(dmg);
@@ -4150,8 +4210,8 @@ export async function bhitm(mtmp, otmp) {
         // post-poly PM_LONG_WORM flag (D-1598).
         if ((mtmp.data?.mndx | 0) === PM_LONG_WORM && has_mcorpsenm(mtmp)) {
             /* already flagged by this zap — skip further poly */
-        } else if (resists_magm(mtmp)) {
-            // shieldeff deferred
+        } else if (resists_magm(mtmp)) { // C `:274–278`
+            await shieldeff_mon(mtmp);
         } else if (!(await resist(mtmp, otmp.oclass, 0, NOTELL))) {
             const polyspot = otyp !== POT_POLYMORPH;
             const give_msg = !game.u?.Hallucination
@@ -4234,13 +4294,13 @@ export async function bhitm(mtmp, otmp) {
     case WAN_LOCKING:
     case SPE_WIZARD_LOCK: {
         // C zap.c bhitm :370–375 — box_or_door mimic then
-        // wake = closeholdingtrap(mtmp, &learn_it). that_is_a_mimic
-        // (MIM_REVEAL) named; seemimic is the C comment. Callee
+        // wake = closeholdingtrap(mtmp, &learn_it). Callee
         // trap.c :6210–6247. zap_updown LOCKING is D-1465.
         // zap_steed does not route locking to bhitm.
         // zapyourself WAN_LOCKING is D-1434.
         // SPE_WIZARD_LOCK wand-duplicate weffects is D-1452.
-        if (disguised_mimic && box_or_door(mtmp)) seemimic(mtmp);
+        if (disguised_mimic && box_or_door(mtmp))
+            await that_is_a_mimic(mtmp, MIM_REVEAL);
         const closed = await closeholdingtrap(mtmp);
         if (closed.noticed) learn_it = true;
         wake = closed.happened;
@@ -4340,11 +4400,9 @@ export async function bhitm(mtmp, otmp) {
     case WAN_OPENING:
     case SPE_KNOCK:
         // C zap.c bhitm :383–432. zap_steed WAN_OPENING/SPE_KNOCK
-        // routes here (D-1463). that_is_a_mimic box_or_door named.
-        if (disguised_mimic) {
-            // that_is_a_mimic box_or_door deferred → seemimic
-            seemimic(mtmp);
-        }
+        // routes here (D-1463).
+        if (disguised_mimic && box_or_door(mtmp)) // C `:384–386`
+            await that_is_a_mimic(mtmp, MIM_REVEAL);
         wake = false; // don't want immediate counterattack
         if (mtmp === game.u?.ustuck) {
             await release_hold();
@@ -4599,9 +4657,9 @@ export async function flashburn(duration, via_lightning) {
         }
         return true;
     }
-    // C: !via_lightning && resists_blnd_by_arti → shieldeff (named)
-    if (!via_lightning) {
-        /* shieldeff deferred */
+    if (!via_lightning && resists_blnd_by_arti(game.youmonst)) { // C `:3075–3078`
+        await shieldeff(game.u?.ux | 0, game.u?.uy | 0);
+        return true;
     }
     return false;
 }
@@ -5669,9 +5727,10 @@ export async function drain_item(obj, by_you) {
  * and the undead-turn corpse messages follow C. `res` stays 1 for
  * make-invisible and for an unknown effect (`impossible`); slow,
  * speed, nothing, and healing set `res` to 0.
- * Named: `debugpline` pulsate (no JS `debugpline`); `muse.c` `mbhit`
- * `destroy_drawbridge` (doorlock is D-1484; `fhito_loc` now wired).
- * `maybe_unhide_at` hero path stays named on that callee.
+ * (`debugpline1` pulsate `:2168` compiles empty — `#ifndef DEBUG`,
+ * lint.h:67.) Named: `muse.c` `mbhit` `destroy_drawbridge` (doorlock is
+ * D-1484; `fhito_loc` now wired). `maybe_unhide_at` hero path stays
+ * named on that callee.
  * @returns {Promise<number>} 1 if the object was affected
  */
 async function bhito(obj, otmp) {
@@ -5680,8 +5739,8 @@ async function bhito(obj, otmp) {
     if (obj === otmp) return 0;
 
     /* C zap.c:2133–2170 — skip while the turn's bypass set is live;
-     * otherwise clear a stray bit. debugpline1 "pulsate" is wizard-only
-     * and has no JS function. */
+     * otherwise clear a stray bit (`debugpline1` pulsate `:2168`
+     * compiles empty — `#ifndef DEBUG`, lint.h:67). */
     if (obj.bypass) {
         if (game.context?.bypasses) return 0;
         obj.bypass = 0;
@@ -6048,9 +6107,8 @@ async function create_polymon(obj, okind) {
  * otherwise operate on next_obj below the current statue), first=FALSE
  * when the pile head changed, hidingunder up/down skips in the walk,
  * maybe_unhide_at tail. Boulder restack (`:2487–2494`) calls
- * `recreate_pile_at`. Named omit: `fill_pit` (`trap.c:4018` is
- * `flooreffects`; the live `js/dig.js` body deletes the trap and
- * the boulder directly).
+ * `recreate_pile_at`; `:2499` calls the live `fill_pit` (`js/dig.js`,
+ * whose `flooreffects` settle body stays thin per its own ledger row).
  */
 export async function bhitpile(wand, fhito, tx, ty, zz) {
     let hitanything = 0;
@@ -6115,8 +6173,7 @@ export async function bhitpile(wand, fhito, tx, ty, zz) {
     }
     /* C :2495–2497 — pile might have been destroyed or dispersed. */
     if (hidingunder) await maybe_unhide_at(tx, ty);
-    /* C :2499 fill_pit — named: js/dig.js fill_pit does not call
-       flooreffects (trap.c:4018). */
+    fill_pit(tx, ty); // C `:2499`
     return hitanything;
 }
 
@@ -7256,9 +7313,10 @@ async function backfire(otmp) {
  * C ref: zap.c dozap / #zap ('z')
  * Self-zap losehp uses killer_xname + uhim (D-1345; C `:2661–2663`).
  * Cursed `rn2(WAND_BACKFIRE_CHANCE)==0` → backfire then exercise STR
- * (D-1416; C `:2647–2652`). Named omit: throwit `:1747` / pickup /
- * wield / invent / mthrowu / do_wear remaining killer_xname;
- * spe<0 dust useupall.
+ * (D-1416; C `:2647–2652`). `check_unpaid` (`:2642`), spe<0 dust
+ * `useupall` (`:2677–2679`) and `update_inventory` (`:2680–2681`) live.
+ * Named omit: throwit `:1747` / pickup / wield / invent / mthrowu /
+ * do_wear remaining killer_xname.
  * @returns {Promise<number>} 0 = cancel/no turn, 1 = took time
  */
 export async function dozap() {
@@ -7272,7 +7330,7 @@ export async function dozap() {
     const obj = await getobj_zap();
     if (!obj) return 0;
 
-    // check_unpaid deferred
+    await check_unpaid(obj); // C `:2642`
     const oc = game.objects?.[obj.otyp];
     const need_dir = oc && oc.oc_dir !== NODIR;
 
@@ -7308,10 +7366,12 @@ export async function dozap() {
         game.current_wand = null;
     }
 
-    if (obj && obj.spe < 0) {
-        // turn to dust / useupall deferred
+    if (obj && (obj.spe | 0) < 0) { // C `:2677–2679`
+        await pline(`${Tobjnam(obj, 'turn')} to dust.`);
+        useupall(obj); /* freeinv() -> update_inventory() */
+    } else {
+        update_inventory(); // C `:2680–2681` maybe used a charge
     }
-    // update_inventory deferred
     return 1;
 }
 
@@ -7543,11 +7603,14 @@ export async function wish_history_menu(buf) {
 }
 
 /**
- * C ref: zap.c makewish — prompt + readobjnam + hold_another_object.
- * Terrain wish via readobjnam_wish → wizterrainwish traps (D-1289) +
- * door/wall (D-1290) + secret corridor (D-1304) + switch_terrain
- * (D-1279). wishcmdassist help arm live; wish_history_add live (D-2873);
- * wish_history_menu returns the pick (caller assigns); wish livelog arms live (D-1892).
+ * C ref: zap.c makewish `:6313–6410` — prompt + readobjnam +
+ * hold_another_object. Terrain wish via readobjnam_wish → wizterrainwish
+ * traps (D-1289) + door/wall (D-1290) + secret corridor (D-1304) +
+ * switch_terrain (D-1279). wishcmdassist help arm live;
+ * wish_history_add live (D-2873); wish_history_menu returns the pick
+ * (caller assigns); wish livelog arms live (D-1892). Failed reads retry
+ * to MAXWISHTRY then fall back to `readobjnam(NULL)` (`:6363–6366`);
+ * term_gone sets resume_wish (`:6339–6343`, resumed in moveloop_core).
  */
 export async function makewish() {
     // C zap.c:6323 — makewish clears resume_wish at entry (zap.c:6341 sets
@@ -7559,12 +7622,14 @@ export async function makewish() {
     const oldwisharti = game.u?.uconduct?.wisharti | 0;
     let tries = 0;
     let buf = '';
+    let bufcpy = '';
+    let otmp = null;
 
     if (game.flags?.verbose) {
         await pline('You may wish for an object.');
     }
 
-    for (;;) {
+    for (;;) { // C `retry:`
         let prompt = 'For what do you wish';
         if (game.iflags?.cmdassist && tries > 0) {
             prompt += " (enter 'help' for assistance)";
@@ -7578,30 +7643,33 @@ export async function makewish() {
         } else {
             buf = mungspaces(await getlin(prompt)); // C `:6337`
         }
-        if (buf === '\x1b') {
-            buf = '';
-            break;
+        if (game.iflags?.term_gone) { // C `:6339–6343`
+            if (!game.iflags?.debug_fuzzer && game.context)
+                game.context.resume_wish = 1;
+            return;
         }
-        if (strncmpi(buf, 'help', -1) === 0) { // C `:6348` !strcmpi
+        if (buf === '\x1b') { // C `:6344–6346` — fall through to read ""
+            buf = '';
+        } else if (strncmpi(buf, 'help', -1) === 0) { // C `:6348` !strcmpi
             // C zap.c:6348-6351 — 'help' shows the assistance window,
             // clears the line for EDIT_GETLIN, and retries the prompt.
             await wishcmdassist(MAXWISHTRY - tries);
             buf = '';
             continue;
         }
-        break;
-    }
-
-    // C zap.c:6359 — history and the livelog quote the line before readobjnam.
-    const bufcpy = buf;
-    let otmp = await readobjnam_wish(buf, nothing);
-    if (!otmp) {
-        await pline('Nothing fitting that description exists in the game.');
-        if (++tries < MAXWISHTRY) {
-            // retry omitted for single-shot session wishes; fall through
+        // C zap.c:6359 — history and the livelog quote the line before readobjnam.
+        bufcpy = buf;
+        otmp = await readobjnam_wish(buf, nothing);
+        if (!otmp) {
+            await pline('Nothing fitting that description exists in the game.');
+            if (++tries < MAXWISHTRY)
+                continue; // C `:6363–6364` goto retry
+            await pline(thats_enough_tries); // C `:6365`
+            otmp = await readobjnam_wish(null, null); // C `:6366`
+            if (!otmp)
+                return; // for safety; should never happen
         }
-        // C: after MAXWISHTRY, random readobjnam(NULL) — deferred
-        return;
+        break;
     }
     if (otmp === nothing) {
         // C zap.c makewish: explicitly wished for "nothing" — retain

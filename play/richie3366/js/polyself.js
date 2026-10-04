@@ -2312,14 +2312,13 @@ export async function polyself(psflags = 0) {
 }
 
 /**
- * C ref: wizcmds.c wiz_polyself — #polyself
+ * C ref: wizcmds.c wiz_polyself `:1089–1094` — #polyself. C has no
+ * in-function gate: the WIZMODECMD dispatcher refuses non-wizards
+ * ("Unavailable command 'polyself'." — cmd.js gate), so this runs
+ * polyself unconditionally like the C body.
  * @returns {Promise<number>} ECMD_OK
  */
 export async function wiz_polyself() {
-    if (!(game.flags?.debug || game.flags?.wizard)) {
-        await pline("You can't do that.");
-        return ECMD_OK;
-    }
     await polyself(POLY_CONTROLLED);
     return ECMD_OK;
 }

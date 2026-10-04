@@ -60,6 +60,7 @@ import { flooreffects } from './do.js';
 import { artifact_light, begin_burn, end_burn } from './timeout.js';
 import { mbodypart } from './polyself.js';
 import { attacktype_fordmg } from './uhitm.js';
+import { can_touch_safely } from './monmove.js';
 import { acurr, A_STR, A_DEX } from './attrib.js';
 import { adj_lev } from './makemon.js';
 import { m_carrying, mon_has_shield } from './mon.js';
@@ -422,10 +423,8 @@ export function autoreturn_weapon(otmp) {
 /**
  * C ref: weapon.c oselect `:475–496` — first minvent match on otyp, skipping
  * non-cockatrice CORPSE/EGG (`corpsenm == NON_PM || !touch_petrifies`) and
- * anything `can_touch_safely` refuses.
- * Named omission: `can_touch_safely` (`mon.c:1957–1974` — corpse
- * petrify/rider + silver + `touch_artifact` deny; `js/monmove.js:230` stub
- * stays always-safe, so this port keeps the call site named, not wired).
+ * anything `can_touch_safely` refuses (`mon.c:1957–1974`, live export from
+ * `js/monmove.js` — corpse petrify/rider + silver + `touch_artifact_mon`).
  */
 function oselect(mtmp, type) {
     if (type < 0) return null;
@@ -437,6 +436,7 @@ function oselect(mtmp, type) {
                 || !touch_petrifies(mons(otmp.corpsenm)))) {
             continue;
         }
+        if (!can_touch_safely(mtmp, otmp)) continue; // C `:490–491`
         return otmp;
     }
     return null;
@@ -477,9 +477,8 @@ export function monmightthrowwep(obj) {
  * `game._propellor`; `&hands_obj` is the `hands_obj` sentinel, `0` is
  * null. `oc_bimanual` reads as `oc_big` per `objclass.h:65` (select_hwep
  * precedent). The rwep arm has no `mweponly` gate in C (unlike the
- * polearm/arwep arms) — kept that way.
- * Named omissions: `can_touch_safely` inside `oselect` (`mon.c:1957–1974`;
- * `js/monmove.js:230` stub stays always-safe, select_hwep precedent).
+ * polearm/arwep arms) — kept that way. `oselect` runs the live
+ * `can_touch_safely` gate (`mon.c:1957–1974`, `js/monmove.js` export).
  */
 export function select_rwep(mtmp) {
     let otmp;
@@ -764,11 +763,9 @@ export async function silver_sears(_magr, mdef, silverhit) {
  * Balrog bullwhip specials, then `hwep[]` walk with the strong/shield,
  * bimanual and silver gates in C short-circuit order.
  * C `oc_bimanual` is `#define oc_bimanual oc_big` (`objclass.h:65`), so the
- * JS `oc_big` read is the same field, not a rename.
- * Named omissions: `can_touch_safely` inside `oselect` (`mon.c:1957–1974`;
- * `js/monmove.js:230` stub stays always-safe); `touch_artifact` monster
- * covetous/mplayer role/align arms deferred in `js/artifact.js`
- * (bane live, call wired for C order).
+ * JS `oc_big` read is the same field, not a rename. `oselect` runs the
+ * live `can_touch_safely` gate (`mon.c:1957–1974`, `js/monmove.js` export);
+ * `touch_artifact` is the whole-C-body live export (`js/artifact.js`).
  */
 export async function select_hwep(mtmp) {
     const strong = strongmonst(mtmp.data);
