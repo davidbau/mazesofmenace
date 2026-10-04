@@ -14,7 +14,7 @@ import {
     newsym, flush_screen, pline, You, You_cant, impossible, pline_dir, pline_xy, pline_The, set_msg_xy,
     clear_nhwindow_message, tty_nhbell,
     mon_visible, sensemon, canspotmon, glyph_at, objnum_to_glyph, hero_glyph, glyph_is_invisible_id,
-    glyph_is_statue, glyph_is_monster, glyph_to_cmap, back_to_glyph,
+    glyph_is_statue, glyph_is_monster, glyph_to_cmap, back_to_glyph, glyph_is_cmap,
     GLYPH_UNEXPLORED,
     glyph_is_warning, unmap_object, map_object,
     look_shown_at, Norep, tty_doprev_message, putmsghistory, NO_GLYPH,
@@ -43,7 +43,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          PARANOID_TRAP, PARANOID_QUIT, GP_ALLOW_U, NO_TRAP_FLAGS, FOOT, Something,
          LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
          SUPPRESS_HISTORY,
-         In_sokoban, Is_waterlevel,
+         In_sokoban, Is_waterlevel, Is_airlevel,
          TRAVP_TRAVEL, TRAVP_VALID,
          TEST_MOVE,
          WIN_ERR,
@@ -116,6 +116,7 @@ import {
     NHKF_GETPOS_HELP, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MOVESKIP,
     NHKF_GETPOS_MENU,
     NHCB_CMD_BEFORE, NUM_NHCB, NUM_MOUSE_BUTTONS,
+    S_stone,
 } from './const.js';
 import { config_error_add } from './botl.js';
 import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
@@ -4578,8 +4579,13 @@ async function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnl
                     const visited = selection_getpoint(x, y, tmap);
                     u.dx = x - toX;
                     u.dy = y - toY;
+                    // C `:1404–1406` — arrival-from compares against u.tx/u.ty
+                    // (the real destination), NOT the BFS from-cell: after a
+                    // guess pick, from is the pick, and clearing travelcc on
+                    // an adjacent pick strands travel ("already here" instead
+                    // of bumping the door, quest-94036 step 103).
                     if (!guessMode && mode === TRAVP_TRAVEL
-                        && (x === fromX && y === fromY || visited)) {
+                        && (x === (u.tx | 0) && y === (u.ty | 0) || visited)) {
                         nomul(0);
                         /* reset run so domove run checks work */
                         if (game.context) game.context.run = 8;
@@ -4804,16 +4810,19 @@ async function findtravelpath_guess() {
  * TRAVP_VALID: findtravelpath swaps ends — BFS from hero toward dest
  * (unlike TRAVP_TRAVEL which BFS dest→hero). Restores tx/ty; VALID marks
  * travelmap and steps but never stops (no nomul/run/travelcc/message —
- * C :1400–1418 gates those on TRAVP_TRAVEL). Named: glyph_is_cmap S_stone
- * via typ≈STONE|SCORR blank showsyms.
+ * C :1400–1418 gates those on TRAVP_TRAVEL). The unseen-target gate
+ * (`:1535–1538`) reads the live glyph (glyph_is_cmap + S_stone), not typ.
  */
 export async function is_valid_travelpt(x, y) {
     const u = game.u;
     if ((u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0)) return true;
     if (!isok(x, y)) return false;
     const loc = game.level?.at?.(x, y);
-    // C: glyph_is_cmap && S_stone == glyph_to_cmap && !seenv → FALSE
-    if (loc && (loc.typ | 0) === STONE && !(loc.seenv | 0)) return false;
+    // C `:1535–1538`: unseen stone-glyph target → FALSE (no peeking
+    // through unexplored rock via travel validation).
+    const glyph = glyph_at(x, y);
+    if (glyph_is_cmap(glyph) && glyph_to_cmap(glyph) === S_stone
+        && !(loc?.seenv | 0)) return false;
 
     const savedTx = u.tx;
     const savedTy = u.ty;
@@ -5943,10 +5952,12 @@ export async function rhack(key) {
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'E') {
         // C ref: engrave.c doengrave / #engrave
-        // ECMD_OK setup; occupation consumes the following turn
-        const tookTime = await doengrave();
-        game.context.move = tookTime ? 1 : 0;
-        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+        // ECMD bitmask like the `#` path: only the TIME bit takes the
+        // turn (FAIL/CANCEL don't — C takes no turn on "can't write",
+        // scen-special-Barbarian-94037 step 102).
+        const engrRes = await doengrave();
+        game.context.move = (engrRes & ECMD_TIME) ? 1 : 0;
+        if (engrRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 't') {
         // C ref: dothrow.c dothrow
         const tookTime = await dothrow();
@@ -6110,14 +6121,14 @@ export async function domove_bump_mon(mtmp, glyph) {
 // C ref: hack.c domove — execute a movement
 /**
  * C ref: hack.c u_rooted — youmonst.data->mmove == 0 (brown mold, etc.).
- * Spends the turn (leave context.move); does not step. Named omissions:
- * Is_airlevel / Is_waterlevel "in place" (Levitation alone covers flight).
+ * Spends the turn (leave context.move); does not step.
  */
 export async function u_rooted() {
     const data = game.youmonst?.data;
     if (!data || (data.mmove | 0)) return false;
     const u = game.u || {};
-    const lev = !!(u.Levitation || u.HLevitation || u.ELevitation);
+    const lev = !!(u.Levitation || u.HLevitation || u.ELevitation // C `:1698`
+        || Is_airlevel(u.uz) || Is_waterlevel(u.uz));
     await pline(`You are rooted ${lev ? 'in place' : 'to the ground'}.`);
     nomul(0);
     return true;

@@ -110,7 +110,7 @@ import { mon_explodes } from './explode.js';
 import { make_hallucinated, make_confused, make_stunned, make_sick, make_slimed, make_stoned } from './potion.js';
 import { SetVoice, Soundeffect } from './sndprocs.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
-import { se_rushing_wind_noise, se_laughter } from './generated/seffects_data.js';
+import { se_rushing_wind_noise, se_laughter, se_cockatrice_hiss } from './generated/seffects_data.js';
 import { worm_move } from './worm.js';
 import { place_monster, remove_monster, dismount_steed } from './steed.js';
 import { unplacebc, placebc } from './ball.js';
@@ -2199,7 +2199,7 @@ async function do_stone_u(mtmp) {
 /**
  * C ref: uhitm.c mhitm_ad_ston — mhitu (monster→you) arm only.
  * hitmsg + !rn2(3) hiss/cough; !rn2(10)||NEW_MOON → do_stone_u.
- * Named omissions: Soundeffect; full make_stoned killer string.
+ * Named omissions: full make_stoned killer string.
  */
 async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
     await hitmsg(mtmp, mattk);
@@ -2212,6 +2212,7 @@ async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
                 || ((game.u?.HHallucination | 0)
                     && !(game.u?.Halluc_resistance | 0)));
             if (Hallu && !Blind()) {
+                Soundeffect(se_cockatrice_hiss, 50); // C :4221
                 await You_hear('hissing.');
                 await pline(
                     `${Monnam(mtmp)} appears to be blowing you a kiss...`,

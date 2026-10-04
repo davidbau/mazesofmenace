@@ -55,8 +55,8 @@
 // mimic mhidden_description / set_msg_xy / dochugw omit); cant_revive
 // force prompt + doppelganger newcham fixup live (D-2004);
 // punish Blind set_bc is D-1769; flooreffects on placebc; HEAVY_IRON_BALL reuse
-// from angrygods; do_genocide Hallucination names /
-// vampshifted POLY_REVERT / chameleon newcham; update_inventory.
+// from angrygods; do_genocide whole (Hallucination names, vampshifted
+// POLY_REVERT, delayed_killer, update_inventory live).
 //
 // Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
 // SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION / SCR_LIGHT /
@@ -121,7 +121,7 @@ import { placebc, set_bc, move_bc } from './ball.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
-    HEAD, HAND, STOMACH, isok, ACCESSIBLE, ismnum,
+    HEAD, HAND, STOMACH, LEG, isok, ACCESSIBLE, ismnum, TT_BURIEDBALL,
     W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, W_ARM, W_ARMH, P_SLING, SPE_LIM, MM_NOEXCLAM,
     MM_MALE, MM_FEMALE, MM_EDOG, MM_MINVIS, G_GONE,
     NO_MM_FLAGS, NO_NC_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
@@ -129,17 +129,17 @@ import {
     nothing_happens, G_GENOD, G_EXTINCT, UNCHANGING,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
     GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_ALLOWCNT,
-    LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, COST_DEGRD, NOTELL, TIMEOUT,
+    LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, COST_DEGRD, COST_UNCURS, NOTELL, TIMEOUT,
     ALL_SPELLS, DISP_BEAM, DISP_END, S_goodpos, Never_mind,
     In_endgame, Is_earthlevel, IS_OBSTRUCTED, IS_AIR,
     EXPL_FIERY, PLNMSG_TOWER_OF_FLAME, M_SEEN_FIRE, u_at, OBJ_AT,
-    something,
+    something, POLY_REVERT, POLYMORPH,
 } from './const.js';
 import { vision_recalc, do_clear_area, cansee, unblock_point } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
-import { dist2, mungspaces, strstri, strncmpi, upwords, digit, upstart } from './hacklib.js';
+import { dist2, mungspaces, strstri, strncmpi, upwords, digit, upstart, lowc } from './hacklib.js';
 import { You_hear, closed_door, maybe_half_phys, is_pool, check_capacity } from './hack.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_maniacal_laughter, se_sad_wailing } from './generated/seffects_data.js';
@@ -148,6 +148,7 @@ import { initedog, tamedog } from './dog.js';
 import { monflee } from './monmove.js';
 import { which_armor, is_elven_armor, is_shield } from './worn.js';
 import { alter_cost, costly_alteration, obfree } from './shk.js';
+import { Punished } from './pray.js';
 import { sokoban_guilt, ceiling } from './trap.js';
 import { drain_weapon_skill, dmgval } from './weapon.js';
 import { mhim } from './mondata.js';
@@ -157,7 +158,7 @@ import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, passes_walls, noncorporeal, i
     G_GENO, G_UNIQ, G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL,
     MALE, FEMALE, is_male, is_female,
     M2_PNAME, monsterNames, nonliving, weirdnonliving, PM_ACID_BLOB,
-    hates_light, is_hider, hides_under,
+    hates_light, is_hider, hides_under, vampshifted,
 } from './monsters.js';
 import { monster_census } from './minion.js';
 import { makemon, makemon_appear_msg, rndmonst, create_critters, newcham, Is_dragon_scales, mkclass, set_malign } from './makemon.js';
@@ -629,13 +630,13 @@ function learnscrolltyp(scrolltyp) {
 }
 
 /**
- * C ref: read.c seffect_remove_curse
- * Cursed scroll: message only (invent untouched). Else worn/blessed/
- * loadstone/leash uncurse or confused blessorcurse.
- * Deferred: shop POT_WATER costly_alteration/alter_cost; Punished/
- * unpunish; buried_ball_to_freedom; steed saddle Yobjnam2/hcolor glow;
- * update_inventory; SPE_REMOVE_CURSE #cast still deferred (throne fake
- * book hits seffects switch, D-1033).
+ * C ref: read.c seffect_remove_curse `:1489–1605` — whole body in C
+ * order. Cursed scroll: message only (invent untouched). Else
+ * worn/blessed/loadstone/leash uncurse or confused blessorcurse with
+ * shop-h2o billing; steed saddle via live which_armor with the amber
+ * glow; Punished→unpunish + buried-ball clasp tail + update_inventory
+ * (tail runs even when cursed). SPE_REMOVE_CURSE #cast still deferred
+ * (throne fake book hits seffects switch, D-1033).
  */
 async function seffect_remove_curse(sobj) {
     const otyp = sobj.otyp | 0;
@@ -681,12 +682,20 @@ async function seffect_remove_curse(sobj) {
             if (sblessed || wornmask
                 || (LOADSTONE >= 0 && (obj.otyp | 0) === LOADSTONE)
                 || (LEASH >= 0 && (obj.otyp | 0) === LEASH && obj.leashmon)) {
-                // shop POT_WATER unpaid costly_alteration / alter_cost deferred
-                void POT_WATER;
+                // C `:1558` — water price varies by curse/bless status.
+                const shop_h2o = !!(obj.unpaid && (obj.otyp | 0) === POT_WATER);
                 if (confused) {
                     await blessorcurse(obj, 2);
+                    // C `:1563` — lose bknown even if unchanged.
                     obj.bknown = 0;
+                    // C `:1567` — blessorcurse only affects uncursed
+                    // items, so water price only goes up (no
+                    // costly_alteration); post-call state read.
+                    if (shop_h2o && (obj.cursed || obj.blessed))
+                        alter_cost(obj, 0); /* price goes up */
                 } else if (obj.cursed) {
+                    if (shop_h2o)
+                        await costly_alteration(obj, COST_UNCURS);
                     await uncurse(obj);
                     if (obj.bknown && otyp === SCR_REMOVE_CURSE) {
                         learnscrolltyp(SCR_REMOVE_CURSE);
@@ -694,39 +703,38 @@ async function seffect_remove_curse(sobj) {
                 }
             }
         }
-        // Steed saddle: which_armor W_SADDLE + glow deferred (no usteed here)
+        // C `:1579–1595` — riding: steed's saddle as if hero's invent.
         if (u.usteed) {
-            const minv = u.usteed.minvent;
-            let saddle = null;
-            for (let o = minv; o; o = o.nobj) {
-                if ((o.owornmask || 0) & W_SADDLE) {
-                    saddle = o;
-                    break;
-                }
-            }
-            // Also scan array-shaped minvent
-            if (!saddle && Array.isArray(minv)) {
-                saddle = minv.find((o) => (o.owornmask || 0) & W_SADDLE) || null;
-            }
+            const saddle = which_armor(u.usteed, W_SADDLE);
             if (saddle) {
                 if (confused) {
-                    blessorcurse(saddle, 2);
-                    saddle.bknown = 0;
+                    await blessorcurse(saddle, 2);
+                    saddle.bknown = 0; /* skip set_bknown() */
                 } else if (saddle.cursed) {
-                    uncurse(saddle);
-                    // Yobjnam2 glow / hcolor("amber") deferred
-                    const Blind = !!(u.Blind || u.ublind);
-                    if (!Blind) {
+                    await uncurse(saddle);
+                    // C `:1588–1593` — like rndcurse, only the saddle
+                    // shows glowing (rndcurse/sit.c convention).
+                    if (!Blind()) {
+                        await pline(`${Yobjnam2(saddle, 'glow')} ${hcolor('amber')}.`);
                         saddle.bknown = Hallucination ? 0 : 1;
                     } else {
-                        saddle.bknown = 0;
+                        saddle.bknown = 0; /* skip set_bknown() */
                     }
                 }
             }
         }
     }
-    // Punished → unpunish deferred; TT_BURIEDBALL → buried_ball_to_freedom deferred
-    // update_inventory deferred
+    // C `:1597–1603` — tail runs even when the scroll was cursed.
+    if (Punished() && !confused)
+        unpunish();
+    if ((u.utrap | 0) && (u.utraptype | 0) === TT_BURIEDBALL) {
+        const { buried_ball_to_freedom } = await import('./dig.js');
+        await buried_ball_to_freedom();
+        const { body_part } = await import('./polyself.js');
+        // C pline_The — plain pline with the The-phrase (cf. zap.js).
+        await pline(`The clasp on your ${body_part(LEG)} vanishes.`);
+    }
+    update_inventory();
 }
 
 /** C ref: read.c cap_spe — clamp |spe| to SPE_LIM. */
@@ -1143,40 +1151,38 @@ async function seffect_taming(sobj) {
 async function seffect_enchant_weapon(sobj) {
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!(game.u?.Confusion);
     const u = game.u || {};
+    // C youprop.h: Confusion ≡ HConfusion; dual-store OR (seffect_earth
+    // idiom) — throne sets HConfusion only (D-1048).
+    const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
     const uwep = u.uwep;
-    const Blind = !!(u.Blind || u.ublind);
 
     if (confused && uwep
         && erosion_matters(uwep) && uwep.oclass !== ARMOR_CLASS) {
         const old_erodeproof = !!uwep.oerodeproof;
         const new_erodeproof = !scursed;
-        uwep.oerodeproof = 0;
-        if (Blind) {
+        uwep.oerodeproof = 0; /* for messages */
+        if (Blind()) {
             uwep.rknown = 0;
-            await pline('Your weapon feels warm for a moment.');
+            await Your('weapon feels warm for a moment.');
         } else {
             uwep.rknown = 1;
-            // Yobjnam2 / hcolor NH_PURPLE|GOLDEN polish deferred
+            // C `:1645–1648` — NH_PURPLE/NH_GOLDEN (file :240).
             await pline(
-                `Your ${uwep.quan > 1 ? 'weapons are' : 'weapon is'} covered by a ${
-                    scursed ? 'mottled' : 'shimmering'
-                } ${scursed ? 'purple' : 'golden'} ${scursed ? 'glow' : 'shield'}!`,
+                `${Yobjnam2(uwep, 'are')} covered by a ${scursed ? 'mottled' : 'shimmering'} ${hcolor(scursed ? NH_PURPLE : NH_GOLDEN)} ${scursed ? 'glow' : 'shield'}!`,
             );
         }
         if (new_erodeproof && ((uwep.oeroded | 0) || (uwep.oeroded2 | 0))) {
             uwep.oeroded = 0;
             uwep.oeroded2 = 0;
             await pline(
-                Blind
-                    ? 'Your weapon feels as good as new!'
-                    : 'Your weapon looks as good as new!',
+                `${Yobjnam2(uwep, Blind() ? 'feel' : 'look')} as good as new!`,
             );
         }
         if (old_erodeproof && !new_erodeproof) {
+            /* restore old_erodeproof before shop charges */
             uwep.oerodeproof = 1;
-            // costly_alteration COST_DEGRD deferred
+            await costly_alteration(uwep, COST_DEGRD);
         }
         uwep.oerodeproof = new_erodeproof ? 1 : 0;
         return sobj;
@@ -1703,6 +1709,16 @@ async function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswal
         newsym(u.ux | 0, u.uy | 0);
     }
     if (dmg) losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
+    // C `:2336–2337` — losehp→done is noreturn: drain the deferred
+    // wail/done finishers here (explode_losehp idiom) so the queued
+    // hit screens render before 'You die...' + Die? (scen-sokoban-
+    // Ranger-94223 step 114 died silently without this).
+    const { finish_maybe_wail } = await import('./hack.js');
+    await finish_maybe_wail();
+    if (game._losehp_needs_done || game.program_state?.gameover) {
+        const { finish_losehp_done } = await import('./end.js');
+        await finish_losehp_done();
+    }
 }
 
 /** C read.c drop_boulder_on_monster `:2341–2410`. */
@@ -1727,7 +1743,7 @@ async function drop_boulder_on_monster(x, y, confused, byu) {
             if (hard_helmet(helmet)) {
                 if (canspotmon(mtmp)) {
                     await pline(`Fortunately, ${mon_nam(mtmp)} is wearing a hard helmet.`);
-                } else if (!game.u?.Deaf) {
+                } else if (!Deaf()) { // C `:2377` — full Deaf macro, not u.Deaf
                     await You_hear('a clanging sound.');
                 }
                 if (mdmg > 2) mdmg = 2;
@@ -1878,6 +1894,14 @@ async function seffect_fire(sobj) {
             // C pline_The — plain pline with the The-phrase (cf. zap.js).
             await pline(`The scroll catches fire and you burn your ${hands}.`);
             losehp(1, 'scroll of fire', KILLED_BY_AN);
+            // C `:1886` — losehp→done is noreturn (drop_boulder_on_player
+            // idiom): drain here so a fatal burn shows its screens.
+            const { finish_maybe_wail } = await import('./hack.js');
+            await finish_maybe_wail();
+            if (game._losehp_needs_done || game.program_state?.gameover) {
+                const { finish_losehp_done } = await import('./end.js');
+                await finish_losehp_done();
+            }
         }
         return null;
     }
@@ -2493,6 +2517,11 @@ export async function doread() {
     }
 
     const sr = await seffects(scroll);
+    // C losehp→done is noreturn: a fatal scroll (earth boulder, fire
+    // burn) already ran its finisher drain inside the seffect; skip the
+    // post-read identify/useup C never reaches (scroll stays for the
+    // death disclosure, like C).
+    if (game.program_state?.gameover) return 1;
     if (sr < 0) {
         scroll.in_use = false;
         return 0;
@@ -2580,9 +2609,9 @@ const PM_NINJA = monsterNames.indexOf('PM_NINJA');
 const PM_SAMURAI = monsterNames.indexOf('PM_SAMURAI');
 
 /**
- * C ref: read.c do_class_genocide — blessed SCR_GENOCIDE class wipe.
- * Named omissions: vampshifted POLY_REVERT (JS polyself voids POLY_REVERT,
- * so wiring the call would run an interactive poly — stays deferred).
+ * C ref: read.c do_class_genocide `:2638–2820` — blessed SCR_GENOCIDE
+ * class wipe, whole body in C order (incl. the vampshifted POLY_REVERT
+ * arm via live polyself).
  */
 async function do_class_genocide() {
     const u = game.u || (game.u = {});
@@ -2689,7 +2718,15 @@ async function do_class_genocide() {
                 await kill_genocided_monsters();
                 update_inventory(); // C read.c:2750 — eggs & tins
                 await pline(`Wiped out all ${nam}.`);
-                // vampshifted POLY_REVERT deferred (JS polyself voids POLY_REVERT)
+                // C `:2753–2756` — vampshifter to vampire (live
+                // POLY_REVERT, D-2262).
+                if (Upolyd(u) && vampshifted(game.youmonst)
+                    /* current shifted form or base vampire form */
+                    && (i === (u.umonnum | 0)
+                        || i === (game.youmonst?.cham | 0))) {
+                    const { polyself } = await import('./polyself.js');
+                    await polyself(POLY_REVERT);
+                }
                 if (Upolyd(u) && i === (u.umonnum | 0)) {
                     u.mh = -1;
                     if (Unchanging()) {
@@ -2743,10 +2780,10 @@ async function do_class_genocide() {
 }
 
 /**
- * C ref: read.c do_genocide(how).
+ * C ref: read.c do_genocide(how) `:2826–3015`, whole body in C order.
  * how: 0 = cursed spawn; 1 = REALLY; 3 = REALLY|PLAYER; 5 = REALLY|ONTHRONE.
- * Named omissions: livelog; Hallucination type names; vampshifted
- * POLY_REVERT; chameleon newcham; update_inventory.
+ * (Prior "chameleon newcham" note was stale: C's newcham is at :3354 in
+ * another function, not do_genocide.)
  */
 export async function do_genocide(how) {
     const u = game.u || (game.u = {});
@@ -2808,7 +2845,14 @@ export async function do_genocide(how) {
                 continue;
             }
             ptr = mons(mndx);
-            // vampshifted POLY_REVERT deferred
+            // C `:2895–2900` — first revert if current shifted form or
+            // base vampire form (live POLY_REVERT, D-2262).
+            if (Upolyd(u) && vampshifted(game.youmonst)
+                && (mndx === (u.umonnum | 0)
+                    || mndx === (game.youmonst?.cham | 0))) {
+                const { polyself } = await import('./polyself.js');
+                await polyself(POLY_REVERT); /* vampshifter to vampire */
+            }
             if (Your_Own_Role(mndx) || Your_Own_Race(mndx)) {
                 killplayer++;
                 break;
@@ -2839,10 +2883,23 @@ export async function do_genocide(how) {
 
     let which = 'all ';
     const realbuf = pmnames[mndx]?.[NEUTRAL] || ptr.name || 'creature';
-    // Hallucination type names deferred — use actual type
-    let buf = realbuf;
-    if (((ptr.geno | 0) & G_UNIQ) && mndx !== PM_HIGH_CLERIC) {
-        which = !((ptr.mflags2 | 0) & M2_PNAME) ? 'the ' : '';
+    // C `:2933–2949` — hallucinate hero's type; else actual type with
+    // the unique-article rule (which stays 'all ' when hallucinating).
+    let buf;
+    if (Hallucination()) {
+        if (Upolyd(u)) {
+            buf = pmname(game.youmonst?.data,
+                game.flags?.female ? FEMALE : MALE);
+        } else {
+            const rn = game.urole?.name || {};
+            buf = (game.flags?.female && rn.f) ? rn.f : (rn.m || 'Player');
+            buf = lowc(buf.charCodeAt(0)) + buf.slice(1);
+        }
+    } else {
+        buf = realbuf;
+        if (((ptr.geno | 0) & G_UNIQ) && mndx !== PM_HIGH_CLERIC) {
+            which = !((ptr.mflags2 | 0) & M2_PNAME) ? 'the ' : '';
+        }
     }
 
     if (how & GENO_REALLY) {
@@ -2880,8 +2937,12 @@ export async function do_genocide(how) {
             }
             if (Upolyd(u)
                 && (ptr.mndx | 0) !== (game.youmonst?.data?.mndx | 0)) {
-                // delayed_killer(POLYMORPH) + udeadinside deferred
-                await You_feel('dead inside.');
+                // C `:2984–2987` — die on rehumanize (delayed_killer
+                // is sync; dynamic import: end.js cycle).
+                const { delayed_killer } = await import('./end.js');
+                delayed_killer(POLYMORPH, game.killer.format | 0,
+                    game.killer.name);
+                await You_feel(`${udeadinside()} inside.`);
             } else {
                 await done(GENOCIDED);
             }
@@ -2890,7 +2951,7 @@ export async function do_genocide(how) {
             await rehumanize();
         }
         await kill_genocided_monsters();
-        // update_inventory deferred
+        update_inventory(); /* in case identified eggs were affected */
     } else {
         let cnt = 0;
         const { monster_census } = await import('./minion.js');

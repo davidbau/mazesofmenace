@@ -12,7 +12,7 @@ import {
 } from './const.js';
 import {
     pline, tty_wait_synch, raw_printf, MAXPCHARS, SYM_OFF_X,
-    update_ov_primary_symset,
+    update_ov_primary_symset, switch_symbols,
 } from './display.js';
 import { trimspaces } from './hacklib.js';
 import { parse_status_hl1 } from './botl.js';
@@ -739,7 +739,7 @@ function cnf_line_WARNINGS(bufp) {
 
 function cnf_line_SYMBOLS(bufp) {
     if (parsesymbols(bufp, PRIMARYSET)) { // C `:1204`
-        // switch_symbols(TRUE) named — no JS symbol apply.
+        switch_symbols(true); // C `:1205` showsyms refresh
         return true; // C `:1206`
     }
     if (!config_unmatched_ignored()) // C `:1208`
@@ -749,7 +749,8 @@ function cnf_line_SYMBOLS(bufp) {
 
 function cnf_line_ROGUESYMBOLS(bufp) {
     if (parsesymbols(bufp, ROGUESET)) { // C `:1193`
-        return true; // switch_symbols named
+        switch_symbols(true); // C `:1194` showsyms refresh
+        return true; // C `:1195`
     }
     cnf_error("Error in ROGUESYMBOLS definition '" + bufp + "'"); // C `:1197`
     return false;
@@ -924,7 +925,12 @@ function cnf_line_LIVELOG(bufp) {
 function cnf_line_PANICTRACE_LIBC(bufp) {
     let n = parseInt(bufp, 10);
     if (!Number.isFinite(n)) n = 0;
-    // PANICTRACE_LIBC is not this build: C keeps the raw atoi (`:1052–1063`).
+    // C `:1054–1058` — PANICTRACE (config.h:276 CRASHREPORT on __linux__)
+    // + PANICTRACE_LIBC (global.h:449 glibc) are both live: range check.
+    if (n < 0 || n > 2) {
+        config_error_add('Illegal value in PANICTRACE_LIBC (not 0,1,2)');
+        n = 0;
+    }
     sysoptBag().panictrace_libc = n;
     return true;
 }
@@ -932,7 +938,13 @@ function cnf_line_PANICTRACE_LIBC(bufp) {
 function cnf_line_PANICTRACE_GDB(bufp) {
     let n = parseInt(bufp, 10);
     if (!Number.isFinite(n)) n = 0;
-    sysoptBag().panictrace_gdb = n; // C `:1077` (range check is PANICTRACE-only)
+    // C `:1062–1066` — PANICTRACE is live (config.h:276 CRASHREPORT on
+    // __linux__): range check.
+    if (n < 0 || n > 2) {
+        config_error_add('Illegal value in PANICTRACE_GDB (not 0,1,2)');
+        n = 0;
+    }
+    sysoptBag().panictrace_gdb = n; // C `:1077`
     return true;
 }
 
@@ -1273,13 +1285,13 @@ export function parse_conf_file(text, proc) {
 export function read_config_file(filename, src) {
     const text = fopen_config_file(filename, src); // C `:1629–1630`
     if (text == null) return false;
-    reset_duplicate_opt_detection(); // C `:1634`
-    free_config_sections(); // C `:1636`
+    reset_duplicate_opt_detection(); // C `:1633`
+    free_config_sections(); // C `:1635`
     if (!game.iflags) game.iflags = {};
-    game.iflags.parse_config_file_src = src | 0; // C `:1637`
+    game.iflags.parse_config_file_src = src | 0; // C `:1636`
     const rv = parse_conf_file(text, parse_config_line); // C `:1638`
-    free_config_sections(); // C `:1642`
-    reset_duplicate_opt_detection(); // C `:1645`
+    free_config_sections(); // C `:1641`
+    reset_duplicate_opt_detection(); // C `:1644`
     return rv; // C `:1646`
 }
 

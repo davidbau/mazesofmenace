@@ -80,6 +80,7 @@ import {
 } from './mondata.js';
 import { extract_from_minvent } from './worn.js';
 import { freehand } from './engrave.js';
+import { obfree } from './shk.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
@@ -170,16 +171,17 @@ export function rnd_hallublast() {
 
 /**
  * C ref: mthrowu.c m_useupall `:1153–1158` — remove an entire item from
- * a monster's inventory and destroy it. obfree is a GC no-op in JS.
+ * a monster's inventory and destroy it (D-3403: the obfree `:1157`
+ * dispose — contents/billing/leash — is live, not a GC no-op).
  */
 export function m_useupall(mon, obj) {
-    return extract_from_minvent(mon, obj, true, false);
+    extract_from_minvent(mon, obj, true, false);
+    obfree(obj, null); // C `:1157` merge=NULL
 }
 
 /**
  * C ref: mthrowu.c m_useup `:1161–1170` — quan>1 decrements (+weight);
- * else m_useupall (extract + obfree; JS has no manual free, the
- * detached object is GC'd).
+ * else m_useupall (extract + obfree dispose).
  */
 export function m_useup(mon, obj) {
     if (!mon || !obj) return;
@@ -1552,11 +1554,10 @@ export async function thrwmm(mtmp, mtarg) {
 
 /**
  * C ref: mthrowu.c thrwmu `:1175–1267` — select missile, polearm thrust,
- * autoreturn toss, line up, monshoot.
+ * autoreturn toss, line up, monshoot. The rogue-level gate lives in the
+ * sole C caller (mhitu.c:884 → mhitu.js:4194), not here (D-3403).
  */
 export async function thrwmu(mtmp) {
-    if (Is_rogue_level(game.u?.uz)) return;
-
     if (!game.context) game.context = {};
     game.context.mon_moving = true;
     try {

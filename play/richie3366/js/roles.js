@@ -1265,10 +1265,10 @@ export async function plnamesuffix() {
  * Priests their SPE_LIGHT skill. Whole body in C order.
  *
  * C callers: allmain.c newgame `:786` (wired: js/allmain.js newgame);
- * restore.c dorecover `:596` (named omission: js/save.js restores
- * urole/urace/quest_status/flags from the save payload, which subsumes C's
- * derive-then-overwrite sequence; re-running the derivation there would
- * only re-burn the ldrgend/nemgend draws C makes before its Sfi reads).
+ * restore.c dorecover `:596` (wired: js/save.js try_restore_save runs
+ * this before the payload overwrites, with pantheon saved/restored —
+ * the re-burned ldrgend/nemgend draws are observable: 4 restore
+ * sessions diverged on their absence).
  * The allmain.c `:805` quest_init comment, makemon.c `:1269` quest-pager
  * comment and decl.h/flag.h/monsters.h notes are comments, not call sites.
  * Async only: plnamesuffix's askname arm blocks on input (Constitution §2).

@@ -37,6 +37,7 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import {
     pline, You_feel, newsym, see_monsters, more,
     canspotmon, canseemon, bot, Hallucination, verbalize, impossible,
+    curs_on_u,
 } from './display.js';
 import { objdescr_is } from './apply.js';
 import { yn_function, paranoid_query, y_n } from './getline.js';
@@ -91,7 +92,8 @@ import {
     IRONBARS, W_NONDIGGABLE, BEAR_TRAP, TT_BEARTRAP,
     STONING, DIED, SLIMED, FROMOUTSIDE, Upolyd, NEUTRAL, FEMALE, MALE,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, EDOG, LIFESAVED,
-    COST_DSTROY, COST_OPEN, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
+    COST_DSTROY, COST_OPEN, COST_BITE, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
+    SELL_NORMAL, SELL_DONTSELL,
     INTRINSIC, POLY_NOFLAGS, DISPLACED,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
     ACID_RES, STONE_RES, TELEPAT, TELEPORT, TELEPORT_CONTROL, LAST_PROP,
@@ -102,7 +104,7 @@ import {
     CHOKING, STARVING, STARVED, A_LAWFUL, STRANGLED, PARANOID_EATING,
     POISONING, LL_CONDUCT,
     DEAF,
-    CXN_SINGULAR, CXN_PFX_THE,
+    CXN_NORMAL, CXN_SINGULAR, CXN_PFX_THE,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
     GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_DOWNPLAY,
 } from './const.js';
@@ -125,7 +127,7 @@ import {
 } from './potion.js';
 import { addinv_nomerge } from './u_init.js';
 import { dropy, dropx, make_blinded, BlindedTimeout, revive_corpse, donull } from './do.js';
-import { type_is_pname, rndmonnam, pmname, Ugender, mon_nam, Monnam, s_suffix } from './do_name.js';
+import { type_is_pname, rndmonnam, pmname, Ugender, mon_nam, Monnam, s_suffix, trycall } from './do_name.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
 import {
@@ -135,7 +137,7 @@ import {
 import { done, delayed_killer } from './end.js';
 import { explode } from './explode.js';
 import { polymon, polyself, rehumanize, change_sex, body_part } from './polyself.js';
-import { costly_alteration, costly_spot } from './shk.js';
+import { costly_alteration, costly_spot, sellobj_state } from './shk.js';
 import {
     wield_tool, uwepgone, uswapwepgone, uqwepgone, welded,
 } from './wield.js';
@@ -149,7 +151,7 @@ import { set_mimic_blocking } from './vision.js';
 import {
     PM_KNIGHT, PM_WIZARD, PM_ELF, PM_VALKYRIE,
 } from './generated/monsters_data.js';
-import { str_start_is, dist2 } from './hacklib.js';
+import { str_start_is, dist2, strncmpi } from './hacklib.js';
 import { retouch_object, touch_artifact, retouch_equipment } from './artifact.js';
 import { remove_worn_item } from './steal.js';
 /* uhitm.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
@@ -228,6 +230,7 @@ const CRYSKNIFE = objectNames.indexOf('CRYSKNIFE');
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const AXE = objectNames.indexOf('AXE');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_TIGER = monsterNames.indexOf('PM_TIGER');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 const PM_COCKATRICE = monsterNames.indexOf('PM_COCKATRICE');
 const PM_CHICKATRICE = monsterNames.indexOf('PM_CHICKATRICE');
@@ -886,8 +889,10 @@ export function food_substitution(old_obj, new_obj) {
 
 /**
  * C ref: eat.c reset_eat — flag only; do_reset_eat runs on the next bite.
+ * Exported: C is extern, called from allmain.c moveloop (monster_nearby)
+ * and lesshungry (choke / paranoid-decline).
  */
-function reset_eat() {
+export function reset_eat() {
     const v = game.context?.victual;
     if (v?.eating && !v.doreset) v.doreset = 1;
 }
@@ -1342,8 +1347,7 @@ function freeinv_touchfood(obj) {
 /**
  * C ref: eat.c touchfood — split stack, set oeaten, freeinv+addinv_nomerge
  * so a bitten piece gets its own invent slot (steal weight / invlet).
- * Named omit: costly_alteration COST_BITE; sellobj_state around invent-full
- * dropy; OBJ_DELETED after drop.
+ * Named omit: OBJ_DELETED after drop (JS OBJ_FREE approx).
  */
 async function touchfood(otmp) {
     if ((otmp.quan || 1) > 1) {
@@ -1358,7 +1362,8 @@ async function touchfood(otmp) {
         }
     }
     if (!otmp.oeaten) {
-        // costly_alteration deferred
+        // C `:371` — shop bill for the first bite, before oeaten is set.
+        await costly_alteration(otmp, COST_BITE);
         otmp.oeaten = obj_nutrition(otmp);
     }
 
@@ -1371,7 +1376,10 @@ async function touchfood(otmp) {
             if (o.oclass !== COIN_CLASS) n++;
         }
         if (n >= INVLET_BASIC) {
+            // C `:378–381` — DONTSELL across the invent-full dropy.
+            sellobj_state(SELL_DONTSELL);
             await dropy(otmp);
+            sellobj_state(SELL_NORMAL);
             if (otmp.where === OBJ_FREE) return null; // deleted approx
         } else {
             otmp = await addinv_nomerge(otmp);
@@ -1886,8 +1894,8 @@ export function eatmupdate() {
  * Branch envelope (D-0943/D-0944/D-0945): named specials + check_intrinsics
  * hallu/newt + corpse_intrinsic → givit / gainstr; were* set_ulycn;
  * mimic gold eatmdone/afternmv; disenchanter attrcurse.
- * Named omissions: set_mimic_blocking;
- * curs_on_u; livelog first polyself conduct.
+ * Named omissions: display_nhwindow(WIN_MAP, TRUE) map flush after
+ * curs_on_u (more() approx).
  */
 async function cpostfx(pm) {
     let tmp = 0;
@@ -1961,8 +1969,14 @@ async function cpostfx(pm) {
                 || ((u.HHallucination | 0) & TIMEOUT));
             const tempshape = hallu ? 'an orange' : 'a pile of gold';
             if (!game.u.uconduct) game.u.uconduct = {};
-            // livelog first polyselfs deferred; still count
-            game.u.uconduct.polyselfs = (game.u.uconduct.polyselfs | 0) + 1;
+            // C `:1199–1202` — count, then the first-mimic conduct livelog.
+            const prevPolyselfs = game.u.uconduct.polyselfs | 0;
+            game.u.uconduct.polyselfs = prevPolyselfs + 1;
+            if (!prevPolyselfs) {
+                livelog_printf(LL_CONDUCT,
+                    'changed form for the first time by mimicking %s',
+                    tempshape);
+            }
             await pline(
                 `You can't resist the temptation to mimic ${tempshape}.`,
             );
@@ -1982,7 +1996,9 @@ async function cpostfx(pm) {
             game.youmonst.m_ap_type = M_AP_OBJECT;
             game.youmonst.mappearance = hallu ? ORANGE_OTYP : GOLD_PIECE;
             newsym(u.ux | 0, u.uy | 0);
-            // C: curs_on_u deferred; display_nhwindow(WIN_MAP,TRUE) → more()
+            // C `:1222–1224` — cursor on hero, then the map flush
+            // (more() approx; see doc).
+            await curs_on_u();
             await more();
         }
         break;
@@ -2482,17 +2498,46 @@ export async function eatcorpse(otmp) {
     let rotted = 0;
     const ptr = mons(mnum);
     const glob = !!otmp.globby;
-    // flesh_petrifies / slimeable deferred — stoneable/slimeable stay false
-    // unless green slime without resistances (named omission beyond flag)
-    const slimeable = mnum === PM_GREEN_SLIME; // Unchanging/Slimed deferred
-    const stoneable = false;
+    // C `:1861–1867` — slimeable needs !Slimed && !Unchanging &&
+    // !slimeproof(youmonst.data); stoneable needs flesh_petrifies &&
+    // !Stone_resistance && !poly_when_stoned(youmonst.data).
+    const form0 = hero_form_data();
+    const u0 = game.u || {};
+    const Slimed0 = !!((u0.Slimed | 0) & TIMEOUT);
+    const Unchanging0 = !!(u0.Unchanging || u0.HUnchanging || u0.EUnchanging);
+    const slimeable = mnum === PM_GREEN_SLIME && !Slimed0 && !Unchanging0
+        && !slimeproof(form0);
+    const Stone_resistance0 = !!(u0.Stone_resistance || u0.HStone_resistance
+        || u0.EStone_resistance);
+    const stoneable = flesh_petrifies(ptr) && !Stone_resistance0
+        && !poly_when_stoned(form0);
+    // C Sick_resistance (youprop.h:69): H || E || defended(AD_DISE) —
+    // one predicate for the tainted and mild-ill arms below.
+    const Sick_resistance = !!((u0.Sick_resistance || u0.HSick_resistance
+        || u0.ESick_resistance)
+        || (game.youmonst ? defended(game.youmonst, AD_DISE) : false));
+    let ll_conduct = 0;
 
     if (!vegan(ptr)) {
         if (!game.u.uconduct) game.u.uconduct = {};
-        game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
+        // C `:1870–1876` — count, then the first-unvegan conduct livelog.
+        const prevUnvegan = game.u.uconduct.unvegan | 0;
+        game.u.uconduct.unvegan = prevUnvegan + 1;
+        if (!prevUnvegan) {
+            livelog_printf(LL_CONDUCT,
+                'consumed animal products for the first time, by eating %s',
+                an(food_xname(otmp, false)));
+            ll_conduct++;
+        }
     }
     if (!vegetarian(ptr)) {
-        // C eat.c:1877–1882 — guilt message is inside violated_vegetarian.
+        // C `:1877–1883` — first-meat livelog unless one already fired;
+        // guilt message is inside violated_vegetarian.
+        if (!(game.u.uconduct?.unvegetarian | 0) && !ll_conduct) {
+            livelog_printf(LL_CONDUCT,
+                'tasted meat for the first time, by eating %s',
+                an(food_xname(otmp, false)));
+        }
         await violated_vegetarian();
     }
 
@@ -2505,13 +2550,30 @@ export async function eatcorpse(otmp) {
     }
 
     if (!glob && !stoneable && !slimeable && rotted > 5) {
-        // tainted path — Sick_resistance / make_sick deferred; use up
+        // C `:1890` — maybe_cannibal(mnum, FALSE): penalty without
+        // message; the return feeds the ", you cannibal" suffix (D-3403).
+        const cannibal = await maybe_cannibal(mnum, false);
+        /* tp++; -- early return makes this unnecessary */
         await pline(
             `Ulch - that ${
                 ptr?.mlet === 'S_FUNGUS' ? 'fungoid vegetation'
                     : vegetarian(ptr) ? 'protoplasm' : 'meat'
-            } was tainted!`,
+            } was tainted${cannibal ? ', you cannibal' : ''}!`,
         );
+        // C `:1904–1917` — Sick_resistance shrug, else rn1(10,10)
+        // sick_time (never an improvement over current Sick) + make_sick
+        // on the "rotted <corpse>" name + the too-long-ago pline.
+        if (Sick_resistance) {
+            await pline("It doesn't seem at all sickening, though...");
+        } else {
+            let sick_time = rn1(10, 10);
+            const Sick = game.u?.Sick | 0;
+            /* make sure new ill doesn't result in improvement */
+            if (Sick && sick_time > Sick) sick_time = Sick > 1 ? Sick - 1 : 1;
+            await make_sick(sick_time,
+                corpse_xname(otmp, 'rotted', CXN_NORMAL), true, SICK_VOMITABLE);
+            await pline('(It must have died too long ago to be safe to eat.)');
+        }
         if (carried(otmp)) useup(otmp);
         else await useupf(otmp, 1);
         return 2;
@@ -2555,7 +2617,7 @@ export async function eatcorpse(otmp) {
             await pline('You seem unaffected by the poison.');
         }
     } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
-        && !(game.u?.HSick_resistance || game.u?.ESick_resistance)) {
+        && !Sick_resistance) {
         tp++;
         await You_feel('%ssick.', game.u?.Sick ? 'very ' : '');
         // C eat.c:1942 losehp(rnd(8), !glob ? "cadaver" : "rotted glob",
@@ -2601,7 +2663,7 @@ export async function eatcorpse(otmp) {
         }
         if (!retcode) consume_oeaten(otmp, 2); /* oeaten >>= 2 */
     } else if ((mnum === PM_COCKATRICE || mnum === PM_CHICKATRICE)
-        && (game.u?.HStone_resistance || game.u?.Hallucination)) {
+        && (Stone_resistance0 || game.u?.Hallucination)) {
         await pline('This tastes just like chicken!');
     } else if (mnum === PM_FLOATING_EYE
         && (game.u?.umonnum ?? -1) === PM_RAVEN) {
@@ -2627,14 +2689,21 @@ export async function eatcorpse(otmp) {
         const palat_msg = palatable_msgs[idx];
         const use_is = !!(game.u?.Hallucination)
             || (!!palatable && palat_msg[0] === 'I');
-        const pmxnam = food_xname(otmp, false);
+        // C `:2000–2004` — strip a leading "the ", then the pname/unique/
+        // plain prefix (in-file the_unique_pm; C objnam.c).
+        let pmxnam = food_xname(otmp, false);
+        if (!strncmpi(pmxnam, 'the ', 4)) pmxnam = pmxnam.slice(4);
+        const tastePrefix = type_is_pname(ptr) ? ''
+            : the_unique_pm(ptr) ? 'The ' : 'This ';
         const taste = game.u?.Hallucination
-            ? (yummy ? 'gnarly' : palatable ? 'copacetic' : 'grody')
+            ? (yummy
+                ? ((game.u?.umonnum | 0) === PM_TIGER ? 'gr-r-reat' : 'gnarly')
+                : palatable ? 'copacetic' : 'grody')
             : (yummy ? 'delicious' : palatable
                 ? palat_msg.slice(1) : 'terrible');
         const bang = (yummy || !palatable) ? '!' : '.';
         await pline(
-            `This ${pmxnam} ${use_is ? 'is' : 'tastes'} ${taste}${bang}`,
+            `${tastePrefix}${pmxnam} ${use_is ? 'is' : 'tastes'} ${taste}${bang}`,
         );
     }
 
@@ -2799,8 +2868,12 @@ async function costly_tin(alter_type) {
 async function use_up_tin(tin) {
     if (carried(tin)) useup(tin);
     else await useupf(tin, 1);
+    // C `:1522–1523` — clear tin + o_id only; reqtime/usedtime keep
+    // their stale values (start_tin rewrites the record next use).
     if (!game.context) game.context = {};
-    game.context.tin = { tin: null, o_id: 0, reqtime: 0, usedtime: 0 };
+    if (!game.context.tin) game.context.tin = {};
+    game.context.tin.tin = null;
+    game.context.tin.o_id = 0;
 }
 
 /* objdescr_is — canonical export in js/apply.js (o_init.c `:352-365`). */
@@ -3238,10 +3311,10 @@ async function eatspecial() {
 
 /**
  * C ref: eat.c doeat_nonfood — one-turn non-FOOD meal for poly diets.
- * Branch envelope: nutrition from quan/weight/oc_nutrition; vegan/
- * vegetarian conduct for leather/bone/dragon_hide/wax; cursed rottenfood;
- * poisoned weapon; delicious pline; eatspecial.
- * Named omissions: livelog first-time conduct.
+ * Branch envelope: nutrition from quan/weight/oc_nutrition (+ MAIL
+ * zero-nutrition); vegan/vegetarian conduct for leather/bone/dragon_hide/
+ * wax with first-time livelogs; cursed rottenfood; poisoned weapon;
+ * delicious pline; eatspecial.
  */
 async function doeat_nonfood(otmp) {
     if (!game.context) game.context = {};
@@ -3267,16 +3340,46 @@ async function doeat_nonfood(otmp) {
     } else {
         basenutrit = game.objects?.[otmp.otyp]?.oc_nutrition ?? 0;
     }
+    // C `:2757–2761` — MAIL_STRUCTURES is live (global.h:430): scrolls
+    // of mail have no nutrition and are never delicious.
+    if ((otmp.otyp | 0) === SCR_MAIL) {
+        basenutrit = 0;
+        nodelicious = true;
+    }
     game.context.victual.nmod = basenutrit;
 
     if (!game.u.uconduct) game.u.uconduct = {};
-    game.u.uconduct.food = (game.u.uconduct.food | 0) + 1;
+    let ll_conduct = 0;
+    // C `:2766–2770` — first-food conduct livelog.
+    const prevFood = game.u.uconduct.food | 0;
+    game.u.uconduct.food = prevFood + 1;
+    if (!prevFood) {
+        ll_conduct++;
+        livelog_printf(LL_CONDUCT, 'ate for the first time (%s)',
+            food_xname(otmp, false));
+    }
 
     const material = game.objects?.[otmp.otyp]?.oc_material ?? 0;
     if (material === MAT_LEATHER || material === MAT_BONE
         || material === MAT_DRAGON_HIDE || material === MAT_WAX) {
-        game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
-        if (material !== MAT_WAX) await violated_vegetarian();
+        // C `:2774–2779` — first-unvegan livelog unless one already fired.
+        const prevUnvegan = game.u.uconduct.unvegan | 0;
+        game.u.uconduct.unvegan = prevUnvegan + 1;
+        if (!prevUnvegan && !ll_conduct) {
+            livelog_printf(LL_CONDUCT,
+                'consumed animal products for the first time, by eating %s',
+                an(food_xname(otmp, false)));
+            ll_conduct++;
+        }
+        if (material !== MAT_WAX) {
+            // C `:2780–2785` — meat by-products line, then the guilt message.
+            if (!(game.u.uconduct.unvegetarian | 0) && !ll_conduct) {
+                livelog_printf(LL_CONDUCT,
+                    'tasted meat by-products for the first time, by eating %s',
+                    an(food_xname(otmp, false)));
+            }
+            await violated_vegetarian();
+        }
     }
 
     if (otmp.cursed) {
@@ -3676,8 +3779,8 @@ async function cprefx(pm) {
 /**
  * C ref: eat.c consume_tin — open tin contents + nutrition / spinach.
  * Branch envelope: ordinary meat tin + spinach; otrapped → b_trapped;
- * cursed trap roll burns rn2; costly_tin shop bill; Fixed_abil
- * Popeye Olive/Bluto deferred (!Fixed_abil → Popeye).
+ * cursed trap roll burns rn2; costly_tin shop bill; spinach first-food
+ * livelog; Fixed_abil Popeye/Olive/Bluto.
  */
 async function consume_tin(mesg) {
     const always_eat = metallivorous(hero_form_data());
@@ -3814,12 +3917,24 @@ async function consume_tin(mesg) {
         }
 
         if (!game.u.uconduct) game.u.uconduct = {};
-        game.u.uconduct.food = (game.u.uconduct.food | 0) + 1;
+        // C `:1670–1671` — spinach needs no vegetarian checks, but the
+        // first-food conduct livelog still fires.
+        const prevFood = game.u.uconduct.food | 0;
+        game.u.uconduct.food = prevFood + 1;
+        if (!prevFood) {
+            livelog_printf(LL_CONDUCT, 'ate for the first time (spinach)');
+        }
         if (!tin.cursed) {
-            // Fixed_abil Olive/Bluto deferred — always Popeye like !Fixed_abil
+            // C `:1682–1684` — Fixed_abil (youprop.h: H || E; attrib.js
+            // Fixed_abil) suppresses the gain: Olive Oyl / Bluto.
+            const gu = game.u || {};
+            const fixedAbil = !!((gu.HFixed_abil | 0)
+                || (gu.EFixed_abil | 0) || gu.Fixed_abil);
             await pline(
                 `This makes you feel like ${
-                    hallu ? "Swee'pea" : 'Popeye'
+                    hallu ? "Swee'pea"
+                        : !fixedAbil ? 'Popeye'
+                            : (game.flags?.female ? 'Olive Oyl' : 'Bluto')
                 }!`,
             );
         }
@@ -4356,11 +4471,35 @@ export async function doeat() {
     if (otmp0.otyp === RIN_SLOW_DIGESTION) {
         await pline('This ring is indigestible!');
         await rottenfood(otmp0);
+        // C `:2915–2916` — a described ring gets named now.
+        if (otmp0.dknown) await trycall(otmp0);
         return 1;
     }
 
     if (otmp0.oclass !== FOOD_CLASS) {
         return doeat_nonfood(otmp0);
+    }
+
+    // C `:2923–2951` — resume an interrupted meal: drop canchoke when no
+    // longer satiated, touchfood reseat (do_reset_eat when it vanishes),
+    // resume/last-bite message, start_eating anew.
+    if (otmp0 === game.context?.victual?.piece) {
+        const vict = game.context.victual;
+        const one_bite_left = ((vict.usedtime | 0) + 1 >= (vict.reqtime | 0));
+        if ((game.u?.uhs | 0) !== SATIATED) vict.canchoke = 0;
+        vict.o_id = 0;
+        const rotmp = await touchfood(otmp0);
+        if (rotmp) {
+            vict.piece = rotmp;
+            vict.o_id = rotmp.o_id;
+        } else {
+            await do_reset_eat();
+        }
+        await pline(
+            `You ${!one_bite_left ? 'resume' : 'consume the last bite of'} your meal.`,
+        );
+        if (rotmp) await start_eating(rotmp, false);
+        return 1;
     }
 
     // C: tins are a special case — start_tin; conduct inside consume_tin
@@ -4371,7 +4510,15 @@ export async function doeat() {
 
     // KMH, conduct
     if (!game.u.uconduct) game.u.uconduct = {};
-    game.u.uconduct.food = (game.u.uconduct.food | 0) + 1;
+    let ll_conduct = 0;
+    // C `:2962–2966` — first-food conduct livelog.
+    const prevFood = game.u.uconduct.food | 0;
+    game.u.uconduct.food = prevFood + 1;
+    if (!prevFood) {
+        livelog_printf(LL_CONDUCT, 'ate for the first time - %s',
+            food_xname(otmp0, false));
+        ll_conduct++;
+    }
 
     const already_partly_eaten = !!otmp0.oeaten;
     let otmp = await touchfood(otmp0);
@@ -4402,12 +4549,28 @@ export async function doeat() {
         // eatcorpse set reqtime / may have modified oeaten
     } else {
         // C eat.c:2998-3024 — food-class conduct: FLESH (non-EGG also
-        // breaks vegetarian) and eggs/milk foods break vegan. Livelog
-        // first-time lines deferred (house convention).
+        // breaks vegetarian) and eggs/milk foods break vegan, with
+        // first-time livelogs.
         const material = game.objects?.[otmp.otyp]?.oc_material | 0;
         if (material === MAT_FLESH) {
-            game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
-            if (otmp.otyp !== EGG) await violated_vegetarian();
+            // C `:3000–3005` — first-unvegan livelog unless one fired.
+            const prevUnvegan = game.u.uconduct.unvegan | 0;
+            game.u.uconduct.unvegan = prevUnvegan + 1;
+            if (!prevUnvegan && !ll_conduct) {
+                livelog_printf(LL_CONDUCT,
+                    'consumed animal products for the first time, by eating %s',
+                    an(food_xname(otmp, false)));
+                ll_conduct++;
+            }
+            if (otmp.otyp !== EGG) {
+                // C `:3006–3013` — first-meat livelog, then the guilt msg.
+                if (!(game.u.uconduct.unvegetarian | 0) && !ll_conduct) {
+                    livelog_printf(LL_CONDUCT,
+                        'tasted meat for the first time, by eating %s',
+                        an(food_xname(otmp, false)));
+                }
+                await violated_vegetarian();
+            }
         } else if (
             otmp.otyp === PANCAKE
             || otmp.otyp === FORTUNE_COOKIE
@@ -4415,7 +4578,14 @@ export async function doeat() {
             || otmp.otyp === CANDY_BAR
             || otmp.otyp === LUMP_OF_ROYAL_JELLY
         ) {
-            game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
+            // C `:3017–3022` — egg/milk foods break vegan, own line.
+            const prevUnvegan = game.u.uconduct.unvegan | 0;
+            game.u.uconduct.unvegan = prevUnvegan + 1;
+            if (!prevUnvegan && !ll_conduct) {
+                livelog_printf(LL_CONDUCT,
+                    'consumed animal products (%s) for the first time',
+                    food_xname(otmp, false));
+            }
         }
 
         const oc = game.objects?.[otmp.otyp];

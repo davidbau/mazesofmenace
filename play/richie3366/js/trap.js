@@ -133,6 +133,7 @@ import {
 } from './objects.js';
 import { monsterNames, PM_ROGUE } from './generated/monsters_data.js';
 import { thitu, ohitmon, hits_bars } from './mthrowu.js';
+import { count_level_features } from './mklev.js';
 import { dmgval, MON_WEP, mwepgone, wet_a_towel, dry_a_towel, is_wet_towel, P_SKILL } from './weapon.js';
 import { observe_object, encumber_msg, near_capacity, makeknown, update_inventory, currency, calc_capacity, inv_weight, weight_cap, prinv, getobj, useup, consume_obj_charge, inventory_resistance_check } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
@@ -853,42 +854,34 @@ function mkroll_launch(ttmp, x, y, otyp, ocount) {
 }
 
 /**
- * C ref: mkmaze.c set_levltyp — analog for maketrap PIT/HOLE morph
- * (D-1280). CAN_OVERWRITE, ice melt, incremental fountain/sink counts.
- * Named omit: SDOOR→AIR arboreal; full count_level_features scan;
- * other callers keep their local analogs.
+ * C ref: mkmaze.c set_levltyp `:77–121` — guarded terrain write in C
+ * order: isok/range gate, SDOOR→AIR arboreal hack, CAN_OVERWRITE gate,
+ * lava lit, ice-melt effects, fountain/sink recount. The
+ * EXTRA_SANITY_CHECKS impossible (`:112–118`) compiles out of the
+ * scored build (by-design).
  */
 export function set_levltyp(x, y, newtyp) {
     if (!isok(x, y) || newtyp < STONE || newtyp >= MAX_TYPE) return false;
     const lev = game.level?.at?.(x, y);
     if (!lev) return false;
     const oldtyp = lev.typ | 0;
-    if (!CAN_OVERWRITE_TERRAIN(oldtyp)) return false;
-    const was_ice = oldtyp === ICE;
-    lev.typ = newtyp;
-    if (IS_LAVA(newtyp)) lev.lit = 1;
-    if (was_ice && newtyp !== ICE) {
+    /* C :82–87 — secret doors in garden theme rooms stay SDOOR. */
+    if (oldtyp === SDOOR && newtyp === AIR) {
+        lev.arboreal_sdoor = 1;
+        return true;
+    }
+    if (!CAN_OVERWRITE_TERRAIN(oldtyp)) return false; // C :89
+    /* C :90–91 — ICE or iced-over drawbridge. */
+    const was_ice = is_ice(x, y);
+    lev.typ = newtyp; // C :93
+    if (IS_LAVA(newtyp)) lev.lit = 1; // C :99–100
+    if (was_ice && newtyp !== ICE) { // C :101–105
         obj_ice_effects(x, y, true);
         spot_stop_timers(x, y, MELT_ICE_AWAY);
     }
-    if ((IS_FOUNTAIN(oldtyp) !== IS_FOUNTAIN(newtyp))
+    if ((IS_FOUNTAIN(oldtyp) !== IS_FOUNTAIN(newtyp)) // C :106–108
         || (IS_SINK(oldtyp) !== IS_SINK(newtyp))) {
-        const lf = game.level?.flags;
-        if (lf) {
-            if (IS_FOUNTAIN(oldtyp) && !IS_FOUNTAIN(newtyp)
-                && (lf.nfountains | 0) > 0) {
-                lf.nfountains--;
-            }
-            if (!IS_FOUNTAIN(oldtyp) && IS_FOUNTAIN(newtyp)) {
-                lf.nfountains = (lf.nfountains | 0) + 1;
-            }
-            if (IS_SINK(oldtyp) && !IS_SINK(newtyp) && (lf.nsinks | 0) > 0) {
-                lf.nsinks--;
-            }
-            if (!IS_SINK(oldtyp) && IS_SINK(newtyp)) {
-                lf.nsinks = (lf.nsinks | 0) + 1;
-            }
-        }
+        count_level_features();
     }
     return true;
 }

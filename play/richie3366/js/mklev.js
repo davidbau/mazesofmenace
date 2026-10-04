@@ -1037,6 +1037,7 @@ export function l_teleport_region(opts) {
     tmplregion.padding = 0;
     tmplregion.rname = { str: null };
     levregion_add(tmplregion);
+    return 0; // C :5459 (number of results)
 }
 
 /** C sp_lev.c:5471–5494 lspo_levregion (unpacked des table). */
@@ -1051,6 +1052,7 @@ export function l_levregion(opts) {
     tmplregion.padding = table.padding == null ? 0 : luaL_checkinteger_unpacked(table.padding, 16);
     tmplregion.rname = { str: get_table_str_opt(table, 'name', null) };
     levregion_add(tmplregion);
+    return 0; // C :5493 (number of results)
 }
 
 /**
@@ -2413,15 +2415,19 @@ export function lspo_map(a, contentsFn) {
 /**
  * C ref: sp_lev.c lspo_reset_level `:5993–6011` — des reset in C order.
  * fromDes ≡ C `L` non-null; the coder block (`:5998–6004`) runs only for
- * non-null L (Lua des-coder state — no JS analogue; the NULL form from
- * wiz_load_splua skips it in C too). makemap_prepost(TRUE) discards the
- * current level before the des load.
+ * non-null L (no des .lua calls reset_level, so only the wiz_load_splua
+ * NULL form at wizcmds.c:388 is wired). makemap_prepost(TRUE) discards
+ * the current level before the des load.
  */
 export async function lspo_reset_level(fromDes = true) {
     const u = game.u || {};
     const wtower = In_W_tower(u.ux | 0, u.uy | 0, u.uz); // C `:5995`
     if (!game.iflags) game.iflags = {};
     game.iflags.lua_testing = true; // C `:5997`
+    if (fromDes) { // C `:5998` (L non-null)
+        if (game.gc?.coder) game.gc.coder = null; // C `:5999–6002` Free
+        create_des_coder(); // C `:6003`
+    }
     await makemap_prepost(true, wtower); // C `:6005`
     game.in_mklev = true; // C `:6006` gi.in_mklev
     oinit(); // C `:6007` level-dependent obj probabilities
@@ -2778,10 +2784,14 @@ function fixup_special() {
         release_rname(r);
         return pending;
     }), () => {
-        /* C `:644–646`. made_branch is place_branch's own early-out
-           (mklev.c): a loader that already placed the branch must not
-           re-enter place_lregion, which burns 200 rn1 when nroom is 0
-           before that early-out. */
+        /* C `:644–646` — plus !game.made_branch: des loaders pre-walk
+           lregions (placing LR_BRANCH via place_lregion) and clear the
+           list before calling this for the tail, so added_branch is
+           FALSE here while C's single walk saw the branch. made_branch
+           is the placed-state C's added_branch carries; without it the
+           fallback re-fires and burns place_lregion draws C never drew.
+           Removing the guard needs the two-call pattern restructured,
+           not the condition trimmed. */
         const p = (!added_branch && !game.made_branch && Is_branchlev(game.u?.uz))
             ? place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null)
             : undefined;
@@ -3295,8 +3305,7 @@ function makemaz_maze_fallback() {
  * form is `lspo_finalize_level`, C `:6014–6064`). Entry/exit + dispatch live
  * in `load_special_proto` below, reused here. Callers pass the name with
  * LEV_EXT (mkmaze.c `:1186`, wiz_load_splua `:384–386`); the stem dispatches.
- * Named omissions: `load_lua` bare-file IO; wizcmds.c `:389`
- * `lspo_reset_level` (no scored analogue — fresh coder per entry).
+ * Named omissions: `load_lua` bare-file IO (by-design, Rule #2).
  */
 export async function load_special(name) {
     let stem = String(name ?? '');
@@ -5191,6 +5200,7 @@ export function set_wallprop_in_selection(sel, prop) {
  */
 export function lspo_non_diggable(sel) {
     set_wallprop_in_selection(sel, W_NONDIGGABLE);
+    return 0; // C :5941 (number of results)
 }
 
 /**
@@ -5200,6 +5210,7 @@ export function lspo_non_diggable(sel) {
  */
 export function lspo_non_passwall(sel) {
     set_wallprop_in_selection(sel, W_NONPASSWALL);
+    return 0; // C :5950 (number of results)
 }
 
 /**
@@ -18240,8 +18251,14 @@ function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
         [7, 4, 0x3e, 0x7f, 0x7f, 0x3e],
         [8, 4, 0x7e, 0xff, 0xff, 0x7e],
     ];
-    if (x >= gbxmax || y >= gbymax) return;
-    if (n >= BM.length) n = BM.length - 1;
+    if (x >= gbxmax || y >= gbymax) return; // C :1893–1894
+    /* C :1895–1898 — clamp with the message (fire-and-forget: sync
+     * load path, like set_levltyp_lit). The :1899–1901 MAX_BMASK panic
+     * is dead (tables top out at 4 == MAX_BMASK). */
+    if (n >= BM.length) {
+        void impossible('n too large (mk_bubble)');
+        n = BM.length - 1;
+    }
     const bm = BM[n];
     let bx = x;
     let by = y;
@@ -18968,7 +18985,7 @@ function add_doors_to_room(croom) {
             if (!isok(x, y)) continue;
             const loc = game.level.at(x, y);
             if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR))
-                add_door(x, y, croom);
+                maybe_add_door(x, y, croom); // C :5551 (hx/roomno gate, not raw add_door)
         }
     }
     for (let i = 0; i < (croom.nsubrooms || 0); i++)
@@ -24019,9 +24036,9 @@ function create_door(dd, broom) {
         if (okdoor(x, y)) break;
     }
     if (trycnt >= 100) return;
+    if (!set_levltyp(x, y, secret ? SDOOR : DOOR)) return; // C :1803
     const loc = game.level.at(x, y);
     if (!loc) return;
-    loc.typ = secret ? SDOOR : DOOR;
     loc.doormask = mask;
     loc.flags = mask;
 }
@@ -29820,27 +29837,24 @@ function induced_align(pct) {
     return Align2amask(rn2(3) - 1);
 }
 
-// C ref: selvar.c selection_from_mkroom — room floor cells (!edge, matching roomno)
+// C ref: selvar.c selection_from_mkroom `:781–799` — room floor cells
+// (!edge, matching roomno) into a fresh selection. Null croom falls
+// back to the des coder's current room (`:787–788`) before returning
+// the empty selection; rmno is the rooms[] index + ROOMOFFSET (`:792`).
 function selection_from_mkroom(croom) {
-    const pts = new Set();
-    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
-    if (!croom) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
-    const rmno = (croom.roomnoidx ?? -1) + ROOMOFFSET;
-    for (let y = croom.ly; y <= croom.hy; y++) {
-        for (let x = croom.lx; x <= croom.hx; x++) {
-            if (!isok(x, y)) continue;
+    const sel = selection_new(); // C :783
+    if (!croom && game.gc?.coder?.croom) croom = game.gc.coder.croom; // C :787–788
+    if (!croom) return sel; // C :789–790
+    const rmno = (croom.roomnoidx ?? -1) + ROOMOFFSET; // C :792
+    for (let y = croom.ly; y <= croom.hy; y++) { // C :793
+        for (let x = croom.lx; x <= croom.hx; x++) { // C :794
+            if (!isok(x, y)) continue; // C :795
             const loc = game.level.at(x, y);
-            if (loc && !loc.edge && loc.roomno === rmno) {
-                pts.add(`${x},${y}`);
-                if (x < lx) lx = x;
-                if (y < ly) ly = y;
-                if (x > hx) hx = x;
-                if (y > hy) hy = y;
-            }
+            if (loc && !loc.edge && loc.roomno === rmno) // C :795–796
+                selection_setpoint(x, y, sel, 1); // C :797
         }
     }
-    if (pts.size === 0) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
-    return { pts, lx, ly, hx, hy };
+    return sel;
 }
 
 /**
@@ -33243,7 +33257,7 @@ async function makeniche(trap_type) {
             } else {
                 const loc = g.level.at(xx, yy);
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
-                    loc.typ = IRONBARS;
+                    set_levltyp(xx, yy, IRONBARS); // C :784 (void)
                     if (rn2(3)) {
                         // C ref: mklev.c makeniche → mkcorpstat(..., mkclass(S_HUMAN,0), ..., TRUE)
                         const ptr = mkclass('S_HUMAN', 0);
@@ -33364,7 +33378,7 @@ function place_branch(branchp, x = 0, y = 0) {
         const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
         const loc = g.level?.at(x, y);
         if (loc) {
-            loc.typ = STAIRS;
+            set_levltyp(x, y, STAIRS); // C :1737 (void)
             loc.ladder = goes_up ? 1 : 2;
         }
         stairway_add(x, y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
@@ -33732,9 +33746,9 @@ function mktrap(num, mktrapflags, croom, tm) {
  * find_okay_roompos, then set_levltyp(FOUNTAIN) before rn2(7). A refused
  * cell returns and does not draw, and does not increment nfountains.
  * blessedftn is the horizontal bit (rm.h:404). Fountain reads use
- * blessedftn, so both fields are written. set_levltyp's fountain/sink
- * arm is still the incremental ±1 (full count_level_features rescan
- * stays named on trap.js); this ++ is C's statement after that call.
+ * blessedftn, so both fields are written. set_levltyp recounts via
+ * count_level_features like C; this ++ is C's statement after that
+ * call (C double-counts the new feature — reproduced, not fixed).
  */
 function mkfount(croom) {
     const m = { x: 0, y: 0 };
@@ -33793,9 +33807,9 @@ function mkaltar(croom) {
 function mksink(croom) {
     const m = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, m)) return;
-    const loc = game.level?.at(m.x, m.y);
-    if (!loc) return;
-    loc.typ = SINK;
+    /* Put a sink at m.x, m.y — C :2325–2328 (set_levltyp recounts,
+     * then C's ++ double-counts the new sink; reproduced, not fixed). */
+    if (!set_levltyp(m.x, m.y, SINK)) return;
     game.level.flags.nsinks = (game.level.flags.nsinks || 0) + 1;
 }
 

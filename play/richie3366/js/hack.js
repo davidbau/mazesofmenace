@@ -48,9 +48,9 @@ import {
 } from './display.js';
 import { gethungry, morehungry, is_fainted, maybe_finished_meal } from './eat.js';
 import { unconscious, enexto, goodpos, rloc_to, rloco, random_teleport_level } from './teleport.js';
-import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary, wake_msg } from './mon.js';
+import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary, wake_msg, NODIAG } from './mon.js';
 import { recalc_block_point, cansee } from './vision.js';
-import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly, G_UNIQ } from './monsters.js';
+import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly, grounded, G_UNIQ } from './monsters.js';
 import {
     objects_at, sobj_at, obj_extract_self, place_object, remove_object, delobj,
     add_to_migration, peek_timer, stop_timer, start_timer, splitobj,
@@ -103,7 +103,7 @@ import { is_db_wall } from './dbridge.js';
 import { doopen_indir } from './lock.js';
 import { use_pick_axe2, buried_ball, buried_ball_to_punishment, bury_objs, fill_pit } from './dig.js';
 import { is_ice, resists_cold, Cold_resistance } from './zap.js';
-import { can_ooze, curr_mon_load, maybe_unhide_at } from './monmove.js';
+import { can_ooze, curr_mon_load, maybe_unhide_at, locomotion } from './monmove.js';
 import { abuse_dog } from './dog.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
@@ -423,18 +423,18 @@ function Blind_tm() {
 }
 
 /**
- * C hack.c:59–66 Known_wwalking / Known_lwalking — no JS helper existed;
- * ported here beside their only caller test_move (same C file).
+ * C hack.c:59–66 Known_wwalking / Known_lwalking — file-local (C macros),
+ * shared by test_move, swim_move_danger and avoid_moving_on_liquid.
  */
-function test_move_known_wwalking() {
+function known_wwalking() {
     const u = game.u || {};
     const boots = u.uarmf;
     return !!(boots && (boots.otyp | 0) === WATER_WALKING_BOOTS_OTYP
         && game.objects?.[boots.otyp]?.oc_name_known && !u.usteed);
 }
-function test_move_known_lwalking() {
+function known_lwalking() {
     const u = game.u || {};
-    return !!(test_move_known_wwalking() && Fire_resistance()
+    return !!(known_wwalking() && Fire_resistance()
         && (u.uarmf?.oerodeproof | 0) && (u.uarmf?.rknown | 0));
 }
 
@@ -556,30 +556,33 @@ export async function test_move(ux, uy, dx, dy, mode) {
                         await doopen_indir(x, y);
                         game.context.door_opened = !closed_door(x, y); // C :1112
                         game.context.move = (ux !== (u.ux | 0) || uy !== (u.uy | 0)) ? 1 : 0; // C :1113
-                    } else if (x === ux || y === uy) { // C :1114 orthogonal
-                        if (Blind_tm() || u.Stunned || acurr(A_DEX) < 10 // C :1115–1117
+                    } else if (x === ux || y === uy) { // C :1112 orthogonal
+                        if (Blind_tm() || u.Stunned || acurr(A_DEX) < 10 // C :1113–1114
                             || Fumbling()) {
-                            if (u.usteed) { // C :1118–1121
+                            if (u.usteed) { // C :1115–1117
                                 await pline(`You can't lead ${y_monnam(u.usteed)} through that closed door.`); // C You_cant
-                            } else { // C :1122–1125
+                            } else { // C :1118–1120
                                 await pline('Ouch!  You bump into a door.');
                                 exercise(A_DEX, false);
                             }
-                            game.context.door_opened = true; // C :1131
-                            game.context.move = 1; // C :1131 = TRUE
-                            nomul(0); // C :1135 stop running
+                            game.context.door_opened = true; // C :1127
+                            game.context.move = 1; // C :1127 = TRUE
+                            nomul(0); // C :1130 stop running
                         } else
-                            await pline('That door is closed.'); // C :1136–1137
+                            await pline('That door is closed.'); // C :1132
                     }
-                } else if (mode === TEST_TRAV || mode === TEST_TRAP) { // C :1140 goto testdiag
-                    // C :1141–1142 diagonal check shared with the open-door
-                    // arm below; the DO_MOVE pline there is unreachable on
-                    // these modes, so only the gate runs here.
-                    if (dx && dy && !Passes_walls_prop()
-                        && (!doorless_door(x, y) || await block_door(x, y))) // C :1141
-                        return false;
+                    return false; // C :1136 (DO_MOVE reaches it after messaging)
                 }
-                return false; // C :1142
+                if (mode === TEST_TRAV || mode === TEST_TRAP) {
+                    // C :1134–1135 goto testdiag — the diagonal gate runs,
+                    // then control falls THROUGH past :1136 to the post-door
+                    // checks (travel plans through doors it will open).
+                    if (dx && dy && !Passes_walls_prop()
+                        && (!doorless_door(x, y) || await block_door(x, y))) // C :1140–1141
+                        return false;
+                } else {
+                    return false; // C :1136 (TEST_MOVE only)
+                }
             }
         } else {
             // C :1144 testdiag label (open door): diagonal into intact doorway banned.
@@ -627,8 +630,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
         if (loc.seenv && (is_pool(x, y) || is_lava(x, y)) // C :1206
             && ((IS_WATERWALL(typ) || typ === LAVAWALL) // C :1208–1210
                 || !(Levitation_st() || Flying_st() // C :1214–1218
-                     || (is_pool(x, y) ? test_move_known_wwalking()
-                         : (test_move_known_lwalking()
+                     || (is_pool(x, y) ? known_wwalking()
+                         : (known_lwalking()
                              && is_lava(u.ux | 0, u.uy | 0))))))
             return mode === TEST_TRAP; // C :1220
     }
@@ -982,8 +985,11 @@ async function moverock_core(sx, sy) {
         }
 
         /* C `:415–424` — levitating (or on the air level) gives no
-         * leverage; Blind still feels the boulder first. */
-        if (u.Levitation || game.dungeon_topology?.Is_airlevel) {
+         * leverage; Blind still feels the boulder first. Levitation is
+         * youprop.h:240 (H||E)&&!B — the sticky flat alone misses
+         * extrinsic sources (ELevitation with no sticky, sokoban-94243);
+         * Is_airlevel compares u.uz (the topology flag was never set). */
+        if (u.Levitation || Levitation_st() || Is_airlevel(u.uz)) { // C `:415`
             if (Blind_im())
                 feel_location(sx, sy);
             await You(`don't have enough leverage to push ${the(xname(otmp))}.`);
@@ -2236,23 +2242,27 @@ export function waterbody_name(x, y) {
 
 /**
  * C ref: hack.c u_locomotion `:1817–1829` — live export (C-home file).
- * Lev/Fly return lowercase here; C capitalize path + locomotion(youmonst.data,
- * def) poly fallback deferred (map-named).
+ * Levitation → Float/float, Flying → Fly/fly (capitalize when def's
+ * first char is already uppercase, `:1819`); else the poly-aware
+ * locomotion(youmonst.data, def) fallback (crawl/swim/slither, `:1828`).
  */
 export function u_locomotion(defWord) {
     const u = game.u || {};
-    if (u.Levitation) return 'float';
-    if (u.Flying) return 'fly';
-    return defWord;
+    const c0 = (defWord ?? '').charAt(0); // C `:1819` *def == highc(*def)
+    const capitalize = c0 === c0.toUpperCase();
+    if (u.Levitation) return capitalize ? 'Float' : 'float'; // C `:1826`
+    if (u.Flying) return capitalize ? 'Fly' : 'fly'; // C `:1827`
+    return locomotion(game.youmonst?.data, defWord); // C `:1828`
 }
 
 /**
  * C ref: hack.c u_simple_floortyp — grounded pool/lava vs air; poly
- * !grounded flyer arm deferred (treat as grounded unless Lev/Fly).
+ * clinger/floater/flyer forms count as air via !grounded (`:1835`).
  */
 function u_simple_floortyp(x, y) {
     const u = game.u || {};
-    const uInAir = !!(u.Levitation || u.Flying);
+    const uInAir = !!(u.Levitation || u.Flying // C `:1835`
+        || !grounded(game.youmonst?.data));
     if (is_waterwall_at(x, y)) return WATER;
     const loc = game.level?.at(x, y);
     if (loc?.typ === LAVAWALL) return LAVAWALL;
@@ -2299,8 +2309,6 @@ export async function handle_tip(tip) {
 
 /**
  * C ref: hack.c swim_move_danger — ParanoidSwim / liquid-wall avoid pline.
- * Known_wwalking / Known_lwalking / steed / Underwater pool stay deferred
- * beyond the seenv + nopick + ParanoidSwim|liquid_wall envelope used here.
  * @returns {Promise<boolean>} true → stop move (dangerous)
  */
 export async function swim_move_danger(x, y) {
@@ -2314,9 +2322,9 @@ export async function swim_move_danger(x, y) {
     if (newtyp !== u_simple_floortyp(u.ux, u.uy)
         && !u.Stunned && !u.Confusion && loc?.seenv
         && (is_pool(x, y) || is_lava(x, y) || liquidWall)) {
-        // Known_wwalking / Known_lwalking deferred → treat as unknown
-        if ((is_pool(x, y) /* && !Known_wwalking */)
-            || (is_lava(x, y) && !is_lava(u.ux, u.uy))
+        if ((is_pool(x, y) && !known_wwalking()) // C `:1901`
+            || (is_lava(x, y) && !known_lwalking() // C `:1905`
+                && !is_lava(u.ux, u.uy))
             || liquidWall) {
             if (game.context?.nopick) {
                 // m-prefix: allow step; suppress future tip
@@ -2420,10 +2428,11 @@ export async function avoid_trap_andor_region(x, y) {
 }
 
 /**
- * C ref: hack.c crawl_destination — orthogonal always; diagonal door/
- * squeeze checks. NODIAG / Passes_walls / bad_rock squeeze / IRONBARS
- * via goodpos deferred → diagonal allowed when goodpos. Hero walk
- * bars are test_move D-1270, not this helper.
+ * C ref: hack.c crawl_destination `:4079–4101` — orthogonal always;
+ * diagonal takes the NODIAG veto (`:4089`), the Passes_walls allow
+ * (`:4091`), the intact-doorway ban (`:4095`) and the bad_rock-flank
+ * cant_squeeze_thru veto (`:4097–4100`). goodpos stays the inline
+ * hero-crawl approximation (hack→teleport load cycle).
  */
 export async function crawl_destination(x, y) {
     const u = game.u;
@@ -2441,10 +2450,17 @@ export async function crawl_destination(x, y) {
     // occupied by monster
     if (m_at(x, y)) return false;
     if (x === u.ux || y === u.uy) return true;
-    // diagonal: intact doorway ban
-    // C hack.c:4095 — doorless shop door still blocked by block_door
+    // C `:4089–4090` — poly'd into a grid bug: no diagonal crawl.
+    if (NODIAG(u.umonnum)) return false;
+    // C `:4091–4092` — or a xorn: walls don't constrain the diagonal.
+    if (Passes_walls_prop()) return true;
+    // C `:4095` — doorless shop door still blocked by block_door.
     if (IS_DOOR(loc.typ) && (!doorless_door(x, y) || await block_door(x, y))) return false;
-    return true;
+    // C `:4097–4100` — squeeze through a too-narrow gap?
+    const youdata = game.youmonst?.data;
+    return !(bad_rock(youdata, u.ux, y)
+        && bad_rock(youdata, x, u.uy)
+        && cant_squeeze_thru(game.youmonst));
 }
 
 /**
@@ -2775,8 +2791,8 @@ export async function avoid_moving_on_trap(x, y, msg) {
 }
 
 /**
- * C hack.c avoid_moving_on_liquid `:2462–2490`. Known_wwalking /
- * Known_lwalking stay omitted (treat as unknown), matching swim_move_danger.
+ * C hack.c avoid_moving_on_liquid `:2462–2490` — liquid safe to
+ * traverse when the hero is known not to fall in (`:2476`).
  */
 export async function avoid_moving_on_liquid(x, y, msg) {
     const u = game.u || {};
@@ -2789,7 +2805,8 @@ export async function avoid_moving_on_liquid(x, y, msg) {
     if ((sameTyp
             || (run < 2 && (!is_lava(x, y) || in_air))
             || game.context?.travel)
-        && (in_air /* || Known_lwalking || (is_pool && Known_wwalking) */)
+        && (in_air || known_lwalking() // C `:2476`
+            || (is_pool(x, y) && known_wwalking()))
         && !liquidWall) {
         return false;
     }
@@ -3788,8 +3805,16 @@ export async function still_chewing(x, y) {
 
     // Okay, chewed through
     if (!u.uconduct) u.uconduct = {};
+    if (!(u.uconduct.food | 0)) { // C `:729` !u.uconduct.food++
+        const thruwhat = boulder ? 'a boulder' // C `:732–737`
+            : IS_TREE(lev.typ) ? 'a tree'
+                : IS_OBSTRUCTED(lev.typ) ? 'rock'
+                    : lev.typ === IRONBARS ? 'iron bars'
+                        : 'a door';
+        livelog_printf(LL_CONDUCT, // C `:730–731`
+            'ate for the first time, by chewing through %s', thruwhat);
+    }
     u.uconduct.food = (u.uconduct.food | 0) + 1;
-    // livelog deferred
     u.uhunger = (u.uhunger | 0) + rnd(20);
 
     if (boulder) {

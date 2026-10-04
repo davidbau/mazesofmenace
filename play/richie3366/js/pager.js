@@ -382,7 +382,7 @@ function youmonst_for_hidden() {
  * (D-1554, `:122–126`) + Punished ", chained to %s" (`:127–129`) + utrap
  * ", <trap_predicament>" (`:130–131`).
  */
-function self_lookat() {
+export function self_lookat() {
     const u = game.u || {};
     // C: race only when !Upolyd; Sprintf(race, "%s ", urace.adj)
     let race = '';
@@ -709,8 +709,9 @@ export async function show_nhw_menu_text(lines, opts = {}) {
 
 /**
  * C ref: files.c / windows.c display_file — page a dat text file.
+ * Exported for options.c doset '?' help (D-3403).
  */
-async function display_file(fname, _warn) {
+export async function display_file(fname, _warn) {
     const raw = readDat(fname);
     if (!raw) {
         await pline(`Cannot open '${fname}' file!`);

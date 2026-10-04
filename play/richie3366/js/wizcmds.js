@@ -480,8 +480,7 @@ export async function wiz_load_lua() {
  * special level and finalizes. ESC/empty → ECMD_CANCEL (`:382–383`).
  * Dynamic mklev import: mklev.js statically imports wizcmds.js
  * (makemap_prepost), so a static edge back would cycle (wiz_flip_level
- * precedent). Named omission: `:389` lspo_reset_level (no scored
- * analogue — each load_special entry builds a fresh des coder).
+ * precedent).
  */
 export async function wiz_load_splua() {
     if (game.flags?.debug || game.flags?.wizard) { /* C :377 */

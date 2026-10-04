@@ -354,9 +354,9 @@ function wishymatch(u_str, o_str, retry_inverted) {
     return false; // C `:3338`
 }
 
-/** C ref: objnam.c rnd_otyp_by_namedesc */
+/** C ref: objnam.c rnd_otyp_by_namedesc `:3455–3529` (D-3403: oc_uname arm). */
 export function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
-    if (!name) return STRANGE_OBJECT;
+    if (!name || !name.length) return STRANGE_OBJECT; // C `:3485–3486`
     const check_of = !name.toLowerCase().includes(' of ');
     const objs = game.objects || [];
     let lo = MAXOCLASSES;
@@ -392,6 +392,9 @@ export function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
                 if (of >= 0) hit = wishymatch(name, zd.slice(of + 4), false);
             }
         }
+        // C `:3531–3532` — user-called name (oc_uname; 0/unset skips).
+        const zu = objs[i]?.oc_uname;
+        if (!hit && zu) hit = wishymatch(name, zu, false);
         if (hit) {
             valid.push(i);
             maxprob += (objs[i]?.oc_prob || 0) + (xtra_prob | 0);

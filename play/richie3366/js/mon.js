@@ -226,8 +226,6 @@ export function bad_rock(mdat, x, y) {
 /**
  * C ref: hack.c cant_squeeze_thru — nonzero = cannot fit a tight diagonal.
  * 1=too big, 2=load, 3=Sokoban (hero only). Returns 0 if can squeeze.
- * Named omission: can_fog (vampshifter) for the bigmonst exemption
- * (hack.c:964). The export is live; this arm still treats it as false.
  */
 export function cant_squeeze_thru(mon) {
     const ptr = mon?.data;
@@ -240,10 +238,9 @@ export function cant_squeeze_thru(mon) {
         return 0;
     }
     const slithy = !!((ptr?.mflags1 ?? 0) & M1_SLITHY);
-    // Named omission: can_fog(mon) — still false here (hack.c:964).
-    if (bigmonst(ptr)
+    if (bigmonst(ptr) // C `:962–965`
         && !(amorphous(ptr) || is_whirly(ptr) || noncorporeal(ptr)
-            || slithy /* || can_fog(mon) */)) {
+            || slithy || can_fog(mon))) {
         return 1;
     }
     // C: hero uses inv_weight()+weight_cap(); mon uses curr_mon_load
@@ -3707,20 +3704,19 @@ export async function relmon(mon, list) {
 
 /**
  * C ref: mon.c replmon `:2515–2563` — swap map mon for larger/traits
- * replacement. relmon off-map + fmon removal, then place_monster the
+ * replacement. Live relmon(mtmp, NULL) off-map + fmon removal (with
+ * the mon_leaving_level :2703 unstuck), then place_monster the
  * replacement (unless it is the steed), worm segs via place_wsegs,
  * light-source swap, fmon prepend, ustuck/usteed, replshk, dealloc.
- * place_wsegs live (D-2300); light swap + replshk + set_ustuck live.
- * Named: :2530 relmon(mtmp, NULL) is a sync mirror (stays sync like
- * C; migrate_to_level precedent) — :2703 unstuck is async-only via
- * docrt. `impossible()` stays fire-and-forget so this stays sync.
+ * Async only: relmon awaits unstuck's swallow-release docrt
+ * (Constitution §2; sole caller zap montraits is async).
  */
-export function replmon(mtmp, mtmp2) {
+export async function replmon(mtmp, mtmp2) {
     if (!mtmp || !mtmp2) return;
     // C :2520–2524 — transfer replacement inventory, flag inconsistency.
     for (let otmp = mtmp2.minvent; otmp; otmp = otmp.nobj) {
         if ((otmp.where | 0) !== OBJ_MINVENT || otmp.ocarry !== mtmp)
-            void impossible('replmon: minvent inconsistency');
+            await impossible('replmon: minvent inconsistency');
         otmp.ocarry = mtmp2;
     }
     mtmp.minvent = null;
@@ -3731,55 +3727,10 @@ export function replmon(mtmp, mtmp2) {
         game.context.polearm.m_id = mtmp2.m_id | 0;
     }
 
-    // C :2530 relmon(mtmp, NULL) — sync mirror in C mon.c:2561–2594
-    // order (stays sync like C; migrate_to_level precedent): fire-and-
-    // forget panics + the mon_leaving_level :2696–2732 sync core (:2703
-    // unstuck is async-only via docrt — named).
-    if (!(game.fmon || []).length) {
-        void impossible('relmon: no fmon available.');
-    }
-    // C :2698–2699 — onmap grid read (canonical m_at, D-1565/D-1231).
-    const omx = mtmp.mx | 0, omy = mtmp.my | 0;
-    const onmap = isok(omx, omy) && m_at(omx, omy) === mtmp;
-    /* to prevent an infinite relobj-flooreffects-hmon-killed loop */
-    mtmp.mtrapped = 0;
-    /* vault guard might be at <0,0> */
-    if (onmap || m_at(0, 0) === mtmp) {
-        if (mtmp.wormno) {
-            remove_worm(mtmp);
-        } else {
-            /* C rm.h:534 — pure grid clear, no mstate change. */
-            remove_monster_xy(omx, omy);
-        }
-    }
-    if (onmap) {
-        mtmp.mundetected = 0; /* for migration; doesn't matter for death */
-        /* unhide mimic in case its shape has been blocking line of sight
-           or it is accompanying the hero to another level */
-        if (M_AP_TYPE(mtmp) !== M_AP_NOTHING
-            && M_AP_TYPE(mtmp) !== M_AP_MONSTER) {
-            seemimic(mtmp);
-        }
-        /* if mon is pinned by a boulder, removing mon lets boulder drop */
-        fill_pit(omx, omy);
-        newsym(omx, omy);
-    }
-    /* remembered target was redirected to mtmp2 above (C :2525–2527),
-       so this forget no-ops — kept for C :2730–2732 order. */
-    if (game.context?.polearm && mtmp === game.context.polearm.hitmon) {
-        game.context.polearm.hitmon = null;
-    }
-    // C :2571–2584 — remove from fmon (head or scan; :2583 absent →
-    // panic, fire-and-forget like the live relmon's continue).
+    // C :2530 relmon(mtmp, NULL) — live export (the former sync mirror
+    // is retired; the :2703 unstuck runs inside mon_leaving_level).
+    await relmon(mtmp, null);
     const list = game.fmon || [];
-    const i = list.indexOf(mtmp);
-    if (i < 0) {
-        void impossible('relmon: mon not in list.');
-    } else {
-        list.splice(i, 1);
-    }
-    // C :2591–2592 — orphan has no next monster.
-    mtmp.nmon = null;
 
     // C :2533–2535 — finish adding the replacement (steed stays off-map).
     if (mtmp !== game.u?.usteed)

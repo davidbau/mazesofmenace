@@ -55,7 +55,7 @@ import {
 import { bcsign } from './rumors.js';
 import { enexto, migrate_to_level, tele_restrict, rloc,
     random_teleport_level, noteleport_level, tele, unconscious } from './teleport.js';
-import { makemon, mpickobj, newcham, rndmonst, set_malign } from './makemon.js';
+import { makemon, makemon_appear_msg, mpickobj, newcham, rndmonst, set_malign } from './makemon.js';
 import {
     place_object, splitobj, unbless, objects_at, sobj_at, mksobj, weight,
     stackobj, unknow_object, obj_extract_self, add_to_container,
@@ -2619,6 +2619,11 @@ export async function use_defensive(mtmp) {
         if (!enexto(wcc, mtmp.mx, mtmp.my, wpm)) return 0;
         await mzapwand(mtmp, otmp, false);
         const wmon = makemon(null, wcc.x, wcc.y, NO_MM_FLAGS);
+        // C makemon.c:1472–1500 in-body appear Norep — JS makemon is sync
+        // so callers wire it (D-0559); without it a visible summons drops
+        // its "suddenly appears" line and a later --More-- desyncs input
+        // (town-94102 step 118: space became "Unknown command").
+        if (wmon) await makemon_appear_msg(wmon, wcc.x, wcc.y, NO_MM_FLAGS);
         if (wmon && canspotmon(wmon) && oseen) {
             makeknown(WAN_CREATE_MONSTER);
         }

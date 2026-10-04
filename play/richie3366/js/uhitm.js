@@ -113,7 +113,7 @@ import { obj_resists } from './dogmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
 import { m_unleash, objdescr_is } from './apply.js';
-import { mhe, mhis, defended, resists_blnd, monstseesu, monstunseesu, attacktype } from './mondata.js';
+import { mhe, mhis, defended, resists_blnd, resists_blnd_by_arti, monstseesu, monstunseesu, attacktype } from './mondata.js';
 import { Unaware, carried } from './eat.js';
 import { helm_simple_name, cloak_simple_name } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
@@ -4654,8 +4654,7 @@ export async function light_hits_gremlin(mon, dmg) {
  * (D-1554); sleep awaken; blind + flee RNG; gremlin light_hits
  * (cry/recoil pline_mon D-1240); resists_blnd illuminate msgs; unlit
  * More. Awaken/blind/illuminate stay pline like C.
- * Named omit: shieldeff resists_blnd_by_arti. Camera caller wires
- * see_monster_closeup (D-0999).
+ * Camera caller wires see_monster_closeup (D-0999).
  * @returns {Promise<number>} 1 if noticeable effect, else 0
  */
 export async function flash_hits_mon(mtmp, otmp) {
@@ -4716,7 +4715,8 @@ export async function flash_hits_mon(mtmp, otmp) {
                 mtmp.mblinded = tmp < 3 ? 0 : rnd(1 + ((50 / tmp) | 0));
             }
         } else if (useeit) {
-            // resists_blnd_by_arti shieldeff deferred
+            if (resists_blnd_by_arti(mtmp)) // C :6405–6406
+                await shieldeff(mx, my);
             if (game.flags?.verbose !== false) {
                 if (lev?.lit) {
                     await pline(`The flash of light shines on ${mon_nam(mtmp)}.`);

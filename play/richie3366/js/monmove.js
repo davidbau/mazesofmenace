@@ -66,7 +66,7 @@ import { mpickobj, set_malign, newcham } from './makemon.js';
 import { may_dig, mdig_tunnel, bury_an_obj, fracture_rock } from './dig.js';
 import { MON_WEP, mon_wield_item, select_rwep, autoreturn_weapon } from './weapon.js';
 import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
-import { is_pole } from './wield.js';
+import { is_pole, mwelded } from './wield.js';
 import { acurrstr } from './attrib.js';
 import { m_canseeu } from './mondata.js';
 import { rloc, tele_restrict, noteleport_level } from './teleport.js';
@@ -658,11 +658,6 @@ function closed_door_at(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc || !IS_DOOR(loc.typ)) return false;
     return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
-}
-
-/** C ref: wield.c mwelded — cursed weapon stuck in hand. */
-function mwelded(obj) {
-    return !!(obj && obj.cursed && ((obj.owornmask || 0) & W_WEP));
 }
 
 /**

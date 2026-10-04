@@ -48,7 +48,7 @@ import {
 import { reset_justpicked } from './pickup.js';
 import { set_wear, glibr } from './do_wear.js';
 import { clear_bypasses } from './worn.js';
-import { gethungry } from './eat.js';
+import { gethungry, reset_eat } from './eat.js';
 import { age_spells } from './spell.js';
 import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, prepare_perminvent, reroll_menu } from './invent.js';
 import { sanity_check } from './wizcmds.js';
@@ -1430,8 +1430,12 @@ export async function moveloop_core() {
         // C ref: allmain.c go.occupation — runs before rhack; return ends this tick
         const cont = await g.occupation();
         if (!cont) g.occupation = null;
-        // C: monster_nearby() → stop_occupation(); reset_eat deferred
-        if (monster_nearby()) await stop_occupation();
+        // C allmain.c:504–508 — monster_nearby() → stop_occupation()
+        // + reset_eat() (the actual reset runs on the next bite).
+        if (monster_nearby()) {
+            await stop_occupation();
+            reset_eat();
+        }
         // C allmain.c:509 — post-occupation, before return
         await runmode_delay_output();
         return;

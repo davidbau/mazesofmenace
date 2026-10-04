@@ -49,7 +49,7 @@ import { game } from './gstate.js';
 import { surface } from './sit.js';
 import { sanitize_name } from './bones.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { pline, You, You_cant, You_see, newsym, map_engraving, engr_can_be_felt, impossible, Hallucination } from './display.js';
+import { pline, You, Your, You_cant, You_see, newsym, map_engraving, engr_can_be_felt, impossible, Hallucination } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import { getobj, useup, hold_another_object, prinv, update_inventory, Blind, near_capacity } from './invent.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
@@ -66,14 +66,15 @@ import {
 import {
     DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE,
     ENGRAVEFILE, EPITAPHFILE, MD_PAD_RUMORS,
-    ROOM, GRAVE, IS_GRAVE, NO_MM_FLAGS, COLNO, ROWNO, CLOUD,
+    ROOM, GRAVE, IS_GRAVE, IS_ALTAR, NO_MM_FLAGS, COLNO, ROWNO, CLOUD,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA, EXT_ENCUMBER,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
     FLYING, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
-    ECMD_OK, ECMD_TIME, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, DRAWBRIDGE_DOWN,
+    ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL, LL_CONDUCT,
+    WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, DRAWBRIDGE_DOWN,
 } from './const.js';
 import { nomul, is_lava, is_pool, SURFACE_AT, check_capacity } from './hack.js';
-import { t_at, uteetering_at_seen_pit, uescaped_shaft, ceiling } from './trap.js';
+import { t_at, uteetering_at_seen_pit, uescaped_shaft, ceiling, set_levltyp } from './trap.js';
 import { goodpos } from './teleport.js';
 import { makemon } from './makemon.js';
 import { monsterNames } from './generated/monsters_data.js';
@@ -93,6 +94,9 @@ import { welded, bimanual } from './wield.js';
 import { dry_a_towel, is_wet_towel, hands_obj } from './weapon.js';
 import { wand_explode } from './read.js';
 import { mungspaces } from './hacklib.js';
+import { mon_nam } from './do_name.js';
+import { altar_wrath } from './pray.js';
+import { livelog_printf } from './pline.js';
 /* mondata.js (hoisted function, call-time use only — imports.mjs SAFE). */
 import { attacktype } from './mondata.js';
 
@@ -436,13 +440,12 @@ export function random_engraving() {
  * C ref: engrave.c make_grave — place GRAVE + HEADSTONE engraving.
  * Branch envelope: ROOM/GRAVE + !trap; null str → get_rnd_text(EPITAPHFILE);
  * fixed str (e.g. "Saved by the bell!") skips the epitaph draw.
- * Named omission: full set_levltyp side effects beyond typ=GRAVE.
  */
 export function make_grave(x, y, str) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     if ((loc.typ !== ROOM && loc.typ !== GRAVE) || t_at(x, y)) return;
-    loc.typ = GRAVE;
+    if (!set_levltyp(x, y, GRAVE)) return; // C :1695
     del_engr(engr_at(x, y));
     let text = str;
     if (text == null) { // C make_grave `if (!str)` — NULL only; "" engraves empty
@@ -1116,7 +1119,7 @@ async function doengrave_sfx_item(de) {
     case TOOL_CLASS:
         if (de.otmp === u.ublindf) {
             await pline('That is a bit difficult to engrave with, don\'t you think?');
-            de.ret = 0;
+            de.ret = ECMD_FAIL; // C `:840`
             return false;
         }
         switch (de.otmp.otyp) {
@@ -1155,7 +1158,7 @@ async function doengrave_sfx_item(de) {
         await pline('Writing a poison pen letter?');
         break;
     case ILLOBJ_CLASS:
-        await pline("You're engraving with an illegal object!");
+        await impossible("You're engraving with an illegal object!"); // C `:887`
         break;
     }
     return true;
@@ -1500,7 +1503,7 @@ export async function doengrave() {
     const u = game.u || {};
     /* C `:964`: messages print inside u_can_engrave; no second pline. */
     if (!(await u_can_engrave())) {
-        return 0;
+        return ECMD_FAIL; // C `:965`
     }
 
     const de = doengrave_ctx_init();
@@ -1508,7 +1511,11 @@ export async function doengrave() {
     game.nomovemsg = null;
 
     de.otmp = await getobj('write with', stylus_ok, GETOBJ_PROMPT);
-    if (!de.otmp) return 0;
+    if (!de.otmp) {
+        // C `:978–981` — fingers cancel the same way (hands getobj NULL).
+        de.ret = ECMD_CANCEL;
+        return de.ret;
+    }
 
     if (is_hands_stylus(de.otmp)) {
         de.writer = `your ${body_part_latebound(FINGERTIP)}`;
@@ -1524,6 +1531,15 @@ export async function doengrave() {
         return de.ret;
     }
 
+    // C `:998–1002` — swallowed by a jello: tickle + dissolve, no engraving.
+    if (de.jello) {
+        await pline(`You tickle ${mon_nam(u.ustuck)} with ${de.writer}.`);
+        await Your('message dissolves...');
+        if (de.disprefresh) newsym(u.ux, u.uy);
+        return de.ret;
+    }
+
+    let initial_msg_given = false; // C `:961`
     if (!can_reach_floor(true)) {
         if (is_hands_stylus(de.otmp) || de.otmp.oclass !== WAND_CLASS) {
             await cant_reach_floor(u.ux, u.uy, false, true, false);
@@ -1533,11 +1549,27 @@ export async function doengrave() {
         await pline(
             `You gesture, with your wand, towards the ${surface(u.ux, u.uy)} below you.`,
         );
+        initial_msg_given = true; // C `:1010`
+    }
+
+    // C `:1013–1018` — altar: motion message (unless the wand gesture
+    // already spoke) + altar_wrath, no engraving.
+    {
+        const aloc = game.level?.at(u.ux, u.uy);
+        if (IS_ALTAR(aloc?.typ)) {
+            if (!initial_msg_given) {
+                await pline(
+                    `You make a motion towards the altar with ${de.writer}.`,
+                );
+            }
+            await altar_wrath(u.ux, u.uy);
+            if (de.disprefresh) newsym(u.ux, u.uy);
+            return de.ret;
+        }
     }
 
     /* C `:1019–1031` — grave: finger only smudges; undisturbed summons
-       a ghoul via disturb_grave (sets disturbed so once-only). The jello
-       `:998` and altar `:1013` arms above stay omitted (header). */
+       a ghoul via disturb_grave (sets disturbed so once-only). */
     {
         const gloc = game.level?.at(u.ux, u.uy);
         if (IS_GRAVE(gloc?.typ)) {
@@ -1556,6 +1588,23 @@ export async function doengrave() {
     if (!await doengrave_sfx_item(de)) {
         if (de.disprefresh) newsym(u.ux, u.uy);
         return de.ret;
+    }
+
+    // C `:1037–1047` — post-sfx grave fixup: an engraving stylus writes a
+    // headstone; anything else resets to dust so the later arms take the
+    // "cannot wipe out" path (buf cleared, no tele/del pending).
+    {
+        const gloc = game.level?.at(u.ux, u.uy);
+        if (IS_GRAVE(gloc?.typ)) {
+            if (de.type === ENGRAVE || de.type === 0) {
+                de.type = HEADSTONE;
+            } else {
+                de.type = DUST;
+                de.dengr = false;
+                de.teleengr = false;
+                de.buf = '';
+            }
+        }
     }
 
     if (de.doknown) {
@@ -1684,9 +1733,16 @@ export async function doengrave() {
         return await doengrave_empty_text(de, u);
     }
 
+    // C `:1212–1216` — a non-signature engraving teaches literacy, with
+    // the first-time conduct livelog.
     if (len !== 1 || (!ebuf.includes('x') && !ebuf.includes('X'))) {
         if (!u.uconduct) u.uconduct = {};
-        u.uconduct.literate = (u.uconduct.literate | 0) + 1;
+        const prevLiterate = u.uconduct.literate | 0;
+        u.uconduct.literate = prevLiterate + 1;
+        if (!prevLiterate) {
+            livelog_printf(LL_CONDUCT,
+                'became literate by engraving "%s"', ebuf);
+        }
     }
 
     /* C engrave.c:1219-1226 — mix-up draws rn2(25)/rn2(11)/rn2(7)/rn2(4)/rn2(2) in order; Blind≡(HBlinded||EBlinded)&&!BBlinded. */

@@ -1576,12 +1576,12 @@ export async function list_genocided(defquery, ask) {
 }
 
 /**
- * C ref: insight.c dogenocided (#genocided).
+ * C ref: insight.c dogenocided `:3135–3139` (#genocided) — unlike
+ * dovanquished (`:2772`), C leaves iflags.menu_requested set here.
  */
 export async function dogenocided() {
     const defq = game.iflags?.menu_requested ? 'a' : 'y';
     await list_genocided(defq, false);
-    if (game.iflags) game.iflags.menu_requested = false;
     return ECMD_OK;
 }
 

@@ -132,6 +132,7 @@ import { SchroedingersBox } from './pickup.js';
 import { arti_cost } from './artifact.js';
 import { o_unleash } from './apply.js';
 import { setnotworn, dropy, assign_level } from './do.js';
+import { uqwepgone } from './wield.js';
 import { findgold, inv_cnt } from './steal.js';
 import { merge_choice } from './files.js';
 import { maybe_reset_pick } from './lock.js';
@@ -1836,48 +1837,44 @@ function mdistu_mon(mtmp) {
 }
 
 /**
- * C ref: shk.c clear_no_charge_obj — clear no_charge (+ contents).
+ * C ref: shk.c clear_no_charge_obj `:329–373` — clear no_charge (+ contents).
  * When shkp is null, clear all; else clear when not in a rival shop.
- * Named omission: get_obj_location buried / contained coord polish.
+ * C `:357` passes OBJ_CONTAINED|OBJ_BURIED = 6 as locflags: only the
+ * BURIED_TOO bit is set, so buried items resolve their coords while
+ * contained items never do (get_obj_location FALSE → clear). The
+ * live timeout.js export takes the same flags expression.
  */
 function clear_no_charge_obj(shkp, otmp) {
     if (!otmp) return;
-    if (Has_contents(otmp)) clear_no_charge(shkp, otmp.cobj);
-    if (!otmp.no_charge) return;
-    if (!shkp) {
+    if (Has_contents(otmp)) clear_no_charge(shkp, otmp.cobj); // C :333–334
+    if (!otmp.no_charge) return; // C :335
+    if (!shkp) { // C :353
         otmp.no_charge = 0;
         return;
     }
     const where = otmp.where | 0;
-    if (where !== OBJ_FLOOR && where !== OBJ_CONTAINED) {
+    if (where !== OBJ_FLOOR && where !== OBJ_CONTAINED // C :354–356
+        && where !== OBJ_BURIED) {
         otmp.no_charge = 0;
         return;
     }
-    let x = otmp.ox | 0;
-    let y = otmp.oy | 0;
-    if (where === OBJ_CONTAINED) {
-        let cont = otmp.ocontainer;
-        while (cont && (cont.where | 0) === OBJ_CONTAINED) cont = cont.ocontainer;
-        if (cont && (cont.where | 0) === OBJ_FLOOR) {
-            x = cont.ox | 0;
-            y = cont.oy | 0;
-        } else {
-            otmp.no_charge = 0;
-            return;
-        }
-    }
-    if (!isok(x, y)) {
+    const pos = shk_full_get_obj_location(otmp, OBJ_CONTAINED | OBJ_BURIED); // C :357
+    if (!pos) { // C :357 (incl. every contained item — flags lack CONTAINED_TOO)
         otmp.no_charge = 0;
         return;
     }
-    const loc = game.level?.at?.(x, y);
+    if (!isok(pos.x, pos.y)) { // C :358
+        otmp.no_charge = 0;
+        return;
+    }
+    const loc = game.level?.at?.(pos.x, pos.y);
     const rno = loc?.roomno | 0;
-    if (rno < ROOMOFFSET || !IS_SHOP(rno - ROOMOFFSET)) {
+    if (rno < ROOMOFFSET || !IS_SHOP(rno - ROOMOFFSET)) { // C :359–360
         otmp.no_charge = 0;
         return;
     }
-    const rm_shkp = game.level?.rooms?.[rno - ROOMOFFSET]?.resident || null;
-    if (!rm_shkp || rm_shkp === shkp) otmp.no_charge = 0;
+    const rm_shkp = game.level?.rooms?.[rno - ROOMOFFSET]?.resident || null; // C :361
+    if (!rm_shkp || rm_shkp === shkp) otmp.no_charge = 0; // C :361–362
 }
 
 /** C ref: shk.c clear_no_charge — walk nobj chain. */
@@ -2755,8 +2752,9 @@ function set_cost(obj, shkp) {
 
 /**
  * C ref: shk.c contained_cost — price of nested contents (usell / buy).
+ * Exported for zap.c poly_obj's shop-anger bill (`:1969–1970`).
  */
-function contained_cost(obj, shkp, price, usell, unpaid_only) {
+export function contained_cost(obj, shkp, price, usell, unpaid_only) {
     let p = price | 0;
     if (!obj) return p;
     let top = obj;
@@ -4766,22 +4764,36 @@ function findgold_invent() {
 }
 
 /**
- * C ref: shk.c money2mon — move hero gold into mon minvent.
+ * C ref: shk.c money2mon `:157–178` — move hero gold into mon minvent.
  * C freeinv → freeinv_core sets disp.botl; botl uses money_cnt(invent).
  * JS botl `$:` caches game._goldCount (addinv/drop maintain it) — decrement
- * here so pay paints the post-payment wallet.
- * Named omissions: remove_worn_item quiver; impossible arms.
+ * here so pay paints the post-payment wallet. The impossibles are
+ * fire-and-forget (sync; set_levltyp_lit precedent).
  */
 export function money2mon(mon, amount) {
-    if (amount <= 0 || !mon) return 0;
+    if (!mon) return 0;
+    if (amount <= 0) { // C :160–163
+        void impossible(`${amount ? 'negative' : 'zero'} payment in money2mon!`);
+        return 0;
+    }
     let ygold = findgold_invent();
-    if (!ygold || (ygold.quan | 0) < amount) return 0;
-    if ((ygold.quan | 0) > amount) {
+    if (!ygold || (ygold.quan | 0) < amount) { // C :164–167
+        void impossible(`Paying without ${ygold ? 'enough' : ''} gold?`);
+        return 0;
+    }
+    if ((ygold.quan | 0) > amount) { // C :169–170
         ygold = splitobj(ygold, amount);
-        // splitobj leaves parent in invent with reduced quan; child not
-        // listed in invent[] — freeinv of child is a no-op (C removes
-        // the split child from the invent chain).
-    } else {
+    } else if (ygold.owornmask) {
+        /* C :171–172 — quivered gold (the only worn state gold reaches):
+           remove_worn_item's W_WEAPONS/quiver arm. uqwepgone is sync; a
+           stale mask with no quiver slot falls to setnotworn like C's
+           catchall. Armor/amulet/ring/tool/ball arms and the
+           donning/in_use guards can't fire for gold. */
+        if (ygold === game.u?.uquiver) uqwepgone();
+        else setnotworn(ygold);
+    }
+    /* C :173 freeinv — splice; the split child isn't listed (no-op). */
+    if (ygold) {
         const inv = game.invent || [];
         const idx = inv.indexOf(ygold);
         if (idx >= 0) inv.splice(idx, 1);
@@ -4983,29 +4995,21 @@ export async function after_shk_move(shkp) {
 }
 
 /**
- * C ref: shk.c home_shk — return to shk.x,shk.y then maybe kops.
- * Named omit: full mnearto(RLOC_NOMSG) yank (coord set like prior door path).
+ * C ref: shk.c home_shk `:1317–1328` — mnearto to shk.x,shk.y (RLOC_NOMSG
+ * suppresses the vanish/appear messages), has_shop, optional kops
+ * teardown, after_shk_move.
  */
 async function home_shk(shkp, killkops) {
     const eshk = ESHK(shkp);
-    if (eshk?.shk) {
-        const x = eshk.shk.x | 0;
-        const y = eshk.shk.y | 0;
-        const ox = shkp.mx;
-        const oy = shkp.my;
-        if (ox !== x || oy !== y) {
-            shkp.mx = x;
-            shkp.my = y;
-            if (ox != null && oy != null) newsym(ox, oy);
-            newsym(x, y);
-        }
-    }
-    if (game.level?.flags) game.level.flags.has_shop = 1;
-    if (killkops) {
+    const x = eshk?.shk?.x | 0; // C :1320
+    const y = eshk?.shk?.y | 0;
+    await mnearto(shkp, x, y, true, RLOC_NOMSG); // C :1322
+    if (game.level?.flags) game.level.flags.has_shop = 1; // C :1323
+    if (killkops) { // C :1324–1327
         await kops_gone(true);
         pacify_guards();
     }
-    await after_shk_move(shkp); // C `:1327`
+    await after_shk_move(shkp); // C :1327
 }
 
 /** C ref: shk.c costly_adjacent — edge or free spot. */

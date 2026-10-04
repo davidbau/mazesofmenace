@@ -10,7 +10,8 @@
 // before matching, `?` / redraw_cmd(^R) → getpos_help? + getpos_refresh
 // + show_goal_msg, mMoOdDxXaAzZ gather_locs cycle (D-0928 #1189),
 // autodescribe topline, force unknown-direction pline, pick_chars
-// LOOK_*, ESC → -1.
+// LOOK_*, ESC → -1 (ccp -10,-10). Entry + per-loop cmdq DIR/KEY
+// consume, G/g run/rush prefix, mouse-click pick (D-3403).
 // getpos_menu / S_goodpos tmp_at hilite / engraving full showsyms /
 // docrtRefresh redraw_map-only live via docrt_flags (display.js).
 // getpos_getvalid `(invalid target)` live (D-0899).
@@ -54,12 +55,16 @@ import {
     ROGUESET, Is_rogue_level,
     HI_ZAP, TIP_GETPOS,
     SUPPRESS_HISTORY, OVERRIDE_MSGTYPE, NO_CURS_ON_U,
-    CQ_REPEAT,
+    CQ_REPEAT, CQ_CANNED, CMDQ_KEY, CMDQ_DIR,
+    NHKF_ESC,
 } from './const.js';
 import { paint_corner_nhw_menu, cmdq_add_key } from './invent.js';
 import { t_at } from './trap.js';
 import { invocation_pos, handle_tip } from './hack.js';
-import { is_valid_travelpt, lock_mouse_buttons } from './cmd.js';
+import {
+    is_valid_travelpt, lock_mouse_buttons,
+    cmdq_pop, cmdq_clear, readchar_poskey,
+} from './cmd.js';
 import { ok_to_quest } from './quest.js';
 import { on_level } from './dungeon.js';
 import { visctrl, cmd_from_func, cmdbind_get } from './dokeylist.js';
@@ -1140,8 +1145,8 @@ function getpos_help_keyxhelp(lines, k1, k2, gloc) {
 
 /**
  * C ref: getpos.c getpos_help :167-307 — NHW_MENU putstr +
- * display_nhwindow(TRUE). Default !num_pad move/run/rush keys
- * (hjklyubn / HJKL / G,g). Named: cmd_from_func custom binds.
+ * display_nhwindow(TRUE). Move/run/rush keys via the live cmd_from_func
+ * (custom binds honored; D-3403 retires the stale "Named" note).
  * C :258-266 cmdassist Sprintf has no putstr (sbuf overwritten by the
  * "Type a ..." Snprintf) so it prints no line — none here either.
  */
@@ -1323,6 +1328,26 @@ export async function show_getpos_tip() {
 export async function getpos(ccp, force, goal, describeAt) {
     const g = game;
     if (!g.flags) g.flags = {};
+    // C `:814–829` — entry: a queued direction (mouse-click MCMD replay
+    // outside doagain) returns the adjacent spot without prompting;
+    // anything else queued clears the canned queue and cancels (D-3403).
+    if (!g.in_doagain) {
+        const entryq = cmdq_pop();
+        if (entryq) {
+            if (entryq.typ === CMDQ_DIR && !entryq.dirz) {
+                ccp.x = (g.u?.ux | 0) + (entryq.dirx | 0);
+                ccp.y = (g.u?.uy | 0) + (entryq.diry | 0);
+                return 0;
+            }
+            cmdq_clear(CQ_CANNED);
+            return -1;
+        }
+    }
+    // C `:803–804` — tx/ty seed at the hero; readchar_poskey fills them
+    // on a mouse click (pass-through in JS; the c==0 arm below mirrors C).
+    let tx = g.u?.ux | 0;
+    let ty = g.u?.uy | 0;
+    let rushrun = false;
     let cx = ccp.x | 0;
     let cy = ccp.y | 0;
     if (!isok(cx, cy)) {
@@ -1363,7 +1388,7 @@ export async function getpos(ccp, force, goal, describeAt) {
     // tty cursor on the last glyph — not on the hero (D-0928 #1137).
     if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
     flush_screen_getpos_dirty();
-    // First nhgetch uses the pre-loop dirty flush; later iterations need a
+    // First read uses the pre-loop dirty flush; later iterations need a
     // full flush + curs like the prior port (topline / map sync).
     let need_full_flush = false;
 
@@ -1404,25 +1429,90 @@ export async function getpos(ccp, force, goal, describeAt) {
             if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
         }
 
-        const key = await nhgetch();
-        need_full_flush = true;
-        const ch = String.fromCharCode(key);
-        // C getpos.c:885–886 — the interactive read (cmdq_pop miss) is
-        // recorded when iflags.remember_getpos and not already replaying.
-        if (g.iflags?.remember_getpos && !g.in_doagain) {
-            cmdq_add_key(CQ_REPEAT, ch);
+        rushrun = false; // C `:870` — cleared at the top of every iteration
+        // C `:872–888` — a queued key (doagain replay of remember_getpos
+        // records, mouse-click MCMD tails) is the input; anything else
+        // queued clears the canned queue and cancels via exitgetpos (-1).
+        // C `:889–891` — the interactive read is recorded when
+        // iflags.remember_getpos and not already replaying (D-3403).
+        let key;
+        {
+            const pos = { x: tx, y: ty, mod: 0 };
+            const cmdq = cmdq_pop();
+            if (cmdq) {
+                if (cmdq.typ !== CMDQ_KEY) {
+                    cmdq_clear(CQ_CANNED);
+                    ccp.x = cx;
+                    ccp.y = cy;
+                    g._pending_message = '';
+                    if (getpos_hilitefunc) getpos_hilitefunc(false);
+                    getpos_sethilite(null, null);
+                    return -1;
+                }
+                key = typeof cmdq.key === 'string'
+                    ? cmdq.key.charCodeAt(0) : (cmdq.key | 0);
+            } else {
+                key = await readchar_poskey(pos);
+                tx = pos.x | 0;
+                ty = pos.y | 0;
+                if (g.iflags?.remember_getpos && !g.in_doagain) {
+                    cmdq_add_key(CQ_REPEAT, String.fromCharCode(key));
+                }
+            }
         }
+        need_full_flush = true;
+        let ch = String.fromCharCode(key);
 
         // C: if (iflags.autodescribe) msg_given = FALSE;
         if (g.iflags?.autodescribe) msg_given = false;
 
-        if (key === 27) {
-            ccp.x = -1;
-            ccp.y = -1;
+        if (key === getpos_spkey(NHKF_ESC)) { // C `:893–898`
+            ccp.x = -10; // C `:894` — cx = cy = -10 (was -1; D-3403)
+            ccp.y = -10;
             g._pending_message = '';
             if (getpos_hilitefunc) getpos_hilitefunc(false);
             getpos_sethilite(null, null);
             return -1;
+        }
+
+        // C `:899–902` — do_run/do_rush ('G'/'g') prefix: one more read,
+        // treated as a fast move (rushrun). The second read is not
+        // recorded, and a non-direction second key falls through the
+        // chain below with rushrun ignored, like C (D-3403).
+        if (key === cmd_from_func('run') || key === cmd_from_func('rush')) {
+            const pos2 = { x: tx, y: ty, mod: 0 };
+            key = await readchar_poskey(pos2);
+            tx = pos2.x | 0;
+            ty = pos2.y | 0;
+            ch = String.fromCharCode(key);
+            rushrun = true;
+        }
+
+        // C final-else `:1132–1141` quitchars gate for the prefixed key: ESC
+        // after the run/rush prefix is not a cancel (-10); like space it
+        // skips the unknown-direction pline and loops (force) or says
+        // "Done." (!force, ccp (-1, 0), result 0).
+        if (rushrun && key === getpos_spkey(NHKF_ESC)) {
+            if (force) continue;
+            await pline('Done.');
+            msg_given = false; // C `:1137` — suppress clear
+            ccp.x = -1;
+            ccp.y = 0;
+            if (getpos_hilitefunc) getpos_hilitefunc(false);
+            getpos_sethilite(null, null);
+            return 0;
+        }
+
+        // C `:903–910` — mouse click: jump the cursor, pick with result 0.
+        if (key === 0) {
+            if (!isok(tx, ty)) continue;
+            cx = tx;
+            cy = ty;
+            ccp.x = cx;
+            ccp.y = cy;
+            if (getpos_hilitefunc) getpos_hilitefunc(false);
+            getpos_sethilite(null, null);
+            return 0;
         }
 
         // C pick_chars_def: . LOOK_TRADITIONAL, , QUICK, ; ONCE, : VERBOSE
@@ -1462,7 +1552,9 @@ export async function getpos(ccp, force, goal, describeAt) {
                 g.u.dy = dy;
                 g.u.dz = 0;
             }
-            if (rush) {
+            // C `:915–918` — rushrun (do_run/do_rush prefix above) takes
+            // the do_rushrun 8-step/glyph-skip path like MV_RUSH/MV_RUN.
+            if (rush || rushrun) {
                 if (g.iflags?.getloc_moveskip) {
                     // C: skip same glyphs while next+1 is still that glyph
                     const glyph = glyph_at(cx, cy);

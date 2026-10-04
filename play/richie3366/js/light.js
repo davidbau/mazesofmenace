@@ -15,7 +15,8 @@ import {
     impossible, pline,
 } from './display.js';
 import { dist2 } from './hacklib.js';
-import { place_object, obj_extract_self, fmt_ptr, obj_is_local } from './mkobj.js';
+import { place_object, obj_extract_self, obj_is_local } from './mkobj.js';
+import { fmt_ptr } from './alloc.js';
 import { simpleonames, otense, xname } from './objnam.js';
 import { monsterNames } from './monsters.js';
 import { ignitable, artifact_light, end_burn, get_mon_location } from './timeout.js';

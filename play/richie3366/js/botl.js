@@ -417,8 +417,8 @@ export function new_status_window() {
 // C botl.c:1809-1884 — compare_blstats(): prev-vs-new change direction
 // (1 = went up/increased, -1 = went down, 0 = same; bitmask 0/1 same/changed).
 // C panic() aborts the game; JS has no sync abort, so the two bad-pointer
-// arms throw with the C message (loud, never silent). fmt_ptr() has no JS
-// port — the field index rides along instead.
+// arms throw with the C message (loud, never silent). fmt_ptr() lives in
+// js/alloc.js but the field index rides along here instead (stable ids).
 export function compare_blstats(bl1, bl2) {
     if (!bl1 || !bl2) {
         throw new Error(`compare_blstat: bad istat pointer ${bl1?.fld}, ${bl2?.fld}`); // C :1814-1816

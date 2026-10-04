@@ -4418,7 +4418,7 @@ function s_suffix_inv(s) {
  * !MINV_ALL → worn_wield_only armament filter (D-3315).
  * youmonst.data swap for "weapon in claw". Empty → "(none)".
  * PICK_ONE/ANY delegate to query_objlist like C (return selected[0]).
- * Named omit: INCLUDE_HERO fake youmonst rows; sortloot loot-name;
+ * Named omit: INCLUDE_HERO fake youmonst rows in the PICK_NONE analog; sortloot loot-name;
  * USE_INVLET letters (MINV_NOLET / PICK_NONE skip them);
  * invdisp_nothing NHW_MENU polish.
  * @returns {Promise<object|null>} selected object (PICK_NONE → null)
@@ -4451,8 +4451,8 @@ export async function display_minventory(mon, dflags, title) {
     const pickings = dflags & MINV_PICKMASK;
     // C: query_objlist(title, &minvent, INVORDER_SORT|INCLUDE_HERO,
     // pickings, allow_all|worn_wield_only); return selected[0].
-    // INCLUDE_HERO fake-hero rows stay named (query_objlist's flag
-    // bit passes through inertly — named there too).
+    // INCLUDE_HERO fake-hero rows live in query_objlist for this
+    // PICK_ONE/ANY path; the PICK_NONE analog below still omits them.
     if (pickings !== PICK_NONE) {
         if (!game.youmonst) game.youmonst = { _youmonst: true };
         if (!game.iflags) game.iflags = {};
@@ -8583,6 +8583,7 @@ export async function doattributes(enl_mode = null) {
     clear_overlay();
     await docrt();
     await flush_screen(1);
+    return ECMD_OK; // C insight.c:2018
 }
 
 /**

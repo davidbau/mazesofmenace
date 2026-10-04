@@ -1252,8 +1252,8 @@ export function map_monst(mtmp, showtail) {
  * browse_map(TER_DETECT|TER_MON) when !blessed-otmp; map_redisplay.
  * Empty + otmp → strange_feeling (D-1418; hallu heebie jeebies else
  * threatened). Crystal-ball / fountain pass null and skip that.
- * Named omissions: cursed-otmp wake; blessed persistent
- * display_nhwindow; unconstrain underwater/buried/swallow.
+ * Blessed persistent detection shows the map via the house
+ * display_nhwindow(WIN_MAP, TRUE) → more() idiom (mfind0 precedent).
  * map_monst pet/detected/monsym is D-1765.
  * detect_wsegs is D-1545 (map_monst TRUE). Long-worm identity is
  * D-1549 (mnum/mndx, not mons() ptr).
@@ -1284,9 +1284,12 @@ export async function monster_detect(otmp, mclass) {
     }
 
     const u = game.u || {};
-    const swallowed = !!(u.uswallow);
+    const swallowed = !!(u.uswallow); // C `:824` before unconstrain_map()
     await cls();
-    // unconstrain_map deferred (ordinary start not underwater/buried)
+    // C `:826` — lift underwater/buried/swallow for the display (the
+    // return feeds the blessed branch `:847`; map_redisplay reconstrains).
+    const unconstrained = unconstrain_map();
+    let woken = false; // C `:823`
 
     for (const mtmp of game.fmon || []) {
         if ((mtmp.mhp | 0) < 1) continue;
@@ -1298,7 +1301,15 @@ export async function monster_detect(otmp, mclass) {
                 && mclass === 'S_WORM_TAIL')) {
             map_monst(mtmp, true);
         }
-        // cursed otmp helpless wake deferred
+        // C `:836–840` — cursed detect wakes helpless monsters;
+        // helpless(mon) is monst.h:251 (msleeping || !mcanmove).
+        if (otmp && otmp.cursed
+            && ((mtmp.msleeping | 0) || !(mtmp.mcanmove | 0))) {
+            mtmp.msleeping = 0;
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
+            woken = true;
+        }
     }
     if (!swallowed) {
         // C detect.c monster_detect — display_self() (U_AP_TYPE glyphs)
@@ -1309,11 +1320,19 @@ export async function monster_detect(otmp, mclass) {
     // verbose pline appends "(For instructions...)" on the same topline
     // (topl.c NEED_MORE + room → two-space join, js/display.js:7387-96);
     // no more() between — a flush here paints a spurious --More--.
+    if (woken) await pline('Monsters sense the presence of you.'); // C `:844–845`
 
-    // otmp&&blessed && !unconstrained → display_nhwindow(WIN_MAP) deferred
-    u.EDetect_monsters = (u.EDetect_monsters | 0) | I_SPECIAL;
-    await browse_map(TER_DETECT | TER_MON, 'monster of interest');
-    u.EDetect_monsters = (u.EDetect_monsters | 0) & ~I_SPECIAL;
+    // C `:847–855` — blessed && !unconstrained shows the persistent map
+    // via display_nhwindow(WIN_MAP, TRUE) (house more() idiom) instead of
+    // the one-shot browse.
+    if (otmp && otmp.blessed && !unconstrained) {
+        /* persistent detection — just show updated map */
+        await more();
+    } else {
+        u.EDetect_monsters = (u.EDetect_monsters | 0) | I_SPECIAL;
+        await browse_map(TER_DETECT | TER_MON, 'monster of interest');
+        u.EDetect_monsters = (u.EDetect_monsters | 0) & ~I_SPECIAL;
+    }
 
     await map_redisplay();
     return 0;
@@ -2242,15 +2261,14 @@ function ftrap_list() {
 }
 
 /**
- * C fobj nobj — JS has no fobj chain; walk every cell's nexthere.
+ * C fobj nobj chain (newest first; place_object threads it, mkobj.js).
+ * Order matters, not just membership: under hallucination each mapped
+ * object draws a display-RNG appearance, so grid order swaps appearances
+ * vs C (scen-impaired-Knight-94330 step 49: pie/ration '/' vs '.').
  */
-function floor_objects() {
+export function floor_objects() {
     const out = [];
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            for (let o = objects_at(x, y); o; o = o.nexthere) out.push(o);
-        }
-    }
+    for (let o = game.fobj; o; o = o.nobj) out.push(o);
     return out;
 }
 

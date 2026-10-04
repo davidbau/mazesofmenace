@@ -960,6 +960,18 @@ export async function try_restore_save() {
     } else if (restoredWizard || restoredExplore) {
         set_playmode();
     }
+    // C restore.c:596 — role_init() re-derivation runs even on restore.
+    // Its only surviving effect is the RNG burn (ldrgend/nemgend and any
+    // selection draws); urole/urace/quest_status/flags are overwritten
+    // from the payload below, like C's Sfi. pantheon is saved/restored:
+    // C sees the launch -1 here, then Sfi overwrites the selection.
+    // (game.plname already holds the save name, so plnamesuffix never
+    // prompts; idempotent for dashless names like C's launch parse.)
+    const savedPantheon = game.flags.pantheon;
+    game.flags.pantheon = -1;
+    const { role_init } = await import('./roles.js');
+    await role_init();
+    game.flags.pantheon = savedPantheon;
     // C: iflags (perm_invent, graphics) stay from nethackrc; not in save.
     game.context = { ...(payload.context || {}) };
     game.moves = payload.moves | 0;

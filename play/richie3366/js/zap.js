@@ -302,7 +302,8 @@ import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv,
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac, addinv_core1, addinv_core2 } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
-import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents, addtobill, inside_shop, shkcatch } from './shk.js';
+import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents, addtobill, inside_shop, shkcatch, inhishop, contained_cost, make_angry_shk } from './shk.js';
+import { Shknam } from './shknam.js';
 import { dryup } from './fountain.js';
 import { explode, completelyburns } from './explode.js';
 import { unpunish, litroom } from './read.js';
@@ -3134,7 +3135,7 @@ export async function montraits(obj, cc, adjacentok) {
         if (src && dst) Object.assign(dst, src);
         mtmp.isshk = 1;
     }
-    replmon(mtmp, mtmp2);
+    await replmon(mtmp, mtmp2);
     newsym(mtmp2.mx | 0, mtmp2.my | 0);
     await restore_cham(mtmp2);
     return mtmp2;
@@ -5308,7 +5309,7 @@ async function stone_to_flesh_obj(obj) {
  * (wand/pile + potion_dip D-1499) plus mksobj(id) for stone-to-flesh
  * (D-1461 :1728–1736). Invent worn remap + set_wear (D-1510).
  * Invent side effects via addinv_core1/2 (C `:1910–1914`).
- * Named: sokoban_guilt / egg/leash / shop bill /
+ * Named: sokoban_guilt / egg/leash /
  * gem mineral rnd / spestudied / floor boulder block.
  */
 export async function poly_obj(obj, id) {
@@ -5521,7 +5522,32 @@ export async function poly_obj(obj, id) {
                 }
             }
         }
-        // C zap.c `:1965–1986` shop-anger bill still named.
+        /* C zap.c `:1965–1986` — polymorphing shop goods (or an unpaid
+           item) on a costly spot angers the shopkeeper. otmp gone means
+           useup() already billed it. */
+        if (((otmp && !carried(otmp)) || obj.unpaid) && costly_spot(ox, oy)) {
+            const rooms = in_rooms(ox, oy, SHOPBASE) || '';
+            const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0); // C :1967
+            if ((!obj.no_charge
+                    || (Has_contents(obj)
+                        && contained_cost(obj, shkp, 0, false, false) !== 0))
+                && inhishop(shkp)) { // C :1969–1971
+                if (shkp.mpeaceful) {
+                    const urooms = in_rooms(game.u.ux, game.u.uy, 0) || '';
+                    const srooms = in_rooms(shkp.mx, shkp.my, 0) || '';
+                    if ((game.u.ushops || '')
+                        && (urooms.charCodeAt(0) || 0) === (srooms.charCodeAt(0) || 0)
+                        && !costly_spot(game.u.ux, game.u.uy)) { // C :1974–1977
+                        await make_angry_shk(shkp, ox, oy);
+                    } else { // C :1978–1981
+                        await pline(`${Shknam(shkp)} gets angry!`);
+                        await hot_pursuit(shkp);
+                    }
+                } else { // C :1983–1984
+                    await Norep(`${Shknam(shkp)} is furious!`);
+                }
+            }
+        }
     } else {
         // minvent/contained — extract+free old; leave otmp free
         delobj(obj);

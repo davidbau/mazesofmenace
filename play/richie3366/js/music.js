@@ -44,7 +44,7 @@ import { Monnam, mon_nam, x_monnam, a_monnam, Amonnam } from './do_name.js';
 import { cansee, recalc_block_point, unblock_point } from './vision.js';
 import { m_at, wakeup, seemimic, onscary, unique_corpstat } from './mon.js';
 import { monflee } from './monmove.js';
-import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch } from './trap.js';
+import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch, set_levltyp } from './trap.js';
 import {
     fillholetyp, liquid_flow,
 } from './dig.js';
@@ -454,8 +454,7 @@ async function do_pit(x, y, tu_pit) {
     // Let liquid flow into the newly created chasm.
     const filltype = fillholetyp(x, y, false);
     if (filltype !== ROOM) {
-        const lev = game.level?.at?.(x, y);
-        if (lev) lev.typ = filltype; // C set_levltyp
+        set_levltyp(x, y, filltype); // C :250 (void)
         await liquid_flow(x, y, filltype, chasm0, null);
         if (!t_at(x, y)) return;
     }

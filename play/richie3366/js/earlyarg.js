@@ -406,8 +406,8 @@ export async function early_options(argcBox, argvBox, hackdirBox) {
         }
     }
     /* empty or "N errors on command line" */
-    config_error_done(); // C `:358`
-    return; // C `:359`
+    config_error_done(); // C `:359`
+    return; // C `:360`
 }
 
 /**

@@ -62,6 +62,7 @@ import {
     Is_rogue_level,
     PRIMARYSET,
     ROGUESET,
+    H_UNK,
     DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
     DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING,
@@ -147,7 +148,7 @@ import {
     DEC_TO_UNICODE, ATR_NONE, ATR_INVERSE, ATR_BOLD, ATR_UNDERLINE,
 } from './terminal.js';
 import { update_lastseentyp, In_tutorial, cmap_to_type, ensure_lastseentyp, on_level } from './dungeon.js';
-import { stairway_at, known_branch_stairs } from './mklev.js';
+import { stairway_at, known_branch_stairs, xy_set_wall_state } from './mklev.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
@@ -3226,6 +3227,41 @@ export function assign_graphics(whichset) {
 }
 
 /**
+ * C ref: symbols.c switch_symbols `:253–292` — refresh showsyms from the
+ * primary set (SYMBOLS/ROGUESYMBOLS apply). TRUE (`:257–260`): showsyms[i]
+ * = ov_primary ? ov : primary — the assign_graphics PRIMARYSET arm, same
+ * stores; the `:261–287` PC9800/TERMLIB/CURSES/WIN32/UTF8 graphics-mode
+ * callbacks are null in contest tty (no JS callbacks exist). FALSE
+ * (`:288–291`): init_primary_symbols + init_showsyms = defaults (the gp
+ * carrier stays null by design; showsyms_defaults PRIMARYSET is what
+ * those inits write) + the PRIMARYSET entry handling/nocolor reset.
+ * Named omission: clear_symsetentry desc/purge/glyphmap (`:289` tail —
+ * no JS home). No reset_glyphmap call in C (assign_graphics-only,
+ * by-design unported). C callers: cfgfiles.c:1194/:1205 (wired);
+ * options.c:664/:1370/:1419/:1943/:4197 + symbols.c:682/:1088 (unported
+ * sites, named).
+ */
+export function switch_symbols(nondefault) {
+    if (!game.gs) game.gs = {};
+    const def = showsyms_defaults(PRIMARYSET);
+    let sh = game.gs.showsyms;
+    if (!Array.isArray(sh) || sh.length !== SYM_MAX) {
+        sh = game.gs.showsyms = new Array(SYM_MAX).fill(0);
+    }
+    if (nondefault) { // C `:257–260`
+        const ov = ov_primary_table();
+        for (let i = 0; i < SYM_MAX; i++) sh[i] = ov[i] ? ov[i] : def[i];
+    } else { // C `:288–291` — defaults + entry handling/nocolor reset
+        const se = game.gs.symset?.[PRIMARYSET];
+        if (se) {
+            se.handling = H_UNK;
+            se.nocolor = 0;
+        }
+        for (let i = 0; i < SYM_MAX; i++) sh[i] = def[i];
+    }
+}
+
+/**
  * C ref: botl.c check_gold_symbol — invis_goldsym when gold showsym ≤ ' '.
  */
 export function check_gold_symbol() {
@@ -4402,10 +4438,9 @@ function glyph_is_trap_at(glyph, x, y) {
  * C ref: detect.c reveal_terrain_getglyph
  * Branch envelope: hero_memory / seenv; strip mon/obj/trap/invisible per
  * TER_* bits; lastseentyp vs typ → back_to_glyph; litcorr→corr hack.
- * Named omissions: visible_region_at / gascloud; keep_traps trap_to_glyph
- * restore when stripping objs; M_AP_FURNITURE lastseentyp fake; swallowed
- * ustuck mon glyph; TER_FULL seenv temp already covered;
- * arboreal default.
+ * Named omissions: visible_region_at / gascloud (incl. the `!seenv` +
+ * region GLYPH_UNEXPLORED arm and the keep_traps region-glyph restore);
+ * arboreal default cell (the id arm is live).
  */
 export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset) {
     const loc = game.level?.at(x, y);
@@ -4462,6 +4497,12 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
 
     if (swallowed) {
         glyph = copy_glyph_id(levl_glyph);
+        // C `:2213–2215` — keep_mons + swallowed hero cell: the engulfer
+        // itself (mon_to_glyph defaults to rn2_on_display_rng like C).
+        const uu = game.u || {};
+        if (keep_mons && uu.ux === x && uu.uy === y && uu.ustuck) {
+            glyph = mon_to_glyph(uu.ustuck);
+        }
     } else {
         const u = game.u || {};
         if (u.ux === x && u.uy === y && canspotself()) {
@@ -4580,14 +4621,31 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
                     ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y),
                 };
             } else {
-                // C: temp typ = lastseentyp; back_to_glyph; restore
-                // wall_info recalc deferred
-                const saveTyp = loc.typ;
-                loc.typ = last;
-                glyph = {
-                    ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y),
-                };
-                loc.typ = saveTyp;
+                // C `:2262–2266` — a mimic here posing as furniture shows
+                // its mappearance, not a faked back_to_glyph.
+                const mim = mon_at_display(x, y);
+                if (mim && M_AP_TYPE(mim) === M_AP_FURNITURE) {
+                    const ap = mim.mappearance | 0;
+                    glyph = {
+                        ...cmap_idx_to_tty(ap), glyph: cmap_to_glyph(ap),
+                    };
+                } else {
+                    // C `:2267–2284` — temp typ = lastseentyp (with the
+                    // wall_info recalc so wall_angle can't impossible on a
+                    // stale doormask); back_to_glyph; restore the spot.
+                    const saveTyp = loc.typ;
+                    const saveWallInfo = loc.wall_info;
+                    loc.typ = last;
+                    if (IS_WALL(last) || last === SDOOR) {
+                        xy_set_wall_state(x, y);
+                    }
+                    glyph = {
+                        ...terrain_glyph(loc, x, y),
+                        glyph: back_to_glyph(x, y),
+                    };
+                    loc.typ = saveTyp;
+                    loc.wall_info = saveWallInfo;
+                }
             }
         }
     }
@@ -7690,15 +7748,17 @@ export async function bot() {
 /**
  * C ref: botl.c timebot — status update when only svm.moves changed.
  * VIA_WINDOWPORT → stat_update_time(); tty path → full bot().
- * Named omissions: hangup done_hup in suppress_map_output.
+ * time_botl clears unconditionally (both JS stores mirror C disp).
  */
 export async function timebot() {
     // C botl.c `:277–278` — gb.bot_disabled returns before time update.
     if (_bot_disabled) return;
     const flags = game.flags || {};
     const iflags = game.iflags || {};
-    // C: status_updates defaults TRUE; treat undefined as enabled
-    if (flags.time && iflags.status_updates !== false) {
+    // C `:285` — status_updates defaults TRUE (undefined reads
+    // enabled); suppress_map_output covers restoring/hangup.
+    if (flags.time && iflags.status_updates !== false
+        && !suppress_map_output()) {
         // C botl.h:213 VIA_WINDOWPORT() (bot() :7406-7408 precedent).
         const wincap2 = game.windowprocs?.wincap2 | 0;
         if ((wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0) {
@@ -7706,9 +7766,10 @@ export async function timebot() {
         } else {
             await bot(); // C :288-290 old status display updates everything
         }
-    } else if (game.flags) {
-        game.flags.time_botl = false;
     }
+    // C `:293` — disp.time_botl clears unconditionally, on every path.
+    if (game.flags) game.flags.time_botl = false;
+    if (game.disp) game.disp.time_botl = false;
 }
 
 // C ref: getline.c xwaitforspace("\033 ") — only ESC/space/return dismiss

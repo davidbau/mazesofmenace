@@ -10,6 +10,7 @@
 //        extract_nobj / container_weight; invent.c delobj / delobj_core (D-1756).
 
 import { game } from './gstate.js';
+import { fmt_ptr } from './alloc.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
 import { depth as depth_of_level, level_difficulty, strsubst, strstri } from './hacklib.js';
 import {
@@ -1958,18 +1959,8 @@ export function where_name(obj) {
     return OBJ_STATE_NAMES[where];
 }
 
-/**
- * C ref: alloc.c fmt_ptr `:125–135` — %p/0x hex of the heap pointer into a
- * rotating static ptrbuf. JS has no heap pointers: render the stable
- * identity the port uses in its place (obj o_id, monst m_id;
- * timeout.js fmt_timer_arg precedent), 0x-hex.
- * Exported for light.c del_light_source / delete_ls not-found arms
- * (D-2574; light.js already imports this module — no new edge).
- */
-export function fmt_ptr(ptr) {
-    const id = (ptr?.o_id ?? ptr?.m_id ?? 0) | 0;
-    return `0x${(id >>> 0).toString(16)}`;
-}
+/* C alloc.c fmt_ptr `:125–135` — imported live from js/alloc.js (C home;
+ * local def moved there; no clone). */
 
 /* C ref: mkobj.c ofmt0 `:2940–2944` — pline format for insane_object(). */
 const OFMT0_SANITY = '%s obj %s %s: %s';
@@ -2721,8 +2712,9 @@ export function noveltitle(otmp) {
 }
 
 // C ref: mkobj.c clear_dknown `:835–848` — dknowns[] then shield-range /
-// objects[].oc_merge (BITS mrg) force dknown=0; pudding later sets 1.
-// Caller: mon.c make_corpse Blind arm (`:928`).
+// objects[].oc_merge (BITS mrg) force dknown=0; pudding always sets 1
+// (even for existing globs via unknow_object — glob merge needs it).
+// Callers: unknow_object `:856`, make_corpse (mon.c:932), tmissile (mthrowu.c:620).
 export function clear_dknown(obj) {
     if (!obj) return;
     const cls = obj.oclass ?? 0;
@@ -2733,7 +2725,8 @@ export function clear_dknown(obj) {
         || oc_merge_of(otyp)) {
         obj.dknown = 0;
     }
-    // Is_pudding → dknown=1 set in mksobj_init after clear_dknown
+    /* C :845–847 — globs always dknown (maximize merging). */
+    if (Is_pudding(obj)) obj.dknown = 1;
 }
 
 /**

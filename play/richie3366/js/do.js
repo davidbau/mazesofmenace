@@ -110,7 +110,7 @@ import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
     check_special_room, is_pool, is_lava, waterbody_name,
     notice_mon_off, notice_mon_on, notice_all_mons,
-    impact_disturbs_zombies, set_uinwater, You_hear,
+    impact_disturbs_zombies, set_uinwater, You_hear, u_locomotion,
 } from './hack.js';
 import { show_getpos_tip } from './getpos.js';
 import { place_object, stackobj, weight, delobj, obj_extract_self,
@@ -559,17 +559,8 @@ function distu(x, y) {
     const u = game.u || {};
     return dist2(u.ux | 0, u.uy | 0, x | 0, y | 0);
 }
-/**
- * C ref: hack.c u_locomotion `:1817–1829` — Levitation, then youprop.h
- * Flying (mhitu.js export: H/E or a flying steed, unless BFlying).
- * Poly `locomotion(youmonst.data, def)` and the capitalize path stay named.
- * @param {string} defWord
- */
-function u_locomotion(defWord) {
-    if (Levitation()) return 'float';
-    if (Flying()) return 'fly';
-    return defWord;
-}
+/* C hack.c u_locomotion — local clone retired; do.c:1258/1762 call the
+ * live hack.js export (same import block above). */
 
 /**
  * C ref: trap.c fire_damage — burn containers/scrolls/books/potions;

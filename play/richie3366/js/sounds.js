@@ -69,6 +69,7 @@ import {
     se_courtly_conversation, se_sceptor_pounding,
     se_low_buzzing, se_angry_drone, se_bees,
     se_someone_searching, se_guards_footsteps,
+    se_canine_whine, se_squeal,
     number_of_se_entries, se_mappings_init,
 } from './generated/seffects_data.js';
 import { p_coaligned, priest_talk, inhistemple, temple_occupied } from './priest.js';
@@ -1255,24 +1256,29 @@ export async function growl(mtmp) {
 }
 
 /**
- * C ref: sounds.c whimper — leash-pull / mistreat soft pet sound.
- * Hallucination → ROLL_FROM(h_sounds). Named omit: Soundeffect; wake_msg.
+ * C ref: sounds.c whimper `:479–515` — leash-pull / mistreat soft pet
+ * sound. Hallucination → ROLL_FROM(h_sounds); else MS_MEW/MS_GROWL →
+ * whimper, MS_BARK → whine, MS_SQEEK → squeal (C has no MS_ROAR arm).
+ * Soundeffect(se, 50) is a no-op without SND_LIB, same as contest C.
+ * wake_nearto is unconditional in C (even at mx 0), like growl.
  */
 export async function whimper(mtmp) {
     if (!mtmp || helpless(mtmp) || mon_msound(mtmp) === MS_SILENT) return;
     let whimper_verb = null;
+    let se = se_canine_whine; // C :482
     if (game.u?.Hallucination) {
         whimper_verb = H_SOUNDS[rn2(H_SOUNDS.length)];
     } else {
         switch (mon_msound(mtmp)) {
         case MS_MEW:
-        case MS_BARK:
+        case MS_GROWL:
             whimper_verb = 'whimper';
             break;
-        case MS_ROAR:
+        case MS_BARK:
             whimper_verb = 'whine';
             break;
         case MS_SQEEK:
+            se = se_squeal;
             whimper_verb = 'squeal';
             break;
         default:
@@ -1280,12 +1286,13 @@ export async function whimper(mtmp) {
         }
     }
     if (whimper_verb) {
+        if (!game.u?.Hallucination) {
+            Soundeffect(se, 50); // C :504–506
+        }
         await pline(`${Monnam(mtmp)} ${vtense(null, whimper_verb)}.`);
         if (game.context?.run) nomul(0);
-        // C: wake_nearto(mx, my, mlevel * 6)
-        if (mtmp.mx) {
-            await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 6);
-        }
+        // C :510 — unconditional (growl idiom).
+        await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 6);
     }
 }
 
@@ -1994,7 +2001,8 @@ async function dochat() {
         // C `:1336–1344` — talking to a statue (Hallu: random monster name)
         const otmp = objects_at(tx, ty);
         if (otmp && (otmp.otyp | 0) === STATUE) {
-            if (!u.Blind && !u.ublind) {
+            // C `:1339` — full Blind macro (computed above).
+            if (!Blind) {
                 await pline_The(
                     '%s seems not to notice you.',
                     Hallucination() ? rndmonnam(null) : 'statue',
@@ -2003,14 +2011,14 @@ async function dochat() {
             return ECMD_OK;
         }
         // C `:1345–1368` — !Deaf && (IS_WALL || SDOOR); secret door
-        // stays wall-like; blind hero needs the wall already mapped
+        // stays wall-like; blind hero needs the wall already mapped.
+        // Full Deaf/Blind macros (computed above), not u.Deaf/u.Blind.
         const typ = game.level?.locations?.[tx]?.[ty]?.typ | 0;
-        if (!u.Deaf && (IS_WALL(typ) || typ === SDOOR)) {
-            const blind = !!(u.Blind || u.ublind);
+        if (!Deaf && (IS_WALL(typ) || typ === SDOOR)) {
             const seenTyp = game.lastseentyp?.[tx]?.[ty] | 0;
-            if (blind && !IS_WALL(seenTyp)) {
+            if (Blind && !IS_WALL(seenTyp)) {
                 // Blind + unmapped wall: silent
-            } else if (!u.Hallucination) {
+            } else if (!Hallucination()) {
                 await pline("It's like talking to a wall.");
             } else {
                 // C: rn2(10); clamp to last walltalk[] entry

@@ -75,7 +75,7 @@ import {
     start_timer, hornoplenty, spot_stop_timers, get_mtraits, obj_has_timer,
     init_dummyobj,
 } from './mkobj.js';
-import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, shk_your, Tobjnam, gloves_simple_name, otense } from './objnam.js';
+import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, shk_your, Tobjnam, gloves_simple_name, otense, safe_qbuf } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam, obj_pmname, hcolor, s_suffix, Ugender } from './do_name.js';
@@ -143,7 +143,7 @@ import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
 import { findit, openit, cvt_sdoor_to_door } from './detect.js';
 import { surface } from './sit.js';
-import { level_difficulty, isqrt, dist2, upstart } from './hacklib.js';
+import { level_difficulty, isqrt, dist2, upstart, strstri } from './hacklib.js';
 import { mon_adjust_speed } from './muse.js';
 import { paralyze_monst } from './mhitm.js';
 
@@ -4786,8 +4786,9 @@ export async function use_candelabrum(obj) {
 
 /**
  * C ref: apply.c use_candle — attach to carried candelabrum (spe<7) or
- * use_lamp. Swallow → no_elbow_room. Named omit: safe_qbuf truncation;
- * update_inventory; obfree oextra. SetVoice is the live empty macro.
+ * use_lamp. Swallow → no_elbow_room. Named omit: update_inventory;
+ * obfree oextra. SetVoice is the live empty macro. The attach prompt runs
+ * the C two-stage safe_qbuf with the strstri " to\033" strip.
  * Lit split carries its light via splitobj → obj_split_light_source.
  */
 export async function use_candle(optr) {
@@ -4807,9 +4808,14 @@ export async function use_candle(optr) {
         return;
     }
 
-    // C: y_n(safe_qbuf attach …) — typical (non-truncated) yname path
-    const qbuf = `Attach ${yname(obj)} to ${yname(otmp)}?`;
-    if ((await yn_function(qbuf, 'yn', 'n')) === 'n') {
+    // C apply.c:1407–1416 — qsfx + safe_qbuf(obj) + " to\033" strip +
+    // safe_qbuf(otmp). Strcpy(q, " to ") truncates at q (NUL), so the
+    // first suffix only sizes obj's portion; the live strstri tail locates q.
+    const qsfx = ` to\x1b${thesimpleoname(otmp)}?`;
+    let qbuf = safe_qbuf(null, 'Attach ', qsfx, obj, yname, thesimpleoname, s);
+    const tail = strstri(qbuf, ' to\x1b');
+    if (tail !== null) qbuf = qbuf.slice(0, qbuf.length - tail.length) + ' to ';
+    if ((await yn_function(safe_qbuf(qbuf, qbuf, '?', otmp, yname, thesimpleoname, 'it'), 'yn', 'n')) === 'n') {
         await use_lamp(obj);
         return;
     }

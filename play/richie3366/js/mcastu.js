@@ -143,9 +143,14 @@ function Detect_monsters() {
     return !!((u.HDetect_monsters | 0) || (u.EDetect_monsters | 0)
         || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
+/** C youprop.h:125 Deaf — HDeaf || EDeaf || u.uroleplay.deaf. Sticky
+ * u.Deaf is not the macro (nothing writes it; cf. insects_Deaf). */
 function Deaf() {
     const u = game.u || {};
-    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+    const p = u.uprops?.[DEAF];
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0)
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0)
+        || u.uroleplay?.deaf);
 }
 function Unaware() {
     return !!(game.u?.Unaware);

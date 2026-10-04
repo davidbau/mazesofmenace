@@ -265,6 +265,8 @@ import {
     dmgtype_fromattack,
     flaming,
     gender,
+    carnivorous,
+    herbivorous,
     has_head,
     haseyes,
     hides_under,
@@ -305,6 +307,7 @@ import {
     touch_petrifies,
     poly_when_stoned,
     unsolid,
+    metallivorous,
     type_is_pname,
 } from './mondata.js';
 import {
@@ -574,7 +577,9 @@ import { destroy_items } from './zap_destroy_items.js';
 import {
     Cold_resistance, drain_item, exclam, hit, resist,
 } from './zap.js';
-import { Finish_digestion, eating_conducts, is_fainted, newuhs } from './eat.js';
+import {
+    Finish_digestion, eating_conducts, is_fainted, morehungry, newuhs,
+} from './eat.js';
 import { note_unported } from './unported.js';
 import { m_useup } from './mthrowu.js';
 import { explode, adtyp_to_expltype } from './explode.js';
@@ -4496,6 +4501,65 @@ export async function mhitm_ad_ston(
     }
 }
 
+// C ref: uhitm.c mhitm_ad_stun() (4388-4419). Preserve the source's three
+// directions and await the existing physical helper before reading its done
+// field, as each C arm does.
+export async function mhitm_ad_stun(
+    magr,
+    mattk,
+    mdef,
+    mhm,
+    state = game,
+    env = {},
+) {
+    const random = env.random ?? { rn2 };
+    const message = requireAttackOperation(env, 'message');
+    const defenderData = mdef.data;
+
+    if (magr === state.youmonst) {
+        if (!heroIsBlind(state)) {
+            await message(
+                `${Monnam(mdef, state, env)} ${makeplural(
+                    stagger(defenderData, 'stagger'),
+                )} for a moment.`,
+                state,
+                env,
+            );
+        }
+        mdef.mstun = 1;
+        await mhitm_ad_phys(magr, mattk, mdef, mhm, state, env);
+        if (mhm.done) return;
+    } else if (mdef === state.youmonst) {
+        await hitmsg(magr, mattk, state, env);
+        if (!magr.mcan && !random.rn2(4)) {
+            const currentStun = state.u?.uprops?.[STUNNED]?.intrinsic ?? 0;
+            await make_stunned(
+                (currentStun & TIMEOUT) + mhm.damage,
+                true,
+                state,
+                env,
+            );
+            // C stores this in an int, so odd damage truncates toward zero.
+            mhm.damage = Math.trunc(mhm.damage / 2);
+        }
+    } else {
+        if (magr.mcan) return;
+        if (canseemon(mdef, state)) {
+            const text = `${Monnam(mdef, state, env)} ${makeplural(
+                stagger(defenderData, 'stagger'),
+            )} for a moment.`;
+            await message(
+                messageAt(text, mdef.mx, mdef.my, state),
+                state,
+                env,
+            );
+        }
+        mdef.mstun = 1;
+        await mhitm_ad_phys(magr, mattk, mdef, mhm, state, env);
+        if (mhm.done) return;
+    }
+}
+
 // C ref: uhitm.c mhitm_ad_legs() (4425-4490).  The three source arms share
 // the same damage object: the hero's arm delegates to physical damage, a
 // monster attacking the hero can wound either leg, and a monster attacking a
@@ -5214,6 +5278,40 @@ export async function mhitm_ad_conf(
     }
 }
 
+// C ref: uhitm.c mhitm_ad_famn() (3777-3805). The hero-attacker case jumps
+// to the monster-pair diet check in C; only a monster attacking the hero
+// prints, exercises Constitution, and may drain hunger.
+export async function mhitm_ad_famn(
+    magr,
+    mattk,
+    mdef,
+    mhm,
+    state = game,
+    env = {},
+) {
+    if (magr !== state.youmonst && mdef === state.youmonst) {
+        const random = env.random ?? { rn1, rn2 };
+        const message = requireAttackOperation(env, 'message');
+        const text = `${Monnam(magr, state, env)} reaches out, and your body shrivels.`;
+        await message(messageAt(text, magr.mx, magr.my, state), state, env);
+        await exercise(A_CON, false, state, random, {
+            encumberMessage: env.encumberMessage ?? encumber_msg,
+        });
+        if (!is_fainted(state)) {
+            await morehungry(random.rn1(40, 40), state, { ...env, random });
+        }
+        return;
+    }
+
+    // uhitm.c's hero-attacker goto and monster-pair arm both arrive here.
+    const defenderData = mdef.data;
+    if (!(carnivorous(defenderData)
+        || herbivorous(defenderData)
+        || metallivorous(defenderData))) {
+        mhm.damage = 0;
+    }
+}
+
 // C ref: uhitm.c mhitm_ad_pest() (3808-3834). Snapshot the attacker's form
 // before the awaited name/message path. The valid build has no hero form with
 // AD_PEST; monster-to-monster disease effects remain at the exact discarded
@@ -5452,7 +5550,9 @@ export async function mhitm_adtyping(
     const unported = (name) => unsupported(`uhitm.c ${name}()`);
 
     switch (mattk.adtyp) {
-    case AD_STUN: unported('mhitm_ad_stun'); break;
+    case AD_STUN:
+        await mhitm_ad_stun(magr, mattk, mdef, mhm, state, env);
+        break;
     case AD_LEGS:
         await mhitm_ad_legs(magr, mattk, mdef, mhm, state, env);
         break;
@@ -5529,7 +5629,9 @@ export async function mhitm_adtyping(
     case AD_PEST:
         await mhitm_ad_pest(magr, mattk, mdef, mhm, state, env);
         break;
-    case AD_FAMN: unported('mhitm_ad_famn'); break;
+    case AD_FAMN:
+        await mhitm_ad_famn(magr, mattk, mdef, mhm, state, env);
+        break;
     case AD_DGST: unported('mhitm_ad_dgst'); break;
     case AD_HALU: unported('mhitm_ad_halu'); break;
     default:

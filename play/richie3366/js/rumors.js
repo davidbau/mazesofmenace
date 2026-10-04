@@ -207,8 +207,9 @@ export function getrumor(truth = 0, exclude_cookie = true) {
             exercise(A_WIS, adjtruth > 0); // C :175
     } else {
         // C :176-178 open failed — unreachable under embed; record so the
-        // C :129 guard trips on later calls, as C does
-        impossible(`Can't open '${RUMORFILE}' file.`);
+        // C :129 guard trips on later calls, as C does (D-3403: call the
+        // live couldnt_open_file, not impossible() direct).
+        couldnt_open_file(RUMORFILE);
         game.true_rumor_size = -1;
     }
     if (!exclude_cookie // C :180-181

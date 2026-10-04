@@ -2897,42 +2897,27 @@ export function Yobjnam2(obj, verb) {
 }
 
 /**
- * C ref: objnam.c simpleonames `:2428–2442` ← minimal_xname — type
- * appearance without BUC, then makeplural when quan != 1 (doquiver_core
- * "6 orcish daggers", dowield "You have N ... readied"). Statue/figurine
- * corpsenm suppressed (C bareobj.corpsenm=NON_PM). C bareobj = zeroobj
- * (owt 0) → BALL_CLASS never gets "very " via this path (xname/doname of
- * the live object still apply punish weight).
- * Named omissions: sack→bag family aliases; full bareobj field subset.
- * C copies SLIME_MOLD spe onto zeroobj so fruit_from_indx still hits;
- * JS pretty_base reads the live spe. Missing quan is a JS-side unset
- * (C always sets quan) — read as 1, same guard as the iactions clone.
+ * C ref: objnam.c simpleonames `:2428–2442` — minimal_xname, then
+ * makeplural when quan != 1 (doquiver_core "6 orcish daggers", dowield
+ * "You have N ... readied"). Statue/figurine corpsenm suppression,
+ * BALL_CLASS owt-0 "heavy iron ball", oc_uname suppression all ride the
+ * minimal_xname export below (D-3403; the pretty_base inline + the
+ * pickup.js 'bag' clones are retired). releaseobuf is a GC no-op
+ * (D-2483 idiom). Missing quan is a JS-side unset (C always sets quan)
+ * — read as 1, same guard as the iactions clone.
  */
 export function simpleonames(obj) {
     if (!obj) return 'object';
-    // C minimal_xname: if (otyp != BOULDER) bareobj.corpsenm = NON_PM
-    const n = objectNames[obj.otyp];
-    if (n === 'STATUE') return 'statue';
-    if (n === 'FIGURINE') return 'figurine';
-    // C minimal_xname bareobj.owt stays 0 → never "very heavy iron ball"
-    if (obj.oclass === BALL_CLASS) return 'heavy iron ball';
-    const base = pretty_base(obj);
+    const base = minimal_xname(obj); // C `:2430`
     // C `:2432` — if (obj->quan != 1L) makeplural(simpleoname)
     if (((obj.quan ?? 1) | 0) !== 1) return makeplural(base);
     return base;
 }
 
 /**
- * C ref: objnam.c actualoname `:2488–2498` — minimal_xname with override_ID
- * (iflags.override_ID=TRUE): true type name even when oc_name_known is
- * unset. Mirrors C's save/force/restore on the oc table (`:1045–1052`):
- * suppress oc_uname, force oc_name_known + dknown, xname a singular
- * bknown-0 copy, restore, strip the cleric-forced "uncursed " prefix
- * (`:1084–1086`).
- * Named omissions: bareobj field subset (corpsenm/known/owt/AMULET known —
- * dead arms for the scroll/call use-case; simpleonames above documents the
- * same minimal_xname subset); SLIME_MOLD spe copy (pretty_base reads live
- * spe); distant_name wrapper (identity for carried objects).
+ * C ref: objnam.c actualoname `:2488–2498` — override_ID around
+ * minimal_xname: true type name even when oc_name_known is unset
+ * (D-3403; the xname-spread inline is retired).
  */
 /**
  * C ref: objnam.c minimal_xname `:1037–1086` (staticfn) — bareobj xname:
@@ -2941,9 +2926,8 @@ export function simpleonames(obj) {
  * (`:1061`), AMULET known else !oc_uses_known (`:1063–1066`), quan 1
  * (`:1067`), corpsenm NON_PM unless BOULDER (`:1069–1070`), SLIME_MOLD
  * spe (`:1074–1075`), distant_name+xname (`:1080`), cleric "uncursed "
- * strip (`:1084–1086`), oc_ restore. Exported — C callers yname `:2397`,
- * simpleonames `:2430`, actualoname `:2495` keep their reviewed subset
- * inlines (D-2640/D-2958); not rewired, zero churn.
+ * strip (`:1084–1086`), oc_ restore. Exported — C callers ysimple_name
+ * `:2397`, simpleonames `:2430`, actualoname `:2495` call it (D-3403).
  * @param {object} obj
  * @returns {string}
  */
@@ -2981,16 +2965,10 @@ export function minimal_xname(obj) {
 }
 
 export function actualoname(obj) {
-    const oc = game.objects?.[obj.otyp | 0];
-    const save_uname = oc ? oc.oc_uname : undefined;
-    const save_name_known = oc ? oc.oc_name_known : undefined;
-    const save_dknown = obj.dknown;
-    if (oc) { oc.oc_uname = 0; oc.oc_name_known = 1; }
-    obj.dknown = 1;
-    let res = xname({ ...obj, quan: 1, bknown: 0 });
-    obj.dknown = save_dknown;
-    if (oc) { oc.oc_uname = save_uname; oc.oc_name_known = save_name_known; }
-    if (res.startsWith('uncursed ')) res = res.slice('uncursed '.length);
+    if (!game.iflags) game.iflags = {};
+    game.iflags.override_ID = true; // C `:2494`
+    const res = minimal_xname(obj); // C `:2495`
+    game.iflags.override_ID = false; // C `:2496`
     return res;
 }
 
@@ -3031,18 +3009,17 @@ export function thesimpleoname(obj) {
 }
 
 /**
- * C ref: objnam.c ysimple_name — shk_your + minimal_xname.
- * JS simpleonames is the live minimal_xname stand-in (D-0881).
- * Named omit: BUFSZ strncat cap (JS strings); sack→bag aliases.
- * Pre-existing local clones (attrib/pickup) stay.
+ * C ref: objnam.c ysimple_name `:2390–2398` — shk_your + minimal_xname
+ * (singular even for stacks; D-3403 retires the simpleonames stand-in).
+ * Named omit: BUFSZ strncat cap (JS strings).
  */
 export function ysimple_name(obj) {
-    return `${shk_your(obj)}${simpleonames(obj)}`;
+    return `${shk_your(obj)}${minimal_xname(obj)}`;
 }
 
 /**
  * C ref: objnam.c Ysimple_name2 — highc first character of ysimple_name.
- * Pre-existing local clones (do_name/pickup) stay.
+ * Pre-existing local clone (do_name) stays; pickup's retired in D-3403.
  */
 export function Ysimple_name2(obj) {
     return upstart(ysimple_name(obj));

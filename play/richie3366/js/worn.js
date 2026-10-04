@@ -36,8 +36,9 @@ import {
 } from './objects.js';
 import {
     curse, obj_extract_self, oc_merge_of, place_object,
-    place_object_no_longer_held, fmt_ptr,
+    place_object_no_longer_held,
 } from './mkobj.js';
+import { fmt_ptr } from './alloc.js';
 import {
     canseemon, newsym, impossible, pline, pline_mon, You,
 } from './display.js';

@@ -34,8 +34,9 @@ import {
     REVIVE_MON, ROT_CORPSE, ZOMBIFY_MON, RLOC_NOMSG,
     has_omid, has_omonst, Upolyd, PLNMSG_OK_DONT_DIE, PLNMSG_ONE_ITEM_HERE,
     DISMOUNT_FELL, W_SADDLE, SUPPRESS_SADDLE, NEUTRAL,
+    BZ_OFS_AD, BZ_M_SPELL,
 } from './const.js';
-import { heal_legs, float_down, instapetrify } from './trap.js';
+import { heal_legs, float_down, instapetrify, Fire_resistance } from './trap.js';
 import { unconscious } from './teleport.js';
 import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear, monst_to_any, obj_to_any, confdir, fall_asleep } from './hack.js';
 import { run_timers, start_timer, stop_timer, weight,
@@ -46,10 +47,10 @@ import { run_timers, start_timer, stop_timer, weight,
 import { which_armor } from './worn.js';
 import { dismount_steed } from './steed.js';
 import { hurtle } from './dothrow.js';
-import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout } from './potion.js';
+import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, make_glib, set_itimeout } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
-import { pline, You, Your, You_feel, You_see, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
+import { pline, You, Your, You_feel, You_see, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination, Warn_of_mon } from './display.js';
 import { inv_weight, update_inventory, useup, useupall } from './invent.js';
 import { doname, makeplural, xname, an, the, vtense, Yname2, shk_your } from './objnam.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -57,14 +58,14 @@ import { objectNames } from './objects.js';
 import {
     G_UNIQ, is_were, mons, is_floater, is_flyer, amorphous, nolimbs,
     M1_SLITHY, MZ_SMALL, is_rider, is_displacer,
-    breathless, monsterNames, touch_petrifies,
+    breathless, monsterNames, touch_petrifies, pmnames,
 } from './monsters.js';
 import { little_to_big, big_to_little, mhe, cantvomit, name_to_mon } from './mondata.js';
 import { dist2, ing_suffix, strsubst, strstri, upstart, highc } from './hacklib.js';
 import { Popeye, morehungry, vomit, Unaware, eating_dangerous_corpse } from './eat.js';
-import { toggle_displacement } from './do_wear.js';
+import { toggle_displacement, wielding_corpse } from './do_wear.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
-import { zombie_form, NODIAG, m_at, wake_nearby } from './mon.js';
+import { zombie_form, NODIAG, m_at, wake_nearby, restartcham } from './mon.js';
 import { maybe_unhide_at } from './monmove.js';
 import { cry_sound } from './sounds.js';
 import { Soundeffect } from './sndprocs.js';
@@ -72,7 +73,7 @@ import { se_kaboom_boom_boom } from './generated/seffects_data.js';
 import { rehumanize, body_part, polymon } from './polyself.js';
 import { you_unwere } from './were.js';
 import { new_light_source, del_light_source, emits_light } from './light.js';
-import { cansee } from './vision.js';
+import { cansee, set_mimic_blocking } from './vision.js';
 import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
 import { Monnam, s_suffix, x_monnam, hcolor, rndmonnam, hliquid, type_is_pname, pmname } from './do_name.js';
@@ -80,6 +81,10 @@ import { find_ac } from './u_init.js';
 import { any_visible_region, visible_region_summary, region_danger } from './region.js';
 import { done, find_delayed_killer, dealloc_killer } from './end.js';
 import { obfree } from './shk.js';
+import { Flying } from './mhitu.js';
+import { spoteffects } from './pickup.js';
+import { stuck_in_wall } from './pray.js';
+import { buzz } from './zap.js';
 
 /**
  * Props whose TIMEOUT is already decremented by the dedicated arms below
@@ -1039,6 +1044,17 @@ export async function nh_timeout() {
             }
         }
     }
+    // C `:649–650` — cream-pie blindness tick.
+    if (u.ucreamed) u.ucreamed = (u.ucreamed | 0) - 1;
+    // C `:662–665` — gallop tick (the usptime haze block `:652–661`
+    // runs post-loop below, pre-existing D-1390 order).
+    if (u.ugallop) {
+        u.ugallop = (u.ugallop | 0) - 1;
+        if (!(u.ugallop | 0) && u.usteed)
+            await pline(`${Monnam(u.usteed)} stops galloping.`);
+    }
+    // C `:667` — snapshot before any decrement (FLYING arm below).
+    const was_flying = Flying();
     // C: for (upp = u.uprops; …) if ((intrinsic & TIMEOUT) && !(--intrinsic & TIMEOUT))
 
     // C HWounded_legs ≡ uprops[WOUNDED_LEGS].intrinsic (youprop.h:136,
@@ -1205,11 +1221,13 @@ export async function nh_timeout() {
             if (p === STUNNED) u.Stunned = u.HStun;
             if (p === GLIB) u.HGlib = next;
         }
-        // Expiry switch deferred — silent clear except STONED → stoning
-        // death (C `:674–685`), DETECT_MONSTERS → see_monsters (D-1418),
-        // LEVITATION → float_down (D-1419), INVIS → newsym + You (D-1421),
-        // SLIMED → slimed_to_death (C `:686–688`), and STRANGLED →
-        // done_timeout(DIED, …) + amulet-vanishes (C `:890–900`).
+        // Expiry arms below: STONED/SLIMED/SICK/STRANGLED deaths,
+        // STUNNED/HALLUC/CONFUSION/BLINDED/DEAF make_* + stop_occupation,
+        // INVIS/LEVITATION/FLYING (D-1419/D-1421), SEE_INVIS, FAST,
+        // FUMBLING, WOUNDED_LEGS, DETECT_MONSTERS, SLEEPY, VOMITING,
+        // FIRE_RES/WWALKING, WARN_OF_MON, PASSES_WALLS,
+        // MAGICAL_BREATHING, GLIB, PROT_FROM_SHAPE_CHANGERS,
+        // ACID_RES/STONE_RES (+ wielding_corpse pair), DISPLACED.
         if (!(next & TIMEOUT) && p === STUNNED) {
             // C timeout.c:737-742 — set_itimeout(&HStun, 1L);
             // make_stunned(0L, TRUE); if (!Stunned) stop_occupation().
@@ -1380,20 +1398,25 @@ export async function nh_timeout() {
             }
         }
         if (!(next & TIMEOUT) && p === STONE_RES) {
-            /* C timeout.c STONE_RES arm (owner line :836) — timed stoning
+            /* C timeout.c STONE_RES arm `:826–845` — timed stoning
              * resistance runs out: same extension/message shape as
-             * ACID_RES; the wielding_corpse pair (do_wear.c:606) stays
-             * named-omitted (map). */
+             * ACID_RES, then the wielding_corpse pair (no-op unless
+             * wielding a cockatrice corpse; uswapwep always no-op
+             * since corpses can't two-weapon). */
             if (!(u.Stone_resistance || u.HStone_resistance
                 || u.EStone_resistance)) {
                 if (eating_dangerous_corpse(STONE_RES)) {
                     set_itimeout(u.uprops[STONE_RES], 1);
                     u.HStone_resistance =
                         ((u.HStone_resistance | 0) & ~TIMEOUT) | 1;
-                } else if (!Unaware()) {
-                    await pline(
-                        'You no longer feel secure from petrification.',
-                    );
+                } else {
+                    if (!Unaware()) {
+                        await pline(
+                            'You no longer feel secure from petrification.',
+                        );
+                    }
+                    await wielding_corpse(u.uwep, null, false);
+                    await wielding_corpse(u.uswapwep, null, false);
                 }
             }
         }
@@ -1423,6 +1446,96 @@ export async function nh_timeout() {
                 incr_itimeout_HSleepy(sleeptime + rnd(100));
             }
         }
+        if (!(next & TIMEOUT) && p === VOMITING) {
+            // C `:689–691` — vomiting runs out (syncs the flat).
+            await make_vomiting(0, true);
+        }
+        if (!(next & TIMEOUT) && p === SEE_INVIS) {
+            // C `:768–773` — see-invisible runs out: mimic handling,
+            // invis mons appear, self appears, stop occupation.
+            set_mimic_blocking(); /* do special mimic handling */
+            see_monsters(); /* make invis mons appear */
+            newsym(u.ux | 0, u.uy | 0); /* make self appear */
+            await stop_occupation();
+        }
+        if (!(next & TIMEOUT) && p === FLYING) {
+            /* C `:804–811` — timed Flying (via #wizintrinsic only) runs
+             * out: landing feedback + spoteffects when actually aloft. */
+            if (was_flying && !Flying()) {
+                if (game.disp) game.disp.botl = true;
+                await You('land.');
+                await spoteffects(true);
+            }
+        }
+        if (!(next & TIMEOUT) && p === FIRE_RES) {
+            /* C `:846–852` — timed fire resistance runs out; skip the
+             * message if fire resistance was acquired meanwhile (lava
+             * life-save relocation path). */
+            if (!Fire_resistance())
+                await Your('temporary ability to survive burning has ended.');
+        }
+        if (!(next & TIMEOUT) && p === WWALKING) {
+            // C `:853–857` — [see fire resistance]; Wwalking is
+            // meaningless on the water level (youprop.h:260).
+            const ww = (((u.HWwalking | 0) || (u.EWwalking | 0)
+                || (u.uprops?.[WWALKING]?.intrinsic | 0)
+                || (u.uprops?.[WWALKING]?.extrinsic | 0))
+                && !Is_waterlevel(u.uz));
+            if (!ww)
+                await Your('temporary ability to walk on liquid has ended.');
+        }
+        if (!(next & TIMEOUT) && p === WARN_OF_MON) {
+            /* C `:862–873` — timed Warn_of_mon (via #wizintrinsic only)
+             * runs out: clear the warned species, message if one was set. */
+            if (!Warn_of_mon()) {
+                const wt = game.context?.warntype;
+                const wptr = wt?.species || null;
+                if (wt) {
+                    wt.species = null;
+                    wt.speciesidx = NON_PM;
+                }
+                if (wptr)
+                    await You(`are no longer warned about ${makeplural(pmnames[wptr.mndx]?.[NEUTRAL] || 'creature')}.`);
+            }
+        }
+        if (!(next & TIMEOUT) && p === PASSES_WALLS) {
+            /* C `:874–882` — timed phasing runs out. */
+            const pw = ((u.HPasses_walls | 0) || (u.EPasses_walls | 0)
+                || (u.uprops?.[PASSES_WALLS]?.intrinsic | 0)
+                || (u.uprops?.[PASSES_WALLS]?.extrinsic | 0));
+            if (!pw) {
+                if (stuck_in_wall())
+                    await You_feel('hemmed in again.');
+                else
+                    await pline(`You're back to your ${!Upolyd(u) ? 'normal' : 'unusual'} self again.`);
+            }
+        }
+        if (!(next & TIMEOUT) && p === MAGICAL_BREATHING) {
+            /* C `:883–888` — timed magical breathing runs out; cough
+             * only inside a poison-gas region while still mortal. */
+            if (!hero_magical_breath()) {
+                if (region_danger()) {
+                    const pr = ((u.HPoison_resistance | 0)
+                        || (u.EPoison_resistance | 0)
+                        || (u.uprops?.[POISON_RES]?.intrinsic | 0)
+                        || (u.uprops?.[POISON_RES]?.extrinsic | 0));
+                    await You(pr ? 'cough.' : 'cough and spit blood!');
+                }
+            }
+        }
+        if (!(next & TIMEOUT) && p === GLIB) {
+            // C `:928–930` — glib fingers run out (may update invent).
+            make_glib(0);
+        }
+        if (!(next & TIMEOUT) && p === PROT_FROM_SHAPE_CHANGERS) {
+            /* C `:931–936` — timed protection (via #wizintrinsic only)
+             * runs out: restart the chameleon/animal timer. */
+            const prot = ((u.HProtection_from_shape_changers | 0)
+                || (u.EProtection_from_shape_changers | 0)
+                || (u.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.intrinsic | 0)
+                || (u.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.extrinsic | 0));
+            if (!prot) restartcham();
+        }
     }
 
     /* C timeout.c :652–661 — dissipate SPE_PROTECTION (D-1390).
@@ -1449,13 +1562,14 @@ export async function nh_timeout() {
     await run_timers();
 }
 
+/** C: monattk.h AD_ELEC (local-const idiom, cf. priest.js:321). */
+const AD_ELEC = 6;
+
 /**
  * C ref: timeout.c do_storms `:1846–1892` — once-per-turn from
  * moveloop_core after dosounds. Non-stormy levels return before
- * any RNG (`!stormy || rn2(8)` short-circuit).
- * Named omit: `buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), 8, …)` /
- * `dobuzz` (zap.c; lightning bolt). Strike position/dir RNG still
- * runs when a storm fires.
+ * any RNG (`!stormy || rn2(8)` short-circuit). Lightning strike via
+ * live buzz (monster LIGHTNING spell type).
  */
 export async function do_storms() {
     const flags = game.level?.flags;
@@ -1475,8 +1589,9 @@ export async function do_storms() {
             const dirx = rn2(3) - 1;
             const diry = rn2(3) - 1;
             if (dirx !== 0 || diry !== 0) {
-                /* C: gb.buzzer = 0; buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), …) */
-                game.buzzer = null;
+                /* BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)): monster LIGHTNING spell */
+                game.buzzer = null; /* unspecified attacker */
+                await buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), 8, x, y, dirx, diry);
             }
         }
     }

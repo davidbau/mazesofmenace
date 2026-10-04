@@ -10,10 +10,9 @@
  * `staticfn`), `nhalloc` (:152–166), `nhrealloc` (:170–202), `nhfree`
  * (:205–214), `nhdupstr` (:219–229), `FITSint_` (:266–273), `FITSuint_`
  * (:276–283) — so every callee of `nhalloc` is live in this commit.
- * `fmt_ptr` stays the live export in js/mkobj.js (heaplog-only use, named
- * omit below — no local clone); `dupstr` stays in js/dungeon.js (the
- * non-MONITOR_HEAP strdup, already ported); `dupstr_n` is `#if 0`-
- * suppressed in C (:249–262) and stays unported.
+ * `dupstr` stays in js/dungeon.js (the non-MONITOR_HEAP strdup, already
+ * ported); `dupstr_n` is `#if 0`-suppressed in C (:249–262) and stays
+ * unported.
  *
  * JS renders the C `long *` raw buffer as a zero-filled `Uint8Array` of
  * the `ForceAlignedLength`-rounded size (C callers treat it as raw bytes;
@@ -86,6 +85,20 @@ export function re_alloc(oldptr, newlth) {
 }
 
 /**
+ * C ref: alloc.c fmt_ptr `:125–135` — %p/0x hex of the heap pointer into a
+ * rotating static ptrbuf (`:129–132`; the caller consumes the buffer
+ * synchronously like C's impossible args). JS has no heap pointers:
+ * render the stable identity the port uses in its place (obj o_id,
+ * monst m_id; timeout.js fmt_timer_arg precedent), 0x-hex.
+ * Users: insane_object/check_contained via mkobj.js, del_light_source
+ * via light.js (both edges cycle-free).
+ */
+export function fmt_ptr(ptr) {
+    const id = (ptr?.o_id ?? ptr?.m_id ?? 0) | 0;
+    return `0x${(id >>> 0).toString(16)}`;
+}
+
+/**
  * C ref: alloc.c:141–149 `heapmon_init` (`staticfn`, hence module-local)
  * — `${NH_HEAPLOG}` log-file setup. `getenv("NH_HEAPLOG")` + `fopen()`
  * are env/file I/O: unavailable under Contest Rule #2, so `heaplog`
@@ -111,7 +124,7 @@ export function nhalloc(lth, file, line) {
         heapmon_init();
     /* C :158–160 heaplog `"+%5u %s %4d %s"` fprintf arm — named omit:
      * file logging is banned under Rule #2 (`heaplog` is always null),
-     * so the arm never fires. `fmt_ptr` stays live at js/mkobj.js. */
+     * so the arm never fires. */
     /* C :162–163 deferred `if (!ptr) panic(...)` — unreachable via
      * alloc(), which throws instead of returning null; kept for shape. */
     if (!ptr)

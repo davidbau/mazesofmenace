@@ -1786,36 +1786,43 @@ export async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: uhitm.c do_stone_mon :3944–3978.
- * Named omit: munstone (muse.c lizard/acid tin eat; treat as false).
+ * The `:3953–3954` munstone(mdef, FALSE) pre-check (stone-curing meal,
+ * possibly fatal via acid) gotos the post_stone tail below.
  * Caller: mhitm_ad_ston leftover (D-1352); mhitm_ad_phys mwep corpse (D-1402).
  */
 async function do_stone_mon(magr, mattk, mdef, mhm) {
     const pd = mdef?.data;
-    if (poly_when_stoned(pd, game.mvitals)) {
-        await mon_to_stone(mdef);
-        mhm.damage = 0;
-        return;
-    }
-    if (!resists_ston(mdef)) {
+    /* C :3953–3954 — may die from the acid eating a stone-curing corpse. */
+    const cured = await munstone(mdef, false);
+    if (!cured) {
+        if (poly_when_stoned(pd, game.mvitals)) {
+            await mon_to_stone(mdef);
+            mhm.damage = 0;
+            return;
+        }
+        if (resists_ston(mdef)) { // C :3960/:3977 (inverted tail)
+            mhm.damage = ((mattk.adtyp | 0) === AD_STON) ? 0 : 1;
+            return;
+        }
         if (_mm_vis && canseemon(mdef)) {
             await pline_mon(mdef, `${Monnam(mdef)} turns to stone!`);
         }
         await monstone(mdef);
-        if (!deadmonster(mdef)) {
-            mhm.hitflags = M_ATTK_MISS;
-            mhm.done = true;
-            return;
-        } else if (mdef.mtame && !_mm_vis) {
-            await pline(
-                'You have a peculiarly sad feeling for a moment, then it passes.',
-            );
-        }
-        const grew = await grow_up(magr, mdef);
-        mhm.hitflags = M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+    }
+    /* post_stone — C :3964–3974 (monstone path and the munstone goto). */
+    if (!deadmonster(mdef)) {
+        mhm.hitflags = M_ATTK_MISS;
         mhm.done = true;
         return;
+    } else if (mdef.mtame && !_mm_vis) {
+        await pline(
+            'You have a peculiarly sad feeling for a moment, then it passes.',
+        );
     }
-    mhm.damage = ((mattk.adtyp | 0) === AD_STON) ? 0 : 1;
+    const grew = await grow_up(magr, mdef);
+    mhm.hitflags = M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+    mhm.done = true;
+    return;
 }
 
 /**

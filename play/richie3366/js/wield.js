@@ -179,7 +179,9 @@ function cantwield(ptr) {
 
 /**
  * C ref: wield.c mwelded `:1077–1084` — monster's cursed welded weapon.
- * Caller must pass a monster's item. monmove.js still has a local clone.
+ * Caller must pass a monster's item. Sole importer monmove.js
+ * m_digweapon_check (local cursed-only clone retired: it dropped the
+ * erodeable_wep/TIN_OPENER predicate of will_weld `:68–70`).
  */
 export function mwelded(obj) {
     if (obj && ((obj.owornmask || 0) & W_WEP) && will_weld(obj)) return true;
@@ -776,7 +778,12 @@ async function getobj_wield() {
  */
 export async function dowield() {
     game.multi = 0;
-    // cantwield(youmonst.data) deferred — humanoid always ok
+    // C `:359–362` — cantwield (mondata.h: nohands || verysmall);
+    // ECMD_FAIL takes no turn → 0 in this 0/1 scheme (doswapweapon idiom).
+    if (cantwield(game.youmonst?.data)) {
+        await pline("Don't be ridiculous!");
+        return 0;
+    }
     clear_splitobjs();
 
     const picked = await getobj_wield();
