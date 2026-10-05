@@ -1,0 +1,1502 @@
+// mkmaze.js -- NetHack's mkmaze.c level generation and special-level fixups.
+
+import {
+    ACCESSIBLE,
+    AIR,
+    BLCORNER,
+    BRCORNER,
+    CLOUD,
+    COLNO,
+    CORR,
+    DEAF,
+    HWALL,
+    In_quest,
+    IRONBARS,
+    IS_DOOR,
+    IS_LAVA,
+    IS_STWALL,
+    IS_WALL,
+    LAVAWALL,
+    LAVAPOOL,
+    LR_BRANCH,
+    LR_DOWNSTAIR,
+    LR_DOWNTELE,
+    LR_PORTAL,
+    LR_TELE,
+    LR_UPTELE,
+    LR_UPSTAIR,
+    MAGIC_PORTAL,
+    MIGR_LEFTOVERS,
+    MIGR_RANDOM,
+    MKTRAP_MAZEFLAG,
+    MM_NONAME,
+    NO_MM_FLAGS,
+    SWIMMING,
+    MON_BUBBLEMOVE,
+    POOL,
+    ROOM,
+    RLOC_ERR,
+    RLOC_NOMSG,
+    ROWNO,
+    SDOOR,
+    SET_LIT_NOCHANGE,
+    SET_LIT_RANDOM,
+    STONE,
+    TDWALL,
+    TLCORNER,
+    TLWALL,
+    TRCORNER,
+    TRWALL,
+    TUWALL,
+    WATER,
+    W_NONDIGGABLE,
+    undestroyable_trap,
+} from './const.js';
+import {
+    is_pool,
+} from './dbridge.js';
+import { isok } from './cmd_isok.js';
+import {
+    Is_branchlev,
+    Is_special,
+    depth,
+    dunlevs_in_dungeon,
+    get_level,
+    ledger_no,
+    on_level,
+    u_on_newpos,
+} from './dungeon.js';
+import { migrate_to_level } from './dog.js';
+import { game } from './gstate.js';
+import { dist2, upstart } from './hacklib.js';
+import { add_to_minv, stackobj } from './invent.js';
+import { set_malign } from './makemon.js';
+import { makemon } from './makemon_create.js';
+import { elemental_clog, m_into_limbo, mnearto, mnexto } from './mon.js';
+import { mkstairs, place_branch, walkfrom, wallification } from './mklev.js';
+import { mktrap, occupied } from './mktrap.js';
+import { is_orc, is_swimmer } from './mondata.js';
+import { m_at, remove_monster } from './monst.js';
+import {
+    dealloc_obj,
+    mkgold,
+    mkobj,
+    mkobj_at,
+    mksobj,
+    mksobj_at,
+    mksobj_migr_to_species,
+    objectType,
+    place_object,
+    remove_object,
+    weight,
+} from './obj.js';
+import { shiny_obj } from './objnam_readobjnam.js';
+import {
+    BOULDER,
+    CORPSE,
+    C_RATION,
+    EGG,
+    FOOD_CLASS,
+    GAUNTLETS_OF_DEXTERITY,
+    GEM_CLASS,
+    GOLD_PIECE,
+    K_RATION,
+    LEATHER_GLOVES,
+    LEMBAS_WAFER,
+    LONG_SWORD,
+    RANDOM_CLASS,
+    RING_CLASS,
+    ROCK,
+    SILVER_SABER,
+    SKELETON_KEY,
+    SLIME_MOLD,
+    STRANGE_OBJECT,
+    TALLOW_CANDLE,
+    TIN,
+    TRIPE_RATION,
+    WAX_CANDLE,
+} from './objects.js';
+import { create_gas_cloud } from './region.js';
+import { within_bounded_area } from './rect.js';
+import { d, rn1, rn2, rnd, rne } from './rng.js';
+import { set_levltyp } from './terrain.js';
+import {
+    deltrap,
+    maketrap,
+    t_at,
+} from './trap.js';
+import { ttyNorep, ttyPline } from './tty_message.js';
+import {
+    block_point,
+    cansee,
+    recalc_block_point,
+    unblock_point,
+} from './vision.js';
+import { cmap_to_glyph, newsym } from './display.js';
+import { S_air, S_cloud, S_water } from './symbols.js';
+import {
+    M2_ORC,
+    PM_CLERIC,
+    PM_MINOTAUR,
+    PM_ORC,
+    PM_ORC_CAPTAIN,
+    PM_ORC_SHAMAN,
+} from './monsters.js';
+import { christen_monst, christen_orc, new_oname, rndorcname } from './do_name.js';
+import { fruitadd } from './fruit.js';
+import { objectGenerationEnv } from './object_generation.js';
+import { rloc } from './teleport.js';
+import { remove_worm } from './worm.js';
+import { onscary, set_apparxy } from './monmove.js';
+
+// C ref: mkmaze.c iswall(). Wall-spine joins accept doors, lava walls,
+// water, secret doors, and iron bars in addition to ordinary wall types.
+export function iswall(x, y, state = game) {
+    if (!isok(x, y)) return 0;
+    const typ = state.level.at(x, y).typ;
+    return (IS_WALL(typ) || IS_DOOR(typ) || typ === LAVAWALL
+        || typ === WATER || typ === SDOOR || typ === IRONBARS) ? 1 : 0;
+}
+
+// C ref: mkmaze.c iswall_or_stone(). Out-of-bounds squares count as stone.
+export function iswall_or_stone(x, y, state = game) {
+    if (!isok(x, y)) return 1;
+    return state.level.at(x, y).typ === STONE || iswall(x, y, state) ? 1 : 0;
+}
+
+// C ref: mkmaze.c is_solid(). STONE and ordinary wall types are solid, as
+// are coordinates outside the map.
+export function is_solid(x, y, state = game) {
+    return !isok(x, y) || IS_STWALL(state.level.at(x, y).typ);
+}
+
+// C ref: mkmaze.c okay(). Move two cells in one cardinal direction, then
+// accept only untouched stone inside the active maze bounds.
+export function okay(x, y, dir, state = game, bounds = null) {
+    const dx = [0, 1, 0, -1];
+    const dy = [-1, 0, 1, 0];
+    if (dir < 0 || dir >= dx.length)
+        throw new Error(`okay: bad direction ${dir}`);
+    x += 2 * dx[dir];
+    y += 2 * dy[dir];
+    const xMax = bounds?.xMax ?? ((COLNO - 1) & ~1);
+    const yMax = bounds?.yMax ?? ((ROWNO - 1) & ~1);
+    return !(x < 3 || y < 3 || x > xMax || y > yMax
+        || state.level.at(x, y).typ !== STONE);
+}
+
+// C ref: mkmaze.c set_levltyp_lit() (125-145). Sets the terrain with
+// set_levltyp() and then the lit flag unless `lit` is SET_LIT_NOCHANGE; lava
+// is always lit and SET_LIT_RANDOM draws rn2(2). Returns set_levltyp()'s
+// result so callers can skip their own follow-up on a refused square.
+export function set_levltyp_lit(x, y, typ, lit, state = game, random = rn2) {
+    const ret = set_levltyp(x, y, typ, { state });
+
+    if (ret && isok(x, y)) {
+        if (lit !== SET_LIT_NOCHANGE) {
+            if (IS_LAVA(typ))
+                lit = 1;
+            else if (lit === SET_LIT_RANDOM)
+                lit = random(2);
+
+            state.level.at(x, y).lit = Boolean(lit);
+        }
+    }
+    return ret;
+}
+
+// C ref: youprop.h Deaf (125). The roleplay term is kept beside this
+// endgame-only caller because the source macro is evaluated after fumaroles
+// has consumed every coordinate and cloud-size random number.
+function Deaf(state) {
+    const deafness = state.u?.uprops?.[DEAF];
+    return Boolean(deafness?.intrinsic || deafness?.extrinsic)
+        || Boolean(state.u?.uroleplay?.deaf);
+}
+
+// C ref: mkmaze.c fumaroles(). The Plane of Fire calls create_gas_cloud()
+// immediately after arrival, before vision_reset() and the first map redraw.
+export async function fumaroles(state = game) {
+    let nmax = rn2(3);
+    let sizemin = 5;
+    let sound = false;
+    let loud = false;
+
+    if (on_level(state.u?.uz, state.fire_level)) {
+        ++nmax;
+        sizemin += 5;
+    }
+    if ((state.level?.flags?.temperature ?? 0) > 0) {
+        ++nmax;
+        sizemin += 5;
+    }
+
+    for (let count = nmax; count; --count) {
+        const x = rn1(COLNO - 4, 3);
+        const y = rn1(ROWNO - 4, 3);
+        if (state.level.at(x, y).typ !== LAVAPOOL) continue;
+
+        const cloud = await create_gas_cloud(
+            x,
+            y,
+            rn1(10, sizemin),
+            rn1(10, 5),
+            {
+                state,
+                random: { rn2 },
+                allowPositiveDamage: true,
+                blockPoint: (bx, by) => block_point(bx, by, state),
+                canSee: (bx, by) => cansee(bx, by, state),
+                newsym: (bx, by) => newsym(bx, by),
+                message: (line) => ttyNorep(line, state),
+            },
+        );
+        // C clear_heros_fault(r) makes this natural cloud harmless to the
+        // hero's temporary fault bookkeeping even though its damage is real.
+        cloud.heros_fault = false;
+        sound = true;
+        if (dist2(x, y, state.u.ux, state.u.uy) < 15) loud = true;
+    }
+    if (sound && !Deaf(state))
+        await ttyNorep(`You hear a ${loud ? 'loud ' : ''}whoosh!`, state);
+}
+
+// C ref: mkmaze.c setup_waterlevel() (1812-1858), for the Plane of Air arm.
+// The C implementation keeps these as file-scope bubble lists. This port
+// keeps the same mutable records on the game state so the arrival pass can
+// consume the exact masks and directions setup created.
+const AIR_BUBBLE_MASKS = Object.freeze([
+    Object.freeze({ width: 2, height: 1, rows: [0x3] }),
+    Object.freeze({ width: 3, height: 2, rows: [0x7, 0x7] }),
+    Object.freeze({ width: 4, height: 3, rows: [0x6, 0xf, 0x6] }),
+    Object.freeze({ width: 5, height: 3, rows: [0xe, 0x1f, 0xe] }),
+    Object.freeze({ width: 6, height: 4, rows: [0x1e, 0x3f, 0x3f, 0x1e] }),
+    Object.freeze({ width: 7, height: 4, rows: [0x3e, 0x7f, 0x7f, 0x3e] }),
+    Object.freeze({ width: 8, height: 4, rows: [0x7e, 0xff, 0xff, 0x7e] }),
+]);
+
+function airBubbleBounds(state = game) {
+    // C's svx/svy are initialized by setup_waterlevel(); the four public
+    // values are the gbxmin/gbymin/gbxmax/gbymax macro results.
+    return state.waterlevel_bounds
+        ?? { xmin: 4, ymin: 2, xmax: 77, ymax: 19 };
+}
+
+function resetAirLocation(location, typ = AIR) {
+    // C's assignment from the static air_pos rm record resets the terrain
+    // fields but does not touch objects, traps, or the level-wide indices.
+    location.typ = typ;
+    location.lit = true;
+    location.flags = 0;
+    location.doormask = 0;
+    location.seenv = 0;
+    location.horizontal = false;
+    location.edge = false;
+    location.wall_info = 0;
+    location.roomno = 0;
+}
+
+export function mv_bubble(bubble, dx, dy, initial, state = game,
+                          random = rn2) {
+    const bounds = airBubbleBounds(state);
+    const waterLevel = on_level(state.u?.uz, state.water_level);
+    const airLevel = on_level(state.u?.uz, state.air_level);
+    let collision = 0;
+    // mkmaze.c:1702-1704. Clouds move only when the one-in-six test passes.
+    if (!airLevel || !random(6)) {
+        if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
+            dx = Math.sign(dx);
+            dy = Math.sign(dy);
+        }
+
+        if (bubble.x <= bounds.xmin) collision |= 2;
+        if (bubble.y <= bounds.ymin) collision |= 1;
+        if (bubble.x + bubble.mask.width - 1 >= bounds.xmax) collision |= 2;
+        if (bubble.y + bubble.mask.height - 1 >= bounds.ymax) collision |= 1;
+
+        if (bubble.x < bounds.xmin) bubble.x = bounds.xmin;
+        if (bubble.y < bounds.ymin) bubble.y = bounds.ymin;
+        if (bubble.x + bubble.mask.width - 1 > bounds.xmax)
+            bubble.x = bounds.xmax - bubble.mask.width + 1;
+        if (bubble.y + bubble.mask.height - 1 > bounds.ymax)
+            bubble.y = bounds.ymax - bubble.mask.height + 1;
+
+        if (bubble.x === bounds.xmin && dx < 0) dx = -dx;
+        if (bubble.x + bubble.mask.width - 1 === bounds.xmax && dx > 0)
+            dx = -dx;
+        if (bubble.y === bounds.ymin && dy < 0) dy = -dy;
+        if (bubble.y + bubble.mask.height - 1 === bounds.ymax && dy > 0)
+            dy = -dy;
+
+        bubble.x += dx;
+        bubble.y += dy;
+
+    }
+
+    // mkmaze.c:1757-1772. Each set bit is a cloud cell and blocks vision.
+    for (let i = 0; i < bubble.mask.width; ++i) {
+        for (let j = 0; j < bubble.mask.height; ++j) {
+            if (!(bubble.mask.rows[j] & (1 << i))) continue;
+            const x = bubble.x + i;
+            const y = bubble.y + j;
+            const location = state.level.at(x, y);
+            if (!location) continue;
+            location.typ = waterLevel ? AIR : CLOUD;
+            location.lit = true;
+            if (waterLevel) unblock_point(x, y, state);
+            else if (airLevel) block_point(x, y, state);
+        }
+    }
+
+    const finishBubble = () => {
+        // mkmaze.c:2087-2105. Bounce or occasionally reroll a bubble's
+        // direction after it has been drawn. There are no contents on Air's
+        // newly-created bubbles, so the Water-only container loop is absent.
+        if (collision === 1) {
+            bubble.dy = -bubble.dy;
+        } else if (collision === 3) {
+            bubble.dy = -bubble.dy;
+            bubble.dx = -bubble.dx;
+        } else if (collision === 2) {
+            bubble.dx = -bubble.dx;
+        } else if (!initial && (bubble.dx || bubble.dy
+            ? !random(20) : !random(5))) {
+            bubble.dx = 1 - random(3);
+            bubble.dy = 1 - random(3);
+        }
+    };
+
+    const finishContents = async (start = 0) => {
+        for (let index = start; index < bubble.cons.length; ++index) {
+            const contents = bubble.cons[index];
+            contents.x += dx;
+            contents.y += dy;
+            switch (contents.what) {
+            case 'object':
+                for (let object = contents.list; object;) {
+                    const next = object.nexthere;
+                    place_object(object, contents.x, contents.y,
+                                 objectGenerationEnv({ state }));
+                    stackobj(object, { state });
+                    object = next;
+                }
+                break;
+            case 'monster': {
+                // C mkmaze.c:2052 consumes mnearto's zero result. A swallowed
+                // holder can make its JS release asynchronous; finish the
+                // relocation and the zero-result fallback before moving on to
+                // the next saved bubble content or collision effect.
+                const moved = await mnearto(contents.list, contents.x, contents.y,
+                    true, RLOC_NOMSG, state);
+                if (!moved) await elemental_clog(contents.list, state);
+                break;
+            }
+            case 'hero': {
+                const occupying = m_at(contents.x, contents.y, state);
+                const oldx = state.u.ux;
+                const oldy = state.u.uy;
+                u_on_newpos(contents.x, contents.y, state);
+                newsym(oldx, oldy);
+                if (occupying)
+                    await mnexto(occupying, RLOC_NOMSG, { state });
+                break;
+            }
+            case 'trap':
+                contents.list.tx = contents.x;
+                contents.list.ty = contents.y;
+                break;
+            default:
+                throw new Error('mv_bubble: unknown bubble contents');
+            }
+        }
+        bubble.cons = [];
+        return finishBubble();
+    };
+
+    if (waterLevel && bubble.cons?.length) return finishContents();
+    return finishBubble();
+}
+
+export function mk_bubble(x, y, n, state = game, random = rn2) {
+    const bounds = airBubbleBounds(state);
+    if (x >= bounds.xmax || y >= bounds.ymax) return null;
+    if (n >= AIR_BUBBLE_MASKS.length) n = AIR_BUBBLE_MASKS.length - 1;
+    const mask = AIR_BUBBLE_MASKS[n];
+    if (x + mask.width - 1 > bounds.xmax)
+        x = bounds.xmax - mask.width + 1;
+    if (y + mask.height - 1 > bounds.ymax)
+        y = bounds.ymax - mask.height + 1;
+    const bubble = {
+        x,
+        y,
+        dx: 1 - random(3),
+        dy: 1 - random(3),
+        mask,
+        cons: [],
+    };
+    state.air_bubbles ??= [];
+    state.air_bubbles.push(bubble);
+    // mv_bubble(..., TRUE) still performs the Air one-in-six draw and draws
+    // the mask, but does not reroll the direction afterward.
+    mv_bubble(bubble, 0, 0, true, state, random);
+    return bubble;
+}
+
+// C ref: mkmaze.c setup_waterlevel() (1812-1858).
+export function setup_waterlevel(state = game, random = rn2) {
+    const waterLevel = on_level(state.u?.uz, state.water_level);
+    const airLevel = on_level(state.u?.uz, state.air_level);
+    if (!waterLevel && !airLevel)
+        throw new Error('setup_waterlevel: level is neither Water nor Air');
+
+    state.level.flags.hero_memory = false;
+    state.air_bubbles = [];
+    state.waterlevel_bounds = { xmin: 4, ymin: 2, xmax: 77, ymax: 19 };
+    state.waterlevel_portal = null;
+    state.hero_bubble = null;
+    for (let x = 1; x <= COLNO - 1; ++x) {
+        for (let y = 0; y <= ROWNO - 1; ++y) {
+            const location = state.level.at(x, y);
+            // C setup_waterlevel() stores the base element's glyph in every
+            // level cell. movebubbles() later replaces the live glyph with
+            // S_cloud; the initial level memory is S_air, so unexplored Air
+            // cells display as blank rather than as cloud markers.
+            location.remembered_glyph = {
+                glyph: cmap_to_glyph(waterLevel ? S_water : S_air, state),
+            };
+            if (location.typ === STONE)
+                location.typ = waterLevel ? WATER : AIR;
+        }
+    }
+
+    const xskip = (waterLevel ? 10 : 6) + random(waterLevel ? 10 : 4);
+    const yskip = (waterLevel ? 4 : 3) + random(waterLevel ? 4 : 3);
+    const bounds = airBubbleBounds(state);
+    for (let x = bounds.xmin; x <= bounds.xmax; x += xskip) {
+        for (let y = bounds.ymin; y <= bounds.ymax; y += yskip)
+            mk_bubble(x, y, random(7), state, random);
+    }
+}
+
+// C ref: mkmaze.c movebubbles() (1539-1646, 1660-1727), Air-level arm.
+// Called once when arriving on Air; the per-turn caller remains outside this
+// candidate until a development session exercises cloud movement after an
+// action on the plane.
+export async function movebubbles(state = game, random = rn2) {
+    const waterLevel = on_level(state.u?.uz, state.water_level);
+    const airLevel = on_level(state.u?.uz, state.air_level);
+    if (!waterLevel && !airLevel) return;
+    if (!state.waterlevel_portal) set_wportal(state);
+    const bounds = airBubbleBounds(state);
+
+    if (waterLevel) {
+        state.hero_bubble = null;
+        for (const bubble of state.air_bubbles ?? []) {
+            if (bubble.cons?.length)
+                throw new Error('movebubbles: cons != null');
+            bubble.cons = [];
+            for (let i = 0; i < bubble.mask.width; ++i) {
+                for (let j = 0; j < bubble.mask.height; ++j) {
+                    if (!(bubble.mask.rows[j] & (1 << i))) continue;
+                    const x = bubble.x + i;
+                    const y = bubble.y + j;
+                    if (!isok(x, y)) continue;
+                    let object = state.level.objects?.[x]?.[y] ?? null;
+                    if (object) {
+                        let list = null;
+                        while (object) {
+                            const next = object.nexthere;
+                            remove_object(object, objectGenerationEnv({ state }));
+                            object.ox = object.oy = 0;
+                            object.nexthere = list;
+                            list = object;
+                            object = next;
+                        }
+                        bubble.cons.unshift({ x, y, what: 'object', list });
+                    }
+                    const monster = m_at(x, y, state);
+                    if (monster) {
+                        bubble.cons.unshift({ x, y, what: 'monster', list: monster });
+                        if (monster.wormno) remove_worm(monster, { state });
+                        else remove_monster(x, y, state);
+                        newsym(x, y);
+                        monster.mx = monster.my = 0;
+                        monster.mstate = (monster.mstate ?? 0) | MON_BUBBLEMOVE;
+                    }
+                    if (!state.u.uswallow && state.u.ux === x && state.u.uy === y) {
+                        bubble.cons.unshift({ x, y, what: 'hero', list: null });
+                        state.hero_bubble = bubble;
+                    }
+                    const trap = t_at(x, y, state);
+                    if (trap)
+                        bubble.cons.unshift({ x, y, what: 'trap', list: trap });
+                    resetAirLocation(state.level.at(x, y), WATER);
+                    block_point(x, y, state);
+                }
+            }
+        }
+    } else {
+      for (let x = 1; x <= COLNO - 1; ++x) {
+        for (let y = 0; y <= ROWNO - 1; ++y) {
+            const location = state.level.at(x, y);
+            resetAirLocation(location);
+            // C movebubbles() assigns air_pos, whose live glyph is
+            // S_cloud. The remembered glyph is the port's stored equivalent
+            // of C's levl[x][y].glyph and must change with that assignment.
+            location.remembered_glyph = {
+                glyph: cmap_to_glyph(S_cloud, state),
+            };
+            recalc_block_point(x, y, state);
+
+            // C breaks up the all-air perimeter. Note that the edge test is
+            // intentionally evaluated for column 1 and row 0 as well.
+            const xedge = x < bounds.xmin || x > bounds.xmax;
+            const yedge = y < bounds.ymin || y > bounds.ymax;
+            if ((xedge || yedge) && !random(xedge ? 3 : 5)) {
+                location.typ = CLOUD;
+                block_point(x, y, state);
+            }
+        }
+      }
+    }
+
+    // C's static `up` toggles before traversing the lists. New levels start
+    // false, so the first arrival walks the setup list in creation order.
+    state.air_bubbles_up = !state.air_bubbles_up;
+    const bubbles = state.air_bubbles_up
+        ? state.air_bubbles
+        : [...state.air_bubbles].reverse();
+    for (const bubble of bubbles) {
+        const rx = random(3);
+        const ry = random(3);
+        const dx = bubble.dx + 1
+            - (!bubble.dx ? rx : (rx ? 1 : 0));
+        const dy = bubble.dy + 1
+            - (!bubble.dy ? ry : (ry ? 1 : 0));
+        await mv_bubble(bubble, dx, dy, false, state, random);
+    }
+    state.vision_full_recalc = 1;
+}
+
+function heroSwimming(state) {
+    const property = state.u?.uprops?.[SWIMMING];
+    return Boolean(property?.intrinsic || property?.extrinsic)
+        || is_swimmer(state.youmonst?.data);
+}
+
+// C ref: mkmaze.c water_friction() (1687-1720).
+export async function water_friction(state = game, random = rn2) {
+    const hero = state.u;
+    if (heroSwimming(state) && random(4)) return;
+    let affected = false;
+    if (hero.dx && !random(!hero.dy ? 3 : 6)) {
+        let dy;
+        do {
+            dy = random(3) - 1;
+        } while (dy && (!isok(hero.ux, hero.uy + dy)
+            || !is_pool(hero.ux, hero.uy + dy, state)));
+        hero.dx = 0;
+        hero.dy = dy;
+        affected = true;
+    } else if (hero.dy && !random(!hero.dx ? 3 : 5)) {
+        let dx;
+        do {
+            dx = random(3) - 1;
+        } while (dx && (!isok(hero.ux + dx, hero.uy)
+            || !is_pool(hero.ux + dx, hero.uy, state)));
+        hero.dy = 0;
+        hero.dx = dx;
+        affected = true;
+    }
+    if (affected)
+        await ttyPline('Water turbulence affects your movements.', state);
+}
+
+function cloneBubble(bubble) {
+    return {
+        x: bubble.x,
+        y: bubble.y,
+        dx: bubble.dx,
+        dy: bubble.dy,
+        mask: {
+            width: bubble.mask.width,
+            height: bubble.mask.height,
+            rows: [...bubble.mask.rows],
+        },
+        cons: [],
+    };
+}
+
+// C ref: mkmaze.c save_waterlevel() (1722-1745).  The JS save layer keeps
+// levels in memory, so this returns a plain snapshot instead of writing C's
+// Sfo_* stream.  `releaseData` is the FREEING mode bit.
+export function save_waterlevel(target = null, state = game,
+                                releaseData = false) {
+    if (!state.air_bubbles?.length) return null;
+    const snapshot = {
+        bounds: { ...airBubbleBounds(state) },
+        bubbles: state.air_bubbles.map(cloneBubble),
+    };
+    if (target) target.waterlevel = snapshot;
+    if (releaseData) unsetup_waterlevel(state);
+    return snapshot;
+}
+
+// C ref: mkmaze.c restore_waterlevel() (1748-1798).
+export function restore_waterlevel(source, state = game, random = rn2) {
+    const snapshot = source?.waterlevel ?? source;
+    state.air_bubbles = [];
+    state.waterlevel_bounds = snapshot?.bounds
+        ? { ...snapshot.bounds }
+        : { xmin: 4, ymin: 2, xmax: 77, ymax: 19 };
+    for (const saved of snapshot?.bubbles ?? []) {
+        const bubble = cloneBubble(saved);
+        state.air_bubbles.push(bubble);
+        mv_bubble(bubble, 0, 0, true, state, random);
+    }
+    if (!state.air_bubbles.length)
+        throw new Error('No air bubbles or clouds to restore?');
+    return state.air_bubbles;
+}
+
+// C ref: mkmaze.c set_wportal() (1800-1809).
+export function set_wportal(state = game) {
+    state.waterlevel_portal = (state.level?.traps ?? [])
+        .find((trap) => trap.ttyp === MAGIC_PORTAL) ?? null;
+    return state.waterlevel_portal;
+}
+
+// C ref: mkmaze.c unsetup_waterlevel() (1859-1869).
+export function unsetup_waterlevel(state = game) {
+    state.air_bubbles = [];
+    state.hero_bubble = null;
+    state.waterlevel_portal = null;
+}
+
+// C ref: mkmaze.c maybe_adjust_hero_bubble() (1927-1940).
+export function maybe_adjust_hero_bubble(state = game, random = rn2) {
+    if (!on_level(state.u?.uz, state.water_level)) return;
+    if (!state.u.dx && !state.u.dy) return;
+    if (state.hero_bubble && !random(2)) {
+        state.hero_bubble.dx = state.u.dx;
+        state.hero_bubble.dy = state.u.dy;
+    }
+}
+
+// A region placement that needs an unported operation. Both arms below sit
+// inside put_lregion_here()'s `oneshot` handling, which place_lregion() reaches
+// only when a single-square region was asked for or when 200 consecutive
+// random squares were all unusable.
+export class UnsupportedRegionPlacementError extends Error {
+    constructor(reason) {
+        super(`unsupported region placement: ${reason}`);
+        this.name = 'UnsupportedRegionPlacementError';
+        this.reason = reason;
+    }
+}
+
+// C ref: mkmaze.c is_exclusion_zone(). A zone recorded on this level that the
+// given placement type must avoid. LR_TELE covers both teleport directions,
+// which is why each of the two directional types matches an LR_TELE zone as
+// well as its own.
+//
+// The list is live rather than always empty: js/mklev.js
+// add_teleport_exclusion() pushes an LR_TELE zone around the themed
+// "Water-surrounded vault", and js/mklev.js clears the list per level.
+export function is_exclusion_zone(type, x, y, state = game) {
+    for (let ez = state.exclusion_zones ?? null; ez; ez = ez.next) {
+        if (((type === LR_DOWNTELE
+              && (ez.zonetype === LR_DOWNTELE || ez.zonetype === LR_TELE))
+             || (type === LR_UPTELE
+                 && (ez.zonetype === LR_UPTELE || ez.zonetype === LR_TELE))
+             || type === ez.zonetype)
+            && within_bounded_area(x, y, ez.lx, ez.ly, ez.hx, ez.hy))
+            return true;
+    }
+    return false;
+}
+
+// C ref: mkmaze.c bad_location(). Its comment: bad if the position is
+// occupied, or inside the restricted region, or is not (a corridor on a maze
+// level, or a room square, or air).
+//
+// occupied() is mklev.c's and is ported at js/mktrap.js; it rejects a square
+// holding a trap, dungeon furniture, lava, water or the invocation position.
+export function bad_location(x, y, nlx, nly, nhx, nhy, state = game) {
+    const typ = state.level?.at(x, y)?.typ;
+    return Boolean(occupied(x, y, state)
+        || within_bounded_area(x, y, nlx, nly, nhx, nhy)
+        || !((typ === CORR && state.level?.flags?.is_maze_lev)
+             || typ === ROOM
+             || typ === AIR));
+}
+
+// C ref: mkmaze.c place_lregion(). Pick a square in (lx, ly, hx, hy) but not in
+// (nlx, nly, nhx, nhy), and place something there according to `rtype`.
+//
+// C's eight coordinates come from `svu.updest` and `svd.dndest`, structs
+// do.c goto_level() zeroes before every arrival. js/do.js renders that clearing
+// as `state.updest = {}`, so an unset field arrives here as undefined where C
+// would read 0; `?? 0` restores C's value before any comparison sees it.
+// Planning options form one lockstep protocol: `planPositionOnly` traverses
+// candidates with `randomOneBased`, calls the required `preflightPosition`
+// for the selected square instead of committing it, and must leave every
+// selection input unchanged so the caller can replay the traversal live.
+export async function place_lregion(
+    lx, ly, hx, hy,
+    nlx, nly, nhx, nhy,
+    rtype,
+    lev,
+    state = game,
+    options = {},
+) {
+    const randomOneBased = options.randomOneBased ?? rn1;
+    lx ??= 0;
+    ly ??= 0;
+    hx ??= 0;
+    hy ??= 0;
+    nlx ??= 0;
+    nly ??= 0;
+    nhx ??= 0;
+    nhy ??= 0;
+
+    if (!lx) { /* default to whole level */
+        // C ref: mkmaze.c:371-374. When defaulting to whole level and rooms
+        // exist, let place_branch choose the location to avoid corridors.
+        if (rtype === LR_BRANCH && state.level?.nroom) {
+            place_branch(Is_branchlev(state.u.uz, state), 0, 0);
+            return;
+        }
+        lx = 1; /* column 0 is not used */
+        hx = COLNO - 1;
+        ly = 0; /* 3.6.0 and earlier erroneously had 1 here */
+        hy = ROWNO - 1;
+    }
+
+    /* clamp the area to the map */
+    if (lx < 1) lx = 1;
+    if (hx > COLNO - 1) hx = COLNO - 1;
+    if (ly < 0) ly = 0;
+    if (hy > ROWNO - 1) hy = ROWNO - 1;
+
+    /* first a probabilistic approach */
+
+    const oneshot = (lx === hx && ly === hy);
+    for (let trycnt = 0; trycnt < 200; trycnt++) {
+        const x = randomOneBased((hx - lx) + 1, lx);
+        const y = randomOneBased((hy - ly) + 1, ly);
+        if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot,
+            lev, state, options)) {
+            return;
+        }
+    }
+
+    /* then a deterministic one */
+
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++)
+            if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true,
+                lev, state, options))
+                return;
+
+    // C's impossible() prints "Couldn't place lregion type %d!" and returns,
+    // leaving the caller with whatever position it already had. Nothing in
+    // this port can continue sensibly from a hero who was never placed.
+    throw new Error(`Couldn't place lregion type ${rtype}!`);
+}
+
+// C ref: mkmaze.c put_lregion_here(). Answers whether <x,y> took the placement;
+// FALSE asks place_lregion() to try another square.
+//
+// `oneshot` is TRUE when there is no other square to try: either the region is
+// a single square, or the 200 random tries are spent and the deterministic
+// sweep is running. Only then does C disturb what is already on the square,
+// and both ways it does so are unported. C's goto_level() clears u.ustuck and
+// u.uswallow before u_on_rndspot() calls this function (do.c:1620, 1736-1804),
+// and fixup_special() runs while mklev() is constructing a level before the
+// hero is placed. Thus a monster found here cannot be the current holder, so
+// the m_into_limbo() call stays synchronous under the conditional cleanup
+// contract in mon.c.
+async function put_lregion_here(
+    x, y,
+    nlx, nly, nhx, nhy,
+    rtype,
+    oneshot,
+    lev,
+    state = game,
+    options = {},
+) {
+    if (bad_location(x, y, nlx, nly, nhx, nhy, state)
+        || is_exclusion_zone(rtype, x, y, state)) {
+        if (!oneshot) {
+            return false; /* caller should try again */
+        }
+        /* Must make do with the only location possible;
+           avoid failure due to a misplaced trap. */
+        const trap = t_at(x, y, state);
+        if (trap && !undestroyable_trap(trap.ttyp)) {
+            // C ref: mkmaze.c:435-439. Clear the trapped flag of any monster
+            // standing in the trap, then remove the trap itself.
+            const mtmpOnTrap = m_at(x, y, state);
+            if (mtmpOnTrap) mtmpOnTrap.mtrapped = false;
+            deltrap(trap, state);
+        }
+        if (bad_location(x, y, nlx, nly, nhx, nhy, state)
+            || is_exclusion_zone(rtype, x, y, state))
+            return false;
+    }
+    switch (rtype) {
+    case LR_TELE:
+    case LR_UPTELE:
+    case LR_DOWNTELE: {
+        /* "something" means the player in this case */
+        const mtmp = m_at(x, y, state);
+        if (mtmp) {
+            /* move the monster if no choice, or just try again */
+            if (oneshot) {
+                // mkmaze.c:449-450, rloc() and then mon.c m_into_limbo().
+                if (!await rloc(mtmp, RLOC_NOMSG, { state }))
+                    m_into_limbo(mtmp, state);
+            }
+            return false;
+        }
+        if (options.planPositionOnly) {
+            if (typeof options.preflightPosition !== 'function') {
+                throw new TypeError(
+                    'planned region placement requires a position preflight',
+                );
+            }
+            options.preflightPosition(x, y, state);
+        } else {
+            u_on_newpos(x, y, state, options);
+        }
+        break;
+    }
+    case LR_BRANCH:
+        // C ref: mkmaze.c:464-465. place_branch(Is_branchlev(&u.uz), x, y).
+        place_branch(Is_branchlev(state.u.uz, state), x, y);
+        break;
+    case LR_PORTAL: {
+        // C ref: mkmaze.c:450-454 mkportal(). A portal is a magic portal
+        // trap whose destination is the level region's resolved d_level.
+        if (lev) mkportal(x, y, lev.dnum, lev.dlevel, state);
+        break;
+    }
+    case LR_DOWNSTAIR:
+    case LR_UPSTAIR:
+        // C ref: mkmaze.c:456-459. Special-level stair regions are resolved
+        // before generate_stairs(), so the latter must see the stair already
+        // present and avoid consuming its fallback room-selection draws.
+        mkstairs(x, y, rtype === LR_UPSTAIR ? 1 : 0, null);
+        break;
+    default:
+        // LR_DOWNSTAIR and LR_UPSTAIR reach mkstairs(). Special-level
+        // construction is their only caller and neither is routed through
+        // this function yet.
+        throw new UnsupportedRegionPlacementError(
+            `put_lregion_here() for region type ${rtype}`,
+        );
+    }
+    return true;
+}
+
+// C ref: mkmaze.c baalz_fixup(). Preserve the level-sized beetle's wall legs
+// while wallification cleans the surrounding nondiggable region.
+export async function baalz_fixup(state = game) {
+    const bughack = state.bughack ??= {
+        inarea: { x1: COLNO, y1: ROWNO, x2: 0, y2: 0 },
+        delarea: { x1: COLNO, y1: ROWNO, x2: 0, y2: 0 },
+    };
+    let x = 0;
+    let y = Math.trunc(ROWNO / 2);
+    let lastx = 0;
+    let lasty = 0;
+
+    for (x = 0; x < COLNO; ++x) {
+        if ((state.level.at(x, y).wall_info & W_NONDIGGABLE) !== 0) {
+            if (!lastx) bughack.inarea.x1 = x + 1;
+            lastx = x;
+        }
+    }
+    bughack.inarea.x2 = (lastx > bughack.inarea.x1 ? lastx : x) - 1;
+
+    x = bughack.inarea.x1;
+    for (y = 0; y < ROWNO; ++y) {
+        if ((state.level.at(x, y).wall_info & W_NONDIGGABLE) !== 0) {
+            if (!lasty) bughack.inarea.y1 = y + 1;
+            lasty = y;
+        }
+    }
+    bughack.inarea.y2 = (lasty > bughack.inarea.y1 ? lasty : y) - 1;
+
+    for (x = bughack.inarea.x1; x <= bughack.inarea.x2; ++x) {
+        for (y = bughack.inarea.y1; y <= bughack.inarea.y2; ++y) {
+            const location = state.level.at(x, y);
+            if (location.typ === POOL) {
+                location.typ = HWALL;
+                if (bughack.delarea.x1 === COLNO) {
+                    bughack.delarea.x1 = x;
+                    bughack.delarea.y1 = y;
+                } else {
+                    bughack.delarea.x2 = x;
+                    bughack.delarea.y2 = y;
+                }
+            } else if (location.typ === IRONBARS) {
+                const left = state.level.at(x - 1, y);
+                const right = state.level.at(x + 1, y);
+                if (isok(x - 1, y)
+                    && (left.wall_info & W_NONDIGGABLE) !== 0) {
+                    left.wall_info &= ~W_NONDIGGABLE;
+                    if (isok(x - 2, y))
+                        state.level.at(x - 2, y).wall_info &= ~W_NONDIGGABLE;
+                } else if (isok(x + 1, y)
+                    && (right.wall_info & W_NONDIGGABLE) !== 0) {
+                    right.wall_info &= ~W_NONDIGGABLE;
+                    if (isok(x + 2, y))
+                        state.level.at(x + 2, y).wall_info &= ~W_NONDIGGABLE;
+                }
+            }
+        }
+    }
+
+    wallification(
+        Math.max(bughack.inarea.x1 - 2, 1),
+        Math.max(bughack.inarea.y1 - 2, 0),
+        Math.min(bughack.inarea.x2 + 2, COLNO - 1),
+        Math.min(bughack.inarea.y2 + 2, ROWNO - 1),
+        state,
+    );
+
+    x = bughack.delarea.x1;
+    y = bughack.delarea.y1;
+    if (isok(x, y)
+        && (state.level.at(x, y).typ === TLWALL
+            || state.level.at(x, y).typ === TRWALL)
+        && isok(x, y + 1)
+        && state.level.at(x, y + 1).typ === TUWALL) {
+        const location = state.level.at(x, y);
+        location.typ = location.typ === TLWALL ? BRCORNER : BLCORNER;
+        state.level.at(x, y + 1).typ = HWALL;
+        const monster = m_at(x, y, state);
+        if (monster) {
+            await rloc(monster, RLOC_ERR | RLOC_NOMSG, {
+                state,
+                newsym,
+                onscary: (nx, ny, mon, env) =>
+                    onscary(nx, ny, mon, env.state),
+                setApparxy: set_apparxy,
+            });
+        }
+    }
+
+    x = bughack.delarea.x2;
+    y = bughack.delarea.y2;
+    if (isok(x, y)
+        && (state.level.at(x, y).typ === TLWALL
+            || state.level.at(x, y).typ === TRWALL)
+        && isok(x, y - 1)
+        && state.level.at(x, y - 1).typ === TDWALL) {
+        const location = state.level.at(x, y);
+        location.typ = location.typ === TLWALL ? TRCORNER : TLCORNER;
+        state.level.at(x, y - 1).typ = HWALL;
+        const monster = m_at(x, y, state);
+        if (monster) {
+            await rloc(monster, RLOC_ERR | RLOC_NOMSG, {
+                state,
+                newsym,
+                onscary: (nx, ny, mon, env) =>
+                    onscary(nx, ny, mon, env.state),
+                setApparxy: set_apparxy,
+            });
+        }
+    }
+
+    bughack.inarea.x1 = bughack.delarea.x1 = COLNO;
+    bughack.inarea.y1 = bughack.delarea.y1 = ROWNO;
+    bughack.inarea.x2 = bughack.delarea.x2 = 0;
+    bughack.inarea.y2 = bughack.delarea.y2 = 0;
+}
+
+// C ref: mkmaze.c fixup_special() (568-704).  The special-level loader owns
+// the object-generation environment, so it supplies the few mklev-local
+// operations used by the Medusa branch.  All region, topology, and level-flag
+// state remains owned here, where the corresponding C function lives.
+export async function fixup_special(state = game, env = {}) {
+    if (on_level(state.u?.uz, state.water_level)
+        || on_level(state.u?.uz, state.air_level)) {
+        state.level.flags.hero_memory = false;
+        setup_waterlevel(state);
+    }
+
+    let addedBranch = false;
+    for (const region of state.lregions ?? []) {
+        let destination = null;
+        switch (region.rtype) {
+        case LR_BRANCH:
+            addedBranch = true;
+            await place_lregion(
+                region.inarea.x1, region.inarea.y1,
+                region.inarea.x2, region.inarea.y2,
+                region.delarea.x1, region.delarea.y1,
+                region.delarea.x2, region.delarea.y2,
+                region.rtype, destination, state,
+            );
+            break;
+        case LR_PORTAL:
+            if (region.rname?.[0] >= '0' && region.rname[0] <= '9') {
+                destination = {
+                    ...state.u.uz,
+                    dlevel: Number.parseInt(region.rname, 10),
+                };
+            } else {
+                destination = env.findLevel(region.rname, state).dlevel;
+            }
+            await place_lregion(
+                region.inarea.x1, region.inarea.y1,
+                region.inarea.x2, region.inarea.y2,
+                region.delarea.x1, region.delarea.y1,
+                region.delarea.x2, region.delarea.y2,
+                region.rtype, destination, state,
+            );
+            break;
+        case LR_UPSTAIR:
+        case LR_DOWNSTAIR:
+            await place_lregion(
+                region.inarea.x1, region.inarea.y1,
+                region.inarea.x2, region.inarea.y2,
+                region.delarea.x1, region.delarea.y1,
+                region.delarea.x2, region.delarea.y2,
+                region.rtype, destination, state,
+            );
+            break;
+        case LR_TELE:
+        case LR_UPTELE:
+        case LR_DOWNTELE:
+            if (region.rtype === LR_TELE || region.rtype === LR_UPTELE) {
+                state.updest = {
+                    lx: region.inarea.x1, ly: region.inarea.y1,
+                    hx: region.inarea.x2, hy: region.inarea.y2,
+                    nlx: region.delarea.x1, nly: region.delarea.y1,
+                    nhx: region.delarea.x2, nhy: region.delarea.y2,
+                };
+            }
+            if (region.rtype === LR_TELE || region.rtype === LR_DOWNTELE) {
+                state.dndest = {
+                    lx: region.inarea.x1, ly: region.inarea.y1,
+                    hx: region.inarea.x2, hy: region.inarea.y2,
+                    nlx: region.delarea.x1, nly: region.delarea.y1,
+                    nhx: region.delarea.x2, nhy: region.delarea.y2,
+                };
+            }
+            break;
+        }
+    }
+
+    if (!addedBranch && Is_branchlev(state.u.uz, state)) {
+        await place_lregion(0, 0, 0, 0, 0, 0, 0, 0,
+                      LR_BRANCH, null, state);
+    }
+
+    if (env.isMedusaLevel?.(state.u.uz)) {
+        const room = state.level.rooms[0];
+        const objectEnv = env.levelObjectEnv();
+        for (let attempts = rnd(4); attempts; --attempts) {
+            const x = env.somex(room);
+            const y = env.somey(room);
+            if (!env.goodpos(x, y, null, 0, { state })) continue;
+            let retries = 0;
+            const statue = env.mkTtObject(x, y, objectEnv);
+            while (++retries < 100 && statue
+                && env.badStatueSpecies(statue.corpsenm, state)) {
+                env.setCorpsenm(statue, env.rndmonnum(objectEnv), objectEnv);
+            }
+        }
+        let statue;
+        if (rn2(2)) {
+            statue = env.mkTtObject(
+                env.somex(room), env.somey(room), objectEnv,
+            );
+        } else {
+            statue = env.mkCorpstat(
+                env.somex(room), env.somey(room), objectEnv,
+            );
+        }
+        let retries = 0;
+        while (++retries < 100 && statue
+            && env.badStatueSpecies(statue.corpsenm, state)) {
+            env.setCorpsenm(statue, env.rndmonnum(objectEnv), objectEnv);
+        }
+    } else if (state.urole?.mnum === PM_CLERIC && In_quest(state.u.uz)) {
+        state.level.flags.graveyard = true;
+    } else if (on_level(state.u.uz, state.stronghold_level)) {
+        state.level.flags.graveyard = true;
+    } else if (on_level(state.u.uz, state.baalzebub_level)) {
+        await baalz_fixup(state);
+    } else if (state.u.uz.dnum === state.mines_dnum && state.ransacked) {
+        stolen_booty(state);
+    }
+
+    const special = Is_special(state.u.uz, state);
+    if (special?.flags?.town) state.level.flags.has_town = true;
+    state.lregions = [];
+}
+
+// C ref: mkmaze.c check_ransacked() (706-711).
+export function check_ransacked(name, state = game) {
+    state.ransacked = state.u.uz.dnum === state.mines_dnum
+        && name === 'minetn-1';
+}
+
+const ORC_LEADER = 1;
+const ORC_FRUIT = Object.freeze(['paddle cactus', 'dwarven root']);
+
+// C ref: mkmaze.c migrate_orc() (716-745).
+export function migrate_orc(monster, flags, state = game) {
+    const currentDepth = depth(state.u.uz, state);
+    const maxDepth = dunlevs_in_dungeon(state.u.uz, state)
+        + state.dungeons[state.u.uz.dnum].depth_start - 1;
+    let destinationDepth;
+    if (flags === ORC_LEADER) {
+        destinationDepth = maxDepth;
+        if (!rn2(40)) --destinationDepth;
+        monster.migflags = (monster.migflags ?? 0) | MIGR_LEFTOVERS;
+    } else {
+        destinationDepth = rn2(maxDepth - currentDepth + 1) + currentDepth;
+        if (destinationDepth === currentDepth) ++destinationDepth;
+        if (destinationDepth > maxDepth) destinationDepth = maxDepth;
+        monster.migflags = (monster.migflags ?? 0) & ~MIGR_LEFTOVERS;
+    }
+    const destination = {};
+    get_level(destination, destinationDepth, state);
+    migrate_to_level(
+        monster, ledger_no(destination, state), MIGR_RANDOM, null, { state },
+    );
+}
+
+// C ref: mkmaze.c shiny_orc_stuff() (747-777).
+export function shiny_orc_stuff(monster, state = game) {
+    const env = objectGenerationEnv({ state, random: { rn1, rn2, rnd, rne } });
+    const captain = monster.data === state.mons[PM_ORC_CAPTAIN];
+    const goldProbability = captain ? 600 : 300;
+    const gemProbability = Math.trunc(goldProbability / 4);
+    if (rn2(1000) < goldProbability) {
+        const gold = mksobj(GOLD_PIECE, true, false, env);
+        if (gold) {
+            gold.quan = 1 + rnd(goldProbability);
+            gold.owt = weight(gold, env);
+            add_to_minv(monster, gold, env);
+        }
+    }
+    if (rn2(1000) < gemProbability) {
+        const gem = mkobj(GEM_CLASS, false, env);
+        if (gem) {
+            if (gem.otyp === ROCK) dealloc_obj(gem, env);
+            else add_to_minv(monster, gem, env);
+        }
+    }
+    if (captain || !rn2(8)) {
+        const otyp = shiny_obj(RING_CLASS, env);
+        if (otyp !== STRANGE_OBJECT) {
+            const ring = mksobj(otyp, true, false, env);
+            if (ring) add_to_minv(monster, ring, env);
+        }
+    }
+}
+
+// C ref: mkmaze.c migr_booty_item() (779-796).
+export function migr_booty_item(otyp, gang, state = game) {
+    const env = objectGenerationEnv({ state, random: { rn1, rn2, rnd, rne } });
+    const object = mksobj_migr_to_species(otyp, M2_ORC, true, false, env);
+    if (object && gang) {
+        new_oname(object, gang.length + 1);
+        object.oextra.oname = gang;
+        if (objectType(otyp, state).oc_class === FOOD_CLASS) {
+            if (otyp === SLIME_MOLD) {
+                object.spe = fruitadd(ORC_FRUIT[rn2(ORC_FRUIT.length)], null,
+                                      env);
+            }
+            object.quan += rn2(3);
+            object.owt = weight(object, env);
+        }
+    }
+    return object;
+}
+
+// C ref: mkmaze.c stolen_booty() (798-889).
+export function stolen_booty(state = game) {
+    const gang = rndorcname({ rn1, rn2 });
+    let count = rnd(4);
+    for (let i = 0; i < count; ++i)
+        migr_booty_item(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, gang, state);
+    count = rnd(3);
+    for (let i = 0; i < count; ++i)
+        migr_booty_item(SKELETON_KEY, gang, state);
+    migr_booty_item(
+        rn1(GAUNTLETS_OF_DEXTERITY - LEATHER_GLOVES + 1, LEATHER_GLOVES),
+        gang, state,
+    );
+    count = rnd(10);
+    for (let i = 0; i < count; ++i) {
+        const otyp = rn1(TIN - TRIPE_RATION + 1, TRIPE_RATION);
+        const definition = objectType(otyp, state);
+        if (otyp !== LEMBAS_WAFER
+            && (definition.oc_prob !== 0 || otyp === C_RATION
+                || otyp === K_RATION)
+            && otyp !== CORPSE && otyp !== EGG && otyp !== TIN) {
+            migr_booty_item(otyp, gang, state);
+        }
+    }
+    migr_booty_item(rn2(2) ? LONG_SWORD : SILVER_SABER, gang, state);
+
+    const monsterEnv = {
+        state,
+        random: { d, rn1, rn2, rnd, rne },
+        hooks: objectGenerationEnv({ state }).hooks,
+    };
+    let monster = makemon(state.mons[PM_ORC_CAPTAIN], 0, 0, MM_NONAME,
+                          monsterEnv);
+    if (monster) {
+        monster = christen_monst(monster, upstart(gang));
+        monster.mpeaceful = false;
+        set_malign(monster, state);
+        shiny_orc_stuff(monster, state);
+        migrate_orc(monster, ORC_LEADER, state);
+    }
+    for (let current = state.level.monlist; current; current = current.nmon) {
+        if ((current.mhp ?? 1) < 1) continue;
+        if (is_orc(current.data) && !current.mextra?.mgivenname && rn2(10)
+            && current.data !== state.mons[PM_ORC_CAPTAIN]) {
+            christen_orc(current, upstart(gang), '', { random: { rn1, rn2 } });
+        }
+    }
+    count = rn2(10) + 5;
+    for (let i = 0; i < count; ++i) {
+        const mtyp = rn2(PM_ORC_SHAMAN - PM_ORC + 1) + PM_ORC;
+        monster = makemon(state.mons[mtyp], 0, 0, MM_NONAME, monsterEnv);
+        if (monster) {
+            shiny_orc_stuff(monster, state);
+            migrate_orc(monster, 0, state);
+        }
+    }
+    state.ransacked = false;
+}
+
+// C ref: mkmaze.c maze_inbounds() (893-901).
+export function maze_inbounds(x, y, frame) {
+    return x >= 2 && y >= 2 && x < frame.xMazeMax && y < frame.yMazeMax
+        && isok(x, y);
+}
+
+function mazeStep(x, y, direction) {
+    switch (direction) {
+    case 0: return { x, y: y - 1 };
+    case 1: return { x: x + 1, y };
+    case 2: return { x, y: y + 1 };
+    case 3: return { x: x - 1, y };
+    default: throw new RangeError(`mz_move: bad direction ${direction}`);
+    }
+}
+
+// C ref: mkmaze.c maze_remove_deadends() (903-944).
+export function maze_remove_deadends(typ, frame, state = game,
+                                     random = rn2) {
+    for (let x = 2; x < frame.xMazeMax; ++x) {
+        for (let y = 2; y < frame.yMazeMax; ++y) {
+            if (!ACCESSIBLE(state.level.at(x, y).typ) || !(x % 2) || !(y % 2))
+                continue;
+            const directions = [];
+            let unavailable = 0;
+            for (let direction = 0; direction < 4; ++direction) {
+                const one = mazeStep(x, y, direction);
+                if (!maze_inbounds(one.x, one.y, frame)) {
+                    ++unavailable;
+                    continue;
+                }
+                const two = mazeStep(one.x, one.y, direction);
+                if (!maze_inbounds(two.x, two.y, frame)) {
+                    ++unavailable;
+                    continue;
+                }
+                if (!ACCESSIBLE(state.level.at(one.x, one.y).typ)
+                    && ACCESSIBLE(state.level.at(two.x, two.y).typ)) {
+                    directions.push(direction);
+                    ++unavailable;
+                }
+            }
+            if (unavailable >= 3 && directions.length) {
+                const one = mazeStep(x, y,
+                    directions[random(directions.length)]);
+                state.level.at(one.x, one.y).typ = typ;
+            }
+        }
+    }
+}
+
+// C ref: mkmaze.c maze0xy() (309-314). Picks a random odd-coordinate
+// starting point inside the given maze bounds (xMax, yMax).
+function maze0xy(xMax, yMax) {
+    const x = 3 + 2 * rn2((xMax >> 1) - 1);
+    const y = 3 + 2 * rn2((yMax >> 1) - 1);
+    return { x, y };
+}
+
+// C ref: mkmaze.c create_maze() (950-1039). Generates a maze with the
+// specified corridor width and wall thickness, then scales it up when
+// the combined scale exceeds 2. walkfrom() carves from maze0xy()'s
+// random start; the bounds are temporarily reduced to keep the small
+// grid inside the map.
+export function create_maze(corrwid, wallthick, rmDeadends, frame, state) {
+    if (corrwid === -1) corrwid = rnd(4);
+    if (wallthick === -1) wallthick = rnd(4) - corrwid;
+    if (wallthick < 1) wallthick = 1;
+    else if (wallthick > 5) wallthick = 5;
+    if (corrwid < 1) corrwid = 1;
+    else if (corrwid > 5) corrwid = 5;
+
+    const scale = corrwid + wallthick;
+    const rdx = Math.trunc(frame.xMazeMax / scale);
+    const rdy = Math.trunc(frame.yMazeMax / scale);
+
+    // Fill the reduced grid: corrmaze fills with STONE; otherwise,
+    // odd-parity cells are STONE (walls) and even-parity cells are HWALL.
+    if (state.level.flags.corrmaze) {
+        for (let x = 2; x < rdx * 2; ++x)
+            for (let y = 2; y < rdy * 2; ++y)
+                state.level.at(x, y).typ = STONE;
+    } else {
+        for (let x = 2; x <= rdx * 2; ++x)
+            for (let y = 2; y <= rdy * 2; ++y)
+                state.level.at(x, y).typ = ((x % 2) && (y % 2))
+                    ? STONE : HWALL;
+    }
+
+    // Temporarily reduce bounds for maze carving.
+    const bounds = { xMax: rdx * 2, yMax: rdy * 2 };
+
+    const mm = maze0xy(bounds.xMax, bounds.yMax);
+    walkfrom(mm.x, mm.y, 0, state, bounds);
+
+    if (rmDeadends) {
+        maze_remove_deadends(
+            state.level.flags.corrmaze ? CORR : ROOM,
+            bounds,
+            state,
+        );
+    }
+
+    // Scale maze up when scale > 2.
+    if (scale > 2) {
+        // Back up the smaller maze into a temporary map.
+        const tmpmap = [];
+        for (let x = 0; x < COLNO; ++x) {
+            tmpmap[x] = new Uint8Array(ROWNO);
+            for (let y = 0; y < ROWNO; ++y) {
+                tmpmap[x][y] = state.level.at(x, y).typ;
+            }
+        }
+
+        // Scale: walk the reduced grid and expand each cell according
+        // to its parity. Odd columns/rows (corridors) get corrwid cells;
+        // even columns/rows (walls) get wallthick cells, except the
+        // boundary columns/rows (x==2 or x==rdx*2, y==2 or y==rdy*2)
+        // which get 1 cell.
+        let rx = 2, x = 2;
+        while (rx < frame.xMazeMax) {
+            const mx = (x % 2)
+                ? corrwid
+                : (x === 2 || x === rdx * 2) ? 1 : wallthick;
+            let ry = 2, y2 = 2;
+            while (ry < frame.yMazeMax) {
+                const my = (y2 % 2)
+                    ? corrwid
+                    : (y2 === 2 || y2 === rdy * 2) ? 1 : wallthick;
+                for (let dx = 0; dx < mx; ++dx) {
+                    for (let dy = 0; dy < my; ++dy) {
+                        if (rx + dx >= frame.xMazeMax
+                            || ry + dy >= frame.yMazeMax) break;
+                        state.level.at(rx + dx, ry + dy).typ = tmpmap[x][y2];
+                    }
+                }
+                ry += my;
+                y2++;
+            }
+            rx += mx;
+            x++;
+        }
+    }
+}
+
+// C ref: mkmaze.c populate_maze() (1095-1124).  Every placement call has a
+// discarded return in C, so a failed placement does not alter the remaining
+// random-call sequence.
+export function populate_maze(frame, state = game) {
+    const env = objectGenerationEnv({ state, random: { rn1, rn2, rnd, rne } });
+    let count = rn1(8, 11);
+    for (; count; --count) {
+        const point = mazexy(null, frame, state);
+        mkobj_at(rn2(2) ? GEM_CLASS : RANDOM_CLASS,
+                 point.x, point.y, true, env);
+    }
+    count = rn1(10, 2);
+    for (; count; --count) {
+        const point = mazexy(null, frame, state);
+        mksobj_at(BOULDER, point.x, point.y, true, false, env);
+    }
+    count = rn2(3);
+    for (; count; --count) {
+        const point = mazexy(null, frame, state);
+        makemon(state.mons[PM_MINOTAUR], point.x, point.y, NO_MM_FLAGS,
+                { state, random: { d, rn1, rn2, rnd, rne }, hooks: env.hooks });
+    }
+    count = rn1(5, 7);
+    for (; count; --count) {
+        const point = mazexy(null, frame, state);
+        makemon(null, point.x, point.y, NO_MM_FLAGS,
+                { state, random: { d, rn1, rn2, rnd, rne }, hooks: env.hooks });
+    }
+    count = rn1(6, 7);
+    for (; count; --count) {
+        const point = mazexy(null, frame, state);
+        mkgold(0, point.x, point.y, env);
+    }
+    count = rn1(6, 7);
+    for (; count; --count)
+        mktrap(0, MKTRAP_MAZEFLAG, null, null, env);
+}
+
+// C ref: mkmaze.c mazexy() (1313-1350).  `coordinate` mirrors the output
+// pointer and is optional for ordinary JavaScript callers.
+export function mazexy(coordinate = null, frame, state = game,
+                       randomOneBased = rnd) {
+    const result = coordinate ?? {};
+    const allowedType = state.level.flags.corrmaze ? CORR : ROOM;
+    let attempts = 0;
+    do {
+        const x = randomOneBased(frame.xMazeMax);
+        const y = randomOneBased(frame.yMazeMax);
+        if (state.level.at(x, y).typ === allowedType) {
+            result.x = x;
+            result.y = y;
+            return result;
+        }
+    } while (++attempts < 100);
+    for (let x = 1; x <= frame.xMazeMax; ++x) {
+        for (let y = 1; y <= frame.yMazeMax; ++y) {
+            if (state.level.at(x, y).typ === allowedType) {
+                result.x = x;
+                result.y = y;
+                return result;
+            }
+        }
+    }
+    throw new Error("mazexy: can't find a place!");
+}
+
+// C ref: mkmaze.c mkportal() (1463-1479).
+export function mkportal(x, y, destinationDungeon, destinationLevel,
+                         state = game) {
+    const portal = maketrap(x, y, MAGIC_PORTAL, { state });
+    if (!portal) return null;
+    portal.dst = { dnum: destinationDungeon, dlevel: destinationLevel };
+    return portal;
+}

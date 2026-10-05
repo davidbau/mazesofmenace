@@ -1,0 +1,470 @@
+// Mobile light-source ownership for burning objects and luminous monsters.
+// C refs: src/light.c new_light_source(), del_light_source(),
+// candle_light_range(); src/zap.c get_obj_location(), get_mon_location().
+
+import {
+    BURIED_TOO,
+    COLNO,
+    COULD_SEE,
+    CONTAINED_TOO,
+    LS_OBJECT,
+    LS_MONSTER,
+    MAX_RADIUS,
+    OBJ_BURIED,
+    OBJ_CONTAINED,
+    OBJ_FLOOR,
+    OBJ_FREE,
+    OBJ_INVENT,
+    OBJ_MINVENT,
+    FM_FMON,
+    FM_MIGRATE,
+    FM_MYDOGS,
+    FM_YOU,
+    RANGE_LEVEL,
+    ROWNO,
+    TEMP_LIT,
+} from './const.js';
+import { artifact_light } from './artifacts.js';
+import { game } from './gstate.js';
+import { dist2 } from './hacklib.js';
+import { note_unported } from './unported.js';
+import {
+    BRASS_LANTERN,
+    CANDELABRUM_OF_INVOCATION,
+    GOLD_DRAGON_SCALE_MAIL,
+    MAGIC_LAMP,
+    OIL_LAMP,
+    POT_OIL,
+    TALLOW_CANDLE,
+    WAX_CANDLE,
+} from './objects.js';
+// js/timeout.js imports this file; both sides use the other's exports only
+// inside function bodies, so the cycle resolves.
+import { obj_is_local } from './timeout.js';
+
+export class UnsupportedLightOperationError extends Error {
+    constructor(operation) {
+        super(`${operation} is not available`);
+        this.name = 'UnsupportedLightOperationError';
+        this.operation = operation;
+    }
+}
+
+// decl.c initializes gl.light_base for each game. Keep the source owner (`gl`)
+// separate from the flattened vision_full_recalc flag used by the current JS
+// vision port.
+export function light_globals_init(state = game) {
+    state.gl ??= {};
+    state.gl.light_base = null;
+}
+
+// C ref: light.c any_light_source().
+export function any_light_source(state = game) {
+    return Boolean(state.gl?.light_base);
+}
+
+// C refs: obj.h ignitable(), artifact.c artifact_light(), and
+// light.c obj_sheds_light(). Only actively burning objects shed light.
+export function obj_sheds_light(obj) {
+    if (!obj?.lamplit) return false;
+    const ignitable = obj.otyp === BRASS_LANTERN
+        || obj.otyp === OIL_LAMP
+        || (obj.otyp === MAGIC_LAMP && obj.spe > 0)
+        || obj.otyp === CANDELABRUM_OF_INVOCATION
+        || obj.otyp === TALLOW_CANDLE
+        || obj.otyp === WAX_CANDLE
+        || obj.otyp === POT_OIL;
+    return ignitable || artifact_light(obj);
+}
+
+function lightGlobals(state) {
+    if (!state.gl || !Object.hasOwn(state.gl, 'light_base'))
+        throw new Error('light sources require light_globals_init()');
+    return state.gl;
+}
+
+function requireMobileSource(type) {
+    if (type !== LS_OBJECT && type !== LS_MONSTER)
+        throw new UnsupportedLightOperationError(`light source type ${type}`);
+}
+
+// light.c:new_light_core(). The source prepends every light to gl.light_base
+// and marks vision for a full recalculation.
+export function new_light_source(x, y, range, type, id, state = game) {
+    const globals = lightGlobals(state);
+    requireMobileSource(type);
+    const radius = Math.trunc(range);
+    // light.c:new_light_core() gives only a camera flash permission to use
+    // radius zero, and that source has an LS_OBJECT union whose a_obj is null.
+    const cameraFlash = radius === 0 && type === LS_OBJECT
+        && id !== null && typeof id === 'object' && id.a_obj === null;
+    if (radius < 0 || radius > MAX_RADIUS
+        || (radius === 0 && !cameraFlash)) {
+        throw new RangeError(`new_light_source: illegal range ${range}`);
+    }
+    if (!id || typeof id !== 'object') {
+        throw new TypeError(
+            `${type === LS_MONSTER ? 'monster' : 'object'} light source requires an object identity`,
+        );
+    }
+
+    const source = {
+        next: globals.light_base,
+        x: Math.trunc(x),
+        y: Math.trunc(y),
+        range: radius,
+        type,
+        id,
+        flags: 0,
+    };
+    globals.light_base = source;
+    state.vision_full_recalc = 1;
+    return source;
+}
+
+// C ref: light.c del_light_source(). Object and monster sources use their
+// owner identity directly; save/restore fixup ids remain outside this subset.
+export function del_light_source(type, id, state = game) {
+    const globals = lightGlobals(state);
+    requireMobileSource(type);
+    let previous = null;
+    let current = globals.light_base;
+    while (current && (current.type !== type || current.id !== id)) {
+        previous = current;
+        current = current.next;
+    }
+    if (!current)
+        throw new Error('del_light_source: object light source not found');
+    if (previous) previous.next = current.next;
+    else globals.light_base = current.next;
+    current.next = null;
+    state.vision_full_recalc = 1;
+}
+
+function transientLightOperation(env, name) {
+    const operation = env?.[name];
+    if (typeof operation !== 'function') {
+        throw new TypeError(`transient light requires ${name}`);
+    }
+    return operation;
+}
+
+// C ref: light.c show_transient_light(). A null object is a camera flash and
+// owns a range-zero LS_OBJECT node whose union member is null. The caller
+// supplies display, vision, and object-list operations so light.js does not
+// add a reverse module cycle through vision.js, display.js, or obj.js.
+export async function show_transient_light(obj, x, y, state = game, env = {}) {
+    let source = null;
+    if (!obj) {
+        // C skips a temporary source when permanent terrain already lights
+        // this square. Otherwise each crossed camera square owns one source
+        // until transient_light_cleanup() removes it.
+        if (state.level?.at(x, y)?.lit) return;
+        source = new_light_source(
+            x, y, 0, LS_OBJECT, { a_obj: null }, state,
+        );
+    } else {
+        for (source = state.gl?.light_base ?? null; source;
+            source = source.next) {
+            if (source.type === LS_OBJECT && source.id === obj) break;
+        }
+        if (!source || obj.where !== OBJ_FREE) {
+            if (typeof env.impossible === 'function') {
+                await env.impossible(obj, !source ? 'missing light source' : 'not free');
+            } else {
+                // C discards impossible()'s void result; its diagnostic path
+                // is separate from the transient-light gameplay effects.
+                note_unported('pline.c impossible');
+            }
+            return;
+        }
+    }
+
+    if (obj) {
+        const placeObject = transientLightOperation(env, 'placeObject');
+        const bhitpos = state.gb?.bhitpos;
+        await placeObject(obj, bhitpos?.x ?? x, bhitpos?.y ?? y);
+    } else {
+        // The zeroany.a_obj member is null for camera flashes. `source.x/y`
+        // are the single stored location for this transient source.
+        source.x = x;
+        source.y = y;
+    }
+
+    await transientLightOperation(env, 'visionRecalc')(0);
+    await transientLightOperation(env, 'flushScreen')(0);
+
+    const rangeSquared = source.range * source.range;
+    for (let monster = state.level?.monlist ?? null;
+        monster;
+        monster = monster.nmon) {
+        if (monster.mhp < 1 || (monster.isgd && !monster.mx)) continue;
+        if (dist2(monster.mx, monster.my, x, y) <= rangeSquared
+            && await transientLightOperation(env, 'canSeeMonster')(monster)) {
+            monster.mtemplit = 1;
+        }
+    }
+
+    if (obj) {
+        await transientLightOperation(env, 'delayOutput')();
+        await transientLightOperation(env, 'removeObject')(obj);
+    }
+}
+
+// C ref: light.c transient_light_cleanup() and discard_flashes(). Camera
+// source ids use {a_obj:null}; ordinary object ids remain their direct object
+// identity and are therefore retained by discard_flashes().
+export async function transient_light_cleanup(state = game, env = {}) {
+    discard_flashes(state);
+    if (state.vision_full_recalc)
+        await transientLightOperation(env, 'visionRecalc')(0);
+
+    let temporaryCount = 0;
+    for (let monster = state.level?.monlist ?? null;
+        monster;
+        monster = monster.nmon) {
+        if (monster.mhp < 1) continue;
+        if (!monster.mtemplit) continue;
+        monster.mtemplit = 0;
+        ++temporaryCount;
+        if (!await transientLightOperation(env, 'canSpotMonster')(monster)) {
+            await transientLightOperation(env, 'mapInvisible')(
+                monster.mx, monster.my,
+            );
+        }
+    }
+    if (temporaryCount)
+        await transientLightOperation(env, 'flushScreen')(0);
+}
+
+// C ref: light.c discard_flashes().
+function discard_flashes(state) {
+    for (let source = state.gl?.light_base ?? null; source;) {
+        const next = source.next;
+        if (source.type === LS_OBJECT && source.id?.a_obj === null)
+            del_light_source(source.type, source.id, state);
+        source = next;
+    }
+}
+
+// C ref: light.c save_light_sources(), its release_data() half alone. The
+// port writes no level file, so what survives is the obligation to drop the
+// light sources that stay with the level the hero is leaving; a lit candle on
+// D:1's floor must not go on lighting a square of D:2.
+//
+// C's discard_flashes() call above it has no counterpart: a flash source is
+// created only by expose_film() with a null object, and no path in the port
+// makes one.
+//
+// `mon_is_local` here is light.c:373's macro `(mon)->mx > 0`, not timeout.c's
+// list walk of the same name; keeping the two definitions apart is why
+// js/timeout.js exports its own.
+export function save_light_sources(range, state = game) {
+    const globals = lightGlobals(state);
+    state.vision_full_recalc = 0;
+    let previous = null;
+    let current = globals.light_base;
+    while (current) {
+        const next = current.next;
+        let isGlobal;
+        if (current.type === LS_OBJECT)
+            isGlobal = !obj_is_local(current.id, state);
+        else if (current.type === LS_MONSTER)
+            isGlobal = !(current.id.mx > 0);
+        else
+            throw new Error(`save_light_sources: bad type ${current.type}`);
+
+        if (isGlobal !== (range === RANGE_LEVEL)) {
+            if (previous) previous.next = next;
+            else globals.light_base = next;
+            current.next = null;
+        } else {
+            previous = current;
+        }
+        current = next;
+    }
+}
+
+// C ref: zap.c get_mon_location(), for a live level monster or steed.
+export function get_mon_location(monster, locflags = 0, state = game) {
+    if (!monster || typeof monster !== 'object') return null;
+    if (monster === state.youmonst || monster === state.u?.usteed) {
+        return Number.isInteger(state.u?.ux) && Number.isInteger(state.u?.uy)
+            ? { x: Math.trunc(state.u.ux), y: Math.trunc(state.u.uy) }
+            : null;
+    }
+    return monster.mx > 0 && (!monster.mburied || locflags)
+        ? { x: Math.trunc(monster.mx), y: Math.trunc(monster.my) }
+        : null;
+}
+
+// C ref: light.c find_mid(). Search only the lists selected by fmflags, in
+// source order; the hero's synthetic monster id is 1.
+export function find_mid(nid, fmflags, state = game) {
+    if ((fmflags & FM_YOU) && nid === 1)
+        return state.youmonst ?? null;
+    if (fmflags & FM_FMON) {
+        for (let monster = state.level?.monlist ?? null;
+            monster; monster = monster.nmon) {
+            if (monster.mhp >= 1 && monster.m_id === nid)
+                return monster;
+        }
+    }
+    if (fmflags & FM_MIGRATE) {
+        for (let monster = state.gm?.migrating_mons ?? null;
+            monster; monster = monster.nmon) {
+            if (monster.m_id === nid) return monster;
+        }
+    }
+    if (fmflags & FM_MYDOGS) {
+        for (let monster = state.gm?.mydogs ?? null;
+            monster; monster = monster.nmon) {
+            if (monster.m_id === nid) return monster;
+        }
+    }
+    return null;
+}
+
+// zap.c:get_obj_location(). Return null for the source's FALSE result.
+export function get_obj_location(obj, locflags = 0, state = game) {
+    switch (obj?.where) {
+    case OBJ_INVENT:
+        if (!state.u) return null;
+        return { x: Math.trunc(state.u.ux), y: Math.trunc(state.u.uy) };
+    case OBJ_FLOOR:
+        return { x: Math.trunc(obj.ox), y: Math.trunc(obj.oy) };
+    case OBJ_MINVENT:
+        if (obj.ocarry?.mx)
+            return { x: Math.trunc(obj.ocarry.mx), y: Math.trunc(obj.ocarry.my) };
+        return null;
+    case OBJ_BURIED:
+        return locflags & BURIED_TOO
+            ? { x: Math.trunc(obj.ox), y: Math.trunc(obj.oy) }
+            : null;
+    case OBJ_CONTAINED:
+        return locflags & CONTAINED_TOO
+            ? get_obj_location(obj.ocontainer, locflags, state)
+            : null;
+    default:
+        return null;
+    }
+}
+
+// C ref: light.c candle_light_range(). Ordinary candle stacks grow at square
+// thresholds; the invocation candelabrum uses its source-specific 1..7-candle
+// bands.
+export function candle_light_range(obj) {
+    if (obj?.otyp === CANDELABRUM_OF_INVOCATION) {
+        const candles = Math.trunc(obj.spe);
+        if (candles < 1 || candles > 7) {
+            throw new RangeError(
+                `candle_light_range: invalid candelabrum count ${obj.spe}`,
+            );
+        }
+        return candles < 4 ? 2 : candles < 7 ? 3 : 4;
+    }
+    if (obj?.otyp !== TALLOW_CANDLE && obj?.otyp !== WAX_CANDLE)
+        throw new UnsupportedLightOperationError('candle_light_range object type');
+    const quantity = Math.trunc(obj.quan);
+    if (quantity < 1)
+        throw new RangeError(`candle_light_range: invalid quantity ${obj.quan}`);
+
+    let radius = 1;
+    while (radius * radius <= quantity && radius < MAX_RADIUS) ++radius;
+    return radius;
+}
+
+// C ref: light.c arti_light_radius() (881-911). Returns the light radius an
+// artifact emits based on its BUC state. Returns 0 when the object is not
+// lit or is not a light-emitting artifact.
+export function arti_light_radius(obj, state = game) {
+    if (!obj.lamplit || !artifact_light(obj)) return 0;
+    let res = obj.blessed ? 3 : !obj.cursed ? 2 : 1;
+    // If poly'd into gold dragon with embedded scales, minimum radiance;
+    // otherwise worn gold DSM gives off more light than other sources.
+    if (obj === state.uskin)
+        res = 1;
+    else if (obj.otyp === GOLD_DRAGON_SCALE_MAIL)
+        ++res;
+    return res;
+}
+
+// C ref: light.c arti_light_description() (913-928).  Keep the description
+// beside arti_light_radius() so every light owner uses the same BUC-dependent
+// wording, including a gold dragon's worn scale mail.
+export function arti_light_description(obj, state = game) {
+    switch (arti_light_radius(obj, state)) {
+    case 4: return 'radiantly';
+    case 3: return 'brilliantly';
+    case 2: return 'brightly';
+    case 1: return 'dimly';
+    default: return 'strangely';
+    }
+}
+
+const LSF_SHOW = 0x1;
+
+// light.c:do_light_sources(). NetHack gets clear_path() and circle_data[]
+// from vision.c; this port receives the corresponding operations explicitly
+// so light.js and vision.js do not form an import cycle.
+export function do_light_sources(csRows, env = {}) {
+    const state = env.state ?? game;
+    const clearPath = env.clearPath;
+    const circleOffset = env.circleOffset;
+    let atHeroRange = 0;
+
+    for (let source = state.gl?.light_base ?? null;
+        source;
+        source = source.next) {
+        source.flags &= ~LSF_SHOW;
+
+        if (source.type === LS_OBJECT) {
+            const position = source.range === 0
+                ? { x: source.x, y: source.y }
+                : get_obj_location(source.id, 0, state);
+            if (position) {
+                source.x = position.x;
+                source.y = position.y;
+                source.flags |= LSF_SHOW;
+            }
+        } else if (source.type === LS_MONSTER) {
+            const position = get_mon_location(source.id, 0, state);
+            if (position) {
+                source.x = position.x;
+                source.y = position.y;
+                source.flags |= LSF_SHOW;
+            }
+        }
+
+        const atHero = state.u?.ux === source.x && state.u?.uy === source.y;
+        if (atHero) {
+            if (atHeroRange >= source.range)
+                source.flags &= ~LSF_SHOW;
+            else
+                atHeroRange = source.range;
+        }
+
+        if (!(source.flags & LSF_SHOW)) continue;
+        if (typeof circleOffset !== 'function')
+            throw new TypeError('do_light_sources requires circleOffset');
+        if (!atHero && typeof clearPath !== 'function')
+            throw new TypeError('do_light_sources requires clearPath');
+
+        const minY = Math.max(0, source.y - source.range);
+        const maxY = Math.min(ROWNO - 1, source.y + source.range);
+        for (let y = minY; y <= maxY; ++y) {
+            const row = csRows[y];
+            const offset = circleOffset(source.range, Math.abs(y - source.y));
+            const minX = Math.max(1, source.x - offset);
+            const maxX = Math.min(COLNO - 1, source.x + offset);
+            for (let x = minX; x <= maxX; ++x) {
+                if (atHero) {
+                    if (row[x] & COULD_SEE) row[x] |= TEMP_LIT;
+                } else if ((source.x === x && source.y === y)
+                    || clearPath(source.x, source.y, x, y)) {
+                    row[x] |= TEMP_LIT;
+                }
+            }
+        }
+    }
+}

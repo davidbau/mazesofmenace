@@ -1,0 +1,5671 @@
+// trap.js — Trap creation and trap-destination logic.
+// C ref: trap.c — maketrap, hole_destination, dng_bottom, choose_trapnote.
+// Stripped-down version for contest: emits the same rn2/rnd/rne PRNG call
+// sequence as C during level generation so RNG parity is preserved.
+
+import { game } from './gstate.js';
+import { s_suffix } from './hacklib.js';
+import { rn2, rnl, rn1, rnd, d } from './rng.js';
+import { newsym, pline, m_at, update_topl, urgent_topl, topl_more, impossible, canseemon_shared, Hallucination_u,
+         feel_location, docrt, under_water } from './display.js';
+import { rn2_on_display_rng } from './disprng.js';
+import { rank_of } from './exper.js';
+import { Blind, recalc_block_point, cansee, couldsee, vision_recalc } from './vision.js';
+import { body_part, near_capacity, update_inventory, delobj, xname, uslinging,
+         Ring_off, off_msg, obj_doname, carried, otense, obj_extract_self,
+         obj_resists, useupall, remove_worn_item, is_plural, simpleonames,
+         makeplural, stackobj, freeinv, inventoryArray, welded, worn_extrinsic, worn_blocked,
+         splitobj, dropx, carried_weight, youmonst_data_pub } from './invent.js';
+import { shk_blocking_door, block_door_feedback } from './shk.js';
+import { observe_object } from './o_init.js';
+import { find_ac } from './u_init.js';
+import { exercise, acurr_eff } from './attrib.js';
+import { Boots_off, stop_donning, hard_helmet, helm_simple_name } from './do_wear.js';
+import { float_vs_flight, selftouch } from './polyself.js';
+import { is_weptool } from './weapon.js';
+import { is_pool, is_lava, is_waterwall } from './dbridge.js';
+import { cxname } from './objnam.js';
+import { vtense } from './dothrow.js';
+import { get_obj_location } from './light.js';
+import {
+    HOLE, TRAPDOOR, SQKY_BOARD, is_hole, In_quest,
+    RUST_TRAP, BEAR_TRAP, DART_TRAP, MAGIC_TRAP, PIT, SPIKED_PIT,
+    TT_BEARTRAP, TT_PIT, TT_LAVA, A_DEX, A_STR, A_CON, A_CHA, A_MAX, FOOT, LEG, HEAD, SPINE, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES,
+    RECURSIVETRAP, POLY_NOFLAGS, ICE,
+    FORCETRAP, FORCEBUNGLE, TOOKPLUNGE, VIASITTING, FAILEDUNTRAP, HURTLING, FROMOUTSIDE,
+    NOWEBMSG, TT_WEB,
+    ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
+    MAX_ERODE, ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
+    EF_PAY, EF_DESTROY, EF_NONE, EF_GREASE, EF_VERBOSE,
+    ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
+    IS_STWALL, IS_TREE,
+    is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
+    IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
+    IS_AIR, IS_ROOM, IS_WALL, SDOOR, SCORR, CORR, ROOM, DRAWBRIDGE_UP,
+    Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold, BURNING, DROWNING, DISSOLVED,
+    Is_waterlevel, IS_WATERWALL,
+    STAIRS, LADDER,
+    LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC, VIBRATING_SQUARE,
+    ARROW_TRAP, ROCKTRAP, SLP_GAS_TRAP, POLY_TRAP, In_sokoban, In_endgame,
+    VAULT, IS_FURNITURE, TRAPPED_DOOR, TRAPPED_CHEST,
+    POOL, MAY_DESTROY, MAY_HIT, MAY_FRACTURE, VIS_EFFECTS,
+    ARM, FINGER, D_TRAPPED, D_ISOPEN, A_WIS, TIMEOUT,
+    AS_NO_MON, AS_MON_IS_UNIQUE,
+    W_BALL, W_ART, W_ARTI, W_SADDLE, I_SPECIAL, FROM_FORM, IS_SINK, W_ARMG, Has_contents, OMONST,
+    TT_INFLOOR, TT_BURIEDBALL,
+    NO_TRAP, TRAPNUM, FIRE_RES, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT,
+    MIGR_NOWHERE, MIGR_RANDOM,
+    ANTIMAGIC, HALF_PHDAM, HALF_SPDAM, PASSES_WALLS, IRONBARS, IS_OBSTRUCTED,
+    TELEPORT, TELEPORT_CONTROL, WWALKING, SWIMMING, MAGICAL_BREATHING, DISMOUNT_FELL,
+    FAINTED, BUFSZ, W_NONPASSWALL, W_NONDIGGABLE, WT_TOOMUCH_DIAGONAL, Unaware, Is_earthlevel,
+    UNENCUMBERED, LEVITATION, FLYING,
+} from './const.js';
+import {
+    objects, mksobj, weight, place_object, BOULDER, STATUE as STATUE_OTYP, CORPSE,
+    LARGE_BOX, CHEST,
+    mkcorpstat, ROCK, ARROW,
+    WEAPON_CLASS, ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, SPBOOK_CLASS,
+    POT_WATER, POT_OIL, COIN_CLASS, GEM_CLASS, LOADSTONE, LEASH, uncurse, blessorcurse,
+    WAN_FIRE, FIRE_HORN, SPE_BOOK_OF_THE_DEAD, SCR_BLANK_PAPER, SPE_BLANK_PAPER,
+    SPE_NOVEL, has_omonst, remove_object, HEAVY_IRON_BALL,
+} from './mkobj.js';
+import { makemon, rndmonst_adj, monster_by_pmidx, name_to_pmidx,
+         pmname_of_pmidx } from './makemon.js';
+import { likes_gems_flag, M1_MINDLESS, mflags1_of, is_animal, M1_FLY,
+         amorphous_flag, unsolid_flag, passes_walls_flag, M1_ACID, throws_rocks_flag,
+         M1_AMPHIBIOUS, M1_BREATHLESS, M1_CLING, M1_HIDE, M1_TUNNEL, M1_NEEDPICK, M1_SLITHY,
+         is_swimmer_flag, can_teleport_flag } from './monflags_data.js';
+import { AD_FIRE, AD_ELEC, AD_MAGM, AD_DGST, AT_ENGL, attacktype_fordmg } from './monattk_data.js';
+import { MM_NOCOUNTBIRTH, MM_NOMSG, STATUE_TRAP, DIED, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, Is_airlevel, DISMOUNT_GENERIC, PLNMSG_BACK_ON_GROUND } from './const.js';
+import { ceiling as ceiling_dg, In_hell as dungeon_In_hell, single_level_branch, surface, find_hell, hliquid, update_lastseentyp } from './dungeon.js';
+import { depth } from './hacklib.js';
+import { check_special_room } from './shkroom.js';
+import { livelog_printf, LL_MINORAC, LL_DUMP } from './livelog.js';
+import { DEADMONSTER, genocided_pm, mmove_of, set_ustuck } from './mon.js';
+
+// C ref: include/onames.h — object type indices (mkobj.js OBJECT_DATA order).
+const DART = 24;
+
+// C ref: trap.c:82 `static const char tower_of_flame[] = "tower of flame";`
+const TOWER_OF_FLAME = 'tower of flame';
+
+// C ref: monst.h G_UNIQ — a species generated only once.
+const G_UNIQ = 0x1000;
+
+// C ref: onames.h PM_* — the golem forms dofiretrap()/trapeffect_fire_trap()
+// name explicitly.  Resolved from the mons[] table by C's own entry name so
+// the indices track monflags_data.js instead of being frozen literals.
+const PM_PAPER_GOLEM = name_to_pmidx('paper golem');
+const PM_STRAW_GOLEM = name_to_pmidx('straw golem');
+const PM_WOOD_GOLEM = name_to_pmidx('wood golem');
+const PM_LEATHER_GOLEM = name_to_pmidx('leather golem');
+
+// C ref: hacklib.c an(str).
+import { an } from './hacklib.js';
+// C ref: hacklib.c the(str) — used by back_on_ground() for "the stairs"/"the
+// air" (every noun it's applied to here already lacks its own article).
+function the_fu(s) { return `the ${s}`; }
+
+// ── trap query / display helpers ─────────────────────────────────────────
+// C ref: trap.c t_at — is there a trap at <x,y>?
+export function t_at(x, y) {
+    for (const t of game.level?.traps ?? [])
+        if (t.tx === x && t.ty === y) return t;
+    return null;
+}
+
+// C ref: trap.h unhideable_trap(ttyp) — a trap that is visible from the moment
+// it is created (maketrap() seeds ttmp->tseen with it).  Only HOLE qualifies;
+// note in particular that MAGIC_PORTAL does NOT, so a freshly generated portal
+// is invisible until seetrap() reveals it.
+export function unhideable_trap(ttyp) { return ttyp === HOLE; }
+
+// C ref: trap.h undestroyable_trap(ttyp) — a trap that maketrap()/
+// put_lregion_here() must not overwrite or remove.
+export function undestroyable_trap(ttyp) {
+    return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+}
+
+// ── paranoid_confirm:trap support ─────────────────────────────────────────
+// C ref: trap.h:105-110 enum trap_immunities.
+export const TRAP_NOT_IMMUNE = 0;
+export const TRAP_CLEARLY_IMMUNE = 1;
+export const TRAP_HIDDEN_IMMUNE = 2;
+
+// C ref: drawing.c:64 defsyms[trap_to_defsym(ttyp)].explanation — the `desc`
+// field of defsym.h:157-182's PCHAR/PCHAR2 entries, S_arrow_trap onward
+// (rm.h:497 `trap_to_defsym(t) (S_arrow_trap + (t) - 1)`).  Complete for
+// ttyp 1..TRAPNUM-1; index 0 (NO_TRAP) is unused.  Note ANTI_MAGIC is the one
+// PCHAR2 entry, so its explanation is "anti-magic field", not its tile name.
+// Same string trap.c:7154 trapname(ttyp, FALSE) returns.
+const TRAP_EXPLANATION = [
+    '',
+    'arrow trap', 'dart trap', 'falling rock trap', 'squeaky board',
+    'bear trap', 'land mine', 'rolling boulder trap', 'sleeping gas trap',
+    'rust trap', 'fire trap', 'pit', 'spiked pit', 'hole', 'trap door',
+    'teleportation trap', 'level teleporter', 'magic portal', 'web',
+    'statue trap', 'magic trap', 'anti-magic field', 'polymorph trap',
+    'vibrating square', 'trapped door', 'trapped chest',
+];
+export function trap_explanation(ttyp) { return TRAP_EXPLANATION[ttyp] ?? ''; }
+
+// C ref: trap.c:5374-5389 into_vs_onto(traptype).
+export function into_vs_onto(traptype) {
+    switch (traptype) {
+    case BEAR_TRAP: case PIT: case SPIKED_PIT: case HOLE:
+    case TELEP_TRAP: case LEVEL_TELEP: case MAGIC_PORTAL: case WEB:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// C ref: trap.c:2782-2934 immune_to_trap(mon, ttype) — would `mon` suffer any
+// adverse effect from a trap of this type?  Its only caller is the
+// paranoid_confirm:trap gate (hack.c:2561), always with &gy.youmonst, and it
+// only distinguishes TRAP_CLEARLY_IMMUNE from everything else — so the arms
+// below note where C's TRAP_HIDDEN_IMMUNE / monster branches are collapsed
+// because they cannot change that answer.
+//
+// gy.youmonst.data is the ROLE monster (u_init.c:991 `u.umonnum = urole.mnum`),
+// which is MZ_HUMAN for all 13 roles (monsters.h:3349 &c) and carries none of
+// amorphous/is_whirly/unsolid/breathless/webmaker/flaming/is_floater/is_flyer/
+// is_clinger.  That is what lets the BEAR_TRAP, SLP_GAS_TRAP and WEB pm tests
+// collapse; a gnome or dwarf hero is STILL MZ_HUMAN here, so this must NOT be
+// "corrected" to test the hero's race.
+export function immune_to_trap(mon, ttype) {
+    const is_you = (mon === game.u);
+
+    switch (ttype) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case ROCKTRAP:
+        return TRAP_NOT_IMMUNE;
+    case BEAR_TRAP:
+        // C: msize <= MZ_SMALL (monflag.h:178-180: MZ_SMALL 1, MZ_HUMAN 2) or
+        // amorphous/whirly/unsolid -> CLEARLY_IMMUNE; a role monster is none of
+        // those, so the hero always falls through to the ground-trap group.
+        /* FALLTHROUGH */
+    case SQKY_BOARD:
+    case LANDMINE:
+    case ROLLING_BOULDER_TRAP:
+    case HOLE:
+    case TRAPDOOR:
+    case PIT:
+    case SPIKED_PIT:
+        // ground-based traps: evaded by levitation/flight/ceiling-clinging
+        if (game.level?.flags?.sokoban_rules && (is_pit(ttype) || is_hole(ttype)))
+            return TRAP_NOT_IMMUNE;
+        if (In_sokoban(game.u?.uz) && ttype === ROLLING_BOULDER_TRAP)
+            return TRAP_CLEARLY_IMMUNE;
+        if (is_you && (game.u?.uprops?.Levitation || game.u?.uprops?.Flying))
+            return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case SLP_GAS_TRAP:
+        // C: breathless(pm) -> CLEARLY_IMMUNE (false for a role monster), else
+        // is_you && Sleep_resistance -> HIDDEN_IMMUNE, else NOT_IMMUNE.  Both
+        // reachable results still make the gate ask, so an elf's intrinsic
+        // sleep resistance is deliberately not consulted here.
+        return TRAP_NOT_IMMUNE;
+    case LEVEL_TELEP:
+    case TELEP_TRAP:
+        // C: In_endgame(&u.uz) || mon_has_amulet(mon) -> CLEARLY_IMMUNE.  There
+        // is no mon_has_amulet() in this port and the Amulet is never carried.
+        if (In_endgame(game.u?.uz)) return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case POLY_TRAP:
+        // C: resists_magm(mon) -> HIDDEN_IMMUNE for the hero (never CLEARLY).
+        return TRAP_NOT_IMMUNE;
+    case STATUE_TRAP:
+        // C: only the hero is affected; a monster is CLEARLY_IMMUNE.
+        return is_you ? TRAP_NOT_IMMUNE : TRAP_CLEARLY_IMMUNE;
+    case WEB:
+        // C: webmaker/amorphous/whirly/flaming/unsolid/gelatinous cube ->
+        // CLEARLY_IMMUNE; none apply to a role monster.
+        return TRAP_NOT_IMMUNE;
+    case ANTI_MAGIC:
+        // C hero arms: Antimagic -> NOT_IMMUNE, u.uenmax == 0 -> HIDDEN_IMMUNE,
+        // otherwise NOT_IMMUNE.  None is CLEARLY_IMMUNE, so the gate always
+        // asks about an anti-magic field.
+        return TRAP_NOT_IMMUNE;
+    case RUST_TRAP:
+        // C (trap.c:2878-2892): an iron golem is always harmed; otherwise scan
+        // the inventory for a rust-prone object that is WORN OR WIELDED, and
+        // return CLEARLY_IMMUNE when there is none.  A quivered object and a
+        // secondary weapon that isn't actually being dual-wielded are skipped,
+        // because a rust trap only hits worn armor and the weapon in use — so a
+        // Monk, a quarterstaff Wizard, or a Tourist whose darts are merely
+        // quivered gets no prompt at all.  (PM_IRON_GOLEM needs a polymorphed
+        // hero or a monster caller; neither happens here.)
+        for (const obj of (game.u?.invent || game.invent || [])) {
+            if (is_rustprone(obj) && (obj.owornmask || 0)) {
+                if (is_you && (obj === game.uquiver
+                               || (obj === game.uswapwep && !game.u?.twoweap)))
+                    continue;
+                return TRAP_NOT_IMMUNE;
+            }
+        }
+        return TRAP_CLEARLY_IMMUNE;
+    case MAGIC_TRAP:
+        // C: for the hero, any number of bad effects.
+        if (is_you) return TRAP_NOT_IMMUNE;
+        /* FALLTHROUGH — for a monster a magic trap only replicates a fire trap */
+    case FIRE_TRAP:
+        // C: `is_you ? !Fire_resistance : !resists_fire(mon)` -> NOT_IMMUNE,
+        // else a burnable-inventory scan whose only other result for the hero is
+        // HIDDEN_IMMUNE.  Nothing in this port ever grants the hero
+        // Fire_resistance, and neither result is CLEARLY_IMMUNE.
+        return TRAP_NOT_IMMUNE;
+    case MAGIC_PORTAL:
+        // C: harmless, but the hero is reported non-immune so it can be asked
+        // about entering.
+        return is_you ? TRAP_NOT_IMMUNE : TRAP_CLEARLY_IMMUNE;
+    case VIBRATING_SQUARE:
+        return TRAP_CLEARLY_IMMUNE;
+    default:
+        // C impossible("immune_to_trap: bad ttype") then falls out.
+        return TRAP_NOT_IMMUNE;
+    }
+}
+
+// C ref: hacklib.c ordin(n) — "1st", "2nd", "3rd", "4th"; 11/12/13 take "th".
+// (dothrow.js/end.js/insight.js/invent.js/objnam.js each keep the same
+// private copy per this codebase's per-file convention; this file gets its
+// own rather than reaching across modules for a one-line helper.)
+function ordin(n) {
+    const dd = n % 10;
+    return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? 'th'
+        : (dd === 1) ? 'st' : (dd === 2) ? 'nd' : 'rd';
+}
+
+// C ref: trap.c:7038 sokoban_guilt() — called when something has been done
+// (breaking a boulder, squeezing past one instead of solving the puzzle,
+// etc.) that entails a luck penalty on a Sokoban level.  `Sokoban` is the
+// per-level flag (svl.level.flags.sokoban_rules), NOT In_sokoban(uz): once
+// maybe_finish_sokoban() clears it below, further "cheats" on that level no
+// longer count even though the hero is still geographically in the branch.
+export function sokoban_guilt() {
+    if (!game.level?.flags?.sokoban_rules) return;
+    const u = game.u;
+    if (!u) return;
+    u.uconduct = u.uconduct || {};
+    u.uconduct.sokocheat = (u.uconduct.sokocheat || 0) + 1;
+    // C ref: attrib.c change_luck(-1) — clamped to LUCKMIN/LUCKMAX (-10/10);
+    // do_wear.js/eat.js/pray.js/uhitm.js each keep the same clamped body per
+    // this codebase's per-file convention.
+    u.uluck = (u.uluck || 0) - 1;
+    if (u.uluck < -10) u.uluck = -10;
+}
+
+// C ref: trap.c:7057 maybe_finish_sokoban() — called when a trap has been
+// deleted or had its ttyp replaced.  Scans the level's remaining traps
+// (ignoring any the hero made) for a pit or hole; if none remain, the current
+// Sokoban puzzle has been solved: clear the level's sokoban_rules flag (so
+// sokoban_guilt() luck penalties and the diagonal-push restriction lift) and
+// log completion.
+export function maybe_finish_sokoban() {
+    if (!game.level?.flags?.sokoban_rules || game.in_mklev) return;
+    const traps = game.level?.traps || [];
+    const stillOpen = traps.some((t) => !t.madeby_u
+        && (t.ttyp === PIT || t.ttyp === HOLE));
+    if (stillOpen) return;
+    const u = game.u;
+    const dungeon = u?.uz ? game.dungeons?.[u.uz.dnum] : null;
+    const sokonum = dungeon ? (dungeon.entry_lev - u.uz.dlevel + 1) : 0;
+    game.level.flags.sokoban_rules = 0;
+    livelog_printf(LL_MINORAC | LL_DUMP,
+        `completed ${sokonum}${ordin(sokonum)} Sokoban level`);
+}
+
+// C ref: trap.c deltrap() — unlink and free a trap.  The lightweight port keeps
+// traps in a flat array, so removal is a splice.  clear_conjoined_pits(trap)
+// is not ported (inert here — nothing sets ttmp->conjoined); the Sokoban
+// completion check IS wired below, matching C's `if (Sokoban && (trap->ttyp
+// == PIT || trap->ttyp == HOLE)) maybe_finish_sokoban();` tail.
+export function deltrap(trap) {
+    const list = game.level?.traps;
+    if (!list || !trap) return;
+    const i = list.indexOf(trap);
+    if (i >= 0) list.splice(i, 1);
+    if (game.level?.flags?.sokoban_rules
+        && (trap.ttyp === PIT || trap.ttyp === HOLE))
+        maybe_finish_sokoban();
+}
+
+// C ref: trap.c delfloortrap(ttmp) — destroy a trap that emanates from the
+// floor (used by gush() to clear a trap before flooding its square).  The
+// u_at() branch is unreachable from gush's only caller (it already skips the
+// hero's own square), so only the monster-occupant bookkeeping applies here.
+export function delfloortrap(ttmp) {
+    if (!ttmp) return false;
+    const removable = ttmp.ttyp === SQKY_BOARD || ttmp.ttyp === BEAR_TRAP
+        || ttmp.ttyp === LANDMINE || ttmp.ttyp === FIRE_TRAP
+        || is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp)
+        || ttmp.ttyp === TELEP_TRAP || ttmp.ttyp === LEVEL_TELEP
+        || ttmp.ttyp === WEB || ttmp.ttyp === MAGIC_TRAP
+        || ttmp.ttyp === ANTI_MAGIC;
+    if (!removable) return false;
+    const mtmp = m_at(ttmp.tx, ttmp.ty);
+    if (mtmp) mtmp.mtrapped = 0;
+    deltrap(ttmp);
+    return true;
+}
+
+// C ref: display.c seetrap()/feeltrap() — mark a trap as seen and redraw it.
+// The lightweight display layer renders the trap glyph from the trap record
+// (see display.js background_glyph); here we just flip tseen + refresh.
+export function seetrap(trap) {
+    if (!trap) return;
+    if (!trap.tseen) {
+        trap.tseen = true;
+        newsym(trap.tx, trap.ty);
+    }
+}
+
+// C ref: dungeon.c dunlev() — level number for lev within its dungeon.
+function dunlev(lev) {
+    return lev?.dlevel ?? 1;
+}
+
+// C ref: dungeon.c dunlevs_in_dungeon() — lowest level number in this dungeon.
+function dunlevs_in_dungeon(lev) {
+    const dnum = lev?.dnum ?? 0;
+    return game.dungeons?.[dnum]?.num_dunlevs ?? 1;
+}
+
+// C ref: dungeon.c — deepest level reached in this dungeon so far.
+function dunlev_reached(lev) {
+    const dnum = lev?.dnum ?? 0;
+    return game.dungeons?.[dnum]?.dunlev_ureached ?? (lev?.dlevel ?? 1);
+}
+
+function In_hell(lev) {
+    return dungeon_In_hell(lev);
+}
+
+// C ref: dungeon.c Invocation_lev(lev) — the vibrating-square level, i.e. the
+// level just above Gehennom's bottom.
+export function Invocation_lev(lev) {
+    return In_hell(lev) && (lev?.dlevel ?? 0) === dunlevs_in_dungeon(lev) - 1;
+}
+
+// C ref: dungeon.c Can_dig_down(lev) = !svl.level.flags.hardfloor
+// && !Is_botlevel(lev) && !Invocation_lev(lev).  Note the hardfloor test reads
+// the CURRENT level's flags in C too (it is svl.level, not lev-relative).
+export function Can_dig_down(lev) {
+    return !game.level?.flags?.hardfloor && !Is_botlevel(lev) && !Invocation_lev(lev);
+}
+
+// C ref: dungeon.c Can_fall_thru(lev) = Can_dig_down(lev) || Is_stronghold(lev).
+// Like Can_dig_down but also permits falling through on the stronghold level,
+// whose bottom-of-dungeon status would otherwise resist both digging and falls.
+export function Can_fall_thru(lev) {
+    return Can_dig_down(lev) || !!Is_stronghold(lev);
+}
+
+// C ref: trap.c dng_bottom() — find "bottom" level of the dungeon, stopping
+// at the quest locate level (and accounting for the unperformed invocation
+// in Gehennom).
+function dng_bottom(lev) {
+    let bottom = dunlevs_in_dungeon(lev);
+
+    /* when in the upper half of the quest, don't fall past the
+       middle "quest locate" level if hero hasn't been there yet */
+    if (In_quest(lev)) {
+        const qlocate_depth = game.qlocate_level?.dlevel ?? bottom;
+        if (dunlev_reached(lev) < qlocate_depth)
+            bottom = qlocate_depth; /* early cut-off */
+    } else if (In_hell(lev)) {
+        if (!game.u?.uevent?.invoked)
+            bottom -= 1;
+    }
+    return bottom;
+}
+
+// C ref: trap.c hole_destination() — destination dlevel for holes/trapdoors.
+export function hole_destination(dst) {
+    const uz = game.u?.uz;
+    const bottom = dng_bottom(uz);
+
+    dst.dnum = uz?.dnum ?? 0;
+    dst.dlevel = dunlev(uz);
+    while (dst.dlevel < bottom) {
+        dst.dlevel++;
+        if (rn2(4))
+            break;
+    }
+}
+
+// C ref: trap.c choose_trapnote() — pick an unused squeaky-board note.
+export function choose_trapnote(ttmp) {
+    const used = new Set();
+    for (const trap of game.level?.traps ?? []) {
+        if (trap !== ttmp && trap.ttyp === SQKY_BOARD && Number.isInteger(trap.tnote))
+            used.add(trap.tnote);
+    }
+    const picks = [];
+    for (let k = 0; k < 12; k++)
+        if (!used.has(k)) picks.push(k);
+    return picks.length ? picks[rn2(picks.length)] : rn2(12);
+}
+
+// C ref: trap.c trapnote() — the musical-note name of a squeaky board.  With
+// noprefix false, prepend the "a"/"an" article the same way objnam.c just_an()
+// does: every note name has a space at str[1], so just_an() takes its
+// single-letter branch and picks "an " when the lowercased first letter is one
+// of "aefhilmnosx" (e.g. "an A note", "an E flat"), else "a " ("a C note").
+const TNNAMES = [
+    'C note', 'D flat', 'D note', 'E flat',
+    'E note', 'F note', 'F sharp', 'G note',
+    'G sharp', 'A note', 'B flat', 'B note',
+];
+export function trapnote(trap, noprefix) {
+    const tn = TNNAMES[trap.tnote];
+    if (noprefix) return tn;
+    const article = 'aefhilmnosx'.includes(tn[0].toLowerCase()) ? 'an ' : 'a ';
+    return article + tn;
+}
+
+// C ref: trap.c maketrap() — create a trap at (x,y) of the given type.
+// Contest port: keeps the lightweight trap record used by mklev/display but
+// faithfully emits the PRNG calls C makes in maketrap's type switch (notably
+// hole_destination's rn2(4) for holes/trapdoors).
+// C ref: trap.c xdir[]/ydir[] (decl.c) — the 8 compass directions, dir 0..7.
+const XDIR8 = [-1, -1, 0, 1, 1, 1, 0, -1];
+const YDIR8 = [0, -1, -1, -1, 0, 1, 1, 1];
+
+// C ref: monmove.c closed_door() — a DOOR whose doormask is closed or locked.
+function closed_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || loc.typ !== DOOR) return false;
+    return (loc.doormask & (D_CLOSED | D_LOCKED)) !== 0;
+}
+
+// C ref: dbridge.c is_pool_or_lava() — pool or lava terrain at <x,y>.
+function is_pool_or_lava(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return IS_POOL(loc.typ) || IS_LAVA(loc.typ);
+}
+
+// C ref: trap.c is_xport() — TELEP_TRAP..MAGIC_PORTAL.
+function is_xport(ttyp) { return ttyp >= TELEP_TRAP && ttyp <= MAGIC_PORTAL; }
+
+// C ref: trap.c isclearpath(cc, distance, dx, dy) — step `distance` cells in
+// (dx,dy); the path is clear iff every cell is in-bounds, ZAP_POS, not a closed
+// door, and free of pit/hole/xport traps.  On success cc is advanced to the far
+// end.  Consumes no RNG.
+function isclearpath(cc, distance, dx, dy) {
+    let x = cc.x, y = cc.y;
+    while (distance-- > 0) {
+        x += dx; y += dy;
+        if (!isok(x, y)) return false;
+        const typ = game.level?.at(x, y)?.typ;
+        if (typ == null || !ZAP_POS(typ) || closed_door(x, y)) return false;
+        const t = t_at(x, y);
+        if (t && (is_pit(t.ttyp) || is_hole(t.ttyp) || is_xport(t.ttyp)))
+            return false;
+    }
+    cc.x = x; cc.y = y;
+    return true;
+}
+
+// C ref: trap.c find_random_launch_coord(ttmp, cc) — pick a clear coord 4..8
+// (2..8 for a rolling boulder trap) cells away from the trap for the launched
+// object.  `Sokoban` (svl.level.flags.sokoban_rules) short-circuits to FALSE
+// before any RNG: Sokoban's own rolling-boulder traps have their launch point
+// fixed by the level layout, not rolled.  Otherwise the launchplace early-out
+// uses gl.launchplace, which is (0,0) for a randomly generated trap (reset in
+// sp_lev.c:4467); with launchplace (0,0), bcc == trap location and
+// linedup(same point) is FALSE, so we always fall through to the
+// rn1(5,4)/rn2(N_DIRS) search.  The while loop consumes no RNG.
+function find_random_launch_coord(ttmp, cc) {
+    if (game.level?.flags?.sokoban_rules) return false;
+    const x = ttmp.tx, y = ttmp.ty;
+    // launchplace (0,0): bcc == (x,y); linedup(x,y,x,y) returns FALSE (zero
+    // displacement), so the early return is skipped.
+    let mindist = 4;
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP) mindist = 2;
+    let distance = rn1(5, 4); /* 4..8 away — rn2(5)+4 */
+    let tmp = rn2(N_DIRS);    /* randomly pick a direction to try first */
+    let trycount = 0;
+    let success = false;
+    while (distance >= mindist) {
+        const dx = XDIR8[tmp], dy = YDIR8[tmp];
+        cc.x = x; cc.y = y;
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP
+            && is_pool_or_lava(x + distance * dx, y + distance * dy))
+            success = false;
+        else
+            success = isclearpath(cc, distance, dx, dy);
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+            const bcc = { x, y };
+            const success_otherway = isclearpath(bcc, distance, -dx, -dy);
+            if (!success_otherway) success = false;
+        }
+        if (success) break;
+        if (++tmp > 7) tmp = 0;
+        if ((++trycount % 8) === 0) --distance;
+    }
+    return success;
+}
+
+// C ref: trap.c mkroll_launch(ttmp, x, y, otyp, ocount) — find a launch coord,
+// drop the launched object (a BOULDER for the rolling boulder trap) there, and
+// record launch / launch2 on the trap.  Returns 1.
+function mkroll_launch(ttmp, x, y, otyp, ocount) {
+    const cc = { x: -1, y: -1 };
+    const success = find_random_launch_coord(ttmp, cc);
+    if (!success) {
+        cc.x = x; cc.y = y;
+    } else {
+        const otmp = mksobj(otyp, true, false);
+        if (otmp) {
+            otmp.quan = ocount;
+            otmp.owt = weight(otmp);
+            place_object(otmp, cc.x, cc.y);
+        }
+    }
+    ttmp.launch = { x: cc.x, y: cc.y };
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+        ttmp.launch2 = { x: x - (cc.x - x), y: y - (cc.y - y) };
+    } else {
+        ttmp.launch_otyp = otyp;
+    }
+    newsym(ttmp.launch.x, ttmp.launch.y);
+    return 1;
+}
+
+// C ref: trap.c mk_trap_statue(x, y) — a STATUE_TRAP holds a statue of a real
+// monster, made by generating that monster, moving its inventory into the
+// statue and then removing it.  RNG-wise that is: up to ten rndmonnum_adj(3,6)
+// species scans (the loop rejects a co-aligned unicorn), mkcorpstat(), and a
+// FULL makemon() at a random location — position search, HP, gender, starting
+// inventory and all.  Leaving it unimplemented cost seed4500 the tail of its
+// Dlvl 40 generation: our traptype_rnd() rolled STATUE_TRAP right alongside C
+// and then simply moved on to the next trap.
+function mk_trap_statue(x, y) {
+    let mptr = null, trycount = 10;
+    do {
+        mptr = monster_by_pmidx(rndmonst_adj(3, 6)?.pmidx ?? 0);
+    } while (--trycount > 0 && mptr && is_unicorn_pm(mptr)
+             && Math.sign(game.u?.ualign?.type ?? 0) === Math.sign(mptr.maligntyp ?? 0));
+    if (!mptr) return;
+    const statue = mkcorpstat(STATUE_OTYP, null, mptr, x, y, 0 /*CORPSTAT_NONE*/);
+    if (!statue) return;
+    // MM_NOCOUNTBIRTH | MM_NOMSG, at a random spot (x==0,y==0).
+    const mtmp = makemon(monster_by_pmidx(statue.corpsenm), 0, 0,
+                         MM_NOCOUNTBIRTH | MM_NOMSG);
+    if (!mtmp) return;                  /* should never happen */
+    // Everything the statue's monster was carrying goes inside the statue.
+    // No RNG; container contents only matter for weight and later looting.
+    const inv = mtmp.minvent || [];
+    while (inv.length) {
+        const otmp = inv.shift();
+        otmp.owornmask = 0;
+        otmp.where = 'contained';
+        otmp.ocontainer = statue;
+        (statue.cobj || (statue.cobj = [])).push(otmp);
+    }
+    statue.owt = weight(statue);
+    trap_mongone(mtmp);
+}
+
+// C ref: mondata.h is_unicorn(ptr) = (mlet == S_UNICORN && likes_gems(ptr)) —
+// the horse half of the 'u' class is excluded by the M2_JEWELS test.
+const S_UNICORN_CLS = 21;       // defsym.h MONSYM(21, 'u', UNICORN, S_UNICORN)
+function is_unicorn_pm(ptr) {
+    return ptr?.mcls === S_UNICORN_CLS && likes_gems_flag(ptr);
+}
+
+// C ref: mon.c mongone(mtmp) — the monster leaves without dying and without a
+// corpse.  Its inventory has already been moved into the statue by the caller.
+function trap_mongone(mtmp) {
+    const lvl = game.level;
+    if (lvl?.monsters) {
+        const i = lvl.monsters.indexOf(mtmp);
+        if (i >= 0) lvl.monsters.splice(i, 1);
+    }
+    if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+}
+
+export function maketrap(x, y, typ) {
+    // C ref: trap.c:466 — the two container/door pseudo-types never become a
+    // map trap.
+    if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
+    // C ref: trap.c maketrap() `if ((ttmp = t_at(x, y)) != 0) { ...
+    // oldplace = TRUE; }` — a square already carrying a trap gets that record
+    // RE-INITIALIZED in place; it is not chained again.  Appending a second
+    // record instead left t_at() answering with the FIRST (stale) type for the
+    // rest of the game: on wizard1 the des-file drops a squeaky board and then
+    // a sleeping gas trap on the same square, and mfndpos()/mon_mintrap() then
+    // read the board — so a monster that C sends onto the gas trap (rnd(25))
+    // never even gets the square as a candidate.
+    const old = game.level ? t_at(x, y) : null;
+    if (old && undestroyable_trap(old.ttyp)) return null;
+    // C ref: trap.c:476-484 — the `else if` arm between "there was already a
+    // trap here" and "make a new one": a FRESH trap is refused outright on
+    // stairs/ladders, on water/lava, on furniture (unless it is a pit or hole),
+    // on an air/cloud square, and a level teleporter inside a one-level branch.
+    // Load-bearing for RNG, not just for the map: mktrap() draws its victim
+    // rnd(4) only when a trap was actually made, so every refusal removes a
+    // draw (Wiz-loca drops 3 of its 11 fixed traps onto replace_terrain'd
+    // CLOUD/MOAT squares).
+    if (!old && game.level) {
+        const ltyp = game.level.at(x, y)?.typ;
+        if (ltyp == null
+            || ltyp === STAIRS || ltyp === LADDER          // CAN_OVERWRITE_TERRAIN
+            || is_pool_or_lava(x, y)
+            || (IS_FURNITURE(ltyp) && typ !== PIT && typ !== HOLE)
+            || (ltyp === DRAWBRIDGE_UP && typ === MAGIC_PORTAL)
+            || (IS_AIR(ltyp) && typ !== MAGIC_PORTAL)
+            || (typ === LEVEL_TELEP && single_level_branch(game.u?.uz)))
+            return null;
+    }
+    // C ref: maketrap() "[re-]initialize all fields except ntrap and <tx,ty>" —
+    // tseen starts out as unhideable_trap(typ), i.e. TRUE only for a HOLE.
+    const trap = old || { tx: x, ty: y };
+    trap.ttyp = typ;
+    trap.tseen = unhideable_trap(typ);
+    trap.once = false;
+    trap.madeby_u = 0;
+    trap.launch = { x: 0, y: 0 };
+    trap.dst = { dnum: -1, dlevel: -1 };
+    if (!game.level) return trap;
+    if (!game.level.traps) game.level.traps = [];
+    // C ref: maketrap() pushes the trap onto the level list before running the
+    // per-type setup (mkroll_launch reads t_at, so the trap must be present).
+    if (!old) game.level.traps.push(trap);
+
+    switch (typ) {
+    case SQKY_BOARD:
+        trap.tnote = choose_trapnote(trap);
+        break;
+    case STATUE_TRAP:
+        // C ref: maketrap():508 — create a "living" statue.
+        mk_trap_statue(x, y);
+        break;
+    case ROLLING_BOULDER_TRAP:
+        // C ref: maketrap():512 — boulder will roll towards the trigger.
+        mkroll_launch(trap, x, y, BOULDER, 1);
+        break;
+    case PIT:
+    case SPIKED_PIT:
+        trap.conjoined = 0;
+        /* FALLTHRU */
+    case HOLE:
+    case TRAPDOOR: {
+        if (is_hole(typ))
+            hole_destination(trap.dst);
+        // C ref: trap.c maketrap():529-561 — a hole/pit REWRITES the terrain it
+        // is dug into.  Omitting this left makeniche's TRAPDOOR niche as SCORR
+        // where C turns it into CORR, and SCORR blocks line of sight while CORR
+        // does not: the wrong viz_array flips m_move's `should_see`, which picks
+        // appr / gettrack and hence the rn2(4*(cnt-j)) modulus hundreds of calls
+        // later (w3-elf-wiz-debug Dlvl 8, cell (4,1)).
+        const lev = game.level?.at?.(x, y);
+        if (lev) {
+            let clear_flags = true;
+            if (lev.typ === DRAWBRIDGE_UP) {
+                clear_flags = false; // keep lev.drawbridgemask
+            } else if (IS_ROOM(lev.typ)) {
+                set_levltyp(x, y, ROOM);
+            } else if (lev.typ === STONE || lev.typ === SCORR) {
+                set_levltyp(x, y, CORR);
+            } else if (IS_WALL(lev.typ) || lev.typ === SDOOR) {
+                const lf = game.level?.flags || {};
+                set_levltyp(x, y, lf.is_maze_lev ? ROOM
+                                  : lf.is_cavernous_lev ? CORR : DOOR);
+            }
+            if (clear_flags) lev.flags = 0;
+            recalc_block_point(x, y);
+        }
+        // C ref: trap.c maketrap():561 — `unearth_objs(x, y)`: whatever was
+        // buried here (e.g. a second buried zombie) is back on the floor.  The
+        // buried iron ball is left to dig.js's unearth_objs().
+        const buried = game.level?.buriedobjlist;
+        if (buried?.length) {
+            for (const otmp of [...buried]) {
+                if (!otmp || otmp.ox !== x || otmp.oy !== y || otmp.otyp === HEAVY_IRON_BALL)
+                    continue;
+                buried.splice(buried.indexOf(otmp), 1);
+                otmp.where = 'floor';   /* place_object() re-links it */
+                place_object(otmp, x, y);
+                stackobj(otmp);
+            }
+        }
+        break;
+    }
+    default:
+        break;
+    }
+
+    // C ref: trap.c maketrap() tail — `if (!oldplace) { push onto ftrap; }
+    // else { if (Sokoban) maybe_finish_sokoban(); }`.  It shouldn't be
+    // possible to override a sokoban pit or hole with some other trap type,
+    // but check anyway, just as C does.
+    if (old && game.level?.flags?.sokoban_rules)
+        maybe_finish_sokoban();
+
+    return trap;
+}
+
+// C ref: mkmaze.c set_levltyp() — refuses to overwrite STAIRS/LADDER
+// (CAN_OVERWRITE_TERRAIN) and lights new lava.
+function set_levltyp(x, y, newtyp) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    if (loc.typ === STAIRS || loc.typ === LADDER) return false;
+    loc.typ = newtyp;
+    if (IS_LAVA(newtyp)) loc.lit = 1;
+    return true;
+}
+
+// ── erosion / water damage ────────────────────────────────────────────────
+// C ref: objclass.h material predicates.  Object material id 11 == IRON.
+const MAT_IRON = 11;
+function is_rustprone(obj) { return objects[obj?.otyp]?.material === MAT_IRON; }
+// C ref: objclass.h erosion_matters() — only weapons and armor erode.
+function erosion_matters(obj) {
+    return obj?.oclass === WEAPON_CLASS || obj?.oclass === ARMOR_CLASS;
+}
+
+// C ref: apply.c splash_lit(obj) — a splash of water puts out a lit light
+// source.  Correction to the old note here: C's version draws NO RNG at all
+// (it is snuff_lit() plus a lantern-battery drain and a "flickers" message);
+// what is unported is the SIDE EFFECT, not a roll.  Consequences of the stub:
+// water_damage() on a lit candle/lamp should return ER_DAMAGED immediately
+// instead of falling through to the erosion switch, and the rust trap's case-3
+// sweep should snuff the hero's light source (which then changes what is lit,
+// hence what is seen, on every later turn).  Needs the light-source machinery
+// (snuff_lit/end_burn), which this port does not have.
+function splash_lit(_obj) {
+    return false;
+}
+
+// C ref: obj.h:337-344 — Is_container / Is_box / Waterproof_container.  otyps
+// from mkobj.js's OBJECT_DATA order (LARGE_BOX 214 .. BAG_OF_TRICKS 220).
+const LARGE_BOX_OTYP = 214, CHEST_OTYP = 215, ICE_BOX_OTYP = 216,
+      OILSKIN_SACK_OTYP = 218, BAG_OF_TRICKS_OTYP = 220,
+      TOWEL_OTYP = 234, CAN_OF_GREASE_OTYP = 240;
+function Is_container_otyp(o) {
+    return o.otyp >= LARGE_BOX_OTYP && o.otyp <= BAG_OF_TRICKS_OTYP;
+}
+function Waterproof_container(o) {
+    return o.otyp === OILSKIN_SACK_OTYP || o.otyp === ICE_BOX_OTYP
+        || o.otyp === LARGE_BOX_OTYP || o.otyp === CHEST_OTYP;
+}
+
+// C ref: trap.c water_damage_chain(obj, here) — walk a container's contents (or
+// a floor pile) and water_damage() each with force=FALSE.  `here` selects the
+// nexthere chain; contents use the nobj chain, which for this port is the
+// container's cobj array in order.
+async function water_damage_chain(list, here) {
+    if (!list) return;
+    const chain = Array.isArray(list) ? [...list] : [list];
+    // C ref: trap.c:4866-4886 — ga.acid_ctx brackets the loop so
+    // pot_acid_damage()'s "A/Some" vs "Another/More" wording varies across a
+    // batch of potions damaged together in the same call (a flooded chest, a
+    // fountain-side floor pile, ...).  bhitpos save/restore is not modelled
+    // (no message reached from this port's callers depends on it).
+    acid_ctx.dkn_boom = 0; acid_ctx.unk_boom = 0; acid_ctx.ctx_valid = true;
+    for (const o of chain) await water_damage(o, null, false);
+    acid_ctx.dkn_boom = 0; acid_ctx.unk_boom = 0; acid_ctx.ctx_valid = false;
+    void here;
+}
+
+// C ref: trap.c water_damage(obj, ostr, force).  Faithful port covering the
+// branches reachable from the rust trap and from dipping into a fountain/pool.
+// `force` (TRUE from the rust trap and fountain dips) skips the luck-based
+// ER_NOTHING saving throw.  Returns an ER_* code.
+export async function water_damage(obj, ostr, force) {
+    if (!obj) return ER_NOTHING;
+    if (splash_lit(obj)) return ER_DAMAGED;
+    // C ref: trap.c water_damage() uses the species-aware stack name.
+    if (!ostr) ostr = cxname(obj);
+
+    // C ref: trap.c water_damage() — a full can of grease and a not-yet-soaked
+    // towel are handled before the greased/container/luck arms.  Neither is
+    // reached by a covered session, but the ORDER is what matters: both sit
+    // ahead of the luck saving throw, so a missing arm shows up as a phantom
+    // rn2(20).
+    if (obj.otyp === CAN_OF_GREASE_OTYP && (obj.spe | 0) > 0) return ER_NOTHING;
+    if (obj.otyp === TOWEL_OTYP && (obj.spe | 0) < 7) {
+        // wet_a_towel(obj, -rnd(7 - obj->spe), TRUE): a negative amt is an
+        // increment by -amt (weapon.c:1043), capped at 7 by finish_towel_change.
+        const amt = -rnd(7 - (obj.spe | 0));
+        obj.spe = Math.min((obj.spe | 0) - amt, 7);
+        return ER_NOTHING;
+    }
+
+    // Greased items: a coin-flip washes the grease off.  (rn2(2) must fire.)
+    if (obj.greased) {
+        if (!rn2(2)) {
+            obj.greased = 0;
+            const in_invent = carried(obj);
+            let described = false;
+            if (in_invent) {
+                await update_topl(`The grease on your ${xname(obj)} washes off.`);
+                described = true;
+                update_inventory();
+            }
+            // ungreased potions of acid are always destroyed by water.
+            if (obj.otyp === POT_ACID_OTYP) {
+                await pot_acid_damage(obj, in_invent, described);
+                return ER_DESTROYED;
+            }
+        }
+        return ER_GREASED;
+    }
+
+    // C ref: trap.c water_damage() container arms, both ahead of the luck
+    // throw.  A waterproof container (oilskin sack / ice box / large box /
+    // chest) shrugs the water off with NO roll at all unless it is cursed, in
+    // which case `obj->cursed && !rn2(3)` decides whether the contents get wet.
+    // Missing both arms, a chest on a square flooded by fountain.c gush() fell
+    // through to `(Luck + 5) > rn2(20)` and drew a phantom rn2(20) (seed4500
+    // step 1329).
+    if (Is_container_otyp(obj)
+        && (!Waterproof_container(obj) || (obj.cursed && !rn2(3)))) {
+        await water_damage_chain(obj.cobj, false);
+        return ER_DAMAGED;   /* contents were damaged */
+    }
+    if (Waterproof_container(obj)) return ER_DAMAGED;
+
+    // Luck-based protection (skipped when force is TRUE, as the rust trap does).
+    if (!force) {
+        const luck = game.u?.uluck || 0;
+        if ((luck + 5) > rn2(20)) return ER_NOTHING;
+    }
+
+    switch (obj.oclass) {
+    case SCROLL_CLASS:
+        if (obj.otyp === SCR_BLANK_PAPER || obj.otyp === SCR_MAIL_OTYP)
+            return ER_NOTHING;
+        if (carried(obj)) await update_topl(`Your ${ostr} ${vtense(ostr, 'fade')}.`);
+        obj.otyp = SCR_BLANK_PAPER;
+        obj.dknown = 0;
+        obj.spe = 0;
+        if (carried(obj)) update_inventory();
+        return ER_DAMAGED;
+    case SPBOOK_CLASS: {
+        const oldotyp = obj.otyp;
+        if (oldotyp === SPE_BOOK_OF_THE_DEAD) {
+            const loc = get_obj_location(obj, 3);
+            if (loc) { obj.ox = loc.x; obj.oy = loc.y; }
+            if (loc && isok(loc.x, loc.y) && cansee(loc.x, loc.y))
+                await update_topl(`Steam rises from ${the_fu(xname(obj))}.`);
+            return ER_NOTHING;
+        }
+        if (oldotyp === SPE_BLANK_PAPER) return ER_NOTHING;
+        if (carried(obj)) await update_topl(`Your ${ostr} ${vtense(ostr, 'fade')}.`);
+        obj.otyp = SPE_BLANK_PAPER;
+        if (obj.spestudied) obj.spestudied = rn2(obj.spestudied);
+        obj.dknown = 0;
+        if (oldotyp === SPE_NOVEL) await (await import('./zap.js')).blank_novel(obj);
+        if (carried(obj)) update_inventory();
+        return ER_DAMAGED;
+    }
+    case POTION_CLASS:
+        if (obj.otyp === POT_ACID_OTYP) {
+            await pot_acid_damage(obj, carried(obj), false);
+            return ER_DESTROYED;
+        } else if (obj.odiluted) {
+            if (carried(obj)) await update_topl(`Your ${ostr} ${vtense(ostr, 'dilute')} further.`);
+            obj.otyp = POT_WATER;
+            obj.dknown = 0;
+            obj.blessed = false;
+            obj.cursed = false;
+            obj.odiluted = 0;
+            if (carried(obj)) update_inventory();
+            return ER_DAMAGED;
+        } else if (obj.otyp !== POT_WATER) {
+            if (carried(obj)) await update_topl(`Your ${ostr} ${vtense(ostr, 'dilute')}.`);
+            obj.odiluted = (obj.odiluted || 0) + 1;
+            if (carried(obj)) update_inventory();
+            return ER_DAMAGED;
+        }
+        return ER_NOTHING; // undiluted water: no effect
+    default:
+        return await erode_obj(obj, ostr, ERODE_RUST, EF_NONE);
+    }
+}
+
+// ── erode_obj (general) ───────────────────────────────────────────────────
+// C ref: objclass.h material predicates for the other 4 erosion types (IRON's
+// is_rustprone is already defined above).  Scoped to worn armor: destroy_arm()
+// (the only caller) never passes anything else, so the WAN_FIRE/candle carve-
+// outs in C's is_flammable (armor is never one of those otypes) are omitted.
+const MAT_LIQUID = 1, MAT_WOOD = 8, MAT_DRAGON_HIDE = 10, MAT_COPPER = 13,
+    MAT_PLASTIC = 18, MAT_GLASS = 19;
+function is_flammable(obj) {
+    const mat = objects[obj?.otyp]?.material;
+    return (mat <= MAT_WOOD && mat !== MAT_LIQUID) || mat === MAT_PLASTIC;
+}
+function is_rottable(obj) {
+    const mat = objects[obj?.otyp]?.material;
+    return (mat <= MAT_WOOD && mat !== MAT_LIQUID) || mat === MAT_DRAGON_HIDE;
+}
+function is_corrodeable(obj) {
+    const mat = objects[obj?.otyp]?.material;
+    return mat === MAT_COPPER || mat === MAT_IRON;
+}
+function is_crackable(obj) {
+    return objects[obj?.otyp]?.material === MAT_GLASS && obj?.oclass === ARMOR_CLASS;
+}
+
+// C ref: do_wear.c obj_erode_type() — which erosion type (if any) applies to
+// a piece of gear, by material.  Order matters: flammable is checked first.
+export function obj_erode_type(obj) {
+    if (is_flammable(obj)) return ERODE_BURN;
+    if (is_rustprone(obj)) return ERODE_RUST;
+    if (is_crackable(obj)) return ERODE_CRACK;
+    if (is_rottable(obj)) return ERODE_ROT;
+    if (is_corrodeable(obj)) return ERODE_CORRODE;
+    return ERODE_NONE;
+}
+
+// C ref: zap.c inventory_resistance_check(dmgtyp) — chance a carried
+// protective item (e.g. a fire-resistant cloak) shields another item.  Not
+// modeled: no covered hero carries such gear, so this always takes C's own
+// "prob == 0" fast path and (like C) consumes no RNG.
+function inventory_resistance_check(_dmgtyp) { return false; }
+
+// C ref: mkobj.c costly_alteration(obj, alter_type) — shop billing for a
+// damaged item.  A no-op for anything not flagged unpaid (no RNG either way);
+// shop billing itself isn't modeled.
+function costly_alteration(_obj, _alter_type) {}
+
+
+// Unwear a destroyed armor piece: clear whichever hero armor slot references
+// it and its owornmask.  C's remove_worn_item()/Cloak_off()/&c also recompute
+// AC and drop any granted intrinsic; not modeled (erosion reaching an already
+// fully-eroded piece isn't exercised by the covered starts).
+function unwear_armor(otmp) {
+    for (const slot of ['uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu'])
+        if (game[slot] === otmp) game[slot] = null;
+    otmp.owornmask = 0;
+}
+
+const ERODE_ACTION = ['smoulder', 'rust', 'rot', 'corrode', 'crack'];
+const ERODE_MSG = ['burnt', 'rusted', 'rotten', 'corroded', 'cracked'];
+const ERODE_BYTHE = ['heat', 'oxidation', 'decay', 'corrosion', 'impact'];
+
+// C ref: trap.c:360 grease_protect(otmp, ostr, victim) — a greased item shrugs
+// the erosion off; the grease itself wears away on !rn2(2).  Originally scoped
+// to the hero-carried case (erode_obj's only caller passes ostr set and
+// victim=game.u); acid_damage() (below) is a second real caller that passes
+// ostr=null and any victim (hero, a monster, or none for a floor object), so
+// the null-ostr and vismon branches are real, not dead code.
+export async function grease_protect(otmp, ostr, victim) {
+    const txt = 'protected by the layer of grease!';
+    const isYou = victim === game.u;
+    const vismon = !!victim && !isYou && canseemon_shared(victim);
+    if (ostr) {
+        if (isYou) {
+            await update_topl(`Your ${ostr} ${vtense(ostr, 'are')} ${txt}`);
+        } else if (vismon) {
+            const { Monnam } = await import('./do_name.js');
+            await update_topl(`${Monnam(victim)}'s ${ostr} ${vtense(ostr, 'are')} ${txt}`);
+        }
+    } else if (isYou || vismon) {
+        let subj = `Your ${xname(otmp)}`;
+        if (!isYou) {
+            const { Monnam } = await import('./do_name.js');
+            subj = `${Monnam(victim)}'s ${xname(otmp)}`;
+        }
+        await update_topl(`${subj} ${otense(otmp, 'are')} ${txt}`);
+    }
+    if (!rn2(2)) {
+        otmp.greased = 0;
+        if (carried(otmp)) {
+            await update_topl('The grease dissolves.');
+            update_inventory();
+        }
+        return true;
+    }
+    return false;
+}
+
+// C ref: trap.c erode_obj(otmp, ostr, type, ef_flags).  Floor objects are
+// visible only at bhitpos; submerged objects require an adjacent underwater
+// observer.  Damage still applies when its feedback cannot be seen.
+export async function erode_obj(otmp, ostr, type, ef_flags) {
+    if (!otmp) return ER_NOTHING;
+    const isYou = carried(otmp);
+    const victim = isYou ? game.u : (mcarried_dmg(otmp) ? otmp.ocarry : null);
+    const vismon = !!victim && !isYou && canseemon_shared(victim);
+    const pos = game.bhitpos;
+    const visobj = !victim && !!pos && cansee(pos.x, pos.y)
+        && (!is_pool(pos.x, pos.y)
+            || (game.u?.uinwater && Math.abs(pos.x - game.u.ux) <= 1
+                && Math.abs(pos.y - game.u.uy) <= 1));
+    if (!ostr) ostr = xname(otmp);
+    if (visobj && /^the /i.test(ostr)) ostr = ostr.slice(4);
+    const visible = isYou || vismon || visobj;
+    const verbose = game.flags?.verbose !== false;
+    const print = (ef_flags & EF_VERBOSE) !== 0;
+
+    let vulnerable;
+    // C ref: trap.c:182 `check_grease = (ef_flags & EF_GREASE)`, cleared again
+    // by the ERODE_BURN and ERODE_ROT arms (fire and decay ignore grease).
+    let check_grease = (ef_flags & EF_GREASE) !== 0;
+    switch (type) {
+    case ERODE_BURN:
+        if (inventory_resistance_check('FIRE')) return ER_NOTHING;
+        vulnerable = is_flammable(otmp);
+        check_grease = false;
+        break;
+    case ERODE_RUST:
+        vulnerable = is_rustprone(otmp);
+        break;
+    case ERODE_ROT:
+        vulnerable = is_rottable(otmp);
+        check_grease = false;
+        break;
+    case ERODE_CORRODE:
+        if (inventory_resistance_check('ACID')) return ER_NOTHING;
+        vulnerable = is_corrodeable(otmp);
+        break;
+    case ERODE_CRACK:
+        vulnerable = is_crackable(otmp);
+        break;
+    default:
+        return ER_NOTHING;
+    }
+    const is_primary = type !== ERODE_ROT && type !== ERODE_CORRODE;
+    const erosion = is_primary ? (otmp.oeroded || 0) : (otmp.oeroded2 || 0);
+
+    // C ref: trap.c:246 — grease is checked FIRST, ahead of erosion_matters().
+    if (check_grease && otmp.greased) {
+        await grease_protect(otmp, ostr, victim);
+        return ER_GREASED;
+    } else if (!erosion_matters(otmp)) {
+        return ER_NOTHING;
+    } else if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
+        if (verbose && print && (isYou || vismon)) {
+            const owner = isYou ? 'Your' : s_suffix((await import('./do_name.js')).Monnam(victim));
+            await update_topl(`${owner} ${ostr} ${vtense(ostr, 'are')} not affected by ${ERODE_BYTHE[type]}.`);
+        }
+        return ER_NOTHING;
+    } else if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
+        // C: blessed objects get a luck-modulated saving roll (rnl(4)); it
+        // must fire here (when reached) to stay in sync with C.
+        if (verbose && (print || otmp.oerodeproof) && visible) {
+            const owner = isYou ? 'your' : !vismon ? 'the'
+                : s_suffix((await import('./do_name.js')).mon_nam(victim));
+            await update_topl(`Somehow, ${owner} ${ostr} ${vtense(ostr, 'are')} not affected by the ${ERODE_BYTHE[type]}.`);
+        }
+        if (otmp.oerodeproof) {
+            otmp.rknown = true;
+            if (isYou) update_inventory();
+        }
+        return ER_NOTHING;
+    } else if (erosion < MAX_ERODE) {
+        const adverb = (erosion + 1 === MAX_ERODE) ? ' completely' : erosion ? ' further' : '';
+        if (visible) {
+            const owner = isYou ? 'Your' : !vismon ? 'The'
+                : s_suffix((await import('./do_name.js')).Monnam(victim));
+            await update_topl(`${owner} ${ostr} ${vtense(ostr, ERODE_ACTION[type])}${adverb}!`);
+        }
+        if (ef_flags & EF_PAY) costly_alteration(otmp, type);
+        if (is_primary) otmp.oeroded = erosion + 1; else otmp.oeroded2 = erosion + 1;
+        if (isYou) update_inventory();
+        // C ref: allmain.c moveloop_core() — find_ac() runs once per player
+        // input, not from erode_obj itself (see read.js destroy_arm()), so an
+        // eroded piece's AC penalty shows up starting with the NEXT screen;
+        // callers that don't already have their own find_ac() call (like
+        // destroy_arm's) are responsible for adding one after this returns.
+        return ER_DAMAGED;
+    } else if (ef_flags & EF_DESTROY) {
+        otmp.in_use = 1;
+        const actbuf = (type === ERODE_CRACK) ? 'shatters' : `${vtense(ostr, ERODE_ACTION[type])} away`;
+        if (visible) {
+            const owner = isYou ? 'Your' : !vismon ? 'The'
+                : s_suffix((await import('./do_name.js')).Monnam(victim));
+            await update_topl(`${owner} ${ostr} ${actbuf}!`);
+        }
+        if (ef_flags & EF_PAY) costly_alteration(otmp, type);
+        if (otmp.owornmask) unwear_armor(otmp);
+        delobj(otmp);
+        return ER_DESTROYED;
+    }
+    // C: already at MAX_ERODE and not EF_DESTROY — only EF_VERBOSE callers tell you.
+    if (verbose && print) {
+        if (isYou) {
+            await update_topl(`Your ${ostr} ${vtense(ostr, Blind() ? 'feel' : 'look')} completely ${ERODE_MSG[type]}.`);
+        } else if (vismon || visobj) {
+            const owner = !vismon ? 'The' : s_suffix((await import('./do_name.js')).Monnam(victim));
+            await update_topl(`${owner} ${ostr} ${vtense(ostr, 'look')} completely ${ERODE_MSG[type]}.`);
+        }
+    }
+    return ER_NOTHING;
+}
+
+// ── acid / fire / lava damage (trap.c) ────────────────────────────────────
+// otyps this section needs that mkobj.js's OBJECT_DATA carries but this file
+// hadn't imported yet.
+const POT_ACID_OTYP = 320, SCR_FIRE_OTYP = 339, SCR_MAIL_OTYP = 364,
+      SPE_FIREBALL_OTYP = 368;
+
+// C ref: zap.c destroy_strings[][3] (trap.c's own comment: "also used in
+// trap.c") — the singular/plural burn message fire_damage() reads for a
+// potion or scroll it destroys.  Index 0 is never resolved by fire_damage's
+// dindx, so only entries 1-4 are populated.
+const FIRE_DESTROY_STRINGS = [
+    null,
+    ['boils and explodes', 'boil and explode'],         // potion (non-oil)
+    ['ignites and explodes', 'ignite and explode'],     // potion of oil
+    ['catches fire and burns', 'catch fire and burn'],  // scroll
+    ['catches fire and burns', ''],                     // spellbook (never plural)
+];
+
+// C ref: objnam.c Yname2(obj) — scoped to the hero-carried case, matching the
+// same simplification js/potion.js's p_Yname2 and js/engrave.js's Yname2 make:
+// every real fire_damage() call site this port wires (a wielded digging tool,
+// a wielded bullwhip, a dipped inventory item) reaches it with a hero-owned
+// object.
+function Yname2_dmg(obj) { return `Your ${xname(obj)}`; }
+// C ref: obj.h mcarried(obj) — the object is in some monster's minvent.
+function mcarried_dmg(obj) { return !!obj && obj.where === 'minvent'; }
+// C ref: pline.c Norep() dedup, matching every other file's local copy.
+async function Norep_lava(msg) {
+    if (game._prevmsg === msg) return;
+    await update_topl(msg);
+}
+
+// C ref: trap.c:4656 pot_acid_damage(obj, in_invent, described) — a potion of
+// acid explodes.  Real callers are both inside water_damage() above (the
+// greased and POTION_CLASS arms).  acid_ctx (dkn_boom/unk_boom/ctx_valid)
+// varies the "A/Some" vs "Another/More" wording across a water_damage_chain()
+// batch; bracketed there, module state here.
+let acid_ctx = { dkn_boom: 0, unk_boom: 0, ctx_valid: false };
+async function pot_acid_damage(obj, in_invent, described) {
+    const one = (obj.quan || 1) === 1;
+    let exploded = false;
+
+    if (Blind() && !in_invent) obj.dknown = 0;
+    if (acid_ctx.ctx_valid)
+        exploded = (obj.dknown ? acid_ctx.dkn_boom : acid_ctx.unk_boom) > 0;
+    if (described) {
+        // just gave "The grease washes off your potion of acid."; don't
+        // re-describe the potion here (see trap.c's own comment).
+        await update_topl(`The potion${obj.quan > 1 ? 's' : ''} ${otense(obj, 'explode')}!`);
+    } else {
+        const bufp = simpleonames(obj);
+        const lead = !exploded ? (one ? 'A ' : 'Some ') : (one ? 'Another ' : 'More ');
+        await update_topl(`${lead}${bufp} ${vtense(bufp, 'explode')}!`);
+    }
+    if (acid_ctx.ctx_valid) {
+        if (obj.dknown) acid_ctx.dkn_boom++;
+        else acid_ctx.unk_boom++;
+    }
+    delobj(obj);
+    if (in_invent) update_inventory();
+}
+
+// C ref: trap.c:4617 acid_damage(obj) — apply acid to a scroll (erased) or
+// anything else (corrode via erode_obj).  Real callers pass a monster's
+// wielded weapon (MON_WEP(mon), possibly null) from the shared mhitm_ad_acid
+// (uhitm.c, reached via js/mhitm_ad.js's mon-vs-mon arm, js/mhitu.js's
+// passiveum and js/mhitm.js's passivemm) or the hero's uwep/uswapwep and a
+// breath/ray target's weapon (zap.c zhitu/zhitm, js/zap.js).
+export async function acid_damage(obj) {
+    if (!obj) return;
+    const isYou = carried(obj);
+    const victim = isYou ? game.u : (mcarried_dmg(obj) ? obj.ocarry : null);
+    const vismon = !!victim && !isYou && canseemon_shared(victim);
+
+    if (isYou && inventory_resistance_check('ACID')) return;
+
+    if (obj.greased) {
+        await grease_protect(obj, null, victim);
+    } else if (obj.oclass === SCROLL_CLASS && obj.otyp !== SCR_BLANK_PAPER) {
+        if (obj.otyp !== SCR_MAIL_OTYP && !Blind()) {
+            if (isYou) {
+                await update_topl(`Your ${xname(obj)} ${otense(obj, 'fade')}.`);
+            } else if (vismon) {
+                const { Monnam } = await import('./do_name.js');
+                await update_topl(`${s_suffix(Monnam(victim))} ${xname(obj)} ${otense(obj, 'fade')}.`);
+            }
+        }
+        obj.otyp = SCR_BLANK_PAPER;
+        obj.spe = 0;
+        obj.dknown = 0;
+    } else {
+        await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
+    }
+}
+
+
+// C ref: trap.c:4454 fire_damage(obj, force, x, y) — set an item on fire;
+// returns whether it was destroyed.  In addition to hero-carried tools and
+// potions, minliquid() applies this to a fire-resistant monster's inventory
+// before relocating it out of lava.
+export async function fire_damage(obj, force, x, y) {
+    const in_sight = !Blind() && couldsee(x, y);
+
+    const { catch_lit } = await import('./zap.js');
+    if (await catch_lit(obj)) return false;
+
+    if (Is_container_otyp(obj) || obj.otyp === STATUE_OTYP) {
+        let chance;
+        switch (obj.otyp) {
+        case STATUE_OTYP:
+        case ICE_BOX_OTYP:
+            return false;
+        case CHEST_OTYP:
+            chance = 40;
+            break;
+        case LARGE_BOX_OTYP:
+            chance = 30;
+            break;
+        default:
+            chance = 20;
+            break;
+        }
+        const luck = game.u?.uluck || 0;
+        if (!force && (luck + 5) > rn2(chance)) return false;
+        if (in_sight) await update_topl(`${Yname2_dmg(obj)} catches fire and burns.`);
+        const contents = obj.cobj ? [...obj.cobj] : [];
+        if (contents.length) {
+            if (in_sight) await update_topl('Its contents fall out.');
+            obj.cobj = [];
+            const { flooreffects } = await import('./do.js');
+            for (const otmp of contents) {
+                otmp.where = 'free';
+                otmp.ocontainer = null;
+                if (!(await flooreffects(otmp, x, y, ''))) place_object(otmp, x, y);
+            }
+        }
+        delobj(obj);
+        return true;
+    } else if (!force && ((game.u?.uluck || 0) + 5) > rn2(20)) {
+        return false;
+    } else if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS) {
+        if (obj.otyp === SCR_FIRE_OTYP || obj.otyp === SPE_FIREBALL_OTYP) return false;
+        if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+            if (in_sight) await update_topl(`Smoke rises from ${xname(obj)}.`);
+            return false;
+        }
+        const dindx = (obj.oclass === SCROLL_CLASS) ? 3 : 4;
+        if (in_sight) {
+            const row = FIRE_DESTROY_STRINGS[dindx];
+            await update_topl(`${Yname2_dmg(obj)} ${row[(obj.quan || 1) > 1 ? 1 : 0]}.`);
+        }
+        delobj(obj);
+        return true;
+    } else if (obj.oclass === POTION_CLASS) {
+        const dindx = (obj.otyp !== POT_OIL) ? 1 : 2;
+        if (in_sight) {
+            const row = FIRE_DESTROY_STRINGS[dindx];
+            await update_topl(`${Yname2_dmg(obj)} ${row[(obj.quan || 1) > 1 ? 1 : 0]}.`);
+        }
+        delobj(obj);
+        return true;
+    } else if (await erode_obj(obj, null, ERODE_BURN, EF_DESTROY) === ER_DESTROYED) {
+        return true;
+    }
+    return false;
+}
+
+// C ref: trap.c:4550 fire_damage_chain(chain, force, here, x, y).  `delobj()`
+// removes a destroyed object from the mutable array, so retain its index for
+// the next object just as C saves `nobj` before calling fire_damage().
+export async function fire_damage_chain(chain, force, _here, x, y) {
+    let num = 0;
+    if (!Array.isArray(chain)) return num;
+    for (let i = 0; i < chain.length;) {
+        const obj = chain[i];
+        if (await fire_damage(obj, force, x, y)) ++num;
+        if (chain[i] === obj) ++i;
+    }
+    if (num && Blind() && !couldsee(x, y))
+        await update_topl('You smell smoke.');
+    return num;
+}
+
+// C ref: trap.c:4575 lava_damage(obj, x, y) — obj was thrown, dropped,
+// teleported, or otherwise landed in lava; real (only) caller is do.c
+// flooreffects()'s is_lava() arm (js/do.js flooreffects, wired there).
+export async function lava_damage(obj, x, y) {
+    const otyp = obj.otyp, ocls = obj.oclass;
+
+    if (obj_resists(obj, 0, 0) && otyp !== SPE_BOOK_OF_THE_DEAD) return false;
+
+    const mat = objects[otyp]?.material;
+    const hasContents = !!(obj.cobj && obj.cobj.length);
+    if (mat < MAT_DRAGON_HIDE
+        && ocls !== SCROLL_CLASS && ocls !== SPBOOK_CLASS
+        && objects[otyp]?.oc_oprop !== FIRE_RES
+        && otyp !== WAN_FIRE && otyp !== FIRE_HORN
+        && !obj.oerodeproof
+        && !hasContents) {
+        if (cansee(x, y)) {
+            if (obj === game.thrownobj)
+                await update_topl(`${is_plural(obj) ? 'They' : 'It'} ${otense(obj, 'burn')} up!`);
+            else
+                await update_topl(`You see ${xname(obj)} hit lava and burn up!`);
+        }
+        if (carried(obj)) {
+            await remove_worn_item(obj, true);
+            useupall(obj);
+        } else {
+            delobj(obj);
+        }
+        return true;
+    }
+    return fire_damage(obj, true, x, y);
+}
+
+// C ref: trap.c:6990 sink_into_lava() — called once per hero move while
+// trapped in lava; real (only) caller is allmain.c's once-per-hero-took-time
+// block (js/allmain.js moveloop_turn(), wired there, right after the
+// clairvoyance/seer_turn bookkeeping that already matches that C block).  The
+// sibling `else if (!u.umoved) pooleffects(FALSE)` arm of that C block calls
+// this file's exported pooleffects().
+export async function sink_into_lava() {
+    const u = game.u;
+    if (!u) return;
+    const sink_deeper = 'You sink deeper into the lava.';
+
+    const { is_lava } = await import('./dbridge.js');
+    if (!u.utrap || u.utraptype !== TT_LAVA) {
+        return; /* shouldn't happen; matches C's own comment */
+    } else if (!is_lava(u.ux, u.uy)) {
+        u.utrap = 0; u.utraptype = 0; /* reset_utrap(FALSE) */
+    } else if (!u.uinvulnerable) {
+        const Fire_resistance = !!u.uprops?.Fire_resistance;
+        if (!Fire_resistance) u.uhp = Math.floor((u.uhp + 2) / 3);
+
+        u.utrap -= (1 << 8);
+        if (u.utrap < (1 << 8)) {
+            game._killer_name = 'molten lava';
+            await update_topl('You sink below the surface and die.');
+            await topl_more();
+            const { burn_away_slime } = await import('./timeout.js');
+            await burn_away_slime();
+            const { done } = await import('./end.js');
+            await done(DISSOLVED);
+            u.utrap = 0; u.utraptype = 0; /* reset_utrap(TRUE) */
+            if (!u.uprops?.Levitation && !u.uprops?.Flying) {
+                const { safe_teleds } = await import('./teleport.js');
+                await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT);
+            }
+        } else if (!u.umoved) {
+            const slimed = u.uprops?.Slimed | 0;
+            if (slimed > 0 && rnd(9) >= slimed) {
+                await update_topl(sink_deeper);
+                const { burn_away_slime } = await import('./timeout.js');
+                await burn_away_slime();
+            } else {
+                await Norep_lava(sink_deeper);
+            }
+            u.utrap += rnd(4);
+        }
+    }
+}
+
+// ── dotrap / trap effect dispatch ─────────────────────────────────────────
+// C ref: hack.c nomul(0) — interrupt any multi-turn action.  hack.c's real
+// nomul() guards `if (gm.multi < nval) return;` (a deliberate bug fix by
+// ab@unido): dotrap() calls nomul(0) UNCONDITIONALLY, including on the
+// recursive dotrap(trap, RECURSIVETRAP) a land mine/pit fires right after
+// losehp() -> done(DIED) -> savelife() has just set multi = -1 for the rest
+// of the turn ("You survived that attempt on your life." pending).  This
+// local copy skipped that guard and unconditionally zeroed game.multi, so
+// the pending nomovemsg's turn-end announcement (allmain.js's multi<0 -> 0
+// unmul step) never fired: the hero silently kept moving with no "You
+// survived..." message and no --More-- to flush it, permanently
+// misaligning the recorded input stream from that point on (bl008 step
+// ~399+).  Delegate to hack.js's already-faithful nomul() instead of
+// duplicating (and re-diverging from) its guard.
+async function trap_nomul() {
+    const { nomul } = await import('./hack.js');
+    nomul(0);
+}
+
+// C ref: trap.c trapeffect_rust_trap(&youmonst, trap, trflags) — the hero
+// variant.  Rolls rn2(5) to pick which body location the gush of water hits,
+// then water_damage()s the relevant gear.  case 3 (the "default") splashes the
+// hero generally and rusts cloak/suit/shirt.
+async function trapeffect_rust_trap(trap, _trflags) {
+    const u = game.u;
+    seetrap(trap);
+
+    switch (rn2(5)) {
+    case 0:
+        await pline('A gush of water hits you on the head!');
+        await water_damage(game.uarmh, 'helm', true);
+        break;
+    case 1:
+        await pline('A gush of water hits your left arm!');
+        if (await water_damage(game.uarms, 'shield', true) !== ER_NOTHING) break;
+        if (u?.twoweap || (game.uwep && false /* bimanual unmodeled */))
+            await water_damage(u?.twoweap ? game.uswapwep : game.uwep, null, true);
+        await water_damage(game.uarmg, 'gloves', true);
+        break;
+    case 2:
+        await pline('A gush of water hits your right arm!');
+        await water_damage(game.uwep, null, true);
+        await water_damage(game.uarmg, 'gloves', true);
+        break;
+    default:
+        await pline('A gush of water hits you!');
+        // splash any lit light sources (excludes wielded weapons; none of the
+        // owned sessions carry a lit source so this consumes no PRNG)
+        for (const otmp of (u?.invent || game.invent || [])) {
+            if (otmp.lamplit && otmp !== game.uwep
+                && (otmp !== game.uswapwep || !u?.twoweap))
+                splash_lit(otmp);
+        }
+        if (game.uarmc)
+            await water_damage(game.uarmc, 'cloak', true);
+        else if (game.uarm)
+            await water_damage(game.uarm, 'suit', true);
+        else if (game.uarmu)
+            await water_damage(game.uarmu, 'shirt', true);
+        break;
+    }
+    // C ref: allmain.c moveloop_core() — find_ac() runs once per player input
+    // (see read.js destroy_arm()'s matching comment), so a rusted/corroded
+    // piece's AC penalty shows up starting with the NEXT screen, not eagerly
+    // from inside water_damage/erode_obj.
+    find_ac();
+}
+
+// C ref: hack.c losehp(n, knam, k_format) — for a non-polymorphed hero this
+// subtracts the damage from u.uhp; running it to 0 or below runs the death
+// path (wizard/discover "Die?" via done(DIED), same as monmove.js mdamageu()).
+// No RNG.  Formerly this clamped HP to 0 and returned, so a trap that would
+// kill the hero left them walking around at 0 HP forever instead of ending
+// the game (or, in wizard mode, offering "Die?"/"OK, so you don't die." and
+// restoring HP via savelife()) — every trap-caused death in the port went
+// through this one function.  Still unported: maybe_wail() when the blow
+// drops the hero below a tenth of uhpmax (message only, no RNG).
+async function losehp(n, knam, k_format = KILLED_BY_AN) {
+    const u = game.u;
+    if (!u) return;
+    if (u.Upolyd) {
+        u.mh = (u.mh | 0) - n;
+        if (u.mh > u.mhmax) u.mhmax = u.mh;
+        if (u.mh < 1) {
+            const { rehumanize } = await import('./polyself.js');
+            if (rehumanize) await rehumanize();
+        }
+        return;
+    }
+    u.uhp -= n;
+    if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
+    else game.botl = true;
+    if (u.uhp < 1) {
+        // C ref: hack.c:4287 `urgent_pline("You die..."); done(DIED);` — every
+        // real losehp() caller announces this before done() runs; done() itself
+        // does not (see end.js done_in_by(), which announces the same way for
+        // a monster kill).
+        await urgent_topl('You die...');
+        game._killer_name = knam ? format_trap_killer(knam, k_format) : null;
+        const { done } = await import('./end.js');
+        await done(DIED);
+    }
+}
+
+// C ref: topten.c formatkiller() reduced to the DIED prefix (the only `how`
+// any trap-caused death in this port reaches) — mirrors end.js
+// killer_text_for_monster()'s simplification of the same switch.
+function format_trap_killer(knam, k_format) {
+    if (k_format === NO_KILLER_PREFIX) return knam;
+    if (k_format === KILLED_BY_AN) return `killed by ${an_str(knam)}`;
+    return `killed by ${knam}`;
+}
+
+// C ref: zap.c:3547 exclam(force) — "?" for negative, "." up to 4, else "!".
+function exclam(force) { return force < 0 ? '?' : force <= 4 ? '.' : '!'; }
+
+// C ref: objnam.c an() — indefinite article prefix for a plain noun.
+function an_str(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
+
+// C ref: hacklib.c upstart() — capitalize the first letter of a string.
+function upstart_trap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+// C ref: mthrowu.c thitu(tlev, dam, objp, name) — resolve a trap missile (here
+// a dart fired by a dart trap) landing on the hero.  For the named-missile
+// path (name != NULL, e.g. "little dart") the message uses an(name) and there
+// is no obj-specific naming.  Rolls dieroll = rnd(20); a hit needs
+// u.uac + tlev > dieroll.  On a hit: "You are hit by a little dart!", then
+// losehp(dam) [no RNG] + exercise(A_STR, FALSE) [rn2(2)].  Returns 1 on hit.
+async function thitu_named(tlev, dam, name) {
+    const { update_topl } = await import('./display.js');
+    const u = game.u;
+    const uac = u?.uac ?? 10;
+    const dieroll = rnd(20);                     // mthrowu.c:106
+    const onm = an_str(name);
+    const terse = Blind() || game.flags?.verbose === false;
+    if (uac + tlev <= dieroll) {
+        // Miss feedback (verbose).  C: pline("%s %s you.", upstart(onmbuf),
+        // vtense(onmbuf, "miss")) where onmbuf = an(name) -> "a little dart"
+        // -> "A little dart misses you." (not "The little dart ...").
+        if (terse)
+            await update_topl('It misses.');
+        else if (uac + tlev <= dieroll - 2)
+            await update_topl(`${upstart_trap(onm)} ${vtense(onm, 'miss')} you.`);
+        else
+            await update_topl(`You are almost hit by ${onm}.`);
+        return 0;
+    }
+    // C ref: mthrowu.c:118-121 — blind/!verbose omits the missile name.
+    await update_topl(terse ? `You are hit${exclam(dam)}`
+                           : `You are hit by ${onm}${exclam(dam)}`);
+    await losehp(dam, name);                     // no RNG
+    exercise(0 /*A_STR*/, false);                // rn2(2)
+    return 1;
+}
+
+// C ref: trap.c t_missile(otyp, trap) — mksobj(otyp, TRUE, FALSE) for the trap
+// missile; quan forced to 1, opoisoned cleared, position set to the trap.
+export function t_missile(otyp, trap) {
+    const otmp = mksobj(otyp, true, false);
+    otmp.quan = 1;
+    otmp.owt = weight(otmp);
+    otmp.opoisoned = 0;
+    otmp.ox = trap.tx; otmp.oy = trap.ty;
+    return otmp;
+}
+
+// C ref: trap.c trapeffect_arrow_trap(&gy.youmonst, trap, trflags) — the hero
+// steps onto an arrow trap.  Same shape as the dart trap minus the poison
+// roll: t_missile's mksobj, dmgval's rnd(oc_wsdam), then thitu(8, ...)'s
+// rnd(20) (+ exercise's rn2(2) on a hit).  A previously-triggered, seen trap
+// misfires on !rn2(15) ("You hear a loud click!") and is removed.
+async function trapeffect_arrow_trap(trap, _trflags) {
+    const u = game.u;
+    const { dmgval } = await import('./uhitm.js');
+    if (trap.once && trap.tseen && !rn2(15)) {
+        await pline('You hear a loud click!');
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+        return;
+    }
+    trap.once = 1;
+    seetrap(trap);
+    // update_topl(), not pline(): C's pline() APPENDS to a topline that is
+    // still TOPLINE_NEED_MORE, and try_disarm()'s "Whoops..." leaves one
+    // pending when move_into_trap() springs this trap.  With nothing pending
+    // the two are equivalent (both leave the line NEED_MORE for thitu's hit
+    // line to append to, the C topl.c CO-8 rule the dart trap relies on).
+    await update_topl('An arrow shoots out at you!');
+    const otmp = t_missile(ARROW, trap);
+    // dmgval(otmp, &gy.youmonst): a role monster is not large -> rnd(oc_wsdam).
+    const dam = dmgval(otmp, { data: { msize: 0 } });
+    // u.usteed is null for the contest hero -> the rn2(2)/steedintrap arm is
+    // short-circuited before its roll.
+    if (await thitu_named(8, dam, 'arrow')) {
+        // Hit: the arrow is consumed (obfree).  No floor object.
+    } else {
+        const { stackobj } = await import('./invent.js');
+        place_object(otmp, u.ux, u.uy);
+        otmp.where = 'floor'; otmp.ox = u.ux; otmp.oy = u.uy;
+        if (!Blind()) observe_object(otmp);
+        stackobj(otmp);
+        newsym(u.ux, u.uy);
+    }
+}
+
+// C ref: trap.c trapeffect_sqky_board(&gy.youmonst, trap, trflags) — the hero
+// steps on a squeaky board.  Consumes no RNG itself, but wake_nearby(FALSE)
+// clears msleeping/STRAT_WAITMASK on every monster within ulevel*20, which
+// changes who acts on the following turns (and therefore the RNG stream).
+async function trapeffect_sqky_board(trap, trflags) {
+    const u = game.u;
+    const forcetrap = (trflags & FORCETRAP) !== 0 || (trflags & FAILEDUNTRAP) !== 0
+        || (!!u?.uprops?.Flying && (trflags & VIASITTING) !== 0);
+    if ((u?.uprops?.Levitation || u?.uprops?.Flying) && !forcetrap) {
+        if (!Blind()) {
+            seetrap(trap);
+            await pline('You notice a loose board below you.');
+        }
+        return;
+    }
+    seetrap(trap);
+    // Deaf is never set for the contest hero, so C's "vibrates" arm is dead.
+    await pline(`A board beneath you squeaks ${trapnote(trap, false)} loudly.`);
+    // cmd.js's copy, not monmove.js's: only that one carries C's wake_msg()
+    // ("<Monster> wakes up.") which lands on the topline after the squeak.
+    const { wake_nearby } = await import('./cmd.js');
+    await wake_nearby(false);
+}
+
+// C ref: trap.c trapeffect_dart_trap(&youmonst, trap, trflags) — the hero
+// steps onto a dart trap.  For a freshly-triggered (trap->once == 0) trap the
+// soft-click escape (rn2(15)) is skipped; the dart is created (mksobj order),
+// a 1-in-6 poison check fires, dmgval(dart, &youmonst) rolls damage, and
+// thitu(7, dam, ..., "little dart") resolves the hit (the recorded hero is on
+// foot so the usteed branch is skipped).  On a hit the dart is freed; on a
+// miss it settles on the floor (place_object + stackobj).  RNG order matches C
+// exactly: next_ident + mksobj_init + mkobj_erosions (inside t_missile), then
+// rn2(6) poison, rnd(oc_wsdam) dmgval, rnd(20) thitu, rn2(2) exercise.
+async function trapeffect_dart_trap(trap, _trflags) {
+    const u = game.u;
+    const { dmgval } = await import('./uhitm.js');
+    // C: on a RE-trigger (trap->once already set) of a seen trap the dart
+    // misfires on !rn2(15).  trap->once is 0 the first time, so C's && stops
+    // before the roll — but the roll is real on every later trigger.
+    if (trap.once && trap.tseen && !rn2(15)) {
+        await pline('You hear a soft click.');
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+        return;
+    }
+    trap.once = 1;
+    seetrap(trap);
+    // C: pline("A little dart shoots out at you!").  Mark the topline NEED_MORE
+    // so thitu's update_topl("You are hit by a little dart!") appends to the
+    // same line (C topl.c update_topl CO-8 rule) rather than replacing it.
+    await update_topl('A little dart shoots out at you!');
+    const otmp = t_missile(DART, trap);
+    if (!rn2(6)) otmp.opoisoned = 1;             // trap.c:1273
+    // dmgval(otmp, &youmonst): the human hero is not a large monster, so this
+    // is rnd(oc_wsdam) (+spe).  A youmonst stand-in with a small msize selects
+    // the small-monster die in uhitm.dmgval.
+    const dam = dmgval(otmp, { data: { msize: 0 } });
+    // u.usteed is null for the recorded (on-foot) hero -> skip the steed branch.
+    const oldumort = u?.umortality | 0;
+    if (await thitu_named(7, dam, 'little dart')) {
+        // C ref: trap.c:1281 — a poisoned dart that HITS runs poisoned() before
+        // obfree().  `fatal` is 0 when the damage already triggered life-saving
+        // (u.umortality rose), else 10.
+        if (otmp.opoisoned) {
+            const { poisoned } = await import('./attrib.js');
+            await poisoned('dart', A_CON, 'little dart',
+                           ((u?.umortality | 0) > oldumort) ? 0 : 10, true);
+        }
+    } else {
+        // Miss: the dart settles on the hero's square.
+        const { stackobj } = await import('./invent.js');
+        place_object(otmp, u.ux, u.uy);
+        otmp.where = 'floor'; otmp.ox = u.ux; otmp.oy = u.uy;
+        if (!Blind()) observe_object(otmp);   // trap.c:1290, as in rocktrap
+        stackobj(otmp);
+        newsym(u.ux, u.uy);
+    }
+}
+
+// C ref: trap.c mu_maybe_destroy_web(mtmp, domsg, trap) — hero arm.  Ordinary
+// role monsters are never amorphous/whirly/flaming/unsolid/a gelatinous cube
+// (gy.youmonst.data is the MZ_HUMAN role record until Upolyd; see the
+// immune_to_trap comment above), so this is a no-op for every un-polymorphed
+// contest hero; it only matters once the hero is polymorphed into a
+// qualifying form.  The monster arm is ported inline at js/monmove.js's WEB
+// trap case.  Consumes no RNG.
+async function mu_maybe_destroy_web_you(domsg, trap) {
+    const u = game.u;
+    const mptr = u?.Upolyd ? (monster_by_pmidx(u.umonnum) || u.data) : null;
+    if (!mptr) return false;
+    const isWhirly = mptr.mcls === 22 /* S_VORTEX */ || mptr.name === 'air elemental';
+    const isFlaming = FLAMING_NAMES_WEB.has(mptr.name);
+    if (amorphous_flag(mptr) || isWhirly || isFlaming || unsolid_flag(mptr)
+        || mptr.name === 'gelatinous cube') {
+        const isAcidic = (mflags1_of(mptr) & M1_ACID) !== 0;
+        if (isFlaming || isAcidic) {
+            if (domsg)
+                await pline(`You ${isFlaming ? 'burn' : 'dissolve'} ${a_your(trap.madeby_u)} spider web!`);
+            deltrap(trap);
+            newsym(u.ux, u.uy);
+            return true;
+        }
+        if (domsg)
+            await pline(`You flow through ${a_your(trap.madeby_u)} spider web.`);
+        return true;
+    }
+    return false;
+}
+// C ref: mondata.h flaming(ptr) — species-name test (no M1_ flag for it).
+const FLAMING_NAMES_WEB = new Set(['fire vortex', 'flaming sphere', 'fire elemental', 'salamander']);
+
+// C ref: trap.c trapeffect_web(&gy.youmonst, trap, trflags) — the hero walks
+// into a spider web.  mu_maybe_destroy_web_you() above gates an amorphous/
+// whirly/flaming/unsolid/gelatinous-cube polymorphed hero out early; webmaker()
+// is left unported (out of this batch's scope) so a hero polymorphed into a
+// cave/giant spider still gets stuck, same as before this change.  Exactly ONE
+// roll fires, selected by ACURR(A_STR) — and a hero with exceptional (18/xx,
+// encoded >= 19) or merely 18 strength takes the `tim = 1` arm, which draws
+// NOTHING.  hack.c trapmove()'s TT_WEB arm (cmd.js) already runs the
+// struggle-out.
+async function trapeffect_web(trap, trflags) {
+    const u = game.u;
+    const webmsgok = (trflags & NOWEBMSG) === 0;
+    const forcetrap = (trflags & FORCETRAP) !== 0 || (trflags & FAILEDUNTRAP) !== 0;
+    const viasitting = (trflags & VIASITTING) !== 0;
+
+    seetrap(trap); // feeltrap()
+    if (await mu_maybe_destroy_web_you(webmsgok, trap)) return;
+    if (webmsgok) {
+        const verbbuf = (forcetrap || viasitting)
+            ? 'are caught by' : `${u_locomotion('stumble')} into`;
+        await pline(`You ${verbbuf} ${a_your(trap.madeby_u)} spider web!`);
+    }
+    set_utrap(1, TT_WEB); /* time is adjusted below */
+    // ACURR(A_STR): acurr_eff returns the C-encoded strength (3..18, then
+    // 19..118 for 18/01..18/**), which is what C's str brackets compare.
+    const str = acurr_eff(A_STR);
+    let tim;
+    if (str <= 3) tim = rn1(6, 6);
+    else if (str < 6) tim = rn1(6, 4);
+    else if (str < 9) tim = rn1(4, 4);
+    else if (str < 12) tim = rn1(4, 2);
+    else if (str < 15) tim = rn1(2, 2);
+    else if (str < 18) tim = rnd(2);
+    else if (str < 69) tim = 1;
+    else {
+        tim = 0;
+        if (webmsgok)
+            await pline(`You tear through ${a_your(trap.madeby_u)} web!`);
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+    }
+    set_utrap(tim, TT_WEB);
+}
+
+// C ref: trap.c trapeffect_slp_gas_trap(&gy.youmonst, trap, trflags).
+// breathless(gy.youmonst.data) is FALSE for every role monster, so the branch
+// turns purely on Sleep_resistance.  NOTE: nothing in this port grants the
+// hero SleepResistance yet (u_init.c's racial/role intrinsics are unported),
+// so an elf or a Monk takes the wrong arm here and draws an rnd(25) C skips —
+// that is a u_init gap, not a trap.c one.
+async function trapeffect_slp_gas_trap(trap, _trflags) {
+    seetrap(trap);
+    const { Sleep_resistance, fall_asleep } = await import('./zap.js');
+    if (Sleep_resistance()) {
+        await pline('You are enveloped in a cloud of gas!');
+    } else {
+        await pline('A cloud of gas puts you to sleep!');
+        fall_asleep(-rnd(25), true);
+    }
+    // steedintrap(trap, NULL): no steed -> returns before any RNG.
+}
+
+// C ref: trap.c set_utrap(tim, typ) — mark the hero trapped for `tim` turns.
+function set_utrap(tim, typ) {
+    const u = game.u;
+    if (!u) return;
+    u.utrap = tim;
+    u.utraptype = typ;
+}
+
+// C ref: do.c set_wounded_legs(side, timex).  When the hero first gains wounded
+// legs, ATEMP(A_DEX)-- (the displayed Dx drops by 1); the timeout is (re)set to
+// at least `timex`.  Consumes no RNG.  Riding moves the wound to the steed but
+// the contest hero is dismounted when the bear trap fires.  C ends with
+// encumber_msg() (do.c:2445): a wounded leg lowers weight_cap, so a hero who
+// was near capacity becomes Burdened and gets the "slowed slightly" message
+// immediately — this fires BEFORE the bear trap's losehp(), which is why the
+// trap's --More-- frame still shows the pre-damage HP (seed0004 step 27).
+export async function set_wounded_legs(side, timex) {
+    const u = game.u;
+    if (!u) return;
+    game.botl = true; // C ref: do.c:2433 — disp.botl = TRUE; before encumber_msg()
+    u.atemp = u.atemp || { a: Array(A_MAX).fill(0) };
+    u.eprops = u.eprops || {};
+    const already = (u.HWounded_legs || 0) || (u.EWounded_legs || 0);
+    if (!already) u.atemp.a[A_DEX] = (u.atemp.a[A_DEX] || 0) - 1;
+    if (!already || (u.HWounded_legs || 0) < timex) u.HWounded_legs = timex;
+    u.EWounded_legs = (u.EWounded_legs || 0) | side;
+    const { encumber_msg } = await import('./invent.js');
+    await encumber_msg();
+}
+
+// C ref: do.c heal_legs(how) — cure wounded legs (called from nh_timeout when the
+// WOUNDED_LEGS timer expires, how==0).  Restores the -1 Dx (ATEMP(A_DEX)++),
+// announces "Your leg(s) feel(s) better." (skipped while mounted or petrifying),
+// clears the wound, and (how==0) re-checks encumbrance — a healed leg raises
+// weight_cap, so a Burdened hero is announced "now unencumbered".  No RNG.
+export async function heal_legs(how) {
+    const u = game.u;
+    if (!u) return;
+    if (!((u.HWounded_legs || 0) || (u.EWounded_legs || 0))) return; // !Wounded_legs
+    game.botl = true;
+    u.atemp = u.atemp || { a: Array(A_MAX).fill(0) };
+    if ((u.atemp.a[A_DEX] || 0) < 0) u.atemp.a[A_DEX]++;
+    if (!u.usteed && how !== 2) {
+        // body_part(LEG) == "leg"; both sides wounded -> makeplural -> "legs".
+        const both = ((u.EWounded_legs || 0) & BOTH_SIDES) === BOTH_SIDES;
+        const legs = both ? 'legs' : body_part(LEG);
+        // vtense((char*)0? no — vtense(legs,"feel")): plural subj -> "feel",
+        // singular -> "feels".
+        const feel = both ? 'feel' : 'feels';
+        const { update_topl } = await import('./display.js');
+        await update_topl(`Your ${legs} ${feel} better.`);
+    }
+    u.HWounded_legs = 0;
+    u.EWounded_legs = 0;
+    if (how === 0) {
+        const { encumber_msg } = await import('./invent.js');
+        await encumber_msg();
+    }
+}
+
+// C ref: trap.c trapeffect_bear_trap(&youmonst, trap, trflags) — the hero
+// variant for a level-1, ground-bound, non-small, dismounted hero (the contest
+// case).  RNG order matches C exactly: d(2,4) damage, rn1(4,4) trap duration,
+// rn1/rn2 wounded-legs side+timeout, then exercise(A_DEX, FALSE).
+async function trapeffect_bear_trap(trap, _trflags) {
+    const u = game.u;
+    const A_Your = trap.madeby_u ? 'Your' : 'A';
+    const dmg = d(2, 4);
+    // Levitation/Flying, amorphous/whirly/unsolid, and small-size harmless
+    // branches are all false for the contest hero (a human Knight on foot).
+    // C feeltrap(trap) just marks it seen for a sighted hero == seetrap().
+    seetrap(trap);
+    set_utrap(rn1(4, 4), TT_BEARTRAP);
+    // Dismounted hero: "<A/Your> bear trap closes on your foot!"  Routed through
+    // update_topl (C pline) so it leaves toplin == NEED_MORE; a same-turn
+    // follow-up (the encumber_msg "slowed slightly" line when the wounded leg
+    // pushes the hero over capacity) then pages it with --More-- (seed0004 step 27).
+    const { update_topl } = await import('./display.js');
+    await update_topl(`${A_Your} bear trap closes on your ${body_part(FOOT)}!`);
+    // No iron shoes -> wounded legs + hp loss (Maybe_Half_Phys is identity for a
+    // hero without HALF_PHDAM, i.e. every starting role).
+    await set_wounded_legs(rn2(2) ? RIGHT_SIDE : LEFT_SIDE, rn1(10, 10));
+    await losehp(dmg, 'bear trap');
+    exercise(A_DEX, false);
+}
+
+// C ref: read.c seffect_remove_curse() — domagictrap() case 20 ("uncurse
+// stuff") calls this with a synthetic, permanently-uncursed-and-unblessed
+// SPE_REMOVE_CURSE "pseudo" spellbook (real C: `pseudo = cg.zeroobj;` —
+// deliberately NOT a real scroll, so the hero can't discover scroll of
+// remove curse from it).  Since sblessed/scursed are always false for that
+// pseudo object, the `if (scursed) {...} else {...}` split always takes the
+// else branch, and the "sblessed" clause of the per-item wornmask gate never
+// fires — both are omitted here as dead code for this specific caller.
+async function magictrap_uncurse_stuff() {
+    const u = game.u;
+    const confused = !!(u?.uprops?.Confusion || 0);
+    // C ref: win/tty/topl.c update_topl() — stepping onto a square with a
+    // magic trap AND a large object pile prints look_here()'s pile-limit
+    // summary ("There are several objects here.") first; that line is
+    // itself written via update_topl() (js/invent.js's LOOKHERE_PILE_LIMIT
+    // block), not pline(), so this message must also use update_topl() to
+    // append onto it rather than pline()'s bare setter replacing it outright
+    // (see js/invent.js's note next to LOOKHERE_PILE_LIMIT).
+    await update_topl(!confused ? 'You feel like someone is helping you.'
+                                 : 'You feel like you need some help.');
+    const inv = Array.isArray(game.invent) ? game.invent.slice() : [];
+    for (const obj of inv) {
+        if (obj.oclass === COIN_CLASS) continue;
+        let wornmask = (obj.owornmask || 0) & ~(W_BALL | W_ART | W_ARTI);
+        if (wornmask) {
+            if (obj === game.uswapwep) {
+                if (!u?.twoweap) wornmask = 0;
+            } else if (obj === game.uquiver) {
+                if (obj.oclass === WEAPON_CLASS) {
+                    if (!(objects[obj.otyp]?.flags & 32 /* F_MERGE */)) wornmask = 0;
+                } else if (obj.oclass === GEM_CLASS) {
+                    if (!uslinging()) wornmask = 0;
+                } else {
+                    wornmask = 0;
+                }
+            }
+        }
+        if (wornmask || obj.otyp === LOADSTONE
+            || (obj.otyp === LEASH && obj.leashmon)) {
+            if (confused) {
+                blessorcurse(obj, 2);
+                obj.bknown = 0;
+            } else if (obj.cursed) {
+                uncurse(obj);
+            }
+        }
+    }
+    // NOT modelled: the riding-steed's-saddle clause (needs a mounted hero
+    // on the SAME turn a magic trap fires — not exercised by this port's
+    // corpus), and the Punished/buried-ball cleanup tail (needs a hero
+    // already dragging a punishment ball, likewise not exercised).
+    update_inventory();
+}
+
+// C ref: trap.c domagictrap() — the common (non-explosion) magic-trap effect.
+// fate = rnd(20) selects the outcome.  The fate < 10 monster-summoning branch
+// is ported faithfully (rnd(4) count, rn1(5,10) blindness, rn1(20,30) deafness,
+// then `cnt` makemon calls); fates 12/19 still call out to machinery this
+// port lacks and are listed in the per-arm comments below.
+async function domagictrap() {
+    const u = game.u;
+    const fate = rnd(20);
+    if (fate < 10) {
+        /* Most of the time, it creates some monsters. */
+        const cnt = rnd(4);
+        // resists_blnd(&gy.youmonst) is (Blind || Unaware) for the hero plus
+        // gaze/explosion-attack and Sunsword tests that a role monster fails —
+        // so an ALREADY-blind hero skips the message AND the rn1(5,10).
+        if (!Blind()) {
+            await pline('You are momentarily blinded by a flash of light!');
+            // make_blinded((long) rn1(5, 10), FALSE): SETS (not adds to) the
+            // HBlinded timer, which timeout.js then counts down.  Leaving it
+            // unset left every later `!Blind` test — display, observe_object,
+            // monster sighting — answering for a sighted hero for 10..14 turns.
+            u.blinded = rn1(5, 10);
+            // potion.c toggle_blindness(): vision_full_recalc + an immediate
+            // vision_recalc(0), same shape as apply.js use_cream_pie.  disp.botl
+            // is DELIBERATELY not mirrored — every other blinding site in this
+            // port (apply.js, eat.js) leaves the status release to the caller.
+            game.vision_full_recalc = 1;
+            const { vision_recalc } = await import('./vision.js');
+            try { vision_recalc(0); } catch { /* pre-vision-init */ }
+            // C then does `if (!Blind) Your1(vision_clears);` — Blind is now
+            // TRUE, so no second line.
+        }
+        // else-if arm: `if (!Blind) You_see("a flash of light!")` — dead, since
+        // resists_blnd() was only true BECAUSE the hero is blind.
+        // Deafness: !Deaf for the contest hero.  HDeaf lives on u.uprops (that
+        // is what sounds.js Deaf() and timeout.js's DEAF timer read).
+        await pline('You hear a deafening roar!');
+        if (!u.uprops) u.uprops = {};
+        u.uprops.HDeaf = (u.uprops.HDeaf || 0) + rn1(20, 30); // incr_itimeout
+        const { makemon } = await import('./makemon.js');
+        for (let c = cnt; c-- > 0;)
+            makemon(null, u.ux, u.uy, 0); // NO_MM_FLAGS
+        // "roar: wake monsters in vicinity, AFTER placing trap-created ones".
+        const { wake_nearto } = await import('./cmd.js');
+        await wake_nearto(u.ux, u.uy, 7 * 7);
+        return;
+    }
+    switch (fate) {
+    case 10: /* sometimes nothing happens */
+        break;
+    case 11: /* toggle intrinsic invisibility */
+        // !Invis for the contest hero -> self_invis_message(): "Gee!  All of
+        // a sudden, you can't see yourself."  No RNG, but HInvis and the
+        // hero's own glyph both change.
+        // C ref: trap.c:5115 You_hear()/self_invis_message() are pline()s, which
+        // page an unacknowledged topline with --More-- first; this port's bare
+        // pline() setter never pages, so route both through update_topl().
+        await update_topl('You hear a low hum.');
+        await update_topl("Gee!  All of a sudden, you can't see yourself.");
+        // HInvis = HInvis ? 0 : HInvis|FROMOUTSIDE.  Two fields: uprops.HInvis
+        // is the intrinsic table (#wizintrinsic reads it), u.uinvis is what
+        // monmove/mcastu Invis() actually test — a monster that cannot see the
+        // hero picks different moduli (monmove.c:1860 rn2(11) etc.).
+        if (!u.uprops) u.uprops = {};
+        u.uprops.HInvis = u.uprops.HInvis ? 0 : ((u.uprops.HInvis || 0) | FROMOUTSIDE);
+        u.uinvis = !!u.uprops.HInvis;
+        newsym(u.ux, u.uy);
+        break;
+    case 12: /* a flash of fire */
+        await dofiretrap(null);
+        break;
+    /* odd feelings */
+    case 13:
+        await pline(`A shiver runs up and down your ${body_part(SPINE)}!`);
+        break;
+    case 14:
+        await pline('You hear distant howling.');
+        break;
+    case 15:
+        // C: on the quest-start level "You feel [oddly ]like the prodigal
+        // son."; otherwise "You suddenly yearn for your <nearby|distant>
+        // homeland." — "nearby" inside the Quest or standing on its dungeon
+        // entrance, else "distant".  No RNG, but a real topline either way.
+        if (on_qstart_level())
+            await pline(`You feel ${game.flags?.female ? 'oddly ' : ''}like the prodigal son.`);
+        else
+            await pline(`You suddenly yearn for your ${In_quest(u.uz) ? 'nearby' : 'distant'} homeland.`);
+        break;
+    case 16:
+        await pline('Your pack shakes violently!');
+        break;
+    case 17:
+        await pline('You smell charred flesh.');
+        break;
+    case 18:
+        await pline('You feel tired.');
+        break;
+    case 19: {
+        await (await import('./attrib.js')).adjattrib(A_CHA, 1, false);
+        const { tamedog } = await import('./dothrow.js');
+        for (let i = -1; i <= 1; i++) {
+            for (let j = -1; j <= 1; j++) {
+                if (!isok(u.ux + i, u.uy + j)) continue;
+                const mon = m_at(u.ux + i, u.uy + j);
+                if (mon) await tamedog(mon, null, true);
+            }
+        }
+        break;
+    }
+    case 20:
+        // C ref: read.c:2200 seffects() — the pseudo object's caller is
+        // seffects(&pseudo), not seffect_remove_curse() directly; its
+        // `if (objects[otyp].oc_magic) exercise(A_WIS, TRUE)` preamble runs
+        // for every magic scroll/spellbook including this synthetic one
+        // (SPE_REMOVE_CURSE has mgc=1), so the rn2(19) fires here too.
+        exercise(A_WIS, true);
+        await magictrap_uncurse_stuff();
+        break;
+    default:
+        break;
+    }
+}
+
+// C ref: dungeon.c on_level(&u.uz, &qstart_level) — is the hero standing on
+// the level the Quest portal leads to?  game.qstart_level is filled in by
+// dungeon.c's init; a port with no quest dungeon reports FALSE.
+function on_qstart_level() {
+    const uz = game.u?.uz, q = game.qstart_level;
+    return !!uz && !!q && uz.dnum === q.dnum && uz.dlevel === q.dlevel;
+}
+
+// C ref: trap.c trapeffect_magic_trap(&youmonst, trap, trflags) — the hero
+// steps onto a magic trap.  seetrap(); a 1-in-30 magical explosion (caught by
+// !rn2(30)); otherwise domagictrap() picks the everyday effect.  steedintrap()
+// follows but consumes no RNG for the dismounted contest hero.
+async function trapeffect_magic_trap(trap, _trflags) {
+    const u = game.u;
+    seetrap(trap);
+    if (!rn2(30)) {
+        // Rare: magical explosion.  deltrap + losehp(rnd(10)) + uenmax bump.
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+        const { update_topl } = await import('./display.js');
+        await update_topl('You are caught in a magical explosion!');
+        game._toplin = 1;
+        await losehp(rnd(10), 'magical explosion');
+        await update_topl('Your body absorbs some of the magical energy!');
+        if (u) {
+            u.uenmax = (u.uenmax || 0) + 2;
+            u.uen = u.uenmax;
+            if (u.uenpeak !== undefined && u.uenmax > u.uenpeak) u.uenpeak = u.uenmax;
+        }
+        return;
+    }
+    await domagictrap();
+    // steedintrap(trap, NULL): no steed -> Trap_Effect_Finished, no RNG.
+}
+
+// C ref: dungeon.c ceiling(x,y).  Message text only, no RNG — but the terrain
+// arm is NOT constant: C only says "ceiling" inside a room / on a wall / in a
+// doorway, and says "rock cavern" everywhere else, which includes every plain
+// CORRIDOR square.  A rock trap sprung in a corridor therefore reads "A trap
+// door in the rock cavern opens ...".  The vault/temple/shop variants still
+// need in_rooms(), which is stubbed empty across this port (mklev.js:254), so
+// a rock trap inside a shop/temple under-reports as "ceiling".
+function ceiling(x, y) {
+    return ceiling_dg(x, y);
+}
+
+// C ref: trap.c trapeffect_rocktrap(&youmonst, trap, trflags) — the hero
+// variant.  On a first trigger trap->once is 0, so the "nothing falls out"
+// escape short-circuits BEFORE its rn2(15) (C's && stops at trap->once).
+// RNG order: d(2,6) damage FIRST, then t_missile's mksobj (next_ident rnd(2)
+// + mksobj_init's GEM_CLASS rn1(6,6) quantity, which t_missile then overwrites
+// with 1), then exercise(A_STR, FALSE)'s rn2(2).  losehp() draws nothing.
+async function trapeffect_rocktrap(trap, _trflags) {
+    const u = game.u;
+    if (trap.once && trap.tseen && !rn2(15)) {
+        await pline(`A trap door in the ${ceiling(u.ux, u.uy)} opens, but nothing falls out!`);
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+        return;
+    }
+    let dmg = d(2, 6);
+    trap.once = 1;
+    seetrap(trap); // C feeltrap(trap) == seetrap() for a sighted hero
+    const otmp = t_missile(ROCK, trap);
+    place_object(otmp, u.ux, u.uy);
+    otmp.where = 'floor'; otmp.ox = u.ux; otmp.oy = u.uy;
+    await pline(`A trap door in the ${ceiling(u.ux, u.uy)} opens and ${an(xname(otmp))} falls on your ${body_part(HEAD)}!`);
+    const form = monster_by_pmidx(u.umonnum) || u.data;
+    const passesRocks = passes_walls_flag(form) && !unsolid_flag(form);
+    let harmless = false;
+    if (game.uarmh) {
+        if (passesRocks) {
+            await pline(`Unfortunately, you are wearing ${an(helm_simple_name(game.uarmh))}.`);
+            dmg = 2;
+        } else if (hard_helmet(game.uarmh)) {
+            await pline('Fortunately, you are wearing a hard helmet.');
+            dmg = 2;
+        } else if (game.flags?.verbose !== false) {
+            await pline(`${Yname2_dmg(game.uarmh)} does not protect you.`);
+        }
+    } else if (passesRocks) {
+        await pline('It passes harmlessly through you.');
+        harmless = true;
+    }
+    if (!Blind()) observe_object(otmp);
+    const { stackobj } = await import('./invent.js');
+    stackobj(otmp);
+    newsym(u.ux, u.uy);
+    if (!harmless) {
+        await losehp(Maybe_Half_Phys(dmg), 'falling rock');
+        exercise(A_STR, false);
+    }
+}
+
+// ── shared helpers for the per-trap hero arms ────────────────────────────
+
+// C ref: trap.c:1098 wearing_iron_shoes(mtmp) — boots whose material is IRON
+// (both IRON_SHOES and KICKING_BOOTS are).  which_armor(&gy.youmonst, W_ARMF)
+// is uarmf for the hero.
+function wearing_iron_shoes_u() {
+    const armf = game.uarmf;
+    return !!armf && objects[armf.otyp]?.material === MAT_IRON;
+}
+
+// C ref: trap.c:3102 steedintrap(trap, otmp) — share the hero's trap with the
+// steed.  Its first line is `if (!u.usteed) return Trap_Effect_Finished;` and
+// u.usteed is null for every hero this port runs, so it draws nothing; named
+// so the arms below read like the C and a steed port has one hook to fill.
+function steedintrap(_trap, _otmp) {
+    return false; /* Trap_Effect_Finished */
+}
+
+// C ref: hack.h Role_if(PM_RANGER)/Role_if(PM_ROGUE) — js/roles.js's mnum, the
+// 0-based role index C's urole.malenum is built from.
+const ROLE_MNUM_RANGER = 7;
+const ROLE_MNUM_ROGUE = 8;
+
+// C ref: onames.h — objects.js indices for the trap-object conversions and the
+// squeaky-board repair tools.
+const BEARTRAP_OTYP = 244, LAND_MINE_OTYP = 243;
+const POT_OIL_OTYP = 321;   // CAN_OF_GREASE_OTYP is js/trap.js:681
+// C ref: objects.h body_part(ARM) index (const.js ARM is 0, the same slot).
+const ARM_BP = ARM;
+
+// C ref: dungeon.h Is_qlocate(lev) — the quest "locate" level.
+function is_qlocate(uz) {
+    const q = game.qlocate_level;
+    return !!uz && !!q && uz.dnum === q.dnum && uz.dlevel === q.dlevel;
+}
+
+// C ref: trap.c:6516 count_traps(ttyp) — how many traps of one type the level
+// carries.  monmove.c's WEB-avoidance modulus reads it.
+export function count_traps(ttyp) {
+    let ret = 0;
+    for (const t of game.level?.traps ?? []) if (t.ttyp === ttyp) ret++;
+    return ret;
+}
+
+// C ref: trap.c:6580 clear_conjoined_pits(trap) — drop `trap` out of its
+// neighbours' conjoined masks.  deltrap() runs it before unlinking.
+export function clear_conjoined_pits(trap) {
+    if (!trap || !is_pit(trap.ttyp)) return;
+    for (let diridx = 0; diridx < N_DIRS; diridx++) {
+        if (!((trap.conjoined || 0) & (1 << diridx))) continue;
+        const x = trap.tx + XDIR8[diridx], y = trap.ty + YDIR8[diridx];
+        if (isok(x, y)) {
+            const t = t_at(x, y);
+            if (t && is_pit(t.ttyp))
+                t.conjoined = (t.conjoined || 0) & ~(1 << ((diridx + 4) % N_DIRS));
+        }
+        trap.conjoined = (trap.conjoined || 0) & ~(1 << diridx);
+    }
+}
+
+// C ref: trap.c:4010 fill_pit(x, y) — a boulder lying in a pit settles into it,
+// removing both.  C goes through do.c flooreffects(otmp, x, y, "settle"), which
+// this port does not have; that arm draws no RNG, so the removal is done here
+// directly (the same shape as cmd.js's copy at climb_pit's call site).
+export function fill_pit(x, y) {
+    const t = t_at(x, y);
+    if (!t || !(is_pit(t.ttyp) || is_hole(t.ttyp))) return;
+    const otmp = sobj_at_floor(BOULDER, x, y);
+    if (!otmp) return;
+    const objs = game.level?.objects;
+    if (objs) { const i = objs.indexOf(otmp); if (i >= 0) objs.splice(i, 1); }
+    otmp.where = 'free';
+    deltrap(t);
+    newsym(x, y);
+}
+
+// C ref: trap.c:1825 trapeffect_pit(&gy.youmonst, trap, trflags) — the hero
+// arm.  Draw order: the adj_pit debris rn2(5) (that arm only), set_utrap's
+// rn1(6,2), then the damage rnd() and, in a spiked pit, the rn2(6) poison
+// check.  hack.c climb_pit() (cmd.js) runs the per-turn escape afterwards.
+async function trapeffect_pit(trap, trflags) {
+    const u = game.u;
+    const ttype = trap.ttyp;
+    let relevant_spikes = (ttype === SPIKED_PIT);
+    const plunged = (trflags & TOOKPLUNGE) !== 0;
+    const viasitting = (trflags & VIASITTING) !== 0;
+    const conj_pit = conjoined_pits(trap, t_at(u?.ux0 ?? 0, u?.uy0 ?? 0), true);
+    const adj_pit = adj_nonconjoined_pit(trap);
+    const already_known = !!trap.tseen;
+    let deliberate = false;
+    const Sokoban = !!game.level?.flags?.sokoban_rules;
+    const Levitation = !!u?.uprops?.Levitation;
+    const Flying = !!u?.uprops?.Flying;
+
+    if (!Sokoban && (Levitation || (Flying && !plunged && !viasitting)))
+        return;
+    feeltrap(trap);
+    // is_clinger(gy.youmonst.data) is FALSE for every role monster, so C's
+    // "<A> pit opens up under you! / You don't fall in!" arm cannot fire.
+    if (!Sokoban) {
+        let verbbuf = '';
+        // u.usteed is null, so C's two steed verbs are unreachable.
+        if (game.iflags?.menu_requested && already_known) {
+            await pline(`You carefully ${u_locomotion('lower yourself')} into the pit.`);
+            deliberate = true;
+        } else if (conj_pit) {
+            await pline('You move into an adjacent pit.');
+        } else if (adj_pit) {
+            await pline(`You stumble over debris${!rn2(5) ? ' between the pits' : ''}.`);
+        } else {
+            verbbuf = !plunged ? 'fall' : (Flying ? 'dive' : 'plunge');
+        }
+        if (verbbuf)
+            await pline(`You ${verbbuf} into ${a_your(trap.madeby_u)} pit!`);
+    }
+    /* wumpus reference */
+    if (game.urole?.mnum === ROLE_MNUM_RANGER && !trap.madeby_u && !trap.once
+        && In_quest(u?.uz) && is_qlocate(u?.uz)) {
+        await update_topl('Fortunately it has a bottom after all...');
+        trap.once = 1;
+    }
+    // u.umonnum == PM_PIT_VIPER / PM_PIT_FIEND needs a polymorphed hero
+    // (js/hack.js keeps a ROLE index there while unpolymorphed), so the
+    // "How pitiful" line cannot fire; it draws nothing either way.
+    if (relevant_spikes && wearing_iron_shoes_u()) {
+        await update_topl(`Your ${xname(game.uarmf)} protects you from the sharp iron spikes.`);
+        relevant_spikes = false;
+    } else if (relevant_spikes) {
+        await update_topl(`You ${conj_pit ? 'step' : 'land'} on a set of sharp iron spikes!`);
+    }
+    set_utrap(rn1(6, 2), TT_PIT);
+    if (!steedintrap(trap, null)) {
+        // Maybe_Half_Phys is the identity for a hero without HALF_PHDAM.
+        if (relevant_spikes) {
+            const oldumort = u?.umortality | 0;
+            const spikeKnam = plunged ? 'deliberately plunged into a pit of iron spikes'
+                : (conj_pit || deliberate) ? 'stepped into a pit of iron spikes'
+                : adj_pit ? 'stumbled into a pit of iron spikes'
+                : 'fell into a pit of iron spikes';
+            await losehp(rnd(conj_pit ? 4 : adj_pit ? 6 : 10), spikeKnam, NO_KILLER_PREFIX);
+            if (!rn2(6)) {
+                const { poisoned } = await import('./attrib.js');
+                await poisoned('spikes', A_STR,
+                               (conj_pit || adj_pit || deliberate)
+                                   ? 'stepping on poison spikes'
+                                   : 'fall onto poison spikes',
+                               ((u?.umortality | 0) > oldumort) ? 0 : 8, false);
+            }
+        } else if (!conj_pit && !deliberate && !(plunged && Flying)) {
+            /* plunging flyers take spike damage but not pit damage */
+            const pitKnam = plunged ? 'deliberately plunged into a pit' : 'fell into a pit';
+            await losehp(rnd(adj_pit ? 3 : 6), pitKnam, NO_KILLER_PREFIX);
+        }
+        // Punished is never set in this port -> no unplacebc/ballfall/placebc.
+        if (!conj_pit) await selftouch('Falling, you');
+        game.vision_full_recalc = 1;
+        exercise(A_STR, false);
+        exercise(A_DEX, false);
+    }
+}
+
+// C ref: dog.c next_to_u() — TRUE unless a LEASHED pet is more than one square
+// away (an unleashed pet never blocks the fall; keepdogs() collects it).  This
+// port has no leashes, so the answer is always TRUE — but the shape is kept so
+// the "are jerked back by your pet!" arm exists for a leash port.
+function next_to_u() {
+    for (const m of game.level?.monsters ?? [])
+        if (m.mleashed && distmin_(m.mx, m.my, game.u.ux, game.u.uy) > 1)
+            return false;
+    return true;
+}
+
+// C ref: trap.c:593 clamp_hole_destination(dlev) — a trap's recorded dst can
+// point past the bottom of its own dungeon (bones from a differently sized
+// game); never fall past it.
+export function clamp_hole_destination(dlev) {
+    const bottom = dng_bottom(dlev);
+    if (dlev.dlevel > bottom) dlev.dlevel = bottom;
+    return dlev;
+}
+
+// C ref: trap.c:602 fall_through(td, ftflags) — the hero drops a level through
+// a trap door / hole (td) or through a hole just dug in the floor (!td).
+// Draws no RNG itself; the arrival roll lives in do.c goto_level().
+async function fall_through(td, ftflags) {
+    const u = game.u;
+    const Sokoban = !!game.level?.flags?.sokoban_rules;
+    const Levitation = !!u?.uprops?.Levitation;
+    const Flying = !!u?.uprops?.Flying;
+    let dont_fall = null;
+    let t = null;
+
+    /* we'll fall even while levitating in Sokoban; otherwise, if we
+       won't fall and won't be told that we aren't falling, give up now */
+    if (Blind() && Levitation && !Sokoban) return;
+
+    const newlevel = dunlev(u.uz) + 1;
+
+    if (td) {
+        t = t_at(u.ux, u.uy);
+        feeltrap(t);
+        if (!Sokoban && !(ftflags & TOOKPLUNGE)) {
+            await pline(t.ttyp === TRAPDOOR
+                ? 'A trap door opens up under you!'
+                : "There's a gaping hole under you!");
+            // C: pline() leaves toplin == TOPLINE_NEED_MORE, and goto_level()'s
+            // docrt() -> display_nhwindow(WIN_MESSAGE) pages it with --More--
+            // before the destination level is drawn.
+            game._toplin = 1;
+        }
+    } else {
+        await pline(`The ${surface(u.ux, u.uy)} opens up under you!`);
+        game._toplin = 1;
+    }
+
+    if (Sokoban && Can_fall_thru(u.uz)) {
+        /* KMH -- You can't escape the Sokoban level traps */
+    } else if (Levitation || u.ustuck
+               || (!Can_fall_thru(u.uz) && !game.level?.at(u.ux, u.uy)?.candig)
+               // is_clinger / ceiling_hider are FALSE for every role monster.
+               || (Flying && !(ftflags & TOOKPLUNGE))) {
+        dont_fall = "don't fall in.";
+    // gy.youmonst.data->msize is MZ_HUMAN for every role, so "don't fit
+    // through." is unreachable while unpolymorphed.
+    } else if (!next_to_u()) {
+        dont_fall = 'are jerked back by your pet!';
+    }
+    if (dont_fall) {
+        await update_topl(`You ${dont_fall}`);
+        // NOT PORTED: impact_drop(0, u.ux, u.uy, 0) — objects on the square
+        // fall through even though the hero did not (do.c, needs goto_level's
+        // object migration).
+        if (!td) {
+            await topl_more();
+            game._pending_message = '';
+            await update_topl('The opening under you closes up.');
+        }
+        return;
+    }
+    // (Flying || is_clinger) && TOOKPLUNGE: no hero here flies into a plunge.
+    // *u.ushops -> shopdig(1): shop damage bookkeeping is shk.c's, unported.
+
+    let dtmp;
+    if (Is_stronghold(u.uz)) {
+        dtmp = find_hell();
+    } else {
+        if (t) {
+            dtmp = { dnum: t.dst.dnum, dlevel: t.dst.dlevel };
+            clamp_hole_destination(dtmp);
+        } else {
+            dtmp = { dnum: u.uz.dnum, dlevel: newlevel };
+        }
+        const dist = depth(dtmp) - depth(u.uz);
+        if (dist > 1)
+            await update_topl(`You fall down a ${dist > 3 ? 'very ' : ''}${dist > 2 ? 'deep ' : ''}shaft!`);
+    }
+
+    // C ref: do.c schedule_goto(&dtmp, !Flying ? UTOTYPE_FALLING : UTOTYPE_NONE,
+    // NULL, !td ? msgbuf : NULL) — the level change is DEFERRED to
+    // deferred_goto(), which allmain.js runs the moment rhack() returns.
+    game._lvltport_dest = {
+        newlevel: dtmp,
+        post_msg: !td ? `The hole in the ${ceiling(u.ux, u.uy)} above you closes up.` : null,
+        falling: !Flying,
+    };
+}
+
+// C ref: trap.c:2013 trapeffect_hole(&gy.youmonst, trap, trflags) — HOLE and
+// TRAPDOOR share this arm.
+async function trapeffect_hole(trap, trflags) {
+    const u = game.u;
+    if (!Can_fall_thru(u.uz)) {
+        seetrap(trap); /* normally done in fall_through */
+        // C impossible("dotrap: %ss cannot exist on this level.") — a broken
+        // invariant, not a game event; don't activate the trap after all.
+        return;
+    }
+    await fall_through(true, (trflags & TOOKPLUNGE));
+}
+
+// C ref: objnam.c the(str) for the plain nouns dofiretrap/fall_through pass
+// (surface() words and container xnames): the article rules for proper nouns
+// and shop-owned items cannot apply to those.
+function the_str(s) {
+    return /^(the |a |an )/i.test(s) ? s : `the ${s}`;
+}
+
+// C ref: youprop.h Maybe_Half_Phys(dmg) — halved for a hero with HALF_PHDAM.
+function Maybe_Half_Phys(dmg) {
+    const u = game.u;
+    return (u?.HHalf_physical_damage || u?.EHalf_physical_damage)
+        ? Math.trunc((dmg + 1) / 2) : dmg;
+}
+
+// C ref: invent.c gi.invent — the hero's inventory chain.
+function invent_list() {
+    return Array.isArray(game.invent) ? game.invent : (game.gi?.invent || []);
+}
+
+// C ref: trap.c:2453 trapeffect_poly_trap(&gy.youmonst, trap, trflags).
+async function trapeffect_poly_trap(trap, trflags) {
+    const u = game.u;
+    const viasitting = (trflags & VIASITTING) !== 0;
+
+    seetrap(trap);
+    // u.usteed is null, so C's "lead <steed> onto" verb is unreachable.
+    const verbbuf = viasitting ? 'trigger' : `${u_locomotion('step')} onto`;
+    await pline(`You ${verbbuf} a polymorph trap!`);
+    if (wearing_iron_shoes_u()) {
+        deltrap(trap);
+        await update_topl(`Your ${xname(game.uarmf)} warps strangely.`);
+        // NOT PORTED: poly_obj(uarmf, IRON_SHOES <-> KICKING_BOOTS) + prinv();
+        // zap.c poly_obj() is a subsystem of its own and this arm needs a hero
+        // wearing iron shoes, which no covered start does.
+    } else if (u?.uprops?.Antimagic || u?.uprops?.Unchanging) {
+        // shieldeff() draws nothing.
+        await update_topl('You feel momentarily different.');
+        /* Trap did nothing; don't remove it --KAA */
+    } else {
+        steedintrap(trap, null);
+        deltrap(trap);      /* delete trap before polymorph */
+        newsym(u.ux, u.uy); /* get rid of trap symbol */
+        await update_topl('You feel a change coming over you.');
+        const { polyself } = await import('./polyself.js');
+        await polyself(POLY_NOFLAGS);
+    }
+}
+
+// C ref: trap.c:2725 trapeffect_vibrating_square(&gy.youmonst, ...) — for the
+// hero it is nothing but feeltrap(); the square is marked for later reference
+// and the Book-of-the-Dead messages live in dungeon.c.
+async function trapeffect_vibrating_square(trap, _trflags) {
+    feeltrap(trap);
+}
+
+// C ref: dig.c:605 fillholetyp(x, y, fill_if_any) — what a new hole at <x,y>
+// fills with, given its neighbours.  With no adjacent water or lava every arm
+// short-circuits before its rn2(), so a dry square costs no draw.
+// blow_up_landmine is currently the only caller.
+//
+// The lava arm is `(lava_cnt > moat+pool && rn2(lava_cnt+1))
+//                  || (lava_cnt && fill_if_any)`.
+// It was previously grouped as `(lava_cnt > moat+pool) && (rn2(..) ||
+// fill_if_any)`, which is NOT the same expression: with fill_if_any set and
+// lava present but outnumbered by water, C returns LAVAPOOL with no draw and
+// the old form fell through to the MOAT arm and drew there.  (The moat and
+// pool arms happen to be equivalent under either grouping.)
+//
+// Still approximate: the neighbour scan tests typ directly rather than C's
+// is_moat/is_pool/is_lava, so a raised DRAWBRIDGE_UP always counts as moat
+// (C splits it on drawbridgemask & DB_UNDER) and a Juiblex MOAT counts as
+// moat rather than pool.  Both need levels the corpus never generates; the
+// faithful predicates are exported from js/dbridge.js, but dbridge.js imports
+// trap.js, so wiring them in means breaking that cycle first.
+function fillholetyp(x, y, fill_if_any) {
+    const lo_x = Math.max(1, x - 1), hi_x = Math.min(x + 1, 79);
+    const lo_y = Math.max(0, y - 1), hi_y = Math.min(y + 1, 20);
+    let pool_cnt = 0, moat_cnt = 0, lava_cnt = 0;
+    for (let x1 = lo_x; x1 <= hi_x; x1++)
+        for (let y1 = lo_y; y1 <= hi_y; y1++) {
+            const typ = game.level?.at(x1, y1)?.typ;
+            if (typ === POOL) pool_cnt++;
+            else if (typ === MOAT || typ === WATER || typ === DRAWBRIDGE_UP) moat_cnt++;
+            else if (typ === LAVAPOOL || typ === LAVAWALL) lava_cnt++;
+        }
+    if (!fill_if_any) pool_cnt = Math.trunc(pool_cnt / 3);
+    if ((lava_cnt > moat_cnt + pool_cnt && rn2(lava_cnt + 1))
+        || (lava_cnt && fill_if_any))
+        return LAVAPOOL;
+    if ((moat_cnt > 0 && rn2(moat_cnt + 1)) || (moat_cnt && fill_if_any))
+        return MOAT;
+    if ((pool_cnt > 0 && rn2(pool_cnt + 1)) || (pool_cnt && fill_if_any))
+        return POOL;
+    return ROOM;
+}
+
+// C ref: trap.c:3172 blow_up_landmine(trap) — the explosion itself.  scatter()
+// is the RNG-heavy part; the tail converts the mine into a PIT (or floods it).
+export async function blow_up_landmine(trap) {
+    const x = trap.tx, y = trap.ty;
+    const lev = game.level?.at(x, y);
+    const { scatter } = await import('./explode.js');
+    const { del_engr_at } = await import('./engrave.js');
+    const { wake_nearto } = await import('./cmd.js');
+
+    await scatter(x, y, 4, MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS, null);
+    del_engr_at(x, y);
+    await wake_nearto(x, y, 400);
+    if (lev && IS_DOOR(lev.typ)) lev.doormask = D_BROKEN;
+    // NOT PORTED: the drawbridge arm (dbridge.c destroy_drawbridge) — no
+    // recorded landmine sits on or beside a drawbridge, and it draws nothing.
+
+    trap = t_at(x, y); /* scatter() may have removed it */
+    if (trap) {
+        // Is_waterlevel/Is_airlevel are endgame-only; a landmine cannot be
+        // generated there, so only the ordinary arm applies.
+        const typ = fillholetyp(x, y, false);
+        if (typ !== ROOM) {
+            if (lev) lev.typ = typ;
+            // NOT PORTED: mkmaze.c liquid_flow() — it deletes the trap and
+            // drowns whatever is on the square (do.c flooreffects).
+            deltrap(trap);
+        } else {
+            trap.ttyp = PIT;        /* explosion creates a pit */
+            trap.madeby_u = 0;      /* resulting pit isn't yours */
+            seetrap(trap);          /* and it isn't concealed */
+        }
+    }
+    fill_pit(x, y);
+    // NOT PORTED: maybe_dunk_boulders() / spot_checks() — terrain bookkeeping
+    // for a square that just changed type; neither draws.
+    recalc_block_point(x, y);
+}
+
+// C ref: trap.c:2528 trapeffect_landmine(&gy.youmonst, trap, trflags).
+// Draw order: rnd(16) damage FIRST (before any message), then the airborne
+// arm's rn2(3)s or the grounded arm's two rn1(35,41) wounded-leg timers, then
+// blow_up_landmine()'s scatter().
+let landmine_recursive = false;
+async function trapeffect_landmine(trap, trflags) {
+    const u = game.u;
+    let damage = rnd(16);
+    /* iron shoes protect against much of the damage from the explosion, but
+       you still take some damage (and wound legs) */
+    if (wearing_iron_shoes_u()) damage = Math.trunc((damage + 3) / 4);
+
+    const already_seen = !!trap.tseen;
+    const forcetrap = (trflags & FORCETRAP) !== 0 || (trflags & FAILEDUNTRAP) !== 0;
+    const forcebungle = (trflags & FORCEBUNGLE) !== 0;
+    let steed_mid = 0;
+    let saddle = null;
+
+    if ((u?.uprops?.Levitation || u?.uprops?.Flying) && !forcetrap) {
+        if (!already_seen && rn2(3)) return;
+        feeltrap(trap);
+        await pline(`${already_seen ? 'There is' : 'You discover'} ${
+            trap.madeby_u ? 'the trigger of your mine' : 'a trigger'} in a pile of soil below you.`);
+        if (already_seen && rn2(3)) return;
+        await update_topl(`KAABLAMM!!!  ${forcebungle ? 'Your inept attempt sets'
+            : 'The air currents set'} ${already_seen ? a_your(trap.madeby_u) : ''}${
+            already_seen ? ' land mine' : 'it'} off!`);
+    } else {
+        /* prevent the mine from affecting the hero twice while the steed
+           death path is still unwinding */
+        if (landmine_recursive) return;
+        feeltrap(trap);
+        await pline(`KAABLAMM!!!  You triggered ${a_your(trap.madeby_u)} land mine!`);
+        if (u?.usteed) steed_mid = u.usteed.m_id;
+        landmine_recursive = true;
+        steedintrap(trap, null);
+        landmine_recursive = false;
+        // C ref: trap.c:2580 saddle = sobj_at(SADDLE, u.ux, u.uy) — u.usteed is
+        // always null in this port (js/trap.js steedintrap comment), so
+        // steed_mid stays 0 and the keep_saddle_with_steedcorpse() call below
+        // is a provable no-op today; ported faithfully for when steed riding
+        // lands.
+        saddle = sobj_at_floor(SADDLE_OTYP, u.ux, u.uy);
+        await set_wounded_legs(LEFT_SIDE, rn1(35, 41));
+        await set_wounded_legs(RIGHT_SIDE, rn1(35, 41));
+        exercise(A_DEX, false);
+    }
+    /* add a pit before calling losehp so bones won't keep the landmine;
+       blow_up_landmine() will remove the pit afterwards if inappropriate */
+    trap.ttyp = PIT;
+    trap.madeby_u = 0;
+    await losehp(Maybe_Half_Phys(damage), 'land mine');
+    await blow_up_landmine(trap);
+    if (steed_mid && saddle && !u?.usteed)
+        keep_saddle_with_steedcorpse(steed_mid, game.level?.objects, saddle);
+    newsym(u.ux, u.uy); /* update trap symbol */
+    /* fall recursively into the pit... */
+    const t2 = t_at(u.ux, u.uy);
+    if (t2) await dotrap(t2, RECURSIVETRAP);
+    fill_pit(u.ux, u.uy);
+}
+
+// C ref: trap.c:939 keep_saddle_with_steedcorpse(steed_mid, objchn, saddle) —
+// hunt the floor object chain (and container contents, recursively) for the
+// corpse embedding the steed's monster record, and move the saddle onto that
+// corpse's square.  The only call site (above) is a provable no-op in this
+// port (steed_mid is always 0 — see that call site's comment); ported so the
+// mechanic itself is correct and ready once steed riding lands.  Consumes
+// no RNG.
+const SADDLE_OTYP = 235;
+export function keep_saddle_with_steedcorpse(steed_mid, objchn, saddle) {
+    if (!saddle) return false;
+    for (const obj of (objchn || [])) {
+        if (obj.otyp === CORPSE && has_omonst(obj)) {
+            const mtmp = OMONST(obj);
+            if (mtmp && mtmp.m_id === steed_mid) {
+                obj_extract_self(saddle);
+                place_object(saddle, obj.ox, obj.oy);
+                stackobj(saddle);
+                return true;
+            }
+        }
+        if (Has_contents(obj)
+            && keep_saddle_with_steedcorpse(steed_mid, obj.cobj, saddle))
+            return true;
+    }
+    return false;
+}
+
+// C ref: trap.c:726 animate_statue(statue, x, y, cause, fail_reason) — bring a
+// statue to life.  Reduced to the path a mklev()-generated STATUE_TRAP can
+// take: mk_trap_statue() builds the statue with mkcorpstat() and no omonst and
+// no oname, so use_saved_traits (montraits()) and christen_monst() are both
+// unreachable, and cause is always ANIMATE_NORMAL from a trap.
+export async function animate_statue(statue, x, y, _cause, fail_reason) {
+    const mnum = statue.corpsenm;
+    const mptr = monster_by_pmidx(mnum);
+    // cant_revive() rewrites unique/were/zombie corpsenm; a trap statue is
+    // built straight from rndmonst_adj(), so it is always revivable as itself.
+    const mon = makemon(mptr, x, y, MM_NOMSG /* | NO_MINVENT */);
+    if (!mon) {
+        if (fail_reason)
+            fail_reason.v = unique_corpstat(mptr) ? AS_MON_IS_UNIQUE : AS_NO_MON;
+        return null;
+    }
+    // M_AP_TYPE/seemimic: a fresh makemon is not mimicking anything yet.
+    mon.mundetected = false;
+    mon.msleeping = 0;
+    /* trap always releases a hostile monster */
+    mon.mtame = 0;
+    mon.mpeaceful = 0;
+    // set_malign(mon) is alignment bookkeeping with no RNG.
+    const comes_to_life = 'comes to life';
+    if (x === game.u.ux && y === game.u.uy)
+        await pline(`The statue ${comes_to_life}!`);
+    else if (!Blind())
+        await pline(`${an(pmname_of_pmidx(mnum))} ${comes_to_life}!`);
+    // The statue's contents spill onto the floor and the statue is deleted.
+    for (const o of (statue.cobj || [])) {
+        o.ocontainer = null;
+        place_object(o, x, y);
+        o.where = 'floor'; o.ox = x; o.oy = y;
+    }
+    statue.cobj = [];
+    delobj(statue);
+    newsym(x, y);
+    return mon;
+}
+
+// C ref: mondata.h unique_corpstat(ptr) — G_UNIQ generation flag.
+function unique_corpstat(ptr) { return ((ptr?.geno | 0) & G_UNIQ) !== 0; }
+
+// C ref: trap.c:908 activate_statue_trap(trap, x, y, shatter).
+export async function activate_statue_trap(trap, x, y, shatter) {
+    let otmp = sobj_at_floor(STATUE_OTYP, x, y);
+    let mtmp = null;
+    deltrap(trap);
+    while (otmp) {
+        const fail = { v: 0 };
+        mtmp = await animate_statue(otmp, x, y, shatter ? 1 /*ANIMATE_SHATTER*/ : 0, fail);
+        if (mtmp || fail.v !== AS_MON_IS_UNIQUE) break;
+        otmp = sobj_at_floor(STATUE_OTYP, x, y);
+    }
+    newsym(x, y); /* feel_newsym() */
+    return mtmp;
+}
+
+// C ref: trap.c:2279 trapeffect_statue_trap(&gy.youmonst, ...).
+async function trapeffect_statue_trap(trap, _trflags) {
+    const u = game.u;
+    await activate_statue_trap(trap, u.ux, u.uy, false);
+}
+
+// C ref: trap.c:4233 dofiretrap(box) — box is null for the floor trap; the
+// trapped-container caller (chest_trap) is pickup.c's and still unported.
+// Draw order for an ordinary hero: d(2,4) [orig_dmg], the message, a SECOND
+// d(2,4), rn2(min(uhpmax, num+1)) off uhpmax, then burnarmor()'s rn2(5) chain
+// (or the rn2(3) that short-circuits it), destroy_items() and the floor burn.
+export async function dofiretrap(box) {
+    const u = game.u;
+    const see_it = !Blind();
+    let num = d(2, 4);
+    const orig_dmg = num;
+    const Fire_resistance = !!u?.uprops?.Fire_resistance;
+    const noun = the_str(box ? xname(box) : surface(u.ux, u.uy));
+
+    // C: `(box && !carried(box)) ? is_pool(box->ox, box->oy) : Underwater`.
+    if ((box && !invent_list().includes(box)) ? isPoolAt(box.ox, box.oy) : !!u?.uinwater) {
+        await pline(`A cascade of steamy bubbles erupts from ${noun}!`);
+        if (Fire_resistance) await update_topl('You are uninjured.');
+        else await losehp(rnd(3), 'boiling water', KILLED_BY);
+        return;
+    }
+    await pline(`A ${TOWER_OF_FLAME} ${box ? 'bursts' : 'erupts'} from ${noun}!`);
+    if (Fire_resistance) {
+        // shieldeff()/monstseesu() draw nothing.
+        num = rn2(2);
+    } else if (u?.Upolyd) {
+        let alt = 0;
+        switch (u.umonnum) {
+        case PM_PAPER_GOLEM:   alt = u.mhmax; break;
+        case PM_STRAW_GOLEM:   alt = Math.trunc(u.mhmax / 2); break;
+        case PM_WOOD_GOLEM:    alt = Math.trunc(u.mhmax / 4); break;
+        case PM_LEATHER_GOLEM: alt = Math.trunc(u.mhmax / 8); break;
+        default:               alt = 0; break;
+        }
+        if (alt > num) num = alt;
+        if (u.mhmax > (monster_by_pmidx(u.umonnum)?.mlevel | 0)) {
+            u.mhmax -= rn2(Math.min(u.mhmax, num + 1));
+            game.botl = true;
+        }
+        if (u.mh > u.mhmax) { u.mh = u.mhmax; game.botl = true; }
+    } else {
+        const { minuhpmax, setuhpmax, losexp } = await import('./exper.js');
+        const uhpmin = minuhpmax(1), olduhpmax = u.uhpmax;
+
+        num = d(2, 4);
+        if (u.uhpmax > uhpmin) {
+            u.uhpmax -= rn2(Math.min(u.uhpmax, num + 1));
+            game.botl = true;
+        } /* note: no 'else' here */
+        if (u.uhpmax < uhpmin) {
+            setuhpmax(Math.min(olduhpmax, uhpmin));
+            game.botl = true;
+            if (!u.uprops?.Drain_resistance) await losexp(null);
+        }
+        if (u.uhp > u.uhpmax) { u.uhp = u.uhpmax; game.botl = true; }
+    }
+    if (!num) await update_topl('You are uninjured.');
+    else await losehp(num, TOWER_OF_FLAME);
+    // burn_away_slime(): the hero is never sliming in this port, and the
+    // function draws no RNG.
+    const { burnarmor, destroy_items, ignite_items, burn_floor_objects }
+        = await import('./zap.js');
+    if (await burnarmor(u) || rn2(3)) {
+        await destroy_items(u, AD_FIRE, orig_dmg);
+        await ignite_items(invent_list());
+    }
+    if (!box && await burn_floor_objects(u.ux, u.uy, see_it, true) && !see_it)
+        await update_topl('You smell paper burning.');
+    // melt_ice(): the ICE terrain arm needs allmain.c's melting machinery; it
+    // draws no RNG.
+}
+
+// C ref: trap.c:1730 trapeffect_fire_trap(&gy.youmonst, trap, trflags).
+async function trapeffect_fire_trap(trap, _trflags) {
+    seetrap(trap);
+    await dofiretrap(null);
+}
+
+// ── the #untrap / disarm surface (trap.c:5248-6100) ──────────────────────
+
+// C ref: hack.h MAXULEV — the highest experience level.
+const MAXULEV = 30;
+// C ref: monsym.h S_HUMAN — the '@' monster class.
+const S_HUMAN_CLS = 25;
+// C ref: obj.h Is_box(otmp).
+function Is_box_otyp(otyp) { return otyp === LARGE_BOX || otyp === CHEST; }
+// C ref: mondata.h mindless(ptr).
+function mindless_pm(ptr) { return ((ptr?.mflags1 | 0) & M1_MINDLESS) !== 0; }
+// C ref: mon.h helpless(mon) — can't act this turn.
+function helpless_mon(mon) {
+    return !mon?.mcanmove || !!mon?.msleeping || (mon?.mfrozen | 0) > 0;
+}
+// C ref: dungeon.c level_difficulty() — depth for an ordinary in-dungeon hero.
+function level_difficulty() { return depth(game.u?.uz); }
+
+// C ref: trap.c:5258 could_untrap(verbosely, check_floor) — the preliminary
+// checks dountrap() and autounlock share.  webmaker() is a SPECIES test
+// (PM_CAVE_SPIDER / PM_GIANT_SPIDER), not a flag — there is no M1_WEBMAKER.
+export async function could_untrap(verbosely, check_floor) {
+    const u = game.u;
+    const data = u?.data;
+    const { nohands } = await import('./monflags_data.js');
+    const { near_capacity } = await import('./invent.js');
+    const { can_reach_floor } = await import('./engrave.js');
+    const webmaker = data?.name === 'cave spider' || data?.name === 'giant spider';
+    let buf = '';
+
+    if (near_capacity() >= 3 /* HVY_ENCUMBER */)
+        buf = "You're too strained to do that.";
+    else if ((data && nohands(data) && !webmaker) || !(data?.mmove ?? 12))
+        buf = 'And just how do you expect to do that?';
+    // u.ustuck / welded(uwep) && bimanual(uwep): neither is modelled here.
+    else if (check_floor && !can_reach_floor(false))
+        buf = `You can't reach the ${surface(u.ux, u.uy)}.`;
+    if (buf) {
+        if (verbosely) await pline(buf);
+        return 0;
+    }
+    return 1;
+}
+
+// C ref: trap.c:5289 untrap_prob(ttmp) — 0 on success, non-0 on failure.
+function untrap_prob(ttmp) {
+    const u = game.u;
+    let chance = 3;
+
+    if (ttmp.ttyp === WEB) {
+        // is_blade()/ART_STING/attacks(AD_FIRE) need the artifact + weapon
+        // subsystems; a non-webmaker hero without a blade takes chance 7.
+        const data = u?.data;
+        const webmaker = data?.name === 'cave spider' || data?.name === 'giant spider';
+        if (!webmaker) chance = 7; /* 5.0: used to be 30 */
+    }
+    if (u?.uprops?.Confusion || u?.uprops?.Hallucination) chance++;
+    if (Blind()) chance++;
+    if (u?.uprops?.Stunned) chance += 2;
+    if (u?.HFumbling || u?.EFumbling) chance *= 2;
+    /* Your own traps are better known than others. */
+    if (ttmp.madeby_u) chance--;
+    if (game.urole?.mnum === ROLE_MNUM_RANGER && ttmp.ttyp === BEAR_TRAP && chance <= 3)
+        return 0; /* always succeeds */
+    if (game.urole?.mnum === ROLE_MNUM_ROGUE) {
+        if (rn2(2 * MAXULEV) < (u?.ulevel | 0)) chance--;
+        if (u?.uhave?.questart && chance > 1) chance--;
+    } else if (game.urole?.mnum === ROLE_MNUM_RANGER && chance > 1) {
+        chance--;
+    }
+    if (chance < 1) chance = 1;
+    return rn2(chance);
+}
+
+// C ref: trap.c:5341 cnv_trap_obj(otyp, cnt, ttmp, bury_it) — a disarmed trap
+// becomes the object it was made of.
+export function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
+    const u = game.u;
+    const otmp = mksobj(otyp, true, false);
+    otmp.quan = cnt;
+    otmp.owt = weight(otmp);
+    /* Only dart traps are capable of being poisonous */
+    if (otyp !== DART) otmp.opoisoned = 0;
+    place_object(otmp, ttmp.tx, ttmp.ty);
+    otmp.where = 'floor'; otmp.ox = ttmp.tx; otmp.oy = ttmp.ty;
+    if (!bury_it) {
+        // sellobj(): only for a trap the hero made inside a shop; shk.c's.
+        stackobj_sync(otmp);
+    }
+    // bury_an_obj(): magical digging only; the burial subsystem is unported.
+    newsym(ttmp.tx, ttmp.ty);
+    if (u?.utrap && u.ux === ttmp.tx && u.uy === ttmp.ty) {
+        u.utrap = 0; u.utraptype = 0; game.botl = true;   /* reset_utrap(TRUE) */
+    }
+    const mtmp = m_at(ttmp.tx, ttmp.ty);
+    if (mtmp && mtmp.mtrapped) mtmp.mtrapped = 0;
+    deltrap(ttmp);
+}
+function stackobj_sync(otmp) {
+    import('./invent.js').then((m) => m.stackobj(otmp)).catch(() => {});
+}
+
+// C ref: trap.c:7175 trap_ice_effects(x, y, ice_is_melting) — ice thawing (or
+// broken) under a trap: a landmine/bear trap sinks into the water it becomes,
+// turning into the loose object it was made from (cnv_trap_obj); every other
+// trap type is simply destroyed unless it's one of the two
+// undestroyable_trap() exceptions (a magic portal or vibrating square never
+// melts away).  Consumes no RNG.
+export function trap_ice_effects(x, y, ice_is_melting) {
+    const ttmp = t_at(x, y);
+    if (ttmp && ice_is_melting) {
+        const mtmp = m_at(x, y);
+        if (mtmp && mtmp.mtrapped) mtmp.mtrapped = 0;
+        if (ttmp.ttyp === LANDMINE || ttmp.ttyp === BEAR_TRAP) {
+            const otyp = (ttmp.ttyp === LANDMINE) ? LAND_MINE_OTYP : BEARTRAP_OTYP;
+            cnv_trap_obj(otyp, 1, ttmp, true);
+        } else if (!undestroyable_trap(ttmp.ttyp)) {
+            deltrap(ttmp);
+        }
+    }
+}
+
+// C ref: trap.c:5393 move_into_trap(ttmp) — a failed disarm drags the hero
+// onto the trap.  test_move()/drag_ball() are hack.c's; the only case this
+// port can hit is an ordinary adjacent step, which always succeeds, so the
+// "Fortunately, you don't move into it." arm needs a doorway/boulder squeeze
+// that #untrap cannot reach from here.
+async function move_into_trap(ttmp) {
+    const u = game.u;
+    const x = ttmp.tx, y = ttmp.ty;
+    u.ux0 = u.ux; u.uy0 = u.uy;
+    u.ux = x; u.uy = y;
+    u.umoved = true;
+    newsym(u.ux0, u.uy0);
+    // vision_recalc(1) / check_leash(): display + leash bookkeeping, no RNG.
+    /* marking the trap unseen forces dotrap() to treat it like a new
+       discovery */
+    ttmp.tseen = false;
+    (game.iflags = game.iflags || {}).failing_untrap =
+        (game.iflags.failing_untrap | 0) + 1;
+    await spoteffects(true);
+    game.iflags.failing_untrap--;
+    const t2 = t_at(u.ux, u.uy);
+    if (t2) t2.tseen = true;
+    exercise(A_WIS, false);
+}
+
+// C ref: trap.c:5441 try_disarm(ttmp, force_failure).
+// 0: doesn't even try; 1: tries and fails; 2: succeeds.
+async function try_disarm(ttmp, force_failure) {
+    const u = game.u;
+    const mtmp = m_at(ttmp.tx, ttmp.ty);
+    const ttype = ttmp.ttyp;
+    const under_u = (!u.dx && !u.dy);
+    const holdingtrap = (ttype === BEAR_TRAP || ttype === WEB);
+    const { can_reach_floor } = await import('./engrave.js');
+
+    /* Test for monster first, monsters are displayed instead of trap. */
+    if (mtmp && (!mtmp.mtrapped || !holdingtrap)) {
+        await pline(`${Monnam_trap(mtmp)} is in the way.`);
+        return 0;
+    }
+    /* We might be forced to move onto the trap's location. */
+    if (sobj_at_floor(BOULDER, ttmp.tx, ttmp.ty) && !u?.uprops?.Passes_walls
+        && !under_u) {
+        await pline('There is a boulder in your way.');
+        return 0;
+    }
+    // The diagonal tight-space check duplicates hack.c test_move()'s bad_rock
+    // pair; bad_rock() is cmd.js's and the squeeze needs two adjacent walls.
+    /* untrappable traps are located on the ground. */
+    if (!can_reach_floor(under_u)) {
+        await pline(`You are unable to reach the ${trapname(ttype, false)}!`);
+        return 0;
+    }
+
+    /* Will our hero succeed? */
+    if (force_failure || untrap_prob(ttmp)) {
+        if (rnl(5)) {
+            await pline('Whoops...');
+            if (mtmp) { /* must be a trap that holds monsters */
+                if (ttype === BEAR_TRAP) {
+                    const { abuse_dog } = await import('./uhitm.js');
+                    if (mtmp.mtame) await abuse_dog(mtmp);
+                    mtmp.mhp -= rnd(4);
+                    if (mtmp.mhp <= 0) {
+                        const { killed } = await import('./uhitm.js');
+                        await killed(mtmp);
+                    }
+                } else if (ttype === WEB) {
+                    let ttmp2 = t_at(u.ux, u.uy);
+                    const data = u?.data;
+                    const webmaker = data?.name === 'cave spider'
+                        || data?.name === 'giant spider';
+                    if (!webmaker && !rn2(3)
+                        && (ttmp2 ? (ttmp2.ttyp === WEB)
+                                  : !!(ttmp2 = maketrap(u.ux, u.uy, WEB)))) {
+                        await update_topl("The web sticks to you.  You're caught too!");
+                        await dotrap(ttmp2, NOWEBMSG);
+                    }
+                    if (mtmp.mtrapped)
+                        await update_topl(`${Monnam_trap(mtmp)} remains entangled.`);
+                }
+            } else if (under_u) {
+                await dotrap(ttmp, FAILEDUNTRAP);
+            } else {
+                await move_into_trap(ttmp);
+            }
+        } else {
+            await pline(`${ttmp.madeby_u ? 'Your' : under_u ? 'This' : 'That'} ${
+                trapname(ttype, false)} is difficult to ${
+                (ttype === WEB) ? 'remove' : 'disarm'}.`);
+        }
+        return 1;
+    }
+    return 2;
+}
+
+// C ref: do_name.c Monnam(mtmp) — capitalised "the <mon>"; the trap arms only
+// ever name a plain, seen monster.
+function Monnam_trap(mtmp) {
+    const nm = pmname_of_pmidx(mtmp?.pmidx ?? mtmp?.mnum ?? 0);
+    return `The ${nm}`;
+}
+
+// C ref: trap.c:5530 reward_untrap(ttmp, mtmp) — freeing a monster from
+// somebody else's trap may pacify it, and may please a lawful god.
+async function reward_untrap(ttmp, mtmp) {
+    if (ttmp.madeby_u) return;
+    if (rnl(10) < 8 && !mtmp.mpeaceful && !helpless_mon(mtmp) && !mtmp.mfrozen
+        && !mindless_pm(mtmp.data) && !unique_corpstat(mtmp.data)
+        && mtmp.data?.mcls !== S_HUMAN_CLS) {
+        mtmp.mpeaceful = 1;
+        const { set_malign } = await import('./makemon.js');
+        set_malign(mtmp);
+        await pline(`${Monnam_trap(mtmp)} is grateful.`);
+    }
+    /* Helping someone out of a trap is a nice thing to do. */
+    if (!rn2(3) && !rnl(8) && (game.u?.ualign?.type | 0) === 1 /* A_LAWFUL */) {
+        const { adjalign } = await import('./attrib.js');
+        adjalign(1);
+        await update_topl('You feel that you did the right thing.');
+    }
+}
+
+// C ref: trap.c:5553 disarm_holdingtrap(ttmp) — bear trap or web.
+async function disarm_holdingtrap(ttmp) {
+    const u = game.u;
+    const which = ttmp.madeby_u ? 'your' : 'the';
+    const fails = await try_disarm(ttmp, false);
+    if (fails < 2) return fails;
+
+    const mtmp = m_at(ttmp.tx, ttmp.ty);
+    if (mtmp) {
+        mtmp.mtrapped = 0;
+        await pline(`You extract ${mon_nam_trap(mtmp)} from ${which} ${
+            (ttmp.ttyp === BEAR_TRAP) ? 'bear trap' : 'web'}.`);
+        await reward_untrap(ttmp, mtmp);
+    } else if (ttmp.ttyp === BEAR_TRAP) {
+        await pline(`You disarm ${which} bear trap.`);
+        cnv_trap_obj(BEARTRAP_OTYP, 1, ttmp, false);
+    } else if (ttmp.ttyp === WEB) {
+        // is_blade()/artifact webs need the weapon subsystem; a bare-handed
+        // hero always gets the plain removal line.
+        await pline(`You succeed in removing ${which} web.`);
+        deltrap(ttmp);
+    }
+    newsym(u.ux + u.dx, u.uy + u.dy);
+    return 1;
+}
+
+// C ref: do_name.c mon_nam(mtmp).
+function mon_nam_trap(mtmp) {
+    return `the ${pmname_of_pmidx(mtmp?.pmidx ?? mtmp?.mnum ?? 0)}`;
+}
+
+// C ref: trap.c:5594 disarm_landmine(ttmp).
+async function disarm_landmine(ttmp) {
+    const fails = await try_disarm(ttmp, false);
+    if (fails < 2) return fails;
+    await pline(`You disarm ${ttmp.madeby_u ? 'your' : 'the'} land mine.`);
+    cnv_trap_obj(LAND_MINE_OTYP, 1, ttmp, false);
+    return 1;
+}
+
+// C ref: trap.c:5607 unsqueak_ok(obj) — getobj filter for the grease/oil the
+// squeaky-board repair wants.
+function unsqueak_ok(obj) {
+    if (!obj) return 0;                       /* GETOBJ_EXCLUDE */
+    if (obj.otyp === CAN_OF_GREASE_OTYP) return 2;  /* GETOBJ_SUGGEST */
+    if (obj.otyp === POT_OIL_OTYP && obj.dknown
+        && objects[POT_OIL_OTYP]?.oc_name_known) return 2;
+    if (obj.oclass === POTION_CLASS) return 1;      /* GETOBJ_DOWNPLAY */
+    return 0;
+}
+
+// C ref: trap.c:5630 disarm_squeaky_board(ttmp).
+async function disarm_squeaky_board(ttmp) {
+    const u = game.u;
+    const { getobj, useup, makeknown, consume_obj_charge } = await import('./invent.js');
+    const obj = await getobj('untrap with', unsqueak_ok, 1 /* GETOBJ_PROMPT */);
+    if (!obj) return 0;
+
+    const bad_tool = !!obj.cursed
+        || ((obj.otyp !== POT_OIL_OTYP || obj.lamplit)
+            && (obj.otyp !== CAN_OF_GREASE_OTYP || !obj.spe));
+    const fails = await try_disarm(ttmp, bad_tool);
+    if (fails < 2) return fails;
+
+    if (obj.otyp === CAN_OF_GREASE_OTYP) consume_obj_charge(obj, true);
+    else { useup(obj); makeknown(POT_OIL_OTYP); }
+    await pline('You repair the squeaky board.'); /* no madeby_u */
+    deltrap(ttmp);
+    newsym(u.ux + u.dx, u.uy + u.dy);
+    const { more_experienced, newexplevel } = await import('./exper.js');
+    more_experienced(1, 5);
+    await newexplevel();
+    return 1;
+}
+
+// C ref: trap.c:5664 disarm_shooting_trap(ttmp, otyp).
+async function disarm_shooting_trap(ttmp, otyp) {
+    const fails = await try_disarm(ttmp, false);
+    if (fails < 2) return fails;
+    await pline(`You disarm ${ttmp.madeby_u ? 'your' : 'the'} trap.`);
+    cnv_trap_obj(otyp, 50 - rnl(50), ttmp, false);
+    return 1;
+}
+
+// C ref: trap.c:5677 try_lift(mtmp, ttmp, xtra_wt, stuff).
+async function try_lift(mtmp, ttmp, xtra_wt, stuff) {
+    const { calc_capacity } = await import('./invent.js');
+    if (calc_capacity(xtra_wt) >= 3 /* HVY_ENCUMBER */) {
+        await pline(`${Monnam_trap(mtmp)} is ${
+            stuff ? 'carrying too much' : 'too heavy'} for you to lift.`);
+        if (!ttmp.madeby_u && !mtmp.mpeaceful && mtmp.mcanmove
+            && !mindless_pm(mtmp.data) && mtmp.data?.mcls !== S_HUMAN_CLS
+            && rnl(10) < 3) {
+            mtmp.mpeaceful = 1;
+            const { set_malign } = await import('./makemon.js');
+            set_malign(mtmp);
+            await update_topl(`${Monnam_trap(mtmp)} thinks it was nice of you to try.`);
+        }
+        return 0;
+    }
+    return 1;
+}
+
+// C ref: trap.c:5700 help_monster_out(mtmp, ttmp) — pull a monster out of a pit.
+async function help_monster_out(mtmp, ttmp) {
+    const { near_capacity } = await import('./invent.js');
+
+    if (!mtmp.mtrapped) {
+        await pline(`${Monnam_trap(mtmp)} isn't trapped.`);
+        return 0;
+    }
+    /* check_capacity(0) */
+    if (near_capacity() >= 4 /* EXT_ENCUMBER */) {
+        await pline("You can't do that while carrying so much stuff.");
+        return 1;
+    }
+    const uprob = untrap_prob(ttmp);
+    if (uprob && !helpless_mon(mtmp)) {
+        await pline(`You try to reach out your ${body_part(ARM_BP)}s, but ${
+            mon_nam_trap(mtmp)} backs away skeptically.`);
+        return 1;
+    }
+    // touch_petrifies() cockatrice arm needs polymon()/instapetrify(); no
+    // recorded pit holds a cockatrice.
+    if (uprob) {
+        await pline(`You try to grab ${mon_nam_trap(mtmp)}, but cannot get a firm grasp.`);
+        if (mtmp.msleeping) {
+            mtmp.msleeping = 0;
+            await update_topl(`${Monnam_trap(mtmp)} awakens.`);
+        }
+        return 1;
+    }
+    await pline(`You reach out your ${body_part(ARM_BP)}s and grab ${mon_nam_trap(mtmp)}.`);
+    if (mtmp.msleeping) {
+        mtmp.msleeping = 0;
+        await update_topl(`${Monnam_trap(mtmp)} awakens.`);
+    } else if (mtmp.mfrozen && !rn2(mtmp.mfrozen)) {
+        mtmp.mcanmove = 1;
+        mtmp.mfrozen = 0;
+        await update_topl(`${Monnam_trap(mtmp)} stirs.`);
+    }
+    let xtra_wt = mtmp.data?.cwt | 0;
+    if (!await try_lift(mtmp, ttmp, xtra_wt, false)) return 1;
+    if (mtmp.minvent?.length) {
+        for (const o of mtmp.minvent) xtra_wt += (o.owt | 0);
+        if (!await try_lift(mtmp, ttmp, xtra_wt, true)) return 1;
+    }
+    await pline(`You pull ${mon_nam_trap(mtmp)} out of the pit.`);
+    mtmp.mtrapped = 0;
+    await reward_untrap(ttmp, mtmp);
+    fill_pit(mtmp.mx, mtmp.my);
+    return 1;
+}
+
+// C ref: trap.c:6294 chest_trap(obj, bodypart, disarm) — a trapped container
+// goes off.  Returns TRUE if the container itself was destroyed.
+// Draw order: the luck save (rn2(13 + Luck), then rn2(13) for its message) or
+// the effect selector (rn2(20), then rn2(13 - Luck) or rn2(26)), then the arm.
+// dokick.js / pickup.js / extcmd-handlers.js each carry a "chest_trap() is not
+// ported" comment at their own call sites; this is the function they want.
+export async function chest_trap(obj, bodypart, disarm) {
+    const u = game.u;
+    const Luck = u?.uluck | 0;
+
+    obj.tknown = 0;   /* for xname(); set to 1 below */
+    obj.otrapped = 0; /* one-shot; clear first in case the chest kills you */
+    await pline(disarm ? 'You set it off!' : 'You trigger a trap!');
+    await topl_more();               /* display_nhwindow(WIN_MESSAGE, FALSE) */
+    game._pending_message = '';
+    if (Luck > -13 && rn2(13 + Luck) > 7) { /* saved by luck */
+        let msg;
+        switch (rn2(13)) {
+        case 12: case 11: msg = 'explosive charge is a dud'; break;
+        case 10: case 9:  msg = 'electric charge is grounded'; break;
+        case 8:  case 7:  msg = 'flame fizzles out'; break;
+        case 6:  case 5: case 4: msg = 'poisoned needle misses'; break;
+        default:          msg = 'gas cloud blows away'; break;
+        }
+        await pline(`But luckily the ${msg}!`);
+    } else {
+        const sel = rn2(20) ? ((Luck >= 13) ? 0 : rn2(13 - Luck)) : rn2(26);
+        const { poisoned } = await import('./attrib.js');
+        if (sel >= 21) {
+            const ox = obj.ox, oy = obj.oy;
+            // NOT PORTED: the shop arms (costly_spot/stolen_value/
+            // make_angry_shk) and unpunish() for a ball/chain on the spot.
+            await pline(`The ${xname(obj)} explodes!`);
+            const explodeKnam = `exploding ${xname(obj)}`; /* buf captured before delobj() */
+            obj.cobj = [];                            /* delete_contents() */
+            let chestgone = false;
+            for (const o of [...(game.level?.objects || [])])
+                if (o.where === 'floor' && o.ox === ox && o.oy === oy) {
+                    if (o === obj) chestgone = true;
+                    delobj(o);
+                }
+            const { wake_nearby } = await import('./cmd.js');
+            await wake_nearby(false);
+            await losehp(Maybe_Half_Phys(d(6, 6)), explodeKnam);
+            exercise(A_STR, false);
+            if (chestgone) return true;
+        } else if (sel >= 17) {
+            await pline(`A cloud of noxious gas billows from ${the_str(xname(obj))}.`);
+            if (rn2(3)) {
+                await poisoned('gas cloud', A_STR, 'cloud of poison gas', 15, false);
+            } else {
+                const { create_gas_cloud } = await import('./region.js');
+                await create_gas_cloud(obj.ox, obj.oy, 1, 8);
+            }
+            exercise(A_CON, false);
+        } else if (sel >= 13) {
+            await pline(`You feel a needle prick your ${body_part(bodypart)}.`);
+            await poisoned('needle', A_CON, 'poisoned needle', 10, false);
+            exercise(A_CON, false);
+        } else if (sel >= 9) {
+            await dofiretrap(obj);
+        } else if (sel >= 6) {
+            let dmg = d(4, 4);
+            const orig_dmg = dmg;
+            await pline('You are jolted by a surge of electricity!');
+            if (u?.uprops?.Shock_resistance) {
+                await update_topl("You don't seem to be affected.");
+                dmg = 0;
+            }
+            const { destroy_items } = await import('./zap.js');
+            await destroy_items(u, AD_ELEC, orig_dmg);
+            if (dmg) await losehp(dmg, 'electric shock');
+        } else if (sel >= 3) {
+            if (!u?.uprops?.Free_action) {
+                await pline('Suddenly you are frozen in place!');
+                const { nomul } = await import('./hack.js');
+                nomul(-d(5, 6));
+                game.multi_reason = 'frozen by a trap';
+                exercise(A_DEX, false);
+            } else {
+                await pline('You momentarily stiffen.');
+            }
+        } else {
+            const { rndcolor } = await import('./do_name.js');
+            await pline(`A cloud of ${rndcolor()} gas billows from ${the_str(xname(obj))}.`);
+            if (!u?.uprops?.Stun)
+                await update_topl('You stagger and your vision blurs...');
+            // make_stunned(x, FALSE) / make_hallucinated(x, FALSE, 0) — the
+            // silent form is just the timer; potion.js exports the latter.
+            u.uprops = u.uprops || {};
+            u.uprops.Stun = ((u.uprops.Stun | 0) & TIMEOUT) + rn1(7, 16);
+            u.Stunned = true;
+            const { make_hallucinated } = await import('./potion.js');
+            await make_hallucinated(((u.uprops.Hallucination | 0) & TIMEOUT) + rn1(5, 16),
+                                    false, 0);
+        }
+        const { bot } = await import('./display.js');
+        await bot(); /* to get immediate botl re-display */
+    }
+    obj.tknown = 1; /* hero knows chest is no longer trapped */
+    return false;
+}
+
+// C ref: trap.c:5794 disarm_box(box, force, confused).
+async function disarm_box(box, force, confused) {
+    const u = game.u;
+    if (box.otrapped) {
+        let ch = acurr_eff(A_DEX) + (u.ulevel | 0);
+        if (game.urole?.mnum === ROLE_MNUM_ROGUE) ch *= 2;
+        if (!force && (confused || u?.HFumbling || u?.EFumbling
+                       || rnd(75 + Math.trunc(level_difficulty() / 2)) > ch)) {
+            await chest_trap(box, FINGER, true);
+        } else {
+            await pline('You disarm it!');
+            box.otrapped = 0;
+            box.tknown = 1;
+            const { more_experienced, newexplevel } = await import('./exper.js');
+            more_experienced(8, 0);
+            await newexplevel();
+        }
+        exercise(A_DEX, true);
+    } else {
+        await pline(`That ${xname(box)} was not trapped.`);
+        box.tknown = 0;
+    }
+}
+
+// C ref: trap.c:5821 untrap_box(box, force, confused).
+async function untrap_box(box, force, confused) {
+    const u = game.u;
+    const { ynq } = await import('./invent.js');
+    if ((box.otrapped
+         && (force || (!confused && rn2(MAXULEV + 1 - (u.ulevel | 0)) < 10)))
+        || box.tknown
+        || (!force && confused && !rn2(3))) {
+        if (!(box.tknown && box.dknown))
+            await pline(`You find a trap on ${the_str(xname(box))}!`);
+        else
+            await pline(`There's a trap on ${the_str(xname(box))}.`);
+        box.tknown = 1;
+        observe_object(box);
+        if (!confused) exercise(A_WIS, true);
+        if (await ynq('Disarm it?') === 'y')
+            await disarm_box(box, force, confused);
+    } else {
+        await pline(`You find no traps on ${the_str(xname(box))}.`);
+    }
+}
+
+// C ref: trap.c:5848 untrap(force, rx, ry, container) — the direction has
+// already been read by extcmd-handlers.js's dountrap() (C reads it here), so
+// this takes the resolved square.  Returns 1 if the attempt took time.
+export async function untrap_at(x, y, force) {
+    const u = game.u;
+    const { can_reach_floor } = await import('./engrave.js');
+    const confused = !!(u?.uprops?.Confusion || u?.uprops?.Hallucination);
+    let trap_skipped = false;
+
+    let ttmp = t_at(x, y);
+    if (ttmp && !ttmp.tseen) ttmp = null;
+    const trapdescr = ttmp ? trapname(ttmp.ttyp, false) : null;
+    const here = (x === u.ux && y === u.uy);
+
+    let boxcnt = 0;
+    if (here)
+        for (const o of (game.level?.objects || []))
+            if (o.where === 'floor' && o.ox === x && o.oy === y
+                && Is_box_otyp(o.otyp) && ++boxcnt > 1) break;
+
+    let deal_with_floor_trap = can_reach_floor(false);
+    if (!deal_with_floor_trap) {
+        let the_trap = '';
+        if (ttmp) the_trap += an(trapdescr);
+        if (ttmp && boxcnt) the_trap += ' and ';
+        if (boxcnt) the_trap += (boxcnt === 1) ? 'a container' : 'containers';
+        const useplural = ((ttmp && boxcnt > 0) || boxcnt > 1);
+        if (ttmp || boxcnt)
+            await pline(`There ${useplural ? 'are' : 'is'} ${the_trap} ${
+                here ? 'here' : 'there'} but you can't reach ${
+                useplural ? 'them' : 'it'}.`);
+        trap_skipped = !!ttmp;
+    } else if (ttmp) {
+        const the_trap = the_str(trapdescr);
+        if (boxcnt) {
+            if (is_pit(ttmp.ttyp)) {
+                await pline(`You can't do much about ${the_trap}${
+                    u.utrap ? " that you're stuck in"
+                            : ' while standing on the edge of it'}.`);
+                trap_skipped = true;
+                deal_with_floor_trap = false;
+            } else {
+                const { ynq } = await import('./invent.js');
+                const c = await ynq(`There ${(boxcnt === 1) ? 'is a container'
+                    : 'are containers'} and ${an(trapdescr)} here.  ${
+                    (ttmp.ttyp === WEB) ? 'Remove' : 'Disarm'} ${the_trap}?`);
+                if (c === 'q') return 0;
+                if (c === 'n') { trap_skipped = true; deal_with_floor_trap = false; }
+            }
+        }
+        if (deal_with_floor_trap) {
+            if (u.utrap) {
+                await pline(`You cannot deal with ${the_trap} while trapped${
+                    here ? ' in it' : ''}!`);
+                return 1;
+            }
+            // M_AP_FURNITURE/M_AP_OBJECT mimics: stumble_onto_mimic() is
+            // uhitm.c's; no recorded trap square holds a disguised mimic.
+            const mtmp = m_at(x, y);
+            switch (ttmp.ttyp) {
+            case BEAR_TRAP:
+            case WEB:
+                return await disarm_holdingtrap(ttmp);
+            case LANDMINE:
+                return await disarm_landmine(ttmp);
+            case SQKY_BOARD:
+                return await disarm_squeaky_board(ttmp);
+            case DART_TRAP:
+                return await disarm_shooting_trap(ttmp, DART);
+            case ARROW_TRAP:
+                return await disarm_shooting_trap(ttmp, ARROW);
+            case PIT:
+            case SPIKED_PIT:
+                if (here) {
+                    await pline('You are already on the edge of the pit.');
+                    return 0;
+                }
+                if (!mtmp) {
+                    await pline('Try filling the pit instead.');
+                    return 0;
+                }
+                return await help_monster_out(mtmp, ttmp);
+            default:
+                await pline(`You cannot disable ${!here ? 'that' : 'this'} trap.`);
+                return 0;
+            }
+        }
+    }
+    // C ref: trap.c:5998 — at most one container per move may be checked.
+    if (deal_with_floor_trap && boxcnt) {
+        const { ynq } = await import('./invent.js');
+        for (const otmp of (game.level?.objects || [])) {
+            if (!(otmp.where === 'floor' && otmp.ox === x && otmp.oy === y
+                  && Is_box_otyp(otmp.otyp))) continue;
+            const q = (otmp.tknown && otmp.dknown)
+                ? `Disarm this ${xname(otmp)}?`
+                : `There is ${an(xname(otmp))} here.  Check it for traps?`;
+            const c = await ynq(q);
+            if (c === 'q') return 0;
+            if (c === 'y') {
+                if (otmp.tknown && otmp.dknown) await disarm_box(otmp, force, confused);
+                else await untrap_box(otmp, force, confused);
+                return 1; /* even for 'no' at the "Disarm it?" prompt */
+            }
+            /* 'n' => continue to the next box */
+        }
+        await pline('There are no other chests or boxes here.');
+    }
+    // stumble_on_door_mimic(): a mimic disguised as a door is uhitm.c's.
+
+    const loc = game.level?.at(x, y);
+    if (!IS_DOOR(loc?.typ ?? STONE)) {
+        if (!trap_skipped) await pline('You know of no traps there.');
+        return 0;
+    }
+    const dm = loc.doormask | 0;
+    if (dm === D_NODOOR || dm === 0) {
+        await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+        return 0;
+    }
+    if (dm & D_ISOPEN) { await pline('This door is safely open.'); return 0; }
+    if (dm & D_BROKEN) { await pline('This door is broken.'); return 0; }
+
+    if (((dm & D_TRAPPED) !== 0
+         && (force || (!confused && rn2(MAXULEV - (u.ulevel | 0) + 11) < 10)))
+        || (!force && confused && !rn2(3))) {
+        await pline('You find a trap on the door!');
+        exercise(A_WIS, true);
+        const { ynq } = await import('./invent.js');
+        if (await ynq('Disarm it?') !== 'y') return 1;
+        if (dm & D_TRAPPED) {
+            const ch = 15 + ((game.urole?.mnum === ROLE_MNUM_ROGUE)
+                ? (u.ulevel | 0) * 3 : (u.ulevel | 0));
+            exercise(A_DEX, true);
+            if (!force && (confused || u?.HFumbling || u?.EFumbling
+                           || rnd(75 + Math.trunc(level_difficulty() / 2)) > ch)) {
+                await pline('You set it off!');
+                const { b_trapped } = await import('./cmd.js');
+                await b_trapped('door', FINGER);
+                loc.doormask = D_NODOOR;
+                const { unblock_point } = await import('./vision.js');
+                unblock_point(x, y);
+                newsym(x, y);
+                // add_damage(): shop repair bookkeeping, no RNG.
+            } else {
+                await pline('You disarm it!');
+                loc.doormask = dm & ~D_TRAPPED;
+                const { more_experienced, newexplevel } = await import('./exper.js');
+                more_experienced(8, 0);
+                await newexplevel();
+            }
+        } else {
+            await pline('This door was not trapped.');
+        }
+        return 1;
+    }
+    await pline('You find no traps on the door.');
+    return 1;
+}
+
+// C ref: trap.c:2937 trapeffect_selector() — dispatch on trap type (hero
+// variant). Every C case now has an arm; the default: is unreachable for a
+// valid ttyp, same as C's impossible().
+async function trapeffect_selector(trap, trflags) {
+    switch (trap.ttyp) {
+    case ARROW_TRAP:
+        await trapeffect_arrow_trap(trap, trflags);
+        break;
+    case SQKY_BOARD:
+        await trapeffect_sqky_board(trap, trflags);
+        break;
+    case SLP_GAS_TRAP:
+        await trapeffect_slp_gas_trap(trap, trflags);
+        break;
+    case WEB:
+        await trapeffect_web(trap, trflags);
+        break;
+    case ROCKTRAP:
+        await trapeffect_rocktrap(trap, trflags);
+        break;
+    case RUST_TRAP:
+        await trapeffect_rust_trap(trap, trflags);
+        break;
+    case BEAR_TRAP:
+        await trapeffect_bear_trap(trap, trflags);
+        break;
+    case DART_TRAP:
+        await trapeffect_dart_trap(trap, trflags);
+        break;
+    case MAGIC_TRAP:
+        await trapeffect_magic_trap(trap, trflags);
+        break;
+    case ANTI_MAGIC:
+        await trapeffect_anti_magic(trap, trflags);
+        break;
+    case TELEP_TRAP:
+        await trapeffect_telep_trap(trap, trflags);
+        break;
+    case LEVEL_TELEP:
+        await trapeffect_level_telep(trap, trflags);
+        break;
+    case MAGIC_PORTAL: {
+        const { domagicportal } = await import('./teleport.js');
+        feeltrap(trap);
+        await domagicportal(trap);
+        break;
+    }
+    case ROLLING_BOULDER_TRAP:
+        await trapeffect_rolling_boulder_trap(trap, trflags);
+        break;
+    case PIT:
+    case SPIKED_PIT:
+        await trapeffect_pit(trap, trflags);
+        break;
+    case HOLE:
+    case TRAPDOOR:
+        await trapeffect_hole(trap, trflags);
+        break;
+    case FIRE_TRAP:
+        await trapeffect_fire_trap(trap, trflags);
+        break;
+    case LANDMINE:
+        await trapeffect_landmine(trap, trflags);
+        break;
+    case POLY_TRAP:
+        await trapeffect_poly_trap(trap, trflags);
+        break;
+    case STATUE_TRAP:
+        await trapeffect_statue_trap(trap, trflags);
+        break;
+    case VIBRATING_SQUARE:
+        await trapeffect_vibrating_square(trap, trflags);
+        break;
+    default:
+        // Not yet modeled: reveal the trap but don't simulate its effect.
+        seetrap(trap);
+        break;
+    }
+}
+
+// C ref: trap.c:2070 trapeffect_telep_trap(&youmonst, ...) — the hero branch:
+// seetrap() then tele_trap().
+async function trapeffect_telep_trap(trap, _trflags) {
+    seetrap(trap);
+    await tele_trap(trap);
+}
+
+// C ref: teleport.c:1491 tele_trap(trap).  The trap->once arm is the vault
+// teleporter makevtele() plants (mklev.c makeniche sets ttmp->once on it): a
+// one-shot that deletes itself and drops the hero INSIDE the vault, which is
+// the only way a normal game reaches a vault at all.
+let in_tele_trap = false;
+async function tele_trap(trap) {
+    if (in_tele_trap) return;
+    in_tele_trap = true;
+    const u = game.u;
+    // C: noteleport_level(&gy.youmonst) — the hero is neither covetous nor a
+    // demon lord, so it reduces to the level flag.
+    if (In_endgame(u?.uz) || u?.uprops?.Antimagic || u?.Antimagic
+        || u?.HAntimagic || u?.EAntimagic || worn_extrinsic(ANTIMAGIC)
+        || game.level?.flags?.noteleport) {
+        await update_topl('You feel a wrenching sensation.');
+    } else if (trap.once) {
+        deltrap(trap);
+        newsym(u.ux, u.uy); /* get rid of trap symbol */
+        await vault_tele();
+    } else if (trap.teledest && isok(trap.teledest.x, trap.teledest.y)) {
+        const { teleds } = await import('./teleport.js');
+        const { settrack } = await import('./track.js');
+        let mtmp = m_at(trap.teledest.x, trap.teledest.y);
+        settrack();
+        if (mtmp) {
+            const { enexto_spawn } = await import('./makemon.js');
+            const cc = enexto_spawn(mtmp.mx, mtmp.my, mtmp.data);
+            if (!cc) {
+                await update_topl('You shudder for a moment.');
+            } else {
+                const { rloc_to } = await import('./teleport.js');
+                await rloc_to(mtmp, cc.x, cc.y);
+                mtmp = null;
+            }
+        }
+        if (!mtmp) await teleds(trap.teledest.x, trap.teledest.y, TELEDS_TELEPORT);
+    } else {
+        const { scrolltele } = await import('./read.js');
+        await scrolltele(null); /* teleport.c tele() */
+    }
+    in_tele_trap = false;
+}
+
+// C ref: teleport.c:772 vault_tele() — search_special(VAULT) then a
+// somexyspace() spot inside it.  The two rn2(2)s this draws (a vault is 2x2)
+// are seed0012's step 237.
+async function vault_tele() {
+    const { teleok, teleds } = await import('./teleport.js');
+    const { somexyspace } = await import('./mkroom.js');
+    const croom = search_special(VAULT);
+    const c = { x: 0, y: 0 };
+    if (croom && somexyspace(croom, c) && teleok(c.x, c.y, false)) {
+        await teleds(c.x, c.y, TELEDS_TELEPORT);
+        return;
+    }
+    const { scrolltele } = await import('./read.js');
+    await scrolltele(null);
+}
+
+// C ref: mkroom.c:765 search_special(type) — first room (then subroom) whose
+// rtype matches.  ANY_TYPE/ANY_SHOP are not needed by the callers here.
+function search_special(type) {
+    for (const croom of (game.level?.rooms || []))
+        if (croom.rtype === type) return croom;
+    for (const croom of (game.level?.subrooms || []))
+        if (croom.rtype === type) return croom;
+    return null;
+}
+
+// C ref: trap.c:2087 trapeffect_level_telep(&youmonst, ...) — the hero branch:
+// seetrap() then level_tele_trap().
+async function trapeffect_level_telep(trap, trflags) {
+    seetrap(trap);
+    await level_tele_trap(trap, trflags);
+}
+
+// C ref: teleport.c:1537 level_tele_trap(trap, trflags).
+async function level_tele_trap(trap, trflags) {
+    const u = game.u;
+    let intentional = false;
+    let verbbuf;
+    if ((trflags & (VIASITTING | FORCETRAP)) !== 0) {
+        verbbuf = 'trigger';
+        intentional = true;
+    } else {
+        verbbuf = `${u_locomotion('step')} onto`;
+    }
+    await update_topl(`You ${verbbuf} a level teleport trap!`);
+
+    // Antimagic (shieldeff has no RNG) and In_endgame both abort before the
+    // deltrap, leaving the trap in place.
+    const antimagic = !!(u?.uprops?.Antimagic || u?.Antimagic
+        || u?.HAntimagic || u?.EAntimagic || worn_extrinsic(ANTIMAGIC));
+    if ((antimagic && !intentional) || In_endgame(u?.uz)) {
+        await update_topl('You feel a wrenching sensation.');
+        return;
+    }
+    deltrap(trap);
+    newsym(u.ux, u.uy);
+    const { level_tele } = await import('./do.js');
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    await level_tele((q) => hooked_tty_getlin(q, null));
+
+    const teleport_control = (u?.uprops?.Teleport_control || 0) > 0 || !!u?.Teleport_control;
+    const hallu = (u?.uprops?.Hallucination || 0) > 0;
+    if (hallu || teleport_control)
+        await update_topl(`You briefly feel ${hallu ? 'oriented' : 'centered'}.`);
+    else
+        await update_topl(`You feel ${(u?.uprops?.Confusion || 0) > 0 ? 'even more ' : ''}disoriented.`);
+    // C ref: teleport.c:1568 — confusion is applied AFTER the teleport attempt,
+    // because being confused changes level_tele's "Oops..." outcome.
+    if (!teleport_control) {
+        const cur = (u?.uprops?.Confusion || 0);
+        if (!u.uprops) u.uprops = {};
+        u.uprops.Confusion = cur + 3;
+        u.uconf = true;
+    }
+}
+
+// C ref: trap.c:2346 trapeffect_anti_magic(&youmonst, ...) — the hero branch.
+async function trapeffect_anti_magic(trap, _trflags) {
+    const u = game.u;
+    seetrap(trap);
+    if (u.uprops?.Antimagic || u.Antimagic || u.HAntimagic || u.EAntimagic
+        || worn_extrinsic(ANTIMAGIC)) {
+        const { ART_MAGICBANE, is_art, defends_when_carried } = await import('./artifact.js');
+        const { is_quest_artifact } = await import('./questpgr.js');
+        let damage = rnd(4);
+        const hp = u.Upolyd ? u.mh : u.uhp;
+        if (u.HHalf_physical_damage || u.EHalf_physical_damage
+            || u.HHalf_spell_damage || u.EHalf_spell_damage
+            || worn_extrinsic(HALF_PHDAM) || worn_extrinsic(HALF_SPDAM))
+            damage += rnd(4);
+        if (is_art(game.uwep, ART_MAGICBANE)) damage += rnd(4);
+        if (inventoryArray().some(obj => obj.oartifact && !is_quest_artifact(obj)
+            && defends_when_carried(AD_MAGM, obj)))
+            damage += rnd(4);
+        if (u.uprops?.Passes_walls || u.HPasses_walls || u.EPasses_walls
+            || worn_extrinsic(PASSES_WALLS) || passes_walls_flag(game.youmonst?.data))
+            damage = Math.trunc((damage + 3) / 4);
+        await pline(`You feel ${damage >= hp ? 'unbearably torpid!'
+            : damage >= Math.trunc(hp / 4) ? 'very lethargic.' : 'sluggish.'}`);
+        await losehp(damage, 'anti-magic implosion', KILLED_BY_AN);
+    }
+    let drain = d(2, 6);                       // trap.c:2386
+    const halfd = rnd(Math.trunc(drain / 2));  // trap.c:2387 — UNCONDITIONAL
+    let exclaim_it = false;
+    if ((u.uenmax ?? 0) > drain) {
+        u.uenmax -= halfd;
+        drain -= halfd;
+        exclaim_it = true;
+    }
+    await drain_en(drain, exclaim_it);
+}
+
+// C ref: trap.c:5195 drain_en(n, max_already_drained).  The throttle
+// `if (n > (uen + uenmax) / 3) n = rnd(n)` is a real draw, and so is the
+// `uenmax -= rnd(-uen)` overdraw.
+export async function drain_en(n, max_already_drained) {
+    const u = game.u;
+    let punct = max_already_drained ? '!' : '.';
+    let mesg;
+    if ((u.uenmax ?? 0) < 1) {
+        if (u.uen || u.uenmax) { u.uen = 0; u.uenmax = 0; }
+        mesg = 'momentarily lethargic';
+    } else {
+        if (n > Math.trunc(((u.uen ?? 0) + u.uenmax) / 3)) n = rnd(n);  // trap.c:5222
+        mesg = 'your magical energy drain away';
+        if (n > (u.uen ?? 0)) punct = '!';
+        u.uen = (u.uen ?? 0) - n;
+        if (u.uen < 0) {
+            u.uenmax -= rnd(-u.uen);
+            if (u.uenmax < 0) u.uenmax = 0;
+            u.uen = 0;
+        } else if (u.uen > u.uenmax) {
+            u.uen = u.uenmax;
+        }
+    }
+    await pline(`You feel ${mesg}${punct}`);
+}
+
+// C ref: trap.c floor_trigger(ttyp) — a trap set off by weight on the floor, so
+// an airborne hero passes over it without triggering it.
+function floor_trigger(ttyp) {
+    switch (ttyp) {
+    case ARROW_TRAP: case DART_TRAP: case ROCKTRAP: case SQKY_BOARD:
+    case BEAR_TRAP: case LANDMINE: case ROLLING_BOULDER_TRAP:
+    case SLP_GAS_TRAP: case RUST_TRAP: case FIRE_TRAP:
+    case PIT: case SPIKED_PIT: case HOLE: case TRAPDOOR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// C ref: trap.c check_in_air(&gy.youmonst, trflags) — hero variant.  A role
+// monster is neither is_floater nor is_flyer, so C's `is_you ? Levitation :
+// is_floater(...)` reduces to the hero's own Levitation/Flying properties.
+function check_in_air_u(trflags) {
+    const u = game.u;
+    const plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
+    return (trflags & HURTLING) !== 0
+        || !!u?.uprops?.Levitation
+        || (!!u?.uprops?.Flying && !plunged);
+}
+
+// C ref: hack.c u_locomotion(def) — locomotion(gy.youmonst.data, def) returns
+// `def` unchanged for every role monster (none is a flyer/floater/clinger/
+// swimmer/crawler), so only Levitation and Flying change the verb.
+function u_locomotion(def) {
+    const u = game.u;
+    const cap = def[0] === def[0].toUpperCase();
+    if (u?.uprops?.Levitation) return cap ? 'Float' : 'float';
+    if (u?.uprops?.Flying) return cap ? 'Fly' : 'fly';
+    return def;
+}
+
+// C ref: trap.c a_your[]/A_Your[] — indexed by trap->madeby_u.
+function a_your(madeby_u) { return madeby_u ? 'your' : 'a'; }
+
+// C ref: trap.c:7100 trapname(ttyp, override) — while hallucinating (and not
+// overridden) the name is a display-RNG pick over the real trap types, the
+// halu_trapnames[] riffs and one "<role> trap"; a real-trap pick of NO_TRAP
+// keeps the true type.  The roletrap arm's rn2(3) is a CORE draw, as in C.
+const HALU_TRAPNAMES = [
+    'bottomless pit', 'polymorphism trap', 'devil teleporter',
+    'falling boulder trap', 'anti-anti-magic field', 'weeping gas trap',
+    'queasy board', 'electrified web', 'owlbear trap', 'sand mine',
+    'vacillating triangle',
+    'death trap', 'disintegration trap', 'ice trap', 'monochrome trap',
+    'axeblade trap', 'pool of boiling oil', 'pool of quicksand',
+    'field of caltrops', 'buzzsaw trap', 'spiked floor', 'revolving wall',
+    'uneven floor', 'finger trap', 'jack-in-a-box', 'yellow snow',
+    'booby trap', 'rat trap', 'poisoned nail', 'snare', 'whirlpool',
+    'trip wire', 'roach motel (tm)',
+    'negative space', 'tensor field', 'singularity', 'imperial fleet',
+    'black hole', 'thermal detonator', 'event horizon',
+    'entoptic phenomenon',
+    'sweet-smelling gas vent', 'phone booth', 'exploding runes',
+    'never-ending elevator', 'slime pit', 'warp zone', 'illusory floor',
+    'pile of poo', 'honey trap', 'tourist trap',
+    'banana peel', 'garden rake', 'whoopie cushion', 'box and stick trap',
+    'fly trap', 'legal trap', 'pit of snakes', 'pollywog trap',
+    'slippery slope', 'thirst trap', 'suntrap',
+];
+export function trapname(ttyp, override) {
+    if (Hallucination_u() && !override) {
+        const total_names = TRAPNUM + HALU_TRAPNAMES.length;
+        const nameidx = rn2_on_display_rng(total_names + 1);
+        if (nameidx === total_names) {
+            const u = game.u || {};
+            const fem = !!(u.Upolyd ? u.mfemale : game.flags?.female);
+            const urole = game.urole;
+            /* inspired by "tourist trap"; copynchars() keeps 33 - 6 chars */
+            const role = rn2(3) ? ((fem && urole?.name?.f) ? urole.name.f : urole?.name?.m)
+                : rank_of(u.ulevel || 1, urole?.mnum, fem);
+            return `${String(role ?? '').slice(0, 27)} trap`.toLowerCase();
+        } else if (nameidx >= TRAPNUM) {
+            return HALU_TRAPNAMES[nameidx - TRAPNUM];
+        } /* else use an actual trap type */
+        if (nameidx !== NO_TRAP) ttyp = nameidx;
+    }
+    return trap_explanation(ttyp);
+}
+
+// C ref: trap.c dotrap()'s article for the "step over"/"escape" lines — an
+// arrow trap the hero did not make reads "an arrow trap".
+function trap_article(trap) {
+    return (trap.ttyp === ARROW_TRAP && !trap.madeby_u) ? 'an' : a_your(trap.madeby_u);
+}
+
+// C ref: trap.c:1045 reset_utrap(msg) via set_utrap(0, 0) — clearing the trap
+// re-runs float_vs_flight(), which may unblock Levitation/Flying.
+async function reset_utrap_fu(msg) {
+    const u = game.u;
+    if (!u) return;
+    const was_Lev = Levitation_fu(), was_Fly = Flying_fu();
+    if (u.utrap) game.botl = true;
+    u.utrap = 0;
+    u.utraptype = 0;
+    float_vs_flight(); /* maybe block Lev and/or Fly */
+    if (msg) {
+        if (!was_Lev && Levitation_fu()) await float_up();
+        if (!was_Fly && Flying_fu()) await pline('You can fly.');
+    }
+}
+
+// C ref: youprop.h Levitation == ((HLevitation || ELevitation) && !BLevitation)
+// and Flying == ((HFlying || EFlying || (u.usteed && is_flyer(steed)))
+// && !BFlying).  The INTRINSIC word is the flat u.uprops field (timeout.js
+// TIMED_PROPS, set_uasmon()'s form bit), the EXTRINSIC word invent.js's
+// worn_extrinsic() store, and the BLOCKED word float_vs_flight()'s
+// u.uprops.B<Prop> plus worn_blocked().
+function Levitation_fu() {
+    return !!((game.u?.uprops?.Levitation | 0) || worn_extrinsic(LEVITATION))
+        && !BLevitation_word();
+}
+function Flying_fu() {
+    const u = game.u;
+    return !!((u?.uprops?.Flying | 0) || worn_extrinsic(FLYING)
+              || (u?.usteed && is_flyer_fu(u.usteed.data)))
+        && !((u?.uprops?.BFlying | 0) || worn_blocked(FLYING));
+}
+// C ref: youprop.h Hallucination.
+function Hallucination_fu() {
+    const u = game.u || {};
+    return !!u.uhallu || !!u.HHallucination || ((u.uprops?.Hallucination | 0) > 0);
+}
+// C ref: youprop.h Lev_at_will == ((HLevitation & I_SPECIAL) != 0L).
+function Lev_at_will_fu() { return ((game.u?.uprops?.Levitation | 0) & I_SPECIAL) !== 0; }
+// C ref: mondata.h is_floater(ptr)/is_flyer(ptr) — mlet S_EYE(5)/S_LIGHT(25),
+// M1_FLY.  Same private duplicate as timeout.js:280-288 and friends.
+function is_floater_fu(ptr) {
+    return !!ptr && (ptr.mcls === 5 /* S_EYE */ || ptr.mcls === 25 /* S_LIGHT */);
+}
+function is_flyer_fu(ptr) { return (mflags1_of(ptr) & M1_FLY) !== 0; }
+// C ref: steed.c dismount_steed(reason) — delegates to js/steed.js's real,
+// faithful port (dynamic import avoids a trap.js <-> steed.js static cycle).
+async function dismount_steed_fu(reason) {
+    const { dismount_steed } = await import('./steed.js');
+    return await dismount_steed(reason);
+}
+
+// C ref: youprop.h — the hero properties drown()/pooleffects()/goodpos()
+// consult.  H<Prop> is the u.uprops timer/intrinsic word (timeout.js
+// TIMED_PROPS keys), E<Prop> is invent.js's worn_extrinsic() store, and the
+// FROMFORM bit is polyself.js set_uasmon()'s u.formprops.
+function uprop_word(key) { return game.u?.uprops?.[key] | 0; }
+function Wwalking_fu() {
+    return !!(uprop_word('HWwalking') || uprop_word('EWwalking') || worn_extrinsic(WWALKING))
+        && !Is_waterlevel(game.u?.uz);
+}
+function Swimming_fu() {
+    const u = game.u;
+    return !!(uprop_word('HSwimming') || worn_extrinsic(SWIMMING) || u?.formprops?.Swimming
+              || (u?.usteed && is_swimmer_flag(u.usteed.data)));
+}
+function Magical_breathing_fu() {
+    return !!(uprop_word('HMagical_breathing') || worn_extrinsic(MAGICAL_BREATHING));
+}
+function Amphibious_fu() {
+    return Magical_breathing_fu() || (mflags1_of(youmonst_data_pub()) & M1_AMPHIBIOUS) !== 0;
+}
+function Breathless_fu() {
+    return Magical_breathing_fu() || (mflags1_of(youmonst_data_pub()) & M1_BREATHLESS) !== 0;
+}
+function Teleportation_fu() {
+    return !!(uprop_word('HTeleportation') || worn_extrinsic(TELEPORT)
+              || game.u?.formprops?.Teleportation);
+}
+function Teleport_control_fu() {
+    return !!(uprop_word('HTeleport_control') || worn_extrinsic(TELEPORT_CONTROL)
+              || game.u?.formprops?.Teleport_control);
+}
+function Passes_walls_fu() {
+    return !!(uprop_word('HPasses_walls') || worn_extrinsic(PASSES_WALLS)
+              || game.u?.formprops?.Passes_walls);
+}
+function Fire_resistance_fu() {
+    return !!(uprop_word('HFire_resistance') || worn_extrinsic(FIRE_RES)
+              || game.u?.formprops?.Fire_resistance);
+}
+// C ref: youprop.h Punished == (uball != 0); read.c punish() sets u.uball.
+function Punished_fu() { return !!game.u?.uball; }
+// C ref: hack.h Luck == (u.uluck + u.moreluck).
+function Luck_fu() { return (game.u?.uluck | 0) + (game.u?.moreluck | 0); }
+// C ref: dungeon.c has_ceiling(lev).
+function has_ceiling_fu(lev) { return !(In_endgame(lev) && !Is_earthlevel(lev)); }
+// C ref: mondata.h grounded(ptr).
+function grounded_fu(ptr) {
+    return !is_flyer_fu(ptr) && !is_floater_fu(ptr)
+        && ((mflags1_of(ptr) & M1_CLING) === 0 || !has_ceiling_fu(game.u?.uz));
+}
+// C ref: mondata.h ceiling_hider(ptr) — S_MIMIC is mlet 13.
+function ceiling_hider_fu(ptr) {
+    const f1 = mflags1_of(ptr);
+    return (f1 & M1_HIDE) !== 0
+        && (((f1 & M1_CLING) !== 0 && ptr?.mcls !== 13) || is_flyer_fu(ptr));
+}
+// C ref: display.h feel_newsym(x, y).
+function feel_newsym(x, y) {
+    if (Blind()) feel_location(x, y);
+    else newsym(x, y);
+}
+
+// C ref: trap.c:3937 float_up() — start levitating: pick the right message
+// for the many "why don't I actually float away" states (trapped, in water,
+// swallowed, hallucinating, on the Plane of Air, or the ordinary case), then
+// the steed/flying fallout, float_vs_flight() and the encumbrance recheck
+// (levitation maximizes carrying capacity).
+export async function float_up() {
+    const u = game.u;
+    if (!u) return;
+    game.botl = true;
+    if (u.utrap) {
+        if (u.utraptype === TT_PIT) {
+            await reset_utrap_fu(false);
+            await pline(`You float up, out of the ${trapname(PIT, false)}!`);
+            game.vision_full_recalc = 1;
+            fill_pit(u.ux, u.uy);
+        } else if (u.utraptype === TT_LAVA || u.utraptype === TT_INFLOOR) {
+            await pline(`Your body pulls upward, but your ${makeplural(body_part(LEG))} are still stuck.`);
+        } else if (u.utraptype === TT_BURIEDBALL) {
+            const cc = { x: u.ux, y: u.uy };
+            const { buried_ball } = await import('./dig.js');
+            buried_ball(cc);
+            const onRoom = IS_ROOM(game.level?.at(cc.x, cc.y)?.typ);
+            await pline(`You feel lighter, but your ${body_part(LEG)} is still chained to the ${onRoom ? 'floor' : 'ground'}.`);
+        } else if (u.utraptype === WEB) {
+            // C ref: trap.c:3963 — real upstream bug, ported verbatim: it
+            // compares u.utraptype (the TT_* enum, values 1-6) against WEB
+            // (=18, the unrelated trap-TYPE enum), which u.utraptype can
+            // never equal.  This branch is therefore dead code in C itself;
+            // a web-trapped hero always falls through to the bear-trap
+            // message below instead of a web-specific one.
+            await pline(`You float up slightly, but you are still stuck in the ${trapname(WEB, false)}.`);
+        } else { /* bear trap (and, per the C bug above, web too) */
+            await pline(`You float up slightly, but your ${body_part(LEG)} is still stuck.`);
+        }
+    } else if (u.uinwater) {
+        await spoteffects(true);
+    } else if (u.uswallow) {
+        if (is_animal(u.ustuck?.data)) {
+            await pline(`You float away from the ${surface(u.ux, u.uy)}.`);
+        } else {
+            await pline(`You spiral up into ${mon_nam_trap(u.ustuck)}.`);
+        }
+    } else if (Hallucination_fu()) {
+        await pline("Up, up, and awaaaay!  You're walking on air!");
+    } else if (Is_airlevel(u.uz)) {
+        await pline('You gain control over your movements.');
+    } else {
+        await pline('You start to float in the air!');
+    }
+    if (u.usteed && !is_floater_fu(u.usteed.data) && !is_flyer_fu(u.usteed.data)) {
+        if (Lev_at_will_fu()) {
+            await pline(`${Monnam_trap(u.usteed)} magically floats up!`);
+        } else {
+            await pline(`You cannot stay on ${mon_nam_trap(u.usteed)}.`);
+            await dismount_steed_fu(DISMOUNT_GENERIC);
+        }
+    }
+    if (Flying_fu())
+        await pline('You are no longer able to control your flight.');
+    float_vs_flight(); /* set BFlying, also BLevitation if still trapped */
+    const { encumber_msg } = await import('./invent.js');
+    await encumber_msg();
+}
+
+// C ref: trap.c:4024 float_down(hmask, emask) — stop levitating.  hmask clears
+// bits of the INTRINSIC levitation word (HLevitation, this port's flat
+// game.u.uprops.Levitation) and emask bits of the EXTRINSIC one (ELevitation,
+// this port's worn-extrinsic bitmask, maintained by invent.js's
+// worn_extrinsics_on/off, so the caller that removed the item has already
+// cleared its bit and emask is a no-op here).  If any source remains the hero
+// stays aloft and nothing is printed.
+export async function float_down(hmask = 0, emask = 0) {
+    const u = game.u;
+    if (!u) return 0;
+    if (hmask) u.uprops.Levitation = (u.uprops.Levitation | 0) & ~hmask;
+    if (Levitation_fu()) return 0; /* maybe another ring/potion/boots */
+    const { encumber_msg } = await import('./invent.js');
+    if (BLevitation_word()) {
+        /* if blocked by terrain, we haven't actually been levitating so
+           we don't give any end-of-levitation feedback or side-effects,
+           but if blocking is solely due to being trapped in/on floor,
+           do give some feedback but skip other float_down() effects */
+        const trapped = BLevitation_word() === I_SPECIAL;
+        float_vs_flight();
+        if (trapped && u.utrap) /* u.utrap => paranoia */
+            await pline(`You are no longer trying to float up from the ${
+                u.utraptype === TT_BEARTRAP ? "trap's jaws"
+                : u.utraptype === TT_WEB ? 'web'
+                : u.utraptype === TT_BURIEDBALL ? 'chain'
+                : u.utraptype === TT_LAVA ? 'lava'
+                : 'ground'}.`); /* TT_INFLOOR */
+        await encumber_msg(); /* carrying capacity might have changed */
+        return 0;
+    }
+    game.botl = true;
+    await trap_nomul(); /* stop running or resting */
+    if (uprop_word('BFlying') || worn_blocked(FLYING)) {
+        /* controlled flight no longer overridden by levitation */
+        float_vs_flight(); /* clears BFlying & I_SPECIAL unless stuck in floor */
+        if (Flying_fu()) {
+            await pline('You have stopped levitating and are now flying.');
+            await encumber_msg(); /* carrying capacity might have changed */
+            return 1;
+        }
+    }
+    if (u.uswallow) {
+        // C ref: mondata.h digests(ptr) == attacktype_fordmg(ptr, AT_ENGL,
+        // AD_DGST); same private copy as timeout.js:301.
+        const swallowed = !!attacktype_fordmg(u.ustuck?.data, AT_ENGL, AD_DGST);
+        await pline(`You float down, but you are still ${
+            swallowed ? 'swallowed' : 'engulfed'}.`);
+        await encumber_msg();
+        return 1;
+    }
+
+    let trap = null;
+    const uball = u.uball, uchain = u.uchain;
+    if (Punished_fu() && !carried(uball) && !m_at(uball.ox, uball.oy)
+        && (is_pool(uball.ox, uball.oy)
+            || ((trap = t_at(uball.ox, uball.oy))
+                && (is_pit(trap.ttyp) || is_hole(trap.ttyp))))) {
+        u.ux0 = u.ux;
+        u.uy0 = u.uy;
+        u.ux = uball.ox;
+        u.uy = uball.oy;
+        movobj_trap(uchain, uball.ox, uball.oy);
+        newsym(u.ux0, u.uy0);
+        game.vision_full_recalc = 1; /* in case the hero moved. */
+    }
+    /* check for falling into pool - added by GAN 10/20/86 */
+    let no_msg = false;
+    if (!Flying_fu()) {
+        if (!u.uswallow && u.ustuck) {
+            const { sticks } = await import('./uhitm.js');
+            if (sticks(youmonst_data_pub()))
+                await pline(`You aren't able to maintain your hold on ${mon_nam_trap(u.ustuck)}.`);
+            else
+                await pline(`Startled, ${mon_nam_trap(u.ustuck)} can no longer hold you!`);
+            set_ustuck(null);
+        }
+        /* drown() and lava_effects() supply their own landing messages */
+        if (is_pool(u.ux, u.uy) && !Wwalking_fu() && !Swimming_fu() && !u.uinwater)
+            no_msg = await drown();
+        if (game.program_state?.gameover) return 1;
+        if (is_lava(u.ux, u.uy) && !game._in_lava_effects) {
+            await lava_effects();
+            no_msg = true;
+        }
+        if (game.program_state?.gameover) return 1;
+    }
+    if (!trap) {
+        trap = t_at(u.ux, u.uy);
+        if (Is_airlevel(u.uz)) {
+            await pline('You begin to tumble in place.');
+        } else if (Is_waterlevel(u.uz) && !no_msg) {
+            await pline('You feel heavier.');
+        /* u.uinwater msgs already in spoteffects()/drown() */
+        } else if (!u.uinwater && !no_msg) {
+            if (!(emask & W_SADDLE)) {
+                if (game.level?.flags?.sokoban_rules && trap) {
+                    /* the unexpected additional force of the air currents
+                       once levitation ceases knocks you off your feet */
+                    await pline(Hallucination_fu() ? "Bummer!  You've crashed."
+                                                   : 'You fall over.');
+                    await losehp(rnd(2), 'dangerous winds', KILLED_BY);
+                    if (game.program_state?.gameover) return 1;
+                    if (u.usteed) await dismount_steed_fu(DISMOUNT_FELL);
+                    await selftouch('As you fall, you');
+                } else if (u.usteed && (is_floater_fu(u.usteed.data)
+                                        || is_flyer_fu(u.usteed.data))) {
+                    await pline('You settle more firmly in the saddle.');
+                } else if (Hallucination_fu()) {
+                    await pline(`Bummer!  You've ${is_pool(u.ux, u.uy) ? 'splashed down'
+                                                                       : 'hit the ground'}.`);
+                } else {
+                    await pline(`You float gently to the ${surface(u.ux, u.uy)}.`);
+                }
+            }
+        }
+    }
+
+    /* levitation gives maximum carrying capacity, so having it end
+       potentially triggers greater encumbrance; do this after
+       'come down' messages, before trap activation or autopickup */
+    await encumber_msg();
+
+    /* can't rely on u.uz0 for detecting trap door-induced level change */
+    const dnum0 = u.uz?.dnum, dlevel0 = u.uz?.dlevel;
+    if (trap) {
+        // C ref: trap.c:4159 — STATUE_TRAP never fires here, a hole/trapdoor
+        // only when the hero can actually fall through, everything else goes
+        // off unless the hero is already caught in it.
+        const fallthru = (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR);
+        if (trap.ttyp !== STATUE_TRAP
+            && !(fallthru && (!Can_fall_thru(u.uz) || u.ustuck))
+            && !u.utrap)
+            await dotrap(trap, 0);
+        if (game.program_state?.gameover) return 1;
+    }
+    if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz) && !u.uswallow
+        /* falling through trap door calls goto_level,
+           and goto_level does its own pickup() call */
+        && u.uz?.dnum === dnum0 && u.uz?.dlevel === dlevel0) {
+        const { pickup_after_move } = await import('./cmd.js');
+        await pickup_after_move(u.ux, u.uy);
+    }
+    return 1;
+}
+
+// C ref: youprop.h BLevitation — the blocked word float_vs_flight() and
+// terrain write, plus any worn blocker.
+function BLevitation_word() { return uprop_word('BLevitation') | worn_blocked(LEVITATION); }
+
+// C ref: mkobj.c movobj(obj, ox, oy) — relocate a floor object in place.
+function movobj_trap(obj, ox, oy) {
+    remove_object(obj);
+    newsym(obj.ox, obj.oy);
+    place_object(obj, ox, oy);
+    newsym(ox, oy);
+}
+
+// C ref: trap.c:4976 back_on_ground(rescued) — the hero has returned to solid
+// ("on"/"over"/"in") footing after levitation/flight/water/a pool ends; picks
+// the right preposition and surface noun.  pooleffects() and pickup.c
+// describe_decor() print it with rescued=FALSE; rescued_from_terrain() uses
+// rescued=TRUE after life-saving moved the hero out of hostile terrain.
+export async function back_on_ground(rescued) {
+    const u = game.u;
+    if (!u) return;
+    let preposit = (Levitation_fu() || Flying_fu()) ? 'over' : 'on';
+    let surf = surface(u.ux, u.uy);
+    if (game.level?.at(u.ux, u.uy)?.typ === ICE) {
+        // C: ice_descr(x,y,buf) — "ice"/"melting ice"/"thin ice", &c.  This
+        // port's surface() already returns 'ice' for the ICE terrain type.
+        surf = 'ice';
+    } else if (surf === 'floor' || surf === 'ground') {
+        surf = 'solid ground';
+    } else if (surf === 'bridge' || surf === 'altar' || surf === 'headstone') {
+        surf = an(surf);
+    } else if (surf === 'stairs' || surf === 'lava' || surf === 'bottom') {
+        surf = the_fu(surf);
+    } else {
+        surf = (surf === 'air') ? the_fu(surf) : an(surf);
+        preposit = 'in';
+    }
+    const you_are_back = rescued ? 'You find yourself'
+        : (game.flags?.verbose !== false ? 'You are back' : 'Back');
+    await pline(`${you_are_back} ${preposit} ${surf}.`);
+    game.last_msg = PLNMSG_BACK_ON_GROUND;
+}
+
+// C ref: trap.h fixed_tele_trap(t) — a teleport trap with a fixed destination
+// (sp_lev "teleport_region"); triggering it is never left to chance.
+function fixed_tele_trap(t) {
+    return t.ttyp === TELEP_TRAP && !!t.teledest
+        && isok(t.teledest.x, t.teledest.y);
+}
+
+// C ref: cmd.c xytodir(x,y) — index of a unit step in xdir[]/ydir[], else
+// DIR_ERR.  hack.h DIR_180(dir) is ((dir) + 4) % N_DIRS.
+function xytodir(dx, dy) {
+    for (let i = 0; i < N_DIRS; i++)
+        if (XDIR8[i] === dx && YDIR8[i] === dy) return i;
+    return -1; /* DIR_ERR */
+}
+
+// C ref: trap.c conjoined_pits(trap2, trap1, u_entering_trap2) — do the two
+// pits share the wall the hero is crossing?  `conjoined` is only ever set by
+// dig.c's pit digging, which this port does not model, so the answer is FALSE
+// in practice; kept faithful because dotrap()/trapeffect_pit() use it to
+// SUPPRESS RNG draws, so a wrong TRUE here would eat rolls C makes.
+export function conjoined_pits(trap2, trap1, u_entering_trap2) {
+    const u = game.u;
+    if (!trap1 || !trap2) return false;
+    if (!isok(trap2.tx, trap2.ty) || !isok(trap1.tx, trap1.ty)
+        || !is_pit(trap2.ttyp) || !is_pit(trap1.ttyp)
+        || (u_entering_trap2 && !(u?.utrap && u.utraptype === TT_PIT)))
+        return false;
+    const diridx = xytodir(Math.sign(trap2.tx - trap1.tx),
+                           Math.sign(trap2.ty - trap1.ty));
+    if (diridx !== -1) {
+        const adjidx = (diridx + 4) % N_DIRS;
+        if (((trap1.conjoined || 0) & (1 << diridx))
+            && ((trap2.conjoined || 0) & (1 << adjidx)))
+            return true;
+    }
+    return false;
+}
+
+// C ref: trap.c adj_nonconjoined_pit(adjtrap) — is the hero stepping from one
+// pit straight into a neighbouring, unjoined one?
+function adj_nonconjoined_pit(adjtrap) {
+    const u = game.u;
+    const trap_with_u = t_at(u?.ux0 ?? 0, u?.uy0 ?? 0);
+    if (trap_with_u && adjtrap && u?.utrap && u.utraptype === TT_PIT
+        && is_pit(trap_with_u.ttyp) && is_pit(adjtrap.ttyp))
+        return xytodir(u.dx, u.dy) !== -1;
+    return false;
+}
+
+// C ref: trap.c dotrap(trap, trflags) — the hero steps onto / triggers a trap.
+export async function dotrap(trap, trflags = 0) {
+    if (!trap) return;
+    const u = game.u;
+    const ttype = trap.ttyp;
+    const already_seen = !!trap.tseen;
+    let forcetrap = (trflags & FORCETRAP) !== 0 || (trflags & FAILEDUNTRAP) !== 0;
+    const forcebungle = (trflags & FORCEBUNGLE) !== 0;
+    const plunged = (trflags & TOOKPLUNGE) !== 0;
+    const conj_pit = conjoined_pits(trap, t_at(u?.ux0 ?? 0, u?.uy0 ?? 0), true);
+    const adj_pit = adj_nonconjoined_pit(trap);
+
+    await trap_nomul();
+
+    if (fixed_tele_trap(trap)) { trflags |= FORCETRAP; forcetrap = true; }
+
+    if (game.level?.flags?.sokoban_rules && (is_pit(ttype) || is_hole(ttype))) {
+        // Sokoban pits/holes are inescapable: C skips BOTH the airborne
+        // step-over and the rn2(5) escape roll, so this arm must not draw.
+        await pline(`Air currents pull you down into ${a_your(trap.madeby_u)} ${trapname(ttype, true)}!`);
+    } else if (!forcetrap) {
+        if (floor_trigger(ttype) && check_in_air_u(trflags)) {
+            if (already_seen)
+                await pline(`You ${u_locomotion('step')} over ${trap_article(trap)} ${trapname(ttype, false)}.`);
+            return;
+        }
+        // C's escape roll is gated on a stack of conditions our old port
+        // dropped: an already-seen MAGIC_PORTAL / VIBRATING_SQUARE /
+        // ANTI_MAGIC draws NO rn2(5) at all, and neither does a Fumbling,
+        // bungling, plunging or pit-to-pit step.  is_clinger(gy.youmonst.data)
+        // is false for every role monster, so the `||` arm cannot fire.
+        const fumbling = !!(u?.HFumbling || u?.EFumbling);
+        if (already_seen && !fumbling && !undestroyable_trap(ttype)
+            && ttype !== ANTI_MAGIC && !forcebungle && !plunged
+            && !conj_pit && !adj_pit
+            && !rn2(5)) {
+            await pline(`You escape ${trap_article(trap)} ${trapname(ttype, false)}.`);
+            return;
+        }
+    }
+
+    // u.usteed is null for the contest hero, so mon_learns_traps(u.usteed, ...)
+    // is skipped.  mons_see_trap() draws no RNG but WRITES mtrapseen on every
+    // sighted, non-mindless, non-animal onlooker — which monmove's mfndpos then
+    // reads to route around the trap, and mon_mintrap's already-seen rn2(4)
+    // step-over roll depends on.
+    const { mons_see_trap } = await import('./monmove.js');
+    mons_see_trap(trap);
+
+    await trapeffect_selector(trap, trflags);
+}
+
+// C ref: include/trap.h is_pit(ttyp) — PIT or SPIKED_PIT.
+function is_pit_ttyp(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
+
+// C ref: dbridge.c is_pool(x,y) — POOL/MOAT/WATER.  IS_POOL(typ) (the range
+// macro, POOL..DRAWBRIDGE_UP) coincides with this for every terrain the
+// corpus ever generates (no drawbridges), so it's reused directly.
+function isPoolAt(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!loc && IS_POOL(loc.typ);
+}
+
+// C ref: mkobj.c sobj_at(otyp, x, y) — floor object lookup (matches cmd.js
+// boulder_at's flat game.level.objects scan).
+function sobj_at_floor(otyp, x, y) {
+    let found = null;
+    for (const o of (game.level?.objects || []))
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === otyp)
+            found = o;
+    return found;
+}
+
+// C ref: pager.c waterbody_name(x,y) — non-hallucinating water-body name; the
+// special-level and hallucination variants aren't reached by the corpus.
+function waterbody_name(x, y) {
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    if (typ === LAVAPOOL) return 'molten lava';
+    if (typ === MOAT) return 'moat';
+    if (typ === WATER) return 'wall of water';
+    if (typ === LAVAWALL) return 'wall of lava';
+    return 'pool of water';
+}
+
+// C ref: hack.c doorless_door() — a doorway that lacks its door (NODOOR or
+// BROKEN); all rogue-level doors are treated as doored.
+function doorless_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    if (Is_rogue_level(game.u?.uz)) return false;
+    return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
+}
+
+// C ref: mondata.h likes_lava(ptr) / teleport.c goodpos()'s floating-eye arm.
+const PM_FIRE_ELEMENTAL_TRAP = name_to_pmidx('fire elemental');
+const PM_SALAMANDER_TRAP = name_to_pmidx('salamander');
+const PM_FLOATING_EYE_TRAP = name_to_pmidx('floating eye');
+const PM_AIR_ELEMENTAL_TRAP = name_to_pmidx('air elemental');
+const PM_GRID_BUG_TRAP = name_to_pmidx('grid bug');
+const PM_GREMLIN_TRAP = name_to_pmidx('gremlin');
+const PM_IRON_GOLEM_TRAP = name_to_pmidx('iron golem');
+// C ref: monsym.h S_VORTEX / S_GHOST / S_EEL mlet values.
+const S_VORTEX_MCLS = 22, S_GHOST_MCLS = 54, S_EEL_MCLS = 57;
+function likes_lava_trap(ptr) {
+    return ptr?.pmidx === PM_FIRE_ELEMENTAL_TRAP || ptr?.pmidx === PM_SALAMANDER_TRAP;
+}
+// C ref: hack.c may_passwall(x, y).
+function may_passwall_trap(x, y) {
+    const loc = game.level?.at(x, y);
+    return !(loc && IS_STWALL(loc.typ) && ((loc.wall_info | 0) & W_NONPASSWALL));
+}
+// C ref: dig.c may_dig(x, y).
+function may_dig_trap(x, y) {
+    const loc = game.level?.at(x, y);
+    return !(loc && (IS_STWALL(loc.typ) || IS_TREE(loc.typ))
+             && ((loc.wall_info | 0) & W_NONDIGGABLE));
+}
+// C ref: monmove.c accessible(x, y).
+function accessible_trap(x, y) {
+    const loc = game.level?.at(x, y);
+    return ACCESSIBLE(loc ? loc.typ : STONE) && !closed_door(x, y);
+}
+
+// C ref: teleport.c goodpos(x, y, &youmonst, 0).  The S_EEL rn2(13) is
+// drawn whenever an eel-shaped hero is offered a dry square.
+export function goodpos_for_hero(x, y) {
+    if (!isok(x, y)) return false;
+    if (m_at(x, y)) return false;
+    const mdat = youmonst_data_pub();
+    if (is_pool(x, y)) {
+        return Swimming_fu() || Amphibious_fu()
+            || (!Is_waterlevel(game.u?.uz) && !is_waterwall(x, y)
+                && (Levitation_fu() || Flying_fu() || Wwalking_fu()));
+    } else if (mdat?.mcls === S_EEL_MCLS && rn2(13)) {
+        return false;
+    } else if (is_lava(x, y)) {
+        if (mdat?.pmidx === PM_FLOATING_EYE_TRAP) return false;
+        return Levitation_fu() || Flying_fu()
+            || (Fire_resistance_fu() && Wwalking_fu() && !!game.uarmf?.oerodeproof)
+            || (!!game.u?.Upolyd && likes_lava_trap(mdat));
+    }
+    if (passes_walls_flag(mdat) && may_passwall_trap(x, y)) return true;
+    if (amorphous_flag(mdat) && closed_door(x, y)) return true;
+    if (!accessible_trap(x, y)) return false;
+    if (sobj_at_floor(BOULDER, x, y) && !throws_rocks_flag(mdat)) return false;
+    return true;
+}
+
+// C ref: hack.c:939 bad_rock(youmonst.data, x, y).
+function bad_rock_hero(mdat, x, y) {
+    const loc = game.level?.at(x, y);
+    const f1 = mflags1_of(mdat);
+    return (!!game.level?.flags?.sokoban_rules && !!sobj_at_floor(BOULDER, x, y))
+        || (IS_OBSTRUCTED(loc ? loc.typ : STONE)
+            && ((f1 & M1_TUNNEL) === 0 || (f1 & M1_NEEDPICK) !== 0 || !may_dig_trap(x, y))
+            && !(passes_walls_flag(mdat) && may_passwall_trap(x, y)));
+}
+// C ref: hack.c:953 cant_squeeze_thru(&youmonst) — 0 fits, 1 too big,
+// 2 carrying too much, 3 Sokoban.  The bigmonst exemption's can_fog() term
+// cannot hold for the hero: is_vampshifter(&youmonst) needs set_uasmon()'s
+// u.mcham, which is only kept while the current form is a vampire or one of
+// its shapeshifted forms (bat, fog cloud, wolf), none of which is MZ_LARGE.
+function cant_squeeze_thru_hero() {
+    if (Passes_walls_fu()) return 0;
+    const ptr = youmonst_data_pub();
+    if ((ptr?.msize ?? 0) >= 3 /* MZ_LARGE */
+        && !(amorphous_flag(ptr)
+             || ptr?.mcls === S_VORTEX_MCLS || ptr?.pmidx === PM_AIR_ELEMENTAL_TRAP
+             || ptr?.mcls === S_GHOST_MCLS || (mflags1_of(ptr) & M1_SLITHY) !== 0))
+        return 1;
+    if (carried_weight() > WT_TOOMUCH_DIAGONAL) return 2;
+    if (game.level?.flags?.sokoban_rules) return 3;
+    return 0;
+}
+
+// C ref: hack.c:4079 crawl_destination(x,y) — drown()'s crawl-out target
+// test, and findtravelpath()'s gate on the travel-to-adjacent fast path.
+// C's block_door() both decides and prints "<shk> blocks your way!".  This
+// gate must stay synchronous for travel, so it decides with shk.c's predicate
+// half and reports the blocking shopkeeper through `blockedby.shkp`; the
+// caller publishes it with shk.js block_door_feedback() at that point in its
+// own (asynchronous) flow, as rnd_nextto_goodpos_hero() does below.
+export function crawl_destination(x, y, blockedby = null) {
+    if (!goodpos_for_hero(x, y)) return false;
+    const u = game.u;
+    if (x === u.ux || y === u.uy) return true; // orthogonal: unrestricted
+    if (u.Upolyd && u.umonnum === PM_GRID_BUG_TRAP) return false; /* NODIAG */
+    if (Passes_walls_fu()) return true;
+    /* pool could be next to a door, conceivably even inside a shop */
+    const loc = game.level?.at(x, y);
+    if (loc && IS_DOOR(loc.typ)) {
+        if (!doorless_door(x, y)) return false;
+        const shkp = shk_blocking_door(x, y);
+        if (shkp) {
+            if (blockedby) blockedby.shkp = shkp;
+            return false;
+        }
+    }
+    const mdat = youmonst_data_pub();
+    return !(bad_rock_hero(mdat, u.ux, y) && bad_rock_hero(mdat, x, u.uy)
+             && cant_squeeze_thru_hero());
+}
+
+// C ref: trap.c rnd_nextto_goodpos(&x,&y,&youmonst) — shuffle the 8 compass
+// directions (Fisher-Yates, matching C's dirs[] shuffle exactly so the PRNG
+// stream lines up) and return the first neighbor that passes
+// crawl_destination(), or null if none do.
+const CRAWL_XDIR = [-1, -1, 0, 1, 1, 1, 0, -1];
+const CRAWL_YDIR = [0, -1, -1, -1, 0, 1, 1, 1];
+async function rnd_nextto_goodpos_hero(x0, y0) {
+    const dirs = [0, 1, 2, 3, 4, 5, 6, 7];
+    for (let i = N_DIRS; i > 0; i--) {
+        const j = rn2(i);
+        const k = dirs[j];
+        dirs[j] = dirs[i - 1];
+        dirs[i - 1] = k;
+    }
+    for (let i = 0; i < N_DIRS; i++) {
+        const nx = x0 + CRAWL_XDIR[dirs[i]];
+        const ny = y0 + CRAWL_YDIR[dirs[i]];
+        const blockedby = { shkp: null };
+        if (crawl_destination(nx, ny, blockedby)) return { x: nx, y: ny };
+        if (blockedby.shkp) await block_door_feedback(blockedby.shkp);
+    }
+    return null;
+}
+
+// C ref: trap.c:4897 emergency_disrobe(lostsome) — while over-encumbered,
+// shed a random undroppable-excluded inventory item until unencumbered (or
+// nothing left to drop).  Returns TRUE once unencumbered, FALSE if items ran
+// out first.  `lostsomeRef`, if given, gets `.v = true` set the first time an
+// item is actually dropped (C's `*lostsome = TRUE`).  RNG: exactly one
+// rn2(invc) draw per while-iteration, plus whatever dropx()'s
+// flooreffects() draws for the item landing in the water.
+function inv_cnt_disrobe(includeGold) {
+    let n = 0;
+    for (const obj of inventoryArray()) if (includeGold || obj.oclass !== COIN_CLASS) ++n;
+    return n;
+}
+export async function emergency_disrobe(lostsomeRef) {
+    let invc = inv_cnt_disrobe(true);
+    while (near_capacity() > (Punished_fu() ? UNENCUMBERED : SLT_ENCUMBER)) {
+        let otmp = null;
+        if (invc > 0) {
+            let i = rn2(invc);
+            for (const obj of inventoryArray()) {
+                const undroppable =
+                    (obj.otyp === LOADSTONE && obj.cursed)
+                    || obj === game.uamul || obj === game.uleft || obj === game.uright
+                    || obj === game.ublindf || obj === game.uarm || obj === game.uarmc
+                    || obj === game.uarmg || obj === game.uarmf || obj === game.uarmu
+                    || (obj.cursed && (obj === game.uarmh || obj === game.uarms))
+                    || welded(obj) || obj.o_id === game.stealoid || obj.in_use;
+                if (!undroppable) otmp = obj;
+                if (--i < 0 && otmp) break;
+            }
+        }
+        if (!otmp) return false;
+        if (otmp.owornmask) await remove_worn_item(otmp, false);
+        if (lostsomeRef) lostsomeRef.v = true;
+        await dropx(otmp);
+        invc--;
+    }
+    return true;
+}
+
+// C ref: trap.c:5059 drown() — the hero is in, or has just entered, water.
+// Returns TRUE iff the hero changed location while surviving (crawled out,
+// teleported, was set down by a dismount, or was life-saved elsewhere), or
+// the game ended.
+export async function drown() {
+    const u = game.u;
+    const { waterbody_name: waterbody_name_full } = await import('./cmd.js');
+    const is_solid = is_waterwall(u.ux, u.uy);
+    let inpool_ok = false;
+
+    feel_newsym(u.ux, u.uy); /* in case Blind, map the water here */
+    /* happily wading in the same contiguous pool */
+    if (u.uinwater && is_pool(u.ux - (u.dx | 0), u.uy - (u.dy | 0))
+        && (Swimming_fu() || Amphibious_fu() || Breathless_fu())) {
+        /* water effects on objects every now and then */
+        if (!rn2(5)) inpool_ok = true;
+        else return false;
+    }
+
+    if (!u.uinwater) {
+        await update_topl(`You ${is_solid ? 'plunge' : 'fall'} into the ${
+            waterbody_name_full(u.ux, u.uy)}${
+            (Amphibious_fu() || Swimming_fu() || Breathless_fu()) ? '.' : '!'}`);
+        if (!Swimming_fu() && !is_solid)
+            await update_topl(`You sink like ${Hallucination_u() ? 'the Titanic' : 'a rock'}.`);
+    }
+
+    await water_damage_chain(inventoryArray(), false);
+
+    if (u.Upolyd && u.umonnum === PM_GREMLIN_TRAP && rn2(3)) {
+        const { split_mon } = await import('./potion.js');
+        await split_mon(game.youmonst || u, null);
+    } else if (u.Upolyd && u.umonnum === PM_IRON_GOLEM_TRAP) {
+        await update_topl('You rust!');
+        const dmg = Maybe_Half_Phys(d(2, 6));
+        if (u.mhmax > dmg) u.mhmax -= dmg;
+        await losehp(dmg, 'rusting away', KILLED_BY);
+        if (game.program_state?.gameover) return true;
+    }
+    if (inpool_ok) return false;
+
+    const { number_leashed, unleash_all } = await import('./apply.js');
+    const nleashed = number_leashed();
+    if (nleashed > 0) {
+        await update_topl(`The leash${nleashed > 1 ? 'es' : ''} slip${nleashed > 1 ? '' : 's'} loose.`);
+        unleash_all();
+    }
+
+    if (Amphibious_fu() || Breathless_fu() || Swimming_fu()) {
+        if (Amphibious_fu() || Breathless_fu()) {
+            if (game.flags?.verbose !== false)
+                await update_topl("But you aren't drowning.");
+            if (!Is_waterlevel(u.uz))
+                await update_topl(Hallucination_u() ? 'Your keel hits the bottom.'
+                                                    : 'You touch bottom.');
+        }
+        if (Punished_fu()) {
+            const { unplacebc, placebc } = await import('./ball.js');
+            unplacebc();
+            placebc();
+        }
+        vision_recalc(2); /* unsee old position */
+        const { set_uinwater } = await import('./do.js');
+        set_uinwater(1);
+        await under_water(1);
+        game.vision_full_recalc = 1;
+        return false;
+    }
+    if ((Teleportation_fu() || can_teleport_flag(youmonst_data_pub())) && !Unaware()
+        && (Teleport_control_fu() || rn2(3) < Luck_fu() + 2)) {
+        await update_topl('You attempt a teleport spell.'); /* utcsri!carroll */
+        const { noteleport_level, dotele } = await import('./teleport.js');
+        if (!noteleport_level({ data: youmonst_data_pub() })) {
+            await dotele(false);
+            if (game.program_state?.gameover) return true;
+            if (!is_pool(u.ux, u.uy)) return true;
+        } else {
+            await update_topl('The attempted teleport spell fails.');
+        }
+    }
+    if (u.usteed) {
+        await dismount_steed_fu(DISMOUNT_GENERIC);
+        if (game.program_state?.gameover) return true;
+        if (!is_pool(u.ux, u.uy)) return true;
+    }
+    /* if sleeping, wake up now so that we don't crawl out of water
+       while still asleep; C's unmul() also clears u.usleep and
+       multi_reason, which js/vault.js unmul() leaves to its callers */
+    if (u.usleep) {
+        const { unmul } = await import('./vault.js');
+        await unmul('Suddenly you wake up!');
+        u.usleep = 0;
+        game.multi_reason = null;
+    }
+    /* being doused will revive from fainting */
+    if ((u.uhs ?? 0) === FAINTED) {
+        const { reset_faint } = await import('./vault.js');
+        await reset_faint();
+    }
+
+    /* have to be able to move in order to crawl */
+    let spot = null;
+    if ((game.multi | 0) >= 0 && mmove_of(youmonst_data_pub())
+        && (spot = await rnd_nextto_goodpos_hero(u.ux, u.uy))) {
+        const lost = { v: false };
+        /* time to do some strip-tease... */
+        const succ = Is_waterlevel(u.uz) ? true : await emergency_disrobe(lost);
+
+        await update_topl(`You try to crawl out of the ${hliquid('water')}.`);
+        if (lost.v) await update_topl('You dump some of your gear to lose weight...');
+        if (succ) {
+            await update_topl('Pheew!  That was close.');
+            const { teleds } = await import('./teleport.js');
+            await teleds(spot.x, spot.y, TELEDS_ALLOW_DRAG);
+            return true;
+        }
+        /* still too much weight */
+        await update_topl('But in vain.');
+    }
+    const { set_uinwater } = await import('./do.js');
+    set_uinwater(1);
+    await urgent_topl('You drown.');
+    /* first pass is survivable by using up an amulet of life-saving or by
+       answering no to "Die?" in explore|wizard mode; second pass can only
+       be survivable via the latter */
+    const { done } = await import('./end.js');
+    const { formatkiller } = await import('./topten.js');
+    const { safe_teleds } = await import('./teleport.js');
+    for (let i = 0; i < 2; i++) {
+        /* killer format and name are reconstructed every iteration
+           because lifesaving resets them */
+        let pool_of_water = waterbody_name_full(u.ux, u.uy);
+        let format = KILLED_BY_AN;
+        /* avoid "drowned in [a] water" */
+        if (pool_of_water === 'water') {
+            pool_of_water = 'deep water';
+            format = KILLED_BY;
+        } else if (pool_of_water === 'limitless water') {
+            /* avoid "drowned in _a_ limitless water" on Plane of Water */
+            format = KILLED_BY;
+        }
+        game.killer = game.killer || { name: '', format: KILLED_BY_AN, id: 0, next: null };
+        game.killer.format = format;
+        game.killer.name = pool_of_water;
+        game._killer_name = formatkiller(BUFSZ, DROWNING, false);
+        await done(DROWNING);
+        if (game.program_state?.gameover) return true;
+        /* oops, we're still alive.  better get out of the water. */
+        if (await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT))
+            break; /* successful life-save */
+        /* nowhere safe to land; repeat drowning loop... */
+        await update_topl("You're still drowning.");
+    }
+
+    if (u.uinwater) set_uinwater(0);
+    await rescued_from_terrain(DROWNING);
+    return true;
+}
+
+// C ref: trap.c lava_effects() — the hero's inventory is flagged before any
+// lava messages.  `useupall()` itself calls obfree(), not delobj(), so these
+// are the only obj_resists draws for items burned by this path.
+const MAT_LIQUID_LAVA = 1, MAT_WOOD_LAVA = 8;
+function lava_burnable(obj) {
+    const mat = objects[obj?.otyp]?.material;
+    return (mat != null && mat > MAT_LIQUID_LAVA && mat <= MAT_WOOD_LAVA)
+        || obj?.oclass === POTION_CLASS;
+}
+
+function mark_lava_inventory() {
+    let protectedObj = null;
+    for (const obj of [...inventoryArray()]) {
+        // C reserves an item already being removed (for example, a stolen
+        // amulet) and leaves it available to the caller.
+        if (obj.in_use) {
+            if (!protectedObj) {
+                protectedObj = obj;
+                obj.in_use = 0;
+            }
+            continue;
+        }
+        if (lava_burnable(obj)
+            && !obj.oerodeproof
+            && objects[obj.otyp]?.oc_oprop !== FIRE_RES
+            && obj.otyp !== SCR_FIRE_OTYP
+            && obj.otyp !== SPE_FIREBALL_OTYP
+            && !obj_resists(obj, 0, 0)) {
+            obj.in_use = 1;
+        }
+    }
+    return protectedObj;
+}
+
+async function lava_burn_stuff(dmg) {
+    const { burnarmor, destroy_items, ignite_items } = await import('./zap.js');
+    // burnarmor() and the rn2(3) gate precede object destruction in C.
+    if (await burnarmor(game.u) || rn2(3)) {
+        await destroy_items(game.u, AD_FIRE, dmg);
+        await ignite_items(inventoryArray());
+    }
+}
+
+async function lava_effects() {
+    const u = game.u;
+    const { urgent_topl } = await import('./display.js');
+    const dmg = d(6, 6); // C declares this before checking resistance.
+    void dmg;
+
+    // C's initial usurvive test is deliberately before its wizard/debug
+    // override, so debug-mode sessions still flag ordinary inventory here.
+    const fire_resistance = !!(u.uprops?.Fire_resistance
+        || u.uprops?.HFire_resistance || u.uprops?.EFire_resistance
+        || u.Fire_resistance);
+    const water_walking = !!(u.uprops?.Wwalking
+        || u.uprops?.HWwalking || u.uprops?.EWwalking);
+    const hp = u.Upolyd ? (u.mh || 0) : (u.uhp || 0);
+    const usurvive_initial = fire_resistance || (water_walking && dmg < hp);
+    const protectedObj = !usurvive_initial ? mark_lava_inventory() : null;
+
+    await update_topl(`You fall into the ${waterbody_name(u.ux, u.uy)}!`);
+    game._killer_name = 'burned by molten lava';
+
+    // In debug/explore mode C survives the first death attempt, but the
+    // inventory has already been flagged above.  Remove each flagged item
+    // through useupall (obfree), preserving the pre-pass RNG ordering.
+    let burncount = 0, burnmesgcount = 0;
+    const wizard = !!game.flags?.debug;
+    const discover = !!(game.flags?.explore || game.flags?.discover
+                        || game.flags?.playmode === 'explore');
+    const usurvive = fire_resistance || usurvive_initial || wizard || discover;
+    for (const obj of [...inventoryArray()]) {
+        if (obj === protectedObj) {
+            obj.in_use = 1;
+            continue;
+        }
+        if (obj.otyp === SPE_BOOK_OF_THE_DEAD) continue;
+        if (!obj.in_use) continue;
+        if (obj.owornmask) {
+            if (usurvive) {
+                await update_topl(`${Yname2_dmg(obj)} ${otense(obj, 'burst')} into flame!`);
+                ++burnmesgcount;
+            }
+            await remove_worn_item(obj, true);
+        }
+        useupall(obj);
+        ++burncount;
+    }
+    if (usurvive && burncount > burnmesgcount) {
+        const remaining = burncount - burnmesgcount;
+        await update_topl(`${burnmesgcount ? (remaining === 1 ? 'Another' : 'Other')
+                                           : (remaining === 1 ? 'An' : 'Some')} `
+                          + `item${remaining === 1 ? '' : 's'} in your inventory `
+                          + `${remaining === 1 ? 'has' : 'have'} been destroyed.`);
+    }
+
+    // Fire resistance does not trigger the death loop.  C instead leaves the
+    // hero in lava with a timed trap and applies one point of damage.
+    if (fire_resistance) {
+        if (!water_walking && (!u.utrap || u.utraptype !== TT_LAVA)) {
+            u.utrap = rn1(4, 4) + (rn1(4, 12) << 8);
+            u.utraptype = TT_LAVA;
+            await update_topl(`You sink into the ${waterbody_name(u.ux, u.uy)}, `
+                              + 'but it only burns slightly.');
+            if ((u.uhp || 0) > 1)
+                await losehp(1, 'molten lava', KILLED_BY);
+        }
+        await lava_burn_stuff(dmg);
+        return false;
+    }
+    if (water_walking && usurvive_initial) {
+        await update_topl(`The ${waterbody_name(u.ux, u.uy)} here burns you!`);
+        await losehp(dmg, 'molten lava', KILLED_BY);
+        await lava_burn_stuff(dmg);
+        return false;
+    }
+    await urgent_topl('You burn to a crisp...');
+
+    const { done } = await import('./end.js');
+    // C retries death after each declined wizard/explore death prompt.  A
+    // life-saving attempt then uses safe_teleds(), whose first candidate is
+    // rnd(COLNO - 1), before terrain-rescue messaging.
+    for (let attempt = 0; attempt < 2; ++attempt) {
+        u.uhp = -1;
+        await done(BURNING);
+        if (game.program_state?.gameover) return true;
+        const { safe_teleds } = await import('./teleport.js');
+        const oldInLava = game._in_lava_effects;
+        game._in_lava_effects = true;
+        let teleported;
+        try {
+            teleported = await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT);
+        } finally {
+            if (oldInLava === undefined) delete game._in_lava_effects;
+            else game._in_lava_effects = oldInLava;
+        }
+        if (teleported) {
+            await rescued_from_terrain(BURNING);
+            await spoteffects(false);
+            return true;
+        }
+        if (attempt === 0) await update_topl("You're still burning.");
+    }
+    // After two failed rescue attempts C grants temporary fire resistance and
+    // returns through burn_stuff, preserving burnarmor/destroy/ignite order.
+    u.uprops = u.uprops || {};
+    const fireTimeout = u.uprops.HFire_resistance | 0;
+    u.uprops.HFire_resistance = (fireTimeout & ~TIMEOUT)
+        | (((fireTimeout & TIMEOUT) + 5) & TIMEOUT);
+    if (!water_walking) {
+        const walkTimeout = u.uprops.HWwalking | 0;
+        u.uprops.HWwalking = (walkTimeout & ~TIMEOUT)
+            | (((walkTimeout & TIMEOUT) + 5) & TIMEOUT);
+    }
+    await lava_burn_stuff(dmg);
+    return false;
+}
+
+// C ref: dbridge.c is_ice(x,y).  Module-private copy (matches the convention
+// duplicated in dungeon.js/muse.js/dothrow.js) since importing dungeon.js's
+// unexported private is_ice would require a re-export edit there.
+function is_ice_trap(x, y) {
+    if (!isok(x, y)) return false;
+    return game.level?.at(x, y)?.typ === ICE;
+}
+// C ref: youprop.h Levitation/Flying.  Module-private copies, same convention
+// as dungeon.js/ball.js/dig.js/dokick.js/do_wear.js.
+function Levitation_trap() { return !!game.u?.uprops?.Levitation; }
+function Flying_trap() { return !!game.u?.uprops?.Flying; }
+// C ref: objnam.c an(str)/the(str).  Module-private copies (duplicated the
+// same way in a dozen other files already).
+function an_trap(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
+function the_trap(s) { return /^[A-Z]/.test(s) ? s : `the ${s}`; }
+// C ref: pager.c ice_descr(x,y,outbuf) — the close-up branch picks a
+// thickness word from the MELT_ICE_AWAY countdown timer; that timer isn't
+// modelled anywhere in this port (js/wizterrainwish.js:405 documents the same
+// GAP for its own ice_descr), so this always reads "solid ice", matching a
+// freshly-formed or non-thawing ice tile.
+function ice_descr_trap(x, y) {
+    return is_ice_trap(x, y) ? 'solid ice' : surface(x, y);
+}
+
+
+// C ref: trap.c:5014 rescued_from_terrain(how) — life-saving or divine rescue
+// pulled the hero out of hostile terrain (drowning/lava) and either dropped
+// them somewhere unexpected or (overfull level) failed to move them at all,
+// so the generic "back on solid ground" line may be wrong; describe whatever
+// terrain the hero is actually standing on/in instead.  Consumes no RNG.
+// Called from the tails of drown()'s and lava_effects()'s life-saving loops.
+export async function rescued_from_terrain(how) {
+    const u = game.u;
+    const find_yourself = 'find yourself';
+    const loc = game.level?.at(u.ux, u.uy) || {};
+    let mesggiven = false;
+
+    switch (how) {
+    case DROWNING:
+        if (is_pool(u.ux, u.uy)) {
+            const mid = (Is_waterlevel(u.uz) || IS_WATERWALL(loc.typ))
+                ? 'in the midst' : 'on top';
+            await pline(`You ${find_yourself} ${mid} of ${surface_liquid_word()}.`);
+            mesggiven = true;
+        } else if (IS_AIR(loc.typ)) {
+            const where = Is_waterlevel(u.uz) ? 'an air bubble' : 'mid air';
+            await pline(`You ${find_yourself} in ${where}.`);
+            mesggiven = true;
+        }
+        break;
+    case BURNING:   /* moved onto lava without fire resistance */
+    case DISSOLVED: /* sunk into lava while fire resistant */
+        if (is_pool(u.ux, u.uy)) {
+            await pline(`You ${find_yourself} ${u.uinwater ? 'in' : 'on'} ${surface_liquid_word()}.`);
+            mesggiven = true;
+        } else if (is_lava(u.ux, u.uy)) {
+            await pline(`You ${find_yourself} on top of molten lava.`);
+            mesggiven = true;
+        }
+        break;
+    default:
+        break;
+    }
+    if (!mesggiven) await back_on_ground(true);
+
+    game.last_msg = PLNMSG_BACK_ON_GROUND; /* for describe_decor() */
+    /* feedback just disclosed this */
+    update_lastseentyp(u.ux, u.uy);
+    game.iflags = game.iflags || {};
+    game.iflags.prev_decor = game.lastseentyp?.[u.ux]?.[u.uy] ?? STONE;
+}
+// C ref: pager.c waterbody_name()'s "water"/hliquid("water") word, the piece
+// rescued_from_terrain's DROWNING/BURNING/DISSOLVED arms name-check via
+// is_pool rather than through the full waterbody_name() phrase.
+function surface_liquid_word() { return hliquid('water'); }
+
+// C ref: hack.c:3233 pooleffects(newspot) — leaving water, then entering
+// water or lava.  `newspot` is TRUE when called by spoteffects(), FALSE from
+// the per-turn moveloop check and from property changes made while in water.
+// Returns TRUE when the rest of spoteffects() should be skipped.
+export async function pooleffects(newspot) {
+    const u = game.u;
+    /* check for leaving water */
+    if (u.uinwater) {
+        let still_inwater = false; /* assume we're getting out */
+
+        if (!is_pool(u.ux, u.uy)) {
+            if (Is_waterlevel(u.uz)) {
+                await pline('You pop into an air bubble.');
+                game.last_msg = PLNMSG_BACK_ON_GROUND;
+            } else if (is_lava(u.ux, u.uy)) {
+                await pline(`You leave the ${hliquid('water')}...`); /* oops! */
+            } else {
+                await back_on_ground(false);
+            }
+        } else if (Is_waterlevel(u.uz)) {
+            still_inwater = true;
+        } else if (Levitation_fu()) {
+            await pline(`You pop out of the ${hliquid('water')} like a cork!`);
+        } else if (Flying_fu()) {
+            await pline(`You fly out of the ${hliquid('water')}.`);
+        } else if (Wwalking_fu()) {
+            await pline('You slowly rise above the surface.');
+        } else {
+            still_inwater = true;
+        }
+        if (!still_inwater) {
+            const was_underwater = !!u.uinwater && !Is_waterlevel(u.uz);
+            const { set_uinwater } = await import('./do.js');
+            set_uinwater(0); /* leave the water */
+            if (was_underwater) { /* restore vision */
+                await docrt();
+                game.vision_full_recalc = 1;
+            }
+        }
+    }
+
+    /* check for entering water or lava */
+    if (!u.ustuck && !Levitation_fu() && !Flying_fu()
+        && (is_pool(u.ux, u.uy) || is_lava(u.ux, u.uy))) {
+        if (u.usteed && !grounded_fu(u.usteed.data)) {
+            /* floating or clinging steed keeps hero safe */
+            return false;
+        } else if (u.usteed) {
+            /* steed enters pool */
+            await dismount_steed_fu(u.uinwater ? DISMOUNT_FELL : DISMOUNT_GENERIC);
+            /* dismount_steed() -> float_down() -> pickup()
+               (float_down doesn't do autopickup on Air or Water) */
+            if (Is_airlevel(u.uz) || Is_waterlevel(u.uz))
+                return false;
+            /* even if we actually end up at same location, float_down()
+               has already done trap and pickup actions of spoteffects() */
+            if (newspot)
+                await check_special_room(false); /* spoteffects */
+            return true;
+        }
+        /* not mounted */
+
+        /* if hiding on ceiling then don't automatically enter pool */
+        if (u.Upolyd && ceiling_hider_fu(youmonst_data_pub()) && u.uundetected)
+            return false;
+
+        /* drown(),lava_effects() return true if hero changes
+           location while surviving the problem */
+        if (is_lava(u.ux, u.uy)) {
+            if (await lava_effects())
+                return true;
+        } else if ((!Wwalking_fu() || is_waterwall(u.ux, u.uy))
+                   && (newspot || !u.uinwater
+                       || !(Swimming_fu() || Amphibious_fu() || Breathless_fu()))) {
+            if (await drown())
+                return true;
+        }
+    }
+    return false;
+}
+
+const LEVITATION_BOOTS_SF = 172;  // mkobj.js otyp (do_wear.js's own copy)
+const RIN_LEVITATION_SF = 183;    // mkobj.js otyp (invent.js's own copy)
+
+// C ref: hack.c:836 dosinkfall() — the hero is Levitating while standing on
+// a sink (a rare Sink-room square).  Either the levitation wobbles/holds (an
+// outside/form-granted or terrain-blocked source, or the hero is already
+// Flying) or it crashes the hero onto the sink (an ordinary timed potion/
+// spell/wand source).  Called from spoteffects() below.
+//
+// This port's Levitation is a single packed `u.uprops.Levitation` timeout
+// (js/timeout.js:357-361) with no worn-item extrinsic — js/do_wear.js:330
+// "the extrinsic itself rides on the worn mask (deferred: levitation)" — so
+// `lev_boots` and the Ring_off/Boots_off tail below can never actually fire
+// in current play; ported anyway, faithfully, in case worn-item levitation
+// is modelled later.
+async function dosinkfall() {
+    const u = game.u;
+    const fell_on_sink = 'fell onto a sink';
+    const levbits = (u.uprops?.Levitation | 0) || (u.uprops?.HLevitation | 0)
+                  || (u.uprops?.ELevitation | 0);
+    const lev_boots = game.uarmf?.otyp === LEVITATION_BOOTS_SF;
+    const innate_lev = (levbits & (FROMOUTSIDE | FROM_FORM)) !== 0;
+    const blockd_lev = (u.uprops?.BLevitation | 0) === I_SPECIAL;
+    const flying = !!(u.uprops?.Flying || u.HFlying || u.EFlying);
+    const ufall = !innate_lev && !blockd_lev && !flying;
+
+    if (!ufall) {
+        await pline((innate_lev || blockd_lev)
+            ? 'You wobble unsteadily for a moment.'
+            : 'You gain control of your flight.');
+    } else {
+        await pline('You crash to the floor!');
+        const dmg = rn1(8, 25 - acurr_eff(A_CON));
+        await losehp(Maybe_Half_Phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
+        exercise(A_DEX, false);
+        await selftouch('Falling, you');
+        for (const obj of (game.level?.objects || [])) {
+            if (obj.ox !== u.ux || obj.oy !== u.uy) continue;
+            if (obj.where !== 'floor' && obj.where !== 1) continue;
+            if (obj.oclass === WEAPON_CLASS || is_weptool(obj)) {
+                await pline(`You fell on ${obj_doname(obj)}.`);
+                await losehp(Maybe_Half_Phys(rnd(3)), fell_on_sink, NO_KILLER_PREFIX);
+                exercise(A_CON, false);
+            }
+        }
+    }
+
+    if (ufall || lev_boots) {
+        await stop_donning(lev_boots ? game.uarmf : null);
+    }
+
+    /* C: ELevitation &= ~W_ARTI; HLevitation &= ~(I_SPECIAL|TIMEOUT);
+       end any timed/worn-artifact levitation source now, across every field
+       name this port's Levitation() helpers read (see js/dbridge.js HProp). */
+    if (u.uprops) {
+        u.uprops.Levitation = (u.uprops.Levitation | 0) & ~(I_SPECIAL | TIMEOUT);
+        if (u.uprops.HLevitation !== undefined)
+            u.uprops.HLevitation = (u.uprops.HLevitation | 0) & ~(I_SPECIAL | TIMEOUT);
+        if (u.uprops.ELevitation !== undefined)
+            u.uprops.ELevitation = (u.uprops.ELevitation | 0) & ~W_ARTI;
+    }
+    if (game.uleft?.otyp === RIN_LEVITATION_SF) {
+        const obj = game.uleft;
+        await Ring_off(obj);
+        await off_msg(obj);
+    }
+    if (game.uright?.otyp === RIN_LEVITATION_SF) {
+        const obj = game.uright;
+        await Ring_off(obj);
+        await off_msg(obj);
+    }
+    if (lev_boots) {
+        const obj = game.uarmf;
+        await Boots_off();
+        await off_msg(obj);
+    }
+    float_vs_flight();
+}
+
+// C ref: hack.c:3312 spoteffects(pick) — run the per-square effects after
+// the hero arrives on (or is changed on) a tile.  `pick` is C's boolean: a
+// truthy value runs pickup(1), i.e. cmd.js pickup_after_move() at the hero's
+// CURRENT position, so re-entrant calls (drown -> teleds -> spoteffects)
+// pick up where the hero actually lands.
+// C's static recursion guards: a hero poly'd into an iron golem who rusts
+// in drown() can rehumanize, whose own spoteffects() must not re-run the
+// pool at the same spot; spottrap stops a fire trap's melt_ice() from
+// re-triggering the same trap.
+let inspoteffects = 0;
+let spotloc = { x: 0, y: 0 };
+let spotterrain = STONE;
+let spottrap = null;
+let spottraptyp = NO_TRAP;
+export async function spoteffects(pick) {
+    const u = game.u;
+    if (!u) return;
+    const trap = t_at(u.ux, u.uy);
+    const trapflag = game.iflags?.failing_untrap ? FAILEDUNTRAP : 0;
+    const terrain_here = game.level?.at(u.ux, u.uy)?.typ ?? STONE;
+
+    if (inspoteffects && u.ux === spotloc.x && u.uy === spotloc.y
+        /* except when reason is transformed terrain (ice -> water) */
+        && spotterrain === terrain_here
+        /* or transformed trap (land mine -> pit) */
+        && (!spottrap || !trap || trap.ttyp === spottraptyp))
+        return;
+
+    ++inspoteffects;
+    spotterrain = terrain_here;
+    spotloc = { x: u.ux, y: u.uy };
+    try {
+        if (await pooleffects(true)) return;
+
+        await check_special_room(false);
+        // C ref: hack.c:3353 — `if (IS_SINK(...) && Levitation) dosinkfall();`
+        if (IS_SINK(game.level?.at(u.ux, u.uy)?.typ) && Levitation_fu())
+            await dosinkfall();
+        if (!game.in_steed_dismounting) { /* if dismounting, check again later */
+            let spot_trap = trap;
+            let spot_pick = pick;
+            /* if levitation is due to time out at the end of this turn,
+               allowing it to do so could give the perception that a trap
+               here is being triggered twice, so adjust the timeout */
+            // timeout.js TIMED_PROPS reads the LEVITATION timer; a polymorphed
+            // floater's set_uasmon() form bit is stored as the bare value 1
+            // and counts as a non-timeout source (C's FROMFORM bit).
+            const { timed_prop } = await import('./timeout.js');
+            const levslot = timed_prop('LEVITATION');
+            const hlev = u.uprops?.Levitation | 0;
+            const levtimer = levslot.get(u);
+            const lev_other = (u.Upolyd && hlev === 1) || (hlev & ~(I_SPECIAL | TIMEOUT));
+            if (spot_trap && levtimer === 1
+                && !(worn_extrinsic(LEVITATION) || lev_other)) {
+                if (rn2(2)) { /* defer timeout */
+                    levslot.set(u, levtimer + 1);
+                } else if (await float_down(I_SPECIAL | TIMEOUT, 0)) { /* timeout early */
+                    /* levitation has ended; we've already triggered any
+                       trap and [usually] performed autopickup */
+                    spot_trap = null;
+                    spot_pick = false;
+                }
+                if (game.program_state?.gameover) return;
+            }
+            const pit = !!(spot_trap && is_pit_ttyp(spot_trap.ttyp));
+            const { pickup_after_move } = await import('./cmd.js');
+            /* If not a pit, pickup before triggering trap.
+               If pit, trigger trap before pickup. */
+            if (spot_pick && !pit) await pickup_after_move(u.ux, u.uy);
+            if (spot_trap && (!spottrap || spottraptyp !== spot_trap.ttyp)) {
+                /* dotrap on a fire trap calls melt_ice() which triggers
+                   spoteffects() (again) which can trigger the same fire
+                   trap (again); spottrap prevents that */
+                spottrap = spot_trap;
+                spottraptyp = spot_trap.ttyp;
+                await dotrap(spot_trap, trapflag);
+                spottrap = null;
+                spottraptyp = NO_TRAP;
+            }
+            if (spot_pick && pit) await pickup_after_move(u.ux, u.uy);
+        }
+    } finally {
+        if (!--inspoteffects) {
+            spotterrain = STONE;
+            spotloc = { x: 0, y: 0 };
+        }
+    }
+}
+
+// ── rolling boulder trap (hero) ──────────────────────────────────────────────
+// C ref: trap.c:2560 trapeffect_rolling_boulder_trap() + trap.c:3260 launch_obj().
+// The trap used to fall into dotrap()'s `default:` (seetrap only), so the
+// boulder never moved and thitu()'s rnd(20) was never drawn.
+export const ROLL = 0x0100, LAUNCH_UNSEEN = 0x0200, LAUNCH_KNOWN = 0x0400;
+
+// C ref: trap.c:3222 launch_drop_spot(obj,x,y) / :3236 launch_in_progress() /
+// :3244 force_launch_placement() — bookkeeping for a boulder/statue mid-
+// flight in launch_obj(): if the hero dies (e.g. thitu() below is fatal)
+// before launch_obj() reaches its own final place_object() call, C's done()
+// terminates the process without ever returning to that call frame, so the
+// launched object would otherwise vanish from the bones file.  gl.launchplace
+// records where to drop it instead; end.c's really_done() consults it via
+// launch_in_progress()/force_launch_placement() just before deciding bones_ok.
+function launch_drop_spot(obj, x, y) {
+    game.launchplace = obj ? { obj, x, y } : { obj: null, x: 0, y: 0 };
+}
+export function launch_in_progress() { return !!game.launchplace?.obj; }
+export function force_launch_placement() {
+    const lp = game.launchplace;
+    if (lp?.obj) {
+        lp.obj.otrapped = 0;
+        place_object(lp.obj, lp.x, lp.y);
+    }
+}
+
+function feeltrap(trap) { if (!trap) return; trap.tseen = true; newsym(trap.tx, trap.ty); }
+function sgn_(n) { return n > 0 ? 1 : (n < 0 ? -1 : 0); }
+function distmin_(x0, y0, x1, y1) {
+    const dx = Math.abs(x0 - x1), dy = Math.abs(y0 - y1);
+    return dx > dy ? dx : dy;
+}
+// (sobj_at_floor is js/trap.js:1692 — note it returns the LAST match on the
+// square, where C's sobj_at() returns the head of the nexthere chain.)
+
+async function trapeffect_rolling_boulder_trap(trap, _trflags) {
+    const style = ROLL | (trap.tseen ? LAUNCH_KNOWN : 0);
+    feeltrap(trap);
+    await pline('Click!  You trigger a rolling boulder trap!');
+    game._toplin = 1;
+    const r = await launch_obj(BOULDER, trap.launch.x, trap.launch.y,
+                               trap.launch2.x, trap.launch2.y, style);
+    if (!r) {
+        if (style & LAUNCH_KNOWN) await pline('No boulder was released.');
+        else await pline('Fortunately for you, no boulder was released.');
+    }
+}
+
+// C ref: trap.c:3260 launch_obj() — the single port behind both rolling-
+// boulder triggers (hero above, monster in monmove.js mon_mintrap) and the
+// pushed-boulder-onto-trap path (cmd.js).  Returns 0 = nothing launched,
+// 1 = launched and placed, 2 = launched and used up.  Not modelled: the
+// down_gate()/ship_object() arm and the per-trap switch for traps lying in
+// the path (land mine, teleporters, pits/holes beyond flooreffects()).
+export async function launch_obj(otyp, x1, y1, x2, y2, style) {
+    const u = game.u;
+    const { thitu, ohitmon } = await import('./monmove.js');
+    const { dmgval } = await import('./uhitm.js');
+    const { flooreffects } = await import('./do.js');
+    const { flash_obj_glyph, show_glyph_cell, You_hear, Deaf_hero } = await import('./display.js');
+    const { wake_nearto } = await import('./cmd.js');
+    let otmp = sobj_at_floor(otyp, x1, y1);
+    let otherside = false;
+    if (!otmp && otyp === BOULDER) { otherside = true; otmp = sobj_at_floor(otyp, x2, y2); }
+    if (!otmp) return 0;
+    if (otherside) { const tx = x1, ty = y1; x1 = x2; y1 = y2; x2 = tx; y2 = ty; }
+    let singleobj;
+    if ((otmp.quan || 1) === 1) {
+        obj_extract_self(otmp);
+        singleobj = otmp;
+    } else {
+        singleobj = splitobj(otmp, 1);
+        obj_extract_self(singleobj);
+    }
+    // C's remove_object() recalcs a boulder's blocker; this port's floor
+    // extraction does not, so do it here (and after every extraction below).
+    if (otyp === BOULDER) recalc_block_point(x1, y1);
+    newsym(x1, y1);
+    let dist = distmin_(x1, y1, x2, y2);
+    let x = x1, y = y1;
+    const dx = sgn_(x2 - x1), dy = sgn_(y2 - y1);
+    let used_up = false;
+    if (style === (ROLL | LAUNCH_UNSEEN)) {
+        if (otyp === BOULDER) {
+            if (cansee(x1, y1)) {
+                await pline(`You see ${an(xname(singleobj))} start to roll.`);
+            } else if (Hallucination_u()) {
+                await You_hear('someone bowling.');
+            } else {
+                const du = (x1 - u.ux) ** 2 + (y1 - u.uy) ** 2;
+                await You_hear(`rumbling ${du <= 4 * 4 ? 'nearby' : 'in the distance'}.`);
+            }
+        }
+        style &= ~LAUNCH_UNSEEN;
+    } else if (style === (ROLL | LAUNCH_KNOWN)) {
+        singleobj.otrapped = 1;   /* a flag for ohitmon */
+        style &= ~LAUNCH_KNOWN;
+    }
+    // tmp_at(DISP_FLASH, obj_to_glyph(singleobj, rn2_on_display_rng)) and
+    // tmp_at(x, y) at the TOP of each step (the PRE-move square), then
+    // tmp_at(DISP_END).  The flash trails one square behind the boulder, so a
+    // --More-- raised mid-roll shows the glyph on that trailing square.
+    const fglyph = flash_obj_glyph(singleobj);
+    let fx = -1, fy = -1;
+    const flash_at = (ax, ay) => {
+        if (fx >= 0) { newsym(fx, fy); fx = fy = -1; }
+        if (!cansee(ax, ay)) return;
+        show_glyph_cell(ax, ay, fglyph.ch, fglyph.color, fglyph.dec);
+        fx = ax; fy = ay;
+    };
+    flash_at(x, y);
+    // C ref: trap.c:3361 launch_drop_spot(singleobj, x, y) — the flight's start.
+    launch_drop_spot(singleobj, x, y);
+    while (dist-- > 0 && !used_up) {
+        flash_at(x, y);
+        if (!isok(x + dx, y + dy)) { x2 = x; y2 = y; break; }
+        x += dx; y += dy;
+        const mtmp = m_at(x, y);
+        if (mtmp) {
+            if (otyp === BOULDER && throws_rocks_flag(mtmp.data) && rn2(3)) {
+                if (cansee(x, y)) {
+                    const { Monnam } = await import('./do_name.js');
+                    await pline(`${Monnam(mtmp)} snatches the boulder.`);
+                }
+                singleobj.otrapped = 0;
+                const { mpickobj } = await import('./steal.js');
+                mpickobj(mtmp, singleobj);
+                used_up = true;
+                launch_drop_spot(null, 0, 0);
+                break;
+            }
+            if (await ohitmon(mtmp, singleobj, (style === ROLL) ? -1 : dist, false, x, y, null)) {
+                used_up = true;
+                launch_drop_spot(null, 0, 0);
+                break;
+            }
+        } else if (u && u.ux === x && u.uy === y) {
+            const { youmonst_data_pub } = await import('./invent.js');
+            const dam = dmgval(singleobj, { data: youmonst_data_pub() });
+            if (game.multi) await trap_nomul();
+            if (await thitu(9 + (singleobj.spe || 0), Maybe_Half_Phys(dam), singleobj)) {
+                const { stop_occupation } = await import('./hack.js');
+                await stop_occupation();
+            }
+        }
+        if (style === ROLL) {
+            // C ref: trap.c:3421 — an object rolling over a down gate rides it
+            // to the level below.  ship_object() spends its rn2(3) "stays put"
+            // roll even for a boulder, which then returns FALSE and plugs the
+            // hole through flooreffects() below.
+            const { down_gate, ship_object } = await import('./dokick.js');
+            if (down_gate(x, y) !== MIGR_NOWHERE) {
+                if (await ship_object(singleobj, x, y, false)) {
+                    used_up = true;
+                    launch_drop_spot(null, 0, 0);
+                    break;
+                }
+            }
+            // C ref: trap.c:3427 — a rolling BOULDER interacts with the trap it
+            // rolls onto before the generic flooreffects() pass.
+            const t = t_at(x, y);
+            if (t && otyp === BOULDER) {
+                let handled = false, stop = false;
+                if (t.ttyp === LANDMINE) {
+                    if (rn2(10) > 2) {
+                        await pline(`KAABLAMM!!!${cansee(x, y)
+                            ? '  The rolling boulder triggers a land mine.' : ''}`);
+                        deltrap(t);
+                        const { del_engr_at } = await import('./engrave.js');
+                        del_engr_at(x, y);
+                        place_object(singleobj, x, y);
+                        singleobj.otrapped = 0;
+                        const { fracture_rock } = await import('./dig.js');
+                        await fracture_rock(singleobj);
+                        const { scatter } = await import('./explode.js');
+                        await scatter(x, y, 4,
+                                      MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS,
+                                      null);
+                        if (cansee(x, y)) newsym(x, y);
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
+                    handled = true;
+                } else if (t.ttyp === LEVEL_TELEP || t.ttyp === TELEP_TRAP) {
+                    let newlev = 0, go = true;
+                    if (t.ttyp === LEVEL_TELEP) {
+                        /* 20% chance of picking current level; 100% for that
+                           in a single-level branch or the endgame */
+                        const { random_teleport_level } = await import('./do.js');
+                        newlev = random_teleport_level();
+                        if (newlev === depth(game.u?.uz)) go = false;
+                    }
+                    if (go) {
+                        if (cansee(x, y))
+                            await pline('Suddenly the rolling boulder disappears!');
+                        else if (!Deaf_hero())
+                            await You_hear('a rumbling stop abruptly.');
+                        singleobj.otrapped = 0;
+                        if (t.ttyp === TELEP_TRAP) {
+                            const { rloco } = await import('./teleport.js');
+                            await rloco(singleobj);
+                        } else {
+                            const { add_to_migration } = await import('./mkobj.js');
+                            const { get_level } = await import('./do.js');
+                            add_to_migration(singleobj);
+                            const dest = get_level(newlev);
+                            singleobj.ox = dest.dnum;
+                            singleobj.oy = dest.dlevel;
+                            singleobj.owornmask = MIGR_RANDOM;
+                        }
+                        seetrap(t);
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
+                    handled = true;
+                } else if (t.ttyp === PIT || t.ttyp === SPIKED_PIT
+                           || t.ttyp === HOLE || t.ttyp === TRAPDOOR) {
+                    /* the boulder won't be used up if there is a monster in
+                       the trap; stop rolling anyway */
+                    x2 = x; y2 = y;
+                    if (await flooreffects(singleobj, x2, y2, 'fall')) {
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
+                    stop = true;      // C: dist = -1, "stop rolling immediately"
+                    handled = true;
+                }
+                if (handled && (used_up || stop)) break;
+            }
+            if (await flooreffects(singleobj, x, y, 'fall')) {
+                used_up = true;
+                launch_drop_spot(null, 0, 0);
+                break;
+            }
+            const otmp2 = (otyp === BOULDER) ? sobj_at_floor(BOULDER, x, y) : null;
+            if (otmp2) {
+                // C ref: trap.c:3514 — one boulder sets the next in motion.
+                const nx = x + dx, ny = y + dy;
+                const bmsg = (!isok(nx, ny) || !dist
+                              || IS_OBSTRUCTED(game.level?.at(nx, ny)?.typ))
+                    ? ' as one boulder hits another'
+                    : ' as one boulder sets another in motion';
+                await You_hear(`a loud crash${cansee(x, y) ? bmsg : ''}!`);
+                obj_extract_self(otmp2);
+                recalc_block_point(x, y);
+                otmp2.otrapped = singleobj.otrapped;
+                singleobj.otrapped = 0;
+                place_object(singleobj, x, y);
+                singleobj = otmp2;
+                await wake_nearto(x, y, 10 * 10);
+            }
+        }
+        if (otyp === BOULDER && closed_door(x, y)) {
+            if (cansee(x, y)) await pline('The boulder crashes through a door.');
+            game.level.at(x, y).doormask = D_BROKEN;
+            if (dist) recalc_block_point(x, y);
+        }
+        if (dist > 0 && isok(x + dx, y + dy)) {
+            const typ = game.level?.at(x + dx, y + dy)?.typ;
+            if (typ === IRONBARS) {
+                x2 = x; y2 = y;
+                const { hits_bars } = await import('./mthrowu.js');
+                if (hits_bars(singleobj, !rn2(20))) break;
+            } else if (IS_STWALL(typ) || IS_TREE(typ)) {
+                x2 = x; y2 = y;
+                if (!Deaf_hero()) await pline('Thump!');
+                await wake_nearto(x2, y2, 16);
+                break;
+            }
+        }
+    }
+    if (fx >= 0) newsym(fx, fy);   /* tmp_at(DISP_END, 0) */
+    // C ref: trap.c:3567 — launch_drop_spot((struct obj *)0,0,0), unconditional,
+    // right after the flight loop ends and before the final placement below.
+    launch_drop_spot(null, 0, 0);
+    if (!used_up) {
+        singleobj.otrapped = 0;
+        place_object(singleobj, x2, y2);
+        newsym(x2, y2);
+        return 1;
+    }
+    return 2;
+}
+
+// C ref: trap.c:7197 trap_sanity_check() — the 'sanity_check' option's trap
+// list audit (game.level.traps is the ftrap chain; order doesn't matter here).
+export async function trap_sanity_check() {
+    const traps = game.level?.traps;
+    if (!Array.isArray(traps)) return;
+    for (const ttmp of traps) {
+        if (!isok(ttmp.tx, ttmp.ty))
+            await impossible(`trap sanity: location (${ttmp.tx},${ttmp.ty})`);
+        if (ttmp.ttyp <= NO_TRAP || ttmp.ttyp >= TRAPNUM)
+            await impossible(`trap sanity: type (${ttmp.ttyp})`);
+    }
+}
+
+// ═══ trap.c:3857 minstapetrify / trap.c:3912 mselftouch / trap.c:6100-6289 ══
+// openholdingtrap / closeholdingtrap / openfallingtrap ══════════════════════
+// Instant petrification helpers for a MONSTER (never the hero — the hero's
+// equivalents are selftouch()/instapetrify(), already ported), plus the three
+// magic-unlock/lock trap-state helpers used by wands of opening/locking and
+// by clairvoyance-style trap reveals.
+
+// C ref: monst.h resists_ston(mon).
+const MR_STONE_TR = 0x80;
+function resists_ston_tr(mon) { return ((mon?.data?.mresists | 0) & MR_STONE_TR) !== 0; }
+
+// C ref: mondata.h:200 touch_petrifies(ptr) — cockatrice/chickatrice only.
+function touch_petrifies_tr(ptr) {
+    return ptr?.name === 'cockatrice' || ptr?.name === 'chickatrice';
+}
+
+// C ref: mondata.c:80 poly_when_stoned(ptr) — a non-stone golem turns into a
+// stone golem instead of a statue, unless stone golems are genocided.
+const S_GOLEM_TR = 55;
+function poly_when_stoned_tr(ptr) {
+    if (!ptr || ptr.mcls !== S_GOLEM_TR || ptr.name === 'stone golem') return false;
+    const idx = name_to_pmidx('stone golem');
+    return idx >= 0 && !genocided_pm(idx);
+}
+
+// C ref: worn.c MON_WEP(mon) — the monster's wielded weapon.
+function mon_wep_tr(mon) { return mon?.mw || null; }
+
+// C ref: mon.c m_next2u(mon) — adjacent to the hero.
+function m_next2u_tr(mon) {
+    const u = game.u;
+    if (!u || !mon) return false;
+    return Math.abs((mon.mx | 0) - (u.ux | 0)) <= 1
+        && Math.abs((mon.my | 0) - (u.uy | 0)) <= 1;
+}
+
+// C ref: trap.c the_your[] indexed by trap->madeby_u ("the"/"your").
+function the_your_tr(madeby_u) { return madeby_u ? 'your' : 'the'; }
+
+// C ref: mon.c:3857 minstapetrify(mon, byplayer) — a monster is instantly
+// petrified.  A vampshifter reverts instead (vamp_stone); a non-stone golem
+// becomes a stone golem (poly_when_stoned/mon_to_stone); otherwise the
+// monster becomes a statue, either via the hero's kill-credit path
+// (byplayer, killed()/xkilled()) or monstone() with no hero credit.
+export async function minstapetrify(mon, byplayer) {
+    if (!mon || resists_ston_tr(mon)) return;
+    if (poly_when_stoned_tr(mon.data)) {
+        const { mon_to_stone } = await import('./mon.js');
+        await mon_to_stone(mon);
+        return;
+    }
+    const { vamp_stone } = await import('./mon.js');
+    if (!(await vamp_stone(mon))) return;
+
+    // "<mon> is slowing down"-equivalent intrinsic-speed removal
+    // (worn.c mon_adjust_speed(mon, -3, NULL)), then the statue message.
+    const { mon_adjust_speed } = await import('./muse.js');
+    await mon_adjust_speed(mon, -3, null);
+
+    const { Monnam } = await import('./uhitm.js');
+    if (cansee(mon.mx, mon.my))
+        await pline(`${Monnam(mon)} turns to stone.`);
+    if (byplayer) {
+        // C ref: mon.c:3866 `gs.stoned = TRUE; xkilled(mon, XKILL_NOMSG);` --
+        // killed() routes a stoned kill through monstone() and skips the
+        // treasure/corpse block.
+        const { killed } = await import('./uhitm.js');
+        game.stoned = true;
+        await killed(mon, { nomsg: true });
+    } else {
+        const { monstone_mm } = await import('./mhitm.js');
+        await monstone_mm(mon);
+    }
+}
+
+// C ref: mon.c:3912 mselftouch(mon, arg, byplayer) — a monster wielding a
+// cockatrice/chickatrice corpse touches itself (falling, losing gloves,
+// polymorphing) and risks instant petrification.
+export async function mselftouch(mon, arg, byplayer) {
+    if (!mon) return;
+    const mwep = mon_wep_tr(mon);
+    if (!mwep || mwep.otyp !== CORPSE || !touch_petrifies_tr(monster_by_pmidx(mwep.corpsenm))
+        || resists_ston_tr(mon))
+        return;
+    if (cansee(mon.mx, mon.my)) {
+        const { Monnam, mon_nam } = await import('./uhitm.js');
+        await pline(`${arg || ''}${arg ? mon_nam(mon) : Monnam(mon)} touches the ${xname(mwep)}.`);
+    }
+    await minstapetrify(mon, byplayer);
+    const { which_armor } = await import('./worn.js');
+    if (!DEADMONSTER(mon) && !which_armor(mon, W_ARMG) && !resists_ston_tr(mon)) {
+        const { mwepgone } = await import('./weapon.js');
+        mwepgone(mon);
+    }
+}
+
+// C ref: trap.c:6100 openholdingtrap(mon, noticed) — for magic unlocking;
+// releases 'mon' (hero or monster) from a bear trap or web.  `noticed` is
+// C's `boolean *noticed` out-param: { value }.
+export async function openholdingtrap(mon, noticed) {
+    if (!mon) return false;
+    const u = game.u;
+    const ishero = (mon === u || mon === game.youmonst || (!!u && mon === u.usteed));
+    const t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my);
+
+    let trapdescr, which;
+    if (ishero && u.utrap) {
+        which = (!t || !t.tseen || !t.madeby_u) ? 'the' : 'your';
+        switch (u.utraptype) {
+        case TT_LAVA: trapdescr = 'molten lava'; break;
+        case TT_INFLOOR: trapdescr = 'ground'; break;
+        case TT_BURIEDBALL: trapdescr = 'your anchor'; which = ''; break;
+        case TT_BEARTRAP: case TT_PIT: case TT_WEB:
+            trapdescr = trapname(t ? t.ttyp
+                : (u.utraptype === TT_WEB ? WEB : u.utraptype === TT_PIT ? PIT : BEAR_TRAP), false);
+            break;
+        default: trapdescr = 'trap'; break;
+        }
+    } else {
+        if (!t || (t.ttyp !== BEAR_TRAP && t.ttyp !== WEB)) return false;
+        trapdescr = trapname(t.ttyp, false);
+    }
+    if (which == null)
+        which = (t && t.tseen) ? the_your_tr(t.madeby_u)
+            : (/^[aeiouAEIOU]/.test(trapdescr) ? 'an' : 'a');
+    if (which) which = `${which} `;
+
+    if (ishero) {
+        if (!u.utrap) return false;
+        if (noticed) noticed.value = true;
+        const buf = 'You are';
+        await pline(`${buf} released from ${which}${trapdescr}.`);
+        u.utrap = 0; u.utraptype = 0; game.botl = true;   /* reset_utrap(TRUE) */
+    } else {
+        if (!mon.mtrapped) return false;
+        mon.mtrapped = 0;
+        const { canspotmon } = await import('./uhitm.js');
+        if (canspotmon(mon)) {
+            if (noticed) noticed.value = true;
+            { const { Monnam } = await import('./uhitm.js');
+              await pline(`${Monnam(mon)} is released from ${which}${trapdescr}.`); }
+        } else if (t && cansee(t.tx, t.ty) && t.tseen) {
+            if (noticed) noticed.value = true;
+            if (t.ttyp === WEB)
+                await pline(`Something is released from ${which}${trapdescr}.`);
+            else
+                await pline(`${(which + trapdescr).replace(/^./, (c) => c.toUpperCase())} opens.`);
+        }
+        if (rn2(2) && m_next2u_tr(mon)) await reward_untrap(t, mon);
+    }
+    return true;
+}
+
+// C ref: trap.c:6209 closeholdingtrap(mon, noticed) — for magic locking;
+// forces a bear trap or web at 'mon''s square shut on it.
+export async function closeholdingtrap(mon, noticed) {
+    if (!mon) return false;
+    const u = game.u;
+    const ishero = (mon === u || mon === game.youmonst || (!!u && mon === u.usteed));
+    const t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my);
+    if (!t || (t.ttyp !== BEAR_TRAP && t.ttyp !== WEB)) return false;
+
+    if (ishero) {
+        if (u.utrap) return false;
+        if (noticed) noticed.value = true;
+        await dotrap(t, FORCETRAP);
+        return u.utrap !== 0;
+    }
+    if (mon.mtrapped) return false;
+    const { canspotmon } = await import('./uhitm.js');
+    if (noticed) noticed.value = cansee(t.tx, t.ty) || canspotmon(mon);
+    const { mon_mintrap, Trap_Effect_Finished } = await import('./monmove.js');
+    return (await mon_mintrap(mon, FORCETRAP)) !== Trap_Effect_Finished;
+}
+
+// C ref: trap.c:6251 openfallingtrap(mon, trapdoor_only, noticed) — for magic
+// unlocking; drops 'mon' through a trapdoor/rock trap (or hole/pit unless
+// trapdoor_only) at its square.
+export async function openfallingtrap(mon, trapdoor_only, noticed) {
+    if (!mon) return false;
+    const u = game.u;
+    const ishero = (mon === u || mon === game.youmonst || (!!u && mon === u.usteed));
+    const t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my);
+    if (!t || ((t.ttyp !== TRAPDOOR && t.ttyp !== ROCKTRAP)
+               && (trapdoor_only || (t.ttyp !== HOLE && !is_pit(t.ttyp)))))
+        return false;
+
+    if (ishero) {
+        if (u.utrap) return false;
+        if (noticed) noticed.value = true;
+        await dotrap(t, FORCETRAP);
+        return u.utrap !== 0;
+    }
+    if (mon.mtrapped) return false;
+    const { canspotmon, wakeupAttack } = await import('./uhitm.js');
+    if (noticed) noticed.value = cansee(t.tx, t.ty) || canspotmon(mon);
+    await wakeupAttack(mon, true);
+    const { mon_mintrap, Trap_Effect_Finished } = await import('./monmove.js');
+    return (await mon_mintrap(mon, FORCETRAP)) !== Trap_Effect_Finished;
+}

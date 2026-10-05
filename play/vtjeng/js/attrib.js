@@ -1,0 +1,1747 @@
+// attrib.js — hero attributes, advancement, exercise, and adjustment.
+// C ref: src/attrib.c the innate-ability tables, role_abil(), postadjabil(),
+// adjabil(), newhp(), setuhpmax(), rnd_attr(), init_attr_role_redist(),
+// init_attr(), redist_attr(), vary_init_attr(), exercise(), exerper(), adjattrib(),
+// exerchk(), gainstr(), losestr(), poison_strdmg(), poisontell(), poisoned(),
+// stone_luck(), set_moreluck(), restore_attrib(), adjuhploss(),
+// check_innate_abil(), innately(), is_innate(), from_what(), acurr(),
+// and uchangealign().
+
+import {
+    A_CG_CONVERT,
+    A_CG_HELM_ON,
+    A_CG_HELM_OFF,
+    A_CHA,
+    A_CON,
+    A_CURRENT,
+    A_DEX,
+    A_INT,
+    A_STR,
+    A_WIS,
+    BLINDED,
+    BLND_RES,
+    CLAIRVOYANT,
+    COLD_RES,
+    CONFUSION,
+    DEAF,
+    DIED,
+    DRAIN_RES,
+    EXT_ENCUMBER,
+    FACE,
+    FAINTED,
+    FAINTING,
+    FAST,
+    FIRE_RES,
+    FIXED_ABIL,
+    FROMEXPER,
+    FROMFORM,
+    FROMOUTSIDE,
+    FROM_RACE,
+    FUMBLING,
+    HALLUC,
+    HALLUC_RES,
+    HUNGRY,
+    HVY_ENCUMBER,
+    INFRAVISION,
+    INTRINSIC,
+    INVIS,
+    JUMPING,
+    KILLED_BY,
+    KILLED_BY_AN,
+    LL_ALIGNMENT,
+    LUCKADD,
+    MAXULEV,
+    MOD_ENCUMBER,
+    NOT_HUNGRY,
+    NUM_ATTRS,
+    POISON_RES,
+    POISONING,
+    REGENERATION,
+    SATIATED,
+    SEARCHING,
+    SEE_INVIS,
+    SHOCK_RES,
+    SICK,
+    SLEEP_RES,
+    STEALTH,
+    STR18,
+    STR19,
+    STRANGLED,
+    STUNNED,
+    TELEPORT_CONTROL,
+    TIMEOUT,
+    Upolyd,
+    VOMITING,
+    W_ARMC,
+    W_ARMF,
+    W_ARMH,
+    WARNING,
+    WEAK,
+    WOUNDED_LEGS,
+    Is_astralevel,
+    ismnum,
+    something,
+} from './const.js';
+import {
+    ART_EYES_OF_THE_OVERWORLD,
+    ART_OGRESMASHER,
+    SPFX_LUCK,
+    what_gives,
+} from './artifacts.js';
+// js/display.js imports acurr() from this file; both sides use the other's
+// exports only inside function bodies, so the cycle resolves.
+import { see_monsters, shieldeff } from './display.js';
+import { game } from './gstate.js';
+import { strstri } from './hacklib.js';
+// js/invent.js does not import from this file, so no cycle.
+import { carrying } from './invent.js';
+// js/mon.js imports adjalign() from this file; both sides use the other's
+// exports only inside function bodies, so the cycle resolves.
+import { adj_erinys } from './mon.js';
+// js/mondata.js imports acurr() from this file; both sides use the other's
+// exports only inside function bodies, so the cycle resolves.
+import { haseyes, name_to_mon, type_is_pname } from './mondata.js';
+import {
+    G_UNIQ,
+    PM_AMOROUS_DEMON,
+    PM_ARCHEOLOGIST,
+    PM_BARBARIAN,
+    PM_CAVE_DWELLER,
+    PM_CLERIC,
+    PM_DWARF,
+    PM_ELF,
+    PM_GNOME,
+    PM_HEALER,
+    PM_HUMAN,
+    PM_KNIGHT,
+    PM_MONK,
+    PM_ORC,
+    PM_RANGER,
+    PM_ROGUE,
+    PM_SAMURAI,
+    PM_TOURIST,
+    PM_VALKYRIE,
+    PM_WIZARD,
+    S_NYMPH,
+} from './monsters.js';
+import { objectType } from './obj.js';
+import {
+    DUNCE_CAP, GAUNTLETS_OF_POWER, HELM_OF_OPPOSITE_ALIGNMENT, LUCKSTONE,
+} from './objects.js';
+import { bare_artifactname, the, ysimple_name } from './objnam.js';
+// js/polyself.js imports exercise() from this file; both sides use the
+// other's exports only inside function bodies, so the cycle resolves.
+import { body_part, uasmon_maxStr } from './polyself.js';
+// js/potion.js imports adjattrib, exercise, poisontell from this file;
+// both sides use the other's exports only inside function bodies, so the
+// cycle resolves.
+import { make_confused } from './potion.js';
+import { d, rn1, rn2, rnd } from './rng.js';
+import { aligns } from './roles.js';
+import { ttyPline } from './tty_message.js';
+import { unconscious } from './trap.js';
+import { summon_furies } from './makemon.js';
+import { note_unported } from './unported.js';
+import { livelog_printf } from './pline.js';
+import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
+
+const EXERCISE_LIMIT = 50;
+const ATTRIBUTE_NAMES = Object.freeze([
+    'strength',
+    'intelligence',
+    'wisdom',
+    'dexterity',
+    'constitution',
+    'charisma',
+]);
+const POSITIVE_ATTRIBUTE_DESCRIPTIONS = Object.freeze([
+    'strong',
+    'smart',
+    'wise',
+    'agile',
+    'tough',
+    'charismatic',
+]);
+const NEGATIVE_ATTRIBUTE_DESCRIPTIONS = Object.freeze([
+    'weak',
+    'stupid',
+    'foolish',
+    'clumsy',
+    'fragile',
+    'repulsive',
+]);
+const EXERCISE_EXPLANATIONS = Object.freeze([
+    Object.freeze(['exercising diligently', 'exercising properly']),
+    Object.freeze([null, null]),
+    Object.freeze(['very observant', 'paying attention']),
+    Object.freeze(['working on your reflexes', 'working on reflexes lately']),
+    Object.freeze(['leading a healthy life-style', 'watching your health']),
+    Object.freeze([null, null]),
+]);
+
+// C ref: attrib.c's `struct innate` tables (23-105), in source order. Each C
+// entry names an intrinsic with `&(HFoo)`, which expands to
+// u.uprops[FOO].intrinsic; `ability` below is that prop.h index. The C arrays
+// end in a `{ 0, 0, 0, 0 }` terminator that adjabil() tests with
+// `!abil->ability`; a JavaScript array ends on its own, so the terminator has
+// no counterpart here.
+//
+// Every entry whose ulevel is 1 has an empty gainstr, which is what lets
+// u_init_misc()'s adjabil(0, 1) grant the level-1 abilities without a message
+// owner. innateTablesHaveSilentLevelOneEntries() re-derives that from the
+// tables so a mistyped entry cannot make the omission wrong.
+function innate(ulevel, ability, gainstr, losestr) {
+    return Object.freeze({ ulevel, ability, gainstr, losestr });
+}
+
+const arc_abil = Object.freeze([
+    innate(1, SEARCHING, '', ''),
+    innate(5, STEALTH, 'stealthy', ''),
+    innate(10, FAST, 'quick', 'slow'),
+]);
+const bar_abil = Object.freeze([
+    innate(1, POISON_RES, '', ''),
+    innate(7, FAST, 'quick', 'slow'),
+    innate(15, STEALTH, 'stealthy', ''),
+]);
+const cav_abil = Object.freeze([
+    innate(7, FAST, 'quick', 'slow'),
+    innate(15, WARNING, 'sensitive', ''),
+]);
+const hea_abil = Object.freeze([
+    innate(1, POISON_RES, '', ''),
+    innate(15, WARNING, 'sensitive', ''),
+]);
+const kni_abil = Object.freeze([
+    innate(7, FAST, 'quick', 'slow'),
+]);
+const mon_abil = Object.freeze([
+    innate(1, FAST, '', ''),
+    innate(1, SLEEP_RES, '', ''),
+    innate(1, SEE_INVIS, '', ''),
+    innate(3, POISON_RES, 'healthy', ''),
+    innate(5, STEALTH, 'stealthy', ''),
+    innate(7, WARNING, 'sensitive', ''),
+    innate(9, SEARCHING, 'perceptive', 'unaware'),
+    innate(11, FIRE_RES, 'cool', 'warmer'),
+    innate(13, COLD_RES, 'warm', 'cooler'),
+    innate(15, SHOCK_RES, 'insulated', 'conductive'),
+    innate(17, TELEPORT_CONTROL, 'controlled', 'uncontrolled'),
+]);
+const pri_abil = Object.freeze([
+    innate(15, WARNING, 'sensitive', ''),
+    innate(20, FIRE_RES, 'cool', 'warmer'),
+]);
+const ran_abil = Object.freeze([
+    innate(1, SEARCHING, '', ''),
+    innate(7, STEALTH, 'stealthy', ''),
+    innate(15, SEE_INVIS, '', ''),
+]);
+const rog_abil = Object.freeze([
+    innate(1, STEALTH, '', ''),
+    innate(10, SEARCHING, 'perceptive', ''),
+]);
+const sam_abil = Object.freeze([
+    innate(1, FAST, '', ''),
+    innate(15, STEALTH, 'stealthy', ''),
+]);
+const tou_abil = Object.freeze([
+    innate(10, SEARCHING, 'perceptive', ''),
+    innate(20, POISON_RES, 'hardy', ''),
+]);
+const val_abil = Object.freeze([
+    innate(1, COLD_RES, '', ''),
+    innate(3, STEALTH, 'stealthy', ''),
+    innate(7, FAST, 'quick', 'slow'),
+]);
+const wiz_abil = Object.freeze([
+    innate(15, WARNING, 'sensitive', ''),
+    innate(17, TELEPORT_CONTROL, 'controlled', 'uncontrolled'),
+]);
+
+// The race tables. adjabil()'s own switch selects only elf_abil and orc_abil
+// (PM_DWARF, PM_GNOME, PM_HUMAN fall through to its `default: rabil = 0` arm).
+// check_innate_abil() reads all five when answering where an already-held
+// intrinsic came from.
+const dwa_abil = Object.freeze([
+    innate(1, INFRAVISION, '', ''),
+]);
+const elf_abil = Object.freeze([
+    innate(1, INFRAVISION, '', ''),
+    innate(4, SLEEP_RES, 'awake', 'tired'),
+]);
+const gno_abil = Object.freeze([
+    innate(1, INFRAVISION, '', ''),
+]);
+const orc_abil = Object.freeze([
+    innate(1, INFRAVISION, '', ''),
+    innate(1, POISON_RES, '', ''),
+]);
+const hum_abil = Object.freeze([]);
+
+// C ref: attrib.c role_abil(). C walks a local roleabils[] array and returns
+// the null `abil` of its terminating entry for a monster number that is not a
+// role; the switch below answers null there, which adjabil() treats the same
+// way.
+export function role_abil(roleMnum) {
+    switch (roleMnum) {
+    case PM_ARCHEOLOGIST: return arc_abil;
+    case PM_BARBARIAN: return bar_abil;
+    case PM_CAVE_DWELLER: return cav_abil;
+    case PM_HEALER: return hea_abil;
+    case PM_KNIGHT: return kni_abil;
+    case PM_MONK: return mon_abil;
+    case PM_CLERIC: return pri_abil;
+    case PM_RANGER: return ran_abil;
+    case PM_ROGUE: return rog_abil;
+    case PM_SAMURAI: return sam_abil;
+    case PM_TOURIST: return tou_abil;
+    case PM_VALKYRIE: return val_abil;
+    case PM_WIZARD: return wiz_abil;
+    default: return null;
+    }
+}
+
+// C ref: attrib.c adjabil()'s own `switch (Race_switch)`, which is a separate
+// selection from check_innate_abil()'s.
+function race_abil(raceMnum) {
+    switch (raceMnum) {
+    case PM_ELF: return elf_abil;
+    case PM_ORC: return orc_abil;
+    default: return null;
+    }
+}
+
+// C ref: attrib.c's local FROM_* #defines (856-862), return codes for
+// innately()/is_innate(). C names them FROM_NONE through FROM_LYCN; JS
+// prefixes with INNATE_ to avoid colliding with the bitmask constants
+// FROM_RACE (0x02000000) and FROM_FORM (0x10000000) that const.js exports.
+const INNATE_NONE = 0;
+const INNATE_ROLE = 1; // from experience at level 1
+const INNATE_RACE = 2;
+const INNATE_INTR = 3; // intrinsically (eating corpse or prayer reward)
+const INNATE_EXP  = 4; // from experience for level > 1
+const INNATE_FORM = 5;
+const INNATE_LYCN = 6;
+
+// C ref: attrib.c check_innate_abil() (818-863). Searches the innate-ability
+// tables for a specific property. For FROMEXPER it walks the role's table; for
+// FROM_RACE (C's FROMRACE) it walks the race's table. Returns the matching
+// entry when the hero's level is at or above the entry's threshold, or null.
+function check_innate_abil(ability, frommask, state = game) {
+    let abil = null;
+    if (frommask === FROMEXPER)
+        abil = role_abil(state.urole?.mnum);
+    else if (frommask === FROM_RACE) {
+        switch (state.urace?.mnum) {
+        case PM_DWARF: abil = dwa_abil; break;
+        case PM_ELF:   abil = elf_abil; break;
+        case PM_GNOME: abil = gno_abil; break;
+        case PM_ORC:   abil = orc_abil; break;
+        case PM_HUMAN: abil = hum_abil; break;
+        default: break;
+        }
+    }
+    if (!abil) return null;
+    for (let i = 0; i < abil.length; i++) {
+        if (abil[i].ability === ability && state.u.ulevel >= abil[i].ulevel)
+            return abil[i];
+    }
+    return null;
+}
+
+// C ref: attrib.c innately() (864-879). Determines how a particular ability was
+// obtained by checking role tables, race tables, and intrinsic flags.
+function innately(ability, intrinsicValue, state = game) {
+    let entry;
+    if ((entry = check_innate_abil(ability, FROMEXPER, state)) !== null)
+        return entry.ulevel === 1 ? INNATE_ROLE : INNATE_EXP;
+    if ((entry = check_innate_abil(ability, FROM_RACE, state)) !== null)
+        return INNATE_RACE;
+    if ((intrinsicValue & FROMOUTSIDE) !== 0)
+        return INNATE_INTR;
+    if ((intrinsicValue & FROMFORM) !== 0)
+        return INNATE_FORM;
+    return INNATE_NONE;
+}
+
+// C ref: attrib.c is_innate() (880-904). Returns an INNATE_* constant
+// indicating the innate source of a property, or INNATE_NONE.
+export function is_innate(propidx, state = game) {
+    const u = state.u;
+    // innately() would report INNATE_FORM for this; caller wants specificity
+    if (propidx === DRAIN_RES && ismnum(u.ulycn))
+        return INNATE_LYCN;
+    // C ref: youprop.h:377 Very_fast = ((HFast & ~INTRINSIC) || EFast)
+    const propFast = u.uprops?.[FAST] ?? {};
+    if (propidx === FAST
+        && ((propFast.intrinsic & ~INTRINSIC) || propFast.extrinsic))
+        return INNATE_NONE; // can't become very fast innately
+    const innateness = innately(
+        propidx, u.uprops?.[propidx]?.intrinsic ?? 0, state,
+    );
+    if (innateness !== INNATE_NONE)
+        return innateness;
+    if (propidx === JUMPING && state.urole?.mnum === PM_KNIGHT
+        // knight has intrinsic jumping, but extrinsic is more versatile so
+        // ignore innateness if equipment is going to claim responsibility
+        && !u.uprops?.[propidx]?.extrinsic)
+        return INNATE_ROLE;
+    if ((propidx === BLINDED && !haseyes(state.youmonst?.data))
+        || (propidx === BLND_RES
+            && ((u.uprops?.[BLND_RES]?.intrinsic ?? 0) & FROMFORM) !== 0))
+        return INNATE_FORM;
+    return INNATE_NONE;
+}
+
+// C ref: attrib.c from_what()'s trailing cleanup (969-975). C modifies its
+// static buffer in place; here we trim the returned string. Removes
+// " pair of " to reduce verbosity, and truncates " of strangulation" when the
+// property is STRANGLED.
+function from_what_trim(buf, propidx) {
+    let result = buf;
+    const pairIdx = strstri(result, ' pair of ');
+    if (pairIdx >= 0) {
+        result = result.slice(0, pairIdx + 1) + result.slice(pairIdx + 9);
+    } else if (propidx === STRANGLED) {
+        const strangIdx = strstri(result, ' of strangulation');
+        if (strangIdx >= 0) result = result.slice(0, strangIdx);
+    }
+    return result;
+}
+
+// C ref: attrib.c from_what() (905-1005). Returns a diagnostic string
+// describing the source of a property. Wizard-mode only; returns '' otherwise.
+export function from_what(propidx, state = game) {
+    if (!state.wizard) return '';
+
+    if (propidx >= 0) {
+        const u = state.u;
+        const innateness = is_innate(propidx, state);
+
+        if ((propidx === BLINDED && u.uroleplay?.blind)
+            || (propidx === DEAF && u.uroleplay?.deaf))
+            return ' from birth';
+        if (innateness === INNATE_ROLE || innateness === INNATE_RACE)
+            return ' innately';
+        if (innateness === INNATE_INTR)
+            return ' intrinsically';
+        if (innateness === INNATE_EXP)
+            return ' because of your experience';
+        if (innateness === INNATE_LYCN)
+            return ' due to your lycanthropy';
+        if (innateness === INNATE_FORM)
+            return ' from your creature form';
+
+        // C ref: youprop.h:377 Very_fast = ((HFast & ~INTRINSIC) || EFast)
+        const propFast = u.uprops?.[FAST] ?? {};
+        const HFast = propFast.intrinsic ?? 0;
+        const EFast = propFast.extrinsic ?? 0;
+        const Very_fast = (HFast & ~INTRINSIC) || EFast;
+        if (propidx === FAST && Very_fast) {
+            let source;
+            if ((HFast & TIMEOUT) !== 0)
+                source = 'a potion or spell';
+            else if ((EFast & W_ARMF) !== 0 && state.uarmf?.dknown
+                     && objectType(state.uarmf, state).oc_name_known)
+                source = ysimple_name(state.uarmf, state); // speed boots
+            else if (EFast)
+                source = 'worn equipment';
+            else
+                source = something;
+            return from_what_trim(` because of ${source}`, propidx);
+        }
+
+        // C ref: artifact.c what_gives() identifies the worn or carried object
+        // providing an extrinsic property. C uses ysimple_name() for ordinary
+        // objects and objnam.c bare_artifactname() for artifacts.
+        if (state.wizard && (u.uprops?.[propidx]?.extrinsic ?? 0) !== 0) {
+            const sourceObject = what_gives(propidx, state);
+            if (sourceObject) {
+                return from_what_trim(
+                    ` because of ${sourceObject.oartifact
+                        ? bare_artifactname(sourceObject, state)
+                        : ysimple_name(sourceObject, state)}`,
+                    propidx,
+                );
+            }
+        }
+
+        // C ref: youprop.h:96 Blindfolded = EBlinded (W_TOOL)
+        // Blindfolded_only = Blindfolded && !Blinded
+        // where Blinded = HBlinded && !BBlinded
+        const propBlind = u.uprops?.[BLINDED] ?? {};
+        const HBlinded = propBlind.intrinsic ?? 0;
+        const EBlinded = propBlind.extrinsic ?? 0;
+        const BBlinded = propBlind.blocked ?? 0;
+        const Blindfolded = EBlinded;
+        const Blinded = HBlinded && !BBlinded;
+        const Blindfolded_only = Blindfolded && !Blinded;
+        if (propidx === BLINDED && Blindfolded_only)
+            return from_what_trim(
+                ` because of ${ysimple_name(state.ublindf, state)}`, propidx,
+            );
+        const BlindedTimeout = HBlinded & TIMEOUT;
+        if (propidx === BLINDED && u.ucreamed
+            && BlindedTimeout === u.ucreamed
+            && !EBlinded && !(HBlinded & ~TIMEOUT))
+            return `due to goop covering your ${body_part(FACE, state.youmonst)}`;
+    } else {
+        // negative property index: blocking capabilities
+        const u = state.u;
+        switch (-propidx) {
+        case BLINDED: {
+            const propBlind = u.uprops?.[BLINDED] ?? {};
+            const BBlinded = propBlind.blocked ?? 0;
+            if (BBlinded && state.ublindf
+                && state.ublindf.oartifact === ART_EYES_OF_THE_OVERWORLD) {
+                return ` because of ${bare_artifactname(state.ublindf, state)}`;
+            }
+            break;
+        }
+        case INVIS:
+            if ((u.uprops?.[INVIS]?.blocked ?? 0) & W_ARMC)
+                return ` because of ${ysimple_name(state.uarmc, state)}`; // mummy wrapping
+            break;
+        case CLAIRVOYANT:
+            if (state.wizard
+                && ((u.uprops?.[CLAIRVOYANT]?.blocked ?? 0) & W_ARMH))
+                return ` because of ${ysimple_name(state.uarmh, state)}`; // cornuthaum
+            break;
+        }
+    }
+    return '';
+}
+
+// Thrown where attrib.c reaches an ability transition this port has not
+// ported. Every one of them changes an intrinsic while the hero is playing,
+// which is the boundary of the experience-level slice this file serves.
+export class UnsupportedAbilityChangeError extends Error {
+    constructor(branch) {
+        super(`ability change requires ${branch}`);
+        this.name = 'UnsupportedAbilityChangeError';
+        this.branch = branch;
+    }
+}
+
+// C ref: attrib.c postadjabil(). C compares the `long *` it was handed against
+// &HWarning and &HSee_invisible; the port passes the prop.h index that pointer
+// stood for, so the comparison is against those two indices. Every other
+// property that changes here redraws nothing.
+function postadjabil(propertyIndex, state) {
+    if (!state.u.ulevel) /* initializing hero; don't attempt screen update yet */
+        return;
+    if (propertyIndex === WARNING || propertyIndex === SEE_INVIS)
+        see_monsters(state);
+}
+
+// C ref: attrib.c adjabil(). The traversal walks the role table and then the
+// race table, switching the intrinsic mask when it crosses over, exactly as C
+// does with its `abil`/`rabil` pair.
+//
+// C's You_feel("%s!") can block on --More--, so this is async and takes the
+// message owner exper.c pluslvl() was handed. Only a gain above experience
+// level 1 prints, because every level-1 entry's gainstr is empty
+// (innateTablesHaveSilentLevelOneEntries() below re-derives that).
+// C's You_feel() uses its dreaming prefix while Unaware: a negative multi
+// with the hero unconscious or fainted. Experience loss can reach that case.
+//
+// Gains and losses default to the canonical terminal message owner, including
+// polyself.c newman()'s caller without an explicit environment. An unchanged
+// level is not a loss: C calls lose_weapon_skill(0), whose `while (--n >= 0)`
+// body never runs. polyself.c newman() lands there one time in five, so that
+// call remains quiet.
+export async function adjabil(oldlevel, newlevel, state = game, env = {}) {
+    const message = env.message ?? ttyPline;
+    const u = state.u;
+    let table = role_abil(state.urole?.mnum);
+    let raceTable = race_abil(state.urace?.mnum);
+    let index = 0;
+    let mask = FROMEXPER;
+
+    while (table || raceTable) {
+        /* Have we finished with the intrinsics list? */
+        if (!table || index >= table.length) {
+            /* Try the race intrinsics */
+            if (!raceTable || raceTable.length === 0) break;
+            table = raceTable;
+            raceTable = null;
+            index = 0;
+            mask = FROM_RACE;
+        }
+        const entry = table[index];
+        const property = u.uprops[entry.ability];
+        const prevabil = property.intrinsic;
+        // youprop.h Unaware and pline.c You_feel().
+        const feelPrefix = Math.trunc(state.multi ?? 0) < 0
+            && (unconscious(state) || u.uhs === FAINTED)
+            ? 'You dream that you feel' : 'You feel';
+        if (oldlevel < entry.ulevel && newlevel >= entry.ulevel) {
+            /* Abilities gained at level 1 can never be lost via level loss,
+             * only via means that remove _any_ sort of ability.  A "gain" of
+             * such an ability from an outside source is devoid of meaning, so
+             * C sets FROMOUTSIDE to avoid such gains. */
+            if (entry.ulevel === 1)
+                property.intrinsic |= mask | FROMOUTSIDE;
+            else
+                property.intrinsic |= mask;
+            /* Silent when the hero already holds the property from the other
+             * mask. No role table repeats a property, and race_abil() reads
+             * only elf_abil[] and orc_abil[], whose properties no role that
+             * can be an elf or an orc also grants above level 1, so no hero
+             * #levelchange can build suppresses a message here. QUALITY.json
+             * carries the deferral for the branch that leaves. */
+            if (!(property.intrinsic & INTRINSIC & ~mask)) {
+                if (entry.gainstr) {
+                    /* C ref: pline.c You_feel("%s!", abil->gainstr) */
+                    await message(`${feelPrefix} ${entry.gainstr}!`, state);
+                }
+            }
+        } else if (oldlevel >= entry.ulevel && newlevel < entry.ulevel) {
+            property.intrinsic &= ~mask;
+            if (!(property.intrinsic & INTRINSIC)) {
+                const text = entry.losestr
+                    ? `${feelPrefix} ${entry.losestr}!`
+                    : entry.gainstr
+                        ? `${feelPrefix} less ${entry.gainstr}!`
+                        : null;
+                if (text) {
+                    await message(text, state);
+                }
+            }
+        }
+        if (prevabil !== property.intrinsic) /* it changed */
+            postadjabil(entry.ability, state);
+        ++index;
+    }
+
+    if (oldlevel > 0) {
+        if (newlevel > oldlevel) add_weapon_skill(newlevel - oldlevel, state);
+        else lose_weapon_skill(oldlevel - newlevel, state);
+    }
+}
+
+// Every innate entry gained at experience level 1 carries an empty gainstr, so
+// u_init_misc()'s adjabil(0, 1) needs no owner for C's You_feel("%s!"). This
+// re-reads the tables rather than restating the claim, and
+// scripts/level-change.test.mjs asserts it.
+export function innateTablesHaveSilentLevelOneEntries() {
+    const tables = [
+        arc_abil, bar_abil, cav_abil, hea_abil, kni_abil, mon_abil, pri_abil,
+        ran_abil, rog_abil, sam_abil, tou_abil, val_abil, wiz_abil,
+        elf_abil, orc_abil,
+    ];
+    return tables.every((table) => table.every(
+        (entry) => entry.ulevel !== 1 || entry.gainstr === '',
+    ));
+}
+
+function roleAndRace(state) {
+    if (!state?.urole || !state?.urace) {
+        throw new Error('role and race must be initialized first');
+    }
+    return { role: state.urole, race: state.urace };
+}
+
+function advancementValue(advance, field) {
+    return Math.trunc(advance?.[field] ?? 0);
+}
+
+function ensureIncrementArray(u, key) {
+    if (!Array.isArray(u[key])) u[key] = new Array(MAXULEV).fill(0);
+    return u[key];
+}
+
+// C ref: attrib.c newhp(). The initial branch is the one used by
+// u_init_misc(), but the level-gain branches are kept here with it.
+export function newhp(state = game, random = { rnd }) {
+    const u = state.u;
+    const { role, race } = roleAndRace(state);
+    if (!u) throw new Error('hero state must be initialized first');
+
+    let hp;
+    if ((u.ulevel ?? 0) === 0) {
+        hp = advancementValue(role.hpadv, 'infix')
+            + advancementValue(race.hpadv, 'infix');
+        const roleRandom = advancementValue(role.hpadv, 'inrnd');
+        const raceRandom = advancementValue(race.hpadv, 'inrnd');
+        if (roleRandom > 0) hp += random.rnd(roleRandom);
+        if (raceRandom > 0) hp += random.rnd(raceRandom);
+        if ((state.moves ?? 0) === 0) {
+            if (!u.ualign) u.ualign = {};
+            u.ualign.type = aligns[state.flags?.initalign]?.value ?? 0;
+            u.ualign.record = Math.trunc(role.initrecord ?? 0);
+        }
+    } else {
+        const lowLevel = u.ulevel < Math.trunc(role.xlev ?? 0);
+        const fixedField = lowLevel ? 'lofix' : 'hifix';
+        const randomField = lowLevel ? 'lornd' : 'hirnd';
+        hp = advancementValue(role.hpadv, fixedField)
+            + advancementValue(race.hpadv, fixedField);
+        const roleRandom = advancementValue(role.hpadv, randomField);
+        const raceRandom = advancementValue(race.hpadv, randomField);
+        if (roleRandom > 0) hp += random.rnd(roleRandom);
+        if (raceRandom > 0) hp += random.rnd(raceRandom);
+
+        const constitution = acurr(state, A_CON);
+        if (constitution <= 3) hp -= 2;
+        else if (constitution <= 6) hp -= 1;
+        else if (constitution <= 14) hp += 0;
+        else if (constitution <= 16) hp += 1;
+        else if (constitution === 17) hp += 2;
+        else if (constitution === 18) hp += 3;
+        else hp += 4;
+    }
+
+    if (hp <= 0) hp = 1;
+    if ((u.ulevel ?? 0) < MAXULEV) {
+        ensureIncrementArray(u, 'uhpinc')[u.ulevel ?? 0] = hp;
+    } else {
+        const limit = Math.max(5 - Math.trunc((u.uhpmax ?? 0) / 300), 1);
+        if (hp > limit) hp = limit;
+    }
+    return hp;
+}
+
+// C ref: attrib.c minuhpmax() (1146-1152). The minimum uhpmax is the hero's
+// experience level, but for life-saving it is always at least 10 (the altmin
+// argument) when the hero's level is below that.
+export function minuhpmax(altmin, state = game) {
+    if (altmin < 1) altmin = 1;
+    return Math.max(state.u.ulevel, altmin);
+}
+
+// C ref: attrib.c setuhpmax(). It updates the active human or polymorph HP
+// maximum and clamps that form's current HP in the same source operation.
+export function setuhpmax(newmax, even_when_polyd, state = game) {
+    const u = state.u;
+    if (!Upolyd(u) || even_when_polyd) {
+        if (newmax !== u.uhpmax) {
+            u.uhpmax = newmax;
+            if (u.uhpmax > u.uhppeak) u.uhppeak = u.uhpmax;
+            state.disp.botl = true;
+        }
+        if (u.uhp > u.uhpmax) {
+            u.uhp = u.uhpmax;
+            state.disp.botl = true;
+        }
+    } else {
+        if (newmax !== u.mhmax) {
+            u.mhmax = newmax;
+            state.disp.botl = true;
+        }
+        if (u.mh > u.mhmax) {
+            u.mh = u.mhmax;
+            state.disp.botl = true;
+        }
+    }
+}
+
+function attributeArrays(u) {
+    if (!u.acurr) u.acurr = {};
+    if (!Array.isArray(u.acurr.a)) u.acurr.a = new Array(NUM_ATTRS).fill(0);
+    if (!u.amax) u.amax = {};
+    if (!Array.isArray(u.amax.a)) u.amax.a = new Array(NUM_ATTRS).fill(0);
+    if (!Array.isArray(u.atemp)) u.atemp = new Array(NUM_ATTRS).fill(0);
+    if (!Array.isArray(u.atime)) u.atime = new Array(NUM_ATTRS).fill(0);
+    if (!Array.isArray(u.aexe)) u.aexe = new Array(NUM_ATTRS).fill(0);
+    return {
+        base: u.acurr.a,
+        max: u.amax.a,
+        temp: u.atemp,
+        time: u.atime,
+        exercise: u.aexe,
+    };
+}
+
+function attributeArray(value) {
+    return Array.isArray(value) ? value : value?.a;
+}
+
+// C ref: attrib.c acurr().  Returns the effective current value of the
+// attribute at chridx, accounting for base, bonus, temporary adjustments,
+// worn items (gauntlets of power, dunce cap), wielded artifacts
+// (Ogresmasher), and polymorphed form (nymph / amorous demon charisma).
+export function acurr(state = game, chridx) {
+    const u = state.u;
+    const base = Math.trunc(u?.acurr?.a?.[chridx] ?? 0);
+    const bonus = Math.trunc(attributeArray(u?.abon)?.[chridx] ?? 0);
+    const temporary = Math.trunc(attributeArray(u?.atemp)?.[chridx] ?? 0);
+    const tmp = base + bonus + temporary;
+    let result = 0;
+
+    if (chridx === A_STR) {
+        // Strength: 3..125 encoded range.  Gauntlets of power force max.
+        if (tmp >= STR19(25)
+            || (state.uarmg && state.uarmg.otyp === GAUNTLETS_OF_POWER)) {
+            result = STR19(25); // 125
+        } else {
+            result = Math.max(tmp, 3);
+        }
+    } else if (chridx === A_CHA) {
+        if (tmp < 18
+            && (state.youmonst?.data?.mlet === S_NYMPH
+                || u?.umonnum === PM_AMOROUS_DEMON)) {
+            result = 18;
+        }
+    } else if (chridx === A_CON) {
+        // u_wield_art(ART_OGRESMASHER) => uwep && uwep->oartifact == art
+        if (state.uwep && state.uwep.oartifact === ART_OGRESMASHER) {
+            result = 25;
+        }
+    } else if (chridx === A_INT || chridx === A_WIS) {
+        if (state.uarmh && state.uarmh.otyp === DUNCE_CAP) {
+            result = 6;
+        }
+    }
+    // else chridx === A_DEX: no special cases
+
+    if (result === 0) {
+        // None of the special cases applied; clamp to 3..25.
+        result = tmp >= 25 ? 25 : tmp <= 3 ? 3 : tmp;
+    }
+    return result;
+}
+
+// C ref: attrib.c acurrstr(), the ACURRSTR macro's implementation. It folds
+// acurr(A_STR)'s 3..125 encoding down to the 3..25 range that arithmetic on
+// Strength uses: 18/01..18/31 become 19, 18/32..18/81 become 20,
+// 18/82..18/100 and 19..21 become 21, and 22..25 come back from 122..125.
+export function acurrstr(state = game) {
+    const str = acurr(state, A_STR);
+    if (str <= 18) return Math.max(str, 3);
+    if (str <= 121) return 19 + Math.trunc(str / 50);
+    return Math.min(str, 125) - 100;
+}
+
+function rnd_attr(role, random) {
+    let value = random.rn2(100);
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        value -= Math.trunc(role.attrdist?.[i] ?? 0);
+        if (value < 0) return i;
+    }
+    return NUM_ATTRS;
+}
+
+function init_attr_role_redist(state, points, addition, random) {
+    const { role, race } = roleAndRace(state);
+    const attrs = attributeArrays(state.u);
+    let tries = 0;
+    const adjustment = addition ? 1 : -1;
+
+    while ((addition ? points > 0 : points < 0) && tries < 100) {
+        const index = rnd_attr(role, random);
+        const limit = addition
+            ? Math.trunc(race.attrmax?.[index] ?? attrs.base[index])
+            : Math.trunc(race.attrmin?.[index] ?? attrs.base[index]);
+        if (index >= NUM_ATTRS
+            || (addition ? attrs.base[index] >= limit : attrs.base[index] <= limit)) {
+            tries += 1;
+            continue;
+        }
+        tries = 0;
+        attrs.base[index] += adjustment;
+        attrs.max[index] += adjustment;
+        points -= adjustment;
+    }
+    return points;
+}
+
+// C ref: attrib.c init_attr().
+export function init_attr(points, state = game, random = { rn2 }) {
+    const { role } = roleAndRace(state);
+    const attrs = attributeArrays(state.u);
+    let remaining = Math.trunc(points);
+
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        const base = Math.trunc(role.attrbase?.[i] ?? 0);
+        attrs.base[i] = attrs.max[i] = base;
+        attrs.temp[i] = attrs.time[i] = 0;
+        remaining -= base;
+    }
+    remaining = init_attr_role_redist(state, remaining, true, random);
+    return init_attr_role_redist(state, remaining, false, random);
+}
+
+// C ref: attrib.c redist_attr() (740-763). Redistribute attribute points when
+// polymorphing into a new human form (newman). Adjusts every attribute except
+// A_INT and A_WIS by rn2(5)-2, clamps to racial bounds, and scales ABASE
+// proportionally. The caller is responsible for calling encumber_msg().
+//
+// Cycle avoidance: uasmon_maxStr() lives in polyself.js, which imports from
+// this file. To avoid a circular dependency it is injected through env.
+export function redist_attr(state = game, env = {}) {
+    const random = env.random ?? { rn2 };
+    const { race } = roleAndRace(state);
+    const attrs = attributeArrays(state.u);
+
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        if (i === A_INT || i === A_WIS)
+            continue;
+        /* Polymorphing doesn't change your mind */
+        const tmp = attrs.max[i];
+        attrs.max[i] += (random.rn2(5) - 2);
+        // ATTRMAX: for A_STR when polymorphed, use the monster form's max
+        // strength; otherwise use the racial maximum.
+        const attrmax = (i === A_STR && Upolyd(state.u) && env.uasmon_maxStr)
+            ? env.uasmon_maxStr(state)
+            : Math.trunc(race.attrmax?.[i] ?? attrs.max[i]);
+        const attrmin = Math.trunc(race.attrmin?.[i] ?? attrs.base[i]);
+        if (attrs.max[i] > attrmax)
+            attrs.max[i] = attrmax;
+        if (attrs.max[i] < attrmin)
+            attrs.max[i] = attrmin;
+        attrs.base[i] = Math.trunc(attrs.base[i] * attrs.max[i] / tmp);
+        /* ABASE(i) > ATTRMAX(i) is impossible */
+        if (attrs.base[i] < attrmin)
+            attrs.base[i] = attrmin;
+    }
+    /* encumber_msg(); -- caller needs to do this */
+}
+
+function adjustInitialAttribute(state, index, increment, random) {
+    if (!increment) return false;
+    const { race } = roleAndRace(state);
+    const attrs = attributeArrays(state.u);
+    const minimum = Math.trunc(race.attrmin?.[index] ?? attrs.base[index]);
+    const maximum = Math.trunc(race.attrmax?.[index] ?? attrs.max[index]);
+    const oldCurrent = attrs.base[index] + attrs.temp[index];
+
+    attrs.base[index] += increment;
+    if (increment > 0) {
+        if (attrs.base[index] > attrs.max[index]) {
+            attrs.max[index] = attrs.base[index];
+            if (attrs.max[index] > maximum) {
+                attrs.base[index] = attrs.max[index] = maximum;
+            }
+        }
+    } else if (attrs.base[index] < minimum) {
+        const decrease = random.rn2(minimum - attrs.base[index] + 1);
+        attrs.base[index] = minimum;
+        attrs.max[index] = Math.max(attrs.max[index] - decrease, minimum);
+    }
+    if (attrs.base[index] + attrs.temp[index] !== oldCurrent) {
+        attrs.exercise[index] = 0;
+        return true;
+    }
+    return false;
+}
+
+// C ref: attrib.c vary_init_attr().
+export function vary_init_attr(state = game, random = { rn2 }) {
+    const attrs = attributeArrays(state.u);
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        if (random.rn2(20) === 0) {
+            const adjustment = random.rn2(7) - 2;
+            adjustInitialAttribute(state, i, adjustment, random);
+            if (attrs.base[i] < attrs.max[i]) attrs.max[i] = attrs.base[i];
+        }
+    }
+}
+
+// C ref: attrib.c exercise(), everything above its trailing encumber_msg().
+// Returns the adjustment and whether that call is due, so the async owner and
+// the synchronous startup caller below share one copy of the arithmetic and
+// one draw boundary.
+function exerciseAttribute(index, increase, state, random, encumberMessage) {
+    if (index === A_INT || index === A_CHA)
+        return { adjustment: 0, encumbranceDue: false };
+    if (Upolyd(state.u) && index !== A_WIS)
+        return { adjustment: 0, encumbranceDue: false };
+    if (typeof random.rn2 !== 'function')
+        throw new TypeError('exercise random injection requires rn2');
+
+    // Both owner checks must precede the draw. Rejecting afterwards would
+    // leave the PRNG advanced and AEXE(i) already changed, so a caller that
+    // retried would not repeat the same call sequence.
+    const encumbranceDue = Math.trunc(state.moves ?? 0) > 0
+        && (index === A_STR || index === A_CON);
+    if (encumbranceDue && typeof encumberMessage !== 'function')
+        throw new Error('exercise requires encumber_msg');
+
+    const attrs = attributeArrays(state.u);
+    let adjustment = 0;
+    if (Math.abs(attrs.exercise[index]) < EXERCISE_LIMIT) {
+        adjustment = increase
+            ? (random.rn2(19) > acurr(state, index) ? 1 : 0)
+            : -random.rn2(2);
+        attrs.exercise[index] += adjustment;
+    }
+    return { adjustment, encumbranceDue };
+}
+
+// C ref: attrib.c exercise(). encumberMessage owns the trailing
+// encumber_msg(), which C runs only for Strength or Constitution after play
+// has begun. Always await this: dropping the completion would emit the
+// encumbrance line after whatever the caller printed next.
+export async function exercise(
+    index,
+    increase,
+    state = game,
+    random = { rn2 },
+    { encumberMessage } = {},
+) {
+    const { adjustment, encumbranceDue } = exerciseAttribute(
+        index,
+        increase,
+        state,
+        random,
+        encumberMessage,
+    );
+    if (encumbranceDue) await encumberMessage(state);
+    return adjustment;
+}
+
+// C ref: attrib.c exercise() reached from o_init.c discover_object(), which
+// runs inside synchronous startup. Only Wisdom arrives from there, and C's
+// trailing encumber_msg() is unreachable for it, so this cannot silently drop
+// a message; it refuses the two indices that could produce one.
+export function exercise_nonphysical(
+    index,
+    increase,
+    state = game,
+    random = { rn2 },
+) {
+    if (index === A_STR || index === A_CON) {
+        throw new Error(
+            'exercise_nonphysical cannot own encumber_msg(); await exercise()',
+        );
+    }
+    return exerciseAttribute(index, increase, state, random).adjustment;
+}
+
+function propertyPresent(hero, index) {
+    const property = hero?.uprops?.[index];
+    return Boolean(property?.intrinsic || property?.extrinsic);
+}
+
+function intrinsicPropertyPresent(hero, index) {
+    return Boolean(hero?.uprops?.[index]?.intrinsic);
+}
+
+function requiredOperation(env, name) {
+    const operation = env[name];
+    if (typeof operation !== 'function')
+        throw new TypeError(`attribute upkeep requires ${name}`);
+    return operation;
+}
+
+async function exerciseWithEnvironment(index, increase, state, env) {
+    return exercise(index, increase, state, env.random, {
+        encumberMessage: env.encumberMessage,
+    });
+}
+
+// C ref: attrib.c exerper(). This owns the five-turn status cadence and the
+// ten-turn hunger and encumbrance cadence. Inventory contents remain stable in
+// the active boundary, but nearCapacity is live: temporary Strength changes
+// can change capacity and burden before the next allocation.
+export async function exerper(state = game, env = {}) {
+    const random = env.random ?? { rn2 };
+    const encumberMessage = requiredOperation(env, 'encumberMessage');
+    const nearCapacity = requiredOperation(env, 'nearCapacity');
+    const normalized = {
+        ...env,
+        random,
+        encumberMessage,
+        nearCapacity,
+    };
+    const moves = Math.trunc(state.moves ?? 0);
+    const hero = state.u;
+    if (!hero || !Number.isSafeInteger(hero.uhunger))
+        throw new Error('periodic exercise requires initialized hero hunger');
+
+    if (moves % 10 === 0) {
+        const hunger = hero.uhunger > 1000
+            ? SATIATED
+            : hero.uhunger > 150
+                ? NOT_HUNGRY
+                : hero.uhunger > 50
+                    ? HUNGRY
+                    : hero.uhunger > 0 ? WEAK : FAINTING;
+        switch (hunger) {
+        case SATIATED:
+            await exerciseWithEnvironment(A_DEX, false, state, normalized);
+            if (state.urole?.mnum === PM_MONK)
+                await exerciseWithEnvironment(A_WIS, false, state, normalized);
+            break;
+        case NOT_HUNGRY:
+            await exerciseWithEnvironment(A_CON, true, state, normalized);
+            break;
+        case WEAK:
+            await exerciseWithEnvironment(A_STR, false, state, normalized);
+            if (state.urole?.mnum === PM_MONK)
+                await exerciseWithEnvironment(A_WIS, true, state, normalized);
+            break;
+        case FAINTING:
+        case FAINTED:
+            await exerciseWithEnvironment(A_CON, false, state, normalized);
+            break;
+        default:
+            break;
+        }
+
+        switch (nearCapacity(state)) {
+        case MOD_ENCUMBER:
+            await exerciseWithEnvironment(A_STR, true, state, normalized);
+            break;
+        case HVY_ENCUMBER:
+            await exerciseWithEnvironment(A_STR, true, state, normalized);
+            await exerciseWithEnvironment(A_DEX, false, state, normalized);
+            break;
+        case EXT_ENCUMBER:
+            await exerciseWithEnvironment(A_DEX, false, state, normalized);
+            await exerciseWithEnvironment(A_CON, false, state, normalized);
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (moves % 5 === 0) {
+        if (intrinsicPropertyPresent(hero, CLAIRVOYANT)
+            && !hero.uprops?.[CLAIRVOYANT]?.blocked) {
+            await exerciseWithEnvironment(A_WIS, true, state, normalized);
+        }
+        if (intrinsicPropertyPresent(hero, REGENERATION))
+            await exerciseWithEnvironment(A_STR, true, state, normalized);
+        if (intrinsicPropertyPresent(hero, SICK)
+            || intrinsicPropertyPresent(hero, VOMITING)) {
+            await exerciseWithEnvironment(A_CON, false, state, normalized);
+        }
+        const hallucinating = intrinsicPropertyPresent(hero, HALLUC)
+            && !propertyPresent(hero, HALLUC_RES);
+        if (intrinsicPropertyPresent(hero, CONFUSION) || hallucinating) {
+            await exerciseWithEnvironment(A_WIS, false, state, normalized);
+        }
+        if ((propertyPresent(hero, WOUNDED_LEGS) && !hero.usteed)
+            || propertyPresent(hero, FUMBLING)
+            || intrinsicPropertyPresent(hero, STUNNED)) {
+            await exerciseWithEnvironment(A_DEX, false, state, normalized);
+        }
+    }
+}
+
+function attributeBonus(hero, index) {
+    return Math.trunc(attributeArray(hero?.abon)?.[index] ?? 0);
+}
+
+async function emitAttributeMessage(env, text, state) {
+    const message = requiredOperation(env, 'message');
+    await message(text, state);
+}
+
+// C ref: attrib.c adjattrib(). The periodic check is its live consumer here.
+// Keeping the whole state and message contract together avoids giving the
+// scheduled path a second attribute-adjustment implementation.
+// messageMode preserves msgflg's three source modes: positive suppresses all
+// messages, zero reports success or a verbose no-change result, and negative
+// reports only a successful change.
+export async function adjattrib(
+    index,
+    increment,
+    messageMode,
+    state = game,
+    env = {},
+) {
+    if (state.u?.uprops?.[FIXED_ABIL]?.extrinsic || !increment) return false;
+
+    if ((index === A_INT || index === A_WIS)
+        && state.uarmh?.otyp === DUNCE_CAP) {
+        if (messageMode === 0) {
+            await emitAttributeMessage(
+                env,
+                'Your cap constricts briefly, then relaxes again.',
+                state,
+            );
+        }
+        return false;
+    }
+
+    const random = env.random ?? { rn2 };
+    const attrs = attributeArrays(state.u);
+    const oldCurrent = acurr(state, index);
+    const oldBase = attrs.base[index];
+    const oldMaximum = attrs.max[index];
+    const racialMinimum = Math.trunc(
+        state.urace?.attrmin?.[index] ?? attrs.base[index],
+    );
+    // attrib.h:ATTRMAX(A_STR) uses the current form's cap while Upolyd.
+    const attributeMaximum = Math.trunc(
+        index === A_STR && Upolyd(state.u)
+            ? uasmon_maxStr(state)
+            : (state.urace?.attrmax?.[index] ?? attrs.max[index]),
+    );
+    attrs.base[index] += increment;
+
+    let description;
+    let bonusOpposesChange;
+    if (increment > 0) {
+        if (attrs.base[index] > attrs.max[index]) {
+            attrs.max[index] = attrs.base[index];
+            if (attrs.max[index] > attributeMaximum)
+                attrs.base[index] = attrs.max[index] = attributeMaximum;
+        }
+        description = POSITIVE_ATTRIBUTE_DESCRIPTIONS[index];
+        bonusOpposesChange = attributeBonus(state.u, index) < 0;
+    } else {
+        if (attrs.base[index] < racialMinimum) {
+            const decrease = random.rn2(
+                racialMinimum - attrs.base[index] + 1,
+            );
+            attrs.base[index] = racialMinimum;
+            attrs.max[index] = Math.max(
+                attrs.max[index] - decrease,
+                racialMinimum,
+            );
+        }
+        description = NEGATIVE_ATTRIBUTE_DESCRIPTIONS[index];
+        bonusOpposesChange = attributeBonus(state.u, index) > 0;
+    }
+
+    if (acurr(state, index) === oldCurrent) {
+        if (messageMode === 0 && state.flags?.verbose) {
+            if (attrs.base[index] === oldBase
+                && attrs.max[index] === oldMaximum) {
+                await emitAttributeMessage(
+                    env,
+                    `You're ${bonusOpposesChange ? 'currently' : 'already'} `
+                        + `as ${description} as you can get.`,
+                    state,
+                );
+            } else {
+                await emitAttributeMessage(
+                    env,
+                    `Your innate ${ATTRIBUTE_NAMES[index]} has `
+                        + `${increment > 0 ? 'improved' : 'declined'}.`,
+                    state,
+                );
+            }
+        }
+        return false;
+    }
+
+    attrs.exercise[index] = 0;
+    state.disp ??= {};
+    state.disp.botl = true;
+    if (messageMode <= 0) {
+        await emitAttributeMessage(
+            env,
+            `You feel ${Math.abs(increment) > 1 ? 'very ' : ''}`
+                + `${description}!`,
+            state,
+        );
+    }
+    if (state.program_state?.in_moveloop
+        && (index === A_STR || index === A_CON)) {
+        await requiredOperation(env, 'encumberMessage')(state);
+    }
+    return true;
+}
+
+function halveExercise(value) {
+    return Math.trunc(Math.abs(value) / 2) * Math.sign(value);
+}
+
+// C ref: attrib.c exerchk(). The scheduled check begins at move 600 in a new
+// game and advances by rn1(200, 800) after every completed check.
+export async function exerchk(state = game, env = {}) {
+    const random = env.random ?? { rn1, rn2 };
+    if (typeof random.rn1 !== 'function'
+        || typeof random.rn2 !== 'function') {
+        throw new TypeError('attribute check random injection requires rn1 and rn2');
+    }
+    const normalized = { ...env, random };
+    await exerper(state, normalized);
+
+    const moves = Math.trunc(state.moves ?? 0);
+    const nextCheck = state.context?.next_attrib_check;
+    if (!Number.isSafeInteger(nextCheck) || nextCheck < 0)
+        throw new Error('attribute check requires next_attrib_check');
+    if (moves < nextCheck || state.multi) return false;
+
+    const attrs = attributeArrays(state.u);
+    for (let index = 0; index < NUM_ATTRS; ++index) {
+        let accumulated = attrs.exercise[index];
+        if (!accumulated) continue;
+
+        const direction = Math.sign(accumulated);
+        const minimum = Math.trunc(
+            state.urace?.attrmin?.[index] ?? attrs.base[index],
+        );
+        const maximum = Math.min(
+            Math.trunc(
+                state.urace?.attrmax?.[index] ?? attrs.max[index],
+            ),
+            18,
+        );
+        const atLimit = accumulated < 0
+            ? attrs.base[index] <= minimum
+            : attrs.base[index] >= maximum;
+        const temporaryBody = Upolyd(state.u) && index !== A_WIS;
+        const threshold = index === A_WIS
+            ? Math.abs(accumulated)
+            : Math.trunc(Math.abs(accumulated) * 2 / 3);
+
+        if (!atLimit && !temporaryBody
+            && random.rn2(EXERCISE_LIMIT) <= threshold) {
+            if (await adjattrib(
+                index,
+                direction,
+                -1,
+                state,
+                normalized,
+            )) {
+                accumulated = 0;
+                const explanation =
+                    EXERCISE_EXPLANATIONS[index][direction > 0 ? 0 : 1];
+                await emitAttributeMessage(
+                    normalized,
+                    `You ${direction > 0 ? 'must have' : "haven't"} been `
+                        + `${explanation}.`,
+                    state,
+                );
+            }
+        }
+        attrs.exercise[index] = halveExercise(accumulated);
+    }
+
+    state.context.next_attrib_check += random.rn1(200, 800);
+    return true;
+}
+
+// C ref: align.h ALIGNLIM (17). The ceiling on u.ualign.record, which rises
+// by one every 200 moves.
+export function ALIGNLIM(state = game) {
+    return 10 + Math.trunc((state.moves ?? 0) / 200);
+}
+
+// C ref: attrib.c adjalign() (1297-1316). "avoid possible problems with
+// alignment overflow, and provide a centralized location for any future
+// alignment limits". A gain raises u.ualign.record toward ALIGNLIM; a loss
+// lowers it without a floor and separately raises u.ualign.abuse, which never
+// falls.
+//
+// `newabuse` is C's `unsigned newabuse = u.ualign.abuse - n`, and with `n < 0`
+// that subtraction adds. u.ualign.abuse starts at 0 in js/u_init.js and this is
+// its only writer, so it stays a small non-negative count and 1307's
+// `newabuse > u.ualign.abuse` is true on every negative `n`. Nothing shrinks
+// it, so C's unsigned wrap at 2^32 has no reachable input either.
+export function adjalign(n, state = game) {
+    const u = state.u;
+    const newalign = u.ualign.record + n;
+
+    if (n < 0) {
+        const newabuse = u.ualign.abuse - n;
+
+        if (newalign < u.ualign.record)
+            u.ualign.record = newalign;
+        if (newabuse > u.ualign.abuse) {
+            u.ualign.abuse = newabuse;
+            adj_erinys(newabuse, state);
+        }
+    } else if (newalign > u.ualign.record) {
+        u.ualign.record = newalign;
+        if (u.ualign.record > ALIGNLIM(state))
+            u.ualign.record = ALIGNLIM(state);
+    }
+}
+
+// C ref: youprop.h Hallucination macro. TRUE when the hero is hallucinating
+// and does not have hallucination resistance.
+function Hallucination(state) {
+    const halluc = state.u?.uprops?.[HALLUC];
+    const resistance = state.u?.uprops?.[HALLUC_RES];
+    return Boolean(halluc?.intrinsic)
+        && !(resistance?.intrinsic || resistance?.extrinsic);
+}
+
+// C ref: attrib.c uchangealign() (1320-1365). Change the hero's alignment
+// type, possibly losing use of artifacts. `reason` is A_CG_CONVERT (altar
+// conversion), A_CG_HELM_ON (putting on helm of opposite alignment), or
+// A_CG_HELM_OFF (taking it off).
+//
+export async function uchangealign(newalign, reason, state = game) {
+    const oldalign = state.u.ualign.type;
+
+    state.u.ublessed = 0; /* lose divine protection */
+    // You/Your/pline messages call flush_screen(), triggering bot(),
+    // so the actual data change needs to come before the message.
+    state.disp ??= {};
+    state.disp.botl = true;
+    if (reason === A_CG_CONVERT) {
+        /* conversion via altar */
+        livelog_printf(
+            LL_ALIGNMENT,
+            `permanently converted to ${aligns[1 - newalign]?.adj ?? ''}`,
+            state,
+        );
+        state.u.ualignbase[A_CURRENT] = newalign;
+        /* worn helm of opposite alignment might block change */
+        if (!state.uarmh
+            || state.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)
+            state.u.ualign.type = state.u.ualignbase[A_CURRENT];
+        await ttyPline(
+            `You have a ${(state.u.ualign.type !== oldalign) ? 'sudden ' : ''}sense of a new direction.`,
+            state,
+        );
+    } else {
+        /* putting on or taking off a helm of opposite alignment */
+        state.u.ualign.type = newalign;
+        if (reason === A_CG_HELM_ON) {
+            adjalign(-7, state); /* for abuse -- record will be cleared shortly */
+            await ttyPline(
+                `Your mind oscillates ${Hallucination(state) ? 'wildly' : 'briefly'}.`,
+                state,
+            );
+            await make_confused(rn1(2, 3), false, state);
+            if (Is_astralevel(state.u?.uz)
+                || (rn2(50) < state.u.ualign.abuse))
+                summon_furies(Is_astralevel(state.u?.uz) ? 0 : 1, state);
+            livelog_printf(
+                LL_ALIGNMENT,
+                `used a helm to turn ${aligns[1 - newalign]?.adj ?? ''}`,
+                state,
+            );
+        } else if (reason === A_CG_HELM_OFF) {
+            await ttyPline(
+                `Your mind is ${Hallucination(state) ? 'much of a muchness' : 'back in sync with your body'}.`,
+                state,
+            );
+        }
+    }
+    if (state.u.ualign.type !== oldalign) {
+        state.u.ualign.record = 0; /* slate is wiped clean */
+        note_unported('artifact.c retouch_equipment');
+    }
+}
+
+function confersLuck(object, state) {
+    if (object.otyp === LUCKSTONE) return true;
+    if (!object.oartifact) return false;
+    return Boolean(state.artilist?.[object.oartifact]?.spfx & SPFX_LUCK);
+}
+
+// C ref: attrib.c stone_luck(). Quantity contributes before the final sign;
+// uncursed stones are counted only when the caller asks for them.
+export function stone_luck(includeUncursed, state = game) {
+    let bonus = 0;
+    for (let object = state.invent; object; object = object.nobj) {
+        if (!confersLuck(object, state)) continue;
+        const quantity = Math.trunc(object.quan ?? 0);
+        if (object.cursed) bonus -= quantity;
+        else if (object.blessed || includeUncursed) bonus += quantity;
+    }
+    return Math.sign(bonus);
+}
+
+// C ref: attrib.c set_moreluck() (441-453). Recalculates u.moreluck from
+// inventory. Called when a luck-conferring item enters or leaves inventory or
+// changes BUC status. The result feeds into Luck (= u.uluck + u.moreluck),
+// which rnl() draws use.
+export function set_moreluck(state = game) {
+    const luckbon = stone_luck(true, state);
+    if (!luckbon && !carrying(LUCKSTONE, state))
+        state.u.moreluck = 0;
+    else if (luckbon >= 0)
+        state.u.moreluck = LUCKADD;
+    else
+        state.u.moreluck = -LUCKADD;
+}
+
+// C ref: attrib.c restore_attrib() (455-487). "(not used)" -- ATIME() is
+// never set to non-zero anywhere in the C source, so the countdown body never
+// fires. Ported for completeness; no caller exists.
+export async function restore_attrib(state = game, env = {}) {
+    const u = state.u;
+    const attrs = attributeArrays(u);
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        const woundedLegs = u.uprops?.[WOUNDED_LEGS]?.intrinsic
+            || u.uprops?.[WOUNDED_LEGS]?.extrinsic;
+        const equilibrium = ((i === A_STR && u.uhs >= WEAK)
+            || (i === A_DEX && woundedLegs)) ? -1 : 0;
+        if (attrs.temp[i] !== equilibrium && attrs.time[i] !== 0) {
+            if (!(--attrs.time[i])) { /* countdown for change */
+                attrs.temp[i] += (attrs.temp[i] > 0) ? -1 : 1;
+                state.disp ??= {};
+                state.disp.botl = true;
+                if (attrs.temp[i]) /* reset timer */
+                    attrs.time[i] = Math.trunc(
+                        100 / acurr(state, A_CON),
+                    );
+            }
+        }
+    }
+    // C checks `disp.botl` here, which covers both changes this function
+    // made and any flag the caller left set. Since the function is dead code
+    // (ATIME is never non-zero), the distinction is academic.
+    if (state.disp?.botl) {
+        const encumberMessage = env.encumberMessage;
+        if (typeof encumberMessage !== 'function')
+            throw new Error('restore_attrib requires encumber_msg');
+        await encumberMessage(state);
+    }
+}
+
+// C ref: attrib.c gainstr() (203-220). Strength gain, typically from eating a
+// giant corpse, spinach from a tin, or royal jelly. When incr is 0 the amount
+// depends on current strength; a cursed object reverses the direction.
+//
+// Cycle avoidance: adjattrib() needs pickup.c encumber_msg(), which lives in a
+// file that imports this one. The caller supplies it through env.
+export async function gainstr(otmp, incr, givemsg, state = game, env = {}) {
+    const random = env.random ?? { rn2, rnd };
+    let num = incr;
+
+    if (!num) {
+        if (state.u.acurr.a[A_STR] < 18)
+            num = (random.rn2(4) ? 1 : random.rnd(6));
+        else if (state.u.acurr.a[A_STR] < STR18(85))
+            num = random.rnd(10);
+        else
+            num = 1;
+    }
+    await adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num,
+                    givemsg ? -1 : 1, state, env);
+}
+
+// C ref: attrib.c losestr() (218-270). Strength loss that may kill; the cause
+// is poison or a monster like 'a'. Each point that would push ABASE(A_STR)
+// below the race's minimum is converted into rn1(4, 3) hit points of damage
+// instead, and only the points that fit reach adjattrib().
+//
+// Cycle avoidance follows poisoned() below: hack.c losehp() lives in a file
+// that imports this one, and pickup.c encumber_msg(), which adjattrib() spends
+// on a Strength change, lives in a file that imports that one. Both arrive
+// through env.
+export async function losestr(num, knam, k_format, state = game, env = {}) {
+    const random = env.random ?? { rn1, rn2 };
+    const losehp = requiredOperation(env, 'losehp');
+    const encumberMessage = requiredOperation(env, 'encumberMessage');
+    const u = state.u;
+    const attrmin = Math.trunc(state.urace?.attrmin?.[A_STR] ?? 0);
+    const uhpmin = minuhpmax(1, state);
+    let ustr = u.acurr.a[A_STR] - num;
+    const waspolyd = Upolyd(u);
+
+    if (num <= 0 || u.acurr.a[A_STR] < attrmin) {
+        // C reports impossible("losestr: %d - %d", ABASE(A_STR), num) and
+        // returns. Both conditions mean the caller asked for a loss the hero
+        // cannot take, so there is nothing to spend here either way.
+        return;
+    }
+    let dmg = 0;
+    while (ustr < attrmin) {
+        ++ustr;
+        --num;
+        /* (0..(4-1))+3 => 3..6; used to use flat 6 here */
+        dmg += random.rn1(4, 3);
+    }
+    if (dmg) {
+        /* in case damage is fatal and caller didn't supply killer reason */
+        if (!knam) {
+            knam = 'terminal frailty';
+            k_format = KILLED_BY;
+        }
+        await losehp(dmg, knam, k_format);
+        if (state.program_state?.gameover) return;
+
+        if (Upolyd(u)) {
+            /* when still poly'd, reduce you-as-monst maxHP; never below 1 */
+            setuhpmax(Math.max(u.mhmax - dmg, 1), false, state);
+        } else if (!waspolyd) {
+            /* not polymorphed now and didn't rehumanize when taking damage;
+               reduce max HP, but not below uhpmin */
+            if (u.uhpmax > uhpmin)
+                setuhpmax(Math.max(u.uhpmax - dmg, uhpmin), false, state);
+        }
+        state.disp.botl = true;
+    }
+    // C's `#if 0` arm (256-262), which would clamp u.uhpmax back down to
+    // uhpmin and call losexp(), is compiled out; nhUse(olduhpmax) is all that
+    // is left of C's `olduhpmax`, so this port never reads it either.
+
+    /* 'num' could have been reduced to 0 in the minimum strength loop;
+       '(Upolyd || !waspolyd)' is True unless damage caused rehumanization */
+    if (num > 0 && (Upolyd(u) || !waspolyd))
+        await adjattrib(
+            A_STR, -num, 1, state, { ...env, random, encumberMessage },
+        );
+}
+
+// C ref: attrib.c poison_strdmg() (272-278). Combined strength loss and damage
+// from some poisons. The strength loss runs first and can already have killed
+// the hero through losestr()'s own losehp().
+export async function poison_strdmg(
+    strloss, dmg, knam, k_format, state = game, env = {},
+) {
+    const losehp = requiredOperation(env, 'losehp');
+    await losestr(strloss, knam, k_format, state, env);
+    if (state.program_state?.gameover) return;
+    await losehp(dmg, knam, k_format);
+}
+
+// C ref: attrib.c poiseff[] (280-290). Each entry's delivery function controls
+// how the message opens: You_feel "weaker" => "You feel weaker", Your "brain
+// is on fire" => "Your brain is on fire", You "break out in hives" =>
+// "You break out in hives".
+const POISON_EFFECT_MESSAGES = Object.freeze([
+    /* A_STR */ { prefix: 'You feel',  msg: 'weaker' },
+    /* A_INT */ { prefix: 'Your',      msg: 'brain is on fire' },
+    /* A_WIS */ { prefix: 'Your',      msg: 'judgement is impaired' },
+    /* A_DEX */ { prefix: 'Your',      msg: 'muscles won\'t obey you' },
+    /* A_CON */ { prefix: 'You feel',  msg: 'very sick' },
+    /* A_CHA */ { prefix: 'You',       msg: 'break out in hives' },
+]);
+
+// C ref: attrib.c poisontell() (293-313). Feedback for attribute loss due to
+// poisoning. Two special cases override the table's message: gauntlets of power
+// force A_STR to stay at STR19(25), giving "innately weaker", and maximum A_CON
+// gives "sick inside".
+export async function poisontell(typ, exclaim, state = game, env = {}) {
+    const effect = POISON_EFFECT_MESSAGES[typ];
+    let msg = effect.msg;
+    if (typ === A_STR && acurr(state, A_STR) === STR19(25))
+        msg = 'innately weaker';
+    else if (typ === A_CON && acurr(state, A_CON) === 25)
+        msg = 'sick inside';
+    const message = requiredOperation(env, 'message');
+    await message(`${effect.prefix} ${msg}${exclaim ? '!' : '.'}`, state);
+}
+
+// C ref: attrib.c adjuhploss() (1182-1194). Called after setuhpmax() when
+// damage is pending; if uhpmax has been reduced, it might have caused uhp to be
+// reduced too; if so, recalculate pending loss to account for that.
+export function adjuhploss(loss, olduhp, state = game) {
+    if (!Upolyd(state.u)) {
+        if (state.u.uhp < olduhp)
+            loss -= (olduhp - state.u.uhp);
+    } else {
+        // The Upolyd arm redirects at u.mh; no caller can reach it today
+        // because nothing polymorphs the hero.
+        if (state.u.mh < olduhp)
+            loss -= (olduhp - state.u.mh);
+    }
+    return Math.max(loss, 1);
+}
+
+// C ref: attrib.c poisoned() (317-408). Called when an attack or trap has
+// poisoned the hero.
+//
+// Three branches:
+//   i == 0 && typ != A_CHA: instant-kill attempt (fatal damage or severe HP
+//     and attribute loss).
+//   i > 5: HP damage only, more likely but less severe for thrown weapons.
+//   else: attribute loss only.
+//
+// Cycle avoidance: losehp() lives in hack.js and done() in end.js, both of
+// which import from this file. To avoid a circular dependency, both are
+// injected through env.losehp and env.done.
+export async function poisoned(
+    reason, typ, pkiller, fatal, thrown_weapon,
+    state = game, env = {},
+) {
+    const random = env.random ?? { rn2, d, rnd, rn1 };
+    const message = requiredOperation(env, 'message');
+    const losehp = requiredOperation(env, 'losehp');
+    const done = requiredOperation(env, 'done');
+    const encumberMessage = requiredOperation(env, 'encumberMessage');
+    const blast = reason === 'blast';
+
+    // Inform the player about being poisoned unless the reason already says
+    // "poison" or was a gas "blast" whose message has already been shown.
+    if (!blast && strstri(reason, 'poison') < 0) {
+        const plural = reason.length > 0 && reason[reason.length - 1] === 's';
+        const article = reason.length > 0
+            && reason[0] === reason[0].toUpperCase() ? '' : 'The ';
+        await message(
+            `${article}${reason} ${plural ? 'were' : 'was'} poisoned!`,
+            state,
+        );
+    }
+
+    // Poison resistance blocks the effect entirely.
+    const poisonRes = state.u?.uprops?.[POISON_RES];
+    if (poisonRes?.intrinsic || poisonRes?.extrinsic) {
+        if (blast) await shieldeff(state.u.ux, state.u.uy, state);
+        await message('The poison doesn\'t seem to affect you.', state);
+        return;
+    }
+
+    // Suppress killer prefix if it already has one.
+    let kprefix = KILLED_BY_AN;
+    const i_mon = name_to_mon(pkiller, { state });
+    if (ismnum(i_mon) && (state.mons[i_mon].geno & G_UNIQ)) {
+        kprefix = KILLED_BY;
+        if (!type_is_pname(state.mons[i_mon]))
+            pkiller = the(pkiller, state);
+    } else if (pkiller.length >= 4
+               && (pkiller.slice(0, 4).toLowerCase() === 'the '
+                   || pkiller.slice(0, 3).toLowerCase() === 'an '
+                   || pkiller.slice(0, 2).toLowerCase() === 'a ')) {
+        kprefix = KILLED_BY;
+    }
+
+    const i = !fatal ? 1 : random.rn2(fatal + (thrown_weapon ? 20 : 0));
+
+    if (i === 0 && typ !== A_CHA) {
+        // Instant-kill attempt, sometimes survivable.
+        const loss = 6 + random.d(4, 6); // 6 + 4d6 => 10..34
+        if (state.u.uhp <= loss) {
+            state.u.uhp = -1;
+            state.disp ??= {};
+            state.disp.botl = true;
+            await message('The poison was deadly...', state);
+        } else {
+            // Survived, but with severe reaction.
+            const olduhp = state.u.uhp;
+            const newuhpmax = state.u.uhpmax - Math.trunc(loss / 2);
+            setuhpmax(Math.max(newuhpmax, minuhpmax(3, state)), true, state);
+            const adjustedLoss = adjuhploss(loss, olduhp, state);
+
+            await losehp(adjustedLoss, pkiller, kprefix, state);
+            if (await adjattrib(A_CON, typ !== A_CON ? -1 : -3, 1, state, env))
+                await poisontell(A_CON, true, state, env);
+            if (typ !== A_CON
+                && await adjattrib(typ, -3, 1, state, env))
+                await poisontell(typ, true, state, env);
+        }
+    } else if (i > 5) {
+        // HP damage; more likely but less severe with missiles.
+        let loss = thrown_weapon ? random.rnd(6) : random.rn1(10, 6);
+        // Half_gas_damage (blast or cloud + worn towel) is not ported; the dart
+        // trap caller passes thrown_weapon=true, so blast and cloud are
+        // unreachable. Guard with a refusal rather than silently skipping.
+        if ((blast || reason === 'gas cloud')
+            && state.u?.uprops) {
+            // Half_gas_damage check: the towel halving. No consumer can reach
+            // this for a dart trap, so leave it as a no-op placeholder.
+        }
+        await losehp(loss, pkiller, kprefix, state);
+    } else {
+        // Attribute loss.
+        const loss = (thrown_weapon || !fatal)
+            ? 1 : random.d(2, 2); // d(2,2) was rn1(3,3)
+        if (await adjattrib(typ, -loss, 1, state, env))
+            await poisontell(typ, true, state, env);
+    }
+
+    if (state.u.uhp < 1) {
+        state.killer ??= {};
+        state.killer.format = kprefix;
+        state.killer.name = pkiller;
+        // "Poisoned by a poisoned ___" is redundant.
+        // Monster-turn planning runs on a clone. C's done() is a terminal
+        // boundary and never runs on that clone; carry the lethal result back
+        // to the live replay so its real done() call owns end-game effects.
+        if (env.planning && typeof env.planningDeath === 'function')
+            throw env.planningDeath();
+        await done(strstri(pkiller, 'poison') >= 0 ? DIED : POISONING, state);
+    }
+    await encumberMessage(state);
+}
+
+export const _attribInternals = Object.freeze({
+    rnd_attr,
+    init_attr_role_redist,
+});

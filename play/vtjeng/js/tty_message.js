@@ -1,0 +1,656 @@
+// tty_message.js -- Source-shaped message normalization and TTY display.
+// C refs: pline.c vpline(), custompline(), urgent_pline(), and Norep();
+// win/tty/topl.c update_topl(), more(), and xwaitforspace(); and
+// win/tty/wintty.c tty_display_nhwindow() and tty_clear_nhwindow().
+
+import { game } from './gstate.js';
+import {
+    MSGTYP_NOREP,
+    MSGTYP_NORMAL,
+    MSGTYP_NOSHOW,
+    MSGTYP_STOP,
+    OVERRIDE_MSGTYPE,
+    PICK_NONE,
+    PICK_ONE,
+    PLINE_NOREPEAT,
+    PLINE_SPEECH,
+    PLINE_VERBALIZE,
+    URGENT_MESSAGE,
+} from './const.js';
+import { flush_screen } from './display.js';
+import {
+    decodeUtf8ByteString,
+    encodeUtf8ByteString,
+} from './hacklib.js';
+import { nhgetch } from './input.js';
+import { emitGlyphUpdateNotices } from './startup_a11y.js';
+import { NO_COLOR } from './terminal.js';
+import { vision_recalc } from './vision.js';
+import { msgtype_type } from './options.js';
+import { sound_speak } from './sounds.js';
+
+// C ref: win/tty/wintty.c defmorestr[], the prompt both more() and dmore()
+// print when no window supplies its own.
+export const MORE_PROMPT = '--More--';
+// C ref: include/wintty.h:85-88, which names four ttyDisplay->toplin states.
+// Three are ported. C assigns TOPLINE_SPECIAL_PROMPT in hooked_tty_getlin() at
+// getline.c:56, in tty_yn_function() at topl.c:392, and on tty_wait_synch()'s
+// interrupted-read arm at wintty.c:3639; the port assigns it nowhere. The only
+// reads of that constant are topl.c:139, 155 and 163, and every one is gated
+// on a nonzero ttyDisplay->cury, so it becomes distinguishable from
+// TOPLINE_NON_EMPTY only once the top line has wrapped onto a second row. No
+// ported prompt wraps; js/getline.js hooked_tty_getlin() records what the
+// wrapped case would need.
+export const TOPLINE_EMPTY = 0;
+export const TOPLINE_NEED_MORE = 1;
+// tty_yn_function()'s clean_up leaves this one behind (topl.c:543). What reads
+// it is clearTtyMessageWindow() below, whose C original repaints only when the
+// state is not TOPLINE_EMPTY -- which is how getdir()'s clear_nhwindow() takes
+// an answered prompt off the top line.
+export const TOPLINE_NON_EMPTY = 2;
+
+function ttyByteText(value) {
+    // topl.c keeps the raw byte string for wrapping and message history.
+    // Recorder patch 006 ignores signed high-bit bytes only when putchar()
+    // projects them into the shadow grid. NUL is an internal skipped-byte
+    // marker: it occupies one logical byte cell but is not a wrapping space.
+    return encodeUtf8ByteString(value).map((byte) => (
+        byte < 0x80 ? String.fromCharCode(byte) : '\0'
+    )).join('');
+}
+
+// C ref: pline.c vpline()'s modest-overflow arm. The formatted byte string is
+// reduced to BUFSZ - 1 bytes once, before MSGTYPE lookup, TTY rendering, and
+// gp.prevmsg storage. Bytes 249 through 251 become an ellipsis and bytes 252
+// through 254 preserve the original final three bytes.
+function normalizeVplineMessage(value) {
+    const bytes = encodeUtf8ByteString(value);
+    if (bytes.length <= 255) return decodeUtf8ByteString(bytes);
+    return decodeUtf8ByteString([
+        ...bytes.slice(0, 249),
+        0x2E, 0x2E, 0x2E,
+        ...bytes.slice(-3),
+    ]);
+}
+
+function writeRecorderTtyLine(display, row, value) {
+    const line = String(value);
+    let column = 0;
+    for (const ch of line) {
+        if (column >= display.cols) break;
+        // Recorder patch 006 receives signed high-bit bytes after topl_putsym()
+        // advances curx. nomux_putch() ignores those bytes, preserving the
+        // prior shadow cell at that column.
+        if (ch !== '\0')
+            display.setCell(column, row, ch, NO_COLOR, 0);
+        ++column;
+    }
+    display.setCursor(column, row);
+    display.clearToEol();
+    return column;
+}
+
+// C ref: win/tty/topl.c update_topl()'s same-line append arm advances the
+// message cursor over its two-space separator, then addtopl() writes only the
+// new bytes and calls cl_end(). Keep the already-rendered prefix intact:
+// putsyms() ignores recorder-shadow high-bit bytes while still advancing the
+// source cursor, and cl_end() clears only after the appended text.
+function appendRecorderTtyLine(display, startColumn, row, value) {
+    let column = startColumn;
+    for (const ch of String(value)) {
+        if (column >= display.cols) break;
+        if (ch !== '\0')
+            display.setCell(column, row, ch, NO_COLOR, 0);
+        ++column;
+    }
+    display.setCursor(column, row);
+    display.clearToEol();
+}
+
+function snapshotRows(display, rowCount) {
+    return display.grid.slice(0, rowCount).map(
+        (row) => row.map((cell) => ({ ...cell })),
+    );
+}
+
+function restoreRows(display, snapshot) {
+    for (let row = 0; row < snapshot.length; ++row) {
+        for (let column = 0; column < snapshot[row].length; ++column) {
+            const cell = snapshot[row][column];
+            display.setCell(column, row, cell.ch, cell.color, cell.attr);
+        }
+    }
+}
+
+function pendingTtyMessageLayout(state) {
+    const display = state.nhDisplay;
+    const lines = wrapTtyTopline(state._pending_message, display.cols);
+    let promptRow = lines.length - 1;
+    let promptColumn = lines.at(-1).length;
+    if (promptColumn >= display.cols - MORE_PROMPT.length) {
+        ++promptRow;
+        promptColumn = 0;
+    }
+    return { display, lines, promptRow, promptColumn };
+}
+
+// Write the pending message and its source-owned More marker without waiting.
+// C's tty_wait_synch() map-window arm refreshes the map and leaves this marker
+// for the next tty_yn_function() read; it does not call getret().
+function writePendingTtyMessagePrompt(state, layout) {
+    const { display, lines, promptRow, promptColumn } = layout;
+    for (let row = 0; row < lines.length; ++row)
+        writeRecorderTtyLine(display, row, lines[row]);
+    if (state._ttyMixedFirstCell)
+        display.setCell(0, 0, state._ttyMixedFirstCell, NO_COLOR, 0);
+    display.putstr(promptColumn, promptRow, MORE_PROMPT, NO_COLOR, 0);
+    display.setCursor(promptColumn + MORE_PROMPT.length, promptRow);
+}
+
+// C ref: wintty.c tty_display_nhwindow(WIN_MAP, FALSE) leaves an existing
+// message's --More-- marker visible after repainting the map. This is the
+// nonblocking half of displayPendingTtyMessageWindow(), used by
+// tty_wait_synch()'s map-window branch.
+export function showPendingTtyMessage(state = game) {
+    if (!state._pending_message || !state.nhDisplay) return false;
+    writePendingTtyMessagePrompt(state, pendingTtyMessageLayout(state));
+    return true;
+}
+
+// C ref: decl.c quitchars[] (" \r\n\033"), the set more() and dmore() pass to
+// xwaitforspace().  The Escape it ends with is matched by the arm above the
+// membership test, exactly as in C.
+const QUITCHARS = ' \r\n\u001B';
+
+// C ref: win/tty/getline.c xwaitforspace().  Returns morc, the key that ended
+// the wait.  ttyDisplay->dismiss_more starts at 0, which matches no key a
+// session can send, so only `s` and the unconditional CR and LF dismiss the
+// prompt.
+export async function xwaitforspace(
+    state = game,
+    s = QUITCHARS,
+    dismissMore = 0,
+) {
+    for (;;) {
+        const code = await nhgetch(state);
+        if (code === 10 || code === 13) return code;
+        // sys/share/unixtty.c setftty():258 raises iflags.cbreak inside
+        // tty_init_nhwindows(); a caller reached before that -- getret() on
+        // the startup configuration errors -- reads every other key and keeps
+        // waiting, where a caller reached after it accepts `s` as well.
+        if (!state.iflags?.cbreak) continue;
+        // Escape has its own arm above the membership test, so it dismisses
+        // the prompt whatever `s` holds.  tty_nhgetch() already substituted it
+        // for NUL.  All other keys ring the bell and leave this boundary
+        // unchanged.
+        if (code === 27 || s.includes(String.fromCharCode(code))
+            || (dismissMore !== 0 && code === dismissMore))
+            return code;
+    }
+}
+
+// C ref: win/tty/topl.c update_topl().  It replaces the last space before
+// column 80 with a newline whenever the remaining message is at least one
+// terminal row long.
+export function wrapTtyTopline(message, columns) {
+    const logicalLines = [];
+    let remaining = String(message);
+    while (remaining.length >= columns) {
+        let split = columns - 1;
+        while (split > 0 && remaining[split] !== ' ') --split;
+        if (split === 0) {
+            split = remaining.indexOf(' ');
+            if (split < 0) break;
+        }
+        logicalLines.push(remaining.slice(0, split));
+        remaining = remaining.slice(split + 1);
+    }
+    logicalLines.push(remaining);
+
+    // topl_putsym() moves to the next row before writing a byte at CO - 1.
+    // That physical wrap still happens when update_topl() could not insert a
+    // newline into a long token, but it does not alter gt.toplines history.
+    const physicalWidth = Math.max(1, columns - 1);
+    return logicalLines.flatMap((line) => {
+        if (!line.length) return [''];
+        const rows = [];
+        for (let start = 0; start < line.length; start += physicalWidth) {
+            rows.push(line.slice(start, start + physicalWidth));
+        }
+        return rows;
+    });
+}
+
+function rememberPendingMessage(state, message, mixedFirstCell = null) {
+    state._pending_message = message;
+    if (mixedFirstCell) state._ttyMixedFirstCell = mixedFirstCell;
+    else delete state._ttyMixedFirstCell;
+    state._ttyToplines = message;
+    const display = state.nhDisplay;
+    if (display) {
+        display.topMessage = message;
+        display.toplines = message;
+        display.toplin = TOPLINE_NEED_MORE;
+    }
+}
+
+// C ref: topl.c redotoplin(), reached by update_topl() after
+// tty_nhgetch() has demoted an acknowledged top line to TOPLINE_NON_EMPTY.
+// That branch replaces the physical line immediately; retaining only the
+// logical pending string leaves the old line on the terminal until a later
+// More prompt redraws it.  Keep this separate from
+// writePendingTtyMessagePrompt(), whose --More-- marker belongs only to a
+// blocking display_nhwindow()/more() boundary.
+function redrawTtyTopline(state, message, mixedFirstCell = null) {
+    const display = state.nhDisplay;
+    if (!display) return;
+    const lines = wrapTtyTopline(message, display.cols);
+    for (let row = 0; row < lines.length; ++row)
+        writeRecorderTtyLine(display, row, lines[row]);
+    if (mixedFirstCell)
+        display.setCell(0, 0, mixedFirstCell, NO_COLOR, 0);
+    display.setCursor(lines.at(-1)?.length ?? 0, lines.length - 1);
+}
+
+// C ref: win/tty/wintty.c tty_clear_nhwindow(WIN_MESSAGE).  Command parsing
+// clears the physical top line after the final key has been read while
+// retaining gt.toplines for message history.
+export function clearTtyMessageWindow(state = game) {
+    const display = state.nhDisplay;
+    if (!display) return;
+    if (display.toplin !== TOPLINE_EMPTY || state._pending_message) {
+        display.clearRow(0);
+        display.setCursor(0, 0);
+    }
+    state._pending_message = '';
+    delete state._ttyMixedFirstCell;
+    display.toplin = TOPLINE_EMPTY;
+    display.topMessage = state._ttyToplines ?? display.toplines ?? '';
+}
+
+// C ref: win/tty/topl.c more().  A multi-line top message is repaired through
+// docorner() and homes the cursor.  A one-line message remains on screen after
+// ordinary dismissal; Escape alone clears that physical top line.
+export async function dismissPendingTtyMessage(
+    state = game,
+    {
+        dismissMore = 0,
+        preventEscapeStop = false,
+        returnResponse = false,
+    } = {},
+) {
+    if (!state._pending_message) return false;
+    const display = state.nhDisplay;
+    if (!display)
+        throw new Error('tty message dismissal requires an initialized display');
+
+    const layout = pendingTtyMessageLayout(state);
+    const { lines, promptRow, promptColumn } = layout;
+    const multiline = promptRow > 0;
+    const snapshot = multiline
+        ? snapshotRows(display, promptRow + 1)
+        : null;
+    if (snapshot) {
+        // The message row is not backed by map-window data. docorner() clears
+        // it while reconstructing any obscured map rows below it.
+        snapshot[0] = snapshot[0].map(() => ({
+            ch: ' ', color: NO_COLOR, attr: 0,
+        }));
+    }
+    // redotoplin() overwrites ordinary bytes in place, skips recorder-ignored
+    // high-bit bytes, and calls cl_end() after every logical/physical line.
+    // Do not clear the prefix first: skipped byte cells retain their prior
+    // character, color, and attributes in the recorder shadow grid.
+    writePendingTtyMessagePrompt(state, layout);
+
+    // wintty.c tty_nhgetch() clears WIN_STOP before every key. more() restores
+    // it only when this prompt's final response is Escape without WIN_NOSTOP.
+    const response = await xwaitforspace(state, QUITCHARS, dismissMore);
+
+    if (snapshot) {
+        restoreRows(display, snapshot);
+        display.setCursor(0, 0);
+    } else if (response === 0 || response === 27) {
+        display.clearRow(0);
+        display.setCursor(0, 0);
+    }
+    state._pending_message = '';
+    delete state._ttyMixedFirstCell;
+    // more() leaves gt.toplines intact for message history. Escape also
+    // sets WIN_STOP after tty_nhgetch() returns; subsequent plines update
+    // that logical buffer without drawing until the next key wait.
+    state._ttyToplines ??= lines.join('\n');
+    if ((response === 0 || response === 27) && !preventEscapeStop)
+        state._ttyMessageStopped = true;
+    display.topMessage = state._ttyToplines;
+    display.toplines = state._ttyToplines;
+    display.toplin = TOPLINE_EMPTY;
+    return returnResponse ? response : true;
+}
+
+// C ref: win/tty/wintty.c tty_message_menu(). The one-item inventory
+// shortcut uses the selected inventory letter as ttyDisplay->dismiss_more,
+// so the message line itself is the menu and the matching key is the result.
+// The caller has just answered a prompt, which is why the normal pline path
+// is safe here; tty_message_menu() then forces its own More boundary and
+// clears WIN_MESSAGE before returning to invent.c.
+export async function tty_message_menu(
+    invletter,
+    how,
+    mesg,
+    state = game,
+) {
+    if (how === PICK_NONE) {
+        await ttyPline(mesg, state);
+        return 0;
+    }
+    if (how !== PICK_ONE)
+        throw new Error(`unsupported tty_message_menu mode ${how}`);
+
+    await ttyPline(mesg, state);
+    const response = await dismissPendingTtyMessage(state, {
+        dismissMore: typeof invletter === 'number'
+            ? invletter
+            : String(invletter ?? '').charCodeAt(0),
+        returnResponse: true,
+    });
+    if (state.nhDisplay) {
+        // wintty.c restores NEED_MORE before tty_clear_nhwindow(), because
+        // more() has already reset the top-line state to EMPTY.
+        state.nhDisplay.toplin = TOPLINE_NEED_MORE;
+        clearTtyMessageWindow(state);
+    }
+    const selected = typeof invletter === 'number'
+        ? invletter
+        : String(invletter ?? '').charCodeAt(0);
+    return response && (response === selected || response === 27)
+        ? response
+        : 0;
+}
+
+// C ref: wintty.c tty_display_nhwindow(WIN_MESSAGE, TRUE/FALSE). Only a
+// TOPLINE_NEED_MORE message enters more(); an already acknowledged physical
+// line is retired logically by the nonblocking call and remains on screen.
+// The blocking-looking TTY implementation therefore must not inspect merely
+// _pending_message: callers such as invent.c look_here() can have a stale
+// physical line with TOPLINE_NON_EMPTY and no input boundary to consume.
+export async function displayPendingTtyMessageWindow(state) {
+    // C tty_display_nhwindow() clears ttyDisplay->rawprint before selecting
+    // the WIN_MESSAGE arm.  This is separate from nomuxRaw.active, which the
+    // recorder keeps sticky for cursor capture.
+    if (state.nhDisplay?.nomuxRaw)
+        state.nhDisplay.nomuxRaw.rawprint = 0;
+    const waitingForMore = state.nhDisplay?.toplin === TOPLINE_NEED_MORE;
+    const waited = waitingForMore
+        ? await dismissPendingTtyMessage(state) : false;
+    if (waited) {
+        state.nhDisplay.toplin = TOPLINE_NEED_MORE;
+        clearTtyMessageWindow(state);
+    } else if (state.nhDisplay) {
+        state.nhDisplay.toplin = TOPLINE_EMPTY;
+    }
+}
+
+function fitsOnTtyTopline(prior, next, columns) {
+    return wrapTtyTopline(prior, columns).length === 1
+        && next.length + prior.length + 3
+            < columns - MORE_PROMPT.length;
+}
+
+// Whether an ordinary pline() will reach xwaitforspace() before it returns.
+// Monster-action planning uses this to distinguish a message which itself is
+// the next supported input boundary from one which would run straight into an
+// unported source operation. Keep the predicates in the same order as
+// ttyPlineCore() below so the dry run does not guess from rendered output.
+export function ttyPlineWillWait(message, state = game) {
+    const normalizedMessage = normalizeVplineMessage(message);
+    const next = ttyByteText(normalizedMessage);
+    const msgtype = msgtype_type(normalizedMessage, false, state);
+    if (msgtype === MSGTYP_NOSHOW) return false;
+
+    const columns = state.nhDisplay?.cols ?? 80;
+    const stoppedAtEntry = Boolean(state._ttyMessageStopped);
+    const occupied = state._pending_message ?? '';
+    const current = state.nhDisplay?.toplin === TOPLINE_NON_EMPTY
+        ? '' : occupied;
+    const priorTopline = state._ttyToplines ?? current;
+    const deathMessage = next.startsWith('You die');
+    const deathComparisonReached = deathMessage
+        && (Boolean(current) || stoppedAtEntry)
+        && fitsOnTtyTopline(priorTopline, next, columns);
+
+    if (stoppedAtEntry && !deathComparisonReached) return false;
+    if (current
+        && !deathMessage
+        && fitsOnTtyTopline(current, next, columns)) {
+        return msgtype === MSGTYP_STOP;
+    }
+    if (current) return true;
+    return wrapTtyTopline(next, columns).length > 1
+        || msgtype === MSGTYP_STOP;
+}
+
+function rememberSuppressedMessage(state, message, columns) {
+    const next = String(message);
+    const current = state._ttyToplines ?? '';
+    const sharesTopline = current
+        && fitsOnTtyTopline(current, next, columns);
+    const toplines = sharesTopline ? `${current}  ${next}` : next;
+    state._ttyToplines = toplines;
+    const display = state.nhDisplay;
+    if (display) {
+        // WIN_STOP prevents this logical update from reaching the terminal.
+        // A message rendered by the update_topl() call which received Escape
+        // remains visible, with its existing TOPLINE_NEED_MORE state.
+        display.toplines = toplines;
+    }
+}
+
+// C refs: pline.c vpline(), Norep(); win/tty/topl.c update_topl(). Messages
+// share the top line only when both fit with two separating spaces and room
+// for a future --More--. PLINE_NOREPEAT compares the new individual message
+// against gp.prevmsg before the window port sees it.
+async function ttyPlineCore(message, state, pflags, mixedFirstCell = null) {
+    // display.c show_glyph() calls pline_xy() synchronously. JS defers the
+    // awaitable TTY work, so a later ordinary message must first drain every
+    // source-earlier glyph notice. emitGlyphUpdateNotices marks its recursive
+    // ttyPline() calls to avoid re-entering this boundary.
+    if (!state._emittingGlyphUpdateNotices) {
+        await emitGlyphUpdateNotices(state, { pline: ttyPline });
+    }
+    const normalizedMessage = normalizeVplineMessage(message);
+    const next = ttyByteText(normalizedMessage);
+    const noRepeat = Boolean(pflags & PLINE_NOREPEAT);
+    const urgentMessage = Boolean(pflags & URGENT_MESSAGE);
+    let msgtype = MSGTYP_NORMAL;
+    if (!(pflags & OVERRIDE_MSGTYPE)) {
+        msgtype = msgtype_type(normalizedMessage, noRepeat, state);
+        if (!(pflags & URGENT_MESSAGE)
+            && (msgtype === MSGTYP_NOSHOW
+                || (msgtype === MSGTYP_NOREP
+                    && normalizedMessage === state._ttyPreviousMessage))) {
+            return;
+        }
+    }
+    const deathMessage = next.startsWith('You die');
+    const columns = state.nhDisplay?.cols ?? 80;
+    let stoppedAtEntry = Boolean(state._ttyMessageStopped);
+    const acknowledgedTopline = state.nhDisplay?.toplin === TOPLINE_NON_EMPTY;
+    // C ref: topl.c update_topl():262-279. Both the share-the-line arm and the
+    // more() below it are gated on `ttyDisplay->toplin == TOPLINE_NEED_MORE`
+    // (or WIN_STOP), not on the line merely being occupied. Every message the
+    // port writes leaves NEED_MORE behind, so this reads as before for them;
+    // tty_yn_function()'s clean_up is the one writer that leaves
+    // TOPLINE_NON_EMPTY, and a message after an answered prompt replaces the
+    // line rather than sharing it or stopping for --More--.
+    const occupied = state._pending_message ?? '';
+    let current = state.nhDisplay?.toplin === TOPLINE_NON_EMPTY
+        ? '' : occupied;
+    const priorTopline = state._ttyToplines ?? current;
+    // update_topl() assigns `notdied` inside the last operand of its same-line
+    // condition.  A long prior/death combination short-circuits before that
+    // comparison, preserving WIN_STOP as an upstream quirk.
+    const deathComparisonReached = deathMessage
+        && (Boolean(current) || stoppedAtEntry)
+        && fitsOnTtyTopline(priorTopline, next, columns);
+    // C ref: pline.c vpline() (266-271). A recalculation another routine
+    // deferred -- options.c:5372's lit_corridor toggle sets the flag right
+    // after shutting vision down -- is spent by the next message rather than
+    // waiting for the move loop, so the map flushed below is the one the
+    // player is being told about. C brackets the call with in_pline = 0 so a
+    // message raised inside it counts as top level; this port keeps no
+    // in_pline counter to save and restore.
+    if (state === game && state.vision_full_recalc) vision_recalc(0);
+    // C ref: pline.c vpline(). Once the hero is on the map, every message
+    // flushes pending map and bottom-line changes before update_topl() can
+    // wrap into a blocking More prompt.
+    if (state === game && state.u?.ux) await flush_screen(1);
+    // C wintty.c handles ATR_URGENT after vpline() has flushed the map but
+    // before tty_putstr() invokes update_topl(): its clear_nhwindow(WIN_MESSAGE)
+    // removes the stale physical line and clears WIN_STOP. Do the same at
+    // this stage, then let the urgent line take the ordinary replacement path.
+    if (urgentMessage && stoppedAtEntry) {
+        clearTtyMessageWindow(state);
+        state._ttyMessageStopped = false;
+        stoppedAtEntry = false;
+        current = '';
+    }
+    if (pflags & (PLINE_VERBALIZE | PLINE_SPEECH))
+        sound_speak(normalizedMessage, state);
+    // "You die" is update_topl()'s exception to WIN_STOP.  Other messages
+    // continue updating gt.toplines for history but remain invisible.
+    if (stoppedAtEntry && !deathComparisonReached) {
+        rememberSuppressedMessage(state, next, columns);
+        state._ttyPreviousMessage = normalizedMessage;
+        return;
+    }
+    if (stoppedAtEntry) state._ttyMessageStopped = false;
+
+    if (current
+        && !deathMessage
+        && fitsOnTtyTopline(current, next, columns)) {
+        // topl.c update_topl() appends two spaces to the source buffer, moves
+        // cw->curx past them, then addtopl() paints the new bytes and clears
+        // the remainder. Do not redraw the prefix: its first cell may be a
+        // tty_putmixed() DEC glyph, and ignored high-bit cells retain their
+        // existing shadow-grid attributes.
+        rememberPendingMessage(
+            state,
+            `${current}  ${next}`,
+            state._ttyMixedFirstCell ?? null,
+        );
+        if (!stoppedAtEntry && state.nhDisplay) {
+            appendRecorderTtyLine(
+                state.nhDisplay,
+                current.length + 2,
+                0,
+                next,
+            );
+        }
+        state._ttyPreviousMessage = normalizedMessage;
+        if (msgtype === MSGTYP_STOP)
+            await displayPendingTtyMessageWindow(state);
+        return;
+    }
+    // topl.c update_topl() retains its entry-time `skip` snapshot for the
+    // replacement below.  In particular, a death message must replace the
+    // stopped line without calling more() a second time after the earlier
+    // Escape has already supplied its input.
+    if (current && !stoppedAtEntry) {
+        await dismissPendingTtyMessage(state, {
+            // wintty.c tty_putstr() keeps WIN_NOSTOP set only while its
+            // urgent update_topl() call can dismiss a prior or wrapped line.
+            // vpline()'s later explicit MSGTYP_STOP display is outside it.
+            preventEscapeStop: urgentMessage,
+        });
+    }
+    // When the comparison above was reached, update_topl() clears WIN_STOP
+    // after more() has had the opportunity to set it from an Escape response.
+    if (deathComparisonReached) state._ttyMessageStopped = false;
+    if (acknowledgedTopline)
+        redrawTtyTopline(state, next, mixedFirstCell);
+    rememberPendingMessage(state, next, mixedFirstCell);
+    state._ttyPreviousMessage = normalizedMessage;
+    // redotoplin() immediately invokes more() when update_topl() wrapped the
+    // new message onto a second terminal row.
+    if (wrapTtyTopline(next, columns).length > 1)
+        await dismissPendingTtyMessage(state, {
+            preventEscapeStop: urgentMessage,
+        });
+    if (msgtype === MSGTYP_STOP)
+        await displayPendingTtyMessageWindow(state);
+}
+
+export async function ttyPline(message, state = game) {
+    const pflags = state.gp?.pline_flags ?? 0;
+    try {
+        return await ttyPlineCore(message, state, pflags);
+    } finally {
+        if (state.gp)
+            state.gp.pline_flags &= ~PLINE_SPEECH;
+    }
+}
+
+// C ref: win/tty/wintty.c tty_putmixed(), for pager.c do_look()'s encoded
+// leading glyph. The raw one-byte symbol preserves TTY wrapping, while the
+// rendered cell gives the scorer the same visual DEC glyph as C's SO/SI span.
+export async function ttyPutmixed(
+    message, renderedFirstCell, state = game,
+) {
+    return ttyPlineCore(message, state, 0, renderedFirstCell);
+}
+
+export async function ttyNorep(message, state = game) {
+    const pflags = (state.gp?.pline_flags ?? 0) | PLINE_NOREPEAT;
+    try {
+        return await ttyPlineCore(message, state, pflags);
+    } finally {
+        if (state.gp)
+            state.gp.pline_flags &= ~PLINE_SPEECH;
+    }
+}
+
+export class UnsupportedCustomPlineFlagsError extends Error {
+    constructor(pflags) {
+        super(`custompline() flags ${pflags} outside OVERRIDE_MSGTYPE`);
+        this.name = 'UnsupportedCustomPlineFlagsError';
+    }
+}
+
+// C ref: pline.c custompline(). This API admits the sole operation its current
+// consumer needs. Every other flag stops before glyph notices, output, state,
+// or input because its distinct source effect is not ported at this boundary.
+export async function ttyCustomPline(message, pflags, state = game) {
+    if (pflags !== OVERRIDE_MSGTYPE)
+        throw new UnsupportedCustomPlineFlagsError(pflags);
+    return ttyPlineCore(message, state, pflags);
+}
+
+// C ref: pline.c urgent_pline() (313-323). It is custompline(URGENT_MESSAGE),
+// and that flag reaches the top line twice: vpline():253 stops MSGTYPE=hide
+// and MSGTYPE=norep from swallowing the message, and putmesg():72-74 turns it
+// into tty_putstr()'s ATR_URGENT, whose arm at wintty.c:2277-2283 clears a
+// WIN_STOP the player set with Escape at an earlier --More-- and marks this
+// one message WIN_NOSTOP.
+//
+// vpline() applies the first two rules above. ttyUrgentPline() below also
+// models the third rule when an earlier Escape left WIN_STOP set. With
+// WIN_STOP clear, the arm sets only WIN_NOSTOP, which has two readers.
+// update_topl():257 reads it as
+// `skip = FALSE`, exactly what a clear WIN_STOP already gives; and more():233
+// reads it when the player answers this message's own --More-- with Escape,
+// where it is what stops that Escape setting WIN_STOP for whatever comes
+// next.
+//
+// dismissPendingTtyMessage() models the second reader by receiving the urgent
+// call's prompt origin. It prevents Escape from setting the persistent stop
+// only for a prior-line or wrapped-line More inside tty_putstr(); vpline()'s
+// later explicit MSGTYP_STOP display receives no such exemption.
+//
+// With WIN_STOP set at entry, tty_clear_nhwindow(WIN_MESSAGE) wipes the top
+// line before the message is written, where an ordinary message would have
+// been held back invisibly; ttyPlineCore() performs that reset for its urgent
+// flag after the source-ordered map flush.
+export async function ttyUrgentPline(message, state = game) {
+    return ttyPlineCore(message, state, URGENT_MESSAGE);
+}

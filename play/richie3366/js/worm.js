@@ -1,0 +1,813 @@
+// worm.js — Long worm segment bookkeeping (creation + movement).
+// C ref: worm.c — get_wormno, initworm, create_worm_tail, count_wsegs,
+//   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h),
+//   worm_move / shrink_worm / worm_nomove (D-1491), see_wsegs (D-1529),
+//   detect_wsegs (D-1545), worm_known (D-1548), cutworm / place_wsegs
+//   (D-1570), redraw_worm (D-1577), wormhitu (D-1798),
+//   flip_worm_segs_vertical / flip_worm_segs_horizontal (D-2222;
+//   caller sp_lev.c flip_level wormno arm in js/mklev.js).
+// Named omissions: muse.c / mhitu.c worm_move callers. Wormgone callers all
+//   live: newcham head-back (D-1573), m_detach (D-2231), mon_leave (D-2296).
+
+import { game } from './gstate.js';
+import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
+import {
+    MAX_NUM_WORMS, N_DIRS, xdir, ydir, MHPMAX, MSLOW, MFAST, NORMAL_SPEED,
+    MON_OFFMAP, has_mcorpsenm, COLNO, ROWNO,
+} from './const.js';
+import { goodpos } from './teleport.js';
+import { distmin } from './hacklib.js';
+import { newsym, show_wseg_detect_glyph, Hallucination, pline, canspotmon, impossible } from './display.js';
+import { cansee } from './vision.js';
+import { NUMMONS, NON_PM, monsterNames } from './monsters.js';
+import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
+import { clone_mon } from './makemon.js';
+import { mon_nam, Monnam, s_suffix } from './do_name.js';
+import { mattacku } from './mhitu.js';
+
+/** @type {(null|{nseg:object|null,wx:number,wy:number})[]} */
+const wheads = new Array(MAX_NUM_WORMS).fill(null);
+/** @type {(null|{nseg:object|null,wx:number,wy:number})[]} */
+const wtails = new Array(MAX_NUM_WORMS).fill(null);
+/** @type {number[]} */
+const wgrowtime = new Array(MAX_NUM_WORMS).fill(0);
+
+function newseg() {
+    return { nseg: null, wx: 0, wy: 0 };
+}
+
+/** C ref: rm.h place_worm_seg — occupy level.monsters[x][y] with worm head. */
+export function place_worm_seg(worm, x, y) {
+    if (!game._level_monsters) game._level_monsters = new Map();
+    const key = `${x},${y}`;
+    if (game._level_monsters.has(key)) {
+        // C: impossible("place_worm_seg over mon") — keep overwrite like soft path
+    }
+    game._level_monsters.set(key, worm);
+}
+
+/** C ref: rm.h remove_monster — clear level.monsters[x][y].
+ * Pure grid clear, no mstate change (C touches no flags here) —
+ * mon_leaving_level's take-off uses this, never the steed.js
+ * flagging variant (D-3279: flag stuck on live migrants). */
+export function remove_monster_xy(x, y) {
+    game._level_monsters?.delete(`${x},${y}`);
+}
+
+/**
+ * Live occupant of C `level.monsters[x][y]` (JS `_level_monsters`).
+ * Heads from place_monster: mx/my match this cell.
+ * Worm segs from place_worm_seg: head pointer, mx/my is the head.
+ * Stale heads (JS movement without remove_monster) are ignored so
+ * mixed occupancy does not ghost a cell. Mounted steed is not on
+ * the map (C remove_monster while riding).
+ */
+export function level_mon_at(x, y) {
+    const mon = game._level_monsters?.get(`${x},${y}`);
+    if (!mon) return null;
+    if (mon === game.u?.usteed) return null;
+    if ((mon.mhp | 0) <= 0) return null;
+    if ((mon.mstate | 0) & MON_OFFMAP) return null;
+    if ((mon.mx | 0) === (x | 0) && (mon.my | 0) === (y | 0)) return mon;
+    if (mon.wormno) return mon;
+    return null;
+}
+
+/**
+ * Occupancy for worm body segs (heads also via place_monster).
+ * C: level.monsters[x][y] holds the worm head pointer at every seg cell.
+ */
+export function worm_mon_at(x, y) {
+    return level_mon_at(x, y);
+}
+
+/** C ref: worm.c get_wormno */
+export function get_wormno() {
+    let new_wormno = 1;
+    while (new_wormno < MAX_NUM_WORMS) {
+        if (!wheads[new_wormno]) return new_wormno;
+        new_wormno++;
+    }
+    return 0;
+}
+
+/** C ref: worm.c create_worm_tail — (num_segs+1) chain; null if num_segs==0. */
+function create_worm_tail(num_segs) {
+    if (!num_segs) return null;
+    let i = 0;
+    const new_tail = newseg();
+    let curr = new_tail;
+    while (i < num_segs) {
+        curr.nseg = newseg();
+        curr = curr.nseg;
+        i++;
+    }
+    return new_tail;
+}
+
+/**
+ * C ref: worm.c initworm — dummy head seg + optional tail chain.
+ * Caller must set worm.wormno = get_wormno() beforehand (non-zero).
+ */
+export function initworm(worm, wseg_count) {
+    const wnum = worm.wormno | 0;
+    const new_tail = create_worm_tail(wseg_count);
+    let seg;
+    if (new_tail) {
+        wtails[wnum] = new_tail;
+        for (seg = new_tail; seg.nseg; seg = seg.nseg) { /* find head */ }
+        wheads[wnum] = seg;
+    } else {
+        wtails[wnum] = wheads[wnum] = seg = newseg();
+    }
+    seg.wx = worm.mx | 0;
+    seg.wy = worm.my | 0;
+    wgrowtime[wnum] = 0;
+}
+
+/** C ref: worm.c count_wsegs */
+export function count_wsegs(mtmp) {
+    let i = 0;
+    if (mtmp?.wormno) {
+        for (let curr = wtails[mtmp.wormno]?.nseg; curr; curr = curr.nseg) i++;
+    }
+    return i;
+}
+
+/* sizeof (struct wseg): pointer + two coordxy, LP64, BITFIELDS on.
+ * gcc probe of the worm.c:12 struct (not committed): 16. */
+const SIZEOF_WSEG = 16;
+
+/**
+ * C ref: worm.c size_wseg `:827–830`.
+ * `count_wsegs(worm) * sizeof (struct wseg)`. The head segment is not
+ * in the count (`count_wsegs` starts at `wtails[wormno]->nseg`).
+ * Caller: wizcmds.c size_monst when `wormno && incl_wsegs`.
+ * @param {object} worm
+ * @returns {number}
+ */
+export function size_wseg(worm) {
+    return count_wsegs(worm) * SIZEOF_WSEG;
+}
+
+/**
+ * C ref: worm.c wseg_at :946–966 — tail-segment index number for (x,y).
+ * C: `m_at(x, y) == worm` gate, then `n - i` over the wtails chain
+ * (head segment counts: C `count_wsegs` excludes the head, this includes
+ * it via the `++nsegs` caller arm in insight.c mstatusline).
+ * JS `level_mon_at` is the `m_at` occupant (head pointer at every seg
+ * cell, wormno arm). Returns 0 when gated out, like C.
+ */
+export function wseg_at(worm, x, y) {
+    let res = 0;
+    if (worm && (worm.wormno | 0) && level_mon_at(x, y) === worm) {
+        let i = 0;
+        let curr = wtails[worm.wormno | 0] || null;
+        for (; curr; curr = curr.nseg) {
+            if ((curr.wx | 0) === (x | 0) && (curr.wy | 0) === (y | 0)) break;
+            ++i;
+        }
+        let n = i;
+        for (; curr; curr = curr.nseg) ++n;
+        res = n - i;
+    }
+    return res | 0;
+}
+
+/**
+ * C ref: worm.c remove_worm — take head+tail off the map grid without
+ * freeing the wseg chain or unlinking fmon. newsym each occupied cell.
+ * Only wx is zeroed (C occupancy test is `if (curr->wx)`).
+ */
+export function remove_worm(worm) {
+    const wnum = worm?.wormno | 0;
+    if (!wnum) return;
+    let curr = wtails[wnum];
+    while (curr) {
+        if (curr.wx) {
+            remove_monster_xy(curr.wx, curr.wy);
+            newsym(curr.wx, curr.wy);
+            curr.wx = 0;
+        }
+        curr = curr.nseg;
+    }
+}
+
+/** C ref: worm.c toss_wsegs — free segs; optionally update display. */
+function toss_wsegs(curr, display_update) {
+    while (curr) {
+        const nxtseg = curr.nseg;
+        if (curr.wx) {
+            remove_monster_xy(curr.wx, curr.wy);
+            if (display_update) newsym(curr.wx, curr.wy);
+        }
+        curr = nxtseg;
+    }
+}
+
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+
+/**
+ * C ref: worm.c wormgone `:307–332` — drop the wseg chain, take the
+ * head off the map, clear wormno. Caller newcham place_monster's the
+ * head back (D-1573); m_detach `:2787` arm live in mhitm.js (D-2231);
+ * dog.c mon_leave `:755` arm live in dog.js (D-2296).
+ */
+export function wormgone(worm) {
+    if (!worm) return;
+    const wnum = worm.wormno | 0;
+    if (!wnum) void impossible('wormgone: wormno is 0');
+    worm.wormno = 0;
+    toss_wsegs(wtails[wnum], true);
+    wheads[wnum] = wtails[wnum] = null;
+    wgrowtime[wnum] = 0;
+    // C: has_mcorpsenm → MCORPSENM = NON_PM (no longer poly-proof)
+    if ((worm.data?.mndx | 0) === PM_LONG_WORM && has_mcorpsenm(worm)) {
+        worm.mextra.mcorpsenm = NON_PM;
+    }
+}
+
+/**
+ * C ref: worm.c wormhitu `:343–362`. Head already had its mattacku in
+ * dochug; skip the dummy tail co-located with wheads. Remaining segs
+ * attack when distu(wx,wy) < 3 (same-cell or adjacent, incl. diagonal).
+ * Caller: monmove.c dochug PHASE FOUR.
+ */
+export async function wormhitu(worm) {
+    const wnum = worm?.wormno | 0;
+    if (!wnum) return 0;
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    for (let seg = wtails[wnum]; seg && seg !== wheads[wnum]; seg = seg.nseg) {
+        const dx = (seg.wx | 0) - ux;
+        const dy = (seg.wy | 0) - uy;
+        if (dx * dx + dy * dy < 3) {
+            if (await mattacku(worm)) return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * C ref: worm.c shrink_worm — drop the tail (list start). No-op when the
+ * worm is only the hidden dummy co-located with the head.
+ */
+function shrink_worm(wnum) {
+    if (wtails[wnum] === wheads[wnum]) return; /* no tail */
+    const seg = wtails[wnum];
+    wtails[wnum] = seg.nseg;
+    seg.nseg = null;
+    toss_wsegs(seg, true);
+}
+
+/**
+ * C ref: worm.c place_wsegs :614–635 — occupy every body seg with `worm`
+ * (not the dummy co-located with the head). When `oldworm` is set,
+ * the cell must currently hold that pointer (cutworm split / replmon).
+ * Callers restore.c restmonchn / mon.c replmon still named.
+ */
+export function place_wsegs(worm, oldworm) {
+    let curr = wtails[worm.wormno | 0];
+    while (curr !== wheads[worm.wormno | 0]) {
+        const x = curr.wx | 0;
+        const y = curr.wy | 0;
+        const mtmp = level_mon_at(x, y);
+        if (oldworm && mtmp === oldworm) {
+            remove_monster_xy(x, y);
+        } else if (mtmp) {
+            void impossible(
+                'placing worm seg <%d,%d> over another mon', x, y,
+            );
+        } else if (oldworm) {
+            void impossible(
+                'replacing worm seg <%d,%d> on empty spot', x, y,
+            );
+        }
+        place_worm_seg(worm, x, y);
+        curr = curr.nseg;
+    }
+    /* head dummy is co-located with the monster; not placed on the map */
+    curr.wx = worm.mx | 0;
+    curr.wy = worm.my | 0;
+}
+
+/**
+ * C ref: worm.c cutworm :372–477 — hit a long-worm body cell: rnd(20)
+ * (+10 if blade/axe), fail if <17; tail-only shrinks; else split.
+ * New worm only when m_lev>=3 && !rn2(3) && get_wormno() && clone_mon.
+ * clone_mon is async (tamedog); pline/You are async. Head hits and
+ * !wormno return before rnd. Callers uhitm known_hitum / dothrow
+ * thitmonst. wormgone named. redraw_worm is D-1577.
+ */
+export async function cutworm(worm, x, y, cuttier) {
+    const wnum = worm?.wormno | 0;
+    if (!wnum) return; /* bullet-proofing */
+
+    x = x | 0;
+    y = y | 0;
+    if (x === (worm.mx | 0) && y === (worm.my | 0)) return; /* hit on head */
+
+    /* cutting goes best with a cuttier weapon */
+    let cut_chance = rnd(20); /* 1-16 no, 17-20 yes; blade: 1-6 no, 7-20 yes */
+    if (cuttier) cut_chance += 10;
+    if (cut_chance < 17) return; /* not good enough */
+
+    let curr = wtails[wnum];
+    while ((curr.wx | 0) !== x || (curr.wy | 0) !== y) {
+        curr = curr.nseg;
+        if (!curr) {
+            await impossible('cutworm: no segment at (%d,%d)', x, y);
+            return;
+        }
+    }
+
+    /* tail segment: the worm just loses it */
+    if (curr === wtails[wnum]) {
+        shrink_worm(wnum);
+        return;
+    }
+
+    /*
+     * Split. New worm's tail is the old tail; old worm's tail is the
+     * segment after curr; curr becomes the dummy under the new head.
+     */
+    const new_tail = wtails[wnum];
+    wtails[wnum] = curr.nseg;
+    curr.nseg = null;
+
+    /* old worm must be at least level 3 to produce a new worm */
+    let new_worm = null;
+    const new_wnum = ((worm.m_lev | 0) >= 3 && !rn2(3)) ? get_wormno() : 0;
+    if (new_wnum) {
+        remove_monster_xy(x, y); /* clone_mon puts new head here */
+        new_worm = await clone_mon(worm, x, y);
+    }
+
+    /* Sometimes the tail end dies. */
+    if (!new_worm) {
+        place_worm_seg(worm, x, y); /* place the "head" segment back */
+        if (game.context?.mon_moving) {
+            if (canspotmon(worm)) {
+                await pline(
+                    `Part of ${s_suffix(mon_nam(worm))} tail has been cut off.`,
+                );
+            }
+        } else {
+            await pline(
+                `You cut part of the tail off of ${mon_nam(worm)}.`,
+            );
+        }
+        toss_wsegs(new_tail, true);
+        if ((worm.mhp | 0) > 1) worm.mhp = Math.trunc((worm.mhp | 0) / 2);
+        return;
+    }
+
+    new_worm.wormno = new_wnum; /* affix new worm number */
+    new_worm.mcloned = 0; /* treat second worm as a normal monster */
+
+    /* Devalue m_lev of both halves. m_lev is always at least 3 here. */
+    worm.m_lev = Math.max((worm.m_lev | 0) - 2, 3);
+    new_worm.m_lev = worm.m_lev;
+
+    /* <N>d8 for long worms; not newmonhp (would reset m_lev). */
+    new_worm.mhpmax = new_worm.mhp = d(new_worm.m_lev | 0, 8);
+    worm.mhpmax = d(worm.m_lev | 0, 8);
+    if ((worm.mhpmax | 0) < (worm.mhp | 0)) worm.mhp = worm.mhpmax;
+
+    wtails[new_wnum] = new_tail;
+    wheads[new_wnum] = curr;
+    wgrowtime[new_wnum] = 0;
+
+    place_wsegs(new_worm, worm);
+
+    if (game.context?.mon_moving) {
+        await pline(`${Monnam(worm)} is cut in half.`);
+    } else {
+        await pline(`You cut ${mon_nam(worm)} in half.`);
+    }
+}
+
+/**
+ * C ref: mon.c mcalcmove(mon, FALSE) — MSLOW/MFAST scale + the :1148
+ * steed-gallop arm, mirrored so the clone tracks mcalcmove exactly; the
+ * m_moving rn2 rounding is skipped. Local copy so worm.js does not
+ * import mon.js (mon.js already imports worm_cross).
+ */
+function worm_mcalcmove(worm) {
+    let mmove = worm.data?.mmove ?? NORMAL_SPEED;
+    if (worm.mspeed === MSLOW) {
+        if (mmove < NORMAL_SPEED) mmove = Math.trunc((2 * mmove + 1) / 3);
+        else mmove = 4 + Math.trunc(mmove / 3);
+    } else if (worm.mspeed === MFAST) {
+        mmove = Math.trunc((4 * mmove + 2) / 3);
+    }
+    // C mon.c:1148–1153 — steed-gallop mirror (D-3000).
+    if (worm === game.u?.usteed && (game.u?.ugallop | 0) !== 0 && game.context?.mv) {
+        mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
+    }
+    return mmove;
+}
+
+/**
+ * C ref: worm.c worm_move — caller already moved the head (place_monster).
+ * Occupy the old dummy as a visible segment, append a new dummy at the
+ * new head, then either grow (wgrowtime/HP) or shrink the tail.
+ * Caller must check worm.wormno.
+ */
+export function worm_move(worm) {
+    const wnum = worm.wormno | 0;
+    const seg = wheads[wnum];
+    place_worm_seg(worm, seg.wx, seg.wy);
+    newsym(seg.wx, seg.wy);
+
+    const new_seg = newseg();
+    new_seg.wx = worm.mx | 0;
+    new_seg.wy = worm.my | 0;
+    new_seg.nseg = null;
+    seg.nseg = new_seg;
+    wheads[wnum] = new_seg;
+
+    if ((wgrowtime[wnum] | 0) <= (game.moves | 0)) {
+        let wsegs = count_wsegs(worm);
+
+        if (!wgrowtime[wnum]) {
+            wgrowtime[wnum] = (game.moves | 0) + rnd(5);
+        } else {
+            const mmove = worm_mcalcmove(worm);
+            let incr = rn1(10, 2); /* 2..11 */
+            incr = Math.trunc((incr * NORMAL_SPEED) / Math.max(mmove, 1));
+            wgrowtime[wnum] = (game.moves | 0) + incr;
+        }
+
+        let whplimit = !(worm.m_lev | 0) ? 4 : (8 * (worm.m_lev | 0));
+        /* wsegs includes the hidden dummy co-located with the head */
+        if (wsegs > 33) {
+            whplimit += 2 * (wsegs - 33);
+            wsegs = 33;
+        }
+        if (wsegs > 22) {
+            whplimit += 4 * (wsegs - 22);
+            wsegs = 22;
+        }
+        if (wsegs > 11) {
+            whplimit += 6 * (wsegs - 11);
+            wsegs = 11;
+        }
+        whplimit += 8 * wsegs;
+        if (whplimit > MHPMAX) whplimit = MHPMAX;
+
+        const prev_mhp = worm.mhp | 0;
+        worm.mhp = prev_mhp + d(2, 2); /* 2..4 */
+        const whpcap = Math.max(whplimit, worm.mhpmax | 0);
+        if ((worm.mhp | 0) < whpcap) {
+            if ((worm.mhp | 0) > whplimit) {
+                worm.mhp = Math.max(prev_mhp, whplimit);
+            }
+            if ((worm.mhp | 0) > (worm.mhpmax | 0)) {
+                worm.mhpmax = worm.mhp | 0;
+            }
+        } else if ((worm.mhp | 0) > (worm.mhpmax | 0)) {
+            worm.mhp = worm.mhpmax | 0;
+        }
+    } else {
+        shrink_worm(wnum);
+    }
+}
+
+/**
+ * C ref: worm.c worm_nomove — failed move: drop the tail and maybe HP.
+ * Caller must check worm.wormno.
+ */
+export function worm_nomove(worm) {
+    shrink_worm(worm.wormno | 0);
+    if ((worm.mhp | 0) > count_wsegs(worm)) {
+        worm.mhp = (worm.mhp | 0) - d(2, 2);
+        if ((worm.mhp | 0) < 1) worm.mhp = 1;
+    }
+}
+
+/**
+ * C ref: worm.c see_wsegs :487–495 — newsym every segment except the
+ * dummy co-located with the head. Callers: display.c see_monsters
+ * `:1511–1512`; worn.c mon_set_minvis `:482–483`; monmove.c postmov
+ * `:1683–1686` after pickup when minvis.
+ */
+export function see_wsegs(worm) {
+    const wnum = worm?.wormno | 0;
+    if (!wnum) return;
+    let curr = wtails[wnum];
+    const head = wheads[wnum];
+    while (curr && curr !== head) {
+        newsym(curr.wx, curr.wy);
+        curr = curr.nseg;
+    }
+}
+
+/**
+ * C ref: worm.c redraw_worm `:989–998` — newsym every segment including
+ * the dummy co-located with the head (unlike see_wsegs, which stops
+ * before wheads). Callers: dog.c tamedog `:1275–1276` after head
+ * newsym; abuse_dog `:1386–1390` when the pet goes wild. Caller checks
+ * wormno; C does not re-check inside the walker.
+ */
+export function redraw_worm(worm) {
+    let curr = wtails[worm.wormno | 0];
+    while (curr) {
+        newsym(curr.wx, curr.wy);
+        curr = curr.nseg;
+    }
+}
+
+/**
+ * C ref: worm.c flip_worm_segs_vertical `:968–976` — mirror every tail
+ * segment's wy about the extends bbox (maxy - wy + miny). Caller:
+ * sp_lev.c flip_level `:662–663` (`flp & 1`, after the head's own FlipY).
+ * Caller checks wormno; C does not re-check inside the walker.
+ */
+export function flip_worm_segs_vertical(worm, miny, maxy) {
+    let curr = wtails[worm.wormno | 0];
+    while (curr) {
+        curr.wy = (maxy - curr.wy + miny);
+        curr = curr.nseg;
+    }
+}
+
+/**
+ * C ref: worm.c flip_worm_segs_horizontal `:979–987` — mirror every tail
+ * segment's wx about the extends bbox (maxx - wx + minx). Caller:
+ * sp_lev.c flip_level `:664–665` (`flp & 2`, after the head's own FlipX).
+ */
+export function flip_worm_segs_horizontal(worm, minx, maxx) {
+    let curr = wtails[worm.wormno | 0];
+    while (curr) {
+        curr.wx = (maxx - curr.wx + minx);
+        curr = curr.nseg;
+    }
+}
+
+/**
+ * C ref: worm.c worm_known :877–893 — true if any segment (incl. dummy
+ * co-located with the head) is cansee. Caller must check invisibility
+ * and telepathy (head only). Used by display.h _canseemon when
+ * mon->wormno, mon.c monkilled :3384, vision.c howmonseen :2162.
+ * Does not use infrared (unlike the non-worm canseemon arm).
+ */
+export function worm_known(worm) {
+    let curr = wtails[worm?.wormno | 0];
+    while (curr) {
+        if (cansee(curr.wx, curr.wy)) return true;
+        curr = curr.nseg;
+    }
+    return false;
+}
+
+/**
+ * C ref: worm.c detect_wsegs :502–519 — show_glyph every body seg except
+ * the dummy co-located with the head. Caller detect.c map_monst
+ * `:132–133` (showtail && PM_LONG_WORM) always passes
+ * use_detection_glyph=0. what_mon(PM_LONG_WORM_TAIL, newsym_rn2) runs
+ * once before the loop (Hallu display rng even if dummy-only).
+ * Named: male/fem glyph offsets (same mlet on tty).
+ */
+export function detect_wsegs(worm, use_detection_glyph) {
+    const wnum = worm?.wormno | 0;
+    let curr = wtails[wnum];
+    const head = wheads[wnum];
+    /* C: what_mon(PM_LONG_WORM_TAIL, newsym_rn2) before the while */
+    let what_tail = PM_LONG_WORM_TAIL;
+    if (Hallucination()) what_tail = rn2_on_display_rng(NUMMONS);
+    while (curr && curr !== head) {
+        show_wseg_detect_glyph(
+            curr.wx, curr.wy, what_tail, worm, !!use_detection_glyph,
+        );
+        curr = curr.nseg;
+    }
+}
+
+/**
+ * Local mon-path of trap.c rnd_nextto_goodpos — avoid worm↔trap↔makemon cycle.
+ * Hero/crawl_destination arm deferred (worms are never &youmonst here).
+ */
+function rnd_nextto_goodpos_mon(pos, mtmp) {
+    const dirs = [];
+    for (let i = 0; i < N_DIRS; i++) dirs.push(i);
+    for (let i = N_DIRS; i > 0; --i) {
+        const j = rn2(i);
+        const k = dirs[j];
+        dirs[j] = dirs[i - 1];
+        dirs[i - 1] = k;
+    }
+    for (let i = 0; i < N_DIRS; i++) {
+        const nx = (pos.x | 0) + xdir[dirs[i]];
+        const ny = (pos.y | 0) + ydir[dirs[i]];
+        if (goodpos(nx, ny, mtmp, 0)) {
+            pos.x = nx;
+            pos.y = ny;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: worm.c place_worm_tail_randomly — reverse segs behind head via
+ * rnd_nextto_goodpos; truncate with toss_wsegs when stuck.
+ */
+export function place_worm_tail_randomly(worm, x, y) {
+    const wnum = worm.wormno | 0;
+    let curr = wtails[wnum];
+    let ox = x | 0;
+    let oy = y | 0;
+
+    if (wnum && (!wtails[wnum] || !wheads[wnum])) return;
+    if (wtails[wnum] === wheads[wnum]) {
+        if (curr.wx && (curr.wx !== worm.mx || curr.wy !== worm.my)) {
+            if (worm_mon_at(curr.wx, curr.wy) === worm) {
+                remove_monster_xy(curr.wx, curr.wy);
+            }
+        }
+        curr.wx = worm.mx | 0;
+        curr.wy = worm.my | 0;
+        return;
+    }
+
+    wheads[wnum].wx = 0;
+    wheads[wnum].wy = 0;
+
+    let new_tail = curr;
+    wheads[wnum] = new_tail;
+    curr = curr.nseg;
+    new_tail.nseg = null;
+    new_tail.wx = x | 0;
+    new_tail.wy = y | 0;
+
+    while (curr) {
+        const pos = { x: ox, y: oy };
+        if (rnd_nextto_goodpos_mon(pos, worm)) {
+            const nx = pos.x | 0;
+            const ny = pos.y | 0;
+            place_worm_seg(worm, nx, ny);
+            curr.wx = ox = nx;
+            curr.wy = oy = ny;
+            wtails[wnum] = curr;
+            curr = curr.nseg;
+            wtails[wnum].nseg = new_tail;
+            new_tail = wtails[wnum];
+            newsym(nx, ny);
+        } else {
+            toss_wsegs(curr, false);
+            curr = null;
+        }
+    }
+}
+
+/**
+ * C ref: worm.c random_dir `:802–822` (staticfn; no C callers — decl `:22`
+ * only). One random step to a neighbouring cell: C `int *nx, *ny`
+ * out-params ≡ `out.nx`/`out.ny` fields. Each axis draws exactly once;
+ * ternary order preserves C short-circuit (edge checks before the draw).
+ */
+function random_dir(x, y, out) {
+    x |= 0; y |= 0;
+    // C `:805–809`: x step — interior rn2(3)-1, right edge -rn2(2), left edge rn2(2).
+    const nx = x + (x > 1 ? (x < COLNO - 1 ? (rn2(3) - 1) : -rn2(2)) : rn2(2));
+    let ny;
+    if (nx !== x) {
+        // C `:810–815`: x changed, so step y the same way (y==0 is ok, x==0 is not).
+        ny = y + (y > 0 ? (y < ROWNO - 1 ? (rn2(3) - 1) : -rn2(2)) : rn2(2));
+    } else {
+        // C `:816–821`: x unchanged, so force y to change.
+        ny = y + (y > 0 ? (y < ROWNO - 1 ? (rn2(2) ? 1 : -1) : -1) : 1);
+    }
+    out.nx = nx;
+    out.ny = ny;
+}
+
+/** Clear per-level worm tables — call from clear_level_structures. */
+export function clear_wormdata() {
+    for (let i = 0; i < MAX_NUM_WORMS; i++) {
+        wheads[i] = null;
+        wtails[i] = null;
+        wgrowtime[i] = 0;
+    }
+    game._level_monsters = new Map();
+}
+
+/**
+ * C ref: worm.c save_worm `:527–568` — savelev writer (sole C caller
+ * save.c:543): snapshot every slot's chain tail-first (C file order) as
+ * plain records, then the wgrowtime row. The count includes the dummy
+ * head seg (`:524` — the walk counts every node, so a stored list's
+ * length IS the C count, empty ⇔ null). Sfo_* binary encode ⇔
+ * plain-record copy (JS saves JSON per Constitution §1.6 — the binary
+ * format stays a named omission, save/rest_engravings precedent D-3005).
+ * The update_file arm (`:535`) always snapshots in JS; the release_data
+ * arm (`:553–567` free + zero) already lives at the callers (level
+ * teardown clear_wormdata above, mklev.js).
+ * @returns {{segs:(null|{wx:number,wy:number}[])[], wgrowtime:number[]}}
+ *   segs[i] tail-first coord list for slots 1..MAX-1 (null ⇔ count 0;
+ *   slot 0 always null like C), wgrowtime all MAX slots.
+ */
+export function save_worm() {
+    // C `:536–548`: slots 1..MAX-1; count, then coords tail-first.
+    const segs = new Array(MAX_NUM_WORMS).fill(null);
+    for (let i = 1; i < MAX_NUM_WORMS; i++) {
+        if (!wtails[i]) continue; // C count 0 ⇔ no Sfo_coordxy writes
+        const list = [];
+        for (let curr = wtails[i]; curr; curr = curr.nseg)
+            list.push({ wx: curr.wx | 0, wy: curr.wy | 0 });
+        segs[i] = list;
+    }
+    // C `:549–550`: wgrowtime slots 0..MAX-1.
+    return { segs, wgrowtime: Array.from(wgrowtime, (t) => t | 0) };
+}
+
+/**
+ * C ref: worm.c rest_worm `:577–603` — getlev reader (sole C caller
+ * restore.c:1147): rebuild each slot's chain tail-first with newseg —
+ * first node becomes wtails[i], last becomes wheads[i] (`:586–597`) —
+ * then the wgrowtime row (`:599–601`). Sfi_* binary decode ⇔ record
+ * copy; newseg arena ⇔ fresh literal (GC). A missing/legacy stored
+ * record (old saves predate the slot) reads as all-zero counts, and the
+ * count-0 arm clears the slot: C `:585–597` leaves the (BSS-zero) slot
+ * null, which the explicit null below reproduces on a reused table.
+ * @param {{segs?:(null|{wx:number,wy:number}[])[], wgrowtime?:number[]}|null|undefined} stored
+ *   a save_worm() record (or legacy nullish ⇒ empty tables, C count 0).
+ */
+export function rest_worm(stored) {
+    const recs = (stored && typeof stored === 'object') ? stored : {};
+    const segs = Array.isArray(recs.segs) ? recs.segs : [];
+    const times = Array.isArray(recs.wgrowtime) ? recs.wgrowtime : [];
+    // C `:583–598`: slots 1..MAX-1; curr = 0, then one newseg per count.
+    for (let i = 1; i < MAX_NUM_WORMS; i++) {
+        const list = Array.isArray(segs[i]) ? segs[i] : [];
+        let curr = null; // C `:585`
+        for (const s of list) {
+            const temp = newseg(); // C `:587`
+            temp.nseg = null; // C `:588`
+            temp.wx = (s?.wx) | 0; // C `:589` Sfi_coordxy
+            temp.wy = (s?.wy) | 0; // C `:590`
+            if (curr)
+                curr.nseg = temp; // C `:591–592`
+            else
+                wtails[i] = temp; // C `:593–594`
+            curr = temp;
+        }
+        if (!curr) wtails[i] = null; // count-0 arm (C slot already null)
+        wheads[i] = curr; // C `:597`
+    }
+    // C `:599–601`: wgrowtime slots 0..MAX-1.
+    for (let i = 0; i < MAX_NUM_WORMS; ++i) wgrowtime[i] = (times[i] | 0);
+}
+
+/**
+ * C ref: worm.c worm_cross :898–942 — would moving from (x1,y1) to (x2,y2)
+ * involve passing between two consecutive segments of the same worm?
+ * C :903–911:
+ *  "With digits representing relative sequence number of the segments,
+ *   returns true when testing between @ and ? (passes through worm's
+ *   body), false between @ and ! (stays on same side of worm).
+ *    .w1?..
+ *    ..@2..
+ *    .65!3.
+ *    ...4.."
+ */
+export function worm_cross(x1, y1, x2, y2) {
+    // C :913–916 — non-adjacent guard (void-impossible: sync fn, wormgone :200 precedent)
+    if (distmin(x1, y1, x2, y2) !== 1) {
+        void impossible('worm_cross checking for non-adjacent location?');
+        return false;
+    }
+    // C :917–919 — passing between segs is only relevant for diagonal moves
+    if (x1 === x2 || y1 === y2) return false;
+    // C :921–924 — is the same monster at <x1,y2> and at <x2,y1>?
+    // (JS: worm_mon_at covers _level_monsters incl. seg cells + wormno arm;
+    // _fmon_at covers fmon heads; mon.js must not be imported here — cycle.)
+    const worm = worm_mon_at(x1, y2) || _fmon_at(x1, y2);
+    if (!worm || (worm_mon_at(x2, y1) || _fmon_at(x2, y1)) !== worm) return false;
+    // C :926–939 — consecutive iff whichever flank cell is hit first is
+    // followed at once by the other. wtails[0] is always null (get_wormno
+    // starts at 1), so wormno 0 falls out of the loop FALSE exactly like C.
+    for (let curr = wtails[worm.wormno | 0], wnxt; curr; curr = wnxt) {
+        wnxt = curr.nseg;
+        if (!wnxt) break; // C :930–931 no next segment; can't continue
+        // C :933–936 — whichever flank cell comes first, next seg is the other
+        if (curr.wx === x1 && curr.wy === y2)
+            return wnxt.wx === x2 && wnxt.wy === y1;
+        if (curr.wx === x2 && curr.wy === y1)
+            return wnxt.wx === x1 && wnxt.wy === y2;
+    }
+    // C :940–941 should never reach here...
+    return false;
+}
+
+/** Head-only occupancy (worm body segs already via worm_mon_at). */
+function _fmon_at(x, y) {
+    const steed = game.u?.usteed;
+    for (const m of game.fmon || []) {
+        if (m === steed) continue;
+        if (m.mx === x && m.my === y) return m;
+    }
+    return null;
+}

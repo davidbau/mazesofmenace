@@ -1,0 +1,1400 @@
+// roles.js — Role, race, gender, alignment data.
+// C ref: role.c — roles[], races[], aligns[], genders[], Hello()
+//
+// mnum / race.mnum are monster-table IDs (PM_*), not roles[]/races[] indexes.
+// roles[] order must match C (Rogue before Ranger) for pantheon randrole().
+
+import {
+    PM_ARCHEOLOGIST,
+    PM_BARBARIAN,
+    PM_CAVE_DWELLER,
+    PM_HEALER,
+    PM_KNIGHT,
+    PM_MONK,
+    PM_CLERIC,
+    PM_RANGER,
+    PM_ROGUE,
+    PM_SAMURAI,
+    PM_TOURIST,
+    PM_VALKYRIE,
+    PM_WIZARD,
+    PM_HUMAN,
+    PM_ELF,
+    PM_DWARF,
+    PM_GNOME,
+    PM_ORC,
+    NON_PM,
+    monsterNames,
+} from './generated/monsters_data.js';
+import {
+    ART_ORB_OF_DETECTION,
+    ART_HEART_OF_AHRIMAN,
+    ART_SCEPTRE_OF_MIGHT,
+    ART_STAFF_OF_AESCULAPIUS,
+    ART_MAGIC_MIRROR_OF_MERLIN,
+    ART_EYES_OF_THE_OVERWORLD,
+    ART_MITRE_OF_HOLINESS,
+    ART_MASTER_KEY_OF_THIEVERY,
+    ART_LONGBOW_OF_DIANA,
+    ART_TSURUGI_OF_MURAMASA,
+    ART_YENDORIAN_EXPRESS_CARD,
+    ART_ORB_OF_FATE,
+    ART_EYE_OF_THE_AETHIOPICA,
+} from './generated/artifacts_data.js';
+import { game } from './gstate.js';
+import { impossible } from './display.js';
+import {
+    A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS,
+    MH_HUMAN, MH_ELF, MH_DWARF, MH_GNOME, MH_ORC,
+    ROLE_NONE, ROLE_RANDOM, ROLE_GENDERS, ROLE_ALIGNS,
+    ROLE_MALE, ROLE_FEMALE, ROLE_NEUTER,
+    ROLE_LAWFUL, ROLE_NEUTRAL, ROLE_CHAOTIC,
+    ROLE_RACEMASK, ROLE_GENDMASK, ROLE_ALIGNMASK,
+    P_CLERIC_SPELL, PL_CSIZ,
+} from './const.js';
+import { rn2, rn2_on_display_rng } from './rng.js';
+import {
+    ok_role, ok_race, ok_gend, ok_align,
+    validrace, validgend, validalign,
+} from './player_selection.js';
+import { findword, strNsubst, strncmpi } from './hacklib.js';
+import { tty_askname } from './askname.js';
+import {
+    mons, is_male, is_female, is_neuter, commit_pm_fixup,
+    M2_PEACEFUL, M2_NASTY, M2_STALK, M2_HOSTILE,
+    M3_CLOSE, M3_WANTSARTI, M3_WAITFORU,
+} from './monsters.js';
+import { objectNames } from './objects.js';
+
+function pm(name) {
+    const i = monsterNames.indexOf(name);
+    return i >= 0 ? i : NON_PM;
+}
+
+// STR18(n) encoding used as racial Str max (attrib.h / role.c).
+const STR18_100 = 18 + 100;
+const STR18_50 = 18 + 50;
+
+// C ref: you.h RoleAdvance — { infix, inrnd, lofix, lornd, hifix, hirnd }
+function adv(infix, inrnd, lofix, lornd, hifix, hirnd) {
+    return { infix, inrnd, lofix, lornd, hifix, hirnd };
+}
+
+export const roles = [
+    // C: roles[] index 0..12 — pantheon randrole uses rn2(SIZE(roles)-1)
+    {
+        // C: name.f is 0 unless a distinct female role name exists
+        name: { m: 'Archeologist', f: null },
+        mnum: PM_ARCHEOLOGIST,
+        petnum: NON_PM,
+        neminum: pm('PM_MINION_OF_HUHETOTL'),
+        // C: roles[] enemy1/2 — qt_montype (questpgr.c)
+        enemy1num: NON_PM,
+        enemy2num: pm('PM_HUMAN_MUMMY'),
+        enemy1sym: 'S_SNAKE',
+        enemy2sym: 'S_MUMMY',
+        title: [
+            { m: 'Digger', f: null },
+            { m: 'Field Worker', f: null },
+            { m: 'Investigator', f: null },
+            { m: 'Exhumer', f: null },
+            { m: 'Excavator', f: null },
+            { m: 'Spelunker', f: null },
+            { m: 'Speleologist', f: null },
+            { m: 'Collector', f: null },
+            { m: 'Curator', f: null },
+        ],
+        lgod: 'Quetzalcoatl',
+        ngod: 'Camaxtli',
+        cgod: 'Huhetotl',
+        // C: { 7, 10, 10, 7, 7, 7 } / { 20, 20, 20, 10, 20, 10 }
+        attrbase: [7, 10, 10, 7, 7, 7],
+        attrdist: [20, 20, 20, 10, 20, 10],
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the College of Archeology',
+        intermed: 'the Tomb of the Toltec Kings',
+        ldrnum: pm('PM_LORD_CARNARVON'),
+        guardnum: pm('PM_STUDENT'),
+        questarti: ART_ORB_OF_DETECTION,
+        xlev: 14,
+        initrecord: 10,
+        // C: { 11, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(11, 0, 0, 8, 1, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+        // C: spelbase..spelsbon (role.c)
+        spelbase: 5, spelheal: 0, spelshld: 2, spelarmr: 10,
+        spelstat: A_INT, spelspec: 'SPE_MAGIC_MAPPING', spelsbon: -4,
+        allow: 0x306e,
+    },
+    {
+        name: { m: 'Barbarian', f: null },
+        mnum: PM_BARBARIAN,
+        petnum: NON_PM,
+        neminum: pm('PM_THOTH_AMON'),
+        enemy1num: pm('PM_OGRE'),
+        enemy2num: pm('PM_TROLL'),
+        enemy1sym: 'S_OGRE',
+        enemy2sym: 'S_TROLL',
+        title: [
+            { m: 'Plunderer', f: 'Plunderess' },
+            { m: 'Pillager', f: null },
+            { m: 'Bandit', f: null },
+            { m: 'Brigand', f: null },
+            { m: 'Raider', f: null },
+            { m: 'Reaver', f: null },
+            { m: 'Slayer', f: null },
+            { m: 'Chieftain', f: 'Chieftainess' },
+            { m: 'Conqueror', f: 'Conqueress' },
+        ],
+        lgod: 'Mitra',
+        ngod: 'Crom',
+        cgod: 'Set',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Camp of the Duali Tribe',
+        intermed: 'the Duali Oasis',
+        ldrnum: pm('PM_PELIAS'),
+        guardnum: pm('PM_CHIEFTAIN'),
+        questarti: ART_HEART_OF_AHRIMAN,
+        // C: { 16, 7, 7, 15, 16, 6 } / { 30, 6, 7, 20, 30, 7 }
+        attrbase: [16, 7, 7, 15, 16, 6],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        xlev: 10,
+        initrecord: 10,
+        // C: { 14, 0, 0, 10, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(14, 0, 0, 10, 2, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 14, spelheal: 0, spelshld: 0, spelarmr: 8,
+        spelstat: A_INT, spelspec: 'SPE_HASTE_SELF', spelsbon: -4,
+        allow: 0x308b,
+    },
+    {
+        name: { m: 'Caveman', f: 'Cavewoman' },
+        mnum: PM_CAVE_DWELLER,
+        petnum: pm('PM_LITTLE_DOG'),
+        neminum: pm('PM_CHROMATIC_DRAGON'),
+        enemy1num: pm('PM_BUGBEAR'),
+        enemy2num: pm('PM_HILL_GIANT'),
+        enemy1sym: 'S_HUMANOID',
+        enemy2sym: 'S_GIANT',
+        title: [
+            { m: 'Troglodyte', f: null },
+            { m: 'Aborigine', f: null },
+            { m: 'Wanderer', f: null },
+            { m: 'Vagrant', f: null },
+            { m: 'Wayfarer', f: null },
+            { m: 'Roamer', f: null },
+            { m: 'Nomad', f: null },
+            { m: 'Rover', f: null },
+            { m: 'Pioneer', f: null },
+        ],
+        lgod: 'Anu',
+        ngod: '_Ishtar',
+        cgod: 'Anshar',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Caves of the Ancestors',
+        intermed: "the Dragon's Lair",
+        ldrnum: pm('PM_SHAMAN_KARNOV'),
+        guardnum: pm('PM_NEANDERTHAL'),
+        questarti: ART_SCEPTRE_OF_MIGHT,
+        // C: { 10, 7, 7, 7, 8, 6 } / { 30, 6, 7, 20, 30, 7 }
+        attrbase: [10, 7, 7, 7, 8, 6],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        // C: xlev 10, initrecord 0 (role.c after enadv)
+        xlev: 10,
+        initrecord: 0,
+        // C: { 14, 0, 0, 8, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(14, 0, 0, 8, 2, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 12, spelheal: 0, spelshld: 1, spelarmr: 8,
+        spelstat: A_INT, spelspec: 'SPE_DIG', spelsbon: -4,
+        allow: 0x306e,
+    },
+    {
+        name: { m: 'Healer', f: null },
+        mnum: PM_HEALER,
+        petnum: NON_PM,
+        neminum: pm('PM_CYCLOPS'),
+        enemy1num: pm('PM_GIANT_RAT'),
+        enemy2num: pm('PM_SNAKE'),
+        enemy1sym: 'S_RODENT',
+        enemy2sym: 'S_YETI',
+        title: [
+            { m: 'Rhizotomist', f: null },
+            { m: 'Empiric', f: null },
+            { m: 'Embalmer', f: null },
+            { m: 'Dresser', f: null },
+            { m: 'Medicus ossium', f: 'Medica ossium' },
+            { m: 'Herbalist', f: null },
+            { m: 'Magister', f: 'Magistra' },
+            { m: 'Physician', f: null },
+            { m: 'Chirurgeon', f: null },
+        ],
+        lgod: '_Athena',
+        ngod: 'Hermes',
+        cgod: 'Poseidon',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Temple of Epidaurus',
+        intermed: 'the Temple of Coeus',
+        ldrnum: pm('PM_HIPPOCRATES'),
+        guardnum: pm('PM_ATTENDANT'),
+        questarti: ART_STAFF_OF_AESCULAPIUS,
+        // C: { 7, 7, 13, 7, 11, 16 } / { 15, 20, 20, 15, 25, 5 }
+        attrbase: [7, 7, 13, 7, 11, 16],
+        attrdist: [15, 20, 20, 15, 25, 5],
+        xlev: 20,
+        initrecord: 10,
+        // C: { 11, 0, 0, 8, 1, 0 } / { 1, 4, 0, 1, 0, 2 }
+        hpadv: adv(11, 0, 0, 8, 1, 0),
+        enadv: adv(1, 4, 0, 1, 0, 2),
+        spelbase: 3, spelheal: -3, spelshld: 2, spelarmr: 10,
+        spelstat: A_WIS, spelspec: 'SPE_CURE_SICKNESS', spelsbon: -4,
+        allow: 0x304a,
+    },
+    {
+        name: { m: 'Knight', f: null },
+        mnum: PM_KNIGHT,
+        petnum: pm('PM_PONY'),
+        neminum: pm('PM_IXOTH'),
+        enemy1num: pm('PM_QUASIT'),
+        enemy2num: pm('PM_OCHRE_JELLY'),
+        enemy1sym: 'S_IMP',
+        enemy2sym: 'S_JELLY',
+        title: [
+            { m: 'Gallant', f: null },
+            { m: 'Esquire', f: null },
+            { m: 'Bachelor', f: null },
+            { m: 'Sergeant', f: null },
+            { m: 'Knight', f: null },
+            { m: 'Banneret', f: null },
+            { m: 'Chevalier', f: 'Chevaliere' },
+            { m: 'Seignieur', f: 'Dame' },
+            { m: 'Paladin', f: null },
+        ],
+        lgod: 'Lugh',
+        ngod: '_Brigit',
+        cgod: 'Manannan Mac Lir',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'Camelot Castle',
+        intermed: 'the Isle of Glass',
+        ldrnum: pm('PM_KING_ARTHUR'),
+        guardnum: pm('PM_PAGE'),
+        questarti: ART_MAGIC_MIRROR_OF_MERLIN,
+        // C: { 13, 7, 14, 8, 10, 17 } / { 30, 15, 15, 10, 20, 10 }
+        attrbase: [13, 7, 14, 8, 10, 17],
+        attrdist: [30, 15, 15, 10, 20, 10],
+        xlev: 10,
+        initrecord: 10,
+        // C: { 14, 0, 0, 8, 2, 0 } / { 1, 4, 0, 1, 0, 2 }
+        hpadv: adv(14, 0, 0, 8, 2, 0),
+        enadv: adv(1, 4, 0, 1, 0, 2),
+        spelbase: 8, spelheal: -2, spelshld: 0, spelarmr: 9,
+        spelstat: A_WIS, spelspec: 'SPE_TURN_UNDEAD', spelsbon: -4,
+        allow: 0x300c,
+    },
+    {
+        name: { m: 'Monk', f: null },
+        mnum: PM_MONK,
+        petnum: NON_PM,
+        neminum: pm('PM_MASTER_KAEN'),
+        enemy1num: pm('PM_EARTH_ELEMENTAL'),
+        enemy2num: pm('PM_XORN'),
+        enemy1sym: 'S_ELEMENTAL',
+        enemy2sym: 'S_XORN',
+        title: [
+            { m: 'Candidate', f: null },
+            { m: 'Novice', f: null },
+            { m: 'Initiate', f: null },
+            { m: 'Student of Stones', f: null },
+            { m: 'Student of Waters', f: null },
+            { m: 'Student of Metals', f: null },
+            { m: 'Student of Winds', f: null },
+            { m: 'Student of Fire', f: null },
+            { m: 'Master', f: null },
+        ],
+        lgod: 'Shan Lai Ching',
+        ngod: 'Chih Sung-tzu',
+        cgod: 'Huan Ti',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Monastery of Chan-Sune',
+        intermed: 'the Monastery of the Earth-Lord',
+        ldrnum: pm('PM_GRAND_MASTER'),
+        guardnum: pm('PM_ABBOT'),
+        questarti: ART_EYES_OF_THE_OVERWORLD,
+        // C: { 10, 7, 8, 8, 7, 7 } / { 25, 10, 20, 20, 15, 10 }
+        attrbase: [10, 7, 8, 8, 7, 7],
+        attrdist: [25, 10, 20, 20, 15, 10],
+        xlev: 10,
+        initrecord: 10,
+        // C: { 12, 0, 0, 8, 1, 0 } / { 2, 2, 0, 2, 0, 2 }
+        hpadv: adv(12, 0, 0, 8, 1, 0),
+        enadv: adv(2, 2, 0, 2, 0, 2),
+        spelbase: 8, spelheal: -2, spelshld: 2, spelarmr: 20,
+        spelstat: A_WIS, spelspec: 'SPE_RESTORE_ABILITY', spelsbon: -4,
+        allow: 0x300f,
+    },
+    // C ref: role.c Priest — no fixed deities; pantheon via randrole
+    {
+        name: { m: 'Priest', f: 'Priestess' },
+        mnum: PM_CLERIC,
+        petnum: NON_PM,
+        neminum: pm('PM_NALZOK'),
+        enemy1num: pm('PM_HUMAN_ZOMBIE'),
+        enemy2num: pm('PM_WRAITH'),
+        enemy1sym: 'S_ZOMBIE',
+        enemy2sym: 'S_WRAITH',
+        title: [
+            { m: 'Aspirant', f: null },
+            { m: 'Acolyte', f: null },
+            { m: 'Adept', f: null },
+            { m: 'Priest', f: 'Priestess' },
+            { m: 'Curate', f: null },
+            { m: 'Canon', f: 'Canoness' },
+            { m: 'Lama', f: null },
+            { m: 'Patriarch', f: 'Matriarch' },
+            { m: 'High Priest', f: 'High Priestess' },
+        ],
+        lgod: null,
+        ngod: null,
+        cgod: null,
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Great Temple',
+        intermed: 'the Temple of Nalzok',
+        ldrnum: pm('PM_ARCH_PRIEST'),
+        guardnum: pm('PM_ACOLYTE'),
+        questarti: ART_MITRE_OF_HOLINESS,
+        attrbase: [7, 7, 10, 7, 7, 7],
+        attrdist: [15, 10, 30, 15, 20, 10],
+        xlev: 10,
+        initrecord: 0,
+        // C: { 12, 0, 0, 8, 1, 0 } / { 4, 3, 0, 2, 0, 2 }
+        hpadv: adv(12, 0, 0, 8, 1, 0),
+        enadv: adv(4, 3, 0, 2, 0, 2),
+        spelbase: 3, spelheal: -2, spelshld: 2, spelarmr: 10,
+        spelstat: A_WIS, spelspec: 'SPE_REMOVE_CURSE', spelsbon: -4,
+        allow: 0x301f,
+    },
+    // C: Rogue precedes Ranger (command-line -R tradition + pantheon indices)
+    {
+        name: { m: 'Rogue', f: null },
+        mnum: PM_ROGUE,
+        petnum: NON_PM,
+        neminum: pm('PM_MASTER_ASSASSIN'),
+        enemy1num: pm('PM_LEPRECHAUN'),
+        enemy2num: pm('PM_GUARDIAN_NAGA'),
+        enemy1sym: 'S_NYMPH',
+        enemy2sym: 'S_NAGA',
+        title: [
+            { m: 'Footpad', f: null },
+            { m: 'Cutpurse', f: null },
+            { m: 'Rogue', f: null },
+            { m: 'Pilferer', f: null },
+            { m: 'Robber', f: null },
+            { m: 'Burglar', f: null },
+            { m: 'Filcher', f: null },
+            { m: 'Magsman', f: 'Magswoman' },
+            { m: 'Thief', f: null },
+        ],
+        lgod: 'Issek',
+        ngod: 'Mog',
+        cgod: 'Kos',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: "the Thieves' Guild Hall",
+        intermed: "the Assassins' Guild Hall",
+        ldrnum: pm('PM_MASTER_OF_THIEVES'),
+        guardnum: pm('PM_THUG'),
+        questarti: ART_MASTER_KEY_OF_THIEVERY,
+        attrbase: [7, 7, 7, 10, 7, 6],
+        attrdist: [20, 10, 10, 30, 20, 10],
+        // C: xlev 11, initrecord 10
+        xlev: 11,
+        initrecord: 10,
+        hpadv: adv(10, 0, 0, 8, 1, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 8, spelheal: 0, spelshld: 1, spelarmr: 9,
+        spelstat: A_INT, spelspec: 'SPE_DETECT_TREASURE', spelsbon: -4,
+        allow: 0x3089,
+    },
+    {
+        name: { m: 'Ranger', f: null },
+        mnum: PM_RANGER,
+        petnum: pm('PM_LITTLE_DOG'),
+        neminum: pm('PM_SCORPIUS'),
+        enemy1num: pm('PM_FOREST_CENTAUR'),
+        enemy2num: pm('PM_SCORPION'),
+        enemy1sym: 'S_CENTAUR',
+        enemy2sym: 'S_SPIDER',
+        title: [
+            { m: 'Tenderfoot', f: null },
+            { m: 'Lookout', f: null },
+            { m: 'Trailblazer', f: null },
+            { m: 'Reconnoiterer', f: 'Reconnoiteress' },
+            { m: 'Scout', f: null },
+            { m: 'Arbalester', f: null },
+            { m: 'Archer', f: null },
+            { m: 'Sharpshooter', f: null },
+            { m: 'Marksman', f: 'Markswoman' },
+        ],
+        lgod: 'Mercury',
+        ngod: '_Venus',
+        cgod: 'Mars',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: "Orion's camp",
+        intermed: 'the cave of the wumpus',
+        ldrnum: pm('PM_ORION'),
+        guardnum: pm('PM_HUNTER'),
+        questarti: ART_LONGBOW_OF_DIANA,
+        // C: { 13, 13, 13, 9, 13, 7 } / { 30, 10, 10, 20, 20, 10 }
+        attrbase: [13, 13, 13, 9, 13, 7],
+        attrdist: [30, 10, 10, 20, 20, 10],
+        xlev: 12,
+        initrecord: 10,
+        // C: { 13, 0, 0, 6, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(13, 0, 0, 6, 1, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 9, spelheal: 2, spelshld: 1, spelarmr: 10,
+        spelstat: A_INT, spelspec: 'SPE_INVISIBILITY', spelsbon: -4,
+        allow: 0x30db,
+    },
+    {
+        name: { m: 'Samurai', f: null },
+        mnum: PM_SAMURAI,
+        petnum: pm('PM_LITTLE_DOG'),
+        neminum: pm('PM_ASHIKAGA_TAKAUJI'),
+        enemy1num: pm('PM_WOLF'),
+        enemy2num: pm('PM_STALKER'),
+        enemy1sym: 'S_DOG',
+        enemy2sym: 'S_ELEMENTAL',
+        title: [
+            { m: 'Hatamoto', f: null },
+            { m: 'Ronin', f: null },
+            { m: 'Ninja', f: 'Kunoichi' },
+            { m: 'Joshu', f: null },
+            { m: 'Ryoshu', f: null },
+            { m: 'Kokushu', f: null },
+            { m: 'Daimyo', f: null },
+            { m: 'Kuge', f: null },
+            { m: 'Shogun', f: null },
+        ],
+        lgod: '_Amaterasu Omikami',
+        ngod: 'Raijin',
+        cgod: 'Susanowo',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Castle of the Taro Clan',
+        intermed: "the Shogun's Castle",
+        ldrnum: pm('PM_LORD_SATO'),
+        guardnum: pm('PM_ROSHI'),
+        questarti: ART_TSURUGI_OF_MURAMASA,
+        // C: { 10, 8, 7, 10, 17, 6 } / { 30, 10, 8, 30, 14, 8 }
+        attrbase: [10, 8, 7, 10, 17, 6],
+        attrdist: [30, 10, 8, 30, 14, 8],
+        xlev: 11,
+        initrecord: 10,
+        // C: { 13, 0, 0, 8, 1, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(13, 0, 0, 8, 1, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 10, spelheal: 0, spelshld: 0, spelarmr: 8,
+        spelstat: A_INT, spelspec: 'SPE_CLAIRVOYANCE', spelsbon: -4,
+        allow: 0x300c,
+    },
+    {
+        name: { m: 'Tourist', f: null },
+        mnum: PM_TOURIST,
+        petnum: NON_PM,
+        neminum: pm('PM_MASTER_OF_THIEVES'),
+        enemy1num: pm('PM_GIANT_SPIDER'),
+        enemy2num: pm('PM_FOREST_CENTAUR'),
+        enemy1sym: 'S_SPIDER',
+        enemy2sym: 'S_CENTAUR',
+        title: [
+            { m: 'Rambler', f: null },
+            { m: 'Sightseer', f: null },
+            { m: 'Excursionist', f: null },
+            { m: 'Peregrinator', f: 'Peregrinatrix' },
+            { m: 'Traveler', f: null },
+            { m: 'Journeyer', f: null },
+            { m: 'Voyager', f: null },
+            { m: 'Explorer', f: null },
+            { m: 'Adventurer', f: null },
+        ],
+        lgod: 'Blind Io',
+        ngod: '_The Lady',
+        cgod: 'Offler',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'Ankh-Morpork',
+        intermed: "the Thieves' Guild Hall",
+        ldrnum: pm('PM_TWOFLOWER'),
+        guardnum: pm('PM_GUIDE'),
+        questarti: ART_YENDORIAN_EXPRESS_CARD,
+        attrbase: [7, 10, 6, 7, 7, 10],
+        attrdist: [15, 10, 10, 15, 30, 20],
+        xlev: 14,
+        initrecord: 0,
+        hpadv: adv(8, 0, 0, 8, 0, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 5, spelheal: 1, spelshld: 2, spelarmr: 10,
+        spelstat: A_INT, spelspec: 'SPE_CHARM_MONSTER', spelsbon: -4,
+        allow: 0x300a,
+    },
+    {
+        name: { m: 'Valkyrie', f: null },
+        mnum: PM_VALKYRIE,
+        petnum: NON_PM,
+        neminum: pm('PM_LORD_SURTUR'),
+        enemy1num: pm('PM_FIRE_ANT'),
+        enemy2num: pm('PM_FIRE_GIANT'),
+        enemy1sym: 'S_ANT',
+        enemy2sym: 'S_GIANT',
+        title: [
+            { m: 'Stripling', f: null },
+            { m: 'Skirmisher', f: null },
+            { m: 'Fighter', f: null },
+            { m: 'Man-at-arms', f: 'Woman-at-arms' },
+            { m: 'Warrior', f: null },
+            { m: 'Swashbuckler', f: null },
+            { m: 'Hero', f: 'Heroine' },
+            { m: 'Champion', f: null },
+            { m: 'Lord', f: 'Lady' },
+        ],
+        lgod: 'Tyr',
+        ngod: 'Odin',
+        cgod: 'Loki',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Shrine of Destiny',
+        intermed: 'the cave of Surtur',
+        ldrnum: pm('PM_NORN'),
+        guardnum: pm('PM_WARRIOR'),
+        questarti: ART_ORB_OF_FATE,
+        // C: { 10, 7, 7, 7, 10, 7 } / { 30, 6, 7, 20, 30, 7 }
+        attrbase: [10, 7, 7, 7, 10, 7],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        // C: xlev 10, initrecord 0
+        xlev: 10,
+        initrecord: 0,
+        // C: { 14, 0, 0, 8, 2, 0 } / { 1, 0, 0, 1, 0, 1 }
+        hpadv: adv(14, 0, 0, 8, 2, 0),
+        enadv: adv(1, 0, 0, 1, 0, 1),
+        spelbase: 10, spelheal: -2, spelshld: 0, spelarmr: 9,
+        spelstat: A_WIS, spelspec: 'SPE_CONE_OF_COLD', spelsbon: -4,
+        allow: 0x202e,
+    },
+    {
+        name: { m: 'Wizard', f: null },
+        mnum: PM_WIZARD,
+        petnum: pm('PM_KITTEN'),
+        neminum: pm('PM_DARK_ONE'),
+        enemy1num: pm('PM_VAMPIRE_BAT'),
+        enemy2num: pm('PM_XORN'),
+        enemy1sym: 'S_BAT',
+        enemy2sym: 'S_WRAITH',
+        title: [
+            { m: 'Evoker', f: null },
+            { m: 'Conjurer', f: null },
+            { m: 'Thaumaturge', f: null },
+            { m: 'Magician', f: null },
+            { m: 'Enchanter', f: 'Enchantress' },
+            { m: 'Sorcerer', f: 'Sorceress' },
+            { m: 'Necromancer', f: null },
+            { m: 'Wizard', f: null },
+            { m: 'Mage', f: null },
+        ],
+        lgod: 'Ptah',
+        ngod: 'Thoth',
+        cgod: 'Anhur',
+        // C role.c Wizard: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Lonely Tower',
+        intermed: 'the Tower of Darkness',
+        ldrnum: pm('PM_NEFERET_THE_GREEN'),
+        guardnum: pm('PM_APPRENTICE'),
+        questarti: ART_EYE_OF_THE_AETHIOPICA,
+        attrbase: [7, 10, 7, 7, 7, 7],
+        attrdist: [10, 30, 10, 20, 20, 10],
+        xlev: 12,
+        initrecord: 0,
+        hpadv: adv(10, 0, 0, 8, 1, 0),
+        enadv: adv(4, 3, 0, 2, 0, 3),
+        spelbase: 1, spelheal: 0, spelshld: 3, spelarmr: 10,
+        spelstat: A_INT, spelspec: 'SPE_MAGIC_MISSILE', spelsbon: -4,
+        allow: 0x30db,
+    },
+];
+
+export const races = [
+    // C ref: role.c races[] — hpadv/enadv Init columns feed newhp()/newpw() at ulevel==0
+    // C: races[] selfmask / lovemask / hatemask (role.c) — peace_minded
+    {
+        name: 'human',
+        adj: 'human',
+        noun: 'human',
+        filecode: 'Hum',
+        // C: races[].individual { "man", "woman" } — newman form strings
+        individual: { m: 'man', f: 'woman' },
+        mnum: PM_HUMAN,
+        // C role.c races[] mummy/zombie columns — grave-arise (end.c:328-331)
+        mummynum: pm('PM_HUMAN_MUMMY'),
+        zombienum: pm('PM_HUMAN_ZOMBIE'),
+        attrmin: [3, 3, 3, 3, 3, 3],
+        attrmax: [STR18_100, 18, 18, 18, 18, 18],
+        hpadv: adv(2, 0, 0, 2, 1, 0),
+        enadv: adv(1, 0, 2, 0, 2, 0),
+        allow: 0x300f,
+        selfmask: MH_HUMAN,
+        lovemask: 0,
+        hatemask: MH_GNOME | MH_ORC,
+    },
+    {
+        name: 'elf',
+        adj: 'elven',
+        noun: 'elf',
+        filecode: 'Elf',
+        mnum: PM_ELF,
+        mummynum: pm('PM_ELF_MUMMY'),
+        zombienum: pm('PM_ELF_ZOMBIE'),
+        attrmin: [3, 3, 3, 3, 3, 3],
+        attrmax: [18, 20, 20, 18, 16, 18],
+        hpadv: adv(1, 0, 0, 1, 1, 0),
+        enadv: adv(2, 0, 3, 0, 3, 0),
+        allow: 0x3011,
+        selfmask: MH_ELF,
+        lovemask: MH_ELF,
+        hatemask: MH_ORC,
+    },
+    {
+        name: 'dwarf',
+        adj: 'dwarven',
+        noun: 'dwarf',
+        filecode: 'Dwa',
+        mnum: PM_DWARF,
+        mummynum: pm('PM_DWARF_MUMMY'),
+        zombienum: pm('PM_DWARF_ZOMBIE'),
+        attrmin: [3, 3, 3, 3, 3, 3],
+        attrmax: [STR18_100, 16, 16, 20, 20, 16],
+        hpadv: adv(4, 0, 0, 3, 2, 0),
+        enadv: adv(0, 0, 0, 0, 0, 0),
+        allow: 0x3024,
+        selfmask: MH_DWARF,
+        lovemask: MH_DWARF | MH_GNOME,
+        hatemask: MH_ORC,
+    },
+    {
+        name: 'gnome',
+        adj: 'gnomish',
+        noun: 'gnome',
+        filecode: 'Gno',
+        mnum: PM_GNOME,
+        mummynum: pm('PM_GNOME_MUMMY'),
+        zombienum: pm('PM_GNOME_ZOMBIE'),
+        attrmin: [3, 3, 3, 3, 3, 3],
+        attrmax: [STR18_50, 19, 18, 18, 18, 18],
+        hpadv: adv(1, 0, 0, 1, 0, 0),
+        enadv: adv(2, 0, 2, 0, 2, 0),
+        allow: 0x3042,
+        selfmask: MH_GNOME,
+        lovemask: MH_DWARF | MH_GNOME,
+        hatemask: MH_HUMAN,
+    },
+    {
+        name: 'orc',
+        adj: 'orcish',
+        noun: 'orc',
+        filecode: 'Orc',
+        mnum: PM_ORC,
+        mummynum: pm('PM_ORC_MUMMY'),
+        zombienum: pm('PM_ORC_ZOMBIE'),
+        attrmin: [3, 3, 3, 3, 3, 3],
+        attrmax: [STR18_50, 16, 16, 18, 18, 16],
+        // Rogue+orc init HP = 10+1 = 11 (not human fallback 10+2 = 12)
+        hpadv: adv(1, 0, 0, 1, 0, 0),
+        enadv: adv(1, 0, 1, 0, 1, 0),
+        allow: 0x3081,
+        selfmask: MH_ORC,
+        lovemask: 0,
+        hatemask: MH_HUMAN | MH_ELF | MH_DWARF,
+    },
+];
+
+export const aligns = [
+    // C: adj / filecode / allow / value — adj used in plsel headers
+    { name: 'lawful', adj: 'lawful', filecode: 'Law', allow: 0x04, value: A_LAWFUL },
+    { name: 'neutral', adj: 'neutral', filecode: 'Neu', allow: 0x02, value: A_NEUTRAL },
+    { name: 'chaotic', adj: 'chaotic', filecode: 'Cha', allow: 0x01, value: A_CHAOTIC },
+];
+
+export const genders = [
+    // C role.c genders[] `:688–694`: adj / he / him / his / filecode / allow.
+    // ROLE_GENDERS is 2 (you.h); neuter+group are for qtext_pronoun /
+    // pronoun_gender, not chargen menus.
+    { name: 'male', adj: 'male', he: 'he', him: 'him', his: 'his',
+        filecode: 'Mal', allow: 0x1000, value: 0 },
+    { name: 'female', adj: 'female', he: 'she', him: 'her', his: 'her',
+        filecode: 'Fem', allow: 0x2000, value: 1 },
+    { name: 'neuter', adj: 'neuter', he: 'it', him: 'it', his: 'its',
+        filecode: 'Ntr', allow: 0x4000, value: 2 },
+    { name: 'group', adj: 'group', he: 'they', him: 'them', his: 'their',
+        filecode: 'Grp', allow: 0, value: 3 },
+];
+
+/** C ref: you.h uhim() — genders[flags.female].him */
+export function uhim() {
+    return genders[game.flags?.female ? 1 : 0]?.him || 'him';
+}
+
+/** C ref: you.h uhis() — genders[flags.female].his */
+export function uhis() {
+    return genders[game.flags?.female ? 1 : 0]?.his || 'his';
+}
+
+export function findRole(name) {
+    if (!name) return null;
+    const lc = name.toLowerCase();
+    return roles.find(r => r.name.m.toLowerCase() === lc
+        || (r.name.f && r.name.f.toLowerCase() === lc));
+}
+
+export function findRace(name) {
+    if (!name) return null;
+    const lc = name.toLowerCase();
+    return races.find(r => r.name.toLowerCase() === lc);
+}
+
+export function findAlign(name) {
+    if (!name) return null;
+    const lc = String(name).toLowerCase();
+    return aligns.find(a => a.name === lc);
+}
+
+// C ref: role.c Hello(mtmp) — Role_switch greeting; mtmp for Samurai shk /
+// Valkyrie mail. Also accepts numeric mnum (allmain welcome path).
+export function Hello(arg) {
+    const mtmp = (arg && typeof arg === 'object') ? arg : null;
+    const mnum = (typeof arg === 'number') ? arg : (game.urole?.mnum);
+    if (mnum === PM_KNIGHT) return 'Salutations';
+    if (mnum === PM_SAMURAI) {
+        // C: mtmp && mtmp->data == &mons[PM_SHOPKEEPER]
+        if (mtmp && (mtmp.isshk || mtmp.data?.name === 'PM_SHOPKEEPER')) {
+            return 'Irasshaimase';
+        }
+        return 'Konnichi wa';
+    }
+    if (mnum === PM_TOURIST) return 'Aloha'; // C :2130-2131
+    if (mnum === PM_VALKYRIE) {
+        // C :2132-2136 — MAIL_STRUCTURES is live (global.h:430), so the
+        // mail-daemon `Hallo` arm is real C, mirroring the Samurai shk arm.
+        if (mtmp && mtmp.data?.name === 'PM_MAIL_DAEMON') {
+            return 'Hallo';
+        }
+        return 'Velkommen'; /* Norse */
+    }
+    return 'Hello'; // C :2137-2138
+}
+
+/** C ref: role.c Goodbye — Role_switch farewell; uses game.urole.mnum. */
+export function Goodbye() {
+    const mnum = game.urole?.mnum;
+    if (mnum === PM_KNIGHT) return 'Fare thee well';
+    if (mnum === PM_SAMURAI) return 'Sayonara';
+    if (mnum === PM_TOURIST) return 'Aloha';
+    if (mnum === PM_VALKYRIE) return 'Farvel';
+    return 'Goodbye';
+}
+
+
+// C ref: botl.c xlev_to_rank — experience level (1..30) → rank index (0..8)
+export function xlev_to_rank(xlev) {
+    const lev = xlev | 0;
+    return (lev <= 2) ? 0 : (lev <= 30) ? Math.trunc((lev + 2) / 4) : 8;
+}
+
+/** C ref: botl.c rank_to_xlev — rank index (0..8) → low end of xlev range. */
+export function rank_to_xlev(rank) {
+    const r = rank | 0;
+    return (r < 1) ? 1 : (r < 2) ? 3 : (r < 8) ? ((r * 4) - 2) : 30;
+}
+
+/**
+ * C ref: botl.c rank_of(lev, monnum, female)
+ * Title for experience level from roles[].title / gu.urole.title.
+ */
+export function rank_of(lev, monnum, female) {
+    let role = null;
+    if (monnum != null) {
+        role = roles.find(r => r.mnum === monnum) || null;
+    }
+    if (!role?.name?.m) role = game.urole || null;
+    const titles = role?.title || role?.rank;
+    // game.urole.rank may still be a single {m,f} for legacy saves
+    const list = Array.isArray(titles) ? titles
+        : (titles ? [titles] : (role?.name ? [{ m: role.name.m, f: role.name.f }] : []));
+    for (let i = xlev_to_rank(lev | 0); i >= 0; i--) {
+        const ent = list[i];
+        if (!ent) continue;
+        if (female && ent.f) return ent.f;
+        if (ent.m) return ent.m;
+    }
+    if (female && role?.name?.f) return role.name.f;
+    if (role?.name?.m) return role.name.m;
+    return 'Player';
+}
+
+/**
+ * C ref: insight.c align_str `:3187–3200`.
+ * `(int) alignment` selects the adjective. `A_NONE` is the altar and
+ * artifact value `-128`, not a third moral pole. Anything else,
+ * including a corrupted `aligntyp`, is `"unknown"`.
+ * Callers that want the artifact-list wording remap `"unaligned"` to
+ * `"non-aligned"` after this return (`artifact.c:1165–1166`).
+ * @param {number} alignment aligntyp
+ * @returns {string}
+ */
+export function align_str(alignment) {
+    switch (alignment | 0) { // C `(int) alignment`
+    case A_CHAOTIC: // insight.c:3190
+        return 'chaotic';
+    case A_NEUTRAL: // insight.c:3192
+        return 'neutral';
+    case A_LAWFUL: // insight.c:3194
+        return 'lawful';
+    case A_NONE: // insight.c:3196
+        return 'unaligned';
+    }
+    return 'unknown'; // insight.c:3199
+}
+
+/**
+ * C ref: pray.c align_gname `:2530–2555`.
+ * Moloch is the file-scope string at pray.c:58. C reads `gu.urole.lgod`,
+ * `ngod`, and `cgod`; callers pass that role as `urole` (`game.urole`).
+ * Unknown alignment calls `impossible` and returns "someone". A leading
+ * '_' marks a goddess and is not part of the spoken name.
+ * @param {object} urole
+ * @param {number} alignment
+ * @returns {string}
+ */
+export function align_gname(urole, alignment) {
+    const role = urole || {};
+    let gnam;
+    switch (alignment) {
+    case A_NONE:
+        gnam = 'Moloch';
+        break;
+    case A_LAWFUL:
+        gnam = role.lgod;
+        break;
+    case A_NEUTRAL:
+        gnam = role.ngod;
+        break;
+    case A_CHAOTIC:
+        gnam = role.cgod;
+        break;
+    default:
+        // async; fire-and-forget so this stays sync (pray.c:2548).
+        void impossible('unknown alignment.');
+        gnam = 'someone';
+        break;
+    }
+    // C `:2552–2553` — if (*gnam == '_') ++gnam;
+    if (typeof gnam === 'string' && gnam.charAt(0) === '_') {
+        gnam = gnam.slice(1);
+    }
+    return gnam;
+}
+
+// C ref: pray.c align_gtitle :2628–2649 — whole body in C order.
+// C reads global gu.urole; JS threads it as the first param (callers pass
+// game.urole/urole). "goddess" iff the raw god name starts with '_'.
+export function align_gtitle(urole, a) {
+    const r = urole || {};
+    let gnam;
+    let result = 'god'; // C :2631
+    switch (a) {
+    case A_LAWFUL: // C :2634
+        gnam = r.lgod;
+        break;
+    case A_NEUTRAL: // C :2637
+        gnam = r.ngod;
+        break;
+    case A_CHAOTIC: // C :2640
+        gnam = r.cgod;
+        break;
+    default: // C :2643–2645
+        gnam = 0;
+        break;
+    }
+    if (gnam && gnam.charAt(0) === '_') // C :2647
+        result = 'goddess';
+    return result;
+}
+
+export function u_gname(urole, ualignType) {
+    return align_gname(urole, ualignType ?? A_NEUTRAL);
+}
+
+// C ref: role.c roles[].filecode — 3-letter quest-proto codes ("Arc".."Wiz"),
+// index-aligned with roles[] above (C struct field; attached here so the table
+// diff stays one line per role). u_init.js keeps its own ROLE_FILECODE copy
+// for quest fixup; consolidating it onto roles[].filecode is deferred.
+const ROLE_FILECODES = [
+    'Arc', 'Bar', 'Cav', 'Hea', 'Kni', 'Mon', 'Pri',
+    'Rog', 'Ran', 'Sam', 'Tou', 'Val', 'Wiz',
+];
+for (let i = 0; i < roles.length && i < ROLE_FILECODES.length; i++) {
+    roles[i].filecode = ROLE_FILECODES[i];
+}
+
+// C ref: role.c randomstr `:710` — static "random"; every str2* below accepts
+// "*" / "@" (length 1) or any case-insensitive prefix of this word.
+const randomstr = 'random';
+
+/**
+ * C ref: role.c str2role `:746–775` — prefix match (Strlen(str) bytes,
+ * case-insensitive) on the male name, then the female name, then an exact
+ * case-insensitive filecode match; "*", "@" or a prefix of "random" yields
+ * ROLE_RANDOM; null/empty yields ROLE_NONE. Roles are checked before the
+ * random fallback, so "r" finds Rogue. Prefix arms use the live strncmpi
+ * export (C 0-on-match); the filecode arms are C strcmpi, kept inline.
+ */
+export function str2role(str) {
+    if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
+    const len = str.length;
+    const low = str.toLowerCase();
+    for (let i = 0; i < roles.length; i++) {
+        // Does it match the male name?
+        if (strncmpi(str, roles[i].name.m, len) === 0) return i; // C role.c:759
+        // Or the female name?
+        if (roles[i].name.f && strncmpi(str, roles[i].name.f, len) === 0) // C :762
+            return i;
+        // Or the filecode?
+        if (low === (roles[i].filecode || '').toLowerCase()) return i;
+    }
+    if ((len === 1 && (str === '*' || str === '@'))
+        || strncmpi(str, randomstr, len) === 0) // C role.c:770
+        return ROLE_RANDOM;
+    // Couldn't find anything appropriate
+    return ROLE_NONE;
+}
+
+/**
+ * C ref: role.c str2race `:812–841` — same envelope over races[i].noun, then
+ * races[i].adj ("elven"/"dwarven"/"gnomish"/"orcish"), then the filecode.
+ */
+export function str2race(str) {
+    if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
+    const len = str.length;
+    const low = str.toLowerCase();
+    for (let i = 0; i < races.length; i++) {
+        // Does it match the noun?
+        if (strncmpi(str, races[i].noun, len) === 0) return i; // C role.c:825
+        // check adjective too
+        if (races[i].adj && strncmpi(str, races[i].adj, len) === 0) // C :828
+            return i;
+        // Or the filecode?
+        if (low === (races[i].filecode || '').toLowerCase()) return i;
+    }
+    if ((len === 1 && (str === '*' || str === '@'))
+        || strncmpi(str, randomstr, len) === 0) // C role.c:836
+        return ROLE_RANDOM;
+    // Couldn't find anything appropriate
+    return ROLE_NONE;
+}
+
+/**
+ * C ref: role.c str2gend `:879–904` — loops i < ROLE_GENDERS (2), so only
+ * male/female are reachable; neuter/group (genders[2..3]) never match here.
+ */
+export function str2gend(str) {
+    if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
+    const len = str.length;
+    const low = str.toLowerCase();
+    for (let i = 0; i < ROLE_GENDERS; i++) {
+        // Does it match the adjective?
+        if (strncmpi(str, genders[i].adj, len) === 0) return i; // C role.c:892
+        // Or the filecode?
+        if (low === (genders[i].filecode || '').toLowerCase()) return i;
+    }
+    if ((len === 1 && (str === '*' || str === '@'))
+        || strncmpi(str, randomstr, len) === 0) // C role.c:899
+        return ROLE_RANDOM;
+    // Couldn't find anything appropriate
+    return ROLE_NONE;
+}
+
+/**
+ * C ref: role.c str2align `:942–967` — loops i < ROLE_ALIGNS (3): lawful,
+ * neutral, chaotic. Only the adjective and filecode participate (C never
+ * matches aligns[i].name "law"/"balance"/"chaos" here).
+ */
+export function str2align(str) {
+    if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
+    const len = str.length;
+    const low = str.toLowerCase();
+    for (let i = 0; i < ROLE_ALIGNS; i++) {
+        // Does it match the adjective?
+        if (low === aligns[i].adj.slice(0, len).toLowerCase()) return i;
+        // Or the filecode?
+        if (low === (aligns[i].filecode || '').toLowerCase()) return i;
+    }
+    if ((len === 1 && (str === '*' || str === '@'))
+        || low === randomstr.slice(0, len).toLowerCase())
+        return ROLE_RANDOM;
+    // Couldn't find anything appropriate
+    return ROLE_NONE;
+}
+
+/**
+ * C ref: role.c validrole `:712–716` — IndexOkT(rolenum, roles): a live index
+ * into roles[] (the C table's terminator is excluded; roles.length already is).
+ */
+export function validrole(rolenum) {
+    return Number.isInteger(rolenum) && rolenum >= 0 && rolenum < roles.length;
+}
+
+/**
+ * C ref: role.c role_gendercount `:1398–1412` (staticfn; exported for the
+ * Shall-I-pick prompt builder) — counts ROLE_MALE/FEMALE/NEUTER allow bits.
+ */
+export function role_gendercount(rolenum) {
+    let gendcount = 0;
+    if (validrole(rolenum)) {
+        if (roles[rolenum].allow & ROLE_MALE) ++gendcount;
+        if (roles[rolenum].allow & ROLE_FEMALE) ++gendcount;
+        if (roles[rolenum].allow & ROLE_NEUTER) ++gendcount;
+    }
+    return gendcount;
+}
+
+/**
+ * C ref: role.c race_alignmentcount `:1414–1428` (staticfn; exported for the
+ * prompt builder) — counts ROLE_CHAOTIC/LAWFUL/NEUTRAL allow bits. The C body
+ * guards only NONE/RANDOM; the index-range guard is a JS memory-safety
+ * adaptation (C would read out of bounds; JS has no out-of-bounds struct).
+ */
+export function race_alignmentcount(racenum) {
+    let aligncount = 0;
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM
+        && Number.isInteger(racenum) && racenum >= 0 && racenum < races.length) {
+        if (races[racenum].allow & ROLE_CHAOTIC) ++aligncount;
+        if (races[racenum].allow & ROLE_LAWFUL) ++aligncount;
+        if (races[racenum].allow & ROLE_NEUTRAL) ++aligncount;
+    }
+    return aligncount;
+}
+
+// C ref: monflag.h — role_init writes these onto mons[ldr/nem].
+const MS_LEADER = 36;
+const MS_NEMESIS = 37;
+
+/**
+ * C ref: role.c randrole `:718–728` — rn2(SIZE(roles)-1); roles.length
+ * already excludes the C terminator, so rn2(roles.length) is the same draw.
+ */
+export function randrole(for_display) {
+    if (for_display) return rn2_on_display_rng(roles.length);
+    return rn2(roles.length);
+}
+
+// C ref: role.c randrole_filtered `:730–744` (staticfn in C; exported here
+// so rigid_role_checks in js/player_selection.js calls the live body instead
+// of cloning it) — honor all the filter masks; fall back to randrole when
+// nothing passes.
+export function randrole_filtered() {
+    const set = [];
+    for (let i = 0; i < roles.length; ++i)
+        if (ok_role(i, ROLE_NONE, ROLE_NONE, ROLE_NONE)
+            && ok_race(i, ROLE_RANDOM, ROLE_NONE, ROLE_NONE)
+            && ok_gend(i, ROLE_NONE, ROLE_RANDOM, ROLE_NONE)
+            && ok_align(i, ROLE_NONE, ROLE_NONE, ROLE_RANDOM))
+            set.push(i);
+    return set.length ? set[rn2(set.length)] : randrole(false);
+}
+
+/**
+ * C ref: role.c randrace `:786–810` — count the valid races, pick with the
+ * x100 factor (bad-RNG guard), walk again to the winner. The `/ 100` is C
+ * integer division. Fallback when the role allows nothing: any race.
+ */
+export function randrace(rolenum) {
+    let n = 0;
+    for (let i = 0; i < races.length && races[i].noun; i++)
+        if (roles[rolenum].allow & races[i].allow & ROLE_RACEMASK)
+            n++;
+    // Pick a random race
+    if (n) n = Math.trunc(rn2(n * 100) / 100);
+    for (let i = 0; i < races.length && races[i].noun; i++)
+        if (roles[rolenum].allow & races[i].allow & ROLE_RACEMASK) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+    // This role has no permitted races?
+    return rn2(races.length);
+}
+
+/**
+ * C ref: role.c randgend `:852–877` — count genders the role and race
+ * allow, rn2(n) when n > 0, walk to the winner. Fallback: any gender.
+ * An out-of-range role or race takes that fallback (C would dereference
+ * roles[]/races[]).
+ */
+export function randgend(rolenum, racenum) {
+    let n = 0;
+    const roleOk = rolenum >= 0 && rolenum < roles.length;
+    const raceOk = racenum >= 0 && racenum < races.length;
+    for (let i = 0; i < ROLE_GENDERS; i++)
+        if (roleOk && raceOk
+            && (roles[rolenum].allow & races[racenum].allow & genders[i].allow
+                & ROLE_GENDMASK))
+            n++;
+    // Pick a random gender
+    if (n) n = rn2(n);
+    for (let i = 0; i < ROLE_GENDERS; i++)
+        if (roleOk && raceOk
+            && (roles[rolenum].allow & races[racenum].allow & genders[i].allow
+                & ROLE_GENDMASK)) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+    // This role/race has no permitted genders?
+    return rn2(ROLE_GENDERS);
+}
+
+/**
+ * C ref: role.c randalign `:915–940` — same envelope over ROLE_ALIGNS
+ * with a plain rn2(n) pick. Fallback: any alignment.
+ */
+export function randalign(rolenum, racenum) {
+    let n = 0;
+    for (let i = 0; i < ROLE_ALIGNS; i++)
+        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow
+            & ROLE_ALIGNMASK)
+            n++;
+    // Pick a random alignment
+    if (n) n = rn2(n);
+    for (let i = 0; i < ROLE_ALIGNS; i++)
+        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow
+            & ROLE_ALIGNMASK) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+    // This role/race has no permitted alignments?
+    return rn2(ROLE_ALIGNS);
+}
+
+/**
+ * C ref: role.c plnamesuffix `:1664–1721` — strip `-role-race-gender-align`
+ * suffix tokens from the player name into flags.init*, prompting via
+ * askname when the name is empty or generic. C callers: unixmain `:198`
+ * (JS: askname_if_needed covers the prompt arm), role_init `:1988`, and
+ * the rename path `:2700`. Async only: the askname arm blocks on input
+ * (Constitution §2). game.plname is the svp.plname buffer;
+ * game.plnamelen the gp.plnamelen username-with-dashes length (JS never
+ * sets it — unixmain does in C).
+ */
+export async function plnamesuffix() {
+    const flags = game.flags || (game.flags = {});
+    let plname = String(game.plname ?? '');
+
+    // some generic user names will be ignored in favor of prompting
+    const genericusers = game.sysopt?.genericusers;
+    if (genericusers) {
+        if (genericusers[0] === '*') {
+            plname = '';
+        } else {
+            // ignore an appended '-role-race-gender-alignment' tail when
+            // measuring the name against the generic-users list
+            const dash = plname.indexOf('-', game.plnamelen | 0);
+            const i = dash >= 0 ? dash : plname.length;
+            if (findword(genericusers, plname, i, false))
+                plname = '';
+        }
+        if (!plname) game.plnamelen = 0;
+    }
+
+    do {
+        if (!plname) {
+            await tty_askname(); // fill game.plname[] (C askname)
+            plname = String(game.plname ?? '');
+            game.plnamelen = 0; // plname[] might have -role-race-&c attached
+        }
+
+        // Look for tokens delimited by '-'
+        const dash = plname.indexOf('-', game.plnamelen | 0);
+        if (dash >= 0) {
+            let eptr = plname.slice(dash + 1); // C: *eptr = '\0', eptr past it
+            plname = plname.slice(0, dash);
+            game.plname = plname;
+            while (eptr !== null) {
+                // Isolate the next token
+                let sptr = eptr;
+                const d2 = sptr.indexOf('-');
+                if (d2 >= 0) {
+                    sptr = sptr.slice(0, d2);
+                    eptr = eptr.slice(d2 + 1);
+                } else {
+                    eptr = null;
+                }
+                // Try to match it to something
+                let i;
+                if ((i = str2role(sptr)) !== ROLE_NONE)
+                    flags.initrole = i;
+                else if ((i = str2race(sptr)) !== ROLE_NONE)
+                    flags.initrace = i;
+                else if ((i = str2gend(sptr)) !== ROLE_NONE)
+                    flags.initgend = i;
+                else if ((i = str2align(sptr)) !== ROLE_NONE)
+                    flags.initalign = i;
+            }
+        } else {
+            game.plname = plname;
+        }
+    } while (!game.plname && !(game.iflags?.defer_plname));
+
+    // commas in the name confuse the record file, convert to spaces
+    game.plname = strNsubst(game.plname, ',', ' ', 0);
+}
+
+/**
+ * C ref: role.c role_init `:1980–2117` — resolve role/race/gender/alignment
+ * from flags.init* (options, plname suffix, player selection) with random
+ * fallback, copy urole/urace, fix up quest leader/guardian/nemesis permonst
+ * data, pick the pantheon, fill missing gods, set godgend, and grant
+ * Priests their SPE_LIGHT skill. Whole body in C order.
+ *
+ * C callers: allmain.c newgame `:786` (wired: js/allmain.js newgame);
+ * restore.c dorecover `:596` (wired: js/save.js try_restore_save runs
+ * this before the payload overwrites, with pantheon saved/restored —
+ * the re-burned ldrgend/nemgend draws are observable: 4 restore
+ * sessions diverged on their absence).
+ * The allmain.c `:805` quest_init comment, makemon.c `:1269` quest-pager
+ * comment and decl.h/flag.h/monsters.h notes are comments, not call sites.
+ * Async only: plnamesuffix's askname arm blocks on input (Constitution §2).
+ */
+export async function role_init() {
+    const flags = game.flags || (game.flags = {});
+    let alignmnt;
+
+    // Strip the role letter out of the player name (backwards compat).
+    await plnamesuffix();
+
+    // Check for a valid role. Try flags.initrole first.
+    if (!validrole(flags.initrole)) {
+        // Try the player letter second (svp.pl_character; options.c also
+        // writes it, role_init copies it back below, save.c persists it).
+        if ((flags.initrole = str2role(String(game.pl_character ?? ''))) < 0)
+            // None specified; pick a random role
+            flags.initrole = randrole_filtered();
+    }
+
+    // We now have a valid role index. Copy the role name back.
+    // This should become OBSOLETE (C comment).
+    game.pl_character = String(roles[flags.initrole].name.m ?? '');
+    game.pl_character = game.pl_character.slice(0, PL_CSIZ - 1); // C: [31] = 0
+
+    // Check for a valid race
+    if (!validrace(flags.initrole, flags.initrace))
+        flags.initrace = randrace(flags.initrole);
+
+    // Check for a valid gender. If new game, check both initgend
+    // and female. On restore, assume flags.female is correct.
+    if (flags.pantheon === -1) { // new game
+        if (!validgend(flags.initrole, flags.initrace, flags.female ? 1 : 0))
+            flags.female = !flags.female;
+    }
+    if (!validgend(flags.initrole, flags.initrace, flags.initgend))
+        // Note that there is no way to check for an unspecified gender.
+        flags.initgend = flags.female ? 1 : 0;
+
+    // Check for a valid alignment
+    if (!validalign(flags.initrole, flags.initrace, flags.initalign))
+        // Pick a random alignment
+        flags.initalign = randalign(flags.initrole, flags.initrace);
+    alignmnt = aligns[flags.initalign].value;
+
+    // Initialize gu.urole and gu.urace (whole-struct copy in C; the JS
+    // newgame setup re-shapes these into the field-rich game objects next).
+    game.urole = { ...roles[flags.initrole] };
+    game.urace = { ...races[flags.initrace] };
+    if (!game.quest_status) game.quest_status = {};
+
+    // Fix up the quest leader
+    if (game.urole.ldrnum !== NON_PM) {
+        const pm = mons(game.urole.ldrnum);
+        commit_pm_fixup(game.urole.ldrnum, {
+            msound: MS_LEADER,
+            mflags2: pm.mflags2 | M2_PEACEFUL,
+            mflags3: pm.mflags3 | M3_CLOSE,
+            maligntyp: alignmnt * 3,
+        });
+        // if gender is random, we choose it now instead of waiting
+        // until the leader monster is created
+        game.quest_status.ldrgend = is_neuter(pm) ? 2
+            : is_female(pm) ? 1
+                : is_male(pm) ? 0
+                    : (rn2(100) < 50 ? 1 : 0);
+    }
+
+    // Fix up the quest guardians
+    if (game.urole.guardnum !== NON_PM) {
+        const pm = mons(game.urole.guardnum);
+        commit_pm_fixup(game.urole.guardnum, {
+            mflags2: pm.mflags2 | M2_PEACEFUL,
+            maligntyp: alignmnt * 3,
+        });
+    }
+
+    // Fix up the quest nemesis
+    if (game.urole.neminum !== NON_PM) {
+        const pm = mons(game.urole.neminum);
+        commit_pm_fixup(game.urole.neminum, {
+            msound: MS_NEMESIS,
+            mflags2: (pm.mflags2 & ~M2_PEACEFUL) | M2_NASTY | M2_STALK | M2_HOSTILE,
+            mflags3: (pm.mflags3 & ~M3_CLOSE) | M3_WANTSARTI | M3_WAITFORU,
+        });
+        // if gender is random, we choose it now instead of waiting
+        // until the nemesis monster is created
+        game.quest_status.nemgend = is_neuter(pm) ? 2
+            : is_female(pm) ? 1
+                : is_male(pm) ? 0
+                    : (rn2(100) < 50 ? 1 : 0);
+    }
+
+    // Fix up the god names
+    if (flags.pantheon === -1) { // new game
+        let trycnt = 0;
+        flags.pantheon = flags.initrole; // use own gods
+        // unless they're missing
+        while (!roles[flags.pantheon].lgod && ++trycnt < 100)
+            flags.pantheon = randrole(false);
+        if (!roles[flags.pantheon].lgod) {
+            for (let i = 0; i < roles.length; i++)
+                if (roles[i].lgod) {
+                    flags.pantheon = i;
+                    break;
+                }
+        }
+    }
+    if (!game.urole.lgod) {
+        game.urole.lgod = roles[flags.pantheon].lgod;
+        game.urole.ngod = roles[flags.pantheon].ngod;
+        game.urole.cgod = roles[flags.pantheon].cgod;
+    }
+    // 0 or 1; no gods are neuter, nor is gender randomized
+    game.quest_status.godgend =
+        align_gtitle(game.urole, alignmnt) === 'goddess' ? 1 : 0;
+
+    if (game.urole.mnum === PM_CLERIC) { // C: Role_if(PM_CLERIC)
+        const speLight = objectNames.indexOf('SPE_LIGHT');
+        if (game.objects?.[speLight])
+            game.objects[speLight].oc_skill = P_CLERIC_SPELL;
+    }
+
+    // C `#if 0` infravision fixup is compiled out (mons[] stays const;
+    // set_uasmon manages Infravision) — no code, like C.
+
+    // Artifacts are fixed in hack_artifacts()
+
+    // Success!
+}

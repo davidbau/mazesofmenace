@@ -1,0 +1,3686 @@
+// trap.js -- Trap allocation, map ownership, the #untrap command,
+// trap-opening/closing, trapped-chest handling, and pit adjacency.
+// C ref: trap.c -- t_at(), hole_destination(), maketrap(), deltrap(),
+// conjoined_pits(), clear_conjoined_pits(), adj_nonconjoined_pit(),
+// choose_trapnote(), set_utrap(), reset_utrap(), fill_pit(), float_down(),
+// climb_pit(), lava_effects(),
+// trapname(), dountrap(), could_untrap(), untrap_prob(), cnv_trap_obj(),
+// into_vs_onto(), move_into_trap(), try_disarm(), reward_untrap(),
+// disarm_holdingtrap(), disarm_landmine(), unsqueak_ok(),
+// disarm_squeaky_board(), disarm_shooting_trap(), try_lift(),
+// help_monster_out(), disarm_box(), untrap_box(), untrap(),
+// openholdingtrap(), closeholdingtrap(), openfallingtrap(), chest_trap().
+
+import {
+    A_CON,
+    A_DEX,
+    A_LAWFUL,
+    A_STR,
+    A_WIS,
+    ANIMATE_NORMAL,
+    ANIMATE_SHATTER,
+    ANIMATE_SPELL,
+    ANTI_MAGIC,
+    ANTIMAGIC,
+    ARM,
+    ARROW_TRAP,
+    BEAR_TRAP,
+    BLINDED,
+    BOLT_LIM,
+    CONFUSION,
+    CORR,
+    DIR_180,
+    DIR_ERR,
+    D_BROKEN,
+    D_CLOSED,
+    D_ISOPEN,
+    D_LOCKED,
+    D_NODOOR,
+    D_TRAPPED,
+    DART_TRAP,
+    DB_FLOOR,
+    DB_ICE,
+    DB_UNDER,
+    DISMOUNT_FELL,
+    DROWNING,
+    BURNING,
+    DISSOLVED,
+    DOOR,
+    DRAWBRIDGE_UP,
+    ECMD_OK,
+    ECMD_TIME,
+    AS_NO_MON,
+    AS_MON_IS_UNIQUE,
+    AS_OK,
+    FAILEDUNTRAP,
+    FIRE_RES,
+    FIRE_TRAP,
+    FINGER,
+    FLYING,
+    FORCETRAP,
+    FREE_ACTION,
+    FUMBLING,
+    GETOBJ_DOWNPLAY,
+    GETOBJ_EXCLUDE,
+    GETOBJ_PROMPT,
+    GETOBJ_SUGGEST,
+    HALF_PHDAM,
+    HALLUC,
+    HALLUC_RES,
+    HAND,
+    I_SPECIAL,
+    HOLE,
+    HVY_ENCUMBER,
+    IS_AIR,
+    IS_DOOR,
+    IS_FURNITURE,
+    IS_ROOM,
+    IS_WALL,
+    IS_WATERWALL,
+    In_sokoban,
+    Is_airlevel,
+    KILLED_BY,
+    KILLED_BY_AN,
+    Is_waterlevel,
+    LADDER,
+    LEG,
+    LIFESAVED,
+    LANDMINE,
+    LAVAWALL,
+    LEVEL_TELEP,
+    LEVITATION,
+    M_SEEN_FIRE,
+    MAGICAL_BREATHING,
+    M_SEEN_ELEC,
+    MAGIC_PORTAL,
+    MAGIC_TRAP,
+    MAXULEV,
+    MELT_ICE_AWAY,
+    M_AP_FURNITURE,
+    M_AP_OBJECT,
+    M_AP_TYPE,
+    MM_ADJACENTOK,
+    MM_FEMALE,
+    MM_MALE,
+    MM_NOCOUNTBIRTH,
+    MM_NOMSG,
+    NO_MINVENT,
+    NON_PM,
+    OBJ_AT,
+    NOWEBMSG,
+    NO_TRAP,
+    NO_TRAP_FLAGS,
+    N_DIRS,
+    PASSES_WALLS,
+    PIT,
+    PLNMSG_BACK_ON_GROUND,
+    POLY_TRAP,
+    P_BASIC,
+    P_RIDING,
+    ROCKTRAP,
+    ROLLING_BOULDER_TRAP,
+    ROOM,
+    RUST_TRAP,
+    SCORR,
+    SDOOR,
+    SHOCK_RES,
+    SHOPBASE,
+    SLEEP_RES,
+    SLT_ENCUMBER,
+    SLP_GAS_TRAP,
+    SPIKED_PIT,
+    SQKY_BOARD,
+    STAIRS,
+    STATUE_TRAP,
+    STONE,
+    STUNNED,
+    SWIMMING,
+    TELEPORT,
+    TELEPORT_CONTROL,
+    TELEP_TRAP,
+    TELEDS_ALLOW_DRAG,
+    TELEDS_TELEPORT,
+    TEST_MOVE,
+    TRAPDOOR,
+    TOOKPLUNGE,
+    TRAPNUM,
+    TRAPPED_CHEST,
+    TRAPPED_DOOR,
+    TRAP_CLEARLY_IMMUNE,
+    TRAP_HIDDEN_IMMUNE,
+    TRAP_NOT_IMMUNE,
+    TIMEOUT,
+    Trap_Effect_Finished,
+    TT_BEARTRAP,
+    TT_BURIEDBALL,
+    TT_INFLOOR,
+    TT_LAVA,
+    TT_NONE,
+    TT_PIT,
+    TT_WEB,
+    UNENCUMBERED,
+    UTOTYPE_FALLING,
+    UTOTYPE_NONE,
+    Upolyd,
+    VIBRATING_SQUARE,
+    WATER,
+    WEB,
+    WWALKING,
+    WT_TOOMUCH_DIAGONAL,
+    W_SADDLE,
+    W_AMUL,
+    W_ARMOR,
+    W_BALL,
+    W_CHAIN,
+    W_ARTI,
+    W_TOOL,
+    W_WEAPONS,
+    ZAP_POS,
+    CORPSTAT_FEMALE,
+    CORPSTAT_GENDER,
+    CORPSTAT_HISTORIC,
+    CORPSTAT_MALE,
+    CORPSTAT_NONE,
+    ONAME,
+    has_oname,
+    u_at,
+    something,
+    helpless,
+    is_hole,
+    is_pit,
+    is_xport,
+    undestroyable_trap,
+    xdir,
+    ydir,
+} from './const.js';
+import { isok } from './cmd_isok.js';
+import { is_art, ART_STING, attacks, has_magic_key, Stone_resistance } from './artifacts.js';
+import { exercise, adjalign, acurr, poisoned } from './attrib.js';
+import { obj_resists, unearth_objs } from './bury.js';
+import { buried_ball } from './dig.js';
+import {
+    drawbridgeFlags, drawbridgeUnder, is_ice, is_lava, is_pool,
+    is_waterwall,
+} from './dbridge.js';
+import { getdir, xytodir } from './cmd.js';
+import {
+    Monnam, capitalizedMonsterName, mon_nam, monsterCommonName, mon_pmname,
+    noit_Monnam, y_monnam, YMonnam, rndcolor, hliquid, hcolor, rndmonnam,
+    a_monnam, christen_monst,
+} from './do_name.js';
+import { abuse_dog } from './dog.js';
+import {
+    has_ceiling,
+    Can_fall_thru,
+    assign_level,
+    depth,
+    dunlev,
+    dunlev_reached,
+    dunlevs_in_dungeon,
+    In_hell,
+    single_level_branch,
+    on_level,
+    level_difficulty,
+    u_on_newpos,
+    ceiling,
+    surface,
+    find_hell,
+    update_lastseentyp,
+} from './dungeon.js';
+import { schedule_goto } from './do.js';
+import { next_to_u } from './apply_next_to_u.js';
+import { number_leashed } from './apply.js';
+import { done } from './end.js';
+import {
+    canseemon, feel_newsym, rank_of, map_invisible,
+} from './display.js';
+import { can_reach_floor } from './engrave.js';
+import { more_experienced, newexplevel } from './exper.js';
+import { makeplural } from './fruit.js';
+import { game } from './gstate.js';
+
+import {
+    near_capacity, calc_capacity, check_capacity, inv_cnt, inv_weight, weight_cap,
+    test_move, spoteffects, bad_rock, crawl_destination, set_uinwater,
+    nomul, unmul, losehp, You_can_move_again,
+    u_locomotion,
+    UnsupportedHeroMoveBoundaryError,
+} from './hack.js';
+import { goodpos } from './teleport.js';
+import { sgn, upstart } from './hacklib.js';
+import {
+    stackobj,
+    getobj,
+    useup,
+    useupall,
+    consume_obj_charge,
+    delete_contents,
+    add_to_container,
+    nxtobj,
+    delobj,
+    obj_extract_self,
+    sobj_at,
+} from './invent.js';
+import { get_obj_location } from './light.js';
+import { water_damage_chain } from './trap_water_damage.js';
+import { Is_box, stumble_on_door_mimic, ynq } from './lock.js';
+import { rndmonnum_adj, set_malign } from './makemon.js';
+import { makemon, makemon_runtime } from './makemon_create.js';
+import { killed, mongone, set_ustuck, wake_nearby, wakeup, seemimic } from './mon.js';
+import {
+    amorphous, amphibious, attacktype, breathless, can_teleport, flaming,
+    ceiling_hider, is_clinger, is_floater,
+    is_animal, is_flyer, is_whirly, nohands, resists_magm, unsolid, webmaker, sticks,
+    bigmonst, is_swimmer, likes_lava, mindless, Resists_Elem,
+    touch_petrifies, unique_corpstat, poly_when_stoned, is_golem,
+    is_vampshifter, nonliving, hides_under, is_unicorn,
+} from './mondata.js';
+import { stagger, monstseesu, monstunseesu } from './mondata.js';
+import {
+    AD_ELEC, AD_FIRE, AT_BREA, AT_MAGC, S_HUMAN, PM_GELATINOUS_CUBE,
+    MZ_SMALL, PM_FOG_CLOUD, PM_IRON_GOLEM, PM_STEAM_VORTEX,
+    MZ_HUGE,
+    PM_STONE_GOLEM, PM_RANGER, PM_ROGUE, PM_WATER_ELEMENTAL,
+    PM_DOPPELGANGER, PM_FLESH_GOLEM, PM_ARCHEOLOGIST, MS_GUARDIAN,
+    PM_GREMLIN,
+    AD_DGST, AT_ENGL,
+} from './monsters.js';
+import { m_at } from './monst.js';
+import { observe_object } from './o_init.js';
+import {
+    mksobj,
+    carried,
+    obj_ice_effects,
+    is_blade,
+    is_flammable,
+    objectType,
+    place_object,
+    remove_object,
+    weight,
+} from './obj.js';
+import { mkcorpstat } from './corpstat.js';
+import { objectGenerationEnv } from './object_generation.js';
+import {
+    an, bare_artifactname, safe_qbuf, ansimpleoname, the, The, Yobjnam2,
+    xnameFresh,
+    donameFresh, Tobjnam,
+} from './objnam.js';
+import {
+    ARROW, BEARTRAP, BOULDER, CAN_OF_GREASE, DART, IRON, LAND_MINE,
+    LOADSTONE, POTION_CLASS, POT_OIL, SCROLL_CLASS, SCR_FIRE, SPBOOK_CLASS,
+    SPE_BOOK_OF_THE_DEAD, SPE_FIREBALL, STATUE, WOOD,
+} from './objects.js';
+import { encumber_msg, pickup } from './pickup.js';
+import { make_hallucinated, make_stunned, set_itimeout } from './potion.js';
+import { ice_descr, waterbody_name } from './pager.js';
+import { float_vs_flight, body_part, polymon } from './polyself.js';
+import { create_gas_cloud } from './region.js';
+import { d, rn1, rn2, rnd, rne, rnl, rn2_on_display_rng, rnz } from './rng.js';
+import { in_rooms } from './rooms.js';
+import { dismount_steed, Punished } from './steed.js';
+import { P_SKILL } from './startup_skills.js';
+import { CMAP_EXPLANATIONS } from './symbol_data.js';
+import { trap_to_defsym } from './symbols.js';
+import { halu_trapnames } from './trap_names_data.js';
+import { set_levltyp } from './terrain.js';
+import { burn_away_slime, spot_stop_timers } from './timeout.js';
+import { is_fainted } from './eat.js';
+import {
+    dofiretrap, dotrap, feeltrap, mintrap, m_easy_escape_pit,
+} from './trap_effects.js';
+import {
+    clearTtyMessageWindow, displayPendingTtyMessageWindow,
+    ttyNorep, ttyPline, ttyUrgentPline,
+} from './tty_message.js';
+import { stumble_onto_mimic } from './uhitm.js';
+import { note_unported } from './unported.js';
+import { unpunish } from './read.js';
+import { unblock_point, recalc_block_point, vision_recalc, cansee } from './vision.js';
+import { welded } from './wield.js';
+import { bimanual } from './worn.js';
+import { newsym, bot, shieldeff } from './display.js';
+import { m_next2u } from './mhitu.js';
+import { destroy_items } from './zap_destroy_items.js';
+import { costly_spot, shop_keeper, shk_your } from './shk.js';
+import { quest_info } from './questpgr.js';
+import { mon_has_amulet } from './wizard.js';
+import { canspotmon } from './display.js';
+
+// Env object for poisoned() calls inside chest_trap and other trap functions.
+function poisonedEnv(state) {
+    return {
+        random: { rn2, d, rnd, rn1 },
+        message: (text) => ttyPline(text, state),
+        losehp: (n, knam, k_format) => losehp(n, knam, k_format, state),
+        done: (how) => done(how, state),
+        encumberMessage: (s) => encumber_msg(s),
+    };
+}
+
+function trapEnv(env = {}) {
+    return {
+        ...env,
+        state: env.state ?? game,
+        random: env.random ?? { rn1, rn2, rnd, rne },
+    };
+}
+
+function capability(env, name) {
+    return env[name] ?? env.hooks?.[name] ?? DEFAULT_CAPABILITIES[name];
+}
+
+function closedDoor(location) {
+    const mask = location.flags || location.doormask || 0;
+    return location.typ === DOOR
+        && Boolean(mask & (D_CLOSED | D_LOCKED));
+}
+
+function clearLaunchPath(coordinate, distance, dx, dy, env) {
+    let { x, y } = coordinate;
+    while (distance-- > 0) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) return false;
+        const location = env.state.level.at(x, y);
+        if (!ZAP_POS(location.typ) || closedDoor(location)) return false;
+        const trap = t_at(x, y, env.state);
+        if (trap && (is_pit(trap.ttyp)
+            || is_hole(trap.ttyp)
+            || is_xport(trap.ttyp))) {
+            return false;
+        }
+    }
+    coordinate.x = x;
+    coordinate.y = y;
+    return true;
+}
+
+// mthrowu.c:linedup(..., 1) for an explicitly supplied launch offset.  The
+// boulderhandling=1 branch ignores intervening boulders, so only terrain and
+// the source's orthogonal-or-diagonal range contract matter here.
+function explicitLaunchCoordinate(trap, env) {
+    const offset = env.state.launchplace;
+    if (!offset) return null;
+    const target = {
+        x: trap.tx + offset.x,
+        y: trap.ty + offset.y,
+    };
+    if (!isok(target.x, target.y)) return null;
+    const dx = target.x - trap.tx;
+    const dy = target.y - trap.ty;
+    const distance = Math.max(Math.abs(dx), Math.abs(dy));
+    if (!distance || distance >= BOLT_LIM
+        || (dx && dy && Math.abs(dx) !== Math.abs(dy))) {
+        return null;
+    }
+    const sx = Math.sign(dx);
+    const sy = Math.sign(dy);
+    for (let step = 1; step < distance; ++step) {
+        const location = env.state.level.at(
+            trap.tx + sx * step,
+            trap.ty + sy * step,
+        );
+        if (!ZAP_POS(location.typ) || closedDoor(location)
+            || location.typ === WATER || location.typ === LAVAWALL) {
+            return null;
+        }
+    }
+    return target;
+}
+
+// trap.c:find_random_launch_coord(). The path is tested in both directions
+// because a rolling boulder must pass through the trigger square and continue
+// to the mirrored endpoint.
+function findRandomLaunchCoordinate(trap, env) {
+    if (!trap || env.state.level.flags?.sokoban_rules) return null;
+    const explicit = explicitLaunchCoordinate(trap, env);
+    if (explicit) return explicit;
+
+    let distance = env.random.rn1(5, 4);
+    let direction = env.random.rn2(N_DIRS);
+    let trycount = 0;
+    while (distance >= 2) {
+        const dx = xdir[direction];
+        const dy = ydir[direction];
+        const launch = { x: trap.tx, y: trap.ty };
+        const endpoint = env.state.level.at(
+            trap.tx + distance * dx,
+            trap.ty + distance * dy,
+        );
+        let success = endpoint
+            && !is_pool(
+                trap.tx + distance * dx,
+                trap.ty + distance * dy,
+                env.state,
+            )
+            && !is_lava(
+                trap.tx + distance * dx,
+                trap.ty + distance * dy,
+                env.state,
+            )
+            && clearLaunchPath(launch, distance, dx, dy, env);
+        const opposite = { x: trap.tx, y: trap.ty };
+        if (!clearLaunchPath(opposite, distance, -dx, -dy, env))
+            success = false;
+        if (success) return launch;
+        direction = (direction + 1) % N_DIRS;
+        if (++trycount % N_DIRS === 0) --distance;
+    }
+    return null;
+}
+
+// trap.c:mkroll_launch() rolling-boulder subset.
+function makeRollingBoulderLaunch(trap, x, y, env) {
+    const launch = findRandomLaunchCoordinate(trap, env) ?? { x, y };
+    if (launch.x !== x || launch.y !== y) {
+        // mkroll_launch() creates a boulder through mkobj.c's object
+        // lifecycle.  Carry the caller's hooks while supplying the
+        // block/extract hooks required by place_object()/stackobj().
+        const objectEnv = objectGenerationEnv(env);
+        const boulder = mksobj(BOULDER, true, false, objectEnv);
+        boulder.quan = 1;
+        boulder.owt = weight(boulder, objectEnv);
+        place_object(boulder, launch.x, launch.y, objectEnv);
+        stackobj(boulder, objectEnv);
+    }
+    trap.launch.x = launch.x;
+    trap.launch.y = launch.y;
+    trap.launch2 = {
+        x: x - (launch.x - x),
+        y: y - (launch.y - y),
+    };
+    capability(env, 'newsym')?.(launch.x, launch.y, env);
+    return true;
+}
+
+const DEFAULT_CAPABILITIES = Object.freeze({
+    makeRollingBoulderLaunch,
+    objIceEffects: obj_ice_effects,
+    spotStopTimers(x, y, action, env) {
+        spot_stop_timers(x, y, action, env.state);
+    },
+    unearthObjects: unearth_objs,
+    recalculateBlockPoint(x, y, env) {
+        recalc_block_point(x, y, env.state);
+    },
+});
+
+export function t_at(x, y, state = game) {
+    for (const trap of state.level?.traps ?? []) {
+        if (trap.tx === x && trap.ty === y) return trap;
+    }
+    return null;
+}
+
+// C ref: trap.c uteetering_at_seen_pit() (6647-6653). TRUE when the hero
+// escaped a pit and stands on its edge, which is why the u.utrap test excludes
+// a hero still caught in one.
+export function uteetering_at_seen_pit(trap, state = game) {
+    const u = state.u;
+    return Boolean(trap && is_pit(trap.ttyp) && trap.tseen
+        && trap.tx === u?.ux && trap.ty === u?.uy
+        && !(u.utrap && u.utraptype === TT_PIT));
+}
+
+// C ref: trap.c uescaped_shaft() (6659-6664). TRUE when the hero is standing
+// on a known hole or trap door without having fallen through it.
+export function uescaped_shaft(trap, state = game) {
+    const u = state.u;
+    return Boolean(trap && is_hole(trap.ttyp) && trap.tseen
+        && trap.tx === u?.ux && trap.ty === u?.uy);
+}
+
+function choose_trapnote(current, env) {
+    const used = Array(12).fill(false);
+    for (const trap of env.state.level?.traps ?? []) {
+        if (trap !== current && trap.ttyp === SQKY_BOARD)
+            used[trap.tnote] = true;
+    }
+
+    const available = [];
+    for (let note = 0; note < used.length; ++note) {
+        if (!used[note]) available.push(note);
+    }
+    return available.length > 0
+        ? available[env.random.rn2(available.length)]
+        : env.random.rn2(12);
+}
+
+// C ref: trap.c dng_bottom() (418-437). The quest locate and pre-invocation
+// Gehennom limits are read from the supplied state, matching In_quest() and
+// In_hell() without depending on the singleton game object.
+export function dng_bottom(level, state = game) {
+    let bottom = dunlevs_in_dungeon(level, state);
+
+    if (level.dnum === state.quest_dnum) {
+        const qlocateDepth = state.qlocate_level?.dlevel ?? 0;
+        if (dunlev_reached(level, state) < qlocateDepth)
+            bottom = qlocateDepth;
+    } else if (In_hell(level, state) && !state.u?.uevent?.invoked) {
+        --bottom;
+    }
+    return bottom;
+}
+
+// C ref: trap.c hole_destination() (440-453). Each candidate depth advances
+// before rn2(4); a nonzero result stops at that depth.
+function hole_destination(destination, env) {
+    const { state, random } = env;
+    const current = state.u?.uz;
+    if (!current || !state.dungeons?.[current.dnum])
+        throw new Error('hole_destination requires initialized dungeon state');
+
+    const bottom = dng_bottom(current, state);
+    destination.dnum = current.dnum;
+    destination.dlevel = dunlev(current);
+    while (destination.dlevel < bottom) {
+        ++destination.dlevel;
+        if (random.rn2(4)) break;
+    }
+}
+
+// C ref: trap.c clamp_hole_destination() (627-633). Mutates and returns the
+// caller's level pair, limiting old-bones destinations to this branch's
+// current bottom.
+export function clamp_hole_destination(destination, state = game) {
+    destination.dlevel = Math.min(
+        destination.dlevel,
+        dng_bottom(destination, state),
+    );
+    return destination;
+}
+
+// C ref: trap.c fall_through() (636-725), shared by a hero entering a hole or
+// trap door and by dokick.c kick_nondoor() when a throne opens a shaft.
+export async function fall_through(td, ftflags, state = game) {
+    const u = state.u;
+    const plunged = Boolean(ftflags & TOOKPLUNGE);
+    let trap = null;
+    let dontFall = null;
+    let controlledFlight = false;
+
+    // Sokoban's special fall rule overrides levitation, but a blind,
+    // levitating hero elsewhere gets no message and no other side effect.
+    if (Blind(state) && Levitation(state) && !state.level?.flags?.sokoban_rules)
+        return;
+
+    const nextLevel = dunlev(u.uz) + 1;
+
+    if (td) {
+        trap = t_at(u.ux, u.uy, state);
+        await feeltrap(trap, { state, redraw: (x, y) => newsym(x, y) });
+        if (!state.level?.flags?.sokoban_rules && !plunged) {
+            await ttyPline(
+                trap.ttyp === TRAPDOOR
+                    ? 'A trap door opens up under you!'
+                    : "There's a gaping hole under you!",
+                state,
+            );
+        }
+    } else {
+        await ttyPline(`The ${surface(u.ux, u.uy, state)} opens up under you!`, state);
+    }
+
+    if (state.level?.flags?.sokoban_rules && Can_fall_thru(u.uz, state)) {
+        // Sokoban's holes cannot be escaped; proceed to the fall checks below.
+    } else if (Levitation(state) || u.ustuck
+        || (!Can_fall_thru(u.uz, state)
+            && !state.level.at(u.ux, u.uy).candig)
+        || ((Flying(state) || is_clinger(state.youmonst.data)
+            || (ceiling_hider(state.youmonst.data) && u.uundetected))
+            && !plunged)) {
+        dontFall = "don't fall in.";
+    } else if (state.youmonst.data.msize >= MZ_HUGE) {
+        dontFall = "don't fit through.";
+    } else if (!next_to_u(state)) {
+        dontFall = 'are jerked back by your pet!';
+    }
+
+    if (dontFall) {
+        await ttyPline(`You ${dontFall}`, state);
+        // C's impact_drop(NULL, ux, uy, 0) result is discarded. The helper is
+        // not ported, so preserve an explicit gap rather than inventing its
+        // object impacts.
+        note_unported('dokick.c impact_drop');
+        if (!td) {
+            await displayPendingTtyMessageWindow(state);
+            await ttyPline('The opening under you closes up.', state);
+        }
+        return;
+    }
+
+    if ((Flying(state) || is_clinger(state.youmonst.data))
+        && plunged && td && trap) {
+        if (Flying(state)) controlledFlight = true;
+        await ttyPline(
+            `You ${Flying(state) ? 'swoop' : 'deliberately drop'} down `
+                + (trap.ttyp === TRAPDOOR
+                    ? 'through the trap door!'
+                    : 'into the gaping hole!'),
+            state,
+        );
+    }
+
+    if (u.ushops) note_unported('shk.c shopdig');
+
+    const destination = { dnum: u.uz.dnum, dlevel: nextLevel };
+    if (state.stronghold_level
+        && on_level(u.uz, state.stronghold_level)) {
+        find_hell(destination, state);
+    } else {
+        if (trap) {
+            assign_level(destination, trap.dst);
+            clamp_hole_destination(destination, state);
+        }
+        const distance = depth(destination, state) - depth(u.uz, state);
+        if (distance > 1) {
+            await ttyPline(
+                `You ${controlledFlight ? 'fly' : 'fall'} down a `
+                    + `${distance > 3 ? 'very ' : ''}`
+                    + `${distance > 2 ? 'deep ' : ''}shaft!`,
+                state,
+            );
+        }
+    }
+
+    const postMessage = !td
+        ? `The hole in the ${ceiling(u.ux, u.uy, state)} above you closes up.`
+        : null;
+    schedule_goto(
+        destination,
+        Flying(state) ? UTOTYPE_NONE : UTOTYPE_FALLING,
+        null,
+        postMessage,
+        state,
+    );
+}
+
+function resetTrap(trap, typ, oldplace) {
+    trap.vl = {};
+    trap.launch = { x: -1, y: -1 };
+    trap.dst = { dnum: -1, dlevel: -1 };
+    trap.teledest = { x: 0, y: 0 };
+    trap.madeby_u = false;
+    trap.once = false;
+    trap.tseen = typ === HOLE;
+    trap.ttyp = typ;
+    // C's newtrap() memset supplies zero for a new record. Replacing an
+    // existing trap preserves tnote except when SQKY_BOARD chooses a note.
+    if (!oldplace) trap.tnote = 0;
+    if (!oldplace) trap.conjoined = 0;
+    // C's ntrap link is represented by level.traps' array order.
+}
+
+function buriedObjectAt(x, y, state) {
+    let buried = state.level.buriedobjlist;
+    while (buried && (buried.ox !== x || buried.oy !== y))
+        buried = buried.nobj;
+    return buried;
+}
+
+function preflightPitTerrain(x, y, env) {
+    if (buriedObjectAt(x, y, env.state)
+        && typeof capability(env, 'unearthObjects') !== 'function') {
+        throw new Error('maketrap requires the buried-object subsystem');
+    }
+    if (is_ice(x, y, env.state)) {
+        if (typeof capability(env, 'objIceEffects') !== 'function') {
+            throw new Error(
+                'maketrap requires obj_ice_effects when removing ice',
+            );
+        }
+        if (typeof capability(env, 'spotStopTimers') !== 'function') {
+            throw new Error(
+                'maketrap requires spot_stop_timers when removing ice',
+            );
+        }
+    }
+}
+
+function preflightHoleDestination(env) {
+    const current = env.state.u?.uz;
+    if (!current || !env.state.dungeons?.[current.dnum]) {
+        throw new Error(
+            'hole_destination requires initialized dungeon state',
+        );
+    }
+}
+
+function heroTrapNeedsReset(x, y, typ, env) {
+    const hero = env.state.u;
+    if (!hero?.utrap || hero.ux !== x || hero.uy !== y) return false;
+    switch (hero.utraptype) {
+    case TT_BEARTRAP: return typ !== BEAR_TRAP;
+    case TT_WEB: return typ !== WEB;
+    case TT_PIT: return !is_pit(typ);
+    case TT_LAVA: return !is_lava(x, y, env.state);
+    default: return false;
+    }
+}
+
+function preflightTrapCreation(x, y, typ, resetHero, env) {
+    if (resetHero && typeof capability(env, 'resetUtrap') !== 'function') {
+        throw new Error('maketrap requires hero-trap reset support');
+    }
+    switch (typ) {
+    case ROLLING_BOULDER_TRAP:
+        if (typeof capability(env, 'makeRollingBoulderLaunch')
+            !== 'function') {
+            throw new Error(
+                'maketrap requires the rolling-boulder launch subsystem',
+            );
+        }
+        break;
+    case PIT:
+    case SPIKED_PIT:
+        preflightPitTerrain(x, y, env);
+        break;
+    case HOLE:
+    case TRAPDOOR:
+        preflightHoleDestination(env);
+        preflightPitTerrain(x, y, env);
+        break;
+    default:
+        break;
+    }
+}
+
+function resetHeroTrap(env) {
+    capability(env, 'resetUtrap')(false, env);
+    if (env.state.u.utrap || env.state.u.utraptype !== TT_NONE) {
+        throw new Error(
+            'maketrap resetUtrap must clear u.utrap and u.utraptype',
+        );
+    }
+}
+
+function pitTerrain(x, y, env) {
+    const { state } = env;
+    const location = state.level.at(x, y);
+    let clearFlags = true;
+
+    if (location.typ === DRAWBRIDGE_UP) {
+        const wasIce = drawbridgeUnder(location) === DB_ICE;
+        location.flags = (drawbridgeFlags(location) & ~DB_UNDER) | DB_FLOOR;
+        clearFlags = false;
+        if (wasIce) {
+            capability(env, 'objIceEffects')(x, y, true, env);
+            capability(env, 'spotStopTimers')(
+                x,
+                y,
+                MELT_ICE_AWAY,
+                env,
+            );
+        }
+    } else if (IS_ROOM(location.typ)) {
+        set_levltyp(x, y, ROOM, env);
+    } else if (location.typ === STONE || location.typ === SCORR) {
+        set_levltyp(x, y, CORR, env);
+    } else if (IS_WALL(location.typ) || location.typ === SDOOR) {
+        set_levltyp(x, y, state.level.flags?.is_maze_lev
+            ? ROOM
+            : state.level.flags?.is_cavernous_lev ? CORR : DOOR, env);
+    }
+
+    if (clearFlags) location.flags = 0;
+    capability(env, 'unearthObjects')?.(x, y, env);
+    capability(env, 'recalculateBlockPoint')?.(x, y, env);
+}
+
+// C ref: trap.c mk_trap_statue() (390-417). Create a statue and a temporary
+// monster whose generated inventory is moved into it, then detach the donor.
+// Level-generation creation stays synchronous; a runtime caller awaits the
+// ordinary makemon runtime tail before consuming the returned monster.
+function mk_trap_statue(x, y, env) {
+    const { state } = env;
+    let tryCount = 10;
+    let species;
+    do {
+        species = state.mons[rndmonnum_adj(3, 6, env)];
+    } while (--tryCount > 0
+        && is_unicorn(species)
+        && sgn(state.u.ualign.type) === sgn(species.maligntyp));
+
+    const statue = mkcorpstat(
+        STATUE,
+        null,
+        species,
+        x,
+        y,
+        CORPSTAT_NONE,
+        env,
+    );
+    const mmflags = MM_NOCOUNTBIRTH | MM_NOMSG;
+    const donorEnv = { ...env, _statueInventoryCreation: true };
+    const finishDonor = (monster) => {
+        if (!monster) return;
+        while (monster.minvent) {
+            const obj = monster.minvent;
+            obj.owornmask = 0;
+            obj_extract_self(obj, donorEnv);
+            add_to_container(statue, obj, donorEnv);
+        }
+        statue.owt = weight(statue, donorEnv);
+        mongone(monster, donorEnv);
+    };
+
+    if (state.in_mklev) {
+        finishDonor(makemon(
+            state.mons[statue.corpsenm],
+            0,
+            0,
+            mmflags,
+            donorEnv,
+        ));
+        return;
+    }
+    if (env._specialRoomFill) {
+        // sp_lev.c room filling owns the runtime tail inside makemon(), which
+        // returns its Promise to keep the caller's source order intact.
+        const creation = makemon(
+            state.mons[statue.corpsenm],
+            0,
+            0,
+            mmflags,
+            { ...donorEnv, runtimeContinuation: { claimed: false } },
+        );
+        return creation && typeof creation.then === 'function'
+            ? creation.then(finishDonor) : finishDonor(creation);
+    }
+    return makemon_runtime(
+        state.mons[statue.corpsenm],
+        0,
+        0,
+        mmflags,
+        donorEnv,
+    ).then(finishDonor);
+}
+
+// C ref: trap.c maketrap(). This owns the level trap list, field reset, terrain
+// conversion, hole destination, and trap-specific side effects. When a
+// discarded C callee is unavailable at this caller, keep its named gap in
+// game.unported and continue instead of inventing its side effects.
+export function maketrap(x, y, typ, rawEnv = {}) {
+    const env = trapEnv(rawEnv);
+    const { state } = env;
+    const location = state.level?.at(x, y);
+    if (!location || typ === TRAPPED_DOOR || typ === TRAPPED_CHEST)
+        return null;
+
+    let trap = t_at(x, y, state);
+    const oldplace = Boolean(trap);
+    if (trap) {
+        if (undestroyable_trap(trap.ttyp)) return null;
+    } else if ((!state.iflags?.debug_overwrite_stairs
+        && (location.typ === LADDER || location.typ === STAIRS))
+        || is_pool(x, y, state) || is_lava(x, y, state)
+        || (IS_FURNITURE(location.typ) && typ !== PIT && typ !== HOLE)
+        || (location.typ === DRAWBRIDGE_UP && typ === MAGIC_PORTAL)
+        || (IS_AIR(location.typ) && typ !== MAGIC_PORTAL)
+        || (typ === LEVEL_TELEP && single_level_branch(state.u?.uz, state))) {
+        return null;
+    } else {
+        trap = { tx: x, ty: y };
+    }
+
+    const resetHero = oldplace && heroTrapNeedsReset(x, y, typ, env);
+    preflightTrapCreation(x, y, typ, resetHero, env);
+    if (resetHero) resetHeroTrap(env);
+    resetTrap(trap, typ, oldplace);
+    const linkTrap = () => {
+        if (!oldplace) {
+            state.level.traps.unshift(trap);
+        } else if (state.level?.flags?.sokoban_rules) {
+            // C's maybe_finish_sokoban() result is discarded. Keep its prize
+            // and luck side effects visible as an unported source boundary.
+            note_unported('sokoban maybe_finish_sokoban');
+        }
+        return trap;
+    };
+    switch (typ) {
+    case SQKY_BOARD:
+        trap.tnote = choose_trapnote(trap, env);
+        break;
+    case STATUE_TRAP:
+        {
+            const created = mk_trap_statue(x, y, env);
+            if (created && typeof created.then === 'function')
+                return created.then(linkTrap);
+        }
+        break;
+    case ROLLING_BOULDER_TRAP:
+        capability(env, 'makeRollingBoulderLaunch')(trap, x, y, env);
+        break;
+    case PIT:
+    case SPIKED_PIT:
+        trap.conjoined = 0;
+        pitTerrain(x, y, env);
+        break;
+    case HOLE:
+    case TRAPDOOR:
+        hole_destination(trap.dst, env);
+        if (in_rooms(x, y, SHOPBASE, state).length
+            && (is_hole(typ) || IS_DOOR(location.typ)
+                || IS_WALL(location.typ))) {
+            // C discards add_damage()'s return; shop repair billing remains
+            // an explicit gap until shk.c:add_damage is ported.
+            note_unported('shk.c add_damage');
+        }
+        pitTerrain(x, y, env);
+        break;
+    case TELEP_TRAP: {
+        const launchplace = state.launchplace;
+        if (launchplace && isok(launchplace.x, launchplace.y)) {
+            trap.teledest.x = (state.xstart ?? 0) + launchplace.x;
+            trap.teledest.y = (state.ystart ?? 0) + launchplace.y;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+
+    return linkTrap();
+}
+
+// C ref: trap.c deltrap() (6529-6548). Unlinks a trap from the level's trap
+// list. C walks gf.ftrap to find the predecessor and panics when the trap is
+// not on the list; the port keeps the same list as an array, in the same
+// order (maketrap() prepends, as C does), so the unlink is one splice and the
+// panic becomes a thrown Error.
+//
+// dealloc_trap() has no counterpart: C frees the record, JavaScript lets it go.
+export function deltrap(trap, state = game) {
+    clear_conjoined_pits(trap);
+    const traps = state.level.traps;
+    const index = traps.indexOf(trap);
+    if (index < 0) throw new Error('deltrap: no preceding trap!');
+    traps.splice(index, 1);
+    const uz = state.u?.uz;
+    if (uz && In_sokoban(uz) && (trap.ttyp === PIT || trap.ttyp === HOLE)) {
+        // trap.c:6545-6546 calls maybe_finish_sokoban(), which awards the
+        // Sokoban prize and its luck bonus. Nothing of that is ported.
+        throw new UnsupportedHeroMoveBoundaryError(
+            'maybe_finish_sokoban() after removing a Sokoban pit or hole',
+        );
+    }
+}
+
+// C ref: trap.c delfloortrap() (6667-6690). Delete floor traps that a
+// terrain effect consumes, clearing the actor's trap state or a monster's
+// trapped flag before unlinking the trap. Keep the trap IDs from const.js in
+// one owner; callers such as fountain gushes and zap floor effects share it.
+export async function delfloortrap(trap, state = game) {
+    if (trap && (trap.ttyp === SQKY_BOARD || trap.ttyp === BEAR_TRAP
+        || trap.ttyp === LANDMINE || trap.ttyp === FIRE_TRAP
+        || is_pit(trap.ttyp) || is_hole(trap.ttyp)
+        || trap.ttyp === TELEP_TRAP || trap.ttyp === LEVEL_TELEP
+        || trap.ttyp === WEB || trap.ttyp === MAGIC_TRAP
+        || trap.ttyp === ANTI_MAGIC)) {
+        if (state.u.ux === trap.tx && state.u.uy === trap.ty) {
+            if ((state.u.utraptype ?? TT_NONE) !== TT_BURIEDBALL)
+                await reset_utrap(true, state);
+        } else {
+            const monster = m_at(trap.tx, trap.ty, state);
+            if (monster) monster.mtrapped = 0;
+        }
+        deltrap(trap, state);
+        return true;
+    }
+    return false;
+}
+
+// C ref: trap.c conjoined_pits() (6552-6579). Check whether two adjacent
+// pit traps are conjoined (linked in a direction pair). The hero must be
+// entering trap2 while trapped in a pit at trap1.
+export function conjoined_pits(trap2, trap1, u_entering_trap2, state = game) {
+    if (!trap1 || !trap2)
+        return false;
+    if (!isok(trap2.tx, trap2.ty) || !isok(trap1.tx, trap1.ty)
+        || !is_pit(trap2.ttyp)
+        || !is_pit(trap1.ttyp)
+        || (u_entering_trap2 && !(state.u.utrap && state.u.utraptype === TT_PIT)))
+        return false;
+    const dx = sgn(trap2.tx - trap1.tx);
+    const dy = sgn(trap2.ty - trap1.ty);
+    const diridx = xytodir(dx, dy);
+    if (diridx !== DIR_ERR) {
+        const adjidx = DIR_180(diridx);
+        if ((trap1.conjoined & (1 << diridx))
+            && (trap2.conjoined & (1 << adjidx)))
+            return true;
+    }
+    return false;
+}
+
+// C ref: trap.c clear_conjoined_pits() (6578-6603). Every trap this port
+// creates has `conjoined` set to 0 -- maketrap() clears it for PIT and
+// SPIKED_PIT and resetTrap() clears it for every other type -- and the
+// mklev.c conjoined-pit generation is not ported (js/mklev.js:2899-2901), so
+// the mask is always empty and the neighbour loop has nothing to walk. It
+// refuses rather than silently skipping the unlink if that ever changes.
+function clear_conjoined_pits(trap) {
+    if (trap && is_pit(trap.ttyp) && trap.conjoined) {
+        throw new UnsupportedHeroMoveBoundaryError(
+            'unlinking a conjoined pit',
+        );
+    }
+}
+
+// C ref: trap.c adj_nonconjoined_pit() (6604-6620). Checks whether the hero
+// is moving from one pit to an adjacent pit that is NOT conjoined with it.
+export function adj_nonconjoined_pit(adjtrap, state = game) {
+    const trap_with_u = t_at(state.u.ux0, state.u.uy0, state);
+    if (trap_with_u && adjtrap && state.u.utrap
+        && state.u.utraptype === TT_PIT
+        && is_pit(trap_with_u.ttyp) && is_pit(adjtrap.ttyp)) {
+        if (xytodir(state.u.dx, state.u.dy) !== DIR_ERR)
+            return true;
+    }
+    return false;
+}
+
+// C ref: trap.c join_adjacent_pits() (6622-6647). Dead code in C (inside
+// #if 0). Recursively marks all neighbouring pit traps as conjoined. Not
+// called from anywhere in the C source.
+// function join_adjacent_pits(trap, state = game) { /* #if 0 in C */ }
+
+// C ref: trap.c count_traps() (6516-6528). Returns the number of traps of
+// the given type on the current level. Walks the level trap list (C's
+// gf.ftrap chain) and counts matches.
+export function count_traps(ttyp, state = game) {
+    let ret = 0;
+    for (const trap of state.level?.traps ?? []) {
+        if (trap.ttyp === ttyp) ret++;
+    }
+    return ret;
+}
+
+// ── Hero trap state and the descent out of levitation (C ref: trap.c) ──
+
+// youprop.h:242 Levitation and :253 Flying, spelled out here for the same
+// reason every other file in this port spells them out: the macros read three
+// fields of one property and Flying adds a steed term. They are exported for
+// js/trap_effects.js alone, which holds the rest of trap.c's port and needs
+// the same two macros in dotrap() and trapeffect_bear_trap(); a second copy
+// there would be a second copy inside one C file.
+export function Levitation(state) {
+    const levitation = state.u.uprops[LEVITATION];
+    return Boolean((levitation.intrinsic || levitation.extrinsic)
+                   && !levitation.blocked);
+}
+
+export function Flying(state) {
+    const flying = state.u.uprops[FLYING];
+    return Boolean((flying.intrinsic || flying.extrinsic
+                    || (state.u.usteed && is_flyer(state.u.usteed.data)))
+                   && !flying.blocked);
+}
+
+function activeHeroProperty(state, property) {
+    const value = state.u?.uprops?.[property] ?? {};
+    return Boolean((value.intrinsic || value.extrinsic) && !value.blocked);
+}
+
+// youprop.h's Fire_resistance and Wwalking are plain intrinsic/extrinsic
+// properties. Wwalking is additionally disabled on the Plane of Water; it
+// does not use the blocked field (that field belongs to Levitation/Flying).
+function heroLavaProperty(state, property) {
+    const value = state.u?.uprops?.[property];
+    return Boolean(value?.intrinsic || value?.extrinsic);
+}
+
+function heroLavaWalking(state) {
+    return heroLavaProperty(state, WWALKING)
+        && !Is_waterlevel(state.u?.uz);
+}
+
+// objclass.h is_organic(): material values through WOOD burn in lava.  Keep
+// this local to trap.c's owner; the same C predicate has separate owners in
+// dogfood and burial and should not become a second shared state value.
+function isOrganic(obj, state) {
+    return objectType(obj, state).oc_material <= WOOD;
+}
+
+function heroSwimming(state) {
+    return activeHeroProperty(state, SWIMMING)
+        || Boolean(state.u?.usteed && is_swimmer(state.u.usteed.data));
+}
+
+function heroBreathless(state) {
+    return activeHeroProperty(state, MAGICAL_BREATHING)
+        || breathless(state.youmonst?.data);
+}
+
+function heroAmphibious(state) {
+    return heroBreathless(state) || amphibious(state.youmonst?.data);
+}
+
+// C ref: trap.c back_on_ground() (4976-5011).
+export async function back_on_ground(rescued, state = game, env = {}) {
+    const { u } = state;
+    let preposition = Levitation(state) || Flying(state) ? 'over' : 'on';
+    let surf = surface(u.ux, u.uy, state);
+    if (is_ice(u.ux, u.uy, state)) {
+        surf = ice_descr(u.ux, u.uy, state);
+    } else if (/^(?:floor|ground)$/iu.test(surf)) {
+        surf = 'solid ground';
+    } else if (/^(?:bridge|altar|headstone)$/iu.test(surf)) {
+        surf = an(surf);
+    } else if (/^(?:stairs|lava|bottom)$/iu.test(surf)) {
+        surf = the(surf);
+    } else {
+        surf = surf.toLowerCase() === 'air' ? the(surf) : an(surf);
+        preposition = 'in';
+    }
+    const subject = rescued
+        ? 'You find yourself'
+        : state.flags?.verbose ? 'You are back' : 'Back';
+    await (env.message ?? ttyPline)(
+        `${subject} ${preposition} ${surf}.`, state,
+    );
+    state.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
+}
+
+// C ref: trap.c rescued_from_terrain() (5014-5054). This is called after
+// life-saving relocation by drown() and lava_effects(); it reports the
+// source cause/landing terrain, then refreshes last-seen terrain through the
+// same visibility owner used by display.c.
+export async function rescued_from_terrain(how, state = game, env = {}) {
+    const { u } = state;
+    const location = state.level?.at(u.ux, u.uy);
+    const levelTyp = location?.typ;
+    const message = env.message ?? ttyPline;
+    let messageGiven = false;
+
+    if (how === DROWNING) {
+        if (is_pool(u.ux, u.uy, state)) {
+            const midst = Is_waterlevel(u.uz) || is_waterwall(u.ux, u.uy, state);
+            await message(
+                `You find yourself ${midst ? 'in the midst' : 'on top'} of ${hliquid('water', { state })}.`,
+                state,
+            );
+            messageGiven = true;
+        } else if (IS_AIR(levelTyp)) {
+            await message(
+                `You find yourself in ${Is_waterlevel(u.uz) ? 'an air bubble' : 'mid air'}.`,
+                state,
+            );
+            messageGiven = true;
+        }
+    } else if (how === BURNING || how === DISSOLVED) {
+        if (is_pool(u.ux, u.uy, state)) {
+            await message(
+                `You find yourself ${u.uinwater ? 'in' : 'on'} ${hliquid('water', { state })}.`,
+                state,
+            );
+            messageGiven = true;
+        } else if (is_lava(u.ux, u.uy, state)) {
+            await message(
+                `You find yourself on top of ${hliquid('molten lava', { state })}.`,
+                state,
+            );
+            messageGiven = true;
+        }
+    }
+
+    if (!messageGiven)
+        await back_on_ground(true, state, env);
+
+    state.iflags ??= {};
+    state.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
+    update_lastseentyp(u.ux, u.uy, state, {
+        canSeeMonster: (monster) => canseemon(monster, state),
+    });
+    state.iflags.prev_decor = state.level.lastseentyp[u.ux][u.uy];
+}
+
+// C ref: trap.c rnd_nextto_goodpos(). The helper shuffles all eight adjacent
+// directions before checking any candidate. Worm tails use the synchronous
+// monster-goodpos arm; drown() awaits the hero-specific crawl_destination.
+export function rnd_nextto_goodpos(x, y, monster, rawEnv = {}) {
+    const env = rawEnv && typeof rawEnv === 'object' ? rawEnv : {};
+    const state = env.state ?? game;
+    const random = { rn2, ...(env.random ?? {}) };
+    const directions = Array.from({ length: N_DIRS }, (_, index) => index);
+    for (let count = N_DIRS; count > 0; --count) {
+        const selected = random.rn2(count);
+        const swap = directions[selected];
+        directions[selected] = directions[count - 1];
+        directions[count - 1] = swap;
+    }
+
+    if (monster === state.youmonst) {
+        return (async () => {
+            for (const direction of directions) {
+                const nx = x + xdir[direction];
+                const ny = y + ydir[direction];
+                if (await crawl_destination(nx, ny, state))
+                    return { x: nx, y: ny };
+            }
+            return null;
+        })();
+    }
+
+    for (const direction of directions) {
+        const nx = x + xdir[direction];
+        const ny = y + ydir[direction];
+        if (goodpos(nx, ny, monster, 0, env)) return { x: nx, y: ny };
+    }
+    return null;
+}
+
+// C ref: trap.c emergency_disrobe() (4897-4944). The return value is used by
+// drown() to decide whether the selected crawl destination is reachable.
+async function emergency_disrobe(lostsome, state = game) {
+    let invc = inv_cnt(true, state);
+    while (near_capacity(state) > (Punished(state)
+        ? UNENCUMBERED
+        : SLT_ENCUMBER)) {
+        let selected = null;
+        if (invc > 0) {
+            let index = rn2(invc);
+            let obj = state.invent;
+            while (obj) {
+                const next = obj.nobj;
+                const undroppable = (obj.otyp === LOADSTONE && obj.cursed)
+                    || obj === state.uamul
+                    || obj === state.uleft
+                    || obj === state.uright
+                    || obj === state.ublindf
+                    || obj === state.uarm
+                    || obj === state.uarmc
+                    || obj === state.uarmg
+                    || obj === state.uarmf
+                    || obj === state.uarmu
+                    || (obj.cursed && (obj === state.uarmh || obj === state.uarms))
+                    || welded(obj, state)
+                    || obj.o_id === (state.gs?.stealoid ?? -1)
+                    || obj.in_use;
+                if (!undroppable) selected = obj;
+                if (--index < 0 && selected) break;
+                obj = next;
+            }
+        }
+        if (!selected) return false;
+        if (selected.owornmask) {
+            const { remove_worn_item } = await import('./steal.js');
+            await remove_worn_item(selected, false, state);
+        }
+        lostsome.value = true;
+        // C discards dropx()'s result. Its liquid-terrain branch is still
+        // refused by the partial do.c port, so skip the call at this exact
+        // boundary instead of entering that refusal or inventing a drop.
+        note_unported('do.c dropx');
+        --invc;
+    }
+    return true;
+}
+
+// C ref: trap.c drown() (5059-5200), the boolean dependency float_down()
+// consumes. Return-valued crawl/disrobe/safe-teleport paths stay in source
+// order; source-discarded side-effect owners are explicit gaps.
+export async function drown(state = game) {
+    const { u } = state;
+    const location = state.level?.at(u.ux, u.uy);
+    const solid = Boolean(location && IS_WATERWALL(location.typ));
+    const swimming = heroSwimming(state);
+    const breathlessHero = heroBreathless(state);
+    const amphibiousHero = heroAmphibious(state);
+    let inpoolOk = false;
+
+    note_unported('display.c feel_newsym');
+    if (u.uinwater && is_pool(u.ux - u.dx, u.uy - u.dy, state)
+        && (swimming || amphibiousHero || breathlessHero)) {
+        if (!rn2(5)) inpoolOk = true;
+        else return false;
+    }
+    if (!u.uinwater) {
+        await ttyPline(
+            `You ${solid ? 'plunge' : 'fall'} into the ${waterbody_name(
+                u.ux,
+                u.uy,
+                state,
+            )}${amphibiousHero || swimming || breathlessHero ? '.' : '!'}`,
+            state,
+        );
+        if (!swimming && !solid) {
+            const hallucinating = activeHeroProperty(state, HALLUC)
+                && !activeHeroProperty(state, HALLUC_RES);
+            await ttyPline(
+                `You sink like ${hallucinating ? 'the Titanic' : 'a rock'}.`,
+                state,
+            );
+        }
+    }
+    await water_damage_chain(state.invent, false, { state });
+    if (u.umonnum === PM_GREMLIN && rn2(3)) {
+        note_unported('mon.c split_mon');
+    } else if (u.umonnum === PM_IRON_GOLEM) {
+        await ttyPline('You rust!', state);
+        const damage = Maybe_Half_Phys(d(2, 6), state);
+        if (u.mhmax > damage) u.mhmax -= damage;
+        await losehp(damage, 'rusting away', KILLED_BY, state);
+    }
+    if (inpoolOk) return false;
+
+    const leashed = number_leashed(state);
+    if (leashed > 0) {
+        await ttyPline(
+            `The leash${leashed > 1 ? 'es' : ''} slip${leashed > 1 ? '' : 's'} loose.`,
+            state,
+        );
+        note_unported('apply.c unleash_all');
+    }
+
+    if (amphibiousHero || breathlessHero || swimming) {
+        if (amphibiousHero || breathlessHero) {
+            if (state.flags?.verbose)
+                await ttyPline("But you aren't drowning.", state);
+            if (!Is_waterlevel(u.uz)) {
+                const hallucinating = activeHeroProperty(state, HALLUC)
+                    && !activeHeroProperty(state, HALLUC_RES);
+                await ttyPline(
+                    hallucinating
+                        ? 'Your keel hits the bottom.'
+                        : 'You touch bottom.',
+                    state,
+                );
+            }
+        }
+        if (Punished(state)) {
+            note_unported('ball.c unplacebc');
+            note_unported('ball.c placebc');
+        }
+        vision_recalc(2);
+        await set_uinwater(true, state);
+        note_unported('vision.c under_water');
+        state.vision_full_recalc = 1;
+        return false;
+    }
+
+    const teleports = activeHeroProperty(state, TELEPORT)
+        || can_teleport(state.youmonst?.data);
+    const teleportControl = activeHeroProperty(state, TELEPORT_CONTROL);
+    const unaware = Math.trunc(state.multi ?? 0) < 0
+        && (unconscious(state) || is_fainted(state));
+    if (teleports && !unaware
+        && (teleportControl || rn2(3) < (u.uluck ?? 0) + 2)) {
+        await ttyPline('You attempt a teleport spell.', state);
+        const { noteleport_level, tele } = await import('./teleport.js');
+        if (!noteleport_level(state.youmonst, state)) {
+            await tele(state);
+            if (!is_pool(u.ux, u.uy, state)) return true;
+        } else {
+            await ttyPline('The attempted teleport spell fails.', state);
+        }
+    }
+    if (u.usteed) {
+        // C discards dismount_steed()'s result. Its generic water-displacement
+        // branch is still outside the steed port, so keep the gap at this
+        // source call and continue with drown()'s post-dismount location test.
+        note_unported('steed.c dismount_steed generic');
+        if (!is_pool(u.ux, u.uy, state)) return true;
+    }
+    if (u.usleep) await unmul('Suddenly you wake up!', state);
+    if (is_fainted(state)) note_unported('eat.c reset_faint');
+
+    const destination = (state.multi ?? 0) >= 0
+        && state.youmonst?.data?.mmove
+        ? await rnd_nextto_goodpos(
+            u.ux,
+            u.uy,
+            state.youmonst,
+            { state, random: { rn2 } },
+        )
+        : null;
+    if (destination) {
+        const lost = { value: false };
+        const success = Is_waterlevel(u.uz)
+            ? true
+            : await emergency_disrobe(lost, state);
+        await ttyPline(
+            `You try to crawl out of the ${hliquid('water', { state })}.`,
+            state,
+        );
+        if (lost.value) {
+            await ttyPline('You dump some of your gear to lose weight...', state);
+        }
+        if (success) {
+            await ttyPline('Pheew!  That was close.', state);
+            const { teleds } = await import('./teleport.js');
+            await teleds(
+                destination.x,
+                destination.y,
+                TELEDS_ALLOW_DRAG,
+                state,
+            );
+            return true;
+        }
+        await ttyPline('But in vain.', state);
+    }
+
+    await set_uinwater(true, state);
+    await ttyUrgentPline('You drown.', state);
+    for (let pass = 0; pass < 2; ++pass) {
+        const pool = waterbody_name(u.ux, u.uy, state);
+        state.killer ??= { name: '', format: KILLED_BY_AN };
+        state.killer.name = pool === 'water' ? 'deep water' : pool;
+        state.killer.format = pool === 'water' || pool === 'limitless water'
+            ? KILLED_BY
+            : KILLED_BY_AN;
+        await done(DROWNING, state);
+        const { safe_teleds } = await import('./teleport.js');
+        if (await safe_teleds(
+            TELEDS_ALLOW_DRAG | TELEDS_TELEPORT,
+            state,
+        )) break;
+        await ttyPline("You're still drowning.", state);
+    }
+    if (u.uinwater) await set_uinwater(false, state);
+    // C discards rescued_from_terrain()'s return value; keep its feedback and
+    // remembered-terrain writes before returning from the water effect.
+    await rescued_from_terrain(DROWNING, state);
+    return true;
+}
+
+// C ref: trap.c lava_effects() (6794-6987), the second boolean dependency of
+// pooleffects().  The C function has one return-valued relocation arm: TRUE
+// means that lifesaving moved the hero and the caller must skip the remaining
+// effects on the old square.  Its item destruction and ignition calls discard
+// their results, but their source calls stay in this owner in source order.
+export async function lava_effects(state = game) {
+    const { u } = state;
+    const damage = d(6, 6);
+    let burncount = 0;
+    let burnmesgcount = 0;
+    state.iflags ??= {};
+    state.iflags.in_lava_effects ??= 0;
+    if (state.iflags.in_lava_effects) {
+        // C's debugpline is output only when debugging; this port has no
+        // debug window owner, so the recursive call is a source-discarded gap.
+        note_unported('trap.c lava_effects recursive call');
+        return false;
+    }
+
+    feel_newsym(u.ux, u.uy, state);
+    await burn_away_slime(state);
+    if (likes_lava(state.youmonst?.data)) return false;
+
+    let fireResistant = heroLavaProperty(state, FIRE_RES);
+    let waterWalking = heroLavaWalking(state);
+    let survives = fireResistant || (waterWalking && damage < u.uhp);
+    let protectedId = 0;
+    const random = { rn2, rnd, rn1, rne, d };
+
+    // C marks vulnerable inventory before the first message, so a save or
+    // hangup at that message still destroys the same objects.  obj_resists()
+    // is called for every ordinary candidate, including when its chance is 0.
+    if (!survives) {
+        for (let obj = state.invent; obj;) {
+            const next = obj.nobj;
+            if (obj.in_use) {
+                if (!protectedId) {
+                    protectedId = obj.o_id;
+                    obj.in_use = false;
+                } else {
+                    note_unported('trap.c lava_effects impossible in-use object');
+                }
+                obj = next;
+                continue;
+            }
+            const type = objectType(obj, state);
+            if ((isOrganic(obj, state) || obj.oclass === POTION_CLASS)
+                && !obj.oerodeproof
+                && type.oc_oprop !== FIRE_RES
+                && obj.otyp !== SCR_FIRE
+                && obj.otyp !== SPE_FIREBALL
+                && !obj_resists(obj, 0, 0, { state, random })) {
+                obj.in_use = true;
+            }
+            obj = next;
+        }
+    }
+
+    // Boots are burned before the hero's fate is decided, since water-walking
+    // footwear is the source that made this lava entry survivable.
+    if (state.uarmf && (state.uarmf.in_use
+        || (isOrganic(state.uarmf, state) && !state.uarmf.oerodeproof))) {
+        const obj = state.uarmf;
+        await ttyPline(`${Yobjnam2(obj, 'burst', state)} into flame!`, state);
+        state.iflags.in_lava_effects++;
+        const { Boots_off } = await import('./do_wear.js');
+        await Boots_off(state);
+        if (obj.o_id !== protectedId)
+            useup(obj, { state });
+        state.iflags.in_lava_effects--;
+        burncount++;
+        burnmesgcount++;
+    }
+
+    // Boots_off() may remove the only source of either property. C evaluates
+    // these macros again after that callback, while the initial usurvive test
+    // intentionally retains the pre-removal values.
+    fireResistant = heroLavaProperty(state, FIRE_RES);
+    waterWalking = heroLavaWalking(state);
+    if (!fireResistant) {
+        if (waterWalking) {
+            await ttyPline(
+                `The ${hliquid('lava', { state })} here burns you!`,
+                state,
+            );
+            if (survives) {
+                await losehp(damage, 'molten lava', KILLED_BY, state);
+                // C jumps directly to burn_stuff after this water-walking
+                // damage; it does not run the fatal inventory loop.
+                await destroy_items(state.youmonst, AD_FIRE, damage, {
+                    state,
+                    random,
+                });
+                const { ignite_items } = await import('./apply_catch_lit.js');
+                await ignite_items(state.invent, { state, random });
+                return false;
+            }
+        } else {
+            await ttyPline(
+                `You fall into the ${waterbody_name(u.ux, u.uy, state)}!`,
+                state,
+            );
+        }
+
+        survives = Boolean(
+            state.u?.uprops?.[LIFESAVED]?.extrinsic,
+        ) || Boolean(state.discover);
+        if (state.wizard) survives = true;
+        state.iflags.in_lava_effects++;
+
+        for (let obj = state.invent; obj;) {
+            const next = obj.nobj;
+            if (obj.o_id === protectedId) {
+                obj.in_use = true;
+            } else if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+                if (survives && !heroIsBlindForLava(state)) {
+                    await ttyPline(
+                        `${The(xnameFresh(obj, state), state)} glows a strange ${hcolor('dark red', state)}, but remains intact.`,
+                        state,
+                    );
+                }
+            } else if (obj.in_use) {
+                if (obj.owornmask) {
+                    if (survives) {
+                        await ttyPline(`${Yobjnam2(obj, 'burst', state)} into flame!`, state);
+                        burnmesgcount++;
+                    }
+                    // C removes every doomed worn item. The message is
+                    // conditional on lifesaving, but remove_worn_item() is
+                    // unconditional before useupall().
+                    // remove_worn_item() is still partial: C discards its
+                    // return, so call it only for the source arms that have
+                    // an implemented owner.  The other C branches are
+                    // recorded as discarded gaps at this call site rather
+                    // than entering a helper that throws a refusal.
+                    const mask = obj.owornmask;
+                    const unsupportedMask = Boolean(mask
+                        & (W_ARMOR | W_AMUL | W_TOOL | W_BALL | W_CHAIN));
+                    const unsupportedQuiver = Boolean(mask & W_WEAPONS)
+                        && obj === state.uquiver;
+                    if (unsupportedMask || unsupportedQuiver) {
+                        note_unported('steal.c remove_worn_item');
+                    } else {
+                        const { remove_worn_item } = await import('./steal.js');
+                        await remove_worn_item(obj, true, state);
+                    }
+                }
+                useupall(obj, { state });
+                burncount++;
+            }
+            obj = next;
+        }
+
+        if (survives && burncount > burnmesgcount) {
+            const remaining = burncount - burnmesgcount;
+            await ttyPline(
+                `${burnmesgcount ? (remaining === 1 ? 'Another' : 'Other')
+                    : (remaining === 1 ? 'An' : 'Some')} item${remaining === 1 ? '' : 's'} in your inventory ${remaining === 1 ? 'has' : 'have'} been destroyed.`,
+                state,
+            );
+        }
+
+        const boilAway = u.umonnum === PM_WATER_ELEMENTAL
+            || u.umonnum === PM_STEAM_VORTEX
+            || u.umonnum === PM_FOG_CLOUD;
+        let burnPass = 0;
+        for (; burnPass < 2; ++burnPass) {
+            u.uhp = -1;
+            state.killer ??= {};
+            state.killer.format = KILLED_BY;
+            state.killer.name = 'molten lava';
+            await ttyUrgentPline(
+                `You ${boilAway ? 'boil away' : 'burn to a crisp'}...`,
+                state,
+            );
+            await done(BURNING, state);
+            if (state.program_state?.gameover) {
+                // really_done() is NORETURN in C. The JS owner returns only
+                // because the segment harness represents termination with
+                // gameover; never run safe_teleds() after final death.
+                state.iflags.in_lava_effects--;
+                return false;
+            }
+            const { safe_teleds } = await import('./teleport.js');
+            if (await safe_teleds(
+                TELEDS_ALLOW_DRAG | TELEDS_TELEPORT,
+                state,
+            )) break;
+            await ttyPline("You're still burning.", state);
+        }
+        state.iflags.in_lava_effects--;
+
+        if (burnPass === 2) {
+            if (!heroLavaProperty(state, FIRE_RES))
+                set_itimeout(state.u.uprops[FIRE_RES], 5);
+            if (!heroLavaWalking(state))
+                set_itimeout(state.u.uprops[WWALKING], 5);
+            await destroy_items(state.youmonst, AD_FIRE, damage, {
+                state,
+                random,
+            });
+            const { ignite_items } = await import('./apply_catch_lit.js');
+            await ignite_items(state.invent, { state, random });
+            return false;
+        }
+
+        await rescued_from_terrain(BURNING, state);
+        await spoteffects(false, state);
+        return true;
+    } else if (!waterWalking
+        && (!u.utrap || u.utraptype !== TT_LAVA)) {
+        const boilAway = !fireResistant;
+        set_utrap(
+            rn1(4, 4) + ((boilAway ? 2 : rn1(4, 12)) << 8),
+            TT_LAVA,
+            state,
+        );
+        await ttyPline(
+            `You sink into the ${waterbody_name(u.ux, u.uy, state)}${boilAway ? ' and are about to be immolated' : ', but it only burns slightly'}!`,
+            state,
+        );
+        if (fireResistant) monstseesu(M_SEEN_FIRE, state);
+        else monstunseesu(M_SEEN_FIRE, state);
+        if (u.uhp > 1)
+            await losehp(boilAway ? Math.trunc(u.uhp / 2) : 1,
+                'molten lava', KILLED_BY, state);
+    }
+
+    await destroy_items(state.youmonst, AD_FIRE, damage, {
+        state,
+        random,
+    });
+    const { ignite_items } = await import('./apply_catch_lit.js');
+    await ignite_items(state.invent, { state, random });
+    return false;
+}
+
+function heroIsBlindForLava(state) {
+    const blindness = state.u?.uprops?.[BLINDED];
+    return Boolean((blindness?.intrinsic || blindness?.extrinsic)
+        && !blindness?.blocked);
+}
+
+// C ref: trap.c unconscious() (6775-6786). The youprop.h:399 Unaware macro
+// combines this pending-message query with eat.c:is_fainted(); the JS caller
+// preserves that same composition through the canonical helper.
+//
+// C reads the pending gn.nomovemsg to tell an immobilized hero apart from an
+// insensible one: only the three messages that announce coming round mean the
+// hero was not there for what happened. A hero with no message scheduled has
+// gn.nomovemsg NULL, and C's `gn.nomovemsg &&` makes that answer FALSE.
+export function unconscious(state = game) {
+    if (Math.trunc(state.multi ?? 0) >= 0) return false;
+
+    const nomovemsg = state.nomovemsg ?? '';
+    return Boolean(state.u?.usleep)
+        || nomovemsg.startsWith('You awake')
+        || nomovemsg.startsWith('You regain con')
+        || nomovemsg.startsWith('You are consci');
+}
+
+// C ref: trap.c set_utrap() (1030-1043). The `!u.utrap ^ !tim` test fires only
+// when the hero enters or leaves a trap, so releasing an untrapped hero writes
+// no status-line flag of its own; float_vs_flight() writes one regardless.
+export function set_utrap(tim, typ, state = game) {
+    const u = state.u;
+    if (Boolean(!u.utrap) !== Boolean(!tim)) {
+        state.disp ??= {};
+        state.disp.botl = true;
+    }
+    u.utrap = tim;
+    u.utraptype = tim ? typ : TT_NONE;
+    float_vs_flight(state);
+}
+
+// C ref: trap.c reset_utrap() (1045-1057). A resumed levitation calls
+// float_up(); resumed flight reports that the hero can fly. `msg=false`
+// returns synchronously because the C branch has no output in that case.
+export function reset_utrap(msg, state = game) {
+    const was_Lev = Levitation(state);
+    const was_Fly = Flying(state);
+
+    set_utrap(0, 0, state);
+
+    if (!msg) return;
+
+    return (async () => {
+        if (!was_Lev && Levitation(state)) await float_up(state);
+        if (!was_Fly && Flying(state)) await ttyPline('You can fly.', state);
+    })();
+}
+
+// C ref: trap.c float_up() (3937-4009). Start the levitation message and
+// resolve any trap, engulfing, steed, flight, and encumbrance effects in C
+// order. C discards dismount_steed()'s return; its unported effect is recorded
+// and skipped at that exact source call.
+export async function float_up(state = game) {
+    const { u } = state;
+    state.disp ??= {};
+    state.disp.botl = true;
+
+    if (u.utrap) {
+        if (u.utraptype === TT_PIT) {
+            await reset_utrap(false, state);
+            await ttyPline(
+                `You float up, out of the ${trapname(PIT, false, state)}!`,
+                state,
+            );
+            state.vision_full_recalc = 1;
+            await fill_pit(u.ux, u.uy, state);
+        } else if (u.utraptype === TT_LAVA || u.utraptype === TT_INFLOOR) {
+            await ttyPline(
+                `Your body pulls upward, but your ${makeplural(
+                    body_part(LEG, state.youmonst),
+                )} are still stuck.`,
+                state,
+            );
+        } else if (u.utraptype === TT_BURIEDBALL) {
+            const cc = { x: u.ux, y: u.uy };
+            buried_ball(cc, state);
+            await ttyPline(
+                `You feel lighter, but your ${body_part(LEG, state.youmonst)} `
+                    + `is still chained to the ${IS_ROOM(
+                        state.level.at(cc.x, cc.y).typ,
+                    ) ? 'floor' : 'ground'}.`,
+                state,
+            );
+        } else if (u.utraptype === TT_WEB) {
+            await ttyPline(
+                `You float up slightly, but you are still stuck in the ${
+                    trapname(WEB, false, state)
+                }.`,
+                state,
+            );
+        } else {
+            await ttyPline(
+                `You float up slightly, but your ${body_part(
+                    LEG, state.youmonst,
+                )} is still stuck.`,
+                state,
+            );
+        }
+    } else if (u.uinwater) {
+        await spoteffects(true, state);
+    } else if (u.uswallow) {
+        if (is_animal(u.ustuck.data)) {
+            await ttyPline(
+                `You float away from the ${surface(u.ux, u.uy, state)}.`,
+                state,
+            );
+        } else {
+            await ttyPline(`You spiral up into ${mon_nam(u.ustuck, state)}.`, state);
+        }
+    } else if (Hallucination(state)) {
+        await ttyPline("Up, up, and awaaaay!  You're walking on air!", state);
+    } else if (Is_airlevel(u.uz)) {
+        await ttyPline('You gain control over your movements.', state);
+    } else {
+        await ttyPline('You start to float in the air!', state);
+    }
+
+    if (u.usteed && !is_floater(u.usteed.data)
+        && !is_flyer(u.usteed.data)) {
+        const levitation = u.uprops[LEVITATION] ?? {};
+        const levAtWill = Boolean(
+            ((levitation.intrinsic & I_SPECIAL)
+                || (levitation.extrinsic & W_ARTI))
+                && !(levitation.intrinsic & ~(I_SPECIAL | TIMEOUT))
+                && !(levitation.extrinsic & ~W_ARTI),
+        );
+        if (levAtWill) {
+            await ttyPline(`${Monnam(u.usteed, state)} magically floats up!`, state);
+        } else {
+            await ttyPline(`You cannot stay on ${mon_nam(u.usteed, state)}.`, state);
+            note_unported('steed.c dismount_steed');
+        }
+    }
+    if (Flying(state))
+        await ttyPline('You are no longer able to control your flight.', state);
+    float_vs_flight(state);
+    await encumber_msg(state);
+}
+
+// C ref: trap.c fill_pit() (4010-4021). A boulder resting on a pit or hole
+// settles into it when the hero leaves the square.
+export function fill_pit(x, y, state = game) {
+    const trap = t_at(x, y, state);
+    const boulder = sobj_at(BOULDER, x, y, state);
+    if (trap && (is_pit(trap.ttyp) || is_hole(trap.ttyp)) && boulder) {
+        obj_extract_self(boulder, {
+            state,
+            hooks: {
+                extractExternalObject: remove_object,
+                recalcBlockPoint: (bx, by, env) =>
+                    recalc_block_point(bx, by, env.state),
+            },
+        });
+        note_unported('do.c flooreffects');
+    }
+}
+
+// C ref: trap.c float_down() (4024-4177). Its masks clear the matching
+// intrinsic and extrinsic sources before it handles flight, swallowing,
+// punishment, terrain, trap activation, and the final pickup in source order.
+export async function float_down(hmask, emask, state = game) {
+    const u = state.u;
+    const levitation = u.uprops[LEVITATION];
+
+    levitation.intrinsic &= ~hmask;
+    levitation.extrinsic &= ~emask;
+    if (Levitation(state))
+        return 0; /* maybe another ring/potion/boots */
+    if (levitation.blocked) {
+        // The BLevitation arm gives terrain- or trap-specific feedback and
+        // returns before every side effect below it.
+        const trapped = levitation.blocked === I_SPECIAL;
+        float_vs_flight(state);
+        if (trapped && u.utrap) {
+            const reason = u.utraptype === TT_BEARTRAP ? "trap's jaws"
+                : u.utraptype === TT_WEB ? 'web'
+                    : u.utraptype === TT_BURIEDBALL ? 'chain'
+                        : u.utraptype === TT_LAVA ? 'lava' : 'ground';
+            await ttyPline(
+                `You are no longer trying to float up from the ${reason}.`,
+                state,
+            );
+        }
+        await encumber_msg(state);
+        return 0;
+    }
+    state.disp ??= {};
+    state.disp.botl = true;
+    nomul(0, state); /* stop running or resting */
+    if (u.uprops[FLYING].blocked) {
+        float_vs_flight(state);
+        if (Flying(state)) {
+            await ttyPline('You have stopped levitating and are now flying.', state);
+            await encumber_msg(state);
+            return 1;
+        }
+    }
+    if (u.uswallow) {
+        const digesting = Boolean(u.ustuck?.data?.mattk?.some((attack) =>
+            attack.aatyp === AT_ENGL && attack.adtyp === AD_DGST));
+        await ttyPline(
+            `You float down, but you are still ${digesting ? 'swallowed' : 'engulfed'}.`,
+            state,
+        );
+        await encumber_msg(state);
+        return 1;
+    }
+
+    let trap = null;
+    if (Punished(state) && !carried(state.uball)
+        && !m_at(state.uball.ox, state.uball.oy, state)
+        && (is_pool(state.uball.ox, state.uball.oy, state)
+            || ((trap = t_at(state.uball.ox, state.uball.oy, state))
+                && (is_pit(trap.ttyp) || is_hole(trap.ttyp))))) {
+        u.ux0 = u.ux;
+        u.uy0 = u.uy;
+        u.ux = state.uball.ox;
+        u.uy = state.uball.oy;
+        // C movobj() moves the chain object with the ball. The object-map
+        // relocation helper is not ported in this source owner.
+        note_unported('obj.c movobj');
+        newsym(u.ux0, u.uy0, state);
+        state.vision_full_recalc = 1;
+    }
+
+    let noMsg = false;
+    if (!Flying(state)) {
+        if (u.ustuck) {
+            if (sticks(state.youmonst?.data)) {
+                await ttyPline(
+                    `You aren't able to maintain your hold on ${mon_nam(u.ustuck, state)}.`,
+                    state,
+                );
+            } else {
+                await ttyPline(
+                    `Startled, ${mon_nam(u.ustuck, state)} can no longer hold you!`,
+                    state,
+                );
+            }
+            set_ustuck(null, state);
+        }
+        if (is_pool(u.ux, u.uy, state) && !heroLavaWalking(state)
+            && !heroSwimming(state) && !u.uinwater) {
+            noMsg = await drown(state);
+        }
+        if (is_lava(u.ux, u.uy, state) && !state.iflags?.in_lava_effects) {
+            // C discards lava_effects()'s result; skip its unported side
+            // effects while retaining float_down()'s source-owned suppression.
+            note_unported('trap.c lava_effects');
+            noMsg = true;
+        }
+    }
+
+    if (!trap) {
+        trap = t_at(u.ux, u.uy, state);
+        if (Is_airlevel(u.uz))
+            await ttyPline('You begin to tumble in place.', state);
+        else if (Is_waterlevel(u.uz) && !noMsg)
+            await ttyPline('You feel heavier.', state);
+        else if (!u.uinwater && !noMsg && !(emask & W_SADDLE)) {
+            if (In_sokoban(u.uz) && trap) {
+                if (Hallucination(state))
+                    await ttyPline("Bummer!  You've crashed.", state);
+                else
+                    await ttyPline('You fall over.', state);
+                await losehp(rnd(2), 'dangerous winds', KILLED_BY, state);
+                if (u.usteed) await dismount_steed(DISMOUNT_FELL, state);
+                note_unported('polyself.c selftouch');
+            } else if (u.usteed
+                && (is_floater(u.usteed.data) || is_flyer(u.usteed.data))) {
+                await ttyPline('You settle more firmly in the saddle.', state);
+            } else if (Hallucination(state)) {
+                const what = is_pool(u.ux, u.uy, state)
+                    ? 'splashed down' : 'hit the ground';
+                await ttyPline(`Bummer!  You've ${what}.`, state);
+            } else {
+                await ttyPline(`You float gently to the ${surface(u.ux, u.uy, state)}.`, state);
+            }
+        }
+    }
+
+    /* levitation gives maximum carrying capacity, so having it end
+       potentially triggers greater encumbrance */
+    await encumber_msg(state);
+
+    const currentDungeonLevel = { dnum: 0, dlevel: 0 };
+    assign_level(currentDungeonLevel, u.uz);
+    if (trap) {
+        let activate = true;
+        switch (trap.ttyp) {
+        case STATUE_TRAP:
+            activate = false;
+            break;
+        case HOLE:
+        case TRAPDOOR:
+            if (!Can_fall_thru(u.uz, state) || u.ustuck)
+                activate = false;
+            break;
+        default:
+            break;
+        }
+        if (activate && !u.utrap)
+            await dotrap(trap, NO_TRAP_FLAGS, state);
+    }
+
+    if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz) && !u.uswallow
+        && on_level(u.uz, currentDungeonLevel)) {
+        // C discards pickup()'s result. pickup.c owns its behavior.
+        await pickup(1, state);
+    }
+    return 1;
+}
+
+// C ref: trap.c climb_pit() (4183-4230). Both doup() and trapmove() spend
+// the attempted turn after this shared helper; preserve its trap-name draw,
+// boulder check, timer update and escape messages in source order.
+export async function climb_pit(state = game) {
+    const u = state.u;
+    if (!u.utrap || u.utraptype !== TT_PIT) return;
+
+    const pitname = trapname(PIT, false, state);
+    if (Passes_walls(state)) {
+        await ttyPline(`You ascend from the ${pitname}.`, state);
+        await reset_utrap(false, state);
+        await fill_pit(u.ux, u.uy, state);
+        state.vision_full_recalc = 1;
+    } else if (!rn2(2) && sobj_at(BOULDER, u.ux, u.uy, state)) {
+        await ttyPline(
+            `Your ${body_part(LEG, state.youmonst)} gets stuck in a crevice.`,
+            state,
+        );
+        await displayPendingTtyMessageWindow(state);
+        clearTtyMessageWindow(state);
+        await ttyPline(`You free your ${body_part(LEG, state.youmonst)}.`, state);
+    } else if ((Flying(state) || is_clinger(state.youmonst.data))
+        && !In_sokoban(u.uz)) {
+        await ttyPline(
+            `You ${u_locomotion('climb', state)} from the ${pitname}.`,
+            state,
+        );
+        await reset_utrap(false, state);
+        await fill_pit(u.ux, u.uy, state);
+        state.vision_full_recalc = 1;
+    } else if (!(--u.utrap) || m_easy_escape_pit(state.youmonst, state)) {
+        await reset_utrap(false, state);
+        const escape = In_sokoban(u.uz) && Levitation(state)
+            ? 'struggle against the air currents and float'
+            : u.usteed ? 'ride' : 'crawl';
+        await ttyPline(`You ${escape} to the edge of the ${pitname}.`, state);
+        await fill_pit(u.ux, u.uy, state);
+        state.vision_full_recalc = 1;
+    } else if (u.dz || state.flags?.verbose) {
+        if (u.usteed) {
+            await ttyNorep(`${YMonnam(u.usteed, state)} is still in a pit.`, state);
+        } else if (Hallucination(state) && !rn2(5)) {
+            await ttyNorep("You've fallen, and you can't get up.", state);
+        } else {
+            await ttyNorep('You are still in a pit.', state);
+        }
+    }
+}
+
+// C ref: trap.c trapname() (7100-7155). The display RNG chooses the name;
+// only the extra role/rank entry also spends a core rn2(3).
+export function trapname(ttyp, override = false, state = game,
+                         random = { rn2, rn2_on_display_rng }) {
+    const hallu = state.u?.uprops?.[HALLUC];
+    const resistance = state.u?.uprops?.[HALLUC_RES];
+    if (hallu?.intrinsic && !(resistance?.intrinsic || resistance?.extrinsic)
+        && !override) {
+        const totalNames = TRAPNUM + halu_trapnames.length;
+        const nameidx = random.rn2_on_display_rng(totalNames + 1);
+        if (nameidx === totalNames) {
+            const female = Upolyd(state) ? state.u.mfemale : state.flags.female;
+            const title = random.rn2(3)
+                ? ((female && state.urole.name.f)
+                    ? state.urole.name.f : state.urole.name.m)
+                : rank_of(state.u.ulevel, state.urole.mnum, female, state);
+            // C's char roletrap[33], minus sizeof " trap" (six bytes),
+            // leaves room for 27 name characters before appending the suffix.
+            return `${title.slice(0, 27)} trap`.toLowerCase();
+        }
+        if (nameidx >= TRAPNUM) return halu_trapnames[nameidx - TRAPNUM];
+        if (nameidx !== NO_TRAP) ttyp = nameidx;
+    }
+    return CMAP_EXPLANATIONS[trap_to_defsym(ttyp)];
+}
+
+function heroProperty(state, property) {
+    const value = state.u?.uprops?.[property];
+    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
+}
+
+// C ref: trap.c immune_to_trap() (2783-2942). This is a pure classification:
+// hidden immunity still asks the hero for confirmation, while clearly visible
+// immunity suppresses the prompt.
+export function immune_to_trap(mon, ttype, state = game) {
+    if (!mon) return TRAP_NOT_IMMUNE;
+    const pm = mon.data;
+    const isYou = mon === state.youmonst;
+    switch (ttype) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case ROCKTRAP:
+        return TRAP_NOT_IMMUNE;
+    case BEAR_TRAP:
+        if ((pm?.msize ?? 0) <= MZ_SMALL || amorphous(pm)
+            || is_whirly(pm) || unsolid(pm)) return TRAP_CLEARLY_IMMUNE;
+        // fall through to the other ground-based traps
+    case SQKY_BOARD:
+    case LANDMINE:
+    case ROLLING_BOULDER_TRAP:
+    case HOLE:
+    case TRAPDOOR:
+    case PIT:
+    case SPIKED_PIT:
+        if (state.level?.flags?.sokoban_rules
+            && (is_pit(ttype) || is_hole(ttype))) return TRAP_NOT_IMMUNE;
+        if (state.u?.uz?.dnum === state.sokoban_dnum
+            && ttype === ROLLING_BOULDER_TRAP)
+            return TRAP_CLEARLY_IMMUNE;
+        if (is_floater(pm) || is_flyer(pm)
+            || (is_clinger(pm) && has_ceiling(state.u.uz, state))) {
+            return TRAP_CLEARLY_IMMUNE;
+        }
+        if (isYou && (heroProperty(state, LEVITATION)
+            || heroProperty(state, FLYING))) return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case SLP_GAS_TRAP:
+        if (breathless(pm)) return TRAP_CLEARLY_IMMUNE;
+        if (!isYou && Resists_Elem(mon, SLEEP_RES, state))
+            return TRAP_CLEARLY_IMMUNE;
+        if (isYou && heroProperty(state, SLEEP_RES))
+            return TRAP_HIDDEN_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case LEVEL_TELEP:
+    case TELEP_TRAP:
+        return state.u?.uz?.dnum === state.astral_level?.dnum
+            || mon_has_amulet(mon)
+            ? TRAP_CLEARLY_IMMUNE : TRAP_NOT_IMMUNE;
+    case POLY_TRAP:
+        if (resists_magm(mon, state))
+            return isYou ? TRAP_HIDDEN_IMMUNE : TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case STATUE_TRAP:
+        return isYou ? TRAP_NOT_IMMUNE : TRAP_CLEARLY_IMMUNE;
+    case WEB:
+        if (webmaker(pm) || amorphous(pm) || is_whirly(pm) || flaming(pm)
+            || unsolid(pm) || pm?.pmidx === PM_GELATINOUS_CUBE) {
+            return TRAP_CLEARLY_IMMUNE;
+        }
+        return TRAP_NOT_IMMUNE;
+    case ANTI_MAGIC:
+        if (isYou) {
+            if (heroProperty(state, ANTIMAGIC)) return TRAP_NOT_IMMUNE;
+            if (!state.u.uenmax) return TRAP_HIDDEN_IMMUNE;
+        } else if (!resists_magm(mon, state)
+            && (mon.mcan || (!attacktype(pm, AT_MAGC)
+                && !attacktype(pm, AT_BREA)))) return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case RUST_TRAP:
+        if (pm?.pmidx === PM_IRON_GOLEM) return TRAP_NOT_IMMUNE;
+        for (let obj = isYou ? state.invent : mon.minvent;
+            obj;
+            obj = obj.nobj) {
+            if (objectType(obj, state).oc_material !== IRON || !obj.owornmask)
+                continue;
+            if (isYou && (obj === state.uquiver
+                || (obj === state.uswapwep && !state.u.twoweap))) continue;
+            return TRAP_NOT_IMMUNE;
+        }
+        return TRAP_CLEARLY_IMMUNE;
+    case MAGIC_TRAP:
+        if (isYou) return TRAP_NOT_IMMUNE;
+        // monster magic traps have the same harmful part as fire traps
+    case FIRE_TRAP: {
+        const fireproof = isYou
+            ? heroProperty(state, FIRE_RES)
+            : Resists_Elem(mon, FIRE_RES, state);
+        if (!fireproof) return TRAP_NOT_IMMUNE;
+        for (let obj = isYou ? state.invent : mon.minvent;
+            obj;
+            obj = obj.nobj) {
+            if (obj.oclass !== SCROLL_CLASS && obj.oclass !== POTION_CLASS
+                && obj.oclass !== SPBOOK_CLASS
+                && !(obj.owornmask && is_flammable(obj, state))) continue;
+            if ((obj.otyp === SCR_FIRE || obj.otyp === SPE_FIREBALL)
+                && (!isYou || (obj.dknown
+                    && objectType(obj, state).oc_name_known))) continue;
+            return TRAP_NOT_IMMUNE;
+        }
+        return isYou ? TRAP_HIDDEN_IMMUNE : TRAP_CLEARLY_IMMUNE;
+    }
+    case MAGIC_PORTAL:
+        return isYou ? TRAP_NOT_IMMUNE : TRAP_CLEARLY_IMMUNE;
+    case VIBRATING_SQUARE:
+        return TRAP_CLEARLY_IMMUNE;
+    default:
+        return TRAP_NOT_IMMUNE;
+    }
+}
+
+// ── #untrap command and disarm subsystem (C ref: trap.c 5248-6096) ──
+
+// C ref: decl.c c_common_strings.c_the_your, indexed by madeby_u.
+const the_your = ['the', 'your'];
+
+// Hero property helpers, local to this file. Each mirrors its youprop.h macro.
+function Blind(state) {
+    const v = state.u?.uprops?.[BLINDED];
+    return Boolean(v?.intrinsic || v?.extrinsic) && !v?.blocked;
+}
+function Confusion(state) {
+    return Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
+}
+function Hallucination(state) {
+    const h = state.u?.uprops?.[HALLUC];
+    const r = state.u?.uprops?.[HALLUC_RES];
+    return Boolean((h?.intrinsic || h?.extrinsic) && !h?.blocked
+                   && !(r?.intrinsic || r?.extrinsic));
+}
+function Stunned(state) {
+    return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
+}
+function Fumbling(state) {
+    return Boolean(state.u?.uprops?.[FUMBLING]?.intrinsic
+                   || state.u?.uprops?.[FUMBLING]?.extrinsic);
+}
+function Passes_walls(state) {
+    const p = state.u?.uprops?.[PASSES_WALLS];
+    return Boolean(p?.intrinsic || p?.extrinsic);
+}
+function Free_action(state) {
+    const p = state.u?.uprops?.[FREE_ACTION];
+    return Boolean(p?.intrinsic || p?.extrinsic);
+}
+// C ref: hack.h Maybe_Half_Phys(). Halves physical damage when the hero
+// has Half_physical_damage from either source.
+function Maybe_Half_Phys(dmg, state) {
+    const halved = state.u?.uprops?.[HALF_PHDAM];
+    return (halved?.intrinsic || halved?.extrinsic)
+        ? Math.trunc((dmg + 1) / 2) : dmg;
+}
+
+// C ref: obj.h u_wield_art(art) => is_art(uwep, art).
+function u_wield_art(art, state) {
+    return is_art(state.uwep, art);
+}
+
+// C ref: trap.c dountrap() (5248-5254). Entry point for the #untrap command.
+export async function dountrap(state = game) {
+    if (!could_untrap(true, false, state))
+        return ECMD_OK;
+
+    return (await untrap(false, 0, 0, null, state)) ? ECMD_TIME : ECMD_OK;
+}
+
+// C ref: trap.c could_untrap() (5257-5284). Preliminary checks for dountrap();
+// also used for autounlock.
+export function could_untrap(verbosely, check_floor, state = game) {
+    const u = state.u;
+    let buf = '';
+
+    if (near_capacity(state) >= HVY_ENCUMBER) {
+        buf = "You're too strained to do that.";
+    } else if ((nohands(state.youmonst?.data)
+                && !webmaker(state.youmonst?.data))
+               || !state.youmonst?.data?.mmove) {
+        buf = 'And just how do you expect to do that?';
+    } else if (u.ustuck && sticks(state.youmonst?.data)) {
+        buf = `You'll have to let go of ${monsterCommonName(u.ustuck, state)} first.`;
+    } else if (u.ustuck
+               || (welded(state.uwep, state) && bimanual(state.uwep, state))) {
+        buf = `Your ${makeplural(body_part(HAND, state.youmonst))} seem to be too busy for that.`;
+    } else if (check_floor && !can_reach_floor(false, state)) {
+        buf = `You can't reach the ${surface(u.ux, u.uy, state)}.`;
+    }
+    if (buf) {
+        if (verbosely) ttyPline(buf, state);
+        return 0;
+    }
+    return 1;
+}
+
+// C ref: trap.c untrap_prob() (5288-5337). Returns 0 for success, non-0 for
+// failure. Probability of disabling a trap; Helge Hafting.
+function untrap_prob(ttmp, state = game) {
+    let chance = 3;
+    const u = state.u;
+    const uwep = state.uwep;
+    const uswapwep = state.uswapwep;
+
+    /* non-spiders are less adept at dealing with webs */
+    if (ttmp.ttyp === WEB) {
+        const wep = (uwep && is_blade(uwep)) ? uwep
+            : (uswapwep && u.twoweap && is_blade(uswapwep))
+                ? uswapwep : null;
+
+        if (wep && !m_at(ttmp.tx, ttmp.ty, state)) {
+            if (u_wield_art(ART_STING, state) || attacks(AD_FIRE, wep))
+                chance = 1;
+            /* else chance stays 3 */
+        } else if (!webmaker(state.youmonst?.data)) {
+            chance = 7; /* 5.0: used to be 30 */
+        }
+    }
+    if (Confusion(state) || Hallucination(state))
+        chance++;
+    if (Blind(state))
+        chance++;
+    if (Stunned(state))
+        chance += 2;
+    if (Fumbling(state))
+        chance *= 2;
+    /* Your own traps are better known than others. */
+    if (ttmp.madeby_u)
+        chance--;
+    if (state.urole?.mnum === PM_RANGER && ttmp.ttyp === BEAR_TRAP
+        && chance <= 3)
+        return 0; /* always succeeds */
+    if (state.urole?.mnum === PM_ROGUE) {
+        if (rn2(2 * MAXULEV) < u.ulevel)
+            chance--;
+        if (u.uhave?.questart && chance > 1)
+            chance--;
+    } else if (state.urole?.mnum === PM_RANGER && chance > 1) {
+        chance--;
+    }
+    if (chance < 1) chance = 1;
+    return rn2(chance);
+}
+
+// C ref: trap.c cnv_trap_obj() (5340-5371). Replace trap with object(s);
+// Helge Hafting.
+export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it, state = game) {
+    const otmp = mksobj(otyp, true, false, { state });
+    otmp.quan = cnt;
+    otmp.owt = weight(otmp, { state });
+    /* Only dart traps are capable of being poisonous */
+    if (otyp !== DART) otmp.opoisoned = 0;
+    place_object(otmp, ttmp.tx, ttmp.ty, { state });
+    if (bury_it) {
+        // C: bury_an_obj(otmp, NULL). bury_an_obj is ported in js/bury.js but
+        // the bury-then-unearth flow is rarely exercised through this path.
+        note_unported('dig.c bury_an_obj via cnv_trap_obj');
+    } else {
+        /* Sell your own traps only... */
+        if (ttmp.madeby_u) {
+            // C: sellobj(otmp, ttmp->tx, ttmp->ty). shk.c, not ported.
+            note_unported('shk.c sellobj');
+        }
+        stackobj(otmp, { state });
+    }
+    newsym(ttmp.tx, ttmp.ty);
+    if (state.u.utrap && state.u.ux === ttmp.tx && state.u.uy === ttmp.ty)
+        await reset_utrap(true, state);
+    const mtmp = m_at(ttmp.tx, ttmp.ty, state);
+    if (mtmp && mtmp.mtrapped) mtmp.mtrapped = 0;
+    deltrap(ttmp, state);
+}
+
+// C ref: trap.c into_vs_onto() (5374-5389). Whether moving to a trap location
+// is moving "into" the trap or "onto" it.
+export function into_vs_onto(traptype) {
+    switch (traptype) {
+    case BEAR_TRAP:
+    case PIT:
+    case SPIKED_PIT:
+    case HOLE:
+    case TELEP_TRAP:
+    case LEVEL_TELEP:
+    case MAGIC_PORTAL:
+    case WEB:
+        return true;
+    }
+    return false;
+}
+
+// C ref: trap.c move_into_trap() (5392-5437). While attempting to disarm an
+// adjacent trap, we've fallen into it.
+async function move_into_trap(ttmp, state = game) {
+    const u = state.u;
+    const x = ttmp.tx;
+    const y = ttmp.ty;
+
+    if (await test_move(u.ux, u.uy, sgn(x - u.ux), sgn(y - u.uy),
+        TEST_MOVE, state)
+        && !Punished(state) /* drag_ball from ball.c is not ported */
+    ) {
+        /* move hero and update map */
+        u.ux0 = u.ux;
+        u.uy0 = u.uy;
+        u_on_newpos(x, y, state);
+        u.umoved = true;
+        newsym(u.ux0, u.uy0);
+        vision_recalc(1, { state });
+        note_unported('dog.c check_leash');
+        // C: if (Punished) move_bc(0, bc, bx, by, cx, cy);
+        // Punished is false here because of the guard above.
+        ttmp.tseen = 0; /* hack for check_here() */
+        state.iflags ??= {};
+        state.iflags.failing_untrap = (state.iflags.failing_untrap ?? 0) + 1;
+        await spoteffects(true, state); /* pickup() + dotrap() */
+        state.iflags.failing_untrap--;
+        const ttmp2 = t_at(u.ux, u.uy, state);
+        if (ttmp2) ttmp2.tseen = 1;
+        exercise(A_WIS, false, state);
+    } else {
+        if (Punished(state)) {
+            // drag_ball() from ball.c is not ported; the hero does not move.
+            note_unported('ball.c drag_ball');
+        }
+        await ttyPline(`Fortunately, you don't move ${into_vs_onto(ttmp.ttyp) ? 'into' : 'onto'} it.`, state);
+    }
+}
+
+// C ref: trap.c try_disarm() (5440-5527). 0: doesn't even try; 1: tries and
+// fails; 2: succeeds.
+async function try_disarm(ttmp, force_failure, state = game) {
+    const mtmp = m_at(ttmp.tx, ttmp.ty, state);
+    const ttype = ttmp.ttyp;
+    const u = state.u;
+    const under_u = (!u.dx && !u.dy);
+    const holdingtrap = (ttype === BEAR_TRAP || ttype === WEB);
+
+    /* Test for monster first, monsters are displayed instead of trap. */
+    if (mtmp && (!mtmp.mtrapped || !holdingtrap)) {
+        await ttyPline(`${capitalizedMonsterName(mtmp, state)} is in the way.`, state);
+        return 0;
+    }
+    /* We might be forced to move onto the trap's location. */
+    if (sobj_at(BOULDER, ttmp.tx, ttmp.ty, state) && !Passes_walls(state)
+        && !under_u) {
+        await ttyPline('There is a boulder in your way.', state);
+        return 0;
+    }
+    /* duplicate tight-space checks from test_move */
+    if (u.dx && u.dy && bad_rock(state.youmonst?.data, u.ux, ttmp.ty, state)
+        && bad_rock(state.youmonst?.data, ttmp.tx, u.uy, state)) {
+        if ((state.invent
+             && (inv_weight(state) + weight_cap(state)
+                 > WT_TOOMUCH_DIAGONAL))
+            || bigmonst(state.youmonst?.data)) {
+            await ttyPline(`You are unable to reach the ${trapname(ttype)}!`, state);
+            return 0;
+        }
+    }
+    /* untrappable traps are located on the ground. */
+    if (!can_reach_floor(under_u, state)) {
+        if (u.usteed && P_SKILL(P_RIDING, state) < P_BASIC) {
+            // C: rider_cant_reach(), steed.c, not ported.
+            note_unported('steed.c rider_cant_reach');
+        } else {
+            await ttyPline(`You are unable to reach the ${trapname(ttype)}!`, state);
+        }
+        return 0;
+    }
+
+    /* Will our hero succeed? */
+    if (force_failure || untrap_prob(ttmp, state)) {
+        if (rnl(5)) {
+            await ttyPline('Whoops...', state);
+            if (mtmp) { /* must be a trap that holds monsters */
+                if (ttype === BEAR_TRAP) {
+                    if (mtmp.mtame) abuse_dog(mtmp, state);
+                    mtmp.mhp -= rnd(4);
+                    if (mtmp.mhp < 1) /* DEADMONSTER */
+                        await killed(mtmp, state);
+                } else if (ttype === WEB) {
+                    let ttmp2 = t_at(u.ux, u.uy, state);
+
+                    if (!webmaker(state.youmonst?.data)
+                        && !rn2(3)
+                        && (ttmp2
+                            ? (ttmp2.ttyp === WEB)
+                            : (ttmp2 = maketrap(u.ux, u.uy, WEB,
+                                { state })) !== null)) {
+                        await ttyPline("The web sticks to you.  You're caught too!", state);
+                        await dotrap(ttmp2, NOWEBMSG, state);
+                        if (u.usteed && u.utrap) {
+                            /* you, not steed, are trapped */
+                            await dismount_steed(DISMOUNT_FELL, state);
+                        }
+                    }
+                    if (mtmp.mtrapped)
+                        await ttyPline(`${capitalizedMonsterName(mtmp, state)} remains entangled.`, state);
+                }
+            } else if (under_u) {
+                await dotrap(ttmp, FAILEDUNTRAP, state);
+            } else {
+                await move_into_trap(ttmp, state);
+            }
+        } else {
+            const whose = ttmp.madeby_u ? 'Your' : under_u ? 'This' : 'That';
+            const verb = (ttype === WEB) ? 'remove' : 'disarm';
+            await ttyPline(`${whose} ${trapname(ttype)} is difficult to ${verb}.`, state);
+        }
+        return 1;
+    }
+    return 2;
+}
+
+// C ref: trap.c reward_untrap() (5529-5548).
+async function reward_untrap(ttmp, mtmp, state = game) {
+    if (!ttmp.madeby_u) {
+        if (rnl(10) < 8 && !mtmp.mpeaceful && !helpless(mtmp)
+            && !mtmp.mfrozen && !mindless(mtmp.data)
+            && !unique_corpstat(mtmp.data)
+            && mtmp.data?.mlet !== S_HUMAN) {
+            mtmp.mpeaceful = 1;
+            set_malign(mtmp, state); /* reset alignment */
+            await ttyPline(`${capitalizedMonsterName(mtmp, state)} is grateful.`, state);
+        }
+        /* Helping someone out of a trap is a nice thing to do. */
+        if (!rn2(3) && !rnl(8) && state.u.ualign?.type === A_LAWFUL) {
+            adjalign(1, state);
+            await ttyPline('You feel that you did the right thing.', state);
+        }
+    }
+}
+
+// C ref: trap.c disarm_holdingtrap() (5552-5591). Help a monster out of a bear
+// trap or web, or if no monster is present, disarm a bear trap or destroy a web.
+async function disarm_holdingtrap(ttmp, state = game) {
+    const which = the_your[ttmp.madeby_u ? 1 : 0];
+    const fails = await try_disarm(ttmp, false, state);
+
+    if (fails < 2)
+        return fails;
+
+    /* ok, disarm it. */
+    const mtmp = m_at(ttmp.tx, ttmp.ty, state);
+    if (mtmp) {
+        mtmp.mtrapped = 0;
+        await ttyPline(`You extract ${monsterCommonName(mtmp, state)} from ${which} ${(ttmp.ttyp === BEAR_TRAP) ? 'bear trap' : 'web'}.`, state);
+        await reward_untrap(ttmp, mtmp, state);
+    } else if (ttmp.ttyp === BEAR_TRAP) {
+        await ttyPline(`You disarm ${which} bear trap.`, state);
+        await cnv_trap_obj(BEARTRAP, 1, ttmp, false, state);
+    } else if (ttmp.ttyp === WEB) {
+        const uwep = state.uwep;
+        const uswapwep = state.uswapwep;
+        const wep = (uwep && is_blade(uwep)) ? uwep
+            : (uswapwep && state.u.twoweap && is_blade(uswapwep))
+                ? uswapwep : null;
+
+        if (wep && wep.oartifact
+            && (u_wield_art(ART_STING, state) || attacks(AD_FIRE, wep))) {
+            const verb = u_wield_art(ART_STING, state) ? 'cuts' : 'burns';
+            await ttyPline(`${bare_artifactname(uwep)} ${verb} through ${which} web!`, state);
+        } else if (wep) {
+            await ttyPline(`You cut through ${which} web.`, state);
+        } else {
+            await ttyPline(`You succeed in removing ${which} web.`, state);
+        }
+        deltrap(ttmp, state);
+    }
+    newsym(state.u.ux + state.u.dx, state.u.uy + state.u.dy);
+    return 1;
+}
+
+// C ref: trap.c disarm_landmine() (5593-5603). Helge Hafting.
+async function disarm_landmine(ttmp, state = game) {
+    const fails = await try_disarm(ttmp, false, state);
+    if (fails < 2) return fails;
+    await ttyPline(`You disarm ${the_your[ttmp.madeby_u ? 1 : 0]} land mine.`, state);
+    await cnv_trap_obj(LAND_MINE, 1, ttmp, false, state);
+    return 1;
+}
+
+// C ref: trap.c unsqueak_ok() (5606-5626). getobj callback for object to
+// disarm a squeaky board with.
+function unsqueak_ok(obj, state = game) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    if (obj.otyp === CAN_OF_GREASE) return GETOBJ_SUGGEST;
+    if (obj.otyp === POT_OIL && obj.dknown
+        && objectType(POT_OIL, state)?.oc_name_known) {
+        return GETOBJ_SUGGEST;
+    }
+    if (obj.oclass === POTION_CLASS) return GETOBJ_DOWNPLAY;
+    return GETOBJ_EXCLUDE;
+}
+
+// C ref: trap.c disarm_squeaky_board() (5629-5660).
+async function disarm_squeaky_board(ttmp, state = game) {
+    const obj = await getobj('untrap with', unsqueak_ok, GETOBJ_PROMPT, state);
+    if (!obj) return 0;
+
+    const bad_tool = (obj.cursed
+        || ((obj.otyp !== POT_OIL || obj.lamplit)
+            && (obj.otyp !== CAN_OF_GREASE || !obj.spe)));
+    const fails = await try_disarm(ttmp, bad_tool, state);
+    if (fails < 2) return fails;
+
+    /* successfully used oil or grease to fix squeaky board */
+    if (obj.otyp === CAN_OF_GREASE) {
+        // C: consume_obj_charge(obj, TRUE). invent.c.
+        consume_obj_charge(obj, true, { state });
+    } else {
+        useup(obj, state); /* oil */
+        // C: makeknown(POT_OIL) => discover_object(POT_OIL, true, true, true).
+        note_unported('o_init.c makeknown via discover_object');
+    }
+    await ttyPline('You repair the squeaky board.', state);
+    deltrap(ttmp, state);
+    newsym(state.u.ux + state.u.dx, state.u.uy + state.u.dy);
+    more_experienced(1, 5, state);
+    await newexplevel(state, { message: ttyPline });
+    return 1;
+}
+
+// C ref: trap.c disarm_shooting_trap() (5663-5673). Removes traps that shoot
+// arrows, darts, etc.
+async function disarm_shooting_trap(ttmp, otyp, state = game) {
+    const fails = await try_disarm(ttmp, false, state);
+    if (fails < 2) return fails;
+    await ttyPline(`You disarm ${the_your[ttmp.madeby_u ? 1 : 0]} trap.`, state);
+    await cnv_trap_obj(otyp, 50 - rnl(50), ttmp, false, state);
+    return 1;
+}
+
+// C ref: trap.c try_lift() (5676-5696). Trying to #untrap a monster from a
+// pit; is the weight too heavy?
+async function try_lift(mtmp, ttmp, xtra_wt, stuff, state = game) {
+    if (calc_capacity(xtra_wt, state) >= HVY_ENCUMBER) {
+        const reason = stuff ? 'carrying too much' : 'too heavy';
+        await ttyPline(`${capitalizedMonsterName(mtmp, state)} is ${reason} for you to lift.`, state);
+        if (!ttmp.madeby_u && !mtmp.mpeaceful && mtmp.mcanmove
+            && !mindless(mtmp.data) && mtmp.data?.mlet !== S_HUMAN
+            && rnl(10) < 3) {
+            mtmp.mpeaceful = 1;
+            set_malign(mtmp, state);
+            await ttyPline(`${capitalizedMonsterName(mtmp, state)} thinks it was nice of you to try.`, state);
+        }
+        return 0;
+    }
+    return 1;
+}
+
+// C ref: trap.c help_monster_out() (5699-5791). Help trapped monster out of a
+// (spiked) pit.
+async function help_monster_out(mtmp, ttmp, state = game) {
+    const u = state.u;
+
+    if (!mtmp.mtrapped) {
+        await ttyPline(`${capitalizedMonsterName(mtmp, state)} isn't trapped.`, state);
+        return 0;
+    }
+    /* Do you have the necessary capacity to lift anything? */
+    if (await check_capacity(null, state))
+        return 1;
+
+    /* Will our hero succeed? */
+    const uprob = untrap_prob(ttmp, state);
+    if (uprob !== 0 && !helpless(mtmp)) {
+        await ttyPline(`You try to reach out your ${makeplural(body_part(ARM, state.youmonst))}, but ${monsterCommonName(mtmp, state)} backs away skeptically.`, state);
+        return 1;
+    }
+
+    /* is it a cockatrice?... */
+    if (touch_petrifies(mtmp.data) && !state.uarmg
+        && !Stone_resistance(state)) {
+        const mtmp_pmname = mon_pmname(mtmp, state);
+
+        await ttyPline(`You grab the trapped ${mtmp_pmname} using your bare ${makeplural(body_part(HAND, state.youmonst))}.`, state);
+
+        if (poly_when_stoned(state.youmonst?.data)
+            && await polymon(PM_STONE_GOLEM, state)) {
+            // C: display_nhwindow(WIN_MESSAGE, FALSE). Not ported.
+            note_unported('window.c display_nhwindow');
+        } else {
+            // C: instapetrify(kbuf). Not ported.
+            note_unported('uhitm.c instapetrify');
+            return 1;
+        }
+    }
+    /* need to do cockatrice check first if sleeping or paralyzed */
+    if (uprob) {
+        await ttyPline(`You try to grab ${monsterCommonName(mtmp, state)}, but cannot get a firm grasp.`, state);
+        if (mtmp.msleeping) {
+            mtmp.msleeping = 0;
+            await ttyPline(`${capitalizedMonsterName(mtmp, state)} awakens.`, state);
+        }
+        return 1;
+    }
+
+    await ttyPline(`You reach out your ${makeplural(body_part(ARM, state.youmonst))} and grab ${monsterCommonName(mtmp, state)}.`, state);
+
+    if (mtmp.msleeping) {
+        mtmp.msleeping = 0;
+        await ttyPline(`${capitalizedMonsterName(mtmp, state)} awakens.`, state);
+    } else if (mtmp.mfrozen && !rn2(mtmp.mfrozen)) {
+        mtmp.mcanmove = 1;
+        mtmp.mfrozen = 0;
+        await ttyPline(`${capitalizedMonsterName(mtmp, state)} stirs.`, state);
+    }
+
+    /* is the monster too heavy? */
+    let xtra_wt = mtmp.data.cwt;
+    if (!(await try_lift(mtmp, ttmp, xtra_wt, false, state)))
+        return 1;
+
+    /* monster without its inventory isn't too heavy; if it carries
+       anything, include that minvent weight and check again */
+    if (mtmp.minvent) {
+        for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
+            xtra_wt += otmp.owt;
+        if (!(await try_lift(mtmp, ttmp, xtra_wt, true, state)))
+            return 1;
+    }
+
+    await ttyPline(`You pull ${monsterCommonName(mtmp, state)} out of the pit.`, state);
+    mtmp.mtrapped = 0;
+    await reward_untrap(ttmp, mtmp, state);
+    fill_pit(mtmp.mx, mtmp.my, state);
+    return 1;
+}
+
+// C ref: trap.c disarm_box() (5793-5817).
+async function disarm_box(box, force, confused, state = game) {
+    if (box.otrapped) {
+        const ch = acurr(state, A_DEX) + state.u.ulevel;
+        let effective_ch = ch;
+        if (state.urole?.mnum === PM_ROGUE) effective_ch *= 2;
+        if (!force && (confused || Fumbling(state)
+                       || rnd(75 + Math.trunc(level_difficulty(state) / 2))
+                          > effective_ch)) {
+            await chest_trap(box, FINGER, true, state);
+            /* 'box' might be gone now */
+        } else {
+            await ttyPline('You disarm it!', state);
+            box.otrapped = 0;
+            box.tknown = 1;
+            more_experienced(8, 0, state);
+            await newexplevel(state, { message: ttyPline });
+        }
+        exercise(A_DEX, true, state);
+    } else {
+        await ttyPline(`That ${xnameFresh(box, state)} was not trapped.`, state);
+        box.tknown = 0;
+    }
+}
+
+// C ref: trap.c untrap_box() (5821-5844). Check a particular container for a
+// trap and optionally disarm it.
+async function untrap_box(box, force, confused, state = game) {
+    if ((box.otrapped
+         && (force || (!confused && rn2(MAXULEV + 1 - state.u.ulevel) < 10)))
+        || box.tknown
+        || (!force && confused && !rn2(3))) {
+        if (!(box.tknown && box.dknown))
+            await ttyPline(`You find a trap on ${the(xnameFresh(box, state))}!`, state);
+        else
+            await ttyPline(`There's a trap on ${the(xnameFresh(box, state))}.`, state);
+        box.tknown = 1;
+        observe_object(box, state);
+        if (!confused) exercise(A_WIS, true, state);
+
+        if (await ynq('Disarm it?', state) === 'y')
+            await disarm_box(box, force, confused, state);
+    } else {
+        await ttyPline(`You find no traps on ${the(xnameFresh(box, state))}.`, state);
+    }
+}
+
+// C ref: trap.c untrap() (5848-6096). Hero is able to attempt untrap, so do so.
+async function untrap(force, rx, ry, container, state = game) {
+    const u = state.u;
+    let x, y;
+    let ttmp;
+    const confused = Confusion(state) || Hallucination(state);
+    let trap_skipped = false;
+    let autounlock_door = false;
+    let boxcnt = 0;
+
+    /* 'force' is true for #invoke; if carrying MKoT, make it be true
+       for #untrap or autounlock */
+    if (!force && has_magic_key(state.youmonst, state))
+        force = true;
+
+    if (!rx && !container) {
+        /* usual case */
+        if (!await getdir(null, state))
+            return 0;
+        x = u.ux + u.dx;
+        y = u.uy + u.dy;
+    } else {
+        /* autounlock's untrap; skip most prompting */
+        if (container) {
+            await untrap_box(container, force, confused, state);
+            return 1;
+        }
+        /* levl[rx][ry] is a locked or trapped door */
+        x = rx;
+        y = ry;
+        autounlock_door = true;
+    }
+    if (!isok(x, y)) {
+        await ttyPline('The perils lurking there are beyond your grasp.', state);
+        return 0;
+    }
+
+    ttmp = t_at(x, y, state);
+    if (ttmp && !ttmp.tseen) ttmp = null;
+    const trapdescr = ttmp ? trapname(ttmp.ttyp) : null;
+    const here = (u.ux === x && u.uy === y);
+
+    if (here) { /* are there one or more containers here? */
+        const objects_at = state.level?.at(x, y)?.objects ?? [];
+        for (const otmp of objects_at) {
+            if (Is_box(otmp)) {
+                if (++boxcnt > 1) break;
+            }
+        }
+    }
+
+    let deal_with_floor_trap = can_reach_floor(false, state);
+    if (autounlock_door) {
+        ; /* skip a bunch */
+    } else if (!deal_with_floor_trap) {
+        let the_trap = '';
+        if (ttmp) the_trap += `a ${trapdescr}`;
+        if (ttmp && boxcnt) the_trap += ' and ';
+        if (boxcnt) the_trap += (boxcnt === 1) ? 'a container' : 'containers';
+        const useplural = ((ttmp && boxcnt > 0) || boxcnt > 1);
+        if (ttmp || boxcnt) {
+            await ttyPline(`There ${useplural ? 'are' : 'is'} ${the_trap} ${here ? 'here' : 'there'} but you can't reach ${useplural ? 'them' : 'it'}${u.usteed ? ' while mounted' : ''}.`, state);
+        }
+        trap_skipped = (ttmp !== null);
+    } else { /* deal_with_floor_trap */
+
+        if (ttmp) {
+            const the_trap = the(trapdescr);
+            if (boxcnt) {
+                if (is_pit(ttmp.ttyp)) {
+                    const suffix = u.utrap
+                        ? " that you're stuck in"
+                        : ' while standing on the edge of it';
+                    await ttyPline(`You can't do much about ${the_trap}${suffix}.`, state);
+                    trap_skipped = true;
+                    deal_with_floor_trap = false;
+                } else {
+                    const containerDesc = (boxcnt === 1)
+                        ? 'is a container' : 'are containers';
+                    const verb = (ttmp.ttyp === WEB) ? 'Remove' : 'Disarm';
+                    const qbuf = `There ${containerDesc} and a ${trapdescr} here.  ${verb} ${the_trap}?`;
+                    const answer = await ynq(qbuf, state);
+                    if (answer === 'q') return 0;
+                    if (answer === 'n') {
+                        trap_skipped = true;
+                        deal_with_floor_trap = false;
+                    }
+                }
+            }
+            if (deal_with_floor_trap) {
+                if (u.utrap) {
+                    const suffix = (u.ux === x && u.uy === y)
+                        ? ' in it' : '';
+                    await ttyPline(`You cannot deal with ${the_trap} while trapped${suffix}!`, state);
+                    return 1;
+                }
+                const mtmp = m_at(x, y, state);
+                if (mtmp
+                    && (M_AP_TYPE(mtmp) === M_AP_FURNITURE
+                        || M_AP_TYPE(mtmp) === M_AP_OBJECT)) {
+                    await stumble_onto_mimic(mtmp, state);
+                    return 1;
+                }
+                switch (ttmp.ttyp) {
+                case BEAR_TRAP:
+                case WEB:
+                    return await disarm_holdingtrap(ttmp, state);
+                case LANDMINE:
+                    return await disarm_landmine(ttmp, state);
+                case SQKY_BOARD:
+                    return await disarm_squeaky_board(ttmp, state);
+                case DART_TRAP:
+                    return await disarm_shooting_trap(ttmp, DART, state);
+                case ARROW_TRAP:
+                    return await disarm_shooting_trap(ttmp, ARROW, state);
+                case PIT:
+                case SPIKED_PIT:
+                    if (here) {
+                        await ttyPline('You are already on the edge of the pit.', state);
+                        return 0;
+                    }
+                    if (!mtmp) {
+                        await ttyPline('Try filling the pit instead.', state);
+                        return 0;
+                    }
+                    return await help_monster_out(mtmp, ttmp, state);
+                default:
+                    await ttyPline(`You cannot disable ${!here ? 'that' : 'this'} trap.`, state);
+                    return 0;
+                }
+            }
+        } /* end if ttmp */
+
+        if (boxcnt) {
+            const objects_at = state.level?.at(x, y)?.objects ?? [];
+            for (const otmp of objects_at) {
+                if (!Is_box(otmp)) continue;
+                let qbuf;
+                if (otmp.tknown && otmp.dknown) {
+                    qbuf = safe_qbuf('Disarm this ', null, otmp,
+                        xnameFresh, ansimpleoname, 'a box', state);
+                } else {
+                    qbuf = safe_qbuf('There is ',
+                        ' here.  Check it for traps?', otmp,
+                        donameFresh, ansimpleoname, 'a box', state);
+                }
+                const answer = await ynq(qbuf, state);
+                if (answer === 'q') return 0;
+                if (answer === 'y') {
+                    if (otmp.tknown && otmp.dknown)
+                        await disarm_box(otmp, force, confused, state);
+                    else
+                        await untrap_box(otmp, force, confused, state);
+                    return 1; /* even for 'no' at "Disarm it?" prompt */
+                }
+                /* 'n' => continue to next box */
+            }
+            await ttyPline('There are no other chests or boxes here.', state);
+        }
+
+        if (stumble_on_door_mimic(x, y, state))
+            return 1;
+    } /* deal_with_floor_trap */
+
+    /*
+     * Doors can be manipulated even while levitating/unskilled riding.
+     */
+    const loc = state.level?.at(x, y);
+    if (!IS_DOOR(loc?.typ)) {
+        if (!trap_skipped)
+            await ttyPline('You know of no traps there.', state);
+        return 0;
+    }
+
+    const doormask = loc?.flags || loc?.doormask || 0;
+    switch (doormask) {
+    case D_NODOOR:
+        await ttyPline(`You ${Blind(state) ? 'feel' : 'see'} no door there.`, state);
+        return 0;
+    case D_ISOPEN:
+        await ttyPline('This door is safely open.', state);
+        return 0;
+    case D_BROKEN:
+        await ttyPline('This door is broken.', state);
+        return 0;
+    }
+
+    if (((doormask & D_TRAPPED) !== 0
+         && (force || (!confused && rn2(MAXULEV - u.ulevel + 11) < 10)))
+        || (!force && confused && !rn2(3))) {
+        await ttyPline('You find a trap on the door!', state);
+        exercise(A_WIS, true, state);
+        if (await ynq('Disarm it?', state) !== 'y')
+            return 1;
+        if (doormask & D_TRAPPED) {
+            const ch = 15 + (state.urole?.mnum === PM_ROGUE
+                ? u.ulevel * 3 : u.ulevel);
+            exercise(A_DEX, true, state);
+            if (!force && (confused || Fumbling(state)
+                           || rnd(75 + Math.trunc(level_difficulty(state) / 2))
+                              > ch)) {
+                await ttyPline('You set it off!', state);
+                // C: b_trapped("door", FINGER). trap.c, not ported.
+                note_unported('trap.c b_trapped');
+                loc.flags = D_NODOOR;
+                loc.doormask = D_NODOOR;
+                unblock_point(x, y, state);
+                newsym(x, y);
+                if (in_rooms(x, y, SHOPBASE, state).length > 0) {
+                    // C: add_damage(x, y, 0L). shk.c, not ported.
+                    note_unported('shk.c add_damage');
+                }
+            } else {
+                await ttyPline('You disarm it!', state);
+                loc.flags = doormask & ~D_TRAPPED;
+                loc.doormask = doormask & ~D_TRAPPED;
+                more_experienced(8, 0, state);
+                await newexplevel(state, { message: ttyPline });
+            }
+        } else {
+            await ttyPline('This door was not trapped.', state);
+        }
+        return 1;
+    } else {
+        await ttyPline('You find no traps on the door.', state);
+        return 1;
+    }
+}
+
+// -----------------------------------------------------------------------
+// Trap opening/closing (zap/detect/steal callers)
+// -----------------------------------------------------------------------
+
+// C ref: trap.c openholdingtrap() (6101-6209). Opens a bear trap or web
+// holding a monster (or hero). Called by zap.c (knock/lock spells),
+// steal.c, and detect.c.
+export async function openholdingtrap(mon, state = game) {
+    const u = state.u;
+    let noticed = false;
+
+    if (!mon)
+        return { result: false, noticed };
+    let ishero = (mon === state.youmonst);
+    if (mon === u.usteed)
+        ishero = true;
+
+    let t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my, state);
+
+    if (ishero && u.utrap) {
+        // All u.utraptype values are holding traps.
+        // There might not be any trap at hero's spot for tt_buriedball;
+        // conversely, there might be an unrelated trap at that spot.
+        let which;
+        let trapdescr;
+        if (!t) {
+            // Fallback dummy: nonNull, tseen and madeby_u are 0.
+            t = { tx: u.ux, ty: u.uy, ttyp: 0, tseen: 0, madeby_u: 0,
+                conjoined: 0, ntrap: null };
+        }
+        which = the_your[(!t || !t.tseen || !t.madeby_u) ? 0 : 1];
+
+        switch (u.utraptype) {
+        case TT_LAVA:
+            trapdescr = 'molten lava';
+            break;
+        case TT_INFLOOR:
+            trapdescr = 'ground';
+            break;
+        case TT_BURIEDBALL:
+            trapdescr = 'your anchor';
+            which = '';
+            break;
+        case TT_BEARTRAP:
+        case TT_PIT:
+        case TT_WEB:
+            trapdescr = trapname(
+                u.utraptype === TT_WEB ? WEB
+                : u.utraptype === TT_PIT ? PIT
+                : BEAR_TRAP,
+            );
+            break;
+        default:
+            trapdescr = 'trap';
+            break;
+        }
+
+        if (!which) {
+            which = t.tseen
+                ? the_your[t.madeby_u ? 1 : 0]
+                : 'aeiouAEIOU'.includes(trapdescr[0]) ? 'an' : 'a';
+        }
+        if (which) which = `${which} `;
+
+        if (!u.utrap)
+            return { result: false, noticed };
+        noticed = true;
+        let buf;
+        if (!u.usteed)
+            buf = 'You are';
+        else if (u.utraptype === TT_BURIEDBALL)
+            buf = `You and ${y_monnam(u.usteed, state)} are`;
+        else
+            buf = `${noit_Monnam(u.usteed, state)} is`;
+        await ttyPline(`${buf} released from ${which}${trapdescr}.`, state);
+        state.vision_full_recalc = 1;
+        await reset_utrap(true, state);
+        if (state.vision_full_recalc)
+            vision_recalc(0, { state });
+    } else {
+        // Non-hero path.
+        if (!t || (t.ttyp !== BEAR_TRAP && t.ttyp !== WEB))
+            return { result: false, noticed };
+        const trapdescr = trapname(t.ttyp);
+
+        let which;
+        if (!which) {
+            which = t.tseen
+                ? the_your[t.madeby_u ? 1 : 0]
+                : 'aeiouAEIOU'.includes(trapdescr[0]) ? 'an' : 'a';
+        }
+        if (which) which = `${which} `;
+
+        if (!mon.mtrapped)
+            return { result: false, noticed };
+        mon.mtrapped = 0;
+        if (canspotmon(mon, state)) {
+            noticed = true;
+            await ttyPline(
+                `${capitalizedMonsterName(mon, state)} is released from ${which}${trapdescr}.`,
+                state,
+            );
+        } else if (cansee(t.tx, t.ty, state) && t.tseen) {
+            noticed = true;
+            if (t.ttyp === WEB) {
+                await ttyPline(
+                    `Something is released from ${which}${trapdescr}.`,
+                    state,
+                );
+            } else {
+                // BEAR_TRAP
+                await ttyPline(
+                    `${upstart(`${which}${trapdescr}`)} opens.`,
+                    state,
+                );
+            }
+        }
+        // Might pacify monster if adjacent.
+        if (rn2(2) && m_next2u(mon, state))
+            await reward_untrap(t, mon, state);
+    }
+    return { result: true, noticed };
+}
+
+// C ref: trap.c closeholdingtrap() (6210-6251). For magic locking; returns
+// true if the targeted monster (which might be the hero) gets hit by a trap.
+export async function closeholdingtrap(mon, state = game) {
+    const u = state.u;
+    let noticed = false;
+
+    if (!mon)
+        return { result: false, noticed };
+    let ishero = (mon === state.youmonst);
+    if (mon === u.usteed)
+        ishero = true;
+    const t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my, state);
+    if (!t || (t.ttyp !== BEAR_TRAP && t.ttyp !== WEB))
+        return { result: false, noticed };
+
+    let result;
+    if (ishero) {
+        if (u.utrap)
+            return { result: false, noticed };
+        noticed = true;
+        let dotrapflags = FORCETRAP;
+        if (u.usteed)
+            dotrapflags |= NOWEBMSG;
+        await dotrap(t, dotrapflags | FORCETRAP, state);
+        result = (u.utrap !== 0);
+    } else {
+        if (mon.mtrapped)
+            return { result: false, noticed };
+        noticed = cansee(t.tx, t.ty, state) || canspotmon(mon, state);
+        result = ((await mintrap(mon, FORCETRAP, { state })) !== Trap_Effect_Finished);
+    }
+    return { result, noticed };
+}
+
+// C ref: trap.c openfallingtrap() (6252-6293). For magic unlocking; returns
+// true if the targeted monster gets hit by a falling trap.
+export async function openfallingtrap(mon, trapdoor_only, state = game) {
+    const u = state.u;
+    let noticed = false;
+
+    if (!mon)
+        return { result: false, noticed };
+    let ishero = (mon === state.youmonst);
+    if (mon === u.usteed)
+        ishero = true;
+    const t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my, state);
+    // No trap or not a falling trap.
+    if (!t || ((t.ttyp !== TRAPDOOR && t.ttyp !== ROCKTRAP)
+               && (trapdoor_only || (t.ttyp !== HOLE && !is_pit(t.ttyp)))))
+        return { result: false, noticed };
+
+    let result;
+    if (ishero) {
+        if (u.utrap)
+            return { result: false, noticed };
+        noticed = true;
+        await dotrap(t, FORCETRAP, state);
+        result = (u.utrap !== 0);
+    } else {
+        if (mon.mtrapped)
+            return { result: false, noticed };
+        noticed = cansee(t.tx, t.ty, state) || canspotmon(mon, state);
+        await wakeup(mon, true, { state });
+        result = ((await mintrap(mon, FORCETRAP, { state })) !== Trap_Effect_Finished);
+    }
+    return { result, noticed };
+}
+
+// C ref: trap.c animate_statue() (725-900).  This is the shared statue
+// transition used by statue traps and zap.c stone_to_flesh_obj().  Creation,
+// saved-trait restoration, object transfer, and deletion stay in their
+// canonical owners; this wrapper preserves their source order and carries a
+// single async result back to the caller.
+export async function animate_statue(
+    statue,
+    x,
+    y,
+    cause = ANIMATE_NORMAL,
+    rawEnv = {},
+) {
+    if (!statue || typeof statue !== 'object')
+        throw new TypeError('animate_statue requires a statue object');
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? { d, rn1, rn2, rnd, rne, rnz };
+    const message = rawEnv.message ?? ttyPline;
+    const norepMessage = rawEnv.norepMessage ?? message;
+    const objectEnv = objectGenerationEnv({
+        ...rawEnv,
+        _animateStatue: true,
+        state,
+        random,
+        message,
+        norepMessage,
+    });
+
+    // These imports would make trap.js's existing makemon/inventory cycles
+    // eager.  C enters this function only after the game has initialized all
+    // of those owners, so resolve them at the call boundary instead.
+    const [{ cant_revive }, { montraits }, { makemon_runtime, m_dowear },
+        { mpickobj }] = await Promise.all([
+        import('./read.js'),
+        import('./zap.js'),
+        import('./makemon_create.js'),
+        import('./steal.js'),
+    ]);
+    const { newcham } = await import('./mon.js');
+
+    let mnum = Number.isInteger(statue.corpsenm)
+        ? statue.corpsenm : NON_PM;
+    let mptr = state.mons?.[mnum] ?? null;
+    if (!mptr) {
+        if (rawEnv.failReason) rawEnv.failReason.value = AS_NO_MON;
+        return null;
+    }
+
+    // read.c cant_revive() writes the possibly substituted species through
+    // its caller-owned pointer.  Keep mptr pointed at the original species
+    // for the doppelganger and quest-guardian decisions below.
+    const revival = cant_revive(mnum, true, statue, state);
+    const changed = Boolean(revival?.changed);
+    mnum = revival?.mtype ?? mnum;
+    if (changed && mnum !== PM_DOPPELGANGER)
+        mptr = state.mons?.[mnum] ?? mptr;
+
+    let golemXform = false;
+    let useSavedTraits;
+    if (changed) {
+        useSavedTraits = false;
+    } else if (is_golem(mptr) && cause === ANIMATE_SPELL) {
+        golemXform = mptr !== state.mons?.[PM_FLESH_GOLEM];
+        mnum = PM_FLESH_GOLEM;
+        mptr = state.mons?.[PM_FLESH_GOLEM] ?? mptr;
+        useSavedTraits = Boolean(statue.oextra?.omonst) && !golemXform;
+    } else {
+        useSavedTraits = Boolean(statue.oextra?.omonst);
+    }
+
+    let monster = null;
+    if (useSavedTraits) {
+        monster = await montraits(
+            statue,
+            { x, y },
+            cause === ANIMATE_SPELL,
+            { ...objectEnv, state, random },
+        );
+        if (monster?.mtame && !monster.isminion)
+            note_unported('dog.c wary_dog');
+    } else {
+        let mmflags = NO_MINVENT | MM_NOMSG;
+        const sgend = statue.spe & CORPSTAT_GENDER;
+        if (sgend === CORPSTAT_MALE) mmflags |= MM_MALE;
+        else if (sgend === CORPSTAT_FEMALE) mmflags |= MM_FEMALE;
+        const guardian = mptr.msound === MS_GUARDIAN
+            && quest_info(MS_GUARDIAN, state) !== mnum;
+        if ((mnum === PM_DOPPELGANGER
+                && mptr !== state.mons?.[PM_DOPPELGANGER]) || guardian) {
+            mmflags |= MM_NOCOUNTBIRTH | MM_ADJACENTOK;
+            monster = await makemon_runtime(
+                state.mons?.[PM_DOPPELGANGER], x, y, mmflags,
+                { ...objectEnv, state, random },
+            );
+            // C discards newcham()'s result here; the transition itself is
+            // still awaited so no placement or inventory work races it.
+            if (monster && Number.isInteger(monster.cham)
+                && monster.cham !== NON_PM)
+                await newcham(monster, mptr, { ...objectEnv, state, random });
+        } else {
+            if (cause === ANIMATE_SPELL) mmflags |= MM_ADJACENTOK;
+            monster = await makemon_runtime(
+                mptr, x, y, mmflags,
+                { ...objectEnv, state, random },
+            );
+        }
+    }
+
+    if (!monster) {
+        if (rawEnv.failReason) {
+            rawEnv.failReason.value = unique_corpstat(
+                state.mons?.[statue.corpsenm],
+            ) ? AS_MON_IS_UNIQUE : AS_NO_MON;
+        }
+        return null;
+    }
+
+    if (has_oname(statue) && !unique_corpstat(monster.data)) {
+        monster = christen_monst(monster, ONAME(statue), objectEnv);
+    }
+    if (M_AP_TYPE(monster))
+        seemimic(monster, state, objectEnv);
+    else
+        monster.mundetected = false;
+    monster.msleeping = 0;
+    if (cause === ANIMATE_NORMAL || cause === ANIMATE_SHATTER) {
+        monster.mtame = 0;
+        monster.mpeaceful = 0;
+        set_malign(monster, state);
+    }
+
+    // C's canspotmon includes both line-of-sight and sensing (telepathy,
+    // warning, and related properties).  Use the canonical display owner so
+    // the statue's message follows the same visibility contract as the rest
+    // of the game.
+    const spotted = canspotmon(monster, state);
+    const comesToLife = !spotted ? 'disappears'
+        : golemXform ? 'turns into flesh'
+            : (nonliving(monster.data) || is_vampshifter(monster))
+                ? 'moves' : 'comes to life';
+    const atHero = u_at(x, y, state);
+    if (atHero || cause === ANIMATE_SPELL) {
+        const shopkeeper = shop_keeper(
+            in_rooms(monster.mx, monster.my, SHOPBASE, state)[0] ?? 0,
+            state,
+        );
+        const noun = cause === ANIMATE_SPELL
+            && (monster !== shopkeeper || carried(statue))
+            ? xnameFresh(statue, state) : 'statue';
+        const statueName = `${shk_your(statue, state)}${noun}`;
+        await message(`${upstart(statueName)} ${comesToLife}!`, state);
+    } else if (Hallucination(state)) {
+        await message(
+            `The ${rndmonnam({ state, random })} suddenly seems more animated.`,
+            state,
+        );
+    } else if (cause === ANIMATE_SHATTER) {
+        const statueName = cansee(x, y, state)
+            ? `${shk_your(statue, state)}${xnameFresh(statue, state)}`
+            : 'a statue';
+        await message(
+            `Instead of shattering, ${statueName} suddenly ${comesToLife}!`,
+            state,
+        );
+    } else {
+        await message(
+            `You find ${spotted ? a_monnam(monster, { ...objectEnv, state, random }) : something} posing as a statue.`,
+            state,
+        );
+        if (!spotted && Blind(state))
+            map_invisible(x, y, state);
+        const { stop_occupation } = await import('./allmain.js');
+        await stop_occupation(state, { message });
+    }
+
+    const movingMonster = Boolean(state.context?.mon_moving);
+    if (!movingMonster && cause !== ANIMATE_NORMAL
+        && costly_spot(x, y, state)) {
+        const keeper = shop_keeper(in_rooms(x, y, SHOPBASE, state)[0] ?? 0, state);
+        if (keeper && (carried(statue) ? statue.unpaid : !statue.no_charge)
+            && monster !== keeper)
+            note_unported('shk.c stolen_value');
+    }
+    if (state.urole?.mnum === PM_ARCHEOLOGIST
+        && (statue.spe & CORPSTAT_HISTORIC)
+        && (!movingMonster || cansee(x, y, state))) {
+        await message(
+            `You feel ${movingMonster ? 'regret' : 'guilty'} that the historic statue is now gone.`,
+            state,
+        );
+        if (!movingMonster) adjalign(-1, state);
+    }
+
+    while (statue.cobj) {
+        const item = statue.cobj;
+        obj_extract_self(item, objectEnv);
+        await mpickobj(monster, item, objectEnv);
+    }
+    m_dowear(monster, true, objectEnv);
+    if (statue.owornmask)
+        note_unported('steal.c remove_worn_item');
+    delobj(statue, objectEnv);
+
+    if (atHero && Upolyd(state.u)
+        && hides_under(state.youmonst?.data)
+        && !OBJ_AT(x, y, state)) {
+        state.u.uundetected = 0;
+    }
+    if (rawEnv.failReason) rawEnv.failReason.value = AS_OK;
+    return monster;
+}
+
+// -----------------------------------------------------------------------
+// Trapped chest
+// -----------------------------------------------------------------------
+
+// C ref: trap.c blindgas[] (81-83). Color descriptions for the gas cloud
+// when the hero is blind. ROLL_FROM(blindgas) = blindgas[rn2(6)].
+const blindgas = Object.freeze([
+    'humid', 'odorless', 'pungent', 'chilling', 'acrid', 'biting',
+]);
+
+// Local helper: Shock_resistance. C ref: youprop.h Shock_resistance.
+function Shock_resistance(state) {
+    const p = state.u?.uprops?.[SHOCK_RES];
+    return Boolean(p?.intrinsic || p?.extrinsic);
+}
+
+// Local helper: Halluc_resistance. C ref: youprop.h Halluc_resistance.
+function Halluc_resistance(state) {
+    const p = state.u?.uprops?.[HALLUC_RES];
+    return Boolean(p?.intrinsic || p?.extrinsic);
+}
+
+// C ref: trap.c chest_trap() (6294-6501). Handles a trapped chest:
+// explosions, poison gas, paralysis, etc. Called from disarm_box (trap.c)
+// and use_container/tipcontainer_checks (pickup.c). Returns true if the
+// chest is destroyed, false if it remains.
+// C ref: trap.c activate_statue_trap() (908-932). It removes the trap first,
+// tries statues in pile order only after the unique-monster retry, refreshes
+// the square, and returns the animated monster pointer (or null).
+export async function activate_statue_trap(
+    trap, x, y, shatter, rawEnv = {},
+) {
+    const state = rawEnv.state ?? game;
+    let monster = null;
+    let statue = sobj_at(STATUE, x, y, state);
+    const failReason = { value: AS_NO_MON };
+    deltrap(trap, state);
+    while (statue) {
+        monster = await animate_statue(
+            statue, x, y,
+            shatter ? ANIMATE_SHATTER : ANIMATE_NORMAL,
+            { ...rawEnv, state, failReason },
+        );
+        if (monster || failReason.value !== AS_MON_IS_UNIQUE) break;
+        statue = nxtobj(statue, STATUE, true);
+    }
+    feel_newsym(x, y, state);
+    return monster;
+}
+
+export async function chest_trap(obj, bodypart, disarm, state = game) {
+    const u = state.u;
+    const Luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
+
+    const loc = get_obj_location(obj, 0, state);
+    if (loc) {
+        obj.ox = loc.x;
+        obj.oy = loc.y;
+    }
+
+    obj.tknown = 0;
+    obj.otrapped = 0; // trap is one-shot
+
+    await ttyPline(
+        disarm ? 'You set it off!' : 'You trigger a trap!',
+        state,
+    );
+    // C: display_nhwindow(WIN_MESSAGE, FALSE) waits at a pending --More--
+    // boundary before chest_trap() evaluates Luck or draws outcome RNG.
+    await displayPendingTtyMessageWindow(state);
+
+    if (Luck > -13 && rn2(13 + Luck) > 7) {
+        // Saved by luck.
+        let msg;
+        switch (rn2(13)) {
+        case 12: case 11:
+            msg = 'explosive charge is a dud'; break;
+        case 10: case 9:
+            msg = 'electric charge is grounded'; break;
+        case 8: case 7:
+            msg = 'flame fizzles out'; break;
+        case 6: case 5: case 4:
+            msg = 'poisoned needle misses'; break;
+        case 3: case 2: case 1: case 0:
+            msg = 'gas cloud blows away'; break;
+        default:
+            // impossible("chest disarm bug")
+            msg = null;
+            break;
+        }
+        if (msg)
+            await ttyPline(`But luckily the ${msg}!`, state);
+    } else {
+        switch (rn2(20) ? ((Luck >= 13) ? 0 : rn2(13 - Luck)) : rn2(26)) {
+        case 25: case 24: case 23: case 22: case 21: {
+            // Explosion.
+            const ox = obj.ox, oy = obj.oy;
+
+            const costly = costly_spot(ox, oy, state)
+                && shop_keeper(
+                    (in_rooms(ox, oy, SHOPBASE, state) || [''])[0], state,
+                ) != null;
+            // C: insider = (*u.ushops && inside_shop(u.ux, u.uy) && ...).
+            // Shop billing (stolen_value/make_angry_shk) is not ported.
+
+            await ttyPline(`${Tobjnam(obj, 'explode', state)}!`, state);
+            const buf = `exploding ${xnameFresh(obj, state)}`;
+
+            if (costly) {
+                // C: loss += stolen_value(...).
+                note_unported('shk.c stolen_value');
+            }
+            delete_contents(obj, { state });
+
+            // Unpunish if ball or chain will be destroyed.
+            if (Punished(state)) {
+                const uchain = state.u.uchain;
+                const uball = state.u.uball;
+                if ((uchain && uchain.ox === ox && uchain.oy === oy)
+                    || (uball && uball.where === 1 /* OBJ_FLOOR */
+                        && uball.ox === ox && uball.oy === oy)) {
+                    unpunish(state);
+                }
+            }
+
+            // Destroy everything at the spot.
+            let chestgone = false;
+            const objects_at = state.level?.at(ox, oy)?.objects;
+            if (objects_at) {
+                // Walk a copy because delobj mutates the list.
+                for (const otmp of [...objects_at]) {
+                    if (costly) {
+                        note_unported('shk.c stolen_value');
+                    }
+                    if (otmp === obj)
+                        chestgone = true;
+                    delobj(otmp, { state });
+                }
+            }
+            await wake_nearby({ state });
+            await losehp(Maybe_Half_Phys(d(6, 6), state), buf, KILLED_BY_AN, state);
+            await exercise(A_STR, false, state);
+            if (costly) {
+                // C: shop accounting messages and make_angry_shk().
+                note_unported('shk.c stolen_value');
+                note_unported('shk.c make_angry_shk');
+            }
+            if (chestgone)
+                return true;
+            break;
+        }
+        case 20: case 19: case 18: case 17:
+            // Poison gas.
+            await ttyPline(
+                `A cloud of noxious gas billows from ${the(xnameFresh(obj, state))}.`,
+                state,
+            );
+            if (rn2(3))
+                await poisoned('gas cloud', A_STR, 'cloud of poison gas', 15,
+                    false, state, poisonedEnv(state));
+            else
+                await create_gas_cloud(obj.ox, obj.oy, 1, 8, { state });
+            await exercise(A_CON, false, state);
+            break;
+        case 16: case 15: case 14: case 13:
+            // Poisoned needle.
+            await ttyPline(
+                `You feel a needle prick your ${body_part(bodypart, state.youmonst)}.`,
+                state,
+            );
+            await poisoned('needle', A_CON, 'poisoned needle', 10, false,
+                state, poisonedEnv(state));
+            await exercise(A_CON, false, state);
+            break;
+        case 12: case 11: case 10: case 9:
+            // Fire trap.
+            await dofiretrap(obj, {
+                state,
+                random: { d, rn1, rn2, rnd, rne, rnl },
+                message: ttyPline,
+            });
+            break;
+        case 8: case 7: case 6: {
+            // Electricity.
+            let dmg = d(4, 4);
+            const orig_dmg = dmg;
+            await ttyPline('You are jolted by a surge of electricity!', state);
+            if (Shock_resistance(state)) {
+                // C trap.c:chest_trap -- animate before the resistance message.
+                await shieldeff(u.ux, u.uy, state);
+                await ttyPline("You don't seem to be affected.", state);
+                monstseesu(M_SEEN_ELEC, state);
+                dmg = 0;
+            } else {
+                monstunseesu(M_SEEN_ELEC, state);
+            }
+            await destroy_items(state.youmonst, AD_ELEC, orig_dmg, {
+                state,
+                random: { d, rn1, rn2, rnd, rne, rnl },
+            });
+            if (dmg)
+                await losehp(dmg, 'electric shock', KILLED_BY_AN, state);
+            break;
+        }
+        case 5: case 4: case 3:
+            // Paralysis.
+            if (!Free_action(state)) {
+                await ttyPline('Suddenly you are frozen in place!', state);
+                nomul(-d(5, 6), state);
+                state.multi_reason = 'frozen by a trap';
+                await exercise(A_DEX, false, state);
+                state.nomovemsg = You_can_move_again;
+            } else {
+                await ttyPline('You momentarily stiffen.', state);
+            }
+            break;
+        case 2: case 1: case 0: {
+            // Stun/hallucination gas.
+            const gascolor = Blind(state)
+                ? blindgas[rn2(blindgas.length)]
+                : rndcolor(state);
+            await ttyPline(
+                `A cloud of ${gascolor} gas billows from ${the(xnameFresh(obj, state))}.`,
+                state,
+            );
+            if (!Stunned(state)) {
+                if (Hallucination(state)) {
+                    await ttyPline('What a groovy feeling!', state);
+                } else {
+                    const dizzy = Halluc_resistance(state) ? ''
+                        : Blind(state) ? ' and get dizzy'
+                        : ' and your vision blurs';
+                    await ttyPline(
+                        `You ${stagger(state.youmonst.data, 'stagger')}${dizzy}...`,
+                        state,
+                    );
+                }
+            }
+            const stunTimeout = (
+                (state.u?.uprops?.[STUNNED]?.intrinsic ?? 0) & TIMEOUT
+            ) + rn1(7, 16);
+            await make_stunned(stunTimeout, false, state);
+            await make_hallucinated(
+                ((state.u?.uprops?.[HALLUC]?.intrinsic ?? 0) & TIMEOUT)
+                    + rn1(5, 16),
+                false, 0, state,
+            );
+            break;
+        }
+        default:
+            // impossible("bad chest trap")
+            break;
+        }
+        await bot();
+    }
+
+    obj.tknown = 1;
+    return false;
+}

@@ -1,0 +1,255 @@
+// des-bridge.mjs — JS-native `des` / `selection` / etc. proxy
+// that lets the templatic-transpiled JS modules call into the
+// existing translated `lspo_*` functions WITHOUT going through
+// fengari's interpreter.
+//
+// Why: the transpiled themerms.lua emits `await des.region({...})`
+// as plain JS.  The fengari sync/async boundary that blocks
+// `NH_EMIT_ASYNC=1` (per project_nh_emit_async.md) is in
+// fengari's INTERPRETER calling JS callbacks — when lspo_* are
+// async, fengari sees Promises and silently fails.  But if my JS
+// code calls lspo_* DIRECTLY (not through fengari's interpreter),
+// the call is just JS-to-JS, and `await` on the (potentially
+// async) lspo_* resolves naturally.
+//
+// Strategy: wrap each registered `lspo_*` function in a JS
+// dispatch that:
+//   1. Saves the fengari stack pointer.
+//   2. Pushes JS args onto fengari's stack using the existing
+//      lua_pushinteger / lua_createtable / lua_setfield primitives.
+//   3. Calls lspo_*(L) directly (just a JS function call).
+//   4. Reads any return values from the stack.
+//   5. Restores the stack pointer.
+//
+// This keeps the fengari L alive (since lspo_* internally calls
+// lua_getfield / lua_tointeger etc., all backed by fengari), but
+// no Lua source ever gets interpreted — the call sequence is
+// driven by JS.
+//
+// Used by:
+//   - the transpiled themerms.lua JS module (when wired up)
+//   - any other transpiled .lua file that needs des/selection
+//
+// Not used by:
+//   - the fengari interpretation path (still active for `kind:
+//     'source'` files like nhlib.lua, quest.lua)
+
+import { lua, lauxlib } from './lua-state.mjs';
+import { lua_touserdata } from './lua-state.mjs';
+import {
+    lua_pushinteger, lua_pushnumber, lua_pushstring, lua_pushboolean,
+    lua_pushnil, lua_gettop, lua_settop, lua_setfield, lua_rawseti,
+    lua_createtable, lua_tointeger, lua_tostring, lua_tonumber,
+    lua_isnumber, lua_isstring, luaValueToJs,
+    wrapLuaObj,
+} from './lua.js';
+import { lua_pushjsfunction } from './lua-state.mjs';
+import { pushSelection } from './nhlsel-bridge.mjs';
+import { Selection } from './selection-js.mjs';
+
+// Build the `des` proxy bound to a specific Lua state.  Each
+// method is `async` so JS callers can `await` it.  The body
+// pushes args onto L, calls the registered C-translated lspo_*,
+// reads back any return values.
+//
+// `lspoTable` is the array-of-{name, func} from sp_lev.js
+// (nhl_functions).  We iterate it once to build the proxy.
+// des-op SERIALIZER (Q9 iter 64): a detached async chain from a
+// prior load could interleave its des ops INSIDE another load's op
+// (seed2600: a themed room's 26x18 des.map mutated xstart/ystart
+// mid-walk during bigrm-9's 74x19 paint -> absorbed mapfrag panic ->
+// all-STONE level).  All top-level des ops now run through one
+// global promise chain so ops are atomic and ordered by invocation.
+// RE-ENTRANT: ops invoked from WITHIN an executing op (contents
+// callbacks via pcall) run inline -- queueing them would deadlock.
+let __desOpChain = Promise.resolve();
+let __desOpDepth = 0;
+
+export function buildDesProxy(L, lspoTable) {
+    // Stamp the state with the creating session's epoch (see the
+    // stale-chain guard below).
+    L.__nh_epoch = globalThis.__nh_session_epoch;
+    const proxy = {};
+    for (const entry of lspoTable) {
+        if (!entry?.name || !entry?.func) continue;
+        const lspoFn = entry.func;
+        // Each method takes any number of JS args, pushes them
+        // onto L, calls lspoFn(L), reads any returned values.
+        proxy[entry.name] = async function(...args) {
+            // Frame discipline (Q9 iteration 21): a des.* call can
+            // arrive MID-pcall (a map-contents callback runs inside
+            // lspo_map's pcall), and lspo_* read their arg count via
+            // lua_gettop — which is FRAME-relative.  Without a fresh
+            // frame the callee sees the enclosing call's leftovers
+            // (lspo_region got argc=2/type1=TABLE from filler_region's
+            // one-table call and took the selection-arg branch, so the
+            // percent cluster never reached its litstate_rnd rolls).
+            // Mirror lua_pcall_async: push a frame base at the current
+            // absolute top, pop it in finally.
+            // Session-epoch guard (Q9 iteration 33): a detached async
+            // chain from a PREVIOUS session can resume after its
+            // session ended (seed0108's level-gen chain woke during
+            // the next session and spent its PRNG — rn2(26) from
+            // get_location landing at the victim's call 203,
+            // re-introducing the 23.143 pollution in the one-process
+            // runner).  Sessions bump globalThis.__nh_session_epoch
+            // at start; a des.* call against a state created in an
+            // older epoch throws here — absorbed by ITS OWN pcall
+            // layers, dying in the old context instead of polluting
+            // the new session.
+            const __epoch = globalThis.__nh_session_epoch;
+            if (L.__nh_epoch !== undefined && __epoch !== undefined
+                && L.__nh_epoch !== __epoch) {
+                throw new Error('stale-session des.' + entry.name
+                    + ' (cross-session chain, epoch ' + L.__nh_epoch
+                    + ' vs ' + __epoch + ')');
+            }
+            const __runOp = async () => {
+            __desOpDepth++;
+            const absBase = L.stack.length;
+            L.frameBases.push(absBase);
+            const __opTrace = (typeof process !== 'undefined' && process.env?.NH_OP_TRACE);
+            const __opId = __opTrace ? ((globalThis.__nh_op_seq = (globalThis.__nh_op_seq || 0) + 1)) : 0;
+            if (__opTrace) { const g = globalThis.__nh_gameRef || globalThis.game; const sid = (L.__nh_state_id || (L.__nh_state_id = (globalThis.__nh_state_seq = (globalThis.__nh_state_seq || 0) + 1))); console.warn('[op>', __opId, 'L#' + sid, 'des.' + entry.name, 'rng@' + ((g && g._rngLog && g._rngLog.length) || 0), JSON.stringify(args).slice(0, 50)); }
+            try {
+                for (const a of args) pushJsValue(L, a);
+                const nresults = await lspoFn(L);
+                if (__opTrace) console.warn('[op<', __opId, 'des.' + entry.name);
+                const top = lua_gettop(L);
+                const ret = [];
+                for (let i = 0; i < (nresults || 0); i++) {
+                    const idx = top - (nresults - 1 - i);
+                    ret.push(popJsValue(L, idx));
+                }
+                return (ret.length === 1) ? ret[0] : ret;
+            } catch (e) {
+                // Match wrapAsyncForLua (lua.js) semantics: a thrown
+                // JS error inside the registered lspo_* is silently
+                // absorbed so the surrounding Lua-level retry / fall-
+                // back logic kicks in (e.g. themeroom_failed=1 in
+                // makerooms-2).  Without this catch, a single bug in
+                // a translated lspo_* aborts the entire transpiled
+                // themerms run — under fengari, wrapAsyncForLua
+                // converts the same exception to a silent 0-return
+                // so subsequent lspo_* calls still execute.
+                if (typeof process !== 'undefined' && process.env?.NH_DEBUG_LUA) {
+                    console.warn('[des-bridge async err]', entry.name, ':', e?.message || e);
+                }
+                return undefined;
+            } finally {
+                L.frameBases.pop();
+                L.stack.length = absBase;
+                __desOpDepth--;
+            }
+            };
+            if (__desOpDepth > 0) {
+                // nested call from within an executing op: run inline
+                return __runOp();
+            }
+            const __p = __desOpChain.then(__runOp);
+            __desOpChain = __p.then(() => {}, () => {});
+            return __p;
+        };
+    }
+    return proxy;
+}
+
+// Push an arbitrary JS value onto the Lua stack.  Mirrors what
+// fengari would push if it interpreted a Lua literal with the
+// same shape.  Supports numbers, strings, booleans, null, arrays
+// (Lua sequence tables), plain objects (Lua key-value tables),
+// and Selection-class instances (push their userdata-equivalent).
+//
+// For nested calls (a value that's itself a call result like
+// `selection.area(0,0,5,5)`), the caller should resolve it to a
+// concrete value BEFORE handing to pushJsValue.  In templatic-
+// transpiled JS this happens naturally (`await des.region(selection.area(0,0,5,5))`
+// evaluates the inner call first).
+export function pushJsValue(L, v) {
+    if (v === null || v === undefined) {
+        lua_pushnil(L);
+        return;
+    }
+    if (typeof v === 'boolean') {
+        lua_pushboolean(L, v);
+        return;
+    }
+    if (typeof v === 'number') {
+        if (Number.isInteger(v)) lua_pushinteger(L, v);
+        else lua_pushnumber(L, v);
+        return;
+    }
+    if (typeof v === 'string') {
+        lua_pushstring(L, v);
+        return;
+    }
+    if (typeof v === 'function') {
+        // Callback values (e.g. des.map's `contents = function(m)
+        // filler_region(1,1) end`) must round-trip as CALLABLES.
+        // The string fallback below used to swallow them (the
+        // function marshalled as its source text, lua_type !=
+        // LUA_TFUNCTION, and lspo_map silently skipped the room's
+        // contents — the Lua-percent x7 cluster's B-layer, Q9
+        // iteration 19).  Same arg-marshal protocol as
+        // installThemermsWrappers: Lua-stack args -> JS values; the
+        // returned Promise is awaited by lua_pcall_async.
+        lua_pushjsfunction(L, (innerL) => {
+            const argc = lua_gettop(innerL);
+            const args = [];
+            for (let i = 1; i <= argc; i++) {
+                args.push(luaValueToJs(innerL, i));
+            }
+            return v(...args);
+        });
+        return;
+    }
+    if (Array.isArray(v)) {
+        // Sequence-table: { [1] = v[0], [2] = v[1], ... }
+        lua_createtable(L, v.length, 0);
+        for (let i = 0; i < v.length; i++) {
+            pushJsValue(L, v[i]);
+            lua_rawseti(L, -2, i + 1);
+        }
+        return;
+    }
+    if (typeof v === 'object') {
+        // Selection: push as light userdata via the nhlsel bridge.
+        // Receiving translated code calls `l_selection_check(L, idx)`
+        // which retrieves the JS selectionvar via lua_touserdata.
+        // See nhlsel-bridge.mjs for the protocol.
+        if (v instanceof Selection || (v && typeof v === 'object' && v.sv)) {
+            pushSelection(L, v);
+            return;
+        }
+        // Plain key-value table.
+        lua_createtable(L, 0, Object.keys(v).length);
+        for (const [k, val] of Object.entries(v)) {
+            pushJsValue(L, val);
+            // Numeric-string keys → integer keys (Lua sequence).
+            if (/^[0-9]+$/.test(k)) {
+                lua_rawseti(L, -2, Number(k));
+            } else {
+                lua_setfield(L, -2, k);
+            }
+        }
+        return;
+    }
+    // Fallback
+    lua_pushstring(L, String(v));
+}
+
+// Pop a JS value from the Lua stack at the given absolute index.
+// For now we handle the common scalar types — integer, string,
+// number, nil.  Used by buildDesProxy for return values, though
+// most lspo_* return 0 (no return value).
+export function popJsValue(L, idx) {
+    if (lua_isnumber(L, idx)) return lua_tonumber(L, idx);
+    if (lua_isstring(L, idx)) return lua_tostring(L, idx);
+    // lightuserdata from nhl_push_obj → shared Lua obj-API wrapper
+    // (timers + totable); see lua.js wrapLuaObj.
+    const raw = lua_touserdata(L, idx);
+    if (raw && typeof raw === 'object' && 'obj' in raw && 'state' in raw) {
+        return wrapLuaObj(raw);
+    }
+    return null;
+}

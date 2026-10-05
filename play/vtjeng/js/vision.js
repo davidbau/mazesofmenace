@@ -1,0 +1,1022 @@
+// vision.js — C ref: vision.c Algorithm C shadow-casting
+// Stripped-down port for the contest skeleton: no underwater handling.
+// Contestants should port the full vision.c for complete parity.
+
+import { game } from './gstate.js';
+import { on_level } from './dungeon.js';
+import { do_light_sources } from './light.js';
+import { worm_known } from './worm.js';
+import { BOULDER } from './objects.js';
+import { visible_region_at } from './region.js';
+import { m_at } from './monst.js';
+import { perceives } from './mondata.js';
+import {
+    BLINDED, CLOUD, COLNO, COULD_SEE, DB_MOAT, DB_UNDER, DRAWBRIDGE_UP,
+    IN_SIGHT, INVIS, LAVAWALL, MOAT, ROWNO, DOOR, SDOOR,
+    POOL, WATER,
+    D_CLOSED, D_LOCKED, D_TRAPPED,
+    MAX_RADIUS,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, SEE_INVIS,
+    DETECT_MONSTERS,
+    MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS,
+    MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
+    IS_WALL, TEMP_LIT, TT_PIT,
+} from './const.js';
+import {
+    canseemon,
+    mon_visible,
+    newsym,
+    see_with_infrared,
+    tp_sensemon,
+    warningMatches,
+} from './display.js';
+import {
+    S_hcdoor,
+    S_ndoor,
+    S_stone,
+    S_tree,
+    S_vcdoor,
+} from './symbols.js';
+
+function heroIsBlind(hero) {
+    const blindness = hero?.uprops?.[BLINDED];
+    return Boolean(blindness?.intrinsic || blindness?.extrinsic)
+        && !blindness?.blocked;
+}
+
+// C ref: display.c seenv_matrix, shared with vision.c.
+export const seenv_matrix = Object.freeze([
+    Object.freeze([SV2, SV1, SV0]),
+    Object.freeze([SV3, SVALL, SV7]),
+    Object.freeze([SV4, SV5, SV6]),
+]);
+
+// Circle data for range limits (C vision.c:27-70)
+const circle_data = [
+    /*  0*/ 0,
+    /*  1*/ 1, 1,
+    /*  3*/ 2, 2, 1,
+    /*  6*/ 3, 3, 2, 1,
+    /* 10*/ 4, 4, 4, 3, 2,
+    /* 15*/ 5, 5, 5, 4, 3, 2,
+    /* 21*/ 6, 6, 6, 5, 5, 4, 2,
+    /* 28*/ 7, 7, 7, 6, 6, 5, 4, 2,
+    /* 36*/ 8, 8, 8, 7, 7, 6, 6, 4, 2,
+    /* 45*/ 9, 9, 9, 9, 8, 8, 7, 6, 5, 3,
+    /* 55*/ 10, 10, 10, 10, 9, 9, 8, 7, 6, 5, 3,
+    /* 66*/ 11, 11, 11, 11, 10, 10, 9, 9, 8, 7, 5, 3,
+    /* 78*/ 12, 12, 12, 12, 11, 11, 10, 10, 9, 8, 7, 5, 3,
+    /* 91*/ 13, 13, 13, 13, 12, 12, 12, 11, 10, 10, 9, 7, 6, 3,
+    /*105*/ 14, 14, 14, 14, 13, 13, 13, 12, 12, 11, 10, 9, 8, 6, 3,
+    /*120*/ 15, 15, 15, 15, 14, 14, 14, 13, 13, 12, 11, 10, 9, 8, 6, 3,
+    /*136*/ 16,
+];
+const circle_start = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120];
+
+// Vision state arrays
+const viz_clear = Array.from({ length: ROWNO }, () => new Int8Array(COLNO));
+const left_ptrs = Array.from({ length: ROWNO }, () => new Int16Array(COLNO));
+const right_ptrs = Array.from({ length: ROWNO }, () => new Int16Array(COLNO));
+
+// Double-buffered COULD_SEE bitmap.  C ref: vision.c's cs_rows0/cs_rows1 with
+// their rmin/rmax pairs, which are file-static there and belong to the one
+// running game.  A caller that recomputes vision for a state other than the
+// live game supplies its own set through state._visionBuffers, so that the
+// live game's current view and its spare buffer both survive.
+export function makeVisionBuffers() {
+    return {
+        rows: [
+            Array.from({ length: ROWNO }, () => new Uint8Array(COLNO)),
+            Array.from({ length: ROWNO }, () => new Uint8Array(COLNO)),
+        ],
+        rmin: [
+            new Int16Array(ROWNO).fill(COLNO),
+            new Int16Array(ROWNO).fill(COLNO),
+        ],
+        rmax: [new Int16Array(ROWNO).fill(0), new Int16Array(ROWNO).fill(0)],
+    };
+}
+
+const liveVisionBuffers = makeVisionBuffers();
+
+// The live COULD_SEE pair has no per-state form and is not reachable from the
+// game state: only rows[0] is, through game.viz_array. The spare row set and
+// both rmin/rmax pairs are exactly what vision_recalc() writes, so a planning
+// round that leaked into them would be invisible to any check that walks the
+// state. scripts/planning-isolation-test-support.mjs snapshots what this
+// returns for that reason. Read-only: callers must not mutate the arrays.
+export function liveVisionBufferViews() {
+    return [
+        ...liveVisionBuffers.rows[0],
+        ...liveVisionBuffers.rows[1],
+        ...liveVisionBuffers.rmin,
+        ...liveVisionBuffers.rmax,
+    ];
+}
+
+// vision.c's transparency index, the other structure that has no per-state
+// form and no path from the game state: viz_clear and the two pointer grids
+// are module-level and are read by the quadrant walks, which take no state.
+// A planning clone borrows the index rather than copying it, so a leak into
+// these arrays would be invisible to a check that walks the state.
+// scripts/planning-isolation-test-support.mjs snapshots what this returns for
+// that reason. Read-only: callers must not mutate the arrays.
+export function transparencyIndexViews() {
+    return [...viz_clear, ...left_ptrs, ...right_ptrs];
+}
+
+function visionBuffers(state) {
+    return state._visionBuffers ?? liveVisionBuffers;
+}
+function mark_visible_range(row, left, right, scan) {
+    if (left > right) return;
+    if (scan.callback) {
+        for (let i = left; i <= right; ++i) scan.callback(i, row);
+        return;
+    }
+    const rowp = scan.rows?.[row];
+    if (!rowp) return;
+    for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
+    if (scan.left[row] > left) scan.left[row] = left;
+    if (scan.right[row] < right) scan.right[row] = right;
+}
+
+function heroSeesInvisible(state) {
+    const property = state.u?.uprops?.[SEE_INVIS];
+    return Boolean(property?.intrinsic || property?.extrinsic);
+}
+
+// defsym.h keeps every wall cmap entry in the contiguous half-open range
+// [S_stone, S_ndoor).  C's is_lightblocker_mappear() expresses this as
+// mappearance < S_ndoor because a valid furniture appearance is nonnegative.
+function isWallMimicAppearance(appearance) {
+    return appearance >= S_stone && appearance < S_ndoor;
+}
+
+// C ref: monst.h is_lightblocker_mappear() (233-239) over is_obj_mappear()
+// (243-244). Exported because mon.c seemimic() reads it too, and one C macro
+// under two spellings is one defect rather than two functions.
+export function is_lightblocker_mappear(monster) {
+    const appearanceType = (monster?.m_ap_type ?? 0) & M_AP_TYPMASK;
+    if (appearanceType === M_AP_OBJECT)
+        return monster.mappearance === BOULDER;
+    return appearanceType === M_AP_FURNITURE
+        && (monster.mappearance === S_hcdoor
+            || monster.mappearance === S_vcdoor
+            || isWallMimicAppearance(monster.mappearance)
+            || monster.mappearance === S_tree);
+}
+
+// C ref: vision.c does_block() (188-190), the mimic term alone: a mimic the
+// hero cannot see through because of what it is pretending to be.
+function mimicBlocksLight(x, y, state) {
+    const monster = m_at(x, y, state);
+    if (!monster || (monster.minvis && !heroSeesInvisible(state))) return false;
+    return is_lightblocker_mappear(monster);
+}
+
+function blocksVisionAt(x, y, state) {
+    const level = state.level;
+    const loc = level.at(x, y);
+    if (!loc) return true;
+    const typ = loc.typ ?? 0;
+    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
+    if (typ === DOOR) {
+        // rm.doormask aliases the shared flags field in C.  Generated levels
+        // use flags while some focused callers still populate doormask.
+        const mask = loc.flags || loc.doormask || 0;
+        if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
+    }
+    const drawbridgeMask = loc.flags ?? 0;
+    const moat = !on_level(state.u?.uz, state.juiblex_level)
+        && (typ === MOAT
+            || (typ === DRAWBRIDGE_UP
+                && (drawbridgeMask & DB_UNDER) === DB_MOAT));
+    if (typ === CLOUD || typ === WATER || typ === LAVAWALL
+        || (state.u?.uinwater && moat)) {
+        return true;
+    }
+    for (let object = level.objects?.[x]?.[y] ?? null;
+        object;
+        object = object.nexthere) {
+        if (object.otyp === BOULDER) return true;
+    }
+    if (mimicBlocksLight(x, y, state)) return true;
+    if (visible_region_at(x, y, state)) return true;
+    return false;
+}
+
+// C ref: vision.c does_block().
+export function does_block(x, y, _location = null, state = game) {
+    return blocksVisionAt(x, y, state);
+}
+
+// The compact transparency index below (viz_clear and the left/right pointers)
+// is a pure function of the map, so it is derived rather than owned: rebuilding
+// it from a different state and rebuilding it again from the live one restores
+// exactly what was there. js/unported_monster_actions.js relies on that to let
+// its cloned monster scan see a door it opened.
+function rebuildVisionPoint(x, y, state) {
+    const affectedCurrentVision = Boolean(state.viz_array?.[y]?.[x]);
+    const oldVisionMin = state._viz_rmin;
+    const oldVisionMax = state._viz_rmax;
+    vision_reset(state);
+    state._viz_rmin = oldVisionMin;
+    state._viz_rmax = oldVisionMax;
+    if (affectedCurrentVision) state.vision_full_recalc = 1;
+}
+
+// C refs: vision.c block_point(), unblock_point(), recalc_block_point().
+// The JS owner rebuilds the compact transparency index as a unit; preserving
+// the prior display bounds gives the same subsequent vision_recalc() contract.
+export function block_point(x, y, state = game) {
+    rebuildVisionPoint(x, y, state);
+}
+
+export function unblock_point(x, y, state = game) {
+    rebuildVisionPoint(x, y, state);
+}
+
+export function recalc_block_point(x, y, state = game) {
+    rebuildVisionPoint(x, y, state);
+}
+
+// C ref: vision_reset() — rebuild viz_clear and left/right ptrs
+export function vision_reset(state = game) {
+    const level = state.level;
+    if (!level) return;
+
+    for (let y = 0; y < ROWNO; y++) {
+        viz_clear[y].fill(0);
+        let dig_left = 0;
+        let block = true;
+        for (let x = 1; x < COLNO; x++) {
+            const cur_block = blocksVisionAt(x, y, state);
+            if (block !== cur_block) {
+                if (block) {
+                    for (let i = dig_left; i < x; i++) {
+                        left_ptrs[y][i] = dig_left;
+                        right_ptrs[y][i] = x - 1;
+                    }
+                } else {
+                    let i = dig_left;
+                    if (dig_left) dig_left--;
+                    for (; i < x; i++) {
+                        left_ptrs[y][i] = dig_left;
+                        right_ptrs[y][i] = x;
+                        viz_clear[y][i] = 1;
+                    }
+                }
+                dig_left = x;
+                block = !block;
+            }
+        }
+        let i = dig_left;
+        if (!block && dig_left) dig_left--;
+        for (; i < COLNO; i++) {
+            left_ptrs[y][i] = dig_left;
+            right_ptrs[y][i] = COLNO - 1;
+            viz_clear[y][i] = block ? 0 : 1;
+        }
+    }
+    state._viz_rmin = null;
+    state._viz_rmax = null;
+}
+
+// Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
+function q1_path(srow, scol, y2, x2) {
+    let x = scol, y = srow;
+    const dx = x2 - x, dy = y - y2;
+    const dxs = dx << 1, dys = dy << 1;
+    if (dy > dx) {
+        let err = dxs - dy;
+        for (let k = dy - 1; k; k--) {
+            if (err >= 0) { x++; err -= dys; }
+            y--;
+            err += dxs;
+            if (!viz_clear[y][x]) return 0;
+        }
+    } else {
+        let err = dys - dx;
+        for (let k = dx - 1; k; k--) {
+            if (err >= 0) { y--; err -= dxs; }
+            x++;
+            err += dys;
+            if (!viz_clear[y][x]) return 0;
+        }
+    }
+    return 1;
+}
+
+function q2_path(srow, scol, y2, x2) {
+    let x = scol, y = srow;
+    const dx = x - x2, dy = y - y2;
+    const dxs = dx << 1, dys = dy << 1;
+    if (dy > dx) {
+        let err = dxs - dy;
+        for (let k = dy - 1; k; k--) {
+            if (err >= 0) { x--; err -= dys; }
+            y--;
+            err += dxs;
+            if (!viz_clear[y][x]) return 0;
+        }
+    } else {
+        let err = dys - dx;
+        for (let k = dx - 1; k; k--) {
+            if (err >= 0) { y--; err -= dxs; }
+            x--;
+            err += dys;
+            if (!viz_clear[y][x]) return 0;
+        }
+    }
+    return 1;
+}
+
+function q3_path(srow, scol, y2, x2) {
+    let x = scol, y = srow;
+    const dx = x - x2, dy = y2 - y;
+    const dxs = dx << 1, dys = dy << 1;
+    if (dy > dx) {
+        let err = dxs - dy;
+        for (let k = dy - 1; k; k--) {
+            if (err >= 0) { x--; err -= dys; }
+            y++;
+            err += dxs;
+            if (!viz_clear[y][x]) return 0;
+        }
+    } else {
+        let err = dys - dx;
+        for (let k = dx - 1; k; k--) {
+            if (err >= 0) { y++; err -= dxs; }
+            x--;
+            err += dys;
+            if (!viz_clear[y][x]) return 0;
+        }
+    }
+    return 1;
+}
+
+function q4_path(srow, scol, y2, x2) {
+    let x = scol, y = srow;
+    const dx = x2 - x, dy = y2 - y;
+    const dxs = dx << 1, dys = dy << 1;
+    if (dy > dx) {
+        let err = dxs - dy;
+        for (let k = dy - 1; k; k--) {
+            if (err >= 0) { x++; err -= dys; }
+            y++;
+            err += dxs;
+            if (!viz_clear[y][x]) return 0;
+        }
+    } else {
+        let err = dys - dx;
+        for (let k = dx - 1; k; k--) {
+            if (err >= 0) { y++; err -= dxs; }
+            x++;
+            err += dys;
+            if (!viz_clear[y][x]) return 0;
+        }
+    }
+    return 1;
+}
+
+// C ref: vision.c clear_path(). The quadrant routines deliberately skip the
+// two endpoints and test only intervening cells against viz_clear.
+export function clear_path(col1, row1, col2, row2) {
+    if (col1 < col2) {
+        return row1 > row2
+            ? q1_path(row1, col1, row2, col2)
+            : q4_path(row1, col1, row2, col2);
+    }
+    if (row1 > row2) return q2_path(row1, col1, row2, col2);
+    if (row1 === row2 && col1 === col2) return 1;
+    return q3_path(row1, col1, row2, col2);
+}
+
+function circle_offset(range, rowOffset) {
+    return circle_data[circle_start[range] + rowOffset];
+}
+
+// C ref: vision.c right_side()
+function right_side(row, left, right_mark, limitsIdx, scan) {
+    const nrow = row + scan.step;
+    const deeper = nrow >= 0 && nrow < ROWNO
+        && (limitsIdx < 0 || circle_data[limitsIdx] >= circle_data[limitsIdx + 1]);
+    const lim_max = limitsIdx >= 0
+        ? Math.min(COLNO - 1, scan.startCol + circle_data[limitsIdx])
+        : COLNO - 1;
+    if (right_mark > lim_max) right_mark = lim_max;
+    const nextLimIdx = limitsIdx >= 0 ? limitsIdx + 1 : -1;
+
+    while (left <= right_mark) {
+        let right_edge = right_ptrs[row][left];
+        if (right_edge > lim_max) right_edge = lim_max;
+
+        if (!viz_clear[row][left]) {
+            if (right_edge > right_mark) {
+                right_edge = (row - scan.step >= 0 && row - scan.step < ROWNO && viz_clear[row - scan.step][right_mark])
+                    ? right_mark + 1 : right_mark;
+            }
+            mark_visible_range(row, left, right_edge, scan);
+            left = right_edge + 1;
+            continue;
+        }
+
+        if (left !== scan.startCol) {
+            for (; left <= right_edge; left++) {
+                const result = scan.step < 0
+                    ? q1_path(scan.startRow, scan.startCol, row, left)
+                    : q4_path(scan.startRow, scan.startCol, row, left);
+                if (result) break;
+            }
+            if (left > lim_max) return;
+            if (left === lim_max) {
+                mark_visible_range(row, lim_max, lim_max, scan);
+                return;
+            }
+            if (left >= right_edge) { left = right_edge; continue; }
+        }
+
+        let right;
+        if (right_mark < right_edge) {
+            for (right = right_mark; right <= right_edge; right++) {
+                const result = scan.step < 0
+                    ? q1_path(scan.startRow, scan.startCol, row, right)
+                    : q4_path(scan.startRow, scan.startCol, row, right);
+                if (!result) break;
+            }
+            right--;
+        } else {
+            right = right_edge;
+        }
+
+        if (left <= right) {
+            if (left === right && left === scan.startCol
+                && scan.startCol < COLNO - 1
+                && !viz_clear[row][scan.startCol + 1]) {
+                right = scan.startCol + 1;
+            }
+            if (right > lim_max) right = lim_max;
+            mark_visible_range(row, left, right, scan);
+            if (deeper)
+                right_side(nrow, left, right, nextLimIdx, scan);
+            left = right + 1;
+        }
+    }
+}
+
+// C ref: vision.c left_side()
+function left_side(row, left_mark, right, limitsIdx, scan) {
+    const nrow = row + scan.step;
+    const deeper = nrow >= 0 && nrow < ROWNO
+        && (limitsIdx < 0 || circle_data[limitsIdx] >= circle_data[limitsIdx + 1]);
+    const lim_min = limitsIdx >= 0
+        ? Math.max(0, scan.startCol - circle_data[limitsIdx])
+        : 0;
+    if (left_mark < lim_min) left_mark = lim_min;
+    const nextLimIdx = limitsIdx >= 0 ? limitsIdx + 1 : -1;
+
+    while (right >= left_mark) {
+        let left_edge = left_ptrs[row][right];
+        if (left_edge < lim_min) left_edge = lim_min;
+
+        if (!viz_clear[row][right]) {
+            if (left_edge < left_mark) {
+                left_edge = (row - scan.step >= 0 && row - scan.step < ROWNO && viz_clear[row - scan.step][left_mark])
+                    ? left_mark - 1 : left_mark;
+            }
+            mark_visible_range(row, left_edge, right, scan);
+            right = left_edge - 1;
+            continue;
+        }
+
+        if (right !== scan.startCol) {
+            for (; right >= left_edge; right--) {
+                const result = scan.step < 0
+                    ? q2_path(scan.startRow, scan.startCol, row, right)
+                    : q3_path(scan.startRow, scan.startCol, row, right);
+                if (result) break;
+            }
+            if (right < lim_min) return;
+            if (right === lim_min) {
+                mark_visible_range(row, lim_min, lim_min, scan);
+                return;
+            }
+            if (right <= left_edge) { right = left_edge; continue; }
+        }
+
+        let left;
+        if (left_mark > left_edge) {
+            for (left = left_mark; left >= left_edge; left--) {
+                const result = scan.step < 0
+                    ? q2_path(scan.startRow, scan.startCol, row, left)
+                    : q3_path(scan.startRow, scan.startCol, row, left);
+                if (!result) break;
+            }
+            left++;
+        } else {
+            left = left_edge;
+        }
+
+        if (left <= right) {
+            if (left === right && right === scan.startCol
+                && scan.startCol > 0
+                && !viz_clear[row][scan.startCol - 1]) {
+                left = scan.startCol - 1;
+            }
+            if (left < lim_min) left = lim_min;
+            mark_visible_range(row, left, right, scan);
+            if (deeper)
+                left_side(nrow, left, right, nextLimIdx, scan);
+            right = left - 1;
+        }
+    }
+}
+
+// C ref: vision.c view_from()
+function view_from(
+    srow,
+    scol,
+    cs_rows,
+    cs_left,
+    cs_right,
+    range = 0,
+    callback = null,
+) {
+    const scan = {
+        callback,
+        left: cs_left,
+        right: cs_right,
+        rows: cs_rows,
+        startCol: scol,
+        startRow: srow,
+        step: 0,
+    };
+    let left, right;
+    if (viz_clear[srow][scol]) {
+        left = left_ptrs[srow][scol];
+        right = right_ptrs[srow][scol];
+    } else {
+        left = !scol ? 0
+            : (viz_clear[srow][scol - 1]
+                ? left_ptrs[srow][scol - 1] : scol - 1);
+        right = scol === COLNO - 1 ? COLNO - 1
+            : (viz_clear[srow][scol + 1]
+                ? right_ptrs[srow][scol + 1] : scol + 1);
+    }
+
+    let limitsIdx = -1;
+    if (range) {
+        if (left < scol - range) left = scol - range;
+        if (right > scol + range) right = scol + range;
+        limitsIdx = circle_start[range] + 1;
+    }
+
+    mark_visible_range(srow, left, right, scan);
+
+    const nrow_down = srow + 1;
+    if (nrow_down < ROWNO) {
+        scan.step = 1;
+        if (scol < COLNO - 1)
+            right_side(nrow_down, scol, right, limitsIdx, scan);
+        if (scol) left_side(nrow_down, left, scol, limitsIdx, scan);
+    }
+    const nrow_up = srow - 1;
+    if (nrow_up >= 0) {
+        scan.step = -1;
+        if (scol < COLNO - 1)
+            right_side(nrow_up, scol, right, limitsIdx, scan);
+        if (scol) left_side(nrow_up, left, scol, limitsIdx, scan);
+    }
+}
+
+// C ref: vision.c do_clear_area(). Callback order is significant for clients
+// such as dogmove.c wantdoor(), which keeps the first square at a tied
+// distance.
+export function do_clear_area(
+    scol,
+    srow,
+    range,
+    callback,
+    argument = null,
+    state = game,
+) {
+    if (typeof callback !== 'function')
+        throw new TypeError('do_clear_area requires a callback');
+    if (range > MAX_RADIUS || range < 1)
+        throw new RangeError(`do_clear_area: illegal range ${range}`);
+
+    if (scol !== state.u.ux || srow !== state.u.uy) {
+        if (state !== game
+            && state.level?._visionTransparencyOwner !== game.level) {
+            throw new Error(
+                'do_clear_area alternate state must share active '
+                    + 'vision transparency',
+            );
+        }
+        view_from(
+            srow,
+            scol,
+            null,
+            null,
+            null,
+            range,
+            (x, y) => callback(x, y, argument),
+        );
+        return;
+    }
+
+    if (state === game && game.vision_full_recalc) vision_recalc(0);
+    const minY = Math.max(0, srow - range);
+    const maxY = Math.min(ROWNO - 1, srow + range);
+    for (let y = minY; y <= maxY; ++y) {
+        const offset = circle_offset(range, Math.abs(y - srow));
+        const minX = Math.max(1, scol - offset);
+        const maxX = Math.min(COLNO - 1, scol + offset);
+        for (let x = minX; x <= maxX; ++x) {
+            if (couldsee(x, y, state)) callback(x, y, argument);
+        }
+    }
+}
+
+// C ref: vision.c do_clear_area().  This async adapter keeps the same
+// row-major callback order for callers whose callback has source-visible
+// asynchronous work.  In particular, a callback can finish changing one
+// square (and consuming its RNG) before the next square is considered.
+// The ordinary synchronous API above remains unchanged for its existing
+// callers.  Fountain gushes are centered on the hero in C; the off-center
+// path below preserves view_from()'s coordinate selection before awaiting
+// each selected callback.
+export async function do_clear_area_async(
+    scol,
+    srow,
+    range,
+    callback,
+    argument = null,
+    state = game,
+    rawEnv = {},
+) {
+    if (typeof callback !== 'function')
+        throw new TypeError('do_clear_area_async requires a callback');
+    if (range > MAX_RADIUS || range < 1)
+        throw new RangeError(`do_clear_area: illegal range ${range}`);
+
+    if (scol !== state.u.ux || srow !== state.u.uy) {
+        const coordinates = [];
+        do_clear_area(
+            scol,
+            srow,
+            range,
+            (x, y) => coordinates.push([x, y]),
+            null,
+            state,
+        );
+        for (const [x, y] of coordinates)
+            await callback(x, y, argument);
+        return;
+    }
+
+    if (state === game && game.vision_full_recalc) vision_recalc(0);
+    // vision.c only bypasses couldsee() for a centered detection callback on
+    // the air or water plane. Other async area effects keep normal visibility.
+    const overrideVision = Boolean(rawEnv.detecting
+        && (on_level(state.u.uz, state.water_level)
+            || on_level(state.u.uz, state.air_level)));
+    const minY = Math.max(0, srow - range);
+    const maxY = Math.min(ROWNO - 1, srow + range);
+    for (let y = minY; y <= maxY; ++y) {
+        const offset = circle_offset(range, Math.abs(y - srow));
+        const minX = Math.max(1, scol - offset);
+        const maxX = Math.min(COLNO - 1, scol + offset);
+        for (let x = minX; x <= maxX; ++x) {
+            if (overrideVision || couldsee(x, y, state))
+                await callback(x, y, argument);
+        }
+    }
+}
+
+// C ref: vision_recalc(control).  `env` names three of the things C reaches
+// through globals: the game state, its pair of COULD_SEE buffers, and
+// display.c's redraw.  js/unported_monster_actions.js supplies all three so
+// that its cloned monster scan can recompute vision for the map it planned
+// without touching the live view or painting a frame.
+//
+// A fourth remains shared and is not in `env`: the transparency index
+// viz_clear/left_ptrs/right_ptrs, declared as module constants above, read
+// here at the `!viz_clear[row][col]` tests and again inside view_from()'s
+// quadrant walks, none of which takes a state.  vision_reset(state) fills it
+// from whichever map it is handed.  A caller working on a state other than
+// `game` therefore has to rebuild the index from its own map before this call
+// and from the live map afterwards, or it computes the live map's sight lines
+// and writes them into the planned state.  js/unported_monster_actions.js is
+// the one caller that does: admitDoorOpening() rebuilds it from the planned
+// map, and the finally at :879-896 rebuilds it from the live one, both through
+// recalc_block_point(), which calls vision_reset().
+//
+// `env.redraw` defaults to newsym, which ignores its state argument and paints
+// the module-level `game`, so a caller whose state is not `game` must supply
+// its own.  Omitting it is refused below rather than left to be discovered on
+// a repainted frame.
+export function vision_recalc(control = 0, env = {}) {
+    const state = env.state ?? game;
+    if (state !== game && typeof env.redraw !== 'function') {
+        throw new TypeError(
+            'vision_recalc on a state other than game requires a redraw',
+        );
+    }
+    const redraw = env.redraw ?? newsym;
+    const u = state.u;
+    if (!u || !state.level) return;
+    state.vision_full_recalc = 0;
+    if (state.in_mklev) return;
+
+    // Swap to unused buffer
+    const buffers = visionBuffers(state);
+    const spare = state.active_buf === 0 ? 1 : 0;
+    const next = buffers.rows[spare];
+    const next_rmin = buffers.rmin[spare];
+    const next_rmax = buffers.rmax[spare];
+
+    for (let y = 0; y < ROWNO; y++) {
+        next[y].fill(0);
+        next_rmin[y] = COLNO;
+        next_rmax[y] = 0;
+    }
+
+    // vision.c:557-622. A swallowed hero has no line of sight; the fresh
+    // buffer remains empty until the swallowed display is drawn by the
+    // caller. Keeping the guard here also makes couldsee() agree with the C
+    // bitmap while monster movement runs inside the engulfment. C gives Blind
+    // and Rogue-level vision precedence over the water/pit arms; underwater
+    // vision in turn precedes pit vision. Those other specialized branches
+    // remain unported here, so leave their prior view_from behavior intact
+    // rather than letting the new pit arm take them over.
+    const rogueLevel = on_level(u.uz, state.rogue_level);
+    const underwaterOutsideWaterLevel = Boolean(
+        u.uinwater && !on_level(u.uz, state.water_level),
+    );
+    const pitSight = Boolean(
+        u.utrap && u.utraptype === TT_PIT
+        && !heroIsBlind(u)
+        && !rogueLevel
+        && !underwaterOutsideWaterLevel,
+    );
+    if (control !== 2 && !state.u?.uswallow) {
+        if (pitSight) {
+            // vision.c:609-622. The pit branch starts ordinary sight with
+            // COULD_SEE and IN_SIGHT only in the adjacent 3-by-3 area. C can
+            // add IN_SIGHT farther away in its later x-ray overlay. C checks
+            // Blind, Rogue-level, and underwater vision before this branch.
+            const minCol = Math.max(1, u.ux - 1);
+            const maxCol = Math.min(COLNO - 1, u.ux + 1);
+            for (let row = u.uy - 1; row <= u.uy + 1; ++row) {
+                if (row < 0) continue;
+                if (row >= ROWNO) break;
+                next_rmin[row] = minCol;
+                next_rmax[row] = maxCol;
+                for (let col = minCol; col <= maxCol; ++col)
+                    next[row][col] = IN_SIGHT | COULD_SEE;
+            }
+        } else {
+            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        }
+    }
+
+    const level = state.level;
+    const ux = u.ux, uy = u.uy;
+
+    // C ref: vision.c vision_recalc(), Blind branch. Keep COULD_SEE so
+    // monster line-of-sight remains available, but grant the hero no
+    // IN_SIGHT cells and remove anything which was visible previously.
+    if (control !== 2 && heroIsBlind(u)) {
+        const oldArray = state.viz_array;
+        state.viz_array = next;
+        state.active_buf = spare;
+        if (oldArray) {
+            for (let row = 0; row < ROWNO; ++row) {
+                for (let col = 0; col < COLNO; ++col) {
+                    if (oldArray[row][col] & IN_SIGHT) redraw(col, row);
+                }
+            }
+        }
+        state._viz_rmin = next_rmin;
+        state._viz_rmax = next_rmax;
+        return;
+    }
+
+    // The current vision subset models the ordinary one-square night-vision
+    // range. C computes night vision before overlaying mobile light sources.
+    for (let row = 0; row < ROWNO; row++) {
+        for (let col = next_rmin[row]; col <= next_rmax[row]; col++) {
+            if (!(next[row][col] & COULD_SEE)) continue;
+            if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1)
+                next[row][col] |= IN_SIGHT;
+        }
+    }
+
+    // C ref: vision.c vision_recalc() -> light.c do_light_sources().
+    do_light_sources(next, {
+        state,
+        clearPath: clear_path,
+        circleOffset: circle_offset,
+    });
+
+    // Convert permanent and mobile lighting within line of sight to IN_SIGHT.
+    for (let row = 0; row < ROWNO; row++) {
+        const dy = Math.sign(uy - row);
+        for (let col = next_rmin[row]; col <= next_rmax[row]; col++) {
+            if (!(next[row][col] & COULD_SEE)
+                || (next[row][col] & IN_SIGHT)) continue;
+            const loc = level?.at(col, row);
+            if (!loc) continue;
+
+            if (loc.lit || (next[row][col] & TEMP_LIT)) {
+                if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
+                    && !viz_clear[row]?.[col]) {
+                    // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
+                    const dx = Math.sign(ux - col);
+                    const flev = level?.at(col + dx, row + dy);
+                    if (flev?.lit
+                        || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
+                        next[row][col] |= IN_SIGHT;
+                    }
+                } else {
+                    next[row][col] |= IN_SIGHT;
+                }
+            }
+        }
+    }
+
+    // Swap viz_array and run newsym updates
+    const old_array = state.viz_array;
+    state.viz_array = next;
+    state.active_buf = spare;
+
+    const old_rmin = state._viz_rmin;
+    const old_rmax = state._viz_rmax;
+    // C ref: vision.c vision_recalc().  control == 2 shares the "you see
+    // nothing" arm with u.uswallow and then falls into this loop rather than
+    // jumping over it the way the Blind arm does with its `goto skip`.  Every
+    // cell keeps the zero get_unused_cs() left, so next_rmin[row] stays COLNO
+    // and next_rmax[row] stays 0 and the span below is the old array's alone:
+    // each square that was in sight, or could be seen, is repainted from
+    // memory.  That is how "shut down vision" darkens the map.
+    //
+    // The early return above already established state.level, so old_array,
+    // which is unset only before the first recalculation, is the whole test.
+    if (old_array) {
+        for (let row = 0; row < ROWNO; row++) {
+            const old_row = old_array[row];
+            const next_row = next[row];
+            const start = old_rmin
+                ? Math.min(old_rmin[row], next_rmin[row])
+                : next_rmin[row];
+            const stop = old_rmax
+                ? Math.max(old_rmax[row], next_rmax[row])
+                : next_rmax[row];
+            if (start > stop) continue;
+            const dy = Math.sign(uy - row);
+            for (let col = start; col <= stop; col++) {
+                const nv = next_row[col];
+                const ov = old_row[col];
+                const loc = state.level.at(col, row);
+                if (!loc) continue;
+
+                if (nv & IN_SIGHT) {
+                    const oldseenv = loc.seenv || 0;
+                    const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
+                    loc.seenv = (loc.seenv || 0) | sv;
+                    if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
+                        redraw(col, row);
+                    }
+                } else if ((nv & COULD_SEE)
+                    && (loc.lit || (nv & TEMP_LIT))) {
+                    if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
+                        && !viz_clear[row][col]) {
+                        const dx = Math.sign(ux - col);
+                        const adjLoc = state.level.at(col + dx, row + dy);
+                        if (adjLoc?.lit
+                            || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
+                            next_row[col] |= IN_SIGHT;
+                            const oldseenv = loc.seenv || 0;
+                            const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
+                            loc.seenv = (loc.seenv || 0) | sv;
+                            if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
+                                redraw(col, row);
+                        }
+                    } else {
+                        next_row[col] |= IN_SIGHT;
+                        const oldseenv = loc.seenv || 0;
+                        const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
+                        loc.seenv = (loc.seenv || 0) | sv;
+                        if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
+                            redraw(col, row);
+                    }
+                } else if ((nv & COULD_SEE) && loc.waslit) {
+                    loc.waslit = 0;
+                    redraw(col, row);
+                } else {
+                    if ((ov & IN_SIGHT)
+                        || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
+                        redraw(col, row);
+                    }
+                }
+            }
+        }
+        if (ux > 0) redraw(ux, uy);
+    }
+
+    state._viz_rmin = next_rmin;
+    state._viz_rmax = next_rmax;
+}
+
+// C ref: cansee(x, y). The optional state keeps focused rendering calls on
+// the same owner; production uses the default game singleton.
+export function cansee(x, y, state = game) {
+    if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
+    return !!(state.viz_array?.[y]?.[x] & IN_SIGHT);
+}
+
+// C ref: couldsee(x, y). The optional state mirrors cansee()'s focused-call
+// ownership while production continues to use the game singleton.
+export function couldsee(x, y, state = game) {
+    if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
+    return !!(state.viz_array?.[y]?.[x] & COULD_SEE);
+}
+
+// C ref: vision.h m_canseeu() (50-53), the variant compiled in. `Invis` is
+// youprop.h:198, the intrinsic-or-extrinsic pair minus the blocked term, and
+// `Underwater` is youprop.h:279, the bare u.uinwater field. The two commented
+// -out terms at vision.h:45-48, u.uburied and mburied, are not compiled.
+export function m_canseeu(mon, state = game) {
+    const invisible = state.u?.uprops?.[INVIS] ?? {};
+    const Invis = Boolean(
+        (invisible.intrinsic || invisible.extrinsic) && !invisible.blocked,
+    );
+    return (!Invis || perceives(mon.data))
+        && !state.u?.uinwater
+        && couldsee(mon.mx, mon.my, state);
+}
+
+// C ref: vision.c howmonseen() (2152-2186), using display.c's tp_sensemon()
+// together with this source owner's MATCH_WARN_OF_MON() predicate. The
+// bitmask is consumed by pager.c:look_at_monster() to explain why a displayed
+// monster is known.
+// C ref: vision.c howmonseen(). The state argument preserves the focused
+// clone contract used by the display/pager callers; no live singleton is
+// consulted while inspecting a planning state.
+export function howmonseen(mon, state = game) {
+    if (!mon) return 0;
+    const useemon = canseemon(mon, state);
+    const xrayRange = Number.isFinite(state.u?.xray_range)
+        && state.u.xray_range >= 0
+        ? Math.trunc(state.u.xray_range) ** 2 : -1;
+    let seen = 0;
+    const normal = mon.wormno
+        ? worm_known(mon, state)
+        : cansee(mon.mx, mon.my, state) && couldsee(mon.mx, mon.my, state);
+    if (normal && mon_visible(mon, state) && !mon.minvis)
+        seen |= MONSEEN_NORMAL;
+    if (useemon && mon.minvis)
+        seen |= MONSEEN_SEEINVIS;
+    const seeInvisible = state.u?.uprops?.[SEE_INVIS];
+    if ((!mon.minvis
+        || Boolean(seeInvisible?.intrinsic || seeInvisible?.extrinsic))
+        && see_with_infrared(mon, state)) {
+        seen |= MONSEEN_INFRAVIS;
+    }
+    if (tp_sensemon(mon, state))
+        seen |= MONSEEN_TELEPAT;
+    const hero = state.u ?? {};
+    const dx = (mon.mx ?? 0) - (hero.ux ?? 0);
+    const dy = (mon.my ?? 0) - (hero.uy ?? 0);
+    if (useemon && xrayRange > 0 && dx * dx + dy * dy <= xrayRange)
+        seen |= MONSEEN_XRAYVIS;
+    const detect = hero.uprops?.[DETECT_MONSTERS];
+    if (Boolean(detect?.intrinsic || detect?.extrinsic))
+        seen |= MONSEEN_DETECT;
+    if (warningMatches(mon, state))
+        seen |= MONSEEN_WARNMON;
+    return seen;
+}
+
+export function init_vision_globals() {
+    // A runSegment() call is a new NetHack process.  C's file-static vision
+    // buffers therefore begin zeroed for every segment; clear the module
+    // buffers explicitly so a prior game cannot redraw stale visible cells
+    // while initializing a blind hero.
+    for (let row = 0; row < ROWNO; ++row) {
+        liveVisionBuffers.rows[0][row].fill(0);
+        liveVisionBuffers.rows[1][row].fill(0);
+    }
+    liveVisionBuffers.rmin[0].fill(COLNO);
+    liveVisionBuffers.rmax[0].fill(0);
+    liveVisionBuffers.rmin[1].fill(COLNO);
+    liveVisionBuffers.rmax[1].fill(0);
+    game.viz_array = liveVisionBuffers.rows[0];
+    game.active_buf = 0;
+    game.vision_full_recalc = 0;
+    game._viz_rmin = null;
+    game._viz_rmax = null;
+}

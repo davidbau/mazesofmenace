@@ -1,0 +1,1181 @@
+// end.js — the death sequence.
+// C ref: src/end.c
+//
+// done() and really_done() spend almost no draws themselves; the sequence is
+// screens — "Die?", the corpse (whose creation DOES draw), "Save bones?",
+// the tombstone text window, the topten notice — and then the process ends,
+// which for a replayed session means the remaining keys of the segment are
+// swallowed and the next segment starts a fresh game.
+
+import { game } from './gstate.js';
+import { notice_all_mons_flush } from './hack.js';
+import { shkname, shkname_is_pname } from './shknam.js';
+import { m_monnam } from './do_name.js';
+import { In_tutorial, UTOTYPE_ATSTAIRS, has_ebones } from './const.js';
+import { pline, canspotmon, tty_clear_nhwindow_message } from './display.js';
+import { You, Your, You_feel, pline_The } from './pline.js';
+import { carrying, hidden_gold, money_cnt, useup, obfree, currency } from './invent.js';
+import { depth, dunlevs_in_dungeon, single_level_branch } from './dungeon.js';
+import { G_GENOD, G_UNIQ, In_endgame, In_quest, Is_astralevel,
+         KILLED_BY_AN, KILLED_BY, A_CURRENT, A_ORIGINAL,
+         LOW_PM, M_AP_MONSTER, M_AP_TYPE, MGIVENNAME, NHW_TEXT, NHW_MENU,
+         OBJ_FREE, BUFSZ,
+         NON_PM, LEAVESTATUE, A_CON, has_mgivenname, Upolyd } from './const.js';
+import { PMNAMES, MONSYMS } from './monst_data.js';
+import { ONAMES, OCLASSES } from './objects_data.js';
+import { pmname, free_oname } from './do_name.js';
+import { gender, type_is_pname } from './mondata.js';
+import { is_vampshifter } from './monst.js';
+import { Hallucination } from './youprop.js';
+import { an } from './objnam.js';
+import { Race_if } from './u_init.js';
+import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
+         tty_destroy_nhwindow } from './tty/wintty.js';
+import { tty_yn_function } from './tty/topl.js';
+import { makeknown } from './o_init.js';
+import { ACURR, adjattrib } from './attrib.js';
+import { minuhpmax } from './attrib.js';
+import { setuhpmax } from './exper.js';
+import { init_uhunger } from './eat.js';
+import { make_sick } from './potion.js';
+import { TIMEOUT, SICK_ALL, TT_LAVA, PLNMSG_OK_DONT_DIE, plur, has_oname, IN_SIGHT } from './const.js';
+import { reset_utrap } from './trap.js';
+import { endmultishot } from './dothrow.js';
+import { expels } from './mhitu.js';
+import { unstuck } from './mon.js';
+import { sticks } from './mondata.js';
+import { mon_nam, Monnam } from './do_name.js';
+import { flush_screen } from './display.js';
+import { Is_container, Has_contents, SchroedingersBox } from './obj.js';
+import { update_inventory, sortloot, unsortloot } from './invent.js';
+import { the, xname, thesimpleoname, the_unique_obj, OBJ_NAME } from './objnam.js';
+import { mksobj } from './mkobj.js';
+import { arti_cost, artiname } from './artifact.js';
+import { adj_lev } from './makemon.js';
+import { d } from './rng.js';
+import { doname_with_price } from './shk.js';
+import { discover_object } from './o_init.js';
+import { upstart } from './do_name.js';
+import { SORTLOOT_LOOT, SORTLOOT_PACK } from './const.js';
+import { boolean_option } from './options.js';
+import { tty_next_page } from './tty/wintty.js';
+import { xwaitforspace } from './tty/getline.js';
+import { docrt, display_nhwindow_message } from './display.js';
+import { keepdogs } from './dog.js';
+
+function note_unported_end(what) {
+    (game.unported ||= new Set()).add('end:' + what);
+}
+
+// src/end.c:44 deaths[] — the array of death.
+const deaths = [
+    'died', 'choked', 'poisoned', 'starvation', 'drowning', 'burning',
+    'dissolving under the heat and pressure', 'crushed', 'turned to stone',
+    'turned into slime', 'genocided', 'panic', 'trickery', 'quit',
+    'escaped', 'ascended',
+];
+
+// src/end.c:52 ends[] — "when you %s".
+const ends = [
+    'died', 'choked', 'were poisoned', 'starved', 'drowned', 'burned',
+    'dissolved in the lava', 'were crushed', 'turned to stone',
+    'turned into slime', 'were genocided', 'panicked', 'were tricked',
+    'quit', 'escaped', 'ascended',
+];
+
+/* include/hack.h death `how` reasons; only the ones the port dispatches on */
+export const DIED = 0, CHOKING = 1, POISONING = 2, STARVING = 3,
+             DROWNING = 4, BURNING = 5, DISSOLVED = 6, CRUSHING = 7,
+             STONING = 8, TURNED_SLIME = 9, GENOCIDED = 10, PANICKED = 11,
+             TRICKED = 12, QUIT = 13, ESCAPED = 14, ASCENDED = 15;
+
+const the_unique_pm = (ptr) =>
+    !type_is_pname(ptr) && (ptr.geno & G_UNIQ) !== 0;
+
+// src/mon.c:362 zombie_maker(), used here only to choose the hero's bones
+// form after a fatal attack.
+function zombie_maker(mon) {
+    const ptr = mon.data;
+    if (mon.mcan)
+        return false;
+    if (ptr.mlet === MONSYMS.S_ZOMBIE)
+        return ptr.pmidx !== PMNAMES.PM_GHOUL
+            && ptr.pmidx !== PMNAMES.PM_SKELETON;
+    return ptr.mlet === MONSYMS.S_LICH;
+}
+
+// src/end.c:185 done_in_by() -- death caused directly by a monster.
+export async function done_in_by(mtmp, how) {
+    const original = mtmp.data;
+    const chamData = Number.isInteger(mtmp.cham) && mtmp.cham >= LOW_PM
+        ? game.mons?.[mtmp.cham] : null;
+    const champtr = chamData || original;
+    const mimicker = M_AP_TYPE(mtmp) === M_AP_MONSTER;
+    const imitator = original !== champtr || mimicker;
+    const monGender = gender(mtmp);
+    let format = KILLED_BY_AN;
+    let buf = '';
+
+    await You(how === STONING ? 'turn to stone...' : 'die...');
+
+    if ((original.geno & G_UNIQ) !== 0 && !(imitator && !mimicker)
+        && !(original === game.mons[PMNAMES.PM_HIGH_CLERIC]
+             && !mtmp.ispriest)) {
+        if (!type_is_pname(original))
+            buf += 'the ';
+        format = KILLED_BY;
+    }
+    if (original === game.mons[PMNAMES.PM_GHOST]
+        && has_mgivenname(mtmp)) {
+        buf += 'the ';
+        format = KILLED_BY;
+    }
+    if (mtmp.minvis)
+        buf += 'invisible ';
+    if (Hallucination() && canspotmon(mtmp))
+        buf += 'hallucinogen-distorted ';
+
+    if (imitator) {
+        let shapePtr = original;
+        const realnm = pmname(champtr, monGender);
+        let fakenm = pmname(original, monGender);
+        const alternate = is_vampshifter(mtmp);
+
+        if (mimicker) {
+            shapePtr = game.mons[mtmp.mappearance] || original;
+            fakenm = pmname(shapePtr, monGender);
+        } else if (alternate && realnm.includes('vampire')
+                   && fakenm === 'vampire bat') {
+            fakenm = 'bat';
+        }
+
+        const shape = alternate || type_is_pname(shapePtr) ? fakenm
+            : the_unique_pm(shapePtr) ? `the ${fakenm}` : an(fakenm);
+        buf += alternate ? `${realnm} in ${shape} form`
+            : mimicker ? `${realnm} disguised as ${shape}`
+              : `${realnm} imitating ${shape}`;
+    } else if (original === game.mons[PMNAMES.PM_GHOST]) {
+        buf += 'ghost';
+        if (has_mgivenname(mtmp))
+            buf += ` of ${MGIVENNAME(mtmp)}`;
+    } else if (mtmp.isshk) {
+        const shknm = shkname(mtmp),
+              honorific = shkname_is_pname(mtmp) ? ''
+                          : mtmp.female ? 'Ms. ' : 'Mr. ';
+
+        buf += `${honorific}${shknm}, the shopkeeper`;
+        format = KILLED_BY;
+    } else if (mtmp.ispriest || mtmp.isminion) {
+        /* m_monnam() suppresses "the" prefix plus "invisible", and
+           it overrides the effect of Hallucination on priestname() */
+        buf += m_monnam(mtmp);
+    } else {
+        buf += pmname(original, monGender);
+        if (has_mgivenname(mtmp))
+            buf += ` ${has_ebones(mtmp) ? 'of' : 'called'} ${MGIVENNAME(mtmp)}`;
+    }
+
+    game.killer = { format, name: buf };
+
+    /* might be killed by a monster which was the cause of hero's
+       helplessness; if so, shorten the reason to just the verb
+       ("paralyzed" rather than "paralyzed by a floating eye") */
+    if (game.multi_reason && game.multireasonbuf
+        && game.multireasonbuf.endsWith(game.multi_reason)) {
+        const m = /^(\d+):/.exec(game.multireasonbuf);
+
+        if (m && Number(m[1]) === mtmp.m_id) {
+            const p = game.multireasonbuf.indexOf(' ');
+
+            if (p >= 0) {
+                game.multireasonbuf = game.multireasonbuf.slice(0, p);
+                game.multi_reason = game.multireasonbuf.slice(m[0].length);
+            }
+        }
+    }
+
+    if (original.mlet === MONSYMS.S_WRAITH) {
+        game.u.ugrave_arise = PMNAMES.PM_WRAITH;
+    } else if (original.mlet === MONSYMS.S_MUMMY
+               && (game.urace?.mummynum ?? NON_PM) !== NON_PM) {
+        game.u.ugrave_arise = game.urace.mummynum;
+    } else if (zombie_maker(mtmp)
+               && (game.urace?.zombienum ?? NON_PM) !== NON_PM) {
+        game.u.ugrave_arise = game.urace.zombienum;
+    } else if (original.mlet === MONSYMS.S_VAMPIRE
+               && Race_if(PMNAMES.PM_HUMAN)) {
+        game.u.ugrave_arise = PMNAMES.PM_VAMPIRE;
+    } else if (original === game.mons[PMNAMES.PM_GHOUL]) {
+        game.u.ugrave_arise = PMNAMES.PM_GHOUL;
+    }
+    if ((game.u.ugrave_arise ?? NON_PM) >= LOW_PM
+        && (game.mvitals[game.u.ugrave_arise].mvflags & G_GENOD) !== 0)
+        game.u.ugrave_arise = NON_PM;
+
+    await done(how);
+}
+
+// src/topten.c formatkiller(), bounded death text for records and graves.
+export function formatkiller(how, incl_helpless, size = BUFSZ) {
+    const k = game.killer || {};
+    let name = k.name || '';
+    /* src/topten.c:103 killed_by_prefix[] — the verb depends on `how` */
+    const killed_by_prefix = [
+        /* DIED, CHOKING, POISONING, STARVING, */
+        'killed by ', 'choked on ', 'poisoned by ', 'died of ',
+        /* DROWNING, BURNING, DISSOLVED, CRUSHING, */
+        'drowned in ', 'burned by ', 'dissolved in ',
+        'crushed to death by ',
+        /* STONING, TURNED_SLIME, GENOCIDED, */
+        'petrified by ', 'turned to slime by ', 'killed by ',
+        /* PANICKED, TRICKED, QUIT, ESCAPED, ASCENDED */
+        '', '', '', '', '',
+    ];
+    let prefix = '';
+    /* KILLED_BY_AN = 0, KILLED_BY = 1, NO_KILLER_PREFIX = 2 */
+    switch (k.format ?? 0) {
+    case 0:
+        name = an(name);
+        /* FALLTHRU */
+    case 1:
+        prefix = killed_by_prefix[how];
+        break;
+    default:
+        break;
+    }
+    name = name.replaceAll(',', ';').replaceAll('=', '_').replaceAll('\t', ' ');
+    let buf = (prefix + name).slice(0, size - 1);
+    if (incl_helpless && game.multi < 0) {
+        const reason = game.multi_reason && `, while ${game.multi_reason}`;
+        const remaining = size - 1 - buf.length;
+        if (reason && reason.length <= remaining)
+            buf += reason;
+        else if (', while helpless'.length <= remaining)
+            buf += ', while helpless';
+    }
+    return buf;
+}
+
+// src/end.c:1596 container_contents(); disclosure and the loot ':' choice.
+export async function container_contents(list, identified, all_containers, reportempty) {
+    const dumping = !!game.iflags?.in_dumplog;
+    for (const box of list || []) {
+        if (Is_container(box) || box.otyp === ONAMES.STATUE) {
+            if (!box.cknown || (identified && !box.lknown)) {
+                box.cknown = 1;
+                if (identified) box.lknown = 1;
+                update_inventory();
+            }
+            if (box.otyp === ONAMES.BAG_OF_TRICKS) {
+                continue;
+            } else if (Has_contents(box)) {
+                const tmpwin = tty_create_nhwindow(NHW_MENU);
+                const cat = SchroedingersBox(box);
+                tty_putstr(tmpwin, 0, `Contents of ${the(xname(box))}:`);
+                if (!dumping) tty_putstr(tmpwin, 0, '');
+                if (!cat) {
+                    const sortloot_option = String(game.flags.sortloot ?? 'l').charAt(0);
+                    const sortflags = ((sortloot_option === 'l' || sortloot_option === 'f')
+                        ? SORTLOOT_LOOT : 0) | (boolean_option('sortpack') ? SORTLOOT_PACK : 0);
+                    const sortedcobj = sortloot(box.cobj, sortflags, false, null);
+                    for (const { obj } of sortedcobj) {
+                        if (!obj) break;
+                        if (identified) {
+                            discover_object(obj.otyp, true, true, false);
+                            obj.dknown = obj.known = obj.bknown = obj.rknown = 1;
+                            if (Is_container(obj) || obj.otyp === ONAMES.STATUE)
+                                obj.cknown = obj.lknown = 1;
+                        }
+                        tty_putstr(tmpwin, 0, `  ${doname_with_price(obj)}`);
+                    }
+                    unsortloot(sortedcobj);
+                } else {
+                    tty_putstr(tmpwin, 0, "  Schroedinger's cat!");
+                }
+                if (dumping) tty_putstr(0, 0, '');
+                await tty_display_nhwindow(tmpwin);
+                do {
+                    await xwaitforspace(' \r\n\x1b');
+                } while (game.morc !== '\x1b' && tty_next_page(tmpwin));
+                tty_destroy_nhwindow(tmpwin);
+                await notice_all_mons_flush();
+                if (all_containers)
+                    await container_contents(box.cobj, identified, true, reportempty);
+            } else if (reportempty) {
+                await pline(`${upstart(thesimpleoname(box))} is empty.`);
+                await display_nhwindow_message();
+            }
+        }
+        if (!all_containers) break;
+    }
+}
+
+// src/end.c:1721 delayed_killer() — remember the cause of a pending death
+// (stoning, sliming, strangling, ...) so done() can name it when it comes.
+export function delayed_killer(id, format, killername) {
+    let k = find_delayed_killer(id);
+    if (!k) {
+        game.killer ||= {};
+        k = { id, format: 0, name: '', next: game.killer.next || null };
+        game.killer.next = k;
+    }
+    k.format = format;
+    k.name = killername ? killername : '';
+    game.killer.name = '';
+}
+
+// src/end.c:1740 find_delayed_killer()
+export function find_delayed_killer(id) {
+    let k;
+    for (k = game.killer?.next || null; k; k = k.next) {
+        if (k.id === id)
+            break;
+    }
+    return k || null;
+}
+
+// src/end.c:1752 dealloc_killer()
+export function dealloc_killer(kptr) {
+    if (!kptr)
+        return;
+    let prev = game.killer, k;
+    for (k = game.killer?.next || null; k; k = k.next) {
+        if (k === kptr)
+            break;
+        prev = k;
+    }
+    if (!k) {
+        /* impossible("dealloc_killer (#%d) not on list", kptr->id) */
+    } else {
+        prev.next = k.next;
+    }
+}
+
+// src/end.c:704 savelife() — explore/wizard "OK, so you don't die."
+export async function savelife(how) {
+    const u = game.u;
+    const acon = ACURR(A_CON);
+    const givehp = 50 + 10 * ((acon / 2) | 0);
+
+    if (u.ulevel < 1)
+        u.ulevel = 1;
+    const uhpmin = minuhpmax(10);
+    if (u.uhpmax < uhpmin)
+        setuhpmax(uhpmin, true);
+    u.uhp = Math.min(u.uhpmax, givehp);
+    if (Upolyd(u))
+        u.mh = Math.min(u.mhmax, givehp);
+    if (u.uhunger < 500 || how === CHOKING) {
+        init_uhunger();
+    }
+    if (((u.uprops?.SICK || 0) & TIMEOUT) === 1)
+        await make_sick(0, null, false, SICK_ALL);
+    game.nomovemsg = 'You survived that attempt on your life.';
+    (game.context ||= {}).move = 0;
+    game.multi = -1; /* can't move again during the current turn */
+    game.multi_reason = game.urole?.mnum === PMNAMES.PM_TOURIST
+        ? 'being toyed with by Fate' : 'attempting to cheat Death';
+    if (u.utrap && u.utraptype === TT_LAVA)
+        await reset_utrap(false);
+    game.disp = game.disp || {};
+    game.disp.botl = true;
+    u.ugrave_arise = NON_PM;
+    (u.intrinsic ||= {}).HUnchanging = 0;
+    await flush_screen(1); /* curs_on_u() */
+    if (!game.context.mon_moving)
+        await endmultishot(false);
+    if (u.uswallow) {
+        await expels(u.ustuck, u.ustuck.data, true);
+    } else if (u.ustuck) {
+        if (Upolyd(u) && sticks(game.youmonst.data))
+            await You(`release ${mon_nam(u.ustuck)}.`);
+        else
+            await pline(`${Monnam(u.ustuck)} releases you.`);
+        await unstuck(u.ustuck);
+    }
+}
+
+// src/end.c done() — the hero's game is over.
+// src/end.c:63 — set while resolving Schroedinger's box for disclosure so
+// the final score counts the same cat
+let Schroedingers_cat = false;
+
+// include/decl.h:417 gg.gems[] and decl.h:154 ga.amulets[], the valuables
+// tallied at the end of the game; src/decl.c:1132 gv.valuables[] lists them
+const gems = Array.from(
+    { length: ONAMES.LAST_REAL_GEM + 1 - ONAMES.FIRST_REAL_GEM + 1 }, /* 1 extra for glass */
+    () => ({ typ: 0, count: 0 }));
+const amulets = Array.from(
+    { length: ONAMES.LAST_AMULET + 1 - ONAMES.FIRST_AMULET },
+    () => ({ typ: 0, count: 0 }));
+const valuables = [{ list: gems, size: gems.length },
+                   { list: amulets, size: amulets.length }];
+
+// include/integer.h:129 nowrap_add() — addition saturating at LONG_MAX
+const LONG_MAX = 0x7fffffffffffffff;
+const nowrap_add = (a, b) => ((a) <= (LONG_MAX - (b)) ? ((a) + (b)) : LONG_MAX);
+
+// src/end.c:763 get_valuables() — inventory or container contents
+function get_valuables(list) {
+    /* find amulets and gems, ignoring all artifacts */
+    for (const obj of list) {
+        if (Has_contents(obj)) {
+            get_valuables(obj.cobj);
+        } else if (obj.oartifact) {
+            continue;
+        } else if (obj.oclass === OCLASSES.AMULET_CLASS) {
+            const i = obj.otyp - ONAMES.FIRST_AMULET;
+            if (!amulets[i].count) {
+                amulets[i].count = obj.quan;
+                amulets[i].typ = obj.otyp;
+            } else
+                amulets[i].count += obj.quan; /* always adds one */
+        } else if (obj.oclass === OCLASSES.GEM_CLASS
+                   && obj.otyp <= ONAMES.LAST_GLASS_GEM) {
+            /* last+1: combine all glass gems into one slot */
+            const i = Math.min(obj.otyp, ONAMES.LAST_REAL_GEM + 1)
+                      - ONAMES.FIRST_REAL_GEM;
+            if (!gems[i].count) {
+                gems[i].count = obj.quan;
+                gems[i].typ = obj.otyp;
+            } else
+                gems[i].count += obj.quan;
+        }
+    }
+}
+
+// src/end.c:798 sort_valuables() — most frequent to least; we could just
+// as easily use qsort, but we don't care about efficiency here
+function sort_valuables(list, size) {
+    /* move greater quantities to the front of the list */
+    for (let i = 1; i < size; i++) {
+        if (list[i].count === 0)
+            continue;   /* empty slot */
+        const ltmp = { ...list[i] }; /* structure copy */
+        let j;
+        for (j = i; j > 0; --j) {
+            if (list[j - 1].count >= ltmp.count)
+                break;
+            list[j] = { ...list[j - 1] };
+        }
+        list[j] = ltmp;
+    }
+}
+
+// src/end.c:907 artifact_score() — counting: add up points; otherwise
+// display them
+function artifact_score(list, counting, endwin) {
+    for (const otmp of list) {
+        if (otmp.oartifact || otmp.otyp === ONAMES.BELL_OF_OPENING
+            || otmp.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD
+            || otmp.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+            const value = arti_cost(otmp); /* zorkmid value */
+            const points = Math.trunc(value * 5 / 2);  /* score value */
+            if (counting) {
+                game.u.urexp = nowrap_add(game.u.urexp, points);
+            } else {
+                discover_object(otmp.otyp, true, true, false);
+                /* not observe_object; dead characters don't observe */
+                otmp.known = otmp.dknown = otmp.bknown = otmp.rknown = 1;
+                /* assumes artifacts don't have quan > 1 */
+                const pbuf = `${the_unique_obj(otmp) ? 'The ' : ''}${
+                    otmp.oartifact ? artiname(otmp.oartifact)
+                                   : OBJ_NAME(game.objects[otmp.otyp])
+                    } (worth ${value} ${currency(value)} and ${points} points)`;
+                tty_putstr(endwin, 0, pbuf);
+            }
+        }
+        if (Has_contents(otmp))
+            artifact_score(otmp.cobj, counting, endwin);
+    }
+}
+
+export async function done(how) {
+    let survive = false;
+    const u = game.u;
+    game.killer ||= {};
+
+    if (how === TRICKED && game.wizard) {
+        await You('are a very tricky wizard, it seems.');
+        game.killer.format = 0;
+        return;
+    }
+
+    /* force full status update */
+    game.disp = game.disp || {};
+    game.disp.botlx = true;
+    /* src/end.c:1045: draw the final live status before fatal damage sets
+       current HP to zero (skipped for 'q' to "Really quit?") */
+    if (!(how === QUIT && game.done_stopprint)) {
+        const { bot } = await import('./display.js');
+        await bot();
+    }
+
+    if (how === ASCENDED || (!game.killer.name && how === GENOCIDED))
+        game.killer.format = 2; /* NO_KILLER_PREFIX */
+    if (!game.killer.name && (how === STARVING || how === BURNING))
+        game.killer.format = 1; /* KILLED_BY */
+    if (!game.killer.name || how >= PANICKED)
+        game.killer.name = deaths[how];
+
+    if (how < PANICKED) {
+        u.umortality = (u.umortality || 0) + 1;
+        if (u.uhp !== 0 || (Upolyd(u) && u.mh !== 0)) {
+            u.uhp = u.mh = 0;
+            game.disp.botl = true;
+        }
+    }
+    if (u.uprops?.LIFESAVED && how <= GENOCIDED) {
+        await pline('But wait...');
+        makeknown(ONAMES.AMULET_OF_LIFE_SAVING);
+        await Your(`medallion ${u.ublind ? 'feels warm' : 'begins to glow'}!`);
+        if (how === CHOKING)
+            await You('vomit ...');
+        await You_feel('much better!');
+        await pline_The('medallion crumbles to dust!');
+        if (u.uamul)
+            await useup(u.uamul);
+
+        await adjattrib(A_CON, -1, true);
+        await savelife(how);
+        if (how === GENOCIDED) {
+            await pline('Unfortunately you are still genocided...');
+        } else {
+            survive = true;
+        }
+    }
+
+    /* explore and wizard modes offer player the option to keep playing */
+    if (!survive && (game.wizard || game.discover) && how <= GENOCIDED) {
+        const c = await tty_yn_function('Die?', 'yn', 'n');
+        if (c !== 'y') {
+            await pline(`OK, so you don't ${how === CHOKING ? 'choke' : 'die'}.`);
+            (game.iflags ||= {}).last_msg = PLNMSG_OK_DONT_DIE;
+            await savelife(how);
+            survive = true;
+        }
+    }
+
+    if (survive) {
+        game.killer.name = '';
+        game.killer.format = 0;
+        return;
+    }
+    await really_done(how);
+}
+
+// src/end.c:851 done_object_cleanup() -- a fatal hit can interrupt an object
+// while it is OBJ_FREE in flight. Put that projectile back on the map before
+// disclosure and bones saving so it is not lost from the level snapshot.
+async function done_object_cleanup() {
+    const u = game.u;
+    const { isok } = await import('./hacklib.js');
+    const { accessible } = await import('./monmove.js');
+    const { place_object } = await import('./mkobj.js');
+    const { stackobj } = await import('./invent.js');
+    let ox = u.ux + (u.dx || 0), oy = u.uy + (u.dy || 0);
+
+    if (!isok(ox, oy) || !accessible(ox, oy)) {
+        ox = u.ux;
+        oy = u.uy;
+    }
+    for (const field of ['thrownobj', 'kickedobj']) {
+        const obj = game[field];
+        if (obj && (obj.where ?? OBJ_FREE) === OBJ_FREE) {
+            place_object(obj, ox, oy);
+            stackobj(obj);
+            game[field] = null;
+        }
+    }
+}
+
+// src/dungeon.c deepest_lev_reached() — deepest ledger depth the hero saw.
+function deepest_lev_reached() {
+    let deepest = 1;
+    for (let i = 0; i < (game.dungeons || []).length; i++) {
+        const d = game.dungeons[i];
+        const reached = d.dunlev_ureached ?? 0;
+        if (reached > 0) {
+            const dep = d.depth_start + reached - 1;
+            if (dep > deepest)
+                deepest = dep;
+        }
+    }
+    return deepest;
+}
+
+// src/end.c:1135 really_done() — the part after the point of no return.
+async function really_done(how) {
+    const u = game.u;
+    let corpse = null;
+    let umoney;
+    let taken = false;
+    let endtime;
+
+    /* src/end.c:1144 — the game is now over; disclosure windows read this
+       (add_menu_heading drops its highlight, hallucination stops, &c) */
+    game.program_state_gameover = true;
+    if (!game.program_state?.panicking)
+        await done_object_cleanup();
+    {
+        const { night, midnight, getnow } = await import('./calendar.js');
+        endtime = getnow();
+        (game.iflags ||= {}).at_night = night();
+        game.iflags.at_midnight = midnight();
+    }
+
+    if (how === ASCENDED) {
+        const { ACH_UWIN, record_achievement } = await import('./insight.js');
+        record_achievement(ACH_UWIN);
+    }
+
+    /* Sometimes you die on the first move.  Life's not fair.
+     * On those rare occasions you get hosed immediately, go out
+     * smiling... :-)  -3.
+     */
+    if ((game.moves | 0) <= 1 && how < PANICKED && !game.done_stopprint)
+        await pline(`Do not pass Go.  Do not collect 200 ${currency(200)}.`);
+
+    const { can_make_bones, savebones } = await import('./bones.js');
+    const bones_ok = (how < GENOCIDED) && can_make_bones();
+
+    /* maintain ugrave_arise even for !bones_ok */
+    if (how === PANICKED)
+        u.ugrave_arise = -4;           /* NON_PM - 3 */
+    else if (how === BURNING || how === DISSOLVED)
+        u.ugrave_arise = -3;           /* NON_PM - 2 */
+    else if (how === STONING)
+        u.ugrave_arise = LEAVESTATUE;
+    else if (how === TURNED_SLIME
+        && !(game.mvitals[PMNAMES.PM_GREEN_SLIME].mvflags & G_GENOD))
+        u.ugrave_arise = PMNAMES.PM_GREEN_SLIME;
+    else
+        u.ugrave_arise = u.ugrave_arise ?? -1;   /* NON_PM */
+
+    if (how === QUIT || how === ESCAPED || how === PANICKED)
+        game.killer.format = 2; /* NO_KILLER_PREFIX */
+
+    if (how !== PANICKED) {
+        const silently = game.done_stopprint ? true : false;
+        const { paybill } = await import('./shk.js');
+        const { paygd } = await import('./vault.js');
+        const { clearpriests } = await import('./priest.js');
+
+        /* these affect score and/or bones, but avoid them during panic */
+        taken = await paybill((how === ESCAPED) ? -1 : (how !== QUIT) ? 1 : 0,
+                              silently);
+        await paygd(silently);
+        await clearpriests();
+    } else
+        taken = false; /* lint; assert( !bones_ok ); */
+
+    /* clearlocks() — file lock housekeeping (files.c), nothing to port */
+
+    // src/end.c really_done(), acknowledge the message window before
+    // disclosure. An already-read prompt keeps its pixels until overwritten.
+    const { display_nhwindow_message } = await import('./display.js');
+    await display_nhwindow_message();
+
+    /* discover everything in inventory for disclosure and dumplog */
+    const { discover_object } = await import('./o_init.js');
+    const { Is_container } = await import('./obj.js');
+    const { ONAMES: END_ONAMES } = await import('./objects_data.js');
+    for (const obj of game.invent || []) {
+        discover_object(obj.otyp, true, true, false);
+        obj.known = obj.bknown = obj.dknown = obj.rknown = 1;
+        if (Is_container(obj))
+            obj.cknown = 1;
+        if (obj.otyp === END_ONAMES.TIN)
+            obj.cknown = 1;
+        if (obj.otyp === END_ONAMES.LARGE_BOX || obj.otyp === END_ONAMES.CHEST)
+            obj.lknown = 1;
+        /* we resolve Schroedinger's cat now in case of both
+           disclosure and dumplog, where the 50:50 chance for
+           live cat has to be the same both times */
+        if (SchroedingersBox(obj)) {
+            if (!Schroedingers_cat) {
+                /* tell observe_quantum_cat() not to create a cat; if it
+                   chooses live cat in this situation, it will leave the
+                   SchroedingersBox flag set (for container_contents()) */
+                const { observe_quantum_cat } = await import('./pickup.js');
+                await observe_quantum_cat(obj, false, false);
+                if (SchroedingersBox(obj))
+                    Schroedingers_cat = true;
+            } else
+                obj.spe = 0; /* ordinary box with cat corpse in it */
+        }
+    }
+
+    await disclose(how, taken);
+
+    /* dump_everything: dumplog disabled */
+
+    /* if pets will contribute to score, populate gm.mydogs list now
+       (bones creation isn't a factor, but pline() messaging is; used to
+       be done even sooner, but we need it to come after dump_everything()
+       so that any accompanying pets are still on the map during dump) */
+    if (how === ESCAPED || how === ASCENDED)
+        await keepdogs(true);
+
+    /* finish_paybill should be called after disclosure but before bones */
+    if (bones_ok && taken) {
+        const { finish_paybill } = await import('./shk.js');
+        await finish_paybill();
+    }
+
+    /* grave creation after disclosure */
+    if (bones_ok && u.ugrave_arise === -1
+        && !((game.mvitals?.[u.umonnum]?.mvflags ?? 0) & 0x10 /* G_NOCORPSE */)) {
+        const mnum = Upolyd(u) ? u.umonnum : game.urace.mnum;
+        const { mk_named_object } = await import('./mkobj.js');
+        const { make_grave } = await import('./mklev.js');
+        const { ONAMES } = await import('./objects_data.js');
+        const { GRAVE } = await import('./const.js');
+        const was_grave = game.level.at(u.ux, u.uy).typ === GRAVE;
+        corpse = mk_named_object(ONAMES.CORPSE, mnum, u.ux, u.uy, game.plname);
+        make_grave(u.ux, u.uy, `${game.plname}, ${formatkiller(how, true)}`);
+        if (game.level.at(u.ux, u.uy).typ === GRAVE && !was_grave)
+            game.level.at(u.ux, u.uy).emptygrave = 1;
+    }
+
+    /* calculate score, before creating bones [container gold] */
+    {
+        const deepest = deepest_lev_reached();
+        game.deepest_lev_reached_depth = deepest;
+        umoney = money_cnt(game.invent || []);
+        umoney += hidden_gold(game.invent || [], true);
+        let tmp = u.umoney0 ?? 0;
+        tmp = umoney - tmp;            /* net gain */
+        if (tmp < 0)
+            tmp = 0;
+        if (how < PANICKED)
+            tmp -= (tmp / 10) | 0;
+        tmp += 50 * (deepest - 1);
+        if (deepest > 20)
+            tmp += 1000 * ((deepest > 30) ? 10 : deepest - 20);
+        u.urexp = (u.urexp || 0) + tmp;
+
+        if (how === ASCENDED
+            && u.ualign.type === (u.ualignbase?.[A_ORIGINAL]
+                                  ?? u.ualign.type)) {
+            const sameBase = (u.ualignbase?.[A_CURRENT] ?? u.ualign.type)
+                          === (u.ualignbase?.[A_ORIGINAL] ?? u.ualign.type);
+            u.urexp += sameBase ? u.urexp : Math.trunc(u.urexp / 2);
+        }
+    }
+
+    if (u.ugrave_arise >= 0 && u.ugrave_arise < game.mons.length
+        && !game.done_stopprint) {
+        const text = u.ugrave_arise === PMNAMES.PM_GREEN_SLIME
+            ? 'revenant persists' : 'body rises from the dead';
+        await Your(`${text} as ${an(pmname(game.mons[u.ugrave_arise],
+                                         game.flags.female ? 1 : 0))}...`);
+        await display_nhwindow_message(false);
+    }
+
+    if (bones_ok) {
+        /* wizard mode asks; normal play saves unconditionally */
+        if (!game.wizard
+            || (await tty_yn_function('Save bones?', 'yn', 'n')) === 'y')
+            await savebones(how, corpse, endtime);
+        corpse = null;
+    }
+
+    game.done_money = umoney;
+
+    /* window teardown, then the tombstone text window. C threads
+       done_stopprint through dump_forward_putstr and the final
+       display_nhwindow gate, so a 'q' at the wizard Dump-core prompt
+       suppresses the whole goodbye summary. */
+    const endwin = tty_create_nhwindow(NHW_TEXT);
+    if (!game.done_stopprint
+        && how < GENOCIDED && (game.flags?.tombstone ?? true)) {
+        const { genl_outrip } = await import('./rip.js');
+        genl_outrip(endwin, how);
+    }
+
+    if (!game.done_stopprint) {
+        if (u.uhave?.amulet)
+            game.killer.name += ' (with the Amulet)';
+        else if (how === ESCAPED) {
+            if (Is_astralevel(u.uz))
+                game.killer.name += ' (in celestial disgrace)';
+            else if (carrying(ONAMES.FAKE_AMULET_OF_YENDOR))
+                game.killer.name += ' (with a fake Amulet)';
+        }
+
+        const female = !!game.flags?.female;
+        const rolename = (female && game.urole?.name?.f)
+            ? game.urole.name.f : (game.urole?.name?.m || 'Adventurer');
+        tty_putstr(endwin, 0,
+                   `${Goodbye()} ${game.plname} the ${how !== ASCENDED
+                       ? rolename : (female ? 'Demigoddess' : 'Demigod')}...`);
+        tty_putstr(endwin, 0, '');
+
+        if (how === ESCAPED || how === ASCENDED) {
+            for (const val of valuables)
+                for (let i = 0; i < val.size; i++)
+                    val.list[i].count = 0;
+            get_valuables(game.invent || []);
+
+            /* add points for collected valuables */
+            for (const val of valuables)
+                for (let i = 0; i < val.size; i++)
+                    if (val.list[i].count !== 0) {
+                        const tmp = val.list[i].count
+                                    * (game.objects[val.list[i].typ]?.oc_cost ?? 0);
+                        u.urexp = nowrap_add(u.urexp, tmp);
+                    }
+
+            /* count the points for artifacts */
+            artifact_score(game.invent || [], true, endwin);
+
+            if (game.viz_array?.[0])
+                game.viz_array[0][0] |= IN_SIGHT; /* need visibility for naming */
+            const mydogs = game.mydogs || [];
+            let pbuf = 'You';
+            if (mydogs.length || Schroedingers_cat) {
+                for (const mtmp of mydogs) {
+                    pbuf += ` and ${mon_nam(mtmp)}`;
+                    if (mtmp.mtame)
+                        u.urexp = nowrap_add(u.urexp, mtmp.mhp);
+                }
+                /* [it might be more robust to create a housecat and add it to
+                   gm.mydogs; it doesn't have to be placed on the map for that] */
+                if (Schroedingers_cat) {
+                    const m_lev = adj_lev(game.mons[PMNAMES.PM_HOUSECAT]);
+
+                    const mhp = d(m_lev, 8);
+                    u.urexp = nowrap_add(u.urexp, mhp);
+                    pbuf += " and Schroedinger's cat";
+                }
+                tty_putstr(endwin, 0, pbuf);
+                pbuf = '';
+            } else {
+                pbuf += ' ';
+            }
+            pbuf += `${how === ASCENDED ? 'went to your reward'
+                                        : 'escaped from the dungeon'} with ${
+                        u.urexp} point${plur(u.urexp)},`;
+            tty_putstr(endwin, 0, pbuf);
+
+            if (!game.done_stopprint)
+                artifact_score(game.invent || [], false, endwin); /* list artifacts */
+
+            /* list valuables here */
+            for (const val of valuables) {
+                sort_valuables(val.list, val.size);
+                for (let i = 0; i < val.size && !game.done_stopprint; i++) {
+                    const typ = val.list[i].typ;
+                    const count = val.list[i].count;
+
+                    if (count === 0)
+                        continue;
+                    if (game.objects[typ].oc_class !== OCLASSES.GEM_CLASS
+                        || typ <= ONAMES.LAST_REAL_GEM) {
+                        const otmp = mksobj(typ, false, false);
+                        discover_object(otmp.otyp, true, true, false);
+                        otmp.dknown = 1; /* seen it (blindness fix) */
+                        /* observe_object not necessary after discover_object */
+                        otmp.known = 1;  /* for fake amulets */
+                        if (has_oname(otmp))
+                            free_oname(otmp);
+                        otmp.quan = count;
+                        pbuf = `${String(count).padStart(8)} ${xname(otmp)} (worth ${
+                                    count * game.objects[typ].oc_cost} ${
+                                    currency(2)}),`;
+                        obfree(otmp, null);
+                    } else {
+                        pbuf = `${String(count).padStart(8)} worthless piece${
+                                    plur(count)} of colored glass,`;
+                    }
+                    tty_putstr(endwin, 0, pbuf);
+                }
+            }
+        } else {
+            /* did not escape or ascend */
+            let pbuf;
+            if (u.uz.dnum === 0 && u.uz.dlevel <= 0) {
+                pbuf = `You ${u.uz.dlevel < 0 ? 'passed away' : ends[how]}`
+                       + ' beyond the confines of the dungeon';
+            } else {
+                const where = Is_astralevel(u.uz) ? 'The Astral Plane'
+                    : game.dungeons[u.uz.dnum].dname;
+                pbuf = `You ${ends[how]} in ${where}`;
+                if (!In_endgame(u.uz) && !single_level_branch(u.uz))
+                    pbuf += ` on dungeon level ${
+                        In_quest(u.uz) ? u.uz.dlevel : depth(u.uz)}`;
+            }
+            pbuf += ` with ${u.urexp} point${u.urexp === 1 ? '' : 's'},`;
+            tty_putstr(endwin, 0, pbuf);
+        }
+
+        tty_putstr(endwin, 0,
+                   `and ${umoney} piece${umoney === 1 ? '' : 's'} of gold, after `
+                   + `${game.moves} move${game.moves === 1 ? '' : 's'}.`);
+        tty_putstr(endwin, 0,
+                   `You were level ${u.ulevel} with a maximum of ${u.uhpmax} hit `
+                   + `point${u.uhpmax === 1 ? '' : 's'} when you ${ends[how]}.`);
+        tty_putstr(endwin, 0, '');
+        await tty_display_nhwindow(endwin, true);
+    }
+    if (!game.done_stopprint) {
+        /* the text window's --More-- accepts only space/return/ESC;
+           wintty.c process_text_window(): ESC at a page's --More-- sets
+           WIN_CANCEL and stops paging instead of showing the next page */
+        const { xwaitforspace } = await import('./tty/getline.js');
+        const { tty_next_page } = await import('./tty/wintty.js');
+        await xwaitforspace(' ');
+        while (game.morc !== '\x1b' && tty_next_page(endwin))
+            await xwaitforspace(' ');
+    }
+    tty_destroy_nhwindow(endwin);
+
+    /* end.c:1579 — exit_nhwindows() runs before topten(): settty ->
+       end_screen clears the terminal and homes the cursor, on every path */
+    {
+        const { cls } = await import('./display.js');
+        await cls();
+        const { tty_curs_base } = await import('./tty/wintty.js');
+        tty_curs_base(0, 0);
+    }
+    const { topten } = await import('./topten.js');
+    await topten(how);
+    {
+        /* the raw prints moved the base cursor; the terminal shows it */
+        const { tty_base_cursor } = await import('./tty/wintty.js');
+        tty_base_cursor();
+    }
+
+    /* end.c:1585 — the stopprint path pads two blank raw lines, which is
+       where the recorded cursor parks */
+    if (game.done_stopprint) {
+        const { tty_raw_print, tty_base_cursor } =
+            await import('./tty/wintty.js');
+        tty_raw_print('');
+        tty_raw_print('');
+        tty_base_cursor();
+    }
+
+    /* nh_terminate(): the process exits here and the session wrapper
+       relaunches the game on the same pty and recorder stream. The driver
+       sees _restart_pending and boots a fresh game, continuing the RNG. */
+    game.program_state_gameover = true;
+    /* C's nh_terminate() never returns; unwind the in-flight turn so the
+       dying move cannot keep drawing (exerchk etc.) after the exit. A
+       session that continues after a death does so as a NEW SEGMENT with
+       its own seed and rc; the driver never restarts within a segment. */
+    const sig = new Error('nh_terminate');
+    sig.__nh_gameover = true;
+    throw sig;
+}
+
+// src/end.c:476 should_query_disclose_option() — how to handle one
+// disclosure category: {ask, defquery}. flags.end_disclose comes from the
+// rc's disclose: option; each category char is one of
+// y/n (prompt, with that default), +/- (always/never, no prompt), a/#.
+function should_query_disclose_option(category) {
+    const disclosure_options = 'iavgco'; /* decl.c:54 */
+    const idx = disclosure_options.indexOf(category);
+    let end = game.flags?.end_disclose;
+    if (end === undefined) {
+        /* parse the raw rc string once: "-i -a" style tokens */
+        end = 'nnnnnn'.split('');
+        const raw = game.flags?.disclose;
+        if (typeof raw === 'string') {
+            for (const tok of raw.trim().split(/\s+/)) {
+                if (tok.length === 2) {
+                    const k = disclosure_options.indexOf(tok[1]);
+                    if (k >= 0)
+                        end[k] = tok[0];
+                } else if (tok.length === 1) {
+                    const k = disclosure_options.indexOf(tok[0]);
+                    if (k >= 0)
+                        end[k] = 'y';
+                }
+            }
+        }
+        end = end.join('');
+        (game.flags ||= {}).end_disclose = end;
+    }
+    const disclose = end[idx] ?? 'n';
+    if (disclose === '+')
+        return { ask: false, defquery: 'y' };
+    if (disclose === '#')
+        return { ask: false, defquery: 'a' };
+    if (disclose === '-')
+        return { ask: false, defquery: 'n' };
+    if (disclose === 'y')
+        return { ask: true, defquery: 'y' };
+    if (disclose === 'a')
+        return { ask: true, defquery: 'a' };
+    return { ask: true, defquery: 'n' };
+}
+
+// src/end.c:2010 disclose() — end of game disclosure. Every category in the
+// tourist rc is '-' (never); prompted categories would need the i/a/v/g/c/o
+// menus, which are recorded until a session actually reaches one.
+async function disclose(how, taken) {
+    /* src/end.c:557 should_query_disclose_option() — the default spec is
+       DISCLOSE_PROMPT_DEFAULT_NO for every category: ask, defaulting 'n'.
+       No public rc sets disclose:, so the ask path is the ported one. */
+    const { tty_yn_function } = await import('./tty/topl.js');
+    let c;
+
+    if ((game.invent || []).length && !game.done_stopprint) {
+        const { ask, defquery } = should_query_disclose_option('i');
+        const qbuf = taken
+            ? `Do you want to see what you had when you ${
+                  how === QUIT ? 'quit' : 'died'}?`
+            : 'Do you want your possessions identified?';
+        c = ask ? await tty_yn_function(qbuf, 'ynq', defquery) : defquery;
+        if (c === 'y') {
+            /* caller has already ID'd everything; we pass 'want_reply=True'
+               to force display_pickinv() to avoid using WIN_INVENT */
+            (game.iflags ||= {}).force_invmenu = false;
+            const { display_inventory } = await import('./invent.js');
+            await display_inventory(null, true);
+            await container_contents(game.invent, true, true, false);
+        }
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+
+    if (!game.done_stopprint) {
+        const { ask, defquery } = should_query_disclose_option('a');
+        c = ask ? await tty_yn_function('Do you want to see your attributes?',
+                                        'ynq', defquery) : defquery;
+        if (c === 'y') {
+            /* src/end.c:594 — the full window, past tense; en_via_menu is
+               FALSE for the final call so the lines go out as putstr text
+               with --More-- paging, not a menu pager */
+            const { enlightenment, BASICENLIGHTENMENT, MAGICENLIGHTENMENT,
+                    ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD } =
+                await import('./insight.js');
+            const { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
+                    tty_destroy_nhwindow, tty_next_page } =
+                await import('./tty/wintty.js');
+            const { xwaitforspace } = await import('./tty/getline.js');
+            const win = tty_create_nhwindow(NHW_MENU);
+            for (const l of enlightenment(
+                     BASICENLIGHTENMENT | MAGICENLIGHTENMENT,
+                     (how >= PANICKED) ? ENL_GAMEOVERALIVE
+                                       : ENL_GAMEOVERDEAD))
+                tty_putstr(win, 0, l);
+            /* display_nhwindow(ge.en_win, TRUE): win/tty/wintty.c
+               process_text_window() pages with dmore(quitchars), so only
+               space, return and ESC turn a page */
+            await tty_display_nhwindow(win);
+            await xwaitforspace(' \r\n\x1b');
+            while (game.morc !== '\x1b' && tty_next_page(win))
+                await xwaitforspace(' \r\n\x1b');
+            tty_destroy_nhwindow(win);
+        }
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+
+    if (!game.done_stopprint) {
+        const { ask, defquery } = should_query_disclose_option('v');
+        const { list_vanquished } = await import('./insight.js');
+        await list_vanquished(defquery, ask);
+    }
+
+    /* list_genocided: nothing is ever genocided in a recorded session */
+
+    if (!game.done_stopprint) {
+        const { ask, defquery } = should_query_disclose_option('c');
+        const achievementSuffix = (game.u.uachieved || []).length
+            ? ' and achievements' : '';
+        c = ask ? await tty_yn_function(
+                `Do you want to see your conduct${achievementSuffix}?`,
+                                        'ynq', defquery) : defquery;
+        if (c === 'y') {
+            const { show_conduct, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD } =
+                await import('./insight.js');
+            await show_conduct((how >= PANICKED) ? ENL_GAMEOVERALIVE
+                                                 : ENL_GAMEOVERDEAD);
+        }
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+
+    if (!game.done_stopprint) {
+        const { ask, defquery } = should_query_disclose_option('o');
+        c = ask ? await tty_yn_function(
+                'Do you want to see the dungeon overview?', 'ynq', defquery)
+                : defquery;
+        if (c === 'y') {
+            const { show_overview } = await import('./dungeon.js');
+            await show_overview((how >= PANICKED) ? 1 : 2, how);
+        }
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+}
+
+// src/role.c:2143 Goodbye() — role-flavoured farewell.
+function Goodbye() {
+    switch (game.urole?.mnum) {
+    case PMNAMES.PM_KNIGHT:  return 'Fare thee well';
+    case PMNAMES.PM_SAMURAI: return 'Sayonara';
+    case PMNAMES.PM_TOURIST: return 'Aloha';
+    case PMNAMES.PM_VALKYRIE: return 'Farvel';
+    default: return 'Goodbye';
+    }
+}
+
+// src/end.c:89 done2() — the #quit command.
+export async function done2() {
+    const { tty_yn_function } = await import('./tty/topl.js');
+    let abandon_tutorial = false;
+
+    if (In_tutorial(game.u.uz)
+        && (await tty_yn_function(
+                'Switch from the tutorial back to regular play?', 'yn', 'n'))
+           === 'y')
+        abandon_tutorial = true;
+
+    /* ParanoidQuit is not in the default paranoid_confirmation set, so
+       this is a plain single-key yn with default 'n' */
+    if (abandon_tutorial
+        || (await tty_yn_function('Really quit without saving?', 'yn', 'n'))
+           !== 'y') {
+        /* clear_nhwindow(WIN_MESSAGE); nomul(0) */
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+        const { nomul } = await import('./hack.js');
+        if ((game.multi ?? 0) > 0)
+            nomul(0);
+        if ((game.multi ?? 0) === 0) {
+            game.u.uinvulnerable = false; /* avoid ctrl-C bug -dlc */
+            game.u.usleep = 0;
+        }
+
+        if (abandon_tutorial) {
+            const { schedule_goto } = await import('./do.js');
+            /* struct u is zeroed at start: a wizard-mode ^V into the
+               tutorial never set ucamefrom, so the C schedules {0,0} */
+            schedule_goto(game.u.ucamefrom ?? { dnum: 0, dlevel: 0 },
+                          UTOTYPE_ATSTAIRS, 'Resuming regular play.', null);
+        }
+        return 0; /* ECMD_OK */
+    }
+
+    if (game.wizard) {
+        /* src/end.c:129 — UNIX wizard mode offers a core dump; 'q' (the
+           default, ESC included) suppresses the end-of-game printout */
+        const c = await tty_yn_function('Dump core?', 'ynq', 'q');
+        if (c === 'y') {
+            /* exit_nhwindows() + NH_abort(): the process ends here without
+               any further screen; the segment's remaining keys reach a dead
+               terminal (allmain.js moveloop_core's gameover arm) */
+            game.program_state_gameover = true;
+            const sig = new Error('nh_terminate');
+            sig.__nh_gameover = true;
+            throw sig;
+        } else if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+    await done(QUIT);
+    return 0;
+}

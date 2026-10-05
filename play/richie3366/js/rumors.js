@@ -1,0 +1,630 @@
+// rumors.js — Rumor file load + getrumor for graffiti / fortune cookies.
+// C ref: rumors.c getrumor / get_rnd_line / outrumor / outoracle / doconsult;
+//         makedefs.c padline + xcrypt packing.
+
+import { rn2, rnd } from './rng.js';
+import { game } from './gstate.js';
+import { A_WIS, exercise } from './attrib.js';
+import { pline, verbalize, impossible, flush_topl_more } from './display.js';
+import { SetVoice, voice_oracle } from './sndprocs.js';
+import { Monnam } from './do_name.js';
+import { ynq, y_n } from './getline.js';
+import { currency, Blind } from './invent.js';
+import { is_fainted } from './eat.js';
+import { money_cnt, money2mon } from './shk.js';
+import { record_achievement } from './insight.js';
+import { more_experienced, newexplevel } from './exper.js';
+import { show_text_pages } from './pager.js';
+import { ACH_ORCL, ECMD_OK, ECMD_TIME, RUMORFILE, ORACLEFILE, ENGRAVEFILE, EPITAPHFILE, BOGUSMONFILE } from './const.js';
+import {
+    TRUE_RUMOR_BUF,
+    FALSE_RUMOR_BUF,
+    MD_PAD_RUMORS,
+} from './generated/rumors_data.js';
+import { ENGRAVE_BUF } from './generated/engrave_data.js';
+import { EPITAPH_BUF } from './generated/epitaph_data.js';
+import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
+import { ORACLE_RECORDS } from './generated/oracles_data.js';
+
+export const BY_ORACLE = 0;
+export const BY_COOKIE = 1;
+export const BY_PAPER = 2;
+
+// C ref: hacklib.c xcrypt() — involution; export for engrave.c blengr.
+export function xcrypt(str) {
+    let bitmask = 1;
+    let out = '';
+    for (let i = 0; i < str.length; i++) {
+        let c = str.charCodeAt(i);
+        if (c & (32 | 64)) c ^= bitmask;
+        out += String.fromCharCode(c);
+        bitmask <<= 1;
+        if (bitmask >= 32) bitmask = 1;
+    }
+    return out;
+}
+
+/**
+ * C rumors.c unpadline `:67–80`. Trailing newline (if fgets left one),
+ * then the underscores makedefs pads with. Interior underscores stay.
+ */
+function unpadline(line) {
+    let end = line.length;
+    if (end > 0 && line[end - 1] === '\n') end--;
+    while (end > 0 && line[end - 1] === '_') end--;
+    return line.slice(0, end);
+}
+
+/** C global.h BUFSZ — sizeof the line[] get_rnd_line fgets into. */
+const RND_LINE_BUFSZ = 256;
+
+/**
+ * C dlb_fgets into a BUFSZ buffer: at most bufsiz-1 bytes, stopping after
+ * a newline (the newline is kept). NULL when nothing is read (EOF).
+ * `end` is the exclusive end of the section (C endpos / EOF).
+ */
+function embed_fgets(file, pos, end, bufsiz) {
+    if (pos >= end) return { text: null, pos };
+    const limit = Math.min(end, pos + (bufsiz - 1));
+    let i = pos;
+    while (i < limit && file[i] !== '\n') i++;
+    if (i < limit && file[i] === '\n') i++;
+    if (i === pos) return { text: null, pos };
+    return { text: file.slice(pos, i), pos: i };
+}
+
+/**
+ * C rumors.c get_rnd_line `:419–494`.
+ * `file` is the embed of the open dlb stream (D-0477). `endpos` 0 means
+ * EOF, as in get_rnd_text. The seek lands inside a line; fgets takes the
+ * rest; a padded file accepts that rest only when strlen <= padlength+1
+ * (newline counted, pad not). After the loop — including when all 10
+ * tries reject — the next fgets is the chosen line. ftell >= endpos, or a
+ * failed fgets, wraps to startpos. nhassert(filechunksize <= INT_MAX) is
+ * the comment in C; these embeds fit. xcrypt's BUFSZ stack buffer vs
+ * alloc is the same bytes (GC).
+ */
+function get_rnd_line(file, rng = rn2, padlength = MD_PAD_RUMORS, startpos = 0, endpos = 0) {
+    // C :434 *buf = '\0' before the empty-section return.
+    if (!endpos) endpos = file.length;
+    const filechunksize = endpos - startpos;
+    if (filechunksize < 1) return '';
+
+    let pos = startpos;
+    let buf = '';
+    for (let trylimit = 10; trylimit > 0; --trylimit) {
+        // C :465 (*rng)((int) filechunksize), then fseek(startpos + offset).
+        const chunkoffset = rng(filechunksize | 0);
+        const got = embed_fgets(file, startpos + chunkoffset, endpos, RND_LINE_BUFSZ);
+        pos = got.pos;
+        buf = got.text == null ? '' : got.text;
+        // C :470 — padlength 0 accepts every landing.
+        if (!padlength || buf.length <= padlength + 1) break;
+    }
+    // C :477 — || does not fgets when the position is already at endpos.
+    let next = null;
+    if (pos < endpos) next = embed_fgets(file, pos, endpos, RND_LINE_BUFSZ);
+    if (pos >= endpos || next == null || next.text == null) {
+        const wrapped = embed_fgets(file, startpos, endpos, RND_LINE_BUFSZ);
+        buf = wrapped.text == null ? '' : wrapped.text;
+    } else {
+        buf = next.text;
+    }
+    const nl = buf.indexOf('\n');
+    if (nl >= 0) buf = buf.slice(0, nl);
+    buf = xcrypt(buf);
+    if (padlength) buf = unpadline(buf);
+    return buf;
+}
+
+/**
+ * C rumors.c get_rnd_text `:499–526`.
+ * dlb_fopen / dlb_fgets / dlb_fseek / dlb_ftell / dlb_fclose are the
+ * Rule #2 embeds (ledger: by-design, no scored file). The extractor
+ * already consumed the leading "don't edit" comment, so starttxt is 0
+ * of that buffer and endpos 0 lets get_rnd_line read through EOF.
+ * The caller buffer is the return string (C Strcpy into buf).
+ */
+function rnd_text_embed(fname) {
+    switch (fname) {
+    case ENGRAVEFILE: return ENGRAVE_BUF;
+    case EPITAPHFILE: return EPITAPH_BUF;
+    case BOGUSMONFILE: return BOGUSMON_BUF;
+    default: return null;
+    }
+}
+
+export function get_rnd_text(fname, rng = rn2, padlength = MD_PAD_RUMORS) {
+    // C :505 dlb_fopen(fname, "r"); :507 buf[0] = '\0' either way.
+    const fh = rnd_text_embed(fname);
+    if (fh != null) {
+        // C :512–515 skip the comment, then ftell → starttxt.
+        // C :519–520 get_rnd_line(..., starttxt, 0L, padlength).
+        const buf = get_rnd_line(fh, rng, padlength, 0, 0);
+        // C :521 dlb_fclose — no-op under the embed.
+        return buf;
+    }
+    couldnt_open_file(fname);
+    return '';
+}
+
+/**
+ * C ref: rumors.c getrumor `:117–191` — rumor_buf OUT-param becomes the
+ * return string (callers `getrumor(0, true)` / `getrumor(truth, bool)`).
+ * dlb file handles are Rule #2 embeds (D-0477): TRUE/FALSE_RUMOR_BUF hold
+ * the true/false sections, so dlb_fopen always succeeds and dlb_fclose is
+ * a no-op; init_rumors header parse ran at build time (extract-rumors.py).
+ * RNG order kept: rn2(2) for adjtruth, then get_rnd_line draws.
+ */
+export function getrumor(truth = 0, exclude_cookie = true) {
+    // C :125 rumor_buf[0] = '\0'
+    let rumor = '';
+    // C :129 a previous try failed to open RUMORFILE
+    if ((game.true_rumor_size ?? 0) < 0) return rumor;
+    // C :132 rumors = dlb_fopen(RUMORFILE, "r") — embed always opens
+    if (TRUE_RUMOR_BUF && FALSE_RUMOR_BUF) {
+        let count = 0; // C :134
+        let adjtruth = 0; // C :135, read at :175 below
+        do {
+            rumor = ''; // C :138
+            // C :139-143 first outrumor() inits sizes; embed sets them
+            // from the split buffers (starts/ends subsumed by the split)
+            if ((game.true_rumor_size ?? 0) === 0) {
+                if (TRUE_RUMOR_BUF.length > 0 && FALSE_RUMOR_BUF.length > 0) {
+                    game.true_rumor_size = TRUE_RUMOR_BUF.length;
+                    game.false_rumor_size = FALSE_RUMOR_BUF.length;
+                } else {
+                    game.true_rumor_size = -1; // C :104 init failed
+                    rumor = `Error reading "${RUMORFILE.slice(0, 80)}".`; // C :141 %.80s
+                    return rumor; // C :142
+                }
+            }
+            // C :149 switch (adjtruth = truth + rn2(2))
+            adjtruth = truth + rn2(2);
+            let buf;
+            switch (adjtruth) {
+            case 2: // C :150 (bogus-input passthrough)
+            case 1: // C :151
+                buf = TRUE_RUMOR_BUF; // C :153-155 true range
+                break;
+            case 0: // C :157 (0 means false here, not "either")
+            case -1: // C :158
+                buf = FALSE_RUMOR_BUF; // C :159-160 false range
+                break;
+            default:
+                impossible('strange truth value for rumor'); // C :162
+                return 'Oops...'; // C :163 strcpy
+            }
+            // C :164-166 get_rnd_line(rumors, line, sizeof line, rn2,
+            // beginning, ending, MD_PAD_RUMORS) — buf section version
+            rumor = get_rnd_line(buf);
+        } while (count++ < 50 && exclude_cookie // C :168-170
+            && rumor.startsWith('[cookie] '));
+        // C :171 dlb_fclose — no-op under embed
+        if (count >= 50) // C :172
+            impossible("Can't find non-cookie rumor?"); // C :173
+        else if (!game.in_mklev) // C :174 avoid WIS for graffiti
+            exercise(A_WIS, adjtruth > 0); // C :175
+    } else {
+        // C :176-178 open failed — unreachable under embed; record so the
+        // C :129 guard trips on later calls, as C does (D-3403: call the
+        // live couldnt_open_file, not impossible() direct).
+        couldnt_open_file(RUMORFILE);
+        game.true_rumor_size = -1;
+    }
+    if (!exclude_cookie // C :180-181
+        && rumor.startsWith('[cookie] ')) {
+        // C :183-189 memmove loop stripping the marker
+        rumor = rumor.slice('[cookie] '.length);
+    }
+    return rumor; // C :190
+}
+
+/**
+ * C ref: obj.h bcsign()
+ */
+export function bcsign(otmp) {
+    if (!otmp) return 0;
+    return (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
+}
+
+/**
+ * C ref: rumors.c outrumor()
+ */
+export async function outrumor(truth, mechanism) {
+    const reading = mechanism === BY_COOKIE || mechanism === BY_PAPER;
+    // C rumors.c:539-549 — reading gates run before getrumor draws.
+    if (reading) {
+        // C :541-543 — fainting hero drops the cookie unread.
+        if (is_fainted() && mechanism === BY_COOKIE) {
+            return;
+        } else if (Blind()) {
+            // C :544-549 — blind: cookie shows the scrap, then pity.
+            if (mechanism === BY_COOKIE)
+                await pline('This cookie has a scrap of paper inside.');
+            await pline('What a pity that you cannot read it!');
+            return;
+        }
+    }
+    let line = getrumor(truth, reading ? false : true);
+    if (!line) line = 'NetHack rumors file closed for renovation.';
+
+    if (mechanism === BY_ORACLE) {
+        // C :557–563 nested rn2 short-circuit then SetVoice + verbalize1.
+        const adv = !rn2(4) ? 'offhandedly '
+            : (!rn2(3) ? 'casually ' : (rn2(2) ? 'nonchalantly ' : ''));
+        await pline(`True to her word, the Oracle ${adv}says: `);
+        SetVoice(null, 0, 80, voice_oracle);
+        await verbalize(line);
+        return;
+    }
+    if (mechanism === BY_COOKIE)
+        await pline('This cookie has a scrap of paper inside.');
+    if (mechanism === BY_COOKIE || mechanism === BY_PAPER)
+        await pline('It reads:');
+    // C rumors.c:573 pline1(line) = pline("%s", line) verbatim (hack.h:1026):
+    // route through the "%s" arm so rumor text containing '%' is never
+    // re-scanned (vpline no-'%' vs vsnprintf arms, pline.c:192-212).
+    await pline('%s', line);
+}
+
+/**
+ * C ref: rumors.c couldnt_open_file `:769–782` (staticfn).
+ * Suppresses impossible()'s "saving and reloading might fix this" hint
+ * (unless the fuzzer escalates it) around the report, then restores it.
+ * Sync like C; impossible() floats un-awaited (getrumor precedent).
+ */
+function couldnt_open_file(filename) {
+    // C :772
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    const save_something = ps.something_worth_saving;
+    // C :777-778 most likely the file is missing; the fuzzer escalates
+    if (!(game.iflags?.debug_fuzzer)) ps.something_worth_saving = 0;
+    // C :780
+    impossible("Can't open '%s' file.", filename);
+    // C :781
+    ps.something_worth_saving = save_something;
+}
+
+/**
+ * C ref: rumors.c `%06ld (%06lx)` stat formatting (`rumor_check` `:228–237`).
+ * Values here are embed-relative byte offsets (see rumor_check); small and
+ * non-negative, so zero-padded decimal + hex match C exactly.
+ */
+function fmt6d(n) {
+    return String(n).padStart(6, '0');
+}
+function fmt6x(n) {
+    return Number(n).toString(16).padStart(6, '0');
+}
+
+/**
+ * C ref: dlb_fgets line model over a Rule #2 embed buffer — one entry per
+ * `\\n`-terminated line, trailing terminator not an extra empty line.
+ */
+function splitEmbedLines(buf) {
+    const arr = String(buf).split('\n');
+    if (arr.length && arr[arr.length - 1] === '') arr.pop();
+    return arr;
+}
+
+/**
+ * C ref: rumors.c others_check `:307–408` (staticfn) — 5.0 audit helper for
+ * rumor_check(); shows the first two entries and the last of the
+ * engrave/epitaph/bogusmon file, counting the rest.
+ * `lines` is the shared text window (C `winid *winptr` out-param); the
+ * caller shows it once via show_text_pages.
+ */
+function others_check(ftype, fname, buf, lines) {
+    // C :319 dlb_fopen(fname, "r") — the embed always opens
+    if (buf) {
+        // C :321-328 create the window on first use; the create-fail
+        // impossible() arm has no JS counterpart (lines[] cannot fail) —
+        // named in the map
+        lines.push(''); // C :329
+        lines.push(ftype); // C :330
+        // C :331-354 the "don't edit" `#` comment-line validation arms have
+        // no JS counterpart: the extractors omit the plaintext header by
+        // design (extract-engrave.py) and validate structure at build time;
+        // the embed starts at the first entry — named in the map
+        const entries = splitEmbedLines(buf);
+        if (!entries.length) {
+            // C :356-362 first-non-comment-line-missing shape (unreachable:
+            // the embeds are non-empty constants)
+            lines.push(`others_check("${fname}"): can't read first non-comment line`);
+            return; // C :361 goto closeit (fclose is a no-op under embed)
+        }
+        // C :363-366 first line; the makedefs default entry
+        lines.push(xcrypt(entries[0]));
+        if (entries.length < 2) {
+            lines.push('(no second entry)'); // C :367-368
+            return; // C :400-401 closeit (fclose no-op)
+        }
+        // C :369-373 second entry
+        lines.push(xcrypt(entries[1]));
+        // C :374-379 count the rest, keeping the last decrypted line
+        let entrycount = 2;
+        let last = '';
+        for (let i = 2; i < entries.length; i++) {
+            entrycount++;
+            last = xcrypt(entries[i]); // C :378 (void) xcrypt(line, xbuf)
+        }
+        // C :380-382 count is 2 only when default + first ordinary are alone
+        if (entrycount === 2) {
+            lines.push('(only two entries)'); // C :383-384
+        } else {
+            // C :386-397 ellipsis (3+ more lines force --More-- on 24-line
+            // screens) then the already-decrypted last line
+            if (entrycount > 3) lines.push(' ...'); // C :394-395
+            lines.push(last); // C :396 xbuf already decrypted
+        }
+        // C :400-401 closeit: dlb_fclose — no-op under embed
+    } else {
+        // C :402-407 open failed (unreachable: non-empty constant); would
+        // not integrate with the text window
+        couldnt_open_file(fname);
+    }
+}
+
+/**
+ * C ref: rumors.c rumor_check `:196–302` — `#wizrumorcheck` ("verify each
+ * rumor access"): dumps the true/false section offsets and sizes plus the
+ * first and last decrypted rumor of each section, then others_check()es the
+ * engrave/epitaph/bogusmon files, all into one NHW_TEXT window.
+ * dlb file handles are Rule #2 embeds (getrumor precedent, D-2513): the
+ * section buffers ARE the file contents, so dlb_fopen always succeeds,
+ * init_rumors' header parse ran at build time (extract-rumors.py), and
+ * dlb_fclose is a no-op. Sizes equal C's byte-for-byte (same pad+xcrypt
+ * transform); START offsets are section-relative (the embed has no "don't
+ * edit" + header lines) while C's contiguity invariant is preserved
+ * (true_end == false_start). Async: pline/More flush + text window.
+ */
+export async function rumor_check() {
+    // C :199 tmpwin = WIN_ERR — the text window, shown once at the end
+    const lines = [];
+    // C :204 open gate (a previous try failed) + dlb_fopen (embed: opens)
+    if ((game.true_rumor_size ?? 0) >= 0) {
+        // C :208 rumor_buf[0] = '\0'
+        // C :209-214 first-use init_rumors() (`:84–107`: skip comment, parse
+        // the header line into start/size, end = start + size)
+        if ((game.true_rumor_size ?? 0) === 0) {
+            game.true_rumor_start = 0;
+            game.true_rumor_size = TRUE_RUMOR_BUF.length;
+            game.true_rumor_end = game.true_rumor_start + game.true_rumor_size; // C :99
+            // C :100 assert(true_end == false_start)
+            game.false_rumor_start = game.true_rumor_end;
+            game.false_rumor_size = FALSE_RUMOR_BUF.length;
+            game.false_rumor_end = game.false_rumor_start + game.false_rumor_size; // C :101
+            // C :103-106 + :210-213 init-failed `goto no_rumors`: unreachable
+            // (buffers are non-empty constants) — named in the map
+        }
+        // C :215 tmpwin = create_nhwindow(NHW_TEXT) — lines[] above
+        // C :228-231 T values line
+        lines.push(`T start=${fmt6d(game.true_rumor_start)} (${fmt6x(game.true_rumor_start)}), end=${fmt6d(game.true_rumor_end)} (${fmt6x(game.true_rumor_end)}), size=${fmt6d(game.true_rumor_size)} (${fmt6x(game.true_rumor_size)})`);
+        // C :232-237 F values line
+        lines.push(`F start=${fmt6d(game.false_rumor_start)} (${fmt6x(game.false_rumor_start)}), end=${fmt6d(game.false_rumor_end)} (${fmt6x(game.false_rumor_end)}), size=${fmt6d(game.false_rumor_size)} (${fmt6x(game.false_rumor_size)})`);
+        // C :246-253 first true rumor: seek to true start, ftell, fgets,
+        // strip newline, show `T %06ld` + decrypted line (padding kept —
+        // C does not unpadline here)
+        const trueLines = splitEmbedLines(TRUE_RUMOR_BUF);
+        lines.push(`T ${fmt6d(game.true_rumor_start)} ${xcrypt(trueLines[0])}`);
+        // C :254-260 find last true rumor: read while ftell < true end;
+        // the crossing line is the section's last — the embed split's tail
+        lines.push(`  ${''.padStart(6)} ${xcrypt(trueLines[trueLines.length - 1])}`); // C :259 `  %6s %s`
+        // C :262-269 first false rumor
+        const falseLines = splitEmbedLines(FALSE_RUMOR_BUF);
+        lines.push(`F ${fmt6d(game.false_rumor_start)} ${xcrypt(falseLines[0])}`);
+        // C :270-276 last false rumor
+        lines.push(`  ${''.padStart(6)} ${xcrypt(falseLines[falseLines.length - 1])}`);
+        // C :278 dlb_fclose — no-op under embed
+    } else {
+        // C no_rumors :279-285 — a previous attempt couldn't open the file
+        // or rejected its contents (first-open-failed couldnt_open_file arm
+        // `:287-290` unreachable under embed — named in the map)
+        await pline('rumors not accessible.');
+        // C :284 display_nhwindow(WIN_MESSAGE, TRUE) — flush pending --More--
+        await flush_topl_more();
+    }
+
+    // C :292-298 the epitaph/engraving/bogusmon check rides along (also in
+    // the no_rumors case, creating the window there)
+    others_check('Engravings:', ENGRAVEFILE, ENGRAVE_BUF, lines); // C :296
+    others_check('Epitaphs:', EPITAPHFILE, EPITAPH_BUF, lines); // C :297
+    others_check('Bogus monsters:', BOGUSMONFILE, BOGUSMON_BUF, lines); // C :298
+
+    // C :300-303 show + destroy the text window
+    if (lines.length > 0) await show_text_pages(lines);
+}
+
+/** C rumors.c init_oracles `:576–595` (staticfn → module-local).
+ * C `:583` assumes a single call; `:584–585` skips the "don't edit" comment
+ * and count lines; `:586–592` sscans the count and reads `oracle_loc[]`
+ * file offsets. Rule #2 embed (D-0477): `scripts/extract-oracles.py` ran
+ * that parse at build time — `ORACLE_RECORDS[0]` is makedefs
+ * `special_oracle` (`util/makedefs.c:1400`, packed `:1468`), the rest follow
+ * in file order — so the deck holds ORACLE_RECORDS indices, same
+ * swap-remove role as the C offsets (save/rest below persists the live
+ * prefix). Index 0 is the special oracle.
+ */
+function init_oracles() {
+    const n = ORACLE_RECORDS.length | 0; // C :586–587 cnt
+    game.oracle_cnt = n; // C :587 svo.oracle_cnt
+    game.oracle_loc = []; // C :588 alloc
+    for (let i = 0; i < n; i++) game.oracle_loc.push(i); // C :589–592
+}
+
+/** C rumors.c outoracle `:638–693`. Rule #2 embed: ORACLEFILE lives in
+ * `js/generated/oracles_data.js` (`scripts/extract-oracles.py`; makedefs
+ * `do_oracles` packs each line xcrypt'd at `util/makedefs.c:1469/1500`),
+ * so dlb handles are infallible, `dlb_fseek` is an index lookup,
+ * `dlb_fclose` is a no-op (getrumor D-2513 precedent). Save/rest is
+ * save_oracles/restore_oracles below. Sole C caller `doconsult` `:755` →
+ * `js/rumors.js` doconsult below.
+ */
+export async function outoracle(special, delphi) {
+    // C `:647–650` early return: open failed before, or deck exhausted.
+    if ((game.oracle_flg | 0) < 0
+        || ((game.oracle_flg | 0) > 0 && (game.oracle_cnt | 0) === 0)) {
+        return;
+    }
+    // C `:652` dlb_fopen(ORACLEFILE, "r") — the embed always opens
+    // (ORACLE_RECORDS is a non-empty constant); the `:689–692` open-failed
+    // arm (couldnt_open_file + oracle_flg = -1) is unreachable — named here.
+    if (!ORACLE_RECORDS || ORACLE_RECORDS.length === 0) {
+        couldnt_open_file(ORACLEFILE); // C :690
+        game.oracle_flg = -1; // C :691 don't try to open it again
+        return;
+    }
+    // C `:655–660` first call: init_oracles + oracle_flg = 1; an empty
+    // deck falls to close_oracles (`:687–688` fclose, no-op) → return.
+    if ((game.oracle_flg | 0) === 0) { // C :655
+        init_oracles(); // C :656
+        game.oracle_flg = 1; // C :657
+        if ((game.oracle_cnt | 0) === 0) return; // C :658–659 goto close
+    }
+    // C `:661–664` oracle_loc[0] is special, [1..cnt-1] normal; cnt <= 1
+    // with !special shouldn't happen → close_oracles → return.
+    if ((game.oracle_cnt | 0) <= 1 && !special) return;
+    // C `:665` pick; rnd(cnt-1) is 1..cnt-1 so the special slot is skipped
+    // unless asked for; short-circuit draws nothing when special.
+    const loc = game.oracle_loc;
+    const oracle_idx = special ? 0 : rnd((game.oracle_cnt | 0) - 1);
+    // C `:666` dlb_fseek to oracle_loc[idx] — index lookup under the
+    // embed; snapshot before the swap below overwrites the slot.
+    const recIdx = loc[oracle_idx] | 0;
+    // C `:667–668` move the last offset into this slot (swap-remove).
+    if (!special) {
+        loc[oracle_idx] = loc[--game.oracle_cnt];
+    }
+    // C `:670` create_nhwindow(NHW_TEXT) — lines[] shown once below.
+    const lines = [];
+    // C `:671–677` header.
+    if (delphi) {
+        lines.push(special // C :672–675
+            ? 'The Oracle scornfully takes all your gold and says:'
+            : 'The Oracle meditates for a moment and then intones:');
+    } else {
+        lines.push('The message reads:'); // C :677
+    }
+    lines.push(''); // C :678
+    // C `:680–684` read to the "---" terminator; `:681–682` strip '\n'
+    // (subsumed: the extractor split lines, no terminators stored);
+    // `:683` xcrypt decrypts (pack-time xcrypt inverted at build, same
+    // visible string); each line putstr'd in file order.
+    const rec = ORACLE_RECORDS[recIdx] || [];
+    for (const row of rec) lines.push(row);
+    // C `:685–686` display + destroy → one text window; `:688` fclose
+    // (no-op under the embed).
+    await show_text_pages(lines);
+}
+
+/**
+ * C ref: rumors.c save_oracles `:598–620` (called from save.c `:321`).
+ * JSON analogue of Sfo_unsigned oracle_cnt + Sfo_ulong oracle_loc[0..cnt):
+ * persist the live swap-remove deck prefix. C entries are dlb file offsets;
+ * JS entries are ORACLE_RECORDS indices (Rule #2 embed) — same deck role.
+ * The `release_data` FREEING arm (zero + free after write) is omitted:
+ * JSON VFS always writes and in-memory state stays (save_msghistory precedent).
+ * @returns {{ oracle_cnt: number, oracle_loc: number[] }}
+ */
+export function save_oracles() {
+    const cnt = game.oracle_cnt | 0;
+    const loc = game.oracle_loc || [];
+    return {
+        oracle_cnt: cnt,
+        oracle_loc: cnt ? loc.slice(0, cnt).map((x) => x | 0) : [],
+    };
+}
+
+/**
+ * C ref: rumors.c restore_oracles `:623–636` (called from restore.c `:712`).
+ * JSON analogue of Sfi_unsigned + Sfi_ulong loop. Missing/zero cnt = old
+ * save: leave oracle_flg at its fresh-boot 0 so the next outoracle runs
+ * init_oracles, exactly as C does when it reads cnt 0 (no flg assignment).
+ */
+export function restore_oracles(saved) {
+    const cnt = saved?.oracle_cnt | 0;
+    if (!cnt) return;
+    const loc = Array.isArray(saved?.oracle_loc) ? saved.oracle_loc : [];
+    game.oracle_cnt = cnt;
+    game.oracle_loc = loc.slice(0, cnt).map((x) => x | 0);
+    while (game.oracle_loc.length < cnt) game.oracle_loc.push(0);
+    game.oracle_flg = 1; /* no need to call init_oracles() */
+}
+
+/** C rumors.c doconsult `:695–767`. */
+export async function doconsult(oracl) {
+    game.multi = 0;
+    const umoney = money_cnt(game.invent);
+    const minor_cost = 50;
+    const major_cost = 500 + 50 * (game.u?.ulevel | 0);
+
+    if (!oracl) {
+        await pline('There is no one here to consult.');
+        return ECMD_OK;
+    }
+    if (!oracl.mpeaceful) {
+        await pline(`${Monnam(oracl)} is in no mood for consultations.`);
+        return ECMD_OK;
+    }
+    if (!umoney) {
+        await pline('You have no gold.');
+        return ECMD_OK;
+    }
+
+    const qbuf = `"Wilt thou settle for a minor consultation?" (${minor_cost} ${currency(minor_cost)})`;
+    const ans = await ynq(qbuf);
+    let u_pay;
+    switch (ans) {
+    default:
+    case 'q':
+        return ECMD_OK;
+    case 'y':
+        if (umoney < minor_cost) {
+            await pline("You don't even have enough gold for that!");
+            return ECMD_OK;
+        }
+        u_pay = minor_cost;
+        break;
+    case 'n':
+        if (umoney <= minor_cost
+            || ((game.oracle_cnt | 0) === 1 || (game.oracle_flg | 0) < 0)) {
+            return ECMD_OK;
+        }
+        {
+            const q2 = `"Then dost thou desire a major one?" (${major_cost} ${currency(major_cost)})`;
+            if ((await y_n(q2)) !== 'y') return ECMD_OK;
+            u_pay = umoney < major_cost ? umoney : major_cost;
+        }
+        break;
+    }
+    money2mon(oracl, u_pay);
+    if (game.flags) game.flags.botl = true;
+    const u = game.u || (game.u = {});
+    const ue = u.uevent || (u.uevent = {});
+    if (!ue.major_oracle && !ue.minor_oracle) {
+        record_achievement(ACH_ORCL);
+    }
+    let add_xpts = 0;
+    if (u_pay === minor_cost) {
+        await outrumor(1, BY_ORACLE);
+        if (!ue.minor_oracle) {
+            add_xpts = Math.trunc(u_pay / (ue.major_oracle ? 25 : 10));
+        }
+        ue.minor_oracle = true;
+    } else {
+        const cheapskate = u_pay < major_cost;
+        await outoracle(cheapskate, true);
+        if (!cheapskate && !ue.major_oracle) {
+            add_xpts = Math.trunc(u_pay / (ue.minor_oracle ? 25 : 10));
+        }
+        ue.major_oracle = true;
+        exercise(A_WIS, !cheapskate);
+    }
+    if (add_xpts) {
+        more_experienced(add_xpts, Math.trunc(u_pay / 50));
+        await newexplevel();
+    }
+    return ECMD_TIME;
+}

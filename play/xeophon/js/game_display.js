@@ -1,0 +1,252 @@
+// game_display.js — NetHack-specific display wrapper around Terminal.
+// Edit freely; the contest only freezes isaac64.js and terminal.js.
+//
+// Adds game state properties (topMessage, toplines, toplin) and
+// message window handling. Delegates all terminal operations to
+// the wrapped Terminal instance.
+//
+// Usage:
+//   const terminal = new Terminal('game-container');
+//   const display = new GameDisplay(terminal);
+//   // display.setCell, display.readKey etc. all delegate to terminal
+//   // display.topMessage, display.putstr_message are NetHack-specific
+
+import { game } from './gstate.js';
+import { currentHeroAttribute } from './attrib.js';
+import {
+    TUTORIAL,
+    In_endgame, Is_airlevel, Is_astralevel, Is_earthlevel, Is_firelevel, Is_waterlevel,
+} from './const.js';
+import { Terminal, CLR_GRAY, NO_COLOR } from './terminal.js';
+
+const TOPLINE_EMPTY = 0;
+const TOPLINE_NEED_MORE = 1;
+
+function endgameStatusName(uz) {
+    if (!In_endgame(uz)) return null;
+    if (Is_astralevel(uz)) return 'Astral Plane';
+    if (Is_waterlevel(uz)) return 'Water';
+    if (Is_firelevel(uz)) return 'Fire';
+    if (Is_airlevel(uz)) return 'Air';
+    if (Is_earthlevel(uz)) return 'Earth';
+    const dungeon = game.dungeons?.[uz?.dnum ?? 0];
+    const depth = dungeon && uz ? dungeon.depth_start + uz.dlevel - 1 : uz?.dlevel || 0;
+    return `unknown plane #${depth}`;
+}
+
+export class GameDisplay {
+    constructor(terminalOrContainerId) {
+        // Accept either a Terminal instance or a container ID (backward compat)
+        if (terminalOrContainerId instanceof Terminal) {
+            this.terminal = terminalOrContainerId;
+        } else {
+            this.terminal = new Terminal(
+                terminalOrContainerId != null ? terminalOrContainerId : null,
+                { rows: 24, cols: 80 }
+            );
+        }
+
+        // NetHack-specific message state
+        this.topMessage = null;
+        this.toplines = '';
+        this.messages = [];
+        this.toplin = TOPLINE_EMPTY;
+        this.messageWinFlags = 0;
+    }
+
+    // --- Delegate all Terminal properties and methods ---
+
+    get rows() { return this.terminal.rows; }
+    get cols() { return this.terminal.cols; }
+    get grid() { return this.terminal.grid; }
+    get cursorCol() { return this.terminal.cursorCol; }
+    set cursorCol(v) { this.terminal.cursorCol = v; }
+    get cursorRow() { return this.terminal.cursorRow; }
+    set cursorRow(v) { this.terminal.cursorRow = v; }
+    get cursorVisible() { return this.terminal.cursorVisible; }
+    set cursorVisible(v) { this.terminal.cursorVisible = v; }
+    get spans() { return this.terminal.spans; }
+    get container() { return this.terminal.container; }
+    get flags() { return this.terminal.flags; }
+    set flags(v) { this.terminal.flags = v; }
+
+    // Display methods
+    setCell(col, row, ch, color, attr) { return this.terminal.setCell(col, row, ch, color, attr); }
+    putstr(col, row, str, color, attr) { return this.terminal.putstr(col, row, str, color, attr); }
+    setCursor(col, row) { return this.terminal.setCursor(col, row); }
+    clearScreen() { return this.terminal.clearScreen(); }
+    clearRow(row) { return this.terminal.clearRow(row); }
+    scrollUp() { return this.terminal.scrollUp(); }
+    moveCursor(x, y) { return this.terminal.moveCursor(x, y); }
+    putChar(x, y, ch, attr) { return this.terminal.putChar(x, y, ch, attr); }
+    getChar(x, y) { return this.terminal.getChar(x, y); }
+    putString(str) { return this.terminal.putString(str); }
+    putCharAtCursor(ch) { return this.terminal.putCharAtCursor(ch); }
+    clearToEol() { return this.terminal.clearToEol(); }
+    cursSet(visibility) { return this.terminal.cursSet(visibility); }
+    flush() { return this.terminal.flush?.(); }
+    getPreElement() { return this.terminal.getPreElement(); }
+    getCanvas() { return this.terminal.getCanvas?.(); }
+    colorToCss(color) { return this.terminal.colorToCss(color); }
+    captureForShell() { return this.terminal.captureForShell(); }
+
+    // Input methods — delegate to terminal with NetHack-specific defaults
+    pushKey(code) { return this.terminal.pushKey(code); }
+    clearInputQueue() { return this.terminal.clearInputQueue(); }
+    get isWaitingForInput() { return this.terminal.isWaitingForInput; }
+    get inputQueueLength() { return this.terminal.inputQueueLength; }
+    get waitEpoch() { return this.terminal.waitEpoch; }
+
+    /**
+     * Read a key with NetHack-specific options bundled.
+     * Apps set keyMapper, onInterrupt, onEmptyQueue on GameDisplay;
+     * these are passed through to terminal.readKey on every call.
+     */
+    readKey(extraOptions) {
+        return this.terminal.readKey({
+            keyMapper: this.keyMapper,
+            onInterrupt: this.onInterrupt,
+            onEmptyQueue: this.onEmptyQueue,
+            ...extraOptions,
+        });
+    }
+
+    /** NetHack key mapper — converts browser keys to game codes. */
+    keyMapper = null;
+    /** Ctrl-C handler. */
+    onInterrupt = null;
+    /** Called when input queue is empty (headless replay). */
+    onEmptyQueue = null;
+
+    // --- NetHack-specific methods ---
+
+    putstr_message(msg) {
+        this.clearRow(0);
+        this.putstr(0, 0, msg, CLR_GRAY);
+        this.topMessage = msg.trimEnd();
+        this.toplines = this.topMessage;
+        this.toplin = this.topMessage ? TOPLINE_NEED_MORE : TOPLINE_EMPTY;
+        this.messages.push(this.topMessage);
+        if (this.messages.length > 20) this.messages.shift();
+    }
+
+    renderStatus(player = game.u) {
+        const u = player || {};
+        // botl.c:bot treats human HP -1 as the completed-save sentinel and
+        // skips both status rows, even when losehp accidentally reaches it.
+        // done later zeros HP; tty's pending dying pline still owns its old
+        // status until the next prompt/pline flushes the updated state.
+        const dyingMessagePending = game._command_mode === 'deathDieMore'
+            || game._queued_message_after_more === 'You die...'
+            || game._queued_messages_after_more?.some(message => message.fatal || message.lifeSaving);
+        const heldStatus = u.uhp === -1 ? game._last_rendered_status
+            : dyingMessagePending ? game._death_minus_one_status : null;
+        if (heldStatus) {
+            for (let row = 0; row < 2; row++) {
+                this.clearRow(22 + row);
+                this.putstr(0, 22 + row, heldStatus[row], NO_COLOR);
+            }
+            return heldStatus;
+        }
+        if (u.uhp === -1) return [];
+        game._death_minus_one_status = null;
+        const rawName = game.plname || 'Hero';
+        const name = rawName ? rawName[0].toUpperCase() + rawName.slice(1) : 'Hero';
+        const genderKey = game.flags?.female ? 'f' : 'm';
+        const role = game.urole?.rank?.[genderKey] || game.urole?.rank?.m
+            || game.urole?.name?.[genderKey] || game.urole?.name?.m || 'Adventurer';
+        const stats = Array.from({ length: 6 }, (_, index) => currentHeroAttribute(index));
+        const align = u.ualign?.type > 0 ? 'Lawful' : u.ualign?.type < 0 ? 'Chaotic' : 'Neutral';
+        const title = `${name} the ${role}`.padEnd(31, ' ');
+        const str = u._strDisplay || (
+            stats[0] > 118 ? String(stats[0] - 100).padStart(2, ' ')
+            : stats[0] === 118 ? '18/**'
+            : stats[0] > 18 ? `18/${String(stats[0] - 18).padStart(2, '0')}`
+            : String(stats[0] || '?')
+        );
+        const line1 = `${title}St:${str} Dx:${stats[3] || '?'} Co:${stats[4] || '?'} In:${stats[1] || '?'} Wi:${stats[2] || '?'} Ch:${stats[5] || '?'} ${align}`;
+
+        // done can flush status before clearing HP (for example, a death
+        // ray bypasses losehp). Retain that snapshot through its prompt;
+        // botl.c always displays negative HP as zero.
+        const deathMoreHp = (game._death_status_hp_before_zero != null
+                && (game._command_mode === 'deathDieMore'
+                    || game._queued_messages_after_more?.some(message => message.fatal || message.lifeSaving)
+                    || game._queued_message_after_more === 'You die...'
+                    || game._pending_message === 'You die...'))
+            || game._death_pending_confirm;
+        const hp = Math.max(0, deathMoreHp ? (game._death_pending_confirm && game._death_status_hp_before_zero == null
+            ? 0 : game._death_status_hp_before_zero) : u.uhp || 0);
+        const heldUac = game._message_more && game._status_uac_before_more != null;
+        // newgame prints the initial status before skills/discoveries call
+        // find_ac. The legacy story retains that screen while internal AC is current.
+        const displayAc = game._intro_lines ? 0 : heldUac ? game._status_uac_before_more : u.uac ?? 10;
+        let line2;
+        const statusTurn = () => {
+            let turn = game.moves || 1;
+            // C ref: allmain.c:227-253 — the tty --More-- pauses inside
+            // pline() never halt C's game state: once the parked message is
+            // the LAST pline still owed by the current monster sweep / hero
+            // action (the lich cast chain's final line, or a refused-death
+            // attack-chain continuation), the rest of movemon(), the
+            // new-turn block (mcalcdistress/mcalcmove reallocation) and
+            // svm.moves++ all run *behind* the parked --More--, so C's status
+            // line shows the new turn while trailing messages (the life-saving
+            // nomovemsg etc.) still wait for dismissal.  This engine defers
+            // that tail until the parked queue fully drains; phase-lock the
+            // rendered T field by displaying one turn ahead during the window.
+            // The marker compares against game.moves, so it self-invalidates
+            // as soon as the real moves++ lands.
+            if (game._status_turn_display_ahead_moves != null
+                && game._status_turn_display_ahead_moves === (game.moves || 1))
+                turn++;
+            return turn;
+        };
+        if (u.uz?.dnum === TUTORIAL) {
+            const xp = game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}` : `Xp:${u.ulevel || 1}`;
+            const turn = game.flags?.time ? ` T:${statusTurn()}` : '';
+            line2 = `Tutorial:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${displayAc} ${xp}${turn}`;
+        } else {
+            const dungeon = game.dungeons?.[u.uz?.dnum ?? 0];
+            const level = u._displayDepth || (dungeon && u.uz ? dungeon.depth_start + u.uz.dlevel - 1 : u.uz?.dlevel || 1);
+            const xp = u._monsterHd
+                ? `HD:${u._monsterHd}`
+                : game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}` : `Xp:${u.ulevel || 1}`;
+            const turn = game.flags?.time ? ` T:${statusTurn()}` : '';
+            const ride = u.usteed ? ' Ride' : '';
+            const blind = u.blind && !u._blindAfterStatus ? ' Blind' : '';
+            const suffix = u.blind ? (u._statusSuffix || '').replace(/ Blind\b/g, '') : u._statusSuffix || '';
+            const statusSuffix = `${suffix}${u.blind && u._blindAfterStatus ? ' Blind' : ''}`;
+            const goldSymbol = game.level?.flags?.rogue_level ? '*' : '$';
+            const levelName = endgameStatusName(u.uz)
+                || (dungeon?.name === 'The Quest' ? `Home ${u.uz?.dlevel || 1}` : `Dlvl:${level}`);
+            line2 = `${levelName} ${goldSymbol}:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${displayAc} ${xp}${turn}${ride}${blind}${statusSuffix}`;
+        }
+        if (heldUac) {
+            game._status_uac_before_more_seen = 1;
+            if (game._status_uac_before_more_hold_count != null) {
+                game._status_uac_before_more_hold_count--;
+                if (game._status_uac_before_more_hold_count <= 0) {
+                    game._status_uac_before_more = null;
+                    game._status_uac_before_more_seen = 0;
+                    game._status_uac_before_more_hold_count = null;
+                }
+            }
+        }
+        else if (game._status_uac_before_more != null) {
+            game._status_uac_before_more = null;
+            game._status_uac_before_more_seen = 0;
+            game._status_uac_before_more_hold_count = null;
+        }
+
+        this.clearRow(22);
+        this.clearRow(23);
+        this.putstr(0, 22, line1, NO_COLOR);
+        this.putstr(0, 23, line2, NO_COLOR);
+        return game._last_rendered_status = [line1, line2];
+    }
+
+    moveCursorTo(col, row = 0) {
+        this.setCursor(col, row);
+    }
+}

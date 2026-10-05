@@ -1,0 +1,235 @@
+// isolation.mjs — give every segment its own copy of the transpiled module graph,
+// in-process.
+//
+// THE PROBLEM. js/generated/* is transpiled C: every C file-scope variable is a
+// module-scope variable, so re-running main() in a module graph that already
+// played a game starts from the previous game's globals. Replaying segment 2 of
+// a save/restore session that way desynchronises immediately (measured: seed0030
+// went from 70591 to 196151 RNG draws). The old fix was one child process per
+// segment (js/boot/worker.mjs), which the judge forbids — it runs us under
+// `node --permission` with no child processes and no worker threads — and which
+// a browser cannot do at all.
+//
+// WHY THE OBVIOUS FIX DOESN'T WORK. `import('./harness.mjs?seg=2')` really does
+// create a second harness module... and nothing else. ESM resolves a static
+// specifier against the *directory* of the importer, so `./allmain.js` inside
+// `unixmain.js?seg=2` resolves to plain `allmain.js` — the query is dropped one
+// level down and the other 171 generated modules stay shared. (Node also
+// realpaths file: URLs, so `//`, `/./` and percent-encoding tricks all collapse
+// to the same key; the query string is the only thing that survives.)
+// Rewriting the graph into data:/blob: URLs can't work either: the generated
+// graph is cyclic, and a cyclic graph of content-addressed URLs is impossible to
+// construct — A's URL depends on B's content which depends on A's URL.
+//
+// WHAT WE DO. Install a synchronous ESM resolve hook that propagates the query:
+// any relative specifier resolved from a parent already tagged `?c2jsseg=N` gets
+// the same tag. So `import(harness + '?c2jsseg=2')` pulls a completely fresh
+// 172-module graph, and cycles are fine because the URLs are computed from the
+// path, not from content. Module.registerHooks is synchronous and in-thread
+// (unlike module.register, which spins up a worker), so it is legal under
+// `--permission` with no extra allowances.
+//
+// BROWSERS. There is no node:module there, so enableSegmentIsolation() reports
+// false and this file does nothing. The browser gets its isolation a level up
+// instead: js/jsmain.js runs segments 2..N inside a module Worker
+// (js/boot/frame.mjs), which is a fresh realm with a fresh module map — same
+// guarantee, different mechanism. Segment 1 runs in the page's own realm, which
+// is pristine anyway. Nothing in this file is imported eagerly by the browser:
+// the node:module specifier is computed, so a bundler will not try to resolve
+// it, and the check below asks what the realm *is* rather than trusting a
+// `process` object, which in the judge's pages is theirs and does claim to be
+// Node.
+
+/** Query key stamped onto per-segment module URLs. */
+export const SEG_KEY = 'c2jsseg';
+
+// Am I in Node? `process.versions.node` alone is not an answer: our own shim
+// leaves it unset (see js/boot/browser-env.mjs), but the judge's pages install
+// a `process` stub that sets it, along with an import map that resolves `node:*`
+// to their shims. In that page the check below would import a `node:module`
+// that is not Node's, and either believe it has registerHooks or complain that
+// it does not — neither of which a browser should be doing. What a realm *is*
+// cannot be faked by a page-supplied object: no Node has `window` or
+// `WorkerGlobalScope`. Same three lines in js/jsmain.js and
+// js/boot/interactive.mjs; keep them in step.
+const IS_BROWSER = typeof globalThis.window !== 'undefined'
+    || typeof globalThis.WorkerGlobalScope !== 'undefined';
+const IS_NODE = !IS_BROWSER && typeof process !== 'undefined'
+    && !!(process.versions && process.versions.node);
+
+// Modules that are pure immutable data and must stay shared: duplicating the
+// 2.1 MB vendored playground — or the 132 KB of quest prose and dungeon layout
+// the Lua-script ports carry (js/lua-js/data/) — per segment would be pointless
+// parse + heap.
+//
+// This pattern said `/data/nethackdir/` and matched nothing: the playground
+// moved to js/data-nethackdir/ when the mirror turned out to publish only
+// js/** + frozen/**, and the pattern did not move with it. So every fork has
+// been carrying its own copy of the vendored playground ever since — measured
+// here, 4.4 MB of heap and ~20% of the graph instantiation, per fork, on both
+// the scoring path and the Node interactive rung.
+//
+// Shared is *safe* here rather than merely intended:
+//   - js/data-nethackdir/: the single consumer is js/boot/harness.mjs:172,
+//     which does `readVendored(v).slice()` — the VFS gets a copy and every
+//     write goes to the per-run overlay, so no segment can reach another's
+//     bytes through this module.
+//   - js/lua-js/data/: two `export default` object/array literals
+//     (quest.mjs's questtext, dungeon.mjs's dungeon table), each read by
+//     exactly one script port that walks it and pushes values across the Lua
+//     C API. Neither is written to, and both are what a `.lua` file's own
+//     table constructor would have built fresh per parse — i.e. the same
+//     immutable-data argument, checked by the reset census rather than
+//     assumed (docs/NOTES-resettable-state.md §1, docs/NOTES-lua-port.md).
+const SHARED = /\/data-nethackdir\/|\/lua-js\/data\//;
+
+// RESOLUTION MEMO — the hook's own cache, and the largest single item in a
+// scored session's startup that is not the game.
+//
+// Registering *any* resolve hook takes Node's loader off its internal
+// resolution fast path, so every import statement in the graph pays a full
+// resolve: pathToFileURL, normalizeString, internalModuleStat, and
+// getPackageScopeConfig walking up to the repo's package.json and JSON.parsing
+// it. The generated corpus is 169 modules but **4,982 import statements**, and
+// it pays all 4,982 of them per segment.
+//
+// They are almost all the same question. ESM resolves a relative specifier
+// against the importer's *directory*, and all 169 generated modules live in one
+// directory — so `./allmain.js` asked from any of them is one resolution, asked
+// eighty times. Keying on (directory, specifier, conditions, attributes)
+// collapses 4,982 calls to **174 distinct answers**, and on later segments to 1.
+//
+// Measured, interleaved ABBA x5 on the real graph, median (min), per segment:
+//   segment 1   438 (411) -> 315 (313) ms
+//   segment 2   429 (396) -> 316 (295)
+//   segment 3   416 (389) -> 321 (299)
+//
+// It cannot change *what* is resolved. The value cached is the untagged result;
+// the `?c2jsseg=` tag is taken from the live parent below and never from the
+// cache, so a hit still forks per segment exactly as before. And resolution is
+// a pure function of the key: the URL is `new URL(specifier, parentURL)`, and
+// the `format` Node reports follows from that URL's extension and the nearest
+// package.json `type` — both fixed once directory and specifier are. The one
+// thing that could move it is the filesystem changing underfoot mid-run, which
+// this program does not do: the VFS overlay is in memory, and the scored path
+// runs under `node --permission` with no write allowance at all.
+//
+// C2JS_RESOLVE_CACHE=0 restores the uncached hook — the A/B baseline.
+const RCACHE = new Map();
+// Read defensively at module scope: this file is imported by js/jsmain.js in
+// the browser too, where `process` is either absent or a page-supplied stub
+// (see IS_NODE above), and a bare `process.env` here would be a ReferenceError
+// before the page ever got to decide it was a browser.
+const RCACHE_ON = (typeof process === 'undefined' ? undefined
+    : process.env && process.env.C2JS_RESOLVE_CACHE) !== '0';
+const RSTAT = { calls: 0, miss: 0 };
+/** hook-cache counters, for the probes and for docs/NOTES-startup.md */
+export function resolveStats() { return { ...RSTAT, size: RCACHE.size }; }
+
+function resolve(specifier, context, nextResolve) {
+    const parent = context.parentURL;
+    RSTAT.calls++;
+    let base;
+    if (RCACHE_ON && parent && parent.startsWith('file:')) {
+        const qq = parent.indexOf('?');
+        const bare = qq < 0 ? parent : parent.slice(0, qq);
+        // Conditions and attributes belong in the key — two imports of one
+        // specifier can legitimately resolve differently under them — but both
+        // are empty or constant for every import this program makes, and this
+        // runs 4,982 times per graph, so neither is serialised unless it is
+        // actually carrying something.
+        const attrs = context.importAttributes;
+        const key = bare.slice(0, bare.lastIndexOf('/') + 1) + '\0' + specifier
+            + '\0' + (context.conditions ? context.conditions.join(',') : '')
+            + '\0' + (attrs && Object.keys(attrs).length ? JSON.stringify(attrs) : '');
+        base = RCACHE.get(key);
+        if (base === undefined) {
+            RSTAT.miss++;
+            base = nextResolve(specifier, context);
+            RCACHE.set(key, base);
+        }
+    } else {
+        base = nextResolve(specifier, context);
+    }
+    // A hook that answers without calling nextResolve has to say so, and a
+    // fresh object each time keeps the cached one from being handed to the
+    // loader twice (nothing mutates it today, and nothing should have to check).
+    const result = { ...base, shortCircuit: true };
+    if (!parent) return result;
+    const q = parent.indexOf('?' + SEG_KEY + '=');
+    if (q < 0) return result;
+    const url = result.url;
+    // node: builtins carry no query; already-tagged URLs are done; shared data
+    // modules opt out.
+    if (!url.startsWith('file:') || url.includes('?') || SHARED.test(url)) return result;
+    result.url = url + parent.slice(q);
+    return result;
+}
+
+let state = null; // null = untried, true/false = resolved
+let failure = null; // why, when state === false in Node — see enableSegmentIsolation
+let warned = false; // has that reason been printed to somebody who wanted it?
+
+/**
+ * Install the per-segment resolve hook (idempotent).
+ *
+ * `opts.quiet` suppresses the degradation notice *for this caller only*. The
+ * interactive rungs (js/boot/main-thread-engine.mjs, ReplayEngine) ask quietly
+ * because a browser-play check fails an entry on any output at all, and because
+ * the thing the notice warns about — "segments after the first replay into the
+ * previous segment's C globals" — is not what happens to them: an interactive
+ * engine that cannot fork the graph refuses the second game in words instead.
+ *
+ * The reason is *remembered* rather than dropped, so a later scoring caller
+ * that did want to hear it still does. Suppressing it globally would mean a
+ * process that played a game before it scored one lost the warning that the
+ * scored run is the one actually affected.
+ *
+ * @param {{quiet?: boolean}} [opts]
+ * @returns {Promise<boolean>} true when `?c2jsseg=N` will fork the whole graph.
+ */
+export async function enableSegmentIsolation(opts) {
+    if (state === null) {
+        state = false;
+        try {
+            if (IS_NODE) {
+                // Computed specifier: keeps browser bundlers from trying to
+                // resolve it.
+                const nodeModule = 'node:' + 'module';
+                const mod = await import(nodeModule);
+                // registerHooks (Node >= 22.15 / >= 23.5) runs hooks
+                // synchronously on this thread. module.register() would work
+                // too but starts a worker, which --permission blocks without
+                // --allow-worker.
+                if (typeof mod.registerHooks !== 'function') {
+                    failure = `node ${process.versions.node} has no module.registerHooks (needs >= 22.15)`;
+                } else {
+                    mod.registerHooks({ resolve });
+                    state = true;
+                }
+            }
+        } catch (e) {
+            failure = String((e && e.message) || e);
+            state = false;
+        }
+    }
+    if (failure && !warned && !(opts && opts.quiet)) { warned = true; warnDegraded(failure); }
+    return state;
+}
+
+// Silent degradation would look like a scoring bug, not a platform gap: only
+// multi-segment sessions are affected, and only from their second segment on.
+function warnDegraded(why) {
+    try {
+        process.stderr.write(
+            `[c2js] per-segment module isolation unavailable (${why}); `
+            + 'segments after the first in a session will replay into the previous '
+            + "segment's C globals.\n",
+        );
+    } catch {}
+}
+
+/** Module specifier for segment `n` of `baseUrl`, isolated when possible. */
+export function segmentSpecifier(baseUrl, n, isolated) {
+    return isolated ? `${baseUrl}?${SEG_KEY}=${n}` : baseUrl;
+}

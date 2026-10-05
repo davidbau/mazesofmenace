@@ -1,0 +1,6761 @@
+// cmd.js — Command dispatch and movement.
+// C ref: cmd.c rhack(), hack.c domove().
+//
+// Minimal skeleton: movement, search, inventory / look / spell / discoveries /
+// attributes for seed8000. Contestants should add: kick, eat, drink, read, zap,
+// wear, wield, drop, throw, pray, cast, and all other commands.
+
+import { game } from './gstate.js';
+import { nhgetch } from './input.js';
+import { rn2, rn1, rnd } from './rng.js';
+import { getnow } from './calendar.js';
+import { timet_delta } from './allmain.js';
+import {
+    newsym, flush_screen, pline, You, You_cant, impossible, pline_dir, pline_xy, pline_The, set_msg_xy,
+    clear_nhwindow_message, tty_nhbell,
+    mon_visible, sensemon, canspotmon, glyph_at, objnum_to_glyph, hero_glyph, glyph_is_invisible_id,
+    glyph_is_statue, glyph_is_monster, glyph_to_cmap, back_to_glyph, glyph_is_cmap,
+    GLYPH_UNEXPLORED,
+    glyph_is_warning, unmap_object, map_object,
+    look_shown_at, Norep, tty_doprev_message, putmsghistory, NO_GLYPH,
+    unmap_invisible, map_invisible, custompline,
+    Hallucination, raw_printf,
+} from './display.js';
+import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
+         D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, SCORR, LAVAWALL,
+         DRAWBRIDGE_UP, ROOMOFFSET,
+         IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
+         IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL, IS_AIR,
+         AIR, MAX_TYPE,
+         isok, Upolyd, Is_container, CLICK_1, CLICK_2,
+         ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
+         CMDQ_EXTCMD, CMDQ_KEY, CMDQ_DIR, CMDQ_USER_INPUT, CMDQ_INT, CQ_CANNED, CQ_REPEAT,
+         IFBURIED, WIZMODECMD, NOFUZZERCMD, PREFIXCMD, MOVEMENTCMD, MOUSECMD,
+         AUTOCOMPLETE, CMD_NOT_AVAILABLE, INTERNALCMD, GENERALCMD, AUTOCOMP_ADJ,
+         CMD_M_PREFIX, CMD_gGF_PREFIX, CMD_INSANE, QBUFSZ, BUFSZ,
+         xdir, ydir, zdir, xytodir, N_DIRS, N_MOVEMODES, DIR_W, DIR_N, DIR_E, DIR_S,
+         DIR_NW, DIR_NE, DIR_SE, DIR_SW,
+         MV_WALK, MV_RUN, MV_RUSH, commandInp, otherInp, getposInp,
+         GFILTER_VIEW, GLOC_INTERESTING,
+         M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, S_hcdoor, S_vcdoor,
+         S_fountain, S_sink, VIBRATING_SQUARE,
+         u_at, has_mgivenname, ARTICLE_THE, SUPPRESS_SADDLE, W_SADDLE,
+         PARANOID_TRAP, PARANOID_QUIT, GP_ALLOW_U, NO_TRAP_FLAGS, FOOT, Something,
+         LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
+         SUPPRESS_HISTORY,
+         In_sokoban, Is_waterlevel, Is_airlevel,
+         TRAVP_TRAVEL, TRAVP_VALID,
+         TEST_MOVE,
+         WIN_ERR,
+         } from './const.js';
+import { FOOD_CLASS, objectNames } from './objects.js';
+import { EXTCMDLIST, CMD_PARAM } from './generated/extcmdlist_data.js';
+import { PM_GRID_BUG, PM_DWARF } from './generated/monsters_data.js';
+
+const STATUE_OTYP = objectNames.indexOf('STATUE');
+const BOULDER_OTYP = objectNames.indexOf('BOULDER');
+const PICK_AXE_OTYP = objectNames.indexOf('PICK_AXE');
+const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
+const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
+const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
+import { bad_rock, cant_squeeze_thru, wake_nearto, minliquid, m_at } from './mon.js';
+import { worm_cross } from './worm.js';
+import { is_hider, hides_under, tunnels, needspick, monsterNames } from './monsters.js';
+import { vision_recalc, couldsee, cansee } from './vision.js';
+import {
+    ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
+    doprring, dopramulet, doprtool, doprinuse, doperminv, dotypeinv,
+    doorganize, adjust_split,
+    cmdq_add_key, Blind, free_pickinv_cache,
+} from './invent.js';
+import { dovspell, docast, num_spells } from './spell.js';
+import { doclassdisco } from './o_init.js'; // SAFE per imports.mjs (hoisted fn, cycle-safe)
+import { doeat, sgn } from './eat.js';
+import { dodrink, dodip, dip_into } from './potion.js';
+import { dozap } from './zap.js';
+import { doread } from './read.js';
+import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor, engr_at } from './engrave.js';
+import { dothrow, dofire } from './dothrow.js';
+import { doapply, dorub, check_leash } from './apply.js';
+import { dokick } from './dokick.js';
+import { dosit } from './sit.js';
+import { donull, dodown, doup, dodrop, doddrop, reset_occupations } from './do.js';
+import { dosave, dosave0 } from './save.js';
+import { clearlocks } from './files.js';
+import { nh_terminate } from './end.js';
+import { doset_simple, dotogglepickup, toggle_bool_option, select_menu_pick_one, select_menu_pick_any, strbuf_append } from './options.js';
+import {
+    do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
+    defsym_explanation, stumble_onto_mimic,
+} from './uhitm.js';
+import { dig_typ, use_pick_axe2 } from './dig.js';
+import { rehumanize, body_part, domonability } from './polyself.js';
+import { Levitation, Flying } from './mhitu.js';
+import { doopen, doopen_indir, doclose, doforce, getdir, dxdy_moveok } from './lock.js';
+import { doextcmd, getlin, mungspaces, extcmd_run_by_txt, paranoid_query } from './getline.js';
+import { strstri, strsubst, upstart, trimspaces, dist2 } from './hacklib.js';
+import { dosearch, doterrain } from './detect.js';
+import { dotakeoff, doddoremarm, dowear, doputon, doremring, remarm_swapwep, ia_dotakeoff } from './do_wear.js';
+import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
+import { dosacrifice } from './pray.js';
+import { doinvoke } from './artifact.js';
+import { dotelecmd, goodpos } from './teleport.js';
+import { dowield, dowieldquiver, doswapweapon, dotwoweapon } from './wield.js';
+import { dowhatis, doquickwhatis, doidtrap, dohelp, dowhatdoes, doversion, show_text_pages } from './pager.js';
+import {
+    visctrl, key2txt, cmdbind_get, cmd_from_dir, cmd_from_func,
+    bind_param_get, bind_param_set, bind_param_clear, bind_param_swap,
+} from './dokeylist.js';
+import {
+    NHKF_ESC, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2, NHKF_GETDIR_HELP,
+    NHKF_GETDIR_MOUSE, NHKF_COUNT, NHKF_GETPOS_SELF, NHKF_GETPOS_PICK,
+    NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
+    NHKF_GETPOS_SHOWVALID, NHKF_GETPOS_AUTODESC, NHKF_GETPOS_MON_NEXT,
+    NHKF_GETPOS_MON_PREV, NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV,
+    NHKF_GETPOS_DOOR_NEXT, NHKF_GETPOS_DOOR_PREV, NHKF_GETPOS_UNEX_NEXT,
+    NHKF_GETPOS_UNEX_PREV, NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV,
+    NHKF_GETPOS_INTERESTING_NEXT, NHKF_GETPOS_INTERESTING_PREV,
+    NHKF_GETPOS_HELP, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MOVESKIP,
+    NHKF_GETPOS_MENU,
+    NHCB_CMD_BEFORE, NUM_NHCB, NUM_MOUSE_BUTTONS,
+    S_stone,
+} from './const.js';
+import { config_error_add } from './botl.js';
+import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
+import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd, x_monnam } from './do_name.js';
+import { dobugreport } from './report.js';
+import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
+import { objects_at, sobj_at } from './mkobj.js';
+import { stairway_at, On_stairs_up, On_stairs_dn, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint, selection_getbounds } from './mklev.js';
+import { In_tutorial } from './dungeon.js';
+import { ATR_INVERSE } from './terminal.js';
+import { dopay, block_entry, block_door } from './shk.js';
+import { dotalk } from './sounds.js';
+import { getpos, getpos_menu, gather_locs_interesting, auto_describe_text, auto_describe } from './getpos.js';
+import {
+    nomul, moverock, boulder_at, swim_move_danger, trapmove,
+    impaired_movement, is_pool, is_lava, carrying_too_much,
+    invocation_message, avoid_trap_andor_region,
+    hero_tread_disturb_buried_zombies, hero_hideunder_after_move,
+    hero_mimic_unhide_after_move, domove_swap_with_pet,
+    test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
+    test_move_hero_passes_bars, test_move_hero_chews_bars, still_chewing,
+    could_move_onto_boulder, Passes_walls_prop,
+    end_running, carrying, runmode_delay_output,
+    water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
+    closed_door, avoid_moving_on_trap, avoid_moving_on_liquid,
+    escape_from_sticky_mon, domove_fight_ironbars, domove_fight_web,
+    air_turbulence, slippery_ice_fumbling,
+    test_move, doorless_door, crawl_destination,
+} from './hack.js';
+import { t_at, dountrap, reset_utrap } from './trap.js';
+import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
+import { drag_ball, move_bc } from './ball.js';
+import { in_out_region } from './region.js';
+import { m_postmove_effect, can_ooze, accessible } from './monmove.js';
+import { exercise_steed, stucksteed, helpless_steed, doride, can_saddle } from './steed.js';
+import { which_armor } from './worn.js';
+import { linedup } from './mthrowu.js';
+
+/** C flag.h:30,33 — `wizard` is `flags.debug`, `discover` is `flags.explore`. */
+export function wizardOn() {
+    return !!(game.flags?.debug || game.flags?.wizard || game.wizard);
+}
+
+function discoverOn() {
+    return !!(game.flags?.explore || game.flags?.discover);
+}
+
+/**
+ * C isspace in the C locale: space, tab, newline, vertical tab, form
+ * feed, carriage return. Used by check_user_string's word scan.
+ * @param {string} ch
+ * @returns {boolean}
+ */
+function cIsspace(ch) {
+    return ch === ' ' || ch === '\t' || ch === '\n'
+        || ch === '\v' || ch === '\f' || ch === '\r';
+}
+
+/**
+ * C ref: unixmain.c get_unix_pw `:731–760` (static). getuid / getlogin /
+ * getenv("USER") / getpwnam / getpwuid. Scored ESM has no passwd
+ * database in Node or Chrome (Contest Rule #2), so the lookup fails
+ * the way C does when getpwuid returns null.
+ * @returns {null}
+ */
+function get_unix_pw() {
+    return null;
+}
+
+/**
+ * C ref: unixmain.c check_user_string `:695–729`. A leading '*' allows
+ * any user. Otherwise the name is `plname` when `sysopt.check_plname`,
+ * else the unix passwd name. A word matches when the next character is
+ * NUL or space (strncmp of exactly pwlen).
+ * @param {string} optstr
+ * @returns {boolean}
+ */
+export function check_user_string(optstr) {
+    const s = String(optstr ?? '');
+    if (s.charCodeAt(0) === 42) return true; // C `:703–704` '*'
+    let pwname = '';
+    if (game.sysopt?.check_plname) {
+        pwname = String(game.plname ?? ''); // C `:705–706`
+    } else {
+        const pw = get_unix_pw(); // C `:707–708`
+        if (pw && pw.pw_name) pwname = String(pw.pw_name);
+    }
+    if (!pwname) return false; // C `:709–710`
+    const pwlen = pwname.length; // C `:711`
+    // C `:712–727` eop = eos(optstr); while (w + pwlen <= eop).
+    let w = 0;
+    while (w + pwlen <= s.length) {
+        const ch = s[w];
+        if (!ch) break; // C `:715–716`
+        if (cIsspace(ch)) { // C `:717–720`
+            w++;
+            continue;
+        }
+        if (s.slice(w, w + pwlen) === pwname) { // C `:721` strncmp
+            const next = s[w + pwlen]; // undefined at the NUL
+            if (next == null || next === '' || cIsspace(next)) return true; // C `:722–723`
+        }
+        while (w < s.length && s[w] && !cIsspace(s[w])) w++; // C `:725–726`
+    }
+    return false; // C `:728`
+}
+
+// C unixmain.c:627–636 — wizard authorization uses the same user matcher
+// as explore authorization; refusal records the deferred startup error.
+export function authorize_wizard_mode() {
+    const wizards = game.sysopt?.wizards;
+    if (wizards && wizards[0]) {
+        if (check_user_string(wizards)) return true;
+    }
+    if (!game.iflags) game.iflags = {};
+    game.iflags.wiz_error_flag = true;
+    return false;
+}
+
+/**
+ * C ref: unixmain.c authorize_explore_mode `:638–651`. SYSCF is on
+ * (config.h:233), so an empty or missing EXPLORERS list refuses and
+ * sets `iflags.explore_error_flag`. The `#else` return TRUE is not
+ * compiled.
+ * @returns {boolean}
+ */
+export function authorize_explore_mode() {
+    const explorers = game.sysopt?.explorers;
+    if (explorers && explorers[0]) { // C `:643`
+        if (check_user_string(explorers)) return true; // C `:644–645`
+    }
+    if (!game.iflags) game.iflags = {};
+    game.iflags.explore_error_flag = true; // C `:647`
+    return false; // C `:648`
+}
+
+/**
+ * C ref: cmd.c enter_explore_mode `:952–983`. Already in explore mode
+ * is one You. Otherwise authorize, then the wizard note or the
+ * non-wizard refusal. The Beware line always names the mode being
+ * left. Yes sets discover and clears wizard, then clears the message
+ * window before the confirmation You. No clears, then Continuing.
+ * Async because You, pline, and paranoid_query await input.
+ * @returns {Promise<number>} ECMD_OK
+ */
+export async function enter_explore_mode() {
+    if (!game.flags) game.flags = {};
+    if (discoverOn()) { // C `:954`
+        await You('are already in explore mode.'); // C `:955`
+    } else {
+        const oldmode = !wizardOn() ? 'normal game' : 'debug mode'; // C `:957`
+        if (!authorize_explore_mode()) { // C `:959`
+            if (!wizardOn()) { // C `:960`
+                await You('cannot access explore mode.'); // C `:961`
+                return ECMD_OK; // C `:962`
+            }
+            await pline( // C `:964–965`
+                "Note: normally you wouldn't be allowed into explore mode.",
+            );
+            /* keep going */ // C `:966`
+        }
+        await pline( // C `:968–969`
+            'Beware!  From explore mode there will be no return to %s,',
+            oldmode,
+        );
+        const paranoidQuit = ((game.flags.paranoia_bits | 0) & PARANOID_QUIT) !== 0;
+        if (await paranoid_query( // C `:970–971`
+            paranoidQuit,
+            'Do you want to enter explore mode?',
+        )) {
+            game.flags.explore = true; // C `:972` discover = TRUE
+            game.flags.discover = true;
+            game.flags.debug = false; // C `:973` wizard = FALSE
+            game.flags.wizard = false;
+            game.wizard = false;
+            clear_nhwindow_message(); // C `:974` clear_nhwindow(WIN_MESSAGE)
+            await You('are now in non-scoring explore mode.'); // C `:975`
+        } else {
+            clear_nhwindow_message(); // C `:977`
+            await pline('Continuing with %s.', oldmode); // C `:978`
+        }
+    }
+    return ECMD_OK; // C `:981`
+}
+
+/** C cmd.c command_queue[CQ_*] — JS arrays on game. */
+function cmdq_qname(q) {
+    return (q | 0) === CQ_REPEAT ? '_cmdq_repeat' : '_cmdq_canned';
+}
+
+/** C ref: cmd.c cmdq_clear(q). Callers without q still clear CQ_CANNED. */
+export function cmdq_clear(q = CQ_CANNED) {
+    game[cmdq_qname(q)] = [];
+}
+
+/**
+ * C ref: wintty.c tty_exit_nhwindows `:809–845`.
+ * `exit_nhwindows` is `(*windowprocs.win_exit_nhwindows)` (winprocs.h:117).
+ * The contest tty build leaves that hook unset, so this is the tty body.
+ * @param {string|null} str settty argument; end_of_input passes NULL
+ */
+function tty_exit_nhwindows(str) {
+    // C `:814` tty_suspend_nhwindows(str) → settty(str) and, when str is
+    // NULL, tty_raw_print(""). term_shutdown (`:843`) is termcap teardown.
+    // Those erase the tty. The scored grid is the capture already taken
+    // at nhgetch; this does not paint a second frame (D-1831).
+    void str;
+    free_pickinv_cache(); // C `:818`
+    // C `:819–830` — wins[i] = NULL for i != BASE_WINDOW, then
+    // WIN_MAP/MESSAGE/INVEN/STATUS = WIN_ERR. JS has no wins[] (the
+    // terminal grid is the window; ids are sentinels from
+    // init_sound_disp_gamewindows). FREE_ALL_MEMORY (config.h:632) also
+    // frees BASE_WINDOW and ttyDisplay; neither object exists here.
+    game.WIN_MAP = WIN_ERR;
+    game.WIN_MESSAGE = WIN_ERR;
+    game.WIN_INVEN = WIN_ERR;
+    game.WIN_STATUS = WIN_ERR;
+    if (!game.iflags) game.iflags = {};
+    game.iflags.window_inited = 0; // C `:844`
+}
+
+/**
+ * C ref: winprocs.h exit_nhwindows macro → win_exit_nhwindows.
+ * An installed hook is the window port (C does not also run the tty body).
+ * @param {string|null} str
+ */
+function exit_nhwindows(str) {
+    const hook = game.windowprocs?.win_exit_nhwindows;
+    if (typeof hook === 'function') {
+        hook(str);
+        return;
+    }
+    tty_exit_nhwindows(str);
+}
+
+/**
+ * C ref: cmd.c end_of_input `:5182–5209` (#ifdef HANGUPHANDLING, live via
+ * global.h:278). NOSAVEONHANGUP is not defined, so the INSURANCE
+ * preserve_locks arm (`:5186–5189`) and the something_worth_saving = 0
+ * arm (`:5190`) are not compiled. SAFERHANGUP (unixconf.h:301) compiles
+ * out `if (!program_state.done_hup++)` (`:5196–5198`).
+ * Async because dosave0 awaits done_object_cleanup; C returns only after
+ * that save. Callers await (hangup, rhack, moveloop_core).
+ */
+export async function end_of_input() {
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    // C `:5193–5194` — tutorial games are not worth saving.
+    if (In_tutorial(game.u?.uz)) {
+        ps.something_worth_saving = 0;
+    }
+    // C `:5199–5200` — SAFERHANGUP: dosave0 whenever still worth saving.
+    if (ps.something_worth_saving) {
+        await dosave0();
+    }
+    // C `:5201–5202` — nosound_procs leaves this pointer NULL (sounds.c:1730).
+    const exitSound = game.soundprocs?.sound_exit_nhsound;
+    if (typeof exitSound === 'function') {
+        exitSound('end_of_input');
+    }
+    // C `:5203–5204`.
+    if (game.iflags?.window_inited) {
+        exit_nhwindows(null);
+    }
+    clearlocks(); // C `:5205` — files.c in-memory levelfile analogue
+    nh_terminate(0); // C `:5206` EXIT_SUCCESS (global.h:255)
+    // C `:5208` return — nh_terminate is noreturn on unix (exit).
+}
+
+/**
+ * C ref: cmd.c cmdq_pop — CQ_REPEAT when gi.in_doagain, else CQ_CANNED.
+ */
+export function cmdq_pop() {
+    const q = game[game.in_doagain ? '_cmdq_repeat' : '_cmdq_canned'];
+    if (!q || !q.length) return null;
+    return q.shift();
+}
+
+/** C ref: cmd.c cmdq_peek. */
+export function cmdq_peek(q) {
+    const qq = game[cmdq_qname(q)];
+    return (qq && qq.length) ? qq[0] : null;
+}
+
+/**
+ * C ref: cmd.c cmdq_copy — JS arrays preserve order (C prepends then
+ * cmdq_reverse). Shallow copy: nodes are not mutated, only shifted.
+ */
+function cmdq_copy(q) {
+    const qq = game[cmdq_qname(q)];
+    return qq && qq.length ? qq.slice() : [];
+}
+
+/**
+ * C ref: cmd.c cmdq_reverse `:373–384` (extern.h:435) — iterative
+ * in-place reversal of a `_cmd_queue` chain. Sole C caller cmdq_copy
+ * `:401`; the JS cmdq_copy above slices order-preserving arrays, so
+ * no live JS caller yet — kept for C-order callers to come.
+ * @param {{ next: object|null } | null} head C `struct _cmd_queue *head`
+ * @returns {{ next: object|null } | null} C `prev`, the new head
+ */
+export function cmdq_reverse(head) {
+    let prev = null, curr = head; // C `:375`
+    while (curr) { // C `:377`
+        const next = curr.next; // C `:378`
+        curr.next = prev; // C `:379`
+        prev = curr; // C `:380`
+        curr = next; // C `:381`
+    }
+    return prev; // C `:383`
+}
+
+/**
+ * C ref: cmd.c cmdq_shift(q) `:354–370` — last node becomes head
+ * (doextcmd records the resolved command after getobj keys).
+ * @param {number} q CQ_CANNED or CQ_REPEAT
+ */
+export function cmdq_shift(q) {
+    const qq = game[cmdq_qname(q)];
+    if (!qq || qq.length < 2) return;
+    qq.unshift(qq.pop());
+}
+
+/**
+ * C rhack `:3745–3746` — CMD_INSANE (^P prevmsg / ^R redraw) copies
+ * iflags.sanity_check onto sanity_no_check so the next moveloop
+ * sanity_check returns without re-firing impossible() (D-1664).
+ * @param {number} flags ext_func_tab flags
+ */
+function rhack_cmd_insane(flags) {
+    if ((flags & CMD_INSANE) !== 0 && game.iflags) {
+        game.iflags.sanity_no_check = game.iflags.sanity_check;
+    }
+}
+
+/**
+ * C ref: cmd.c cmdq_add_ec `:253–270` — typ CMDQ_EXTCMD, tail-append.
+ * `:260` ec_entry = ext_func_tab_from_func(fn). JS push is that tail
+ * walk (`while (cq->next)` then link, or install the head). A caller
+ * tab is used only when the lookup misses (anonymous wrapper, or an
+ * ef_funct that is not in FUNCT_TXT).
+ * @param {number} q CQ_CANNED or CQ_REPEAT
+ * @param {Function} fn C `int (*fn)(void)`
+ * @param {{ txt?: string, flags?: number, run?: Function } | null} [tab]
+ */
+export function cmdq_add_ec(q, fn, tab = null) {
+    const name = cmdq_qname(q);
+    if (!game[name]) game[name] = [];
+    /* C `:259–260`. Lookup wins over a caller-supplied row. */
+    const looked = ext_func_tab_from_func(fn);
+    const ec = looked || tab;
+    game[name].push({
+        typ: CMDQ_EXTCMD,
+        run: fn,
+        txt: ec?.txt || '',
+        flags: ec?.flags | 0,
+        ec_entry: looked || null,
+    });
+}
+
+/**
+ * C ref: cmd.c cmdq_add_dir(q, dx, dy, dz) `:294–311` — typ CMDQ_DIR.
+ * Same tail-append shape as cmdq_add_ec; consumed by getdir
+ * (lock.js getdir_read_dirsym reads dirx/diry/dirz).
+ * @param {number} q
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} dz
+ */
+export function cmdq_add_dir(q, dx, dy, dz) {
+    const name = cmdq_qname(q);
+    if (!game[name]) game[name] = [];
+    game[name].push({ typ: CMDQ_DIR, dirx: dx | 0, diry: dy | 0, dirz: dz | 0 });
+}
+
+/**
+ * C ref: cmd.c cmdq_add_userinput(q) `:316–331` — typ CMDQ_USER_INPUT.
+ * Same tail-append shape as cmdq_add_ec; lets getlin/getobj take live
+ * user input mid-queue (getline.js/invent.js USERINPUT arms; key '\0'
+ * matches the getline.js node shape).
+ * @param {number} q
+ */
+export function cmdq_add_userinput(q) {
+    const name = cmdq_qname(q);
+    if (!game[name]) game[name] = [];
+    game[name].push({ typ: CMDQ_USER_INPUT, key: '\0' });
+}
+
+/**
+ * C ref: cmd.c cmdq_print `:220–249` — debug dump of command_queue[q].
+ * C has no callers (debug helper); exported for debugger parity. Async
+ * because pline awaits. KEY nodes store a 1-char string (cmdq_add_key)
+ * or a char code (canned clones); key2txt takes the code (C passes
+ * `char` into `key2txt(c, buf)`; the buf out-param is GC here).
+ * EXTCMD prints ec_entry ef_txt (C `:232`); anonymous wrappers fall
+ * back to the node's txt.
+ * @param {number} q CQ_CANNED or CQ_REPEAT
+ */
+export async function cmdq_print(q) {
+    const qq = game[cmdq_qname(q)] || []; // C `:223` gc.command_queue[q]
+    await pline(`CQ:${q | 0}`); // C `:225` pline("CQ:%i", q)
+    for (const cq of qq) { // C `:226` while (cq)
+        switch (cq.typ) { // C `:227`
+        case CMDQ_KEY: { // C `:228–230`
+            const code = typeof cq.key === 'string'
+                ? cq.key.charCodeAt(0) : (cq.key | 0);
+            await pline(`(key:${key2txt(code)})`);
+            break;
+        }
+        case CMDQ_EXTCMD: // C `:231–233`
+            await pline(`(extcmd:#${cq.ec_entry?.txt ?? cq.txt ?? ''})`);
+            break;
+        case CMDQ_DIR: // C `:234–236`
+            await pline(`(dir:${cq.dirx | 0},${cq.diry | 0},${cq.dirz | 0})`);
+            break;
+        case CMDQ_USER_INPUT: // C `:237–239`
+            await pline('(userinput)');
+            break;
+        case CMDQ_INT: // C `:240–242`
+            await pline(`(int:${cq.intval | 0})`);
+            break;
+        default: // C `:243–245`
+            await pline(`(ERROR:${cq.typ | 0})`);
+            break;
+        }
+    }
+}
+
+/**
+ * C ref: cmd.c rnd_extcmd_idx `:3601–3604` (extern.h:417). Dead in C (no
+ * callers) but extern, so a live export. EXTCMDLIST.length ≡
+ * extcmdlist_length (generated table omits the C null terminator).
+ * @returns {number} C `rn2(extcmdlist_length + 1) - 1`, in [-1, length-1]
+ */
+export function rnd_extcmd_idx() {
+    return rn2(EXTCMDLIST.length + 1) - 1; // C `:3603`
+}
+
+/**
+ * C ref: cmd.c reset_cmd_vars `:3606–3624`. travelmap selection_free named.
+ * @param {boolean} reset_cmdq
+ */
+function reset_cmd_vars(reset_cmdq) {
+    if (!game.context) game.context = {};
+    game.context.run = 0;
+    game.context.nopick = 0;
+    game.context.forcefight = 0;
+    game.context.move = 0;
+    game.context.mv = 0;
+    game.domove_attempting = 0;
+    game.multi = 0;
+    if (game.iflags) game.iflags.menu_requested = false;
+    game.context.travel = 0;
+    game.context.travel1 = 0;
+    /* C cmd.c:3616–3618 — the travel-session visited set dies here. */
+    game.travelmap = null;
+    if (reset_cmdq) {
+        cmdq_clear(CQ_CANNED);
+        cmdq_clear(CQ_REPEAT);
+    }
+}
+
+/**
+ * C ref: cmd.c set_move_cmd `:1386–1400`. PREFIXCMD already in
+ * domove_attempting skips the run/WALK|RUSH assign.
+ * @param {number} dir DIR_*
+ * @param {number} run 0 walk, else capital/ctrl run value
+ */
+export function set_move_cmd(dir, run) {
+    const u = game.u || (game.u = {});
+    if (!game.context) game.context = {};
+    u.dz = zdir[dir] | 0;
+    u.dx = xdir[dir] | 0;
+    u.dy = ydir[dir] | 0;
+    if (game.iflags?.menu_requested) game.context.nopick = 1;
+    game.context.travel = 0;
+    game.context.travel1 = 0;
+    if (!(game.domove_attempting) && !u.dz) {
+        game.context.run = run;
+        game.domove_attempting = (game.domove_attempting || 0)
+            | (run ? DOMOVE_RUSH : DOMOVE_WALK);
+    }
+}
+
+/* C cmd.c do_move_* `:1403–1464` — REPEAT records these, not the key. */
+function do_move_west() { set_move_cmd(DIR_W, 0); return ECMD_TIME; }
+function do_move_northwest() { set_move_cmd(DIR_NW, 0); return ECMD_TIME; }
+function do_move_north() { set_move_cmd(DIR_N, 0); return ECMD_TIME; }
+function do_move_northeast() { set_move_cmd(DIR_NE, 0); return ECMD_TIME; }
+function do_move_east() { set_move_cmd(DIR_E, 0); return ECMD_TIME; }
+function do_move_southeast() { set_move_cmd(DIR_SE, 0); return ECMD_TIME; }
+function do_move_south() { set_move_cmd(DIR_S, 0); return ECMD_TIME; }
+function do_move_southwest() { set_move_cmd(DIR_SW, 0); return ECMD_TIME; }
+
+/* C cmd.c do_rush_* `:1461–1514` — rush family, C order. extcmdlist
+   "rush*" rows `:2026–2049` (`:2025` rush comment: m prefix but not g/G/F)
+   + move_funcs[][MV_RUSH] `:2071–2078`. Callers dispatch on ef_txt
+   (FUNCT_TXT rows below; MOVE_FUNC_TXT carries the txt column). */
+function do_rush_west() { set_move_cmd(DIR_W, 3); return ECMD_TIME; }
+function do_rush_northwest() { set_move_cmd(DIR_NW, 3); return ECMD_TIME; }
+function do_rush_north() { set_move_cmd(DIR_N, 3); return ECMD_TIME; }
+function do_rush_northeast() { set_move_cmd(DIR_NE, 3); return ECMD_TIME; }
+function do_rush_east() { set_move_cmd(DIR_E, 3); return ECMD_TIME; }
+function do_rush_southeast() { set_move_cmd(DIR_SE, 3); return ECMD_TIME; }
+function do_rush_south() { set_move_cmd(DIR_S, 3); return ECMD_TIME; }
+function do_rush_southwest() { set_move_cmd(DIR_SW, 3); return ECMD_TIME; }
+
+/* C cmd.c do_run_* `:1517–1571` — run family, C order. extcmdlist
+   "run*" rows `:2042–2057` (`:2041` run comment: m prefix but not g/G/F)
+   + move_funcs[][MV_RUN] `:2071–2078`. Callers dispatch on ef_txt
+   (FUNCT_TXT rows below; movecmd/cmd_from_dir/getpos_help use the txt). */
+function do_run_west() { set_move_cmd(DIR_W, 1); return ECMD_TIME; }
+function do_run_northwest() { set_move_cmd(DIR_NW, 1); return ECMD_TIME; }
+function do_run_north() { set_move_cmd(DIR_N, 1); return ECMD_TIME; }
+function do_run_northeast() { set_move_cmd(DIR_NE, 1); return ECMD_TIME; }
+function do_run_east() { set_move_cmd(DIR_E, 1); return ECMD_TIME; }
+function do_run_southeast() { set_move_cmd(DIR_SE, 1); return ECMD_TIME; }
+function do_run_south() { set_move_cmd(DIR_S, 1); return ECMD_TIME; }
+function do_run_southwest() { set_move_cmd(DIR_SW, 1); return ECMD_TIME; }
+
+/**
+ * C cmd.c levltyp[MAX_TYPE + 2] `:1072–1086` — "temporary? hack, since
+ * level type codes aren't the same as screen symbols" (`:1069–1071`).
+ * Indices 0..36 are the rm.h terrain types in order; [37] is the
+ * undiggable-stone name for wiz_map_levltyp, [38] the odd-count pad.
+ */
+export const levltyp = [
+    'stone', 'vertical wall', 'horizontal wall', 'top-left corner wall',
+    'top-right corner wall', 'bottom-left corner wall',
+    'bottom-right corner wall', 'cross wall', 'tee-up wall', 'tee-down wall',
+    'tee-left wall', 'tee-right wall', 'drawbridge wall', 'tree',
+    'secret door', 'secret corridor', 'pool', 'moat', 'water',
+    'drawbridge up', 'lava pool', 'lava wall', 'iron bars', 'door',
+    'corridor', 'room', 'stairs', 'ladder', 'fountain', 'throne', 'sink',
+    'grave', 'altar', 'ice', 'drawbridge down', 'air', 'cloud',
+    /* not a real terrain type, but used for undiggable stone
+       by wiz_map_levltyp() */
+    'unreachable/undiggable',
+    /* padding in case the number of entries above is odd */
+    '',
+];
+
+/**
+ * C ref: cmd.c levltyp_to_name `:1089–1094` (extern.h:425).
+ * @param {number} typ C `int typ`
+ * @returns {string|null} C `levltyp[typ]` or NULL
+ */
+export function levltyp_to_name(typ) {
+    if (typ >= 0 && typ < MAX_TYPE) return levltyp[typ]; // C `:1092–1093`
+    return null; // C `:1094` NULL
+}
+
+/**
+ * C ref: cmd.c do_rush `:1589–1602` — 'g' PREFIXCMD.
+ * @returns {Promise<number>}
+ */
+export async function do_rush() {
+    if ((game.domove_attempting || 0) & DOMOVE_RUSH) {
+        await Norep('Double rush prefix, canceled.');
+        if (game.context) game.context.run = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+    if (!game.context) game.context = {};
+    game.context.run = 2;
+    game.domove_attempting = (game.domove_attempting || 0) | DOMOVE_RUSH;
+    return ECMD_OK;
+}
+
+/**
+ * C ref: cmd.c do_run `:1605–1618` — 'G' PREFIXCMD.
+ * @returns {Promise<number>}
+ */
+export async function do_run() {
+    if ((game.domove_attempting || 0) & DOMOVE_RUSH) {
+        await Norep('Double run prefix, canceled.');
+        if (game.context) game.context.run = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+    if (!game.context) game.context = {};
+    game.context.run = 3;
+    game.domove_attempting = (game.domove_attempting || 0) | DOMOVE_RUSH;
+    return ECMD_OK;
+}
+
+/**
+ * C ref: cmd.c do_fight `:1621–1634` — 'F' PREFIXCMD.
+ * @returns {Promise<number>}
+ */
+export async function do_fight() {
+    if (game.context?.forcefight) {
+        await Norep('Double fight prefix, canceled.');
+        game.context.forcefight = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+    if (!game.context) game.context = {};
+    game.context.forcefight = 1;
+    game.domove_attempting = (game.domove_attempting || 0) | DOMOVE_WALK;
+    return ECMD_OK;
+}
+
+/**
+ * C ref: cmd.c do_reqmenu `:1574–1586` — 'm' PREFIXCMD.
+ * C `visctrl(cmd_from_func(do_reqmenu))` — ef_txt "reqmenu".
+ * @returns {Promise<number>}
+ */
+export async function do_reqmenu() {
+    if (game.iflags?.menu_requested) {
+        await Norep(`Double ${visctrl(cmd_from_func('reqmenu'))} prefix, canceled.`);
+        game.iflags.menu_requested = false;
+        return ECMD_CANCEL;
+    }
+    if (!game.iflags) game.iflags = {};
+    game.iflags.menu_requested = true;
+    return ECMD_OK;
+}
+
+/**
+ * C ref: cmd.c ext_func_tab_from_func — first extcmdlist row with matching
+ * ef_txt (INTERNALCMD included; "altdip" is dip_into).
+ * @param {string} txt
+ * @returns {typeof EXTCMDLIST[number] | null}
+ */
+export function ext_func_tab_from_txt(txt) {
+    if (txt == null || txt === '') return null;
+    const want = String(txt).toLowerCase();
+    for (const e of EXTCMDLIST) {
+        if (e.txt.toLowerCase() === want) return e;
+    }
+    return null;
+}
+
+/** C cmd.c:157 `unavailcmd[]`. */
+const UNAVAILCMD = "Unavailable command '%s'.";
+
+/** C decl.c:8–13 `nhcb_name[]`, same order as `NHCB_*`. */
+export const NHCB_NAME = ['cmd_before', 'level_enter', 'level_leave', 'end_turn'];
+
+/**
+ * C dat/nhlib.lua tutorial_cmd_before — `#save` is refused, everything
+ * else is allowed. No pline (the C comment that would print is disabled).
+ * @param {string} cmd
+ * @returns {boolean}
+ */
+export function tutorial_cmd_before(cmd) {
+    return cmd !== 'save';
+}
+
+/** JS stand-ins for the Lua globals `nh_callback_run` calls via `_G[k]`. */
+const NHCB_HANDLERS = {
+    tutorial_cmd_before,
+};
+
+function ensure_nhcb() {
+    if (!game.nhcb_counts || game.nhcb_counts.length !== NUM_NHCB) {
+        game.nhcb_counts = new Array(NUM_NHCB).fill(0);
+    }
+    if (!game.nh_lua_variables || typeof game.nh_lua_variables !== 'object') {
+        game.nh_lua_variables = {};
+    }
+    return game.nhcb_counts;
+}
+
+/**
+ * C ref: nhlua.c nhl_callback `:1663–1705` and dat/nhcore.lua
+ * `nh_callback_set` / `nh_callback_rm`. Named: `lua_getglobal` and
+ * `nhl_pcall_handle` (no Lua VM). The count and `_CB_<name>` table are
+ * the state those calls mutate. A negative count still calls `impossible`
+ * and stays negative, so a later `nhcb_counts[i]` test is still true.
+ * @param {string} cb
+ * @param {string} fn
+ * @param {boolean} [rm]
+ */
+export async function nhl_callback(cb, fn, rm = false) {
+    const counts = ensure_nhcb();
+    let i = 0;
+    for (; i < NUM_NHCB; i++) {
+        if (NHCB_NAME[i] === cb) break;
+    }
+    if (i >= NUM_NHCB) return; // C `:1689–1690`
+    if (rm) {
+        counts[i] = (counts[i] | 0) - 1; // C `:1693`
+        if (counts[i] < 0) await impossible('nh.callback counts are wrong'); // C `:1694–1695`
+    } else {
+        counts[i] = (counts[i] | 0) + 1; // C `:1697`
+    }
+    const key = `_CB_${cb}`;
+    const cur = game.nh_lua_variables[key];
+    if (!cur || typeof cur !== 'object') game.nh_lua_variables[key] = {};
+    if (rm) delete game.nh_lua_variables[key][fn]; // C nh_callback_rm `:35`
+    else game.nh_lua_variables[key][fn] = true; // C nh_callback_set `:24`
+}
+
+/**
+ * C ref: dat/nhcore.lua nh_callback_run `:39–54`. An empty table returns
+ * true. The first handler that returns false stops the walk. Named:
+ * Lua `pairs` order when more than one name is registered (JS keeps
+ * insertion order). Unknown globals are skipped — there is no `_G`.
+ * @param {string} cb
+ * @param {...*} args
+ * @returns {Promise<boolean>}
+ */
+export async function nh_callback_run(cb, ...args) {
+    ensure_nhcb();
+    const key = `_CB_${cb}`;
+    let table = game.nh_lua_variables[key];
+    if (!table || typeof table !== 'object') {
+        game.nh_lua_variables[key] = {}; // C `:45–46`
+        return true;
+    }
+    for (const name of Object.keys(table)) {
+        if (!table[name]) continue;
+        const handler = NHCB_HANDLERS[name];
+        if (!handler) continue;
+        if (!(await handler(...args))) return false; // C `:49–50`
+    }
+    return true; // C `:53`
+}
+
+/**
+ * C ref: cmd.c can_do_extcmd `:462–489`.
+ * A missing row is refused before the C body (C always has a struct).
+ * altdip is INTERNALCMD with no IFBURIED — a buried hero is refused.
+ * `wizard` is `flags.debug` (`flag.h:30`); `wizardOn` also honors the
+ * JS `flags.wizard` / `game.wizard` aliases this file already uses.
+ * @param {typeof EXTCMDLIST[number] | null | undefined} extcmd
+ * @returns {Promise<boolean>}
+ */
+export async function can_do_extcmd(extcmd) {
+    if (!extcmd) return false;
+    const ecflags = extcmd.flags | 0; // C `:465`
+
+    // C `:467–476` — NHCB_CMD_BEFORE. False from Lua returns with no pline.
+    if (game.luacore && game.nhcb_counts && (game.nhcb_counts[NHCB_CMD_BEFORE] | 0)) {
+        const ok = await nh_callback_run(NHCB_NAME[NHCB_CMD_BEFORE], extcmd.txt);
+        if (!ok) return false;
+    }
+
+    if (!wizardOn() && (ecflags & WIZMODECMD)) { // C `:478–481`
+        await pline(UNAVAILCMD, extcmd.txt);
+        return false;
+    } else if (game.u?.uburied && !(ecflags & IFBURIED)) { // C `:481–483`
+        await You_cant('do that while you are buried!');
+        return false;
+    } else if (game.iflags?.debug_fuzzer && (ecflags & NOFUZZERCMD)) { // C `:484–485`
+        return false;
+    }
+    return true; // C `:487`
+}
+
+/**
+ * C strutil.c pmatch_internal `:104–141` — '*' matches 0+ chars, '?'
+ * matches any single char (ci folds via lowc, A–Z only); C `goto
+ * pmatch_top` tail recursion is the `for (;;)` loop; `s`/`p` are read
+ * with pre-advance (`*strng++`, `*patrn++`), so `*` recurses on
+ * `strng - 1` / `patrn - 1` exactly as C does.
+ * `sk` skip-set arm (`:119–127` fuzzy variant) omitted: no C caller
+ * passes non-null sk — both live wrappers pass `(const char *) 0`
+ * (`pmatchz` is declared `extern.h:1265` but never defined in pinned C).
+ * doextlist search uses pmatchi (ci true); checkfile keys use pmatch.
+ * @param {string} patrn
+ * @param {string} strng
+ * @param {boolean} ci
+ * @returns {boolean}
+ */
+function pmatch_internal(patrn, strng, ci) {
+    const pstr = String(patrn ?? '');
+    const sstr = String(strng ?? '');
+    const fold = (ch) => {
+        if (!ci || !ch) return ch;
+        const c = ch.charCodeAt(0);
+        return (c >= 65 && c <= 90) ? String.fromCharCode(c + 32) : ch;
+    };
+    const rec = (pi, si) => {
+        for (;;) {
+            const s = si < sstr.length ? sstr[si] : '';
+            const p = pi < pstr.length ? pstr[pi] : '';
+            si++;
+            pi++;
+            if (!p) return s === '';
+            if (p === '*') {
+                if (!(pi < pstr.length ? pstr[pi] : '') || rec(pi, si - 1)) {
+                    return true;
+                }
+                return s ? rec(pi - 1, si) : false;
+            }
+            if ((ci ? fold(p) !== fold(s) : p !== s) && (p !== '?' || !s)) {
+                return false;
+            }
+        }
+    };
+    return rec(0, 0);
+}
+
+/**
+ * C strutil.c pmatch `:144–148` — case-sensitive wildcard match.
+ * Live C callers: pager.c checkfile `:1024–1025` data-base keys
+ * (against `lcase(dbase_str)`, `:866`), files.c debugcore `:3154`
+ * (`#ifdef DEBUG`; live `js/files.js` `debugcore`, wildcards arm).
+ */
+export function pmatch(patrn, strng) {
+    return pmatch_internal(patrn, strng, false);
+}
+
+/** C strutil.c pmatchi `:150–155`. */
+export function pmatchi(patrn, strng) {
+    return pmatch_internal(patrn, strng, true);
+}
+
+/**
+ * C ref: cmd.c accept_menu_prefix `:3507–3512` — CMD_M_PREFIX.
+ * @param {{ flags?: number } | null | undefined} efp
+ * @returns {boolean}
+ */
+function accept_menu_prefix_tab(efp) {
+    return !!(efp && ((efp.flags | 0) & CMD_M_PREFIX));
+}
+
+/**
+ * C ref: cmd.c doc_extcmd_flagstr `:523–557`.
+ * efp null → footnote strings; else "" / "[m]" / "[A]" / "[mA]".
+ * The `[m]` tag stays literal (`cmd.c:530`). The quoted key is
+ * `visctrl(cmd_from_func(do_reqmenu))` (`:537`), ef_txt "reqmenu".
+ * @param {{ flags?: number } | null} efp
+ * @returns {{ footnote: string[] } | { flagstr: string }}
+ */
+function doc_extcmd_flagstr(efp) {
+    if (!efp) {
+        return {
+            footnote: [
+                '[A] Command autocompletes',
+                `[m] Command accepts '${visctrl(cmd_from_func('reqmenu'))}' prefix`,
+            ],
+        };
+    }
+    const mprefix = accept_menu_prefix_tab(efp);
+    const autocomplete = ((efp.flags | 0) & AUTOCOMPLETE) !== 0;
+    let flagstr = '';
+    if (mprefix || autocomplete) {
+        flagstr = '[';
+        if (mprefix) flagstr += 'm';
+        if (autocomplete) flagstr += 'A';
+        flagstr += ']';
+    }
+    return { flagstr };
+}
+
+/**
+ * C ref: cmd.c pgetchar `:445–453` ("courtesy of aeb@cwi.nl") — fuzzer arm
+ * returns randomkey, else a blocking nhgetch. Async only because JS
+ * nhgetch awaits input (Constitution §2); C callers treat it as a plain
+ * key read. C initializes ch to '\0' then overwrites both arms.
+ * @returns {Promise<number>} key code
+ */
+export async function pgetchar() {
+    if (game.iflags?.debug_fuzzer)
+        return randomkey();
+    return await nhgetch();
+}
+
+/**
+ * C ref: cmd.c extcmd_initiator `:456–460` — '#' or whatever was bound to
+ * doextcmd() in its place (`:455`). Returns the key code
+ * (C char; JS stores codes — set by reset_commands `:3475`,
+ * js/cmd.js reset_commands below).
+ * Sole C caller: win/tty/getline.c:310 tty_get_ext_cmd (prompt + "unknown
+ * extended command" pline), wired in JS get_ext_cmd.
+ * @returns {number} key code
+ */
+export function extcmd_initiator() {
+    return game.Cmd?.extcmd_char ?? 0; // C `:459` gc.Cmd.extcmd_char
+}
+
+/* C ref: cmd.c randomkey `:3521–3522` — static fuzz-cycle state. */
+let _randomkey_i = 0;
+let _randomkey_last_c = 0;
+
+/**
+ * Reset randomkey fuzz-cycle state (debug-fuzzer test support;
+ * cf. input.js resetInputState).
+ */
+export function reset_randomkey() {
+    _randomkey_i = 0;
+    _randomkey_last_c = 0;
+}
+
+/**
+ * C ref: cmd.c randomkey `:3515–3578` — random keystroke biased toward
+ * movement commands, debug-fuzzer only (callers: pgetchar `:450`,
+ * random_response `:3587`, readchar_core `:5218`, wintty.c `:4068`).
+ * Returns a key-code number (C char). C order preserved arm by arm:
+ * ^A/^P repeat gate, rn2(16) switch (default ESC … case 14), last_c latch.
+ * Case 8 cycles `i++ % SIZE(extcmdlist)` — SIZE counts the donull
+ * sentinel (cmd.c:2068), which the generated EXTCMDLIST omits, so index
+ * == length yields key 0. Case 10–12 draws d = rn2(N_DIRS) then
+ * m = rn2(7) ? MV_WALK : (!rn2(3) ? MV_RUSH : MV_RUN) in that order.
+ * rnd() never yields 0, so case 14 avoids '\0' (mouse click) by
+ * construction. C('a') = 1, C('p') = 16 (global.h:487).
+ * @returns {number} key code
+ */
+export function randomkey() {
+    /* give ^A and ^P a high probability of being repeated */
+    if ((_randomkey_last_c === 1 || _randomkey_last_c === 16)
+        && game.program_state?.input_state === commandInp && rn2(5))
+        return _randomkey_last_c;
+
+    let c;
+    switch (rn2(16)) {
+    default:
+        c = 27; /* '\033' */
+        break;
+    case 0:
+        c = 10; /* '\n' */
+        break;
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+        c = rn1(126 - 32 + 1, 32); /* rn1('~' - ' ' + 1, ' ') */
+        break;
+    case 5:
+        c = rn2(2) ? 9 : 32; /* '\t' : ' ' */
+        break;
+    case 6:
+        c = rn1(122 - 97 + 1, 97); /* rn1('z' - 'a' + 1, 'a') */
+        break;
+    case 7:
+        c = rn1(90 - 65 + 1, 65); /* rn1('Z' - 'A' + 1, 'A') */
+        break;
+    case 8:
+        c = (() => {
+            const n = EXTCMDLIST.length + 1; /* C SIZE(extcmdlist) */
+            const idx = _randomkey_i++ % n;
+            return idx < EXTCMDLIST.length ? EXTCMDLIST[idx].key : 0;
+        })();
+        break;
+    case 9:
+        c = 35; /* '#' */
+        break;
+    case 10:
+    case 11:
+    case 12:
+        {
+            const d = rn2(N_DIRS);
+            const m = rn2(7) ? MV_WALK : (!rn2(3) ? MV_RUSH : MV_RUN);
+
+            c = cmd_from_dir(d, m);
+        }
+        break;
+    case 13:
+        c = rn1(57 - 48 + 1, 48); /* rn1('9' - '0' + 1, '0') */
+        break;
+    case 14:
+        /* any char, but avoid '\0' because it's used for mouse click */
+        c = rnd(game.iflags?.wc_eight_bit_input ? 255 : 127);
+        break;
+    }
+
+    if (game.program_state?.input_state === commandInp)
+        _randomkey_last_c = c;
+    return c;
+}
+
+/**
+ * C ref: cmd.c random_response `:3580–3597` — accumulate randomkey()
+ * keystrokes until '\n' (accept) or ESC (discard + stop), keeping at most
+ * sz-1 chars. Returns the JS string (C writes buf + NUL).
+ * @param {number} sz C buffer size including NUL
+ * @returns {string}
+ */
+export function random_response(sz) {
+    let out = '';
+    for (;;) {
+        const c = randomkey();
+        if (c === 10) /* '\n' */
+            break;
+        if (c === 27) { /* '\033' */
+            out = '';
+            break;
+        }
+        if (out.length < sz - 1)
+            out += String.fromCharCode(c & 0xff);
+    }
+    return out;
+}
+
+/**
+ * C ref: cmd.c readchar_queue `:153` — file-static pushback consumed by
+ * readchar_core (`:5221–5222`) and the ALTMETA second read (`:5255`).
+ * Upstream has no writer (these are the only read sites), so it is always
+ * empty here; the shape stays so a future pushback port has its home.
+ * JS string + cursor for C's `*readchar_queue++` pointer bump.
+ */
+let _readchar_queue = '';
+let _readchar_queue_pos = 0;
+
+/**
+ * C ref: cmd.c `*readchar_queue` — next queued byte, 0 when empty.
+ * charCodeAt out of range is NaN, and `NaN || 0` is 0, which mirrors the
+ * NUL terminator C sees at the end of its string.
+ * @returns {number}
+ */
+function readchar_queue_peek() {
+    return _readchar_queue.charCodeAt(_readchar_queue_pos) || 0;
+}
+
+/**
+ * C ref: cmd.c hangup `:5159–5181` (#ifdef HANGUPHANDLING — live via
+ * include/global.h:278; SAFERHANGUP live via unixconf.h:301;
+ * NOSAVEONHANGUP off). C order: exiting → in_moveloop=0,
+ * nhwindows_hangup, done_hup++, defer while in_moveloop with something
+ * worth saving, else end_of_input. Named: nhwindows_hangup (windowport
+ * signal hook — wintty.c, no JS signals). Caller: readchar_core EOF
+ * arm (`:5245`), which awaits this.
+ * @param {number} [sig_unused] C signal-handler arg, unused
+ */
+export async function hangup(sig_unused = 0) {
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    if (ps.exiting)
+        ps.in_moveloop = 0;
+    void sig_unused;
+    ps.done_hup = (ps.done_hup | 0) + 1;
+    if (ps.in_moveloop && ps.something_worth_saving)
+        return;
+    await end_of_input();
+}
+
+/**
+ * C ref: cmd.c click_to_cmd `:4905–4913` — stamp clicklook_cc, then queue
+ * the bound mouse-button command. Caller: readchar_core click arm
+ * (`:5264`). game.Cmd.mousebtn is bound by commands_init
+ * (therecmdmenu/clicklook); the entry shape below (run + tab) matches
+ * cmdq_add_ec's live call shapes.
+ * @param {number} x
+ * @param {number} y
+ * @param {number} mod CLICK_1 / CLICK_2
+ */
+export function click_to_cmd(x, y, mod) {
+    if (!game.gc) game.gc = {};
+    game.gc.clicklook_cc = { x: x | 0, y: y | 0 };
+    const entry = game.Cmd?.mousebtn?.[(mod | 0) - 1];
+    if (entry)
+        cmdq_add_ec(CQ_CANNED, entry.run ?? entry, entry);
+}
+
+/**
+ * C ref: cmd.c lock_mouse_buttons `:3326–3340` in C order — stash the
+ * `game.Cmd.mousebtn` bindings while getpos runs (so map clicks cannot
+ * fire bound commands mid-targeting) and restore them after. The stash
+ * is function-static in C (`:3329`); here it is module-local. When no
+ * binding table exists yet (fresh game before commands_init), both arms
+ * are no-ops and the stash keeps nulls.
+ * Callers getpos.c:858 → js/getpos.js getpos() loop entry (TRUE);
+ * getpos.c:1155 exitgetpos → the same function's finally (FALSE).
+ * @param {boolean|number} savebtns nonzero to stash + clear, zero to restore
+ */
+const _locked_mousebtn = new Array(NUM_MOUSE_BUTTONS).fill(null);
+export function lock_mouse_buttons(savebtns) {
+    const btns = game.Cmd?.mousebtn;
+    if (savebtns) {
+        for (let i = 0; i < NUM_MOUSE_BUTTONS; i++) { /* C `:3333–3337` */
+            _locked_mousebtn[i] = btns?.[i] ?? null;
+            if (btns) btns[i] = null;
+        }
+    } else if (btns) { /* C `:3338–3340` */
+        for (let i = 0; i < NUM_MOUSE_BUTTONS; i++)
+            btns[i] = _locked_mousebtn[i];
+    }
+}
+
+/**
+ * C ref: cmd.c readchar_core `:5213–5272` in C order. Async only because
+ * pgetchar / nhgetch await input (Constitution §2); C callers see a plain
+ * key read. Key codes are numbers (pgetchar/nhgetch convention); C's
+ * `(char)` return cast is a no-op on this range. parse/get_count/getpos/
+ * getdir appear only in the ALTMETA comment (`:5251–5254`), not as calls.
+ * @param {{ x: number, y: number, mod: number }} pos in/out mouse coords
+ * @returns {Promise<number>} key code (0 = click, handled via click_to_cmd)
+ */
+export async function readchar_core(pos) {
+    const EOF = -1; /* C stdio EOF */
+    const ESC = 27; /* '\033' */
+    let sym;
+
+    if (game.iflags?.debug_fuzzer) {
+        /* C `:5217–5220` — randomkey then goto readchar_done (the
+           input_state reset below still runs). */
+        sym = randomkey();
+    } else {
+        if (readchar_queue_peek()) /* C `:5221–5222` */
+            sym = _readchar_queue.charCodeAt(_readchar_queue_pos++);
+        else if (game.in_doagain) /* C `:5223–5224` */
+            sym = await pgetchar();
+        else /* C `:5225–5226` — nh_poskey is tty_nhgetch on unix
+                (wintty.c tty_nh_poskey: `i = tty_nhgetch()`; the WIN32CON
+                NUL/EOF→ESC map does not apply). input.js nhgetch is the
+                tty_nhgetch equivalent; mouse coords have no key-stream
+                source here (clicks arrive via cmdq/clicklook_cc), so pos
+                passes through. */
+            sym = await nh_poskey_read(pos);
+
+        /* C `:5228–5241` NR_OF_EOFS=20 (cmd.c:15); clearerr(stdin)
+           omitted — no stdio (C itself says omit if undefined). */
+        if (sym === EOF) {
+            let cnt = 20; /* NR_OF_EOFS */
+            do {
+                sym = await pgetchar();
+            } while (--cnt && sym === EOF);
+        }
+
+        if (sym === EOF) { /* C `:5243–5247` */
+            await hangup(0);
+            sym = ESC;
+        } else if (sym === ESC /* C `:5248–5260` ALTMETA (unixconf.h:224) */
+                   && game.iflags?.altmeta
+                   && game.program_state?.input_state !== otherInp) {
+            /* C `:5255` — queue first, else blocking read. */
+            sym = readchar_queue_peek()
+                ? _readchar_queue.charCodeAt(_readchar_queue_pos++)
+                : await pgetchar();
+            if (sym === EOF || sym === 0) /* C `:5256–5257` */
+                sym = ESC;
+            else if (sym !== ESC) /* C `:5258–5259` force 8th bit on */
+                sym |= 0x80; /* C `0200` */
+        } else if (sym === 0) { /* C `:5261–5265` click event */
+            if (!game.gc) game.gc = {};
+            game.gc.clicklook_cc = { x: -1, y: -1 };
+            click_to_cmd(pos.x | 0, pos.y | 0, pos.mod | 0);
+        }
+    }
+
+    /* C readchar_done `:5267–5271` — the goto lands here, so the reset
+       runs on every path including the fuzzer arm; parse() sets it back
+       when it needs a non-ordinary next read. */
+    if (!game.program_state) game.program_state = {};
+    game.program_state.input_state = otherInp;
+    return sym | 0;
+}
+
+/**
+ * C ref: wintty.c tty_nh_poskey — `i = tty_nhgetch()`; input.js nhgetch
+ * is that equivalent. String-tolerant like lock.js nhgetch_to_dirsym
+ * (browser readKey may hand a string); pos passes through — see
+ * readchar_core.
+ * @param {{ x: number, y: number, mod: number }} pos
+ * @returns {Promise<number>} key code
+ */
+async function nh_poskey_read(pos) {
+    const k = await nhgetch();
+    return (typeof k === 'string') ? (k.length ? k.charCodeAt(0) : 0) : (k | 0);
+}
+
+/**
+ * C ref: cmd.c readchar `:5275–5284` — hero-position read for ordinary
+ * keys (x/y/mod only matter when nh_poskey reports a mouse click).
+ * This is C's first readchar_core call site (`:5282`).
+ * @returns {Promise<number>} key code
+ */
+export async function readchar() {
+    const pos = { x: game.u?.ux | 0, y: game.u?.uy | 0, mod: 0 };
+    return readchar_core(pos);
+}
+
+/**
+ * C ref: cmd.c readchar_poskey `:5286–5295` — getpos()'s mouse-aware read
+ * (input_state=getposInp, so ALTMETA treats `ESC c` as M-c for Alt+digit).
+ * This is C's second readchar_core call site (`:5293`).
+ * @param {{ x: number, y: number, mod: number }} pos
+ * @returns {Promise<number>} key code
+ */
+export async function readchar_poskey(pos) {
+    if (!game.program_state) game.program_state = {};
+    game.program_state.input_state = getposInp;
+    return readchar_core(pos);
+}
+
+const DOEXTLIST_HEADINGS = [
+    'Extended Commands',
+    'Debugging Extended Commands',
+];
+
+/**
+ * C ref: cmd.c doextlist `:560–734` — NHW_MENU PICK_ONE of extcmdlist.
+ * Meta rows: 'a' menumode, ':'/'s' search, 'z' wizard onelist.
+ * Callers: doextcmd loop (`#?`) and pager.c hmenu_doextlist.
+ * Keystroke M('?') is rhack cmdbind_get (D-1643), not this body.
+ * @returns {Promise<number>} ECMD_OK
+ */
+export async function doextlist() {
+    const wizard = !!(game.flags?.debug || game.flags?.wizard || game.wizard);
+    const discover = !!(game.flags?.explore || game.flags?.discover);
+    let menumode = 0;
+    let onelist = 0;
+    let redisplay = true;
+    let search = false;
+    let searchbuf = '';
+
+    while (redisplay) {
+        redisplay = false;
+        const raw = [];
+        raw.push({ text: 'Extended Commands List', attr: 0, selectable: false });
+        raw.push({ text: '', attr: 0, selectable: false });
+
+        raw.push({
+            text: `Switch to ${menumode ? 'including' : 'excluding'} commands that don't autocomplete`,
+            attr: 0,
+            selectable: true,
+            selector: 'a',
+            a_int: 1,
+        });
+        if (!searchbuf) {
+            raw.push({
+                text: 'Search extended commands',
+                attr: 0,
+                selectable: true,
+                selector: ':',
+                gselector: 's',
+                a_int: 2,
+            });
+        } else {
+            let back = 'Switch back from search';
+            if (back.length + searchbuf.length + ' ("")'.length < QBUFSZ) {
+                back += ` ("${searchbuf}")`;
+            }
+            raw.push({
+                text: back,
+                attr: 0,
+                selectable: true,
+                selector: 's',
+                gselector: ':',
+                a_int: 3,
+            });
+        }
+        if (wizard) {
+            raw.push({
+                text: onelist
+                    ? 'Switch to showing debugging commands in separate section'
+                    : 'Switch to showing all alphabetically, including debugging commands',
+                attr: 0,
+                selectable: true,
+                selector: 'z',
+                a_int: 4,
+            });
+        }
+        raw.push({ text: '', attr: 0, selectable: false });
+
+        const menushown = [0, 0];
+        let n = 0;
+        for (let pass = 0; pass <= 1; ++pass) {
+            if (pass === 1 && (onelist || !wizard)) break;
+            for (const efp of EXTCMDLIST) {
+                if (!efp?.txt) continue;
+                if (((efp.flags | 0) & (CMD_NOT_AVAILABLE | INTERNALCMD)) !== 0) {
+                    continue;
+                }
+                if (menumode === 1 && ((efp.flags | 0) & AUTOCOMPLETE) === 0) {
+                    continue;
+                }
+                const wizc = ((efp.flags | 0) & WIZMODECMD) !== 0 ? 1 : 0;
+                if (wizc && !wizard) continue;
+                if (!onelist && pass !== wizc) continue;
+                let cmd_desc = efp.desc || '';
+                if (!wizard && !discover
+                    && ((efp.flags | 0) & GENERALCMD) !== 0
+                    && strstri(cmd_desc, 'extinct')) {
+                    cmd_desc = strsubst(
+                        cmd_desc,
+                        ' been genocided or become extinct',
+                        ' been genocided',
+                    );
+                }
+                if (searchbuf
+                    && !strstri(efp.txt, searchbuf)
+                    && !strstri(cmd_desc, searchbuf)
+                    && !pmatchi(searchbuf, efp.txt)
+                    && !pmatchi(searchbuf, cmd_desc)) {
+                    continue;
+                }
+                if (!menushown[pass]) {
+                    raw.push({
+                        text: DOEXTLIST_HEADINGS[pass],
+                        attr: ATR_INVERSE,
+                        selectable: false,
+                    });
+                    menushown[pass] = 1;
+                }
+                const flagstr = doc_extcmd_flagstr(efp).flagstr || '';
+                const line = ` ${String(efp.txt).padEnd(14)} ${flagstr.padStart(4)} ${cmd_desc}`;
+                raw.push({ text: line, attr: 0, selectable: false });
+                ++n;
+            }
+            if (n) raw.push({ text: '', attr: 0, selectable: false });
+        }
+        if (searchbuf && !n) {
+            raw.push({ text: 'no matches', attr: 0, selectable: false });
+        } else {
+            for (const line of doc_extcmd_flagstr(null).footnote) {
+                raw.push({ text: line, attr: 0, selectable: false });
+            }
+        }
+
+        const picked = await select_menu_pick_one(raw);
+        if (picked.kind === 'pick' && (picked.item?.a_int | 0) > 0) {
+            switch (picked.item.a_int | 0) {
+            case 1:
+                menumode = 1 - menumode;
+                redisplay = true;
+                break;
+            case 2:
+                search = true;
+                break;
+            case 3:
+                search = false;
+                searchbuf = '';
+                redisplay = true;
+                break;
+            case 4:
+                search = false;
+                searchbuf = '';
+                onelist = 1 - onelist;
+                redisplay = true;
+                break;
+            }
+        } else {
+            search = false;
+            searchbuf = '';
+        }
+        if (search) {
+            let phrase = await getlin('Extended command list search phrase?');
+            if (phrase === '\x1b') phrase = '';
+            else phrase = mungspaces(phrase);
+            if (phrase) {
+                searchbuf = phrase;
+                redisplay = true;
+            }
+            search = false;
+        }
+    }
+    return ECMD_OK;
+}
+
+/** C ref: cmd.c `:160` — `static const char cmdnotavail[]`. */
+const cmdnotavail = "'%s' command not available.";
+
+/**
+ * C ref: `(*windowprocs.win_can_suspend)()` (`cmd.c:5666`). The tty port
+ * answers `genl_can_suspend_yes` (`wintty.c:162`), but scored ESM has no
+ * suspend (no SIGTSTP in Chrome/Node ESM; Contest Rule #2), so the
+ * window system here cannot suspend and the Norep arm is live.
+ * @returns {boolean}
+ */
+function win_can_suspend() {
+    return false;
+}
+
+/**
+ * C ref: cmd.c dosuspend_core `:5661–5678` (^Z, #suspend) — in C order.
+ * SUSPEND is defined (`unixconf.h:291`), so the capability branch is
+ * live; `win_can_suspend()` is false here, taking the Norep arm
+ * (`:5676`). The suspend arm keeps C order over live `getnow` /
+ * `timet_delta` / `game.urealtime`; `dosuspend()` (`:5672`,
+ * `sys/share/ioctl.c:161`, SIGTSTP) is unportable (Rule #2) and named
+ * in the D-entry. Caller: extcmdlist `:1878` "suspend" row, wired via
+ * the getline EXT_CMDS entry.
+ * @returns {Promise<number>} ECMD_OK
+ */
+export async function dosuspend_core() {
+    if (win_can_suspend()) { // C `:5666`
+        const now = getnow(); // C `:5667`
+        game.urealtime.realtime += timet_delta(now, game.urealtime.start_timing); // C `:5669`
+        game.urealtime.start_timing = now; // C `:5670`
+        /* dosuspend() `:5672` — named omission (SIGTSTP; Rule #2). */
+        game.urealtime.start_timing = getnow(); // C `:5673`
+    } else {
+        await Norep(cmdnotavail, '#suspend'); // C `:5676`
+    }
+    return ECMD_OK; // C `:5677`
+}
+
+/**
+ * C ref: cmd.c dosh_core `:5681–5696` (!, #shell) — in C order. SHELL
+ * is defined (`unixconf.h:322`), so the live arm runs: urealtime
+ * accounting over live `getnow` / `timet_delta` / `game.urealtime`,
+ * then `dosh()` (`:5691`, port subshell), unportable under Rule #2
+ * (named in the D-entry). With no subshell the command is
+ * unavailable, so the arm falls back to C's own !SHELL text
+ * (`:5693`). Caller: extcmdlist `:1860` "shell" row, wired via the
+ * getline EXT_CMDS entry.
+ * @returns {Promise<number>} ECMD_OK
+ */
+export async function dosh_core() {
+    const now = getnow(); // C `:5686`
+    game.urealtime.realtime += timet_delta(now, game.urealtime.start_timing); // C `:5688`
+    game.urealtime.start_timing = now; // C `:5689`
+    /* dosh() `:5691` — named omission (subshell spawn; Rule #2). */
+    await Norep(cmdnotavail, '#shell'); // C `:5693` !SHELL text
+    game.urealtime.start_timing = getnow(); // C `:5692`
+    return ECMD_OK; // C `:5695`
+}
+
+/**
+ * C ref: cmd.c dummyfunction `:5698–5702` (staticfn) — whole body:
+ * return ECMD_CANCEL. C declares it at cmd.c:151 with no live call
+ * sites (placeholder command function); ported for coverage.
+ * @returns {number} ECMD_CANCEL
+ */
+export function dummyfunction() {
+    return ECMD_CANCEL; // C `:5701`
+}
+
+/**
+ * C ref: cmd.c get_changed_key_binds `:2235–2287` [campaign 4/7] — BIND= lines
+ * for changed key bindings: user-rebound commands plus default-key commands
+ * left unbound. sbuf non-null appends (the #saveoptions path); sbuf null
+ * shows a text window (the rebind-menu path).
+ * C order: `:2244–2246` window setup; `:2248–2267` userbind-delta loop over
+ * gc.Cmd.cmdbinds; `:2269–2281` unbound-defaults loop over extcmdlist;
+ * `:2282–2285` display/destroy tail.
+ * JS shape notes: the C cmdbinds list (defaults with user FALSE from
+ * commands_init `:2750–2780` + user overlays from bind_key `:2662–2730`)
+ * is split in JS — defaults live in dokeylist build_default_cmdbinds, user
+ * binds in game.Cmd.binds (RC BIND= overlay via parsebindings, jsmain.js).
+ * Effective-bind reads go through the live cmdbind_get export (dokeylist.js);
+ * userbind iteration below mirrors C list order (cmdbind_add `:2152`
+ * prepends: most recent first, in-place on rebind — same as Map order,
+ * reversed). CMD_PARAM arm prints BIND=key:cmd(param) from the live
+ * bind_param store (bind_param_get, `?? ''` like keylist_putcmds).
+ * Callees: key2txt (dokeylist.js live), strbuf_append (options.js live),
+ * cmdbind_get + bind_param_get (dokeylist.js live). Callers: options.c all_options_strbuf
+ * `:9734` (live: js/options.js all_options_strbuf); cmd.c handler_rebind_keys
+ * `:2442` NULL arm (live: drained via `show_text_pages`, D-2762).
+ * @param {{ str: string|null, len: number }|null} sbuf strbuf or null
+ * @returns {string[]} putstr lines when sbuf is null (C returns void; the
+ * display tail belongs to the caller)
+ */
+export function get_changed_key_binds(sbuf) {
+    // C `:2240–2246`: win = WIN_ERR; if (!sbuf) win = create_nhwindow(NHW_TEXT).
+    // js/ has no NHW_TEXT window object (pager show_text_pages is async-only),
+    // so NULL-arm lines accumulate in winLines, returned for the caller (D-2762).
+    const winLines = [];
+    // C `:2263–2266` + `:2277–2280`: sbuf ? strbuf_append(sbuf, buf) : putstr(win, 0, buf).
+    const emit = (buf) => {
+        if (sbuf) strbuf_append(sbuf, `${buf}\n`); // C Sprintf `sbuf ? "\n" : ""`
+        else winLines.push(buf);
+    };
+
+    /* commands bound to different key */ // C `:2248`
+    const overlay = game.Cmd?.binds;
+    const userbinds = overlay instanceof Map ? [...overlay.entries()].reverse() : [];
+    for (const [rawKey, name] of userbinds) {
+        const key = Number(rawKey) & 0xff; // C uchar key
+        if (!key) continue; // C cmdbind_add `:2130`: no node for key 0
+        if (!name) continue; // C bind_key "nothing" `:2670` removes the node: no cmd, loop-1 skip
+        // C `:2251`: bind->userbind && bind->cmd && bind->cmd->key != bind->key.
+        // Every overlay entry is a user bind (RC parse is the only JS writer);
+        // re-match the row the way bind_key `:2690–2693` does (ef_txt match,
+        // INTERNALCMD skipped — same predicate as parsebindings). A miss cannot
+        // happen (parse-time match); skip defensively.
+        const ext = EXTCMDLIST.find(
+            (e) => e.txt.toLowerCase() === String(name).toLowerCase()
+                && ((e.flags | 0) & INTERNALCMD) === 0,
+        );
+        if (!ext || ext.key === key) continue;
+        // C `:2253–2261`: CMD_PARAM arm prints BIND=key:cmd(param), plain
+        // arm BIND=key:cmd. The param is the live bind_param store (written
+        // by overlay_bind_key `:2706–2708` and the live bind_key), read here
+        // like the keylist_putcmds sibling (dokeylist.js).
+        // key2txt(bind->key, buf2) takes the single key.
+        if (((ext.flags | 0) & CMD_PARAM) !== 0) { // C `:2253`
+            const param = bind_param_get(key) ?? ''; // C `:2256` bind->param
+            emit(`BIND=${key2txt(key)}:${ext.txt}(${param})`); // C `:2254–2257`
+        } else {
+            emit(`BIND=${key2txt(key)}:${ext.txt}`); // C `:2259–2261`
+        }
+    }
+
+    /* commands which should be bound to a key, but aren't */ // C `:2269`
+    // C `:2271`: i < extcmdlist_length (SIZE-1: skips the null terminator row);
+    // the generated table has no terminator, so exhausting it is exact.
+    for (const ec of EXTCMDLIST) {
+        if (!ec.key) continue; // C `:2273` ec->key && ...
+        // C `:2273` !keys[ec->key] — keys[] marks every bound node; the live
+        // cmdbind_get oracle (defaults + overlay) is the same mapping.
+        if (cmdbind_get(ec.key & 0xff)) continue;
+        emit(`BIND=${key2txt(ec.key & 0xff)}:nothing`); // C `:2274–2275`
+    }
+
+    // C `:2282–2285`: if (!sbuf) { display_nhwindow(win, TRUE); destroy_nhwindow(win); }
+    // The sole C NULL caller handler_rebind_keys (cmd.c:2442) is live in this
+    // file (D-2762) and drains the returned lines via `await show_text_pages`.
+    return winLines;
+}
+
+/**
+ * C ref: cmd.c count_bind_keys `:2207–2231` — changed plus unbound binds.
+ * Same two loops as get_changed_key_binds (above), counting instead of
+ * emitting; the counts are equal line-for-line, so the handler's `:2427`
+ * gate implies a non-empty item-3 display. C order kept.
+ * Callers: cmd.c:2427 (handler_rebind_keys, live below);
+ * options.c:8336 (optfn_o_bind_keys get_val → doset row, js/options.js).
+ * @returns {number} changed-bind count
+ */
+export function count_bind_keys() {
+    // C `:2214`: keys[256] zeroed, marked per node in loop 1. The
+    // marking feeds only loop 2, where the live cmdbind_get oracle
+    // (defaults + overlay, D-2550) is the same mapping — no array kept.
+    let nbinds = 0;
+
+    /* commands bound to different key */ // C `:2216`
+    const overlay = game.Cmd?.binds;
+    const userbinds = overlay instanceof Map ? [...overlay.entries()].reverse() : [];
+    for (const [rawKey, name] of userbinds) {
+        const key = Number(rawKey) & 0xff; // C uchar key
+        if (!key) continue; // C cmdbind_add `:2130`: no node for key 0
+        if (!name) continue; // C bind_key "nothing" `:2670` removes the node
+        // C `:2219`: bind->userbind && bind->cmd && bind->cmd->key != bind->key.
+        // Same bind_key-style re-match as get_changed_key_binds (above).
+        const ext = EXTCMDLIST.find(
+            (e) => e.txt.toLowerCase() === String(name).toLowerCase()
+                && ((e.flags | 0) & INTERNALCMD) === 0,
+        );
+        if (!ext || ext.key === key) continue;
+        nbinds++; // C `:2220`
+    }
+
+    /* commands which should be bound to a key, but aren't */ // C `:2225`
+    // C `:2226`: i < extcmdlist_length (SIZE-1: skips the null terminator row);
+    // the generated table has no terminator, so exhausting it is exact.
+    for (const ec of EXTCMDLIST) {
+        if (!ec.key) continue; // C `:2227` ec->key && ...
+        if (cmdbind_get(ec.key & 0xff)) continue; // C `:2227` !keys[ec->key]
+        nbinds++; // C `:2228`
+    }
+
+    return nbinds; // C `:2230`
+}
+
+/**
+ * C ref: cmd.c cmdbind_add `:2125–2155` (staticfn) — add or rebind one node.
+ * JS shape: the C cmdbinds list is split (defaults generated in dokeylist
+ * build_default_cmdbinds, user binds in the game.Cmd.binds overlay), so
+ * add/update mutate the overlay. Map.set on an existing key keeps
+ * first-insertion position (no move-to-front) ≡ C's in-place update, and
+ * Map append ≡ C prepend, both under the reversed iteration the D-2550
+ * order proof relies on. Overlay values are lowercase names (parsebindings
+ * precedent) and are the userbind flag. `user` FALSE writes
+ * `game.Cmd._layoutSlots` once `reset_commands` has created it and drops
+ * any overlay mask on that key (C replaces the node). Before that array
+ * exists, FALSE still records the name on the overlay.
+ * Callers: bind_key `:2694` (live below); commands_init `:2756`/`:2762`,
+ * reset_commands `:3371`/`:3411`/`:3462`, update_rest_on_space `:3501`,
+ * cmdbind_add `:2133` self.
+ * @param {number} key
+ * @param {typeof EXTCMDLIST[number]|null} extcmd
+ * @param {boolean} user
+ */
+/** C cmdbind_add of a null extcmd still allocates a node (`cmd.c:2147`). */
+const NULL_BIND = Object.freeze({
+    key: 0, txt: '', desc: '', flags: 0, _nullBind: true,
+});
+
+/**
+ * C `gc.Cmd.cmdbinds` is a singly linked list. `cmdbind_add` prepends a
+ * new key and leaves an existing node where it is (`cmd.c:2137–2153`).
+ * Index 0 is the head (newest). The array starts with `_layoutSlots`
+ * in `reset_commands`, so `commands_init` is the first writer.
+ * @param {number} k
+ */
+function cmdbind_order_prepend(k) {
+    if (!k || !game.Cmd?._layoutSlots) return;
+    if (!game.Cmd._cmdbindOrder) game.Cmd._cmdbindOrder = [];
+    const order = game.Cmd._cmdbindOrder;
+    if (order.indexOf(k) >= 0) return;
+    order.unshift(k);
+}
+
+/** C cmdbind_remove unlinks the node (`cmd.c:2164–2168`). */
+function cmdbind_order_unlink(k) {
+    const order = game.Cmd?._cmdbindOrder;
+    if (!order) return;
+    const i = order.indexOf(k);
+    if (i >= 0) order.splice(i, 1);
+}
+
+/**
+ * C cmdbind_swapkeys exchanges the key fields and leaves the nodes
+ * in place (`cmd.c:2200–2202`).
+ */
+function cmdbind_order_swap_keys(k1, k2) {
+    const order = game.Cmd?._cmdbindOrder;
+    if (!order || k1 === k2) return;
+    const i1 = order.indexOf(k1);
+    const i2 = order.indexOf(k2);
+    if (i1 >= 0) order[i1] = k2;
+    if (i2 >= 0) order[i2] = k1;
+}
+
+function cmdbind_add(key, extcmd, user) {
+    const k = key & 0xff; // C uchar key
+    if (!game.Cmd) game.Cmd = {};
+    const slots = game.Cmd._layoutSlots;
+    if (slots) {
+        if (!k) return; // C `:2130–2131`
+        const node = slots[k]; // C `:2128` cmdbind_get
+        if (!extcmd && node) { // C `:2132–2135`
+            cmdbind_remove(k);
+            return;
+        }
+        if (!extcmd) {
+            slots[k] = NULL_BIND; // C `:2147–2152` node with cmd NULL
+            bind_param_clear(k); // C `:2150` param NULL
+            cmdbind_order_prepend(k); // C `:2152–2153` new node at the head
+            return;
+        }
+        /* binding exists, set it to this command */ // C `:2137–2144`
+        const isNew = !node; // C `:2146` else — no node yet, prepend
+        bind_param_clear(k); // C `:2141–2143` free param on update
+        slots[k] = extcmd;
+        if (isNew) cmdbind_order_prepend(k); // C `:2152–2153`
+        const overlay = game.Cmd.binds;
+        if (user) {
+            if (!(overlay instanceof Map)) game.Cmd.binds = new Map();
+            game.Cmd.binds.set(k, extcmd.txt.toLowerCase());
+        } else if (overlay instanceof Map && overlay.has(k)) {
+            overlay.delete(k); // user FALSE replaces the node
+        }
+        return;
+    }
+    const bind = cmdbind_get(k); // C `:2128`
+    if (!k) return; // C `:2130–2131`
+    if (!extcmd && bind) { // C `:2132–2135`
+        cmdbind_remove(k);
+        return;
+    }
+    if (!extcmd) return; // no slot array yet — null node has no overlay key
+    if (!(game.Cmd.binds instanceof Map)) game.Cmd.binds = new Map();
+    /* binding exists, set it to this command */ // C `:2137`
+    bind_param_clear(k); // C `:2141–2143` free, or `:2150` NULL on a new node
+    void user;
+    game.Cmd.binds.set(k, extcmd.txt.toLowerCase());
+}
+
+/**
+ * C ref: cmd.c cmdbind_remove `:2157–2177` (staticfn) — unlink one node.
+ * JS shape: delete mirrors the C unlink (a later re-add appends ≡ C
+ * prepend under reversed iteration); the null marker keeps rhack skipping
+ * if/else keys (D-1657) and clears the default in cmdbinds_live (≡ C's
+ * unbound-after-remove).
+ * Callers: bind_key `:2670` (live below); reset_commands `:3413`/`:3456`,
+ * cmdbind_add `:2133`, update_rest_on_space via cmdbind_add.
+ * @param {number} key
+ */
+function cmdbind_remove(key) {
+    const k = key & 0xff; // C uchar key
+    const slots = game.Cmd?._layoutSlots;
+    if (slots) slots[k] = null; // C `:2164–2173` unlink
+    cmdbind_order_unlink(k); // C `:2165–2168` prev->next / head
+    bind_param_clear(k); // C `:2169–2170` free param
+    const overlay = game.Cmd?.binds;
+    if (!(overlay instanceof Map)) return; // C: no list — nothing to unlink
+    // Null marker keeps rhack skipping if/else keys (D-1657) and, once
+    // slots exist, hides a stale base until a user-FALSE add deletes it.
+    overlay.delete(k);
+    overlay.set(k, null);
+}
+
+/**
+ * C ref: cmd.c bind_key `:2661–2728` — bind key to command (extern).
+ * "nothing" unbinds; otherwise the (param) suffix is split off
+ * bind_key-style and the bare name is matched case-insensitively against
+ * extcmdlist (INTERNALCMD skipped — the same predicate parsebindings and
+ * get_changed_key_binds use). C order kept, including the bind-before-error
+ * order: cmdbind_add `:2693` runs before the CMD_PARAM error arms, so an
+ * empty param still binds before reporting. The botl.js re-export resolves
+ * to cfgfiles.js config_error_add for formatting and config_erradd reporting.
+ * Callers: cmd.c:2393 (handler_rebind_keys_add, live below);
+ * options.c:7669 (parsebindings BIND= — JS parsebindings writes the overlay
+ * directly, pre-existing equivalent); commands_init `:2762–2780`
+ * (build_default_cmdbinds — pre-existing equivalent).
+ * @param {number} key
+ * @param {string} command
+ * @param {boolean} user
+ * @returns {boolean} TRUE unless no command matched
+ */
+export function bind_key(key, command, user) {
+    const k = key & 0xff; // C uchar key
+    const cmd = String(command ?? '');
+
+    /* special case: "nothing" is reserved for unbinding */ // C `:2668`
+    if (cmd.toLowerCase() === 'nothing') { // C `:2669` !strcmpi
+        cmdbind_remove(k); // C `:2670`
+        return true; // C `:2671` TRUE
+    }
+
+    /* copy command to buf for modification */ // C `:2673–2676` (GC string)
+    let buf = cmd;
+    /* does buf have a parameter in parenthesis? */ // C `:2679`
+    let p = null;
+    const open = buf.indexOf('('); // C `:2680` strchr
+    const close = buf.lastIndexOf(')'); // C `:2681` strrchr
+    if (open >= 0 && close >= 0 && close > open) { // C `:2680–2682` lastp > p
+        p = buf.slice(open + 1, close); // C `:2683–2686` *p=0; *lastp=0; p++
+        buf = buf.slice(0, open);
+    }
+
+    // C `:2689`: to the null terminator (the generated table has none).
+    for (const extcmd of EXTCMDLIST) {
+        if (buf.toLowerCase() !== extcmd.txt.toLowerCase()) continue; // C `:2690–2691` strcmpi
+        if (((extcmd.flags | 0) & INTERNALCMD) !== 0) continue; // C `:2692–2693`
+        cmdbind_add(k, extcmd, user); // C `:2694`
+
+        if (((extcmd.flags | 0) & CMD_PARAM) !== 0) { // C `:2696`
+            if (p === null) { // C `:2697` !p
+                config_error_add("'%s' requires a parameter", buf); // C `:2698`
+            } else {
+                const maxlen = Math.min(30, p.length) + 1; // C `:2701`
+                if (maxlen <= 1) { // C `:2703`
+                    config_error_add('Required parameter cannot be empty'); // C `:2704`
+                } else {
+                    // C `:2705–2707` strncpy of min(30, strlen)+1, then NUL
+                    // at maxlen-1. Key 0 never reaches here (`:2130`).
+                    bind_param_set(k, p.slice(0, maxlen - 1));
+                }
+            }
+        } else if (p !== null && p.length > 0) { // C `:2711`
+            config_error_add("'%s' does not take a parameter", buf); // C `:2712`
+        }
+        // C `:2714–2721` #if 0 CMD_NOT_AVAILABLE note — dead in C, omitted.
+        return true; // C `:2723` TRUE (free(buf) `:2722` is GC)
+    }
+
+    return false; // C `:2727` FALSE
+}
+
+/**
+ * C ref: cmd.c bind_mousebtn `:2624–2659` — bind mouse button to a
+ * MOUSECMD extcmd, or "nothing" to unbind. bind_key sibling: same
+ * nothing-first shape (`:2636`), ef_txt walk (`:2641`), MOUSECMD gate
+ * (`:2644–2645`, no INTERNALCMD skip — clicklook carries it), and the
+ * live config_error_add sink. C `:2650–2656` #if 0 CMD_NOT_AVAILABLE
+ * note is dead in C, omitted like bind_key's. Callers: commands_init
+ * `:2758–2759` (wired); options.c:7637 parsebindings mouse arm (wired —
+ * failure falls through to txt2key per `:7638`).
+ * @param {number} btn 1-based button
+ * @param {string} command extcmd ef_txt, or "nothing"
+ * @returns {boolean} TRUE unless no command matched
+ */
+export function bind_mousebtn(btn, command) {
+    const b = btn | 0;
+    if (b < 1 || b > NUM_MOUSE_BUTTONS) { // C `:2628`
+        config_error_add('Wrong mouse button, valid are 1-%i', NUM_MOUSE_BUTTONS); // C `:2629–2630`
+        return false; // C `:2631` FALSE
+    }
+    const i = b - 1; // C `:2633` btn--
+    if (!game.Cmd) game.Cmd = {};
+    if (!game.Cmd.mousebtn) {
+        game.Cmd.mousebtn = new Array(NUM_MOUSE_BUTTONS).fill(null);
+    }
+
+    /* special case: "nothing" is reserved for unbinding */ // C `:2635`
+    if (String(command ?? '').toLowerCase() === 'nothing') { // C `:2636` !strcmpi
+        game.Cmd.mousebtn[i] = null; // C `:2637` (struct ext_func_tab *) 0
+        return true; // C `:2638` TRUE
+    }
+
+    // C `:2641`: to the null terminator (the generated table has none).
+    for (const extcmd of EXTCMDLIST) {
+        if (String(command ?? '').toLowerCase() !== extcmd.txt.toLowerCase()) continue; // C `:2642–2643` strcmpi
+        if (((extcmd.flags | 0) & MOUSECMD) === 0) continue; // C `:2644–2645`
+        game.Cmd.mousebtn[i] = extcmd; // C `:2646`
+        // C `:2648–2656` #if 0 CMD_NOT_AVAILABLE note — not compiled.
+        return true; // C `:2657` TRUE
+    }
+
+    return false; // C `:2659` FALSE
+}
+
+/* C cmd.c:2070–2083 move_funcs[N_DIRS_Z][N_MOVEMODES] — txt identity. */
+const MOVE_FUNC_TXT = [
+    ['movewest', 'runwest', 'rushwest'],
+    ['movenorthwest', 'runnorthwest', 'rushnorthwest'],
+    ['movenorth', 'runnorth', 'rushnorth'],
+    ['movenortheast', 'runnortheast', 'rushnortheast'],
+    ['moveeast', 'runeast', 'rusheast'],
+    ['movesoutheast', 'runsoutheast', 'rushsoutheast'],
+    ['movesouth', 'runsouth', 'rushsouth'],
+    ['movesouthwest', 'runsouthwest', 'rushsouthwest'],
+    ['down', 'down', 'down'],
+    ['up', 'up', 'up'],
+];
+
+/* C cmd.c:3347–3350 dirchars tables. */
+const SDIR = 'hykulnjb><';
+const SDIR_SWAP_YZ = 'hzkulnjb><';
+const NDIR = '47896321><';
+const NDIR_PHONE = '41236987><';
+
+/**
+ * C cmd.c:3489–3493 static restonspace — clone of extcmd '.' / donull,
+ * distinct description, bound to space by update_rest_on_space.
+ */
+const REST_ON_SPACE = Object.freeze({
+    key: 32,
+    txt: 'wait',
+    desc: "rest one move via 'rest_on_space' option",
+    flags: IFBURIED | CMD_M_PREFIX,
+    text: 'waiting',
+});
+
+/**
+ * C cmd.c:3161–3191 spkeys_binds — index is the nhkf enum, not row order.
+ * Rows are [nhkf, defaultKey, name] in C row order; the third column is C's
+ * bind-name field (`:3161–3191`), matched case-sensitively by
+ * bind_specialkey below. NHKF_ESC carries null: C's `(char *) 0`
+ * "no binding" row never matches (`:3199`).
+ */
+const SPKEYS_BINDS = [
+    [NHKF_ESC, 0x1b, null],
+    [NHKF_GETDIR_SELF, 46, 'getdir.self'],
+    [NHKF_GETDIR_SELF2, 115, 'getdir.self2'],
+    [NHKF_GETDIR_HELP, 63, 'getdir.help'],
+    [NHKF_GETDIR_MOUSE, 95, 'getdir.mouse'],
+    [NHKF_COUNT, 110, 'count'],
+    [NHKF_GETPOS_SELF, 64, 'getpos.self'],
+    [NHKF_GETPOS_PICK, 46, 'getpos.pick'],
+    [NHKF_GETPOS_PICK_Q, 44, 'getpos.pick.quick'],
+    [NHKF_GETPOS_PICK_O, 59, 'getpos.pick.once'],
+    [NHKF_GETPOS_PICK_V, 58, 'getpos.pick.verbose'],
+    [NHKF_GETPOS_SHOWVALID, 36, 'getpos.valid'],
+    [NHKF_GETPOS_AUTODESC, 35, 'getpos.autodescribe'],
+    [NHKF_GETPOS_MON_NEXT, 109, 'getpos.mon.next'],
+    [NHKF_GETPOS_MON_PREV, 77, 'getpos.mon.prev'],
+    [NHKF_GETPOS_OBJ_NEXT, 111, 'getpos.obj.next'],
+    [NHKF_GETPOS_OBJ_PREV, 79, 'getpos.obj.prev'],
+    [NHKF_GETPOS_DOOR_NEXT, 100, 'getpos.door.next'],
+    [NHKF_GETPOS_DOOR_PREV, 68, 'getpos.door.prev'],
+    [NHKF_GETPOS_UNEX_NEXT, 120, 'getpos.unexplored.next'],
+    [NHKF_GETPOS_UNEX_PREV, 88, 'getpos.unexplored.prev'],
+    [NHKF_GETPOS_VALID_NEXT, 122, 'getpos.valid.next'],
+    [NHKF_GETPOS_VALID_PREV, 90, 'getpos.valid.prev'],
+    [NHKF_GETPOS_INTERESTING_NEXT, 97, 'getpos.all.next'],
+    [NHKF_GETPOS_INTERESTING_PREV, 65, 'getpos.all.prev'],
+    [NHKF_GETPOS_HELP, 63, 'getpos.help'],
+    [NHKF_GETPOS_LIMITVIEW, 34, 'getpos.filter'],
+    [NHKF_GETPOS_MOVESKIP, 42, 'getpos.moveskip'],
+    [NHKF_GETPOS_MENU, 33, 'getpos.menu'],
+];
+
+/**
+ * C ref: cmd.c bind_specialkey `:3194–3205` — bind key to a special-key
+ * command by name (extern). Walks spkeys_binds in C row order; a null-name
+ * row never matches (`:3199` !name → continue) and the compare is
+ * case-sensitive strcmp. Writes the live game.Cmd.spkeys[nhkf] slot
+ * (reset_commands `:3365–3366` seeds it from these defaults; cmd_spkey
+ * reads it with the same fallback). Sole C caller: options.c:7651
+ * (parsebindings special-key arm).
+ * @param {number} key
+ * @param {string} command
+ * @returns {boolean} TRUE when the command named a special key
+ */
+export function bind_specialkey(key, command) {
+    const cmd = String(command ?? ''); // C `const char *command`
+    for (let i = 0; i < SPKEYS_BINDS.length; i++) { // C `:3198` SIZE
+        const name = SPKEYS_BINDS[i][2]; // C `:3199` spkeys_binds[i].name
+        if (!name || cmd !== name) continue; // C `:3199–3200` !name/strcmp
+        if (!game.Cmd) game.Cmd = {};
+        if (!game.Cmd.spkeys) game.Cmd.spkeys = []; // C array always exists
+        game.Cmd.spkeys[SPKEYS_BINDS[i][0]] = key & 0xff; // C `:3201` uchar
+        return true; // C `:3202` TRUE
+    }
+    return false; // C `:3204` FALSE
+}
+
+/**
+ * C extcmdlist ef_funct identity. The generated table stores ef_txt,
+ * not function pointers, so this map is the pointer compare in
+ * ext_func_tab_from_func (cmd.c:3015–3025). Alternate commands use
+ * their INTERNALCMD row (altdip, not dip).
+ */
+const FUNCT_TXT = new Map([
+    [doextcmd, '#'],
+    [dohelp, 'help'],
+    [dotypeinv, 'inventtype'],
+    [do_repeat, 'repeat'],
+    [dokick, 'kick'],
+    [wiz_map, 'wizmap'],
+    [wiz_genesis, 'wizgenesis'],
+    [doprev_message, 'prevmsg'],
+    [dotelecmd, 'teleport'],
+    [wiz_level_tele, 'wizlevelport'],
+    [wiz_wish, 'wizwish'],
+    [doattributes, 'attributes'],
+    [doapply, 'apply'],
+    [doddoremarm, 'takeoffall'],
+    [doclose, 'close'],
+    [dodrop, 'drop'],
+    [doddrop, 'droptype'],
+    [doeat, 'eat'],
+    [doengrave, 'engrave'],
+    [dofire, 'fire'],
+    [ddoinv, 'inventory'],
+    [doopen, 'open'],
+    [dopay, 'pay'],
+    [doputon, 'puton'],
+    [dodrink, 'quaff'],
+    [dowieldquiver, 'quiver'],
+    [doread, 'read'],
+    [doremring, 'remove'],
+    [dosearch, 'search'],
+    [dosave, 'save'],
+    [dothrow, 'throw'],
+    [dotip, 'tip'], // C cmd.c:1905 AUTOCOMPLETE|CMD_M_PREFIX
+    [dotakeoff, 'takeoff'],
+    [doversion, 'versionshort'],
+    [dowield, 'wield'],
+    [dowear, 'wear'],
+    [doswapweapon, 'swap'],
+    [dozap, 'zap'],
+    [docast, 'cast'],
+    [dopickup, 'pickup'],
+    [donull, 'wait'],
+    [dodown, 'down'],
+    [doup, 'up'],
+    [dotravel, 'travel'],
+    [dotravel_target, 'retravel'],
+    [dolook, 'look'],
+    [doloot, 'loot'], // C cmd.c:1762 AUTOCOMPLETE|CMD_M_PREFIX
+    [doclicklook, 'clicklook'],
+    [dowhatis, 'whatis'],
+    [doquickwhatis, 'glance'],
+    [dovspell, 'showspells'],
+    [doidtrap, 'showtrap'],
+    [dodiscovered, 'known'],
+    [doclassdisco, 'knownclass'], // C cmd.c:1752 '`' knownclass
+    [dotogglepickup, 'autopickup'],
+    [dobugreport, 'bugreport'], // C cmd.c:1685 (after autopickup, its C predecessor)
+    [doset_simple, 'options'],
+    [doprgold, 'showgold'],
+    [doprwep, 'seeweapon'],
+    [doprarm, 'seearmor'],
+    [doprring, 'seerings'],
+    [dopramulet, 'seeamulet'],
+    [doprtool, 'seetools'],
+    [doprinuse, 'seeall'],
+    [doperminv, 'perminv'],
+    [doterrain, 'terrain'],
+    [do_rush, 'rush'],
+    [do_run, 'run'],
+    [do_fight, 'fight'],
+    [do_reqmenu, 'reqmenu'],
+    [do_move_west, 'movewest'],
+    [do_move_northwest, 'movenorthwest'],
+    [do_move_north, 'movenorth'],
+    [do_move_northeast, 'movenortheast'],
+    [do_move_east, 'moveeast'],
+    [do_move_southeast, 'movesoutheast'],
+    [do_move_south, 'movesouth'],
+    [do_move_southwest, 'movesouthwest'],
+    [do_rush_west, 'rushwest'],
+    [do_rush_northwest, 'rushnorthwest'],
+    [do_rush_north, 'rushnorth'],
+    [do_rush_northeast, 'rushnortheast'],
+    [do_rush_east, 'rusheast'],
+    [do_rush_southeast, 'rushsoutheast'],
+    [do_rush_south, 'rushsouth'],
+    [do_rush_southwest, 'rushsouthwest'],
+    [do_run_west, 'runwest'],
+    [do_run_northwest, 'runnorthwest'],
+    [do_run_north, 'runnorth'],
+    [do_run_northeast, 'runnortheast'],
+    [do_run_east, 'runeast'],
+    [do_run_southeast, 'runsoutheast'],
+    [do_run_south, 'runsouth'],
+    [do_run_southwest, 'runsouthwest'],
+    [dotalk, 'chat'],
+    [docallcmd, 'call'],
+    [dodip, 'dip'],
+    [dip_into, 'altdip'],
+    [dosit, 'sit'],
+    [doride, 'ride'],
+    [domonability, 'monster'],
+    [dountrap, 'untrap'],
+    [dosacrifice, 'offer'],
+    [dorub, 'rub'],
+    [doforce, 'force'],
+    [doorganize, 'adjust'],
+    [adjust_split, 'altadjust'],
+    [remarm_swapwep, 'altunwield'],
+    [ia_dotakeoff, 'alttakeoff'],
+    [dotwoweapon, 'twoweapon'],
+    [doinvoke, 'invoke'],
+]);
+
+function Ccode(c) {
+    return (0x1f & c) & 0xff; // C `C()` global.h:487
+}
+
+function Mcode(c) {
+    return (0x80 | c) & 0xff; // C `M()` global.h:480
+}
+
+/** C highc — ASCII a-z only (`hacklib.c` highc). Digits stay themselves. */
+function highcCode(c) {
+    const code = c & 0xff;
+    if (code >= 97 && code <= 122) return code - 32;
+    return code;
+}
+
+/**
+ * Effective bind at `key` once slots exist: overlay mask, else the slot.
+ * A null overlay value is "nothing" (no node). `_nullBind` is a node
+ * whose cmd is NULL. Before slots exist, cmdbind_get's extcmd is the node.
+ * @param {number} key
+ * @returns {{ exists: boolean, cmd: typeof EXTCMDLIST[number]|null }}
+ */
+function layout_bind(key) {
+    const k = key & 0xff;
+    if (!k) return { exists: false, cmd: null };
+    const slots = game.Cmd?._layoutSlots;
+    const overlay = game.Cmd?.binds;
+    if (overlay instanceof Map && overlay.has(k)) {
+        const name = overlay.get(k);
+        if (!name) return { exists: false, cmd: null };
+        const want = String(name).toLowerCase();
+        for (const e of EXTCMDLIST) {
+            if (e.txt.toLowerCase() === want) return { exists: true, cmd: e };
+        }
+        return { exists: true, cmd: null };
+    }
+    if (!slots) {
+        const ext = cmdbind_get(k);
+        return { exists: !!ext, cmd: ext };
+    }
+    const slot = slots[k];
+    if (!slot) return { exists: false, cmd: null };
+    if (slot._nullBind) return { exists: true, cmd: null };
+    return { exists: true, cmd: slot };
+}
+
+/**
+ * C ref: cmd.c cmdbind_swapkeys `:2194–2204` (staticfn).
+ * Both nodes must exist. Swaps the commands (C swaps the key fields)
+ * and any overlay mask so the userbind flag moves with the command.
+ * @param {number} key1
+ * @param {number} key2
+ */
+function cmdbind_swapkeys(key1, key2) {
+    const k1 = key1 & 0xff;
+    const k2 = key2 & 0xff;
+    const slots = game.Cmd?._layoutSlots;
+    if (!slots) return;
+    const a = layout_bind(k1);
+    const b = layout_bind(k2);
+    if (!a.exists || !b.exists) return; // C `:2200`
+    const overlay = game.Cmd.binds;
+    const has1 = overlay instanceof Map && overlay.has(k1);
+    const has2 = overlay instanceof Map && overlay.has(k2);
+    const v1 = has1 ? overlay.get(k1) : undefined;
+    const v2 = has2 ? overlay.get(k2) : undefined;
+    slots[k1] = b.cmd || NULL_BIND; // C bind1->key = key2 (cmd stays on the node)
+    slots[k2] = a.cmd || NULL_BIND;
+    bind_param_swap(k1, k2); // param stays on the node, so it follows the key
+    if (has1 || has2) {
+        if (!(overlay instanceof Map)) return;
+        if (has2) overlay.set(k1, v2);
+        else overlay.delete(k1);
+        if (has1) overlay.set(k2, v1);
+        else overlay.delete(k2);
+    }
+    cmdbind_order_swap_keys(k1, k2); // C `:2201–2202` key fields, nodes stay
+}
+
+/**
+ * C ref: cmd.c ext_func_tab_from_func `:3015–3025`.
+ * First extcmdlist row whose ef_funct matches, including INTERNALCMD.
+ * JS matches FUNCT_TXT (ef_txt for that function). A string is that txt.
+ * @param {Function|string|null|undefined} fn
+ * @returns {typeof EXTCMDLIST[number]|null}
+ */
+export function ext_func_tab_from_func(fn) {
+    const txt = typeof fn === 'string' ? fn : FUNCT_TXT.get(fn);
+    if (!txt) return null; // C `:3024` NULL
+    for (const extcmd of EXTCMDLIST) { // C `:3020` ef_txt
+        if (extcmd.txt === txt) return extcmd; // C `:3021` ef_funct == fn
+    }
+    return null;
+}
+
+/**
+ * C ref: cmd.c bind_key_fn `:2731–2746` (staticfn).
+ * First non-INTERNALCMD row whose command is `txt` (C: ef_funct == fn).
+ * @param {number} key
+ * @param {string} txt
+ * @returns {boolean}
+ */
+function bind_key_fn(key, txt) {
+    for (const extcmd of EXTCMDLIST) { // C `:2736`
+        if (extcmd.txt !== txt) continue; // C `:2737` ef_funct != fn
+        if ((extcmd.flags & INTERNALCMD) !== 0) continue; // C `:2738–2739`
+        cmdbind_add(key, extcmd, false); // C `:2740`
+        return true; // C `:2741`
+    }
+    return false; // C `:2745`
+}
+
+/**
+ * C ref: cmd.c commands_init `:2749–2782` (staticfn).
+ */
+function commands_init() {
+    for (const extcmd of EXTCMDLIST) { // C `:2754` through the null ef_txt
+        if (extcmd.key) cmdbind_add(extcmd.key, extcmd, false); // C `:2755–2756`
+    }
+    bind_mousebtn(1, 'therecmdmenu'); // C `:2758`
+    bind_mousebtn(2, 'clicklook'); // C `:2759`
+    bind_key(Ccode(108), 'redraw', false); // C `:2762` C('l')
+    bind_key(104, 'help', false); // C `:2763` 'h'
+    bind_key(106, 'jump', false); // C `:2764` 'j'
+    bind_key(107, 'kick', false); // C `:2765` 'k'
+    bind_key(108, 'loot', false); // C `:2766` 'l'
+    bind_key(Ccode(110), 'annotate', false); // C `:2767` C('n')
+    bind_key(78, 'name', false); // C `:2768` 'N'
+    bind_key(117, 'untrap', false); // C `:2769` 'u'
+    bind_key(53, 'run', false); // C `:2770` '5'
+    bind_key(Mcode(53), 'rush', false); // C `:2771` M('5')
+    bind_key(45, 'fight', false); // C `:2772` '-'
+    bind_key(Mcode(79), 'overview', false); // C `:2775` M('O')
+    bind_key(Mcode(50), 'twoweapon', false); // C `:2776` M('2')
+    bind_key(Mcode(78), 'name', false); // C `:2777` M('N')
+    // C `:2779–2781` #if 0 space→wait — not compiled.
+}
+
+/**
+ * Movement key for one dirchars character and move mode.
+ * Num_pad run and rush are both M(di) (`cmd.c:3448–3450`).
+ * @param {number} di
+ * @param {number} mode
+ * @param {boolean} numPad
+ * @returns {number}
+ */
+function dir_mode_key(di, mode, numPad) {
+    let key = di & 0xff;
+    if (!numPad) {
+        if (mode === MV_RUN) key = highcCode(key); // C `:3442`
+        else if (mode === MV_RUSH) key = Ccode(key); // C `:3443`
+    } else if (mode === MV_RUN || mode === MV_RUSH) {
+        key = Mcode(key); // C `:3448–3450`
+    }
+    return key;
+}
+
+function dirBackup() {
+    const cmd = game.Cmd;
+    if (!cmd._dirBack) {
+        cmd._dirBack = {
+            backed: false,
+            key: Array.from({ length: N_DIRS }, () => new Array(N_MOVEMODES).fill(0)),
+            cmd: Array.from({ length: N_DIRS }, () => new Array(N_MOVEMODES).fill(null)),
+        };
+    }
+    return cmd._dirBack;
+}
+
+/**
+ * C ref: cmd.c update_rest_on_space `:3479–3503`.
+ * Callers: reset_commands `:3474` (live). `options.c:5426`
+ * (`optfn_boolean` rest_on_space, wired from `optfn_boolean_do_set`).
+ * `options.c:7364` (`initoptions_finish`) has no JS function.
+ */
+export function update_rest_on_space() {
+    if (!game.Cmd) game.Cmd = {};
+    // The clone is a distinct object from extcmd '.' / "wait". Without the
+    // slot array, overlay lookup collapses them and turning the option off
+    // cannot see `&restonspace`. The boot is options.c:7158
+    // (initoptions_init live but startup-unwired); its !num_pad result
+    // matches build_default_cmdbinds.
+    if (!game.Cmd._layoutSlots) reset_commands(true);
+    const bind = layout_bind(32); // C `:3494` cmdbind_get(' ')
+    if (bind.exists && bind.cmd !== REST_ON_SPACE) { // C `:3499`
+        game.Cmd._unrestonspace = bind.cmd; // C `:3500` (null cmd included)
+    }
+    const unrest = game.Cmd._unrestonspace || null;
+    const use = game.flags?.rest_on_space ? REST_ON_SPACE : unrest; // C `:3501`
+    cmdbind_add(32, use, false);
+}
+
+/**
+ * C ref: cmd.c reset_commands `:3344–3476`.
+ * `initial` is the `options.c:7158` boot (`initoptions_init` live but
+ * startup-unwired). The first non-initial call runs that boot once so the
+ * static backup matches a process that already executed it: the default
+ * table in `build_default_cmdbinds` is that boot's !num_pad result.
+ * @param {boolean} initial
+ */
+export function reset_commands(initial) {
+    if (!game.Cmd) game.Cmd = {};
+    // Stand-in for options.c:7158. Not a second C call site: the static
+    // `backed_dir_cmd` starts FALSE, and JS never ran the boot.
+    if (!initial && !game.Cmd._layoutSlots) reset_commands(true);
+
+    const cmd = game.Cmd;
+    const iflags = game.iflags || (game.iflags = {});
+    let updated = 0;
+
+    if (initial) { // C `:3361`
+        updated = 1; // C `:3362`
+        cmd.num_pad = false; // C `:3363`
+        cmd.pcHack_compat = cmd.phone_layout = cmd.swap_yz = false; // C `:3364`
+        if (!cmd.spkeys) cmd.spkeys = [];
+        for (let i = 0; i < SPKEYS_BINDS.length; i++) { // C `:3365–3366`
+            cmd.spkeys[SPKEYS_BINDS[i][0]] = SPKEYS_BINDS[i][1];
+        }
+        if (!cmd._layoutSlots) {
+            cmd._layoutSlots = new Array(256).fill(null);
+            // C gc.Cmd.cmdbinds starts NULL; commands_init prepends onto it.
+            cmd._cmdbindOrder = [];
+        }
+        commands_init(); // C `:3367`
+    } else {
+        const back = dirBackup();
+        if (back.backed) { // C `:3369`
+            for (let dir = 0; dir < N_DIRS; dir++) { // C `:3370`
+                for (let mode = 0; mode < N_MOVEMODES; mode++) { // C `:3371`
+                    cmdbind_add(back.key[dir][mode], back.cmd[dir][mode], false); // C `:3372`
+                }
+            }
+        }
+
+        /* basic num_pad */ // C `:3376`
+        let flagtemp = !!iflags.num_pad; // C `:3377`
+        if (flagtemp !== !!cmd.num_pad) { // C `:3378`
+            cmd.num_pad = flagtemp; // C `:3379`
+            updated++; // C `:3380`
+        }
+        /* swap_yz mode (only applicable for !num_pad) */ // C `:3382–3383`
+        const npm = iflags.num_pad_mode | 0;
+        flagtemp = (npm & 1) ? !cmd.num_pad : false; // C `:3384`
+        if (flagtemp !== !!cmd.swap_yz) { // C `:3385`
+            cmd.swap_yz = flagtemp; // C `:3386`
+            updated++; // C `:3387`
+            const ylist = [ // C `:3352–3354`
+                121, 89, Ccode(121), Mcode(121), Mcode(89), Mcode(Ccode(121)),
+            ];
+            for (let i = 0; i < ylist.length; i++) { // C `:3391`
+                const c = ylist[i] & 0xff; // C `:3392`
+                cmdbind_swapkeys(c, (c + 1) & 0xff); // C `:3393`
+            }
+        }
+        /* MSDOS compatibility mode (only applicable for num_pad) */ // C `:3395`
+        flagtemp = (npm & 1) ? !!cmd.num_pad : false; // C `:3397`
+        if (flagtemp !== !!cmd.pcHack_compat) { // C `:3398`
+            cmd.pcHack_compat = flagtemp; // C `:3399`
+            updated++; // C `:3400`
+            // C `:3402–3408` #if 0 M('5') swap — not compiled.
+            const c = Mcode(48); // C `:3410` M('0')
+            if (cmd.pcHack_compat) { // C `:3411`
+                cmdbind_add(c, ext_func_tab_from_func(dotypeinv), false); // C `:3412`
+            } else {
+                cmdbind_remove(c); // C `:3413`
+            }
+        }
+        /* phone keypad layout (only applicable for num_pad) */ // C `:3415`
+        flagtemp = (npm & 2) ? !!cmd.num_pad : false; // C `:3416`
+        if (flagtemp !== !!cmd.phone_layout) { // C `:3417`
+            cmd.phone_layout = flagtemp; // C `:3418`
+            updated++; // C `:3419`
+            for (let i = 0; i < 3; i++) { // C `:3421`
+                let c = 49 + i; // C `:3422` '1'+i
+                cmdbind_swapkeys(c, c + 6); // C `:3423`
+                c = Mcode(49) + i; // C `:3424` M('1')+i
+                cmdbind_swapkeys(c, (c + 6) & 0xff); // C `:3425`
+            }
+        }
+    }
+
+    if (updated) cmd.serialno = (cmd.serialno | 0) + 1; // C `:3430–3431`
+    const numPad = !!cmd.num_pad;
+    cmd.dirchars = !numPad // C `:3432–3434`
+        ? (!cmd.swap_yz ? SDIR : SDIR_SWAP_YZ)
+        : (!cmd.phone_layout ? NDIR : NDIR_PHONE);
+    cmd.alphadirchars = !numPad ? cmd.dirchars : SDIR; // C `:3435`
+
+    const back = dirBackup();
+    for (let dir = 0; dir < N_DIRS; dir++) { // C `:3438`
+        for (let mode = MV_WALK; mode < N_MOVEMODES; mode++) { // C `:3439`
+            const di = cmd.dirchars.charCodeAt(dir); // C `:3441`
+            const key = dir_mode_key(di, mode, numPad);
+            back.key[dir][mode] = key; // C `:3452`
+            const bound = layout_bind(key); // C `:3453`
+            back.cmd[dir][mode] = bound.exists ? bound.cmd : null; // C `:3454–3455`
+            cmdbind_remove(key); // C `:3456`
+        }
+    }
+    back.backed = true; // C `:3459`
+
+    for (let i = 0; i < N_DIRS; i++) { // C `:3462`
+        const di = cmd.dirchars.charCodeAt(i);
+        bind_key_fn(di, MOVE_FUNC_TXT[i][MV_WALK]); // C `:3463`
+        if (!numPad) { // C `:3464`
+            bind_key_fn(highcCode(di), MOVE_FUNC_TXT[i][MV_RUN]); // C `:3465–3466`
+            bind_key_fn(Ccode(di), MOVE_FUNC_TXT[i][MV_RUSH]); // C `:3467`
+        } else {
+            bind_key_fn(Mcode(di), MOVE_FUNC_TXT[i][MV_RUN]); // C `:3470`
+            // C `:3471` rush of a digit is not bound; the 5 prefix is commands_init.
+        }
+    }
+    update_rest_on_space(); // C `:3474`
+    // C `:3475` cmd_from_func(doextcmd). JS identity of doextcmd is txt "#".
+    cmd.extcmd_char = cmd_from_func('#') & 0xff;
+}
+
+/**
+ * C ref: cmd.c handler_rebind_keys_add `:2290–2405` (staticfn) — one rebind.
+ * keyfirst reads the key up front, else the command menu comes first and the
+ * key is read at bindit. C order kept: current-bind header, "nothing" row,
+ * extcmd rows (MOVEMENTCMD/INTERNALCMD/CMD_NOT_AVAILABLE skipped, a_int
+ * i+1), end_menu prompt as inverse header + blank (wintty.c tty_end_menu),
+ * PICK_ONE, -1/param
+ * arms, bindit key read, prevcmd compare, Changed/Bound/failed plines.
+ * Async only because JS menu/getlin/plines await input (Constitution §2);
+ * C callers treat it as a plain blocking call. select_menu_pick_one
+ * auto-letters selector-less rows ≡ tty_end_menu (helper cites wintty.c).
+ * C `:2363`/`:2379` Strcat cmdstr onto the uninitialized buffer (upstream
+ * wart — only sane as assignment) is a plain assignment below.
+ * Sole caller: handler_rebind_keys `:2440` (live below).
+ * @param {boolean} keyfirst
+ */
+async function handler_rebind_keys_add(keyfirst) {
+    let key = 0; // C `:2300` uchar key = '\0'
+
+    if (keyfirst) { // C `:2303`
+        await pline('Bind which key? '); // C `:2304`
+        key = (await pgetchar()) & 0xff; // C `:2305` (uchar truncation)
+
+        if (!key || key === 27) return; // C `:2307–2308` '\033'
+    }
+
+    // C `:2311–2313` create_nhwindow/start_menu/zeroany — the raw menu below.
+    const raw = [];
+    if (key) { // C `:2315`
+        const bind = cmdbind_get(key); // C `:2316`
+
+        // C `:2318–2324`: bind && bind->cmd — the JS oracle returns the entry
+        // itself (null when unbound), so one null check covers both arms.
+        if (bind) {
+            raw.push({
+                text: `Key '${key2txt(key)}' is currently bound to "${bind.txt}".`,
+                selectable: false,
+            });
+        } else {
+            raw.push({
+                text: `Key '${key2txt(key)}' is not bound to anything.`,
+                selectable: false,
+            });
+        }
+        raw.push({ text: '', selectable: false }); // C `:2325–2326` add_menu_str(win, "")
+    }
+
+    // C `:2329–2332`: a_int -1, no selector.
+    raw.push({ text: 'nothing: unbind the key', selectable: true, a_int: -1 });
+
+    raw.push({ text: '', selectable: false }); // C `:2334`
+
+    for (let i = 0; i < EXTCMDLIST.length; i++) { // C `:2336` i < extcmdlist_length
+        const ec = EXTCMDLIST[i]; // C `:2337`
+
+        if (((ec.flags | 0) & (MOVEMENTCMD | INTERNALCMD | CMD_NOT_AVAILABLE)) !== 0) continue; // C `:2339–2340`
+
+        // C `:2342–2345`: a_int = i+1; Sprintf "%s: %s" ef_txt/ef_desc.
+        raw.push({ text: `${ec.txt}: ${ec.desc}`, selectable: true, a_int: i + 1 });
+    }
+    // C `:2347–2351` end_menu prompt — tty_menu_promptstyle (default
+    // ATR_INVERSE; wintty.c `:2680–2689`) + blank separator (`:2685–2686`).
+    raw.unshift({ text: '', selectable: false });
+    raw.unshift({
+        text: key ? `Bind '${key2txt(key)}' to what command?` : 'Bind what command?',
+        selectable: false,
+        attr: ATR_INVERSE,
+    });
+    const res = await select_menu_pick_one(raw); // C `:2352–2353` select + destroy (inside the helper)
+    if (res.kind !== 'pick') return; // C npick <= 0 `:2354` falls through (no goto)
+
+    // C `:2358–2359`: i = picks->item.a_int; free(picks) (GC).
+    const i = res.item.a_int | 0;
+    let ec = null;
+    let cmdstr;
+    if (i === -1) { // C `:2361`
+        ec = null; // C `:2362`
+        cmdstr = 'nothing'; // C `:2363` (Strcat wart — see doc)
+        // C `:2364` goto bindit.
+    } else {
+        ec = EXTCMDLIST[i - 1]; // C `:2366` &extcmdlist[i-1]
+
+        if (((ec.flags | 0) & CMD_PARAM) !== 0) { // C `:2368`
+            // C `:2372`: parambuf[BUFSZ] zeroed; `:2373` querybuf. C has no
+            // ESC arm after getlin here — the buffer passes through as-is.
+            const parambuf = mungspaces(await getlin(`Command ${ec.txt} requires a parameter:`)); // C `:2373–2375`
+            // C `:2376–2377`: Snprintf(cmdstr, BUFSZ-1, "%s(%s)") + NUL.
+            cmdstr = `${ec.txt}(${parambuf})`.slice(0, BUFSZ - 1);
+        } else {
+            cmdstr = ec.txt; // C `:2379` (Strcat wart — see doc)
+        }
+    }
+// bindit: // C `:2382`
+    if (!key) { // C `:2383`
+        await pline('Bind which key? '); // C `:2384`
+        key = (await pgetchar()) & 0xff; // C `:2385`
+
+        if (!key || key === 27) return; // C `:2387–2388` '\033'
+    }
+
+    const prevcmd = cmdbind_get(key); // C `:2391`
+
+    if (bind_key(key, cmdstr, true)) { // C `:2393` TRUE
+        // C `:2394`: prevcmd && prevcmd->cmd != ec — entry identity here.
+        if (prevcmd && prevcmd !== ec) {
+            await pline(`Changed key '${key2txt(key)}' from "${prevcmd.txt}" to "${cmdstr}".`); // C `:2395–2396`
+        } else if (!prevcmd) { // C `:2397`
+            await pline(`Bound key '${key2txt(key)}' to "${cmdstr}".`); // C `:2398–2399`
+        }
+        // C: same-command rebind (prevcmd === ec) prints nothing.
+    } else {
+        await pline('Key binding failed?!'); // C `:2402`
+    }
+}
+
+/**
+ * C ref: cmd.c handler_rebind_keys `:2407–2446` — "bind keys" option menu.
+ * PICK_ONE redo loop: bind key→command / command→key, plus "view changed
+ * key binds" when count_bind_keys is nonzero. Item 3 drains the NULL arm of
+ * get_changed_key_binds via show_text_pages (the D-2550 named sink, now
+ * live). Async only because JS menus await input (Constitution §2).
+ * Caller: options.c:8340 (optfn_o_bind_keys do_handler → doset() othrPicks
+ * 'bind keys' arm, js/options.js); options.c:8336 get_val → doset row val.
+ */
+export async function handler_rebind_keys() {
+    for (;;) { // redo_rebind: C `:2416`
+        // C `:2417–2419` create_nhwindow/start_menu/zeroany — raw menu below.
+        // C `:2432` end_menu "Do what?" — tty_end_menu paints the prompt
+        // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE;
+        // wintty.c `:2680–2689`, options.c `:7188–7189`), then a blank
+        // separator item (wintty.c `:2685–2686`; pickup.js precedent).
+        const raw = [
+            { text: 'Do what?', selectable: false, attr: ATR_INVERSE },
+            { text: '', selectable: false },
+            { text: 'bind key to a command', selectable: true, a_int: 1 }, // C `:2421–2423`
+            { text: 'bind command to a key', selectable: true, a_int: 2 }, // C `:2424–2426`
+        ];
+        if (count_bind_keys()) { // C `:2427`
+            raw.push({ text: 'view changed key binds', selectable: true, a_int: 3 }); // C `:2428–2430`
+        }
+        const res = await select_menu_pick_one(raw); // C `:2432–2434` end/select/destroy (destroy inside the helper)
+        if (res.kind !== 'pick') return; // C npick <= 0 `:2435` falls through (no goto)
+        const i = res.item.a_int | 0; // C `:2436–2437` (+ free `:2437`, GC)
+
+        if (i === 1 || i === 2) { // C `:2439`
+            await handler_rebind_keys_add(i === 1); // C `:2440`
+        } else if (i === 3) { // C `:2441`
+            const lines = get_changed_key_binds(null); // C `:2442`
+            await show_text_pages(lines);
+        }
+        // C `:2444` goto redo_rebind.
+    }
+}
+
+/**
+ * C ref: cmd.c parseautocomplete `:3244–3292` — apply one AUTOCOMPLETE=
+ * value (or one handler row name) to the generated EXTCMDLIST flags
+ * (txt/flags; C loops to the null terminator, JS exhausts the array —
+ * all_options_autocomplete precedent). C order: comma/colon split with
+ * tail recursion first (`:3249–3254`), trimspaces (`:3257`), empty
+ * return (`:3259–3260`), '!' negation (`:3263–3269`), flag update
+ * (`:3272–3285`), bad-name raw_printf (`:3289–3290`).
+ * C's in-place `*autoc = '\0'` split is head/tail slices (JS strings are
+ * immutable); the short-circuit tries ',' before ':' (`:3250–3251`).
+ * Named omission: wait_synch `:3291` (windowed input boundary; the config
+ * parser stays sync — cfgfiles.js configMsg precedent).
+ * C callers: cfgfiles.c cnf_line_AUTOCOMPLETE `:627` (wired in
+ * js/cfgfiles.js), handler_change_autocompletions `:2500`/`:2507` (live
+ * below), self `:3253`.
+ * @param {string} autocomplete
+ * @param {boolean} condition
+ */
+export function parseautocomplete(autocomplete, condition) {
+    let text = String(autocomplete ?? ''); // C `:3244` char *autocomplete
+    // C `:3249–3251` — strchr(',') first, strchr(':') only when no comma.
+    let sep = text.indexOf(',');
+    if (sep < 0) sep = text.indexOf(':');
+    if (sep >= 0) { // C `:3249`
+        // C `:3252–3253` — NUL the separator, recurse on the tail first.
+        parseautocomplete(text.slice(sep + 1), condition);
+        text = text.slice(0, sep);
+    }
+
+    text = trimspaces(text); // C `:3257`
+    if (!text) return; // C `:3259–3260`
+
+    // C `:3263–3269` — a leading '!' negates (unlike most options a
+    // leading "no" may be part of the command name).
+    if (text[0] === '!') {
+        text = trimspaces(text.slice(1)); // C `:3267`
+        condition = !condition; // C `:3268`
+    }
+
+    for (const efp of EXTCMDLIST) { // C `:3272` to the null terminator
+        if (text === efp.txt) { // C `:3273` strcmp
+            // C `:3274` — the toggle fires exactly when the requested
+            // state differs from the current AUTOCOMPLETE bit.
+            const has = (efp.flags & AUTOCOMPLETE) !== 0;
+            if (!!condition !== has) { // C `:3274–3279`
+                if (efp.flags & AUTOCOMP_ADJ) efp.flags &= ~AUTOCOMP_ADJ;
+                else efp.flags |= AUTOCOMP_ADJ;
+            }
+            if (condition) efp.flags |= AUTOCOMPLETE; // C `:3281–3282`
+            else efp.flags &= ~AUTOCOMPLETE; // C `:3283–3284`
+            return; // C `:3285`
+        }
+    }
+
+    // C `:3288–3290` — not a real extended command.
+    raw_printf("Bad autocomplete: invalid extended command '%s'.", text);
+    // C `:3291` wait_synch — named omission (see doc comment).
+}
+
+/**
+ * C ref: cmd.c handler_change_autocompletions `:2449–2515` — the
+ * "Which commands autocomplete?" PICK_ANY menu behind the Othr
+ * 'autocompletions' row. C order: menu build over extcmdlist_length
+ * (`:2463–2481`, INTERNALCMD|CMD_NOT_AVAILABLE and short-name skips,
+ * a_int i+1, '*' when AUTOCOMP_ADJ, SELECTED when AUTOCOMPLETE),
+ * end_menu prompt (`:2483`), select_menu (`:2484`), the n>=0 apply loop
+ * (`:2485–2512`, parseautocomplete TRUE for picks else FALSE), destroy
+ * (`:2514`). EXTCMDLIST.length ≡ extcmdlist_length (no C null
+ * terminator in the generated table — handler_rebind_keys_add `:2159`
+ * precedent). The create/start/add/end/select/destroy window layer maps
+ * to one select_menu_pick_any call (cond_menu precedent); cancelValue
+ * -1 keeps C's n>=0 gate (ESC skips the apply loop, finish-empty still
+ * clears every listed row). free(picks) `:2511` is GC; cg.zeroany has no
+ * JS carrier (a_int rides each row).
+ * Async only because the JS menu awaits input (Constitution §2); C
+ * callers treat it as a plain blocking call.
+ * C caller: options.c optfn_o_autocomplete do_handler `:8362` (wired in
+ * js/options.js doset).
+ */
+
+/**
+ * C ref: cmd.c count_autocompletions `:3312–3322` — count extcmdlist rows
+ * with AUTOCOMP_ADJ set. The generated EXTCMDLIST omits the C null
+ * terminator (handler_rebind_keys_add `:2159` precedent), so the loop runs
+ * to the end instead of stopping at a null ef_txt (`:3317`).
+ * Sole C caller: options.c optfn_o_autocomplete get_val `:8358` (wired in
+ * js/options.js).
+ */
+export function count_autocompletions() {
+    let n = 0; // C `:3315`
+    for (const efp of EXTCMDLIST) { // C `:3317`
+        if ((efp.flags & AUTOCOMP_ADJ) !== 0) // C `:3318`
+            n++;
+    }
+    return n; // C `:3321`
+}
+
+export async function handler_change_autocompletions() {
+    // C `:2462–2481` — one row per adjustable command.
+    const raw = [
+        // C `:2483` end_menu prompt rides the title row (cond_menu precedent).
+        { text: 'Which commands autocomplete?', selectable: false },
+    ];
+    for (let i = 0; i < EXTCMDLIST.length; i++) { // C `:2463`
+        const ec = EXTCMDLIST[i]; // C `:2464`
+        if ((ec.flags & (INTERNALCMD | CMD_NOT_AVAILABLE)) !== 0) continue; // C `:2466–2467`
+        if (ec.txt.length < 2) continue; // C `:2468–2469` strlen
+        // C `:2471–2475` — "%c %s: %s".
+        raw.push({
+            text: `${(ec.flags & AUTOCOMP_ADJ) ? '*' : ' '} ${ec.txt}: ${ec.desc}`,
+            selectable: true,
+            selected: (ec.flags & AUTOCOMPLETE) !== 0, // C `:2478–2480`
+            a_int: i + 1, // C `:2471`
+        });
+    }
+
+    // C `:2484` select + `:2514` destroy (destroy inside the helper).
+    const picked = await select_menu_pick_any(raw, { cancelValue: -1 });
+    if (picked !== -1) { // C `:2485` n >= 0
+        const chosen = new Set(picked.map((it) => it.a_int | 0));
+        for (let i = 0; i < EXTCMDLIST.length; i++) { // C `:2486`
+            const ec = EXTCMDLIST[i]; // C `:2489`
+            if ((ec.flags & (INTERNALCMD | CMD_NOT_AVAILABLE)) !== 0) continue; // C `:2491–2492`
+            if (ec.txt.length < 2) continue; // C `:2493–2494`
+            // C `:2496–2504` — ec == &extcmdlist[a_int-1] ≡ i+1 picked.
+            if (chosen.has(i + 1)) parseautocomplete(ec.txt, true);
+            else parseautocomplete(ec.txt, false); // C `:2506–2508`
+        }
+        // C `:2510–2511` free(picks) is GC here.
+    }
+}
+
+/**
+ * C rhack do_cmdq_extcmd: can_do_extcmd then ef_funct. Failure
+ * reset_cmd_vars(TRUE) drops leftover CQ_CANNED keys.
+ * @param {{ typ: number, txt: string, run: () => Promise<number> }} cq
+ * @returns {Promise<number>}
+ */
+async function run_cmdq_extcmd(cq) {
+    const tab = ext_func_tab_from_txt(cq.txt);
+    if (!tab || !(await can_do_extcmd(tab))) {
+        cmdq_clear();
+        return ECMD_OK;
+    }
+    return (await cq.run()) | 0;
+}
+
+/**
+ * User BIND=/BINDINGS= overlay occupies this key (including "nothing").
+ * C rhack `:3678` cmdbind_get is first; JS if/else is the default table.
+ * Overlay must skip that if/else (D-1657; D-0897 was inventory-only).
+ * Movement keys still take the walk arm first (named). Default
+ * cmdbind_get without overlay is D-1643. CMD_PARAM named.
+ * @param {number} key
+ * @returns {boolean}
+ */
+function rhack_user_overlay_key(key) {
+    const overlay = game.Cmd?.binds;
+    return overlay instanceof Map && overlay.has(key & 0xff);
+}
+
+/**
+ * C rhack `:3678–3828` tlist path: cmdbind_get then can_do_extcmd /
+ * prefix gate / REPEAT / ef_funct / PREFIXCMD / ECMD_TIME.
+ * Used for keys the if/else does not handle (default M('?') → doextlist,
+ * other meta binds with a live EXT_CMDS runner) and for user BIND=
+ * overlay on if/else keys (D-1657). MOVEMENTCMD walk/rush still the
+ * early isMovementKey / isRunKey arms unless BIND= owns the key (run
+ * keys sit after overlay). No runner → skip so Unknown command still
+ * fires.
+ * @param {number} key
+ * @param {typeof EXTCMDLIST[number] | null} prefix_seen
+ * @param {boolean} was_m_prefix
+ * @returns {Promise<{ done?: boolean, prefix?: typeof EXTCMDLIST[number] }>}
+ */
+async function rhack_dispatch_bound(key, prefix_seen, was_m_prefix) {
+    const tlist = cmdbind_get(key);
+    if (!game.gc) game.gc = {};
+    // C `:3679` gc.cmd_bind = cmdbind_get (the node, including param).
+    // JS cmdbind_get returns the cmd; param is the side slot.
+    game.gc.cmd_bind = tlist
+        ? Object.assign({}, tlist, { param: bind_param_get(key) })
+        : null;
+    if (!tlist) return {};
+    const run = extcmd_run_by_txt(tlist.txt);
+    if (!run) return {};
+
+    if (!(await can_do_extcmd(tlist))) {
+        reset_cmd_vars(true);
+        return { done: true };
+    }
+
+    if (prefix_seen && !(tlist.flags & PREFIXCMD)
+        && !(tlist.flags & (was_m_prefix ? CMD_M_PREFIX : CMD_gGF_PREFIX))) {
+        // C `:3696–3700` — visctrl(cmd_from_func); unbound reqmenu is the long name.
+        const pfxKey = cmd_from_func(prefix_seen.txt) & 0xff;
+        const which = pfxKey
+            ? visctrl(pfxKey)
+            : (prefix_seen.txt === 'reqmenu'
+                ? 'move-no-pickup or request-menu'
+                : (prefix_seen.txt || '?'));
+        if (was_m_prefix) {
+            await pline(
+                `The ${tlist.txt} command does not accept '${which}' prefix.`,
+            );
+        } else {
+            const ch = tlist.key | 0;
+            const upDown = ch === 60 || ch === 62
+                || tlist.txt === 'up' || tlist.txt === 'down';
+            await pline(
+                `The '${which}' prefix should be followed by a movement command${
+                    upDown ? ' other than up or down' : ''}.`,
+            );
+        }
+        reset_cmd_vars(true);
+        return { done: true };
+    }
+
+    if (tlist.f_text && !game.occupation && (game.multi | 0)) {
+        set_occupation(run, tlist.f_text, game.multi);
+    }
+
+    if (!game.in_doagain && tlist.txt !== '#' && tlist.txt !== 'repeat') {
+        if (!prefix_seen) cmdq_clear(CQ_REPEAT);
+        cmdq_add_ec(CQ_REPEAT, run, tlist);
+    } else if (!game.in_doagain && tlist.txt === '#') {
+        cmdq_clear(CQ_REPEAT);
+    }
+
+    rhack_cmd_insane(tlist.flags);
+
+    const res = (await run()) | 0;
+
+    if (tlist.txt === '#' && game.ext_tlist) {
+        const extTab = game.ext_tlist;
+        game.ext_tlist = null;
+        cmdq_add_ec(CQ_REPEAT, extTab.run, extTab);
+        cmdq_shift(CQ_REPEAT);
+    }
+
+    if ((tlist.flags & PREFIXCMD) !== 0) {
+        if ((res & ECMD_CANCEL) !== 0) {
+            reset_cmd_vars(true);
+            return { done: true };
+        }
+        return { prefix: tlist };
+    }
+
+    if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+        reset_cmd_vars(true);
+    } else if ((res & ECMD_TIME) === 0) {
+        reset_cmd_vars((game.multi | 0) < 0);
+    }
+    if ((res & ECMD_TIME) !== 0) {
+        if (!game.context) game.context = {};
+        game.context.move = 1;
+        if (tlist.txt !== 'kick') game.kickedloc = { x: 0, y: 0 };
+    }
+    return { done: true };
+}
+
+/* C ref: cmd.c enum menucmd `:4379–4418` — [t]herecmdmenu action ids */
+const MCMD_NOTHING = 0;
+const MCMD_OPEN_DOOR = 1;
+const MCMD_LOCK_DOOR = 2;
+const MCMD_UNTRAP_DOOR = 3;
+const MCMD_KICK_DOOR = 4;
+const MCMD_CLOSE_DOOR = 5;
+const MCMD_LOOK_TRAP = 7;
+const MCMD_UNTRAP_TRAP = 8;
+const MCMD_MOVE_DIR = 9;
+const MCMD_RIDE = 10;
+const MCMD_REMOVE_SADDLE = 11;
+const MCMD_APPLY_SADDLE = 12;
+const MCMD_TALK = 13;
+const MCMD_NAME = 14;
+const MCMD_QUAFF = 15;
+const MCMD_DIP = 16;
+const MCMD_SIT = 17;
+const MCMD_UP = 18;
+const MCMD_DOWN = 19;
+const MCMD_DISMOUNT = 20;
+const MCMD_MONABILITY = 21;
+const MCMD_PICKUP = 22;
+const MCMD_LOOT = 23;
+const MCMD_TIP = 24;
+const MCMD_EAT = 25;
+const MCMD_DROP = 26;
+const MCMD_REST = 27;
+const MCMD_LOOK_HERE = 28;
+const MCMD_LOOK_AT = 29;
+const MCMD_ATTACK_NEXT2U = 30;
+const MCMD_UNTRAP_HERE = 31;
+const MCMD_OFFER = 32;
+const MCMD_INVENTORY = 33;
+const MCMD_CAST_SPELL = 34;
+const MCMD_THROW_OBJ = 35;
+const MCMD_TRAVEL = 36;
+const MCMD_SEARCH = 6;
+
+/* C ref: act_on_act `:4698–4710` key chain + `:4749–4755` saddle (otyp ids). */
+const SKELETON_KEY_OTYP = objectNames.indexOf('SKELETON_KEY');
+const LOCK_PICK_OTYP = objectNames.indexOf('LOCK_PICK');
+const CREDIT_CARD_OTYP = objectNames.indexOf('CREDIT_CARD');
+const SADDLE_OTYP = objectNames.indexOf('SADDLE');
+
+/**
+ * C ref: cmd.c doclicklook `:5380–5390` (staticfn → module-local) — look at
+ * gc.clicklook_cc. auto_describe is getpos.c:640 (js/getpos.js).
+ * @returns {Promise<number>} ECMD_*
+ */
+async function doclicklook() {
+    const cc = game.gc?.clicklook_cc;
+    if (!cc || !isok(cc.x | 0, cc.y | 0)) return ECMD_OK; // `:5383–5384`
+    if (!game.context) game.context = {};
+    game.context.move = 0; // `:5386` svc.context.move = FALSE
+    await auto_describe(cc.x | 0, cc.y | 0); // `:5387`
+    return ECMD_OK; // `:5389`
+}
+
+/**
+ * C ref: cmd.c domouseaction `:4916–5006` (staticfn → export for the
+ * cmdlist "mouseaction" INTERNALCMD|MOUSECMD row) — act on a map click at
+ * gc.clicklook_cc. C order kept arm by arm: travelcmd near-clamp vs far
+ * travel stamp, here-arms (drink/sit/stairs-up/stairs-down/loot-or-pickup/
+ * rest), directional assist (kick locked / open closed / search / walk),
+ * else sloppy-click quantize + rest-on-self, tail walk queue.
+ * vobj_at is display.h:22 (svl.level.objects head) → live objects_at;
+ * move_funcs[*][MV_WALK] → live move_funcs_walk (xytodir order, same rows);
+ * On_stairs_up/dn live js/mklev.js; test_move is async in JS (awaited,
+ * short-circuit kept). C caller cmd.c:2061 cmdlist row → JS
+ * extcmdlist_data.js:165 row, dispatched via click_to_cmd on the
+ * commands_init mousebtn bindings.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function domouseaction() {
+    const u = game.u || {};
+    let x = (game.gc?.clicklook_cc?.x | 0) - (u.ux | 0); // C `:4923`
+    let y = (game.gc?.clicklook_cc?.y | 0) - (u.uy | 0); // C `:4924`
+    let o = null; // C `:4919 struct obj *o`
+    let dir = 0; // C `:4921`
+    if ((game.flags?.travel ?? true)) { // C `:4926 flags.travelcmd` (JS key 'travel', optlist default On)
+        if (Math.abs(x) <= 1 && Math.abs(y) <= 1) { // C `:4927`
+            x = sgn(x); y = sgn(y); // C `:4928`
+        } else { // C `:4929–4934`
+            if (!game.iflags) game.iflags = {};
+            if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+            game.iflags.travelcc.x = u.tx = (u.ux | 0) + x; // C `:4930`
+            game.iflags.travelcc.y = u.ty = (u.uy | 0) + y; // C `:4931`
+            cmdq_add_ec(CQ_CANNED, dotravel_target); // C `:4932`
+            return ECMD_OK; // C `:4933`
+        }
+
+        if (x === 0 && y === 0) { // C `:4936` here
+            const htyp = game.level?.at(u.ux, u.uy)?.typ; // C `levl[u.ux][u.uy].typ`
+            if (IS_FOUNTAIN(htyp) || IS_SINK(htyp)) { // C `:4938–4939`
+                cmdq_add_ec(CQ_CANNED, dodrink); // C `:4940`
+                return ECMD_OK; // C `:4941`
+            } else if (IS_THRONE(htyp)) { // C `:4942`
+                cmdq_add_ec(CQ_CANNED, dosit); // C `:4943`
+                return ECMD_OK;
+            } else if (On_stairs_up(u.ux, u.uy)) { // C `:4944`
+                cmdq_add_ec(CQ_CANNED, doup); // C `:4945`
+                return ECMD_OK; // C `:4946`
+            } else if (On_stairs_dn(u.ux, u.uy)) { // C `:4947`
+                cmdq_add_ec(CQ_CANNED, dodown); // C `:4948`
+                return ECMD_OK;
+            } else if ((o = objects_at(u.ux, u.uy)) !== null) { // C `:4950 vobj_at`
+                cmdq_add_ec(CQ_CANNED, Is_container(o) ? doloot : dopickup); // C `:4951`
+                return ECMD_OK; // C `:4952`
+            } else { // C `:4953–4955` just rest
+                cmdq_add_ec(CQ_CANNED, donull);
+                return ECMD_OK;
+            }
+        }
+
+        /* directional commands */
+        dir = xytodir(x, y); // C `:4959`
+        if (!m_at((u.ux | 0) + x, (u.uy | 0) + y) // C `:4960–4961`
+            && !(await test_move(u.ux, u.uy, x, y, TEST_MOVE))) {
+            const ahead = game.level?.at((u.ux | 0) + x, (u.uy | 0) + y);
+            if (IS_DOOR(ahead?.typ)) { // C `:4962`
+                /* slight assistance to player: choose kick/open for them */
+                if (((ahead?.doormask | 0) & D_LOCKED) !== 0) { // C `:4964`
+                    cmdq_add_ec(CQ_CANNED, dokick); // C `:4965`
+                    return ECMD_OK; // C `:4966`
+                }
+                if (((ahead?.doormask | 0) & D_CLOSED) !== 0) { // C `:4968`
+                    cmdq_add_ec(CQ_CANNED, doopen); // C `:4969`
+                    return ECMD_OK; // C `:4970`
+                }
+            }
+            if ((ahead?.typ | 0) <= SCORR) { // C `:4973`
+                cmdq_add_ec(CQ_CANNED, dosearch); // C `:4974`
+                return ECMD_OK; // C `:4975`
+            }
+            cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]); // C `:4977 [MV_WALK]`
+            return ECMD_OK; // C `:4978–4980`
+        }
+    } else {
+        /* convert without using floating point, allowing sloppy clicking */
+        if (x > 2 * Math.abs(y)) // C `:4984`
+            x = 1, y = 0;
+        else if (y > 2 * Math.abs(x)) // C `:4986`
+            x = 0, y = 1;
+        else if (x < -2 * Math.abs(y)) // C `:4988`
+            x = -1, y = 0;
+        else if (y < -2 * Math.abs(x)) // C `:4990`
+            x = 0, y = -1;
+        else // C `:4992`
+            x = sgn(x), y = sgn(y); // C `:4993`
+
+        if (x === 0 && y === 0) { // C `:4995`
+            /* map click on player to "rest" command */
+            cmdq_add_ec(CQ_CANNED, donull); // C `:4997`
+            return ECMD_OK; // C `:4998`
+        }
+        dir = xytodir(x, y); // C `:5000`
+    }
+
+    /* move, attack, etc. */
+    cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]); // C `:5004 [MV_WALK]`
+    return ECMD_OK; // C `:5005`
+}
+
+/**
+ * C ref: cmd.c dotoggleoption `:1376–1384` (`#toggle` extcmd `:1907`,
+ * BIND=`'`:toggle(price_quotes) / `@`:toggle(autopickup)) — toggle the
+ * boolean option named by the current key binding's param, else direct
+ * the player to #optionsfull. The param arm reads game.gc.cmd_bind.param,
+ * stamped at the C `:3679` site in rhack_dispatch_bound from
+ * `bind_param_get`. rc parsebindings still strips `(param)`, so a
+ * BIND= line does not fill the slot; `bind_key` does.
+ * C caller cmd.c:1907 extcmd row → JS EXT_CMDS 'toggle' (getline.js).
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function dotoggleoption() {
+    const bind = game.gc?.cmd_bind; // C `:1378 gc.cmd_bind`
+    if (bind && bind.param) { // C `:1378 ->param`
+        return toggle_bool_option(bind.param); // C `:1379`
+    }
+    await pline('Use #optionsfull to set any option instead.'); // C `:1381`
+    return ECMD_OK; // C `:1382`
+}
+
+/* C ref: cmd.c move_funcs `:2070–2078` [MV_WALK] column — xytodir order. */
+const move_funcs_walk = [
+    do_move_west, do_move_northwest, do_move_north, do_move_northeast,
+    do_move_east, do_move_southeast, do_move_south, do_move_southwest,
+];
+
+/**
+ * C ref: cmd.c act_on_act `:4658–4838` (staticfn → module-local) — queue
+ * CQ_CANNED input for a [t]herecmdmenu action at adjacent (dx,dy).
+ * C order kept arm by arm; sgn clamp `:4666–4677` (live eat.js sgn ≡
+ * hacklib.c:650); MCMD_* ids are the cmd.c:4379 enum.
+ * The look-trap arm queues pager.js `doidtrap` (live export,
+ * C pager.c:2336) directly, like every other arm.
+ * C callers cmd.c:4880 (there_cmd_menu K==1 fast path) + :4892 (menu pick):
+ * both wired in JS there_cmd_menu below (self/next2u/far/common).
+ * @param {number} act MCMD_* action
+ * @param {number} dx delta to target (sgn-clamped unless throw/travel/look)
+ * @param {number} dy delta to target
+ */
+function act_on_act(act, dx, dy) {
+    let otmp = null; // `:4662`
+    let dir = 0; // `:4663`
+
+    /* a few there_cmd_menu_far() actions use dx,dy differently `:4665` */
+    switch (act) { // `:4666–4677`
+    case MCMD_THROW_OBJ:
+    case MCMD_TRAVEL:
+    case MCMD_LOOK_AT:
+        /* keep dx,dy as-is */
+        break;
+    default:
+        /* force dx and dy to be +1, 0, or -1 */
+        dx = sgn(dx);
+        dy = sgn(dy);
+        break;
+    }
+
+    switch (act) { // `:4679–4837`
+    case MCMD_TRAVEL: // `:4680–4688`
+        /* FIXME: explicit travel works even when flags.travelcmd is off */
+        if (!game.iflags) game.iflags = {};
+        if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+        game.iflags.travelcc.x = game.u.tx = game.u.ux + dx;
+        game.iflags.travelcc.y = game.u.ty = game.u.uy + dy;
+        cmdq_add_ec(CQ_CANNED, dotravel_target);
+        break;
+    case MCMD_THROW_OBJ: // `:4689–4693`
+        cmdq_add_ec(CQ_CANNED, dothrow);
+        cmdq_add_userinput(CQ_CANNED);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_OPEN_DOOR: // `:4694–4697`
+        cmdq_add_ec(CQ_CANNED, doopen);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_LOCK_DOOR: // `:4698–4710`
+        otmp = carrying(SKELETON_KEY_OTYP);
+        if (!otmp) otmp = carrying(LOCK_PICK_OTYP);
+        if (!otmp) otmp = carrying(CREDIT_CARD_OTYP);
+        if (otmp) {
+            cmdq_add_ec(CQ_CANNED, doapply);
+            cmdq_add_key(CQ_CANNED, otmp.invlet);
+            cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+            cmdq_add_key(CQ_CANNED, 'y'); /* "Lock it?" */
+        }
+        break;
+    case MCMD_UNTRAP_DOOR: // `:4711–4714`
+        cmdq_add_ec(CQ_CANNED, dountrap);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_KICK_DOOR: // `:4715–4718`
+        cmdq_add_ec(CQ_CANNED, dokick);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_CLOSE_DOOR: // `:4719–4722`
+        cmdq_add_ec(CQ_CANNED, doclose);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_SEARCH: // `:4723–4725`
+        cmdq_add_ec(CQ_CANNED, dosearch);
+        break;
+    case MCMD_LOOK_TRAP: // `:4726–4729`
+        cmdq_add_ec(CQ_CANNED, doidtrap);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_UNTRAP_TRAP: // `:4730–4733`
+        cmdq_add_ec(CQ_CANNED, dountrap);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_MOVE_DIR: // `:4734–4737`
+        dir = xytodir(dx, dy);
+        cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]);
+        break;
+    case MCMD_RIDE: // `:4738–4741`
+        cmdq_add_ec(CQ_CANNED, doride);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_REMOVE_SADDLE: // `:4742–4748`
+        /* m-prefix for #loot: skip any floor containers */
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        cmdq_add_ec(CQ_CANNED, doloot);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Do you want to remove saddle? */
+        break;
+    case MCMD_APPLY_SADDLE: // `:4749–4755`
+        if ((otmp = carrying(SADDLE_OTYP)) != null) {
+            cmdq_add_ec(CQ_CANNED, doapply);
+            cmdq_add_key(CQ_CANNED, otmp.invlet);
+            cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        }
+        break;
+    case MCMD_ATTACK_NEXT2U: // `:4756–4759`
+        dir = xytodir(dx, dy);
+        cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]);
+        break;
+    case MCMD_TALK: // `:4760–4763`
+        cmdq_add_ec(CQ_CANNED, dotalk);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_NAME: // `:4764–4768`
+        cmdq_add_ec(CQ_CANNED, docallcmd);
+        cmdq_add_key(CQ_CANNED, 'm'); /* name a monster */
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0); /* getpos() uses u.ux+dx,u.uy+dy */
+        break;
+    case MCMD_QUAFF: // `:4769–4772`
+        cmdq_add_ec(CQ_CANNED, dodrink);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Drink from the fountain?" */
+        break;
+    case MCMD_DIP: // `:4773–4777`
+        cmdq_add_ec(CQ_CANNED, dodip);
+        cmdq_add_userinput(CQ_CANNED);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Dip foo into the fountain?" */
+        break;
+    case MCMD_SIT: // `:4778–4780`
+        cmdq_add_ec(CQ_CANNED, dosit);
+        break;
+    case MCMD_UP: // `:4781–4783`
+        cmdq_add_ec(CQ_CANNED, doup);
+        break;
+    case MCMD_DOWN: // `:4784–4786`
+        cmdq_add_ec(CQ_CANNED, dodown);
+        break;
+    case MCMD_DISMOUNT: // `:4787–4789`
+        cmdq_add_ec(CQ_CANNED, doride);
+        break;
+    case MCMD_MONABILITY: // `:4790–4792`
+        cmdq_add_ec(CQ_CANNED, domonability);
+        break;
+    case MCMD_PICKUP: // `:4793–4795`
+        cmdq_add_ec(CQ_CANNED, dopickup);
+        break;
+    case MCMD_LOOT: // `:4796–4798`
+        cmdq_add_ec(CQ_CANNED, doloot);
+        break;
+    case MCMD_TIP: // `:4799–4802`
+        cmdq_add_ec(CQ_CANNED, dotip);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "There is foo here; tip it?" */
+        break;
+    case MCMD_EAT: // `:4803–4806`
+        cmdq_add_ec(CQ_CANNED, doeat);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "There is foo here; eat it?" */
+        break;
+    case MCMD_DROP: // `:4807–4809`
+        cmdq_add_ec(CQ_CANNED, dodrop);
+        break;
+    case MCMD_INVENTORY: // `:4810–4812`
+        cmdq_add_ec(CQ_CANNED, ddoinv);
+        break;
+    case MCMD_REST: // `:4813–4815`
+        cmdq_add_ec(CQ_CANNED, donull);
+        break;
+    case MCMD_LOOK_HERE: // `:4816–4818`
+        cmdq_add_ec(CQ_CANNED, dolook);
+        break;
+    case MCMD_LOOK_AT: // `:4819–4823`
+        if (!game.gc) game.gc = {};
+        game.gc.clicklook_cc = { x: game.u.ux + dx, y: game.u.uy + dy };
+        cmdq_add_ec(CQ_CANNED, doclicklook);
+        break;
+    case MCMD_UNTRAP_HERE: // `:4824–4827`
+        cmdq_add_ec(CQ_CANNED, dountrap);
+        cmdq_add_dir(CQ_CANNED, 0, 0, 1);
+        break;
+    case MCMD_OFFER: // `:4828–4831`
+        cmdq_add_ec(CQ_CANNED, dosacrifice);
+        cmdq_add_userinput(CQ_CANNED);
+        break;
+    case MCMD_CAST_SPELL: // `:4832–4834`
+        cmdq_add_ec(CQ_CANNED, docast);
+        break;
+    default: // `:4835–4837`
+        break;
+    }
+}
+
+/**
+ * C ref: cmd.c mcmd_addmenu `:4420–4431`.
+ * `any = cg.zeroany; any.a_int = act;` then `add_menu` with a blank
+ * accelerator, `ATR_NONE`, `NO_COLOR`, and `MENU_ITEMFLAGS_NONE`.
+ * This path has no winid (D-2706): `win` is the item list
+ * `there_cmd_menu` later gives to `select_menu_pick_one`. The glyph,
+ * color, and attribute arguments are not read by that picker.
+ * @param {Array<{act:number, text:string}>} win
+ * @param {number} act MCMD_* 
+ * @param {string} txt
+ */
+function mcmd_addmenu(win, act, txt) {
+    win.push({ act, text: txt });
+}
+
+/**
+ * C ref: cmd.c there_cmd_menu_self `:4435–4520` (staticfn).
+ * Appends the hero-cell [t]herecmdmenu rows and returns how many (C `K`).
+ * The fourth argument `int *act` is UNUSED. `#if 0` at `:4477–4484`
+ * (Upolyd / MCMD_MONABILITY) is compiled out.
+ * `levl[x][y].typ` is `game.level.at`. `svl.level.objects[x][y]` is
+ * `objects_at` (pile head, `nexthere` chain). `gi.invent` (`decl.h:469`)
+ * is `game.invent`: an empty array is the NULL chain; a linked-list head
+ * stays truthy. `defsyms[].explanation` is `defsym_explanation`.
+ * `can_reach_floor(FALSE)` is called once per C guard, not cached.
+ * @param {Array<{act:number, text:string}>} win
+ * @param {number} x
+ * @param {number} y
+ * @returns {number}
+ */
+function there_cmd_menu_self(win, x, y) {
+    let K = 0;
+    const typ = game.level?.at(x, y)?.typ | 0; // `:4439`
+    const stway = stairway_at(x, y); // `:4440`
+
+    if (!u_at(x, y)) return K; // `:4443–4444`
+
+    if ((IS_FOUNTAIN(typ) || IS_SINK(typ)) && can_reach_floor(false)) { // `:4446`
+        const buf = `Drink from the ${defsym_explanation(
+            IS_FOUNTAIN(typ) ? S_fountain : S_sink,
+        )}`; // `:4447–4448`
+        mcmd_addmenu(win, MCMD_QUAFF, buf), ++K; // `:4449`
+    }
+    if (IS_FOUNTAIN(typ) && can_reach_floor(false)) // `:4451`
+        mcmd_addmenu(win, MCMD_DIP, 'Dip something into the fountain'), ++K;
+    if (IS_THRONE(typ)) // `:4453`
+        mcmd_addmenu(win, MCMD_SIT, 'Sit on the throne'), ++K;
+    if (IS_ALTAR(typ)) // `:4455`
+        mcmd_addmenu(win, MCMD_OFFER, 'Sacrifice something on the altar'), ++K;
+
+    if (stway && stway.up) { // `:4458`
+        const buf = `Go up the ${stway.isladder ? 'ladder' : 'stairs'}`;
+        mcmd_addmenu(win, MCMD_UP, buf), ++K; // `:4461`
+    }
+    if (stway && !stway.up) { // `:4463`
+        const buf = `Go down the ${stway.isladder ? 'ladder' : 'stairs'}`;
+        mcmd_addmenu(win, MCMD_DOWN, buf), ++K; // `:4466`
+    }
+    if (game.u.usteed) { // `:4468`
+        const buf = `Dismount ${x_monnam(
+            game.u.usteed, ARTICLE_THE, null, SUPPRESS_SADDLE, false,
+        )}`; // `:4469–4471`
+        mcmd_addmenu(win, MCMD_DISMOUNT, buf), ++K; // `:4472`
+    }
+
+    /* `#if 0` Upolyd / MCMD_MONABILITY `:4475–4481` — compiled out. */
+
+    const otmp = objects_at(x, y); // `:4483–4484` OBJ_AT → level.objects[x][y]
+    if (otmp) {
+        const buf = `Pick up ${otmp.nexthere ? 'items' : doname(otmp)}`;
+        mcmd_addmenu(win, MCMD_PICKUP, buf), ++K; // `:4487`
+
+        if (Is_container(otmp)) { // `:4489`
+            mcmd_addmenu(win, MCMD_LOOT, `Loot ${doname(otmp)}`), ++K; // `:4491`
+            mcmd_addmenu(win, MCMD_TIP, `Tip ${doname(otmp)}`), ++K; // `:4494`
+        }
+        if ((otmp.oclass | 0) === FOOD_CLASS) { // `:4496`
+            mcmd_addmenu(win, MCMD_EAT, `Eat ${doname(otmp)}`), ++K; // `:4498`
+        }
+    }
+
+    /* `:4503` gi.invent — empty JS array is the NULL chain. */
+    const inv = game.invent;
+    if (Array.isArray(inv) ? inv.some(Boolean) : !!inv) {
+        mcmd_addmenu(win, MCMD_INVENTORY, 'Inventory'), ++K; // `:4504`
+        mcmd_addmenu(win, MCMD_DROP, 'Drop items'), ++K; // `:4505`
+    }
+    mcmd_addmenu(win, MCMD_REST, 'Rest one turn'), ++K; // `:4507`
+    mcmd_addmenu(win, MCMD_SEARCH, 'Search around you'), ++K; // `:4508`
+    mcmd_addmenu(win, MCMD_LOOK_HERE, 'Look at what is here'), ++K; // `:4509`
+
+    if (num_spells() > 0) // `:4511`
+        mcmd_addmenu(win, MCMD_CAST_SPELL, 'Cast a spell'), ++K;
+
+    const ttmp = t_at(x, y); // `:4514`
+    if (ttmp && ttmp.tseen) {
+        if ((ttmp.ttyp | 0) !== VIBRATING_SQUARE) // `:4515`
+            mcmd_addmenu(win, MCMD_UNTRAP_HERE, 'Attempt to disarm trap'), ++K;
+    }
+    return K; // `:4519`
+}
+
+/**
+ * C you.h:558 — `#define next2u(px,py) (distu((px),(py)) <= 2)`;
+ * distu is squared dist2 (hack.h:1531; m_next2u precedent, apply.js).
+ * Macro (no C symbol) → module-local; no isok guard, like C.
+ */
+function next2u(x, y) {
+    const u = game.u || {};
+    return dist2(x | 0, y | 0, u.ux | 0, u.uy | 0) <= 2;
+}
+
+/**
+ * C ref: cmd.c there_cmd_menu_next2u `:4524–4621` (staticfn →
+ * module-local) — adjacent-cell [t]herecmdmenu rows: door, search, trap,
+ * boulder, steed saddle on/off, peaceful talk/swap/name, hostile attack.
+ * C order kept arm by arm. `win` is the items array (mcmd_addmenu form);
+ * `actOut` is C `int *act` (only the attack arm writes it, `:4616`).
+ * levl glyph is loc.remembered_glyph (hero_memory store, detect.js);
+ * glyph_is_invisible(glyph_at()) is glyph_is_invisible_id (display.js).
+ * @param {Array<{act:number, text:string}>} win
+ * @param {{act:number}} actOut
+ * @returns {number} C `K`
+ */
+function there_cmd_menu_next2u(win, x, y, mod, actOut) {
+    let K = 0; // `:4530`
+    const typ = game.level?.at(x, y)?.typ | 0; // `:4532`
+
+    if (!next2u(x, y)) // `:4536`
+        return K; // `:4537`
+
+    if (IS_DOOR(typ)) { // `:4539`
+        const dm = game.level?.at(x, y)?.doormask | 0; // `:4541`
+
+        if (dm & (D_CLOSED | D_LOCKED)) { // `:4543`
+            mcmd_addmenu(win, MCMD_OPEN_DOOR, 'Open the door'), ++K; // `:4544`
+            /* no lknown flag for doors to remember locked/unlocked `:4545–4546` */
+            const key_or_pick = !!(carrying(SKELETON_KEY_OTYP) || carrying(LOCK_PICK_OTYP)); // `:4547`
+            const card = carrying(CREDIT_CARD_OTYP) != null; // `:4548`
+            if (key_or_pick || card) { // `:4549`
+                mcmd_addmenu(win, MCMD_LOCK_DOOR, // `:4550–4552`
+                    upstart(`${key_or_pick ? 'lock or ' : ''}unlock the door`)), ++K;
+            }
+            /* no tknown flag for doors (or chests) `:4554–4555` */
+            mcmd_addmenu(win, MCMD_UNTRAP_DOOR, // `:4556–4557`
+                'Search the door for a trap'), ++K;
+            /* [what about #force?] `:4558` */
+            mcmd_addmenu(win, MCMD_KICK_DOOR, 'Kick the door'), ++K; // `:4559`
+        } else if ((dm & D_ISOPEN) && mod === CLICK_2) { // `:4560`
+            mcmd_addmenu(win, MCMD_CLOSE_DOOR, 'Close the door'), ++K; // `:4561`
+        }
+    }
+
+    if (typ <= SCORR) // `:4565`
+        mcmd_addmenu(win, MCMD_SEARCH, 'Search for secret doors'), ++K; // `:4566`
+
+    const ttmp = t_at(x, y); // `:4568` (ttmp = t_at) — tseen below
+    if (ttmp && ttmp.tseen) {
+        mcmd_addmenu(win, MCMD_LOOK_TRAP, 'Examine trap'), ++K; // `:4569`
+        if ((ttmp.ttyp | 0) !== VIBRATING_SQUARE) // `:4570`
+            mcmd_addmenu(win, MCMD_UNTRAP_TRAP, // `:4571–4572`
+                'Attempt to disarm trap'), ++K;
+        mcmd_addmenu(win, MCMD_MOVE_DIR, 'Move on the trap'), ++K; // `:4573`
+    }
+
+    const bloc = game.level?.at(x, y); // `:4576` levl[x][y].glyph
+    const bmem = bloc?.remembered_glyph;
+    if ((bmem && typeof bmem.glyph === 'number' ? bmem.glyph : NO_GLYPH)
+            === objnum_to_glyph(BOULDER_OTYP))
+        mcmd_addmenu(win, MCMD_MOVE_DIR, 'Push the boulder'), ++K; // `:4577`
+
+    let mtmp = m_at(x, y); // `:4579`
+    if (mtmp && !canspotmon(mtmp)) // `:4580`
+        mtmp = null; // `:4581`
+    if (mtmp && which_armor(mtmp, W_SADDLE)) { // `:4582`
+        const mnam = x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false); // `:4583–4584`
+
+        if (!game.u?.usteed) { // `:4586`
+            mcmd_addmenu(win, MCMD_RIDE, `Ride ${mnam}`), ++K; // `:4587–4588`
+        }
+        mcmd_addmenu(win, MCMD_REMOVE_SADDLE, // `:4590–4591`
+            `Remove saddle from ${mnam}`), ++K;
+    }
+    if (mtmp && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE) // `:4593–4594`
+        && carrying(SADDLE_OTYP)) {
+        mcmd_addmenu(win, MCMD_APPLY_SADDLE, // `:4595–4596`
+            `Put saddle on ${mon_nam(mtmp)}`), ++K;
+    }
+    if (mtmp && (mtmp.mpeaceful || mtmp.mtame)) { // `:4598`
+        mcmd_addmenu(win, MCMD_TALK, // `:4599–4600`
+            `Talk to ${mon_nam(mtmp)}`), ++K;
+
+        mcmd_addmenu(win, MCMD_MOVE_DIR, // `:4602–4603`
+            `Swap places with ${mon_nam(mtmp)}`), ++K;
+
+        mcmd_addmenu(win, MCMD_NAME, // `:4605–4608`
+            `${!has_mgivenname(mtmp) ? 'Name' : 'Rename'} ${mon_nam(mtmp)}`), ++K;
+    }
+
+    if ((mtmp && !(mtmp.mpeaceful || mtmp.mtame)) // `:4611–4612`
+        || glyph_is_invisible_id(glyph_at(x, y))) {
+        mcmd_addmenu(win, MCMD_ATTACK_NEXT2U, // `:4613–4614`
+            `Attack ${mtmp ? mon_nam(mtmp) : 'unseen creature'}`), ++K;
+        /* attacking overrides any other automatic action `:4615` */
+        actOut.act = MCMD_ATTACK_NEXT2U; // `:4616`
+    }
+    /* `:4617–4619` else is a comment ("Move %s", direction — handled below) */
+    return K; // `:4620`
+}
+
+/**
+ * C ref: cmd.c there_cmd_menu_far `:4623–4636` (staticfn →
+ * module-local) — far-cell [t]herecmdmenu rows on CLICK_1: linedup throw
+ * within 18 squares, then Travel. `win` is the items array; returns K.
+ * @param {Array<{act:number, text:string}>} win
+ * @returns {number} C `K`
+ */
+function there_cmd_menu_far(win, x, y, mod) {
+    let K = 0; // `:4626`
+
+    if (mod === CLICK_1) { // `:4628`
+        const u = game.u || {};
+        if (linedup(u.ux | 0, u.uy | 0, x | 0, y | 0, 1) // `:4629–4630` boulderhandling 1=ignore
+            && dist2(u.ux | 0, u.uy | 0, x | 0, y | 0) < 18 * 18)
+            mcmd_addmenu(win, MCMD_THROW_OBJ, 'Throw something'), ++K; // `:4631`
+
+        mcmd_addmenu(win, MCMD_TRAVEL, 'Travel here'), ++K; // `:4633`
+    }
+    return K; // `:4635`
+}
+
+/**
+ * C ref: cmd.c there_cmd_menu_common `:4638–4654` in C order — append the
+ * shared "Look at map symbol" entry on CLICK_1/CLICK_2 (C ignores
+ * iflags.clicklook here). JS builds an items array where C calls
+ * mcmd_addmenu(win, MCMD_LOOK_AT, ...) + ++K (add_menu on a window is
+ * display-stream plumbing; the menu assembly in there_cmd_menu below is
+ * the live caller). C's `int *act` is UNUSED. Short-circuit order kept:
+ * `!u_at(x,y) || Upolyd || glyph_at(x,y) != hero_glyph` — the glyph arm
+ * covers self shown as non-hero (invisible w/o see-invisible, ?).
+ * C hero_glyph is an int (display.h:654 monnum_to_glyph); JS hero_glyph()
+ * returns its descriptor, so compare against `.glyph`.
+ * @returns {{act:number, text:string}[]}
+ */
+export function there_cmd_menu_common(x, y, mod) {
+    const items = [];
+    if (mod !== CLICK_1 && mod !== CLICK_2) return items;
+    const u = game.u;
+    const atSelf = u && (u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0);
+    // C `:4649–4651`: !u_at || Upolyd || glyph_at != hero_glyph
+    if (!atSelf || Upolyd(u) || glyph_at(x, y) !== hero_glyph().glyph) {
+        items.push({ act: MCMD_LOOK_AT, text: 'Look at map symbol' });
+    }
+    return items;
+}
+
+/**
+ * C ref: cmd.c there_cmd_menu `:4841–4896` (staticfn → module-local) —
+ * NHW_MENU "What do you want to do?" over the self / next2u / far /
+ * common builders, then the K==0 travel/move fallback, the K==1
+ * act_on_act fast path, or the PICK_ONE menu. C order kept arm by arm.
+ * `actBox` is C `int act` (address-taken by the next2u builder);
+ * `pickAct` is C npick/picks; move_funcs[dir][MV_WALK] is
+ * move_funcs_walk (xytodir order, same rows); flags.travelcmd is the
+ * JS 'travel' key (default On, domouseaction precedent).
+ * @returns {Promise<string>} '\0' after act / ESC cancel (C ch)
+ */
+async function there_cmd_menu(x, y, mod) {
+    const u = game.u || {};
+    let ch = '\0'; // `:4846`
+    let K = 0; // `:4847` (npick alongside — pickAct below)
+    const dx = (x | 0) - (u.ux | 0), dy = (y | 0) - (u.uy | 0); // `:4850`
+    const actBox = { act: MCMD_NOTHING }; // `:4851` int act
+    const items = []; // `:4853–4854` create/start menu
+
+    if (u_at(x, y)) // `:4856`
+        K += there_cmd_menu_self(items, x, y); // `:4857`
+    else if (next2u(x, y)) // `:4858`
+        K += there_cmd_menu_next2u(items, x, y, mod, actBox); // `:4859`
+    else // `:4860`
+        K += there_cmd_menu_far(items, x, y, mod); // `:4861`
+    const common = there_cmd_menu_common(x, y, mod); // `:4862`
+    if (common.length) {
+        items.push(...common);
+        K += common.length;
+    }
+
+    let pickAct = null; // C `:4847–4848` npick/picks — set at the menu pick
+    if (!K) { // `:4864`
+        /* no menu options, try to move `:4865` */
+        if (next2u(x, y) // `:4866`
+            && await test_move(u.ux | 0, u.uy | 0, dx, dy, TEST_MOVE)) {
+            const dir = xytodir(dx, dy); // `:4867`
+
+            cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]); // `:4869`
+        } else if ((game.flags?.travel ?? true)) { // `:4870` flags.travelcmd
+            if (!game.iflags) game.iflags = {};
+            if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+            game.iflags.travelcc.x = game.u.tx = x | 0; // `:4871`
+            game.iflags.travelcc.y = game.u.ty = y | 0; // `:4872`
+            cmdq_add_ec(CQ_CANNED, dotravel_target); // `:4873`
+        }
+        ch = '\0'; // `:4875–4876` npick = 0, ch
+    } else if (K === 1 // `:4877`
+        && actBox.act !== MCMD_NOTHING && actBox.act !== MCMD_TRAVEL) {
+        act_on_act(actBox.act, dx, dy); // `:4880` (`:4878` destroy is display plumbing)
+        return '\0'; // `:4881`
+    } else { // `:4882`
+        const raw = [ // `:4883` end_menu "What do you want to do?"
+            { text: 'What do you want to do?', attr: ATR_INVERSE, selectable: false },
+            { text: '', attr: 0, selectable: false },
+            ...items.map((it) => ({
+                text: it.text,
+                attr: 0,
+                selectable: true,
+                act: it.act,
+            })),
+        ];
+        const res = await select_menu_pick_one(raw); // `:4884` PICK_ONE
+        ch = '\x1b'; // `:4885`
+        if (res.kind === 'pick' && res.item?.act != null) pickAct = res.item.act | 0; // `:4889`
+    }
+    if (pickAct !== null) { // `:4888` npick > 0
+        act_on_act(pickAct, dx, dy); // `:4892`
+        return '\0'; // `:4893`
+    }
+    return ch; // `:4895`
+}
+
+/**
+ * C ref: cmd.c here_cmd_menu — always returns '\0' (discards there_cmd_menu ch).
+ */
+async function here_cmd_menu() {
+    const u = game.u;
+    if (!u) return '\0';
+    await there_cmd_menu(u.ux | 0, u.uy | 0, CLICK_1);
+    return '\0';
+}
+
+/**
+ * C ref: cmd.c doherecmdmenu — #herecmdmenu.
+ * here_cmd_menu always returns '\0' → always ECMD_OK; actions via CQ_CANNED.
+ * C `(ch && ch != '\033')`: NUL is falsy — do not treat JS '\0' as TIME.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function doherecmdmenu() {
+    const ch = await here_cmd_menu();
+    if (!ch || ch === '\0' || ch === '\x1b') return ECMD_OK;
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: cmd.c dotherecmdmenu `:4342–4375` — #therecmdmenu ("a way to
+ * test there_cmd_menu without mouse"). Click-stamped cell first, else
+ * getdir; getdir/here_cmd_menu/there_cmd_menu are async in JS. C reads
+ * BSS-zero clicklook_cc ({0,0} is isok-false since x>=1), so an
+ * unstamped game.gc falls through to getdir the same way. ECMD check
+ * is the doherecmdmenu shape: C `(ch && ch != ESC)` with NUL falsy.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function dotherecmdmenu() {
+    const u = game.u || {};
+    const x = (game.gc?.clicklook_cc?.x | 0); // `:4347`
+    const y = (game.gc?.clicklook_cc?.y | 0); // `:4348`
+    let ch;
+
+    if (!game.iflags) game.iflags = {};
+    game.iflags.getdir_click = CLICK_1 | CLICK_2; // `:4350` allow 'far' click
+
+    if (isok(x, y)) { // `:4352`
+        if (x === (u.ux | 0) && y === (u.uy | 0)) // `:4353`
+            ch = await here_cmd_menu(); // `:4354`
+        else
+            ch = await there_cmd_menu(x, y, game.iflags.getdir_click); // `:4356`
+        game.gc.clicklook_cc = { x: -1, y: -1 }; // `:4357`
+        game.iflags.getdir_click = 0; // `:4358`
+        return (!ch || ch === '\0' || ch === '\x1b') ? ECMD_OK : ECMD_TIME; // `:4359`
+    }
+
+    const dir = await getdir(null); // `:4362` (const char *) 0
+    const click = game.iflags.getdir_click | 0; // `:4363`
+    game.iflags.getdir_click = 0; // `:4364`
+
+    if (!dir || !isok((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))) // `:4366`
+        return ECMD_CANCEL; // `:4367`
+
+    if ((u.dx | 0) || (u.dy | 0)) // `:4369`
+        ch = await there_cmd_menu((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0), click); // `:4370`
+    else
+        ch = await here_cmd_menu(); // `:4372`
+
+    return (!ch || ch === '\0' || ch === '\x1b') ? ECMD_OK : ECMD_TIME; // `:4374`
+}
+
+
+// Direction deltas: y u k
+//                   h . l
+//                   b j n
+const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
+const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
+
+function isMovementKey(ch) {
+    return 'hjklyubn'.includes(ch);
+}
+
+function isRunKey(ch) {
+    return 'HJKLYUBN'.includes(ch);
+}
+
+/** C ref: cmd.c reset_commands — C(dirchars[i]) → do_rush_* (!number_pad). */
+function rushDirFromCtrl(key) {
+    // Only real Ctrl-A..Ctrl-Z codes (1..26). Plain 'j' (106) must not match:
+    // (106 & 0x1f)+96 === 'j'. C('j')==10=='\n' is rush-south.
+    if (key < 1 || key > 26) return null;
+    const letter = String.fromCharCode(key + 96); // 1..26 → a..z
+    if (!isMovementKey(letter)) return null;
+    return letter;
+}
+
+// C ref: hack.c — check if a cell blocks movement
+// C test_move: IS_OBSTRUCTED(typ) || typ == IRONBARS (plus closed doors),
+// except IRONBARS when Passes_walls || passes_bars(youmonst.data) (D-1270).
+// IS_OBSTRUCTED covers STONE..SCORR including TREE/SDOOR/SCORR (typ < POOL).
+function blocksMove(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    if (IS_OBSTRUCTED(loc.typ)) return true;
+    if (loc.typ === IRONBARS && !test_move_hero_passes_bars()) return true;
+    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    return false;
+}
+
+function closed_door_at(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!(loc && loc.typ === DOOR
+        && (loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+/**
+ * C ref: hack.c findtravelpath :1403–1407 — closed doors and boulders on the
+ * CURRENT cell usually cause a delay (prefer another path), not a block:
+ * (!Passes_walls && !can_ooze(youmonst) && closed_door(x,y)) ||
+ * (sobj_at(BOULDER,x,y) && !could_move_onto_boulder(x,y)).
+ * The TEST_TRAP third arm (seen trap / known liquid on the target) rides at
+ * the call site via travel_avoids_cell gated on run==8; TEST_TRAV still
+ * rejects those cells after the delay expires, matching C.
+ */
+function travel_delay_current(x, y) {
+    if (!Passes_walls_prop() && !can_ooze(game.youmonst)
+        && closed_door_at(x, y)) return true;
+    if (boulder_at(x, y) && !could_move_onto_boulder(x, y)) return true;
+    return false;
+}
+
+/** Local t_at — avoid cmd.js ↔ trap.js cycle. */
+function travel_t_at(x, y) {
+    const traps = game.level?.traps;
+    if (!traps) return null;
+    for (const t of traps) {
+        if (t && (t.tx | 0) === (x | 0) && (t.ty | 0) === (y | 0)) return t;
+    }
+    return null;
+}
+
+/**
+ * C ref: hack.c test_move TEST_TRAV + run==8 — travel path avoids seen traps
+ * and known pool/lava (except hero cell). VIBRATING_SQUARE allowed.
+ * Named omissions: Known_wwalking / Known_lwalking / WATERWALL / LAVAWALL.
+ */
+function travel_avoids_cell(x, y) {
+    const u = game.u;
+    if (u && (x | 0) === (u.ux | 0) && (y | 0) === (u.uy | 0)) return false;
+    const t = travel_t_at(x, y);
+    if (t && t.tseen && (t.ttyp | 0) !== VIBRATING_SQUARE) return true;
+    const loc = game.level?.at(x, y);
+    if (loc?.seenv && (is_pool(x, y) || is_lava(x, y))) {
+        const fly = !!(u?.Flying || u?.HFlying || u?.EFlying
+            || u?.Levitation || u?.HLevitation || u?.ELevitation);
+        if (!fly) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: hack.c test_move — diagonal through bad_rock flanks needs
+ * cant_squeeze_thru (load / bigmonst / Sokoban). worm_cross deferred.
+ */
+function travel_blocks_tight_diag(ux, uy, nx, ny) {
+    const dx = (nx - ux) | 0;
+    const dy = (ny - uy) | 0;
+    if (!dx || !dy) return false;
+    const ym = game.youmonst;
+    if (!ym?.data) return false;
+    if (!bad_rock(ym.data, ux, ny) || !bad_rock(ym.data, nx, uy)) return false;
+    return cant_squeeze_thru(ym) !== 0;
+}
+
+/**
+ * C ref: hack.c test_move :989–1255, TEST_TRAV arms in C order — the edge
+ * test findtravelpath calls per direction (`test_move(x, y, nx-x, ny-y,
+ * TEST_TRAV)` at :1400/:1427). Replaces the blocksMove / boulder_at /
+ * travel_avoids_cell / tight-diag stand-in chain in the travel BFS.
+ * C consequences, all preserved: closed doors are passable (orthogonal;
+ * diagonal falls into `testdiag` :1139); single boulders are enterable
+ * leaves (two-in-a-row gate on expansion, :1238); diagonal intact doorways
+ * are banned both into (:1139–1147) and out of (:1205–1213) the door cell.
+ * Named omissions: Passes_walls+may_passwall rock (:1014); Underwater rock
+ * (outcome identical — blocked); worm_cross (:1172); WAN_DIGGING-unknown arm of the two-in-row
+ * gate (no JS objects[].oc_name_known — treated as not carrying);
+ * Known_wwalking/Known_lwalking/WATERWALL/LAVAWALL (ride inside
+ * travel_avoids_cell).
+ */
+async function travel_test_move(ux, uy, dx, dy) {
+    const x = (ux | 0) + (dx | 0);
+    const y = (uy | 0) + (dy | 0);
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const typ = loc.typ | 0;
+    const passWalls = Passes_walls_prop();
+    const ym = game.youmonst;
+    const ydat = ym?.data;
+    if (IS_OBSTRUCTED(typ) || typ === IRONBARS) {
+        // C :1011–1073. Blind feel_location, autodig/use_pick_axe2 and the
+        // drawbridge/Sokoban/mention_walls plines are DO_MOVE-only.
+        // C :1016–1023: Underwater blocks before the tunnels/IRONBARS arms
+        // on every mode (only the There() pline is DO_MOVE-gated) — an
+        // underwater tunneling polyform or passes-bars form no longer
+        // routes travel through rock/bars (D-1971 review-941 debt).
+        if ((game.u?.uinwater | 0)) return false;
+        if (typ === IRONBARS) {
+            if (!(passWalls || test_move_hero_passes_bars())) return false;
+        } else if (!(ydat && tunnels(ydat) && !needspick(ydat))) {
+            return false;
+        }
+        // tunnels(youmonst)+!needspick eats the rock: pass.
+    } else if (IS_DOOR(typ)) {
+        // C :1074–1167. Passes_walls / ooze / Underwater / tunneling pass a
+        // closed door; TEST_TRAV takes `goto testdiag` (:1149) — orthogonal
+        // falls through (pass; the delay arm prefers other routes), diagonal
+        // needs doorless_door (block_door rides along).
+        if (closed_door_at(x, y)) {
+            if (passWalls || can_ooze(ym)) { /* pass */ } else if ((game.u?.uinwater | 0)) {
+                return false;
+            } else if (ydat && tunnels(ydat) && !needspick(ydat)) { /* pass */ } else if ((dx | 0) && (dy | 0)
+                && (!doorless_door(x, y) || await block_door(x, y))) {
+                return false;
+            }
+        } else if ((dx | 0) && (dy | 0) && !passWalls
+            && (!doorless_door(x, y) || await block_door(x, y))) {
+            return false;
+        }
+    }
+    // C squeeze (:1153): bad_rock flanks + cant_squeeze_thru (worm_cross :1172
+    // deferred — named above).
+    if (travel_blocks_tight_diag(ux, uy, x, y)) return false;
+    // C :1181–1200 run==8 trap/liquid: C returns (mode==TEST_TRAP), FALSE
+    // under TEST_TRAV — shared travel_avoids_cell (hero cell excluded there).
+    if (((game.context?.run | 0) === 8) && travel_avoids_cell(x, y)) return false;
+    // C :1205–1213 diagonal out of a doorway that still has a door.
+    if ((dx | 0) && (dy | 0) && !passWalls) {
+        const from = game.level?.at(ux, uy);
+        if (from && IS_DOOR(from.typ | 0)
+            && (!doorless_door(ux, uy) || await block_entry(x, y))) {
+            return false;
+        }
+    }
+    // C :1216–1252 boulder TEST_TRAV: never in Sokoban; two boulders in a
+    // row need Passes_walls / giant-tiny maneuver / tunneling / a carried
+    // digger; else assume the push works — the cell is enterable and the
+    // gate above blocks expansion out of it (D-0412/D-0700 leaf).
+    if (boulder_at(x, y) && (In_sokoban() || !passWalls)) {
+        if (In_sokoban()) return false;
+        if (boulder_at(ux, uy) && !passWalls
+            && !could_move_onto_boulder(ux, uy)
+            && !(ydat && tunnels(ydat) && !needspick(ydat))
+            && !carrying(PICK_AXE_OTYP) && !carrying(DWARVISH_MATTOCK_OTYP)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+/**
+ * C ref: hack.c test_move DO_MOVE + flags.mention_walls on IS_OBSTRUCTED.
+ * Uses defsyms[].explanation via an(); S_stone → "solid stone".
+ * C: pline_dir(xytodir(dx,dy), "It's %s.", buf) (D-1216).
+ * Deferred: Blind feel_location, Passes_walls/may_passwall on rock,
+ * Underwater, tunnels/still_chewing rock, autodig, is_db_wall, Sokoban
+ * resist, full back_to_glyph/wall_angle→S_stone edge cases.
+ * IRONBARS pass/chew is D-1270 (blocksMove / still_chewing, not here).
+ * run>=2 boulder pline_dir is D-1226 (test_move, not this bump).
+ * OOB / testdiag doorway / run-into-trap-or-liquid mention_walls is D-1800.
+ */
+async function mention_walls_obstructed(x, y) {
+    if (!game.flags?.mention_walls) return;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    if (loc.typ === IRONBARS) {
+        await pline('You cannot pass through the bars.');
+        return;
+    }
+    let buf;
+    // C: glyph = back_to_glyph; sym==S_stone → "solid stone"; else an(explanation)
+    if (loc.typ === TREE || (IS_TREE(loc.typ) && loc.typ !== STONE)) {
+        buf = an('tree');
+    } else if ((IS_WALL(loc.typ) || loc.typ === SDOOR) && loc.seenv) {
+        buf = an('wall');
+    } else {
+        // STONE / SCORR / unseen wall (wall_angle→S_stone) / other rock
+        buf = 'solid stone';
+    }
+    const u = game.u || {};
+    const dx = ((x | 0) - (u.ux | 0)) | 0;
+    const dy = ((y | 0) - (u.uy | 0)) | 0;
+    await pline_dir(xytodir(dx, dy), `It's ${buf}.`);
+}
+
+/**
+ * C ref: hack.c domove_fight_empty `:2229–2338`.
+ * Force-fight an empty or solid square, or a remembered invisible glyph
+ * with no monster and no m-prefix, spends the turn. Returns false when
+ * neither guard holds so domove keeps walking.
+ * An off-map target rewrites the local coordinates to (0,1) before the
+ * guard (not (0,0): m_at can find a vault guard there) and is worded as
+ * an unknown obstacle.
+ */
+export async function domove_fight_empty(x, y) {
+    const unknownObstacle = 'an unknown obstacle';
+    const offEdge = !isok(x, y);
+    // C: glyph_at only on the map; off-edge is GLYPH_UNEXPLORED.
+    let glyph = !offEdge ? glyph_at(x, y) : GLYPH_UNEXPLORED;
+
+    if (offEdge) {
+        x = 0;
+        y = 1;
+    }
+
+    /* specifying 'F' with no monster wastes a turn.
+       Remembered 'I' && !m_at && !nopick does too. forcefight
+       short-circuits so m_at is not called. */
+    if (game.context?.forcefight
+        || (glyph_is_invisible_id(glyph) && !m_at(x, y)
+            && !game.context?.nopick)) {
+        let boulder = null;
+        const u = game.u || {};
+        // C attacktype(data, AT_EXPL) ≡ attacktype_fordmg(..., AD_ANY).
+        const explo = !!(Upolyd(u)
+            && attacktype_fordmg(game.youmonst?.data, AT_EXPL, -1));
+        const loc = offEdge ? null : game.level?.at(x, y);
+        // off-edge short-circuits: do not call accessible on (0,1).
+        const solid = offEdge
+            || !accessible(x, y)
+            || IS_FURNITURE(loc?.typ);
+        let buf;
+
+        if (offEdge) {
+            /* treat as if solid rock, even on planes' levels */
+            buf = unknownObstacle;
+        } else {
+            if (!(u.uinwater | 0)) {
+                boulder = sobj_at(BOULDER_OTYP, x, y);
+                /* displayed statue, or a hallucinated monster glyph.
+                   youprop.h:120 — display.js, not the do_name sticky clone. */
+                if (glyph_is_statue(glyph)
+                    || (Hallucination() && glyph_is_monster(glyph))) {
+                    boulder = sobj_at(STATUE_OTYP, x, y);
+                }
+                /* F at boulder/statue/wall/door while wielding a digger */
+                if (game.context?.forcefight
+                    && u.uwep && dig_typ(u.uwep, x, y)
+                    && !glyph_is_invisible_id(glyph)
+                    && !glyph_is_monster(glyph)) {
+                    await use_pick_axe2(u.uwep);
+                    return true;
+                }
+            }
+
+            /* about to become known empty — remove 'I' if present */
+            unmap_object(x, y);
+            if (boulder) map_object(boulder, true);
+            newsym(x, y);
+            glyph = glyph_at(x, y); /* C nhUse: refreshed id is not read */
+
+            if (boulder) {
+                buf = ansimpleoname(boulder);
+            } else if ((u.uinwater | 0) && !is_pool(x, y)) {
+                /* underwater non-water: blank map, so no terrain name */
+                buf = (Is_waterlevel(u.uz) && (loc?.typ | 0) === AIR)
+                    ? 'an air bubble'
+                    : 'nothing';
+            } else if (solid) {
+                /* seen, wall, secret door, or secret corridor: real name.
+                   unseen other solids stay "an unknown obstacle". */
+                if (loc && (loc.seenv || IS_STWALL(loc.typ)
+                    || loc.typ === SDOOR || loc.typ === SCORR)) {
+                    glyph = back_to_glyph(x, y);
+                    buf = the(defsym_explanation(glyph_to_cmap(glyph)));
+                } else {
+                    buf = unknownObstacle;
+                }
+            } else {
+                buf = 'thin air';
+            }
+        }
+
+        /* futile: */
+        const adverb = !(boulder || solid)
+            ? ''
+            : (!explo ? 'harmlessly ' : 'futilely ');
+        const verb = explo ? 'explode at' : 'attack';
+        await You(`${adverb}${verb} ${buf}.`);
+
+        nomul(0);
+        if (explo) {
+            const attk = attacktype_fordmg(game.youmonst?.data, AT_EXPL, -1);
+            /* no monster has been attacked so we have bypassed explum() */
+            await wake_nearto(u.ux | 0, u.uy | 0, 7 * 7);
+            if (attk) await explum(null, attk);
+            u.mh = -1; /* dead in the current form */
+            await rehumanize();
+        }
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: hack.c lookaround `:3898–4058` — whole body in C order.
+ * NODIAG head + Blind/run gate; per-cell visible-monster stop (mention_walls
+ * pline_xy), STONE/away skips, trap arm (run==1 → bcorr, infront → stop,
+ * else fall through), terrain else-chain (obstructed/room/air/ice skip;
+ * closed-door-or-mimic mention/stop/bcorr; corridor; pool/lava; objects),
+ * bcorr corridor counting, run==2 widen stop, rush/travel auto-turn.
+ * `stop:` is C `nomul(0)` (live hack.js export, already imported); bcorr is
+ * a flag (C goto into the CORR arm skips the terrain else-chain).
+ * Async only because the C message arms (You/pline_xy/pline_The) and the
+ * trap/liquid helpers reach --More-- (callers continue_run + moveloop_core
+ * multi>0 !mv replay arm await; exported for the latter, D-3433).
+ */
+export async function lookaround() {
+    const ctx = game.context;
+    const u = game.u;
+    // C `:3907–3911` — grid bugs (NODIAG ≡ umonnum==PM_GRID_BUG,
+    // hack.h:1414) cannot move diagonally, even blind.
+    if ((((u?.umonnum) | 0) === PM_GRID_BUG) && (u.dx || 0) && (u.dy || 0)) {
+        await You('cannot move diagonally.');
+        nomul(0);
+        return;
+    }
+    // C `:3913–3914` — Blind || run==0 returns (Blind is the live
+    // invent.js macro: H/EBlinded && !BBlinded + uroleplay.blind).
+    if (Blind() || !ctx?.run) return;
+
+    let corrct = 0;
+    let noturn = 0;
+    let x0 = 0;
+    let y0 = 0;
+    let m0 = 1;
+    let i0 = 9;
+
+    for (let x = u.ux - 1; x <= u.ux + 1; x++) {
+        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            // C `:3917` — infront: the square we're moving into.
+            const infront = (x === u.ux + (u.dx || 0) && y === u.uy + (u.dy || 0));
+            // C `:3920–3921` — ignore out of bounds and our own square (u_at).
+            if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
+            // C `:3923–3924` — grid bugs ignore diagonals.
+            if ((((u?.umonnum) | 0) === PM_GRID_BUG) && x !== u.ux && y !== u.uy) continue;
+
+            // C `:3927–3930` — a visible monster there? (m_at; M_AP
+            // furniture/object mimics don't count; mon_visible — D-0705:
+            // invisible hostiles must not end a run, attack_checks prints
+            // Wait! instead.)
+            const mtmp = mon_at(x, y);
+            if (mtmp
+                && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+                && M_AP_TYPE(mtmp) !== M_AP_OBJECT
+                && mon_visible(mtmp)) {
+                // C `:3933–3938` — running (not rush-1) against a
+                // non-safemon, or blocking our move while not traveling.
+                if ((ctx.run !== 1 && !is_safemon(mtmp))
+                    || (infront && !ctx.travel)) {
+                    if (game.flags?.mention_walls) {
+                        await pline_xy(x, y, '%s blocks your path.',
+                            upstart(a_monnam(mtmp)));
+                    }
+                    nomul(0); // C `stop:` `:4020–4022`
+                    return;
+                }
+            }
+
+            const loc = game.level?.at(x, y);
+            const typ = loc?.typ ?? STONE;
+            // C `:3943–3944` — stone is never interesting.
+            if (typ === STONE) continue;
+            // C `:3946–3947` — ignore the square we're moving away from.
+            if (x === u.ux - (u.dx || 0) && y === u.uy - (u.dy || 0)) continue;
+
+            // C `:3950–3956` — stop for (seen, non-vibrating-square) traps,
+            // sometimes: run==1 treats the trap square as corridor (bcorr);
+            // otherwise stop only when the trap is directly in front; when
+            // neither goto fires C falls through to the terrain chain.
+            // (The helper's own mention_walls pline is the run>=2 msg arm.)
+            let asCorr = false; // C `goto bcorr` `:3978`
+            if (await avoid_moving_on_trap(x, y, infront && ctx.run > 1)) {
+                if (ctx.run === 1) asCorr = true; // C `:3952–3953`
+                else if (infront) { nomul(0); return; } // C `:3954–3955`
+            }
+
+            if (!asCorr) {
+                // C `:3959–3961` — obstructed, room, air, ice: uninteresting.
+                if (IS_OBSTRUCTED(typ) || typ === ROOM || IS_AIR(typ) || typ === ICE) {
+                    continue;
+                // C `:3962` — a closed door (live hack.js export ≡ monmove.c
+                // closed_door: IS_DOOR + D_LOCKED|D_CLOSED), or a mimic
+                // appearing as one (is_door_mappear, monst.h:240 — inlined
+                // like lock.js: the mappearance disjunct, not a clone).
+                } else if (closed_door(x, y)
+                    || (mtmp && M_AP_TYPE(mtmp) === M_AP_FURNITURE
+                        && ((mtmp.mapappearance | 0) === S_hcdoor
+                            || (mtmp.mappearance | 0) === S_vcdoor))) {
+                    // C `:3965–3966` — ignore diagonal doors.
+                    if (x !== u.ux && y !== u.uy) continue;
+                    if (ctx.run !== 1 && !ctx.travel) {
+                        // C `:3968–3971` — mention + stop.
+                        if (game.flags?.mention_walls) {
+                            set_msg_xy(x, y);
+                            await You('stop in front of the door.');
+                        }
+                        nomul(0); return;
+                    }
+                    // C `:3975` — orthogonal door counts as corridor.
+                    asCorr = true;
+                } else if (typ === CORR) {
+                    // C `:3976` — corridor.
+                    asCorr = true;
+                } else if (is_pool(x, y) || is_lava(x, y)) {
+                    // C `:4005–4008` — is_pool_or_lava (dbridge.c:77):
+                    // stop only when the liquid is in front and the hero
+                    // would avoid stepping in; otherwise uninteresting.
+                    // (The helper's edge-of-water pline is the msg=TRUE arm.)
+                    if (infront && await avoid_moving_on_liquid(x, y, true)) {
+                        nomul(0); return;
+                    }
+                    continue;
+                } else {
+                    // C `:4009–4018` — e.g. objects or trap or stairs.
+                    if (ctx.run === 1) asCorr = true; // C `:4010`
+                    else if (ctx.run === 8) continue; // C `:4012`
+                    else if (mtmp) continue; // C `:4014` (unseen monster)
+                    // C `:4016–4017` — diagonally-behind squares don't stop.
+                    else if (((x === u.ux - (u.dx || 0)) && (y !== u.uy + (u.dy || 0)))
+                        || ((y === u.uy - (u.dy || 0)) && (x !== u.ux + (u.dx || 0)))) continue;
+                    else { nomul(0); return; } // C fall-through to stop:
+                }
+            }
+
+            if (asCorr) {
+                // C `:3979` — corridor counting only when the hero is not
+                // standing in a room.
+                const here = game.level?.at(u.ux, u.uy);
+                if (here && here.typ !== ROOM) {
+                    // C `:3981–3999` — rush/travel corridor tracking.
+                    if (ctx.run === 1 || ctx.run === 3 || ctx.run === 8) {
+                        // C `:3984` — distance to the square we're moving to.
+                        const i = dist2(x, y, u.ux + (u.dx || 0), u.uy + (u.dy || 0));
+                        // C `:3986–3987` — ignore squares past it.
+                        if (i > 2) continue;
+                        // C `:3991` — second corridor not orthogonally
+                        // adjacent to the first: no turn.
+                        if (corrct === 1 && dist2(x, y, x0, y0) !== 1) noturn = 1;
+                        // C `:3995–3999` — keep the closest square
+                        // (orthogonal beats diagonal); m0 notes a monster.
+                        if (i < i0) {
+                            i0 = i;
+                            x0 = x;
+                            y0 = y;
+                            m0 = mtmp ? 1 : 0;
+                        }
+                    }
+                    corrct++;
+                }
+                continue; // C `:4004`
+            }
+        }
+    }
+
+    // C `:4025–4029` — run==2 into a widening corridor: mention + stop.
+    if (corrct > 1 && ctx.run === 2) {
+        if (game.flags?.mention_walls) {
+            await pline_The('corridor widens here.');
+        }
+        nomul(0);
+        return;
+    }
+
+    // C `:4030–4057` — rush/travel auto-turn at corridor corners (only
+    // when exactly the tracked corridor(s) were seen, unblocked).
+    if ((ctx.run === 1 || ctx.run === 3 || ctx.run === 8)
+        && !noturn && !m0 && i0
+        && (corrct === 1 || (corrct === 2 && i0 === 1))) {
+        let turn;
+        if (i0 === 2) {
+            // C `:4034–4037` — straight turn left/right.
+            turn = ((u.dx || 0) === y0 - u.uy && (u.dy || 0) === u.ux - x0) ? 2 : -2;
+        } else if ((u.dx || 0) && (u.dy || 0)) {
+            // C `:4039–4042` — diagonal half turn.
+            turn = (((u.dx || 0) === (u.dy || 0) && y0 === u.uy)
+                || ((u.dx || 0) !== (u.dy || 0) && y0 !== u.uy)) ? -1 : 1;
+        } else {
+            // C `:4044–4048` — orthogonal half turn.
+            turn = ((x0 - u.ux === y0 - u.uy && !(u.dy || 0))
+                || (x0 - u.ux !== y0 - u.uy && (u.dy || 0))) ? 1 : -1;
+        }
+        // C `:4052–4056` — accumulate last_str_turn; turn at most ±2.
+        turn += (u.last_str_turn || 0);
+        if (turn <= 2 && turn >= -2) {
+            u.last_str_turn = turn;
+            u.dx = x0 - u.ux;
+            u.dy = y0 - u.uy;
+        }
+    }
+}
+
+/** C cmd.c u_at — hero cell. */
+function look_u_at(x, y) {
+    const u = game.u || {};
+    return (u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0);
+}
+
+/**
+ * C selvar.c selection_new — Set-backed COLNO×ROWNO; empty bounds lx=COLNO.
+ * Local to cmd.c dolookaround (mklev.js Lua floodfill stays matchTyp).
+ */
+function look_sel_new() {
+    return { pts: new Set(), lx: COLNO, ly: ROWNO, hx: 0, hy: 0 };
+}
+
+function look_sel_getpoint(x, y, sel) {
+    if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return 0;
+    return sel.pts.has(`${x},${y}`) ? 1 : 0;
+}
+
+function look_sel_setpoint(x, y, sel, c) {
+    if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return;
+    const key = `${x},${y}`;
+    if (c) {
+        sel.pts.add(key);
+        if (x < sel.lx) sel.lx = x;
+        if (y < sel.ly) sel.ly = y;
+        if (x > sel.hx) sel.hx = x;
+        if (y > sel.hy) sel.hy = y;
+    } else {
+        sel.pts.delete(key);
+    }
+}
+
+/* selection_getbounds: canonical mklev.js export (C selvar.c:76-95).
+ * The look_sel_* family passes its look_sel_new objects straight through
+ * (no wid/bounds_dirty → recalc no-ops, wid defaults to COLNO). */
+
+/**
+ * C cmd.c dolookaround_floodfill_findroom — stop at wall/door/tree/bars/
+ * waterwall/lavawall/scorr/sdoor/DRAWBRIDGE_UP. CORR and ROOM pass.
+ */
+function dolookaround_floodfill_findroom(x, y) {
+    const loc = game.level?.at?.(x, y);
+    const typ = loc?.typ | 0;
+    if (IS_STWALL(typ) || IS_DOOR(typ) || IS_TREE(typ)
+        || IS_WATERWALL(typ) || typ === LAVAWALL || typ === IRONBARS
+        || typ === SCORR || typ === SDOOR || typ === DRAWBRIDGE_UP) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C selvar.c selection_floodfill + set_selection_floodfillchk.
+ * Seed is always included; neighbors need check_func.
+ */
+function look_sel_floodfill(ov, x0, y0, diagonals, check_func) {
+    if (!ov || typeof check_func !== 'function') return;
+    const tmp = look_sel_new();
+    const stackX = [];
+    const stackY = [];
+    const queued = new Set();
+    const enqueue = (nx, ny) => {
+        if (!isok(nx, ny)) return;
+        const key = `${nx},${ny}`;
+        if (queued.has(key) || look_sel_getpoint(nx, ny, tmp)) return;
+        if (!check_func(nx, ny)) return;
+        queued.add(key);
+        stackX.push(nx);
+        stackY.push(ny);
+    };
+    // C: SEL_FLOOD seed without check_func
+    queued.add(`${x0},${y0}`);
+    stackX.push(x0);
+    stackY.push(y0);
+    while (stackX.length) {
+        const x = stackX.pop();
+        const y = stackY.pop();
+        if (isok(x, y)) {
+            look_sel_setpoint(x, y, ov, 1);
+            look_sel_setpoint(x, y, tmp, 1);
+        }
+        enqueue(x + 1, y);
+        enqueue(x - 1, y);
+        enqueue(x, y + 1);
+        enqueue(x, y - 1);
+        if (diagonals) {
+            enqueue(x + 1, y + 1);
+            enqueue(x - 1, y - 1);
+            enqueue(x - 1, y + 1);
+            enqueue(x + 1, y - 1);
+        }
+    }
+}
+
+/** C display.h glyph_is_unexplored — blank !seenv. Integer glyph IDs named. */
+function look_glyph_unexplored_at(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return true;
+    if (loc.seenv | 0) return false;
+    const ch = loc.disp_ch;
+    return !ch || ch === ' ' || ch === '';
+}
+
+/** C cmd.c u_have_seen_whole_selection. */
+function u_have_seen_whole_selection(sel) {
+    const rect = {}; // C cmd.c:1198 NhRect rect
+    selection_getbounds(sel, rect); // C cmd.c:1200
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (isok(x, y) && look_sel_getpoint(x, y, sel)
+                && look_glyph_unexplored_at(x, y)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/** C cmd.c u_have_seen_bounds_selection — rectangular outline only. */
+function u_have_seen_bounds_selection(sel) {
+    const rect = {}; // C cmd.c:1216 NhRect rect
+    selection_getbounds(sel, rect); // C cmd.c:1218
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        let y = rect.ly;
+        if (isok(x, y) && look_sel_getpoint(x, y, sel)
+            && look_glyph_unexplored_at(x, y)) {
+            return false;
+        }
+        y = rect.hy;
+        if (isok(x, y) && look_sel_getpoint(x, y, sel)
+            && look_glyph_unexplored_at(x, y)) {
+            return false;
+        }
+    }
+    for (let y = rect.ly; y <= rect.hy; y++) {
+        let x = rect.lx;
+        if (isok(x, y) && look_sel_getpoint(x, y, sel)
+            && look_glyph_unexplored_at(x, y)) {
+            return false;
+        }
+        x = rect.hx;
+        if (isok(x, y) && look_sel_getpoint(x, y, sel)
+            && look_glyph_unexplored_at(x, y)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** C cmd.c u_can_see_whole_selection. */
+function u_can_see_whole_selection(sel) {
+    const rect = {}; // C cmd.c:1249 NhRect rect
+    selection_getbounds(sel, rect); // C cmd.c:1251
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (isok(x, y) && look_sel_getpoint(x, y, sel) && !cansee(x, y)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/** C selvar.c selection_is_irregular — hole in the bounding rect. */
+function look_sel_is_irregular(sel) {
+    const rect = {}; // C selvar.c:750 NhRect rect
+    selection_getbounds(sel, rect); // C selvar.c:752
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (isok(x, y) && !look_sel_getpoint(x, y, sel)) return true;
+        }
+    }
+    return false;
+}
+
+/** C selvar.c selection_size_description. */
+function look_sel_size_description(sel) {
+    const rect = {}; // C selvar.c:766 NhRect rect
+    selection_getbounds(sel, rect); // C selvar.c:769
+    const dx = (rect.hx - rect.lx + 1) | 0;
+    const dy = (rect.hy - rect.ly + 1) | 0;
+    const shape = look_sel_is_irregular(sel)
+        ? 'irregularly shaped'
+        : (dx === dy) ? 'square' : 'rectangular';
+    return `${shape} ${dx} by ${dy}`;
+}
+
+/**
+ * C cmd.c lookaround_known_room. u.urooms[0] even when describing an
+ * adjacent doorway room (C quirk). Corridor-goes-to TODO named.
+ */
+async function lookaround_known_room(x, y) {
+    const sel = look_sel_new();
+    const rooms = game.u?.urooms || '';
+    const rmno = rooms.length
+        ? (rooms.charCodeAt(0) - ROOMOFFSET)
+        : -ROOMOFFSET;
+    look_sel_floodfill(sel, x, y, true, dolookaround_floodfill_findroom);
+    if (!look_u_at(x, y)) set_msg_xy(x, y);
+    const where = look_u_at(x, y) ? 'this' : 'that';
+    const kind = rmno >= 0 ? 'room' : 'area';
+    if (u_have_seen_whole_selection(sel)) {
+        const u_in = !!look_sel_getpoint(x, y, sel);
+        const verb = (look_u_at(x, y) && u_in && u_can_see_whole_selection(sel))
+            ? 'are in'
+            : look_u_at(x, y) ? 'remember this as' : 'remember that as';
+        await pline(`You ${verb} ${an(look_sel_size_description(sel))} ${kind}.`);
+    } else if (u_have_seen_bounds_selection(sel)) {
+        await pline(
+            `You guess ${where} to be ${an(look_sel_size_description(sel))} ${kind}.`,
+        );
+    } else {
+        await pline(`You can't guess the size of ${where} area.`);
+    }
+}
+
+/**
+ * C cmd.c shown corridor cmap for corr_next2u — glyph_is_cmap S_corr /
+ * S_litcorr. S_engrcorr is GLOC_INTERESTING, not this arm.
+ */
+function shown_corr_cmap(x, y) {
+    if (look_shown_at(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc || (loc.typ | 0) !== CORR) return false;
+    const ep = engr_at(x, y);
+    if (ep?.erevealed) return false;
+    const ch = loc.disp_ch;
+    if (!ch || ch === ' ' || ch === '') return false;
+    return ch === '#';
+}
+
+/**
+ * C cmd.c dolookaround — #lookaround and newgame glyph_updates then-arm.
+ * Temporarily forces a11y.accessiblemsg On and getloc_filter VIEW.
+ * Named: corridor-goes-to rooms TODO; stuff outside current room TODO;
+ * firstmatch via getpos auto_describe_text (do_screen_description).
+ */
+export async function dolookaround() {
+    if (!game.iflags) game.iflags = {};
+    if (!game.a11y) {
+        game.a11y = { accessiblemsg: false, msg_loc: { x: 0, y: 0 } };
+    }
+    if (!game.a11y.msg_loc) game.a11y.msg_loc = { x: 0, y: 0 };
+    const tmp_getloc_filter = game.iflags.getloc_filter | 0;
+    const tmp_accessiblemsg = !!game.a11y.accessiblemsg;
+    let corr_next2u = false;
+    const u = game.u || {};
+    const here = game.level?.at?.(u.ux, u.uy);
+    const htyp = here?.typ | 0;
+
+    game.a11y.accessiblemsg = true;
+    if (htyp === CORR) {
+        corr_next2u = true;
+    } else if (IS_DOOR(htyp)) {
+        for (let i = DIR_W; i < N_DIRS; i += 2) {
+            const x = (u.ux | 0) + xdir[i];
+            const y = (u.uy | 0) + ydir[i];
+            const loc = isok(x, y) ? game.level?.at?.(x, y) : null;
+            if (loc && IS_ROOM(loc.typ)) await lookaround_known_room(x, y);
+        }
+        corr_next2u = true;
+    } else {
+        await lookaround_known_room(u.ux | 0, u.uy | 0);
+    }
+
+    game.iflags.getloc_filter = GFILTER_VIEW;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const iscorr = corr_next2u && shown_corr_cmap(x, y);
+            if (!look_u_at(x, y)
+                && (gather_locs_interesting(x, y, GLOC_INTERESTING)
+                    || iscorr)) {
+                const firstmatch = auto_describe_text(x, y) || '';
+                await pline_xy(x, y, `${firstmatch}.`);
+            }
+        }
+    }
+
+    game.iflags.getloc_filter = tmp_getloc_filter;
+    game.a11y.accessiblemsg = tmp_accessiblemsg;
+    return ECMD_OK;
+}
+
+// C ref: cmd.c — continue a DOMOVE_RUSH after the first step (moveloop multi>0)
+export async function continue_run() {
+    if (!game.context?.run || !(game.multi > 0) || !game.context.mv) {
+        end_running(true);
+        return false;
+    }
+    await lookaround();
+    // C allmain.c:517 — delay output before testing lookaround's clear
+    await runmode_delay_output();
+    if (!(game.multi > 0) || !game.context.run) {
+        game.context.move = 0;
+        return false;
+    }
+    // C: if (multi < COLNO && !--multi) end_running
+    if (game.multi < COLNO && !--game.multi) {
+        end_running(true);
+    }
+    // C ref: hack.c domove_core — travel recomputes step each turn
+    if (game.context?.travel) {
+        // C: if (!findtravelpath(TRAVP_TRAVEL)) findtravelpath(TRAVP_GUESS)
+        let travelStep = await findtravelpath_travel();
+        if (travelStep === TRAVEL_STEP_UNSURE) {
+            await You('stop, unsure which way to go.');
+            travelStep = TRAVEL_STEP;
+        }
+        if (!travelStep) {
+            travelStep = await findtravelpath_guess();
+            if (travelStep === TRAVEL_STEP_UNSURE) {
+                await You('stop, unsure which way to go.');
+                travelStep = TRAVEL_STEP;
+            }
+        }
+        if (!travelStep) {
+            end_running(true);
+            game.context.move = 0;
+            return false;
+        }
+        game.context.travel1 = 0;
+    }
+    const dx = game.u.dx || 0;
+    const dy = game.u.dy || 0;
+    await domove(dx, dy);
+    if (game.context.move !== 0) game.context.move = 1;
+    return true;
+}
+
+export function run_active() {
+    return !!(game.context?.run && game.multi > 0 && game.context.mv);
+}
+
+// Repeat a counted search (20s) without reading a new key
+export function search_repeat_active() {
+    return !!(game._repeat_search && (game.multi || 0) > 0);
+}
+
+/** C ref: decl.c dirs_ord — cardinals first for findtravelpath. */
+const DIRS_ORD = [
+    DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
+];
+
+/* findtravelpath step results. C returns boolean, but the TRAVP_TRAVEL
+ * visited arm must print You("stop, unsure which way to go.") and You is
+ * async-only in JS — so the sync BFS reports TRAVEL_STEP_UNSURE and the
+ * async TRAVEL wrappers print it in C order (message, then the step).
+ * TRAVP_VALID never reports it (C :1405–1413 gates the message on TRAVEL). */
+const TRAVEL_NOPATH = 0;
+const TRAVEL_STEP = 1;
+const TRAVEL_STEP_UNSURE = 2;
+
+/**
+ * C ref: hack.c findtravelpath :1268–1269 (`if (!gt.travelmap)
+ * gt.travelmap = selection_new()`) — the visited set for this travel
+ * session. Every hero cell a TRAVP_TRAVEL/VALID step starts from is marked,
+ * so stepping from a marked cell stops travel with "unsure which way to
+ * go". Per-game heap like C (never saved); cleared by reset_cmd_vars
+ * (cmd.c:3616) and end_running (hack.c:4151).
+ */
+function travelmap_ensure() {
+    if (!game.travelmap) game.travelmap = selection_new();
+    return game.travelmap;
+}
+
+/**
+ * C-style BFS from (fromX,fromY) until (toX,toY)=hero is adjacent.
+ * Sets u.dx/u.dy to step from hero onto the connecting neighbor.
+ * C ref: hack.c findtravelpath TRAVP_TRAVEL / noguess.
+ * @param {boolean} guessMode — TRAVP_GUESS expand: require couldsee(nx,ny)
+ * @param {boolean} [couldseeOnly] — sighted: require couldsee (ignore seenv)
+ * @param {number} [mode] — TRAVP_TRAVEL (visited stop + travelcc) or
+ *   TRAVP_VALID (mark + step only, C :1400–1418)
+ * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
+ */
+async function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = false, mode = TRAVP_TRAVEL) {
+    const u = game.u;
+    // C :1268–1269 — the travel-session visited set is allocated on entry.
+    const tmap = travelmap_ensure();
+    const travel = new Map();
+    let cur = [{ x: fromX, y: fromY }];
+    // C: memset travel 0 — the start cell matrix stays 0 (only discovered
+    // cells get radius); unvisited ≡ 0, so the start may be re-discovered.
+    let radius = 1;
+    // C hack.c :1330 — no diagonal movement for grid bugs (NODIAG);
+    // dirs_ord is cardinals-first, so drop the diagonal half (D-1897).
+    const dirs = (((u?.umonnum) | 0) === PM_GRID_BUG)
+        ? DIRS_ORD.slice(0, 4) : DIRS_ORD;
+
+    while (cur.length) {
+        const next = [];
+        for (const { x, y } of cur) {
+            // C hack.c :1412–1420 — door/boulder/trap delay: re-queue this
+            // cell once per round (matrix untouched) while
+            // travel[x][y] > radius-3; open paths win, delayed routes
+            // still resolve once the delay expires (D-1897).
+            let alreadyRepeated = false;
+
+            for (const dir of dirs) {
+                const nx = x + xdir[dir];
+                const ny = y + ydir[dir];
+                if (!isok(nx, ny)) continue;
+                if (guessMode && !couldsee(nx, ny)) continue;
+                if (travel_delay_current(x, y)
+                    || (((game.context?.run | 0) === 8)
+                        && travel_avoids_cell(nx, ny))) {
+                    if ((travel.get(`${x},${y}`) | 0) > radius - 3) {
+                        if (!alreadyRepeated) {
+                            next.push({ x, y });
+                            alreadyRepeated = true;
+                        }
+                        continue;
+                    }
+                }
+                // C test_move TEST_TRAV edge (:1400): closed doors pass,
+                // single boulders are enterable leaves, diagonal intact
+                // doorways banned both ways (travel_test_move).
+                if (!await travel_test_move(x, y, nx - x, ny - y)) continue;
+
+                if (nx === toX && ny === toY) {
+                    // C :1400–1418 — TRAVP_TRAVEL/VALID success. visited is
+                    // read off the CURRENT cell (x,y); the step from hero
+                    // onto it is set either way; only TRAVP_TRAVEL stops
+                    // (nomul + run=8) on destination-or-visited, clearing
+                    // travelcc on a fresh destination and reporting UNSURE
+                    // on a revisit (the wrapper prints the C You() line).
+                    const visited = selection_getpoint(x, y, tmap);
+                    u.dx = x - toX;
+                    u.dy = y - toY;
+                    // C `:1404–1406` — arrival-from compares against u.tx/u.ty
+                    // (the real destination), NOT the BFS from-cell: after a
+                    // guess pick, from is the pick, and clearing travelcc on
+                    // an adjacent pick strands travel ("already here" instead
+                    // of bumping the door, quest-94036 step 103).
+                    if (!guessMode && mode === TRAVP_TRAVEL
+                        && (x === (u.tx | 0) && y === (u.ty | 0) || visited)) {
+                        nomul(0);
+                        /* reset run so domove run checks work */
+                        if (game.context) game.context.run = 8;
+                        if (!visited) {
+                            if (!game.iflags) game.iflags = {};
+                            if (!game.iflags.travelcc) {
+                                game.iflags.travelcc = { x: 0, y: 0 };
+                            }
+                            game.iflags.travelcc.x = 0;
+                            game.iflags.travelcc.y = 0;
+                        }
+                        selection_setpoint(u.ux, u.uy, tmap, 1);
+                        return visited ? TRAVEL_STEP_UNSURE : TRAVEL_STEP;
+                    }
+                    selection_setpoint(u.ux, u.uy, tmap, 1);
+                    return TRAVEL_STEP;
+                }
+                const key = `${nx},${ny}`;
+                if (travel.has(key)) continue;
+                const loc = game.level?.at(nx, ny);
+                if (!loc) continue;
+                // C: seenv || (!Blind && couldsee). couldseeOnly ignores seenv
+                // (D-0702 workaround for over-broad JS seenv).
+                if (couldseeOnly && !u.Blind) {
+                    if (!couldsee(nx, ny)) continue;
+                } else if (!(loc.seenv || (!u.Blind && couldsee(nx, ny)))) {
+                    continue;
+                }
+                travel.set(key, radius);
+                next.push({ x: nx, y: ny });
+            }
+        }
+        cur = next;
+        radius++;
+        if (radius > COLNO * ROWNO) break;
+    }
+    return TRAVEL_NOPATH;
+}
+
+/**
+ * C ref: hack.c findtravelpath TRAVP_TRAVEL/TRAVP_VALID (:1271–1306) —
+ * adjacent fast path + BFS. Adjacent: travel1 + next2u (distu<=2, the
+ * self cell qualifies in C too) + the crawl_destination
+ * restricted-diagonal gate, then end_running(FALSE) + live test_move
+ * TEST_MOVE (was blocksMove/boulder stand-ins); TEST_MOVE failure under
+ * TRAVEL sets run=8 and falls into the BFS. VALID swaps BFS ends
+ * (hero→dest). dest==hero skips the BFS via C `found:` (zero+nomul).
+ * @param {number} [mode] — TRAVP_TRAVEL (step + stop) or TRAVP_VALID
+ *   (mark + step only, C :1400–1418)
+ * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
+ */
+async function findtravelpath_travel(couldseeOnly = false, mode = TRAVP_TRAVEL) {
+    const u = game.u;
+    const destX = u.tx | 0;
+    const destY = u.ty | 0;
+    if (!isok(destX, destY)) return TRAVEL_NOPATH;
+
+    const ctx = game.context;
+    // C :1271–1292 — adjacent reachable → normal one-step move.
+    if ((mode === TRAVP_TRAVEL || mode === TRAVP_VALID) && ctx?.travel1
+        && Math.abs(destX - (u.ux | 0)) <= 1 && Math.abs(destY - (u.uy | 0)) <= 1
+        && await crawl_destination(destX, destY)) {
+        end_running(false);
+        if (await test_move(u.ux | 0, u.uy | 0,
+                            destX - (u.ux | 0), destY - (u.uy | 0), TEST_MOVE)) {
+            if (mode === TRAVP_TRAVEL) {
+                u.dx = destX - u.ux;
+                u.dy = destY - u.uy;
+                nomul(0);
+                if (!game.iflags) game.iflags = {};
+                if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+                game.iflags.travelcc.x = 0;
+                game.iflags.travelcc.y = 0;
+            }
+            return TRAVEL_STEP;
+        }
+        // C :1291–1292 — TEST_MOVE failed: run=8, then fall into the BFS.
+        if (mode === TRAVP_TRAVEL && ctx) ctx.run = 8;
+    }
+
+    // C found: — dest==hero skips the BFS (zero + nomul like C).
+    if (destX === (u.ux | 0) && destY === (u.uy | 0)) {
+        u.dx = 0;
+        u.dy = 0;
+        nomul(0);
+        return TRAVEL_NOPATH;
+    }
+
+    // C :1297–1306 — VALID swaps ends (BFS hero→dest, not dest→hero —
+    // that falsely succeeds from impassable stone).
+    if (mode === TRAVP_VALID)
+        return await findtravelpath_bfs(u.ux | 0, u.uy | 0, destX, destY,
+                                        false, couldseeOnly, TRAVP_VALID);
+    return await findtravelpath_bfs(destX, destY, u.ux, u.uy, false, couldseeOnly);
+}
+
+/**
+ * C ref: hack.c findtravelpath(TRAVP_GUESS) — BFS from hero through
+ * couldsee cells, pick matrix cell closest to u.tx/u.ty, then
+ * TRAVP_TRAVEL from that pick back to hero.
+ * Named omissions: travel_test_move arms (may_passwall, worm_cross,
+ * wand-unknown, Known_*walking — test_move's own row).
+ * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
+ */
+async function findtravelpath_guess() {
+    const u = game.u;
+    const destX = u.tx | 0;
+    const destY = u.ty | 0;
+    if (!isok(destX, destY)) return TRAVEL_NOPATH;
+    // C found: — dest==hero skips the BFS (zero + nomul like C).
+    if (destX === (u.ux | 0) && destY === (u.uy | 0)) {
+        u.dx = 0;
+        u.dy = 0;
+        nomul(0);
+        return TRAVEL_NOPATH;
+    }
+
+    // C: start BFS at hero; travel[hero] stays 0 (not a guess candidate).
+    const travel = new Map();
+    let cur = [{ x: u.ux | 0, y: u.uy | 0 }];
+    let radius = 1;
+    // C hack.c :1330 — grid-bug NODIAG; same cardinals-first prefix (D-1897).
+    const dirs = (((u?.umonnum) | 0) === PM_GRID_BUG)
+        ? DIRS_ORD.slice(0, 4) : DIRS_ORD;
+
+    while (cur.length) {
+        const next = [];
+        for (const { x, y } of cur) {
+            // C hack.c :1412–1420 — same door/boulder/trap delay arm as the
+            // TRAVEL loop (one shared C body, one mode flag).
+            let alreadyRepeated = false;
+            for (const dir of dirs) {
+                const nx = x + xdir[dir];
+                const ny = y + ydir[dir];
+                if (!isok(nx, ny)) continue;
+                // C GUESS: !couldsee → continue (before test_move)
+                if (!couldsee(nx, ny)) continue;
+                if (travel_delay_current(x, y)
+                    || (((game.context?.run | 0) === 8)
+                        && travel_avoids_cell(nx, ny))) {
+                    if ((travel.get(`${x},${y}`) | 0) > radius - 3) {
+                        if (!alreadyRepeated) {
+                            next.push({ x, y });
+                            alreadyRepeated = true;
+                        }
+                        continue;
+                    }
+                }
+                // C test_move TEST_TRAV edge, same as the TRAVEL loop.
+                if (!await travel_test_move(x, y, nx - x, ny - y)) continue;
+                // C: reaching dest under GUESS does not return / enqueue
+                if (nx === destX && ny === destY) continue;
+                const key = `${nx},${ny}`;
+                if (travel.has(key)) continue;
+                const loc = game.level?.at(nx, ny);
+                if (!loc) continue;
+                if (!(loc.seenv || (!u.Blind && couldsee(nx, ny)))) continue;
+                travel.set(key, radius);
+                next.push({ x: nx, y: ny });
+            }
+        }
+        cur = next;
+        radius++;
+        if (radius > COLNO * ROWNO) break;
+    }
+
+    // C: pick couldsee cell in travel[] with minimal distmin to dest.
+    // Raster x,y order matches C tie-breaks (last write wins on equal dist).
+    let px = u.ux | 0;
+    let py = u.uy | 0;
+    let dist = Math.max(Math.abs(destX - px), Math.abs(destY - py));
+    let d2 = dist2(px, py, destX, destY);
+    let ptrav = COLNO * ROWNO;
+
+    for (let tx = 1; tx < COLNO; tx++) {
+        for (let ty = 0; ty < ROWNO; ty++) {
+            const ctrav = travel.get(`${tx},${ty}`) | 0;
+            if (!couldsee(tx, ty) || ctrav <= 0) continue;
+            const nxtdist = Math.max(Math.abs(destX - tx), Math.abs(destY - ty));
+            if (nxtdist === dist && ctrav < ptrav) {
+                const nd2 = dist2(tx, ty, destX, destY);
+                if (nd2 < d2) {
+                    px = tx;
+                    py = ty;
+                    d2 = nd2;
+                    ptrav = ctrav;
+                }
+            } else if (nxtdist < dist) {
+                px = tx;
+                py = ty;
+                dist = nxtdist;
+                d2 = dist2(tx, ty, destX, destY);
+                ptrav = ctrav;
+            }
+        }
+    }
+
+    // C :1481–1490 — no guesses: sgn toward dest; live test_move
+    // TEST_MOVE (was blocksMove/boulder/avoids/diag stand-ins).
+    if (px === (u.ux | 0) && py === (u.uy | 0)) {
+        u.dx = Math.sign(destX - (u.ux | 0));
+        u.dy = Math.sign(destY - (u.uy | 0));
+        if (await test_move(u.ux | 0, u.uy | 0, u.dx, u.dy, TEST_MOVE)) {
+            // C :1484–1487 — the general-direction step also marks travelmap.
+            selection_setpoint(u.ux, u.uy, travelmap_ensure(), 1);
+            return TRAVEL_STEP;
+        }
+        // C found: — zero + nomul like C.
+        u.dx = 0;
+        u.dy = 0;
+        nomul(0);
+        return TRAVEL_NOPATH;
+    }
+
+    // C: mode = TRAVP_TRAVEL; goto noguess from (px,py) toward hero
+    return await findtravelpath_bfs(px, py, u.ux, u.uy, false);
+}
+
+/**
+ * C ref: hack.c is_valid_travelpt — getpos auto_describe appends
+ * " (no travel path)" when getloc_travelmode && !is_valid_travelpt.
+ * TRAVP_VALID: findtravelpath swaps ends — BFS from hero toward dest
+ * (unlike TRAVP_TRAVEL which BFS dest→hero). Restores tx/ty; VALID marks
+ * travelmap and steps but never stops (no nomul/run/travelcc/message —
+ * C :1400–1418 gates those on TRAVP_TRAVEL). The unseen-target gate
+ * (`:1535–1538`) reads the live glyph (glyph_is_cmap + S_stone), not typ.
+ */
+export async function is_valid_travelpt(x, y) {
+    const u = game.u;
+    if ((u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0)) return true;
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    // C `:1535–1538`: unseen stone-glyph target → FALSE (no peeking
+    // through unexplored rock via travel validation).
+    const glyph = glyph_at(x, y);
+    if (glyph_is_cmap(glyph) && glyph_to_cmap(glyph) === S_stone
+        && !(loc?.seenv | 0)) return false;
+
+    const savedTx = u.tx;
+    const savedTy = u.ty;
+    const savedDx = u.dx;
+    const savedDy = u.dy;
+    const tcc = game.iflags?.travelcc;
+    const savedTccX = tcc ? tcc.x : 0;
+    const savedTccY = tcc ? tcc.y : 0;
+    u.tx = x | 0;
+    u.ty = y | 0;
+    let ret = TRAVEL_NOPATH;
+    try {
+        // C findtravelpath(TRAVP_VALID) via the shared envelope: adjacent
+        // fast path (travel1-gated like C) + BFS hero→dest (not dest→hero —
+        // that falsely succeeds from impassable stone).
+        ret = await findtravelpath_travel(false, TRAVP_VALID);
+    } finally {
+        u.tx = savedTx;
+        u.ty = savedTy;
+        u.dx = savedDx;
+        u.dy = savedDy;
+        if (tcc) {
+            tcc.x = savedTccX;
+            tcc.y = savedTccY;
+        }
+    }
+    return ret !== TRAVEL_NOPATH;
+}
+
+/**
+ * C ref: cmd.c dotravel_target — travel to iflags.travelcc / u.tx,u.ty.
+ * @returns {Promise<number>} ECMD_*
+ */
+async function dotravel_target() {
+    if (!game.iflags) game.iflags = {};
+    if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+    const tcc = game.iflags.travelcc;
+    if (!isok(tcc.x, tcc.y)) {
+        await pline('No travel destination set.');
+        return ECMD_OK;
+    }
+    const u = game.u;
+    if (u.ux === tcc.x && u.uy === tcc.y) {
+        await pline('You are already here.');
+        tcc.x = 0;
+        tcc.y = 0;
+        return ECMD_OK;
+    }
+
+    if (game.iflags) game.iflags.getloc_travelmode = false;
+    if (!game.context) game.context = {};
+    game.context.travel = 1;
+    game.context.travel1 = 1;
+    game.context.run = 8;
+    game.context.nopick = 1;
+    game.domove_attempting = (game.domove_attempting || 0) | DOMOVE_RUSH;
+
+    if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
+    u.last_str_turn = 0;
+    game.context.mv = 1;
+
+    u.tx = tcc.x;
+    u.ty = tcc.y;
+
+    // C ref: hack.c findtravelpath — seenv || (!Blind && couldsee), then
+    // domove. D-0702: JS seenv can overmark and yield a Chebyshev-worsening
+    // detour where C has no TEST_TRAV path → quiet-rest (dx=dy=0).
+    // Do NOT prefer couldsee-only first: that skipped seenv CLOUD cells on
+    // Quest and stepped SE while C walked S (D-0784 / seed0360 @104904).
+    let stepped = false;
+    let travelStep = await findtravelpath_travel(false);
+    if (travelStep === TRAVEL_STEP_UNSURE) {
+        await You('stop, unsure which way to go.');
+        travelStep = TRAVEL_STEP;
+    }
+    if (!travelStep) {
+        travelStep = await findtravelpath_guess();
+        if (travelStep === TRAVEL_STEP_UNSURE) {
+            await You('stop, unsure which way to go.');
+            travelStep = TRAVEL_STEP;
+        }
+    }
+    if (travelStep) {
+        const nx = (u.ux | 0) + (u.dx | 0);
+        const ny = (u.uy | 0) + (u.dy | 0);
+        const before = Math.max(
+            Math.abs((u.tx | 0) - (u.ux | 0)),
+            Math.abs((u.ty | 0) - (u.uy | 0)),
+        );
+        const after = Math.max(
+            Math.abs((u.tx | 0) - nx),
+            Math.abs((u.ty | 0) - ny),
+        );
+        if (after <= before) {
+            await domove(u.dx || 0, u.dy || 0);
+            stepped = true;
+        }
+    }
+    if (stepped) {
+        if (game.context) {
+            game.context.travel1 = 0;
+            if (game.context.move !== 0) game.context.move = 1;
+        }
+    } else {
+        u.dx = 0;
+        u.dy = 0;
+        nomul(0);
+        end_running(true);
+        game.context.move = 1;
+    }
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: cmd.c dotravel — '_' / #travel getpos then dotravel_target.
+ * Branch envelope: cancel, already-here, adjacent step, greedy BFS step.
+ * Adjacent + no-guess steps use live test_move TEST_MOVE; DO_MOVE-mode
+ * probes stay deferred (domove executes the step instead).
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function dotravel() {
+    if (!game.iflags) game.iflags = {};
+    if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+    const cc = {
+        x: game.iflags.travelcc.x | 0,
+        y: game.iflags.travelcc.y | 0,
+    };
+    if (cc.x === 0 && cc.y === 0) {
+        cc.x = game.u.ux;
+        cc.y = game.u.uy;
+    }
+    game.iflags.getloc_travelmode = true;
+
+    // C cmd.c:5321–5341 — menu_requested picks from the interesting-locs
+    // menu under GFILTER_VIEW (filter restored either way); decline keeps
+    // the cached travelcc and costs no turn (ECMD_OK), else free getpos.
+    if (game.iflags.menu_requested) {
+        const gfilt = game.iflags.getloc_filter | 0;
+        game.iflags.getloc_filter = GFILTER_VIEW;
+        if (!(await getpos_menu(cc, GLOC_INTERESTING))) {
+            game.iflags.getloc_filter = gfilt;
+            game.iflags.getloc_travelmode = false;
+            return ECMD_OK;
+        }
+        game.iflags.getloc_filter = gfilt;
+    } else {
+        await pline('Where do you want to travel to?');
+        if ((await getpos(cc, true, 'the desired destination')) < 0) {
+            game.iflags.getloc_travelmode = false;
+            return ECMD_CANCEL;
+        }
+    }
+
+    game.iflags.travelcc.x = game.u.tx = cc.x;
+    game.iflags.travelcc.y = game.u.ty = cc.y;
+    return dotravel_target();
+}
+
+export async function continue_search() {
+    if (!search_repeat_active()) {
+        game._repeat_search = false;
+        game.multi = 0;
+        return false;
+    }
+    game.multi--;
+    if (game.multi <= 0) {
+        game._repeat_search = false;
+        game.multi = 0;
+    }
+    // C: counted `Ns` re-invokes dosearch each multi tick
+    await dosearch();
+    game.context.move = 1;
+    game.kickedloc = { x: 0, y: 0 };
+    return true;
+}
+
+/**
+ * C integer.h AppendLongDigit — L*10+D, or -1 on overflow.
+ * @param {number} L
+ * @param {number} D
+ * @returns {number}
+ */
+function append_long_digit(L, D) {
+    const LONG_MAX = Number.MAX_SAFE_INTEGER;
+    if (L < Math.trunc(LONG_MAX / 10)
+        || (L === Math.trunc(LONG_MAX / 10) && D <= (LONG_MAX % 10))) {
+        return L * 10 + D;
+    }
+    return -1;
+}
+
+/**
+ * C cmd.c get_count inkey: NUL / 0 means read the first key.
+ * @param {string|number|null|undefined} inkey
+ * @returns {number}
+ */
+function get_count_inkey_code(inkey) {
+    if (inkey == null || inkey === '' || inkey === '\0') return 0;
+    if (typeof inkey === 'string') return inkey.charCodeAt(0) & 0xff;
+    return inkey & 0xff;
+}
+
+/**
+ * C cmd.c get_count `:5009–5090`. Digits then a terminator; echo
+ * "Count: N" via live custompline(SUPPRESS_HISTORY) (full vpline +
+ * prevmsg, minus dumplog).
+ * GC_SAVEHIST / GC_CONDHIST put "Count: N "+key2txt in putmsghistory
+ * (D-1588). parse uses GC_NOFLAGS; getobj uses GC_SAVEHIST.
+ * altmeta input_state / num_pad NHKF_COUNT named.
+ * @param {string|null} [allowchars]
+ * @param {string|number} [inkey]
+ * @param {number} [maxcount]
+ * @param {{ n: number }} [countOut]
+ * @param {number} [gc_flags]
+ * @returns {Promise<number>} terminating key
+ */
+export async function get_count(
+    allowchars = null,
+    inkey = 0,
+    maxcount = LARGEST_INT,
+    countOut = null,
+    gc_flags = GC_NOFLAGS,
+) {
+    const box = countOut || { n: 0 };
+    box.n = 0;
+    let cnt = 0;
+    let pending = get_count_inkey_code(inkey);
+    const first = pending ? (pending - 48) : 0;
+    const historicmsg = (gc_flags & GC_SAVEHIST) !== 0;
+    const conditionalmsg = (gc_flags & GC_CONDHIST) !== 0;
+    const echoalways = (gc_flags & GC_ECHOFIRST) !== 0;
+    let backspaced = false;
+    let showzero = true;
+    let key = 0;
+
+    for (;;) {
+        if (pending) {
+            key = pending;
+            pending = 0;
+        } else {
+            key = await nhgetch();
+        }
+
+        if (key >= 48 && key <= 57) {
+            const dgt = key - 48;
+            cnt = append_long_digit(cnt, dgt);
+            if (cnt < 0) cnt = 0;
+            else if (maxcount > 0 && cnt > maxcount) cnt = maxcount;
+            showzero = (key === 48);
+        } else if (key === 8 || key === 127) {
+            if (!cnt && !echoalways) break;
+            showzero = false;
+            cnt = Math.trunc(cnt / 10);
+            backspaced = true;
+        } else if (key === 27) {
+            break;
+        } else if (!allowchars
+                   || allowchars.includes(String.fromCharCode(key))) {
+            box.n = cnt;
+            break;
+        }
+
+        if (cnt > 9 || backspaced || echoalways) {
+            clear_nhwindow_message();
+            let qbuf;
+            if (backspaced && !cnt && !showzero) {
+                qbuf = 'Count: ';
+            } else {
+                qbuf = `Count: ${cnt}`;
+                backspaced = false;
+            }
+            // C cmd.c get_count: custompline(SUPPRESS_HISTORY, "%s", qbuf)
+            // then mark_synch. wincap2 has WC2_SUPPRESS_HIST, so putmesg
+            // ORs ATR_NOHISTORY (show_topl). prevmsg is still the echo.
+            await custompline(SUPPRESS_HISTORY, qbuf);
+            await flush_screen(1);
+            game.nhDisplay?.setCursor?.(qbuf.length, 0);
+        }
+    }
+
+    if (historicmsg || (conditionalmsg && box.n !== first)) {
+        putmsghistory(`Count: ${box.n} ${key2txt(key)}`, false);
+    }
+
+    return key;
+}
+
+/**
+ * C cmd.c rhack `:3732–3740`. Map the dispatch key to the function C
+ * would cmdq_add_ec(CQ_REPEAT, …). do_repeat and doextcmd are skipped
+ * at the call site. PREFIXCMD / movement / BIND overlays named.
+ * @param {string} ch
+ * @param {number} key
+ * @returns {((() => Promise<number>|number|boolean|void)|null)}
+ */
+function rhack_repeat_command(ch, key) {
+    if (key === 1) return do_repeat;
+    if (key === 4) return dokick;
+    if (key === 6) return wiz_map;
+    if (key === 7) return wiz_genesis;
+    if (key === 16) return doprev_message; // C('p')
+    if (key === 20) return dotelecmd;
+    if (key === 22) return wiz_level_tele;
+    if (key === 23) return wiz_wish;
+    if (key === 24) return doattributes;
+    switch (ch) {
+    case 'a': return doapply;
+    case 'A': return doddoremarm;
+    case 'c': return doclose;
+    case 'd': return dodrop;
+    case 'D': return doddrop;
+    case 'e': return doeat;
+    case 'E': return doengrave;
+    case 'f': return dofire;
+    case 'i': return ddoinv;
+    case 'I': return dotypeinv;
+    case 'o': return doopen;
+    case 'p': return dopay;
+    case 'P': return doputon;
+    case 'q': return dodrink;
+    case 'Q': return dowieldquiver;
+    case 'r': return doread;
+    case 'R': return doremring;
+    case 's': return dosearch;
+    case 'S': return dosave;
+    case 't': return dothrow;
+    case 'T': return dotakeoff;
+    case 'V': return doversion;
+    case 'w': return dowield;
+    case 'W': return dowear;
+    case 'x': return doswapweapon;
+    case 'z': return dozap;
+    case 'Z': return docast;
+    case ',': return dopickup;
+    case '.': return donull;
+    case '>': return dodown;
+    case '<': return doup;
+    case '_': return dotravel;
+    case ':': return dolook;
+    case '/': return dowhatis;
+    case ';': return doquickwhatis;
+    case '?': return dohelp;
+    case '+': return dovspell;
+    case '^': return doidtrap;
+    case '\\': return dodiscovered;
+    case '`': return doclassdisco; // C cmd.c:1752
+    case '@': return dotogglepickup;
+    case 'O': return doset_simple;
+    case '$': return doprgold;
+    case ')': return doprwep;
+    case '[': return doprarm;
+    case '=': return doprring;
+    case '"': return dopramulet;
+    case '(': return doprtool;
+    case '*': return doprinuse;
+    case '|': return doperminv;
+    case '\x7f': return doterrain;
+    case ' ': return game.flags?.rest_on_space ? donull : null;
+    case 'g': return do_rush;
+    case 'G': return do_run;
+    case 'F': return do_fight;
+    case '-': return do_fight; // C cmd.c:2772 bind_key('-', "fight")
+    case 'm': return do_reqmenu;
+    case 'h': return do_move_west;
+    case 'y': return do_move_northwest;
+    case 'k': return do_move_north;
+    case 'u': return do_move_northeast;
+    case 'l': return do_move_east;
+    case 'n': return do_move_southeast;
+    case 'j': return do_move_south;
+    case 'b': return do_move_southwest;
+    default: return null;
+    }
+}
+
+/**
+ * C extcmdlist ef_txt for rhack CQ_REPEAT cmdq_add_ec (flags via
+ * ext_func_tab_from_txt). BIND overlays named.
+ * @param {string} ch
+ * @param {number} key
+ * @returns {string}
+ */
+function rhack_repeat_txt(ch, key) {
+    if (key === 1) return 'repeat';
+    if (key === 4) return 'kick';
+    if (key === 6) return 'wizmap';
+    if (key === 7) return 'wizgenesis';
+    if (key === 16) return 'prevmsg';
+    if (key === 20) return 'teleport';
+    if (key === 22) return 'wizlevelport';
+    if (key === 23) return 'wizwish';
+    if (key === 24) return 'attributes';
+    const byCh = {
+        a: 'apply', A: 'takeoffall', c: 'close', d: 'drop', D: 'droptype',
+        e: 'eat',
+        E: 'engrave', f: 'fire', i: 'inventory', I: 'inventtype', o: 'open', p: 'pay',
+        P: 'puton', q: 'quaff', Q: 'quiver', r: 'read', R: 'remove', s: 'search',
+        S: 'save', t: 'throw', T: 'takeoff', V: 'versionshort', w: 'wield', W: 'wear',
+        x: 'swap', z: 'zap', Z: 'cast', ',': 'pickup', '.': 'wait',
+        '>': 'down', '<': 'up', _: 'travel', ':': 'look', '/': 'whatis',
+        ';': 'glance', '?': 'help', '+': 'showspells', '^': 'showtrap', '\\': 'known',
+        '`': 'knownclass',
+        '@': 'autopickup', O: 'options', $: 'showgold', ')': 'seeweapon',
+        '[': 'seearmor', '=': 'seerings', '"': 'seeamulet', '(': 'seetools',
+        '*': 'seeall',
+        '|': 'perminv',
+        '\x7f': 'terrain',
+        g: 'rush', G: 'run', F: 'fight', '-': 'fight', m: 'reqmenu',
+        h: 'movewest', y: 'movenorthwest', k: 'movenorth', u: 'movenortheast',
+        l: 'moveeast', n: 'movesoutheast', j: 'movesouth', b: 'movesouthwest',
+    };
+    if (ch === ' ' && game.flags?.rest_on_space) return 'wait';
+    return byCh[ch] || '';
+}
+
+/**
+ * C cmd.c do_repeat `:1637–1660`. Ctrl-A / #repeat. Copy CQ_REPEAT,
+ * in_doagain, rhack(0), restore the copy so a further repeat works.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function do_repeat() {
+    let res = ECMD_OK;
+    if (!game.in_doagain) {
+        if (!cmdq_peek(CQ_REPEAT)) {
+            await Norep('There is no command available to repeat.');
+            return ECMD_FAIL;
+        }
+        const repeat_copy = cmdq_copy(CQ_REPEAT);
+        game.in_doagain = true;
+        await rhack(0);
+        game.in_doagain = false;
+        cmdq_clear(CQ_REPEAT);
+        game._cmdq_repeat = repeat_copy;
+        if (game.iflags) game.iflags.menu_requested = false;
+        if (game.context?.move) res = ECMD_TIME;
+    }
+    return res;
+}
+
+/**
+ * C cmd.c doprev_message `:163–168` — #prevmsg / ^P.
+ * Windowproc is tty_doprev_message (D-1601). ECMD_OK, no turn.
+ * @returns {Promise<number>}
+ */
+export async function doprev_message() {
+    await tty_doprev_message();
+    return ECMD_OK;
+}
+
+/**
+ * C `gc.Cmd.spkeys[nhkf]` (`cmd.c:3161–3191` defaults). A missing table
+ * uses those defaults so ESC stays `'\033'` and the count prefix stays `'n'`.
+ * @param {number} nhkf
+ * @returns {number}
+ */
+function cmd_spkey(nhkf) {
+    const v = game.Cmd?.spkeys?.[nhkf];
+    if (typeof v === 'number') return v | 0;
+    for (let i = 0; i < SPKEYS_BINDS.length; i++) {
+        if (SPKEYS_BINDS[i][0] === nhkf) return SPKEYS_BINDS[i][1] | 0;
+    }
+    if (nhkf === NHKF_ESC) return 0x1b;
+    if (nhkf === NHKF_COUNT) return 110; // 'n'
+    return 0;
+}
+
+/**
+ * C cmd.c parse `:5096–5151` (staticfn). Digit count, then the command
+ * key. `num_pad` reads one key first and only calls `get_count` for the
+ * count prefix. ESC clears the count; `in_doagain` and the
+ * repeat/prevmsg/extcmd binds keep `last_command_count` (the save just
+ * above makes those two arms copy the count `get_count` stored).
+ * `gm.multi` is the count minus one when the count is non-zero.
+ * JS `get_count` reads `nhgetch` rather than `readchar`, so this stores
+ * `otherInp` the way `readchar_done` (`:5267–5271`) would have.
+ * @returns {Promise<number>} `gc.cmd_key`
+ */
+async function parse() {
+    if (!game.iflags) game.iflags = {};
+    if (!game.context) game.context = {};
+    if (!game.program_state) game.program_state = {};
+
+    // C `:5101–5104` — in_parse, count 0, assume the command takes time, cursor on hero.
+    game.iflags.in_parse = true;
+    game.context.command_count = 0;
+    game.context.move = 1;
+    await flush_screen(1);
+    // C `:5106–5108` — readchar ESC honors altmeta while a command is parsed.
+    game.program_state.input_state = commandInp;
+
+    // C `:5110–5118` — num_pad off, or the count-prefix key, collects digits.
+    const numPad = !!game.Cmd?.num_pad;
+    const countKey = cmd_spkey(NHKF_COUNT);
+    let foo = 0;
+    if (!numPad || (foo = await readchar()) === countKey) {
+        game.program_state.input_state = commandInp;
+        const cntbox = { n: 0 };
+        foo = await get_count(null, '\0', LARGEST_INT, cntbox, GC_NOFLAGS);
+        game.context.command_count = cntbox.n | 0;
+        game.program_state.input_state = otherInp;
+    }
+    game.last_command_count = game.context.command_count | 0; // C `:5120`
+
+    const escKey = cmd_spkey(NHKF_ESC);
+    if (foo === escKey) { // C `:5122–5125` esc cancels the count
+        clear_nhwindow_message(); // clear_nhwindow(WIN_MESSAGE)
+        game.context.command_count = 0;
+        game.last_command_count = 0;
+    } else if (game.in_doagain) { // C `:5126–5127`
+        game.context.command_count = game.last_command_count | 0;
+    } else if (foo) {
+        // C `:5128–5139` — do_repeat / doprev_message / doextcmd.
+        // JS cmdbind_get returns the extcmd (C `bind->cmd`); txt is ef_funct.
+        const bind = cmdbind_get(foo & 0xff);
+        if (bind && bind.txt
+            && (bind.txt === 'repeat' || bind.txt === 'prevmsg' || bind.txt === '#')) {
+            game.context.command_count = game.last_command_count | 0;
+        }
+    }
+
+    // C `:5141–5143`
+    game.multi = game.context.command_count | 0;
+    if (game.multi) game.multi--;
+
+    game.cmd_key = foo; // C `:5145`
+    clear_nhwindow_message(); // C `:5146` clear_nhwindow(WIN_MESSAGE)
+    game.iflags.in_parse = false; // C `:5149`
+    return game.cmd_key; // C `:5150`
+}
+
+// C ref: cmd.c rhack — main command dispatcher
+export async function rhack(key) {
+    const firsttime = (key === 0);
+    let prefix_seen = null;
+    let was_m_prefix = false;
+
+    // C rhack: menu_requested=FALSE and nopick=0 *before* got_prefix_input
+    // so PREFIXCMD do_reqmenu survives the loop (D-1186 g/G; this iter m/F).
+    if (game.iflags) game.iflags.menu_requested = false;
+    if (game.context) game.context.nopick = 0;
+
+    for (;;) { // C got_prefix_input
+    // C cmd.c:3638–3641 — SAFERHANGUP done_hup → end_of_input.
+    if (game.program_state?.done_hup) {
+        await end_of_input();
+        return;
+    }
+    // C cmd.c:3642–3651 — cmdq_pop before parse on EVERY entry, replay
+    // included: a queued entry preempts the stored cmd_key (counted
+    // whip/pole/grapple re-apply after wield_tool takes TIME, apply.c).
+    const canned = cmdq_pop();
+    if (canned) {
+        const isKey = typeof canned === 'object'
+            && canned.typ !== CMDQ_EXTCMD
+            && (canned.typ === CMDQ_KEY || canned.typ === 'key');
+        if (isKey) {
+            // C: KEY becomes the command keystroke (not a getobj letter).
+            key = typeof canned.key === 'string'
+                ? canned.key.charCodeAt(0)
+                : (canned.key | 0);
+        } else {
+            if (!game.context) game.context = {};
+            // C: CMDQ_EXTCMD uses ext_func_tab (altdip INTERNALCMD).
+            // PREFIXCMD / MOVEMENTCMD go through rhack after func()
+            // (got_prefix_input / DOMOVE_WALK|RUSH). apply/dig/dothrow/
+            // iactions call this file's cmdq_add_ec (txt empty → run()).
+            let res;
+            let flags = 0;
+            if (typeof canned === 'function') {
+                res = await canned();
+            } else if (typeof canned === 'object'
+                       && canned.typ === CMDQ_EXTCMD) {
+                flags = canned.flags | 0;
+                rhack_cmd_insane(flags);
+                res = canned.txt
+                    ? await run_cmdq_extcmd(canned)
+                    : await canned.run();
+                if ((flags & PREFIXCMD) && !(res & ECMD_CANCEL)) {
+                    prefix_seen = canned;
+                    if (canned.txt === 'reqmenu') was_m_prefix = true;
+                    key = 0;
+                    continue;
+                }
+                if ((flags & PREFIXCMD) && (res & ECMD_CANCEL)) {
+                    reset_cmd_vars(true);
+                    return;
+                }
+                if ((flags & MOVEMENTCMD)
+                    && (game.domove_attempting & DOMOVE_WALK)) {
+                    if (game.multi) game.context.mv = 1;
+                    await domove(game.u?.dx | 0, game.u?.dy | 0);
+                    game.context.forcefight = 0;
+                    if (game.iflags) game.iflags.menu_requested = false;
+                    if (game.context.move !== 0) game.context.move = 1;
+                    return;
+                }
+                if ((flags & MOVEMENTCMD)
+                    && (game.domove_attempting & DOMOVE_RUSH)) {
+                    if (firsttime) {
+                        if (!game.multi) {
+                            game.multi = Math.max(COLNO, ROWNO);
+                        }
+                        if (game.u) game.u.last_str_turn = 0;
+                    }
+                    game.context.mv = 1;
+                    await domove(game.u?.dx | 0, game.u?.dy | 0);
+                    if (game.iflags) game.iflags.menu_requested = false;
+                    if (game.context.move !== 0) game.context.move = 1;
+                    return;
+                }
+            } else {
+                res = await canned();
+            }
+            // C rhack: (res & ECMD_TIME) → context.move; CANCEL|FAIL →
+            // reset_cmd_vars(TRUE) clears remaining CQ_CANNED. Boolean true
+            // from doapply is ECMD_TIME (true & 1); D-1018 canned re-apply.
+            if ((res & ECMD_TIME) !== 0) {
+                game.context.move = 1;
+                game.kickedloc = { x: 0, y: 0 };
+            } else {
+                if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) cmdq_clear();
+                game.context.move = 0;
+            }
+            return;
+        }
+    }
+
+    if (key === 0) {
+        // C cmd.c:3652–3656 — parse(); a click may queue CQ_CANNED and
+        // return no key, which re-enters got_prefix_input.
+        key = await parse();
+        if (!key && cmdq_peek(CQ_CANNED)) continue;
+    }
+
+    // C cmd.c:3660–3670 — no key, (char)0377, or ESC is not a command.
+    // JS readchar keeps keys unsigned (readchar_core), so 0377 is the
+    // -1 sentinel rather than meta-255.
+    {
+        const escKey = cmd_spkey(NHKF_ESC);
+        if (!key || key === -1 || key === escKey) {
+            if (key === escKey) {
+                if (game.iflags) {
+                    game.iflags.sanity_no_check = game.iflags.sanity_check;
+                }
+            } else {
+                tty_nhbell();
+            }
+            game._repeat_search = false;
+            reset_cmd_vars(true);
+            return;
+        }
+    }
+
+    const ch = String.fromCharCode(key);
+    // C ref: reset_commands bind C(dir) → do_rush_*; e.g. C('j')=='\n' south
+    const rushDir = rushDirFromCtrl(key);
+
+    // C rhack (cmd.c): prefix_seen=do_fight + command lacking CMD_gGF_PREFIX
+    // → pline feedback, ECMD_FAIL, reset_cmd_vars — do NOT run the command.
+    // Silent clear used to let F+# fall through into doextcmd, desyncing
+    // later getobj letters as movement (D-0927 seed4500 @87803).
+    // Named omissions: nested g/G PREFIXCMD after F; full CMD_gGF table.
+    // C: g/G are PREFIXCMD so they do not trip the F-prefix error.
+    if (game.context?.forcefight
+        && ch !== 'F' && ch !== '-' && ch !== 'm' && ch !== 'g' && ch !== 'G'
+        && !isMovementKey(ch) && !isRunKey(ch) && !rushDir) {
+        const upDown = (ch === '<' || ch === '>');
+        await pline(
+            `The 'F' prefix should be followed by a movement command${
+                upDown ? ' other than up or down' : ''}.`,
+        );
+        game.context.forcefight = 0;
+        game.domove_attempting = 0;
+        game.context.move = 0;
+        game.context.mv = 0;
+        if (game.context.run) game.context.run = 0;
+        if ((game.multi | 0) > 0) game.multi = 0;
+        game.context.travel = 0;
+        game.context.travel1 = 0;
+        if (game.iflags) game.iflags.menu_requested = false;
+        return;
+    }
+    // C rhack: g/G PREFIXCMD then a non-walk, non-PREFIXCMD key (capital
+    // run / Ctrl-rush lack CMD_gGF_PREFIX) → same pline, reset_cmd_vars.
+    const pendingRushPrefix = !!(
+        ((game.domove_attempting || 0) & DOMOVE_RUSH)
+        && !game.context?.mv
+        && (game.context?.run === 2 || game.context?.run === 3)
+    );
+    if (pendingRushPrefix
+        && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== '-' && ch !== 'm'
+        && !isMovementKey(ch)) {
+        const which = game.context.run === 3 ? 'G' : 'g';
+        const upDown = (ch === '<' || ch === '>');
+        await pline(
+            `The '${which}' prefix should be followed by a movement command${
+                upDown ? ' other than up or down' : ''}.`,
+        );
+        game.context.forcefight = 0;
+        game.domove_attempting = 0;
+        game.context.move = 0;
+        game.context.mv = 0;
+        game.context.run = 0;
+        game.multi = 0;
+        game.context.travel = 0;
+        game.context.travel1 = 0;
+        if (game.iflags) game.iflags.menu_requested = false;
+        return;
+    }
+    // C rhack: keep menu_requested for CMD_M_PREFIX commands (O→doset_simple
+    // reads it to call doset; ^T→dotelecmd m-prefix menu D-1209; #→doextcmd
+    // then the resolved extcmd's own flag, D-1230). Drop only when the next
+    // command rejects 'm'.
+    // Named omission: full rhack-key accept_menu_prefix table.
+    // Typed # uses EXTCMDLIST CMD_M_PREFIX (D-1605 #seeall). Keys )[="(* D-1589.
+    // cmdbind_get covers default M('?') "?" and other CMD_M_PREFIX binds (D-1643).
+    const bindTab = cmdbind_get(key);
+    const accepts_m_prefix = ch === 'O' || ch === ',' || ch === 'e'
+        || ch === 'q' || ch === 'a' || ch === 's' || ch === 'p'
+        || ch === '>' || ch === '<'
+        || ch === ')' || ch === '[' || ch === '=' || ch === '"'
+        || ch === '(' || ch === '*'
+        || key === 20 // C('t') dotelecmd CMD_M_PREFIX
+        || ch === '#' // doextcmd CMD_M_PREFIX; resolved cmd checked in doextcmd
+        || accept_menu_prefix_tab(bindTab);
+    if (ch !== 'm' && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== '-'
+        && !accepts_m_prefix && !isMovementKey(ch) && !isRunKey(ch)
+        && !rushDir && game.iflags?.menu_requested) {
+        // C `:3703–3711` — m-prefix + command lacking CMD_M_PREFIX: the
+        // reject pline (bound keys only; unbound fall to Unknown below).
+        if (bindTab?.txt) {
+            const pfx = cmd_from_func('reqmenu');
+            const which = pfx ? visctrl(pfx) : 'move-no-pickup or request-menu';
+            await custompline(SUPPRESS_HISTORY,
+                `The ${bindTab.txt} command does not accept '${which}' prefix.`);
+        }
+        game.iflags.menu_requested = false;
+    }
+
+    // C rhack `:3732–3740`: !in_doagain && func != do_repeat && != doextcmd
+    // → cmdq_clear(CQ_REPEAT) unless prefix_seen, then cmdq_add_ec(CQ_REPEAT).
+    // doextcmd clears REPEAT; cmdq_shift after ext_tlist (below).
+    // Overlay keys use rhack_dispatch_bound REPEAT (cmdbind_get tlist).
+    const overlay_key = rhack_user_overlay_key(key);
+    if (!overlay_key && !game.in_doagain && key !== 1 && ch !== '#') {
+        if (!prefix_seen) cmdq_clear(CQ_REPEAT);
+        const fn = rhack_repeat_command(ch, key);
+        if (fn && fn !== do_repeat) {
+            const txt = rhack_repeat_txt(ch, key);
+            cmdq_add_ec(CQ_REPEAT, fn, ext_func_tab_from_txt(txt) || { txt, flags: 0 });
+        }
+    } else if (!overlay_key && !game.in_doagain && ch === '#') {
+        cmdq_clear(CQ_REPEAT);
+    }
+
+    if (isMovementKey(ch)) {
+        // C ref: cmd.c set_move_cmd(dir, 0) — clear stale travel; DOMOVE_WALK
+        // unless a g/G PREFIXCMD already set DOMOVE_RUSH (keeps context.run).
+        // C `:1396–1399`: `if (!domove_attempting && !u.dz) run = 0` — a
+        // plain walk ends any run (e.g. travel's run=8); without this the
+        // EOT time_botl stays suppressed and T: goes stale after travel.
+        if (!game.context) game.context = {};
+        game.context.travel = 0;
+        game.context.travel1 = 0;
+        const attempting = game.domove_attempting || 0;
+        if (!attempting) {
+            // C set_move_cmd `:1396–1399` guards on `!u.dz` (walks only).
+            if (!(game.u?.dz | 0)) game.context.run = 0;
+            game.domove_attempting = DOMOVE_WALK;
+        } else if ((attempting & DOMOVE_WALK) === 0
+                   && (attempting & DOMOVE_RUSH) !== 0
+                   && !game.context.mv) {
+            // C rhack DOMOVE_RUSH after do_rush/do_run: firsttime multi + mv
+            if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
+            if (game.u) game.u.last_str_turn = 0;
+            game.context.mv = 1;
+        }
+        // C rhack grid-bug arm (`:3778–3784`) — diagonal as a grid bug
+        // goes nowhere: You_cant + reset_cmd_vars, no domove. The
+        // attempting/travel conjuncts always hold here (WALK/RUSH set,
+        // travel cleared above); dxdy_moveok reads u.dx/u.dy
+        // (set_move_cmd in C), seeded here.
+        {
+            const mu = game.u || (game.u = {});
+            mu.dx = DIR_DX[ch];
+            mu.dy = DIR_DY[ch];
+        }
+        if (!dxdy_moveok()) {
+            await You_cant('get there from here...');
+            reset_cmd_vars(true);
+            return;
+        }
+        // C cmd.c:3785–3787 — DOMOVE_WALK with a count rides the mv
+        // replay path (moveloop_core allmain.c:524–528): direct domove
+        // per tick, no rhack re-dispatch, no per-step see_monsters
+        // refresh under Hallu/telepat/Warning/region.
+        if (game.multi) game.context.mv = 1;
+        await domove(DIR_DX[ch], DIR_DY[ch]);
+        // C: forcefight cleared after DOMOVE_WALK domove
+        if (game.context) game.context.forcefight = 0;
+        // domove sets context.move = 0 if blocked; else leave as 1 (allmain preset)
+        if (game.context.move !== 0) game.context.move = 1;
+    } else if (overlay_key) {
+        // C rhack cmdbind_get user overlay before the default key table.
+        // JS if/else is that table; skip it when BIND= owns the key.
+        const bound = await rhack_dispatch_bound(key, prefix_seen, was_m_prefix);
+        if (bound.prefix) {
+            prefix_seen = bound.prefix;
+            if (bound.prefix.txt === 'reqmenu') was_m_prefix = true;
+            key = 0;
+            continue;
+        }
+        if (!bound.done) {
+            // C tlist NULL ("nothing") or overlay target with no EXT_CMDS
+            // runner — Unknown, do not fall through to if/else.
+            if (game.context?.forcefight) game.context.forcefight = 0;
+            if (game.context?.run || (game.multi || 0) > 0) end_running(true);
+            if (game.context) game.context.command_count = 0;
+            game._repeat_search = false;
+            game.context.move = 0;
+            await pline(`Unknown command '${visctrl(key)}'.`);
+        }
+    } else if (isRunKey(ch) || rushDir) {
+        // C ref: cmd.c do_run_* → run=1; do_rush_* (C(dir)) → run=3
+        const low = rushDir || ch.toLowerCase();
+        if (!game.context) game.context = {};
+        // Pending F + capital/ctrl dir: forcefight one step (not rush)
+        if (game.context.forcefight) {
+            game.context.travel = 0;
+            game.context.travel1 = 0;
+            // C rhack grid-bug arm (`:3778–3784`) — see the walk arm above.
+            {
+                const mu = game.u || (game.u = {});
+                mu.dx = DIR_DX[low];
+                mu.dy = DIR_DY[low];
+            }
+            if (!dxdy_moveok()) {
+                await You_cant('get there from here...');
+                reset_cmd_vars(true);
+                return;
+            }
+            // C cmd.c:3785–3787 — do_fight pre-sets DOMOVE_WALK (`:1631`),
+            // so F+runkey rides this WALK arm (checked before RUSH): same
+            // mv=1 replay rule as the walk arm above.
+            if (game.multi) game.context.mv = 1;
+            await domove(DIR_DX[low], DIR_DY[low]);
+            game.context.forcefight = 0;
+            if (game.context.move !== 0) game.context.move = 1;
+        } else {
+            // C: set_move_cmd(dir, run) — clears travel; capital run=1, Ctrl-rush=3
+            // First step carries DOMOVE_RUSH; continue_run clears attempting
+            // after each domove so later steps do not maybe_smudge_engr.
+            game.context.travel = 0;
+            game.context.travel1 = 0;
+            if (!game.domove_attempting) {
+                game.domove_attempting = DOMOVE_RUSH;
+            }
+            game.context.run = rushDir ? 3 : 1;
+            game.context.mv = 1;
+            if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
+            game.u.last_str_turn = 0;
+            // C rhack grid-bug arm (`:3778–3784`) — see the walk arm above.
+            {
+                const mu = game.u || (game.u = {});
+                mu.dx = DIR_DX[low];
+                mu.dy = DIR_DY[low];
+            }
+            if (!dxdy_moveok()) {
+                await You_cant('get there from here...');
+                reset_cmd_vars(true);
+                return;
+            }
+            await domove(DIR_DX[low], DIR_DY[low]);
+            if (game.context.move !== 0) game.context.move = 1;
+        }
+    } else if (ch === 'F' || ch === '-') {
+        // C cmd.c do_fight `:1621–1634` — 'F' PREFIXCMD, '-' via
+        // commands_init bind_key('-', "fight") `:2772`; goto got_prefix_input
+        // unless CANCEL
+        const res = await do_fight();
+        if (res & ECMD_CANCEL) {
+            reset_cmd_vars(true);
+            return;
+        }
+        prefix_seen = ext_func_tab_from_txt('fight');
+        key = 0;
+        continue;
+    } else if (ch === 'm') {
+        // C cmd.c do_reqmenu — PREFIXCMD; was_m_prefix for CMD_M_PREFIX table
+        const res = await do_reqmenu();
+        if (res & ECMD_CANCEL) {
+            reset_cmd_vars(true);
+            return;
+        }
+        prefix_seen = ext_func_tab_from_txt('reqmenu');
+        was_m_prefix = true;
+        key = 0;
+        continue;
+    } else if (ch === 'g' || ch === 'G') {
+        // C cmd.c do_rush ('g') / do_run ('G') — PREFIXCMD, then another cmd
+        const res = ch === 'G' ? await do_run() : await do_rush();
+        if (res & ECMD_CANCEL) {
+            reset_cmd_vars(true);
+            return;
+        }
+        prefix_seen = ext_func_tab_from_txt(ch === 'G' ? 'run' : 'rush');
+        key = 0;
+        continue;
+    } else if (key === 1) {
+        // C cmd.c do_repeat — Ctrl-A "repeat" (IFBURIED|GENERALCMD)
+        const res = await do_repeat();
+        game.context.move = (res & ECMD_TIME) ? 1 : 0;
+        if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch >= '0' && ch <= '9') {
+        // Digits are consumed by get_count in parse (rhack(0)); reaching
+        // here means rhack(key) with an explicit digit — treat as count
+        // bump without a turn (rare multi/canned path).
+        if (!game.context) game.context = {};
+        const d = ch.charCodeAt(0) - 48;
+        game.context.command_count = (game.context.command_count || 0) * 10 + d;
+        if (game.context.command_count > 500) game.context.command_count = 500;
+        game.context.move = 0;
+        if (game.context.command_count > 9) {
+            const qbuf = `Count: ${game.context.command_count}`;
+            clear_nhwindow_message();
+            game._pending_message = qbuf;
+            await flush_screen(1);
+            const disp = game.nhDisplay;
+            if (disp?.setCursor) disp.setCursor(qbuf.length, 0);
+        }
+    } else if (ch === 'a') {
+        // C ref: apply.c doapply
+        const tookTime = await doapply();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'o') {
+        // C ref: lock.c doopen / cmd.c `o` — getdir then open door
+        const tookTime = await doopen();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'c') {
+        // C ref: lock.c doclose / cmd.c `c` — getdir then close door
+        const tookTime = await doclose();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (key === 4) { // Ctrl-D
+        // C ref: dokick.c dokick — #kick
+        const tookTime = await dokick();
+        game.context.move = tookTime ? 1 : 0;
+        // C: do NOT clear kickedloc after dokick — pets avoid it this turn
+    } else if (ch === ' ' && game.flags?.rest_on_space) {
+        // C ref: cmd.c update_rest_on_space — <space> → donull when option On
+        // C: f_text "waiting" + multi → timed_occupation(donull)
+        if ((game.multi | 0) > 0 && !game.occupation) {
+            set_occupation(donull, 'waiting', game.multi);
+        }
+        const tookTime = await donull();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === '.') {
+        // C ref: do.c donull / cmd.c — wait; timed non-kick clears kickedloc
+        // C rhack: f_text "waiting" && multi → set_occupation(donull,…)
+        // so Count:N . runs N turns via timed_occupation (D-0928 #1096).
+        if ((game.multi | 0) > 0 && !game.occupation) {
+            set_occupation(donull, 'waiting', game.multi);
+        }
+        const tookTime = await donull();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === ',') {
+        // C ref: hack.c dopickup / cmd.c — `,` pickup
+        const pickRes = await dopickup();
+        game.context.move = (pickRes & ECMD_TIME) ? 1 : 0;
+        if (pickRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'p') {
+        // C ref: shk.c dopay / cmd.c — `p` pay shopping bill
+        const payRes = await dopay();
+        game.context.move = (payRes & ECMD_TIME) ? 1 : 0;
+        if (payRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === '>') {
+        // C ref: do.c dodown / cmd.c — go down staircase
+        const downRes = await dodown();
+        game.context.move = (downRes & 0x01) ? 1 : 0;
+        if (downRes & 0x01) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === '<') {
+        // C ref: do.c doup / cmd.c — go up staircase
+        const upRes = await doup();
+        game.context.move = (upRes & 0x01) ? 1 : 0;
+        if (upRes & 0x01) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 's') {
+        // C ref: detect.c dosearch + cmd.c set_occupation(f_text "searching")
+        // parse already set multi = count-1; counted Ns → timed occupation.
+        if (game.context) game.context.command_count = 0;
+        if ((game.multi | 0) > 0) {
+            if (game.context) game.context.mv = 0;
+            // C: if (f_text && !occupation && multi) set_occupation(dosearch,…)
+            if (!game.occupation) set_occupation(dosearch, 'searching', game.multi);
+        }
+        const tookTime = await dosearch();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'd') {
+        // C ref: do.c dodrop — drop an item
+        const dropRes = await dodrop();
+        game.context.move = (dropRes & ECMD_TIME) ? 1 : 0;
+        if (dropRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'D') {
+        // C ref: do.c doddrop / cmd.c 'D' droptype
+        const dropRes = await doddrop();
+        game.context.move = (dropRes & ECMD_TIME) ? 1 : 0;
+        if (dropRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'T') {
+        // C ref: do_wear.c dotakeoff — take off armor/accessory
+        // (ECMD bitmask: ECMD_CANCEL must not read as took-time).
+        const takeRes = await dotakeoff();
+        game.context.move = (takeRes & ECMD_TIME) ? 1 : 0;
+        if (takeRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'R') {
+        // C ref: do_wear.c doremring — 'R' remove accessory
+        const tookTime = await doremring();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'A') {
+        // C ref: do_wear.c doddoremarm / cmd.c 'A' takeoffall
+        const res = await doddoremarm();
+        game.context.move = (res & ECMD_TIME) ? 1 : 0;
+        if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'w') {
+        // C ref: wield.c dowield — wield a weapon
+        const tookTime = await dowield();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'x') {
+        // C ref: wield.c doswapweapon / cmd.c 'x' "swap"
+        const swapRes = await doswapweapon();
+        game.context.move = swapRes ? 1 : 0;
+        if (swapRes) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'S') {
+        // C ref: save.c dosave / cmd.c — #save (GENERALCMD, ECMD_OK)
+        await dosave();
+        game.context.move = 0;
+    } else if (ch === 'O') {
+        // C ref: options.c doset_simple / cmd.c — O options menu
+        await doset_simple();
+        game.context.move = 0;
+    } else if (ch === '@') {
+        // C ref: options.c dotogglepickup / cmd.c — @ autopickup toggle
+        await dotogglepickup();
+        game.context.move = 0;
+    } else if (ch === '$') {
+        // C ref: invent.c doprgold / cmd.c — #showgold (GENERALCMD)
+        await doprgold();
+        game.context.move = 0;
+    } else if (ch === ')') {
+        // C ref: invent.c doprwep / cmd.c — #seeweapon (GENERALCMD, WEAPON_SYM)
+        await doprwep();
+        game.context.move = 0;
+    } else if (ch === '[') {
+        // C ref: invent.c doprarm / cmd.c — #seearmor (GENERALCMD, ARMOR_SYM)
+        await doprarm();
+        game.context.move = 0;
+    } else if (ch === '=') {
+        // C ref: invent.c doprring / cmd.c — #seerings (GENERALCMD, RING_SYM)
+        await doprring();
+        game.context.move = 0;
+    } else if (ch === '"') {
+        // C ref: invent.c dopramulet / cmd.c — #seeamulet (GENERALCMD, AMULET_SYM)
+        await dopramulet();
+        game.context.move = 0;
+    } else if (ch === '(') {
+        // C ref: invent.c doprtool / cmd.c — #seetools (GENERALCMD, TOOL_SYM)
+        await doprtool();
+        game.context.move = 0;
+    } else if (ch === '*') {
+        // C ref: invent.c doprinuse / cmd.c — #seeall (GENERALCMD, '*')
+        await doprinuse();
+        game.context.move = 0;
+    } else if (ch === '|') {
+        // C ref: invent.c doperminv / cmd.c — #perminv (GENERALCMD, '|')
+        await doperminv();
+        game.context.move = 0;
+    } else if (ch === '\x7f') {
+        // C ref: cmd.c doterrain / #terrain — DEL key (\177)
+        await doterrain();
+        game.context.move = 0;
+    } else if (ch === 'Q') {
+        // C ref: wield.c dowieldquiver / doquiver_core("ready")
+        const tookTime = await dowieldquiver();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === '_') {
+        // C ref: cmd.c dotravel — #travel / getpos destination
+        const travelRes = await dotravel();
+        game.context.move = (travelRes & ECMD_TIME) ? 1 : 0;
+        if (travelRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'W') {
+        // C ref: do_wear.c dowear — wear armor
+        const tookTime = await dowear();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'P') {
+        // C ref: do_wear.c doputon — put on accessory
+        const tookTime = await doputon();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'i') {
+        // C ref: invent.c ddoinv / display_inventory
+        await ddoinv();
+        game.context.move = 0;
+    } else if (ch === 'I') {
+        // C ref: invent.c dotypeinv / cmd.c inventtype
+        await dotypeinv();
+        game.context.move = 0;
+    } else if (ch === 'e') {
+        // C ref: eat.c doeat
+        const tookTime = await doeat();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'q') {
+        // C ref: potion.c dodrink / #quaff — ECMD_TIME bit only (CANCEL≠time)
+        const drinkRes = await dodrink();
+        game.context.move = (drinkRes & ECMD_TIME) ? 1 : 0;
+        if (drinkRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'z') {
+        // C ref: zap.c dozap / #zap
+        const tookTime = await dozap();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'Z') {
+        // C ref: spell.c docast / #cast
+        const castRes = await docast();
+        game.context.move = (castRes & 0x01) ? 1 : 0; // ECMD_TIME
+        if (castRes & 0x01) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'r') {
+        // C ref: read.c doread / #read
+        const tookTime = await doread();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'E') {
+        // C ref: engrave.c doengrave / #engrave
+        // ECMD bitmask like the `#` path: only the TIME bit takes the
+        // turn (FAIL/CANCEL don't — C takes no turn on "can't write",
+        // scen-special-Barbarian-94037 step 102).
+        const engrRes = await doengrave();
+        game.context.move = (engrRes & ECMD_TIME) ? 1 : 0;
+        if (engrRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 't') {
+        // C ref: dothrow.c dothrow
+        const tookTime = await dothrow();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'f') {
+        // C ref: dothrow.c dofire — #fire / quiver shoot
+        const tookTime = await dofire();
+        // C: ECMD_OK after queueing fireassist keeps CQ_CANNED
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === '+') {
+        // C ref: spell.c dovspell
+        await dovspell();
+        game.context.move = 0;
+    } else if (ch === '\\') {
+        // C ref: o_init.c dodiscovered
+        await dodiscovered();
+        game.context.move = 0;
+    } else if (ch === '`') {
+        // C ref: o_init.c doclassdisco (cmd.c:1752 knownclass)
+        await doclassdisco();
+        game.context.move = 0;
+    } else if (key === 16) { // ^P — C('p') doprev_message
+        // C ref: cmd.c doprev_message / topl.c tty_doprev_message (D-1601)
+        // CMD_INSANE — skip the following sanity_check (D-1664).
+        rhack_cmd_insane(CMD_INSANE);
+        await doprev_message();
+        game.context.move = 0;
+    } else if (key === 20) { // ^T — C('t') dotelecmd
+        // C ref: teleport.c dotelecmd / cmd.c teleport
+        const teleRes = await dotelecmd();
+        game.context.move = (teleRes & 0x01) ? 1 : 0; // ECMD_TIME
+    } else if (key === 24) { // ^X
+        // C ref: insight.c enlightenment / doattributes
+        await doattributes();
+        game.context.move = 0;
+    } else if (key === 23) { // ^W — C('w') wiz_wish
+        // C ref: wizcmds.c wiz_wish / cmd.c wizwish + rhack ECMD_OK tail
+        // `:3814–3816` — a death declined mid-wish leaves multi=-1
+        // (savelife); reset_cmd_vars clears it so the next command reads
+        // normally instead of tripping unmul's nomovemsg pline a turn
+        // early (scen-wish-Valkyrie-92014 step 49 stale --More--).
+        const wishRes = (await wiz_wish()) | 0;
+        if ((wishRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((wishRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
+        if ((wishRes & ECMD_TIME) !== 0) game.context.move = 1;
+    } else if (key === 22) { // ^V — C('v') wiz_level_tele
+        // C ref: wizcmds.c wiz_level_tele / cmd.c wizlevelport
+        await wiz_level_tele();
+        game.context.move = 0;
+    } else if (key === 7) { // ^G — C('g') wiz_genesis
+        // C ref: wizcmds.c wiz_genesis / cmd.c wizgenesis
+        await wiz_genesis();
+        game.context.move = 0;
+    } else if (key === 6) { // ^F — C('f') wiz_map
+        // C ref: wizcmds.c wiz_map / cmd.c wizmap — ECMD_OK, no turn
+        await wiz_map();
+        game.context.move = 0;
+    } else if (ch === ':') {
+        // C ref: invent.c dolook / lookat — dolook returns look_here's
+        // Blind-gated ECMD_TIME (invent.c:4319-4327); a blind feel takes
+        // the turn just like any timed command (sibling ECMD_TIME pattern).
+        game.context.move = ((await dolook()) & ECMD_TIME) ? 1 : 0;
+    } else if (ch === '&') {
+        // C ref: cmd.c '&' → dowhatdoes (IFBURIED|GENERALCMD) — ECMD_OK, no turn
+        await dowhatdoes();
+        game.context.move = 0;
+    } else if (ch === '/') {
+        // C ref: pager.c dowhatis / do_look — ECMD_OK, no turn
+        await dowhatis();
+        game.context.move = 0;
+    } else if (ch === ';') {
+        // C ref: cmd.c ';' → glance / pager.c doquickwhatis → do_look(1)
+        await doquickwhatis();
+        game.context.move = 0;
+    } else if (ch === '?') {
+        // C ref: pager.c dohelp — ECMD_OK, no turn
+        await dohelp();
+        game.context.move = 0;
+    } else if (ch === 'V') {
+        // C ref: version.c doversion / cmd.c 'V' versionshort
+        // (IFBURIED|GENERALCMD|CMD_M_PREFIX) — ECMD_OK, no turn
+        await doversion();
+        game.context.move = 0;
+    } else if (ch === '#') {
+        // C rhack doextcmd: ext_tlist then cmdq_add_ec + cmdq_shift so the
+        // resolved command is first on CQ_REPEAT (ahead of getobj keys).
+        const extRes = await doextcmd();
+        const extTab = game.ext_tlist;
+        game.ext_tlist = null;
+        if (extTab) {
+            cmdq_add_ec(CQ_REPEAT, extTab.run, extTab);
+            cmdq_shift(CQ_REPEAT);
+        }
+        game.context.move = (extRes & ECMD_TIME) ? 1 : 0;
+        if (extTab && (extTab.flags & PREFIXCMD) && !(extRes & ECMD_CANCEL)) {
+            prefix_seen = extTab;
+            if (extTab.txt === 'reqmenu') was_m_prefix = true;
+            key = 0;
+            continue;
+        }
+        if (extTab && (extRes & ECMD_CANCEL) && (extTab.flags & PREFIXCMD)) {
+            reset_cmd_vars(true);
+            return;
+        }
+    } else {
+        // C rhack cmdbind_get tlist path for keys the if/else missed
+        // (M('?') → doextlist; other default meta binds with EXT_CMDS).
+        const bound = await rhack_dispatch_bound(key, prefix_seen, was_m_prefix);
+        if (bound.prefix) {
+            prefix_seen = bound.prefix;
+            if (bound.prefix.txt === 'reqmenu') was_m_prefix = true;
+            key = 0;
+            continue;
+        }
+        if (!bound.done) {
+            // Unknown command (includes unbound space when !rest_on_space)
+            // C rhack: custompline(SUPPRESS_HISTORY, "Unknown command '%s'.",
+            // visctrl(key)) — Ctrl-C is "^C", not raw ETX (D-1189).
+            if (game.context?.forcefight) game.context.forcefight = 0;
+            if (game.context?.run || (game.multi || 0) > 0) end_running(true);
+            if (game.context) game.context.command_count = 0;
+            game._repeat_search = false;
+            game.context.move = 0;
+            await pline(`Unknown command '${visctrl(key)}'.`);
+        }
+    }
+    return;
+    } // C got_prefix_input
+}
+
+/**
+ * C ref: hack.c:1925-1948 domove_bump_mon — m-prefix bump onto a monster.
+ * If they used a 'm' command (nopick, not travel) onto a spotted/invisible/
+ * warning glyph, stumble onto mimics else print Pardon/move-right-into and
+ * waste the turn (return true); otherwise fall through to attack (false).
+ * Short-circuit and branch order match C exactly.
+ */
+export async function domove_bump_mon(mtmp, glyph) {
+    const u = game.u || {};
+    const ctx = game.context || {};
+    // C: if (nopick && !travel && (canspotmon || glyph_is_invisible || glyph_is_warning))
+    if (!(ctx.nopick && !ctx.travel)) return false;
+    if (!(canspotmon(mtmp) || glyph_is_invisible_id(glyph)
+        || glyph_is_warning(glyph))) return false;
+    // C: if (M_AP_TYPE && !Protection_from_shape_changers && !sensemon)
+    const prot = !!((u.HProtection_from_shape_changers | 0)
+        || (u.EProtection_from_shape_changers | 0)
+        || u.Protection_from_shape_changers);
+    if (M_AP_TYPE(mtmp) && !prot && !sensemon(mtmp)) {
+        await stumble_onto_mimic(mtmp);
+    } else if (mtmp.mpeaceful && !Hallucination()) {
+        // C youprop.h:120 Hallucination; m_monnam(): "dog" or "Fido"
+        await pline(`Pardon me, ${m_monnam(mtmp)}.`);
+    } else {
+        await pline(`You move right into ${mon_nam(mtmp)}.`);
+    }
+    return true;
+}
+
+// C ref: hack.c domove — execute a movement
+/**
+ * C ref: hack.c u_rooted — youmonst.data->mmove == 0 (brown mold, etc.).
+ * Spends the turn (leave context.move); does not step.
+ */
+export async function u_rooted() {
+    const data = game.youmonst?.data;
+    if (!data || (data.mmove | 0)) return false;
+    const u = game.u || {};
+    const lev = !!(u.Levitation || u.HLevitation || u.ELevitation // C `:1698`
+        || Is_airlevel(u.uz) || Is_waterlevel(u.uz));
+    await pline(`You are rooted ${lev ? 'in place' : 'to the ground'}.`);
+    nomul(0);
+    return true;
+}
+
+/**
+ * C ref: dungeon.c earth_sense `:1548–1565` — dwarves on foot in a
+ * room or corridor sense buried goods under their square. Sole C
+ * caller is u_on_newpos; domove reaches it via the end-of-move
+ * re-position (hack.c:2937).
+ */
+export async function earth_sense() {
+    const u = game.u || {};
+    // C: Race_if(PM_DWARF) — urace.mnum.
+    if ((game.urace?.mnum | 0) !== PM_DWARF) return;
+    if (u.usteed || Flying() || Levitation() || Upolyd) return;
+    const typ = game.level?.at?.(u.ux | 0, u.uy | 0)?.typ | 0;
+    if (typ !== CORR && typ !== ROOM) return;
+    const buried = game.level?.buriedobjlist;
+    const found = Array.isArray(buried)
+        ? buried.some((o) => o && (o.ox | 0) === (u.ux | 0) && (o.oy | 0) === (u.uy | 0))
+        : (() => {
+            for (let o = buried; o; o = o.nobj) {
+                // C u_at macro — hero on the buried square.
+                if ((o.ox | 0) === (u.ux | 0) && (o.oy | 0) === (u.uy | 0)) return true;
+            }
+            return false;
+        })();
+    if (found) {
+        await You(`sense something below your ${makeplural(body_part(FOOT))}.`);
+    }
+}
+
+/**
+ * C ref: hack.c domove_attackmon_at `:1955–1990` — attack gate for the
+ * destination monster plus the displacer-beast involuntary swap flag.
+ * Only attack what is known (forcefight, spotted, sensed, or a
+ * non-peaceful floor hider/eel, for which do_attack prints "Wait!");
+ * a displacer beast tracking the hero's old square may swap instead
+ * of being hit. Returns { done, displaceu }: done → the attack spent
+ * the move (domove returns); displaceu → skip the middle and swap
+ * after the occupy below.
+ */
+async function domove_attackmon_at(mtmp, x, y) {
+    const u = game.u || {};
+    const out = { done: false, displaceu: false };
+    // C: forcefight || !mundetected || sensemon
+    //     || ((hides_under || S_EEL) && !safemon)
+    if (game.context?.forcefight || !mtmp.mundetected || sensemon(mtmp)
+        || ((hides_under(mtmp.data) || mtmp.data?.mlet === 'S_EEL')
+            && !is_safemon(mtmp))) {
+        /* target monster might decide to switch places with you... */
+        // C mons[] identity ≡ mndx (monmove.js:794 precedent); C
+        // helpless() macro ≡ helpless_steed; NODIAG ≡ grid bug (cmd :1789).
+        out.displaceu = ((mtmp.data?.mndx | 0) === PM_DISPLACER_BEAST && !rn2(2)
+            && (mtmp.mux | 0) === (u.ux0 | 0) && (mtmp.muy | 0) === (u.uy0 | 0)
+            && !helpless_steed(mtmp)
+            && !mtmp.meating && !mtmp.mtrapped
+            && !u.utrap && !u.ustuck && !u.usteed
+            && !(u.dx && u.dy
+                && (((u.umonnum | 0) === PM_GRID_BUG)
+                    || (bad_rock(mtmp.data, x, u.uy0 | 0)
+                        && bad_rock(mtmp.data, u.ux0 | 0, y))
+                    || (bad_rock(game.youmonst?.data, u.ux0 | 0, y)
+                        && bad_rock(game.youmonst?.data, x, u.uy0 | 0))))
+            && goodpos(u.ux0 | 0, u.uy0 | 0, mtmp, GP_ALLOW_U));
+        /* if not displacing, try to attack; note that it might evade;
+           also, we don't attack tame or peaceful when safemon() */
+        if (!out.displaceu && await do_attack(mtmp)) out.done = true;
+    }
+    return out;
+}
+
+export async function domove(dx, dy) {
+    const u = game.u;
+    const forcefight = !!game.context?.forcefight;
+    // C ref: hack.c domove — clear succeeded; clear attempting in finally
+    game.domove_succeeded = 0;
+    let smudgeCoords = null;
+
+    try {
+    // C ref: hack.c set_move_cmd — #reqmenu / m-prefix → nopick for this move
+    if (game.iflags?.menu_requested) {
+        if (!game.context) game.context = {};
+        game.context.nopick = 1;
+        game.iflags.menu_requested = false;
+    }
+
+    // C sets u.dx/u.dy before the blocked-move check (used by lookaround/run)
+    u.dx = dx;
+    u.dy = dy;
+    u.ux0 = u.ux;
+    u.uy0 = u.uy;
+
+    // C ref: hack.c domove_core — carrying_too_much before swallow/attack
+    if (await carrying_too_much()) {
+        if (game.context?.run) end_running(true);
+        return;
+    }
+
+    let newx;
+    let newy;
+    let mtmp;
+
+    // C ref: hack.c domove_core — swallowed: zero dx/dy, u_on_newpos onto
+    // ustuck, attack engulfer; skip impaired_movement / m_at walk path.
+    // Named omissions still ahead of the non-swallow arm:
+    // air_turbulence, slippery_ice_fumbling.
+    if ((u.uswallow | 0) && u.ustuck) {
+        u.dx = 0;
+        u.dy = 0;
+        newx = u.ustuck.mx | 0;
+        newy = u.ustuck.my | 0;
+        await u_on_newpos(newx, newy); // C hack.c:2736
+        mtmp = u.ustuck;
+    } else {
+        // C ref: hack.c domove_core `:2742–2745` — air turbulence, then
+        // slippery-ice fumbling, before ux+dx / impaired_movement.
+        // C returns bare here (a continuing run re-rolls next turn).
+        if (await air_turbulence()) return;
+        slippery_ice_fumbling();
+        // C ref: hack.c domove_core — impaired_movement after ux+dx
+        // (Confusion/Stunned may rn2(5) then confdir).
+        if (impaired_movement()) {
+            if (game.context?.run) end_running(true);
+            return;
+        }
+        // C hack.c:2371 / :2750–2758 — water_friction via water_turbulence,
+        // then move_out_of_bounds, then avoid_running_into_trap_or_liquid.
+        // Named: air_turbulence, slippery_ice_fumbling.
+        if (await water_turbulence()) {
+            if (game.context?.run) end_running(true);
+            return;
+        }
+        newx = (u.ux | 0) + (u.dx | 0);
+        newy = (u.uy | 0) + (u.dy | 0);
+        if (await move_out_of_bounds(newx, newy)) return;
+        if (await avoid_running_into_trap_or_liquid(newx, newy)) return;
+        // C ref: hack.c domove_core `:2760` — sticky-holder escape spends
+        // the turn before m_at / attack (D-new: escape_from_sticky_mon).
+        if (await escape_from_sticky_mon(newx, newy)) return;
+
+        // C ref: hack.c domove_core — m_at / run-stop / attackmon BEFORE test_move
+        // (closed_door / testdiag / rock). Diagonal intact-doorway bans must not
+        // suppress attacking a monster on an adjacent cell (seed0012 @12439).
+        // Named omissions: displacer swap; mundetected Wait!;
+        // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
+        mtmp = mon_at(newx, newy);
+        // C: don't attack if running and can see the non-safemon (pets ok).
+        // forcefight never reaches this arm. Confdir into a visible hostile
+        // must stop the run here — else JS burns a hit-roll rn2(20) while C
+        // returns for nhgetch (seed0002 @11309).
+        if (mtmp && !is_safemon(mtmp) && game.context?.run && !forcefight) {
+            const Blind = !!(u.Blind || u.ublind
+                || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+            const ap = M_AP_TYPE(mtmp);
+            const seenAsMon = (ap !== M_AP_FURNITURE && ap !== M_AP_OBJECT)
+                || !!(u.Protection_from_shape_changers);
+            if ((!Blind && mon_visible(mtmp) && seenAsMon) || sensemon(mtmp)) {
+                nomul(0);
+                game.context.move = 0;
+                return;
+            }
+        }
+    }
+
+    // C hack.c:2775 — bhitpos tracks the target square for zap/throw aim.
+    if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+    game.bhitpos.x = newx;
+    game.bhitpos.y = newy;
+
+    // C hack.c:2786–2802 — set by domove_attackmon_at below; when true
+    // the middle (fight trio/unmap/steed/rooted/paranoid/utrap/inline
+    // test_move/swim, :2802–2858) is skipped and the swap runs after
+    // the occupy (live below).
+    let displaceu = false;
+    if (mtmp) {
+        // C hack.c:2789–2791 — stepping out to attack spends any
+        // multi-turn action first, even for a safemon swap below.
+        if (!is_safemon(mtmp) || forcefight) nomul(0);
+        // C ref: hack.c:2794 domove_bump_mon before domove_attackmon_at —
+        // m-prefix bump wastes the turn, skipping the do_attack rn2(7).
+        if (await domove_bump_mon(mtmp, glyph_at(newx, newy))) return;
+        // C hack.c:2796–2801 domove_attackmon_at — known/forcefight/hider
+        // gate, displacer-beast swap flag, else do_attack.
+        // Swallowed path: mtmp is ustuck; still goes through do_attack.
+        const atk = await domove_attackmon_at(mtmp, newx, newy);
+        displaceu = atk.displaceu;
+        if (atk.done) {
+            if (game.context?.run) end_running(true);
+            return;
+        }
+        // safemon displace: fall through; swap after test_move succeeds
+        // (not when swallowed — engulfer is never safemon displace)
+    }
+    // C hack.c:2802–2858 — when !displaceu: bars, web, fight_empty
+    // (a TRUE return spends the move), unmap_invisible, then the middle
+    // (steed/rooted/paranoid/utrap/inline test_move/swim). A displacer
+    // swap skips the whole middle; the swap arm runs after the occupy.
+    if (!displaceu) {
+        if (await domove_fight_ironbars(newx, newy)
+            || await domove_fight_web(newx, newy)
+            || await domove_fight_empty(newx, newy)) {
+            if (game.context?.run) end_running(true);
+            game.context.move = 1;
+            return;
+        }
+        unmap_invisible(newx, newy);
+
+        // C hack.c:2817–2820 — a ridden steed that can't move (helpless or,
+        // with checkfeeding, still eating) spends the turn without stepping.
+        if ((u.dx || u.dy) && u.usteed && await stucksteed(false)) {
+            nomul(0);
+            return;
+        }
+
+        // C ref: hack.c domove_core — after attack path, before trapmove:
+        // u_rooted (mmove==0) spends the turn without stepping (D-0928 #1106).
+        if (await u_rooted()) {
+            if (game.context?.run) end_running(true);
+            return;
+        }
+
+        // C ref: hack.c domove_core — ParanoidTrap → avoid_trap_andor_region
+        // after u_rooted, before u.utrap/trapmove (D-1187).
+        if (((game.flags?.paranoia_bits | 0) & PARANOID_TRAP) !== 0) {
+            if (await avoid_trap_andor_region(newx, newy)) return;
+        }
+
+        // C ref: hack.c domove_core — u.utrap → trapmove before test_move
+        // (attack already handled above; displaceu false when trapped).
+        // Stuck / same-spot escape: return without context.move=0 (turn spends).
+        if (u.utrap) {
+            const moved = await trapmove(newx, newy, null);
+            if (!(u.utrap | 0)) {
+                if (game.disp) game.disp.botl = true;
+                if (game.flags) game.flags.botl = true;
+                // C hack.c:2835 domove_core — might resume levitation or flight
+                await reset_utrap(true);
+            }
+            if (!moved) return;
+        }
+
+        // C ref: hack.c test_move — closed_door autoopen / orthogonal bump
+        // Passes_walls / ooze / Underwater / tunnels / Blind feel_location /
+        // steed lead-through deferred (named in c-js-map turns).
+        // Fumbling ≡ Fumbling() H||E (D-0691/D-0696) — not sticky u.Fumbling.
+        if (closed_door_at(newx, newy)) {
+            if (!game.context) game.context = {};
+            game.context.door_opened = false;
+            // C: check !context.run BEFORE clearing run — rush must bump, not autoopen
+            const autoopen = game.flags?.autoopen !== false;
+            const impaired = !!(u.Confusion || u.Stunned || Fumbling());
+            if (autoopen && !game.context.run && !impaired) {
+                await doopen_indir(newx, newy);
+                // C: door_opened = !closed_door; move = (pos changed) → usually 0.
+                game.context.door_opened = !closed_door_at(newx, newy);
+                game.context.move = 0;
+                return;
+            }
+            // C: else if (x == ux || y == uy) — orthogonal only
+            if (newx === u.ux || newy === u.uy) {
+                const Blind = !!(u.Blind || u.ublind
+                    || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+                if (Blind || u.Stunned || acurr(A_DEX) < 10 || Fumbling()) {
+                    await pline('Ouch!  You bump into a door.');
+                    exercise(A_DEX, false);
+                    // C: door_opened = move = TRUE; nomul(0) stops running
+                    game.context.door_opened = true;
+                    game.context.move = 1;
+                    nomul(0);
+                    return;
+                }
+                await pline('That door is closed.');
+            }
+            // C domove_core: !door_opened → move=0; nomul(0)
+            game.context.move = 0;
+            nomul(0);
+            return;
+        }
+
+        // C ref: hack.c test_move :1024–1036 — IRONBARS DO_MOVE chew for
+        // rust/corr/metallivore before the Passes_walls || passes_bars
+        // allow (D-1270). TEST_MOVE/TRAV skip chew via blocksMove.
+        const destTyp = game.level?.at(newx, newy)?.typ;
+        if (destTyp === IRONBARS && test_move_hero_chews_bars()) {
+            if (await still_chewing(newx, newy)) {
+                // C hack.c:2843–2848 — !test_move && !door_opened
+                if (game.context) game.context.move = 0;
+                nomul(0);
+                return;
+            }
+        }
+
+        // C ref: hack.c test_move testdiag — no diagonal into intact doorway
+        // (open/closed/locked; only doorless D_NODOOR/D_BROKEN allowed).
+        if (u.dx && u.dy) {
+            const dest = game.level?.at(newx, newy);
+            if (dest && IS_DOOR(dest.typ)
+                && (!doorless_door(newx, newy) || await block_door(newx, newy))) {
+                // C test_move testdiag: Underwater || flags.mention_walls
+                if ((u.uinwater | 0) || game.flags?.mention_walls) {
+                    await pline("You can't move diagonally into an intact doorway.");
+                }
+                if (game.context?.run) end_running(true);
+                game.context.move = 0;
+                return;
+            }
+            // C: diagonal out of a doorway that still has a door
+            const here = game.level?.at(u.ux, u.uy);
+            if (here && IS_DOOR(here.typ)
+                && (!doorless_door(u.ux, u.uy)
+                    || (!Passes_walls_prop() && await block_entry(newx, newy)))) {
+                if (game.flags?.mention_walls) {
+                    await pline("You can't move diagonally out of an intact doorway.");
+                }
+                if (game.context?.run) end_running(true);
+                game.context.move = 0;
+                return;
+            }
+        }
+
+        if (blocksMove(newx, newy)) {
+            // Can't move there — end a run so lookaround/continue_run don't
+            // keep going in the previous direction with stale multi.
+            if (game.context?.run) end_running(true);
+            // C ref: hack.c test_move — DO_MOVE + mention_walls on rock/bars
+            const bloc = game.level?.at(newx, newy);
+            if (bloc && (IS_OBSTRUCTED(bloc.typ) || bloc.typ === IRONBARS)) {
+                await mention_walls_obstructed(newx, newy);
+            }
+            // out-of-bounds is move_out_of_bounds (D-1800), not this bump
+            game.context.move = 0;
+            return;
+        }
+
+        // C ref: hack.c test_move — after dest obstacles, before boulder:
+        // dx&&dy && bad_rock flanks → cant_squeeze_thru. Case 3 = Sokoban
+        // "cannot pass that way." Must not run when dest is IS_OBSTRUCTED
+        // (C returns earlier in that arm — often silent without mention_walls).
+        if (u.dx && u.dy) {
+            const ym = game.youmonst;
+            if (ym?.data
+                && bad_rock(ym.data, u.ux, newy)
+                && bad_rock(ym.data, newx, u.uy)) {
+                const why = cant_squeeze_thru(ym);
+                if (why) {
+                    if (why === 3) {
+                        await pline('You cannot pass that way.');
+                    } else if (why === 2) {
+                        await pline('You are carrying too much to get through.');
+                    } else if (why === 1) {
+                        await pline('Your body is too large to fit through.');
+                    }
+                    if (game.context?.run) end_running(true);
+                    game.context.move = 0;
+                    return;
+                }
+            }
+        }
+
+        // C hack.c test_move :1188–1192 — diagonal across consecutive
+        // long-worm segments is blocked. The `else if` runs only when the
+        // squeeze `if` above did not: bad-rock flanks skip it even when
+        // cant_squeeze_thru returned 0 (can squeeze through).
+        {
+            const wdat = game.youmonst?.data;
+            const tightDiag = !!(wdat && u.dx && u.dy
+                && bad_rock(wdat, u.ux, newy) && bad_rock(wdat, newx, u.uy));
+            if ((u.dx && u.dy) && !tightDiag
+                && worm_cross(u.ux | 0, u.uy | 0, newx, newy)) {
+                await pline(`${YMonnam(mon_at(u.ux | 0, newy))} is in your way.`);
+                if (game.context?.run) end_running(true);
+                game.context.move = 0;
+                return;
+            }
+        }
+
+        // C hack.c test_move 1216–1230 — sobj_at(BOULDER) && (Sokoban ||
+        // !Passes_walls): run>=2 abort before moverock (D-1226). TEST_TRAV
+        // excluded in C; this is DO_MOVE. Passes_walls && !Sokoban skips the
+        // whole arm (walk onto the boulder). cannot_push squeeze D-1239;
+        // giant pickup/maneuver D-1253; nopick m-dir over/against D-1262.
+        if (test_move_boulder_is_blocking(newx, newy)) {
+            // C test_move starts door_opened = FALSE; moverock may set it.
+            if (game.context) game.context.door_opened = false;
+            if (test_move_run_blocked_by_boulder(newx, newy)) {
+                if (game.flags?.mention_walls) {
+                    await pline_dir(
+                        xytodir(u.dx | 0, u.dy | 0),
+                        'A boulder blocks your path.',
+                    );
+                }
+                if (!game.context?.door_opened) {
+                    if (game.context) game.context.move = 0;
+                    nomul(0);
+                }
+                return;
+            }
+            const mr = await moverock();
+            if (mr < 0) {
+                // C hack.c:2843–2848 — !test_move keeps move when door_opened
+                // (nopick in-way learned a glyph; D-1262).
+                if (!game.context?.door_opened) {
+                    if (game.context?.run) end_running(true);
+                    game.context.move = 0;
+                }
+                return;
+            }
+            // moverock pushed boulder(s); fall through to occupy vacated cell
+        }
+
+        // C ref: hack.c swim_move_danger — after test_move, before occupying cell
+        if (await swim_move_danger(newx, newy)) {
+            if (game.context?.run) end_running(true);
+            game.context.move = 0;
+            nomul(0);
+            return;
+        }
+    } /* !displaceu — C hack.c:2858 */
+
+    // C ref: hack.c domove — Punished → drag_ball before occupying cell;
+    // cause_delay → nomul(-2) after spoteffects.
+    let bc_control = 0;
+    let ballx = 0, bally = 0, chainx = 0, chainy = 0;
+    let cause_delay = false;
+    let bc_picked = false;
+    // C: Punished ≡ (uball != 0)
+    if (u.uball && !(u.uswallow | 0)) {
+        const drag = await drag_ball(newx, newy, true);
+        if (!drag.ok) {
+            if (game.context?.run) end_running(true);
+            // C: drag_ball failure returns without clearing move when jerked;
+            // encumber path also returns — leave context.move as-is for turn.
+            return;
+        }
+        bc_control = drag.bc_control;
+        ballx = drag.ballx;
+        bally = drag.bally;
+        chainx = drag.chainx;
+        chainy = drag.chainy;
+        cause_delay = !!drag.cause_delay;
+        bc_picked = true;
+    }
+    const put_bc = () => {
+        if (bc_picked) move_bc(0, bc_control, ballx, bally, chainx, chainy);
+        bc_picked = false;
+    };
+
+    /* C hack.c:2866–2868 — Check regions entering/leaving after
+     * drag_ball, before m_at / occupy. Gas NO_CALLBACK never
+     * rejects; still updates REG_HERO_INSIDE (D-1157). C returns
+     * without move_bc put-down. dothrow hurtle_step is D-1165;
+     * do.c goto_level is D-1166. youmonst m_postmove_effect is
+     * D-1167 (after occupy). allmain m_everyturn_effect youmonst
+     * is D-1175 (fog at u.ux, not this walk trail). */
+    if (!(await in_out_region(newx, newy))) {
+        return;
+    }
+
+    const oldx = u.ux, oldy = u.uy;
+
+    // C hack.c:2870 then 2874–2927 — m_at before occupy; swap after
+    // m_postmove_effect. Ceiling hiders skip swap (falling-monster).
+    mtmp = mon_at(newx, newy);
+
+    // Move the hero. C hack.c:2874–2884 — occupy, then
+    // m_postmove_effect(&youmonst) at u.ux0, then usteed mx/my.
+    u.ux = newx;
+    u.uy = newy;
+    await m_postmove_effect(game.youmonst);
+    if (u.usteed) {
+        u.usteed.mx = newx;
+        u.usteed.my = newy;
+        /* C hack.c:2883 [if move attempt ends up being blocked, should
+         * training count?] exercise_steed(); train riding skill */
+        await exercise_steed();
+    }
+
+    if (displaceu && mtmp) {
+        // C hack.c:2900–2927 — the beast chose to swap places: it goes
+        // to the hero's old square (JS occupancy follows mx/my, so the
+        // remove is implicit), the hero keeps the new one, and the beast
+        // may land in liquid or on a trap. mux/muy still track the hero.
+        const swapGlyph = glyph_at(newx, newy);
+        const noticed_it = canspotmon(mtmp)
+            || glyph_is_invisible_id(swapGlyph)
+            || glyph_is_warning(swapGlyph);
+        mtmp.mx = u.ux0 | 0; // C place_monster(mtmp, u.ux0, u.uy0)
+        mtmp.my = u.uy0 | 0;
+        newsym(newx, newy);
+        newsym(u.ux0 | 0, u.uy0 | 0);
+        /* monst still knows where hero is */
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+        await pline(`${!noticed_it ? Something : YMonnam(mtmp)} swaps places with you...`);
+        if (!canspotmon(mtmp)) map_invisible(u.ux0 | 0, u.uy0 | 0);
+        /* monster chose to swap places; hero doesn't get any credit
+           or blame if something bad happens to it */
+        if (!game.context) game.context = {};
+        game.context.mon_moving = 1;
+        if (!(await minliquid(mtmp))) {
+            const { mintrap } = await import('./trap.js');
+            await mintrap(mtmp, NO_TRAP_FLAGS);
+        }
+        game.context.mon_moving = 0;
+    } else if (mtmp && is_safemon(mtmp)
+        && !(is_hider(mtmp.data) && mtmp.mundetected)) {
+        if (!(await domove_swap_with_pet(mtmp, newx, newy))) {
+            u.ux = u.ux0;
+            u.uy = u.uy0;
+            if (u.usteed) {
+                u.usteed.mx = u.ux;
+                u.usteed.my = u.uy;
+            }
+        }
+    }
+
+    const did_step = (u.ux !== u.ux0 || u.uy !== u.uy0);
+    // C hack.c:2964–2973 — only when ux0!=ux (failed swap bounces)
+    if (did_step) {
+        game.domove_succeeded |= (game.domove_attempting || 0)
+            & (DOMOVE_RUSH | DOMOVE_WALK);
+        smudgeCoords = { oldx, oldy, newx, newy };
+    }
+
+    // C hack.c:2934 — full re-position after the tentative occupy
+    // (cliparound, uundetected, steed, see_nearby or level-change
+    // map_location, earth_sense). Not gated on did_step.
+    await u_on_newpos(u.ux, u.uy);
+    // C hack.c:2939 cmd.c reset_occupations — stepping clears any
+    // remarm/pick/trapset occupation (doddrop re-arms its own).
+    await reset_occupations();
+
+    // C ref: hack.c domove — check_leash(u.ux0, u.uy0) after place, before
+    // newsym/vision (D-1005). Runs even when swap bounced.
+    await check_leash(u.ux0 | 0, u.uy0 | 0);
+
+    // C ref: hack.c domove :2708 — kickedloc clears unconditionally at
+    // domove() end (finally block below), even on bumps/failed steps.
+
+    // C: running stops on door / obstructed / furniture (dest tmpr)
+    if (game.context?.run && game.context.run < 8) {
+        const tmpr = game.level?.at(newx, newy);
+        if (tmpr && (tmpr.typ === DOOR || IS_OBSTRUCTED(tmpr.typ)
+            || IS_FURNITURE(tmpr.typ))) {
+            end_running(true);
+        }
+    }
+
+    // C hack.c:2944–2947 — tread may disturb buried zombies
+    hero_tread_disturb_buried_zombies();
+    // C hack.c:2949–2951 — hideunder after tread (D-1245)
+    hero_hideunder_after_move();
+    // C hack.c:2953–2960 — mimic furniture/object unhide (D-1260)
+    hero_mimic_unhide_after_move();
+
+    // Update display. C hack.c:2964–2973 — newsym(ux0,uy0);
+    // vision_recalc(1); invocation_message(); only when the hero
+    // actually stepped (ux0!=ux || uy0!=uy). JS extra newsym(dest)
+    // is display-only, not this peel. Same-cell occupy (swallow onto
+    // ustuck) skips the clue.
+    if (did_step) {
+        newsym(oldx, oldy);
+        vision_recalc(1);
+        newsym(newx, newy);
+        await invocation_message();
+    }
+
+    // C: Punished → move_bc(0, ...) put ball&chain back after move
+    put_bc();
+
+    // C: if (u.umoved) spoteffects(TRUE) — autopickup / check_here look
+    if (did_step) {
+        u.umoved = true;
+        await spoteffects(true);
+    }
+
+    // C: delay next move because of ball dragging (after spoteffects)
+    if (cause_delay) {
+        nomul(-2);
+        game.multi_reason = 'dragging an iron ball';
+        game.nomovemsg = '';
+    }
+
+    // C hack.c:2990 — domove's last statement
+    await runmode_delay_output();
+    } finally {
+        // C ref: hack.c domove — smudge only when RUSH|WALK succeeded this step;
+        // continue_run steps have attempting cleared → no rnd(5) (D-0359)
+        if (smudgeCoords
+            && ((game.domove_succeeded || 0) & (DOMOVE_RUSH | DOMOVE_WALK)) !== 0) {
+            maybe_smudge_engr(
+                smudgeCoords.oldx, smudgeCoords.oldy,
+                smudgeCoords.newx, smudgeCoords.newy,
+            );
+        }
+        // C ref: hack.c domove `:2702–2705` — maybe_adjust_hero_bubble on the
+        // same RUSH|WALK gate, independent of smudgeCoords; runs after
+        // spoteffects like C (domove_core `:2979–2980` precedes it).
+        if (((game.domove_succeeded || 0) & (DOMOVE_RUSH | DOMOVE_WALK)) !== 0) {
+            maybe_adjust_hero_bubble();
+        }
+        game.domove_attempting = 0;
+        // C ref: hack.c domove :2708 — gk.kickedloc cleared unconditionally
+        // at domove() end: a bumped/failed step still frees the kicked
+        // square, so pets stop avoiding it next turn (scen-normal-Rogue-92146:
+        // stale (26,9) skipped dog_move's j==0 rn2(1) at dogmove.c:1255).
+        game.kickedloc = { x: 0, y: 0 };
+    }
+}

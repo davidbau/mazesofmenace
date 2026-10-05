@@ -1,0 +1,134 @@
+// dat/air.js — the Plane of Air.
+// C ref: dat/air.lua
+//
+// A level that is all open air: teleport-partitioned into an arrival third
+// and a portal third, lit throughout, with the whole population placed at
+// random. The clouds themselves come from setup_waterlevel()/movebubbles()
+// in mkmaze.c, not from the script.
+
+import { lspo_level_flags, lspo_level_init, lspo_map_full, lspo_message,
+         lspo_teleport_region, lspo_levregion, lspo_region_sel,
+         lspo_monster, l_selection_fillrect } from '../sp_lev.js';
+
+const AIR_MAP = `
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+`.replace(/^\n/, '').replace(/\n$/, '');
+
+export async function air_level() {
+    const des = {
+        level_init: lspo_level_init,
+        level_flags: lspo_level_flags,
+        message: lspo_message,
+        map: lspo_map_full,
+        teleport_region: lspo_teleport_region,
+        levregion: lspo_levregion,
+        region: (sel, lit) => lspo_region_sel(sel, lit),
+        monster: (a, x, y, o) => lspo_monster(a, x, y, o),
+    };
+    const selection = {
+        area: l_selection_fillrect,
+    };
+
+    des.level_init({ style: 'solidfill', fg: ' ' });
+
+    des.level_flags('mazelevel', 'noteleport', 'hardfloor', 'shortsighted',
+                    'stormy');
+    /* The following messages are somewhat obtuse, to make then equally
+       meaningful if the player can see or not. */
+    des.message('What a strange feeling!');
+    des.message('You notice that there is no gravity here.');
+    /* The player lands, upon arrival, in the lower-left area.  The location
+       of the portal to the next level is randomly chosen.  This map has no
+       visible outer boundary, and is all "air". */
+    des.map(AIR_MAP);
+    /* Use up and down regions to partition the level into three parts;
+       teleportation can't cross from one part into another.  The up region
+       is where you'll arrive after activating the portal from the preceding
+       level; the exit portal is placed inside the down region. */
+    des.teleport_region({ region: [1, 0, 24, 20], region_islev: 1,
+                          exclude: [25, 0, 79, 20], exclude_islev: 1,
+                          dir: 'up' });
+    des.teleport_region({ region: [56, 0, 79, 20], region_islev: 1,
+                          exclude: [1, 0, 55, 20], exclude_islev: 1,
+                          dir: 'down' });
+
+    des.levregion({ region: [57, 1, 78, 19], region_islev: 1,
+                    type: 'portal', name: 'fire' });
+    des.region(selection.area(0, 0, 75, 19), 'lit');
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+    des.monster({ id: 'air elemental', peaceful: 0 });
+
+    des.monster({ id: 'floating eye', peaceful: 0 });
+    des.monster({ id: 'floating eye', peaceful: 0 });
+    des.monster({ id: 'floating eye', peaceful: 0 });
+
+    des.monster({ id: 'yellow light', peaceful: 0 });
+    des.monster({ id: 'yellow light', peaceful: 0 });
+    des.monster({ id: 'yellow light', peaceful: 0 });
+
+    des.monster('couatl');
+
+    des.monster('D');
+    des.monster('D');
+    des.monster('D');
+    des.monster('D');
+    des.monster('D');
+
+    des.monster('E');
+    des.monster('E');
+    des.monster('E');
+    des.monster('J');
+    des.monster('J');
+
+    des.monster({ id: 'djinni', peaceful: 0 });
+    des.monster({ id: 'djinni', peaceful: 0 });
+    des.monster({ id: 'djinni', peaceful: 0 });
+
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'fog cloud', peaceful: 0 });
+    des.monster({ id: 'energy vortex', peaceful: 0 });
+    des.monster({ id: 'energy vortex', peaceful: 0 });
+    des.monster({ id: 'energy vortex', peaceful: 0 });
+    des.monster({ id: 'energy vortex', peaceful: 0 });
+    des.monster({ id: 'energy vortex', peaceful: 0 });
+    des.monster({ id: 'steam vortex', peaceful: 0 });
+    des.monster({ id: 'steam vortex', peaceful: 0 });
+    des.monster({ id: 'steam vortex', peaceful: 0 });
+    des.monster({ id: 'steam vortex', peaceful: 0 });
+    des.monster({ id: 'steam vortex', peaceful: 0 });
+}
