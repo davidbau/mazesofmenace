@@ -471,11 +471,20 @@ export function which_armor(monster, mask, state = game) {
 // C ref: worn.c mon_set_minvis() (474-488). The monster's permanent
 // invisibility is copied to its current visibility unless invisibility is
 // blocked, then the occupied square is redrawn.
-export function mon_set_minvis(monster, cursedPotion, state = game) {
+export function mon_set_minvis(monster, cursedPotion, state = game, rawEnv = {}) {
     monster.perminvis = cursedPotion ? 0 : 1;
     if (!monster.invis_blkd) {
         monster.minvis = monster.perminvis;
-        newsym(monster.mx, monster.my, state);
+        if (state === game) {
+            newsym(monster.mx, monster.my);
+        } else {
+            const noteUnported = rawEnv.noteUnported ?? note_unported;
+            noteUnported('display.c newsym');
+        }
+        if (monster.wormno) {
+            const noteUnported = rawEnv.noteUnported ?? note_unported;
+            noteUnported('worm.c see_wsegs');
+        }
     }
 }
 
@@ -820,7 +829,7 @@ async function applyMonsterArmorRuntime(
                 const curseSubject = Monnam(monster, state, env);
                 await message(
                     `${s_suffix(curseSubject)} ${simpleonames(best, state)} `
-                    + `${otense(best, 'glow')} ${hcolor('black', state, env)} for a moment.`,
+                    + `${otense(best, 'glow', state)} ${hcolor('black', state, env)} for a moment.`,
                     state,
                 );
             }
@@ -854,12 +863,12 @@ async function applyMonsterArmorRuntime(
             const message = env.message ?? ttyPline;
             if (sawMonster) {
                 await message(
-                    `${Yname2(best, state)} ${otense(best, 'begin')} to shine ${adesc}.`,
+                    `${Yname2(best, state)} ${otense(best, 'begin', state)} to shine ${adesc}.`,
                     state,
                 );
             } else if (canseemon(monster, state)) {
                 await message(
-                    `${Yname2(best, state)} ${otense(best, 'are')} shining ${adesc}.`,
+                    `${Yname2(best, state)} ${otense(best, 'are', state)} shining ${adesc}.`,
                     state,
                 );
             } else if (sawLocation) {

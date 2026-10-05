@@ -38,7 +38,7 @@ import {
     LL_CONDUCT,
     has_mgivenname, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
     DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone, ESHK, MELT_ICE_AWAY,
-    NEUTRAL,
+    NEUTRAL, CQ_CANNED, CMDQ_EXTCMD,
 } from './const.js';
 import {
     pline, vpline, You, You_cant, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
@@ -46,6 +46,8 @@ import {
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
     impossible, raw_printf,
 } from './display.js';
+import { cmdq_peek, ext_func_tab_from_func } from './cmd.js';
+import { dokick } from './dokick.js';
 import { gethungry, morehungry, is_fainted, maybe_finished_meal } from './eat.js';
 import { unconscious, enexto, goodpos, rloc_to, rloco, random_teleport_level } from './teleport.js';
 import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary, wake_msg, NODIAG } from './mon.js';
@@ -108,7 +110,7 @@ import { abuse_dog } from './dog.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { place_monster, remove_monster } from './steed.js';
-import { mundisplaceable } from './uhitm.js';
+import { mundisplaceable, defsym_explanation } from './uhitm.js';
 import { monsndx } from './mondata.js';
 import { worm_cross } from './worm.js';
 import { Is_qstart } from './quest.js';
@@ -446,10 +448,10 @@ function known_lwalking() {
  * `door_opened = FALSE` clear runs on all modes and is kept.
  * You_cant / Your / There / pline_The have no JS export (lock.js:602
  * precedent) — rendered as net-identical pline text, never new clones.
- * Named omissions (c-js-map turns): ECMD_OK + canned-kick fake (JS doopen_indir returns bool, not
- * ECMD codes; cmdq_peek is cmd.js-local) / defsyms[].explanation prose
- * (tree/wall/solid-stone heuristic, cmd.js:1201 stand-in) / autodig flag
- * (no JS option; arm live on game.flags.autodig).
+ * Whole: ECMD_OK + canned-kick fake via live cmdq_peek / ec_entry
+ * (JS doopen_indir false ⟺ ECMD_OK); mention_walls prose via live
+ * defsym_explanation (uhitm.js); autodig arm live on game.flags.autodig
+ * (allopt row, options.js).
  */
 export async function test_move(ux, uy, dx, dy, mode) {
     ux |= 0; uy |= 0; dx |= 0; dy |= 0; mode |= 0; // C :995–999 coordxy args
@@ -513,14 +515,9 @@ export async function test_move(ux, uy, dx, dy, mode) {
                     let buf;
                     if (sym === S_stone) // C :1063–1064
                         buf = 'solid stone';
-                    else if (sym >= 0) { // C :1065–1066 an(explanation)
-                        if (loc.typ === TREE || (IS_TREE(loc.typ) && loc.typ !== STONE))
-                            buf = an('tree');
-                        else if ((IS_WALL(loc.typ) || loc.typ === SDOOR) && loc.seenv)
-                            buf = an('wall');
-                        else
-                            buf = 'solid stone';
-                    } else // C :1067–1069
+                    else if (sym >= 0) // C :1065–1066 an(defsyms[sym].explanation)
+                        buf = an(defsym_explanation(sym));
+                    else // C :1067–1069
                         buf = `impossible [background glyph=${glyph}]`;
                     await pline_dir(xytodir(dx, dy), `It's ${buf}.`); // C :1070
                 }
@@ -549,12 +546,18 @@ export async function test_move(ux, uy, dx, dy, mode) {
                         await You("try to ooze under the door, but can't squeeze your possessions through.");
                     if (game.flags?.autoopen !== false && !(game.context.run | 0) // C :1100–1102
                         && !u.Confusion && !u.Stunned && !Fumbling()) {
-                        // C :1103 tmp = doopen_indir(x, y); JS returns bool,
-                        // not ECMD codes — the ECMD_OK + canned-kick fake
-                        // (:1104–1111) is a named omission, so door_opened
-                        // is always !closed_door here.
-                        await doopen_indir(x, y);
-                        game.context.door_opened = !closed_door(x, y); // C :1112
+                        // C :1103 tmp = doopen_indir(x, y); JS returns bool
+                        // (true ⟺ ECMD_TIME, false ⟺ ECMD_OK — lock.js).
+                        const tmp = await doopen_indir(x, y);
+                        // C :1104–1111 — autounlock-Kick queues a canned
+                        // kick with res ECMD_OK; fake door_opened so the
+                        // kick runs as the next command.
+                        const cq = cmdq_peek(CQ_CANNED); // C :1107
+                        if (tmp === false && cq && cq.typ === CMDQ_EXTCMD
+                            && cq.ec_entry === ext_func_tab_from_func(dokick))
+                            game.context.door_opened = true;
+                        else
+                            game.context.door_opened = !closed_door(x, y); // C :1112
                         game.context.move = (ux !== (u.ux | 0) || uy !== (u.uy | 0)) ? 1 : 0; // C :1113
                     } else if (x === ux || y === uy) { // C :1112 orthogonal
                         if (Blind_tm() || u.Stunned || acurr(A_DEX) < 10 // C :1113–1114

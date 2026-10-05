@@ -19,7 +19,7 @@
 import { game } from './gstate.js';
 import { place_object, obj_extract_self, objects_at, set_bknown } from './mkobj.js';
 import { newsym, pline, You_feel, cls, map_object, impossible } from './display.js';
-import { flooreffects } from './do.js';
+import { flooreffects, setnotworn } from './do.js';
 import {
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, BC_BALL, BC_CHAIN, IS_OBSTRUCTED, IS_DOOR,
     D_CLOSED, D_LOCKED, POOL, is_pit, is_hole, SLT_ENCUMBER,
@@ -174,8 +174,10 @@ export async function ballfall() {
 
 /**
  * C ref: ball.c litter `:965–983` — rnd(capacity) may force-drop invent
- * downstairs: canletgo "" gate, stairs pline, setnotworn subset, freeinv,
- * hitfloor(otmp, FALSE) landing (breaks/ship/altar/dropy).
+ * downstairs: canletgo "" gate, stairs pline, live setnotworn (D-3437;
+ * the inline slot-nulling subset dropped twoweap/extrinsic/artifact/
+ * botl effects — review 2374), freeinv, hitfloor(otmp, FALSE) landing
+ * (breaks/ship/altar/dropy).
  */
 async function litter() {
     const u = game.u || {};
@@ -194,20 +196,10 @@ async function litter() {
             `You drop ${yn} and ${plural ? 'they' : 'it'} `
             + `${plural ? 'fall' : 'falls'} down the stairs with you.`,
         );
-        // setnotworn subset
-        if (u.uwep === otmp) {
-            const shine = setuwep(null);
-            if (shine) await shine;
-        }
-        if (u.uswapwep === otmp) setuswapwep(null);
-        if (u.uquiver === otmp) setuqwep(null);
-        for (const slot of [
-            'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
-            'uleft', 'uright', 'uamul', 'ublindf',
-        ]) {
-            if (u[slot] === otmp) u[slot] = null;
-        }
-        otmp.owornmask = 0;
+        // C `:980` — the live whole export (worn.c:150–184: twoweap,
+        // cancel_doff, slot walk incl. uwep/uswapwep/uquiver, extrinsic,
+        // artifact, w_blocks, tux, botl, update_inventory, telepat).
+        setnotworn(otmp);
         freeinv_ball(otmp);
         await hitfloor(otmp, false); // C `:981` — breaks/ship/altar/dropy
     }

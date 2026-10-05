@@ -1,7 +1,7 @@
 // mhitu.js -- Monsters attacking the hero.
 // C ref: mhitu.c -- hitmsg(), missmu(), mswings_verb(), mswings(), getmattk(),
 // calc_mattacku_vars(), mtrapped_in_pit(), mattacku(), magic_negation(),
-// could_seduce(), hitmu(), gazemu(), mdamageu(), ranged_attk_available(),
+// could_seduce(), hitmu(), explmu(), gazemu(), mdamageu(), ranged_attk_available(),
 // passiveum(), and gulp_blnd_check().
 
 import {
@@ -56,7 +56,11 @@ import {
     W_AMUL,
     W_ACCESSORY,
     W_ARMOR,
+    W_ARM,
+    W_ARMC,
     W_ARMG,
+    W_ARMH,
+    W_ARMU,
     XKILL_NOMSG,
     W_WEP,
     Upolyd,
@@ -70,6 +74,7 @@ import {
 } from './const.js';
 import {
     is_pool,
+    is_waterwall,
 } from './dbridge.js';
 import { acurr, exercise, minuhpmax } from './attrib.js';
 import { encumber_msg } from './pickup.js';
@@ -124,10 +129,12 @@ import {
 import {
     golemeffects,
     killed,
+    mondead,
     mon_to_stone,
     new_were,
     set_ustuck,
     unstuck,
+    wake_nearto,
     xkilled,
 } from './mon.js';
 import {
@@ -162,6 +169,7 @@ import {
     attacktype_fordmg,
     can_blnd,
     flaming,
+    defended,
     resists_blnd,
 } from './mondata.js';
 import { monnear } from './monmove.js';
@@ -170,17 +178,23 @@ import { find_offensive } from './muse.js';
 import { mon_reflects, ureflects } from './muse.js';
 import { makeplural } from './fruit.js';
 import { is_weptool, is_wet_towel, objectType } from './obj.js';
-import { sobj_at } from './invent.js';
+import { sobj_at, update_inventory } from './invent.js';
 import { place_monster, remove_monster } from './monst.js';
 import {
     AMULET_OF_GUARDING,
     BOULDER,
     CORPSE,
+    OILSKIN_CLOAK,
     PIERCE,
     WEAPON_CLASS,
     getObjects,
 } from './objects.js';
-import { an, donameFresh, xnameFresh } from './objnam.js';
+import {
+    an,
+    cloak_simple_name,
+    donameFresh,
+    xnameFresh,
+} from './objnam.js';
 import { is_quest_artifact } from './questpgr.js';
 import { d, rn1, rn2, rnd, rne, rn2_on_display_rng } from './rng.js';
 import { heroIsBlind, messageAt } from './startup_a11y.js';
@@ -200,7 +214,7 @@ import {
 import { Cold_resistance, Fire_resistance, drain_item } from './zap.js';
 import { cansee, couldsee, m_canseeu, vision_recalc } from './vision.js';
 import { hitval } from './weapon.js';
-import { is_pole } from './worn.js';
+import { is_pole, which_armor } from './worn.js';
 import { breamu, spitmu } from './mthrowu.js';
 import { mnexto } from './teleport.js';
 import {
@@ -212,6 +226,7 @@ import {
 import {
     make_blinded,
     make_confused,
+    make_hallucinated,
     make_sick,
     make_stunned,
 } from './potion.js';
@@ -240,6 +255,51 @@ export async function u_slow_down(
     else
         await message('Your quickness feels less natural.', state);
     await exercise(A_DEX, false, state, random);
+}
+
+// C ref: mhitu.c u_slip_free() (1047-1085). AT_ENGL excludes this escape;
+// other grabbing attacks inspect cloak, suit, shirt, or the AD_DRIN helmet.
+export async function u_slip_free(mtmp, mattk, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? { rn2 };
+    const message = rawEnv.message ?? (rawEnv.planning ? async () => {}
+        : ttyPline);
+
+    if (mattk.aatyp === M.AT_ENGL) return false;
+
+    let obj = which_armor(state.youmonst, W_ARMC, state)
+        || which_armor(state.youmonst, W_ARM, state);
+    if (!obj) obj = which_armor(state.youmonst, W_ARMU, state);
+    if (mattk.adtyp === M.AD_DRIN)
+        obj = which_armor(state.youmonst, W_ARMH, state);
+
+    if (obj && (obj.greased || obj.otyp === OILSKIN_CLOAK)
+        && (!obj.cursed || random.rn2(3))) {
+        const name = obj.greased || objectType(obj, state).oc_name_known
+            ? xnameFresh(obj, state)
+            : cloak_simple_name(obj, state);
+        await message(
+            messageAt(
+                `${Monnam(mtmp, state, rawEnv)} `
+                    + `${mattk.adtyp === M.AD_WRAP ? 'slips off of'
+                        : 'grabs you, but cannot hold onto'} your `
+                    + `${obj.greased ? 'greased' : 'slippery'} ${name}!`,
+                mtmp.mx,
+                mtmp.my,
+                state,
+            ),
+            state,
+            rawEnv,
+        );
+
+        if (obj.greased && !random.rn2(2)) {
+            await message('The grease wears off.', state, rawEnv);
+            obj.greased = false;
+            update_inventory({ ...rawEnv, state });
+        }
+        return true;
+    }
+    return false;
 }
 
 // Planning cannot call end.c done_in_by() on its cloned state: the ordinary
@@ -1211,12 +1271,10 @@ export async function mattacku(monster, rawEnv = {}) {
                 if (foundyou) {
                     const j = random.rnd(20 + i);
                     if (tmp > j) {
-                        if (unsolid(state.youmonst.data)) {
-                            // uhitm.c failed_grab() decides whether an attack
-                            // on an unsolid defender connects at all, and
-                            // spends a draw of its own doing it.
-                            unsupported('an attack on an unsolid hero');
-                        }
+                        if (unsolid(state.youmonst.data)
+                            && await failed_grab(
+                                monster, state.youmonst, mattk, env,
+                            )) continue;
                         if (mattk.aatyp !== M.AT_KICK
                             || !thick_skinned(state.youmonst.data)) {
                             sum[i] = await hitmu(monster, mattk, env);
@@ -1239,7 +1297,11 @@ export async function mattacku(monster, rawEnv = {}) {
             /* Note: if displaced, prev attacks never succeeded */
             if ((!range2 && i >= 2 && sum[i - 1] && sum[i - 2])
                 || monster === u.ustuck) {
-                unsupported('a monster crushing the hero');
+                if (!await failed_grab(
+                    monster, state.youmonst, mattk, env,
+                )) {
+                    sum[i] = await hitmu(monster, mattk, env);
+                }
             }
             break;
 
@@ -1251,7 +1313,8 @@ export async function mattacku(monster, rawEnv = {}) {
             break;
 
         case M.AT_EXPL: /* automatic hit if next to, and aimed at you */
-            if (!range2) unsupported('a monster exploding at the hero');
+            if (!range2)
+                sum[i] = await explmu(monster, mattk, foundyou, env);
             break;
 
         case M.AT_ENGL:
@@ -1525,7 +1588,7 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
             && sobj_at(BOULDER, u.ux, u.uy, state)) {
             return M_ATTK_MISS;
         }
-        if (failed_grab(mtmp, state.youmonst, mattk, rawEnv))
+        if (await failed_grab(mtmp, state.youmonst, mattk, rawEnv))
             return M_ATTK_MISS;
 
         // These source branches are outside this exact ordinary, untrapped,
@@ -1885,6 +1948,112 @@ async function hitmu(mtmp, mattk, env) {
         res = M_ATTK_HIT;
     await mattackuStopOccupation(env);
     return res;
+}
+
+// C ref: mhitu.c explmu() (1591-1665). Resolve a monster's explosive hit
+// before waking nearby monsters; the hero-targeted AD_HALU arm removes the
+// attacker before changing the hero's hallucination property.
+export async function explmu(mtmp, mattk, ufound, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random;
+    if (typeof random?.d !== 'function'
+        || typeof random?.rnd !== 'function') {
+        throw new TypeError('explmu requires d and rnd random operations');
+    }
+    const message = requireMattackuOperation(rawEnv, 'message');
+    let killAgr = true;
+    let notAffected;
+
+    if (mtmp.mcan) return M_ATTK_MISS;
+
+    let tmp = random.d(mattk.damn, mattk.damd);
+    notAffected = defended(mtmp, mattk.adtyp, state);
+
+    if (!ufound) {
+        const name = canseemon(mtmp, state)
+            ? Monnam(mtmp, state, rawEnv) : 'It';
+        const medium = is_waterwall(mtmp.mux, mtmp.muy, state)
+            ? 'empty water' : 'thin air';
+        await message(`${name} explodes at a spot in ${medium}!`, state);
+    } else {
+        await hitmsg(mtmp, mattk, state, rawEnv);
+    }
+
+    switch (mattk.adtyp) {
+    case M.AD_COLD:
+    case M.AD_FIRE:
+    case M.AD_ELEC:
+        // C's mon_explodes() result is discarded. Its full object-destruction
+        // and hero-damage path remains an explicit source boundary here.
+        note_unported('explode.c mon_explodes');
+        if (mtmp.mhp > 0) killAgr = false;
+        break;
+    case M.AD_BLND:
+        notAffected = resists_blnd(state.youmonst, state);
+        if (ufound && !notAffected) {
+            // C places the division inside the right side of ||. A visible
+            // monster skips both that mutation and its random draw.
+            if (mon_visible(mtmp, state)
+                || random.rnd(tmp = Math.trunc(tmp / 2)) > state.u.ulevel) {
+                await message('You are blinded by a blast of light!', state);
+                await make_blinded(tmp, false, state, rawEnv);
+                if (!heroIsBlind(state))
+                    await message('Your vision clears.', state);
+            } else if (state.flags?.verbose) {
+                await message(
+                    'You get the impression it was not terribly bright.',
+                    state,
+                );
+            }
+        }
+        break;
+    case M.AD_HALU: {
+        const hallucination = state.u?.uprops?.[HALLUC];
+        const hallucinationResistance = state.u?.uprops?.[HALLUC_RES];
+        const alreadyHallucinating = Boolean(hallucination?.intrinsic
+            && !(hallucinationResistance?.intrinsic
+                || hallucinationResistance?.extrinsic));
+        notAffected = Boolean(notAffected || heroIsBlind(state)
+            || state.u.umonnum === M.PM_BLACK_LIGHT
+            || state.u.umonnum === M.PM_VIOLET_FUNGUS
+            || dmgtype(state.youmonst.data, M.AD_STUN));
+        if (ufound && !notAffected) {
+            if (!alreadyHallucinating)
+                await message(
+                    'You are caught in a blast of kaleidoscopic light!',
+                    state,
+                );
+            // C removes the exploder before applying Hallucination, so its
+            // own glyph cannot be randomized by the property transition.
+            await mondead(mtmp, state, rawEnv);
+            killAgr = false;
+            const changed = await make_hallucinated(
+                (hallucination?.intrinsic ?? 0) + tmp,
+                false,
+                0,
+                state,
+                rawEnv,
+            );
+            await message(
+                `You ${changed ? 'are freaked out' : 'seem unaffected'}.`,
+                state,
+            );
+        }
+        break;
+    }
+    default:
+        note_unported('pline.c impossible');
+        break;
+    }
+
+    if (notAffected) {
+        await message('You seem unaffected by it.', state);
+        await ugolemeffects(mattk.adtyp, tmp, state);
+    }
+    if (killAgr && mtmp.mhp > 0)
+        await mondead(mtmp, state, rawEnv);
+    await wake_nearto(mtmp.mx, mtmp.my, 7 * 7, rawEnv);
+    return mtmp.mhp > 0 ? M_ATTK_MISS : M_ATTK_AGR_DIED;
 }
 
 // C ref: mhitu.c:gazemu() (1668-1898). The ordinary compiled gaze effects

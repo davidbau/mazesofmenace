@@ -142,7 +142,8 @@ import {
     UnsupportedLevelChangeError,
 } from './do.js';
 import {
-    doremring, doputon, dotakeoff, dowear, remarm_swapwep, reset_remarm,
+    doremring, doputon, dotakeoff, dowear, ia_dotakeoff, remarm_swapwep,
+    reset_remarm,
     UnsupportedAccessoryOnError,
     UnsupportedTakeOffError, UnsupportedWearError,
 } from './do_wear.js';
@@ -199,7 +200,6 @@ import { UnsupportedPositionCheckError, tele } from './teleport.js';
 import { reset_utrap, t_at, dountrap } from './trap.js';
 import { stairway_at } from './stairs.js';
 import { UnsupportedHeroTimeoutBoundaryError } from './timeout.js';
-import { UnsupportedErosionError } from './trap_erode_obj.js';
 import {
     doeat,
     morehungry,
@@ -2926,12 +2926,8 @@ export function failClosedCommandRefusals() {
         // across the map -- so the segment has to end on them rather than
         // lose the screens they matched.
         UnsupportedZapError,
-        // trap.c burnarmor() and erode_obj() raise this for a monster victim
-        // and for the wet towel a hero's own fire would dry. zhitu()'s fire
-        // arm is the ported caller, one frame below UnsupportedZapError.
-        UnsupportedErosionError,
-        // The two classes zhitu()'s destroy_items() call reaches below
-        // UnsupportedErosionError, each after the bolt has been drawn and the
+        // The two classes zhitu()'s destroy_items() call reaches below the
+        // zap effect boundary, each after the bolt has been drawn and the
         // items it destroyed have been announced. zap.c maybe_destroy_item()
         // raises the first from its AD_COLD and AD_ELEC cases and from a worn
         // or wielded object; do_name.c docall() raises the second for an
@@ -5532,6 +5528,19 @@ export async function rhack(key, state = game) {
         if (queuedExtcmdEntry?.ef_funct === 'dotip') {
             const res = await failClosedCommand(
                 key, state, () => dotip(state),
+            );
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        // C ref: iactions.c:231 queues ia_dotakeoff() for IA_TAKEOFF_OBJ;
+        // rhack() invokes the queued function pointer before consuming the
+        // following canned inventory letter inside getobj().
+        if (queuedExtcmdEntry?.ef_funct === 'ia_dotakeoff') {
+            const res = await failClosedCommand(
+                key, state, () => ia_dotakeoff(state),
             );
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)

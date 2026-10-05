@@ -7442,9 +7442,10 @@ export async function newclipping(x, y) {
  * to resend the map (`redraw_map(TRUE)` `:3840`) when the origin moved.
  * Async only because redraw_map awaits flush_screen (nhgetch reach),
  * same shape as redraw_map D-1974.
- * Named: core call sites still unwired — allmain.c:546 moveloop,
- * getpos.c:851/1146, muse.c:2637, restore.c:629. dungeon.c:1580
- * u_on_newpos calls cliparound (js/mklev.js).
+ * Wired: allmain.c:546 moveloop (js/allmain.js), getpos.c:851 pre-loop
+ * + :1146 nxtc (js/getpos.js; nxtc shifted to the loop top with the
+ * house flush shift), dungeon.c:1580 u_on_newpos (js/mklev.js).
+ * Named: muse.c:2637, restore.c:629 (non-manifest future rows).
  * @param {number} x map x, C `int x`
  * @param {number} y map y, C `int y`
  */
@@ -7599,7 +7600,9 @@ export function reglyph_darkroom() {
  * C wintty.c docorner `:3650–3720` — cl_end from xmin, row_refresh the
  * map, then bot() when ymax reaches WIN_STATUS. bot() returns immediately
  * when gb.bot_disabled, so leftover WIN_STATUS left of xmin stays.
- * Named: TTY_PERM_INVENT; ystart_between_menu_pages paging repair (D-1832).
+ * `:3686` + `:3716`: ystart_between_menu_pages!=0 is refresh-only (no
+ * cl_end blank, no botlx/bot tail — D-3441).
+ * Named: TTY_PERM_INVENT; process_menu_window row_startoffset caller (C :1523).
  * @param {number} xmin
  * @param {number} ymax exclusive, C `cw->maxrow + 1`
  * @param {number} [ystart]
@@ -7615,9 +7618,13 @@ export async function docorner(xmin, ymax, ystart = 0) {
     const x0 = Math.max(0, (xmin | 0) - 1);
     const y0 = Math.max(0, ystart | 0);
     const y1 = Math.max(y0, ymax | 0);
+    // C `:3686` — between menu pages: refresh-only, skip cl_end
+    const paging = (ystart | 0) !== 0;
     for (let y = y0; y < y1; y++) {
-        for (let c = x0; c < cols; c++)
-            display.setCell(c, y, ' ', NO_COLOR, 0);
+        if (!paging) {
+            for (let c = x0; c < cols; c++)
+                display.setCell(c, y, ' ', NO_COLOR, 0);
+        }
         // C `:3696` y < offy || y + clipy > ROWNO → skip board (tty
         // tty_display_nhwindow; JS offy 1; clipy 0 at 80x24, so y > ROWNO).
         if (y < 1 || y + clipy > ROWNO) continue;
@@ -7629,8 +7636,8 @@ export async function docorner(xmin, ymax, ystart = 0) {
         // cl_end blank — visually identical, no redundant setCell.
         row_refresh(x0 + 1 + clipx, COLNO - 1, y - 1 + clipy);
     }
-    // C: ymax >= wins[WIN_STATUS]->offy → disp.botlx = TRUE; bot();
-    if (y1 >= 22) {
+    // C `:3716`: ymax >= wins[WIN_STATUS]->offy && !ystart → botlx; bot()
+    if (y1 >= 22 && !paging) {
         if (game.flags) game.flags.botlx = true;
         await bot();
     }
@@ -7868,7 +7875,9 @@ export async function timebot() {
 // capture boundary, matching C session steps with 0 RNG at --More--.
 // C more() does not call flush_screen/bot — only message; paint cached botl.
 export async function more() {
-    // C topl.c more() — debug_fuzzer skip named; inmore recursion guard.
+    // C topl.c:209–210 — the fuzzer never blocks on --More--.
+    if (game.iflags?.debug_fuzzer) return;
+    // C topl.c more() — inmore recursion guard.
     if (_tty_inmore) return;
     _tty_inmore++;
     try {

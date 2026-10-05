@@ -912,14 +912,16 @@ export async function doopen_indir(x, y) {
 
     const loc = game.level?.at(cc.x, cc.y);
     const portcullis = is_drawbridge_wall(cc.x, cc.y) >= 0;
-    // C lock.c doopen_indir `:836–845` — "this used to be 'if (Blind)' but
+    // C lock.c doopen_indir `:832–840` — "this used to be 'if (Blind)' but
     // using a key skips that so we do too": unconditional mapseen/newsym,
-    // LEARNED when either changes. C also compares door->glyph, which JS
-    // cells don't model (game.js), so only the lastseentyp half is live.
+    // LEARNED when either the glyph or the seen-typ changes. Glyph half
+    // via cellGlyph (levl glyph ≡ remembered id; pick_lock :1421 precedent).
     {
+        const oldglyph = cellGlyph(loc);
         const oldlastseentyp = update_mapseen_for(cc.x, cc.y);
         newsym(cc.x, cc.y);
-        if ((game.lastseentyp?.[cc.x]?.[cc.y] | 0) !== (oldlastseentyp | 0)) res = true;
+        if (cellGlyph(loc) !== oldglyph
+            || (game.lastseentyp?.[cc.x]?.[cc.y] | 0) !== (oldlastseentyp | 0)) res = true;
     }
 
     if (portcullis || !loc || !IS_DOOR(loc.typ)) {

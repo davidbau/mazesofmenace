@@ -19,7 +19,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_screen_getpos_dirty, pline, You, coord_desc, custompline,
+    flush_screen, flush_screen_getpos_dirty, cliparound, pline, You, coord_desc, custompline,
     docrt, docrt_flags, docrtRefresh,
     terrain_glyph,
     look_shown_at, glyph_is_invisible,
@@ -43,6 +43,7 @@ import {
     NHKF_GETPOS_INTERESTING_NEXT, NHKF_GETPOS_INTERESTING_PREV,
     NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV,
     NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_MENU, NHKF_GETPOS_LIMITVIEW,
+    NHKF_GETPOS_HELP,
     S_stone, S_trwall, S_ndoor, S_vodoor, S_hcdoor, S_room, S_darkroom,
     S_corr, S_litcorr, S_engroom, S_engrcorr, S_arrow_trap,
     S_upstair, S_fountain,
@@ -316,14 +317,25 @@ function is_cmap_lava(i) {
 }
 
 /**
- * C ref: getpos.c matching[] build — defsyms[].sym / showsyms[] for
- * feature cmaps (walls/room/corr/door/ndoor skipped). k==0 → unknown
- * direction. Named: full gs.showsyms[] table (DEC extras below).
+ * C ref: getpos.c:1052–1061 matching[] build — defsyms[].sym /
+ * gs.showsyms[] for feature cmaps (walls/room/corr/door/ndoor
+ * skipped). k==0 → unknown direction. showsyms is the live
+ * game.gs.showsyms P range (direct sidx like C; entries are the
+ * single-char carriers assign_graphics wrote, else the defsyms
+ * fallback — identical to C's init-fed table at default config).
  */
 function build_feature_matching(ch) {
     const matching = new Uint8Array(MAXPCHARS);
     let k = 0;
-    const engroom = DEFSYMS_CH[S_engroom];
+    // C :1053/:1059–1060 — gs.showsyms[sidx] live (P range, direct sidx).
+    const showsyms = game.gs?.showsyms;
+    const showch = (i) => {
+        const v = showsyms?.[i];
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' && v > 0) return String.fromCharCode(v & 0xff);
+        return DEFSYMS_CH[i];
+    };
+    const engroom = showch(S_engroom);
     for (let sidx = 0; sidx < MAXPCHARS; sidx++) {
         if (is_cmap_wall(sidx) || is_cmap_room(sidx)
             || is_cmap_corr(sidx) || is_cmap_door(sidx)
@@ -331,6 +343,7 @@ function build_feature_matching(ch) {
             continue;
         }
         if (ch === DEFSYMS_CH[sidx]
+            || ch === showch(sidx)
             || (ch === '^' && is_cmap_trap(sidx))
             || (ch === engroom && is_cmap_engraving(sidx))) {
             matching[sidx] = ++k;
@@ -1097,6 +1110,8 @@ const GETPOS_SPKEY_DEFAULT = {
     [NHKF_GETPOS_MOVESKIP]: '*'.charCodeAt(0),
     [NHKF_GETPOS_MENU]: '!'.charCodeAt(0),
     [NHKF_GETPOS_LIMITVIEW]: '"'.charCodeAt(0),
+    // C cmd.c:3187 spkeys_binds default for the :844 verbose prompt + :945 arm.
+    [NHKF_GETPOS_HELP]: '?'.charCodeAt(0),
 };
 
 /** C ref: getpos.c gloc_descr[][4] — index 2 used when !getloc_usemenu. */
@@ -1310,15 +1325,13 @@ export async function show_getpos_tip() {
         // other keys: stay open (C xwaitforspace / PICK_NONE)
     }
     game._menu_overlay = false;
-    // C: closing tip NHW_MENU does not docrt — gbuf still holds whatever
-    // show_glyph wrote (reveal_terrain map). docrt would newsym hero `@`
-    // back over TER_MAP browse. Rebuild tty from loc.disp_* instead.
-    if (game.iflags?.terrainmode) {
-        await flush_screen(1);
-    } else {
-        await docrt();
-        await flush_screen(1);
-    }
+    // C: closing a corner NHW_MENU dismisses via docorner
+    // (erase_menu_or_text): reprint retained gbuf, no newsym — never
+    // docrt. docrt would newsym the hero `@` over a cell C still shows
+    // stale (scen-dig-Caveman-94195 s66: seen trap `^` under the hero).
+    // The loop's flushes set _overlay_resync, so this flush resyncs the
+    // full map from gbuf (terrainmode and normal alike).
+    await flush_screen(1);
 }
 
 /**
@@ -1378,7 +1391,8 @@ export async function getpos(ccp, force, goal, describeAt) {
     const gidx = Array(NUM_GLOCS).fill(0);
 
     if (g.flags.verbose !== false) {
-        await pline("(For instructions type a '?')");
+        // C :844–845 — the live help-key binding, not a hardcoded '?'.
+        await pline(`(For instructions type a '${visctrl(getpos_spkey(NHKF_GETPOS_HELP))}')`);
         msg_given = true;
     }
 
@@ -1386,6 +1400,10 @@ export async function getpos(ccp, force, goal, describeAt) {
     // C getpos: curs(cx,cy); flush_screen(0) before the read loop.
     // flush_screen(0) reprints dirty (getvalid) cells and leaves the
     // tty cursor on the last glyph — not on the hero (D-0928 #1137).
+    // C getpos.c:848–853 — CLIPPING (config.h:538, compiled in):
+    // cliparound(cx, cy) with the pre-loop curs+flush. No-op at the
+    // contest fixed size (clipping never set — no resize path).
+    await cliparound(cx, cy);
     if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
     flush_screen_getpos_dirty();
     // First read uses the pre-loop dirty flush; later iterations need a
@@ -1410,6 +1428,10 @@ export async function getpos(ccp, force, goal, describeAt) {
     // exitgetpos (`:1155`) restores them in the finally below.
     lock_mouse_buttons(true);
     for (;;) {
+        // C getpos.c:1144–1148 (nxtc) — cliparound(cx, cy) with the
+        // pass's curs+flush, shifted to the loop top with the house
+        // flush shift (need_full_flush); one call per pass like C.
+        await cliparound(cx, cy);
         // C getpos: show_goal_msg / auto_describe then curs then readchar.
         if (show_goal_msg) {
             await pline(`Move cursor to ${goal || 'desired location'}:`);
@@ -1596,10 +1618,11 @@ export async function getpos(ccp, force, goal, describeAt) {
             return 0; // C: result = 0 (not -1)
         }
 
-        // C: NHKF_GETPOS_HELP || redraw_cmd(c) → help?; getpos_refresh;
-        // curs; show_goal_msg (falls to nxtc — no unknown-direction).
-        if (ch === '?' || redraw_cmd(key)) {
-            if (ch === '?') {
+        // C :945–949 — NHKF_GETPOS_HELP || redraw_cmd(c) → help?;
+        // getpos_refresh; curs; show_goal_msg (falls to nxtc — no
+        // unknown-direction). Live binding like C, not a hardcoded '?'.
+        if (key === getpos_spkey(NHKF_GETPOS_HELP) || redraw_cmd(key)) {
+            if (key === getpos_spkey(NHKF_GETPOS_HELP)) {
                 await getpos_help(!!force, goal || 'desired location');
             }
             await getpos_refresh();

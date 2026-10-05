@@ -950,10 +950,10 @@ export function fixed_tele_trap(ttmp) {
 // ROLLING_BOULDER_TRAP mkroll_launch / STATUE_TRAP mk_trap_statue +
 // PIT/HOLE set_levltyp (D-1280) + DRAWBRIDGE_UP ice→floor (D-1296) +
 // shop add_damage (D-1300).
-// Named omissions: TELEP_TRAP fixed-dest launchplace arm (`:566–574` —
-// launchplace is never set when a TELEP_TRAP is created, so the isok
-// gate never fires; themerms fixed-dest traps set teledest via caller).
-// Sokoban finish is maybe_finish_sokoban below.
+// Whole: TELEP_TRAP fixed-dest launchplace arm (`:566–574`) live above;
+// themerms fixed-dest traps set teledest via caller (postprocess).
+// Knox LEVEL_TELEP single-level-branch refuse (`:482`) live in the
+// terrain gates. Sokoban finish is maybe_finish_sokoban below.
 export function maketrap(x, y, typ) {
     // C ref: trap.c maketrap — reject door/chest map traps; terrain gates.
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
@@ -1080,6 +1080,25 @@ export function maketrap(x, y, typ) {
             if (clear_flags) lev.flags = 0;
             maketrap_unearth_objs(x, y);
             recalc_block_point(x, y);
+        }
+        break;
+    }
+    case TELEP_TRAP: {
+        // C trap.c:566–574 — fixed-dest tele trap. launchplace is the
+        // shared sp_lev/ammo global (trap.c:3221 launch_drop_spot); the
+        // splev origin is gx.xstart/gy.ystart (reset to 1/0 by
+        // reset_xystart_size, sp_lev.c:206–212). themerms fixed-dest
+        // traps set teledest caller-side; this arm covers the
+        // launchfrom/teledest parse path (lspo_trap :4397–4470).
+        const lp = game.launchplace || { x: 0, y: 0 };
+        if (isok(lp.x, lp.y)) { // C :567
+            ttmp.teledest = { // C :568–569
+                x: (game.splev_xstart ?? 1) + (lp.x | 0),
+                y: (game.splev_ystart ?? 0) + (lp.y | 0),
+            };
+            if (ttmp.teledest.x === x && ttmp.teledest.y === y) { // C :570
+                void impossible('making fixed-dest tele trap pointing to itself'); // C :571
+            }
         }
         break;
     }
@@ -8141,7 +8160,7 @@ export async function chest_trap(obj, bodypart, disarm) {
             const Shock_resistance = !!(u.Shock_resistance
                 || u.HShock_resistance || u.EShock_resistance);
             if (Shock_resistance) {
-                // shieldeff deferred
+                await shieldeff(u.ux | 0, u.uy | 0); // C `:6447`
                 await pline("You don't seem to be affected.");
                 monstseesu(M_SEEN_ELEC);
                 dmg = 0;

@@ -26,7 +26,7 @@ import {
     UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
     MAGIC_PORTAL, TIMEOUT, BLINDED, STONED, SLIMED, STRANGLED, SICK,
     RLOC_NOMSG, TELEDS_NO_FLAGS, EYE, FACE, HAND, STOMACH, FROMOUTSIDE, HMON_THROWN, NO_TRAP,
-    WARN_OF_MON, TELEPAT, INFRAVISION,
+    WARN_OF_MON, TELEPAT, INFRAVISION, NHCB_LVL_LEAVE,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
     LL_ACHIEVE, LL_DEBUG, LL_CONDUCT,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
@@ -190,7 +190,7 @@ import { nh_terminate } from './end.js';
 import { strange_feeling } from './detect.js';
 import { surface } from './sit.js';
 import { use_pick_axe2, bury_objs, fill_pit, buried_ball_to_punishment } from './dig.js';
-import { set_move_cmd, u_rooted, nhl_callback, wizardOn } from './cmd.js';
+import { set_move_cmd, u_rooted, nhl_callback, wizardOn, nh_callback_run, NHCB_NAME } from './cmd.js';
 import { cmd_from_func, visctrl } from './dokeylist.js';
 import { newcham, mpickobj } from './makemon.js';
 import { grow_up, mondied } from './mhitm.js';
@@ -1533,9 +1533,9 @@ export async function getlev_catchup_monsters(elapsed) {
 * Ported: discarded-level VISITED impossible+clear (C `:1695–1697`) +
 * portal-missing qexpelled/impossible distinction (C `:1731–1740`).
  * Trap-door `ballfall` was already live; D-3261 omit text corrected.
- * Deferred: binary NHFILE, quest gate seal RMPORTAL, migrating-Wizard
- * resurrect arm, Lua NHCB_LVL_LEAVE, MICRO display_nhwindow after
- * Valley odor;
+ * Deferred: binary NHFILE savelev/getlev (VFS analogue), quest gate
+ * seal RMPORTAL (callee-side), MICRO display_nhwindow after Valley
+ * odor (compiled out: MICRO is Amiga/PC-only);
  * poly `locomotion()` climb verb / steed-flyer Flying;
  * u_collide_m full limbo. Ported: Punished climb
  * `great_effort` + Flying ladder "along" (D-0928 #1159);
@@ -1731,6 +1731,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     if (on_level(newlevel, u.uz)) return;
 
+    // C do.c:1586–1591 — Lua level-leave callbacks (NHCB_END_TURN
+    // precedent: allmain.js moveloop_core; the counts guard runs
+    // handlers only).
+    if (game.luacore && game.nhcb_counts
+        && (game.nhcb_counts[NHCB_LVL_LEAVE] | 0)) {
+        await nh_callback_run(NHCB_NAME[NHCB_LVL_LEAVE]);
+    }
+
     // C do.c:1593–1595 — tethered movement makes level change while trapped
     // feasible: unbury the ball into a punishment before save/leave.
     if ((u.utrap | 0) && (u.utraptype | 0) === TT_BURIEDBALL)
@@ -1747,7 +1755,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C do.c:1611-1613 — falling (trap door/hole only): floor objects at
     // the hero may follow to newlevel.dlevel with MIGR_WITH_HERO (checked
     // in obj_delivery). Before keepdogs/check_special_room like C (travelcc
-    // /polearm clears live later in JS, pre-existing drift, untouched).
+    // :1607 + polearm.hitmon :1608 clear later in JS, pre-existing drift).
     if (falling) {
         await impact_drop(null, u.ux | 0, u.uy | 0, newlevel.dlevel | 0);
     }
@@ -1803,6 +1811,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
     game.iflags.travelcc.x = 0;
     game.iflags.travelcc.y = 0;
+    // C do.c:1608 — polearm target does not survive the level change
+    // (JS null ≡ C NULL; the object may not exist — apply.js use_pole
+    // creates it per attack).
+    if (game.context?.polearm) game.context.polearm.hitmon = null;
 
     // C do.c:1640–1664 — cant_go_back = (newdungeon && In_endgame) ||
     // leaving_tutorial. nhfp->mode = cant_go_back ? FREEING

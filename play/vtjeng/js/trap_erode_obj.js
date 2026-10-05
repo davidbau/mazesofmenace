@@ -51,16 +51,17 @@ import {
     isCorrodeable,
     isCrackable,
     is_flammable,
+    is_wet_towel,
     is_rottable,
     isRustprone,
     objectType,
 } from './obj.js';
-import { TOWEL } from './objects.js';
 import {
     cloak_simple_name,
     cxname,
     erosion_matters,
     helm_simple_name,
+    vtense,
     xnameFresh,
 } from './objnam.js';
 import { heroIsBlind } from './startup_a11y.js';
@@ -70,6 +71,8 @@ import { which_armor } from './worn.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { canseemon } from './display.js';
+import { dry_a_towel } from './weapon.js';
+import { note_unported } from './unported.js';
 
 // C ref: trap.c erode_obj()'s three static tables (177-182), one row per
 // ERODE_* value, together with the `vulnerable` predicate and the `is_primary`
@@ -137,17 +140,6 @@ function erosionOperation(env, name, fallback) {
     return operation;
 }
 
-function pluralDescription(description) {
-    return /(?:s|teeth)$/u.test(description)
-        && !/(?:ss|us)$/u.test(description);
-}
-
-function verbFor(description, verb) {
-    if (pluralDescription(description)) return verb;
-    if (verb === 'are') return 'is';
-    return `${verb}s`;
-}
-
 function currentErosion(obj, primary) {
     return Math.trunc(primary ? obj.oeroded ?? 0 : obj.oeroded2 ?? 0);
 }
@@ -155,17 +147,6 @@ function currentErosion(obj, primary) {
 function setErosion(obj, primary, amount) {
     if (primary) obj.oeroded = amount;
     else obj.oeroded2 = amount;
-}
-
-// A refusal this file raises where trap.c acts. js/cmd.js
-// failClosedCommandRefusals() lists it, so a segment ends at the branch
-// instead of discarding every frame the command already matched.
-export class UnsupportedErosionError extends Error {
-    constructor(branch) {
-        super(`trap.c item erosion reached ${branch}`);
-        this.name = 'UnsupportedErosionError';
-        this.branch = branch;
-    }
 }
 
 // C ref: trap.c erode_obj() (170-353), "Generic erode-item function".
@@ -195,7 +176,10 @@ export async function erode_obj(obj, description, type, flags, env) {
     const floorVictim = !uvictim && !monsterVictim;
 
     const details = EROSION[type];
-    if (!details) throw new RangeError(`invalid erosion type ${type}`);
+    if (!details) {
+        note_unported('pline.c impossible');
+        return ER_NOTHING;
+    }
     const { state } = env;
     const random = env.random;
     const message = erosionOperation(env, 'message', ttyPline);
@@ -231,7 +215,7 @@ export async function erode_obj(obj, description, type, flags, env) {
     const vulnerable = details.vulnerable(obj, state);
     const erosion = currentErosion(obj, details.primary);
 
-    let name = description || cxname(obj, state);
+    let name = description ?? cxname(obj, state);
     // trap.c's visobj strings are already article-free: it strips the
     // leading "the " from cxname() before using the floor-object message.
     if (visobj && !uvictim && !vismon && /^the /iu.test(name))
@@ -261,7 +245,7 @@ export async function erode_obj(obj, description, type, flags, env) {
     if (details.checkGrease && (flags & EF_GREASE) && obj.greased) {
         if (uvictim || vismon) {
             await message(
-                `${possessive} ${name} ${verbFor(name, 'are')} `
+                `${possessive} ${name} ${vtense(name, 'are')} `
                 + 'protected by the layer of grease!',
                 state,
             );
@@ -280,7 +264,7 @@ export async function erode_obj(obj, description, type, flags, env) {
     if (!vulnerable || (obj.oerodeproof && obj.rknown)) {
         if (verbose && print && (uvictim || vismon)) {
             await message(
-                `${possessive} ${name} ${verbFor(name, 'are')} `
+                `${possessive} ${name} ${vtense(name, 'are')} `
                 + `not affected by ${details.affectedBy}.`,
                 state,
             );
@@ -293,7 +277,7 @@ export async function erode_obj(obj, description, type, flags, env) {
         if (verbose && (print || obj.oerodeproof) && visible) {
             await message(
                 `Somehow, ${lowerPossessive} `
-                + `${name} ${verbFor(name, 'are')} not affected by the `
+                + `${name} ${vtense(name, 'are')} not affected by the `
                 + `${details.affectedBy}.`,
                 state,
             );
@@ -313,7 +297,7 @@ export async function erode_obj(obj, description, type, flags, env) {
                 : erosion ? ' further' : '';
             await message(
                 `${possessive} ${name} `
-                + `${verbFor(name, details.action)}${adverb}!`,
+                + `${vtense(name, details.action)}${adverb}!`,
                 state,
             );
         }
@@ -331,7 +315,7 @@ export async function erode_obj(obj, description, type, flags, env) {
         if (visible) {
             const action = type === ERODE_CRACK
                 ? 'shatters'
-                : `${verbFor(name, details.action)} away`;
+                : `${vtense(name, details.action)} away`;
             await message(
                 `${possessive} ${name} ${action}!`,
                 state,
@@ -380,13 +364,13 @@ export async function erode_obj(obj, description, type, flags, env) {
         if (uvictim) {
             await message(
                 `Your ${name} `
-                + `${verbFor(name, heroIsBlind(state) ? 'feel' : 'look')} `
+                + `${vtense(name, heroIsBlind(state) ? 'feel' : 'look')} `
                 + `completely ${details.result}.`,
                 state,
             );
         } else if (vismon || visobj) {
             await message(
-                `${possessive} ${name} ${verbFor(name, 'look')} completely `
+                `${possessive} ${name} ${vtense(name, 'look')} completely `
                 + `${details.result}.`,
                 state,
             );
@@ -416,14 +400,12 @@ export async function burnarmor(victim, env) {
     /* burning damage may dry wet towel */
     const inventory = victim === state.youmonst ? state.invent : victim.minvent;
     for (let item = inventory; item; item = item.nobj) {
-        // obj.h:256 is_wet_towel(). apply.c dry_a_towel() remains outside
-        // this span, so keep the existing fail-closed boundary before the
-        // armor slot draw. A dry towel leaves the scan walking as C's does.
-        if (item.otyp === TOWEL && (item.spe ?? 0) > 0) {
-            if (victim === state.youmonst)
-                throw new UnsupportedErosionError('dry_a_towel() for a wet towel');
-            random.rn2((item.spe ?? 0) + 1);
-            note_unported('apply.c dry_a_towel');
+        if (is_wet_towel(item)) {
+            const oldSpe = item.spe;
+            await dry_a_towel(item, random.rn2(oldSpe + 1), true, state, env);
+            // C tries the next towel only when this roll left the current one
+            // unchanged; it stops at the first towel whose wetness changed.
+            if (item.spe !== oldSpe) break;
         }
     }
 

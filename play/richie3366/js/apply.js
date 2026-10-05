@@ -107,7 +107,7 @@ import { explode } from './explode.js';
 import {
     flash_hits_mon, xkilled, attack_checks, check_caitiff,
     force_attack, stumble_onto_mimic, killed, defsym_explanation,
-    attacktype_fordmg,
+    attacktype_fordmg, can_blnd,
 } from './uhitm.js';
 import { digests, set_ustuck, Flying, mon_reflects, gulp_blnd_check } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
@@ -145,7 +145,7 @@ import { findit, openit, cvt_sdoor_to_door } from './detect.js';
 import { surface } from './sit.js';
 import { level_difficulty, isqrt, dist2, upstart, strstri } from './hacklib.js';
 import { mon_adjust_speed } from './muse.js';
-import { paralyze_monst } from './mhitm.js';
+import { paralyze_monst, AT_WEAP } from './mhitm.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -1033,7 +1033,8 @@ async function use_camera(obj) {
         const { zapyourself } = await import('./zap.js');
         await zapyourself(obj, true);
     } else if (u.uswallow) {
-        await pline(`You take a picture of ${mon_nam(u.ustuck)}'s stomach.`);
+        // C `:97–98` s_suffix(mon_nam)+mbodypart(STOMACH) (:815 precedent)
+        await pline(`You take a picture of ${s_suffix(mon_nam(u.ustuck))} ${mbodypart(u.ustuck, STOMACH)}.`);
     } else if (u.dz) {
         await pline(
             `You take a picture of the ${
@@ -1064,20 +1065,10 @@ function BlindedTimeout() {
 }
 
 /**
- * C ref: mondata.c can_blnd(NULL, &youmonst, AT_WEAP, cream_pie) subset.
- * Named omissions: visored helmet; mon_perma_blind; raven-vs-raven.
- */
-function can_blnd_cream_self(obj) {
-    const you = game.youmonst;
-    if (!haseyes(you?.data)) return false;
-    // C: Blindfolded ≡ EBlinded / ublindf blocks cream on hero
-    if (game.u?.ublindf || (game.u?.EBlinded | 0)) return false;
-    void obj;
-    return true;
-}
-
-/**
- * C ref: apply.c use_cream_pie — immerse face; blindinc rnd(25); splat+delobj.
+ * C ref: apply.c use_cream_pie `:3568–3603` — immerse face; blindinc rnd(25);
+ * splat+delobj. `:3584` calls the live whole `can_blnd` (uhitm.js; C pie
+ * checks EBlinded only `:344–346` — D-3441 deleted the subset that added a
+ * non-C ublindf gate; dothrow.js toss_up precedent).
  * Named omissions: invent-array wiring when splitobj child is not pushed
  * (quan>1 rare for wish).
  * @returns {number} ECMD_OK (C never spends a turn)
@@ -1114,7 +1105,8 @@ async function use_cream_pie(obj) {
         );
     }
 
-    if (can_blnd_cream_self(pie)) {
+    // C `:3584` can_blnd(NULL, &youmonst, AT_WEAP, pie) — live whole (D-3441)
+    if (can_blnd(null, game.youmonst, AT_WEAP, pie)) {
         const blindinc = rnd(25);
         u.ucreamed = (u.ucreamed | 0) + blindinc;
         await make_blinded(BlindedTimeout() + blindinc, false);

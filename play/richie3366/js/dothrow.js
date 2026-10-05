@@ -73,7 +73,7 @@ import {
 import { add_to_minv, mpickobj, makemon, set_malign } from './makemon.js';
 import { finish_quest, is_quest_artifact } from './quest.js';
 import { align_gname } from './roles.js';
-import { find_mac } from './mhitm.js';
+import { find_mac, AT_WEAP } from './mhitm.js';
 import { digests, Levitation, Flying } from './mhitu.js';
 import { hitval, weapon_hit_bonus, should_mulch_missile, dmgval, autoreturn_weapon, multishot_class_bonus, is_wet_towel, dry_a_towel } from './weapon.js';
 import { spec_abon, artifact_hit, is_art } from './artifact.js';
@@ -101,7 +101,7 @@ import {
     bigmonst,
 } from './monsters.js';
 import { tamedog } from './dog.js';
-import { hmon, passive_obj } from './uhitm.js';
+import { hmon, passive_obj, can_blnd } from './uhitm.js';
 import { cutworm } from './worm.js';
 import { potionbreathe, potionhit, Half_gas_damage } from './potion.js';
 import { body_part, polymon } from './polyself.js';
@@ -1292,18 +1292,6 @@ function harmless_missile(obj) {
 }
 
 /**
- * C ref: mondata.c can_blnd — toss_up AT_WEAP cream pie / blinding venom
- * vs you. Named omit: Blindfolded/ublindf/visor; other aatyp.
- */
-function can_blnd_toss_self(obj) {
-    if (!haseyes(game.youmonst?.data)) return false;
-    const otyp = obj?.otyp | 0;
-    if (otyp !== CREAM_PIE && otyp !== BLINDING_VENOM) return false;
-    if (game.u?.uswallow) return false;
-    return true;
-}
-
-/**
  * C zap.c hit when mtmp == youmonst — always verbose, mon_nam → "you"
  * (x_monnam youmonst still named in do_name.js).
  */
@@ -1652,8 +1640,10 @@ export async function toss_up(obj, hitsroof) {
         // JS potionhit: null = you (youmonst identity still named)
         await potionhit(null, obj, POTHIT_HERO_THROW);
     } else if (breaktest(obj)) {
+        // C dothrow.c:1297 — AT_WEAP ok here even if attack was AT_SPIT;
+        // live can_blnd covers raven-self + EBlinded/ublindf/ucreamed/visor.
         const blindinc = ((otyp === CREAM_PIE || otyp === BLINDING_VENOM)
-            && can_blnd_toss_self(obj))
+            && can_blnd(game.youmonst, game.youmonst, AT_WEAP, obj))
             ? rnd(25)
             : 0;
         await breakmsg(obj, !Blind());

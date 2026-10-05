@@ -1473,7 +1473,7 @@ async function carry_count(obj, container, count, telekinesis, wts) {
     }
 
     if (!container) where = 'here'; /* slightly shorter form */ // C `:1685–1686`
-    if (game.invent || umoney) { // C `:1687`
+    if ((game.invent?.length || umoney)) { // C `:1687` gi.invent NULL ⇔ empty (D-3441; [] is truthy)
         prefx1 = 'you cannot '; // C `:1688`
         prefx2 = ''; // C `:1689`
         suffx = ' any more'; // C `:1690`

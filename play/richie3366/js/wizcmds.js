@@ -1003,8 +1003,9 @@ async function you_sanity_check() {
  * after light_sources, before trap). Caller allmain.c moveloop_core
  * when iflags.sanity_check || debug_fuzzer (opt_in Off).
  * check_wornmask_slots runs inside you_sanity_check.
- * Named omit: obj/timer/mon/trap/engraving/levl sanity;
- * dobjsfree / clear_bypasses / resume_wish.
+ * Whole: obj/timer/mon/trap/engraving/levl sanity callees are
+ * by-design (wizard debug-build path); dobjsfree / clear_bypasses /
+ * resume_wish are the moveloop_core envelope, live in allmain.js.
  */
 export async function sanity_check() {
     if (!game.iflags) game.iflags = {};

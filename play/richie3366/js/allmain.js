@@ -5,13 +5,13 @@ import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './mklev.js';
 import { dobjsfree, clear_splitobjs } from './mkobj.js';
-import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input, enter_explore_mode, nh_callback_run, NHCB_NAME } from './cmd.js';
+import { rhack, continue_run, run_active, lookaround, dolookaround, end_of_input, enter_explore_mode, nh_callback_run, NHCB_NAME, domove } from './cmd.js';
 import {
     docrt, cls, bot, timebot, curs_on_u, flush_screen, pline, Norep,
     flush_topl_more, see_monsters, You, install_tty_wincap2,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
     clear_glyph_buffer, glyph_to_cmap, urgent_pline,
-    under_water, under_ground,
+    under_water, under_ground, cliparound,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
@@ -46,7 +46,7 @@ import { nhgetch } from './input.js';
 import {
     unmul, nomul, monster_nearby, stop_occupation, overexert_hp, is_pool,
     notice_mon_off, notice_mon_on, notice_all_mons, runmode_delay_output,
-    check_special_room,
+    check_special_room, end_running,
 } from './hack.js';
 import { reset_justpicked, pickup, pooleffects } from './pickup.js';
 import { fix_shop_damage } from './shk.js';
@@ -91,6 +91,7 @@ import {
     WC2_HILITE_STATUS, WC2_FLUSH_STATUS,
     COLNO, S_upstair, S_brdnladder,
     RLOC_NOMSG, fuzzer_impossible_panic,
+    RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
 } from './const.js';
 
 // C ref: allmain.c static mvl_change — delayed polyself(1) / you_were(2).
@@ -1510,12 +1511,45 @@ export async function moveloop_core() {
         // multi-turn inactivity continues without nhgetch
     } else if (run_active()) {
         await continue_run();
-    } else if (search_repeat_active()) {
-        await continue_search();
+    } else if ((g.multi || 0) > 0) {
+        // C allmain.c:514–531 — multi > 0 without run: a counted command
+        // returned ECMD_TIME with no f_text occupation (s/. set occupations
+        // via cmd.c:3728; only those two carry f_text). lookaround() may
+        // clear multi (stop instead of repeating). Counted walks (mv=1,
+        // set by the DOMOVE_WALK arm, cmd.c:3786) replay domove() directly:
+        // short counts tick down with end_running at 0, run-sized counts
+        // (>= COLNO) ride until something clears multi; replay steps skip
+        // the rhack re-dispatch, the smudge (attempting cleared by the
+        // first domove, hack.c:2706) and the per-step see_monsters refresh
+        // (the !mv gate above). Other commands --multi and re-run the
+        // stored key; the :529 nhassert(command_count != 0) is a release
+        // no-op, cmd_key persists from parse (sole writer js/cmd.js
+        // parse), and a 0 key falls back to the parse path. The old
+        // search_repeat_active() branch was dead (game._repeat_search has
+        // no `= true` in js/**; Ns runs as a dosearch occupation) and C
+        // has no such arm.
+        await lookaround();
+        await runmode_delay_output();
+        if (!((g.multi || 0) > 0)) {
+            // C :517–521 — lookaround cleared multi: no move this tick.
+            g.context.move = 0;
+            return;
+        }
+        if (g.context.mv) {
+            // C :524–528 — mv replay. multi is >= 1 here (re-checked
+            // above); end_running(TRUE) clears mv/travel (multi already 0,
+            // so its cancel-multi is a no-op). u.dx/u.dy persist from the
+            // first step, as in C.
+            if ((g.multi | 0) < COLNO && !--g.multi) end_running(true);
+            await domove(g.u?.dx | 0, g.u?.dy | 0);
+        } else {
+            g.multi--;
+            await rhack(g.cmd_key | 0);
+        }
     } else {
         // C allmain.c:532–536 — multi == 0, #ifdef MAIL: ckmailstatus()
         // then rhack(0). The multi > 0 arm calls rhack(cmd_key) with no
-        // mail check; run/search stay on the branches above.
+        // mail check; run stays on the branch above.
         if ((g.multi || 0) === 0) await ckmailstatus();
         await rhack(0);
     }
@@ -1527,6 +1561,31 @@ export async function moveloop_core() {
     if (g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;
+    }
+    // C allmain.c:543–547 — CLIPPING (config.h:538, compiled in):
+    // cliparound(u.ux, u.uy) after rhack() + vision_recalc so the map
+    // redraws once with correct vision data, not twice. No-op at the
+    // contest fixed size (clipping never set — no resize path).
+    await cliparound(g.u.ux | 0, g.u.uy | 0);
+    // C allmain.c:548–556 — periodic MAP redisplay after cliparound:
+    // (!run || runmode == RUN_TPORT) && multi && every 7th (multi, or
+    // moves when travelling). The time&&run botl sub-arm refreshes the
+    // status clock during runs (the per-turn time_botl at :1253 is
+    // !run-gated, so a quiet run otherwise never refreshes the clock). The
+    // display_nhwindow(WIN_MAP, FALSE) repaint itself is subsumed by the
+    // every-tick flush_screen(1) (:1481), which paints identical map
+    // content each turn — no second repaint call. runmode defaults to
+    // RUN_LEAP when unset (initoptions_init `:7176`; runmodeNow).
+    {
+        const _rm = g.flags?.runmode;
+        const runmode = (_rm === RUN_TPORT || _rm === RUN_LEAP
+            || _rm === RUN_STEP || _rm === RUN_CRAWL) ? _rm : RUN_LEAP;
+        const multi = g.multi | 0;
+        if ((!g.context.run || runmode === RUN_TPORT)
+            && multi && (!g.context.travel ? !(multi % 7)
+                : !((g.moves | 0) % 7))) {
+            if (g.flags?.time && g.context.run) g.flags.botl = true;
+        }
     }
     // Message cleared at start of next rhack so pline() survives until the
     // following nhgetch capture (C keeps topline until next command).

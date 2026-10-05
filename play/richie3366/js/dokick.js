@@ -1675,10 +1675,18 @@ export async function dokick() {
        will be 1 unless player declines to kick peaceful monster */
     let oldglyph = -1;
     let oldmem = null;
+    let olddisp = null;
     if (mtmp) {
         oldglyph = glyph_at(x, y);
         const preloc = game.level?.at(x, y);
         oldmem = preloc?.remembered_glyph ? { ...preloc.remembered_glyph } : null;
+        // C :1417–1418 restores unconditionally (review 1682 §1): with no
+        // hero-memory record the pre-kick tty paint is the restore record
+        // (glyphmap id→char table deferred — display.js show_glyph_cell).
+        olddisp = preloc ? {
+            ch: preloc.disp_ch, color: preloc.disp_color,
+            decgfx: !!preloc.disp_decgfx, attr: preloc.disp_attr | 0,
+        } : null;
         if (!(await maybe_kick_monster(mtmp, x, y))) {
             // C: return context.move ? ECMD_TIME : ECMD_OK
             return !!(game.context?.move ?? true);
@@ -1721,12 +1729,21 @@ export async function dokick() {
             /* C `:1411–1413` — mapped an invisible monster and killed it:
              * redisplay the pre-kick glyph, not the invisible marker.
              * JS hero-memory record is C lev->glyph's counterpart and
-             * carries its painted cell; restoring it restores both. */
-            if (glyph !== oldglyph && glyph_is_invisible_id(glyph) && oldmem) {
-                loc.remembered_glyph = oldmem;
-                await show_glyph_cell(
-                    x, y, oldmem.ch, oldmem.color, !!oldmem.decgfx, 0, oldglyph,
-                );
+             * carries its painted cell; restoring it restores both. C has
+             * no memory gate, so the !oldmem square still repaints the
+             * pre-kick tty paint (never-painted cell: blank over the id). */
+            if (glyph !== oldglyph && glyph_is_invisible_id(glyph)) {
+                if (oldmem) {
+                    loc.remembered_glyph = oldmem;
+                    await show_glyph_cell(
+                        x, y, oldmem.ch, oldmem.color, !!oldmem.decgfx, 0, oldglyph,
+                    );
+                } else {
+                    await show_glyph_cell(
+                        x, y, olddisp?.ch ?? ' ', olddisp?.color,
+                        !!olddisp?.decgfx, olddisp?.attr | 0, oldglyph,
+                    );
+                }
             }
         } else if (!canspotmon(mtmp)
                    /* check <x,y>: evade-by-jump to an unseen square
