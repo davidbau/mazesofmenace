@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, You, You_cant, There, pline_The, newsym, feel_newsym, canseemon, canspotmon, map_invisible, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
+import { pline, You, You_cant, There, pline_The, newsym, feel_newsym, canseemon, canspotmon, map_invisible, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh, set_msg_xy } from './display.js';
 import { yn_function, y_n, ynq } from './getline.js';
 import { vision_recalc, recalc_block_point, unblock_point, cansee } from './vision.js';
 import { stop_occupation, in_rooms, closed_door, confdir, is_lava, is_pool, You_hear } from './hack.js';
@@ -14,7 +14,7 @@ import {
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
-    AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
+    AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP, AUTOUNLOCK_KICK, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
     M_AP_FURNITURE, M_AP_OBJECT, Something, Never_mind, FINGER, S_hcdoor, S_vcdoor,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
     xytodir, getdirInp, u_at, isok,
@@ -23,7 +23,8 @@ import {
     NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q,
     NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
 } from './const.js';
-import { cmdq_pop, cmdq_clear } from './cmd.js';
+import { cmdq_pop, cmdq_clear, cmdq_add_ec, cmdq_add_dir } from './cmd.js';
+import { dokick } from './dokick.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, A_WIS, exercise } from './attrib.js';
 import { verysmall, nohands, passes_walls, G_UNIQ, breathless, haseyes } from './monsters.js';
@@ -860,9 +861,6 @@ export async function doopen() {
  * C ref: lock.c doopen_indir — open a CLOSED door at (x,y).
  * Autoopen callers pass door coordinates (x > 0). Interactive `o`
  * uses get_adjacent_loc → getdir ("In what direction?").
- * Named omissions: pit-reach gate (lock.c:815–818 You_cant);
- * set_msg_xy on the This-door arm; AUTOUNLOCK_KICK canned dokick;
- * trapped-shop-door SHOP_DOOR_COST add_damage (lock.c:911).
  * Returns true when C would return ECMD_TIME (open attempt / lock setup).
  */
 export async function doopen_indir(x, y) {
@@ -897,7 +895,11 @@ export async function doopen_indir(x, y) {
     if (u_at(cc.x, cc.y) && ((u.dz | 0) > 0 || !closed_door(u.ux, u.uy))) {
         return (await doloot()) === ECMD_TIME;
     }
-    // C: u.utrap TT_PIT reach — deferred
+    // C lock.c doopen_indir `:815–818` — pinned in a pit, can't reach out.
+    if (u.utrap && (u.utraptype | 0) === TT_PIT) {
+        await You_cant('reach over the edge of the pit.');
+        return false;
+    }
     // C lock.c doopen_indir `:820` — door-mimic stumble before the
     // Confusion/Stunned turn cost below.
     if (await stumble_on_door_mimic(cc.x, cc.y)) return true;
@@ -950,6 +952,7 @@ export async function doopen_indir(x, y) {
             mesg = ' is locked';
             locked = true;
         }
+        set_msg_xy(x, y); // C `:872`
         await pline(`This door${mesg}.`);
         // C ref: lock.c doopen_indir — locked && flags.autounlock → pick_lock
         if (locked) {
@@ -966,15 +969,25 @@ export async function doopen_indir(x, y) {
                         return pl !== 0;
                     }
                 }
-                // AUTOUNLOCK_KICK canned dokick deferred
+                // C `:878–884` — canned kick runs later; no time elapses now
+                // (res is reset to ECMD_OK, clobbering Confusion/learned).
+                if ((au & AUTOUNLOCK_KICK) !== 0
+                    && !u.usteed /* kicking differs when mounted */
+                    && (await ynq('Kick it?')) === 'y') {
+                    cmdq_add_ec(CQ_CANNED, dokick);
+                    cmdq_add_dir(CQ_CANNED,
+                        x > u.ux ? 1 : x < u.ux ? -1 : 0,
+                        y > u.uy ? 1 : y < u.uy ? -1 : 0, 0);
+                    return false;
+                }
             }
         }
-        return false;
+        return res;
     }
 
     if (verysmall(game.youmonst?.data)) {
         await pline("You're too small to pull the door open.");
-        return false;
+        return res;
     }
 
     // C: rnl(20) < (ACURRSTR + ACURR(A_DEX) + ACURR(A_CON)) / 3
@@ -982,12 +995,17 @@ export async function doopen_indir(x, y) {
         (acurrstr() + acurr(A_DEX) + acurr(A_CON)) / 3,
     );
     if (rnl(20) < chance) {
+        set_msg_xy(x, y); // C `:900`
         await pline('The door opens.');
         if (mask & D_TRAPPED) {
-            // C lock.c:908-911 — b_trapped BEFORE D_NODOOR (shop
-            // SHOP_DOOR_COST add_damage named omission, map-kept).
+            // C lock.c:908-911 — b_trapped BEFORE D_NODOOR; a trapped
+            // shop door bills the breakage.
             await b_trapped('door', FINGER);
             loc.doormask = D_NODOOR;
+            if (in_rooms(x, y, SHOPBASE)) {
+                const { add_damage } = await import('./shk.js');
+                add_damage(x, y, SHOP_DOOR_COST);
+            }
         } else {
             loc.doormask = D_ISOPEN;
         }
@@ -998,6 +1016,7 @@ export async function doopen_indir(x, y) {
         vision_recalc(1);
     } else {
         exercise(A_STR, true);
+        set_msg_xy(x, y); // C `:918`
         await pline('The door resists!');
     }
     return true;
@@ -1088,9 +1107,8 @@ async function obstructed_close(x, y) {
 /**
  * C ref: lock.c doclose — #close / `c` command.
  * Envelope: nohands/pit gates, getdir (cmdassist; tail confdir inside it),
- * impaired-direction TIME, door mask arms, close roll.
- * Named omissions: portcullis/drawbridge; steed close path;
- * feel_newsym mapseen gating.
+ * impaired-direction TIME, portcullis/drawbridge/nodoor, door mask arms,
+ * steed-or-roll close.
  * @returns {Promise<boolean>} true when C would return ECMD_TIME
  */
 export async function doclose() {
@@ -1144,9 +1162,16 @@ export async function doclose() {
         feel_location(x, y);
         if ((game.lastseentyp?.[x]?.[y] | 0) !== (oldlastseentyp | 0)) res = true;
     }
-    if (!loc || !IS_DOOR(loc.typ)) {
-        // C: portcullis/drawbridge arms deferred
-        await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+    const portcullis = is_drawbridge_wall(x, y) >= 0; // C `:999`
+    if (portcullis || !loc || !IS_DOOR(loc.typ)) {
+        // C `:1002–1010` — closed portcullis / bridge span / nodoor.
+        if (is_db_wall(x, y) || (loc?.typ | 0) === DRAWBRIDGE_UP) {
+            await pline_The('drawbridge is already closed.');
+        } else if (portcullis || (loc?.typ | 0) === DRAWBRIDGE_DOWN) {
+            await There('is no obvious way to close the drawbridge.');
+        } else {
+            await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+        }
         return res;
     }
 

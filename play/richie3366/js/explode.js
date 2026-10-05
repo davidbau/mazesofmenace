@@ -27,9 +27,8 @@
 // You_hear("a blast.") / generic "explosion" / Boom!;
 // engulfing_u → engulfer_explosion_msg; seemimic before caught-in.
 // Named omissions: You_hear Underwater/Unaware prefixes (no live
-// Unaware export); golemeffects (monster, explode.c:525) stays
-// unported; hero ugolemeffects is wired at the uhurt site;
-// Upolyd rehumanize fatal path; wake_nearto beyond msleeping;
+// Unaware export); hero ugolemeffects is wired at the uhurt site;
+// wake_nearto beyond msleeping;
 // Role_switch damu only for known role pm;
 // explode_show_visible already owns explosion_to_glyph;
 // scatter shop bill live via shk.js credit_report (D-2282);
@@ -54,7 +53,8 @@ import { uhim, uhis } from './roles.js';
 import { sticks } from './engrave.js';
 import { Soundeffect, se_blast } from './sndprocs.js';
 // imports.mjs --can explode.js mhitm.js mondead: SAFE (hoisted fn)
-import { mondead } from './mhitm.js';
+import { mondead, golemeffects_mm } from './mhitm.js';
+import { rehumanize } from './polyself.js';
 import { digests, ugolemeffects } from './mhitu.js';
 import {
     maybe_half_phys, nomul, stop_occupation, You_hear, in_rooms,
@@ -625,7 +625,10 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
                 }
 
                 if ((explmask[i][j] & EXPL_MON) !== 0) {
-                    // golemeffects deferred — shield: item destruction only
+                    // C :517–525 — shielded: golem heal/slow on dam
+                    // (burning-items damage ignored for golemeffects),
+                    // then item-destruction damage only.
+                    await golemeffects_mm(mtmp, adtyp, dam);
                     mtmp.mhp = (mtmp.mhp | 0) - itemdmg;
                 } else {
                     let mdam = dam;
@@ -738,7 +741,10 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
         else monstunseesu(cvt_adtyp_to_mseenres(adtyp));
 
         if (u && ((u.uhp | 0) <= 0 || (u.Upolyd && (u.mh | 0) <= 0))) {
-            // Upolyd rehumanize deferred — fatal path as non-poly
+            // C :641–644 — a poly'd hero reverts instead of dying here.
+            if (u.Upolyd) {
+                await rehumanize();
+            } else {
             if (!game.killer) game.killer = { name: '', format: 0 };
             if (olet === MON_EXPLODE) {
                 // C :646–650 — unseen blast keeps killer.name
@@ -772,6 +778,7 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
             }
             const { done } = await import('./end.js');
             await done(adtyp === AD_FIRE ? BURNING : DIED);
+            }
         }
         exercise(A_STR, false);
     }

@@ -1382,7 +1382,7 @@ async function do_break_wand(obj) {
                     );
                 }
             }
-            fill_pit(x, y);
+            await fill_pit(x, y);
             await maybe_dunk_boulders(x, y);
             recalc_block_point(x, y);
             continue;
@@ -1882,7 +1882,7 @@ async function magic_whistled(obj) {
         if (!mtmp.mtame || mtmp === game.u?.usteed) continue;
         if (mtmp.mtrapped) {
             mtmp.mtrapped = 0;
-            fill_pit(mtmp.mx | 0, mtmp.my | 0);
+            await fill_pit(mtmp.mx | 0, mtmp.my | 0);
         }
         const oseen = canspotmon(mtmp);
         if (oseen) mnam = y_monnam(mtmp);

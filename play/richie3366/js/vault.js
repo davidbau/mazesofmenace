@@ -21,7 +21,7 @@ import { makemon, set_malign, newegd } from './makemon.js';
 import { mon_track_clear } from './monmove.js';
 import {
     pline, You, You_see, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
-    map_location, unset_seenv, mon_visible, impossible, pline_mon,
+    map_location, unset_seenv, mon_visible, impossible, pline_mon, pline_The,
 } from './display.js';
 import { getlin } from './getline.js';
 import {
@@ -36,7 +36,7 @@ import {
 import { COIN_CLASS } from './objects.js';
 import { del_engr_at, make_grave, sticks } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
-import { rloc, enexto } from './teleport.js';
+import { rloc, enexto, tele } from './teleport.js';
 import { yelp } from './sounds.js';
 import { on_level } from './dungeon.js';
 import {
@@ -52,13 +52,14 @@ import {
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
     GD_EATGOLD, GD_DESTROYGOLD, ARTICLE_A, FCSIZ,
     RLOC_NOMSG, RLOC_MSG, RLOC_ERR, FEMALE, MALE, IN_SIGHT, COULD_SEE,
-    NEED_HTH_WEAPON, MELT_ICE_AWAY,
+    NEED_HTH_WEAPON, MELT_ICE_AWAY, IS_OBSTRUCTED, Upolyd,
 } from './const.js';
 import { MON_WEP, mon_wield_item } from './weapon.js';
 import { m_at, m_carrying, mnexto, mpickgold, setmangry, mongone } from './mon.js';
 import { upstart, dist2, mungspaces, strncmpi } from './hacklib.js';
 import { SetVoice } from './sndprocs.js';
-import { is_fainted, reset_faint } from './eat.js';
+import { is_fainted, reset_faint, carried } from './eat.js';
+import { Punished } from './pray.js';
 
 import { remove_monster, place_monster } from './steed.js';
 import { obfree, money_cnt } from './shk.js';
@@ -172,9 +173,12 @@ export async function clear_fcorr(grd, forceshow) {
         if ((dead || !in_fcorridor(grd, u.ux, u.uy)) && egrd.gddone) {
             force = true;
         }
-        // Punished/uball arm deferred
+        // C `:74–79` — the hero on the cell, a seen cell, or the
+        // Punished chain's floor ball sitting on it all block removal.
         if ((u_at(fcx, fcy) && !dead)
-            || (!force && couldsee(fcx, fcy))) {
+            || (!force && couldsee(fcx, fcy))
+            || (Punished() && u.uball && !carried(u.uball)
+                && (u.uball.ox | 0) === fcx && (u.uball.oy | 0) === fcy)) {
             return false;
         }
 
@@ -215,8 +219,17 @@ export async function clear_fcorr(grd, forceshow) {
         }
         egrd.fcbeg = fcbeg + 1;
     }
-    // pline_The("corridor disappears.") / encased deferred
-    void sawcorridor;
+    // C `:53–54` — stopprint (paygd→mongone→grddead at game end) silences both.
+    const silently = !!game.program_state?.stopprint;
+    if (sawcorridor && !silently) await pline_The('corridor disappears.');
+    // C `:108–112` — encased only while the hero is still alive.
+    {
+        const here = game.level?.at?.(u.ux | 0, u.uy | 0);
+        const hp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
+        if (IS_OBSTRUCTED(here?.typ | 0) && hp > 0 && !silently) {
+            await You('are encased in rock.');
+        }
+    }
     return true;
 }
 
@@ -237,15 +250,22 @@ async function restfakecorr(grd) {
  */
 export function parkguard(grd) {
     if (!grd) return;
-    const ox = grd.mx | 0;
-    const oy = grd.my | 0;
-    grd.mx = 0;
-    grd.my = 0;
-    if (ox) newsym(ox, oy);
+    // C `:159–160` — a parked guard is no longer the polearm victim.
+    if (game.context?.polearm && grd === game.context.polearm.hitmon) {
+        game.context.polearm.hitmon = null;
+    }
+    // C `:161–164` — lift off the grid with a repaint (mx gate, not my).
+    if (grd.mx | 0) {
+        remove_monster(grd.mx, grd.my);
+        newsym(grd.mx, grd.my);
+    }
+    // C `:165–166` — off-map hold at <0,0>.
+    if (m_at(0, 0) !== grd) place_monster(grd, 0, 0);
+    // C `:170–171` — EGD og follows mx,my (0,0 via place_monster).
     const egrd = EGD(grd);
     if (egrd) {
-        egrd.ogx = 0;
-        egrd.ogy = 0;
+        egrd.ogx = grd.mx | 0;
+        egrd.ogy = grd.my | 0;
     }
 }
 
@@ -282,7 +302,7 @@ export function move_gold(gold, vroom) {
  * VWALL typ by side + wall_info=0, del_engr_at, IN_SIGHT|COULD_SEE newsym
  * pulse with viz restore, block_point; tail whisper vs distant-chant +
  * gold-moved + walls-restored plines.
- * `xy_set_wall_state` stays deferred (mklev.js file-local; invault same).
+ * `xy_set_wall_state` after wall restore (C `:706`; live mklev.js export).
  * `m_at`/`obfree` are static imports (`imports.mjs --can` → SAFE, hoisted,
  * same SCC); `m_into_limbo` stays dynamic (clear_fcorr idiom).
  */
@@ -357,7 +377,7 @@ async function wallify_vault(grd) {
 
                 lev.typ = typ;
                 lev.wall_info = 0;
-                /* xy_set_wall_state deferred (mklev.js local clone) */
+                xy_set_wall_state(x, y); // C `:706` — WA_MASK bits
                 del_engr_at(x, y);
                 /*
                  * hack: player knows walls are restored because of the
@@ -542,7 +562,7 @@ export function vault_gd_watching(activity) {
  * Approachability failure uses C `goto incr_radius` (abandon current dd
  * ring), not a per-cell continue.
  */
-function find_guard_dest(guard, dest) {
+async function find_guard_dest(guard, dest) {
     for (let dd = 2; dd < ROWNO || dd < COLNO; dd++) {
         let skip_ring = false;
         ring: for (let y = (game.u.uy | 0) - dd; y <= (game.u.uy | 0) + dd; y++) {
@@ -578,6 +598,9 @@ function find_guard_dest(guard, dest) {
         }
         void skip_ring;
     }
+    // C `:311–313` — no corridor anywhere: impossible + scatter.
+    await impossible('Not a single corridor on this level?');
+    await tele();
     return false;
 }
 
@@ -627,7 +650,7 @@ export async function invault() {
     if (guard) return;
 
     const dest = { x: 0, y: 0 };
-    if (!find_guard_dest(null, dest)) return;
+    if (!(await find_guard_dest(null, dest))) return;
     const gdx = dest.x | 0;
     const gdy = dest.y | 0;
     vaultroom -= ROOMOFFSET;
@@ -1382,7 +1405,7 @@ export async function gd_move(grd) {
         } else if (!egrd.gddone) {
             /* We're stuck, so try to find a new destination. */
             const dest = { x: 0, y: 0 };
-            if (!find_guard_dest(grd, dest)
+            if (!(await find_guard_dest(grd, dest))
                 || (dest.x === ggx && dest.y === ggy)) {
                 await pline(`${Monnam(grd)}, confused, disappears.`);
                 return await gd_move_cleanup(grd, semi_dead, true);

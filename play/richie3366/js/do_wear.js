@@ -66,7 +66,7 @@ import {
     rightleftchars, RIGHT_HANDED,
     GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
     GETOBJ_NOFLAGS, Upolyd,
-    A_CURRENT, A_CG_HELM_OFF,
+    A_CURRENT, A_CG_HELM_OFF, A_CG_HELM_ON, A_NEUTRAL, A_CHAOTIC, A_LAWFUL,
 } from './const.js';
 import { condtests } from './botl.js';
 import { x_monnam, trycall, hcolor, hliquid, obj_pmname } from './do_name.js';
@@ -1306,7 +1306,7 @@ export function adj_abon(otmp, delta) {
  */
 async function Helmet_on() {
     const u = game.u || {};
-    const h = u.uarmh;
+    let h = u.uarmh; // let: uchangealign below may clear u.uarmh (C `:508`)
     // C dereferences uarmh (non-null there); keep the old no-op when null.
     if (!h) {
         find_ac();
@@ -1350,9 +1350,20 @@ async function Helmet_on() {
         game.flags.botl = true;
         makeknown(h.otyp);
         break;
-    // C HELM_OF_OPPOSITE_ALIGNMENT `:465–472` (uchangealign + FALLTHROUGH
-    // into the glow/curse block) deferred — uchangealign is unported, so
-    // such wears take the known tail only; see c-js-map.
+    case HELM_OF_OPPOSITE_ALIGNMENT:
+        // C `:465–472` — known first (uarmh could get cleared); flip to
+        // the opposite alignment (neutral flips by o_id parity), then
+        // FALLTHROUGH into the glow/curse block with uarmh re-read.
+        h.known = 1;
+        await uchangealign(
+            (u.ualign?.type | 0) !== A_NEUTRAL
+                ? -(u.ualign?.type | 0)
+                : ((h.o_id | 0) % 2) ? A_CHAOTIC : A_LAWFUL,
+            A_CG_HELM_ON,
+        );
+        h = u.uarmh;
+        /* FALLTHROUGH */
+    /*FALLTHRU*/
     case DUNCE_CAP:
         if (h && !h.cursed) {
             if (Blind()) await pline(`${Tobjnam(h, 'vibrate')} for a moment.`);
@@ -2133,7 +2144,9 @@ export async function Blindf_off(otmp) {
 }
 
 /**
- * C ref: do_wear.c armor_or_accessory_off — armor path; accessories partial.
+ * C ref: do_wear.c armor_or_accessory_off `:1771–1829` — not-wearing /
+ * layering (skin/suit/shirt) gates, select_off gating for armor and
+ * accessories alike, then armoroff / ring / amulet / blindfold dispatch.
  * @returns {number} 0 = no time, 1 = took time
  */
 async function armor_or_accessory_off(obj) {
@@ -2143,11 +2156,17 @@ async function armor_or_accessory_off(obj) {
         await pline('You are not wearing that.');
         return 0;
     }
-    // Layering: suit under cloak, shirt under suit/cloak
+    // Layering: skin-embedded, suit under cloak, shirt under suit/cloak.
     if (
-        (obj === u.uarm && u.uarmc)
+        obj === u.uskin
+        || (obj === u.uarm && u.uarmc)
         || (obj === u.uarmu && (u.uarmc || u.uarm))
     ) {
+        if (obj === u.uskin) {
+            // C `:1794` — dragon scales merged with the skin.
+            await pline("You can't take that off; it's embedded.");
+            return 0;
+        }
         const parts = [];
         if (u.uarmc) parts.push(cloak_simple_name(u.uarmc)); /* C do_wear.c:1785 */
         if (obj === u.uarmu && u.uarm) parts.push(suit_simple_name(u.uarm)); /* C do_wear.c:1787–1789 */
@@ -2157,16 +2176,17 @@ async function armor_or_accessory_off(obj) {
         return 0;
     }
 
-    if ((obj.owornmask || 0) & W_ARMOR) {
-        return armoroff(obj);
-    }
-
-    // C do_wear.c:1800–1805 — select_off calls cursed (`:2784`). Ring_,
-    // Amulet_off, and Blindf_off do not read takeoff.mask, so clear it.
+    // C `:1799–1805` — select_off gating runs for armor too
+    // (welded-weapon/cursed-cover/beartrap-infloor/glove checks);
+    // armoroff/Ring_/Amulet/Blindf_off do not read takeoff.mask.
     reset_remarm();
     await select_off(obj);
     if (!(takeoff_info().mask | 0)) return 0;
     reset_remarm();
+
+    if ((obj.owornmask || 0) & W_ARMOR) {
+        return armoroff(obj);
+    }
     if (obj === u.uleft || obj === u.uright) {
         // C do_wear.c:1809–1817 — off_msg before removal, then Ring_off
         // (setworn + adjust_attrib/accuracy/damage/prop side effects).

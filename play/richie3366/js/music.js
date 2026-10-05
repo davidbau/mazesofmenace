@@ -42,6 +42,7 @@ import {
 import { dist2, mungspaces } from './hacklib.js';
 import { Monnam, mon_nam, x_monnam, a_monnam, Amonnam } from './do_name.js';
 import { cansee, recalc_block_point, unblock_point } from './vision.js';
+import { finish_meating } from './dogmove.js';
 import { m_at, wakeup, seemimic, onscary, unique_corpstat } from './mon.js';
 import { monflee } from './monmove.js';
 import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch, set_levltyp } from './trap.js';
@@ -250,7 +251,7 @@ async function sleep_monst_music(mon, amt, how) {
         return 0;
     }
     if (mon.mcanmove) {
-        mon.meating = 0;
+        finish_meating(mon); // C `:1236` — incl. mimic-AP reset
         amt = (amt | 0) + (mon.mfrozen | 0);
         if (amt > 0) {
             mon.mcanmove = 0;

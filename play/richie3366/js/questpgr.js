@@ -294,6 +294,76 @@ results lately can hardly be called suitable for %ra!
 back only when you have purified yourself."`,
 };
 
+/** C ref: dat/quest.lua badlevel (Arc + Bar + Pri). */
+const QUEST_BADLEVEL = {
+    Arc: `"%p, you are yet too inexperienced to undertake such a demanding
+quest.  A mere %r could not possibly face the rigors demanded and
+survive.  Go forth, and come here again when your adventures have further
+taught you."`,
+    Bar: `"%p, I fear that you are as yet too inexperienced to face
+%n.  Only %Ra with the help of %d could ever hope to
+defeat %ni."`,
+    Pri: `"Alas, %p, it is not yet to be.  A mere %r could never
+withstand the might of %n.  Go forth, again into the world, and return
+when you have attained the post of %R."`,
+};
+
+/** C ref: dat/quest.lua encourage arrays (Arc + Bar + Pri). */
+const QUEST_ENCOURAGE = {
+    Arc: [
+        `"Beware, for %n is powerful and cunning."`,
+        `"To locate the entrance to %i, you must pass many traps."`,
+        `"A %nt may be vulnerable to attacks by magical cold."`,
+        `"Call upon %d when you encounter %n."`,
+        `"You must destroy %n.  It will pursue you otherwise."`,
+        `"%oC is a mighty talisman.  With it you can destroy %n."`,
+        `"Go forth with the blessings of %d."`,
+        `"I will have my %gP watch for your return."`,
+        `"Remember not to stray from the true %a path."`,
+        `"You may be able to sense %o when you are near."`,
+    ],
+    Bar: [
+        `"%nC is strong in the dark arts, but not immune to cold steel."`,
+        `"Remember that %n is a great sorcerer.  He lived in the time of Atlantis."`,
+        `"If you fail, %p, I will not be able to protect these people long."`,
+        `"To enter %i, you must be very stealthy.  The horde will be on guard."`,
+        `"Call upon %d in your time of need."`,
+        `"May %d protect you, and guide your steps."`,
+        `"If you can lay hands upon %o, carry it for good fortune."`,
+        `"I cannot stand against %ns sorcery.  But %d will help you."`,
+        `"Do not fear %n.  I know you can defeat %ni."`,
+        `"You have a great road to travel, %p, but only after you defeat %n."`,
+    ],
+    Pri: [
+        `"You can prevail, if you rely on %d."`,
+        `"Remember that %n has great magic at his command."`,
+        `"Be pure, my %S."`,
+        `"Beware, %i is surrounded by a great graveyard."`,
+        `"You may be able to affect %n with magical cold."`,
+        `"Acquire and wear %o if you can.  It will aid you against %n."`,
+        `"Call upon %d when your need is greatest.  You will be answered."`,
+        `"The undead legions are weakest during the daylight hours."`,
+        `"Do not lose faith, %p.  If you do so, %n will grow stronger."`,
+        `"Wear %o.  It will assist you against the undead."`,
+    ],
+};
+
+/** C ref: dat/quest.lua leader_next (Arc + Bar + Pri). */
+const QUEST_LEADER_NEXT = {
+    Arc: `"Again, %p, you stand before me.
+Let me see if you have gained experience in the interim."`,
+    Bar: `"%p, you are back.  Are you ready now for the challenge?"`,
+    Pri: `"Again, my %S, you stand before me.  Are you ready now to help us?"`,
+};
+
+/** C ref: dat/quest.lua posthanks (Arc + Bar + Pri). */
+const QUEST_POSTHANKS = {
+    Arc: `"Welcome back, %p.  Have you progressed with your quest to
+regain the Amulet of Yendor for %d?"`,
+    Bar: `"Tell us, %p, have you fared well on your great quest?"`,
+    Pri: `"Welcome back, %p.  How is your quest for the Amulet going?"`,
+};
+
 /** C ref: dat/quest.lua locate_first (Bar + Arc + Pri + Wiz exercised). */
 const QUEST_LOCATE_FIRST = {
     Bar: `The scent of water comes to you in the desert breeze.  You know that
@@ -513,6 +583,26 @@ const QUEST_MSG_META = {
             synopsis: '["%pC, you have strayed from the %a path.  Purify yourself!"]',
         },
     },
+    badlevel: {
+        Arc: {
+            output: 'text',
+            synopsis: '[%pC, a mere %r is too inexperienced.]',
+        },
+        Bar: {
+            output: 'text',
+            synopsis: '["You are too inexperienced.  Come back when you are %Ra."]',
+        },
+        Pri: {
+            output: 'text',
+            synopsis: '[%rA cannot withstand %n.  Come back when you are %Ra.]',
+        },
+    },
+    posthanks: {
+        Arc: {
+            output: 'text',
+            synopsis: '["Have you progressed with your quest to regain the Amulet of Yendor for %d?"]',
+        },
+    },
     locate_first: {
         Arc: {
             output: 'text',
@@ -604,8 +694,12 @@ const QUEST_LEGACY_SYNOPSIS =
 const QUEST_ROLE_TEXT = {
     firsttime: QUEST_FIRSTTIME,
     leader_first: QUEST_LEADER_FIRST,
+    leader_next: QUEST_LEADER_NEXT,
     assignquest: QUEST_ASSIGNQUEST,
     badalign: QUEST_BADALIGN,
+    badlevel: QUEST_BADLEVEL,
+    encourage: QUEST_ENCOURAGE,
+    posthanks: QUEST_POSTHANKS,
     locate_first: QUEST_LOCATE_FIRST,
     locate_next: QUEST_LOCATE_NEXT,
     nexttime: QUEST_NEXTTIME,
@@ -1098,7 +1192,8 @@ async function deliver_by_window(msg, how) {
  * calls impossible(), so misses stay silent-FALSE; allmain legacy and
  * pauper_legacy still use com_pager_legacy (not this window); TEST_PATTERN (lua self-test
  * only); other-role bodies except the five nemesis msgids (D-2853, all 13
- * filecodes) and the guardtalk pair (all 13 filecodes, extracted);
+ * filecodes), the guardtalk pair (all 13 filecodes, extracted), and the
+ * leader badlevel/encourage/leader_next/posthanks sets (Arc/Bar/Pri);
  * convert_arg catalogue is D-1649;
  * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
  * Lua helpers with no JS counterpart: nhl_init/nhl_loadlua/nhl_done

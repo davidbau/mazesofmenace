@@ -20,6 +20,7 @@ import { config_error_init, config_error_done, config_erradd } from './cfgfiles.
 import { dump_all_glyphids } from './glyphs.js';
 import { nh_terminate } from './end.js';
 import { getversionstring, runtime_info_init, release_runtime_info } from './version.js';
+import { dump_weights } from './hack.js';
 import { monsterNames, NUMMONS, NON_PM, LOW_PM, SPECIAL_PM } from './generated/monsters_data.js';
 import { objectNames, NUM_OBJECTS, LAST_GENERIC, FIRST_OBJECT, FIRST_REAL_GEM, LAST_REAL_GEM, MAXOCLASSES } from './generated/objects_data.js';
 import { NROFARTIFACTS, artilistRaw } from './generated/artifacts_data.js';
@@ -698,7 +699,7 @@ export function argcheck(argc, argv, eArg) {
         dump_mongen(); // C `:537`
         return 2;
     case ARG_DUMPWEIGHTS: // C `:538–540`
-        // Named omission: hack.c:4421 dump_weights.
+        dump_weights(); // C `:539` — live js/hack.js export
         return 2;
     case ARG_BIDSHOW: // C `:542–544` under CRASHREPORT
         crashreport_bidshow(); // C `:543` (report.c:189; js/report.js)

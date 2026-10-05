@@ -412,8 +412,9 @@ export async function finish_quest(obj) {
  * com_pager + pissed_off + expulsion + livelog, gated on !pissed_off
  * (`:338–348` — an already-pissed leader does nothing more); badalign
  * (`:349–353`); assignquest + got_quest + livelog (`:354–366`).
- * qt_pager/com_pager miss (posthanks/banished texts not yet extracted)
- * is a no-op deliver — the calls still burn the C nhl_init shuffle.
+ * qt_pager/com_pager miss (other-role bodies beyond Arc/Bar/Pri for
+ * posthanks/encourage/leader_next/badlevel, map-named) is a no-op
+ * deliver — the calls still burn the C nhl_init shuffle.
  * Callers: leader_speaks (`:390`) + quest_chat (`:476`).
  */
 async function chat_with_leader(mtmp) {

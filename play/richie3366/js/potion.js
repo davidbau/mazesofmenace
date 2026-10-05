@@ -95,7 +95,7 @@ import {
     canseemon, see_monsters, see_objects, see_traps, swallowed,
     unmap_object, glyph_is_invisible, newsym,
     Hallucination as hero_Hallucination,
-    map_invisible, impossible,
+    map_invisible, impossible, shieldeff,
 } from './display.js';
 import {
     POTION_CLASS, SPBOOK_CLASS, COIN_CLASS, ARMOR_CLASS, WEAPON_CLASS,
@@ -157,7 +157,7 @@ import { hands_obj, P_SKILL } from './weapon.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
 import { losehp, finish_maybe_wail, nomul, maybe_half_phys, is_pool, waterbody_name, fall_asleep, in_rooms } from './hack.js';
 import { burn_away_slime } from './timeout.js';
-import { monstseesu, monstunseesu, Resists_Elem } from './mondata.js';
+import { monstseesu, monstunseesu, Resists_Elem, defended } from './mondata.js';
 import { cansee, set_mimic_blocking } from './vision.js';
 import {
     mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames, likes_fire,
@@ -195,7 +195,7 @@ import { polyself, body_part } from './polyself.js';
 import { permapoisoned } from './artifact.js';
 import { poly_obj, obj_unpolyable, Cold_resistance } from './zap.js';
 import { slept_monst } from './mhitm.js';
-import { obj_resists } from './dogmove.js';
+import { obj_resists, finish_meating } from './dogmove.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import { hard_helmet } from './do_wear.js';
@@ -3791,9 +3791,9 @@ function mon_perma_blind_pot(mon) {
 
 /**
  * C mhitm.c sleep_monst :1223–1246. how>=0 mimic reveal + resist.
- * defended(AD_SLEE) / shieldeff named.
  */
-function sleep_monst_pot(mon, amt, how) {
+const AD_SLEE = 4; /* sleep — monattk.h */
+async function sleep_monst_pot(mon, amt, how) {
     if (!mon) return 0;
     if ((how | 0) >= 0 && !mon.msleeping && !(mon.mfrozen | 0)
         && mon.data?.mlet === 'S_MIMIC'
@@ -3801,12 +3801,15 @@ function sleep_monst_pot(mon, amt, how) {
             || (mon.m_ap_type | 0) === M_AP_OBJECT)) {
         seemimic(mon);
     }
+    // C `:1232–1234` — resisted → shield only, no sleep.
     if (resists_elem_pot(mon, MR_SLEEP)
+        || defended(mon, AD_SLEE)
         || ((how | 0) >= 0 && resist_potion(mon))) {
+        await shieldeff(mon.mx | 0, mon.my | 0);
         return 0;
     }
     if (mon.mcanmove) {
-        mon.meating = 0;
+        finish_meating(mon); // C `:1236` — incl. mimic-AP reset
         amt = (amt | 0) + (mon.mfrozen | 0);
         if (amt > 0) {
             mon.mcanmove = 0;
@@ -4067,7 +4070,7 @@ export async function potionhit(mon, obj, how) {
         }
         case POT_SLEEPING:
             // slept_monst is the canonical mhitm.js import (D-3368).
-            if (sleep_monst_pot(mon, rnd(12), POTION_CLASS)) {
+            if (await sleep_monst_pot(mon, rnd(12), POTION_CLASS)) {
                 await pline(`${Monnam(mon)} falls asleep.`);
                 await slept_monst(mon);
             }

@@ -274,7 +274,7 @@ import {
 } from './dbridge.js';
 import { ok_to_quest } from './quest.js';
 import { more_experienced, losexp, newexplevel } from './exper.js';
-import { obj_resists, is_quest_artifact } from './dogmove.js';
+import { obj_resists, is_quest_artifact, finish_meating } from './dogmove.js';
 import { zap_dig, fracture_rock, fill_pit, break_statue, bury_objs, unearth_objs, draft_message } from './dig.js';
 import {
     killed, xkilled, flash_hits_mon, m_is_steadfast, that_is_a_mimic,
@@ -1491,7 +1491,7 @@ function bounce_dir(sx, sy, ddx, ddy, bounceback) {
 function sleep_monst_zap(mon, amt) {
     if (!mon) return 0;
     if (mon.mcanmove) {
-        mon.meating = 0;
+        finish_meating(mon); // C `:1236` — incl. mimic-AP reset
         amt = (amt | 0) + (mon.mfrozen | 0);
         if (amt > 0) {
             mon.mcanmove = 0;
@@ -1961,15 +1961,23 @@ export async function zhitm(mon, type, nd, ootmp) {
     case ZT_SLEEP: {
         tmp = 0;
         // C: zhitm ZT_SLEEP → sleep_monst(mon, d(nd,25),
-        // type==ZT_WAND(ZT_SLEEP) ? WAND_CLASS : '\0') (mhitm.c). The d()
-        // arg is drawn before the gate; C how is WAND_CLASS or '\0' (both
-        // >= 0, so the resist always runs once reached). Resisted → shield
-        // only, no sleep (shield display deferred). resists_sleep bit check
-        // is live; its worn/artifact scan and defended() stay named-deferred.
+        // type==ZT_WAND(ZT_SLEEP) ? WAND_CLASS : '\0') (mhitm.c `:1223–1246`).
         const amt = d(nd, 25);
         const how = (type | 0) === ZT_SLEEP ? WAND_CLASS : 0;
-        if (!resists_sleep_slee(mon) && !(await resist(mon, how, 0, NOTELL)))
+        // C `:1226–1230` — how>=0 reveals mimics unless already asleep.
+        if (how >= 0 && !mon.msleeping && !(mon.mfrozen | 0)
+            && mon.data?.mlet === 'S_MIMIC'
+            && (M_AP_TYPE(mon) === M_AP_FURNITURE
+                || M_AP_TYPE(mon) === M_AP_OBJECT)) {
+            seemimic(mon);
+        }
+        // C `:1232–1234` — resisted → shield only, no sleep.
+        if (resists_sleep_slee(mon) || defended(mon, AD_SLEE)
+            || (await resist(mon, how, 0, NOTELL))) {
+            await shieldeff(mon.mx | 0, mon.my | 0);
+        } else {
             sleep_monst_zap(mon, amt);
+        }
         break;
     }
     case ZT_DEATH: {
@@ -6176,7 +6184,7 @@ export async function bhitpile(wand, fhito, tx, ty, zz) {
     }
     /* C :2495–2497 — pile might have been destroyed or dispersed. */
     if (hidingunder) await maybe_unhide_at(tx, ty);
-    fill_pit(tx, ty); // C `:2499`
+    await fill_pit(tx, ty); // C `:2499`
     return hitanything;
 }
 

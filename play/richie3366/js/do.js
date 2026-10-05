@@ -28,11 +28,11 @@ import {
     RLOC_NOMSG, TELEDS_NO_FLAGS, EYE, FACE, HAND, STOMACH, FROMOUTSIDE, HMON_THROWN, NO_TRAP,
     WARN_OF_MON, TELEPAT, INFRAVISION,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
-    LL_ACHIEVE, LL_DEBUG,
+    LL_ACHIEVE, LL_DEBUG, LL_CONDUCT,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
     CXN_SINGULAR,
     CONTAINED_TOO, BURIED_TOO, ER_DESTROYED, WT_SPLASH_THRESHOLD, COST_DEGRD,
-    TT_PIT, FIRE_RES, PIT,
+    TT_PIT, TT_BURIEDBALL, FIRE_RES, PIT,
     ROOM, SINK, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
     DB_FLOOR, DB_UNDER,
     IS_WATERWALL, IS_ALTAR, IS_SINK, is_pit, is_hole, u_at, Has_contents,
@@ -64,7 +64,7 @@ import {
 } from './objects.js';
 import {
     pline, Norep, You, Your, You_cant, pline_The, There, You_see, docrt,
-    flush_screen, flush_topl_more, newsym, glyph_to_cmap, map_background,
+    flush_screen, flush_topl_more, newsym, glyph_to_cmap, map_background, map_object,
     assign_graphics, check_gold_symbol,
     You_feel, canseemon, canspotmon, impossible, describe_level,
     see_monsters,
@@ -129,6 +129,7 @@ import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
     freeinv_core, getobj, ggetobj, useup, useupall, useupf,
+    update_inventory,
 } from './invent.js';
 import { can_reach_floor, set_occupation, engr_at, sticks, save_engravings, rest_engravings, unskip_engravings_for_save } from './engrave.js';
 import { rest_rooms } from './mkroom.js';
@@ -188,7 +189,7 @@ import { tricked_fileremoved } from './save.js';
 import { nh_terminate } from './end.js';
 import { strange_feeling } from './detect.js';
 import { surface } from './sit.js';
-import { use_pick_axe2, bury_objs, fill_pit } from './dig.js';
+import { use_pick_axe2, bury_objs, fill_pit, buried_ball_to_punishment } from './dig.js';
 import { set_move_cmd, u_rooted, nhl_callback, wizardOn } from './cmd.js';
 import { cmd_from_func, visctrl } from './dokeylist.js';
 import { newcham, mpickobj } from './makemon.js';
@@ -507,10 +508,9 @@ function Doname2(obj) {
 }
 // C pline.c There :425–433 — canonical export imported from display.js (D-3299; local clone removed).
 /**
- * C worn.c setnotworn — pointer-walk worn[]; does not call setworn.
+ * C worn.c setnotworn `:150–184` — pointer-walk worn[]; does not call setworn.
  * Clears oc_oprop extrinsic only for slots that currently point at obj.
  * Leaves owornmask bits when obj is not in the slot (tutorial restore flag).
- * Named omit: update_inventory.
  * Exported for shopdig snatch (D-1016); tutorial stash/restore (D-1015/D-1020).
  */
 export function setnotworn(obj) {
@@ -552,6 +552,7 @@ export function setnotworn(obj) {
         || (game.flags?.armorstatus && (unworn & W_ARMOR) !== 0)) {
         if (game.disp) game.disp.botl = true;
     }
+    update_inventory(); // C `:182`
     recalc_telepat_range();
 }
 /** C hack.h distu — squared distance from hero. */
@@ -723,15 +724,24 @@ export async function obj_no_longer_held(obj) {
 }
 
 /**
- * C ref: do.c doaltarobj — drop/land feedback + bknown on altar.
- * Named omit: livelog_printf conduct.
+ * C ref: do.c doaltarobj `:363–390` — drop/land feedback + bknown on altar.
+ * C `:370–373`: `!gnostic++` — the post-increment always runs; the conduct
+ * livelog fires only when the old value was 0.
  */
 export async function doaltarobj(obj) {
     if (!obj || Blind()) return;
     if ((obj.oclass | 0) !== COIN_CLASS) {
         if (!game.context?.mon_moving) {
             const uc = game.u?.uconduct;
-            if (uc && !(uc.gnostic | 0)) uc.gnostic = (uc.gnostic | 0) + 1;
+            if (uc) {
+                const wasGnostic = uc.gnostic | 0; // C `:370` old value
+                uc.gnostic = wasGnostic + 1; // C `:370` ++ always runs
+                if (!wasGnostic) { // C `:370–373`
+                    livelog_printf(LL_CONDUCT,
+                        'eschewed atheism, by dropping %s on an altar',
+                        doname(obj));
+                }
+            }
         }
     } else {
         obj.blessed = obj.cursed = 0;
@@ -1131,8 +1141,9 @@ function tutorial_enter_gamestate() {
         inv.shift();
         // C freeinv sets where = OBJ_FREE before the object sits on
         // gmst_invent. addinv_nomerge on the way out panics otherwise.
-        // freeinv_core / update_inventory stay the existing omit: setnotworn
-        // already cleared the worn slot, and the array was shifted by hand.
+        // freeinv_core stays the existing omit (where is set by hand below).
+        // update_inventory rides inside setnotworn now (C `:182`); it
+        // no-ops outside the moveloop, so stash/restore are unaffected.
         otmp.where = OBJ_FREE;
         otmp.owornmask = wornmask;
         stash.unshift(otmp); // C prepends gmst_invent
@@ -1720,6 +1731,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     if (on_level(newlevel, u.uz)) return;
 
+    // C do.c:1593–1595 — tethered movement makes level change while trapped
+    // feasible: unbury the ball into a punishment before save/leave.
+    if ((u.utrap | 0) && (u.utraptype | 0) === TT_BURIEDBALL)
+        await buried_ball_to_punishment();
+
     // C do.c:1605 — maybe_reset_pick(NULL) before the departing level is
     // saved and freed, so carried() still sees gx.xlock.box.
     maybe_reset_pick(null);
@@ -1750,7 +1766,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C do.c:1618 goto_level — needed in level_tele
     reset_utrap(false);
     // C do.c:1619–1620 — fill the departure pit, clear u.ustuck/u.uswallow.
-    fill_pit(u.ux | 0, u.uy | 0);
+    await fill_pit(u.ux | 0, u.uy | 0);
     set_ustuck(null);
     // set_uinwater(0) (D-1267; C do.c:1621). Same-value is a no-op.
     await set_uinwater(0);
@@ -2632,7 +2648,7 @@ function freeinv_drop(obj) {
  * break_armor armor-drop More packs load before gloves).
  * Punished uball → drop_ball (C do.c:834, D-2329); else shop sell (D-0994).
  * Swallow: unpaid theft, then engulfer_digests_food or mpickobj (do.c:816–825).
- * Named omissions: Blind+Levitation map_object.
+ * Blind+Levitation map_object after stackobj (do.c:838–839).
  * hitfloor dropz(TRUE) is D-1263.
  */
 export async function dropz(obj, with_impact) {
@@ -2678,6 +2694,7 @@ export async function dropz(obj, with_impact) {
         await sellobj(obj, u.ux | 0, u.uy | 0);
     }
     stackobj(obj);
+    if (Blind() && Levitation()) map_object(obj, 0); // C `:838–839`
     newsym(u.ux, u.uy);
     // C dropz → encumber_msg() after place (capacity may cross on poly form)
     await encumber_msg();
@@ -3114,8 +3131,11 @@ function drop_obj_ok(obj) {
 }
 
 /**
- * C ref: do.c dodrop — getobj then drop; shop sellobj_state around drop.
- * #droptype is doddrop (D-1635). reset_occupations is that path.
+ * C ref: do.c dodrop `:29–43` — getobj then drop; shop sellobj_state
+ * around drop; `if (result) reset_occupations()` (`:39–40`; drop returns
+ * ECMD_TIME/ECMD_FAIL, both nonzero, so it always runs — including the
+ * cancel path, where C drop(NULL) is ECMD_FAIL).
+ * #droptype is doddrop (D-1635).
  *
  * Branch envelope: ordinary floor drop of invent item including uwep;
  * cancel / missing letter / worn armor reject. Deferred: sinks,
@@ -3132,15 +3152,22 @@ export async function dodrop() {
         const obj = await getobj('drop', drop_obj_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
         if (!obj) {
             sellobj_state(SELL_NORMAL);
+            await reset_occupations(); // C `:39–40` (drop(NULL) is ECMD_FAIL)
             return ECMD_CANCEL;
         }
         const result = await drop(obj);
         sellobj_state(SELL_NORMAL);
+        if (result) await reset_occupations(); // C `:39–40`
         return result;
     }
     const obj = await getobj('drop', drop_obj_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
-    if (!obj) return ECMD_CANCEL;
-    return drop(obj);
+    if (!obj) {
+        await reset_occupations(); // C `:39–40`
+        return ECMD_CANCEL;
+    }
+    const result = await drop(obj);
+    if (result) await reset_occupations(); // C `:39–40`
+    return result;
 }
 
 /**
@@ -3947,7 +3974,7 @@ export async function revive_corpse(corpse) {
                 await You_hear('scratching noises.');
             }
             const { fill_pit } = await import('./dig.js');
-            fill_pit(mx, my);
+            await fill_pit(mx, my);
             break;
         }
         // FALLTHROUGH — C do.c:2236–2240 !is_zomb → impossible

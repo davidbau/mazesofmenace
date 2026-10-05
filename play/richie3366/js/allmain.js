@@ -5,12 +5,13 @@ import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './mklev.js';
 import { dobjsfree, clear_splitobjs } from './mkobj.js';
-import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input, enter_explore_mode } from './cmd.js';
+import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input, enter_explore_mode, nh_callback_run, NHCB_NAME } from './cmd.js';
 import {
     docrt, cls, bot, timebot, curs_on_u, flush_screen, pline, Norep,
     flush_topl_more, see_monsters, You, install_tty_wincap2,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
-    clear_glyph_buffer, glyph_to_cmap,
+    clear_glyph_buffer, glyph_to_cmap, urgent_pline,
+    under_water, under_ground,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
@@ -28,6 +29,7 @@ import { makedog } from './dog.js';
 import { makemon, makemon_appear_msg, reset_align_shift_cache } from './makemon.js';
 import {
     mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, see_nearby_monsters,
+    m_at, mnexto,
 } from './mon.js';
 import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD, PM_MONK, reset_erinys, breathless, monst_globals_init } from './monsters.js';
 import { program_state_init, decl_globals_init } from './decl.js';
@@ -44,14 +46,17 @@ import { nhgetch } from './input.js';
 import {
     unmul, nomul, monster_nearby, stop_occupation, overexert_hp, is_pool,
     notice_mon_off, notice_mon_on, notice_all_mons, runmode_delay_output,
+    check_special_room,
 } from './hack.js';
-import { reset_justpicked } from './pickup.js';
+import { reset_justpicked, pickup, pooleffects } from './pickup.js';
+import { fix_shop_damage } from './shk.js';
 import { set_wear, glibr } from './do_wear.js';
 import { clear_bypasses } from './worn.js';
 import { gethungry, reset_eat } from './eat.js';
 import { age_spells } from './spell.js';
 import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, prepare_perminvent, reroll_menu } from './invent.js';
 import { sanity_check } from './wizcmds.js';
+import { done } from './end.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
 import { status_initialize, status_eval_next_unhilite } from './botl.js';
@@ -75,6 +80,7 @@ import { you_were } from './were.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE, NHCORE_START_NEW_GAME, NHCORE_RESTORE_OLD_GAME,
+    NHCORE_MOVELOOP_TURN, NHCB_END_TURN, ESCAPED,
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
     UTOTYPE_NONE, TIMEOUT, REGENERATION, CLAIRVOYANT,
     MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING, GLIB,
@@ -84,6 +90,7 @@ import {
     WIN_ERR, MENU_BEHAVE_STANDARD, MENU_BEHAVE_PERMINV,
     WC2_HILITE_STATUS, WC2_FLUSH_STATUS,
     COLNO, S_upstair, S_brdnladder,
+    RLOC_NOMSG, fuzzer_impossible_panic,
 } from './const.js';
 
 // C ref: allmain.c static mvl_change — delayed polyself(1) / you_were(2).
@@ -297,7 +304,7 @@ export async function moveloop_preamble(resuming) {
         // C: set_wear(NULL) — Helmet_on fedora luck, Blindf_on, etc.
         await set_wear(null);
         reset_justpicked(game.invent);
-        // C: (void) pickup(1) — autopickup at initial location deferred
+        await pickup(1); // C `:76` — autopickup at initial location
         game.context.seer_turn = rnd(30);
         game.u.umovement = NORMAL_SPEED;
         // C decl.c: hero_seq starts as 1<<3; moveloop resets on moves++
@@ -306,12 +313,21 @@ export async function moveloop_preamble(resuming) {
     } else {
         // C restore.c: hero_seq = moves << 3 (not saved)
         game.hero_seq = ((game.moves || 1) | 0) << 3;
-        // C allmain.c:87 — subset of pickup() on restore; fix_shop_damage
-        // stays deferred (shop.c, outside this cluster).
+        // C allmain.c:87–88 — subset of pickup() on restore, then shop repair.
         await read_engr_at(game.u?.ux, game.u?.uy);
+        await fix_shop_damage(); // C `:88`
     }
+    // C `:84` disp.botlx = TRUE (STATUS_HILITES); bot() reads flags.botlx.
+    if (!game.disp) game.disp = {};
+    game.disp.botlx = true;
+    game.flags.botlx = true;
     // C: encumber_msg() — sync go.oldcap (auto-pickup / starting load)
     await encumber_msg();
+    // C `:90–93` — deferred see_monsters catch-up.
+    if (game.defer_see_monsters) {
+        game.defer_see_monsters = false;
+        see_monsters();
+    }
     // C allmain.c:97 — u_init leaves uz0.dlevel at 0 (u_init.c:984).
     // Until this copy, on_level(uz, uz0) is false on the starting
     // level, so u_on_newpos takes the level-change arm every move.
@@ -320,6 +336,11 @@ export async function moveloop_preamble(resuming) {
         game.u.uz0.dlevel = game.u.uz?.dlevel | 0;
     }
     game.context.move = 0;
+    // C `:100–103` — finish "--debug:fuzzer" command-line processing.
+    if (game.iflags?.fuzzerpending) {
+        game.iflags.debug_fuzzer = fuzzer_impossible_panic;
+        game.iflags.fuzzerpending = false;
+    }
     // C: program_state.in_moveloop = 1 — gates adjattrib STR/CON encumber_msg
     if (!game.program_state) game.program_state = {};
     game.program_state.in_moveloop = 1;
@@ -794,6 +815,12 @@ export async function newgame() {
     // welcome. Default mon_notices Off (optlist spot_monsters).
     notice_mon_off();
 
+    // C `:772` disp.botlx = TRUE; bot() reads flags.botlx.
+    if (!g.disp) g.disp = {};
+    g.disp.botlx = true;
+    g.flags = g.flags || {};
+    g.flags.botlx = true;
+
     // C: moves starts 0 until u_init_role; reset align_shift statics
     g.moves = 0;
     reset_align_shift_cache();
@@ -880,6 +907,13 @@ export async function newgame() {
 
     // C ref: allmain.c newgame() — u_on_upstairs before makedog
     await u_on_upstairs();
+    // C `:806` — special-room arrival checks (rogue level, etc.).
+    await check_special_room(false);
+    // C `:808–809` — a monster on the hero's starting spot is moved off.
+    {
+        const heroSpot = m_at(g.u?.ux | 0, g.u?.uy | 0); // MON_AT
+        if (heroSpot) await mnexto(heroSpot, RLOC_NOMSG);
+    }
     // C ref: allmain.c → makedog() (skipped when preferred_pet === 'n')
     await makedog();
 
@@ -1201,6 +1235,15 @@ export async function moveloop_core() {
                 // C: settrack() before svm.moves++
                 settrack();
                 g.moves = (g.moves || 1) + 1;
+                // C allmain.c:253–257 — never let moves wrap: mystic
+                // decimal cap, then the dungeon capitulates. Unreachable
+                // in play (1e9 turns); display_nhwindow(WIN_MESSAGE,TRUE)
+                // is flush_topl_more per the amulet-wish house arm below.
+                if ((g.moves | 0) >= 1000000000) {
+                    await flush_topl_more();
+                    await urgent_pline('The dungeon capitulates.');
+                    await done(ESCAPED);
+                }
                 // C: hero_seq = moves << 3 — distinct every hero turn
                 g.hero_seq = (g.moves | 0) << 3;
                 // C allmain.c: if (flags.time && !svc.context.run)
@@ -1209,6 +1252,11 @@ export async function moveloop_core() {
                 if (g.flags?.time && !g.context?.run) {
                     g.flags.time_botl = true;
                 }
+
+                // C allmain.c:269 — per-turn Lua hook before Glib. The
+                // nhcore.lua function is commented out, so the first call
+                // marks it unavailable and every call after is a no-op.
+                await l_nhcore_call(NHCORE_MOVELOOP_TURN);
 
                 // once-per-turn — C: if (Glib) glibr(); then nh_timeout
                 const glib = (g.u.uprops?.[GLIB]?.intrinsic | 0)
@@ -1344,10 +1392,22 @@ export async function moveloop_core() {
         }
         // C allmain.c:424-428 — [fast hero sinks multiple times per turn];
         // lava-trapped hero sinks, else a stationary hero feels pool
-        // effects (pooleffects(FALSE) stays deferred with under_water /
-        // under_ground, D-1000).
+        // effects (D-1000 deferral retired: on dry land pooleffects is a
+        // predicate-only no-op; in water it drowns the waiting hero).
         if ((g.u.utrap | 0) && (g.u.utraptype | 0) === TT_LAVA)
             await sink_into_lava();
+        else if (!g.u.umoved)
+            await pooleffects(false);
+
+        // C allmain.c:430–434 — vision while buried or underwater is
+        // updated here. Underwater ≡ u.uinwater (youprop.h:279); the (0)
+        // refresh completes the (2)→(1) dela protocol wired at the
+        // detect/dig/display/trap sites.
+        if ((g.u.uinwater | 0))
+            await under_water(0);
+        else if ((g.u.uburied | 0))
+            await under_ground(0);
+
         // see_nearby_monsters at end of actual-time-passed (D-1000).
         await see_nearby_monsters();
     }
@@ -1470,6 +1530,13 @@ export async function moveloop_core() {
     }
     // Message cleared at start of next rhack so pline() survives until the
     // following nhgetch capture (C keeps topline until next command).
+
+    // C allmain.c:558–563 — Lua end-of-turn callbacks. nhcb_counts stays
+    // all-zero without a registered nh.callback (cmd.js can_do_extcmd
+    // guards NHCB_CMD_BEFORE the same way), so this only runs handlers.
+    if (g.luacore && g.nhcb_counts && (g.nhcb_counts[NHCB_END_TURN] | 0)) {
+        await nh_callback_run(NHCB_NAME[NHCB_END_TURN]);
+    }
 }
 
 // C ref: allmain.c moveloop()

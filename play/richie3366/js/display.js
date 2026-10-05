@@ -3852,6 +3852,24 @@ export function terrain_glyph(loc, x, y) {
             dec: false,
         };
     }
+    case LADDER: {
+        // C ref: display.c back_to_glyph LADDER; defsym.h PCHAR2 '<'/'>'
+        // CLR_BROWN (branch CLR_YELLOW); dat/symbols DECgraphics
+        // S_upladder \xf9 meta-y (≤) / S_dnladder \xfa meta-z (≥),
+        // incl. branch variants. (No ROGUESET arm: C remaps stairs
+        // only.) Missing case painted '?' (scen-tour-Tourist-92075).
+        // DEC emits the raw base letter: C sends it in a DEC span and
+        // the frozen judge has no y/z mapping (DEC_MAP), so its cell
+        // is the raw letter — dec:false skips terminal.js
+        // DEC_TO_UNICODE (≤/≥ would mismatch). Mirrors ALTAR raw-'{'.
+        const lsway = stairway_at(x, y);
+        const lbranch = known_branch_stairs(lsway);
+        const ldown = !!(loc.ladder & LA_DOWN);
+        const lcolor = lbranch ? CLR_YELLOW : CLR_BROWN;
+        return dec
+            ? { ch: ldown ? 'z' : 'y', color: lcolor, dec: false }
+            : { ch: ldown ? '>' : '<', color: lcolor, dec: false };
+    }
     // C ref: display.c back_to_glyph ALTAR → altar_to_glyph(altarmask);
     // mapglyph altar_color(offset). dat/symbols DECgraphics S_altar \xfb
     // meta-{. Contest build has no USE_GENERAL_ALTAR_COLORS → chaotic/
@@ -4448,11 +4466,10 @@ function glyph_is_trap_at(glyph, x, y) {
 
 /**
  * C ref: detect.c reveal_terrain_getglyph
- * Branch envelope: hero_memory / seenv; strip mon/obj/trap/invisible per
- * TER_* bits; lastseentyp vs typ → back_to_glyph; litcorr→corr hack.
- * Named omissions: visible_region_at / gascloud (incl. the `!seenv` +
- * region GLYPH_UNEXPLORED arm and the keep_traps region-glyph restore);
- * arboreal default cell (the id arm is live).
+ * Branch envelope: hero_memory / seenv; strip mon/obj/trap/cloud/invisible
+ * per TER_* bits; region arms (gascloud strip, `reg && was_mon`, !seenv
+ * unexplored, keep_traps trap-or-region restore); lastseentyp vs typ →
+ * back_to_glyph; arboreal default cell; litcorr→corr hack. Whole.
  */
 export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset) {
     const loc = game.level?.at(x, y);
@@ -4469,11 +4486,15 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
         : (cansee(x, y) ? SVALL : 0);
 
     // C TER_MAP default int (detect.c reveal_terrain): arboreal S_tree else
-    // S_stone. The JS default_glyph param is ch-only (arboreal deferred),
-    // so the id is attached wherever the default is used.
+    // S_stone. The JS default_glyph param is the stone cell; arboreal
+    // levels substitute the tree cell, and the id is attached wherever
+    // the default is used.
     const default_id = cmap_to_glyph(
         game.level?.flags?.arboreal ? S_TREE_CMAP : S_STONE,
     );
+    const default_cell = game.level?.flags?.arboreal
+        ? cmap_idx_to_tty(S_TREE_CMAP)
+        : default_glyph;
     if (full) {
         const save = loc.seenv;
         loc.seenv = SVALL;
@@ -4499,7 +4520,7 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     } else {
         levl_glyph = seenv
             ? { ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y) }
-            : attach_glyph(copy_glyph(default_glyph), default_id);
+            : attach_glyph(copy_glyph(default_cell), default_id);
     }
 
     // Classify displayed layer (C glyph_at) without integer glyph IDs.
@@ -4580,6 +4601,42 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
         }
     }
 
+    // C detect.c:2199 — the visible region covering this cell, if any.
+    const reg = visible_region_at(x, y);
+    // C detect.c:2162 glyph_is_gascloud — the displayed glyph is the
+    // region's cloud iff the overlay painted it: newsym only paints
+    // visible cells, so the cloud shows iff cansee (the :2232–2238
+    // !seenv case is a cloud adjacent to the hero, which cansee covers),
+    // and newsym precedence (display.c:993–998, newsym_try_show_region)
+    // puts it over terrain/trap/obj, while a displayed monster or
+    // invisible glyph wins (mon_overrides_region; the hero @ always
+    // wins). The swallowed path uses levl_glyph (never a cloud), so no
+    // overlay there — but reg itself stays live for the !seenv
+    // unexplored arm, like C.
+    let glyph_shows_cloud = false;
+    if (!swallowed && reg && cansee(x, y) && (ACCESSIBLE(loc.typ | 0)
+                || (reg.visible && is_pool_or_lava_disp(x, y)))) {
+        const uu = game.u || {};
+        if (uu.ux === x && uu.uy === y) {
+            glyph_shows_cloud = false;
+        } else {
+            glyph_shows_cloud =
+                !mon_overrides_region(mon_at_display(x, y), x, y);
+        }
+    }
+    if (glyph_shows_cloud) {
+        // C reg->glyph — the region's own cloud glyph (show_region
+        // paints the same cell: '#' CLR_BRIGHT_GREEN poison / CLR_GRAY).
+        const poison = reg.glyph === 'S_poisoncloud';
+        glyph = {
+            ch: '#',
+            color: poison ? CLR_BRIGHT_GREEN : CLR_GRAY,
+            dec: false,
+            glyph: cmap_to_glyph(poison ? S_poisoncloud : S_cloud),
+        };
+        kind = 'cloud';
+    }
+
     // C: !keep_mons && (monster|warning) || swallow → levl_glyph
     if ((!keep_mons && kind === 'mon')) {
         glyph = copy_glyph_id(levl_glyph);
@@ -4619,13 +4676,35 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
         }
     }
 
-    // C: strip objects / traps / invisible / (region && was_mon)
+    // C: strip objects / traps / gasclouds / invisible / (region && was_mon)
     if (((!keep_objs && kind === 'obj')
-        || (!keep_traps && kind === 'trap')
+        || (!keep_traps && (kind === 'trap' || (reg && glyph_shows_cloud)))
         || kind === 'invisible'
-        || (was_mon && false /* region deferred */))) {
+        || (reg && was_mon))) {
         if (!seenv) {
-            glyph = attach_glyph(copy_glyph(default_glyph), default_id);
+            // C :2232–2238 — a visible region can show at an otherwise
+            // unexplored cell; keep it unexplored, not the stone default.
+            glyph = !reg
+                ? attach_glyph(copy_glyph(default_cell), default_id)
+                : attach_glyph(copy_glyph(default_cell), GLYPH_UNEXPLORED);
+        } else if (keep_traps && reg && (glyph_shows_cloud || was_mon)) {
+            // C :2239–2248 — keep_traps at a region spot shows the seen
+            // trap, else the region glyph itself (neither the remembered
+            // background nor back_to_glyph). No covers_traps gate here.
+            const t = t_at_display(x, y);
+            if (t && t.tseen) {
+                const tg = trap_glyph(t);
+                glyph = { ch: tg.ch, color: tg.color, dec: !!tg.dec };
+                if (typeof tg.glyph === 'number') glyph.glyph = tg.glyph | 0;
+            } else {
+                const poison = reg.glyph === 'S_poisoncloud';
+                glyph = {
+                    ch: '#',
+                    color: poison ? CLR_BRIGHT_GREEN : CLR_GRAY,
+                    dec: false,
+                    glyph: cmap_to_glyph(poison ? S_poisoncloud : S_cloud),
+                };
+            }
         } else {
             const last = game.lastseentyp?.[x]?.[y] | 0;
             if (last === (loc.typ | 0) || !last) {
@@ -4665,7 +4744,7 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     // C: an unclassified cell keeps glyph_at — the displayed int, which is
     // GLYPH_UNEXPLORED for unseen cells (never the stone default).
     return reveal_terrain_cmap_hack(
-        glyph || attach_glyph(copy_glyph(default_glyph), GLYPH_UNEXPLORED),
+        glyph || attach_glyph(copy_glyph(default_cell), GLYPH_UNEXPLORED),
     );
 }
 

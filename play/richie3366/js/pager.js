@@ -2909,7 +2909,23 @@ export async function doidtrap() {
 
     // C `:2361–2388` — `gf.ftrap` walk; `return ECMD_OK` sits inside
     // the coordinate `if`, so non-matching traps `continue` past it.
-    for (let trap = game.ftrap; trap; trap = trap.ntrap) {
+    // JS splits the C chain: maketrap pushes the live level.traps array
+    // (t_at) and leaves game.ftrap null on fresh levels (an array after
+    // restore), so the chain alone finds nothing — walk the union of the
+    // gf-shaped store and level.traps, deduped (deltrap's dual-unlink
+    // precedent; one trap per square makes order irrelevant).
+    const traplist = [];
+    const seenTraps = new Set();
+    const pushTrap = (t) => {
+        if (t && !seenTraps.has(t)) { seenTraps.add(t); traplist.push(t); }
+    };
+    if (Array.isArray(game.ftrap)) {
+        for (const t of game.ftrap) pushTrap(t);
+    } else {
+        for (let t = game.ftrap; t; t = t.ntrap) pushTrap(t);
+    }
+    for (const t of (game.level?.traps || [])) pushTrap(t);
+    for (const trap of traplist) {
         if ((trap.tx | 0) !== x || (trap.ty | 0) !== y) continue;
         // C `:2364–2365` — unseen trap breaks to "can't see".
         if (!trap.tseen) break;

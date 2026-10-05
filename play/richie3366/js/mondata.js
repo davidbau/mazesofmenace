@@ -4,7 +4,7 @@
 // (seen_resistance) + resist_conflict + cantvomit (D-1127).
 
 import { game } from './gstate.js';
-import { strstri } from './hacklib.js';
+import { strstri, strncmpi } from './hacklib.js';
 import { couldsee } from './vision.js';
 import { rnd, rn2 } from './rng.js';
 import { acurr, A_CHA } from './attrib.js';
@@ -816,7 +816,7 @@ export function name_to_monplus(in_str, remainder_p = null, gender_name_var = nu
         const mndx = monsterNames.indexOf(alt.pm);
         if (mndx < LOW_PM) continue;
         const len = alt.name.length;
-        if (!slow.startsWith(alt.name)) continue;
+        if (strncmpi(str, alt.name, len) !== 0) continue; // C `:1026`
         const after = str[len];
         if (after === undefined || after === ' ' || after === "'") { // C `:1007`
             if (remainder_p) remainder_p.rest = inStr.slice(skip + len); // C `:1009–1010`
@@ -839,7 +839,7 @@ export function name_to_monplus(in_str, remainder_p = null, gender_name_var = nu
             if (!cand) continue; // C `:1022–1023`
             const mLen = cand.length;
             if (mLen <= len) continue; // C `:1027` m_i_len > len
-            if (!slow.startsWith(cand.toLowerCase())) continue; // C `:1028` strncmpi
+            if (strncmpi(cand, str, mLen) !== 0) continue; // C `:1047`
             if (mLen === slen) { // C `:1029–1035` exact match
                 mntmp = i;
                 len = mLen;
@@ -848,13 +848,19 @@ export function name_to_monplus(in_str, remainder_p = null, gender_name_var = nu
                 break;
             }
             // C `:1036–1054` prefix with space/plural/possessive boundary
-            const tail = slow.slice(mLen);
+            // (n == -1 is the strcmpi macro; the live export folds lowc
+            // like C instead of Unicode-lowering the input first).
+            const tailRaw = str.slice(mLen);
             if (slen > mLen
-                && (tail[0] === ' '
-                    || tail === 's' || tail.startsWith('s ')
-                    || tail === "'" || tail.startsWith("' ")
-                    || tail === "'s" || tail.startsWith("'s ")
-                    || tail === 'es' || tail.startsWith('es '))) {
+                && (tailRaw[0] === ' '
+                    || strncmpi(tailRaw, 's', -1) === 0
+                    || strncmpi(tailRaw, 's ', 2) === 0
+                    || strncmpi(tailRaw, "'", -1) === 0
+                    || strncmpi(tailRaw, "' ", 2) === 0
+                    || strncmpi(tailRaw, "'s", -1) === 0
+                    || strncmpi(tailRaw, "'s ", 3) === 0
+                    || strncmpi(tailRaw, 'es', -1) === 0
+                    || strncmpi(tailRaw, 'es ', 3) === 0)) {
                 mntmp = i;
                 len = mLen;
                 matchgend = mgend;

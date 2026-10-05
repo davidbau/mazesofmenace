@@ -4,10 +4,11 @@
 // Branch envelope: getobj("write on") + blank-paper gates + getlin type +
 // name/descr/uname match + ink cost + known/Luck write test + useup +
 // hold_another_object.
-// Named omissions: livelog literate conduct; check_unpaid; known_spell
-// (spe_Fresh / GoingStale — treated as spe_Unknown); MAIL_STRUCTURES
-// SCR_MAIL spe=2; Glib Tobjnam/fingers_or_gloves polish; novel Hallu
-// wording polish; new_book_description composition "into " prefix.
+// Named omissions: MAIL_STRUCTURES SCR_MAIL spe=2; Glib
+// Tobjnam/fingers_or_gloves polish; novel Hallu wording polish;
+// new_book_description composition "into " prefix.
+// livelog literate conduct, check_unpaid, known_spell (fresh/stale),
+// + pen-charge update_inventory are live (D-3426).
 
 import { game } from './gstate.js';
 import { strstri, mungspaces, strncmpi } from './hacklib.js';
@@ -17,10 +18,10 @@ import {
     SCROLL_CLASS, SPBOOK_CLASS, objectNames, objectNameStrs, objectDescrs,
 } from './objects.js';
 import {
-    ECMD_OK, ECMD_TIME, ECMD_CANCEL, MAXULEV, GETOBJ_NOFLAGS,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, MAXULEV, GETOBJ_NOFLAGS, LL_CONDUCT,
 } from './const.js';
-import { compactify_invlets, makeknown, observe_object, hold_another_object, getobj_display_pickinv, useup, getobj } from './invent.js';
-import { obfree } from './shk.js';
+import { compactify_invlets, makeknown, observe_object, hold_another_object, getobj_display_pickinv, useup, getobj, update_inventory } from './invent.js';
+import { obfree, check_unpaid } from './shk.js';
 import { getlin } from './getline.js';
 import { rn2, rn1, rnl } from './rng.js';
 import { nohands } from './monsters.js';
@@ -29,7 +30,9 @@ import { A_WIS, exercise } from './attrib.js';
 import { bcsign } from './rumors.js';
 import { wipeout_text } from './engrave.js';
 import { dropx } from './do.js';
-import { doname, Ysimple_name2 } from './objnam.js';
+import { doname, Ysimple_name2, an } from './objnam.js';
+import { known_spell, spe_Unknown, spe_Fresh, spe_GoingStale } from './spell.js';
+import { livelog_printf } from './pline.js';
 import { PM_WIZARD } from './generated/monsters_data.js';
 
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
@@ -64,8 +67,8 @@ const GETOBJ_EXCLUDE = -3;
 const GETOBJ_DOWNPLAY = 1;
 const GETOBJ_SUGGEST = 2;
 
-/** C spe_Unknown — known_spell body deferred. */
-const SPE_UNKNOWN = 0;
+/* SPE_UNKNOWN retired (D-3426) — live spell.js spe_Unknown/spe_Fresh/
+   spe_GoingStale + known_spell are imported above. */
 
 function Blind() {
     const u = game.u || {};
@@ -302,15 +305,20 @@ export async function dowrite(pen) {
         return ECMD_TIME;
     }
 
-    // C: u.uconduct.literate++ (+ livelog deferred)
+    // C: u.uconduct.literate++ with first-time livelog.
     if (!game.u) game.u = {};
     if (!game.u.uconduct) game.u.uconduct = {};
+    if (!(game.u.uconduct.literate | 0)) {
+        // C `:245` — typeword is spellbook/scroll only (novel → spellbook).
+        livelog_printf(LL_CONDUCT, 'became literate by writing %s',
+            an(paper.oclass === SPBOOK_CLASS ? 'spellbook' : 'scroll'));
+    }
     game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
 
     const new_obj = mksobj(i, false, false);
     new_obj.bknown = !!(paper.bknown && pen.bknown);
 
-    // check_unpaid(pen) deferred
+    await check_unpaid(pen); // C `:250` — a used quill may bill.
 
     const basecost = await cost(new_obj);
     if ((pen.spe | 0) < Math.trunc(basecost / 2)) {
@@ -335,17 +343,20 @@ export async function dowrite(pen) {
             useup(paper);
         }
         obfree(new_obj);
+        update_inventory(); // C `:262` — pen spe changed.
         return ECMD_TIME;
     }
     pen.spe = (pen.spe | 0) - actualcost;
 
-    const spell_knowledge = SPE_UNKNOWN; // known_spell deferred
+    // C `:266` — live known_spell for spellbooks (D-3426).
+    const spell_knowledge = paper.oclass === SPBOOK_CLASS
+        ? known_spell(new_obj.otyp) : spe_Unknown;
     const ocNew = game.objects?.[new_obj.otyp];
     if (!ocNew?.oc_name_known
         && !(by_descr && ocNew?.oc_encountered)
-        && spell_knowledge !== 1 /* spe_Fresh */
+        && spell_knowledge !== spe_Fresh
         && rnl(((Role_if(PM_WIZARD) && paper.oclass !== SPBOOK_CLASS)
-            || spell_knowledge === 2 /* spe_GoingStale */)
+            || spell_knowledge === spe_GoingStale)
             ? 5 : 15)) {
         await pline(
             `You ${by_descr ? 'fail' : "don't know how"} to write that.`,
@@ -355,6 +366,7 @@ export async function dowrite(pen) {
                 'You write in your best handwriting:  "My Diary", '
                 + 'but it quickly fades.',
             );
+            update_inventory(); // C `:283` — pen spe changed.
         } else {
             let failbuf;
             if (by_descr) {

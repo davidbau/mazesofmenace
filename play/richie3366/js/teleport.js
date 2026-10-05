@@ -1489,7 +1489,7 @@ export async function teleds(nux, nuy, teleds_flags) {
     // Dynamic import: dig.js → trap.js → teleport.js cycle.
     {
         const { fill_pit } = await import('./dig.js');
-        fill_pit(u.ux0 | 0, u.uy0 | 0);
+        await fill_pit(u.ux0 | 0, u.uy0 | 0);
     }
     // C: placebc when chain was taken off map (OBJ_FREE)
     if (ball_active && u.uchain && (u.uchain.where | 0) === OBJ_FREE) {
@@ -2868,8 +2868,21 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
             && M_AP_TYPE(mtmp) !== M_AP_MONSTER) {
             seemimic(mtmp);
         }
-        /* if mon is pinned by a boulder, removing mon lets boulder drop */
-        fill_pit(mx, my);
+        /* if mon is pinned by a boulder, removing mon lets boulder drop.
+           C trap.c:4010 fill_pit — this function is sync (level-gen
+           reachable) so it cannot await the async flooreffects settle;
+           the extract + deltrap + delobj core runs inline instead.
+           Victim msgs/damage at this one site stay deferred; every
+           await-capable site rides the full async fill_pit (D-3426). */
+        {
+            const t = t_at(mx, my);
+            const boulder = sobj_at(BOULDER, mx, my);
+            if (t && (is_pit(t.ttyp) || is_hole(t.ttyp)) && boulder) {
+                obj_extract_self(boulder);
+                deltrap(t);
+                delobj(boulder);
+            }
+        }
         newsym(mx, my);
     }
     /* if mon is a remembered target, forget it since it isn't here anymore */

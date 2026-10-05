@@ -42,7 +42,7 @@ import {
 } from './const.js';
 import {
     pline, vpline, You, You_cant, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
-    set_msg_xy, feel_location, map_object, unmap_object, verbalize, curs_on_u,
+    set_msg_xy, feel_location, map_object, unmap_object, glyph_is_invisible, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
     impossible, raw_printf,
 } from './display.js';
@@ -765,7 +765,7 @@ export function movobj(obj, ox, oy) {
 /**
  * C ref: hack.c dopush `:166–244` — message + exercise(A_STR) + movobj +
  * shop bill arms. Caller passes costly (push started inside a shop).
- * unmap_object trap/engr arms deferred (JS clears the remembered glyph).
+ * Invisible-dest glyph yields via unmap_object (`:206–207`).
  */
 async function dopush(sx, sy, rx, ry, otmp, costly) {
     const u = game.u;
@@ -793,12 +793,11 @@ async function dopush(sx, sy, rx, ry, otmp, costly) {
     bp.time = moves;
 
     /* C `:206–207` — move the boulder after the message; an invisible
-     * remembered glyph (I from a monster-behind You_hear) yields to it. */
+     * glyph at the destination (I from a monster-behind You_hear)
+     * yields to it via the trap/engr/background remap. */
     {
         const dloc = game.level?.at(rx, ry);
-        if (dloc?.remembered_glyph?.invisible) {
-            dloc.remembered_glyph = null; // unmap_object trap/engr arms deferred
-        }
+        if (glyph_is_invisible(dloc)) unmap_object(rx, ry);
     }
     otmp.next_boulder = 0; /* C `:208` — reset before movobj. D-1294. */
     movobj(otmp, rx, ry); /* C `:209` — does newsym(rx,ry) */
@@ -920,9 +919,9 @@ export async function revive_nasty(x, y, msg) {
  * HOLE / TELEP / ROLLING_BOULDER_TRAP) + boulder_hits_pool +
  * fobj-chain relink + dopush with costly + cannot_push_msg (D-1749
  * Blind feels throughout).
- * Named omissions: unmap_object trap/engr arms (remembered-glyph clear
- * stands in, dopush); squeezeablylightinvent pack-weight arm of
- * could_move_onto_boulder lives in that helper, not here.
+ * Invisible-dest glyph yields via unmap_object in dopush (`:206–207`).
+ * squeezeablylightinvent pack-weight arm of could_move_onto_boulder
+ * lives in that helper, not here.
  * Returns 0 to advance onto vacated cell, -1 to abort the move.
  */
 async function moverock_core(sx, sy) {
@@ -1096,7 +1095,7 @@ async function moverock_core(sx, sy) {
                         );
                         await blow_up_landmine(ttmp);
                         /* if the boulder remains, it should fill the pit */
-                        fill_pit(u.ux, u.uy);
+                        await fill_pit(u.ux, u.uy);
                         if (cansee(rx, ry))
                             newsym(rx, ry);
                         return sobj_at(BOULDER, sx, sy) ? -1 : 0;

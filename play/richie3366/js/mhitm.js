@@ -139,7 +139,7 @@ import { stairway_find_type_dir } from './mklev.js';
 import { polyself } from './polyself.js';
 import { you_were, you_unwere, were_change } from './were.js';
 import { night } from './calendar.js';
-import { resists_drli, shieldeff_mon } from './zap.js';
+import { resists_drli, shieldeff_mon, drain_item } from './zap.js';
 import { poisoned, A_STR, A_DEX, A_CON } from './attrib.js';
 import { rloc, tele_restrict, tele, goodpos, u_teleport_mon, enexto, rloc_to } from './teleport.js';
 import { m_unleash } from './apply.js';
@@ -442,13 +442,25 @@ function is_you_defender(mdef) {
 }
 
 /**
+ * C ref: monst.c:79 c_sa_no — SEDUCTION_ATTACKS_NO (monsters.h:2925):
+ * the six succubus/incubus attacks when SEDUCE=0.
+ */
+const C_SA_NO = [
+    { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
+    { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
+    { aatyp: AT_BITE, adtyp: AD_DRLI, damn: 2, damd: 6 },
+    { ...NO_ATTK },
+    { ...NO_ATTK },
+    { ...NO_ATTK },
+];
+
+/**
  * C ref: mhitu.c getmattk `:309–444` — base mptr->mattk[indx] + live
  * substitutions. Uses extracted monsters_data mattks (mons().mattk).
  * Optional mdef enables defender-dependent arms (DREN / lich cold→PHYS).
  * Omit mdef to skip those (aatyp-only scans). Optional prev_result is
  * C's prev_result[] (mattacku sum / mattackm res).
- * Named omit: SEDUCE=0 SSEX→c_sa_no[] / lone SSEX→DRLI (`c_sa_no` is
- * not in js/). uhitm.hmonas callers still omit prev_result.
+ * Named omit: uhitm.hmonas callers still omit prev_result.
  */
 export function get_mattk(magr, i, mdef = undefined, prev_result = null) {
     if (i < 0 || i >= NATTK) return { ...NO_ATTK };
@@ -476,7 +488,23 @@ export function get_mattk(magr, i, mdef = undefined, prev_result = null) {
         attk._slot = null;
     };
 
-    /* C: honor SEDUCE=0 — c_sa_no table / lone SSEX→DRLI named omit. */
+    /* C mhitu.c:320–334 — honor SEDUCE=0 (sys.c default 1; a sysconf
+       SEDUCE=0 reaches here via SYSOPT_SEDUCE()). */
+    if (!SYSOPT_SEDUCE()) {
+        /* If the first attack is SSEX, all six substitute (expected
+           succubus/incubus handling); a lone SSEX elsewhere → DRLI. */
+        if ((mptr.mattk[0]?.adtyp | 0) === AD_SSEX) {
+            const sub = C_SA_NO[i] || NO_ATTK;
+            subst();
+            attk.aatyp = sub.aatyp | 0;
+            attk.adtyp = sub.adtyp | 0;
+            attk.damn = sub.damn | 0;
+            attk.damd = sub.damd | 0;
+        } else if (attk.adtyp === AD_SSEX) {
+            subst();
+            attk.adtyp = AD_DRLI;
+        }
+    }
 
     /* consecutive DISE/PEST/FAMN → STUN */
     if (prev_result && i > 0 && (prev_result[i - 1] | 0) > M_ATTK_MISS
@@ -599,7 +627,7 @@ function is_youmonst(m) {
  * resists_magm/resist/system-shock/newcham/tele follow-up (D-1006).
  * Await `newcham(..., NO_NC_FLAGS)` so mleashed unleash / Elbereth
  * flee finish before the vis pline / tele (D-1648; C `:1174` is
- * sync int). Named omissions: shieldeff / shieldeff_mon flash;
+ * sync int). shieldeff / shieldeff_mon flashes live (`:1129`, `:1152`).
  * ANTIMAGIC gear scan in resists_magm (TELL resist shield live via shieldeff_mon).
  * @returns {Promise<number>} remaining damage (0 when shape-change applied)
  */
@@ -609,7 +637,7 @@ export async function mon_poly(magr, mdef, dmg) {
     if (isyou) {
         const u = game.u || {};
         if (Antimagic(u)) {
-            // shieldeff(u.ux, u.uy) deferred
+            await shieldeff(u.ux | 0, u.uy | 0); // C `:1128–1129`
         } else if (Unchanging(u)) {
             // just take a little damage
         } else if ((u.ulycn | 0) === NON_PM) {
@@ -631,7 +659,8 @@ export async function mon_poly(magr, mdef, dmg) {
             || is_youmonst(magr)
             || (canspotmon(mdef) && cansee(mdef.mx | 0, mdef.my | 0));
         if (resists_magm(mdef)) {
-            // shieldeff_mon deferred
+            // C `:1150–1152` — gv.vis gate is the widened house vis.
+            if (vis) await shieldeff_mon(mdef);
         } else if (resist_poly(mdef, TELL)) {
             /* C zap.c:6143-6144 — TELL shield lives inside resist(). */
             await shieldeff_mon(mdef);
@@ -1399,7 +1428,7 @@ async function sleep_slee_mm(mon, amt) {
         return 0;
     }
     if (mon.mcanmove) {
-        mon.meating = 0;
+        finish_meating(mon); // C `:1236` — incl. mimic-AP reset
         amt = (amt | 0) + (mon.mfrozen | 0);
         if (amt > 0) {
             mon.mcanmove = 0;
@@ -2554,10 +2583,10 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
         skip_live = true;
         break;
     case AD_ENCH:
-        if (mhitb && !mdef.mcan && mwep && (mwep.spe | 0) > 0) {
-            /* C drain_item(mwep, FALSE): defends(AD_DRLI) named; then
-             * obj_resists(10,90) then spe--. Ring/helm ABON named. */
-            if (rn2(100) >= (mwep.oartifact ? 90 : 10)) mwep.spe--;
+        // C `:1350–1354` — disenchanter: live drain_item (defends(AD_DRLI)
+        // immunity + obj_resists + ring ABON inside). No message.
+        if (mhitb && !mdef.mcan && mwep) {
+            await drain_item(mwep, false);
         }
         break;
     default:

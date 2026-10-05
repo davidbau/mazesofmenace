@@ -1191,11 +1191,14 @@ const NASTIES = [
 
 /**
  * C ref: wizard.c pick_nasty `:537–581` — ROLL_FROM(nasties) + geno/difcap/hell alt.
- * Named omissions: rogue monsym uppercase retry (monsym table not wired here).
+ * Rogue level re-ROLLs once for an uppercase monsym (`:547–549`).
  */
 export function pick_nasty(difcap) {
     let res = NASTIES[rn2(NASTIES.length)];
-    // Rogue uppercase re-ROLL deferred (monsym table not wired here)
+    // C `:547–549` — rogue level wants uppercase; one re-ROLL.
+    if (Is_rogue_level(game.u?.uz) && !monsym_isupper(mons(res))) {
+        res = NASTIES[rn2(NASTIES.length)];
+    }
     let alt = res;
     const inHell = (game.u?.uz?.dnum | 0) === GEHENNOM;
     if (((game.mvitals?.[res]?.mvflags ?? 0) & G_GENOD) !== 0

@@ -997,18 +997,23 @@ export async function digactualhole(x, y, madeby, ttyp) {
 }
 
 /**
- * C ref: trap.c fill_pit — boulder settles into pit/hole.
- * flooreffects body thin: extract + deltrap + delobj boulder.
+ * C ref: trap.c fill_pit `:4010–4020` — boulder settles into pit/hole.
+ * The settle path (trapped-victim damage incl. hero rnd(15) squish,
+ * fills/plugs msgs, bury_objs) rides the live do.js flooreffects
+ * (dynamic import is this file's convention); deltrap/delobj/newsym
+ * run inside it (delfloortrap + useupf + bury + newsym).
+ * Async: flooreffects reaches pline. The one sync caller
+ * (teleport.js migrate_to_level) inlines the extract/deltrap/delobj
+ * core instead — see the site comment there.
  */
-export function fill_pit(x, y) {
+export async function fill_pit(x, y) {
     const t = t_at(x, y);
     if (!t || !(is_pit(t.ttyp) || is_hole(t.ttyp))) return;
     const otmp = sobj_at(BOULDER, x, y);
     if (!otmp) return;
     obj_extract_self(otmp);
-    deltrap(t);
-    delobj(otmp);
-    newsym(x, y);
+    const { flooreffects } = await import('./do.js');
+    await flooreffects(otmp, x, y, 'settle'); // C `:4018`
 }
 
 /**

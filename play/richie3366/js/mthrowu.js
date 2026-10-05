@@ -41,7 +41,7 @@ import { mswings_verb } from './mhitu.js';
 import { ammo_and_launcher, is_launcher, is_pole, mwelded, is_ammo } from './wield.js';
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
 import { calc_capacity, Blind } from './invent.js';
-import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation, You_hear } from './hack.js';
+import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation, You_hear, finish_maybe_wail } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
     pline, pline_The, pline_mon, You, mon_visible, see_with_infrared, tmp_at, obj_glyph,
@@ -663,6 +663,8 @@ export async function thitu(tlev, dam, objp, name) {
             await finish_losehp_done();
             return 1;
         }
+        // C: potionhit's losehp rehumanizes inline (same drain as below).
+        await finish_maybe_wail();
     } else {
         // C `:135–140` — extra silver damage already applied by dmgval.
         if (obj && (game.objects?.[obj.otyp | 0]?.oc_material | 0) === SILVER
@@ -681,6 +683,10 @@ export async function thitu(tlev, dam, objp, name) {
          * C then falls through to the A_STR exercise. Only a true
          * death (really_done keeps gameover set) skips it. */
         losehp(dam, knm, kprefix);
+        // C `:4275–4276` — losehp rehumanizes inline when mh<1 (no RNG);
+        // drain showdamage/rehumanize/wail before the Upolyd-gated A_STR
+        // exercise, or a reverting hero skips the rn2(2) C draws (D-3426).
+        await finish_maybe_wail();
         if (game.program_state?.gameover) {
             await finish_losehp_done();
             if (game.program_state?.gameover) return 1;

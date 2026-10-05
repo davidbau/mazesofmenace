@@ -11,7 +11,7 @@ import {
     pline, mon_visible, see_with_infrared, pline_mon, verbalize,
     map_invisible, newsym, sensemon, flash_glyph_at, mon_to_glyph,
     canspotmon, canseemon, impossible, cls, docrt, display_self, You_feel, Norep,
-    more, show_glyph_cell, shieldeff,
+    more, show_glyph_cell, shieldeff, urgent_pline,
 } from './display.js';
 import { worm_known, worm_move } from './worm.js';
 import {
@@ -88,7 +88,7 @@ import {
     RLOC_MSG, XKILL_NOMSG, XKILL_NOCONDUCT, COULD_SEE, IN_SIGHT,
     P_DAGGER, P_KNIFE, NOTELL, TELL, TEMPLE, IS_OBSTRUCTED, IS_AIR,
     BZ_M_WAND, BZ_OFS_AD, DIR_LEFT2, DIR_RIGHT2, DIR_CLAMP, xytodir,
-    dirtocoord, engulfing_u,
+    dirtocoord, engulfing_u, HAND,
 } from './const.js';
 import { MON_WEP, dmgval, hands_obj } from './weapon.js';
 import { welded, mwelded } from './wield.js';
@@ -117,6 +117,7 @@ import { CLR_GREEN, CLR_BRIGHT_GREEN } from './terminal.js';
 import { explode } from './explode.js';
 import { fill_pit } from './dig.js';
 import { surface } from './sit.js';
+import { body_part } from './polyself.js';
 import { Soundeffect, SetVoice } from './sndprocs.js';
 import { se_bugle_playing_reveille, se_crash_through_floor, se_zap_then_explosion, se_boing } from './generated/seffects_data.js';
 import { awaken_soldiers } from './music.js';
@@ -2210,8 +2211,10 @@ function See_invisible() {
 /**
  * C ref: muse.c find_misc — gain-level, bullwhip rn2(5), invis, speed,
  * poly trap/wand/potion, bag rn2(5).
- * Named omission: C nomore() skip-rest-of-this-obj on already-ported
- * whip/invis/speed still uses per-check `!==` rather than continue.
+ * C nomore(x) (`:2151`) is `if (has_misc == x) continue` — it skips the
+ * rest of the current obj, so the first guarded arm wins (a later
+ * gain-level potion excepted); per-check `!==` would let later objs
+ * override and would burn bag rn2(5) draws C skips (D-3426).
  */
 export function find_misc(mtmp) {
     const m = museState();
@@ -2271,9 +2274,9 @@ export function find_misc(mtmp) {
             m.misc = obj;
             m.has_misc = MUSE_POT_GAIN_LEVEL;
         }
-        // C: nomore(MUSE_BULLWHIP)
-        if (m.has_misc !== MUSE_BULLWHIP
-            && obj.otyp === BULLWHIP && !mtmp.mpeaceful
+        // C: nomore(MUSE_BULLWHIP) — skip the rest of this obj.
+        if (m.has_misc === MUSE_BULLWHIP) continue;
+        if (obj.otyp === BULLWHIP && !mtmp.mpeaceful
             /* C short-circuit: uwep && !rn2(5) before MON_WEP / adjacency */
             && uwep && !rn2(5) && obj === MON_WEP(mtmp)
             && u_at(mtmp.mux, mtmp.muy)
@@ -2286,27 +2289,33 @@ export function find_misc(mtmp) {
         }
         /* Note: peaceful/tame monsters won't make themselves
          * invisible unless you can see them.  Not really right, but... */
-        if (m.has_misc !== MUSE_WAN_MAKE_INVISIBLE
-            && obj.otyp === WAN_MAKE_INVISIBLE && (obj.spe | 0) > 0
+        // C: nomore(MUSE_WAN_MAKE_INVISIBLE)
+        if (m.has_misc === MUSE_WAN_MAKE_INVISIBLE) continue;
+        if (obj.otyp === WAN_MAKE_INVISIBLE && (obj.spe | 0) > 0
             && !mtmp.minvis && !mtmp.invis_blkd
             && (!mtmp.mpeaceful || See_invisible())
             && (!attacktype(mtmp.data, AT_GAZE) || mtmp.mcan)) {
             m.misc = obj;
             m.has_misc = MUSE_WAN_MAKE_INVISIBLE;
         }
-        if (m.has_misc !== MUSE_POT_INVISIBILITY
-            && obj.otyp === POT_INVISIBILITY
+        // C: nomore(MUSE_POT_INVISIBILITY)
+        if (m.has_misc === MUSE_POT_INVISIBILITY) continue;
+        if (obj.otyp === POT_INVISIBILITY
             && !mtmp.minvis && !mtmp.invis_blkd
             && (!mtmp.mpeaceful || See_invisible())
             && (!attacktype(mtmp.data, AT_GAZE) || mtmp.mcan)) {
             m.misc = obj;
             m.has_misc = MUSE_POT_INVISIBILITY;
         }
+        // C: nomore(MUSE_WAN_SPEED_MONSTER)
+        if (m.has_misc === MUSE_WAN_SPEED_MONSTER) continue;
         if (obj.otyp === WAN_SPEED_MONSTER && (obj.spe | 0) > 0
             && mtmp.mspeed !== MFAST && !mtmp.isgd) {
             m.misc = obj;
             m.has_misc = MUSE_WAN_SPEED_MONSTER;
         }
+        // C: nomore(MUSE_POT_SPEED)
+        if (m.has_misc === MUSE_POT_SPEED) continue;
         if (obj.otyp === POT_SPEED
             && mtmp.mspeed !== MFAST && !mtmp.isgd) {
             m.misc = obj;
@@ -2597,7 +2606,7 @@ export async function use_defensive(mtmp) {
                 await pline_mon(mtmp,
                     `${Monnam(mtmp)} has made a pit in the ${surface(mx, my)}.`);
             }
-            fill_pit(mx, my);
+            await fill_pit(mx, my);
             recalc_block_point(mx, my);
             return (await mintrap(mtmp, FORCEBUNGLE)) === Trap_Killed_Mon
                 ? 1 : 2;
@@ -2621,7 +2630,7 @@ export async function use_defensive(mtmp) {
                     `${something} crash through the ${surface(mx, my)}.`);
             }
         }
-        fill_pit(mx, my);
+        await fill_pit(mx, my);
         /* C: we made sure that there is a level for mtmp to go to */
         /* C muse.c:969 — ledger_no(&u.uz) + 1 via live dungeon.js export. */
         migrate_to_level(mtmp, ledger_no(game.u?.uz) + 1, MIGR_RANDOM, null);
@@ -3098,8 +3107,10 @@ async function you_aggravate(mtmp) {
 }
 
 /**
- * C ref: muse.c use_misc — gain-level / invis / bullwhip / speed /
- * poly wand/potion/trap / bag / you_aggravate.
+ * C ref: muse.c use_misc `:2383–2626` — gain-level / invis / bullwhip /
+ * speed / poly wand/potion/trap / bag / you_aggravate.
+ * INVIS canspotmon; wraps-around urgent_pline; yank surface();
+ * bullwhip body_part(HAND) (D-3426).
  */
 export async function use_misc(mtmp) {
     const m = museState();
@@ -3168,7 +3179,8 @@ export async function use_misc(mtmp) {
         const nambuf = mon_nam(mtmp);
         mon_set_minvis(mtmp, !!otmp.cursed);
         if (vismon && mtmp.minvis) {
-            if (canseemon(mtmp)) {
+            // C `:2453` canspotmon (telepathy/sensemon see the transparency).
+            if (canspotmon(mtmp)) {
                 await pline(
                     `${upstart(s_suffix(nambuf))} body takes on a ${Hallucination() ? 'normal' : 'strange'} transparency.`,
                 );
@@ -3203,7 +3215,8 @@ export async function use_misc(mtmp) {
         if (!obj) break;
 
         const the_weapon = the(xname(obj));
-        let hand = 'hand';
+        // C `:2549–2550` — poly-aware (claw/paw), plural when bimanual.
+        let hand = body_part(HAND);
         if (bimanual(obj)) hand = makeplural(hand);
 
         if (vismon) {
@@ -3217,7 +3230,8 @@ export async function use_misc(mtmp) {
             );
             return 1;
         }
-        await pline(
+        // C `:2577` — urgent_pline, not pline.
+        await urgent_pline(
             `${The_whip} wraps around ${the_weapon} you're wielding!`,
         );
         if (welded(obj)) {
@@ -3245,8 +3259,9 @@ export async function use_misc(mtmp) {
             place_object(obj, mtmp.mx, mtmp.my);
             break;
         case 2:
+            // C `:2606` — surface(), not a 'floor' literal.
             await pline(
-                `${Monnam(mtmp)} yanks ${the_weapon} to the floor!`,
+                `${Monnam(mtmp)} yanks ${the_weapon} to the ${surface(u.ux | 0, u.uy | 0)}!`,
             );
             await dropy(obj);
             break;

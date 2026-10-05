@@ -480,8 +480,7 @@ import { record_achievement } from './insight.js';
 
 /**
  * C ref: priest.c intemple `:410–538` — enter TEMPLE room (from
- * check_special_room). Named omissions: SetVoice pitch (voice-macro
- * no-op).
+ * check_special_room). Whole (SetVoice `:467` kept as a C-order no-op).
  */
 export async function intemple(roomno) {
     const u = game.u;
@@ -537,6 +536,9 @@ export async function intemple(roomno) {
             msg1 = `Pilgrim, you enter a ${!shrined ? 'desecrated' : 'sacred'} place!`;
         }
         if (msg1 && can_speak && !Deaf) {
+            // C `:467` — SetVoice is a !SND_LIB no-op (sndprocs.h);
+            // the call is kept for C order (cf. prisoner_speaks).
+            SetVoice(priest, 0, 80, 0);
             await verbalize(msg1);
             if (msg2) await verbalize(msg2);
             epri.enter_time = moves + d(10, 100);

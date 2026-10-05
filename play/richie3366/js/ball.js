@@ -17,7 +17,7 @@
 // Jerked-back `omon_adj` + `hmon`/`miss` is `ball.c:798–808`.
 
 import { game } from './gstate.js';
-import { place_object, obj_extract_self, objects_at } from './mkobj.js';
+import { place_object, obj_extract_self, objects_at, set_bknown } from './mkobj.js';
 import { newsym, pline, You_feel, cls, map_object, impossible } from './display.js';
 import { flooreffects } from './do.js';
 import {
@@ -49,7 +49,7 @@ import { body_part } from './polyself.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_destroy_web } from './generated/seffects_data.js';
 import { mon_at, hmon } from './uhitm.js';
-import { omon_adj } from './dothrow.js';
+import { omon_adj, hitfloor } from './dothrow.js';
 import { miss } from './mthrowu.js';
 import { find_mac } from './worn.js';
 import { maybe_unhide_at } from './monmove.js';
@@ -61,6 +61,8 @@ import { objectNames } from './generated/objects_data.js';
 
 /* C otyp ids (dig.js / dbridge.js idiom: indexOf on objectNames). */
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const LOADSTONE = objectNames.indexOf('LOADSTONE');
+const LEASH = objectNames.indexOf('LEASH');
 const IRON_CHAIN = objectNames.indexOf('IRON_CHAIN');
 
 /** C ref: ball.c BCPOS_* — stacking order when ball&chain share a cell. */
@@ -86,7 +88,10 @@ function freeinv_ball(obj) {
 
 /**
  * Silent canletgo for litter (word="") — avoid do.js import cycle.
- * C ref: do.c canletgo worn/weld/saddle gates when word empty.
+ * C ref: do.c canletgo `:665–711` with empty word: the armor, weld and
+ * saddle gates keep their FALSE; the loadstone arm keeps its corpsenm
+ * reset + set_bknown + FALSE and the leash arm its FALSE (only the
+ * plines are word-gated).
  */
 function canletgo_silent(obj) {
     if (!obj) return false;
@@ -94,6 +99,14 @@ function canletgo_silent(obj) {
     if (mask & (W_ARMOR | W_ACCESSORY | W_SADDLE)) return false;
     const u = game.u || {};
     if (obj === u.uwep && welded(u.uwep)) return false;
+    // C `:687–702` — cursed loadstone: no pline, still stuck.
+    if ((obj.otyp | 0) === LOADSTONE && obj.cursed) {
+        obj.corpsenm = 0; // C `:698` reset
+        set_bknown(obj, 1); // C `:699`
+        return false;
+    }
+    // C `:703–708` — leash tied to a monster.
+    if ((obj.otyp | 0) === LEASH && (obj.leashmon | 0) !== 0) return false;
     return true;
 }
 
@@ -160,8 +173,9 @@ export async function ballfall() {
 }
 
 /**
- * C ref: ball.c litter — rnd(capacity) may force-drop invent downstairs.
- * Named omission: hitfloor impact/shop/altar (place at hero feet).
+ * C ref: ball.c litter `:965–983` — rnd(capacity) may force-drop invent
+ * downstairs: canletgo "" gate, stairs pline, setnotworn subset, freeinv,
+ * hitfloor(otmp, FALSE) landing (breaks/ship/altar/dropy).
  */
 async function litter() {
     const u = game.u || {};
@@ -195,9 +209,7 @@ async function litter() {
         }
         otmp.owornmask = 0;
         freeinv_ball(otmp);
-        // hitfloor deferred — place at feet like ordinary dropz
-        place_object(otmp, u.ux | 0, u.uy | 0);
-        newsym(u.ux | 0, u.uy | 0);
+        await hitfloor(otmp, false); // C `:981` — breaks/ship/altar/dropy
     }
 }
 
@@ -940,7 +952,7 @@ export async function drag_ball(x, y, allow_drag = true) {
                 out.ballx = cox;
                 out.bally = coy;
                 move_bc(0, out.bc_control, out.ballx, out.bally, out.chainx, out.chainy);
-                // spoteffects caller-side deferred for abort path
+                await spoteffects(true); // C `:823` — jerk-back landing
                 out.ok = false;
                 return out;
             }
@@ -1045,7 +1057,7 @@ export async function drop_ball(x, y) {
             }
             }
             await reset_utrap(true);
-            fill_pit(u.ux | 0, u.uy | 0);
+            await fill_pit(u.ux | 0, u.uy | 0);
         }
 
         u.ux0 = u.ux | 0;

@@ -64,7 +64,7 @@ import { can_chant, known_spell, spe_Unknown, spe_Fresh, spe_Forgotten, spell_sk
 import { couldsee } from './vision.js';
 import { monflee } from './monmove.js';
 import { set_malign, makemon } from './makemon.js';
-import { killed, xkilled } from './uhitm.js';
+import { killed, xkilled, attacktype_fordmg } from './uhitm.js';
 import { ureflects } from './mhitu.js';
 import { aggravate } from './wizard.js';
 import { setuhpmax, losexp, pluslvl } from './exper.js';
@@ -147,6 +147,7 @@ import {
     SDOOR, SCORR, W_SADDLE, EYE, STOMACH,
     P_LONG_SWORD, P_BROAD_SWORD, ONAME_GIFT, ONAME_KNOW_ARTI,
     nothing_happens, ACH_TUNE, PLNMSG_OBJ_GLOWS,
+    LARGEST_INT,
 } from './const.js';
 import { objectNameStrs } from './generated/objects_data.js';
 import { record_achievement } from './insight.js';
@@ -552,6 +553,9 @@ async function fix_curse_trouble(otmp, what) {
  * Ported: all TROUBLE_* majors + minors (D-1011/D-1012).
  * Named omit: swallow Blind attacktype_fordmg gate polish.
  */
+const AT_ENGL = 11; /* engulf — monattk.h */
+const AD_BLND = 11; /* blinds (yellow light) — monattk.h */
+
 function in_trouble() {
     const u = game.u || {};
     // C: major troubles in priority order
@@ -611,7 +615,8 @@ function in_trouble() {
     if (BlindedTimeout() > 1
         && !((u.HBlinded | 0) & ~TIMEOUT)
         && (!u.uswallow
-            /* attacktype_fordmg swallow Blind deferred — treat as not blind */)) {
+            // C `:261–264` — a blinding engulfer's stomach blinds anyway.
+            || !attacktype_fordmg(u.ustuck?.data, AT_ENGL, AD_BLND))) {
         return TROUBLE_BLIND;
     }
     if (((u.HDeaf | 0) & TIMEOUT) > 1) return TROUBLE_BLIND;
@@ -871,14 +876,6 @@ async function fix_worst_trouble(trouble) {
     }
 }
 
-/** Local stubs — full mondata predicates deferred (C-JS-MAP). */
-function is_demon(_data) {
-    return false;
-}
-function is_undead(_data) {
-    return false;
-}
-
 function pray_state() {
     if (!game.pray) game.pray = { p_aligntyp: 0, p_trouble: 0, p_type: 0 };
     return game.pray;
@@ -888,7 +885,7 @@ function pray_state() {
  * C ref: pray.c water_prayer — bless/curse POT_WATER on altar; no RNG.
  * @returns {boolean} true if any water changed
  */
-function water_prayer(bless_water) {
+async function water_prayer(bless_water) {
     const u = game.u;
     let changed = 0;
     let other = false;
@@ -906,8 +903,17 @@ function water_prayer(bless_water) {
             other = true;
         }
     }
-    // Glow pline deferred unless screens need it
-    void other;
+    // C `:1404–1410` — the changed potions glow on the altar.
+    if (!Blind() && changed) {
+        await pline(
+            `${(other && changed > 1) ? 'Some of the'
+                : (other ? 'One of the' : 'The')}`
+            + ` potion${(other || changed > 1) ? 's' : ''}`
+            + ` on the altar glow${changed > 1 ? '' : 's'}`
+            + ` ${bless_water ? hcolor('light blue') : hcolor('black')}`
+            + ' for a moment.',
+        );
+    }
     return changed > 0;
 }
 
@@ -924,7 +930,7 @@ export async function can_pray(praying) {
     gp.p_trouble = in_trouble();
 
     if (
-        is_demon(data)
+        mon_is_demon(data)
         && (gp.p_aligntyp === A_LAWFUL || gp.p_aligntyp !== A_NEUTRAL)
     ) {
         if (praying) {
@@ -974,7 +980,7 @@ export async function can_pray(praying) {
     }
 
     if (
-        is_undead(data)
+        mon_is_undead(data)
         && !Inhell()
         && (
             gp.p_aligntyp === A_LAWFUL
@@ -1391,8 +1397,7 @@ async function give_spell() {
  * pat_on_head rn2 dispatch in C source order (cases 1, 3, 2, 4) + case-5
  * intrinsic gift-grant (D-2219) + cases 7/8 gcrownu / 6 give_spell;
  * ublesscnt rnz(350) (+udemigod kick).
- * Named omissions: moves>100000 ublesscnt incr; on_altar wrong-god early
- * return polish; SetVoice pitch on the gift verbalize (file convention).
+ * SetVoice pitch is C-compiled-out (sndprocs.h no-op without SND_LIB).
  */
 async function pleased(g_align) {
     const u = game.u || (game.u = {});
@@ -1639,6 +1644,12 @@ async function pleased(g_align) {
     let kick_on_butt = u.uevent?.udemigod ? 1 : 0;
     if (u.uevent?.uhand_of_elbereth) kick_on_butt++;
     if (kick_on_butt) u.ublesscnt += kick_on_butt * rnz(1000);
+    // C `:1371–1378` — past turn 100000 the gods answer ever slower.
+    if ((game.moves | 0) > 100000) {
+        const incr = Math.trunc(((game.moves | 0) - 100000) / 100);
+        const largest = LARGEST_INT - (u.ublesscnt | 0);
+        u.ublesscnt = (u.ublesscnt | 0) + (incr > largest ? largest : incr);
+    }
 }
 
 /**
@@ -1952,18 +1963,18 @@ export async function prayer_done() {
 
     if (gp.p_type === 0) {
         if (on_altar() && (u.ualign?.type ?? 0) !== alignment) {
-            water_prayer(false);
+            await water_prayer(false);
         }
         u.ublesscnt = (u.ublesscnt | 0) + rnz(250);
         change_luck(-3);
         await gods_upset(u.ualign?.type ?? 0);
     } else if (gp.p_type === 1) {
         if (on_altar() && (u.ualign?.type ?? 0) !== alignment) {
-            water_prayer(false);
+            await water_prayer(false);
         }
         await angrygods(u.ualign?.type ?? 0);
     } else if (gp.p_type === 2) {
-        if (water_prayer(false)) {
+        if (await water_prayer(false)) {
             u.ublesscnt = (u.ublesscnt | 0) + rnz(250);
             change_luck(-3);
             await gods_upset(u.ualign?.type ?? 0);
@@ -1975,7 +1986,7 @@ export async function prayer_done() {
         // bless water, then please the god.
         if (on_altar()) {
             await pray_revive();
-            water_prayer(true);
+            await water_prayer(true);
         }
         await pleased(alignment);
     }

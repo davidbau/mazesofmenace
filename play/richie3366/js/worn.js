@@ -925,8 +925,11 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
             if (!is_cloak(obj)) continue;
             if ((mon.data?.msize ?? 0) > MZ_HUMAN
                 && (obj.otyp | 0) !== MUMMY_WRAPPING) continue;
-            // See_invisible deferred — treat as !See_invisible
-            if (mon.minvis && w_blocks(obj, W_ARMC) === INVIS && !creation) {
+            // C `:848–851` — an invisible monster avoids an invis-blocking
+            // cloak only when the hero cannot see invisible (file idiom:
+            // the u.See_invisible mirror, as in nambuf above).
+            if (mon.minvis && w_blocks(obj, W_ARMC) === INVIS
+                && !game.u?.See_invisible && !creation) {
                 continue;
             }
             break;

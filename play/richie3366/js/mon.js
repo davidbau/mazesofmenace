@@ -2141,7 +2141,7 @@ export async function mon_leaving_level(mon) {
             seemimic(mon);
         }
         /* if mon is pinned by a boulder, removing mon lets boulder drop */
-        fill_pit(mx, my);
+        await fill_pit(mx, my);
         newsym(mx, my);
     }
     /* if mon is a remembered target, forget it since it isn't here anymore */

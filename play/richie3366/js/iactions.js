@@ -39,6 +39,7 @@ import { ATR_INVERSE } from './terminal.js';
 // imports.mjs --can js/apply.js js/cmd.js cmdq_add_ec (and dig/dothrow):
 // hoisted function, cycle-safe. iactions is the same edge.
 import { cmdq_add_ec } from './cmd.js';
+import { nohands, verysmall } from './monsters.js';
 
 /**
  * C ref: iactions.c itemactions_pushkeys — queue CQ_CANNED ec + invlet.
@@ -779,9 +780,12 @@ export async function itemactions(otmp) {
         add(IA_INVOKE_OBJ, 'V', 'Try to invoke a unique power of this object');
     }
 
-    // w: wield — C iactions.c `:606–630` skip uwep / cantwield named
-    if (otmp === u.uwep) {
-        /* already wielded — skip. cantwield(youmonst.data) named omit. */
+    // w: wield — C iactions.c `:606–630` skip uwep / cantwield.
+    // cantwield is a mondata.h:123 macro (nohands || verysmall),
+    // expanded inline like the eat/polyself/uhitm/wield sites.
+    if (otmp === u.uwep
+        || nohands(game.youmonst?.data) || verysmall(game.youmonst?.data)) {
+        /* either already wielded or can't wield anything; skip 'w' */
     } else if (
         otmp.oclass === WEAPON_CLASS || is_weptool(otmp)
         || (otmp.otyp === TOWEL && (otmp.spe | 0) > 0) /* is_wet_towel */

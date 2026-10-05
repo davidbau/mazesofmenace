@@ -1758,8 +1758,7 @@ function setmnotwielded_rot(mon, obj) {
  * setmnotwielded; OBJ_MIGRATING owornmask=0; invent extract splice;
  * in_invent update_inventory after rot_organic extract.
  * unique/pname corpse_xname CXN_NO_PFX "the" (D-1234).
- * Named omit: hideunder/mundetected expose; rot_organic contents bury;
- * setmnotwielded artifact_light.
+ * Named omit: setmnotwielded artifact_light (own row).
  */
 export async function rot_corpse(obj) {
     if (!obj) return;
@@ -1795,7 +1794,15 @@ export async function rot_corpse(obj) {
         obj.owornmask = 0;
     }
 
-    // C: rot_organic — contents bury deferred; extract + obfree
+    // C dig.c rot_organic :2129–2137 via rot_corpse — a rotting
+    // container's contents become newly buried objects (map coords synced
+    // first); bury_an_obj extracts, so the loop terminates.
+    const { bury_an_obj } = await import('./dig.js');
+    while (Has_contents(obj)) {
+        obj.cobj.ox = obj.ox;
+        obj.cobj.oy = obj.oy;
+        await bury_an_obj(obj.cobj, null);
+    }
     obj_extract_self(obj);
     obj.quan = 0;
     obj.where = OBJ_FREE;

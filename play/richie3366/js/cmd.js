@@ -59,6 +59,7 @@ const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
 const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
 const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
 import { bad_rock, cant_squeeze_thru, wake_nearto, minliquid, m_at } from './mon.js';
+import { worm_cross } from './worm.js';
 import { is_hider, hides_under, tunnels, needspick, monsterNames } from './monsters.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
@@ -756,7 +757,7 @@ export function ext_func_tab_from_txt(txt) {
 const UNAVAILCMD = "Unavailable command '%s'.";
 
 /** C decl.c:8–13 `nhcb_name[]`, same order as `NHCB_*`. */
-const NHCB_NAME = ['cmd_before', 'level_enter', 'level_leave', 'end_turn'];
+export const NHCB_NAME = ['cmd_before', 'level_enter', 'level_leave', 'end_turn'];
 
 /**
  * C dat/nhlib.lua tutorial_cmd_before — `#save` is refused, everything
@@ -6497,6 +6498,23 @@ async function domove(dx, dy) {
                 game.context.move = 0;
                 return;
             }
+        }
+    }
+
+    // C hack.c test_move :1188–1192 — diagonal across consecutive
+    // long-worm segments is blocked. The `else if` runs only when the
+    // squeeze `if` above did not: bad-rock flanks skip it even when
+    // cant_squeeze_thru returned 0 (can squeeze through).
+    {
+        const wdat = game.youmonst?.data;
+        const tightDiag = !!(wdat && u.dx && u.dy
+            && bad_rock(wdat, u.ux, newy) && bad_rock(wdat, newx, u.uy));
+        if ((u.dx && u.dy) && !tightDiag
+            && worm_cross(u.ux | 0, u.uy | 0, newx, newy)) {
+            await pline(`${YMonnam(mon_at(u.ux | 0, newy))} is in your way.`);
+            if (game.context?.run) end_running(true);
+            game.context.move = 0;
+            return;
         }
     }
 
