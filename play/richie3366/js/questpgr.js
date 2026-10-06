@@ -19,7 +19,7 @@ import {
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
-import { nhl_nhlib_align_shuffle } from './dungeon.js';
+import { nhl_nhlib_align_shuffle, get_table_str_opt } from './dungeon.js';
 import { show_nhw_menu_text, show_text_pages } from './pager.js';
 import { mons, M2_PNAME } from './monsters.js';
 import { NON_PM, pmnames } from './generated/monsters_data.js';
@@ -1085,52 +1085,67 @@ function skip_pager(_common) {
 /**
  * C ref: questpgr.c com_pager_core lua lookup (embedded tables, not VM).
  * msg_fallbacks.goal_alt → goal_next when the role has no alt table.
+ * Field reads go through the shared get_table_str_opt helper (C
+ * nhlua.c:1055–1076): strings convert verbatim, functions are pcalled,
+ * direct non-strings throw like nhl_error. text converts here (C reads
+ * it at :543, before the rawtext arm); synopsis converts lazily in
+ * com_pager_core (C reads it at :549, after the :544-548 rawtext arm
+ * returns), so the entry carries its synopsis source table as synsrc.
  */
 function lookup_quest_entry(section, msgid, fallbackTried) {
     if (section === 'common') {
-        // C :517-541 entry table; array-form entries (no "text" key) carry
-        // text:null until the :552-568 rn2 arm resolves them.
+        // C :517-541 entry table; array-form entries read "text" (:543) off
+        // the entry table itself (nil → NULL), resolved by the :552-568
+        // rn2 arm; synsrc is the same table (C :549 reads nil → NULL).
         const arr = QUEST_CUSS_ARRAYS[msgid];
-        if (arr) return { text: null, synopsis: null, output: 'default', array: arr };
+        if (arr) return { text: get_table_str_opt(arr, 'text', null), output: 'default', array: arr, synsrc: arr };
         const raw = QUEST_COMMON[msgid];
         if (raw == null) return null;
         if (typeof raw === 'object') {
             return {
-                text: raw.text ?? null,
-                synopsis: raw.synopsis ?? null,
+                text: get_table_str_opt(raw, 'text', null),
                 output: raw.output ?? 'default',
+                synsrc: raw,
             };
         }
-        return { text: raw, synopsis: null, output: 'default' };
+        // Flattened { text } table (quest.lua :189-194 shape): the extractor
+        // did the :543 read; no synopsis key, so C :549 reads nil → NULL.
+        return { text: raw, output: 'default', synsrc: null };
     }
     const table = QUEST_ROLE_TEXT[msgid];
     const raw = table?.[section];
     // Empty string is a miss, same as a missing role key (C: not a lua table).
     if (raw == null || raw === '') {
         if (!fallbackTried) {
-            const fb = QUEST_MSG_FALLBACKS[msgid];
-            if (fb) return lookup_quest_entry(section, fb, true);
+            // C :522-527 — msg_fallbacks table read (NULL default); a
+            // non-NULL result retries under the fallback id (C :526 is a
+            // pointer test, so "" would retry too).
+            const fb = get_table_str_opt(QUEST_MSG_FALLBACKS, msgid, null);
+            if (fb != null) return lookup_quest_entry(section, fb, true);
         }
         return null;
     }
     // C :552–568 — no "text" field: entry is an array of strings. discourage
-    // is that shape (quest.lua). text stays null so the rn2(nelems) arm runs.
+    // is that shape (quest.lua). "text" reads nil → NULL off the entry
+    // table itself, so the rn2(nelems) arm runs.
     if (Array.isArray(raw)) {
-        return { text: null, synopsis: null, output: 'default', array: raw };
+        return { text: get_table_str_opt(raw, 'text', null), output: 'default', array: raw, synsrc: raw };
     }
     // nemesis_* tables carry text / synopsis / output on the entry itself.
     if (typeof raw === 'object') {
         return {
-            text: raw.text ?? null,
-            synopsis: raw.synopsis ?? null,
+            text: get_table_str_opt(raw, 'text', null),
             output: raw.output ?? 'default',
+            synsrc: raw,
         };
     }
+    // Flattened { text, synopsis?, output? } table: the extractor split the
+    // :543 text answer into the string and the :549/:550 answers into meta.
     const meta = QUEST_MSG_META[msgid]?.[section] || {};
     return {
         text: raw,
-        synopsis: meta.synopsis || null,
         output: meta.output || 'default',
+        synsrc: meta,
     };
 }
 
@@ -1214,8 +1229,9 @@ async function deliver_by_window(msg, how) {
  * convert_arg catalogue is D-1649;
  * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
  * Lua helpers with no JS counterpart: nhl_init/nhl_loadlua/nhl_done
- * (no VM — embedded tables), get_table_str_opt/get_table_option
- * (the lookup above), dupstr (string assign).
+ * (no VM — embedded tables), get_table_option (the lookup above),
+ * dupstr (string assign). get_table_str_opt reads through the shared
+ * js/dungeon.js helper (text/synopsis/fallback above).
  *
  * @param {string} section role filecode or "common"
  * @param {string} msgid
@@ -1240,7 +1256,8 @@ async function com_pager_core(section, msgid, showerror, rawOut) {
         return false;
     }
 
-    // C :543 — text field (null for array-form entries).
+    // C :543 — text field, converted in lookup_quest_entry via
+    // get_table_str_opt (C reads text before the rawtext arm below).
     let text = entry.text ?? null;
     // C :544-548 — rawtext arm BEFORE the array arm: dupstr(text) with no
     // display, res TRUE even when text is null.
@@ -1249,8 +1266,10 @@ async function com_pager_core(section, msgid, showerror, rawOut) {
         return true;
     }
 
-    // C :549-550 — synopsis + output ("default" → 0) options.
-    let synopsis = entry.synopsis ?? null;
+    // C :549-550 — synopsis (read here, after the rawtext arm above,
+    // exactly where C reads it: the :544-548 arm returns before :549) +
+    // output ("default" → 0) options.
+    let synopsis = entry.synsrc ? get_table_str_opt(entry.synsrc, 'synopsis', null) : null;
     let output = howtoput2i(entry.output);
 
     // C :552-568 — no text: entry is an array of strings; nelems<2 is

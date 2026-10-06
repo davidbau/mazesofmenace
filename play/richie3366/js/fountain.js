@@ -51,6 +51,7 @@ import {
     pline, newsym, You, You_feel, You_see, flush_topl_more, canspotmon, verbalize,
     glyph_is_invisible, tmp_at,
 } from './display.js';
+import { can_no_longer_twoweap } from './wield.js';
 import {
     curse, bless, uncurse, mksobj_at, rnd_class, mkobj, mkobj_at,
     obj_extract_self, objects_at, sobj_at, delobj, mkgold,
@@ -1174,10 +1175,18 @@ export async function dipfountain(obj) {
                 'From the murky depths, a hand reaches up to bless the sword.',
             );
             await pline('As the hand retreats, the fountain disappears!');
+            const was_twoweap = !!u.twoweap;
             obj = oname(
                 obj, artiname(ART_EXCALIBUR),
                 ONAME_VIA_DIP | ONAME_KNOW_ARTI,
             );
+            /* C oname do_name.c:403–404 untwoweapon() You(): a dipped
+               wielded secondary can trigger it; oname stays sync, so the
+               async dipfountain emits it here — before discover_artifact
+               (:433), exactly C's point in the message stream. */
+            if (was_twoweap && obj === u.uswapwep && !u.twoweap) {
+                await pline(`You ${can_no_longer_twoweap}.`);
+            }
             discover_artifact(ART_EXCALIBUR);
             await bless(obj);
             obj.oeroded = 0;

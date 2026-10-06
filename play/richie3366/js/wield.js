@@ -37,7 +37,10 @@ import { shkname } from './shknam.js';
 
 /** C: are_no_longer_twoweap / can_no_longer_twoweap */
 const are_no_longer_twoweap = 'are no longer using two weapons at once';
-const can_no_longer_twoweap = 'can no longer wield two weapons at once';
+/* Exported: sync oname cannot await pline, so its do_name.c:403–404
+   untwoweapon() You() is emitted by the async callers that can pass the
+   wielded secondary (do_oname, dipfountain) through this shared string. */
+export const can_no_longer_twoweap = 'can no longer wield two weapons at once';
 
 /**
  * C ref: wield.c empty_handed — gloves → "empty handed"; else humanoid

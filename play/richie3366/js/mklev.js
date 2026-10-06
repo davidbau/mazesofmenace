@@ -1004,7 +1004,7 @@ function get_table_boolean(table, name) {
 }
 
 /** C nhlua.c:1106–1118: nil defaults; every other type is validated. */
-function get_table_boolean_opt(table, name, defval) {
+export function get_table_boolean_opt(table, name, defval) {
     if (table[name] != null) return get_table_boolean(table, name);
     return defval;
 }
@@ -1143,15 +1143,6 @@ export async function lspo_gas_cloud(opts) {
 }
 
 /**
- * C ref: nhlua.c get_table_int_opt — nil field → defval, else integer.
- * Unpacked-table form: plain-object field read (des tables are trusted
- * content, so `| 0` coercion stands in for luaL_checkinteger).
- */
-function splev_opt_int(v, defval) {
-    return v == null ? defval : v | 0;
-}
-
-/**
  * C ref: nhlua.c get_table_option — luaL_checkoption index into the option
  * table; absent field → default string; no match → nhl_error (fatal).
  * luaL_checkoption matches exactly (case-sensitive).
@@ -1161,25 +1152,6 @@ function splev_opt_index(v, defval, opts) {
     const i = opts.indexOf(s);
     if (i < 0) throw new Error(`lspo: bad option '${s}'`);
     return i;
-}
-
-/**
- * C ref: nhlua.c get_table_boolean_opt / get_table_boolean — nil field →
- * defval; "true"/"false"/"yes"/"no" (exact), boolean, or 0/1; else
- * nhl_error (fatal — the JS guard throws likewise).
- */
-function splev_opt_boolean(v, defval) {
-    if (v == null) return defval;
-    if (typeof v === 'boolean') return v ? 1 : 0;
-    if (typeof v === 'number') {
-        if (v === 0 || v === 1) return v;
-        throw new Error('lspo: Expected a boolean');
-    }
-    if (typeof v === 'string') {
-        const i = ['true', 'false', 'yes', 'no'].indexOf(v);
-        if (i >= 0) return [1, 0, 1, 0][i];
-    }
-    throw new Error('lspo: Expected a boolean');
 }
 
 /**
@@ -1295,9 +1267,9 @@ const LSPO_MAZEWALK_DIRS2I = [W_NORTH, W_SOUTH, W_EAST, W_WEST, W_RANDOM];
  * (C `:5865–5866`). levl indexes go through level.at with a null
  * guard (walkfrom idiom above — C indexes raw levl).
  * Named: lcheck_param_table (table-or-empty + object check);
- * get_table_mapchr_opt / get_table_boolean_opt / get_table_option
- * (inline splev_chr2typ / splev_opt_boolean / splev_opt_index, C
- * nhlua.c :256/:1107/:1122); luaL_checkinteger
+ * get_table_mapchr_opt / get_table_option (inline splev_chr2typ /
+ * splev_opt_index, C nhlua.c :256/:1122); get_table_boolean_opt is the
+ * shared same-file helper (C nhlua.c :1107–1118); luaL_checkinteger
  * (luaL_checkinteger_unpacked).
  */
 export function lspo_mazewalk(a, b, c) {
@@ -1316,7 +1288,7 @@ export function lspo_mazewalk(a, b, c) {
         my = mm.y;
         ftyp = get_table_mapchr_opt(o, 'typ', ROOM); // C :5794
 
-        fstocked = splev_opt_boolean(o.stocked, 1); // C :5795
+        fstocked = get_table_boolean_opt(o, 'stocked', 1); // C :5795 get_table_boolean_opt(L, "stocked", 1)
         dir = LSPO_MAZEWALK_DIRS2I[splev_opt_index(o.dir, 'random', LSPO_MAZEWALK_DIRS)]; // C :5796
     }
     let x = typeof mx === 'bigint' ? Number(mx & 0xffn) : mx | 0; // C :5799 SP_COORD_PACK
@@ -1377,11 +1349,11 @@ export function lspo_mazewalk(a, b, c) {
 export function lspo_gold(a, b, c) {
     let amount, x, y;
     const argc = arguments.length;
-    if (argc === 3) { // C :4489-4492
+    if (argc === 3) { // C :4490-4493
         amount = a | 0;
         x = b | 0;
         y = c | 0;
-    } else if (argc === 2 && b !== null && typeof b === 'object') { // C :4493-4496
+    } else if (argc === 2 && b !== null && typeof b === 'object') { // C :4494-4498
         amount = a | 0;
         // C :4486 gldx/gldy are unset until get_coord writes them. A nil
         // leaves the -1 seed (this arm only runs for a table).
@@ -1389,20 +1361,22 @@ export function lspo_gold(a, b, c) {
         get_coord(b, gld); // C :4496 get_coord(L, 2, &gldx, &gldy)
         x = gld.x;
         y = gld.y;
-    } else if (argc === 0 || (argc === 1 && a !== null && typeof a === 'object')) { // C :4497-4501
+    } else if (argc === 0 || (argc === 1 && a !== null && typeof a === 'object')) { // C :4499-4500
         create_des_coder();
-        const o = a ?? {}; // C lcheck_param_table
-        amount = splev_opt_int(o.amount, -1); // C :4499
-        const xy = get_table_xy_or_coord(o); // C :4500
+        const o = a ?? {}; // C :4500 lcheck_param_table
+        // C :4502 get_table_int_opt(L, "amount", -1): nil → -1, else
+        // checkinteger (fractions and non-numerics throw like C argerror).
+        amount = get_table_int_opt(o, 'amount', -1);
+        const xy = get_table_xy_or_coord(o); // C :4503
         x = xy.x;
         y = xy.y;
     } else {
-        throw new Error('lspo_gold: Wrong parameters'); // C :4503-4506 nhl_error
+        throw new Error('lspo_gold: Wrong parameters'); // C :4505-4508 nhl_error
     }
-    const coder = game.gc?.coder ?? null; // C :4520 gc.coder->croom (table form created it above)
-    const pos = get_location_coord(DRY, coder?.croom ?? null, x, y); // C :4520 (RANDOM when x=y=-1)
-    if (amount < 0) amount = rnd(200); // C :4521-4522
-    mkgold(amount, pos.x, pos.y); // C :4523
+    const coder = game.gc?.coder ?? null; // C :4516 gc.coder->croom (table form created it above)
+    const pos = get_location_coord(DRY, coder?.croom ?? null, x, y); // C :4516 (RANDOM when x=y=-1)
+    if (amount < 0) amount = rnd(200); // C :4517-4518
+    mkgold(amount, pos.x, pos.y); // C :4519
     return 0;
 }
 
@@ -1600,13 +1574,13 @@ export function lspo_trap(a, b, c) {
     } else { // C :4428-4461 table form
         const o = argc === 0 ? {} : a; // C lcheck_param_table: table-or-empty
         if (o === null || typeof o !== 'object') throw new Error('lspo_trap: Wrong parameters');
-        const xy = get_table_xy_or_coord(o); // C :4431
+        const xy = get_table_xy_or_coord(o); // C :4429
         x = xy.x;
         y = xy.y;
         tmp.type = lspo_traptype_opt(o, 'type', -1); // C :4430
-        tmp.spider_on_web = !!splev_opt_boolean(o.spider_on_web, 1); // C :4433
-        tmp.seen = !!splev_opt_boolean(o.seen, 0); // C :4434
-        tmp.novictim = !splev_opt_boolean(o.victim, 1); // C :4435
+        tmp.spider_on_web = !!get_table_boolean_opt(o, 'spider_on_web', 1); // C :4431 get_table_boolean_opt(L, "spider_on_web", 1)
+        tmp.seen = !!get_table_boolean_opt(o, 'seen', 0); // C :4432 get_table_boolean_opt(L, "seen", FALSE)
+        tmp.novictim = !get_table_boolean_opt(o, 'victim', 1); // C :4433 novictim = !get_table_boolean_opt(L, "victim", TRUE)
         if (o.launchfrom != null && typeof o.launchfrom === 'object') { // C :4437-4446
             const lc = { x: -1, y: -1 }; // C :4438
             get_coord(o.launchfrom, lc); // C :4439 get_coord(L, -1, &lx, &ly)
@@ -1651,27 +1625,6 @@ function sel_set_feature(x, y, typ) {
 }
 
 /**
- * C ref: nhlua.c get_table_boolean `:1079–1104` — string arm returns the
- * raw luaL_checkoption index ("true"→0, "false"→1, "yes"→2, "no"→3;
- * no match throws like nhl_error); boolean → 1/0; number must be an
- * integer 0/1 else throw ("Expected a boolean").
- */
-function splev_feature_boolopt(v, name) {
-    if (typeof v === 'string') {
-        const i = ['true', 'false', 'yes', 'no'].indexOf(v);
-        if (i < 0) throw new Error(`lspo_feature: Expected a boolean for '${name}'`);
-        return i;
-    }
-    if (typeof v === 'boolean') return v ? 1 : 0;
-    if (typeof v === 'number') {
-        if (!Number.isInteger(v) || v < 0 || v > 1)
-            throw new Error(`lspo_feature: Expected a boolean for '${name}'`);
-        return v;
-    }
-    throw new Error(`lspo_feature: Expected a boolean for '${name}'`);
-}
-
-/**
  * C ref: sp_lev.c l_table_getset_feature_flag `:4739–4756` — absent field
  * (get_table_boolean_opt defval -2) skips; else set/clear flag on the
  * cell. C writes levl[x][y].flags, which rm.h aliases (`#define looted
@@ -1680,9 +1633,10 @@ function splev_feature_boolopt(v, name) {
  * (get_table_boolean throws on -1) and is kept verbatim for C order.
  */
 function l_table_getset_feature_flag(o, x, y, name, flag) {
-    if (o[name] == null) return; // C :4746 get_table_boolean_opt -2
-    let val = splev_feature_boolopt(o[name], name);
-    if (val === -1) val = rn2(2); // C :4748-4749
+    const raw = get_table_boolean_opt(o, name, -2); // C :4745
+    if (raw === -2) return; // C :4747
+    let val = raw;
+    if (val === -1) val = rn2(2); // C :4748-4749 (dead: the conversion throws on -1; kept verbatim)
     const loc = game.level.at(x, y);
     if (!loc) return;
     if (val) loc.looted = (loc.looted | 0) | flag; // C :4750-4751
@@ -1812,11 +1766,10 @@ export function lspo_engraving(a, b, c) {
         if (typeof o.text !== 'string') // C :3908 get_table_str luaL_checkstring
             throw new Error("bad argument 'text' (string expected)");
         txt = o.text;
-        // C :3909-3910 get_table_boolean_opt (nil → default, else shared
-        // C nhlua.c get_table_boolean raw-index semantics via
-        // splev_feature_boolopt; nonzero → true like C's boolean assignment).
-        wipeout = (o.degrade == null ? 1 : splev_feature_boolopt(o.degrade, 'degrade')) !== 0;
-        guardobjs = (o.guardobjects == null ? 0 : splev_feature_boolopt(o.guardobjects, 'guardobjects')) !== 0;
+        // C :3909-3910 get_table_boolean_opt (nil → default, else the
+        // shared same-file conversion; nonzero → true like C's use).
+        wipeout = get_table_boolean_opt(o, 'degrade', 1) !== 0; // C :3909
+        guardobjs = get_table_boolean_opt(o, 'guardobjects', 0) !== 0; // C :3910
     } else if (argc === 3) { // C :3911-3917
         const ex = { x, y }; // C :3912 ex, ey; nil leaves the -1 seed
         get_coord(a, ex); // C :3913 (void) get_coord(L, 1, &ex, &ey)
@@ -1984,7 +1937,7 @@ export function lspo_terrain(a, b, c) {
             throw new Error('lspo_terrain: Erroneous map char');
         tmpterrain.ter = check_mapchr(o.typ); // C nhlua.c:393-397 check_mapchr
         if (tmpterrain.ter === INVALID_TYPE) throw new Error('lspo_terrain: Erroneous map char'); // C nhlua.c:247-248
-        tmpterrain.tlit = splev_opt_int(o.lit, SET_LIT_NOCHANGE); // C :5001
+        tmpterrain.tlit = get_table_int_opt(o, 'lit', SET_LIT_NOCHANGE); // C :5001 (int) luaL_checkinteger
     } else if (argc === 2 && a !== null && typeof a === 'object' // C :5002-5003 LUA_TTABLE
                && !(a.pts instanceof Set) && typeof b === 'string') { // (a selection is LUA_TUSERDATA, not TABLE)
         tmpterrain.ter = check_mapchr(b); // C :5005
@@ -2028,8 +1981,9 @@ export function lspo_terrain(a, b, c) {
  * "Erroneous map char"); totyp >= MAX_TYPE returns 0 (C `:5068–5069`).
  * fromterrain defaults INVALID_TYPE, which selects the mapfragment arm
  * (C `:5071–5082`: mapfragment required there, mapfrag_error throws).
- * chance/lit/x1..y2 default 100/NOCHANGE/-1 (C nhlua.c:1029
- * get_table_int_opt ≡ splev_opt_int). All--1 reads the "region" array
+ * chance/lit/x1..y2 default 100/NOCHANGE/-1 (C nhlua.c:1028–1039
+ * get_table_int_opt via the live dungeon.js helper). All--1 reads the
+ * "region" array
  * (C `:5092–5095` get_table_region optional-TRUE ≡
  * get_table_region_unpacked null-keeps--1s); still-all--1 reads the
  * "selection" field (C `:5097–5101`, shape-checked like
@@ -2066,12 +2020,15 @@ export function lspo_replace_terrain(opts) {
         const err = mapfrag_error(mf); // C :5080
         if (err !== null) throw new Error(`lspo_replace_terrain: ${err}`); // C :5081 nhl_error
     }
-    const chance = splev_opt_int(o.chance, 100); // C :5085
-    const tolit = splev_opt_int(o.lit, SET_LIT_NOCHANGE); // C :5086
-    let x1 = splev_opt_int(o.x1, -1); // C :5087-5090
-    let y1 = splev_opt_int(o.y1, -1);
-    let x2 = splev_opt_int(o.x2, -1);
-    let y2 = splev_opt_int(o.y2, -1);
+    // C :5086–5091 get_table_int_opt reads: nil → default, else
+    // checkinteger (fractions and non-numerics throw like C argerror;
+    // o is a non-null object here, so nil ⟺ absent on both sides).
+    const chance = get_table_int_opt(o, 'chance', 100); // C :5086
+    const tolit = get_table_int_opt(o, 'lit', SET_LIT_NOCHANGE); // C :5087
+    let x1 = get_table_int_opt(o, 'x1', -1); // C :5088-5091
+    let y1 = get_table_int_opt(o, 'y1', -1);
+    let x2 = get_table_int_opt(o, 'x2', -1);
+    let y2 = get_table_int_opt(o, 'y2', -1);
     if (x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1) { // C :5092
         const reg = get_table_region_unpacked(o, 'region', true); // C :5093 optional-TRUE
         if (reg) { x1 = reg[0]; y1 = reg[1]; x2 = reg[2]; y2 = reg[3]; }
@@ -2155,16 +2112,16 @@ export async function lspo_region(a, b) {
         const o = a ?? {}; // C :5598 lcheck_param_table
         if (o === null || typeof o !== 'object') throw new Error('lspo_region: Wrong parameters');
         // C TODO (:5599-5601): "unfilled"/"filled"/"lvflags_only" needfill strings — no get_table_needfill_opt in C yet; int stands
-        const needfill = splev_opt_int(o.filled, 0); // C :5602
-        const irregular = splev_opt_boolean(o.irregular, 0); // C :5603
-        const joined = splev_opt_boolean(o.joined, 1); // C :5604 (TRUE)
-        const do_arrival_room = splev_opt_boolean(o.arrival_room, 0); // C :5605
+        const needfill = get_table_int_opt(o, 'filled', 0); // C :5600 get_table_int_opt(L, "filled", 0)
+        const irregular = get_table_boolean_opt(o, 'irregular', 0); // C :5601 get_table_boolean_opt(L, "irregular", 0)
+        const joined = get_table_boolean_opt(o, 'joined', 1); // C :5602 get_table_boolean_opt(L, "joined", TRUE)
+        const do_arrival_room = get_table_boolean_opt(o, 'arrival_room', 0); // C :5603 get_table_boolean_opt(L, "arrival_room", 0)
         const rtype = await get_table_roomtype_opt(o, 'type', OROOM); // C :5606
-        let rlit = splev_opt_int(o.lit, -1); // C :5607
-        let dx1 = splev_opt_int(o.x1, -1); // C :5563-5566 get_table_coords_or_region
-        let dy1 = splev_opt_int(o.y1, -1);
-        let dx2 = splev_opt_int(o.x2, -1);
-        let dy2 = splev_opt_int(o.y2, -1);
+        let rlit = get_table_int_opt(o, 'lit', -1); // C :5605 get_table_int_opt(L, "lit", -1)
+        let dx1 = get_table_int_opt(o, 'x1', -1); // C :5565-5568 get_table_coords_or_region
+        let dy1 = get_table_int_opt(o, 'y1', -1);
+        let dx2 = get_table_int_opt(o, 'x2', -1);
+        let dy2 = get_table_int_opt(o, 'y2', -1);
         if (dx1 === -1 && dy1 === -1 && dx2 === -1 && dy2 === -1) { // C :5569
             const reg = get_table_region_unpacked(o, 'region', false); // C :5571 required-FALSE
             dx1 = reg[0]; dy1 = reg[1]; dx2 = reg[2]; dy2 = reg[3]; // C :5572-5574
@@ -2287,7 +2244,7 @@ export function lspo_map(a, contentsFn) {
         if (typeof o.map !== 'string') // C :6120 get_table_str
             throw new Error("bad argument 'map' (string expected)");
         mf = mapfrag_fromstr(o.map); // C :6128 (dupstr/free are GC no-ops)
-        lit = splev_opt_boolean(o.lit, 0); // C :6121 get_table_boolean_opt FALSE
+        lit = get_table_boolean_opt(o, 'lit', 0); // C :6121 get_table_boolean_opt(L, "lit", FALSE)
         if (typeof contentsFn === 'function') contents = contentsFn; // unpacked contents (lspo_room precedent)
         else if (typeof o.contents === 'function') contents = o.contents; // C :6122-6126 lua_getfield contents
     }
@@ -19116,7 +19073,10 @@ export function lspo_door(a, b, c) {
         const tmpd = {
             secret: (typ === D_SECRET) ? 1 : 0, // C :4715
             mask: msk, // C :4716 (unresolved — create_door rolls -1 itself)
-            pos: splev_opt_int(o?.pos, -1), // C :4717 (3-arg form reads defaults, like C's field read)
+            // C :4717 get_table_int_opt(L, "pos", -1): nil → -1, else
+            // checkinteger (fractions and non-numerics throw like C
+            // argerror; the 3-arg form's null table reads the default).
+            pos: get_table_int_opt(o, 'pos', -1),
             wall: walldirs2i[splev_opt_index(o?.wall, 'all', walldirs)], // C :4718
         };
         create_door(tmpd, game.gc?.coder?.croom ?? null); // C :4720
@@ -19161,23 +19121,27 @@ export function lspo_wallify(o) {
 }
 
 /**
- * C ref: sp_lev.c lspo_mineralize `:3939–3955` — des.mineralize entry in C
- * order: create_des_coder (`:3944`), -1-defaulted prob reads (`:3946–3951`,
- * splev_opt_int ≡ get_table_int_opt), then the live mineralize
- * (`:3953`). -1 keeps mineralize's default behavior (C's own comment).
- * mineralize itself is untouched (phase-2 park — callee only).
+ * C ref: sp_lev.c lspo_mineralize `:3938–3955` — des.mineralize entry in C
+ * order: create_des_coder (`:3943`), -1-defaulted prob reads (`:3947–3950`,
+ * get_table_int_opt), then the live mineralize (`:3952`). -1 keeps
+ * mineralize's default behavior (C's own comment `:3946`). The four reads
+ * go through the shared js/dungeon.js helper on the EXISTING mklev→dungeon
+ * edge (no import change): t is the caller's `o ?? {}`, so lua_field is
+ * t[name] and nil/non-nil classifications match C (a non-object o reads
+ * nil on both sides). mineralize itself is untouched (phase-2 park —
+ * callee only).
  * Named omissions: lcheck_param_table (by-design nhlua); des dispatch
  * (nhl_functions[] — no scored analogue until the Lua VM, Constitution
  * §7); exported for that caller.
  */
 export function lspo_mineralize(o) {
-    create_des_coder(); // C :3944
-    const t = o ?? {}; // C :3946 lcheck_param_table
-    const gem_prob = splev_opt_int(t.gem_prob, -1); // C :3948
-    const gold_prob = splev_opt_int(t.gold_prob, -1); // C :3949
-    const kelp_moat = splev_opt_int(t.kelp_moat, -1); // C :3950
-    const kelp_pool = splev_opt_int(t.kelp_pool, -1); // C :3951
-    mineralize(kelp_pool, kelp_moat, gold_prob, gem_prob, true); // C :3953
+    create_des_coder(); // C :3943
+    const t = o ?? {}; // C :3945 lcheck_param_table
+    const gem_prob = get_table_int_opt(t, 'gem_prob', -1); // C :3947
+    const gold_prob = get_table_int_opt(t, 'gold_prob', -1); // C :3948
+    const kelp_moat = get_table_int_opt(t, 'kelp_moat', -1); // C :3949
+    const kelp_pool = get_table_int_opt(t, 'kelp_pool', -1); // C :3950
+    mineralize(kelp_pool, kelp_moat, gold_prob, gem_prob, true); // C :3952
     return 0; // C :3954
 }
 
@@ -22598,38 +22562,53 @@ function lspo_object_apply_montype(tmp) {
         && id !== FIGURINE) {
         return;
     }
+    // C :3673 get_table_str_opt(L, "montype", NULL): nil → NULL, string
+    // kept, function pcalled + optstring conversion, direct non-string
+    // throws like nhl_error. tmp is a non-null object at the caller's
+    // table gate, so lua_field is tmp.montype and the
+    // nil/string/function/else classifications are identical to C's.
+    const montype = get_table_str_opt(tmp, 'montype', null);
     let nonpmobj = false;
-    const montype = tmp.montype;
-    if (montype != null && montype !== '') {
-        const mt = String(montype);
+    // C :3675 `if (montype)` is a pointer test: "" enters the branch
+    // (and errors below — it matches no permonst).
+    if (montype != null) {
+        const mt = montype;
         const low = mt.toLowerCase();
         if ((id === TIN && (low === 'spinach' || low === 'empty'))
             || (id === EGG && low === 'empty')) {
             tmp.corpsenm = NON_PM;
             tmp.spe = low === 'spinach' ? 1 : 0;
             nonpmobj = true;
-        } else if (mt.length === 1) {
-            const mlet = monclass_letter_to_mlet(mt);
-            if (mlet) {
-                const pm = mkclass(mlet, G_NOGEN | G_IGNORE);
-                if (pm) tmp.corpsenm = pm.mndx | 0;
-            } else {
-                const mndx = lspo_object_montype_mndx(mt);
-                if (mndx !== NON_PM) tmp.corpsenm = mndx;
-            }
         } else {
-            const mndx = lspo_object_montype_mndx(mt);
+            // C :3685–3699 class-letter mkclass, else the pmnames scan;
+            // :3701–3704 assigns the hit or nhl_errors.
+            let mndx = NON_PM;
+            if (mt.length === 1) {
+                const mlet = monclass_letter_to_mlet(mt);
+                if (mlet) {
+                    const pm = mkclass(mlet, G_NOGEN | G_IGNORE);
+                    if (pm) mndx = pm.mndx | 0;
+                } else {
+                    mndx = lspo_object_montype_mndx(mt);
+                }
+            } else {
+                mndx = lspo_object_montype_mndx(mt);
+            }
             if (mndx !== NON_PM) tmp.corpsenm = mndx;
+            else if (!nonpmobj) nhl_error('Unknown montype');
         }
     }
     if (id === STATUE || id === CORPSE) {
         let lflags = 0;
-        if (tmp.historic) lflags |= CORPSTAT_HISTORIC;
-        if (tmp.male) lflags |= CORPSTAT_MALE;
-        if (tmp.female) lflags |= CORPSTAT_FEMALE;
+        // C :3709–3713 get_table_boolean_opt on the object table (tmp is
+        // its spread; normalize leaves these keys untouched, so the read
+        // is the caller's value or the 0 default, converted like C).
+        if (get_table_boolean_opt(tmp, 'historic', 0)) lflags |= CORPSTAT_HISTORIC; // C :3709
+        if (get_table_boolean_opt(tmp, 'male', 0)) lflags |= CORPSTAT_MALE; // C :3711
+        if (get_table_boolean_opt(tmp, 'female', 0)) lflags |= CORPSTAT_FEMALE; // C :3713
         tmp.spe = lflags;
     } else if (id === EGG) {
-        tmp.spe = tmp.laid_by_you ? 1 : 0;
+        tmp.spe = get_table_boolean_opt(tmp, 'laid_by_you', 0) ? 1 : 0; // C :3717
     } else if (!nonpmobj) {
         tmp.spe = 0;
     }
@@ -22961,25 +22940,63 @@ function get_table_int_or_random(tab, name, rndval) {
 function lspo_object_normalize_table(tmp) {
     // C :3634 — absent and "random" are -127 (create_object: NOT RANDOM).
     tmp.spe = get_table_int_or_random(tmp, 'spe', -127);
-    if (tmp.trapped == null) tmp.trapped = -1;
-    if (tmp.locked == null) tmp.locked = -1;
-    if (tmp.eroded == null) tmp.eroded = 0;
     if (tmp.buc != null) tmp.curse_state = get_table_buc(tmp.buc);
     if (tmp.curse_state == null) tmp.curse_state = 0;
+    // C :3637 get_table_str_opt(L, "name", NULL): nil → NULL, string kept,
+    // function pcalled + optstring conversion, direct non-string throws
+    // like nhl_error. tmp is a non-null spread at the caller's table gate
+    // (:23030), so lua_field(tmp,'name') is tmp.name and the
+    // nil/string/function/else classifications are identical to C's. Read
+    // here (after buc :3635, before quantity :3638) to keep C's pcall order.
+    tmp.name = get_table_str_opt(tmp, 'name', null);
     // C :3638 field "quantity". Hand-rolled des.object tables store that
     // lua key as quan (tut-1, minetown, themerms). Copy it when quantity
     // itself is nil so the call uses C's field name.
     if (tmp.quantity == null && tmp.quan != null) tmp.quantity = tmp.quan;
     tmp.quan = get_table_int_or_random(tmp, 'quantity', -1);
-    if (tmp.lit == null) tmp.lit = 0;
+    // C :3639–3648 get_table_boolean_opt (nhlua.c:1107–1118): nil → the
+    // default, else the get_table_boolean conversion (string → raw
+    // checkoption index, boolean → 1/0, number must be 0/1, anything else
+    // throws like nhl_error). tmp is a non-null spread at the caller's
+    // table gate (:23048), so lua_field is tmp[name] and nil ⟺ == null
+    // on both sides. Read here in C order against the other throwing
+    // reads (quantity :3638 before, eroded :3641 after).
+    tmp.buried = get_table_boolean_opt(tmp, 'buried', 0); // C :3639
+    tmp.lit = get_table_boolean_opt(tmp, 'lit', 0); // C :3640
+    // C :3641/:3645 get_table_int_opt(L, "eroded"/"recharged", 0): nil →
+    // 0, else checkinteger conversion (integral floats and numeric strings
+    // convert; fractions and direct non-numerics argerror). tmp is a
+    // non-null spread at the caller's table gate (:23045), so lua_field
+    // is tmp[name] and the nil/non-nil classifications are identical to
+    // C's. Read here (after lit :3640, before id :3652) to keep C's read
+    // order against the other throwing reads (name :3637, quantity :3638).
+    tmp.eroded = get_table_int_opt(tmp, 'eroded', 0);
+    // C :3642–3644, in order between eroded :3641 and recharged :3645.
+    // The :3644 key is "trap_known"; the tmpobj field is tknown.
+    tmp.locked = get_table_boolean_opt(tmp, 'locked', -1); // C :3642
+    tmp.trapped = get_table_boolean_opt(tmp, 'trapped', -1); // C :3643
+    tmp.tknown = get_table_boolean_opt(tmp, 'trap_known', -1); // C :3644
+    tmp.recharged = get_table_int_opt(tmp, 'recharged', 0);
+    // C :3646–3648, in order after recharged :3645.
+    tmp.greased = get_table_boolean_opt(tmp, 'greased', 0); // C :3646
+    tmp.broken = get_table_boolean_opt(tmp, 'broken', 0); // C :3647
+    tmp.achievement = get_table_boolean_opt(tmp, 'achievement', 0); // C :3648
     if (tmp.corpsenm == null) tmp.corpsenm = NON_PM;
 
+    // C get_table_objtype :3541–3542 — "id" is read before "class"
+    // (function fields pcall in that order).
+    const rawId = tmp.id;
+    const preResolved = typeof rawId === 'number' && Number.isInteger(rawId);
+    // C :3541 get_table_str_opt(L, "id", NULL): nil → NULL, string kept,
+    // function pcalled + optstring conversion, direct non-string throws
+    // like nhl_error. tmp is a non-null spread at the caller's table gate,
+    // so lua_field is tmp.id and the nil/string/function/else
+    // classifications are identical to C's. JS-only: an integer id is a
+    // pre-resolved otyp from hand-rolled callers (audited this iter: otyp
+    // constants only — a Lua number nhl_errors in C).
+    const idStr = preResolved ? null : get_table_str_opt(tmp, 'id', null);
     const classChar = get_table_objclass_field(tmp);
-    if (typeof tmp.id === 'string') {
-        tmp.id = find_objtype(tmp.id, classChar);
-    } else if (tmp.id == null) {
-        tmp.id = STRANGE_OBJECT;
-    }
+    tmp.id = preResolved ? rawId : find_objtype(idStr, classChar);
     // C: tmpobj.class = get_table_objclass after get_table_objtype
     tmp.class = classChar;
 
@@ -23054,18 +23071,6 @@ function get_table_align_unpacked(align) {
         case 'noncoaligned': return AM_SPLEV_NONCO;
         default: return AM_SPLEV_RANDOM; // "random" + unknown
     }
-}
-
-/**
- * C ref: sp_lev.c get_table_boolean_opt(L, key, dflt) for unpacked tables —
- * absent (null/undefined) yields dflt, which may be BOOL_RANDOM (-1);
- * explicit booleans fold to 1/0; numbers pass through untouched so an
- * explicit BOOL_RANDOM survives.
- */
-function lspo_bool_opt(v, dflt) {
-    if (v == null) return dflt;
-    if (typeof v === 'boolean') return v ? 1 : 0;
-    return v | 0;
 }
 
 /**
@@ -23180,8 +23185,8 @@ function lspo_monster_from_string(paramstr, arg2, arg3) {
  * splev_create_monster from tmp.idName — normalize itself burns nothing.
  */
 function lspo_monster_normalize_table(tmp, inventFn) {
-    tmp.peaceful = lspo_bool_opt(tmp.peaceful, BOOL_RANDOM);
-    tmp.asleep = lspo_bool_opt(tmp.asleep, BOOL_RANDOM);
+    tmp.peaceful = get_table_boolean_opt(tmp, 'peaceful', BOOL_RANDOM); // C :3293
+    tmp.asleep = get_table_boolean_opt(tmp, 'asleep', BOOL_RANDOM); // C :3294
     // C :3295 get_table_str_opt(L, "name", NULL): nil → NULL, string kept,
     // function pcalled + optstring conversion, direct non-string throws
     // like nhl_error. tmp is a non-null object here (spread at the caller's
@@ -23189,26 +23194,33 @@ function lspo_monster_normalize_table(tmp, inventFn) {
     // nil/string/function/else classifications are identical to C's.
     tmp.name = get_table_str_opt(tmp, 'name', null);
     tmp.sp_amask = get_table_align_unpacked(tmp.align);
-    tmp.female = lspo_bool_opt(tmp.female, BOOL_RANDOM);
-    tmp.invis = lspo_bool_opt(tmp.invis, 0);
-    tmp.cancelled = lspo_bool_opt(tmp.cancelled, 0);
-    tmp.revived = lspo_bool_opt(tmp.revived, 0);
-    tmp.avenge = lspo_bool_opt(tmp.avenge, 0);
-    tmp.fleeing = tmp.fleeing | 0;
-    tmp.blinded = tmp.blinded | 0;
-    tmp.paralyzed = tmp.paralyzed | 0;
-    tmp.stunned = lspo_bool_opt(tmp.stunned, 0);
-    tmp.confused = lspo_bool_opt(tmp.confused, 0);
-    tmp.waiting = lspo_bool_opt(tmp.waiting, 0);
-    tmp.m_lev_adj = tmp.m_lev_adj | 0;
+    tmp.female = get_table_boolean_opt(tmp, 'female', BOOL_RANDOM); // C :3299
+    tmp.invis = get_table_boolean_opt(tmp, 'invisible', 0); // C :3300
+    tmp.cancelled = get_table_boolean_opt(tmp, 'cancelled', 0); // C :3301
+    tmp.revived = get_table_boolean_opt(tmp, 'revived', 0); // C :3302
+    tmp.avenge = get_table_boolean_opt(tmp, 'avenge', 0); // C :3303
+    // C :3304–3306 get_table_int_opt(L, "fleeing"/"blinded"/"paralyzed",
+    // 0): nil → 0, else checkinteger conversion (integral floats and
+    // numeric strings convert; fractions and direct non-numerics throw
+    // like argerror). tmp is a non-null object here (spread at the
+    // caller's table gate), so lua_field(tmp,name) is tmp[name] and the
+    // nil/non-nil classifications are identical to C's.
+    tmp.fleeing = get_table_int_opt(tmp, 'fleeing', 0);
+    tmp.blinded = get_table_int_opt(tmp, 'blinded', 0);
+    tmp.paralyzed = get_table_int_opt(tmp, 'paralyzed', 0);
+    tmp.stunned = get_table_boolean_opt(tmp, 'stunned', 0); // C :3307
+    tmp.confused = get_table_boolean_opt(tmp, 'confused', 0); // C :3308
+    tmp.waiting = get_table_boolean_opt(tmp, 'waiting', 0); // C :3309
+    // C :3310 get_table_int_opt(L, "m_lev_adj", 0): same conversion.
+    tmp.m_lev_adj = get_table_int_opt(tmp, 'm_lev_adj', 0);
     // C :3318 — seentraps stays 0 (TODO: trap-name list to bitfield).
-    tmp.keep_default_invent = lspo_bool_opt(tmp.keep_default_invent, -1);
+    tmp.keep_default_invent = get_table_boolean_opt(tmp, 'keep_default_invent', -1); // C :3313
     let mm_flags = NO_MM_FLAGS;
-    if (!lspo_bool_opt(tmp.tail, 1)) mm_flags |= MM_NOTAIL;
-    if (!lspo_bool_opt(tmp.group, 1)) mm_flags |= MM_NOGRP;
-    if (lspo_bool_opt(tmp.adjacentok, 0)) mm_flags |= MM_ADJACENTOK;
-    if (lspo_bool_opt(tmp.ignorewater, 0)) mm_flags |= MM_IGNOREWATER;
-    if (!lspo_bool_opt(tmp.countbirth, 1)) mm_flags |= MM_NOCOUNTBIRTH;
+    if (!get_table_boolean_opt(tmp, 'tail', 1)) mm_flags |= MM_NOTAIL; // C :3315
+    if (!get_table_boolean_opt(tmp, 'group', 1)) mm_flags |= MM_NOGRP; // C :3317
+    if (get_table_boolean_opt(tmp, 'adjacentok', 0)) mm_flags |= MM_ADJACENTOK; // C :3319
+    if (get_table_boolean_opt(tmp, 'ignorewater', 0)) mm_flags |= MM_IGNOREWATER; // C :3321
+    if (!get_table_boolean_opt(tmp, 'countbirth', 1)) mm_flags |= MM_NOCOUNTBIRTH; // C :3323
     tmp.mm_flags = mm_flags;
     // C :3326 get_table_str_opt(L, "appear_as", NULL): nil → NULL, string
     // kept, function pcalled + optstring conversion, direct non-string
@@ -23227,7 +23239,13 @@ function lspo_monster_normalize_table(tmp, inventFn) {
     }
     if (tmp.rx == null) tmp.rx = -1;
     if (tmp.ry == null) tmp.ry = -1;
-    tmp.idName = (tmp.id == null) ? null : String(tmp.id);
+    // C :3169 get_table_str_opt(L, "id", NULL) via get_table_montype
+    // :3166–3180: nil → NULL, string kept, function pcalled +
+    // optstring conversion, direct non-string throws like nhl_error.
+    // tmp is a non-null object here (spread at the caller's table gate),
+    // so lua_field(tmp,'id') is tmp.id and the
+    // nil/string/function/else classifications are identical to C's.
+    tmp.idName = get_table_str_opt(tmp, 'id', null);
     tmp.mndx = NON_PM;
     if (tmp.idName != null) {
         const mndx = name_to_monplus(tmp.idName, null, { gender: NEUTRAL });

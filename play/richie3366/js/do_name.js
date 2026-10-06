@@ -22,7 +22,7 @@ import {
 import { game } from './gstate.js';
 import { livelog_printf } from './pline.js';
 import { alter_cost } from './shk.js';
-import { set_twoweap } from './wield.js';
+import { set_twoweap, can_no_longer_twoweap } from './wield.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { rn2, rn1, rn2_on_display_rng, rnd_on_display_rng } from './rng.js';
 import { wipeout_text } from './engrave.js';
@@ -255,7 +255,17 @@ async function do_oname(obj) {
         buf = aname;
     }
 
+    const uNow = game.u || (game.u = {});
+    const was_twoweap = !!uNow.twoweap;
     oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
+    /* C oname do_name.c:403–404 calls untwoweapon() when obj==uswapwep.
+       oname stays sync (18 callers, incl. sync level-gen) so the You() it
+       cannot await lands here: do_oname is async, C prints nothing
+       between the arm and do_oname's return (:367–368), and the triple
+       gate replays C exactly (twoweap flips only in that arm). */
+    if (was_twoweap && obj === uNow.uswapwep && !uNow.twoweap) {
+        await pline(`You ${can_no_longer_twoweap}.`);
+    }
 }
 
 /**
@@ -1311,7 +1321,10 @@ set_noit_mon_nam(noit_mon_nam);
  * C ref: do_name.c oname `:371–426` — assign name; may create an
  * artifact via artifact_exists. via_naming literate++ livelog when
  * naming produces Sting/Orcrist (D-1680).
- * Named: `untwoweapon` You() (pline is async; oname stays sync).
+ * The :403–404 untwoweapon() You() cannot await pline from sync oname;
+ * the two async callers that can pass the wielded secondary (do_oname,
+ * dipfountain) snapshot twoweap and emit it after oname() returns —
+ * C prints nothing between, so the stream position is exact.
  */
 export function oname(obj, name, oflgs = 0) {
     if (!obj) return obj;
