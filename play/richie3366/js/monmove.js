@@ -1320,7 +1320,7 @@ export async function mb_trapped(mtmp, canseeit) {
     if (game.flags?.verbose !== false) {
         if (canseeit && !game.u?.Unaware) {
             await pline_mon(mtmp, 'KABOOM!!  You see a door explode.');
-        } else if (!game.u?.Deaf) {
+        } else if (!hero_Deaf()) { // C :59 !Deaf macro (HDeaf|EDeaf|roleplay), not the u.Deaf flag
             const far = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) > 7 * 7;
             await pline(`You hear a ${far ? 'distant' : 'nearby'} explosion.`);
         }
@@ -1687,8 +1687,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
     if (mmoved !== MMOVE_MOVED && mmoved !== MMOVE_DONE) return mmoved;
 
     // let: C refreshes the cached ptr after vamp_shift (:1498) and
-    // mintrap (:1517); the vamp arm below assigns, the mintrap
-    // refresh stays deferred (pre-existing).
+    // mintrap (:1514); both arms assign below.
     let ptr = mtmp.data;
 
     if (mmoved === MMOVE_MOVED) {
@@ -1737,6 +1736,10 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
         // C ref: monmove.c postmov — migrated/off-map after mintrap
         return MMOVE_DONE;
     }
+    // C `:1514` — the post-move mintrap may have polymorphed the
+    // monster (poly trap → new data); later arms (door squeeze,
+    // meat, hides_under hide-check) must read the new permonst.
+    ptr = mtmp.data; /* in case mintrap() caused polymorph */
 
     // open a door, or crash through it, if mtmp can
     const loc = game.level?.at(mtmp.mx, mtmp.my);
@@ -1771,7 +1774,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                     await pline_mon(mtmp, `${Monnam(mtmp)} unlocks and opens a door.`);
                 } else if (canseeit) {
                     await You_see('a door unlock and open.');
-                } else if (!game.u?.Deaf) {
+                } else if (!hero_Deaf()) { // C :1571 !Deaf macro (HDeaf|EDeaf|roleplay), not the u.Deaf flag
                     await pline('You hear a door unlock and open.');
                 }
             }
@@ -1786,7 +1789,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                     await pline_mon(mtmp, `${Monnam(mtmp)} opens a door.`);
                 } else if (canseeit) {
                     await You_see('a door open.');
-                } else if (!game.u?.Deaf) {
+                } else if (!hero_Deaf()) { // C :1588 !Deaf macro (HDeaf|EDeaf|roleplay), not the u.Deaf flag
                     await pline('You hear a door open.');
                 }
             }
@@ -1804,7 +1807,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                     await pline_mon(mtmp, `${Monnam(mtmp)} smashes down a door.`);
                 } else if (canseeit) {
                     await You_see('a door crash open.');
-                } else if (!game.u?.Deaf) {
+                } else if (!hero_Deaf()) { // C :1613 !Deaf macro (HDeaf|EDeaf|roleplay), not the u.Deaf flag
                     await pline('You hear a door crash open.');
                 }
             }
@@ -2108,7 +2111,6 @@ export async function m_move(mtmp, after) {
     let can_tunnel;
     let can_open;
     let can_unlock;
-    // is_rider deferred
     const omx = mtmp.mx;
     const omy = mtmp.my;
 
@@ -2127,7 +2129,9 @@ export async function m_move(mtmp, after) {
     ptr = mtmp.data;
     can_tunnel = tunnels(ptr) && !Is_rogue_level(game.u?.uz);
     can_open = !(nohands(ptr) || verysmall(ptr));
-    can_unlock = (can_open && monhaskey(mtmp, true)) || !!mtmp.iswiz;
+    // C `:1766–1767` — Riders unlock without a key (live is_rider, already
+    // imported; the deferred clause).
+    can_unlock = (can_open && monhaskey(mtmp, true)) || !!mtmp.iswiz || is_rider(ptr);
 
     // C: meating countdown — still eating skips dog_move / approach
     if (mtmp.meating) {

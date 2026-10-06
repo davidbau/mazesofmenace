@@ -1210,8 +1210,12 @@ export async function try_restore_save() {
     u.ustuck_mid = 0;
     game.program_state.beyond_savefile_load = 1;
 
-    // C: delete save after successful restore
-    vfsDeleteFile(vfsPath(path));
+    // C restore.c:903-904 — a normal-mode restore deletes the save here;
+    // wizard/discover deletion is the unixmain keep-savefile prompt's 'n'
+    // arm (jsmain.js restore sequence), so the save stays until answered.
+    if (!game.wizard && !game.discover) {
+        vfsDeleteFile(vfsPath(path));
+    }
     return true;
 }
 

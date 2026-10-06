@@ -183,7 +183,10 @@ export function obj_resists(obj, ochance, achance) {
 export function dogfood(mon, obj) {
     if (!obj) return UNDEF; // JS-artifact guard; C callers pass non-null
     // C `:1002` — tainted food is POISON unless the pet resists poison.
-    if (obj.opoisoned && !resists_poison(mon)) return POISON;
+    // C obj.h:139 `#define opoisoned otrapped`: one bit — a trapped
+    // box/chest (mkobj.c:1012-1014 `!(rn2(10))`) reads poisoned here.
+    // JS keeps the fields separate, so read both.
+    if ((obj.opoisoned || obj.otrapped) && !resists_poison(mon)) return POISON;
     // C `:1004` — quest artifact / obj_resists (rn2(100) inside) → TABU/APPORT.
     if (is_quest_artifact(obj) || obj_resists(obj, 0, 95)) {
         return obj.cursed ? TABU : APPORT;

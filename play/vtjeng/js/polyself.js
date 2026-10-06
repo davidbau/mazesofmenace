@@ -2123,6 +2123,14 @@ export async function rehumanize(state = game, rawEnv = {}) {
             state.killer ??= {};
             state.killer.format = NO_KILLER_PREFIX;
             state.killer.name = 'killed while stuck in creature form';
+            if (env.planning) {
+                if (typeof env.planningDeath !== 'function') {
+                    throw new TypeError(
+                        'rehumanize requires planningDeath for a fatal planned reversion',
+                    );
+                }
+                throw env.planningDeath();
+            }
             await done(DIED, state);
             /* can get to here if declining to die in explore or wizard
                mode; since we're wearing an amulet of unchanging we can't
@@ -2157,6 +2165,14 @@ export async function rehumanize(state = game, rawEnv = {}) {
         state.killer ??= {};
         state.killer.name = `reverting to unhealthy ${state.urace.adj} form`;
         state.killer.format = KILLED_BY;
+        if (env.planning) {
+            if (typeof env.planningDeath !== 'function') {
+                throw new TypeError(
+                    'rehumanize requires planningDeath for a fatal planned reversion',
+                );
+            }
+            throw env.planningDeath();
+        }
         await done(DIED, state);
     }
     nomul(0, state);
@@ -2841,7 +2857,9 @@ export function poly_gender(state = game) {
 // C ref: polyself.c ugolemeffects() (2160-2188). A hero in flesh golem form
 // heals from electricity and one in iron golem form from fire, up to the
 // form's maximum.
-export async function ugolemeffects(damtype, dam, state = game) {
+export async function ugolemeffects(damtype, dam, state = game, env = {}) {
+    const message = env.message ?? (env.planning ? async () => {} : ttyPline);
+    const random = env.random ?? { rn2 };
     const u = state.u;
     let heal = 0;
 
@@ -2867,8 +2885,10 @@ export async function ugolemeffects(damtype, dam, state = game) {
             u.mh = u.mhmax;
         state.disp ??= {};
         state.disp.botl = true;
-        await ttyPline('Strangely, you feel better than before.', state);
-        await exercise(A_STR, true, state, { rn2 });
+        await message('Strangely, you feel better than before.', state, env);
+        await exercise(A_STR, true, state, random, {
+            encumberMessage: (subject) => encumber_msg(subject, { message }),
+        });
     }
 }
 

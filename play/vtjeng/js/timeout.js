@@ -7,6 +7,7 @@
 // and obj_stop_timers() also accept cleanup integration through `{ hooks }`.
 
 import {
+    ACCESSIBLE,
     ACID_RES,
     A_CON,
     A_DEX,
@@ -30,6 +31,7 @@ import {
     FAST,
     FAINTED,
     FAINTING,
+    G_GONE,
     HATCH_EGG,
     HALLUC,
     HALLUC_RES,
@@ -43,9 +45,11 @@ import {
     KILLED_BY_AN,
     MELT_ICE_AWAY,
     MAGICAL_BREATHING,
+    MM_NOMSG,
     M_AP_MONSTER,
     NECK,
     NEUTRAL,
+    NO_MINVENT,
     PLNMSG_ONE_ITEM_HERE,
     MAX_EGG_HATCH_TIME,
     MV_KNOWS_EGG,
@@ -100,14 +104,18 @@ import {
     } from './const.js';
 import {
     is_pool,
+    is_pool_or_lava,
     is_ice,
 } from './dbridge.js';
+import { surface } from './dungeon.js';
 import { stop_occupation } from './allmain.js';
 import { confdir } from './cmd.js';
 import { Stone_resistance, artifact_light } from './artifacts.js';
 import { acurr, adjattrib, exercise, stone_luck } from './attrib.js';
-import { newsym, see_monsters, vobj_at } from './display.js';
-import { hcolor, Monnam, rndmonnam, x_monnam } from './do_name.js';
+import { canseemon, newsym, see_monsters, vobj_at } from './display.js';
+import {
+    a_monnam, hcolor, m_monnam, Monnam, rndmonnam, x_monnam,
+} from './do_name.js';
 import { hurtle } from './dothrow.js';
 import { toggle_displacement } from './do_wear.js';
 import {
@@ -116,12 +124,17 @@ import { dealloc_killer, find_delayed_killer } from './end.js';
 import { rot_corpse, unportedRotCorpseReason } from './dig.js';
 import { heal_legs } from './do.js';
 import { makeplural } from './fruit.js';
-import { carrying, sobj_at, update_inventory, useup } from './invent.js';
+import {
+    carrying, container_weight, obfree, obj_extract_self, sobj_at,
+    update_inventory, useup,
+} from './invent.js';
 import { game } from './gstate.js';
 import { heroIsBlind } from './startup_a11y.js';
 import {
     inv_weight, NODIAG, You_can_move_again, nomul, spoteffects, } from './hack.js';
-import { highc, strstri, strsubst, upstart } from './hacklib.js';
+import {
+    highc, ing_suffix, s_suffix, strstri, strsubst, upstart,
+} from './hacklib.js';
 import {
     incr_itimeout, make_blinded, make_confused, make_deaf, make_glib, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout, } from './potion.js';
 import { deferred_decor, encumber_msg } from './pickup.js';
@@ -131,11 +144,12 @@ import { an, donameFresh, the, vtense } from './objnam.js';
 import {
     candle_light_range, arti_light_radius, del_light_source, get_obj_location, new_light_source, } from './light.js';
 import {
-    breathless, cantvomit, is_flyer, is_rider, is_were, name_to_mon,
-    mhe, nolimbs, touch_petrifies, type_is_pname, little_to_big,
+    big_to_little, breathless, cantvomit, is_flyer, is_rider, is_silent,
+    is_were, locomotion, name_to_mon, mhe, nolimbs, touch_petrifies,
+    type_is_pname, little_to_big,
 } from './mondata.js';
 import { body_part, rehumanize } from './polyself.js';
-import { restartcham, wake_nearby, zombie_form } from './mon.js';
+import { hideunder, restartcham, wake_nearby, zombie_form } from './mon.js';
 import { note_unported } from './unported.js';
 import {
     float_down, unconscious } from './trap.js';
@@ -149,6 +163,7 @@ import {
     PM_LIZARD,
     PM_GREEN_SLIME,
     S_TROLL,
+    S_DRAGON,
     G_UNIQ,
     LOW_PM,
     NON_PM,
@@ -168,10 +183,14 @@ import {
     WAX_CANDLE,
 } from './objects.js';
 import {
-    remove_object, shrink_glob, unportedShrinkGlobReason,
+    carried, remove_object, shrink_glob, unportedShrinkGlobReason,
 } from './obj.js';
+import { m_at } from './monst.js';
+import { cansee } from './vision.js';
+import { heroDeaf, verbalize } from './pline.js';
+import { cry_sound, set_voice } from './sounds.js';
 import {
-    createCoreRandom, d, rn1, rn2, rn2_on_display_rng, rnd, rnz,
+    createCoreRandom, d, rn1, rn2, rn2_on_display_rng, rnd, rne, rnz,
 } from './rng.js';
 import { ttyNorep, ttyPline, ttyUrgentPline } from './tty_message.js';
 
@@ -351,6 +370,212 @@ export class UnsupportedHeroTimeoutBoundaryError extends Error {
     }
 }
 
+// C ref: timeout.c hatch_egg() (1017-1192). A due object timer owns the egg
+// until this callback either reschedules it or removes it from its chain.
+// makemon.c and dog.c already provide the creation and taming decisions; load
+// those modules at the call site to avoid making their timeout dependencies a
+// new static import cycle.
+export async function hatch_egg(egg, timeout, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const message = rawEnv.message ?? ttyPline;
+    const random = {
+        d, rn1, rn2, rnd, rne, rnz,
+        ...(rawEnv.random ?? {}),
+    };
+    const env = {
+        ...rawEnv,
+        state,
+        random,
+        message,
+        displayRandom: rawEnv.displayRandom ?? (state === game
+            ? rn2_on_display_rng
+            : createCoreRandom(state.displayCtx, state).rn2),
+    };
+
+    // Sterilization is checked before either ownership or location work.
+    if (egg.corpsenm === NON_PM) return;
+
+    let monster = null;
+    let lastMonster = null;
+    const speciesIndex = big_to_little(egg.corpsenm);
+    const yours = Boolean(egg.spe
+        || (!state.flags?.female && carried(egg) && !random.rn2(2)));
+    const silent = timeout !== state.moves;
+    const location = get_obj_location(egg, 0, state);
+    let canseeHatchspot = false;
+    let hatchcount = 0;
+    let x;
+    let y;
+
+    if (location) {
+        ({ x, y } = location);
+        hatchcount = random.rnd(Math.trunc(egg.quan));
+        canseeHatchspot = cansee(x, y, state) && !silent;
+
+        if (!(state.mons[speciesIndex].geno & G_UNIQ)
+            && !(state.mvitals[speciesIndex].mvflags & G_GONE)) {
+            const requested = hatchcount;
+            let i;
+            const { enexto } = await import('./teleport.js');
+            const { makemon_runtime } = await import('./makemon_create.js');
+            const { tamedog } = await import('./dog.js');
+            for (i = hatchcount; i > 0; --i) {
+                const coordinate = enexto(
+                    x, y, state.mons[speciesIndex], env,
+                );
+                if (!coordinate || !(monster = await makemon_runtime(
+                    state.mons[speciesIndex], coordinate.x, coordinate.y,
+                    NO_MINVENT | MM_NOMSG,
+                    { ...env, _hatchEgg: true },
+                ))) {
+                    break;
+                }
+
+                // C's tamedog() result controls the carried, non-dragon
+                // hatchling's special initial tame value.
+                if ((yours && !silent)
+                    || (carried(egg) && monster.data.mlet === S_DRAGON)) {
+                    if (await tamedog(monster, null, false, env)
+                        && carried(egg)
+                        && monster.data.mlet !== S_DRAGON) {
+                        monster.mtame = 20;
+                    }
+                }
+                if (state.mvitals[speciesIndex].mvflags & G_GONE) break;
+                lastMonster = monster;
+            }
+            if (!monster) monster = lastMonster;
+            hatchcount = requested - i;
+            egg.quan = Math.trunc(egg.quan) - hatchcount;
+        }
+    }
+
+    if (!monster) return;
+
+    const siblings = hatchcount > 1;
+    let redraw = false;
+    let knowsEgg = false;
+    let monsterName = '';
+    if (canseeHatchspot) {
+        // C deliberately names the exact monster type here even when the
+        // hero is hallucinating; m_monnam(), not Monnam(), owns this branch.
+        const exactName = m_monnam(monster, state, env);
+        monsterName = `${siblings ? 'some ' : an(exactName)}`
+            + (siblings ? makeplural(exactName) : '');
+    }
+
+    switch (egg.where) {
+    case OBJ_INVENT:
+        knowsEgg = true;
+        if (!canseeHatchspot) {
+            await message(
+                `${unaware(state) ? 'You dream that you feel' : 'You feel'} `
+                    + `${something} ${locomotion(monster.data, 'drop')} `
+                    + 'from your pack!',
+                state,
+            );
+        } else {
+            await message(
+                `${unaware(state) ? 'You dream that you see' : 'You see'} `
+                    + `${monsterName} ${locomotion(monster.data, 'drop')} `
+                    + 'out of your pack!',
+                state,
+            );
+        }
+        if (yours) {
+            const speaker = siblings ? 'Their' : 'Its';
+            const sound = ing_suffix(cry_sound(monster));
+            const verb = is_silent(monster.data) || heroDeaf(state)
+                ? 'seems' : 'sounds';
+            await message(
+                `${speaker} ${sound} ${verb} like `
+                    + `"${state.flags?.female ? 'mommy' : 'daddy'}`
+                    + `${egg.spe ? '.' : '?'}"`,
+                state,
+            );
+        } else if (monster.data.mlet === S_DRAGON && !heroDeaf(state)) {
+            set_voice(monster, 0, 80, 0, state);
+            await verbalize('Gleep!', state, { message });
+        }
+        break;
+
+    case OBJ_FLOOR:
+        if (canseeHatchspot) {
+            knowsEgg = true;
+            await message(
+                `${unaware(state) ? 'You dream that you see' : 'You see'} `
+                    + `${monsterName} hatch.`,
+                state,
+            );
+            redraw = true;
+        }
+        break;
+
+    case OBJ_MINVENT:
+        if (canseeHatchspot) {
+            const carrier = egg.ocarry;
+            let carriedBy;
+            if (canseemon(carrier, state)
+                && (!carrier.wormno || cansee(carrier.mx, carrier.my, state))) {
+                carriedBy = `${s_suffix(a_monnam(carrier, env))} pack`;
+                knowsEgg = true;
+            } else if (is_pool(monster.mx, monster.my, state)) {
+                carriedBy = 'empty water';
+            } else {
+                carriedBy = 'thin air';
+            }
+            await message(
+                `${unaware(state) ? 'You dream that you see' : 'You see'} `
+                    + `${monsterName} ${locomotion(monster.data, 'drop')} `
+                    + `out of ${carriedBy}!`,
+                state,
+            );
+        }
+        break;
+
+    default:
+        note_unported('pline.c impossible');
+        break;
+    }
+
+    if (canseeHatchspot && knowsEgg) {
+        learn_egg_type(speciesIndex, state, env);
+    }
+
+    if (egg.quan > 0) {
+        attach_egg_hatch_timeout(egg, random.rnd(12), env);
+        // timeout.c discards container_weight()'s result but keeps its weight
+        // update for any enclosing container (the location gate excludes one).
+        container_weight(egg, { state });
+    } else if (carried(egg)) {
+        useup(egg, env);
+    } else {
+        const objectEnv = {
+            ...env,
+            hooks: {
+                extractExternalObject: remove_object,
+                stopObjectTimers: (obj, hookEnv) => obj_stop_timers(
+                    obj, hookEnv.state ?? state, hookEnv,
+                ),
+                ...(env.hooks ?? {}),
+            },
+        };
+        obj_extract_self(egg, objectEnv);
+        obfree(egg, null, objectEnv);
+        const remainingMonster = (monster = m_at(x, y, state));
+        if (remainingMonster
+            && !await hideunder(remainingMonster, {
+                ...env,
+                redraw: env.newsym ?? newsym,
+            })
+            && cansee(x, y, state)) {
+            redraw = true;
+        }
+    }
+
+    if (redraw) (env.newsym ?? newsym)(x, y, state);
+}
+
 // C ref: timeout.c timeout_funcs[] (1978-1990), "Table of timeout functions,
 // listed in order of enum timeout_types". Each row keeps the VERBOSE_TIMER
 // name C prints so a stop can say which function it refused. `f` is the ported
@@ -366,7 +591,7 @@ const timeout_funcs = [
     { name: 'revive_mon' },
     { name: 'zombify_mon' },
     { name: 'burn_object' },
-    { name: 'hatch_egg' },
+    { name: 'hatch_egg', f: hatch_egg, unported: () => null },
     {
         name: 'fig_transform',
         f: figTransformCallback,
@@ -832,6 +1057,35 @@ export async function sickness_dialogue(state = game, env = {}) {
     await exercise(A_CON, false, state, random, { encumberMessage });
 }
 
+// C ref: timeout.c levi_texts[] and levitation_dialogue() (347-378).
+// The final descent message belongs to float_down(), not this countdown.
+export async function levitation_dialogue(state = game, env = {}) {
+    const u = state.u;
+    const timeout = u.uprops[LEVITATION].intrinsic & TIMEOUT;
+    const i = Math.trunc((timeout - 1) / 2);
+    if (u.uprops[LEVITATION].extrinsic) return;
+    if (!ACCESSIBLE(state.level.at(u.ux, u.uy).typ)
+        && !is_pool_or_lava(u.ux, u.uy, state)) return;
+
+    if (timeout % 2 && i > 0 && i <= 2) {
+        const message = env.message
+            ?? (env.planning ? async () => {} : ttyPline);
+        if (i === 1) {
+            const danger = is_pool_or_lava(u.ux, u.uy, state)
+                && !Is_waterlevel(u.uz);
+            const urgentMessage = env.urgentMessage
+                ?? (env.planning ? message : ttyUrgentPline);
+            await urgentMessage(
+                `You wobble unsteadily ${danger ? 'over' : 'in'} the ${danger
+                    ? surface(u.ux, u.uy, state) : 'air'}.`, state,
+            );
+        } else {
+            await message('You float slightly lower.', state);
+        }
+        await stop_occupation(state, { ...env, message });
+    }
+}
+
 // C ref: timeout.c choke_texts, choke_texts2 and choke_dialogue() (278-314).
 // Preserve the C countdown index (the final element is the first warning),
 // Breathless short-circuit, and the unconditional trailing exercise call.
@@ -975,6 +1229,24 @@ async function vomiting_dialogue(state, env = {}) {
     await exercise(A_CON, false, state, random, { encumberMessage });
 }
 
+// C ref: timeout.c phaze_texts[] and phaze_dialogue() (528-543).
+const phazeTexts = Object.freeze([
+    'You start to feel bloated.',
+    'You are feeling rather flabby.',
+]);
+
+export async function phaze_dialogue(state = game, env = {}) {
+    const property = state.u.uprops[PASSES_WALLS];
+    const timeout = property.intrinsic & TIMEOUT;
+    const i = Math.trunc(timeout / 2);
+    if (property.extrinsic || (property.intrinsic & ~TIMEOUT)) return;
+    if (timeout % 2 && i > 0 && i <= phazeTexts.length) {
+        const message = env.message
+            ?? (env.planning ? async () => {} : ttyPline);
+        await message(phazeTexts[phazeTexts.length - i], state);
+    }
+}
+
 // youprop.h: source-only properties do not consult their blocked field.
 function propertySource(state, index) {
     const property = state.u?.uprops?.[index];
@@ -1002,6 +1274,14 @@ export function nh_timeout_requires_live_state(state = game) {
         && !is_were(state.youmonst.data)) return true;
     if (u.uprops?.[STRANGLED]?.intrinsic) return true;
     if (u.uprops?.[VOMITING]?.intrinsic) return true;
+    // Warnings at five and three turns stop occupations after displaying
+    // their message. Run that source effect live before planning the tail.
+    const levitation = u.uprops?.[LEVITATION];
+    const levitationTimeout = levitation?.intrinsic & TIMEOUT;
+    if ((levitationTimeout === 5 || levitationTimeout === 3)
+        && !levitation.extrinsic
+        && (ACCESSIBLE(state.level.at(u.ux, u.uy).typ)
+            || is_pool_or_lava(u.ux, u.uy, state))) return true;
     for (const index of [
         STONED, SICK, BLINDED, INVIS, SEE_INVIS, HALLUC, LEVITATION,
         FLYING, DETECT_MONSTERS, DISPLACED, GLIB,
@@ -1320,10 +1600,10 @@ export async function nh_timeout(state = game, env = {}) {
                 })),
         });
     }
-    if ((u.uprops?.[LEVITATION]?.intrinsic & TIMEOUT) && !env.planning)
-        note_unported('timeout.c levitation_dialogue');
-    if ((u.uprops?.[PASSES_WALLS]?.intrinsic & TIMEOUT) && !env.planning)
-        note_unported('timeout.c phaze_dialogue');
+    if (u.uprops?.[LEVITATION]?.intrinsic & TIMEOUT)
+        await levitation_dialogue(state, displayEnv);
+    if (u.uprops?.[PASSES_WALLS]?.intrinsic & TIMEOUT)
+        await phaze_dialogue(state, displayEnv);
     if ((u.uprops?.[MAGICAL_BREATHING]?.intrinsic & TIMEOUT) && !env.planning)
         note_unported('timeout.c region_dialogue');
     if (u.uprops?.[SLEEPY]?.intrinsic & TIMEOUT)

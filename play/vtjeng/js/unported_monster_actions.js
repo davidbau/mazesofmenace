@@ -11,8 +11,6 @@
 // Delete this file once ported coverage makes the boundary unnecessary.
 
 import {
-    BEAR_TRAP,
-    WEB,
     BURN,
     CORR,
     DOOR,
@@ -180,9 +178,6 @@ import {
 } from './rng.js';
 
 
-import {
-    t_at,
-} from './trap.js';
 import { rloc } from './teleport.js';
 import { ttyPline, ttyPlineWillWait } from './tty_message.js';
 import { note_unported } from './unported.js';
@@ -303,25 +298,23 @@ function assertSimpleActionState(monster, state) {
     // js/quest.js refuses every conversation branch it does not carry.
     if (monster.mfrozen)
         unsupported('inconsistent frozen monster state');
-    // trap.c mintrap()'s held-monster arm is ported for bear traps and webs.
-    // Other trap types retain their source-specific escape dependencies.
-    if (monster.mtrapped) {
-        const heldBy = t_at(monster.mx, monster.my, state);
-        if (heldBy && heldBy.ttyp !== BEAR_TRAP && heldBy.ttyp !== WEB)
-            unsupported('a trapped monster');
-    }
+    // trap.c mintrap() owns every held-trap escape, including pits,
+    // metallivore effects, and clearing a stale mtrapped bit on no trap.
     if (monster.mtame && !monster.isminion) {
-        if (!STARTING_PETS.has(monster.data?.pmidx))
-            unsupported('a non-starting pet');
+        // C monmove.c:m_move() sends every tame non-minion with an edog
+        // extension through dogmove.c:dog_move(); that path is not limited to
+        // the three species selected as a new game starting pet.
+        if (!monster.mextra?.edog)
+            unsupported('a tame pet without dog state');
         // C dogmove.c:dog_goal() aborts before goal setup or random draws
-        // for the current steed; dog_move() turns that into MMOVE_NOTHING.
-        // The planning clone maps both pointers to the same cloned monster.
+        // for the current steed. Keep this existing planning guard for both
+        // starting pets and later tame monsters; dog_move() owns other pet
+        // states. The planning clone maps both pointers to the same monster.
         if (monster.msleeping
             || (monster.mleashed && monster !== state.u?.usteed)) {
-            unsupported('special starting-pet state');
+            unsupported(STARTING_PETS.has(monster.data?.pmidx)
+                ? 'special starting-pet state' : 'special tame-pet state');
         }
-        if (!monster.mextra?.edog)
-            unsupported('missing starting-pet state');
         return;
     }
 
@@ -517,6 +510,12 @@ export function planningState(state) {
             monsterMap.set(monster, cloneMonster(monster));
         }
     }
+    // C's youmonst is a separate struct monst rather than an entry in the
+    // level monster chain. Shape reversion writes its data pointer, mimic
+    // fields, and cancellation state, so a planned hero attack needs its own
+    // copy just as planned level monsters do.
+    const heroMonster = state.youmonst
+        ? cloneMonster(state.youmonst) : state.youmonst;
     const objectMap = cloneObjects(state, monsterMap);
     const context = structuredClone(state.context ?? {});
     const remapContextObject = (target, source, field) => {
@@ -548,6 +547,10 @@ export function planningState(state) {
         // MON_WEP(). A wielded weapon is also in minvent, so the clone's
         // pointer has to name the copy the pack now holds.
         clone.mw = objectMap.get(original.mw) ?? null;
+    }
+    if (heroMonster) {
+        heroMonster.minvent = objectMap.get(state.youmonst.minvent) ?? null;
+        heroMonster.mw = objectMap.get(state.youmonst.mw) ?? null;
     }
 
     const level = Object.assign(
@@ -647,7 +650,9 @@ export function planningState(state) {
         if (!source) return null;
         return {
             ...source,
-            id: monsterMap.get(source.id)
+            id: source.id === state.youmonst
+                ? heroMonster
+                : monsterMap.get(source.id)
                 ?? objectMap.get(source.id)
                 ?? source.id,
             next: cloneLightList(source.next),
@@ -794,6 +799,7 @@ export function planningState(state) {
         } : state.svs,
         track: structuredClone(state.track),
         u: hero,
+        youmonst: heroMonster,
         // The admitted naming path writes the discovery ledger:
         // distant_name() reaches xname(), which calls observe_object() and
         // o_init.c discover_object(), setting objects[otyp].oc_encountered and

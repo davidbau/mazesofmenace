@@ -4067,15 +4067,21 @@ export function seemimic(mtmp, state = game, env = {}) {
 // an asynchronous owner, so callers can preserve C's state and output order.
 export function normal_shape(mon, state = game, rawEnv = {}) {
     const mcham = Number(mon.cham);
+    const redrawSquare = rawEnv.redrawSquare
+        ?? rawEnv.redraw
+        ?? (rawEnv.planning
+            ? () => {}
+            : (x, y) => newsym(x, y, state));
     const finishMimic = () => {
         if (M_AP_TYPE(mon) !== M_AP_NOTHING) {
             if (!mon.meating) {
                 if (M_AP_TYPE(mon) !== M_AP_MONSTER) mon.msleeping = 1;
-                seemimic(mon, state);
-            } else {
-                finish_meating(mon, {
-                    redraw: (x, y) => newsym(x, y, state),
+                seemimic(mon, state, {
+                    ...rawEnv,
+                    newsym: redrawSquare,
                 });
+            } else {
+                finish_meating(mon, { ...rawEnv, redraw: redrawSquare });
             }
         }
         return undefined;
@@ -4083,8 +4089,6 @@ export function normal_shape(mon, state = game, rawEnv = {}) {
     const finishWere = () => {
         if (!(is_were(mon.data) && mon.data.mlet !== S_HUMAN))
             return finishMimic();
-        const redrawSquare = rawEnv.redrawSquare
-            ?? ((x, y) => newsym(x, y, state));
         return new_were(mon, {
             ...rawEnv,
             state,
@@ -4098,13 +4102,13 @@ export function normal_shape(mon, state = game, rawEnv = {}) {
         const pending = newcham(
             mon,
             target,
-            { ...rawEnv, state, ncflags: NC_SHOW_MSG },
+            { ...rawEnv, state, ncflags: NC_SHOW_MSG, redrawSquare },
         );
         const afterShape = () => {
             mon.cham = NON_PM;
             // newcham() may uncancel a polymorphing monster; C overrides that.
             if (mcan) mon.mcan = 1;
-            newsym(mon.mx, mon.my, state);
+            redrawSquare(mon.mx, mon.my);
             return finishWere();
         };
         if (pending && typeof pending.then === 'function')
@@ -5221,29 +5225,17 @@ function LEVEL_SPECIFIC_NOCORPSE(mdat, state, random) {
                    && random.rn2(3));
 }
 
-// C ref: mon.c corpse_chance() (3180-3249). "TRUE if corpse might be dropped,
-// magr may die if mon was swallowed".
-//
-// The lich branch remains a source-prescribed no-corpse refusal; the gas-spore
-// branch below is fully wired through explode.c so its two damage rolls and
-// explosion effects occur before returning FALSE.
-//
-//   3193-3197  Vlad and the liches, whose bodies crumble into dust instead.
-//   3200-3232  AT_BOOM, the gas spore's death explosion.
-//
-// The closing formula at 3247 is what decides an ordinary kill, and it splits
-// species that look alike: a sewer rat is G_FREQ 1 and verysmall, so tmp is 4;
-// a goblin is G_FREQ 2, which fails `< 2`, and MZ_SMALL, so tmp is 2. Read the
-// species record rather than guessing from size.
-export function corpse_chance(
+// C ref: mon.c corpse_chance() (3181-3252). Decide corpse eligibility after
+// death, including the explosion that can kill a monster's engulfer.
+export async function corpse_chance(
     mon,
     magr,
     was_swallowed,
     state = game,
     env = {},
 ) {
-    const unsupported = requiredKillOperation(env, 'unsupported');
     const random = env.random ?? { d, rn1, rn2, rnd, rne };
+    const message = env.message ?? ttyPline;
     const mdat = mon.data;
     let i;
     let tmp;
@@ -5255,8 +5247,14 @@ export function corpse_chance(
         was_swallowed = true;
     }
 
-    if (mdat === state.mons[PM_VLAD_THE_IMPALER] || mdat.mlet === S_LICH)
-        unsupported('a lich body crumbling into dust');
+    if (mdat === state.mons[PM_VLAD_THE_IMPALER] || mdat.mlet === S_LICH) {
+        if (cansee(mon.mx, mon.my, state) && !was_swallowed)
+            await message(messageAt(
+                `${s_suffix(Monnam(mon, state, env))} body crumbles into dust.`,
+                mon.mx, mon.my, state,
+            ), state, env);
+        return false;
+    }
 
     /* "Gas spores always explode upon death" */
     for (i = 0; i < NATTK; i++) {
@@ -5268,45 +5266,46 @@ export function corpse_chance(
         else tmp = 0;
 
         if (was_swallowed && magr) {
-            const message = env.message ?? ttyPline;
-            return (async () => {
-                if (magr === state.youmonst) {
-                    await message(
-                        `There is an explosion in your ${body_part(STOMACH,
-                            state.youmonst)}!`,
-                        state,
-                        env,
-                    );
-                    state.killer ??= { name: '', format: KILLED_BY_AN };
-                    state.killer.name = `${s_suffix(mon_pmname(mon))} explosion`;
-                    state.killer.format = KILLED_BY_AN;
-                    const half = state.u?.uprops?.[HALF_PHDAM];
-                    await losehp(
-                        half?.intrinsic || half?.extrinsic
-                            ? Math.trunc((tmp + 1) / 2) : tmp,
-                        state.killer.name,
-                        KILLED_BY_AN,
-                        state,
-                        env,
-                    );
-                } else {
-                    await message('You hear an explosion.', state, env);
-                    magr.mhp -= tmp;
-                    if (magr.mhp <= 0) {
-                        await mondied(magr, state, env);
-                        if (canspotmon(magr, state))
-                            await message(`${Monnam(magr, state, env)} rips open!`,
-                                state, env);
-                    } else if (canseemon(magr, state)) {
-                        await message(`${Monnam(magr, state, env)} seems to have indigestion.`,
-                            state, env);
-                    }
+            if (magr === state.youmonst) {
+                await message(
+                    `There is an explosion in your ${body_part(STOMACH,
+                        state.youmonst)}!`,
+                    state,
+                    env,
+                );
+                state.killer ??= {};
+                state.killer.name = `${s_suffix(mon_pmname(mon, state))} explosion`;
+                const half = state.u?.uprops?.[HALF_PHDAM];
+                await losehp(
+                    half?.intrinsic || half?.extrinsic
+                        ? Math.trunc((tmp + 1) / 2) : tmp,
+                    state.killer.name,
+                    KILLED_BY_AN,
+                    state,
+                    env,
+                );
+            } else {
+                const heard = youHear('an explosion.', state);
+                if (heard) await message(heard, state, env);
+                magr.mhp -= tmp;
+                if (magr.mhp < 1) await mondied(magr, state, env);
+                if (magr.mhp < 1) {
+                    if (canspotmon(magr, state))
+                        await message(messageAt(
+                            `${Monnam(magr, state, env)} rips open!`,
+                            magr.mx, magr.my, state,
+                        ), state, env);
+                } else if (canseemon(magr, state)) {
+                    await message(messageAt(
+                        `${Monnam(magr, state, env)} seems to have indigestion.`,
+                        magr.mx, magr.my, state,
+                    ), state, env);
                 }
-                return false;
-            })();
+            }
+            return false;
         }
-        return mon_explodes(mon, attack, state, { ...env, random })
-            .then(() => false);
+        await mon_explodes(mon, attack, state, { ...env, random });
+        return false;
     }
 
     /* "must duplicate this below check in xkilled() since it results in

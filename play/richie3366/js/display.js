@@ -1728,7 +1728,7 @@ function mimic_object_appearance_glyph(mtmp) {
  * branch colors. S_altar → altar_to_glyph(AM_NEUTRAL) (no
  * USE_GENERAL_ALTAR_COLORS). DEC remaps match terrain_glyph.
  * Trap/zap/cmap-C (S_arrow_trap..S_goodpos) via defsym.h PCHAR.
- * Named: drawbridge cmap 42–45; swallow cmap; integer glyph IDs.
+ * Named: swallow cmap; integer glyph IDs.
  */
 function cmap_idx_to_tty(cmap_idx) {
     const idx = cmap_idx | 0;
@@ -1811,6 +1811,18 @@ function cmap_idx_to_tty(cmap_idx) {
     case S_LAVAWALL_CMAP:
         return dec ? { ch: '`', color: CLR_ORANGE, dec: true }
             : { ch: '}', color: CLR_ORANGE, dec: false };
+    // C defsym.h PCHAR2(42–43) — lowered drawbridge '.' CLR_BROWN;
+    // dat/symbols DECgraphics S_vodbridge/S_hodbridge \xfe meta-~
+    // (centered dot, like S_room/S_ndoor/S_ice).
+    case S_VODBRIDGE:
+    case S_HODBRIDGE:
+        return dec ? { ch: '~', color: CLR_BROWN, dec: true }
+            : { ch: '.', color: CLR_BROWN, dec: false };
+    // C defsym.h PCHAR2(44–45) — raised drawbridge '#' CLR_BROWN; the
+    // DECgraphics section lists no bridge entry, so ASCII in both modes.
+    case S_VCDBRIDGE:
+    case S_HCDBRIDGE:
+        return { ch: '#', color: CLR_BROWN, dec: false };
     case S_AIR_CMAP:
         return { ch: ' ', color: CLR_CYAN, dec: false };
     case S_CLOUD_CMAP:
@@ -3615,8 +3627,8 @@ function darkroom_sym() {
 
 /**
  * C ref: display.c back_to_glyph `:2286–2427` — integer gbuf id for
- * terrain. Tty still comes from terrain_glyph; DRAWBRIDGE_UP under-typ
- * is live here (C switch) even while tty stays `?` (named).
+ * terrain. Tty comes from terrain_glyph, whose arms mirror this switch
+ * (arboreal STONE, DBWALL, both drawbridge typs included).
  */
 export function back_to_glyph(x, y) {
     const ptr = game.level?.at(x, y);
@@ -3798,8 +3810,17 @@ export function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
     const dec = use_decgraphics();
     switch (typ) {
-    case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
-    case SCORR:     return { ch: ' ', color: NO_COLOR, dec: false }; // C: like stone until found
+    // C display.c back_to_glyph `:2294–2297` — SCORR/STONE share one arm:
+    // S_tree on arboreal, else S_stone. (Unfound secret corridors stay
+    // blank via vision gating — seenv/cansee — not here.) Tty twin of the
+    // back_to_glyph arm; the tree cell mirrors the TREE arm below.
+    case STONE:
+    case SCORR:
+        if (game.level?.flags?.arboreal) {
+            return dec ? { ch: 'g', color: CLR_GREEN, dec: true }
+                : { ch: '#', color: CLR_GREEN, dec: false };
+        }
+        return { ch: ' ', color: NO_COLOR, dec: false };
     // C defsym S_room: ASCII '.'; DECgraphics meta-~ (middle dot)
     case ROOM:      return dec
         ? { ch: '~', color: NO_COLOR, dec: true }
@@ -3887,7 +3908,8 @@ export function terrain_glyph(loc, x, y) {
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     // C ref: display.c back_to_glyph TREE → S_tree; defsym.h PCHAR '#'/CLR_GREEN;
-    // dat/symbols DECgraphics S_tree \xe7 meta-g. Arboreal STONE→tree deferred.
+    // dat/symbols DECgraphics S_tree \xe7 meta-g. (Arboreal STONE→tree shares
+    // this cell via the STONE arm above.)
     case TREE:
         return dec
             ? { ch: 'g', color: CLR_GREEN, dec: true }
@@ -3901,7 +3923,7 @@ export function terrain_glyph(loc, x, y) {
     // C ref: display.c back_to_glyph + defsym.h PCHAR — pool/moat/water/lava/ice.
     // Primary: '}' (pool/lava/water) / '.' (ice). DECgraphics: S_pool/S_lava/
     // S_lavawall/S_water \xe0 meta-` diamond; S_ice \xfe meta-~.
-    // DRAWBRIDGE_UP under-typ deferred (still default '?').
+    // (DRAWBRIDGE_UP under-typ shares these cells via the arm below.)
     case POOL:
     case MOAT:
         return dec
@@ -3928,6 +3950,38 @@ export function terrain_glyph(loc, x, y) {
         return { ch: ' ', color: CLR_CYAN, dec: false };
     case CLOUD:
         return { ch: '#', color: CLR_GRAY, dec: false };
+    // C display.c back_to_glyph `:2393–2395` — DBWALL is horizontal ?
+    // S_hcdbridge : S_vcdbridge (never wall_angle, never seenv-gated).
+    case DBWALL:
+        return cmap_idx_to_tty(loc.horizontal ? S_HCDBRIDGE : S_VCDBRIDGE);
+    // C display.c back_to_glyph `:2396–2416` — DRAWBRIDGE_UP shows the
+    // under-typ cmap (DB_MOAT→S_pool, DB_LAVA→S_lava, DB_ICE→S_ice,
+    // DB_FLOOR→S_room; default S_room like the int twin, which also
+    // omits C's impossible(Strange db-under)). Tty via the cmap table so
+    // the cell cannot drift from back_to_glyph's id.
+    case DRAWBRIDGE_UP: {
+        let uidx;
+        switch ((loc.drawbridgemask | 0) & DB_UNDER) {
+        case DB_MOAT:
+            uidx = S_POOL_CMAP;
+            break;
+        case DB_LAVA:
+            uidx = S_LAVA_CMAP;
+            break;
+        case DB_ICE:
+            uidx = S_ICE_CMAP;
+            break;
+        case DB_FLOOR:
+        default:
+            uidx = S_ROOM_CMAP;
+            break;
+        }
+        return cmap_idx_to_tty(uidx);
+    }
+    // C display.c back_to_glyph `:2417–2419` — DRAWBRIDGE_DOWN is
+    // horizontal ? S_hodbridge : S_vodbridge.
+    case DRAWBRIDGE_DOWN:
+        return cmap_idx_to_tty(loc.horizontal ? S_HODBRIDGE : S_VODBRIDGE);
     // C ref: display.c back_to_glyph — walls/SDOOR use wall_angle(seenv)
     case SDOOR:
     case HWALL:

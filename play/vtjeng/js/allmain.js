@@ -5,7 +5,7 @@
 // Unsupported command and monster branches stop before live state changes;
 // UUID, notice, and glyph-map setup remain to be ported.
 
-import { getnow } from './calendar.js';
+import { getnow, night } from './calendar.js';
 import { game } from './gstate.js';
 import {
     A_DEX,
@@ -24,15 +24,21 @@ import {
     MOD_ENCUMBER,
     NO_MM_FLAGS,
     NORMAL_SPEED,
+    NON_PM,
+    POLYMORPH,
+    POLY_NOFLAGS,
     RLOC_NOMSG,
     SEARCHING,
     SLT_ENCUMBER,
     TELEPAT,
     TELEPORT,
     TT_LAVA,
+    UNCHANGING,
     UNENCUMBERED,
     WARNING,
     WARN_OF_MON,
+    Upolyd,
+    ismnum,
 } from './const.js';
 import { acurr, exerchk } from './attrib.js';
 import { makedog, see_nearby_monsters } from './dog.js';
@@ -63,6 +69,8 @@ import { init_objects } from './o_init.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
 import { UnsupportedObjectNameError } from './objnam.js';
 import { remove_object, UnsupportedObjectOperationError } from './obj.js';
+import { polyself } from './polyself.js';
+import { you_were } from './were.js';
 import { UnsupportedMonsterPickupOperationError } from './steal.js';
 import { objectGenerationHooks } from './object_generation.js';
 import { reset_mvitals } from './monsters.js';
@@ -1013,6 +1021,44 @@ async function finishElapsedTurnAfterTimeout(
             cmdq_clear(CQ_CANNED, state);
             cmdq_clear(CQ_REPEAT, state);
         }
+    }
+
+    // C ref: allmain.c moveloop_core():322-339. `mvl_change` is a C static,
+    // so keep its per-game, nonsaved value on the game object. planningState()
+    // shallow-copies top-level scalars, giving the dry run its own pending
+    // value without changing the monster-action planning contract. The save
+    // serializer intentionally omits this transient field, as C's static is
+    // reset when a saved game is restored.
+    state.mvl_change ??= 0;
+    if ((state.mvl_change === 1 && !propertyActive(state, POLYMORPH))
+        || (state.mvl_change === 2 && state.u.ulycn === NON_PM)) {
+        state.mvl_change = 0;
+    }
+    if (propertyActive(state, POLYMORPH) && !random.rn2(100)) {
+        state.mvl_change = 1;
+    } else if (ismnum(state.u.ulycn) && !Upolyd(state.u)
+        && !random.rn2(80 - (20 * Number(night(state))))) {
+        state.mvl_change = 2;
+    }
+    if (state.mvl_change && !propertyActive(state, UNCHANGING)
+        && (state.multi ?? 0) >= 0) {
+        await stop_occupation(state, { message: turnMessage });
+        if (state.mvl_change === 1) {
+            // The C call discards polyself()'s return. Its existing body
+            // owns the transition; this caller does not inspect that value.
+            // polyself() currently draws from the live core context, so do
+            // not invoke it while simulating a planning clone.
+            if (planning)
+                elapsedTurnBoundary('delayed polymorph needs clone-owned RNG');
+            await polyself(POLY_NOFLAGS, state);
+        } else {
+            // Confirmation reads input, so defer the transition to the live
+            // turn just as the polymorph dispatch above does.
+            if (planning)
+                elapsedTurnBoundary('delayed lycanthropy needs live input');
+            await you_were(state, { random, message: turnMessage });
+        }
+        state.mvl_change = 0;
     }
 
     // C ref: allmain.c moveloop_core():342-346. A Ranger or an Archeologist

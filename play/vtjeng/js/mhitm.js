@@ -5,6 +5,18 @@
 
 import {
     ACID_RES,
+    ANTIMAGIC,
+    ARTICLE_A,
+    NO_NC_FLAGS,
+    POLY_NOFLAGS,
+    RLOC_MSG,
+    SUPPRESS_NAME,
+    SUPPRESS_IT,
+    SUPPRESS_INVISIBLE,
+    TELL,
+    UNCHANGING,
+    XKILL_GIVEMSG,
+    XKILL_NOCORPSE,
     COLD_RES,
     CONFLICT,
     DEAF,
@@ -23,6 +35,9 @@ import {
     M_ATTK_DEF_DIED,
     M_ATTK_HIT,
     M_ATTK_MISS,
+    MM_IGNOREWATER,
+    NO_TRAP_FLAGS,
+    Trap_Killed_Mon,
     M_AP_NOTHING,
     NEED_HTH_WEAPON,
     NEED_WEAPON,
@@ -51,6 +66,7 @@ import {
     mon_nam_too,
     monsterPossessive,
     some_mon_nam,
+    x_monnam,
 } from './do_name.js';
 import { game } from './gstate.js';
 import {
@@ -67,9 +83,13 @@ import {
     mon_givit,
     mon_offmap,
     monkilled,
+    minliquid,
     mon_to_stone,
     monstone,
     newcham,
+    pm_to_cham,
+    shieldeff_mon,
+    xkilled,
     set_ustuck,
     unstuck,
     zombie_maker,
@@ -78,6 +98,10 @@ import {
 } from './mon.js';
 import {
     is_elf,
+    is_vampshifter,
+    flaming,
+    can_teleport,
+    resists_magm,
     is_rider,
     is_whirly,
     is_orc,
@@ -102,6 +126,7 @@ import { m_at, place_monster, remove_monster } from './monst.js';
 import { update_monster_region } from './region.js';
 import {
     AD_ACID,
+    AD_RBRE,
     AD_DGST,
     AD_DRIN,
     AD_ENCH,
@@ -133,6 +158,7 @@ import {
     MZ_HUGE,
     NON_PM,
     PM_GRID_BUG,
+    PM_SHADE,
     PM_ARCHON,
     PM_FLOATING_EYE,
     PM_GREEN_SLIME,
@@ -144,7 +170,7 @@ import {
 } from './monsters.js';
 import { ART_TROLLSBANE } from './artifacts.js';
 import { objectType } from './obj.js';
-import { SILVER } from './objects.js';
+import { SILVER, WAND_CLASS } from './objects.js';
 import { makeplural } from './fruit.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 
@@ -170,6 +196,11 @@ import { mon_reflects } from './muse.js';
 import { split_mon } from './potion.js';
 import { messageAt } from './startup_a11y.js';
 import { note_unported } from './unported.js';
+import { polyself } from './polyself.js';
+import { you_were } from './were.js';
+import { goodpos, rloc, tele, tele_restrict } from './teleport.js';
+import { t_at } from './trap.js';
+import { mintrap } from './trap_effects.js';
 
 // C ref: mhitm.c attk_protection() (1475-1518). Return the worn-item mask
 // that protects a target from the attack type. This is a pure source helper;
@@ -657,10 +688,7 @@ export async function mdisplacem(magr, mdef, quietly = false, rawEnv = {}) {
 //            through to the physical group below it. The distant half still
 //            needs mthrowu.c thrwmm(), and a selected/current weapon still
 //            needs mswingsm() and hitval().
-//   AT_GAZE  gazemm().
-//   AT_EXPL  explmm().
-//   AT_ENGL  gulpmm().
-//   AT_BREA and AT_SPIT  breamm() and spitmm().
+// The gaze, explosion, engulf, breath and spit arms use their source owners.
 //
 // `strike` is C's, declared once above the loop and never re-initialized
 // inside it, and every arm that reaches passivemm() assigns it in the same
@@ -853,7 +881,31 @@ export async function mattackm(magr, mdef, rawEnv = {}) {
             break;
 
         case AT_ENGL:
-            unsupported('a monster engulfing another monster');
+            if (mdef.data === state.mons[PM_SHADE]) {
+                if (state.gv.vis) {
+                    await requireAttackOperation(env, 'message')(
+                        `${s_suffix(Monnam(magr, state, env))} attempt to engulf `
+                            + `${mon_nam(mdef, state, env)} is futile.`, state, env);
+                }
+                strike = 0;
+                break;
+            }
+            if (state.u.usteed && mdef === state.u.usteed) {
+                strike = 0;
+                break;
+            }
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
+                continue;
+            if (engulfing_u(magr, state)) {
+                strike = 0;
+            } else if ((strike = tmp > random.rnd(20 + i) ? 1 : 0)) {
+                if (await failed_grab(magr, mdef, mattk, env))
+                    strike = 0;
+                else
+                    res[i] = await gulpmm(magr, mdef, mattk, env);
+            } else {
+                await missmm(magr, mdef, mattk, env);
+            }
             break;
 
         case AT_BREA:
@@ -1003,8 +1055,7 @@ export async function failed_grab(magr, mdef, mattk, env = {}) {
 // C ref: mhitm.c engulf_target() (805-845). The target must fit inside the
 // engulfer, neither combatant may be trapped, and the two occupied squares
 // must be places from which both combatants can later be separated. The hero
-// half is the only one used by mhitu.c gulpmu() here; the monster half stays
-// source-faithful because gulpmm() will eventually share this predicate.
+// and monster callers share the same placement gates.
 export function engulf_target(magr, mdef, state = game) {
     const defenderIsHero = mdef === state.youmonst;
     const attackerIsHero = magr === state.youmonst;
@@ -1052,6 +1103,92 @@ export function engulf_target(magr, mdef, state = game) {
     }
 
     return true;
+}
+
+// C ref: mhitm.c gulpmm() (849-969). The defender remains in the monster
+// chain while the aggressor occupies its square. gm.mswallower is C's temporary
+// owner for corpse_chance(), cleared after the common damage path returns.
+export async function gulpmm(magr, mdef, mattk, rawEnv = {}) {
+    const env = attackEnv(rawEnv);
+    const { state } = env;
+    if (!engulf_target(magr, mdef, state)) return M_ATTK_MISS;
+    const message = requireAttackOperation(env, 'message');
+    const redraw = env.redraw ?? newsym;
+    // mondata.h digests()/enfolds() test the engulf attack's damage type.
+    const digests = () => magr.data.mattk.some(
+        attack => attack.aatyp === AT_ENGL && attack.adtyp === AD_DGST);
+    const enfolds = () => magr.data.mattk.some(
+        attack => attack.aatyp === AT_ENGL && attack.adtyp === AD_WRAP);
+    if (state.gv.vis) {
+        await message(`${Monnam(magr, state, env)} `
+            + `${digests() ? 'swallows' : enfolds() ? 'encloses' : 'engulfs'} `
+            + `${mon_nam(mdef, state, env)}.`, state, env);
+    }
+    if (!flaming(magr.data)) {
+        for (let obj = mdef.minvent; obj; obj = obj.nobj)
+            note_unported('apply.c snuff_lit');
+    }
+    if (is_vampshifter(mdef)
+        && await newcham(mdef, state.mons[mdef.cham], {
+            ...env, ncflags: NO_NC_FLAGS,
+        })) {
+        if (state.gv.vis) {
+            await message(`${Monnam(magr, state, env)} expels `
+                + `${canspotmon(mdef, state) ? 'it' : 'something'}.`, state, env);
+            if (canspotmon(mdef, state)) {
+                await message(`It turns into ${x_monnam(mdef, ARTICLE_A,
+                    null, SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE,
+                    false, state, env)}.`, state, env);
+            }
+        }
+        return M_ATTK_HIT;
+    }
+    const ax = magr.mx, ay = magr.my;
+    let dx = mdef.mx, dy = mdef.my;
+    remove_monster(dx, dy, state);
+    remove_monster(ax, ay, state);
+    place_monster(magr, dx, dy, state);
+    redraw(ax, ay, state);
+    redraw(dx, dy, state);
+    state.gm.mswallower = magr;
+    let status = await mdamagem(magr, mdef, mattk, null, 0, env);
+    state.gm.mswallower = null;
+    if ((status & (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED))
+        === (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED)) {
+        // Both died; their death paths already removed them.
+    } else if (status & M_ATTK_DEF_DIED) {
+        if (!goodpos(dx, dy, magr, MM_IGNOREWATER, env)) {
+            if (m_at(dx, dy, state) === magr) {
+                remove_monster(dx, dy, state);
+                redraw(dx, dy, state);
+            }
+            dx = ax;
+            dy = ay;
+        }
+        if (m_at(dx, dy, state) !== magr) {
+            place_monster(magr, dx, dy, state);
+            redraw(dx, dy, state);
+        }
+        if (await minliquid(magr, env)
+            || (t_at(dx, dy, state)
+                && await mintrap(magr, NO_TRAP_FLAGS, env) === Trap_Killed_Mon))
+            status |= M_ATTK_AGR_DIED;
+    } else if (status & M_ATTK_AGR_DIED) {
+        place_monster(mdef, dx, dy, state);
+        redraw(dx, dy, state);
+    } else {
+        if (cansee(dx, dy, state)) {
+            await message(`${Monnam(mdef, state, env)} is `
+                + `${digests() ? 'regurgitated' : enfolds() ? 'released' : 'expelled'}!`,
+            state, env);
+        }
+        remove_monster(dx, dy, state);
+        place_monster(magr, ax, ay, state);
+        place_monster(mdef, dx, dy, state);
+        redraw(ax, ay, state);
+        redraw(dx, dy, state);
+    }
+    return status;
 }
 
 // C ref: mhitm.c hitmm() (642-731). "Returns the result of mdamagem()."
@@ -1345,6 +1482,90 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, env) {
             | (await grow_up(magr, mdef, env) ? 0 : M_ATTK_AGR_DIED);
     }
     return (mhm.hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+}
+
+// C ref: mhitm.c mon_poly() (1122-1207). Return the remaining damage
+// after magic resistance, system shock, or a complete shape transition.
+export async function mon_poly(magr, mdef, damage, state = game, rawEnv = {}) {
+    const random = rawEnv.random ?? { d, rn1, rn2, rnd, rne, rnz };
+    const message = rawEnv.message ?? ttyPline;
+    const env = { ...rawEnv, state, random, message };
+    const oldform = mdef.data;
+    const freaky = ' undergoes a freakish metamorphosis';
+
+    // polyself() can ask for a form and uses the live core context. Stop
+    // the dry run at the existing input boundary and replay this effect live.
+    if (env.planning) {
+        if (typeof env.requestPlanningInput !== 'function')
+            throw new TypeError('planned mon_poly requires an input boundary');
+        env.requestPlanningInput('mon_poly');
+    }
+    if (mdef === state.youmonst) {
+        const active = (property) => Boolean(
+            state.u.uprops[property].intrinsic
+            || state.u.uprops[property].extrinsic,
+        );
+        if (active(ANTIMAGIC)) {
+            await shieldeff(state.u.ux, state.u.uy, state);
+        } else if (!active(UNCHANGING)) {
+            if (state.u.ulycn === NON_PM) {
+                await message('You are subjected to a freakish metamorphosis.', state);
+                await polyself(POLY_NOFLAGS, state);
+            } else if (state.u.umonnum !== state.u.ulycn) {
+                await message('You feel an unnatural urge coming on.', state);
+                await you_were(state, env);
+            } else {
+                await message('You feel a natural urge coming on.', state);
+                note_unported('were.c you_unwere');
+            }
+            damage = 0;
+        }
+    } else {
+        const before = Monnam(mdef, state, env);
+        if (resists_magm(mdef, state)) {
+            if (state.gv?.vis) await shieldeff_mon(mdef, env);
+        } else if (await resist(mdef, WAND_CLASS, 0, TELL, state, random, env)) {
+            // Resist leaves the original damage unchanged.
+        } else if (!random.rn2(25) && mdef.cham === NON_PM
+            && (mdef.mcan || pm_to_cham(mdef.data.pmidx, state) !== NON_PM)) {
+            if (state.gv?.vis) await message(`${before} shudders!`, state);
+            damage += Math.trunc((mdef.mhpmax + 1) / 2);
+            mdef.mhp -= damage;
+            damage = 0;
+            if (mdef.mhp < 1) {
+                if (magr === state.youmonst)
+                    await xkilled(mdef, XKILL_GIVEMSG | XKILL_NOCORPSE, state, env);
+                else
+                    await monkilled(mdef, '', AD_RBRE, state, env);
+            }
+        } else if (await newcham(mdef, null, { ...env, ncflags: NO_NC_FLAGS })) {
+            if (state.gv?.vis) {
+                const wasSeen = before.toLowerCase() !== 'it';
+                const verbosely = state.flags.verbose || !wasSeen;
+                if (canspotmon(mdef, state)) {
+                    await message(`${before}${verbosely ? freaky : ''}`
+                        + `${verbosely ? ' and' : ''} turns into `
+                        + `${x_monnam(mdef, ARTICLE_A, null,
+                            SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE,
+                            false, state, env)}.`, state);
+                } else if (wasSeen || magr === state.youmonst) {
+                    await message(`${before}${freaky}`
+                        + `${wasSeen ? ' and disappears' : ''}.`, state);
+                }
+            }
+            damage = 0;
+            if (can_teleport(magr.data)) {
+                if (magr === state.youmonst) await tele(state, env);
+                else if (!await tele_restrict(magr, state, env))
+                    await rloc(magr, RLOC_MSG, env);
+            }
+        } else if (state.gv?.vis && state.flags.verbose) {
+            await message('Nothing happens.', state);
+        }
+    }
+    if (mdef.data !== oldform && magr !== state.youmonst)
+        magr.mspec_used += random.rnd(2);
+    return damage;
 }
 
 // C ref: mhitm.c passivemm() (1304-1460). Run the defender's first AT_NONE
