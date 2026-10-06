@@ -224,8 +224,9 @@ export async function com_pager_legacy(statusSnap = null, pauper = false) {
 }
 
 /**
- * C ref: dat/quest.lua firsttime texts (Arc/Bar/Pri/Wiz exercised).
- * Other roles burn nhl_init shuffle only until ported.
+ * C ref: dat/quest.lua firsttime texts
+ * (Arc/Bar/Pri/Wiz + Hea/Kni/Ran/Rog/Sam/Tou exercised).
+ * Cav/Mon/Val burn nhl_init shuffle only until ported.
  */
 const QUEST_FIRSTTIME = {
     // C ref: dat/quest.lua Arc firsttime (output=text)
@@ -268,6 +269,52 @@ the shadows.
 
 Your teacher would never allow such unaesthetic forms to surround the
 tower...  unless something were dreadfully wrong!`,
+    // C ref: dat/quest.lua Hea firsttime (output=text) — quest.lua:944-952
+    Hea: `What sorcery has brought you back to %H?  The smell
+of fresh funeral pyres tells you that something is amiss with the healing
+powers that used to practice here.
+
+No rhizotomists are tending the materia medica gardens, and where are the
+common folk who used to come for the cures?
+
+You know that you must quickly make your way to the collegium, and
+%ls iatreion, and find out what has happened in your absence.`,
+    // C ref: dat/quest.lua Kni firsttime (output=text) — quest.lua:1181-1186
+    Kni: `You materialize in the shadows of %H.  Immediately, you notice
+that something is wrong.  The fields around the castle are trampled and
+withered, as if some great battle has been recently fought.
+
+Exploring further, you %x long gouges in the walls of %H.
+You know of only one creature that makes those kinds of marks...`,
+    // C ref: dat/quest.lua Ran firsttime (output=text) — quest.lua:1827-1831
+    Ran: `You arrive in familiar surroundings.  In the distance, you %x the
+ancient forest grove, the place of worship to %d.
+
+Something is wrong, though.  Surrounding the grove are centaurs!
+And they've noticed you!`,
+    // C ref: dat/quest.lua Rog firsttime (output=text) — quest.lua:2047-2049
+    Rog: `Unexpectedly, you find yourself back in Ransmannsby, where you trained to
+be a thief.  Quickly you make the guild sign, hoping that you AND word
+of your arrival reach %ls den.`,
+    // C ref: dat/quest.lua Sam firsttime (output=text) — quest.lua:2263-2271
+    Sam: `Even before your senses adjust, you recognize the kami of
+%H.
+
+You %x the standard of your teki, %n, flying above
+the town.  How could such a thing have happened?  Why are ninja
+wandering freely; where are the samurai of your daimyo, %l?
+
+You quickly say a prayer to Izanagi and Izanami and walk towards
+town.`,
+    // C ref: dat/quest.lua Tou firsttime (output=text) — quest.lua:2495-2502
+    Tou: `You breathe a sigh of relief as you find yourself back in the familiar
+surroundings of %H.
+
+You quickly notice that things do not appear the way they did when you
+left.  The town is dark and quiet.  There are no sounds coming from
+behind the town walls, and no campfires burning in the fields.  As a
+matter of fact, you do not %x any movement in the fields at all, and
+the crops seem as though they have been untended for many weeks.`,
 };
 
 /** C ref: dat/quest.lua leader_first (Arc + Pri). */
@@ -576,6 +623,30 @@ const QUEST_MSG_META = {
         Wiz: {
             output: 'text',
             synopsis: '[You have arrived at %ls tower but something is very wrong.]',
+        },
+        Hea: {
+            output: 'text',
+            synopsis: '[You arrive back at %H and must find %l.]',
+        },
+        Kni: {
+            output: 'text',
+            synopsis: '[Signs of battle include long gouges in the walls of %H.]',
+        },
+        Ran: {
+            output: 'text',
+            synopsis: '[The ancient forest grove is surrounded by centaurs.]',
+        },
+        Rog: {
+            output: 'text',
+            synopsis: '[You are in Ransmannsby, where you trained.  Find %l.]',
+        },
+        Sam: {
+            output: 'text',
+            synopsis: '[The banner of %n flies above town.  What has happened to %l?]',
+        },
+        Tou: {
+            output: 'text',
+            synopsis: '[You find yourself back at %H, but the quiet is ominous.]',
         },
     },
     leader_first: {

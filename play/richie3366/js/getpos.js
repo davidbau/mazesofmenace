@@ -25,6 +25,7 @@ import {
     look_shown_at, glyph_is_invisible,
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
     glyph_is_monster, GLYPH_MON_MALE_OFF, GLYPH_MON_FEM_OFF,
+    glyph_is_object, objnum_to_glyph,
 } from './display.js';
 import { cansee } from './vision.js';
 import { do_screen_description } from './pager.js';
@@ -948,11 +949,17 @@ export function gather_locs_interesting(x, y, gloc) {
         return true;
     }
     case GLOC_OBJS: {
-        const shown = look_shown_at(x, y);
-        if (shown?.kind !== 'obj' || !shown.obj) return false;
-        const otyp = shown.obj.otyp | 0;
-        if (BOULDER_OTYP >= 0 && otyp === BOULDER_OTYP) return false;
-        if (ROCK_OTYP >= 0 && otyp === ROCK_OTYP) return false;
+        // C `:451-452,461-464` — glyph_at reads the DISPLAYED map
+        // (gbuf: live and remembered glyphs alike), not live objects,
+        // exactly like the GLOC_MONS arm above. A remembered object
+        // glyph with no live object still cycles (the describe path
+        // then names it via the object_from_map fake, drawing rnd(2)
+        // through mksobj→next_ident); boulder/rock GLYPHS excluded.
+        const g = glyph_at(x, y);
+        if (!glyph_is_object(g)) return false;
+        const id = g | 0;
+        if (BOULDER_OTYP >= 0 && id === objnum_to_glyph(BOULDER_OTYP)) return false;
+        if (ROCK_OTYP >= 0 && id === objnum_to_glyph(ROCK_OTYP)) return false;
         return true;
     }
     case GLOC_DOOR:

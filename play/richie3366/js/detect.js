@@ -63,7 +63,7 @@ import {
     see_monsters, flush_screen, docrt, cls, more, set_msg_xy, unmap_object, flush_topl_more,
     remember_shown_glyph,
     glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at, glyph_to_cmap,
-    There, Your, under_water, under_ground,
+    There, You, Your, under_water, under_ground,
     Hallucination, random_object, random_monster,
     pet_to_glyph, detected_mon_to_glyph, mon_to_glyph, monsym, glyph_tty_attr,
     flash_glyph_at, invisible_glyph_cell, memory_glyph_is_invisible,
@@ -1368,51 +1368,62 @@ async function map_redisplay() {
 }
 
 /**
- * C ref: detect.c reveal_terrain — known/full map without selected layers.
- * Branch envelope: Hallucination/Stunned/Confusion gate; getglyph/show_glyph
- * rewrite; flush; Showing pline; browse_map; map_redisplay.
- * Named omissions: unconstrain_map underwater/buried/swallow; region/
- * gascloud; trap_to_glyph keep_traps restore; M_AP_FURNITURE; TER_FULL
- * explore body beyond getglyph; arboreal default tree.
+ * C ref: detect.c reveal_terrain `:2356–2414` — known/full map without
+ * selected layers.
+ * Branch envelope: Hallucination/Stunned/Confusion gate; swallowed
+ * capture; unconstrain_map/docrt; getglyph/show_glyph rewrite (arboreal
+ * default inside getglyph); flush; Showing pline; browse_map;
+ * map_redisplay (reconstrains).
+ * Named omissions: none — unconstrain arm wired this iter; arboreal
+ * default + trap_to_glyph keep_traps restore + M_AP_FURNITURE +
+ * region/gascloud + TER_FULL all live in reveal_terrain_getglyph
+ * (display.js, D-3430/D-3406/D-3404).
  */
 export async function reveal_terrain(which_subset) {
-    const full = (which_subset & TER_FULL) !== 0;
+    const full = (which_subset & TER_FULL) !== 0; // C `:2360`
     const u = game.u || {};
-    if ((u.Hallucination || u.Stunned || u.Confusion) && !full) {
-        await pline('You are too disoriented for this.');
+    if ((u.Hallucination || u.Stunned || u.Confusion) && !full) { // C `:2362`
+        await You('are too disoriented for this.'); // C `:2363`
         return;
     }
 
-    const keep_traps = (which_subset & TER_TRP) !== 0;
-    const keep_objs = (which_subset & TER_OBJ) !== 0;
-    const keep_mons = (which_subset & TER_MON) !== 0;
-    // C: swallowed captured before unconstrain_map (unconstrain deferred)
+    const keep_traps = (which_subset & TER_TRP) !== 0; // C `:2369`
+    const keep_objs = (which_subset & TER_OBJ) !== 0; // C `:2370`
+    const keep_mons = (which_subset & TER_MON) !== 0; // C `:2371`, not used
+    // C `:2372` — swallowed captured before unconstrain_map().
     const swallowed = !!(u.uswallow);
+    // C `:2373 arboreal default_sym` + `:2377 default_glyph` live in
+    // reveal_terrain_getglyph (default_id/default_cell). C `:2375–2376` —
+    // drop underwater/buried/swallow confinement for the full-map draw,
+    // redraw when anything was constrained (map_redisplay reconstrains
+    // below, like C `:2411`).
+    if (unconstrain_map())
+        await docrt();
 
     const { reveal_terrain_show_map, flush_screen } = await import('./display.js');
-    reveal_terrain_show_map(which_subset, swallowed);
-    await flush_screen(1);
+    reveal_terrain_show_map(which_subset, swallowed); // C `:2379–2384` loop
+    await flush_screen(1); // C `:2388`
 
-    let buf;
+    let buf; // C `:2389–2403`
     if (full) {
-        buf = 'underlying terrain';
+        buf = 'underlying terrain'; // C `:2390`
     } else {
-        buf = 'known terrain';
-        if (keep_traps) {
+        buf = 'known terrain'; // C `:2392`
+        if (keep_traps) { // C `:2393–2395`
             buf += `${(keep_objs || keep_mons) ? ',' : ' and'} traps`;
         }
-        if (keep_objs) {
+        if (keep_objs) { // C `:2396–2399`
             buf += `${(keep_traps || keep_mons) ? ',' : ''}${keep_mons ? '' : ' and'} objects`;
         }
-        if (keep_mons) {
+        if (keep_mons) { // C `:2400–2402`
             buf += `${(keep_traps || keep_objs) ? ',' : ''} and monsters`;
         }
     }
-    await pline(`Showing ${buf} only...`);
+    await pline(`Showing ${buf} only...`); // C `:2404`
 
-    which_subset |= TER_MAP;
-    await browse_map(which_subset, 'anything of interest');
-    await map_redisplay();
+    which_subset |= TER_MAP; // C `:2408` guarantee non-zero
+    await browse_map(which_subset, 'anything of interest'); // C `:2409`
+    await map_redisplay(); // C `:2411`
 }
 
 /**

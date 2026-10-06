@@ -8,7 +8,7 @@ import {
     throws_rocks, is_swimmer, likes_lava, mindless, is_animal, strongmonst, is_mercenary,
     mon_knows_traps, mon_learns_traps, can_teleport, hides_under, webmaker, PM_GIANT_SPIDER,
     is_vampshifter, is_watch, is_mind_flayer, is_covetous,
-    is_floater, is_flyer, amorphous, nolimbs, M1_SLITHY, MZ_SMALL,
+    is_floater, is_flyer, amorphous, nolimbs, M1_SLITHY, MZ_SMALL, MZ_MEDIUM,
     grounded, telepathic, mons, metallivorous, humanoid, is_neuter, G_UNIQ,
     corpse_eater, is_demon, touch_petrifies, acidic, mon_hates_silver,
     resists_ston, is_rider, dmgtype,
@@ -117,6 +117,7 @@ import {
     hideunder as hideunderHero,
 } from './mon.js';
 import { distmin, dist2, upstart } from './hacklib.js';
+import { in_your_sanctuary } from './priest.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -175,7 +176,8 @@ const AD_CORR = 42;
 const GEMSTONE = 20; // objclass.h
 const MINERAL = 21; // objclass.h
 const MAX_CARR_CAP = 1000;
-const MZ_HUMAN = 3;
+/** C ref: monflag.h:180 — MZ_HUMAN ≡ MZ_MEDIUM (2), not MZ_LARGE (3). */
+const MZ_HUMAN = MZ_MEDIUM;
 const WT_HUMAN = 1450;
 const MTSZ = 4;
 const BOLT_LIM = 8;
@@ -1152,18 +1154,43 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
     mon_track_clear(mtmp);
 }
 
-// C ref: monmove.c distfleeck()
-export function distfleeck(mtmp) {
-    // bravegremlin roll always happens even if unused
+// C ref: monmove.c distfleeck() `:532–567` — whole: bravegremlin rn2(5)
+// `:538` first (always drawn, even when unused); inrange/nearby from
+// mux/muy `:540–542`; seescary at mux/muy when the monster is blind to
+// the hero (mcansee / Invis-perceives gate `:551–557`), else the hero
+// square; unconditional onscary `:559`; scared when nearby and
+// (sawscary || gremlin-light-not-brave || hostile-in-sanctuary)
+// `:560–562`, then monflee(rnd(rn2(7) ? 10 : 100)) `:563–564` (async:
+// monflee plines). Callers (dochug `:791/:834/:915`) await.
+export async function distfleeck(mtmp) {
+    // C `:538`: bravegremlin roll always happens even if unused
     const bravegremlin = rn2(5) === 0;
-    void bravegremlin;
 
     const inrange = dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
         <= (BOLT_LIM * BOLT_LIM);
     const nearby = inrange && monnear(mtmp, mtmp.mux, mtmp.muy);
-    // onscary / flees_light / sanctuary not hit for seed8000 starter path
-    const scared = 0;
-    return { inrange: inrange ? 1 : 0, nearby: nearby ? 1 : 0, scared };
+
+    // C `:551–557`: blind-to-hero image sees the scare at mux/muy
+    let seescaryx, seescaryy;
+    if (!mtmp.mcansee || (Invis() && !perceives(mtmp.data))) {
+        seescaryx = mtmp.mux;
+        seescaryy = mtmp.muy;
+    } else {
+        seescaryx = game.u?.ux;
+        seescaryy = game.u?.uy;
+    }
+
+    // C `:559`: onscary is unconditional (draws no RNG either side)
+    const sawscary = onscary(seescaryx, seescaryy, mtmp);
+    // C `:560–562`: short-circuit — sanctuary read only when needed
+    if (nearby && (sawscary
+        || (flees_light(mtmp) && !bravegremlin)
+        || (!mtmp.mpeaceful && in_your_sanctuary(mtmp, 0, 0)))) {
+        // C `:563–564`
+        await monflee(mtmp, rnd(rn2(7) ? 10 : 100), true, true);
+        return { inrange: inrange ? 1 : 0, nearby: nearby ? 1 : 0, scared: 1 };
+    }
+    return { inrange: inrange ? 1 : 0, nearby: nearby ? 1 : 0, scared: 0 };
 }
 
 /** C youprop.h Deaf ≡ HDeaf || EDeaf || uroleplay.deaf (plus u.Deaf flag). */
@@ -2699,7 +2726,7 @@ export async function dochug(mtmp) {
         if (mtmp.mstate) return 0;
         set_apparxy(mtmp);
     }
-    let { inrange, nearby, scared } = distfleeck(mtmp);
+    let { inrange, nearby, scared } = await distfleeck(mtmp);
 
     // C: find_defensive / find_misc before movement phase
     if (find_defensive(mtmp, false)) {
@@ -2739,7 +2766,7 @@ export async function dochug(mtmp) {
         await mind_blast(mtmp);
         if (game.program_state?.gameover) return 0;
         set_apparxy(mtmp);
-        ({ inrange, nearby, scared } = distfleeck(mtmp));
+        ({ inrange, nearby, scared } = await distfleeck(mtmp));
     }
 
     // C ref: monmove.c dochug — nearby AT_WEAP may spend the turn wielding
@@ -2812,7 +2839,7 @@ export async function dochug(mtmp) {
         // C ref: monmove.c dochug — off-map after m_move skips 2nd distfleeck
         if (mon_offmap(mtmp)) return 1;
         if (status !== MMOVE_DIED) {
-            ({ inrange, nearby, scared } = distfleeck(mtmp));
+            ({ inrange, nearby, scared } = await distfleeck(mtmp));
         }
         if (status === MMOVE_NOMOVES && scared) panicattk = true;
         // C: monmove.c dochug switch — Hallu newsym after 2nd distfleeck

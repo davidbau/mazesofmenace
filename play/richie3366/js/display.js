@@ -4754,8 +4754,9 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
  * Does not pline / browse / map_redisplay (caller).
  */
 export function reveal_terrain_show_map(which_subset, swallowed) {
-    // C: default_sym = arboreal ? S_tree : S_stone — arboreal STONE→tree deferred
-    // (TREE typ itself via terrain_glyph D-0565)
+    // C `:2373/:2377` default_sym/default_glyph — the stone cell; arboreal
+    // levels substitute the tree cell inside reveal_terrain_getglyph
+    // (default_id/default_cell), so this stays unconditional here.
     const default_glyph = { ch: ' ', color: NO_COLOR, dec: false };
 
     for (let x = 1; x < COLNO; x++) {

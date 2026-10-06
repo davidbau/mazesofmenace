@@ -6954,7 +6954,9 @@ function load_wiz_strt() {
  * (Guarded Tower / moat). solidfill + cloud/moat replace_terrain +
  * irregular rooms with secret doors + locked doors + traps/monsters.
  * Named omissions: humidity-aware get_location; spo_end_moninvent
- * m_dowear.
+ * m_dowear. Wall-form secret doors stay mark-free per C (create_door,
+ * not sel_set_door — lspo_door wall branch :4703–4713).
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3546).
  */
 function load_wiz_loca() {
     const g = game;
@@ -7056,13 +7058,14 @@ function load_wiz_loca() {
 
     wizLocaAddIrregular(48, 10, false, 'random');
 
-    // des.door("locked", …)
+    // des.door("locked", …) — Wiz-loca.lua:76–79
     const wizDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     wizDoor(55, 8, D_LOCKED);
@@ -7249,6 +7252,7 @@ function load_wiz_filb() {
  * Named omissions: humidity-aware get_location; spo_end_moninvent
  * m_dowear; fill_special_room TEMPLE beyond has_temple; G_UNIQ extinct
  * early return; fakewiz.
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3546).
  */
 function load_wiz_goal() {
     const g = game;
@@ -7326,12 +7330,14 @@ function load_wiz_goal() {
     wizGoalLit(50, 4, 60, 14, true);
 
     // des.door("locked", x, y) — C lspo_door → sel_set_door; SDOOR stays
+    // Wiz-goal.lua:50–65
     const wizDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     for (const [rx, ry] of [
@@ -7427,6 +7433,7 @@ function load_wiz_goal() {
  * C ref: dat/Pri-strt.lua via load_special — Priest quest start.
  * Arch Priest invent wears via m_dowear (sp_lev.c spo_end_moninvent).
  * Named omissions: fill_special_room TEMPLE beyond FILL_LVFLAGS has_temple.
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3550).
  */
 function load_pri_strt() {
     const g = game;
@@ -7512,13 +7519,14 @@ function load_pri_strt() {
     game.SpLev_Map.add(`${mx + 52},${my + 9}`); // C :4189
     mkstairs(mx + 52, my + 9, 0, null, true);
 
-    // des.door — C lspo_door → sel_set_door
+    // des.door — C lspo_door → sel_set_door; Pri-strt.lua:53–70
     const priDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     priDoor(18, 9, D_LOCKED);
@@ -7648,6 +7656,7 @@ function load_pri_strt() {
  * Named omissions: humidity-aware get_location; flip_level (noflip);
  * spo_end_moninvent m_dowear; add_doors_to_room mid-region (doors are
  * linked once via link_doors_rooms before wallify, ≡ C load_special).
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3550).
  */
 async function load_pri_loca() {
     const g = game;
@@ -7770,13 +7779,14 @@ async function load_pri_loca() {
         ry: 7,
     });
 
-    // des.door locked
+    // des.door locked — Pri-loca.lua:38–43
     const priDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     priDoor(10, 6, D_LOCKED);
@@ -7960,6 +7970,7 @@ xxxxx...xxxxxx....xxxxxxxx
  * Lord Carnarvon invent wears via m_dowear (sp_lev.c spo_end_moninvent).
  * Named omissions:
  * humidity-aware get_location for water-likers (eels use fixed moat).
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3552).
  */
 function load_arc_strt() {
     const g = game;
@@ -8033,13 +8044,14 @@ function load_arc_strt() {
     game.SpLev_Map.add(`${mx + 55},${my + 7}`); // C :4189
     mkstairs(mx + 55, my + 7, 0, null, true);
 
-    // des.door — C lspo_door → sel_set_door
+    // des.door — C lspo_door → sel_set_door; Arc-strt.lua:60–71
     const arcDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     arcDoor(22, 7, D_CLOSED);
@@ -8172,6 +8184,7 @@ function load_arc_strt() {
  * C ref: dat/Arc-loca.lua via load_special — Archeologist quest locate.
  * Named omissions: humidity-aware get_location; selection.grow on
  * 2-arg lit regions; spo_end_moninvent m_dowear.
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3552).
  */
 function load_arc_loca() {
     const g = game;
@@ -8271,13 +8284,14 @@ function load_arc_loca() {
     arcLit(36, 12, 42, 14, false);
     arcLit(46, 11, 49, 11, false);
 
-    // des.door
+    // des.door — C lspo_door → sel_set_door; Arc-loca.lua:48–63
     const arcDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     arcDoor(31, 4, D_CLOSED);
@@ -10623,6 +10637,7 @@ function load_sam_filb() {
  * dragons/snakes in lua order; branch levregion point (04,12) after flip.
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3554).
  */
 function load_hea_strt() {
     const g = game;
@@ -10689,13 +10704,14 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
         }
     }
 
-    // des.door × 12 (6 locked + 6 closed)
+    // des.door × 12 (6 locked + 6 closed) — C lspo_door → sel_set_door; Hea-strt.lua:50–61
     const heaDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     heaDoor(24, 10, D_LOCKED);
@@ -10779,6 +10795,7 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
  * rats/class-r/eels/kraken/sharks/semicolons/dragons/snakes in lua order.
  * Named omissions: humidity-aware get_location for water-likers;
  * spo_end_moninvent m_dowear; ensure_way_out.
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3554).
  */
 async function load_hea_loca() {
     const g = game;
@@ -10836,13 +10853,14 @@ PPPPPPPPPPP........PPPPPPPPPPPP
         }
     }
 
-    // des.door × 4 (2 closed + 2 locked)
+    // des.door × 4 (2 closed + 2 locked) — C lspo_door → sel_set_door; Hea-loca.lua:28–31
     const heaLocaDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     heaLocaDoor(9, 4, D_CLOSED);
@@ -13717,6 +13735,7 @@ function load_knox() {
  * C ref: dat/Bar-loca.lua via load_special — locate level (ogre fort).
  * Named omissions: humidity-aware get_location for water-likers;
  * set_malign after peaceful override (matches Bar-strt partial).
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3548).
  */
 function load_bar_loca() {
     const g = game;
@@ -13773,13 +13792,14 @@ function load_bar_loca() {
     barLit(56, 0, 75, 8, false);
     barLit(64, 9, 75, 16, false);
 
-    // des.door
+    // des.door — Bar-loca.lua:41–50
     const barDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     barDoor(23, 3, D_ISOPEN);
@@ -13890,6 +13910,7 @@ function load_bar_loca() {
  * C ref: dat/Bar-goal.lua via load_special — Barbarian quest goal
  * (Thoth Amon / Heart of Ahriman). Named omissions: humidity-aware
  * get_location; spo_end_moninvent m_dowear; G_UNIQ extinct early return.
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3548).
  */
 function load_bar_goal() {
     const g = game;
@@ -13932,14 +13953,15 @@ function load_bar_goal() {
     // argc=2: unlit does not grow (light_region litstate=0).
     light_region(mx + 0, my + 0, mx + 75, my + 19, false);
 
-    // des.door("locked", 22,09) / (26,09) — C lspo_door → sel_set_door;
-    // map 'S' stays SDOOR.
+    // des.door("locked", 22,09) / (26,09) — Bar-goal.lua:35–36,
+    // C lspo_door → sel_set_door; map 'S' stays SDOOR.
     const barGoalDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
-        loc.doormask = mask;
+        loc.doormask = mask; // C :4660
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     barGoalDoor(22, 9, D_LOCKED);
@@ -16389,6 +16411,7 @@ function load_astral() {
  * Named omissions: ensure_way_out; link_doors_rooms full scan;
  * map_cleanup; is_mines_prize consumption beyond achieveo oid/otyp stamp.
  * minend-3 is D-1823.
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3544).
  */
 function load_minend_1() {
     const g = game;
@@ -16472,6 +16495,7 @@ function load_minend_1() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_LOCKED;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = D_LOCKED;
     };
     meDoor(7, 16);
@@ -16592,6 +16616,7 @@ function load_minend_1() {
  * Named omissions: ensure_way_out; link_doors_rooms full scan;
  * map_cleanup; is_mines_prize consumption beyond achieveo oid/otyp stamp.
  * minend-3 is D-1823.
+ * SpLev_Map game bitmap C-complete (C :6292/:4189/:4661; D-3544).
  */
 function load_minend_2() {
     const g = game;
@@ -16641,12 +16666,14 @@ function load_minend_2() {
         setTer(56, 14, HWALL);
         setTer(61, 15, VWALL);
         setTer(52, 5, SDOOR);
+        // des.door("locked", 52,5) — minend-2.lua:39, same percent(50) arm
         {
             const loc = g.level.at(mx + 52, my + 5);
             if (loc) {
                 if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
                 set_door_orientation(mx + 52, my + 5); // C sel_set_door :4659
                 loc.doormask = D_LOCKED;
+                if (g.SpLev_Map) g.SpLev_Map.add(`${mx + 52},${my + 5}`); // C :4661
                 loc.flags = D_LOCKED;
             }
         }
@@ -16697,6 +16724,7 @@ function load_minend_2() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_LOCKED;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = D_LOCKED;
     };
     meDoor(12, 2);
@@ -19229,8 +19257,14 @@ function set_door_orientation(x, y) {
  * sites, D-3528), knoxDoor (11 sites) + tut1_door (12 sites, D-3530),
  * baalz inline (1 site) + valleyDoor (3 sites, D-3536), medusa medDoor
  * ×3 + medusa-2 inline (16 sites, D-3538), barDoor (Bar-strt 8) +
- * wizDoor (Wiz-strt 8, D-3540), astralDoor (9) + sanctDoor (4, D-3542)
- * carry the :4661 game mark; the rest keep the split.
+ * wizDoor (Wiz-strt 8, D-3540), astralDoor (9) + sanctDoor (4, D-3542),
+ * meDoor ×2 (minend-1 7 + minend-2 2) + minend-2 gated inline (52,5)
+ * (10 sites, D-3544), wizDoor (Wiz-loca 4 + Wiz-goal 16, D-3546),
+ * barDoor (Bar-loca 10) + barGoalDoor (Bar-goal 2, D-3548),
+ * priDoor (Pri-strt 18 + Pri-loca 6, D-3550),
+ * arcDoor (Arc-strt 12 + Arc-loca 16, D-3552),
+ * heaDoor (Hea-strt 12) + heaLocaDoor (Hea-loca 4, D-3554) carry the
+ * :4661 game mark; the rest keep the split.
  */
 function sel_set_door(x, y, typ) {
     const loc = game.level.at(x, y); // C levl[x][y]
