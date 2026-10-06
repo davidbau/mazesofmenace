@@ -147,7 +147,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level, init_dungeons, Is_special, Is_branchlev, Invocation_lev, In_W_tower, On_W_tower_level, dupstr, get_table_option, get_table_str_opt, get_table_int_opt,
+    on_level, init_dungeons, Is_special, Is_branchlev, Invocation_lev, In_W_tower, On_W_tower_level, dupstr, get_table_option, get_table_str_opt, get_table_int_opt, luaL_checkoption,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -1143,18 +1143,6 @@ export async function lspo_gas_cloud(opts) {
 }
 
 /**
- * C ref: nhlua.c get_table_option — luaL_checkoption index into the option
- * table; absent field → default string; no match → nhl_error (fatal).
- * luaL_checkoption matches exactly (case-sensitive).
- */
-function splev_opt_index(v, defval, opts) {
-    const s = v ?? defval;
-    const i = opts.indexOf(s);
-    if (i < 0) throw new Error(`lspo: bad option '${s}'`);
-    return i;
-}
-
-/**
  * C ref: mklev.c count_level_features `:828–841` — recount fountains and
  * sinks over x 1..COLNO-1, y 0..ROWNO-1 (x = 1 lower bound like C).
  */
@@ -1231,9 +1219,9 @@ export function lspo_drawbridge(opts) {
     create_des_coder(); // C :5739
     const o = opts ?? {}; // C :5741 lcheck_param_table
     const mm = get_table_xy_or_coord(o); // C :5743
-    const dir = LSPO_MWDIRS2I[splev_opt_index(o.dir, 'random', LSPO_MWDIRS)]; // C :5745
+    const dir = LSPO_MWDIRS2I[get_table_option(o, 'dir', 'random', LSPO_MWDIRS)]; // C :5744
     const coder = game.gc.coder;
-    let db_open = LSPO_DBOPENS2I[splev_opt_index(o.state, 'random', LSPO_DBOPENS)]; // C :5747
+    let db_open = LSPO_DBOPENS2I[get_table_option(o, 'state', 'random', LSPO_DBOPENS)]; // C :5746
     const pos = get_location_coord(DRY | WET | HOT, coder?.croom ?? null, mm.x, mm.y); // C :5750
     if (!isok(mm.x, mm.y)) throw new Error('lspo_drawbridge: drawbridge coord not ok'); // C :5751-5754 nhl_error
     if (db_open === -1) db_open = !rn2(2) ? 1 : 0; // C :5756-5757 db_open = !rn2(2)
@@ -1267,8 +1255,8 @@ const LSPO_MAZEWALK_DIRS2I = [W_NORTH, W_SOUTH, W_EAST, W_WEST, W_RANDOM];
  * (C `:5865–5866`). levl indexes go through level.at with a null
  * guard (walkfrom idiom above — C indexes raw levl).
  * Named: lcheck_param_table (table-or-empty + object check);
- * get_table_mapchr_opt / get_table_option (inline splev_chr2typ /
- * splev_opt_index, C nhlua.c :256/:1122); get_table_boolean_opt is the
+ * get_table_mapchr_opt (inline splev_chr2typ, C nhlua.c :256);
+ * get_table_option is the shared dungeon.js import (C nhlua.c :1122); get_table_boolean_opt is the
  * shared same-file helper (C nhlua.c :1107–1118); luaL_checkinteger
  * (luaL_checkinteger_unpacked).
  */
@@ -1279,7 +1267,7 @@ export function lspo_mazewalk(a, b, c) {
     if (argc === 3) { // C :5786
         mx = luaL_checkinteger_unpacked(a); // C :5787
         my = luaL_checkinteger_unpacked(b); // C :5788
-        dir = LSPO_MAZEWALK_DIRS2I[splev_opt_index(c, 'random', LSPO_MAZEWALK_DIRS)]; // C :5789
+        dir = LSPO_MAZEWALK_DIRS2I[luaL_checkoption(c, 'random', LSPO_MAZEWALK_DIRS)]; // C :5789
     } else { // C :5790
         const o = a ?? {}; // C :5791 lcheck_param_table
         if (o === null || typeof o !== 'object') throw new Error('lspo_mazewalk: Wrong parameters');
@@ -1289,7 +1277,7 @@ export function lspo_mazewalk(a, b, c) {
         ftyp = get_table_mapchr_opt(o, 'typ', ROOM); // C :5794
 
         fstocked = get_table_boolean_opt(o, 'stocked', 1); // C :5795 get_table_boolean_opt(L, "stocked", 1)
-        dir = LSPO_MAZEWALK_DIRS2I[splev_opt_index(o.dir, 'random', LSPO_MAZEWALK_DIRS)]; // C :5796
+        dir = LSPO_MAZEWALK_DIRS2I[get_table_option(o, 'dir', 'random', LSPO_MAZEWALK_DIRS)]; // C :5796
     }
     let x = typeof mx === 'bigint' ? Number(mx & 0xffn) : mx | 0; // C :5799 SP_COORD_PACK
     let y = typeof my === 'bigint' ? Number(my & 0xffn) : my | 0;
@@ -1409,8 +1397,8 @@ const LSPO_WALLDIRS2I = [W_ANY, W_RANDOM, W_NORTH, W_WEST, W_EAST, W_SOUTH];
  * order. Unpacked-table form (opts object; lcheck_param_table ≡
  * table-or-empty + object check). Required srcroom/srcdoor/destroom/
  * destdoor via luaL_checkinteger_unpacked like C get_table_int
- * (nhlua.c:1017–1025); srcwall/destwall via splev_opt_index default
- * "all" like C get_table_option `:4542–4546`. Async: create_corridor
+ * (nhlua.c:1017–1025); srcwall/destwall via get_table_option default
+ * "all" (C `:4545`/`:4548`). Async: create_corridor
  * awaits impossible on the W_ANY/W_RANDOM guard. No table-form
  * des.corridor call exists in dat/*.lua (only des.random_corridors).
  */
@@ -1422,15 +1410,15 @@ export async function lspo_corridor(opts) {
         src: {
             room: luaL_checkinteger_unpacked(o.srcroom),
             door: luaL_checkinteger_unpacked(o.srcdoor),
-            wall: LSPO_WALLDIRS2I[splev_opt_index(o.srcwall, 'all', LSPO_WALLDIRS)],
+            wall: LSPO_WALLDIRS2I[get_table_option(o, 'srcwall', 'all', LSPO_WALLDIRS)], // C :4545
         },
         dest: {
             room: luaL_checkinteger_unpacked(o.destroom),
             door: luaL_checkinteger_unpacked(o.destdoor),
-            wall: LSPO_WALLDIRS2I[splev_opt_index(o.destwall, 'all', LSPO_WALLDIRS)],
+            wall: LSPO_WALLDIRS2I[get_table_option(o, 'destwall', 'all', LSPO_WALLDIRS)], // C :4548
         },
     };
-    await create_corridor(tc); // C :4548
+    await create_corridor(tc); // C :4551
     return 0; // C :4550
 }
 
@@ -1663,17 +1651,17 @@ export function lspo_feature(a, b, c) {
     create_des_coder(); // C :4855
     const argc = arguments.length;
     if (argc === 1 && typeof a === 'string') { // C :4857-4860
-        typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
+        typ = LSPO_FEATURES2I[luaL_checkoption(a, null, LSPO_FEATURES)]; // C :4860
         x = y = -1;
     } else if (argc === 2 && typeof a === 'string' // C :4861-4867
         && b !== null && typeof b === 'object') {
-        typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
+        typ = LSPO_FEATURES2I[luaL_checkoption(a, null, LSPO_FEATURES)]; // C :4865
         const fx = { x: -1, y: -1 }; // C :4864 fx, fy
         get_coord(b, fx); // C :4866 get_coord(L, 2, &fx, &fy)
         x = luaL_checkinteger_unpacked(fx.x, 16);
         y = luaL_checkinteger_unpacked(fx.y, 16);
     } else if (argc === 3) { // C :4868-4872
-        typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
+        typ = LSPO_FEATURES2I[luaL_checkoption(a, null, LSPO_FEATURES)]; // C :4870
         x = b | 0;
         y = c | 0;
     } else { // C :4873-4880 table form (lcheck_param_table: argc<1 ≡ {})
@@ -1681,8 +1669,8 @@ export function lspo_feature(a, b, c) {
         const xy = get_table_xy_or_coord(o); // C :4877
         x = luaL_checkinteger_unpacked(xy.x, 16);
         y = luaL_checkinteger_unpacked(xy.y, 16);
-        typ = LSPO_FEATURES2I[splev_opt_index(o.type, null, LSPO_FEATURES)]; // C :4878
-        can_have_flags = true; // C :4879
+        typ = LSPO_FEATURES2I[get_table_option(o, 'type', null, LSPO_FEATURES)]; // C :4879
+        can_have_flags = true; // C :4880
     }
 
     let humidity;
@@ -1762,7 +1750,7 @@ export function lspo_engraving(a, b, c) {
         const xy = get_table_xy_or_coord(o); // C :3904
         x = luaL_checkinteger_unpacked(xy.x, 16);
         y = luaL_checkinteger_unpacked(xy.y, 16);
-        etyp = LSPO_ENGRTYPES2I[splev_opt_index(o.type, 'engrave', LSPO_ENGRTYPES)]; // C :3907
+        etyp = LSPO_ENGRTYPES2I[get_table_option(o, 'type', 'engrave', LSPO_ENGRTYPES)]; // C :3907
         if (typeof o.text !== 'string') // C :3908 get_table_str luaL_checkstring
             throw new Error("bad argument 'text' (string expected)");
         txt = o.text;
@@ -1775,7 +1763,7 @@ export function lspo_engraving(a, b, c) {
         get_coord(a, ex); // C :3913 (void) get_coord(L, 1, &ex, &ey)
         x = luaL_checkinteger_unpacked(ex.x, 16);
         y = luaL_checkinteger_unpacked(ex.y, 16);
-        etyp = LSPO_ENGRTYPES2I[splev_opt_index(b, 'engrave', LSPO_ENGRTYPES)]; // C :3916
+        etyp = LSPO_ENGRTYPES2I[luaL_checkoption(b, 'engrave', LSPO_ENGRTYPES)]; // C :3916
         if (typeof c !== 'string') // C :3917 dupstr(luaL_checkstring)
             throw new Error('bad argument #3 (string expected)');
         txt = c;
@@ -2176,9 +2164,7 @@ export async function lspo_region(a, b) {
     } else if (argc === 2) { // C :5619 region(selection, "lit")
         if (!a || typeof a !== 'object' || !(a.pts instanceof Set)) // C :5622 l_selection_check
             throw new Error('lspo_region: selection expected');
-        const li = ['unlit', 'lit'].indexOf(b ?? 'lit'); // C :5625 luaL_checkoption def "lit"
-        if (li < 0) throw new Error(`lspo_region: bad option '${b}'`);
-        const rlit2 = li;
+        const rlit2 = luaL_checkoption(b, 'lit', ['unlit', 'lit']); // C :5619 luaL_checkoption def "lit"
         const sel = selection_clone(a); // C :5622-5623
         // TODO: lit=random (C's own note — kept)
         if (rlit2) selection_do_grow(sel, W_ANY); // C :5630-5631
@@ -2198,7 +2184,7 @@ export async function lspo_region(a, b) {
  * callback (lspo_room precedent); the table's own "contents" function
  * field is honored too (C `:6122–6126` lua_getfield). halign/valign
  * map exactly like C `:6081–6093` (TOP=1 BOTTOM=5, sp_lev.c:172-173;
- * absent → "none" → -1 via splev_opt_index, C nhlua.c get_table_option).
+ * absent → "none" → -1 via get_table_option, C nhlua.c get_table_option).
  * The map string is required (C `:6120` get_table_str) and lit defaults
  * FALSE (C `:6121`). x,y-or-halign/valign placement (C `:6147–6223`):
  * themeroom random placement with croom somex/somey (C `:6148–6168`),
@@ -2216,6 +2202,13 @@ export async function lspo_region(a, b) {
  * (C `:6318` l_push_wid_hei_table, sp_lev.c:3050) and returns the live
  * selection (C `:6321–6324` push-copy + free + return 1 — no Lua stack).
  * Lua-table-called (C `:6392` des registration); 0 C callers.
+ * Tower loaders inline the load loop (load_tower1/2/3); their map cells
+ * carry the :6292 game mark (D-3528 close-out). Tutorial loaders inline
+ * the load loop (load_tut1/2); their map cells carry the :6292 game
+ * mark (D-3532 close-out — both tutorial bitmaps C-complete). The
+ * themeroom helper (lspo_map_themeroom) inlines the same shared loop;
+ * its map cells carry the :6292 game mark (D-3534 close-out — last
+ * unmarked map loop; 19 THEMEROOM_MAPS byte-identical to themerms.lua).
  * Named: mapfrag_free (GC no-op); dupstr/free (GC no-ops);
  * l_push_wid_hei_table ({width,height} object); nhl_pcall_handle
  * (direct contents call); l_selection_push_copy + selection_free
@@ -2237,8 +2230,8 @@ export function lspo_map(a, contentsFn) {
     } else { // C :6110 table form
         const o = a ?? {}; // C :6112 lcheck_param_table
         if (o === null || typeof o !== 'object') throw new Error('lspo_map: Wrong parameters');
-        lr = l_or_r2i[splev_opt_index(o.halign, 'none', left_or_right)]; // C :6114
-        tb = t_or_b2i[splev_opt_index(o.valign, 'none', top_or_bot)]; // C :6115
+        lr = l_or_r2i[get_table_option(o, 'halign', 'none', left_or_right)]; // C :6117
+        tb = t_or_b2i[get_table_option(o, 'valign', 'none', top_or_bot)]; // C :6118
         const xy = get_table_xy_or_coord(o); // C :6116
         x = xy.x; y = xy.y;
         if (typeof o.map !== 'string') // C :6120 get_table_str
@@ -5225,10 +5218,10 @@ export function lspo_wall_property(o) {
     if (arguments.length < 1) o = {}; // C lcheck_param_table :228-230
     if (o == null || typeof o !== 'object') // C :232 luaL_checktype
         throw new Error('bad argument #1 (table expected)');
-    let dx1 = o.x1 != null ? (o.x1 | 0) : -1; // C :5889 get_table_int_opt -1
-    let dy1 = o.y1 != null ? (o.y1 | 0) : -1;
-    let dx2 = o.x2 != null ? (o.x2 | 0) : -1;
-    let dy2 = o.y2 != null ? (o.y2 | 0) : -1;
+    let dx1 = get_table_int_opt(o, 'x1', -1); // C :5565-5568 get_table_coords_or_region via :5889
+    let dy1 = get_table_int_opt(o, 'y1', -1);
+    let dx2 = get_table_int_opt(o, 'x2', -1);
+    let dy2 = get_table_int_opt(o, 'y2', -1);
     if (dx1 === -1 && dy1 === -1 && dx2 === -1 && dy2 === -1) {
         const r = get_table_region_unpacked(o, 'region', false); // C :5571-5576
         dx1 = r[0];
@@ -5236,7 +5229,7 @@ export function lspo_wall_property(o) {
         dx2 = r[2];
         dy2 = r[3];
     }
-    const wprop = LSPO_WPROPS2I[splev_opt_index(o.property, 'nondiggable', LSPO_WPROPS)]; // C :5891
+    const wprop = LSPO_WPROPS2I[get_table_option(o, 'property', 'nondiggable', LSPO_WPROPS)]; // C :5891
     const xs = game.splev_xstart ?? 1; // C gx.xstart
     const ys = game.splev_ystart ?? 0; // C gy.ystart
     const xsz = game.splev_xsize ?? COLNO - 1; // C gx.xsize
@@ -5266,6 +5259,8 @@ function medusa_mark_nondig(mx, my, x1, y1, x2, y2) {
 
 /**
  * C ref: dat/medusa-1.lua via load_special.
+ * Map cells + stairs + doors carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3538).
  * Named omissions: worn/artifact STONE_RES in resists_ston;
  * flip_level lregion coord update (same shortcut as Bar-strt/fire);
  * full mongone invent teardown beyond fmon unlink.
@@ -5360,8 +5355,12 @@ function load_medusa_1() {
     });
 
     // des.stair("up", 05,14) / des.stair("down", 36,10)
-    mkstairs(mx + 5, my + 14, 1, null);
-    mkstairs(mx + 36, my + 10, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 5},${my + 14}`); // C :4189
+    mkstairs(mx + 5, my + 14, 1, null, true);
+    game.SpLev_Map.add(`${mx + 36},${my + 10}`); // C :4189
+    mkstairs(mx + 36, my + 10, 0, null, true);
 
     // des.door
     const medDoor = (rx, ry, mask) => {
@@ -5370,6 +5369,7 @@ function load_medusa_1() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     medDoor(46, 7, D_CLOSED);
@@ -5563,6 +5563,8 @@ function load_medusa_1() {
 
 /**
  * C ref: dat/medusa-3.lua via load_special — raven-tree Medusa variant.
+ * Map cells + stair + doors carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3538).
  * Named omissions: worn/artifact STONE_RES in resists_ston;
  * ensure_way_out / solidify; full mongone invent teardown beyond fmon unlink.
  * D-0928: flip updates lregions; land still JS@(43,6) vs C@(42,7).
@@ -5673,7 +5675,13 @@ function load_medusa_3() {
     });
 
     // des.stair("down", medloc)
-    if (medloc) mkstairs(medloc.x, medloc.y, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    // medloc is absolute (place pts carry mx/my); traps postdate the stair (medusa-3.lua).
+    if (medloc) {
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${medloc.x},${medloc.y}`); // C :4189
+        mkstairs(medloc.x, medloc.y, 0, null, true);
+    }
 
     // des.door
     const medDoor = (rx, ry, mask) => {
@@ -5682,6 +5690,7 @@ function load_medusa_3() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     medDoor(8, 8, D_LOCKED);
@@ -5828,6 +5837,8 @@ function load_medusa_3() {
 
 /**
  * C ref: dat/medusa-2.lua via load_special — twin-island palace variant.
+ * Map cells + stairs + door carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3538).
  * Named omissions: worn/artifact STONE_RES in resists_ston;
  * ensure_way_out / solidify; create_object Medusa fill (uses
  * medusa_empty_statue_at); count_level_features / premap.
@@ -5917,6 +5928,7 @@ function load_medusa_2() {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
             set_door_orientation(mx + 71, my + 7); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
+            if (g.SpLev_Map) g.SpLev_Map.add(`${mx + 71},${my + 7}`); // C :4661
             loc.flags = D_LOCKED;
         }
     }
@@ -5992,6 +6004,8 @@ function load_medusa_2() {
 
 /**
  * C ref: dat/medusa-4.lua via load_special — palace + yellow-dragon nest.
+ * Map cells + stair + doors carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3538).
  * Named omissions: worn/artifact STONE_RES in resists_ston;
  * ensure_way_out / solidify; create_object Medusa fill (uses
  * medusa_empty_statue_at); count_level_features / premap.
@@ -6072,6 +6086,7 @@ function load_medusa_4() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_LOCKED;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = D_LOCKED;
     };
     medDoor(4, 6);
@@ -6476,6 +6491,8 @@ function load_bigrm_12() {
  * C ref: dat/Bar-strt.lua via load_special — full script through branch
  * levregion; m_dowear after Pelias invent live (sp_lev.c spo_end_moninvent).
  * Branch levregion stored pre-flip so flip_level remaps it (D-0782 pattern).
+ * Map cells + stairs + doors carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3540).
  */
 function load_bar_strt() {
     const g = game;
@@ -6551,7 +6568,10 @@ function load_bar_strt() {
     barLit(22, 14, 24, 15, true);
 
     // des.stair("down", 09,09)
-    mkstairs(mx + 9, my + 9, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 9},${my + 9}`); // C :4189
+    mkstairs(mx + 9, my + 9, 0, null, true);
     // des.levregion branch — placed after wallify/flip in load_special epilogue
 
     // des.door — C lspo_door → sel_set_door (typ already DOOR/SDOOR from map)
@@ -6561,6 +6581,7 @@ function load_bar_strt() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     barDoor(12, 5, D_LOCKED);
@@ -6687,6 +6708,8 @@ function load_bar_strt() {
 /**
  * C ref: dat/Wiz-strt.lua via load_special — Wizard quest start (Neferet).
  * solidfill + cloud replace_terrain + tower clear + leader invent.
+ * Map cells + stairs + doors carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3540).
  * Named omissions: spo_end_moninvent m_dowear; count_level_features /
  * level_finalize_topology / fill_special_room;
  * sp_lev.c lspo_reset_level / lspo_finalize_level still named
@@ -6772,7 +6795,10 @@ function load_wiz_strt() {
     }
 
     // des.stair("down", 30,10)
-    mkstairs(mx + 30, my + 10, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 30},${my + 10}`); // C :4189
+    mkstairs(mx + 30, my + 10, 0, null, true);
 
     // Portal arrival point + branch levregion (pre-flip; flip remaps inarea)
     sel_set_ter(mx + 63, my + 6, ROOM, SET_LIT_NOCHANGE);
@@ -6794,6 +6820,7 @@ function load_wiz_strt() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     wizDoor(31, 9, D_CLOSED);
@@ -7045,8 +7072,13 @@ function load_wiz_loca() {
 
     // des.terrain({03,17}, ".") then stairs
     sel_set_ter(mx + 3, my + 17, ROOM, SET_LIT_NOCHANGE);
-    mkstairs(mx + 3, my + 17, 1, null);
-    mkstairs(mx + 48, my + 10, 0, null);
+    // des.stair("up", 03,17) / des.stair("down", 48,10)
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 3},${my + 17}`); // C :4189
+    mkstairs(mx + 3, my + 17, 1, null, true);
+    game.SpLev_Map.add(`${mx + 48},${my + 10}`); // C :4189
+    mkstairs(mx + 48, my + 10, 0, null, true);
 
     // des.non_diggable(selection.area(00,00,75,20))
     for (let y = my; y <= my + 20 && y < ROWNO; y++) {
@@ -7310,7 +7342,10 @@ function load_wiz_goal() {
     ]) wizDoor(rx, ry, D_LOCKED);
 
     // des.stair("up", 55,05)
-    mkstairs(mx + 55, my + 5, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 55},${my + 5}`); // C :4189
+    mkstairs(mx + 55, my + 5, 1, null, true);
 
     // des.non_diggable(selection.area(00,00,75,19))
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
@@ -7472,7 +7507,10 @@ function load_pri_strt() {
     }
 
     // des.stair("down", 52,09)
-    mkstairs(mx + 52, my + 9, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 52},${my + 9}`); // C :4189
+    mkstairs(mx + 52, my + 9, 0, null, true);
 
     // des.door — C lspo_door → sel_set_door
     const priDoor = (rx, ry, mask) => {
@@ -7749,8 +7787,12 @@ async function load_pri_loca() {
     priDoor(30, 7, D_LOCKED);
 
     // Stairs — up intentionally off-map (x=43); down in temple
-    mkstairs(mx + 43, my + 5, 1, null);
-    mkstairs(mx + 20, my + 6, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 43},${my + 5}`); // C :4189
+    mkstairs(mx + 43, my + 5, 1, null, true);
+    game.SpLev_Map.add(`${mx + 20},${my + 6}`); // C :4189
+    mkstairs(mx + 20, my + 6, 0, null, true);
 
     // des.non_diggable(selection.area(10,02,30,13))
     for (let y = my + 2; y <= my + 13 && y < ROWNO; y++) {
@@ -7855,7 +7897,10 @@ xxxxx...xxxxxx....xxxxxxxx
     light_region(mx + 0, my + 0, mx + 25, my + 10, false);
 
     // des.stair("up", 20,05)
-    mkstairs(mx + 20, my + 5, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 20},${my + 5}`); // C :4189
+    mkstairs(mx + 20, my + 5, 1, null, true);
 
     // des.object helm of brilliance → The Mitre of Holiness
     // eroded=-1 ⇒ oerodeproof=1 (lua comment / create_object)
@@ -7983,7 +8028,10 @@ function load_arc_strt() {
     arcLit(32, 14, 48, 14, false);
 
     // des.stair("down", 55,07)
-    mkstairs(mx + 55, my + 7, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 55},${my + 7}`); // C :4189
+    mkstairs(mx + 55, my + 7, 0, null, true);
 
     // des.door — C lspo_door → sel_set_door
     const arcDoor = (rx, ry, mask) => {
@@ -8250,8 +8298,12 @@ function load_arc_loca() {
     arcDoor(54, 15, D_CLOSED);
 
     // des.stair
-    mkstairs(mx + 3, my + 17, 1, null);
-    mkstairs(mx + 39, my + 10, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 3},${my + 17}`); // C :4189
+    mkstairs(mx + 3, my + 17, 1, null, true);
+    game.SpLev_Map.add(`${mx + 39},${my + 10}`); // C :4189
+    mkstairs(mx + 39, my + 10, 0, null, true);
 
     // des.altar — type="altar" (shrine=0); align from shuffled splev_align
     const alignStrToAmask = (s) => {
@@ -8434,7 +8486,10 @@ function load_arc_goal() {
     }
 
     // des.stair("up", 38,10)
-    mkstairs(mx + 38, my + 10, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 38},${my + 10}`); // C :4189
+    mkstairs(mx + 38, my + 10, 1, null, true);
 
     // des.non_diggable — C sel_set_wall_property: STWALL/TREE/IRONBARS only
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
@@ -8585,7 +8640,10 @@ async function load_kni_strt() {
     kniLit(27, 6, 43, 9, true);
 
     // des.stair("down", 40,7)
-    mkstairs(mx + 40, my + 7, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 40},${my + 7}`); // C :4189
+    mkstairs(mx + 40, my + 7, 0, null, true);
 
     const kniDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
@@ -8799,8 +8857,12 @@ xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
     }
 
     // des.stair
-    mkstairs(mx + 38, my + 0, 1, null);
-    mkstairs(mx + 18, my + 5, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 38},${my + 0}`); // C :4189
+    mkstairs(mx + 38, my + 0, 1, null, true);
+    game.SpLev_Map.add(`${mx + 18},${my + 5}`); // C :4189
+    mkstairs(mx + 18, my + 5, 0, null, true);
 
     // des.altar({ x=17, y=05, align="neutral", type="shrine" })
     // C create_altar: amask then priestini then |= AM_SHRINE
@@ -8989,7 +9051,10 @@ function load_kni_goal() {
     }
 
     // des.stair("up", 03,08)
-    mkstairs(mx + 3, my + 8, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 3},${my + 8}`); // C :4189
+    mkstairs(mx + 3, my + 8, 1, null, true);
 
     // des.non_diggable — C sel_set_wall_property: STWALL/TREE/IRONBARS
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
@@ -9135,7 +9200,11 @@ function load_rog_strt() {
     // local place = { {33,0}, {0,12}, {25,20}, {75,05} }; shuffle(place)
     const place = [[33, 0], [0, 12], [25, 20], [75, 5]];
     nhlib_shuffle(place);
-    mkstairs(mx + place[0][0], my + place[0][1], 0, null);
+    // des.stair({ dir = "down", coord = place[1] }) — concrete coord at des time → fixed scoord.
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + place[0][0]},${my + place[0][1]}`); // C :4189
+    mkstairs(mx + place[0][0], my + place[0][1], 0, null, true);
     const mimicDown = (id, rx, ry) => {
         const mtmp = splev_create_monster(id, undefined, { rx, ry });
         if (!mtmp) return;
@@ -9603,7 +9672,10 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     light_region(mx + 0, my + 0, mx + 75, my + 19, true);
 
     // des.stair("down", 18, 01)
-    mkstairs(mx + 18, my + 1, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 18},${my + 1}`); // C :4189
+    mkstairs(mx + 18, my + 1, 0, null, true);
     // des.feature("fountain", 53, 02) — map-relative
     {
         const loc = g.level.at(mx + 53, my + 2);
@@ -9733,8 +9805,12 @@ xPPPPxx                         xxxxPPPP
     light_region(mx + 0, my + 0, mx + 39, my + 12, true);
 
     // des.stair up (off-map) + down
-    mkstairs(mx + 48, my + 14, 1, null);
-    mkstairs(mx + 20, my + 6, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 48},${my + 14}`); // C :4189
+    mkstairs(mx + 48, my + 14, 1, null, true);
+    game.SpLev_Map.add(`${mx + 20},${my + 6}`); // C :4189
+    mkstairs(mx + 20, my + 6, 0, null, true);
 
     // des.non_diggable(selection.area(00,00,39,12)) — walls/bars only
     for (let y = my; y <= my + 12 && y < ROWNO; y++) {
@@ -9828,7 +9904,11 @@ xxxxxxxxx..................xxxxxxxx
     // des.replace_terrain L→'.' chance 50 around the (off-map) up stair
     lspo_replace_terrain_region(44, 9, 46, 11, LAVAPOOL, ROOM, 50);
     // des.stair("up", 45, 10) — intentionally off of the map
-    mkstairs(mx + 45, my + 10, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    // force is live here: the off-map cell is LAVA, and C :2172 rooms it first.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 45},${my + 10}`); // C :4189
+    mkstairs(mx + 45, my + 10, 1, null, true);
 
     // des.non_diggable(selection.area(00,00,34,16)) — walls/bars only
     for (let y = my; y <= my + 16 && y < ROWNO; y++) {
@@ -10053,7 +10133,10 @@ function load_sam_strt() {
     }
 
     // des.stair("down", 29,04)
-    mkstairs(mx + 29, my + 4, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 29},${my + 4}`); // C :4189
+    mkstairs(mx + 29, my + 4, 0, null, true);
 
     const samDoor = (rx, ry, mask) => {
         const loc = g.level.at(mx + rx, my + ry);
@@ -10214,8 +10297,12 @@ function load_sam_loca() {
     ]) samDoor(rx, ry, D_CLOSED);
 
     // des.stair("up", 10,10) + des.stair("down", 25,14)
-    mkstairs(mx + 10, my + 10, 1, null);
-    mkstairs(mx + 25, my + 14, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 10},${my + 10}`); // C :4189
+    mkstairs(mx + 10, my + 10, 1, null, true);
+    game.SpLev_Map.add(`${mx + 25},${my + 14}`); // C :4189
+    mkstairs(mx + 25, my + 14, 0, null, true);
 
     // des.non_diggable(selection.area(00,00,75,19)) — walls/bars only
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
@@ -10358,7 +10445,10 @@ ${' '.repeat(45)}
     }
 
     // des.stair({ dir = "up", coord = place[placeidx] })
-    mkstairs(mx + px, my + py, 1, null);
+    // C l_create_stairway: fixed scoord (concrete Lua coord) → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + px},${my + py}`); // C :4189
+    mkstairs(mx + px, my + py, 1, null, true);
 
     // holes in the concentric ring walls (des.terrain "..." → ROOM)
     let ring = [[22, 14], [30, 10], [22, 6], [14, 10]];
@@ -10583,7 +10673,10 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
     light_region(mx + 0, my + 0, mx + 75, my + 19, true);
 
     // des.stair("down", 37,9)
-    mkstairs(mx + 37, my + 9, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 37},${my + 9}`); // C :4189
+    mkstairs(mx + 37, my + 9, 0, null, true);
 
     // des.altar({ x=32, y=09, align="neutral", type="altar" }) — not a shrine:
     // plain altar, no priestini, no has_temple
@@ -10758,8 +10851,12 @@ PPPPPPPPPPP........PPPPPPPPPPPP
     heaLocaDoor(11, 6, D_LOCKED);
 
     // des.stair up (04,04) + down (20,06)
-    mkstairs(mx + 4, my + 4, 1, null);
-    mkstairs(mx + 20, my + 6, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 4},${my + 4}`); // C :4189
+    mkstairs(mx + 4, my + 4, 1, null, true);
+    game.SpLev_Map.add(`${mx + 20},${my + 6}`); // C :4189
+    mkstairs(mx + 20, my + 6, 0, null, true);
 
     // des.non_diggable(selection.area(11,02,21,07)) — walls/bars only
     for (let y = my + 2; y <= my + 7 && y < ROWNO; y++) {
@@ -10866,7 +10963,10 @@ PPP..................................PPP.
     light_region(mx + 0, my + 0, mx + 40, my + 11, true);
 
     // des.stair("up", 39,10)
-    mkstairs(mx + 39, my + 10, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 39},${my + 10}`); // C :4189
+    mkstairs(mx + 39, my + 10, 1, null, true);
 
     // des.non_diggable(selection.area(00,00,40,11)) — walls/bars only
     for (let y = my; y <= my + 11 && y < ROWNO; y++) {
@@ -11084,7 +11184,10 @@ function load_tou_strt() {
     light_region(mx + 62, my + 2, mx + 67, my + 4, true);
 
     // des.stair("down", 66,03)
-    mkstairs(mx + 66, my + 3, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 66},${my + 3}`); // C :4189
+    mkstairs(mx + 66, my + 3, 0, null, true);
 
     // des.non_diggable(selection.area(00,00,75,19)) — walls/bars only
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
@@ -11297,8 +11400,12 @@ function load_tou_loca() {
     touOrd(70, 11, 72, 12);
 
     // des.stair("up", 10,04) + des.stair("down", 73,05)
-    mkstairs(mx + 10, my + 4, 1, null);
-    mkstairs(mx + 73, my + 5, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 10},${my + 4}`); // C :4189
+    mkstairs(mx + 10, my + 4, 1, null, true);
+    game.SpLev_Map.add(`${mx + 73},${my + 5}`); // C :4189
+    mkstairs(mx + 73, my + 5, 0, null, true);
 
     // des.non_diggable(selection.area(00,00,75,19)) × 2 (lua :33 + :74,
     // idempotent) — walls/bars only
@@ -11502,7 +11609,10 @@ function load_tou_goal() {
     }
 
     // des.stair("up", 70,08)
-    mkstairs(mx + 70, my + 8, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 70},${my + 8}`); // C :4189
+    mkstairs(mx + 70, my + 8, 1, null, true);
 
     // des.door × 27 in lua order (9 locked + 8 closed + 7 random + 3 open)
     const touGoalDoor = (rx, ry, mask) => {
@@ -11794,7 +11904,10 @@ async function load_ran_strt() {
     light_region(mx + 0, my + 0, mx + 40, my + 20, true);
 
     // des.stair("down", 10,10)
-    mkstairs(mx + 10, my + 10, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 10},${my + 10}`); // C :4189
+    mkstairs(mx + 10, my + 10, 0, null, true);
     // des.levregion branch {51,02,77,18} region_islev=1 — absolute level
     // cells; placed after wallify/flip in the epilogue below.
 
@@ -11936,8 +12049,12 @@ function load_ran_loca() {
     light_region(mx + 0, my + 0, mx + 54, my + 19, true);
 
     // des.stair up (25,05) + down (27,18)
-    mkstairs(mx + 25, my + 5, 1, null);
-    mkstairs(mx + 27, my + 18, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 25},${my + 5}`); // C :4189
+    mkstairs(mx + 25, my + 5, 1, null, true);
+    game.SpLev_Map.add(`${mx + 27},${my + 18}`); // C :4189
+    mkstairs(mx + 27, my + 18, 0, null, true);
 
     // des.non_diggable(selection.area(00,00,54,19)) — walls/bars only
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
@@ -12041,7 +12158,10 @@ function load_ran_goal() {
     light_region(mx + 0, my + 0, mx + 75, my + 19, true);
 
     // des.stair("up", 19,10)
-    mkstairs(mx + 19, my + 10, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 19},${my + 10}`); // C :4189
+    mkstairs(mx + 19, my + 10, 1, null, true);
 
     // des.non_diggable(selection.area(00,00,75,19)) — walls/bars only
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
@@ -12314,7 +12434,10 @@ function load_mon_strt() {
     sel_set_ter(mx + 5, my + 4, ROOM, SET_LIT_NOCHANGE);
 
     // des.stair("down", 52,09)
-    mkstairs(mx + 52, my + 9, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 52},${my + 9}`); // C :4189
+    mkstairs(mx + 52, my + 9, 0, null, true);
 
     // des.door — C lspo_door → sel_set_door
     const monDoor = (rx, ry, mask) => {
@@ -12613,7 +12736,10 @@ xxxxx...xxxxxx....xxxxxxxx
     light_region(mx + 0, my + 0, mx + 25, my + 10, false);
 
     // des.stair("up", 20,05)
-    mkstairs(mx + 20, my + 5, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 20},${my + 5}`); // C :4189
+    mkstairs(mx + 20, my + 5, 1, null, true);
 
     // des.object({ id = "lenses", coord = place[placeidx], buc="blessed",
     //              spe=0, name="The Eyes of the Overworld" }) — Tou-goal
@@ -12896,7 +13022,10 @@ function load_cav_strt() {
     cavStrtOrd(35, 16);
 
     // des.stair("down", 02,03)
-    mkstairs(mx + 2, my + 3, 0, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 2},${my + 3}`); // C :4189
+    mkstairs(mx + 2, my + 3, 0, null, true);
     // des.levregion({ region={71,09,71,09}, type="branch" }) — placed
     // post-flip in the epilogue below.
 
@@ -13092,8 +13221,12 @@ function load_cav_loca() {
     }
 
     // des.stair up (04,03) + down (73,10)
-    mkstairs(mx + 4, my + 3, 1, null);
-    mkstairs(mx + 73, my + 10, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 4},${my + 3}`); // C :4189
+    mkstairs(mx + 4, my + 3, 1, null, true);
+    game.SpLev_Map.add(`${mx + 73},${my + 10}`); // C :4189
+    mkstairs(mx + 73, my + 10, 0, null, true);
 
     // des.non_diggable(selection.area(00,00,75,19)) — walls/bars only
     for (let y = my; y <= my + 19 && y < ROWNO; y++) {
@@ -13524,6 +13657,7 @@ function load_knox() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     knoxDoor(6, 14, D_CLOSED);
@@ -13660,8 +13794,12 @@ function load_bar_loca() {
     barDoor(55, 6, D_LOCKED);
 
     // des.stair
-    mkstairs(mx + 5, my + 2, 1, null);
-    mkstairs(mx + 70, my + 13, 0, null);
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 5},${my + 2}`); // C :4189
+    mkstairs(mx + 5, my + 2, 1, null, true);
+    game.SpLev_Map.add(`${mx + 70},${my + 13}`); // C :4189
+    mkstairs(mx + 70, my + 13, 0, null, true);
 
     // des.object({ x, y }) — create_object RANDOM_CLASS; default clears erosion
     for (const [rx, ry] of [
@@ -13808,7 +13946,10 @@ function load_bar_goal() {
     barGoalDoor(26, 9, D_LOCKED);
 
     // des.stair("up", 36,05)
-    mkstairs(mx + 36, my + 5, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 36},${my + 5}`); // C :4189
+    mkstairs(mx + 36, my + 5, 1, null, true);
 
     // des.altar({ x=63,y=04, align="noncoaligned", type="altar" })
     // C get_table_align("align") → AM_SPLEV_NONCO; type="altar" shrine=0.
@@ -13912,9 +14053,10 @@ function splev_map_aligned_start(wid, hei, halign, valign) {
 
 /**
  * C ref: dat/tower1.lua via load_special — Vlad's Tower upper stage.
- * Named omissions: SpLev_Map fidelity beyond solidify set;
- * map_cleanup lava/pool sweep; mon_has_special Vlad gate (makemon skips
- * newcham for Vlad); full nh.is_genocided beyond mvitals G_GENOD.
+ * Named omissions: map_cleanup lava/pool sweep; mon_has_special Vlad
+ * gate (makemon skips newcham for Vlad); full nh.is_genocided beyond
+ * mvitals G_GENOD. Map cells + ladder + doors carry the game SpLev_Map
+ * marks (C :6292/:4189/:4661; D-3528).
  * D-0673: map lit=FALSE clear after solidfill (≡ C lspo_map).
  */
 function load_tower1() {
@@ -13949,25 +14091,30 @@ function load_tower1() {
     g.splev_ystart = ystart;
     g.splev_xsize = mf.wid;
     g.splev_ysize = mf.hei;
-    const spLevMap = new Set();
+    if (!g.SpLev_Map) g.SpLev_Map = new Set(); // C lspo_map load loop (minend_3 idiom)
     for (let yy = ystart; yy < Math.min(ROWNO, ystart + mf.hei); yy++) {
         for (let xx = xstart; xx < Math.min(COLNO, xstart + mf.wid); xx++) {
             const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
             if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
+            g.SpLev_Map.add(`${xx},${yy}`); // C :6292 SpLev_Map[x][y] = 1
             sel_set_ter(xx, yy, mptyp, false);
-            spLevMap.add(`${xx},${yy}`);
         }
     }
     // C lspo_map defaults lit=FALSE → set_levltyp_lit clears solidfill
     // BOOL_RANDOM lit on map cells (sel_set_ter(...,false) is nochange).
     // Same envelope as Pri-loca D-0668 / fire D-0569.
-    for (const key of spLevMap) {
-        const comma = key.indexOf(',');
-        const x = Number(key.slice(0, comma));
-        const y = Number(key.slice(comma + 1));
-        const loc = g.level.at(x, y);
-        if (!loc) continue;
-        loc.lit = IS_LAVA(loc.typ) ? true : false;
+    {
+        const sp = g.SpLev_Map;
+        if (sp) {
+            for (const key of sp) {
+                const comma = key.indexOf(',');
+                const x = Number(key.slice(0, comma));
+                const y = Number(key.slice(comma + 1));
+                const loc = g.level.at(x, y);
+                if (!loc) continue;
+                loc.lit = IS_LAVA(loc.typ) ? true : false;
+            }
+        }
     }
     const mx = xstart;
     const my = ystart;
@@ -13982,6 +14129,9 @@ function load_tower1() {
     {
         const lx = mx + 11;
         const ly = my + 5;
+        // C l_create_stairway :4189: the mark precedes the ladder arm (no traps predate it).
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${lx},${ly}`); // C :4189
         const loc = g.level.at(lx, ly);
         if (loc) {
             loc.typ = LADDER;
@@ -13992,7 +14142,6 @@ function load_tower1() {
             dlevel: (g.u?.uz?.dlevel ?? 1) + 1,
         });
         if (g.level) g.level.dnstair = { x: lx, y: ly };
-        spLevMap.add(`${lx},${ly}`);
     }
 
     // des.monster("Vlad the Impaler", 06, 05)
@@ -14046,6 +14195,7 @@ function load_tower1() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     twDoor(8, 3, D_CLOSED);
@@ -14107,7 +14257,7 @@ function load_tower1() {
         for (let y = 0; y < ROWNO; y++) {
             const loc = g.level.at(x, y);
             if (!loc || !IS_STWALL(loc.typ)) continue;
-            if (spLevMap.has(`${x},${y}`)) continue;
+            if (g.SpLev_Map?.has(`${x},${y}`)) continue;
             loc.flags = (loc.flags | 0) | (W_NONDIGGABLE | W_NONPASSWALL);
         }
     }
@@ -14116,8 +14266,9 @@ function load_tower1() {
 
 /**
  * C ref: dat/tower2.lua via load_special — Vlad's Tower middle stage.
- * Named omissions: SpLev_Map fidelity beyond solidify set;
- * map_cleanup; ensure_way_out; exclusion_zones.
+ * Named omissions: map_cleanup; ensure_way_out; exclusion_zones.
+ * Map cells + ladders + doors carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3528).
  * D-0673 pattern: map lit=FALSE clear after solidfill (≡ C lspo_map).
  */
 function load_tower2() {
@@ -14153,23 +14304,28 @@ function load_tower2() {
     g.splev_ystart = ystart;
     g.splev_xsize = mf.wid;
     g.splev_ysize = mf.hei;
-    const spLevMap = new Set();
+    if (!g.SpLev_Map) g.SpLev_Map = new Set(); // C lspo_map load loop (minend_3 idiom)
     for (let yy = ystart; yy < Math.min(ROWNO, ystart + mf.hei); yy++) {
         for (let xx = xstart; xx < Math.min(COLNO, xstart + mf.wid); xx++) {
             const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
             if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
+            g.SpLev_Map.add(`${xx},${yy}`); // C :6292 SpLev_Map[x][y] = 1
             sel_set_ter(xx, yy, mptyp, false);
-            spLevMap.add(`${xx},${yy}`);
         }
     }
     // C lspo_map defaults lit=FALSE → clear solidfill BOOL_RANDOM lit
-    for (const key of spLevMap) {
-        const comma = key.indexOf(',');
-        const x = Number(key.slice(0, comma));
-        const y = Number(key.slice(comma + 1));
-        const loc = g.level.at(x, y);
-        if (!loc) continue;
-        loc.lit = IS_LAVA(loc.typ) ? true : false;
+    {
+        const sp = g.SpLev_Map;
+        if (sp) {
+            for (const key of sp) {
+                const comma = key.indexOf(',');
+                const x = Number(key.slice(0, comma));
+                const y = Number(key.slice(comma + 1));
+                const loc = g.level.at(x, y);
+                if (!loc) continue;
+                loc.lit = IS_LAVA(loc.typ) ? true : false;
+            }
+        }
     }
     const mx = xstart;
     const my = ystart;
@@ -14185,6 +14341,9 @@ function load_tower2() {
     {
         const lx = mx + 11;
         const ly = my + 5;
+        // C l_create_stairway :4189: the mark precedes the ladder arm (no traps predate it).
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${lx},${ly}`); // C :4189
         const loc = g.level.at(lx, ly);
         if (loc) {
             loc.typ = LADDER;
@@ -14195,12 +14354,14 @@ function load_tower2() {
             dlevel: (g.u?.uz?.dlevel ?? 1) - 1,
         });
         if (g.level) g.level.upstair = { x: lx, y: ly };
-        spLevMap.add(`${lx},${ly}`);
     }
     // des.ladder("down", 03,07)
     {
         const lx = mx + 3;
         const ly = my + 7;
+        // C l_create_stairway :4189: the mark precedes the ladder arm (no traps predate it).
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${lx},${ly}`); // C :4189
         const loc = g.level.at(lx, ly);
         if (loc) {
             loc.typ = LADDER;
@@ -14211,7 +14372,6 @@ function load_tower2() {
             dlevel: (g.u?.uz?.dlevel ?? 1) + 1,
         });
         if (g.level) g.level.dnstair = { x: lx, y: ly };
-        spLevMap.add(`${lx},${ly}`);
     }
 
     const twDoor = (rx, ry, mask) => {
@@ -14220,6 +14380,7 @@ function load_tower2() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     twDoor(10, 4, D_LOCKED);
@@ -14308,7 +14469,7 @@ function load_tower2() {
         for (let y = 0; y < ROWNO; y++) {
             const loc = g.level.at(x, y);
             if (!loc || !IS_STWALL(loc.typ)) continue;
-            if (spLevMap.has(`${x},${y}`)) continue;
+            if (g.SpLev_Map?.has(`${x},${y}`)) continue;
             loc.flags = (loc.flags | 0) | (W_NONDIGGABLE | W_NONPASSWALL);
         }
     }
@@ -14317,8 +14478,9 @@ function load_tower2() {
 
 /**
  * C ref: dat/tower3.lua via load_special — Vlad's Tower entry (bottom).
- * Named omissions: SpLev_Map fidelity beyond solidify set;
- * map_cleanup; ensure_way_out; exclusion_zones.
+ * Named omissions: map_cleanup; ensure_way_out; exclusion_zones.
+ * Map cells + ladder + door carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3528).
  * D-0673 pattern: map lit=FALSE clear after solidfill (≡ C lspo_map).
  * Niches are NOT shuffled (unlike tower1/tower2).
  */
@@ -14357,23 +14519,28 @@ function load_tower3() {
     g.splev_ystart = ystart;
     g.splev_xsize = mf.wid;
     g.splev_ysize = mf.hei;
-    const spLevMap = new Set();
+    if (!g.SpLev_Map) g.SpLev_Map = new Set(); // C lspo_map load loop (minend_3 idiom)
     for (let yy = ystart; yy < Math.min(ROWNO, ystart + mf.hei); yy++) {
         for (let xx = xstart; xx < Math.min(COLNO, xstart + mf.wid); xx++) {
             const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
             if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
+            g.SpLev_Map.add(`${xx},${yy}`); // C :6292 SpLev_Map[x][y] = 1
             sel_set_ter(xx, yy, mptyp, false);
-            spLevMap.add(`${xx},${yy}`);
         }
     }
     // C lspo_map defaults lit=FALSE → clear solidfill BOOL_RANDOM lit
-    for (const key of spLevMap) {
-        const comma = key.indexOf(',');
-        const x = Number(key.slice(0, comma));
-        const y = Number(key.slice(comma + 1));
-        const loc = g.level.at(x, y);
-        if (!loc) continue;
-        loc.lit = IS_LAVA(loc.typ) ? true : false;
+    {
+        const sp = g.SpLev_Map;
+        if (sp) {
+            for (const key of sp) {
+                const comma = key.indexOf(',');
+                const x = Number(key.slice(0, comma));
+                const y = Number(key.slice(comma + 1));
+                const loc = g.level.at(x, y);
+                if (!loc) continue;
+                loc.lit = IS_LAVA(loc.typ) ? true : false;
+            }
+        }
     }
     const mx = xstart;
     const my = ystart;
@@ -14400,6 +14567,9 @@ function load_tower3() {
     {
         const lx = mx + 5;
         const ly = my + 7;
+        // C l_create_stairway :4189: the mark precedes the ladder arm (no traps predate it).
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${lx},${ly}`); // C :4189
         const loc = g.level.at(lx, ly);
         if (loc) {
             loc.typ = LADDER;
@@ -14410,7 +14580,6 @@ function load_tower3() {
             dlevel: (g.u?.uz?.dlevel ?? 1) - 1,
         });
         if (g.level) g.level.upstair = { x: lx, y: ly };
-        spLevMap.add(`${lx},${ly}`);
     }
 
     // des.door("locked",14,05)
@@ -14420,6 +14589,7 @@ function load_tower3() {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
             set_door_orientation(mx + 14, my + 5); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
+            if (g.SpLev_Map) g.SpLev_Map.add(`${mx + 14},${my + 5}`); // C :4661
             loc.flags = D_LOCKED;
         }
     }
@@ -14487,7 +14657,7 @@ function load_tower3() {
         for (let y = 0; y < ROWNO; y++) {
             const loc = g.level.at(x, y);
             if (!loc || !IS_STWALL(loc.typ)) continue;
-            if (spLevMap.has(`${x},${y}`)) continue;
+            if (g.SpLev_Map?.has(`${x},${y}`)) continue;
             loc.flags = (loc.flags | 0) | (W_NONDIGGABLE | W_NONPASSWALL);
         }
     }
@@ -14568,7 +14738,10 @@ function load_soko1_1() {
         hx: xstart + 16, hy: ystart + 15,
     };
 
-    mkstairs(xstart + 1, ystart + 1, 0, null); // des.stair("down", 01, 01)
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${xstart + 1},${ystart + 1}`); // C :4189
+    mkstairs(xstart + 1, ystart + 1, 0, null, true); // des.stair("down", 01, 01)
 
     // des.region(selection.area(00,00,25,17),"lit")
     for (let y = ystart; y <= ystart + 17 && y < ROWNO; y++) {
@@ -14737,7 +14910,10 @@ function load_soko1_2() {
         hx: xstart + 16, hy: ystart + 14,
     };
 
-    mkstairs(xstart + 6, ystart + 15, 0, null); // des.stair("down", 06, 15)
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${xstart + 6},${ystart + 15}`); // C :4189
+    mkstairs(xstart + 6, ystart + 15, 0, null, true); // des.stair("down", 06, 15)
 
     // des.region(selection.area(00,00,25,16),"lit")
     for (let y = ystart; y <= ystart + 16 && y < ROWNO; y++) {
@@ -14885,8 +15061,12 @@ function load_soko3_1() {
 `.replace(/^\n/, '');
     const { xstart, ystart } = splev_apply_centered_map(SOKO3_1_MAP);
 
-    mkstairs(xstart + 11, ystart + 2, 0, null); // des.stair("down", 11, 02)
-    mkstairs(xstart + 23, ystart + 4, 1, null); // des.stair("up", 23, 04)
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${xstart + 11},${ystart + 2}`); // C :4189
+    mkstairs(xstart + 11, ystart + 2, 0, null, true); // des.stair("down", 11, 02)
+    game.SpLev_Map.add(`${xstart + 23},${ystart + 4}`); // C :4189
+    mkstairs(xstart + 23, ystart + 4, 1, null, true); // des.stair("up", 23, 04)
 
     {
         const loc = g.level.at(xstart + 27, ystart + 9);
@@ -14987,8 +15167,12 @@ function load_soko3_2() {
 `.replace(/^\n/, '');
     const { xstart, ystart } = splev_apply_centered_map(SOKO3_2_MAP);
 
-    mkstairs(xstart + 3, ystart + 1, 0, null); // des.stair("down", 03, 01)
-    mkstairs(xstart + 20, ystart + 4, 1, null); // des.stair("up", 20, 04)
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${xstart + 3},${ystart + 1}`); // C :4189
+    mkstairs(xstart + 3, ystart + 1, 0, null, true); // des.stair("down", 03, 01)
+    game.SpLev_Map.add(`${xstart + 20},${ystart + 4}`); // C :4189
+    mkstairs(xstart + 20, ystart + 4, 1, null, true); // des.stair("up", 20, 04)
 
     {
         const loc = g.level.at(xstart + 24, ystart + 9);
@@ -15102,7 +15286,10 @@ function load_soko4_1() {
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
 
-    mkstairs(xstart + 6, ystart + 6, 1, null); // des.stair("up", 06, 06)
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${xstart + 6},${ystart + 6}`); // C :4189
+    mkstairs(xstart + 6, ystart + 6, 1, null, true); // des.stair("up", 06, 06)
 
     // des.region(selection.area(00,00,13,12), "lit")
     for (let y = ystart; y <= ystart + 12 && y < ROWNO; y++) {
@@ -15219,7 +15406,10 @@ function load_soko4_2() {
 `.replace(/^\n/, '');
     const { xstart, ystart } = splev_apply_centered_map(SOKO4_2_MAP);
 
-    mkstairs(xstart + 1, ystart + 1, 1, null); // des.stair("up", 01, 01)
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${xstart + 1},${ystart + 1}`); // C :4189
+    mkstairs(xstart + 1, ystart + 1, 1, null, true); // des.stair("up", 01, 01)
 
     // des.region(selection.area(00,00,14,10),"lit")
     for (let y = ystart; y <= ystart + 10 && y < ROWNO; y++) {
@@ -15879,6 +16069,8 @@ function load_water() {
 
 /**
  * C ref: dat/astral.lua via load_special — Astral Plane (endgame 5 of 5).
+ * Map cells + doors carry the game SpLev_Map marks
+ * (no des.stair on the level; C :6292/:4661; D-3542).
  * Named omissions: ensure_way_out; humidity-aware get_location;
  * spo_end_moninvent m_dowear; fill_special_room TEMPLE beyond FILL_LVFLAGS
  * has_temple; G_UNIQ extinct return; fakewiz.
@@ -16074,6 +16266,7 @@ function load_astral() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     astralDoor(11, 9, D_CLOSED);
@@ -16290,7 +16483,10 @@ function load_minend_1() {
     meDoor(66, 2);
 
     // des.stair("up", 36,04)
-    mkstairs(mx + 36, my + 4, 1, null);
+    // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 36},${my + 4}`); // C :4189
+    mkstairs(mx + 36, my + 4, 1, null, true);
 
     // des.non_diggable(selection.area(00,00,74,17))
     for (let y = my; y <= my + 17 && y < ROWNO; y++) {
@@ -16506,7 +16702,10 @@ function load_minend_2() {
     meDoor(12, 2);
     meDoor(11, 6);
 
-    mkstairs(mx + 36, my + 4, 1, null);
+    // des.stair("up", 36,04) — C l_create_stairway: fixed scoord → mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 36},${my + 4}`); // C :4189
+    mkstairs(mx + 36, my + 4, 1, null, true);
 
     const markNondig = (x1, y1, x2, y2) => {
         for (let y = my + y1; y <= my + y2 && y < ROWNO; y++) {
@@ -17584,9 +17783,13 @@ function load_minetn_5() {
         setArea(69, 11, 71, 11, HWALL);
     }
 
-    // des.stair
-    mkstairs(mx + 1, my + 1, 1, null);
-    mkstairs(mx + 46, my + 3, 0, null);
+    // des.stair("up", 01,01) / des.stair("down", 46,03)
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 1},${my + 1}`); // C :4189
+    mkstairs(mx + 1, my + 1, 1, null, true);
+    game.SpLev_Map.add(`${mx + 46},${my + 3}`); // C :4189
+    mkstairs(mx + 46, my + 3, 0, null, true);
 
     // des.feature fountain (map may already have '{')
     for (const [rx, ry] of [[50, 9], [10, 15], [66, 18]]) {
@@ -18773,8 +18976,12 @@ function load_soko2_1() {
 `.replace(/^\n/, '');
     const { xstart, ystart } = splev_apply_centered_map(SOKO2_1_MAP);
 
-    mkstairs(xstart + 6, ystart + 10, 0, null); // des.stair("down", 06, 10)
-    mkstairs(xstart + 16, ystart + 4, 1, null); // des.stair("up", 16, 04)
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${xstart + 6},${ystart + 10}`); // C :4189
+    mkstairs(xstart + 6, ystart + 10, 0, null, true); // des.stair("down", 06, 10)
+    game.SpLev_Map.add(`${xstart + 16},${ystart + 4}`); // C :4189
+    mkstairs(xstart + 16, ystart + 4, 1, null, true); // des.stair("up", 16, 04)
 
     {
         const loc = g.level.at(xstart + 18, ystart + 8);
@@ -18875,8 +19082,12 @@ function load_soko2_2() {
 `.replace(/^\n/, '');
     const { xstart, ystart } = splev_apply_centered_map(SOKO2_2_MAP);
 
-    mkstairs(xstart + 6, ystart + 11, 0, null); // des.stair("down", 06, 11)
-    mkstairs(xstart + 15, ystart + 6, 1, null); // des.stair("up", 15, 06)
+    // C l_create_stairway: fixed scoords → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${xstart + 6},${ystart + 11}`); // C :4189
+    mkstairs(xstart + 6, ystart + 11, 0, null, true); // des.stair("down", 06, 11)
+    game.SpLev_Map.add(`${xstart + 15},${ystart + 6}`); // C :4189
+    mkstairs(xstart + 15, ystart + 6, 1, null, true); // des.stair("up", 15, 06)
 
     // des.door("locked", 19, 09) and des.door("locked", 19, 11)
     for (const [dx, dy] of [[19, 9], [19, 11]]) {
@@ -19014,7 +19225,12 @@ function set_door_orientation(x, y) {
  * the loc guard is the JS null-map equivalent of C's direct levl index.
  * The 58 coord-form des.door closures (D-2695/D-2697) predate this home and
  * keep their inlined typ/orientation/doormask — established split, not
- * rewired here.
+ * rewired here. Tower closures (twDoor ×2 + tower3 inline, 10 des.door
+ * sites, D-3528), knoxDoor (11 sites) + tut1_door (12 sites, D-3530),
+ * baalz inline (1 site) + valleyDoor (3 sites, D-3536), medusa medDoor
+ * ×3 + medusa-2 inline (16 sites, D-3538), barDoor (Bar-strt 8) +
+ * wizDoor (Wiz-strt 8, D-3540), astralDoor (9) + sanctDoor (4, D-3542)
+ * carry the :4661 game mark; the rest keep the split.
  */
 function sel_set_door(x, y, typ) {
     const loc = game.level.at(x, y); // C levl[x][y]
@@ -19056,7 +19272,7 @@ export function lspo_door(a, b, c) {
     let msk, x, y, o;
     if (argc === 3) { // C :4688-4691
         o = null;
-        msk = doorstates2i[splev_opt_index(a, 'random', doorstates)]; // C :4689 luaL_checkoption
+        msk = doorstates2i[luaL_checkoption(a, 'random', doorstates)]; // C :4688 luaL_checkoption
         x = luaL_checkinteger_unpacked(b); // C :4690
         y = luaL_checkinteger_unpacked(c); // C :4691
     } else if (argc === 0 || (argc === 1 && (a == null || typeof a === 'object'))) { // C :4693-4700 table form
@@ -19064,7 +19280,7 @@ export function lspo_door(a, b, c) {
         const xy = get_table_xy_or_coord(o); // C :4697
         x = luaL_checkinteger_unpacked(xy.x, 16);
         y = luaL_checkinteger_unpacked(xy.y, 16);
-        msk = doorstates2i[splev_opt_index(o.state, 'random', doorstates)]; // C :4698-4699
+        msk = doorstates2i[get_table_option(o, 'state', 'random', doorstates)]; // C :4698-4699
     } else {
         nhl_error('lspo_door: Wrong parameters'); // C param-table failure
     }
@@ -19077,7 +19293,7 @@ export function lspo_door(a, b, c) {
             // checkinteger (fractions and non-numerics throw like C
             // argerror; the 3-arg form's null table reads the default).
             pos: get_table_int_opt(o, 'pos', -1),
-            wall: walldirs2i[splev_opt_index(o?.wall, 'all', walldirs)], // C :4718
+            wall: walldirs2i[get_table_option(o, 'wall', 'all', walldirs)], // C :4718
         };
         create_door(tmpd, game.gc?.coder?.croom ?? null); // C :4720
     } else {
@@ -19877,10 +20093,12 @@ function load_tut1() {
     game.splev_ystart = ystart;
     game.splev_xsize = mf.wid;
     game.splev_ysize = mf.hei;
+    if (!game.SpLev_Map) game.SpLev_Map = new Set(); // C lspo_map load loop (tower idiom)
     for (let yy = ystart; yy < Math.min(ROWNO, ystart + mf.hei); yy++) {
         for (let xx = xstart; xx < Math.min(COLNO, xstart + mf.wid); xx++) {
             const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
             if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
+            game.SpLev_Map.add(`${xx},${yy}`); // C :6292 SpLev_Map[x][y] = 1
             sel_set_ter(xx, yy, mptyp, false);
         }
     }
@@ -19925,6 +20143,7 @@ function load_tut1() {
         }
         set_door_orientation(xstart + mx, ystart + my); // C sel_set_door :4659
         loc.doormask = mask;
+        if (game.SpLev_Map) game.SpLev_Map.add(`${xstart + mx},${ystart + my}`); // C :4661
         loc.flags = mask;
     };
     // C: dat/tut-1.lua tut_key / tut_key_help — nh.eckey (cmd_from_ecname)
@@ -20248,10 +20467,12 @@ function load_tut2() {
     game.splev_ystart = ystart;
     game.splev_xsize = mf.wid;
     game.splev_ysize = mf.hei;
+    if (!game.SpLev_Map) game.SpLev_Map = new Set(); // C lspo_map load loop (tower idiom)
     for (let yy = ystart; yy < Math.min(ROWNO, ystart + mf.hei); yy++) {
         for (let xx = xstart; xx < Math.min(COLNO, xstart + mf.wid); xx++) {
             const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
             if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
+            game.SpLev_Map.add(`${xx},${yy}`); // C :6292 SpLev_Map[x][y] = 1
             sel_set_ter(xx, yy, mptyp, false);
         }
     }
@@ -22517,20 +22738,16 @@ function create_object(o, croom) {
 }
 
 /**
- * C ref: sp_lev.c get_table_buc — bucs[] / bucs2i[].
+ * C sp_lev.c get_table_buc `:3441–3452`: bucs[] `:3444–3447` over
+ * get_table_option(L, "buc", "random") `:3449`, mapped by bucs2i[]
+ * `:3448`. tbl is the caller's non-null table, so lua_field is
+ * tbl.buc and nil ⟺ == null on both sides; absent → "random" → 0,
+ * exact strings map, everything else throws like C argerror.
  */
-function get_table_buc(buc) {
-    const bucs = {
-        random: 0,
-        blessed: 1,
-        uncursed: 2,
-        cursed: 3,
-        'not-cursed': 4,
-        'not-uncursed': 5,
-        'not-blessed': 6,
-    };
-    if (buc == null) return 0;
-    return bucs[String(buc).toLowerCase()] ?? 0;
+function get_table_buc(tbl) {
+    const BUCS = ['random', 'blessed', 'uncursed', 'cursed', 'not-cursed', 'not-uncursed', 'not-blessed']; // C :3444–3447
+    const BUCS2I = [0, 1, 2, 3, 4, 5, 6]; // C :3448
+    return BUCS2I[get_table_option(tbl, 'buc', 'random', BUCS)]; // C :3449
 }
 
 /**
@@ -22940,8 +23157,8 @@ function get_table_int_or_random(tab, name, rndval) {
 function lspo_object_normalize_table(tmp) {
     // C :3634 — absent and "random" are -127 (create_object: NOT RANDOM).
     tmp.spe = get_table_int_or_random(tmp, 'spe', -127);
-    if (tmp.buc != null) tmp.curse_state = get_table_buc(tmp.buc);
-    if (tmp.curse_state == null) tmp.curse_state = 0;
+    // C :3635 get_table_buc — unconditional: nil → "random" → 0.
+    tmp.curse_state = get_table_buc(tmp);
     // C :3637 get_table_str_opt(L, "name", NULL): nil → NULL, string kept,
     // function pcalled + optstring conversion, direct non-string throws
     // like nhl_error. tmp is a non-null spread at the caller's table gate
@@ -23057,20 +23274,17 @@ export function l_create_object(o, contentsFn, croom = null) {
 }
 
 /**
- * C ref: sp_lev.c get_table_align :3113–3128 (unpacked; not lua_State).
- * 7-entry gtaligns table; absent defaults to "random" (C get_table_option
- * dflt). Matched case-insensitively like the file's get_table_buc.
+ * C sp_lev.c get_table_align `:3113–3128` (unpacked; not lua_State):
+ * gtaligns[] `:3116–3119` over get_table_option(L, "align", "random")
+ * `:3125`, mapped by aligns2i[] `:3120–3123`. tbl is the caller's
+ * non-null table, so lua_field is tbl.align and nil ⟺ == null on
+ * both sides; absent → "random" → AM_SPLEV_RANDOM, exact strings
+ * map, everything else throws like C argerror.
  */
-function get_table_align_unpacked(align) {
-    switch (String(align ?? 'random').toLowerCase()) {
-        case 'noalign': return AM_NONE;
-        case 'law': return AM_LAWFUL;
-        case 'neutral': return AM_NEUTRAL;
-        case 'chaos': return AM_CHAOTIC;
-        case 'coaligned': return AM_SPLEV_CO;
-        case 'noncoaligned': return AM_SPLEV_NONCO;
-        default: return AM_SPLEV_RANDOM; // "random" + unknown
-    }
+function get_table_align_unpacked(tbl) {
+    const GTALIGNS = ['noalign', 'law', 'neutral', 'chaos', 'coaligned', 'noncoaligned', 'random']; // C :3116–3119
+    const ALIGNS2I = [AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM]; // C :3120–3123
+    return ALIGNS2I[get_table_option(tbl, 'align', 'random', GTALIGNS)]; // C :3125
 }
 
 /**
@@ -23193,7 +23407,7 @@ function lspo_monster_normalize_table(tmp, inventFn) {
     // table gate), so lua_field(tmp,'name') is tmp.name and the
     // nil/string/function/else classifications are identical to C's.
     tmp.name = get_table_str_opt(tmp, 'name', null);
-    tmp.sp_amask = get_table_align_unpacked(tmp.align);
+    tmp.sp_amask = get_table_align_unpacked(tmp); // C :3298
     tmp.female = get_table_boolean_opt(tmp, 'female', BOOL_RANDOM); // C :3299
     tmp.invis = get_table_boolean_opt(tmp, 'invisible', 0); // C :3300
     tmp.cancelled = get_table_boolean_opt(tmp, 'cancelled', 0); // C :3301
@@ -23399,7 +23613,7 @@ export function splev_create_altar(a, croom = null) {
         ry = xy.y;
     }
     const sp_amask = (t.sp_amask != null)
-        ? (t.sp_amask | 0) : get_table_align_unpacked(t.align);
+        ? (t.sp_amask | 0) : get_table_align_unpacked(t);
     let shrine = (t.shrine != null) ? (t.shrine | 0) : -1;
     let x, y;
     let room = croom;
@@ -23444,8 +23658,15 @@ export function splev_create_altar(a, croom = null) {
  * Packed coord: get_location adds xstart/ystart (or croom lx/ly), deltrap,
  * SpLev_Map[x][y]=1, mkstairs(..., force=TRUE). Random: good_stair_loc then
  * mkstairs force=FALSE. Ladder skips mkstairs (no dungeon-end no-op).
- * Named omit: Lua argc table/string parse (loaders pass unpacked dir/coord);
- * other des.stair loaders still raw mkstairs without force.
+ * No table form (D-3522): the :4165/:4171 dir parse is unported-Lua
+ * boundary — every in-tree dir arrives an unpacked 0/1 int, zero
+ * string-dir sources. Fixed des.stair sites: special levels (medusa/val/
+ * minend/minetn/valley/asmodeus/baalz/orcus/sanctum) carry the :4189 mark
+ * + fixed force, tower/wizard ladders the mark (deltrap live only at the
+ * sanctum stair); quest (42 fixed sites) + soko (12) carry the mark +
+ * force (D-3526; all traps postdate the stairs in dat + loader order, so
+ * deltrap stays a no-op there). Random des.stair runs splev_create_stair /
+ * splev_room_stair (both carry the :4189 mark).
  */
 export function l_create_stairway(up, rx, ry, croom, using_ladder) {
     create_des_coder(); // C :4159
@@ -23568,8 +23789,8 @@ export function lspo_grave(a, b, c, croom = null) {
 /**
  * C ref: sp_lev.c lspo_altar `:4283–4318` (unpacked; not lua_State) — the
  * des.altar binding. Table-only (C `:4298` lcheck_param_table):
- * x/y-or-coord (C `:4300`), align (C `:4302` get_table_align), type
- * altar/shrine/sanctum defaulting to altar (C `:4303` get_table_option).
+ * x/y-or-coord (C `:4301`), align (C `:4303` get_table_align), type
+ * altar/shrine/sanctum defaulting to altar (C `:4304` get_table_option).
  * -1,-1 packs RANDOM, else the coord (C `:4305–4308`); coord + sp_amask
  * + shrine run create_altar in croom (C `:4310–4315`, the D-2990
  * splev_create_altar split port — shrine is always 0/1/2, never the
@@ -23583,9 +23804,9 @@ export function lspo_altar(o, croom = null) {
     create_des_coder(); // C :4296
     if (o == null || typeof o !== 'object') // C :4298 lcheck_param_table
         throw new Error('lspo_altar: Wrong parameters');
-    const xy = get_table_xy_or_coord(o); // C :4300
-    const al = get_table_align_unpacked(o.align); // C :4302
-    const shrine = shrines2i[splev_opt_index(o.type, 'altar', shrines)]; // C :4303
+    const xy = get_table_xy_or_coord(o); // C :4301
+    const al = get_table_align_unpacked(o); // C :4303
+    const shrine = shrines2i[get_table_option(o, 'type', 'altar', shrines)]; // C :4304
     // C :4305-4315 — acoord pack + tmpaltar.coord/sp_amask/shrine + create_altar
     splev_create_altar({ rx: xy.x, ry: xy.y, sp_amask: al, shrine }, croom);
     return 0; // C :4317
@@ -23600,6 +23821,8 @@ function splev_create_stair(up) {
     const trap = t_at(pos.x, pos.y);
     // C l_create_stairway: deltrap(badtrap) before the stair.
     if (trap) deltrap(trap);
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${pos.x},${pos.y}`); // C :4189
     mkstairs(pos.x, pos.y, up ? 1 : 0, null);
 }
 
@@ -23816,6 +24039,8 @@ function splev_room_stair(croom, up) {
     const trap = t_at(pos.x, pos.y);
     // C l_create_stairway: deltrap(badtrap) before the stair.
     if (trap) deltrap(trap);
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${pos.x},${pos.y}`); // C :4189
     mkstairs(pos.x, pos.y, up ? 1 : 0, croom);
 }
 
@@ -24716,8 +24941,9 @@ function load_castle() {
 
 /**
  * C ref: dat/valley.lua via load_special — Valley of the Dead (Gehennom).
- * Named omissions: ensure_way_out; asmodeus/baalz/orcus/juiblex/hellfill
- * protos.
+ * Map cells + stair + doors carry the game SpLev_Map marks
+ * (C :6292/:4189/:4661; D-3536). Named omissions: ensure_way_out;
+ * asmodeus/baalz/orcus/juiblex/hellfill protos.
  */
 function load_valley() {
     const g = game;
@@ -24835,7 +25061,10 @@ function load_valley() {
     addIrregularMorgue(37, 9);
 
     // Stairs / branch / teleport regions (apply tele+branch after flip)
-    mkstairs(mx + 1, my + 1, 0, null);
+    // des.stair("down", 01,01) — C l_create_stairway: fixed scoord → mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 1},${my + 1}`); // C :4189
+    mkstairs(mx + 1, my + 1, 0, null, true);
     g.lregions = g.lregions || [];
     g.lregions.push({
         rtype: LR_BRANCH,
@@ -24857,6 +25086,7 @@ function load_valley() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     valleyDoor(4, 1, D_LOCKED);
@@ -25179,7 +25409,10 @@ function load_asmodeus() {
     asmoDoor(18, 4, D_LOCKED);
     asmoDoor(18, 8, D_CLOSED);
 
-    mkstairs(mx1 + 13, my1 + 7, 0, null);
+    // des.stair("down", 13,07) — C l_create_stairway: fixed scoord → mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx1 + 13},${my1 + 7}`); // C :4189
+    mkstairs(mx1 + 13, my1 + 7, 0, null, true);
 
     // des.non_diggable(selection.area(00,00,20,11))
     for (let ry = 0; ry <= 11; ry++) {
@@ -25656,7 +25889,8 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 /**
  * C ref: dat/baalz.lua via load_special — Baalzebub beetle lair (Gehennom).
  * solidfill + corrmaze + right/center map + west mazewalk (stocked);
- * baalz_fixup via fixup_special. Named omissions: hellfill/
+ * baalz_fixup via fixup_special. Map cells + stair + door carry the game
+ * SpLev_Map marks (C :6292/:4189/:4661; D-3536). Named omissions: hellfill/
  * wizard1–3/fakewiz; ensure_way_out; map_cleanup.
  */
 function load_baalz() {
@@ -25748,13 +25982,17 @@ function load_baalz() {
     // des.mazewalk(00,06,"west") — stocked default true
     splev_mazewalk(0, 6, W_WEST, true);
 
-    mkstairs(mx + 44, my + 6, 0, null);
+    // des.stair("down", 44,06) — C l_create_stairway: fixed scoord → mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 44},${my + 6}`); // C :4189
+    mkstairs(mx + 44, my + 6, 0, null, true);
     {
         const loc = g.level.at(mx + 0, my + 6);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
             set_door_orientation(mx + 0, my + 6); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
+            if (g.SpLev_Map) g.SpLev_Map.add(`${mx + 0},${my + 6}`); // C :4661
             loc.flags = D_LOCKED;
         }
     }
@@ -25928,7 +26166,10 @@ function load_orcus() {
         }
     }
 
-    mkstairs(mx + 33, my + 15, 0, null);
+    // des.stair("down", 33,15) — C l_create_stairway: fixed scoord → mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 33},${my + 15}`); // C :4189
+    mkstairs(mx + 33, my + 15, 0, null, true);
 
     const boulderCoords = [
         [19, 2], [20, 2], [21, 2], [36, 2], [36, 3],
@@ -26286,6 +26527,9 @@ function load_wizard1() {
     {
         const lx = mx + 6;
         const ly = my + 5;
+        // C l_create_stairway :4189: the mark precedes the ladder arm (no traps predate it).
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${lx},${ly}`); // C :4189
         const loc = g.level.at(lx, ly);
         if (loc) {
             loc.typ = LADDER;
@@ -26605,6 +26849,9 @@ function load_wizard2() {
     {
         const lx = mx + 12;
         const ly = my + 1;
+        // C l_create_stairway :4189: the mark precedes the ladder arm (no traps predate it).
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${lx},${ly}`); // C :4189
         const loc = g.level.at(lx, ly);
         if (loc) {
             loc.typ = LADDER;
@@ -26619,6 +26866,9 @@ function load_wizard2() {
     {
         const lx = mx + 14;
         const ly = my + 11;
+        // C l_create_stairway :4189: the mark precedes the ladder arm (no traps predate it).
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${lx},${ly}`); // C :4189
         const loc = g.level.at(lx, ly);
         if (loc) {
             loc.typ = LADDER;
@@ -26912,6 +27162,9 @@ function load_wizard3() {
     {
         const lx = mx + 11;
         const ly = my + 7;
+        // C l_create_stairway :4189: the mark precedes the ladder arm (no traps predate it).
+        if (!game.SpLev_Map) game.SpLev_Map = new Set();
+        game.SpLev_Map.add(`${lx},${ly}`); // C :4189
         const loc = g.level.at(lx, ly);
         if (loc) {
             loc.typ = LADDER;
@@ -27235,7 +27488,9 @@ export function mk_roamer(ptr, alignment, x, y, peaceful) {
 /**
  * C ref: dat/sanctum.lua via load_special — Moloch's Sanctum (Gehennom).
  * No lua temperate/hot/cold — keeps clear_level_structures hell default
- * temperature=1 (D-0751). Named omissions: ensure_way_out;
+ * temperature=1 (D-0751). Map cells + stair + doors carry the game
+ * SpLev_Map marks (C :6292/:4189/:4661; D-3542).
+ * Named omissions: ensure_way_out;
  * hellfill/wizard1–3/fakewiz protos.
  */
 function load_sanctum() {
@@ -27396,6 +27651,7 @@ function load_sanctum() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
         set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
+        if (g.SpLev_Map) g.SpLev_Map.add(`${mx + rx},${my + ry}`); // C :4661
         loc.flags = mask;
     };
     sanctDoor(40, 6, D_CLOSED);
@@ -27476,7 +27732,14 @@ function load_sanctum() {
     for (let i = 0; i < 3; i++) splev_create_monster('V');
 
     // Stair up + teleport arrival region (apply after flip)
-    mkstairs(mx + 63, my + 15, 1, null);
+    // C l_create_stairway :4187–4189: deltrap(badtrap) before the stair —
+    // live here (des order: 6 random traps :85–90 precede des.stair :130).
+    const stairTrap = t_at(mx + 63, my + 15);
+    if (stairTrap) deltrap(stairTrap);
+    // Fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${mx + 63},${my + 15}`); // C :4189
+    mkstairs(mx + 63, my + 15, 1, null, true);
     // des.teleport_region({ region={54,1,79,18}, region_islev=1, dir="down" })
     // C levregion_add: in_islev skips get_location — absolute level coords.
     g.lregions = g.lregions || [];
@@ -31991,6 +32254,10 @@ function lspo_replace_terrain_sel(sel, fromtyp, totyp, chance) {
 
 // C ref: sp_lev.c lspo_map — themerms random-placement path (lr=tb=-1, no croom)
 // mapdef: { map, fx, fy [, contents()] } — contents replaces default filler_region.
+// The write loop below is C's shared "Load the map" loop (:6286–6305),
+// which runs on the themeroom path too (the in_mk_themerooms gate guards
+// only the no-overwrite pre-check :6244–6283) — so every valid map cell
+// carries the :6292 game mark (D-3534 close-out, tower idiom).
 function lspo_map_themeroom(mapdef) {
     const g = game;
     const mapstr = mapdef.map;
@@ -32050,11 +32317,13 @@ function lspo_map_themeroom(mapdef) {
         g.splev_ystart = ystart;
         g.splev_xsize = xsize;
         g.splev_ysize = ysize;
+        if (!g.SpLev_Map) g.SpLev_Map = new Set(); // C lspo_map load loop (tower idiom)
         for (let yy = ystart; yy < Math.min(ROWNO, ystart + ysize); yy++) {
             for (let xx = xstart; xx < Math.min(COLNO, xstart + xsize); xx++) {
                 const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
                 if (mptyp === INVALID_TYPE) continue;
                 if (mptyp >= MAX_TYPE) continue;
+                g.SpLev_Map.add(`${xx},${yy}`); // C :6292 SpLev_Map[x][y] = 1
                 sel_set_ter(xx, yy, mptyp, false);
             }
         }

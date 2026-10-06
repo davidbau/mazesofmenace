@@ -19,7 +19,7 @@ import {
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
-import { nhl_nhlib_align_shuffle, get_table_str_opt } from './dungeon.js';
+import { nhl_nhlib_align_shuffle, get_table_str_opt, get_table_option } from './dungeon.js';
 import { show_nhw_menu_text, show_text_pages } from './pager.js';
 import { mons, M2_PNAME } from './monsters.js';
 import { NON_PM, pmnames } from './generated/monsters_data.js';
@@ -1064,15 +1064,18 @@ const QUEST_CUSS_ARRAYS = {
 };
 
 /**
- * C ref: questpgr.c howtoput / howtoput2i — get_table_option default "default".
- * pline=1, window=2, text=2, menu=3, default=0.
+ * C questpgr.c com_pager `:550` — howtoput[] `:474–476` over
+ * get_table_option(L, "output", "default"), mapped by howtoput2i[]
+ * `:477` (pline=1, window=2, text=2, menu=3, default=0). entry is the
+ * caller's non-null table, so lua_field is entry.output and nil ⟺
+ * == null on both sides; absent → "default" → 0, exact strings map,
+ * everything else throws like C argerror.
  */
-const HOWTOPUT = ['pline', 'window', 'text', 'menu', 'default'];
-const HOWTOPUT2I = [1, 2, 2, 3, 0];
+const HOWTOPUT = ['pline', 'window', 'text', 'menu', 'default']; // C :474–476
+const HOWTOPUT2I = [1, 2, 2, 3, 0]; // C :477
 
-function howtoput2i(outputName) {
-    const i = HOWTOPUT.indexOf(outputName || 'default');
-    return HOWTOPUT2I[i < 0 ? HOWTOPUT.indexOf('default') : i] | 0;
+function howtoput2i(entry) {
+    return HOWTOPUT2I[get_table_option(entry, 'output', 'default', HOWTOPUT)]; // C :550
 }
 
 /**
@@ -1270,7 +1273,7 @@ async function com_pager_core(section, msgid, showerror, rawOut) {
     // exactly where C reads it: the :544-548 arm returns before :549) +
     // output ("default" → 0) options.
     let synopsis = entry.synsrc ? get_table_str_opt(entry.synsrc, 'synopsis', null) : null;
-    let output = howtoput2i(entry.output);
+    let output = howtoput2i(entry); // C :550
 
     // C :552-568 — no text: entry is an array of strings; nelems<2 is
     // impossible()+done, else text = array[rn2(nelems)+1] (lua 1-based;

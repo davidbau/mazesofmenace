@@ -306,7 +306,7 @@ function luaL_checkinteger_dgn(v) {
  * @param {readonly string[]} opts
  * @returns {number}
  */
-function luaL_checkoption(value, defval, opts) {
+export function luaL_checkoption(value, defval, opts) {
     const t = lua_type(value);
     let name;
     if (t === 'nil') {
