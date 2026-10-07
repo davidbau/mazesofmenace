@@ -296,10 +296,14 @@ function punctTail(buf) {
 
 /**
  * C ref: cfgfiles.c config_erradd `:1543–1589` in C order.
- * Named: wait_synch `:1562` (windowed input boundary — parser stays sync,
- * parseoptions precedent). The in_lua list drains live through
- * l_get_config_errors above (lua registration nhlua.c:1887 named —
- * no Lua state in ESM, the export returns a JS array).
+ * The in_lua list drains live through l_get_config_errors above (lua
+ * registration nhlua.c:1887 named — no Lua state in ESM, the export
+ * returns a JS array). The !ready arm splits by window state: pre-window
+ * C's pline would raw_print (configMsg sink), windowed (a bad value from
+ * the interactive 'O' command) it plines + tty_wait_synch — the file's
+ * `:175–185` do_write_config_file arms are the same pline/wait_synch
+ * idiom. Sync signature (C void): the windowed arm returns the display
+ * promise for the doset direct-optfn path to await.
  */
 export function config_erradd(buf) {
     let text = buf && buf.length ? String(buf) : 'Unknown error'; // C `:1549–1550`
@@ -307,10 +311,21 @@ export function config_erradd(buf) {
     const punct = punctTail(text);
     const ready = !!game.program_state?.config_error_ready;
     if (!ready) { // C `:1557–1563`
-        const prefix = !game.iflags?.window_inited ? 'config_error_add: ' : '';
-        configMsg(prefix + text + punct);
-        // C `:1562` wait_synch — named (see doc comment).
-        return;
+        // C `:1558` — very early, where pline() uses raw_print(), or a bad
+        // value prompted by the interactive 'O' command.
+        if (!game.iflags?.window_inited) { // C `:1560` prefix arm
+            configMsg('config_error_add: ' + text + punct);
+            return;
+        }
+        // C `:1559–1562` windowed: pline, then wait_synch (the '%s'
+        // wrapper is C's `:1559` "%s%s%s" verbatim-arg shape — message
+        // text with '%' must not re-scan). Sync callers run the paint
+        // synchronously and drop the wait; doset awaits the promise.
+        const msg = text + punct;
+        return (async () => { // C `:1559–1562`
+            await pline('%s', msg);
+            await tty_wait_synch();
+        })();
     }
     if (game.iflags?.in_lua) { // C `:1566–1574`
         configErrorMsg = { // C `:1568–1573` alloc + prepend
@@ -421,9 +436,16 @@ function config_error_format(fmt, args) {
     );
 }
 
-/** C ref: cfgfiles.c:1864–1872 — varargs wrapper, shared by every caller. */
+/**
+ * C ref: cfgfiles.c:1864–1872 — varargs wrapper, shared by every caller.
+ * Sync signature like C (void): the return carries config_erradd's
+ * windowed pline promise only when the !ready arm awaited display (the
+ * doset direct-optfn path awaits it); every other arm completes
+ * synchronously and returns undefined, so the 60+ sync callers that
+ * ignore the return are unaffected.
+ */
 export function config_error_add(str, ...args) {
-    vconfig_error_add(str, args); // C :1870
+    return vconfig_error_add(str, args); // C :1870
 }
 
 /** C ref: cfgfiles.c:1874–1890 — format, chop, then enqueue/report. */
@@ -431,7 +453,7 @@ function vconfig_error_add(str, args) {
     let buf = config_error_format(str, args); // C :1878–1880 BIGBUFSZ + vsnprintf
     // C :1881–1887 DEBUG panic compiled out (patchlevel.h NH_STATUS_RELEASED).
     buf = buf.slice(0, BUFSZ - 1).split('\0', 1)[0]; // C :1888 buf[BUFSZ-1] = 0
-    config_erradd(buf); // C :1889
+    return config_erradd(buf); // C :1889
 }
 
 /**

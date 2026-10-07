@@ -1676,6 +1676,7 @@ export async function show_spells() {
  * SORT vs swap). Second (swap) call with splaction >= 0: the preselected
  * letter declines (C `*spell_no == splaction` → FALSE → break);
  * Return/Space accepts the preselected → likewise FALSE.
+ * The splaction row paints preselected '*' (C SELECTED + wintty paint).
  * CAST: letter returns ok:true with splnum.
  */
 async function dospellmenu(prompt, splaction) {
@@ -1716,7 +1717,12 @@ async function dospellmenu(prompt, splaction) {
         // uses loop index i (not splnum) when orderindx is active
         if (wizard) line += ` ${padL(6, spellknow(i))}`;
         const letter = spellet(splnum);
-        entries.push({ text: `${letter} - ${line}`, attr: 0 });
+        // C `:2130–2132`: (splnum == splaction) → MENU_ITEMFLAGS_SELECTED;
+        // wintty `:1468–1473` initial paint shows selected (count -1) as '*'.
+        // Only the dovspell swap call passes a book index, so exactly one
+        // row matches there; VIEW/CAST/DUMP pass negatives (no match).
+        const marker = splnum === splaction ? '*' : '-';
+        entries.push({ text: `${letter} ${marker} ${line}`, attr: 0 });
         choices.push({ key: letter, splnum });
     }
 

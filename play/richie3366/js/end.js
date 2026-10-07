@@ -12,6 +12,7 @@ import { deepest_lev_reached, depth, strstri, upstart } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
     canspotmon, Hallucination, curs_on_u, newsym, impossible, You,
+    mark_topline_empty,
 } from './display.js';
 import { yn_function, y_n, ynq, paranoid_query } from './getline.js';
 import { livelog_printf } from './pline.js';
@@ -1142,6 +1143,12 @@ async function really_done(how) {
     clearlocks();
 
     await flush_topl_more();
+    // C end.c:1246–1247 — display_nhwindow(WIN_MESSAGE, FALSE): the
+    // not-NEED_MORE arm (wintty.c:1873–1884) settles toplin EMPTY (+msg
+    // cur zero) with NO visual erase, so the answered "Die?" prompt
+    // stays visible as stale pixels under the disclose menu (the menu
+    // overlay clear at wintty.c:1938–1941 then skips).
+    mark_topline_empty();
 
     // C: invent discover_object walk before disclose (and dumplog)
     if (how !== PANICKED) {

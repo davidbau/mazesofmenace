@@ -2814,7 +2814,10 @@ export async function teleport_pet(mtmp, force_it) {
  * FALSE state clear run sync — see body); `:906` relmon(mtmp,
  * &gm.migrating_mons) live as a sync mirror in C mon.c:2561–2594
  * order (fire-and-forget panics + the mon_leaving_level :2696–2732
- * sync core). Stays sync like C (replmon precedent js/mon.js:3722):
+ * sync core, except the fmon unlink runs before newsym: C's m_at is
+ * grid-only but JS m_at falls back to the fmon scan, which still
+ * holds the live migrant). Stays sync like C (replmon precedent
+ * js/mon.js:3722):
  * live relmon/mon_leaving_level await unstuck→docrt and the
  * migrate_orc level-gen path (js/mklev.js:2506 ← stolen_booty ←
  * fixup_special_tail) cannot await. ledger_to_dnum/ledger_to_dlev
@@ -2859,7 +2862,9 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
     const numSegs = mon_leave(mtmp);
 
     /* C dog.c:906 relmon(mtmp, &gm.migrating_mons) — sync mirror in C
-     * mon.c:2561–2594 order (see doc for why not the live await). */
+     * mon.c:2561–2594 order (see doc for why not the live await;
+     * fmon unlink runs before newsym — JS m_at reads fmon, C's does
+     * not; see below). */
     // C :2565–2566 — no fmon at all (JS relmon continues past it too).
     if (!(game.fmon || []).length) {
         void impossible('relmon: no fmon available.');
@@ -2893,6 +2898,22 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
             remove_monster_xy(mx, my);
         }
     }
+    /* C :2571–2584 — remove from fmon (head or scan; one indexOf
+     * covers both; :2583 absent → panic, fire-and-forget). JS-ORDER:
+     * C unlinks fmon after mon_leaving_level's newsym because C's
+     * m_at is grid-only (rm.h:510), so the cleared grid already hides
+     * the migrant. JS m_at/mon_at_display fall back to the fmon coord
+     * scan (mon.js:1734–1741, display.js:586–592), which still holds
+     * this live migrant (mhp > 0, mx/my intact) — newsym would repaint
+     * it over the revealed trap. Unlink first so newsym sees what C
+     * sees. Death paths are unaffected (mhp<=0 is filtered). */
+    const list = game.fmon || [];
+    const idx = list.indexOf(mtmp);
+    if (idx < 0) {
+        void impossible('relmon: mon not in list.');
+    } else {
+        list.splice(idx, 1);
+    }
     if (onmap) {
         mtmp.mundetected = 0; /* for migration; doesn't matter for death */
         /* unhide mimic in case its shape has been blocking line of sight
@@ -2923,17 +2944,8 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
         game.context.polearm.hitmon = null;
     }
 
-    // C :2571–2584 — remove from fmon (head or scan; one indexOf
-    // covers both; :2583 absent → panic, fire-and-forget).
-    const list = game.fmon || [];
-    const idx = list.indexOf(mtmp);
-    if (idx < 0) {
-        void impossible('relmon: mon not in list.');
-    } else {
-        list.splice(idx, 1);
-    }
-
-    // C :2586–2589 — insert into migrating_mons with the nmon link.
+    // C :2586–2589 — insert into migrating_mons with the nmon link
+    // (fmon unlink already ran above, before newsym — see note there).
     if (!game.migrating_mons) game.migrating_mons = [];
     mtmp.nmon = game.migrating_mons[0] || null;
     game.migrating_mons.unshift(mtmp);

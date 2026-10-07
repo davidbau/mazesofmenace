@@ -53,8 +53,8 @@ import {
     obj_glyph, suppress_map_output,
     putmsghistory, impossible, tty_nhbell, tty_wait_synch,
     clear_nhwindow_message, Hallucination, set_bot_disabled,
-    clear_committed_status,
-    docorner, dxdy_to_dist_descr,
+    clear_committed_status, clear_message_window_menu_overlay,
+    erase_menu_or_text, dxdy_to_dist_descr,
 } from './display.js';
 import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, gloves_simple_name, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf, safe_qbuf } from './objnam.js';
 import { yn_function, y_n, getlin, mungspaces } from './getline.js';
@@ -3017,8 +3017,11 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
         && game._tty_menu_geom?.maxrow > 0)
         ? game._tty_menu_geom.maxrow
         : 0;
-    // C clears WIN_MESSAGE before menu; keep map/status for corner only.
-    game._pending_message = '';
+    // C wintty.c tty_display_nhwindow(NHW_MENU) overlay `:1938–1941` →
+    // tty_clear_nhwindow(WIN_MESSAGE) `:1047–1058`: erase only when
+    // toplin != EMPTY (death disclose keeps the answered Die? prompt:
+    // EMPTY state, stale pixels). Keep map/status for corner only.
+    clear_message_window_menu_overlay();
     game._menu_overlay = false;
 
     // Corner chargen: C clears WIN_MESSAGE only — BASE splash (copyright /
@@ -3089,8 +3092,10 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
 /**
  * C ref: wintty.c erase_menu_or_text / tty_dismiss_nhwindow(NHW_MENU).
  * Fullscreen (offx==0): docrt()+flush (Hallu see_monsters burns inside
- * docrt). Corner (offx!=0): docorner ≡ reprint gbuf only — no newsym /
- * display-RNG burns; once-per-input Hallu see_monsters refreshes next.
+ * docrt) with JS-model status interleave (D-0467/D-1850). Corner
+ * (offx!=0): the shared erase_menu_or_text export (docorner ≡ reprint
+ * gbuf only — no newsym / display-RNG burns; once-per-input Hallu
+ * see_monsters refreshes next).
  */
 export async function dismiss_nhw_menu(opts = null) {
     const g = game._tty_menu_geom;
@@ -3112,10 +3117,12 @@ export async function dismiss_nhw_menu(opts = null) {
         await flush_screen(1);
         return;
     }
-    // C erase_menu_or_text: docorner(offx, maxrow+1, 0). bot() inside
-    // docorner no-ops while gb.bot_disabled, so leftover WIN_STATUS stays.
+    // C destroy_nhwindow → tty_destroy_nhwindow `:1999` →
+    // erase_menu_or_text(clearscreen=FALSE): corner docorner(offx,
+    // maxrow+1, 0); bot() inside docorner no-ops while gb.bot_disabled,
+    // so leftover WIN_STATUS stays. No flush (this helper's cadence).
     const maxrow = (g.maxrow > 0 ? g.maxrow : (g.endRow | 0) + 1);
-    await docorner(g.offx | 0, maxrow + 1, 0);
+    await erase_menu_or_text(g.offx | 0, 0, maxrow, false);
 }
 
 /**
@@ -3227,16 +3234,27 @@ export async function select_menu_pick_none(entries) {
         const morestr = npages > 1
             ? `(${curr_page + 1} of ${npages})`
             : '(end) ';
-        const painted = page.map(e => ({
-            text: ` ${typeof e === 'string' ? e : e.text}`,
-            attr: typeof e === 'string' ? 0 : (e.attr || 0),
-        }));
-        painted.push({ text: ` ${morestr}`, attr: 0 });
-        paint_overlay(painted, {
-            col: 0,
-            withStatus: false,
-            cursor: [morestr.length + 1, page.length],
-        });
+        // C wintty.c tty_display_nhwindow(NHW_MENU) H2344 `:1907–1946`:
+        // multi-page menus are fullscreen (maxrow>=rows → offx=0, screen
+        // cleared); single-page menus take the corner overlay (offx>0,
+        // map kept, cl_end from offx per line). Sibling PICK_ONE loop
+        // below branches the same way (npages>1 → paint_overlay, else
+        // paint_corner_nhw_menu).
+        if (npages > 1) {
+            const painted = page.map(e => ({
+                text: ` ${typeof e === 'string' ? e : e.text}`,
+                attr: typeof e === 'string' ? 0 : (e.attr || 0),
+            }));
+            painted.push({ text: ` ${morestr}`, attr: 0 });
+            paint_overlay(painted, {
+                col: 0,
+                withStatus: false,
+                cursor: [morestr.length + 1, page.length],
+            });
+            game._tty_menu_geom = { offx: 0, endRow: page.length };
+        } else {
+            await paint_corner_nhw_menu(page, morestr);
+        }
         await flush_screen(1);
         // C wintty.c:1561 — PICK_NONE has no explicit selectors.
         const key = map_menu_cmd(await nhgetch());
@@ -3277,9 +3295,17 @@ export async function select_menu_pick_none(entries) {
         tty_nhbell();
         // other keys: re-prompt same page (C xwaitforspace)
     }
+    // C wintty.c erase_menu_or_text `:966–985`: corner dismiss is
+    // docorner(offx, maxrow+1, 0) — map and status kept; fullscreen
+    // dismiss is docrt + flush. Fullscreen stays byte-identical to
+    // before (D-1879 precedent: no clear_committed_status here).
+    if (game._tty_menu_geom && game._tty_menu_geom.offx !== 0) {
+        await dismiss_nhw_menu();
+    } else {
         clear_overlay();
-    await docrt();
-    await flush_screen(1);
+        await docrt();
+        await flush_screen(1);
+    }
     return cancelled ? -1 : 0;
     } finally {
         set_bot_disabled(_botPrev);
@@ -3981,18 +4007,43 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         for (const [k, v] of built.byLet) byLet.set(k, v);
         pickItems.push(...built.pickItems);
     } else {
-        for (const oclass of DEF_INV_ORDER) {
-            const items = inv.filter((o) => {
-                if (o.oclass !== oclass) return false;
-                if (!allow) return true;
-                return allow.has(o.invlet);
-            });
-            if (!items.length) continue;
-            entries.push({
-                text: let_to_name(oclass, false, withsym),
-                attr: headingAttr,
-            });
-            for (const otmp of items) {
+        /* C display_pickinv `:3181–3184` — sortflags from sortloot/sortpack
+           (the TTY_PERM_INVENT doing_perm_invent override is the WIN_INVEN
+           branch — pickinv_build_perm — not this menu path). */
+        const sortpack = sortpack_on();
+        let sortflags = (game.flags?.sortloot === 'f') ? SORTLOOT_LOOT : SORTLOOT_INVLET;
+        if (sortpack) sortflags |= SORTLOOT_PACK;
+        /* C `:3207` — filter is NULL here (lets-filtering is in the item
+           loop, `:3271`); inuse_only takes pickinv_build_inuse instead. */
+        const sorted = sortloot(inv, sortflags, false, null);
+        /* C `:3262–3343` nextclass — one pass per inv_order class (+ the
+           `:3337–3339` venom strkitten; change_inv_order excludes VENOM
+           from inv_order, so the append never duplicates), header on the
+           first listed item of the class (`:3290–3300`); !sortpack is a
+           single headerless pass in sorted order. */
+        const classes = sortpack
+            ? (() => {
+                const c = [...inv_order_classes()];
+                if (!c.includes(VENOM_CLASS)) c.push(VENOM_CLASS);
+                return c;
+            })()
+            : [null];
+        for (const oclass of classes) {
+            let classcount = 0;
+            for (const srt of sorted) {
+                const otmp = srt.obj;
+                if (!otmp) continue;
+                /* C `:3271` — skip letters outside the asked set. */
+                if (allow && !allow.has(otmp.invlet)) continue;
+                /* C `:3273` — !sortpack lists every class in one pass. */
+                if (sortpack && otmp.oclass !== oclass) continue;
+                if (sortpack && !classcount) {
+                    entries.push({
+                        text: let_to_name(oclass, false, withsym),
+                        attr: headingAttr,
+                    });
+                }
+                classcount++;
                 // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1186).
                 if (!Blind()) observe_object(otmp);
                 // C: invent.c display_pickinv — obj_to_glyph(otmp, rn2_on_display_rng)
@@ -4010,6 +4061,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
                 entries.push({ text: formattedobj, attr: 0 });
             }
         }
+        unsortloot(sorted); // C `:3368` — free-only; GC no-op in JS.
     }
     // C display_pickinv `:3345–3366` — after class items, before end_menu
     const special = force_invmenu_special(lets, allowxtra, usextra);
@@ -9021,8 +9073,9 @@ function dfeatureExplanation(cmap) {
  * free (ECMD_OK); can't-reach is ECMD_OK even when Blind. Swallowed
  * engulfer-stomach arm live (Contents + display_minventory); lava/pool
  * early return live; ICE Blind force_decor arm live; single-item
- * last_msg live. Named: Blind surface() envelope (hardcoded 'floor';
- * C surface room/corr); blanket xname observe / distant_name.
+ * last_msg live. Blind surf is the live sit.js surface() (D-3628;
+ * 'stairs'/'altar'/'doorway' wording, retiring the 'floor' envelope).
+ * Named: blanket xname observe / distant_name.
  * Furniture with ct==0 uses pickup.describe_decor (D-0356), not this path.
  * @returns {Promise<number>} ECMD_TIME when Blind, else ECMD_OK
  */
@@ -9114,7 +9167,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
             skip_dfeature = true; /* ice already described */
         } else {
             const cant_reach = !can_reach_floor(true);
-            const surf = 'floor'; // C surface() room/corr envelope
+            // C `:4201` — surf = surface(u.ux, u.uy): 'stairs'/'altar'/
+            // 'doorway'/... wording, not the old room/corr 'floor' envelope.
+            const surf = surface(u?.ux, u?.uy);
             const where = cant_reach ? 'lying beneath you' : 'lying here on the ';
             const onwhat = cant_reach ? '' : surf;
             if (drift) {

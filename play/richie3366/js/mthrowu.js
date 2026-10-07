@@ -1289,7 +1289,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                         return;
                     }
                 } else {
-                    let dam = dmgval(singleobj, null);
+                    // C mthrowu.c:722 — dam = dmgval(singleobj, &gy.youmonst);
+                    // the hero's live form drives bigmonst + bonus arms (D-3617)
+                    let dam = dmgval(singleobj, game.youmonst);
                     let hitv = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
                     if (hitv < -4) hitv = -4;
                     // C :727-734 — elves get a shooting bonus with bows

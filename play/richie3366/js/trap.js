@@ -3065,6 +3065,7 @@ export async function drain_en(n, max_already_drained) {
             u.uen = 0;
             u.uenmax = 0;
             if (game.disp) game.disp.botl = true;
+            if (game.flags) game.flags.botl = true; // JS status mirror: bot() reads flags.botl
         }
         mesg = 'momentarily lethargic';
     } else {
@@ -3086,6 +3087,7 @@ export async function drain_en(n, max_already_drained) {
             u.uen = u.uenmax;
         }
         if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true; // JS status mirror: bot() reads flags.botl
     }
     /* after manipulating u.uen,uenmax and setting context.botl, so
        that You_feel() -> pline() will update status before the message */

@@ -6789,19 +6789,32 @@ function load_wiz_strt() {
     unlitRect(30, 10, 31, 10);
 
     // des.region({ region={19,11,33,15}, lit=0, type="ordinary", irregular=1 })
+    // C lspo_region irregular arm (sp_lev.c:5682-5690): flood_fill_rm from
+    // (dx1,dy1) through connected floor — walls/doors/SDOORs keep their lit
+    // when unlighting — then add_room over the FLOOD bounds (not the des
+    // rect), rlit + irregular flags. No topologize (regular-room arm only,
+    // :5691-5697); no coder bookkeeping (hand-loader has no coder and the
+    // net croom effect is null); no per-room add_doors_to_room (the global
+    // link_doors_rooms below covers it in both, C :6022).
     {
-        const dx1 = mx + 19, dy1 = my + 11, dx2 = mx + 33, dy2 = my + 15;
-        if ((g.level.nroom | 0) < MAXNROFROOMS) {
-            add_room(dx1, dy1, dx2, dy2, false, OROOM, true);
+        const dx1 = mx + 19, dy1 = my + 11;
+        const L47_rlit = litstate_rnd(0); // C :5638 + :5605 (des lit=0; no RNG)
+        if ((g.level.nroom | 0) >= MAXNROFROOMS) { // C :5662 room-cap fallback
+            impossible('Too many rooms on new level!'); // C :5664-5665
+            light_region(dx1, dy1, mx + 33, my + 15, L47_rlit); // C :5666-5671
+        } else {
+            const bounds = { min_rx: dx1, max_rx: dx1, min_ry: dy1, max_ry: dy1 }; // C :5683-5684
+            if (g.smeq) g.smeq[g.level.nroom] = g.level.nroom; // C :5685 (lspo_region idiom)
+            flood_fill_rm(dx1, dy1, (g.level.nroom | 0) + ROOMOFFSET, L47_rlit, true, bounds); // C :5686
+            add_room(bounds.min_rx, bounds.min_ry, bounds.max_rx, bounds.max_ry, false, OROOM, true); // C :5687-5688 (lit=FALSE)
             const troom = g.level.rooms[g.level.nroom - 1];
             if (troom) {
-                troom.rlit = 0;
-                troom.irregular = true;
-                troom.needjoining = true;
-                topologize(troom);
+                troom.needfill = 0; // C :5679 (des filled default 0)
+                troom.needjoining = true; // C :5681 (des joined default TRUE)
+                troom.rlit = L47_rlit ? 1 : 0; // C :5689
+                troom.irregular = true; // C :5690
             }
         }
-        unlitRect(19, 11, 33, 15);
     }
 
     // des.stair("down", 30,10)
@@ -20161,9 +20174,13 @@ function load_tut1() {
             sel_set_ter(xx, yy, mptyp, false);
         }
     }
-    // des.region lit area(01,01,73,16) — map-relative + xstart/ystart
-    for (let y = ystart + 1; y <= ystart + 16 && y < ROWNO; y++) {
-        for (let x = xstart + 1; x <= xstart + 73 && x < COLNO; x++) {
+    // des.region lit area(01,01,73,16) — map-relative + xstart/ystart.
+    // C lspo_region :5624-5626 grows a "lit" selection one cell
+    // (selection_do_grow W_ANY) before sel_set_lit, so the grown rect
+    // (0,0)-(74,17) lights the map's wall ring too (no lava on this
+    // map, so plain `lit = true` ≡ sel_set_lit(x, y, 1)).
+    for (let y = ystart; y <= ystart + 17 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 74 && x < COLNO; x++) {
             const loc = game.level.at(x, y);
             if (loc) loc.lit = true;
         }
@@ -20538,9 +20555,11 @@ function load_tut2() {
         }
     }
     // des.region lit area(01,01,73,16) — map-relative + xstart/ystart
-    // (same lua rect as tut-1; clamped, so it lights the 14x8 map)
-    for (let y = ystart + 1; y <= ystart + 16 && y < ROWNO; y++) {
-        for (let x = xstart + 1; x <= xstart + 73 && x < COLNO; x++) {
+    // (same lua rect as tut-1; grown per lspo_region :5624-5626 to
+    // (0,0)-(74,17), clamped, so it lights the 14x8 map including its
+    // border walls — the ungrown rect missed map row 0 and col 0)
+    for (let y = ystart; y <= ystart + 17 && y < ROWNO; y++) {
+        for (let x = xstart; x <= xstart + 74 && x < COLNO; x++) {
             const loc = game.level.at(x, y);
             if (loc) loc.lit = true;
         }
@@ -24918,13 +24937,15 @@ function load_castle() {
         }
     }
 
+    // C lspo_region selection arm (sp_lev.c:5619-5637): a "lit" selection
+    // grows by 1 first (selection_do_grow W_ANY, :5630-5631), then every
+    // grown cell goes through sel_set_lit (:5632 → :5535-5540, lava stays
+    // lit); "unlit" skips the grow. For a solid rect that is exactly
+    // light_region's expanded rect (:2839-2862 — same lava rule, same
+    // no-expansion-when-unlit); castle's map-space rects (xstart 9+) never
+    // reach the x0 clamp where the two spellings could differ.
     const setLitArea = (x1, y1, x2, y2, lit) => {
-        for (let y = my + y1; y <= my + y2 && y < ROWNO; y++) {
-            for (let x = mx + x1; x <= mx + x2 && x < COLNO; x++) {
-                const loc = g.level.at(x, y);
-                if (loc) loc.lit = lit;
-            }
-        }
+        light_region(mx + x1, my + y1, mx + x2, my + y2, lit);
     };
     // Entire castle unlit, then lit courtyards / rooms
     setLitArea(0, 0, 62, 16, false);

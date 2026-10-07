@@ -23,7 +23,7 @@ import './date.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, impossible, docrt, more, coord_desc,
+    flush_screen, flush_topl_more, pline, impossible, erase_menu_or_text, more, coord_desc,
     mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
     glyph_to_obj_at, glyph_at, glyph_is_trap, glyph_to_trap, trap_to_glyph,
     glyph_is_monster, glyph_is_object, glyph_is_statue, glyph_is_warning,
@@ -297,8 +297,10 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
         if (last) break;
     }
     game._menu_overlay = false;
-    await docrt();
-    await flush_screen(1);
+    // C destroy_nhwindow → tty_destroy_nhwindow `:1999` →
+    // erase_menu_or_text(clearscreen=FALSE); NHW_TEXT is always
+    // fullscreen (offx==0, offy==0) → docrt+flush, as before.
+    await erase_menu_or_text(0, 0, expanded.length, false);
     return cancelled;
 }
 
@@ -697,14 +699,15 @@ export async function show_nhw_menu_text(lines, opts = {}) {
     }
 
     game._menu_overlay = false;
-    // C erase_menu_or_text: offx==0 → docrt; else docorner. JS still
-    // docrt() for Hallu see_monsters burns (cohort RNG); cls() wipes
-    // _pending_message, so restore only look_here leftovers C leaves
-    // left of offx (D-0929 — not every corner menu).
-    const savedTopl = keepLeftover ? (game._pending_message || '') : '';
-    await docrt();
-    if (savedTopl) game._pending_message = savedTopl;
-    await flush_screen(1);
+    // C destroy_nhwindow → tty_destroy_nhwindow `:1999` →
+    // erase_menu_or_text(clearscreen=FALSE): corner takes the docorner
+    // arm (targeted replay, no docrt/overlay — D-3626), fullscreen
+    // docrt+flush. The corner flush keeps this helper's screen cadence
+    // (C writes the tty immediately); docorner touches no toplin state,
+    // so the D-0929 dismiss-time save/restore is dead (paint-time
+    // keep_message_leftover above stays).
+    await erase_menu_or_text(offx, 0, maxrow, false);
+    if (offx !== 0) await flush_screen(1);
 }
 
 /**

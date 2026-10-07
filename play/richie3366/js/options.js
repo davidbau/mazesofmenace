@@ -2534,8 +2534,13 @@ export async function handler_number_pad() {
         "-1 (off, 'z' to move upper-left, 'y' to zap wands)",
     ];
     // C `:5907–5909` create_nhwindow/start_menu/zeroany — raw menu below.
-    // C `:5915` end_menu prompt painted as header (D-2762 precedent).
-    const raw = [{ text: 'Select number_pad mode:', selectable: false }];
+    // C tty_end_menu (wintty.c `:2685–2689`): the end_menu prompt paints
+    // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
+    // then a blank separator item (handler_menu_objsyms precedent; D-3403).
+    const raw = [
+        { text: 'Select number_pad mode:', selectable: false, attr: ATR_INVERSE }, // C `:5915`
+        { text: '', selectable: false }, // C wintty.c blank item
+    ];
     for (let i = 0; i < npchoices.length; ++i) { // C `:5910`
         // C `:5911–5913` a_int i+1, letter 'a'+i, gacc '0'+i,
         // nul_glyphinfo, ATR_NONE/NO_COLOR, MENU_ITEMFLAGS_NONE (no preselect).
@@ -3825,8 +3830,9 @@ export function optfn_crash_urlmax(_optidx, req, _negated, opts, _op) {
         if (op !== EMPTY_OPTSTR) { // C `:1319`
             const temp = opt_atoi(op); // C `:1320` atoi
             if (temp < 75) { // C `:1322`
-                config_error_add('Invalid value %d for crash_urlmax. ' // C `:1323–1324`
+                const bad = config_error_add('Invalid value %d for crash_urlmax. ' // C `:1323–1324`
                     + ' Minimum value is 75.', temp);
+                if (bad && typeof bad.then === 'function') return bad.then(() => OPTN_ERR); // C `:1325` — windowed pline promise resolves the shared return
                 return OPTN_ERR; // C `:1325`
             }
             gc.crash_urlmax = temp; // C `:1327`
@@ -7034,13 +7040,15 @@ function remove_autopickup_exception(whichape) {
 }
 
 /**
- * C windows.c add_menu_heading `:1818–1821` attr. Color stays NO_COLOR
- * on this painter (the corner menu has no per-row color). The stored
- * attr is C-domain (wintype.h ATR_*); translate to the terminal
- * bitmask for the painter. DIM/ITALIC/BLINK have no terminal code
- * (named).
+ * C windows.c add_menu_heading `:1815–1828` attr selection: iflags
+ * menu_headings (`:1819–1820`) unless gameover suppresses highlighting
+ * (`:1822–1824`). Shared by every select_menu_pick_any heading row
+ * (autopickup exceptions, cond_menu). Color stays NO_COLOR on this
+ * painter (the corner menu has no per-row color). The stored attr is
+ * C-domain (wintype.h ATR_*); translate to the terminal bitmask for
+ * the painter. DIM/ITALIC/BLINK have no terminal code (named).
  */
-function ape_heading_attr() {
+export function menu_heading_attr() {
     if (game.program_state?.gameover) return ATR_NONE; // C `:1820–1821`
     const h = game.iflags?.menu_headings;
     const a = (h && typeof h === 'object' && typeof h.attr === 'number') ? h.attr : MC_ATR_INVERSE;
@@ -7084,7 +7092,7 @@ export async function handler_autopickup_exception() {
                 raw.push({
                     text: "Always pickup '<'; never pickup '>'", // C `:6373–6374`
                     selectable: false,
-                    attr: ape_heading_attr(),
+                    attr: menu_heading_attr(),
                 });
                 for (let i = 0; i < numapes && i < list.length; i++) { // C `:6375`
                     const ape = list[i];
@@ -7810,14 +7818,16 @@ export function optfn_boulder(optidx, req, _negated, opts, _op, optInitial) {
         else if (ch >= '1' && ch < String.fromCharCode(48 + WARNCOUNT)) // C `:1197`
             clash = 2;
         if (!ch || signed < 32) { // C `:1199` opts[0] < ' '
-            config_error_add('boulder symbol cannot be a control character'); // C `:1200`
+            const bad = config_error_add('boulder symbol cannot be a control character'); // C `:1200`
+            if (bad && typeof bad.then === 'function') return bad.then(() => OPTN_OK); // C `:1201` — windowed pline promise resolves the shared return
             return OPTN_OK; // C `:1201`
         }
         if (clash) { // C `:1202`
             // visctrl(ch) is ch for these printable clash characters.
-            config_error_add( // C `:1205–1208`
+            const bad = config_error_add( // C `:1205–1208`
                 "Badoption - boulder symbol '%s' would conflict with a %s symbol",
                 ch, clash === 1 ? 'monster' : 'warning');
+            if (bad && typeof bad.then === 'function') return bad.then(() => OPTN_OK); // C `:1228` — windowed pline promise resolves the shared return
         } else { // C `:1209`
             const slot = SYM_BOULDER + SYM_OFF_X; // C `:1213`
             update_ov_primary_symset(slot, ch); // C `:1213`
@@ -9506,6 +9516,29 @@ async function doset_compound_via_getlin(opt) {
         const saReslt = await optfn_suppress_alert(
             allopt_idx(name), REQ_DO_SET, false, `${name}:${saVal}`, saVal);
         if (saReslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true; // C `:639–640`
+    } else if (name === 'boulder' || name === 'crash_urlmax') {
+        // C `:8675–8680` / full-doset `:8949–8953`: Sprintf "name:abuf" +
+        // parseoptions — awaited (fruit/suppress_alert precedent) so the
+        // optfn's windowed config errors (Badoption `:1205`, Invalid value
+        // `:1323`) pline + tty_wait_synch before the next pick. Doset
+        // input is well-formed (exact menu name, not negated, no dupe
+        // scope outside opt_initial), so this is C parseoptions `:635–640`
+        // only: string_for_opt TRUE, optfn do_set, mark on optn_ok. Named:
+        // the `:522` length / `:529–533` strip / `:540–543` negation /
+        // `:621–623` dupe arms (unreached from doset values), and the
+        // missing-parameter report inside string_for_opt FALSE (a doset
+        // empty value stays sync-fire-and-forget like every other
+        // sync-called windowed error).
+        if (!game.go) game.go = {};
+        game.go.opt_initial = false; // C `:504` tinitial FALSE (doset call)
+        game.go.opt_from_file = false; // C `:505` tfrom_file FALSE
+        const full = `${name}:${abuf}`;
+        const op = string_for_opt(full, true); // C `:636`
+        const idx = allopt_idx(name);
+        const reslt = name === 'boulder'
+            ? await optfn_boulder(idx, REQ_DO_SET, false, full, op, false) // C `:637–638` (explicit FALSE is the `:504` global)
+            : await optfn_crash_urlmax(idx, REQ_DO_SET, false, full, op); // C `:637–638`
+        if (reslt === OPTN_OK) opt_set_in_config[idx] = true; // C `:639–640`
     } else {
         parseoptions(`${name}:${abuf}`, false, false);
     }
@@ -10345,7 +10378,7 @@ const DOSET_BOOL_ADDR = {
     travel_debug: { obj: 'iflags', key: 'trav_debug' }, // C optlist.h:791 &iflags.trav_debug (wizard menu row; DEBUG build per patchlevel.h:36; no JS consumer yet — hack.c:1431/:1492 travel-path display)
     use_inverse: { obj: 'iflags', key: 'wc_inverse' },
     verbose: { obj: 'flags', key: 'verbose' },
-    weaponstatus: { obj: 'iflags', key: 'weaponstatus' },
+    weaponstatus: { obj: 'flags', key: 'weaponstatus' }, // C optlist.h:866 &flags.weaponstatus
     whatis_menu: { obj: 'iflags', key: 'getloc_usemenu' }, // C optlist.h:874 &iflags.getloc_usemenu; getpos.js reads this (D-3592)
     whatis_moveskip: { obj: 'iflags', key: 'getloc_moveskip' }, // C optlist.h:877 &iflags.getloc_moveskip; getpos.js reads this (D-3592)
     // C optlist.h NHOPTB wizmgender set_wizonly &iflags.wizmgender (D-1701)
@@ -10657,23 +10690,72 @@ export async function optfn_boolean(optidx, req, negated, opts) {
 }
 
 /**
- * C options.c optfn_boolean do_set — `*(allopt[].addr) = !negated` then
- * after-change. `initial` is `go.opt_initial`: config returns before the
- * in-game switch (no botl, no `opt_accessiblemsg` msg_loc zero, no
- * toggle pline). C optlist.h NHOPTB accessiblemsg addr is
- * `&a11y.accessiblemsg` (D-1218); mention_map is `&a11y.glyph_updates`
- * (D-1219); spot_monsters is `&a11y.mon_notices` (D-1235);
- * mon_movement is `&a11y.mon_movement` (D-1236). wizweight after-change
- * is D-1669 (`:5353–5361`). Glyph-reset after-change is D-1701
- * (`:5376–5385`). No after-change arm for spot_monsters or
- * mon_movement (unlike accessiblemsg msg_loc zero).
+ * C options.c optfn_boolean do_set (`:5192–5449`) — the doset `:8904` path
+ * (doset builds `[!]name`, parseoptions routes to the optfn with
+ * negated = old value and no `:value`, so the op/valok parse is skipped).
+ * `*(allopt[].addr) = !negated` then after-change, in C order. `initial`
+ * is `go.opt_initial`: config returns before the in-game switch (no botl,
+ * no `opt_accessiblemsg` msg_loc zero, no toggle pline). Async only for
+ * the C idlecheckpoint notice pline (the optfn_boolean precedent).
+ * Returns true when C falls through to the toggle-message gate
+ * (`:5438–5439`, caller plines iff give_opt_msg), false when C returns
+ * before it (silent retreat, fuzzer/perm_invent gate, config path).
+ * C optlist.h NHOPTB accessiblemsg addr is `&a11y.accessiblemsg`
+ * (D-1218); mention_map is `&a11y.glyph_updates` (D-1219);
+ * spot_monsters is `&a11y.mon_notices` (D-1235); mon_movement is
+ * `&a11y.mon_movement` (D-1236). wizweight after-change is D-1669
+ * (`:5353–5361`). Glyph-reset after-change is D-1701 (`:5376–5385`).
+ * No after-change arm for spot_monsters or mon_movement (unlike
+ * accessiblemsg msg_loc zero). Unreachable via doset (not listed:
+ * doset passes are set_gameview..set_in_game/set_wiznofuz, `:8819–8820`):
+ * opt_female (`:5247–5263`, set_in_config — the nosexchange arm with it)
+ * and opt_pauper (`:5290–5293`, set_in_config); the config path uses the
+ * whole optfn_boolean above. The setwhere gates (`:5207`, `:5211`)
+ * cannot fire on listed rows either.
  */
-export function optfn_boolean_do_set(name, negated, initial = false) {
+export async function optfn_boolean_do_set(name, negated, initial = false) {
     const addr = DOSET_BOOL_ADDR[name];
-    if (!addr) return;
+    if (!addr) return false; // C `:5204` silent retreat
+    // C `:5239–5244` fuzzer gate (returns optn_ok: no set, no pline).
+    if (game.iflags?.debug_fuzzer && !initial
+        && (name === 'silent' || name === 'perm_invent')) {
+        return false;
+    }
+    // C `:5265–5267` case opt_perm_invent (returns optn_silenterr: no set,
+    // no pline; doset still runs preference_update after — caller-side).
+    if (name === 'perm_invent' && !negated && !initial
+        && !can_set_perm_invent(undefined, initial)) {
+        return false;
+    }
     if (!game[addr.obj]) game[addr.obj] = {};
-    game[addr.obj][addr.key] = !negated;
-    if (initial) return;
+    game[addr.obj][addr.key] = !negated; // C `:5286` SET IT HERE
+    // C `:5288–5322` after the change (pauper omitted: set_in_config).
+    if (name === 'ascii_map') { // C `:5294–5296`
+        if (!game.iflags) game.iflags = {};
+        game.iflags.wc_tiled_map = negated;
+    } else if (name === 'tiled_map') { // C `:5297–5299`
+        if (!game.iflags) game.iflags = {};
+        game.iflags.wc_ascii_map = negated;
+    } else if (name === 'hilite_pet') { // C `:5300–5311`
+        // C `#if defined(TTY_GRAPHICS) || defined(CURSES_GRAPHICS)` with
+        // `WINDOWPORT(tty) || WINDOWPORT(curses)`; scored build is tty.
+        if (windowport_tty() || windowport_curses()) {
+            if (!game.iflags) game.iflags = {};
+            if (game.iflags.hilite_pet && !game.iflags.wc2_petattr)
+                game.iflags.wc2_petattr = ATR_INVERSE;
+        }
+        mark_opt_need_redraw(); // C `:5310`
+    } else if (name === 'idlecheckpoint') {
+        // C `:5314–5320` `#ifndef IDLECHECKPOINT` — compiles (config.h
+        // leaves it undefined). Notice pline, value forced off, and the
+        // toggle pline below skipped via give_opt_msg (caller-side gate).
+        await pline("There is no underlying support for 'idlecheckpoint' compiled in.");
+        if (!game.iflags) game.iflags = {};
+        game.iflags.idlecheckpoint = false;
+        game.give_opt_msg = false;
+    }
+    // C `:5325–5326` only do processing below if setting with doset().
+    if (initial) return false;
     // C options.c:5330–5351. terrainstatus falls through weapon/armor
     // (wc2_supported gate) into showscore/showvers/showexp/time:
     // VIA_WINDOWPORT() status_initialize(REASSESS_ONLY), then disp.botl.
@@ -10722,6 +10804,35 @@ export function optfn_boolean_do_set(name, negated, initial = false) {
         mark_opt_need_redraw();
         mark_opt_need_glyph_reset();
     }
+    if (name === 'lit_corridor' || name === 'dark_room') {
+        // C options.c optfn_boolean `:5362–5374` — the vision system is
+        // set up here (not initializing: see the `initial` return above).
+        vision_recalc(2); // C shut down vision
+        game.vision_full_recalc = 1; // C `gv.vision_full_recalc` (vision.js:270)
+        if (game.iflags?.use_color) mark_opt_need_redraw(); // C darkroom refresh
+    }
+    if (name === 'color') { // C `:5399–5409` (`#ifdef TOS` arm build-gated out)
+        mark_opt_need_redraw();
+        mark_opt_need_glyph_reset();
+    }
+    if (name === 'customcolors') { // C `:5411–5413`
+        if (!game.go) game.go = {};
+        game.go.opt_reset_customcolors = true;
+    }
+    if (name === 'customsymbols') { // C `:5414–5416`
+        if (!game.go) game.go = {};
+        game.go.opt_reset_customsymbols = true;
+    }
+    if (name === 'menucolors' || name === 'guicolor') { // C `:5417–5421`
+        update_inventory();
+        if (!game.go) game.go = {};
+        game.go.opt_need_promptstyle = true;
+    }
+    if (name === 'mention_decor') { // C `:5422–5424`
+        if (!game.iflags) game.iflags = {};
+        game.iflags.prev_decor = STONE;
+    }
+    return true; // C falls through to the `:5438–5439` toggle-message gate
 }
 
 /* C options.c wcnames/wcshortnames `:4885–4890` + flag.h
@@ -10978,8 +11089,9 @@ function doset_bool_term(name) {
  * !wc_supported (contest tty !TTY_PERM_INVENT). `:8897–8902` PREFIXES
  * section compiled out (hack.h:1055 ifdef).
  * Named omissions: wc2 menu-skip arm (needs the status bits, which
- * need windowport status delivery — see doset_skip_unsupported);
- * optfn_boolean perm_invent can_set gate (caller-side).
+ * need windowport status delivery — see doset_skip_unsupported).
+ * The bool-toggle after-change (incl. the perm_invent can_set gate) is
+ * optfn_boolean_do_set, which mirrors the C do_set arms in C order.
  * reset_needed_visuals subset is D-1701 (no reset_glyphmap).
  */
 export async function doset() {
@@ -11208,9 +11320,12 @@ export async function doset() {
             if (!DOSET_BOOL_ADDR[name]) continue;
             // C: doset toggle → parseoptions → optfn_boolean negated = old value
             const negated = doset_bool_value(name);
-            optfn_boolean_do_set(name, negated, false);
-            await pline(`'${name}' option toggled ${!negated ? 'on' : 'off'}.`);
-            preference_update(name); // C `:8956–8958` (tty no-op stub)
+            const applied = await optfn_boolean_do_set(name, negated, false);
+            // C `:5438–5439` toggle-message gate (idlecheckpoint forces
+            // give_opt_msg off instead of plining here).
+            if (applied && game.give_opt_msg !== false)
+                await pline(`'${name}' option toggled ${!negated ? 'on' : 'off'}.`);
+            preference_update(name); // C `:8956–8958` (tty no-op stub; doset ignores the optfn return)
         }
         for (const name of getlinPicks) {
             // C doset :8941–8956, no handler: getlin, ESC, parseoptions.

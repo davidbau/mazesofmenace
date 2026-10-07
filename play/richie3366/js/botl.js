@@ -2132,7 +2132,9 @@ export function parse_cond_option(negated, opts) {
  * then one row per condition, preselected when enabled); returns true iff
  * any change was made. The create/start/select/destroy window layer maps
  * to one select_menu_pick_any call (getpos_menu precedent); free(picks)
- * and cg.zeroany have no JS carrier (a_int rides each row).
+ * and cg.zeroany have no JS carrier (a_int rides each row). The
+ * `:1409–1411` heading row carries the shared menu_heading_attr
+ * (windows.c `:1815–1828` — iflags menu_headings unless gameover).
  * C callers: options.c pfxfn_cond_ do_handler `:5032` ("not used" in C —
  * no JS site); options.c optfn_o_status_cond do_handler `:8436–8439`
  * (wired in js/options.js doset).
@@ -2140,7 +2142,7 @@ export function parse_cond_option(negated, opts) {
 export async function cond_menu() {
     // options.js statically imports botl.js, so the menu layer comes in
     // lazily here (mon_givit/eat.js + wiz_intrinsic precedents).
-    const { select_menu_pick_any } = await import('./options.js');
+    const { select_menu_pick_any, menu_heading_attr } = await import('./options.js');
     if (!game.gc) game.gc = {}; // C decl.h:223 instance_globals_c (cmd.js precedent)
     const menutitle = ['alphabetically', 'by ranking']; // C `:1378–1380`
     let changed = false; // C `:1390`
@@ -2168,8 +2170,9 @@ export async function cond_menu() {
                 a_int: 1,
                 itemflags: MENU_ITEMFLAGS_SKIPINVERT,
             },
-            // C `:1409–1411` add_menu_heading.
-            { text: `sorted ${menutitle[order]}`, selectable: false },
+            // C `:1409–1411` add_menu_heading — attr is windows.c
+            // `:1815–1828` (iflags menu_headings unless gameover).
+            { text: `sorted ${menutitle[order]}`, selectable: false, attr: menu_heading_attr() },
         ];
         for (let i = 0; i < condtests.length; i++) { // C `:1412` SIZE(condtests)
             idx = sequence[i];

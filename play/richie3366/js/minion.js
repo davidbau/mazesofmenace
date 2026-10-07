@@ -28,7 +28,7 @@ import {
 } from './monsters.js';
 import {
     NON_PM, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, G_GONE, MM_EMIN, MM_NOMSG,
-    GEHENNOM, In_endgame, STRAT_APPEARMSG, W_ARMS, RLOC_MSG, LL_UMONST,
+    In_endgame, STRAT_APPEARMSG, W_ARMS, RLOC_MSG, LL_UMONST,
     ARTICLE_A, EXACT_NAME,
 } from './const.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
@@ -81,9 +81,9 @@ function sgn(n) {
 
 /* C hacklib.c s_suffix — live export from './do_name.js' (clone removed D-3360). */
 
-/** C ref: dungeon.h Inhell — In_hell(&u.uz) / Gehennom. */
+/** C ref: dungeon.h Inhell — In_hell(&u.uz): dungeon hellish flag (dungeon.c:1941–1945), not dnum. */
 export function Inhell() {
-    return (game.u?.uz?.dnum | 0) === GEHENNOM;
+    return !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
 }
 
 /** C ref: obj.h u_wield_art — is_art(uwep, art). */
