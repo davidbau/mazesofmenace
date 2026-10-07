@@ -1766,11 +1766,17 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
                     how = 'exploding glob of slime';
                 losehp(dmg, one ? how : makeplural(how),
                        one ? KILLED_BY_AN : KILLED_BY);
-                exercise(A_STR, false);
-                // C losehp → urgent_pline + done noreturn
+                /* C zap.c:5947–5949 + hack.c losehp:4287 — losehp is
+                 * noreturn on death (done(DIED) unless life-saved);
+                 * exercise runs only when the hero survives. ESM adapter
+                 * (D-3608 oil pattern): drain done() here and bail while
+                 * gameover; a lifesave clears gameover inside done() and C
+                 * continues to exercise below. */
                 if (game._losehp_needs_done || game.program_state?.gameover) {
                     await finish_losehp_done();
+                    if (game.program_state?.gameover) return dmg;
                 }
+                exercise(A_STR, false);
             }
         }
     }

@@ -658,7 +658,7 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
 }
 
 // C ref: dogmove.c dog_goal()
-async function dog_goal(mtmp, edog, after, udist, whappr) {
+export async function dog_goal(mtmp, edog, after, udist, whappr) {
     // C: Steeds don't move on their own will
     if (mtmp === game.u?.usteed) return -2;
 
@@ -740,15 +740,31 @@ async function dog_goal(mtmp, edog, after, udist, whappr) {
                         break;
                     }
                 }
-                // C: magic portal within distu <= 2
+                // C dogmove.c:596-601 — first MAGIC_PORTAL in the gf.ftrap
+                // walk decides (break after it whether or not in range; C
+                // assumes one portal per level). JS splits the C chain:
+                // maketrap pushes the live level.traps array and leaves
+                // game.ftrap null on fresh levels (an array after restore),
+                // so walk the doidtrap union (D-3411): gf-shaped store
+                // first, then level.traps, deduped.
                 if (appr === 0) {
-                    for (let t = game.ftrap; t; t = t.ntrap) {
-                        if (t.ttyp === MAGIC_PORTAL) {
-                            if (dist2(t.tx, t.ty, game.u.ux, game.u.uy) <= 2) {
-                                appr = 1;
-                            }
-                            break;
+                    const traplist = [];
+                    const seenTraps = new Set();
+                    const pushTrap = (t) => {
+                        if (t && !seenTraps.has(t)) { seenTraps.add(t); traplist.push(t); }
+                    };
+                    if (Array.isArray(game.ftrap)) {
+                        for (const t of game.ftrap) pushTrap(t);
+                    } else {
+                        for (let t = game.ftrap; t; t = t.ntrap) pushTrap(t);
+                    }
+                    for (const t of (game.level?.traps || [])) pushTrap(t);
+                    for (const t of traplist) {
+                        if ((t.ttyp | 0) !== MAGIC_PORTAL) continue;
+                        if (dist2(t.tx, t.ty, game.u.ux, game.u.uy) <= 2) {
+                            appr = 1;
                         }
+                        break;
                     }
                 }
             }

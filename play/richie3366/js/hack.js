@@ -9,7 +9,7 @@ import {
     NUM_TIPS, NHCORE_GETPOS_TIP,
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, IS_WALL, IS_TREE, IS_STWALL,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
-    NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
+    NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO, MAXNROFROOMS,
     is_pit, LANDMINE, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP,
     ROLLING_BOULDER_TRAP, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
     LEPREHALL, COCKNEST, ANTHOLE, DELPHI,
@@ -3205,9 +3205,17 @@ export async function check_special_room(newlev) {
 function search_special_rtype(type) {
     const rooms = game.level?.rooms;
     if (!rooms) return false;
-    const n = (game.level.nroom | 0) + (game.level.nsubroom | 0);
-    for (let i = 0; i < n; i++) {
-        if ((rooms[i]?.rtype | 0) === type) return true;
+    // C `:768–772` — rooms[0..] up to the hx<0 sentinel.
+    for (const croom of rooms) {
+        if (!croom || (croom.hx | 0) < 0) break;
+        if ((croom.rtype | 0) === type) return true;
+    }
+    // C `:773–777` + decl.c:1169 (`gs.subrooms ≡ &svr.rooms[MAXNROFROOMS+1]`):
+    // subrooms live at rooms[41+], not in a separate array.
+    for (let i = MAXNROFROOMS + 1; i < rooms.length; i++) {
+        const croom = rooms[i];
+        if (!croom || (croom.hx | 0) < 0) break;
+        if ((croom.rtype | 0) === type) return true;
     }
     return false;
 }

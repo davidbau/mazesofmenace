@@ -540,6 +540,7 @@ import { dowrite } from './write.js';
 import { encumber_msg, pickup_object, use_container } from './pickup.js';
 import {
     dig_check,
+    digactualhole,
     fillholetyp,
     liquid_flow,
     use_pick_axe,
@@ -3355,7 +3356,7 @@ export async function use_candle(obj, state = game, env = {}) {
 // transitions. Other missing effect helpers are void or explicitly discarded,
 // so their C call sites remain named gaps. Trouble state is stored in the
 // intrinsic timeout and property flags in u.uprops.
-async function use_unicorn_horn(obj, state = game, env = {}) {
+export async function use_unicorn_horn(obj, state = game, env = {}) {
     const message = env.message ?? ttyPline;
     const recordGap = (source) => {
         if (state === game) note_unported(source);
@@ -4757,12 +4758,8 @@ export async function do_break_wand(obj, state = game, rawEnv = {}) {
                     const makePit = random.rn2(obj.spe) < 3
                         || (!Can_dig_down(state.u.uz, state)
                             && !level.candig);
-                    // apply.c discards digactualhole()'s return, but the
-                    // non-hero BY_OBJECT aftermath is outside that port.
-                    // Preserve the argument's rn2 before leaving the gap.
-                    const trapType = makePit ? PIT : HOLE;
-                    note_unported(
-                        `dig.c digactualhole non-hero trap type ${trapType}`,
+                    await digactualhole(
+                        x, y, null, makePit ? PIT : HOLE, state, { ...env, random },
                     );
                 }
             }

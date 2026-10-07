@@ -75,7 +75,7 @@ import { disintegrate_arm, setworn, stuck_ring, unchanger, Amulet_off } from './
 import { summon_minion, dlord } from './minion.js';
 import {
     near_capacity, encumber_msg, feel_cockatrice, useup, useupf,
-    observe_object, update_inventory, makeknown,
+    observe_object, update_inventory, makeknown, Blind,
 } from './invent.js';
 import { punish, unpunish } from './read.js';
 import { attrcurse, rndcurse } from './sit.js';
@@ -229,9 +229,8 @@ function Inhell() {
     return !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
 }
 
-function Blind() {
-    return !!(game.u?.Blind || game.u?.ublind);
-}
+/* Blind: canonical invent.js export (C youprop.h:103) — the local clone
+   reading u.Blind/u.ublind never saw FROMFORM blindness (set_uasmon). */
 
 function Hallucination() {
     return !!(game.u?.Hallucination);
@@ -2964,8 +2963,15 @@ export async function doturn() {
         return ECMD_OK;
     }
     if (!(u.uconduct)) u.uconduct = {};
-    if (!(u.uconduct.gnostic++)) {
+    // C pray.c:2426 `if (!u.uconduct.gnostic++)` — post-increment always
+    // runs; livelog only when the old value was 0. The `| 0` idiom is the
+    // in-file dopray/dosacrifice precedent: a raw `undefined++` would leave
+    // NaN, breaking the `:2442` gnostic==1 ECMD_TIME test below.
+    if (!(u.uconduct.gnostic | 0)) {
+        u.uconduct.gnostic = 1;
         livelog_printf(LL_CONDUCT, 'rejected atheism by turning undead');
+    } else {
+        u.uconduct.gnostic = (u.uconduct.gnostic | 0) + 1;
     }
 
     const Gname = await halu_gname(u.ualign?.type ?? 0);

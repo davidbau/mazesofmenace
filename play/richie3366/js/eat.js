@@ -422,34 +422,8 @@ function incr_itimeout_prop(u, key, incr) {
     u[key] = ((u[key] | 0) & ~TIMEOUT) | ((cur + (incr | 0)) & TIMEOUT);
 }
 
-/**
- * C objects.h FOOD nutrition — extractor omits oc_nutrition (named omission).
- * Only otyps exercised by the reqtime-1 / cookie path need entries here.
- */
-const FOOD_NUTRITION = {
-    FORTUNE_COOKIE: 40,
-    APPLE: 50,
-    PEAR: 50,
-    ORANGE: 80,
-    MELON: 100,
-    BANANA: 80,
-    CARROT: 50,
-    FOOD_RATION: 800,
-    TRIPE_RATION: 200,
-    LEMBAS_WAFER: 800,
-    CRAM_RATION: 600,
-    K_RATION: 400,
-    C_RATION: 300,
-    EGG: 80,
-    CLOVE_OF_GARLIC: 40,
-    SPRIG_OF_WOLFSBANE: 40,
-    EUCALYPTUS_LEAF: 1,
-    CANDY_BAR: 100,
-    CREAM_PIE: 100,
-    PANCAKE: 200,
-    SLIME_MOLD: 250,
-    LUMP_OF_ROYAL_JELLY: 200,
-};
+/* C objects.h FOOD nutrition lives in the generated objects table
+ * (oc_nutrition via scripts/extract-objects.py, D-3606) — no hand table. */
 
 /**
  * C ref: trap.c unconscious — multi < 0 and (usleep or wake-msg prefixes).
@@ -703,7 +677,11 @@ export async function newuhs(incr) {
  * unset; meat-ring edge cases.
  */
 export async function gethungry() {
-    if (game.u?.uinvulnerable) return;
+    // C eat.c:3167 — uinvulnerable OR wizard debug_hunger ("no hunger",
+    // optlist.h:275) returns before every burn AND every draw (no rn2(10),
+    // no rn2(20)); the flag is live via the doset toggle (options.js
+    // DOSET_BOOL_ADDR → game.iflags.debug_hunger).
+    if (game.u?.uinvulnerable || game.iflags?.debug_hunger) return;
     const u = game.u;
 
     // C: (!Unaware || !rn2(10)) && eats && !Slow_digestion → uhunger--
@@ -1005,7 +983,8 @@ export async function lesshungry(num) {
 }
 
 /**
- * C ref: eat.c obj_nutrition — CORPSE uses mons[].cnutrit; FOOD oc_nutrition.
+ * C ref: eat.c obj_nutrition `:325–332` — CORPSE cnutrit, globby owt, else
+ * objects[].oc_nutrition (live from the objects extractor, D-3606).
  */
 export function obj_nutrition(otmp) {
     if (!otmp) return 0;
@@ -1013,10 +992,7 @@ export function obj_nutrition(otmp) {
         return mons(otmp.corpsenm)?.cnutrit ?? 0;
     }
     if (otmp.globby) return otmp.owt | 0;
-    const oc = game.objects?.[otmp.otyp];
-    if (oc?.oc_nutrition != null) return oc.oc_nutrition | 0;
-    const name = objectNames[otmp.otyp];
-    return FOOD_NUTRITION[name] ?? 0;
+    return (game.objects?.[otmp.otyp]?.oc_nutrition ?? 0) | 0;
 }
 
 /** C ref: eat.c nonrotting_food */

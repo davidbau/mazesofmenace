@@ -1105,8 +1105,11 @@ export async function study_book(spellbook) {
     }
 
     if (booktype === SPE_BLANK_PAPER) {
+        // C `:506–510` — makeknown (hack.h:1530) credits the hero:
+        // discover_object(x, TRUE, TRUE, TRUE) exercises WIS (rn2(19))
+        // when the type is newly named.
         await pline('This spellbook is all blank.');
-        discover_object(booktype, true, true);
+        makeknown(booktype);
         return 1;
     }
     if (booktype === SPE_NOVEL) {
@@ -1159,6 +1162,9 @@ export async function study_book(spellbook) {
         delay = -8 * oc_delay;
         break;
     default:
+        // C `:555–558` — unreachable for generated spellbook oc_level 1–7.
+        await impossible('Unknown spellbook level %d, book %d;',
+            oc_level, booktype);
         return 0;
     }
     game.context.spbook.delay = delay;
@@ -1170,8 +1176,10 @@ export async function study_book(spellbook) {
     if (spellid(i) === booktype && spellknow(i) > Math.trunc(KEEN / 10)) {
         const name = objectNameStrs[booktype] || 'spell';
         await pline(`You know "${name}" quite well already.`);
-        // C: makeknown(booktype)
-        discover_object(booktype, true, true);
+        // C `:570` — makeknown (hack.h:1530), credit_hero TRUE (same fix
+        // as the `:508` blank-paper arm: the spell may be undiscovered
+        // when learned via divine gift).
+        makeknown(booktype);
         if ((await yn_function('Refresh your memory anyway?', 'yn', 'n')) === 'n') {
             return 0;
         }

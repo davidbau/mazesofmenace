@@ -17,6 +17,7 @@ import {
     TIMER_LEVEL, TIMER_GLOBAL, TIMER_OBJECT, TIMER_MONSTER,
     RANGE_LEVEL, RANGE_GLOBAL,
     LS_OBJECT, LS_MONSTER,
+    W_WEP,
 } from './const.js';
 import { mons } from './monsters.js';
 import { savemon_edog } from './makemon.js';
@@ -188,6 +189,11 @@ export function serMon(mtmp) {
         out.mtrack.push({ x: c?.x | 0, y: c?.y | 0 });
     }
     out.minvent = serObjChain(mtmp.minvent);
+    // C save.c:834 savemon — Sfo_monst writes the whole struct incl the raw
+    // mw pointer; on restore only its null/non-null bit is load-bearing
+    // (restore.c:432 relinks via the W_WEP minvent scan), so persist it as
+    // a flag (object-valued fields are skipped by the loop above).
+    out.mw = mtmp.mw ? 1 : 0;
     savemon_edog(mtmp, out);
     return out;
 }
@@ -198,6 +204,19 @@ function deserMon(raw, ghostly = false) {
     delete mtmp.mtrack;
     mtmp.minvent = deserObjChain(raw.minvent, OBJ_MINVENT);
     for (let o = mtmp.minvent; o; o = o.nobj) o.ocarry = mtmp;
+    // C restore.c:432–444 restmonchn — the saved mw is only a non-null
+    // flag; relink it to the minvent member carrying W_WEP, else
+    // MON_NOWEP. The :443 impossible diagnostic is omitted (sync restore
+    // path; file precedent "impossible-only, unwritten").
+    mtmp.mw = null;
+    if (raw.mw) {
+        for (let o = mtmp.minvent; o; o = o.nobj) {
+            if (((o.owornmask | 0) & W_WEP) !== 0) {
+                mtmp.mw = o;
+                break;
+            }
+        }
+    }
     mtmp.data = mons(mtmp.mnum | 0);
     mtmp.mtrack = [];
     for (let j = 0; j < 4; j++) {

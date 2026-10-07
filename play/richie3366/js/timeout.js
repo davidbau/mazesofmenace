@@ -92,7 +92,7 @@ import { buzz } from './zap.js';
  * arms and skips them here to avoid double --.
  */
 const TIMEOUT_DEDICATED = new Set([
-    WOUNDED_LEGS, CONFUSION, BLINDED, DEAF, FUMBLING, FAST,
+    WOUNDED_LEGS, CONFUSION, BLINDED, DEAF, FUMBLING, FAST, STUNNED,
 ]);
 
 /** Flat H* mirrors that wiz_intrinsic / make_* keep beside uprops. */
@@ -344,6 +344,18 @@ function intr_bits(u, propId, flat) {
 /** C youprop.h E* — flat or uprops[prop].extrinsic. */
 function extr_bits(u, propId, flat) {
     return (u[flat] | 0) || (u.uprops?.[propId]?.extrinsic | 0);
+}
+
+/** C youprop.h HStun ≡ u.uprops[STUNNED].intrinsic — one field. */
+function set_HStun(bits) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[STUNNED]) {
+        u.uprops[STUNNED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    u.HStun = bits | 0;
+    u.Stunned = u.HStun;
+    u.uprops[STUNNED].intrinsic = bits | 0;
 }
 
 /** C youprop.h HDeaf ≡ u.uprops[DEAF].intrinsic — one field. */
@@ -1057,6 +1069,25 @@ export async function nh_timeout() {
     const was_flying = Flying();
     // C: for (upp = u.uprops; …) if ((intrinsic & TIMEOUT) && !(--intrinsic & TIMEOUT))
 
+    // C prop.h:32 — the -- loop runs in property index order, so STUNNED
+    // (=13) expires before CONFUSION (=14). Dedicated arm first (not the
+    // generic loop below) so same-tick stun+confusion expiry prints
+    // "steadier" first (D-3605: scen-impaired-Monk-94230 step 172).
+    // OR-read + dual-write like the DEAF/FUMBLING/FAST arms (D-1817).
+    const hs = (u.HStun | 0) | (u.uprops?.[STUNNED]?.intrinsic | 0);
+    if (hs & TIMEOUT) {
+        const next = hs - 1;
+        set_HStun(next);
+        if (!(next & TIMEOUT)) {
+            // C timeout.c:737-742 — set_itimeout(&HStun, 1L);
+            // make_stunned(0L, TRUE); if (!Stunned) stop_occupation().
+            u.HStun = ((u.HStun | 0) & ~TIMEOUT) | 1;
+            u.Stunned = u.HStun;
+            await make_stunned(0, true);
+            if (!((u.HStun | 0) || (u.Stunned | 0))) await stop_occupation();
+        }
+    }
+
     // C HWounded_legs ≡ uprops[WOUNDED_LEGS].intrinsic (youprop.h:136,
     // single storage). OR-read + dual-write like the DEAF/FUMBLING/FAST
     // arms: -- only the flat left #wizintrinsic/beartrap TIMEOUT stuck in
@@ -1218,31 +1249,16 @@ export async function nh_timeout() {
             if (p === HALLUC) {
                 u.Hallucination = !!(u.HHallucination & TIMEOUT);
             }
-            if (p === STUNNED) u.Stunned = u.HStun;
             if (p === GLIB) u.HGlib = next;
         }
         // Expiry arms below: STONED/SLIMED/SICK/STRANGLED deaths,
-        // STUNNED/HALLUC/CONFUSION/BLINDED/DEAF make_* + stop_occupation,
+        // HALLUC/CONFUSION/BLINDED/DEAF make_* + stop_occupation
+        // (STUNNED is a dedicated arm above, first, for C index order),
         // INVIS/LEVITATION/FLYING (D-1419/D-1421), SEE_INVIS, FAST,
         // FUMBLING, WOUNDED_LEGS, DETECT_MONSTERS, SLEEPY, VOMITING,
         // FIRE_RES/WWALKING, WARN_OF_MON, PASSES_WALLS,
         // MAGICAL_BREATHING, GLIB, PROT_FROM_SHAPE_CHANGERS,
         // ACID_RES/STONE_RES (+ wielding_corpse pair), DISPLACED.
-        if (!(next & TIMEOUT) && p === STUNNED) {
-            // C timeout.c:737-742 — set_itimeout(&HStun, 1L);
-            // make_stunned(0L, TRUE); if (!Stunned) stop_occupation().
-            // Re-arm the flat to 1 first: the -- above already zeroed it,
-            // and make_stunned only reports ("You feel a bit steadier
-            // now.") when old is nonzero — same shape as the HALLUC arm
-            // below and the CONFUSION/BLINDED/DEAF dedicated arms above.
-            // uprops already reads 0 here (generic loop), and
-            // make_stunned clears the flat, so both slots end at 0 and
-            // the arm cannot re-fire.
-            u.HStun = ((u.HStun | 0) & ~TIMEOUT) | 1;
-            u.Stunned = u.HStun;
-            await make_stunned(0, true);
-            if (!((u.HStun | 0) || (u.Stunned | 0))) await stop_occupation();
-        }
         if (!(next & TIMEOUT) && p === HALLUC) {
             // C timeout.c:777-783 — set_itimeout(&HHallucination, 1L);
             // make_hallucinated(0L, TRUE, 0L); if (!Hallucination)

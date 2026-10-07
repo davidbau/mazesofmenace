@@ -2053,13 +2053,15 @@ function u_locomotion_verb(def) {
     return locomotion(game.youmonst?.data, def);
 }
 
-/** C hack.c losehp then maybe_wail / done(DIED). */
+/** C hack.c losehp then maybe_wail / done(DIED). True while the hero
+ * stays dead; a lifesave (amulet, wizard/explore Die? decline) clears
+ * gameover inside done() (end.c) and returns false so the caller
+ * continues in C order (D-3608 oil pattern). */
 async function finish_hero_losehp() {
     await finish_maybe_wail();
     if (game._losehp_needs_done) {
         const { finish_losehp_done } = await import('./end.js');
         await finish_losehp_done();
-        return true;
     }
     return !!(game.program_state?.gameover);
 }
@@ -3453,6 +3455,7 @@ export async function float_down(hmask, emask) {
                         await pline('You fall over.');
                     }
                     await losehp(rnd(2), 'dangerous winds', KILLED_BY);
+                    if (await finish_hero_losehp()) return 1;
                     if (u.usteed) {
                         const { dismount_steed } = await import('./steed.js');
                         const { DISMOUNT_FELL } = await import('./const.js');
@@ -3543,6 +3546,7 @@ export async function b_trapped(item, bodypart = NO_PART) {
     await pline(`KABOOM!!  ${The(item)} was booby-trapped!`);
     await wake_nearby(false);
     await losehp(maybe_half_phys(dmg), 'explosion', KILLED_BY_AN);
+    if (await finish_hero_losehp()) return;
     exercise(A_STR, false);
     if ((bodypart | 0) !== NO_PART) exercise(A_CON, false);
     const u = game.u || (game.u = {});
@@ -3776,6 +3780,7 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
                     rn2(2) ? RIGHT_SIDE : LEFT_SIDE, rn1(10, 10),
                 );
                 losehp(maybe_half_phys(dmg), 'bear trap', KILLED_BY_AN);
+                if (await finish_hero_losehp()) return Trap_Effect_Finished;
             }
         }
         exercise(A_DEX, false);
@@ -3924,6 +3929,7 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
             const dam = u.mhmax | 0;
             await pline('You are covered with rust!');
             losehp(maybe_half_phys(dam), 'rusting away', KILLED_BY);
+            if (await finish_hero_losehp()) return Trap_Effect_Finished;
         } else if ((u.umonnum | 0) === PM_GREMLIN && rn2(3)) {
             // C trap.c:1652–1653 split_mon(&youmonst, NULL)
             const { split_mon } = await import('./sit.js');
@@ -4038,7 +4044,10 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags) {
             );
             deltrap(trap);
             newsym(u.ux, u.uy);
-            return Trap_Is_Gone;
+            /* C trap.c:1332-1338 — the hero empty arm falls through to
+               Trap_Effect_Finished; only the monster arm (:1388) returns
+               Trap_Is_Gone. */
+            return Trap_Effect_Finished;
         }
         let dmg = d(2, 6);
         let harmless = false;
@@ -4071,6 +4080,7 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags) {
         newsym(u.ux, u.uy);
         if (!harmless) {
             losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
+            if (await finish_hero_losehp()) return Trap_Effect_Finished;
             exercise(A_STR, false);
         }
         return Trap_Effect_Finished;
@@ -4999,7 +5009,10 @@ async function dofiretrap(box) {
             `A cascade of steamy bubbles erupts from ${the(box ? xname(box) : surface(u.ux, u.uy))}!`,
         );
         if (Fire_resistance()) await You('are uninjured.');
-        else losehp(rnd(3), 'boiling water', KILLED_BY);
+        else {
+            losehp(rnd(3), 'boiling water', KILLED_BY);
+            await finish_hero_losehp();
+        }
         return;
     }
     await pline(
@@ -5064,7 +5077,10 @@ async function dofiretrap(box) {
         monstunseesu(M_SEEN_FIRE);
     }
     if (!num) await You('are uninjured.');
-    else losehp(num, TOWER_OF_FLAME, KILLED_BY_AN); /* fire damage */
+    else {
+        losehp(num, TOWER_OF_FLAME, KILLED_BY_AN); /* fire damage */
+        if (await finish_hero_losehp()) return;
+    }
     await burn_away_slime(); /* C `:4305`, static timeout.js import */
 
     const you = game.youmonst || { _youmonst: true };
@@ -5228,6 +5244,7 @@ async function trapeffect_magic_trap(mtmp, trap, trflags) {
             newsym(u.ux, u.uy); /* update position */
             await pline('You are caught in a magical explosion!');
             losehp(rnd(10), 'magical explosion', KILLED_BY_AN);
+            if (await finish_hero_losehp()) return Trap_Effect_Finished;
             await pline('Your body absorbs some of the magical energy!');
             u.uenmax = (u.uenmax | 0) + 2;
             u.uen = u.uenmax;
@@ -5900,6 +5917,7 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         trap.ttyp = PIT;
         trap.madeby_u = false;
         await losehp(maybe_half_phys(damage), 'land mine', KILLED_BY_AN);
+        if (await finish_hero_losehp()) return Trap_Effect_Finished;
         await blow_up_landmine(trap);
         if (steed_mid && saddle && !u.usteed) /* C :2591–2592 */
             void keep_saddle_with_steedcorpse(steed_mid, game.fobj, saddle);
@@ -6609,7 +6627,7 @@ export async function drown() {
         if (game._losehp_needs_done || game.program_state?.gameover) {
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
-            return true;
+            if (game.program_state?.gameover) return true;
         }
     }
     if (inpool_ok)
@@ -8111,6 +8129,7 @@ export async function chest_trap(obj, bodypart, disarm) {
             }
             await wake_nearby(false);
             losehp(maybe_half_phys(d(6, 6)), buf, KILLED_BY_AN);
+            if (await finish_hero_losehp()) return chestgone;
             exercise(A_STR, false);
             if (costly && loss) {
                 if (insider) {
@@ -8166,7 +8185,10 @@ export async function chest_trap(obj, bodypart, disarm) {
                     game.youmonst || { _youmonst: true }, AD_ELEC, orig_dmg,
                 );
             }
-            if (dmg) losehp(dmg, 'electric shock', KILLED_BY_AN);
+            if (dmg) {
+                losehp(dmg, 'electric shock', KILLED_BY_AN);
+                if (await finish_hero_losehp()) return false;
+            }
             break;
         }
         case 5: case 4: case 3: {

@@ -122,7 +122,7 @@ import {
 } from './const.js';
 import { config_error_add } from './botl.js';
 import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
-import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd, x_monnam } from './do_name.js';
+import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd, x_monnam, y_monnam } from './do_name.js';
 import { dobugreport } from './report.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at, sobj_at } from './mkobj.js';
@@ -6604,8 +6604,8 @@ export async function domove(dx, dy) {
         }
 
         // C ref: hack.c test_move — closed_door autoopen / orthogonal bump
-        // Passes_walls / ooze / Underwater / tunnels / Blind feel_location /
-        // steed lead-through deferred (named in c-js-map turns).
+        // Passes_walls / ooze / Underwater / tunnels / Blind feel_location
+        // deferred (named in c-js-map turns); steed lead-through live below.
         // Fumbling ≡ Fumbling() H||E (D-0691/D-0696) — not sticky u.Fumbling.
         if (closed_door_at(newx, newy)) {
             if (!game.context) game.context = {};
@@ -6625,8 +6625,12 @@ export async function domove(dx, dy) {
                 const Blind = !!(u.Blind || u.ublind
                     || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
                 if (Blind || u.Stunned || acurr(A_DEX) < 10 || Fumbling()) {
-                    await pline('Ouch!  You bump into a door.');
-                    exercise(A_DEX, false);
+                    if (u.usteed) { // C :1115–1117 — riding hero leads, never Ouch
+                        await pline(`You can't lead ${y_monnam(u.usteed)} through that closed door.`);
+                    } else { // C :1118–1120
+                        await pline('Ouch!  You bump into a door.');
+                        exercise(A_DEX, false);
+                    }
                     // C: door_opened = move = TRUE; nomul(0) stops running
                     game.context.door_opened = true;
                     game.context.move = 1;

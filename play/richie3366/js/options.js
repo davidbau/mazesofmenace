@@ -2081,8 +2081,14 @@ export async function handler_paranoid_confirmation() {
     if (!game.flags) game.flags = {};
     const wizard = !!(game.flags.wizard || game.flags.debug); // C `wizard` (end.js/teleport.js test)
     // C `:5963–5965` create_nhwindow/start_menu/zeroany — raw menu below.
-    // C `:5992` end_menu prompt painted as header (D-2762 precedent).
-    const raw = [{ text: 'Actions requiring extra confirmation:', selectable: false }];
+    // C tty_end_menu (wintty.c `:2680–2690`): a non-null end_menu prompt
+    // is prepended as the prompt in tty_menu_promptstyle (= menu_headings,
+    // default ATR_INVERSE), then a blank separator item (handler_menu_objsyms
+    // precedent).
+    const raw = [
+        { text: 'Actions requiring extra confirmation:', selectable: false, attr: ATR_INVERSE }, // C `:5992`
+        { text: '', selectable: false }, // C wintty.c blank item
+    ];
     for (let i = 0; paranoia[i].flagmask !== 0; ++i) { // C `:5966`
         if (paranoia[i].flagmask === PARANOID_BONES && !wizard) continue; // C `:5967–5968`
         /* the 'swim' choice mentions the 'm' movement prefix in its
@@ -10278,7 +10284,7 @@ const DOSET_BOOL_ADDR = {
     customcolors: { obj: 'iflags', key: 'customcolors' },
     customsymbols: { obj: 'iflags', key: 'customsymbols' },
     dark_room: { obj: 'flags', key: 'dark_room' },
-    debug_hunger: { obj: 'iflags', key: 'debug_hunger' }, // C optlist.h:276 &iflags.debug_hunger (wizard menu row; no JS consumer yet)
+    debug_hunger: { obj: 'iflags', key: 'debug_hunger' }, // C optlist.h:276 &iflags.debug_hunger (wizard menu row; consumed by eat.js gethungry :3167 gate)
     debug_mongen: { obj: 'iflags', key: 'debug_mongen' }, // C optlist.h:279 &iflags.debug_mongen
     debug_overwrite_stairs: { obj: 'iflags', key: 'debug_overwrite_stairs' }, // C optlist.h:282 &iflags.debug_overwrite_stairs (no JS consumer yet)
     dropped_nopick: { obj: 'flags', key: 'nopick_dropped' },
@@ -11049,7 +11055,12 @@ export async function doset() {
             selectable: false,
             attr: ATR_INVERSE,
         });
-        // set_gameview compounds — non-selectable (indent replaces "a - ")
+        // set_gameview compounds — non-selectable (indent replaces "a - ").
+        // C doset `:8871–8880` gameview pass → doset_add_menu `:9036–9044`
+        // (optfn get_val into buf2, "unknown" unless optn_ok + non-empty).
+        // 12 of 13 rows route through their live optfn; `name` keeps its
+        // live game.plname read (optfn_name get_val returns the same field
+        // — D-3580 left it live, not a literal).
         for (const [name, val] of [
             ['windowtype', 'tty'],
             ['playmode', 'normal'],
@@ -11066,14 +11077,23 @@ export async function doset() {
             ['soundlib', null],
         ]) {
             if (doset_skip_unsupported(name)) continue;
-            // C doset_add_menu `:9038` get_val. soundlib is set_gameview
-            // (non-selectable); the column is the active library name.
+            // C doset_add_menu `:9038` get_val for every compound, including
+            // the set_gameview pass (non-selectable; indexoffset 0). Retires
+            // D-3580 omission (3) — windowtype/msghistory/pettype/cat/dog/
+            // horsename literals — now that scen-options-Valkyrie-94311
+            // step 33 probes pettype [horse] (rc pettype:horse).
             const roleOptfn = name === 'soundlib' ? optfn_soundlib
                 : name === 'gender' ? optfn_gender
                 : name === 'race' ? optfn_race
                 : name === 'role' ? optfn_role
                 : name === 'alignment' ? optfn_alignment
                 : name === 'playmode' ? optfn_playmode // C `:9038` get_val → optfn_playmode `:3499–3501` (wizard→debug, discover→explore, else normal)
+                : name === 'windowtype' ? optfn_windowtype // C `:9038` → `:4982–4984` 'tty'
+                : name === 'catname' ? optfn_catname // C `:9038` → petname `:868–871` name or '(none)'
+                : name === 'dogname' ? optfn_dogname // C `:9038` → petname `:868–871`
+                : name === 'horsename' ? optfn_horsename // C `:9038` → petname `:868–871`
+                : name === 'msghistory' ? optfn_msghistory // C `:9038` → `:2542–2544` iflags.msg_history
+                : name === 'pettype' ? optfn_pettype // C `:9038` → `:3237–3243` preferred_pet spelling
                 : null;
             // C doset_add_menu `:9038` get_val for a live optfn.
             const shown = roleOptfn
@@ -11724,7 +11744,8 @@ export async function optfn_suppress_alert(optidx, req, negated, opts, op) {
  * optfn } — addr twins DOSET_BOOL_ADDR (doset toggles) plus 8 live-field
  * mappings (debug_mongen, female, menu_tab_sep, monpolycontrol,
  * montelecontrol, perm_invent, sanity_check, splash_screen); 18 BoolOpt rows
- * keep addr null (their C addr has no live JS field — named). Every other
+ * keep addr null (their C addr has no live JS field — named; debug_hunger
+ * is the exception: its field lives on the DOSET_BOOL_ADDR twin). Every other
  * optfn is null (optfn_boolean and the remaining optfn and pfxfn handlers
  * are unported — named). The C sentinel (name 0, disregarded) is omitted:
  * JS length terminates the loops. */
@@ -11814,7 +11835,7 @@ const allopt = [
     // optlist.h:271 NHOPTC(DECgraphics)
     { name: 'DECgraphics', opttyp: CompOpt, idx: 41, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_DECgraphics },
     // optlist.h:275 NHOPTB(debug_hunger)
-    { name: 'debug_hunger', opttyp: BoolOpt, idx: 42, setwhere: SET_WIZNOFUZ, initval: false, addr: null /* C: &iflags.debug_hunger, no live field */, optfn: null },
+    { name: 'debug_hunger', opttyp: BoolOpt, idx: 42, setwhere: SET_WIZNOFUZ, initval: false, addr: null /* C: &iflags.debug_hunger — live via the DOSET_BOOL_ADDR twin (doset toggle + gethungry gate); allopt twin (config/parseoptions) unported — named */, optfn: null },
     // optlist.h:278 NHOPTB(debug_mongen)
     { name: 'debug_mongen', opttyp: BoolOpt, idx: 43, setwhere: SET_WIZNOFUZ, initval: false, addr: { obj: 'iflags', key: 'debug_mongen' } /* C: &iflags.debug_mongen */, optfn: null },
     // optlist.h:281 NHOPTB(debug_overwrite_stairs)

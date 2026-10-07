@@ -14,7 +14,7 @@ import {
     D_CLOSED, D_LOCKED, W_NONPASSWALL, IS_ALTAR, HEADSTONE,
     MIGR_RANDOM, MIGR_PORTAL, MON_MIGRATING, NO_TRAP,
     is_xport,
-    ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP, TEMPLE,
+    ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP, TEMPLE, MAXNROFROOMS,
     A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL, AM_SHRINE, Amask2align,
     ESHK, EPRI, DISPLACED,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT, TELEDS_ALLOW_DRAG,
@@ -847,15 +847,24 @@ export async function tele_restrict(mon) {
 
 /** C ref: mkroom.c search_special — first room/subroom matching type. */
 function search_special(type) {
-    const lists = [game.level?.rooms, game.level?.subrooms];
-    for (const rooms of lists) {
-        if (!rooms) continue;
-        for (const croom of rooms) {
-            if (!croom || (croom.hx | 0) < 0) break;
-            const rt = croom.rtype | 0;
-            if ((type === ANY_SHOP && rt >= SHOPBASE) || rt === type) {
-                return croom;
-            }
+    const rooms = game.level?.rooms;
+    if (!rooms) return null;
+    // C `:768–772` — rooms[0..] up to the hx<0 sentinel.
+    for (const croom of rooms) {
+        if (!croom || (croom.hx | 0) < 0) break;
+        const rt = croom.rtype | 0;
+        if ((type === ANY_SHOP && rt >= SHOPBASE) || rt === type) {
+            return croom;
+        }
+    }
+    // C `:773–777` + decl.c:1169 (`gs.subrooms ≡ &svr.rooms[MAXNROFROOMS+1]`):
+    // subrooms live at rooms[41+], not in a separate array.
+    for (let i = MAXNROFROOMS + 1; i < rooms.length; i++) {
+        const croom = rooms[i];
+        if (!croom || (croom.hx | 0) < 0) break;
+        const rt = croom.rtype | 0;
+        if ((type === ANY_SHOP && rt >= SHOPBASE) || rt === type) {
+            return croom;
         }
     }
     return null;

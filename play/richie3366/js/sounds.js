@@ -39,7 +39,7 @@ import {
 } from './monsters.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
-    ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
+    ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT, MAXNROFROOMS,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO, EPRI, HAIR, NECK, HEAD,
     ESHK, EMIN, has_emin, Is_astralevel, Is_sanctum, Is_oracle_level, In_endgame,
     STRAT_WAITMASK, STRANGLED, PLNMSG_GROWL, FULL_MOON, Upolyd, BLOOD,
@@ -563,18 +563,22 @@ function gold_at(x, y) {
  * import this one, do not add a third copy. Imported by mhitm.js shkgone.
  */
 export function search_special(type) {
-    const lists = [game.level?.rooms, game.level?.subrooms];
-    for (const rooms of lists) {
-        if (!rooms) continue;
-        for (const croom of rooms) {
-            if (!croom || (croom.hx | 0) < 0) break;
-            const rt = croom.rtype | 0;
-            if ((type === ANY_TYPE && rt !== OROOM)
-                || (type === ANY_SHOP && rt >= SHOPBASE)
-                || rt === type) {
-                return croom;
-            }
-        }
+    const rooms = game.level?.rooms;
+    if (!rooms) return null;
+    const match = (rt) => (type === ANY_TYPE && rt !== OROOM)
+        || (type === ANY_SHOP && rt >= SHOPBASE)
+        || rt === type;
+    // C `:768–772` — rooms[0..] up to the hx<0 sentinel.
+    for (const croom of rooms) {
+        if (!croom || (croom.hx | 0) < 0) break;
+        if (match(croom.rtype | 0)) return croom;
+    }
+    // C `:773–777` + decl.c:1169 (`gs.subrooms ≡ &svr.rooms[MAXNROFROOMS+1]`):
+    // subrooms live at rooms[41+], not in a separate array.
+    for (let i = MAXNROFROOMS + 1; i < rooms.length; i++) {
+        const croom = rooms[i];
+        if (!croom || (croom.hx | 0) < 0) break;
+        if (match(croom.rtype | 0)) return croom;
     }
     return null;
 }

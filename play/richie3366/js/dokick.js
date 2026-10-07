@@ -51,9 +51,10 @@ import { AT_KICK } from './mhitm.js';
 import { digests } from './mhitu.js';
 import { surface } from './sit.js';
 import {
-    overexertion, losehp, maybe_half_phys, in_rooms, in_town, is_pool,
+    overexertion, losehp, finish_maybe_wail, maybe_half_phys, in_rooms, in_town, is_pool,
     impact_disturbs_zombies, You_hear,
 } from './hack.js';
+import { finish_losehp_done } from './end.js';
 import {
     set_wounded_legs, legs_in_no_shape, b_trapped, t_at, water_damage,
     fall_through, chest_trap, instapetrify, activate_statue_trap,
@@ -321,7 +322,8 @@ export function kickstr(kickobjnam) {
 /**
  * C ref: dokick.c kick_ouch — solid terrain / failed impact (partial).
  * wake_nearto wired; drawbridge wall remap D-1361; air/Lev hurtle D-1370.
- * losehp applies the damage roll (regen_hp needs uhp < uhpmax).
+ * losehp applies the damage roll (regen_hp needs uhp < uhpmax);
+ * fatal drains done()/wail via the D-3608 oil pattern.
  * set_wounded_legs on !rn2(3) → ATEMP(DEX)-- (D-0785).
  * killer string via kickstr (D-1343) after maploc remap.
  */
@@ -351,10 +353,20 @@ export async function kick_ouch(x, y, kickobjnam = '') {
     //     losehp(Maybe_Half_Phys(dmg), kickstr(buf, kickobjnam), KILLED_BY);
     const dmg = rnd(acurr(A_CON) > 15 ? 3 : 5);
     await losehp(maybe_half_phys(dmg), kickstr(kickobjnam), KILLED_BY);
-    /* C dokick.c:903–905 — losehp is noreturn on death. Else
-     * if (Is_airlevel || Levitation) hurtle(-dx,-dy,rn1(2,4),TRUE).
-     * rn1 is an argument so it burns only when the if is true. */
-    if (game._losehp_needs_done || game.program_state?.gameover) return;
+    /* C dokick.c:903 + hack.c losehp:4287 — losehp is noreturn on death
+     * (done(DIED) unless life-saved) and maybe_wails on survival. ESM
+     * adapter (D-3608 oil pattern): drain done()/wail here so a fatal
+     * kick renders the death sequence; a lifesave clears gameover inside
+     * done() and C continues to the hurtle check below. */
+    if (game._losehp_needs_done) {
+        await finish_losehp_done();
+        if (game.program_state?.gameover) return;
+    } else {
+        await finish_maybe_wail();
+    }
+    /* C dokick.c:904–905 — if (Is_airlevel || Levitation)
+     * hurtle(-dx,-dy,rn1(2,4),TRUE). rn1 is an argument so it burns
+     * only when the if is true. */
     if (Is_airlevel(game.u?.uz) || Levitation()) {
         const u = game.u || {};
         await hurtle(-(u.dx || 0), -(u.dy || 0), rn1(2, 4), true);

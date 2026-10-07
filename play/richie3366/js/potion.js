@@ -136,7 +136,7 @@ import {
     EYE, SEE_INVIS,
     DETECT_MONSTERS, LEVITATION, INVIS, HEAD, COLNO, ROWNO,
     In_endgame, Is_earthlevel, Is_airlevel, Is_waterlevel, In_sokoban,
-    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF, STRANGLED, G_GONE,
+    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF, STRANGLED, STUNNED, G_GONE,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
     ERODE_CORRODE, EF_GREASE,
@@ -521,6 +521,15 @@ async function peffect_sickness(otmp) {
         if (!Role_if_healer()) {
             // C: losehp(1, "mildly contaminated potion", KILLED_BY_AN)
             losehp(1, 'mildly contaminated potion', KILLED_BY_AN);
+            /* C potion.c:971 losehp is noreturn-on-death (hack.c:4287
+             * urgent_pline + done(DIED)); JS defers via
+             * _losehp_needs_done — drain like peffect_oil. */
+            if (game._losehp_needs_done) {
+                await finish_losehp_done();
+                if (game.program_state?.gameover) return;
+            } else {
+                await finish_maybe_wail();
+            }
         }
     } else {
         if (Poison_resistance()) {
@@ -552,12 +561,30 @@ async function peffect_sickness(otmp) {
                     contaminant,
                     otmp.fromsink ? KILLED_BY : KILLED_BY_AN,
                 );
+                /* C potion.c:994,997 losehp is noreturn-on-death
+                 * (hack.c:4287 urgent_pline + done(DIED)); JS defers via
+                 * _losehp_needs_done — drain like peffect_oil. */
+                if (game._losehp_needs_done) {
+                    await finish_losehp_done();
+                    if (game.program_state?.gameover) return;
+                } else {
+                    await finish_maybe_wail();
+                }
             } else {
                 losehp(
                     1 + rn2(2),
                     contaminant,
                     otmp.fromsink ? KILLED_BY : KILLED_BY_AN,
                 );
+                /* C potion.c:1001 losehp is noreturn-on-death (hack.c:4287
+                 * urgent_pline + done(DIED)); JS defers via
+                 * _losehp_needs_done — drain like peffect_oil. */
+                if (game._losehp_needs_done) {
+                    await finish_losehp_done();
+                    if (game.program_state?.gameover) return;
+                } else {
+                    await finish_maybe_wail();
+                }
             }
             exercise(A_CON, false);
         }
@@ -937,7 +964,11 @@ function stagger_poly(ptr, def) {
 /**
  * C ref: potion.c make_stunned(xtime, talk)
  * Sync HStun TIMEOUT; mirror onto u.Stunned for JS gates (C: Stun ≡ HStun).
- * Named omissions: usteed saddle wobble.
+ * Dual-writes uprops[STUNNED].intrinsic: C HStun IS that slot
+ * (youprop.h:80) and the nh_timeout generic loop masters it — a flat-only
+ * write while the slot is non-empty (stacking re-grant, lizard cut-to-2,
+ * unicorn-horn/prayer cure) was clobbered next tick (D-3605).
+ * Named omissions: none (usteed saddle arm live below).
  */
 export async function make_stunned(xtime, talk) {
     const u = game.u || (game.u = {});
@@ -961,6 +992,12 @@ export async function make_stunned(xtime, talk) {
     }
     u.HStun = ((u.HStun | 0) & ~TIMEOUT) | itimeout(xtime);
     u.Stunned = u.HStun;
+    // C youprop.h:80 single storage — dual-write the slot the tick masters
+    // (flag-preserving, same clamped value as the flat).
+    if (!u.uprops) u.uprops = {};
+    const stunprop = u.uprops[STUNNED]
+        || (u.uprops[STUNNED] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
+    set_itimeout(stunprop, xtime);
 }
 
 /**
@@ -1432,6 +1469,15 @@ async function peffect_levitation(otmp) {
                     'colliding with the ceiling',
                     KILLED_BY,
                 );
+                /* C potion.c:1204 losehp is noreturn-on-death
+                 * (hack.c:4287 urgent_pline + done(DIED)); JS defers via
+                 * _losehp_needs_done — drain like peffect_oil. */
+                if (game._losehp_needs_done) {
+                    await finish_losehp_done();
+                    if (game.program_state?.gameover) return;
+                } else {
+                    await finish_maybe_wail();
+                }
                 potion_nothing = 0;
             }
         }
@@ -1602,6 +1648,15 @@ async function peffect_water(otmp) {
                 'potion of holy water',
                 KILLED_BY_AN,
             );
+            /* C potion.c:738 losehp is noreturn-on-death (hack.c:4287
+             * urgent_pline + done(DIED)); JS defers via
+             * _losehp_needs_done — drain like peffect_oil. */
+            if (game._losehp_needs_done) {
+                await finish_losehp_done();
+                if (game.program_state?.gameover) return;
+            } else {
+                await finish_maybe_wail();
+            }
         } else if (otmp.cursed) {
             await You_feel('quite proud of yourself.');
             await healup(d(2, 6), 0, false, false);
@@ -1623,6 +1678,15 @@ async function peffect_water(otmp) {
                 'potion of unholy water',
                 KILLED_BY_AN,
             );
+            /* C potion.c:759 losehp is noreturn-on-death (hack.c:4287
+             * urgent_pline + done(DIED)); JS defers via
+             * _losehp_needs_done — drain like peffect_oil. */
+            if (game._losehp_needs_done) {
+                await finish_losehp_done();
+                if (game.program_state?.gameover) return;
+            } else {
+                await finish_maybe_wail();
+            }
         } else {
             await You_feel('full of dread.');
         }
@@ -1671,7 +1735,8 @@ function Stoned(u = game.u || {}) {
  * You_feel a little strange (Hallucination: normal). If !Unchanging:
  * unblessed or already polymorphed → polyself(POLY_NOFLAGS); blessed
  * original form → polyself(POLY_CONTROLLED|POLY_LOW_CTRL) then
- * mtimedone = min(mtimedone, rn2(15)+10) when still Upolyd.
+ * mtimedone = min(mtimedone, rn2(15)+10) when still Upolyd (min is a
+ * macro: losing branch draws rn2(15) twice — D-3615).
  * SPE_POLYMORPH is not this case (wand-duplicate / zapyourself).
  * potionhit D-1472 / potionbreathe D-1477 / dipsink POT_POLYMORPH still named.
  */
@@ -1684,7 +1749,14 @@ async function peffect_polymorph(otmp) {
         } else {
             await polyself(POLY_CONTROLLED | POLY_LOW_CTRL);
             if ((u.mtimedone | 0) && ((u.umonnum | 0) !== (u.umonster | 0))) {
-                u.mtimedone = Math.min(u.mtimedone | 0, rn2(15) + 10);
+                // C :1327 min() is a macro ((x)<(y)?(x):(y),
+                // hack.h:1518): the losing branch's rn2(15) evaluates
+                // TWICE (condition draw, then result draw). Math.min
+                // draws once and shifts the keystream.
+                const d1 = rn2(15);
+                if (!((u.mtimedone | 0) < d1 + 10)) {
+                    u.mtimedone = rn2(15) + 10;
+                }
             }
         }
     }
@@ -1746,6 +1818,15 @@ async function peffect_acid(otmp) {
         await pline(`This burns${how}!`);
         const dmg = d(otmp.cursed ? 2 : 1, otmp.blessed ? 4 : 8);
         losehp(maybe_half_phys(dmg), 'potion of acid', KILLED_BY_AN);
+        /* C potion.c:1309 losehp is noreturn-on-death (hack.c:4287
+         * urgent_pline + done(DIED)); JS defers via
+         * _losehp_needs_done — drain like peffect_oil. */
+        if (game._losehp_needs_done) {
+            await finish_losehp_done();
+            if (game.program_state?.gameover) return;
+        } else {
+            await finish_maybe_wail();
+        }
         exercise(A_CON, false);
     }
     if (Stoned(u)) {
@@ -2136,6 +2217,11 @@ export async function dopotion(otmp) {
     potion_unkn = 0;
     const retval = await peffects(otmp);
     if (retval >= 0) return retval ? 1 : 0;
+    /* C dopotion :618-641 tail runs only when the hero survives: a fatal
+     * losehp inside peffects never returns (hack.c:4287 urgent_pline +
+     * done(DIED) noreturn; lifesave clears gameover inside done(), so
+     * the tail still runs on a lifesave, like C). */
+    if (game.program_state?.gameover) return 1;
 
     if (potion_nothing) {
         potion_unkn++;
@@ -3232,6 +3318,15 @@ async function dip_potion_explosion(obj, dmg) {
         if (!breathless(yd) || haseyes(yd)) await potionbreathe(obj);
         useupall(obj);
         losehp(dmg, 'alchemic blast', KILLED_BY_AN);
+        /* C potion.c:2433 losehp is noreturn-on-death (hack.c:4287
+         * urgent_pline + done(DIED)); JS defers via
+         * _losehp_needs_done — drain like peffect_oil. */
+        if (game._losehp_needs_done) {
+            await finish_losehp_done();
+            if (game.program_state?.gameover) return true;
+        } else {
+            await finish_maybe_wail();
+        }
         return true;
     }
     return false;
@@ -3918,6 +4013,15 @@ export async function potionhit(mon, obj, how) {
             ? 'propelled potion'
             : 'thrown potion';
         losehp(maybe_half_phys(rnd(2)), killer, KILLED_BY_AN);
+        /* C potion.c:1638 losehp is noreturn-on-death (hack.c:4287
+         * urgent_pline + done(DIED)); JS defers via
+         * _losehp_needs_done — drain like peffect_oil. */
+        if (game._losehp_needs_done) {
+            await finish_losehp_done();
+            if (game.program_state?.gameover) return;
+        } else {
+            await finish_maybe_wail();
+        }
     } else {
         tx = mon.mx | 0;
         ty = mon.my | 0;
@@ -3977,6 +4081,15 @@ export async function potionhit(mon, obj, how) {
                 await pline(`This burns${burn}!`);
                 const dmg = d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
                 losehp(maybe_half_phys(dmg), 'potion of acid', KILLED_BY_AN);
+                /* C potion.c:1702 losehp is noreturn-on-death (hack.c:4287
+                 * urgent_pline + done(DIED)); JS defers via
+                 * _losehp_needs_done — drain like peffect_oil. */
+                if (game._losehp_needs_done) {
+                    await finish_losehp_done();
+                    if (game.program_state?.gameover) return;
+                } else {
+                    await finish_maybe_wail();
+                }
             }
             break;
         default:
