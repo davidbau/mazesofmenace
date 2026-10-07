@@ -1510,15 +1510,16 @@ export const WC2_EXTRASTATUS = 0x080000;
 /**
  * C wintty.c tty_procs.wincap2 `:111–125` (unix tty: SELECTSAVED and
  * STATUS_HILITES on per config.h:575/:616; EXTRACOLORS on, NO_TERMS is
- * not unix) minus the four status bits (HILITE_STATUS|HITPOINTBAR|
- * FLUSH_STATUS|RESET_STATUS): those flip VIA_WINDOWPORT() into the
- * status_update delivery path, a named omission (botl.js header), so the
- * JS model cannot carry them yet. Every other C tty bit is installed
- * (display.js install_tty_wincap2; options.js fallback mirrors it).
+ * not unix) including the four status bits (HILITE_STATUS|HITPOINTBAR|
+ * FLUSH_STATUS|RESET_STATUS): C tty sets them (wintty.c `:114–117`),
+ * VIA_WINDOWPORT() is true, and status_update delivery is live
+ * (botl.js tty_status_update). Installed by display.js
+ * install_tty_wincap2; options.js fallback mirrors it.
  */
 export const TTY_WINCAP2 = WC2_URGENT_MESG | WC2_SUPPRESS_HIST
     | WC2_DARKGRAY | WC2_STATUSLINES | WC2_U_UTF8STR | WC2_PETATTR
-    | WC2_EXTRACOLORS | WC2_EXTRASTATUS | WC2_SELECTSAVED;
+    | WC2_EXTRACOLORS | WC2_EXTRASTATUS | WC2_SELECTSAVED
+    | WC2_HILITE_STATUS | WC2_HITPOINTBAR | WC2_FLUSH_STATUS | WC2_RESET_STATUS;
 export const ALIGN_LEFT = 1;
 export const ALIGN_RIGHT = 2;
 export const ALIGN_TOP = 3;

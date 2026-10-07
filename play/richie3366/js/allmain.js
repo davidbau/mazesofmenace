@@ -213,10 +213,8 @@ export function init_sound_disp_gamewindows() {
     game.WIN_MESSAGE = 10;
     // C `:720–724` if (VIA_WINDOWPORT()) status_initialize(FALSE) else
     // WIN_STATUS = create_nhwindow(NHW_STATUS). tty_procs sets the full
-    // `:111–125` set; the installer carries every bit except the four
-    // status bits (VIA_WINDOWPORT would reroute into the unported
-    // status_update delivery, botl.js header), so this stays on the
-    // else arm.
+    // `:111–125` set including the status bits (const.js TTY_WINCAP2),
+    // so this takes the windowport arm like C.
     install_tty_wincap2();
     const wincap2 = game.windowprocs?.wincap2 | 0;
     const viaWindowport = (wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0;

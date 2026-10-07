@@ -104,6 +104,9 @@ import { isok } from './cmd_isok.js';
 import { game } from './gstate.js';
 import { use_crystal_ball } from './detect.js';
 import { inside_shop } from './shk.js';
+import { getrumor } from './random_text.js';
+import { verbalize } from './pline.js';
+import { bcsign } from './obj.js';
 import { HCOLORS } from './random_text_data.js';
 import {
     AT_MAGC,
@@ -122,6 +125,7 @@ import {
     PM_CLAY_GOLEM,
     PM_CLERIC,
     PM_ELF,
+    PM_GREMLIN,
     PM_HEALER,
     PM_KNIGHT,
     PM_MONK,
@@ -219,6 +223,7 @@ import {
 import { In_hell, depth, dunlevs_in_dungeon, ledger_no, surface } from './dungeon.js';
 import { cansee, couldsee } from './vision.js';
 import { next_to_u } from './apply_next_to_u.js';
+import { do_blinding_ray } from './apply.js';
 import { glyph_at, glyph_is_trap, newsym, shieldeff } from './display.js';
 import { invocation_pos, losehp, nomul, spoteffects } from './hack.js';
 import { float_down, float_up, t_at } from './trap.js';
@@ -231,13 +236,13 @@ import {
     hcolor as nameColor,
     monsterCommonName,
 } from './do_name.js';
-import { cancel_monst, resist, Fire_resistance, Cold_resistance } from './zap.js';
+import { cancel_monst, resist, Fire_resistance, Cold_resistance, flashburn, lightdamage } from './zap.js';
 import { healmon, migrate_mon, set_ustuck, wake_nearto } from './mon.js';
 import { monflee } from './monmove.js';
 import { hitfloor, throwit } from './dothrow.js';
 import { P_MAX_SKILL, spell_skilltype } from './startup_skills.js';
 import { spelleffects } from './spell.js';
-import { seffects } from './read.js';
+import { litroom, seffects } from './read.js';
 import { charge_ok, recharge } from './read.js';
 import {
     healup, make_blinded, make_sick, make_slimed, make_stunned,
@@ -2593,21 +2598,24 @@ async function invoke_storm_spell(obj, state) {
     return ECMD_TIME;
 }
 
-// C ref: artifact.c invoke_blinding_ray() (2053-2086).
-async function invoke_blinding_ray(obj, state) {
+// C ref: artifact.c invoke_blinding_ray() (2054-2087).
+export async function invoke_blinding_ray(obj, state = game) {
     if (await getdir(null, state)) {
         if (state.u.dx || state.u.dy) {
-            note_unported('artifact.c do_blinding_ray');
+            await do_blinding_ray(obj, state);
         } else if (state.u.dz) {
-            note_unported('light.c litroom');
-            await ttyPline(nothing_seems_to_happen, state);
+            await litroom(true, obj, state);
+            const spot = state.level.at(state.u.ux, state.u.uy);
+            await ttyPline(!Blind(state) && spot.lit && !spot.waslit
+                ? 'It is lit here now.' : nothing_seems_to_happen, state);
         } else {
+            // Capture vulnerability before lightdamage can rehumanize the hero.
+            const vulnerable = state.u.umonnum === PM_GREMLIN;
             const damg = obj.blessed ? 15 : !obj.cursed ? 10 : 5;
-            // rnd(damg) consumed by flashburn argument
-            rnd(damg);
-            note_unported('zap.c flashburn');
-            note_unported('light.c lightdamage');
-            await ttyPline(nothing_seems_to_happen, state);
+            if (vulnerable) await lightdamage(obj, true, 2 * damg, state);
+            if (!await flashburn(damg + rnd(damg), false, state)
+                && !vulnerable)
+                await ttyPline(nothing_seems_to_happen, state);
         }
     } else {
         await ttyPline(Never_mind, state);
@@ -2803,22 +2811,28 @@ export function artifact_light(obj) {
     return obj?.oartifact === ART_SUNSWORD;
 }
 
-// C ref: artifact.c arti_speak() (2279-2296). A speaking artifact (SPFX_SPEAK
-// set) whispers a rumor from the rumors file when wielded. The only two
-// speaking artifacts are Sting and Orcrist (both SPFX_WARN_OF_MON |
-// SPFX_SPEAK). This port handles the early return for non-speaking artifacts
-// and stops at the speaking path, which needs getrumor() and verbalize1().
-export function arti_speak(obj, state = game) {
+// C ref: artifact.c arti_speak() (2279-2296). Read the rumor before either
+// message, preserving getrumor's BUC choice and wisdom exercise.
+export async function arti_speak(obj, state = game, env = {}) {
     const normalized = artifactTables(state);
     const oart = get_artifact(obj, normalized);
-    /* Is this a speaking artifact? */
     if (oart === normalized.artilist[ART_NONARTIFACT]
-        || !(oart.spfx & SPFX_SPEAK))
-        return ECMD_OK; /* nothing happened */
+        || !(oart.spfx & SPFX_SPEAK)) return ECMD_OK;
 
-    // The speaking path reads a rumor and verbalize1()s it. getrumor() and
-    // verbalize1() are not ported.
-    throw new UnsupportedArtifactDisplayError('a speaking artifact (arti_speak)');
+    const message = env.message ?? ttyPline;
+    const random = env.random ?? { rn2 };
+    const rumor = getrumor(bcsign(obj), true, {
+        ...env, state, random,
+        exercise: env.exercise ?? ((index, increase) => exercise(
+            index, increase, state, { rn2: random.rn2.bind(random) },
+        )),
+    });
+    const line = rumor || 'NetHack rumors file closed for renovation.';
+    await message(`${Tobjnam(obj, 'whisper', state)}:`, state);
+    // sndprocs.h compiles SetVoice to an empty macro in the recorder's
+    // build without an integrated sound library.
+    await verbalize(line, state, { message });
+    return ECMD_TIME;
 }
 
 // --- artifact.c functions (C lines 2299-2502) ---

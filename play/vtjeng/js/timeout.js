@@ -117,7 +117,7 @@ import {
     a_monnam, hcolor, m_monnam, Monnam, rndmonnam, x_monnam,
 } from './do_name.js';
 import { hurtle } from './dothrow.js';
-import { toggle_displacement } from './do_wear.js';
+import { setwornEnv, toggle_displacement } from './do_wear.js';
 import {
     Popeye, eating_dangerous_corpse, morehungry, vomit, } from './eat.js';
 import { dealloc_killer, find_delayed_killer } from './end.js';
@@ -126,7 +126,7 @@ import { heal_legs } from './do.js';
 import { makeplural } from './fruit.js';
 import {
     carrying, container_weight, obfree, obj_extract_self, sobj_at,
-    update_inventory, useup,
+    update_inventory, useup, useupall,
 } from './invent.js';
 import { game } from './gstate.js';
 import { heroIsBlind } from './startup_a11y.js';
@@ -140,7 +140,7 @@ import {
 import { deferred_decor, encumber_msg } from './pickup.js';
 import { stuck_in_wall } from './pray.js';
 import { region_danger } from './region.js';
-import { an, donameFresh, the, vtense } from './objnam.js';
+import { an, donameFresh, the, vtense, xname, Yname2 } from './objnam.js';
 import {
     candle_light_range, arti_light_radius, del_light_source, get_obj_location, new_light_source, } from './light.js';
 import {
@@ -149,12 +149,14 @@ import {
     type_is_pname, little_to_big,
 } from './mondata.js';
 import { body_part, rehumanize } from './polyself.js';
-import { hideunder, restartcham, wake_nearby, zombie_form } from './mon.js';
+import { hideunder, maybe_unhide_at, restartcham, wake_nearby, zombie_form } from './mon.js';
+import { objectGenerationEnv } from './object_generation.js';
+import { Shk_Your } from './shk.js';
 import { note_unported } from './unported.js';
 import {
     float_down, unconscious } from './trap.js';
 
-import { which_armor } from './worn.js';
+import { setnotworn, which_armor } from './worn.js';
 import { find_ac } from './u_init_inventory_attrs.js';
 import {
     PM_DEATH,
@@ -183,7 +185,7 @@ import {
     WAX_CANDLE,
 } from './objects.js';
 import {
-    carried, remove_object, shrink_glob, unportedShrinkGlobReason,
+    carried, remove_object, shrink_glob, unportedShrinkGlobReason, weight,
 } from './obj.js';
 import { m_at } from './monst.js';
 import { cansee } from './vision.js';
@@ -588,9 +590,9 @@ export async function hatch_egg(egg, timeout, rawEnv = {}) {
 const timeout_funcs = [
     { name: 'rot_organic' },
     { name: 'rot_corpse', f: rot_corpse, unported: unportedRotCorpseReason },
-    { name: 'revive_mon' },
+    { name: 'revive_mon', f: reviveMonCallback, unported: () => null },
     { name: 'zombify_mon' },
-    { name: 'burn_object' },
+    { name: 'burn_object', f: burn_object, unported: () => null },
     { name: 'hatch_egg', f: hatch_egg, unported: () => null },
     {
         name: 'fig_transform',
@@ -602,6 +604,13 @@ const timeout_funcs = [
 ];
 if (timeout_funcs.length !== NUM_TIME_FUNCS)
     throw new Error('timeout_funcs must cover every timeout_types row');
+
+// C ref: timeout.c timeout_funcs[REVIVE_MON]. Load the do.c callback at
+// dispatch time because do.js also uses the timeout queue's public owners.
+async function reviveMonCallback(arg, timeout, env) {
+    const { revive_mon } = await import('./do.js');
+    return revive_mon(arg, timeout, env);
+}
 
 // C ref: mkobj.c shrink_glob(). Build the full env for the timer callback,
 // injecting the extractExternalObject hook for floor-object removal and
@@ -1229,6 +1238,64 @@ async function vomiting_dialogue(state, env = {}) {
     await exercise(A_CON, false, state, random, { encumberMessage });
 }
 
+// C ref: timeout.c stoned_texts[] and stoned_dialogue() (128-185).
+const stonedTexts = Object.freeze([
+    'You are slowing down.',
+    'Your limbs are stiffening.',
+    'Your limbs have turned to stone.',
+    'You have turned to stone.',
+    'You are a statue.',
+]);
+
+export async function stoned_dialogue(state = game, env = {}) {
+    const u = state.u;
+    const i = u.uprops[STONED].intrinsic & TIMEOUT;
+    const random = env.random ?? { d, rn2, rnd };
+    const message = env.message
+        ?? (env.planning ? async () => {} : ttyPline);
+    const urgentMessage = env.urgentMessage
+        ?? (env.planning ? message : ttyUrgentPline);
+    if (i > 0 && i <= stonedTexts.length) {
+        let text = stonedTexts[stonedTexts.length - i];
+        if (nolimbs(state.youmonst.data) && strstri(text, 'limbs') >= 0)
+            text = strsubst(text, 'limbs', 'extremities');
+        await urgentMessage(text, state);
+    }
+    switch (i) {
+    case 5:
+        u.uprops[FAST].intrinsic = 0;
+        if ((state.multi ?? 0) > 0) nomul(0, state);
+        break;
+    case 4:
+        if (!Popeye(STONED, state))
+            await stop_occupation(state, { ...env, random, message });
+        if ((state.multi ?? 0) > 0) nomul(0, state);
+        break;
+    case 3:
+        await stop_occupation(state, { ...env, random, message });
+        nomul(-3, state);
+        state.multi_reason = 'getting stoned';
+        state.nomovemsg = You_can_move_again;
+        if ((u.uprops[WOUNDED_LEGS].intrinsic
+            || u.uprops[WOUNDED_LEGS].extrinsic) && !u.usteed)
+            await heal_legs(state, { ...env, how: 2, message });
+        break;
+    case 2: {
+        const deafTimeout = u.uprops[DEAF].intrinsic & TIMEOUT;
+        if (deafTimeout > 0 && deafTimeout < 5)
+            set_itimeout(u.uprops[DEAF], 5);
+        if (u.uprops[VOMITING].intrinsic)
+            await make_vomiting(0, false, state, { ...env, message });
+        if (u.uprops[SLIMED].intrinsic)
+            await make_slimed(0, null, state, { ...env, message });
+        break;
+    }
+    }
+    const encumberMessage = env.encumberMessage
+        ?? (subject => encumber_msg(subject, { message }));
+    await exercise(A_DEX, false, state, random, { encumberMessage });
+}
+
 // C ref: timeout.c phaze_texts[] and phaze_dialogue() (528-543).
 const phazeTexts = Object.freeze([
     'You start to feel bloated.',
@@ -1244,6 +1311,33 @@ export async function phaze_dialogue(state = game, env = {}) {
         const message = env.message
             ?? (env.planning ? async () => {} : ttyPline);
         await message(phazeTexts[phazeTexts.length - i], state);
+    }
+}
+
+// C ref: timeout.c region_texts[] and region_dialogue() (548-569).
+const regionTexts = Object.freeze([
+    'You seem to have some trouble breathing.',
+    'The air here seems foul.',
+]);
+
+export async function region_dialogue(state = game, env = {}) {
+    const property = state.u.uprops[MAGICAL_BREATHING];
+    const remaining = property.intrinsic & TIMEOUT;
+    const i = Math.trunc(remaining / 2);
+
+    // Test danger after removing only the timed breathing protection. Restore
+    // it before returning or allowing the ordinary warning to wait for input.
+    property.intrinsic &= ~TIMEOUT;
+    const noNeedToBreathe = propertySource(state, MAGICAL_BREATHING)
+        || breathless(state.youmonst.data);
+    const inPoisonGasCloud = region_danger(state);
+    property.intrinsic |= remaining;
+    if (noNeedToBreathe || !inPoisonGasCloud) return;
+
+    if (remaining % 2 && i > 0 && i <= regionTexts.length) {
+        const message = env.message
+            ?? (env.planning ? async () => {} : ttyPline);
+        await message(regionTexts[regionTexts.length - i], state);
     }
 }
 
@@ -1270,8 +1364,16 @@ function Flying(state) {
 export function nh_timeout_requires_live_state(state = game) {
     const u = state.u;
     if (u.uinvulnerable) return false;
+    // revive() creates a monster, removes its corpse, and redraws the level.
+    // Run this timer live before planning the elapsed turn's monster tail.
+    for (let timer = state.gt?.timer_base;
+        timer && timer.timeout <= state.moves; timer = timer.next) {
+        if (timer.kind === TIMER_OBJECT && timer.func_index === REVIVE_MON)
+            return true;
+    }
     if (u.mtimedone === 1 && !propertySource(state, UNCHANGING)
         && !is_were(state.youmonst.data)) return true;
+    if (u.uprops?.[STONED]?.intrinsic) return true;
     if (u.uprops?.[STRANGLED]?.intrinsic) return true;
     if (u.uprops?.[VOMITING]?.intrinsic) return true;
     // Warnings at five and three turns stop occupations after displaying
@@ -1566,8 +1668,8 @@ export async function nh_timeout(state = game, env = {}) {
     };
     adjust_timeout_luck(state);
     if (u.uinvulnerable) return;
-    if (u.uprops?.[STONED]?.intrinsic && !env.planning)
-        note_unported('timeout.c stoned_dialogue');
+    if (u.uprops?.[STONED]?.intrinsic)
+        await stoned_dialogue(state, { ...displayEnv, random });
     if (u.uprops?.[SLIMED]?.intrinsic) {
         const slimeMessage = env.message
             ?? (env.planning ? async () => {} : ttyPline);
@@ -1604,8 +1706,8 @@ export async function nh_timeout(state = game, env = {}) {
         await levitation_dialogue(state, displayEnv);
     if (u.uprops?.[PASSES_WALLS]?.intrinsic & TIMEOUT)
         await phaze_dialogue(state, displayEnv);
-    if ((u.uprops?.[MAGICAL_BREATHING]?.intrinsic & TIMEOUT) && !env.planning)
-        note_unported('timeout.c region_dialogue');
+    if (u.uprops?.[MAGICAL_BREATHING]?.intrinsic & TIMEOUT)
+        await region_dialogue(state, displayEnv);
     if (u.uprops?.[SLEEPY]?.intrinsic & TIMEOUT)
         await sleep_dialogue(state, env);
     if (u.mtimedone && !--u.mtimedone) {
@@ -1974,12 +2076,297 @@ export async function run_timers(state = game, env = {}) {
 
         if (curr.kind === TIMER_OBJECT)
             curr.arg.timed = Math.trunc(curr.arg.timed ?? 0) - 1;
-        // shrink_glob() is async (it calls pline for shrink/dissolve messages
-        // and encumber_msg for capacity changes). Other callbacks are sync but
-        // awaiting a non-thenable is a no-op, so the await is safe for all.
+        // Message-producing callbacks await live feedback before their next
+        // source operation; synchronous callbacks also use this dispatch.
         await timeout_funcs[curr.func_index].f(curr.arg, curr.timeout, fireEnv);
         curr.next = null;
     }
+}
+
+// The firing timer has already released its object count. Compose the existing
+// object, light and worn-slot owners against that same state; the planning
+// pass mutates its clone while suppressing inventory and map output.
+function burnObjectEnv(rawEnv) {
+    const state = rawEnv.state ?? game;
+    const env = objectGenerationEnv({ ...rawEnv, state });
+    const wornHooks = setwornEnv(state).hooks;
+    env.hooks = {
+        ...env.hooks,
+        setNotWorn: (obj, hookEnv) => setnotworn(obj, {
+            ...hookEnv,
+            hooks: { ...wornHooks, ...hookEnv.hooks },
+        }),
+        ...rawEnv.hooks,
+    };
+    if (rawEnv.planning) {
+        env.message = async () => {};
+        env.newsym = () => {};
+        env.hooks.updateInventory = () => {};
+        env.hooks.newsym = env.newsym;
+    } else if (env.hooks.updateInventory === undefined) {
+        env.hooks.updateInventory = state.hooks?.updateInventory;
+    }
+    return env;
+}
+
+// C ref: timeout.c see_lamp_flicker() (1345-1356). Called only when seen.
+export async function see_lamp_flicker(obj, tailer, env = {}) {
+    const state = env.state ?? game;
+    const message = env.planning ? async () => {} : (env.message ?? ttyPline);
+    switch (obj.where) {
+    case OBJ_INVENT:
+    case OBJ_MINVENT:
+        await message(`${Yname2(obj, state, env)} flickers${tailer}.`, state);
+        break;
+    case OBJ_FLOOR:
+        await message(`You see ${an(xname(obj, state))} flicker${tailer}.`, state);
+        break;
+    }
+}
+
+// C ref: timeout.c lantern_message() (1360-1375). Called only when seen.
+export async function lantern_message(obj, env = {}) {
+    const state = env.state ?? game;
+    const message = env.planning ? async () => {} : (env.message ?? ttyPline);
+    switch (obj.where) {
+    case OBJ_INVENT:
+        await message('Your lantern is getting dim.', state);
+        if (hallucinating(state))
+            await message('Batteries have not been invented yet.', state);
+        break;
+    case OBJ_FLOOR:
+        await message('You see a lantern getting dim.', state);
+        break;
+    case OBJ_MINVENT:
+        await message(`${s_suffix(Monnam(obj.ocarry, state, env))} lantern is getting dim.`, state);
+        break;
+    }
+}
+
+// C ref: timeout.c burn_object() (1383-1680). run_timers() passes the source
+// object's reference after unlinking the timer and decrementing obj.timed.
+export async function burn_object(obj, timeout, rawEnv = {}) {
+    const env = burnObjectEnv(rawEnv);
+    const state = env.state;
+    const message = env.message ?? ttyPline;
+    const menorah = obj.otyp === CANDELABRUM_OF_INVOCATION;
+    const many = menorah ? obj.spe > 1 : obj.quan > 1;
+    const isCandle = obj.otyp === TALLOW_CANDLE || obj.otyp === WAX_CANDLE;
+
+    if (timeout !== currentMove(state)) {
+        const howLong = currentMove(state) - timeout;
+        if (howLong >= obj.age) {
+            obj.age = 0;
+            end_burn(obj, false, env);
+            if (menorah) {
+                obj.spe = 0;
+                obj.owt = weight(obj, env);
+            } else if (isCandle || obj.otyp === POT_OIL) {
+                const monster = obj.where === OBJ_FLOOR
+                    ? m_at(obj.ox, obj.oy, state) : null;
+                obj_extract_self(obj, env);
+                obfree(obj, null, env);
+                obj = null;
+                if (monster)
+                    maybe_unhide_at(monster.mx, monster.my, state, env);
+            }
+        } else {
+            obj.age -= howLong;
+            begin_burn(obj, true, env);
+        }
+        return;
+    }
+
+    const location = get_obj_location(obj, 0, state);
+    const blind = heroIsBlind(state);
+    let canseeit = false;
+    let whose;
+    if (location) {
+        canseeit = !blind && cansee(location.x, location.y, state);
+        // C fills this prefix even when the object cannot be seen. A monster
+        // owner may spend display RNG here before the branch-specific name.
+        whose = Shk_Your(obj, state, env);
+    }
+    const bytouch = obj.where === OBJ_INVENT && obj.otyp !== BRASS_LANTERN;
+    let needNewsym = false;
+    let needInvupdate = false;
+    const floorPrefix = menorah ? "a candelabrum's " : many ? 'some ' : 'a ';
+
+    switch (obj.otyp) {
+    case POT_OIL:
+        if (canseeit) {
+            switch (obj.where) {
+            case OBJ_INVENT:
+                needInvupdate = true;
+                // C falls through to the monster-inventory message.
+            case OBJ_MINVENT:
+                await message(`${whose}potion of oil has burnt away.`, state);
+                break;
+            case OBJ_FLOOR:
+                await message('You see a burning potion of oil go out.', state);
+                needNewsym = true;
+                break;
+            }
+        }
+        end_burn(obj, false, env);
+        if (carried(obj)) {
+            useupall(obj, env);
+        } else {
+            if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
+            obj_extract_self(obj, env);
+            obfree(obj, null, env);
+        }
+        obj = null;
+        break;
+
+    case BRASS_LANTERN:
+    case OIL_LAMP:
+        switch (obj.age) {
+        case 150:
+        case 100:
+        case 50:
+            if (canseeit) {
+                if (obj.otyp === BRASS_LANTERN)
+                    await lantern_message(obj, env);
+                else
+                    await see_lamp_flicker(obj, obj.age === 50 ? ' considerably' : '', env);
+            }
+            break;
+        case 25:
+            if (canseeit) {
+                if (obj.otyp === BRASS_LANTERN) {
+                    await lantern_message(obj, env);
+                } else {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                    case OBJ_MINVENT:
+                        await message(`${Yname2(obj, state, env)} seems about to go out.`, state);
+                        break;
+                    case OBJ_FLOOR:
+                        await message(`You see ${an(xname(obj, state))} about to go out.`, state);
+                        break;
+                    }
+                }
+            }
+            break;
+        case 0:
+            if (canseeit || bytouch) {
+                switch (obj.where) {
+                case OBJ_INVENT:
+                    needInvupdate = true;
+                    // C falls through to the monster-inventory message.
+                case OBJ_MINVENT:
+                    await message(obj.otyp === BRASS_LANTERN
+                        ? `${whose}lantern has run out of power.`
+                        : `${Yname2(obj, state, env)} has gone out.`, state);
+                    break;
+                case OBJ_FLOOR:
+                    await message(obj.otyp === BRASS_LANTERN
+                        ? 'You see a lantern run out of power.'
+                        : `You see ${an(xname(obj, state))} go out.`, state);
+                    break;
+                }
+            }
+            end_burn(obj, false, env);
+            break;
+        default:
+            // A refuelled lamp restarts from its new remaining age.
+            break;
+        }
+        if (obj.age) begin_burn(obj, true, env);
+        break;
+
+    case CANDELABRUM_OF_INVOCATION:
+    case TALLOW_CANDLE:
+    case WAX_CANDLE:
+        switch (obj.age) {
+        case 75:
+            if (canseeit) {
+                switch (obj.where) {
+                case OBJ_INVENT:
+                case OBJ_MINVENT:
+                    await message(`${whose}${menorah ? "candelabrum's " : ''}candle${many ? 's are' : ' is'} getting short.`, state);
+                    break;
+                case OBJ_FLOOR:
+                    await message(`You see ${floorPrefix}candle${many ? 's' : ''} getting short.`, state);
+                    break;
+                }
+            }
+            break;
+        case 15:
+            if (canseeit) {
+                switch (obj.where) {
+                case OBJ_INVENT:
+                case OBJ_MINVENT:
+                    await message(`${whose}${menorah ? "candelabrum's " : ''}candle${many ? "s'" : "'s"} flame${many ? 's' : ''} flicker${many ? '' : 's'} low!`, state);
+                    break;
+                case OBJ_FLOOR:
+                    await message(`You see ${floorPrefix}candle${many ? "s'" : "'s"} flame${many ? 's' : ''} flicker low!`, state);
+                    break;
+                }
+            }
+            break;
+        case 0:
+            if (canseeit || bytouch) {
+                if (menorah) {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                        needInvupdate = true;
+                        // C falls through to the monster-inventory message.
+                    case OBJ_MINVENT:
+                        await message(`${whose}candelabrum's flame${many ? 's die' : ' dies'}.`, state);
+                        break;
+                    case OBJ_FLOOR:
+                        await message(`You see a candelabrum's flame${many ? 's' : ''} die.`, state);
+                        break;
+                    }
+                } else {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                    case OBJ_MINVENT:
+                        await message(`${Yname2(obj, state, env)} ${many ? 'are' : 'is'} consumed!`, state);
+                        break;
+                    case OBJ_FLOOR:
+                        await message(`You see ${many ? 'some ' : ''}${many ? xname(obj, state) : an(xname(obj, state))} consumed!`, state);
+                        needNewsym = true;
+                        break;
+                    }
+                    await message(hallucinating(state)
+                        ? many ? 'They shriek!' : 'It shrieks!'
+                        : blind ? '' : many ? 'Their flames die.' : 'Its flame dies.', state);
+                }
+            }
+            end_burn(obj, false, env);
+            if (menorah) {
+                obj.spe = 0;
+                obj.owt = weight(obj, env);
+                if (carried(obj)) needInvupdate = true;
+            } else {
+                if (carried(obj)) {
+                    useupall(obj, env);
+                } else {
+                    const onfloor = obj.where === OBJ_FLOOR;
+                    if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
+                    obj_extract_self(obj, env);
+                    if (onfloor)
+                        maybe_unhide_at(location.x, location.y, state, env);
+                    obfree(obj, null, env);
+                }
+                obj = null;
+            }
+            break;
+        default:
+            // Added candles restart the candelabrum from its new age.
+            break;
+        }
+        if (obj && obj.age) begin_burn(obj, true, env);
+        break;
+    default:
+        note_unported('pline.c impossible');
+        break;
+    }
+    if (needNewsym) (env.newsym ?? newsym)(location.x, location.y, state);
+    if (needInvupdate) update_inventory(env);
 }
 
 // C ref: timeout.c begin_burn(). age is fuel remaining before this segment;

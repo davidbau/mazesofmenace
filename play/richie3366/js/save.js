@@ -728,7 +728,8 @@ export async function dosave0() {
         lights_global: snapshotGlobalLights(),
         preferred_pet: game.preferred_pet || null,
         _goldCount: game._goldCount | 0,
-        _lastinvnr: game._lastinvnr | 0,
+        // C include/decl.h:536 — gl.lastinvnr «never saved&restored»;
+        // savegamestate omits it, so the JSON payload does too (D-3584).
         datetime_saved: game.datetime || null,
         // C save.c `:288` — Sfo_char(yyyymmddhhmmss(ubirthday), 14).
         ubirthday: yyyymmddhhmmss(Math.trunc(Number(game.ubirthday) || 0)),
@@ -1037,7 +1038,11 @@ export async function try_restore_save() {
     game.artiexist = payload.artiexist;
     game.preferred_pet = payload.preferred_pet;
     game._goldCount = payload._goldCount | 0;
-    game._lastinvnr = payload._lastinvnr | 0;
+    // C include/decl.h:536 — gl.lastinvnr «never saved&restored»: a fresh
+    // C process starts at BSS 0 and restgamestate leaves it there, so the
+    // first post-restore assigninvlet fills the lowest free gap (D-3584).
+    // Ignore any legacy payload key for the same reason.
+    game._lastinvnr = 0;
     if (payload.timer_id != null) game.timer_id = payload.timer_id | 0;
     if (payload.quest_status) game.quest_status = payload.quest_status;
     if (payload.pl_fruit != null) game.pl_fruit = payload.pl_fruit;

@@ -135,6 +135,11 @@ import {
     BUFSZ,
     gp,
     ECMD_OK,
+    SYM_OFF_P,
+    SYM_NOTHING,
+    SYM_UNEXPLORED,
+    SYM_BOULDER,
+    SYM_INVISIBLE,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -237,6 +242,99 @@ export const GLYPH_INVISIBLE = GLYPH_INVIS_OFF;
 export const GLYPH_UNEXPLORED = GLYPH_UNEXPLORED_OFF;
 export const GLYPH_NOTHING = GLYPH_NOTHING_OFF;
 export const GLYPH_TRAP_OFF = GLYPH_CMAP_B_OFF + (S_arrow_trap - S_grave);
+
+/**
+ * C display.c reset_glyphmap `:2774–3045` symidx column — the showsyms[]
+ * slot a glyph decodes to (decode_mixed's map_glyphinfo read, windows.c
+ * `:1482–1486`). Same highest-bank-first offset order as the show_glyph
+ * chain below; colors/flags are not read here (decode_mixed takes the
+ * symidx only). Rogue-level color arms do not move symidx, so no
+ * GMAP_ROGUELEVEL input is needed. Caller: botl.js decode_mixed.
+ */
+export function glyphmap_symidx(glyph) {
+    const gid = glyph | 0;
+    let offset = -1;
+    // C `:2774–2779` nothing / unexplored.
+    if ((offset = gid - GLYPH_NOTHING_OFF) >= 0) return SYM_NOTHING + SYM_OFF_X;
+    if ((offset = gid - GLYPH_UNEXPLORED_OFF) >= 0) return SYM_UNEXPLORED + SYM_OFF_X;
+    // C `:2781–2791` statue piletop (fem/male): monster letter.
+    if ((offset = gid - GLYPH_STATUE_FEM_PILETOP_OFF) >= 0) return mlet_symidx(offset);
+    if ((offset = gid - GLYPH_STATUE_MALE_PILETOP_OFF) >= 0) return mlet_symidx(offset);
+    // C `:2794–2797` body piletop: corpse class slot.
+    if ((offset = gid - GLYPH_BODY_PILETOP_OFF) >= 0) return corpse_class_symidx();
+    // C `:2800–2806` object piletop: class slot, boulder override.
+    if ((offset = gid - GLYPH_OBJ_PILETOP_OFF) >= 0) return obj_symidx(offset);
+    // C `:2821–2830` statues (fem/male): monster letter.
+    if ((offset = gid - GLYPH_STATUE_FEM_OFF) >= 0) return mlet_symidx(offset);
+    if ((offset = gid - GLYPH_STATUE_MALE_OFF) >= 0) return mlet_symidx(offset);
+    // C `:2836–2838` warnings.
+    if ((offset = gid - GLYPH_WARNING_OFF) >= 0) return offset + SYM_OFF_W;
+    // C `:2842–2862` explosions (frosty/fiery/magical/wet/muddy/noxious/dark).
+    if ((offset = gid - GLYPH_EXPLODE_FROSTY_OFF) >= 0) return S_expl_tl + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_EXPLODE_FIERY_OFF) >= 0) return S_expl_tl + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_EXPLODE_MAGICAL_OFF) >= 0) return S_expl_tl + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_EXPLODE_WET_OFF) >= 0) return S_expl_tl + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_EXPLODE_MUDDY_OFF) >= 0) return S_expl_tl + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_EXPLODE_NOXIOUS_OFF) >= 0) return S_expl_tl + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_EXPLODE_DARK_OFF) >= 0) return S_expl_tl + offset + SYM_OFF_P;
+    // C `:2864–2866` swallow: 8 positions.
+    if ((offset = gid - GLYPH_SWALLOW_OFF) >= 0) return (S_sw_tl + (offset & 0x7)) + SYM_OFF_P;
+    // C `:2870–2872` cmap C (dig beam row).
+    if ((offset = gid - GLYPH_CMAP_C_OFF) >= 0) return S_digbeam + offset + SYM_OFF_P;
+    // C `:2877–2879` zap beams: 4 directions.
+    if ((offset = gid - GLYPH_ZAP_OFF) >= 0) return (S_vbeam + (offset & 0x3)) + SYM_OFF_P;
+    // C `:2884–2888` cmap B (grave row).
+    if ((offset = gid - GLYPH_CMAP_B_OFF) >= 0) return S_grave + offset + SYM_OFF_P;
+    // C `:2918–2920` altars (all five alignments share one slot).
+    if ((offset = gid - GLYPH_ALTAR_OFF) >= 0) return S_altar + SYM_OFF_P;
+    // C `:2926–2928` cmap A (door row).
+    if ((offset = gid - GLYPH_CMAP_A_OFF) >= 0) return S_ndoor + offset + SYM_OFF_P;
+    // C `:2946–2957` dungeon walls (soko/knox/gehennom/mines/main).
+    if ((offset = gid - GLYPH_CMAP_SOKO_OFF) >= 0) return S_vwall + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_CMAP_KNOX_OFF) >= 0) return S_vwall + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_CMAP_GEH_OFF) >= 0) return S_vwall + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_CMAP_MINES_OFF) >= 0) return S_vwall + offset + SYM_OFF_P;
+    if ((offset = gid - GLYPH_CMAP_MAIN_OFF) >= 0) return S_vwall + offset + SYM_OFF_P;
+    // C `:2964–2966` stone: the showsyms base slot.
+    if ((offset = gid - GLYPH_CMAP_STONE_OFF) >= 0) return SYM_OFF_P;
+    // C `:2968–2971` objects: class slot, boulder override.
+    if ((offset = gid - GLYPH_OBJ_OFF) >= 0) return obj_symidx(offset);
+    // C `:2985–2998` ridden (fem/male): monster letter.
+    if ((offset = gid - GLYPH_RIDDEN_FEM_OFF) >= 0) return mlet_symidx(offset);
+    if ((offset = gid - GLYPH_RIDDEN_MALE_OFF) >= 0) return mlet_symidx(offset);
+    // C `:3003–3005` bodies: corpse class slot.
+    if ((offset = gid - GLYPH_BODY_OFF) >= 0) return corpse_class_symidx();
+    // C `:3010–3021` detected (fem/male): monster letter.
+    if ((offset = gid - GLYPH_DETECT_FEM_OFF) >= 0) return mlet_symidx(offset);
+    if ((offset = gid - GLYPH_DETECT_MALE_OFF) >= 0) return mlet_symidx(offset);
+    // C `:3028–3030` invisible.
+    if ((offset = gid - GLYPH_INVIS_OFF) >= 0) return SYM_INVISIBLE + SYM_OFF_X;
+    // C `:3035–3045` pets and monsters (fem/male): monster letter.
+    if ((offset = gid - GLYPH_PET_FEM_OFF) >= 0) return mlet_symidx(offset);
+    if ((offset = gid - GLYPH_PET_MALE_OFF) >= 0) return mlet_symidx(offset);
+    if ((offset = gid - GLYPH_MON_FEM_OFF) >= 0) return mlet_symidx(offset);
+    if ((offset = gid - GLYPH_MON_MALE_OFF) >= 0) return mlet_symidx(offset);
+    return SYM_NOTHING + SYM_OFF_X;
+}
+
+// C reset_glyphmap object rows (`:2804`, `:2969`): class slot of the
+// object at `offset`, with the boulder override (`:2806`, `:2971`).
+function obj_symidx(offset) {
+    if (offset === BOULDER_OTYP) return SYM_BOULDER + SYM_OFF_X;
+    return (game.objects?.[offset]?.oc_class | 0) + SYM_OFF_O;
+}
+
+// C reset_glyphmap corpse rows (`:2797`, `:3005`).
+function corpse_class_symidx() {
+    return (game.objects?.[CORPSE_OTYP]?.oc_class | 0) + SYM_OFF_O;
+}
+
+// C reset_glyphmap monster rows (`:2783`, `:2651`): mons mlet + SYM_OFF_M.
+// C mlet is the letter char; JS carries the S_* name (MLET_CH precedent).
+function mlet_symidx(offset) {
+    const ch = MLET_CH[mons(offset)?.mlet] || '?';
+    return ch.charCodeAt(0) + SYM_OFF_M;
+}
 
 /* C display.h altar_types — unaligned, chaotic, neutral, lawful, other. */
 const altar_unaligned = 0;
@@ -5870,30 +5968,33 @@ export function swallowed(first = 0) {
     const swallower = u.ustuck.mnum ?? u.ustuck.data?.mndx ?? 0;
 
     if (first) {
-        // C display.c:1338–1339 cls(); bot(). docrt_flags already cls()'d
-        // on the uswallow arm. bot() has no await, so the status cache
-        // updates before this function returns.
+        // C `:1337–1339` — cls(); bot(). cls() is display.c:2196–2201:
+        // message flush + botlx + clear_nhwindow(WIN_MAP) +
+        // clear_glyph_buffer() (`:2200` — the gbuf wipe). The gulp path
+        // (mhitu.c:1396) calls swallowed(1) directly, not via docrt, so
+        // the wipe must live here: without it the pre-swallow glyphs
+        // (monsters the hero can no longer see) stay readable via
+        // glyph_at and getpos 'm' cycles to phantom squares (D-3579).
+        // The physical clear rides along: every cell is blanked + dirty
+        // below, so the next flush repaints blanks. The async cls()
+        // (terminal/message side) stays the docrt arm's; bot() runs
+        // sync-called as before.
+        clear_glyph_buffer();
         void bot();
-        for (let y = 0; y < ROWNO; y++) {
-            for (let x = 1; x < COLNO; x++) {
-                const loc = game.level?.at(x, y);
-                if (loc) {
-                    loc.disp_ch = ' ';
-                    loc.disp_color = NO_COLOR;
-                    loc.disp_decgfx = false;
-                    // C swallowed blank must repaint: keep the cell dirty
-                    // and in the span (cls just cleared the buffer, so
-                    // not all these cells are dirty from newsyms).
-                    loc.gnew = 1;
-                    mark_gbuf_dirty(x, y);
-                }
-            }
-        }
     } else if (_swallow_lastx) {
+        // C `:1341–1348` — clear the old 3x3 with show_glyph(x, y,
+        // GLYPH_UNEXPLORED). The id matters, not just the blank paint:
+        // glyph_at readers (gather_locs, do_screen_description) and
+        // disp_kind readers (zap, detect) must see unexplored rather
+        // than the stale cell or NO_GLYPH. The suppress gate mirrors
+        // show_glyph's own (C `:1886`); kind is set alongside because
+        // the classifier cannot derive it from the id.
         for (let y = _swallow_lasty - 1; y <= _swallow_lasty + 1; y++) {
             for (let x = _swallow_lastx - 1; x <= _swallow_lastx + 1; x++) {
-                if (isok(x, y)) {
-                    show_glyph_cell(x, y, ' ', NO_COLOR, false);
+                if (isok(x, y) && !suppress_map_output()) {
+                    show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, GLYPH_UNEXPLORED);
+                    const loc = game.level?.at(x, y);
+                    if (loc) loc.disp_kind = 'unexplored';
                 }
             }
         }
@@ -6214,9 +6315,10 @@ export async function docrt_flags(refresh_flags) {
             // no vision_recalc/cls), then post_map.
             await redraw_map(0);
         } else if (game.u.uswallow) {
-            // C `:1726–1728` — swallowed(1) does cls()+bot(). cls is here
-            // (swallowed's own cls is the same clear); bot() runs inside
-            // swallowed(first).
+            // C `:1726–1728` — swallowed(1) does cls()+bot(). The async
+            // cls() stays here (terminal/message side); swallowed(first)
+            // wipes gbuf itself via clear_glyph_buffer (C :1338→:2200),
+            // which the direct gulp-path caller (mhitu.c:1396) needs.
             await cls();
             swallowed(1);
         } else if ((game.u.uinwater | 0) && !Is_waterlevel(game.u.uz)) {
@@ -6661,6 +6763,18 @@ function _commitStatusLines() {
 }
 
 export { _statusLine2 as status_line_2 };
+
+/**
+ * Publish field-rendered status rows (tty BL_FLUSH render). C keeps the
+ * painted rows in the status window buffer (cw->data); JS readers (flush,
+ * overlays, paint_status_grid) take them from the last bot() commit, so
+ * the windowport render commits here instead of _commitStatusLines.
+ * Caller: botl.js render_status.
+ */
+export function set_committed_status_lines(s1, s2) {
+    _lastStatus1 = s1 ?? '';
+    _lastStatus2 = s2 ?? '';
+}
 
 /** Expand CSI cursor-forward in status for overlay painting. */
 export function snapshot_status_lines() {
@@ -7872,7 +7986,10 @@ export async function bot() {
         // C botl.h:213 VIA_WINDOWPORT()
         const wincap2 = game.windowprocs?.wincap2 | 0;
         if ((wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0) {
-            // C :262. bot_via_windowport panics when !gb.blinit.
+            // C :262. bot_via_windowport panics when !gb.blinit. The
+            // BL_FLUSH render commits + paints like the putstr arm, so a
+            // menu-blanked status (clear_committed_status) ends here too.
+            _statusSuppressed = false;
             bot_via_windowport();
         } else {
             // C :264–267 curs(WIN_STATUS, 1, 0); putstr(do_statusline1());
@@ -8913,9 +9030,8 @@ function putstr(window, attr, str) {
 
 /**
  * C wintty.c tty_procs.wincap2 `:111–125` (const.js TTY_WINCAP2: the full
- * unix tty set minus the four status bits, which stay off so
- * VIA_WINDOWPORT() stays false — status_update delivery is a named
- * omission, botl.js header).
+ * unix tty set with the four status bits, so VIA_WINDOWPORT() is true
+ * and status_update delivery runs (botl.js tty_status_update)).
  * @returns {number}
  */
 export function install_tty_wincap2() {

@@ -1233,11 +1233,11 @@ function wc_supported(optnam) {
 
 /**
  * C options.c wc2_options[] `:9823–9842` (name/bit pairs, C order).
- * The installed `windowprocs.wincap2` (wintty.c `:111–125` minus the
- * status bits, const.js TTY_WINCAP2) also carries message/utf8/
- * extracolors/selectsaved bits this table has no name for. Status
- * hilite/flush/reset + hitpointbar stay off (VIA_WINDOWPORT would
- * reroute into the unported status_update delivery, botl.js header).
+ * The installed `windowprocs.wincap2` (wintty.c `:111–125`, const.js
+ * TTY_WINCAP2) also carries message/utf8/extracolors/selectsaved bits
+ * this table has no name for. Status hilite/flush/reset + hitpointbar
+ * are on (VIA_WINDOWPORT true; status_update delivery is live in
+ * botl.js tty_status_update).
  */
 export const wc2_options = [
     { wc_name: 'armorstatus', wc_bit: WC2_EXTRASTATUS },
@@ -8985,7 +8985,8 @@ export function initoptions_init() {
     flags.pickup_burden = MOD_ENCUMBER; // C `:7207`
     flags.sortloot = 'l'; // C `:7208`
     flags.end_disclose = DISCLOSE_PROMPT_DEFAULT_NO.repeat(NUM_DISCLOSURE_OPTIONS); // C `:7210–7211`
-    /* C `:7212` switch_symbols(FALSE) + `:7213` init_rogue_symbols() — named omits. */
+    switch_symbols(false); // C `:7212` set default characters (builds gs.showsyms)
+    /* C `:7213` init_rogue_symbols() — named omit (rogue_syms carrier unread in JS). */
     /* C `:7214–7244` TERM probes + `:7246–7257` MSDOS/WIN32/MAC — named omits, see doc. */
     flags.menu_style = MENU_FULL; // C `:7258`
     iflags.wc_align_message = ALIGN_TOP; // C `:7260`
@@ -9559,6 +9560,30 @@ function simple_bool_toggle(opt) {
     // to terminal ATR_INVERSE.
     if (opt.name === 'hilite_pet' && bag[opt.addr.key] && !bag.wc2_petattr) {
         bag.wc2_petattr = MC_ATR_INVERSE;
+    }
+    // C doset_simple_menu `:8662` parseoptions("!name") → optfn_boolean
+    // do_set `:5350–5351` (optfn_boolean_do_set mirror): status options
+    // reassess fields + botl so the tty field path enables/disables them.
+    if (opt.name === 'terrainstatus') classify_terrain(); // C `:5332`
+    if (opt.name === 'terrainstatus' || opt.name === 'weaponstatus'
+        || opt.name === 'armorstatus') {
+        if (!wc2_supported(opt.name)) { // C `:5337–5342`
+            config_error_add("'%s' is not supported.", opt.name);
+            return;
+        }
+        if (via_windowport()) status_initialize(REASSESS_ONLY); // C `:5350`
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true; // C `:5351` disp.botl
+    }
+    if (opt.name === 'showexp' || opt.name === 'time'
+        || opt.name === 'showscore' || opt.name === 'showvers') { // C `:5346–5351`
+        if (via_windowport()) status_initialize(REASSESS_ONLY);
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+    }
+    if (opt.name === 'hitpointbar' && via_windowport()) { // C `:5387–5390`
+        status_initialize(REASSESS_ONLY);
+        mark_opt_need_redraw();
     }
     // C optfn_boolean `:5376–5385` then doset_simple reset_needed_visuals.
     if (OPT_GLYPH_RESET.has(opt.name)) {
@@ -10216,6 +10241,9 @@ const DOSET_BOOL_ADDR = {
     customcolors: { obj: 'iflags', key: 'customcolors' },
     customsymbols: { obj: 'iflags', key: 'customsymbols' },
     dark_room: { obj: 'flags', key: 'dark_room' },
+    debug_hunger: { obj: 'iflags', key: 'debug_hunger' }, // C optlist.h:276 &iflags.debug_hunger (wizard menu row; no JS consumer yet)
+    debug_mongen: { obj: 'iflags', key: 'debug_mongen' }, // C optlist.h:279 &iflags.debug_mongen
+    debug_overwrite_stairs: { obj: 'iflags', key: 'debug_overwrite_stairs' }, // C optlist.h:282 &iflags.debug_overwrite_stairs (no JS consumer yet)
     dropped_nopick: { obj: 'flags', key: 'nopick_dropped' },
     eight_bit_tty: { obj: 'iflags', key: 'eight_bit_tty' },
     extmenu: { obj: 'iflags', key: 'extmenu' },
@@ -10238,8 +10266,11 @@ const DOSET_BOOL_ADDR = {
     mention_map: { obj: 'a11y', key: 'glyph_updates' }, // C: &a11y.glyph_updates
     mention_walls: { obj: 'flags', key: 'mention_walls' },
     menu_overlay: { obj: 'iflags', key: 'menu_overlay' },
+    menu_tab_sep: { obj: 'iflags', key: 'menu_tab_sep' }, // C optlist.h:476 &iflags.menu_tab_sep
     menucolors: { obj: 'iflags', key: 'use_menu_color' },
     mon_movement: { obj: 'a11y', key: 'mon_movement' }, // C: &a11y.mon_movement
+    monpolycontrol: { obj: 'iflags', key: 'mon_polycontrol' }, // C optlist.h:496 &iflags.mon_polycontrol
+    montelecontrol: { obj: 'iflags', key: 'mon_telecontrol' }, // C optlist.h:499 &iflags.mon_telecontrol
     null: { obj: 'flags', key: 'null' },
     pickup_stolen: { obj: 'flags', key: 'pickup_stolen' },
     pickup_thrown: { obj: 'flags', key: 'pickup_thrown' },
@@ -10251,6 +10282,7 @@ const DOSET_BOOL_ADDR = {
     rest_on_space: { obj: 'flags', key: 'rest_on_space' },
     safe_pet: { obj: 'flags', key: 'safe_pet' },
     safe_wait: { obj: 'flags', key: 'safe_wait' },
+    sanity_check: { obj: 'iflags', key: 'sanity_check' }, // C optlist.h:639 &iflags.sanity_check
     showdamage: { obj: 'iflags', key: 'showdamage' },
     showexp: { obj: 'flags', key: 'showexp' },
     showrace: { obj: 'flags', key: 'showrace' },
@@ -10267,6 +10299,7 @@ const DOSET_BOOL_ADDR = {
     tombstone: { obj: 'flags', key: 'tombstone' },
     toptenwin: { obj: 'iflags', key: 'toptenwin' },
     travel: { obj: 'flags', key: 'travel' }, // C: flags.travelcmd
+    travel_debug: { obj: 'iflags', key: 'trav_debug' }, // C optlist.h:791 &iflags.trav_debug (wizard menu row; DEBUG build per patchlevel.h:36; no JS consumer yet — hack.c:1431/:1492 travel-path display)
     use_inverse: { obj: 'iflags', key: 'wc_inverse' },
     verbose: { obj: 'flags', key: 'verbose' },
     weaponstatus: { obj: 'iflags', key: 'weaponstatus' },
@@ -10352,14 +10385,33 @@ const DOSET_BOOL_MOD = [
 ];
 
 /**
- * C options.c doset `:8820` endpass wizard→set_wiznofuz; `:8842–8843`
- * skip set_wizonly when !wizard (`flags.debug`). Appended after
- * whatis_moveskip so earlier mO letters stay put. allopt order:
- * wizmgender then wizweight.
+ * C options.c doset `:8820` endpass wizard→set_wiznofuz; `:8842–8845`
+ * skip set_wizonly when !wizard (`flags.debug`), set_wiznofuz when
+ * !wizard or debug_fuzzer. Wizard rows splice in optlist.h order;
+ * wizmgender/wizweight stay last (C optlist.h:890-893; wraptext after
+ * them is wc2-skipped on tty).
  */
 function doset_bool_mod_list() {
-    if (game.flags?.debug) return [...DOSET_BOOL_MOD, 'wizmgender', 'wizweight'];
-    return DOSET_BOOL_MOD;
+    // C doset `:8820` endpass + `:8842–8845`: set_wizonly rows list iff
+    // wizard; set_wiznofuz rows need wizard without the fuzzer. All
+    // splice in optlist.h order (C lists allopt in order).
+    const wizard = !!game.flags?.debug;
+    const wiznofuz = wizard && !game.iflags?.debug_fuzzer;
+    if (!wizard) return DOSET_BOOL_MOD;
+    const out = [...DOSET_BOOL_MOD];
+    const insertAfter = (anchor, ...rows) => {
+        const at = out.indexOf(anchor) + 1;
+        if (at > 0) out.splice(at, 0, ...rows);
+    };
+    // C optlist.h:275-282 (between dark_room and dropped_nopick).
+    if (wiznofuz) insertAfter('dark_room', 'debug_hunger', 'debug_mongen', 'debug_overwrite_stairs');
+    insertAfter('menu_overlay', 'menu_tab_sep'); // C optlist.h:476
+    const nullAt = out.indexOf('null'); // C optlist.h:496-499
+    if (nullAt > 0) out.splice(nullAt, 0, 'monpolycontrol', 'montelecontrol');
+    insertAfter('safe_wait', 'sanity_check'); // C optlist.h:639
+    insertAfter('travel', 'travel_debug'); // C optlist.h:790 (DEBUG build lists it: live &iflags.trav_debug, patchlevel.h:36)
+    out.push('wizmgender', 'wizweight'); // C optlist.h:890-893 (tail; wraptext after them is wc2-skipped)
+    return out;
 }
 
 function doset_bool_value(name) {
@@ -10984,6 +11036,7 @@ export async function doset() {
                 : name === 'race' ? optfn_race
                 : name === 'role' ? optfn_role
                 : name === 'alignment' ? optfn_alignment
+                : name === 'playmode' ? optfn_playmode // C `:9038` get_val → optfn_playmode `:3499–3501` (wizard→debug, discover→explore, else normal)
                 : null;
             // C doset_add_menu `:9038` get_val for a live optfn.
             const shown = roleOptfn
@@ -12026,7 +12079,7 @@ const allopt = [
     // optlist.h:786 NHOPTB(travel)
     { name: 'travel', opttyp: BoolOpt, idx: 192, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'travel' }, optfn: null },
     // optlist.h:794 NHOPTB(travel_debug)
-    { name: 'travel_debug', opttyp: BoolOpt, idx: 193, setwhere: SET_WIZONLY, initval: false, addr: null /* C: &iflags.trav_debug, no live field */, optfn: null },
+    { name: 'travel_debug', opttyp: BoolOpt, idx: 193, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'trav_debug' } /* C optlist.h:791 &iflags.trav_debug (DEBUG build, patchlevel.h:36) */, optfn: null },
     // optlist.h:798 NHOPTB(tutorial)
     { name: 'tutorial', opttyp: BoolOpt, idx: 194, setwhere: SET_IN_CONFIG, initval: true, addr: { obj: 'flags', key: 'tutorial' }, optfn: null },
     // optlist.h:801 NHOPTB(use_darkgray)
@@ -12109,7 +12162,9 @@ const EMPTY_OPTSTR = '';
  * identical, name for name). Only the exceptional values are listed; the
  * row defaults are negateok=true, dupeok=false, pfx=false, alias=null.
  * `IBM_` (NHOPTP, MICRO-only) is absent on unix, so OPT_PFX has 2 entries.
- * `customsymbols` self-alias is C's text (optlist.h `:262`). */
+ * `customsymbols` self-alias is C's text (optlist.h `:262`).
+ * `travel_debug` is absent (negateok Yes — the DEBUG variant, optlist.h
+ * `:790-792`, is the compiled one: patchlevel.h `:36` defines DEBUG). */
 const OPT_NEGATEOK_NO = new Set(['windowtype', 'playmode', 'name',
     'align_status', 'altkeyhandling', 'autocompletions', 'autopickup exceptions',
     'bind keys', 'BIOS', 'boulder', 'catname', 'crash_email', 'crash_name',
@@ -12123,7 +12178,7 @@ const OPT_NEGATEOK_NO = new Set(['windowtype', 'playmode', 'name',
     'rawio', 'roguesymset', 'scores', 'sortloot', 'soundlib',
     'status condition fields', 'status highlight rules', 'statuslines',
     'suppress_alert', 'symset', 'term_cols', 'term_rows', 'tile_file', 'traps',
-    'travel_debug', 'vary_msgcount', 'versinfo', 'warnings', 'windowcolors']);
+    'vary_msgcount', 'versinfo', 'warnings', 'windowcolors']);
 const OPT_DUPEOK_YES = new Set(['role', 'race', 'gender', 'alignment',
     'font_map', 'font_menu', 'font_message', 'font_size_map', 'font_size_menu',
     'font_size_message', 'font_size_status', 'font_size_text', 'font_status',

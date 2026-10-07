@@ -5,20 +5,18 @@
 //
 // C build notes: STATUS_HILITES is compiled in (config.h:616), so the
 // `#ifdef STATUS_HILITES` arms below are live C, not dead config. The
-// windowport itself (`status_update` == `*windowprocs.win_status_update`,
+// windowport delivery (`status_update` == `*windowprocs.win_status_update`,
 // winprocs.h:186; caps WC2_RESET_STATUS/WC2_FLUSH_STATUS, winprocs.h:246/248)
-// has no JS registry yet, so per-field/RESET/FLUSH delivery is a named
-// omission (loud forwarder, never silent). The hilite-rule engine
+// is tty_status_update below (wintty.c:4454); the scored port has no proc
+// table, so the tty function is the call. The hilite-rule engine
 // (get_hilite botl.c:2364, live below; hilite_reset_needed botl.c:2257,
 // live below) feeds status_update color + the hilite_rule cache.
-// status_update itself stays a named omission (no windowport registry).
 //
 // Caller: C bot() (botl.c:262) calls bot_via_windowport when
 // VIA_WINDOWPORT(). display.js bot() does that. C tty SETS the status
-// bits (wintty.c `:114–117`, STATUS_HILITES config.h:616); the JS model
-// leaves all four clear (const.js TTY_WINCAP2) because status_update
-// delivery below is a named omission, so that arm does not run and the
-// tty path commits do_statusline1 / do_statusline2 instead.
+// bits (wintty.c `:114–117`, STATUS_HILITES config.h:616) and so does
+// the JS model (const.js TTY_WINCAP2); the tty putstr path commits
+// do_statusline1 / do_statusline2 only when the caps are clear.
 
 import { game } from './gstate.js';
 import { config_error_add } from './cfgfiles.js';
@@ -75,7 +73,7 @@ import {
     A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA,
     acurr, get_strength_str,
 } from './attrib.js';
-import { describe_level, objnum_to_glyph, Hallucination, impossible, SYM_OFF_O } from './display.js';
+import { describe_level, objnum_to_glyph, Hallucination, impossible, SYM_OFF_O, glyphmap_symidx, set_committed_status_lines } from './display.js';
 import { rank_of, roles } from './roles.js';
 import { money_cnt } from './shk.js';
 import { hidden_gold } from './vault.js';
@@ -178,8 +176,12 @@ const initblstats = [
 let blstatsInitalready = false;
 
 export function init_blstats() {
-    if (blstatsInitalready) {
-        // C :1765-1768 — impossible("init_blstats called more than once.").
+    // C :1763-1768 — initalready is process-global and C runs one game
+    // per process, so a set flag means buffers exist. JS runs every
+    // segment in one process (game = {} per game): buffers gone means a
+    // new game, not a repeat call — rebuild quietly (fresh-process
+    // semantics, no C repeat to impossible about).
+    if (blstatsInitalready && game.gb?.blstats) {
         return;
     }
     if (!game.gb) game.gb = {};
@@ -261,6 +263,33 @@ let ttyStatus = [
     new Array(MAXBLSTATS).fill(null),
     new Array(MAXBLSTATS).fill(null),
 ];
+// C wintty.c:4263-4309 — tty delivery statics (STATUS_HILITES on).
+let ttyColormasks = null; // C :4263
+let condShrinklvl = 0; // C :4306
+let enclev = 0, encShrinklvl = 0; // C :4307
+let dlvlShrinklvl = 0; // C :4308
+let truncationExpected = false; // C :4309
+let windowdataInit = false; // C :4305 windowdata_init
+let finalx = [[0, 0], [0, 0], [0, 0]]; // C :4304 [rows][BEFORE=0|NOW=1]
+// C :4321-4326 do_field_opt — DISABLE_TTY_FIELD_OPT is unset, so 1.
+let doFieldOpt = 1;
+// C wins[WIN_STATUS]->data — the status window framebuffer (chars only;
+// colors/attrs go straight to the terminal). MAX_STATUS_ROWS × 80.
+let statusWinData = [
+    new Array(80).fill(' '),
+    new Array(80).fill(' '),
+    new Array(80).fill(' '),
+];
+// C wintty.c:4269-4273 encvals — encumbrance word shrink ladder.
+const encvals = [
+    ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'],
+    ['', 'Burden', 'Stress', 'Strain', 'Overtax', 'Overload'],
+    ['', 'Brd', 'Strs', 'Strn', 'Ovtx', 'Ovld'],
+];
+// C wins[WIN_STATUS]->cols — contest fixed 24x80 geometry.
+const STATUS_COLS = 80;
+// C decl.c:74 hexdd — decode_glyph hex table.
+const HEXDD = '00112233445566778899aAbBcCdDeEfF';
 
 // Same sentinel allmain.js uses for create_nhwindow(NHW_STATUS).
 const WIN_STATUS_ID = 11;
@@ -344,6 +373,677 @@ export function tty_status_init() {
 // port has no proc table, so the tty function is the call.
 function status_enablefield(fld, fieldname, fieldfmt, fldenabl) {
     tty_status_enablefield(fld, fieldname, fieldfmt, fldenabl);
+}
+
+// =====================================================================
+// C win/tty/wintty.c status_update delivery (`:4454–5264`, STATUS_HILITES
+// on per config.h:616) + its static callees, in C order with C line cites.
+// Field values buffer in statusVals/ttyStatus (above); BL_FLUSH/BL_RESET
+// fit (make_things_fit) and render (render_status) into statusWinData —
+// the wins[WIN_STATUS]->data mirror — and onto grid rows 22–23. Time-only
+// ticks (timebot → stat_update_time) refresh BL_TIME alone; every other
+// field keeps its last bot() value, which is the paint C captures.
+// =====================================================================
+
+// C wintty.c:4454–4579 tty_status_update (STATUS_HILITES arm; tty_procs
+// :158). BL_RESET forces a full re-render, BL_FLUSH renders fit fields,
+// BL_CONDITION stashes bits+masks, BL_GOLD decodes mixed glyph text,
+// every other field formats into statusVals. Nothing renders except on
+// FLUSH/RESET (`:4577`).
+export function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) {
+    fldidx |= 0; // C int param
+    let reset_state = false; // C `:4467` NO_RESET
+    if (fldidx < BL_RESET || fldidx >= MAXBLSTATS) return; // C `:4469–4470`
+    if (fldidx >= 0 && fldidx < MAXBLSTATS && !statusActivefields[fldidx]) return; // C `:4472–4473`
+    if (fldidx === BL_RESET) { // C `:4476–4480`
+        reset_state = true; // C FORCE_RESET; FALLTHROUGH
+        if (make_things_fit(reset_state) || truncationExpected) render_status();
+        // C `:4483–4485` status_sanity_check is compiled out
+        // (NH_DEVEL_STATUS == NH_STATUS_RELEASED, patchlevel.h:33).
+        return;
+    }
+    if (fldidx === BL_FLUSH) { // C `:4480`
+        if (make_things_fit(reset_state) || truncationExpected) render_status();
+        return;
+    }
+    if (fldidx === BL_CONDITION) { // C `:4488–4496`
+        ttyStatus[NOW][fldidx].idx = fldidx;
+        ttyConditionBits = ptr | 0; // C :4490 *condptr
+        ttyColormasks = colormasks ?? null; // C :4491
+        ttyStatus[NOW][fldidx].valid = true;
+        ttyStatus[NOW][fldidx].dirty = true;
+        ttyStatus[NOW][fldidx].sanitycheck = true;
+        truncationExpected = false;
+    } else {
+        let text = (fldidx === BL_GOLD) // C `:4497–4500`
+            ? decode_mixed(String(ptr ?? '')) // :4498 decode_mixed
+            : String(ptr ?? ''); // C `:4501` default
+        const attrmask = ((color | 0) >> 8) & 0x00FF; // C `:4502`
+        let fmt = statusFieldfmt[fldidx]; // C `:4503`
+        if (!fmt) fmt = '%s'; // C `:4504–4505`
+        // C `:4506–4512` skip the leading blank for a row-first field.
+        if (fmt.charAt(0) === ' '
+            && (fldidx === ttyFieldorder[0][0] || fldidx === ttyFieldorder[1][0]
+                || fldidx === ttyFieldorder[2][0])) fmt = fmt.slice(1);
+        // C `:4513` Sprintf — every live fmt carries one %s (initblstats);
+        // the replacer keeps $ sequences in the value literal.
+        statusVals[fldidx] = fmt.replace('%s', () => text);
+        ttyStatus[NOW][fldidx].idx = fldidx; // C `:4514`
+        ttyStatus[NOW][fldidx].color = (color | 0) & 0x00FF; // C `:4515`
+        ttyStatus[NOW][fldidx].attr = term_attr_fixup(attrmask); // C `:4516`
+        ttyStatus[NOW][fldidx].lth = statusVals[fldidx].length; // C `:4517`
+        ttyStatus[NOW][fldidx].valid = true; // C `:4518–4520`
+        ttyStatus[NOW][fldidx].dirty = true;
+        ttyStatus[NOW][fldidx].sanitycheck = true;
+    }
+    // C `:4524–4531` suppress the lone blank the core sends for unused
+    // carrying-capacity.
+    if (fldidx >= 0 && fldidx < MAXBLSTATS
+        && ttyStatus[NOW][fldidx].lth === 1 && statusVals[fldidx].charAt(0) === ' ') {
+        statusVals[fldidx] = '';
+        ttyStatus[NOW][fldidx].lth = 0;
+    }
+    // C `:4534–4576` second switch (default processing above first).
+    if (fldidx === BL_HP && (game.iflags?.wc2_hitpointbar | 0)) { // C `:4535–4545`
+        hpbarPercent = percent | 0; // C `:4538`
+        hpbarCritHp = critically_low_hp(true) ? 1 : 0; // C `:4539`
+        ttyStatus[NOW][BL_TITLE].color = (color | 0) & 0x00FF; // C `:4540`
+        const tha = HL_INVERSE | (hpbarCritHp ? HL_BLINK : 0); // C `:4541`
+        ttyStatus[NOW][BL_TITLE].attr = term_attr_fixup(tha); // C `:4542`
+        ttyStatus[NOW][BL_TITLE].dirty = true; // C `:4543`
+    } else if (fldidx === BL_LEVELDESC || fldidx === BL_HUNGER) { // C `:4546–4560`
+        // LEVELDESC falls through into HUNGER's blank-strip in C.
+        if (fldidx === BL_LEVELDESC) dlvlShrinklvl = 0; // C `:4547`
+        // C `:4551–4559` strip trailing blanks.
+        if (ttyStatus[NOW][fldidx].lth > 0) {
+            let s = statusVals[fldidx];
+            while (s.length > 0 && s.charAt(s.length - 1) === ' ') s = s.slice(0, -1);
+            statusVals[fldidx] = s;
+            ttyStatus[NOW][fldidx].lth = s.length;
+        }
+    } else if (fldidx === BL_TITLE) { // C `:4561–4566`
+        if (game.iflags?.wc2_hitpointbar) ttyStatus[NOW][fldidx].lth = 30 + 2;
+    } else if (fldidx === BL_GOLD) { // C `:4567–4571`
+        // A surviving \G counts 1 display cell, not 10 source chars.
+        const p = statusVals[fldidx].indexOf('\\');
+        if (p >= 0 && statusVals[fldidx].charAt(p + 1) === 'G') ttyStatus[NOW][fldidx].lth -= (10 - 1);
+    } else if (fldidx === BL_CAP) { // C `:4572–4575`
+        encShrinklvl = 0; // C `:4573` caller passes the full word
+        enclev = stat_cap_indx(); // C `:4574`
+    }
+    // C `:4577` render on BL_FLUSH/BL_RESET only.
+}
+
+// C wintty.c:4583–4638 make_things_fit — restore shrink levels, measure
+// rows, then shrink conditions (2 tries), encumbrance (2), Dlvl (1),
+// else expect truncation. Returns the condition-row requirement, 0 when
+// fields are not all valid yet.
+function make_things_fit(force_update) {
+    let fitting = 0; // C `:4586`
+    const rowsz = [0, 0, 0]; // C `:4587` MAX_STATUS_ROWS
+    const num_rows = statusRows(); // C `:4589`
+    const condrow = num_rows - 1; // C `:4590`
+    let otheroptions = 0; // C `:4587`
+    condShrinklvl = 0; // C `:4591`
+    if (encShrinklvl > 0 && num_rows === 2) shrink_enc(0); // C `:4592–4593`
+    if (dlvlShrinklvl > 0) shrink_dlvl(0); // C `:4594–4595`
+    set_condition_length(); // C `:4596`
+    for (let trycnt = 0; trycnt < 6 && !fitting; ++trycnt) { // C `:4597`
+        if (!check_fields(force_update, rowsz)) { // C `:4601–4604`
+            fitting = 0;
+            break;
+        }
+        const requirement = rowsz[condrow] - 1; // C `:4606`
+        if (requirement <= STATUS_COLS - 1) { // C `:4607–4610` wins cols
+            fitting = requirement;
+            break;
+        }
+        if (trycnt < 2) { // C `:4611–4617`
+            if (condShrinklvl < trycnt + 1) {
+                condShrinklvl = trycnt + 1;
+                set_condition_length();
+            }
+            continue;
+        }
+        if (condShrinklvl >= 2) { // C `:4618–4635`
+            if (otheroptions < 2) {
+                if (num_rows === 2) shrink_enc(otheroptions + 1); // C `:4625–4626`
+            } else if (otheroptions === 2) {
+                shrink_dlvl(1); // C `:4628`
+            } else {
+                truncationExpected = true; // C `:4631`
+                break;
+            }
+            ++otheroptions; // C `:4634` runs even when num_rows is 3
+        }
+    }
+    return fitting; // C `:4637`
+}
+
+// C wintty.c:4646–4743 check_fields — lay out every active field (x/y),
+// flag moves (update_right/redraw), and take the same-contents shortcut
+// (matchprev) against the window buffer. sz[row] takes the 1-based end.
+// FALSE while any field is still invalid.
+function check_fields(forcefields, sz) {
+    if (!windowdataInit && !check_windowdata()) return false; // C `:4652–4653`
+    const num_rows = statusRows(); // C `:4655`
+    let valid = true; // C `:4650`
+    for (let row = 0; row < num_rows; ++row) { // C `:4656`
+        sz[row] = 0;
+        let col = 1; // C `:4658`
+        let update_right = false; // C `:4659`
+        for (let i = 0; ttyFieldorder[row][i] !== BL_FLUSH; ++i) { // C `:4660`
+            const idx = ttyFieldorder[row][i];
+            if (!statusActivefields[idx]) continue; // C `:4661–4662`
+            if (!ttyStatus[NOW][idx].valid) valid = false; // C `:4663–4664`
+            ttyStatus[NOW][idx].redraw = false; // C `:4667`
+            ttyStatus[NOW][idx].y = row; // C `:4668`
+            ttyStatus[NOW][idx].x = col; // C `:4669`
+            // C `:4671–4682` a moved field end resyncs everything right.
+            if (ttyStatus[NOW][idx].x + ttyStatus[NOW][idx].lth
+                !== ttyStatus[BEFORE][idx].x + ttyStatus[BEFORE][idx].lth) {
+                update_right = true;
+            } else if (ttyStatus[NOW][idx].lth !== ttyStatus[BEFORE][idx].lth
+                || ttyStatus[NOW][idx].x !== ttyStatus[BEFORE][idx].x) {
+                ttyStatus[NOW][idx].redraw = true;
+            } else {
+                update_right = false;
+            }
+            let matchprev = false; // C `:4684`
+            if (valid && !update_right && !forcefields // C `:4685–4686`
+                && !ttyStatus[NOW][idx].redraw) {
+                // C `:4691–4699` same-contents shortcut (conditions skip:
+                // color/attr checks and status_vals are wrong for them).
+                if (doFieldOpt && idx !== BL_CONDITION
+                    && ttyStatus[NOW][idx].color === ttyStatus[BEFORE][idx].color
+                    && ttyStatus[NOW][idx].attr === ttyStatus[BEFORE][idx].attr) {
+                    matchprev = true; // C `:4700`
+                    if (ttyStatus[NOW][idx].dirty) { // C `:4701`
+                        const nb = statusVals[idx] ?? ''; // C `:4708`
+                        let c = col - 1; // C `:4706`
+                        let k = 0;
+                        while (k < nb.length && c < STATUS_COLS) { // C `:4709`
+                            if (nb[k] !== statusWinData[row][c]) break; // C `:4710–4711`
+                            k++; // C `:4712–4714`
+                            c++;
+                        }
+                        // C `:4716–4722` unmatched remainder, or overrun.
+                        // (`:4723–4728` is #if 0, compiled out.)
+                        if (k < nb.length) matchprev = false;
+                    }
+                }
+            }
+            if (forcefields || update_right // C `:4734–4736`
+                || (ttyStatus[NOW][idx].dirty && !matchprev)) {
+                ttyStatus[NOW][idx].redraw = true;
+            }
+            col += ttyStatus[NOW][idx].lth; // C `:4738`
+        }
+        sz[row] = col; // C `:4740`
+    }
+    return valid; // C `:4742`
+}
+
+// C wintty.c:4844–4857 set_condition_length — 1 blank + word per set
+// condition bit at the current shrink level (caller sets condShrinklvl).
+function set_condition_length() {
+    let lth = 0; // C `:4847`
+    if (ttyConditionBits) { // C `:4849`
+        for (let c = 0; c < CONDITION_COUNT; ++c) { // C `:4850` SIZE
+            const mask = conditions[c].mask; // C `:4851`
+            if ((ttyConditionBits & mask) === mask) // C `:4852`
+                lth += 1 + conditions[c].text[condShrinklvl].length; // C `:4853`
+        }
+    }
+    ttyStatus[NOW][BL_CONDITION].lth = lth; // C `:4856`
+}
+
+// C wintty.c:4860–4868 shrink_enc — shrink (lvl 0–2) or restore the
+// encumbrance word; lth always re-measures, even past level 2.
+function shrink_enc(lvl) {
+    if (lvl <= 2) { // C `:4863`
+        encShrinklvl = lvl; // C `:4864`
+        statusVals[BL_CAP] = ' ' + encvals[lvl][enclev]; // C `:4865`
+    }
+    ttyStatus[NOW][BL_CAP].lth = statusVals[BL_CAP].length; // C `:4867`
+}
+
+// C wintty.c:4871–4884 shrink_dlvl — Dlvl: to Dl: (lvl 1) or back (0).
+function shrink_dlvl(lvl) {
+    const cur = statusVals[BL_LEVELDESC] ?? ''; // C `:4875` strchr ':'
+    const ci = cur.indexOf(':');
+    if (ci >= 0) { // C `:4877`
+        dlvlShrinklvl = lvl; // C `:4878`
+        const head = (lvl === 0) ? 'Dlvl' : 'Dl'; // C `:4879`
+        statusVals[BL_LEVELDESC] = head + cur.slice(ci); // C `:4880–4881`
+        ttyStatus[NOW][BL_LEVELDESC].lth = statusVals[BL_LEVELDESC].length; // C `:4882`
+    }
+}
+
+// C wintty.c:4891–4901 check_windowdata — the status window buffer
+// starts blank and null-terminated (paniclog is log-only here).
+function check_windowdata() {
+    // C `:4893–4895` — no WinDesc table in JS; game.WIN_STATUS is the
+    // validity signal (genl_status_init). paniclog writes a log file,
+    // excluded by Rule #2 (display.js impossible precedent).
+    if (game.WIN_STATUS == null || (game.WIN_STATUS | 0) === WIN_ERR) return false;
+    if (!windowdataInit) { // C `:4896–4899` tty_clear_nhwindow
+        for (let r = 0; r < statusWinData.length; r++) statusWinData[r].fill(' ');
+        const disp = game.nhDisplay;
+        if (disp?.setCell) {
+            for (let r = 0; r < statusRows(); r++) {
+                for (let c = 0; c < STATUS_COLS; c++) disp.setCell(c, 22 + r, ' ', NO_COLOR, 0);
+            }
+        }
+        windowdataInit = true;
+    }
+    return true; // C `:4900`
+}
+
+// C wintty.c:4908–4918 condcolor — first CLR_ slot whose mask hits.
+function condcolor(bm, bmarray) {
+    if ((bm | 0) && bmarray) { // C `:4912`
+        for (let i = 0; i < CLR_MAX; ++i) { // C `:4913`
+            if (((bm | 0) & (bmarray[i] | 0)) !== 0) return i; // C `:4914–4915`
+        }
+    }
+    return NO_COLOR; // C `:4917`
+}
+
+// C wintty.c:4921–4953 condattr — HL_ bits from the ATTCLR slots.
+function condattr(bm, bmarray) {
+    let attr = 0; // C `:4923`
+    if ((bm | 0) && bmarray) { // C `:4926`
+        for (let i = HL_ATTCLR_BOLD; i < BL_ATTCLR_MAX; ++i) { // C `:4927`
+            if (((bm | 0) & (bmarray[i] | 0)) !== 0) { // C `:4928`
+                switch (i) { // C `:4929–4948`
+                case HL_ATTCLR_BOLD: attr |= HL_BOLD; break;
+                case HL_ATTCLR_DIM: attr |= HL_DIM; break;
+                case HL_ATTCLR_ITALIC: attr |= HL_ITALIC; break;
+                case HL_ATTCLR_ULINE: attr |= HL_ULINE; break;
+                case HL_ATTCLR_BLINK: attr |= HL_BLINK; break;
+                case HL_ATTCLR_INVERSE: attr |= HL_INVERSE; break;
+                }
+            }
+        }
+    }
+    return attr; // C `:4952`
+}
+
+// Render-terminal state (term_start/end_color/attr targets). Colors are
+// CLR_* / NO_COLOR like the map paints; attrs are the HL_* mask.
+let renderFg = NO_COLOR;
+let renderAttrHL = 0;
+// Status-window cursor (1-based x, 0-based y); cl_end's origin. Mid-render
+// positions are unobservable (callers re-curs after bot()).
+let statusCurX = 1;
+let statusCurY = 0;
+// C render_status `:5110` once_only truncation warn flag.
+let renderTruncWarned = false;
+
+// C termcap term_start_color/term_end_color — subsequent field chars
+// take coloridx, then back to default. Dormant without statushilites
+// rules (render guards every call on iflags.hilite_delta).
+function term_start_color(coloridx) {
+    if ((coloridx | 0) !== NO_COLOR) renderFg = coloridx | 0;
+}
+function term_end_color() {
+    renderFg = NO_COLOR;
+}
+
+// C wintty.c Begin_Attr/End_Attr (`:4955–4989`) — HL_ mask on/off around
+// a field. The cell sink carries bold/inverse/uline bits (display.js
+// sgrTransition); dim/blink/italic have no cell bit and stay stored-only.
+function begin_attr(m) {
+    renderAttrHL |= (m | 0);
+}
+function end_attr(m) {
+    renderAttrHL &= ~(m | 0);
+}
+
+// HL_* mask to the setCell attr bits (1 inv, 2 bold, 4 under).
+function hl_to_cell_attr(m) {
+    let a = 0;
+    if ((m | 0) & HL_BOLD) a |= 2;
+    if ((m | 0) & HL_INVERSE) a |= 1;
+    if ((m | 0) & HL_ULINE) a |= 4;
+    return a;
+}
+
+// C tty_curs(WIN_STATUS, x, y) inside the status render — cursor model.
+function status_curs(x, y) {
+    statusCurX = x | 0;
+    statusCurY = y | 0;
+}
+
+// C termcap.c cl_end (`:648–663`) — clear visible cells from the cursor
+// to end of line. C clears the tty, not cw->data; JS also clears the
+// mirror (mirror==visible invariant — the cleared span sits past every
+// field end, so check_fields' same-contents compare, which stays inside
+// field spans, never reads it; the row commit below does). xterm HAS CE
+// so the cursor does not move (the no-CE space-fill arm is dead there).
+function status_cl_end() {
+    const disp = game.nhDisplay;
+    for (let c = statusCurX - 1; c < STATUS_COLS; c++) {
+        if (c < 0) continue;
+        statusWinData[statusCurY][c] = ' ';
+        if (disp?.setCell) disp.setCell(c, 22 + statusCurY, ' ', NO_COLOR, 0);
+    }
+}
+
+// C wintty.c:4803–4840 tty_putstatusfield — one field string at (x, y):
+// x 1-based, y 0-based; chars land in the window buffer and on screen.
+function tty_putstatusfield(text, x, y) {
+    // C `:4808–4810` — unreachable past check_windowdata; C panics.
+    if (game.WIN_STATUS == null || (game.WIN_STATUS | 0) === WIN_ERR) {
+        throw new Error('tty_putstatusfield: Invalid WinDesc');
+    }
+    // C `:4816` print_vt_code2 AVTC_SELECT_WINDOW — tile-protocol emit,
+    // no tty text effect.
+    const nrows = statusRows(); // C `:4813` cw->maxrow
+    x |= 0; y |= 0;
+    if (x < STATUS_COLS && y < nrows) { // C `:4818`
+        if (x !== statusCurX || y !== statusCurY) status_curs(x, y); // C `:4819–4820`
+        const s = String(text ?? ''); // C `:4814` lth
+        const disp = game.nhDisplay;
+        for (let i = 0; i < s.length; ++i) { // C `:4821`
+            const n = i + x; // C `:4822`
+            if (n < STATUS_COLS && s[i]) { // C `:4823`
+                statusWinData[y][n - 1] = s[i]; // C `:4827` cw->data
+                if (disp?.setCell) disp.setCell(n - 1, 22 + y, s[i], renderFg, hl_to_cell_attr(renderAttrHL)); // C `:4824` putchar
+                statusCurX++; // C `:4825–4826` curx++
+            }
+        }
+    }
+    // C `:4832–4839` #if 0, compiled out.
+}
+
+// C wintty.c:4992–5264 render_status — paint redraw-flagged fields in
+// fieldorder, conditions word by word (cond_idx order), then erase a
+// shrunk tail and roll NOW to BEFORE.
+function render_status() {
+    const num_rows = statusRows(); // C `:5006`
+    for (let row = 0; row < num_rows; ++row) { // C `:5007`
+        // C `:5008` HUPSKIP — done_hup return; morc is display-local
+        // (xwaitforspace bypass) and SIGHUP is unreachable in contest.
+        if (game.program_state?.done_hup) return;
+        const y = row; // C `:5009`
+        status_curs(1, y); // C `:5010` tty_curs(WIN_STATUS, 1, y)
+        let x = 1; // C `:4995` reused across the row (`:5251`)
+        for (let i = 0; ttyFieldorder[row][i] !== BL_FLUSH; ++i) { // C `:5011`
+            const idx = ttyFieldorder[row][i];
+            if (!statusActivefields[idx]) continue; // C `:5012–5013`
+            x = ttyStatus[NOW][idx].x; // C `:5014`
+            const text0 = statusVals[idx] ?? ''; // C `:5015` ("" for CONDITION)
+            const tlth = ttyStatus[NOW][idx].lth | 0; // C `:5016`
+            if (ttyStatus[NOW][idx].redraw || !doFieldOpt) { // C `:5018`
+                const hitpointbar = idx === BL_TITLE // C `:5019–5020`
+                    && (game.iflags?.wc2_hitpointbar | 0);
+                if (idx === BL_CONDITION) { // C `:5022–5116`
+                    let bits = ttyConditionBits | 0; // C `:5028`
+                    // C `:5037–5071` third-row condition indent.
+                    if (row === 2 && bits !== 0) { // C `:5037` MAX_STATUS_ROWS-1
+                        let last_col = STATUS_COLS; // C `:5038` cw->cols
+                        if (statusActivefields[BL_VERS] // C `:5044–5046`
+                            && ttyFieldorder[row][i + 1] === BL_VERS) {
+                            last_col -= ttyStatus[NOW][BL_VERS].lth | 0;
+                        }
+                        let cstart; // C `:5047–5061`
+                        if (ttyStatus[BEFORE][BL_HUNGER].y < row
+                            && x < ttyStatus[BEFORE][BL_HUNGER].x
+                            && (ttyStatus[BEFORE][BL_HUNGER].x + tlth < last_col - 1)) {
+                            cstart = ttyStatus[BEFORE][BL_HUNGER].x;
+                        } else if (x + tlth < STATUS_COLS - 1) {
+                            cstart = last_col - tlth;
+                        } else {
+                            cstart = x;
+                        }
+                        if (x < cstart) { // C `:5063–5070`
+                            do {
+                                if (statusWinData[y][x - 1] !== ' ') tty_putstatusfield(' ', x, y); // C `:5065–5066` dat
+                                x++;
+                            } while (x < cstart);
+                            ttyStatus[NOW][BL_CONDITION].x = x; // C `:5068`
+                            status_curs(x, y); // C `:5069`
+                        }
+                    }
+                    // C `:5073–5104` draw condition words in cond_idx order.
+                    for (let c = 0; c < CONDITION_COUNT && bits !== 0; ++c) { // C `:5073` SIZE
+                        const ci = cond_idx[c]; // C `:5074`
+                        const mask = conditions[ci].mask; // C `:5075`
+                        if (((bits | 0) & mask) !== 0) { // C `:5076` bits & mask
+                            let coloridx = NO_COLOR; // C `:4996`
+                            let attrmask = 0;
+                            tty_putstatusfield(' ', x++, y); // C `:5079`
+                            if (game.iflags?.hilite_delta) { // C `:5080–5086`
+                                attrmask = condattr(mask, ttyColormasks);
+                                begin_attr(attrmask);
+                                coloridx = condcolor(mask, ttyColormasks);
+                                if (coloridx !== NO_COLOR) term_start_color(coloridx);
+                            }
+                            let condtext = conditions[ci].text[condShrinklvl]; // C `:5087`
+                            if (x >= STATUS_COLS && !truncationExpected) { // C `:5088–5094`
+                                void impossible('Unexpected condition placement overflow for "%s"', condtext);
+                                condtext = '';
+                                bits = 0;
+                            }
+                            tty_putstatusfield(condtext, x, y); // C `:5095`
+                            x += condtext.length; // C `:5096`
+                            if (game.iflags?.hilite_delta) { // C `:5097–5101`
+                                if (coloridx !== NO_COLOR) term_end_color();
+                                end_attr(attrmask);
+                            }
+                            bits &= ~mask; // C `:5102`
+                        }
+                    }
+                    // C `:5109–5116` x==cols may sit on the terminator;
+                    // past it truncates (paniclog is Rule #2 log-only).
+                    if (x > STATUS_COLS) {
+                        if (!truncationExpected && !renderTruncWarned) renderTruncWarned = true;
+                        x = STATUS_COLS;
+                    }
+                } else if (hitpointbar) { // C `:5117–5177` title HP bar
+                    let bar; // C `:5125` bar[30+1]
+                    const ttext = text0;
+                    if (ttext.length !== 30) { // C `:5130–5135` %-30.30s
+                        bar = ttext.padEnd(30).slice(0, 30);
+                        statusVals[BL_TITLE] = bar; // C `:5132` writeback
+                    } else {
+                        bar = ttext; // C `:5134`
+                    }
+                    if (hpbarCritHp) bar = repad_with_dashes(bar); // C `:5136–5137`
+                    const bar_len = bar.length; // C `:5138` always 30
+                    const twoparts = hpbarPercent < 100; // C `:5126`
+                    let attrmask = 0; // C `:5140` dead-case default
+                    let bar2 = '';
+                    if (twoparts) { // C `:5144–5154`
+                        let bar_pos = Math.trunc((bar_len * hpbarPercent) / 100); // C `:5146`
+                        if (bar_pos < 1 && hpbarPercent > 0) bar_pos = 1; // C `:5147–5148`
+                        if (bar_pos >= bar_len && hpbarPercent < 100) bar_pos = bar_len - 1; // C `:5149–5150`
+                        bar2 = bar.slice(bar_pos); // C `:5151–5153` split
+                        bar = bar.slice(0, bar_pos);
+                    }
+                    tty_putstatusfield('[', x++, y); // C `:5155`
+                    if (bar.length) { // C `:5156` *bar
+                        const coloridx = ttyStatus[NOW][BL_TITLE].color; // C `:5157`
+                        attrmask = ttyStatus[NOW][BL_TITLE].attr; // C `:5158`
+                        begin_attr(attrmask); // C `:5159`
+                        if (game.iflags?.hilite_delta && coloridx !== NO_COLOR) term_start_color(coloridx); // C `:5160–5161`
+                        tty_putstatusfield(bar, x, y); // C `:5162`
+                        x += bar.length; // C `:5163`
+                        if (game.iflags?.hilite_delta && coloridx !== NO_COLOR) term_end_color(); // C `:5164–5165`
+                        end_attr(attrmask); // C `:5166`
+                    }
+                    if (twoparts) { // C `:5168–5176`
+                        // C `:5169–5170` ATR_BLINK has no cell bit (dormant:
+                        // hitpointbar off in contest); the text still paints.
+                        tty_putstatusfield(bar2, x, y); // C `:5172`
+                        x += bar2.length; // C `:5173`
+                    }
+                    tty_putstatusfield(']', x++, y); // C `:5177`
+                } else { // C `:5178–5235` ordinary field
+                    if (idx === BL_VERS // C `:5185–5188` trailing version
+                        && ttyFieldorder[row][i + 1] === BL_FLUSH) { // right-justifies
+                        // C `:5191–5202` FIXME resync after 3rd-row indents.
+                        const vx = (ttyStatus[BEFORE][BL_CONDITION].x | 0)
+                            + (ttyStatus[BEFORE][BL_CONDITION].lth | 0);
+                        if (i > 0 && ttyFieldorder[row][i - 1] === BL_CONDITION && x !== vx) {
+                            x = vx;
+                            status_curs(x, y); // C `:5201`
+                        }
+                        const vstart = STATUS_COLS - (ttyStatus[NOW][idx].lth | 0); // C `:5204`
+                        if (x < vstart) { // C `:5205–5211`
+                            do {
+                                if (statusWinData[y][x - 1] !== ' ') tty_putstatusfield(' ', x, y); // C `:5207–5208` dat
+                                x++;
+                            } while (x < vstart);
+                            ttyStatus[NOW][BL_VERS].x = x; // C `:5210`
+                        }
+                    }
+                    let text = text0;
+                    if (game.iflags?.hilite_delta) { // C `:5213–5227`
+                        while (text.charAt(0) === ' ') { // C `:5214–5217`
+                            tty_putstatusfield(' ', x++, y);
+                            text = text.slice(1);
+                        }
+                        if (text.charAt(0) === '/' && idx === BL_EXP) { // C `:5218–5221`
+                            tty_putstatusfield('/', x++, y);
+                            text = text.slice(1);
+                        }
+                        const am = ttyStatus[NOW][idx].attr; // C `:5222–5226`
+                        begin_attr(am);
+                        const ci = ttyStatus[NOW][idx].color;
+                        if (ci !== NO_COLOR) term_start_color(ci);
+                        tty_putstatusfield(text, x, y); // C `:5228`
+                        x += text.length; // C `:5229`
+                        if (ci !== NO_COLOR) term_end_color(); // C `:5230–5234`
+                        end_attr(am);
+                    } else {
+                        tty_putstatusfield(text, x, y); // C `:5228`
+                        x += text.length; // C `:5229`
+                    }
+                }
+            } else {
+                x += tlth; // C `:5238` not rendered, same text as before
+            }
+            finalx[row][NOW] = x - 1; // C `:5240`
+            // C `:5242–5244` reset flags now the field is rendered.
+            ttyStatus[NOW][idx].dirty = false;
+            ttyStatus[NOW][idx].redraw = false;
+            ttyStatus[NOW][idx].sanitycheck = false;
+            ttyStatus[BEFORE][idx] = { ...ttyStatus[NOW][idx] }; // C `:5249` value copy
+        }
+        // C `:5251–5256` a shrunk row erases its tail.
+        x = finalx[row][NOW]; // C `:5251` (x is reused; keep the name)
+        if ((x < finalx[row][BEFORE] || !finalx[row][BEFORE]) // C `:5252`
+            && x + 1 < STATUS_COLS) { // cw->cols
+            status_curs(x + 1, y); // C `:5254`
+            status_cl_end(); // C `:5255`
+        }
+        finalx[row][BEFORE] = finalx[row][NOW]; // C `:5261`
+    }
+    // Publish the painted rows for the flush/overlay readers (the
+    // window-buffer equivalent of display.js _commitStatusLines): C has
+    // no such strings. The mirror is visible-identical (status_cl_end
+    // clears it with the grid), so visible content is the row through
+    // finalx, trailing blanks trimmed like _statusLine1/2 emit.
+    const rows = [];
+    for (let r = 0; r < 2; r++) {
+        const end = Math.max(0, (finalx[r][NOW] | 0) + 1);
+        rows.push(statusWinData[r].slice(0, end).join('').replace(/ +$/, ''));
+    }
+    set_committed_status_lines(rows[0] ?? '', rows[1] ?? '');
+    // C `:5263` return (void).
+}
+
+// C windows.c:1439–1463 decode_glyph — 4 rndencode hex + 4 glyph hex
+// (hexdd halves the strchr offset). Returns the digit count, 0 when the
+// check word mismatches (glyph_ptr untouched); out is boxed (out.v).
+function decode_glyph(str, out) {
+    let rndchk = 0, dcount = 0, retval = 0; // C `:1441`
+    let i = 0;
+    const s = String(str ?? '');
+    for (; i < s.length && ++dcount <= 4; ++i) { // C `:1444`
+        const dp = HEXDD.indexOf(s[i]); // C `:1445` strchr
+        if (dp >= 0) { // C `:1445`
+            retval++; // C `:1446`
+            rndchk = (rndchk * 16) + Math.trunc(dp / 2); // C `:1447`
+        } else break; // C `:1448–1449`
+    }
+    if (rndchk === (game.svc?.context?.rndencode | 0)) { // C `:1451`
+        out.v = 0; // C `:1452` *glyph_ptr = dcount = 0
+        dcount = 0;
+        for (; i < s.length && ++dcount <= 4; ++i) { // C `:1453`
+            const dp = HEXDD.indexOf(s[i]); // C `:1454`
+            if (dp >= 0) { // C `:1454`
+                retval++; // C `:1455`
+                out.v = (out.v * 16) + Math.trunc(dp / 2); // C `:1456`
+            } else break; // C `:1457–1458`
+        }
+        return retval; // C `:1460`
+    }
+    return 0; // C `:1462`
+}
+
+// C windows.c:1466–1512 decode_mixed — expand \GXXXXNNNN glyph escapes
+// to their showsyms char (single pass, no rescan). A failed check word
+// stays literal (possible forgery); trailing lone backslash survives;
+// any other \x drops the backslash.
+export function decode_mixed(str) {
+    let out = '';
+    const s = String(str ?? '');
+    let i = 0;
+    while (i < s.length) { // C `:1474`
+        if (s[i] === '\\') { // C `:1475`
+            const save = i; // C `:1479` save_str
+            i++; // C `:1479` str++
+            const c = i < s.length ? s[i] : '\0'; // C `:1480` switch
+            if (c === 'G') { // C `:1481` glyph value
+                const box = { v: 0 };
+                const dcount = decode_glyph(s.slice(i + 1), box); // C `:1482`
+                if (dcount) { // C `:1482`
+                    i += (dcount + 1); // C `:1483`
+                    // C `:1484–1486` map_glyphinfo symidx → showsyms.
+                    const so = glyphmap_symidx(box.v);
+                    const sh = game.gs?.showsyms?.[so];
+                    out += (typeof sh === 'string' && sh.length) ? sh[0] : '?';
+                    continue; // C `:1485–1487` no copy this iteration
+                }
+                i = save; // C `:1490` forgery — literal
+            } else if (c === '\\') { // C `:1493–1494` → copy one below
+                // fall through to the shared copy
+            } else if (c === '\0') { // C `:1495–1504` trailing backslash
+                i = save; // C `:1503`
+            }
+            // C default (`:1506`): no case — the backslash is dropped.
+        }
+        out += s[i] ?? ''; // C `:1507` *put++ = *str++
+        i++;
+    }
+    return out; // C `:1510–1511`
+}
+
+// C win/tty/termcap.c:1411–1428 term_attr_fixup — drop highlights the
+// terminal cannot do (kept in sync with s_atr2str). The recorder runs
+// xterm-256color (record-session.mjs), where US (uline), MB (blink)
+// and MH (dim) all exist, so every arm below reads present.
+export function term_attr_fixup(msk) {
+    msk |= 0; // C int param
+    const has_US = true; // C `:1415` nh_US — xterm present
+    const has_MB = true; // C `:1420` MB — xterm present
+    const has_MH = true; // C `:1425` MH — xterm present
+    if ((msk & HL_ULINE) && !has_US) { // C `:1415–1418`
+        msk |= HL_BOLD;
+        msk &= ~HL_ULINE;
+    }
+    if ((msk & HL_BLINK) && !has_MB) { // C `:1420–1423`
+        msk |= HL_BOLD;
+        msk &= ~HL_BLINK;
+    }
+    if ((msk & HL_DIM) && !has_MH) { // C `:1425–1427`
+        msk &= ~HL_DIM;
+    }
+    return msk; // C `:1428`
 }
 
 // C botl.c:1683-1720 status_initialize.
@@ -952,10 +1652,11 @@ function get_hilite(idx, fldidx, vp, chg, pc, colorBox) {
 }
 
 // C winprocs.h:186 (`#define status_update (*windowprocs.win_status_update)`)
-// — per-field delivery into the windowport's status buffer. Named omit: JS
-// has no windowport registry; the tty end effect is display.js bot().
-function status_update(_fld, _val, _chg, _pc, _color, _hilites) {
-    throw new Error('named omit: status_update windowport dispatch (winprocs.h:186) not yet ported');
+// — per-field delivery into the windowport's status buffer. tty_procs
+// installs tty_status_update (wintty.c:158); the scored port has no proc
+// table, so the tty function is the call (status_enablefield precedent).
+function status_update(fld, val, chg, pc, color, hilites) {
+    tty_status_update(fld, val, chg, pc, color, hilites);
 }
 
 // C botl.c:1496-1497 — `static int oldrndencode = 0; static nhsym oldgoldsym
@@ -1060,7 +1761,7 @@ export function eval_notify_windowport_field(fld, valsetlist, idx) {
 // C `windowprocs.wincap2` (winprocs.h) — the live caps word. Shape mirrors
 // options.js windowprocs_wincap2 (:1343–1349): the installed tty value once
 // display.js install_tty_wincap2 has run, else the const.js TTY_WINCAP2
-// model (full unix tty set minus the four status bits, const.js:1510–1521).
+// model (full unix tty set including the four status bits, const.js).
 function windowprocs_wincap2() {
     const wp = game.windowprocs;
     if (wp && typeof wp === 'object' && Object.hasOwn(wp, 'wincap2')) {
@@ -1099,9 +1800,8 @@ export function evaluate_and_notify_windowport(valsetlist, idx) {
     // C :1652-1670 notes: botlx forces a full push (some ports only draw
     // changed fields; tty needs the repaint after menu/text obliteration).
     // C :1671/:1674 read windowprocs.wincap2 live (single-port tty model:
-    // installed value or const.js TTY_WINCAP2 — full unix tty set minus
-    // the four status bits, so both arms stay dormant until status_update
-    // delivery + the doset wc2 arm land, their own rows).
+    // installed value or const.js TTY_WINCAP2 — full unix tty set with
+    // the status bits, so both arms push into tty_status_update).
     const wincap2 = windowprocs_wincap2();
     const botlx = !!(game.flags?.botlx ?? game.disp?.botlx); // C disp.botlx; JS convention: game.flags (display.js bot())
     if (botlx && (wincap2 & WC2_RESET_STATUS) !== 0) { // C :1671-1673
@@ -1304,8 +2004,7 @@ export function opt_next_cond(indx) {
 
 /* C botl.c:852 `int cond_idx[CONDITION_COUNT]` (extern via botl.h:158) —
  * display-order index scratch, filled + qsort(cond_cmp)'d by the condopt
- * init arm. Write-only in C (no reader in src/ or include/); kept so the
- * init arm's observable store order matches. */
+ * init arm. Read by render_status (wintty.c:5074) for condition words. */
 export const cond_idx = new Array(CONDITION_COUNT).fill(0);
 
 /**
@@ -2822,8 +3521,8 @@ export function stat_update_time() {
     eval_notify_windowport_field(fld, valset, idx); // C :1294
     // C :1295-1298 WC2_FLUSH_STATUS push. Caps read the live single-port
     // tty model (same windowprocs_wincap2 helper as
-    // evaluate_and_notify_windowport); the status bits stay clear so the
-    // arm stays dormant until status_update delivery lands (own row).
+    // evaluate_and_notify_windowport); the status bits are set, so the
+    // arm pushes BL_FLUSH into tty_status_update.
     const wincap2 = windowprocs_wincap2();
     if ((wincap2 & WC2_FLUSH_STATUS) !== 0) { // C :1295
         status_update(BL_FLUSH, 0, 0, 0, NO_COLOR, null); // C :1296-1297

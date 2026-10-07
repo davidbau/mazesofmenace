@@ -209,7 +209,7 @@ import {
     noit_Monnam, y_monnam, YMonnam, rndcolor, hliquid, hcolor, rndmonnam,
     a_monnam, christen_monst,
 } from './do_name.js';
-import { abuse_dog } from './dog.js';
+import { abuse_dog, wary_dog } from './dog.js';
 import {
     has_ceiling,
     Can_fall_thru,
@@ -233,7 +233,7 @@ import { next_to_u } from './apply_next_to_u.js';
 import { number_leashed } from './apply.js';
 import { done } from './end.js';
 import {
-    canseemon, feel_newsym, rank_of, map_invisible,
+    canseemon, feel_newsym, rank_of, map_invisible, under_water,
 } from './display.js';
 import { can_reach_floor } from './engrave.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -318,7 +318,7 @@ import { float_vs_flight, body_part, polymon } from './polyself.js';
 import { create_gas_cloud } from './region.js';
 import { d, rn1, rn2, rnd, rne, rnl, rn2_on_display_rng, rnz } from './rng.js';
 import { in_rooms } from './rooms.js';
-import { dismount_steed, Punished } from './steed.js';
+import { dismount_steed, Punished, rider_cant_reach } from './steed.js';
 import { P_SKILL } from './startup_skills.js';
 import { CMAP_EXPLANATIONS } from './symbol_data.js';
 import { trap_to_defsym } from './symbols.js';
@@ -1395,7 +1395,7 @@ export async function drown(state = game) {
         }
         vision_recalc(2);
         await set_uinwater(true, state);
-        note_unported('vision.c under_water');
+        await under_water(1, state);
         state.vision_full_recalc = 1;
         return false;
     }
@@ -2479,8 +2479,7 @@ async function try_disarm(ttmp, force_failure, state = game) {
     /* untrappable traps are located on the ground. */
     if (!can_reach_floor(under_u, state)) {
         if (u.usteed && P_SKILL(P_RIDING, state) < P_BASIC) {
-            // C: rider_cant_reach(), steed.c, not ported.
-            note_unported('steed.c rider_cant_reach');
+            await rider_cant_reach(state);
         } else {
             await ttyPline(`You are unable to reach the ${trapname(ttype)}!`, state);
         }
@@ -3292,7 +3291,7 @@ export async function animate_statue(
             { ...objectEnv, state, random },
         );
         if (monster?.mtame && !monster.isminion)
-            note_unported('dog.c wary_dog');
+            await wary_dog(monster, true, objectEnv);
     } else {
         let mmflags = NO_MINVENT | MM_NOMSG;
         const sgend = statue.spe & CORPSTAT_GENDER;

@@ -744,6 +744,13 @@ export async function rloc_to(mtmp, x, y, rloc_opts = null) {
     // set_apparxy after dest newsym (teleport.c:1702, D-1160).
     mtmp.mx = x;
     mtmp.my = y;
+    /* C teleport.c:1684 place_monster (steed.c:931 `mstate = MON_FLOOR`):
+     * placement wipes every mstate bit, not just the OFFMAP set by the
+     * remove half (D-3577's partial clear left BUBBLEMOVE stuck — D-3582:
+     * a bubble-carried pet kept mstate 16 and movemon skipped it, forking
+     * the step at C distfleeck vs JS mcalcmove). JS occupancy stays mx/my
+     * + !MON_OFFMAP; no grid write on this path. */
+    mtmp.mstate = MON_FLOOR;
     // C: update_monster_region after place, before worm tail
     // (teleport.c:1685 / region.c:598–611, D-1161).
     update_monster_region(mtmp);

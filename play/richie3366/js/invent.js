@@ -8551,10 +8551,17 @@ export async function doattributes(enl_mode = null) {
         const pageCount = Math.max(1, Math.ceil(lines.length / PAGE));
         for (let p = 0; p < pageCount; p++) {
             const chunk = lines.slice(p * PAGE, (p + 1) * PAGE);
-            chunk.push(` (${p + 1} of ${pageCount})`);
+            // C wintty.c tty_end_menu `:2742–2750` + process_menu_window
+            // `:1537–1543`: single-page menus show "(end) " (trailing
+            // space); only multi-page menus show "(x of y)" (no trailing
+            // space). Cursor after the morestr (`:1545–1547` + dmore).
+            const morestr = pageCount > 1
+                ? `(${p + 1} of ${pageCount})`
+                : '(end) ';
+            chunk.push(` ${morestr}`);
             const endRow = chunk.length - 1;
             paint_overlay(chunk.map(t => ({ text: t, attr: 0 })), {
-                cursor: [9, endRow],
+                cursor: [morestr.length + 1, endRow],
             });
             await flush_screen(1);
             if (await waitMenuKey()) break;

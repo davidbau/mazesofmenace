@@ -1,5 +1,5 @@
 // steed.js -- Riding a saddled monster.
-// C ref: steed.c -- can_saddle(), use_saddle(), put_saddle_on_mon(),
+// C ref: steed.c -- rider_cant_reach(), can_saddle(), use_saddle(), put_saddle_on_mon(),
 // can_ride(), mount_steed(), exercise_steed(),
 // landing_spot(), dismount_steed(), maybewakesteed(), stucksteed() and
 // doride().
@@ -73,6 +73,7 @@ import {
 import { isok } from './cmd_isok.js';
 import { dirtocoord, getdir, xytodir, y_n } from './cmd.js';
 import { newsym } from './display.js';
+import { heal_legs } from './do.js';
 import { finish_meating } from './dogmove.js';
 import {
     Monnam,
@@ -83,6 +84,7 @@ import {
     mon_nam,
     pmname,
     x_monnam,
+    y_monnam,
 } from './do_name.js';
 import { game } from './gstate.js';
 import {
@@ -207,6 +209,15 @@ function canSeeStartingPet(monster, env) {
     // dog.c:makedog() equips the saddle before initedog(); ordinary startup
     // pets are adjacent unless blindness or invisibility prevents seeing one.
     return !Blind(env.state) && !monster.minvis;
+}
+
+// C ref: steed.c rider_cant_reach() (17-20). Its caller has decided
+// that the mounted hero cannot reach; naming retains the ordinary owner.
+export async function rider_cant_reach(state = game, env = {}) {
+    await (env.message ?? ttyPline)(
+        `You aren't skilled enough to reach from ${y_monnam(state.u.usteed, state, env)}.`,
+        state,
+    );
 }
 
 const SADDLEABLE_CLASSES = new Set([
@@ -462,8 +473,8 @@ export async function mount_steed(mtmp, force, state = game) {
     if (propertyActive(state, WOUNDED_LEGS)) {
         // do.c legs_in_no_shape() (2408-2423) reads EWounded_legs' side bits
         // and makeplural(), and the `force && wizard` heal_legs() question
-        // below it is debug-mode only. Neither is ported, which is the whole
-        // basis for the stop: the property itself is live. do.c
+        // below it is debug-mode only. That message/prompt branch remains
+        // unported; heal_legs() itself is available. The property is live: do.c
         // set_wounded_legs() writes it, and trap.c trapeffect_bear_trap()'s
         // hero arm reaches that writer, so a hero who walks into a bear trap
         // and then rides arrives here.
@@ -893,27 +904,10 @@ export async function dismount_steed(reason, state = game) {
     }
     /* While riding, Wounded_legs refers to the steed's legs;
        after dismounting, it reverts to the hero's legs. */
-    if (repair_leg_damage) {
-        // C calls heal_legs(1) here. js/do.js ports that function's how == 0
-        // arm alone. What how decides is narrower than it looks: do.c:2461's
-        // message test is `!u.usteed && how != 2`, so only the petrification
-        // value suppresses the line, and the dismount is silent through the
-        // first conjunct instead -- steed.c clears u.usteed at :658, after the
-        // heal_legs(1) call at :655. do.c:2483's `if (how == 0)` is the one
-        // test how alone decides, and it suppresses the encumbrance feedback
-        // for 1 and 2 both. So a how == 1 caller needs this function's ported
-        // body with encumber_msg() suppressed, which means restoring the
-        // argument rather than re-deriving the branch, and that is the basis
-        // for this stop.
-        // The property is live -- do.c set_wounded_legs(), reached from trap.c
-        // trapeffect_bear_trap()'s hero arm, writes it -- but mount_steed()
-        // refuses a hero who already carries the wound, so arriving here needs
-        // one taken while riding, and no C writer that can inflict one on a
-        // rider is ported: trap.c:2581-2582's land mine, uhitm.c:4475, and the
-        // ball.c, dig.c, dokick.c and apply.c calls. steed.c:614's own wound,
-        // from the fall this function is handling, clears the flag at 615.
-        throw new UnsupportedSteedError('dismount_steed() healing legs');
-    }
+    // C steed.c:655 heals the steed before releasing u.usteed; mode 1
+    // suppresses encumbrance feedback until the subsequent landing.
+    if (repair_leg_damage)
+        await heal_legs(state, { how: 1, message: ttyPline });
 
     /* Release the steed */
     u.usteed = null;

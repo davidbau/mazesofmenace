@@ -8577,8 +8577,8 @@ function load_arc_goal() {
  * solidfill ROOM then mines fg=bg="." lit-field kludge; Camelot map;
  * COURT FILL_LVFLAGS; CUSTOM_INVENT Excalibur + plate; warhorse saddles.
  * King Arthur invent wears via m_dowear (sp_lev.c spo_end_moninvent).
- * Named omissions: humidity get_location;
- * light_region wall expansion; ensure_way_out / map_cleanup.
+ * Named omissions: humidity get_location; ensure_way_out / map_cleanup.
+ * (String-form region wall expansion is live via light_region.)
  */
 async function load_kni_strt() {
     const g = game;
@@ -8625,17 +8625,12 @@ async function load_kni_strt() {
     const mx = g.splev_xstart ?? 1;
     const my = g.splev_ystart ?? 0;
 
-    const kniLit = (x1, y1, x2, y2, lit) => {
-        for (let y = y1; y <= y2; y++) {
-            for (let x = x1; x <= x2; x++) {
-                const loc = g.level.at(mx + x, my + y);
-                if (loc) loc.lit = lit;
-            }
-        }
-    };
-    // des.region lit / unlit (map-relative)
-    kniLit(0, 0, 49, 15, true);
-    kniLit(4, 4, 45, 11, false);
+    // des.region(selection.area(00,00,49,15),"lit") → light_region expands
+    // walls (C lspo_region argc=2 :5624-5632: grow W_ANY when lit).
+    light_region(mx + 0, my + 0, mx + 49, my + 15, true);
+    // des.region(selection.area(04,04,45,11),"unlit") — argc=2 unlit does
+    // not grow (C :5630 `if (rlit)`).
+    light_region(mx + 4, my + 4, mx + 45, my + 11, false);
 
     // des.region({ region={06,06,22,09}, lit=1, type="throne", filled=2 })
     {
@@ -8649,9 +8644,12 @@ async function load_kni_strt() {
                 topologize(troom);
             }
         }
-        kniLit(6, 6, 22, 9, true);
+        // (no sel_set_lit: C table path lights via add_room only —
+        // the old raw-rect relight here was a subset of it)
     }
-    kniLit(27, 6, 43, 9, true);
+    // des.region(selection.area(27,06,43,09),"lit") → light_region expands
+    // walls (C lspo_region argc=2 :5624-5632: grow W_ANY when lit).
+    light_region(mx + 27, my + 6, mx + 43, my + 9, true);
 
     // des.stair("down", 40,7)
     // C l_create_stairway: fixed scoord → SpLev_Map mark :4189 + force :4209–4210.
@@ -18399,9 +18397,14 @@ function setup_waterlevel() {
     const gbymax = ymax - 1;
     g.waterlevel_bounds = { xmin, ymin, xmax, ymax, gbxmin, gbymin, gbxmax, gbymax };
 
-    // C: glyph = cmap_to_glyph(water ? S_water : S_air); set on every cell
+    // C: glyph = cmap_to_glyph(water ? S_water : S_air); set on every cell.
+    // C stores the integer id; the tty resolves at paint time through the
+    // live symset. Resolve the same way (terrain_glyph is the live
+    // DEC-aware twin): DECgraphics shows S_water as meta-` diamond
+    // (dat/symbols), ASCII as '}'. S_air has no DEC override.
+    const waterTty = terrain_glyph({ typ: WATER });
     const memGlyph = Is_waterlevel(uz)
-        ? { ch: '}', color: CLR_BRIGHT_BLUE, decgfx: false }
+        ? { ch: waterTty.ch, color: waterTty.color, decgfx: !!waterTty.dec }
         : { ch: ' ', color: CLR_CYAN, decgfx: false };
     const typ = Is_waterlevel(uz) ? WATER : AIR;
     for (let x = 1; x <= COLNO - 1; x++) {
@@ -18557,6 +18560,12 @@ export async function movebubbles() {
      * wins) so maybe_adjust_hero_bubble gates rn2(2) on a real find. */
     g.hero_bubble = null;
     if (Is_waterlevel(uz)) {
+        /* C `:1541–1545` water_pos glyph is the integer S_water id; the
+         * tty resolves at paint time through the live symset (DECgraphics
+         * meta-` diamond, dat/symbols; ASCII '}'). Hoisted: the symset
+         * cannot change mid-call. terrain_glyph is the live DEC-aware
+         * twin (already imported). */
+        const bubbleWaterTty = terrain_glyph({ typ: WATER });
         /* C `:1563–1564`: keep attached ball&chain separate from bubble
          * objects. Punished ≡ uball != 0 (youprop.h:77). */
         if (g.u?.uball)
@@ -18619,7 +18628,11 @@ export async function movebubbles() {
                      * glyph, WATER, zeroed seenv/lit) then block_point. */
                     const loc = g.level.at(x, y);
                     if (loc) {
-                        loc.remembered_glyph = { ch: '}', color: CLR_BRIGHT_BLUE, decgfx: false };
+                        loc.remembered_glyph = {
+                            ch: bubbleWaterTty.ch,
+                            color: bubbleWaterTty.color,
+                            decgfx: !!bubbleWaterTty.dec,
+                        };
                         loc.typ = WATER;
                         loc.lit = false;
                         loc.seenv = 0;

@@ -4454,7 +4454,17 @@ export async function continue_run() {
     if (game.multi < COLNO && !--game.multi) {
         end_running(true);
     }
-    // C ref: hack.c domove_core — travel recomputes step each turn
+    // C ref: hack.c domove_core `:2724–2728` — travel recomputes step
+    // each turn: `if (!findtravelpath(TRAVP_TRAVEL))
+    // findtravelpath(TRAVP_GUESS); travel1 = 0;` then FALLS THROUGH to
+    // the step. No-path has no early return: findtravelpath's `found:`
+    // (hack.c `:1516–1520`, ported in findtravelpath_guess) already
+    // zeroed dx/dy + nomul(0) (multi cleared, travel over via
+    // end_running inside nomul); domove below self-steps (no-op) with
+    // move=1 and the turn still runs (movemon, timers, dosounds,
+    // gethungry). move=0/return here skipped the turn C runs
+    // (scen-town-Wizard-94142 travel step 8 from (21,17): hero
+    // unmoved, 95 draws, then the next command's getpos).
     if (game.context?.travel) {
         // C: if (!findtravelpath(TRAVP_TRAVEL)) findtravelpath(TRAVP_GUESS)
         let travelStep = await findtravelpath_travel();
@@ -4468,11 +4478,6 @@ export async function continue_run() {
                 await You('stop, unsure which way to go.');
                 travelStep = TRAVEL_STEP;
             }
-        }
-        if (!travelStep) {
-            end_running(true);
-            game.context.move = 0;
-            return false;
         }
         game.context.travel1 = 0;
     }
@@ -5435,14 +5440,22 @@ export async function rhack(key) {
             } else {
                 res = await canned();
             }
-            // C rhack: (res & ECMD_TIME) → context.move; CANCEL|FAIL →
-            // reset_cmd_vars(TRUE) clears remaining CQ_CANNED. Boolean true
-            // from doapply is ECMD_TIME (true & 1); D-1018 canned re-apply.
+            // C rhack do_cmdq_extcmd jumps into the tlist path, so a
+            // queued command gets the same post-command rule as a fresh
+            // key (`:3812–3816`): CANCEL|FAIL → reset_cmd_vars(TRUE)
+            // (clears remaining CQ_CANNED *and* CQ_REPEAT), else
+            // no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+            // Boolean true from doapply is ECMD_TIME (true & 1);
+            // D-1018 canned re-apply.
+            if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+                reset_cmd_vars(true);
+            } else if ((res & ECMD_TIME) === 0) {
+                reset_cmd_vars((game.multi | 0) < 0);
+            }
             if ((res & ECMD_TIME) !== 0) {
                 game.context.move = 1;
                 game.kickedloc = { x: 0, y: 0 };
             } else {
-                if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) cmdq_clear();
                 game.context.move = 0;
             }
             return;
@@ -5733,6 +5746,13 @@ export async function rhack(key) {
     } else if (key === 1) {
         // C cmd.c do_repeat — Ctrl-A "repeat" (IFBURIED|GENERALCMD)
         const res = await do_repeat();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((res & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (res & ECMD_TIME) ? 1 : 0;
         if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch >= '0' && ch <= '9') {
@@ -5755,21 +5775,29 @@ export async function rhack(key) {
     } else if (ch === 'a') {
         // C ref: apply.c doapply
         const tookTime = await doapply();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'o') {
         // C ref: lock.c doopen / cmd.c `o` — getdir then open door
         const tookTime = await doopen();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'c') {
         // C ref: lock.c doclose / cmd.c `c` — getdir then close door
         const tookTime = await doclose();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (key === 4) { // Ctrl-D
         // C ref: dokick.c dokick — #kick
         const tookTime = await dokick();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         // C: do NOT clear kickedloc after dokick — pets avoid it this turn
     } else if (ch === ' ' && game.flags?.rest_on_space) {
@@ -5779,6 +5807,8 @@ export async function rhack(key) {
             set_occupation(donull, 'waiting', game.multi);
         }
         const tookTime = await donull();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '.') {
@@ -5789,26 +5819,56 @@ export async function rhack(key) {
             set_occupation(donull, 'waiting', game.multi);
         }
         const tookTime = await donull();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === ',') {
         // C ref: hack.c dopickup / cmd.c — `,` pickup
         const pickRes = await dopickup();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((pickRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((pickRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (pickRes & ECMD_TIME) ? 1 : 0;
         if (pickRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'p') {
         // C ref: shk.c dopay / cmd.c — `p` pay shopping bill
         const payRes = await dopay();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((payRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((payRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (payRes & ECMD_TIME) ? 1 : 0;
         if (payRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '>') {
         // C ref: do.c dodown / cmd.c — go down staircase
         const downRes = await dodown();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((downRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((downRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (downRes & 0x01) ? 1 : 0;
         if (downRes & 0x01) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '<') {
         // C ref: do.c doup / cmd.c — go up staircase
         const upRes = await doup();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((upRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((upRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (upRes & 0x01) ? 1 : 0;
         if (upRes & 0x01) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 's') {
@@ -5821,143 +5881,240 @@ export async function rhack(key) {
             if (!game.occupation) set_occupation(dosearch, 'searching', game.multi);
         }
         const tookTime = await dosearch();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'd') {
         // C ref: do.c dodrop — drop an item
         const dropRes = await dodrop();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((dropRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((dropRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (dropRes & ECMD_TIME) ? 1 : 0;
         if (dropRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'D') {
         // C ref: do.c doddrop / cmd.c 'D' droptype
         const dropRes = await doddrop();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((dropRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((dropRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (dropRes & ECMD_TIME) ? 1 : 0;
         if (dropRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'T') {
         // C ref: do_wear.c dotakeoff — take off armor/accessory
         // (ECMD bitmask: ECMD_CANCEL must not read as took-time).
         const takeRes = await dotakeoff();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((takeRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((takeRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (takeRes & ECMD_TIME) ? 1 : 0;
         if (takeRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'R') {
         // C ref: do_wear.c doremring — 'R' remove accessory
         const tookTime = await doremring();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'A') {
         // C ref: do_wear.c doddoremarm / cmd.c 'A' takeoffall
         const res = await doddoremarm();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((res & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (res & ECMD_TIME) ? 1 : 0;
         if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'w') {
         // C ref: wield.c dowield — wield a weapon
         const tookTime = await dowield();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'x') {
         // C ref: wield.c doswapweapon / cmd.c 'x' "swap"
         const swapRes = await doswapweapon();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!swapRes) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = swapRes ? 1 : 0;
         if (swapRes) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'S') {
         // C ref: save.c dosave / cmd.c — #save (GENERALCMD, ECMD_OK)
         await dosave();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === 'O') {
         // C ref: options.c doset_simple / cmd.c — O options menu
         await doset_simple();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '@') {
         // C ref: options.c dotogglepickup / cmd.c — @ autopickup toggle
         await dotogglepickup();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '$') {
         // C ref: invent.c doprgold / cmd.c — #showgold (GENERALCMD)
         await doprgold();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === ')') {
         // C ref: invent.c doprwep / cmd.c — #seeweapon (GENERALCMD, WEAPON_SYM)
         await doprwep();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '[') {
         // C ref: invent.c doprarm / cmd.c — #seearmor (GENERALCMD, ARMOR_SYM)
         await doprarm();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '=') {
         // C ref: invent.c doprring / cmd.c — #seerings (GENERALCMD, RING_SYM)
         await doprring();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '"') {
         // C ref: invent.c dopramulet / cmd.c — #seeamulet (GENERALCMD, AMULET_SYM)
         await dopramulet();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '(') {
         // C ref: invent.c doprtool / cmd.c — #seetools (GENERALCMD, TOOL_SYM)
         await doprtool();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '*') {
         // C ref: invent.c doprinuse / cmd.c — #seeall (GENERALCMD, '*')
         await doprinuse();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '|') {
         // C ref: invent.c doperminv / cmd.c — #perminv (GENERALCMD, '|')
         await doperminv();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '\x7f') {
         // C ref: cmd.c doterrain / #terrain — DEL key (\177)
         await doterrain();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === 'Q') {
         // C ref: wield.c dowieldquiver / doquiver_core("ready")
         const tookTime = await dowieldquiver();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '_') {
         // C ref: cmd.c dotravel — #travel / getpos destination
         const travelRes = await dotravel();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((travelRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((travelRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (travelRes & ECMD_TIME) ? 1 : 0;
         if (travelRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'W') {
         // C ref: do_wear.c dowear — wear armor
         const tookTime = await dowear();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'P') {
         // C ref: do_wear.c doputon — put on accessory
         const tookTime = await doputon();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'i') {
         // C ref: invent.c ddoinv / display_inventory
         await ddoinv();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === 'I') {
         // C ref: invent.c dotypeinv / cmd.c inventtype
         await dotypeinv();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === 'e') {
         // C ref: eat.c doeat
         const tookTime = await doeat();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'q') {
         // C ref: potion.c dodrink / #quaff — ECMD_TIME bit only (CANCEL≠time)
         const drinkRes = await dodrink();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((drinkRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((drinkRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (drinkRes & ECMD_TIME) ? 1 : 0;
         if (drinkRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'z') {
         // C ref: zap.c dozap / #zap
         const tookTime = await dozap();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'Z') {
         // C ref: spell.c docast / #cast
         const castRes = await docast();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((castRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((castRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (castRes & 0x01) ? 1 : 0; // ECMD_TIME
         if (castRes & 0x01) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'r') {
         // C ref: read.c doread / #read
         const tookTime = await doread();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'E') {
@@ -5966,44 +6123,72 @@ export async function rhack(key) {
         // turn (FAIL/CANCEL don't — C takes no turn on "can't write",
         // scen-special-Barbarian-94037 step 102).
         const engrRes = await doengrave();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((engrRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((engrRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (engrRes & ECMD_TIME) ? 1 : 0;
         if (engrRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 't') {
         // C ref: dothrow.c dothrow
         const tookTime = await dothrow();
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'f') {
         // C ref: dothrow.c dofire — #fire / quiver shoot
         const tookTime = await dofire();
         // C: ECMD_OK after queueing fireassist keeps CQ_CANNED
+        // C rhack `:3814–3816` — no-time result applies the ECMD_OK rule.
+        if (!tookTime) reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '+') {
         // C ref: spell.c dovspell
         await dovspell();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '\\') {
         // C ref: o_init.c dodiscovered
         await dodiscovered();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '`') {
         // C ref: o_init.c doclassdisco (cmd.c:1752 knownclass)
         await doclassdisco();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (key === 16) { // ^P — C('p') doprev_message
         // C ref: cmd.c doprev_message / topl.c tty_doprev_message (D-1601)
         // CMD_INSANE — skip the following sanity_check (D-1664).
         rhack_cmd_insane(CMD_INSANE);
         await doprev_message();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (key === 20) { // ^T — C('t') dotelecmd
         // C ref: teleport.c dotelecmd / cmd.c teleport
         const teleRes = await dotelecmd();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((teleRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((teleRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
         game.context.move = (teleRes & 0x01) ? 1 : 0; // ECMD_TIME
     } else if (key === 24) { // ^X
         // C ref: insight.c enlightenment / doattributes
         await doattributes();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (key === 23) { // ^W — C('w') wiz_wish
         // C ref: wizcmds.c wiz_wish / cmd.c wizwish + rhack ECMD_OK tail
@@ -6021,40 +6206,64 @@ export async function rhack(key) {
     } else if (key === 22) { // ^V — C('v') wiz_level_tele
         // C ref: wizcmds.c wiz_level_tele / cmd.c wizlevelport
         await wiz_level_tele();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (key === 7) { // ^G — C('g') wiz_genesis
         // C ref: wizcmds.c wiz_genesis / cmd.c wizgenesis
         await wiz_genesis();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (key === 6) { // ^F — C('f') wiz_map
         // C ref: wizcmds.c wiz_map / cmd.c wizmap — ECMD_OK, no turn
         await wiz_map();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === ':') {
         // C ref: invent.c dolook / lookat — dolook returns look_here's
         // Blind-gated ECMD_TIME (invent.c:4319-4327); a blind feel takes
         // the turn just like any timed command (sibling ECMD_TIME pattern).
-        game.context.move = ((await dolook()) & ECMD_TIME) ? 1 : 0;
+        const lookRes = await dolook();
+        // C rhack `:3812–3816` — CANCEL|FAIL → reset_cmd_vars(TRUE),
+        // else no-TIME-bit (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((lookRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((lookRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
+        game.context.move = (lookRes & ECMD_TIME) ? 1 : 0;
     } else if (ch === '&') {
         // C ref: cmd.c '&' → dowhatdoes (IFBURIED|GENERALCMD) — ECMD_OK, no turn
         await dowhatdoes();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '/') {
         // C ref: pager.c dowhatis / do_look — ECMD_OK, no turn
         await dowhatis();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === ';') {
         // C ref: cmd.c ';' → glance / pager.c doquickwhatis → do_look(1)
         await doquickwhatis();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '?') {
         // C ref: pager.c dohelp — ECMD_OK, no turn
         await dohelp();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === 'V') {
         // C ref: version.c doversion / cmd.c 'V' versionshort
         // (IFBURIED|GENERALCMD|CMD_M_PREFIX) — ECMD_OK, no turn
         await doversion();
+        // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
+        reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;
     } else if (ch === '#') {
         // C rhack doextcmd: ext_tlist then cmdq_add_ec + cmdq_shift so the
@@ -6076,6 +6285,14 @@ export async function rhack(key) {
         if (extTab && (extRes & ECMD_CANCEL) && (extTab.flags & PREFIXCMD)) {
             reset_cmd_vars(true);
             return;
+        }
+        // C rhack `:3812–3816` (non-prefix extcmd fall-through) —
+        // CANCEL|FAIL → reset_cmd_vars(TRUE), else no-TIME-bit
+        // (ECMD_OK) → reset_cmd_vars(multi < 0).
+        if ((extRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((extRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
         }
     } else {
         // C rhack cmdbind_get tlist path for keys the if/else missed

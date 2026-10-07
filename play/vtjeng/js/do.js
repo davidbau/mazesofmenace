@@ -3,8 +3,8 @@
 // C refs: do.c -- boulder_hits_pool(), dodrop(), flooreffects(), canletgo(), drop(), dosinkring(),
 // teleport_sink(), dropx(), dropy(), dropz(), trycall(), u_stuck_cannot_go(), dodown(), doup(),
 // goto_level(), u_collide_m(), temperature_change_msg() and
-// legs_in_no_shape(), set_wounded_legs(); dokick.c obj_delivery(); mon.c
-// kill_genocided_monsters(); questpgr.c deliver_splev_message().
+// legs_in_no_shape(), set_wounded_legs(), heal_legs(); dokick.c obj_delivery();
+// questpgr.c deliver_splev_message().
 
 import {
     ACH_ASTR,
@@ -40,7 +40,6 @@ import {
     FUMBLING,
     GETOBJ_ALLOWCNT,
     GETOBJ_PROMPT,
-    G_GENOD,
     GRAVE,
     HAND,
     HALF_PHDAM,
@@ -66,6 +65,15 @@ import {
     NC_SHOW_MSG,
     NO_NC_FLAGS,
     OBJ_INVENT,
+    OBJ_MINVENT,
+    OBJ_CONTAINED,
+    OBJ_BURIED,
+    CONTAINED_TOO,
+    BURIED_TOO,
+    PIT,
+    TIMER_OBJECT,
+    REVIVE_MON,
+    ROT_CORPSE,
     OBJ_FLOOR,
     OBJ_FREE,
     CXN_SINGULAR,
@@ -143,7 +151,7 @@ import {
     reglyph_darkroom,
 } from './display.js';
 import {
-    Adjmonnam, Monnam, docall, hcolor, hliquid, mon_nam, rndmonnam,
+    Adjmonnam, Amonnam, Monnam, docall, hcolor, hliquid, mon_nam, rndmonnam,
     y_monnam,
 } from './do_name.js';
 import { setwornEnv } from './do_wear.js';
@@ -215,14 +223,14 @@ import { mklev } from './mklev.js';
 import { makemon } from './makemon_create.js';
 import { fumaroles, movebubbles } from './mkmaze.js';
 import {
-    healmon, m_in_air, m_into_limbo, mnexto, mondied, newcham, pm_to_cham, set_ustuck,
+    healmon, kill_genocided_monsters, m_in_air, m_into_limbo, mnexto, mondied, newcham, pm_to_cham, set_ustuck,
     wake_nearto,
 } from './mon.js';
 import { m_at } from './monst.js';
 import { gulp_blnd_check } from './mhitu.js';
 import {
     dmgtype, is_whirly, olfaction, passes_walls, sticks, touch_petrifies,
-    throws_rocks,
+    throws_rocks, is_reviver, is_rider, is_displacer, locomotion,
 } from './mondata.js';
 import { youHear } from './monmove.js';
 import {
@@ -238,6 +246,7 @@ import {
     PM_TOURIST,
     PM_WRAITH,
     AD_POLY,
+    S_ZOMBIE,
 } from './monsters.js';
 import {
     is_pick, obj_meld, obj_nexto_xy, objectType, place_object,
@@ -248,7 +257,7 @@ import {
     The, Tobjnam, Doname2, an, corpse_xname, donameFresh, is_plural, otense,
     yobjnam,
     the, vtense,
-    xnameFresh, yname,
+    xname, xnameFresh, yname,
 } from './objnam.js';
 import {
     COIN_CLASS,
@@ -306,7 +315,7 @@ import { com_pager } from './questpgr.js';
 import { in_out_region, visible_region_at } from './region.js';
 import { getlev } from './restore.js';
 import { delete_levelfile } from './files.js';
-import { cloneIsaacContext, createCoreRandom, d, rn2, rnd } from './rng.js';
+import { cloneIsaacContext, createCoreRandom, d, rn1, rn2, rnd, rnz } from './rng.js';
 import { check_special_room, move_update } from './rooms.js';
 import { savelev } from './save.js';
 import { costly_spot } from './shk.js';
@@ -321,11 +330,12 @@ import {
     u_on_sstairs,
 } from './stairs.js';
 import { Punished, dismount_steed, stucksteed } from './steed.js';
-import { enexto, safe_teleds } from './teleport.js';
-import { burn_away_slime, run_timers } from './timeout.js';
+import { enexto, rloc, safe_teleds } from './teleport.js';
+import { burn_away_slime, obj_has_timer, rider_revival_time, run_timers, start_timer } from './timeout.js';
 import {
     climb_pit,
     fill_pit,
+    maketrap,
     Flying,
     Levitation,
     reset_utrap,
@@ -338,8 +348,8 @@ import { ttyNorep, ttyPline } from './tty_message.js';
 import { heroIsBlind } from './startup_a11y.js';
 import { note_unported } from './unported.js';
 import { cansee, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
-import { welded } from './wield.js';
-import { bimanual, setuqwep, setuswapwep, setuwep } from './worn.js';
+import { welded, weldmsg } from './wield.js';
+import { bimanual, setnotworn, setuqwep, setuswapwep, setuwep } from './worn.js';
 import { resurrect } from './wizard.js';
 import {
     assign_graphics, S_altar, S_fountain, S_grave, S_room, S_sink, S_throne,
@@ -347,7 +357,7 @@ import {
 import { CMAP_EXPLANATIONS } from './symbol_data.js';
 import { done } from './end.js';
 import { tutorial } from './nhlua.js';
-import { canseemon } from './display.js';
+import { canseemon, canspotmon } from './display.js';
 
 // A fail-closed boundary for goto_level() branches outside the ordinary
 // staircase descent and positive-decimal level teleport ports.
@@ -359,47 +369,174 @@ export class UnsupportedLevelChangeError extends Error {
     }
 }
 
-// C ref: do.c revive_corpse() (2111-2250), floor arm used by hack.c
-// revive_nasty(). revive() owns creation and corpse deletion; this wrapper
-// snapshots the corpse description and reports the source-specific result.
-export async function revive_corpse(corpse, state = game) {
-    if (corpse?.where !== OBJ_FLOOR) {
-        throw new UnsupportedLevelChangeError(
-            'revive_corpse() outside its floor arm',
-        );
-    }
+// C ref: do.c revive_corpse() (2111-2250). revive() deletes the corpse on
+// success, so its location, carrier, container, and name are saved first.
+export async function revive_corpse(corpse, state = game, rawEnv = {}) {
+    const wornHooks = setwornEnv(state).hooks;
+    const env = {
+        ...rawEnv, state,
+        hooks: {
+            // zap.c:revive -> invent.c:useup/obfree removes a wielded corpse
+            // through the existing worn.c owner before deallocating it.
+            setNotWorn: (obj, hookEnv) => setnotworn(obj, {
+                ...hookEnv,
+                hooks: { ...wornHooks, ...hookEnv.hooks },
+            }),
+            ...rawEnv.hooks,
+        },
+    };
+    const message = env.message ?? ttyPline;
+    const where = corpse.where;
+    const species = state.mons[corpse.corpsenm];
+    const isZombie = species.mlet === S_ZOMBIE
+        || (where === OBJ_BURIED && is_reviver(species));
+    const wielded = corpse === state.uwep;
     const chewed = Boolean(corpse.oeaten);
     const cname = corpse_xname(
-        corpse,
-        chewed ? 'bite-covered' : null,
-        CXN_SINGULAR,
-        state,
+        corpse, chewed ? 'bite-covered' : null, CXN_SINGULAR, state,
     );
-    const coordinate = get_obj_location(corpse, 0, state);
-    const { revive } = await import('./zap.js');
-    const monster = await revive(corpse, false, { state });
+    let carrier = where === OBJ_MINVENT ? corpse.ocarry : null;
+    const coordinate = get_obj_location(
+        corpse, CONTAINED_TOO | BURIED_TOO, state,
+    );
+    let container = null;
+    let containerWhere = 0;
+    const { get_container_location, revive } = await import('./zap.js');
+    if (where === OBJ_CONTAINED) {
+        container = corpse.ocontainer;
+        const location = get_container_location(container);
+        containerWhere = location.loc;
+        if (containerWhere === OBJ_MINVENT && location.carrier)
+            carrier = location.carrier;
+    }
+    const monster = await revive(corpse, false, env);
     if (!monster) return false;
 
-    if (cansee(coordinate.x, coordinate.y, state)
-        || canseemon(monster, state)) {
-        let effect = '';
-        if (monster.data === state.mons[PM_DEATH])
-            effect = ' in a whirl of spectral skulls';
-        else if (monster.data === state.mons[PM_PESTILENCE])
-            effect = ' in a churning pillar of flies';
-        else if (monster.data === state.mons[PM_FAMINE])
-            effect = ' in a ring of withered crops';
-
-        if (canseemon(monster, state)) {
-            const name = chewed
-                ? Adjmonnam(monster, 'bite-covered', state)
-                : Monnam(monster, state);
-            await ttyPline(`${name} rises from the dead${effect}!`, state);
-        } else {
-            await ttyPline(`${The(cname, state)} disappears${effect}!`, state);
+    switch (where) {
+    case OBJ_INVENT:
+        await message(wielded
+            ? `The ${cname} writhes out of your grasp!`
+            : 'You feel squirming in your backpack!', state, env);
+        break;
+    case OBJ_FLOOR:
+        if (cansee(coordinate.x, coordinate.y, state)
+            || canseemon(monster, state)) {
+            let effect = '';
+            if (monster.data === state.mons[PM_DEATH])
+                effect = ' in a whirl of spectral skulls';
+            else if (monster.data === state.mons[PM_PESTILENCE])
+                effect = ' in a churning pillar of flies';
+            else if (monster.data === state.mons[PM_FAMINE])
+                effect = ' in a ring of withered crops';
+            const name = canseemon(monster, state)
+                ? (chewed ? Adjmonnam(monster, 'bite-covered', state)
+                    : Monnam(monster, state))
+                : The(cname, state);
+            await message(`${name} ${canseemon(monster, state)
+                ? 'rises from the dead' : 'disappears'}${effect}!`, state, env);
         }
+        break;
+    case OBJ_MINVENT:
+        if (cansee(monster.mx, monster.my, state)) {
+            if (carrier && canseemon(carrier, state)) {
+                await message(`Startled, ${mon_nam(carrier, state)} drops ${
+                    an(cname, state)} as it ${canspotmon(monster, state)
+                    ? 'revives' : 'disappears'}!`, state, env);
+            } else if (canspotmon(monster, state)) {
+                await message(`${chewed
+                    ? Adjmonnam(monster, 'bite-covered', state)
+                    : Monnam(monster, state)} suddenly appears!`, state, env);
+            }
+        }
+        break;
+    case OBJ_CONTAINED: {
+        const name = canspotmon(monster, state)
+            ? Amonnam(monster, state) : 'Something';
+        if (!container) {
+            note_unported('pline.c impossible');
+        } else if (carrier && canseemon(carrier, state)) {
+            await message(`${name} writhes out of ${yname(container, state)}!`,
+                state, env);
+        } else if (containerWhere === OBJ_INVENT) {
+            await message(`${name} ${locomotion(monster.data, 'writhes')}`
+                + ` out of ${an(xname(container, state), state)} in your pack!`,
+            state, env);
+        } else if (containerWhere === OBJ_FLOOR
+            && cansee(coordinate.x, coordinate.y, state)) {
+            await message(`${name} escapes from ${
+                an(xname(container, state), state)}!`, state, env);
+        }
+        break;
+    }
+    case OBJ_BURIED:
+        if (isZombie) {
+            await maketrap(monster.mx, monster.my, PIT, env);
+            if (cansee(monster.mx, monster.my, state)) {
+                const trap = t_at(monster.mx, monster.my, state);
+                if (trap) trap.tseen = true;
+                await message(`${canspotmon(monster, state)
+                    ? Amonnam(monster, state) : 'Something'}`
+                    + ' claws itself out of the ground!', state, env);
+                (env.newsym ?? newsym)(monster.mx, monster.my, state);
+            } else if (dist2(monster.mx, monster.my,
+                state.u.ux, state.u.uy) < 25) {
+                // Soundeffect() is a no-op in the recorder's nosound backend.
+                const line = youHear('scratching noises.', state);
+                if (line) await message(line, state, env);
+            }
+            fill_pit(monster.mx, monster.my, state);
+            break;
+        }
+        // C falls through for an unexpectedly revived buried non-zombie.
+        // falls through
+    default:
+        note_unported('pline.c impossible');
+        break;
     }
     return true;
+}
+
+// C ref: do.c revive_mon() (2255-2292). TIMER_OBJECT callbacks receive the
+// object itself (C's arg->a_obj), after run_timers() decrements obj.timed.
+export async function revive_mon(body, _timeout, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const env = { ...rawEnv, state };
+    const random = env.random ?? { d, rn1, rn2, rnd, rnz };
+    const message = env.message ?? ttyPline;
+    const species = state.mons[body.corpsenm];
+    if (is_displacer(species) && body.where === OBJ_FLOOR) {
+        const coordinate = get_obj_location(body, 0, state);
+        const obstacle = coordinate && m_at(coordinate.x, coordinate.y, state);
+        if (obstacle && (state.level.flags.stasis_until ?? 0) < state.moves) {
+            const noticed = canseemon(obstacle, state);
+            const oldName = Monnam(obstacle, state);
+            if (await rloc(obstacle, RLOC_NOMSG, env)) {
+                if (noticed && !canseemon(obstacle, state))
+                    await message(`${oldName} vanishes.`, state, env);
+                else if (!noticed && canseemon(obstacle, state))
+                    await message(`${Monnam(obstacle, state)} appears.`, state, env);
+                else if (noticed && dist2(obstacle.mx, obstacle.my,
+                    coordinate.x, coordinate.y) > 2)
+                    await message(`${oldName} teleports.`, state, env);
+            }
+        }
+    }
+    if (!await revive_corpse(body, state, env)) {
+        let when;
+        let action;
+        if (is_rider(species) && random.rn2(99)) {
+            action = REVIVE_MON;
+            when = rider_revival_time(body, true, env);
+        } else {
+            if (!obj_has_timer(body, ROT_CORPSE, state))
+                await message(`You feel ${is_rider(species) ? 'much ' : ''}`
+                    + 'less hassled.', state, env);
+            action = ROT_CORPSE;
+            when = Math.max(1, random.d(5, 50) - (state.moves - body.age));
+        }
+        if (!obj_has_timer(body, action, state))
+            start_timer(when, TIMER_OBJECT, action, body, state);
+    }
 }
 
 // C ref: do.c wipeoff() (2361-2385). The occupation callback independently
@@ -1489,14 +1626,14 @@ async function drop(obj, state = game) {
     if (obj === state.uwep) {
         if (welded(state.uwep, state)) {
             // do.c:724 weldmsg() (wield.c:1061-1074), which names the weapon
-            // with objnam.c Yobjnam2(); yname() under it is not ported.
+            // with objnam.c Yobjnam2().
             //
             // Unreachable, in C too: canletgo() at :715 tests the identical
             // `obj == uwep && welded(uwep)` pair one branch earlier and
             // returns FALSE, so drop() has already answered ECMD_FAIL with the
             // Norep at do.c:677. The dead test is written out because the port
             // keeps C's structure; deleting it changes nothing.
-            throw new UnsupportedDropError('weldmsg()');
+            await weldmsg(obj, state);
         }
         setuwep(null, setwornEnv(state));
     }
@@ -2626,7 +2763,7 @@ export async function goto_level(
     if (Punished(state)) await placebc(state);
     obj_delivery(false, state);
     await losedogs({ state });
-    kill_genocided_monsters(state);
+    await kill_genocided_monsters(state);
     // "Expire all timers that have gone off while away. Must be after
     // migrating monsters and objects are delivered."
     // The arrival is never a dry run, so a rotting floor corpse draws through
@@ -2844,21 +2981,6 @@ function obj_delivery(near_hero, state = game) {
     }
 }
 
-// C ref: mon.c kill_genocided_monsters(), which goto_level() calls so that a
-// monster of a genocided species that was migrating dies as it arrives.
-//
-// Nothing genocides a species in this port: svm.mvitals[].mvflags gains
-// G_GENOD only in read.c do_genocide(), which no ported command reaches. The
-// kill_eggs() sweep at the end of C's function selects on the same flag.
-function kill_genocided_monsters(state = game) {
-    for (let index = 0; index < (state.mvitals?.length ?? 0); ++index) {
-        if (state.mvitals[index].mvflags & G_GENOD) {
-            note_unported('mon.c kill_genocided_monsters');
-            return;
-        }
-    }
-}
-
 // C ref: do.c u_collide_m() (1410-1445). The hero has arrived on a square a
 // monster already holds -- one that came down with her, or one mklev() put on
 // the up staircase -- and one of the two has to move.
@@ -2993,16 +3115,9 @@ export async function set_wounded_legs(side, timex, state = game, env = {}) {
     await encumber_msg(state, { message: env.message ?? ttyPline });
 }
 
-// C ref: do.c heal_legs() (2448-2486), the how == 0 arm. C's argument picks
-// between an ordinary recovery (0), a dismount (1) and the petrification
-// countdown (2), and it is read at C 2461 and 2483 to suppress the message and
-// the encumbrance feedback. Only timeout.c nh_timeout()'s WOUNDED_LEGS case is
-// ported and it passes 0, so both tests are resolved here in the direction 0
-// takes; steed.c dismount_steed()'s heal_legs(1) stays refused at js/steed.js.
-//
-// The caller has already counted HWounded_legs down to zero, so youprop.h:138
-// Wounded_legs is true here only through the side bits EWounded_legs holds.
-// Both fields are cleared together because 5.0 heals both legs at once.
+// C ref: do.c heal_legs() (2448-2486). `how` is C's healing mode:
+// 0 ordinary recovery, 1 dismounting, 2 limbs turning to stone.
+// Both HWounded_legs and EWounded_legs clear together in every mode.
 //
 // C's two halves of the temporary-Dexterity ledger are guarded differently,
 // and neither is unconditional. set_wounded_legs() spends a point only when no
@@ -3011,7 +3126,7 @@ export async function set_wounded_legs(side, timex, state = game, env = {}) {
 // extends the timeout. This function gives one back only while the temporary
 // total is still negative (do.c:2453-2454), so a hero whose Dexterity was
 // raised in between keeps the gain. Across one wound the two cancel exactly.
-export async function heal_legs(state = game, { message = ttyPline } = {}) {
+export async function heal_legs(state = game, { how = 0, message = ttyPline } = {}) {
     const u = state.u;
     const wounded = u.uprops[WOUNDED_LEGS];
     if (!wounded.intrinsic && !wounded.extrinsic) return;
@@ -3022,7 +3137,7 @@ export async function heal_legs(state = game, { message = ttyPline } = {}) {
 
     // C ref: do.c:2461-2469. A mounted hero's wound belongs to the steed, so
     // nothing is said about the hero's own legs.
-    if (!u.usteed) {
+    if (!u.usteed && how !== 2) {
         let legs = body_part(LEG, state.youmonst);
         if ((wounded.extrinsic & BOTH_SIDES) === BOTH_SIDES)
             legs = makeplural(legs);
@@ -3034,5 +3149,5 @@ export async function heal_legs(state = game, { message = ttyPline } = {}) {
 
     // C ref: do.c:2473-2484. Wounded legs cost carrying capacity, so healing
     // them can lift an encumbrance the hero has been carrying.
-    await encumber_msg(state, { message });
+    if (how === 0) await encumber_msg(state, { message });
 }
