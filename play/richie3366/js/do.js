@@ -10,7 +10,7 @@
 //         corpse_xname adjective).
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn1, rnz, d } from './rng.js';
+import { rn2, rnd, rn1, rnz, d, rn2_on_display_rng, reseed_random } from './rng.js';
 import { depth, builds_up, level_difficulty, upstart, dist2 } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
@@ -2022,6 +2022,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             nh_terminate(EXIT_FAILURE);
             return;
         }
+        reseed_random(rn2); // C do.c:1709
+        reseed_random(rn2_on_display_rng); // C do.c:1710
         // C: getlev — restore in-memory stash + place/catchup/restore_cham/hide_monst + rest_track
         // C restore.c Sfi_dest_area updest/dndest after rest_stairs.
         game.level = info.level;

@@ -47,6 +47,24 @@ function whichrng(fn) {
     return -1;
 }
 
+/*
+ * C ref: rnd.c reseed_random `:289–294` — reshuffle stream fn, but only when
+ * has_strong_rngseed (decl.c:84 FALSE — an unset game flag reads undefined,
+ * likewise false; the sole C setter is sys/unix unixmain.c:824 inside the
+ * DEV_RANDOM fopen arm of sys_random_seed). The `:293` guard is live; the
+ * arm names init_random(fn) (sibling named omit at js/options.js:8991):
+ * OS entropy (time/pid//dev/random) is nondeterministic and has no scored
+ * analogue under Rule #2. The scored deterministic build never sets the
+ * flag (the recorder leaves it FALSE under NETHACK_SEED), so the four
+ * mklev call sites are live guards over a never-taken arm.
+ */
+export function reseed_random(fn) {
+    if (game.has_strong_rngseed) {
+        /* Named omit: init_random(fn) ← set_random(sys_random_seed(), fn). */
+        void fn;
+    }
+}
+
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }

@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { lua_number_unpacked, lua_integer_unpacked, luaL_checkinteger_unpacked, lua_tointeger_unpacked } from './nhlua.js';
 import { GameMap } from './game.js';
-import { rn2, rnd, rn1, rnz } from './rng.js';
+import { rn2, rnd, rn1, rnz, rn2_on_display_rng, reseed_random } from './rng.js';
 import { CLR_CYAN, CLR_GRAY, CLR_BRIGHT_BLUE } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, dist2, distmin, level_difficulty, strstri, upstart, swapbits, stripdigits, str_lines_maxlen, strncmpi } from './hacklib.js';
@@ -2918,32 +2918,34 @@ export function l_nhcore_init() {
     game.nh_lua_variables = {};
 }
 
-// C ref: mklev.c mklev()
+/**
+ * C ref: mklev.c mklev `:1577–1593` — whole body in C order.
+ * `:1579–1580` / `:1591–1592` reseed_random(rn2) / reseed_random(rn2_on_display_rng)
+ * run through the live `:293` guard (rnd.c:289–294; js/rng.js); the recorder
+ * leaves has_strong_rngseed FALSE under NETHACK_SEED (recorder sys/unix/unixmain.c
+ * sys_random_seed), and the scored deterministic build never sets it, so the
+ * init_random arm stays a named omit. Async only because getbones and
+ * makelevel await (VFS / des); init_mapseen stays dynamically imported
+ * from dungeon.js. There is deliberately NO feature recount here: C counts
+ * des levels in the load_special epilogue (sp_lev.c:6484, mirrored in
+ * load_special_proto below) and leaves mkfount/mksink's recount+`++`
+ * double count standing on normal levels (D-2950 named this blanket
+ * recount; the `^F` footer reads it). `:1551` resets in_mklev inside
+ * level_finalize_topology, not here.
+ */
 export async function mklev() {
     const g = game;
-    // C: init_mapseen before getbones
+    reseed_random(rn2); // C :1579
+    reseed_random(rn2_on_display_rng); // C :1580
+    // C :1582 — init_mapseen before getbones.
     const { init_mapseen } = await import('./dungeon.js');
     init_mapseen(g.u?.uz);
-    if (await getbones()) return;
-    g.in_mklev = true;
-    await makelevel();
-    recount_level_features();
-    level_finalize_topology();
-    g.in_mklev = false;
-}
-
-function recount_level_features() {
-    const lvl = game.level;
-    if (!lvl?.flags) return;
-    let nfountains = 0, nsinks = 0;
-    for (let y = 0; y < ROWNO; y++)
-        for (let x = 1; x < COLNO; x++) {
-            const typ = lvl.at(x, y)?.typ;
-            if (typ === FOUNTAIN) nfountains++;
-            if (typ === SINK) nsinks++;
-        }
-    lvl.flags.nfountains = nfountains;
-    lvl.flags.nsinks = nsinks;
+    if (await getbones()) return; // C :1583–1584
+    g.in_mklev = true; // C :1586
+    await makelevel(); // C :1587
+    level_finalize_topology(); // C :1589 (resets in_mklev at :1551)
+    reseed_random(rn2); // C :1591
+    reseed_random(rn2_on_display_rng); // C :1592
 }
 
 // C ref: mklev.c clear_level_structures()
@@ -3283,7 +3285,15 @@ export async function load_special(name) {
 async function load_special_proto(protofile) {
     create_des_coder(); // C :6459 at load_special entry (full init inside)
     try {
-        return await load_special_proto_body(protofile);
+        const ok = await load_special_proto_body(protofile);
+        // C :6484 — the load_special epilogue recounts level features after
+        // the .lua content (before solidify/fixup/premap). Per-level ports
+        // run fixup/premap inline, so this lands after them; same value —
+        // the post-count C ops never change fountain/sink-ness except
+        // through recounting set_levltyp (stairs), and solidify_map touches
+        // STWALL cells only. A dispatch miss returns false like C's give_up.
+        if (ok) count_level_features();
+        return ok;
     } finally {
         if (game.gc) game.gc.coder = null; // C :6498–6499 Free + NULL
     }
@@ -20108,7 +20118,9 @@ function load_tut1() {
     });
     if (!game.level.flags) game.level.flags = {};
     game.level.flags.is_maze_lev = true;
-    game.level.flags.nomongen = true;
+    // C sp_lev.c lspo_level_flags "nomongen" :3812-3813 → rndmongen = 0
+    // (dat/tut-1.lua:30-31; the makemon :1168 gate reads rndmongen).
+    game.level.flags.rndmongen = false;
     // C sp_lev.c "nodeathdrops" → svl.level.flags.deathdrops = 0
     game.level.flags.deathdrops = false;
     game.level.flags.noautosearch = true;
@@ -20492,7 +20504,9 @@ function load_tut2() {
     });
     if (!game.level.flags) game.level.flags = {};
     game.level.flags.is_maze_lev = true;
-    game.level.flags.nomongen = true;
+    // C sp_lev.c lspo_level_flags "nomongen" :3812-3813 → rndmongen = 0
+    // (dat/tut-2.lua:3-4; the makemon :1168 gate reads rndmongen).
+    game.level.flags.rndmongen = false;
     // C sp_lev.c "nodeathdrops" → svl.level.flags.deathdrops = 0
     game.level.flags.deathdrops = false;
     game.level.flags.noautosearch = true;
@@ -34155,9 +34169,10 @@ function mkaltar(croom) {
 // C ref: mklev.c mksink :2316-2329 — find_okay_roompos, set_levltyp(SINK),
 // nsinks++. set_levltyp's FALSE arm (mkmaze.c:77-121) cannot fire here:
 // somexyspace only yields ROOM/CORR/ICE while CAN_OVERWRITE_TERRAIN
-// (rm.h:320) refuses only LADDER/STAIRS. Named omit: C recounts via
-// count_level_features (mkmaze.c:106-108) before the ++ (cf the named
-// recount omit on trap.js set_levltyp); js/ keeps the incremental count.
+// (rm.h:320) refuses only LADDER/STAIRS. set_levltyp recounts via
+// count_level_features (mkmaze.c:106-108) before the ++; this ++ is C's
+// statement after that call (C double-counts the new sink — reproduced,
+// not fixed; the mkfount comment holds here too).
 function mksink(croom) {
     const m = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, m)) return;

@@ -1038,11 +1038,15 @@ export async function try_restore_save() {
     game.artiexist = payload.artiexist;
     game.preferred_pet = payload.preferred_pet;
     game._goldCount = payload._goldCount | 0;
-    // C include/decl.h:536 — gl.lastinvnr «never saved&restored»: a fresh
-    // C process starts at BSS 0 and restgamestate leaves it there, so the
-    // first post-restore assigninvlet fills the lowest free gap (D-3584).
-    // Ignore any legacy payload key for the same reason.
-    game._lastinvnr = 0;
+    // C include/decl.h:536 — gl.lastinvnr «never saved&restored»:
+    // early_init runs decl_globals_init (allmain.c:40) before dorecover
+    // (unixmain.c:66 vs :263), so a fresh C process restores with the
+    // g_init_l value 51 (decl.c «lastinvr») and restgamestate leaves it
+    // — the next assigninvlet tries 'a' first (nhlua.c «next inv letter
+    // to try to use will be 'a'»). D-3584's BSS-0 guess is falsified by
+    // scen-quest-Knight-94336 (C «a - a saddle.» with 'a' free; from 0
+    // the scan starts at 'b'). Ignore any legacy payload key.
+    game._lastinvnr = 51;
     if (payload.timer_id != null) game.timer_id = payload.timer_id | 0;
     if (payload.quest_status) game.quest_status = payload.quest_status;
     if (payload.pl_fruit != null) game.pl_fruit = payload.pl_fruit;

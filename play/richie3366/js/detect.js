@@ -1430,13 +1430,15 @@ export async function reveal_terrain(which_subset) {
  * C ref: cmd.c doterrain — #terrain View which? menu then reveal_terrain.
  * Branch envelope: recalc_mapseen; normal a/b/c choices (a preselected *);
  * explore/discover + wizard extras 4–6; Esc cancel (which=-1);
- * space/return → preselected 1; letter pick. Cases 5/6 call the live
+ * space/return → preselected 1; letter pick. Menu dismiss is corner
+ * docorner via dismiss_nhw_menu (wintty.c erase_menu_or_text offx!=0 arm;
+ * gbuf resend, no docrt regen — D-3594). Cases 5/6 call the live
  * wiz_map_levltyp / wiz_levltyp_legend (js/wizcmds.js).
  */
 export async function doterrain() {
     const { nhgetch } = await import('./input.js');
-    const { flush_screen, flush_topl_more, docrt } = await import('./display.js');
-    const { paint_corner_nhw_menu } = await import('./invent.js');
+    const { flush_topl_more } = await import('./display.js');
+    const { paint_corner_nhw_menu, dismiss_nhw_menu } = await import('./invent.js');
     const { ATR_INVERSE } = await import('./terminal.js');
     const { recalc_mapseen } = await import('./dungeon.js');
 
@@ -1494,23 +1496,29 @@ export async function doterrain() {
     for (;;) {
         await paint_corner_nhw_menu(entries, '(end) ');
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
         const ch = String.fromCharCode(key);
+        // C wintty.c erase_menu_or_text — corner (offx!=0) dismiss is
+        // docorner (gbuf resend, no newsym/display-RNG burns), never full
+        // docrt(): docrt's vision_recalc(0)+see_monsters repainted visible
+        // monsters twice before the once-per-input Hallu arm's third paint;
+        // C paints once. Dismiss only on terminal keys — C select_menu
+        // stays open on invalid input.
         if (key === 27) {
-            which = -1; // C: n < 0
+            await dismiss_nhw_menu(); // C: n < 0
+            which = -1;
             break;
         }
         // C: space/return with preselected still on → n==1 → sel[0]==1
         //    or n==0 (toggled off) still maps to which=1
         if (ch === ' ' || key === 13 || key === 10) {
+            await dismiss_nhw_menu();
             const pre = choices.find((c) => c.preselected);
             which = pre ? pre.which : 1;
             break;
         }
         const hit = choices.find((c) => c.key === ch || c.key === ch.toLowerCase());
         if (hit) {
+            await dismiss_nhw_menu();
             which = hit.which;
             break;
         }

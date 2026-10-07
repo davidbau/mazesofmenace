@@ -4973,7 +4973,25 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
                         allopt_idx('symset'), REQ_DO_SET, negated, trimmed, val, result, true,
                     );
                 }
-                else if (key === 'suppress_alert') result.flags.suppress_alert = val;
+                else if (key === 'suppress_alert') {
+                    // C optfn_suppress_alert do_set (`:4142–4148`) via parseoptions
+                    // (`:626` negateok-No rejects before the optfn; `:635–638`
+                    // dispatch) + feature_alert_opts (`:7558–7585`) opt_initial
+                    // path: pack via get_feature_notice_ver, future versions are
+                    // config_error_add (no You_cant/pline at init), unparseable
+                    // keeps the prior value.
+                    if (negated) continue; // C `:626`
+                    if (val !== '') { // C `:4146` op != empty_optstr
+                        const fnv = get_feature_notice_ver(val) >>> 0; // C `:7561`
+                        if (fnv === 0) { /* C `:7563–7564` — keep prior */ } else if (fnv > get_current_feature_ver()) { // C `:7565`
+                            config_error_add( // C `:7569–7571` opt_initial
+                                '%s=%s Invalid reference to a future version ignored',
+                                'suppress_alert', val);
+                        } else {
+                            result.flags.suppress_alert = fnv; // C `:7576`
+                        }
+                    }
+                }
                 else if (key === 'msg_window') {
                     // C optfn_msg_window do_set (opt_initial) on result.iflags.
                     optfn_msg_window(
@@ -5451,6 +5469,14 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
                         allopt_idx('fruit'), REQ_DO_SET, negated, stripped, EMPTY_OPTSTR, true,
                     );
                 }
+                else if (lname === 'suppress_alert') {
+                    // C optfn_suppress_alert do_set, valueless (opt_initial):
+                    // bare name carries op==empty_optstr → no-op (`:4146`
+                    // keeps prior); negated is `:626` negateok-No → prior
+                    // kept (silent skip, sibling negateok-No precedent).
+                    // Without this arm the boolean fallback below would store
+                    // true/false, misreading as 0.0.0/(none) at get_val.
+                }
                 else if (lname === 'petattr') {
                     // C optfn_petattr do_set, valueless (opt_initial).
                     // negateok-No: parseoptions `:626` rejects first.
@@ -5626,6 +5652,14 @@ export async function choose_classes_menu(prompt, category, way, classList, clas
         // C :1712 ++class_list via for..of
     }
     const showAll = category === 1 && nextAcc <= 'z'.charCodeAt(0); // C :1714
+    // C windows.c select_menu `:1859–1863` — the `:1737` select runs display
+    // + dismiss with gb.bot_disabled = TRUE (saved/restored): a pending
+    // botlx (e.g. from the parent fullscreen dismiss's docrt) is serviced
+    // only after the select returns, so WIN_STATUS stays as the erase left
+    // it (blank after fullscreen). Sibling selects (select_menu_pick_any
+    // `:10023`, pick_one `:9649`) already wrap; this loop is C's `:1737`.
+    const _botPrev = set_bot_disabled(true);
+    try {
     for (;;) {
         // C: tty_end_menu prompt uses menu_headings (ATR_INVERSE)
         const entries = [
@@ -5689,6 +5723,9 @@ export async function choose_classes_menu(prompt, category, way, classList, clas
             return '';
         }
         // invalid / toggle → re-paint same menu (keep overlay; no docrt)
+    }
+    } finally {
+        set_bot_disabled(_botPrev); // C `:1863`
     }
 }
 
@@ -10303,8 +10340,8 @@ const DOSET_BOOL_ADDR = {
     use_inverse: { obj: 'iflags', key: 'wc_inverse' },
     verbose: { obj: 'flags', key: 'verbose' },
     weaponstatus: { obj: 'iflags', key: 'weaponstatus' },
-    whatis_menu: { obj: 'iflags', key: 'whatis_menu' },
-    whatis_moveskip: { obj: 'iflags', key: 'whatis_moveskip' },
+    whatis_menu: { obj: 'iflags', key: 'getloc_usemenu' }, // C optlist.h:874 &iflags.getloc_usemenu; getpos.js reads this (D-3592)
+    whatis_moveskip: { obj: 'iflags', key: 'getloc_moveskip' }, // C optlist.h:877 &iflags.getloc_moveskip; getpos.js reads this (D-3592)
     // C optlist.h NHOPTB wizmgender set_wizonly &iflags.wizmgender (D-1701)
     wizmgender: { obj: 'iflags', key: 'wizmgender' },
     // C optlist.h NHOPTB wizweight set_wizonly &iflags.wizweight (D-1669)
@@ -11081,7 +11118,7 @@ export async function doset() {
             // wintty.c `:119`; the model carries it, const.js TTY_WINCAP2,
             // so the live optfn reads '2'/'3' like C — same as here).
             { name: 'statuslines', get_val: () => (((game.iflags?.wc2_statuslines | 0) < 3) ? '2' : '3') },
-            { name: 'suppress_alert', val: '(none)' },
+            { name: 'suppress_alert', get_val: () => doset_compopt_get_val(optfn_suppress_alert, 'suppress_alert') },
             { name: 'symset', val: 'DECgraphics, active, handler=DEC', handler: true }, // C has_handler (optlist.h) → handler_symset
             { name: 'versinfo', get_val: () => doset_compopt_get_val(optfn_versinfo, 'versinfo'), handler: true },
             { name: 'whatis_coord', get_val: () => doset_compopt_get_val(optfn_whatis_coord, 'whatis_coord'), handler: true },

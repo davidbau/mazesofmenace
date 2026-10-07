@@ -2283,14 +2283,16 @@ export async function m_move(mtmp, after) {
     const flag = mon_allowflags(mtmp);
     const mfp = { cnt: 0, poss: [], info: [] };
     const cnt = mfndpos(mtmp, mfp, flag);
-    // C ref: monmove.c m_move — cnt==0 tryescape defensive use (not unicorns)
+    // C ref: monmove.c m_move `:1926–1930` — cnt==0 tryescape defensive
+    // use (not unicorns). No second return: a cornered unicorn falls
+    // through to the (empty) selection loop and the `:2064` rn2(2)
+    // teleport arm below.
     if (cnt === 0 && !(ptr?.mlet === 'S_UNICORN' && likes_gems(ptr))) {
         if (find_defensive(mtmp, true) && (await use_defensive(mtmp))) {
             return MMOVE_DONE;
         }
         return MMOVE_NOMOVES;
     }
-    if (cnt === 0) return MMOVE_NOMOVES;
 
     let nix = omx;
     let niy = omy;
@@ -2368,10 +2370,13 @@ export async function m_move(mtmp, after) {
     }
 
     if (mmoved === MMOVE_NOTHING) {
-        // C ref: monmove.c m_move — unicorn failed-move teleport then postmov
+        // C ref: monmove.c m_move `:2064–2067` — cornered unicorn teleports
+        // (result ignored, MOVED either way; Tengu arm above is the live
+        // `await rloc(mtmp, RLOC_MSG)` precedent).
         if (ptr?.mlet === 'S_UNICORN' && likes_gems(ptr)
             && rn2(2) && !(await tele_restrict(mtmp))) {
-            if (rloc(mtmp, 0)) return MMOVE_MOVED;
+            await rloc(mtmp, RLOC_MSG);
+            return MMOVE_MOVED;
         }
         // C: worm_nomove shrinks the tail when the head did not move
         if (mtmp.wormno) worm_nomove(mtmp);

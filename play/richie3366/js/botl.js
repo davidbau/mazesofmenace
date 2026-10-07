@@ -73,7 +73,7 @@ import {
     A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA,
     acurr, get_strength_str,
 } from './attrib.js';
-import { describe_level, objnum_to_glyph, Hallucination, impossible, SYM_OFF_O, glyphmap_symidx, set_committed_status_lines } from './display.js';
+import { describe_level, objnum_to_glyph, Hallucination, impossible, SYM_OFF_O, glyphmap_symidx, set_committed_status_lines, pline } from './display.js';
 import { rank_of, roles } from './roles.js';
 import { money_cnt } from './shk.js';
 import { hidden_gold } from './vault.js';
@@ -89,7 +89,7 @@ import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
 import {
     upstart, strNsubst, stripchars, str_start_is, fuzzymatch, lowc,
-    deepest_lev_reached, eos, highc, strncmpi,
+    deepest_lev_reached, eos, highc, strncmpi, trimspaces, strstri, digit,
 } from './hacklib.js';
 import { clr2colorname } from './artifact.js';
 import { humanoid, mons, is_flyer, NON_PM } from './monsters.js';
@@ -104,6 +104,8 @@ import {
 // because match_optname is a hoisted function declaration, called at
 // runtime, never at module top level (`imports.mjs --can` verdict SAFE).
 import { match_optname } from './options.js';
+// getline.js takes no botl edge (`imports.mjs --can` verdict SAFE).
+import { getlin } from './getline.js';
 
 // C: sgn() (hacklib) — sign of an int comparison result.
 function sgn(x) {
@@ -385,6 +387,19 @@ function status_enablefield(fld, fieldname, fieldfmt, fldenabl) {
 // field keeps its last bot() value, which is the paint C captures.
 // =====================================================================
 
+// C wintty.c:4513 Sprintf single-%s-conversion subset: `%[-][width][.prec]s`.
+// Minimum width pads with blanks (padStart, or padEnd with '-');
+// precision truncates. Surrounding literal text is preserved.
+function sprintf_percent_s(fmt, text) {
+    const m = /%(-)?(\d+)?(?:\.(\d+))?s/.exec(fmt);
+    if (!m) return fmt;
+    let val = text;
+    if (m[3] !== undefined) val = val.slice(0, parseInt(m[3], 10));
+    const width = m[2] !== undefined ? parseInt(m[2], 10) : 0;
+    if (val.length < width) val = m[1] ? val.padEnd(width, ' ') : val.padStart(width, ' ');
+    return fmt.slice(0, m.index) + val + fmt.slice(m.index + m[0].length);
+}
+
 // C wintty.c:4454–4579 tty_status_update (STATUS_HILITES arm; tty_procs
 // :158). BL_RESET forces a full re-render, BL_FLUSH renders fit fields,
 // BL_CONDITION stashes bits+masks, BL_GOLD decodes mixed glyph text,
@@ -425,9 +440,10 @@ export function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) 
         if (fmt.charAt(0) === ' '
             && (fldidx === ttyFieldorder[0][0] || fldidx === ttyFieldorder[1][0]
                 || fldidx === ttyFieldorder[2][0])) fmt = fmt.slice(1);
-        // C `:4513` Sprintf — every live fmt carries one %s (initblstats);
-        // the replacer keeps $ sequences in the value literal.
-        statusVals[fldidx] = fmt.replace('%s', () => text);
+        // C `:4513` Sprintf(status_vals[fldidx], fmt, text) — every live
+        // fmt carries exactly one %s conversion (initblstats fmts, plus
+        // the hitpointbar BL_TITLE override `%-30.30s`, botl.c:1714).
+        statusVals[fldidx] = sprintf_percent_s(fmt, text);
         ttyStatus[NOW][fldidx].idx = fldidx; // C `:4514`
         ttyStatus[NOW][fldidx].color = (color | 0) & 0x00FF; // C `:4515`
         ttyStatus[NOW][fldidx].attr = term_attr_fixup(attrmask); // C `:4516`
@@ -750,7 +766,25 @@ function tty_putstatusfield(text, x, y) {
             const n = i + x; // C `:4822`
             if (n < STATUS_COLS && s[i]) { // C `:4823`
                 statusWinData[y][n - 1] = s[i]; // C `:4827` cw->data
-                if (disp?.setCell) disp.setCell(n - 1, 22 + y, s[i], renderFg, hl_to_cell_attr(renderAttrHL)); // C `:4824` putchar
+                // Capture-normalized form: the recorder compresses space
+                // runs longer than 4 to CSI CUF (terminal.js serialize
+                // precedent; do_statusline1 gap rule) and the worker
+                // renders CUF-skips as blank attr-0 cells (frozen
+                // screen-decode), so a status space in such a run lands
+                // attr-free even when painted under an attr (hitpointbar
+                // pad under Begin_Attr, wintty.c:5159–5166). Short runs
+                // are written verbatim with attrs (C wintty.c:4824
+                // putchar), intra-name spaces included.
+                let chAttr = hl_to_cell_attr(renderAttrHL);
+                if (s[i] === ' ') {
+                    // Maximal space run within s containing i, both
+                    // directions — the bar pad touches the string end.
+                    let lo = i, hi = i;
+                    while (lo - 1 >= 0 && s[lo - 1] === ' ') lo--;
+                    while (s[hi + 1] === ' ') hi++;
+                    if (hi - lo + 1 > 4) chAttr = 0;
+                }
+                if (disp?.setCell) disp.setCell(n - 1, 22 + y, s[i], renderFg, chAttr); // C `:4824` putchar
                 statusCurX++; // C `:4825–4826` curx++
             }
         }
@@ -2195,7 +2229,8 @@ export async function cond_menu() {
  * (options.c `:1873` do_set, cfgfiles.c `:1173`) is still unported, so the
  * two exports below are live for those future rows. The interactive
  * chooser / field menu / remove family is below (`:3811+`, D-2757).
- * `status_hilite_menu_add` (`:3889–4302`) stays a named omission.
+ * `status_hilite_menu_add` (`:3890–4302`) is wired below (both `:4370`
+ * and `:4445–4447` sites).
  * Diagnostics use cfgfiles.js config_error_add; existing abbreviated
  * threshold diagnostics and omitted format arguments are map-named.
  */
@@ -3876,9 +3911,8 @@ function hiliteMenuRows(prompt, rows) {
  * nul_glyphinfo / NO_COLOR / MENU_ITEMFLAGS_NONE do not change the tty
  * text row. cg.zeroany is the fresh a_int on each row.
  *
- * C callers are both inside status_hilite_menu_add (`:4057`, `:4088`),
- * which has no JS body (named omission). This export is the call those
- * sites make.
+ * C callers are both inside status_hilite_menu_add (`:4057–4058`,
+ * `:4088–4089`, wired below). This export is the call those sites make.
  *
  * @param {number} fld statusfields index
  * @param {string|null} str threshold text, or null for the up/down menu
@@ -3949,9 +3983,9 @@ export async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
  * MENU_ITEMFLAGS_NONE do not change the tty text row; cg.zeroany is
  * the fresh a_int on each row.
  *
- * C callers are all inside status_hilite_menu_add (`:4135` enc_stat,
- * `:4148` aligntxt, `:4161` hutxt, `:4199` rolelist), which has no JS
- * body (named omission). This export is the call those sites make.
+ * C callers are all inside status_hilite_menu_add (`:4135–4137`
+ * enc_stat, `:4148–4149` aligntxt, `:4161` hutxt, `:4199` rolelist,
+ * wired below). This export is the call those sites make.
  *
  * @param {string} querystr end_menu prompt (`:2771`)
  * @param {Array<string|null>} arr value strings (null = C NULL gap slot)
@@ -3988,8 +4022,8 @@ export async function query_arrayvalue(querystr, arr, arrmin, arrmax) {
  * nul_glyphinfo / NO_COLOR / MENU_ITEMFLAGS_NONE do not change the
  * tty text row; cg.zeroany is the fresh a_ulong on each row.
  *
- * Sole C caller: status_hilite_menu_add `:4113` (named omission, no
- * JS body). This export is the call that site makes.
+ * Sole C caller: status_hilite_menu_add `:4113` (wired below).
+ * This export is the call that site makes.
  *
  * @returns {Promise<number>} OR of picked masks (C unsigned long), 0 on cancel
  */
@@ -4024,8 +4058,8 @@ export async function query_conditions() {
  * MENU_ITEMFLAGS_NONE do not change the tty text row; cg.zeroany is
  * the fresh a_int on each row.
  *
- * Sole C caller: status_hilite_menu_add `:3905` (named omission, no
- * JS body). This export is the call that site makes.
+ * Sole C caller: status_hilite_menu_add `:3905` (wired below).
+ * This export is the call that site makes.
  *
  * @returns {Promise<number>} picked field index, or BL_FLUSH on cancel
  */
@@ -4048,6 +4082,560 @@ export async function status_hilite_menu_choose_field() {
         // C `:3701` free(picks) — GC.
     }
     return fld; // C `:3703`
+}
+
+/**
+ * C ref: botl.c status_hilite_menu_choose_behavior `:3707–3808` — PICK_ONE
+ * menu of the hilite behaviors one field supports, with C's accelerators
+ * ('a' always-hilite, 'b' condition bitmask, 'c' value-changes, 'n'
+ * number threshold, 'p' percentage threshold, 'C' critical HP, 't' text
+ * match; a_int is the BL_TH_* behavior). A single-option field
+ * (BL_CONDITION) auto-picks without a menu (`:3799–3801`); cancel keeps
+ * the BL_TH_NONE - 1 init, an empty finish is BL_TH_NONE (`:3795–3798`).
+ * create/start/end/select/destroy fold into one select_menu_pick_one
+ * (choose_updownboth precedent); nul_glyphinfo / NO_COLOR /
+ * MENU_ITEMFLAGS_NONE do not change the tty text row; cg.zeroany is
+ * the fresh a_int on each row.
+ *
+ * select_menu_pick_one reports only pick/cancel: C's res == 0
+ * (Enter/space with nothing preselected) and res == -1 (ESC) both land
+ * as cancel. The fold is exact: the sole caller maps both to return
+ * FALSE (origfld is a real field at both `:4370`/`:4446` sites, so the
+ * BL_TH_NONE goto-choose_field arm is unreachable and no pline fires on
+ * either path).
+ *
+ * Sole C caller: status_hilite_menu_add `:3923` (wired below).
+ * @param {number} fld statusfields index
+ * @returns {Promise<number>} behavior, BL_TH_NONE, or BL_TH_NONE - 1 on cancel
+ */
+export async function status_hilite_menu_choose_behavior(fld) {
+    let beh = BL_TH_NONE - 1; // C `:3710` (res folds into the pick below)
+    const f = fld | 0;
+    let onlybeh = BL_TH_NONE, nopts = 0; // C `:3715`
+    // C `:3716` clr = NO_COLOR — tty text row unaffected (precedent).
+
+    if (f < 0 || f >= MAXBLSTATS) // C `:3718–3719`
+        return BL_TH_NONE;
+
+    const at = initblstats[f]?.anytype; // C `:3721`
+    const fname = blstatFldName(f);
+    const rows = [];
+    if (f !== BL_CONDITION) { // C `:3726`
+        onlybeh = BL_TH_ALWAYS_HILITE; // C `:3728` any.a_int
+        rows.push({ // C `:3729–3731`
+            text: `Always highlight ${fname}`, selectable: true,
+            selector: 'a', attr: ATR_NONE, a_int: onlybeh,
+        });
+        nopts++; // C `:3732`
+    }
+    if (f === BL_CONDITION) { // C `:3735`
+        onlybeh = BL_TH_CONDITION; // C `:3737`
+        rows.push({ // C `:3738–3739`
+            text: 'Bitmask of conditions', selectable: true,
+            selector: 'b', attr: ATR_NONE, a_int: onlybeh,
+        });
+        nopts++; // C `:3740`
+    }
+    if (f !== BL_CONDITION && f !== BL_VERS) { // C `:3743`
+        onlybeh = BL_TH_UPDOWN; // C `:3745`
+        rows.push({ // C `:3746–3748`
+            text: `${fname} value changes`, selectable: true,
+            selector: 'c', attr: ATR_NONE, a_int: onlybeh,
+        });
+        nopts++; // C `:3749`
+    }
+    if (f !== BL_CAP && f !== BL_HUNGER // C `:3752–3753`
+        && (at === ANY_INT || at === ANY_LONG)) {
+        onlybeh = BL_TH_VAL_ABSOLUTE; // C `:3755`
+        rows.push({ // C `:3756–3757`
+            text: 'Number threshold', selectable: true,
+            selector: 'n', attr: ATR_NONE, a_int: onlybeh,
+        });
+        nopts++; // C `:3758`
+    }
+    if ((initblstats[f]?.idxmax ?? -1) >= 0) { // C `:3761`
+        onlybeh = BL_TH_VAL_PERCENTAGE; // C `:3763`
+        rows.push({ // C `:3764–3765`
+            text: 'Percentage threshold', selectable: true,
+            selector: 'p', attr: ATR_NONE, a_int: onlybeh,
+        });
+        nopts++; // C `:3766`
+    }
+    if (f === BL_HP) { // C `:3769`
+        onlybeh = BL_TH_CRITICALHP; // C `:3771`
+        rows.push({ // C `:3772–3775`
+            text: `Highlight critically low ${fname}`, selectable: true,
+            selector: 'C', attr: ATR_NONE, a_int: onlybeh,
+        });
+        nopts++; // C `:3776`
+    }
+    if (initblstats[f]?.anytype === ANY_STR // C `:3779–3780`
+        || f === BL_CAP || f === BL_HUNGER) {
+        onlybeh = BL_TH_TEXTMATCH; // C `:3782`
+        rows.push({ // C `:3783–3785`
+            text: `${fname} text match`, selectable: true,
+            selector: 't', attr: ATR_NONE, a_int: onlybeh,
+        });
+        nopts++; // C `:3786`
+    }
+
+    const prompt = `Select ${fname} field hilite behavior:`; // C `:3789–3790`
+    if (nopts > 1) { // C `:3793`
+        // options.js statically imports this module (cond_menu precedent).
+        const { select_menu_pick_one } = await import('./options.js');
+        const pick = await select_menu_pick_one(hiliteMenuRows(prompt, rows)); // C `:3794`
+        if (pick.kind === 'pick' && pick.item) { // C `:3803` res > 0
+            beh = pick.item.a_int | 0; // C `:3804`
+            // C `:3805` free(picks) — GC.
+        } else { // C `:3795–3798` res <= 0: none chosen or cancelled
+            beh = BL_TH_NONE - 1; // cancel arm; the res == 0 twin folds here (doc comment)
+        }
+        // C `:3802` destroy_nhwindow — select_menu_pick_one dismisses.
+    } else if (onlybeh !== BL_TH_NONE) { // C `:3799`
+        beh = onlybeh; // C `:3800`
+    }
+    return beh; // C `:3807`
+}
+
+/* C botl.c:2215–2216 file statics for the `:4040` / `:4046` range plines. */
+const threshold_value = 'hilite_status threshold ';
+const is_out_of_range = ' is out of range';
+
+/**
+ * C ref: botl.c status_hilite_menu_add `:3890–4302` — the "add a hilite
+ * rule" flow behind status_hilite_menu_fld: choose field (when called
+ * with BL_FLUSH), choose behavior, choose value (threshold getlin plus
+ * the up/down menu, the up/down menu alone, the conditions menu, the
+ * text-match menu/getlin, or nothing — by behavior), choose color,
+ * choose attribute, then store the rule (condition bits into
+ * gc.cond_hilites, every other behavior via
+ * status_hilite_add_threshold) with an "Added hilite ..." pline.
+ * TRUE when a rule was added.
+ *
+ * The four C labels (choose_field, choose_behavior, choose_value,
+ * choose_color) are a state loop; every goto is a label assignment in
+ * C order. The threshold parse emulates C's in-place buffer (leading
+ * spaces stay in the base, trailing stripped, operator/plus blanked,
+ * '%' truncates — hacklib.c trimspaces) because the updownboth menu
+ * and the color/attribute prompts read the edited buffer, not the
+ * trimmed value. getlin's "" / ESC returns are C's NUL / ESC first
+ * byte (getline.js contract). C's res == 0 / -1 menu pair folds into
+ * the shared pick/cancel helpers exactly like the sibling choosers.
+ *
+ * C callers: status_hilite_menu_fld `:4370` and `:4445–4447` (both wired
+ * below). `:668` is the prototype.
+ * @param {number} origfld field to add for, or BL_FLUSH to choose one
+ * @returns {Promise<boolean>} TRUE when a rule was added
+ */
+export async function status_hilite_menu_add(origfld) {
+    let fld; // C `:3892`
+    let behavior; // C `:3893`
+    let lt_gt_eq; // C `:3894`
+    let clr = NO_COLOR, atr = HL_UNDEF; // C `:3895`
+    let hilite; // C `:3896` struct hilite_s
+    let cond = 0; // C `:3897` unsigned long
+    let colorqry = ''; // C `:3898` colorqry[BUFSZ]
+    let attrqry = ''; // C `:3899` attrqry[BUFSZ]
+    let retry = 0; // C `:3900`
+    const ofld = origfld | 0;
+
+    let label = 'choose_field';
+    for (;;) {
+    if (label === 'choose_field') { // C `:3902`
+        fld = ofld; // C `:3903`
+        if (fld === BL_FLUSH) { // C `:3904`
+            fld = await status_hilite_menu_choose_field(); // C `:3905`
+            /* C `:3906` isn't this redundant given what follows? */
+            if (fld === BL_FLUSH) // C `:3907–3908`
+                return false;
+        }
+        if (fld === BL_FLUSH) // C `:3911–3912`
+            return false;
+
+        colorqry = ''; // C `:3914`
+        attrqry = ''; // C `:3915`
+
+        hilite = { // C `:3917` memset zero (parse_status_hl2 shape)
+            fld: 0, set: false, anytype: 0, value: zeroAnything(),
+            behavior: 0, textmatch: '', rel: 0, coloridx: 0, next: null,
+        };
+        hilite.next = null; // C `:3918`
+        hilite.set = false; // C `:3919` mark it "unset"
+        hilite.fld = fld; // C `:3920`
+
+        label = 'choose_behavior'; // C `:3922` fallthrough
+        continue;
+    }
+    if (label === 'choose_behavior') { // C `:3922`
+        behavior = await status_hilite_menu_choose_behavior(fld); // C `:3923`
+
+        if (behavior === (BL_TH_NONE - 1)) { // C `:3925`
+            return false; // C `:3926`
+        } else if (behavior === BL_TH_NONE) { // C `:3927`
+            if (ofld === BL_FLUSH) { label = 'choose_field'; continue; } // C `:3928–3929`
+            return false; // C `:3930`
+        }
+
+        hilite.behavior = behavior; // C `:3933`
+
+        label = 'choose_value'; // C `:3935` fallthrough
+        continue;
+    }
+    if (label === 'choose_value') { // C `:3935`
+        if (retry++ > 5) { // C `:3936`
+            await pline("That's enough tries."); // C `:3937`
+            return false; // C `:3938`
+        }
+        if (behavior === BL_TH_VAL_PERCENTAGE // C `:3940–3941`
+            || behavior === BL_TH_VAL_ABSOLUTE) {
+            // C `:3942–3947` inbuf/buf/aval/val/dt/gotnum/percent/inp/numstart/op.
+            const percent = (behavior === BL_TH_VAL_PERCENTAGE);
+            let val = 0, dt = ANY_INVALID;
+            let gotnum = false;
+
+            lt_gt_eq = NO_LTEQGT; // C `:3949` not set up yet
+            const buf = `Enter ${percent ? 'percentage ' : ''}value for ${blstatFldName(fld)} threshold:`; // C `:3951–3953`
+            /* C `:3950` inbuf[0] = '\0' preload folds into getlin
+               (EDIT_GETLIN off — getline.js ignores bufp). */
+            const inbuf = await getlin(buf); // C `:3954` getlin(buf, inbuf)
+            if (inbuf === '' || inbuf[0] === '\x1b') { // C `:3955–3956` NUL / ESC
+                label = 'choose_behavior'; continue;
+            }
+
+            // C `:3958` inp = numstart = trimspaces(inbuf): mutable buffer.
+            const chars = [...inbuf];
+            let end = chars.length; // trailing strip in place
+            while (end > 0 && (chars[end - 1] === ' ' || chars[end - 1] === '\t')) end--;
+            chars.length = end;
+            let numstart = 0; // leading kept in base, skipped by pointer
+            while (numstart < chars.length && (chars[numstart] === ' ' || chars[numstart] === '\t')) numstart++;
+            let pos = numstart;
+            if (pos >= chars.length) { // C `:3959–3960` !*inp
+                label = 'choose_behavior'; continue;
+            }
+
+            /* C `:3962–3963` allow "<50%" / ">50" / "50" / "<=50%" ... */
+            if (chars[pos] === '>' || chars[pos] === '<' || chars[pos] === '=') { // C `:3964`
+                lt_gt_eq = (chars[pos] === '>') // C `:3965–3967`
+                    ? ((chars[pos + 1] === '=') ? GE_VALUE : GT_VALUE)
+                    : (chars[pos] === '<')
+                        ? ((chars[pos + 1] === '=') ? LE_VALUE : LT_VALUE)
+                        : EQ_VALUE;
+                chars[pos++] = ' '; // C `:3968`
+                numstart++; // C `:3969`
+                if (lt_gt_eq === GE_VALUE || lt_gt_eq === LE_VALUE) { // C `:3970`
+                    chars[pos++] = ' '; // C `:3971`
+                    numstart++; // C `:3972`
+                }
+            }
+            if (chars[pos] === '-') { // C `:3975`
+                pos++; // C `:3976`
+            } else if (chars[pos] === '+') { // C `:3977`
+                chars[pos++] = ' '; // C `:3978`
+                numstart++; // C `:3979`
+            }
+            while (pos < chars.length && digit(chars[pos])) { // C `:3981–3984`
+                pos++;
+                gotnum = true;
+            }
+            if (chars[pos] === '%') { // C `:3985`
+                if (!percent) { // C `:3986`
+                    await pline('Not expecting a percentage.'); // C `:3987`
+                    label = 'choose_behavior'; continue; // C `:3988`
+                }
+                chars.length = pos; // C `:3990` *inp = '\0' [accepts trailing junk!]
+            } else if (pos < chars.length) { // C `:3991–3992` some random characters
+                await pline('"%s" is not a recognized number.', chars.slice(pos).join('')); // C `:3993`
+                label = 'choose_value'; continue; // C `:3994`
+            }
+            if (!gotnum) { // C `:3996`
+                await pline('Is that an invisible number?'); // C `:3997`
+                label = 'choose_value'; continue; // C `:3998`
+            }
+            const op = (lt_gt_eq === LT_VALUE) ? '<' // C `:4000–4005`
+                : (lt_gt_eq === LE_VALUE) ? '<='
+                : (lt_gt_eq === GT_VALUE) ? '>'
+                : (lt_gt_eq === GE_VALUE) ? '>='
+                : (lt_gt_eq === EQ_VALUE) ? '='
+                : ''; /* didn't specify lt_gt_eq with number */
+
+            const aval = zeroAnything(); // C `:4007` aval = cg.zeroany
+            dt = percent ? ANY_INT : initblstats[fld].anytype; // C `:4008`
+            let numstr = chars.slice(numstart).join('');
+            s_to_anything(aval, numstr, dt); // C `:4009`
+
+            if (percent) { // C `:4011`
+                val = aval.a_int; // C `:4012`
+                if (initblstats[fld].idxmax === -1) { // C `:4013`
+                    await pline("Field '%s' does not support percentage values.", // C `:4014–4015`
+                        blstatFldName(fld));
+                    behavior = BL_TH_VAL_ABSOLUTE; // C `:4016`
+                    label = 'choose_value'; continue; // C `:4017`
+                }
+                /* C `:4019–4023` deliberate >-1 / <101 use stays palatable. */
+                if ((val < 0 && (val !== -1 || lt_gt_eq !== GT_VALUE)) // C `:4024–4027`
+                    || (val === 0 && lt_gt_eq === LT_VALUE)
+                    || (val === 100 && lt_gt_eq === GT_VALUE)
+                    || (val > 100 && (val !== 101 || lt_gt_eq !== LT_VALUE))) {
+                    await pline("'%s%d%%' is not a valid percent value.", op, val); // C `:4028`
+                    label = 'choose_value'; continue; // C `:4029`
+                }
+                /* C `:4031` restore suffix for the color/attribute prompts. */
+                if (!numstr.includes('%')) // C `:4032–4033`
+                    numstr += '%';
+
+            /* C `:4035` reject negatives except AC and >-1; reject 0 for <. */
+            } else if (dt === ANY_INT // C `:4036–4039`
+                       && (aval.a_int < ((fld === BL_AC) ? -128
+                                         : (lt_gt_eq === GT_VALUE) ? -1
+                                           : (lt_gt_eq === LT_VALUE) ? 1 : 0))) {
+                await pline("%s'%s%d'%s", threshold_value, // C `:4040–4041`
+                    op, aval.a_int, is_out_of_range);
+                label = 'choose_value'; continue; // C `:4042`
+            } else if (dt === ANY_LONG // C `:4043–4045`
+                       && (aval.a_long < ((lt_gt_eq === GT_VALUE) ? -1
+                                          : (lt_gt_eq === LT_VALUE) ? 1 : 0))) {
+                await pline("%s'%s%ld'%s", threshold_value, // C `:4046–4047`
+                    op, aval.a_long, is_out_of_range);
+                label = 'choose_value'; continue; // C `:4048`
+            }
+
+            if (lt_gt_eq === NO_LTEQGT) { // C `:4051`
+                const ltok = (dt === ANY_INT) // C `:4052–4054`
+                    ? (aval.a_int > 0 || fld === BL_AC)
+                    : (aval.a_long > 0);
+                /* C `:4055` gtok reads aval.a_long over the INT-written
+                   union (LP64 zero-extended over zeroany); the value is
+                   validated non-negative here, so both arms agree. */
+                const along = (dt === ANY_INT) ? (aval.a_int | 0) : (aval.a_long | 0);
+                const gtok = (!percent || along < 100);
+                /* C `:4057–4058` str is the edited inbuf base (leading
+                   kept, '+' blanked, '%' truncated — not the trimmed
+                   value). JS strings are immutable, so the buffer above
+                   is that base. */
+                lt_gt_eq = await status_hilite_menu_choose_updownboth(
+                    fld, chars.join(''), ltok, gtok);
+                if (lt_gt_eq === NO_LTEQGT) { // C `:4059–4060`
+                    label = 'choose_value'; continue;
+                }
+            }
+
+            colorqry = `Choose a color for when ${blstatFldName(fld)} is ${ // C `:4063–4071`
+                (lt_gt_eq === LT_VALUE) ? 'less than '
+                : (lt_gt_eq === GT_VALUE) ? 'more than ' : ''}${numstr}${
+                (lt_gt_eq === LE_VALUE) ? ' or less'
+                : (lt_gt_eq === GE_VALUE) ? ' or more' : ''}:`;
+            attrqry = `Choose attribute for when ${blstatFldName(fld)} is ${ // C `:4072–4080`
+                (lt_gt_eq === LT_VALUE) ? 'less than '
+                : (lt_gt_eq === GT_VALUE) ? 'more than ' : ''}${numstr}${
+                (lt_gt_eq === LE_VALUE) ? ' or less'
+                : (lt_gt_eq === GE_VALUE) ? ' or more' : ''}:`;
+
+            hilite.rel = lt_gt_eq; // C `:4082`
+            hilite.value = aval; // C `:4083`
+        } else if (behavior === BL_TH_UPDOWN) { // C `:4084`
+            if (initblstats[fld].anytype !== ANY_STR) { // C `:4085`
+                const ltok = (fld !== BL_TIME), gtok = true; // C `:4086`
+
+                lt_gt_eq = await status_hilite_menu_choose_updownboth( // C `:4088–4089`
+                    fld, null, ltok, gtok);
+                if (lt_gt_eq === NO_LTEQGT) { // C `:4090–4091`
+                    label = 'choose_behavior'; continue;
+                }
+            } else { /* C `:4092` ANY_STR */
+                /* C `:4093–4098` ordered string comparison is pointless
+                   for title/dungeon-level/alignment; skip the one-choice
+                   menu and just use 'changed'. */
+                lt_gt_eq = EQ_VALUE; // C `:4099`
+            }
+            /* C `:4101–4105` / `:4106–4110`: LE/GE print "increases"
+               (unreachable: the str==NULL menu offers LT/EQ/GT only). */
+            const dirword = (lt_gt_eq === EQ_VALUE) ? 'changes'
+                : (lt_gt_eq === LT_VALUE) ? 'decreases' : 'increases';
+            colorqry = `Choose a color for when ${blstatFldName(fld)} ${dirword}:`;
+            attrqry = `Choose attribute for when ${blstatFldName(fld)} ${dirword}:`;
+            hilite.rel = lt_gt_eq; // C `:4111`
+        } else if (behavior === BL_TH_CONDITION) { // C `:4112`
+            cond = await query_conditions(); // C `:4113`
+            if (!cond) { // C `:4114`
+                if (ofld === BL_FLUSH) { label = 'choose_field'; continue; } // C `:4115–4116`
+                return false; // C `:4117`
+            }
+            colorqry = `Choose a color for conditions ${conditionbitmask2str(cond)}:`; // C `:4119–4121`
+            attrqry = `Choose attribute for conditions ${conditionbitmask2str(cond)}:`; // C `:4122–4124`
+        } else if (behavior === BL_TH_TEXTMATCH) { // C `:4125`
+            const qry_buf = `${(fld === BL_CAP // C `:4128–4133`
+                || fld === BL_ALIGN
+                || fld === BL_HUNGER
+                || fld === BL_TITLE) ? 'Choose' : 'Enter'} ${blstatFldName(fld)} text value to match:`;
+            if (fld === BL_CAP) { // C `:4134`
+                const rv = await query_arrayvalue(qry_buf, // C `:4135–4137`
+                    enc_stat, SLT_ENCUMBER, OVERLOADED + 1);
+
+                if (rv < SLT_ENCUMBER) { // C `:4139–4140`
+                    label = 'choose_behavior'; continue;
+                }
+
+                hilite.rel = TXT_VALUE; // C `:4142`
+                hilite.textmatch = enc_stat[rv]; // C `:4143`
+            } else if (fld === BL_ALIGN) { // C `:4144`
+                const aligntxt = [ // C `:4145–4147`
+                    'chaotic', 'neutral', 'lawful',
+                ];
+                const rv = await query_arrayvalue(qry_buf, // C `:4148–4149`
+                    aligntxt, 0, 2 + 1);
+
+                if (rv < 0) { // C `:4151–4152`
+                    label = 'choose_behavior'; continue;
+                }
+
+                hilite.rel = TXT_VALUE; // C `:4154`
+                hilite.textmatch = aligntxt[rv]; // C `:4155`
+            } else if (fld === BL_HUNGER) { // C `:4156`
+                const hutxt = [ // C `:4157–4160`
+                    'Satiated', null, 'Hungry', 'Weak',
+                    'Fainting', 'Fainted', 'Starved',
+                ];
+                const rv = await query_arrayvalue(qry_buf, hutxt, SATIATED, STARVED + 1); // C `:4161`
+
+                if (rv < SATIATED) { // C `:4163–4164`
+                    label = 'choose_behavior'; continue;
+                }
+
+                hilite.rel = TXT_VALUE; // C `:4166`
+                hilite.textmatch = hutxt[rv]; // C `:4167`
+            } else if (fld === BL_TITLE) { // C `:4168`
+                /* C `:4169–4171` rolelist[3 * 9 + 1]; mbuf/fbuf/obuf[MAXVALWIDTH]. */
+                const rolelist = [];
+                const titles = game.urole?.title ?? game.urole?.rank; // C `:4174` gu.urole.rank[9]
+                const ranks = Array.isArray(titles) ? titles : [];
+                const female = !!game.flags?.female; // C `:4183` flags.female
+                for (let i = 0; i < 9; i++) { // C `:4173`
+                    const mbuf = `"${ranks[i]?.m ?? ''}"`; // C `:4174`
+                    /* C `:4180–4181` else arm: the per-iteration fresh
+                       strings already start empty. */
+                    let fbuf = '', obuf = '';
+                    if (ranks[i]?.f) { // C `:4175`
+                        fbuf = `"${ranks[i].f}"`; // C `:4176`
+                        obuf = `${female ? fbuf : mbuf} or ${female ? mbuf : fbuf}`; // C `:4177–4179`
+                    }
+                    if (female) { // C `:4183`
+                        if (fbuf) // C `:4184–4185`
+                            rolelist.push(fbuf);
+                        rolelist.push(mbuf); // C `:4186`
+                        if (obuf) // C `:4187–4188`
+                            rolelist.push(obuf);
+                    } else { // C `:4189`
+                        rolelist.push(mbuf); // C `:4190`
+                        if (fbuf) // C `:4191–4192`
+                            rolelist.push(fbuf);
+                        if (obuf) // C `:4193–4194`
+                            rolelist.push(obuf);
+                    }
+                }
+                rolelist.push('"none of the above (polymorphed)"'); // C `:4197`
+
+                const rv = await query_arrayvalue(qry_buf, rolelist, 0, rolelist.length); // C `:4199`
+                if (rv >= 0) { // C `:4200`
+                    hilite.rel = TXT_VALUE; // C `:4201`
+                    hilite.textmatch = rolelist[rv]; // C `:4202`
+                }
+                // C `:4204–4205` free(rolelist[]) — GC.
+                if (rv < 0) { // C `:4206–4207`
+                    label = 'choose_behavior'; continue;
+                }
+            } else { // C `:4208`
+                /* C `:4211` inbuf[0] = '\0' preload folds into getlin
+                   (EDIT_GETLIN off — getline.js ignores bufp). */
+                const tminbuf = await getlin(qry_buf); // C `:4212` getlin(qry_buf, inbuf)
+                if (tminbuf === '' || tminbuf[0] === '\x1b') { // C `:4213–4214`
+                    label = 'choose_behavior'; continue;
+                }
+
+                hilite.rel = TXT_VALUE; // C `:4216`
+                if (tminbuf.length < MAXVALWIDTH) // C `:4217–4218`
+                    hilite.textmatch = tminbuf;
+                else // C `:4219–4220`
+                    return false;
+            }
+            colorqry = `Choose a color for when ${blstatFldName(fld)} is '${hilite.textmatch}':`; // C `:4222–4223`
+            attrqry = `Choose attribute for when ${blstatFldName(fld)} is '${hilite.textmatch}':`; // C `:4224–4225`
+        } else if (behavior === BL_TH_ALWAYS_HILITE) { // C `:4226`
+            colorqry = `Choose a color to always hilite ${blstatFldName(fld)}:`; // C `:4227–4228`
+            attrqry = `Choose attribute to always hilite ${blstatFldName(fld)}:`; // C `:4229–4230`
+        }
+        /* C has no arm for BL_TH_CRITICALHP/BL_TH_NONE: fall through
+           with empty queries exactly like C. */
+
+        label = 'choose_color'; // C `:4224` fallthrough
+        continue;
+    }
+    if (label === 'choose_color') { // C `:4233`
+        // options.js statically imports this module (cond_menu precedent).
+        const { query_color, query_attr } = await import('./options.js');
+        clr = await query_color(colorqry, NO_COLOR); // C `:4234`
+        if (clr === -1) { // C `:4235`
+            if (behavior !== BL_TH_ALWAYS_HILITE) { // C `:4236–4237`
+                label = 'choose_value'; continue;
+            } else { // C `:4238–4239`
+                label = 'choose_behavior'; continue;
+            }
+        }
+        atr = await query_attr(attrqry, ATR_NONE); // C `:4241`
+        if (atr === -1) { // C `:4242–4243`
+            label = 'choose_color'; continue;
+        }
+
+        if (behavior === BL_TH_CONDITION) { // C `:4245`
+            const ch = ensureCondHilites(); // C `:4250–4270` gc.cond_hilites
+            if (atr & HL_BOLD) ch[HL_ATTCLR_BOLD] = ((ch[HL_ATTCLR_BOLD] ?? 0) | cond) >>> 0; // C `:4250–4251`
+            if (atr & HL_DIM) ch[HL_ATTCLR_DIM] = ((ch[HL_ATTCLR_DIM] ?? 0) | cond) >>> 0; // C `:4252–4253`
+            if (atr & HL_ITALIC) ch[HL_ATTCLR_ITALIC] = ((ch[HL_ATTCLR_ITALIC] ?? 0) | cond) >>> 0; // C `:4254–4255`
+            if (atr & HL_ULINE) ch[HL_ATTCLR_ULINE] = ((ch[HL_ATTCLR_ULINE] ?? 0) | cond) >>> 0; // C `:4256–4257`
+            if (atr & HL_BLINK) ch[HL_ATTCLR_BLINK] = ((ch[HL_ATTCLR_BLINK] ?? 0) | cond) >>> 0; // C `:4258–4259`
+            if (atr & HL_INVERSE) ch[HL_ATTCLR_INVERSE] = ((ch[HL_ATTCLR_INVERSE] ?? 0) | cond) >>> 0; // C `:4260–4261`
+            if (atr === HL_NONE) { // C `:4262`
+                ch[HL_ATTCLR_BOLD] = ((ch[HL_ATTCLR_BOLD] ?? 0) & ~cond) >>> 0; // C `:4263`
+                ch[HL_ATTCLR_DIM] = ((ch[HL_ATTCLR_DIM] ?? 0) & ~cond) >>> 0; // C `:4264`
+                ch[HL_ATTCLR_ITALIC] = ((ch[HL_ATTCLR_ITALIC] ?? 0) & ~cond) >>> 0; // C `:4265`
+                ch[HL_ATTCLR_ULINE] = ((ch[HL_ATTCLR_ULINE] ?? 0) & ~cond) >>> 0; // C `:4266`
+                ch[HL_ATTCLR_BLINK] = ((ch[HL_ATTCLR_BLINK] ?? 0) & ~cond) >>> 0; // C `:4267`
+                ch[HL_ATTCLR_INVERSE] = ((ch[HL_ATTCLR_INVERSE] ?? 0) & ~cond) >>> 0; // C `:4268`
+            }
+            ch[clr] = ((ch[clr] ?? 0) | cond) >>> 0; // C `:4270`
+            let clrbuf = strNsubst(clr2colorname(clr), ' ', '-', 0); // C `:4271`
+            const tmpattr = hlattr2attrname(atr); // C `:4272` (buf/len fold into the return)
+            if (tmpattr != null) // C `:4273–4274`
+                clrbuf += `&${tmpattr}`;
+            await pline('Added hilite condition/%s/%s', // C `:4275–4276`
+                conditionbitmask2str(cond), clrbuf);
+        } else { // C `:4277`
+            hilite.coloridx = clr | (atr << 8); // C `:4280`
+            hilite.anytype = initblstats[fld].anytype; // C `:4281`
+
+            if (fld === BL_TITLE) { // C `:4283`
+                const tail = strstri(hilite.textmatch, ' or ');
+                if (tail !== null) { // C `:4283` != 0
+                    /* C `:4284–4285` split "male-rank or female-rank" into
+                       two distinct but otherwise identical rules. */
+                    hilite.textmatch = hilite.textmatch.slice( // C `:4286` *p = '\0'
+                        0, hilite.textmatch.length - tail.length);
+                    /* C `:4287` new rule for male-rank. */
+                    status_hilite_add_threshold(fld, hilite); // C `:4288`
+                    await pline('Added hilite %s', status_hilite2str(hilite)); // C `:4289`
+                    /* C `:4290–4294` transfer female-rank to the buffer
+                       start (p += sizeof " or " - sizeof "" == 4). */
+                    hilite.textmatch = tail.slice(4);
+                    /* C `:4295` proceed with normal addition. */
+                }
+            }
+            status_hilite_add_threshold(fld, hilite); // C `:4297`
+            await pline('Added hilite %s', status_hilite2str(hilite)); // C `:4298`
+        }
+        reset_status_hilites(); // C `:4300`
+        return true; // C `:4301`
+    }
+    }
 }
 
 /**
@@ -4120,8 +4708,8 @@ export function status_hilite_remove(id) {
  * both botl stores the same way).
  *
  * Callers: botl.c:4556 → status_hilite_menu below.
- * botl.c:4300 is the tail of status_hilite_menu_add (named omission,
- * no JS site). options.c:4035 is optfn_statushilites do_set (live in
+ * botl.c:4300 is the tail of status_hilite_menu_add (wired above).
+ * options.c:4035 is optfn_statushilites do_set (live in
  * js/options.js, gated on !opt_from_file like C).
  */
 export function reset_status_hilites() {
@@ -4150,14 +4738,14 @@ export function reset_status_hilites() {
  * (accelerator Z, a_int -2). SCORE_ON_BOTL is commented out
  * (config.h:627), so the `#ifndef` arm is live C: score never offers Z.
  * Delete (mode bit 1) calls status_hilite_remove for each selected id.
- * Create (mode bit 2) is status_hilite_menu_add — named omission.
+ * Create (mode bit 2) loops status_hilite_menu_add while it returns
+ * TRUE (`:4445–4447`).
  *
  * When the field has no lines yet, C calls status_hilite_menu_add first
- * (`:4370`) and returns FALSE if that returns FALSE. The add function
- * has no JS body, so this site takes that FALSE return. The
- * "No current hilites for %s" row (`:4392–4394`) is only reached after
- * add returns TRUE and the re-gather is still empty; that arm stays
- * with the omitted function.
+ * (`:4370`); FALSE from that returns FALSE (`:4375`), TRUE re-gathers
+ * and recounts (`:4371–4373`) and falls through — the "No current
+ * hilites for %s" row (`:4392–4394`) shows when the re-gather is still
+ * empty.
  *
  * Sole C caller: status_hilite_menu `:4555` (wired below). `:670` is
  * the prototype.
@@ -4165,31 +4753,44 @@ export function reset_status_hilites() {
  * @returns {Promise<boolean>} acted
  */
 async function status_hilite_menu_fld(fld) {
-    const count = status_hilite_linestr_countfield(fld); // C `:4363`
+    let count = status_hilite_linestr_countfield(fld); // C `:4363`
     if (!count) { // C `:4369–4376`
-        // Named omission: status_hilite_menu_add (botl.c:3889–4302).
-        // C returns FALSE from here when add returns FALSE (`:4375`).
-        return false;
+        if (await status_hilite_menu_add(fld)) { // C `:4370`
+            status_hilite_linestr_done(); // C `:4371`
+            status_hilite_linestr_gather(); // C `:4372`
+            count = status_hilite_linestr_countfield(fld); // C `:4373`
+        } else {
+            return false; // C `:4375`
+        }
     }
 
     const rows = [];
-    let hlstr = status_hilite_str; // C `:4382`
-    while (hlstr) { // C `:4383–4391`
-        if ((hlstr.fld | 0) === (fld | 0)) {
-            rows.push({
-                text: hlstr.str, selectable: true, attr: ATR_NONE, a_int: hlstr.id | 0,
-            });
+    if (count) { // C `:4381`
+        let hlstr = status_hilite_str; // C `:4382`
+        while (hlstr) { // C `:4383–4391`
+            if ((hlstr.fld | 0) === (fld | 0)) {
+                rows.push({
+                    text: hlstr.str, selectable: true, attr: ATR_NONE, a_int: hlstr.id | 0,
+                });
+            }
+            hlstr = hlstr.next;
         }
-        hlstr = hlstr.next;
+    } else { // C `:4392–4394`
+        rows.push({
+            text: `No current hilites for ${blstatFldName(fld)}`,
+            selectable: false, attr: ATR_NONE,
+        });
     }
     rows.push({ text: '', selectable: false, attr: ATR_NONE }); // C `:4398` separator
-    rows.push({ // C `:4400–4404` a_int -1, accelerator 'X'
-        text: 'Remove selected hilites',
-        selectable: true,
-        selector: 'X',
-        attr: ATR_NONE,
-        a_int: -1,
-    });
+    if (count) { // C `:4400`
+        rows.push({ // C `:4401–4404` a_int -1, accelerator 'X'
+            text: 'Remove selected hilites',
+            selectable: true,
+            selector: 'X',
+            attr: ATR_NONE,
+            a_int: -1,
+        });
+    }
     // C `:4407–4421` #ifndef SCORE_ON_BOTL. The define is off, so score
     // suppresses Z. Every other field offers it.
     if ((fld | 0) !== BL_SCORE) {
@@ -4220,9 +4821,9 @@ async function status_hilite_menu_fld(fld) {
                 if (idx > 0 && status_hilite_remove(idx)) acted = true;
             }
         }
-        if (mode & 2) { // C `:4445–4447`
-            // Named omission: while (status_hilite_menu_add(fld)) acted = TRUE.
-            // botl.c:3889–4302 has no JS body, so this arm does not set acted.
+        if (mode & 2) { // C `:4445–4447` create new hilites
+            while (await status_hilite_menu_add(fld))
+                acted = true;
         }
         // C `:4449` free(picks) — GC.
     }

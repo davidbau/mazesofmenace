@@ -119,7 +119,7 @@ import {
     A_LAWFUL, XKILL_NOMSG, SHOP_HOLE_COST,
     COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK, COST_DECHNT,
     TEST_MOVE,
-    SET_LIT_RANDOM, SET_LIT_NOCHANGE, LS_MONSTER,
+    SET_LIT_RANDOM, SET_LIT_NOCHANGE, LS_MONSTER, ANTIMAGIC,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination, SURFACE_AT,
@@ -1775,7 +1775,11 @@ export function into_vs_onto(traptype) {
 
 /**
  * C youprop.h Sleep_resistance / Antimagic — H||E; confer writes uprops
- * only (D-1089). Sticky flats kept for poly/eat.
+ * only (D-1089). Sticky flats kept for poly/eat. Antimagic reads
+ * uprops[ANTIMAGIC] too: worn cloak MR confers only there
+ * (do_wear.js confer_oc_oprop, unmirrored), so flats-only skipped
+ * trapeffect_anti_magic's `:2347–2371` arm (scen-trap-Wizard-94001
+ * step 178: C rnd(4) + sluggish vs JS d(2,6) — D-3595).
  */
 function Sleep_resistance() {
     const u = game.u || {};
@@ -1784,7 +1788,9 @@ function Sleep_resistance() {
 }
 function Antimagic_prop() {
     const u = game.u || {};
-    return !!((u.HAntimagic | 0) || (u.EAntimagic | 0) || u.Antimagic);
+    const e = u.uprops?.[ANTIMAGIC];
+    return !!((u.HAntimagic | 0) || (u.EAntimagic | 0) || u.Antimagic
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /**

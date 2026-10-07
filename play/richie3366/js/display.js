@@ -7119,17 +7119,22 @@ function _buildScreenOutput() {
         // window alone, so blank-then-paint erases a shrunk status.
         // Do not snapshot/restore grid rows — that copies blanks after a
         // per-key docrt/cls (D-1831 regression).
+        // Per-cell compare: restore cells the cache disagrees with
+        // (overlay residue, docrt/cls blanks), keep cells that already
+        // match — text AND attrs. render_status (wintty.c:4992) owns the
+        // row attrs on the windowport path; blank-then-plain-paint here
+        // would clobber them (hitpointbar inverse, wintty.c:5155–5177).
         if (!_statusSuppressed && !_bot_disabled) {
             const s1 = _lastStatus1 || s1raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
                 m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10) || 0) : '');
+            const grow22 = display.grid?.[22];
+            const grow23 = display.grid?.[23];
             for (let c = 0; c < cols; c++) {
-                display.setCell(c, 22, ' ', NO_COLOR, 0);
-                display.setCell(c, 23, ' ', NO_COLOR, 0);
+                const want1 = c < s1.length ? s1[c] : ' ';
+                const want2 = c < s2.length ? s2[c] : ' ';
+                if (grow22?.[c]?.ch !== want1) display.setCell(c, 22, want1, NO_COLOR, 0);
+                if (grow23?.[c]?.ch !== want2) display.setCell(c, 23, want2, NO_COLOR, 0);
             }
-            for (let c = 0; c < Math.min(s1.length, display.cols); c++)
-                display.setCell(c, 22, s1[c], NO_COLOR, 0);
-            for (let c = 0; c < Math.min(s2.length, display.cols); c++)
-                display.setCell(c, 23, s2[c], NO_COLOR, 0);
         }
         // Cursor: prompts that actively await input set cursor via their
         // callers (yn_function / more / Count). Leftover getobj text on

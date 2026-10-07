@@ -3282,9 +3282,8 @@ async function runApplyCommand(key, state) {
     return failClosedCommand(key, state, () => doapply(state));
 }
 
-// C ref: apply.c dorub(). Cancellation and the nohands refusal return the
-// function's own result; selecting an object reaches apply.js's explicit
-// boundary before the unported wielding and rubbing effects.
+// C ref: apply.c dorub(). Preserve its command result, including the wield
+// turn which queues a second rub through the canned command dispatcher.
 async function runRubCommand(key, state) {
     return failClosedCommand(key, state, () => dorub(state));
 }
@@ -5000,6 +4999,10 @@ async function doextcmd(key, state) {
         // done(QUIT), while the cancellation path returns ECMD_OK after it
         // restores the command loop.
         return await done2(state);
+    case 'wiz_debug_cmd_bury': {
+        const { wiz_debug_cmd_bury } = await import('./dig.js');
+        return await wiz_debug_cmd_bury(state);
+    }
     case 'doprev_message':
         return doprev_message(state);
     case 'enter_explore_mode':

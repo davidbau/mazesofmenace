@@ -1477,9 +1477,12 @@ export async function moveloop_core() {
     // disp.botl|botlx, time-only timebot() when disp.time_botl; either arm
     // then parks the cursor (curs_on_u ≡ flush_screen(1) in JS). game.flags
     // is the live store bot()/flush_screen gate on; game.disp mirrors it.
-    // The unconditional flush_screen(1) below still runs (C flush_screen
-    // carries the same gate at display.c:2237–2240, a no-op here since the
-    // arm above just consumed the flags).
+    // No unconditional flush follows: C paints the map here only inside
+    // the botl/time_botl arms above (the next flush is parse()'s, cmd.c
+    // :5104). An unconditional flush_screen(1) here (D-2405 leftover)
+    // painted gbuf one screen ahead of C — visible whenever a
+    // yn/getdir preface more() blocks with no status change (D-3598:
+    // TEMP-C order F,F,F,F/M1,M2/movemon/M1(no-flush)/M2/F,F).
     {
         const _fl = g.flags || {};
         if (_fl.botl || _fl.botlx) {
@@ -1490,7 +1493,6 @@ export async function moveloop_core() {
             await curs_on_u();
         }
     }
-    await flush_screen(1);
 
     // C allmain.c:481 — once-per-player-input m_everyturn_effect(&youmonst)
     // after bot, before context.move = 1. Fog vapor at current u.ux
