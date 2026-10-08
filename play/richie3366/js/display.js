@@ -1703,9 +1703,18 @@ export function look_shown_at(x, y) {
     return null;
 }
 
-/** C glyph_to_obj analogue: remembered object glyph encodes otyp. */
+/**
+ * C levl[x][y].glyph → glyph_to_obj (display.h): memory stores the GLYPH
+ * int, not an otyp. A mimic faking a !dknown gem/spellbook memorizes
+ * GLYPH_OBJ_OFF+0 (zeroobj oclass), which reads as STRANGE_OBJECT, not
+ * the mimicked otyp. otyp fallback covers glyph-less memories
+ * (Hallu-STATUE randoms, whose stored otyp equals the C glyph's).
+ */
 function remembered_glyph_otyp(g) {
     if (!g || g.invisible) return -1;
+    if (typeof g.glyph === 'number' && glyph_is_object(g.glyph)) {
+        return glyph_to_obj(g.glyph);
+    }
     if (g.otyp == null || (g.otyp | 0) < 0) return -1;
     return g.otyp | 0;
 }
@@ -2087,14 +2096,21 @@ function display_monster(x, y, mon, sightflags, worm_tail) {
             break;
         }
         case M_AP_OBJECT: {
-            // C `:564–575` — cg.zeroobj + ox/oy/otyp/corpsenm.
-            // map_object(&obj, !sensed): hero_memory even when sensed;
-            // observe_object when generic+cansee+neardist; show_glyph
-            // only if !sensed. Default corpsenm is PM_TENGU.
+            // C `:564–575` — cg.zeroobj + ox/oy/otyp/corpsenm. oclass
+            // stays 0 (C never sets it): a !dknown gem/spellbook mimic
+            // then takes generic_obj_to_glyph → GLYPH_OBJ_OFF+0, the
+            // STRANGE_OBJECT glyph (display.h obj_is_generic /
+            // generic_obj_to_glyph; objects.h has no RANDOM_CLASS(0)
+            // generic slot). map_object(&obj, !sensed): hero_memory
+            // even when sensed; observe_object when the COMPUTED glyph
+            // is generic+cansee+near (skipped for the OFF+0 collapse);
+            // show_glyph only if !sensed. Default corpsenm is PM_TENGU.
             const obj = {
                 ox: x,
                 oy: y,
                 otyp: mon.mappearance | 0,
+                oclass: 0,
+                dknown: 0,
                 corpsenm: has_mcorpsenm(mon) ? MCORPSENM(mon) : PM_TENGU,
             };
             map_object(obj, !sensed);
@@ -2366,22 +2382,14 @@ function distu(x, y) {
 }
 
 /**
- * C ref: display.c map_object — if glyph would be generic and hero cansee
- * within neardist, observe_object then recompute as specific (per-otyp color).
- * Named omissions: pile-top glyph flags.
- */
-function map_object_observe_near(obj, x, y) {
-    if (!obj || game.u?.Hallucination) return;
-    if (!obj_is_generic(obj)) return;
-    if (!cansee(x, y)) return;
-    const { neardist } = object_neardist();
-    if (distu(x, y) <= neardist) observe_object(obj);
-}
-
-/**
- * C ref: display.c map_object — obj_to_glyph then hero_memory store.
+ * C ref: display.c map_object `:333–377` — obj_to_glyph, then the observe
+ * gate reads the COMPUTED glyph (generic+cansee+!Hallu+near →
+ * observe_object + recompute specific), then hero_memory store.
  * Under Hallu, STATUE *display* is statue_to_glyph (mon+gender) but
  * *memory* is a separate random_obj_to_glyph (extra display-RNG burns).
+ * Gating on the glyph (not the obj) matters: the display_monster
+ * zeroobj fake (oclass 0) yields GLYPH_OBJ_OFF+0, outside generic range,
+ * so C skips observe — an obj gate would wrongly observe+discover it.
  */
 /** C ref: display.c map_object — export for fight_empty boulder/statue remap. */
 export function map_object(obj, show) {
@@ -2389,8 +2397,15 @@ export function map_object(obj, show) {
     const x = obj.ox | 0;
     const y = obj.oy | 0;
     const loc = game.level?.at(x, y);
-    map_object_observe_near(obj, x, y);
-    const og = obj_glyph(obj);
+    // C `:335–349` — obj_to_glyph first (Hallu burns display RNG here
+    // either way), then gate, observe, recompute. Piletop generic is
+    // inside glyph_is_generic_object, as in C (no named omit).
+    let og = obj_glyph(obj);
+    if (!game.u?.Hallucination && glyph_is_generic_object(og.glyph)
+        && cansee(x, y) && distu(x, y) <= object_neardist().neardist) {
+        observe_object(obj);
+        og = obj_glyph(obj);
+    }
     const attr = obj_map_attr(obj);
     const pile = obj_is_piletop(obj);
     if (game.level?.flags?.hero_memory && loc) {
@@ -2467,7 +2482,9 @@ export function see_nearby_objects() {
 
 // Contest nomux / tty ANSI_DEFAULT: CLR_GRAY hilite is empty → capture
 // emits default fg (decoded NO_COLOR). CLR_BLACK fg 0 is coerced the same.
-function tty_map_color(color) {
+// Exported for invent.js menu paint (menu-color rows carry live colors;
+// the map gbuf path already maps at store, `:4285`/`:4589`).
+export function tty_map_color(color) {
     if (color === CLR_GRAY || color === CLR_BLACK) return NO_COLOR;
     return color;
 }
@@ -2499,7 +2516,13 @@ export function obj_glyph(obj) {
         };
     }
     const def = game.objects?.[obj.otyp];
+    // C generic_obj_to_glyph encodes obj->oclass RAW (the mimic fake's is
+    // 0); the RENDERED sym comes from the glyph's otyp class instead
+    // (C mapglyph via objects[glyphotyp].oc_class), so ch is otyp-based.
+    // Real objects have oclass == otyp class; oclass-less fakes used the
+    // same fallback before.
     const oclass = obj.oclass ?? def?.oc_class ?? ILLOBJ_CLASS;
+    const otypclass = def?.oc_class ?? ILLOBJ_CLASS;
     // C: STATUE → monster letter (not ROCK_CLASS '`'); color is statue white
     // Hallu statue → random_monster + gender (display.h statue_to_glyph)
     if (obj.otyp === STATUE_OTYP) {
@@ -2510,7 +2533,10 @@ export function obj_glyph(obj) {
             // C: (!(rng)(2)) ? MON_MALE_OFF : MON_FEM_OFF
             const off = rn2_on_display_rng(2)
                 ? GLYPH_MON_FEM_OFF : GLYPH_MON_MALE_OFF;
-            const color = def?.oc_color ?? CLR_WHITE;
+            // C display.h statue_to_glyph `:950–953` — the Hallu glyph is
+            // mnum + GLYPH_MON_*_OFF, a plain monster glyph: tty color is
+            // mon_color(mnum), not objects[STATUE].oc_color (D-3637).
+            const color = mcolors[mnum] ?? NO_COLOR;
             return { ch, color, dec: false, glyph: mnum + off };
         }
         if (obj.corpsenm != null && obj.corpsenm >= 0) {
@@ -2524,7 +2550,7 @@ export function obj_glyph(obj) {
             return { ch, color, dec: false, glyph: (obj.corpsenm | 0) + off };
         }
     }
-    const ch = oc_display_sym(oclass);
+    const ch = oc_display_sym(otypclass);
     // C: body glyphs use mon_color(corpsenm), not objects[CORPSE].oc_color
     if (obj.otyp === CORPSE_OTYP && obj.corpsenm != null && obj.corpsenm >= 0) {
         const color = mcolors[obj.corpsenm] ?? def?.oc_color ?? NO_COLOR;
@@ -2532,10 +2558,15 @@ export function obj_glyph(obj) {
     }
     // C: generic_obj_to_glyph → objects[oclass] (GENERIC_POTION etc.)
     if (obj_is_generic(obj)) {
+        const gnum = (oclass | 0) + objOff;
         const gen = game.objects?.[oclass];
+        // C display.h: with raw oclass 0 (mimic fake) the glyph is
+        // GLYPH_OBJ_OFF+0 — outside generic range, so it renders via
+        // objects[STRANGE_OBJECT] (ILLOBJ ']'), not the class sym.
+        const gcc = glyph_is_generic_object(gnum)
+            ? ch : oc_display_sym(gen?.oc_class ?? ILLOBJ_CLASS);
         return {
-            ch, color: gen?.oc_color ?? NO_COLOR, dec: false,
-            glyph: (oclass | 0) + objOff,
+            ch: gcc, color: gen?.oc_color ?? NO_COLOR, dec: false, glyph: gnum,
         };
     }
     const color = def?.oc_color ?? NO_COLOR;
@@ -4719,11 +4750,34 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
 
     if (swallowed) {
         glyph = copy_glyph_id(levl_glyph);
-        // C `:2213–2215` — keep_mons + swallowed hero cell: the engulfer
+        // C `:2211–2212` — keep_mons + swallowed hero cell: the engulfer
         // itself (mon_to_glyph defaults to rn2_on_display_rng like C).
         const uu = game.u || {};
         if (keep_mons && uu.ux === x && uu.uy === y && uu.ustuck) {
             glyph = mon_to_glyph(uu.ustuck);
+            kind = 'mon';
+        } else {
+            // C `:2213–2218` — the swallowed hero reads memory, but C
+            // still classifies that int: mon/warning/swallow sets was_mon
+            // (glyph stays levl_glyph), and object/trap/invisible memory
+            // takes the `:2219–2224` restore + `:2225+` strip arms below
+            // like the displayed glyph — else a remembered weapon leaks
+            // through the terrain draw unstripped
+            // (scen-engulf-Archeologist-94292 step 252: ')' vs '<').
+            const memId = typeof glyph?.glyph === 'number'
+                ? glyph.glyph | 0 : NO_GLYPH;
+            if ((!keep_mons
+                && (glyph_is_monster(memId) || glyph_is_warning(memId)))
+                || glyph_is_swallow(memId)) {
+                was_mon = true;
+            }
+            if (memId === GLYPH_INVISIBLE || glyph?.invisible) {
+                kind = 'invisible';
+            } else if (glyph_is_object(memId)) {
+                kind = 'obj';
+            } else if (glyph_is_trap(memId)) {
+                kind = 'trap';
+            }
         }
     } else {
         const u = game.u || {};
@@ -6779,12 +6833,20 @@ export function set_bot_disabled(v) {
 /**
  * Suppress status paint after fullscreen NHW_MENU clear. C leaves status
  * blank until the next bot(); used for Options → choose_classes.
+ * botlx is PRESERVED, not cleared: C windows.c select_menu `:1855–1865`
+ * scopes gb.bot_disabled around win_select_menu but clears no flags, so
+ * docrt()'s disp.botlx=TRUE (display.c:1767) survives the disabled bot()
+ * skip (botl.c:255–256) and the post-select repaint (pline.c:274's
+ * flush_screen → bot() → BL_RESET, botl.c:1670–1673) still fires.
+ * Clearing it here ate the repaint: the post-select bot() saw
+ * updated=0/botlx=false, sent neither RESET nor FLUSH, and the flush
+ * fallback repainted status text PLAIN (hitpointbar brackets without
+ * the wintty.c:5155–5166 inverse).
  */
 export function clear_committed_status() {
     _statusSuppressed = true;
     if (game.flags) {
         game.flags.botl = false;
-        game.flags.botlx = false;
         game.flags.time_botl = false;
     }
 }

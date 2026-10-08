@@ -92,6 +92,8 @@ import {
     ROT_CORPSE,
     OBJ_FLOOR,
     OBJ_FREE,
+    OBJ_DELETED,
+    OBJ_LUAFREE,
     CXN_SINGULAR,
     ROOM,
     RLOC_NOMSG,
@@ -125,6 +127,7 @@ import {
     W_SADDLE,
     W_QUIVER,
     W_SWAPWEP,
+    W_WEP,
     W_ART,
     W_ARTI,
     I_SPECIAL,
@@ -266,7 +269,7 @@ import {
     S_ZOMBIE,
 } from './monsters.js';
 import {
-    is_pick, obj_meld, obj_nexto_xy, objectType, place_object,
+    is_pick, isCandle, obj_meld, obj_nexto_xy, objectType, place_object,
     pudding_merge_message, remove_object, set_bknown, splitobj, weight,
 } from './obj.js';
 import { oinit } from './o_init.js';
@@ -350,7 +353,7 @@ import {
 } from './stairs.js';
 import { Punished, dismount_steed, stucksteed } from './steed.js';
 import { enexto, rloc, safe_teleds } from './teleport.js';
-import { burn_away_slime, obj_has_timer, rider_revival_time, run_timers, start_timer } from './timeout.js';
+import { burn_away_slime, obj_has_timer, preflight_end_burn, rider_revival_time, run_timers, start_timer } from './timeout.js';
 import {
     climb_pit,
     fill_pit,
@@ -367,8 +370,8 @@ import { ttyNorep, ttyPline } from './tty_message.js';
 import { heroIsBlind } from './startup_a11y.js';
 import { note_unported } from './unported.js';
 import { block_point, cansee, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
-import { welded, weldmsg } from './wield.js';
-import { bimanual, bypass_objlist, nxt_unbypassed_obj, setnotworn, setuqwep, setuswapwep, setuwep } from './worn.js';
+import { setuwep, welded, weldmsg } from './wield.js';
+import { bimanual, bypass_objlist, nxt_unbypassed_obj, setnotworn, setuqwep, setuswapwep } from './worn.js';
 import { resurrect } from './wizard.js';
 import {
     assign_graphics, S_altar, S_fountain, S_grave, S_room, S_sink, S_throne,
@@ -1091,14 +1094,19 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
                 return true;
             }
         } else if (obj.globby) {
-            let survivor = obj;
-            while (survivor) {
-                const other = obj_nexto_xy(survivor, x, y, true, state);
+            let globbyobj = obj;
+            while (globbyobj) {
+                const other = obj_nexto_xy(globbyobj, x, y, true, state);
                 if (!other) break;
-                await pudding_merge_message(survivor, other, state, rawEnv);
-                survivor = obj_meld(survivor, other, state, rawEnv);
+                await pudding_merge_message(globbyobj, other, state, rawEnv);
+                // C discards obj_meld's survivor and tests its original
+                // incoming pointer, which obj_absorb nulls when consumed.
+                // The JS lifecycle marks deletion, including Lua retention.
+                obj_meld(globbyobj, other, state, rawEnv);
+                if (globbyobj.where === OBJ_DELETED
+                    || globbyobj.where === OBJ_LUAFREE) globbyobj = null;
             }
-            return !survivor;
+            return !globbyobj;
         } else if (state.context?.mon_moving && IS_ALTAR(state.level?.at(x, y)?.typ)
             && cansee(x, y, state)) {
             await doaltarobj(obj, state);
@@ -1458,13 +1466,13 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
         obj.in_use = false;
         await dropx(obj, dropCommandEnv(state));
     } else if (random.rn2(5) === 0) {
-        freeinv(obj, { state });
+        await freeinv(obj, { state });
         obj.in_use = false;
         obj.ox = state.u.ux;
         obj.oy = state.u.uy;
         add_to_buried(obj, { state });
     } else {
-        useup(obj, { state });
+        await useup(obj, { state });
     }
 }
 
@@ -1646,7 +1654,7 @@ async function drop(obj, state = game) {
             await weldmsg(obj, state);
             return ECMD_FAIL;
         }
-        setuwep(null, setwornEnv(state));
+        await setuwep(null, setwornEnv(state));
     }
     if (obj === state.uquiver) {
         setuqwep(null, setwornEnv(state));
@@ -1691,7 +1699,7 @@ async function drop(obj, state = game) {
             }
             if (state.flags.verbose)
                 await ttyPline(`You drop ${donameFresh(obj, state)}.`, state);
-            freeinv(obj, { state });
+            await freeinv(obj, { state });
             const { hitfloor } = await import('./dothrow.js');
             await hitfloor(obj, true, state);
             if (levhack) {
@@ -1849,11 +1857,9 @@ export function preflight_dropx(obj, env = {}) {
     // stackobj() preserves the newly dropped object and absorbs an older pile
     // member into it. The survivor keeps its light and timers across an
     // ordinary drop; light.c finds their new location through that same object.
-    // An absorbed lit or timed member needs merged()'s unported light/timer
-    // operations, so the compatible-pile walk below still refuses that merge.
-    // Glob-specific floor and merge effects remain outside this tail.
-    if (obj.globby)
-        throw new UnsupportedDropError('a globby object');
+    // Compatible lit candles use merged()'s canonical light/timer owners.
+    // Globs coalesce in flooreffects before ordinary stacking; other timed
+    // members retain their generic merge lifecycle boundary below.
     // obfree()'s remaining operations are reached by an object the drop chain
     // already stops: canletgo() refuses a leash tied to a pet, the unpaid test
     // below refuses a billed object and the shop-level test refuses an unpaid
@@ -1872,12 +1878,16 @@ export function preflight_dropx(obj, env = {}) {
     }
     if (!can_reach_floor(true, state))
         throw new UnsupportedDropError('an unreachable floor');
+    // dig.c:341 drops uwep directly; do.c:810 clears it in dropz after
+    // extraction, shipping and altar handling. Admit only that primary mask.
+    const primaryWeapon = state.uwep === obj && obj.owornmask === W_WEP;
     const secondaryWeapon = state.uswapwep === obj
         && Boolean(obj.owornmask & W_SWAPWEP);
     // worn.c:91-94 allows W_SWAPWEP and W_QUIVER on one object; do.c:814-818
     // clears both equipment pointers when that object is dropped.
-    const allowedWornMask = secondaryWeapon ? W_SWAPWEP | W_QUIVER : 0;
-    if ((obj.owornmask & ~allowedWornMask) || state.uwep === obj
+    const allowedWornMask = primaryWeapon ? W_WEP
+        : secondaryWeapon ? W_SWAPWEP | W_QUIVER : 0;
+    if ((obj.owornmask & ~allowedWornMask) || (state.uwep === obj && !primaryWeapon)
         || (state.uquiver === obj && !secondaryWeapon)
         || (state.uswapwep === obj && !secondaryWeapon)
         || state.uball === obj) {
@@ -1913,8 +1923,8 @@ export function preflight_dropx(obj, env = {}) {
         && !IS_ALTAR(location.typ) && !stway) {
         throw new UnsupportedDropError('non-ordinary terrain');
     }
-    if (engr_at(x, y, state))
-        throw new UnsupportedDropError('an engraving under the drop');
+    // do.c:dropx/dropz/flooreffects adds no effect for an engraving on dry
+    // floor. Keep its text intact and let the ordinary placement/redraw run.
     if (visible_region_at(x, y, state))
         throw new UnsupportedDropError('a visible region over the drop');
     for (let buried = state.level.buriedobjlist; buried; buried = buried.nobj) {
@@ -1941,11 +1951,21 @@ export function preflight_dropx(obj, env = {}) {
     for (let member = state.level.objects[x][y] ?? null; member;
         member = member.nexthere) {
         if (!member.lamplit && !member.timed && !member.globby) continue;
-        if (mergable(obj, member, normalized)) {
-            throw new UnsupportedDropError(
-                'a lit, timed, or globby object in the floor pile',
-            );
+        if (!mergable(obj, member, normalized)) continue;
+        // A compatible floor glob consumes the incoming free glob in
+        // flooreffects; invent.c:stackobj never reaches that timed member.
+        if (obj.globby && member.globby) continue;
+        if (isCandle(member) && member.lamplit && !member.globby) {
+            // merged() extracts this older candle and end_burn() stops its
+            // burn before obj_stop_timers is considered. Validate that owner
+            // while the drop is still atomic; generic timed/glob paths below
+            // retain their separate lifecycle boundary.
+            preflight_end_burn(member, true, normalized);
+            continue;
         }
+        throw new UnsupportedDropError(
+            'a lit, timed, or globby object in the floor pile',
+        );
     }
 
     preflight_update_inventory(normalized);
@@ -2029,13 +2049,13 @@ export async function doaltarobj(obj, state = game) {
 export async function dropx(obj, env = {}, prepared = null) {
     const normalizedInput = dropEnv(env);
     if (normalizedInput.state.u?.uswallow) {
-        freeinv(obj, normalizedInput);
+        await freeinv(obj, normalizedInput);
         await dropz(obj, false, normalizedInput);
         return;
     }
     const admission = prepared ?? preflight_dropx(obj, normalizedInput);
     const normalized = consumeDropAdmission(obj, normalizedInput, admission);
-    freeinv(obj, normalized);
+    await freeinv(obj, normalized);
     const { ux, uy } = normalized.state.u;
     if (await ship_object(obj, ux, uy, false, normalized)) return;
     if (!normalized.state.u.uswallow
@@ -2045,13 +2065,13 @@ export async function dropx(obj, env = {}, prepared = null) {
     // C dropx() reaches dropz() after shipping and altar handling. Clear the
     // same equipment slots here because this admitted JS tail enters the
     // floor-effects helper directly instead of calling dropz().
-    clearDropSlots(obj, normalized);
+    await clearDropSlots(obj, normalized);
     await dropzAdmitted(obj, normalized);
 }
 
-function clearDropSlots(obj, env) {
+async function clearDropSlots(obj, env) {
     const { state } = env;
-    if (obj === state.uwep) setuwep(null, env);
+    if (obj === state.uwep) await setuwep(null, env);
     if (obj === state.uquiver) setuqwep(null, env);
     if (obj === state.uswapwep) setuswapwep(null, env);
 }
@@ -2133,7 +2153,7 @@ export async function dropz(obj, with_impact, env = {}) {
     const { state } = normalized;
     if (obj.where !== OBJ_FREE)
         throw new Error('dropz requires a free object');
-    clearDropSlots(obj, normalized);
+    await clearDropSlots(obj, normalized);
     if (state.u?.uswallow) {
         if (obj !== state.uball) {
             if (obj.unpaid) {

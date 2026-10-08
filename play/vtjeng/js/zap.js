@@ -198,7 +198,6 @@ import {
     set_twoweap,
     setuqwep,
     setuswapwep,
-    setuwep,
     setworn,
     wearslot,
     wearmask_to_obj,
@@ -229,6 +228,7 @@ import { fix_wall_spines } from './mklev.js';
 import { boxlock, doorlock, picking_at, reset_pick } from './lock.js';
 import { breaks, breakobj, hero_breaks, mhurtle } from './dothrow.js';
 import { canseemon, canspotmon } from './display.js';
+import { setuwep } from './wield.js';
 
 // Thrown where zap.c reaches a wand effect this port has not ported.
 export class UnsupportedZapError extends Error {
@@ -935,7 +935,7 @@ export async function dozap(state = game) {
     }
     if (obj.spe < 0) {
         await ttyPline(`${Tobjnam(obj, 'turn', state)} to dust.`, state);
-        useupall(obj, { state }); /* calls freeinv() -> update_inventory() */
+        await useupall(obj, { state }); /* calls freeinv() -> update_inventory() */
     } else {
         update_inventory({ state }); /* maybe used a charge */
     }
@@ -2450,7 +2450,7 @@ export async function poly_obj(obj, id, state = game,
             if (newWornMask & W_WEP) {
                 if (wasTwoHanded || !bimanual(replacement, state)
                     || !state.uarms)
-                    setuwep(replacement, env);
+                    await setuwep(replacement, env);
                 if (wasTwoweap && state.uwep
                     && !bimanual(state.uwep, state))
                     set_twoweap(true, state);
@@ -2462,7 +2462,7 @@ export async function poly_obj(obj, id, state = game,
             } else if (newWornMask & W_QUIVER) {
                 setuqwep(replacement, env);
             } else if (newWornMask) {
-                setworn(replacement, newWornMask, env);
+                await setworn(replacement, newWornMask, env);
                 if (newWornMask & W_RING) {
                     await set_wear(state, replacement, { ...rawEnv, random });
                 } else {
@@ -2611,7 +2611,7 @@ export async function stone_to_flesh_obj(obj, state = game,
                         note_unported('shk.c stolen_value');
                     }
                     if (obj.timed) obj_stop_timers(obj, state, env);
-                    if (carried(obj)) useup(obj, env);
+                    if (carried(obj)) await useup(obj, env);
                     else delobj(obj, env);
                     if (cansee(monster.mx, monster.my, state)) {
                         await ttyPline(
@@ -5642,8 +5642,8 @@ export async function dobuzz(
     // it back false on every reachable path.
     const shopdamage = { value: false };
 
-    // C ref: zap.c:4793. fireball is true only for hero spell fire (type 11),
-    // which is outside the supported range. gas_hit is set per iteration.
+    // C ref: zap.c:4793. fireball is true only for hero spell fire (type 11).
+    // gas_hit is set per iteration.
     const fireball = (type === 10 + ZT_FIRE);
     let gas_hit = false;
 
@@ -6431,9 +6431,12 @@ export async function weffects(
         if (otyp === WAN_DIGGING || otyp === SPE_DIG) {
             await zap_dig(state, random);
         } else if (otyp >= SPE_MAGIC_MISSILE && otyp <= SPE_FINGER_OF_DEATH) {
-            // A cast ray takes the same dobuzz(), at BZ_U_SPELL() types 10..19
-            // and u.ulevel / 2 + 1 dice. spell.c casting is unported.
-            throw new UnsupportedZapError('ubuzz() for a spell the hero cast');
+            // C BZ_U_SPELL(BZ_OFS_SPE(otyp)); level division is integer.
+            await ubuzz(
+                10 + Math.abs(otyp - SPE_MAGIC_MISSILE) % 10,
+                Math.trunc(state.u.ulevel / 2) + 1,
+                state, random, rawEnv,
+            );
         } else if (otyp >= WAN_MAGIC_MISSILE && otyp <= WAN_LIGHTNING) {
             await ubuzz(
                 Math.abs(otyp - WAN_MAGIC_MISSILE) % 10,

@@ -260,8 +260,8 @@ import {
 import { livelog_printf } from './pline.js';
 import { tiphat } from './sounds.js';
 import { setwornEnv } from './do_wear.js';
-import { welded, weldmsg } from './wield.js';
-import { extract_from_minvent, which_armor, setuqwep, setuswapwep, setuwep } from './worn.js';
+import { setuwep, welded, weldmsg } from './wield.js';
+import { extract_from_minvent, which_armor, setuqwep, setuswapwep } from './worn.js';
 import { note_unported } from './unported.js';
 import { d } from './rng.js';
 import { canspotmon } from './display.js';
@@ -2451,7 +2451,7 @@ function menuClassCharacter(c) {
 }
 
 // C ref: pickup.c:469-471. menu_class_present().
-function menu_class_present(c, state) {
+export function menu_class_present(c, state = game) {
     return Boolean(c && state.gv?.valid_menu_classes?.includes(
         menuClassCharacter(c),
     ));
@@ -2514,6 +2514,12 @@ export function allow_category(otmp, state = game) {
         if (!classes.includes(bucx)) return false;
     }
     return !state.gp?.picked_filter || Boolean(otmp.pickup_prev);
+}
+
+// C ref: pickup.c is_worn_by_type() (608-612). allow_category may mark
+// Priest inventory curse knowledge, so this predicate is not pure.
+export function is_worn_by_type(otmp, state = game) {
+    return Boolean(is_worn(otmp) && allow_category(otmp, state));
 }
 
 export function allow_all() {
@@ -2912,7 +2918,7 @@ async function in_container(obj, state) {
             await weldmsg(obj, state);
             return 0;
         }
-        setuwep(null, setwornEnv(state));
+        await setuwep(null, setwornEnv(state));
         // Obsolete uwep check from 3.0: life-saving could rewield.
         if (state.uwep)
             return 0; /* unwielded, died, rewielded */
@@ -2936,7 +2942,7 @@ async function in_container(obj, state) {
         return 0;
     }
 
-    freeinv(obj, { state });
+    await freeinv(obj, { state });
     if (obj_is_burning(obj)) {
         // C discards snuff_lit()'s result; preserve the call boundary without
         // inventing its light/timer effects.

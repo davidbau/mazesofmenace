@@ -2685,9 +2685,12 @@ export function count_autocompletions() {
 
 export async function handler_change_autocompletions() {
     // C `:2462–2481` — one row per adjustable command.
+    // C `:2483` end_menu prompt — tty_menu_promptstyle (default
+    // ATR_INVERSE; wintty.c `:2680–2689`) + blank separator (`:2685–2686`;
+    // handler_rebind_keys_add/js-cmd + D-3403/D-3645 sibling precedent).
     const raw = [
-        // C `:2483` end_menu prompt rides the title row (cond_menu precedent).
-        { text: 'Which commands autocomplete?', selectable: false },
+        { text: 'Which commands autocomplete?', selectable: false, attr: ATR_INVERSE },
+        { text: '', selectable: false },
     ];
     for (let i = 0; i < EXTCMDLIST.length; i++) { // C `:2463`
         const ec = EXTCMDLIST[i]; // C `:2464`

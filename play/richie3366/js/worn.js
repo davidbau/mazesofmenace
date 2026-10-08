@@ -793,8 +793,15 @@ export function update_mon_extrinsics(mon, obj, on, silently) {
                 case FAST: { // C `:601–607`
                     const save_in_mklev = game.in_mklev;
                     if (silently) game.in_mklev = true;
-                    yield mon_adjust_speed(mon, 0, obj);
+                    const spd = mon_adjust_speed(mon, 0, obj);
                     game.in_mklev = save_in_mklev;
+                    // C calls mon_adjust_speed synchronously; under
+                    // silently the forced in_mklev clears give_msg so it
+                    // takes no await — effects already applied, and yielding
+                    // its (resolved) promise would suspend the creation
+                    // path and leak in_mklev across the caller's next draws
+                    // (D-3642). The sounding path still yields.
+                    if (!silently) yield spd;
                     break;
                 }
                 case ANTIMAGIC: // C `:610–612` handled elsewhere
@@ -825,8 +832,13 @@ export function update_mon_extrinsics(mon, obj, on, silently) {
                 case FAST: { // C `:638–644`
                     const save_in_mklev = game.in_mklev;
                     if (silently) game.in_mklev = true;
-                    yield mon_adjust_speed(mon, 0, obj);
+                    const spd = mon_adjust_speed(mon, 0, obj);
                     game.in_mklev = save_in_mklev;
+                    // Same no-yield-under-silently rule as the on-arm above
+                    // (D-3642): mon_adjust_speed takes no await once
+                    // give_msg is cleared, so C's synchronous call stays
+                    // synchronous here too.
+                    if (!silently) yield spd;
                     break;
                 }
                 case FIRE_RES: // C `:646–680` rescan worn gear for an
@@ -1008,7 +1020,12 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
     }
 
     if (old) {
-        await update_mon_extrinsics(mon, old, false, creation);
+        // C `:959` is synchronous; on the creation path take no await
+        // (update_mon_extrinsics returns void there — the FAST arm never
+        // yields under silently — D-3642), so fire-forget m_dowear callers
+        // keep C's consecutive slot order.
+        if (creation) update_mon_extrinsics(mon, old, false, creation);
+        else await update_mon_extrinsics(mon, old, false, creation);
 
         /* owornmask was cleared above but artifact_light() expects it */
         old.owornmask = oldmask;
@@ -1036,7 +1053,9 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
             }
         }
     }
-    await update_mon_extrinsics(mon, best, true, creation);
+    // C `:992` — same no-await creation rule as the `:959` site above.
+    if (creation) update_mon_extrinsics(mon, best, true, creation);
+    else await update_mon_extrinsics(mon, best, true, creation);
     /* if couldn't see it but now can, or vice versa */
     if (!creation && (sawmon ^ canseemon(mon))) {
         if (mon.minvis && !game.u?.See_invisible) {
@@ -1049,8 +1068,14 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
 
 /**
  * C ref: worn.c m_dowear `:762–796` — wear best of each armor type.
- * Async only through m_dowear_type's !creation message path; creation
- * callers (makemon/minion/mplayer/bones) take no await and run sync-through.
+ * C is fully synchronous; the creation path takes no message and must run
+ * sync-through (an `await` always suspends, even on a resolved promise, so
+ * the creation slots below deliberately never await). Fire-forget creation
+ * callers (makemon :1445, mplayer.c:293, sp_lev.c:3034, trap.c:885) rely on
+ * it: suspending between slots splits the per-slot nambuf namings
+ * (rndmonnam under Hallucination) around the caller's newsym + appear
+ * message and shifts every later display-RNG draw (D-3642). Async only
+ * through m_dowear_type's !creation message path.
  * @param {object} mon
  * @param {boolean} creation — true → no wear delay / messages
  */
@@ -1061,6 +1086,36 @@ export async function m_dowear(mon, creation) {
     if (mindless(ptr)
         && (!creation || (ptr.mlet !== 'S_MUMMY'
             && (ptr.mndx ?? -1) !== PM_SKELETON))) {
+        return;
+    }
+
+    if (creation) {
+        // C `:775–793` — same guards in the same order, no await anywhere:
+        // m_dowear_type's creation path takes no await either (D-3642), so
+        // all eight slots (namings + wears interleaved) complete
+        // synchronously inside the caller's sync flow, exactly like C.
+        m_dowear_type(mon, W_AMUL, creation, false);
+        const can_wear_armor = !cantweararm(ptr);
+        if (can_wear_armor && !((mon.misc_worn_check || 0) & W_ARM)) {
+            m_dowear_type(mon, W_ARMU, creation, false);
+        }
+        if (can_wear_armor || WrappingAllowed(ptr)) {
+            m_dowear_type(mon, W_ARMC, creation, false);
+        }
+        m_dowear_type(mon, W_ARMH, creation, false);
+        const mwep = mon.mw || null;
+        if (!mwep || !bimanual(mwep)) {
+            m_dowear_type(mon, W_ARMS, creation, false);
+        }
+        m_dowear_type(mon, W_ARMG, creation, false);
+        if (!slithy(ptr) && ptr.mlet !== 'S_CENTAUR') {
+            m_dowear_type(mon, W_ARMF, creation, false);
+        }
+        if (can_wear_armor) {
+            m_dowear_type(mon, W_ARM, creation, false);
+        } else {
+            m_dowear_type(mon, W_ARM, creation, true); // RACE_EXCEPTION
+        }
         return;
     }
 

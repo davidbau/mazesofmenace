@@ -117,7 +117,7 @@ import {
     a_monnam, hcolor, m_monnam, Monnam, rndmonnam, x_monnam,
 } from './do_name.js';
 import { hurtle } from './dothrow.js';
-import { setwornEnv, toggle_displacement } from './do_wear.js';
+import { setwornEnv, toggle_displacement, wielding_corpse } from './do_wear.js';
 import {
     Popeye, eating_dangerous_corpse, morehungry, vomit, } from './eat.js';
 import { dealloc_killer, find_delayed_killer } from './end.js';
@@ -550,7 +550,7 @@ export async function hatch_egg(egg, timeout, rawEnv = {}) {
         // update for any enclosing container (the location gate excludes one).
         container_weight(egg, { state });
     } else if (carried(egg)) {
-        useup(egg, env);
+        await useup(egg, env);
     } else {
         const objectEnv = {
             ...env,
@@ -1387,7 +1387,7 @@ export function nh_timeout_requires_live_state(state = game) {
     for (const index of [
         STONED, SICK, BLINDED, INVIS, SEE_INVIS, HALLUC, LEVITATION,
         FLYING, DETECT_MONSTERS, DISPLACED, GLIB,
-        PROT_FROM_SHAPE_CHANGERS,
+        PROT_FROM_SHAPE_CHANGERS, STONE_RES,
     ]) {
         if ((u.uprops?.[index]?.intrinsic & TIMEOUT) === 1) return true;
     }
@@ -1510,7 +1510,9 @@ async function decrement_property_timeouts(state, env) {
             break;
         case SEE_INVIS:
             if (!env.planning) note_unported('display.c set_mimic_blocking');
-            see_monsters(state);
+            await see_monsters(state, { ...env,
+                redraw: env.redraw ?? env.newsym
+                    ?? (env.planning ? () => {} : undefined) });
             (env.newsym ?? newsym)(u.ux, u.uy, state);
             await stop_occupation(state, env);
             break;
@@ -1564,8 +1566,8 @@ async function decrement_property_timeouts(state, env) {
                 }
                 if (!unaware(state))
                     await message('You no longer feel secure from petrification.', state);
-                if (!env.planning) note_unported('do_wear.c wielding_corpse');
-                if (!env.planning) note_unported('do_wear.c wielding_corpse');
+                await wielding_corpse(state.uwep, null, false, state, env);
+                await wielding_corpse(state.uswapwep, null, false, state, env);
             }
             break;
         case FIRE_RES:
@@ -1615,7 +1617,7 @@ async function decrement_property_timeouts(state, env) {
             if (!env.planning) note_unported('timeout.c done_timeout');
             if (state.uamul?.otyp === AMULET_OF_STRANGULATION) {
                 await message('Your amulet vanishes!', state);
-                useup(state.uamul, { ...env, state });
+                await useup(state.uamul, { ...env, state });
             }
             break;
         case FUMBLING:
@@ -1639,7 +1641,9 @@ async function decrement_property_timeouts(state, env) {
                 await deferred_decor(false, state);
             break;
         case DETECT_MONSTERS:
-            see_monsters(state);
+            await see_monsters(state, { ...env,
+                redraw: env.redraw ?? env.newsym
+                    ?? (env.planning ? () => {} : undefined) });
             break;
         case GLIB:
             make_glib(0, state, env);
@@ -2210,7 +2214,7 @@ export async function burn_object(obj, timeout, rawEnv = {}) {
         }
         end_burn(obj, false, env);
         if (carried(obj)) {
-            useupall(obj, env);
+            await useupall(obj, env);
         } else {
             if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
             obj_extract_self(obj, env);
@@ -2343,7 +2347,7 @@ export async function burn_object(obj, timeout, rawEnv = {}) {
                 if (carried(obj)) needInvupdate = true;
             } else {
                 if (carried(obj)) {
-                    useupall(obj, env);
+                    await useupall(obj, env);
                 } else {
                     const onfloor = obj.where === OBJ_FLOOR;
                     if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;

@@ -3176,10 +3176,16 @@ export function optfn_whatis_filter(optidx, req, negated, opts, _op, iflagsBag, 
 export async function handler_whatis_filter() {
     if (!game.iflags) game.iflags = {};
     const gfilt = game.iflags.getloc_filter | 0; // C `:6285`
+    // C tty_end_menu (wintty.c `:2685–2689`): the end_menu prompt paints
+    // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
+    // then a blank separator item (whatis_coord precedent; D-3403).
     const raw = [{ // C `:6311–6312` end_menu prompt as header
         text: 'Select location filtering when going for next/previous map position:',
         selectable: false,
-    }];
+        attr: ATR_INVERSE,
+    },
+    { text: '', selectable: false }, // C wintty.c blank item
+    ];
     const rows = [ // C `:6290–6308` a_char is GFILTER_* + 1
         ['n', GFILTER_NONE, 'no filtering'],
         ['v', GFILTER_VIEW, 'in view only'],
@@ -5981,6 +5987,102 @@ export function count_menucolors() {
 }
 
 /**
+ * C ref: windows.c get_menu_coloring `:1841–1853` (staticfn) in C order —
+ * first regex_match over menu_colorings wins and REPLACES both color and
+ * attr (`:1848–1850`); FALSE when use_menu_color is off (`:1845`) or
+ * nothing matches. C callers pass the bare add_menu str (pre-selector);
+ * the `(str, *color, *attr) → boolean` out-param shape collapses to a
+ * `{ color, attr }` hit (C-domain attr) or null.
+ * @param {string} str
+ * @returns {{color:number,attr:number}|null}
+ */
+export function get_menu_coloring(str) {
+    if (str == null) return null;
+    if (!game.iflags?.use_menu_color) return null; // C `:1845`
+    for (let tmp = menuColorings; tmp; tmp = tmp.next) { // C `:1846`
+        if (regex_match(String(str), tmp.match)) { // C `:1847`
+            return { color: tmp.color | 0, attr: tmp.attr | 0 }; // C `:1848–1850`
+        }
+    }
+    return null; // C `:1852`
+}
+
+/* C wintty.c:2640 — the windowport's promptstyle snapshot, painted onto
+ * every end_menu prompt (wintty.c `:2685–2689`). C's raw static default
+ * is { NO_COLOR, ATR_NONE }, but the newgame relay (allmain.c:728, always
+ * taken — WIN_INVEN is never WIN_ERR) snapshots the initoptions default
+ * (options.c:7188–7189, no-color & inverse) before any menu can paint,
+ * so the slot default below is the only C-observable one. JS has no
+ * windowport; this module-level slot IS the tty state (same lifetime:
+ * process-global in C, re-relayed every game). C-domain attr. */
+let tty_menu_promptstyle = { color: NO_COLOR, attr: MC_ATR_INVERSE };
+
+/**
+ * C ref: windows.c adjust_menu_promptstyle `:1769–1778` — relay a
+ * color_attr style into the windowport's tty_menu_promptstyle snapshot
+ * and clear go.opt_need_promptstyle. C order: copy color+attr into the
+ * relay request (`:1771–1773`), dispatch the ctrl (`:1774–1775` — the
+ * slot write below; the tty case ignores the window, wintty.c:2905),
+ * clear the flag (`:1776`). C callers (all wired): allmain.c:728
+ * (newgame), options.c:5790 (handler_menu_headings), options.c:9004
+ * (reset_needed_visuals, gated on go.opt_need_promptstyle).
+ * @param {number} _window C WIN_INVEN (the tty dispatch ignores it)
+ * @param {{color:number,attr:number}} style C color_attr (C-domain attr)
+ */
+export function adjust_menu_promptstyle(_window, style) {
+    // Fallbacks are the initoptions default (options.c:7188–7189,
+    // no-color & inverse) — C's arg is NONNULL, always that struct.
+    const color = style?.color ?? NO_COLOR; // C `:1772`
+    const attr = style?.attr ?? MC_ATR_INVERSE; // C `:1773`
+    tty_menu_promptstyle = { color: color | 0, attr: attr | 0 }; // C `:1775`
+    if (game.go) game.go.opt_need_promptstyle = false; // C `:1776`
+}
+
+/**
+ * Cell-domain read of the relayed promptstyle (C tty_end_menu
+ * `:2685–2689` paints the prompt with tty_menu_promptstyle). No gameover
+ * gate in C — the relay snapshots unconditionally.
+ * @returns {{attr:number,color:number}}
+ */
+export function menu_prompt_style() {
+    return {
+        attr: cattr_to_cell(tty_menu_promptstyle.attr),
+        color: tty_menu_promptstyle.color ?? NO_COLOR,
+    };
+}
+
+/**
+ * Cell-domain read of the live heading style (C windows.c
+ * add_menu_heading `:1815–1828`: live iflags.menu_headings, suppressed
+ * to none/no-color during end-of-game disclosure).
+ * @returns {{attr:number,color:number}}
+ */
+export function menu_heading_style() {
+    if (game.program_state?.gameover) return { attr: 0, color: NO_COLOR }; // C `:1822–1824`
+    const mh = game.iflags?.menu_headings;
+    return {
+        attr: cattr_to_cell(mh?.attr ?? MC_ATR_INVERSE),
+        color: mh?.color ?? NO_COLOR,
+    };
+}
+
+/**
+ * C attr index (wintype.h: MC_ATR_* domain) → cell attr bits. Only
+ * bold/inverse/uline have cell bits (botl.js hl_to_cell_attr precedent);
+ * dim/blink/italic record plain — the C capture shows no SGR for them
+ * (scen-options-Caveman-94011 step 59 rows 4–7 vs SGR 1/4/7 on rows 3/6/8).
+ * @param {number} a
+ * @returns {number}
+ */
+export function cattr_to_cell(a) {
+    const v = a | 0;
+    if (v === MC_ATR_BOLD) return ATR_BOLD;
+    if (v === MC_ATR_INVERSE) return ATR_INVERSE;
+    if (v === MC_ATR_ULINE) return ATR_UNDERLINE;
+    return 0;
+}
+
+/**
  * C ref: coloratt.c free_one_menu_coloring `:684–706` — unlink idx
  * (0..); out-of-range unlinks nothing.
  */
@@ -6739,16 +6841,23 @@ export function basic_menu_colors(load_colors) {
 export async function query_color(prompt, dflt_color) {
     const dflt = dflt_color | 0;
     basic_menu_colors(true);
+    // C tty_end_menu (wintty.c `:2685–2689`): the end_menu prompt paints
+    // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
+    // then a blank separator item (D-3403 sibling precedent).
     const raw = [
-        { text: prompt ? String(prompt) : 'Pick a color', selectable: false },
+        { text: prompt ? String(prompt) : 'Pick a color', selectable: false, attr: ATR_INVERSE }, // C `:497`
+        { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (const [nm, col] of MENU_COLORNAMES) {
-        raw.push({ text: nm, selectable: true, color: col, selected: col === dflt });
+        // C `:492–495` passes ATR_NONE/NO_COLOR; the row color comes from
+        // the basic_menu_colors patterns via get_menu_coloring at paint.
+        // pickColor is the JS a_int→color shortcut for the `:505` arm below.
+        raw.push({ text: nm, selectable: true, pickColor: col, selected: col === dflt });
     }
     const res = await select_menu_pick_one(raw);
     basic_menu_colors(false);
     if (res.kind !== 'pick') return -1; // C `:517` pick_cnt < 0 (ESC)
-    const y = res.item.color | 0;
+    const y = res.item.pickColor | 0;
     if (dflt !== NO_COLOR) { // C `:505–508` pick_cnt==2 menu-earlier arm
         const idxD = MENU_COLORNAMES.findIndex((row) => (row[1] | 0) === dflt);
         const idxY = MENU_COLORNAMES.findIndex((row) => (row[1] | 0) === y);
@@ -6768,11 +6877,18 @@ export async function query_color(prompt, dflt_color) {
 export async function query_attr(prompt, dflt_attr) {
     const dflt = dflt_attr | 0;
     const allow_many = !!prompt && strncmpi(String(prompt), 'Choose', 6) === 0; // C coloratt.c:402
+    // C tty_end_menu (wintty.c `:2685–2689`): the end_menu prompt paints
+    // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
+    // then a blank separator item (D-3403 sibling precedent).
     const raw = [
-        { text: prompt ? String(prompt) : 'Pick an attribute', selectable: false },
+        { text: prompt ? String(prompt) : 'Pick an attribute', selectable: false, attr: ATR_INVERSE }, // C `:417`
+        { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (const [nm, val] of MENU_ATTRNAMES) {
-        raw.push({ text: nm, selectable: true, attrval: val, selected: val === dflt });
+        // C `:415–416` passes attrnames[i].attr as the caller attr (painted
+        // from attr_n); attrval stays the pick-math value (patterns may
+        // override the paint attr, never the pick).
+        raw.push({ text: nm, selectable: true, attr: cattr_to_cell(val), attrval: val, selected: val === dflt });
     }
     if (allow_many) {
         const picks = await select_menu_pick_any(raw);
@@ -7246,7 +7362,8 @@ export async function handler_menu_colors() {
  * C ref: options.c handler_menu_headings `:5779–5792` (staticfn) —
  * do_handler of optfn_menu_headings (`:2219`). Queries the
  * color+attribute pair, refreshes the persistent inventory display
- * when a pair was picked, then returns optn_ok. Async:
+ * when a pair was picked, relays the style to the promptstyle
+ * snapshot (`:5790`), then returns optn_ok. Async:
  * query_color_attr awaits (update_inventory is sync and already
  * imported from invent.js).
  * @returns {Promise<number>}
@@ -7267,8 +7384,7 @@ export async function handler_menu_headings() {
         /* header highlighting affects persistent inventory display */ // C `:5786`
         if (ifl.perm_invent) update_inventory(); // C `:5787–5788`
     }
-    // C `:5790` adjust_menu_promptstyle(WIN_INVEN, &iflags.menu_headings) —
-    // no scored analogue (by-design); named omission.
+    adjust_menu_promptstyle(game.WIN_INVEN, ifl.menu_headings); // C `:5790`
     return optn_ok; // C `:5791`
 }
 
@@ -9731,12 +9847,26 @@ export async function select_menu_pick_one(rawItems) {
                 // C ref: wintty.c process_menu_window `:1467–1473` — the
                 // '-' of "k - text" paints '*' when the item is preselected
                 // (MENU_ITEMFLAGS_SELECTED, count -1).
+                // C windows.c add_menu `:1803–1807`: menu-color patterns
+                // replace the caller color/attr when use_menu_color (no
+                // selectable row carries SKIPMENUCOLORS — only
+                // add_menu_heading/restore.c:1582 do). Matched against the
+                // bare str like C, pre-selector. descStart is C's attr_n
+                // (`:1442–1446`): the selector prefix paints plain.
+                let mcolor = NO_COLOR, mattr = it.attr || 0;
+                const mc = get_menu_coloring(it.text);
+                if (mc) { mcolor = mc.color; mattr = cattr_to_cell(mc.attr); }
                 return {
                     text: `${it.selector} ${it.selected ? '*' : '-'} ${it.text}`,
-                    attr: it.attr || 0,
+                    attr: mattr,
+                    color: mcolor,
+                    descStart: 4,
                 };
             }
-            return { text: it.text, attr: it.attr || 0 };
+            // Non-selectable rows (prompt/headings/plain text) carry their
+            // caller color like C's stored tty_menu_item (the prompt reads
+            // the relayed tty_menu_promptstyle, wintty.c `:2685–2689`).
+            return { text: it.text, attr: it.attr || 0, color: it.color ?? NO_COLOR };
         });
         const morestr = npages > 1
             ? `(${currPage + 1} of ${npages})`
@@ -10089,12 +10219,23 @@ export async function select_menu_pick_any(rawItems, opts = {}) {
                     const mark = !it.selected ? '-'
                         : ((it.count | 0) === -1
                             ? (it._retoggled ? '+' : '*') : '#');
+                    // C windows.c add_menu `:1803–1807`: menu-color
+                    // patterns replace the caller color/attr when
+                    // use_menu_color (pick_one sibling arm; bare str,
+                    // pre-selector). descStart is C's attr_n (`:1442–1446`).
+                    let mcolor = NO_COLOR, mattr = it.attr || 0;
+                    const mc = get_menu_coloring(it.text);
+                    if (mc) { mcolor = mc.color; mattr = cattr_to_cell(mc.attr); }
                     return {
                         text: `${it.selector} ${mark} ${it.text}`,
-                        attr: it.attr || 0,
+                        attr: mattr,
+                        color: mcolor,
+                        descStart: 4,
                     };
                 }
-                return { text: it.text, attr: it.attr || 0 };
+                // Non-selectable rows carry their caller color (pick_one
+                // sibling arm; C tty_menu_item `:2685–2689`).
+                return { text: it.text, attr: it.attr || 0, color: it.color ?? NO_COLOR };
             });
             const morestr = npages > 1
                 ? `(${currPage + 1} of ${npages})`
@@ -11000,8 +11141,7 @@ export function optfn_windowcolors(optidx, req, negated, opts, op) {
  * Named omissions: reset_glyphmap(gm_optionchange) `:8983` (CURRENT
  * ban); change_palette() `:8989` (`#ifdef CHANGE_COLOR` — windconf.h:29
  * leaves it commented out and only Amiga amiconf.h:165 defines it, so
- * the arm is not compiled); adjust_menu_promptstyle `:9004`
- * (by-design, no scored analogue). C callers: doset_simple `:8727`,
+ * the arm is not compiled). C callers: doset_simple `:8727`,
  * doset `:8973`, toggle_bool_option `:9294` (all wired in this file).
  */
 async function reset_needed_visuals() {
@@ -11027,7 +11167,7 @@ async function reset_needed_visuals() {
         await docrt(); // C `:9001`
     }
     if (go.opt_need_promptstyle) { // C `:9003`
-        /* Named omission (doc): adjust_menu_promptstyle `:9004`. */
+        adjust_menu_promptstyle(game.WIN_INVEN, game.iflags?.menu_headings); // C `:9004`
     }
     // C `:9006–9008` — after docrt may have set disp.botlx.
     if (game.flags?.botl || game.flags?.botlx
@@ -11111,7 +11251,10 @@ export async function doset() {
     for (;;) {
         // C options.c doset: fmtstr_doset "%s%-Ns [%s]"; non-select indent "    ".
         const raw = [];
-        raw.push({ text: 'Set what options?', selectable: false, attr: ATR_INVERSE });
+        // C tty_end_menu (wintty.c `:2685–2689`): the prompt paints with
+        // the relayed tty_menu_promptstyle (live menu_headings after
+        // handler_menu_headings `:5790` / reset_needed_visuals `:9004`).
+        raw.push({ text: 'Set what options?', selectable: false, ...menu_prompt_style() });
         raw.push({ text: '', selectable: false });
         // C `:8843` — help rows unless skiphelp (first pass: !cmdassist).
         if (!skiphelp) {
@@ -11136,10 +11279,12 @@ export async function doset() {
             });
             raw.push({ text: '', selectable: false });
         }
+        // C add_menu_heading (windows.c `:1815–1828`): live
+        // iflags.menu_headings, gameover-suppressed.
         raw.push({
             text: 'Booleans (selecting will toggle value):',
             selectable: false,
-            attr: ATR_INVERSE,
+            ...menu_heading_style(),
         });
         for (const name of DOSET_BOOL_NONMOD) {
             if (doset_skip_unsupported(name)) continue;
@@ -11165,7 +11310,7 @@ export async function doset() {
         raw.push({
             text: 'Compounds (selecting will prompt for new value):',
             selectable: false,
-            attr: ATR_INVERSE,
+            ...menu_heading_style(),
         });
         // set_gameview compounds — non-selectable (indent replaces "a - ").
         // C doset `:8871–8880` gameview pass → doset_add_menu `:9036–9044`
@@ -11266,7 +11411,7 @@ export async function doset() {
         raw.push({
             text: 'Other settings:',
             selectable: false,
-            attr: ATR_INVERSE,
+            ...menu_heading_style(),
         });
         for (const t of [
             { name: 'autocompletions', val: currently_set_val(count_autocompletions()) }, // C options.c:8358 optfn_o_autocomplete get_val (n_currently_set)

@@ -204,8 +204,10 @@ const SYSCF_FILE = 'sysconf'; // C config.h `:234`
  * rcfile_interface_options is the writer (`:1968` / `:1975`). */
 let ignoreStatementErrors = false;
 
-/* C cfgfiles.c `:1455–1466` config-error stack. Messages use sync
- * raw_printf: pline+wait_synch is the windowed input boundary (map). */
+/* C cfgfiles.c `:1455–1466` config-error stack. Pre-window messages use
+ * sync raw_printf; windowed errors pline (map: no live windowed caller —
+ * read_sym_file files.c:2631 is MISSING, so the ready windowed arm ships
+ * unreached). */
 let configErrorData = null;
 
 /* C cfgfiles.c `:1467` file-static config_error_msg — the in_lua error
@@ -302,8 +304,11 @@ function punctTail(buf) {
  * C's pline would raw_print (configMsg sink), windowed (a bad value from
  * the interactive 'O' command) it plines + tty_wait_synch — the file's
  * `:175–185` do_write_config_file arms are the same pline/wait_synch
- * idiom. Sync signature (C void): the windowed arm returns the display
- * promise for the doset direct-optfn path to await.
+ * idiom. The ready arm (`:1577–1589`) splits the same way: pre-window
+ * both plines stay configMsg, windowed they pline in C order (`:1579`,
+ * `:1587` — no wait_synch in this arm). Sync signature (C void): a
+ * windowed arm returns the display promise for the doset direct-optfn
+ * path to await.
  */
 export function config_erradd(buf) {
     let text = buf && buf.length ? String(buf) : 'Unknown error'; // C `:1549–1550`
@@ -337,15 +342,29 @@ export function config_erradd(buf) {
     }
     if (!configErrorData) return;
     configErrorData.num_errors++; // C `:1577`
-    if (!configErrorData.origline_shown && !configErrorData.secure) { // C `:1578–1580`
-        configMsg('\n' + configErrorData.origline);
-        configErrorData.origline_shown = true;
-    }
+    // C `:1578–1580` — the origline paint snapshots sync: C paints
+    // immediately at call time, so a detached (unawaited) windowed caller
+    // still sees exactly-once origline with the call-time line text.
+    const showOrig = !configErrorData.origline_shown && !configErrorData.secure;
+    const origline = configErrorData.origline;
+    if (showOrig) configErrorData.origline_shown = true; // C `:1580`
     let lineno = ''; // C `:1582–1585`
     if (configErrorData.line_num > 0 && !configErrorData.secure)
         lineno = 'Line ' + configErrorData.line_num + ': ';
     const tag = configErrorData.secure ? 'Error:' : ' *'; // C `:1587`
-    configMsg(tag + ' ' + lineno + text + punct);
+    if (!game.iflags?.window_inited) { // pre-window: C pline is raw_print
+        if (showOrig) configMsg('\n' + origline); // C `:1579`
+        configMsg(tag + ' ' + lineno + text + punct); // C `:1587`
+        return;
+    }
+    // Windowed (in C: doset symset optfns → read_sym_file → the "symbols"
+    // frame, options.c:1366/:1415/:1932/:3558/:4180 → files.c:2644): C
+    // plines paint. Unlike the !ready arm (`:1562`) there is no wait_synch
+    // here. The promise lets a doset-style caller await the paint.
+    return (async () => { // C `:1579` + `:1587` in order
+        if (showOrig) await pline('\n%s', origline);
+        await pline('%s %s%s%s', tag, lineno, text, punct);
+    })();
 }
 
 /** Preformatted cfgfiles diagnostics share the same config_erradd sink. */
@@ -439,10 +458,11 @@ function config_error_format(fmt, args) {
 /**
  * C ref: cfgfiles.c:1864–1872 — varargs wrapper, shared by every caller.
  * Sync signature like C (void): the return carries config_erradd's
- * windowed pline promise only when the !ready arm awaited display (the
- * doset direct-optfn path awaits it); every other arm completes
- * synchronously and returns undefined, so the 60+ sync callers that
- * ignore the return are unaffected.
+ * windowed pline promise when a windowed arm painted (the !ready arm's
+ * pline + wait_synch, or the ready arm's two plines — the doset
+ * direct-optfn path awaits it); every other arm completes synchronously
+ * and returns undefined, so the 60+ sync callers that ignore the return
+ * are unaffected.
  */
 export function config_error_add(str, ...args) {
     return vconfig_error_add(str, args); // C :1870

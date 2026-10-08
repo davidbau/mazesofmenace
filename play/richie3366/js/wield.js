@@ -29,7 +29,7 @@ import { setworn, reset_remarm } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE, ART_OGRESMASHER, ART_SUNSWORD } from './generated/artifacts_data.js';
 import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
 import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
-import { trycall } from './do_name.js';
+import { trycall, hcolor } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
 import { inv_cnt } from './steal.js';
 import { alter_cost, costly_alteration, shop_keeper, inside_shop, Shk_Your } from './shk.js';
@@ -1286,11 +1286,6 @@ export async function untwoweapon() {
     }
 }
 
-/** C ref: potion.c hcolor — Hallucination synonym deferred. */
-function hcolor(colorword) {
-    return colorword || 'odd';
-}
-
 /**
  * C ref: objnam.c Yobjnam2 — "Your <xname> <otense verb>".
  * shk_your / pname / artifact article arms deferred.
@@ -1347,9 +1342,11 @@ function is_elven_weapon(obj) {
 /**
  * C ref: wield.c chwepon `:917–1048` — enchant / disenchant wielded weapon.
  * restrict_name faint-glow, Magicbane clue, unpaid alter_cost, and
- * costly_alteration COST_DEGRD/DECHNT live (D-1692). Named: Hallucination
- * hcolor; invent.c useupall (eat.js clone; obfree); Yobjnam2 local vs
- * objnam export; encumber_msg only after stack fuse.
+ * costly_alteration COST_DEGRD/DECHNT live (D-1692). Entry `hcolor` is the
+ * live do_name.js export (C `:920` draws display-RNG even on the
+ * early-return arm that discards `color`). Named: invent.c useupall
+ * (eat.js clone; obfree); Yobjnam2 local vs objnam export; encumber_msg
+ * only after stack fuse.
  * @returns {Promise<number>} 1 = enchanted (caller useup); 0 = strange_feeling used up scroll
  */
 export async function chwepon(otmp, amount) {

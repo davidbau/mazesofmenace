@@ -1890,10 +1890,12 @@ function hidden_isyou(mon) {
 }
 
 /**
- * C pager.c mhidden_description glyph pick: hero_memory && !isyou →
- * levl.glyph (remembered otyp), else glyph_at (gbuf). JS has no integer
- * glyph ids; remembered_glyph.otyp / glyph_to_obj_at stand in for
- * glyph_is_object + glyph_to_obj.
+ * C pager.c mhidden_description glyph pick `:201–202`: hero_memory &&
+ * !isyou → levl[x][y].glyph (the memorized GLYPH int), else glyph_at
+ * (gbuf); object_from_map applies glyph_to_obj. A mimic faking a
+ * !dknown gem/spellbook memorizes GLYPH_OBJ_OFF+0 (zeroobj oclass),
+ * which reads as STRANGE_OBJECT, not the mimicked otyp. otyp fallback
+ * covers glyph-less memories (Hallu-STATUE randoms only).
  */
 function hidden_object_glyphotyp(x, y, isyou) {
     const loc = game.level?.at?.(x, y);
@@ -1901,8 +1903,13 @@ function hidden_object_glyphotyp(x, y, isyou) {
     const heroMem = game.level?.flags?.hero_memory !== false;
     if (heroMem && !isyou) {
         const rg = loc.remembered_glyph;
-        if (rg && !rg.invisible && rg.otyp != null && (rg.otyp | 0) >= 0) {
-            return rg.otyp | 0;
+        if (rg && !rg.invisible) {
+            if (typeof rg.glyph === 'number' && glyph_is_object(rg.glyph)) {
+                return glyph_to_obj(rg.glyph);
+            }
+            if (rg.otyp != null && (rg.otyp | 0) >= 0) {
+                return rg.otyp | 0;
+            }
         }
         return -1;
     }

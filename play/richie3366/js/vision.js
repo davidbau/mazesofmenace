@@ -1127,6 +1127,12 @@ export function vision_recalc(control = 0) {
         }
         game._viz_rmin = next_rmin;
         game._viz_rmax = next_rmax;
+        // C vision.c `skip:` — the blind branch goto-skips the sighted
+        // update loop but still newsyms the hero ("Make sure the hero
+        // shows up!", unless panicking). Under Hallucination this burns
+        // one display-RNG (hero-object repaint); missing it desyncs every
+        // later hallu glyph (scen-impaired-Healer-94190 step 198).
+        if (!game.program_state?.panicking && (u.ux | 0) > 0) newsym(u.ux, u.uy);
         return;
     } else if (control !== 2) {
         // Is_rogue_level → rogue_vision; else Algorithm-C view_from.
@@ -1364,6 +1370,14 @@ export function init_vision_globals() {
 export function vision_off_newsym_gbuf(opts = {}) {
     const u = game.u;
     if (!u || !game.level) return;
+    // C vision.c:531–534 — this helper runs vision_recalc(2)'s update loop,
+    // which lives below the in_mklev/in_getlev/!vision_inited gate: when
+    // really_done `:1152` renders vision inoperative at gameover, C runs no
+    // newsym here (TEMP-C measured vinit=0, zero loop visits at the
+    // disclose docrt). Without the gate the newsyms below rewrite hero
+    // memory (S_litcorr→S_corr under dark_room) that C preserves. Same
+    // named in_getlev omission as vision_recalc above.
+    if (game.in_mklev || !game.iflags?.vision_inited) return;
     const snap = opts.useLiveViz ? null : game._leave_viz_snapshot;
     const old_array = snap?.array || game.viz_array;
     const old_rmin = snap?.rmin || game._viz_rmin;

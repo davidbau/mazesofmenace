@@ -17,7 +17,7 @@ import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
 import { fastforward_pre_mklev } from './fastforward.js';
 import { init_objects } from './o_init.js';
-import { activate_chosen_soundlib } from './options.js';
+import { activate_chosen_soundlib, adjust_menu_promptstyle } from './options.js';
 import { init_artifacts, mkot_trap_warn } from './artifact.js';
 import { init_dungeons, find_level, print_level_annotation } from './dungeon.js';
 import { depth } from './hacklib.js';
@@ -183,8 +183,7 @@ async function maybe_tele_poly_were() {
  * no-op without `iflags.sounds` + achievement procs — cf.
  * `exper.js`/`insight.js` SoundAchievement debt); `#ifdef CHANGE_COLOR`
  * `change_palette` (`coloratt.c:1098–1108`, compiled out — `windconf.h`
- * leaves `CHANGE_COLOR` commented); `adjust_menu_promptstyle` ctrl relay
- * (`windows.c:1769–1778`, JS menus read `iflags.menu_headings` directly);
+ * leaves `CHANGE_COLOR` commented);
  * `start_menu`/`end_menu` empty-menu Qt pacify (no Qt window to pacify);
  * the three `display_nhwindow(..., FALSE)` paints (at init there is no
  * pending `--More--`, no level yet for MAP, and status is repainted by the
@@ -231,12 +230,12 @@ export function init_sound_disp_gamewindows() {
     // `:727`/`sync_perminvent` gates the same way).
     game.WIN_INVEN = 20;
     // C `:727–728` if (WIN_INVEN != WIN_ERR)
-    // adjust_menu_promptstyle(WIN_INVEN, &iflags.menu_headings) — the ctrl
-    // relay is implicit in JS (menus read menu_headings directly, cf.
-    // invent.js add_menu_heading); keep the opt_need_promptstyle clear.
+    // adjust_menu_promptstyle(WIN_INVEN, &iflags.menu_headings) — the relay
+    // snapshots the style into the promptstyle slot (options.js), which the
+    // menu painters read (prompt) alongside live menu_headings (headings).
     if ((game.WIN_INVEN ?? WIN_ERR) !== WIN_ERR) {
-        if (!game.go) game.go = {};
-        game.go.opt_need_promptstyle = false;
+        if (!game.iflags) game.iflags = {};
+        adjust_menu_promptstyle(game.WIN_INVEN, game.iflags.menu_headings);
     }
     // C `:730–735` #ifdef TTY_PERM_INVENT if (WINDOWPORT(tty) &&
     // WIN_INVEN != WIN_ERR) { menu_behavior = MENU_BEHAVE_PERMINV;

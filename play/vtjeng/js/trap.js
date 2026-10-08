@@ -134,6 +134,7 @@ import {
     STAIRS,
     STATUE_TRAP,
     STONE,
+    STONING,
     STUNNED,
     SWIMMING,
     TELEPORT,
@@ -243,6 +244,7 @@ import { game } from './gstate.js';
 import {
     near_capacity, calc_capacity, check_capacity, inv_cnt, inv_weight, weight_cap,
     test_move, spoteffects, bad_rock, crawl_destination, set_uinwater,
+    HeroDeathPlanningError,
     nomul, unmul, losehp, You_can_move_again,
     u_locomotion,
     UnsupportedHeroMoveBoundaryError,
@@ -346,6 +348,29 @@ import { costly_spot, shop_keeper, shk_your } from './shk.js';
 import { quest_info } from './questpgr.js';
 import { mon_has_amulet } from './wizard.js';
 import { canspotmon } from './display.js';
+
+// C ref: trap.c instapetrify() (3844-3855). Supporting wielding_corpse's
+// protection-loss callers; other source callers retain their named gaps, so
+// this helper is not established complete across its wider entry points.
+export async function instapetrify(str, state = game, env = {}) {
+    if (Stone_resistance(state)) return;
+    if (poly_when_stoned(state.youmonst.data, state)
+        && await polymon(PM_STONE_GOLEM, state, env)) return;
+    const urgentMessage = env.urgentMessage
+        ?? (env.planning ? env.message ?? (async () => {}) : ttyUrgentPline);
+    await urgentMessage('You turn to stone...', state, env);
+    state.killer ??= { name: '' };
+    state.killer.format = KILLED_BY;
+    if (str !== state.killer.name) state.killer.name = str ?? '';
+    // A planning armor callback cannot enter end.c's live terminal/recovery
+    // sequence. The existing preflight handoff carries this death kind too.
+    if (env.planning) {
+        const error = new HeroDeathPlanningError(state.killer.name, KILLED_BY, env);
+        error.how = STONING;
+        throw error;
+    }
+    await done(STONING, state, env);
+}
 
 // Env object for poisoned() calls inside chest_trap and other trap functions.
 function poisonedEnv(state) {
@@ -1555,7 +1580,7 @@ export async function lava_effects(state = game) {
         const { Boots_off } = await import('./do_wear.js');
         await Boots_off(state);
         if (obj.o_id !== protectedId)
-            useup(obj, { state });
+            await useup(obj, { state });
         state.iflags.in_lava_effects--;
         burncount++;
         burnmesgcount++;
@@ -1634,7 +1659,7 @@ export async function lava_effects(state = game) {
                         await remove_worn_item(obj, true, state);
                     }
                 }
-                useupall(obj, { state });
+                await useupall(obj, { state });
                 burncount++;
             }
             obj = next;
@@ -2630,7 +2655,7 @@ async function disarm_squeaky_board(ttmp, state = game) {
         // C: consume_obj_charge(obj, TRUE). invent.c.
         consume_obj_charge(obj, true, { state });
     } else {
-        useup(obj, state); /* oil */
+        await useup(obj, state); /* oil */
         // C: makeknown(POT_OIL) => discover_object(POT_OIL, true, true, true).
         note_unported('o_init.c makeknown via discover_object');
     }

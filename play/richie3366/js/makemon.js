@@ -3758,9 +3758,10 @@ export function makemon(mdat, x, y, mmflags = 0) {
     if (allow_minvent_local) {
         if (is_armed(ptr)) m_initweap(mtmp);
         m_initinv(mtmp);
-        // C `:1445` — m_dowear is async in JS (worn.js) but makemon is
-        // sync (level gen); fire-and-forget (D-1648 shape). Awaiting
-        // needs an async cascade through mklev, out of scope.
+        // C `:1445` — m_dowear's creation path is sync-through in JS
+        // (worn.js takes no await there, D-3642), so this fire-and-forget
+        // from sync makemon still executes all slots consecutively in C
+        // order before the saddle check below (D-1648 shape, now exact).
         m_dowear(mtmp, true);
         if (!rn2(100) && is_domestic(ptr)
             && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {

@@ -54,7 +54,7 @@ import {
     putmsghistory, impossible, tty_nhbell, tty_wait_synch,
     clear_nhwindow_message, Hallucination, set_bot_disabled,
     clear_committed_status, clear_message_window_menu_overlay,
-    erase_menu_or_text, dxdy_to_dist_descr,
+    erase_menu_or_text, dxdy_to_dist_descr, tty_map_color,
 } from './display.js';
 import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, gloves_simple_name, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf, safe_qbuf } from './objnam.js';
 import { yn_function, y_n, getlin, mungspaces } from './getline.js';
@@ -2919,11 +2919,17 @@ function paint_overlay(lines, opts = {}) {
         const entry = lines[r];
         const text = typeof entry === 'string' ? entry : entry.text;
         const attr = typeof entry === 'string' ? 0 : (entry.attr || 0);
+        // C wintty.c process_menu_window `:1462–1491`: color/attr paint from
+        // attr_n (entry.split; 0 for headers). Callers without color/split
+        // keep the old whole-row-attr/NO_COLOR paint.
+        const color = typeof entry === 'string' ? NO_COLOR
+            : tty_map_color(entry.color ?? NO_COLOR);
+        const split = typeof entry === 'string' ? 0 : (entry.split | 0);
         const col = opts.col || 0;
         // C tty: leading pad space is not part of item ATR_INVERSE/heading
         for (let i = 0; i < text.length && col + i < disp.cols; i++) {
-            const a = (i === 0 && text[0] === ' ') ? 0 : attr;
-            disp.setCell(col + i, r, text[i], NO_COLOR, a);
+            const pre = i < split || (i === 0 && text[0] === ' ');
+            disp.setCell(col + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
         }
     }
     if (withStatus) write_status_to_grid(disp);
@@ -3038,10 +3044,13 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     }
 
     if (offx === 0) {
-        // C H2344 fullscreen — clear then leading pad + text at col 1
+        // C H2344 fullscreen — clear then leading pad + text at col 1.
+        // The pad shifts C's attr_n by one (entry.descStart + 1).
         const painted = entries.map(e => ({
             text: ` ${typeof e === 'string' ? e : e.text}`,
             attr: typeof e === 'string' ? 0 : (e.attr || 0),
+            color: typeof e === 'string' ? NO_COLOR : (e.color ?? NO_COLOR),
+            split: typeof e === 'string' ? 0 : ((e.descStart | 0) + 1),
         }));
         painted.push({ text: ` ${morestr}`, attr: 0 });
         paint_overlay(painted, {
@@ -3058,12 +3067,19 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
         const entry = entries[r];
         const text = typeof entry === 'string' ? entry : entry.text;
         const attr = typeof entry === 'string' ? 0 : (entry.attr || 0);
+        // C wintty.c process_menu_window `:1462–1491`: color/attr paint from
+        // attr_n (entry.descStart; 0 for headers → whole row, as before).
+        const color = typeof entry === 'string' ? NO_COLOR
+            : tty_map_color(entry.color ?? NO_COLOR);
+        const split = typeof entry === 'string' ? 0 : (entry.descStart | 0);
         // cl_end from offx to EOL
         for (let c = offx; c < disp.cols; c++)
             disp.setCell(c, r, ' ', NO_COLOR, 0);
         disp.setCell(offx, r, ' ', NO_COLOR, 0);
-        for (let i = 0; i < text.length && offx + 1 + i < disp.cols; i++)
-            disp.setCell(offx + 1 + i, r, text[i], NO_COLOR, attr);
+        for (let i = 0; i < text.length && offx + 1 + i < disp.cols; i++) {
+            const pre = i < split;
+            disp.setCell(offx + 1 + i, r, text[i], pre ? NO_COLOR : color, pre ? 0 : attr);
+        }
     }
     // morestr row
     for (let c = offx; c < disp.cols; c++)
@@ -3109,11 +3125,11 @@ export async function dismiss_nhw_menu(opts = null) {
         // otherwise repaint WIN_STATUS; D-0467 itemed leftover is blank.
         // display_pickinv select_menu does not blank: bot_disabled wraps
         // then the next bot() paints (death disclose D-1850).
+        // The wipe preserves docrt's botlx (C display.c `:1769`; windows.c
+        // select never clears flags): the moveloop gate / pline flush
+        // repaints via BL_RESET (bot() clears the suppression) on the
+        // next tick.
         if (!opts?.keep_status) clear_committed_status();
-        // C display.c `:1769` — docrt set disp.botlx; the JS-only wipe above
-        // must not eat it: the moveloop gate repaints (bot() clears the
-        // suppression) on the next tick.
-        if (!opts?.keep_status && game.flags) game.flags.botlx = true;
         await flush_screen(1);
         return;
     }
@@ -3244,6 +3260,8 @@ export async function select_menu_pick_none(entries) {
             const painted = page.map(e => ({
                 text: ` ${typeof e === 'string' ? e : e.text}`,
                 attr: typeof e === 'string' ? 0 : (e.attr || 0),
+                color: typeof e === 'string' ? NO_COLOR : (e.color ?? NO_COLOR),
+                split: typeof e === 'string' ? 0 : ((e.descStart | 0) + 1),
             }));
             painted.push({ text: ` ${morestr}`, attr: 0 });
             paint_overlay(painted, {
@@ -6143,8 +6161,14 @@ async function status_core_lines(final = 0, opts = {}) {
     if ((((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0))
         || u.uroleplay?.blind) {
         const hb = u.HBlinded | 0;
-        const blindfoldOnly = !!(u.ublindf
-            && u.ublindf.otyp === objectNames.indexOf('BLINDFOLD'));
+        // C insight.c:1065 + youprop.h:97 — Blindfolded_only ≡
+        // (EBlinded && !(HBlinded && !BBlinded)): a worn blindfold
+        // (or towel) alone reads "deliberately"; timed/intrinsic
+        // blindness — even combined with a blindfold — reads
+        // "temporarily". (Was: worn-BLINDFOLD-otyp check — true even
+        // with concurrent timed blindness, and false for towels.)
+        const blindfoldOnly = !!((u.EBlinded | 0)
+            && !(hb && !(u.BBlinded | 0)));
         const kind = (hb & FROMOUTSIDE) ? 'permanently'
             : (hb & FROMFORM) ? 'innately'
                 : blindfoldOnly ? 'deliberately'

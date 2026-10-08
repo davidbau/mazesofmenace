@@ -2024,8 +2024,12 @@ export async function dig_up_grave(cc) {
             );
         }
         {
-            const { makemon, mkclass } = await import('./makemon.js');
-            makemon(mkclass('S_ZOMBIE', 0), dig_x, dig_y, MM_NOMSG);
+            const { makemon, mkclass, makemon_appear_msg } = await import('./makemon.js');
+            const zomb = makemon(mkclass('S_ZOMBIE', 0), dig_x, dig_y, MM_NOMSG);
+            // C makemon.c:1502–1504 — in-body dochugw(FALSE) lives in the
+            // deferred appear_msg (MM_NOMSG skips only the Norep): a risen
+            // threat stops the digging occupation ("You stop digging.").
+            if (zomb) await makemon_appear_msg(zomb, zomb.mx | 0, zomb.my | 0, MM_NOMSG);
         }
         break;
     }
@@ -2038,8 +2042,10 @@ export async function dig_up_grave(cc) {
             );
         }
         {
-            const { makemon, mkclass } = await import('./makemon.js');
-            makemon(mkclass('S_MUMMY', 0), dig_x, dig_y, MM_NOMSG);
+            const { makemon, mkclass, makemon_appear_msg } = await import('./makemon.js');
+            const mumm = makemon(mkclass('S_MUMMY', 0), dig_x, dig_y, MM_NOMSG);
+            // C makemon.c:1502–1504 — same deferred dochugw(FALSE) as case 2.
+            if (mumm) await makemon_appear_msg(mumm, mumm.mx | 0, mumm.my | 0, MM_NOMSG);
         }
         break;
     }
@@ -2485,8 +2491,12 @@ async function dig() {
         // (makemon dynamic import follows the dighole convention above).
         if (Is_earthlevel(u.uz) && !rn2(3)) {
             const mndx = rn2(2) ? PM_EARTH_ELEMENTAL : PM_XORN;
-            const { makemon } = await import('./makemon.js');
-            if (makemon(mons(mndx), dpx, dpy, MM_NOMSG)) {
+            const { makemon, makemon_appear_msg } = await import('./makemon.js');
+            const elem = makemon(mons(mndx), dpx, dpy, MM_NOMSG);
+            // C makemon.c:1502–1504 in-body dochugw(FALSE) precedes the
+            // debris pline (dig.c:531–532); MM_NOMSG skips only the Norep.
+            if (elem) await makemon_appear_msg(elem, elem.mx | 0, elem.my | 0, MM_NOMSG);
+            if (elem) {
                 await pline('The debris from your digging comes to life!');
             }
         }
