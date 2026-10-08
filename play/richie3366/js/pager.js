@@ -637,7 +637,8 @@ export async function show_nhw_menu_text(lines, opts = {}) {
     let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
     if (offx < 0) offx = 0;
     const maxrow = lines.length;
-    if (maxrow >= rows || game.flags?.menu_overlay === false) offx = 0;
+    // C wintty.c:1924–1925 !iflags.menu_overlay (home: optlist.h:456).
+    if (maxrow >= rows || game.iflags?.menu_overlay === false) offx = 0;
 
     // Default: clear topline (C NHW_MENU corner tty_clear when toplin!=EMPTY,
     // fullscreen always). look_here opts.keep_message_leftover skips clear
@@ -1256,7 +1257,7 @@ function cmap_showsym_code(idx) {
         // rewritten at runtime: the room copy when dark_room+use_color,
         // else the SYM_NOTHING slot (DEF_NOTHING ' ').
         if ((game.flags?.dark_room !== false)
-            && (game.iflags?.use_color !== false)) {
+            && (game.iflags?.wc_color !== false)) {
             return cmap_showsym_code(S_room);
         }
         return showsym_x_code(SYM_NOTHING, 0x20);

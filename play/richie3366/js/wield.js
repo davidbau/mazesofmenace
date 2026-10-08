@@ -33,6 +33,7 @@ import { trycall, hcolor } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
 import { inv_cnt } from './steal.js';
 import { alter_cost, costly_alteration, shop_keeper, inside_shop, Shk_Your } from './shk.js';
+import { strange_feeling } from './detect.js';
 import { shkname } from './shknam.js';
 
 /** C: are_no_longer_twoweap / can_no_longer_twoweap */
@@ -1296,36 +1297,12 @@ function Yobjnam2(obj, verb) {
 }
 
 /**
- * C ref: potion.c strange_feeling — pline + optional trycall/useup.
- * Beginner/Hallucination default text; caller nulls sobj when used up.
+ * C ref: potion.c strange_feeling — D-3680: the H-only local clone is
+ * deleted; wield.c:943 (chwepon) calls the live detect.js export, which
+ * reads the Hallucination macro (H||HH, potion.c:1465). The clone's inline
+ * useup differed only in dead-on-this-path arms (setuwep: otmp is always
+ * the scroll, never uwep — sole caller read.js seffect_enchant_weapon).
  */
-async function strange_feeling(obj, txt) {
-    const beginner = !!(game.flags?.beginner);
-    const Hallucination = !!(game.u?.Hallucination);
-    if (beginner || !txt) {
-        await pline(
-            `You have a ${Hallucination ? 'normal' : 'strange'} feeling for a moment, then it passes.`,
-        );
-    } else {
-        await pline(txt);
-    }
-    if (!obj) return;
-    if (obj.dknown) await trycall(obj);
-    // useup one
-    if ((obj.quan || 1) > 1) {
-        obj.quan--;
-        obj.owt = weight(obj);
-    } else {
-        const inv = game.invent || [];
-        const idx = inv.indexOf(obj);
-        if (idx >= 0) inv.splice(idx, 1);
-        if (game.u?.uwep === obj) {
-            const shine = setuwep(null);
-            if (shine) await shine;
-        }
-    }
-}
-
 const CORPSE = objectNames.indexOf('CORPSE');
 const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
 const AKLYS = objectNames.indexOf('AKLYS');

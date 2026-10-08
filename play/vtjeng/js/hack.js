@@ -2565,10 +2565,9 @@ export async function test_move(
                     const openEnv = { message };
                     if (env.random) openEnv.random = env.random;
                     const result = await doopen_indir(x, y, state, openEnv);
-                    // cmdq_peek(CQ_CANNED) can contain a queued kick after
-                    // doopen_indir(). That lock.c AUTOUNLOCK_KICK arm remains
-                    // an owning-file dependency and throws there when reached;
-                    // ordinary open/locked-door results use this source arm.
+                    // hack.c:1099-1105 treats a queued kick as an opened
+                    // door handoff. The kick runs on the next command and
+                    // spends its own time; this walking pull spends none.
                     const queued = cmdq_peek(CQ_CANNED, state);
                     const queuedKick = result === ECMD_OK
                         && queued?.typ === CMDQ_EXTCMD
@@ -5093,6 +5092,9 @@ export function terrain_changed_under_hero(state = game) {
 // gi.in_steed_dismounting suppresses only the trap/pickup tail; the preceding
 // terrain, pool and room effects still run on that C entry.
 export async function spoteffects(pick, state = game, rawEnv = {}) {
+    // Some async JS callers resume after a C NORETURN death boundary. Stop
+    // before beginning any square-arrival effects in that case.
+    if (state.program_state?.gameover) return;
     const { u } = state;
     const message = rawEnv.planning
         ? async () => {}
@@ -5173,6 +5175,9 @@ export async function spoteffects(pick, state = game, rawEnv = {}) {
                     staticState.trap = null;
                     staticState.traptyp = NO_TRAP_FLAGS;
                 }
+                // Keep the recursion-guard cleanup above, then stop before
+                // pit pickup and the remaining arrival effects after death.
+                if (state.program_state?.gameover) return;
             }
             if (pick && pit) await pickup(1, state);
         }

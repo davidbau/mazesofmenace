@@ -597,8 +597,7 @@ export function room_cmap_explanation(x, y, loc) {
         return 'floor of a room';
     }
     const darkRoomColor = game.flags?.dark_room !== false
-        && game.flags?.color !== false
-        && game.iflags?.use_color !== false;
+        && game.iflags?.wc_color !== false;
     // C: !waslit || (dark_room && use_color) → S_darkroom (or NOTHING)
     if (!loc.waslit || darkRoomColor) return 'dark part of a room';
     return 'floor of a room';
@@ -1299,9 +1298,12 @@ async function getpos_help(force, goal) {
 }
 
 /**
- * C ref: nhcore.lua show_getpos_tip → nhlua.c nhl_text (NHW_MENU +
- * select_menu PICK_NONE) → wintty H2344 corner offx. Not NHW_TEXT
- * fullscreen; map under/left of the panel stays.
+ * C ref: nhcore.lua show_getpos_tip → nhlua.c nhl_text `:810–849`
+ * (NHW_MENU + end_menu + select_menu PICK_NONE `:846–847` + destroy
+ * `:848`) → wintty H2344 geometry (`:1907–1925`: corner offx, or
+ * fullscreen offx==0 when maxrow>=rows or !menu_overlay). Not NHW_TEXT;
+ * corner keeps the map under/left of the panel, fullscreen clears it
+ * and dismisses via docrt (`:976–979`).
  */
 export async function show_getpos_tip() {
     // Exact nhcore.lua [[...]] lines (nhl_text splits on \n; wrap at 76).
@@ -1325,12 +1327,25 @@ export async function show_getpos_tip() {
         // other keys: stay open (C xwaitforspace / PICK_NONE)
     }
     game._menu_overlay = false;
-    // C: closing a corner NHW_MENU dismisses via docorner
-    // (erase_menu_or_text): reprint retained gbuf, no newsym — never
-    // docrt. docrt would newsym the hero `@` over a cell C still shows
-    // stale (scen-dig-Caveman-94195 s66: seen trap `^` under the hero).
-    // The loop's flushes set _overlay_resync, so this flush resyncs the
-    // full map from gbuf (terrainmode and normal alike).
+    // C: nhl_text `:846–848` destroys the PICK_NONE menu after select →
+    // tty_destroy_nhwindow `:2020` → tty_dismiss_nhwindow `:1953` (MENU
+    // arm) → erase_menu_or_text `:966–985` with clearscreen=FALSE. The
+    // corner arm (`:981–982` docorner) reprints retained gbuf, no
+    // newsym — the loop's flushes set _overlay_resync, so the flush
+    // below resyncs the full map from gbuf (terrainmode and normal
+    // alike); docrt there would newsym the hero `@` over a cell C
+    // still shows stale (scen-dig-Caveman-94195 s66: seen trap `^`
+    // under the hero). But the fullscreen arm (offx==0 — !menu_overlay
+    // per `:1924–1925` H2344, or maxrow>=rows) is `:976–979` docrt() +
+    // flush, redrawing level state over the reveal_terrain temp map
+    // (hero `@` + visible mon repaint; scen-options-Archeologist-94231
+    // s36: pet `f` + `@` over reveal floor+stairs). Same fullscreen
+    // cadence as select_menu_pick_none (invent.js:3347-3351, D-1879:
+    // no clear_committed_status on PICK_NONE).
+    if (!game._tty_menu_geom || game._tty_menu_geom.offx === 0) {
+        game._tty_menu_geom = null;
+        await docrt();
+    }
     await flush_screen(1);
 }
 

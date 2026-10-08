@@ -1226,8 +1226,20 @@ async function use_cream_pie(obj) {
     const { vision_recalc } = await import('./vision.js');
     const u = game.u;
     const wasblind = (u?.blinded || 0) > 0; // Blind before
-    // (quan > 1 split not needed: wished pie has quan 1.)
-    await update_topl('You immerse your face in the cream pie.');
+    // C ref: apply.c use_cream_pie() — a stack is split first (splitobj()'s
+    // nextoid() draws rnd(2)) and only ONE pie is smeared and used up.
+    let several = false;
+    if ((obj.quan || 1) > 1) {
+        several = true;
+        obj = _invent.splitobj(obj, 1);
+    }
+    if (ap_Hallucination()) {
+        await update_topl('You give yourself a facial.');
+    } else {
+        const { xname, the, makeplural } = await import('./objnam.js');
+        await update_topl(`You immerse your face in ${several ? 'one of ' : ''}${
+            several ? makeplural(the(xname(obj))) : the(xname(obj))}.`);
+    }
     // can_blnd(0, youmonst, AT_WEAP, cream pie) is TRUE for a cream pie.
     const blindinc = rnd(25);
     if (u) {
@@ -1513,6 +1525,12 @@ function rub_ok(obj) {
 // C ref: apply.c dorub() — the #rub command.  Returns an ECMD_* code.
 export async function dorub() {
     await loadDeps();
+    // C ref: apply.c:1789 — a handless polymorph form can't rub anything; this
+    // runs BEFORE getobj(), so the refusal consumes no item-letter key.
+    if (_invent.nohands_youmonst()) {
+        await _display.pline("You aren't able to rub anything without hands.");
+        return ECMD_OK;
+    }
     const obj = await _invent.getobj('rub', rub_ok, _invent.GETOBJ_NOFLAGS);
     if (!obj) return ECMD_CANCEL;
 

@@ -2975,8 +2975,9 @@ export function nhw_menu_geometry(entries, morestr = '(end) ') {
     let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
     if (offx < 0) offx = 0;
     // C H2344: no offx==10 → fullscreen; only tall menus / !menu_overlay
+    // (wintty.c:1924–1925; home is iflags — optlist.h:456, flag.h:340).
     const maxrow = entries.length + 1; // items + morestr row (approx)
-    if (maxrow >= 24 || game.flags?.menu_overlay === false) offx = 0;
+    if (maxrow >= 24 || game.iflags?.menu_overlay === false) offx = 0;
     return { offx, maxcol };
 }
 
@@ -8708,7 +8709,18 @@ export async function doattributes(enl_mode = null) {
         await waitMenuKey();
     }
     clear_overlay();
-    await docrt();
+    // C win/tty/wintty.c erase_menu_or_text `:966–984` (destroy_nhwindow
+    // path, clearscreen=FALSE): offx==0 fullscreen (offy==0 for NHW_MENU)
+    // → docrt()+flush; offx≠0 corner → docorner(offx, maxrow+1, 0) —
+    // gbuf reprint, 0 display draws (D-3666: C's attributes-menu dismiss
+    // drew 0; the old unconditional docrt() burned 6 display draws and
+    // desynced the moveloop-end Hallu arm). Single-page corner maxrow =
+    // nitems+1 (paint_corner_nhw_menu convention); offx in scope above.
+    if (offx === 0) {
+        await docrt();
+    } else {
+        await erase_menu_or_text(offx, 0, lines.length + 1, false);
+    }
     await flush_screen(1);
     return ECMD_OK; // C insight.c:2018
 }

@@ -281,7 +281,7 @@ import { bagotricks, mkclass } from './makemon.js';
 import { makemon_runtime } from './makemon_create.js';
 import { mkundead } from './mkroom.js';
 import {
-    m_in_air, mnexto, seemimic, set_ustuck, wakeup, wake_nearby, wake_nearto,
+    killed, m_in_air, mnexto, seemimic, set_ustuck, wakeup, wake_nearby, wake_nearto,
 } from './mon.js';
 import {
     can_blow,
@@ -561,7 +561,7 @@ import { begin_burn, end_burn } from './timeout.js';
 import { wield_tool } from './wield.js';
 import { acurr } from './attrib.js';
 import { known_spell, spe_Fresh, spelleffects } from './spell.js';
-import { stucksteed, use_saddle } from './steed.js';
+import { kick_steed, stucksteed, use_saddle } from './steed.js';
 import { enexto, rloc, rloc_to, tele_restrict, tele_to_rnd_pet, teleds } from './teleport.js';
 import { mpickobj } from './steal.js';
 import {
@@ -589,7 +589,7 @@ import {
 import { digests, hurtle, hurtle_jump, thitmonst, walk_path } from './dothrow.js';
 import { makeplural } from './fruit.js';
 import { change_luck } from './moveloop_preamble.js';
-import { getpos } from './getpos.js';
+import { getpos, getpos_sethilite } from './getpos.js';
 import { SPE_JUMPING, BOULDER } from './objects.js';
 import { S_goodpos } from './symbols.js';
 import { in_rooms } from './rooms.js';
@@ -695,7 +695,7 @@ export function get_valid_polearm_position(x, y, state = game) {
 // C ref: apply.c display_polearm_positions() (3334-3353).
 export async function display_polearm_positions(onOff, state = game) {
     if (onOff) {
-        await tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos, state), state);
+        await tmp_at(DISP_BEAM, map_glyphinfo(cmap_to_glyph(S_goodpos, state), state), state);
         for (let dx = -3; dx <= 3; ++dx) {
             for (let dy = -3; dy <= 3; ++dy) {
                 const x = state.u.ux + dx;
@@ -822,7 +822,7 @@ export async function use_whip(obj, state = game, env = {}) {
     } else if ((!u.dx && !u.dy) || u.dz > 0) {
         if (u.usteed && !rn2(proficient + 2)) {
             await ttyPline(`You whip ${mon_nam(u.usteed, state)}!`, state);
-            note_unported('steed.c kick_steed');
+            await kick_steed(state);
             return ECMD_TIME;
         }
         if (is_pool_or_lava(u.ux, u.uy, state)
@@ -1029,15 +1029,9 @@ export async function use_pole(obj, autohit, state = game) {
         }
     }
     if (!autohit) {
-        state.getpos_hilitefunc = (onOff) => display_polearm_positions(onOff, state);
-        state.getpos_getvalid = (x, y) => get_valid_polearm_position(x, y, state);
-        try {
-            if (await getpos(target, true, 'the spot to hit', state) < 0)
-                return res | ECMD_CANCEL;
-        } finally {
-            state.getpos_hilitefunc = null;
-            state.getpos_getvalid = null;
-        }
+        await getpos_sethilite(display_polearm_positions, get_valid_polearm_position, state);
+        if (await getpos(target, true, 'the spot to hit', state) < 0)
+            return res | ECMD_CANCEL;
     }
 
     glyph = glyph_at(target.x, target.y, state);
@@ -1280,7 +1274,7 @@ export function can_grapple_location(x, y, state = game) {
 
 export async function display_grapple_positions(onOff, state = game) {
     if (onOff) {
-        await tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos, state), state);
+        await tmp_at(DISP_BEAM, map_glyphinfo(cmap_to_glyph(S_goodpos, state), state), state);
         for (let dx = -3; dx <= 3; ++dx) {
             for (let dy = -3; dy <= 3; ++dy) {
                 const x = dx + state.u.ux;
@@ -1335,16 +1329,9 @@ export async function use_grapple(obj, state = game, env = {}) {
 
     await message('Where do you want to hit?', state);
     cc = { x: state.u.ux, y: state.u.uy };
-    state.getpos_hilitefunc = (onOff) =>
-        display_grapple_positions(onOff, state);
-    state.getpos_getvalid = (x, y) => can_grapple_location(x, y, state);
-    try {
-        if (await getpos(cc, true, 'the spot to hit', state) < 0)
-            return res | ECMD_CANCEL;
-    } finally {
-        state.getpos_hilitefunc = null;
-        state.getpos_getvalid = null;
-    }
+    await getpos_sethilite(display_grapple_positions, can_grapple_location, state);
+    if (await getpos(cc, true, 'the spot to hit', state) < 0)
+        return res | ECMD_CANCEL;
 
     typ = uwep_skill_type(state);
     if (dist2(cc.x, cc.y, state.u.ux, state.u.uy) > grapple_range(state)) {
@@ -2914,15 +2901,9 @@ export async function jump(magic = 0, state = game) {
     const target = { x: state.u.ux, y: state.u.uy };
     state.gj ??= {};
     state.gj.jumping_is_magic = magic;
-    state.getpos_hilitefunc = display_jump_positions;
-    state.getpos_getvalid = get_valid_jump_position;
-    try {
-        if (await getpos(target, true, 'the desired position', state) < 0)
-            return ECMD_CANCEL;
-    } finally {
-        state.getpos_hilitefunc = null;
-        state.getpos_getvalid = null;
-    }
+    await getpos_sethilite(display_jump_positions, get_valid_jump_position, state);
+    if (await getpos(target, true, 'the desired position', state) < 0)
+        return ECMD_CANCEL;
     if (!await is_valid_jump_pos(target.x, target.y, magic, true, state))
         return ECMD_FAIL;
     if (state.u.usteed && u_at(target.x, target.y, state)) {
@@ -3987,7 +3968,7 @@ export function beautiful(state = game) {
                                 : cha >= 4 ? 'ugly' : 'hideous';
 }
 
-// C ref: apply.c use_mirror() (1021-1190). bhit() supplies the first
+// C ref: apply.c use_mirror() (1018-1201). bhit() supplies the first
 // visible or self-perceiving monster along an INVIS_BEAM, without a beam
 // glyph or animation. Its returned monster and gn.notonhead are both used
 // here, so the zap.c callee is wired at this exact source call.
@@ -4130,10 +4111,10 @@ export async function use_mirror(obj, state = game, env = {}) {
             await ttyPline(`${Monnam(mtmp, state)} is turned to stone!`, state);
         state.gs ??= {};
         state.gs.stoned = true;
-        // mon.c:killed() is void in C but its xkilled() source family still
-        // has unrelated early branch refusals. Preserve the source gap
-        // instead of claiming a stone-kill side effect that cannot complete.
-        note_unported('mon.c killed');
+        await killed(mtmp, state, {
+            ...env,
+            random: { d, rn1, rn2, rnd, rne, rnl, rnz, ...(env.random ?? {}) },
+        });
     } else if (monable && mtmp.data === state.mons[PM_FLOATING_EYE]) {
         let amount = random.d(
             Math.trunc(mtmp.m_lev),
@@ -4283,7 +4264,7 @@ export async function use_towel(obj, state = game, env = {}) {
                 } else {
                     await message(`You push your ${what} off.`, state);
                     await Blindf_off(worn, state);
-                    await dropx(worn, { ...env, state });
+                    await dropx(worn, dropCommandEnv(state, env));
                 }
             }
             if (is_wet_towel(obj))

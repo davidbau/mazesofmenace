@@ -130,7 +130,8 @@ function legacy_lines(pauper = false) {
     let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
     if (offx < 0) offx = 0;
     const maxrow = raw.length;
-    if (maxrow >= rows || game.flags?.menu_overlay === false) offx = 0;
+    // C wintty.c:1924–1925 !iflags.menu_overlay (home: optlist.h:456).
+    if (maxrow >= rows || game.iflags?.menu_overlay === false) offx = 0;
     const moreRow = raw.length - 1;
     // C: NHW_MENU dmore — leading pad at offx, --More-- at offx+1, cursor past it
     const moreCol = offx + 1 + '--More--'.length;

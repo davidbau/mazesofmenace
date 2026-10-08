@@ -10,7 +10,7 @@ import { game } from './gstate.js';
 import { s_suffix } from './hacklib.js';
 import { find_mac as worn_find_mac } from './worn.js';
 import { rn2, rnd, rnl, d } from './rng.js';
-import { nhgetch } from './input.js';
+import { nhgetch, xwaitforspace_quit } from './input.js';
 import { docrt, flush_screen, newsym, map_object, pline, putStatusRow, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot, bot_snapshot, m_at, display_nhwindow_message, obj_to_glyph, remember_topl, yn_prompt_history, key2txt, note_topl, wrap_topl } from './display.js';
 import { hooks } from './gstate.js';
 import { cansee, Blind as Blind_for_wear } from './vision.js';
@@ -91,7 +91,7 @@ import {
     attach_fig_transform_timeout,
 } from './mkobj.js';
 
-import { getpos, getpos_render, travel_adjacent_step, ia_checkfile_name, checkfile } from './hack.js';
+import { getpos, getpos_render, travel_adjacent_step, ia_checkfile_name, checkfile, nomul } from './hack.js';
 import { observe_object as disco_observe_object, build_discoveries_rows, discover_object } from './o_init.js';
 import { monster_by_pmidx, pmname_of_pmidx, name_to_pmidx } from './makemon.js';
 import { strongmonst_flag as strongmonst, throws_rocks_flag, is_were_flag,
@@ -106,13 +106,14 @@ import { base_armcat } from './objarmor_data.js';
 import { find_ac } from './u_init.js';
 import { moveloop_turn, youHaveFast, youHaveVeryFast } from './allmain.js';
 import { acurr_eff, acurr_str_encoded, exercise, set_moreluck } from './attrib.js';
-import { onbill, shk_scan, add_to_billobjs } from './shk.js';
+import { onbill, shk_scan, add_to_billobjs, shopper_financial_report } from './shk.js';
 import { shop_keeper } from './shkroom.js';
 import { hitval, dbon, weapon_type, weapon_hit_bonus_core,
          weapon_dam_bonus_core, weapon_descr } from './weapon.js';
 import { P_TWO_WEAPON_COMBAT as P_TWO_WEAPON_COMBAT_INV,
          P_RIDING as P_RIDING_INV, W_ART as W_ART_PROP, W_WEP as W_WEP_PROP,
-         HAND, STOMACH, ONAME_VIA_NAMING, ONAME_KNOW_ARTI, HMON_APPLIED } from './const.js';
+         HAND, STOMACH, ONAME_VIA_NAMING, ONAME_KNOW_ARTI, HMON_APPLIED,
+         ALL_FINISHED } from './const.js';
 import {
     UNENCUMBERED, OVERLOADED,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
@@ -150,7 +151,8 @@ import { shk_owns } from './shk.js';
 import { xname as on_xname, cxname_singular as on_cxname_singular, doname_base as on_doname_base,
          corpse_xname as on_corpse_xname, simpleonames as on_simpleonames,
          ansimpleoname as on_ansimpleoname, minimal_xname as on_minimal_xname,
-         distantname_adjust, distantname_active, The as on_The, the as on_the } from './objnam.js';
+         distantname_adjust, distantname_active, The as on_The, the as on_the,
+         killer_xname } from './objnam.js';
 import { y_monnam } from './do_name.js';
 // role.js imports only gstate/rng/const, so this is cycle-safe.
 import { roles, align_gname } from './role.js';
@@ -166,7 +168,9 @@ import { pickup, pickup_prinv_prefix, allow_category, add_valid_menu_class,
          SIGNAL_NOMENU, SIGNAL_ESCAPE,
          INCLUDE_VENOM, ALL_TYPES, ALL_TYPES_SELECTED, UNPAID_TYPES,
          WORN_TYPES, BILLED_TYPES, CHOOSE_ALL, BUC_BLESSED_F, BUC_CURSED_F,
-         BUC_UNCURSED_F, BUC_UNKNOWN_F, JUSTPICKED } from './pickup.js';
+         BUC_UNCURSED_F, BUC_UNKNOWN_F, JUSTPICKED,
+         safe_qbuf, yn_pending_more,
+         def_char_to_objclass as pickup_def_char_to_objclass } from './pickup.js';
 // C ref: src/do_wear.c — the per-slot on/off side effects, wearability checks
 // and *_simple_name() family now live in their own module.
 import {
@@ -485,14 +489,17 @@ export function setuswapwep(obj) { setworn_slot(obj, QW_SWAPWEP, () => game.uswa
 export function setuwep_slot(obj) {
     if (obj === game.uwep) return; /* C: "necessary to not set gu.unweapon" */
     setworn_slot(obj, QW_WEP, () => game.uwep, (o) => { game.uwep = o; });
-    if (obj) {
-        game.unweapon = (obj.oclass === WEAPON_CLASS)
-            ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
-               || (is_pole(obj) && !game.u?.usteed))
-            : !(is_weptool(obj) || is_wet_towel(obj));
-    } else {
-        game.unweapon = true; /* for "bare hands" message */
-    }
+    game.unweapon = uwep_unweapon(obj);
+}
+// C ref: wield.c setuwep() tail — the gu.unweapon value for a newly wielded
+// `obj` (null = bare hands).  Also used by restore.c dorecover(), which re-runs
+// setuwep() on the restored weapon to re-arm the "bashing" reminder.
+export function uwep_unweapon(obj) {
+    if (!obj) return true; /* for "bare hands" message */
+    return (obj.oclass === WEAPON_CLASS)
+        ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
+           || (is_pole(obj) && !game.u?.usteed))
+        : !(is_weptool(obj) || is_wet_towel(obj));
 }
 // C ref: include/obj.h is_ammo/is_launcher/matching_launcher/ammo_and_launcher.
 // Ammunition's oc_skill is the negative of its launcher's (arrow == -P_BOW), so
@@ -715,7 +722,7 @@ export async function wield_tool(obj, verb) {
     return true;
 }
 function corpse_xname(obj, adj, flagsArg = 0) { return on_corpse_xname(obj, adj, flagsArg); }
-export function killer_xname(obj) { return simple_obj_name(obj, { article: false }); }
+export { killer_xname };
 
 // C ref: do_name.c docall_xname(obj) — the bare "a/an <appearance>" name used
 // in the "Call <x>:" prompt: a fresh copy with diluted/poison/BUC fixups so it
@@ -1207,11 +1214,19 @@ function Maybe_Half_Phys(dmg) {
     return (game.u?.HHalf_physical_damage || game.u?.EHalf_physical_damage)
         ? Math.trunc((dmg + 1) / 2) : dmg;
 }
-// C ref: hack.c losehp() reduced to the hp arithmetic (death handling lives in
-// the callers' own losehp copies elsewhere in the port).
-function losehp_invent(n) {
+// C ref: hack.c losehp(n, knam, k_format) -- do.js losehp_do() runs the whole
+// thing, including "You die..." / done(DIED) when the hit points run out.
+async function losehp_invent(n, knam, k_format = 0 /* KILLED_BY_AN */) {
+    const { losehp_do } = await import('./do.js');
+    await losehp_do(n, knam, k_format);
+}
+// Synchronous variant for this file's sync touch_artifact() (its sync callers
+// cannot await showdamage()'s pline); artifact.js's async touch_artifact()
+// goes through do.js losehp_do(), which does show the damage.
+function losehp_invent_sync(n) {
     const u = game.u;
     if (!u) return;
+    hooks.end_running?.(true); // hack.c:4266
     u.uhp -= n;
     if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
     if (u.uhp < 1) u.uhp = 0;
@@ -1257,7 +1272,7 @@ export function touch_artifact(obj, mon) {
         // the silver damage bonus never fired for a real silver artifact.
         if (objects[obj.otyp]?.material === 14 /* SILVER */ && Hate_silver())
             dmg += Maybe_Half_Phys(rnd(10));
-        losehp_invent(dmg);
+        losehp_invent_sync(dmg);
         exercise(A_WIS, false);
     }
 
@@ -1428,8 +1443,6 @@ function money_cnt(list) {
     }
     return sum;
 }
-function shopper_financial_report() {}
-function stolen_value(_obj, _x, _y, _a, _b) { return 0; }
 function in_rooms(_x, _y, _shop) { return ''; }
 function u_at(x, y) { return game.u?.ux === x && game.u?.uy === y; }
 function hides_under(_data) { return false; }
@@ -1701,9 +1714,12 @@ export function body_part(part) {
     return poly_body_part(part);
 }
 // C ref: wield.c empty_handed() — gloves imply hands so "empty handed"; a
-// gloveless humanoid is "bare handed"; a paws/handless polyform (never reached
-// here) is "not wielding anything".  The starter heroes are always humanoid.
-function empty_handed() { return game.uarmg ? 'empty handed' : 'bare handed'; }
+// gloveless humanoid is "bare handed"; paws or a lack of hands (an animal
+// polyform) read "not wielding anything".
+export function empty_handed() {
+    return game.uarmg ? 'empty handed'
+        : humanoid_flag(youmonst_data()) ? 'bare handed' : 'not wielding anything';
+}
 // C ref: obj.h:427 pair_of(o) — lenses, gloves or boots (by oc_armcat, not
 // by a name regex: "gauntlets of power" matches neither 'gloves' nor 'boots').
 export function pair_of(obj) { return obj?.otyp === LENSES || is_gloves(obj) || is_boots(obj); }
@@ -2531,7 +2547,33 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     renderMenuLines(flat, cursor);
 }
 
-function paintMenuLine(display, x, y, line) {
+// C ref: windows.c add_menu()/get_menu_coloring() — when the `menucolors`
+// option is on, every non-heading menu item's text (without tty's "x - "
+// selector prefix) is matched against the MENUCOLOR= patterns, newest first,
+// and the first hit recolors the whole item.  Returns a bodyStyle or null.
+function menuColorStyle(line) {
+    if (line.attr || !game.flags?.menucolors || !game.menucolors?.length)
+        return null;
+    const m = /^(\S) [-+#] /.exec(line.text);
+    const str = m ? line.text.slice(4) : line.text;
+    const rule = game.menucolors.find((r) => r.regex.test(str));
+    if (!rule) return null;
+    const attr = rule.attr === 1 ? ATR_BOLD : rule.attr === 4 ? ATR_UNDERLINE
+        : rule.attr === 6 ? ATR_INVERSE : 0;
+    return { color: rule.color === CLR_GRAY ? NO_COLOR : rule.color, attr, whole: !m };
+}
+
+function paintMenuLine(display, x, y, line, isMenu = false) {
+    const mc = isMenu && !line.bodyStyle ? menuColorStyle(line) : null;
+    if (mc) {
+        if (mc.whole) {
+            display.putstr(x, y, line.text, mc.color, mc.attr);
+        } else {
+            display.putstr(x, y, line.text.slice(0, 4), NO_COLOR, 0);
+            display.putstr(x + 4, y, line.text.slice(4), mc.color, mc.attr);
+        }
+        return;
+    }
     if (!line.bodyStyle) {
         display.putstr(x, y, line.text, NO_COLOR, line.attr || 0);
         if (line.attr) {
@@ -2606,7 +2648,7 @@ export function renderMenuLines(flat, cursor = [36, 8]) {
             display.setCell(c, r, ' ', NO_COLOR, 0);
     let row = 0;
     for (const ln of flat)
-        paintMenuLine(display, col, row++, ln);
+        paintMenuLine(display, col, row++, ln, true);
     const endRow = row;
     display.putstr(col, row++, '(end)', NO_COLOR);
     putStatusLines(display, bandStart, menuLastRow);
@@ -2915,7 +2957,7 @@ export function renderWindowScreen(lines, opts = {}) {
         let text = typeof ln === 'string' ? ln : (ln.text || '');
         if (maxLen >= 0 && text.length > maxLen) text = text.slice(0, maxLen);
         const attr = typeof ln === 'string' ? ATR_NONE : (ln.attr || ATR_NONE);
-        paintMenuLine(display, textCol, row++, { ...ln, text, attr });
+        paintMenuLine(display, textCol, row++, { ...ln, text, attr }, menu);
     }
     const footer = opts.footer || '--More--';
     const footerRow = opts.footerRow != null ? opts.footerRow
@@ -5446,6 +5488,7 @@ function armor_on_fn(mask) {
 // allmain's once-per-hero seer_turn roll.
 async function run_dress_occupation(delay, msg, afternmv) {
     const g = game;
+    nomul(-delay);   /* ends any run/rush in progress (end_running) */
     g.multi = -delay;
     g.multi_reason = 'dressing up';
     g.nomovemsg = msg || '';
@@ -5863,6 +5906,7 @@ function start_occupation(delay, msg, afternmv) {
     // set a POSITIVE multi and a `_afternmv` field nothing reads, so a
     // delay-bearing piece (leather gloves, boots, any real suit) was never
     // actually taken off and its "You finish ..." line never printed.
+    nomul(-delay);   /* ends any run/rush in progress (end_running) */
     game.multi = -delay;
     game.multi_reason = 'disrobing';
     game.nomovemsg = msg;
@@ -6167,7 +6211,12 @@ async function retouch_object(obj) {
             let dmg = 0;
             if (ag) dmg += Maybe_Half_Phys(rnd(10));
             if (bane) dmg += rnd(10);
-            losehp_invent(dmg);
+            let what = killer_xname(obj);
+            if (ag && !obj.oartifact && !bane) {
+                if (obj.oclass === RING_CLASS) what = 'a silver ring';
+                else if (obj.oclass === WAND_CLASS) what = 'a silver wand';
+            }
+            await losehp_invent(dmg, `handling ${what}`, 1 /* KILLED_BY */);
             exercise(A_CON, false);
         }
     }
@@ -6588,6 +6637,16 @@ async function bhit_thrown_landing(dx, dy, range, obj) {
         const nx = bx + dx, ny = by + dy;
         if (!throw_isok(nx, ny)) break;
         bx = nx; by = ny;
+        // C ref: zap.c:3883 bhit() — `if (is_pick(obj) && inside_shop(x, y) &&
+        // (mtmp = shkcatch(obj, x, y)) != 0) { result = mtmp; goto bhit_done; }`
+        // A shopkeeper next to the path nimbly catches a thrown pick-axe.
+        if (is_pick(obj)) {
+            const SK = await import('./shk.js');
+            if (SK.inside_shop(bx, by)) {
+                const shk = await SK.shkcatch(obj, bx, by);
+                if (shk) { hitmon = shk; break; }
+            }
+        }
         const loc = game.level.at(bx, by);
         const typ = loc?.typ ?? 0;
         // C ref: zap.c:3897 bhit() — a "wall of water"/lava wall stops items.
@@ -7536,7 +7595,23 @@ async function throwit(otmp, skillsnap, wep_mask) {
     // — a monster in the path takes the hit (thitmonst); only if the object
     // survives does it go on to break/land.
     if (land.mon) {
-        if (await thitmonst(land.mon, otmp, skillsnap)) return ECMD_TIME;
+        // C ref: dothrow.c throwit_mon_hit() — `if (mon->isshk && obj->where ==
+        // OBJ_MINVENT && obj->ocarry == mon) return TRUE; /* alert shk caught it */`
+        if (land.mon.isshk && otmp.where === 'minvent' && otmp.ocarry === land.mon)
+            return ECMD_TIME;
+        const obj_gone = await thitmonst(land.mon, otmp, skillsnap);
+        // C ref: dothrow.c throwit_mon_hit() — `mon = m_at(bhitpos)`, then "[perhaps
+        // this should be moved into thitmonst or hmon]": a shopkeeper the hero hit
+        // or missed from outside the shop (or while the shk is elsewhere) gives chase.
+        const shk = m_at(land.x, land.y);
+        if (shk && shk.isshk) {
+            const SK = await import('./shk.js');
+            const { in_rooms } = await import('./shkroom.js');
+            if (!SK.inside_shop(game.u.ux, game.u.uy)
+                || !in_rooms(shk.mx, shk.my, 14 /* SHOPBASE */).includes((game.u.ushops || [])[0]))
+                SK.hot_pursuit(shk);
+        }
+        if (obj_gone) return ECMD_TIME;
     }
 
     // C ref: dothrow.c throwit():1710 — a Mjollnir or aklys that reached the end
@@ -7560,7 +7635,7 @@ async function throwit(otmp, skillsnap, wep_mask) {
                     dmg += rnd(3);
                     await update_topl(`${Tobjnam_throw(otmp, 'fly')} back toward you, hitting your ${
                         body_part(0 /*ARM*/)}!`);
-                    losehp_invent(dmg);
+                    await losehp_invent(Maybe_Half_Phys(dmg), killer_xname(otmp), 1 /* KILLED_BY */);
                 }
                 otmp.owornmask = 0;
                 // C ref: dothrow.c:1754 `if (!ship_object(obj, u.ux, u.uy,
@@ -7612,6 +7687,18 @@ async function throwit(otmp, skillsnap, wep_mask) {
     }
     const { flooreffects } = await import('./do.js');
     if (await flooreffects(otmp, land.x, land.y, 'fall')) return ECMD_TIME;
+    // C ref: dothrow.c:1813-1820 — a shopkeeper who was in the way (and the
+    // pick-axe missed or was not caught outright) snatches it up.
+    if (land.mon && land.mon.isshk && is_pick(otmp)) {
+        if (cansee(land.x, land.y)) {
+            const { Monnam } = await import('./uhitm.js');
+            await update_topl(`${Monnam(land.mon)} snatches up ${the_name_of(otmp)}.`);
+        }
+        if (((u.ushops || []).length || otmp.unpaid))
+            await DT.check_shop_obj(otmp, land.x, land.y, false);
+        (await import('./steal.js')).mpickobj(land.mon, otmp); /* may merge and free obj */
+        return ECMD_TIME;
+    }
     // C ref: dothrow.c:1818 — `if (!mon && ship_object(obj, bhitpos.x,
     // bhitpos.y, FALSE))`: the missile landed on a hole/trap door/down stairs
     // and rides it to the level below instead of resting here.
@@ -7631,6 +7718,10 @@ async function throwit(otmp, skillsnap, wep_mask) {
         const { impact_disturbs_zombies } = await import('./monmove.js');
         impact_disturbs_zombies(otmp, true);
     }
+    // C ref: dothrow.c:1834-1836 — charge for items thrown out of a shop; the
+    // shk takes possession of items thrown into one (or buys them).
+    if (((u.ushops || []).length || otmp.unpaid) && otmp !== game.uball)
+        await DT.check_shop_obj(otmp, land.x, land.y, false);
     // C ref: dothrow.c throwit():1838 stackobj(obj) after place_object() —
     // a thrown apple merges into an identical pile already on that square.
     stackobj(otmp);
@@ -7647,10 +7738,18 @@ async function throwit(otmp, skillsnap, wep_mask) {
 export async function hitfloor(otmp, verbosely) {
     const u = game.u;
     const hereTyp = game.level.at(u.ux, u.uy)?.typ ?? 0;
-    const soft = IS_SOFT(hereTyp);
     // C ref: dothrow.c:610 — soft ground (air/cloud/water), being underwater or
     // being swallowed all short-circuit to dropy(): no message, no break test.
-    if (!soft && verbosely) {
+    if (IS_SOFT(hereTyp) || u.uinwater || u.uswallow) {
+        otmp.owornmask = 0;
+        otmp.how_lost = LOST_THROWN;
+        await dropy(otmp);
+        return;
+    }
+    if (IS_ALTAR(hereTyp)) {
+        // C ref: dothrow.c:614 `doaltarobj(obj)` replaces the "hits the floor" line.
+        await (await import('./do.js')).doaltarobj(otmp);
+    } else if (verbosely) {
         // C ref: dothrow.c:617 — a wand of striking "strike"s rather than
         // "hit"s, and a SEEN trapdoor/hole/pit renames the surface it lands on.
         const dn = doname_invent(otmp);
@@ -7668,7 +7767,7 @@ export async function hitfloor(otmp, verbosely) {
     // C ref: dothrow.c:642 `if (hero_breaks(obj, u.ux, u.uy, BRK_FROM_INV))
     // return;` — this is where a dropped mirror costs 2 Luck and a smashed
     // camera rolls its demon; the port used to inline a bare delobj().
-    if (!soft && (await DT.hero_breaks(otmp, u.ux, u.uy, DT.BRK_FROM_INV))) {
+    if (await DT.hero_breaks(otmp, u.ux, u.uy, DT.BRK_FROM_INV)) {
         newsym(u.ux, u.uy);
         return;
     }
@@ -7679,11 +7778,10 @@ export async function hitfloor(otmp, verbosely) {
         const { ship_object } = await import('./dokick.js');
         if (await ship_object(otmp, u.ux, u.uy, false)) return;
     }
-    mkobj_place_object(otmp, u.ux, u.uy);
-    otmp.where = OBJ_FLOOR;
+    // C ref: dothrow.c:646 `dropz(obj, TRUE)` — flooreffects, container impact
+    // damage, zombie disturbance and (in a shop) sellobj() all live there.
     otmp.how_lost = LOST_THROWN;
-    stackobj(otmp);
-    newsym(u.ux, u.uy);
+    await dropz(otmp, u.ux, u.uy, true);
 }
 // C ref: trap.c t_at(u.ux, u.uy).
 function trap_at_hero() {
@@ -7811,7 +7909,9 @@ async function toss_up(otmp, hitsroof) {
     }
     const less_damage = hard_helmet(game.uarmh);
     if (dmg > 1 && less_damage) dmg = 1;
+    if (dmg > 0) dmg += (game.u.udaminc | 0);
     if (dmg < 0) dmg = 0;
+    dmg = Maybe_Half_Phys(dmg);
     if (game.uarmh) {
         if (less_damage && dmg < (game.u.uhp | 0))
             await update_topl('Fortunately, you are wearing a hard helmet.');
@@ -7819,7 +7919,7 @@ async function toss_up(otmp, hitsroof) {
             await update_topl(`Your ${armor_simple_name(game.uarmh)} does not protect you.`);
     }
     await hitfloor(otmp, true);
-    losehp_invent(dmg);
+    await losehp_invent(dmg, 'falling object', 0 /* KILLED_BY_AN */);
 }
 
 // C ref: weapon.c skill_name() — launcher name for the throw "by hand" message.
@@ -9459,7 +9559,7 @@ async function dropz(obj, x, y, with_impact = false) {
     if (u.uswallow) {
         if (obj !== game.uball) {
             const SK = await import('./shk.js');
-            if (SK.is_unpaid(obj)) stolen_value(obj, u.ux, u.uy, true, false);
+            if (SK.is_unpaid(obj)) await SK.stolen_value(obj, u.ux, u.uy, true, false);
             const DOm = await import('./do.js');
             if (!(await DOm.engulfer_digests_food(obj))) {
                 const ST = await import('./steal.js');
@@ -9942,12 +10042,275 @@ export function is_inuse(obj) { return carried(obj) && (is_worn(obj) || tool_bei
 export function safeq_xprname(obj) { return xprname(obj, null, safeq_xprn_ctx.let, safeq_xprn_ctx.dot, 0, 0); }
 export function safeq_shortxprname(obj) { return xprname(obj, ansimpleoname(obj), safeq_xprn_ctx.let, safeq_xprn_ctx.dot, 0, 0); }
 
-export function ggetobj(_word, _fn, _mx, _combo, resultflags = null) {
-    if (!inventoryArray().length) { if (resultflags) resultflags.value = 1; return 0; }
-    return 0;
+// C ref: invent.c static removeables[] -- the classes 'A' can take off.
+const REMOVEABLES = [ARMOR_CLASS, WEAPON_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS];
+const ynaqchars = 'ynaq', ynNaqchars = 'yn#aq';
+
+// C ref: invent.c ggetobj() -- the menustyle:Traditional/Combination class
+// prompt used by Drop, Identify and Takeoff (A).  Returns the number of times
+// fn was called successfully (askchain()'s result), 0 when cancelled, -1 for
+// "no further identifications", and -2/-3 when the player asked for the menu
+// with 'm' (all types / only the selected classes).  With combo set it only
+// gathers the category list.
+export async function ggetobj(word, fn, mx, combo, resultflags = null) {
+    const inv = inventoryArray();
+    if (!inv.length) {
+        await pline(`You have nothing to ${word}.`);
+        if (resultflags) resultflags.value = ALL_FINISHED;
+        return 0;
+    }
+    if (resultflags) resultflags.value = 0;
+    let ckfn = null, ofilter = null;
+    let takeoff = false, ident = false, allflag = false, m_seen = false;
+    add_valid_menu_class(0); /* reset */
+    if (taking_off(word)) {
+        takeoff = true;
+        ofilter = is_worn;
+    } else if (word === 'identify') {
+        ident = true;
+        ofilter = not_fully_identified;
+    }
+
+    const iletsArr = [];
+    const itemcount = { count: 0 };
+    let iletct = collect_obj_classes(iletsArr, inv, false, ofilter, itemcount);
+    let ilets = iletsArr.join('');
+    const unpaid = count_unpaid(inv);
+
+    if (ident && !iletct) {
+        return -1; /* no further identifications */
+    } else if (inv.length) {
+        ilets += ' ';
+        if (unpaid) ilets += 'u';
+        if (count_buc(inv, BUC_BLESSED, ofilter)) ilets += 'B';
+        if (count_buc(inv, BUC_UNCURSED, ofilter)) ilets += 'U';
+        if (count_buc(inv, BUC_CURSED, ofilter)) ilets += 'C';
+        if (count_buc(inv, BUC_UNKNOWN, ofilter)) ilets += 'X';
+        if (count_justpicked(inv)) ilets += 'P';
+        ilets += 'a';
+    }
+    ilets += 'i';
+    if (!combo) ilets += 'm'; /* allow menu presentation on request */
+
+    let buf;
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    for (;;) {
+        buf = String(await hooked_tty_getlin(
+            `What kinds of thing do you want to ${word}? [${ilets}]`, null));
+        if (buf.charAt(0) === '\x1b') return 0;
+        if (buf.includes('i')) {
+            /* applicable inventory letters; if empty, show entire invent */
+            let ailets = '';
+            if (ofilter)
+                for (const otmp of inventoryArray())
+                    if (ofilter(otmp) && !ailets.includes(otmp.invlet))
+                        ailets += otmp.invlet;
+            if ((await display_inventory_interactive(ailets)) === '\x1b')
+                return 0;
+        } else {
+            break;
+        }
+    }
+
+    let extra_removeables = '';
+    if (takeoff) {
+        /* arbitrary types of items can be placed in the weapon slots */
+        if (game.uwep) extra_removeables += String.fromCharCode(game.uwep.oclass);
+        if (game.uswapwep) extra_removeables += String.fromCharCode(game.uswapwep.oclass);
+        if (game.uquiver) extra_removeables += String.fromCharCode(game.uquiver.oclass);
+    }
+
+    const olets = [];            /* object class NUMBERS, in the order typed */
+    for (const sym of buf) {
+        if (sym === ' ') continue;
+        const oc_of_sym = pickup_def_char_to_objclass(sym);
+        if (takeoff && oc_of_sym !== MAXOCLASSES) {
+            if (extra_removeables.includes(String.fromCharCode(oc_of_sym))) {
+                ; /* skip rest of takeoff checks */
+            } else if (!REMOVEABLES.includes(oc_of_sym)) {
+                await pline('Not applicable.');
+                return 0;
+            } else if (oc_of_sym === ARMOR_CLASS && !wearing_armor()) {
+                noarmor(false);
+                return 0;
+            } else if (oc_of_sym === WEAPON_CLASS && !game.uwep && !game.uswapwep
+                       && !game.uquiver) {
+                await pline('You are not wielding anything.');
+                return 0;
+            } else if (oc_of_sym === RING_CLASS && !game.uright && !game.uleft) {
+                await pline('You are not wearing rings.');
+                return 0;
+            } else if (oc_of_sym === AMULET_CLASS && !game.uamul) {
+                await pline('You are not wearing an amulet.');
+                return 0;
+            } else if (oc_of_sym === TOOL_CLASS && !game.ublindf) {
+                await pline('You are not wearing a blindfold.');
+                return 0;
+            }
+        }
+
+        if (sym === 'a') {
+            allflag = true;
+        } else if (sym === 'A') {
+            ; /* same as the default */
+        } else if (sym === 'u') {
+            add_valid_menu_class('u');
+            ckfn = ckunpaid;
+        } else if ('BUCXP'.includes(sym)) {
+            add_valid_menu_class(sym); /* 'B','U','C','X', or 'P' */
+            ckfn = ckvalidcat;
+        } else if (sym === 'm') {
+            m_seen = true;
+        } else if (oc_of_sym === MAXOCLASSES) {
+            await pline(`You don't have any ${sym}'s.`);
+        } else if (!olets.includes(oc_of_sym)) {
+            add_valid_menu_class(sym);   /* this port's classes are SYMBOLS */
+            olets.push(oc_of_sym);
+        }
+    }
+
+    if (m_seen) {
+        return (allflag
+                || (!olets.length && ckfn !== ckunpaid && ckfn !== ckvalidcat))
+               ? -2 : -3;
+    } else if (menu_style() !== MENU_TRADITIONAL && combo && !allflag) {
+        return 0;
+    }
+    const cnt = await askchain(inventoryArray(), olets, allflag, fn, ckfn, mx, word);
+    /* askchain() has already finished the job in this case, so tell the
+       caller not to continue processing */
+    if (combo && allflag && resultflags) resultflags.value |= ALL_FINISHED;
+    return cnt;
 }
 
-export function askchain(_objchn, _olets, _allflag, _fn, _ckfn, _mx, _word) { return 0; }
+// C ref: invent.c askchain() -- walk the chain in the object class order given
+// by olets (class numbers) and ask, item by item, whether fn should be applied
+// (allflag skips the asking).  Returns the sum of fn's results, or -1 when an
+// identify was abandoned.  The chain is always the hero's inventory in this
+// port (the container traditional_loot() path does not go through here yet).
+export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
+    let cnt = 0, dud = 0;
+    const takeoff = taking_off(word);
+    const ident = (word === 'identify');
+    const take_out = (word === 'take out');
+    const put_in = (word === 'put in');
+    const nodot = (word === 'nodot' || word === 'drop' || ident
+                   || takeoff || take_out || put_in);
+    const ininv = (objchn === inventoryArray());
+    const bycat = (menu_class_present('u') || menu_class_present('B')
+                   || menu_class_present('U') || menu_class_present('C')
+                   || menu_class_present('X') || menu_class_present('P'));
+    /* someday maybe we'll sort by 'olets' too, but not yet... */
+    const sortedchn = sortloot(objchn, SORTLOOT_INVLET, false, null);
+    let first = true;
+    let oi = 0;                       /* index into olets (C: *olets++) */
+
+    try {
+        for (;;) {                    /* nextclass: */
+            let ilet = 'a'.charCodeAt(0) - 1;
+            if (objchn.length && objchn[0].oclass === COIN_CLASS)
+                ilet--;               /* extra iteration */
+            /* each object's bypass bit tracks which have been processed, since
+               multiple drop can change the chain while it operates */
+            bypass_objlist(objchn, false);
+            let otmp;
+            while ((otmp = nxt_unbypassed_loot(sortedchn, objchn)) != null) {
+                if (ilet === 122 /* 'z' */) ilet = 65 /* 'A' */;
+                else if (ilet === 90 /* 'Z' */) ilet = 35 /* NOINVSYM '#' */;
+                else ilet++;
+                if (olets.length && otmp.oclass !== olets[oi]) continue;
+                if (takeoff && !is_worn(otmp)) continue;
+                if (ident && !not_fully_identified(otmp)) continue;
+                if (ckfn && !ckfn(otmp)) continue;
+                if (bycat && !ckvalidcat(otmp)) continue;
+                let sym;
+                if (!allflag) {
+                    safeq_xprn_ctx.let = String.fromCharCode(ilet);
+                    safeq_xprn_ctx.dot = !nodot;
+                    let qpfx = '';
+                    if (first) {
+                        /* traditional_loot() skips prompting when only one class
+                           of objects is involved, so prefix the first object
+                           being queried here with an explanation why */
+                        if (take_out || put_in)
+                            qpfx = `${word.charAt(0).toUpperCase()}${word.slice(1)}: `;
+                        first = false;
+                    }
+                    const qbuf = safe_qbuf(qpfx, '?', otmp,
+                        ininv ? safeq_xprname : doname,
+                        ininv ? safeq_shortxprname : ansimpleoname, 'item');
+                    /* nyaq(qbuf) or nyNaq(qbuf), bypassing canned input for ^A */
+                    await yn_pending_more();
+                    sym = await y_n(qbuf,
+                        (takeoff || ident || (otmp.quan | 0) < 2) ? ynaqchars : ynNaqchars,
+                        'n');
+                } else {
+                    sym = 'y';
+                }
+
+                const otmpo = otmp;
+                let target = otmp;
+                if (sym === '#') {
+                    /* Number was entered; split the object unless it
+                       corresponds to 'none' or 'all'.  2 special cases: cursed
+                       loadstones and welded weapons stay merged. */
+                    const yn_number = game.yn_number | 0;
+                    if (!yn_number) {
+                        sym = 'n';
+                    } else {
+                        sym = 'y';
+                        if (yn_number < target.quan && splittable(target))
+                            target = splitobj(target, yn_number);
+                    }
+                }
+                let done = false;
+                switch (sym) {
+                case 'a':
+                    allflag = true;
+                    /* FALLTHRU */
+                case 'y': {
+                    const tmp = await fn(target);
+                    if (tmp <= 0) {
+                        if (container_gone(fn)) {
+                            /* target caused magic bag to explode; both gone */
+                            target = null;
+                        } else if (target && target !== otmpo) {
+                            /* split occurred, merge again */
+                            unsplitobj(target);
+                        }
+                        if (tmp < 0) return cnt;
+                    }
+                    cnt += tmp;
+                    if (--mx === 0) return cnt;
+                    /* FALLTHRU */
+                }
+                case 'n':
+                    if (nodot) dud++;
+                    break;
+                case 'q':
+                    /* special case for seffects() */
+                    if (ident) cnt = -1;
+                    return cnt;
+                default:
+                    break;
+                }
+            }
+            if (olets.length && ++oi < olets.length) continue;   /* goto nextclass */
+            break;
+        }
+
+        if (!takeoff && (dud || cnt))
+            await pline('That was all.');
+        else if (!dud && !cnt)
+            await pline('No applicable objects.');
+        return cnt;
+    } finally {
+        /* can't just clear bypass bit of items in objchn because the action
+           applied to selected ones might move them to a different chain */
+        clear_bypasses();
+        unsortloot(sortedchn);
+    }
+}
 // C ref: wintty.c tty_select_menu(window, PICK_ONE) for callers outside
 // invent.c that build their own `items`/`plan` (see reroll_menu()).
 export async function select_pick_one_menu(items, plan) {
@@ -10989,6 +11352,7 @@ async function select_inventory_menu(rows, byLet) {
             repaint = false; continue;
         }
         if (c === 27 || c === 32 || c === 13 || c === 10) {
+            game._invmenu_esc = (c === 27);   /* display_inventory() == '\033' */
             await dismiss_invent_screen();
             return null;
         }
@@ -11077,8 +11441,11 @@ export async function display_inventory_interactive(lets = null) {
     const byLet = new Map();
     for (const obj of inventoryArray())
         if (!lets || String(lets).includes(obj.invlet)) byLet.set(obj.invlet, obj);
+    game._invmenu_esc = false;
     const picked = await select_inventory_menu(rows, byLet);
     if (picked) await dismiss_invent_screen();
+    /* C: display_inventory(lets, TRUE) yields '\033' when the menu was ESC'd */
+    return game._invmenu_esc ? '\x1b' : '';
 }
 
 // Render the selectable inventory.  When the content fits one page it is a tty
@@ -11208,6 +11575,22 @@ export function display_pickinv(lets = null, xtra_choice = null, query = null, a
     // caller computes xtra_choice/allowxtra; this port's only OTHER caller,
     // display_inventory(), always passes null/false, so this is a no-op there).
     const usextra = !!(xtra_choice && allowxtra);
+    // C ref: invent.c display_pickinv():3130-3170 — `n` only distinguishes 0, 1
+    // and "more"; with exactly one item of interest and no reply wanted the
+    // listing is a plain pline() (tty_message_menu PICK_NONE), not a menu.
+    // (want_reply's PICK_ONE message_menu variant is not reproduced here.)
+    {
+        const inv = inventoryArray();
+        let n = lets ? String(lets).length : (!inv.length ? 0 : inv.length === 1 ? 1 : 2);
+        if (usextra || (n === 1 && !lets)) ++n;
+        if (n === 1 && !want_reply && !game.flags?.force_invmenu
+            && !game.iflags?.menu_requested) {
+            const otmp = inv.find((o) => !lets || o.invlet === String(lets)[0]);
+            if (otmp) prinv(null, otmp, 0);
+            if (out_cnt) out_cnt.value = -1;
+            return '\0';
+        }
+    }
     const rows = inventoryRows(lets);
     if (usextra) rows.unshift(['Miscellaneous', `${HANDS_SYM} - ${xtra_choice}`]);
     const special = want_reply ? force_invmenu_special(lets) : null;
@@ -11823,7 +12206,7 @@ async function renderThingsHereMenu(header, itemLines, pre = []) {
         draw();
         game._modal_screen = 'thingshere';
         const c = await nhgetch();
-        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+        if (xwaitforspace_quit(c)) break;
     }
     delete game._modal_screen;
 }
@@ -11941,7 +12324,7 @@ export async function doprgold() {
         await pline(total ? `You are carrying a total of ${total} ${currency(total)}.`
                           : 'You have no money.');
     }
-    shopper_financial_report();
+    await shopper_financial_report();
     return ECMD_OK;
 }
 

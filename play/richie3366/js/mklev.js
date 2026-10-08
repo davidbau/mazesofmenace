@@ -20136,7 +20136,7 @@ function splev_map_center_start(wid, hei) {
 
 /**
  * C ref: dat/tut-1.lua via load_special — map + des.* through end of file.
- * Named omissions: Knight jump (role gate); leftover obfree;
+ * Named omissions: leftover obfree;
  * Lua nh.callback cmd_before/end_turn; update_inventory.
  */
 function load_tut1() {
@@ -20273,7 +20273,10 @@ function load_tut1() {
         + tut_key('movenorthwest');
     tut1_engr(9, 3, 'Move around with ' + movekeys);
     tut1_engr(5, 2, 'Move diagonally with ' + diagmovekeys);
-    // Knight jump engraving deferred (role gate).
+    // C: dat/tut-1.lua:83-85 — knight-only engraving (u.role == "Knight").
+    if (game.urole?.mnum === PM_KNIGHT) {
+        tut1_engr(12, 1, "Knights can jump with '" + tut_key('jump') + "'");
+    }
     tut1_engr(2, 4, 'Some actions may require multiple tries before succeeding');
     tut1_engr(2, 5, 'Open the door by moving into it');
     tut1_door(2, 6, D_CLOSED);
@@ -31572,6 +31575,37 @@ function themeroom_pillars_contents(croom) {
 }
 
 /**
+ * C ref: themerms.lua 'Random dungeon feature in the middle of an
+ * odd-sized room' contents (:446–457: wid/hei :448–449 run before
+ * des.room; feature list + shuffle :452–453; center des.terrain
+ * :454–455) + nhlib.lua shuffle (:17–22) + sp_lev.c lspo_terrain
+ * (:4978–5038, argc==3 → tlit stays SET_LIT_NOCHANGE, :5027–5034
+ * get_location_coord + sel_set_ter).
+ * Fisher–Yates over {"C","L","I","P","T"} via live nhlib_shuffle
+ * (rn2(5..2), same draws/order as C), then the room center
+ * ((width-1)/2,(height-1)/2, room-relative like Pillars) set to
+ * feature[1]. Char map: nhlua.c char2typ (:361 C→CLOUD, :369 L→
+ * LAVAPOOL, :371 I→ICE, :368 P→POOL, :373 T→TREE). Retires the
+ * D-1836 "Random-feature center terrain" omission (D-3668).
+ */
+function themeroom_random_feature_contents(croom) {
+    // C: local feature = { "C", "L", "I", "P", "T" }; shuffle(feature)
+    const feature = [CLOUD, LAVAPOOL, ICE, POOL, TREE];
+    nhlib_shuffle(feature);
+    const typ = feature[0];
+    // C l_push_mkroom_table: width = 1+(hx-lx), height = 1+(hy-ly)
+    const { width, height } = l_push_mkroom_table(croom);
+    // Lua: des.terrain((rm.width - 1) / 2, (rm.height - 1) / 2, feature[1])
+    const rx = (width - 1) / 2;
+    const ry = (height - 1) / 2;
+    const ax = croom.lx + rx;
+    const ay = croom.ly + ry;
+    if (!isok(ax, ay)) return;
+    // C get_location_coord + sel_set_ter (Pillars idiom, :5034)
+    sel_set_ter(ax, ay, typ, SET_LIT_NOCHANGE);
+}
+
+/**
  * C ref: nhlua.c nhl_timer_start_at — cvt_to_abscoord then
  * spot_stop_timers + start_timer(TIMER_LEVEL, MELT_ICE_AWAY).
  * Iterate already yields absolute cells (JS analogue of rel+cvt).
@@ -32549,9 +32583,10 @@ async function themerooms_generate(difficulty) {
             needfill = FILL_NORMAL;
             do_themed_fill = true;
         }
-        // Named omission: Random-feature center terrain. Nesting nested
-        // body is D-0916. Pillars terrain D-0901. Water vault D-0690.
+        // Named omissions: Water vault D-0690.
         // Blocked center map+replace_terrain D-0243.
+        // (Random-feature center terrain D-3668,
+        // Nesting D-0916, Pillars D-0901: ported.)
 
         // C build_room: chance defaults to 100 → always burns rn2(100)
         // (after contents arg RNG such as Nesting rn2(4) size rolls)
@@ -32576,6 +32611,9 @@ async function themerooms_generate(difficulty) {
                     await themeroom_mausoleum_contents(aroom);
                 } else if (pick.name === 'Twin businesses') {
                     await themeroom_twin_businesses_contents(aroom);
+                } else if (pick.name === 'Random dungeon feature') {
+                    // C ref: themerms.lua:446–457 contents (D-3668)
+                    themeroom_random_feature_contents(aroom);
                 }
                 add_doors_to_room(aroom);
             }

@@ -17,7 +17,7 @@ import { game, hooks, svc_context_run } from './gstate.js';
 import { t_at as t_at_hk, trap_explanation as trap_explanation_hk, crawl_destination } from './trap.js';
 import { domove, blocksMove, test_move_quiet, getpos_walkdir, getpos_rushdir, getpos_hint_chars, readchar_core, waterbody_name } from './cmd.js';
 import { moveloop_turn, moveloop_input_redraw } from './allmain.js';
-import { cls_flush_messages, m_at, vobj_at, covers_objects, object_glyph, trap_glyph, flush_screen, newsym, pline, update_topl, topl_more, display_nhwindow_message, wrap_topl, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature, is_cmap_engraving_at, engraving_glyph, bg_attr, feel_location, canspotself, mimic_object_glyph, obj_is_generic, remember_topl, note_topl } from './display.js';
+import { cls_flush_messages, m_at, vobj_at, covers_objects, object_glyph, trap_glyph, flush_screen, newsym, pline, update_topl, topl_more, display_nhwindow_message, wrap_topl, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature, is_cmap_engraving_at, engraving_glyph, bg_attr, feel_location, canspotself, mimic_object_glyph, obj_is_generic, remember_topl, note_topl, Hallucination_u } from './display.js';
 import { do_screen_description, look_at_object, look_at_monster } from './pager.js';
 import { fruit_from_name } from './objnam.js';
 import { def_monsyms, S_WORM_TAIL } from './symbols.js';
@@ -25,10 +25,10 @@ import { obj_doname, whatis_pick_inventory, carried_weight, inv_weight,
          inventoryArray, is_pick, ansimpleoname,
          floor_object_name, doname_vague_quan, distant_name_pub } from './invent.js';
 import { rnd } from './rng.js';
-import { vision_recalc, Blind, couldsee, cansee } from './vision.js';
-import { nhgetch } from './input.js';
+import { vision_recalc, Blind, couldsee, cansee, Infravision } from './vision.js';
+import { nhgetch, xwaitforspace_quit } from './input.js';
 import { is_safemon, canspotmon } from './uhitm.js';
-import { distant_monnam, ARTICLE_NONE, a_monnam } from './do_name.js';
+import { distant_monnam, ARTICLE_NONE, a_monnam, coyotename } from './do_name.js';
 import { dist2, distmin } from './hacklib.js';
 import { worm_cross } from './worm.js';
 import { monster_by_pmidx, pmname_of_pmidx } from './makemon.js';
@@ -67,6 +67,7 @@ import { canseemon_shared, bot } from './display.js';
 import { mflags2_of, M2_PNAME, is_hider_flag } from './monflags_data.js';
 import { l_nhcore_call } from './nhlua.js';
 import { newuhs } from './eat.js';
+import { coord_desc } from './getpos.js';
 
 // Run direction deltas for the capital-letter run commands (and the
 // 'G'/'g' prefix followed by a movement key).  C: xdir[]/ydir[].
@@ -180,7 +181,12 @@ export function end_running(and_travel) {
     // armed after the meal that interrupted it (no attack, no turn, 11
     // recorded draws lost).  `context.run_prefix` is NOT cleared here: that
     // one stands in for rhack()'s LOCAL prefix_seen, which C's end_running()
-    // cannot reach either.
+    // cannot reach either.  `context.stale_rush` (gd.domove_attempting's
+    // DOMOVE_RUSH bit) is likewise NOT cleared: end_running() never touches
+    // domove_attempting, so a g/G residue keeps its rush arm after the run
+    // value is gone (bl045: a quaffed potion's losehp() ended the run, yet the
+    // next 'k' still became a counted walk that "You are in full health."
+    // interrupts).
     c.stale_run = 0;
     c.cmd_stale_run = 0;
     if (and_travel) {
@@ -515,6 +521,16 @@ async function takeTurn() {
     if (game._lvltport_dest) {
         const { run_deferred_lvltport } = await import('./do.js');
         await run_deferred_lvltport();
+    }
+    // C ref: allmain.c moveloop_core():538 `if (u.utotype) deferred_goto();` —
+    // runs right after the hero's move (rhack() or the context.mv continuation
+    // domove()) and BEFORE the next iteration's once-per-turn monster/turn work,
+    // so a portal step that scheduled a level change leaves the level before the
+    // old level's monsters get their turn.  The inline run/travel loops would
+    // otherwise have taken that turn first (bl000 step 1144, magic portal).
+    if (game.u.utotype) {
+        const { deferred_goto } = await import('./do.js');
+        await deferred_goto();
     }
     await moveloop_turn();
 }
@@ -1385,7 +1401,7 @@ async function getpos_help(force, goal, doingWhatIs, hasValid, hasHilite) {
     for (;;) {
         render_text_window(lines);
         const k = await nhgetch();               // getline.c xwaitforspace(quitchars)
-        if (k === 32 || k === 13 || k === 10 || k === 27) break;
+        if (xwaitforspace_quit(k)) break;
     }
 }
 
@@ -2230,6 +2246,10 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
                 else if (desc === 'lit corridor') desc = 'corridor';
             }
         }
+        // C ref: getpos.c auto_describe():650 -- "<description> <coords>" for the
+        // whatis_coord option (nothing, and no space, under GPCOORDS_NONE).
+        const coords = coord_desc(x, y, '', gp_iflags().getpos_coords);
+        if (coords) desc += ` ${coords}`;
         if (validfn && !validfn(x, y)) desc += ' (invalid target)';
         // C ref: getpos.c auto_describe():657 — gated on the GLOBAL
         // iflags.getloc_travelmode, not on which command opened getpos().
@@ -2954,6 +2974,18 @@ function look_pick_description(x, y) {
         // otherwise ever refer to them.  Mirrors js/pager.js's own faithful
         // (but, for this '/' command, unreached) do_screen_description port.
         const self = self_lookat();
+        // C ref: pager.c do_screen_description() keys off the displayed symbol —
+        // a polymorphed hero is drawn as its monster class letter, so the class
+        // explanation is that class's, and "or you" is never tacked on (!Upolyd).
+        if (u.Upolyd && u.data?.mlet) {
+            const pcls = def_monsyms.find((d) => d.sym === u.data.mlet && d.explain);
+            if (pcls)
+                return {
+                    text: `${u.data.mlet}        ${an(pcls.explain)} (${self})`,
+                    firstmatch: self,
+                    found: 1,
+                };
+        }
         const showsYou = !(game.urace?.mnum === 0 /* PM_HUMAN */
                             || game.urace?.mnum === 1 /* PM_ELF */) && !u.Upolyd;
         return {
@@ -2969,20 +3001,30 @@ function look_pick_description(x, y) {
     // supplies the specific "(tame kitten)" parenthetical.  Missing this check
     // fell through to the bare terrain description for any farlooked monster.
     const mtmp = m_at(x, y);
+    const loc0 = game.level?.at(x, y);
     if (shows_mimic_object(mtmp, x, y)) {
         const text = { s: '' }, firstmatch = { s: '' };
         const found = do_screen_description({ x, y }, true, '', text, firstmatch, {});
         return { text: text.s, firstmatch: firstmatch.s, found };
     }
     if (mtmp && canspotmon(mtmp)) {
-        const cls = def_monsyms.find((d) => d.sym === mtmp.data?.mlet && d.explain);
+        // C ref: pager.c do_screen_description() keys the class explanation off
+        // the DISPLAYED symbol (glyph_at), which is a random monster letter
+        // while the hero hallucinates, not the monster's own class letter.
+        const shownSym = (game.u?.uhallu && loc0?.disp_ch && loc0.disp_ch !== ' ')
+            ? loc0.disp_ch : mtmp.data?.mlet;
+        const cls = def_monsyms.find((d) => d.sym === shownSym && d.explain);
         const classText = cls ? an(cls.explain) : an(mtmp.data?.mname || 'monster');
-        const specific = look_at_monster_desc(mtmp);
+        // C ref: pager.c lookat() calls look_at_monster() exactly once, so a
+        // hallucinating hero's random monster name (one rndmonnam() draw off the
+        // core rng) is picked once, not once per helper.
+        const lm = look_at_monster(mtmp, x, y, true);
+        const specific = game.u?.uhallu ? lm.buf : look_at_monster_desc(mtmp);
         // C ref: pager.c do_screen_description() — the farlook pick appends
         // " [seen: <how>]" (look_at_monster's monbuf) unless only normal vision.
-        const seen = look_at_monster(mtmp, x, y, true).monbuf;
+        const seen = lm.monbuf;
         return {
-            text: `${mtmp.data?.mlet || '?'}        ${classText} (${specific})`
+            text: `${shownSym || '?'}        ${classText} (${specific})`
                 + (seen ? ` [seen: ${seen}]` : ''),
             firstmatch: specific,
             found: 1,
@@ -3616,13 +3658,24 @@ function look_at_monster_desc(mtmp) {
     // C: distant_monnam(mtmp, ARTICLE_NONE, buf) — which is x_monnam(called),
     // so the shopkeeper / given-name / "<name>'s ghost" spellings all come from
     // the one place that already models them, instead of a local subset.
-    let buf = distant_monnam(mtmp, ARTICLE_NONE);
+    // C ref: pager.c:432 — a coyote is `coyotename()` unless hallucinating.
+    let buf = (mtmp.data?.name === 'coyote' && !Hallucination_u())
+        ? coyotename(mtmp) : distant_monnam(mtmp, ARTICLE_NONE);
     const adj = mtmp.mtame ? 'tame ' : (mtmp.mpeaceful ? 'peaceful ' : '');
     buf = `${adj}${buf}`;
+    // C ref: pager.c:445-451 — a monster sticking to / holding the hero.
+    if (game.u?.ustuck === mtmp) {
+        if (game.u.uswallow || game.iflags?.save_uswallow)
+            buf += (mtmp.data?.mattk || []).some((a) => a && a.aatyp === 11 /* AT_ENGL */)
+                ? ', swallowing you' : ', engulfing you'; // same test as pager.js pg_digests()
+        else
+            buf += ', holding you';
+    }
     // C ref: pager.c:455-464 — "if mtmp isn't able to move ... say so".
     if (mtmp.mfrozen) buf += ', can\'t move (paralyzed or sleeping or busy)';
     else if (mtmp.msleeping) buf += ', asleep';
     else if ((mtmp.mstrategy & STRAT_WAITMASK) !== 0) buf += ', meditating';
+    if (mtmp.mleashed) buf += ', leashed to you';
     return `${buf}${mon_hidden_suffix(mtmp)}`;
 }
 
@@ -4033,8 +4086,9 @@ export function set_msg_xy(x, y) {
 // through to `result.flags.spot_monsters` (the generic default: branch) and
 // game.a11y.mon_notices is never written by anything.  Read the option from
 // where it actually lands rather than introducing a whole a11y namespace.
-export async function notice_mon(mtmp) {
+export function notice_mon_text(mtmp) {
     const a11y = game.a11y || {};
+    let text = null;
 
     if (game.flags?.spot_monsters && !a11y.mon_notices_blocked) {
         const spot = canspotmon(mtmp)
@@ -4045,7 +4099,6 @@ export async function notice_mon(mtmp) {
 
         if (spot && !mtmp.mspotted && !DEADMONSTER(mtmp)) {
             mtmp.mspotted = true;
-            set_msg_xy(mtmp.mx, mtmp.my);
             const nam = x_monnam(mtmp,
                                  mtmp.mtame ? ARTICLE_YOUR
                                  : (!has_mgivenname(mtmp)
@@ -4053,18 +4106,95 @@ export async function notice_mon(mtmp) {
                                  : ARTICLE_NONE,
                                  (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null,
                                  has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
-            // C ref: pline.c pline() leaves toplin==NEED_MORE, so a second
-            // notice printed in the same batch (notice_all_mons() iterates
-            // every newly-spottable monster) appends to the first with two
-            // spaces instead of replacing it ("You see your little dog.  You
-            // see a lichen."), matching update_topl()'s port of that
-            // accumulation — see [[pline-vs-update-topl-trap]].
-            await update_topl(`You ${canseemon_shared(mtmp) ? 'see' : 'notice'} ${nam}.`);
+            text = `You ${canseemon_shared(mtmp) ? 'see' : 'notice'} ${nam}.`;
         } else if (!spot) {
             mtmp.mspotted = false;
         }
     }
+    return text;
 }
+
+export async function notice_mon(mtmp) {
+    const text = notice_mon_text(mtmp);
+    if (text === null) return;
+    set_msg_xy(mtmp.mx, mtmp.my);
+    // C ref: pline.c pline() leaves toplin==NEED_MORE, so a second
+    // notice printed in the same batch (notice_all_mons() iterates
+    // every newly-spottable monster) appends to the first with two
+    // spaces instead of replacing it ("You see your little dog.  You
+    // see a lichen."), matching update_topl()'s port of that
+    // accumulation — see [[pline-vs-update-topl-trap]].
+    await update_topl(text);
+}
+
+// C ref: flag.h notice_mon_off()/notice_mon_on() — nestable block on the
+// a11y monster notices (a11y.mon_notices_blocked is a counter).
+export function notice_mon_off() {
+    const a11y = game.a11y || (game.a11y = {});
+    a11y.mon_notices_blocked = (a11y.mon_notices_blocked || 0) + 1;
+}
+export function notice_mon_on() {
+    const a11y = game.a11y || (game.a11y = {});
+    if ((a11y.mon_notices_blocked = (a11y.mon_notices_blocked || 0) - 1) < 0)
+        a11y.mon_notices_blocked = 0;
+}
+
+// C ref: vision.c vision_recalc() tail `notice_all_mons(TRUE)`.  vision_recalc()
+// is synchronous in this port but notice_mon() prints, so the two passes of
+// notice_all_mons() run here (they decide which monsters get announced and
+// reset mspotted) and the announcements are queued in game._noticeQueue.  The
+// queue is drained, in order, before the next topline message (pline /
+// update_topl) and before the next key read (input.js nhgetch), which is where
+// C's message would already have been printed relative to every observer.
+// docrt() runs vision_recalc(2) (nothing spottable, so every mspotted resets)
+// then vision_recalc(0), which is why a full redraw re-announces monsters.
+export function notice_all_mons_queue(reset) {
+    const a11y = game.a11y || {};
+    if (!(game.flags?.spot_monsters && !a11y.mon_notices_blocked))
+        return;
+    const fmon = game.level?.monsters || [];
+    let cnt = 0;
+    for (const mtmp of fmon) {
+        if (DEADMONSTER(mtmp)) continue;
+        if (canspotmon(mtmp)) cnt++;
+        else if (reset) mtmp.mspotted = false;
+    }
+    if (!cnt) return;
+    const arr = [];
+    for (const mtmp of fmon) {
+        if (DEADMONSTER(mtmp)) continue;
+        if (!canspotmon(mtmp)) mtmp.mspotted = false;
+        else if (arr.length < cnt) arr.push(mtmp);
+    }
+    if (!arr.length) return;
+    arr.sort(notice_mons_cmp);
+    // notice_mon()'s decision (and its mspotted update) is made NOW, while the
+    // monster is still in sight; only the printing is deferred.
+    for (const mtmp of arr) {
+        const text = notice_mon_text(mtmp);
+        if (text !== null)
+            (game._noticeQueue || (game._noticeQueue = [])).push({ text, x: mtmp.mx, y: mtmp.my });
+    }
+}
+
+export async function flush_notice_queue(render = false) {
+    const q = game._noticeQueue;
+    if (!q || !q.length || game._noticeFlushing) return;
+    game._noticeQueue = [];
+    game._noticeFlushing = true;
+    try {
+        for (const { text, x, y } of q) {
+            set_msg_xy(x, y);
+            await update_topl(text);
+        }
+        // The caller is about to read a key: paint what was just printed.
+        if (render) await flush_screen(1);
+    } finally {
+        game._noticeFlushing = false;
+    }
+}
+hooks.noticeQueue = notice_all_mons_queue;
+hooks.flushNotices = flush_notice_queue;
 
 // C ref: hack.c:1744 notice_all_mons(reset) — announce every spottable monster,
 // nearest first.  The two passes are C's and differ: pass 1 only clears
@@ -4349,7 +4479,7 @@ export function furniture_present(furniture, roomno) {
 // ── hack.c:4247  the showdamage option's per-hit line ───────────────────────
 
 // C ref: hack.c:4247 showdamage(dmg) — losehp()'s "[HP -3, 12 left]" trailer.
-// iflags.showdamage is off in every recorded rc (js/options.js:1227).
+// iflags.showdamage is set by OPTIONS=showdamage (options.js set_boolean).
 export async function showdamage(dmg) {
     const iflags = game.iflags, u = game.u;
 

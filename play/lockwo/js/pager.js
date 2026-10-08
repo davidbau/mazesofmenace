@@ -16,6 +16,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { render_map_to_grid, pline, topl_more, flush_screen, canspotself, useDECgraphics, obj_is_generic, remember_topl, yn_prompt_history } from './display.js';
 import { renderWindowScreen, dismiss_invent_screen, distant_name_pub, floor_object_name, doname_vague_quan } from './invent.js';
+import { observe_object } from './o_init.js';
 import { doextversion } from './version.js';
 import { option_help_lines } from './options.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
@@ -963,7 +964,7 @@ import { objects, BOULDER, CHEST, LARGE_BOX, STRANGE_OBJECT, ROCK_CLASS,
          mksobj, mkobj } from './mkobj.js';
 import { monster_by_pmidx } from './makemon.js';
 import { simpleonames } from './objnam.js';
-import { distant_monnam, ARTICLE_NONE, mon_nam } from './do_name.js';
+import { distant_monnam, ARTICLE_NONE, mon_nam, coyotename } from './do_name.js';
 import { visible_region_at, region_is_poisoncloud } from './region.js';
 import { doextlist, cmd_from_func, waterbody_name } from './cmd.js';
 import { rn2 } from './rng.js';
@@ -1456,8 +1457,7 @@ export function object_from_map(glyph, x, y) {
 
     let otmp = pg_sobj_at(glyphotyp, x, y);
     if (!otmp)
-        for (const o of [...(game.level?.buriedobjlist || []),
-                         ...(game.level?.buriedobjs || [])])
+        for (const o of (game.level?.buriedobjlist || []))
             if (o.ox === x && o.oy === y && o.otyp === glyphotyp) { otmp = o; break; }
 
     /* there might be a mimic here posing as an object */
@@ -1512,7 +1512,9 @@ export function object_from_map(glyph, x, y) {
     }
     return { fakeobj, obj: otmp };
 }
-function observe_object_pg(obj) { if (obj) obj.dknown = 1; }
+// o_init.c observe_object(): dknown AND the type's oc_encountered flag (what
+// #discoveries lists), not just the per-object dknown bit.
+function observe_object_pg(obj) { observe_object(obj); }
 /* shk.c costly_spot(x, y) — inside a shop the hero has not paid in. */
 function costly_spot(_x, _y) { return false; }
 
@@ -1636,11 +1638,6 @@ function rndmonnam() {
     return 'creature';
 }
 
-/* do_name.c coyotename(mtmp, buf) */
-function coyotename(mtmp) {
-    const names = ['Wile E.', 'Ralph', 'Road Runner', 'Coyote Kid'];
-    return `coyote called ${names[(mtmp.m_id | 0) % names.length]}`;
-}
 /* mondata.h digests(ptr) == attacktype(ptr, AT_ENGL) */
 function pg_digests(ptr) {
     return (ptr?.mattk || []).some((a) => a && a.aatyp === 11 /* AT_ENGL */);

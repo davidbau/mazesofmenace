@@ -5,7 +5,7 @@
 // menu code that js/invent.js owns, the selection is delegated there and the
 // branch/count logic stays here, on C's line order.
 
-import { game, svc_context_run } from './gstate.js';
+import { game, hooks, svc_context_run } from './gstate.js';
 import { Blind } from './vision.js';
 import { read_engr_at } from './engrave.js';
 import { rn2, rnd, d } from './rng.js';
@@ -296,6 +296,7 @@ function is_lava(x, y) { return game.level?.at?.(x, y)?.typ === LAVAPOOL; }
    copies in this port.  C's `disp.botl = TRUE` is omitted for the reason
    js/trap.js:864 records (an extra botl release point costs a screen). */
 async function losehp(n, _knam) {
+    hooks.end_running?.(true); // hack.c:4266
     const u = ustate();
     u.uhp = (u.uhp || 0) - n;
     if (u.uhp < 1) u.uhp = 0;
@@ -455,7 +456,7 @@ export async function query_classes(oclasses, one_at_a_time, everything, action,
    caller's doname() is far shorter than the 127-character budget. */
 const QBUFSZ = 128;
 const something = 'something';
-function safe_qbuf(qprefix, qsuffix, obj, func, altfunc, lastR) {
+export function safe_qbuf(qprefix, qsuffix, obj, func, altfunc, lastR) {
     const lenlimit = QBUFSZ - 1;
     const budget = lenlimit - qprefix.length - qsuffix.length;
     let name = String(func(obj));
@@ -471,7 +472,7 @@ function safe_qbuf(qprefix, qsuffix, obj, func, altfunc, lastR) {
    the prompt is drawn (unless a previous --More-- was ESC'd, i.e. WIN_STOP).
    js/display's y_n() keys that off its own _yn_need_more flag, so the
    pline-pending case is handled here. */
-async function yn_pending_more() {
+export async function yn_pending_more() {
     if (game._toplin === 1 && !game._winStop) {
         const { topl_more } = await import('./display.js');
         await topl_more();

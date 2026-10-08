@@ -7,7 +7,7 @@
 
 import { game, hooks } from './gstate.js';
 import { s_suffix } from './hacklib.js';
-import { nhgetch } from './input.js';
+import { nhgetch, xwaitforspace_quit } from './input.js';
 import { NO_COLOR } from './terminal.js';
 import { roles, rank_of, align_gname, align_gtitle } from './role.js';
 import { A_LAWFUL, A_NEUTRAL, A_CHAOTIC, In_quest } from './const.js';
@@ -130,7 +130,7 @@ export async function com_pager_legacy() {
     // key just rings the bell and leaves the window up.
     for (;;) {
         const c = await nhgetch();
-        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+        if (xwaitforspace_quit(c)) break;
     }
     // C ref: questpgr.c com_pager_core() — the `synopsis` bypasses delivery and
     // goes to putmsghistory() so ^P can recall it.
@@ -2838,7 +2838,7 @@ async function deliver_by_window(lines) {
     g._modal_screen = 'topl';
     for (;;) {
         const c = await nhgetch();
-        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+        if (xwaitforspace_quit(c)) break;
     }
     delete g._modal_screen;
     g._pending_message = '';
@@ -3180,7 +3180,7 @@ export async function quest_chat(mtmp) {
 
 // C ref: mon.c angry_guards(silent) — anger the Minetown watch; TRUE if any
 // peaceful watchman was found.
-async function angry_guards(silent) {
+export async function angry_guards(silent) {
     const { canspotmon } = await import('./uhitm.js');
     const { m_next2u } = await import('./monmove.js');
     let ct = 0, nct = 0, sct = 0, slct = 0;

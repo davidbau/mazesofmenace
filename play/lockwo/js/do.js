@@ -60,7 +60,7 @@ import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
          UTOTYPE_RMPORTAL, DIED, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX,
          MIGR_EXACT_XY, I_SPECIAL, TIMEOUT, W_ARTI, LEVITATION } from './const.js';
 import { docrt, flush_screen, pline, update_topl, urgent_topl, topl_more, y_n, newsym,
-         see_nearby_objects } from './display.js';
+         see_nearby_objects, reglyph_remembered_darkroom, map_location } from './display.js';
 import { seetrap, dotrap } from './trap.js';
 import { check_special_room } from './shkroom.js';
 import { forget_temple_entry } from './priest.js';
@@ -188,7 +188,7 @@ async function place_hero_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
                 await m_into_limbo(mtmp);
             }
         }
-        game.u.ux = x; game.u.uy = y;
+        u_on_newpos(x, y);
     };
 
     const oneshot = (lx === hx && ly === hy);
@@ -220,9 +220,9 @@ async function place_hero_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype) {
 // map validation is a panic()/impossible() in C, never reached legally.
 // hack.c's domove_core() (inlined in cmd.js) takes the "same level" arm;
 // goto_level() always takes the other, since u.uz already names the
-// destination while u.uz0 still names the level left — that arm's
-// map_location()/lastseentyp seed is moot anyway since docrt() repaints
-// everything.  Consumes no RNG.
+// destination while u.uz0 still names the level left.  That arm's
+// map_location() consumes no core RNG but does make display-rng draws while
+// Hallucinating (a statue/object under the hero).
 export function u_on_newpos(x, y) {
     const u = game.u;
     u.ux = x;
@@ -233,6 +233,8 @@ export function u_on_newpos(x, y) {
     if (u.uz?.dnum !== u.uz0?.dnum || u.uz?.dlevel !== u.uz0?.dlevel) {
         /* changing levels: don't leave the old position set with stale values */
         u.ux0 = u.ux; u.uy0 = u.uy;
+        /* sets lastseentyp; the object-glyph pick draws display rng while Hallucinating */
+        map_location(u.ux, u.uy);
     } else {
         see_nearby_objects();
     }
@@ -603,6 +605,7 @@ export async function losehp_do(n, knam, k_format = KILLED_BY_AN) {
     end_running(true);
     if (u.Upolyd) {
         u.mh = (u.mh ?? 0) - n;
+        { const { showdamage } = await import('./hack.js'); await showdamage(n); }
         if (u.mh > u.mhmax) u.mhmax = u.mh;
         if (u.mh < 1) {
             const { rehumanize } = await import('./polyself.js');
@@ -611,6 +614,7 @@ export async function losehp_do(n, knam, k_format = KILLED_BY_AN) {
         return;
     }
     u.uhp = (u.uhp ?? 0) - n;
+    { const { showdamage } = await import('./hack.js'); await showdamage(n); }
     if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
     else game.botl = true;
     if (u.uhp < 1) {
@@ -890,16 +894,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // precedence, do.c:1777) hero instead FALLS, with an unconditional message
     // + rnd(3) hp (rolled later, at its real position in the arrival arm).
     // Punished falls run ball.c drag_down() after arrival placement below.
-    // C ref: topl.c — an unacknowledged topline left by the calling command
-    // (e.g. wizard '?' teleport's prinv("Endgame prerequisite:"), teleport.c:
-    // 1244) pages its --More-- here too, over the still-intact departing-level
-    // buffer, ahead of the keepdogs pet-cell redraw and vision_recalc(2) below
-    // (seed0373 step 99).
-    if (game._toplin === 1) {
-        await topl_more();
-        game._pending_message = '';
-        game._toplin = 0;
-    }
+    // An unacknowledged topline left by the calling command (a robbed shop's
+    // "The Keystone Kops are after you!", wizard '?' teleport's prinv(), ...)
+    // is NOT paged here: C's tty pages it from docrt()'s cls() ->
+    // display_nhwindow(WIN_MESSAGE) AFTER mklev(), so the new level's PRNG
+    // draws belong to the step that dismissed the previous input, before the
+    // --More-- is shown.  (See the _toplin check ahead of docrt() below.)
 
     const fell_downstairs = at_stairs && !up
         && !Flying_do() && (near_capacity() > UNENCUMBERED || Punished_do() || Fumbling_do());
@@ -954,6 +954,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // it first would blank that frame's monsters, costing 19 screens across
     // seed0030/0014/0002; draw ORDER is identical either way.
     vision_recalc(2);
+
+    // C ref: do.c goto_level():1625 — recalc_mapseen() "recalculate map overview
+    // before we leave the level" (the level's #overview annotations, features
+    // and lastseentyp counts are frozen as of now).
+    { const { recalc_mapseen } = await import('./dungeon.js'); await recalc_mapseen(); }
 
     // Move to the destination level.
     g._visited_levels = g._visited_levels || {};
@@ -1022,6 +1027,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // frees the live list for a newly generated level) so a revisit still
         // refuses monster generation / teleport inside the same rectangles.
         exclusion_zones: g.exclusion_zones,
+        // C ref: save.c savelev_core() — svl.lastseentyp is part of the level's
+        // save file (init_mapseen() wipes the live array for each NEW level).
+        lastseentyp: g.lastseentyp,
     };
     clear_regions();
     // C ref: save_track() release_data() -> initrack().  Clear the live ring so
@@ -1029,9 +1037,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // reloaded destination gets its own ring back via getlev_restore().
     initrack();
 
-    // C ref: display.c cls():2196 display_nhwindow(WIN_MESSAGE,FALSE)
-    { const { topl_more } = await import('./display.js');
-      if (game._toplin === 1) { await topl_more(); game._toplin = 0; } }
     // C ref: do.c:1672 — "record this level transition as a potential seen
     // branch unless using some non-standard means of transportation (level
     // teleport)".  Runs BEFORE u.uz is reassigned; it is what puts the
@@ -1227,6 +1232,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // vision_recalc(2) find squares still in sight and spend an extra
     // display-rng draw on each (seed0383 step 195).
     game.vision_full_recalc = 0;
+    // C ref: do.c:1715 reglyph_darkroom() — right after the level is (re)loaded.
+    reglyph_remembered_darkroom();
     vision_reset();
     // C ref: display.c docrt_flags() -> cls() -> display_nhwindow(WIN_MESSAGE,
     // FALSE): an unacknowledged topline (drag_down's "The iron ball smacks into
@@ -1234,7 +1241,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // drag_down's own cls() left behind (do.c:1720's flush_screen(-1) has map
     // flushes postponed).  Only afterwards does cls() clear WIN_MAP and docrt()
     // repaint it, which do.c:1841's flush_screen(-1) then finally flushes.
-    if (game._toplin === 1) {
+    // tty_display_nhwindow() returns at once while WIN_CANCELLED (== WIN_STOP,
+    // set by an ESC-dismissed --More--) is on, so such a line is simply wiped.
+    if (game._toplin === 1 && !game._winStop) {
         await topl_more();
         game._pending_message = '';
         game._toplin = 0;
@@ -1392,11 +1401,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // Without this the chronicle window showed only "entered the dungeon".
     if (firstVisit) {
         const major = !!(In_endgame(u.uz) || In_quest(u.uz));
-        const dname = String(game.dungeons?.[u.uz.dnum]?.dname || 'The Dungeons of Doom')
-            .replace(/^The /, 'the ');
+        const { describe_level } = await import('./botl.js');
+        const dloc = { buf: '' };
+        describe_level(dloc, 2);
         const { livelog_printf, LL_ACHIEVE, LL_DEBUG } = await import('./livelog.js');
-        livelog_printf(major ? LL_ACHIEVE : LL_DEBUG,
-                       `entered level ${depth_of_level(u.uz)}, ${dname}`);
+        livelog_printf(major ? LL_ACHIEVE : LL_DEBUG, `entered ${dloc.buf}`);
     }
     if (firstVisit && game.urole?.mnum === PM_TOURIST) {
         more_experienced(level_difficulty(), 0);
@@ -1541,6 +1550,9 @@ async function getlev_restore(ledger) {
     // rectangles come back with it, so Sokoban's monster-generation zone (and a
     // hell prefab's no-teleport keep) is back in force on a revisit.
     g.exclusion_zones = store.exclusion_zones ?? null;
+
+    // C ref: restore.c getlev() — `Sfi_schar(nhfp, &svl.lastseentyp[c][r])`.
+    if (store.lastseentyp) g.lastseentyp = store.lastseentyp;
 
     // C ref: track.c rest_track() (called from getlev()) — restore this level's
     // saved footprint ring.  goto_level() cleared the live ring (initrack) when

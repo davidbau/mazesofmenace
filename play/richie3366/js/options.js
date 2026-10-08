@@ -5307,7 +5307,7 @@ export function parseNethackrc(rc, defaultsInitialized = false) {
                     result.flags.nudist = value;
                 }
                 else if (lname === 'fixinv') result.flags.invlet_constant = value;
-                else if (lname === 'color') result.flags.color = value;
+                else if (lname === 'color') result.iflags.wc_color = value; // C optlist.h:237 &iflags.wc_color (flag.h:507 use_color ≡ wc_color; C has no flags.color)
                 else if (lname === 'legacy') result.flags.legacy = value;
                 else if (lname === 'tutorial') { result.flags.tutorial = value; result.tutorial_set = true; }
                 else if (lname === 'splash_screen') result.iflags.wc_splash_screen = value;
@@ -9862,11 +9862,12 @@ export async function select_menu_pick_one(rawItems) {
     let currPage = 0;
 
     // C tty_end_menu: multi-page → maxrow = lmax+1 ≥ rows → fullscreen.
-    // Force via menu_overlay false for the paint geometry check.
-    const prevOverlay = game.flags?.menu_overlay;
+    // Force via menu_overlay false for the paint geometry check (home is
+    // iflags — wintty.c:1924–1925 reads iflags.menu_overlay).
+    const prevOverlay = game.iflags?.menu_overlay;
     if (npages > 1) {
-        if (!game.flags) game.flags = {};
-        game.flags.menu_overlay = false;
+        if (!game.iflags) game.iflags = {};
+        game.iflags.menu_overlay = false;
     }
 
     try {
@@ -9994,8 +9995,8 @@ export async function select_menu_pick_one(rawItems) {
     } finally {
         set_bot_disabled(_botPrev);
         if (npages > 1) {
-            if (prevOverlay === undefined) delete game.flags.menu_overlay;
-            else game.flags.menu_overlay = prevOverlay;
+            if (prevOverlay === undefined) delete game.iflags.menu_overlay;
+            else game.iflags.menu_overlay = prevOverlay;
         }
     }
 }
@@ -10230,11 +10231,13 @@ export async function select_menu_pick_any(rawItems, opts = {}) {
     let counting = false;
     let count = 0;
     let resetCount = true;
-    const prevOverlay = game.flags?.menu_overlay;
+    // Multi-page → C maxrow ≥ rows → fullscreen; force via the iflags home
+    // (wintty.c:1924–1925) for the paint geometry check.
+    const prevOverlay = game.iflags?.menu_overlay;
     const _botPrev = set_bot_disabled(true);
     if (npages > 1) {
-        if (!game.flags) game.flags = {};
-        game.flags.menu_overlay = false;
+        if (!game.iflags) game.iflags = {};
+        game.iflags.menu_overlay = false;
     }
     try {
         for (;;) {
@@ -10444,8 +10447,8 @@ export async function select_menu_pick_any(rawItems, opts = {}) {
     } finally {
         set_bot_disabled(_botPrev);
         if (npages > 1) {
-            if (prevOverlay === undefined) delete game.flags.menu_overlay;
-            else game.flags.menu_overlay = prevOverlay;
+            if (prevOverlay === undefined) delete game.iflags.menu_overlay;
+            else game.iflags.menu_overlay = prevOverlay;
         }
     }
 }
@@ -10475,7 +10478,7 @@ const DOSET_BOOL_ADDR = {
     accessiblemsg: { obj: 'a11y', key: 'accessiblemsg' }, // C: &a11y.accessiblemsg
     acoustics: { obj: 'flags', key: 'acoustics' },
     altmeta: { obj: 'iflags', key: 'altmeta' },
-    armorstatus: { obj: 'iflags', key: 'armorstatus' },
+    armorstatus: { obj: 'flags', key: 'armorstatus' }, // C optlist.h:168 &flags.armorstatus
     autodescribe: { obj: 'iflags', key: 'autodescribe' },
     autodig: { obj: 'flags', key: 'autodig' },
     autoopen: { obj: 'flags', key: 'autoopen' },
@@ -10484,7 +10487,7 @@ const DOSET_BOOL_ADDR = {
     bgcolors: { obj: 'iflags', key: 'bgcolors' },
     checkpoint: { obj: 'flags', key: 'checkpoint' }, // C: flags.ins_chkpt
     cmdassist: { obj: 'iflags', key: 'cmdassist' },
-    color: { obj: 'iflags', key: 'wc_color' },
+    color: { obj: 'iflags', key: 'wc_color' }, // C optlist.h:237 &iflags.wc_color (flag.h:507 use_color ≡ wc_color; every paint gate reads this key)
     confirm: { obj: 'flags', key: 'confirm' },
     customcolors: { obj: 'iflags', key: 'customcolors' },
     customsymbols: { obj: 'iflags', key: 'customsymbols' },
@@ -10501,7 +10504,7 @@ const DOSET_BOOL_ADDR = {
     goldX: { obj: 'flags', key: 'goldX' },
     help: { obj: 'flags', key: 'help' },
     herecmd_menu: { obj: 'flags', key: 'herecmd_menu' },
-    hilite_pet: { obj: 'iflags', key: 'hilite_pet' },
+    hilite_pet: { obj: 'iflags', key: 'wc_hilite_pet' }, // C optlist.h:366 &iflags.wc_hilite_pet (flag.h:508 hilite_pet ≡ wc_hilite_pet; the short key was a phantom the paint reader never saw)
     hilite_pile: { obj: 'iflags', key: 'hilite_pile' },
     hitpointbar: { obj: 'iflags', key: 'wc2_hitpointbar' }, // C: &iflags.wc2_hitpointbar
     idlecheckpoint: { obj: 'iflags', key: 'idlecheckpoint' },
@@ -10775,7 +10778,7 @@ export async function optfn_boolean(optidx, req, negated, opts) {
             // `WINDOWPORT(tty) || WINDOWPORT(curses)`; scored build is tty.
             if (windowport_tty() || windowport_curses()) {
                 if (!game.iflags) game.iflags = {};
-                if (game.iflags.hilite_pet && !game.iflags.wc2_petattr)
+                if (game.iflags.wc_hilite_pet && !game.iflags.wc2_petattr)
                     game.iflags.wc2_petattr = ATR_INVERSE;
             }
             mark_opt_need_redraw(); // C `go.opt_need_redraw = TRUE`
@@ -10820,7 +10823,7 @@ export async function optfn_boolean(optidx, req, negated, opts) {
             // (Rule #2) so unset means on — the `!== false` convention
             // (display.js:5083). A truthy gate drops the darkroom
             // refresh and its docrt→cls→more --More--.
-            if (game.iflags?.use_color !== false) mark_opt_need_redraw();
+            if (game.iflags?.wc_color !== false) mark_opt_need_redraw();
         } else if (OPT_GLYPH_RESET.has(name)) { // C `:5376–5385`
             mark_opt_need_redraw();
             mark_opt_need_glyph_reset();
@@ -10918,7 +10921,7 @@ export async function optfn_boolean_do_set(name, negated, initial = false) {
         // `WINDOWPORT(tty) || WINDOWPORT(curses)`; scored build is tty.
         if (windowport_tty() || windowport_curses()) {
             if (!game.iflags) game.iflags = {};
-            if (game.iflags.hilite_pet && !game.iflags.wc2_petattr)
+            if (game.iflags.wc_hilite_pet && !game.iflags.wc2_petattr)
                 game.iflags.wc2_petattr = ATR_INVERSE;
         }
         mark_opt_need_redraw(); // C `:5310`
@@ -10987,7 +10990,7 @@ export async function optfn_boolean_do_set(name, negated, initial = false) {
         vision_recalc(2); // C shut down vision
         game.vision_full_recalc = 1; // C `gv.vision_full_recalc` (vision.js:270)
         // C `:5373` — unset means on (whole-optfn note above).
-        if (game.iflags?.use_color !== false) mark_opt_need_redraw();
+        if (game.iflags?.wc_color !== false) mark_opt_need_redraw();
     }
     if (name === 'color') { // C `:5399–5409` (`#ifdef TOS` arm build-gated out)
         mark_opt_need_redraw();
@@ -11402,7 +11405,7 @@ export async function doset() {
             { name: 'crash_name', get_val: () => doset_compopt_get_val(optfn_crash_name, 'crash_name') || 'unknown' }, // C `:9043` "unknown" unless non-empty
             { name: 'crash_urlmax', val: '-1' },
             { name: 'disclose', get_val: () => doset_compopt_get_val(optfn_disclose, 'disclose'), handler: true },
-            { name: 'fruit', val: 'slime mold' },
+            { name: 'fruit', get_val: () => doset_compopt_get_val(optfn_fruit, 'fruit') || 'unknown' }, // C `:9043` "unknown" unless non-empty (optfn_fruit get_val `:1770` Sprintfs pl_fruit; was hardcoded 'slime mold')
             { name: 'glyph', val: '(to be done)' },
             { name: 'hilite_status', get_val: () => doset_compopt_get_val(optfn_hilite_status, 'hilite_status') },
             { name: 'menu_headings', get_val: () => doset_compopt_get_val(optfn_menu_headings, 'menu_headings'), handler: true },
@@ -12074,7 +12077,7 @@ const allopt = [
     // optlist.h:159 NHOPTB(altmeta)
     { name: 'altmeta', opttyp: BoolOpt, idx: 12, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'altmeta' }, optfn: null },
     // optlist.h:167 NHOPTB(armorstatus)
-    { name: 'armorstatus', opttyp: BoolOpt, idx: 13, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'armorstatus' }, optfn: null },
+    { name: 'armorstatus', opttyp: BoolOpt, idx: 13, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'armorstatus' }, optfn: null },
     // optlist.h:170 NHOPTB(ascii_map)
     { name: 'ascii_map', opttyp: BoolOpt, idx: 14, setwhere: SET_IN_GAME, initval: true /* ascii_map_Def: tty */, addr: null /* C: &iflags.wc_ascii_map, no live field */, optfn: null },
     // optlist.h:173 NHOPTO("autocompletions")
@@ -12111,7 +12114,7 @@ const allopt = [
     { name: 'checkpoint', opttyp: BoolOpt, idx: 30, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'checkpoint' }, optfn: null },
     // optlist.h:233 NHOPTB(cmdassist)
     { name: 'cmdassist', opttyp: BoolOpt, idx: 31, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'cmdassist' }, optfn: null },
-    // optlist.h:236 NHOPTB(color)
+    // optlist.h:236 NHOPTB(color) → &iflags.wc_color (flag.h:507 use_color ≡ wc_color; the one color home)
     { name: 'color', opttyp: BoolOpt, idx: 32, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'wc_color' }, optfn: null },
     // optlist.h:239 NHOPTB(confirm)
     { name: 'confirm', opttyp: BoolOpt, idx: 33, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'confirm' }, optfn: null },

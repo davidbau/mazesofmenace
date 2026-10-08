@@ -249,7 +249,8 @@ export const GLYPH_TRAP_OFF = GLYPH_CMAP_B_OFF + (S_arrow_trap - S_grave);
  * `:1482–1486`). Same highest-bank-first offset order as the show_glyph
  * chain below; colors/flags are not read here (decode_mixed takes the
  * symidx only). Rogue-level color arms do not move symidx, so no
- * GMAP_ROGUELEVEL input is needed. Caller: botl.js decode_mixed.
+ * GMAP_ROGUELEVEL input is needed. Callers: botl.js decode_mixed;
+ * map_glyphinfo `:2653`.
  */
 export function glyphmap_symidx(glyph) {
     const gid = glyph | 0;
@@ -330,10 +331,17 @@ function corpse_class_symidx() {
 }
 
 // C reset_glyphmap monster rows (`:2783`, `:2651`): mons mlet + SYM_OFF_M.
-// C mlet is the letter char; JS carries the S_* name (MLET_CH precedent).
+// C mlet is the MONSYM number 1..60 (defsym.h MONSYM(1,'a',ANT,S_ANT):
+// S_ANT is 1; the letter comes from def_monsyms[mlet].sym), so the slot
+// is positional: number + SYM_OFF_M (LOADSYMS M rows [4,124..183] prove
+// it: S_ANT→124). JS carries the S_* name, so the number is the
+// DEF_MONSYM_CH position (its doc guarantees [m-1]); unknown letters
+// (incl. the '?' fallback) land on the SYM_OFF_M placeholder slot,
+// whose showsyms/ov value is 0 (no override, readers fall back).
 function mlet_symidx(offset) {
     const ch = MLET_CH[mons(offset)?.mlet] || '?';
-    return ch.charCodeAt(0) + SYM_OFF_M;
+    const m = DEF_MONSYM_CH.indexOf(ch) + 1;
+    return m > 0 ? m + SYM_OFF_M : SYM_OFF_M;
 }
 
 /* C display.h altar_types — unaligned, chaotic, neutral, lawful, other. */
@@ -467,6 +475,30 @@ function hero_map_attr() {
     const u = game.u || {};
     const female = Upolyd(u) ? !!u.mfemale : !!game.flags?.female;
     return wizmgender_inverse(female);
+}
+
+/**
+ * C ref: display.c reset_glyphmap `:2941–2946` (S_engrcorr whose showsyms
+ * char equals the S_corr/S_litcorr char → MG_BW_ENGR) + wintty.c
+ * tty_print_glyph `:3930–3936` (MG_BW_ENGR && use_inverse → ATR_INVERSE).
+ * The flag is static per glyph id (set at glyphmap reset, read at every
+ * tty paint), so the twin derives it from the banked id inside
+ * show_glyph_cell — live, memory, detection and wizard engrcorr paints
+ * all inherit it, as in C. Default symbols all show '#', so the arm
+ * fires unless SYMBOLS separates them (showsyms live, `:2653`).
+ * Named omissions: the `:2934` has_rogue_color first-arm (ROGUESET +
+ * IBM handling, never active on contest tty — same standing as the
+ * S_litcorr CLR_WHITE sibling); the `:2897–2912` MG_BW_LAVA/ICE/SINK
+ * chain (needs !use_color plus customized colliding symbols; no
+ * corpus session reaches it).
+ */
+function engrcorr_map_attr(gid) {
+    if ((gid | 0) !== cmap_to_glyph(S_ENGRCORR)) return 0;
+    const sh = game.gs?.showsyms;
+    const sym = sh?.[S_ENGRCORR + SYM_OFF_P];
+    if (sym !== sh?.[S_CORR + SYM_OFF_P]
+        && sym !== sh?.[S_LITCORR + SYM_OFF_P]) return 0;
+    return use_inverse_opt() ? ATR_INVERSE : 0;
 }
 
 // C ref: defsym.h OBJCLASS_DRAWING — default object-class map symbols
@@ -3966,7 +3998,7 @@ function altar_glyph_color(loc) {
         CLR_RED, CLR_GRAY, CLR_GRAY, CLR_GRAY, CLR_BRIGHT_MAGENTA,
     ];
     // C: altar_color(n) → iflags.use_color ? altarcolors[n] : NO_COLOR
-    if (game.iflags?.use_color === false) return NO_COLOR;
+    if (game.iflags?.wc_color === false) return NO_COLOR;
     return altarcolors[idx];
 }
 
@@ -4405,20 +4437,21 @@ export function update_ov_rogue_symset(idx, val) {
  * whole base from glyphmap[glyph] (`:2612`, built by the deferred
  * reset_glyphmap), then applies the ONLY on-the-fly tinkering C permits —
  * the hero (is_you) color ladder and the two accessibility arms — and
- * stamps ttychar/glyph (`:2653–2655`).
+ * resolves ttychar from the showsyms ov side (`:2653`) + glyph echo.
  * JS has no glyphmap[]/showsyms[]/tileidx machinery, so the caller passes
  * the already-resolved base record (the live paint {ch, color, dec} the
  * glyph constructors produced — the same values the deferred table would
  * carry for the tty); the integer id rides along as base.glyph for the
- * is_you / pet predicates. Returns the adjusted record
+ * is_you / pet / symidx resolution. Returns the adjusted record
  * {ch, color, dec, glyphflags, glyph}; unmapped base fields pass through.
  * Wired caller: show_glyph_cell (C show_glyph `:2006` calls with mgflags
  * 0, so every paint — hero included — takes these arms; the `:2489`
  * glyphinfo_at call is the UNBUFFERED build, JS gbuf is buffered).
- * Named omissions: glyphmap[] base copy + sym.symidx/tileidx (no
- * glyphmap/tile machinery); get_othersym base (the assign_graphics
- * showsyms copy itself is live at game.gs.showsyms; hero arm reads
- * the ov tables directly);
+ * Named omissions: glyphmap[] base copy + sym.color/tileidx (no
+ * glyphmap/tile machinery; the symidx column is live as
+ * glyphmap_symidx); get_othersym base (the assign_graphics showsyms
+ * copy itself is live at game.gs.showsyms; the `:2653` arm reads the
+ * ov tables directly);
  * HAS_ROGUE_IBM_GRAPHICS MSDOS/TILES variant (compiled out upstream).
  * @param {number} x map x, C coordxy
  * @param {number} y map y, C coordxy
@@ -4435,12 +4468,26 @@ export function map_glyphinfo(x, y, base, mgflags) {
     const isYou = !!u_at(x, y) && glyph_is_monster(gid);
     // C `:2612` glyphinfo->gm = *gmap — the base record stands in (named).
     const out = { ...base, glyphflags: 0, glyph: gid };
+    // C reset_glyphmap `:3077–3083` tail + the `:2683–2694` bank macros
+    // (obj/mon/pet/warn/explode/wall/altar/cmap/zap): every table color
+    // is use_color-gated, NO_COLOR when off. Gate the base here, before
+    // the is_you ladder — C's `:2630–2636` hero overrides (CLR_YELLOW,
+    // HI_DOMESTIC) apply after the copy and stay ungated. flag.h:507
+    // use_color ≡ wc_color: the one home the toggles write.
+    if (game.iflags?.wc_color === false) out.color = NO_COLOR;
+    // C `:2612` also seeds gm.sym.symidx from the glyph id — the symidx
+    // column of the deferred table is live as glyphmap_symidx (same
+    // module). Unmapped paints (NO_GLYPH / JS-only callers carrying no
+    // integer id) take no arm: C's NO_GLYPH never reaches show_glyph.
+    let symidx = (gid >= 0 && gid < MAX_GLYPH) ? glyphmap_symidx(gid) : -1;
+    let heroArmFired = false;
+    let petArmFired = false;
     const u = game.u || {};
     if (isYou) {
         // C `:2619–2636` hero color ladder: monochrome, poly'd, or a
         // glyph that is not the hero's own (riding uses the steed's
         // ridden-bank id, never hero_glyph) keep the base color.
-        if (game.iflags?.use_color === false || Upolyd(u) || gid !== hero_glyph().glyph) {
+        if (game.iflags?.wc_color === false || Upolyd(u) || gid !== hero_glyph().glyph) {
             ; // color tweak not needed (!use_color) or not wanted
         } else if ((game.currentgraphics | 0) === ROGUESET
                 && (game.gs?.symset?.[ROGUESET]?.handling | 0) === H_IBM
@@ -4466,18 +4513,44 @@ export function map_glyphinfo(x, y, base, mgflags) {
         if ((game.sysopt?.accessibility | 0) === 1 && !(mg & MG_FLAG_NOOVERRIDE)
                 && heroOverride) {
             out.ch = heroOverride;
+            // The value is final: C `:2653` would re-read this same
+            // nonzero X slot, so the general read below skips.
+            heroArmFired = true;
         }
         // C `:2645`, inside is_you but outside the accessibility gate.
         out.glyphflags |= MG_HERO;
     }
-    // C `:2647–2652` pet NOOVERRIDE kludge: drop the override symbol and
-    // show the pet by its monster letter (showsyms[mlet + SYM_OFF_M]).
+    // C `:2647–2652` pet NOOVERRIDE kludge: re-point at the monster-letter
+    // slot (mlet number + SYM_OFF_M); the `:2653` read below yields the M
+    // override when one is set (SYMBOLS S_* monster rows are live
+    // LOADSYMS), else the default letter.
     if ((game.sysopt?.accessibility | 0) === 1
             && (mg & MG_FLAG_NOOVERRIDE) && glyph_is_pet(gid)) {
-        out.ch = MLET_CH[mons(glyph_to_mon(gid))?.mlet] || '?';
+        petArmFired = true;
+        symidx = mlet_symidx(glyph_to_mon(gid));
     }
-    // C `:2653–2655` ttychar = showsyms[symidx] (the base ch carries it —
-    // only the two accessibility arms above re-point it) + glyph echo.
+    // C `:2653–2655` ttychar = gs.showsyms[gm.sym.symidx] + glyph echo.
+    // C's showsyms is ov ?: symset (switch_symbols `:257–260`); the base
+    // ch already encodes the symset side (DEC via use_decgraphics, ASCII
+    // defaults), so only the ov side is read here, from the current
+    // set's table — ROGUESET vs PRIMARYSET follows game.currentgraphics
+    // like C's assign_graphics swap. High-bit ov values are DEC-charset
+    // requests (wintty.c `:3758–3763` graph_on + ch ^ 0x80); plain values
+    // paint with DEC off (SYMBOLS=S_pool:~ paints '~', not the DEC '`').
+    if (!heroArmFired && symidx >= 0 && symidx < SYM_MAX) {
+        const ovTable = ((game.currentgraphics | 0) === ROGUESET)
+            ? ov_rogue_table() : ov_primary_table();
+        const ov = ovTable[symidx] || 0;
+        if (ov) {
+            const code = String(ov).charCodeAt(0);
+            out.ch = String.fromCharCode(code & 0x7F);
+            out.dec = (code & 0x80) !== 0;
+        } else if (petArmFired) {
+            // C's showsyms default for the mlet slot: the plain letter
+            // (the base ch may carry a hallucination-mapped letter).
+            out.ch = MLET_CH[mons(glyph_to_mon(gid))?.mlet] || '?';
+        }
+    }
     out.glyph = gid;
     return out;
 }
@@ -4575,6 +4648,10 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
     ch = gi.ch;
     color = gi.color;
     decgfx = gi.dec;
+    // C tty layer derives ATR_INVERSE from the glyph id's MG_BW_ENGR flag
+    // (reset_glyphmap `:2941–2946`) at every paint; OR it here so live,
+    // memory, detection and wizard engrcorr paints all inherit, as in C.
+    attr |= engrcorr_map_attr(gid);
     const announce = show_glyph_change_wanted(loc, x, y, ch, color, decgfx, attr);
     // C classifies the already-chosen glyph id; stamp JS kind the same way
     // (no mon_glyph / obj_glyph). Always store so later On sees real old kind.
@@ -5080,7 +5157,7 @@ export function zapdir_to_glyph(dx0, dy0, beam_type) {
     const dy = dy0 | 0;
     // C: dx = (dx == dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0
     const dir = (dx === dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0;
-    const useColor = game.iflags?.use_color !== false;
+    const useColor = game.iflags?.wc_color !== false;
     // C display.c zapcolors[NUM_ZAP] / display.h zap_color_*
     const zapcolors = [
         HI_ZAP, CLR_ORANGE, CLR_WHITE, HI_ZAP,
@@ -5368,8 +5445,9 @@ export async function explode_show_visible(x, y, expltype, explmask) {
  * C ref: display.c magic_map_background(x, y, show)
  * Remembers real background under hero_memory; show==0 is mapping path.
  * Out-of-sight ROOM the hero does not remember as lit: with dark_room+color
- * → DARKROOMSYM (showsyms[S_darkroom]=showsyms[S_room], floor ·); else
- * GLYPH_NOTHING blank. Unlit lit-corr glyph → dark corr.
+ * → DARKROOMSYM (showsyms[S_darkroom]=showsyms[S_room], floor ·; S_stone
+ * blank on the Rogue level per sym.h:96); else GLYPH_NOTHING blank. Unlit
+ * lit-corr glyph → dark corr.
  */
 export function magic_map_background(x, y, show) {
     const lev = game.level?.at(x, y);
@@ -5385,13 +5463,21 @@ export function magic_map_background(x, y, show) {
             //    : GLYPH_NOTHING. Defaults On; showsyms equate darkroom to
             //    room floor (reglyph_darkroom).
             const darkRoom = game.flags?.dark_room !== false;
-            const useColor = game.flags?.color !== false
-                && game.iflags?.use_color !== false;
+            const useColor = game.iflags?.wc_color !== false;
             if (!(darkRoom && useColor)) {
                 tg = { ch: ' ', color: NO_COLOR, dec: false };
                 glyph = GLYPH_NOTHING;
             } else {
-                glyph = cmap_to_glyph(darkroom_sym());
+                // C sym.h:96 DARKROOMSYM is S_stone on the Rogue level,
+                // S_darkroom elsewhere. tg must render the stored glyph:
+                // stone paints blank (showsyms[S_stone]); S_darkroom paints
+                // as room floor here because this arm implies the :1850
+                // reglyph_darkroom equate (dark_room && use_color).
+                const dsym = darkroom_sym();
+                glyph = cmap_to_glyph(dsym);
+                if (dsym === S_STONE) {
+                    tg = { ch: ' ', color: NO_COLOR, dec: false };
+                }
             }
         } else if (lev.typ === CORR && glyph === cmap_to_glyph(S_LITCORR)) {
             tg = { ch: '#', color: NO_COLOR, dec: false };
@@ -5615,7 +5701,7 @@ export function feel_location(x, y) {
                 // C `:839–845` — dark-room tint (rogue level stays stone),
                 // else the lit/unlit floor symbol.
                 const darkRoom = game.flags?.dark_room !== false
-                    && game.iflags?.use_color !== false
+                    && game.iflags?.wc_color !== false
                     && !Is_rogue_level(game.u?.uz);
                 set_memory_cmap(x, y, loc, darkRoom ? S_darkroom
                     : (loc.waslit ? S_room : S_stone));
@@ -5631,7 +5717,7 @@ export function feel_location(x, y) {
                 && !loc.waslit)
                 set_memory_cmap(x, y, loc, S_corr);
             else if (typ === ROOM && game.flags?.dark_room !== false
-                     && game.iflags?.use_color !== false
+                     && game.iflags?.wc_color !== false
                      && memG === cmap_to_glyph(S_room))
                 set_memory_cmap(x, y, loc, S_darkroom);
         }
@@ -5673,7 +5759,7 @@ export function feel_location(x, y) {
         // room floor, and S_darkroom shares its symbol.
         const mem = loc.remembered_glyph;
         const darkRoomColor = game.flags?.dark_room !== false
-            && game.iflags?.use_color !== false;
+            && game.iflags?.wc_color !== false;
         if ((loc.typ | 0) === ROOM
             && (!loc.waslit || darkRoomColor)) {
             // C `:896–897` writes cmap(dark_room ? S_darkroom : S_stone),
@@ -5907,8 +5993,7 @@ export function newsym(x, y) {
         // cell (showsyms[S_darkroom]=showsyms[S_room] when dark_room).
         let mem = loc.remembered_glyph;
         const darkRoomColor = game.flags?.dark_room !== false
-            && game.flags?.color !== false
-            && game.iflags?.use_color !== false;
+            && game.iflags?.wc_color !== false;
         const isLitcorr = (loc.typ | 0) === CORR && (
             memory_is_cmap(mem, S_LITCORR)
             || (mem.ch === '#' && mem.color === CLR_WHITE)
@@ -7525,7 +7610,7 @@ export function get_bkglyph_and_framecolor(x, y) {
             } else if (idx === S_room) {
                 // C `:2560–2561` (dark_room && use_color) ? DARKROOMSYM.
                 idx = (game.flags?.dark_room !== false
-                        && game.iflags?.use_color !== false)
+                        && game.iflags?.wc_color !== false)
                     ? darkroom_sym() : S_stone;
             }
         }
@@ -7776,7 +7861,8 @@ export async function cliparound(x, y) {
  * per the M_AP_FURNITURE `:539–540` precedent); GLYPH_NOTHING writes the
  * blank `' '`/`NO_COLOR` cell with the NOTHING id (per
  * `magic_map_background` when `!dark_room`).
- * `dark_room` / `use_color` default On via `!== false` (per
+ * `dark_room` / `wc_color` (C `iflags.use_color` ≡ `wc_color`,
+ * flag.h:507) default On via `!== false` (per
  * `get_bkglyph_and_framecolor` `:2555–2562`); `cansee` stays last in each
  * conjunction so it never runs when an earlier arm already failed.
  * Named omissions: `gs.showsyms[S_darkroom]` equate (`:1850–1853`, no
@@ -7788,7 +7874,7 @@ export async function cliparound(x, y) {
 export function reglyph_darkroom() {
     // C `:1826` + `:1836–1837` flag reads (Is_rogue_level takes &u.uz).
     const darkRoom = game.flags?.dark_room !== false;
-    const useColor = game.iflags?.use_color !== false;
+    const useColor = game.iflags?.wc_color !== false;
     const isRogue = Is_rogue_level(game.u?.uz);
     // C `:1822–1823` x 1..COLNO-1, y 0..ROWNO-1.
     for (let x = 1; x < COLNO; x++) {

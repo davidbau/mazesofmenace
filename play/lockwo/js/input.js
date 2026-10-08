@@ -1,7 +1,7 @@
 // input.js — Keystroke input handling.
 // Provides async nhgetch() that reads from an input queue.
 
-import { game } from './gstate.js';
+import { game, hooks } from './gstate.js';
 import { KEY_BINDINGS } from './terminal.js';
 
 const _inputQueue = [];
@@ -18,6 +18,9 @@ export function pushKeys(keys) {
 // In replay mode, reads from the input queue.
 // In browser mode, waits for a real keypress.
 export async function nhgetch() {
+    // C ref: vision.c vision_recalc() tail notice_all_mons(): announcements
+    // queued by the synchronous vision code print before the hero is asked for input.
+    if (game._noticeQueue?.length) await hooks.flushNotices(true);
     // C ref: win/tty/wintty.c tty_nhgetch() — `wins[WIN_MESSAGE]->flags &=
     // ~WIN_STOP;` unconditionally, before reading anything.  WIN_STOP (set by
     // topl_more_ext when a --More-- is dismissed with ESC, suppressing further
@@ -57,6 +60,16 @@ export async function nhgetch() {
 
 
     throw new Error('Input queue empty - test may be missing keystrokes');
+}
+
+// C ref: win/tty/getline.c xwaitforspace(quitchars) one-key test for a text
+// window's dmore() (quitchars " \r\n\033"): space/return dismiss; ESC dismisses AND
+// leaves ttyDisplay->dismiss_more == 1 (^A) behind, so a later ^A also dismisses
+// a --More-- (`c == x`).  Any other key rings the bell and keeps waiting.
+export function xwaitforspace_quit(c) {
+    if (c === 13 || c === 10 || c === 32) return true;
+    if (c === 27) { game._dismissMore = 1; return true; }
+    return !!game._dismissMore && c === game._dismissMore;
 }
 
 // Reset input state

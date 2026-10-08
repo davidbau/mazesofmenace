@@ -45,7 +45,7 @@ import {
 } from './monflags_data.js';
 import { objects as OBJECTS } from './mkobj.js';
 import { acurr_eff, exercise, adjattrib } from './attrib.js';
-import { newsym, map_invisible, update_topl, urgent_topl, canseemon_shared, Hallucination_u as Hallucination, hold_botl_hp } from './display.js';
+import { newsym, map_invisible, unmap_object, update_topl, urgent_topl, canseemon_shared, Hallucination_u as Hallucination, hold_botl_hp } from './display.js';
 import { cansee, couldsee, Blind } from './vision.js';
 import { is_home_elemental, monster_by_pmidx } from './makemon.js';
 import { DEADMONSTER, mvitals_died, m_detach, wake_nearto_core } from './mon.js';
@@ -89,7 +89,13 @@ function gender(mtmp) {
     return is_neuter_flag(permonst(mtmp)) ? 2 : (mtmp?.female ? 1 : 0);
 }
 
-async function emitU(msg) { if (msg) await update_topl(msg); }
+// `mon` = C's pline_mon(mtmp, ...): the message is about that monster's square,
+// which accessiblemsg turns into a "(north): " prefix.
+async function emitU(msg, mon) {
+    if (!msg) return;
+    if (mon && !is_hero(mon)) (await import('./hack.js')).set_msg_xy(mon.mx, mon.my);
+    await update_topl(msg);
+}
 
 // ── small mondata.h predicates ──────────────────────────────────────────────
 const haseyes = (ptr) => (mflags1_of(ptr) & M1_NOEYES) === 0;
@@ -495,7 +501,7 @@ export async function hitmsg(mtmp, mattk) {
     if (compat && !mtmp.mcan && !mtmp.mspec_used) {
         await emitU(`${Monst_name} ${!Blind() ? 'smiles at'
             : !Deaf() ? 'talks to' : 'touches'} you ${
-            (compat === 2) ? 'engagingly' : 'seductively'}.`);
+            (compat === 2) ? 'engagingly' : 'seductively'}.`, mtmp);
     } else {
         let verb, punct = '!';
         switch (mattk.aatyp) {
@@ -518,7 +524,7 @@ export async function hitmsg(mtmp, mattk) {
         const again = (h.mid === mtmp.m_id && h.slot != null
                        && mattk._slot === h.slot + 1
                        && mattk.aatyp === h.aatyp) ? ' again' : '';
-        await emitU(`${Monst_name} ${verb}${again}${punct}`);
+        await emitU(`${Monst_name} ${verb}${again}${punct}`, mtmp);
     }
     const h = game._hitmsg || (game._hitmsg = {});
     h.mid = mtmp.m_id; h.slot = mattk._slot; h.aatyp = mattk.aatyp;
@@ -535,9 +541,9 @@ export async function missmu(mtmp, nearmiss, mattk) {
     const { Monnam, canspotmon } = await import('./uhitm.js');
     if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
     if (could_seduce(mtmp, YOUMONST, mattk) && !mtmp.mcan)
-        await emitU(`${Monnam(mtmp)} pretends to be friendly.`);
+        await emitU(`${Monnam(mtmp)} pretends to be friendly.`, mtmp);
     else
-        await emitU(`${Monnam(mtmp)} ${(nearmiss && Verbose()) ? 'just ' : ''}misses!`);
+        await emitU(`${Monnam(mtmp)} ${(nearmiss && Verbose()) ? 'just ' : ''}misses!`, mtmp);
     await (await import('./hack.js')).stop_occupation();
 }
 
@@ -994,6 +1000,13 @@ export async function gulpmu(mtmp, mattk) {
 }
 const MZ_HUGE = 4;   // C ref: monflag.h:182 (MZ_GIGANTIC is 7, not 5)
 
+// C ref: mon.c:3170 mondead() — `if (glyph_is_invisible(levl[mx][my].glyph))
+// unmap_object(mx, my)` just before m_detach: killing a monster the hero only
+// remembered as 'I' drops the marker.
+function mondead_unmap(mtmp) {
+    if (game.level?.at(mtmp.mx, mtmp.my)?.invisMon) unmap_object(mtmp.mx, mtmp.my);
+}
+
 // ═══ mhitu.c:1591 explmu ════════════════════════════════════════════════════
 // A yellow light / gas spore style attacker detonates next to the hero.
 // RNG: d(damn,damd) always; AD_BLND adds rnd(tmp/2) but ONLY when the exploder
@@ -1049,6 +1062,7 @@ export async function explmu(mtmp, mattk, ufound) {
                 await emitU('You are caught in a blast of kaleidoscopic light!');
             // C ref mhitu.c:1645 — mondead(mtmp) BEFORE make_hallucinated(),
             // so the dying light is never itself displayed hallucinated.
+            mondead_unmap(mtmp);
             mvitals_died(mtmp);
             await m_detach(mtmp, mtmp.data, true);
             kill_agr = false;                 /* already killed (maybe lifesaved) */
@@ -1070,6 +1084,7 @@ export async function explmu(mtmp, mattk, ufound) {
     // AD_HALU's mondead); AD_BLND (and any not_affected arm) falls through
     // to here with kill_agr still TRUE.
     if (kill_agr && !DEADMONSTER(mtmp)) {
+        mondead_unmap(mtmp);
         mvitals_died(mtmp);
         await m_detach(mtmp, mtmp.data, true);
     }
@@ -1280,6 +1295,7 @@ export async function mdamageu(mtmp, n) {
     game.botl = true;
     if (Upolyd()) {
         u.mh = (u.mh | 0) - n;
+        { const { showdamage } = await import('./hack.js'); await showdamage(n); }
         if (u.mh > u.mhmax) u.mh = u.mhmax;
         if (u.mh < 1) {
             const { rehumanize } = await import('./polyself.js');
@@ -1287,6 +1303,7 @@ export async function mdamageu(mtmp, n) {
         }
     } else {
         u.uhp = (u.uhp | 0) - n;
+        { const { showdamage } = await import('./hack.js'); await showdamage(n); }
         if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
         if (u.uhp < 1) {
             const { done_in_by } = await import('./end.js');

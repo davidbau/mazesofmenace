@@ -2453,6 +2453,13 @@ async function handler_rebind_keys_add(keyfirst) {
 
     if (keyfirst) { // C `:2303`
         await pline('Bind which key? '); // C `:2304`
+        // C tty paints the prompt synchronously (putmesg → update_topl
+        // direct tty write, cursor after the text); JS pline only stages
+        // _pending_message, so flush + cursor before the blocking read
+        // (get_count `:5108–5109` / getlin / tty_yn precedent) — the
+        // input-boundary screen must show the prompt.
+        await flush_screen(1);
+        game.nhDisplay?.setCursor?.('Bind which key? '.length, 0);
         key = (await pgetchar()) & 0xff; // C `:2305` (uchar truncation)
 
         if (!key || key === 27) return; // C `:2307–2308` '\033'
@@ -2527,6 +2534,9 @@ async function handler_rebind_keys_add(keyfirst) {
 // bindit: // C `:2382`
     if (!key) { // C `:2383`
         await pline('Bind which key? '); // C `:2384`
+        // Same deferred-paint flush + cursor as the `:2304` site above.
+        await flush_screen(1);
+        game.nhDisplay?.setCursor?.('Bind which key? '.length, 0);
         key = (await pgetchar()) & 0xff; // C `:2385`
 
         if (!key || key === 27) return; // C `:2387–2388` '\033'

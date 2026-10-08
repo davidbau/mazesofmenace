@@ -5,7 +5,7 @@
 // are kept structurally but rely on subsystems the port does not yet model,
 // which are unreachable for a non-polymorphed contest hero on ordinary terrain.
 
-import { game } from './gstate.js';
+import { game, hooks } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { update_topl, vobj_at } from './display.js';
 import { surface, hliquid } from './dungeon.js';
@@ -27,10 +27,12 @@ import {
 // C ref: hack.c losehp() — for a non-polymorphed hero this subtracts the damage
 // from u.uhp (no RNG).  Death handling isn't exercised by the sit sessions, so
 // it is reduced to the hp arithmetic + hpmax clamp.
-function losehp(n) {
+async function losehp(n) {
     const u = game.u;
     if (!u) return;
+    hooks.end_running?.(true); // hack.c:4266
     u.uhp -= n;
+    { const { showdamage } = await import('./hack.js'); await showdamage(n); }
     if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
     if (u.uhp < 1) u.uhp = 0;
 }
@@ -129,7 +131,7 @@ export async function dosit() {
             } else if (u.utraptype === TT_PIT) {
                 if (trap && trap.ttyp === SPIKED_PIT) {
                     await update_topl('You sit down on a spike.  Ouch!');
-                    losehp(Half_physical_damage() ? rn2(2) : 1);
+                    await losehp(Half_physical_damage() ? rn2(2) : 1);
                     exercise(A_STR, false);
                 } else {
                     await update_topl('You sit down in the pit.');
@@ -141,7 +143,7 @@ export async function dosit() {
             } else if (u.utraptype === TT_LAVA) {
                 await update_topl(`You sit in the ${hliquid('lava')}!`);
                 u.utrap += rnd(4);
-                losehp(d(2, 10)); // lava damage
+                await losehp(d(2, 10)); // lava damage
             } else if (u.utraptype === TT_INFLOOR || u.utraptype === TT_BURIEDBALL) {
                 await update_topl("You can't maneuver to sit!");
                 u.utrap++;
@@ -170,7 +172,7 @@ export async function dosit() {
         // must be WWalking
         await update_topl(`You sit on the ${hliquid('lava')}.`);
         await update_topl(`The ${hliquid('lava')} burns you!`);
-        losehp(d(10, 10)); // lava damage (no Fire_resistance for base hero)
+        await losehp(d(10, 10)); // lava damage (no Fire_resistance for base hero)
     } else if (is_ice_at(u.ux, u.uy)) {
         await update_topl('You sit on the ice.');
         await update_topl('The ice feels cold.');

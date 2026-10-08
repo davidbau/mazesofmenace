@@ -19,9 +19,9 @@
 // recorded at their source boundary; the self-zap dispatch itself does not
 // reject a valid object type.
 //
-// wizcmds.c wiz_wish(), potion.c mongrantswish(), the ordinary sit.c throne,
+// wizcmds.c wiz_wish(), potion.c mongrantswish(), both sit.c throne effects,
 // zap.c's wishing wand, and allmain.c's Amulet and resumed-wish branches call
-// makewish(). sit.c special_throne_effect's wish arm remains an explicit gap.
+// makewish().
 //
 // zap.c's elemental destruction of carried and floor-borne objects lives in
 // js/zap_destroy_items.js, which the C file separates as its own group of
@@ -183,7 +183,7 @@ import { stairway_at } from './stairs.js';
 
 import { burnarmor } from './trap_erode_obj.js';
 import {
-    conjoined_pits, delfloortrap, fill_pit, maketrap, openholdingtrap, closeholdingtrap, openfallingtrap, animate_statue, activate_statue_trap, reset_utrap, set_utrap, t_at, trapname } from './trap.js';
+    conjoined_pits, delfloortrap, fill_pit, maketrap, openholdingtrap, closeholdingtrap, openfallingtrap, animate_statue, activate_statue_trap, reset_utrap, set_utrap, t_at, trapname, trap_ice_effects } from './trap.js';
 import { dotrap, mintrap } from './trap_effects.js';
 import {
     erode_armor, flash_hits_mon, m_is_steadfast, shade_miss,
@@ -4832,10 +4832,7 @@ export async function melt_ice(x, y, msg = null, state = game, rawEnv = {}) {
     }
 
     spot_stop_timers(x, y, MELT_ICE_AWAY, state);
-    if (t_at(x, y, state)) {
-        // trap.c trap_ice_effects() is a discarded void effect, not data.
-        note_unported('trap.c trap_ice_effects');
-    }
+    await trap_ice_effects(x, y, true, state, env);
     obj_ice_effects(x, y, false, env);
     const { unearth_objs } = await import('./dig.js');
     await unearth_objs(x, y, env);

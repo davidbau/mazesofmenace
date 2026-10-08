@@ -95,7 +95,10 @@ import {
     STRANGLED,
     TELEP_TRAP,
     TELEPORT,
+    TER_FULL,
     TER_MAP,
+    TER_OBJ,
+    TER_TRP,
     VIBRATING_SQUARE,
     Upolyd,
     quitchars,
@@ -147,7 +150,6 @@ import {
 import {
     doremring, doputon, dotakeoff, dowear, ia_dotakeoff, remarm_swapwep,
     reset_remarm, doddoremarm,
-    UnsupportedAccessoryOnError,
     UnsupportedTakeOffError, UnsupportedWearError,
 } from './do_wear.js';
 import { doclose, doforce, doopen, reset_pick, UnsupportedLockError } from './lock.js';
@@ -2861,9 +2863,6 @@ export function failClosedCommandRefusals() {
         // set_wear() raises it too, from moveloop_preamble() rather than from
         // a command, which is the raiser the startup reader above converts.
         UnsupportedWearError,
-        // do_wear.c Amulet_on() and Blindf_on() are fail-closed entry points
-        // that belong to later puton-command slices.
-        UnsupportedAccessoryOnError,
         // eat.c newuhs() is shared: gethungry() calls it from the turn loop,
         // and done_eating() and lesshungry() call it from doeat().
         UnsupportedHungerTransitionError,
@@ -2967,10 +2966,8 @@ export function failClosedCommandRefusals() {
         // have stopped raising the class, because dropping it early costs the
         // turn-boundary conversion too.
         UnsupportedPrayerError,
-        // dokick.c raises this from dokick()'s nine guards and five target
-        // tests and from kick_nondoor()'s terrain chain, each at its own
-        // condition and so before that arm has drawn, printed or written
-        // anything.
+        // dokick.c retains this for inherited kick_monster callbacks
+        // whose supporting owners still refuse their source branches.
         UnsupportedKickError,
         // mon.c maybe_unhide_at() raises this from inside invent.c
         // delobj_core(), which sit.c's cream-pie arm reaches through useupf().
@@ -3149,11 +3146,9 @@ async function runSearchCommand(key, state) {
     return failClosedCommand(key, state, () => dosearch(state));
 }
 
-// C ref: cmd.c doterrain() (1098-1170). The menu is source-shaped for every
-// normal/explore/wizard entry, but only the normal preselected TER_MAP choice
-// is owned by this slice. reveal_terrain() stops after its projection and
-// message, before browse_map()/getpos(); the wrapper keeps that later branch
-// and every other menu choice fail-closed.
+// C ref: cmd.c doterrain() (1098-1189). Choices 1-4 use the complete
+// detect.c terrain projection. Wizard internal codes and legend remain
+// separate source owners, so those menu choices retain their refusal.
 async function runTerrainCommand(key, state) {
     return failClosedCommand(key, state, () => doterrain(state));
 }
@@ -3201,12 +3196,19 @@ export async function doterrain(state = game) {
         overlay: state.iflags?.menu_overlay !== false,
     });
     if (which === null) return ECMD_OK;
-    if (which !== 1) {
+    const subsets = {
+        1: TER_MAP,
+        2: TER_MAP | TER_TRP,
+        3: TER_MAP | TER_TRP | TER_OBJ,
+        4: TER_MAP | TER_FULL,
+    };
+    if (which in subsets) {
+        await reveal_terrain(subsets[which], state);
+    } else {
         throw new UnsupportedSearchError(
             `terrain menu choice ${which} is not ported`,
         );
     }
-    await reveal_terrain(TER_MAP, state);
     return ECMD_OK;
 }
 
@@ -3633,8 +3635,7 @@ async function runTwoWeaponCommand(key, state) {
 // C ref: dokick.c dokick(). Like dosearch() and doeat() it returns its own
 // ECMD_* result: ECMD_CANCEL when the direction prompt answers nothing or
 // names the hero's own square, and ECMD_TIME for the kick that lands. C's
-// third result, the ECMD_FAIL that follows every no-kick guard, belongs to
-// arms this port refuses.
+// guard chain returns ECMD_FAIL after flushing the pending message window.
 async function runKickCommand(key, state) {
     return failClosedCommand(key, state, () => dokick(state));
 }
@@ -4453,8 +4454,9 @@ function terrainAt(x, y, state) {
 
 function doorMaskAt(x, y, state) {
     const tile = tileAt(x, y, state);
+    // C rm.doormask aliases flags; ordinary generated doors populate flags.
     return typeof tile === 'object'
-        ? tile?.doormask ?? tile?.flags ?? 0 : 0;
+        ? tile?.flags || tile?.doormask || 0 : 0;
 }
 
 function objectAt(x, y, state) {
@@ -5717,8 +5719,8 @@ export async function rhack(key, state = game) {
         }
         if (command === 'terrain') {
             // C ref: cmd.c rhack()'s result handling at 3810-3818. doterrain()
-            // is a no-time command; its TER_MAP implementation ends at the
-            // browse_map()/getpos() boundary with a fail-closed refusal.
+            // is a no-time command; terrain browsing restores the live map
+            // before the ordinary no-time result tail resets command state.
             const res = await runTerrainCommand(key, state);
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
@@ -6163,7 +6165,7 @@ export async function rhack(key, state = game) {
             // C ref: rhack()'s result handling at cmd.c:3810-3825. dokick()
             // answers ECMD_CANCEL for a direction prompt that named nothing
             // and ECMD_TIME for the kick that lands; its ECMD_FAIL belongs to
-            // the no-kick guards this port refuses. cmd.c:1748's "kick" row
+            // the source-ordered no-kick guard chain. cmd.c:1748's "kick" row
             // carries no flags at all, so neither the prefix test at
             // 3693-3695 nor the MOVEMENTCMD and domove_attempting tests at
             // 3773-3800 can divert it.

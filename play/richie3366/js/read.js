@@ -110,6 +110,7 @@ import {
 import { more_experienced } from './exper.js';
 import {
     do_mapping, cvt_sdoor_to_door, gold_detect, trap_detect, food_detect,
+    strange_feeling,
 } from './detect.js';
 import { study_book, can_chant, losespells } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
@@ -1212,23 +1213,11 @@ async function seffect_enchant_weapon(sobj) {
 }
 
 /**
- * C ref: potion.c strange_feeling — local for destroy-armor fail / confused naked.
+ * C ref: potion.c strange_feeling — D-3680: the H-only strange_feeling_scroll
+ * clone is deleted; read.c:1128/:1334/:1388 call the live detect.js export,
+ * which reads the Hallucination macro (H||HH, potion.c:1465). The clone's
+ * useup call was the file-local invent.c twin, line-identical to live's.
  */
-async function strange_feeling_scroll(obj, txt) {
-    const beginner = !!(game.flags?.beginner);
-    const Hallucination = !!(game.u?.Hallucination);
-    if (beginner || !txt) {
-        await pline(
-            `You have a ${Hallucination ? 'normal' : 'strange'} feeling for a moment, then it passes.`,
-        );
-    } else {
-        await pline(txt);
-    }
-    if (!obj) return;
-    if (obj.dknown) await trycall(obj);
-    useup(obj);
-}
-
 /**
  * C ref: read.c disintegrate_cursed_armor `:1293–1321` (staticfn) —
  * gather every cursed worn piece (suit, cloak, helm, shield, gloves,
@@ -1258,8 +1247,8 @@ async function disintegrate_cursed_armor() {
  * worn pieces → getobj choice, blessed → disintegrate_cursed_armor,
  * else destroy_arm or skin-itch. Every callee live (some_armor /
  * any_worn_armor_ok / count_worn_armor / adj_abon / disintegrate_arm /
- * destroy_arm do_wear.js; strange_feeling_scroll file-local ≡ potion.c
- * strange_feeling via live detect.js strange_feeling; p_glow2 file-local;
+ * destroy_arm do_wear.js; strange_feeling live detect.js (D-3680);
+ * p_glow2 file-local;
  * costly_alteration shk.js; Yobjnam2/an/actualoname objnam.js;
  * make_stunned potion.js; getobj invent.js).
  * @returns {Promise<object|null>} sobj or null if strange_feeling used it up
@@ -1276,7 +1265,7 @@ export async function seffect_destroy_armor(sobj) {
 
     if (confused) { // C `:1333–1352`
         if (!otmp) { // C `:1334–1339`
-            await strange_feeling_scroll(sobj, 'Your bones itch.');
+            await strange_feeling(sobj, 'Your bones itch.');
             exercise(A_STR, false);
             exercise(A_CON, false);
             return null; // C: *sobjp = 0 (useup ran inside strange_feeling)
@@ -1328,7 +1317,7 @@ export async function seffect_destroy_armor(sobj) {
             known = true;
             return sobj;
         } else if (!(await destroy_arm())) { // C `:1392`
-            await strange_feeling_scroll(sobj, 'Your skin itches.');
+            await strange_feeling(sobj, 'Your skin itches.');
             exercise(A_STR, false);
             exercise(A_CON, false);
             return null; // C: *sobjp = 0 (useup ran inside strange_feeling)
@@ -1565,7 +1554,7 @@ async function seffect_enchant_armor(sobj) {
     const Blind = Blind_read();
     const otmp = some_armor(game.youmonst);
     if (!otmp) {
-        await strange_feeling_scroll(sobj, !Blind
+        await strange_feeling(sobj, !Blind
             ? 'Your skin glows then fades.'
             : 'Your skin feels warm for a moment.');
         exercise(A_CON, !scursed);

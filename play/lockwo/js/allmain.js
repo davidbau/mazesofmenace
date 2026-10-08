@@ -113,6 +113,9 @@ function welcomeMessage() {
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
+    // C ref: allmain.c newgame() `notice_mon_off()` — welcome messages come
+    // before any monster is noticed; notice_mon_on() follows welcome(TRUE).
+    (game.a11y || (game.a11y = {})).mon_notices_blocked = ((game.a11y || {}).mon_notices_blocked || 0) + 1;
 
     // C ref: mons[] is pristine at process start in C, and restore.c:727 calls
     // adj_erinys(u.ualign.abuse) when reloading a save.  This port runs many
@@ -404,7 +407,8 @@ async function newgame_real() {
     // own --More-- ONLY when it actually has something to announce — see
     // hack.js — so this call is a no-op, including its screen effects, for
     // every session that doesn't set spot_monsters.)
-    const { notice_all_mons } = await import('./hack.js');
+    const { notice_all_mons, notice_mon_on } = await import('./hack.js');
+    notice_mon_on();
     await notice_all_mons(true);
     // C ref: allmain.c welcome(TRUE) — "guarantee that 'major' event category
     // is never empty": the very first gamelog line.
@@ -498,14 +502,22 @@ async function moveloop_preamble_messages() {
 // player is displayed.  Our recorded sessions all answer "no".
 async function maybe_do_tutorial(preambleShownMore) {
     const g = game;
-    if (g.tutorial_set_in_config) return; // "OPTIONS=!tutorial" => no prompt
-    // Showing the menu flushes the pending top-line message.  If the moon
-    // phase preamble already paged the welcome line, the message currently
-    // on the top line is the preamble; otherwise it's the welcome line — or
-    // nothing at all, if that line had wrapped and paged itself already (see
-    // the same guard above).
-    if (game._pending_message) await topl_more();
-    await ask_do_tutorial();
+    if (g.tutorial_set_in_config) {
+        // C ref: options.c ask_do_tutorial() — a tutorial option set in the rc,
+        // on or off, is obeyed without asking.  "OPTIONS=!tutorial" => no
+        // prompt and no tutorial; "OPTIONS=tutorial" => no prompt, straight to
+        // the deferred "Entering the tutorial." goto.
+        if (!g.flags.tutorial) return;
+        await do_tutorial_goto();
+    } else {
+        // Showing the menu flushes the pending top-line message.  If the moon
+        // phase preamble already paged the welcome line, the message currently
+        // on the top line is the preamble; otherwise it's the welcome line, or
+        // nothing at all, if that line had wrapped and paged itself already
+        // (see the same guard above).
+        if (game._pending_message) await topl_more();
+        await ask_do_tutorial();
+    }
 
     // C ref: maybe_do_tutorial() tutorial-yes branch — ask_do_tutorial() set up
     // game._tutorial_level via do_tutorial_goto().  Page the deferred-goto
@@ -516,7 +528,10 @@ async function maybe_do_tutorial(preambleShownMore) {
         // Step-13 screen: "Entering the tutorial.--More--" over the previous
         // level (game.level not yet swapped).
         await pline('Entering the tutorial.');
-        await topl_more();
+        // C: the --More-- comes from the docrt()/cls() of goto_level() finding
+        // toplin == NEED_MORE.  After an ESC'd --More-- (WIN_STOP) the message
+        // is silently accumulated, toplin stays empty, and no --More-- shows.
+        if (!game._winStop) await topl_more();
         await enter_tutorial_level();
     }
 }
@@ -589,7 +604,10 @@ function sequester_inventory_for_tutorial() {
         setnotworn(obj);
         freeinv(obj);
     }
-    g._tutorial_saved_state = { invent: saved };
+    // nhl_gamestate() also stashes svs.spl_book and zeroes it, so the hero
+    // knows no spells inside the tutorial.
+    g._tutorial_saved_state = { invent: saved, spl_book: g.spl_book };
+    delete g.spl_book;      /* spell.js spl_book() recreates a blank book lazily */
 }
 
 function engr_at_tut(x, y) {
@@ -1858,6 +1876,11 @@ export async function moveloop_input_redraw() {
     // (which has no worn gear, so this recomputes the same base 10).
     find_ac();
     if (g.context?.mv && !Blind()) return;
+    // C ref: cmd.c rhack() — the 'm' prefix and its command are ONE rhack()
+    // call (`goto got_prefix_input`), so no moveloop_core() iteration, and no
+    // once-per-input redraw (a hallucinating hero's display-rng draws), runs
+    // between them.  Our do_reqmenu returns early; _m_fresh marks that gap.
+    if (g.context?._m_fresh) return;
     const dsp = await import('./display.js');
     if (Hallucination()) {
         // `see_monsters(); see_objects(); see_traps(); if (u.uswallow)
@@ -1932,6 +1955,13 @@ export async function moveloop_core() {
             await moveloop_turn();
         }
     }
+
+    // C ref: end.c really_done() never returns to moveloop_core() (it ends in
+    // nh_terminate()).  A monster that killed the hero during moveloop_turn()
+    // must not fall through to the redraw / command read below: the recorded
+    // session stops at the key that finished the game, so the keys still queued
+    // after it were never delivered to NetHack.
+    if (g.program_state?.gameover) return;
 
     // C ref: allmain.c moveloop_core():445 — "the Amulet of Yendor gives a wish
     // when initially picked up": once per game, at the first player-input

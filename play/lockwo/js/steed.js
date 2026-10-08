@@ -20,7 +20,7 @@
 // through to the slip roll.  They are kept as guards (matching C order) but
 // consume no RNG, so leaving them un-modelled in detail is RNG-faithful.
 
-import { game } from './gstate.js';
+import { game, hooks } from './gstate.js';
 import { rnd, rn1, rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { pline, flush_screen, newsym, update_topl, urgent_topl, unmap_object,
@@ -69,7 +69,9 @@ function Monnam_steed(mtmp) {
 async function losehp(n) {
     const u = game.u;
     if (!u) return;
+    hooks.end_running?.(true); // hack.c:4266
     u.uhp -= n;
+    { const { showdamage } = await import('./hack.js'); await showdamage(n); }
     if (u.uhp > u.uhpmax) {
         u.uhpmax = u.uhp;
         return;

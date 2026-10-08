@@ -973,18 +973,19 @@ export async function try_restore_save() {
     } else if (restoredWizard || restoredExplore) {
         set_playmode();
     }
-    // C restore.c:596 — role_init() re-derivation runs even on restore.
-    // Its only surviving effect is the RNG burn (ldrgend/nemgend and any
-    // selection draws); urole/urace/quest_status/flags are overwritten
-    // from the payload below, like C's Sfi. pantheon is saved/restored:
-    // C sees the launch -1 here, then Sfi overwrites the selection.
-    // (game.plname already holds the save name, so plnamesuffix never
-    // prompts; idempotent for dashless names like C's launch parse.)
-    const savedPantheon = game.flags.pantheon;
-    game.flags.pantheon = -1;
+    // C restore.c:596 — role_init() re-derivation runs even on restore,
+    // but AFTER Sfi_flag `:571` restored flags (incl. pantheon): C sees
+    // the RESTORED pantheon here, never the launch -1, so the new-game
+    // arms (role.c `:2009` gender re-check, `:2064–2077` pantheon re-roll)
+    // are skipped and only ldrgend/nemgend burn RNG. Forcing pantheon to
+    // -1 re-rolls deities for godless roles (Priest, role.c:285) — a
+    // spurious randrole rn2(13) C never draws — so role_init runs with
+    // the restored flags intact. urole/urace/quest_status are overwritten
+    // from the payload below, like C's Sfi. (game.plname already holds
+    // the save name, so plnamesuffix never prompts; idempotent for
+    // dashless names like C's launch parse.)
     const { role_init } = await import('./roles.js');
     await role_init();
-    game.flags.pantheon = savedPantheon;
     // C: iflags (perm_invent, graphics) stay from nethackrc; not in save.
     game.context = { ...(payload.context || {}) };
     game.moves = payload.moves | 0;

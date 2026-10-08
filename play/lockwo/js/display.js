@@ -498,6 +498,14 @@ function mimics_an_object(mon) {
     return t === M_AP_OBJECT || t === M_AP_FURNITURE;
 }
 
+// C ref: display.c display_monster() `sensed` — a disguised monster the hero
+// senses (telepathy, Detect_monsters, Protection_from_shape_changers) shows
+// as itself.
+function mimic_sensed(mon) {
+    return M_AP_TYPE(mon) !== M_AP_NOTHING
+        && !!((game.u?.uprops?.Protection_from_shape_changers ?? 0) || _sensemon(mon));
+}
+
 // C ref: display.h see_with_infrared(mon) = (!Blind && Infravision &&
 // infravisible(mon->data) && couldsee(mon->mx, mon->my)).  TRUE when a
 // warm-blooded monster sits in the hero's line of sight but on a square too
@@ -1745,6 +1753,17 @@ function set_seenv(lev, x0, y0, x, y) {
     lev.seenv = (lev.seenv | 0) | SEENV_MATRIX_D[sgn(dy) + 1][sgn(dx) + 1];
 }
 
+// C ref: display.c map_location(x, y, FALSE) — update the hero's memory of one
+// square without drawing it.  background_glyph() makes the same display-rng
+// draws C's map_object() does while Hallucinating (u_on_newpos() arrival).
+export function map_location(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const bg = background_glyph(loc, x, y);
+    if (game.level?.flags?.hero_memory) remember_bg(loc, bg);
+    update_lastseentyp_d(x, y);
+}
+
 // ── feel_location ──
 // C ref: display.c:822 feel_location(x, y) — "feel the location: the hero
 // cannot see it, but is touching it".  Drives blind searching, blind movement
@@ -2031,6 +2050,10 @@ export function newsym(x, y) {
             // Detection reveals a mimic but preserves its visible disguise in map memory.
             if (detected && see_it && M_AP_TYPE(mon) !== M_AP_NOTHING)
                 mg = monster_glyph(mon, true);
+            // C ref: display.c display_monster() `sensed = mon_mimic &&
+            // (Protection_from_shape_changers || sensemon(mon))` — a mimic the
+            // hero senses (telepathy) is drawn as itself, not its disguise.
+            if (mimic_sensed(mon)) mg = monster_glyph(mon, true);
             const detAttr = (detected && !see_it && !worm_tail
                              && !(mon.mtame && !Hallucination_u())
                              && game.flags?.use_inverse !== false) ? ATR_INVERSE : 0;
@@ -2077,7 +2100,7 @@ export function newsym(x, y) {
             clear_invisible_memory(x, y);
             // C ref: display.c:1054 — this arm passes is_worm_tail(mon) too.
             const mg = (dark_worm_tail && !Hallucination_u())
-                ? worm_tail_glyph() : monster_glyph(mon, detect_monsters);
+                ? worm_tail_glyph() : monster_glyph(mon, detect_monsters || mimic_sensed(mon));
             // C ref: display.c:1046 see_it (tp_sensemon / infravision) picks
             // PHYSICALLY-seen-style 0; otherwise DETECTED -> MG_DETECT ->
             // ATR_INVERSE (wintty.c tty_print_glyph), pets excepted.
@@ -2229,13 +2252,9 @@ export async function docrt() {
     // who was just released from a stomach kept the blanked viz_array, so every
     // monster in the room rendered as a warning glyph instead of itself.
     if (game.u?.uswallow) {
-        for (let y = 0; y < ROWNO; y++)
-            for (let x = 1; x < COLNO; x++)
-                newsym(x, y);
-        if (game.u?.ux > 0 && canspotself()) {
-            const hg = hero_glyph();
-            show_glyph_cell(game.u.ux, game.u.uy, hg.ch, hg.color, false);
-        }
+        // C ref: display.c docrt_flags() `if (u.uswallow) { swallowed(1); ...}`
+        // — redraws the stomach (eight display-rng picks while Hallucinating).
+        await swallowed(1);
         return;
     }
     // C ref: display.c:1730 `if (Underwater && !Is_waterlevel(&u.uz))
@@ -3027,9 +3046,20 @@ function _dropAttrOnBlankRuns(cells) {
         if (run < ANSI_RLE_MIN_RUN) return;
         for (let i = end - run; i < end; i++) if (cells[i]) cells[i].attr = 0;
     };
+    // The encoder sees the SGR escapes the terminal emits where attribute or
+    // color changes, and those break a run of literal spaces, so only blanks
+    // sharing one rendition count toward ANSI_RLE_MIN_RUN.
+    const style = (cell) => (cell ? `${cell.attr || 0}/${cell.color ?? ''}` : '0/');
+    let runStyle = '';
     for (let c = 0; c <= cells.length; c++) {
         const blank = c < cells.length && (!cells[c] || cells[c].ch === ' ');
-        if (blank) { run++; continue; }
+        if (blank) {
+            const st = style(cells[c]);
+            if (run > 0 && st !== runStyle) { clear(c); run = 0; }
+            runStyle = st;
+            run++;
+            continue;
+        }
         clear(c);
         run = 0;
     }
@@ -3522,22 +3552,31 @@ export function note_topl(msg) {
     return msg;
 }
 
-export async function pline(msg, opts = {}) {
-    // C ref: pline.c vpline():162-190 — when a11y.accessiblemsg is set (only
-    // #lookaround forces it on, in js/cmd.js) and set_msg_xy() left a valid
-    // location for THIS message, prefix it with a direction string and reset
-    // the location.  The reset runs unconditionally, exactly like C's, so a
-    // stale location can never leak into a later unrelated message.
+// C ref: pline.c vpline():162-190 -- when a11y.accessiblemsg is set and
+// set_msg_xy()/pline_mon()/pline_xy() left a valid location for THIS message,
+// prefix it with a direction string ("(north): ...") and reset the location.
+// The reset runs unconditionally, exactly like C's, so a stale location can
+// never leak into a later unrelated message.  Both topline writers (pline()
+// and update_topl()) pass through here because C has only one (vpline).  The
+// rc option lands on game.flags.accessiblemsg (options.js set_boolean's default
+// arm); #lookaround forces a11y.accessiblemsg on around its scan (js/cmd.js).
+async function a11y_location_prefix(msg) {
     const a11y = game.a11y;
     const savedMsgLoc = a11y?.msg_loc;
     if (a11y) a11y.msg_loc = { x: 0, y: 0 };
-    if (a11y?.accessiblemsg && savedMsgLoc && isok(savedMsgLoc.x, savedMsgLoc.y)) {
+    if ((a11y?.accessiblemsg ?? game.flags?.accessiblemsg) && savedMsgLoc
+        && isok(savedMsgLoc.x, savedMsgLoc.y) && msg) {
         const { coord_desc } = await import('./getpos.js');
         const gpc = game.iflags?.getpos_coords;
         const cmode = (gpc === undefined || gpc === GPCOORDS_NONE)
             ? GPCOORDS_COMFULL : gpc;
-        msg = `${coord_desc(savedMsgLoc.x, savedMsgLoc.y, '', cmode)}: ${msg}`;
+        return `${coord_desc(savedMsgLoc.x, savedMsgLoc.y, '', cmode)}: ${msg}`;
     }
+    return msg;
+}
+
+export async function pline(msg, opts = {}) {
+    msg = await a11y_location_prefix(msg);
     const suppressHistory = !!opts.suppressHistory;
     if (msgtype_suppressed(msg)) return;
     // C ref: win/tty/topl.c update_topl() `skip`: once a --More-- was
@@ -3547,6 +3586,7 @@ export async function pline(msg, opts = {}) {
     // C ref: pline.c vpline():266-274 — vision_recalc() FIRST, then
     // flush_screen(), which is what runs bot() when disp.botl is set.
     pline_vision_flush();
+    if (game._noticeQueue?.length) await hooks.flushNotices();
     await botl_flush();
     _buildScreenOutput();
     const cur = game._pending_message || '';
@@ -3711,6 +3751,10 @@ export async function topl_more_ext(extraChars, prewrapped = null) {
     if (curx >= CO - 8) {
         curx = 0;
         cury += 1;
+        /* topl_putsym('\n') ends with `if (cw->curx == 0) cl_end();`, which
+           blanks the whole new row before "--More--" is written on it. */
+        if (cury < disp.rows)
+            for (let x = 0; x < disp.cols; x++) disp.setCell(x, cury, ' ', NO_COLOR, 0);
     }
     for (let i = 0; i < DEFMORESTR.length && curx + i < CO; i++)
         disp.setCell(curx + i, cury, DEFMORESTR[i], NO_COLOR, 0);
@@ -3866,6 +3910,7 @@ export function timebot_sync() {
 }
 
 export async function update_topl(bp) {
+    bp = await a11y_location_prefix(bp);
     if (msgtype_suppressed(bp)) return;
     // C ref: pline.c vpline():129 `strncpy(gp.prevmsg, line, BUFSZ)` — the LAST
     // INDIVIDUAL message, which is what Norep()'s dedup compares against.  It is
@@ -3878,6 +3923,7 @@ export async function update_topl(bp) {
     // (i.e. bot()); this port calls update_topl() directly at many of C's
     // pline() sites, so both happen here too, in that order.
     pline_vision_flush();
+    if (game._noticeQueue?.length) await hooks.flushNotices();
     await botl_flush();
     _buildScreenOutput();
     const n0 = bp.length;
@@ -4078,6 +4124,7 @@ function topl_cursor_after(str) {
 // prompt.  resp lists the allowed letters (an embedded ESC marks hidden,
 // always-acceptable choices); def is returned on space/return/ESC.
 export async function y_n(query, resp = 'yn\x1b', def = 'n') {
+    game.yn_number = 0;
     if (game._yn_need_more && (!game._winStop || game._winNoStop)) {
         await topl_more();
         // Acking a deferred --More-- is where a pending status redraw lands:
@@ -4187,11 +4234,61 @@ export async function y_n(query, resp = 'yn\x1b', def = 'n') {
             return answered(def);
         }
         const lc = ch.toLowerCase();
-        if (resp.includes(lc)) {
-            game._toplin = 0;
-            return answered(lc);
+        // C ref: topl.c tty_yn_function():495-545 -- when '#' is an allowed
+        // response, '#' or a digit starts a count: the typed digits echo after
+        // the prompt until a non-digit ends the number (0 answers 'n', ESC or
+        // a stray key abandons it and re-prompts).  The count lands in
+        // yn_number, which askchain() uses to split a stack.
+        const digit_ok = resp.includes('#') && c >= 48 && c <= 57;
+        if (!resp.includes(lc) && !digit_ok) continue;
+        if (lc === '#' || digit_ok) {
+            let n_len = 1, value = 0, abort = false;
+            let typed = '#';
+            if (lc !== '#') { typed += ch; n_len++; value = c - 48; }
+            const echo = async () => {
+                game._pending_message = full + typed;
+                await flush_screen(1);
+                if (disp?.setCursor) {
+                    const [curx, cury] = topl_cursor_after(full + typed);
+                    disp.setCursor(curx, cury);
+                }
+            };
+            let z;
+            do {
+                await echo();
+                game._modal_screen = 'topl';
+                z = await nhgetch();
+                delete game._modal_screen;
+                if (z >= 48 && z <= 57) {
+                    value = value * 10 + (z - 48);
+                    typed += String.fromCharCode(z); n_len++;
+                } else if (z === 121 /* y */ || z === 27 || z === 32 || z === 13 || z === 10) {
+                    if (z === 27) value = -1;   /* abort */
+                    z = 10;                     /* break */
+                } else if (z === 8 || z === 127) {
+                    if (n_len <= 1) { value = -1; break; }
+                    value = Math.trunc(value / 10);
+                    typed = typed.slice(0, -1); n_len--;
+                } else {
+                    value = -1; abort = true;   /* abort */
+                    break;
+                }
+            } while (z !== 10);
+            if (value > 0) {
+                game.yn_number = value;
+                game._toplin = 0;
+                return answered('#');
+            }
+            if (value === 0 && !abort) {
+                game._toplin = 0;
+                return answered('n');           /* 0 => "no" */
+            }
+            /* remove number from top line, then try again */
+            game._pending_message = full.trimEnd();
+            continue;
         }
-        // invalid response: re-prompt (no bell modeled).
+        game._toplin = 0;
+        return answered(lc);
     }
 }
 
@@ -5346,6 +5443,26 @@ export function reglyph_darkroom() {
     /* C then aliases gs.showsyms[S_darkroom]; js/symbols.js owns showsyms and
        cannot be imported here (it pulls in js/options.js, which imports this
        file), so the symbol alias is left to that module. */
+}
+
+// C ref: display.c reglyph_darkroom() as goto_level() (do.c:1715) calls it right
+// after a level is loaded, for the live path's `remembered_glyph` memory (the
+// numeric function above has no live caller).  Without dark_room+use_color, or on
+// the Rogue level, a remembered S_darkroom becomes S_room if the square was lit
+// and GLYPH_NOTHING otherwise, so a Rogue-level floor square the hero felt while
+// leaving (feel_location's S_darkroom) comes back blank on re-entry.
+export function reglyph_remembered_darkroom() {
+    const lvl = game.level;
+    if (!lvl) return;
+    if (game.flags?.dark_room && game.iflags?.use_color
+        && !Is_rogue_level(game.u?.uz)) return;
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = lvl.at(x, y);
+            if (!loc?.remembered_glyph?.darkroom) continue;
+            if (loc.waslit) delete loc.remembered_glyph.darkroom;
+            else loc.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false };
+        }
 }
 
 // C ref: display.c:1877 show_glyph(x, y, glyph) — store the glyph in the 3rd

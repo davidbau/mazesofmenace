@@ -9,6 +9,7 @@ import {
     AUTOUNLOCK_KICK,
     AUTOUNLOCK_UNTRAP,
     CONFUSION,
+    CQ_CANNED,
     D_BROKEN,
     D_CLOSED,
     D_ISOPEN,
@@ -53,6 +54,9 @@ import { is_magic_key, touch_artifact } from './artifacts.js';
 import { stop_occupation } from './allmain.js';
 import { acurrstr, acurr, exercise } from './attrib.js';
 import {
+    cmdq_add_ec,
+    cmdq_add_dir,
+    ext_func_tab_from_func,
     get_adjacent_loc,
     getdir,
     set_occupation,
@@ -127,7 +131,7 @@ import {
 } from './objnam.js';
 import { container_at, doloot, encumber_msg } from './pickup.js';
 import { is_quest_artifact } from './questpgr.js';
-import { rn2, rnl } from './rng.js';
+import { rn2, rnd, rnl } from './rng.js';
 import { costly_spot } from './shk.js';
 import {
     b_trapped,
@@ -778,7 +782,7 @@ export async function pick_lock(pick, rx, ry, container, state = game, env = {})
             else if (picktyp !== LOCK_PICK) { verb = 'unlock'; it = true; }
             else verb = 'pick';
             if (autounlock && (state.flags.autounlock & AUTOUNLOCK_UNTRAP)
-                && could_untrap(false, true, state)
+                && await could_untrap(false, true, state)
                 && (c = otmp.tknown ? (otmp.otrapped ? yes : no)
                     : await ask(safe_qbuf('Check ', ' for a trap?', otmp,
                         yname, ysimple_name, 'this', state))) !== no) {
@@ -869,7 +873,7 @@ export async function pick_lock(pick, rx, ry, container, state = game, env = {})
             return PICKLOCK_LEARNED_SOMETHING;
         default: {
             let c;
-            if ((state.flags.autounlock & AUTOUNLOCK_UNTRAP) && could_untrap(false, false, state)
+            if ((state.flags.autounlock & AUTOUNLOCK_UNTRAP) && await could_untrap(false, false, state)
                 && (c = await ask('Check this door for a trap?')) !== no) {
                 if (c === quit) return PICKLOCK_DID_NOTHING;
                 await untrap(false, cc.x, cc.y, null, state);
@@ -1043,53 +1047,16 @@ export async function doforce(state = game) {
     return ECMD_TIME;
 }
 
-// C ref: lock.c:859-873, the switch that names a door doopen_indir() cannot
-// pull at. It is translated whole because it is one statement, but only its
-// default arm is live.
-//
-// The reason is the seam's own mask guard, not closed_door(). closed_door() is
-// a bit test (`doormask & (D_LOCKED | D_CLOSED)`), so it admits D_TRAPPED
-// combinations as well. The auto-open caller narrows its input through
-// requireAutoopenClosedDoor() in js/hack.js, while explicit doopen() admits
-// the broken, missing, already-open, and locked masks named by this switch.
-//
-// C also sets a `locked` flag in the default arm; see the caller for why this
-// port has no reader for it.
-function notClosedMessage(door) {
-    switch (doorMask(door)) {
-    case D_BROKEN:
-        return ' is broken';
-    case D_NODOOR:
-        return 'way has no door';
-    case D_ISOPEN:
-        return ' is already open';
-    default:
-        return ' is locked';
-    }
-}
-
-// C ref: lock.c doopen() (773-776). The `o` command handler; delegates to
+// C ref: lock.c doopen() (773-776), explicit command wrapper.
 // doopen_indir(0, 0).
 export async function doopen(state = game) {
     return doopen_indir(0, 0, state);
 }
 
-// C ref: lock.c doopen_indir() (780-923), translated whole. Two callers reach
-// it: doopen() above passes (0, 0) and the hero chooses a direction; hack.c
-// test_move() passes a nonzero <x,y> when the hero walks into a closed door
-// with `autoopen` set, skipping the direction prompt and every precondition
-// hack.js already refused.
-//
-// Covered: nohands, the pit dirprompt, get_adjacent_loc, the u_at -> doloot()
-// redirect, the pit refusal, stumble_on_door_mimic, Confusion/Stunned,
-// the glyph-comparison block, the portcullis and non-door messages (drawbridge,
-// container_at, no-door), the doormask switch with the autounlock apply-key
-// path, verysmall, and the `door is known to be CLOSED` roll with both of its
-// outcomes.
-//
-// Not covered, each throwing: the D_TRAPPED half of the success arm with its
-// trapped-door opening and shop add_damage() bookkeeping, and the AUTOUNLOCK_KICK path
-// that queues dokick with cmdq_add_dir().
+// C ref: lock.c doopen_indir() (780-921), translated whole. doopen()
+// prompts for a direction; hack.c test_move() passes the walking target.
+// A queued autokick returns ECMD_OK so time waits for that command, while
+// explicit opening (including its trap) returns ECMD_TIME.
 export async function doopen_indir(x, y, state = game, env = {}) {
     // Reject unknown keys so a test substitution cannot silently fall through
     // to the real operation.
@@ -1098,7 +1065,7 @@ export async function doopen_indir(x, y, state = game, env = {}) {
             throw new TypeError(`doopen_indir does not read env.${name}`);
     }
     const message = env.message ?? ttyPline;
-    const random = env.random ?? { rn2, rnl };
+    const random = { rn2, rnd, rnl, ...env.random };
     const u = state.u;
 
     // lock.c:788-791. nohands check.
@@ -1138,7 +1105,7 @@ export async function doopen_indir(x, y, state = game, env = {}) {
     }
 
     // lock.c:820-821. Door mimic check.
-    if (stumble_on_door_mimic(cc.x, cc.y, state))
+    if (await stumble_on_door_mimic(cc.x, cc.y, state))
         return ECMD_TIME;
 
     // lock.c:825-826. When choosing a direction is impaired, use a turn
@@ -1189,28 +1156,30 @@ export async function doopen_indir(x, y, state = game, env = {}) {
 
     // lock.c:855-896. Door is not closed.
     if (!(doorMask(door) & D_CLOSED)) {
-        await message(
-            messageAt(`This door${notClosedMessage(door)}.`, cc.x, cc.y,
-                state),
-            state,
-        );
-        // lock.c:876-894. Offer a locked door to flags.autounlock.
-        const locked = (doorMask(door) & D_LOCKED) !== 0;
+        let mesg, locked = false;
+        switch (doorMask(door)) {
+        case D_BROKEN: mesg = ' is broken'; break;
+        case D_NODOOR: mesg = 'way has no door'; break;
+        case D_ISOPEN: mesg = ' is already open'; break;
+        default: mesg = ' is locked'; locked = true; break;
+        }
+        await message(messageAt(`This door${mesg}.`, cc.x, cc.y, state), state);
         if (locked && state.flags?.autounlock) {
             const autounlockFlags = state.flags.autounlock;
             u.dz = 0; /* should already be 0 since hero moved toward door */
-            if ((autounlockFlags & AUTOUNLOCK_APPLY_KEY) !== 0) {
-                const unlocktool = autokey(true, state);
-                if (unlocktool) {
-                    res = (await pick_lock(unlocktool, cc.x, cc.y, null, state))
-                        ? ECMD_TIME : ECMD_OK;
-                }
-            } else if ((autounlockFlags & AUTOUNLOCK_KICK) !== 0) {
-                // lock.c:884-893. AUTOUNLOCK_KICK asks "Kick it?" and queues
-                // dokick with cmdq_add_dir(), which is not ported.
-                throw new UnsupportedLockError(
-                    'AUTOUNLOCK_KICK in doopen_indir()',
-                );
+            const unlocktool = (autounlockFlags & AUTOUNLOCK_APPLY_KEY) !== 0
+                ? autokey(true, state) : null;
+            if (unlocktool) {
+                res = (await pick_lock(unlocktool, cc.x, cc.y, null, state))
+                    ? ECMD_TIME : ECMD_OK;
+            } else if ((autounlockFlags & AUTOUNLOCK_KICK) !== 0
+                       && !u.usteed
+                       && await yn_function('Kick it?', 'ynq', 'q', true, state)
+                          === 'y'.charCodeAt(0)) {
+                cmdq_add_ec(CQ_CANNED, ext_func_tab_from_func('dokick'), state);
+                cmdq_add_dir(CQ_CANNED,
+                    Math.sign(cc.x - u.ux), Math.sign(cc.y - u.uy), 0, state);
+                res = ECMD_OK;
             }
         }
         return res;
@@ -1235,16 +1204,13 @@ export async function doopen_indir(x, y, state = game, env = {}) {
             messageAt('The door opens.', cc.x, cc.y, state), state,
         );
         if (doorMask(door) & D_TRAPPED) {
-            // lock.c:908-911. The whole trapped-door opening branch remains
-            // unported; b_trapped() is available for its eventual caller.
-            throw new UnsupportedLockError(
-                'D_TRAPPED door trap in doopen_indir()',
-            );
+            await b_trapped('door', FINGER, state, { ...env, random, message });
+            setDoorMask(door, D_NODOOR);
+            if (in_rooms(cc.x, cc.y, SHOPBASE, state).length)
+                note_unported('shk.c add_damage');
+        } else {
+            setDoorMask(door, D_ISOPEN);
         }
-        // detect.c cvt_sdoor_to_door() sets both spellings of struct rm's
-        // shared mask field; every reader in the port accepts either.
-        door.flags = D_ISOPEN;
-        door.doormask = D_ISOPEN;
         feel_newsym(cc.x, cc.y, state);
         recalc_block_point(cc.x, cc.y, state);
     } else {
@@ -1259,18 +1225,13 @@ export async function doopen_indir(x, y, state = game, env = {}) {
     return ECMD_TIME;
 }
 
-// C ref: lock.c stumble_on_door_mimic() (759-769). Checks whether a monster
-// at (x,y) is a door mimic and, if so, forces the hero to interact with it.
-// stumble_onto_mimic() is unported, so this function throws when the mimic
-// condition is met. In normal play the condition requires a shapechanger
-// mimicking a closed door, which is rare enough that the throw is acceptable.
-export function stumble_on_door_mimic(x, y, state = game) {
+// C ref: lock.c stumble_on_door_mimic() (759-769).
+export async function stumble_on_door_mimic(x, y, state = game) {
     const mtmp = m_at(x, y, state);
     if (mtmp && is_door_mappear(mtmp)
         && !Protection_from_shape_changers(state)) {
-        throw new UnsupportedLockError(
-            'stumble_onto_mimic() in stumble_on_door_mimic()',
-        );
+        await stumble_onto_mimic(mtmp, state, { state, pline: ttyPline });
+        return true;
     }
     return false;
 }
@@ -1552,9 +1513,9 @@ function Stunned(state) {
 // D_BROKEN, already closed/locked), the verysmall refusal, the rn2(25) close
 // roll with both outcomes, and the exercise/resist path.
 //
-// Not covered, each throwing: stumble_on_door_mimic (mimic path),
-// Confusion/Stunned (confdir throws first), and obstructed's visible-monster
-// arm.
+// Not covered, each throwing: Confusion/Stunned (confdir throws first),
+// and obstructed's visible-monster arm. The source door-mimic check calls
+// the canonical reveal owner before it consumes a turn.
 export async function doclose(state = game) {
     const u = state.u;
 
@@ -1594,8 +1555,8 @@ export async function doclose(state = game) {
         return res;
     }
 
-    // lock.c:987-988. stumble_on_door_mimic throws for the mimic path.
-    if (stumble_on_door_mimic(x, y, state))
+    // lock.c:987-988. Revealing a door mimic consumes a turn.
+    if (await stumble_on_door_mimic(x, y, state))
         return ECMD_TIME;
 
     // lock.c:992-993. Unreachable in this port: getdir() calls confdir(), which

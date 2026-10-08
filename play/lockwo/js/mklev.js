@@ -36,7 +36,7 @@ import {
     l_selection_or, l_selection_grow, l_selection_fillrect, l_selection_rect,
     l_selection_randline, W_ANY, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST,
 } from './selvar.js';
-import { Is_special, builds_up, In_hell, Is_valley, dunlevs_in_dungeon, level_difficulty_c } from './dungeon.js';
+import { Is_special, builds_up, In_hell, Is_valley, dunlevs_in_dungeon, level_difficulty_c, init_mapseen } from './dungeon.js';
 import { In_quest, BR_PORTAL, BR_NO_END1, BR_NO_END2,
          Is_knox_level, Is_earthlevel } from './const.js';
 import { roles, races } from './role.js';
@@ -48,7 +48,7 @@ import { makemon as make_monster, rndmonst, mkclass,
          name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel,
          name_gender_hint, MGEND_MALE, MGEND_FEMALE, MGEND_NEUTRAL,
          newcham as newcham_mk } from './makemon.js';
-import { m_at, newsym, impossible } from './display.js';
+import { m_at, newsym, impossible, map_location } from './display.js';
 import { wiz_flip_lregions } from './levels/wiz_common.js';
 import { getbones } from './bones.js';
 import { set_corpsenm } from './mkobj.js';
@@ -184,9 +184,19 @@ function stairway_find_special_dir(up) {
 
 // ── Hero placement (C ref: stairs.c, mkmaze.c) ──
 
+// C ref: dungeon.c u_on_newpos() — the level-change arm (u.uz != u.uz0)
+// map_location()s the arrival square, which makes display-rng draws while
+// Hallucinating.
 function u_on_newpos(x, y) {
-    game.u.ux = x;
-    game.u.uy = y;
+    const u = game.u;
+    u.ux = x;
+    u.uy = y;
+    u.uundetected = 0;
+    if (u.usteed) { u.usteed.mx = x; u.usteed.my = y; }
+    if (u.uz?.dnum !== u.uz0?.dnum || u.uz?.dlevel !== u.uz0?.dlevel) {
+        u.ux0 = x; u.uy0 = y;
+        map_location(x, y);
+    }
 }
 
 // C ref: mkmaze.c bad_location() — full predicate; two missing terms restored:
@@ -343,6 +353,7 @@ export function l_nhcore_init() {
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
+    init_mapseen(g.u.uz);           // C ref: mklev.c:1582, before getbones()
     if (await getbones()) return;   // bones loaded → level already grafted
     g.in_mklev = true;
     await makelevel();
@@ -462,6 +473,13 @@ async function makelevel() {
     // fall through to the regular generator (their sessions diverge earlier
     // anyway, so this cannot regress them).
     const slev = Is_special(g.u?.uz);
+    // C ref: mklev.c:1269 makemaz("tut-1") — a #wizmakemap inside the tutorial
+    // rebuilds tut-1 from its Lua program, not an ordinary random level.
+    if (slev && slev.proto === 'tut-1') {
+        const { makemaz_tutorial } = await import('./tutorial.js');
+        makemaz_tutorial();
+        return;
+    }
     if (slev && slev.proto && slev.proto.toLowerCase() === 'bigrm') {
         await makemaz_bigroom();
         // C ref: bigrm-10.lua's LR_UPSTAIR levregion.  Its map-relative
@@ -6877,11 +6895,29 @@ function extend_spine(locale, wall_there, dx, dy) {
     if (locale[0][1] && locale[2][1] && locale[0][ny] && locale[2][ny]) return 0;
     return 1;
 }
+// C ref: decl.c gb.bughack — the Baalzebub "insect" region that wall_cleanup()
+// and fix_wall_spines() treat specially while baalz_fixup() wallifies it.
+// x1/y1 start at COLNO/ROWNO so within_bounded_area() fails on its first test
+// everywhere else.  See js/levels/baalz.js.
+export const bughack = {
+    inarea: { x1: COLNO, y1: ROWNO, x2: 0, y2: 0 },
+    delarea: { x1: COLNO, y1: ROWNO, x2: 0, y2: 0 },
+};
+export function bughack_reset() {
+    bughack.inarea = { x1: COLNO, y1: ROWNO, x2: 0, y2: 0 };
+    bughack.delarea = { x1: COLNO, y1: ROWNO, x2: 0, y2: 0 };
+}
+function in_bughack_area(x, y) {
+    const a = bughack.inarea;
+    return x >= a.x1 && x <= a.x2 && y >= a.y1 && y <= a.y2;
+}
+
 function wall_cleanup(x1, y1, x2, y2) {
     const map = game.level;
     if (!map) return;
     for (let x = x1; x <= x2; x++)
         for (let y = y1; y <= y2; y++) {
+            if (in_bughack_area(x, y)) continue;
             const loc = map.at(x, y);
             const typ = loc?.typ ?? STONE;
             if (!(IS_WALL(typ) && typ !== DBWALL)) continue;
@@ -6903,10 +6939,12 @@ export function fix_wall_spines(x1, y1, x2, y2) {
             const loc = map.at(x, y);
             const typ = loc?.typ ?? STONE;
             if (!(IS_WALL(typ) && typ !== DBWALL)) continue;
+            // C: loc_f is iswall inside the baalz insect, iswall_or_stone elsewhere.
+            const lf = in_bughack_area(x, y) ? isWallTile : isWallOrStone;
             const locale = [
-                [isWallOrStone(x-1,y-1), isWallOrStone(x-1,y), isWallOrStone(x-1,y+1)],
-                [isWallOrStone(x,y-1), 0, isWallOrStone(x,y+1)],
-                [isWallOrStone(x+1,y-1), isWallOrStone(x+1,y), isWallOrStone(x+1,y+1)],
+                [lf(x-1,y-1), lf(x-1,y), lf(x-1,y+1)],
+                [lf(x,y-1), 0, lf(x,y+1)],
+                [lf(x+1,y-1), lf(x+1,y), lf(x+1,y+1)],
             ];
             const bits = (extend_spine(locale, isWallTile(x,y-1), 0, -1) << 3)
                 | (extend_spine(locale, isWallTile(x,y+1), 0, 1) << 2)
@@ -7395,8 +7433,8 @@ function bury_object(otmp) {
     otmp.where = 'buried';
     const lvl = game.level;
     if (lvl) {
-        if (!lvl.buriedobjs) lvl.buriedobjs = [];
-        lvl.buriedobjs.unshift(otmp); /* C add_to_buried(): head insertion */
+        if (!lvl.buriedobjlist) lvl.buriedobjlist = [];
+        lvl.buriedobjlist.unshift(otmp); /* C add_to_buried(): head insertion */
     }
     return otmp;
 }
@@ -7696,14 +7734,20 @@ function level_finalize_topology() {
     // consumes no RNG, so running it here is terrain-equivalent and keeps the
     // PRNG aligned.  Without it, irregular lit rooms render straight walls
     // instead of corners.  C ref: mklev.c wallification().
-    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    // C ref: sp_lev.c lspo_finalize_level() skips its level-wide wallification
+    // on a corrmaze level so the Baalzebub insect legs survive.
+    if (!game.level?.flags?.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;
         for (let i = 0; i < nroom; i++)
             topologize(game.level.rooms?.[i]);
     }
     set_wall_state();
-    const rooms = game.level?.rooms ?? [];
+    // C: `for (ridx = 0; ridx < SIZE(svr.rooms); ridx++)` — the flat array also
+    // holds the subrooms (rooms[MAXNROFROOMS + 1 ...]), which is where the
+    // Oracle's Delphi chamber lives.
+    const rooms = [...(game.level?.rooms ?? []), ...(game.level?.subrooms ?? [])];
     for (let i = 0; i < rooms.length; i++) {
         const rm = rooms[i];
         if (rm && rm.rtype != null) rm.orig_rtype = rm.rtype;
