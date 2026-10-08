@@ -57,6 +57,7 @@ import {
     GETOBJ_ALLOWCNT,
     GETOBJ_PROMPT,
     GRAVE,
+    G_GENOD,
     HAND,
     HALF_PHDAM,
     IS_ALTAR,
@@ -153,7 +154,7 @@ import {
 import { reset_trapset } from './apply.js';
 import { bones_include_name } from './bones.js';
 import { obj_resists } from './bury.js';
-import { buried_ball_to_punishment, bury_objs, use_pick_axe2 } from './dig.js';
+import { buried_ball_to_punishment, bury_objs, rot_corpse, use_pick_axe2 } from './dig.js';
 import { ballfall, ballrelease, drag_down, placebc, unplacebc } from './ball.js';
 import { next_to_u } from './apply_next_to_u.js';
 import {
@@ -244,7 +245,7 @@ import { makemon } from './makemon_create.js';
 import { fumaroles, movebubbles } from './mkmaze.js';
 import {
     healmon, kill_genocided_monsters, m_in_air, m_into_limbo, mnexto, mondied, newcham, pm_to_cham, set_ustuck,
-    wake_nearto,
+    wake_nearto, zombie_form,
 } from './mon.js';
 import { m_at } from './monst.js';
 import { gulp_blnd_check } from './mhitu.js';
@@ -269,8 +270,8 @@ import {
     S_ZOMBIE,
 } from './monsters.js';
 import {
-    is_pick, isCandle, obj_meld, obj_nexto_xy, objectType, place_object,
-    pudding_merge_message, remove_object, set_bknown, splitobj, weight,
+    free_omid, free_omonst, is_pick, isCandle, obj_meld, obj_nexto_xy, objectType, place_object,
+    pudding_merge_message, remove_object, set_bknown, set_corpsenm, splitobj, weight,
 } from './obj.js';
 import { oinit } from './o_init.js';
 import {
@@ -558,6 +559,26 @@ export async function revive_mon(body, _timeout, rawEnv = {}) {
         }
         if (!obj_has_timer(body, action, state))
             start_timer(when, TIMER_OBJECT, action, body, state);
+    }
+}
+
+// C ref: do.c zombify_mon() (2299-2317). run_timers has already released
+// this callback's object timer count before species conversion and revival.
+export async function zombify_mon(body, timeout, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const env = { ...rawEnv, state };
+    const zmon = zombie_form(state.mons[body.corpsenm]);
+    if (zmon !== NON_PM && !(state.mvitals[zmon].mvflags & G_GENOD)) {
+        if (body.oextra?.omid) free_omid(body);
+        if (body.oextra?.omonst) free_omonst(body);
+        // set_corpsenm -> weight consumes eaten_stat for a partly eaten
+        // corpse. Keep the canonical owner available through its object seam.
+        const { eaten_stat } = await import('./eat.js');
+        env.hooks = { eatenStat: eaten_stat, ...env.hooks };
+        set_corpsenm(body, zmon, env);
+        await revive_mon(body, timeout, env);
+    } else {
+        await rot_corpse(body, timeout, env);
     }
 }
 
@@ -1881,16 +1902,13 @@ export function preflight_dropx(obj, env = {}) {
         throw new UnsupportedDropError('the box whose lock is being picked');
     if (!u || u.uswallow)
         throw new UnsupportedDropError('a swallowed hero');
-    // do.c dropz():836 maps an object specially only for Blind && Levitation.
-    // can_reach_floor(TRUE) below already refuses that pair; grounded blindness
-    // and Hallucination both reach the ordinary place_object()/stackobj()/
-    // newsym() tail. display.c owns Hallucination's glyph draws there.
+    // Direct dropx()/dropz() callers, including confused reverse_loot(), do
+    // not test can_reach_floor(). That test belongs to drop() before its
+    // hitfloor() branch; dropz maps Blind && Levitation after stacking.
     if (u.uinwater || on_level(u.uz, state.air_level)
         || on_level(u.uz, state.water_level)) {
         throw new UnsupportedDropError('underwater or special-level display');
     }
-    if (!can_reach_floor(true, state))
-        throw new UnsupportedDropError('an unreachable floor');
     // dig.c:341 drops uwep directly; do.c:810 clears it in dropz after
     // extraction, shipping and altar handling. Admit only that primary mask.
     const primaryWeapon = state.uwep === obj && obj.owornmask === W_WEP;
@@ -2147,8 +2165,7 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
         }
     }
     stackobj(obj, normalized);
-    if (withImpact && heroIsBlind(normalized.state)
-        && Levitation(normalized.state)) {
+    if (heroIsBlind(normalized.state) && Levitation(normalized.state)) {
         map_object(obj, 0, normalized.state);
     }
     requiredDropHook(normalized, 'newsym')(

@@ -1299,7 +1299,9 @@ function Yobjnam2(obj, verb) {
 /**
  * C ref: potion.c strange_feeling — D-3680: the H-only local clone is
  * deleted; wield.c:943 (chwepon) calls the live detect.js export, which
- * reads the Hallucination macro (H||HH, potion.c:1465). The clone's inline
+ * reads the Hallucination macro via display.js (HH && !resist,
+ * youprop.h:120; D-3688 — the D-3680 "H||HH extrinsic arm" rationale was
+ * wrong: C has no extrinsic hallucination). The clone's inline
  * useup differed only in dead-on-this-path arms (setuwep: otmp is always
  * the scroll, never uwep — sole caller read.js seffect_enchant_weapon).
  */

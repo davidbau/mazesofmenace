@@ -234,16 +234,19 @@ function useup(otmp) {
 }
 
 /**
- * C ref: potion.c strange_feeling — beginner/Hallucination default
- * text, else txt; trycall if dknown; useup. Crystal-ball callers
- * pass a null detector and skip this.
+ * C ref: potion.c strange_feeling `:1461–1476` — beginner/Hallucination
+ * default text, else txt; trycall if dknown; useup. Crystal-ball callers
+ * pass a null detector and skip this. `Hallucination` at `:1465` is the
+ * youprop.h:120 macro (HHallucination && !Halluc_resistance — "solely a
+ * timeout", `:115`; no extrinsic hallucination, only extrinsic
+ * hallucination *resistance*), read via the live display.js export
+ * (D-1493; D-3688 gates the D-3680 H||HH shadow on the resist check).
  */
 export async function strange_feeling(obj, txt) {
     const beginner = !!(game.flags?.beginner);
-    const Hallucination = !!(game.u?.Hallucination || game.u?.HHallucination);
     if (beginner || !txt) {
         await pline(
-            `You have a ${Hallucination ? 'normal' : 'strange'} feeling for a moment, then it passes.`,
+            `You have a ${Hallucination() ? 'normal' : 'strange'} feeling for a moment, then it passes.`,
         );
     } else {
         await pline(txt);

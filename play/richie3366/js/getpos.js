@@ -26,6 +26,7 @@ import {
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
     glyph_is_monster, GLYPH_MON_MALE_OFF, GLYPH_MON_FEM_OFF,
     glyph_is_object, objnum_to_glyph,
+    glyph_is_nothing, glyph_is_unexplored,
 } from './display.js';
 import { cansee } from './vision.js';
 import { do_screen_description } from './pager.js';
@@ -50,7 +51,7 @@ import {
     S_corr, S_litcorr, S_engroom, S_engrcorr, S_arrow_trap,
     S_upstair, S_fountain,
     S_expl_br, S_tree, S_pool, S_lava, S_lavawall,
-    S_water,
+    S_water, S_bars, S_ice, S_air, S_cloud,
     STAIRS, LADDER, LA_DOWN, ROOM, CORR, STONE, SCORR, TREE, CLOUD, IS_WALL,
     DOOR, IS_DOOR, IS_DRAWBRIDGE,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, AIR,
@@ -72,7 +73,6 @@ import { ok_to_quest } from './quest.js';
 import { on_level } from './dungeon.js';
 import { visctrl, cmd_from_func, cmdbind_get } from './dokeylist.js';
 import { distmin } from './hacklib.js';
-import { engr_at } from './engrave.js';
 import { objectNames } from './objects.js';
 import { an } from './objnam.js';
 import { select_menu_pick_one } from './options.js';
@@ -762,31 +762,6 @@ function known_vibrating_square_at(x, y) {
 }
 
 /**
- * C getpos.c gather_locs_interesting boring cmap — wall/tree/bars/ice/
- * air/cloud/lava/water/room/corr. Not S_engr* (erevealed). Integer
- * glyph_is_cmap IDs named; typ+look_shown_at stand in.
- */
-function shown_boring_cmap(x, y) {
-    if (look_shown_at(x, y)) return false;
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return false;
-    const typ = loc.typ | 0;
-    const ch = loc.disp_ch;
-    const blank = !ch || ch === ' ' || ch === '';
-    if (!(loc.seenv | 0) && blank) return false;
-    const ep = engr_at(x, y);
-    if (ep?.erevealed) return false;
-    if (IS_WALL(typ) || typ === STONE || typ === SCORR) return true;
-    if (typ === TREE || typ === IRONBARS || typ === ICE) return true;
-    if (typ === AIR || typ === CLOUD) return true;
-    if (typ === LAVAPOOL || typ === LAVAWALL) return true;
-    if (typ === POOL || typ === MOAT || typ === WATER) return true;
-    if (typ === ROOM) return true;
-    if (typ === CORR) return true;
-    return false;
-}
-
-/**
  * C ref: getpos.c gloc_filter_classify_glyph `:340-361` — cmap class of a
  * glyph for GFILTER_AREA matching: room/furniture → 1, wall/tree → 2,
  * corr → 3, water → 4, lava → 5, everything else → 0.
@@ -979,10 +954,31 @@ export function gather_locs_interesting(x, y, gloc) {
     case GLOC_VALID:
         if (getpos_getvalid) return !!getpos_getvalid(x, y);
         // FALLTHROUGH — C getpos.c:487
-    case GLOC_INTERESTING:
+    case GLOC_INTERESTING: {
+        // C `:451-452,487-503` — glyph_at reads the DISPLAYED map
+        // (gbuf: live and remembered glyphs alike), not live terrain,
+        // exactly like the GLOC_MONS/OBJS/DOOR arms above. A sensed but
+        // unseen monster (detect-monsters paints its glyph while seenv
+        // stays 0) is interesting; a seenv≠0 cell whose displayed glyph
+        // is unexplored is not. Boring-cmap list is C's verbatim.
+        const g = glyph_at(x, y);
+        const sym = glyph_is_cmap(g) ? glyph_to_cmap(g) : -1;
+        const boring = glyph_is_cmap(g)
+            && (is_cmap_wall(sym)
+                || sym === S_tree
+                || sym === S_bars
+                || sym === S_ice
+                || sym === S_air
+                || sym === S_cloud
+                || is_cmap_lava(sym)
+                || is_cmap_water(sym)
+                || sym === S_ndoor
+                || is_cmap_room(sym)
+                || is_cmap_corr(sym));
         return (gather_locs_interesting(x, y, GLOC_DOOR)
-            || !(shown_boring_cmap(x, y) || is_unexplored_loc(x, y))
+            || !(boring || glyph_is_nothing(g) || glyph_is_unexplored(g))
             || known_vibrating_square_at(x, y));
+    }
     default:
         return false;
     }

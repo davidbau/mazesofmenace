@@ -653,9 +653,21 @@ export function can_make_bones() {
     if (u.uswallow) return false;
 
     // C: non-branch levels with a MAGIC_PORTAL never leave bones
+    // (bones.c can_make_bones `:369–374`: for (ttmp = gf.ftrap; ...) if
+    // MAGIC_PORTAL). JS ftrap is level.traps; game.ftrap is the node
+    // chain when set — fresh levels leave it null, so the live array
+    // carries the check (quest.js:294 portal-find shape).
     if (!Is_branchlev(uz)) {
-        for (let t = game.ftrap; t; t = t.ntrap) {
-            if ((t.ttyp | 0) === MAGIC_PORTAL) return false;
+        const traps = game.level?.traps;
+        if (Array.isArray(traps)) {
+            for (const tr of traps) {
+                if (tr && (tr.ttyp | 0) === MAGIC_PORTAL) return false;
+            }
+        }
+        if (game.ftrap && !Array.isArray(game.ftrap)) {
+            for (let t = game.ftrap; t; t = t.ntrap) {
+                if ((t.ttyp | 0) === MAGIC_PORTAL) return false;
+            }
         }
     }
 

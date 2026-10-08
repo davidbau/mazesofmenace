@@ -1502,22 +1502,46 @@ export async function dosuspend_core() {
 }
 
 /**
+ * C ref: sys/unix/unixunix.c dosh `:343–365` ('!' port shell) — whole
+ * body in C order. SHELL (`unixconf.h:322`) and SYSCF
+ * (`config.h:232–233`) are both defined, so the shellers gate
+ * (`:348–355`) is live: without a sysconf shellers entry authorizing
+ * this user, reject with C's text (`:352`), before any subshell.
+ * Scored ESM has no sysconf (`game.sysopt.shellers` null, sys.js),
+ * so the gate always fires here; the authorized-subshell arm
+ * (`child(0)` + `execl`, `:356–364`) is unportable under Contest
+ * Rule #2 (named in the D-entry). Caller: dosh_core (cmd.c:5690).
+ * @returns {Promise<number>} 0
+ */
+export async function dosh() {
+    // C `:349–350` — !sysopt.shellers || !sysopt.shellers[0], then the
+    // live check_user_string (cmd.js; '*' allows any user, else the
+    // plname/unix-user word match — unixmain.c:696).
+    const shellers = game.sysopt?.shellers;
+    if (!shellers || !shellers[0] || !check_user_string(shellers)) {
+        /* FIXME: should no longer assume a particular command keystroke */
+        await Norep("Unavailable command '!'."); // C `:352`
+        return 0; // C `:353`
+    }
+    /* child(0)/execl `:356–364` — named omission (subshell spawn; Rule #2). */
+    return 0; // C `:364`
+}
+
+/**
  * C ref: cmd.c dosh_core `:5681–5696` (!, #shell) — in C order. SHELL
  * is defined (`unixconf.h:322`), so the live arm runs: urealtime
  * accounting over live `getnow` / `timet_delta` / `game.urealtime`,
- * then `dosh()` (`:5691`, port subshell), unportable under Rule #2
- * (named in the D-entry). With no subshell the command is
- * unavailable, so the arm falls back to C's own !SHELL text
- * (`:5693`). Caller: extcmdlist `:1860` "shell" row, wired via the
- * getline EXT_CMDS entry.
+ * then the live port `dosh()` (`:5691`), whose SYSCF shellers gate
+ * rejects here (no sysconf in scored ESM). The `:5693` !SHELL text
+ * is not compiled into the recorder build. Caller: extcmdlist
+ * `:1860` "shell" row, wired via the getline EXT_CMDS entry.
  * @returns {Promise<number>} ECMD_OK
  */
 export async function dosh_core() {
     const now = getnow(); // C `:5686`
     game.urealtime.realtime += timet_delta(now, game.urealtime.start_timing); // C `:5688`
     game.urealtime.start_timing = now; // C `:5689`
-    /* dosh() `:5691` — named omission (subshell spawn; Rule #2). */
-    await Norep(cmdnotavail, '#shell'); // C `:5693` !SHELL text
+    await dosh(); // C `:5690–5691` — port shell (shellers gate rejects here)
     game.urealtime.start_timing = getnow(); // C `:5692`
     return ECMD_OK; // C `:5695`
 }
@@ -5604,18 +5628,27 @@ export async function rhack(key) {
     }
 
     if (isMovementKey(ch)) {
-        // C ref: cmd.c set_move_cmd(dir, 0) — clear stale travel; DOMOVE_WALK
-        // unless a g/G PREFIXCMD already set DOMOVE_RUSH (keeps context.run).
+        // C ref: cmd.c set_move_cmd(dir, 0) `:1386–1400` — u.dz/dx/dy from
+        // the dir FIRST (`:1389–1391`; zdir is 0 for planar dirs, so a walk
+        // clears any stale getdir dz); the `:1396–1399` guard below reads
+        // the fresh dz, and later readers (climb_pit `:4226`
+        // `u.dz || verbose`) must not see the stale value either.
+        // DOMOVE_WALK unless a g/G PREFIXCMD already set DOMOVE_RUSH
+        // (keeps context.run).
         // C `:1396–1399`: `if (!domove_attempting && !u.dz) run = 0` — a
         // plain walk ends any run (e.g. travel's run=8); without this the
         // EOT time_botl stays suppressed and T: goes stale after travel.
+        const mu = game.u || (game.u = {});
+        mu.dz = 0; // C `:1389` u.dz = zdir[dir] (0 for planar)
+        mu.dx = DIR_DX[ch]; // C `:1390`
+        mu.dy = DIR_DY[ch]; // C `:1391`
         if (!game.context) game.context = {};
         game.context.travel = 0;
         game.context.travel1 = 0;
         const attempting = game.domove_attempting || 0;
         if (!attempting) {
-            // C set_move_cmd `:1396–1399` guards on `!u.dz` (walks only).
-            if (!(game.u?.dz | 0)) game.context.run = 0;
+            // C set_move_cmd `:1396–1399` guards on the fresh `!u.dz`.
+            if (!mu.dz) game.context.run = 0;
             game.domove_attempting = DOMOVE_WALK;
         } else if ((attempting & DOMOVE_WALK) === 0
                    && (attempting & DOMOVE_RUSH) !== 0
@@ -5629,12 +5662,7 @@ export async function rhack(key) {
         // goes nowhere: You_cant + reset_cmd_vars, no domove. The
         // attempting/travel conjuncts always hold here (WALK/RUSH set,
         // travel cleared above); dxdy_moveok reads u.dx/u.dy
-        // (set_move_cmd in C), seeded here.
-        {
-            const mu = game.u || (game.u = {});
-            mu.dx = DIR_DX[ch];
-            mu.dy = DIR_DY[ch];
-        }
+        // (set_move_cmd in C), seeded at the arm top.
         if (!dxdy_moveok()) {
             await You_cant('get there from here...');
             reset_cmd_vars(true);
@@ -5676,14 +5704,16 @@ export async function rhack(key) {
         if (!game.context) game.context = {};
         // Pending F + capital/ctrl dir: forcefight one step (not rush)
         if (game.context.forcefight) {
+            // C set_move_cmd `:1389–1391` — u.dz/dx/dy from the dir first
+            // (zdir 0 for planar; clears stale getdir dz like the walk arm).
+            const mu = game.u || (game.u = {});
+            mu.dz = 0;
+            mu.dx = DIR_DX[low];
+            mu.dy = DIR_DY[low];
             game.context.travel = 0;
             game.context.travel1 = 0;
-            // C rhack grid-bug arm (`:3778–3784`) — see the walk arm above.
-            {
-                const mu = game.u || (game.u = {});
-                mu.dx = DIR_DX[low];
-                mu.dy = DIR_DY[low];
-            }
+            // C rhack grid-bug arm (`:3778–3784`) — see the walk arm above
+            // (dx/dy seeded at the arm top).
             if (!dxdy_moveok()) {
                 await You_cant('get there from here...');
                 reset_cmd_vars(true);
@@ -5697,9 +5727,15 @@ export async function rhack(key) {
             game.context.forcefight = 0;
             if (game.context.move !== 0) game.context.move = 1;
         } else {
-            // C: set_move_cmd(dir, run) — clears travel; capital run=1, Ctrl-rush=3
-            // First step carries DOMOVE_RUSH; continue_run clears attempting
-            // after each domove so later steps do not maybe_smudge_engr.
+            // C: set_move_cmd(dir, run) — u.dz/dx/dy from the dir first
+            // (`:1389–1391`; zdir 0 for planar), then clears travel;
+            // capital run=1, Ctrl-rush=3. First step carries DOMOVE_RUSH;
+            // continue_run clears attempting after each domove so later
+            // steps do not maybe_smudge_engr.
+            const mu = game.u || (game.u = {});
+            mu.dz = 0;
+            mu.dx = DIR_DX[low];
+            mu.dy = DIR_DY[low];
             game.context.travel = 0;
             game.context.travel1 = 0;
             if (!game.domove_attempting) {
@@ -5709,12 +5745,8 @@ export async function rhack(key) {
             game.context.mv = 1;
             if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
             game.u.last_str_turn = 0;
-            // C rhack grid-bug arm (`:3778–3784`) — see the walk arm above.
-            {
-                const mu = game.u || (game.u = {});
-                mu.dx = DIR_DX[low];
-                mu.dy = DIR_DY[low];
-            }
+            // C rhack grid-bug arm (`:3778–3784`) — see the walk arm above
+            // (dx/dy seeded at the arm top).
             if (!dxdy_moveok()) {
                 await You_cant('get there from here...');
                 reset_cmd_vars(true);
@@ -5970,7 +6002,27 @@ export async function rhack(key) {
         if (swapRes) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'S') {
         // C ref: save.c dosave / cmd.c — #save (GENERALCMD, ECMD_OK)
-        await dosave();
+        // C rhack `:3689–3694` — can_do_extcmd(tlist) gates the key
+        // command before ef_funct; FALSE skips dosave with no pline
+        // and the ECMD_OK tail below still applies. The NHCB_CMD_BEFORE
+        // lua arm (dat/nhlib.lua tutorial_cmd_before `:187–193`,
+        // "save" blacklist `:183–185`, registered by tutorial_enter on
+        // tut-1) vetoes save in the tutorial, so `S` there is a silent
+        // no-op; the wizard/buried/fuzzer arms ride the same live row.
+        const saveTab = ext_func_tab_from_txt('save');
+        if (saveTab && (await can_do_extcmd(saveTab))) {
+            await dosave();
+        } else {
+            // C rhack `:3691–3693` — the veto path runs
+            // reset_cmd_vars(TRUE) BEFORE the shared ECMD_OK tail
+            // (house shape: rhack_dispatch_bound above): the pre-gate
+            // REPEAT add (`rhack_repeat_command` 'S'→dosave; C's
+            // `:3732–3737` add is post-gate) must not survive a veto,
+            // so a following ^A prints do_repeat `:1646` Norep.
+            // The TRUE reset zeroes multi, so the tail below is
+            // reset(FALSE) — C's double-reset convergence.
+            reset_cmd_vars(true);
+        }
         // C rhack `:3814–3816` — ECMD_OK → reset_cmd_vars(multi < 0).
         reset_cmd_vars((game.multi | 0) < 0);
         game.context.move = 0;

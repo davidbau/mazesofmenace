@@ -1215,8 +1215,10 @@ async function seffect_enchant_weapon(sobj) {
 /**
  * C ref: potion.c strange_feeling — D-3680: the H-only strange_feeling_scroll
  * clone is deleted; read.c:1128/:1334/:1388 call the live detect.js export,
- * which reads the Hallucination macro (H||HH, potion.c:1465). The clone's
- * useup call was the file-local invent.c twin, line-identical to live's.
+ * which reads the Hallucination macro via display.js (HH && !resist,
+ * youprop.h:120; D-3688 — the D-3680 "H||HH extrinsic arm" rationale was
+ * wrong: C has no extrinsic hallucination). The clone's useup call was
+ * the file-local invent.c twin, line-identical to live's.
  */
 /**
  * C ref: read.c disintegrate_cursed_armor `:1293–1321` (staticfn) —

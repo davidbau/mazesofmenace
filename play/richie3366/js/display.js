@@ -2531,11 +2531,15 @@ export function obj_glyph(obj) {
     if (game.u?.Hallucination && obj?.otyp !== STATUE_OTYP) {
         // random_object: rn2(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT
         const otyp = rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT;
-        // C: if CORPSE → second burn random_monster + body glyph
+        // C: if CORPSE → second burn random_monster + body glyph.
+        // C reset_glyphmap `:3004–3010` (BODY) + `:2796–2802`
+        // (BODY_PILETOP): body glyphs render objects[CORPSE].oc_class
+        // (FOOD `%`), never the monster letter — only the color comes
+        // from the monster (mon_color). Same shape as the true-corpse
+        // arm below.
         if (otyp === CORPSE_OTYP) {
             const mnum = rn2_on_display_rng(NUMMONS);
-            const ptr = mons(mnum);
-            const ch = MLET_CH[ptr?.mlet] || '%';
+            const ch = oc_display_sym(game.objects?.[CORPSE_OTYP]?.oc_class ?? FOOD_CLASS);
             const color = mcolors[mnum] ?? NO_COLOR;
             return { ch, color, dec: false, glyph: mnum + GLYPH_BODY_OFF };
         }
