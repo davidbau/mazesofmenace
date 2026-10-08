@@ -34,7 +34,7 @@ import {
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
     otherInp, fuzzer_impossible_continue,
 } from './const.js';
-import { select_menu_pick_one } from './options.js';
+import { select_menu_pick_one, menu_prompt_style } from './options.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
 import { cmdq_pop, cmdq_clear, extcmd_initiator } from './cmd.js';
 import { cmdq_add_key } from './invent.js';
@@ -1901,7 +1901,14 @@ function yn_func_menu_opt(items, key, text, def) {
  */
 async function yn_function_menu(query, resp, def) {
     if (!yn_menuable_resp(resp)) return null;
-    const items = [];
+    // C `end_menu(win, query)` + tty_end_menu (wintty.c `:2680–2690`):
+    // the query paints as the prompt row (relayed tty_menu_promptstyle)
+    // above a blank separator, ahead of the Yes/No rows in C order
+    // (D-3403/doset sibling pattern).
+    const items = [
+        { text: query, selectable: false, ...menu_prompt_style() },
+        { text: '', selectable: false },
+    ];
     if (resp === rightleftchars) {
         yn_func_menu_opt(items, 'r', 'Right', def);
         yn_func_menu_opt(items, 'l', 'Left', def);

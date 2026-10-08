@@ -153,7 +153,7 @@ import {
 import { reset_trapset } from './apply.js';
 import { bones_include_name } from './bones.js';
 import { obj_resists } from './bury.js';
-import { bury_objs, use_pick_axe2 } from './dig.js';
+import { buried_ball_to_punishment, bury_objs, use_pick_axe2 } from './dig.js';
 import { ballrelease, drag_down, placebc, unplacebc } from './ball.js';
 import { next_to_u } from './apply_next_to_u.js';
 import {
@@ -341,7 +341,7 @@ import { cloneIsaacContext, createCoreRandom, d, rn1, rn2, rnd, rnz } from './rn
 import { check_special_room, move_update } from './rooms.js';
 import { savelev } from './save.js';
 import { costly_spot, sellobj_state } from './shk.js';
-import { container_impact_dmg, ship_object } from './dokick.js';
+import { container_impact_dmg, impact_drop, ship_object } from './dokick.js';
 import { set_levltyp } from './terrain.js';
 import {
     stairway_at,
@@ -1164,10 +1164,19 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
 // has identified one potion of oil is never asked to name another. That is why
 // potion.c potionbreathe()'s tail is silent for a starting inventory, whose
 // types u_init.c ini_inv_use_obj() discovered as it handed them over.
-export async function trycall(obj, state = game) {
+export async function trycall(obj, state = game, env = {}) {
     const type = objectType(obj, state);
-    if (!type.oc_name_known && !type.oc_uname)
+    if (!type.oc_name_known && !type.oc_uname) {
+        // docall() returns before output/input for an unseen object. A
+        // planning clone otherwise stops before its flush_screen/getlin so
+        // the live pass can replay every source-earlier message and draw.
+        if (env.planning && obj.dknown) {
+            if (typeof env.requestPlanningInput !== 'function')
+                throw new TypeError('planned trycall requires an input handoff');
+            return env.requestPlanningInput('do.c trycall');
+        }
         await docall(obj, state);
+    }
 }
 
 // C ref: do.c teleport_sink() (459-493). It tries up to 200 room squares in
@@ -1916,11 +1925,11 @@ export function preflight_dropx(obj, env = {}) {
         throw new UnsupportedDropError('liquid terrain');
     // do.c:flooreffects leaves a boulder intact on dry terrain without a
     // pit or hole. The trap and liquid guards above bound this floor path.
-    // Doorways and stairways add no flooreffects() branch when shipping
-    // leaves the object on this level.
+    // Doorways, thrones and stairways add no flooreffects() branch when
+    // shipping leaves the object on this level.
     if (location.typ !== ROOM && location.typ !== CORR
         && location.typ !== DOOR && location.typ !== SINK
-        && !IS_ALTAR(location.typ) && !stway) {
+        && location.typ !== THRONE && !IS_ALTAR(location.typ) && !stway) {
         throw new UnsupportedDropError('non-ordinary terrain');
     }
     // do.c:dropx/dropz/flooreffects adds no effect for an engraving on dry
@@ -2497,7 +2506,7 @@ function discard_unreachable_levels(state, leavingTutorial) {
 // the arrival tail at 1967-1993.
 //
 // Remaining gaps are limited to discarded calls whose source owners are not
-// yet available (impact_drop, selftouch, fix_shop_damage, and the migration
+// yet available (selftouch, fix_shop_damage, and the migration
 // sweeps). The selected goto_level branches themselves are source-ordered,
 // including endgame/tutorial transitions, portal fallback, flight, falling,
 // and the unreachable-level cleanup. Gehennom, Knox, Mines, Sokoban and the
@@ -2607,11 +2616,9 @@ export async function goto_level(
     // nethack-c/upstream/dat/ registers one, so nhcb_counts[] is zero for
     // every level this port loads and the block is dead.
 
-    // do.c:1593-1595, tethered movement. The call's result is discarded;
-    // dig.c remains outside this source span, so record its unavailable
-    // transition and continue with the level save.
+    // do.c:1593-1595 restores punishment before saving the old level.
     if (u.utrap && u.utraptype === TT_BURIEDBALL) {
-        note_unported('dig.c buried_ball_to_punishment');
+        await buried_ball_to_punishment(state);
     }
 
     // do.c:1597-1599 calls currentlevel_rewrite(), whose two operations have
@@ -2644,10 +2651,8 @@ export async function goto_level(
     // aware and is deliberately left intact.
 
     if (falling) {
-        // do.c:1612-1613. impact_drop() is a discarded void call; its owner
-        // is not ported, so preserve the source boundary without rejecting
-        // the rest of the fall transition.
-        note_unported('dokick.c impact_drop');
+        // do.c:1612-1613: assess the departing pile before saving the level.
+        await impact_drop(null, u.ux, u.uy, newlevel.dlevel, { state });
     }
 
     await check_special_room(true, state);
@@ -3113,10 +3118,8 @@ export async function goto_level(
 // for the objects that were sent ahead and once for the ones that travel with
 // the hero.
 //
-// gm.migrating_objs is empty on every path the port reaches. Its writers are
-// dokick.c's ship_object(), the shopkeeper's stolen-goods handling and the
-// object half of a level change, none of which is ported, and js/dog.js
-// migrate_to_level() moves monsters rather than objects.
+// ship_object() and impact_drop() populate gm.migrating_objs. Arrival remains
+// an explicit discarded-call gap until the object-delivery owner is ported.
 function obj_delivery(near_hero, state = game) {
     if (state.gm?.migrating_objs) {
         note_unported('dokick.c obj_delivery');

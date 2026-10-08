@@ -28,14 +28,14 @@ import { rn2, rn1, rn2_on_display_rng, rnd_on_display_rng } from './rng.js';
 import { wipeout_text } from './engrave.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, docrt, canspotmon, pline,
+    flush_screen, flush_topl_more, canspotmon, pline,
     glyph_to_obj_at, glyph_is_swallow_at, see_with_infrared, sensemon,
     verbalize, impossible,
     /* youprop.h:116–120. The same-file export is the sticky reader. */
     Hallucination as youprop_Hallucination,
 } from './display.js';
 import {
-    paint_corner_nhw_menu, discover_object,
+    paint_corner_nhw_menu, dismiss_nhw_menu, discover_object,
     getobj, update_inventory, Blind,
 } from './invent.js';
 import { rename_disco, undiscover_object } from './o_init.js';
@@ -1558,8 +1558,15 @@ async function docallcmd_menu() {
     for (;;) {
         await paint_corner_nhw_menu(entries, '(end) ');
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
+        /* C docallcmd :545–551: select_menu → destroy_nhwindow, then
+           straight to the arm's prompt — no docrt between menu and
+           prompt. Corner destroy (tty_destroy_nhwindow :1999 →
+           erase_menu_or_text clearscreen=FALSE) reprints stored gbuf
+           only: no newsym, no Hallu what_mon re-roll (C keeps 'v' at
+           scen-trap-Wizard-94001 step 238; docrt() re-rolled '\'').
+           dismiss_nhw_menu is that destroy (invent.js corner arm);
+           the flush blits stored state. */
+        await dismiss_nhw_menu();
         await flush_screen(1);
         const raw = String.fromCharCode(key);
         if (key === 27 || raw === 'q') return 'q';

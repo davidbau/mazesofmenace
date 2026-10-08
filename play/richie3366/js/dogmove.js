@@ -6,7 +6,7 @@ import { rn2, rnd } from './rng.js';
 import {
     mon_allowflags, mfndpos, m_at, monnear, onscary, ALLOW_M,
     ALLOW_U, ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
-    m_consume_obj, perceives,
+    m_consume_obj, perceives, mdrop_obj,
 } from './mon.js';
 import { distmin, dist2 } from './hacklib.js';
 import {
@@ -38,7 +38,7 @@ import {
     MAGIC_PORTAL, A_NONE,
     EPRI, EMIN, DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2,
     xdir, ydir, xytodir,
-    DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS, COST_DEGRD, OBJ_FREE,
+    DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS, COST_DEGRD,
     S_sink, something,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
     COST_CONTENTS, Is_rogue_level,
@@ -916,29 +916,10 @@ function droppables(mon) {
     return null; // C: (struct obj *) 0 — don't drop anything
 }
 
-// C ref: steal.c mdrop_obj — pet drop subset (worn/saddle/shop/extrinsics omitted)
-async function mdrop_obj(mon, obj, verbosely) {
-    const omx = mon.mx, omy = mon.my;
-    // C: distant_name(obj, doname) before extract — near observe side-effects
-    const obj_name = distant_name(obj, doname);
-    // C steal.c:825 extract_from_minvent(mon, obj, FALSE, TRUE).
-    // Saddle/shop/flooreffects/post-place update_mon_extrinsics stay
-    // the subset omit of this clone. Untagged where falls back to
-    // obj_extract_self so place_object still sees a free object.
-    const ex = extract_from_minvent(mon, obj, false, true);
-    if (ex && typeof ex.then === 'function') await ex;
-    if (obj.where !== OBJ_FREE) {
-        obj_extract_self(obj);
-        if (obj.owornmask) obj.owornmask = 0;
-    }
-    // C steal.c mdrop_obj: verbosely && cansee → pline_mon
-    if (verbosely && cansee(omx, omy)) {
-        await pline_mon(mon, `${Monnam(mon)} drops ${obj_name}.`);
-    }
-    // flooreffects omitted — ordinary missiles/items place on floor
-    place_object(obj, omx, omy);
-    stackobj(obj);
-}
+// C ref: steal.c mdrop_obj — imported live from mon.js (D-3657: the local
+// pet-drop subset clone dropped the flooreffects "fall" gate, losing the
+// mon_moving doaltarobj arm — and every other landing effect — for apport
+// drops; C has one mdrop_obj, steal.c:808–849).
 
 // C ref: steal.c relobj — is_pet uses droppables; vault-guard gold omitted
 async function relobj(mtmp, show, is_pet) {

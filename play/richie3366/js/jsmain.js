@@ -240,7 +240,12 @@ export class NethackGame {
             // C unixmain dorecover success: no second l_nhcore_init.
             // restore_luadata already inited luacore if it was NULL
             // (nhlua.c `:1357–1358`) then loadstring'd nh_lua_variables.
-            vision_recalc(0);
+            // C restore.c dorecover `:941–948` runs vision_reset +
+            // vision_full_recalc = 1 straight into docrt() — no
+            // vision_recalc before it (docrt_flags runs the (2)+(0)
+            // pair itself, display.c `:1740`/`:1758`). A pre-docrt
+            // recalc here only burns display RNG (its paints are wiped
+            // by docrt's cls) and desyncs Hallu glyphs on restore.
             await docrt();
             await bot();
             await welcome(false);

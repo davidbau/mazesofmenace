@@ -1816,8 +1816,11 @@ export function unlink_minvent(mon, obj) {
  * TRUE); tame-saddle no_charge in shop; verbosely pline; flooreffects
  * "fall" gate before place+stack; update_mon_extrinsics when still alive
  * and the obj was worn (saddle removal last — it can throw the rider).
+ * Live callers: mdrop_special_objs (same file) and dogmove.js relobj
+ * (pet apport drops; the dogmove-local subset clone was deleted for
+ * dropping the flooreffects "fall" gate — D-3657).
  */
-async function mdrop_obj(mon, obj, verbosely) {
+export async function mdrop_obj(mon, obj, verbosely) {
     const omx = mon.mx | 0;
     const omy = mon.my | 0;
     const unwornmask = obj.owornmask | 0;

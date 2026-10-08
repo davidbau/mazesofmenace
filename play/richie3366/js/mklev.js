@@ -161,7 +161,7 @@ import {
 } from './display.js';
 import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
-import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
+import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc, vision_reset, vision_off_newsym_gbuf } from './vision.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
 import { monst_to_any, is_pool, is_lava, in_rooms, invocation_pos } from './hack.js';
 import { begin_burn, end_burn } from './timeout.js';
@@ -6902,6 +6902,10 @@ function load_wiz_strt() {
         pm = splev_mines_maybe_clear_your_race(pm);
         const moved = splev_resolve_occupied(mx + rx, my + ry, pm);
         const mtmp = pm ? makemon(pm, moved.x, moved.y, 0) : null;
+        // C sp_lev.c create_monster :2125 — des.monster class letters keep
+        // the tmpmons.female = 0 default (:3230); clobber the makemon
+        // birth draw (cf. splev_create_monster D-0873).
+        if (mtmp) mtmp.female = 0;
         if (mtmp && peaceful != null && peaceful > BOOL_RANDOM)
             mtmp.mpeaceful = peaceful;
     };
@@ -17907,7 +17911,12 @@ function load_minetn_5() {
         let x = mx + rx, y = my + ry;
         const moved = splev_resolve_occupied(x, y, pm);
         x = moved.x; y = moved.y;
-        if (pm) makemon(pm, x, y, 0);
+        if (!pm) return;
+        const mtmp = makemon(pm, x, y, 0);
+        // C sp_lev.c create_monster :2125 — des.monster class letters keep
+        // the tmpmons.female = 0 default (:3230); clobber the makemon
+        // birth draw (cf. splev_create_monster D-0873).
+        if (mtmp) mtmp.female = 0;
     };
 
     // Shops
@@ -18568,7 +18577,17 @@ export async function movebubbles() {
     if (!g.wportal)
         set_wportal();
 
-    /* C `:1557`: vision will be updated as bubbles move. */
+    /* C `:1557`: vision will be updated as bubbles move. C's
+     * vision_recalc(2) runs the main update loop (repainting old-visible
+     * cells as memory/unseen); JS vision_recalc skips that loop for
+     * control 2 (D-0852: unflushed-tty goto/docrt screens), so run it
+     * here via the D-0852 helper BEFORE the swap — same newsym set and
+     * order as C (loop paints with viz emptied, then (2) blanks viz for
+     * the cons pickup/deposit below). Without it, vacated bubble cells
+     * leaving sight keep stale live glyphs: the post-drift
+     * vision_recalc(0) compares against the blanked array and its
+     * not_in_sight arm (old IN_SIGHT || COULD_SEE xor) cannot fire. */
+    vision_off_newsym_gbuf({ useLiveViz: true });
     vision_recalc(2);
 
     const bounds = g.waterlevel_bounds || {
@@ -27296,7 +27315,12 @@ function load_wizard3() {
         let pm = mlet ? mkclass(mlet, G_NOGEN) : null;
         pm = splev_mines_maybe_clear_your_race(pm);
         const moved = splev_resolve_occupied(mx + rx, my + ry, pm);
-        if (pm) makemon(pm, moved.x, moved.y, 0);
+        if (!pm) return;
+        const mtmp = makemon(pm, moved.x, moved.y, 0);
+        // C sp_lev.c create_monster :2125 — des.monster class letters keep
+        // the tmpmons.female = 0 default (:3230); clobber the makemon
+        // birth draw (cf. splev_create_monster D-0873).
+        if (mtmp) mtmp.female = 0;
     };
 
     // Fixed monsters

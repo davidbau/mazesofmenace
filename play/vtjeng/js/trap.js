@@ -198,8 +198,8 @@ import {
 import { isok } from './cmd_isok.js';
 import { is_art, ART_STING, attacks, has_magic_key, Stone_resistance } from './artifacts.js';
 import { exercise, adjalign, acurr, poisoned } from './attrib.js';
-import { obj_resists, unearth_objs } from './bury.js';
-import { buried_ball } from './dig.js';
+import { obj_resists } from './bury.js';
+import { buried_ball, unearth_objs } from './dig.js';
 import {
     drawbridgeFlags, drawbridgeUnder, is_ice, is_lava, is_pool,
     is_waterwall,
@@ -240,6 +240,7 @@ import { can_reach_floor } from './engrave.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { makeplural } from './fruit.js';
 import { game } from './gstate.js';
+import { impact_drop } from './dokick.js';
 
 import {
     near_capacity, calc_capacity, check_capacity, inv_cnt, inv_weight, weight_cap,
@@ -665,10 +666,7 @@ export async function fall_through(td, ftflags, state = game) {
 
     if (dontFall) {
         await ttyPline(`You ${dontFall}`, state);
-        // C's impact_drop(NULL, ux, uy, 0) result is discarded. The helper is
-        // not ported, so preserve an explicit gap rather than inventing its
-        // object impacts.
-        note_unported('dokick.c impact_drop');
+        await impact_drop(null, u.ux, u.uy, 0, { state });
         if (!td) {
             await displayPendingTtyMessageWindow(state);
             await ttyPline('The opening under you closes up.', state);
@@ -851,8 +849,10 @@ function pitTerrain(x, y, env) {
     }
 
     if (clearFlags) location.flags = 0;
-    capability(env, 'unearthObjects')?.(x, y, env);
-    capability(env, 'recalculateBlockPoint')?.(x, y, env);
+    const exposed = capability(env, 'unearthObjects')(x, y, env);
+    const recompute = () => capability(env, 'recalculateBlockPoint')(x, y, env);
+    if (exposed && typeof exposed.then === 'function') return exposed.then(recompute);
+    recompute();
 }
 
 // C ref: trap.c mk_trap_statue() (390-417). Create a statue and a temporary
@@ -985,14 +985,22 @@ export function maketrap(x, y, typ, rawEnv = {}) {
             && (IS_DOOR(location.typ) || IS_WALL(location.typ)))
             note_unported('shk.c add_damage');
         trap.conjoined = 0;
-        pitTerrain(x, y, env);
+        {
+            const exposed = pitTerrain(x, y, env);
+            if (exposed && typeof exposed.then === 'function')
+                return exposed.then(linkTrap);
+        }
         break;
     case HOLE:
     case TRAPDOOR:
         hole_destination(trap.dst, env);
         if (in_rooms(x, y, SHOPBASE, state).length)
             note_unported('shk.c add_damage');
-        pitTerrain(x, y, env);
+        {
+            const exposed = pitTerrain(x, y, env);
+            if (exposed && typeof exposed.then === 'function')
+                return exposed.then(linkTrap);
+        }
         break;
     case TELEP_TRAP: {
         const launchplace = state.launchplace;

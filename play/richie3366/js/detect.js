@@ -46,7 +46,7 @@
 // TER_FULL explore-only map body; arboreal default tree;
 // monster_detect cursed wake / blessed WIN_MAP /
 // TER_DETECT autodescribe; map_monst pet/detect/monsym is D-1765;
-// mfind0 set_msg_xy / display_nhwindow flush;
+// mfind0 whole (via_warning set_msg_xy + message flush wired);
 // object_detect buried/minvent/cursed-mimic/clear_stale_map caller;
 // observe_recursively on buried/minvent (invent+floor do_dknown D-1417);
 // furniture_detect whole (D-3045; !revealed display_nhwindow named);
@@ -372,9 +372,9 @@ export async function find_trap(trap) {
 }
 
 /**
- * C ref: detect.c mfind0 — reveal mimic / hider / unseen mon on search.
- * Returns -1 continue, 1 found (took time), 0 nothing.
- * Named omissions: set_msg_xy; display_nhwindow flush on via_warning.
+ * C ref: detect.c mfind0 `:1965–2013` — reveal mimic / hider / unseen mon
+ * on search. Returns -1 continue, 1 found (took time), 0 nothing.
+ * Whole incl. the via_warning set_msg_xy + message flush.
  */
 async function mfind0(mtmp, via_warning) {
     if (!mtmp) return 0;
@@ -395,10 +395,16 @@ async function mfind0(mtmp, via_warning) {
             || hides_under(ptr)
             || ptr?.mlet === 'S_EEL')) {
             if (via_warning && found_something) {
+                set_msg_xy(x, y); // C `:1984`
                 await pline(
                     `Your danger sense causes you to take a second ${
                         Blind() ? 'to check nearby' : 'look close by'}.`,
                 );
+                // C `:1987` display_nhwindow(WIN_MESSAGE, FALSE) — NEED_MORE
+                // → more() + clear (wintty.c:1873–1884; house flush_topl_more
+                // precedent: vault.js gd_move_cleanup, end.js done1). The
+                // pause lands before mundetected is cleared + newsym runs.
+                await flush_topl_more();
             }
             mtmp.mundetected = 0;
             found_something = true;
@@ -415,8 +421,10 @@ async function mfind0(mtmp, via_warning) {
         exercise(A_WIS, true);
         if (!canspotmon(mtmp)) {
             map_invisible(x, y);
+            set_msg_xy(x, y); // C `:2004`
             await You_feel('an unseen monster!');
         } else if (!sensemon(mtmp)) {
+            set_msg_xy(x, y); // C `:2007`
             const nam = mtmp.mtame
                 ? x_monnam_tame(mtmp)
                 : x_monnam(mtmp, ARTICLE_A, null, 0, false);
@@ -429,7 +437,7 @@ async function mfind0(mtmp, via_warning) {
 
 /**
  * C ref: detect.c warnreveal — adjacent mundetected Warning targets.
- * Via_warning mfind0; set_msg_xy / display_nhwindow flush still deferred.
+ * Via_warning mfind0 (message flush lives inside mfind0, C `:1987`).
  */
 export async function warnreveal() {
     const u = game.u || {};

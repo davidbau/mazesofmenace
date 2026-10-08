@@ -18,7 +18,7 @@ import { gamelog_add } from './pline.js';
 import { change_luck } from './attrib.js';
 import {
     FULL_MOON, OBJ_INVENT, OBJ_CONTAINED, OBJ_FREE, OBJ_MIGRATING,
-    ECMD_OK, BUFSZ, VISITED, LFILE_EXISTS, REST_CURRENT_LEVEL,
+    ECMD_OK, BUFSZ, VISITED, LFILE_EXISTS, REST_GSTATE, REST_CURRENT_LEVEL,
     W_WEP, W_SWAPWEP, W_QUIVER, PL_NSIZ,
     WRITING, FREEING, NHF_SAVEFILE, Is_rogue_level, ROGUESET,
     TRICKED,
@@ -936,6 +936,18 @@ export async function try_restore_save() {
         return false;
     }
 
+    // C restore.c dorecover `:794–795` — "suppress map display if some
+    // part of the code tries to update that": restoring = REST_GSTATE at
+    // entry, covering getlev(0) + restgamestate. JSON has one hydration
+    // pass instead of C's three (REST_GSTATE → REST_LEVELS →
+    // REST_CURRENT_LEVEL), so this stays until the REST_CURRENT_LEVEL
+    // envelope below, cleared like C's `:944` clear before docrt. Gates
+    // suppress_map_output (display.js) so restore-time newsym/see_monsters
+    // paints draw no display RNG — without it a Hallu restore desyncs the
+    // monster glyphs (scen-trap-Wizard-94001 seg1 step 0).
+    if (!game.program_state) game.program_state = {};
+    game.program_state.restoring = REST_GSTATE;
+
     objects_globals_init();
     // C restore.c:719 restnames(nhfp) — bases/disco/objclass/uname chunk.
     restnames(payload);
@@ -1005,6 +1017,13 @@ export async function try_restore_save() {
     game.urole = payload.urole;
     game.urace = payload.urace;
     game.mvitals = payload.mvitals || [];
+    // C restore.c restgamestate `:680–684` — "things after this can have
+    // unintended display side-effects too early in the game": disable
+    // see_monsters here (gate at display.js:see_monsters), re-enabled at
+    // the top of moveloop (C allmain.c:92–94; preamble catch-up at
+    // js/allmain.js:326–329). Sits after mvitals `:676–678` like C,
+    // before the worn loop (restWornFromInvent below, C `:687–690`).
+    game.defer_see_monsters = true;
     game.dungeons = payload.dungeons || game.dungeons;
     game.n_dgns = payload.n_dgns | 0;
     game.branches = payload.branches || game.branches;

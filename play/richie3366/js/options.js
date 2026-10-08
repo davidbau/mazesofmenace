@@ -420,7 +420,13 @@ export function optfn_disclose(optidx, req, negated, opts, op, flags) {
 export async function handler_disclose() {
     const ed0 = disclose_home(null).end_disclose;
     const discCat = new Array(NUM_DISCLOSURE_OPTIONS).fill(0); // C `:5688`
-    const raw = [{ text: 'Change which disclosure options categories:', selectable: false }];
+    // C tty_end_menu (wintty.c `:2685–2689`): the end_menu prompt paints
+    // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
+    // then a blank separator item (D-3403 sibling precedent).
+    const raw = [
+        { text: 'Change which disclosure options categories:', selectable: false, ...menu_prompt_style() }, // C `:5704`
+        { text: '', selectable: false }, // C wintty.c blank item
+    ];
     for (let i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) { // C `:5696`
         const buf = `${disclosure_names[i].padEnd(12, ' ')}[${ed0[i]}${DISCLOSURE_OPTIONS[i]}]`; // C `:5697–5698`
         raw.push({
@@ -444,7 +450,10 @@ export async function handler_disclose() {
         if (!discCat[i]) continue; // C `:5718`
         const c = disclose_home(null).end_disclose[i]; // C `:5719`
         const prompt = `Disclosure options for ${disclosure_names[i]}:`; // C `:5720–5721`
-        const sub = [{ text: prompt, selectable: false }];
+        const sub = [
+            { text: prompt, selectable: false, ...menu_prompt_style() }, // C `:5765` end_menu prompt (tty_end_menu paint)
+            { text: '', selectable: false }, // C wintty.c blank item
+        ];
         const pushMode = (mode, text) => {
             sub.push({
                 text,
@@ -2812,7 +2821,13 @@ export async function handler_menustyle() {
     if (!game.flags) game.flags = {};
     const oldStyle = menuStyleNow(game.flags); // C `:5549` old_menu_style
     const sep = game.iflags?.menu_tab_sep ? '\t' : ' '; // C `:5550`
-    const raw = [{ text: 'Select menustyle:', selectable: false }]; // C `:5570` end_menu
+    // C `:5570` end_menu — the prompt row carries tty_menu_promptstyle +
+    // the blank separator (wintty.c tty_end_menu `:2685–2689`; verbatim the
+    // D-3403/handler_disclose D-3654 sibling pattern).
+    const raw = [
+        { text: 'Select menustyle:', selectable: false, ...menu_prompt_style() },
+        { text: '', selectable: false },
+    ];
     for (let i = 0; i < MENUTYPE.length; i++) { // C `:5557` SIZE(menutype)
         const head = MENUTYPE[i][0].slice(0, 12).padEnd(12, ' '); // C `:5558` %-12.12s
         const mid = MENUTYPE[i][1].slice(0, 60);
@@ -5685,7 +5700,12 @@ export async function choose_classes_menu(prompt, category, way, classList, clas
             { text: '', attr: 0 },
         ];
         for (const it of items) {
-            const mark = it.selected ? '+' : '-';
+            // C wintty.c process_menu_window `:1467–1473` initial page paint:
+            // the '-' of "k - text" shows '*' when the item is preselected
+            // (count -1); runtime toggles show '+' via set_item_state
+            // `:1182`. _retoggled marks runtime selection since the last
+            // page paint (D-3403 select_menu_pick_any sibling `:10220–10227`).
+            const mark = !it.selected ? '-' : (it._retoggled ? '+' : '*');
             entries.push({
                 text: `${it.letch} ${mark} ${it.text}`,
                 attr: 0,
@@ -5736,6 +5756,7 @@ export async function choose_classes_menu(prompt, category, way, classList, clas
                 return hit.sym;
             }
             hit.selected = !hit.selected; // C PICK_ANY toggle
+            if (hit.selected) hit._retoggled = true; // C set_item_state '+' (D-3403)
         } else if (showAll && ch === 'A') { // C :1749–1754 ' ' pick collapses to the blank list
             await dismiss();
             return '';
@@ -6845,7 +6866,7 @@ export async function query_color(prompt, dflt_color) {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator item (D-3403 sibling precedent).
     const raw = [
-        { text: prompt ? String(prompt) : 'Pick a color', selectable: false, attr: ATR_INVERSE }, // C `:497`
+        { text: prompt ? String(prompt) : 'Pick a color', selectable: false, ...menu_prompt_style() }, // C `:497`
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (const [nm, col] of MENU_COLORNAMES) {
@@ -6881,7 +6902,7 @@ export async function query_attr(prompt, dflt_attr) {
     // with tty_menu_promptstyle (= menu_headings, default ATR_INVERSE),
     // then a blank separator item (D-3403 sibling precedent).
     const raw = [
-        { text: prompt ? String(prompt) : 'Pick an attribute', selectable: false, attr: ATR_INVERSE }, // C `:417`
+        { text: prompt ? String(prompt) : 'Pick an attribute', selectable: false, ...menu_prompt_style() }, // C `:417`
         { text: '', selectable: false }, // C wintty.c blank item
     ];
     for (const [nm, val] of MENU_ATTRNAMES) {
@@ -7702,9 +7723,11 @@ function optfn_horsename(optidx, req, negated, opts, op) {
  * "Fruit is now" pline run only when `!opt_initial`. get_val and
  * get_cnf_val Sprintf `pl_fruit`. No do_handler arm — falls through
  * to optn_ok.
- * `pline` is async, but parseoptions compares the optfn result to
- * OPTN_OK synchronously, so the message is started and not awaited
- * (doset keeps `give_opt_msg` false, so that path does not pline).
+ * `pline` is async: when it runs, do_set returns the pline promise
+ * chained to OPTN_OK (optfn_boulder `:1201` precedent) so the doset
+ * caller awaits the paint; every other path returns OPTN_OK/OPTN_ERR
+ * synchronously for parseoptions' sync compare. Only doset_simple
+ * keeps `give_opt_msg` false (C `:8722`); full doset never clears it.
  * @param {number} optidx C optidx (UNUSED)
  * @param {number} req
  * @param {boolean} negated
@@ -7756,8 +7779,11 @@ export function optfn_fruit(optidx, req, negated, opts, _op, optInitial) {
         if (!optInit) { // C `:1755`
             fruitadd(game.pl_fruit, forig); // C `:1759`
             // C `:1760` give_opt_msg static-init TRUE (options.c `:108`).
+            // Full doset never clears it (only doset_simple `:8722` does),
+            // so the message paints as its own screen before the next
+            // pick's prompt; the doset arm awaits the shared return.
             if (game.give_opt_msg !== false)
-                void pline('Fruit is now "%s".', game.pl_fruit); // C `:1761`
+                return pline('Fruit is now "%s".', game.pl_fruit).then(() => OPTN_OK); // C `:1761` — windowed pline promise resolves the shared return (optfn_boulder `:1201` precedent)
         }
         return OPTN_OK; // C `:1768`
     }
@@ -9623,7 +9649,12 @@ async function doset_compound_via_getlin(opt) {
     // fruit/suppress_alert keep their live direct-optfn arms (same effect,
     // awaited in order); every other name goes the C route.
     if (name === 'fruit') {
-        optfn_fruit(allopt_idx('fruit'), REQ_DO_SET, false, `fruit:${abuf}`, abuf, false);
+        // Awaited so the C `:1761` "Fruit is now" paint lands before the
+        // next pick's prompt (C doset `:8941–8956` is synchronous; the
+        // optfn returns the pline promise, optfn_boulder `:1201`
+        // precedent). doset_simple keeps give_opt_msg false, so that
+        // path stays sync with no pline.
+        await optfn_fruit(allopt_idx('fruit'), REQ_DO_SET, false, `fruit:${abuf}`, abuf, false);
     } else if (name === 'suppress_alert') {
         // C doset_simple_menu `:8675–8680` getlin + parseoptions("suppress_alert:<abuf>")
         // ("pass the buck"); awaited here so the !opt_initial You_cant/pline
@@ -10784,7 +10815,12 @@ export async function optfn_boolean(optidx, req, negated, opts) {
         } else if (name === 'lit_corridor' || name === 'dark_room') {
             vision_recalc(2); // C shut down vision
             game.vision_full_recalc = 1; // C `gv.vision_full_recalc` (vision.js:270)
-            if (game.iflags?.use_color) mark_opt_need_redraw(); // C darkroom refresh
+            // C `:5373` `if (iflags.use_color)` reads TRUE on the
+            // color-terminal build (tty TERM probes); JS has no probe
+            // (Rule #2) so unset means on — the `!== false` convention
+            // (display.js:5083). A truthy gate drops the darkroom
+            // refresh and its docrt→cls→more --More--.
+            if (game.iflags?.use_color !== false) mark_opt_need_redraw();
         } else if (OPT_GLYPH_RESET.has(name)) { // C `:5376–5385`
             mark_opt_need_redraw();
             mark_opt_need_glyph_reset();
@@ -10950,7 +10986,8 @@ export async function optfn_boolean_do_set(name, negated, initial = false) {
         // set up here (not initializing: see the `initial` return above).
         vision_recalc(2); // C shut down vision
         game.vision_full_recalc = 1; // C `gv.vision_full_recalc` (vision.js:270)
-        if (game.iflags?.use_color) mark_opt_need_redraw(); // C darkroom refresh
+        // C `:5373` — unset means on (whole-optfn note above).
+        if (game.iflags?.use_color !== false) mark_opt_need_redraw();
     }
     if (name === 'color') { // C `:5399–5409` (`#ifdef TOS` arm build-gated out)
         mark_opt_need_redraw();
