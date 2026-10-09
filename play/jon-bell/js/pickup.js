@@ -20,7 +20,7 @@ import {
     pline, _topl_stash_result, newsym, newsym_force, Norep, flush_screen,
     force_more, topl_park_cursor, topl_force_break_after,
 } from './display.js';
-import { pline_with_more, money_cnt } from './com_pager.js';
+import { pline_with_more, money_cnt, build_window_screen, tty_window_offx } from './com_pager.js';
 import { autokey, pick_lock, getdir } from './lock.js';
 import { nomul } from './allmain.js';
 import { nhgetch } from './input.js';
@@ -391,15 +391,21 @@ async function doloot_core() {
                     if (_isContainerObj(cobj))
                         containers.push(cobj);
                 }
-                const menuItems = containers.map((obj) => ({
-                    obj, sel: null, gsel: null, selected: false,
-                }));
-                let menuCh = 97; /* wintty.c assigns a, b, ... */
-                for (const item of menuItems) {
-                    item.sel = String.fromCharCode(menuCh);
+                const menuItems = [];
+                for (const obj of containers)
+                    menuItems.push({ obj, sel: null, gsel: null, selected: false,
+                                     text: await doname(obj) });
+                /* wintty.c tty_end_menu assigns a, b, ... restarting at 'a' on
+                 * each page (23 rows; the title and blank row take two). */
+                let menuCh = 97;
+                for (let ix = 0; ix < menuItems.length; ix++) {
+                    if (ix > 0 && menuItems.length + 3 > 24 && (ix + 2) % 23 === 0)
+                        menuCh = 97;
+                    menuItems[ix].sel = String.fromCharCode(menuCh);
                     menuCh = (menuCh === 122) ? 65 : menuCh + 1;
                 }
-                const cancelled = await _select_menu(menuItems, PICK_ANY);
+                const cancelled = await _select_menu(menuItems, PICK_ANY,
+                                                      { title: 'Loot which containers?' });
                 if (!cancelled) {
                     const selected = menuItems.filter((item) => item.selected);
                     for (let i = 0; i < selected.length; i++) {
@@ -963,12 +969,53 @@ const _QO_SELECT_ALL = 0x2e /* '.' */, _QO_UNSELECT_ALL = 0x2d /* '-' */,
  * toggles that row (PICK_ONE finishes immediately on the first toggle,
  * pickup.c:1024's `how` parameter), a group accelerator toggles its whole
  * class, anything else rings the bell and the menu stays up. */
-async function _select_menu(items, how) {
+async function _select_menu(items, how, paint = null) {
+    let page = 0;
     for (;;) {
+        /* wintty.c tty_end_menu: a menu taller than the terminal paginates at
+         * rows-1 (23) content rows with a "(N of M)" footer; each page is a
+         * full-screen window and bare selectors apply to the visible page. */
+        let pageStart = 0, pageEnd = items.length, pageCount = 1;
+        if (paint) {
+            const all = [`\x1b[7m${paint.title}\x1b[0m`, ''];
+            for (const it of items)
+                all.push(`${it.sel} ${it.selected ? '+' : '-'} ${it.text}`);
+            all.push('(end)');
+            const tall = all.length > 24;
+            let lines = all;
+            if (tall) {
+                const body = all.slice(0, -1);
+                pageCount = Math.ceil(body.length / 23);
+                if (page >= pageCount) page = pageCount - 1;
+                const rs = page * 23, re = Math.min(body.length, rs + 23);
+                lines = [...body.slice(rs, re), `(${page + 1} of ${pageCount})`];
+                pageStart = Math.max(0, rs - 2);
+                pageEnd = Math.max(0, re - 2);
+                while (lines.length < 24) lines.push('');
+            }
+            const full = tall || lines.length === 24;
+            const WIN_COL = full ? 1 : tty_window_offx(lines, 'end');
+            game._pending_message = '';
+            game._topl_sticky = null;
+            game._screen_output = build_window_screen(lines, WIN_COL, game.u?.uac ?? 0,
+                                                      tall ? 0 : undefined, undefined, full);
+            const disp = game.nhDisplay;
+            if (disp) {
+                if (tall) {
+                    const foot = `(${page + 1} of ${pageCount})`;
+                    disp.cursorCol = WIN_COL + foot.length;
+                    disp.cursorRow = lines.findIndex((l) => l === foot);
+                } else {
+                    disp.cursorCol = WIN_COL + 6;
+                    disp.cursorRow = lines.length - 1;
+                }
+            }
+        }
         const raw = await nhgetch();
         const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         const ch = String.fromCharCode(k);
-        const hit = items.find((it) => it.sel === ch);
+        const hit = items.find((it, ix) => it.sel === ch
+            && ix >= pageStart && ix < pageEnd);
         if (hit) {
             hit.selected = !hit.selected;
             if (how === PICK_ONE) return false;
@@ -978,7 +1025,15 @@ async function _select_menu(items, how) {
             for (const it of items) it.selected = false;
             return true; /* cancelled */
         }
-        if (k === 10 || k === 13 || k === 32)
+        if (k === 32 || k === 62 /* > */) {
+            if (page < pageCount - 1) { page++; continue; }
+            if (k === 32) return false; /* space finishes on the last page */
+            continue;
+        }
+        if (k === 60 /* < */) { if (page > 0) page--; continue; }
+        if (k === 94 /* ^ */) { page = 0; continue; }
+        if (k === 124 /* | */) { page = pageCount - 1; continue; }
+        if (k === 10 || k === 13)
             return false; /* commit */
         if (how === PICK_ANY && (k === _QO_SELECT_ALL || k === _QO_SELECT_PAGE)) {
             for (const it of items) it.selected = true;
@@ -1415,7 +1470,7 @@ export async function pickup_prinv(obj, count, verb) {
 }
 
 /* C ref: pickup.c:1803-1882 pickup_object(obj, count, telekinesis). */
-async function pickup_object(obj, count, telekinesis) {
+export async function pickup_object(obj, count, telekinesis) {
     const g = game;
     if ((obj.quan | 0) < count) {
         /* C: impossible(...); return 0; — a real invariant violation, not a

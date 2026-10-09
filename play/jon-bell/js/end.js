@@ -702,6 +702,8 @@ export async function do_death_sequence(opts) {
      * including the WIN_STOP case where acknowledgement is suppressed.
      * Clear that state before dropping WIN_STOP so the shared reader cannot
      * page the same suppressed death message a second time. */
+    if (g._topl_win_stop)
+        g._pending_message = '';
     g._topl_unacknowledged = false;
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
@@ -726,7 +728,7 @@ export async function do_death_sequence(opts) {
             //     "OK, so you don't die.  The kitten bites the giant bat.--More--".
             // savelife's gm.multi = -1 then makes this turn's HEAD block emit the
             // nomovemsg through unmul() (js/allmain.js), where C emits it.
-            await pline("OK, so you don't die.");
+            await pline("OK, so you don't %s.", ((pd.how | 0) === CHOKING_END) ? "choke" : "die");
             await savelife(pd.how, true);
         } else {
             // DEFERRED path (a death flagged outside movemon and drained at the
@@ -737,7 +739,7 @@ export async function do_death_sequence(opts) {
             // "OK, so you don't die." (done) and the nomovemsg (savelife) both land on
             // when the multi<0 countdown completes; here both are the command-result
             // line the next rhack(0) restores).
-            g._resultMessage = "OK, so you don't die.  "
+            g._resultMessage = "OK, so you don't " + (((pd.how | 0) === CHOKING_END) ? "choke" : "die") + ".  "
                 + (g.nomovemsg || 'You survived that attempt on your life.');
             g.nomovemsg = null;
         }
@@ -801,6 +803,17 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
      * Width paging clears the input flag while leaving a final remainder,
      * so retain the original state until that remainder is acknowledged. */
     const unacknowledged = g._topl_unacknowledged;
+    /* teleds() publishes "You materialize..." into _resultMessage before its
+     * spoteffects pickup(1) can ask a question (hack.c:3375); C's single
+     * topline still holds it, and update_topl pages it when the question does
+     * not fit beside it (topl.c:264: len(new) + len(old) + 3 >= CO-8). */
+    if (g._teleportResultPublished && g._resultMessage && !g._pending_message
+        && !g._topl_win_stop && !g._topl_win_stop_armed
+        && (query.length + (choices === null ? 0 : choices.length + 3) + g._resultMessage.length + 3) >= 72) {
+        const held = g._resultMessage;
+        g._resultMessage = '';
+        await force_more(held);
+    }
     if (!g._topl_win_stop && !g._topl_win_stop_armed) {
         if (_topline_more_pending()) await flush_screen(1);
         if (unacknowledged && g._pending_message)
@@ -812,7 +825,12 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
     g._topl_win_stop_buf = null;
     /* C win/tty/wintty.c tty_yn_function renders "<query> [<choices>] (<def>)"
      * and parks the cursor one column past it. */
-    const qbuf = choices === null ? query : `${query} [${choices}] (${defchoice})`;
+    /* C topl.c:410-428 — responses after <esc> are accepted but not shown, and
+     * " (%c)" is appended only when def is nonzero. */
+    const shownChoices = choices === null ? '' : choices.split('\x1b')[0];
+    const hasDef = defchoice && defchoice !== '\0';
+    const qbuf = choices === null ? query
+        : `${query} [${shownChoices}]${hasDef ? ` (${defchoice})` : ''}`;
     /* Unlike getlin's windows.c wrapper, yn_function does not set
      * gb.bot_disabled. Its initial custompline can therefore paint pending
      * status even though tty inread is set. Materialize that frame here;
@@ -1078,7 +1096,7 @@ export async function done(how) {
         if ((wizard() || discover()) && how <= GENOCIDED) {
             const die = await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_DIE), 'Die?');
             if (!die) {
-                await pline("OK, so you don't die.");
+                await pline("OK, so you don't %s.", ((how | 0) === CHOKING_END) ? "choke" : "die");
                 await savelife(how, true);
                 if (g.svk?.killer) {
                     g.svk.killer.name = '';

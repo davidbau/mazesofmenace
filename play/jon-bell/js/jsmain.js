@@ -102,8 +102,13 @@ export class NethackGame {
         g.iflags.num_pad = false;
         g.iflags.num_pad_mode = 0;
         reset_commands(true);
+        // C seeds the PRNG (options.c:7161) before the rc is parsed, and the
+        // rc's CHOOSE= draws rn2 (cfgfiles.c:480).
+        initRng(this._seed);
+        enableRngLog();
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
+        g.msgtype_hide = opts.msgtypes || [];
         // C ref: options.c optfn_name — svp.plname[] is empty unless the rc
         // named the hero.  The 'Hero' default is a JS-side placeholder for
         // the replay path; the played-chargen path asks instead (askname).
@@ -186,7 +191,15 @@ export class NethackGame {
         // (options.c:4180) renders "<name>, active, handler=<H>" from exactly
         // these two fields, which is what the 'O' menu's symset row shows; with
         // no name recorded it reports "default" for a set that is plainly active.
-        if (opts.symset) gs.symset[PRIMARYSET].name = opts.symset;
+        if (opts.symset) {
+            gs.symset[PRIMARYSET].name = opts.symset;
+            /* C options.c:4198 optfn_symset sets these and nothing clears them
+             * until the first reset_needed_visuals()/doset, so a later bound
+             * toggle() redraws (docrt -> --More-- on a pending topline). */
+            g.go = g.go || {};
+            g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
+            g.go.opt_symset_changed = true;
+        }
         // Initialize hero struct.  C's `struct u_event` is embedded in `you`
         // and is BSS-zeroed by decl_globals_init(); keep the same explicit
         // zero state here so event reads (quest completion, invocation,
@@ -225,9 +238,6 @@ export class NethackGame {
         // TODO: Map role/race/gender/align from opts to role data
         g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
         g.urace = { adj: 'human' };
-        // Initialize PRNG
-        initRng(this._seed);
-        enableRngLog();
         if (this._preflightRandomPicks)
             genlPlayerSetupRandomPicksForY(g);
         if (this._chargenRng.length > 0)
@@ -429,6 +439,7 @@ export class NethackGame {
             const escapedTeardown = game._endHow === ESCAPED
                 && game.program_state?.gameover
                 && game.flags?.debug
+                && keyIdx >= nhGame._moves.length
                 && String(game._screen_output || '').startsWith('Goodbye');
             const wizardScoreNoticePending = game._wizardScoreNoticePending != null;
             const wizardScoreNotice = game.flags?.debug
@@ -444,7 +455,8 @@ export class NethackGame {
                 game._wizardScoreNoticePending = false;
             } else {
                 nhGame._screens.push(game._screen_output || '');
-                nhGame._cursors.push(disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);
+                nhGame._cursors.push(game._rawCursorFrozen ? game._rawCursorFrozen.slice()
+                    : disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);
             }
             nhGame._rngSlices.push(slice);
             // Keep the marker through stale brown-mold frames; clear it only

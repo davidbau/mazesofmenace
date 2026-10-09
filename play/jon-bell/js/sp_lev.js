@@ -12,7 +12,8 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
 import { FILL_NORMAL } from './const.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
-import { find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
+import { oinit } from './o_init.js';
+import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal, worm_seg_swap, wormgone } from './worm.js';
 import { In_hell, Can_fall_thru, mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, somexy, somex, somey, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, set_corpsenm, sobj_at, wallification, count_level_features, makecorridors, mkstairs, stairway_add, build_room, add_room, topologize, level_difficulty, get_level_extends, fix_wall_spines, occupied, mpickobj } from './mklev.js';
 import { set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty } from './mkmaze.js';
@@ -52,6 +53,7 @@ import { nhl_init, nhl_done } from './nhlua.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { create_drawbridge } from './dokick.js';
+import { impossible } from './pline.js';
 import { map_background, map_object, map_trap, newsym_force as newsym_force_real } from './display.js';
 import { enexto_core, rloc } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
@@ -5109,7 +5111,7 @@ function map_cleanup() {
 // (flp&2). Draws ZERO rn2/rnd/d/rne/rnz — pure coordinate transposition.
 // extras=true is the #wizfliplevel path.  The same structural transpose is
 // used, with the additional hero/ball/travel state updates below.
-async function flip_level(flp, extras) {
+export async function flip_level(flp, extras) {
     if ((flp & 3) === 0)
         return;
 
@@ -5516,7 +5518,7 @@ async function flip_level(flp, extras) {
 // stays at the real C *default* (3) for tut-1/tut-2 today, so this
 // function, unlike in C, DOES roll rn2(2) draws and CAN reach the
 // flip_level() call below.
-async function flip_level_rnd(flp, extras) {
+export async function flip_level_rnd(flp, extras) {
     let c = 0;
     if ((flp & 1) && rn2(2))
         c |= 1;
@@ -5909,9 +5911,8 @@ async function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
             if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev))
                 return;
 
-    // C: impossible("Couldn't place lregion type %d!", rtype) — diagnostic
-    // only, no state change; omitted (matches other impossible() no-ops
-    // already in this port, e.g. mkstairs' bogus-stair message).
+    // C mkmaze.c:409
+    await impossible("Couldn't place lregion type %d!", rtype);
 }
 
 const MR_STONE = 0x80;
@@ -6248,6 +6249,33 @@ export async function load_special(name) {
         premap_detect();
 
     return give_up_des_coder(true);
+}
+
+/* C ref: sp_lev.c:5993-6061 lspo_reset_level/lspo_finalize_level, L == NULL arms */
+export async function lspo_reset_level() {
+    const wt = (await import('./dochug.js')).In_W_tower_wz(game.u.ux | 0, game.u.uy | 0, game.u.uz);
+    (game.iflags = game.iflags || {}).lua_testing = true;
+    await (await import('./wizcmds.js')).makemap_prepost(true, wt);
+    game.in_mklev = true; oinit(); clear_level_structures();
+    return 0;
+}
+export async function lspo_finalize_level() {
+    const wt = (await import('./dochug.js')).In_W_tower_wz(game.u.ux | 0, game.u.uy | 0, game.u.uz);
+    link_doors_rooms();
+    if (game.level) {
+        const { x_maze_max, y_maze_max } = splev_maze_extent();
+        const r = remove_boundary_syms({ typ: splev_extract_typ(), flags: splev_extract_flags(),
+            splev_map: game.splev_map, x_maze_max, y_maze_max });
+        splev_apply_typ_flags(r.typ, r.flags);
+    }
+    map_cleanup();
+    if (!game.level?.flags?.corrmaze) wallification(1, 0, COLNO - 1, ROWNO - 1);
+    if (game.level) count_level_features();
+    await fixup_special(); await level_finalize_topology();
+    for (let i = 0; i < (game.level?.nroom ?? 0); ++i) await fill_special_room(game.level.rooms[i]);
+    await (await import('./wizcmds.js')).makemap_prepost(false, wt);
+    game.iflags.lua_testing = false;
+    return 0;
 }
 
 function give_up_des_coder(result) {

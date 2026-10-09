@@ -22,7 +22,7 @@ import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's mat
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel,
-         oclass_sym, rogue_graphics, botl_status_suffix, fit_status_line_width, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
+         oclass_sym, rogue_graphics, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -783,8 +783,13 @@ function _statusLine2(uacOverride, pwOverride) {
         const _tm = _tut != null ? _tut : (g._timeBotlFrozenMoves != null ? g._timeBotlFrozenMoves : g.moves);
         s += ` T:${_tm || 1}`;
     }
-    s += botl_status_suffix(u.uhs | 0, undefined);
-    return fit_status_line_width(s);
+    game._botlPreInv = pwOverride !== undefined;
+    try {
+        s += botl_status_suffix(u.uhs | 0, undefined);
+        return status_row_finish(s);
+    } finally {
+        game._botlPreInv = false;
+    }
 }
 // ── pline_with_more ──
 // C ref: allmain.c:923 welcome(TRUE) → pline() triggers --More-- in tty after com_pager.

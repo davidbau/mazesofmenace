@@ -4,7 +4,12 @@ import { MAX_NUM_WORMS, NON_PM, MCORPSENM, NORMAL_SPEED, MSLOW, MFAST, MHPMAX } 
 import { PM_LONG_WORM } from './pm.generated.js';
 import { rnd_nextto_goodpos } from './trap.js';
 import { newsym } from './display.js';
-import { m_at } from './uhitm.js';
+import { m_at, mon_nam } from './uhitm.js';
+import { clone_mon_ml } from './mklev.js';
+import { pline } from './display.js';
+import { canspotmon } from './display.js';
+import { Monnam } from './mcastu.js';
+import { s_suffix } from './hacklib.js';
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -142,6 +147,17 @@ export function initworm(worm, wseg_count) {
     wgrowtime[wnum] = 0;
 }
 
+/* C worm.c:344-362 wormhitu() loop — the (wx,wy) of each segment from the tail
+ * up to but NOT including the head (the head's dummy tail segment shares its
+ * location and has already had its chance to attack). */
+export function worm_hitu_segs(worm) {
+    const out = [];
+    const wnum = worm.wormno;
+    for (let seg = wtails[wnum]; seg && seg !== wheads[wnum]; seg = seg.nseg)
+        out.push([seg.wx, seg.wy]);
+    return out;
+}
+
 /* C worm.c:836-846 count_wsegs(mtmp) — segments AFTER the tail's first node. */
 export function count_wsegs(mtmp) {
     let i = 0;
@@ -202,33 +218,79 @@ export function worm_nomove(worm) {
     }
 }
 
-/* C worm.c:364-478 cutworm.  The clone_mon arm is unavailable in this port,
- * so a successful cut keeps the surviving tail on the original worm and
- * discards the struck half; the chance and all core RNG draws are preserved. */
-export function cutworm(worm, x, y, cuttier) {
+/* C worm.c:364-478 cutworm.  Hitting a long worm at (x, y) may cut it;
+ * a level>=3 worm splits in two on !rn2(3) via clone_mon. */
+export async function cutworm(worm, x, y, cuttier) {
     const wnum = worm?.wormno | 0;
-    if (!wnum || ((x | 0) === (worm.mx | 0) && (y | 0) === (worm.my | 0)))
-        return false;
+    if (!wnum)
+        return; /* bullet-proofing */
+    if ((x | 0) === (worm.mx | 0) && (y | 0) === (worm.my | 0))
+        return; /* hit on head */
+
     let cutChance = rnd(20);
     if (cuttier) cutChance += 10;
-    if (cutChance < 17) return false;
+    if (cutChance < 17) return; /* not good enough */
 
+    /* Find the segment that was attacked. */
     let curr = wtails[wnum];
     while (curr && ((curr.wx | 0) !== (x | 0) || (curr.wy | 0) !== (y | 0)))
         curr = curr.nseg;
-    if (!curr) return false;
+    if (!curr) return; /* impossible("cutworm: no segment at ...") */
+
+    /* If this is the tail segment, then the worm just loses it. */
     if (curr === wtails[wnum]) {
         shrink_worm(wnum);
-        return true;
+        return;
     }
 
-    const oldTail = wtails[wnum];
+    const new_tail = wtails[wnum];
     wtails[wnum] = curr.nseg;
-    curr.nseg = null;
-    place_worm_seg(worm, x | 0, y | 0);
-    toss_wsegs(oldTail, true);
-    worm.mhp = Math.max(1, Math.trunc((worm.mhp | 0) / 2));
-    return true;
+    curr.nseg = null; /* split the worm */
+
+    let new_worm = null;
+    const new_wnum = ((worm.m_lev | 0) >= 3 && !rn2(3)) ? get_wormno() : 0;
+    if (new_wnum) {
+        remove_monster(x | 0, y | 0); /* clone_mon puts new head here */
+        new_worm = await clone_mon_ml(worm, x | 0, y | 0);
+    }
+
+    /* Sometimes the tail end dies. */
+    if (!new_worm) {
+        place_worm_seg(worm, x | 0, y | 0); /* place the "head" segment back */
+        if (game.context?.mon_moving) {
+            if (canspotmon(worm))
+                await pline("Part of " + s_suffix(mon_nam(worm)) + " tail has been cut off.");
+        } else
+            await pline("You cut part of the tail off of " + mon_nam(worm) + ".");
+        toss_wsegs(new_tail, true);
+        if ((worm.mhp | 0) > 1)
+            worm.mhp = Math.trunc((worm.mhp | 0) / 2);
+        return;
+    }
+
+    new_worm.wormno = new_wnum; /* affix new worm number */
+    new_worm.mcloned = 0;       /* treat second worm as a normal monster */
+
+    /* Devalue the monster level of both halves of the worm. */
+    worm.m_lev = Math.max((worm.m_lev | 0) - 2, 3);
+    new_worm.m_lev = worm.m_lev;
+
+    new_worm.mhpmax = new_worm.mhp = d(new_worm.m_lev | 0, 8);
+    worm.mhpmax = d(worm.m_lev | 0, 8); /* new maxHP for old worm */
+    if ((worm.mhpmax | 0) < (worm.mhp | 0))
+        worm.mhp = worm.mhpmax;
+
+    wtails[new_wnum] = new_tail;
+    wheads[new_wnum] = curr;
+    wgrowtime[new_wnum] = 0;
+
+    /* Place the new monster at all the segment locations. */
+    place_wsegs(new_worm, worm);
+
+    if (game.context?.mon_moving)
+        await pline(Monnam(worm) + " is cut in half.");
+    else
+        await pline("You cut " + mon_nam(worm) + " in half.");
 }
 
 const MONS = /** @type {number[][]} */ (monsPack.mons);

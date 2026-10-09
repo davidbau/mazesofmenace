@@ -196,6 +196,10 @@ export async function u_init_misc() {
      * bail above rather than literally first, because C never reaches
      * u_init_misc() with an unresolved role at all (see the bail's comment). */
     g.flags.female = (g.flags.initgend | 0) !== 0;
+    g.flags.beginner = true; /* C u_init.c:950 */
+    /* C ref u_init.c:950 `flags.beginner = TRUE;` — cleared by more_experienced()
+     * (exper.c:202); strange_feeling() (potion.c:1463) reads it. */
+    g.flags.beginner = true;
     g.u = g.u || {};
     const u = g.u;
     // C u_init.c:957 memset(&u, 0, sizeof(u)); you.h embeds every property
@@ -790,6 +794,10 @@ function _is_weptool_obj(oclass, otyp) {
 /* C u_init.c:1254 — discover, equip and learn from one actual inventory node. */
 export async function ini_inv_use_obj(obj) {
     const u = game.u;
+    /* Real chargen has built the kit: cmd.js's lazy Ranger stand-in
+     * (_ensure_ranger_weapons) must never re-conjure a dagger/bow/arrows
+     * once the hero has unwielded them (wield.c:176-182 uwep stays NULL). */
+    u._weaponsInit = true;
     if (OC_DESCR[obj.otyp] && obj.known)
         discover_object(obj.otyp, true, true, false);
     if (obj.otyp === OIL_LAMP_OTYP)

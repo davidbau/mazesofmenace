@@ -1258,7 +1258,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
         if ((game.multi | 0) >= 0) {
             nomul(-1);
             game.multi_reason = 'opening a container';
-            (game.gn ||= {}).nomovemsg = '';
+            game.nomovemsg = '';
         }
         g.abort_looting = true;
         return ECMD_TIME;

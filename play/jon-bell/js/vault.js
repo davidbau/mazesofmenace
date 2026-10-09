@@ -531,11 +531,9 @@ export async function invault() {
         do {
             buf = await getlin(Deaf() ? "You are required to supply your name. -"
                                      : "\"Hello stranger, who are you?\" -");
-            /* C: buf[0] == '\033' (ESC) leaves the string EMPTY for the
-             * !buf[0] retry test; js/wizcmds.js getlin returns the ESC
-             * sentinel as its whole result. */
-            if (buf === '\x1b')
-                buf = '';
+            /* C win/tty/getline.c:85-97: ESC with no text typed returns the
+             * one-char string "\033", so !buf[0] is false and the retry
+             * loop ends after this first prompt (vault.c:504-505). */
             buf = mungspaces(buf);
         } while (!buf && --trycount > 0);
 
@@ -791,7 +789,14 @@ async function clear_fcorr(grd, forceshow) {
              * ball-and-chain, so `Punished` is permanently false. */
             return false;
 
-        const mtmp = m_at(fcx, fcy);
+        /* C's m_at() reads the map grid, where a guard killed this turn is
+         * still placed (mondead -> grddead runs BEFORE m_detach removes him);
+         * this port's m_at() skips mhp < 1, so find the dead guard here.  C
+         * then takes the isgd arm below: grddead() relobj()s and parkguard()s. */
+        let mtmp = m_at(fcx, fcy);
+        if (!mtmp && DEADMONSTER(grd) && (grd.mx | 0) === fcx && (grd.my | 0) === fcy
+            && !(grd._mapRemoved))
+            mtmp = grd;
         if (mtmp) {
             if (mtmp.isgd)
                 return false;

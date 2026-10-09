@@ -25,10 +25,10 @@
  *
  * @ts-nocheck — js sibling imports; ambient game types not declared.
  */
-import { game } from './gstate.js';
-import { block_point, unblock_point } from './vision.js';
+import { game, wizard } from './gstate.js';
+import { block_point, unblock_point, cansee } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM } from './const.js';
+import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT } from './const.js';
 import { PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE_VORTEX, PM_FREEZING_SPHERE, PM_STEAM_VORTEX, PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE, PM_EARTH_ELEMENTAL, PM_DUST_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_YELLOW_LIGHT, NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST } from './pm.generated.js';
 
 function _hero_resists(prop) {
@@ -50,7 +50,7 @@ import { identify_pack, do_mapping } from './read.js';
 /* C sit.c:582 uses You()->pline immediately; the deferred eat.js You()
  * leaves the aura in _resultMessage and paints it on a later frame. */
 import { You as You_rc } from './do_wear.js';
-import { Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, quest_info } from './objnam.js';
+import { Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, quest_info, an } from './objnam.js';
 import { curse, unbless } from './mkobj.js';
 import { spec_ability, adjattrib, change_luck } from './attrib.js';
 import { hcolor, Amonnam } from './mhitm.js';
@@ -62,10 +62,14 @@ import { tele } from './teleport.js';
 /* makewish's C home is wizcmds.c:38; the throne sources are sit.c:110/251. */
 import { makewish } from './wizcmds.js';
 import { getlin } from './wizcmds.js';
+import { rndmonst } from './makemon.js';
+import { adjalign as adjalign_sit } from './attrib.js';
+import { verbalize, list_genocided } from './cmd.js';
+import { DEAF } from './const.js';
 /* makemon's C home is makemon.c:1338; the real port lives in js/mklev.js
  * (NOT js/makemon.js — that file only has makemonDomesticSaddle). */
 import { makemon, courtmon as courtmon_real, kill_genocided_monsters, upstart } from './mklev.js';
-import { heal_legs as heal_legs_real } from './cmd.js';
+import { heal_legs as heal_legs_real, y_n_default } from './cmd.js';
 /* polyself's C home is polyself.c:1306. */
 import { polyself } from './polyself.js';
 /* seffects's C home is read.c:2166. */
@@ -91,6 +95,7 @@ import { losexp as losexp_real } from './exper.js';
 /* schedule_goto's C home is do.c:2076.  js/cmd.js owns file js/cmd.js but its
  * export is fine to import (only editing js/cmd.js is off limits here). */
 import { schedule_goto } from './cmd.js';
+import { remove_worn_item } from './steal.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 /* ---------------------------------------------------------------------------
  * A_MAX — total number of base attributes (C: attrib.h A_MAX = 6)
@@ -113,13 +118,14 @@ const KILLED_BY = 1;
  * sync body (attrib.c:117 adjattrib()). */
 /* losehp: LOCAL EMPTY STUB DELETED — see import above. */
 /* C sit.c:14-35 take_gold() — remove every coin object from inventory. */
-function take_gold() {
+export async function take_gold() {
     let prev = null;
     let lost_money = false;
     for (let obj = game.invent; obj;) {
         const next = obj.nobj || null;
         if ((obj.oclass | 0) === 12 /* COIN_CLASS */) {
             lost_money = true;
+            await remove_worn_item(obj, false); /* C sit.c:24 */
             if (prev) prev.nobj = next;
             else game.invent = next;
             obj.nobj = null;
@@ -190,7 +196,7 @@ export async function do_class_genocide() {
         if (!goodcnt && cls !== permonstTemplate(roleM)?.mlet
             && cls !== permonstTemplate(raceM)?.mlet) {
             if (gonecnt) await pline('All such monsters are already nonexistent.');
-            else if (immunecnt || cls === 0 /* S_invisible placeholder */)
+            else if (immunecnt || cls === 35 /* S_invisible */)
                 await You("aren't permitted to genocide such monsters.");
             else
                 await pline('That %s does not represent any monster.',
@@ -243,40 +249,101 @@ export async function do_class_genocide() {
 export async function do_genocide(flags = 1) {
     const really = (flags & 1) !== 0;
     const onThrone = (flags & 4) !== 0;
-    const prompt = 'What type of monster do you want to genocide?';
     let selected = null;
-    for (let attempt = 0; attempt < 5; ++attempt) {
-        const answer = await getlin(prompt);
-        if (answer === '\x1b' || /^(?:'?(?:none|nothing))'?$/i.test(String(answer).trim())) {
-            if (!really) continue;
+    let killPlayer0 = false;
+    for (let i = 0; ; i++) {
+        if (i >= 5) {
+            /* cursed effect => no free pass (unless rndmonst() fails) */
+            if (!really) {
+                const r = rndmonst();
+                if (r != null) { selected = r; break; }
+            }
+            await pline("That's enough tries!");
             return false;
         }
-        const result = name_to_mon(String(answer).trim(), -1);
-        const mndx = result?.mntmp ?? NON_PM;
-        if (mndx < LOW_PM || mndx >= NUMMONS) {
-            await pline('Such creatures do not exist in this world.');
+        let prompt = 'What type of monster do you want to genocide?';
+        if (i > 0)
+            prompt += ` [enter ${game.iflags?.cmdassist === false
+                ? "'?' to see previous genocides"
+                : "the name of a type of monster, or '?'"}]`;
+        const buf = String(await getlin(prompt)).replace(/\s+/g, ' ').trim();
+        if (!buf) {
+            await pline('%s.', (i + 1 < 5)
+                ? "Type the name of a type of monster or 'none'"
+                : 'No type of monster specified');
             continue;
         }
-        const vital = (game.mvitals ||= [])[mndx] ||= { born: 0, died: 0, mvflags: 0 };
-        if (vital.mvflags & G_GENOD) {
-            await pline('Such creatures no longer exist in this world.');
+        if (buf[0] === '\x1b' || /^(?:'?none'?|nothing)$/i.test(buf)) {
+            if (!really) {
+                const r = rndmonst();
+                if (r != null) { selected = r; break; }
+            }
+            return false;
+        }
+        if (buf === '?' || buf === "'?'") {
+            await list_genocided('g', false);
+            --i;
+            continue;
+        }
+        const result = name_to_mon(buf, -1);
+        const mndx = result?.mntmp ?? NON_PM;
+        const vital0 = mndx >= LOW_PM && mndx < NUMMONS ? (game.mvitals ||= [])[mndx] : null;
+        if (mndx < LOW_PM || mndx >= NUMMONS || (vital0 && (vital0.mvflags & G_GENOD))) {
+            await pline('Such creatures %s exist in this world.',
+                (mndx < LOW_PM || mndx >= NUMMONS) ? 'do not' : 'no longer');
+            continue;
+        }
+        const ptr0 = permonstTemplate(mndx);
+        if (mndx === (game.urole?.mnum | 0) || mndx === (game.urace?.mnum | 0)) {
+            killPlayer0 = true;
+            selected = mndx;
+            break;
+        }
+        const aln = Math.sign(game.u?.ualign?.type | 0);
+        if ((ptr0.mflags2 & 0x8) !== 0) adjalign_sit(-aln);
+        if ((ptr0.mflags2 & 0x100) !== 0) adjalign_sit(aln);
+        if (!(ptr0.geno & 0x20)) {
+            if (!game.u?.uprops?.[DEAF]?.intrinsic) {
+                if (game.flags?.verbose !== false)
+                    await pline('A thunderous voice booms through the caverns:');
+                await verbalize('No, mortal!  That will not be done.');
+            }
             continue;
         }
         selected = mndx;
         break;
     }
-    if (selected == null) {
-        await pline("That's enough tries!");
-        return false;
-    }
 
     const data = permonstTemplate(selected);
+    if (!really) {
+        /* C read.c:2985-3004 — cursed scroll: no genocide, create monsters */
+        let cnt = 0;
+        const census0 = monster_census(false);
+        const v0 = (game.mvitals ||= [])[selected] ||= { born: 0, died: 0, mvflags: 0 };
+        if (!(data.geno & 0x1000) && !(v0.mvflags & (G_GENOD | G_EXTINCT))) {
+            for (let n = rn1(3, 4); n > 0; n--) {
+                if (!await makemon(selected, game.u.ux | 0, game.u.uy | 0, NO_MINVENT | MM_NOMSG))
+                    break;
+                ++cnt;
+                if (v0.mvflags & G_EXTINCT) break;
+            }
+        }
+        if (cnt) {
+            cnt = monster_census(false) - census0;
+            const nm = data?.pmnames?.[2];
+            await pline('Sent in %s%s.', (cnt > 1) ? 'some ' : '',
+                (cnt > 1) ? makeplural(nm) : an(nm));
+        } else {
+            await pline('Nothing happens.');
+        }
+        return true;
+    }
     /* C permits genocide of the player's role or race, and of the current
      * polymorph form; all of those cases ultimately kill the hero. */
     const role = game.urole?.mnum | 0;
     const race = game.urace?.mnum | 0;
     const current = game.youmonst?.data?.pmidx ?? game.u?.umonnum;
-    const killPlayer = selected === role || selected === race
+    const killPlayer = killPlayer0 || selected === role || selected === race
         || (current != null && selected === (current | 0) && game.u?.unchanging);
     const vital = game.mvitals[selected] ||= { born: 0, died: 0, mvflags: 0 };
     vital.mvflags |= G_GENOD | 0x10; /* G_NOCORPSE */
@@ -752,6 +819,13 @@ async function special_throne_effect(effect) {
  * RNG call sequence (see module header for full count).
  * ---------------------------------------------------------------------------
  */
+/* C tty leaves the answered prompt on the topline until the next key read
+ * (topl.c:257-266), so stash it for the post-rhack wipe in js/allmain.js. */
+async function analyze_throne() {
+    const ans = await y_n_default("Analyze throne?", 'n');
+    game._resultMessage = "Analyze throne? [yn] (n)";
+    return ans;
+}
 export async function throne_sit_effect() {
     const u = game.u || {};
     const gi = game.gi || {};
@@ -769,10 +843,18 @@ export async function throne_sit_effect() {
     if (rnd(6) > 4) {
         /* RNG 2: which effect (1..13) */
         let effect = rnd(13);
-        /* wizard / debug_fuzzer branch: in JS we skip the interactive getlin
-         * path (no terminal input during replay); effect stays rnd(13) result.
-         * C: if (wizard && !iflags.debug_fuzzer) { ... } — no extra RNG calls
-         * in the debug path that are visible in trace (getlin is interactive). */
+        /* C sit.c:46-60 — wizard && !iflags.debug_fuzzer (never set here) */
+        if (wizard()) {
+            const buf = String(await getlin("Throne sit effect (1..13) [0=random]"));
+            if (buf[0] === '\x1b') {
+                await pline("%s", "Never mind.");
+                return; /* caller will still cause a move to elapse */
+            }
+            const which = parseInt(buf, 10) || 0; /* atoi */
+            if (which >= 1 && which <= 13)
+                effect = which;
+        }
+
         if (special_throne) {
             await special_throne_effect(effect);
             /* special throne never removes itself from sitting — return now */
@@ -816,7 +898,7 @@ export async function throne_sit_effect() {
                 break;
             case 5:
                 /* No RNG — take_gold() side-effects only */
-                take_gold();
+                await take_gold();
                 break;
             case 6: {
                 /* RNG: rn2(5) — only on the luck branch; makewish has own RNG */
@@ -909,13 +991,17 @@ export async function throne_sit_effect() {
         }
     }
     else {
-        /* No RNG — comfort/discomfort message only */
-        /* C: if (is_prince(...) || u.uevent.uhand_of_elbereth) ... */
-        void special_throne; /* already computed; no RNG needed */
+        /* C sit.c:211-214 — no RNG; is_prince(gy.youmonst.data) reads mons[u.umonnum] */
+        const ymd = permonstTemplate(u.umonnum | 0);
+        if (((ymd?.mflags2 | 0) & M2_PRINCE) !== 0 || u.uevent?.uhand_of_elbereth)
+            await You_feel("very comfortable here.");
+        else
+            await You_feel("somehow out of place...");
     }
     /* Throne removal: !special_throne && !rn2(3) */
-    /* C: (!wizard || y_n("Analyze throne?") == 'y') — in replay wizard=false */
-    if (!special_throne && !rn2(3)) { /* RNG: rn2(3) */
+    /* C sit.c:224-225 — wizard mode asks y_n("Analyze throne?") after rn2(3) hits */
+    if (!special_throne && !rn2(3) /* RNG: rn2(3) */
+        && (!wizard() || (await analyze_throne()) === 'y')) {
         /* Remove throne tile and redraw */
         /* C sit.c:226 — levl[tx][ty].typ = ROOM, levl[tx][ty].flags = 0; */
         const tloc = lvl ? lvl.at(tx, ty) : null;
@@ -925,7 +1011,9 @@ export async function throne_sit_effect() {
         }
         map_background(tx, ty, false);
         newsym_force(tx, ty);
-        /* pline_The("throne %s in a puff of logic.", ...) — no RNG */
+        /* C sit.c:231 */
+        await pline_The("throne %s in a puff of logic.",
+                        cansee(tx, ty) ? "vanishes" : "has vanished");
     }
 }
 /* ---------------------------------------------------------------------------

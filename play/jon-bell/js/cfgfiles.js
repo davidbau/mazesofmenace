@@ -103,5 +103,46 @@ function fopen_config_file(filename, src) {
 function free_config_sections() { /* no-op stub */ }
 function parse_conf_file(fp, callback) { return true; }
 function parse_config_line(line) { /* no-op stub */ }
+
+/* C ref: cfgfiles.c:1297-1380 config_line_stmt[] — the non-sysconf rows
+ * (syscnf_only rows are skipped when !in_sysconf), as [name, min length]. */
+const CONFIG_LINE_STMT = [
+    ['OPTIONS', 4], ['AUTOPICKUP_EXCEPTION', 5], ['BINDINGS', 4],
+    ['AUTOCOMPLETE', 5], ['MSGTYPE', 7], ['HACKDIR', 4], ['LEVELDIR', 4],
+    ['LEVELS', 4], ['SAVEDIR', 4], ['BONESDIR', 5], ['DATADIR', 4],
+    ['SCOREDIR', 4], ['LOCKDIR', 4], ['CONFIGDIR', 4], ['TROUBLEDIR', 4],
+    ['NAME', 4], ['ROLE', 4], ['CHARACTER', 4], ['dogname', 3],
+    ['catname', 3], ['BOULDER', 3], ['MENUCOLOR', 9], ['HILITE_STATUS', 6],
+    ['WARNINGS', 5], ['ROGUESYMBOLS', 4], ['SYMBOLS', 4], ['WIZKIT', 6],
+    ['SOUNDDIR', 8], ['SOUND', 5], ['QT_TILEWIDTH', 12],
+    ['QT_TILEHEIGHT', 13], ['QT_FONTSIZE', 11], ['QT_COMPACT', 10],
+];
+
+/* C ref: cfgfiles.c:1437 (and :1413) parse_config_line()'s error returns for
+ * a statement no config_line_stmt[] row matches.  Returns the
+ * config_error_add() message, or null when the line is a known statement. */
+export function config_line_error(origbuf) {
+    /* mungspaces(): tabs -> space, condense runs, trim */
+    const buf = origbuf.replace(/[ \t]+/g, ' ').replace(/^ | $/g, '');
+    const eq = buf.indexOf('='), co = buf.indexOf(':');
+    let p = (eq < 0 || (co >= 0 && co < eq)) ? co : eq; /* find_optparam() */
+    if (p < 0)
+        return "Not a config statement, missing '='";
+    /* match_varname() -> match_optname(..., val_allowed=TRUE): the length
+     * of the name without any ':'/'=' value and the spaces before it */
+    let len = buf.length;
+    let q = buf.indexOf(':'), r = buf.indexOf('=');
+    q = (q < 0 || (r >= 0 && r < q)) ? r : q;
+    if (q >= 0) {
+        while (q > 0 && /\s/.test(buf[q - 1])) q--;
+        len = q;
+    }
+    const user = buf.slice(0, len).toLowerCase();
+    for (const [name, minlen] of CONFIG_LINE_STMT) {
+        if (len >= minlen && name.toLowerCase().startsWith(user))
+            return null;
+    }
+    return 'Unknown config statement';
+}
 function reset_duplicate_opt_detection() { /* no-op stub */ }
 function fclose(fp) { /* no-op stub */ }

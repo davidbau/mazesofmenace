@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { OPTION_DEFINITIONS } from './options_data.js';
 import { ECMD_OK, ECMD_FAIL, PRIMARYSET, STONE, WC_PERM_INVENT } from './const.js';
-import { pline, bot, docrt, reglyph_darkroom, check_gold_symbol } from './display.js';
+import { pline, bot, docrt, reglyph_darkroom, check_gold_symbol, flush_screen, force_more } from './display.js';
 import { vision_recalc } from './vision.js';
 import { update_rest_on_space } from './cmd_binds.js';
 import { classifyTerrain as classify_terrain } from './terrain-status.js';
@@ -346,14 +346,26 @@ export function can_set_perm_invent() {
     return true;
 }
 
+/* C utf8map.c reset_customsymbols(): free_all_glyphmap_u() then
+ * apply_customizations(gc.currentgraphics, do_custom_symbols). This port keeps
+ * no per-glyph custom-symbol (glyphmap u) storage and parses no S_/G_
+ * customizations, so there is nothing to free or apply. */
+function reset_customsymbols() {}
+
 export async function reset_needed_visuals() {
     const go = game.go;
-    if (go.opt_need_glyph_reset) missing('reset_glyphmap');
+    /* C: reset_glyphmap(gm_optionchange) rebuilds the glyph->symbol table; this
+     * port maps glyphs on demand (js/symbols.js reset_glyphmap is likewise a no-op). */
     if (go.opt_reset_customcolors || go.opt_update_basic_palette || go.opt_reset_customsymbols || go.opt_need_redraw) {
         if (go.opt_update_basic_palette) { missing('change_palette'); go.opt_update_basic_palette = false; }
         if (go.opt_reset_customcolors) reset_customcolors();
-        if (go.opt_reset_customsymbols) missing('reset_customsymbols');
+        if (go.opt_reset_customsymbols) reset_customsymbols();
         if (go.opt_need_redraw) { check_gold_symbol(); reglyph_darkroom(); }
+        /* C display.c cls() -> display_nhwindow(WIN_MESSAGE, FALSE): a topline
+         * still showing a message gets its --More-- before the screen clears. */
+        await flush_screen(1);
+        if (game._pending_message) await force_more(game._pending_message);
+        game._pending_message = '';
         await docrt();
     }
     if (go.opt_need_promptstyle) missing('adjust_menu_promptstyle');

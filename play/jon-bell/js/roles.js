@@ -4,7 +4,7 @@
 //
 // Displays names for menus remain minimal; bitmask tables match C NUM_ROLES/NUM_RACES.
 import { AM_CHAOTIC, AM_LAWFUL, AM_NEUTRAL, NON_PM, ROLE_ALIGNS, ROLE_ALIGNMASK, ROLE_CHAOTIC as ROLE_ALIGN_BIT_CHAOS, ROLE_FEMALE, ROLE_GENDERS, ROLE_GENDMASK, ROLE_LAWFUL as ROLE_ALIGN_BIT_LAWFUL, ROLE_MALE, ROLE_NEUTRAL as ROLE_ALIGN_BIT_NEUTRAL, ROLE_NONE, ROLE_RANDOM, ROLE_RACEMASK, PICK_RANDOM, PICK_RIGID, } from './const.js';
-import { rn2 } from './rng.js';
+import { rn2, rn2_on_display_rng } from './rng.js';
 import {
     PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE,
     PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER, PM_MONK,
@@ -367,9 +367,9 @@ export function validalign(rolenum, racenum, alignnum) {
         && (ROLE_ALLOWS[rolenum] & raceSpecs[racenum].allow
             & ALIGN_TAB[alignnum].allow & ROLE_ALIGNMASK));
 }
-export function randrole(_forDisplay) {
-    _forDisplay;
-    return rn2(NUM_ROLES);
+export function randrole(forDisplay) {
+    /* C role.c:719-727 */
+    return forDisplay ? rn2_on_display_rng(NUM_ROLES) : rn2(NUM_ROLES);
 }
 export function randrace(rolenum) {
     let n = 0;

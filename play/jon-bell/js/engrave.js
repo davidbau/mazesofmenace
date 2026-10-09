@@ -17,6 +17,9 @@ import { check_unpaid_usage } from './shk.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { goodpos } from './trap.js';
+import { is_pool } from './look.js';
+import { LAVAPOOL, LAVAWALL, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE } from './const.js';
+import { permonstTemplate } from './makemon.js';
 import { nhgetch } from './input.js';
 import { pline, flush_screen, newsym } from './display.js';
 import { topl_park_cursor } from './display.js';
@@ -28,14 +31,14 @@ import { getObjFromGetobj, welded, body_part, surface as surface_real, ceiling,
          Yname2, is_blade, is_art } from './cmd.js';
 import { bimanual, is_boots } from './do_wear.js';
 import { Yobjnam2, doname, xname, Tobjnam, otense } from './objnam.js';
-import { useup } from './cmd.js';
+import { useup, altar_wrath, check_capacity } from './cmd.js';
 import { GETOBJ_PROMPT, HAND } from './const.js';
 import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { can_reach_floor as can_reach_floor_real } from './hold_another_object.js';
 import { make_engr_at, del_engr_at, engr_at, random_engraving } from './mklev.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
-         ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE,
+         ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE, IS_ALTAR,
          DRAWBRIDGE_UP, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC } from './const.js';
 
 /* ── object class numbers (objclass.h OBJCLASS enum) ─────────────────────────── */
@@ -73,11 +76,7 @@ function uHallu(u) { return _hasProp(u, HALLUC); }
 function body_part_fingertip() { return 'fingertip'; }
 function body_part_hand() { return 'hand'; }
 
-function surface(x, y) {
-    const loc = game.level?.at?.(x, y);
-    if (loc && loc.typ === ICE) return 'ice';
-    return 'floor';
-}
+function surface(x, y) { return surface_real(x, y); }
 export function is_ice(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return false; /* C: !isok(x, y) -> FALSE */
@@ -121,12 +120,38 @@ function stylus_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
-function u_can_engrave() {
+async function u_can_engrave() {
     const u = game.u || {};
     if (u.uswallow) {
         return false;
     }
-    /* cantwield / check_capacity — FALSE for the unencumbered human hero. */
+    /* C engrave.c:520-533 — terrain arms */
+    const lev = game.level?.at?.(u.ux, u.uy);
+    const levtyp = lev ? (lev.typ | 0) : 0;
+    if (lev) {
+        if (levtyp === LAVAPOOL || levtyp === LAVAWALL) {
+            await pline(`You can't write on the ${surface_real(u.ux, u.uy)}!`);
+            return false;
+        } else if (is_pool(u.ux, u.uy) || IS_FOUNTAIN(levtyp)) {
+            await pline(`You can't write on the ${surface_real(u.ux, u.uy)}!`);
+            return false;
+        } else if (IS_AIR(levtyp)) {
+            await pline(`You can't write in ${levtyp === CLOUD ? 'cloud vapor' : 'thin air'}!`);
+            return false;
+        } else if (!ACCESSIBLE(levtyp)) {
+            await pline("You can't write here.");
+            return false;
+        }
+    }
+    /* C engrave.c:532 cantwield(gy.youmonst.data) = nohands || verysmall (mondata.h:96) */
+    const ym = (game.youmonst && game.youmonst.data)
+        || (u.umonnum != null ? permonstTemplate(u.umonnum | 0) : null);
+    if (ym && (((ym.mflags1 | 0) & 0x00002000) !== 0 || (ym.msize | 0) < 1)) {
+        await pline("You can't even hold anything!");
+        return false;
+    }
+    if (check_capacity(null)) /* C engrave.c:536 */
+        return false;
     return true;
 }
 
@@ -321,7 +346,7 @@ export async function doengrave() {
     const g = game;
     const u = g.u || {};
 
-    if (!u_can_engrave()) {
+    if (!(await u_can_engrave())) {
         return ECMD_FAIL;
     }
 
@@ -355,6 +380,22 @@ export async function doengrave() {
     /* C engrave.c:993 — the wielded or worn stylus is still usable. */
     if (!freehand() && de.otmp !== u.uwep && !de.otmp.owornmask) {
         await pline(`You have no free ${body_part(HAND)} to write with!`);
+        return doengr_exit(de);
+    }
+
+    let initial_msg_given = false;
+    if (!can_reach_floor_real(true)) {
+        if ((de.otmp.oclass | 0) !== WAND_CLASS) {
+            await cant_reach_floor(u.ux, u.uy, false, true, false);
+            return doengr_exit(de);
+        }
+        await pline(`You gesture, with your wand, towards the ${surface(u.ux, u.uy)} below you.`);
+        initial_msg_given = true;
+    }
+    if (IS_ALTAR(game.level?.locations?.[u.ux]?.[u.uy]?.typ)) {
+        if (!initial_msg_given)
+            await pline(`You make a motion towards the altar with ${de.writer}.`);
+        await altar_wrath(u.ux, u.uy);
         return doengr_exit(de);
     }
 
@@ -523,7 +564,7 @@ export async function doengrave() {
             } else if (de.type === DUST || de.type === MARK || de.type === ENGR_BLOOD) {
                 const oldKind = de.oetype === BURN
                     ? (de.frosted ? 'melted into' : 'burned into') : 'engraved in';
-                await pline(`You cannot wipe out the message that is ${oldKind} ${de.eloc || surface(u.ux, u.uy)} here.`);
+                await pline(`You cannot wipe out the message that is ${oldKind} the ${surface(u.ux, u.uy)} here.`);
                 de.ret = ECMD_TIME;
                 return doengr_exit(de);
             } else if (de.type !== de.oetype || c === 'n') {

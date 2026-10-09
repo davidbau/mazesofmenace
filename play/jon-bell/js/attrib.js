@@ -107,6 +107,15 @@ export function acurr(u, i) {
             return STR19(25);
         return Math.max(tmp, 3);
     }
+    /* C attrib.c:1228-1231: a worn dunce cap pins Int/Wis at 6. */
+    /* C attrib.c:1222-1224: nymphs and the amorous demon (incubus/succubus)
+     * form count as Cha 18 when the base is lower. */
+    if (i === A_CHA && tmp < 18
+        && ((game.youmonst?.data?.mlet | 0) === 14 /* S_NYMPH */
+            || (u.umonnum | 0) === 290 /* PM_AMOROUS_DEMON */))
+        return 18;
+    if ((i === A_INT || i === A_WIS) && u.uarmh && (u.uarmh.otyp | 0) === 94)
+        return 6;
     if (tmp >= 25)
         return 25;
     if (tmp <= 3)

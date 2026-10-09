@@ -61,7 +61,7 @@ PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_WATER_EL
 PM_GHOST, PM_WIZARD_OF_YENDOR, PM_SHOPKEEPER, PM_ARCHEOLOGIST, PM_WIZARD, } from './pm.generated.js';
 import { cansee, couldsee, clear_path, is_lightblocker_mappear, does_block, unblock_point } from './vision.js';
 import { linedup } from './trap.js';
-import { mon_nam, exclam } from './uhitm.js';
+import { mon_nam, exclam, artifact_hit } from './uhitm.js';
 /* C mon.c:3470 killed() is a one-line wrapper over xkilled(), which lives in
  * js/uhitm.js.  mhitm.js already imports from uhitm.js (mon_nam, dmgval_weapon,
  * ...), so this rides the existing edge rather than adding a new one. */
@@ -227,6 +227,8 @@ export function attk_protection(aatyp) {
  * ---------------------------------------------------------------------------
  */
 import { mdamageu } from './mhitu.js';
+import { drain_pending_death_in_place } from './fastforward.js';
+import { pending_death_is_final } from './end.js';
 /* m_canseeu — C ref: nethack-c/include/vision.h:45-52 (macro):
  *   (!Invis || perceives(m->data)) && !Underwater && couldsee(m->mx, m->my)
  * Invis = (HInvis || EInvis) && !BInvis (youprop.h:198)
@@ -784,6 +786,24 @@ export function Amonnam(mtmp) {
     return xm_highc_first(a_monnam(mtmp));
 }
 
+/* C ref: do_name.c:1512-1534 — road-runner nemesis aliases for coyotes. */
+const coynames = [
+    "Carnivorous Vulgaris", "Road-Runnerus Digestus", "Eatibus Anythingus",
+    "Famishus-Famishus", "Eatibus Almost Anythingus", "Eatius Birdius",
+    "Famishius Fantasticus", "Eternalii Famishiis", "Famishus Vulgarus",
+    "Famishius Vulgaris Ingeniusi", "Eatius-Slobbius", "Hardheadipus Oedipus",
+    "Carnivorous Slobbius", "Hard-Headipus Ravenus", "Evereadii Eatibus",
+    "Apetitius Giganticus", "Hungrii Flea-Bagius", "Overconfidentii Vulgaris",
+    "Caninus Nervous Rex", "Grotesques Appetitus", "Nemesis Ridiculii",
+    "Canis latrans"
+];
+
+export function coyotename(mtmp) {
+    return `${x_monnam(mtmp, ARTICLE_NONE, null, 0, true)} - ${
+        mtmp.mcan ? coynames[coynames.length - 1]
+                  : coynames[(mtmp.m_id >>> 0) % (coynames.length - 1)]}`;
+}
+
 /* ── distant_monnam ──────────────────────────────────────────────────────
  * C ref: nethack-c/src/do_name.c (ground truth)
  * Port of distant_monnam — obfuscates high priest(ess) on Astral Plane
@@ -1019,7 +1039,16 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
                 const acid_res = _hero_resists(ACID_RES);
                 if (!acid_res) {
-                    mdamageu(mon, tmp);
+                    /* C mhitu.c:1925 mdamageu -> done_in_by runs IN PLACE: a lifesaved
+                     * swallowed hero is expelled (unstuck rnd(2)) before the
+                     * erode_armor draw below. */
+                    const _deathBeforeAcid = game._pendingDeath || null;
+                    await mdamageu(mon, tmp);
+                    if (game._pendingDeath && game._pendingDeath !== _deathBeforeAcid) {
+                        await drain_pending_death_in_place();
+                        if (pending_death_is_final())
+                            return (malive | mhit);
+                    }
                     monstunseesu(M_SEEN_ACID);
                 }
                 else {
@@ -2618,8 +2647,9 @@ async function _hmon_hitmon_do_hit(hmd, mon, obj, u, uwep) {
     }
     if (hmd.mdat && (hmd.mdat.pmidx | 0) === PM_SHADE) {
     }
-    if ((obj.oclass | 0) === _OCLASS_WEAPON || (obj.oclass | 0) === _OCLASS_GEM) {
-        _hmon_hitmon_weapon(hmd, mon, obj, u, uwep);
+    if ((obj.oclass | 0) === _OCLASS_WEAPON || is_weptool(obj)
+        || (obj.oclass | 0) === _OCLASS_GEM) {
+        await _hmon_hitmon_weapon(hmd, mon, obj, u, uwep);
     } else if ((obj.oclass | 0) === 8 /* POTION_CLASS */) {
     } else {
         await _hmon_hitmon_misc_obj(hmd, mon, obj);
@@ -2627,14 +2657,14 @@ async function _hmon_hitmon_do_hit(hmd, mon, obj, u, uwep) {
 }
 
 /* uhitm.c:1071 hmon_hitmon_weapon — dispatch melee vs ranged */
-function _hmon_hitmon_weapon(hmd, mon, obj, u, uwep) {
+async function _hmon_hitmon_weapon(hmd, mon, obj, u, uwep) {
     if (_is_launcher_hmon(obj)
         || (!hmd.thrown && (_is_missile_hmon(obj) || _is_ammo_hmon(obj)))
         || (_is_ammo_hmon(obj) && (hmd.thrown !== HMON_THROWN
                                    || !_ammo_and_launcher_hmon(obj, uwep)))) {
         _hmon_hitmon_weapon_ranged(hmd, mon, obj);
     } else {
-        hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep);
+        await hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep);
     }
 }
 
@@ -2652,14 +2682,31 @@ function _hmon_hitmon_weapon_ranged(hmd, mon, obj) {
 }
 
 /* uhitm.c:935 hmon_hitmon_weapon_melee (also handles THROWN missiles/ammo) */
-export function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
+export async function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
     hmd.use_weapon_skill = true;
     hmd.dmg = dmgval_weapon(obj, mon);
     hmd.train_weapon_skill = (hmd.dmg > 1);
 
     /* Healer/rogue/shatter special cases require hand_to_hand — skipped for THROWN */
 
+    /* C uhitm.c:1015-1033: artifact_hit adds spec_dbon (rnd(24) for
+     * Mjollnir) and may print its own message. */
     if (obj.oartifact) {
+        const ah = await artifact_hit(null, mon, obj, hmd.dmg, hmd.dieroll);
+        hmd.dmg = ah.dmg;
+        if (ah.special) {
+            if ((mon.mhp | 0) < 1) { /* DEADMONSTER */
+                hmd.doreturn = true;
+                hmd.retval = false;
+                return;
+            }
+            if (hmd.dmg === 0) {
+                hmd.doreturn = true;
+                hmd.retval = true;
+                return;
+            }
+            hmd.hittxt = true;
+        }
     }
     if (hmd.material === _MAT_SILVER_HMON && mon_hates_silver(mon))
         hmd.silvermsg = hmd.silverobj = true;
@@ -2676,6 +2723,12 @@ export function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
 }
 
 async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
+    /* C uhitm.c:1125-1130 — BOULDER 1d20, HEAVY_IRON_BALL 1d25, IRON_CHAIN 1d4+1 */
+    if ((obj.otyp | 0) === SHADE_AWARE_BOULDER || (obj.otyp | 0) === SHADE_AWARE_HEAVY_IRON_BALL
+        || (obj.otyp | 0) === SHADE_AWARE_IRON_CHAIN) {
+        hmd.dmg = dmgval_weapon(obj, mon);
+        return;
+    }
     if ((obj.otyp | 0) === CREAM_PIE || (obj.otyp | 0) === BLINDING_VENOM_HM) {
         mon.msleeping = 0;
         /* C uhitm.c:1265-1268 — AT_SPIT for venom, AT_WEAP for a thrown pie. */
@@ -3501,6 +3554,7 @@ export function resists_drli(mon) {
 }
 
 export function resists_blnd(mon) {
+    resists_blnd_impossible = null;
     const ptr = mon ? mon.data : null;
     const is_you = is_youmonst(mon);
 
@@ -3521,10 +3575,18 @@ export function resists_blnd(mon) {
         return true;
     /* catchall */
     if (is_you && _Blnd_resist()) {
-        impossible("'Blnd_resist' but not resists_blnd()?");
+        /* impossible() is async (js/pline.js) and this body is sync; record the
+         * message so an awaiting caller (js/zap.js _u_resists_blnd) emits it. */
+        resists_blnd_impossible = "'Blnd_resist' but not resists_blnd()?";
         return true;
     }
     return false;
+}
+export let resists_blnd_impossible = null;
+export function take_resists_blnd_impossible() {
+    const m = resists_blnd_impossible;
+    resists_blnd_impossible = null;
+    return m;
 }
 /* C youprop.h Blnd_resist == (HBlnd_resist || EBlnd_resist).  Nothing in js/
  * writes uprops[BLND_RES] today, so this is an honest false; it is spelled out
@@ -3973,7 +4035,7 @@ function Unaware() {
 }
 
 function mon_perma_blind(mdef) {
-    return !!(mdef && mdef.mblinded);
+    return !!(mdef && !(mdef.mcansee | 0) && !(mdef.mblinded | 0)); /* monst.h:253 */
 }
 
 function objdescr_is(obj, desc) {

@@ -11,12 +11,12 @@ import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr } from "./attrib.js";
 import { overexert_hp } from "./uhitm.js";
 import { t_at, registerTrapMksobj, m_dowear, activate_statue_trap } from "./trap.js";
-import { Warning, newsym, feel_location, feel_newsym, pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, You_hear } from "./display.js";
+import { Warning, newsym, feel_location, feel_newsym, pline, urgent_pline, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, You_hear } from "./display.js";
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
  * do_death_sequence is only ever REFERENCED at call time. */
 import { do_death_sequence } from "./end.js";
-import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, HALF_PHDAM, DEAF, VOMITING, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, BARRACKS, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel, Is_airlevel } from "./const.js";
+import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, ENERGY_REGENERATION, HALF_PHDAM, DEAF, VOMITING, STRANGLED, A_STR, SICK, SICK_NONVOMITABLE, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, BARRACKS, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel, Is_airlevel } from "./const.js";
 import { is_pool } from "./look.js";
 import { can_reach_floor } from "./hold_another_object.js";
 /* nomul: C detect.c:2049/2058 calls it from dosearch0 when a hidden door or
@@ -75,7 +75,9 @@ import { NUM_ROLES, resolveRandomChargenInit, role_init, ROLE_GODS } from "./rol
 import { consumeUInitMiscHeroInitRng } from "./exper.js";
 import { randomize_gem_colors, init_objects, shuffle_all } from "./o_init.js";
 import { u_init_inventory_attrs } from "./u_init.js";
-import { wipe_engr_at } from "./mklev.js";
+import { wipe_engr_at, upstart } from "./mklev.js";
+import { mhe } from "./makemon.js";
+import { hcolor } from "./mhitm.js";
 import { mksobj, mkobj, makemon, place_object, make_corpse, wake_nearto, minliquid } from "./mklev.js";
 /* dosounds()'s shop branch (sounds.c:313-329) needs tended_shop/inhishop, which
  * live in js/shk.js.  shk.js does not import this module, so the edge is safe;
@@ -927,7 +929,8 @@ export function dosounds_rng() {
     if (!lf)
         return;
     const _u = game.u || {};
-    if ((_u.HDeaf | 0) || !!(_u.uprops?.[DEAF]?.extrinsic | 0)
+    if ((_u.HDeaf | 0) || !!(_u.uprops?.[DEAF]?.intrinsic | 0)
+        || !!(_u.uprops?.[DEAF]?.extrinsic | 0)
         || (_u.uroleplay && _u.uroleplay.deaf)
         || (game.flags && game.flags.acoustics === false)
         || (_u.uswallow | 0) || (_u.uinwater | 0))
@@ -1146,6 +1149,60 @@ export async function vomiting_dialogue_ff() {
     exercise(A_CON, false);
 }
 
+/* C timeout.c:295-312 choke_dialogue, called from nh_timeout (timeout.c:628)
+ * between vomiting_dialogue and sickness_dialogue.  The trailing
+ * exercise(A_STR, FALSE) runs every turn the hero is Strangled. */
+export async function choke_dialogue_ff() {
+    const u = game.u;
+    const p = u?.uprops?.[STRANGLED];
+    if (!p || !(p.intrinsic | 0)) return;
+    const i = (p.intrinsic | 0) & TIMEOUT;
+    const choke_texts = ['You find it hard to breathe.', "You're gasping for air.",
+        'You can no longer breathe.', "You're turning %s.", 'You suffocate.'];
+    const choke_texts2 = ['Your %s is becoming constricted.',
+        'Your blood is having trouble reaching your brain.',
+        'The pressure on your %s increases.', 'Your consciousness is fading.',
+        'You suffocate.'];
+    if (i > 0 && i <= choke_texts.length) {
+        const mb = u.uprops?.[MAGICAL_BREATHING];
+        const breathless = !!((mb?.intrinsic | 0) || (mb?.extrinsic | 0))
+            || pooleffects_breathless(game.youmonst?.data);
+        if (breathless || !rn2(50)) {
+            await urgent_pline(choke_texts2[choke_texts2.length - i].replace('%s', body_part(NECK))); /* timeout.c:301 */
+        } else {
+            const str = choke_texts[choke_texts.length - i];
+            await urgent_pline(str.includes('%') ? str.replace('%s', hcolor('blue' /* NH_BLUE */)) : str); /* timeout.c:305-308 */
+            await stop_occupation();
+        }
+    }
+    exercise(A_STR, false);
+}
+/* C timeout.c:316-345 sickness_dialogue, called from nh_timeout (timeout.c:629)
+ * right after choke_dialogue.  The three warnings fire on odd remaining
+ * timeouts; the trailing exercise(A_CON, FALSE) (timeout.c:344) runs every
+ * turn the hero is Sick, outside the `if`. */
+export async function sickness_dialogue_ff() {
+    const u = game.u;
+    const p = u?.uprops?.[SICK];
+    if (!p || !(p.intrinsic | 0)) return;
+    const j = (p.intrinsic | 0) & TIMEOUT, i = Math.trunc(j / 2);
+    const texts = ['Your illness feels worse.', 'Your illness is severe.', "You are at Death's door."];
+    if (i > 0 && i <= texts.length && (j % 2) !== 0) {
+        let buf = texts[texts.length - i];
+        if (((u.usick_type | 0) & SICK_NONVOMITABLE) === 0)
+            buf = buf.replace('illness', 'sickness');
+        const hallu = !!(u.uprops?.[HALLUC]?.intrinsic | 0)
+            && !((u.uprops?.[HALLUC_RES]?.intrinsic | 0)
+                || (u.uprops?.[HALLUC_RES]?.extrinsic | 0));
+        if (hallu && buf.includes("Death's door")) {
+            const pronoun = mhe(game.youmonst);
+            buf += `  ${upstart(pronoun)} ${vtense(pronoun, 'are')} inviting you in.`;
+        }
+        await pline(buf);
+    }
+    exercise(A_CON, false);
+}
+
 // Per-step leaf RNG calls
 // C ref: allmain.c moveloop_core() — per-turn block fires in order:
 //   mcalcmove×N (rn2(12) per monster), rn2(70) makemon,
@@ -1192,6 +1249,16 @@ export async function fastforward_step(stepNum) {
 // movement=0 (from the initial mapstate checkpoint) and C's movemon() fires 0 RNG when
 // no monster has movement >= NORMAL_SPEED. Steps 11+ use fastforward_step_generic_turn()
 // which includes dochug dispatch, since by then monsters have accumulated movement.
+async function _ff_generic_regen_hp() {
+    const u = game.u;
+    if (!u || u.uinvulnerable)
+        return;
+    const needs = !Upolyd(u)
+        ? ((u.uhp | 0) < (u.uhpmax | 0))
+        : (((u.mh | 0) < (u.mhmax | 0)) || _uasmon_mlet(u) === S_EEL_FF);
+    if (needs)
+        await regen_hp(UNENCUMBERED);
+}
 /* Generic turn for step 1 only — no dochug dispatch because monsters have
  * movement=0 at the initial mapstate checkpoint (C's movemon fires 0 RNG).
  * C ref: allmain.c:263 — movemon() returns FALSE immediately (no monster can move),
@@ -1209,6 +1276,11 @@ async function fastforward_step_generic_turn_nodochug() {
     /* C allmain.c:261 mvl_wtcap = near_capacity() — recomputed after the
      * monster-move loop; threaded into u_calc_moveamt (consumes no RNG). */
     u_calc_moveamt(near_capacity());
+    /* C ref: allmain.c:341-348 — regen_hp() sits between svm.moves++ and
+     * dosounds in the per-turn block; this calibrated block omitted it, so a
+     * wounded hero's rn2(100) (allmain.c:659) vanished on any turn run through
+     * here (the doapply wield-turn, js/cmd.js). */
+    await _ff_generic_regen_hp();
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
     await autosearch_rng();
@@ -1248,6 +1320,11 @@ async function fastforward_step_generic_turn() {
     /* C allmain.c:261 mvl_wtcap = near_capacity() — recomputed after the
      * monster-move loop; threaded into u_calc_moveamt (consumes no RNG). */
     u_calc_moveamt(near_capacity());
+    /* C ref: allmain.c:341-348 — regen_hp() sits between svm.moves++ and
+     * dosounds in the per-turn block; this calibrated block omitted it, so a
+     * wounded hero's rn2(100) (allmain.c:659) vanished on any turn run through
+     * here (the doapply wield-turn, js/cmd.js). */
+    await _ff_generic_regen_hp();
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
     await autosearch_rng();
@@ -1407,11 +1484,15 @@ function regen_pw(wtcap) {
     const ulevel = (u.ulevel | 0);
     const period = ((MAXULEV + 8 - ulevel) * (isWizard ? 3 : 4)) / 6 | 0;
     const moves = (game.moves | 0);
-    if ((wtcap | 0) < MOD_ENCUMBER && period !== 0 && (moves % period) === 0) {
+    /* C Energy_regeneration = HEnergy_regeneration || EEnergy_regeneration. */
+    if (((wtcap | 0) < MOD_ENCUMBER && period !== 0 && (moves % period) === 0)
+        || _has_prop(u, ENERGY_REGENERATION)) {
         /* C allmain.c:678 — upper = (ACURR(A_WIS)+ACURR(A_INT))/15 + 1. */
         let upper = ((acurr(u, A_WIS) | 0) + (acurr(u, 1 /*A_INT*/) | 0)) / 15 | 0;
         upper += 1;
-        /* EMagical_breathing unported = false; no +2. */
+        /* C allmain.c:620 — EMagical_breathing is the extrinsic half only. */
+        if ((u.uprops?.[MAGICAL_BREATHING]?.extrinsic | 0) !== 0)
+            upper += 2;
         u.uen = uen + rn1(upper, 1);
         if ((u.uen | 0) > uenmax)
             u.uen = uenmax;

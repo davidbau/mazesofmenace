@@ -3573,6 +3573,19 @@ export async function set_wounded_legs(side, timex) {
     const hw = u.HWounded_legs | 0;
     if (!wounded || (hw & TIMEOUT) < (timex | 0)) {
         set_itimeout_prop('HWounded_legs', timex | 0);
+        // C youprop.h:136 — HWounded_legs ≡ uprops[WOUNDED_LEGS].intrinsic
+        // (single storage). Dual-write the slot: the nh_timeout arm
+        // OR-reads flat|slot, so a stale slot inflates the countdown
+        // (OR ≠ max) and legs heal late — C healed at step 397 while JS
+        // still held 9 ticks (scen-sweep-Barbarian-95337, xan re-pricks).
+        // Preserve non-TIMEOUT slot bits like the ticker arm.
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[WOUNDED_LEGS]) {
+            u.uprops[WOUNDED_LEGS] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        u.uprops[WOUNDED_LEGS].intrinsic =
+            ((u.uprops[WOUNDED_LEGS].intrinsic | 0) & ~TIMEOUT)
+            | ((timex | 0) & TIMEOUT);
     }
     u.EWounded_legs = (u.EWounded_legs | 0) | (side | 0);
     u.Wounded_legs = true;

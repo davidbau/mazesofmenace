@@ -3430,9 +3430,12 @@ function print_branch(out, dnum, lowerBound, upperBound, bymenu, lchoices) {
  *
  * Ported: bymenu=TRUE PICK_ONE path (headings + specials + branches +
  * continuous selectors + unreachable Knox letter skip) + tty_end_menu
- * prompt/blank row (D-0563) + bot() after dismiss (D-0568); bymenu=FALSE
- * NHW_MENU putstr + display_nhwindow → process_text_window/dmore
- * (#wizwhere / D-0928 #1115/#1183 — not NHW_TEXT show_text_pages).
+ * prompt/blank row (D-0563); no bot() after dismiss (D-0568's extra call
+ * removed: C dismisses under bot_disabled and never bot()s here —
+ * destroy is a no-op, the botlx flag survives to the next pline);
+ * bymenu=FALSE NHW_MENU putstr + display_nhwindow →
+ * process_text_window/dmore (#wizwhere / D-0928 #1115/#1183 — not
+ * NHW_TEXT show_text_pages).
  * Sets dest.lev / dest.dgn and returns logical depth (playerlev), or 0
  * on cancel.
  * Named omissions: none — the endgame amulet grant after pick is the
@@ -3598,12 +3601,15 @@ export async function print_dungeon(bymenu, dest = null) {
     }
 
     const res = await select_menu_pick_one(raw);
-    // C wintty: dismissing a fullscreen menu that covered WIN_STATUS sets
-    // disp.botlx and calls bot() immediately. select_menu_pick_one still
-    // clear_committed_status for Options→submenu blanking (D-0385); restore
-    // here so the next pline/--More-- (e.g. Endgame prerequisite) shows botl.
-    const { bot } = await import('./display.js');
-    await bot();
+    // C: no bot() here. tty_select_menu dismisses inside windows.c
+    // select_menu's bot_disabled guard (wintty.c:2795; guard :1859–1863),
+    // so the dismissal's docrt sets disp.botlx (display.c:1769) and the
+    // flag survives; destroy_nhwindow is a no-op for the inactive menu
+    // (wintty.c:2018–2019). The next pline's flush_screen repaints fresh
+    // status from the preserved flag (vpline.c:274 → bot()). An eager
+    // bot() here would paint pre-restore moves and clear botlx (D-0568's
+    // extra call did exactly that; the prinv path it served repaints via
+    // the flag at its own pline instead).
     if (res.kind !== 'pick' || res.item?.choiceIdx == null) return 0;
     const idx = res.item.choiceIdx | 0;
     if (dest) {

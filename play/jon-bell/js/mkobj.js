@@ -14,6 +14,11 @@ import { confers_luck } from './attrib.js';   /* artifact.c:524 */
 import { set_moreluck } from './cmd.js';      /* attrib.c:454 */
 import { bimanual, reset_remarm } from './do_wear.js'; /* mondata.h:69 / do_wear.c */
 import { book_cursed } from './spell.js';     /* spell.c:2093 */
+import { cansee, Blind } from './vision.js';
+import { pline, You_see, You_hear } from './display.js';
+import { Your } from './do_wear.js';
+import { makeplural, obj_typename } from './objnam.js';
+import { HALLUC, OBJ_FLOOR, OBJ_INVENT } from './const.js';
 // ── Object-type constants ────────────────────────────────────────────────────
 // All values must match the otyp indices baked into the C build this JS mirrors.
 const POT_HEALING = 307;
@@ -279,4 +284,34 @@ export function curse(otmp) {
             book_cursed(otmp);
     }
     /* C:1814-1815 — if (otmp->lamplit) maybe_adjust_light(otmp, old_light); */
+}
+
+/* C mkobj.c:3843-3870 pudding_merge_message(): give a message if hero
+ * notices two globs merging. */
+export async function pudding_merge_message(otmp, otmp2) {
+    const u = game.u || {};
+    const visible = cansee(otmp.ox | 0, otmp.oy | 0)
+        || cansee(otmp2.ox | 0, otmp2.oy | 0);
+    const onfloor = (otmp.where | 0) === OBJ_FLOOR || (otmp2.where | 0) === OBJ_FLOOR;
+    const inpack = (otmp.where | 0) === OBJ_INVENT || (otmp2.where | 0) === OBJ_INVENT;
+    const hp = u.uprops && u.uprops[HALLUC];
+    const hallu = !!(hp && ((hp.intrinsic | 0) || (hp.extrinsic | 0)));
+
+    if ((!Blind() && visible) || inpack) {
+        if (hallu) {
+            if (onfloor)
+                await You_see('parts of the floor melting!');
+            else if (inpack)
+                await Your('pack reaches out and grabs something!');
+        } else if (onfloor || inpack) {
+            const adj = ((otmp.ox | 0) !== (u.ux | 0) || (otmp.oy | 0) !== (u.uy | 0))
+                && ((otmp2.ox | 0) !== (u.ux | 0) || (otmp2.oy | 0) !== (u.uy | 0));
+            await pline('The %s%s coalesce%s.',
+                        (onfloor && adj) ? 'adjacent ' : '',
+                        makeplural(obj_typename(otmp.otyp | 0)),
+                        inpack ? ' inside your pack' : '');
+        }
+    } else {
+        await You_hear('a faint sloshing sound.');
+    }
 }

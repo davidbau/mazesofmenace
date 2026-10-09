@@ -102,16 +102,37 @@ export function assign_candy_wrapper(obj) {
     }
     return;
 }
-/* ---------------------------------------------------------------------------
- * wand_explode — stub for wand explosion (RNG: rnd(lim) is consumed).
- * C ref: nethack-c/src/read.c — called at lines 763, 785.
- * The rnd(lim) is passed in as 'dam' already evaluated by the caller.
- * ---------------------------------------------------------------------------
- */
-function wand_explode_stub(obj, dam) {
-    /* C: various pline calls + losehp + useup.
-     * RNG for dam is consumed by the caller before this call.
-     * No additional RNG in this stub path. */
+/* C read.c:2413-2441 — overcharging any wand or zapping/engraving cursed wand.
+ * chg is the recharging adjustment (0 for zap/engrave). */
+export async function wand_explode(obj, chg) {
+    const expl = !chg ? 'suddenly' : 'vibrates violently and';
+    /* number of damage dice */
+    if (!chg) chg = 2; /* zap/engrave adjustment */
+    let n = (obj.spe | 0) + chg;
+    if (n < 2) n = 2; /* arbitrary minimum */
+    /* size of damage dice */
+    const WAN_NOTHING = 416, WAN_UNDEAD_TURNING = 421, WAN_POLYMORPH = 422,
+          WAN_CANCELLATION = 423, WAN_MAGIC_MISSILE = 429, WAN_FIRE = 430,
+          WAN_COLD = 431, WAN_DEATH = 433, WAN_LIGHTNING = 434;
+    let k;
+    switch (obj.otyp | 0) {
+    case WAN_WISHING: k = 12; break;
+    case WAN_CANCELLATION: case WAN_DEATH: case WAN_POLYMORPH:
+    case WAN_UNDEAD_TURNING: k = 10; break;
+    case WAN_COLD: case WAN_FIRE: case WAN_LIGHTNING:
+    case WAN_MAGIC_MISSILE: k = 8; break;
+    case WAN_NOTHING: k = 4; break;
+    default: k = 6; break;
+    }
+    /* inflict damage and destroy the wand */
+    const dmg = d(n, k);
+    obj.in_use = true; /* in case losehp() is fatal (or --More--^C) */
+    await pline(`${Yname2(obj)} ${expl} explodes!`);
+    await losehp(dmg /* Maybe_Half_Phys: Half_physical_damage unported */,
+                 'exploding wand', KILLED_BY_AN);
+    await useup_cmd(obj);
+    /* obscure side-effect */
+    exercise(A_STR, false);
 }
 /* ---------------------------------------------------------------------------
  * stripspe — remove charges from object (no RNG).
@@ -154,16 +175,30 @@ function _p_glow_observe(obj) {
     if (obj && !Blind)
         observe_object(obj);
 }
+function _p_glow_Blind() {
+    const p = game.u?.uprops?.[BLINDED];
+    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
+}
+/* color may be a string ('blue') or this file's numeric NH_* token. */
+function _p_glow_color(color) {
+    return hcolor_real(typeof color === 'number' ? hcolor(color) : color);
+}
 async function p_glow1(obj) {
+    /* C read.c:669 */
     _p_glow_observe(obj);
+    await pline(`${Yobjnam2(obj, _p_glow_Blind() ? 'vibrate' : 'glow')} briefly.`);
 }
 async function p_glow2(obj, color) {
-    /* C: pline("%s%s%s for a moment.", Yobjnam2(otmp, ...), ...) */
+    /* C read.c:675-676 */
+    const Blind = _p_glow_Blind();
     _p_glow_observe(obj);
+    await pline(`${Yobjnam2(obj, Blind ? 'vibrate' : 'glow')}${Blind ? '' : ' '}${Blind ? '' : _p_glow_color(color)} for a moment.`);
 }
 async function p_glow3(obj, color) {
-    /* C: pline("%s feebly%s%s for a moment.", Yobjnam2(otmp, ...), ...) */
+    /* C read.c:682-684 */
+    const Blind = _p_glow_Blind();
     _p_glow_observe(obj);
+    await pline(`${Yobjnam2(obj, Blind ? 'vibrate' : 'glow')} feebly${Blind ? '' : ' '}${Blind ? '' : _p_glow_color(color)} for a moment.`);
 }
 /* ---------------------------------------------------------------------------
  * recharge — recharge an object (wand, ring, or tool).
@@ -218,8 +253,7 @@ export async function recharge(obj, curse_bless) {
         if (n > 0 && (otyp === WAN_WISHING
             || (n * n * n > rn2(7 * 7 * 7)))) { /* rn2(343) */
             /* wand explodes: consume rnd(lim) for damage */
-            const dam = rnd(lim);
-            wand_explode_stub(obj, dam);
+            await wand_explode(obj, rnd(lim));
             return;
         }
         /* C read.c:767: increment recharge count (didn't explode) */
@@ -251,7 +285,7 @@ export async function recharge(obj, curse_bless) {
             /* C read.c:781-787: wishing wand overflow → explode */
             if (otyp === WAN_WISHING && obj.spe > 3) {
                 /* wands can't give more than three wishes */
-                wand_explode_stub(obj, 1);
+                await wand_explode(obj, 1);
                 return;
             }
             /* C read.c:788-793: glow messages */
@@ -551,6 +585,8 @@ export async function recharge(obj, curse_bless) {
 // ─────────────────────────────────────────────────────────────────────────────
 import { flush_screen, docrt, cls, under_water, under_ground, newsym, terrain_glyph, occupation_force_more, force_more, map_trap, map_engraving, map_object, unmap_object, show_glyph_cell, update_lastseentyp, GLYPHCLS_TRAP, GLYPHCLS_OBJ, GLYPHCLS_CMAP, GLYPHCLS_ENGR } from './display.js';
 import { t_at } from './trap.js';
+import { oc_merge as oc_merge_rd } from './oc_merge.generated.js';
+import { NUMMONS } from './pm.generated.js';
 import { engr_at } from './mklev.js';
 /* C detect.c:1418 room_discovered() lives in dungeon.c; this port hosts the
  * dungeon.c #overview block in js/cmd.js. */
@@ -560,8 +596,9 @@ import { nhgetch } from './input.js';
 import { study_book_learn } from './spell.js';
 import { exercise } from './attrib.js';
 import { study_book_dull } from './spell.js';
-import { cansee } from './vision.js';
-import { COLNO, ROWNO, CORR, SCORR, ROOM, SVALL, IS_FURNITURE, TER_DETECT, TER_OBJ, TER_MON, Has_contents, u_at, NOSE } from './const.js';
+import { cansee, unblock_point } from './vision.js';
+import { cvt_sdoor_to_door } from './dig.js';
+import { COLNO, ROWNO, SDOOR, CORR, SCORR, ROOM, SVALL, IS_FURNITURE, TER_DETECT, TER_OBJ, TER_MON, TER_TRP, TER_MAP, Has_contents, u_at, NOSE } from './const.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, INVIS, SEE_INVIS } from './const.js';
 /* make_confused's C home is potion.c:88; this file's private copy wrote a flat
  * `game.HConfusion` that only its own readers consulted. */
@@ -585,7 +622,9 @@ import { simpleonames, suit_simple_name } from './objnam.js';
  * file already carries. */
 import { shop_keeper, costly_spot } from './shk.js';
 import { inside_shop } from './mklev.js';
-import { shkname } from './dokick.js';
+import { KILLED_BY_AN } from './const.js';
+import { shkname, losehp } from './dokick.js';
+import { Yname2, useup as useup_cmd } from './cmd.js';
 import { erosion_matters, mkobj, place_object, makemon } from './mklev.js';
 /* seffect_light's confused arm only (read.c:1762-1780). */
 import { initedog, tamedog } from './dog.js';
@@ -613,7 +652,7 @@ import { xname, doname_with_price } from './objnam.js';
 /* C invent.c:1752 getobj() — the shared (prompt-less) selector; see the KNOWN
  * GAP at its one call site in seffect_destroy_armor. */
 import { getobj } from './eat.js';
-import { GETOBJ_PROMPT, TIMEOUT, STUNNED } from './const.js';
+import { GETOBJ_PROMPT, GETOBJ_ALLOWCNT, TIMEOUT, STUNNED } from './const.js';
 /* doread()'s own return value (C read.c returns ECMD_OK/ECMD_TIME/ECMD_CANCEL
  * from every arm); this file previously only set g.context.move as a side
  * effect and fell off the end with an implicit `undefined` return. */
@@ -637,10 +676,11 @@ import { getObjName } from './o_init.js';
 import { resist } from './zap.js';
 /* C read.c:364-556's non-scroll readable ladder needs these; all are hoisted
  * `export function`s, so the js/mklev.js and js/objnam.js cycles resolve. */
+import { create_gas_cloud } from './region.js';
 import { bcsign, upwords, outrumor, BY_COOKIE, wipeout_text } from './mklev.js';
 import { singular } from './objnam.js';
 import { You_cant, getobj_cmdq_drain } from './cmd.js';
-import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY } from './const.js';
+import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_SELECTABLE } from './const.js';
 import {
     /* read.c:503-507's red_mons[].  Taken from pm.generated.js but VERIFIED BY
      * NAME against js/makemon_pmnames.json (see the marker arm's comment). */
@@ -655,6 +695,19 @@ import { You_hear } from './display.js';
 /* C hack.h NOTELL — resist()'s `tell` argument. */
 import { NOTELL } from './const.js';
 import { Monnam } from './mcastu.js';
+import { mksobj as mksobj_er, wake_nearto as wake_nearto_er } from './mklev.js';
+import { flooreffects as flooreffects_er, ceiling as ceiling_er } from './cmd.js';
+import { stackobj as stackobj_er } from './sp_lev.js';
+import { killed as killed_er, wakeup as wakeup_er } from './mhitm.js';
+import { mondied as mondied_er } from './makemon.js';
+import { dmgval as dmgval_er } from './uhitm.js';
+import { doname as doname_er, xname as xname_er } from './objnam.js';
+import { hard_helmet as hard_helmet_er } from './do_wear.js';
+import { sokoban_guilt as sokoban_guilt_er } from './trap.js';
+import { map_invisible as map_invisible_er } from './display.js';
+import { In_quest as In_quest_er, In_endgame as In_endgame_er, Is_earthlevel as Is_earthlevel_er, PASSES_WALLS as PASSES_WALLS_er, HALF_PHDAM as HALF_PHDAM_er, AIR as AIR_ER, DOOR as DOOR_ER, D_CLOSED as D_CLOSED_ER, D_LOCKED as D_LOCKED_ER, HEAD as HEAD_ER, DEAF as DEAF_ER, IS_OBSTRUCTED, W_ARMH as W_ARMH_ER } from './const.js';
+import { mon_nam as mon_nam_er } from './uhitm.js';
+import { obfree as obfree_er } from './shk.js';
 import { do_genocide, do_class_genocide } from './sit.js';
 /* C ref: pline.h:44 `#define You(...)  pline("You " __VA_ARGS__)`.
  *
@@ -673,7 +726,7 @@ function You(fmt, ...args) { return pline("You " + fmt, ...args); }
  * and mbodypart is a hoisted `export function`, so the read<->cmd cycle is
  * safe for the same reason js/mhitm.js:78-82 documents. */
 import { mbodypart } from './cmd.js';
-import { s_suffix, y_monnam } from './mhitm.js';
+import { s_suffix, y_monnam, hcolor as hcolor_real } from './mhitm.js';
 import { Is_waterlevel, Is_rogue_level, ROOMOFFSET, STOMACH } from './const.js';
 import { do_clear_area, vision_recalc } from './vision.js';
 import { dmgtype } from './dogmove.js';
@@ -682,10 +735,21 @@ import { dmgtype } from './dogmove.js';
  * js/display.js also declares a private `observe_object`, but that one is a
  * bare `obj.dknown = 1` with neither the FIRST_OBJECT nor the Hallucination
  * guard, so it is NOT the copy to wire. */
-import { observe_object, level_tele, getobj_redo_menu, check_capacity, getpos } from './cmd.js';
+import { getObjFromGetobj, observe_object, level_tele, getobj_redo_menu, check_capacity, getpos } from './cmd.js';
 /* C teleport.c:844 scrolltele() — the non-confused, non-cursed arm of
  * seffect_teleportation (read.c:1796). */
 import { scrolltele } from './teleport.js';
+import { explode as explode_fr } from './zap.js';
+import { EXPL_FIERY as EXPL_FIERY_FR, PLNMSG_TOWER_OF_FLAME as PLNMSG_TOWER_OF_FLAME_FR,
+         HAND as HAND_FR, HEAD as HEAD_FR, M_SEEN_FIRE as M_SEEN_FIRE_FR, FIRE_RES as FIRE_RES_FR,
+         ACCESSIBLE as ACCESSIBLE_FR } from './const.js';
+import { burn_away_slime as burn_away_slime_fr, monstseesu as monstseesu_fr,
+         monstunseesu as monstunseesu_fr } from './mcastu.js';
+import { losehp as losehp_fr, delobj as delobj_rd } from './dokick.js';
+import { shieldeff as shieldeff_fr } from './display.js';
+import { is_pool_or_lava as is_pool_or_lava_fr } from './look.js';
+import { hliquid as hliquid_fr } from './mhitm.js';
+import { body_part as body_part_fr } from './cmd.js';
 
 const SPBOOK_CLASS = 10;
 // NH_ color constants (nhcolor enum: nh_NO_COLOR=0, nh_BLACK=1, nh_RED=2, ...)
@@ -765,6 +829,7 @@ async function study_book_already_known(spellName) {
      * y_n in C calls topl.c more() to clear the line.  Mirror that loop. */
     await topline_more_loop(msg);
     const ynPrompt = 'Refresh your memory anyway? [yn] (n)';
+    let refresh = false;
     while (true) {
         g._pending_message = ynPrompt;
         await flush_screen(1);
@@ -774,10 +839,15 @@ async function study_book_already_known(spellName) {
         if (c === '\x1b') break;                          /* ESC → default 'n' */
         if (c === '\r' || c === '\n' || c === ' ') break; /* activator → default 'n' */
         const lc = c.toLowerCase();
-        if (lc === 'y' || lc === 'n') break;              /* valid yn answer */
+        if (lc === 'y' || lc === 'n') {                   /* valid yn answer */
+            refresh = (lc === 'y');                       /* spell.c:571 only 'n' returns 0 */
+            break;
+        }
         /* invalid key: tty_yn_function loops and re-reads; prompt persists */
     }
+    if (refresh) return true;   /* spell.c:571-573: 'y' falls through to the study below */
     g._pending_message = ynPrompt;
+    return false;
 }
 
 /* C ref: spell.c:468 study_book(spellbook) — study a specific spellbook
@@ -818,6 +888,40 @@ export async function study_book(spellbook) {
         g.context.move = 1;
         return true;
     }
+    /* C ref: spell.c:506-510 — SPE_BLANK_PAPER: message, makeknown, return 1.
+     * (The resume-after-interrupt test at 496-500 excludes blank paper, so
+     * this arm is always reached.) */
+    if (booktype === 407 /* SPE_BLANK_PAPER */) {
+        await pline('This spellbook is all blank.');
+        _makeknown(booktype);
+        g.context = g.context || {};
+        g.context.move = 1;
+        return true;
+    }
+    /* C ref: spell.c:512-536 — 3.6 tribute: reading a novel. */
+    if (booktype === 408 /* SPE_NOVEL */) {
+        const { noveltitle, read_tribute } = await import('./do_name.js');
+        const box = { value: (spellbook.novelidx ?? spellbook.corpsenm ?? -1) | 0 };
+        const tribtitle = noveltitle(box);
+        spellbook.novelidx = spellbook.corpsenm = box.value;
+        if (await read_tribute('books', tribtitle, 0, null, spellbook.o_id)) {
+            _bump_literate();
+            _makeknown(booktype);
+            const _u = g.u || (g.u = {});
+            _u.uevent = _u.uevent || {};
+            if (!_u.uevent.read_tribute) {
+                const { record_achievement } = await import('./cmd.js');
+                record_achievement(20 /* ACH_NOVL */);
+                more_experienced(20, 0);
+                const { newexplevel } = await import('./uhitm.js');
+                await newexplevel();
+                _u.uevent.read_tribute = 1;
+            }
+        }
+        g.context = g.context || {};
+        g.context.move = 1;
+        return true;
+    }
     /* C ref: spell.c:561 — find spell slot matching this book's otyp. */
     let sb = null;
     for (const s of spl_book) {
@@ -827,10 +931,11 @@ export async function study_book(spellbook) {
         const idx = booktype - _SPBOOK_FIRST_OTYP;
         const name = (idx >= 0 && idx < _SPBOOK_NAMES.length)
             ? _SPBOOK_NAMES[idx] : 'a spell';
-        await study_book_already_known(name);
-        g.context = g.context || {};
-        g.context.move = 0; /* y_n-'n' → study_book returns 0 → ECMD_OK */
-        return false;
+        if (!(await study_book_already_known(name))) {
+            g.context = g.context || {};
+            g.context.move = 0; /* y_n-'n' → study_book returns 0 → ECMD_OK */
+            return false;
+        }
     }
     const moved = await study_book_learn(spellbook);
     g.context = g.context || {};
@@ -1717,12 +1822,22 @@ async function _docall_scroll(obj) {
      * docall_xname (do_name.c:605) copies the object, forces quan=1 and clears
      * blessed/cursed, then returns an(xname(&otemp)); for a scroll xname() is
      * xname_scroll(). */
-    const qbuf = 'Call ' + an(xname_scroll({
-        otyp: obj.otyp | 0, oclass: SCROLL_CLASS_OC, quan: 1,
-        blessed: false, cursed: false,
-        dknown: !!obj.dknown, bknown: !!obj.bknown,
-        oname: undefined,
-    })) + ':';
+    let qname;
+    if (obj.oclass === undefined || obj.oclass === SCROLL_CLASS_OC) {
+        qname = xname_scroll({
+            otyp: obj.otyp | 0, oclass: SCROLL_CLASS_OC, quan: 1,
+            blessed: false, cursed: false,
+            dknown: !!obj.dknown, bknown: !!obj.bknown,
+            oname: undefined,
+        });
+    } else {
+        /* docall_xname's otemp copy: no oextra, quan 1, not blessed/cursed;
+         * the class-specific fixups (do_name.c:613-627) are irrelevant to
+         * the callable classes that reach here. */
+        qname = xname({ ...obj, oextra: undefined, oname: undefined,
+                        quan: 1, blessed: false, cursed: false });
+    }
+    const qbuf = 'Call ' + an(qname) + ':';
     /* win/tty/topl.c update_topl(): the prompt lands on a topline that still
      * holds the unacked scroll feedback, so the tty more()s it first. */
     if (g._pending_message)
@@ -2420,6 +2535,17 @@ async function seffect_enchant_weapon(sobjp) {
         cap_spe(uwep);
 }
 
+/* C ref: read.c:3066 unpunish().  delobj(chain) runs delobj_core's
+ * obj_resists(chain, 0, 0) — one rn2(100) — before the extract (invent.c:1446).
+ * js/dig.js's unpunish skips that draw, so this local body follows C. */
+async function unpunish_rd() {
+    const savechain = game.u?.uchain;
+    setworn_bc(null, W_CHAIN);                          /* sets 'uchain' to Null */
+    if (savechain)
+        await delobj_rd(savechain);
+    setworn_bc(null, W_BALL);                           /* sets 'uball' to Null */
+}
+
 async function seffect_remove_curse(sobj) {
     const g = game;
     const otyp = sobj.otyp | 0;
@@ -2488,11 +2614,8 @@ async function seffect_remove_curse(sobj) {
             }
         }
     }
-    if (_Punished() && !confused) {
-        /* C read.c:1600 unpunish() — ball & chain removal (ball.c).  Not ported
-         * here; no RNG.  A Punished hero reading remove curse will keep the ball
-         * in this port, which is a state divergence, not a silent one. */
-    }
+    if (_Punished() && !confused)
+        await unpunish_rd();                            /* C read.c:1600 */
     /* C read.c:1602-1605 — buried-ball trap release.  u.utraptype TT_BURIEDBALL
      * is not modelled on this path; no RNG. */
     /* C read.c:1607 update_inventory() — display only, no RNG. */
@@ -2619,7 +2742,7 @@ async function seffect_destroy_armor(sobjp) {
             if (!_oc_name_known(sobj.otyp | 0))
                 await pline(`This is ${an(_actualoname(sobj))}!`);  /* read.c:1373 */
             g._gk_known = true;
-            const atmp = getobj('destroy', any_worn_armor_ok, GETOBJ_PROMPT);
+            const atmp = await getObjFromGetobj('destroy', any_worn_armor_ok, GETOBJ_PROMPT);
             /* check the return value, in case the user picked a non-valid obj */
             if (any_worn_armor_ok(atmp) === GETOBJ_SUGGEST_RD)
                 otmp = atmp;
@@ -3026,7 +3149,7 @@ import { currency as currency_gd } from './shk.js';
 import { ARTICLE_THE as ARTICLE_THE_GD, ARTICLE_YOUR as ARTICLE_YOUR_GD,
          SUPPRESS_SADDLE as SUPPRESS_SADDLE_GD } from './const.js';
 import { MKOBJ_OC_MATERIAL as MKOBJ_OC_MATERIAL_GD } from './mkobj_erosion_meta.js';
-import { FOOT as FOOT_GD } from './const.js';
+import { FOOT as FOOT_GD, TOE as TOE_RD, D_TRAPPED as D_TRAPPED_RD, otrapped_of } from './const.js';
 import { PM_GOLD_GOLEM as PM_GOLD_GOLEM_GD } from './pm.generated.js';
 const COIN_CLASS_GD = 12, GOLD_MAT_GD = 15, GOLD_PIECE_GD = 438;
 function _oc_material_gd(o) { return MKOBJ_OC_MATERIAL_GD[o.otyp | 0] | 0; }
@@ -3196,10 +3319,142 @@ async function gold_detect(sobj) {
  * the confused/cursed trap_detect arm is not ported (no-op, as before). */
 async function seffect_gold_detection(sobjp) {
     const sobj = sobjp.obj;
-    if (sobj.cursed || _Confusion() !== 0)
-        return;
-    if (await gold_detect(sobj))
-        sobjp.obj = null;
+    const scursed = !!sobj.cursed;
+    const confused = _Confusion() !== 0;
+    if ((confused || scursed) ? await trap_detect(sobj) : await gold_detect(sobj))
+        sobjp.obj = null; /* failure: strange_feeling() -> useup() */
+}
+
+/* C detect.c:907-953 detect_obj_traps(list, FALSE, 0, NULL): OTRAP_NONE=0,
+ * OTRAP_HERE=1, OTRAP_THERE=2.  Only the show_them == FALSE scan is ported. */
+function _detect_obj_traps_scan(objlist, show_them = false, how = 0) {
+    const u = game.u || {};
+    let result = 0;
+    for (let otmp = objlist; otmp; otmp = otmp.nobj) {
+        const isbox = (otmp.otyp | 0) === 214 || (otmp.otyp | 0) === 215;
+        if (isbox && otrapped_of(otmp)) {
+            otmp.tknown = 1; /* C detect.c:934 */
+            const x = otmp.ox | 0, y = otmp.oy | 0;
+            result |= (x === (u.ux | 0) && y === (u.uy | 0)) ? 1 : 2;
+            if (show_them) /* C detect.c:938-942: dummytrap.ttyp == TRAPPED_CHEST */
+                _sense_trap({ tx: x, ty: y, ttyp: TRAPPED_CHEST_RD }, x, y, how);
+        }
+        if (Has_contents(otmp))
+            result |= _detect_obj_traps_scan(otmp.cobj, show_them, how);
+    }
+    return result;
+}
+
+const FIRST_OBJECT_RD = 18; /* display.c's FIRST_OBJECT; see js/display.js random_object */
+const TRAPPED_CHEST_RD = 25, TRAPPED_DOOR_RD = 24;
+/* C detect.c:863-896 sense_trap(trap, x, y, src_cursed).  Records whether the
+ * sensed spot is the hero's (stands in for display_trap_map's
+ * glyph_at(u.ux, u.uy) test: cls() cleared the glyph buffer).  The
+ * hallucinated otyp is the rn2 random_object(); oc_merge from the generated table. */
+function _sense_trap(trap, x, y, src_cursed) {
+    const u = game.u || {};
+    let atHero;
+    if (_Hallucination() || src_cursed) {
+        const ox = trap ? trap.tx : x, oy = trap ? trap.ty : y;
+        const obj = { otyp: GOLD_PIECE_GD, oclass: COIN_CLASS_GD, ox, oy,
+                      o_id: 0, nobj: null, cobj: null };
+        /* C detect.c:878-881: otyp, then quan, then corpsenm = random_monster(rn2) */
+        if (_Hallucination())
+            obj.otyp = rn2(MKOBJ_OC_CLASS.length - FIRST_OBJECT_RD) + FIRST_OBJECT_RD;
+        obj.quan = (obj.otyp === GOLD_PIECE_GD) ? rnd(10)
+                   : oc_merge_rd(obj.otyp) ? rnd(2) : 1;
+        obj.corpsenm = rn2(NUMMONS);
+        map_object(obj, 1);
+        atHero = ox === (u.ux | 0) && oy === (u.uy | 0);
+    } else {
+        map_trap(trap, 1);
+        trap.tseen = 1;
+        atHero = trap.tx === (u.ux | 0) && trap.ty === (u.uy | 0);
+    }
+    if (atHero) game._sensed_at_hero = true;
+}
+
+/* C detect.c:956-1003 display_trap_map(cursed_src) */
+async function display_trap_map(cursed_src) {
+    const g = game, u = g.u || {};
+    let ter_typ = TER_DETECT | (cursed_src ? TER_OBJ : TER_TRP);
+    if (g._pending_message) await force_more(g._pending_message);
+    await cls();
+    const wasConstrained = unconstrain_map_rd();
+    g._sensed_at_hero = false;
+    try {
+        _detect_obj_traps_scan(g.level?.buriedobjlist, true, cursed_src);
+        _detect_obj_traps_scan(g.fobj, true, cursed_src);
+        for (let mon = g.fmon; mon; mon = mon.nmon) {
+            if ((mon.mhp | 0) < 1 || (mon.isgd && !mon.mx)) continue;
+            _detect_obj_traps_scan(mon.minvent, true, cursed_src);
+        }
+        _detect_obj_traps_scan(g.invent, true, cursed_src);
+        for (let t = g.ftrap; t; t = t.ntrap)
+            _sense_trap(t, 0, 0, cursed_src);
+        const doors = g.level?.doors || [];
+        for (let d = 0; d < (g.level?.doorindex | 0) && d < doors.length; d++) {
+            const cc = doors[d];
+            const loc = g.level.at ? g.level.at(cc.x, cc.y) : null;
+            if (!loc || (loc.typ | 0) === SDOOR) continue;
+            if ((loc.doormask | 0) & D_TRAPPED_RD)
+                _sense_trap({ tx: cc.x, ty: cc.y, ttyp: TRAPPED_DOOR_RD }, cc.x, cc.y, cursed_src);
+        }
+        if (!g._sensed_at_hero) {
+            newsym(u.ux | 0, u.uy | 0);
+            ter_typ |= TER_MON;
+        }
+        await You_feel(cursed_src ? 'very greedy.' : 'entrapped.');
+        await browse_map_rd(ter_typ, cursed_src ? 'gold' : 'trap of interest');
+        await map_redisplay_rd();
+    } finally {
+        if (wasConstrained && (g.iflags?.save_uinwater
+                               || g.iflags?.save_uburied
+                               || g.iflags?.save_uswallow))
+            reconstrain_map_rd();
+    }
+}
+
+/* C detect.c:1010-1077 trap_detect(sobj): returns 1 if nothing was detected.
+ * The display arm is display_trap_map above. */
+export async function trap_detect(sobj) {
+    const g = game, u = g.u || {};
+    let found = false;
+    const cursed_src = sobj && sobj.cursed ? 1 : 0;
+    if (u.usteed) { u.usteed.mx = u.ux; u.usteed.my = u.uy; }
+    for (let t = g.ftrap; t; t = t.ntrap) {
+        if ((t.tx | 0) !== (u.ux | 0) || (t.ty | 0) !== (u.uy | 0))
+        { await display_trap_map(cursed_src); return 0; }
+        found = true;
+    }
+    const lists = [g.fobj, g.level?.buriedobjlist];
+    for (let mon = g.fmon; mon; mon = mon.nmon) {
+        if ((mon.mhp | 0) < 1 || (mon.isgd && !mon.mx)) continue;
+        lists.push(mon.minvent);
+    }
+    for (const l of lists) {
+        const tr = _detect_obj_traps_scan(l);
+        if (tr & 2) { await display_trap_map(cursed_src); return 0; }
+        if (tr) found = true;
+    }
+    if (_detect_obj_traps_scan(g.invent)) found = true;
+    const doors = g.level?.doors || [];
+    for (let d = 0; d < (g.level?.doorindex | 0) && d < doors.length; d++) {
+        const cc = doors[d];
+        const loc = g.level.at ? g.level.at(cc.x, cc.y) : null;
+        if (!loc || (loc.typ | 0) === SDOOR) continue;
+        if ((loc.doormask | 0) & D_TRAPPED_RD) {
+            if (cc.x !== (u.ux | 0) || cc.y !== (u.uy | 0))
+            { await display_trap_map(cursed_src); return 0; }
+            found = true;
+        }
+    }
+    if (!found) {
+        await _strange_feeling(sobj, `Your ${makeplural(food_body_part(TOE_RD))} stop itching.`);
+        return 1;
+    }
+    await Your('%s itch.', makeplural(food_body_part(TOE_RD)));
+    return 0;
 }
 
 /* C ref: read.c:2050-2054 seffect_food_detection(&sobj).
@@ -3216,6 +3471,151 @@ async function seffect_food_detection(sobjp) {
     const sobj = sobjp.obj !== undefined ? sobjp.obj : sobjp;
     if (await food_detect(sobj))
         sobjp.obj = null;
+}
+
+/* C read.c:687-724 charge_ok() — getobj classifier for the object to charge. */
+function charge_ok(obj) {
+    const MAGIC_LAMP = 228;
+    if (!obj) return GETOBJ_EXCLUDE;
+    if (obj.oclass === WAND_CLASS) return GETOBJ_SUGGEST;
+    if (obj.oclass === RING_CLASS && obj.otyp >= RIN_BASE && obj.otyp <= RIN_LAST_CHARGED
+        && obj.dknown && _oc_name_known(obj.otyp))
+        return GETOBJ_SUGGEST;
+    if (_is_weptool(obj)) return GETOBJ_EXCLUDE; /* specific check before general tools */
+    if (obj.oclass === TOOL_CLASS) {
+        if (obj.otyp === BRASS_LANTERN || obj.otyp === OIL_LAMP
+            || (obj.otyp === MAGIC_LAMP && !_oc_name_known(MAGIC_LAMP)))
+            return GETOBJ_SUGGEST;
+        if (_tool_oc_charged(obj.otyp))
+            return (obj.dknown && _oc_name_known(obj.otyp)) ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
+        return GETOBJ_EXCLUDE;
+    }
+    return GETOBJ_EXCLUDE_SELECTABLE; /* weapons/armor: selectable for "feeling of loss" */
+}
+function _tool_oc_charged(otyp) {
+    return otyp === BELL_OF_OPENING || otyp === MAGIC_MARKER || otyp === TINNING_KIT
+        || otyp === EXPENSIVE_CAMERA || otyp === OIL_LAMP || otyp === BRASS_LANTERN
+        || otyp === CRYSTAL_BALL || otyp === HORN_OF_PLENTY || otyp === BAG_OF_TRICKS
+        || otyp === CAN_OF_GREASE || otyp === MAGIC_FLUTE || otyp === MAGIC_HARP
+        || otyp === FROST_HORN || otyp === FIRE_HORN || otyp === DRUM_OF_EARTHQUAKE;
+}
+
+/* C read.c:1788-1827 seffect_charging(&sobj). */
+async function seffect_charging(holder) {
+    const sobj = holder.obj;
+    const u = game.u;
+    const sblessed = !!sobj.blessed, scursed = !!sobj.cursed;
+    const confused = _uprop_on(CONFUSION);
+    const already_known = (sobj.oclass | 0) === SPBOOK_CLASS || _oc_name_known(sobj.otyp);
+    if (confused) {
+        if (scursed) {
+            await pline('You feel discharged.');
+            u.uen = 0;
+        } else {
+            await pline('You feel charged up!');
+            u.uen += d(sblessed ? 6 : 4, 4);
+            if (u.uen > u.uenmax) u.uenmax = u.uen;
+            else u.uen = u.uenmax;
+        }
+        game.disp.botl = true;
+        return;
+    }
+    /* known = TRUE; -- handled inline here */
+    if (!already_known) {
+        await pline('This is a charging scroll.');
+        learnscroll(sobj);
+    }
+    useup(sobj); /* so it is not in the getobj picklist */
+    holder.obj = null;
+    const otmp = await getObjFromGetobj('charge', charge_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    if (otmp) await recharge(otmp, scursed ? -1 : sblessed ? 1 : 0);
+}
+
+/* C ref: read.c:1080-1085 can_center_cloud (valid_cloud_pos: read.c:1069-1074) */
+function can_center_cloud(x, y) {
+    if (!isok(x, y)) return false;
+    const typ = game.level?.at(x, y)?.typ;
+    if (!(ACCESSIBLE_FR(typ) || is_pool_or_lava_fr(x, y))) return false;
+    const u = game.u;
+    const dx = u.ux - x, dy = u.uy - y;
+    return !!cansee(x, y) && (dx * dx + dy * dy) < 32;
+}
+
+/* C ref: read.c:1864-1932 seffect_fire.  The getpos_sethilite() highlight
+ * (display_stinking_cloud_positions) is cosmetic and not modelled. */
+async function seffect_fire(holder) {
+    const sobj = holder.obj;
+    const g = game, u = g.u;
+    const otyp = sobj.otyp | 0;
+    const sblessed = !!sobj.blessed;
+    const confused = _Confusion() !== 0;
+    const already_known = _oc_name_known(otyp);
+    const cc = { x: u.ux, y: u.uy };
+    const cval = bcsign(sobj);
+    let dam = Math.trunc((2 * (rn1(3, 3) + 2 * cval) + 1) / 3);
+    useup(sobj);
+    holder.obj = null; /* it's gone */
+    if (!already_known)
+        learnscrolltyp(SCR_FIRE);
+    const underwater = !!u.uinwater;
+    if (confused) {
+        if (underwater) {
+            await pline(`A little ${hliquid_fr('water')} around you vaporizes.`);
+        } else if (_uprop_on(FIRE_RES_FR)) {
+            shieldeff_fr(u.ux, u.uy);
+            monstseesu_fr(M_SEEN_FIRE_FR);
+            if (!_Blind())
+                await pline(`Oh, look, what a pretty fire in your ${makeplural(body_part_fr(HAND_FR))}.`);
+            else
+                await pline(`You feel a pleasant warmth in your ${makeplural(body_part_fr(HAND_FR))}.`);
+        } else {
+            monstunseesu_fr(M_SEEN_FIRE_FR);
+            await pline(`The scroll catches fire and you burn your ${makeplural(body_part_fr(HAND_FR))}.`);
+            await losehp_fr(1, 'scroll of fire', 1 /* KILLED_BY_AN */);
+        }
+        return;
+    }
+    if (underwater) {
+        await pline(`The ${hliquid_fr('water')} around you vaporizes violently!`);
+    } else {
+        if (sblessed) {
+            if (!already_known)
+                await pline('This is a scroll of fire!');
+            dam *= 5;
+            await pline('Where do you want to center the explosion?');
+            await getpos(cc, true, 'the desired position');
+            if (!can_center_cloud(cc.x, cc.y)) {
+                /* try to reach too far, get burned */
+                cc.x = u.ux;
+                cc.y = u.uy;
+            }
+        }
+        if (cc.x === u.ux && cc.y === u.uy) {
+            await pline('The scroll erupts in a tower of flame!');
+            g.iflags = g.iflags || {};
+            g.iflags.last_msg = PLNMSG_TOWER_OF_FLAME_FR; /* for explode() */
+            await burn_away_slime_fr();
+        }
+    }
+    await explode_fr(cc.x, cc.y, 11 /* ZT_SPELL_O_FIRE */, dam, SCROLL_CLASS_OC, EXPL_FIERY_FR);
+}
+
+/* C ref: read.c:3082-3105 do_stinking_cloud */
+async function do_stinking_cloud(sobj, mention_stinking) {
+    const u = game.u;
+    await pline(`Where do you want to center the ${mention_stinking ? 'stinking ' : ''}cloud?`);
+    const cc = { x: u.ux, y: u.uy };
+    if ((await getpos(cc, true, 'the desired position')) < 0) {
+        await pline('Never mind.');
+        return;
+    } else if (!can_center_cloud(cc.x, cc.y)) {
+        if (_Hallucination())
+            await pline('Ugh... someone cut the cheese.');
+        else
+            await pline(`${sobj.oclass === SCROLL_CLASS_OC ? 'The scroll crumbles with' : 'You smell'} a whiff of rotten eggs.`);
+        return;
+    }
+    create_gas_cloud(cc.x, cc.y, 15 + 10 * bcsign(sobj), 8 + 4 * bcsign(sobj));
 }
 
 export async function seffects(sobj) {
@@ -3326,6 +3726,24 @@ export async function seffects(sobj) {
         if (!holder.obj) return 1;
         break;
     }
+    case SCR_FIRE: {
+        /* C read.c:2256-2258 seffect_fire(&sobj); it useup()s the scroll and
+         * sets *sobjp = 0, so seffects returns 1 and read_scroll must not
+         * useup again. */
+        const holder = { obj: sobj };
+        await seffect_fire(holder);
+        if (!holder.obj) return 1;
+        break;
+    }
+    case SCR_STINKING_CLOUD: {
+        /* C read.c:1991-2002 seffect_stinking_cloud */
+        const already_known = _oc_name_known(otyp);
+        if (!already_known)
+            await pline('You have found a scroll of stinking cloud!');
+        game._gk_known = true;
+        await do_stinking_cloud(sobj, already_known);
+        break;
+    }
     case SCR_GOLD_DETECTION: {
         /* C read.c:2250-2251 seffect_gold_detection(&sobj) */
         const holder = { obj: sobj };
@@ -3344,6 +3762,16 @@ export async function seffects(sobj) {
         if (!holder.obj) return 1; /* C: sobj gone → seffects returns 1 */
         break;
     }
+    case SCR_CHARGING: {
+        const holder = { obj: sobj };
+        await seffect_charging(holder);
+        if (!holder.obj) return 1;
+        break;
+    }
+    case SCR_EARTH:
+        /* C read.c:2260-2262 seffect_earth(&sobj).  Never clears *sobjp. */
+        await seffect_earth(sobj);
+        break;
     default:
         break;
     }
@@ -3364,6 +3792,9 @@ const SPE_IDENTIFY = 397; /* objects.h spellbook block (magic mapping = 396) */
 const SCR_TAMING = 330, SPE_CHARM_MONSTER = 387; /* objects.h */
 const SCR_LIGHT = 332; /* objects.h scroll block; also used as -332 in js/mklev.js shop tables */
 const SCR_AMNESIA = 338;
+const SCR_CHARGING = 342;
+const SCR_EARTH = 340; /* objects.h; matches js/makemon.js:3736 */
+const ROCK_ER = 474, BOULDER_ER = 475; /* objects.h; matches js/dokick.js:1978 */
 /* objects.h:1189 SCROLL("destroy armor", "JUYED AWK YACC", ...) — the row
  * immediately after "enchant armor" (SCR_ENCHANT_ARMOR = 323) in the same
  * SCROLL() block, so 324.  Cross-checks against the neighbours this file
@@ -3516,7 +3947,7 @@ function is_whirly_lit(mon_data) {
 function free_lit(ptr) {}
 
 function impact_arti_light(otmp, flag, visible) { /* not yet ported */ }
-function light_hits_gremlin(mon, dmg) { /* not yet ported */ }
+import { light_hits_gremlin } from './cmd.js'; /* C uhitm.c:6425 — real body lives in cmd.js */
 function set_lit(x, y, val) {
     const loc = game.level?.at(x, y);
     if (!loc)
@@ -3604,7 +4035,7 @@ export async function litroom(on, obj) {
         return;
 
     if (_Punished() && !on && !_Blind())
-        move_bc(1, 0, g.uball.ox, g.uball.oy, g.uchain.ox, g.uchain.oy);
+        move_bc(1, 0, u.uball.ox, u.uball.oy, u.uchain.ox, u.uchain.oy);
 
     if (Is_rogue_level(u.uz)) {
         /* C: levl[u.ux][u.uy].roomno / svr.rooms[] — the port's map cell is
@@ -3627,7 +4058,7 @@ export async function litroom(on, obj) {
     if (!_Blind()) {
         vision_recalc(2);
         if (_Punished() && !on)
-            move_bc(0, 0, g.uball.ox, g.uball.oy, g.uchain.ox, g.uchain.oy);
+            move_bc(0, 0, u.uball.ox, u.uball.oy, u.uchain.ox, u.uchain.oy);
     }
 
     g.vision_full_recalc = 1;
@@ -3636,7 +4067,7 @@ export async function litroom(on, obj) {
         do {
             const gremlin = g.gremlins;
             g.gremlins = gremlin.nxt;
-            light_hits_gremlin(gremlin.mon, rnd(5));
+            await light_hits_gremlin(gremlin.mon, rnd(5));
             free_lit(gremlin);
         } while (g.gremlins);
     }
@@ -3654,8 +4085,9 @@ async function seffect_confuse_monster(sobj) {
     const hands = makeplural(body_part("hand"));
 
     const youdata = g.youmonst.data;
-    const youmlet = youdata ? youdata.mlet : '@';
-    if (youmlet != '@' /* S_HUMAN */ || scursed) {
+    const S_HUMAN_LIT = 53; /* defsym.h S_HUMAN; mons[].mlet is the numeric class */
+    const youmlet = youdata ? youdata.mlet : S_HUMAN_LIT;
+    if ((youmlet | 0) !== S_HUMAN_LIT || scursed) {
         if (!_Confusion())
             await pline("You feel confused.");
         await make_confused(_Confusion() + rnd(100), false);
@@ -3696,7 +4128,7 @@ async function seffect_confuse_monster(sobj) {
         /* after a while, repeated uses become less effective */
         if (g.u.umconf >= 40)
             incr = 1;
-        g.u.umconf += (incr >>> 0); /* unsigned */
+        g.u.umconf = ((g.u.umconf | 0) + (incr >>> 0)) >>> 0; /* unsigned; field starts undefined here */
     }
 }
 
@@ -3737,6 +4169,7 @@ async function seffect_amnesia(sobj) {
 /* C objects.h — the scroll block runs SCR_ENCHANT_ARMOR=323 .. SCR_STINKING_CLOUD
  * =343 (js/oc_name_data.js:341 is "punishment"). */
 const SCR_PUNISHMENT = 341;
+const SCR_STINKING_CLOUD = 343;
 /* C objclass.h enum objclass_classes — confirmed against js/mkobj_data.js
  * MKOBJ_SVB_BASES: [15]=477 (HEAVY_IRON_BALL), [16]=478 (IRON_CHAIN). */
 const BALL_CLASS = 15;
@@ -3826,7 +4259,7 @@ function setworn_bc(obj, mask) {
 
 /* C ref: mondata.h amorphous/is_whirly/unsolid — the three polyform tests
  * punish() consults.  Same flag reads js/makemon.js:2911-2913 makes. */
-const M1_AMORPHOUS_RD = 0x00040000, M1_UNSOLID_RD = 0x00080000;
+const M1_AMORPHOUS_RD = 0x00000004, M1_UNSOLID_RD = 0x00100000; /* monflag.h:87,105 */
 const S_VORTEX_RD = 23; /* monsym.h S_VORTEX; is_whirly = mlet == S_VORTEX || AIR_ELEMENTAL */
 function _amorphous(d) { return ((d.mflags1 | 0) & M1_AMORPHOUS_RD) !== 0; }
 function _unsolid(d) { return ((d.mflags1 | 0) & M1_UNSOLID_RD) !== 0; }
@@ -3861,8 +4294,7 @@ export function losespells() {
     g.context.spbook.o_id = 0;
     const spl = g.spl_book || [];
     const n = spl.length;
-    if (n <= 0)
-        return;
+    /* C has no n == 0 early-out: rn2(0 + 1) still draws (spell.c:1778). */
     let nzap = rn2(n + 1);
     if (_Confusion() !== 0) {
         const i2 = rn2(n + 1);
@@ -4269,14 +4701,49 @@ async function _identify_objlist_menu(promptText) {
  * "A map coalesces in your mind!", then do_mapping(). */
 async function seffect_magic_mapping(sobj) {
     const g = game;
-    const is_scroll = true; /* sobj is a real scroll here */
+    const is_scroll = ((sobj.oclass | 0) === SCROLL_CLASS_OC);
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const confused = (_Confusion() !== 0);
+    const nommap = !!g.level?.flags?.nommap;
     if (is_scroll) {
+        if (nommap) { /* C read.c:2110-2118 */
+            await Your('mind is filled with crazy lines!');
+            if (_Hallucination())
+                await pline('Wow!  Modern art.');
+            else
+                await Your('%s spins in bewilderment.', body_part_fr(HEAD_FR));
+            await make_confused(_Confusion() + rnd(30), false);
+            return;
+        }
+        if (sblessed) { /* C read.c:2120-2130 */
+            for (let x = 1; x < COLNO; x++)
+                for (let y = 0; y < ROWNO; y++) {
+                    const lev = g.level?.at(x, y);
+                    if (lev && lev.typ === SDOOR) {
+                        cvt_sdoor_to_door(lev);
+                        if (Is_rogue_level(g.u?.uz))
+                            unblock_point(x, y);
+                    }
+                }
+        }
         g._gk_known = true; /* C read.c:2134 gk.known = TRUE */
+    }
+    if (nommap) { /* C read.c:2137-2141 */
+        await Your('%s spins as %s blocks the spell!', body_part_fr(HEAD_FR),
+                   'something');
+        await make_confused(_Confusion() + rnd(30), false);
+        return;
     }
     /* C read.c:2143: pline("A map coalesces in your mind!"); */
     await pline('A map coalesces in your mind!');
-    /* C read.c:2144 cval = (scursed && !confused) — false here (not cursed). */
+    const cval = (scursed && !confused); /* C read.c:2144 */
+    if (cval) game.u.uprops[CONFUSION].intrinsic = 1; /* HConfusion = 1 to screw up map */
     await do_mapping();
+    if (cval) {
+        game.u.uprops[CONFUSION].intrinsic = 0; /* restore */
+        await pline("Unfortunately, you can't grasp the details.");
+    }
 }
 
 export function magic_map_background(loc, x, y) {
@@ -4313,7 +4780,7 @@ export function show_map_spot(loc, x, y, cnf) {
     loc.seenv = SVALL; /* C detect.c:1385 */
     if (loc.typ === SCORR) { /* C detect.c:1388-1391 */
         loc.typ = CORR;
-        /* unblock_point — vision update; the cell is now passable corridor. */
+        unblock_point(x, y); /* C detect.c:1390 */
     }
     const oldCls = loc.disp_cls;
     const oldGlyph = { ch: loc.disp_ch, color: loc.disp_color, decgfx: !!loc.disp_decgfx,
@@ -4352,12 +4819,24 @@ export function show_map_spot(loc, x, y, cnf) {
  * re-renders the map from the freshly-set remembered glyphs. */
 export async function do_mapping() {
     const g = game;
-    const cnf = 0;
+    const cnf = _Confusion(); /* C detect.c:1430 show_map_spot(zx, zy, Confusion) */
+    /* C detect.c:1427 unconstrained = unconstrain_map() — an underwater / buried
+     * / engulfed hero is brought out to the normal map first. */
+    const unconstrained = unconstrain_map_rd();
     for (let zx = 1; zx < COLNO; zx++) {
         for (let zy = 0; zy < ROWNO; zy++) {
             const loc = g.level?.at(zx, zy);
             if (loc) show_map_spot(loc, zx, zy, cnf);
         }
+    }
+    if (!g.level?.flags?.hero_memory || unconstrained) {
+        /* C detect.c:1432-1438 */
+        await flush_screen(1);
+        await browse_map_rd(TER_DETECT | TER_MAP | TER_TRP | TER_OBJ,
+                            'anything of interest');
+        await map_redisplay_rd();
+    } else {
+        reconstrain_map_rd();
     }
     /* C detect.c:1443: exercise(A_WIS, TRUE) → rn2(19) */
     exercise(2 /* A_WIS */, true);
@@ -4449,4 +4928,149 @@ export function cant_revive(mtype, revival, from_obj) {
         return true;
     }
     return false;
+}
+
+/* ── Scroll of earth (C read.c:1919-1971 seffect_earth, 2293-2420
+ * drop_boulder_on_player / drop_boulder_on_monster) ───────────────────────── */
+const M1_WALLWALK_ER = 0x00000008; /* monflag.h:88 */
+const S_GHOST_ER = 54; /* monsym.h S_GHOST (v5); matches js/eat.js:991 */
+function _has_ceiling_er(lev) {
+    return !(In_endgame_er(lev) && !Is_earthlevel_er(lev));
+}
+function _hero_solid_er() {
+    const d = game.youmonst?.data;
+    if (!d) return true;
+    return !_amorphous(d) && !_uprop_on(PASSES_WALLS_er)
+        && (d.mlet | 0) !== S_GHOST_ER && !_unsolid(d);
+}
+function _mon_solid_er(d) {
+    return !_amorphous(d) && !((d.mflags1 | 0) & M1_WALLWALK_ER)
+        && (d.mlet | 0) !== S_GHOST_ER && !_unsolid(d);
+}
+async function seffect_earth(sobj) {
+    const g = game, u = g.u;
+    const sblessed = !!sobj.blessed, scursed = !!sobj.cursed;
+    const confused = _Confusion() !== 0;
+    if (!Is_rogue_level(u.uz) && _has_ceiling_er(u.uz)
+        && (!In_endgame_er(u.uz) || Is_earthlevel_er(u.uz))) {
+        let nboulders = 0;
+        if (u.uswallow) {
+            await You_hear('rumbling.');
+        } else if (!(In_quest_er(u.uz) || !_has_ceiling_er(u.uz))) {
+            await pline(`The ${ceiling_er(u.ux, u.uy)} rumbles ${sblessed ? 'around' : 'above'} you!`);
+        } else {
+            const avalanche = 'avalanche';
+            const matbuf = sblessed ? makeplural(avalanche) : an(avalanche);
+            await pline(`${matbuf.charAt(0).toUpperCase() + matbuf.slice(1)} of boulders ${sblessed ? 'materialize' : 'materializes'} ${sblessed ? 'around' : 'above'} you!`);
+        }
+        g._gk_known = true;
+        sokoban_guilt_er();
+        if (!scursed) {
+            for (let x = u.ux - 1; x <= u.ux + 1; x++) {
+                for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+                    if (isok(x, y) && !closed_door_er(x, y)
+                        && !IS_OBSTRUCTED(g.level.at(x, y).typ)
+                        && !IS_AIR_ER(g.level.at(x, y).typ)
+                        && (x !== u.ux || y !== u.uy)) {
+                        if (await drop_boulder_on_monster(x, y, confused, true)) nboulders++;
+                    }
+                }
+            }
+        }
+        if (!sblessed) {
+            await drop_boulder_on_player(confused, !scursed, true, false);
+        } else if (!nboulders) {
+            await pline('But nothing else happens.');
+        }
+    }
+}
+const IS_AIR_ER = (typ) => (typ | 0) === AIR_ER;
+function closed_door_er(x, y) {
+    const t = game.level.at(x, y);
+    return !!t && ((t.typ | 0) === DOOR_ER) && (((t.doormask | 0) & (D_CLOSED_ER | D_LOCKED_ER)) !== 0);
+}
+export async function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswallow) {
+    const g = game, u = g.u;
+    if (u.uswallow && !skip_uswallow) {
+        await drop_boulder_on_monster(u.ux, u.uy, confused, byu);
+        return;
+    }
+    const otmp2 = await mksobj_er(confused ? ROCK_ER : BOULDER_ER, false, false);
+    if (!otmp2) return;
+    otmp2.quan = confused ? rn1(5, 2) : 1;
+    otmp2.owt = weight(otmp2);
+    let dmg;
+    if (_hero_solid_er()) {
+        await pline(`You are hit by ${await doname_er(otmp2)}!`);
+        dmg = Math.trunc(dmgval_er(otmp2, g.youmonst) * otmp2.quan);
+        if (u.uarmh && helmet_protects) {
+            if (hard_helmet_er(u.uarmh)) {
+                await pline('Fortunately, you are wearing a hard helmet.');
+                if (dmg > 2) dmg = 2;
+            } else if (g.flags?.verbose !== false) {
+                await pline(`${await Yname2(u.uarmh)} does not protect you.`);
+            }
+        }
+    } else
+        dmg = 0;
+    wake_nearto_er(u.ux, u.uy, 4 * 4);
+    if (!(await flooreffects_er(otmp2, u.ux, u.uy, 'fall'))) {
+        place_object(otmp2, u.ux, u.uy);
+        await stackobj_er(otmp2);
+        newsym(u.ux, u.uy);
+    }
+    if (dmg)
+        await losehp(_uprop_on(HALF_PHDAM_er) ? Math.trunc((dmg + 1) / 2) : dmg, 'scroll of earth', KILLED_BY_AN);
+}
+export async function drop_boulder_on_monster(x, y, confused, byu) {
+    const g = game, u = g.u;
+    const otmp2 = await mksobj_er(confused ? ROCK_ER : BOULDER_ER, false, false);
+    if (!otmp2) return false;
+    otmp2.quan = confused ? rn1(5, 2) : 1;
+    otmp2.owt = weight(otmp2);
+    const mtmp = m_at(x, y);
+    if (mtmp && _mon_solid_er(mtmp.data)) {
+        const helmet = which_armor(mtmp, W_ARMH_ER);
+        if (cansee(mtmp.mx, mtmp.my)) {
+            await pline(`${Monnam(mtmp)} is hit by ${await doname_er(otmp2)}!`);
+            if (mtmp.minvis && !canspotmon(mtmp))
+                map_invisible_er(mtmp.mx, mtmp.my);
+        } else if (u.uswallow && u.ustuck === mtmp) {
+            await You_hear(`something hit ${s_suffix(mon_nam_er(mtmp))} ${mbodypart(mtmp, STOMACH)} over your ${body_part_fr(HEAD_ER)}!`);
+        }
+        let mdmg = dmgval_er(otmp2, mtmp) * otmp2.quan;
+        if (helmet) {
+            if (hard_helmet_er(helmet)) {
+                if (canspotmon(mtmp))
+                    await pline(`Fortunately, ${mon_nam_er(mtmp)} is wearing a hard helmet.`);
+                else if (!_uprop_on(DEAF_ER))
+                    await You_hear('a clanging sound.');
+                if (mdmg > 2) mdmg = 2;
+            } else if (canspotmon(mtmp)) {
+                await pline(`${Monnam(mtmp)}'s ${xname_er(helmet)} does not protect ${mtmp.female ? 'her' : 'him'}.`);
+            }
+        }
+        mtmp.mhp -= mdmg;
+        if (mtmp.mhp <= 0) {
+            if (byu) {
+                await killed_er(mtmp);
+            } else {
+                await pline(`${Monnam(mtmp)} is killed.`);
+                await mondied_er(mtmp);
+            }
+        } else {
+            await wakeup_er(mtmp, byu);
+        }
+        wake_nearto_er(x, y, 4 * 4);
+    } else if (mtmp && u.uswallow && u.ustuck === mtmp) {
+        await obfree_er(otmp2, null);
+        await drop_boulder_on_player(confused, true, false, true);
+        return true;
+    }
+    if (!(await flooreffects_er(otmp2, x, y, 'fall'))) {
+        place_object(otmp2, x, y);
+        await stackobj_er(otmp2);
+        newsym(x, y);
+    }
+    return true;
 }

@@ -3,7 +3,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { nhlib_load_toplevel_rng } from './nhlib.js';
-import { pline, canseemon, canspotmon, map_invisible, Norep, newsym, shieldeff } from './display.js';
+import { pline, canseemon, canspotmon, Unaware, map_invisible, Norep, newsym, shieldeff } from './display.js';
 import { You } from './eat.js';
 import { mon_nam } from './uhitm.js';
 import { nomul } from './allmain.js';
@@ -470,7 +470,7 @@ export async function mcast_death_touch(mtmp) {
 }
 /* C pline.c:386-399 You_feel(line) — "You feel " + line (the Unaware variant
  * prefixes "You dream that you feel "; js/dig.js:902 spells the same body). */
-function You_feel_mc(line) { pline('You feel ' + line); }
+function You_feel_mc(line) { pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + line); } /* pline.c:387-400 */
 const KILLED_BY_MC = 1;               /* hack.h killer.format */
 // other than MCAST_HASTE_SELF ever reaches mcast_spell in the 15 records).
 export async function mcast_clone_wiz(mtmp) {
@@ -616,7 +616,7 @@ export function mcast_stun_you(dmg) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR_MC);
         if (!Stunned_mc())
-            pline('You feel momentarily disoriented.');
+            You_feel_mc('momentarily disoriented.');
         make_stunned_mc(1, false);
     } else {
         pline(Stunned_mc() ? 'You struggle to keep your balance.' : 'You reel...');
@@ -1005,7 +1005,7 @@ function impossible(_msg, ..._args) { }
 // pline_mon / pline_The — C ref: pline.c. set_msg_xy() (message-origin coord,
 // used only for MSGTYPE color/mute rules) is not modeled; mirrors the
 // established local convention in js/mhitu.js.
-function pline_mon(_mtmp, msg) { pline(msg); }
+function pline_mon(_mtmp, msg, ...args) { pline(msg, ...args); }
 function pline_The(msg) { pline('The ' + msg); }
 
 export function Monnam(mtmp) {

@@ -16,7 +16,7 @@ import { newmextra } from './makemon.js';
 import { newemin } from './sit.js';
 import { rn2, rn1 } from './rng.js';
 import { dist2 } from './hacklib.js';
-import { _allow_rock_mv, _can_open_mv, _passes_bars_mv, m_break_boulder_mv, m_move_aggress } from './monmove.js';
+import { _allow_rock_mv, _can_open_mv, _passes_bars_mv, m_break_boulder_mv, m_move_aggress, mon_allowflags } from './monmove.js';
 import { online2, mfndpos, monnear, makemon, mpickobj, mkobj, mksobj, mongone } from './mklev.js';
 import { pm_good_location } from './sp_lev.js';
 import { set_malign, which_armor } from './makemon.js';
@@ -368,7 +368,7 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
 
     let nix = omx;
     let niy = omy;
-    const allowflags = _allow_rock_mv(mtmp) | _can_open_mv(mtmp) | _passes_bars_mv(mtmp);
+    const allowflags = mon_allowflags(mtmp); /* C priest.c:65 */
     const mfp = { cnt: 0, poss: [], info: [] };
     const real_cnt = mfndpos(mtmp, mfp, allowflags);
     const poss = [];

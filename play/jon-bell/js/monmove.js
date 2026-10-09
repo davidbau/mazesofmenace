@@ -25,7 +25,7 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
          NC_SHOW_MSG,
          /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
 import { newsym, canspotmon, _topl_record_join, pline, canseemon,
-         topl_force_break_now, Norep, You_hear, sensemon, _pline_flush_frame_record, Unaware } from './display.js';
+         topl_force_break_now, Norep, You_hear, You_see, sensemon, _pline_flush_frame_record, Unaware, swallowed } from './display.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
 import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
          obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
@@ -34,7 +34,7 @@ import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickob
          /* meatmetal (mon.c:1521) */ mksobj_at,
          /* meatmetal (mon.c:1473) */ is_rustprone,
  healmon as healmon_real, meatobj as meatobj_real,
-         meatcorpse as meatcorpse_real, newcham } from './mklev.js';
+         meatcorpse as meatcorpse_real, newcham, u_on_newpos } from './mklev.js';
 import { accessible, closed_door, may_dig } from './look.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
 import { gettrack } from './track.js';
@@ -44,8 +44,8 @@ import { artifact_light } from './light.js';
  * cycle is fine, they are hoisted function declarations). */
 import { rloc, mnexto } from './teleport.js';
 import { RLOC_MSG, has_edog, SHOPBASE } from './const.js';
-import { can_track, resist_conflict, can_blow, y_monnam, Adjmonnam, wakeup, locomotion } from './mhitm.js';
-import { losehp } from './dokick.js';
+import { can_track, resist_conflict, can_blow, y_monnam, YMonnam, Adjmonnam, wakeup, locomotion } from './mhitm.js';
+import { losehp, acurrstr } from './dokick.js';
 import { monkilled_trap } from './trap.js';
 import { TELEPAT as TELEPAT_MV, HALF_SPDAM as HALF_SPDAM_MV, KILLED_BY_AN as KILLED_BY_AN_MV } from './const.js';
 import { see_wsegs, worm_nomove, worm_move } from './worm.js';
@@ -587,7 +587,7 @@ function m_balks_at_approaching(oldappr, mtmp, prefrange) {
 
     /* can attack from distance, and hp loss or attack not used */
     if (ranged_attk_available(mtmp)
-        && (((mtmp.mhp | 0) < (((mtmp.mhpmax | 0) + 1) / 3))
+        && (((mtmp.mhp | 0) < Math.trunc(((mtmp.mhpmax | 0) + 1) / 3))
             || !(mtmp.mspec_used | 0)))
         return -1;
 
@@ -1617,22 +1617,23 @@ export async function m_move(mtmp, after) {
     if ((mtmp.isshk | 0)) {
         const xm = await shk_move(mtmp);
         if (xm === -2) return MMOVE_DIED_MV;
-        if (xm === -1) {
-            return MMOVE_NOTHING_MV;
+        /* C monmove.c:1812-1814 case -1: mmoved = MMOVE_NOTHING; break — a following
+         * shk leaves it to m_move: fall through to the normal AI (m_search_items). */
+        if (xm !== -1) {
+            /* C default (impossible) and cases 0,1 → postmov with MMOVE_NOTHING/MOVED.
+             * The move itself (remove/place/newsym) already happened inside
+             * move_special; postmov's shk-on-trap mintrap is not yet needed. */
+            /* C monmove.c:1823 — `return postmov(..., (xm != 1) ? MMOVE_NOTHING
+             * : MMOVE_MOVED, ...)`; the tail runs for the MMOVE_MOVED case. */
+            /* C postmov (monmove.c:1508, :1656) — the MMOVED redraw pair around
+             * mintrap: newsym(omx,omy) then newsym(mtmp->mx,mtmp->my).  move_special
+             * (priest.c:122-124) itself only does newsym(nix,niy). */
+            if (xm === 1) {
+                newsym(_entry_omx, _entry_omy);
+                newsym(mtmp.mx | 0, mtmp.my | 0);
+            }
+            return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
         }
-        /* C default (impossible) and cases 0,1 → postmov with MMOVE_NOTHING/MOVED.
-         * The move itself (remove/place/newsym) already happened inside
-         * move_special; postmov's shk-on-trap mintrap is not yet needed. */
-        /* C monmove.c:1823 — `return postmov(..., (xm != 1) ? MMOVE_NOTHING
-         * : MMOVE_MOVED, ...)`; the tail runs for the MMOVE_MOVED case. */
-        /* C postmov (monmove.c:1508, :1656) — the MMOVED redraw pair around
-         * mintrap: newsym(omx,omy) then newsym(mtmp->mx,mtmp->my).  move_special
-         * (priest.c:122-124) itself only does newsym(nix,niy). */
-        if (xm === 1) {
-            newsym(_entry_omx, _entry_omy);
-            newsym(mtmp.mx | 0, mtmp.my | 0);
-        }
-        return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
     }
     if ((mtmp.ispriest | 0)) {
         const xm = await pri_move(mtmp);
@@ -1672,6 +1673,21 @@ export async function m_move(mtmp, after) {
             await mnexto(mtmp, RLOC_MSG);
         }
         newsym(_entry_omx, _entry_omy);
+        /* C postmov (monmove.c:1509-1516): the teleported tengu may land on a
+         * trap; `trapret = mintrap(mtmp, NO_TRAP_FLAGS)`, and a killed/moved
+         * monster ends the move with MMOVE_DIED. */
+        {
+            const _tt = t_at(mtmp.mx | 0, mtmp.my | 0);
+            if (_tt && _tt.ttyp !== SQKY_BOARD_MV) {
+                const trapret = await mintrap(mtmp, 0);
+                if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
+                    if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
+                    return MMOVE_DIED_MV;
+                }
+            } else if (_tt) {
+                _handle_sqky_board_mon(mtmp, _tt, mtmp.mx | 0, mtmp.my | 0);
+            }
+        }
         newsym(mtmp.mx | 0, mtmp.my | 0);
         /* C monmove.c:1847 — `return postmov(..., MMOVE_MOVED, ...)`. */
         return postmov(mtmp, MMOVE_MOVED_MV);
@@ -1781,11 +1797,10 @@ export async function m_move(mtmp, after) {
         /* C: in_line = lined_up(mtmp) && distmin(mx,my,mux,muy) <= (throws_rocks?20:ACURRSTR/2+1) */
         const _dmin = distmin_mv(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0);
         /* ACURRSTR/2+1: typical early ACURRSTR ~11 → 6; throws_rocks rare here. */
-        const _mndx_il = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-        const _mrow_il = (_mndx_il >= 0 && _mndx_il < _MONS_MV.length) ? _MONS_MV[_mndx_il] : null;
-        const _throws = _mrow_il ? !!((_mrow_il[7] >>> 0) & M2_ROCKTHROW_MV2) : false;
-        const _acurrstr = acurr(game.u, A_STR) | 0;
-        const _range = _throws ? 20 : (Math.trunc(_acurrstr / 2) + 1);
+        /* C: throws_rocks(gy.youmonst.data) tests the HERO's form, not mtmp's;
+         * ACURRSTR is acurrstr() (attrib.c:1235), not raw ACURR(A_STR). */
+        const _throws = !!(((game.youmonst?.data?.mflags2 | 0)) & M2_ROCKTHROW_MV2);
+        const _range = _throws ? 20 : (Math.trunc(acurrstr(game.u) / 2) + 1);
         const in_line = lined_up_mv(mtmp) && (_dmin <= _range);
         if (appr !== 1 || !in_line)
             getitems = true;
@@ -2115,7 +2130,14 @@ export async function m_move(mtmp, after) {
                         _btrapped_now = false;
                     }
                 }
-                if ((_dm_d & D_CLOSED_MV) === D_CLOSED_MV && !(_dm_d & D_LOCKED_MV)
+                if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
+                    && (_mf1_d & M1_AMORPHOUS_MV) !== 0) {
+                    /* C monmove.c:1549-1553 — amorphous monsters flow/ooze under
+                     * a closed or locked door; the door state is untouched. */
+                    if (game.flags?.verbose !== false && canseemon(mtmp))
+                        await pline(`${YMonnam(mtmp)} ${(_mndx_d === 106 /* PM_FOG_CLOUD */
+                            || (_mrow_d && (_mrow_d[0] | 0) === S_LIGHT_MV)) ? 'flows' : 'oozes'} under the door.`);
+                } else if ((_dm_d & D_CLOSED_MV) === D_CLOSED_MV && !(_dm_d & D_LOCKED_MV)
                     && _can_open_d) {
                     let _doorDone = false;
                     /* C UnblockDoor (monmove.c:1552): doormask = <what>; newsym;
@@ -2146,7 +2168,13 @@ export async function m_move(mtmp, after) {
                         /* C monmove.c:1613: !Deaf → You_hear("a door open.");
                          * display.js You_hear carries the Deaf / Unaware
                          * ("You dream that you hear ") prefixes (pline.c:447). */
-                        _doorhear = true;
+                        /* The explicit !Deaf guard (monmove.c:1588) is separate
+                         * from You_hear's own (Deaf && !Unaware) test. */
+                        const _du = game.u || {};
+                        _doorhear = !(((_du.HDeaf | 0) !== 0) || ((_du.EDeaf | 0) !== 0)
+                            || !!(_du.uprops?.[DEAF]?.intrinsic | 0)
+                            || !!(_du.uprops?.[DEAF]?.extrinsic | 0)
+                            || !!(_du.uroleplay && _du.uroleplay.deaf));
                     } else if (!canspotmon(mtmp)) {
                         /* C monmove.c:1611: canseeit && !canspotmon →
                          * You_see("a door open."). */
@@ -2182,21 +2210,16 @@ export async function m_move(mtmp, after) {
                         if (await mb_trapped(mtmp, _canseeit_d))
                             return MMOVE_DIED_MV;
                     } else if (game.flags?.verbose !== false) {
-                        let _doormsg = null;
+                        /* C monmove.c:1607-1614: every arm goes through
+                         * pline_mon/You_see/You_hear, so WIN_STOP (ESC at an
+                         * earlier --More--) and paging apply; the old direct
+                         * _pending_message write bypassed both. */
                         if (_canseeit_d && canspotmon(mtmp))
-                            _doormsg = `${Monnam_dm(mtmp)} smashes down a door.`;
+                            await pline(`${Monnam_dm(mtmp)} smashes down a door.`);
                         else if (_canseeit_d)
-                            _doormsg = 'You see a door crash open.';
+                            await You_see('a door crash open.');
                         else
-                            _doormsg = 'You hear a door crash open.';
-                        const _prevd = game._pending_message;
-                        if (_prevd && _prevd.length > 0) {
-                            const _joinedd = _prevd + '  ' + _doormsg;
-                            _topl_record_join(_prevd, _joinedd);
-                            game._pending_message = _joinedd;
-                        } else {
-                            game._pending_message = _doormsg;
-                        }
+                            await You_hear('a door crash open.');
                     }
                     if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV).length)
                         add_damage(mtmp.mx | 0, mtmp.my | 0, 0);
@@ -2233,7 +2256,17 @@ export async function m_move(mtmp, after) {
          * hide-under block.  Keeping this after dig but before postmov() is
          * what places its display-stream draws ahead of those block's core
          * leaves. */
-        newsym(nix, niy);
+        /* C monmove.c:1649-1657 — "set also in domove(), hack.c": an engulfer
+         * that moves carries the swallowed hero with it. */
+        if ((game.u?.uswallow | 0) && game.u.ustuck === mtmp
+            && ((mtmp.mx | 0) !== omx || (mtmp.my | 0) !== omy)) {
+            game.u.ux0 = game.u.ux;
+            game.u.uy0 = game.u.uy;
+            u_on_newpos(mtmp.mx | 0, mtmp.my | 0);
+            swallowed(0);
+        } else {
+            newsym(nix, niy);
+        }
 
         /* C mon_track_add(mtmp, omx, omy): update mtrack (monmove.c:79). */
         mon_track_add(mtmp, omx, omy);

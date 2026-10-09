@@ -12,6 +12,7 @@ import { Is_rogue_level, Is_earthlevel, A_LAWFUL, OBJ_MINVENT, ONAME_RANDOM } fr
 import { oname } from './objnam.js';
 import { hard_helmet } from './do_wear.js';
 import { curse } from './mkobj.js';
+import { mpickobj } from './mklev.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { PM_ABBOT, PM_ACOLYTE, PM_APPRENTICE, PM_ATTENDANT, PM_BALROG, PM_CAPTAIN, PM_CHIEFTAIN, PM_DISPATER, PM_DWARF, PM_ETTIN, PM_ELVENKING, PM_FOREST_CENTAUR, PM_GUIDE, PM_HIGH_PRIEST, PM_HOBBIT, PM_HORNED_DEVIL, PM_HUNTER, PM_LIEUTENANT, PM_NEANDERTHAL, PM_NINJA, PM_ORCUS, PM_OGRE_KING, PM_OGRE_LORD, PM_PAGE, PM_PRIEST, PM_ROSHI, PM_SALAMANDER, PM_SERGEANT, PM_SOLDIER, PM_STUDENT, PM_THUG, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WARRIOR, PM_YEENOGHU, PM_GOBLIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN, PM_ORC_CAPTAIN, } from './pm.generated.js';
 /** @typedef {[number, number, number, number, number, number, number, number, number]} MonRow */
@@ -441,8 +442,10 @@ export async function mongets(mtmp, otyp, mksobjFn) {
             otmp.spe = 0;
     }
     /* C makemon.c:2223 — mpickobj → add_to_minv */
-    if (otmp)
-        _add_to_minv(mtmp, otmp);
+    /* C makemon.c:2224-2227 — mpickobj() merges into an existing stack
+     * (add_to_minv, mkobj.c:2655) and returns nonzero when otmp was freed. */
+    if (otmp && await mpickobj(mtmp, otmp))
+        return null;
     return otmp || null;
 }
 /**
@@ -459,8 +462,8 @@ async function mInitthrow(mtmp, otyp, oquan, mksobjFn) {
         /* C makemon.c:155-156 */
         if (otyp === ORCISH_ARROW)
             otmp.opoisoned = 1;
-        /* C makemon.c:159 — mpickobj → add_to_minv */
-        _add_to_minv(mtmp, otmp);
+        /* C makemon.c:159 — mpickobj → add_to_minv (merges) */
+        await mpickobj(mtmp, otmp);
     }
 }
 /**
@@ -641,7 +644,10 @@ export async function mInitweap(mtmp, mksobjFn) {
                 const typ = rn2(3) ? LONG_SWORD : SILVER_MACE;
                 const nam = (typ === LONG_SWORD) ? 'Sunsword' : 'Demonbane';
                 let otmpW = await mksobjFn(typ, false, false);
-                const mal = monAlign(mndx);
+                /* C makemon.c:339-340 sgn(mtmp->isminion ? EMIN(mtmp)->min_align
+                 *                                       : ptr->maligntyp) */
+                const mal = (mtmp.isminion && mtmp.mextra?.emin)
+                    ? (mtmp.mextra.emin.min_align | 0) : monAlign(mndx);
                 if ((!rn2(20) || isLordMndx(mndx)) && sgn(mal) === A_LAWFUL) {
                     if (otmpW)
                         otmpW = oname(otmpW, nam, ONAME_RANDOM);

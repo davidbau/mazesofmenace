@@ -48,6 +48,7 @@
 //
 // @ts-nocheck — js sibling imports.
 import { game } from './gstate.js';
+import { pudding_merge_message } from './mkobj.js';
 import { pline } from './display.js';
 import { observe_object } from './o_init.js';
 import { obfree } from './shk.js';
@@ -334,6 +335,7 @@ export async function merged(potmp, pobj) {
      * flags, and average the two shrink timers before freeing the absorbed
      * object. */
     if (obj.globby) {
+        await pudding_merge_message(otmp, obj); /* invent.c:929 */
         const w1 = (otmp.oeaten | 0) || (otmp.owt | 0);
         const w2 = (obj.oeaten | 0) || (obj.owt | 0);
         const total = w1 + w2;
@@ -359,8 +361,7 @@ export async function merged(potmp, pobj) {
         const tm2 = stop_timer(SHRINK_GLOB, { a_obj: obj });
         const tm = Math.trunc(((tm1 || 25) + (tm2 || 25) + 1) / 2);
         start_timer(tm, TIMER_OBJECT, SHRINK_GLOB, { a_obj: otmp });
-        if ((otmp.where | 0) === OBJ_INVENT)
-            await pline(`The ${obj_typename(otmp.otyp | 0)} coalesces inside your pack.`);
+
     }
 
     /* C:935-942 — and C's own reason for the how_lost exclusion: monsters
@@ -390,7 +391,7 @@ function _Role_if(role_idx) {
 function _Role_if_cleric() { return _Role_if(ROLE_PRIEST); }
 
 function _oc_skill(obj) { return MKOBJ_OC_SKILL[obj.otyp | 0] | 0; }
-function is_ammo(obj) {
+export function is_ammo(obj) {
     if (!obj) return false;
     const oc = obj.oclass | 0;
     return (oc === WEAPON_CLASS || oc === GEM_CLASS)
@@ -399,8 +400,8 @@ function is_ammo(obj) {
 function matching_launcher(a, l) {
     return !!l && _oc_skill(a) === -_oc_skill(l);
 }
-function ammo_and_launcher(a, l) { return is_ammo(a) && matching_launcher(a, l); }
-function is_missile(obj) {
+export function ammo_and_launcher(a, l) { return is_ammo(a) && matching_launcher(a, l); }
+export function is_missile(obj) {
     if (!obj) return false;
     const oc = obj.oclass | 0;
     return (oc === WEAPON_CLASS || oc === TOOL_CLASS)
@@ -456,7 +457,7 @@ export async function addinv_core0(obj, other_obj, update_perm_invent) {
         reset_justpicked(g.invent);
     }
 
-    addinv_core1(obj); /* C:1082 — most side effects of carrying obj */
+    await addinv_core1(obj); /* C:1082 — most side effects of carrying obj */
 
     let added = false;
     /* C:1087-1096 addinv_before()'s insert-in-place arm; other_obj is NULL on
@@ -524,7 +525,7 @@ export async function addinv_core0(obj, other_obj, update_perm_invent) {
              * of which has a generated JS table — so it is NAMED rather than
              * approximated.  Reaching it requires flags.pickup_thrown AND a
              * hero-thrown object arriving through hold_another_object. */
-            if (obj_was_thrown && g.flags?.pickup_thrown && !u.uquiver
+            if (obj_was_thrown && (g.flags?.pickup_thrown ?? true) /* optlist.h:579 initval On */ && !u.uquiver
                 && (obj.oartifact | 0) !== 3 /* ART_MJOLLNIR */
                 && (obj.otyp | 0) !== 80 /* AKLYS */
                 && (throwing_weapon(obj) || is_ammo(obj)))

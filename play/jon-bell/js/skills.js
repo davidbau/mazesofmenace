@@ -26,8 +26,10 @@ import { skill_based_spellbook_id } from './spell.js';
 import { pline, flush_screen, docrt, force_more } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { nhgetch } from './input.js';
+import { yn_function } from './end.js';
 import { OC_NAME } from './oc_name_data.js';
 import { is_ammo } from './cmd.js';
+import { build_window_screen } from './com_pager.js';
 import { PM_PONY } from './pm.generated.js';
 import { ROLE_PM_MNUM } from './roles.js';
 import { weapon_type, can_advance, slots_required } from './uhitm.js';
@@ -453,17 +455,10 @@ function add_skills_to_menu(selectable, speedy) {
 
 function wizardMode() { return !!(game.flags && game.flags.debug); }
 
-/* C ref: hack.h y_n(query) => yn_function(query, ynchars, 'n', TRUE); the tty
- * backend writes "<query> [yn] (n)" and parks the cursor one past it.  Same
- * body as js/potion.js's file-local y_n. */
+/* C ref: hack.h y_n(query) => yn_function(query, ynchars, 'n', TRUE); tty
+ * rejects keys outside "yn"/ESC/space/Enter with a bell and keeps reading. */
 async function y_n(question) {
-    const prompt = `${question} [yn] (n)`;
-    game._pending_message = prompt;
-    await flush_screen(1);
-    const disp = game.nhDisplay;
-    if (disp) topl_park_cursor(disp, prompt + ' ');
-    const key = await nhgetch();
-    return String.fromCharCode(key).toLowerCase();
+    return yn_function(question, 'yn', 'n', true);
 }
 
 const SCREEN_ROWS = 24;
@@ -500,10 +495,38 @@ async function enhance_menu(items, prompt, pickOne) {
         }
     }
     let pageIdx = 0;
+    /* C ref: wintty.c:1927 — a single-page menu with maxrow < rows overlays the
+     * map at offx = min(40, cols - maxcol - 1) (H2344_BROKEN arm), maxcol being
+     * the longest stored str + 2 (tty_end_menu, trailing blanks counted); only
+     * offx == 10 / maxrow >= rows goes full-screen.  Same placement as
+     * cmd.js tty_menu_pick_one_ext. */
+    let overlayCol = 0;
+    if (npages === 1 && all.length + 1 < SCREEN_ROWS) {
+        let maxlen = 5;
+        for (let n = 0; n < all.length; n++) {
+            const body = accel[n] ? `${accel[n]} - ${all[n].text}` : all[n].text;
+            maxlen = Math.max(maxlen, body.length);
+        }
+        const col = Math.min(41, 78 - maxlen);
+        if (col > 1)
+            overlayCol = col;
+    }
     const renderPage = async () => {
         const start = pageIdx * LMAX;
         const page = all.slice(start, start + LMAX);
         const morestr = (npages > 1) ? `(${pageIdx + 1} of ${npages})` : '(end) ';
+        if (overlayCol) {
+            const wl = page.map((it, i) => {
+                const a = accel[start + i];
+                const body = a ? `${a} - ${it.text}` : it.text;
+                return it.heading ? `\x1b[7m${body}\x1b[0m` : body;
+            });
+            wl.push('(end)');
+            g._screen_output = build_window_screen(wl, overlayCol, g.u?.uac ?? 0);
+            const disp = g.nhDisplay;
+            if (disp) { disp.cursorCol = overlayCol + '(end) '.length; disp.cursorRow = page.length; }
+            return { start, page, morestr };
+        }
         const rows = new Array(SCREEN_ROWS).fill('');
         for (let i = 0; i < page.length; i++) {
             const it = page[i];

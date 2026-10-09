@@ -10,16 +10,17 @@ import { make_stunned } from './potion.js';
 /* C ref: do.c:2076 schedule_goto — domagicportal defers the actual level
  * change to the end of the turn, same as level_tele (js/cmd.js:11421). */
 import { schedule_goto } from './cmd.js';
+import { yn_function } from './end.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
-import { newsym, see_monsters, shieldeff } from './display.js';
+import { newsym, see_monsters, shieldeff, docrt } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './allmain.js';
 import { pline, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { Monnam } from './mcastu.js';
 import { Amonnam } from './mhitm.js';
 import { You } from './eat.js';
-import { in_rooms, maybe_unhide_at, sobj_at, somexyspace, u_on_newpos, mongone } from './mklev.js';
+import { set_ustuck, in_rooms, maybe_unhide_at, sobj_at, somexyspace, u_on_newpos, mongone } from './mklev.js';
 /* C ref: mkroom.c:764-780 search_special(VAULT) — vault_tele's room lookup. */
 import { search_special } from './mkroom.js';
 /* C ref: trap.c:1700 deltrap — the once-trap is consumed on use. */
@@ -78,10 +79,17 @@ import { VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
  * (teleport.c:892).  Lives in js/cmd.js alongside the rest of the getpos
  * machinery (truncate_to_map, movecmd, the farlook descriptions). */
 import { getpos } from './cmd.js';
+import { noit_mon_nam } from './mhitm.js';
 import { learnscroll } from './read.js';
 /* C potion.c:260 make_blinded — canonical transient-blindness transition. */
 import { make_blinded } from './zap.js';
 import { ENV } from './hostenv.js';
+import { newcham as newcham_vr, upstart as upstart_vr } from './mklev.js';
+import { expels_gu as expels_gu_vr } from './mhitu.js';
+import { x_monnam as x_monnam_vr } from './mhitm.js';
+import { nonliving as nonliving_vr } from './makemon.js';
+import { Unaware as Unaware_vr } from './display.js';
+import { ismnum as ismnum_vr, G_GENOD as G_GENOD_VR, NON_PM as NON_PM_VR, ARTICLE_THE as ARTICLE_THE_VR, ARTICLE_A as ARTICLE_A_VR, SUPPRESS_INVISIBLE as SUPPRESS_INVISIBLE_VR, AUGMENT_IT as AUGMENT_IT_VR, SUPPRESS_NAME as SUPPRESS_NAME_VR, SUPPRESS_IT as SUPPRESS_IT_VR } from './const.js';
 /* C ref: include/hack.h flag bits for collect_coords() */
 export const CC_NO_FLAGS = 0x00;
 export const CC_INCL_CENTER = 0x01;
@@ -342,11 +350,20 @@ export async function teleds(nux, nuy, teleds_flags) {
     }
     /* C 487: reset_utrap(FALSE) */
     u.utrap = 0;
-    /* C 489: set_ustuck(0) */
-    u.ustuck = null;
+    /* C 488-489: was_swallowed = u.uswallow; set_ustuck(Null) clears uswallow */
+    const was_swallowed = !!u.uswallow;
+    set_ustuck(null);
     /* C 490-491: u.ux0 = u.ux; u.uy0 = u.uy */
     u.ux0 = u.ux | 0;
     u.uy0 = u.uy | 0;
+    /* C 499-504: leaving an engulfer — ball&chain are off map while swallowed */
+    if (was_swallowed) {
+        if (u.uball) { /* Punished */
+            ball_active = true;
+            ball_still_in_range = allow_drag = false;
+        }
+        await docrt();
+    }
     /* C ref: teleport.c:504-520 — the in-range / draggable arm.  drag_ball()
      * may itself decide dragging is impossible and teleport the ball on its
      * own, which is why C re-reads ball_active from uball->where afterwards. */
@@ -553,7 +570,10 @@ export async function scrolltele(scroll) {
     if ((!!(u.uhave && u.uhave.amulet) || On_W_tower_level(u.uz)) && !rn2(3)) {
         /* C ref: pline.c You_feel(x) → pline("You feel %s", x). */
         await pline('You feel disoriented for a moment.');
-        return;
+        /* C 867-870: if (!wizard || y_n("Override?") != 'y') return;
+         * y_n(query) is yn_function(query, ynchars, 'n', TRUE) (hack.h). */
+        if (!wizard || (await yn_function('Override?', 'yn', 'n', true)) !== 'y')
+            return;
     }
 
     /* C 872-873 */
@@ -899,6 +919,16 @@ export async function mnexto(mtmp, rlocflags) {
     if (!mm || !isok(mm.x, mm.y)) {
         await deal_with_overcrowding(mtmp);
         return;
+    }
+    /* C mon.c:3971-3979: wizard-mode 'montelecontrol' option; enexto()'s
+     * value for mm is the default, savemm keeps the player from choosing the
+     * hero's location and then overriding the invalid-spot prompt. */
+    if ((game.iflags?.mon_telecontrol || game.iflags?.montelecontrol)) {
+        const savemm = { x: mm.x, y: mm.y };
+        if (!(await control_mon_tele(mtmp, mm, rlocflags, false))) {
+            mm.x = savemm.x;
+            mm.y = savemm.y;
+        }
     }
     await rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
 }
@@ -1473,6 +1503,38 @@ function is_exclusion_zone_local(type, x, y) {
     return false;
 }
 
+/* C teleport.c:1898-1943 control_mon_tele — let wizard-mode player choose a
+ * teleporting monster's destination. */
+export async function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
+    if (!isok(cc_p.x, cc_p.y)) {
+        cc_p.x = mon.mx, cc_p.y = mon.my;
+        if (!isok(cc_p.x, cc_p.y))
+            cc_p.x = game.u.ux, cc_p.y = game.u.uy;
+    }
+    if (!(game.flags && game.flags.debug) || !(game.iflags?.mon_telecontrol || game.iflags?.montelecontrol))
+        return false;
+
+    if (game._levelgenPaintFreeze && !game._status_blanked) {
+        game._status_blanked = true;
+        game._status_blanked_by_mtc = true;  /* released by goto_level after losedogs */
+    }
+    await pline(`Teleport ${noit_mon_nam(mon)} @ <${mon.mx},${mon.my}> where?`);
+    const tcbuf = 'where to teleport ' + noit_mon_nam(mon);
+    const gp = await getpos(cc_p, false, tcbuf);
+    if (gp >= 0 && !u_at(cc_p.x, cc_p.y)) {
+        if (via_rloc ? rloc_pos_ok(cc_p.x, cc_p.y, mon)
+                     : goodpos_full(cc_p.x, cc_p.y, mon, rlocflags))
+            return true;
+        if (!game.iflags?.debug_fuzzer) {
+            const q = `<${mon.mx},${mon.my}> is not considered viable; force anyway?`;
+            if ((await yn_function(q, 'yn', 'n', true)) === 'y')
+                return true;
+        }
+    }
+    await pline(`${via_rloc ? 'Picking random' : 'Using derived'} destination.`);
+    return false;
+}
+
 function rloc_pos_ok(x, y, mtmp) {
     if (!goodpos_full(x, y, mtmp, GP_CHECKSCARY)) return false;
     const xx = mtmp.mx | 0;
@@ -1791,24 +1853,11 @@ export async function rloc(mtmp, rlocflags) {
             return true;
         }
     }
-    if (game.iflags?.mon_telecontrol && mtmp.mx) {
-        /* C teleport.c:1836-1859 calls control_mon_tele(), which opens the
-         * cursor picker and can optionally force an invalid destination.  rloc
-         * is deliberately synchronous in this port (monster movement calls it
-         * from synchronous combat code), so it cannot cross that input await.
-         * Replay/debug callers can still provide the selected coordinate in
-         * the same state slot used by the option bridge.  Treat a valid choice
-         * exactly like control_mon_tele's `via_rloc` success; with no choice,
-         * fall through to C's random placement after its "Picking random"
-         * outcome.  This removes the fatal placeholder while preserving the
-         * C RNG path for ordinary option-enabled callers.
-         */
-        const chosen = game.iflags.mon_telecontrol_pos
-            || game.iflags.montelecontrol_pos
-            || game.mon_telecontrol_pos;
-        const cx = chosen?.x | 0, cy = chosen?.y | 0;
-        if (isok(cx, cy) && !u_at(cx, cy) && rloc_pos_ok(cx, cy, mtmp)) {
-            await rloc_to_core(mtmp, cx, cy, rlocflags);
+    if ((game.iflags?.mon_telecontrol || game.iflags?.montelecontrol) && mtmp.mx) {
+        /* C teleport.c:1836-1841 */
+        const cc = { x: mtmp.mx | 0, y: mtmp.my | 0 };
+        if (await control_mon_tele(mtmp, cc, rlocflags, true)) {
+            await rloc_to_core(mtmp, cc.x, cc.y, rlocflags);
             return true;
         }
     }
@@ -1891,5 +1940,54 @@ export async function u_teleport_mon(mtmp, give_feedback) {
         if (!await rloc(mtmp, RLOC_MSG))
             return false;
     }
+    return true;
+}
+
+/* C mon.c:2890-2985 vamprises() — a vampire in bat/fog/wolf form that "dies"
+ * reverts to vampire instead.  If it was engulfing the hero, expels() (the
+ * mnexto ring shuffle + spoteffects) runs first, then newcham back to the
+ * vampire.  Returns TRUE when the monster rose (mondead() then returns early).
+ * NOT modelled: the closed_door arm (mon.c:2949-2975, door smash / booby trap). */
+export async function vamprises(mtmp) {
+    const mndx = mtmp.cham | 0;
+    if (!ismnum_vr(mndx) || mndx === ((mtmp.data?.pmidx ?? mtmp.mnum) | 0)
+        || ((game.mvitals?.[mndx]?.mvflags | 0) & G_GENOD_VR))
+        return false;
+    const u = game.u;
+    const ptr = mtmp.data;
+    const noncorp = (ptr.mlet | 0) === 54 /* S_GHOST */;
+    const amorph = !!((ptr.mflags1 | 0) & 0x00000004);
+    const specMon = nonliving_vr(ptr) || noncorp || amorph;
+    const specDeath = !!game.gd?.disintegested || noncorp || amorph;
+    const unaware = Unaware_vr();
+    const action = (unaware ? 'you dream that ' : '')
+        + x_monnam_vr(mtmp, ARTICLE_THE_VR, specMon ? null : 'seemingly dead',
+                      SUPPRESS_INVISIBLE_VR | AUGMENT_IT_VR, false)
+        + ' ' + (unaware ? '' : 'suddenly ')
+        + (specDeath ? 'reconstitutes' : 'transforms') + ' and rises as';
+    mtmp.mcanmove = 1;
+    mtmp.mfrozen = 0;
+    /* set_mon_min_mhpmax(mtmp, 10) */
+    if ((mtmp.mhpmax | 0) < (mtmp.m_lev | 0) + 1) mtmp.mhpmax = (mtmp.m_lev | 0) + 1;
+    if ((mtmp.mhpmax | 0) < 10) mtmp.mhpmax = 10;
+    mtmp.mhp = mtmp.mhpmax;
+    if (u.ustuck === mtmp) {
+        if (u.uswallow)
+            await expels_gu_vr(mtmp, (ptr.pmidx ?? mtmp.mnum) | 0, false);
+        else {
+            set_ustuck(null);
+            await pline(`${Monnam(mtmp)} is no longer in your clutches.`);
+        }
+    }
+    if (!await newcham_vr(mtmp, mndx, 0 /* NO_NC_FLAGS */))
+        return (mtmp.mhp | 0) > 0;
+    mtmp.cham = ((mtmp.data?.pmidx ?? mtmp.mnum) | 0) === mndx ? NON_PM_VR : mndx;
+    if (canspotmon(mtmp)) {
+        await pline(upstart_vr(action) + ' '
+            + x_monnam_vr(mtmp, ARTICLE_A_VR, null,
+                          SUPPRESS_NAME_VR | SUPPRESS_IT_VR | SUPPRESS_INVISIBLE_VR, false) + '!');
+        game.vamp_rise_msg = true;
+    }
+    newsym(mtmp.mx | 0, mtmp.my | 0);
     return true;
 }

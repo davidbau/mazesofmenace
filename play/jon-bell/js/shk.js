@@ -50,7 +50,8 @@ import { m_at } from './uhitm.js';
 import { can_carry } from './dogmove.js';
 import { resist_conflict } from './mhitm.js';
 import { move_special } from './priest.js';
-import { rn2 as rn2_shk } from './rng.js';
+import { rn2 as rn2_shk, rnd as rnd_shk } from './rng.js';
+import { depth as depth_shk } from './hacklib.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
@@ -199,7 +200,7 @@ function bp_to_obj(bp) {
     return bp.useup ? o_on(id, game.billobjs) : find_oid(id);
 }
 
-async function money2mon(mon, amount) {
+export async function money2mon(mon, amount) {
     const ygold = findgold(game.invent);
 
     if (amount <= 0)
@@ -1191,6 +1192,15 @@ export function sellobj_state(deliberate) {
 export async function sellobj(obj, x, y) {
     const g = game;
     const u = g.u;
+
+    /* C's gs/ga initial values (decl.c:720-721): sell_response == 'a',
+     * sell_how == SELL_NORMAL, auto_credit == FALSE until sellobj_state()
+     * runs (a thrown/trap-dropped object reaches sellobj without it). */
+    if (g.gs === undefined) g.gs = {};
+    if (g.ga === undefined) g.ga = {};
+    if (g.gs.sell_how === undefined) g.gs.sell_how = SELL_NORMAL;
+    if (g.gs.sell_response === undefined) g.gs.sell_response = 'a';
+    if (g.ga.auto_credit === undefined) g.ga.auto_credit = false;
 
     // C: boolean isgold = (obj->oclass == COIN_CLASS); — cheap scalar read,
     // safe to evaluate up front like C does.
@@ -2389,6 +2399,38 @@ export function add_damage(x, y, cost) {
     if (cansee(x, y))
         loc.seenv = SVALL;
 }
+/* C ref: shk.c:5019-5062 shopdig(fall); fall arm (backpack grab) not ported. */
+export async function shopdig(fall) {
+    const u = game.u;
+    const shkp = shop_keeper(_ushops0_shk(u));
+    if (!shkp) return;
+    if (!inhishop(shkp)) {
+        if ((game.urole?.mnum | 0) === PM_KNIGHT) {
+            await pline('You feel like a common thief.');
+            adjalign_real(-sgn(u.ualign?.type | 0));
+        }
+        return;
+    }
+    if (fall) return;
+    let lang = 0; /* 0 can't speak, 1 animal noises, 2 speaks */
+    const msound = _msound_of_shk(shkp);
+    if (helpless(shkp) || msound === 0) { /* lang stays 0 */ }
+    else if (msound <= MS_ANIMAL_SHK) lang = 1;
+    else if (msound >= 25 /* MS_HUMANOID */) lang = 2;
+    if (lang === 2 && !_shk_Deaf() && !muteshk(shkp)) {
+        const female = !!(game.flags?.female | 0);
+        if ((u.utraptype | 0) === 2 /* TT_PIT, const.js:2269 */)
+            await verbalize("Be careful, %s, or you might fall through the floor.",
+                            female ? "madam" : "sir");
+        else
+            await verbalize("%s, do not damage the floor here!",
+                            female ? "Madam" : "Sir");
+    }
+    if ((game.urole?.mnum | 0) === PM_KNIGHT) {
+        await pline('You feel like a common thief.');
+        adjalign_real(-sgn(u.ualign?.type | 0));
+    }
+}
 /* C ref: shk.c:4850 fix_shop_damage() */
 export async function fix_shop_damage() {
     const g = game;
@@ -3480,14 +3522,14 @@ async function rob_shop(shkp) {
                         eshkp.credit | 0, currency(eshkp.credit | 0));
         total = 0;
     } else {
-        await Your_real("escaped the shop without paying!");
+        await You_real("escaped the shop without paying!");
         total -= (eshkp.credit | 0);
     }
     await setpaid(shkp);
     if (!total)
         return false;
     eshkp.robbed = (eshkp.robbed | 0) + total;
-    await Your_real("stole %ld %s worth of merchandise.", total, currency(total));
+    await You_real("stole %ld %s worth of merchandise.", total, currency(total));
     livelog_printf(LL_ACHIEVE,
                    "stole %ld %s worth of merchandise from %s %s",
                    total, currency(total), s_suffix(shkname(shkp)),
@@ -3517,11 +3559,12 @@ function _choose_stairs_shk(out, dir) {
     if (s) { out.x = s.sx | 0; out.y = s.sy | 0; }
 }
 async function makekops_shk(mm) {
-    const cnt = Math.abs((game.u?.uz?.dlevel | 0)) + (rn2_shk(5) + 1);
+    const cnt = Math.abs(depth_shk(game.u?.uz)) + rnd_shk(5);
     const counts = [cnt, Math.trunc(cnt / 3) + 1, Math.trunc(cnt / 6), Math.trunc(cnt / 9)];
     const types = [PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN];
     for (let i = 0; i < types.length; i++) {
         let n = counts[i] | 0;
+        if (n === 0) break;
         const mndx = types[i];
         if (((game.mvitals?.[mndx]?.mvflags | 0) & G_GONE) !== 0) continue;
         while (n-- > 0) {

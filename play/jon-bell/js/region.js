@@ -135,6 +135,14 @@ function u_at(x, y) {
 function region_pline_sync(msg) {
     const g = game;
     if (!g || !msg) return;
+    /* topl.c:257 skip = (flags & (WIN_STOP|WIN_NOSTOP)) == WIN_STOP: after an ESC
+     * at a --More-- the message updates gt.toplines but is never drawn. */
+    if (g._topl_win_stop) {
+        const hidden = String(g._topl_win_stop_buf || g._pending_message || '');
+        g._topl_win_stop_buf = (hidden.length + 2 + msg.length < 71)
+            ? hidden + '  ' + msg : msg;
+        return;
+    }
     const prev = g._pending_message;
     if (prev && prev.length > 0) {
         const joined = prev + '  ' + msg;

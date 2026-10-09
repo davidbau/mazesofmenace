@@ -6,6 +6,7 @@ import { rn2, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
 import { get_rnd_line_from_section } from './mklev.js';
 import { BOGUSMON_LINES, BOGUSMON_OFFSETS, BOGUSMON_SIZE, MD_PAD_BOGONS } from './bogusmon_data.js';
 import { ENV } from './hostenv.js';
+import { game } from './gstate.js';
 
 /* C monflag.h enum mgender { MALE, FEMALE, NEUTRAL, NUM_MGENDERS } */
 const MALE = 0, FEMALE = 1;
@@ -191,4 +192,143 @@ export function lookup_novel(lookname, idx) {
     if (idx && prior >= 0 && prior < sir_Terry_novels.length)
         return sir_Terry_novels[prior];
     return null;
+}
+
+/* C files.c:3424-3470 choose_passage(): pick a not-yet-used passage of the
+ * book `oid`, tracking the unused ones in svc.context.novel.  The rn2(range)
+ * draws of the >MAXPASSAGES arm and the final rn2(count) are RNG-visible. */
+function choose_passage(passagecnt, oid) {
+    const MAXPASSAGES = 20;
+    const ctx = game.context || (game.context = {});
+    const nv = ctx.novel || (ctx.novel = { id: 0, count: 0, pasg: new Array(MAXPASSAGES).fill(0) });
+    if (passagecnt < 1)
+        return 0;
+    if ((oid >>> 0) !== (nv.id >>> 0) || (nv.count | 0) === 0) {
+        let range = passagecnt, limit = MAXPASSAGES;
+        nv.id = oid;
+        if (range <= limit) {
+            nv.count = passagecnt;
+            for (let idx = 0; idx < MAXPASSAGES; idx++)
+                nv.pasg[idx] = idx < passagecnt ? idx + 1 : 0;
+        } else {
+            nv.count = MAXPASSAGES;
+            let idx = 0;
+            for (let i = 0; i < passagecnt; ++i, --range)
+                if (range > 0 && rn2(range) < limit) {
+                    nv.pasg[idx++] = i + 1;
+                    --limit;
+                }
+        }
+    }
+    const idx = rn2(nv.count | 0);
+    const res = nv.pasg[idx] | 0;
+    nv.pasg[idx] = nv.pasg[--nv.count] | 0;
+    return res;
+}
+
+/* C files.c:3474-3637 read_tribute(): find `tribtitle` in dat/tribute's
+ * `tribsection`, choose a passage and show it in an NHW_MENU window (or, when
+ * `nowin_buf` is a {value} box, fetch its first line into the box instead).
+ * Returns TRUE when something was read. */
+export async function read_tribute(tribsection, tribtitle, tribpassage, nowin_buf, oid) {
+    const { pline, putmsghistory } = await import('./display.js');
+    const { dat_content } = await import('./dat_source.js');
+    const badtranslation = 'an incomprehensible foreign translation';
+    const ci = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+    const munge = (s) => s.replace(/\s+/g, ' ').replace(/^ /, '').replace(/ $/, '');
+    if (nowin_buf)
+        nowin_buf.value = '';
+    if (tribsection == null || tribtitle == null) {
+        if (!nowin_buf)
+            await pline(`It's ${badtranslation} of "${tribtitle}"!`);
+        return false;
+    }
+    const raw = dat_content('tribute');
+    if (raw === null) {
+        if (!nowin_buf)
+            await pline('You feel too overwhelmed to continue!');
+        return false;
+    }
+    const SECTIONSCOPE = 1, TITLESCOPE = 2, PASSAGESCOPE = 3;
+    let scope = 0, passagecnt = 0, targetpassage = 0;
+    let matchedsection = false, matchedtitle = false, foundpassage = false;
+    let lastline = '';
+    const win = [];
+    let grasped = false;
+    for (const rawline of raw.replace(/\n$/, '').split('\n')) {
+        const line = rawline.replace(/\r$/, '');
+        const c0 = line[0];
+        if (c0 === '%') {
+            const rest = line.slice(1).toLowerCase();
+            if (rest.startsWith('section ')) {
+                scope = SECTIONSCOPE;
+                matchedsection = ci(line.slice(9), tribsection);
+            } else if (rest.startsWith('title ')) {
+                let st = line.slice(7);
+                const p1 = st.indexOf('(');
+                if (p1 >= 0) {
+                    const after = st.slice(p1 + 1);
+                    st = munge(st.slice(0, p1));
+                    const p2 = after.indexOf(')');
+                    if (p2 >= 0) {
+                        passagecnt = parseInt(after.slice(0, p2), 10) || 0;
+                        scope = TITLESCOPE;
+                        if (matchedsection && ci(st, tribtitle)) {
+                            matchedtitle = true;
+                            targetpassage = !tribpassage
+                                ? choose_passage(passagecnt, oid)
+                                : (tribpassage <= passagecnt) ? tribpassage : 0;
+                        } else {
+                            matchedtitle = false;
+                        }
+                    }
+                }
+            } else if (rest.startsWith('passage ')) {
+                const passagenum = parseInt(munge(line.slice(9)), 10) || 0;
+                if (passagenum > 0 && passagenum <= passagecnt) {
+                    scope = PASSAGESCOPE;
+                    if (matchedtitle && passagenum === targetpassage)
+                        foundpassage = true;
+                }
+            } else if (rest.startsWith('e ')) {
+                if (foundpassage)
+                    break;
+                if (scope === TITLESCOPE)
+                    matchedtitle = false;
+                if (scope === SECTIONSCOPE)
+                    matchedsection = false;
+                if (scope)
+                    --scope;
+            }
+        } else if (c0 === '#') {
+            /* comment */
+        } else if (foundpassage) {
+            if (!nowin_buf) {
+                win.push(line);
+                if (line)
+                    lastline = line;
+            } else {
+                nowin_buf.value = line;
+                break;
+            }
+        }
+    }
+    if (nowin_buf)
+        return nowin_buf.value !== '';
+    if (foundpassage && lastline) {
+        const { dbase_display_window } = await import('./cmd.js');
+        await dbase_display_window(win);
+        if (lastline.includes('['))
+            lastline = munge(lastline);
+        else
+            lastline = `[${tribtitle}, by Terry Pratchett]`;
+        const p = lastline.lastIndexOf(']');
+        if (p >= 0)
+            lastline = lastline.slice(0, p) + `; passage #${targetpassage}]`;
+        putmsghistory(lastline, false);
+        grasped = true;
+    }
+    if (!grasped)
+        await pline(`It seems to be ${badtranslation} of "${tribtitle}"!`);
+    return grasped;
 }

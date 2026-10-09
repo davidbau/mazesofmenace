@@ -1,4 +1,5 @@
 import { spoteffects } from './landing-effects.js';
+import { is_pool_or_lava } from './look.js';
 // do_wear.c — wearing / taking off worn objects; armor-class calculation.
 // C ref: do_wear.c — find_ac (line 2472).
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
@@ -29,7 +30,7 @@ function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
 import { pline, urgent_pline } from './display.js';
 import { see_monsters } from './display.js';
 import { topl_park_cursor } from './display.js';
-import { flush_screen, _topline_more_pending } from './display.js';
+import { flush_screen, _topline_more_pending, _topl_stash_result } from './display.js';
 import { _topl_merge_result, _topl_joins_snapshot, _topl_record_join } from './display.js';
 import { nhgetch } from './input.js';
 import { nomul, unmul, stop_occupation } from './allmain.js';
@@ -40,6 +41,10 @@ import { STR19, PROTECTION, INTRINSIC } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE } from './pm.generated.js';
 import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam } from './mhitm.js';
 import { s_suffix } from './hacklib.js';
+import { hcolor } from './mhitm.js';
+import { curse } from './mkobj.js';
+import { update_inventory } from './inventory_refresh.js';
+import { HALLUC, HALLUC_RES } from './const.js';
 /* C mondata.c:632 sliparm(ptr) — the real one, exported by js/makemon.js:462.
  * canwearobj's cantweararm(ptr) is breakarm(ptr) || sliparm(ptr) (mondata.h:133);
  * both halves are imported rather than re-derived here. */
@@ -202,6 +207,7 @@ import { BLINDED as BLINDED_PROP, INVIS as INVIS_PROP, DISPLACED as DISPLACED_PR
 import { SEE_INVIS as SEE_INVIS_PROP, ACID_RES as ACID_RES_PROP,
          TELEPAT as TELEPAT_DISP_PROP, DETECT_MONSTERS as DETECT_MONSTERS_PROP } from './const.js';
 import { newsym } from './display.js';   /* C display.c */
+import { STRANGLED, NECK, MAGICAL_BREATHING as MAGICAL_BREATHING_DW } from './const.js';
 import { Tobjnam } from './objnam.js';   /* C objnam.c:2810 */
 /* C youprop.h `EProp |= <mask>` over u.uprops[p].extrinsic, for the arms that
  * set a SECOND property by hand (the alchemy smock's acid resistance).  Same
@@ -219,7 +225,7 @@ function _dw_set_extrinsic_mask(prop, mask, on) {
  * HEAD is the body_part() index used by a TOWEL's on_msg.  Both taken from
  * const.js rather than re-spelled, so the eyewear slot agrees with is_worn()'s
  * WORN_BLINDF_VAL by construction. */
-import { W_TOOL as W_TOOL_C, HEAD as HEAD_DW } from './const.js';
+import { W_TOOL as W_TOOL_C, HEAD as HEAD_DW, FACE as FACE_DW } from './const.js';
 /* vision_recalc — the load-bearing half of toggle_blindness().  js/vision.js
  * carries the real `else if (Blind)` arm of C's vision_recalc (vision.c:548),
  * so conferring EBlinded below is what makes it fire.  vision.js imports only
@@ -515,7 +521,7 @@ function cloak_simple_name(row, obj) {
         if (row.name === 'robe') return 'robe';
         if (row.name === 'mummy wrapping') return 'wrapping';
         if (row.name === 'alchemy smock')
-            return (obj?.oc_name_known && obj?.dknown) ? 'smock' : 'apron';
+            return ((game._oc_name_known && game._oc_name_known[obj?.otyp]) && obj?.dknown) ? 'smock' : 'apron';
     }
     return 'cloak';
 }
@@ -531,7 +537,7 @@ function helm_simple_name(row) {
  * known, description otherwise); needs dknown. */
 function gloves_simple_name(row, obj) {
     if (row && obj?.dknown) {
-        const visible = obj?.oc_name_known ? row.name : row.descr;
+        const visible = (game._oc_name_known && game._oc_name_known[obj?.otyp]) ? row.name : row.descr;
         if (visible && visible.includes('gauntlets')) return 'gauntlets';
     }
     return 'gloves';
@@ -541,7 +547,7 @@ function gloves_simple_name(row, obj) {
 function boots_simple_name(row, obj) {
     if (row && obj?.dknown) {
         if (row.descr && row.descr.includes('shoes')) return 'shoes';
-        if (obj?.oc_name_known && row.name && row.name.includes('shoes'))
+        if ((game._oc_name_known && game._oc_name_known[obj?.otyp]) && row.name && row.name.includes('shoes'))
             return 'shoes';
     }
     return 'boots';
@@ -763,7 +769,7 @@ export async function Boots_off() {
         const BStealth = rec ? (rec.blocked | 0) : 0;
         if (!oldprop && !HStealth && !BStealth) {
             makeknown_otyp(otyp);
-            await pline('Sure, you are noisy.');
+            await pline('You sure are noisy.');
         }
     } else if (otyp === FUMBLE_BOOTS_OTYP_DW) {
         /* C do_wear.c:319-321 — removing fumble boots clears their timeout
@@ -858,7 +864,15 @@ export async function Cloak_off() {
     if (propRec)
         propRec.extrinsic = (propRec.extrinsic | 0) & ~W_ARMC;
     await takeoff_slot('uarmc');
-    if (otyp === CLOAK_OF_DISPLACEMENT_OTYP || otyp === 'CLOAK_OF_DISPLACEMENT')
+    if (otyp === ELVEN_CLOAK_OTYP) {
+        /* C do_wear.c:401 toggle_stealth(otmp, oldprop, FALSE) */
+        if (!g.context?.takeoff?.cancelled_don && !oldprop
+            && !(propRec ? (propRec.intrinsic | 0) : 0)
+            && !(propRec ? (propRec.blocked | 0) : 0)) {
+            makeknown_otyp(otyp);
+            await pline('You sure are noisy.');
+        }
+    } else if (otyp === CLOAK_OF_DISPLACEMENT_OTYP || otyp === 'CLOAK_OF_DISPLACEMENT')
         await toggle_displacement(otmp, oldprop, false);
     return 0;
 }
@@ -977,7 +991,7 @@ export async function Armor_on()  {
 }
 export function Shield_on() { return don_slot('uarms'); }
 const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93;
-export function Helmet_on() {
+export async function Helmet_on() {
     const u = game.u;
     /* u_init.js's starting-gear scaffold (iniInvWornArmor) stores the worn
      * armor's otyp as its NAME string, while mksobj-created objects carry the
@@ -1008,6 +1022,36 @@ export function Helmet_on() {
     }
     if (u.uarmh && (u.uarmh.otyp | 0) === HELM_OF_BRILLIANCE)
         adj_abon(u.uarmh, u.uarmh.spe | 0);
+    /* C do_wear.c:451-452 HELM_OF_CAUTION: see_monsters(). */
+    if (u.uarmh && (u.uarmh.otyp | 0) === 95)
+        see_monsters();
+    /* C do_wear.c:480-505 DUNCE_CAP (HELM_OF_OPPOSITE_ALIGNMENT's uchangealign
+     * half is still unported and stays deferred). */
+    if (u.uarmh && (u.uarmh.otyp | 0) === 94) {
+        if (!u.uarmh.cursed) {
+            if (_propOn(BLINDED_PROP))
+                await pline(`${Tobjnam(u.uarmh, 'vibrate')} for a moment.`);
+            else
+                await pline(`${Tobjnam(u.uarmh, 'glow')} ${hcolor('black')} for a moment.`);
+            curse(u.uarmh);
+            if (_propOn(BLINDED_PROP))
+                set_bknown(u.uarmh, 0);
+            else if ((game.flags?.initrole ?? -1) === 6) /* Role_if(PM_CLERIC) */
+                set_bknown(u.uarmh, 1);
+            else if (u.uarmh.bknown)
+                update_inventory();
+        }
+        if (game.disp) game.disp.botl = 1;
+        const hallu = game.u?.uprops?.[HALLUC]?.intrinsic
+            && !(game.u.uprops[HALLUC_RES]?.intrinsic || game.u.uprops[HALLUC_RES]?.extrinsic);
+        if (hallu) {
+            await pline('My brain hurts!');
+        } else {
+            const di = C_ATTR_TO_DISP[A_INT] ?? A_INT;
+            const tot = ((u.acurr?.a?.[di]) | 0) + ((u.abon?.a?.[di]) | 0) + ((u.atemp?.a?.[di]) | 0);
+            await pline(`You feel ${acurr(u, A_INT) <= tot ? 'like sitting in a corner' : 'giddy'}.`);
+        }
+    }
     return don_slot('uarmh');
 }
 /* Gloves_on's real body (with C's per-otyp switch) is below, beside Cloak_on. */
@@ -1132,6 +1176,13 @@ export async function Cloak_on() {
             makeknown_otyp(otyp);
             break;
         case ELVEN_CLOAK_OTYP:
+            /* C do_wear.c:376 toggle_stealth(uarmc, oldprop, TRUE) */
+            if (!g.initial_don && !oldprop
+                && !(rec ? (rec.intrinsic | 0) : 0)
+                && !(rec ? (rec.blocked | 0) : 0)) {
+                makeknown_otyp(otyp);
+                await pline('You move very quietly.');
+            }
             break;
         case CLOAK_OF_DISPLACEMENT_OTYP:
             await toggle_displacement(otmp, oldprop, true);
@@ -2252,6 +2303,32 @@ export async function accessory_or_armor_on(obj) {
                 /* invalid key: loop and re-read (C do..while !mask). */
             }
         }
+        /* do_wear.c:2290-2317 — Glib / cursed-gloves / welded-weapon guards. */
+        {
+            const u = g.u;
+            if (u.uarmg && Glib_dw()) {
+                await Your(`${gloves_simple_name_obj(u.uarmg)} are too slippery to remove, so you cannot put on the ring.`);
+                return ECMD_TIME; /* always uses move */
+            }
+            if (u.uarmg && u.uarmg.cursed) {
+                const res = !u.uarmg.bknown;
+                set_bknown(u.uarmg, 1);
+                await You(`cannot remove your ${c_gloves} to put on the ring.`);
+                return res ? ECMD_TIME : ECMD_OK;
+            }
+            if (u.uwep) {
+                const res = !u.uwep.bknown; /* before welded() sets bknown */
+                if (((mask === RIGHT_RING_VAL && u.uhandedness === RIGHT_HANDED)
+                     || (mask === LEFT_RING_VAL && u.uhandedness === LEFT_HANDED)
+                     || bimanual(u.uwep)) && _uwep_welded_dw()) {
+                    let hand = body_part(HAND);
+                    if (bimanual(u.uwep)) hand = makeplural(hand);
+                    set_bknown(u.uwep, 1);
+                    await You(`cannot free your weapon ${hand} to put on the ring.`);
+                    return res ? ECMD_TIME : ECMD_OK;
+                }
+            }
+        }
         /* do_wear.c:2356 retouch_object(): no silver/material conflict here. */
         /* do_wear.c:2409-2416 — setworn(obj, mask); Ring_on(obj); on_msg. */
         await setworn(obj, mask);
@@ -2260,7 +2337,10 @@ export async function accessory_or_armor_on(obj) {
         /* do_wear.c:2416 on_msg(obj) → prinv(NULL, obj, 0) — the
          * "<invlet> - <doname> (on {right|left} hand)." add-to-invent feedback
          * (do_wear.c:76 on_msg; objnam.c:1494 worn-ring suffix).  RNG-free. */
-        await on_msg(obj);
+        /* do_wear.c:2412-2413 — is_worn(obj) is false only for a ring of
+         * levitation put on at a sink (dosinkfall already removed it). */
+        if ((obj.owornmask | 0) !== 0)
+            await on_msg(obj);
         return ECMD_TIME;
     }
     if (amulet) {
@@ -2312,7 +2392,47 @@ export async function accessory_or_armor_on(obj) {
             await useup(obj);
             return ECMD_TIME;
         }
-        await on_msg(obj);
+        /* C ref: do_wear.c:1078 — case AMULET_OF_GUARDING: makeknown();
+         * find_ac().  makeknown -> discover_object(credit_hero) draws
+         * exercise(A_WIS)'s rn2(19) (attrib.c:509) and makes the name known. */
+        if ((obj.otyp | 0) === AMULET_OF_GUARDING) {
+            makeknown_otyp(AMULET_OF_GUARDING);
+            find_ac();
+        }
+        /* C ref: do_wear.c:1030-1042 — case AMULET_OF_STRANGULATION. */
+        let onMsgDone = false;
+        if ((obj.otyp | 0) === AMULET_OF_STRANGULATION_DW) {
+            const bre = g.u.uprops && g.u.uprops[MAGICAL_BREATHING_DW];
+            const breathless = !!(bre && ((bre.intrinsic | 0) || (bre.extrinsic | 0)));
+            const sp = ensure_uprop(STRANGLED);
+            if (has_head(g.youmonst && g.youmonst.data) && !breathless
+                && !(sp.intrinsic | 0)) {
+                makeknown_otyp(AMULET_OF_STRANGULATION_DW);
+                sp.intrinsic = 6;
+                if (g.disp) g.disp.botl = 1;
+                await on_msg(obj);
+                onMsgDone = true;
+                await pline('It constricts your throat!');
+            }
+        }
+        /* C ref: do_wear.c:1056-1074 — case AMULET_OF_FLYING. */
+        if ((obj.otyp | 0) === AMULET_OF_FLYING_DW) {
+            float_vs_flight();
+            if (Flying()) {
+                const fp = ensure_uprop(FLYING_PROP);
+                const was = (fp.extrinsic | 0) & ~W_AMUL_C;
+                const alreadyFlying = !!((fp.intrinsic | 0) || was) && !(fp.blocked | 0);
+                if (!alreadyFlying) {
+                    makeknown_otyp(AMULET_OF_FLYING_DW);
+                    await on_msg(obj);
+                    onMsgDone = true;
+                    if (g.disp) g.disp.botl = 1;
+                    await You('are now in flight.');
+                }
+            }
+        }
+        if (!onMsgDone)
+            await on_msg(obj);
         return ECMD_TIME;
     }
     if (oclass === TOOL_CLASS_DW && _is_eyewear_dw(obj)) {
@@ -2330,7 +2450,7 @@ export async function accessory_or_armor_on(obj) {
             const ubOtyp = ub.otyp | 0;
             const objOtyp = obj.otyp | 0;
             if (ubOtyp === TOWEL_OTYP_DW) {
-                await pline(`Your ${body_part(HEAD_DW)} is already covered by a towel.`);
+                await pline(`Your ${body_part(FACE_DW)} is already covered by a towel.`);
             } else if (ubOtyp === BLINDFOLD_OTYP_DW) {
                 if (objOtyp === LENSES_OTYP_DW)
                     await already_wearing2('lenses', 'a blindfold');
@@ -2643,12 +2763,32 @@ export async function Amulet_off() {
         await setworn(null, W_AMUL_C);
         await off_msg_amulet(amul);
         earlyOffMsg = true;
+        /* do_wear.c:1139-1146 */
+        const sp = ensure_uprop(STRANGLED);
+        if (sp.intrinsic | 0) {
+            sp.intrinsic = 0;
+            if (g.disp) g.disp.botl = 1;
+            const bre = u.uprops && u.uprops[MAGICAL_BREATHING_DW];
+            const breathless = !!(bre && ((bre.intrinsic | 0) || (bre.extrinsic | 0)));
+            if (breathless)
+                await pline(`Your ${body_part(NECK)} is no longer constricted!`);
+            else
+                await pline('You can breathe more easily!');
+            makeknown_otyp(AMULET_OF_STRANGULATION_DW);
+        }
     } else if (otyp === AMULET_OF_RESTFUL_SLEEP_DW) {
         /* do_wear.c:1150-1154 — setworn only; off_msg comes from the shared
          * tail below (early_off_msg is NOT set for this case in C). */
         await setworn(null, W_AMUL_C);
-        /* HSleepy timeout-bit clear deferred — same rationale as this file's
-         * existing Amulet_on RESTFUL_SLEEP note: nothing in js/ reads HSleepy. */
+        /* C do_wear.c:1152-1153 — clear the timeout bits only when no other
+         * source (ESleepy, FROMOUTSIDE bits) holds the property. */
+        const sl = u.uprops && u.uprops[SLEEPY_DW];
+        if (sl && !(sl.extrinsic | 0) && !((sl.intrinsic | 0) & ~TIMEOUT_DW))
+            sl.intrinsic = (sl.intrinsic | 0) & ~TIMEOUT_DW;
+        /* do_wear.c:1151-1153 — HSleepy = 0L avoided to keep FROMOUTSIDE. */
+        const slp = u.uprops && u.uprops[SLEEPY_DW];
+        if (slp && !(slp.extrinsic | 0) && !((slp.intrinsic | 0) & ~PROP_TIMEOUT))
+            slp.intrinsic = (slp.intrinsic | 0) & ~PROP_TIMEOUT;
     } else if (otyp === AMULET_OF_MAGICAL_BREATHING_DW) {
         /* do_wear.c:1113-1132 */
         await setworn(null, W_AMUL_C);
@@ -2656,9 +2796,19 @@ export async function Amulet_off() {
         earlyOffMsg = true;
     } else if (otyp === AMULET_OF_FLYING_DW) {
         /* do_wear.c:1155-1170 */
+        const was_flying = Flying();
         await setworn(null, W_AMUL_C);
         await off_msg_amulet(amul);
         earlyOffMsg = true;
+        float_vs_flight();
+        if (was_flying && !Flying()) {
+            if (g.disp) g.disp.botl = 1;
+            await pline(`You ${(is_pool_or_lava(u.ux, u.uy)
+                || Is_waterlevel(u.uz) || Is_airlevel(u.uz))
+                ? "stop flying" : "land"}.`);
+            makeknown_otyp(AMULET_OF_FLYING_DW);
+            await spoteffects(true);
+        }
     } else if (otyp === AMULET_OF_GUARDING) {
         find_ac(); /* do_wear.c:1176 — shared tail handles setworn+off_msg. */
     }
@@ -2695,10 +2845,25 @@ export async function float_down(hmask, emask) {
     if (g.disp) g.disp.botl = 1;
     /* botl event tag (parity with C's flush_screen → bot during the more()). */
     nomul(0); /* stop running or resting (hack.c) */
-    float_vs_flight();
-    /* BFlying/uswallow/Punished/pool/lava branches deferred (FALSE here). */
+    /* C trap.c:4059-4066 — controlled flight no longer overridden by levitation. */
+    if (ensure_uprop(FLYING_PROP).blocked | 0) {
+        float_vs_flight();
+        if (Flying()) {
+            await pline('You have stopped levitating and are now flying.');
+            await encumber_msg(); /* carrying capacity might have changed */
+            return 1;
+        }
+    } else {
+        float_vs_flight();
+    }
+    /* uswallow/Punished/pool/lava branches deferred (FALSE here). */
     if (!(emask & W_SADDLE_FD)) {
-        await pline(`You float gently to the ${surface(u.ux, u.uy)}.`);
+        const hallu = u.uprops?.[HALLUC]?.intrinsic
+            && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
+        if (hallu) /* C trap.c:4138-4141 (is_pool arm deferred with the pool branch) */
+            await pline("Bummer!  You've hit the ground.");
+        else
+            await pline(`You float gently to the ${surface(u.ux, u.uy)}.`);
         // C update_topl may block here before landing triggers another effect.
         if (_topline_more_pending())
             await flush_screen(1);
@@ -2724,8 +2889,13 @@ export async function float_down(hmask, emask) {
     /* C trap.c:4162-4167 — pickup only on a normal level, outside air/water
      * levels and swallowing; the existing helper is pickup(1). */
     if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz) && !u.uswallow
-        && on_level(levelBeforeTrap, u.uz))
+        && on_level(levelBeforeTrap, u.uz)) {
+        /* The pickup's look_here text goes to the command-result channel; move the
+         * live "You float gently..." line there first so it keeps C's single-
+         * topline order (float message, then "You see here ..."). */
+        _topl_stash_result();
         await _spoteffects_pickup_fd();
+    }
     return 1;
 }
 
@@ -3153,6 +3323,10 @@ export async function float_up() {
         await spoteffects(true);
     } else if (u.uswallow) {
         /* swallowed branch — not reached. */
+    } else if (u.uprops?.[HALLUC]?.intrinsic
+               && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic)) {
+        /* C trap.c:3984-3985 */
+        await pline("Up, up, and awaaaay!  You're walking on air!");
     } else {
         await pline('You start to float in the air!');
     }
@@ -3308,7 +3482,7 @@ export async function set_wear(obj) {
     if (!obj ? (u.uarmg != null) : (obj === u.uarmg))
         Gloves_on();
     if (!obj ? (u.uarmh != null) : (obj === u.uarmh))
-        Helmet_on();
+        await Helmet_on();
     if (!obj ? (u.uarms != null) : (obj === u.uarms))
         Shield_on();
 

@@ -8,7 +8,7 @@ import { clong, LONG_MAX } from './integer.js';
 import { newuexp } from './exper_pure.js';
 import { PM_WIZARD } from './pm.generated.js';
 import { pline, flush_screen, livelog_printf } from './display.js';
-import { adjabil, minuhpmax, setuhpmax } from './attrib.js';
+import { adjabil, minuhpmax, setuhpmax, acurr } from './attrib.js';
 import { Goodbye } from './roles.js';
 import { monhp_per_lvl } from './makemon.js';
 import { KILLED_BY, DIED, LL_MINORAC, Upolyd, DRAIN_RES } from './const.js';
@@ -241,11 +241,9 @@ export function newpw() {
         }
         return en;
     }
-    /* C exper.c:56: enrnd = (int) ACURR(A_WIS) / 2.
-     * JS u.acurr.a is in display order [Str,Dex,Con,Int,Wis,Cha].
-     * C constant A_WIS=2 maps to display index 4 (DISPLAY_TO_C[4]=2). */
-    const wis = u.acurr ? (u.acurr.a ? (u.acurr.a[4] | 0) : 0) : 0;
-    enrnd = Math.trunc(wis / 2);
+    /* C exper.c:56: enrnd = (int) ACURR(A_WIS) / 2 (A_WIS=2); acurr adds
+     * abon/atemp (worn items, e.g. helm of brilliance). */
+    enrnd = Math.trunc(acurr(u, 2) / 2);
     if ((u.ulevel | 0) < xlev) {
         /* C exper.c:57-59: lower range */
         enrnd += ((re ? re.lornd : 0) | 0) + ((rr ? rr.lornd : 0) | 0);

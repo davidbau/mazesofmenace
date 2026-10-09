@@ -9642,6 +9642,12 @@ export function freeinv_core(obj) {
         const uhave = u.uhave || (u.uhave = {});
         if (!uhave.amulet) impossible("don't have amulet?");
         uhave.amulet = 0;
+        // JS-only `uhave_amulet` flat (sole writer: the teleport.c:1234
+        // endgame-prerequisite grant; read OR'd with this bit in ~20
+        // guards) mirrors C's bit — clear it here or every post-loss read
+        // stays stuck at 1 (makemon.c:1389 ndemon sleep skipped at earth
+        // creation after the Wizard's stealamulet theft).
+        u.uhave_amulet = 0;
     } else if ((obj.otyp | 0) === CANDELABRUM_OF_INVOCATION) { // C `:1365–1368`
         const uhave = u.uhave || (u.uhave = {});
         if (!uhave.menorah) impossible("don't have candelabrum?");

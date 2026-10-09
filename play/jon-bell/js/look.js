@@ -1,5 +1,6 @@
 import { displayLookWindow } from './look-window.js';
 import { ECMD_OK, ECMD_TIME } from './const.js';
+import { trapname } from './makemon.js';
 // @ts-nocheck
 // look.js — `:` (dolook) and look_here implementation.
 //
@@ -654,7 +655,7 @@ export function avoid_moving_on_trap(x, y, msg) {
     /* C hack.c:2456-2460 — rushes (run >= 2) report why they stopped. */
     if (msg && game.flags?.mention_walls) {
         set_msg_xy(x, y);
-        void pline(`You stop in front of ${an(_trapname_lk(trap.ttyp | 0))}.`);
+        void pline(`You stop in front of ${an(trapname(trap.ttyp | 0, false))}.`);
     }
     return true;
 }
@@ -879,6 +880,11 @@ export function lookaround() {
                 /* closed door? */
                 if (x !== ux && y !== uy) continue; /* ignore if diagonal */
                 if (run !== 1 && !travel) {
+                    /* C hack.c:3974-3977 */
+                    if (game.flags?.mention_walls) {
+                        set_msg_xy(x, y);
+                        void pline('You stop in front of the door.');
+                    }
                     nomul(0);
                     _emitStop('closed-door');
                     return;

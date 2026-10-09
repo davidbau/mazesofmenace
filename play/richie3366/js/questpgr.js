@@ -474,7 +474,9 @@ You have an odd feeling this may be the last time you ever come here.`,
 the final time you come here.`,
 };
 
-/** C ref: dat/quest.lua goal_first (Arc + Bar + Pri + Kni + Sam; output=text). */
+/** C ref: dat/quest.lua goal_first (Arc + Bar + Cav + Pri + Kni + Ran + Sam + Wiz).
+ * Cav/Ran output=text (+ synopsis in QUEST_MSG_META); Wiz has neither key
+ * in lua, so it delivers as a plain pline via the default arm. */
 const QUEST_GOAL_FIRST = {
     Arc: `A strange feeling washes over you, and you think back to things you
 learned during the many lectures of %l.
@@ -483,6 +485,14 @@ You realize the feeling must be the presence of %o.`,
     Bar: `The hairs on the nape of your neck lift as you sense an energy in the
 very air around you.  You fight down a primordial panic that seeks to
 make you turn and run.  This is surely the lair of %n.`,
+    // C ref: dat/quest.lua Cav goal_first (output=text)
+    Cav: `You find yourself in a large cavern, with neatly polished walls, that
+nevertheless show signs of being scorched by fire.
+
+Bones litter the floor, and there are objects scattered everywhere.
+The air is close with the stench of sulphurous fumes.
+
+%nC is clearly visible, but %nh seems to be asleep.`,
     // C ref: dat/quest.lua Pri goal_first (output=text) — seed0367 @209
     Pri: `The stench of brimstone is all about you, and the shrieks and moans
 of tortured souls assault your psyche.
@@ -500,6 +510,15 @@ pieces of rusted metal and broken weapons show above the surface.`,
 You become like the rice plant and bend to the ground, offering a
 prayer to %d.  But when the wind has passed, you stand
 proudly again.  Putting your kami in the hands of fate, you advance.`,
+    // C ref: dat/quest.lua Ran goal_first (output=text)
+    Ran: `You descend into a weird place, in which roughly cut cave-like walls
+join with smooth, finished ones, as if someone was in the midst of
+finishing off the construction of a subterranean complex.
+
+Off in the distance, you hear a sound like the clattering of many
+hooves on rock.`,
+    // C ref: dat/quest.lua Wiz goal_first (no output/synopsis keys: pline)
+    Wiz: `You feel your mentor's presence; perhaps %o is nearby.`,
 };
 
 /** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni). */
@@ -715,6 +734,10 @@ const QUEST_MSG_META = {
             output: 'text',
             synopsis: '[This is surely the lair of %n.]',
         },
+        Cav: {
+            output: 'text',
+            synopsis: '[You enter a large cavern.  %nC is present.]',
+        },
         Pri: {
             output: 'text',
             synopsis: '[The stench of brimstone surrounds you, the shrieks and moans are endless.]',
@@ -726,6 +749,10 @@ const QUEST_MSG_META = {
         Sam: {
             output: 'text',
             synopsis: '[You feel the taunts %n, but after offering a prayer to %d, you proceed.]',
+        },
+        Ran: {
+            output: 'text',
+            synopsis: '[You descend into a subterranean complex.  Hooves clatter in the distance.]',
         },
     },
     killed_nemesis: {

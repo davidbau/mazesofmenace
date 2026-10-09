@@ -1520,8 +1520,16 @@ export async function unstuck(mtmp, skipDocrt = false) {
         /* skipDocrt: js/mhitu.js expels() pages and repaints itself at C's
          * position right after this call (mhitu.js:6177-6240). */
         if (!skipDocrt) {
-            if (game._pending_message)
-                await force_more(String(game._pending_message));
+            if (game._pending_message) {
+                const morc = await force_more(String(game._pending_message));
+                /* topl.c more():232-235 — this page is raised by cls(), not by an
+                 * owner message's update_topl, so ESC's WIN_STOP is live at once
+                 * for every following message (until an urgent one clears it). */
+                if (morc === 27 && game._topl_win_stop_armed) {
+                    game._topl_win_stop_armed = false;
+                    game._topl_win_stop = true;
+                }
+            }
             await docrt();
         }
     }

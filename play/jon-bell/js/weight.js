@@ -11,6 +11,7 @@ import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTY
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import { pline } from './display.js';
+import { stagger, float_vs_flight } from './mhitm.js';
 /* eaten_stat (C eat.c:3788) is js/eat.js's faithful port; eat.js imports
  * near_capacity from this file, so this is a late-bound ES-module cycle. */
 import { eaten_stat } from './eat.js';
@@ -180,6 +181,14 @@ export function weight_cap() {
         }
     }
 
+    /* hack.c:4338-4343 — BLevitation was masked above; C restores the saved
+     * value and calls float_vs_flight(), which RECOMPUTES the I_SPECIAL block
+     * from the current u.utrap.  So a weight_cap() call (bot() via
+     * near_capacity) after trapmove() zeroed u.utrap but before reset_utrap()
+     * drops the block, and reset_utrap(TRUE) then sees was_Lev true and prints
+     * no float_up message. */
+    if (levProp && ((levProp.blocked | 0) & I_SPECIAL_BIT)) float_vs_flight();
+
     return Math.max(carrcap, 1); /* never return 0 */
 }
 
@@ -253,6 +262,12 @@ export async function encumber_msg() {
  * copies of this message table that already exist in js/ (cmd.js
  * _encumber_msg_text, wizcmds.js _wish_encumber_text, potion.js:3036 ...) are
  * the failure mode a second copy would join. */
+/* C pickup.c:1982/2003 — You("%s under your ...", stagger(gy.youmonst.data, "stagger")). */
+export function stagger_verb() {
+    const yd = game.youmonst && game.youmonst.data;
+    return yd ? stagger(yd, 'stagger') : 'stagger';
+}
+
 export function encumber_msg_sync() {
     const u = game.u;
     if (!u) return;
@@ -263,7 +278,7 @@ export function encumber_msg_sync() {
         switch (newcap) {
         case 1: msg = 'Your movements are slowed slightly because of your load.'; break;
         case 2: msg = 'You rebalance your load.  Movement is difficult.'; break;
-        case 3: msg = 'You stagger under your heavy load.  Movement is very hard.'; break;
+        case 3: msg = `You ${stagger_verb()} under your heavy load.  Movement is very hard.`; break;
         default: msg = `You ${newcap === 4 ? 'can barely' : "can't even"} move a handspan with this load!`; break;
         }
     } else if (oldcap > newcap) {
@@ -271,7 +286,7 @@ export function encumber_msg_sync() {
         case 0: msg = 'Your movements are now unencumbered.'; break;
         case 1: msg = 'Your movements are only slowed slightly by your load.'; break;
         case 2: msg = 'You rebalance your load.  Movement is still difficult.'; break;
-        case 3: msg = 'You stagger under your load.  Movement is still very hard.'; break;
+        case 3: msg = `You ${stagger_verb()} under your load.  Movement is still very hard.`; break;
         }
     }
     if (msg) {

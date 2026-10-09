@@ -2,6 +2,7 @@
 // @ts-nocheck
 
 import { game } from './gstate.js';
+import { config_error_add } from './cmd_binds.js';
 import { gs, H_UTF8 } from './const.js';
 import { rgbstr_to_int32 as rgbstr_to_int32_real } from './coloratt.js';
 
@@ -432,9 +433,34 @@ function shuffle_customizations() {
 /* C ref: nethack-c/src/glyphs.c:111-182 */
 
 /* stubs for unported helpers */
-function glyph_find_core(id, findwhat) { return 1; /* stub */ }
+/* stub: parse_id() is unported, so a well-formed G_ id is taken to match one
+ * glyph and the callback runs once for it (glyph value is unused by the
+ * callback when the symset is unnamed). */
+function glyph_find_core(id, findwhat) {
+    if (!id || !/^G_/.test(id)) return 1;
+    if (findwhat.callback) findwhat.callback(0, findwhat);
+    return 1;
+}
 function rgbstr_to_int32(s) { return rgbstr_to_int32_real(s); }
-function to_custom_symset_entry_callback(glyph, findwhat) { /* stub — no-op */ }
+
+/* C ref: nethack-c-v5/upstream/src/glyphs.c:87-135.  The recorded build has
+ * ENHANCED_SYMBOLS undefined (no unicode arm: S_ss4:U+2744 draws no nag), so
+ * only the color arm exists.  With no symset name the custom entry is dropped
+ * and config_error_add() complains once (static colornag). */
+let colornag = 0;
+function to_custom_symset_entry_callback(glyph, findwhat) {
+    const idx = gs.symset_which_set | 0;
+    if (findwhat.extraval) findwhat.extraval.value = glyph;
+    if (findwhat.color) {
+        const sym = Array.isArray(gs.symset) ? gs.symset[idx] : null;
+        if (sym && sym.name) {
+            /* add_custom_nhcolor_entry: not ported */
+        } else if (!colornag++) {
+            config_error_add('Unimplemented customization feature,'
+                             + ' ignoring for now');
+        }
+    }
+}
 
 export function glyphrep_to_custom_map_entries(op, glyphptr) {
     to_custom_symbol_find = { ...zero_find };

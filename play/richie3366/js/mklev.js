@@ -7125,11 +7125,24 @@ function load_wiz_loca() {
 
     // Fixed traps then random-location traps
     const placeTrap = (ttyp, rx, ry) => {
+        // C sp_lev.c create_trap :1826-1835 — fixed coords re-hit the
+        // same cell, so the STAIRS/LADDER retry is a single check.
+        const typ = game.level.at(mx + rx, my + ry)?.typ;
+        if (typ === STAIRS || typ === LADDER) return;
         const ttmp = maketrap(mx + rx, my + ry, ttyp);
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (ttyp) => {
-        const pos = get_location_random();
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, ttyp);
         mktrap_seen_victim(ttmp, {});
     };
@@ -8390,6 +8403,10 @@ function load_arc_loca() {
 
     // Fixed traps then random-location traps
     const placeTrap = (ttyp, rx, ry) => {
+        // C sp_lev.c create_trap :1826-1835 — fixed coords re-hit the
+        // same cell, so the STAIRS/LADDER retry is a single check.
+        const typ = game.level.at(mx + rx, my + ry)?.typ;
+        if (typ === STAIRS || typ === LADDER) return;
         const ttmp = maketrap(mx + rx, my + ry, ttyp);
         mktrap_seen_victim(ttmp, {});
     };
@@ -22019,10 +22036,15 @@ function lua_random2(lo, hi) {
     return lo + rn2(hi - lo + 1);
 }
 
+// C ref: sp_lev.c create_object :2422–2423 — top-level .lev OBJECTs stack.
+// splev_create_object stands in for create_object on class-only lines
+// (containment is always 0 here, so the !SP_OBJ_CONTENT gate passes).
 function splev_create_object(oclass) {
     const pos = get_location_random();
-    if (oclass == null) mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
-    else mkobj_at(oclass, pos.x, pos.y, true);
+    const otmp = (oclass == null)
+        ? mkobj_at(RANDOM_CLASS, pos.x, pos.y, true)
+        : mkobj_at(oclass, pos.x, pos.y, true);
+    if (otmp) stackobj(otmp);
 }
 
 function splev_create_boulder() {
@@ -25271,12 +25293,25 @@ function load_valley() {
 
     // Traps — fixed then random-location named
     const placeTrapAt = (kind, rx, ry) => {
+        // C sp_lev.c create_trap :1826-1835 — fixed coords re-hit the
+        // same cell, so the STAIRS/LADDER retry is a single check.
+        const typ = game.level.at(mx + rx, my + ry)?.typ;
+        if (typ === STAIRS || typ === LADDER) return;
         const ttmp = maketrap(mx + rx, my + ry, kind);
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random();
-        if (pos.x < 0) return;
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            if (pos.x < 0) return;
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
     };
@@ -25573,12 +25608,25 @@ function load_asmodeus() {
     placeClassObj(SCROLL_CLASS);
 
     const placeTrapAt = (kind, rx, ry) => {
+        // C sp_lev.c create_trap :1826-1835 — fixed coords re-hit the
+        // same cell, so the STAIRS/LADDER retry is a single check.
+        const typ = game.level.at(mx1 + rx, my1 + ry)?.typ;
+        if (typ === STAIRS || typ === LADDER) return;
         const ttmp = maketrap(mx1 + rx, my1 + ry, kind);
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random();
-        if (pos.x < 0) return;
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            if (pos.x < 0) return;
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
     };
@@ -25943,8 +25991,17 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     splev_create_boulder();
 
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random();
-        if (pos.x < 0) return;
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            if (pos.x < 0) return;
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
     };
@@ -26131,8 +26188,17 @@ function load_baalz() {
     placeClassObj(SCROLL_CLASS);
 
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random();
-        if (pos.x < 0) return;
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            if (pos.x < 0) return;
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
     };
@@ -26339,8 +26405,17 @@ function load_orcus() {
     addRectRoom(12, 0, 15, 4, true, SHOPBASE);
 
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random();
-        if (pos.x < 0) return;
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            if (pos.x < 0) return;
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
     };
@@ -26712,12 +26787,25 @@ function load_wizard1() {
 
     // And to make things a little harder.
     const placeTrapAt = (kind, rx, ry) => {
+        // C sp_lev.c create_trap :1826-1835 — fixed coords re-hit the
+        // same cell, so the STAIRS/LADDER retry is a single check.
+        const typ = game.level.at(mx + rx, my + ry)?.typ;
+        if (typ === STAIRS || typ === LADDER) return;
         const ttmp = maketrap(mx + rx, my + ry, kind);
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random();
-        if (pos.x < 0) return;
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            if (pos.x < 0) return;
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
     };
@@ -27001,8 +27089,17 @@ function load_wizard2() {
 
     // Random traps.
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random();
-        if (pos.x < 0) return;
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            if (pos.x < 0) return;
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
     };
@@ -27344,6 +27441,10 @@ function load_wizard3() {
 
     // And to make things a little harder.
     const placeTrapAt = (kind, rx, ry) => {
+        // C sp_lev.c create_trap :1826-1835 — fixed coords re-hit the
+        // same cell, so the STAIRS/LADDER retry is a single check.
+        const typ = game.level.at(mx + rx, my + ry)?.typ;
+        if (typ === STAIRS || typ === LADDER) return;
         const ttmp = maketrap(mx + rx, my + ry, kind);
         mktrap_seen_victim(ttmp, {});
     };
@@ -27770,12 +27871,25 @@ function load_sanctum() {
 
     // Surround the temple with fire + random traps
     const placeTrapAt = (kind, rx, ry) => {
+        // C sp_lev.c create_trap :1826-1835 — fixed coords re-hit the
+        // same cell, so the STAIRS/LADDER retry is a single check.
+        const typ = game.level.at(mx + rx, my + ry)?.typ;
+        if (typ === STAIRS || typ === LADDER) return;
         const ttmp = maketrap(mx + rx, my + ry, kind);
         mktrap_seen_victim(ttmp, {});
     };
     const placeTrapRnd = (kind) => {
-        const pos = get_location_random();
-        if (pos.x < 0) return;
+        // C sp_lev.c create_trap :1826-1835 — retry the whole
+        // get_location on STAIRS/LADDER (up to 100), else no trap.
+        let trycnt = 0;
+        let pos;
+        do {
+            pos = get_location_random();
+            if (pos.x < 0) return;
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
         const ttmp = maketrap(pos.x, pos.y, kind);
         mktrap_seen_victim(ttmp, {});
     };

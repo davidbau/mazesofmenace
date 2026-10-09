@@ -1154,17 +1154,22 @@ export async function doclose() {
     // C Confusion/Stunned ≡ H-fields (youprop.h); flat mirrors per repo idiom.
     if ((u.HConfusion | 0) || u.Confusion || (u.HStun | 0) || u.Stunned) res = true;
 
-    const loc = game.level?.at(x, y);
-    // C lock.c doclose — Blind: feel_location + mapseen; LEARNED when
-    // lastseentyp changes. C also compares door->glyph, which JS cells
-    // don't model (game.js), so only the lastseentyp half is live —
-    // same idiom as doopen_indir above.
+    const loc = game.level?.at(x, y); // C `:995` — door
+    const portcullis = is_drawbridge_wall(x, y) >= 0; // C `:996`
+    // C `:997–1005` — Blind: feel_location + mapseen; LEARNED when the
+    // memory glyph or lastseentyp changes. remembered_glyph.glyph is the
+    // lev->glyph model (display.js feel_location/map_* maintain it in C
+    // order); absent (never mapped) is C's zero-init virgin — every
+    // mapped id differs from it, matching C's 0→id TIME (mapped cmap/obj
+    // ids are never 0: GLYPH_MON_OFF=0 holds monster glyphs only,
+    // display.h:497-514; S_stone maps at GLYPH_CMAP_OFF).
     if (Blind()) {
+        const oldglyph = loc?.remembered_glyph?.glyph;
         const oldlastseentyp = update_mapseen_for(x, y);
         feel_location(x, y);
-        if ((game.lastseentyp?.[x]?.[y] | 0) !== (oldlastseentyp | 0)) res = true;
+        if (loc?.remembered_glyph?.glyph !== oldglyph
+            || (game.lastseentyp?.[x]?.[y] | 0) !== (oldlastseentyp | 0)) res = true;
     }
-    const portcullis = is_drawbridge_wall(x, y) >= 0; // C `:999`
     if (portcullis || !loc || !IS_DOOR(loc.typ)) {
         // C `:1002–1010` — closed portcullis / bridge span / nodoor.
         if (is_db_wall(x, y) || (loc?.typ | 0) === DRAWBRIDGE_UP) {

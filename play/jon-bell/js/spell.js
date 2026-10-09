@@ -2,6 +2,7 @@
 // C ref: nethack-c/src/spell.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
 
+import { take_gold } from './sit.js';
 import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { OC_NAME } from './oc_name_data.js';
@@ -25,7 +26,20 @@ import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT,
  * is out of this fix's scope. */
 import { acurr as acurr_real } from './attrib.js';
 import { nomul } from './allmain.js';
-import { trycall, useup, jump, body_part, cmdq_pop, cmdq_add_key } from './cmd.js';
+import { iter_mons, On_stairs, makemon } from './mklev.js';
+import { set_malign, permonstTemplate } from './makemon.js';
+import { mkundead } from './cmd.js';
+import { PM_MASTER_LICH, PM_NALFESHNEE } from './pm.generated.js';
+import { NO_MINVENT } from './const.js';
+import { tamedog } from './dog.js';
+import { monflee } from './makemon.js';
+import { invocation_pos, trycall, useup, jump, body_part, cmdq_pop, cmdq_add_key, getpos, walk_path, getpos_sethilite } from './cmd.js';
+import { explode } from './zap.js';
+import { m_at } from './uhitm.js';
+import { cansee } from './vision.js';
+import { canspotmon } from './display.js';
+import { distmin } from './hacklib.js';
+import { isok, Is_waterlevel, ZAP_POS, IS_DOOR, D_ISOPEN, EXPL_FIERY, EXPL_FROSTY } from './const.js';
 import { yn_function } from './end.js';
 import { MENU_TRADITIONAL } from './const.js';
 import { check_capacity } from './cmd.js';
@@ -40,7 +54,7 @@ import { freehand } from './engrave.js';
 import { can_chant } from './makemon.js';
 import { CLR_WHITE } from './terminal.js';
 import { exercise } from './attrib.js';
-import { discover_object } from './o_init.js';
+import { discover_object, observe_object } from './o_init.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { use_skill } from './uhitm.js';
 /* percent_success's is_metallic() (spell.c:2190-2208) needs objects[].oc_material
@@ -68,7 +82,8 @@ import { find_ac } from './do_wear.js';
 import { hcolor, hliquid } from './mhitm.js';
 import { an, Tobjnam as Tobjnam_real, getObjDescr, makeplural } from './objnam.js';
 import { fall_asleep } from './timeout.js';
-import { EYE } from './const.js';
+import { EYE, ERODE_CORRODE, EF_GREASE, EF_VERBOSE } from './const.js';
+import { erode_obj } from './trap.js';
 import { dmgtype_fromattack } from './makemon.js';
 import { PM_FOG_CLOUD, PM_AIR_ELEMENTAL } from './pm.generated.js';
 /* C spell.c:1570 dispatches directly to dog.c:137 make_familiar(). */
@@ -843,11 +858,77 @@ function incrnknow(spell, x) {
 // the delay countdown and the normal (non-confused, non-blank, non-novel)
 // memorization tail.  No RNG on these paths (the lenses rn2(2) / confusion
 // branches don't occur for the elf-wizard finger-of-death study).
-export function learn() {
+// C ref: spell.c:231-339 deadbook().  Only the plain (non-invocation, non-cursed,
+// non-blessed) arm is ported; the others are named gaps and throw loudly.
+async function deadbook(book2) {
+    pline('You turn the pages of the Book of the Dead...');
+    /* makeknown(): credit_hero exercise only on first discovery (o_init.c:481) */
+    if (!(game._oc_name_known && game._oc_name_known[SPE_BOOK_OF_THE_DEAD]))
+        exercise(A_WIS, true);
+    discover_object(SPE_BOOK_OF_THE_DEAD, true, true);
+    observe_object(book2);
+    book2.known = 1;
+    if (invocation_pos(game.u.ux, game.u.uy) && !On_stairs(game.u.ux, game.u.uy))
+        throw new Error('not yet ported: deadbook invocation arm (spell.c:241-308)');
+    if (book2.cursed) {
+        /* spell.c:311-323 raise_dead */
+        await pline('You raised the dead!');
+        let mtmp;
+        if (!rn2(3) && ((mtmp = await makemon(permonstTemplate(PM_MASTER_LICH), game.u.ux, game.u.uy, NO_MINVENT))
+                        || (mtmp = await makemon(permonstTemplate(PM_NALFESHNEE), game.u.ux, game.u.uy, NO_MINVENT)))) {
+            mtmp.mpeaceful = false;
+            set_malign(mtmp);
+        }
+        /* unturn_dead(&youmonst), zap.c:1156: only carried corpses/eggs act */
+        for (let o = game.invent; o; o = o.nobj)
+            if ((o.otyp | 0) === 265 /* CORPSE */ || (o.otyp | 0) === 266 /* EGG */)
+                throw new Error('not yet ported: unturn_dead(hero) with corpse/egg in inventory (zap.c:1156)');
+        await mkundead({ x: game.u.ux, y: game.u.uy }, true, NO_MINVENT);
+        return;
+    }
+    if (book2.blessed) {
+        /* C spell.c:324-326 iter_mons(deadbook_pacify_undead); :211-226 */
+        const mons = [];
+        iter_mons((m) => mons.push(m));
+        const u = game.u;
+        for (const mtmp of mons) {
+            if ((((mtmp.data.mflags2 | 0) & 0x2) /* M2_UNDEAD */
+                 || mtmp.cham === 226 || mtmp.cham === 227 || mtmp.cham === 228 /* is_vampshifter */)
+                && cansee(mtmp.mx, mtmp.my)) {
+                mtmp.mpeaceful = true;
+                const dx = u.ux - mtmp.mx, dy = u.uy - mtmp.my;
+                if (Math.sign(mtmp.data.maligntyp | 0) === Math.sign(u.ualign.type | 0)
+                    && dx * dx + dy * dy < 4) {
+                    if (mtmp.mtame) {
+                        if (mtmp.mtame < 20) mtmp.mtame++;
+                    } else {
+                        await tamedog(mtmp, null, true);
+                    }
+                } else {
+                    await monflee(mtmp, 0, false, true);
+                }
+            }
+        }
+        return;
+    }
+    switch (rn2(3)) {
+    case 0: pline('Your ancestors are annoyed with you!'); break;
+    case 1: pline('The headstones in the cemetery begin to move!'); break;
+    default: pline('Oh my!  Your name appears in the book!');
+    }
+}
+
+export async function learn() {
     const g = game;
     g.context = g.context || {};
     const sp = g.context.spbook = g.context.spbook || { book: null, o_id: 0, delay: 0 };
     const book = sp.book;
+
+    // C spell.c:365-367 — JDS: lenses give 50% faster reading.  The rn2(2)
+    // is only drawn when delay != 0 and lenses are worn (&& short-circuit).
+    if (sp.delay && g.u && g.u.ublindf
+        && (g.u.ublindf.otyp | 0) === LENSES && rn2(2))
+        sp.delay = (sp.delay | 0) + 1;
 
     // C spell.c:378 — still counting down the study delay: return 1 (busy).
     if (sp.delay) {
@@ -857,6 +938,11 @@ export function learn() {
     // C spell.c:383 exercise(A_WIS, TRUE) — you're studying.
     exercise(A_WIS, true);
     const booktype = book ? (book.otyp | 0) : -1;
+    // C spell.c:385-388 — Book of the Dead goes to deadbook() and ends the study.
+    if (booktype === SPE_BOOK_OF_THE_DEAD) {
+        await deadbook(book);
+        return 0;
+    }
 
     // C spell.c:393-395 — find the spell slot matching this book (or first free).
     const spl = g.spl_book || (g.spl_book = []);
@@ -942,7 +1028,7 @@ async function cursed_book(bp) {
                      + rn1(100, 250), true);
         break;
     case 3:
-        /* take_gold() — KNOWN GAP (see header).  RNG-free in C. */
+        await take_gold(); /* C spell.c:128 */
         break;
     case 4:
         await pline('These runes were just too much to comprehend.');
@@ -952,6 +1038,11 @@ async function cursed_book(bp) {
         break;
     case 5:
         await pline('The book was coated with contact poison!');
+        if (g.u?.uarmg) {
+            /* C spell.c:147-149 */
+            await erode_obj(g.u.uarmg, 'gloves', ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
+            break;
+        }
         break;
     case 6:
         await pline('As you read the book, it explodes in your face!');
@@ -1727,7 +1818,29 @@ export async function spelleffects(spell_otyp, atme, force) {
     case SPE_FIREBALL:
     case SPE_CONE_OF_COLD:
         if (role_skill >= P_SKILLED) {
-            /* UNPORTED: throwspell() + the explode() loop (spell.c:1422-1453). */
+            if (await throwspell()) {                       /* spell.c:1422 */
+                const cc = { x: u.dx, y: u.dy };            /* spell.c:1423-1424 */
+                let n = rnd(8) + 1;                         /* spell.c:1425 */
+                while (n--) {
+                    if (!u.dx && !u.dy && !u.dz) {          /* spell.c:1427 */
+                        const damage = await zapyourself(pseudo, true);
+                        if (damage)
+                            await losehp(damage, `zapped ${uhim_spell()}self with a spell`, NO_KILLER_PREFIX);
+                    } else {
+                        await explode(u.dx, u.dy, otyp - SPE_MAGIC_MISSILE + 10,
+                                      spell_damage_bonus_sp(Math.trunc(u.ulevel / 2) + 1), 0,
+                                      (otyp === SPE_CONE_OF_COLD) ? EXPL_FROSTY : EXPL_FIERY);
+                    }
+                    u.dx = cc.x + rnd(3) - 2;               /* spell.c:1439-1440 */
+                    u.dy = cc.y + rnd(3) - 2;
+                    const lv = isok(u.dx, u.dy) ? game.level.at(u.dx, u.dy) : null;
+                    if (!lv || !cansee(u.dx, u.dy) || IS_STWALL(lv.typ | 0) || u.uswallow) {
+                        /* Spell is reflected back to center */
+                        u.dx = cc.x;
+                        u.dy = cc.y;
+                    }
+                }
+            }
             break;
         }
         /* FALLTHROUGH — C spell.c:1457 FALLTHRU into the wand-like group. */
@@ -1887,6 +2000,83 @@ function oc_dir_of_spell(otyp) {
 async function getdir_for_spell() {
     game._screen_output = null;
     return await getdir(null);
+}
+
+/* C ref: zap.c:3480 spell_damage_bonus (zap.js's copy is an identity stub). */
+function spell_damage_bonus_sp(dmg) {
+    const intell = acurr_real(1 /* A_INT */);
+    const lvl = game.u.ulevel | 0;
+    if (intell <= 9) {
+        if (dmg > 1)
+            dmg = (dmg <= 3) ? 1 : dmg - 3;
+    } else if (intell <= 13 || lvl < 5) {
+        /* no bonus or penalty */
+    } else if (intell <= 18)
+        dmg += 1;
+    else if (intell <= 24 || lvl < 14)
+        dmg += 2;
+    else
+        dmg += 3;
+    return dmg;
+}
+
+/* C ref: spell.c:1604-1612 spell_aim_step */
+function spell_aim_step(_arg, x, y) {
+    if (!isok(x, y))
+        return false;
+    const t = game.level.at(x, y).typ | 0;
+    const lv = game.level.at(x, y);
+    return !(!ZAP_POS(t) && !(IS_DOOR(t) && ((lv.doormask | 0) & D_ISOPEN)));
+}
+
+/* C ref: spell.c:1617-1623 can_center_spell_location */
+function can_center_spell_location(x, y) {
+    const u = game.u;
+    if (distmin(u.ux, u.uy, x, y) > 10)
+        return false;
+    return isok(x, y) && !!cansee(x, y) && !IS_STWALL(game.level.at(x, y).typ | 0);
+}
+
+/* C ref: spell.c:1653-1700 throwspell — choose location where spell takes
+ * effect.  The getpos_sethilite highlight (display_spell_target_positions,
+ * spell.c:1625-1651) is cosmetic and not modelled, as in seffect_fire. */
+async function throwspell() {
+    const u = game.u;
+    if (u.uinwater) {
+        await pline("You're joking!  In this weather?");
+        return 0;
+    } else if (Is_waterlevel(u.uz)) {
+        await pline('You had better wait for the sun to come out.');
+        return 0;
+    }
+    await pline('Where do you want to cast the spell?');
+    const cc = { x: u.ux, y: u.uy };
+    await getpos_sethilite(null, can_center_spell_location);
+    if ((await getpos(cc, true, 'the desired position')) < 0)
+        return 0; /* user pressed ESC */
+    /* clear_nhwindow(WIN_MESSAGE): discard any autodescribe feedback */
+    if (distmin(u.ux, u.uy, cc.x, cc.y) > 10) {
+        await pline('The spell dissipates over the distance!');
+        return 0;
+    } else if (u.uswallow) {
+        await pline('The spell is cut short!');
+        exercise(A_WIS, false);
+        u.dx = 0;
+        u.dy = 0;
+        return 1;
+    }
+    let mtmp;
+    if (((cc.x !== u.ux || cc.y !== u.uy) && !cansee(cc.x, cc.y)
+         && (!(mtmp = m_at(cc.x, cc.y)) || !canspotmon(mtmp)))
+        || IS_STWALL(game.level.at(cc.x, cc.y).typ | 0)) {
+        await pline('Your mind fails to lock onto that location!');
+        return 0;
+    }
+    const uc = { x: u.ux, y: u.uy };
+    await walk_path(uc, cc, spell_aim_step, null);
+    u.dx = cc.x;
+    u.dy = cc.y;
+    return 1;
 }
 
 /* C ref: hack.h uhim() — the objective pronoun for the hero, used only to build

@@ -4,30 +4,33 @@
 //
 // Real mklev.js handles level generation for screen parity.
 import { game } from './gstate.js';
-import { rehumanize } from './polyself.js';
+import { m_everyturn_effect } from './monmove.js';
+import { rehumanize, polymon } from './polyself.js';
 import { you_unwere, is_were } from './were.js';
-import { UNCHANGING, ARTICLE_THE, SUPPRESS_SADDLE } from './const.js';
+import { UNCHANGING, STRANGLED, DIED, KILLED_BY, STONED, SLIMED, STONING, TURNED_SLIME, NO_KILLER_PREFIX, ARTICLE_THE, SUPPRESS_SADDLE, SICK, SICK_ALL, KILLED_BY_AN, SICK_NONVOMITABLE, A_CON, POISONING } from './const.js';
+import { done as done_end, find_delayed_killer, dealloc_killer } from './end.js';
 import { nh_timeout_spell_protection, run_timers, fall_asleep } from './timeout.js';
 import { decrement_property_timeout, timeout_terrain_property,
     terrain_timeout_dialogues } from './terrain_timeout.js';
 import { FIRE_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES,
     STONE_RES, DRAIN_RES, SICK_RES, ANTIMAGIC, WARN_OF_MON, DETECT_MONSTERS, DISPLACED, WWALKING,
     MAGICAL_BREATHING, PASSES_WALLS } from './const.js';
-import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
+import * as PROPS from './const.js';
+import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers } from './mklev.js';
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
-import { clear_bypasses } from './trap.js';
-import { rhack, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ } from './cmd.js';
+import { clear_bypasses, sink_into_lava } from './trap.js';
+import { pooleffects, rhack, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
 import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
-import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff } from './fastforward.js';
+import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed } from './dog.js';
 import { x_monnam } from './mhitm.js';
 import { initrack } from './track.js';
 import { emitMapstate } from './mapstate.js';
 import { roles, races } from './roles.js';
-import { PM_GRID_BUG } from './pm.generated.js';
+import { PM_GRID_BUG, PM_GREEN_SLIME } from './pm.generated.js';
 import { u_init_skills_discoveries } from './u_init.js';
 import { rn1, rn2, rnd, pushRngLogEntry } from './rng.js';
 /* C ref: allmain.c:325 — run_regions() in the once-per-turn upkeep block. */
@@ -41,20 +44,21 @@ import { I_SPECIAL } from './const.js';
 import { PLNMSG_ONE_ITEM_HERE } from './const.js';
 import { float_down, glibr } from './do_wear.js';
 import { GLIB } from './const.js';
-import { make_glib, make_vomiting } from './potion.js';
+import { make_glib, make_vomiting, make_deaf as make_deaf_prop } from './potion.js';
 import { Armor_off, Shield_off, Helmet_off, Gloves_off, Boots_off, Cloak_off, Shirt_off, Armor_on, Shield_on, Helmet_on, Gloves_on, Boots_on, Cloak_on, Shirt_on, find_ac, set_wear } from './do_wear.js';
 import { picklock, forcelock } from './lock.js';
 import { dig } from './dig.js';
 import { carrying } from './eat.js';
 import { PM_ARCHEOLOGIST } from './pm.generated.js';
-import { eatfood, Hear_again, maybe_finished_meal, reset_eat, is_fainted, opentin } from './eat.js';
+import { stoned_dialogue, slime_dialogue, eatfood, Hear_again, maybe_finished_meal, reset_eat, is_fainted, opentin } from './eat.js';
 import { do_vicinity_map } from './detect.js';
 import { learn } from './spell.js';
 import { engrave } from './engrave.js';
 import { m_at } from './uhitm.js';
-import { noattacks_mndx } from './mhitu.js';
+import { noattacks_mndx, stealarm_mu } from './mhitu.js';
 import { canspotmon, _topl_stash_result } from './display.js';
 import { pline_flush_point } from './display.js';
+import { spoteffects } from './landing-effects.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 
 function ffRunTrace(tag, fields = '') {
@@ -83,7 +87,8 @@ function timed_clairvoyance_active() {
 /* C allmain.c:456-469's "redo monsters" arms and their two property tests.
  * The real bodies, in the files that own them — NOT another file-local copy of
  * Warning()/Blind(), which this tree already has too many of. */
-import { see_monsters, see_objects, see_traps, Warning, Warn_of_mon, swallowed } from './display.js';
+import { see_monsters, see_objects, see_traps, Warning, Warn_of_mon, swallowed, newsym } from './display.js';
+import { set_mimic_blocking } from './sit.js';
 import { topl_force_break_after } from './display.js';
 import { makewish } from './wizcmds.js';
 import { Blind } from './vision.js';
@@ -101,7 +106,8 @@ function _Unblind_telepat() {
 }
 import { isok } from './hacklib.js';
 import { unconscious, reset_justpicked, pickup } from './pickup.js';
-import { change_luck, acurr, stone_luck } from './attrib.js';
+import { change_luck, acurr, stone_luck, adjattrib, exercise } from './attrib.js';
+import { make_sick } from './potion.js';
 /* C timeout.c slip_or_trip()'s callees — imported rather than re-spelled. */
 import { inv_weight, encumber_msg_sync } from './weight.js';
 import { doname, makeplural } from './objnam.js';
@@ -109,6 +115,9 @@ import { is_ice } from './engrave.js';
 import { wake_nearto } from './mklev.js';
 import { which_armor, onscary } from './makemon.js';
 import { ENV } from './hostenv.js';
+import { nhgetch } from './input.js';
+import { raw_print } from './rawterm.js';
+import { get_configfile } from './cfgfiles.js';
 
 // ── calendar.c port (subset): getnow/getlt/phase_of_the_moon/friday_13th ──
 // C ref: calendar.c.  moveloop_preamble (allmain.c:60-71) calls
@@ -254,6 +263,30 @@ export function yyyymmdd(date) {
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
+    /* C cfgfiles.c:1544-1590 config_erradd() / :1596-1620 config_error_done():
+     * the rc errors collected while parsing are reported before any window
+     * exists, so pline() takes its raw_print() arm — one "Error: <msg>." row
+     * per error (secure rc, so no origline / "Line N:" prefix), then
+     * pline("\n%d error%s in %s.\n") (two blank-line rows around the count) —
+     * and wait_synch() blocks for a key. */
+    const cfgerrs = g._config_errors;
+    const nerrs = cfgerrs ? cfgerrs.filter(m => typeof m === 'string').length : 0;
+    if (nerrs) {
+        const n = nerrs;
+        for (const msg of cfgerrs) {
+            if (typeof msg !== 'string') { raw_print(msg.pline); continue; }
+            raw_print(`Error: ${msg}${'.!?'.includes(msg.slice(-1)) ? '' : '.'}`);
+        }
+        raw_print('');
+        raw_print(`${n} error${n === 1 ? '' : 's'} in ${get_configfile()}.`);
+        raw_print('');
+        g._config_errors = [];
+        /* The recorded tty cursor never leaves where the raw_print() report
+         * parked it: every step of a game that opened with a config-error
+         * report records that one position. */
+        g._rawCursorFrozen = [g.nhDisplay?.cursorCol ?? 0, g.nhDisplay?.cursorRow ?? 0, 1];
+        await nhgetch();
+    }
     // C ref: allmain.c newgame():845 — SET_BOTLX() fires before any init
     // functions (notice_mon_off(); SET_BOTLX(); ...).
     // SET_BOTLX() = event_log("botlx[...]") + disp.botlx = TRUE (hack.h:1729).
@@ -326,6 +359,7 @@ export async function newgame() {
     // Fast-forward through post-mklev startup RNG calls.
     // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
     await fastforward_post_mklev(g.flags?.initrole ?? -1);
+    engr_reset_text_pointers(); /* allmain.c:838 save_currentstate() -> save_engravings */
     // Hero state (u.uhp/uhpmax/uen/uenmax/uac/uhunger/ulevel/acurr/amax/ualign)
     // is now set by u_init_misc(), called via fastforward_pre_mklev() →
     // consumeUInitMiscHeroInitRng() → u_init_misc() (src/u_init.ts).  That ran
@@ -421,7 +455,6 @@ export async function newgame() {
     // before the initial autopickup.  They must not make a later #drop query
     // claim that starting inventory was just picked up.
     reset_justpicked(g.invent);
-    await pickup(1);
     emitMapstate('post_init');
     // C ref: allmain.c:911-913 — if (flags.legacy) com_pager(pauper ? "pauper_legacy" : "legacy")
     // C ref: allmain.c:923 — welcome(TRUE) fires after com_pager.
@@ -429,9 +462,12 @@ export async function newgame() {
     /* C ref: allmain.c:911-913 — if (flags.legacy) com_pager(...)
      * com_pager only runs after role_init() resolves role; skip when chargen
      * is still pending (initrole < 0 means role_init() has not yet been called). */
+    let deferredLastStartupMsg = null;
     if (!chargenIncomplete && g.flags?.legacy !== false) {
         await com_pager_legacy(!!(g.u?.uroleplay?.pauper), preInitAc, preInitPw);
     }
+    // C ref: allmain.c:840 — useful data now exists (impossible() reads this).
+    (g.program_state ||= {}).something_worth_saving = ((g.program_state.something_worth_saving | 0) + 1);
     // C ref: allmain.c:923 welcome(TRUE) — role-specific greeting + char description.
     // C ref: role.c:2120 Hello() — role-specific greeting per role.
     // C ref: allmain.c:923 welcome(TRUE) only fires after chargen resolves role.
@@ -587,8 +623,13 @@ export async function newgame() {
                 if (!skipStartupMessage)
                     g._pending_message = startupMsgs[mi];
             }
-            if (tutorialWillRun && !startupWinStop)
-                await topl_more_page(startupMsgs[startupMsgs.length - 1], u?.uac ?? 0);
+            if (tutorialWillRun && !startupWinStop) {
+                /* C order: moveloop_preamble's pickup(1) (allmain.c:75) runs
+                 * BEFORE maybe_do_tutorial, so a message it prints (mention_decor's
+                 * describe_decor) pages the standing welcome line and is itself
+                 * the one the tutorial's pre-menu flush pages. */
+                deferredLastStartupMsg = startupMsgs[startupMsgs.length - 1];
+            }
         }
         else {
             // flushes it, so the pline sets _pending_message;
@@ -596,6 +637,16 @@ export async function newgame() {
             pline_flush_point();                          /* C pline.c:274 */
             g._pending_message = welcomeMsg;
         }
+    }
+    if (deferredLastStartupMsg !== null)
+        g._pending_message = '';
+    await pickup(1);
+    if (deferredLastStartupMsg !== null) {
+        const decorMsg = g._pending_message || '';
+        g._pending_message = '';
+        await topl_more_page(deferredLastStartupMsg, g.u?.uac ?? 0);
+        if (decorMsg)
+            await topl_more_page(decorMsg, g.u?.uac ?? 0);
     }
     g.disp = g.disp || { botl: 0, botlx: 0, time_botl: 0, toplin: 0, inmore: 0 };
     g.disp.botlx = 1;
@@ -618,8 +669,7 @@ export async function newgame() {
             // C: schedule_goto(&sp->dlevel, UTOTYPE_NONE, "Entering the tutorial.", NULL)
             const tut1 = (g._sp_levchn || []).find(sl => sl.proto === 'tut-1');
             if (tut1) {
-                schedule_goto(tut1.dlevel, UTOTYPE_NONE, null, null);
-                await pline_with_more('Entering the tutorial.', g.u?.uac ?? 0);
+                schedule_goto(tut1.dlevel, UTOTYPE_NONE, 'Entering the tutorial.', null);
                 // C: deferred_goto()
                 await deferred_goto();
                 // C: vision_recalc(0); docrt();
@@ -721,7 +771,7 @@ export async function unmul(msg_override) {
     g.multi = 0;
     if (msg_override != null)
         g.nomovemsg = msg_override;
-    else if (g.nomovemsg == null)
+    else if (g.nomovemsg == null || g.nomovemsg === 0) /* C's NULL (steal.c:550 `= 0`) */
         g.nomovemsg = 'You can move again.';
     /* C hack.c:4185 `if (*gn.nomovemsg)` — non-empty, which is exactly JS
      * string truthiness once the null case above is handled. */
@@ -743,6 +793,7 @@ export async function unmul(msg_override) {
  * and any death/lifesaving caused by removing protection. */
 async function afternmv_dispatch(tag) {
     switch (tag) {
+        case 'stealarm':   return stealarm_mu(); /* steal.c:165 */
         case 'Armor_off':  return Armor_off();
         case 'Shield_off': return Shield_off();
         case 'Helmet_off': return Helmet_off();
@@ -767,6 +818,8 @@ async function afternmv_dispatch(tag) {
          * nomul(-rnd(10)) knockout arm (eat.c:1850).  Draws rn2(2) when the
          * unconsciousness countdown completes. */
         case 'Hear_again': return Hear_again();
+        /* stealarm — C ref: steal.c:165, scheduled by steal()'s armor arm. */
+        case 'stealarm': return (await import('./mhitu.js')).stealarm();
         case 'unfaint': {
             Hear_again();
             if ((game.u.uhs | 0) > FAINTING)
@@ -824,6 +877,8 @@ function faithful_input_redraw() {
 // the same one the calibrated path used (g.moves init 1 vs C svm.moves init 0;
 // the +1 carry is consistent across both paths so the seer -1 correction and
 // downstream emission sites are unchanged).
+let _nh_timeout_turn = null;
+export async function nh_timeout_wield_turn() { if (_nh_timeout_turn) await _nh_timeout_turn(); }
 async function faithful_moveloop_turn() {
     const g = game;
     // C allmain.c:245 — u.umovement -= NORMAL_SPEED (time passed this key).
@@ -985,6 +1040,8 @@ async function faithful_moveloop_turn() {
             // (steps 66 and 72), this port spent one on 2, 3 and 4.
             g.hero_seq = (g.moves | 0) << 3;
             await l_nhcore_call(NHCORE_MOVELOOP_TURN);
+            /* nh_timeout() as a closure so a hand-rolled wield-turn (cmd.js doapply) can run it too. */
+            _nh_timeout_turn = async () => {
             // C allmain.c:271-273: slipping precedes even the invulnerable
             // early return inside nh_timeout().
             if (g.u?.uprops?.[GLIB]?.intrinsic)
@@ -1027,7 +1084,11 @@ async function faithful_moveloop_turn() {
                  * timed-property decrement loop.  Effects created by the
                  * dialogue therefore receive the same current-turn decrement
                  * as C. */
+                if ((g.u?.uprops?.[STONED]?.intrinsic | 0)) await stoned_dialogue(); /* C timeout.c:623 */
+                if ((g.u?.uprops?.[SLIMED]?.intrinsic | 0)) await slime_dialogue(); /* C timeout.c:625 */
                 await vomiting_dialogue_ff();
+                await choke_dialogue_ff(); /* C timeout.c:628 */
+                await sickness_dialogue_ff(); /* C timeout.c:629 */
                 // C allmain.c:273 — nh_timeout(), immediately before run_regions().
                 // The uprops[] countdown loop is walked in PROPERTY-INDEX order, so
                 // the ported slices go in that order too: INVULNERABLE 11,
@@ -1066,6 +1127,10 @@ async function faithful_moveloop_turn() {
                 await nh_timeout_confusion();
                 await nh_timeout_blinded();
                 await nh_timeout_deaf();
+                await nh_timeout_sick();
+                await nh_timeout_stoned();
+                await nh_timeout_slimed();
+                await nh_timeout_strangled();
                 // C timeout.c:689, VOMITING (20): dialogue ran above;
                 // the generic timeout loop decrements the property here.
                 const vomitingProp = g.u?.uprops?.[VOMITING];
@@ -1090,19 +1155,64 @@ async function faithful_moveloop_turn() {
                 await nh_timeout_fumbling();
                 await nh_timeout_wounded_legs();
                 await nh_timeout_sleepy();
+                // C timeout.c:768-773, SEE_INVIS (29): a #wizintrinsic timed
+                // See_invisible counts down; expiry refreshes invisible monsters.
+                if (decrement_property_timeout(PROPS.SEE_INVIS)) {
+                    set_mimic_blocking();
+                    see_monsters();
+                    newsym(g.u.ux, g.u.uy);
+                    await stop_occupation();
+                }
                 await timeout_terrain_property(WARN_OF_MON);
                 // C timeout.c:751 generic loop: DETECT_MONSTERS (37) counts down; no expiry arm.
                 decrement_property_timeout(DETECT_MONSTERS);
+                // C timeout.c:760-767 INVIS (40): newsym(u.ux,u.uy), then the expiry
+                // message when the hero is visible again; precedes DISPLACED (41).
+                if (decrement_property_timeout(PROPS.INVIS)) {
+                    newsym(g.u.ux, g.u.uy);
+                    const ip = g.u.uprops[PROPS.INVIS];
+                    const sp = g.u.uprops[PROPS.SEE_INVIS];
+                    const invis = !!(((ip.intrinsic | 0) || (ip.extrinsic | 0)) && !ip.blocked);
+                    if (!invis && !ip.blocked && !Blind()) {
+                        await pline(!((sp.intrinsic | 0) || (sp.extrinsic | 0))
+                            ? 'You are no longer invisible.'
+                            : 'You can no longer see through yourself.');
+                        await stop_occupation();
+                    }
+                }
                 // C timeout.c:858 — DISPLACED is property index 41, after
                 // WARN_OF_MON and before the transportation-property block.
                 await timeout_terrain_property(DISPLACED);
                 // C timeout.c:794: LEVITATION (48) precedes FAST (64).
                 if ((g.u?.uprops?.[LEVITATION]?.intrinsic | 0) & TIMEOUT)
                     await nh_timeout_levitation();
+                // C timeout.c:805-811 FLYING (49): timed Flying is #wizintrinsic-only;
+                // the generic loop counts it down and expiry lands the hero.
+                {
+                    const flyP = g.u?.uprops?.[FLYING];
+                    if ((flyP?.intrinsic | 0) & TIMEOUT) {
+                        const was_flying = _fumble_flying();
+                        flyP.intrinsic--;
+                        if (!((flyP.intrinsic | 0) & TIMEOUT)
+                            && was_flying && !_fumble_flying()) {
+                            g.disp = g.disp || {};
+                            g.disp.botl = 1;
+                            await pline('You land.');
+                            await spoteffects(true);
+                        }
+                    }
+                }
                 await timeout_terrain_property(WWALKING);
                 await timeout_terrain_property(MAGICAL_BREATHING);
                 await timeout_terrain_property(PASSES_WALLS);
                 await nh_timeout_fast();
+                /* C timeout.c:670-671 — the generic loop decrements EVERY timed
+                 * property; properties with no switch arm (timeout.c:672-940) just
+                 * count down.  Only #wizintrinsic sets such timeouts (e.g. a timed
+                 * Reflecting, which must expire or dobuzz's `if (Reflecting)`
+                 * keeps bouncing the ray at zap.c:4964). */
+                for (const name of 'HALLUC_RES BLND_RES HUNGER TELEPAT WARNING WARN_UNDEAD SEARCHING INFRAVISION ADORNED STEALTH AGGRAVATE_MONSTER CONFLICT JUMPING TELEPORT_CONTROL SLOW_DIGESTION HALF_SPDAM HALF_PHDAM REGENERATION ENERGY_REGENERATION PROTECTION POLYMORPH_CONTROL UNCHANGING REFLECTING FREE_ACTION FIXED_ABIL LIFESAVED TELEPORT POLYMORPH CLAIRVOYANT SWIMMING'.split(' '))
+                    decrement_property_timeout(PROPS[name]);
                 // C timeout.c:947 — run_timers(), the LAST statement of nh_timeout().
                 // Fires every queue element whose timeout has arrived: ROT_CORPSE is
                 // ~250 turns after it was made).  RNG-free for the two ported
@@ -1112,6 +1222,8 @@ async function faithful_moveloop_turn() {
                 // pile at (40,5) that C had deleted long before the hero saw it.
                 await run_timers();
             }
+            };
+            await _nh_timeout_turn();
             // C allmain.c:325 — run_regions(), the FIRST once-per-turn call after
             // nh_timeout() (only its WOUNDED_LEGS arm is ported, just above) and
             // well before regen_hp (C :341),
@@ -1189,6 +1301,14 @@ async function faithful_moveloop_turn() {
         if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1')
             pushRngLogEntry(`^vision_seer_resched[moves=${_seerMoves} next=${g.context.seer_turn | 0}]`);
     }
+    /* C allmain.c:423-428 — `if (u.utrap && u.utraptype == TT_LAVA) sink_into_lava();
+     * else if (!u.umoved) (void) pooleffects(FALSE);` — a hero who did not move
+     * this turn is re-tested against the terrain under them (a wished-up
+     * pool/moat, levitation timing out).  sink_into_lava is unported. */
+    if (g.u && g.u.utrap && g.u.utraptype === 4 /* TT_LAVA */)
+        await sink_into_lava();
+    else if (!((g.u && g.u.umoved) | 0))
+        await pooleffects(false);
     if (_heroTrace) {
         const u = g.u || {};
         pushRngLogEntry(
@@ -1333,6 +1453,12 @@ async function eat_occupation_turn() {
             ? _topl_merge_result(eatMsg, g._pending_message, eatMsgJoins)
             : g._pending_message;
         eatMsgJoins = _topl_joins_snapshot(eatMsg) || [];
+    }
+    if (prior && eatMsg.startsWith(prior.text + '  ')) {
+        const cut = prior.text.length + 2;
+        eatMsg = eatMsg.slice(cut);
+        eatMsgJoins = eatMsgJoins.filter((off) => off > prior.text.length)
+            .map((off) => off - cut);
     }
     g._pending_message = '';
     g._resultMessage = null;
@@ -1540,6 +1666,111 @@ function nh_timeout_invulnerable() {
     p.intrinsic = (p.intrinsic | 0) - 1;
 }
 
+/* C timeout.c:692-724 generic countdown, SICK (17). */
+async function nh_timeout_sick() {
+    const g = game;
+    const p = g.u?.uprops?.[SICK];
+    if (!p || !((p.intrinsic | 0) & TIMEOUT))
+        return;
+    p.intrinsic = (p.intrinsic | 0) - 1;
+    if ((p.intrinsic | 0) & TIMEOUT)
+        return;
+    const kptr = find_delayed_killer(SICK);
+    if (((g.u.usick_type | 0) & SICK_NONVOMITABLE) === 0
+        && rn2(100) < acurr(A_CON)) {
+        await pline('You have recovered from your illness.');
+        await make_sick(0, null, false,SICK_ALL);
+        exercise(A_CON, false);
+        await adjattrib(A_CON, -1, 1);
+        return;
+    }
+    await urgent_pline('You die from your illness.');
+    g.svk = g.svk || {};
+    g.svk.killer = { id: 0, name: kptr?.name || '', format: kptr?.name ? kptr.format : KILLED_BY_AN, next: null };
+    dealloc_killer(kptr);
+    p.intrinsic |= I_SPECIAL; /* done_timeout, timeout.c:575 */
+    await done_end(POISONING);
+    p.intrinsic &= ~I_SPECIAL;
+    g.u.usick_type = 0;
+}
+
+/* C timeout.c:671-684 generic countdown, STONED (18): at expiry the delayed
+ * killer names the death, then done_timeout(STONING, STONED) (timeout.c:575). */
+async function nh_timeout_stoned() {
+    const g = game;
+    const p = g.u?.uprops?.[STONED];
+    if (!p || !((p.intrinsic | 0) & TIMEOUT))
+        return;
+    p.intrinsic = (p.intrinsic | 0) - 1;
+    if ((p.intrinsic | 0) & TIMEOUT)
+        return;
+    const kptr = find_delayed_killer(STONED);
+    g.svk = g.svk || {};
+    g.svk.killer = g.svk.killer || { id: 0, format: 0, name: '', next: null };
+    if (kptr && kptr.name) {
+        g.svk.killer.format = kptr.format;
+        g.svk.killer.name = kptr.name;
+    } else {
+        g.svk.killer.format = NO_KILLER_PREFIX;
+        g.svk.killer.name = 'killed by petrification';
+    }
+    dealloc_killer(kptr);
+    p.intrinsic |= I_SPECIAL;
+    await done_end(STONING);
+    /* life-saved */
+    p.intrinsic &= ~I_SPECIAL;
+    if (g.disp) g.disp.botl = 1;
+}
+
+/* C timeout.c:686-688 generic countdown, SLIMED: at expiry slimed_to_death()
+ * (timeout.c:457-516).  The decrement is what lets slime_dialogue() see the
+ * odd timeouts on later turns. */
+async function nh_timeout_slimed() {
+    const g = game;
+    const p = g.u?.uprops?.[SLIMED];
+    if (!p || !((p.intrinsic | 0) & TIMEOUT))
+        return;
+    p.intrinsic = (p.intrinsic | 0) - 1;
+    if ((p.intrinsic | 0) & TIMEOUT)
+        return;
+    const kptr = find_delayed_killer(SLIMED);
+    if ((g.u?.umonnum | 0) === PM_GREEN_SLIME && g.u?.mtimedone) {
+        dealloc_killer(kptr);
+        return;
+    }
+    g.svk = g.svk || {};
+    g.svk.killer = g.svk.killer || { id: 0, format: 0, name: '', next: null };
+    if (kptr && kptr.name) {
+        g.svk.killer.format = kptr.format;
+        g.svk.killer.name = kptr.name;
+    } else {
+        g.svk.killer.format = NO_KILLER_PREFIX;
+        g.svk.killer.name = 'turned into green slime';
+    }
+    dealloc_killer(kptr);
+    await polymon(PM_GREEN_SLIME);
+    await done_end(TURNED_SLIME);
+    if (g.disp) g.disp.botl = 1;
+}
+
+/* C timeout.c:890-894 generic countdown, STRANGLED (19): at expiry the hero
+ * dies of strangulation/suffocation.  (The life-saved tail, timeout.c:895-905,
+ * is not ported: the amulet-vanishes arm needs useup on uamul.) */
+async function nh_timeout_strangled() {
+    const g = game;
+    const p = g.u?.uprops?.[STRANGLED];
+    if (!p || !((p.intrinsic | 0) & TIMEOUT))
+        return;
+    p.intrinsic = (p.intrinsic | 0) - 1;
+    if ((p.intrinsic | 0) & TIMEOUT)
+        return;
+    g.svk = g.svk || {};
+    g.svk.killer = g.svk.killer || { id: 0, format: 0, name: '', next: null };
+    g.svk.killer.format = KILLED_BY;
+    g.svk.killer.name = g.u.uburied ? 'suffocation' : 'strangulation';
+    await done_end(DIED);
+}
+
 async function nh_timeout_stunned() {
     const g = game;
     const p = g.u?.uprops?.[STUNNED];
@@ -1697,7 +1928,25 @@ async function nh_timeout_hallucinated() {
 async function nh_timeout_deaf() {
     const g = game;
     const u = g.u;
-    if (!u || !(u.HDeaf | 0))
+    if (!u)
+        return;
+    /* The uprops[DEAF] slot is what potion.js make_deaf (and so #wizintrinsic)
+     * writes; C's one HDeaf is counted down by the generic loop (timeout.c:
+     * `(upp->intrinsic & TIMEOUT) && !(--upp->intrinsic & TIMEOUT)`). */
+    const dp = u.uprops?.[DEAF_AM];
+    if (dp && ((dp.intrinsic | 0) & TIMEOUT)) {
+        dp.intrinsic = (dp.intrinsic | 0) - 1;
+        if ((dp.intrinsic | 0) & TIMEOUT)
+            return;
+        const was = { value: dp.intrinsic | 0 };
+        set_itimeout(was, 1);
+        dp.intrinsic = was.value;
+        await make_deaf_prop(0, true);
+        if (!Deaf_am())
+            await stop_occupation();
+        return;
+    }
+    if (!(u.HDeaf | 0))
         return;
     u.HDeaf = (u.HDeaf | 0) - 1;
     if ((u.HDeaf | 0) !== 0)
@@ -2189,6 +2438,13 @@ async function moveloop_core_faithful() {
         // result built from several joined plines (e.g. a RAY spell's self-hit +
         // pet-kill message) loses its internal boundaries by the time the merge
         // below reads them, and is shown as one opaque atomic pline that never
+        /* tty_yn_function leaves the answered prompt as dead topline text: a later
+         * pline overwrites it rather than joining it (topl.c), so hold it aside
+         * across movemon and restore it only if nothing was printed. */
+        const _ynStale = (g._resultMessage && g._resultMessage === g._ynStaleTopline)
+            ? g._resultMessage : null;
+        if (_ynStale) g._resultMessage = '';
+        g._ynStaleTopline = null;
         const _resultMsgJoins = _topl_joins_snapshot(g._resultMessage);
         if (g._resultMessage && _resultMsgJoins && _resultMsgJoins.length)
             g._resultMessageJoins = { src: g._resultMessage, joins: _resultMsgJoins.slice() };
@@ -2238,6 +2494,7 @@ async function moveloop_core_faithful() {
         // correctly.  The ettin mummy hits!  ...") that must page across 3 --More--
         // frames before the wizard-mode "You die..." pager, else the death event's
         // recorded keystroke window shifts and the "Die?"/savelife screens misalign.
+        if (_ynStale && !g._resultMessage && !g._pending_message) g._resultMessage = _ynStale;
         if (g._resultMessage && g._pending_message) {
             g._resultMessage = _topl_merge_result(g._resultMessage, g._pending_message, _resultMsgJoins);
             g._pending_message = '';
@@ -2255,8 +2512,11 @@ async function moveloop_core_faithful() {
         {
             const _oc = g._occ_committed_topl;
             if (_oc && !_oc.postMeal && !g.occupation && g._resultMessage) {
-                g._resultMessage = _topl_merge_result(_oc.text, g._resultMessage,
-                                                      _topl_joins_snapshot(_oc.text));
+                /* Already folded in front (stop_occupation's pending merge):
+                 * a second fold would duplicate the taste line. */
+                if (!g._resultMessage.startsWith(_oc.text))
+                    g._resultMessage = _topl_merge_result(_oc.text, g._resultMessage,
+                                                          _topl_joins_snapshot(_oc.text));
                 g._occ_committed_topl = null;
             }
         }
@@ -2381,7 +2641,7 @@ async function moveloop_core_faithful() {
                 topl_force_break_after(_cut >= 0 ? _carry.slice(_cut + 2) : _carry);
             }
         }
-        await pline('The Amulet is bestowing a wish upon you!');
+        await urgent_pline('The Amulet is bestowing a wish upon you!');
         await makewish();
     }
     if (!g._pendingDeath)
@@ -2470,6 +2730,9 @@ async function moveloop_core_faithful() {
     const preMoveUz = g.u && g.u.uz
         ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel }
         : null;
+    // C allmain.c:481 — m_everyturn_effect(&gy.youmonst): a polyed hero (fog
+    // cloud) leaves vapor each turn; draws rn2(3) at region.c:1303.
+    if (g.youmonst && g.youmonst.data) m_everyturn_effect(g.youmonst);
     // C allmain.c:540 — context.move = 1 unconditionally before rhack.
     g.context = g.context || {};
     g.context.move = 1;
@@ -2793,7 +3056,9 @@ async function moveloop_core_faithful() {
             // C allmain.c:556 — (*go.occupation)() == learn(); 0 ends the study.
             // learn()'s completion line ("You learn ..." / "You add ...") also
             // appends onto the study topline.
-            const r = learn();
+            // A stop_occupation() inside the world block already cleared
+            // go.occupation; C then never calls the callback (allmain.c:556).
+            const r = (g.occupation === learn) ? await learn() : 1;
             if (r === 0)
                 g.occupation = null;
             else if (g.occupation !== learn)
@@ -3064,6 +3329,10 @@ async function moveloop_core_faithful() {
                 trapInterrupted = true;
                 break;
             }
+            // C allmain.c:453-470 — each occupation iteration is its own
+            // moveloop_core, so the once-per-input hallucination redraw runs
+            // (display-RNG draws) before the callback at :493.
+            faithful_input_redraw();
             // C allmain.c:493 — (*go.occupation)() == set_trap(); 0 ends it.
             const r = await setTrapFn();
             g.context.move = 1; // the callback's return is not an ECMD_* code
@@ -3099,6 +3368,7 @@ async function moveloop_core_faithful() {
     // and returns 0.  C then runs ONE more post-occupation world turn (context.move
     if (g.occupation === forcelock && (g.multi | 0) >= 0) {
         let forceGuard = 0;
+        let forceInterrupted = false;
         // C lock.c:743 begin message ("You start bashing it with your spear.") is in
         // _resultMessage; it is the first committed topline.  forcelock()'s success
         // turn stages "You succeed...", "...totally destroyed...", "You see a bottle
@@ -3119,6 +3389,14 @@ async function moveloop_core_faithful() {
             // svm.moves++ inside) BEFORE the occupation callback (the C trace shows
             // head(turn N) → forcelock rn2(100) → movemon within each turn).
             await faithful_moveloop_turn();
+            // C allmain.c:493-556 — the head world block may itself have interrupted
+            // the force (dochugw -> stop_occupation, monmove.c:223-235, "You stop
+            // forcing the lock."): C then falls through to rhack with NO forcelock()
+            // call and NO further world block (picklock driver shape).
+            if (g.occupation !== forcelock || (g.multi | 0) < 0) {
+                forceInterrupted = true;
+                break;
+            }
             // C allmain.c:556 — (*go.occupation)() == forcelock(); 0 ends the force.
             const r = await forcelock();
             if (r === 0) g.occupation = null;
@@ -3142,7 +3420,7 @@ async function moveloop_core_faithful() {
         // staged messages in C, so hold them back and append them last.
         const _res0 = g._resultMessage ?? null;
         const _pend0 = g._pending_message || '';
-        await faithful_moveloop_turn();
+        if (!forceInterrupted) await faithful_moveloop_turn();
         let _postTail = '';
         {
             const _p1 = g._pending_message || '';

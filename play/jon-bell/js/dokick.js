@@ -12,7 +12,7 @@ import { game } from './gstate.js';
 import { abuse_dog } from './dog.js';
 import { Is_juiblex_level as Is_juiblex_level_real } from './const.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
-import { pline, newsym, You_hear, flush_pending_messages } from './display.js';
+import { pline, newsym, You_hear, flush_pending_messages, canseemon } from './display.js';
 function strchr(str, ch) {
     if (str == null) return false;
     const want = typeof ch === 'number' ? ch : String(ch);
@@ -35,6 +35,15 @@ import { LEVITATION as LEVITATION_PROP_DK, IS_OBSTRUCTED, Is_airlevel } from './
 import { TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
          SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
          INTRINSIC, DEAF } from './const.js';
+import { OC_COST } from './oc_cost_data.js';
+import { PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './pm.generated.js';
+import { wakeup } from './mhitm.js';
+import { finish_meating } from './dogmove.js';
+import { verbalize } from './cmd.js';
+import { money_cnt } from './com_pager.js';
+import { hidden_gold } from './vault.js';
+import { miss } from './zap.js';
+import { mhis_mon } from './mhitu.js';
 import { PM_KILLER_BEE, PM_BLACK_PUDDING, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD, PM_VALKYRIE, PM_ELF, } from './pm.generated.js';
 /* decl.h:17 NH_BLACK = c_color_names.c_black = "black" (a color-name string,
  * not the CLR_BLACK terminal-attribute int) — the SINK arm's C call
@@ -53,7 +62,7 @@ import { book_disappears as spell_book_disappears } from './spell.js';
 /* C mkobj.c:458-503 splitobj(obj, num) — the one body lives in js/makemon.js
  * (this repo's mkobj.c splitobj/nextoid host); scatter()'s object-stack
  * splitting loop needs it. */
-import { splitobj } from './makemon.js';
+import { splitobj, attacktype_fordmg } from './makemon.js';
 /* C mon.c:3997 maybe_mnexto() and mon.c noteleport_level() — kick_monster's
  * dodge arm (dokick.c:268-283). */
 import { maybe_mnexto } from './teleport.js';
@@ -85,7 +94,7 @@ import { food_disappears } from './eat.js';
 import { t_at } from './trap.js';
 import { deadhero, do_death_sequence } from './end.js';
 import { set_wounded_legs, ok_to_quest, breaktest, breakmsg, breakobj, altar_wrath, _delobj_useupf as delobj_core, currency as cmd_currency, snuff_candle, thitmonst } from './cmd.js';
-import { hurtle, showdamage } from './cmd.js';
+import { hurtle, showdamage, body_part } from './cmd.js';
 import { RIGHT_SIDE } from './const.js';
 import { UNCHANGING } from './const.js';
 import { rehumanize } from './polyself.js';
@@ -110,7 +119,7 @@ import { hero_breaks, find_trap, impact_disturbs_zombies } from './cmd.js';
 import { breakchestlock } from './lock.js';
 import { find_objowner } from './shk.js';
 import { doname, singular } from './objnam.js';
-import { LEG, is_pit, WEB, STATUE_TRAP, ZAP_POS } from './const.js';
+import { LEG, TT_PIT, is_pit, WEB, STATUE_TRAP, ZAP_POS } from './const.js';
 import { obj_resists } from './zap.js';
 import { useup } from './cmd.js';
 export { is_unpaid, in_rooms, shop_keeper };
@@ -132,7 +141,7 @@ import { ohitmon } from './mhitu.js';
  * trap-missile call sites; its own note says the general "plain hit" tail it
  * implements is exactly what a non-acid/non-stone/non-potion/non-silver
  * scattered object (a tree fruit) takes too). */
-import { thitu } from './trap.js';
+import { thitu, fall_through } from './trap.js';
 /* C weapon.c:262-... dmgval(otmp, mon) — the one body lives in js/uhitm.js. */
 import { dmgval } from './uhitm.js';
 /* C objnam.c xname(obj) / An(str) — the one bodies live in js/objnam.js;
@@ -231,7 +240,9 @@ function martial() {
     const martial_bonus = (initrole === 5 || initrole === 9); /* Monk || Samurai */
     /* uarmf->otyp == KICKING_BOOTS — uarmf otyp tracking present; KICKING_BOOTS
      * otyp constant not surfaced in const.js yet (WIRE_PENDING). */
-    return martial_bonus;
+    /* dokick.c:8-10 — uarmf && uarmf->otyp == KICKING_BOOTS */
+    const boots = u.uarmf ?? null;
+    return martial_bonus || !!(boots && (boots.otyp | 0) === _KM_KICKING_BOOTS);
 }
 /* C ref: dokick.c:863-878 kick_dumb(x, y) — no-leverage kick at empty space.
  * RNG: rn2(3) — maybe kick at empty space vs. strain a muscle.
@@ -513,7 +524,8 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             const dunlev = uz.dlevel | 0;
             const dunlevs = dungeon?.num_dunlevs ?? 30;
             if (dunlev < dunlevs) {
-                /* fall_through stub — WIRE_PENDING */
+                /* C dokick.c:1055 fall_through(FALSE, 0) */
+                await fall_through(false, 0);
                 return ECMD_TIME;
             }
             else {
@@ -1011,7 +1023,7 @@ async function kickdmg(mon, clumsy) {
         if (goodpos(mdx, mdy, mon, 0) && m_in_out_region(mon, mdx, mdy)) {
             const oldx = mon.mx | 0;
             const oldy = mon.my | 0;
-            await pline(`${mon_nam(mon)} reels from the blow.`);
+            await pline(`${_km_Monnam(mon)} reels from the blow.`);
             mon.mx = mdx;
             mon.my = mdy;
             newsym(oldx, oldy);
@@ -1202,6 +1214,90 @@ export async function container_impact_dmg(obj, x, y) {
     }
     if (wchange)
         obj.owt = weight(obj);
+}
+
+/* C dokick.c:293-347 ghitm() -- return TRUE if caught (the gold taken care of),
+ * FALSE otherwise.  The gold object is not attached to the fobj chain. */
+async function ghitm(mtmp, gold) {
+    const g = game;
+    const u = g.u;
+    let msg_given = false;
+    const mflags2 = (mtmp.data?.mflags2 ?? mtmp.mflags2 ?? 0) | 0;
+    const likesGold = (mflags2 & 0x10000000) !== 0; /* M2_GREEDY */
+    const mercenary = (mflags2 & 0x00000200) !== 0; /* M2_MERC */
+
+    if (!likesGold && !mtmp.isshk && !mtmp.ispriest && !mtmp.isgd && !mercenary) {
+        await wakeup(mtmp, true);
+    } else if (!(mtmp.mcanmove | 0)) {
+        /* too light to do real damage */
+        if (canseemon(mtmp)) {
+            await pline(`${The(xname(gold))} harmlessly ${otense(gold, 'hit')} ${mon_nam(mtmp)}.`);
+            msg_given = true;
+        }
+    } else {
+        const was_sleeping = mtmp.msleeping | 0;
+        const value = (gold.quan | 0) * (OC_COST[gold.otyp | 0] | 0);
+
+        mtmp.msleeping = 0;
+        finish_meating(mtmp);
+        if (!mtmp.isgd && !rn2(4))
+            await setmangry(mtmp, true);
+        /* greedy monsters catch gold */
+        if (cansee(mtmp.mx | 0, mtmp.my | 0))
+            await pline(`${_km_Monnam(mtmp)} ${was_sleeping ? 'awakens and ' : ''}catches the gold.`);
+        await mpickobj(mtmp, gold);
+        if (mtmp.isshk) {
+            const eshk = ESHK(mtmp);
+            let robbed = eshk.robbed | 0;
+            if (robbed) {
+                robbed -= value;
+                if (robbed < 0) robbed = 0;
+                await pline(`The amount ${!robbed ? '' : 'partially '}covers ${mhis_mon(mtmp)} recent losses.`);
+                eshk.robbed = robbed;
+                /* make_happy_shk(mtmp, FALSE) when !robbed: no real body in js/ */
+            } else if (mtmp.mpeaceful) {
+                eshk.credit = (eshk.credit | 0) + value;
+                await pline(`You have ${eshk.credit} ${currency(eshk.credit)} in credit.`);
+            } else
+                await verbalize('Thanks, scum!');
+        } else if (mtmp.ispriest) {
+            await verbalize(mtmp.mpeaceful ? 'Thank you for your contribution.' : 'Thanks, scum!');
+        } else if (mtmp.isgd) {
+            const umoney = money_cnt(u.invent);
+            await verbalize(umoney ? 'Drop the rest and follow me.'
+                : hidden_gold(true) ? 'You still have hidden gold.  Drop it now.'
+                : mtmp.mpeaceful ? "I'll take care of that; please move along."
+                : "I'll take that; now get moving.");
+        } else if (mercenary) {
+            const was_angry = !mtmp.mpeaceful;
+            let goldreqd = 0;
+            const mn = (mtmp.data?.mnum ?? mtmp.mnum);
+            if (mn === PM_SOLDIER) goldreqd = 100;
+            else if (mn === PM_SERGEANT) goldreqd = 250;
+            else if (mn === PM_LIEUTENANT) goldreqd = 500;
+            else if (mn === PM_CAPTAIN) goldreqd = 750;
+
+            if (goldreqd && rn2(3)) {
+                const umoney = money_cnt(u.invent);
+                goldreqd += Math.trunc((umoney + (u.ulevel | 0) * rn2(5)) / (acurr(u, 5) | 0));
+                if (value > goldreqd)
+                    mtmp.mpeaceful = 1;
+            }
+            if (!mtmp.mpeaceful) {
+                await verbalize(goldreqd ? "That's not enough, coward!"
+                    : "I don't take bribes from scum like you!");
+            } else if (was_angry) {
+                await verbalize('That should do.  Now beat it!');
+            } else {
+                await verbalize(`Thanks for the tip, ${u.female || g.flags?.female ? 'lady' : 'buddy'}.`);
+            }
+        }
+        return true;
+    }
+
+    if (!msg_given)
+        miss(xname(gold), mtmp);
+    return false;
 }
 
 /* C ref: dokick.c:487-504 kick_object(x, y, kickobjnam) — jacket around
@@ -1458,29 +1554,8 @@ async function really_kick_object(x, y, kickedobj) {
             return 1; /* alert shk caught it */
         g.notonhead = ((bx | 0) !== (mon.mx | 0) || (by | 0) !== (mon.my | 0));
         if (isgold) {
-            /* C dokick.c:295-347 ghitm().  The common non-greedy arm wakes
-             * the target and leaves the coin on the projectile path; a greedy
-             * or official monster catches it and takes ownership. */
-            const mflags2 = (mon.data?.mflags2 ?? mon.mflags2 ?? 0) | 0;
-            const likesGold = (mflags2 & 0x10000000) !== 0;
-            const mercenary = (mflags2 & 0x00000200) !== 0;
-            if (!likesGold && !mon.isshk && !mon.ispriest && !mon.isgd && !mercenary) {
-                await wakeup_attack(mon, true);
-                if (canspotmon(mon))
-                    await pline(`${xname(kickedobj)} misses ${mon_nam(mon)}.`);
-            } else if (!(mon.mcanmove | 0)) {
-                if (canspotmon(mon))
-                    await pline(`The ${xname(kickedobj)} harmlessly hits ${mon_nam(mon)}.`);
-            } else {
-                const wasSleeping = !!mon.msleeping;
-                mon.msleeping = 0;
-                if (!mon.isgd && !rn2(4))
-                    await setmangry(mon, true);
-                if (cansee(mon.mx | 0, mon.my | 0))
-                    await pline(`${mon_nam(mon)} ${wasSleeping ? 'awakens and ' : ''}catches the gold.`);
-                await mpickobj(mon, kickedobj);
-                return 1;
-            }
+            if (await ghitm(mon, kickedobj))
+                return 1; /* gold was caught */
         } else if (await thitmonst(mon, kickedobj))
             return 1;
     }
@@ -1514,12 +1589,35 @@ export async function dokick_resolve() {
     let avrg_attrib;
     const uarmf = u.uarmf ?? null;
     /* KICKING_BOOTS otyp not surfaced; treat as non-kicking-boots (WIRE_PENDING). */
-    if (false) {
+    if (uarmf && (uarmf.otyp | 0) === _KM_KICKING_BOOTS) {
         avrg_attrib = 99;
     }
     else {
         avrg_attrib = Math.trunc((acurrstr(u) + (acurr(u, A_DEX) | 0)
             + (acurr(u, A_CON) | 0)) / 3);
+    }
+    /* C dokick.c:1339-1352 — swallowed: rn2(3) picks the flavour message;
+     * case 1 falls through to the default arm unless the engulfer digests
+     * (mondata.h digests() = AT_ENGL/AD_DGST).  Pit: Passes_walls hero only. */
+    if (u.uswallow) {
+        switch (rn2(3)) {
+        case 0:
+            await pline(`You can't move your ${body_part(LEG)}!`);
+            break;
+        case 1:
+            if (attacktype_fordmg(u.ustuck.data, 11, 26)) {
+                await pline(`${_km_Monnam(u.ustuck)} burps loudly.`);
+                break;
+            }
+            /* FALLTHRU */
+        default:
+            await pline('Your feeble kick has no effect.');
+            break;
+        }
+        return ECMD_TIME;
+    } else if (u.utrap && (u.utraptype | 0) === TT_PIT) {
+        await pline('You kick at the side of the pit.');
+        return ECMD_TIME;
     }
     if (Levitation_dk(u)) {
         const xx = (u.ux | 0) - dx;
@@ -1583,8 +1681,16 @@ export async function dokick_resolve() {
                    && !((u.uswallow | 0) && u.ustuck === mtmp)) {
             map_invisible(x, y);
         }
-        /* C dokick.c:1427-1440 -- the Levitation/air-level recoil (hurtle) is
-         * the same WIRE_PENDING Levitation this file reads FALSE everywhere. */
+        /* C dokick.c:1427-1440 -- recoil if floating */
+        if ((Is_airlevel(u.uz) || Levitation_dk(u)) && g.context.move) {
+            let range = ((g.youmonst?.data?.cwt | 0) + (weight_cap() + inv_weight()));
+            if (range < 1)
+                range = 1; /* divide by zero avoidance */
+            range = Math.trunc((3 * (mtmp.data?.cwt | 0)) / range);
+            if (range < 1)
+                range = 1;
+            await hurtle(-(u.dx | 0), -(u.dy | 0), range, true);
+        }
         return ECMD_TIME;
     }
     unmap_invisible(x, y);
@@ -1781,7 +1887,7 @@ export async function impact_drop(missile, x, y, dlev) {
         let eshk = shkp.mextra?.eshk;
         if (eshk) {
             if (eshk.robbed > robbed) {
-                await You("removed %ld %s worth of goods!", price, currency(price));
+                await pline("You removed %ld %s worth of goods!", price, currency(price));
                 if (cansee(shkp.mx, shkp.my)) {
                     if ((eshk.customer || "")[0] === undefined || (eshk.customer || "").charCodeAt(0) === 0) {
                         /* C: strncpy(ESHK(shkp)->customer, svp.plname, PL_NSIZ) */
@@ -1800,7 +1906,7 @@ export async function impact_drop(missile, x, y, dlev) {
             }
             if (eshk.debit > debit) {
                 let amt = eshk.debit - debit;
-                await You("owe %s %ld %s for goods lost.", shkname(shkp), amt,
+                await pline("You owe %s %ld %s for goods lost.", shkname(shkp), amt,
                     currency(amt));
             }
         }
@@ -2790,3 +2896,4 @@ function _Deaf_dk() {
     const dp = u.uprops && u.uprops[DEAF];
     return !!dp && !!((dp.intrinsic | 0) || (dp.extrinsic | 0)) && !(dp.blocked | 0);
 }
+export { ghitm };

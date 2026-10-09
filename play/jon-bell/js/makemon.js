@@ -2205,8 +2205,7 @@ export async function mInitinv(mtmp, mksobjFn) {
         case S_MUMMY:
             /* C makemon.c:774-776 — mummy: rn2(7) → MUMMY_WRAPPING */
             if (rn2(7)) {
-                const wrap = await mksobjFn(MUMMY_WRAPPING, true, false);
-                if (wrap) { wrap.nobj = mtmp.minvent ?? null; mtmp.minvent = wrap; }
+                await mongets(mtmp, MUMMY_WRAPPING, mksobjFn);   /* makemon.c:774 */
             }
             break;
         case S_QUANTMECH:
@@ -4121,7 +4120,9 @@ function mquaffmsg_Deaf() {
     const p = u.uprops ? u.uprops[DEAF] : null;
     const intrinsic = p ? (p.intrinsic | 0) : 0;
     const extrinsic = p ? (p.extrinsic | 0) : 0;
-    return !!(intrinsic || extrinsic || (u.uroleplay && u.uroleplay.deaf));
+    /* HDeaf is the flat u.HDeaf countdown in this port (eat.js newuhs's
+     * faint arm, eat.c:3421, sets it); uprops[DEAF] never carries it. */
+    return !!((u.HDeaf | 0) || intrinsic || extrinsic || (u.uroleplay && u.uroleplay.deaf));
 }
 /* const.js BOLT_LIM = 8 (C: include/hack.h).  Local const: this file already
  * carries several function-local shadows around the muse block. */
@@ -4176,7 +4177,7 @@ async function mreadmsg_singular(otmp, namer) {
     otmp.quan = savequan;
     return nam;
 }
-async function mreadmsg(mtmp, otmp) {
+export async function mreadmsg(mtmp, otmp) {
     const vismon = canseemon(mtmp);
     let tpindicator = !vismon && sensemon(mtmp);
     if (!vismon && mquaffmsg_Deaf())
@@ -4864,10 +4865,20 @@ export async function use_defensive(mtmp) {
         }
         return 2;
     case MUSE_BUGLE:
-        /* KNOWN GAP — muse.c:838-848.  Missing dependency: awaken_soldiers()
-         * (sounds.c), which has no js/ definition at all.  RNG-free either
-         * way; C returns 2 here, this returns C's no-action 0. */
-        return 0;
+        /* C muse.c:838-848.  awaken_soldiers lives in js/music.js, which
+         * imports this module, so it is loaded at call time. */
+        if (!otmp)
+            throw new Error("use_defensive: no bugle");
+        if (vismon) {
+            pline_mon(mtmp, `${Monnam(mtmp)} plays ${doname(otmp)}!`);
+        } else if (!mquaffmsg_Deaf()) {
+            mquaffmsg_You_hear('a bugle playing reveille!');
+        }
+        {
+            const { awaken_soldiers } = await import('./music.js');
+            await awaken_soldiers(mtmp);
+        }
+        return 2;
     case MUSE_WAN_TELEPORTATION_SELF:
         if (!otmp)
             throw new Error("use_defensive: no wand of teleportation");
@@ -5908,7 +5919,7 @@ function dist2(x1, y1, x2, y2) {
  * (steal.c:78-81, makeplural(mbodypart(u.usteed, FOOT))) AND was what
  * js/read.js imported by name for litroom()'s engulfed arm.  Imported from
  * ./cmd.js above, alongside body_part from the same module. */
-async function monflee_release_hero(mon) {
+export async function monflee_release_hero(mon) {
     const u = game.u;
     const ustuck = u ? u.ustuck : null;
     if (!mon || !ustuck)

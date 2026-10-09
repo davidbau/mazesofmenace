@@ -5,6 +5,12 @@
 // (lock.c:957-1052). The drawbridge predicates used by the shared branches
 // are implemented locally below to keep lock.js independent of dokick.js.
 import { game } from './gstate.js';
+import { t_at } from './trap.js';
+const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
+import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
+import { canspotmon, map_invisible } from './display.js';
+import { s_suffix } from './hacklib.js';
+import { Some_Monnam } from './mhitm.js';
 import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, redraw_cmd, dxdy_moveok, xytodir, readchar,
     show_direction_keys, dowhatdoes_core } from './cmd.js';
 import { visctrl } from './cmd_binds.js';
@@ -19,14 +25,16 @@ import { display_text_window } from './com_pager.js';
 import { pushRngLogEntry } from './rng.js';
 import { isaac64_next_uint64 } from './isaac64.js';
 import { acurr, exercise } from './attrib.js';
-import { rn2, rnl } from './rng.js';
+import { rn2, rnl, rnd } from './rng.js';
+import { losehp } from './dokick.js';
+import { level_difficulty, wake_nearby } from './mklev.js';
 import { isok } from './hacklib.js';
 import { wake_nearto } from './mklev.js';
 import { in_rooms, add_damage } from './shk.js';
 import { cansee, Blind } from './vision.js';
 import { closed_door } from './look.js';
 import { DEAF, HALLUC, STUNNED, CONFUSION, DBWALL, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH,
-         IS_DRAWBRIDGE } from './const.js';
+         IS_DRAWBRIDGE, HALF_PHDAM, KILLED_BY_AN, NO_PART, SHOP_DOOR_COST } from './const.js';
 /* C ref: objects.h — WAN_STRIKING otyp (js/makemon.js and js/muse.js pin the
  * same value); SPE_FORCE_BOLT shares doorlock's arm in C but is not reachable
  * here yet. */
@@ -55,7 +63,9 @@ import { simple_typename, xname_flags, cxname, doname, ansimpleoname } from './o
 import { safe_qbuf } from './shk.js';
 import { weapon_type, WEAPON_WLDAM, m_at, mon_nam } from './uhitm.js';
 import { place_object } from './mklev.js';
-import { potionbreathe } from './potion.js';
+import { potionbreathe, make_stunned } from './potion.js';
+import { chest_trap } from './trap.js';
+import { FINGER } from './const.js';
 import { obj_resists } from './dogmove.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { SHOPBASE, SDOOR, DOOR, D_CLOSED, D_ISOPEN, D_TRAPPED, D_NODOOR, D_BROKEN, D_LOCKED, A_STR, A_DEX, A_CON, ECMD_TIME, ECMD_OK, ECMD_CANCEL,
@@ -88,6 +98,23 @@ function oc_material(otyp) {
 }
 /* C ref: objnam.c the(str) — definite article. */
 function _the(str) { return 'the ' + str; }
+
+/* C ref: trap.c:6694 b_trapped(item, bodypart) — a booby-trapped container or
+ * door explodes in the hero's face. */
+async function b_trapped(item, bodypart) {
+    const lvl = level_difficulty() | 0;
+    const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
+    const hp = game.u?.uprops?.[HALF_PHDAM];
+    const half = !!hp && !!((hp.intrinsic | 0) || (hp.extrinsic | 0));
+    await pline(`KABOOM!!  The ${item} was booby-trapped!`);
+    wake_nearby(false);
+    await losehp(half ? Math.trunc((dmg + 1) / 2) : dmg, 'explosion', KILLED_BY_AN);
+    exercise(A_STR, false);
+    if (bodypart !== NO_PART)
+        exercise(A_CON, false);
+    const st = game.u?.uprops?.[STUNNED];
+    await make_stunned(((st?.intrinsic | 0) & 0xffffff) + dmg, true);
+}
 
 function _rawRnd(x) {
     const val = isaac64_next_uint64(game.coreCtx);
@@ -197,8 +224,13 @@ export async function doopen_indir(x, y) {
             break;
         }
         await pline(`This door${mesg}.`);
-        if (locked && (g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY)) {
-            const au = g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
+        /* the nethackrc handler stores flags.autounlock as the option's text
+         * ("apply-key+kick+force"); C holds the unlocktypes[] bitmask. */
+        const auRaw = g.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
+        const au = typeof auRaw === 'string'
+            ? auRaw.split('+').reduce((m, w) => m | ({ untrap: 1, 'apply-key': AUTOUNLOCK_APPLY_KEY, kick: 4, force: 8 }[w.trim()] | 0), 0)
+            : auRaw;
+        if (locked && au) {
             if (g.u) g.u.dz = 0;   /* C lock.c:877 */
             if ((au & AUTOUNLOCK_APPLY_KEY) !== 0) {
                 const unlocktool = autokey(true);
@@ -240,7 +272,10 @@ export async function doopen_indir(x, y) {
         await pline("The door opens.");
         /* C lock.c:908-913 — D_TRAPPED: b_trapped then D_NODOOR; else D_ISOPEN */
         if (loc.doormask & D_TRAPPED) {
+            await b_trapped('door', FINGER);
             loc.doormask = D_NODOOR;
+            if (in_rooms(cx, cy, SHOPBASE).length)
+                add_damage(cx, cy, SHOP_DOOR_COST);
         } else {
             loc.doormask = D_ISOPEN;
         }
@@ -576,7 +611,7 @@ export async function doclose() {
         g.context = g.context || {};
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
         return;
-    } else if (_obstructed_stub(x, y, false)) {
+    } else if (await _obstructed_stub(x, y, false)) {
         g.context = g.context || {};
         g.context.move = (res === ECMD_TIME) ? 1 : 0;
         return;
@@ -853,9 +888,12 @@ export async function picklock() {
             else door.doormask = D_LOCKED;
         }
     } else if (x.box) {
+        /* C lock.c:151-155 — box lock toggles; lknown set; trapped → chest_trap.
+         * (lock.c:153-155) */
         x.box.olocked = !x.box.olocked;
         x.box.lknown = 1;
-        /* if (gx.xlock.box->otrapped) chest_trap(...) — not reached (untrapped). */
+        if (x.box.otrapped)
+            await chest_trap(x.box, FINGER, false);
     }
     exercise(A_DEX, true);
     x.usedtime = 0; return 0;
@@ -1227,6 +1265,15 @@ export async function pick_lock(pick, rx, ry, container) {
 
     /* C lock.c:429 — u_at(cc): pick the lock on a container at the hero's tile. */
     if (cx === (u.ux | 0) && cy === (u.uy | 0)) {
+        /* C lock.c:436-439 — a stale/real u.dz < 0 ('<' at the direction
+         * prompt) has no lock to pick: "There isn't any sort of lock up
+         * there." ("here" when Levitation). */
+        if ((u.dz | 0) < 0 && !autounlock) {
+            const lp = u.uprops?.[48]; /* LEVITATION */
+            const lev = !!lp && !!((lp.intrinsic | 0) || (lp.extrinsic | 0)) && !(lp.blocked | 0);
+            await pline(`There isn't any sort of lock up ${lev ? 'here' : 'there'}.`);
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
         let c = 'n';
         let count = 0;
         const lvlObjs = g.level?.levelObjects;
@@ -1470,7 +1517,32 @@ function _is_db_wall_stub(x, y) {
     const loc = game.level?.at(x, y);
     return !!loc && (loc.typ | 0) === DBWALL;
 }
-function _obstructed_stub(_x, _y, _quietly) { return false; }
+/* C lock.c:925-952 obstructed() */
+async function _obstructed_stub(x, y, quietly) {
+    const mtmp = m_at(x, y);
+    let objhere = false;
+    if (mtmp && M_AP_TYPE(mtmp) !== M_AP_FURNITURE) {
+        if (M_AP_TYPE(mtmp) === M_AP_OBJECT) {
+            objhere = true;
+        } else {
+            if (!quietly) {
+                let Mn = Some_Monnam(mtmp);
+                if ((mtmp.mx !== x || mtmp.my !== y) && canspotmon(mtmp))
+                    Mn = s_suffix(Mn) + ' tail';
+                await pline(`${Mn} blocks the way!`);
+            }
+            if (!canspotmon(mtmp))
+                map_invisible(x, y);
+            return true;
+        }
+    }
+    if (objhere || game.level?.levelObjects?.[x]?.[y]) {
+        if (!quietly)
+            await pline("Something's in the way.");
+        return true;
+    }
+    return false;
+}
 
 /* C ref: lock.c:16 picking_lock(coordxy *x, coordxy *y) — if hero is picklocking,
  *   set *x = u.ux + u.dx, *y = u.uy + u.dy and return TRUE; else *x=*y=0, return FALSE. */
@@ -1517,6 +1589,7 @@ export async function doorlock(otmp, x, y) {
         return false;
     let res = true;
     let loudness = 0;
+    let msg = null;
 
     if ((door.typ | 0) === SDOOR) {
         /* KNOWN GAP — lock.c:1049-1076: a striking/opening beam turns a
@@ -1557,15 +1630,75 @@ export async function doorlock(otmp, x, y) {
             res = false;
         }
         break;
-    default:
-        /* KNOWN GAP — lock.c:1079-1147 also handles WAN_LOCKING /
-         * SPE_WIZARD_LOCK (needs obstructed(), block_point()) and
-         * WAN_OPENING / SPE_KNOCK.  All RNG-free, none reachable from
-         * mbhit (which only ever passes a WAN_STRIKING beam), and C's own
-         * fallthrough here is `impossible()` + the res=TRUE default.
-         * Returns FALSE = "nothing changed" rather than throwing. */
-        return false;
+    case WAN_LOCKING_OTYP_LK:
+    case SPE_WIZARD_LOCK_OTYP_LK: {
+        /* C lock.c:1138-1195 */
+        const dustcloud = 'A cloud of dust';
+        const quickly_dissipates = 'quickly dissipates';
+        const mysterywand = (otmp.oclass | 0) === WAND_CLASS && !otmp.dknown;
+        if (Is_rogue_level(game.u?.uz)) {
+            const vis = cansee(x, y);
+            if (vis) {
+                await pline(`${dustcloud} springs up in the older, more primitive doorway.`);
+            } else if (!_lock_Deaf()) {
+                await pline('You hear a swoosh.');
+            }
+            if (await _obstructed_stub(x, y, mysterywand)) {
+                if (vis)
+                    await pline(`The cloud ${quickly_dissipates}.`);
+                return false;
+            }
+            block_point(x, y);
+            door.typ = SDOOR;
+            door.doormask = D_NODOOR;
+            if (vis)
+                await pline('The doorway vanishes!');
+            newsym(x, y);
+            return true;
+        }
+        if (await _obstructed_stub(x, y, mysterywand))
+            return false;
+        if (t_at(x, y)) {
+            await pline(`${dustcloud} springs up in the doorway, but ${quickly_dissipates}.`);
+            return false;
+        }
+        switch ((door.doormask | 0) & ~D_TRAPPED) {
+        case D_CLOSED:
+            msg = 'The door locks!';
+            break;
+        case D_ISOPEN:
+            msg = 'The door swings shut, and locks!';
+            break;
+        case D_BROKEN:
+            msg = 'The broken door reassembles and locks!';
+            break;
+        case D_NODOOR:
+            msg = 'A cloud of dust springs up and assembles itself into a door!';
+            break;
+        default:
+            res = false;
+            break;
+        }
+        block_point(x, y);
+        door.doormask = D_LOCKED | ((door.doormask | 0) & D_TRAPPED);
+        newsym(x, y);
+        break;
     }
+    case WAN_OPENING_OTYP_LK:
+    case SPE_KNOCK_OTYP_LK:
+        /* C lock.c:1196-1202 */
+        if ((door.doormask | 0) & D_LOCKED) {
+            msg = 'The door unlocks!';
+            door.doormask = D_CLOSED | ((door.doormask | 0) & D_TRAPPED);
+        } else
+            res = false;
+        break;
+    default:
+        impossible(`magic (${otmp.otyp}) attempted on door.`);
+        break;
+    }
+    if (msg && cansee(x, y))
+        await pline(msg);
 
     if (loudness > 0) {
         /* C lock.c:1157-1162 — the door was destroyed: wake everything within

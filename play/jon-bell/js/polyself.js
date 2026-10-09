@@ -20,9 +20,9 @@ import { game } from './gstate.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
-import { pline, urgent_pline, newsym, see_monsters, flush_screen, _topl_stash_result } from './display.js';
+import { pline, urgent_pline, newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon } from './display.js';
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
-import { permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
+import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
 import { getlin } from './wizcmds.js';
 import { mungspaces, valid_vampshiftform, set_ustuck, mksobj } from './mklev.js';
 import * as cmdNS from './cmd.js';
@@ -30,7 +30,7 @@ import { mnexto } from './teleport.js';
 import { rndexp } from './exper_pure.js';
 import { newhp, newpw } from './exper.js';
 import {
-    find_ac, donning, encumber_msg, takeoff_slot_noac, worn_invent_obj, cancel_don,
+    find_ac, donning, encumber_msg, takeoff_slot_noac, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
 import { dropx, useup, welded, setuwep, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
 import { losehp } from './dokick.js';
@@ -41,7 +41,7 @@ import { artifact_light, arti_light_radius } from './light.js';
 import { setworn } from './worn.js';
 import { uwepgone as _uwepgone, uswapwepgone as _uswapwepgone } from './steal.js';
 import { weapon_descr, MONS_NAMES } from './uhitm.js';
-import { cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, simple_typename, simpleonames, ansimpleoname, otense } from './objnam.js';
+import { the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, simple_typename, simpleonames, ansimpleoname, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import {
@@ -68,17 +68,24 @@ import { nomul, unmul } from './allmain.js';
 import { deadhero, do_death_sequence, done, yn_function } from './end.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { dmgtype } from './dogmove.js';
-import { float_vs_flight, breakarm, num_horns, update_inventory, hliquid, defended } from './mhitm.js';
+import { float_vs_flight, breakarm, num_horns, update_inventory, hliquid, defended, Some_Monnam } from './mhitm.js';
 import { is_pool } from './look.js';
 /* Shared trap timer/status bookkeeping (C trap.c:set_utrap). */
 import { set_utrap, unpunish } from './dig.js';
 import { buried_ball_to_freedom, reset_utrap, selftouch, t_at, deltrap, maketrap, dotrap, feeltrap } from './trap.js';
 import { On_stairs } from './mklev.js';
 import { is_pool_or_lava } from './look.js';
+import { spoteffects } from './landing-effects.js';
 import { mon_nam } from './uhitm.js';
 import { expels_gu } from './mhitu.js';
-import { bhp_bury_objs } from './cmd.js';
-import { in_rooms, add_damage } from './shk.js';
+import { Monnam } from "./mcastu.js";
+import { bhp_bury_objs, dismount_steed as dismount_steed_real } from './cmd.js';
+import { in_rooms, add_damage, pay_for_damage } from './shk.js';
+import { may_dig as may_dig_look } from './look.js';
+import { watch_dig } from './dig.js';
+import { morehungry } from './eat.js';
+import { recalc_block_point } from './vision.js';
+import { IS_OBSTRUCTED, IS_TREE, IS_WALL, IS_DOOR, DOOR, SDOOR, D_BROKEN, D_NODOOR, D_TRAPPED, ROOM, CORR, SHOPBASE, SHOP_DOOR_COST, DISMOUNT_POLY } from './const.js';
 import { set_mimic_blocking } from './sit.js';
 import { sticks } from './dog.js';
 import {
@@ -495,6 +502,8 @@ export async function polymon(mntmp) {
     // Latch Blind before set_uasmon() changes the form's BLINDED intrinsic;
     // this is needed when an eyeless form reverts to one with eyes.
     const was_blind = !!Blind_vis();
+    /* C polyself.c:796 — name saved before the change in case sight changes. */
+    const ustuckNam = u.ustuck ? Some_Monnam(u.ustuck) : '';
     u.mtimedone = rn1(500, 500);
     u.umonnum = mntmp;
     set_uasmon();
@@ -580,39 +589,28 @@ export async function polymon(mntmp) {
         const oldCanContain = ((oldData.msize | 0) >= (ptr.msize | 0))
             || _is_whirly(oldData);
         if (newUnsolid || newTooLarge || !oldCanContain) {
-            /* C prints this special line before expels() for an unsolid body;
-             * the generic expulsion message is handled for the other forms. */
+            /* C polyself.c:921-933 — the special line precedes expels(), which
+             * runs unstuck() (rnd(2) mspec_used, docrt), mnexto and spoteffects. */
             if (newUnsolid)
-                await pline(`${mon_nam_poly(swallower)} can no longer contain you.`);
-            else
-                await pline(`You get expelled from ${mon_nam_poly(swallower)}.`);
-            set_ustuck(null); /* clears uswallow/uswldtim, as C set_ustuck */
-            await mnexto(swallower, 0); /* C mnexto(mtmp, RLOC_NOMSG) */
-            newsym(u.ux, u.uy);
+                await pline(`${canspotmon(swallower) ? Monnam(swallower) : Some_Monnam(swallower)} can no longer contain you.`);
+            await expels_gu(swallower, swallower.data?.pmidx, !newUnsolid);
         }
     } else if (u.ustuck && !u.uswallow) {
         /* C releases a holder when the new body can itself stick or is
          * unsolid, preventing an automatic re-grab on the next monster turn. */
         if (_sticks_poly(ptr) || ((ptr.mflags1 & 0x00100000) !== 0)) {
             const holder = u.ustuck;
+            /* C polyself.c:923-929 */
+            const nam = canspotmon(holder) ? Monnam(holder) : ustuckNam;
             set_ustuck(null);
-            await pline(`${mon_nam_poly(holder)} loses its grip on you.`);
+            await pline(`${nam} loses its grip on you.`);
         }
     }
 
-    /* C polyself.c:955-965 — the new form may no longer ride the current
-     * steed.  dismount_steed(DISMOUNT_POLY) finds a landing square and moves
-     * the steed away from the hero; mnexto uses the same shuffled coordinate
-     * search used by the port's landing helpers. */
-    if (u.usteed && !_can_ride_poly(ptr, u.usteed)) {
-        const steed = u.usteed;
-        await pline(`You can no longer ride ${mon_nam_poly(steed)}.`);
-        u.usteed = null;
-        g.in_steed_dismounting = true;
-        await mnexto(steed, 0);
-        g.in_steed_dismounting = false;
-        newsym(steed.mx, steed.my);
-    }
+    /* C polyself.c:955-965 — if (!can_ride(u.usteed)) dismount_steed(DISMOUNT_POLY);
+     * the steed.c body prints the message, releases the steed and places it. */
+    if (u.usteed && !_can_ride_poly(ptr, u.usteed))
+        await dismount_steed_real(DISMOUNT_POLY);
 
     // C polyself.c:967 find_ac() (repeated).
     find_ac();
@@ -764,7 +762,7 @@ async function break_armor() {
              * takeoff_slot_noac clears the mask; see do_wear.js worn_invent_obj. */
             const cloak = worn_invent_obj('uarmc');
             await pline(`The clasp on your ${cloak_simple_name(otmp)} breaks open!`);
-            await takeoff_slot_noac('uarmc');   /* C: Cloak_off() — no find_ac */
+            await Cloak_off();   /* C polyself.c:1186,1210 Cloak_off() — runs the otyp switch (toggle_displacement etc.) */
             await dropp(cloak);
         }
         if (u.uarmu) {
@@ -785,7 +783,7 @@ async function break_armor() {
                 await pline(`Your ${cloak_simple_name(otmp)} falls, unsupported!`);
             else
                 await pline(`You shrink out of your ${cloak_simple_name(otmp)}!`);
-            await takeoff_slot_noac('uarmc');   /* C: Cloak_off() — no find_ac */
+            await Cloak_off();   /* C polyself.c:1186,1210 Cloak_off() — runs the otyp switch (toggle_displacement etc.) */
             await dropp(otmp);
         }
         otmp = u.uarmu;
@@ -812,7 +810,7 @@ async function break_armor() {
             } else {
                 if (donning(otmp)) cancel_don();
                 await pline(`Your ${helm_simple_name(otmp)} falls to the ${surface(u.ux, u.uy)}!`);
-                await takeoff_slot_noac('uarmh');   /* C: Helmet_off() — no find_ac */
+                await Helmet_off();   /* C polyself.c:1237,1269: Helmet_off() (fedora change_luck(-1), do_wear.c:523) */
                 await dropp(otmp);
             }
         }
@@ -824,7 +822,7 @@ async function break_armor() {
             /* Drop weapon along with gloves */
             await pline(`You drop your gloves${u.uwep ? ' and weapon' : ''}!`);
             await drop_weapon(0);
-            await takeoff_slot_noac('uarmg'); /* C: Gloves_off() — no find_ac */
+            await Gloves_off(); /* C polyself.c:1255; its encumber_msg (do_wear.c:675) fires while the gloves are still in invent */
             await dropp(otmp);
         }
         otmp = u.uarms;
@@ -838,7 +836,7 @@ async function break_armor() {
             /* C polyself.c:1256-1261 */
             if (donning(otmp)) cancel_don();
             await pline(`Your ${helm_simple_name(otmp)} falls to the ${surface(u.ux, u.uy)}!`);
-            await takeoff_slot_noac('uarmh');   /* C: Helmet_off() — no find_ac */
+            await Helmet_off();   /* C polyself.c:1237,1269: Helmet_off() (fedora change_luck(-1), do_wear.c:523) */
             await dropp(otmp);
         }
     }
@@ -1163,7 +1161,16 @@ async function polyman(msg) {
     // C polyself.c:261 check_strangling(TRUE).  Reversion can expose a
     // strangulation amulet which was harmless in a breathless form.
     check_strangling_poly(true);
-    // pool-lava spoteffects / see_monsters(): RNG-free display bookkeeping.
+    /* C polyself.c:263-265 — if (!Levitation && !u.ustuck &&
+     * is_pool_or_lava(u.ux, u.uy)) spoteffects(TRUE); */
+    {
+        const lev = u.uprops?.[LEVITATION];
+        const Lev = !!((lev?.intrinsic | 0) || (lev?.extrinsic | 0)) && !(lev?.blocked | 0);
+        if (!Lev && !u.ustuck && is_pool_or_lava(u.ux, u.uy))
+            await spoteffects(true);
+    }
+    // see_monsters(): RNG-free display bookkeeping.
+    // C polyself.c:267 see_monsters(): RNG-free display bookkeeping.
 }
 
 export async function rehumanize() {
@@ -1304,6 +1311,10 @@ async function newman_dead() {
     g.svk.killer.format = KILLED_BY_AN;
     g.svk.killer.name = 'unsuccessful polymorph';
     await done(DIED);
+    if ((game.multi | 0) < 0) {
+        game.multi = 0;
+        game.nomovemsg = null;
+    }
     await newuhs(false);
     await encumber_msg();
 }
@@ -1581,6 +1592,23 @@ export async function polyself(psflags) {
         // C polyself.c:514-516 — buf[0]='\0'; tryct = 5;
         let buf = '';
         let tryct = 5;
+        /* C hooked_tty_getlin (getline.c:53) pages a standing topline with
+         * more() before the prompt.  This port parks the previous command's
+         * result line in _resultMessage until the next rhack, so a turn-start
+         * polyself (allmain.c:325) reaches getlin with an empty
+         * _pending_message and the thrown-aklys kill messages never page.
+         * Move it back onto the live topline so getlin pages it. */
+        if (game._resultMessage) {
+            const _rm = game._resultMessage;
+            const _rj = (game._resultMessageJoins?.src === _rm
+                && Array.isArray(game._resultMessageJoins.joins))
+                ? game._resultMessageJoins.joins.slice()
+                : (_topl_joins_snapshot(_rm) || undefined);
+            game._pending_message = game._pending_message
+                ? _topl_merge_result(_rm, game._pending_message, _rj)
+                : _rm;
+            game._resultMessage = null;
+        }
         do {
             mntmp = NON_PM;
             // C polyself.c:519 — getlin("Become what kind of monster? [type the name]").
@@ -1680,8 +1708,12 @@ export async function polyself(psflags) {
                     // --tryct reaches zero and emits thats_enough_tries.
                     if (tryct <= 0) tryct++;
                 }
-                const rejected = monPmname(mntmp, g.flags?.female ? FEMALE : MALE);
-                await You_cant(`polymorph into ${an(rejected)}.`);
+                // C polyself.c:608-612 — the_unique_pm gets "the", non-pname gets an().
+                let pm_name = monPmname(mntmp, g.flags?.female ? FEMALE : MALE);
+                if (the_unique_pm(cptr)) pm_name = the(pm_name);
+                else if (!((cptr.mflags2 & 0x00080000) !== 0)) /* type_is_pname: M2_PNAME */
+                    pm_name = an(pm_name);
+                await You_cant(`polymorph into ${pm_name}.`);
             } else {
                 // C polyself.c:614 — else break; (a valid, polyok form was named).
                 break;
@@ -2294,3 +2326,104 @@ function youhiding(via_enlghtmt, msgflag) {
     pline(`You are ${msgflag ? 'already' : 'now'} ${buf}.`);
 }
 function plur(x) { return (x === 1) ? "" : "s"; }
+
+// ── C hack.c:624-742 still_chewing() — rock / wall / tree / door / secret door
+// (the boulder arm lives in cmd.js _still_chewing_boulder; iron bars are not
+// handled here).  Returns true while still eating, false when done.
+export async function still_chewing(x, y) {
+    const g = game;
+    const u = g.u;
+    const lev = g.level.at(x, y);
+    const resetDig = () => {
+        g.context.digging = { pos: { x: 0, y: 0 }, level: null, down: false,
+            chew: false, warned: false, effort: 0 };
+    };
+    g.context = g.context || {};
+    if (!g.context.digging) resetDig();
+    const d = g.context.digging;
+    if (d.down) { resetDig(); }
+    const dg = g.context.digging;
+    const obstructed = IS_OBSTRUCTED(lev.typ);
+    if (obstructed && !may_dig_look(x, y)) {
+        await pline('You hurt your teeth on the %s.'.replace('%s',
+            IS_TREE(lev.typ) ? 'tree' : 'hard stone'));
+        nomul(0);
+        return true;
+    }
+    const what = IS_TREE(lev.typ) ? 'tree' : obstructed ? 'rock' : 'door';
+    const udaminc = u.udaminc | 0;
+    if (!dg.chew || dg.pos.x !== x || dg.pos.y !== y
+        || !dg.level || dg.level.dnum !== u.uz.dnum || dg.level.dlevel !== u.uz.dlevel) {
+        dg.down = false;
+        dg.chew = true;
+        dg.warned = false;
+        dg.pos = { x, y };
+        dg.level = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
+        dg.effort = (obstructed && !IS_TREE(lev.typ) ? 30 : 60) + udaminc;
+        await pline(`You start chewing ${IS_TREE(lev.typ) ? 'on a' : 'a hole in the'} ${what}.`
+            .replace('a hole in the tree', 'on a tree'));
+        await watch_dig(null, x, y, false);
+        return true;
+    }
+    dg.effort = (dg.effort | 0) + 30 + udaminc;
+    if (dg.effort <= 100) {
+        if (g.flags?.verbose !== false)
+            await pline(`You ${dg.chew ? 'continue' : 'begin'} chewing on the ${what}.`);
+        dg.chew = true;
+        await watch_dig(null, x, y, false);
+        return true;
+    }
+    // Okay, you've chewed through something
+    if (!(u.uconduct.food | 0)) { /* livelog only */ }
+    u.uconduct.food = (u.uconduct.food | 0) + 1;
+    await morehungry(rnd(20));
+    let digtxt = null, dmgtxt = null;
+    if (IS_WALL(lev.typ)) {
+        if (in_rooms(x, y, SHOPBASE).length) {
+            add_damage(x, y, 10 * Math.min(acurr(0), 125));
+            dmgtxt = 'damage';
+        }
+        digtxt = 'chew a hole in the wall.';
+        if (g.level.flags.is_maze_lev) {
+            lev.typ = ROOM;
+        } else if (g.level.flags.is_cavernous_lev && !cmdNS.in_town(x, y)) {
+            lev.typ = CORR;
+        } else {
+            lev.typ = DOOR;
+            lev.doormask = D_NODOOR;
+        }
+    } else if (IS_TREE(lev.typ)) {
+        digtxt = 'chew through the tree.';
+        lev.typ = ROOM;
+    } else if (lev.typ === SDOOR) {
+        if ((lev.doormask | 0) & D_TRAPPED) {
+            lev.doormask = D_NODOOR;
+            // b_trapped() (trap.c) is not exported by any js/ module yet.
+        } else {
+            digtxt = 'chew through the secret door.';
+            lev.doormask = D_BROKEN;
+        }
+        lev.typ = DOOR;
+    } else if (IS_DOOR(lev.typ)) {
+        if (in_rooms(x, y, SHOPBASE).length) {
+            add_damage(x, y, SHOP_DOOR_COST);
+            dmgtxt = 'break';
+        }
+        if ((lev.doormask | 0) & D_TRAPPED) {
+            lev.doormask = D_NODOOR;
+            // b_trapped() (trap.c) is not exported by any js/ module yet.
+        } else {
+            digtxt = 'chew through the door.';
+            lev.doormask = D_BROKEN;
+        }
+    } else { /* STONE or SCORR */
+        digtxt = 'chew a passage through the rock.';
+        lev.typ = CORR;
+    }
+    recalc_block_point(x, y);
+    newsym(x, y);
+    if (digtxt) await pline(`You ${digtxt}`);
+    if (dmgtxt) await pay_for_damage(dmgtxt, false);
+    resetDig();
+    return false;
+}

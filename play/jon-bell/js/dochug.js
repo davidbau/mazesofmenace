@@ -14,8 +14,9 @@ import { game } from './gstate.js';
 // binding (RNG-identical), but the call edge dochug→m_move→dog_move is now
 // statically visible. No circular dep: monmove/dogmove do not import dochug.)
 import { distfleeck, set_apparxy, m_move, mind_blast } from './monmove.js';
-import { mattacku, noattacks_mndx, mon_mattk_raw, ranged_attk_available } from './mhitu.js';
-import { find_offensive, find_defensive, find_misc, use_misc, use_defensive } from './makemon.js';
+import { worm_hitu_segs } from './worm.js';
+import { mattacku, noattacks_mndx, mon_mattk_raw, ranged_attk_available, expels_gu } from './mhitu.js';
+import { find_offensive, find_defensive, find_misc, use_misc, use_defensive, monflee_release_hero } from './makemon.js';
 import { Upolyd, engulfing_u, CONFLICT, INVIS as INVIS_DH, NEED_WEAPON, NEED_HTH_WEAPON } from './const.js';
 import { mon_wield_item, select_rwep } from './uhitm.js';
 import { is_pick, watch_dig } from './dig.js';
@@ -320,6 +321,16 @@ export async function dochug(mtmp) {
         if (!rn2(25))
             mtmp.mflee = 0;
     }
+    /* C monmove.c:763-767 — cease conflict-induced swallow/grab if conflict
+     * has ended.  Releasing the hero uses up the monster's turn. */
+    {
+        const us = game.u && game.u.ustuck;
+        if (us && (us === mtmp || (us.m_id != null && us.m_id === mtmp.m_id))
+            && (mtmp.mpeaceful | 0) && !(mtmp.mconf | 0) && !_conflict_dch()) {
+            await monflee_release_hero(mtmp);
+            return 0;
+        }
+    }
     /*
      * PHASE TWO: Special Movements and Actions
      */
@@ -604,6 +615,16 @@ export async function dochug(mtmp) {
             && heroHp > 0) {
             if (await mattacku(mtmp))
                 return 1; /* monster died (e.g. exploded) */
+        }
+        /* C monmove.c:973-976 — a long worm's tail segments next to the hero
+         * each get another mattacku (worm.c:344-362 wormhitu). */
+        if (mtmp.wormno) {
+            for (const [wx, wy] of worm_hitu_segs(mtmp)) {
+                const ddx = wx - (u.ux | 0), ddy = wy - (u.uy | 0);
+                if (ddx * ddx + ddy * ddy < 3)
+                    if (await mattacku(mtmp))
+                        return 1; /* your passive ability killed the worm */
+            }
         }
     }
     /* C monmove.c:979-981 — "special speeches for quest monsters":
@@ -905,7 +926,10 @@ async function tactics_wz(mtmp) {
         mx = mtmp.mx | 0; my = mtmp.my | 0;
 
         if (u.uswallow && u.ustuck === mtmp) {
-            expels_wz(mtmp, mtmp.data, true);
+            /* C wizard.c:381 expels(mtmp, mtmp->data, TRUE): the real body is
+             * expels_gu (mhitu.c:264-306); unstuck() draws rnd(2), mnexto()
+             * the collect_coords ladder. */
+            await expels_gu(mtmp, mtmp.data?.pmidx ?? mtmp.mnum, true);
         }
 
         /* if wounded, hole up on or near the stairs (to block them) */
@@ -992,4 +1016,3 @@ async function tactics_wz(mtmp) {
     }
 }
 /* C priest.c inhistemple / mon.c expels — see the call sites above. */
-function expels_wz(_mtmp, _data, _flag) { /* js/dog.js:1025 stub, unreached */ }

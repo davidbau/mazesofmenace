@@ -20,6 +20,7 @@ import { flush_screen, pline, force_more, docrt } from './display.js';
 import { getlin } from './wizcmds.js';
 import { mungspaces } from './mklev.js';
 import { optfn_fruit_set } from './options.js';
+import { reset_needed_visuals } from './options_runtime.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
 import { number_pad_value } from './cmd_config.js';
 import { reset_commands, update_rest_on_space } from './cmd_binds.js';
@@ -851,6 +852,7 @@ export async function doset() {
     let skiphelp = !((g.iflags.cmdassist === undefined) ? true : g.iflags.cmdassist);
     let gavehelp = false;
 
+    let needVisuals = false;
     for (;;) { /* C: `rerun:` */
         const m = new TtyMenu();
         /* rows[k] is the option behind a_int k+1; HELP_A_INT is the '?' row. */
@@ -954,6 +956,9 @@ export async function doset() {
                     const negated = boolValue(ent.row);
                     box[ent.row.fld] = !negated;
                     if (ent.row.name === 'rest_on_space') update_rest_on_space();
+                    /* C optfn_boolean (options.c:5412-5416): these set the pending-visual flags. */
+                    if (ent.row.name === 'customcolors') { g.go.opt_reset_customcolors = true; needVisuals = true; }
+                    if (ent.row.name === 'customsymbols') { g.go.opt_reset_customsymbols = true; needVisuals = true; }
                     /* C ref: options.c:5438-5440 — give_opt_msg is TRUE on the
                      * doset() path (only doset_simple clears it). */
                     await pline(`'${ent.row.name}' option toggled ${!negated ? 'on' : 'off'}.`);
@@ -1019,6 +1024,8 @@ export async function doset() {
         break;
     }
 
+    /* C options.c:8973 doset(): reset_needed_visuals() after the pick walk. */
+    if (needVisuals) await reset_needed_visuals();
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
 }

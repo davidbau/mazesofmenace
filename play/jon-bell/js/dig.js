@@ -30,11 +30,12 @@ import { TT_PIT, STONE, SCORR, CORR, DOOR, D_NODOOR, IS_WALL, IS_OBSTRUCTED, IS_
 import { wake_nearto } from './mklev.js';
 import { mon_learns_traps } from './trap.js';
 import { mondied } from './makemon.js';
-import { obj_extract_self, sobj_at, add_to_buried, in_rooms, mksobj_at, mk_tt_object, minliquid, remove_object, del_engr_at, makemon, obj_timer_checks as obj_timer_checks_real } from './mklev.js';
+import { place_object, obj_extract_self, sobj_at, add_to_buried, in_rooms, mksobj_at, mk_tt_object, minliquid, remove_object, del_engr_at, makemon, obj_timer_checks as obj_timer_checks_real } from './mklev.js';
 import { obj_resists } from './dogmove.js';
 import { is_ice, cant_reach_floor } from './engrave.js';
 import { uteetering_at_seen_pit, uescaped_shaft } from './pickup.js';
-import { yobjnam, Yobjnam2, an } from './objnam.js';
+import { yobjnam, Yobjnam2, an, An } from './objnam.js';
+import { IS_STWALL } from './const.js';
 import { trapname } from './makemon.js';
 import { is_pool, may_dig } from './look.js';
 import { dotrap } from './trap.js';
@@ -60,7 +61,7 @@ import { remove_worn_item } from './steal.js';
 import { stop_occupation } from './allmain.js';
 import { update_inventory } from './mhitm.js';
 import { hideunder } from './mklev.js';
-import { add_damage, pay_for_damage } from './shk.js';
+import { add_damage, pay_for_damage, shopdig } from './shk.js';
 import { weight } from './weight.js';
 /* dighole()/digactualhole()/fillholetyp()/liquid_flow() — the zap_dig()
  * u.dz!=0 branch (dig.c:1584-1610) and the general-purpose dig-a-hole
@@ -76,9 +77,14 @@ import { is_pit, is_hole, is_magical_trap, Is_airlevel, Is_waterlevel, Is_botlev
          DIGCHECK_FAIL_ALTAR, DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_WATERLEVEL,
          DIGCHECK_FAIL_TOOHARD, DIGCHECK_FAIL_UNDESTROYABLETRAP,
          DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_BOULDER,
-         DIGCHECK_FAIL_OBJ_POOL_OR_TRAP, TT_INFLOOR, ICE, MELT_ICE_AWAY,
+         DIGCHECK_FAIL_OBJ_POOL_OR_TRAP, DIGCHECK_FAILED, TT_INFLOOR, ICE, MELT_ICE_AWAY,
          NO_TRAP_FLAGS } from './const.js';
 import { d } from './rng.js';
+import { IRONBARS, IS_WATERWALL, KILLED_BY, HALF_PHDAM, WEB } from './const.js';
+import { nomul } from './allmain.js';
+import { wake_nearby } from './mklev.js';
+import { fire_damage, confdir, surface as surface_cmd, ceiling as ceiling_cmd } from './cmd.js';
+import { losehp } from './dokick.js';
 import { t_at, deltrap, delfloortrap, unearth_objs, maketrap, mintrap,
          trapeffect_hole_mon, buried_ball_to_punishment } from './trap.js';
 import { On_stairs, stairway_at, In_hell } from './mklev.js';
@@ -91,7 +97,7 @@ import { distmin } from './hacklib.js';
 import { pickup } from './pickup.js';
 import { spot_stop_timers, spot_time_left } from './timeout.js';
 import { obj_ice_effects } from './mklev.js';
-import { explode } from './zap.js';
+import { explode, fracture_rock, break_statue } from './zap.js';
 /* get_iter_mons/angry_guards (mon.c, real bodies live in js/mklev.js) and
  * m_canseeu (vision.h, js/dochug.js) -- needed by watch_dig() below
  * (dig.c:1372-1409). PM_WATCHMAN/PM_WATCH_CAPTAIN for its is_watch(ptr) test
@@ -341,7 +347,12 @@ async function digactualhole_pit(x, y) {
     /* record the PIT trap so t_at(x,y) is consistent for any later dig resume. */
     g.level = g.level || {};
     if (!Array.isArray(g.level.traps)) g.level.traps = [];
-    if (!g.level.traps.some((t) => t.tx === x && t.ty === y)) {
+    /* maketrap() on an occupied square (trap.c oldplace) re-types the existing
+     * trap in place; digactualhole then sets madeby_u and seetrap() (dig.c:700-706). */
+    const old = g.level.traps.find((t) => t.tx === x && t.ty === y);
+    if (old) {
+        old.ttyp = PIT; old.tseen = 1; old.madeby_u = true; old.once = 0;
+    } else {
         g.level.traps.push({ tx: x, ty: y, ttyp: PIT, tseen: 1, madeby_u: true });
     }
     /* C dig.c:730 — if (madeby_u) wake_nearby(FALSE); (before the at_u set_utrap). */
@@ -490,13 +501,9 @@ function wake_nearby_(_flag) {
     wake_nearto(u.ux | 0, u.uy | 0, (u.ulevel | 0) * 20);
 }
 
-// C ref: dat.c surface(x,y) — terrain-dependent surface noun used only in
-// message text on branches this file does not verify against the board
-// full version also covers ice/trees/altars/etc., which are out of scope
+// C ref: dungeon.c:1750 surface(x,y) — the full terrain noun (doorway, stairs,
 function surface_(x, y) {
-    const lev = game.level?.at(x, y);
-    const typ = lev ? (lev.typ | 0) : 0;
-    return (typ >= ROOM) ? 'floor' : 'ground';
+    return surface_cmd(x, y);
 }
 
 // C ref: dig.c:571-582 furniture_handled(x,y,madeby_u) — TRUE (and handled)
@@ -510,7 +517,7 @@ async function furniture_handled_(x, y, madeby_u) {
     if (IS_FOUNTAIN(typ)) {
         /* C dig.c:573-576: gush first, then force the fountain into its
          * warned state so dryup() performs depletion in this same action. */
-        dogushforth(false);
+        await dogushforth(false);
         if (lev) lev.flags = (lev.flags | 0) | 2; /* FOUNTAIN_IS_WARNED */
         await dryup(x, y, !!madeby_u);
         return true;
@@ -780,6 +787,12 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
         } else if (!madeby_obj && canseemon(madeby)) {
             await pline('%s digs %s %s the %s.', Monnam(madeby), an(tname),
                 in_thru, surface_type);
+        } else if (cansee(x, y) && game.flags?.verbose) {
+            /* C dig.c:660-666 */
+            if (IS_STWALL(old_typ))
+                await pline('The %s crumbles into %s.', surface_type, an(tname));
+            else
+                await pline('%s appears in the %s.', An(tname), surface_type);
         }
     }
 
@@ -1011,6 +1024,26 @@ export { dighole };
 
 // C ref: dig.c:300 dig(void) — the occupation callback, run once per turn by the
 // moveloop occupation driver.  Returns 1 while still digging, 0 when done.
+// C ref: dig.c:253-296 digcheck_fail_message(digresult, madeby=BY_YOU, x, y)
+async function digcheck_fail_message_(digresult, x, y, tool) {
+    const uw = game.u?.uwep || tool;
+    const verb = (uw && is_axe(uw)) ? 'chop' : 'dig in';
+    switch (digresult) {
+    case DIGCHECK_FAIL_AIRLEVEL: await pline('You cannot %s thin air.', verb); break;
+    case DIGCHECK_FAIL_ALTAR: await pline('The altar is too hard to break apart.'); break;
+    case DIGCHECK_FAIL_BOULDER: await pline("There isn't enough room to %s here.", verb); break;
+    case DIGCHECK_FAIL_ONLADDER: await pline('The ladder resists your effort.'); break;
+    case DIGCHECK_FAIL_ONSTAIRS: await pline('The stairs are too hard to %s.', verb); break;
+    case DIGCHECK_FAIL_THRONE: await pline('The throne is too hard to break apart.'); break;
+    case DIGCHECK_FAIL_CANTDIG:
+    case DIGCHECK_FAIL_TOOHARD:
+    case DIGCHECK_FAIL_UNDESTROYABLETRAP:
+        await pline('The %s here is too hard to %s.', surface_(x, y), verb); break;
+    case DIGCHECK_FAIL_WATERLEVEL: await pline('The %s splashes and subsides.', hliquid('water')); break;
+    default: break;
+    }
+}
+
 export async function dig() {
     const g = game;
     const u = g.u || {};
@@ -1019,6 +1052,15 @@ export async function dig() {
      * g.context.digging.tool (the apply object), since the JS uwep wiring may
      * differ from C's (the pick-axe is the C uwep). */
     const tool = d.tool || u.uwep || {};
+
+    /* C dig.c:317-322 — digging down: dig_check on the hero's square. */
+    if (d.down) {
+        const dcresult = dig_check_(BY_YOU_, u.ux | 0, u.uy | 0);
+        if (dcresult >= DIGCHECK_FAILED) {
+            await digcheck_fail_message_(dcresult, u.ux | 0, u.uy | 0, tool);
+            return 0;
+        }
+    }
 
     /* C dig.c:326-334 — the horizontal-dig nondiggable checks, before the
      * Fumbling test and before any effort is added. */
@@ -1064,7 +1106,7 @@ export async function dig() {
             return 1;
         }
         /* C dig.c:432-437 — make the pit at <u.ux,u.uy>, occupation ends. */
-        if (await dighole_pit()) {
+        if (await dighole(true, false, null)) {
             /* C dig.c:432-435 — the pit is made; forget the dig level so the
              * next apply starts a fresh dig (effort 0). */
             d.level = { dnum: 0, dlevel: -1 };
@@ -1080,7 +1122,20 @@ export async function dig() {
          * / pay_for_damage are RNG-neutral; the Is_earthlevel rn2(3) elemental
          * spawn does not apply (Dlvl 1 is not the earth level). */
         let digtxt = null;
-        if (lev && (lev.typ === STONE || lev.typ === SCORR)) {
+        const digtyp = dig_typ(u.uwep || tool, dpx, dpy);
+        let bobj, sobj;
+        if (digtyp === DIGTYP_STATUE && (sobj = sobj_at(STATUE, dpx, dpy))) {
+            /* C dig.c:451-458 */
+            digtxt = (await break_statue(sobj)) ? 'The statue shatters.' : null;
+        } else if (digtyp === DIGTYP_BOULDER && (sobj = sobj_at(BOULDER, dpx, dpy))) {
+            /* C dig.c:459-467 */
+            await fracture_rock(sobj);
+            if ((bobj = sobj_at(BOULDER, dpx, dpy))) {
+                obj_extract_self(bobj);
+                place_object(bobj, dpx, dpy);
+            }
+            digtxt = 'The boulder falls apart.';
+        } else if (lev && (lev.typ === STONE || lev.typ === SCORR)) {
             /* C dig.c:486-487 — cut away rock → corridor. */
             lev.typ = CORR; lev.flags = 0;
             digtxt = 'You succeed in cutting away some rock.';
@@ -1100,8 +1155,24 @@ export async function dig() {
         g.vision_full_recalc = 1;
         return 0;
     }
+    {
+        /* C dig.c:549-563 */
+        const dig_target = dig_typ(u.uwep || tool, dpx, dpy);
+        if ((lev && IS_WALL(lev.typ)) || dig_target === DIGTYP_DOOR) {
+            if (in_rooms(dpx, dpy, SHOPBASE).length > 0) {
+                const uw2 = u.uwep || tool;
+                const verb2 = (!uw2 || is_pick(uw2)) ? 'dig into' : 'chop through';
+                await pline('This %s seems too hard to %s.',
+                            (lev && IS_DOOR(lev.typ)) ? 'door' : 'wall', verb2);
+                return 0;
+            }
+        } else if (dig_target === DIGTYP_UNDIGGABLE
+            || (dig_target === DIGTYP_ROCK && lev && !IS_OBSTRUCTED(lev.typ)))
+            return 0; /* statue or boulder got taken */
+    }
     if (!g.did_dig_msg) {
-        await pline('You hit the rock with all your might.');
+        const d_target = ['', 'rock', 'statue', 'boulder', 'door', 'tree'];
+        await pline(`You hit the ${d_target[dig_typ(u.uwep || tool, dpx, dpy)]} with all your might.`);
         g.did_dig_msg = true;
     }
     return 1;
@@ -1145,10 +1216,14 @@ export async function use_pick_axe2(obj) {
 
     if (dz < 0) {
         /* C dig.c:1175-1179 — can't reach the ceiling. */
-        await pline("You can't reach the ceiling.");
+        if (Levitation_())
+            await pline("You don't have enough leverage.");
+        else
+            await pline(`You can't reach the ${ceiling_cmd(u.ux, u.uy)}.`);
+        /* falls out of the if-chain to dig.c:1358 `return ECMD_TIME` */
         g.context = g.context || {};
-        g.context.move = 0;
-        return 0;
+        g.context.move = 1;
+        return 1;
     }
     if (!(u.dx | 0) && !(u.dy | 0) && !dz) {
         g.context = g.context || {};
@@ -1156,6 +1231,7 @@ export async function use_pick_axe2(obj) {
         return 1;
     }
     if (dz === 0) {
+        confdir(false);
         const rx = (u.ux | 0) + (u.dx | 0);
         const ry = (u.uy | 0) + (u.dy | 0);
         if (!isok(rx, ry)) {
@@ -1184,8 +1260,59 @@ export async function use_pick_axe2(obj) {
          * never reach the BOULDER/STATUE arms at all). */
         const dig_target = dig_typ(obj, rx, ry);
         if (dig_target === DIGTYP_UNDIGGABLE) {
-            if (loc && loc.typ === TREE) {
+            const trap = t_at(rx, ry);
+            let boulder;
+            let trap_with_u;
+            if (trap && trap.ttyp === WEB) {
+                if (!trap.tseen) {
+                    seetrap(trap);
+                    await pline('There is a spider web there!');
+                }
+                await pline(`${Yobjnam2(obj, 'become')} entangled in the web.`);
+                nomul(-d(2, 2));
+                g.multi_reason = 'stuck in a spider web';
+                g.nomovemsg = 'You pull free.';
+            } else if (loc && loc.typ === IRONBARS) {
+                await pline('Clang!');
+                wake_nearby(false);
+            } else if (loc && IS_WATERWALL(loc.typ)) {
+                await pline('Splash!');
+            } else if (loc && loc.typ === LAVAWALL) {
+                await pline('Splash!');
+                await fire_damage(u.uwep, false, rx, ry);
+            } else if (loc && IS_TREE(loc.typ)) {
                 await pline('You need an axe to cut down a tree.');
+            } else if (loc && IS_OBSTRUCTED(loc.typ)) {
+                await pline('You need a pick to dig rock.');
+            } else if ((boulder = sobj_at(BOULDER, rx, ry)) || sobj_at(STATUE, rx, ry)) {
+                const what = boulder ? 'boulder' : 'statue';
+                if (!ispick) {
+                    const vibrate = !rn2(3);
+                    await pline(`Sparks fly as you whack the ${what}.${vibrate ? '  The axe-handle vibrates violently!' : ''}`);
+                    if (vibrate) {
+                        const hp = u.uprops && u.uprops[HALF_PHDAM];
+                        const dmg = hp && ((hp.intrinsic | 0) || (hp.extrinsic | 0)) ? Math.trunc(3 / 2) : 2;
+                        await losehp(dmg, 'axing a hard object', KILLED_BY);
+                    }
+                    wake_nearby(false);
+                } else {
+                    await pline(`You can't reach the ${what}.`);
+                }
+            } else if (u.utrap && u.utraptype === TT_PIT && trap
+                       && (trap_with_u = t_at(u.ux | 0, u.uy | 0))
+                       && is_pit(trap.ttyp)
+                       && !conjoined_pits_dg(trap, trap_with_u, false)) {
+                const idx = xytodir(u.dx | 0, u.dy | 0);
+                if (idx !== DIR_ERR) {
+                    const adjidx = DIR_180(idx);
+                    trap_with_u.conjoined = (trap_with_u.conjoined | 0) | (1 << idx);
+                    trap.conjoined = (trap.conjoined | 0) | (1 << adjidx);
+                    await pline('You clear some debris from between the pits.');
+                }
+            } else if (u.utrap && u.utraptype === TT_PIT && t_at(u.ux | 0, u.uy | 0)) {
+                await pline(`You swing ${yobjnam(obj)}, but the rubble has no place to go.`);
+            } else {
+                await pline(`You swing ${yobjnam(obj)} through thin air.`);
             }
             g.context = g.context || {};
             g.context.move = 1;
@@ -1196,22 +1323,22 @@ export async function use_pick_axe2(obj) {
                            'hitting the boulder', 'chopping at the door',
                            'cutting the tree'];
         /* C dig.c:1280-1309 — fresh dig vs continue. */
-        const d = diggingCtx();
+        const dc = diggingCtx();
         g.did_dig_msg = false;
-        d.quiet = false;
-        if (d.pos.x !== rx || d.pos.y !== ry || d.down) {
-            d.down = false;
-            d.chew = false;
-            d.warned = false;
-            d.pos.x = rx;
-            d.pos.y = ry;
-            d.level = g.u && g.u.uz ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel } : { dnum: 0, dlevel: 0 };
-            d.effort = 0;
-            d.tool = obj;
+        dc.quiet = false;
+        if (dc.pos.x !== rx || dc.pos.y !== ry || dc.down) {
+            dc.down = false;
+            dc.chew = false;
+            dc.warned = false;
+            dc.pos.x = rx;
+            dc.pos.y = ry;
+            dc.level = g.u && g.u.uz ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel } : { dnum: 0, dlevel: 0 };
+            dc.effort = 0;
+            dc.tool = obj;
             await pline(`You start ${d_action[dig_target]}.`);
         } else {
-            await pline(`You ${d.chew ? 'begin' : 'continue'} ${d_action[dig_target]}.`);
-            d.chew = false;
+            await pline(`You ${dc.chew ? 'begin' : 'continue'} ${d_action[dig_target]}.`);
+            dc.chew = false;
         }
         /* C dig.c:1310 — set_occupation(dig, verbing, 0). */
         g.occupation = dig;
@@ -1262,20 +1389,24 @@ export async function use_pick_axe2(obj) {
         g.context.move = 1;
         return 1;
     }
-    const d = diggingCtx();
+    const dc = diggingCtx();
     /* C dig.c:1337-1352 — fresh dig vs continue.  Start a new dig run. */
     const _dl = g.u && g.u.uz ? g.u.uz : { dnum: 0, dlevel: 0 };
-    if (d.pos.x !== (u.ux | 0) || d.pos.y !== (u.uy | 0)
-        || (d.level.dnum | 0) !== (_dl.dnum | 0) || (d.level.dlevel | 0) !== (_dl.dlevel | 0) || !d.down) {
-        d.chew = false;
-        d.down = true;
-        d.warned = false;
-        d.pos.x = u.ux | 0;
-        d.pos.y = u.uy | 0;
-        d.level = g.u && g.u.uz ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel } : { dnum: 0, dlevel: 0 };
-        d.effort = 0;
-        d.tool = obj; /* the applied pick-axe (the dig tool / C uwep). */
+    if (dc.pos.x !== (u.ux | 0) || dc.pos.y !== (u.uy | 0)
+        || (dc.level.dnum | 0) !== (_dl.dnum | 0) || (dc.level.dlevel | 0) !== (_dl.dlevel | 0) || !dc.down) {
+        dc.chew = false;
+        dc.down = true;
+        dc.warned = false;
+        dc.pos.x = u.ux | 0;
+        dc.pos.y = u.uy | 0;
+        dc.level = g.u && g.u.uz ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel } : { dnum: 0, dlevel: 0 };
+        dc.effort = 0;
+        dc.tool = obj; /* the applied pick-axe (the dig tool / C uwep). */
         await pline(`You start ${verbing} downward.`);
+        if (u.ushops && (Array.isArray(u.ushops) ? u.ushops[0] : u.ushops)) {
+            await shopdig(0);
+            add_damage(u.ux | 0, u.uy | 0, 100 /* SHOP_PIT_COST, hack.h:81 */);
+        }
     } else {
         await pline(`You continue ${verbing} downward.`);
     }
@@ -1317,6 +1448,9 @@ export async function use_pick_axe(obj, dirCh) {
         }
         u.dx = DX[dirCh]; u.dy = DY[dirCh]; u.dz = 0;
     }
+    /* C cmd.c:4117 getdir() tail — `if (!u.dz) confdir(FALSE);` (rn2(8) when
+     * Stunned / Confused-and-!rn2(5)); dig.c:1193 draws it again below. */
+    if (!u.dz) confdir(false);
     /* Marks an APPLY-started dig (command returned ECMD_TIME, context.move=1):
      * allmain's occupation driver runs movemon BEFORE dig() for these, unlike
      * domove's autodig (allmain.c moveloop_core order). */

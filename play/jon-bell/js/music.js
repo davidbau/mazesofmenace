@@ -28,7 +28,20 @@ import {
     ACH_TUNE, STRAT_WAITMASK,
 } from './const.js';
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
-import { digactualhole_ } from './dig.js';
+import { fillholetyp_, liquid_flow_, set_utrap, cvt_sdoor_to_door } from './dig.js';
+import { maketrap, t_at, reset_utrap, selftouch } from './trap.js';
+import { sobj_at, obj_extract_self, in_rooms } from './mklev.js';
+import { add_damage } from './shk.js';
+import { flooreffects } from './cmd.js';
+import { rnl } from './rng.js';
+import { xkilled } from './uhitm.js';
+import { mon_nam } from './uhitm.js';
+import { You_hear } from './display.js';
+import { unblock_point, recalc_block_point } from './vision.js';
+import { is_pit, has_mgivenname, ROOM, SHOPBASE, XKILL_NOMSG,
+         ARTICLE_THE, SUPPRESS_SADDLE, NO_KILLER_PREFIX, TT_PIT, TT_BURIEDBALL,
+         LEVITATION, FLYING, FUMBLING, HALF_PHDAM } from './const.js';
+import { PM_ARCHEOLOGIST } from './pm.generated.js';
 import { wakeup_attack, seemimic } from './mhitm.js';
 import { m_at } from './uhitm.js';
 import { set_levltyp } from './mkmaze.js';
@@ -53,9 +66,9 @@ const NOTELL = 0;
 /* monsym.h monster classes used by the charm/calm filters. */
 const S_NYMPH = 14, S_SNAKE = 45;
 /* monflag.h M1_MINDLESS. */
-const M1_MINDLESS = 0x00100000;
+const M1_MINDLESS = 0x00010000;
 /* monflag.h M2_MERC — is_mercenary(ptr) is (ptr)->mflags2 & M2_MERC. */
-const M2_MERC = 0x00200000;
+const M2_MERC = 0x00000200;
 /* mkobj.h G_UNIQ, the geno bit unique_corpstat() tests. */
 const G_UNIQ = 0x1000;
 /* global.h ROWNO / COLNO, for the earthquake drum's awaken_monsters radius. */
@@ -282,11 +295,137 @@ async function charm_monsters(distance) {
     }
 }
 
+/* ── C music.c:221-310  do_pit ──────────────────────────────────────────── */
+const BOULDER_OTYP = 475;
+const M1_FLY_ = 0x00000001, M1_CLING_ = 0x00000040;
+const M1_AMPHIBIOUS_ = 0x00000004;
+const M1_NOLIMBS_ = 0x00000200 | 0x00000400, M1_SLITHY_ = 0x00000800;
+function prop_on_(key) {
+    const p = game.u?.uprops?.[key];
+    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0));
+}
+function is_flyer_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_FLY_) !== 0; }
+function is_clinger_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_CLING_) !== 0; }
+function humanoid_(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & 0x00000400) !== 0; }
+function u_at_(x, y) { return (game.u.ux | 0) === x && (game.u.uy | 0) === y; }
+/* hero's own data: u.umonnum when polymorphed, else the player monster */
+function youdata_() { return game.youmonst?.data ?? game.u?.data ?? null; }
+
+/* Try to make a pit. */
+async function do_pit(x, y, tu_pit) {
+    const u = game.u;
+    const chasm0 = await maketrap(x, y, PIT);
+    let chasm = chasm0;
+    if (!chasm)
+        return; /* no pit if portal at that location */
+    chasm.tseen = 1;
+
+    const mtmp = m_at(x, y); /* (redundant?) */
+    let otmp = sobj_at(BOULDER_OTYP, x, y);
+    if (otmp) {
+        if (cansee(x, y))
+            await pline(`KADOOM!  The boulder falls into a chasm${u_at_(x, y) ? ' below you' : ''}!`);
+        if (mtmp)
+            mtmp.mtrapped = 0;
+        obj_extract_self(otmp);
+        await flooreffects(otmp, x, y, '');
+        return;
+    }
+
+    /* Let liquid flow into the newly created chasm. */
+    const filltype = fillholetyp_(x, y, false);
+    if (filltype !== ROOM) {
+        set_levltyp(x, y, filltype);
+        await liquid_flow_(x, y, filltype, chasm, null);
+        /* liquid_flow() deletes trap, might kill mtmp */
+        if ((chasm = t_at(x, y)) == null)
+            return;
+    }
+
+    if (mtmp) {
+        if (!is_flyer_(mtmp.data) && !is_clinger_(mtmp.data)) {
+            const m_already_trapped = mtmp.mtrapped;
+
+            mtmp.mtrapped = 1;
+            if (!m_already_trapped) { /* suppress messages */
+                if (cansee(x, y)) {
+                    await pline(`${Monnam(mtmp)} falls into a chasm!`);
+                } else if (humanoid_(mtmp.data)) {
+                    await You_hear('a scream!');
+                }
+            }
+            /* mselftouch(mtmp, "Falling, ", TRUE): only draws for a monster
+             * wielding a cockatrice corpse; no js/ export exists. */
+            if (!DEADMONSTER(mtmp)) {
+                mtmp.mhp -= rnd(m_already_trapped ? 4 : 6);
+                if (DEADMONSTER(mtmp)) {
+                    if (!cansee(x, y)) {
+                        await pline('It is destroyed!');
+                    } else {
+                        await pline(`You destroy ${mtmp.mtame
+                            ? x_monnam(mtmp, ARTICLE_THE, 'poor',
+                                has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false)
+                            : mon_nam(mtmp)}!`);
+                    }
+                    await xkilled(mtmp, XKILL_NOMSG);
+                }
+            }
+        }
+    } else if (u_at_(x, y)) {
+        if ((u.utrap | 0) && (u.utraptype | 0) === TT_BURIEDBALL) {
+            await pline('Your chain breaks!');
+            await reset_utrap(true);
+        }
+        const yd = youdata_();
+        if (prop_on_(LEVITATION) || prop_on_(FLYING) || is_clinger_(yd)) {
+            if (!tu_pit) { /* no pit here previously */
+                await pline('A chasm opens up under you!');
+                await pline("You don't fall in!");
+            }
+        } else if (!tu_pit || !(u.utrap | 0) || (u.utraptype | 0) !== TT_PIT) {
+            /* no pit here previously, or you were not in it even if there was */
+            await pline('You fall into a chasm!');
+            set_utrap(rn1(6, 2), TT_PIT);
+            await losehp(Maybe_Half_Phys_(rnd(6)), 'fell into a chasm', NO_KILLER_PREFIX);
+            await selftouch('Falling, you');
+        } else if ((u.utrap | 0) && (u.utraptype | 0) === TT_PIT) {
+            const arch = ((game.urole?.mnum ?? -1) | 0) === PM_ARCHEOLOGIST;
+            const keepfooting =
+                (!(prop_on_(FUMBLING) && rn2(5))
+                 && (!(rnl(arch ? 3 : 9))
+                     || ((acurr(A_DEX) > 7) && rn2(5))));
+
+            await pline('You are jostled around violently!');
+            set_utrap(rn1(6, 2), TT_PIT);
+            await losehp(Maybe_Half_Phys_(rnd(keepfooting ? 2 : 4)),
+                'hurt in a chasm', NO_KILLER_PREFIX);
+            if (keepfooting)
+                exercise(A_DEX, true);
+            else
+                await selftouch(((u.mtimedone | 0) && ((((yd?.mflags1 | 0) >>> 0) & M1_SLITHY_)
+                                  || (((yd?.mflags1 | 0) >>> 0) & M1_NOLIMBS_) === M1_NOLIMBS_))
+                    ? 'Shaken, you' : 'Falling down, you');
+        }
+    } else {
+        newsym(x, y);
+    }
+}
+function Maybe_Half_Phys_(dmg) {
+    return prop_on_(HALF_PHDAM) ? Math.trunc((dmg + 1) / 2) : dmg;
+}
+
 /* ── C music.c:342-470  do_earthquake ───────────────────────────────────── */
+/* NOT PORTED: desecrate_altar(FALSE, algn) on the ALTAR arm (no js/ body) and
+ * add_damage's shop-door arm beyond what shk.js provides. */
 async function do_earthquake(force) {
     const u = game.u || {};
     const into_a_chasm = ' into a chasm';
-    force = Math.min(force | 0, 13);
+    const trap_at_u = t_at(u.ux | 0, u.uy | 0);
+    let tu_pit = 0;
+    if (trap_at_u)
+        tu_pit = is_pit(trap_at_u.ttyp) ? 1 : 0;
+    if (force > 13) /* sanity precaution; maximum used is actually 10 */
+        force = 13;
     const sx = Math.max((u.ux | 0) - force * 2, 1);
     const sy = Math.max((u.uy | 0) - force * 2, 0);
     const ex = Math.min((u.ux | 0) + force * 2, COLNO - 1);
@@ -308,32 +447,60 @@ async function do_earthquake(force) {
         const lev = game.level?.at(x, y);
         if (!lev) continue;
         const typ = lev.typ | 0;
-        if (typ === ALTAR && ((altarmask_at(x, y) | 0) & AM_SANCTUM)) continue;
-        if (cansee(x, y)) {
-            const desc = typ === FOUNTAIN ? 'The fountain falls'
-                : typ === SINK ? 'The kitchen sink falls'
-                : typ === ALTAR ? 'The altar falls'
-                : typ === GRAVE ? 'The headstone topples'
-                : typ === THRONE ? 'The throne falls' : null;
-            if (desc) await pline(`${desc}${into_a_chasm}.`);
+        switch (typ) {
+        case FOUNTAIN:
+            if (cansee(x, y)) await pline(`The fountain falls${into_a_chasm}.`);
+            await do_pit(x, y, tu_pit);
+            break;
+        case SINK:
+            if (cansee(x, y)) await pline(`The kitchen sink falls${into_a_chasm}.`);
+            await do_pit(x, y, tu_pit);
+            break;
+        case ALTAR: {
+            const amsk = altarmask_at(x, y) | 0;
+            /* always preserve the high altars */
+            if (amsk & AM_SANCTUM) break;
+            if (cansee(x, y)) await pline(`The altar falls${into_a_chasm}.`);
+            await do_pit(x, y, tu_pit);
+            break;
         }
-        if (typ === SCORR) {
+        case GRAVE:
+            if (cansee(x, y)) await pline(`The headstone topples${into_a_chasm}.`);
+            await do_pit(x, y, tu_pit);
+            break;
+        case THRONE:
+            if (cansee(x, y)) await pline(`The throne falls${into_a_chasm}.`);
+            await do_pit(x, y, tu_pit);
+            break;
+        case SCORR:
             set_levltyp(x, y, CORR);
-            newsym(x, y);
+            unblock_point(x, y);
             if (cansee(x, y)) await pline('A secret corridor is revealed.');
-        } else if (typ === SDOOR) {
-            set_levltyp(x, y, DOOR);
-            lev.doormask = D_NODOOR;
-            newsym(x, y);
+            await do_pit(x, y, tu_pit);
+            break;
+        case CORR:
+        case ROOM:
+            await do_pit(x, y, tu_pit);
+            break;
+        case SDOOR:
+            cvt_sdoor_to_door(lev); /* .typ = DOOR */
             if (cansee(x, y)) await pline('A secret door is revealed.');
-        } else if (typ === DOOR && (lev.doormask | 0) !== D_NODOOR) {
+            /* FALLTHRU */
+        case DOOR: /* make the door collapse */
+            /* if already doorless, treat like room or corridor */
+            if ((lev.doormask | 0) === D_NODOOR) {
+                await do_pit(x, y, tu_pit);
+                break;
+            }
+            /* wasn't doorless, now it will be */
             lev.doormask = D_NODOOR;
-            newsym(x, y);
+            recalc_block_point(x, y);
+            newsym(x, y); /* before pline */
             if (cansee(x, y)) await pline('The door collapses.');
-        } else if (typ === STONE) {
-            continue;
+            if (in_rooms(x, y, SHOPBASE)?.length)
+                add_damage(x, y, 0);
+            break;
         }
-        await digactualhole_(x, y, null, PIT, true);
     }
 }
 

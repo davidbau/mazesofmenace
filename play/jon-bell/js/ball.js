@@ -27,7 +27,7 @@ import { Blind } from './vision.js';
 import { omon_adj, _spoteffects_pickup, welded, setuwep, setuswapwep,
          setuqwep, freeinv, body_part, set_wounded_legs } from './cmd.js';
 import { find_mac, t_at, reset_utrap, fill_pit } from './trap.js';
-import { remove_object, maybe_unhide_at, place_object } from './mklev.js';
+import { remove_object, obj_extract_self, maybe_unhide_at, place_object } from './mklev.js';
 import { flooreffects } from './cmd.js';
 import { rn2, rnd } from './rng.js';
 import { You, hard_helmet, encumber_msg } from './do_wear.js';
@@ -425,13 +425,13 @@ export function unplacebc() {
     if (!uball || !uchain) return;
     if (game.u?.uswallow) return; // ball.c:149-161 — not unplaced while swallowed
     if (!carried(uball)) {
-        remove_object(uball);             // ball.c:166 obj_extract_self
+        obj_extract_self(uball);          // ball.c:164
         if (Blind() && ((game.u.bc_felt | 0) & BC_BALL))  // ball.c:167-168
             bc_set_glyph_at(uball.ox, uball.oy, game.u.bglyph);
         maybe_unhide_at(uball.ox, uball.oy);
         newsym(uball.ox, uball.oy);
     }
-    remove_object(uchain);                // ball.c:173
+    obj_extract_self(uchain);             // ball.c:170
     if (Blind() && ((game.u.bc_felt | 0) & BC_CHAIN))      // ball.c:174-175
         bc_set_glyph_at(uchain.ox, uchain.oy, game.u.cglyph);
     maybe_unhide_at(uchain.ox, uchain.oy);

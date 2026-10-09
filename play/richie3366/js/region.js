@@ -627,7 +627,7 @@ async function make_gas_cloud(cloud, damage, inside_cloud) {
  * C ref: region.c:262-276 free_region — release a region's heap blocks
  * in C order (rects :266-267, monsters :268-269, enter_msg :270-271,
  * leave_msg :272-273, the struct itself :274). GC owns the JS object
- * (callers drop it: remove_region splices before the newsym passes,
+ * (callers drop it: remove_region swap-drops before the newsym passes,
  * clear_regions rebinds the list), so each live C free() renders as a
  * null release and `:274` is a no-op by construction. C linkage is
  * extern (decl :15); callers remove_region (:385) + clear_regions (:399).
@@ -645,14 +645,20 @@ export function free_region(reg) {
  * C ref: region.c remove_region — drop then ttl=-2 so visible_region_at
  * skips; two-pass unblock_point / newsym (D-1576). Pass 1 u.uinwater=0
  * (does_block Underwater moat). Blind skips pass 2. free_region (:385).
+ * C linkage is extern (decl :30); exported for the order test.
  */
-function remove_region(reg) {
+export function remove_region(reg) {
     const regs = game.regions || [];
     const i = regs.indexOf(reg);
     if (i < 0) return;
 
     /* remove region before potential newsym() calls, but don't free it yet */
-    regs.splice(i, 1);
+    /* C :355-357 — swap-with-last, NOT splice: the last region takes
+     * the freed slot, so survivors after i keep their indices and
+     * run_regions order matches C. */
+    const last = regs.length - 1;
+    if (last !== i) regs[i] = regs[last];
+    regs.length = last;
 
     /* Update screen if necessary */
     reg.ttl = -2; /* for visible_region_at */

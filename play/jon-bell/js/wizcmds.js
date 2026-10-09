@@ -5,41 +5,52 @@
 import { u_safe_from_fatal_corpse } from './pickup.js';
 import { game, wizard } from './gstate.js';
 import { COLNO } from './const.js';
+const IN_SIGHT_BIT = 0x2; /* vision.h IN_SIGHT */
 import { s_suffix as _ta_s_suffix } from './hacklib.js';
 import { nhgetch } from './input.js';
+import { oc_merge } from './oc_merge.generated.js';
 import { pline, flash_mon, canspotmon, unmap_invisible, gamelog_add } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { flush_screen, force_more, _topl_record_join, capture_painted_frame,
          _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { display_text_window } from './com_pager.js';
-import { pluslvl } from './exper.js';
+import { displayLookWindow } from './look-window.js';
+import { pluslvl, losexp } from './exper.js';
+import { findit, wish_history_add, wish_history_menu, wish_history_has } from './zap.js';
 import { rn2, d, rnd } from './rng.js';
-import { readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, the, The, aobjnam, doname as doname_real } from './objnam.js';
-import { discover_object } from './o_init.js';
-import { near_capacity } from './weight.js';
+import { quest_info, readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
+import { discover_object, observe_object } from './o_init.js';
+import { near_capacity, stagger_verb } from './weight.js';
 import { exercise } from './attrib.js';
 import { losehp } from './dokick.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { hates_silver, name_to_mon, name_to_monclass, permonstTemplate, monPmname, set_malign, mkclass, rndmonst, splitobj } from './makemon.js';
-import { makemon, newcham, engravings_list } from './mklev.js';
+import { makemon, newcham, engravings_list, mongone } from './mklev.js';
 import { count_wsegs } from './worm.js';
 import { tamedog } from './dog.js';
 import { put_saddle_on_mon } from './steed.js';
 import { is_pool } from './look.js';
 import { light_sources_list } from './light.js';
-import { region_stats_snapshot } from './region.js';
+import { region_stats_snapshot, any_visible_region } from './region.js';
+import { property_by_index } from './timeout.js';
 import { cant_revive } from './read.js';
-import { PM_LONG_WORM_TAIL, PM_LONG_WORM, PM_STALKER } from './pm.generated.js';
+import { PM_LONG_WORM_TAIL, PM_LONG_WORM, PM_STALKER, PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
+import monsPack from './makemon_mons.json' with { type: 'json' };
 /* y_n_default is C's y_n() (hack.h:1329 y_n(q) := yn_function(q, ynchars, 'n',
  * TRUE)); it lives in js/cmd.js, which already imports this file — the cycle is
  * the tree's norm (20+ modules import from cmd.js) and both sides are hoisted
  * function declarations, so the binding resolves at call time. */
-import { y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos } from './cmd.js';
+import { setuqwep, y_n_default, addinv_core2, reorder_invent, inv_cnt, dropx, freeinv, hitfloor, getpos, addinv_core1, dropy, carry_obj_effects } from './cmd.js';
+import { place_object, remove_object } from './mklev.js';
 import { m_at, mon_nam, xkilled, XKILL_NOMSG } from './uhitm.js';
 import { dmonsfree } from './mkmaze.js';
-import { addinv_core0, can_reach_floor } from './hold_another_object.js';
+import { flip_level, flip_level_rnd } from './sp_lev.js';
+import { docrt } from './display.js';
+import { yn_function } from './end.js';
+import { bury_objs } from './zap.js';
+import { addinv_core0, can_reach_floor, is_missile, ammo_and_launcher } from './hold_another_object.js';
 import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
-         Is_airlevel, Is_waterlevel, IRONBARS, ICE, FUMBLING,
+         Is_airlevel, Is_waterlevel, IRONBARS, ICE, FUMBLING, COLD_RES, LS_OBJECT, LS_MONSTER,
          LL_CONDUCT, LL_WISH } from './const.js';
 
 /* C wizcmds.c:1113-1693 — #stats uses native allocation sizes rather than
@@ -131,6 +142,12 @@ const A_CHAOTIC = -1;
 const A_NEUTRAL = 0;
 const A_LAWFUL  = 1;
 
+/* C artifact.c:92-95: artifacts whose role field names a role (artilist.h), keyed by
+ * artilist index, valued by roles[] index (0=Arc..12=Wiz).  Quest artifacts are
+ * handled via quest_info(0).  aligns[].value by flags.initalign (role.c:697). */
+const _ARTI_GIFT_ROLE = { 1: 4, 3: 11, 4: 1, 8: 12, 12: 6, 19: 9 };
+const _ARTI_ALIGN_VALUE = [1, 0, -1];
+
 export const ARTI_PROPS = [
     /*  0 STRANGE_OBJECT */ { spfx: 0,                                          al: A_NONE,    role: false, race: false },
     /*  1 Excalibur     */ { spfx: SPFX_RESTR | SPFX_INTEL,                     al: A_LAWFUL,  role: true,  race: false },
@@ -218,7 +235,7 @@ function _ta_xname(otmp) {
     if (noun && descr != null)
         return _wish_xname_named_tail(otmp, `${descr} ${noun}`);
     if (noun) return _wish_xname_named_tail(otmp, noun);
-    return 'object';
+    return xname(otmp); /* GEM_CLASS etc. (objnam.c:624) */
 }
 
 export async function touch_artifact_youmonst(otmp) {
@@ -238,10 +255,25 @@ export async function touch_artifact_youmonst(otmp) {
     const self_willed = (p.spfx & SPFX_INTEL) !== 0; /* artifact.c:920 */
 
     /* C artifact.c:921-928, the `yours` branch. */
-    const badclass = self_willed && (p.role || p.race);
+    /* C artifact.c:922: Role_if(oart->role) */
+    const roleMatch = arti === (quest_info(0) | 0)
+                      || _ARTI_GIFT_ROLE[arti] === ((g.flags?.initrole ?? -1) | 0);
+    const badclass = self_willed && ((p.role && !roleMatch) || p.race);
+    /* C artifact.c:88-104 hack_artifacts(): "gift" artifacts of the hero's own
+     * role (artifact.c:92-95) and the hero's quest artifact (:103) have their
+     * alignment rewritten to the hero's initial alignment, so a Valkyrie
+     * wishing for Mjollnir is never badalign and no rn2(4) is drawn. */
+    let al = p.al;
+    if (al !== A_NONE) {
+        const initrole = (g.flags?.initrole ?? -1) | 0;
+        if (_ARTI_GIFT_ROLE[arti] === initrole || arti === (quest_info(0) | 0)) {
+            const ia = (g.flags?.initalign ?? 0) | 0;
+            al = _ARTI_ALIGN_VALUE[ia] ?? al;
+        }
+    }
     let badalign = (p.spfx & SPFX_RESTR) !== 0
-                   && p.al !== A_NONE
-                   && (p.al !== ualignType || ualignRecord < 0);
+                   && al !== A_NONE
+                   && (al !== ualignType || ualignRecord < 0);
 
     /* C artifact.c:941-942: if (!badalign) badalign = bane_applies(oart, mon).
      * bane_applies requires (spfx & SPFX_DBONUS) and spec_applies(hero).  For
@@ -280,13 +312,32 @@ export async function touch_artifact_youmonst(otmp) {
          * losehp (hack.c:4219, exported from js/dokick.js) is RNG-free on the
          * hero's-own-action path and applies u.uhp -= dmg, which the status
          * line must show at the caller's --More--. */
+        /* A lethal blast: done() plines "You die..." inside losehp, which more()s
+         * the You() still on the topline (artifact.c:951 precedes :958), so the
+         * blast line must reach the tty before the death sequence runs. */
+        if (dmg >= ((u.uhp ?? 0) | 0) && g._touch_artifact_blast_msg) {
+            const _bm = g._touch_artifact_blast_msg;
+            g._touch_artifact_blast_msg = null;
+            await pline(_bm);
+        }
         await losehp(dmg, `touching ${_ta_xname(otmp)}`, KILLED_BY);
         /* C artifact.c:959 */
         exercise(A_WIS, false);
     }
 
     /* C artifact.c:962-971: badclass && badalign && self_willed → refuse (0). */
-    if (badclass && badalign && self_willed) return 0;
+    if (badclass && badalign && self_willed) {
+        const _blast = g._touch_artifact_blast_msg;
+        if (_blast) {
+            g._touch_artifact_blast_msg = null;
+            await force_more(_blast);
+        }
+        if ((otmp.where | 0) !== OBJ_INVENT_WIZ)
+            await pline(`${Tobjnam(otmp, 'evade')} your grasp!`);
+        else
+            await pline(`${Tobjnam(otmp, 'are')} beyond your control!`);
+        return 0;
+    }
     return 1; /* C artifact.c:973 */
 }
 
@@ -461,8 +512,8 @@ export async function wiz_level_change() {
         }
         if (newlevel < 1) newlevel = 1;
         /* C wizcmds.c:473: while (u.ulevel > newlevel) losexp("#levelchange") */
-        /* losexp not ported — stub; no RNG consumed in the unported path */
-        /* WIRE_PENDING: port-losexp-follow-up */
+        while ((u.ulevel | 0) > newlevel)
+            await losexp('#levelchange');
     } else {
         /* C wizcmds.c:475-484: going up */
         if ((u.ulevel | 0) >= MAXULEV) {
@@ -522,12 +573,13 @@ async function _wish_doname(otmp, quanOverride) {
         otmp.quan = savequan;
     }
 }
-const _MERGE_CLASSES = new Set([7 /*FOOD*/, 8 /*POTION*/, 9 /*SCROLL*/, 13 /*GEM*/]);
 function _wish_mergable(into, obj) {
     if (into === obj) return false;
     if ((into.otyp | 0) !== (obj.otyp | 0)) return false;
     if (obj.nomerge || into.nomerge) return false;
-    if (!_MERGE_CLASSES.has(obj.oclass | 0)) return false;
+    if (!oc_merge(obj.otyp)) return false;
+    /* C invent.c:4391-4393 — coins of the same kind will always merge */
+    if ((obj.oclass | 0) === COIN_CLASS_WZ) return true;
     if ((obj.cursed | 0) !== (into.cursed | 0)) return false;
     if ((obj.blessed | 0) !== (into.blessed | 0)) return false;
     if ((obj.spe | 0) !== (into.spe | 0)) return false;
@@ -537,6 +589,25 @@ function _wish_mergable(into, obj) {
     if ((obj.oclass | 0) === 7) {
         if ((obj.oeaten | 0) !== (into.oeaten | 0)) return false;
         if ((obj.orotten | 0) !== (into.orotten | 0)) return false;
+    }
+    /* C invent.c mergable(): erosion level and grease must match. */
+    if ((obj.oeroded | 0) !== (into.oeroded | 0)
+        || (obj.oeroded2 | 0) !== (into.oeroded2 | 0)
+        || (obj.greased | 0) !== (into.greased | 0)) return false;
+    /* C invent.c mergable(): corpses/eggs/tins merge only for the same
+     * monster type; hatching eggs never merge. */
+    const ot = obj.otyp | 0;
+    if (ot === 265 /* CORPSE */ || ot === 266 /* EGG */ || ot === 335 /* TIN */) {
+        if ((obj.corpsenm ?? -1) !== (into.corpsenm ?? -1)) return false;
+        if (ot === 266 && (obj.timed || into.timed)) return false;
+    }
+    /* C invent.c:4442-4446 — revivable corpses never merge (is_reviver:
+     * mondata.h:170, S_TROLL or a Rider; MONS row[0] is mlet, S_TROLL = 46). */
+    if (ot === 265 /* CORPSE */ && (into.corpsenm ?? -1) >= LOW_PM) {
+        const n = into.corpsenm | 0;
+        if ((monsPack.mons[n][0] | 0) === 46
+            || n === PM_DEATH || n === PM_FAMINE || n === PM_PESTILENCE)
+            return false;
     }
     return true;
 }
@@ -566,7 +637,7 @@ function _wish_encumber_text(oldcap, newcap) {
         switch (newcap) {
         case 1: return 'Your movements are slowed slightly because of your load.';
         case 2: return 'You rebalance your load.  Movement is difficult.';
-        case 3: return 'You stagger under your heavy load.  Movement is very hard.';
+        case 3: return `You ${stagger_verb()} under your heavy load.  Movement is very hard.`;
         default: return `You ${newcap === 4 ? 'can barely' : "can't even"} move a handspan with this load!`;
         }
     } else if (oldcap > newcap) {
@@ -574,7 +645,7 @@ function _wish_encumber_text(oldcap, newcap) {
         case 0: return 'Your movements are now unencumbered.';
         case 1: return 'Your movements are only slowed slightly by your load.';
         case 2: return 'You rebalance your load.  Movement is still difficult.';
-        case 3: return 'You stagger under your load.  Movement is still very hard.';
+        case 3: return `You ${stagger_verb()} under your load.  Movement is still very hard.`;
         default: return null;
         }
     }
@@ -597,9 +668,13 @@ async function _wish_encumber_msg(oldcap, prinvLine) {
         if (prinvLine) {
             const f = capture_painted_frame();
             if (f) {
-                f.cap = oldcap | 0;
+                /* C invent.c addinv_core1: gold sets disp.botl, so the prinv
+                 * pline's flush_screen runs bot() with the POST-add capacity
+                 * (the $ field is already updated; so is the cap). */
+                const _goldPrinv = prinvLine.startsWith('$ - ');
+                f.cap = (_goldPrinv ? newcap : oldcap) | 0;
                 g._pickupEncPreFrame = f;
-                g._pickupEncMorePending = { oldcap: oldcap | 0, prinvText: prinvLine };
+                g._pickupEncMorePending = { oldcap: (_goldPrinv ? newcap : oldcap) | 0, prinvText: prinvLine };
             }
         }
     } else {
@@ -658,6 +733,7 @@ async function _wish_drop_overburdened(obj, dropSpec) {
     }
 }
 
+import { merged as merged_glob } from './hold_another_object.js';
 async function _wish_addinv_prinv(otmp, dropSpec) {
     const g = game;
 
@@ -668,10 +744,11 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
     const _dropCap = Math.max(_oldcap, _pickupBurden);
     const _oquan = (otmp.quan ?? 1) | 0;
 
-    if (!_wish_Blind() && (otmp.otyp | 0) >= 0) {
-        otmp.dknown = 1;
-        discover_object(otmp.otyp | 0, false, true, false); /* RNG-free */
-    }
+    /* observe_object itself carries C's o_init.c:447 `!Hallucination` and
+     * FIRST_OBJECT guards: a hallucinating hero's wish leaves dknown unset, so a
+     * known-type tool still prints its appearance ("a glass orb"). */
+    if (!_wish_Blind() && (otmp.otyp | 0) >= 0)
+        observe_object(otmp); /* RNG-free */
 
     if (_wish_Fumbling()) {
         otmp.nomerge = 1;
@@ -692,16 +769,30 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
      * the wished object's quantity folds into the existing node and NO new
      * invlet is consumed; C still prinv()s, but with the surviving (merged)
      * object and its existing letter. */
-    for (let o = g.invent; o; o = o.nobj) {
-        if (_wish_mergable(o, otmp)) {
+    /* C invent.c:1100-1107 — merge with the quiver in preference to any other
+     * inventory slot, so a wished stack folds into the quivered one. */
+    const _wmerge = (g.u?.uquiver && _wish_mergable(g.u.uquiver, otmp)) ? g.u.uquiver
+        : (() => { for (let o = g.invent; o; o = o.nobj) if (_wish_mergable(o, otmp)) return o; return null; })();
+    for (let o = _wmerge; o; o = null) {
+        if (o) {
             /* C invent.c:856-875 — reconcile knowledge dimensions; if a real
              * discovery happened, C fires the comparison pline + forces a
              * --More-- (invent.c:934-942, otmp->where==OBJ_INVENT and neither
              * how_lost==LOST_THROWN — both true for a wished stack already held). */
-            const discovered = _wish_merged_reconcile(o, otmp);
+            let discovered = false;
             const oquan = ((otmp.quan ?? 1) | 0); /* prinv's quan arg = wished obj's quan */
+            if (otmp.globby) {
+                /* invent.c:928-931 — globs absorb (pudding_merge_message +
+                 * obj_absorb) instead of adding quantity. */
+                await merged_glob({ o }, { o: otmp });
+            } else {
             o.quan = ((o.quan ?? 1) | 0) + oquan;
+            /* C invent.c:838-839 — merged() clears bknown on merged gold
+             * before comparing the id dimensions (:871) */
+            if ((o.oclass | 0) === COIN_CLASS_WZ) o.bknown = 0;
+            discovered = _wish_merged_reconcile(o, otmp);
             o.owt = (o.owt | 0); /* weight recompute is weight-only/RNG-free */
+            }
             if (discovered) {
                 await force_more('You learn more about your items by comparing them.');
             }
@@ -719,6 +810,11 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 await _wish_drop_overburdened(dropped, dropSpec);
                 return;
             }
+            /* C invent.c:1282-1286 hold_another_object — autoquiver fills an empty quiver. */
+            if (game.flags?.autoquiver && !game.u.uquiver && !o.owornmask
+                && (is_missile(o) || ammo_and_launcher(o, game.u.uwep)
+                    || ammo_and_launcher(o, game.u.uswapwep)))
+                await setuqwep(o);
             let prinvLine = null;
             if (o.invlet) {
                 const total_of = (oquan > 0 && oquan < (o.quan | 0));
@@ -762,6 +858,10 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
             g._lastinvnr = i;
         }
     }
+    /* C invent.c:1082 addinv_core0 — addinv_core1(obj) runs first on every path:
+     * u.uhave.amulet = 1 + record_achievement(ACH_AMUL) etc.  Without it a
+     * wished Amulet never arms allmain.c:446's "bestowing a wish" block. */
+    await addinv_core1(otmp);
     otmp.where = OBJ_INVENT_WIZ;
     otmp.nobj = g.invent ?? null;
     g.invent = otmp;
@@ -769,6 +869,7 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
     const _core2msgs = [];
     otmp.pickup_prev = 1;
     addinv_core2(otmp, _core2msgs);
+    carry_obj_effects(otmp); /* C invent.c:1144 (cursed figurine timer) */
     /* C invent.c:1040's pline is committed and paged HERE rather than inside
      * addinv_core2: prinv's own pline is what more()s it in C, and this port's
      * prinv line goes through game._resultMessage, which does not page a
@@ -782,6 +883,11 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
         await _wish_drop_overburdened(otmp, dropSpec);
         return;
     }
+    /* C invent.c:1282-1286 hold_another_object — autoquiver fills an empty quiver. */
+    if (game.flags?.autoquiver && !game.u.uquiver && !otmp.owornmask
+        && (is_missile(otmp) || ammo_and_launcher(otmp, game.u.uwep)
+            || ammo_and_launcher(otmp, game.u.uswapwep)))
+        await setuqwep(otmp);
     /* C invent.c:2889 prinv — "<invlet> - <doname>." on the topline. */
     let prinvLine = null;
     if (otmp.invlet) {
@@ -1050,7 +1156,11 @@ export async function makewish() {
             promptbuf += " (enter 'help' for assistance)";
         promptbuf += '?';
 
-        const buf = await getlin(promptbuf);
+        let buf;
+        if (g.iflags?.menu_requested && wish_history_has() && tries === 0)
+            buf = (await wish_history_menu()) ?? '';
+        else
+            buf = await getlin(promptbuf);
 
         /* C zap.c:6343: (void) mungspaces(buf);
          * C zap.c:6344-6350:
@@ -1091,12 +1201,14 @@ export async function makewish() {
             /* C zap.c:6369-6373 — explicitly declined the wish. */
             return;
         } else if (otmp === hands_obj) {
+            wish_history_add(wishstr);
             /* C zap.c:6373-6377 — terrain success: no object to hold,
              * no wish-conduct increment, and no ublesscnt adjustment.
              * DEBUG wish-history storage is not yet modeled by makewish. */
             return;
         }
         wishedText = wishstr;
+        wish_history_add(wishstr);
         break;
     }
 
@@ -1134,17 +1246,25 @@ export async function makewish() {
         otmp.wishedfor = 1;
     const _wishDropSpec = otmp ? _wish_drop_spec(otmp) : null;
 
+    let _wishRefused = false;
     if (otmp && (otmp.oartifact | 0)) {
         if (!_wish_Blind())
             otmp.dknown = 1;
-        await touch_artifact_youmonst(otmp);
+        /* C invent.c:1218-1231 */
+        place_object(otmp, g.u.ux | 0, g.u.uy | 0);
+        const canTouch = await touch_artifact_youmonst(otmp);
+        remove_object(otmp);
+        if (!canTouch) {
+            await dropy(otmp);
+            _wishRefused = true;
+        }
     }
 
-    if (otmp && (otmp.oclass | 0) !== 0) {
+    if (otmp && !_wishRefused && (otmp.oclass | 0) !== 0) {
         const blastMsg = g._touch_artifact_blast_msg;
         if (blastMsg) {
             g._touch_artifact_blast_msg = null;
-            await force_more(blastMsg);
+            await pline(blastMsg);
         }
         await _wish_addinv_prinv(otmp, _wishDropSpec);
     }
@@ -1328,7 +1448,15 @@ async function create_particular_creation(d) {
         if (remapped && firstchoice !== PM_LONG_WORM_TAIL) {
             const buf = `Creating ${monPmname(d.which, _CP_NEUTRAL)} instead; force `
                       + `${monPmname(firstchoice, _CP_NEUTRAL)}?`;
-            if (await y_n_default(buf, 'n') === 'y')
+            const ans = await y_n_default(buf, 'n');
+            /* C win/tty/topl.c:545 — tty_yn_function never erases the answered
+             * prompt; it stays on the terminal row until a later pline
+             * overwrites it.  js nhgetch drops _pending_message on read, so hand
+             * the prompt to the paint-time fallback (js/display.js _topl_sticky)
+             * — "Creating doppelganger instead; force Juiblex?" with no
+             * "appears" message still shows at the next input boundary. */
+            game._topl_sticky = `${buf} [yn] (n)`;
+            if (ans === 'y')
                 d.which = firstchoice;
         }
         whichpm = permonstTemplate(d.which);
@@ -1443,6 +1571,26 @@ export async function create_particular() {
     return await create_particular_creation(d);
 }
 
+/* C wizcmds.c:410-442 wiz_flip_level() — #wizfliplevel; returns ECMD_OK. */
+export async function wiz_flip_level() {
+    const choices = '0123';
+    const prmpt = 'Flip 0=randomly, 1=vertically, 2=horizontally, 3=both:';
+    if (wizard) {
+        let c = await yn_function(prmpt, choices, '\0', true);
+        if (c && c !== '\0' && choices.includes(c)) {
+            c = c.charCodeAt(0) - 48;
+            if (!c)
+                await flip_level_rnd(3, true);
+            else
+                await flip_level(c, true);
+            await docrt();
+        } else {
+            await pline('Never mind.');
+        }
+    }
+    return ECMD_OK;
+}
+
 /* C wizcmds.c:203 wiz_genesis — returns ECMD_OK (no turn) either way. */
 export async function wiz_genesis() {
     const g = game;
@@ -1462,5 +1610,428 @@ export async function wiz_genesis() {
     }
 
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
+    return ECMD_OK;
+}
+
+/* C wizcmds.c:229 wiz_detect — #wizdetect: findit() in wizard mode.
+ * Returns ECMD_OK on both arms (no turn). */
+export async function wiz_detect() {
+    if (wizard()) {
+        await findit();
+    } else {
+        await pline('Unavailable command \'wizdetect\'.');
+    }
+    return ECMD_OK;
+}
+
+import { ROWNO, COULD_SEE, IN_SIGHT, TEMP_LIT, IS_WALL, IS_ROOM, IS_DOOR,
+         SDOOR, CORR, WM_MASK, u_at } from './const.js';
+
+/* C wizcmds.c:575 wiz_show_seenv() — #wizseenv.  Each seenv value takes two
+ * characters, so the display is centred on the hero.  NHW_TEXT: no turn, no
+ * RNG. */
+export async function wiz_show_seenv() {
+    const u = game.u;
+    const lines = [];
+    let startx = Math.max(1, u.ux - Math.trunc(COLNO / 4));
+    const stopx = Math.min(startx + Math.trunc(COLNO / 2), COLNO);
+    /* can't have a line exactly 80 chars long */
+    if (stopx - startx === Math.trunc(COLNO / 2))
+        startx++;
+    for (let y = 0; y < ROWNO; y++) {
+        let row = '';
+        for (let x = startx; x < stopx; x++) {
+            if (u_at(x, y)) {
+                row += '@@';
+            } else {
+                const v = (game.level.at(x, y)?.seenv | 0) & 0xff;
+                row += (v === 0) ? '  ' : v.toString(16).padStart(2, '0');
+            }
+        }
+        /* remove trailing spaces */
+        lines.push(row.replace(/ +$/, ''));
+    }
+    await display_text_window(lines);
+    return ECMD_OK;
+}
+
+/* C wizcmds.c:620 wiz_show_vision() — #vision. */
+export async function wiz_show_vision() {
+    const lines = [];
+    lines.push(`Flags: 0x${COULD_SEE.toString(16)} could see, 0x${IN_SIGHT.toString(16)} in sight, 0x${TEMP_LIT.toString(16)} temp lit`);
+    lines.push('');
+    for (let y = 0; y < ROWNO; y++) {
+        let row = '';
+        for (let x = 1; x < COLNO; x++) {
+            if (u_at(x, y)) {
+                row += '@';
+            } else {
+                const v = game.viz_array?.[y]?.[x] | 0;
+                row += (v === 0) ? ' ' : String.fromCharCode(48 + v);
+            }
+        }
+        lines.push(row.replace(/ +$/, ''));
+    }
+    await display_text_window(lines);
+    return ECMD_OK;
+}
+
+/* C wizcmds.c:656 wiz_show_wmodes() — #wmode. */
+export async function wiz_show_wmodes() {
+    const lines = [];
+    lines.push(''); /* WINDOWPORT(tty) only: blank top line */
+    for (let y = 0; y < ROWNO; y++) {
+        let row = '';
+        for (let x = 0; x < COLNO; x++) {
+            const lev = game.level.at(x, y);
+            if (u_at(x, y))
+                row += '@';
+            else if (IS_WALL(lev.typ) || lev.typ === SDOOR)
+                row += String.fromCharCode(48 + ((lev.wall_info | 0) & WM_MASK));
+            else if (lev.typ === CORR)
+                row += '#';
+            else if (IS_ROOM(lev.typ) || IS_DOOR(lev.typ))
+                row += '.';
+            else
+                row += 'x';
+        }
+        lines.push(row.slice(1));
+    }
+    await display_text_window(lines);
+    return ECMD_OK;
+}
+
+/* C ref: wizcmds.c:70-105 makemap_unmakemon(mtmp, migratory) — un-create one
+ * monster of the level being replaced so the new incarnation may remake it. */
+async function makemap_unmakemon(mtmp, migratory) {
+    const g = game;
+    const ndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
+    const mv = ndx >= 0 && g.mvitals ? (g.mvitals[ndx] ||= { born: 0, died: 0, mvflags: 0 }) : null;
+    if (mv) {
+        /* G_UNIQ = 0x1000 (monflag.h) */
+        if (mtmp.data && (mtmp.data.geno & 0x1000))
+            mv.mvflags &= ~0x01; /* ~G_EXTINCT */
+        if (mv.born)
+            mv.born--;
+    }
+    if (mtmp.isgd) {
+        mtmp.isgd = 0; /* fall through to mongone() */
+    } else if ((mtmp.mhp | 0) < 1) {
+        return; /* DEADMONSTER: already set to be discarded */
+    }
+    /* wizcmds.c:91-93 setpaid() for a shk on this level: private to js/shk.js, RNG-free. */
+    if (migratory) {
+        mtmp.mstate = ((mtmp.mstate | 0) | 0x01 /* MON_OFFMAP */)
+            & ~(0x04 | 0x08 | 0x40); /* ~(MIGRATING|LIMBO|ENDGAME_MIGR) */
+        mtmp.nmon = g.fmon;
+        g.fmon = mtmp;
+    }
+    await mongone(mtmp);
+}
+
+/* C ref: wizcmds.c:109-153 makemap_remove_mons(void) */
+async function makemap_remove_mons() {
+    const g = game;
+    const { keepdogs } = await import('./dog.js');
+    await keepdogs(true);
+    let nxt;
+    for (let mtmp = g.fmon; mtmp; mtmp = nxt) {
+        nxt = mtmp.nmon;
+        if ((mtmp.mhp | 0) < 1)
+            continue;
+        await makemap_unmakemon(mtmp, false);
+    }
+    const { on_level } = await import('./dungeon.js');
+    let mprev = null;
+    for (let mtmp = g.migrating_mons; mtmp; ) {
+        const e = mtmp.mextra;
+        if (e && ((mtmp.isshk && e.eshk && on_level(g.u.uz, e.eshk.shoplevel))
+                  || (mtmp.ispriest && e.epri && on_level(g.u.uz, e.epri.shrlevel))
+                  || (mtmp.isgd && e.egd && on_level(g.u.uz, e.egd.gdlevel)))) {
+            const nx = mtmp.nmon;
+            if (mprev) mprev.nmon = nx; else g.migrating_mons = nx;
+            await makemap_unmakemon(mtmp, true);
+            mtmp = nx;
+        } else {
+            mprev = mtmp;
+            mtmp = mtmp.nmon;
+        }
+    }
+    dmonsfree();
+}
+
+/* C ref: cmd.c:986-1062 makemap_prepost(pre, wiztower).  rm_mapseen() (the
+ * #overview record) and the achievement revocation have no JS counterpart; both
+ * are RNG-free and screen-invisible apart from Mine's-end/Soko-end prize levels. */
+export async function makemap_prepost(pre, wiztower) {
+    const g = game;
+    const u = g.u;
+    if (pre) {
+        await makemap_remove_mons();
+        if (u.uball) {
+            const { ballrelease, unplacebc } = await import('./ball.js');
+            await ballrelease(false);
+            unplacebc();
+        }
+        (await import('./lock.js')).maybe_reset_pick(null);
+        const dg = g.context?.digging;
+        if (dg && dg.level && (await import('./dungeon.js')).on_level(dg.level, u.uz))
+            g.context.digging = {};
+        g.iflags = g.iflags || {};
+        g.iflags.travelcc = { x: 0, y: 0 };
+        if (g.context?.polearm) g.context.polearm.hitmon = null;
+        await (await import('./trap.js')).reset_utrap(false);
+        await (await import('./cmd.js')).check_special_room(true);
+        g.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+        g.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+        u.ustuck = null;
+        u.uswallow = u.uswldtim = 0;
+        (await import('./cmd.js')).set_uinwater(0);
+        u.uundetected = 0;
+        dmonsfree();
+        (await import('./mklev.js')).dobjsfree();
+        const dgn = g.dungeons?.[u.uz.dnum | 0];
+        const ledger = (u.uz.dlevel | 0) + (dgn?.ledger_start | 0);
+        (await import('./save.js')).savelev(ledger);
+    } else {
+        (await import('./vision.js')).vision_reset();
+        g.vision_full_recalc = 1;
+        const disp = await import('./display.js');
+        /* C display.c:2196 cls() opens with display_nhwindow(WIN_MESSAGE, FALSE):
+         * a pending topline (e.g. makemon's "A shopkeeper suddenly appears close
+         * by!" from fill_special_room) is paged with --More-- before the clear. */
+        if (g._pending_message)
+            await disp.force_more(String(g._pending_message));
+        g._levelgenPaintFreeze = null; /* cls() wipes the physical screen */
+        await disp.cls();
+        const mk = await import('./mklev.js');
+        await mk.u_on_rndspot((u.uhave?.amulet ? 1 : 0) | (wiztower ? 2 : 0));
+        await (await import('./dog.js')).losedogs();
+        await mk.kill_genocided_monsters();
+        /* C cmd.c:1043-1044 u_collide_m(), as inlined in goto_level (js/cmd.js) */
+        const tp = await import('./teleport.js');
+        let collMon = m_at(u.ux | 0, u.uy | 0);
+        if (collMon) {
+            let moved = false;
+            if (!rn2(2)) {
+                const cc = tp.enexto_core(u.ux | 0, u.uy | 0);
+                if (cc && ((cc.x - u.ux) ** 2 + (cc.y - u.uy) ** 2) <= 2) {
+                    mk.u_on_newpos(cc.x, cc.y);
+                    moved = true;
+                }
+            }
+            if (!moved)
+                await tp.mnexto(collMon, tp.RLOC_NOMSG);
+            collMon = m_at(u.ux | 0, u.uy | 0);
+            if (collMon) {
+                if (!await tp.rloc(collMon, tp.RLOC_NOMSG) || (collMon = m_at(u.ux | 0, u.uy | 0)))
+                    await (await import('./dog.js')).m_into_limbo(collMon);
+            }
+        }
+        (await import('./track.js')).initrack();
+        if (u.uball) {
+            const b = await import('./ball.js');
+            b.unplacebc();
+            await b.placebc();
+        }
+        /* C display.c docrt_flags() -> cls() -> display_nhwindow(WIN_MESSAGE, FALSE):
+         * whatever u_on_rndspot()/losedogs() left on the topline (place_lregion's
+         * impossible() trio) is paged with a final --More-- before the repaint. */
+        await flush_screen(1);  /* pline.c:273 flush_screen() per message: pages all but the last */
+        if (g._pending_message)
+            await disp.force_more(String(g._pending_message));
+        await disp.docrt();
+        flush_screen(1);
+        await (await import('./objnam.js')).deliver_splev_message();
+        await (await import('./cmd.js')).check_special_room(false);
+    }
+}
+
+/* C ref: wizcmds.c:155-171 wiz_makemap(void) — #wizmakemap: discard the
+ * current level and replace it with a freshly generated one. */
+export async function wiz_makemap() {
+    if (wizard()) {
+        const wasW = (await import('./dochug.js')).In_W_tower_wz(game.u.ux | 0, game.u.uy | 0, game.u.uz);
+        await makemap_prepost(true, wasW);
+        await (await import('./mklev.js')).mklev();
+        await makemap_prepost(false, wasW);
+    } else {
+        await pline('Unavailable command \'wizmakemap\'.');
+    }
+    return ECMD_OK;
+}
+
+/* C ref: dig.c:2287-2318 wiz_debug_cmd_bury() — the #wizbury command: bury
+ * everything at the hero's location and around. */
+export async function wiz_debug_cmd_bury() {
+    const u = game.u;
+    const lo = game.level.levelObjects;
+    const count = (x, y) => {
+        let n = 0;
+        for (let o = lo?.[x]?.[y] || null; o; o = o.nexthere) ++n;
+        return n;
+    };
+    let before = 0, after = 0;
+    for (let x = u.ux - 1; x <= u.ux + 1; x++)
+        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            if (x < 1 || x > COLNO - 1 || y < 0 || y > 20) continue; /* isok */
+            before += count(x, y);
+            await bury_objs(x, y);
+            after += count(x, y);
+        }
+    const diff = before - after;
+    if (before === 0)
+        await pline("No objects here or adjacent to bury.");
+    else if (diff === 0)
+        await pline("No objects buried.");
+    else
+        await pline("%d object%s buried.", diff, diff === 1 ? "" : "s");
+    return 0; /* ECMD_OK */
+}
+
+/* C ref: timeout.c:2011-2030 print_queue() — lines for one timer chain.
+ * fmt_ptr() prints a host address no replay can reproduce; stand-in used. */
+const _TIMER_KINDS = ['none', 'level', 'global', 'object', 'monster'];
+const _TIMER_FUNC_NAMES = ['rot_organic', 'rot_corpse', 'revive_mon', 'zombify_mon',
+    'burn_object', 'hatch_egg', 'fig_transform', 'shrink_glob', 'melt_ice_away'];
+function _print_queue_lines(base) {
+    if (!base) return [' <empty>'];
+    const lines = ['timeout  id   kind   call'];
+    for (let curr = base; curr; curr = curr.next) {
+        const o = curr.arg?.a_obj;
+        const ptr = '0x' + (o ? 0x55d0c0de0000 + ((o.o_id | 0) << 6) : 0).toString(16).padStart(16, '0');
+        lines.push(' ' + String(curr.timeout).padStart(4) + '   ' + String(curr.tid).padStart(4)
+                   + '  ' + (_TIMER_KINDS[curr.kind] ?? 'unknown').padEnd(6) + ' '
+                   + _TIMER_FUNC_NAMES[curr.func_index] + '(' + ptr + ')');
+    }
+    return lines;
+}
+
+/* C ref: region.c:673-710 visible_region_summary() — lines instead of putstr. */
+function _visible_region_summary_lines() {
+    const lines = [];
+    const fldsep = game.iflags?.menu_tab_sep ? '\t' : '  ';
+    for (const reg of region_stats_snapshot().regions) {
+        if (!reg.visible || reg.ttl === -2) continue;
+        if (!lines.length) lines.push('', 'Visible regions');
+        const damg = reg.arg?.a_int | 0;
+        const typbuf = damg ? `poison gas (${damg})` : 'vapor';
+        const bb = reg.bounding_box;
+        lines.push(String(reg.ttl + 1).padStart(5) + fldsep + typbuf.padEnd(16)
+                   + fldsep + `@[${bb.lx},${bb.ly}..${bb.hx},${bb.hy}]`);
+    }
+    return lines;
+}
+
+/* C ref: timeout.c:2040-2150 wiz_timeout_queue() — the #timeout command: a
+ * corner text window; no turn, no RNG. */
+export async function wiz_timeout_queue() {
+    const g = game;
+    const u = g.u;
+    const TIMEOUT = 0x00FFFFFF;
+    const COLD_RES_ID = COLD_RES;
+    const lines = [`Current time = ${g.moves | 0}.`, '', 'Active timeout queue:', ''];
+    lines.push(..._print_queue_lines(g.gt?.timer_base ?? null));
+    let count = 0, longestlen = 0, specindx = 0;
+    for (let i = 0; ; ++i) {
+        const [p, propname] = property_by_index(i);
+        if (!propname) break;
+        const intrinsic = u.uprops[p].intrinsic | 0;
+        if (intrinsic & TIMEOUT) {
+            ++count;
+            if (propname.length > longestlen) longestlen = propname.length;
+        }
+        if (specindx === 0 && p === COLD_RES_ID) specindx = i;
+    }
+    lines.push('');
+    if (!count) {
+        lines.push('No timed properties.');
+    } else {
+        lines.push('Timed properties:', '');
+        for (let i = 0; ; ++i) {
+            const [p, propname] = property_by_index(i);
+            if (!propname) break;
+            const intrinsic = u.uprops[p].intrinsic | 0;
+            if (intrinsic & TIMEOUT) {
+                if (specindx > 0 && i >= specindx) {
+                    lines.push(' -- settable via #wizintrinsic only --');
+                    specindx = 0;
+                }
+                lines.push(' ' + propname.padEnd(longestlen) + ' ' + String(intrinsic & TIMEOUT).padStart(4));
+            }
+        }
+    }
+    if (u.uswldtim) {
+        lines.push('', `Swallow countdown is ${u.uswldtim >>> 0}.`);
+    }
+    if (u.uinvault) {
+        lines.push('', `Vault counter is ${u.uinvault | 0}.`);
+    }
+    if (any_visible_region())
+        lines.push(..._visible_region_summary_lines());
+    const stasis = g.level?.flags?.stasis_until | 0;
+    if (stasis >= (g.moves | 0)) {
+        const left = stasis - (g.moves | 0);
+        lines.push('', `Level is no-teleport for ${left + 1} ${left > 0 ? 'turns' : 'more turn'}.`);
+    }
+    await displayLookWindow(lines); /* NHW_MENU corner window (timeout.c:2049) */
+    return ECMD_OK;
+}
+
+/* C ref: light.c:934-975 wiz_light_sources() — the #lightsources command: a
+ * corner text window; no turn, no RNG.  fmt_ptr() stand-in as in #timeout. */
+export async function wiz_light_sources() {
+    const g = game;
+    const pad2 = (n) => String(n).padStart(2);
+    const lines = [`Mobile light sources: hero @ (${pad2(g.u.ux)},${pad2(g.u.uy)})`, ''];
+    const sources = light_sources_list();
+    if (sources.length) {
+        lines.push('location range flags  type    id',
+                   '-------- ----- ------ ----  -------');
+        for (const ls of sources) {
+            const id = ls.id || {};
+            const who = ls.type === LS_OBJECT ? 'obj'
+                : ls.type === LS_MONSTER
+                    ? ((id.a_monst?.mx | 0) > 0 ? 'mon'
+                        : (id.a_monst === g.youmonst) ? 'you' : '<m>')
+                    : '???';
+            const o = id.a_obj ?? id.a_monst;
+            const ptr = '0x' + (o ? 0x55d0c0de0000 + (((o.o_id ?? o.m_id) | 0) << 6) : 0).toString(16).padStart(16, '0');
+            lines.push(`  ${pad2(ls.x)},${pad2(ls.y)}   ${pad2(ls.range)}   0x${(ls.flags | 0).toString(16).padStart(4, '0')}  ${who}  ${ptr}`);
+        }
+    } else {
+        lines.push('<none>');
+    }
+    await displayLookWindow(lines);
+    return ECMD_OK;
+}
+
+/* C ref: wizcmds.c:376-395 wiz_load_splua(void) — #wizloaddes: load a special
+ * level lua file onto the current level. */
+export async function wiz_load_splua() {
+    if (wizard()) {
+        let buf = await getlin('Load which des lua file?');
+        if (buf === '' || buf[0] === '\x1b')
+            return ECMD_CANCEL;
+        if (!buf.includes('.'))
+            buf += '.lua';
+        const sp = await import('./sp_lev.js');
+        /* C's gbuf is global and survives clear_level_structures(); nothing
+         * repaints the map until makemap_prepost(FALSE)'s docrt(), so a pline
+         * raised by load_special/fixup_special (e.g. "Couldn't place lregion
+         * type 2!--More--") is drawn over the OLD map.  Freeze the paint on
+         * the pre-reset frame until makemap_prepost's cls() releases it. */
+        const frame = (await import('./display.js')).capture_painted_frame();
+        game._levelgenPaintFreeze = frame;
+        try {
+            await sp.lspo_reset_level();
+            await sp.load_special(buf);
+            await sp.lspo_finalize_level();
+        } finally {
+            game._levelgenPaintFreeze = null;
+        }
+    } else {
+        await pline('Unavailable command \'wizloaddes\'.');
+    }
     return ECMD_OK;
 }

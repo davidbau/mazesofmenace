@@ -13,9 +13,9 @@ import { COST_CONTENTS, BURN_OBJECT, otrapped_of } from './const.js';
 //   1. rnd_otyp_by_namedesc: rn2(maxprob) when name match needed
 //   2. mksobj: rnd(2) @ next_ident, then class-specific init RNG
 //   3. makewish end: rn2(100) for u.ublesscnt (zap.c:6414)
-import { pline } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
+import { pline, livelog_printf } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { weight } from './weight.js';
-import { WT_IRON_BALL_INCR } from './const.js';
+import { WT_IRON_BALL_INCR, LL_CONDUCT, LL_ARTIFACT } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { game, wizard, discover } from './gstate.js';
 import { clong } from './integer.js';
@@ -25,13 +25,13 @@ import { mksobj, mkobj, place_object, eos, lowc, highc, letter, mungspaces, digi
           * block (objnam.c:5216-5222).  It re-runs start_corpse_timeout, so it
           * DRAWS; see the leaf note in _finalize_wish. */
          set_corpsenm, can_be_hatched, Can_fall_thru } from './mklev.js';
-import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './pm.generated.js';
+import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING } from './pm.generated.js';
 import { MKOBJ_OC_PROB, MKOBJ_SVB_BASES, MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { getObjName } from './o_init.js';
 import { OC_NAME } from './oc_name_data.js';
 import { OC_DESCR } from './oc_descr_data.js';
 import { OC_CHARGED, OC_COST } from './oc_cost_data.js';
-import { hard_helmet, oc_armcat } from './do_wear.js';
+import { hard_helmet, oc_armcat, doffing, donning } from './do_wear.js';
 import { the_unique_pm, permonstTemplate, monPmname, trapname,
          /* C mondata.c:920 name_to_mon — readobjnam's "<obj> of <monster>" arm. */
          name_to_mon } from './makemon.js';
@@ -55,7 +55,24 @@ import { NEUTRAL, ONAME, has_oname, BLINDED, P_BOW, P_SHURIKEN,
          CORPSTAT_GENDER,
          ismnum, NO_TRAP, TRAPNUM, ROCKTRAP, MAGIC_PORTAL, BEAR_TRAP, LANDMINE,
          is_hole } from './const.js';
-import { impossible_, maketrap } from './trap.js';
+import { impossible_, maketrap, t_at, deltrap, reset_utrap } from './trap.js';
+import { feel_newsym, docrt } from './display.js';
+import { fire_damage_chain, water_damage_chain, pooleffects, switch_terrain, set_uinwater,
+         waterbody_name, ice_descr } from './cmd.js';
+import { make_grave, del_engr_at, fix_wall_spines, count_level_features } from './mklev.js';
+import { recalc_block_point } from './vision.js';
+import { is_pool, is_pool_or_lava } from './look.js';
+import { is_ice } from './engrave.js';
+import { spot_stop_timers } from './timeout.js';
+import { start_melt_ice_timeout } from './zap.js';
+import { FOUNTAIN, THRONE, SINK, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, ICED_POOL, ICED_MOAT,
+         ALTAR, TREE, IRONBARS, CLOUD, DOOR, SDOOR, CORR, SCORR, ROOM, HWALL, VWALL, DBWALL,
+         DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE, DB_FLOOR,
+         F_LOOTED, T_LOOTED, S_LPUDDING, S_LDWASHER, S_LRING, TREE_LOOTED, TREE_SWARM,
+         D_NODOOR, D_ISOPEN, D_BROKEN, D_CLOSED, D_LOCKED, D_TRAPPED, WM_MASK,
+         A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_NONE, IS_WALL, IS_GRAVE, IS_FOUNTAIN, IS_SINK, IS_DOOR,
+         Align2amask, TT_LAVA, MELT_ICE_AWAY, IS_FURNITURE, Is_rogue_level, LADDER, STAIRS,
+         W_NONDIGGABLE, W_NONPASSWALL, HALLUC_RES, LEVITATION, FLYING, isok, COLNO, ROWNO } from './const.js';
 import { update_inventory } from './mhitm.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_MERGE, MKOBJ_OC_MAGIC,
          MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
@@ -83,7 +100,7 @@ import { begin_burn, peek_timer } from './timeout.js';
  * gstate/const/display, so this edge closes no cycle back into objnam.js. */
 import { cansee as cansee_on } from './vision.js';
 import { BOGUSMON_LINES } from './bogusmon_data.js';
-import { mons_cnutrit } from './food_props.js';
+import { mons_cnutrit, obj_nutrition } from './food_props.js';
 import { counter_were } from './were.js';
 
 /* C ref: nethack-c/src/pline.c:587-637 impossible(const char *s, ...) — it
@@ -552,7 +569,7 @@ function _artifact_origin(arti, aflags) {
 /* C artifact.c:340-352 exist_artifact(int otyp, const char *name) — has the
  * artifact with this EXACT name and base type already been created?  Note C
  * uses strcmp, not the fuzzy/"the "-stripping match artifact_name() uses. */
-function exist_artifact(otyp, name) {
+export function exist_artifact(otyp, name) {
     if (otyp && name) {
         for (let m = 0; m < ARTILIST.length; m++)
             if (ARTILIST[m].otyp === otyp && ARTILIST[m].name === name)
@@ -631,7 +648,17 @@ export function oname(obj, name, oflgs) {
             throw new Error('UNPORTED-CALLEE: oname alter_cost');
         if (via_naming) {
             /* violate illiteracy conduct since successfully wrote arti-name */
-            throw new Error('UNPORTED-CALLEE: oname via_naming livelog');
+            const uc = (game.u.uconduct = game.u.uconduct || {});
+            const wasLiterate = (uc.literate | 0);
+            uc.literate = wasLiterate + 1;
+            if (!wasLiterate)
+                livelog_printf(LL_CONDUCT | LL_ARTIFACT,
+                               'became literate by naming %s',
+                               bare_artifactname(obj));
+            else
+                livelog_printf(LL_ARTIFACT,
+                               'chose %s to be named "%s"',
+                               ansimpleoname(obj), bare_artifactname(obj));
         }
     }
     /* C: carried(o) == (o->where == OBJ_INVENT) */
@@ -1063,7 +1090,14 @@ export function doname_potion(obj) {
             || (!obj.cursed && !obj.blessed))) {
         if (obj.cursed) prefix += 'cursed ';
         else if (obj.blessed) prefix += 'blessed ';
-        else prefix += 'uncursed ';
+        /* C objnam.c:1328-1348 — potions are never oc_charged, so only the
+         * implicit_uncursed option (default on) and Role_if(PM_CLERIC) matter. */
+        /* objnam.c:1329-1349: implicit_uncursed defaults on, so "uncursed" is
+         * printed only for a non-Cleric (oc_charged is false for potions). */
+        else if (!(g.flags && (g.flags.implicit_uncursed === undefined
+                               ? true : !!g.flags.implicit_uncursed))
+                 || !_Role_if(ROLE_IDX_PRIEST))
+            prefix += 'uncursed ';
     }
     /* a/an correction (objnam.c:1684-1691): recompute the article from whatever
      * now follows "a " (the BUC word if present, else the object name). */
@@ -1346,6 +1380,10 @@ function _buildObjNameTbl() {
  * needs to match by name. */
 const OC_NAME_JS_ALIGNED_MAX = 366; /* JS otyp == C otyp for i < 366 */
 function _objName(i) {
+    /* options.c:7341 — initoptions_finish: obj_descr[SLIME_MOLD].oc_name =
+     * "fruit", so OBJ_NAME(objects[SLIME_MOLD]) is "fruit" in a running game
+     * (the real slime mold is only wishable via a named/default fruit). */
+    if (i === SLIME_MOLD) return "fruit";
     /* OBJ_NAME(objects[i]) — the role-invariant real name, full otyp coverage.
      * getObjName() is authoritative (JS numbering) for the classes it covers
      * (shuffled ranges + spellbooks/wands/gems at otyp >= 366) and for the JS
@@ -1963,6 +2001,7 @@ export async function readobjnam(bp, no_wish) {
 
     /* mungspaces: trim and collapse whitespace */
     bp = bp.trim().replace(/\s+/g, ' ');
+    const fruitbuf = bp; /* C objnam.c:4926 Strcpy(d.fruitbuf, bp) */
 
     /* "nothing" / "nil" / "none" → no_wish */
     if (bp === '' || /^(nothing|nil|none)$/i.test(bp))
@@ -1980,9 +2019,9 @@ export async function readobjnam(bp, no_wish) {
     const dx = {
         trapped: d.trapped, locked: d.locked, unlocked: d.unlocked,
         broken: d.broken, isgreased: d.isgreased, isdiluted: d.isdiluted,
-        eroded: d.eroded, eroded2: d.eroded2, ishistoric: d.ishistoric,
+        halfeaten: d.halfeaten, eroded: d.eroded, eroded2: d.eroded2, ishistoric: d.ishistoric,
         contents: d.contents, wetness: d.wetness, very: d.very,
-        mntmp: NON_PM, mgend: d.mgend, tvariety: -1,
+        mntmp: NON_PM, mgend: d.mgend, tvariety: -1, gsize: d.gsize | 0,
     };
 
     if (!cnt) cnt = 1;
@@ -2003,11 +2042,65 @@ export async function readobjnam(bp, no_wish) {
         return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx);
     }
 
+    /* " of spinach" is stripped off in postparse1 (objnam.c:4278-4281), leaving
+     * e.g. "4 tins" -> "tin", which then resolves RNG-free via postparse3. */
+    {
+        const sp = _strstri(bp, ' of spinach');
+        if (sp >= 0) {
+            bp = bp.slice(0, sp);
+            dx.contents = TIN_SPINACH_C;
+        }
+    }
+    /* C objnam.c:4324-4334 — skip over "pair of ", "pairs of", "set of" and
+     * "sets of" (boots/gloves/lenses wishes: "cursed pair of levitation boots"). */
+    if (strncmpi(bp, 'pair of ', 8) === 0) {
+        bp = bp.slice(8);
+        cnt *= 2;
+    } else if (strncmpi(bp, 'pairs of ', 9) === 0) {
+        bp = bp.slice(9);
+        if (cnt > 1) cnt *= 2;
+    } else if (strncmpi(bp, 'set of ', 7) === 0) {
+        bp = bp.slice(7);
+    } else if (strncmpi(bp, 'sets of ', 8) === 0) {
+        bp = bp.slice(8);
+    }
     /* makesingular if needed */
+    const bp_presingular = bp; /* C's postparse1 tin test runs BEFORE makesingular (postparse2) */
     const sg = makesingular(bp);
     if (sg !== bp) {
         if (cnt === 1) cnt = 2;
         bp = sg;
+    }
+
+    /* C objnam.c:4337-4366 — intercept pudding globs ("glob", "<foo> glob",
+     * "glob of <foo>") so they are not treated as a corpse.  An unrecognised
+     * monster picks a random glob type (rn1(PM_BLACK_PUDDING - PM_GRAY_OOZE,
+     * PM_GRAY_OOZE)); the canonical spelling "glob of <pmname>" is then
+     * looked up in FOOD_CLASS (`goto srch`, objnam.c:4957 -> postparse3). */
+    {
+        const origbp = bp;
+        const lcb = bp.toLowerCase();
+        let gp = -1;
+        const isGlob = lcb === 'glob' || lcb.endsWith(' glob')
+            || lcb === 'globs' || lcb.endsWith(' globs')
+            || (gp = _strstri(bp, 'glob of ')) >= 0
+            || (gp = _strstri(bp, 'globs of ')) >= 0;
+        if (isGlob) {
+            const gr = name_to_mon(gp < 0 ? bp : bp.slice(_strstri(bp.slice(gp), ' of ') + gp + 4), null);
+            let gm = (gr && typeof gr === 'object') ? gr.mntmp : gr;
+            if (gm == null || gm < 0)
+                gm = rn1_local(PM_BLACK_PUDDING - PM_GRAY_OOZE, PM_GRAY_OOZE);
+            if (cnt < 2 && _strstri(bp, 'globs') >= 0)
+                cnt = 2;
+            bp = 'glob of ' + monPmname(gm, 2);
+            let gtyp = rnd_otyp_by_namedesc_js(bp, FOOD_CLASS, 1);
+            if (gtyp === STRANGE_OBJECT && origbp !== bp)
+                gtyp = rnd_otyp_by_namedesc_js(origbp, FOOD_CLASS, 1);
+            if (gtyp === STRANGE_OBJECT)
+                return null;
+            const otmp = await mksobj(gtyp, true, false);
+            return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx);
+        }
     }
 
     /* C objnam.c:3374-3429 spellings[] — alternate names which cannot be
@@ -2076,7 +2169,11 @@ export async function readobjnam(bp, no_wish) {
     const bplc = bp.toLowerCase();
 
     /* Check for "<class> of something" or "something <class>" */
-    for (let i = 0; i < WRP_NAMES.length; i++) {
+    /* C objnam.c:4560-4566 — avoid false class hits ("ring mail", "meat ring"). */
+    const wrpSkip = ["enchant ", "destroy ", "detect food", "food detection", "ring mail",
+        "studded leather armor", "leather armor", "tooled horn", "food ration", "meat ring"]
+        .some((p) => bplc.startsWith(p));
+    for (let i = 0; i < WRP_NAMES.length && !wrpSkip; i++) {
         const wname = WRP_NAMES[i];
         const wcls = WRP_CLASSES[i];
 
@@ -2118,6 +2215,15 @@ export async function readobjnam(bp, no_wish) {
             actualn = bp.slice(0, bp.length - wname.length - 1);
             break;
         }
+        /* C objnam.c:4579 BSTRCMPI(bp, p - j, wrp[i]) is a bare tail compare
+         * with no space requirement: "E*:wand" is class WAND with bp "E*:"
+         * (p -= j; a trailing ' ' is stripped, objnam.c:4586-4590). */
+        if (wcls !== AMULET_CLASS && bp.length > wname.length
+            && bplc.endsWith(wname)) {
+            oclass = wcls;
+            actualn = bp.slice(0, bp.length - wname.length).replace(/ $/, '');
+            break;
+        }
     }
 
     {
@@ -2135,12 +2241,26 @@ export async function readobjnam(bp, no_wish) {
                     rn2((MKOBJ_OC_PROB[SCALE_MAIL] | 0) + 1);
                 }
                 /* scales: no RNG (objnam.c:4478-4484 sets typ directly). */
-                const otmp = await mksobj(dsmOtyp, true, false);
+                /* C builds the SCALE_MAIL (iron: mksobj_init/mkobj_erosions see its
+                 * material) and only then rewrites otyp to the dragon's mail
+                 * (objnam.c:5242-5246); scales are created directly. */
+                const otmp = await mksobj(isMail ? SCALE_MAIL : dsmOtyp, true, false);
+                if (isMail && otmp) {
+                    otmp.otyp = dsmOtyp;
+                    otmp.owt = weight(otmp);
+                }
                 return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx);
             }
         }
     }
 
+    /* specific food rather than color of gem/potion/spellbook[/scales]
+     * (objnam.c:4523-4526, readobjnam_postparse2): "orange" is the fruit, so
+     * no rnd_otyp_by_namedesc rn2(maxprob) draw happens. */
+    if (bplc.endsWith("orange") && dx.mntmp === NON_PM) {
+        const otmp = await mksobj(_otypByName("orange"), true, false);
+        return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx);
+    }
     if (bplc.endsWith("gold piece") || bplc.endsWith("zorkmid")
         || bplc === "gold" || bplc === "money" || bplc === "coin"
         || bp.charCodeAt(0) === 36 /* GOLD_SYM '$' */) {
@@ -2185,9 +2305,11 @@ export async function readobjnam(bp, no_wish) {
             || bplc_ms.includes('gauntlets ') || bplc_ms.includes('gloves ')
             || bplc_ms.includes('finger ');
         if (!blocked) {
-            const tinAt = bplc_ms.indexOf('tin of ');
+            /* C strstri(d->bp, "tin of ") sees the unsingularized string, so
+             * "4 tins of dried lizard" misses it (objnam.c:4381). */
+            const tinAt = bp_presingular.toLowerCase().indexOf('tin of ');
             if (tinAt >= 0) {
-                let filling = bp.slice(tinAt + 7);
+                let filling = bp_presingular.slice(tinAt + 7);
                 if (filling.toLowerCase() === 'spinach') {
                     dx.contents = TIN_SPINACH_C;
                 } else {
@@ -2247,6 +2369,43 @@ export async function readobjnam(bp, no_wish) {
         /* C reaches postparse2's `d->actualn = d->bp` with the STRIPPED string;
          * this port computed actualn from the unstripped one above. */
         actualn = bp;
+        /* postparse2's o_ranges test (objnam.c:4671-4676) sees the STRIPPED bp:
+         * "Uruk-hai shield" -> monster "Uruk-hai" -> "shield" -> rnd_class. */
+        const bplc_or = bp.toLowerCase();
+        for (const r of O_RANGES) {
+            if (bplc_or === r.name) {
+                const typ = rnd_class(r.first, r.last);
+                const otmp = await mksobj(typ, true, false);
+                return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx);
+            }
+        }
+    }
+
+    /* specific food rather than color of gem/potion/spellbook[/scales]
+     * (objnam.c:4522-4526): a tail "orange" is the fruit, `goto typfnd`, so
+     * NO rn2(maxprob) is drawn by rnd_otyp_by_namedesc. */
+    if (bp.toLowerCase().endsWith('orange') && dx.mntmp === NON_PM) {
+        const otmp = await mksobj(_otypByName('orange'), true, false);
+        return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx);
+    }
+
+    /* C objnam.c:4284-4308 — "Amulet of Yendor" names two items (the real
+     * Amulet by name, the fake by description); `fake`/`cheap`/`plastic`/
+     * `imitation` select the fake, anything else forces the real one, and
+     * `goto typfnd` skips rnd_otyp_by_namedesc, so NO rn2(maxprob) is drawn. */
+    {
+        const _lcbp = bp.toLowerCase();
+        const _ai = _lcbp.indexOf('amulet of yendor');
+        if (_ai >= 0 && (_ai === 0 || bp[_ai - 1] === ' ')) {
+            let _fake = d.fake | 0, _s = bp.toLowerCase(); /* C :4287 s = d->bp (whole string, not the match) */
+            if (_s.startsWith('cheap ')) { _fake = 1; _s = _s.slice(6); }
+            if (_s.startsWith('plastic ')) { _fake = 1; _s = _s.slice(8); }
+            if (_s.startsWith('imitation ')) { _fake = 1; _s = _s.slice(10); }
+            const otmp = await mksobj(_fake ? FAKE_AMULET_OF_YENDOR : AMULET_OF_YENDOR,
+                                      true, false);
+            return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn,
+                                  cnt, rechrg, islit, erodeproof, dx);
+        }
     }
 
     /* C objnam.c:4622-4660 — wizard wishes must disambiguate the two trap
@@ -2326,6 +2485,45 @@ export async function readobjnam(bp, no_wish) {
         return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx);
     }
 
+    /* ── user-defined fruit (objnam.c:4800-4869): checked last, after every real
+     * object name has failed; the unmodified wish string `fruitbuf` has its own
+     * count/BUC prefixes stripped here, and a hit is a SLIME_MOLD of that fruit. */
+    {
+        let fp = 0, cntf = 0, blessedf = 0, iscursedf = 0, uncursedf = 0;
+        for (;;) {
+            if (fp >= fruitbuf.length) break;
+            const rest = fruitbuf.slice(fp);
+            let l;
+            if (/^an /i.test(rest)) { cntf = 1; l = 3; }
+            else if (/^a /i.test(rest)) { cntf = 1; l = 2; }
+            else if (!cntf && /^[0-9]/.test(rest)) {
+                cntf = parseInt(rest, 10);
+                fp += /^[0-9]*/.exec(rest)[0].length;
+                while (fruitbuf[fp] === ' ') fp++;
+                l = 0;
+            }
+            else if (/^blessed /i.test(rest)) { blessedf = 1; l = 8; }
+            else if (/^cursed /i.test(rest)) { iscursedf = 1; l = 7; }
+            else if (/^uncursed /i.test(rest)) { uncursedf = 1; l = 9; }
+            else if (/^(partly|partially) eaten /i.test(rest)) { l = /^partly/i.test(rest) ? 13 : 16; }
+            else break;
+            fp += l;
+        }
+        const fpStr = fruitbuf.slice(fp);
+        for (let fr = game.ffruit; fr; fr = fr.nextf) {
+            let ftyp = 0;
+            if (fpStr === fr.fname) ftyp = 1;
+            else if (fpStr === makesingular(fr.fname)) ftyp = 2;
+            else if (fpStr === makeplural(fr.fname)) ftyp = 3;
+            if (ftyp) {
+                if (ftyp === 2 && !cntf) cntf = 1;
+                else if (ftyp === 3 && !cntf) cntf = 2;
+                const otmp = await mksobj(SLIME_MOLD, true, false);
+                return _finalize_wish(otmp, blessedf, iscursedf, uncursedf, spe, spesgn, cntf, rechrg, islit, erodeproof, { ...dx, ftype: fr.fid });
+            }
+        }
+    }
+
     /* ── artifact specified by name, not type (objnam.c:4870-4879) ──────────
      *   if (!d->oclass && d->actualn) {
      *       d->name = artifact_name(d->actualn, &objtyp, TRUE);
@@ -2341,9 +2539,16 @@ export async function readobjnam(bp, no_wish) {
              * ONAME_WISH) -> artifact_exists sets otmp->oartifact = arti index;
              * wished-for artifact => quan = 1.  No replay RNG on this path. */
             if (otmp) {
-                otmp.oartifact = arti.arti;
-                otmp.oextra = otmp.oextra || {};
-                otmp.oextra.oname = arti.name;
+                /* do_name.c:392 oname(): "If named artifact exists in the game,
+                 * do not create another" — returns the object UNNAMED, so
+                 * oartifact stays 0 and the objnam.c:5369 rn2(nartifact_exist())
+                 * below is never drawn.  quan = 1 and wisharti++ still follow
+                 * (objnam.c:5361, d.name == aname). */
+                if (!exist_artifact(arti.otyp, arti.name)) {
+                    otmp.oartifact = arti.arti;
+                    otmp.oextra = otmp.oextra || {};
+                    otmp.oextra.oname = arti.name;
+                }
                 otmp.quan = 1;
                 /* objnam.c:5364 u.uconduct.wisharti++ (KMH conduct); counted before
                  * the objnam.c:5369 downgrade check, as in C. */
@@ -2352,6 +2557,9 @@ export async function readobjnam(bp, no_wish) {
                 /* C oname()->artifact_exists()->artifact_origin() (artifact.c:488)
                  * sets artiexist[a].exists = 1 for the just-created artifact. */
                 _artiexist()[arti.arti] = true;
+                /* objnam.c:5368-5369 if (permapoisoned(otmp)) otmp->opoisoned = 1 */
+                if (permapoisoned(otmp))
+                    otmp.opoisoned = 1;
             }
             /* more wishing abuse: don't allow wishing for certain artifacts
              * (objnam.c:5369-5379).  C evaluates the condition left-to-right:
@@ -2383,20 +2591,8 @@ export async function readobjnam(bp, no_wish) {
     /* C objnam.c:4970-4977 / 3554-3583 — wizard terrain/trap wishes run
      * before polearm/hammer and only when no object class was parsed. */
     if (wizard() && !game.program_state?.wizkit_wishing && oclass === 0) {
-        for (let trap = NO_TRAP + 1; trap < TRAPNUM; trap++) {
-            let tname = trapname(trap, true);
-            if (!bp.toLowerCase().startsWith(tname.toLowerCase())) continue;
-            if (is_hole(trap) && !Can_fall_thru(game.u?.uz)) trap = ROCKTRAP;
-            const t = await maketrap(game.u?.ux | 0, game.u?.uy | 0, trap);
-            if (t) {
-                const actual = t.ttyp | 0;
-                tname = trapname(actual, true);
-                await pline(`${An(tname)}${actual !== MAGIC_PORTAL ? '' : ' to nowhere'}.`);
-            } else {
-                await pline(`Creation of ${an(tname)} failed.`);
-            }
-            return hands_obj;
-        }
+        const wr = await wizterrainwish(bp, d);
+        if (wr) return wr;
     }
 
     /* The trap arm of C wizterrainwish is above.  Furniture/terrain
@@ -2436,6 +2632,9 @@ export async function readobjnam(bp, no_wish) {
 function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx) {
     if (!otmp) return otmp;
     dx = dx || {};
+    /* C objnam.c:3946 d->tvariety defaults to RANDOM_TIN (-2); a caller that
+     * never parsed a tin variety must not reach the rn2(4) at 5343. */
+    if (dx.tvariety === undefined) dx = { ...dx, tvariety: -2 };
     {
         const t = otmp.otyp | 0;
         if (t === TIN) {
@@ -2460,6 +2659,8 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
                         : (rn2(2) ? CORPSTAT_MALE : CORPSTAT_FEMALE);
             if (dx.ishistoric && t === STATUE)
                 otmp.spe = (otmp.spe | 0) | CORPSTAT_HISTORIC;
+        } else if (t === SLIME_MOLD && dx.ftype !== undefined) {
+            otmp.spe = dx.ftype; /* objnam.c:5137-5138 */
         } else if (t === TOWEL) {
             /* C objnam.c:5129-5132 — "wet"/"moist" set a towel's spe. */
             if (dx.wetness) otmp.spe = dx.wetness | 0;
@@ -2477,7 +2678,7 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         /* C objnam.c:5199-5203: tins use the corresponding human form when a
          * were-form cannot leave a corpse.  Keep this local to the TIN arm;
          * corpse/figurine conversion has separate downstream semantics. */
-        if (t === TIN && _is_were_pm(permonstTemplate(mntmp))
+        if (t !== FIGURINE && _is_were_pm(permonstTemplate(mntmp))
             && ((_mvflags_of(mntmp) & G_NOCORPSE_OBJNAM) !== 0)) {
             const humanwere = counter_were(mntmp);
             if (humanwere !== NON_PM) mntmp = humanwere;
@@ -2535,6 +2736,11 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
     } else if (uncursed) {
         otmp.blessed = false;
         otmp.cursed = false;
+    } else if (spesgn < 0) {
+        /* C objnam.c:5266-5267: a negatively-enchanted wish with no BUC word is
+         * cursed. */
+        otmp.cursed = true;
+        otmp.blessed = false;
     }
     /* Apply enchantment from wish string */
     if (spesgn !== 0) {
@@ -2543,6 +2749,25 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
 
     if ((otmp.otyp | 0) === SCR_MAIL_OTYP)
         otmp.spe = 1;
+    /* C objnam.c:5042-5071 — globs: quantity is always 1, the count magnifies
+     * weight instead.  (The wizard-mode "Override glob weight limit?" y_n at
+     * :5065 is not modelled; it only fires when cnt exceeds rn1(5, 2).) */
+    if (otmp.globby) {
+        otmp.quan = 1;
+        otmp.owt = weight(otmp);
+        const gs = dx.gsize | 0;
+        if (gs > 1)
+            otmp.owt += (5 + (gs - 2) * 10) * otmp.owt;
+        if (cnt > 1) {
+            let rn1cnt = rn1_local(5, 2);
+            if (rn1cnt > 6 - gs)
+                rn1cnt = 6 - gs;
+            if (cnt > rn1cnt && !wizard())
+                cnt = rn1cnt;
+            otmp.owt *= cnt;
+        }
+        cnt = 0;
+    }
     if (cnt > 0 && _oc_merge_on(otmp.otyp)
         && (wizard()
             || cnt < rnd(6)
@@ -2629,6 +2854,12 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         && (rn2(4) || wizard()))
         otmp.spe = -((dx.tvariety | 0) + 1);
 
+    /* C objnam.c:5383-5394 — "partly eaten" wish: oeaten = nut, then
+     * consume_oeaten(otmp, 1) (halve); skipped for nut <= 1. */
+    if (dx.halfeaten && (otmp.oclass | 0) === FOOD_CLASS) {
+        const nut = obj_nutrition(otmp) >>> 0;
+        if (nut > 1) otmp.oeaten = nut >> 1;
+    }
     // C objnam.c:5395-5397: finalize weight before the optional ball increment.
     otmp.owt = weight(otmp);
     if (dx.very && (otmp.oclass | 0) === BALL_CLASS)
@@ -4038,11 +4269,10 @@ export function not_fully_identified(otmp) {
     if ((!otmp.cknown && (Is_container_otyp(otyp) || otyp === STATUE))
         || (!otmp.lknown && Is_box_otyp(otyp)))
         return true;
-    /* KNOWN GAP — C then tests `oartifact && undiscovered_artifact(oartifact)`.
-     * This port has no artiexist discovery table reachable from here (see
-     * _artiexist() above, which models only the wish-time existence bits), so an
-     * as-yet-undiscovered artifact is reported fully identified one step early.
-     * Message text only; C draws NO RNG on this branch. */
+    /* C invent.c: oartifact && undiscovered_artifact(oartifact) (artifact.c:1131);
+     * game.artidisco is the discovery list (js/cmd.js discover_artifact). */
+    if (otmp.oartifact && !(game.artidisco || []).includes(otmp.oartifact | 0))
+        return true;
     if ((otmp.rknown | 0)
         || ((otmp.oclass | 0) !== ARMOR_CLASS && (otmp.oclass | 0) !== WEAPON_CLASS
             && (otmp.oclass | 0) !== BALL_CLASS))
@@ -4109,10 +4339,19 @@ export function Japanese_item_name(i) {
  * only monster-spit venom, which is VENOM_CLASS and so never reaches the
  * WEAPON_CLASS arm's test.) */
 export function is_poisonable(otmp) {
-    if ((otmp.oclass | 0) !== WEAPON_CLASS)
-        return false;
-    const sk = MKOBJ_OC_SKILL[otmp.otyp | 0] | 0;
-    return sk >= -P_SHURIKEN && sk <= -P_BOW;
+    if ((otmp.oclass | 0) === WEAPON_CLASS) {
+        const sk = MKOBJ_OC_SKILL[otmp.otyp | 0] | 0;
+        if (sk >= -P_SHURIKEN && sk <= -P_BOW)
+            return true;
+    }
+    return permapoisoned(otmp);
+}
+
+/* C artifact.c:2837 permapoisoned(obj) — currently only Grimtooth
+ * (artilist order: NONARTIFACT, EXCALIBUR, STORMBRINGER, MJOLLNIR, CLEAVER,
+ * GRIMTOOTH => 5). */
+function permapoisoned(obj) {
+    return !!obj && (obj.oartifact | 0) === 5;
 }
 
 /* C obj.h:256 is_wet_towel(o) — ((o)->otyp == TOWEL && (o)->spe > 0) */
@@ -4825,10 +5064,11 @@ async function doname_base(obj, doname_flags) {
         break;
     case ARMOR_CLASS:
         if (mask & W_ARM_ALL) {
-            /* C:1391-1397 — doffing()/donning() are not tracked in this port
-             * (js/do_wear.js models the transitions synchronously), so a worn
-             * piece always reads "(being worn)", which is C's own third arm. */
-            bp += ' (being worn)';
+            /* C objnam.c:1387-1396 — check doffing() before donning() because
+             * donning() returns true for both cases. */
+            bp += doffing(obj) ? ' (being doffed)'
+                : donning(obj) ? ' (being donned)'
+                : ' (being worn)';
         }
         /* FALLTHROUGH — C:1420 */
     case WEAPON_CLASS:
@@ -5472,4 +5712,291 @@ export function shield_simple_name(shield) {
 // C: const char * shirt_simple_name(struct obj *shirt UNUSED) { return "shirt"; }
 export function shirt_simple_name(_shirt) {
     return "shirt";
+}
+
+/* C objnam.c:3537-3550 set_wallprop_from_str() */
+function set_wallprop_from_str(bp) {
+    let wall_prop = 0;
+    if (bp.includes('undiggable ') || bp.includes('nondiggable '))
+        wall_prop |= W_NONDIGGABLE;
+    if (bp.includes('unphaseable ') || bp.includes('nonpasswall '))
+        wall_prop |= W_NONPASSWALL;
+    const lev = game.level?.at(game.u.ux, game.u.uy);
+    if (wall_prop && lev)
+        lev.wall_info = (lev.wall_info | 0) | wall_prop;
+}
+
+/* C objnam.c:3918 dbterrainmesg() */
+async function dbterrainmesg(newtype, x, y) {
+    const lev = game.level?.at(x, y);
+    await pline(`${newtype} ${((lev.typ | 0) === DRAWBRIDGE_UP) ? 'in front of' : 'under'} the drawbridge.`);
+}
+
+/* C objnam.c:3554-3916 wizterrainwish() — wizard-mode trap and terrain wishes.
+ * `d` carries the preparse flags (blessed/looted/doorless/locked/closed/open/
+ * broken/trapped).  Returns hands_obj when a wish was consumed, else null. */
+async function wizterrainwish(bp, d) {
+    const u = game.u;
+    const x = u.ux | 0, y = u.uy | 0;
+    let madeterrain = false, badterrain = false;
+
+    for (let trap = NO_TRAP + 1; trap < TRAPNUM; trap++) {
+        let tname = trapname(trap, true);
+        if (!bp.toLowerCase().startsWith(tname.toLowerCase())) continue;
+        /* found it; avoid stupid mistakes */
+        if (is_hole(trap) && !Can_fall_thru(u.uz)) trap = ROCKTRAP;
+        const t = await maketrap(x, y, trap);
+        if (t) {
+            const actual = t.ttyp | 0;
+            tname = trapname(actual, true);
+            await pline(`${An(tname)}${actual !== MAGIC_PORTAL ? '' : ' to nowhere'}.`);
+        } else {
+            await pline(`Creation of ${an(tname)} failed.`);
+        }
+        return hands_obj;
+    }
+
+    /* furniture and terrain (use at your own risk) */
+    const lev = game.level?.at(x, y);
+    if (!lev) return null;
+    const oldtyp = lev.typ | 0;
+    const is_dbridge = (oldtyp === DRAWBRIDGE_DOWN || oldtyp === DRAWBRIDGE_UP);
+    const lc = bp.toLowerCase();
+    const ends = (s) => lc.endsWith(s);
+    const starts = (s) => lc.startsWith(s);
+    const is_lava_t = (t) => t === LAVAPOOL || t === LAVAWALL;
+
+    if (ends('fountain')) {
+        lev.typ = FOUNTAIN;
+        if (oldtyp !== FOUNTAIN) game.level.flags.nfountains = (game.level.flags.nfountains | 0) + 1;
+        lev.looted = d.looted ? F_LOOTED : 0;
+        lev.blessedftn = (d.blessed || starts('magic ')) ? 1 : 0;
+        await pline(`A ${lev.blessedftn ? 'magic ' : ''}fountain.`);
+        madeterrain = true;
+    } else if (ends('throne')) {
+        lev.typ = THRONE;
+        lev.looted = d.looted ? T_LOOTED : 0;
+        await pline('A throne.');
+        madeterrain = true;
+    } else if (ends('sink')) {
+        lev.typ = SINK;
+        if (oldtyp !== SINK) game.level.flags.nsinks = (game.level.flags.nsinks | 0) + 1;
+        lev.looted = d.looted ? (S_LPUDDING | S_LDWASHER | S_LRING) : 0;
+        await pline('A sink.');
+        madeterrain = true;
+    /* ("water" matches "potion of water" rather than terrain) */
+    } else if (ends('pool') || ends('moat') || ends('wall of water')) {
+        const ltyp = ends('pool') ? POOL : ends('moat') ? MOAT : WATER;
+        if (!is_dbridge) {
+            lev.typ = ltyp;
+            lev.flags = 0;
+        } else {
+            lev.drawbridgemask = ((lev.drawbridgemask | 0) & ~DB_UNDER) | DB_MOAT;
+        }
+        del_engr_at(x, y);
+        if (!is_dbridge) {
+            const hr = (u.uprops[HALLUC_RES] = u.uprops[HALLUC_RES] || {});
+            const save_prop = hr.extrinsic;
+            hr.extrinsic = 1; /* EHalluc_resistance = 1 */
+            const new_water = waterbody_name(x, y);
+            hr.extrinsic = save_prop;
+            await pline(`${An(new_water)}.`);
+        } else {
+            await dbterrainmesg('Moat', x, y);
+        }
+        await water_damage_chain(game.level.levelObjects[x][y], true);
+        madeterrain = true;
+    /* also matches "molten lava" */
+    } else if (ends('lava') || ends('wall of lava')) {
+        const ltyp = ends('wall of lava') ? LAVAWALL : LAVAPOOL;
+        if (!is_dbridge) {
+            lev.typ = ltyp;
+            lev.flags = 0;
+        } else {
+            lev.drawbridgemask = ((lev.drawbridgemask | 0) & ~DB_UNDER) | DB_LAVA;
+        }
+        del_engr_at(x, y);
+        if (!is_dbridge) {
+            await pline(`A ${(lev.typ | 0) === LAVAPOOL ? 'pool' : 'wall'} of molten lava.`);
+            const p = (i) => u.uprops?.[i];
+            const lf = (i) => !!(((p(i)?.intrinsic | 0) || (p(i)?.extrinsic | 0)) && !(p(i)?.blocked | 0));
+            if (!(lf(LEVITATION) || lf(FLYING)) || (lev.typ | 0) === LAVAWALL)
+                await pooleffects(false);
+        } else {
+            await dbterrainmesg('Lava', x, y);
+        }
+        await fire_damage_chain(game.level.levelObjects[x][y], true, true, x, y);
+        madeterrain = true;
+    } else if (ends('ice')) {
+        if (!is_dbridge) {
+            lev.typ = ICE;
+            /* icedpool overloads flags; specifies what ice will melt into */
+            lev.icedpool = (oldtyp === ROOM) ? ICED_POOL : ICED_MOAT;
+        } else {
+            lev.drawbridgemask = ((lev.drawbridgemask | 0) & ~DB_UNDER) | DB_ICE;
+        }
+        del_engr_at(x, y);
+        if (starts('melting '))
+            start_melt_ice_timeout(x, y, 0);
+        if (!is_dbridge) {
+            const s = ice_descr(x, y);
+            await pline(`${s.charAt(0).toUpperCase()}${s.slice(1)}.`);
+        } else {
+            await dbterrainmesg('Ice', x, y);
+        }
+        madeterrain = true;
+    } else if (ends('altar')) {
+        let al;
+        lev.typ = ALTAR;
+        if (starts('chaotic ')) al = A_CHAOTIC;
+        else if (starts('neutral ')) al = A_NEUTRAL;
+        else if (starts('lawful ')) al = A_LAWFUL;
+        else if (starts('unaligned ')) al = A_NONE;
+        else /* -1 - A_CHAOTIC, 0 - A_NEUTRAL, 1 - A_LAWFUL */
+            al = !rn2(6) ? A_NONE : (rn2(A_LAWFUL + 2) - 1);
+        lev.altarmask = Align2amask(al);
+        const alstr = al === A_CHAOTIC ? 'chaotic' : al === A_NEUTRAL ? 'neutral'
+            : al === A_LAWFUL ? 'lawful' : 'unaligned';
+        await pline(`${An(alstr)} altar.`);
+        madeterrain = true;
+    } else if (ends('grave') || ends('headstone')) {
+        make_grave(x, y, null);
+        if (IS_GRAVE(lev.typ | 0)) {
+            lev.looted = 0;
+            lev.disturbed = d.looted ? 1 : 0;
+            await pline(`A ${lev.disturbed ? 'disturbed ' : ''}grave.`);
+            madeterrain = true;
+        } else {
+            await pline("Can't place a grave here.");
+            badterrain = true;
+        }
+    } else if (ends('tree')) {
+        lev.typ = TREE;
+        lev.looted = d.looted ? (TREE_LOOTED | TREE_SWARM) : 0;
+        set_wallprop_from_str(bp);
+        await pline('A tree.');
+        madeterrain = true;
+    } else if (ends('bars')) {
+        lev.typ = IRONBARS;
+        lev.flags = 0;
+        set_wallprop_from_str(bp);
+        await pline('Iron bars.');
+        madeterrain = true;
+    } else if (ends('cloud')) {
+        lev.typ = CLOUD;
+        lev.flags = 0;
+        await pline('A cloud.');
+        del_engr_at(x, y);
+        madeterrain = true;
+    } else if (ends('door') || (d.doorless && ends('doorway'))) {
+        const secret = ends('secret door');
+        /* require door or wall so that the 'horizontal' flag is already right */
+        const lt = lev.typ | 0;
+        if (lt === DOOR || lt === SDOOR || (IS_WALL(lt) && lt !== DBWALL) || lt === IRONBARS) {
+            const old_wall_info = (lt !== DOOR) ? (lev.wall_info | 0) : 0;
+            lev.typ = secret ? SDOOR : DOOR;
+            lev.wall_info = 0; /* overlays 'flags' */
+            if (Is_rogue_level(u.uz)) {
+                d.doorless = 1;
+                d.locked = d.closed = d.open = d.broken = 0;
+            }
+            lev.doormask = d.locked ? D_LOCKED
+                : (d.doorless || secret) ? D_NODOOR
+                    : d.open ? D_ISOPEN
+                        : d.broken ? D_BROKEN
+                            : D_CLOSED;
+            if (secret)
+                lev.wall_info = (lev.wall_info | 0) | (old_wall_info & WM_MASK);
+            if (d.trapped === 2
+                || (((lev.doormask | 0) & (D_LOCKED | D_CLOSED)) === 0 && !secret))
+                d.trapped = 0;
+            if (d.trapped)
+                lev.doormask = (lev.doormask | 0) | D_TRAPPED;
+            let dbuf = '';
+            const dm = lev.doormask | 0;
+            if (dm & D_TRAPPED) dbuf += 'trapped ';
+            if (dm & D_LOCKED) dbuf += 'locked ';
+            if ((lev.typ | 0) === SDOOR) {
+                dbuf += 'secret door';
+            } else {
+                if (dm & D_CLOSED) dbuf += 'closed ';
+                if (dm & D_ISOPEN) dbuf += 'open ';
+                if (dm & D_BROKEN) dbuf += 'broken ';
+                if ((dm & ~D_TRAPPED) === D_NODOOR) dbuf += 'doorless doorway';
+                else dbuf += 'door';
+            }
+            await pline(`${An(dbuf)}.`);
+            madeterrain = true;
+        } else {
+            const dbuf = secret ? 'secret door' : 'door';
+            await pline(`${dbuf.charAt(0).toUpperCase()}${dbuf.slice(1)} requires door or wall location.`);
+            badterrain = true;
+        }
+    } else if (ends('wall') && (lc.length === 4 || lc[lc.length - 5] === ' ')) {
+        let wall = HWALL;
+        if ((isok(x, y - 1) && IS_WALL(game.level.at(x, y - 1).typ | 0))
+            || (isok(x, y + 1) && IS_WALL(game.level.at(x, y + 1).typ | 0)))
+            wall = VWALL;
+        madeterrain = true;
+        lev.typ = wall;
+        lev.flags = 0;
+        set_wallprop_from_str(bp);
+        fix_wall_spines(Math.max(0, x - 1), Math.max(0, y - 1),
+                        Math.min(COLNO, x + 1), Math.min(ROWNO, y + 1));
+        await pline('A wall.');
+    } else if (ends('secret corridor')) {
+        if ((lev.typ | 0) === CORR) {
+            lev.typ = SCORR;
+            await pline('Secret corridor.');
+            madeterrain = true;
+        } else {
+            await pline('Secret corridor requires corridor location.');
+            badterrain = true;
+        }
+    } else if (ends('room') || ends('floor') || ends('ground')) {
+        if (oldtyp === ROOM
+            || (IS_FURNITURE(oldtyp) && oldtyp !== LADDER && oldtyp !== STAIRS)
+            || oldtyp === ICE || is_pool_or_lava(x, y)) {
+            lev.typ = ROOM;
+            await pline('Room floor.');
+            if (IS_FURNITURE(oldtyp)) count_level_features();
+            const t = t_at(x, y);
+            if (t && (t.ttyp | 0) !== MAGIC_PORTAL) deltrap(t);
+            madeterrain = true;
+        } else if (is_dbridge) {
+            lev.drawbridgemask = ((lev.drawbridgemask | 0) & ~DB_UNDER) | DB_FLOOR;
+            await dbterrainmesg('Floor', x, y);
+            madeterrain = true;
+        } else {
+            await pline('Room|floor|ground not allowed here.');
+            badterrain = true;
+        }
+    }
+
+    if (madeterrain) {
+        feel_newsym(x, y); /* map the spot where the wish occurred */
+        if (u.uinwater && !is_pool(u.ux, u.uy)) {
+            set_uinwater(0);
+            await docrt();
+        } else {
+            if (u.utrap && (u.utraptype | 0) === TT_LAVA && !is_lava_t(game.level.at(u.ux, u.uy).typ | 0))
+                await reset_utrap(false);
+            recalc_block_point(x, y);
+        }
+        if (IS_FOUNTAIN(oldtyp) || IS_SINK(oldtyp))
+            count_level_features();
+        if (!is_ice(x, y))
+            spot_stop_timers(x, y, MELT_ICE_AWAY);
+        if (IS_FOUNTAIN(oldtyp) || IS_GRAVE(oldtyp)
+            || IS_WALL(oldtyp) || oldtyp === IRONBARS
+            || IS_DOOR(oldtyp) || oldtyp === SDOOR) {
+            const nt = lev.typ | 0;
+            if (!IS_FOUNTAIN(nt) && !IS_GRAVE(nt) && !IS_DOOR(nt) && nt !== SDOOR)
+                lev.horizontal = 0;
+        }
+        await switch_terrain();
+    }
+    if (madeterrain || badterrain)
+        return hands_obj;
+    return null;
 }

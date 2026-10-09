@@ -21,7 +21,10 @@ import { cansee, couldsee } from './vision.js';
 import { m_at, mon_nam, exclam } from './uhitm.js';
 import { Monnam } from './mcastu.js';
 import { find_mac } from './trap.js';
-import { resist, miss, dobuzz, bhito } from './zap.js';
+import { resist, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
+import { Blind } from './vision.js';
+import { resists_blnd } from './mhitm.js';
+import { verbalize } from './cmd.js';
 import { The, vtense, an, xname_wand, simple_typename, xname } from './objnam.js';
 import { doname, singular } from './objnam.js';
 import { distmin } from './hacklib.js';
@@ -29,18 +32,27 @@ import { observe_object } from './o_init.js';
 import { m_throw } from './mhitu.js';
 import { losehp } from './dokick.js';
 import { breaks } from './dokick.js';
-import { nomul } from './allmain.js';
+import { nomul, stop_occupation } from './allmain.js';
 import { monstunseesu, seemimic as seemimic_real, resists_magm } from './mhitm.js';
 import { monstseesu as monstseesu_real } from './mcastu.js';
 import { discover_object } from './o_init.js';
-import { BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL } from './const.js';
+import { BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG } from './const.js';
 import { doorlock } from './lock.js';
 import { in_rooms, add_damage } from './shk.js';
+import { tele, tele_restrict, rloc } from './teleport.js';
+import { mreadmsg } from './makemon.js';
+import { m_useup } from './trap.js';
+import { drop_boulder_on_monster, drop_boulder_on_player } from './read.js';
+import { ceiling } from './cmd.js';
+import { closed_door } from './look.js';
+import { IS_OBSTRUCTED, IS_AIR } from './const.js';
 
 /* C ref: muse.c:1272-1290 — the offensive MUSE_* values, verbatim.  Declared
  * again here (rather than imported) because js/makemon.js keeps its copies
  * module-private; the VALUES are C's and must stay in sync with that block. */
 const MUSE_WAN_STRIKING = 7;
+const MUSE_CAMERA = 18;
+const MUSE_SCR_EARTH = 17;
 const MUSE_WAN_DEATH = 1, MUSE_WAN_SLEEP = 2, MUSE_WAN_FIRE = 3,
       MUSE_WAN_COLD = 4, MUSE_WAN_LIGHTNING = 5, MUSE_WAN_MAGIC_MISSILE = 6;
 const MUSE_POT_PARALYSIS = 9;
@@ -54,6 +66,7 @@ const MUSE_WAN_UNDEAD_TURNING = 20;
 /* objects.h otyps (same values js/makemon.js pins for find_offensive).
  * WAN_STRIKING is the wand the shopkeeper carries. */
 const WAN_STRIKING = 417;
+const WAN_TELEPORTATION = 424;
 const WAN_UNDEAD_TURNING = 421;
 const WAN_MAGIC_MISSILE = 429;
 /* objclass.h oclass numbers: POTION_CLASS 8, WAND_CLASS 11 (objects.h:96
@@ -83,15 +96,6 @@ function DEADMONSTER(mon) { return !!(mon && (mon.mhp | 0) <= 0); }
  * hero-monst record, so the hero is recognised the same way js/teleport.js
  * does it: m_id == 1 (and the absent game.youmonst itself). */
 function is_youmonst(m) { return !m || (m.m_id | 0) === 1; }
-
-/* C ref: allmain.c:755-768 stop_occupation() — interrupt a multi-turn action.
- * There is no occupation running while a monster zaps, and the JS occupation
- * model lives in js/allmain.js; C's nomul(0)/svc.context.botl work is done by
- * the nomul() call that follows at each of this file's call sites. */
-function stop_occupation() {
-    if (game.occupation)
-        game.occupation = null;
-}
 
 function makeknown(otyp) { discover_object(otyp, true, true, true); }
 
@@ -140,7 +144,7 @@ function precheck(mon, obj) {
 
 /* C ref: muse.c:167-192 mzapwand(mtmp, otmp, self) — announce the zap, spend a
  * charge, and (when seen) interrupt the hero's occupation. */
-function mzapwand(mtmp, otmp, self) {
+async function mzapwand(mtmp, otmp, self) {
     if ((otmp.spe | 0) < 1) {
         /* C: impossible("Mon zapping wand with %d charges?") then return —
          * the charge is NOT spent. */
@@ -167,7 +171,7 @@ function mzapwand(mtmp, otmp, self) {
          * either way; the charge below is still spent, as in C. */
     } else {
         pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
-        stop_occupation();
+        await stop_occupation();
     }
     otmp.spe = (otmp.spe | 0) - 1;
 }
@@ -176,10 +180,14 @@ function mzapwand(mtmp, otmp, self) {
  * target on the beam.  mtmp is &gy.youmonst when the beam is hitting the hero.
  * Only the WAN_STRIKING case is ported. */
 async function mbhitm(mtmp, otmp) {
-    let tmp;
+    let tmp, tgt_x = 0, tgt_y = 0;
     let reveal_invis = false, learnit = false;
     const hits_you = is_youmonst(mtmp);
     const u = game.u || {};
+    /* C's dead mtmp keeps its stale mx,my (mon.c:2718); this port's
+     * monkilled_trap() zeroes them, so remember the target square for the
+     * cansee() test at the end (muse.c:1647-1649). */
+    if (!hits_you) { tgt_x = mtmp.mx | 0; tgt_y = mtmp.my | 0; }
 
     if (!hits_you && otmp.otyp !== WAN_UNDEAD_TURNING) {
         mtmp.msleeping = 0;
@@ -209,7 +217,7 @@ async function mbhitm(mtmp, otmp) {
             } else {
                 pline("The wand misses you.");
             }
-            stop_occupation();
+            await stop_occupation();
             nomul(0);
         } else if (resists_magm(mtmp)) {
             pline("Boing!");
@@ -225,11 +233,26 @@ async function mbhitm(mtmp, otmp) {
         /* C muse.c:1651-1655 — wand discovery needs the zap AND the impact
          * spot to have been seen. */
         if (learnit && game.zap_oseen
-            && (hits_you || cansee(mtmp.mx | 0, mtmp.my | 0)))
+            && (hits_you || cansee(tgt_x, tgt_y)))
             makeknown(WAN_STRIKING);
         break;
+    case WAN_TELEPORTATION:
+        /* C muse.c:1656-1668 */
+        if (hits_you) {
+            await tele();
+            if (game.zap_oseen)
+                makeknown(WAN_TELEPORTATION);
+        } else {
+            /* for consistency with zap.c, don't identify */
+            if (mtmp.ispriest && in_rooms(mtmp.mx | 0, mtmp.my | 0, TEMPLE)?.length) {
+                if (cansee(mtmp.mx | 0, mtmp.my | 0))
+                    pline(`${Monnam(mtmp)} resists the magic!`);
+            } else if (!tele_restrict(mtmp))
+                await rloc(mtmp, RLOC_MSG);
+        }
+        break;
     default:
-        /* KNOWN GAP — muse.c:1656-1701 handles WAN_TELEPORTATION,
+        /* KNOWN GAP — muse.c:1669-1701 handles WAN_TELEPORTATION,
          * WAN_CANCELLATION/SPE_CANCELLATION, WAN_UNDEAD_TURNING,
          * WAN_POLYMORPH, WAN_SLOW_MONSTER, WAN_SPEED_MONSTER and
          * WAN_DIGGING; several draw RNG (rloc, unturn_dead, newcham).
@@ -358,7 +381,7 @@ export async function use_offensive(mtmp) {
          * loop, which made a monster carrying a death wand throw its boulder
          * instead and skipped the hero-side exercise/zap RNG. */
         game.zap_oseen = oseen;
-        mzapwand(mtmp, otmp, false);
+        await mzapwand(mtmp, otmp, false);
         if (oseen) makeknown(otmp.otyp | 0);
         game.m_using = true;
         game.buzzer = mtmp;
@@ -379,15 +402,8 @@ export async function use_offensive(mtmp) {
     case MUSE_WAN_TELEPORTATION:
     case MUSE_WAN_UNDEAD_TURNING:
     case MUSE_WAN_STRIKING:
-        if (game.has_offense !== MUSE_WAN_STRIKING) {
-            /* KNOWN GAP — muse.c:1878-1890 shares one arm between
-             * MUSE_WAN_TELEPORTATION, MUSE_WAN_UNDEAD_TURNING and
-             * MUSE_WAN_STRIKING; only STRIKING is ported.  See the switch
-             * default below for why this returns 0 instead of throwing. */
-            return 0;
-        }
         game.zap_oseen = oseen;
-        mzapwand(mtmp, otmp, false);
+        await mzapwand(mtmp, otmp, false);
         game.m_using = true;
         game.buzzer = mtmp;
         /* C muse.c:1884 — rn1(8, 6) is the beam's range and is drawn BEFORE
@@ -413,6 +429,65 @@ export async function use_offensive(mtmp) {
                 distmin(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0),
                 otmp);
         return 2;
+    case MUSE_SCR_EARTH: {
+        /* C muse.c:1891-1937.  TODO (C): handle steeds. */
+        /* don't use monster fields after killing it */
+        const confused = !!mtmp.mconf;
+        const mmx = mtmp.mx | 0, mmy = mtmp.my | 0;
+        const is_cursed = !!otmp.cursed, is_blessed = !!otmp.blessed;
+
+        await mreadmsg(mtmp, otmp);
+        /* Identify the scroll */
+        if (canspotmon(mtmp)) {
+            pline(`The ${ceiling(mmx, mmy)} rumbles ${otmp.blessed ? "around" : "above"} ${mon_nam(mtmp)}!`);
+            if (oseen) makeknown(otmp.otyp | 0);
+        } else if (cansee(mmx, mmy)) {
+            pline(`The ${ceiling(mmx, mmy)} rumbles in the middle of nowhere!`);
+            if (mtmp.minvis) map_invisible(mmx, mmy);
+            if (oseen) makeknown(otmp.otyp | 0);
+        }
+
+        /* could be fatal to monster, so use up the scroll before
+           there's a chance that monster's inventory will be dropped */
+        await m_useup(mtmp, otmp);
+
+        /* Loop through the surrounding squares */
+        for (let x = mmx - 1; x <= mmx + 1; x++) {
+            for (let y = mmy - 1; y <= mmy + 1; y++) {
+                const lev = isok(x, y) ? game.level?.at(x, y) : null;
+                /* Is this a suitable spot? */
+                if (lev && !closed_door(x, y)
+                    && !IS_OBSTRUCTED(lev.typ | 0) && !IS_AIR(lev.typ | 0)
+                    && ((x === mmx && y === mmy) ? !is_blessed : !is_cursed)
+                    && (x !== (game.u.ux | 0) || y !== (game.u.uy | 0))) {
+                    await drop_boulder_on_monster(x, y, confused, false);
+                }
+            }
+        }
+        /* Attack the player */
+        if (distmin(mmx, mmy, game.u.ux | 0, game.u.uy | 0) === 1 && !is_cursed) {
+            await drop_boulder_on_player(confused, !is_cursed, false, true);
+        }
+
+        return DEADMONSTER(mtmp) ? 1 : 2;
+    }
+    case MUSE_CAMERA: {
+        /* C muse.c:1953-1970.  SetVoice is a no-op here. */
+        if (game.u?.uprops?.[23]?.intrinsic || game.u?.uprops?.[23]?.extrinsic) {
+            await verbalize("Say cheese!");
+        } else if (!Blind()) {
+            pline(`${Monnam(mtmp)} takes a picture of you with ${an(xname(otmp))}!`);
+        }
+        game.m_using = true;
+        if (!Blind() && !resists_blnd(game.youmonst)) {
+            pline("You are blinded by the flash of light!");
+            make_blinded(BlindedTimeout() + rnd(1 + 50), false);
+        }
+        lightdamage(otmp, true, 5);
+        game.m_using = false;
+        otmp.spe = (otmp.spe | 0) - 1;
+        return 1;
+    }
     default:
         return 0;
     }

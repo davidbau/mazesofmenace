@@ -253,7 +253,7 @@ import {
 } from './attrib.js';
 import { findit, cvt_sdoor_to_door, show_map_spot } from './detect.js';
 import {
-    fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
+    fall_asleep, losehp, finish_maybe_wail, maybe_half_phys, nomul, is_pool,
     is_lava, is_moat, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
     SURFACE_AT, You_hear, long_to_any, obj_to_any, set_uinwater, check_capacity,
     test_move,
@@ -2148,6 +2148,11 @@ async function zhitu(type, nd, fltxt, sx, sy) {
                     orig_dam,
                 );
             }
+            // C :4434–4436 — destroy_items → maybe_destroy_item → losehp →
+            // done is NORETURN (exit); a fatal boil never reaches the ignite
+            // gate (Monk-95415 seg0 ends at can_make_bones). Lifesave-safe:
+            // gameover stays false so the gate falls through per C.
+            if (game.program_state?.gameover) break;
             if (!rn2(3)) await ignite_items(game.invent); // C :4436
         }
         break;
@@ -2310,6 +2315,11 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         losehp(dam, kbuf, KILLED_BY_AN); // C :4588
         if (game._losehp_needs_done || game.program_state?.gameover) {
             await finish_losehp_done();
+        } else {
+            // C :4588 — losehp runs maybe_wail inline (hack.c:4289–4291);
+            // JS defers via _needs_maybe_wail — drain before returning to
+            // buzz/ubreatheu (oil pattern: D-3608/D-3611).
+            await finish_maybe_wail();
         }
     }
 }
