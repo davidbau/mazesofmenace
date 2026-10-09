@@ -1325,6 +1325,15 @@ async function angrygods(resp_god) {
         break;
     }
 
+    // C pray.c:704–784 — done() never returns on a real death
+    // (nh_terminate NORETURN → exit, extern.h:997/2385); the fry arms
+    // return only on lifesave/wizard-decline (C :609–644 fall-through,
+    // god_zaps_you header), which leave gameover false. JS really_done
+    // returns with gameover set, so a fry-by-god death must skip the
+    // rnz(300) pray-timer tail (Tourist-95425 drew 5 stray angrygods
+    // draws after the zap). god_zaps_you :1153 idiom.
+    if (game.program_state?.gameover) return;
+
     const new_ublesscnt = rnz(300);
     if (new_ublesscnt > (u.ublesscnt | 0)) u.ublesscnt = new_ublesscnt;
 }

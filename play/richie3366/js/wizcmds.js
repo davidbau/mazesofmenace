@@ -634,10 +634,16 @@ export async function wiz_map() {
     const save_Hhallu = u.HHallucination | 0;
     const save_Confusion = u.Confusion;
     const save_Hallucination = u.Hallucination;
+    // C HConfusion / HHallucination are u.uprops[].intrinsic (youprop.h);
+    // display.js Hallucination() reads that slot as well as the flat.
+    const confProp = u.uprops?.[CONFUSION], halluProp = u.uprops?.[HALLUC];
+    const save_confIntr = confProp?.intrinsic, save_halluIntr = halluProp?.intrinsic;
     u.HConfusion = 0;
     u.HHallucination = 0;
     u.Confusion = 0;
     u.Hallucination = 0;
+    if (confProp) confProp.intrinsic = 0;
+    if (halluProp) halluProp.intrinsic = 0;
 
     // C: for (t = gf.ftrap; t; t = t->ntrap) — JS stores traps on
     // level.traps (maketrap); ftrap linked list is often empty (D-0814).
@@ -665,6 +671,8 @@ export async function wiz_map() {
     u.HHallucination = save_Hhallu;
     u.Confusion = save_Confusion;
     u.Hallucination = save_Hallucination;
+    if (confProp) confProp.intrinsic = save_confIntr;
+    if (halluProp) halluProp.intrinsic = save_halluIntr;
     return ECMD_OK;
 }
 

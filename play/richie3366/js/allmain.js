@@ -1274,7 +1274,20 @@ export async function moveloop_core() {
                     || (g.u.HGlib | 0) || (g.u.Glib | 0);
                 if (glib) await glibr();
                 await nh_timeout();
+                // C allmain.c:273–274 — done() never returns on a real
+                // death (nh_terminate NORETURN → exit, extern.h:997/2385);
+                // it returns only on lifesave/wizard-decline, which leave
+                // gameover false. JS really_done returns with gameover set,
+                // so a timeout-expiry death (nh_timeout done_timeout arms:
+                // STONING/SICK/STRANGLED) must not fall through to
+                // run_regions/maintenance (7 scen-chain sessions drew
+                // regen/dosounds/gethungry/wipe after done). Same idiom as
+                // the movemon gate above and the in-nh_timeout gates.
+                if (g.program_state?.gameover) return;
                 await run_regions();
+                // C: same noreturn — a region death (gas-cloud losehp →
+                // finish_losehp_done) must not reach maintenance either.
+                if (g.program_state?.gameover) return;
                 // C allmain.c moveloop: if (u.ublesscnt) u.ublesscnt--;
                 if (g.u.ublesscnt) g.u.ublesscnt = (g.u.ublesscnt | 0) - 1;
 

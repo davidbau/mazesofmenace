@@ -621,7 +621,13 @@ export async function tactics(mtmp) {
 /**
  * C ref: wizard.c resurrect — confront hero with Wizard on endgame entry.
  * Envelope: no_of_wizards==0 → makemon(PM_WIZARD, ux,uy, MM_NOWAIT) +
- * mrevived; clear WAITMASK; hostile + set_malign; voice pline.
+ * mrevived; else migrating Wizard without Amulet catches up elapsed time
+ * + mon_arrive(Wiz_arrive); clear WAITMASK; hostile + set_malign; voice
+ * pline + verbalize. The appear Norep is C makemon's (:1476–1500, gated
+ * on canseemon/sensemon), via makemon_appear_msg on the makemon path
+ * only — resurrect itself prints nothing else (D-3735 deleted the D-0559
+ * ungated inline duplicate, which also fired on the migrating path where
+ * C prints no appear).
  * Named omissions: SetVoice; Deaf-aware acoustics polish.
  */
 export async function resurrect() {
@@ -679,18 +685,11 @@ export async function resurrect() {
         mtmp.mtame = 0;
         mtmp.mpeaceful = 0;
         set_malign(mtmp);
-        // C: makemon !in_mklev !MM_NOMSG appear Norep (D-0559) — before voice.
-        // Envelope: canseemon/sensemon + mimic arms deferred; Wizard is visible.
-        {
-            const ux = u.ux | 0;
-            const uy = u.uy | 0;
-            const dx = Math.abs((mtmp.mx | 0) - ux);
-            const dy = Math.abs((mtmp.my | 0) - uy);
-            const next2u = dx <= 1 && dy <= 1 && (dx || dy);
-            const where = next2u ? ' next to you'
-                : ((dx * dx + dy * dy) <= 64) ? ' close by' : '';
-            await Norep(`${Monnam(mtmp)} suddenly appears${where}!`);
-        }
+        // C: no appear here — it is makemon's (:1476–1500, gated), covered
+        // on the makemon path by makemon_appear_msg above; the migrating
+        // path prints nothing before the voice (D-3735 deleted the D-0559
+        // ungated inline duplicate, which over-filled the message window
+        // for a blind hero and hid the voice behind --More--).
         if (!u.Deaf) {
             await pline('A voice booms out...');
             await verbalize(`So thou thought thou couldst ${verb} me, fool.`);

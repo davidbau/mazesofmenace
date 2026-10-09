@@ -9325,16 +9325,16 @@ function putmesg(line) {
     SoundSpeak(line);
 }
 
-async function pline_after_consume(msg, alreadyDumplogged = false) {
-    const line = String(msg);
-    // C pline.c vpline DUMPLOG_CORE `:233–239`: vpline() above already
-    // dumplogged before the in_pline/raw gate; direct callers pass false.
-    if (!alreadyDumplogged) dumplogmsg(line);
-    const { msgtyp, suppress } = vpline_msgtyp_gate(line);
-    if (suppress) return;
-    // C pline.c vpline `:270–276` — vision_recalc(0) with in_pline saved
-    // at 0 so a recursive pline during recalc takes the raw_print path
-    // (boulder extract / door / light set vision_full_recalc mid-turn).
+/**
+ * C ref: pline.c vpline `:266–271` — flush a pending vision_full_recalc
+ * with in_pline saved at 0 so a recursive pline during recalc takes the
+ * raw_print path (boulder extract / door / light set the flag mid-turn).
+ * Called by pline_after_consume (every vpline) and by tty_yn_function's
+ * prompt paint (C topl.c `:420,425` custompline → vpline): a slime-death
+ * "Die?" prompt arrives with polymon's recalc pending, and the prompt's
+ * flush is what clears the stale monster glyph for the eyeless hero.
+ */
+export function vpline_flush_vision() {
     if (game.vision_full_recalc) {
         const _savedInPline = _vpline_in_pline;
         _vpline_in_pline = 0;
@@ -9344,6 +9344,18 @@ async function pline_after_consume(msg, alreadyDumplogged = false) {
             _vpline_in_pline = _savedInPline;
         }
     }
+}
+
+async function pline_after_consume(msg, alreadyDumplogged = false) {
+    const line = String(msg);
+    // C pline.c vpline DUMPLOG_CORE `:233–239`: vpline() above already
+    // dumplogged before the in_pline/raw gate; direct callers pass false.
+    if (!alreadyDumplogged) dumplogmsg(line);
+    const { msgtyp, suppress } = vpline_msgtyp_gate(line);
+    if (suppress) return;
+    // C pline.c vpline `:266–271` — flush before flush_screen (helper:
+    // same statements, shared with the yn-prompt paint below).
+    vpline_flush_vision();
     // C `:277–278` — if (u.ux) flush_screen(NO_CURS_ON_U ? 0 : 1).
     if (game.u?.ux) await flush_screen((gp.pline_flags & NO_CURS_ON_U) ? 0 : 1);
     // C `:276` putmesg(line). debug_prevent_pline returns before

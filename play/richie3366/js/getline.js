@@ -20,7 +20,7 @@ import {
     mark_topline_special_prompt, hooked_getlin_release_prompt,
     hooked_getlin_epilogue, tty_yn_rewrite_toplines, tty_nhbell,
     tty_yn_note_msg_cursor, tty_yn_clean_up_tty,
-    impossible, set_bot_disabled,
+    impossible, set_bot_disabled, vpline_flush_vision,
 } from './display.js';
 import { key2txt, visctrl, cmd_from_func } from './dokeylist.js';
 import { rn2 } from './rng.js';
@@ -2146,6 +2146,11 @@ async function tty_yn_function(query, resp = 'yn', def = 'n') {
     const restorePrompt = () => hooked_getlin_restore_prompt(paint);
     hooked_yn_begin();
     try {
+        // C topl.c `:420,425` custompline → vpline `:266–271` — the prompt
+        // flushes a pending vision_full_recalc before flush_screen/putmesg
+        // (polymon-blindness clears the stale monster glyph for the eyeless
+        // hero). Once: repaints are C addtopl (`:442,458`), no vpline.
+        vpline_flush_vision();
         await paint();
         if (!resp) {
             const c = await nhgetch();

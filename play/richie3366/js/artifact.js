@@ -12,6 +12,11 @@ import { objectNames, NUM_OBJECTS, objectDescrs, objects, WEAPON_CLASS, RING_CLA
 import { obj_shuffle_range } from './o_init.js';
 import { monsterNames, NON_PM, M2_UNDEAD, M2_WERE, is_demon, is_dprince, is_dlord, resists_ston, hates_silver, bigmonst, has_head, noncorporeal, amorphous, is_covetous, is_mplayer, nonliving, mons, set_can_track_excalibur_hook } from './monsters.js';
 import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli, cancel_monst, resist, probe_monster, destroy_items } from './zap.js';
+// C ref: youprop.h:57 Antimagic — HAntimagic || EAntimagic ≡ uprops[ANTIMAGIC].
+// Canonical port (D-1089 pattern): flats + uprops intrinsic/extrinsic, so worn
+// cloak-of-MR / gray DSM (confer_oc_oprop writes uprops only, no flat mirror)
+// read true. imports.mjs --can artifact.js mcastu.js Antimagic: SAFE (hoisted).
+import { Antimagic as Antimagic_hero } from './mcastu.js';
 import {
     A_NONE,
     ONAME_WISH,
@@ -406,12 +411,6 @@ function Levitation() {
     if (u.Levitation) return true;
     return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
         && !(u.BLevitation | 0));
-}
-
-/** C ref: youprop.h Antimagic — HAntimagic || EAntimagic (flat + H/E). */
-function Antimagic_hero() {
-    const u = game.u || {};
-    return !!((u.Antimagic | 0) || (u.HAntimagic | 0) || (u.EAntimagic | 0));
 }
 
 function Role_switch() {

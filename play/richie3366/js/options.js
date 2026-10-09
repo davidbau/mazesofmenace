@@ -9934,6 +9934,26 @@ export async function select_menu_pick_one(rawItems) {
             }
             continue;
         }
+        // C wintty.c process_menu_window `:1622–1648`: page keys only reset
+        // page_start, so the loop repaints the next page (fullscreen:
+        // term_clear_screen `:1407–1413`, no docrt) and the window stays
+        // up; '>' on the last page and an unknown key just re-prompt. The
+        // window is erased once, when the menu finishes (destroy →
+        // erase_menu_or_text `:966–980`).
+        const lastPage = currPage >= npages - 1;
+        if (key === 32 && !lastPage || ch === '>') {
+            if (!lastPage) currPage++;
+            continue;
+        }
+        if (ch === '<' || ch === '^' || ch === '|') {
+            if (ch === '<' && currPage > 0) currPage--;
+            if (ch === '^') currPage = 0;
+            if (ch === '|') currPage = npages - 1;
+            continue;
+        }
+        const finishing = key === 27 || key === 13 || key === 10 || key === 32;
+        if (!finishing && !hit && !ghit) continue; // C nhbell, same page
+
         const wasFullscreen = game._tty_menu_geom?.offx === 0;
         await dismiss_nhw_menu();
         if (hit && wasFullscreen) {
@@ -9942,55 +9962,22 @@ export async function select_menu_pick_one(rawItems) {
             clear_committed_status();
         }
 
-        // C wintty.c `:1622–1638`: ESC deselects all + WIN_CANCELLED;
+        // C wintty.c `:1604–1631`: ESC deselects all + WIN_CANCELLED;
         // `\n`/`\r` and last-page space finish with the current
         // selection — a preselected entry (MENU_ITEMFLAGS_SELECTED)
         // is returned, not cancelled.
-        const finishPick = (key === 13 || key === 10 || key === 32)
-            ? items.find((it) => it.selectable && it.selected)
-            : null;
-        if (key === 27 || key === 13 || key === 10) {
+        const finishPick = key === 27 ? null
+            : finishing ? items.find((it) => it.selectable && it.selected) : null;
+        if (finishing) {
             if (finishPick) {
                 if (wasFullscreen) clear_committed_status();
                 return { kind: 'pick', item: finishPick };
             }
             return { kind: 'cancel' };
         }
-        // C: ' ' / MENU_NEXT_PAGE ('>') — advance; space on last finishes
-        if (key === 32 || ch === '>') {
-            if (currPage < npages - 1) {
-                currPage++;
-                continue;
-            }
-            if (key === 32) {
-                if (finishPick) {
-                    if (wasFullscreen) clear_committed_status();
-                    return { kind: 'pick', item: finishPick };
-                }
-                // space on last page cancels PICK_ONE (no pick)
-                return { kind: 'cancel' };
-            }
-            // '>' on last page: stay (nhbell); re-prompt
-            continue;
-        }
-        if (ch === '<') {
-            if (currPage > 0) currPage--;
-            continue;
-        }
-        if (ch === '^') {
-            currPage = 0;
-            continue;
-        }
-        if (ch === '|') {
-            currPage = npages - 1;
-            continue;
-        }
         if (hit) return { kind: 'pick', item: hit };
-        if (ghit) {
-            if (wasFullscreen) clear_committed_status();
-            return { kind: 'pick', item: ghit };
-        }
-        // invalid → re-prompt same page (C nhbell)
+        if (wasFullscreen) clear_committed_status();
+        return { kind: 'pick', item: ghit };
     }
     } finally {
         set_bot_disabled(_botPrev);

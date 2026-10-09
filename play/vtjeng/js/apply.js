@@ -2808,6 +2808,7 @@ async function jumpLandingPath(target, state) {
     const source = { x: state.u.ux, y: state.u.uy };
     const destination = { x: target.x, y: target.y };
     const range = {
+        state,
         range: Math.max(
             Math.abs(destination.x - source.x),
             Math.abs(destination.y - source.y),
@@ -2817,7 +2818,7 @@ async function jumpLandingPath(target, state) {
         source,
         destination,
         hurtle_jump,
-        { state, range },
+        range,
     );
     target.x = destination.x;
     target.y = destination.y;
@@ -3293,7 +3294,7 @@ export async function use_candle(obj, state = game, env = {}) {
     const attachQuery = safe_qbuf(
         query, '?', candelabrum, yname, thesimpleoname, 'it', state,
     );
-    if (await y_n(attachQuery, state) === 'n') {
+    if (await y_n(attachQuery, state) === 'n'.charCodeAt(0)) {
         await use_lamp(obj, state, env);
         return;
     }
@@ -3379,7 +3380,7 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
             // C evaluates the timeout (and its conditional RNG) before xname.
             const sicknessDuration = sickTimeout
                 ? Math.trunc(sickTimeout / 3) + 1
-                : rn1(acurr(A_CON, state), 20);
+                : rn1(acurr(state, A_CON), 20);
             const cause = xnameFresh(obj, state);
             await make_sick(
                 sicknessDuration, cause, true, SICK_NONVOMITABLE, state, env,

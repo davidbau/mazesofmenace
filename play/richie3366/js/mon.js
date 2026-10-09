@@ -2145,7 +2145,14 @@ export async function mon_leaving_level(mon) {
         }
         /* if mon is pinned by a boulder, removing mon lets boulder drop */
         await fill_pit(mx, my);
+        // C's newsym reads the grid cell cleared above; JS m_at also scans
+        // fmon by mx/my, and relmon unlinks mon from fmon only after this
+        // returns, so mon reads as off-map for the redraw alone (a lasting
+        // MON_OFFMAP strands the migrant on arrival — D-3279).
+        const mstate = mon.mstate;
+        mon.mstate = (mon.mstate | 0) | MON_OFFMAP;
         newsym(mx, my);
+        mon.mstate = mstate;
     }
     /* if mon is a remembered target, forget it since it isn't here anymore */
     if (game.context?.polearm && mon === game.context.polearm.hitmon) {

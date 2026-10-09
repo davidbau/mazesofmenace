@@ -19,7 +19,7 @@ import {
     glyph_is_warning, unmap_object, map_object,
     look_shown_at, Norep, tty_doprev_message, putmsghistory, NO_GLYPH,
     unmap_invisible, map_invisible, custompline,
-    Hallucination, raw_printf,
+    Hallucination, raw_printf, feel_location,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, SCORR, LAVAWALL,
@@ -6669,10 +6669,11 @@ export async function domove(dx, dy) {
         }
 
         // C ref: hack.c test_move — closed_door autoopen / orthogonal bump
-        // Passes_walls / ooze / Underwater / tunnels / Blind feel_location
-        // deferred (named in c-js-map turns); steed lead-through live below.
+        // Passes_walls / ooze / Underwater / tunnels deferred (named in
+        // c-js-map turns); steed lead-through live below.
         // Fumbling ≡ Fumbling() H||E (D-0691/D-0696) — not sticky u.Fumbling.
         if (closed_door_at(newx, newy)) {
+            if (Blind()) feel_location(newx, newy); // C test_move :1076–1077
             if (!game.context) game.context = {};
             game.context.door_opened = false;
             // C: check !context.run BEFORE clearing run — rush must bump, not autoopen
@@ -6714,6 +6715,10 @@ export async function domove(dx, dy) {
         // rust/corr/metallivore before the Passes_walls || passes_bars
         // allow (D-1270). TEST_MOVE/TRAV skip chew via blocksMove.
         const destTyp = game.level?.at(newx, newy)?.typ;
+        // C test_move :1012–1013 — a blind hero feels rock, walls and bars
+        // before any pass-through, chew or bump outcome.
+        if ((IS_OBSTRUCTED(destTyp) || destTyp === IRONBARS) && Blind())
+            feel_location(newx, newy);
         if (destTyp === IRONBARS && test_move_hero_chews_bars()) {
             if (await still_chewing(newx, newy)) {
                 // C hack.c:2843–2848 — !test_move && !door_opened
@@ -6729,6 +6734,7 @@ export async function domove(dx, dy) {
             const dest = game.level?.at(newx, newy);
             if (dest && IS_DOOR(dest.typ)
                 && (!doorless_door(newx, newy) || await block_door(newx, newy))) {
+                if (Blind()) feel_location(newx, newy); // C test_move testdiag :1144–1145
                 // C test_move testdiag: Underwater || flags.mention_walls
                 if ((u.uinwater | 0) || game.flags?.mention_walls) {
                     await pline("You can't move diagonally into an intact doorway.");
