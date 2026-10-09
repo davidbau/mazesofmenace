@@ -1442,11 +1442,15 @@ export async function moveloop_core() {
     }
     // C: allmain.c once-per-player-input find_ac() before bot/flush/rhack
     find_ac();
-    // C allmain.c:453–468 — if (!context.mv || Blind) {
+    // C allmain.c:453–471 — if (!context.mv || Blind) {
     //   Hallucination → see_monsters/objects/traps + swallowed(0)
     //   else Unblind_telepat || Warning || Warn_of_mon
     //        || any_visible_region() → see_monsters
-    // }
+    //   then (:470–471) vision_recalc(0) when vision_full_recalc is set
+    // } — the consume is INSIDE the gate (D-3698): when the hero moved
+    // (mv) and can see, C defers the recalc to the next pline/see so it
+    // runs with the new position. No post-clear: vision_recalc resets
+    // the flag on entry (C vision.c vision_recalc head).
     {
         const u = g.u || {};
         const Blind = !!(u.Blind || u.ublind
@@ -1466,11 +1470,11 @@ export async function moveloop_core() {
                     see_monsters();
                 }
             }
+            // C :470–471 — inside the gate, after the see arms.
+            if (g.vision_full_recalc) {
+                vision_recalc(0);
+            }
         }
-    }
-    if (g.vision_full_recalc) {
-        vision_recalc(0);
-        g.vision_full_recalc = 0;
     }
     // C allmain.c:473–479 — paint status only on request: full bot() when
     // disp.botl|botlx, time-only timebot() when disp.time_botl; either arm

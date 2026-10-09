@@ -231,7 +231,13 @@ function hooked_getlin_edit_key(c, st) {
 const EDIT_GETLIN = false;
 
 /**
- * C ref: windows.c getlin → tty_getlin → hooked_tty_getlin.
+ * C ref: windows.c getlin `:1868–1902` → tty_getlin → hooked_tty_getlin.
+ * `:1875–1889` cmdq preamble drains CMDQ_KEY bytes into the answer
+ * (newline terminates like C's `'\0'` store; a non-KEY node or an empty
+ * queue ends the drain; every popped node is consumed) and `:1891–1895`
+ * echoes `pline("%s %s", query, answer)` + early return, before
+ * bot_disabled is touched. `:1897–1901` in_getlin envelope wraps the
+ * win_getlin prompt loop.
  * Prompt + echo until Enter/ESC. ^P walks tty_doprev_message (D-1611).
  * kill_char / `\177` wipe the buffer (D-1632); empty erase and other
  * rejected keys tty_nhbell. Nonempty ESC clears then falls through
@@ -242,7 +248,31 @@ const EDIT_GETLIN = false;
  * @param {string} [bufp]
  */
 export async function getlin(query, bufp) {
-    const _botPrev = set_bot_disabled(true);
+    /* C windows.c `:1875–1889` — cmdq preamble. C `free`s every popped
+     * node (`:1885` + `:1888–1889`); JS cmdq_pop shifts, so the pop is
+     * the consume. Tolerant KEY test is the yn_function house shape. */
+    let gotCmdq = false; // C `:1872`
+    let cmdqBuf = '';
+    for (;;) {
+        const cmdq = cmdq_pop(); // C `:1875`
+        if (!cmdq) break;
+        if (cmdq.typ !== CMDQ_KEY && cmdq.typ !== 'key') break; // C `:1882–1883` else-break
+        gotCmdq = true; // C `:1877`
+        const k = yn_cmdq_key(cmdq);
+        if (k === '\n') break; // C `:1878–1881` newline → NUL, not stored
+        cmdqBuf += k; // C `:1878–1879`
+    }
+    if (gotCmdq) { // C `:1891–1895`
+        await pline('%s %s', query, cmdqBuf); // C `:1893`
+        return cmdqBuf;
+    }
+
+    /* C `:1897–1901` in_getlin envelope in C order (set before
+     * bot_disabled, cleared after its restore). No readers in C or JS;
+     * the live game.program_state field carries it. */
+    if (!game.program_state) game.program_state = {};
+    game.program_state.in_getlin = 1; // C `:1897`
+    const _botPrev = set_bot_disabled(true); // C `:1898`
     await flush_topl_more();
     clear_win_stop();
     hooked_getlin_begin();
@@ -297,7 +327,8 @@ export async function getlin(query, bufp) {
         hooked_getlin_epilogue(false);
         hooked_getlin_end();
         game._pending_message = '';
-        set_bot_disabled(_botPrev);
+        set_bot_disabled(_botPrev); // C windows.c `:1900`
+        game.program_state.in_getlin = 0; // C windows.c `:1901`
     }
 }
 

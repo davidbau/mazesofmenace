@@ -47,6 +47,7 @@ import { find_ac } from './u_init.js';
 import {
     setworn, Helmet_off, Gloves_off, Boots_off, Shield_off,
     Armor_gone, Cloak_off, Blindf_off, cloak_simple_name, helm_simple_name,
+    donning, cancel_don,
 } from './do_wear.js';
 import { dropx, canletgo, make_blinded } from './do.js';
 import { uswapwepgone, uwepgone, could_twoweap, untwoweapon } from './wield.js';
@@ -1362,7 +1363,8 @@ async function dropp(obj) {
  * the one raw setworn keeps {skip_find_ac} (C worn.c has no find_ac;
  * polymon's own find_ac pair runs in C order: after drop_weapon (:890)
  * and before encumber_msg (:967), arming botl for the post-strip paints).
- * Named omissions: donning/cancel_don (do_wear locals, unwired).
+ * donning/cancel_don wired at all 7 C sites (live do_wear.js exports;
+ * the shield arm has no donning check in C). Whole vs C `:1157–1302`.
  */
 async function break_armor() {
     const u = game.u || {};
@@ -1371,11 +1373,12 @@ async function break_armor() {
     const noAc = { skip_find_ac: true };
 
     if (breakarm(uptr)) {
-        // C :1162–1176 — donning cancel omitted (do_wear local unwired);
-        // lamplit DSM end_burn, message, exercise, Armor_gone, useup
-        // (armor is DESTROYED, not dropped).
+        // C :1162–1176 — donning cancel first, then lamplit DSM
+        // end_burn, message, exercise, Armor_gone, useup (armor is
+        // DESTROYED, not dropped).
         const otmp = u.uarm;
         if (otmp) {
+            if (donning(otmp)) cancel_don(); /* C :1164–1165 */
             if (otmp.lamplit) end_burn(otmp, false);
             await pline('You break out of your armor!');
             exercise(A_STR, false);
@@ -1412,6 +1415,7 @@ async function break_armor() {
         // C :1201–1211 — racial_exception keeps hobbit elven suits on.
         const otmp = u.uarm;
         if (otmp && racial_exception(game.youmonst, otmp) < 1) {
+            if (donning(otmp)) cancel_don(); /* C :1200–1201 */
             await pline('Your armor falls around you!');
             await Armor_gone();
             // C dropp→dropx→dropz→encumber_msg mid-break_armor (before gloves)
@@ -1441,15 +1445,16 @@ async function break_armor() {
             await dropp(shirt);
         }
     }
-    // C :1230–1251 — horned forms pierce flimsy helms, else the helm
-    // falls (donning cancel omitted like the other arms in this function).
+    // C :1230–1251 — horned forms pierce flimsy helms unless donned
+    // (:1231), else the helm falls (donning cancel :1239–1240 first).
     if (has_horns(uptr)) {
         const hornhelm = u.uarmh;
         if (hornhelm) {
-            if (is_flimsy(hornhelm)) {
+            if (is_flimsy(hornhelm) && !donning(hornhelm)) {
                 const hornbuf = `horn${num_horns(uptr) === 1 ? '' : 's'}`;
                 await pline(`Your ${hornbuf} ${vtense(hornbuf, 'pierce')} through ${yname(hornhelm)}.`);
             } else {
+                if (donning(hornhelm)) cancel_don(); /* C :1239–1240 */
                 await pline(`Your ${helm_simple_name(hornhelm)} falls to the ${surface(u.ux, u.uy)}!`);
                 await Helmet_off();
                 await dropp(hornhelm);
@@ -1461,6 +1466,7 @@ async function break_armor() {
     if (nohands(uptr) || verysmall(uptr)) {
         const gloves = u.uarmg;
         if (gloves) {
+            if (donning(gloves)) cancel_don(); /* C :1250–1251 */
             // C: Drop weapon along with gloves
             await pline(`You drop your gloves${u.uwep ? ' and weapon' : ''}!`);
             await drop_weapon(0);
@@ -1475,6 +1481,7 @@ async function break_armor() {
         }
         const helm = u.uarmh;
         if (helm) {
+            if (donning(helm)) cancel_don(); /* C :1265–1266 */
             await pline(`Your ${helm_simple_name(helm)} falls to the ${surface(u.ux, u.uy)}!`);
             await Helmet_off();
             await dropp(helm);
@@ -1486,6 +1493,7 @@ async function break_armor() {
         || slithy(uptr) || uptr.mlet === 'S_CENTAUR') {
         const boots = u.uarmf;
         if (boots) {
+            if (donning(boots)) cancel_don(); /* C :1276–1277 */
             if (is_whirly(uptr)) {
                 await pline('Your boots fall away!');
             } else {

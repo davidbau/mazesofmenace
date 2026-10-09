@@ -136,7 +136,6 @@ import {
     newsym,
     objnum_to_glyph,
     vobj_at,
-    UnsupportedMapMemoryError,
     UnsupportedTransientDisplayError,
 } from './display.js';
 import {
@@ -293,6 +292,7 @@ import {
 import { dodiscovered, UnsupportedDiscoveryDisplayError } from './o_init.js';
 import { donameFresh, UnsupportedObjectNameError } from './objnam.js';
 import {
+    doset,
     doset_simple,
     dotogglepickup,
     toggle_bool_option,
@@ -310,6 +310,8 @@ import { kill_genocided_monsters, UnsupportedHideError } from './mon.js';
 import { dosave, dosave0, savelev } from './save.js';
 import {
     dohelp,
+    dohistory,
+    dowhatdoes,
     doquickwhatis,
     do_screen_description,
     dowhatis,
@@ -375,8 +377,9 @@ import {
     dopoly, doremove, dospinweb, dospit, dosummon,
 } from './polyself.js';
 import {
-    wiz_detect, wiz_flip_level, wiz_genesis, wiz_identify, wiz_intrinsic, wiz_level_change, wiz_kill, wiz_smell, wiz_show_seenv, wiz_show_vision,
-    wiz_level_tele, wiz_makemap, wiz_map, wiz_polyself, wiz_wish, wiz_where, wiz_rumor_check,
+    wiz_detect, wiz_flip_level, wiz_genesis, wiz_identify, wiz_intrinsic, wiz_level_change, wiz_kill, wiz_smell, wiz_show_seenv, wiz_show_vision, wiz_show_stats, wiz_show_wmodes, wiz_objprobs, wiz_display_macros, wiz_mon_diff, wiz_telekinesis, wiz_custom,
+    wiz_level_tele, wiz_makemap, wiz_map, wiz_polyself, wiz_wish, wiz_where, wiz_rumor_check, wiz_migrate_mons,
+    wiz_map_levltyp, wiz_levltyp_legend,
 } from './wizcmds.js';
 import {
     dozap,
@@ -1075,11 +1078,10 @@ export function movecmd(sym, mode, state = game) {
 export function key2extcmddesc(key, state = game) {
     const byte = key & 0xFF;
     const model = commandBindings(state);
-    let description = '';
-    if (movecmd(byte, MV_WALK, state)) description = 'move';
-    else if (movecmd(byte, MV_RUSH, state)) description = 'rush';
-    else if (movecmd(byte, MV_RUN, state)) description = 'run';
-    if (description) return description;
+    // C writes temporary movement text but never returns it: it continues
+    // into the count, special-key and binding lookups. Keep all probe effects.
+    if (!movecmd(byte, MV_WALK, state)
+        && !movecmd(byte, MV_RUSH, state)) movecmd(byte, MV_RUN, state);
 
     const unmeta = byte & 0x7F;
     const isDigit = (value) => value >= 0x30 && value <= 0x39;
@@ -1859,7 +1861,7 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'options', 'autopickup',
     'wizwish', 'wizidentify', 'wizlevelport', 'wizgenesis', 'wizintrinsic', 'wizmap', 'wizwhere', 'wizcast', 'wizsmell', 'wizkill', 'fire', 'throw',
     'swap', 'kick',
-    'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot', 'force', 'tip',
+    'save', 'wield', 'quiver', 'help', 'whatdoes', 'whatis', '#', 'loot', 'force', 'tip',
     'glance', 'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet',
     'seeall', 'seetools', 'teleport',
     'overview', 'chronicle', 'conduct', 'vanquished', 'genocided',
@@ -2363,7 +2365,8 @@ export async function enter_explore_mode(state = game) {
     return ECMD_OK;
 }
 
-const LEVLTYP_NAMES = Object.freeze([
+// C ref: cmd.c levltyp[MAX_TYPE + 2], also read by wizcmds.c diagnostics.
+export const levltyp = Object.freeze([
     'stone', 'vertical wall', 'horizontal wall', 'top-left corner wall',
     'top-right corner wall', 'bottom-left corner wall',
     'bottom-right corner wall', 'cross wall', 'tee-up wall', 'tee-down wall',
@@ -2375,9 +2378,9 @@ const LEVLTYP_NAMES = Object.freeze([
     'unreachable/undiggable', '',
 ]);
 
-// C ref: cmd.c levltyp_to_name() (1090-1193).
+// C ref: cmd.c levltyp_to_name() (1089-1095).
 export function levltyp_to_name(typ) {
-    return typ >= 0 && typ < MAX_TYPE ? LEVLTYP_NAMES[typ] : null;
+    return typ >= 0 && typ < MAX_TYPE ? levltyp[typ] : null;
 }
 
 function selectedPoint(selection, x, y) {
@@ -2907,10 +2910,6 @@ export function failClosedCommandRefusals() {
         // anything, so an unported option value stops with no output; its
         // pick loop stops after the player has committed a selection.
         UnsupportedOptionMenuError,
-        // display.c unmap_object() raises this for a square that shows an
-        // engraving, which hack.c domove_fight_empty() is the one ported
-        // caller that can reach.
-        UnsupportedMapMemoryError,
         UnsupportedHeroTimeoutBoundaryError,
         UnsupportedPositionCheckError,
         UnsupportedMonsterCreationError,
@@ -3144,8 +3143,7 @@ async function runSearchCommand(key, state) {
 }
 
 // C ref: cmd.c doterrain() (1098-1189). Choices 1-4 use the complete
-// detect.c terrain projection. Wizard internal codes and legend remain
-// separate source owners, so those menu choices retain their refusal.
+// detect.c terrain projection; choices 5-6 await the wizcmds.c text windows.
 async function runTerrainCommand(key, state) {
     return failClosedCommand(key, state, () => doterrain(state));
 }
@@ -3201,10 +3199,10 @@ export async function doterrain(state = game) {
     };
     if (which in subsets) {
         await reveal_terrain(subsets[which], state);
-    } else {
-        throw new UnsupportedSearchError(
-            `terrain menu choice ${which} is not ported`,
-        );
+    } else if (which === 5) {
+        await wiz_map_levltyp(state);
+    } else if (which === 6) {
+        await wiz_levltyp_legend(state);
     }
     return ECMD_OK;
 }
@@ -3673,12 +3671,12 @@ async function runEnhanceCommand(key, state) {
     }));
 }
 
-// C ref: options.c doset_simple(), the 'O' command. Both it and the doset()
-// its menu_requested arm hands off to format the whole menu before
+// C ref: options.c doset_simple() ('O') and doset() ('#optionsfull'). Both
+// preserve their own menu_requested inversion and format the menu before
 // select_menu() draws anything, so an unported option value stops before any
 // output.
-async function runOptionsCommand(key, state) {
-    return failClosedCommand(key, state, () => doset_simple(state, {
+async function runOptionsCommand(key, state, handler = doset_simple) {
+    return failClosedCommand(key, state, () => handler(state, {
         // add_menu_heading() draws each section heading with
         // iflags.menu_headings, which menuTitleStyle() reads.
         headingStyle: {
@@ -5122,6 +5120,12 @@ async function doextcmd(key, state) {
         return await runEngraveCommand(key, state);
     case 'dohelp':
         return await runHelpCommand(key, state);
+    case 'dohistory':
+        return await dohistory(state);
+    case 'doset':
+        return await runOptionsCommand(key, state, doset);
+    case 'dowhatdoes':
+        return await dowhatdoes(state);
     case 'dowhatis':
         return await runWhatisCommand(key, state);
     case 'doquickwhatis':
@@ -5267,12 +5271,28 @@ async function doextcmd(key, state) {
         return await wiz_flip_level(state);
     case 'wiz_kill':
         return await runKillCommand(key, state);
+    case 'wiz_migrate_mons':
+        return await wiz_migrate_mons(state);
     case 'wiz_rumor_check':
         return await wiz_rumor_check(state);
     case 'doborn':
         return await doborn(state);
     case 'wiz_smell':
         return await runSmellCommand(key, state);
+    case 'wiz_display_macros':
+        return await wiz_display_macros(state);
+    case 'wiz_mon_diff':
+        return await wiz_mon_diff(state);
+    case 'wiz_custom':
+        return await wiz_custom(state);
+    case 'wiz_telekinesis':
+        return await wiz_telekinesis(state);
+    case 'wiz_objprobs':
+        return await wiz_objprobs(state);
+    case 'wiz_show_wmodes':
+        return await wiz_show_wmodes(state);
+    case 'wiz_show_stats':
+        return await wiz_show_stats(state);
     case 'wiz_show_seenv':
         return await wiz_show_seenv(state);
     case 'wiz_show_vision':
@@ -5768,6 +5788,11 @@ export async function rhack(key, state = game) {
         }
         if (command === 'help') {
             await runHelpCommand(key, state);
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'whatdoes') {
+            await dowhatdoes(state);
             resetCommandVars(state, state.multi < 0);
             return;
         }
@@ -6549,6 +6574,19 @@ export async function rhack(key, state = game) {
         }
         if (command === 'seeamulet') {
             await failClosedCommand(key, state, () => dopramulet(state, inventoryMenuHooks(state)));
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        // C ref: cmd.c rhack() invokes the registered inventory handler,
+        // then resets ECMD_OK without spending time (3810-3825). These
+        // direct keys use the same canonical display as their #commands.
+        if (command === 'seetools') {
+            await failClosedCommand(key, state, () => doprtool(state, inventoryMenuHooks(state)));
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'seeall') {
+            await failClosedCommand(key, state, () => doprinuse(state, inventoryMenuHooks(state)));
             resetCommandVars(state, state.multi < 0);
             return;
         }

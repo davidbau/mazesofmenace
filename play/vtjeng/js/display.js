@@ -52,7 +52,7 @@ import {
     AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, AM_SANCTUM,
     ACCESSIBLE, BLINDED, BOLT_LIM, CONFUSION, DEAF, DETECT_MONSTERS, FLYING,
     HALLUC, HALLUC_RES, INFRAVISION, SEE_INVIS,
-    H_IBM, ROGUESET,
+    H_IBM, H_UTF8, PRIMARYSET, ROGUESET,
     CORPSTAT_FEMALE, CORPSTAT_GENDER,
     HL_BOLD, HL_INVERSE, HL_ULINE, HL_UNDEF,
     LEVITATION, NOT_HUNGRY, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE,
@@ -168,7 +168,6 @@ import {
     object_class_symbol,
     optional_misc_symbol,
     symbol_at,
-    MAXPCHARS,
     SYM_OFF_O,
     SYM_OFF_P,
     SYM_OFF_W,
@@ -239,6 +238,8 @@ import {
     trap_to_defsym,
 } from './symbols.js';
 import { numeric_glyph_customization } from './glyphs.js';
+// Existing display callers share glyphs.c's canonical decoder.
+export { glyph_to_cmap } from './glyphs.js';
 import {
     GLYPH_ALTAR_OFF,
     GLYPH_BODY_OFF,
@@ -1448,18 +1449,11 @@ function display_monster(x, y, monster, sightflags, wormTail, state = game) {
             presented, state, detected,
         );
 
-        // C show_mon_or_warn() clears a remembered invisible marker and then
-        // remembers a visible floor object beneath the monster. The only
-        // unported branch in that void helper is forgetting an engraved
-        // square; preserve that named gap without using a fake return value.
+        // C show_mon_or_warn() clears the remembered invisible marker before
+        // remembering a visible object beneath the monster.
         const location = state.level.at(x, y);
         if (glyph_is_invisible(location.remembered_glyph?.glyph)) {
-            try {
-                unmap_object(x, y, state);
-            } catch (error) {
-                if (!(error instanceof UnsupportedMapMemoryError)) throw error;
-                note_unported('display.c unmap_object');
-            }
+            unmap_object(x, y, state);
             const object = vobj_at(x, y, state);
             if (cansee(x, y, state) && object)
                 map_object(object, false, state);
@@ -1735,38 +1729,6 @@ export function glyph_is_warning(glyph) {
 // map_glyphinfo()'s GLYPH_ZAP_OFF arm resolves.
 export function glyph_is_cmap_zap(glyph) {
     return glyph >= GLYPH_ZAP_OFF && glyph < (NUM_ZAP << 2) + GLYPH_ZAP_OFF;
-}
-
-/**
- * C ref: glyphs.c glyph_to_cmap() (199-231). The inverse of cmap_to_glyph(),
- * and lossy in the two places cmap_to_glyph() is lossy: every branch's walls
- * come back as the main dungeon's indices, and all five altars come back as
- * S_altar.
- *
- * C's swallow, explosion and zap arms are omitted. No ported path produces a
- * number in any of those three ranges -- reset_glyphmap()'s arms for them are
- * unported for the same reason -- so each would be an untested inverse of an
- * absent forward direction. They fall to C's own default instead, MAXPCHARS,
- * which is the fencepost entry defsyms[] carries for exactly this.
- */
-export function glyph_to_cmap(glyph) {
-    if (!glyph_is_cmap(glyph)) return MAXPCHARS;
-    if (glyph === GLYPH_CMAP_STONE_OFF) return S_stone;
-    if (glyph < GLYPH_CMAP_A_OFF) {
-        // The five wall ranges are adjacent and equally sized, so one
-        // remainder covers what C spells as five separate range tests.
-        return ((glyph - GLYPH_CMAP_MAIN_OFF) % ((S_trwall - S_vwall) + 1))
-            + S_vwall;
-    }
-    if (glyph < GLYPH_ALTAR_OFF) return (glyph - GLYPH_CMAP_A_OFF) + S_ndoor;
-    if (glyph < GLYPH_CMAP_B_OFF) return S_altar;
-    if (glyph < GLYPH_ZAP_OFF) return (glyph - GLYPH_CMAP_B_OFF) + S_grave;
-    // glyphs.c:1003-1004. The zap range holds four beam directions per
-    // zap type, so the remainder recovers the direction, discarding the
-    // type that zapdir_to_glyph() packed above it.
-    if (glyph < GLYPH_CMAP_C_OFF)
-        return ((glyph - GLYPH_ZAP_OFF) % 4) + S_vbeam;
-    return (glyph - GLYPH_CMAP_C_OFF) + S_digbeam;
 }
 
 // C refs: display.h GLYPH_TRAP_OFF, glyph_is_trap(), and glyph_to_trap().
@@ -2209,7 +2171,11 @@ function configuredPetOverride(state) {
  * state.
  */
 export function map_glyphinfo(glyph, state = game, options = undefined) {
-    if (!mapGlyphinfoResolves(glyph)) {
+    // reset_glyphmap also initializes the enum hole for piletop venom,
+    // although glyph_is_object excludes it from gameplay classification.
+    const rawEnumGlyph = options?.rawGlyphmap && Number.isInteger(glyph)
+        && glyph >= 0 && glyph < MAX_GLYPH;
+    if (!mapGlyphinfoResolves(glyph) && !rawEnumGlyph) {
         throw new TypeError(
             `map_glyphinfo() has no arm for glyph ${glyph}`,
         );
@@ -2236,7 +2202,9 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
     } else if (glyph === GLYPH_UNEXPLORED_OFF) {
         // display.c:2778-2782. The unexplored sentinel uses the active
         // SYM_UNEXPLORED byte and no color, just like the C glyph map entry.
-        return unexploredGlyphInfo(state);
+        if (!options?.rawGlyphmap) return unexploredGlyphInfo(state);
+        symbol = misc_symbol(SYM_UNEXPLORED, state);
+        color = NO_COLOR;
     } else if (glyph_is_monster(glyph)) {
         // display.c:2986-3065. The glyph number already contains the
         // species, gender, and presentation family; derive the symbol from
@@ -2417,6 +2385,14 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
     if (state.iflags?.wc_color === false
         || (isRogueLevelForState(state) && !rogueColor)) color = NO_COLOR;
 
+    // Symbol-set S_* Unicode belongs to the glyph before accessibility
+    // replaces its base symbol. Concrete G_* customizations override it.
+    const activeHandling = state.gs?.symset?.[
+        state.gc?.currentgraphics ?? PRIMARYSET
+    ]?.handling;
+    const symbolUnicode = activeHandling === H_UTF8
+        ? symbol.displayCh : undefined;
+
     // reset_glyphmap() installs the pet override in the stored glyph map
     // before map_glyphinfo() applies coordinate-dependent hero handling.
     if (accessibilityOverridesEnabled(state) && glyph_is_pet(glyph)) {
@@ -2454,6 +2430,15 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
         // recovered from the stored glyph species, never from m_at().
         symbol = monster_class_symbol(speciesForGlyph(glyph, state).mlet, state);
     }
+
+    // #wizcustom reads reset_glyphmap's stored fields before Unicode or
+    // custom colors are applied to presentation. Resolve them from the same
+    // source branch; no coordinate-specific hero override is requested.
+    if (options?.rawGlyphmap) return {
+        ttychar: symbol.ttychar ?? symbol.ch.charCodeAt(0),
+        color: state.iflags?.use_color === false ? NO_COLOR : color,
+        unicode: symbolUnicode,
+    };
 
     const presentation = glyphPresentation(
         symbol,
@@ -3628,34 +3613,8 @@ export function map_engraving(engraving, show, state = game) {
     if (show) show_glyph_cell(x, y, glyph);
 }
 
-// The refusal class for a map-memory rewrite this port cannot perform.
-// js/cmd.js failClosedCommandRefusals() lists it, so a command that reaches
-// one ends its segment on the last screen it matched.
-export class UnsupportedMapMemoryError extends Error {
-    constructor(message) {
-        super(message);
-        this.name = 'UnsupportedMapMemoryError';
-    }
-}
-
-// C ref: display.c unmap_object() (408-438). Forgets whatever the map showed
-// at <x,y> and puts back the terrain, the seen trap, or plain stone. hack.c
-// domove_fight_empty() calls it before it names what the hero swung at,
-// because the square is about to become known empty.
-//
-// Its engraving arm stops, and no longer for want of a helper:
-// engraving_to_glyph() is ported now, so the arm could be written as C writes
-// it. What it still needs is a recorded case, because retiring the stop lets a
-// force-fight at an engraved square keep running, and no differential covers
-// that square today. The deferral force-fight-engraved-square owns the port;
-// this comment says only why the stop stands, not that it cannot go.
-// spot_shows_engravings() restricts the arm
-// to CORR, ICE and ROOM, all three of them ACCESSIBLE() and none of them
-// furniture, so the squares that can reach it are exactly the ones
-// domove_fight_empty() calls thin air. That arm is live, so a force-fight at
-// an engraved square reaches this refusal; js/cmd.js
-// failClosedCommandRefusals() lists UnsupportedMapMemoryError, so the segment
-// ends there rather than the error escaping.
+// C ref: display.c unmap_object() (408-438). Restore known trap, engraving,
+// or terrain memory without drawing; callers redraw the square when needed.
 export function unmap_object(x, y, state = game) {
     if (!state.level?.flags?.hero_memory) return;
     const location = state.level.at(x, y);
@@ -3669,19 +3628,19 @@ export function unmap_object(x, y, state = game) {
         const showsEngravings = location.typ === CORR
             || location.typ === ICE
             || location.typ === ROOM;
-        if (showsEngravings && engr_at(x, y, state) && !covered) {
-            throw new UnsupportedMapMemoryError(
-                'forgetting a square that shows an engraving',
-            );
+        const engraving = showsEngravings ? engr_at(x, y, state) : null;
+        if (engraving && !covered) {
+            if (cansee(x, y, state)) engraving.erevealed = 1;
+            map_engraving(engraving, 0, state);
+        } else {
+            map_background(x, y, 0, state);
         }
-        map_background(x, y, 0, state);
         /* turn remembered dark room squares dark */
-        // C compares levl[x][y].glyph with cmap_to_glyph(S_room). The compare
-        // can only succeed on what map_background() just wrote, and
-        // back_to_glyph() writes S_room for exactly the ROOM squares this
-        // test already names, so the typ test carries the whole condition.
-        if (!location.waslit && location.typ === ROOM)
+        if (!location.waslit
+            && location.remembered_glyph?.glyph === cmap_to_glyph(S_room, state)
+            && location.typ === ROOM) {
             location.remembered_glyph = rememberedCmap(S_stone, state);
+        }
     } else {
         location.remembered_glyph = rememberedCmap(S_stone, state);
     }
@@ -5987,6 +5946,10 @@ function _buildScreenOutput(cursorOnHero = true) {
     const savedCursor = !cursorOnHero && display.grid
         ? [display.cursorCol, display.cursorRow]
         : null;
+    // getline.c raises ttyDisplay->inread before custompline reaches this
+    // flush. C prints only dirty gbuf cells; a prompt must keep the physical
+    // menu or text window over every clean map cell.
+    const bufferedOnly = (display.inread ?? 0) > 0;
     const statusRows = game._renderedStatusLayouts ?? statusLayouts();
     // botl.c bot() leaves the physical status window untouched while
     // gb.bot_disabled is raised.  Keep those cells across the canonical
@@ -6008,9 +5971,9 @@ function _buildScreenOutput(cursorOnHero = true) {
                 skippedMessageCells[c] = { ...display.grid[0][c] };
             }
         }
-        display.clearScreen();
+        if (!bufferedOnly) display.clearScreen();
         // Message line
-        for (let c = 0; c < Math.min(msg.length, display.cols); c++) {
+        for (let c = 0; !bufferedOnly && c < Math.min(msg.length, display.cols); c++) {
             // Recorder patch 006 ignores signed high-bit TTY bytes after the
             // source cursor has advanced. tty_message.js represents each such
             // byte as NUL, so restore the physical cell which clearScreen()
@@ -6034,13 +5997,13 @@ function _buildScreenOutput(cursorOnHero = true) {
             const y = viewport.top + offset;
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
-                if (!loc) continue;
+                if (!loc || (bufferedOnly && !loc.gnew)) continue;
                 const ch = browserGlyphs && loc.disp_browser_ch
                     ? loc.disp_browser_ch
                     : (loc.disp_decgfx
                         ? decMap[loc.disp_ch] || loc.disp_ch
                         : loc.disp_ch);
-                if (!ch || ch === ' ') continue;
+                if (!ch || (!bufferedOnly && ch === ' ')) continue;
                 display.setCell(
                     x - 1,
                     offset + 1,
@@ -6058,9 +6021,9 @@ function _buildScreenOutput(cursorOnHero = true) {
         // early with gb.bot_disabled.  Keep that suppression visible in the
         // rebuilt terminal: repainting the cached status layouts here would
         // put the covered status rows back underneath a getlin prompt.
-        if (game.gb?.bot_disabled !== true)
+        if (!bufferedOnly && game.gb?.bot_disabled !== true)
             writeStatusRows(display, statusRows);
-        else if (savedStatusCells) {
+        else if (!bufferedOnly && savedStatusCells) {
             const firstRow = display.rows - savedStatusCells.length;
             for (let row = 0; row < savedStatusCells.length; ++row) {
                 for (let column = 0; column < display.cols; ++column) {
@@ -6386,4 +6349,9 @@ function _refreshTimeField(layout) {
     const hungerX = layout.hungerX ?? null;
     const { row } = _renderStatusFields(fields, hungerX);
     return { ...row.finish(), fields, hungerX };
+}
+
+// Bounded display.c reset_glyphmap field access for wizcmds.c diagnostics.
+export function glyphmap_base_fields(glyph, state = game) {
+    return map_glyphinfo(glyph, state, { rawGlyphmap: true });
 }

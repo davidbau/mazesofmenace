@@ -65,7 +65,7 @@ import {
     maybe_mnexto,
 } from './mon.js';
 import { abuse_dog } from './dog.js';
-import { monflee, set_apparxy, maybe_unhide_at, get_iter_mons_xy } from './monmove.js';
+import { monflee, set_apparxy, maybe_unhide_at, get_iter_mons_xy, hero_Deaf } from './monmove.js';
 import { m_in_out_region } from './region.js';
 import { mon_nam, Monnam, christen_orc, free_oname, hliquid } from './do_name.js';
 import { martial_bonus, use_skill, special_dmgval } from './weapon.js';
@@ -429,6 +429,7 @@ async function watchman_door_damage(mtmp, x, y) {
  * doorbuster = Upolyd && is_giant(youmonst.data) via the mondata.h M2_GIANT
  * predicate; Soundeffect shatter/crash arms in C order (no-op without
  * SND_LIB_INTEGRATED, trap.js launch_obj convention). mon_yells is D-1248.
+ * Fail-arm Deaf macro gate via hero_Deaf (D-3704).
  */
 async function kick_door(x, y, avrg_attrib) {
     const loc = game.level?.at(x, y);
@@ -498,8 +499,10 @@ async function kick_door(x, y, avrg_attrib) {
     } else {
         if (Blind()) feel_location(x, y); /* we know we hit it */
         exercise(A_STR, true);
-        // C: (Deaf || !rn2(3)) ? "Thwack" : "Whammm"
-        const thud = (game.u?.Deaf || !rn2(3)) ? 'Thwack' : 'Whammm';
+        // C dokick.c:966 (Deaf || !rn2(3)) — Deaf ≡ youprop.h:125
+        // HDeaf||EDeaf||uroleplay.deaf via hero_Deaf() (D-3572 pattern);
+        // short-circuits to Thwack without drawing rn2(3).
+        const thud = (hero_Deaf() || !rn2(3)) ? 'Thwack' : 'Whammm';
         await pline(`${thud}!!`);
         if (in_town(x, y)) {
             await get_iter_mons_xy(watchman_door_damage, x, y);
@@ -752,7 +755,11 @@ async function kick_nondoor(x, y, avrg_attrib) {
         if (!((loc.looted | 0) & S_LPUDDING) && !rn2(3)
             && !((game.mvitals?.[PM_BLACK_PUDDING]?.mvflags ?? 0) & G_GONE)) {
             if (Blind()) {
-                if (!(u.Deaf || u.HDeaf)) await You_hear('a gushing sound.');
+                // C dokick.c:1213 (if (!Deaf)) — Deaf ≡ youprop.h:125
+                // HDeaf||EDeaf||uroleplay.deaf via hero_Deaf() (D-3572
+                // pattern); an extrinsic/roleplay-deaf hero stays silent
+                // even Unaware, where You_hear's dream arm would speak.
+                if (!hero_Deaf()) await You_hear('a gushing sound.');
             } else {
                 await pline('A black ooze gushes up from the drain!');
             }

@@ -265,6 +265,7 @@ import {
 import { escapes } from './options_escapes.js';
 import {
     assign_graphics,
+    known_handling,
     finish_boulder_symbol,
     MAXMCLASSES,
     switch_symbols,
@@ -272,6 +273,7 @@ import {
 import {
     apply_customizations,
     glyphrep_to_custom_map_entries,
+    fill_glyphid_cache, free_glyphid_cache, glyphid_cache_status,
     inspect_glyphrep,
 } from './glyphs.js';
 import { choose_classes_menu, getlin, select_menu } from './windows.js';
@@ -6756,6 +6758,8 @@ export function hide_unhide_msgtypes(hide, hide_mask, state = game) {
 export function parseNethackrc(rc, random = rn2) {
     const result = defaultResult();
     if (!rc) return result;
+    // C initoptions7154 fills before configuration parsing.
+    if (!glyphid_cache_status(result)) fill_glyphid_cache(result);
     const optionState = {
         seen: new Set(),
         values: {
@@ -6936,6 +6940,7 @@ export function parseNethackrc(rc, random = rn2) {
     }
 
     free_config_sections(result);
+    if (glyphid_cache_status(result)) free_glyphid_cache(result);
     return result;
 }
 
@@ -7180,6 +7185,7 @@ export function finishStartupBooleanOptions(state) {
 export function initoptions_finish(parsedOptions = {}, state = game, env = {}) {
     finish_fruit_option(parsedOptions, state, env);
     finish_boulder_symbol(state);
+    if (glyphid_cache_status(state)) free_glyphid_cache(state);
     apply_customizations(state.gc?.currentgraphics ?? PRIMARYSET, state);
     reglyph_darkroom(state);
     finishStartupBooleanOptions(state);
@@ -7326,9 +7332,6 @@ const disco_orders_descr = Object.freeze([
     'alphabetical across all classes',
 ]);
 const disclosure_options = 'iavgco';
-const known_handling = Object.freeze([
-    'UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8',
-]);
 // C ref: options.c paranoia[].  The setter walks all fifteen rows, including
 // the two config-only choices at the end.  The value getter stops at "none",
 // the first zero mask, so neither config-only choice is ever printed.
@@ -7828,11 +7831,10 @@ const MENU_TAB_SEP = allopt.find(
     (option) => option.name === 'menu_tab_sep',
 );
 
-// C ref: options.c doset()'s fmtstr_doset, the "%s%-Nus [%s]" branch.
-// fmtstr_tab_doset, the branch above, is not ported.
+// C ref: options.c doset()'s fmtstr_doset and fmtstr_tab_doset.
 function dosetEntryFormat(state, startpass, endpass) {
     if (booleanOptionValue(state, MENU_TAB_SEP))
-        throw new UnsupportedOptionMenuError('doset() with menu_tab_sep');
+        return (indent, name, value) => `${indent}${name}\t[${value}]`;
     const width = longest_option_name(startpass, endpass);
     return (indent, name, value) => `${indent}${name.padEnd(width)} [${value}]`;
 }
@@ -7901,7 +7903,8 @@ export function dosetMenuItems(state, helpers, skiphelp) {
             if (unsupportedWindowOption(option.name)) continue;
 
             const a_int = pass === 0 ? 0 : i + 1 + indexoffset;
-            const indent = pass === 0 ? '    ' : '';
+            const indent = pass === 0 && !booleanOptionValue(state, MENU_TAB_SEP)
+                ? '    ' : '';
             // enhance_menu_text() is compiled out; its whole body sits behind
             // `#if 0` in this build.
             const text = format(
@@ -8786,17 +8789,14 @@ const AUTOPICKUP_SUFFIX_OPTIONS = Object.freeze(new Set([
 ]));
 
 // C ref: options.c doset_simple_menu()'s fmtstr_doset_simple, the
-// "%-Nus [%s]" branch; fmtstr_tab_doset_simple above it is not ported.  Two
+// "%-Nus [%s]" and "%s\t[%s]" branches. Two
 // things differ from doset()'s format.  There is no leading "%s", because
 // this menu has no indented pass to line up with, and the width comes from
 // set_gameview..set_in_game even in debug mode, where doset() widens its own
 // end of that range to set_wiznofuz.
 function dosetSimpleEntryFormat(state) {
-    if (booleanOptionValue(state, MENU_TAB_SEP)) {
-        throw new UnsupportedOptionMenuError(
-            'doset_simple_menu() with menu_tab_sep',
-        );
-    }
+    if (booleanOptionValue(state, MENU_TAB_SEP))
+        return (name, value) => `${name}\t[${value}]`;
     const width = longest_option_name(set_gameview, set_in_game);
     return (name, value) => `${name.padEnd(width)} [${value}]`;
 }

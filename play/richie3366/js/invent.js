@@ -341,9 +341,10 @@ import { sticks } from './engrave.js';
 import { surface } from './sit.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC, PM_ARCHEOLOGIST, monsterNames } from './generated/monsters_data.js';
+import { ART_OGRESMASHER } from './generated/artifacts_data.js';
 import { humanoid, strongmonst, is_flyer, mons, touch_petrifies, poly_when_stoned, hides_under, throws_rocks, haseyes, dmgtype, hates_silver, vampshifted, nonliving, weirdnonliving } from './monsters.js';
 import { hideunder } from './mon.js';
-import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck, disp_artifact_discoveries } from './artifact.js';
+import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck, disp_artifact_discoveries, u_wield_art } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
 import {
     askchain, add_valid_menu_class, collect_obj_classes,
@@ -352,7 +353,7 @@ import {
 } from './pickup.js';
 import { is_ammo, is_pole, empty_handed } from './wield.js';
 import { is_wet_towel, can_advance } from './weapon.js';
-import { shield_simple_name, Boots_on, helm_simple_name, cloak_simple_name, shirt_simple_name, suit_simple_name, boots_simple_name } from './do_wear.js';
+import { shield_simple_name, Boots_on, helm_simple_name, cloak_simple_name, shirt_simple_name, suit_simple_name, boots_simple_name, stuck_ring } from './do_wear.js';
 import { float_vs_flight, youhiding } from './polyself.js';
 import { learn_egg_type } from './timeout.js';
 
@@ -378,6 +379,9 @@ const OTYP_GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
+const DUNCE_CAP = objectNames.indexOf('DUNCE_CAP');
+const RIN_SUSTAIN_ABILITY = objectNames.indexOf('RIN_SUSTAIN_ABILITY');
 
 /**
  * C ref: invent.c u_have_novel `:1575–1584` — first SPE_NOVEL on
@@ -5255,13 +5259,74 @@ function attrval(attrindx, attrvalue) {
 }
 
 /**
- * C ref: insight.c one_characteristic — current; limit when race ≠ human 18.
- * Branch envelope: no poly / Fixed_abil / cursed gauntlets hide path;
- * base/peak suffixes deferred until acurr≠abase cases appear.
+ * C ref: insight.c one_characteristic `:860–893` — hide_innate_value: a
+ * poly'd hero or stuck/worn cursed items hide base/peak/limit (the line
+ * shows the plain value); MAGIC enlightenment clears the hide unless
+ * poly'd. Shared by the overlay + final line builders below.
+ * @param {number} attrindx A_STR..A_CHA
+ * @param {number} mode BASICENLIGHTENMENT | MAGICENLIGHTENMENT
  */
-function one_characteristic_line(attrindx) {
+export function one_characteristic_hide_innate(attrindx, mode) {
+    const u = game.u || {};
+    let hide = false;
+    // C `:860–866` — Upolyd hides; else Fixed_abil (extrinsic-only,
+    // youprop.h:385) hides only while a sustain-ability ring is stuck on.
+    if (Upolyd(u)) {
+        hide = true;
+    } else if ((u.EFixed_abil | 0)) {
+        if (stuck_ring(u.uleft, RIN_SUSTAIN_ABILITY)
+            || stuck_ring(u.uright, RIN_SUSTAIN_ABILITY)) {
+            hide = true;
+        }
+    }
+    // C `:867–890` — per-attribute cursed-item hides.
+    switch (attrindx) {
+    case A_STR: // C `:868–871`
+        if (u.uarmg && (u.uarmg.otyp | 0) === GAUNTLETS_OF_POWER && u.uarmg.cursed) {
+            hide = true;
+        }
+        break;
+    case A_DEX: // C `:872–873` — no hide.
+        break;
+    case A_CON: // C `:874–877`
+        if (u_wield_art(ART_OGRESMASHER) && u.uwep.cursed) {
+            hide = true;
+        }
+        break;
+    case A_INT: // C `:878–881`
+        if (u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP && u.uarmh.cursed) {
+            hide = true;
+        }
+        break;
+    case A_WIS: // C `:882–885`
+        if (u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP && u.uarmh.cursed) {
+            hide = true;
+        }
+        break;
+    case A_CHA: // C `:886–887` — no hide.
+        break;
+    default: // C `:888–889` returns (impossible); callers pass A_STR..A_CHA only.
+        return false;
+    }
+    // C `:891–893` — MAGIC enlightenment clears the hide unless poly'd
+    // (final disclosure always includes MAGICENLIGHTENMENT).
+    if ((mode & MAGICENLIGHTENMENT) && !Upolyd(u)) {
+        hide = false;
+    }
+    return hide;
+}
+
+/**
+ * C ref: insight.c one_characteristic — current; limit when race ≠ human 18.
+ * Hidden (Upolyd / Fixed_abil / cursed item, MAGIC clearing) → plain value.
+ */
+export function one_characteristic_line(attrindx, mode) {
     const u = game.u || {};
     const acurrent = acurr(attrindx);
+    // C `:899` — hidden: plain value, no base/peak/limit suffixes.
+    if (one_characteristic_hide_innate(attrindx, mode)) {
+        return `  Your ${ATTR_NAMES[attrindx]} is ${attrval(attrindx, acurrent)}.`;
+    }
     let valubuf = attrval(attrindx, acurrent);
     const abase = u.acurr?.a?.[attrindx] ?? acurrent;
     const apeak = u.amax?.a?.[attrindx] ?? abase;
@@ -6665,7 +6730,7 @@ export async function enlightenment(mode, final = 0) {
         lines.push('');
         lines.push(`${final ? 'Final ' : ''}Characteristics:`);
         for (const a of [A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA]) {
-            lines.push(one_characteristic_line_final(a, !!final));
+            lines.push(one_characteristic_line_final(a, !!final, mode));
         }
     }
 
@@ -7587,13 +7652,12 @@ function autopickup_enlightenment_line_final(final) {
     return enlght_line_txt('Autopickup ', final ? 'was ' : 'is ', buf, '');
 }
 
-function one_characteristic_line_final(attrindx, final) {
+export function one_characteristic_line_final(attrindx, final, mode) {
     const u = game.u || {};
     const acurrent = acurr(attrindx);
-    // C insight.c:854-862 — poly'd hero can't track base/peak: plain value.
-    // (Fixed_abil/stuck-ring/cursed-item hide arms deferred; MAGIC-mode
-    // clearing only matters with those arms since hide starts FALSE here.)
-    if (Upolyd(u)) {
+    // C insight.c:860-899 — poly/stuck-ring/cursed-item hide (plain value);
+    // MAGIC enlightenment clears the hide unless poly'd.
+    if (one_characteristic_hide_innate(attrindx, mode)) {
         return enlght_line_txt(
             `Your ${ATTR_NAMES[attrindx]} `,
             final ? 'was ' : 'is ',
@@ -7733,12 +7797,12 @@ export async function doattributes(enl_mode = null) {
             autopickup_enlightenment_line(),
             '',
             ' Characteristics:',
-            one_characteristic_line(A_STR),
-            one_characteristic_line(A_DEX),
-            one_characteristic_line(A_CON),
-            one_characteristic_line(A_INT),
-            one_characteristic_line(A_WIS),
-            one_characteristic_line(A_CHA),
+            one_characteristic_line(A_STR, mode),
+            one_characteristic_line(A_DEX, mode),
+            one_characteristic_line(A_CON, mode),
+            one_characteristic_line(A_INT, mode),
+            one_characteristic_line(A_WIS, mode),
+            one_characteristic_line(A_CHA, mode),
             '',
         );
     }

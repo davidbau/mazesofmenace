@@ -50,7 +50,7 @@ import {
     EDOG, has_edog, ACCFOOD, MANFOOD, Is_container,
     NC_SHOW_MSG, NO_NC_FLAGS, PLNMSG_HIDE_UNDER,
 } from './const.js';
-import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms } from './hack.js';
+import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms, You_hear } from './hack.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -1220,17 +1220,14 @@ function mhis_yell(mtmp) {
     return 'its';
 }
 
-/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
-async function You_hear_yell(line) {
-    if (hero_Deaf() || game.flags?.acoustics === false) return;
-    await pline(`You hear ${line}`);
-}
-
 /**
  * C ref: monmove.c mon_yells — Deaf spotted waves/shakes; else
  * "X yells:" or You_hear someone yell, then verbalize1(shout).
  * SetVoice is empty without SND_LIB_INTEGRATED (contest sndprocs.h).
  * C Soundeffect(se_someone_yells) is commented out.
+ * The unspotted arm calls the live You_hear (pline.c:436–452, whole in
+ * js/hack.js) — its inner gates (acoustics silence, Underwater "barely",
+ * Unaware "dream") apply; the outer if (Deaf) above is C's gate order.
  */
 export async function mon_yells(mon, shout) {
     if (hero_Deaf()) {
@@ -1248,7 +1245,7 @@ export async function mon_yells(mon, shout) {
     if (display_canspotmon(mon)) {
         await pline_mon(mon, `${Amonnam(mon)} yells:`);
     } else {
-        await You_hear_yell('someone yell:');
+        await You_hear('someone yell:'); /* C monmove.c:124 */
     }
     await verbalize(shout);
 }
@@ -1322,7 +1319,8 @@ export async function mb_trapped(mtmp, canseeit) {
             await pline_mon(mtmp, 'KABOOM!!  You see a door explode.');
         } else if (!hero_Deaf()) { // C :59 !Deaf macro (HDeaf|EDeaf|roleplay), not the u.Deaf flag
             const far = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) > 7 * 7;
-            await pline(`You hear a ${far ? 'distant' : 'nearby'} explosion.`);
+            // C :60 — live You_hear: acoustics gate + Underwater/Unaware prefixes.
+            await You_hear('a %s explosion.', far ? 'distant' : 'nearby');
         }
     }
     await wake_nearto(mtmp.mx | 0, mtmp.my | 0, 7 * 7);
@@ -1775,7 +1773,8 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 } else if (canseeit) {
                     await You_see('a door unlock and open.');
                 } else if (!hero_Deaf()) { // C :1571 !Deaf macro (HDeaf|EDeaf|roleplay), not the u.Deaf flag
-                    await pline('You hear a door unlock and open.');
+                    // C :1572 — live You_hear: acoustics gate + Underwater/Unaware prefixes.
+                    await You_hear('a door unlock and open.');
                 }
             }
         } else if (dm === D_CLOSED && can_open) {
@@ -1790,7 +1789,8 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 } else if (canseeit) {
                     await You_see('a door open.');
                 } else if (!hero_Deaf()) { // C :1588 !Deaf macro (HDeaf|EDeaf|roleplay), not the u.Deaf flag
-                    await pline('You hear a door open.');
+                    // C :1589 — live You_hear: acoustics gate + Underwater/Unaware prefixes.
+                    await You_hear('a door open.');
                 }
             }
         } else if ((dm & (D_LOCKED | D_CLOSED)) !== 0) {
@@ -1808,7 +1808,8 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 } else if (canseeit) {
                     await You_see('a door crash open.');
                 } else if (!hero_Deaf()) { // C :1613 !Deaf macro (HDeaf|EDeaf|roleplay), not the u.Deaf flag
-                    await pline('You hear a door crash open.');
+                    // C :1614 — live You_hear: acoustics gate + Underwater/Unaware prefixes.
+                    await You_hear('a door crash open.');
                 }
             }
             // shop add_damage deferred

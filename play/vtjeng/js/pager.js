@@ -25,6 +25,8 @@ import {
     DRAWBRIDGE_UP,
     ECMD_OK,
     GRAVE,
+    GPCOORDS_COMPASS,
+    GPCOORDS_SCREEN,
     GPCOORDS_MAP,
     GPCOORDS_NONE,
     HALLUC,
@@ -143,7 +145,7 @@ import {
 import { DATA_BASE_ENTRIES } from './data_base_data.js';
 import { engr_at } from './engrave.js';
 import { fruit_from_name, makeplural, makesingular } from './fruit.js';
-import { LOOK_TRADITIONAL, getpos } from './getpos.js';
+import { LOOK_TRADITIONAL, coord_desc, getpos } from './getpos.js';
 import { game } from './gstate.js';
 import { createCommandBindingModel, keyForCommand } from './command_bindings.js';
 import { visible_region_at } from './region.js';
@@ -251,7 +253,7 @@ import {
     menuTitleStyle,
     ttyMenuLayout,
 } from './tty_menu.js';
-import { ttyPline, ttyPutmixed } from './tty_message.js';
+import { displayPendingTtyMessageWindow, ttyPline, ttyPutmixed } from './tty_message.js';
 import { doextversion } from './version.js';
 import {
     t_at,
@@ -321,20 +323,18 @@ function mon_to_glyph(monster, state) {
     return mnum + (monster?.female ? GLYPH_MON_FEM_OFF : GLYPH_MON_MALE_OFF);
 }
 
-function assertOrdinaryWhatisState(state) {
+function assertWhatisMenuState(state) {
     // pager.c do_look() admits blind heroes; blindness is handled by its
     // lookat()/description branches after the cursor has been selected.
     if (state.flags?.lootabc)
         throw new UnsupportedWhatisError('the lootabc menu');
     if (state.u?.uswallow)
         throw new UnsupportedWhatisError('a swallowed hero');
-    if (heroHallucinating(state))
-        throw new UnsupportedWhatisError('a hallucinating hero');
 }
 
 export function whatisMenuItems(state = game) {
-    assertOrdinaryWhatisState(state);
-    return [
+    assertWhatisMenuState(state);
+    const ordinaryChoices = [
         {
             value: '/',
             selector: '/',
@@ -353,6 +353,12 @@ export function whatisMenuItems(state = game) {
             groupSelector: 'n',
             label: 'something else (by symbol or name)',
         },
+    ];
+    // C ref: pager.c do_look() gates the separator and list choices, rather
+    // than the entire menu, on !u.uswallow && !Hallucination (1748).
+    if (heroHallucinating(state)) return ordinaryChoices;
+    return [
+        ...ordinaryChoices,
         { value: 'm', selector: 'm', label: 'nearby monsters' },
         { value: 'M', selector: 'M', label: 'all monsters shown on map' },
         { value: 'o', selector: 'o', label: 'nearby objects' },
@@ -390,6 +396,7 @@ export function whatisMenuItems(state = game) {
 
 function menuLines(state) {
     const items = whatisMenuItems(state);
+    if (heroHallucinating(state)) return items;
     return [...items.slice(0, 3), { text: '' }, ...items.slice(3)];
 }
 
@@ -806,63 +813,87 @@ export function look_region_nearby(nearby, state = game) {
     };
 }
 
-function mapCoordinate(x, y) {
-    const coordinate = `<${x},${y}>${y < 10 ? ' ' : ''}`;
-    return coordinate.padStart(8);
-}
-
 function trapOrEngravingMapCoordinate(x, y) {
     // Unlike look_all(), pager.c look_traps() and look_engrs() do not append
     // the single-digit-y alignment space before applying the width-eight pad.
     return `<${x},${y}>`.padStart(8);
 }
 
-// C ref: pager.c look_all(), for live monster and floor-object glyphs under
-// the default map-coordinate mode. The scan is y-major, then x-minor.
+// C ref: pager.c look_all() (1979-2074). The source scans y-major, then
+// x-minor, and formats the explicit coordinate mode before decoding glyphs.
 export async function look_all(nearby, doMons, state = game) {
-    const coordinateMode = state.iflags?.getpos_coords ?? GPCOORDS_NONE;
-    if (coordinateMode !== GPCOORDS_NONE
-        && coordinateMode !== GPCOORDS_MAP) {
-        throw new UnsupportedWhatisError('alternate list coordinates');
-    }
     const { loX, loY, hiX, hiY } = look_region_nearby(nearby, state);
     const lines = [];
+    let count = 0;
+    // display.h:canspotself(). Invisible includes the see-invisible exception.
+    const invisible = propertyActive(state, INVIS)
+        && !propertyActive(state, SEE_INVIS);
+    const telepathy = state.u?.uprops?.[TELEPAT] ?? {};
+    const canSpotSelf = heroBlind(state) || state.u.uswallow
+        || (!invisible && !state.u.uundetected)
+        || (Boolean(telepathy.extrinsic) && !telepathy.blocked)
+        || propertyActive(state, DETECT_MONSTERS);
     for (let y = loY; y <= hiY; ++y) {
         for (let x = loX; x <= hiX; ++x) {
             const glyph = glyph_at(x, y, state);
             let description = '';
-            if (doMons && glyph_is_monster(glyph)) {
-                if (u_at(x, y, state)) {
-                    description = self_lookat(state);
-                } else {
-                    const monster = m_at(x, y, state);
-                    if (monster)
-                        description = look_at_monster(monster, x, y, state);
+            if (doMons) {
+                if (glyph_is_monster(glyph)) {
+                    if (u_at(x, y, state) && canSpotSelf) {
+                        description = self_lookat(state);
+                        ++count;
+                    } else {
+                        const monster = m_at(x, y, state);
+                        if (monster) {
+                            description = look_at_monster(monster, x, y, state);
+                            ++count;
+                        }
+                    }
+                } else if (glyph_is_invisible(glyph)) {
+                    description = 'remembered, unseen, creature';
+                    ++count;
+                } else if (glyph_is_warning(glyph)) {
+                    description = def_warnsyms[glyph - GLYPH_WARNING_OFF].desc;
+                    ++count;
                 }
-            } else if (!doMons && glyph_is_object(glyph)) {
+            } else if (glyph_is_object(glyph)) {
                 description = look_at_object(glyph, x, y, state);
+                ++count;
             }
             if (!description) continue;
 
-            if (!lines.length) {
+            const configured = state.iflags?.getpos_coords ?? GPCOORDS_NONE;
+            const mode = configured !== GPCOORDS_NONE ? configured : GPCOORDS_MAP;
+            if (count === 1) {
                 const which = doMons ? 'monsters' : 'objects';
+                const position = mode !== GPCOORDS_COMPASS
+                    ? coord_desc(state.u.ux, state.u.uy, state, mode)
+                    : canSpotSelf ? 'you' : 'your position';
                 lines.push({
                     text: nearby
-                        ? `${which[0].toUpperCase()}${which.slice(1)} currently shown near <${state.u.ux},${state.u.uy}>:`
+                        ? `${which[0].toUpperCase()}${which.slice(1)} currently shown near ${position}:`
                         : `All ${which} currently shown on the map:`,
                 });
                 lines.push({ text: '    ' });
             }
-            const location = state.level?.at(x, y);
-            const symbol = location?.disp_ch
-                ?? visibleGlyphCharacter(map_glyphinfo(glyph, state));
+            let coordinate = coord_desc(x, y, state, mode);
+            if (mode === GPCOORDS_MAP && y < 10) coordinate += ' ';
+            if (mode !== GPCOORDS_SCREEN)
+                coordinate = coordinate.padStart(mode === GPCOORDS_MAP ? 8 : 12);
+            const prefix = coordinate + '  ';
+            // windows.c:encglyph() is ten bytes before putmixed decoding.
+            // C truncates lookbuf using that encoded prefix, not the one-cell
+            // glyph which appears in the resulting text window.
+            description = description.slice(0, BUFSZ - 1 - (prefix.length + 10 + 2));
+            const symbol = encodedGlyphCharacter(glyph, state);
             lines.push({
-                text: `${mapCoordinate(x, y)}  ${symbol}  ${description}`,
+                text: `${prefix}${symbol}  ${description}`,
+                glyphCells: [{ column: prefix.length, ch: symbol }],
             });
         }
     }
 
-    if (lines.length) {
+    if (count) {
         await displayTtyTextWindow(state, lines);
     } else {
         await ttyPline(
@@ -1864,7 +1895,7 @@ export async function do_look(mode, clickCc = null, state = game) {
     const quick = mode === 1;
     if ((mode !== 0 && !quick) || clickCc)
         throw new UnsupportedWhatisError('click or queued look mode');
-    assertOrdinaryWhatisState(state);
+    assertWhatisMenuState(state);
 
     // C ref: pager.c do_look() sets i='y' for quick mode, bypassing the
     // #whatis selection menu and entering the screen-coordinate path.
@@ -1876,6 +1907,10 @@ export async function do_look(mode, clickCc = null, state = game) {
         overlay: state.iflags?.menu_overlay !== false,
     });
     if (choice === null) return ECMD_OK;
+    // The selection menu is available during Hallucination. The selected
+    // lookup and quick-look paths remain outside the current admission.
+    if (heroHallucinating(state))
+        throw new UnsupportedWhatisError('a hallucinating hero');
     if (choice === 'i') {
         let inventoryRepairLayout = null;
         const invlet = await display_inventory(null, true, state, {
@@ -2098,24 +2133,47 @@ export function dowhatdoes_core(q, state = game) {
     return `${key2txt(q).padEnd(8)}${description}.`;
 }
 
-// C ref: pager.c dowhatdoes() (2657-2719), through the ordinary one-line `i`
-// query exercised by the help menu. The alternate-meta, help expansion,
-// unknown-command, and embedded-newline output arms remain fail-closed.
+// C ref: pager.c whatdoes_help() (2421-2444). The generated keyhelp lines
+// apply this helper's leading-blank filtering rather than tty_display_file's
+// tab expansion; the existing text-window owner displays and destroys them.
+export async function whatdoes_help(state = game) {
+    const lines = HELP_TEXT_FILES.keyhelp;
+    if (!lines) {
+        await ttyPline('Cannot open "keyhelp" data file!', state);
+        await displayPendingTtyMessageWindow(state);
+        return;
+    }
+    await displayTtyTextWindow(state, lines.map(text => ({ text })));
+}
+
+// C ref: pager.c dowhatdoes() (2659-2717).
 export async function dowhatdoes(state = game) {
     if (!state._dowhatdoesAsked) {
-        await ttyPline("Ask about '&' or '?' to get more info.", state);
+        await ttyPline("Ask about '&' or '?' to get more info."
+            + (state.iflags.altmeta ? '  (For ESC, type it twice.)' : ''), state);
         state._dowhatdoesAsked = true;
     }
     // introff()/intron() only change the native terminal's signal handling.
     // The browser and replay input sources do not install that handler.
-    const q = await yn_function('What command?', null, '\0', true, state);
-    if (q !== 0x69) {
-        throw new UnsupportedHelpError(
-            `whatdoes query ${key2txt(q)} outside ordinary inventory lookup`,
-        );
+    let q = await yn_function('What command?', null, '\0', true, state);
+    if (q === 0x1b && state.iflags.altmeta) {
+        q = await yn_function(']', null, '\0', true, state);
+        if (q !== 0x1b) q = (q | 0x80) & 0xff;
     }
     const result = dowhatdoes_core(q, state);
-    await ttyPline(result, state);
+    if (result !== null) {
+        const newline = result.indexOf('\n');
+        if (q === 0x26 || q === 0x3f) await whatdoes_help(state);
+        if (newline < 0) {
+            await ttyPline(result, state);
+        } else {
+            await ttyPline(result.slice(0, newline) + ',', state);
+            await ttyPline(result.slice(0, 8) + result.slice(newline + 1), state);
+        }
+    } else {
+        const byte = q & 0xff;
+        await ttyPline(`No such command '${visctrl(q)}', char code ${byte} (0${byte.toString(8).padStart(3, '0')} or 0x${byte.toString(16).padStart(2, '0')}).`, state);
+    }
     return ECMD_OK;
 }
 

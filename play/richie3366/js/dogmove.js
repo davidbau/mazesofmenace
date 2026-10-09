@@ -12,7 +12,7 @@ import { distmin, dist2 } from './hacklib.js';
 import {
     objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
     eaten_stat, peek_at_iced_corpse_age, is_organic, is_metallic, is_rustprone,
-    sobj_at,
+    sobj_at, is_mines_prize, is_soko_prize,
 } from './mkobj.js';
 import { mattackm, max_passive_dmg, mdisplacem, mondied } from './mhitm.js';
 import { mon_reflects } from './mhitu.js';
@@ -39,6 +39,7 @@ import {
     EPRI, EMIN, DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2,
     xdir, ydir, xytodir,
     DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS, COST_DEGRD,
+    NEED_WEAPON, NEED_HTH_WEAPON,
     S_sink, something,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
     COST_CONTENTS, Is_rogue_level,
@@ -54,12 +55,12 @@ import {
     haseyes, touch_petrifies, resists_ston, resists_acid, is_flyer, is_floater,
     flesh_petrifies, likes_fire, slimeproof, metallivorous, mon_hates_silver,
 } from './monsters.js';
-import { MON_WEP } from './weapon.js';
-import { which_armor, extract_from_minvent } from './worn.js';
+import { MON_WEP, mon_wield_item } from './weapon.js';
+import { which_armor, extract_from_minvent, check_gear_next_turn } from './worn.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam, y_monnam, pmname, Mgender } from './do_name.js';
 import { gettrack } from './track.js';
-import { hero_conflict, resist_conflict, monsndx, same_race, mhis } from './mondata.js';
+import { hero_conflict, resist_conflict, monsndx, same_race, mhis, attacktype } from './mondata.js';
 import { is_pool, is_lava, stop_occupation, On_stairs } from './hack.js';
 import { m_unleash } from './apply.js';
 import { lose_guardian_angel } from './minion.js';
@@ -135,6 +136,9 @@ const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+// C ref: dogmove.c dog_invent `:429–431` — MAIL_STRUCTURES (global.h:430,
+// unconditional) mail-fetch guard.
+const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 
 function mon_track_add(mtmp, x, y) {
     if (!mtmp.mtrack) {
@@ -985,7 +989,8 @@ async function dog_hunger(mtmp, edog) {
 
 // C ref: dogmove.c dog_invent — udist is squared dist2 (same as dog_move)
 // Branch envelope: drop/APPORT pickup + underfoot DOGFOOD/CADAVER/
-// starving-ACCFOOD → dog_eat return; mines/soko prize + MAIL skip deferred.
+// starving-ACCFOOD → dog_eat return; MAIL_STRUCTURES mail skip +
+// mines/soko prize exclusion (D-3697).
 async function dog_invent(mtmp, edog, udist) {
     // C: helpless(mtmp) || meating → 0 (msleeping/mfrozen subset)
     if (mtmp.msleeping || mtmp.mfrozen || mtmp.meating) return 0;
@@ -1008,6 +1013,15 @@ async function dog_invent(mtmp, edog, udist) {
     if (!obj) return 0;
     const oclass = obj.oclass ?? 0;
     if (oclass === BALL_CLASS || oclass === CHAIN_CLASS || oclass === ROCK_CLASS)
+        return 0;
+    /* C dogmove.c `:429–431` (MAIL_STRUCTURES is unconditional —
+       global.h:430): pets never fetch scrolls of mail. */
+    if ((obj.otyp | 0) === SCR_MAIL)
+        return 0;
+    /* C dogmove.c `:432–434` — avoid special items; once hero picks
+       them up, they'll cease being special and become eligible for
+       normal monst activity. */
+    if (is_mines_prize(obj) || is_soko_prize(obj))
         return 0;
 
     const edible = dogfood(mtmp, obj);
@@ -1041,7 +1055,20 @@ async function dog_invent(mtmp, edog, udist) {
                 obj_extract_self(otmp);
                 newsym(omx, omy);
                 mpickobj(mtmp, otmp);
-                // mon_wield_item / check_gear_next_turn omitted (no AT_WEAP pet)
+                /* C ref: dogmove.c `:466–471` — an AT_WEAP pet that picks
+                 * up gear while NEED_WEAPON re-arms to NEED_HTH_WEAPON
+                 * and wields now (a poly/charm pet can have AT_WEAP, so
+                 * the old "no AT_WEAP pet" omit was C-wrong); the gear
+                 * check runs unconditionally (D-3695). AT_WEAP stays
+                 * file-local per house pattern (dog.js, exper.js,
+                 * mhitm.js carry their own). */
+                const AT_WEAP = 254;
+                if (attacktype(mtmp.data, AT_WEAP)
+                    && mtmp.weapon_check === NEED_WEAPON) {
+                    mtmp.weapon_check = NEED_HTH_WEAPON;
+                    await mon_wield_item(mtmp); /* C: (void) */
+                }
+                check_gear_next_turn(mtmp);
             }
         }
     }
