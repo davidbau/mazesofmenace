@@ -3555,8 +3555,13 @@ function pole_mimic_unsensed_object(mtmp) {
 }
 
 function covers_objects_pole(x, y) {
-    // C display.h covers_objects — is_pool && !Underwater, or lava
-    return (is_pool(x, y) && !game.u?.Underwater) || is_lava(x, y);
+    // C display.h covers_objects `:218–220` —
+    //   `(is_pool(xx, yy) && !Underwater) || LAVAPOOL || LAVAWALL`
+    // with Underwater ≡ u.uinwater (youprop.h:279). is_pool/is_lava
+    // are the live hack.js imports (:83); the Underwater arm reads
+    // the live bit via Underwater_hero() (:1803, D-3400 idiom) —
+    // the sticky `u.Underwater` flat has zero writers in js/.
+    return (is_pool(x, y) && !Underwater_hero()) || is_lava(x, y);
 }
 
 function shown_floor_obj_pole(x, y) {

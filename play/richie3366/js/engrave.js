@@ -74,6 +74,7 @@ import {
     WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, DRAWBRIDGE_DOWN,
 } from './const.js';
 import { nomul, is_lava, is_pool, SURFACE_AT, check_capacity } from './hack.js';
+import { hero_Deaf } from './monmove.js';
 import { t_at, uteetering_at_seen_pit, uescaped_shaft, ceiling, set_levltyp } from './trap.js';
 import { goodpos } from './teleport.js';
 import { makemon, makemon_appear_msg } from './makemon.js';
@@ -936,7 +937,10 @@ async function doengrave_sfx_item_WAN(de) {
     const u = game.u || {};
     const loc = game.level?.at(u.ux, u.uy);
     const nam = objectNames[de.otmp.otyp | 0];
-    const deaf = !!(game.u?.Deaf);
+    /* C `:693` (Blind && !Deaf) + `:730` !Deaf — the youprop.h:125 macro
+     * (HDeaf||EDeaf||uroleplay.deaf), read via the live hero_Deaf export
+     * (monmove.js; its extra `|| u.Deaf` is D-3572 dead code, zero writers). */
+    const deaf = hero_Deaf();
     const bugs = (v) => `The bugs on the ${surface(u.ux, u.uy)} ${v}!`;
     switch (nam) {
     default:

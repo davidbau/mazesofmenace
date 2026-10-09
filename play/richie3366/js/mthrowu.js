@@ -81,6 +81,7 @@ import {
 import { extract_from_minvent } from './worn.js';
 import { freehand } from './engrave.js';
 import { obfree } from './shk.js';
+import { hero_Deaf } from './monmove.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
@@ -389,7 +390,11 @@ export async function spitmm(mtmp, mattk, mtarg) {
     if (mtmp.mcan) {
         const u = game.u || {};
         const lim2 = BOLT_LIM * BOLT_LIM;
-        if (!(u.Deaf || game.flags?.acoustics === false)
+        // C mthrowu.c:1022 `if (!Deaf && mdistu < BOLT_LIM*BOLT_LIM)` —
+        // Deaf is the youprop.h:125 macro (hero_Deaf), with no acoustics
+        // arm: the spotted pline prints with acoustics off, unspotted
+        // silence comes from inside You_hear (:1028).
+        if (!hero_Deaf()
             && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < lim2) {
             if (canspotmon(mtmp)) {
                 await pline(
@@ -458,8 +463,8 @@ export async function spitmu(mtmp, mattk) {
  * Envelope: m_lined_up; mcan cough; m_seenres/REFL skip; !mspec_used &&
  * rn2(3) → dobuzz(BZ_M_BREATH); mspec_used / pet hunger. Named omissions:
  * Hallucination breathwep_name; Soundeffect cough; AD_SLEE Sleep_res
- * mspec bump uses flat Sleep_resistance; mon-mon mattackm AT_BREA deferred
- * (import cycle — hero path via breamu/mattacku).
+ * mspec bump uses flat Sleep_resistance. Callers wired: breamu
+ * (js/mthrowu.js:544), mattackm AT_BREA (js/mhitm.js:6455).
  */
 export async function breamm(mtmp, mattk, mtarg) {
     const typ = get_atkdam_type(mattk?.adtyp | 0);
@@ -469,7 +474,12 @@ export async function breamm(mtmp, mattk, mtarg) {
 
     if (m_lined_up(mtarg, mtmp)) {
         if (mtmp.mcan) {
-            if (!(u.Deaf || game.flags?.acoustics === false)) {
+            // C mthrowu.c:1100 `if (!Deaf)` — Deaf is the
+            // youprop.h:125 macro (hero_Deaf), with no acoustics arm:
+            // the spotted pline prints with acoustics off, unspotted
+            // silence comes from inside You_hear (:1105). Soundeffect
+            // :1104 stays named (family convention, cf spitmm).
+            if (!hero_Deaf()) {
                 if (canseemon(mtmp)) {
                     await pline(`${Monnam(mtmp)} coughs.`);
                 } else {
@@ -1064,7 +1074,9 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
                             mlevitating ? 'beneath' : 'at'
                         } ${mhis_mtoss(magr)} ${makeplural(mbodypart(magr, FOOT))}.`,
                     );
-                } else if (!game.u?.Deaf) {
+                // C mthrowu.c:909 `else if (!Deaf)` — Deaf ≡ youprop.h:125
+                // (HDeaf || EDeaf || uroleplay.deaf). Live reader: hero_Deaf.
+                } else if (!hero_Deaf()) {
                     await You_hear(
                         `Something land near ${mon_nam(magr)}.`,
                     );
@@ -1077,7 +1089,9 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
                             mhis_mtoss(magr)
                         } ${body_part(ARM)}!`,
                     );
-                } else if (!game.u?.Deaf) {
+                // C mthrowu.c:918 `else if (!Deaf)` — Deaf ≡ youprop.h:125
+                // (HDeaf || EDeaf || uroleplay.deaf). Live reader: hero_Deaf.
+                } else if (!hero_Deaf()) {
                     await You_hear(
                         `something hit ${mon_nam(magr)} with a thud!`,
                     );
@@ -1120,7 +1134,10 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
                 place_object(otmp, x, y);
                 stackobj(otmp);
             }
-            if (!game.u?.Deaf && !game.u?.Underwater) {
+            // C mthrowu.c:952 `if (!Deaf && !Underwater)` — Deaf ≡
+            // youprop.h:125 (HDeaf || EDeaf || uroleplay.deaf), Underwater ≡
+            // youprop.h:279 (u.uinwater). Live readers: hero_Deaf + live bit.
+            if (!hero_Deaf() && !(game.u?.uinwater | 0)) {
                 if (is_pool(x, y)
                     || (is_lava(x, y) && !is_flammable(otmp))) {
                     await pline(
@@ -1128,7 +1145,11 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
                     );
                 }
             }
-            if (otmp.lamplit) game.vision_full_recalc = 1;
+            // C mthrowu.c:960 `if (obj_sheds_light(otmp))` — the full
+            // light.c:763–775 predicate (obj_is_burning ≡ lamplit &&
+            // (ignitable || artifact_light)), not bare lamplit.
+            const { obj_sheds_light } = await import('./light.js');
+            if (obj_sheds_light(otmp)) game.vision_full_recalc = 1;
         }
     }
     if (cansee(x, y)) newsym(x, y);
@@ -1702,7 +1723,9 @@ export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags) {
         return;
     }
 
-    if (!(game.u?.Deaf || game.flags?.acoustics === false)) {
+    // C mthrowu.c:1447 `if (!Deaf)` — Deaf ≡ youprop.h:125 H (HDeaf ||
+    // EDeaf || uroleplay.deaf); no acoustics arm. Live reader: hero_Deaf.
+    if (!hero_Deaf()) {
         const barsounds = ['', 'Whang', 'Whap', 'Flapp', 'Clink', 'Clonk'];
         let bsindx;
         if (obj_type === BOULDER || obj_type === HEAVY_IRON_BALL) {

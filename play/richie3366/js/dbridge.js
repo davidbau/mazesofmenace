@@ -753,7 +753,9 @@ export async function close_drawbridge(x, y) {
     set_entity(x2, y2, occ[1]);
     await do_entity(occ[1]);
 
-    if (objects_at(x, y) && !(u.Deaf || game.flags?.acoustics === false)) {
+    // C `:815` — OBJ_AT && !Deaf, Deaf ≡ youprop.h:125 (no acoustics
+    // arm; acoustics-off silence comes from inside the live You_hear).
+    if (objects_at(x, y) && !hero_Deaf()) {
         Soundeffect(se_smashing_and_crushing, 75);
         await You_hear('smashing and crushing.');
     }

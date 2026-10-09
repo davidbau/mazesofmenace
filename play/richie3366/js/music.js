@@ -899,8 +899,9 @@ async function do_improvisation(instr) {
  */
 export async function do_play_instrument(instr) {
     const u = game.u;
-    if (u?.Underwater) {
-        // C music.c:763-765: You_cant("play music underwater!")
+    // C music.c:765 `if (Underwater)`; Underwater ≡ youprop.h:279 (u.uinwater).
+    // D-3400 idiom: read the live bit, not the sticky `u.Underwater` flat.
+    if ((u?.uinwater | 0)) {
         await pline("You can't play music underwater!");
         return ECMD_OK;
     } else if (

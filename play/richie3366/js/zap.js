@@ -982,7 +982,8 @@ export async function melt_ice(x, y, msg) {
     if (t_at(x, y)) await trap_ice_effects(x, y, true); // TRUE: ice_is_melting
     obj_ice_effects(x, y, false);
     await unearth_objs(x, y);
-    if (game.u?.Underwater) vision_recalc(1);
+    /* C zap.c:5059–5060 — Underwater ≡ u.uinwater (youprop.h:279; D-3400 idiom). */
+    if ((game.u?.uinwater | 0)) vision_recalc(1);
     newsym(x, y);
     if (cansee(x, y) || u_at(x, y)) await Norep(msg);
     let otmp = sobj_at(BOULDER, x, y);
@@ -2870,7 +2871,7 @@ export function learnwand(obj) {
  * wall/door/floor/ground. On_stairs named → ground unless furniture
  * (zap_updown WAN_PROBING uses "it" for IS_FURNITURE).
  */
-function surface_zap(x, y) {
+export function surface_zap(x, y) {
     const loc = game.level?.at?.(x, y);
     const levtyp = SURFACE_AT(x, y);
     const uz = game.u?.uz;
@@ -2879,7 +2880,8 @@ function surface_zap(x, y) {
         return levtyp === CLOUD ? 'cloud' : 'air';
     }
     if (is_pool(x, y)) {
-        return (game.u?.Underwater && !Is_waterlevel(uz))
+        /* C dungeon.c:1765–1767 — Underwater ≡ u.uinwater (youprop.h:279; D-3400 idiom). */
+        return ((game.u?.uinwater | 0) && !Is_waterlevel(uz))
             ? 'bottom' : hliquid('water');
     }
     if (is_ice(x, y)) return 'ice';

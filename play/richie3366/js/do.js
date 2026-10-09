@@ -882,7 +882,9 @@ export async function flooreffects(obj, x, y, verb) {
         res = await lava_damage(obj, x, y);
     } else if (is_pool(x, y)) {
         if ((Blind() || Levitation() || Flying()) && !Deaf() && u_at(x, y)) {
-            if (!game.u?.Underwater) {
+            // C do.c:277 — !Underwater; Underwater ≡ u.uinwater
+            // (youprop.h:279; D-3400 idiom — u.Underwater is never written).
+            if (!(game.u?.uinwater | 0)) {
                 if (weight(obj) > WT_SPLASH_THRESHOLD) {
                     await pline('Splash!');
                 } else if (Levitation() || Flying()) {

@@ -2574,13 +2574,15 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
     // C dothrow.c throwit :1793–1801 — !Deaf && !Underwater pool/lava
     // landing: Soundeffect(se_splash, 50) then Splash!/Plop! before
     // flooreffects (sndprocs edge is cycle-free; seffects is data-leaf).
+    // Underwater ≡ u.uinwater (youprop.h:279; D-3400 idiom — the
+    // u.Underwater flat is never written).
     {
         const { is_pool, is_lava } = await import('./hack.js');
         const { weight } = await import('./mkobj.js');
         const { WT_SPLASH_THRESHOLD } = await import('./const.js');
         const { Soundeffect } = await import('./sndprocs.js');
         const { se_splash } = await import('./generated/seffects_data.js');
-        if (!Deaf() && !game.u?.Underwater
+        if (!Deaf() && !(u.uinwater | 0)
             && (is_pool(x, y)
                 || (is_lava(x, y) && !is_flammable(obj)))) {
             Soundeffect(se_splash, 50);

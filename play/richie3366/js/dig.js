@@ -35,7 +35,7 @@ import {
 import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
     confdir, losehp, maybe_half_phys, nomul, switch_terrain, On_stairs,
-    Passes_walls_prop, spot_checks,
+    Passes_walls_prop, spot_checks, You_hear,
 } from './hack.js';
 import { currency, cmdq_add_key } from './invent.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
@@ -1164,7 +1164,9 @@ export async function mdig_tunnel(mtmp) {
     const lf = game.level?.flags || {};
     if (IS_WALL(here.typ)) {
         if (game.flags?.verbose !== false && !rn2(5)) {
-            if (!game.u?.Deaf) await pline('You hear crashing rock.');
+            /* C dig.c:1468-1471: no outer Deaf gate; Soundeffect named;
+               live You_hear carries the Deaf/acoustics/Underwater/Unaware arms. */
+            await You_hear('crashing rock.');
         }
         if (in_rooms(mtmp.mx, mtmp.my, SHOPBASE)) {
             const { add_damage } = await import('./shk.js');

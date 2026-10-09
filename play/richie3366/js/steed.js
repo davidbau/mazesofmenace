@@ -199,13 +199,16 @@ function freeinv(otmp) {
     if (idx >= 0) inv.splice(idx, 1);
 }
 
-/** C ref: steed.c can_ride */
+/** C ref: steed.c can_ride `:169–174` — `(!Underwater || is_swimmer(mtmp->data))`,
+ * with Underwater ≡ u.uinwater (youprop.h:279). Live-bit read (D-3400 idiom),
+ * same expression as the mount_steed gate below (:724); the sticky
+ * `u.Underwater` flat has zero writers in js/ (dead false). */
 export function can_ride(mtmp) {
     if (!mtmp?.mtame) return false;
     const yd = you_data();
     if (!humanoid(yd) || verysmall(yd) || bigmonst(yd)) return false;
     const u = game.u || {};
-    if (u.Underwater && !is_swimmer(mtmp.data)) return false;
+    if ((u.uinwater | 0) && !is_swimmer(mtmp.data)) return false;
     return true;
 }
 
@@ -271,7 +274,11 @@ export async function use_saddle(otmp) {
 
     if (!(await u_handsy())) return ECMD_OK;
 
-    if (u.uswallow || u.Underwater || !(await getdir(null))) {
+    // C steed.c:46 — Underwater ≡ u.uinwater (youprop.h:279); live-bit
+    // read (D-3400 idiom), same expression as the can_ride disjunct (:211)
+    // and the mount_steed gate (:724). The sticky `u.Underwater` flat has
+    // zero writers in js/ (dead false).
+    if (u.uswallow || (u.uinwater | 0) || !(await getdir(null))) {
         await pline(Never_mind);
         return ECMD_CANCEL;
     }
@@ -848,9 +855,9 @@ function stealth_now() {
  * teleds ALLOW_DRAG + boulder sokoban_guilt + save_utrap mintrap,
  * no-room BYCHOICE killed vs monkilled(""/-AD_PHYS), ENGULFED/BONES
  * float_down skip with botl-only else arm, encumber_msg, polearm unweapon.
- * Named omit: uhitm DISMOUNT_KNOCKED u.dx/u.dy caller,
- * update_mon_extrinsics, teleds_simple subset (ball/chain, utrap clear,
- * swallow/hideunder/drag — canonical teleds owns them).
+ * Named omit: update_mon_extrinsics, teleds_simple subset (ball/chain,
+ * utrap clear, swallow/hideunder/drag — canonical teleds owns them;
+ * KNOCKED u.dx/u.dy caller wired js/mhitm.js:2963–2966).
  * landing_spot KNOCKED preferred-dir + enexto forceit D-1640.
  * float_down → pickup when !Air/Water
  * (D-0220 / D-0966). BYCHOICE D-0213.
@@ -990,7 +997,12 @@ export async function dismount_steed(reason) {
             // C `:727–736`: a grounded steed drops into water/lava.
             if (grounded(mdat)) {
                 if (is_pool(u.ux, u.uy)) {
-                    if (!u.Underwater) {
+                    // C steed.c:726 — Underwater ≡ u.uinwater
+                    // (youprop.h:279); live-bit read (D-3400 idiom), same
+                    // expression as the use_saddle gate (:281) and the
+                    // can_ride disjunct (:211). The sticky `u.Underwater`
+                    // flat has zero writers in js/ (dead false).
+                    if (!(u.uinwater | 0)) {
                         await pline(`${Monnam(mtmp)} falls into the ${surface(u.ux, u.uy)}!`);
                     }
                     if (!cant_drown(mdat)) {

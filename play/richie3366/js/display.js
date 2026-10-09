@@ -2273,14 +2273,23 @@ export function display_self() {
         hg.glyph);
 }
 
-// C ref: display.h covers_objects — is_pool && !Underwater, or lava.
-function covers_objects(x, y) {
+// C ref: display.h covers_objects `:218–220` —
+//   `(is_pool(xx, yy) && !Underwater) || LAVAPOOL || LAVAWALL`
+// with Underwater ≡ u.uinwater (youprop.h:279). Lava-first order kept:
+// pure `||`, no side effects, no RNG. C is_pool(x, y) (dbridge.c:46 —
+// POOL/MOAT/WATER or is_moat) is NOT the IS_POOL range: a raised
+// bridge over lava/ice/floor (or over moat on Juiblex) is IS_POOL-
+// true but C-is_pool-false — hence the live is_pool call (already
+// imported from hack.js; same shape as the C-exact
+// covers_objects_detect sibling in detect.js). The sticky
+// `u.Underwater` flat has zero writers in js/ (dead false) — read
+// the live bit (D-3400 idiom).
+export function covers_objects(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     const t = loc.typ | 0;
     if (t === LAVAPOOL || t === LAVAWALL) return true;
-    // C: is_pool ≡ IS_POOL (POOL..DRAWBRIDGE_UP)
-    if (IS_POOL(t) && !(game.u?.Underwater | 0)) return true;
+    if (is_pool(x, y) && !(game.u?.uinwater | 0)) return true;
     return false;
 }
 

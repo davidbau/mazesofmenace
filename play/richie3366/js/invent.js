@@ -4716,7 +4716,10 @@ export async function display_binventory(x, y, as_if_seen) {
     let n2 = 0;
     let underwhat = 'here';
     const { is_pool, is_lava } = await import('./hack.js');
-    if ((is_pool(x, y) || is_lava(x, y)) && !game.u?.Underwater) {
+    // C invent.c:5501 — is_pool_or_lava(x, y) && !Underwater; Underwater ≡
+    // u.uinwater (youprop.h:279); live-bit read (D-3400 idiom). The sticky
+    // `u.Underwater` flat has zero writers in js/ (dead false).
+    if ((is_pool(x, y) || is_lava(x, y)) && !(game.u?.uinwater | 0)) {
         const obj = objects_at(x, y);
         if (obj) {
             const { hliquid } = await import('./do_name.js');

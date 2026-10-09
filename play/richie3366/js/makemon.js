@@ -3581,15 +3581,17 @@ export function makemon(mdat, x, y, mmflags = 0) {
             }
         }
     } else if (ptr.mlet === 'S_EEL') {
-        // C: makemon.c case S_EEL → hideunder(mtmp) when in_mklev.
-        // Inline eel arm of mon.c hideunder (seeit=0 during mklev; no pline).
-        if (game.in_mklev && mtmp.mx) {
-            const hx = mtmp.mx, hy = mtmp.my;
-            const typ = game.level?.at(hx, hy)?.typ ?? 0;
-            if (IS_POOL(typ) && !Is_waterlevel(game.u?.uz)
-                && !game.u?.Underwater) {
-                mtmp.mundetected = 1;
-            }
+        // C makemon.c:1322–1326 — case S_EEL: if (gi.in_mklev)
+        // (void) hideunder(mtmp). Call the live mon.js export (D-3716):
+        // it carries the whole S_EEL arm incl. the ustuck/trapped gates,
+        // the is_pool && !Is_waterlevel && (!Underwater || !couldsee)
+        // predicate (mon.c:4746–4747, Underwater ≡ u.uinwater
+        // youprop.h:279), the mundetected writeback and the newsym on
+        // change; seeit is 0 in mklev so no message. The previous inline
+        // read the sticky u.Underwater flat (zero writers — dead false)
+        // and dropped the || !couldsee disjunct entirely.
+        if (game.in_mklev) {
+            hideunder(mtmp);
         }
     } else if (ptr.mlet === 'S_LIGHT' || ptr.mlet === 'S_ELEMENTAL') {
         // C: makemon.c S_LIGHT/S_ELEMENTAL — stalker & black light perminvis

@@ -148,7 +148,7 @@ import { bury_an_obj } from './dig.js';
 import { is_pole, is_weptool } from './wield.js';
 import { mswings_verb, Conflict, unstuck, set_ustuck, digests, hitmsg, diseasemu, doseduce, mhitm_ad_sedu_u } from './mhitu.js';
 import { sticks } from './engrave.js';
-import { mon_offmap, set_apparxy, mb_trapped, itsstuck, accessible } from './monmove.js';
+import { mon_offmap, set_apparxy, mb_trapped, itsstuck, accessible, hero_Deaf } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_confused, make_stunned } from './potion.js';
 import { Unaware } from './eat.js';
@@ -396,7 +396,10 @@ async function noises(magr, mattk) {
     const far_noise = !!game.far_noise;
     const noisetime = game.noisetime | 0;
     const moves = game.moves | 0;
-    if (!game.u?.Deaf && (farq !== far_noise || moves - noisetime > 10)) {
+    // C mhitm.c:31 — !Deaf is the youprop.h:125 macro
+    // (HDeaf||EDeaf||uroleplay.deaf) via hero_Deaf() (monmove.js, D-3572
+    // pattern); the raw u.Deaf read let macro-deaf heroes hear far combat.
+    if (!hero_Deaf() && (farq !== far_noise || moves - noisetime > 10)) {
         game.far_noise = farq;
         game.noisetime = moves;
         const what = (mattk?.aatyp | 0) === AT_EXPL ? 'an explosion' : 'some noises';
@@ -4253,8 +4256,11 @@ async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
         mhm.done = true;
         return;
     }
-    if (game.flags?.verbose !== false && !game.u?.Deaf) {
-        // SetVoice named
+    // C uhitm.c:4530 — !Deaf is the youprop.h:125 macro
+    // (HDeaf||EDeaf||uroleplay.deaf) via hero_Deaf() (monmove.js, D-3572
+    // pattern); the raw u.Deaf read let macro-deaf heroes hear Burrrrp.
+    // SetVoice (:4532) stays named.
+    if (game.flags?.verbose !== false && !hero_Deaf()) {
         await verbalize('Burrrrp!');
     }
     await wake_nearto(magr.mx, magr.my, 2 * 2);
@@ -4375,7 +4381,11 @@ async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
             mhm.done = true;
             return;
         }
-        if (!game.u?.Deaf) {
+        // C uhitm.c:3088 — !Deaf is the youprop.h:125 macro
+        // (HDeaf||EDeaf||uroleplay.deaf) via hero_Deaf() (monmove.js,
+        // D-3572 pattern); the raw u.Deaf read let macro-deaf heroes
+        // hear m-vs-m cursing laughter.
+        if (!hero_Deaf()) {
             if (!_mm_vis) await You_hear('laughter.');
             else if (canseemon(magr)) await pline_mon(magr, `${Monnam(magr)} chuckles.`);
         }

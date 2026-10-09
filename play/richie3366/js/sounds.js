@@ -838,8 +838,10 @@ export async function dosounds() {
     const u = game.u || {};
     // C youprop.h Deaf ≡ HDeaf|EDeaf|uroleplay.deaf (plus u.Deaf flag)
     const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+    // C sounds.c:208 Underwater ≡ u.uinwater (youprop.h:279); the
+    // u.Underwater flat is never written — read the live bit (D-3400 idiom).
     if (Deaf || game.flags?.acoustics === false
-        || u.uswallow || u.Underwater) {
+        || u.uswallow || (u.uinwater | 0)) {
         return;
     }
 

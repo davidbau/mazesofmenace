@@ -3968,9 +3968,12 @@ export function hideunder(mtmp) {
         || (t && !is_pit(t.ttyp))) {
         // trapped or non-pit trap site
     } else if (mtmp.data.mlet === 'S_EEL') {
-        /* C: is_pool && !Is_waterlevel && (!Underwater || !couldsee) */
+        /* C mon.c:4746–4747 — is_pool && !Is_waterlevel &&
+           (!Underwater || !couldsee); Underwater ≡ u.uinwater
+           (youprop.h:279). The u.Underwater flat is never written —
+           read the live bit (D-3400 idiom; monmove.js clone agrees). */
         undetected = !!(is_pool(x, y) && !Is_waterlevel(u.uz)
-            && (!(u.Underwater) || !couldsee(x, y)));
+            && (!(u.uinwater | 0) || !couldsee(x, y)));
         if (seeit) seenobj = 'the water';
     } else if (hides_under(mtmp.data)) {
         const otmp = objects_at(x, y);
