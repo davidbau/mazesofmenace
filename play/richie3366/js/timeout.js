@@ -1067,176 +1067,183 @@ export async function nh_timeout() {
     }
     // C `:667` — snapshot before any decrement (FLYING arm below).
     const was_flying = Flying();
-    // C: for (upp = u.uprops; …) if ((intrinsic & TIMEOUT) && !(--intrinsic & TIMEOUT))
-
-    // C prop.h:32 — the -- loop runs in property index order, so STUNNED
-    // (=13) expires before CONFUSION (=14). Dedicated arm first (not the
-    // generic loop below) so same-tick stun+confusion expiry prints
-    // "steadier" first (D-3605: scen-impaired-Monk-94230 step 172).
-    // OR-read + dual-write like the DEAF/FUMBLING/FAST arms (D-1817).
-    const hs = (u.HStun | 0) | (u.uprops?.[STUNNED]?.intrinsic | 0);
-    if (hs & TIMEOUT) {
-        const next = hs - 1;
-        set_HStun(next);
-        if (!(next & TIMEOUT)) {
-            // C timeout.c:737-742 — set_itimeout(&HStun, 1L);
-            // make_stunned(0L, TRUE); if (!Stunned) stop_occupation().
-            u.HStun = ((u.HStun | 0) & ~TIMEOUT) | 1;
-            u.Stunned = u.HStun;
-            await make_stunned(0, true);
-            if (!((u.HStun | 0) || (u.Stunned | 0))) await stop_occupation();
-        }
-    }
-
-    // C HWounded_legs ≡ uprops[WOUNDED_LEGS].intrinsic (youprop.h:136,
-    // single storage). OR-read + dual-write like the DEAF/FUMBLING/FAST
-    // arms: -- only the flat left #wizintrinsic/beartrap TIMEOUT stuck in
-    // the slot, so flat|slot readers (mount_steed's steed.c:228 wounded
-    // gate, dokick, pray…) believed the legs wounded forever — C printed
-    // "I see nobody there." while JS refused the mount (cf. D-1817 DEAF).
-    const hw = (u.HWounded_legs | 0)
-        | (u.uprops?.[WOUNDED_LEGS]?.intrinsic | 0);
-    if (hw & TIMEOUT) {
-        // C: --upp->intrinsic then test TIMEOUT bits cleared
-        const next = hw - 1;
-        u.HWounded_legs = next;
-        if (!u.uprops) u.uprops = {};
-        if (!u.uprops[WOUNDED_LEGS]) {
-            u.uprops[WOUNDED_LEGS] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-        }
-        u.uprops[WOUNDED_LEGS].intrinsic =
-            ((u.uprops[WOUNDED_LEGS].intrinsic | 0) & ~TIMEOUT)
-            | (next & TIMEOUT);
-        if (!(next & TIMEOUT)) {
-            // C case WOUNDED_LEGS: heal_legs(0); stop_occupation();
-            await heal_legs(0);
-            await stop_occupation();
-        }
-    }
-
-    const hc = u.HConfusion | 0;
-    if (hc & TIMEOUT) {
-        const next = hc - 1;
-        u.HConfusion = next;
-        u.Confusion = next;
-        if (!(next & TIMEOUT)) {
-            // C case CONFUSION: set_itimeout(&HConfusion, 1L);
-            // make_confused(0L, TRUE); if (!Confusion) stop_occupation();
-            u.HConfusion = ((u.HConfusion | 0) & ~TIMEOUT) | 1;
-            u.Confusion = u.HConfusion;
-            await make_confused(0, true);
-            if (!(u.HConfusion | 0) && !(u.Confusion | 0)) {
-                await stop_occupation();
-            }
-        }
-    }
-
-    // C case BLINDED — timeout.c:743; make_blinded(0,TRUE) + stop if cured
-    const hb = u.HBlinded | 0;
-    if (hb & TIMEOUT) {
-        const next = hb - 1;
-        u.HBlinded = next;
-        // Keep uprops[BLINDED] ≡ HBlinded (C single storage; D-0928 #1171)
-        if (!u.uprops) u.uprops = {};
-        if (!u.uprops[BLINDED]) {
-            u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-        }
-        u.uprops[BLINDED].intrinsic =
-            ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (next & TIMEOUT);
-        if (!(next & TIMEOUT)) {
-            // C: after --, was_blind = !!Blind (props, not sticky);
-            // set_itimeout(&HBlinded, 1L); make_blinded(0L, TRUE);
-            // if (was_blind && !Blind) stop_occupation();
-            const was_blind = (!!(((u.HBlinded | 0) || (u.EBlinded | 0))
-                && !(u.BBlinded | 0)))
-                || !!u.uroleplay?.blind;
-            u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | 1;
-            u.uprops[BLINDED].intrinsic =
-                ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | 1;
-            await make_blinded(0, true);
-            const still_blind = (!!(((u.HBlinded | 0) || (u.EBlinded | 0))
-                && !(u.BBlinded | 0)))
-                || !!u.uroleplay?.blind;
-            if (was_blind && !still_blind) await stop_occupation();
-        }
-    }
-
-    // C case DEAF — timeout.c:752; make_deaf(0,TRUE) talk suppressed if Unaware
-    // HDeaf ≡ uprops[DEAF].intrinsic (youprop.h). D-1792 sync_timeout_flats
-    // copied the flat once; this arm used to -- only u.HDeaf, leaving
-    // uprops TIMEOUT stuck (#wizintrinsic DEAF leftover, D-1817).
-    const hd = (u.HDeaf | 0) | (u.uprops?.[DEAF]?.intrinsic | 0);
-    if (hd & TIMEOUT) {
-        const next = hd - 1;
-        set_HDeaf(next);
-        if (!(next & TIMEOUT)) {
-            // C: set_itimeout(&HDeaf, 1L); make_deaf(0L, TRUE);
-            set_itimeout_HDeaf(1);
-            await make_deaf(0, true);
-            if (game.disp) game.disp.botl = true;
-            if (game.flags) game.flags.botl = true;
-            const stillDeaf = !!(u.HDeaf || u.EDeaf || u.uroleplay?.deaf || u.Deaf
-                || (u.uprops?.[DEAF]?.intrinsic | 0)
-                || (u.uprops?.[DEAF]?.extrinsic | 0));
-            if (!stillDeaf) await stop_occupation();
-        }
-    }
-
-    // C case FUMBLING — timeout.c:902
-    const hf = (u.HFumbling | 0) | (u.uprops?.[FUMBLING]?.intrinsic | 0);
-    if (hf & TIMEOUT) {
-        const next = hf - 1;
-        set_HFumbling(next);
-        if (!(next & TIMEOUT)) {
-            // C: if (u.umoved && !(Levitation || Flying))
-            if (u.umoved && !(u.Levitation || u.Flying)) {
-                await slip_or_trip();
-                nomul(-2);
-                game.multi_reason = 'fumbling';
-                game.nomovemsg = '';
-                // C: inv_weight() > (WT_NOISY_INV * -1)
-                if (inv_weight() > -WT_NOISY_INV) {
-                    if (!(u.HDeaf | u.Deaf)) {
-                        await pline('You make a lot of noise!');
-                    }
-                    await wake_nearby(false);
-                }
-            }
-            // C: HFumbling &= ~FROMOUTSIDE; if (Fumbling) incr_itimeout rnd(20)
-            set_HFumbling((u.HFumbling | 0) & ~FROMOUTSIDE);
-            if (Fumbling()) {
-                incr_itimeout_HFumbling(rnd(20));
-            }
-            // C timeout.c:926–930 — mention_decor catch-up after slip
-            if (game.iflags?.defer_decor) {
-                const { deferred_decor } = await import('./pickup.js');
-                await deferred_decor(false);
-            }
-        }
-    }
-
-    // C case FAST — timeout.c:725; timed FAST is Very_fast until TIMEOUT ends
-    const hfast = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
-    if (hfast & TIMEOUT) {
-        const next = hfast - 1;
-        set_HFast(next);
-        if (!(next & TIMEOUT)) {
-            // C: if (!Very_fast) You_feel("yourself slow down%s.", Fast ? " a bit" : "");
-            if (!Very_fast()) {
-                await You_feel(`yourself slow down${Fast() ? ' a bit' : ''}.`);
-            }
-        }
-    }
-
-    // C: for (upp = u.uprops; upp < u.uprops + SIZE(u.uprops); upp++)
-    //    if ((upp->intrinsic & TIMEOUT) && !(--upp->intrinsic & TIMEOUT))
-    // Dedicated arms above already -- those props; remaining (INVULNERABLE,
-    // resistances, …) only live in uprops and were never decremented — so
-    // #wizintrinsic leftovers like invulnerable [30] never cleared (D-0928).
+    // C timeout.c :670–672 — ONE loop in property index order
+    // (for upp = u.uprops; upp < u.uprops + SIZE; upp++): each property's
+    // -- and expiry arm run at its index, so STRANGLED (=19) deaths block
+    // on the Die? prompt before FAST (=64) prints "slow down" (D-3789:
+    // scen-sweep-Ranger-95303 step 957), and STUNNED (=13) before
+    // CONFUSION (=14, D-3605). Dedicated arms dispatch at their index
+    // inside the loop; storage handling inside each arm is unchanged.
+    // (INVULNERABLE, resistances, …) only live in uprops and were never
+    // decremented — so #wizintrinsic leftovers like invulnerable never
+    // cleared (D-0928).
     if (!u.uprops) u.uprops = {};
     sync_timeout_flats(u);
     for (let p = 1; p <= LAST_PROP; p++) {
-        if (TIMEOUT_DEDICATED.has(p)) continue;
+        if (TIMEOUT_DEDICATED.has(p)) {
+            // Dedicated decrement+expiry arms at their property index
+            // (C timeout.c :670 single-loop order: 13, 14, 15, 16, 25, 26, 64).
+            if (p === STUNNED) {
+                // STUNNED (=13) runs at its index, before CONFUSION (=14):
+                // same-tick stun+confusion expiry prints "steadier" first
+                // (D-3605: scen-impaired-Monk-94230 step 172).
+                // OR-read + dual-write like the DEAF/FUMBLING/FAST arms (D-1817).
+                const hs = (u.HStun | 0) | (u.uprops?.[STUNNED]?.intrinsic | 0);
+                if (hs & TIMEOUT) {
+                    const next = hs - 1;
+                    set_HStun(next);
+                    if (!(next & TIMEOUT)) {
+                        // C timeout.c:737-742 — set_itimeout(&HStun, 1L);
+                        // make_stunned(0L, TRUE); if (!Stunned) stop_occupation().
+                        u.HStun = ((u.HStun | 0) & ~TIMEOUT) | 1;
+                        u.Stunned = u.HStun;
+                        await make_stunned(0, true);
+                        if (!((u.HStun | 0) || (u.Stunned | 0))) await stop_occupation();
+                    }
+                }
+            } else if (p === CONFUSION) {
+                const hc = u.HConfusion | 0;
+                if (hc & TIMEOUT) {
+                    const next = hc - 1;
+                    u.HConfusion = next;
+                    u.Confusion = next;
+                    if (!(next & TIMEOUT)) {
+                        // C case CONFUSION: set_itimeout(&HConfusion, 1L);
+                        // make_confused(0L, TRUE); if (!Confusion) stop_occupation();
+                        u.HConfusion = ((u.HConfusion | 0) & ~TIMEOUT) | 1;
+                        u.Confusion = u.HConfusion;
+                        await make_confused(0, true);
+                        if (!(u.HConfusion | 0) && !(u.Confusion | 0)) {
+                            await stop_occupation();
+                        }
+                    }
+                }
+            } else if (p === BLINDED) {
+                // C case BLINDED — timeout.c:743; make_blinded(0,TRUE) + stop if cured
+                const hb = u.HBlinded | 0;
+                if (hb & TIMEOUT) {
+                    const next = hb - 1;
+                    u.HBlinded = next;
+                    // Keep uprops[BLINDED] ≡ HBlinded (C single storage; D-0928 #1171)
+                    if (!u.uprops) u.uprops = {};
+                    if (!u.uprops[BLINDED]) {
+                        u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+                    }
+                    u.uprops[BLINDED].intrinsic =
+                        ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (next & TIMEOUT);
+                    if (!(next & TIMEOUT)) {
+                        // C: after --, was_blind = !!Blind (props, not sticky);
+                        // set_itimeout(&HBlinded, 1L); make_blinded(0L, TRUE);
+                        // if (was_blind && !Blind) stop_occupation();
+                        const was_blind = (!!(((u.HBlinded | 0) || (u.EBlinded | 0))
+                            && !(u.BBlinded | 0)))
+                            || !!u.uroleplay?.blind;
+                        u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | 1;
+                        u.uprops[BLINDED].intrinsic =
+                            ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | 1;
+                        await make_blinded(0, true);
+                        const still_blind = (!!(((u.HBlinded | 0) || (u.EBlinded | 0))
+                            && !(u.BBlinded | 0)))
+                            || !!u.uroleplay?.blind;
+                        if (was_blind && !still_blind) await stop_occupation();
+                    }
+                }
+            } else if (p === DEAF) {
+                // C case DEAF — timeout.c:752; make_deaf(0,TRUE) talk suppressed if Unaware
+                // HDeaf ≡ uprops[DEAF].intrinsic (youprop.h). D-1792 sync_timeout_flats
+                // copied the flat once; this arm used to -- only u.HDeaf, leaving
+                // uprops TIMEOUT stuck (#wizintrinsic DEAF leftover, D-1817).
+                const hd = (u.HDeaf | 0) | (u.uprops?.[DEAF]?.intrinsic | 0);
+                if (hd & TIMEOUT) {
+                    const next = hd - 1;
+                    set_HDeaf(next);
+                    if (!(next & TIMEOUT)) {
+                        // C: set_itimeout(&HDeaf, 1L); make_deaf(0L, TRUE);
+                        set_itimeout_HDeaf(1);
+                        await make_deaf(0, true);
+                        if (game.disp) game.disp.botl = true;
+                        if (game.flags) game.flags.botl = true;
+                        const stillDeaf = !!(u.HDeaf || u.EDeaf || u.uroleplay?.deaf || u.Deaf
+                            || (u.uprops?.[DEAF]?.intrinsic | 0)
+                            || (u.uprops?.[DEAF]?.extrinsic | 0));
+                        if (!stillDeaf) await stop_occupation();
+                    }
+                }
+            } else if (p === FUMBLING) {
+                // C case FUMBLING — timeout.c:902
+                const hf = (u.HFumbling | 0) | (u.uprops?.[FUMBLING]?.intrinsic | 0);
+                if (hf & TIMEOUT) {
+                    const next = hf - 1;
+                    set_HFumbling(next);
+                    if (!(next & TIMEOUT)) {
+                        // C: if (u.umoved && !(Levitation || Flying))
+                        if (u.umoved && !(u.Levitation || u.Flying)) {
+                            await slip_or_trip();
+                            nomul(-2);
+                            game.multi_reason = 'fumbling';
+                            game.nomovemsg = '';
+                            // C: inv_weight() > (WT_NOISY_INV * -1)
+                            if (inv_weight() > -WT_NOISY_INV) {
+                                if (!(u.HDeaf | u.Deaf)) {
+                                    await pline('You make a lot of noise!');
+                                }
+                                await wake_nearby(false);
+                            }
+                        }
+                        // C: HFumbling &= ~FROMOUTSIDE; if (Fumbling) incr_itimeout rnd(20)
+                        set_HFumbling((u.HFumbling | 0) & ~FROMOUTSIDE);
+                        if (Fumbling()) {
+                            incr_itimeout_HFumbling(rnd(20));
+                        }
+                        // C timeout.c:926–930 — mention_decor catch-up after slip
+                        if (game.iflags?.defer_decor) {
+                            const { deferred_decor } = await import('./pickup.js');
+                            await deferred_decor(false);
+                        }
+                    }
+                }
+            } else if (p === WOUNDED_LEGS) {
+                // C HWounded_legs ≡ uprops[WOUNDED_LEGS].intrinsic (youprop.h:136,
+                // single storage). OR-read + dual-write like the DEAF/FUMBLING/FAST
+                // arms: -- only the flat left #wizintrinsic/beartrap TIMEOUT stuck in
+                // the slot, so flat|slot readers (mount_steed's steed.c:228 wounded
+                // gate, dokick, pray…) believed the legs wounded forever — C printed
+                // "I see nobody there." while JS refused the mount (cf. D-1817 DEAF).
+                const hw = (u.HWounded_legs | 0)
+                    | (u.uprops?.[WOUNDED_LEGS]?.intrinsic | 0);
+                if (hw & TIMEOUT) {
+                    // C: --upp->intrinsic then test TIMEOUT bits cleared
+                    const next = hw - 1;
+                    u.HWounded_legs = next;
+                    if (!u.uprops) u.uprops = {};
+                    if (!u.uprops[WOUNDED_LEGS]) {
+                        u.uprops[WOUNDED_LEGS] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+                    }
+                    u.uprops[WOUNDED_LEGS].intrinsic =
+                        ((u.uprops[WOUNDED_LEGS].intrinsic | 0) & ~TIMEOUT)
+                        | (next & TIMEOUT);
+                    if (!(next & TIMEOUT)) {
+                        // C case WOUNDED_LEGS: heal_legs(0); stop_occupation();
+                        await heal_legs(0);
+                        await stop_occupation();
+                    }
+                }
+            } else if (p === FAST) {
+                // C case FAST — timeout.c:725; timed FAST is Very_fast until TIMEOUT ends
+                const hfast = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
+                if (hfast & TIMEOUT) {
+                    const next = hfast - 1;
+                    set_HFast(next);
+                    if (!(next & TIMEOUT)) {
+                        // C: if (!Very_fast) You_feel("yourself slow down%s.", Fast ? " a bit" : "");
+                        if (!Very_fast()) {
+                            await You_feel(`yourself slow down${Fast() ? ' a bit' : ''}.`);
+                        }
+                    }
+                }
+            }
+            continue;
+        }
         const prop = u.uprops[p];
         if (!prop) continue;
         const intr = prop.intrinsic | 0;
@@ -1252,10 +1259,10 @@ export async function nh_timeout() {
             if (p === GLIB) u.HGlib = next;
         }
         // Expiry arms below: STONED/SLIMED/SICK/STRANGLED deaths,
-        // HALLUC/CONFUSION/BLINDED/DEAF make_* + stop_occupation
-        // (STUNNED is a dedicated arm above, first, for C index order),
-        // INVIS/LEVITATION/FLYING (D-1419/D-1421), SEE_INVIS, FAST,
-        // FUMBLING, WOUNDED_LEGS, DETECT_MONSTERS, SLEEPY, VOMITING,
+        // HALLUC make_* + stop_occupation (STUNNED/CONFUSION/BLINDED/DEAF/
+        // FUMBLING/WOUNDED_LEGS/FAST dispatch as dedicated arms at their
+        // indices above, D-3789), INVIS/LEVITATION/FLYING (D-1419/D-1421),
+        // SEE_INVIS, DETECT_MONSTERS, SLEEPY, VOMITING,
         // FIRE_RES/WWALKING, WARN_OF_MON, PASSES_WALLS,
         // MAGICAL_BREATHING, GLIB, PROT_FROM_SHAPE_CHANGERS,
         // ACID_RES/STONE_RES (+ wielding_corpse pair), DISPLACED.

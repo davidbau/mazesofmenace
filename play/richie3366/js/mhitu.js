@@ -94,7 +94,7 @@ import {
 } from './invent.js';
 import { burn_away_slime } from './timeout.js';
 import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, mhitm_ad_conf, mhitm_ad_ssex, mattackm, rustm,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, mhitm_ad_conf, mhitm_ad_ssex, mattackm, rustm, attk_protection, mon_to_stone,
     could_seduce, failed_grab, engulf_target, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
     golemeffects_mm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
@@ -2988,9 +2988,9 @@ export function mon_avoiding_this_attack(mtmp, attkidx) {
 /**
  * C ref: mhitu.c passiveum — hero AT_NONE/AT_BOOM counterattack after hitmu.
  * Uses olduasmon (form at hit start) even if rehumanized mid-hit.
- * Named omissions: attk_protection/poly_when_stoned detail; drain_item body;
- * erode_armor/acid_damage bodies; golemeffects; mon_reflects; paralyze_monst
- * full; rehumanize AT_BOOM; split_mon body (mh heal still applied).
+ * Named omissions: drain_item body; erode_armor/acid_damage bodies;
+ * golemeffects; mon_reflects; paralyze_monst full; rehumanize AT_BOOM;
+ * split_mon body (mh heal still applied).
  */
 async function passiveum(olduasmon, mtmp, mattk) {
     if (!olduasmon || !mtmp) return M_ATTK_HIT;
@@ -3035,10 +3035,20 @@ async function passiveum(olduasmon, mtmp, mattk) {
             // acid_damage(MON_WEP(mtmp)) deferred
         }
         return assess_dmg(mtmp, tmp);
-    case AD_STON: {
-        // attk_protection / wornitems / poly_when_stoned deferred — resists only
-        if (!resists_ston(mtmp)) {
-            await pline(`${Monnam(mtmp)} turns to stone!`);
+    case AD_STON: { /* cockatrice (C mhitu.c:2480–2498) */
+        const protector = attk_protection(mattk.aatyp | 0);
+        let wornitems = mtmp.misc_worn_check | 0;
+        /* wielded weapon gives same protection as gloves here */
+        if (MON_WEP(mtmp)) wornitems |= W_ARMG;
+        const noTouch = ~0;
+        if (!resists_ston(mtmp)
+            && (protector === 0
+                || (protector !== noTouch && (wornitems & protector) !== protector))) {
+            if (poly_when_stoned(mtmp.data, game.mvitals)) {
+                await mon_to_stone(mtmp);
+                return M_ATTK_HIT; /* no damage during the polymorph */
+            }
+            await pline_mon(mtmp, '%s turns to stone!', Monnam(mtmp));
             if (!game.context) game.context = {};
             game.context.stoned = 1;
             await xkilled(mtmp, XKILL_NOMSG);

@@ -2343,7 +2343,10 @@ export async function healup(nhp, nxtra, curesick, cureblind) {
     const u = game.u;
     if (!u) return;
     if (nhp) {
-        if (u.Upolyd) {
+        // C potion.c:1432 + you.h:554 — Upolyd is (umonnum != umonster),
+        // never a flat (u.Upolyd has zero writes; the canonical const.js
+        // export is already imported here).
+        if (Upolyd(u)) {
             u.mh = (u.mh ?? 0) + nhp;
             if (u.mh > (u.mhmax ?? 0)) {
                 u.mhmax = (u.mhmax ?? 0) + nxtra;

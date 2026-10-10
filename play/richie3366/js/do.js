@@ -2066,7 +2066,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         restore_timers(info.timers);
         restore_light_sources(info.lights);
         game.billobjs = info.billobjs || null;
-        // C restore.c rest_bubbles before rest_track
+        // C restore.c getlev — the monster loop `:1181–1221` (place +
+        // catchup incl. the `:1219` hide_monst rnd(10) gate) runs BEFORE
+        // rest_bubbles `:1226` (mv_bubble ini reads m_at occupancy,
+        // mkmaze.c:1952+). Keep this order: bubbles-after-monsters.
+        getlev_place_monsters();
+        await getlev_catchup_monsters(elapsed);
+        // C restore.c getlev `:1226` rest_bubbles — after the monster loop,
+        // before load_exclusions `:1227` / rest_track `:1228`.
         if (info.waterlevel) await restore_waterlevel(info.waterlevel);
         // C restore.c getlev `:1227` load_exclusions — after rest_bubbles,
         // before rest_track. Pre-stash levels omit the key → empty list.
@@ -2076,8 +2083,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // (clear_level_structures only runs on mklev, not stash restore).
         game.Sokoban = !!(game.level?.flags?.sokoban_rules
             || game.level?.flags?.sokoban);
-        getlev_place_monsters();
-        await getlev_catchup_monsters(elapsed);
         close_nhfile(nhfp); // C do.c:1712 — after getlev (`:1713` oinit has no counterpart on this path — pre-existing)
     }
 
@@ -2645,17 +2650,20 @@ export async function canletgo(obj, word) {
 }
 
 /**
- * C ref: invent.c freeinv + freeinv_core — remove from invent; gold sets
- * disp.botl. JS botl `$:` reads game._goldCount (addinv / container put-in
- * maintain it); decrement here so drop paints $:0 like C money_cnt.
+ * C ref: invent.c freeinv `:1403–1409` — extract from invent, pickup_prev=0,
+ * freeinv_core, update_inventory. No owornmask touch: C never clears it
+ * here — dropz's set* clears slot+bit (a zeroing fired a spurious setworn
+ * impossible on still-slotted drops, D-3791). Gold sets disp.botl; JS botl
+ * `$:` reads game._goldCount (addinv / container put-in maintain it);
+ * decrement here so drop paints $:0 like C money_cnt.
  */
 function freeinv_drop(obj) {
     const inv = game.invent || [];
     const idx = inv.indexOf(obj);
     if (idx >= 0) inv.splice(idx, 1);
-    obj.owornmask = 0;
     obj.nobj = null;
-    freeinv_core(obj);
+    obj.pickup_prev = 0; // C `:1406`
+    freeinv_core(obj); // C `:1407`
     // where left for place_object to set OBJ_FLOOR
     // C invent.c freeinv_core — COIN_CLASS → disp.botl = TRUE; return
     if (obj.oclass === COIN_CLASS) {
@@ -2663,6 +2671,7 @@ function freeinv_drop(obj) {
         if (!game.flags) game.flags = {};
         game.flags.botl = true;
     }
+    update_inventory(); // C `:1408`
 }
 
 /**

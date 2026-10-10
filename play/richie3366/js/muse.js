@@ -165,7 +165,6 @@ const UNICORN_HORN = objectNames.indexOf('UNICORN_HORN');
 const FROST_HORN = objectNames.indexOf('FROST_HORN');
 const FIRE_HORN = objectNames.indexOf('FIRE_HORN');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
-const CLOAK_OF_MAGIC_RESISTANCE = objectNames.indexOf('CLOAK_OF_MAGIC_RESISTANCE');
 const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
 const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
@@ -459,22 +458,21 @@ function mdistu(mtmp) {
 }
 
 /**
- * C ref: youprop.h Antimagic — HAntimagic || EAntimagic.
- * oc_oprop via setworn deferred; match worn MR cloak / gray dragon armor
- * like Displaced cloak special-case.
+ * C ref: youprop.h:55–57 Antimagic ≡ HAntimagic || EAntimagic
+ * (u.uprops[ANTIMAGIC] bits only — C never reads the worn gear live).
+ * nhl_gamestate save strips worn extrinsics before snapshotting u and
+ * restore re-wears before memcpy'ing the snapshot back, so worn MR
+ * cloak / gray dragon armor can carry extrinsic == 0 (temp-C measured
+ * 95204: uarmc=148 MR cloak, anti-E 2 → 0 across the "Resetting time"
+ * restore, never re-conferred — D-3763 Displaced shape). No live
+ * uarmc/uarm fallback — it Boings where C takes the rnd(20) gate.
+ * Flats stay: union read with uprops (D-1089 mcastu/invent mirrors).
  */
 function Antimagic() {
     const u = game.u || {};
     if (u.Antimagic || u.HAntimagic || u.EAntimagic) return true;
-    if (u.uprops?.[ANTIMAGIC]?.intrinsic || u.uprops?.[ANTIMAGIC]?.extrinsic) {
-        return true;
-    }
-    const cloak = u.uarmc;
-    if (cloak && cloak.otyp === CLOAK_OF_MAGIC_RESISTANCE) return true;
-    const body = u.uarm;
-    if (body && (body.otyp === GRAY_DRAGON_SCALE_MAIL
-        || body.otyp === GRAY_DRAGON_SCALES)) return true;
-    return false;
+    const e = u.uprops?.[ANTIMAGIC];
+    return !!((e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /** C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded. */

@@ -546,8 +546,15 @@ export function fill_special_room(croom, env = {}) {
         if (croom.needfill === FILL_NORMAL) {
             if (croom.rtype >= SHOPBASE) {
                 const stockRoom = env.stockRoom ?? stock_room;
-                stockRoom(croom.rtype - SHOPBASE, croom, normalized);
-                flags.has_shop = true;
+                const maybeStocked = stockRoom(
+                    croom.rtype - SHOPBASE, croom, normalized,
+                );
+                const finishShop = () => {
+                    flags.has_shop = true;
+                };
+                if (maybeStocked && typeof maybeStocked.then === 'function')
+                    return maybeStocked.then(finishShop);
+                finishShop();
                 return;
             }
 
@@ -1756,6 +1763,8 @@ async function ensureSpecialLevelLoaders() {
     const { MINES_LEVEL_LOADERS } = await import('./mines_levels.js');
     const { FIRE_LEVEL_LOADERS } = await import('./fire_levels.js');
     const { AIR_LEVEL_LOADERS } = await import('./air_levels.js');
+    const { EARTH_LEVEL_LOADERS } = await import('./earth_levels.js');
+    const { WATER_LEVEL_LOADERS } = await import('./water_levels.js');
     const { HELL_LEVEL_LOADERS } = await import('./hell_levels.js');
     const { VALLEY_LEVEL_LOADERS } = await import('./valley_levels.js');
     const { MEDUSA_LEVEL_LOADERS } = await import('./medusa_levels.js');
@@ -1776,6 +1785,8 @@ async function ensureSpecialLevelLoaders() {
         ...MINES_LEVEL_LOADERS,
         ...FIRE_LEVEL_LOADERS,
         ...AIR_LEVEL_LOADERS,
+        ...EARTH_LEVEL_LOADERS,
+        ...WATER_LEVEL_LOADERS,
         ...HELL_LEVEL_LOADERS,
         ...VALLEY_LEVEL_LOADERS,
         ...MEDUSA_LEVEL_LOADERS,

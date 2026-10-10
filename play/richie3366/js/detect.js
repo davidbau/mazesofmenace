@@ -1364,8 +1364,11 @@ async function browse_map(ter_typ, ter_explain) {
 /**
  * C ref: detect.c:93–102 map_redisplay — reconstrain + docrt + packages.
  * Unconditional reconstrain_map like C (monster_detect :859 and trap paths
- * reach here with stale-zero saves, same as C). flush_screen(1) retained
- * from the previous JS body (screen-model flush).
+ * reach here with stale-zero saves, same as C). No flush_screen: C has
+ * none here — docrt's disp.botlx stays pending so the post-command flush
+ * paints status AFTER wiz_map restores conf/hallu (wizcmds.c:194–195).
+ * The retained flush_screen(1) (D-0128 inertia) committed status inside
+ * the zero-window and consumed botlx (D-3785).
  */
 async function map_redisplay() {
     reconstrain_map(); // :96
@@ -1375,7 +1378,6 @@ async function map_redisplay() {
         await under_water(2); // :99
     if ((u.uburied | 0) !== 0) // :100
         await under_ground(2); // :101
-    await flush_screen(1);
 }
 
 /**

@@ -69,6 +69,7 @@ import {
     Is_baal_level,
     RLOC_ERR,
     DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, ENGRAVE, ENGR_BLOOD,
+    PROT_FROM_SHAPE_CHANGERS,
     LS_MONSTER, ismnum,
     S_dnstair,
     MM_ASLEEP, MM_NOCOUNTBIRTH, MM_NOMSG, IS_TREE, G_GENOD,
@@ -9247,6 +9248,10 @@ function load_rog_strt() {
         const mtmp = splev_create_monster(id, undefined, { rx, ry });
         if (!mtmp) return;
         // C create_monster appear_as "ter:staircase down" → S_dnstair
+        // C sp_lev.c:2002-2006 — refused while Protection_from_shape_changers
+        // (uprops H||E; S_MIMIC static, FURNITURE needs no cham arm).
+        const pfsc = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+        if ((pfsc?.intrinsic | 0) || (pfsc?.extrinsic | 0)) return;
         mtmp.m_ap_type = M_AP_FURNITURE;
         mtmp.mappearance = S_dnstair;
     };
@@ -16565,6 +16570,14 @@ function load_minend_1() {
         ({ x, y } = splev_resolve_occupied(x, y, pm));
         const mtmp = makemon(pm, x, y, 0);
         if (!mtmp) return null;
+        // C sp_lev.c:2002-2006 — des appear_as is refused while
+        // Protection_from_shape_changers (youprop.h:359-360: uprops H||E).
+        // The ring confer + wizintrinsic write uprops only (flats stay 0),
+        // so read uprops like the makemon set_mimic_sym gate that just ran
+        // inside makemon above (same instant, same protection). S_MIMIC is
+        // static here and OBJECT needs no cham arm, so only prot is live.
+        const pfsc = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+        if ((pfsc?.intrinsic | 0) || (pfsc?.extrinsic | 0)) return mtmp;
         mtmp.m_ap_type = M_AP_OBJECT;
         mtmp.mappearance = otyp;
         return mtmp;
@@ -19563,6 +19576,11 @@ function create_mimic_as_boulder() {
     const mtmp = makemon(pm, pos.x, pos.y, 0);
     if (!mtmp) return null;
     mtmp.female = female;
+    // C sp_lev.c:2002-2006 — appear_as refused while
+    // Protection_from_shape_changers (uprops H||E; female stays: C :2125
+    // clobber is outside the gated block. S_MIMIC static, no cham arm).
+    const pfsc = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+    if ((pfsc?.intrinsic | 0) || (pfsc?.extrinsic | 0)) return mtmp;
     mtmp.m_ap_type = M_AP_OBJECT;
     mtmp.mappearance = BOULDER;
     return mtmp;
@@ -22283,11 +22301,13 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
 function splev_create_monster_appear_fixup(mtmp, appear, appear_as, loc) {
     if (!appear_as) return;
     // C :2002–2006 gate: mimic, or cham-valid shifter with a MONSTER appear,
-    // and no Protection_from_shape_changers.
+    // and no Protection_from_shape_changers (youprop.h:359-360: uprops H||E).
+    // The ring confer + wizintrinsic write uprops only (flats stay 0: the
+    // flat-only read missed ring-conferred protection), so read uprops like
+    // every other PfSC reader (makemon set_mimic_sym, do_wear, display).
     const u = game.u || {};
-    const prot = !!((u.HProtection_from_shape_changers | 0)
-        || (u.EProtection_from_shape_changers | 0)
-        || u.Protection_from_shape_changers);
+    const pfsc = u.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+    const prot = !!((pfsc?.intrinsic | 0) || (pfsc?.extrinsic | 0));
     if (!(mtmp.data?.mlet === 'S_MIMIC'
         || (ismnum(mtmp.cham | 0) && (appear | 0) === M_AP_MONSTER))
         || prot) {
@@ -25926,7 +25946,11 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
         const mtmp = makemon(pm, xx, yy, 0);
         if (mtmp) {
             mtmp.female = female;
-            if (appearFurniture != null) {
+            // C sp_lev.c:2002-2006 — appear_as refused while
+            // Protection_from_shape_changers (uprops H||E).
+            const pfsc = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+            const prot = (pfsc?.intrinsic | 0) || (pfsc?.extrinsic | 0);
+            if (appearFurniture != null && !prot) {
                 mtmp.m_ap_type = M_AP_FURNITURE;
                 mtmp.mappearance = appearFurniture;
             }
@@ -31479,8 +31503,13 @@ function create_mimic_as_chest(croom) {
     const mtmp = makemon(pm, pos.x, pos.y, 0);
     if (mtmp) {
         // C create_monster appear_as overrides set_mimic_sym result
-        mtmp.m_ap_type = M_AP_OBJECT;
-        mtmp.mappearance = CHEST;
+        // C sp_lev.c:2002-2006 — refused while Protection_from_shape_changers
+        // (uprops H||E; S_MIMIC static, OBJECT needs no cham arm).
+        const pfsc = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+        if (!((pfsc?.intrinsic | 0) || (pfsc?.extrinsic | 0))) {
+            mtmp.m_ap_type = M_AP_OBJECT;
+            mtmp.mappearance = CHEST;
+        }
     }
     return mtmp;
 }

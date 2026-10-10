@@ -32,6 +32,7 @@ import {
     flush_screen, pline, newsym, newsym_force, docrt, bot, flush_topl_more, canseemon,
     canspotmon, Hallucination, clear_nhwindow_message, Norep, impossible,
     sensemon, You, There, urgent_pline, pline_The, verbalize, You_cant,
+    obj_glyph,
 } from './display.js';
 import { addinv } from './u_init.js';
 import {
@@ -768,8 +769,10 @@ export async function query_category(qstr, olist, qflags, how) {
  * menu_remarm live flags: SIGNAL_NOMENU | USE_INVLET | INVORDER_SORT,
  * PICK_ANY, allow is_worn / is_worn_by_type, invent Array.
  * this_title / PICK_ONE / INCLUDE_VENOM pack (dotypeinv D-1687).
- * Named omit: obj_to_glyph/mon_to_glyph display RNG (glyph rows carry
- * ocsym/selectors only); count-prefix. INCLUDE_HERO fake-hero row +
+ * Menu-glyph burn live per allowed item (C :1131, D-3784); tty
+ * shows ocsym only so the glyph value is discarded.
+ * Named omit: engulfer mon_to_glyph burn (C :1157–1158);
+ * count-prefix. INCLUDE_HERO fake-hero row +
  * engulfer-minvent worn rejects live (sole caller: display_minventory).
  * Floor pickup keeps the existing query_objlist_pickup clone
  * (D-0365/D-0405/D-1599).
@@ -867,6 +870,9 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
                 }
                 first = false;
                 const ocsym = def_oc_syms[curr.oclass | 0]?.sym || '';
+                // C :1131 obj_to_glyph(curr, rn2_on_display_rng) — Hallu
+                // display-RNG burn; the glyph is discarded (tty ocsym).
+                obj_glyph(curr);
                 items.push({
                     selectable: true,
                     selector,
@@ -898,6 +904,9 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
             }
             first = false;
             const ocsym = def_oc_syms[curr.oclass | 0]?.sym || '';
+            // C :1131 obj_to_glyph(curr, rn2_on_display_rng) — Hallu
+            // display-RNG burn; the glyph is discarded (tty ocsym).
+            obj_glyph(curr);
             items.push({
                 selectable: true,
                 selector,
