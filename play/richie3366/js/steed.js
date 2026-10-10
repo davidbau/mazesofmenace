@@ -50,6 +50,7 @@ import {
 import { getdir } from './lock.js';
 import { y_n } from './getline.js';
 import { m_at, cant_drown } from './mon.js';
+import { u_on_newpos } from './mklev.js'; // SAFE per imports.mjs (hoisted fn, cycle-safe)
 import { isok, strsubst } from './hacklib.js';
 import {
     Monnam, mon_nam, a_monnam, monverbself, pmname, Mgender, y_monnam,
@@ -461,20 +462,22 @@ async function maybewakesteed(steed) {
  * C ref: teleport.c teleds — mount/dismount placement subset.
  * Ball/chain, swallow, hideunder, drag_ball, utrap clear deferred
  * (canonical teleds owns them; dismount saves u.utrap for mintrap).
+ * Placement itself goes through the live u_on_newpos (C teleds `:525`):
+ * same-level see_nearby_objects observes newly-near floor items
+ * (dknown + specific repaint), cliparound, uundetected clear,
+ * earth_sense — the open-coded ux/uy form skipped all four.
  */
-function teleds_simple(nux, nuy, _flags) {
+async function teleds_simple(nux, nuy, _flags) {
     void _flags;
     const u = game.u;
     const ox = u.ux | 0;
     const oy = u.uy | 0;
+    // C teleds `:490–491`: ux0/uy0 snap before u_on_newpos.
     u.ux0 = ox;
     u.uy0 = oy;
-    u.ux = nux;
-    u.uy = nuy;
-    if (u.usteed) {
-        u.usteed.mx = nux;
-        u.usteed.my = nuy;
-    }
+    // C teleds `:525` — sets u.ux/uy + usteed mx/my, cliparound,
+    // same-level see_nearby_objects, earth_sense.
+    await u_on_newpos(nux, nuy);
     newsym(ox, oy);
     newsym(nux, nuy);
     vision_recalc(1);
@@ -858,6 +861,8 @@ function stealth_now() {
  * Named omit: update_mon_extrinsics, teleds_simple subset (ball/chain,
  * utrap clear, swallow/hideunder/drag — canonical teleds owns them;
  * KNOCKED u.dx/u.dy caller wired js/mhitm.js:2963–2966).
+ * teleds_simple places via the live u_on_newpos (C teleds `:525`):
+ * same-level see_nearby_objects observes newly-near floor items.
  * landing_spot KNOCKED preferred-dir + enexto forceit D-1640.
  * float_down → pickup when !Air/Water
  * (D-0220 / D-0966). BYCHOICE D-0213.
@@ -1022,7 +1027,7 @@ export async function dismount_steed(reason) {
                 // C: in_steed_dismounting around teleds so spoteffects skips
                 // pickup; float_down does the single pickup attempt.
                 game.in_steed_dismounting = true;
-                teleds_simple(cc.x, cc.y, TELEDS_ALLOW_DRAG);
+                await teleds_simple(cc.x, cc.y, TELEDS_ALLOW_DRAG);
                 if (sobj_at(BOULDER, cc.x, cc.y)) sokoban_guilt();
                 game.in_steed_dismounting = false;
 

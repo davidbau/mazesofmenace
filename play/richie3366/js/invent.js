@@ -195,6 +195,8 @@ import {
     INCLUDE_VENOM,
     USE_INVLET,
     INVORDER_SORT,
+    SIGNAL_NOMENU,
+    SIGNAL_ESCAPE,
     STONED,
     SLIMED,
     STRANGLED,
@@ -3568,89 +3570,42 @@ export function count_unidentified(objchn) {
 }
 
 /**
- * C ref: invent.c menu_identify — query_objlist USE_INVLET PICK_ANY.
- * Envelope: invent-letter toggle menu of not_fully_identified items.
- * Named omissions: SIGNAL_NOMENU polish; wait_synch between loops.
- * Traditional ggetobj is D-1602 (identify_pack MENU_TRADITIONAL).
+ * C ref: invent.c menu_identify `:2660–2695` — query_objlist
+ * (SIGNAL_NOMENU | SIGNAL_ESCAPE | USE_INVLET | INVORDER_SORT)
+ * PICK_ANY over not_fully_identified, identify each pick, wait_synch
+ * before re-opening the menu. C linkage is staticfn: stays local.
+ * (D-3753 restart: the paint_corner_nhw_menu clone skipped C's
+ * INVORDER_SORT class headings, e.g. the "Armor" row.)
  */
 async function menu_identify(id_limit) {
-    let first = true;
+    let first = true; // C :2663
     let tryct = 5;
-    while (id_limit > 0) {
-        const eligible = (game.invent || []).filter(not_fully_identified);
-        if (!eligible.length) {
+    while (id_limit > 0) { // C :2667
+        const buf = `What would you like to identify ${first ? 'first' : 'next'}?`; // C :2668–2669
+        const { n: rn, pick_list } = await query_objlist( // C :2670–2672
+            buf, game.invent,
+            (SIGNAL_NOMENU | SIGNAL_ESCAPE | USE_INVLET | INVORDER_SORT),
+            PICK_ANY, not_fully_identified,
+        );
+        let n = rn;
+        if (n > 0) { // C :2674
+            if (n > id_limit) n = id_limit; // C :2675–2676
+            for (let i = 0; i < n; i++, id_limit--) { // C :2677–2678
+                await identify(pick_list[i].obj);
+            }
+            if (id_limit) await tty_wait_synch(); // C :2680–2681 wait_synch
+            first = false; // C :2682
+        } else if (n === -2) { // C :2683 player used ESC
+            break;
+        } else if (n === -1) { // C :2685 no eligible items (SIGNAL_NOMENU)
             await pline('That was all.');
             break;
-        }
-        const items = eligible.map((obj) => ({
-            obj,
-            letch: obj.invlet
-                || (obj.oclass === COIN_CLASS ? '$' : '?'),
-            selected: false,
-        }));
-        const prompt = `What would you like to identify ${first ? 'first' : 'next'}?`;
-        const entries = [
-            { text: prompt, attr: ATR_INVERSE },
-            { text: '', attr: 0 },
-        ];
-        for (const it of items) {
-            const mark = it.selected ? '+' : '-';
-            entries.push({
-                text: `${it.letch} ${mark} ${doname(it.obj)}`,
-                attr: 0,
-            });
-        }
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        let n = 0;
-        for (;;) {
-            const key = await nhgetch();
-            if (key === 27) {
-                n = -2;
-                break;
-            }
-            if (key === 13 || key === 10 || key === 32) {
-                const chosen = items.filter((it) => it.selected);
-                n = chosen.length;
-                if (n > id_limit) n = id_limit;
-                for (let i = 0; i < n; i++, id_limit--) {
-                    await identify(chosen[i].obj);
-                }
-                break;
-            }
-            const ch = typeof key === 'number' ? String.fromCharCode(key) : key;
-            const hit = items.find((it) => it.letch === ch);
-            if (hit) {
-                hit.selected = !hit.selected;
-                // refresh marks
-                for (let ei = 2; ei < entries.length; ei++) {
-                    const it = items[ei - 2];
-                    if (!it) continue;
-                    const mark = it.selected ? '+' : '-';
-                    entries[ei] = {
-                        text: `${it.letch} ${mark} ${doname(it.obj)}`,
-                        attr: 0,
-                    };
-                }
-                await paint_corner_nhw_menu(entries, '(end) ');
-                await flush_screen(1);
-                continue;
-            }
-            // unmatched — ignore for now
-        }
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-        if (n === -2) break;
-        if (n === 0) {
-            if (!--tryct) {
-                await pline(thats_enough_tries);
-                break;
-            }
+        } else if (!--tryct) { // C :2688 stop re-prompting
+            await pline(thats_enough_tries); // C :2689 pline1 (apply.js:3149 idiom)
+            break;
+        } else { // C :2691 try again
             await pline('Choose an item; use ESC to decline.');
-            continue;
         }
-        first = false;
     }
 }
 

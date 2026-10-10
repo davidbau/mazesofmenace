@@ -316,6 +316,15 @@ left.  The town is dark and quiet.  There are no sounds coming from
 behind the town walls, and no campfires burning in the fields.  As a
 matter of fact, you do not %x any movement in the fields at all, and
 the crops seem as though they have been untended for many weeks.`,
+    // C ref: dat/quest.lua Val firsttime (output=text) — quest.lua:2713-2722
+    Val: `You materialize at the base of a snowy hill.  Atop the hill sits
+a place you know well, %H.  You immediately realize
+that something here is very wrong!
+
+In places, the snow and ice have been melted into steaming pools of
+water.  Fumaroles and pools of bubbling lava surround the hill.
+The stench of sulphur is carried through the air, and you %x creatures
+that should not be able to live in this environment moving towards you.`,
 };
 
 /** C ref: dat/quest.lua leader_first (Arc + Pri). */
@@ -456,12 +465,14 @@ const QUEST_LOCATE_NEXT = {
     Wiz: `You believe that you may once again invade %i.`,
 };
 
-/** C ref: dat/quest.lua nexttime (Arc + Bar + Pri). */
+/** C ref: dat/quest.lua nexttime (Arc + Bar + Pri + Wiz). */
 const QUEST_NEXTTIME = {
     Arc: `Once again, you are back at %H.`,
     Bar: `Once again, you near %H.  You know that %l
 will be waiting.`,
     Pri: `Once again, you stand before %H.`,
+    // C ref: dat/quest.lua Wiz nexttime (no output/synopsis keys: pline)
+    Wiz: `Once again, you are back at %H.`,
 };
 
 /** C ref: dat/quest.lua othertime (Arc + Bar + Pri). */
@@ -521,13 +532,15 @@ hooves on rock.`,
     Wiz: `You feel your mentor's presence; perhaps %o is nearby.`,
 };
 
-/** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni). */
+/** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni + Ran). */
 const QUEST_GOAL_NEXT = {
     Arc: `The familiar presence of %o is in the ether.`,
     Bar: `Yet again you feel the air around you heavy with malevolent magical energy.`,
     Pri: `Again, you have invaded %ns domain.`,
     // C ref: dat/quest.lua Kni goal_next
     Kni: `Again, you stand at the entrance to %ns lair.`,
+    // C ref: dat/quest.lua Ran goal_next (no output/synopsis keys: pline)
+    Ran: `Once again, you enter the distorted castle of %n.`,
 };
 
 /** C ref: dat/quest.lua goal_alt (Arc; Bar falls back to goal_next in C). */
@@ -667,6 +680,10 @@ const QUEST_MSG_META = {
         Tou: {
             output: 'text',
             synopsis: '[You find yourself back at %H, but the quiet is ominous.]',
+        },
+        Val: {
+            output: 'text',
+            synopsis: '[You arrive below %H.  Something is wrong; there is lava present.]',
         },
     },
     leader_first: {

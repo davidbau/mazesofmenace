@@ -192,7 +192,7 @@
 // is D-1386 (this callee SPE ubuzz). SPE_FORCE_BOLT IMMEDIATE bhit
 // + bhitm spell_damage_bonus is D-1388. zhitm spell_damage_bonus named.
 // muse MUSE_CAMERA is D-1376; Sunsword invoke_blinding_ray is D-1377.
-// bhit WEB stick D-1393; throwit fly / skiprange named.
+// bhit WEB stick D-1393; throwit THROWN_WEAPON fly via bhit (D-3756).
 // bhitm WAN_MAKE_INVISIBLE is D-1414; conferral See_invisible
 // uprops in knowninvisible is D-1423; zap_steed WAN_PROBING is
 // D-1443; zap_steed WAN_TELEPORTATION is D-1455; zap_steed
@@ -6227,7 +6227,8 @@ function bhit_skiprange(range) {
 }
 
 /**
- * C ref: zap.c bhit — ZAPPED_WAND + KICKED_WEAPON + THROWN_TETHERED_WEAPON.
+ * C ref: zap.c bhit — ZAPPED_WAND + KICKED_WEAPON + THROWN_TETHERED_WEAPON
+ * + THROWN_WEAPON (throwit fly wired D-3756).
  * Branch envelope: kicked start+range--; WATERWALL/LAVAWALL stop;
  * hits_bars; mon stop; coin/ship_object; DISP_FLASH / DISP_TETHER tmp_at
  * + nh_delay_output; pool/lava/sink stop. THROWN_TETHERED remaps to
@@ -6252,8 +6253,7 @@ function bhit_skiprange(range) {
  * skiprange + rock skip/pass-over (`:3855–3858`, `:3944–3970`;
  * callee staticfn `:3579–3588` file-local `bhit_skiprange`;
  * M_IN_WATER is zap.c:61 `S_EEL || cant_drown`, canonical import).
- * Named omit: THROWN_WEAPON fly callers (throwit still inlines those
- * and still skips WEB / shade / mimic-object).
+ * THROWN_WEAPON fly callers wired: throwit calls this (D-3756).
  * HEAVY_IRON_BALL boulder/uball stop is `:4095–4119` below (r = 0).
  * shkcatch is `shk.c:4362` (`:3885–3890`), before terrain.
  * show_transient_light is D-1597; bhit `!Blind` is youprop.h:103 (D-1604).
@@ -6374,7 +6374,7 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
             // C zap.c bhit :3926–3938 — empty WEB + thrown/kicked
             // !rn2(3) sticks (D-1393). Monster on the web skips this
             // (shade/M_AP_OBJECT come later). ZAPPED_WAND/FLASHED_LIGHT
-            // do not roll. throwit THROWN_WEAPON fly still named.
+            // do not roll.
             if (!mtmp && ttmp && (ttmp.ttyp | 0) === WEB
                 && (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
                 && !rn2(3)) {

@@ -972,13 +972,19 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
         return finish_picks([one.item]);
     }
 
-    const picked = await select_menu_pick_any(raw);
-    if (!picked.length) {
-        /* C: ESC n<0 → SIGNAL_ESCAPE ? -2 : 0. Empty confirm is 0. */
+    /* C `:1210–1213` — only select_menu n<0 (ESC) maps via
+       SIGNAL_ESCAPE; an empty confirm is n=0. cancelValue keeps the
+       two distinct (D-3753: menu_identify re-prompts on 0 via
+       "Choose an item", quits on -2). */
+    const picked = await select_menu_pick_any(raw, { cancelValue: null });
+    if (picked === null) {
         return {
             n: (qflags & SIGNAL_ESCAPE) ? -2 : 0,
             pick_list: [],
         };
+    }
+    if (!picked.length) {
+        return { n: 0, pick_list: [] };
     }
     return finish_picks(picked);
 }

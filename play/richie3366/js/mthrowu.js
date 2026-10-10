@@ -1572,11 +1572,16 @@ export async function thrwmm(mtmp, mtarg) {
  */
 export async function thrwmu(mtmp) {
     if (!game.context) game.context = {};
+    // C: mthrowu.c never writes mon_moving (allmain.c:210-216 owns it
+    // around movemon); this wrapper is JS-only. Save/restore (quest.c
+    // :428-437 / zap.c melt_ice_away :5123-5131 pattern) — a finally-false
+    // clobbered the outer TRUE, faulting later movemon gas clouds.
+    const save_mon_moving = game.context.mon_moving;
     game.context.mon_moving = true;
     try {
         await thrwmu_body(mtmp);
     } finally {
-        game.context.mon_moving = false;
+        game.context.mon_moving = save_mon_moving;
     }
 }
 

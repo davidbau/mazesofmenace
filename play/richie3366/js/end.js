@@ -1519,13 +1519,7 @@ function give_to_nearby_mon(otmp, x, y) {
         }
     }
     if (selected && can_carry(selected, otmp)) add_to_minv(selected, otmp);
-    else {
-        // C is place_object only; stackobj is this file's pre-existing
-        // floor convention (RNG-free), kept so the no-neighbour path is
-        // unchanged from the deferred arm it replaces.
-        place_object(otmp, x, y);
-        stackobj(otmp);
-    }
+    else place_object(otmp, x, y); // C `:253–254` — place only, no stackobj (D-3754: the death-drop never merges)
 }
 
 /**
@@ -1553,7 +1547,7 @@ function give_u_to_m_resistances(mtmp) {
  * retired here). Lit lamps and artifact lights are snuffed before
  * owornmask clears (artifact_light reads W_ARM).
  */
-async function drop_upon_death(mtmp, cont, x, y) {
+export async function drop_upon_death(mtmp, cont, x, y) {
     const u = game.u || {};
     u.twoweap = false;
     if (!game.invent) game.invent = [];
@@ -1586,8 +1580,10 @@ async function drop_upon_death(mtmp, cont, x, y) {
         } else if (!rn2(8)) {
             give_to_nearby_mon(otmp, x, y);
         } else {
+            // C `:298–299` — place only, no stackobj (D-3754: the
+            // death-drop never merges; the extra merge dropped one
+            // bones object, shifting the ghostly next_ident stream)
             place_object(otmp, x, y);
-            stackobj(otmp);
         }
     }
     // C `:301–302` — reweigh the statue after the drop loop

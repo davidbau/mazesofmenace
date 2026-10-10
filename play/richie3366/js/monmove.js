@@ -2166,6 +2166,37 @@ export async function m_move(mtmp, after) {
         return postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open, seenflgs);
     }
 
+    // C ref: monmove.c m_move `:1778–1800` — acquisitive (covetous)
+    // monsters attack the intruder sitting on their goal (D-3749: the
+    // D-3748-measured writer of the mattackm cliff — without it the
+    // wizard falls through to dochug/distfleeck).
+    if (is_covetous(ptr)) {
+        // C `:1781–1783` — mgoal is a zeroed struct in C; JS leaves it
+        // unset until wizard.js tactics writes it, so default to (0,0)
+        // (isok rejects it, same as C's goal=(0,0) gate negatives).
+        const tx = mtmp.mgoal?.x | 0;
+        const ty = mtmp.mgoal?.y | 0;
+        const intruder = isok(tx, ty) ? m_at(tx, ty) : null;
+        // C `:1788–1791` — short-circuit order kept (dist2 is pure);
+        // 5.0 `<= 2` admits adjacent-diagonal attacks.
+        if (intruder && intruder !== mtmp
+            && dist2(mtmp.mx, mtmp.my, tx, ty) <= 2) {
+            // C `:1792–1793` — stamps are live inside mattackm
+            // (failed_grab reads notonhead, mhitm.c:602/612); same
+            // game.* idiom as m_move_aggress above.
+            if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+            game.bhitpos.x = tx;
+            game.bhitpos.y = ty;
+            game.notonhead = ((intruder.mx | 0) !== tx
+                || (intruder.my | 0) !== ty);
+            const covetousattack = await mattackm(mtmp, intruder);
+            // C `:1795–1797` — 5.0 tests AGR_DIED (was erroneously == 2).
+            if (covetousattack & M_ATTK_AGR_DIED) return MMOVE_DIED;
+            return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open, seenflgs);
+        }
+        // Otherwise continue with the normal AI routine (C `:1802`).
+    }
+
     // C ref: monmove.c m_move — shopkeeper / guard / priest special
     if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
         let xm;

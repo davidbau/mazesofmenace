@@ -2206,8 +2206,8 @@ export async function boomhit(obj, dx, dy) {
  * throwit returning-missile losehp killer_xname (D-1346; C `:1747`).
  * Named omit: objsplit unsplit; throw_obj gates (canletgo / Mjollnir /
  * too-heavy / `:139–148` petrify / welded / wet-towel / multishot extras /
- * `:274–292` unsplit) are live in throw_obj above; THROWN_WEAPON still
- * uses the JS fly stand-in (not zap.js bhit).
+ * `:274–292` unsplit) are live in throw_obj above; THROWN_WEAPON flies
+ * via the live zap.js bhit (D-3756).
  */
 
 /**
@@ -2418,7 +2418,7 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
     const dy = u.dy || 0;
     // C throwit :1613–1672 — ACURRSTR urange then range (D-1316 / D-1323)
     const calc = throwit_calc_range(obj, tethered_weapon);
-    let range = calc.range | 0;
+    const range = calc.range | 0;
     const urange = calc.urange | 0;
     if (calc.hand_throw) {
         // C :1643–1646 — an(skill_name) + weapon_descr + body_part(HAND)
@@ -2426,95 +2426,32 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
             `You aren't wielding ${an(throwit_skill_name(weapon_type(obj)))}, so you throw your ${throwit_weapon_descr(obj)} by ${body_part(HAND)}.`,
         );
     }
-    if (tethered_weapon) {
-        // C :1674–1677 — bhit(THROWN_TETHERED_WEAPON) opens DISP_TETHER
+    // C throwit :1674–1679 — every non-boomerang flight goes through the
+    // live bhit (tethered opens DISP_TETHER; plain THROWN_WEAPON draws
+    // the thrown-rock skiprange window + !rn2(3) inside bhit). The old
+    // inline loop is gone — bhit owns bars/WEB/shade/mimic/sink/
+    // waterwall/notonhead/ball stops (D-1928; D-3756).
+    {
         const pobj = { obj };
         const { bhit } = await import('./zap.js');
         hitmon = await bhit(
-            dx, dy, range, THROWN_TETHERED_WEAPON, null, null, pobj,
+            dx, dy, range,
+            tethered_weapon ? THROWN_TETHERED_WEAPON : THROWN_WEAPON,
+            null, null, pobj,
         );
         obj = pobj.obj;
-        game.thrownobj = obj;
+        game.thrownobj = obj; /* obj may be null now */
         x = game.bhitpos?.x | 0;
         y = game.bhitpos?.y | 0;
-    } else {
-    let point_blank = true;
-    while (range-- > 0) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 1 || nx >= COLNO || ny < 0 || ny >= ROWNO) break;
-        const loc = game.level?.at?.(nx, ny);
-        if (!loc) break;
-        const typ = loc.typ ?? 0;
-        const closed = IS_DOOR(typ) && ((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
-        // C bhit: IRONBARS via hits_bars before ZAP_POS stop (D-0990)
-        if (typ === IRONBARS) {
-            const { hits_bars } = await import('./mthrowu.js');
-            const pobj = { obj };
-            if (await hits_bars(
-                pobj, x, y, nx, ny,
-                point_blank ? 0 : !rn2(5), 1,
-            )) {
-                if (!pobj.obj) {
-                    throwit_return(false);
-                    return; // destroyed at bars
-                }
-                obj = pobj.obj;
-                break; // land at previous cell (x,y)
-            }
-            // passes through — fall through to advance
-        }
-        // C bhit: if (!ZAP_POS(typ) || closed_door) { bhitpos -= dir; break; }
-        if (!ZAP_POS(typ) || closed) break;
-        x = nx;
-        y = ny;
-        point_blank = false;
-        // C bhit THROWN_WEAPON: stop on monster before tmp_at of that cell
-        const mon = m_at(x, y);
-        if (mon) {
-            hitmon = mon;
-            break;
-        }
-        // C zap.c bhit :4095–4119 — limit range of a thrown ball so the
-        // hero won't make an invalid move. The non-tethered THROWN_WEAPON
-        // path inlines bhit here, so the stops live here too, in C order
-        // after the monster stop (js/zap.js:6469 holds the bhit-home copy).
-        // A boulder stops it with a message; a chained uball jerks to a
-        // halt when the hero can't follow (test_move from the previous
-        // square) or over a Sokoban pit/hole. range is C range.
-        if (range > 0 && obj && (obj.otyp | 0) === HEAVY_IRON_BALL) {
-            const bobj = sobj_at(BOULDER, x, y);
-            if (bobj) {
-                if (cansee(x, y)) {
-                    await pline(`${The(distant_name(obj, xname))} hits ${an(xname(bobj))}.`);
-                }
-                range = 0;
-            } else if (obj === u.uball) {
-                if (!await test_move(x - dx, y - dy, dx, dy, TEST_MOVE)) {
-                    /* nb: it didn't hit anything directly */
-                    if (cansee(x, y)) {
-                        await pline(`${The(distant_name(obj, xname))} jerks to an abrupt halt.`);
-                    }
-                    range = 0;
-                } else if (game.level?.flags?.sokoban_rules || game.Sokoban) {
-                    // C: Sokoban = level.flags.sokoban_rules (trap.js:582)
-                    const t = t_at(x, y);
-                    if (t && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
-                        /* hero falls into the trap, so ball stops */
-                        range = 0;
-                    }
-                }
-            }
-        }
-    }
     }
     // C throwit :1680–1682 — after bhit so ux,uy are correct
     if (Is_airlevel(u.uz) || Levitation_boom()) {
         await hurtle(-(u.dx || 0), -(u.dy || 0), urange, true);
     }
-    // C :1684–1691 — bhit may have destroyed obj; tether still open
-    if (tethered_weapon && !obj) {
-        await throwit_tether_end(true, false);
+    // C :1684–1691 — bhit may have destroyed obj (bars); the tethered
+    // cord is still open and this caller ENDs it (no-op otherwise).
+    if (!obj) {
+        await throwit_tether_end(tethered_weapon, false);
         throwit_return(false);
         return;
     }

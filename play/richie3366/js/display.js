@@ -1286,7 +1286,7 @@ export function Warn_of_mon() {
  * copies; sticky `u.Protection_from_shape_changers` is a JS fallback
  * (same as do_wear / restore_cham).
  */
-function Protection_from_shape_changers() {
+export function Protection_from_shape_changers() {
     const u = game.u || {};
     const p = u.uprops?.[PROT_FROM_SHAPE_CHANGERS];
     return !!(u.HProtection_from_shape_changers
@@ -6959,6 +6959,7 @@ function _commitStatusLines() {
 }
 
 export { _statusLine2 as status_line_2 };
+export { _paintToplineOnly as paint_topline_only };
 
 /**
  * Publish field-rendered status rows (tty BL_FLUSH render). C keeps the

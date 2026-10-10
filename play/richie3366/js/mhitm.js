@@ -638,6 +638,10 @@ function is_youmonst(m) {
  */
 export async function mon_poly(magr, mdef, dmg) {
     const oldform = mdef?.data;
+    // C's tail compares mdef->data != oldform over canonical mons[]
+    // pointers; JS mons() builds a fresh object per call, so capture the
+    // form index for that comparison (see the tail note).
+    const oldMndx = oldform?.mndx ?? mdef?.mnum ?? NON_PM;
     const isyou = is_youmonst(mdef);
     if (isyou) {
         const u = game.u || {};
@@ -722,7 +726,13 @@ export async function mon_poly(magr, mdef, dmg) {
     }
     // when a transformation has happened, can't attack again for poly
     // effect during next turn or two; not enforced for poly'd hero
-    if (mdef?.data !== oldform && magr && !is_youmonst(magr)) {
+    // C: mdef->data != oldform — C permonst are canonical mons[] pointers,
+    // so an unchanged form is the identical pointer. JS mons() builds a
+    // fresh object per call (set_uasmon/newcham reinstall data even when
+    // the form index is unchanged), so compare the stored form index —
+    // same mndx idiom as zap.js lightdamage and the pm_to_cham call above.
+    const newMndx = mdef?.data?.mndx ?? mdef?.mnum ?? NON_PM;
+    if (newMndx !== oldMndx && magr && !is_youmonst(magr)) {
         magr.mspec_used = (magr.mspec_used | 0) + rnd(2);
     }
     return dmg | 0;

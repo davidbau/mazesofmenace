@@ -1762,13 +1762,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await impact_drop(null, u.ux | 0, u.uy | 0, newlevel.dlevel | 0);
     }
 
-    // C: if (!iflags.nofollowers) keepdogs(FALSE)
-    if (!game.iflags?.nofollowers) await keepdogs(false);
-    // C: check_special_room(TRUE) on leave — move_update clears urooms so
-    // arrival re-enters temple/shop messages (intemple).
+    // C do.c:1615 goto_level — check_special_room(TRUE) FIRST (leave-shop
+    // robbery messages paginate mid-turn); the trap/ustuck cleanup, then
+    // keepdogs (:1623–1624), then recalc_mapseen (:1625), in C order
+    // (D-3761: keepdogs before check_special_room dropped pets from the
+    // map at the first --More--).
     await check_special_room(true);
-    // C: recalc_mapseen() before leaving — persist feat/msrooms on mapseen
-    recalc_mapseen();
     // C: do.c goto_level — Punished unplacebc before savelev so ball&chain
     // are not left on the departing floor (D-0915).
     // C: Punished ≡ (uball != 0)
@@ -1782,6 +1781,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await set_uinwater(0);
     // C do.c:1622 — not hidden, even if means are available.
     u.uundetected = 0;
+    // C do.c:1623–1624 — if (!iflags.nofollowers) keepdogs(FALSE), AFTER
+    // check_special_room: pets stay on fmon while the leave-shop messages
+    // paginate (D-3761).
+    if (!game.iflags?.nofollowers) await keepdogs(false);
+    // C do.c:1625 — recalc_mapseen() before leaving — persist feat/msrooms
+    // on mapseen.
+    recalc_mapseen();
     // Snapshot sight before vision_recalc(2) clears viz — getbones yn
     // needs prior IN_SIGHT to mon→memory newsym the leave-level gbuf.
     if (game.viz_array) {

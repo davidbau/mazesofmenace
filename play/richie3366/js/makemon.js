@@ -170,7 +170,7 @@ import {
 } from './objects.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee, does_block, block_point } from './vision.js';
-import { newsym, Norep, canseemon, sensemon, canspotmon, pline, You, pline_mon, impossible, coord_desc, swallowed, monsym, raw_printf } from './display.js';
+import { newsym, Norep, canseemon, sensemon, canspotmon, pline, You, pline_mon, impossible, coord_desc, swallowed, monsym, raw_printf, Protection_from_shape_changers } from './display.js';
 import { mhidden_description } from './pager.js';
 import { emits_light, new_light_source, del_light_source, obj_sheds_light, snuff_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
@@ -179,7 +179,7 @@ import { vtense, simpleonames, Tobjnam } from './objnam.js';
 import { get_shop_item, shkname } from './shknam.js';
 import {
     get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
-    worm_mon_at, wormgone,
+    wormgone,
 } from './worm.js';
 import { deliver_obj_to_mon } from './dokick.js';
 import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear, discard_minvent, mongone } from './mon.js';
@@ -3352,27 +3352,21 @@ export function makemon(mdat, x, y, mmflags = 0) {
         return null;
     }
 
-    // C: MON_AT(x,y) via level.monsters[][] — includes worm body segs
-    // (rm.h place_worm_seg). Heads are on fmon; segs on _level_monsters.
-    {
-        let occupied = false;
-        if (game.fmon) {
-            for (const m of game.fmon) {
-                if (m.mx === x && m.my === y) {
-                    occupied = true;
-                    break;
-                }
-            }
-        }
-        // D-0545: worm tail cells must reject like C MON_AT (no rndmonst burn)
-        if (!occupied && worm_mon_at(x, y)) occupied = true;
-        if (occupied) {
-            if (!(mmflags & MM_ADJACENTOK)) return null;
-            const cc = { x: 0, y: 0 };
-            if (!enexto_core(cc, x, y, ptr, gpflags)) return null;
-            x = cc.x;
-            y = cc.y;
-        }
+    // C makemon.c:1193–1199 — MON_AT(x,y) is the live-monsters grid
+    // (rm.h:515). Dead mons linger on fmon until dmonsfree but are off
+    // the grid, as are MON_OFFMAP mons and the mounted steed. The live
+    // m_at() export implements exactly that contract (mon.js:1725: grid
+    // incl. worm segs via place_worm_seg, then an fmon scan skipping
+    // steed/dead/offmap; same precedent as clone_mon below) — so a
+    // hand-rolled unfiltered fmon scan here wrongly voided creation on
+    // dead/offmap/steed cells (D-3751: a mhp=0 salamander husk at 9,17
+    // voided a summon makemon and its substitute, drawing nothing).
+    if (m_at(x, y)) {
+        if (!(mmflags & MM_ADJACENTOK)) return null;
+        const cc = { x: 0, y: 0 };
+        if (!enexto_core(cc, x, y, ptr, gpflags)) return null;
+        x = cc.x;
+        y = cc.y;
     }
 
     // C makemon.c:1204–1212 — ptr arm: a specific monster that has already
@@ -3646,7 +3640,10 @@ export function makemon(mdat, x, y, mmflags = 0) {
     mtmp.cham = NON_PM;
     {
         const mcham = pm_to_cham(ptr.mndx);
-        if (mcham !== NON_PM) {
+        // C makemon.c:1356 — Protection_from_shape_changers skips cham
+        // setup entirely (cham stays NON_PM, no newcham, allow_minvent
+        // stays TRUE so m_initinv still runs).
+        if (!Protection_from_shape_changers() && mcham !== NON_PM) {
             mtmp.cham = mcham;
             // C makemon.c:1367 — newcham NO_NC_FLAGS finishes before
             // allow_minvent=FALSE. Sync makemon cannot await (134

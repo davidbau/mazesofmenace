@@ -6,10 +6,12 @@
 // (calls live in chat_with_leader — miss no-ops after the C nhl_init shuffle);
 // exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest.
-// nexttime/othertime: Arc+Bar+Pri; goal_first: Arc+Bar+Cav+Pri+Kni+Ran+Sam+Wiz
+// nexttime: Arc+Bar+Pri+Wiz (Wiz plain pline, no output/synopsis in lua);
+// othertime: Arc+Bar+Pri; firsttime: +Val (Cav+Mon miss);
+// goal_first: Arc+Bar+Cav+Pri+Kni+Ran+Sam+Wiz
 // (Wiz plain pline, no output/synopsis in lua),
-// goal_next: Arc+Bar+Pri+Kni (other-role goal_* miss then D-1662
-// common retry; still no body).
+// goal_next: Arc+Bar+Pri+Kni+Ran (Ran plain pline, no output/synopsis
+// in lua; other-role goal_* miss then D-1662 common retry; still no body).
 // finish_quest throw/kick catch is D-1312; offeredit/hasamulet/offeredit2
 // qt_pager bodies still named (shuffle live).
 

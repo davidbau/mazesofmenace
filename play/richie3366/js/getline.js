@@ -20,7 +20,7 @@ import {
     mark_topline_special_prompt, hooked_getlin_release_prompt,
     hooked_getlin_epilogue, tty_yn_rewrite_toplines, tty_nhbell,
     tty_yn_note_msg_cursor, tty_yn_clean_up_tty,
-    impossible, set_bot_disabled, vpline_flush_vision,
+    impossible, set_bot_disabled, vpline_flush_vision, paint_topline_only,
 } from './display.js';
 import { key2txt, visctrl, cmd_from_func } from './dokeylist.js';
 import { rn2 } from './rng.js';
@@ -38,6 +38,18 @@ import { select_menu_pick_one, menu_prompt_style } from './options.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
 import { cmdq_pop, cmdq_clear, extcmd_initiator } from './cmd.js';
 import { cmdq_add_key } from './invent.js';
+
+/**
+ * C ref: pline.c vpline `:277–278` — custompline prompts flush only
+ * `if (u.ux)`. Pre-placement (the wizard "Get bones?" yn from getbones()
+ * mid-level-gen, bones.c:671) the prompt paints the topline with no
+ * flush_screen bot()/map — C's first bot() is the newgame tail
+ * (allmain.c:819), so WIN_STATUS is still empty (D-3750).
+ */
+async function prompt_paint_flush() {
+    if (game.u?.ux) await flush_screen(1);
+    else paint_topline_only();
+}
 
 /**
  * C ref: topl.c topl_putsym — before writing when curx == CO-1, emit `\n`
@@ -292,7 +304,7 @@ export async function getlin(query, bufp) {
         );
         mark_topline_special_prompt(raw);
         game._pending_message = text;
-        await flush_screen(1);
+        await prompt_paint_flush();
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(col, row);
     };
@@ -1636,7 +1648,7 @@ export async function get_ext_cmd() {
         const { text, col, row } = topl_wrap_echo(raw, 2 + st.cursor);
         mark_topline_special_prompt(raw);
         game._pending_message = text;
-        await flush_screen(1);
+        await prompt_paint_flush();
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(col, row);
     };
@@ -2135,7 +2147,7 @@ async function tty_yn_function(query, resp = 'yn', def = 'n') {
         const { text, col, row } = topl_wrap_echo(prompt, prompt.length);
         mark_topline_special_prompt(prompt);
         game._pending_message = text;
-        await flush_screen(1);
+        await prompt_paint_flush();
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(col, row);
         tty_yn_note_msg_cursor(col, row);
@@ -2228,7 +2240,7 @@ async function yn_collect_number(prompt, firstCh, preserve) {
         const raw = prompt + echo;
         const { text, col, row } = topl_wrap_echo(raw, raw.length);
         mark_topline_prompt(text);
-        await flush_screen(1);
+        await prompt_paint_flush();
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(col, row);
         tty_yn_note_msg_cursor(col, row);

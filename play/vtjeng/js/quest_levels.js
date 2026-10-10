@@ -3,17 +3,22 @@
 //         dat/Bar-goal.lua, dat/Bar-loca.lua, dat/Arc-strt.lua,
 //         dat/Arc-loca.lua, dat/Arc-fila.lua, dat/Arc-filb.lua,
 //         dat/Arc-goal.lua, dat/Cav-goal.lua, dat/Cav-loca.lua,
-//         dat/Cav-strt.lua, dat/Mon-goal.lua, dat/Sam-goal.lua, dat/astral.lua,
+//         dat/Cav-strt.lua, dat/Mon-goal.lua, dat/Mon-loca.lua, dat/Mon-strt.lua,
+//         dat/Sam-goal.lua, dat/Tou-strt.lua, dat/astral.lua,
 //         dat/Hea-goal.lua, dat/Hea-loca.lua, dat/Hea-strt.lua,
 //         dat/Kni-loca.lua, dat/Kni-strt.lua, dat/Ran-loca.lua,
-//         dat/Ran-goal.lua, dat/Rog-strt.lua, dat/Val-goal.lua,
-//         dat/Val-loca.lua,
+//         dat/Ran-goal.lua, dat/Ran-strt.lua, dat/Rog-strt.lua, dat/Rog-loca.lua,
+//         dat/Rog-goal.lua, dat/Val-goal.lua,
+//         dat/Tou-loca.lua, dat/Val-loca.lua, dat/Sam-loca.lua,
 //         dat/Pri-strt.lua, dat/Pri-loca.lua, dat/Pri-fila.lua,
 //         dat/Pri-filb.lua, dat/Pri-goal.lua, dat/oracle.lua,
 //         dat/Wiz-strt.lua, dat/Wiz-loca.lua, dat/Wiz-fila.lua,
-//         dat/tower1.lua, dat/tower2.lua, dat/tower3.lua.
+//         dat/tower1.lua, dat/tower2.lua, dat/tower3.lua, dat/Val-strt.lua.
 
-import { COLNO, FEMALE, G_GENOD, ROWNO } from './const.js';
+import {
+    COLNO, FEMALE, G_GENOD, ROOM, ROWNO,
+    W_ANY, W_NORTH, W_RANDOM, W_WEST,
+} from './const.js';
 import { mkclass } from './makemon.js';
 import {
     G_IGNORE,
@@ -57,7 +62,9 @@ import {
     MACE, MIRROR, ROBE, RUNESWORD, STATUE, TALLOW_CANDLE, WAX_CANDLE,
 } from './objects.js';
 import { rn2, rnd } from './rng.js';
-import { selection_area, ThemeroomSelection } from './themerooms.js';
+import {
+    selection_area, selection_new, selection_negate, ThemeroomSelection,
+} from './themerooms.js';
 import { KNI_GOAL_LEVEL_MAP } from './kni_goal_level_data.js';
 import { CAV_GOAL_LEVEL_MAP } from './cav_goal_level_data.js';
 import { HEA_GOAL_LEVEL_MAP } from './hea_goal_level_data.js';
@@ -69,7 +76,11 @@ import {
     KNI_LOCA_FIXED_TRAPS, KNI_LOCA_LEVEL_MAP, KNI_LOCA_MONSTERS,
 } from './kni_loca_level_data.js';
 import { MON_GOAL_LEVEL_MAP } from './mon_goal_level_data.js';
+import { MON_LOCA_LEVEL_MAP } from './mon_loca_level_data.js';
+import { MON_STRT_LEVEL_MAP } from './mon_strt_level_data.js';
+import { ROG_GOAL_LEVEL_MAP, ROG_GOAL_MONSTERS } from './rog_goal_level_data.js';
 import { SAM_GOAL_LEVEL_MAP } from './sam_goal_level_data.js';
+import { TOU_STRT_LEVEL_MAP, TOU_STRT_DOORS, TOU_STRT_GUIDES } from './tou_strt_level_data.js';
 import {
     RAN_LOCA_LEVEL_MAP, RAN_LOCA_MONSTERS, RAN_LOCA_OBJECT_COUNT, RAN_LOCA_TRAPS,
 } from './ran_loca_level_data.js';
@@ -78,16 +89,28 @@ import {
     RAN_GOAL_OBJECT_CALLS, RAN_GOAL_TRAP_COUNT,
 } from './ran_goal_level_data.js';
 import {
+    RAN_STRT_LEVEL_MAP, RAN_STRT_HUNTERS, RAN_STRT_FOREST_CENTAURS,
+} from './ran_strt_level_data.js';
+import {
     VAL_GOAL_DRAWBRIDGES, VAL_GOAL_LEVEL_MAP, VAL_GOAL_MONSTERS,
     VAL_GOAL_OBJECT_CALLS, VAL_GOAL_TRAPS,
 } from './val_goal_level_data.js';
 import { KNI_STRT_LEVEL_MAP } from './kni_strt_level_data.js';
 import { ASTRAL_LEVEL_MAP } from './astral_level_data.js';
 import { VAL_LOCA_LEVEL_MAP } from './val_loca_level_data.js';
+import { VAL_STRT_LEVEL_MAP } from './val_strt_level_data.js';
 import {
     ROG_STRT_DOORS, ROG_STRT_EXIT_MONSTERS, ROG_STRT_GUARDS,
     ROG_STRT_LEVEL_MAP,
 } from './rog_strt_level_data.js';
+import { ROG_LOCA_LEVEL_MAP } from './rog_loca_level_data.js';
+import { TOU_LOCA_DOORS, TOU_LOCA_LEVEL_MAP } from './tou_loca_level_data.js';
+import { l_selection_or, l_selection_sub } from './nhlsel.js';
+import { SAM_LOCA_LEVEL_MAP, SAM_LOCA_LEVEL_DOORS,
+    SAM_LOCA_LEVEL_OBJECTS, SAM_LOCA_LEVEL_MONSTERS } from './sam_loca_level_data.js';
+import {
+    TOU_GOAL_LEVEL_DOORS, TOU_GOAL_LEVEL_MAP, TOU_GOAL_LEVEL_MONSTERS,
+} from './tou_goal_level_data.js';
 
 // C ref: selvar.c selection_do_randline(). Recursive midpoint displacement
 // that draws a random zig-zag path from (x1,y1) to (x2,y2).
@@ -2342,6 +2365,187 @@ async function kniStrt(des) {
     }
 }
 
+// C ref: dat/Tou-strt.lua, whole program. Keep siege monsters before
+// Twoflower's awaited custom inventory, then guides, river monsters and traps.
+async function touStrt(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noteleport', 'hardfloor');
+    await des.map(TOU_STRT_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 75, 19), 'lit');
+    await des.region({ region: [14, 1, 20, 3], lit: 0, type: 'morgue', filled: 1 });
+    await des.region(selection_area(7, 10, 11, 12), 'unlit');
+    await des.region(selection_area(4, 16, 8, 18), 'unlit');
+    await des.region(selection_area(17, 16, 21, 18), 'unlit');
+    await des.region(selection_area(27, 2, 32, 4), 'unlit');
+    await des.region(selection_area(34, 2, 39, 4), 'unlit');
+    await des.region(selection_area(41, 2, 53, 4), 'unlit');
+    await des.region(selection_area(55, 2, 60, 4), 'unlit');
+    await des.region(selection_area(62, 2, 67, 4), 'lit');
+    await des.stair('down', 66, 3);
+    await des.levregion({ region: [68, 14, 68, 14], type: 'branch' });
+    await des.non_diggable(selection_area(0, 0, 75, 19));
+    for (const door of TOU_STRT_DOORS) await des.door(...door);
+    for (let i = 0; i < 12; ++i) await des.monster('giant spider');
+    await des.monster('s');
+    await des.monster('s');
+    for (let i = 0; i < 8; ++i) await des.monster('forest centaur');
+    await des.monster('C');
+    await des.monster({ id: 'Twoflower', coord: [64, 3], async inventory() {
+        await des.object({ id: 'walking shoes', spe: 3 });
+        await des.object({ id: 'hawaiian shirt', spe: 3 });
+    } });
+    await des.object('chest', 64, 3);
+    for (const coord of TOU_STRT_GUIDES) await des.monster('guide', ...coord);
+    await des.monster('watchman', 35, 8);
+    await des.monster('watchman', 36, 8);
+    await des.monster('giant eel', 62, 12);
+    await des.monster('piranha', 47, 10);
+    await des.monster('piranha', 29, 11);
+    await des.monster('kraken', 34, 9);
+    await des.monster('kraken', 37, 9);
+    for (let i = 0; i < 9; ++i) await des.trap();
+}
+
+// dat/Tou-loca.lua lines 1–153. Selection operators preserve the source's
+// numeric point values; map-relative coordinates are resolved through des.frame.
+async function touLoca(des, state) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'hardfloor');
+    await des.map(TOU_LOCA_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 75, 19), 'lit');
+    await des.non_diggable(selection_area(0, 0, 75, 19));
+
+    await des.region({ region: [1, 1, 4, 5], lit: 0, type: 'morgue', filled: 1 });
+    await des.region({ region: [15, 3, 20, 5], lit: 1, type: 'shop', filled: 1 });
+    await des.region({ region: [62, 3, 71, 4], lit: 1, type: 'shop', filled: 1 });
+    await des.region({ region: [1, 17, 11, 18], lit: 1, type: 'barracks', filled: 1 });
+    await des.region({ region: [12, 9, 20, 10], lit: 1, type: 'barracks', filled: 1 });
+    await des.region({ region: [53, 11, 59, 14], lit: 1, type: 'zoo', filled: 1 });
+    await des.region({ region: [63, 14, 72, 16], lit: 1, type: 'barracks', filled: 1 });
+    await des.region({ region: [32, 14, 40, 16], lit: 1, type: 'temple', filled: 1 });
+
+    await des.region({ region: [6, 1, 11, 2], type: 'ordinary' });
+    await des.region({ region: [24, 1, 29, 2], type: 'ordinary' });
+    await des.region({ region: [31, 1, 36, 2], type: 'ordinary' });
+    await des.region({ region: [42, 1, 45, 3], type: 'ordinary' });
+    await des.region({ region: [53, 1, 58, 2], type: 'ordinary' });
+    await des.region({ region: [24, 4, 26, 5], type: 'ordinary' });
+    await des.region({ region: [30, 6, 34, 7], type: 'ordinary' });
+    await des.region(selection_area(73, 5, 74, 5), 'unlit');
+    await des.region({ region: [1, 9, 4, 12], type: 'ordinary' });
+    await des.region({ region: [1, 14, 7, 15], type: 'ordinary' });
+    await des.region({ region: [12, 12, 20, 13], type: 'ordinary' });
+    await des.region({ region: [13, 17, 20, 18], type: 'ordinary' });
+    await des.region({ region: [22, 9, 24, 10], type: 'ordinary' });
+    await des.region({ region: [22, 12, 24, 12], type: 'ordinary' });
+    await des.region({ region: [24, 16, 28, 18], type: 'ordinary' });
+    await des.region({ region: [28, 11, 33, 12], type: 'ordinary' });
+    await des.region(selection_area(35, 11, 36, 12), 'lit');
+    await des.region({ region: [38, 8, 41, 12], type: 'ordinary' });
+    await des.region({ region: [43, 7, 49, 8], type: 'ordinary' });
+    await des.region({ region: [43, 12, 49, 12], type: 'ordinary' });
+    await des.region({ region: [44, 16, 51, 16], type: 'ordinary' });
+    await des.region({ region: [53, 6, 59, 7], type: 'ordinary' });
+    await des.region({ region: [61, 6, 71, 7], type: 'ordinary' });
+    await des.region({ region: [55, 16, 59, 18], type: 'ordinary' });
+    await des.region({ region: [63, 11, 68, 12], type: 'ordinary' });
+    await des.region({ region: [70, 11, 72, 12], type: 'ordinary' });
+
+    await des.stair('up', 10, 4);
+    await des.stair('down', 73, 5);
+    await des.non_diggable(selection_area(0, 0, 75, 19));
+    for (const door of TOU_LOCA_DOORS) await des.door(...door);
+
+    for (let i = 0; i < 14; ++i) await des.object();
+    await des.object('blank paper', 71, 12);
+    await des.object('blank paper', 71, 12);
+
+    // Lua filter_mapchar('.') maps the floor glyph to ROOM in splev.c. The
+    // selection coordinates stay local until lspo_trap resolves them.
+    const floorSquares = selection_area(0, 0, 75, 19).filter_mapchar(
+        ROOM, (x, y) => state.level.at(des.frame.xstart + x, des.frame.ystart + y),
+    );
+    const shops = l_selection_or(
+        selection_area(15, 3, 20, 5), selection_area(62, 3, 71, 4),
+    );
+    const validTraps = l_selection_sub(floorSquares, shops);
+    for (let i = 0; i < 9; ++i)
+        await des.trap(validTraps.rndcoord(true, rn2));
+
+    for (let i = 0; i < 16; ++i) await des.monster('giant spider');
+    await des.monster('s');
+    await des.monster('s');
+}
+
+// C ref: dat/Tou-goal.lua, whole program. The natural quest-level caller
+// loads this through mklev.c:makelevel -> mkmaze.c:makemaz -> sp_lev.c:load_special.
+async function touGoal(des, state) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel');
+    await des.map(TOU_GOAL_LEVEL_MAP);
+
+    await des.region(selection_area(0, 0, 75, 19), 'lit');
+    await des.region(selection_area(1, 1, 9, 2), 'lit');
+    await des.region({ region: [1, 4, 9, 5], lit: 1,
+        type: 'barracks', filled: 1 });
+    await des.region(selection_area(1, 7, 2, 10), 'unlit');
+    await des.region(selection_area(7, 7, 9, 10), 'unlit');
+    await des.region(selection_area(1, 14, 2, 15), 'unlit');
+    await des.region(selection_area(7, 14, 9, 15), 'unlit');
+    await des.region(selection_area(1, 17, 2, 18), 'unlit');
+    await des.region(selection_area(7, 17, 9, 18), 'unlit');
+
+    await des.region({ region: [11, 1, 19, 2], lit: 0,
+        type: 'barracks', filled: 1 });
+    await des.region(selection_area(21, 1, 30, 2), 'unlit');
+    await des.region({ region: [11, 17, 19, 18], lit: 0,
+        type: 'barracks', filled: 1 });
+    await des.region(selection_area(21, 17, 30, 18), 'unlit');
+
+    await des.region(selection_area(18, 7, 25, 11), 'lit');
+    await des.region(selection_area(18, 13, 19, 13), 'unlit');
+    await des.region(selection_area(21, 13, 22, 13), 'unlit');
+    await des.region(selection_area(24, 13, 25, 13), 'unlit');
+
+    await des.region(selection_area(42, 3, 47, 6), 'unlit');
+    await des.region(selection_area(42, 8, 50, 11), 'unlit');
+    await des.region({ region: [37, 16, 41, 18], lit: 0,
+        type: 'morgue', filled: 1 });
+    await des.region(selection_area(47, 16, 55, 18), 'unlit');
+    await des.region(selection_area(55, 1, 62, 3), 'unlit');
+    await des.region(selection_area(64, 1, 71, 3), 'unlit');
+    await des.region({ region: [60, 14, 71, 15], lit: 1,
+        type: 'shop', filled: 1 });
+    await des.region({ region: [60, 17, 71, 18], lit: 1,
+        type: 'shop', filled: 1 });
+
+    await des.non_diggable(selection_area(0, 0, 75, 19));
+    await des.stair('up', 70, 8);
+    for (const door of TOU_GOAL_LEVEL_DOORS) await des.door(...door);
+
+    await des.object({ id: 'credit card', x: 4, y: 1, buc: 'blessed',
+        spe: 0, name: 'The Platinum Yendorian Express Card' });
+    for (let i = 0; i < 14; ++i) await des.object();
+
+    // C sp_lev.c maps the source map character '.' to ROOM. The selection
+    // remains map-fragment-relative until des.trap resolves the coordinates.
+    const floorSquares = selection_area(0, 0, 75, 19).filter_mapchar(
+        ROOM, (x, y) => state.level.at(des.frame.xstart + x,
+                                      des.frame.ystart + y),
+    );
+    // Preserve the complete bounding rectangle from Tou-goal.lua, including
+    // the corridor between its two shops, outside the trap-selection points.
+    const validTraps = l_selection_sub(
+        floorSquares, selection_area(60, 14, 71, 18),
+    );
+    for (let i = 0; i < 6; ++i)
+        await des.trap(validTraps.rndcoord(true, rn2));
+
+    for (const monster of TOU_GOAL_LEVEL_MONSTERS)
+        await des.monster(...monster);
+    await des.wallify();
+}
+
 // C ref: dat/astral.lua, whole program.
 async function astral(des, state) {
     await des.level_init({ style: 'solidfill', fg: ' ' });
@@ -2456,6 +2660,65 @@ async function astral(des, state) {
 
 // Whole dat/Val-loca.lua1–85. Fixed stair coordinates remain map-relative,
 // including the up stair beyond the fragment; the canonical owner checks the level.
+function valStrtSelectionGrow(selection, direction, random) {
+    const directions = {
+        all: W_ANY,
+        north: W_NORTH,
+        west: W_WEST,
+        random: W_RANDOM,
+    };
+    return selection.grow(directions[direction], random.rn2);
+}
+
+// Whole dat/Val-strt.lua. The Lua selection library is passed separately from
+// des.* because it is a global table in the source program.
+async function valStrt(des, state, lua) {
+    await des.level_flags('mazelevel', 'noteleport', 'hardfloor', 'icedpools');
+    await des.level_init({ style: 'solidfill', fg: 'I' });
+
+    let pools = selection_new();
+    for (let i = 0; i < 13; ++i) lua.selection.set(pools);
+    pools = l_selection_or(
+        pools,
+        valStrtSelectionGrow(lua.selection.set(selection_new()), 'west', lua.random),
+    );
+    pools = l_selection_or(
+        pools,
+        valStrtSelectionGrow(lua.selection.set(selection_new()), 'north', lua.random),
+    );
+    pools = l_selection_or(
+        pools,
+        valStrtSelectionGrow(lua.selection.set(selection_new()), 'random', lua.random),
+    );
+
+    // C selection_grow() clones its receiver; paint the grown pool rim first.
+    await des.terrain(valStrtSelectionGrow(pools.clone(), 'all', lua.random), 'P');
+    await des.terrain(pools, 'L');
+
+    await des.map(VAL_STRT_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 75, 19), 'lit');
+    await des.levregion({ region: [66, 17, 66, 17], type: 'branch' });
+    await des.stair('down', 18, 1);
+    await des.feature('fountain', 53, 2);
+    await des.door('locked', 26, 10);
+    await des.door('locked', 43, 10);
+    await des.monster({ id: 'Norn', coord: [35, 10], async inventory() {
+        await des.object({ id: 'banded mail', spe: 5 });
+        await des.object({ id: 'long sword', spe: 4 });
+    } });
+    await des.object('chest', 36, 10);
+    for (const [x, y] of [[27, 8], [27, 9], [27, 11], [27, 12],
+        [42, 8], [42, 9], [42, 11], [42, 12]])
+        await des.monster('warrior', x, y);
+    await des.non_diggable(selection_area(26, 7, 43, 13));
+    for (let i = 0; i < 6; ++i) await des.trap('fire');
+    for (const [x, y] of [[4, 12], [8, 8], [14, 4], [17, 11], [24, 10],
+        [45, 10], [54, 2], [55, 7], [58, 14], [63, 17]])
+        await des.monster('fire ant', x, y);
+    await des.monster({ id: 'fire giant', x: 18, y: 1, peaceful: 0 });
+    await des.monster({ id: 'fire giant', x: 10, y: 16, peaceful: 0 });
+}
+
 async function valLoca(des) {
     await des.level_init({ style: 'solidfill', fg: ' ' });
     await des.level_flags('mazelevel', 'hardfloor', 'icedpools', 'noflip');
@@ -2475,6 +2738,41 @@ async function valLoca(des) {
     await des.monster({ class: 'H', peaceful: 0 });
     for (let i = 0; i < 7; ++i) await des.monster({ id: 'fire giant', peaceful: 0 });
     await des.monster({ class: 'H', peaceful: 0 });
+}
+
+// Whole dat/Ran-strt.lua1–101. Tree replacement uses the pre-map frame;
+// the branch region is absolute, while inhabitants use the map-relative frame.
+async function ranStrt(des) {
+    await des.level_init({ style: 'solidfill', fg: '.' });
+    await des.level_flags('mazelevel', 'noteleport', 'hardfloor', 'arboreal');
+    await des.level_init({ style: 'mines', fg: '.', bg: '.', smoothed: true,
+        joined: true, lit: 1, walled: false });
+    await des.replace_terrain({ region: [0, 0, 76, 19], fromterrain: '.',
+        toterrain: 'T', chance: 5 });
+    await des.map({ halign: 'left', valign: 'center', map: RAN_STRT_LEVEL_MAP.join('\n') });
+    await des.region(selection_area(0, 0, 40, 20), 'lit');
+    await des.stair('down', 10, 10);
+    await des.levregion({ region: [51, 2, 77, 18], region_islev: 1, type: 'branch' });
+    await des.monster({ id: 'Orion', coord: [20, 10],
+        async inventory() {
+            await des.object({ id: 'leather armor', spe: 4 });
+            await des.object({ id: 'yumi', spe: 4 });
+            await des.object({ id: 'ya', spe: 4, quantity: 50 });
+        } });
+    await des.object('chest', 20, 10);
+    for (const [x, y] of RAN_STRT_HUNTERS) await des.monster('hunter', x, y);
+    await des.non_diggable(selection_area(0, 0, 40, 20));
+    await des.trap('arrow', 30, 9);
+    await des.trap('arrow', 30, 10);
+    await des.trap('pit', 40, 9);
+    await des.trap('spiked pit');
+    await des.trap('bear');
+    await des.trap('bear');
+    await des.monster({ id: 'minotaur', x: 33, y: 9, peaceful: 0, asleep: 1 });
+    for (const [x, y] of RAN_STRT_FOREST_CENTAURS)
+        await des.monster({ id: 'forest centaur', x, y, peaceful: 0 });
+    for (let i = 0; i < 6; ++i) await des.monster({ id: 'plains centaur', peaceful: 0 });
+    for (let i = 0; i < 2; ++i) await des.monster({ id: 'scorpion', peaceful: 0 });
 }
 
 // dat/Rog-strt.lua: whole Rogue quest start program, in source order.
@@ -2512,9 +2810,149 @@ async function rogStrt(des, state) {
         await des.monster({ id: 'chameleon', coord: streets.rndcoord(true), peaceful: 0 });
 }
 
+// dat/Mon-loca.lua: whole Monk quest locate program, in source order.
+async function monLoca(des, state) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel');
+    await des.map(MON_LOCA_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 75, 20), 'lit');
+    await des.stair('up');
+    await des.stair('down');
+    await des.non_diggable(selection_area(0, 0, 75, 20));
+    for (let i = 0; i < 15; ++i) await des.object();
+    const tinplace = selection_negate().filter_mapchar(ROOM, (x, y) => state.level.at(x, y));
+    const tinloc = tinplace.rndcoord(false, rn2, { x: des.frame.xstart, y: des.frame.ystart });
+    await des.object({ id: 'tin', coord: tinloc, quantity: 2, buc: 'blessed', montype: 'spinach' });
+    await des.engraving({ coord: tinloc, type: 'burn', text: 'Elbereth' });
+    for (let i = 0; i < 6; ++i) await des.trap();
+    for (let i = 0; i < 14; ++i) await des.monster('earth elemental');
+    for (let i = 0; i < 9; ++i) await des.monster('xorn');
+}
+
+// dat/Mon-strt.lua: whole Monk quest start program, in source order.
+async function monStrt(des, state) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noteleport', 'hardfloor');
+    await des.map(MON_STRT_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 75, 19), 'lit');
+    await des.region({ region: [24, 6, 33, 13], lit: 1, type: 'temple' });
+    await des.replace_terrain({ region: [0, 0, 10, 19], fromterrain: '.', toterrain: 'T', chance: 10 });
+    await des.replace_terrain({ region: [65, 0, 75, 19], fromterrain: '.', toterrain: 'T', chance: 10 });
+
+    // Lua26 floods the same-terrain component after both tree replacements.
+    const spacelocs = selection_floodfill(5, 4, state, des.frame);
+
+    await des.terrain({ x: 5, y: 4 }, '.');
+    await des.levregion({ region: [5, 4, 5, 4], type: 'branch' });
+    await des.stair('down', 52, 9);
+    await des.door('locked', 18, 9);
+    await des.door('locked', 18, 10);
+    await des.door('closed', 34, 9);
+    await des.door('closed', 34, 10);
+    await des.door('closed', 40, 5);
+    await des.door('closed', 46, 5);
+    await des.door('closed', 52, 5);
+    await des.door('locked', 38, 7);
+    await des.door('closed', 42, 7);
+    await des.door('closed', 46, 7);
+    await des.door('closed', 52, 7);
+    await des.door('locked', 38, 12);
+    await des.door('closed', 44, 12);
+    await des.door('closed', 48, 12);
+    await des.door('closed', 52, 12);
+    await des.door('closed', 40, 14);
+    await des.door('closed', 46, 14);
+    await des.door('closed', 52, 14);
+    await des.altar({ x: 28, y: 9, align: 'noalign', type: 'altar' });
+    await des.monster({
+        id: 'Grand Master', coord: { x: 28, y: 10 },
+        inventory: async () => { await des.object({ id: 'robe', spe: 6 }); },
+    });
+    await des.monster('abbot', 32, 7);
+    await des.monster('abbot', 32, 8);
+    await des.monster('abbot', 32, 11);
+    await des.monster('abbot', 32, 12);
+    await des.monster('abbot', 33, 7);
+    await des.monster('abbot', 33, 8);
+    await des.monster('abbot', 33, 11);
+    await des.monster('abbot', 33, 12);
+    await des.non_diggable(selection_area(18, 3, 55, 16));
+    for (let i = 0; i < 2; ++i)
+        await des.trap('dart', spacelocs.rndcoord(true, rn2));
+    for (let i = 0; i < 4; ++i) await des.trap();
+    for (let i = 0; i < 8; ++i)
+        await des.monster('earth elemental', spacelocs.rndcoord(true, rn2));
+    for (let i = 0; i < 4; ++i)
+        await des.monster('xorn', spacelocs.rndcoord(true, rn2));
+    await des.object({ id: 'tin', coord: [29, 9], quantity: 2, montype: 'spinach' });
+    await des.object({ id: 'food ration', coord: [46, 4], quantity: 4 });
+}
+
+// Whole dat/Rog-loca.lua lines 1–99. Stairs use independent random locations;
+// the fixed cursed scroll is map-relative and precedes all random objects.
+async function rogLoca(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel');
+    await des.map(ROG_LOCA_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 75, 20), 'lit');
+    await des.stair('up');
+    await des.stair('down');
+    await des.non_diggable(selection_area(0, 0, 75, 20));
+    await des.object({ id: 'scroll of teleportation', x: 11, y: 18,
+        buc: 'cursed', spe: 0 });
+    for (let i = 0; i < 14; ++i) await des.object();
+    for (let i = 0; i < 6; ++i) await des.trap();
+    for (let i = 0; i < 17; ++i) await des.monster({ id: 'leprechaun', peaceful: 0 });
+    await des.monster({ class: 'l', peaceful: 0 });
+    for (let i = 0; i < 7; ++i) await des.monster({ id: 'guardian naga', peaceful: 0 });
+    for (let i = 0; i < 3; ++i) await des.monster({ class: 'N', peaceful: 0 });
+    for (let i = 0; i < 5; ++i) await des.monster({ id: 'chameleon', peaceful: 0 });
+}
+
+// dat/Rog-goal.lua: whole Rogue quest goal program, in source order.
+async function rogGoal(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'noteleport');
+    await des.map(ROG_GOAL_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 75, 20), 'lit');
+    await des.levregion({ region: [1, 0, 15, 20], region_islev: 1,
+        exclude: [1, 18, 4, 20], type: 'stair-up' });
+    await des.non_diggable(selection_area(0, 0, 75, 20));
+    await des.trap('spiked pit', 37, 7);
+    await des.object({ id: 'skeleton key', x: 38, y: 10, buc: 'blessed', spe: 0,
+        name: 'The Master Key of Thievery' });
+    await des.object({ id: 'tin', x: 26, y: 12, montype: 'chameleon' });
+    for (let i = 0; i < 13; ++i) await des.object();
+    for (let i = 0; i < 11; ++i) await des.trap();
+    for (const monster of ROG_GOAL_MONSTERS) await des.monster({ ...monster });
+}
+
+// Whole dat/Sam-loca.lua lines 1–141. Positional and table descriptor forms
+// retain their source defaults, including the canine class draw and hostile guards.
+async function samLoca(des) {
+    await des.level_init({ style: 'solidfill', fg: ' ' });
+    await des.level_flags('mazelevel', 'hardfloor');
+    await des.map(SAM_LOCA_LEVEL_MAP);
+    await des.region(selection_area(0, 0, 75, 19), 'lit');
+    for (const door of SAM_LOCA_LEVEL_DOORS) await des.door(...door);
+    await des.stair('up', 10, 10);
+    await des.stair('down', 25, 14);
+    await des.non_diggable(selection_area(0, 0, 75, 19));
+    for (const object of SAM_LOCA_LEVEL_OBJECTS) await des.object(...object);
+    for (let i = 0; i < 6; ++i) await des.trap();
+    for (const monster of SAM_LOCA_LEVEL_MONSTERS) await des.monster(...monster);
+}
+
 export const QUEST_LEVEL_LOADERS = {
+    'Sam-loca': samLoca,
+    'Rog-loca': rogLoca,
+    'Rog-goal': rogGoal,
+    'Mon-loca': monLoca,
+    'Mon-strt': monStrt,
+    'Ran-strt': ranStrt,
     'Rog-strt': rogStrt,
     'Val-loca': valLoca,
+    'Val-strt': valStrt,
     'Hea-strt': heaStrt,
     'Cav-loca': cavLoca,
     'Cav-goal': cavGoal,
@@ -2530,6 +2968,9 @@ export const QUEST_LEVEL_LOADERS = {
     'Arc-goal': arcGoal,
     'Kni-goal': kniGoal,
     'Sam-goal': samGoal,
+    'Tou-strt': touStrt,
+    'Tou-loca': touLoca,
+    'Tou-goal': touGoal,
     'Kni-loca': kniLoca,
     'Ran-loca': ranLoca,
     'Ran-goal': ranGoal,

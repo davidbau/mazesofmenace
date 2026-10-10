@@ -47,6 +47,7 @@ import {
     set_wall_state,
 } from './display.js';
 import { def_char_to_monclass, def_char_to_objclass } from './drawing.js';
+import { MAXMCLASSES } from './symbols.js';
 import { add_to_container, obj_extract_self, obfree, sobj_at } from './invent.js';
 import { UnsupportedMonsterCreationError, makemon, dmonsfree } from './makemon_create.js';
 import { mkclass, rndmonnum } from './makemon.js';
@@ -86,6 +87,7 @@ import {
     set_levltyp_lit,
 } from './mkmaze.js';
 import { d, rn2, rnd, rn1, rne, rnz } from './rng.js';
+import { l_selection_setpoint } from './nhlsel.js';
 import { flip_level_rnd } from './sp_lev.js';
 import {
     init_rect,
@@ -123,6 +125,9 @@ import {
     BOULDER,
     CHEST,
     CORPSE,
+    EGG,
+    FIGURINE,
+    TIN,
     CRAM_RATION,
     FOOD_CLASS,
     FOOD_RATION,
@@ -653,6 +658,13 @@ export function initialize_themeroom_branch(state = game, random = rn2) {
 // C ref: mklev.c makelevel()
 async function makelevel(specialLevelLoader = null) {
     const g = game;
+    // mklev.c:1414–1418: every generation branch reaches this room-fill
+    // tail. load_special itself stops before filling special rooms.
+    const fillSpecialRooms = async () => {
+        const env = levelObjectEnv();
+        for (let i = 0; i < g.level.nroom; ++i)
+            await fill_special_room(g.level.rooms[i], env);
+    };
     oinit();
     clear_level_structures();
 
@@ -678,6 +690,7 @@ async function makelevel(specialLevelLoader = null) {
                 : Boolean(SPECIAL_LEVEL_LOADERS[slev.proto]);
             if (hasLoader) {
                 await makemaz(slev.proto, slev, g);
+                await fillSpecialRooms();
                 return;
             }
             throw new UnsupportedLevelChangeError(
@@ -697,6 +710,7 @@ async function makelevel(specialLevelLoader = null) {
         const specialLevelApi = createSpecialLevelApi(g);
         await specialLevelLoader(specialLevelApi, g);
         await specialLevelApi.finish();
+        await fillSpecialRooms();
         return;
     }
 
@@ -704,10 +718,12 @@ async function makelevel(specialLevelLoader = null) {
     const dungeonRecord = g.dungeons[g.u.uz.dnum];
     if (dungeonRecord.proto) {
         await makemaz('', null, g);
+        await fillSpecialRooms();
         return;
     }
     if (dungeonRecord.fill_lvl) {
         await makemaz(dungeonRecord.fill_lvl, null, g);
+        await fillSpecialRooms();
         return;
     }
 
@@ -724,6 +740,7 @@ async function makelevel(specialLevelLoader = null) {
         await ensureSpecialLevelLoaders();
         if (SPECIAL_LEVEL_LOADERS[fillName]) {
             await makemaz(fillName, null, g);
+            await fillSpecialRooms();
             return;
         }
     }
@@ -870,9 +887,7 @@ async function makelevel(specialLevelLoader = null) {
         if (fillable) --bonusItemRoomCountdown;
     }
 
-    const specialRoomEnv = levelObjectEnv();
-    for (let index = 0; index < g.level.nroom; ++index)
-        await fill_special_room(g.level.rooms[index], specialRoomEnv);
+    await fillSpecialRooms();
 
     // themerooms_post_level_generate() is completed by
     // level_finalize_topology(), after every ordinary and special room fill.
@@ -1771,6 +1786,12 @@ async function ensureSpecialLevelLoaders() {
         ...WIZARD2_LEVEL_LOADERS,
         ...WIZARD3_LEVEL_LOADERS,
     };
+    // Val-strt is the first translated level to use the Lua selection global.
+    // Keep the established loader signature for every other level, including
+    // loaders whose third argument is an injected random function.
+    const valStrtLoader = QUEST_LEVEL_LOADERS['Val-strt'];
+    SPECIAL_LEVEL_LOADERS['Val-strt'] = (des, state) =>
+        valStrtLoader(des, state, des[SPECIAL_LEVEL_LUA_GLOBALS]);
 }
 
 // C ref: sp_lev.c load_special(). Initializes the level coder, runs the
@@ -4369,6 +4390,8 @@ async function finishFixupSpecial(state) {
     });
 }
 
+const SPECIAL_LEVEL_LUA_GLOBALS = Symbol('special-level Lua globals');
+
 function createSpecialLevelApi(state) {
     // C ref: sp_lev.c SpLev_Map[COLNO][ROWNO]. Tracks which cells were
     // placed by lspo_map, lspo_door, lspo_stair, or lspo_drawbridge.
@@ -4408,7 +4431,7 @@ function createSpecialLevelApi(state) {
         spObjectContext,
     };
 
-    return l_register_des({
+    const des = l_register_des({
         random: SOURCE_THEMEROOM_RANDOM,
         get frame() { return frame; },
 
@@ -4583,20 +4606,46 @@ function createSpecialLevelApi(state) {
             } else {
                 spec = lcheck_param_table(args);
             }
-            // C ref: sp_lev.c lspo_object(). When montype is a single
-            // character, resolve it as a monster class letter to a PM_ index
-            // the same way C does: mkclass(def_char_to_monclass(ch), flags).
-            let corpsenm = spec.montype;
-            if (typeof corpsenm === 'string' && corpsenm.length === 1) {
-                const cls = def_char_to_monclass(corpsenm);
-                const species = mkclass(cls, G_NOGEN | G_IGNORE, {
-                    state,
-                    random: SOURCE_THEMEROOM_RANDOM,
-                });
-                corpsenm = species
-                    ? state.mons.indexOf(species)
-                    : undefined;
+            // C ref: sp_lev.c lspo_object(): only these object types read
+            // montype. Species names use the source table directly, without
+            // find_montype's gender draw; non-species tokens stay with the
+            // canonical normalization in sp_lev_object.js.
+            const hasMontype = spec.montype != null;
+            const id = hasMontype ? get_table_objtype(spec, state) : spec.id;
+            let corpsenm;
+            if ([STATUE, EGG, CORPSE, TIN, FIGURINE].includes(id)) {
+                // Existing translated loaders may supply the resolved PM index.
+                const montype = Number.isInteger(spec.montype) ? spec.montype
+                    : get_table_str_opt(spec, 'montype', null);
+                if (Number.isInteger(montype)) corpsenm = montype;
+                const token = typeof montype === 'string' ? montype.toLowerCase() : null;
+                const nonpmobj = (id === TIN && (token === 'spinach' || token === 'empty'))
+                    || (id === EGG && token === 'empty');
+                if (token != null && !nonpmobj) {
+                    let species;
+                    const cls = montype.length === 1 ? def_char_to_monclass(montype) : MAXMCLASSES;
+                    if (montype.length === 1 && cls !== MAXMCLASSES) {
+                        species = mkclass(cls, G_NOGEN | G_IGNORE, {
+                            state,
+                            random: SOURCE_THEMEROOM_RANDOM,
+                        });
+                    } else {
+                        for (let i = LOW_PM; i < NUMMONS; ++i) {
+                            const names = state.mons[i].pmnames;
+                            if ([names[NEUTRAL], names[MALE], names[FEMALE]]
+                                .some(name => name != null && name.toLowerCase() === token)) {
+                                species = state.mons[i];
+                                break;
+                            }
+                        }
+                    }
+                    if (!species) throw new Error('Unknown montype');
+                    corpsenm = state.mons.indexOf(species);
+                }
+                spec = { ...spec, montype };
             }
+            // Reuse a parsed id rather than invoking its Lua callback again.
+            if (hasMontype) spec = { ...spec, id };
             const coordinate = get_table_xy_or_coord(spec);
             const normalized = {
                 ...spec,
@@ -4690,18 +4739,23 @@ function createSpecialLevelApi(state) {
                 premap_detect(state);
             }
 
-            // C ref: sp_lev.c load_special() calls fill_special_room for
-            // every room after fixup_special. For rooms created by
-            // des.room() or des.region(table), this sets level flags
-            // (has_temple etc.) and fills shops/zoos when needfill is
-            // FILL_NORMAL.
-            const nroom = state.level?.nroom ?? 0;
-            const rooms = state.level?.rooms ?? [];
-            for (let i = 0; i < nroom; i++) {
-                await fill_special_room(rooms[i], levelObjectEnv());
-            }
+            // sp_lev.c:6454–6503 load_special() ends here. makelevel()
+            // fills natural loads; lspo_finalize_level() fills direct loads
+            // after level_finalize_topology() has mineralized the map.
         },
     });
+    // selection is a Lua global library, separate from the C des.* table.
+    // Bind its setpoint helper to this load's coder and random source.
+    const luaGlobals = Object.freeze({
+        random: SOURCE_THEMEROOM_RANDOM,
+        selection: Object.freeze({
+            set(...args) { return l_selection_setpoint(args, env); },
+        }),
+    });
+    Object.defineProperty(des, SPECIAL_LEVEL_LUA_GLOBALS, {
+        value: luaGlobals,
+    });
+    return des;
 }
 
 // C ref: sp_lev.c lspo_map(), array form. Sets the map frame and paints

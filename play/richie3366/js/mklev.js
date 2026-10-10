@@ -121,7 +121,7 @@ import {
 import { mk_mplayer } from './mplayer.js';
 import { can_saddle, put_saddle_on_mon, remove_monster, place_monster } from './steed.js';
 import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
-import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree, discard_minvent, mdrop_special_objs, m_into_limbo } from './mon.js';
+import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree, discard_minvent, mdrop_special_objs, m_into_limbo, mongone } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level, single_level_branch, Inhell } from './teleport.js';
 import { clear_wormdata, flip_worm_segs_horizontal, flip_worm_segs_vertical, remove_worm } from './worm.js';
 import { obj_resists } from './dogmove.js';
@@ -5017,10 +5017,13 @@ function load_bigrm_13() {
 }
 
 /**
- * C ref: sp_lev.c create_object Medusa special — empty statue (corpsenm NON_PM)
- * picks a non-stone-resistant corpsenm via makemon reject loop + invent transfer.
+ * C ref: sp_lev.c create_object Medusa special `:2356–2389` — empty statue
+ * (corpsenm NON_PM) picks a non-stone-resistant corpsenm via makemon reject
+ * loop + invent transfer. Both disposals are the live mongone (`:2374`
+ * reject, `:2387` accept tail: mdrop_special_objs dice + detach), awaited;
+ * callers are async (load_special_proto_body awaits thenables).
  */
-function medusa_empty_statue_at(x, y) {
+async function medusa_empty_statue_at(x, y) {
     const g = game;
     const otmp = mksobj_at(STATUE, x, y, true, true);
     if (!otmp) return null;
@@ -5037,14 +5040,8 @@ function medusa_empty_statue_at(x, y) {
             propagate(wastyp, true, false);
             break;
         }
-        const list = g.fmon;
-        if (Array.isArray(list)) {
-            const ix = list.indexOf(was);
-            if (ix >= 0) list.splice(ix, 1);
-        }
-        was.mx = 0;
-        was.my = 0;
-        was.minvent = null;
+        // C `:2374` mongone(was) — reject stone-resistant / poly-when-stoned
+        await mongone(was);
         was = null;
     }
     if (was) {
@@ -5056,13 +5053,8 @@ function medusa_empty_statue_at(x, y) {
             add_to_container(otmp, obj);
         }
         otmp.owt = weight(otmp);
-        const list = g.fmon;
-        if (Array.isArray(list)) {
-            const ix = list.indexOf(was);
-            if (ix >= 0) list.splice(ix, 1);
-        }
-        was.mx = 0;
-        was.my = 0;
+        // C `:2387` mongone(was) — invent already transferred above
+        await mongone(was);
     }
     return otmp;
 }
@@ -5272,10 +5264,10 @@ function medusa_mark_nondig(mx, my, x1, y1, x2, y2) {
  * Map cells + stairs + doors carry the game SpLev_Map marks
  * (C :6292/:4189/:4661; D-3538).
  * Named omissions: worn/artifact STONE_RES in resists_ston;
- * flip_level lregion coord update (same shortcut as Bar-strt/fire);
- * full mongone invent teardown beyond fmon unlink.
+ * flip_level lregion coord update (same shortcut as Bar-strt/fire).
+ * Statue disposals call the live mongone (sp_lev.c:2374/:2387).
  */
-function load_medusa_1() {
+async function load_medusa_1() {
     const g = game;
     nhlib_shuffle_align();
     splev_level_init({
@@ -5454,15 +5446,9 @@ function load_medusa_1() {
                 propagate(wastyp, true, false);
                 break;
             }
-            // C: mongone(was) — reject stone-resistant / poly-when-stoned
-            const list = g.fmon;
-            if (Array.isArray(list)) {
-                const ix = list.indexOf(was);
-                if (ix >= 0) list.splice(ix, 1);
-            }
-            was.mx = 0;
-            was.my = 0;
-            was.minvent = null;
+            // C sp_lev.c:2374 mongone(was) — reject stone-resistant /
+            // poly-when-stoned
+            await mongone(was);
             was = null;
         }
         if (was) {
@@ -5474,13 +5460,8 @@ function load_medusa_1() {
                 add_to_container(otmp, obj);
             }
             otmp.owt = weight(otmp);
-            const list = g.fmon;
-            if (Array.isArray(list)) {
-                const ix = list.indexOf(was);
-                if (ix >= 0) list.splice(ix, 1);
-            }
-            was.mx = 0;
-            was.my = 0;
+            // C sp_lev.c:2387 mongone(was) — invent already transferred above
+            await mongone(was);
         }
     }
 
@@ -5576,10 +5557,11 @@ function load_medusa_1() {
  * Map cells + stair + doors carry the game SpLev_Map marks
  * (C :6292/:4189/:4661; D-3538).
  * Named omissions: worn/artifact STONE_RES in resists_ston;
- * ensure_way_out / solidify; full mongone invent teardown beyond fmon unlink.
+ * ensure_way_out / solidify.
+ * Statue disposals call the live mongone (sp_lev.c:2374/:2387).
  * D-0928: flip updates lregions; land still JS@(43,6) vs C@(42,7).
  */
-function load_medusa_3() {
+async function load_medusa_3() {
     const g = game;
     nhlib_shuffle_align();
     splev_level_init({
@@ -5752,10 +5734,10 @@ function load_medusa_3() {
     }
 
     // altloc empty statue + 6 random empty statues
-    if (altloc) medusa_empty_statue_at(altloc.x, altloc.y);
+    if (altloc) await medusa_empty_statue_at(altloc.x, altloc.y);
     for (let i = 0; i < 6; i++) {
         const pos = get_location_random();
-        medusa_empty_statue_at(pos.x, pos.y);
+        await medusa_empty_statue_at(pos.x, pos.y);
     }
 
     for (let i = 0; i < 8; i++) splev_create_object(null);
@@ -5853,7 +5835,7 @@ function load_medusa_3() {
  * ensure_way_out / solidify; create_object Medusa fill (uses
  * medusa_empty_statue_at); count_level_features / premap.
  */
-function load_medusa_2() {
+async function load_medusa_2() {
     const g = game;
     nhlib_shuffle_align();
     splev_level_init({
@@ -5960,7 +5942,7 @@ function load_medusa_2() {
         [64, 8], [65, 8], [64, 9], [65, 9],
         [64, 10], [65, 10], [64, 11], [65, 11],
     ]) {
-        medusa_empty_statue_at(mx + rx, my + ry);
+        await medusa_empty_statue_at(mx + rx, my + ry);
     }
     l_create_object('boulder', 4, 4);
     l_create_object('/', 52, 9);
@@ -6020,7 +6002,7 @@ function load_medusa_2() {
  * ensure_way_out / solidify; create_object Medusa fill (uses
  * medusa_empty_statue_at); count_level_features / premap.
  */
-function load_medusa_4() {
+async function load_medusa_4() {
     const g = game;
     nhlib_shuffle_align();
     splev_level_init({
@@ -6121,10 +6103,10 @@ function load_medusa_4() {
     if (medloc) {
         medusa_perseus_statue(medloc.x - mx, medloc.y - my, 75, 25);
     }
-    if (altloc) medusa_empty_statue_at(altloc.x, altloc.y);
+    if (altloc) await medusa_empty_statue_at(altloc.x, altloc.y);
     for (let i = 0; i < 6; i++) {
         const pos = get_location_random();
-        medusa_empty_statue_at(pos.x, pos.y);
+        await medusa_empty_statue_at(pos.x, pos.y);
     }
     for (let i = 0; i < 8; i++) splev_create_object(null);
     for (let i = 0; i < 7; i++) splev_create_trap();
@@ -22736,8 +22718,16 @@ function create_object(o, croom) {
     }
 
     // C sp_lev.c create_object :2356–2389 — Medusa statues are petrified
-    // monsters: not stone-resistant, with monster inventory. mongone is
-    // the sync fmon unlink (file idiom, cf. :4032).
+    // monsters: not stone-resistant, with monster inventory. C disposes via
+    // the live mongone (`:2374` reject, `:2387` accept tail); this generic
+    // copy keeps the sync fmon unlink because it is unreached — no caller
+    // passes STATUE with NON_PM corpsenm on a Medusa level (direct callers
+    // create amulet/luckstone/boulder off-medusa; medusa-level
+    // l_create_object calls create boulder/wand/crystal-ball/egg, and the
+    // Perseus statue carries montype knight; the reached Medusa statues go
+    // through medusa_empty_statue_at / load_medusa_1, which await mongone).
+    // If a STATUE+NON_PM path ever routes here on medusa, make this async
+    // and call the live mongone at both disposals.
     if (id === STATUE && Is_medusa_level(game.u?.uz) && cn === NON_PM) {
         let was = null;
         let wastyp = otmp.corpsenm | 0;
@@ -22750,6 +22740,9 @@ function create_object(o, croom) {
                     propagate(wastyp, true, false);
                     break;
                 }
+                // C `:2374` mongone(was) — sync unlink: this generic copy is
+                // unreached (see the arm comment); the reached Medusa sites
+                // await the live mongone.
                 const gone = game.fmon;
                 if (Array.isArray(gone)) {
                     const ix = gone.indexOf(was);
@@ -22770,6 +22763,7 @@ function create_object(o, croom) {
                 add_to_container(otmp, obj);
             }
             otmp.owt = weight(otmp);
+            // C `:2387` mongone(was) — sync unlink, unreached copy (above).
             const gone = game.fmon;
             if (Array.isArray(gone)) {
                 const ix = gone.indexOf(was);
