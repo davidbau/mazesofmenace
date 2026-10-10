@@ -4933,19 +4933,23 @@ async function dotravel_target() {
     u.tx = tcc.x;
     u.ty = tcc.y;
 
-    // C ref: hack.c findtravelpath — seenv || (!Blind && couldsee), then
-    // domove. C steps on ANY findtravelpath direction, detours included:
-    // cmd.c dotravel_target sets travel/run/multi and calls domove() with
-    // no distance gate, and TEST_TRAV paths through closed doors (the hero
-    // bumps them on arrival — "That door is closed." — since travel sets
-    // context.run, which skips autoopen). Do NOT suppress a
-    // Chebyshev-worsening first step: the door-route detour (town-94242
-    // step 72: NW toward the door while the target lies east) is C's own
-    // path (D-3563). Do NOT prefer couldsee-only first: that skipped seenv
-    // CLOUD cells on Quest and stepped SE while C walked S (D-0784).
-    // D-0702's seenv-detour rest stays covered by the
-    // genuine-NOPATH else branch below (C rests when no TEST_TRAV path).
-    let stepped = false;
+    // C cmd.c:5375 + hack.c domove_core :2724-2728 — dotravel_target calls
+    // domove() unconditionally; the travel-step recompute (travel→guess,
+    // travel1=0) sits at the top of domove_core and NOPATH FALLS THROUGH
+    // (findtravelpath `found:` :1518-1522 zeroes dx/dy + nomul(0)), so
+    // domove's pre-step arms — carrying, uswallow (zero dx/dy, attack the
+    // engulfer), turbulence, impaired, trap/liquid, sticky, m_at — always
+    // run. Same shape as continue_run (D-3583). Gating domove on
+    // travelStep skipped the engulfed first-step attack (95332@817: C
+    // melee gethungry→hitum vs a movemon-only turn). C steps on ANY
+    // findtravelpath direction, detours included (no distance gate; the
+    // door-route detour town-94242 step 72 is C's own path — D-3563), and
+    // TEST_TRAV paths through closed doors (the hero bumps them on
+    // arrival since travel sets context.run, which skips autoopen). Do NOT
+    // prefer couldsee-only first: that skipped seenv CLOUD cells on Quest
+    // and stepped SE while C walked S (D-0784). D-0702's seenv-detour
+    // rest stays covered: NOPATH falls through to a domove self-step with
+    // move=1 and the turn still runs.
     let travelStep = await findtravelpath_travel(false);
     if (travelStep === TRAVEL_STEP_UNSURE) {
         await You('stop, unsure which way to go.');
@@ -4958,22 +4962,19 @@ async function dotravel_target() {
             travelStep = TRAVEL_STEP;
         }
     }
-    if (travelStep) {
-        await domove(u.dx || 0, u.dy || 0);
-        stepped = true;
-    }
-    if (stepped) {
-        if (game.context) {
-            game.context.travel1 = 0;
-            if (game.context.move !== 0) game.context.move = 1;
-        }
-    } else {
+    if (!travelStep) {
+        // C findtravelpath `found:` (:1518-1522) — NOPATH zeroes dx/dy +
+        // nomul(0) (JS nomul ends running, like C :4171). The
+        // BFS-exhausted exits return NOPATH without it, so apply it here
+        // (the guess no-pick and dest==hero exits already did;
+        // re-applying is a no-op).
         u.dx = 0;
         u.dy = 0;
         nomul(0);
-        end_running(true);
-        game.context.move = 1;
     }
+    if (game.context) game.context.travel1 = 0;
+    await domove(u.dx || 0, u.dy || 0);
+    if (game.context && game.context.move !== 0) game.context.move = 1;
     return ECMD_TIME;
 }
 

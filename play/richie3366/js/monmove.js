@@ -49,6 +49,7 @@ import {
     MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG, TRAPPED_DOOR,
     EDOG, has_edog, ACCFOOD, MANFOOD, Is_container,
     NC_SHOW_MSG, NO_NC_FLAGS, PLNMSG_HIDE_UNDER,
+    AGGRAVATE_MONSTER,
 } from './const.js';
 import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms, You_hear } from './hack.js';
 import {
@@ -762,10 +763,14 @@ function Stealth() {
     return !!(((u.HStealth | 0) || (u.EStealth | 0)) && !(u.BStealth | 0));
 }
 
-/** C ref: youprop.h Aggravate_monster — HAggravate_monster || EAggravate_monster. */
+/** C ref: youprop.h:212–214 Aggravate_monster — H||E over uprops (worn.c
+ * confers extrinsic on wear); union read for the split store (D-3775
+ * house shape). Reader: disturb (monmove.c:349). */
 function Aggravate_monster() {
     const u = game.u || {};
-    return !!((u.HAggravate_monster | 0) || (u.EAggravate_monster | 0));
+    return !!((u.HAggravate_monster | 0) || (u.EAggravate_monster | 0)
+        || (u.uprops?.[AGGRAVATE_MONSTER]?.intrinsic | 0)
+        || (u.uprops?.[AGGRAVATE_MONSTER]?.extrinsic | 0));
 }
 
 /** C ref: youprop.h Blind_telepat — HTelepat || ETelepat. */

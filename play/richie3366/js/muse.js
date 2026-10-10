@@ -808,9 +808,16 @@ async function mbhitm(mtmp, otmp, hits_you) {
                     tmp = Math.trunc((tmp + 1) / 2);
                 }
                 losehp(tmp, 'wand', KILLED_BY_AN);
+                /* C `:1625–1626` — losehp may die into done(), but done()
+                 * returns when life-saved (amulet; wizard/explore `Die?`
+                 * decline — savelife clears the JS gameover flag, end.js);
+                 * C then falls through to learnit + stop_occupation/nomul
+                 * + makeknown (the WIS credit). Only a true death
+                 * (really_done keeps gameover set) skips them. Same shape
+                 * as thitu (mthrowu.js, D-3426). */
                 if (game.program_state?.gameover) {
                     await finish_losehp_done();
-                    return 0;
+                    if (game.program_state?.gameover) return 0;
                 }
                 learnit = true;
             } else {

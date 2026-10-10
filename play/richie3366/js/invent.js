@@ -5644,10 +5644,12 @@ function hero_Sleepy(u = game.u || {}) {
     return !!((u.HSleepy | 0) || (u.ESleepy | 0) || u.Sleepy);
 }
 
-/** C ref: youprop.h Poison_resistance — H || E. */
+/** C ref: youprop.h Poison_resistance — H || E via flat + uprops[POISON_RES]. */
 function hero_Poison_resistance(u = game.u || {}) {
+    const e = u.uprops?.[POISON_RES];
     return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
-        || u.Poison_resistance);
+        || u.Poison_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /** C ref: youprop.h Fire_resistance — H || E via flat + uprops[FIRE_RES]. */

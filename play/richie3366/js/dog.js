@@ -24,6 +24,7 @@ import {
     DISMOUNT_THROWN, DISMOUNT_GENERIC, NO_TRAP_FLAGS,
     ESHK, EPRI, EGD,
     LS_MONSTER, OBJ_FREE, MAX_NUM_WORMS, Has_contents,
+    AGGRAVATE_MONSTER,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { is_pool, in_rooms } from './hack.js';
@@ -1433,7 +1434,13 @@ export async function abuse_dog(mtmp) {
     if (!mtmp?.mtame) return;
 
     const u = game.u || {};
-    const Aggravate = !!((u.HAggravate_monster | 0) || (u.EAggravate_monster | 0));
+    // C youprop.h:212–214 — Aggravate_monster ≡ H||E over uprops
+    // (worn.c:124–125 confers extrinsic on wear); JS splits the store
+    // (flats + uprops, E flat never mirrored), so read the union
+    // (D-3775 Poison house shape).
+    const Aggravate = !!((u.HAggravate_monster | 0) || (u.EAggravate_monster | 0)
+        || (u.uprops?.[AGGRAVATE_MONSTER]?.intrinsic | 0)
+        || (u.uprops?.[AGGRAVATE_MONSTER]?.extrinsic | 0));
     if (Aggravate || hero_conflict()) {
         mtmp.mtame = Math.trunc((mtmp.mtame | 0) / 2);
     } else {

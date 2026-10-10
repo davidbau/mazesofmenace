@@ -2774,9 +2774,12 @@ async function in_or_out_menu(
         );
         await flush_screen(1);
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
+        // C wintty.c erase_menu_or_text — corner dismiss is docorner
+        // (gbuf resend, no newsym / display-RNG burns), never docrt:
+        // docrt re-newsyms every visible cell, re-picking all Hallu
+        // mon/obj glyphs (95343@599). Shared helper takes the docrt arm
+        // only for offx==0, like C.
+        await dismiss_nhw_menu();
 
         if (key === 27) return 'q';
         // C select_menu PICK_ONE: Space/Return accepts the preselected default.

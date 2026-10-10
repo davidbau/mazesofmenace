@@ -68,10 +68,11 @@ import {
     BURNING_OIL, TRAP_EXPLODE, XKILL_GIVEMSG, XKILL_NOCORPSE, BURNING, DIED,
     XKILL_NOMSG, XKILL_NOCONDUCT, INVULNERABLE,
     PLNMSG_CAUGHT_IN_EXPLOSION, PLNMSG_TOWER_OF_FLAME,
-    engulfing_u,
+    engulfing_u, Upolyd,
     N_DIRS, xdir, ydir, ZAP_POS, IS_DOOR, IS_SINK, STONE,
     LARGEST_INT, MAY_HITMON, MAY_HITYOU, MAY_DESTROY, MAY_FRACTURE,
     D_ISOPEN, D_NODOOR, D_BROKEN, STATUE_TRAP, SHOPBASE,
+    POISON_RES,
 } from './const.js';
 import {
     pmnames, G_UNIQ, MR_FIRE, MR_COLD, MR_ELEC, MR_DISINT,
@@ -178,9 +179,12 @@ function Disint_resistance() {
         || u.EDisint_resistance);
 }
 function Poison_resistance() {
+    // C youprop.h:46-48 — H || E || flag || uprops (JS split storage).
     const u = game.u || {};
+    const p = u.uprops?.[POISON_RES];
     return !!(u.Poison_resistance || u.HPoison_resistance
-        || u.EPoison_resistance);
+        || u.EPoison_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 function Acid_resistance() {
     const u = game.u || {};
@@ -462,7 +466,7 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
     {
         const ustuck = game.u?.ustuck;
         if (ustuck && !game.u?.uswallow) {
-            if (game.u?.Upolyd && sticks(game.youmonst?.data)) {
+            if (Upolyd(game.u) && sticks(game.youmonst?.data)) {
                 grabbing = true;
             } else {
                 grabbed = true;
@@ -730,7 +734,8 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
             if (grabbing && dist2(grabxy.x, grabxy.y, x, y) <= 2) {
                 damu *= 2;
             }
-            if (u.Upolyd) u.mh = (u.mh | 0) - damu;
+            // C you.h:554 — Upolyd is (umonnum != umonster), never a flat
+            if (Upolyd(u)) u.mh = (u.mh | 0) - damu;
             else u.uhp = (u.uhp | 0) - damu;
             if (game.flags) game.flags.botl = true;
             if (game.disp) game.disp.botl = true;
@@ -740,9 +745,9 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
         if (uhurt === 1) monstseesu(cvt_adtyp_to_mseenres(adtyp));
         else monstunseesu(cvt_adtyp_to_mseenres(adtyp));
 
-        if (u && ((u.uhp | 0) <= 0 || (u.Upolyd && (u.mh | 0) <= 0))) {
+        if (u && ((u.uhp | 0) <= 0 || (Upolyd(u) && (u.mh | 0) <= 0))) {
             // C :641–644 — a poly'd hero reverts instead of dying here.
-            if (u.Upolyd) {
+            if (Upolyd(u)) {
                 await rehumanize();
             } else {
             if (!game.killer) game.killer = { name: '', format: 0 };

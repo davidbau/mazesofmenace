@@ -10,7 +10,7 @@ import { Monnam, mon_nam, x_monnam, Amonnam, s_suffix } from './do_name.js';
 import { getlin } from './getline.js';
 import { currency } from './invent.js';
 import { money_cnt, money2mon } from './shk.js';
-import { makemon, mkclass, mkclass_aligned, newemin, mongets, mpickobj, set_malign } from './makemon.js';
+import { makemon, makemon_appear_msg, mkclass, mkclass_aligned, newemin, mongets, mpickobj, set_malign } from './makemon.js';
 import { is_lminion, enexto, tele_restrict, rloc } from './teleport.js';
 import { mongone } from './mon.js';
 import { nomul, stop_occupation, unmul } from './hack.js';
@@ -207,6 +207,10 @@ export async function summon_minion(alignment, talk) {
         mon = null;
     } else if (mnum === PM_ANGEL) {
         mon = makemon(mons(mnum), game.u?.ux, game.u?.uy, MM_EMIN | MM_NOMSG);
+        // C makemon.c:1502–1504 in-body tail (deferred from sync makemon):
+        // a discernable threat stops the hero's occupation before any
+        // "appears" pline below (MM_NOMSG skips only the Norep).
+        if (mon) await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0, MM_EMIN | MM_NOMSG);
         if (mon) {
             mon.isminion = 1;
             if (!mon.mextra) mon.mextra = {};
@@ -217,6 +221,8 @@ export async function summon_minion(alignment, talk) {
     } else if (mnum !== PM_SHOPKEEPER && mnum !== PM_GUARD
         && mnum !== PM_ALIGNED_CLERIC && mnum !== PM_HIGH_CLERIC) {
         mon = makemon(mons(mnum), game.u?.ux, game.u?.uy, MM_EMIN | MM_NOMSG);
+        // C makemon.c:1502–1504 in-body tail (deferred from sync makemon).
+        if (mon) await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0, MM_EMIN | MM_NOMSG);
         if (mon) {
             mon.isminion = 1;
             if (!mon.mextra) mon.mextra = {};
@@ -226,6 +232,8 @@ export async function summon_minion(alignment, talk) {
         }
     } else {
         mon = makemon(mons(mnum), game.u?.ux, game.u?.uy, MM_NOMSG);
+        // C makemon.c:1502–1504 in-body tail (deferred from sync makemon).
+        if (mon) await makemon_appear_msg(mon, mon.mx | 0, mon.my | 0, MM_NOMSG);
     }
 
     if (mon) {
@@ -291,7 +299,9 @@ export function dprince(atyp) {
  * Whole body in C order: dtype/cnt selection per summoner class, G_UNIQ /
  * G_GONE gates, makemon loop with angel emin+renegade, S_ANGEL
  * show_transient_light + transient_light_cleanup, canseemon Amonnam pline
- * (live do_name.js export), census-diff result. No named omissions.
+ * (live do_name.js export), census-diff result. Makemon's in-body
+ * dochugw(FALSE) tail (makemon.c:1502–1504) runs via the deferred
+ * makemon_appear_msg before the "appears" pline. No named omissions.
  */
 export async function msummon(mon) {
     let ptr;
@@ -375,6 +385,10 @@ export async function msummon(mon) {
     while (cnt > 0) {
         const mtmp = makemon(mons(dtype), u.ux, u.uy, MM_EMIN | MM_NOMSG);
         if (mtmp) {
+            // C makemon.c:1502–1504 in-body tail (deferred from sync
+            // makemon): a summoned threat stops a searching hero BEFORE
+            // the "appears" pline below (MM_NOMSG skips only the Norep).
+            await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, MM_EMIN | MM_NOMSG);
             result++;
             if (dtype === PM_ANGEL) {
                 mtmp.isminion = 1;

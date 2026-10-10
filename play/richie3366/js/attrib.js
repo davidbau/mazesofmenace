@@ -395,7 +395,15 @@ export async function losestr(num, knam, k_format) {
         if (game._losehp_needs_done || game.program_state?.gameover) {
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
-            return;
+            // C `:244-254` — losehp→done() returns on lifesave or wizard
+            // "Die?" decline (survive), and losestr RESUMES with the max-HP
+            // cut below (the "Die?" prompt blocks mid-losestr; "n" runs
+            // savelife, then C cuts uhpmax by dmg — 95309: weaken draws
+            // 18×rn2(4), dmg 74, max 118→44). Only a true death
+            // (really_done keeps gameover set; C never returns) stops the
+            // tail — same conditional-return shape as thitu/mbhitm
+            // (mthrowu.js D-3426/D-3777, muse.js D-3776).
+            if (game.program_state?.gameover) return;
         }
         const { setuhpmax } = await import('./exper.js');
         if (Upolyd(u)) {
@@ -437,8 +445,13 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
             ? '' : 'The ';
         await pline(`${article}${r} ${plural ? 'were' : 'was'} poisoned!`);
     }
+    // C youprop.h:46-48 Poison_resistance ≡ uprops intrinsic || extrinsic;
+    // JS split storage: flats (eat/pray/polyself intrinsics, artifact
+    // carry) plus uprops (confer_oc_oprop worn extrinsic — the ring path).
+    const pres = u.uprops?.[POISON_RES];
     const Poison_resistance = !!((u.HPoison_resistance | 0)
-        || (u.EPoison_resistance | 0) || u.Poison_resistance);
+        || (u.EPoison_resistance | 0) || u.Poison_resistance
+        || (pres?.intrinsic | 0) || (pres?.extrinsic | 0));
     if (Poison_resistance) {
         // C attrib.c:339-340 — blast shield pyrotechnics even when resisted.
         if (blast)

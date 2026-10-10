@@ -2568,8 +2568,11 @@ function spec_applies(weap, mtmp) {
             return rn2(100) < (ptr?.mr | 0) ? 0 : 1;
         case AD_DRST:
             // C: !(yours ? Poison_resistance : resists_poison(mtmp))
+            // (youprop.h:46-48; JS split storage reads flats + uprops).
             return (yours
-                ? !!(u.Poison_resistance || u.HPoison_resistance || u.EPoison_resistance)
+                ? !!(u.Poison_resistance || u.HPoison_resistance || u.EPoison_resistance
+                    || (u.uprops?.[POISON_RES]?.intrinsic | 0)
+                    || (u.uprops?.[POISON_RES]?.extrinsic | 0))
                 : resists_poison(mtmp)) ? 0 : 1;
         case AD_DRLI:
             // C: !(yours ? Drain_resistance : resists_drli(mtmp))

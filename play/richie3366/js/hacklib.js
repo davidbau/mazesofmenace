@@ -2,7 +2,7 @@
 // C ref: hacklib.c, dungeon.c helpers
 
 import { game } from './gstate.js';
-import { BUFSZ, In_endgame } from './const.js';
+import { BUFSZ, In_endgame, AGGRAVATE_MONSTER } from './const.js';
 
 export function isok(x, y) {
     const { COLNO, ROWNO } = await_const();
@@ -176,7 +176,10 @@ export function level_difficulty(uz) {
             res += 2 * ((dptr?.entry_lev | 0) - (lev.dlevel | 0) + 1);
         }
     }
-    if ((u.EAggravate_monster | 0)) // C `:2081` ring of aggravate monster
+    // C `:2081` reads EAggravate_monster (extrinsic only) ≡
+    // uprops[AGGRAVATE_MONSTER].extrinsic (youprop.h:213); the JS E flat
+    // is never mirrored, so read the union (D-3775 house shape).
+    if ((u.EAggravate_monster | 0) || (u.uprops?.[AGGRAVATE_MONSTER]?.extrinsic | 0))
         res = res > 25 ? 50 : res * 2;
     return res;
 }

@@ -493,13 +493,16 @@ async function peffect_see_invisible(otmp) {
 }
 
 /**
- * C ref: youprop.h Poison_resistance — H || E || flag.
- * Named omission: intrinsic race/role props beyond uprops bits.
+ * C ref: youprop.h Poison_resistance (:46–48: uprops intrinsic ||
+ * extrinsic) — H || E || flag || uprops (JS split storage; the worn-ring
+ * extrinsic lives in uprops via confer_oc_oprop, never the E flat).
  */
 function Poison_resistance() {
     const u = game.u || {};
+    const p = u.uprops?.[POISON_RES];
     return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
-        || u.Poison_resistance);
+        || u.Poison_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 
 /** C ref: role.h Role_if(PM_HEALER) */

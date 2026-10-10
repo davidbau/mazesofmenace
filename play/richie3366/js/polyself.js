@@ -58,7 +58,7 @@ import { racial_exception, has_horns, num_horns, WrappingAllowed, is_flimsy } fr
 import { digests, set_ustuck } from './mhitu.js';
 import {
     losehp, nomul, is_pool, waterbody_name, On_stairs, in_rooms,
-    monst_to_any,
+    monst_to_any, finish_maybe_wail,
 } from './hack.js';
 import { finish_losehp_done, done, find_delayed_killer, dealloc_killer } from './end.js';
 import { steed_vs_stealth } from './steed.js';
@@ -2032,6 +2032,11 @@ export async function polyself(psflags = 0) {
         if (rn2(20) > acurr(A_CON)) {
             await pline('You shudder for a moment.');
             losehp(rnd(30), 'system shock', KILLED_BY_AN);
+            // C polyself.c:492→493 — showdamage/rehumanize run synchronously
+            // inside losehp, so the mh<1 revert (umonnum := umonster) lands
+            // before the :493 exercise reads Upolyd. Drain in C order first;
+            // the done gate below only fires on true (post-revert uhp<1) death.
+            await finish_maybe_wail();
             if (game._losehp_needs_done || game.program_state?.gameover) {
                 await finish_losehp_done();
             }

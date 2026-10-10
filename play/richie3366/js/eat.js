@@ -1676,8 +1676,11 @@ async function givit(type, ptr) {
         break;
     case POISON_RES:
         if (!((u.HPoison_resistance | 0) & FROMOUTSIDE)) {
+            // C youprop.h:46-48 — H || E || flag || uprops (JS split storage).
             const had = !!(u.Poison_resistance || u.HPoison_resistance
-                || u.EPoison_resistance);
+                || u.EPoison_resistance
+                || (u.uprops?.[POISON_RES]?.intrinsic | 0)
+                || (u.uprops?.[POISON_RES]?.extrinsic | 0));
             await You_feel(had ? 'especially healthy.' : 'healthy.');
             u.HPoison_resistance = (u.HPoison_resistance | 0) | FROMOUTSIDE;
         }
@@ -2572,8 +2575,11 @@ export async function eatcorpse(otmp) {
     } else if (poisonous(ptr) && rn2(5)) {
         tp++;
         await pline('Ecch - that must have been poisonous!');
+        // C youprop.h:46-48 — H || E || flag || uprops (JS split storage).
         const poisRes = !!(game.u?.HPoison_resistance || game.u?.EPoison_resistance
-            || game.u?.Poison_resistance);
+            || game.u?.Poison_resistance
+            || (game.u?.uprops?.[POISON_RES]?.intrinsic | 0)
+            || (game.u?.uprops?.[POISON_RES]?.extrinsic | 0));
         if (!poisRes) {
             // C eat.c:1932 poison_strdmg(rnd(4), rnd(15),
             // !glob ? "poisonous corpse" : "poisonous glob", KILLED_BY_AN)
@@ -3350,8 +3356,11 @@ async function doeat_nonfood(otmp) {
 
     if (otmp.oclass === WEAPON_CLASS && otmp.opoisoned) {
         await pline('Ecch - that must have been poisonous!');
+        // C youprop.h:46-48 — H || E || flag || uprops (JS split storage).
         const poisRes = !!(game.u?.HPoison_resistance || game.u?.EPoison_resistance
-            || game.u?.Poison_resistance);
+            || game.u?.Poison_resistance
+            || (game.u?.uprops?.[POISON_RES]?.intrinsic | 0)
+            || (game.u?.uprops?.[POISON_RES]?.extrinsic | 0));
         if (!poisRes) {
             // C eat.c:2798 poison_strdmg(rnd(4), rnd(15), xname(otmp),
             // KILLED_BY_AN) — canonical losestr+losehp death path.
@@ -4298,7 +4307,10 @@ async function edibility_prompts(otmp) {
     } else if (otmp.orotten || (cadaver && rotted > 3)) {
         buf = `${foodsmell} like ${it_or_they} could be rotten!`;
     } else if (cadaver && poisonous(mons(mnum))
-        && !(u.Poison_resistance || u.HPoison_resistance || u.EPoison_resistance)) {
+        // C youprop.h:46-48 — H || E || flag || uprops (JS split storage).
+        && !(u.Poison_resistance || u.HPoison_resistance || u.EPoison_resistance
+            || (u.uprops?.[POISON_RES]?.intrinsic | 0)
+            || (u.uprops?.[POISON_RES]?.extrinsic | 0))) {
         buf = `${foodsmell} like ${it_or_they} might be poisonous!`;
     } else if (otmp.otyp === APPLE && otmp.cursed
         && !(u.Sleep_resistance || u.HSleep_resistance || u.ESleep_resistance)) {

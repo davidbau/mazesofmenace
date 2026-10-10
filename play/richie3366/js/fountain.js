@@ -80,6 +80,7 @@ import {
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
     POLY_NOFLAGS, UNCHANGING,
     DISP_ALWAYS, DISP_END,
+    POISON_RES,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
@@ -813,8 +814,11 @@ export async function drinkfountain() {
             break;
         case 21: { // Poisonous
             await pline('The water is contaminated!');
+            // C youprop.h:46-48 — H || E || flag || uprops (JS split storage).
             const poisRes = !!(u.HPoison_resistance || u.EPoison_resistance
-                || u.Poison_resistance);
+                || u.Poison_resistance
+                || (u.uprops?.[POISON_RES]?.intrinsic | 0)
+                || (u.uprops?.[POISON_RES]?.extrinsic | 0));
             if (poisRes) {
                 // C fountain.c:302-303 — fruitname(FALSE), not a fixed string
                 await pline(

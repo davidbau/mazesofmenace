@@ -697,7 +697,14 @@ export async function thitu(tlev, dam, objp, name) {
         // drain showdamage/rehumanize/wail before the Upolyd-gated A_STR
         // exercise, or a reverting hero skips the rn2(2) C draws (D-3426).
         await finish_maybe_wail();
-        if (game.program_state?.gameover) {
+        /* C `:150–151` — the drain gate is THIS losehp's death
+         * (`_losehp_needs_done`), not the sticky gameover flag: a death
+         * whose done() still pends (wizard Die? decline resolving late)
+         * must not make a later non-fatal hit skip the A_STR exercise
+         * C draws (95225: dart hits a healthy hero while an earlier
+         * turn's gas-cloud death pends). Only a true death (really_done
+         * keeps gameover set) returns early. */
+        if (game._losehp_needs_done) {
             await finish_losehp_done();
             if (game.program_state?.gameover) return 1;
         }

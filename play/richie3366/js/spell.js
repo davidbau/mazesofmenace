@@ -236,6 +236,7 @@ import {
     MENU_FULL,
     CMDQ_KEY, CQ_REPEAT,
     Never_mind,
+    POISON_RES,
 } from './const.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
 import { PM_KNIGHT, PM_WIZARD, monsterNames } from './generated/monsters_data.js';
@@ -627,11 +628,13 @@ function BlindedTimeout() {
     return (game.u?.HBlinded | 0) & TIMEOUT;
 }
 
-/** C ref: youprop.h Poison_resistance. */
+/** C ref: youprop.h Poison_resistance (:46–48) — H || E || flag || uprops (JS split storage). */
 function Poison_resistance() {
     const u = game.u || {};
+    const p = u.uprops?.[POISON_RES];
     return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
-        || u.Poison_resistance);
+        || u.Poison_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 
 /** C ref: invent.c useup — one from stack / remove. */
