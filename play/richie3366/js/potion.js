@@ -2920,14 +2920,6 @@ function Confusion() {
     return !!((game.u?.HConfusion | 0) || (game.u?.Confusion | 0));
 }
 
-/**
- * C youprop.h Unaware — multi < 0 && (unconscious || fainted).
- * JS mirrors usleep / Unaware like zap.js; faint body named.
- */
-function Unaware_pot() {
-    const u = game.u || {};
-    return ((u.multi | 0) < 0) && !!(u.usleep || u.Unaware);
-}
 
 /**
  * C youprop.h Half_gas_damage — damp/wet towel (ublindf spe > 0).
@@ -3088,7 +3080,8 @@ export async function potionbreathe(obj) {
         exercise(A_DEX, true);
         break;
     case POT_BLINDNESS:
-        if (!Blind() && !Unaware_pot()) {
+        /* C `:2072` — !Blind && !Unaware (youprop.h:399 macro, live eat.js export). */
+        if (!Blind() && !Unaware()) {
             kn++;
             await pline('It suddenly gets dark.');
         }
@@ -3099,7 +3092,8 @@ export async function potionbreathe(obj) {
                 false,
             );
         }
-        if (!Blind() && !Unaware_pot()) {
+        /* C `:2077` — same gate for the clears arm. */
+        if (!Blind() && !Unaware()) {
             await pline('Your vision quickly clears.');
         }
         break;

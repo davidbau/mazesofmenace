@@ -192,7 +192,6 @@ const PM_FIRE_VORTEX = monsterNames.indexOf('PM_FIRE_VORTEX');
 const PM_FLAMING_SPHERE = monsterNames.indexOf('PM_FLAMING_SPHERE');
 const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
 const PM_SALAMANDER = monsterNames.indexOf('PM_SALAMANDER');
-const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
 
 /** C ref: monattk.h — engulf damage types used by gulpmu. */
 const AD_BLND = 11;
@@ -230,15 +229,16 @@ export function Conflict() {
 }
 
 /**
- * C ref: youprop.h Displaced — HDisplaced || EDisplaced.
- * Cloak-of-displacement extrinsic via uprops or worn cloak otyp.
+ * C ref: youprop.h Displaced `:202–204` — HDisplaced || EDisplaced,
+ * stored u.uprops[DISPLACED] bits only. No live worn-cloak fallback:
+ * nhl_gamestate restore re-wears before memcpy'ing the extrinsic-
+ * cleared snapshot back, so a worn cloak can carry EDisplaced == 0
+ * (temp-C measured 95303; same arm as monmove.js Displaced).
  */
 function Displaced() {
     const u = game.u || {};
     if (u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic) return true;
-    if (u.uprops?.[DISPLACED]?.extrinsic) return true;
-    const cloak = u.uarmc;
-    return !!(cloak && cloak.otyp === CLOAK_OF_DISPLACEMENT);
+    return !!u.uprops?.[DISPLACED]?.extrinsic;
 }
 
 /**

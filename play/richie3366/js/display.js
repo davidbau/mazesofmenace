@@ -4920,6 +4920,24 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
                     // id paints NO_GLYPH, which lookat reports as "unexplored area").
                     if (hero_memory && loc.remembered_glyph && !loc.remembered_glyph.invisible) {
                         glyph = copy_glyph_id(loc.remembered_glyph);
+                        // C `:2219+` classifies the DISPLAYED int — a stale
+                        // remembered object/trap/invisible glyph with no live
+                        // thing under it still takes the restore + strip arms
+                        // below (scen-trek-Wizard-95506 step 691: remembered
+                        // `%` food on corridor must strip to `#` in the
+                        // object-excluded 'b' view, not leak through as
+                        // kind 'other'). Same id classification as the
+                        // swallowed path above; cmap/unexplored ids stay
+                        // 'other'.
+                        const memId = typeof glyph?.glyph === 'number'
+                            ? glyph.glyph | 0 : NO_GLYPH;
+                        if (memId === GLYPH_INVISIBLE || glyph?.invisible) {
+                            kind = 'invisible';
+                        } else if (glyph_is_object(memId)) {
+                            kind = 'obj';
+                        } else if (glyph_is_trap(memId)) {
+                            kind = 'trap';
+                        }
                     } else if (seenv) {
                         glyph = {
                             ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y),

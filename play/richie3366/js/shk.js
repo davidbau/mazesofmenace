@@ -140,7 +140,6 @@ import { set_voice } from './sounds.js';
 
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
-const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
 const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 const MIRROR = objectNames.indexOf('MIRROR');
 const GEMSTONE = 20; // materials.h
@@ -4677,13 +4676,17 @@ export async function gd_move(grd) {
     return vault_gd_move(grd);
 }
 
-/** C ref: youprop.h Displaced — HDisplaced || EDisplaced (cloak extrinsic). */
+/**
+ * C ref: youprop.h Displaced `:202–204` — HDisplaced || EDisplaced,
+ * stored u.uprops[DISPLACED] bits only. No live worn-cloak fallback:
+ * nhl_gamestate restore re-wears before memcpy'ing the extrinsic-
+ * cleared snapshot back, so a worn cloak can carry EDisplaced == 0
+ * (temp-C measured 95303; same arm as monmove.js Displaced).
+ */
 function Displaced() {
     const u = game.u || {};
     if (u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic) return true;
-    if (u.uprops?.[DISPLACED]?.extrinsic) return true;
-    const cloak = u.uarmc;
-    return !!(cloak && cloak.otyp === CLOAK_OF_DISPLACEMENT);
+    return !!u.uprops?.[DISPLACED]?.extrinsic;
 }
 
 /**

@@ -153,9 +153,7 @@ function Deaf() {
         || (p?.intrinsic | 0) || (p?.extrinsic | 0)
         || u.uroleplay?.deaf);
 }
-function Unaware() {
-    return !!(game.u?.Unaware);
-}
+
 function youmonst_victim() {
     return game.youmonst || { _youmonst: true };
 }
@@ -634,7 +632,6 @@ async function mcast_lightning(mtmp, dmg) {
 
 /**
  * C youprop.h:399 Unaware — multi < 0 && (unconscious() || is_fainted()).
- * The file-level Unaware() is sticky u.Unaware and is not this macro.
  * unconscious is teleport.c; is_fainted is eat.c.
  */
 function insects_Unaware() {

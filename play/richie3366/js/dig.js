@@ -133,7 +133,7 @@ import {
     KILLED_BY, KILLED_BY_AN, NO_PART,
     HEAD, FOOT,
     TT_BURIEDBALL, TT_INFLOOR, DRAWBRIDGE_DOWN, DBWALL, MIGR_RANDOM,
-    TAINT_AGE, MM_NOMSG, IN_SIGHT, COULD_SEE, RLOC_NOMSG, STOMACH,
+    TAINT_AGE, MM_NOMSG, IN_SIGHT, COULD_SEE, RLOC_NOMSG, STOMACH, FAINTED,
     xytodir, DIR_180, DIR_ERR, xdir, ydir, N_DIRS,
     ICE, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
     ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE, OBJ_FLOOR,
@@ -209,7 +209,17 @@ function closed_door(x, y) {
  * instead of mon_visible's See_invisible + !mundetected). */
 
 function Unaware() {
-    return ((game.u?.multi | 0) < 0) && !!game.u?.usleep;
+    /* C youprop.h:399 Unaware = multi<0 && (unconscious() || is_fainted());
+       C trap.c:6776 unconscious: multi<0 && (usleep || wake-msg prefixes);
+       C eat.c:3346 is_fainted: uhs == FAINTED. */
+    if ((game.multi | 0) >= 0) return false;
+    const u = game.u || {};
+    const msg = game.nomovemsg || '';
+    return !!(u.usleep
+        || msg.startsWith('You awake')
+        || msg.startsWith('You regain con')
+        || msg.startsWith('You are consci')
+        || (u.uhs | 0) === FAINTED);
 }
 
 function Blind() {

@@ -33,7 +33,7 @@ import { paranoid_query } from './getline.js';
 import { tamedog } from './dog.js';
 import { makemon, makemon_appear_msg } from './makemon.js';
 import {
-    PARANOID_WERECHANGE, POLYMORPH_CONTROL, UNCHANGING, NO_MM_FLAGS,
+    PARANOID_WERECHANGE, POLYMORPH_CONTROL, UNCHANGING, NO_MM_FLAGS, FAINTED,
     PROT_FROM_SHAPE_CHANGERS,
 } from './const.js';
 
@@ -78,9 +78,16 @@ function Unchanging(u = game.u || {}) {
         || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
-/** C ref: youprop.h Unaware — multi < 0 && usleep. */
+/** C youprop.h:399 Unaware = multi<0 && (unconscious() || is_fainted());
+    C trap.c:6776 unconscious (usleep || wake-msg prefixes); C eat.c:3346 is_fainted (uhs==FAINTED). */
 function Unaware(u = game.u || {}) {
-    return (u.multi | 0) < 0 && !!u.usleep;
+    if ((game.multi | 0) >= 0) return false;
+    const msg = game.nomovemsg || '';
+    return !!(u.usleep
+        || msg.startsWith('You awake')
+        || msg.startsWith('You regain con')
+        || msg.startsWith('You are consci')
+        || (u.uhs | 0) === FAINTED);
 }
 
 /** C ref: youprop.h Stunned — HStun / flat. */

@@ -107,6 +107,7 @@ import {
     CXN_NORMAL, CXN_SINGULAR, CXN_PFX_THE,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
     GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_DOWNPLAY,
+    MAX_EGG_HATCH_TIME,
 } from './const.js';
 import {
     adjattrib, gainstr, losestr, acurr, acurrstr, change_luck, exercise,
@@ -1400,8 +1401,8 @@ async function fprefx(otmp) {
             else await useupf(otmp, 1);
             await explode(u.ux | 0, u.uy | 0, -11, d(3, 6), 0, EXPL_FIERY);
             return false;
-        } else if ((((game.moves | 0) - (otmp.age | 0)) | 0) > 2 * 400) {
-            // C stale_egg (obj.h:316): moves-age > 2*MAX_EGG_HATCH_TIME
+        } else if ((((game.moves | 0) - (otmp.age | 0)) | 0) > 2 * MAX_EGG_HATCH_TIME) {
+            // C stale_egg (obj.h:316-317): moves-age > 2*MAX_EGG_HATCH_TIME (obj.h:315: 200)
             await pline('Ugh.  Rotten egg.');
             await make_vomiting((((u.Vomiting | 0) & TIMEOUT) + d(10, 4)) | 0, true);
         } else {

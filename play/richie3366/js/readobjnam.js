@@ -374,7 +374,9 @@ export function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
     const maxglob = objectNames.indexOf('GLOB_OF_BLACK_PUDDING');
 
     for (let i = lo; i <= hi; i++) {
-        const zn = objectNameStrs[i];
+        // C objclass.h:190-191 — OBJ_NAME/OBJ_DESCR read obj_descr[] via
+        // oc_name_idx/oc_descr_idx (descr shuffled at init; o_init.c shuffle).
+        const zn = objectNameStrs[objs[i]?.oc_name_idx ?? i];
         if (!zn) continue;
         let hit = wishymatch(name, zn, true);
         if (!hit && check_of) {
@@ -384,7 +386,7 @@ export function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
                 hit = wishymatch(name, zn.slice(of + 4), false);
             }
         }
-        const zd = objectDescrs[i];
+        const zd = objectDescrs[objs[i]?.oc_descr_idx ?? i];
         if (!hit && zd) {
             hit = wishymatch(name, zd, false);
             if (!hit && check_of) {

@@ -47,6 +47,9 @@ import {
 } from './mhitm.js';
 import { title_to_mon } from './botl.js';
 import { resists_drli } from './zap.js';
+// C vision.h m_canseeu reads the Invis macro; the live export is the
+// house source (imports.mjs SAFE: hoisted fn, existing SCC).
+import { Invis } from './timeout.js';
 // C mondata.c attacktype — hoisted fn, cycle-safe (`imports.mjs --can
 // mondata.js uhitm.js attacktype_fordmg`: SAFE; uhitm.js already imports
 // mondata.js, runtime-only calls, no top-level reads either way).
@@ -1090,14 +1093,16 @@ export function m_clearseenres(mon, mask) {
     mon.seen_resistance = (mon.seen_resistance | 0) & ~(mask | 0);
 }
 
-/** C ref: vision.h m_canseeu — buried arms deferred. */
+/** C ref: vision.h m_canseeu `:50–53` (live #else arm; the #if 0 buried
+ * arm is dead) — `(!Invis || perceives(data)) && !Underwater &&
+ * couldsee(mx,my)`. Invis is the live youprop export (D-3773: the old
+ * inline read wrong-case flats `u.Hinvis`/`u.Einvis`, always undefined,
+ * so an invisible hero stayed visible to every monster). */
 export function m_canseeu(m) {
-    const u = game.u || {};
-    const Invis = !!(u.Hinvis || u.Einvis || u.Invis);
     const perceives = ((m?.data?.mflags1 | 0) & M1_SEE_INVIS) !== 0;
-    if (Invis && !perceives) return false;
+    if (Invis() && !perceives) return false;
     // C vision.h:52 — !Underwater; Underwater ≡ u.uinwater (youprop.h:279).
-    if ((u.uinwater | 0) !== 0) return false;
+    if ((game.u?.uinwater | 0) !== 0) return false;
     return couldsee(m.mx, m.my);
 }
 

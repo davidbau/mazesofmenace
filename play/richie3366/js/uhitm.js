@@ -3117,8 +3117,10 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
         const oldhp = mon.mhp | 0;
         if (!game.u.uconduct) game.u.uconduct = {};
         const oldweaphit = game.u.uconduct.weaphit | 0;
+        // C uhitm.c:616 — WEAPON_CLASS or is_weptool (TOOL with skill
+        // != P_NONE); a wielded lantern (skill P_NONE) is not a weapon hit.
         if (weapon && (weapon.oclass === WEAPON_CLASS
-            || game.objects?.[weapon.otyp]?.oc_skill != null)) {
+            || is_weptool(weapon))) {
             game.u.uconduct.weaphit = oldweaphit + 1;
         }
         /* C: gn.notonhead = (mx,my) != gb.bhitpos before hmon */

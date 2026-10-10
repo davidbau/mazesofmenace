@@ -2591,12 +2591,16 @@ export async function trapmove(x, y, desttrap) {
 }
 
 /**
- * C ref: hack.c u_maybe_impaired — Stunned always; Confusion rolls !rn2(5).
- * Short-circuit matches C: no rn2 when Stunned or when not Confused.
+ * C ref: hack.c u_maybe_impaired `:2417–2421` — Stunned always; Confusion
+ * rolls !rn2(5). Short-circuit matches C: no rn2 when Stunned or when
+ * not Confused. C Stunned ≡ HStun ≡ uprops[STUNNED].intrinsic
+ * (youprop.h:80-81); HStun is the live flat (D-3605 dual-write) while
+ * u.Stunned is a legacy mirror unsynced by the set_uasmon FROMFORM
+ * grant (D-3772: 95347@485) — read both, like botl.js:3470.
  */
 export function u_maybe_impaired() {
     const u = game.u || {};
-    if (u.Stunned) return true;
+    if ((u.HStun | 0) || u.Stunned) return true;
     // C: Confusion ≡ HConfusion
     if (u.Confusion || u.HConfusion) return !rn2(5);
     return false;
@@ -2618,37 +2622,31 @@ export function confdir(force_impairment) {
 }
 
 /**
- * C ref: hack.c bad_rock — obstructed tile the form cannot dig/pass.
- * Named omissions: Sokoban boulder; tunnels/needspick/may_dig;
- * passes_walls/may_passwall (hero rarely applies here).
- */
-function bad_rock_hero(x, y) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return true;
-    return IS_OBSTRUCTED(loc.typ);
-}
-
-/**
- * C ref: hack.c impaired_movement — if impaired, confdir until isok+!bad_rock.
- * Returns true when movement is aborted (tries>50 → nomul(0)).
- * Mutates u.dx/u.dy on successful redirect; caller recomputes destination.
+ * C ref: hack.c impaired_movement `:2424–2441` — if impaired, confdir
+ * until isok + !bad_rock(youmonst.data). Returns true when movement is
+ * aborted (tries>50 → nomul(0)). Mutates u.dx/u.dy on successful
+ * redirect; caller recomputes destination. The reject test is the live
+ * bad_rock export (Sokoban-boulder + dig/pass arms, D-3772) — C reads
+ * the form's bad_rock, not an obstructed-only clone. C tries++ order:
+ * 51 draws max before the abort.
  */
 export function impaired_movement() {
     const u = game.u;
     if (!u) return false;
     if (!u_maybe_impaired()) return false;
+    const youdata = game.youmonst?.data;
     let tries = 0;
     let x;
     let y;
     do {
-        if (++tries > 50) {
+        if (tries++ > 50) {
             nomul(0);
             return true;
         }
         confdir(true);
         x = (u.ux | 0) + (u.dx | 0);
         y = (u.uy | 0) + (u.dy | 0);
-    } while (!isok(x, y) || bad_rock_hero(x, y));
+    } while (!isok(x, y) || bad_rock(youdata, x, y));
     return false;
 }
 

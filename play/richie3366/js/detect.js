@@ -2384,7 +2384,7 @@ function detect_obj_traps(objlist, show_them, how, ft) {
  * under_water/under_ground after reconstrain named.
  */
 async function display_trap_map(cursed_src) {
-    const { cls, flush_topl_more } = await import('./display.js');
+    const { cls } = await import('./display.js');
     let ter_typ = TER_DETECT | (cursed_src ? TER_OBJ : TER_TRP);
 
     await cls();
@@ -2427,7 +2427,11 @@ async function display_trap_map(cursed_src) {
         ter_typ |= TER_MON;
     }
     await You_feel(`${cursed_src ? 'very greedy' : 'entrapped'}.`);
-    await flush_topl_more();
+    // C detect.c:998 You_feel("very greedy"/"entrapped") then browse_map
+    // (:1000) → getpos.c:843-846 verbose pline appends "(For instructions
+    // ...)" on the same topline (topl.c NEED_MORE + room → two-space join);
+    // no more() between — a flush here paints a spurious --More-- (same
+    // class as D-2081 monster_detect / D-2242 object_detect).
     await browse_map(ter_typ, cursed_src ? 'gold' : 'trap of interest');
     reconstrain_map();
     await map_redisplay();

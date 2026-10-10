@@ -4965,10 +4965,7 @@ export function Fire_resistance() {
     const u = game.u || {};
     return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
 }
-function Unaware() {
-    const u = game.u || {};
-    return (u.multi | 0) < 0 && !!u.usleep;
-}
+
 /** C mondata.h pm_invisible */
 function pm_invisible(ptr) {
     const mndx = ptr?.mndx ?? -1;
@@ -6678,7 +6675,6 @@ export async function drown() {
     {
         const teleportation = !!((u.HTeleportation | 0) || (u.ETeleportation | 0) || u.Teleportation
             || (u.uprops?.[TELEPORT]?.intrinsic | 0) || (u.uprops?.[TELEPORT]?.extrinsic | 0));
-        /* local Unaware() is usleep-only; C :399 needs unconscious||faint */
         const { Unaware: UnawareProp } = await import('./eat.js');
         const teleportControl = !!((u.HTeleport_control | 0) || (u.ETeleport_control | 0)
             || u.Teleport_control
