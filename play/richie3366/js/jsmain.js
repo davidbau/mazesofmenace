@@ -27,6 +27,7 @@ import { player_selection } from './player_selection.js';
 import { check_special_room } from './hack.js';
 import { y_n } from './getline.js';
 import { delete_savefile } from './files.js';
+import { NhPanic, panic_tail } from './end.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -396,29 +397,43 @@ export async function runSegment(input) {
         display.pushKey(code);
     }
 
-    await nhGame.start();
+    try {
+        await nhGame.start();
 
-    // Drive the game loop until input is exhausted. The judge looks
-    // at game.getScreens() afterwards; whatever the contestant
-    // captured is what gets compared.
-    // C ref: allmain.c moveloop `:587–597` — `for (;;) {
-    // moveloop_core(); }`: C has no iteration cap; the loop ends only
-    // via noreturn exits (death/quit/save — gameover here) or, in this
-    // harness, input exhaustion. A moves-based cap truncates turn-dense
-    // segments (multi-turn search/rest runs ~9+ turns per keypress, so
-    // the needed calls exceed any fixed multiple of the move count)
-    // mid-keypress. Hang protection stays the worker timeout (the
-    // Must-fix hang signal): a no-progress livelock surfaces as
-    // ETIMEDOUT instead of silent truncation.
-    for (; !game.program_state?.gameover;) {
-        try {
-            await moveloop_core();
-        } catch (e) {
-            if (String(e?.message || '').includes('Input queue empty')) break;
-            throw e;
+        // Drive the game loop until input is exhausted. The judge looks
+        // at game.getScreens() afterwards; whatever the contestant
+        // captured is what gets compared.
+        // C ref: allmain.c moveloop `:587–597` — `for (;;) {
+        // moveloop_core(); }`: C has no iteration cap; the loop ends only
+        // via noreturn exits (death/quit/save — gameover here) or, in this
+        // harness, input exhaustion. A moves-based cap truncates turn-dense
+        // segments (multi-turn search/rest runs ~9+ turns per keypress, so
+        // the needed calls exceed any fixed multiple of the move count)
+        // mid-keypress. Hang protection stays the worker timeout (the
+        // Must-fix hang signal): a no-progress livelock surfaces as
+        // ETIMEDOUT instead of silent truncation.
+        for (; !game.program_state?.gameover;) {
+            try {
+                await moveloop_core();
+            } catch (e) {
+                if (String(e?.message || '').includes('Input queue empty')) break;
+                throw e;
+            }
+            // C really_done is noreturn — stop driving gameplay after death
+            if (game.program_state?.gameover) break;
         }
-        // C really_done is noreturn — stop driving gameplay after death
-        if (game.program_state?.gameover) break;
+    } catch (e) {
+        // C end.c panic is noreturn: the NhPanic throw unwound to here, so
+        // run the rest of its body (Oops, getret wait, then the process
+        // aborts). Any other throw is a port bug and still propagates.
+        if (!(e instanceof NhPanic)) throw e;
+        // Harness diagnostic only (scorers tell a JS-only panic from C's).
+        nhGame._panicStack = String(e.stack || e.message);
+        try {
+            await panic_tail(e);
+        } catch (e2) {
+            if (!String(e2?.message || '').includes('Input queue empty')) throw e2;
+        }
     }
 
     return nhGame;

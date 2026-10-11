@@ -77,7 +77,7 @@ import { describe_level, objnum_to_glyph, Hallucination, impossible, SYM_OFF_O, 
 import { rank_of, roles } from './roles.js';
 import { money_cnt } from './shk.js';
 import { hidden_gold } from './vault.js';
-import { nowrap_add } from './end.js';
+import { nowrap_add, panic } from './end.js';
 import { pmname } from './do_name.js';
 import { sticks } from './engrave.js';
 import { unconscious } from './teleport.js';
@@ -752,7 +752,7 @@ function status_cl_end() {
 function tty_putstatusfield(text, x, y) {
     // C `:4808–4810` — unreachable past check_windowdata; C panics.
     if (game.WIN_STATUS == null || (game.WIN_STATUS | 0) === WIN_ERR) {
-        throw new Error('tty_putstatusfield: Invalid WinDesc');
+        panic('tty_putstatusfield: Invalid WinDesc');
     }
     // C `:4816` print_vt_code2 AVTC_SELECT_WINDOW — tile-protocol emit,
     // no tty text effect.
@@ -1100,7 +1100,7 @@ export function status_initialize(reassessment) {
         game.gb.blinit = true;
     } else if (!game.gb?.blinit) {
         // C :1698 panic — does not return.
-        throw new Error("status 'reassess' before init");
+        panic("status 'reassess' before init");
     }
     const polyd = !!Upolyd(game.u);
     const flags = game.flags ?? {};

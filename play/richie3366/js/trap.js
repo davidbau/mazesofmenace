@@ -110,7 +110,7 @@ import {
     HVY_ENCUMBER, EXT_ENCUMBER, UNENCUMBERED, SLT_ENCUMBER, WT_TOOMUCH_DIAGONAL,
     TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, TELEPORT, TELEPORT_CONTROL,
     WOUNDED_LEGS,
-    ECMD_OK, ECMD_TIME, MON_DETACH,
+    ECMD_OK, ECMD_TIME, MON_DETACH, MON_ENDGAME_FREE, M_AP_NOTHING, M_AP_MONSTER,
     Is_container, Waterproof_container, Is_box,
     xytodir, DIR_180, DIR_ERR,
     OBJ_FLOOR, OBJ_FREE, VAULT, TEMPLE, SHOPBASE, ESHK, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_SLEEP, CONTAINED_TOO, BURIED_TOO,
@@ -146,7 +146,7 @@ import {
 } from './attrib.js';
 import { tamedog, wary_dog, abuse_dog } from './dog.js';
 import { welded, uwepgone, uswapwepgone } from './wield.js';
-import { count_wsegs, worm_known } from './worm.js';
+import { count_wsegs, worm_known, remove_monster_xy, remove_worm, wormgone } from './worm.js';
 import { level_difficulty, depth, distmin, dist2, ordin, strsubst, upstart, strncmpi } from './hacklib.js';
 import { make_stunned, make_hallucinated } from './potion.js';
 import { monstseesu, monstunseesu, defended, resists_magm, attacktype, resists_blnd } from './mondata.js';
@@ -155,7 +155,7 @@ import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sel
 import { unpunish, seffects } from './read.js';
 import { create_gas_cloud } from './region.js';
 import { polymon, body_part, mbodypart, float_vs_flight, Unchanging, polyself } from './polyself.js';
-import { done } from './end.js';
+import { done, panic } from './end.js';
 import { make_blinded, dropx, setnotworn } from './do.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_loud_crash, se_roar, se_soft_click, se_loud_click, se_someone_bowling, se_rumbling } from './generated/seffects_data.js';
@@ -259,23 +259,46 @@ function is_unicorn(ptr) {
 }
 
 /**
- * C ref: trap.c mongone subset — drop from fmon after invent emptied.
- * Full mongone (timers, worm, shop) deferred; the m_detach light arm
- * (mon.c:2745) is live (D-3246): an emitting donor (black-light
- * statue trap) would otherwise orphan its light onto an mx=0 donor,
- * and dosave writes id 0 for it (restore throws
- * `relink_light_sources: no monster 0`).
+ * C ref: mon.c mongone `:3267–3283` → m_detach `:2734–2797` →
+ * mon_leaving_level `:2696–2730`, for mk_trap_statue's temporary donor
+ * (sync: maketrap's callers are sync). The donor is fresh from makemon
+ * with its minvent already moved into the statue, so isgd, unstuck,
+ * mdrop_special_objs, discard_minvent, m_unleash, iswiz, stealmid, shk
+ * and steed are no-ops. Live, in C order: the light arm (D-3246 — an
+ * emitting donor would orphan its light), the take-off-map + newsym that
+ * repaints the donor's random square (it showed the donor's glyph until
+ * the next full redraw), mimic reveal, worm teardown, the endgame free
+ * bit. The fmon unlink stands in for MON_DETACH + dmonsfree (the donor
+ * is dead to every fmon walker either way).
  */
 function mongone_statue_donor(mtmp) {
     if (!mtmp) return;
+    const mx = mtmp.mx | 0, my = mtmp.my | 0;
+    mtmp.mhp = 0; // C mongone `:3269`
     const list = game.fmon;
     if (list) {
         const i = list.indexOf(mtmp);
         if (i >= 0) list.splice(i, 1);
     }
-    // C mongone → m_detach (mon.c:2745) del arm, before the mx zero
-    // below (C reads mx>0 at m_detach entry; the donor is placed).
-    if (emits_light(mtmp.data)) del_light_source(LS_MONSTER, monst_to_any(mtmp));
+    // C m_detach `:2744–2745` — mx>0 at entry (the donor is placed).
+    if (mx > 0 && emits_light(mtmp.data)) del_light_source(LS_MONSTER, monst_to_any(mtmp));
+    // C mon_leaving_level `:2698–2726`.
+    const onmap = isok(mx, my);
+    mtmp.mtrapped = 0;
+    if (onmap) {
+        if (mtmp.wormno) remove_worm(mtmp);
+        else remove_monster_xy(mx, my);
+        mtmp.mundetected = 0;
+        if (M_AP_TYPE(mtmp) !== M_AP_NOTHING && M_AP_TYPE(mtmp) !== M_AP_MONSTER)
+            seemimic(mtmp);
+        // C `:2724` fill_pit — async only on its pit+boulder arm (then
+        // flooreffects); the sync caller lets that rare arm float.
+        void fill_pit(mx, my);
+        newsym(mx, my);
+    }
+    // C m_detach `:2786–2789`.
+    if (mtmp.wormno) wormgone(mtmp);
+    if (In_endgame(game.u?.uz)) mtmp.mstate = (mtmp.mstate | 0) | MON_ENDGAME_FREE;
     mtmp.mx = 0;
     mtmp.my = 0;
 }
@@ -1109,7 +1132,10 @@ export function maketrap(x, y, typ) {
     if (!oldplace) {
         if (!game.level) return ttmp;
         if (!game.level.traps) game.level.traps = [];
-        game.level.traps.push(ttmp);
+        // C trap.c:577-579 — head-insert (ttmp->ntrap = gf.ftrap), so
+        // every gf.ftrap walk sees newest-first (display_trap_map
+        // sense_trap fakes, set_wportal, first-portal gates).
+        game.level.traps.unshift(ttmp);
     } else if (Sokoban_rules()) {
         // C trap.c:581–585 — overwrite of an existing trap; the new
         // ttyp is already stored, so the scan sees the replacement.
@@ -1400,8 +1426,8 @@ export function deltrap(trap) {
     }
 
     if (!found) {
-        // C trap.c:6543 — panic is NORETURN. Throw matches insert_branch.
-        throw new Error('deltrap: no preceding trap!');
+        // C trap.c:6543 — panic is NORETURN.
+        panic('deltrap: no preceding trap!');
     }
 
     // C rm.h:538 `#define Sokoban svl.level.flags.sokoban_rules`, plus the

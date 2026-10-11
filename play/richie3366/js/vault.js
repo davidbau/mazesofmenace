@@ -16,6 +16,7 @@
 // by construction).
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import { rn2 } from './rng.js';
 import { makemon, set_malign, newegd } from './makemon.js';
 import { mon_track_clear } from './monmove.js';
@@ -1392,7 +1393,7 @@ export async function gd_move(grd) {
             if (!egrd.fakecorr) egrd.fakecorr = [];
             const fi = egrd.fcend | 0;
             egrd.fcend = fi + 1;
-            if (fi === FCSIZ) throw new Error('fakecorr overflow'); // C panic
+            if (fi === FCSIZ) panic('fakecorr overflow'); // C panic
             const cell = game.level?.at?.(nx, ny);
             egrd.fakecorr[fi] = {
                 fx: nx,

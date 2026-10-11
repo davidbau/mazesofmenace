@@ -8,6 +8,7 @@
 // shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import { bot_via_windowport, SCORE_ON_BOTL, botl_score, stat_update_time } from './botl.js';
 import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
@@ -161,7 +162,7 @@ import {
 import { depth, dist2 } from './hacklib.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { DEFSYMS } from './generated/defsyms_data.js';
-import { observe_object, near_capacity, update_inventory, Blind } from './invent.js';
+import { observe_object, near_capacity, update_inventory, Blind, hero_Warning } from './invent.js';
 import { visible_region_at, show_region } from './region.js';
 import { see_wsegs, worm_known, level_mon_at } from './worm.js';
 import { SoundSpeak } from './sndprocs.js';
@@ -169,6 +170,7 @@ import { msgtype_type } from './options.js';
 import { mapxy_valid } from './getpos.js';
 import { mungspaces } from './getline.js';
 import { Unaware } from './eat.js';
+import { Levitation, Flying } from './mhitu.js'; // feel_can_reach_floor property reads (hoisted fns, runtime use only — imports.mjs SAFE)
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -1396,8 +1398,9 @@ export function sensemon(mon) {
 export function mon_warning(mon) {
     if (!mon) return false;
     const u = game.u || {};
-    const Warning = !!((u.HWarning | 0) || (u.EWarning | 0) || u.Warning);
-    if (!Warning || mon.mpeaceful) return false;
+    // C youprop.h Warning ≡ uprops[WARNING].intrinsic || .extrinsic — a
+    // worn ring of warning sets only uprops (do_wear.js confer_oc_oprop).
+    if (!hero_Warning(u) || mon.mpeaceful) return false;
     const d = dist2(u.ux | 0, u.uy | 0, mon.mx | 0, mon.my | 0);
     if (d >= 100) return false;
     const warnlevel = game.context?.warnlevel ?? 1;
@@ -1692,10 +1695,13 @@ function show_mon_or_warn(x, y, ch, color, decgfx = false, attr = 0, glyph) {
     show_glyph_cell(x, y, ch, color, decgfx, attr, glyph);
 }
 
-// C ref: youprop.h Infravision — race intrinsic via set_uasmon/mons[urace]
+// C ref: youprop.h Infravision (H||E) + polyself.c set_uasmon `:84–85`
+// (PROPSET(INFRAVISION, infravision(Upolyd ? mdat : &mons[urace]))): the
+// race default applies only while human; poly'd, the HInfravision
+// FROMFORM bit above is the whole story (D-0039 fallback gated).
 function hero_has_infravision() {
     if (game.u?.HInfravision || game.u?.EInfravision) return true;
-    // Non-polyd race default (C polyself set_uasmon → mons[urace.mnum])
+    if (Upolyd(game.u)) return false;
     const racePm = game.urace?.mnum;
     if (racePm == null) return false;
     return infravision(mons(racePm));
@@ -2657,7 +2663,7 @@ let _tty_intr = 0;
 // addtopl("--More--") when interrupted mid-more (D-1646).
 let _tty_inmore = 0;
 // C wintty.h ttyDisplay->rawprint — wait_synch getret path (D-1646).
-// tty_raw_print setter named.
+// Setter: tty_raw_print.
 let _tty_rawprint = 0;
 
 /** C wintty.h ttyDisplay->inread. Getline always zeros it around
@@ -3134,6 +3140,9 @@ export function reset_display_messages() {
     _tty_intr = 0;
     _tty_inmore = 0;
     _tty_rawprint = 0;
+    _nomux_raw_active = false;
+    _nomux_raw_row = 0;
+    _nomux_raw_col = 0;
     _msg_cw = null;
     _snapshot_mesgs = null;
     _putmsghistory_initd = false;
@@ -5666,16 +5675,21 @@ export function engr_can_be_felt(ep) {
 
 /**
  * Inline can_reach_floor(FALSE) for feel_location — avoid engrave↔display
- * import cycle (engrave.js imports newsym from display).
- * Named omission: usteed P_RIDING < P_BASIC; ustuck hugs; ceiling hider.
+ * import cycle (engrave.js imports newsym from display). C engrave.c:187
+ * reads the Levitation/Flying PROPERTIES (H||E, !B); the flat u.Levitation
+ * / u.Flying mirrors are never set by set_uasmon (FROMFORM lands on H* +
+ * uprops), so read the live mhitu.js exports (D-3825 pattern; imports.mjs
+ * VERDICT: SAFE, hoisted functions, cycle-safe).
+ * Named omission: usteed P_RIDING < P_BASIC (C :201); ustuck hugs (:192);
+ * ceiling hider (:203); youmonst msize >= MZ_HUGE (:206).
  */
 function feel_can_reach_floor() {
     const u = game.u || {};
     if (u.uswallow) return false;
-    if (u.Levitation && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
+    if (Levitation() && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
         return false;
     }
-    if (u.Flying) return true;
+    if (Flying()) return true;
     return true;
 }
 
@@ -8466,22 +8480,106 @@ function addtopl(s) {
 }
 
 /**
- * C wintty.c getret `:763–781` — "Hit space/return to continue: " then
- * xwaitforspace(" "). Contest tty is cbreak (space). No MICRO/WIN32CON.
+ * C ref: getline.c xwaitforspace `:230–257` — return / CR always; under
+ * cbreak ESC (sets dismiss_more = 1), a char of `s`, or x = dismiss_more
+ * (no ttyDisplay: '\n', which also admits '\r'); anything else bells.
+ * `strchr(s, c)` also matches c == NUL (the terminator). EOF is the
+ * harness's input-exhaustion throw.
+ * @param {string|null} s chars allowed besides return
  */
-async function getret() {
+async function xwaitforspace(s) {
+    const disp = game.nhDisplay;
+    const x = disp ? (_dismiss_more | 0) : 10;
     const cbreak = game.iflags?.cbreak !== false;
-    const which = cbreak ? 'space' : 'return';
-    addtopl(`\nHit ${which} to continue: `);
     const { nhgetch } = await import('./input.js');
+    _morc = 0;
     for (;;) {
         const c = await nhgetch();
-        if (c === 13 || c === 10) break;
+        if (c === 10 || c === 13) break;
         if (cbreak) {
-            if (c === 27 || c === 32) break;
+            if (c === 27) {
+                if (disp) _dismiss_more = 1;
+                _morc = 27;
+                break;
+            }
+            if ((s != null && (c === 0 || s.includes(String.fromCharCode(c))))
+                || c === x || (x === 10 && c === 13)) {
+                _morc = c;
+                break;
+            }
             tty_nhbell();
         }
     }
+}
+
+/**
+ * C wintty.c getret `:788–805` — xputs "\nHit space to continue: " (with
+ * standout) then xwaitforspace(" "), then iflags.raw_printed = 0. xputs is
+ * a raw termcap write outside the cell hooks the recorder's screen shadow
+ * follows (termcap.c NOMUX_CAPTURE), so the prompt never reaches a
+ * captured screen: nothing is painted here. No MICRO/WIN32CON.
+ */
+async function getret() {
+    await xwaitforspace(' ');
+    if (game.iflags) game.iflags.raw_printed = 0; // C `:804`
+}
+
+// C termcap.c NOMUX_CAPTURE raw shadow (`nomux_raw_active/row/col`
+// `:871–873`) — the recorder's view of tty_raw_print output. Entered on
+// the first non-empty raw_print and never left (`:875–883`).
+let _nomux_raw_active = false;
+let _nomux_raw_row = 0;
+let _nomux_raw_col = 0;
+
+/** C termcap.c nomux_raw_putch `:885–900`. */
+function nomux_raw_putch(ch, attr) {
+    const disp = game.nhDisplay;
+    if (ch === '\n') {
+        _nomux_raw_row++;
+        _nomux_raw_col = 0;
+        return;
+    }
+    if (ch.charCodeAt(0) < 32) return;
+    if (_nomux_raw_row >= 0 && _nomux_raw_row < 24
+        && _nomux_raw_col >= 0 && _nomux_raw_col < 80) {
+        disp?.setCell?.(_nomux_raw_col, _nomux_raw_row, ch, NO_COLOR, attr);
+    }
+    _nomux_raw_col++;
+}
+
+/**
+ * C termcap.c nomux_raw_emit `:916–946` — skip empty in-game flushes; else
+ * enter raw mode (clear the shadow, home), write the string and puts()'s
+ * newline; the cursor is the raw row/col (nomux_get_cursor `:952–960`).
+ * The shadow's fg/attr carry no stale colour here (recorded plain text).
+ */
+function nomux_raw_emit(s, bold) {
+    const disp = game.nhDisplay;
+    if (!_nomux_raw_active) {
+        if (disp && !s) return; // in-game flush (markers always on)
+        _nomux_raw_active = true; // nomux_enter_raw_mode
+        _nomux_raw_row = 0;
+        _nomux_raw_col = 0;
+        disp?.clearScreen?.();
+    }
+    const attr = bold ? ATR_BOLD : ATR_NONE;
+    for (const ch of s) nomux_raw_putch(ch, attr);
+    nomux_raw_putch('\n', attr);
+    disp?.setCursor?.(_nomux_raw_col, _nomux_raw_row);
+}
+
+/**
+ * C ref: wintty.c tty_raw_print `:4065–4082` — rawprint++ (ttyDisplay) or
+ * raw_printed++ (non-empty, no ttyDisplay); puts() to the real tty; the
+ * NOMUX_CAPTURE shadow write is what a captured screen shows. Caller:
+ * end.js panic_tail (vraw_printf's raw_print stays a named omit).
+ * @param {string} str
+ */
+export function tty_raw_print(str) {
+    const s = String(str ?? '');
+    if (game.nhDisplay) _tty_rawprint++;
+    else if (s && game.iflags) game.iflags.raw_printed = (game.iflags.raw_printed | 0) + 1;
+    nomux_raw_emit(s, false);
 }
 
 /**
@@ -8902,6 +9000,8 @@ export async function custompline(flags, fmt, ...args) {
 // same net text without reusing a va_list.
 const BIGBUFSZ = 5 * BUFSZ;
 let _vpline_in_pline = 0;
+// D-3830: completion tail for concurrent vpline entries (below).
+let _vpline_tail = Promise.resolve();
 
 /**
  * C pline.c:192–212: the vsnprintf expansion shared by the message
@@ -9076,38 +9176,82 @@ export async function vpline(fmt, ...args) {
     // C `:192–212` — printf arms (helper above).
     const { text, ln } = vpline_expand(line, args);
     line = text;
-    // C `:213–214` — `ln > BIGBUFSZ-1` panics (fatal exit in C;
-    // throw is the JS panic stand-in; never reached in scored runs).
+    // C `:213–214` — `ln > BIGBUFSZ-1` panics.
     if (ln > BIGBUFSZ - 1) {
-        throw new Error(`pline attempting to print ${ln} characters!`);
+        panic('pline attempting to print %d characters!', ln);
     }
     // C `:216–231` — modest overflow truncates preserving the last 3.
     line = vpline_truncate(line, ln);
     // C DUMPLOG_CORE `:233–239` — dumplogmsg before putmesg when
     // SUPPRESS_HISTORY is off (yn ATR_NOHISTORY still named).
     if ((gp.pline_flags & SUPPRESS_HISTORY) === 0) dumplogmsg(line);
-    // C `:243–249` — `if (in_pline++ || !window_inited)`: raw_print path.
-    // C prints via raw_print (named omit above), sets last_msg UNKNOWN,
-    // and jumps to pline_done (SPEECH clear + --in_pline).
-    const _wasIn = _vpline_in_pline;
-    _vpline_in_pline++;
+    // D-3830: link the completion tail synchronously, before any await,
+    // so a sync-immediate later arrival chains onto this vpline. The tail
+    // is release-only (never rejects): a throwing outer still releases,
+    // so chained followers always proceed.
+    const _prevTail = _vpline_tail;
+    let _releaseTail;
+    _vpline_tail = new Promise((res) => { _releaseTail = res; });
     try {
-        if (_wasIn || !game.iflags?.window_inited) {
-            if (game.iflags) game.iflags.last_msg = PLNMSG_UNKNOWN;
-            return;
+        // A set in_pline here means a floated vpline (sync caller:
+        // attrib.c exercise encumber_msg tail, `void impossible()`
+        // sites) is in flight. C printed it synchronously, so chain
+        // after it instead of dropping: the old gate lost the lich
+        // cast plus two smoulders at scen-sweep-Priest-95316 step 681
+        // (measured wasIn=1). True nesting (this call is on the
+        // outer's own (a)sync stack) keeps the legacy drop — chaining
+        // it would deadlock (the outer awaits this completion).
+        // Uncontended entries (in_pline 0) skip both the sniff and the
+        // await: zero ticks, baseline interleaving preserved.
+        if (_vpline_in_pline !== 0 && !msg_stack_nested()) {
+            await _prevTail;
         }
-        // C `:251–268` — OVERRIDE_MSGTYPE / msgtype_type / URGENT suppress
-        // gate lives in `pline_after_consume` (vpline_msgtyp_gate) so the
-        // window body stays one function; order matches C (gate → vision
-        // → flush → putmesg). The suppress jump lands on pline_done via
-        // this try/finally (SPEECH clear + --in_pline).
-        await pline_after_consume(line, true);
+        // C `:243–249` — `if (in_pline++ || !window_inited)`: raw_print
+        // path. C prints via raw_print (named omit above), sets
+        // last_msg UNKNOWN, and jumps to pline_done (SPEECH clear +
+        // --in_pline). Post-chain in_pline is 0 unless nested (kept as
+        // the backstop) or pre-window.
+        const _wasIn = _vpline_in_pline;
+        _vpline_in_pline++;
+        try {
+            if (_wasIn || !game.iflags?.window_inited) {
+                if (game.iflags) game.iflags.last_msg = PLNMSG_UNKNOWN;
+                return;
+            }
+            // C `:251–268` — OVERRIDE_MSGTYPE / msgtype_type / URGENT
+            // suppress gate lives in `pline_after_consume`
+            // (vpline_msgtyp_gate) so the window body stays one
+            // function; order matches C (gate → vision → flush →
+            // putmesg). The suppress jump lands on pline_done via this
+            // try/finally (SPEECH clear + --in_pline).
+            await pline_after_consume(line, true);
+        } finally {
+            // C pline_done `:285–290` — SND_SPEECH clear (compiled out
+            // of the contest C; the flag still clears) then --in_pline.
+            gp.pline_flags &= ~PLINE_SPEECH;
+            _vpline_in_pline--;
+        }
     } finally {
-        // C pline_done `:285–290` — SND_SPEECH clear (compiled out of the
-        // contest C; the flag still clears) then --in_pline.
-        gp.pline_flags &= ~PLINE_SPEECH;
-        _vpline_in_pline--;
+        _releaseTail();
     }
+}
+
+/**
+ * D-3830: true-nesting probe for the vpline completion chain. A second
+ * `vpline` frame on this call's stack means this entry is nested inside
+ * the in-flight outer's own execution (V8 async stacks preserve the
+ * await chain, so post-yield nesting is caught too; the outer-to-inner
+ * path is ≤4 frames deep, far under the default 10-frame
+ * stackTraceLimit), so chaining would deadlock and the legacy in_pline
+ * drop applies. A detached float-sibling's stack shows only this vpline
+ * frame and chains safely. Read only when contended (in_pline set), so
+ * the common path pays nothing. Skips its own frame (whose name must
+ * never contain `vpline`, else it self-matches).
+ * @returns {boolean}
+ */
+function msg_stack_nested() {
+    const frames = (new Error().stack || '').split('\n').slice(2).join('\n');
+    return frames.split('vpline').length - 1 >= 2;
 }
 
 // C ref: pline.c pline `:103–110` — va_start then vpline.
@@ -9467,7 +9611,7 @@ export async function impossible(s, ...args) {
     const ps = game.program_state;
     // C :591–592 is fatal, before changing the recursion latch.
     if (ps.in_impossible) {
-        throw new Error('impossible called impossible');
+        panic('impossible called impossible');
     }
 
     ps.in_impossible = 1;
@@ -9476,7 +9620,7 @@ export async function impossible(s, ...args) {
     const pbuf = vpline_expand(s, args).text.slice(0, BUFSZ - 1);
     // C :598 paniclog("impossible", pbuf): filesystem, Rule #2.
     if (game.iflags?.debug_fuzzer === fuzzer_impossible_panic) {
-        throw new Error(pbuf); // C :599–600, before any pline
+        panic('%s', pbuf); // C :599–600, before any pline
     }
 
     // C :602–604 calls pline itself with the preformatted text.

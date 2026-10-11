@@ -65,7 +65,7 @@ import { couldsee } from './vision.js';
 import { monflee } from './monmove.js';
 import { set_malign, makemon } from './makemon.js';
 import { killed, xkilled, attacktype_fordmg } from './uhitm.js';
-import { ureflects } from './mhitu.js';
+import { ureflects, Levitation, Flying } from './mhitu.js';
 import { aggravate } from './wizard.js';
 import { setuhpmax, losexp, pluslvl } from './exper.js';
 import { done } from './end.js';
@@ -2744,8 +2744,13 @@ async function offer_fake_amulet(otmp, highaltar, altaralign) {
  */
 export async function dosacrifice() {
     const u = game.u || {};
+    /* C pray.c `:1857` — altaralign first, in C order (a_align is a pure level read). */
+    const altaralign = a_align(u.ux | 0, u.uy | 0);
     if (!on_altar() || u.uswallow) {
-        const prep = (u.Levitation || u.Flying) ? 'over' : 'on';
+        /* C `:1860–1864` — (Levitation || Flying) are youprop.h macros
+           over uprops H/E (:240/:253–256); the u.Levitation/u.Flying
+           summary flats have no writer, so read the live exports. */
+        const prep = (Levitation() || Flying()) ? 'over' : 'on';
         await pline(`You are not ${prep} an altar.`);
         return ECMD_OK;
     }
@@ -2756,7 +2761,6 @@ export async function dosacrifice() {
     const loc = game.level?.at(u.ux, u.uy);
     const mask = (loc && (loc.altarmask != null ? loc.altarmask : loc.flags)) | 0;
     const highaltar = !!(mask & AM_SANCTUM);
-    const altaralign = a_align(u.ux | 0, u.uy | 0);
 
     const otmp = await floorfood('sacrifice', 1);
     if (!otmp) return ECMD_OK;

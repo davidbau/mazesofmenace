@@ -12,8 +12,12 @@ import { deepest_lev_reached, depth, strstri, upstart } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
     canspotmon, Hallucination, curs_on_u, newsym, impossible, You,
-    mark_topline_empty,
+    mark_topline_empty, vpline_expand, set_bot_disabled, tty_raw_print,
+    tty_wait_synch,
 } from './display.js';
+// C end.c panic `:410` exit_nhwindows — hoisted function decl, call-time
+// use only (cmd.js already imports end.js).
+import { tty_exit_nhwindows } from './cmd.js';
 import { yn_function, y_n, ynq, paranoid_query } from './getline.js';
 import { livelog_printf } from './pline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
@@ -1037,6 +1041,88 @@ export function nh_terminate(status) {
 }
 
 /**
+ * C panic() is NORETURN and is called from synchronous code; JS reaches
+ * it by throwing this from the call site. runSegment catches it at the
+ * top and runs panic_tail — the rest of C's panic body. Any other throw
+ * stays a JS error (a port bug), never a panic.
+ */
+export class NhPanic extends Error {
+    constructor(buf, abort) {
+        super(buf);
+        this.name = 'NhPanic';
+        this.abort = !!abort; // C `:401–402` re-entered: NH_abort(NULL)
+    }
+}
+
+/**
+ * C ref: end.c panic `:394–402` — the entry: the message (C `:466`
+ * vsnprintf, hoisted — it only feeds raw_print/paniclog) and the re-entry
+ * latch `if (program_state.panicking++) NH_abort(NULL)`.
+ * @param {string} fmt printf-style format
+ * @param {...*} args
+ */
+export function panic(fmt, ...args) {
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    let buf = String(fmt);
+    if (buf.includes('%')) buf = vpline_expand(buf, args).text;
+    if (buf.length > BUFSZ - 1) buf = buf.slice(0, BUFSZ - 1);
+    const was = ps.panicking | 0;
+    ps.panicking = was + 1;
+    throw new NhPanic(buf, was !== 0);
+}
+
+/**
+ * C ref: end.c panic `:403–480` — the body after the latch, run once the
+ * NhPanic throw has unwound to runSegment (C never returns from panic,
+ * so nothing at the call site runs after it in either runtime).
+ * The pinned recorder build is macOS with CRASHREPORT defined
+ * (config.h:244–247), so `:472–476` NH_abort is unconditional: the
+ * process dies right after the raw prints, nothing past the getret wait
+ * is ever captured, and really_done(PANICKED) (`:479`) is unreachable.
+ * Measured: a space/ESC/return after "Oops..." ends the C recording with
+ * no further screen; any other key bells and re-captures "\nOops...".
+ * Named omissions: sound_exit_nhsound (`:408–409`, nosound_procs NULL);
+ * set_error_savefile + dosave0 (`:442–451`, the error save goes under its
+ * own name, which no later restore reads); paniclog (`:468`, file side
+ * channel, Rule #2); NH_abort's panictrace/web report (`:472–476`).
+ * @param {NhPanic} err
+ */
+export async function panic_tail(err) {
+    if (err.abort) return; // C `:401–402` NH_abort(NULL) — nothing captured
+    const ps = game.program_state;
+    set_bot_disabled(true); // C `:404`
+    if (game.iflags?.window_inited) { // C `:405–412`
+        tty_raw_print('\r\nOops...');
+        await tty_wait_synch(); // rawprint → getret → xwaitforspace(" ")
+        tty_exit_nhwindows(null);
+        game.iflags.window_inited = 0;
+    }
+    // C `:414–418`.
+    tty_raw_print(ps.gameover
+        ? 'Postgame wrapup disrupted.'
+        : !ps.something_worth_saving
+            ? 'Program initialization has failed.'
+            : 'Suddenly, the dungeon collapses.');
+    // C `:420–439` !NOTIFY_NETHACK_BUGS: !wizard → SYSCF support, else the
+    // formatted WIZARDS list, else WIZARD_NAME (config.h:229 "wizard").
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        const maybe_rebuild = !ps.something_worth_saving
+            ? '.' : '\nand it may be possible to rebuild.';
+        const so = game.sysopt || {};
+        if (so.support) {
+            tty_raw_print(`To report this error, ${so.support}${maybe_rebuild}`);
+        } else if (so.fmtd_wizard_list) {
+            tty_raw_print(`To report this error, contact ${so.fmtd_wizard_list}${maybe_rebuild}`);
+        } else {
+            tty_raw_print(`Report error to "wizard"${maybe_rebuild}`);
+        }
+    }
+    tty_raw_print(err.message); // C `:467`
+    // C `:472–476` NH_abort(buf) — the process ends here.
+}
+
+/**
  * C ref: end.c really_done `:1130–1590` — gameover; cleanup; urealtime;
  * achievements; first-move pline; bones_ok/launch; arise; QUIT; fixup;
  * paybill; disclose; keepdogs; finish_paybill; grave; score (+ascension);
@@ -1046,7 +1132,8 @@ export function nh_terminate(status) {
  * side-channel, DUMPLOG retired D-1776); livelog_printf/logfile/xlogfile
  * (no session effect); wait_synch/signals/sethanguphandler/exit_nhwindows
  * (platform/windowing, no JS counterpart); sound_exit_nhsound (no sound
- * lib); panic() caller (C end.c:470 — panic itself unported, own row);
+ * lib); panic() caller (C end.c:479 — unreachable in the pinned
+ * CRASHREPORT build, see panic_tail);
  * done_object_cleanup arms (live export above);
  * unleash_all in finish_paybill; ParanoidBones getlin; DUMPLOG second
  * artifact_score; grddead inside mongone; display_pickinv cache setter;
@@ -1056,6 +1143,7 @@ export function nh_terminate(status) {
 async function really_done(how) {
     if (!game.program_state) game.program_state = {};
     game.program_state.gameover = true;
+    game._losehp_gameover = false; // real gameover — not losehp's marker
     // C really_done `:1146` — panic save is pointless once gameover.
     game.program_state.something_worth_saving = 0;
     if (game.program_state.done_hup) {
@@ -1918,6 +2006,14 @@ export async function finish_losehp_done() {
     await finish_losehp_rehumanize();
     if (!game._losehp_needs_done) return;
     game._losehp_needs_done = false;
+    // C hack.c losehp `:4287–4288` reaches done(DIED) with gameover FALSE
+    // (only really_done `:1144` sets it). Drop losehp's JS-only bail
+    // marker so done() runs on C state: savelife's Monnam(u.ustuck) must
+    // say "It" for a blind hero (x_monnam do_it skips on gameover).
+    if (game._losehp_gameover) {
+        game._losehp_gameover = false;
+        game.program_state.gameover = false;
+    }
     await pline('You die...');
     await done(DIED);
 }

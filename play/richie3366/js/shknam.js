@@ -4,6 +4,7 @@
 // irregular-shop edge cases; platform ifdef shktools names.
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import { rn2, rnd } from './rng.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
 import {
@@ -452,9 +453,8 @@ export function shkname(mtmp) {
     mtmp.isshk = save_isshk;
     // C `:865–866` — sanity: not a shopkeeper after all (named omit above).
     if (!save_isshk) return nam;
-    // C `:867–868` — a shopkeeper without eshk data is a C panic (abort);
-    // the JS analogue is a throw (remove_object precedent, D-2607).
-    if (!has_eshk(mtmp)) throw new Error(`shkname: shopkeeper "${nam}" lacks 'eshk' data.`);
+    // C `:867–868` — a shopkeeper without eshk data is a C panic.
+    if (!has_eshk(mtmp)) panic('%s', `shkname: shopkeeper "${nam}" lacks 'eshk' data.`);
     // C `:870` — the shop's own name.
     let shknm = ESHK(mtmp)?.shknam || '';
     if (Hallucination() && !game.program_state?.gameover) {

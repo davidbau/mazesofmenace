@@ -6,6 +6,7 @@
 // vision_reset: cs0 + both could-see planes, then the dig loop (D-2883).
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, DOOR, SDOOR, TREE, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED, TT_PIT,
@@ -826,7 +827,7 @@ function view_from(srow, scol, loc_cs_rows, left_most, right_most, range = 0,
     if (range) {
         if (range > MAX_RADIUS || range < 1) {
             /* C: panic("view_from called with range %d", range) — NORETURN. */
-            throw new Error(`view_from called with range ${range | 0}`);
+            panic('view_from called with range %d', range | 0);
         }
         limitsIdx = (circle_start[range] | 0) + 1;
         if (left < scol - range) left = scol - range;

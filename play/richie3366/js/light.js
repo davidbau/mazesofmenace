@@ -4,6 +4,7 @@
 // obj_sheds_light / obj_is_burning (D-1743; caller mkobj.c dealloc_obj).
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_MONSTER, LS_OBJECT, TEMP_LIT,
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_FREE, FM_EVERYWHERE,
@@ -312,12 +313,10 @@ export function relink_light_sources(ghostly) {
             }
             // C :553–555 — a miss is panic.
             if (which !== '\0')
-                throw new Error(
-                    `relink_light_sources: can't find ${which}_id ${nid >>> 0}`);
+                panic("relink_light_sources: can't find %c_id %u", which, nid >>> 0);
         } else {
             // C :556–557 — any other type is panic.
-            throw new Error(
-                `relink_light_sources: bad type (${(ls.type | 0)})`);
+            panic('relink_light_sources: bad type (%d)', ls.type | 0);
         }
         // C :559 — clear the fixup flag.
         ls.flags = (ls.flags | 0) & ~LSF_NEEDS_FIXUP;

@@ -2993,14 +2993,6 @@ export async function dospinweb() {
 export async function domonability() {
     const u = game.u || {};
     const uptr = game.youmonst?.data;
-    const tail = async () => {
-        if (Upolyd(u)) {
-            await pline('Any special ability you may have is purely reflexive.');
-        } else {
-            await pline("You don't have a special ability in your normal form!");
-        }
-        return ECMD_OK;
-    };
     // C: might_hide prompt rides before every arm
     const might_hide = is_hider(uptr) || hides_under(uptr);
     /* C: char c = '\0' — 0 is falsy so `c ? ... : ...` falls to the
@@ -3057,6 +3049,10 @@ export async function domonability() {
     } else if (u.usteed && can_breathe(u.usteed?.data)) { // C `:940–942`
         await pet_ranged_attk(u.usteed, true);
         return ECMD_TIME;
+    } else if (Upolyd(u)) { // C `:943–944` — chain arm, not a shared tail
+        await pline('Any special ability you may have is purely reflexive.');
+    } else { // C `:945–947`
+        await pline("You don't have a special ability in your normal form!");
     }
-    return tail();
+    return ECMD_OK; // C `:948` — gremlin/shriek arms fall here bare
 }

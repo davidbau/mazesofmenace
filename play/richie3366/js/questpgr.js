@@ -27,6 +27,7 @@ import { QUEST_NEMESIS_SPEECH } from './generated/quest_nemesis_speech.js';
 import { QUEST_GUARDTALK } from './generated/quest_guardtalk.js';
 import { an, An, the, makeplural, makesingular } from './objnam.js';
 import { s_suffix } from './do_name.js';
+import { Blind } from './invent.js';
 
 /** C ref: monflag.h enum ms_sounds — quest_info switch cases. */
 const MS_LEADER = 36;
@@ -902,12 +903,13 @@ function intermed() {
 /**
  * C ref: questpgr.c convert_arg `:235–325` — fills gc.cvt_buf; JS returns it.
  * Caller convert_line (D-1634). ualignbase is a JS object (.original/.current),
- * not C ualignbase[A_ORIGINAL] index.
+ * not C ualignbase[A_ORIGINAL] index. %x reads the live Blind() export
+ * (C youprop.h:103 (HBlinded||EBlinded)&&!BBlinded) — the inline dead-flat
+ * read (u.Blind/u.HBlind/u.EBlind) never saw extrinsic blindness.
  */
 function convert_arg(c) {
     const urole = game.urole || {};
     const u = game.u || {};
-    const Blind = !!(u.Blind || u.HBlind || u.EBlind);
     const female = !!game.flags?.female;
     const aOrig = u.ualignbase?.original ?? u.ualign?.type ?? A_NEUTRAL;
     let str;
@@ -982,7 +984,7 @@ function convert_arg(c) {
         str = 'lawful';
         break;
     case 'x':
-        str = Blind ? 'sense' : 'see';
+        str = Blind() ? 'sense' : 'see';
         break;
     case 'Z':
         // C: svd.dungeons[0].dname

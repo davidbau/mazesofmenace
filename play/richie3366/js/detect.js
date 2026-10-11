@@ -2281,7 +2281,7 @@ export async function object_detect(detector, oclass) {
 }
 
 /**
- * C gf.ftrap / ntrap. JS maketrap pushes `level.traps`.
+ * C gf.ftrap / ntrap. JS maketrap head-inserts `level.traps` (trap.c:577-579).
  */
 function ftrap_list() {
     return game.ftrap || game.level?.traps || [];

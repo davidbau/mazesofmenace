@@ -646,7 +646,19 @@ export async function show_nhw_menu_text(lines, opts = {}) {
     const keepLeftover = !!opts.keep_message_leftover && offx !== 0;
     if (!keepLeftover) game._pending_message = '';
     game._menu_overlay = false;
-    await flush_screen(1);
+    // C wintty.c tty_display_nhwindow(NHW_MENU) `:1907–1946` paints menu
+    // text with no bot() on the path (message-window clear + bare paint +
+    // dmore wait; container_contents' display_nhwindow/destroy pair is not
+    // a select_menu, and tty calls no bot() there). The grid-sync flush
+    // below must not paint status either: a pending botlx (e.g. the
+    // disclose inventory dismiss's docrt) stays pending until the next
+    // real bot() — botl.c `:255–256` preserves flags under gb.bot_disabled.
+    const _botPrev = set_bot_disabled(true);
+    try {
+        await flush_screen(1);
+    } finally {
+        set_bot_disabled(_botPrev);
+    }
 
     if (offx === 0) {
         // Fullscreen NHW_MENU / tall entry — clear then paint col-0 text.
@@ -2920,7 +2932,7 @@ export async function doidtrap() {
 
     // C `:2361–2388` — `gf.ftrap` walk; `return ECMD_OK` sits inside
     // the coordinate `if`, so non-matching traps `continue` past it.
-    // JS splits the C chain: maketrap pushes the live level.traps array
+    // JS splits the C chain: maketrap head-inserts the live level.traps array
     // (t_at) and leaves game.ftrap null on fresh levels (an array after
     // restore), so the chain alone finds nothing — walk the union of the
     // gf-shaped store and level.traps, deduped (deltrap's dual-unlink

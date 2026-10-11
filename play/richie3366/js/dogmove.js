@@ -747,7 +747,7 @@ export async function dog_goal(mtmp, edog, after, udist, whappr) {
                 // C dogmove.c:596-601 — first MAGIC_PORTAL in the gf.ftrap
                 // walk decides (break after it whether or not in range; C
                 // assumes one portal per level). JS splits the C chain:
-                // maketrap pushes the live level.traps array and leaves
+                // maketrap head-inserts the live level.traps array and leaves
                 // game.ftrap null on fresh levels (an array after restore),
                 // so walk the doidtrap union (D-3411): gf-shaped store
                 // first, then level.traps, deduped.

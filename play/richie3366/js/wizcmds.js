@@ -82,7 +82,7 @@ import { xkilled } from './uhitm.js';
 import { monkilled } from './mhitm.js';
 /* C end.c done — #wizkill seppuku arm
    (`imports.mjs --can wizcmds.js end.js done` SAFE). */
-import { done } from './end.js';
+import { done, panic } from './end.js';
 /* C uhis — #wizkill killer-name possessive
    (`imports.mjs --can wizcmds.js roles.js uhis` SAFE). */
 import { uhis } from './roles.js';
@@ -582,7 +582,7 @@ export async function wiz_panic() {
     }
     if (await paranoid_query(true, /* C :542–543 */
         'Do you want to call panic() and end your game?')) {
-        throw new Error('Crash test (#panic).'); /* C :544 panic */
+        panic('Crash test (#panic).'); /* C :544 */
     }
     return ECMD_OK;
 }

@@ -1010,7 +1010,11 @@ function pretty_base(obj) {
         const ocw = game.objects?.[obj.otyp]?.oc_weight ?? 0;
         return `${((obj.owt | 0) > ocw) ? 'very ' : ''}heavy iron ball`;
     }
-    let base = PRETTY[n] || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
+    // C xname_flags FOOD_CLASS `:789` Concat(actualn) / ROCK_CLASS `:823`
+    // Strcpy(actualn): the base is OBJ_NAME (oc_name), not a prettified
+    // macro — the lossy lowercase fallback mangled "C-ration"→"c ration".
+    let base = PRETTY[n] || objectNameStrs[obj.otyp]
+        || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
     // C ref: objnam.c xname — Samurai Japanese_item_name overrides actualn
     if (Role_if_samurai()) {
         const jn = Japanese_item_name(obj.otyp, null);

@@ -1132,10 +1132,15 @@ export function Fast() {
         || (prop?.intrinsic | 0) || (prop?.extrinsic | 0));
 }
 
-/** C ref: youprop.h Searching */
+/**
+ * C ref: youprop.h Searching ≡ uprops[SEARCHING].intrinsic || .extrinsic —
+ * a worn ring of searching sets only uprops (do_wear.js confer_oc_oprop).
+ */
 export function Searching() {
     const u = game.u || {};
-    return !!(u.HSearching || u.ESearching);
+    const prop = u.uprops?.[SEARCHING];
+    return !!((u.HSearching | 0) || (u.ESearching | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0));
 }
 
 /**

@@ -6,6 +6,7 @@
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import { lua_number_unpacked, lua_integer_unpacked, luaL_checkinteger_unpacked, lua_tointeger_unpacked } from './nhlua.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rnz, rn2_on_display_rng, reseed_random } from './rng.js';
@@ -557,11 +558,8 @@ export async function u_on_newpos(x, y) {
     if (!isok(x, y)) {
         const off = (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1);
         if (off) {
-            // panic() is NORETURN (extern.h). No JS panic (paniclog is
-            // Rule #2). Do not fall through into ux/uy.
-            throw new Error(
-                `u_on_newpos: trying to place hero off map <${x},${y}>`,
-            );
+            // panic() is NORETURN (extern.h). Do not fall through into ux/uy.
+            panic('u_on_newpos: trying to place hero off map <%d,%d>', x, y);
         }
         await impossible(
             'u_on_newpos: trying to place hero off map <%d,%d>', x, y,
@@ -1801,7 +1799,7 @@ export async function lspo_room(opts, contentsFn) {
     if (game.in_mk_themerooms && game.themeroom_failed) return 0; // C :4032-4033
     const o = lcheck_param_table(arguments); // C :4035
     if (coder.n_subroom > MAX_NESTED_ROOMS) // C :4038-4039 panic
-        throw new Error('lspo_room: Too deeply nested rooms?!');
+        panic('lspo_room: Too deeply nested rooms?!');
     const left_or_right = ['left', 'half-left', 'center', 'half-right', 'right', 'none', 'random']; // C :4041-4044
     const l_or_r2i = [SPLEV_LEFT, SPLEV_H_LEFT, SPLEV_CENTER, SPLEV_H_RIGHT, SPLEV_RIGHT, -1, -1]; // C :4045-4048
     const top_or_bot = ['top', 'center', 'bottom', 'none', 'random']; // C :4049-4051
@@ -21359,7 +21357,7 @@ async function mkinvpos(x, y, dist) {
         /* outermost 2 columns and/or rows may be truncated due to edge */
         if (dist < (7 - 2)) { /* panic() or impossible() */
             if (!isok(x, y))
-                throw new Error(`mkinvpos: <${x},${y}> (${dist}) off map edge!`);
+                panic('mkinvpos: <%d,%d> (%d) off map edge!', x, y, dist);
             await impossible('mkinvpos: <%d,%d> (%d) off map edge!', x, y, dist);
         }
         return;
@@ -22194,8 +22192,7 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
         // DEF_CHAR_TO_MLET (mondata.js); MAXMCLASSES panics in C.
         const mlet = DEF_CHAR_TO_MLET[id_or_class] ?? null;
         if (!mlet)
-            throw new Error(
-                `create_monster: unknown monster class '${id_or_class}'`);
+            panic('%s', `create_monster: unknown monster class '${id_or_class}'`);
         pm = mkclass(mlet, G_NOGEN);
     }
     pm = splev_mines_maybe_clear_your_race(pm);
@@ -24084,7 +24081,7 @@ function get_location_in_room(croom, humidity = DRY) {
 function get_room_loc(c, croom) {
     if (c.x < 0 && c.y < 0) {
         if (somexy(croom, c)) return;
-        throw new Error("get_room_loc: can't find a place!"); // C :1369 panic
+        panic("get_room_loc: can't find a place!"); // C :1369 panic
     }
     if (c.x < 0) c.x = rn2(croom.hx - croom.lx + 1); // C :1371-1372
     if (c.y < 0) c.y = rn2(croom.hy - croom.ly + 1); // C :1373-1374
@@ -30828,7 +30825,7 @@ export function selection_floodfill(ov, x, y, diagonals) {
             idx++;
         } else {
             // C: panic(floodfill_stack_overrun)
-            throw new Error('floodfill stack overrun');
+            panic('floodfill stack overrun');
         }
     };
     // C SEL_FLOOD_CHKDIR `:411-418`
@@ -33230,7 +33227,7 @@ export function search_door(croom, wall, cnt) {
             yy = croom.ly;
             break;
         default:
-            throw new Error('search_door: Bad wall!'); // :2526 panic
+            panic('search_door: Bad wall!'); // :2526 panic
             /*NOTREACHED*/
     }
     while (xx <= croom.hx + 1 && yy <= croom.hy + 1) { // :2529
@@ -34043,7 +34040,7 @@ export function fix_wall_spines(x1, y1, x2, y2) {
         VWALL, TLWALL, TRWALL, CROSSWALL];
     // C :252-253 — sanity check on incoming variables (panic is NORETURN).
     if (x1 < 0 || x2 >= COLNO || x1 > x2 || y1 < 0 || y2 >= ROWNO || y1 > y2)
-        throw new Error(`wall_extends: bad bounds (${x1},${y1}) to (${x2},${y2})`);
+        panic('wall_extends: bad bounds (%d,%d) to (%d,%d)', x1, y1, x2, y2);
     const map = game.level;
     if (!map) return; // JS-only: C levl always exists; nothing to join yet.
     const bh = bughack_state();
@@ -34104,8 +34101,7 @@ export function mazexy(cc) {
                 cc.y = y;
                 return;
             }
-    /* C: panic("mazexy: can't find a place!"); loud throw ≡ C panic. */
-    throw new Error("mazexy: can't find a place!");
+    panic("mazexy: can't find a place!");
 }
 
 // ============================================================

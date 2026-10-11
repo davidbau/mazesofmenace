@@ -10,6 +10,7 @@
 //        extract_nobj / container_weight; invent.c delobj / delobj_core (D-1756).
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import { fmt_ptr } from './alloc.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
 import { depth as depth_of_level, level_difficulty, strsubst, strstri } from './hacklib.js';
@@ -1182,7 +1183,7 @@ export function write_timer(timer) {
         return { ...base, arg_id: timer.mon?.m_id | 0, arg_kind: timer.kind | 0 };
     default:
         // C :2547–2550 — panic("write_timer").
-        throw new Error('write_timer: bad kind ' + (timer.kind | 0));
+        panic('write_timer: bad kind %d', timer.kind | 0);
     }
 }
 
@@ -1527,9 +1528,9 @@ export function start_timer(when, kind, action, arg) {
     if (kindN <= TIMER_NONE || kindN >= NUM_TIMER_KINDS
         || funcN < 0 || funcN >= NUM_TIME_FUNCS) {
         /* panic() args: kind_name(kind) runs first (TIMER_NONE
-           impossible), then the throw stands in for panic NORETURN. */
+           impossible). */
         const label = kind_name(kindN);
-        throw new Error(`start_timer (${label}: ${funcN})`);
+        panic('start_timer (%s: %d)', label, funcN);
     }
 
     /* C `:2259–2274` — same kind, func_index, and arg.a_void. */

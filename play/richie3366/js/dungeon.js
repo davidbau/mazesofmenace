@@ -9,6 +9,7 @@ import { game } from './gstate.js';
 import { luaL_checkinteger_unpacked } from './nhlua.js';
 import { debugcore } from './files.js';
 import { rn2, rn1, rnd } from './rng.js';
+import { panic } from './end.js';
 import { dungeonProto } from './generated/dungeon_data.js';
 import {
     MAXLEVEL,
@@ -554,7 +555,7 @@ export function insert_branch(new_branch, extract_first) {
         const idx = g.branches.indexOf(new_branch);
         // C :474–475 panic("insert_branch: not found"); throw ≡ C panic
         // (botl.js compare_blstats precedent — JS has no sync abort).
-        if (idx < 0) throw new Error('insert_branch: not found');
+        if (idx < 0) panic('insert_branch: not found');
         g.branches.splice(idx, 1); // C :476–479 unlink (prev->next / head)
     }
     new_branch.next = null; // C :481
@@ -1154,7 +1155,7 @@ export function assign_rnd_level(dest, src, range) {
 /**
  * C ref: dungeon.c ledger_to_dnum :1401–1416 —
  * ledger_start < ledgerno ≤ ledger_start + num_dunlevs. Out of range is
- * C panic (throw ≡ panic — sibling ports throw; no silent dnum 0).
+ * C panic (`:1413`; no silent dnum 0).
  */
 export function ledger_to_dnum(ledgerno) {
     const n = game.n_dgns | 0;
@@ -1166,7 +1167,7 @@ export function ledger_to_dnum(ledgerno) {
         const count = d.num_dunlevs | 0;
         if (start < want && want <= start + count) return i;
     }
-    throw new Error(`level number out of range [ledger_to_dnum(${want})]`);
+    panic('level number out of range [ledger_to_dnum(%d)]', want);
 }
 
 /**
@@ -1396,8 +1397,8 @@ export function dungeon_branch(s) {
         }
     }
     if (!br) {
-        /* C panic() is NORETURN. throw ≡ C panic (insert_branch). */
-        throw new Error(`dgn_entrance: can't find entrance to ${s}`);
+        /* C panic() is NORETURN. */
+        panic("dgn_entrance: can't find entrance to %s", s);
     }
     return br;
 }
@@ -1686,11 +1687,11 @@ export function init_dungeons() {
     // `lua_len` → `svn.n_dgns` (`:1255–1265`). The generated table is a JS
     // array, so the type panic becomes an Array check.
     if (!Array.isArray(dungeonProto))
-        throw new Error('init_dungeons: dungeon is not a lua table');
+        panic('init_dungeons: dungeon is not a lua table');
     game.n_dgns = dungeonProto.length;
 
     // C: `if (svn.n_dgns >= MAXDUNGEON) panic(...)` (`:1268–1269`).
-    if (game.n_dgns >= MAXDUNGEON) throw new Error('init_dungeons: too many dungeons');
+    if (game.n_dgns >= MAXDUNGEON) panic('init_dungeons: too many dungeons');
 
     // C: `tidx = lua_gettop(L); lua_pushnil(L); i = 0;` +
     // `while (lua_next(L, tidx) != 0)` (`:1271–1278`): visit every dungeon
@@ -1700,7 +1701,7 @@ export function init_dungeons() {
     for (const entry of dungeonProto) {
         // C: `if (!lua_istable(L, -1)) panic("dungeon[%i] ...", i)` (`:1280–1281`).
         if (!entry || typeof entry !== 'object')
-            throw new Error(`init_dungeons: dungeon[${i}] is not a lua table`);
+            panic('init_dungeons: dungeon[%d] is not a lua table', i);
         // Slot for tmpdungeon bookkeeping even before fill (C: fixed array).
         if (!pd.tmpdungeon[i]) pd.tmpdungeon[i] = { branches: 0, levels: 0 };
         if (init_dungeon_dungeons(entry, pd, i)) {
@@ -1712,7 +1713,7 @@ export function init_dungeons() {
             // C: `if (!place_level(pd.start, &pd)) panic("couldn't place")`
             // (`:1291–1292`); DDEBUG stderr block (`:1293–1298`) omitted.
             if (!place_level(pd.start, pd)) {
-                throw new Error("init_dungeon: couldn't place levels");
+                panic("init_dungeon: couldn't place levels");
             }
             // C: `for (; pd.start < pd.n_levs; pd.start++)` +
             // `if (pd.final_lev[pd.start]) add_level(...)` (`:1299–1301`).
@@ -3264,9 +3265,8 @@ export async function donamelevel() {
 export async function show_overview(why = 0, reason = 0) {
     const { formatkiller } = await import('./end.js');
     const { ATR_INVERSE } = await import('./terminal.js');
-    const { nhgetch } = await import('./input.js');
     const { flush_topl_more, endgamelevelname } = await import('./display.js');
-    const { paint_corner_nhw_menu, dismiss_nhw_menu } = await import('./invent.js');
+    const { select_menu_pick_none } = await import('./invent.js');
     const { ldrname } = await import('./questpgr.js');
 
     recalc_mapseen();
@@ -3296,12 +3296,12 @@ export async function show_overview(why = 0, reason = 0) {
         }
         return;
     }
-    for (;;) {
-        await paint_corner_nhw_menu(entries, '(end) ');
-        const key = await nhgetch();
-        await dismiss_nhw_menu();
-        if (key === 27 || key === 32 || key === 13 || key === 10) break;
-    }
+    // C dungeon.c :3328 select_menu PICK_NONE — tty pages 23/page with
+    // "(N of M)" when multi-page (wintty.c tty_end_menu :2693–2694,
+    // tty_display_nhwindow :1537–1547, dmore :1154–1172) and dismisses via
+    // erase_menu_or_text; the corner painter cannot page (D-1849 pattern:
+    // import the live export, don't clone a pager here).
+    await select_menu_pick_none(entries);
 }
 
 /**

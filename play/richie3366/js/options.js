@@ -248,7 +248,7 @@ import {
     clearrolefilter, setrolefilter, rolefilterstring,
 } from './player_selection.js';
 import { rcfile, read_config_file, config_error_init, config_error_done, config_error_add, assure_syscf_file } from './cfgfiles.js';
-import { nh_terminate } from './end.js';
+import { nh_terminate, panic } from './end.js';
 import { do_deferred_showpaths } from './files.js'; // C initoptions `:7112` (imports.mjs: hoisted fn, lazy reads only)
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
@@ -5663,16 +5663,16 @@ export async function choose_classes_menu(prompt, category, way, classList, clas
         let accelerator; // C add_menu accelerator
         if (category === 0) { // C :1670–1680
             const mlet = DEF_CHAR_TO_MLET[sym]; // C def_char_to_monclass + IndexOk
-            if (mlet === undefined) throw new Error(`choose_classes_menu: invalid monclass '${sym}'`); // C :1673–1675 panic (throw ≡ panic, dungeon.js:548)
+            if (mlet === undefined) panic('%s', `choose_classes_menu: invalid monclass '${sym}'`); // C :1673–1675 panic
             text = mlet_class_explain(mlet); // C :1676–1678 def_monsyms[idx].explain, buf "%s"
             accelerator = sym; // C :1677
         } else if (category === 1) { // C :1681–1691
             const idx = def_char_to_objclass(sym);
-            if (idx < 1 || idx >= def_oc_syms.length) throw new Error(`choose_classes_menu: invalid objclass '${sym}'`); // C :1684–1686 panic; IndexOk
+            if (idx < 1 || idx >= def_oc_syms.length) panic('%s', `choose_classes_menu: invalid objclass '${sym}'`); // C :1684–1686 panic; IndexOk
             text = `${sym}  ${def_oc_syms[idx].explain}`; // C :1689 "%c  %s"
             accelerator = String.fromCharCode(nextAcc); // C :1688
         } else {
-            throw new Error(`choose_classes_menu: invalid category ${category}`); // C :1693–1695 panic
+            panic('choose_classes_menu: invalid category %d', category); // C :1693–1695 panic
             /*NOTREACHED*/
         }
         const selected = !!(way && classSelect && String(classSelect).includes(sym)); // C :1697–1701
@@ -11693,8 +11693,7 @@ export function Strlen_(str, file, line) {
         if (ch === '\0') break;
     }
     if (len === LARGEST_INT) {
-        // The panic subsystem is absent; retain its non-returning failure.
-        throw new Error(`${file}:${line | 0} string too long`);
+        panic('%s', `${file}:${line | 0} string too long`);
     }
     return len >>> 0;
 }

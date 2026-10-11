@@ -2,6 +2,7 @@
 // C ref: hack.c — losehp, nomul, unmul, overexertion, moverock/dopush (and related).
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import { cmd_from_func, visctrl } from './dokeylist.js';
 import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING,
@@ -284,7 +285,7 @@ export function rounddiv(x, y) {
     let divsgn = 1; // C `:4554`
     let yy = Math.trunc(y); // C `int y`
     let xx = Math.trunc(x); // C `long x`
-    if (yy === 0) throw new Error('division by zero in rounddiv'); // C `:4556–4557` panic
+    if (yy === 0) panic('division by zero in rounddiv'); // C `:4556–4557` panic
     else if (yy < 0) { // C `:4558–4561`
         divsgn = -divsgn;
         yy = -yy;
@@ -1947,6 +1948,10 @@ export function losehp(n, knam, k_format = KILLED_BY) {
     if ((u.uhp || 0) < 1) {
         // C: urgent_pline("You die..."); done(DIED); — noreturn
         if (!game.program_state) game.program_state = {};
+        // JS-only bail marker: C's done(DIED) runs here with gameover
+        // still FALSE (really_done :1144 sets it). Remember that losehp
+        // invented it so finish_losehp_done can drop it before done().
+        if (!game.program_state.gameover) game._losehp_gameover = true;
         game.program_state.gameover = true;
         game._losehp_needs_done = true;
         if (!game.killer) game.killer = { name: '', format: 0 };
@@ -1986,6 +1991,7 @@ export async function finish_losehp_rehumanize() {
     await rehumanize();
     if (!wasGameover && game.program_state?.gameover) {
         game._losehp_needs_done = false;
+        game._losehp_gameover = false;
         game._needs_maybe_wail = false;
     }
 }

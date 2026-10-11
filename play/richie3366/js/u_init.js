@@ -7,6 +7,7 @@
 //         human/orc race kits; elf/dwarf/gnome partial).
 
 import { game } from './gstate.js';
+import { panic } from './end.js';
 import { rn2, rnd, rn1, rne } from './rng.js';
 import { mksobj, mkobj, dealloc_obj, weight, merged, carry_obj_effects, is_mines_prize, is_soko_prize } from './mkobj.js';
 import {
@@ -740,10 +741,10 @@ function skills_for_role() {
         skills = Skill_W;
         break;
     default:
-        // C: panic("No skills found for role") — loud throw ≡ C panic
+        // C: panic("No skills found for role")
         // (js/dungeon.js:250, js/mklev.js:29777 precedent); C's trailing
         // break after panic is unreachable, so none here.
-        throw new Error('No skills found for role');
+        panic('No skills found for role');
     }
 
     return skills;
@@ -1056,7 +1057,7 @@ export async function addinv_core0(obj, other_obj, update_perm_invent) {
     const saved_otyp = obj.otyp | 0;
     // C `:1063–1064` — panic if the object is still on a chain.
     if ((obj.where | 0) !== OBJ_FREE) {
-        throw new Error('addinv: obj not free');
+        panic('addinv: obj not free');
     }
     // C `:1065–1066`
     if ((obj.how_lost | 0) === LOST_EXPLODING) return null;

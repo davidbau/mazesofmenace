@@ -4488,8 +4488,8 @@ function s_suffix_inv(s) {
  * !MINV_ALL → worn_wield_only armament filter (D-3315).
  * youmonst.data swap for "weapon in claw". Empty → "(none)".
  * PICK_ONE/ANY delegate to query_objlist like C (return selected[0]).
- * Named omit: INCLUDE_HERO fake youmonst rows in the PICK_NONE analog; sortloot loot-name;
- * USE_INVLET letters (MINV_NOLET / PICK_NONE skip them);
+ * Named omit: INCLUDE_HERO fake youmonst rows in the PICK_NONE analog;
+ * sortloot order (chain order kept — loot-name + pack ranks unported);
  * invdisp_nothing NHW_MENU polish.
  * @returns {Promise<object|null>} selected object (PICK_NONE → null)
  */
@@ -4506,7 +4506,9 @@ function worn_wield_only(obj) {
 export async function display_minventory(mon, dflags, title) {
     if (!mon) return null;
     const do_all = (dflags & MINV_ALL) !== 0;
-    void MINV_NOLET; // letters skipped: !USE_INVLET + PICK_NONE
+    // C never reads MINV_NOLET here; qflags lack USE_INVLET so letters
+    // are menu-assigned a..z/A.., never inventory letters (monst.h:42).
+    void MINV_NOLET;
     void PICK_NONE;
     let hdr = title;
     if (!hdr) {
@@ -4565,21 +4567,52 @@ export async function display_minventory(mon, dflags, title) {
     // C iflags.suppress_price++ so doname_with_price ≡ doname
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
     try {
-        const entries = [{ text: hdr, attr: headingAttr }];
+        // C tty_end_menu `:2680–2690`: a prompt prepends "" then the
+        // title, so rows are [title, "", ...items].
+        const entries = [
+            { text: hdr, attr: headingAttr },
+            { text: '', attr: 0 },
+        ];
         const classes = DEF_INV_ORDER.includes(VENOM_CLASS)
             ? [...DEF_INV_ORDER]
             : [...DEF_INV_ORDER, VENOM_CLASS];
+        let first = true; // C query_objlist `:1105–1139` first-added item
         for (const oclass of classes) {
             const group = shown.filter((o) => (o.oclass | 0) === oclass);
             if (!group.length) continue;
             entries.push({ text: let_to_name(oclass), attr: headingAttr });
             for (const otmp of group) {
                 obj_glyph(otmp);
-                entries.push({ text: doname(otmp), attr: 0 });
+                // C query_objlist `:1133–1135`: first-item gold keeps '$'
+                // (a set selector tty_end_menu never reassigns); every
+                // other selectable takes a menu letter below.
+                const e = { text: doname(otmp), attr: 0, selector: '' };
+                if (first && (otmp.oclass | 0) === COIN_CLASS)
+                    e.selector = '$';
+                first = false;
+                entries.push(e);
             }
         }
         const rows = display()?.rows || 24;
         const lmax = Math.min(52, rows - 1);
+        // C tty_add_menu `:2602` prefixed "%c - " ('?' while unassigned)
+        // and tty_end_menu `:2716–2726` assigns menu letters a..z then A..
+        // in menu order, resetting to 'a' at each page start (n counts
+        // every list slot, title/blank/headings included). The prefix is
+        // baked into the painted text so geometry sees C's maxcol.
+        let menuCh = 'a';
+        for (let n = 0; n < entries.length; n++) {
+            if (n % lmax === 0) menuCh = 'a';
+            const e = entries[n];
+            if (e.selector === undefined) continue;
+            const sel = e.selector || menuCh;
+            if (!e.selector) {
+                menuCh = menuCh === 'z' ? 'A'
+                    : String.fromCharCode(menuCh.charCodeAt(0) + 1);
+            }
+            e.text = `${sel} - ${e.text}`;
+            delete e.selector;
+        }
         if (entries.length > lmax) {
             await select_menu_pick_none(entries);
         } else {
@@ -5741,7 +5774,7 @@ function hero_Blind_telepat(u = game.u || {}) {
 }
 
 /** C ref: youprop.h Warning — HWarning || EWarning. */
-function hero_Warning(u = game.u || {}) {
+export function hero_Warning(u = game.u || {}) {
     const e = u.uprops?.[WARNING];
     return !!((u.HWarning | 0) || (u.EWarning | 0)
         || u.Warning
