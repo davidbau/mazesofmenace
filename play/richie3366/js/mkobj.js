@@ -3119,10 +3119,14 @@ export function mergable(otmp, obj) {
     if (ohl !== LOST_NONE && hl !== ohl) return false;
     /* globby: checks beyond this point don't inhibit merger */
     if (obj.globby) return true;
+    /* C obj.h:139 `#define opoisoned otrapped`: one bit — poison on
+       weapons, trap on containers. JS tracks both fields; compare both
+       so a poisoned stack never merges into a plain one (95502@607). */
     if ((obj.unpaid | 0) !== (otmp.unpaid | 0) || (obj.spe | 0) !== (otmp.spe | 0)
         || (obj.no_charge | 0) !== (otmp.no_charge | 0)
         || (obj.obroken | 0) !== (otmp.obroken | 0)
         || (obj.otrapped | 0) !== (otmp.otrapped | 0)
+        || !!obj.opoisoned !== !!otmp.opoisoned
         || (obj.lamplit | 0) !== (otmp.lamplit | 0))
         return false;
     /* C obj.h:130 `#define orotten oeroded`: food rot shares erosion

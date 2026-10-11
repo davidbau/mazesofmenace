@@ -98,9 +98,9 @@ import { create_critters, monhp_per_lvl, newmcorpsenm } from './makemon.js';
 import {
     makemon_revival, makemon_runtime, newcham_revival, neweshk, } from './makemon_create.js';
 import {
-    can_be_hatched, completelyburns, attacktype_fordmg, defended, dead_species, dmgtype, dmgtype_fromattack, is_demon, perceives, hides_under, is_whirly, mindless, is_mplayer, is_rider, is_reviver, is_vampshifter, resists_drli, is_swimmer, amphibious, breathless, Resists_Elem, resists_magm, resists_blnd, resists_blnd_by_arti, monstseesu, monstunseesu, nonliving, is_golem, carnivorous, nohands, is_undead, sticks, type_is_pname, unique_corpstat, } from './mondata.js';
+    can_be_hatched, completelyburns, defended, dead_species, dmgtype, dmgtype_fromattack, is_demon, perceives, hides_under, is_whirly, mindless, is_mplayer, is_rider, is_reviver, is_vampshifter, resists_drli, is_swimmer, amphibious, breathless, Resists_Elem, resists_magm, resists_blnd, resists_blnd_by_arti, monstseesu, monstunseesu, nonliving, is_golem, carnivorous, nohands, is_undead, sticks, type_is_pname, unique_corpstat, } from './mondata.js';
 import {
-    AD_ACID, AD_ANY, AD_COLD, AD_DGST, AD_DISN, AD_DRLI, AD_ELEC, AD_FIRE, AD_DRST, AD_MAGM, AD_RBRE, AD_SEDU, AD_SPEL, AD_SSEX, AD_WRAP, AT_ENGL, PM_CLAY_GOLEM, PM_CROCODILE, PM_FLESH_GOLEM, PM_GLASS_GOLEM, PM_GOLD_GOLEM, PM_IRON_GOLEM, PM_LEATHER_GOLEM, PM_PAPER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_STONE_GOLEM, PM_STRAW_GOLEM, PM_WOOD_GOLEM, PM_DEATH, PM_DOPPELGANGER, PM_MONK, PM_KNIGHT, PM_HEALER, PM_GHOST, PM_PESTILENCE, PM_GREMLIN, PM_LONG_WORM, PM_ARCHEOLOGIST, G_NOCORPSE, G_UNIQ, NUMMONS, S_EEL, S_GOLEM, S_MIMIC, S_ZOMBIE, MZ_MEDIUM, } from './monsters.js';
+    AD_ACID, AD_COLD, AD_DGST, AD_DISN, AD_DRLI, AD_ELEC, AD_FIRE, AD_DRST, AD_MAGM, AD_RBRE, AD_SEDU, AD_SPEL, AD_SSEX, AT_ENGL, PM_CLAY_GOLEM, PM_CROCODILE, PM_FLESH_GOLEM, PM_GLASS_GOLEM, PM_GOLD_GOLEM, PM_IRON_GOLEM, PM_LEATHER_GOLEM, PM_PAPER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_STONE_GOLEM, PM_STRAW_GOLEM, PM_WOOD_GOLEM, PM_DEATH, PM_DOPPELGANGER, PM_MONK, PM_KNIGHT, PM_HEALER, PM_GHOST, PM_PESTILENCE, PM_GREMLIN, PM_LONG_WORM, PM_ARCHEOLOGIST, G_NOCORPSE, G_UNIQ, NUMMONS, S_EEL, S_GOLEM, S_MIMIC, S_ZOMBIE, MZ_MEDIUM, } from './monsters.js';
 import { discover_object, observe_object } from './o_init.js';
 import { obj_resists } from './bury.js';
 import { del_engr_at, engr_at, make_engr_at, rloc_engr } from './engrave.js';
@@ -164,7 +164,7 @@ import {
 import {
     d, rn1, rn2, rn2_on_display_rng, rnd, rne, rnl, rnz, } from './rng.js';
 import {
-    killed, shieldeff_mon, monkilled, normal_shape, replmon, restore_cham, seemimic, healmon, maybe_unhide_at, m_respond, m_in_air, newcham, wake_nearto, wakeup, xkilled, check_gear_next_turn, set_ustuck, unstuck, mimic_hit_msg, } from './mon.js';
+    killed, shieldeff_mon, monkilled, normal_shape, replmon, restore_cham, seemimic, healmon, hideunder, maybe_unhide_at, m_respond, m_in_air, newcham, wake_nearto, wakeup, xkilled, check_gear_next_turn, set_ustuck, unstuck, mimic_hit_msg, } from './mon.js';
 import { dmgval } from './weapon.js';
 import { expels, u_slow_down } from './mhitu.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
@@ -183,7 +183,7 @@ import {
     closed_door, dissolve_bars, monflee, monfleeMessage, onscary, set_apparxy, youHear, } from './monmove.js';
 import { stairway_at } from './stairs.js';
 
-import { burnarmor } from './trap_erode_obj.js';
+import { acid_damage, burnarmor } from './trap_erode_obj.js';
 import {
     conjoined_pits, delfloortrap, fill_pit, maketrap, openholdingtrap, closeholdingtrap, openfallingtrap, animate_statue, activate_statue_trap, reset_utrap, set_utrap, t_at, trapname, trap_ice_effects } from './trap.js';
 import { dotrap, mintrap } from './trap_effects.js';
@@ -969,9 +969,8 @@ async function boxlock_invent(obj, state = game) {
     void obj;
 }
 
-// C ref: zap.c release_hold() (578-606).  The swallowed expels(TRUE) arm is
-// still outside the port; keep that void call as a named source gap rather
-// than invoking expels() with its different FALSE-message contract.
+// C ref: zap.c release_hold() (578-606). Its swallowed arm calls expels(TRUE)
+// after the digestive mouth cue, preserving source message and relocation order.
 export async function release_hold(state = game) {
     const holder = state.u?.ustuck;
     if (!holder) {
@@ -988,10 +987,7 @@ export async function release_hold(state = game) {
             else
                 await ttyPline('You feel a sudden rush of air!', state);
         }
-        // C passes `TRUE` here (zap.c:598), while the current expels owner
-        // implements only its FALSE-message contract.  The return is void,
-        // so preserve the source boundary until that arm is ported.
-        note_unported('mhitu.c expels TRUE');
+        await expels(holder, { state, expulsionMessage: true });
     } else if (sticks(state.youmonst?.data)) {
         set_ustuck(null, state);
         await ttyPline(`You release ${mon_nam(holder, state)}.`, state);
@@ -1089,19 +1085,33 @@ export async function unturn_dead(monster, state = game, rawEnv = {}) {
 }
 
 // C ref: zap.c unturn_you() (1225-1234).
-async function unturn_you(state = game) {
-    await unturn_dead(state.youmonst, state);
+export async function unturn_you(state = game, rawEnv = {}) {
+    // Monster actions pass a cloned RNG through mbhitm(); direct self-zaps
+    // keep using the live game stream when no invocation stream is supplied.
+    const random = {
+        d,
+        rn1,
+        rn2,
+        rnd,
+        rne,
+        rnz,
+        ...(rawEnv.random ?? {}),
+    };
+    const env = { ...rawEnv, random };
+    const message = rawEnv.message ?? ttyPline;
+    await unturn_dead(state.youmonst, state, env);
     if (is_undead(state.youmonst?.data)) {
         const already = Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
-        await ttyPline(
+        await message(
             `You feel frightened and ${already ? 'even more ' : ''}stunned.`,
             state,
+            rawEnv,
         );
         const stunTimeout = (state.u?.uprops?.[STUNNED]?.intrinsic ?? 0)
             & TIMEOUT;
-        await make_stunned(stunTimeout + rnd(30), false, state);
+        await make_stunned(stunTimeout + random.rnd(30), false, state, env);
     } else {
-        await ttyPline('You shudder in dread.', state);
+        await message('You shudder in dread.', state, rawEnv);
     }
 }
 
@@ -1597,9 +1607,8 @@ export function spell_damage_bonus(damage, state = game) {
 // the second element) to a piece of armor to disintegrate when appropriate.
 //
 // Every damage branch is kept here because dobuzz() uses zhitm()'s returned
-// damage and armor pointer to decide the rest of the monster arm. The acid
-// damage call still has a discarded-void gap for an equipped monster weapon;
-// the separate acid armor-erosion call is wired to erode_armor().
+// damage and armor pointer to decide the rest of the monster arm. Acid damage
+// corrodes its wielded object before the separate armor-erosion call.
 export async function zhitm(
     mon,
     type,
@@ -1753,10 +1762,10 @@ export async function zhitm(
             break;
         }
         tmp = random.d(nd, 6);
-        // trap.c:acid_damage() is a discarded-void gap. Preserve its roll,
-        // then run the now-ported armor selector on its separate source roll.
-        if (!random.rn2(6) && mon.mw)
-            note_unported('trap.c acid_damage');
+        // C discards acid_damage()'s result; preserve its weapon gate before
+        // the separate armor-corrosion gate.
+        if (!random.rn2(6))
+            await acid_damage(mon.mw, { ...env, state, random });
         if (!random.rn2(6))
             await erode_armor(mon, ERODE_CORRODE, state, env);
         break;
@@ -3082,7 +3091,7 @@ export async function bhito(obj, wand, state = game,
                     && hides_under(state.youmonst?.data);
                 learn_it = cansee(obj.ox, obj.oy, state);
                 await do_osshock(obj, state, random, rawEnv);
-                if (cover) note_unported('mon.c hideunder');
+                if (cover) hideunder(state.youmonst, { ...rawEnv, state });
             } else {
                 const replacement = await poly_obj(
                     obj, STRANGE_OBJECT, state, random, rawEnv,
@@ -3607,10 +3616,11 @@ export async function bhitm(monster, wand, state = game,
                     rawEnv,
                 );
                 await ttyPline('A huge hole opens up...', state, rawEnv);
-                // zap.c ignores expels()'s return. Its TRUE expulsion-message
-                // arm is not yet ported, so preserve the source boundary and
-                // continue through bhitm()'s common tail.
-                note_unported('mhitu.c expels TRUE');
+                await expels(monster, {
+                    ...rawEnv,
+                    state,
+                    expulsionMessage: true,
+                });
             }
         }
     } else if (otyp === WAN_OPENING || otyp === SPE_KNOCK) {
@@ -4833,12 +4843,12 @@ export async function zhitu(type, nd, fltxt, sx, sy, state = game,
             await exercise(A_STR, false, state, random, exerciseEnv);
             monstunseesu(M_SEEN_ACID, state);
         }
-        // C discards acid_damage()'s return. Preserve the source gates, but
-        // leave weapon corrosion as a named gap until trap.c is ported.
+        // C discards acid_damage()'s return; preserve both weapon slots and
+        // their distinct source probability gates.
         if (!random.rn2(state.u.twoweap ? 3 : 6))
-            note_unported('trap.c acid_damage');
+            await acid_damage(state.uwep, { ...env, state, random });
         if (state.u.twoweap && !random.rn2(3))
-            note_unported('trap.c acid_damage');
+            await acid_damage(state.uswapwep, { ...env, state, random });
         if (!random.rn2(6))
             await erode_armor(state.youmonst, ERODE_CORRODE, state, env);
         break;
@@ -6032,10 +6042,9 @@ export async function zapnodir(obj, state = game,
     }
 }
 
-// C ref: dig.c zap_dig() (1548-1754). The swallowed branch still stops at
-// digests()/expels() because their message and relocation chain is not yet
-// owned here; vertical down-dig calls the ported dighole() but later hole
-// descent remains incomplete. The horizontal adjacent-pit arm runs
+// C ref: dig.c zap_dig() (1548-1754). The swallowed branch uses the canonical
+// expels() message and relocation path; vertical down-dig calls the ported
+// dighole() but later hole descent remains incomplete. The horizontal adjacent-pit arm runs
 // pit_flow()/liquid_flow() in source order. The
 // normal horizontal and maze arms are complete through their beam animation,
 // source terrain order, vision updates, and discarded shop/watch hooks.
@@ -6073,26 +6082,10 @@ export async function zap_dig(
                 mtmp.mhp = Math.trunc((mtmp.mhp + 1) / 2);
             else
                 mtmp.mhp = 1;
-            if (!digestive) {
-                const enfolding = Boolean(
-                    attacktype_fordmg(mtmp.data, AT_ENGL, AD_WRAP),
-                );
-                if (enfolding) {
-                    await ttyPline(
-                        `${Monnam(mtmp, state)} unfolds and you are released!`,
-                        state,
-                    );
-                } else if (attacktype_fordmg(mtmp.data, AT_ENGL, AD_ANY)) {
-                    await ttyPline(
-                        `You get expelled from ${mon_nam(mtmp, state)} `
-                        + 'with a squelch!',
-                        state,
-                    );
-                } else {
-                    note_unported('pline.c impossible');
-                }
-            }
-            await expels(mtmp, { state });
+            await expels(mtmp, {
+                state,
+                expulsionMessage: !digestive,
+            });
         }
         return;
     }
@@ -6419,10 +6412,7 @@ export async function zap_updown(obj, state = game,
                && hides_under(state.youmonst?.data)) {
         const top = state.level?.objects?.[x]?.[y];
         if (top && await bhito(top, obj, state, random, rawEnv)) {
-            // C discards hideunder()'s return.  Hero concealment is an
-            // explicit gap in the canonical monster owner, so record it
-            // without running the throwing adapter.
-            note_unported('mon.c hideunder');
+            hideunder(state.youmonst, { ...rawEnv, state });
             disclose = true;
         }
     }

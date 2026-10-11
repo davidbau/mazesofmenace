@@ -114,7 +114,7 @@ import {
 import {
     makeknown, compactify_invlets, enlightenment, observe_object,
     hold_another_object, update_inventory, near_capacity, freeinv_core,
-    prinv, getobj_display_pickinv, useupall, getobj,
+    prinv, getobj_display_pickinv, useupall, getobj, invletter_value,
 } from './invent.js';
 import { yn_function } from './getline.js';
 import {
@@ -132,11 +132,12 @@ import {
     OBJ_FREE,
     POTHIT_HERO_THROW, POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     FIRE_RES, COLD_RES,
-    TIMEOUT, I_SPECIAL, HALLUC_RES, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
+    TIMEOUT, I_SPECIAL, HALLUC_RES, HALLUC, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
     EYE, SEE_INVIS,
     DETECT_MONSTERS, LEVITATION, INVIS, HEAD, COLNO, ROWNO,
     In_endgame, Is_earthlevel, Is_airlevel, Is_waterlevel, In_sokoban,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF, STRANGLED, STUNNED, G_GONE,
+    CONFUSION,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
     ERODE_CORRODE, EF_GREASE,
@@ -324,7 +325,7 @@ function compact_lets(lets) {
     return out;
 }
 
-/** C ref: potion.c dip_ok — suggest non-coin invent, uncompacted. */
+/** C ref: potion.c dip_ok — suggest non-coin invent, uncompacted, C sortloot INVLET order. */
 function dippable_lets_raw() {
     const inv = game.invent || [];
     const lets = [];
@@ -332,7 +333,8 @@ function dippable_lets_raw() {
         if (o.oclass === COIN_CLASS) continue;
         if (o.invlet) lets.push(o.invlet);
     }
-    lets.sort();
+    // C sortloot_cmp `:473` — invletter_value, not ASCII (C «bG», not «Gb»).
+    lets.sort((a, b) => invletter_value(a) - invletter_value(b));
     return lets.join('');
 }
 
@@ -923,6 +925,10 @@ export async function make_deaf(xtime, talk) {
  */
 export async function make_confused(xtime, talk) {
     const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[CONFUSION]) {
+        u.uprops[CONFUSION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
     const old = u.HConfusion | 0;
     if (u.Unaware) talk = false;
     // C: if (!xtime && old) You_feel("less …") when talk
@@ -935,6 +941,11 @@ export async function make_confused(xtime, talk) {
     }
     u.HConfusion = ((u.HConfusion | 0) & ~TIMEOUT) | itimeout(xtime);
     u.Confusion = u.HConfusion;
+    // HConfusion ≡ uprops[CONFUSION].intrinsic (youprop.h:83, C single
+    // storage) — keep the slot ≡ the flat like make_deaf/make_blinded,
+    // or #wizintrinsic's oldtimeout read shows a stale [N] (D-1817 shape).
+    u.uprops[CONFUSION].intrinsic =
+        ((u.uprops[CONFUSION].intrinsic | 0) & ~TIMEOUT) | itimeout(xtime);
 }
 
 /**
@@ -1145,7 +1156,8 @@ function hallucResisted(u) {
  * C ref: potion.c make_hallucinated :369–438, in C order — Unaware talk
  * suppress; mask arm (HHallucination gate, EHalluc_resistance |= / &=~
  * + uprops extrinsic mirror, Hallucination re-mirror); else arm
- * (changed gated on EXTRINSIC resistance only, set_itimeout TIMEOUT bits,
+ * (changed gated on EXTRINSIC resistance only, set_itimeout TIMEOUT bits
+ * + uprops[HALLUC] slot mirror (HHallucination ≡ slot, youprop.h:116),
  * clear-without-toggle talk); changed arm (eatmupdate when !Hallucination,
  * uswallow/swallowed else see_* before the pline, update_inventory,
  * disp.botl, talk pline).
@@ -1185,6 +1197,18 @@ export async function make_hallucinated(xtime, talk, mask = 0) {
         if (!(u.EHalluc_resistance | 0) && (!!old !== !!xtime)) changed = true;
         // C :395 set_itimeout(&HHallucination, xtime) — TIMEOUT bits only
         u.HHallucination = (old & ~TIMEOUT) | itimeout(xtime);
+        // HHallucination ≡ uprops[HALLUC].intrinsic (youprop.h:116, C single
+        // storage) — keep the slot ≡ the flat (D-3802 CONFUSION shape), or
+        // the display.js Hallucination() reader (flat || slot) still sees
+        // Hallu after a cure and the :425 see_monsters repaint paints hallu
+        // glyphs (95323 step 1163: C true `C` vs JS hallu `M` + stuck `Hallu`
+        // after the peffect_sickness shock cure).
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[HALLUC]) {
+            u.uprops[HALLUC] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        u.uprops[HALLUC].intrinsic =
+            ((u.uprops[HALLUC].intrinsic | 0) & ~TIMEOUT) | itimeout(xtime);
         u.Hallucination = !!((u.HHallucination | 0) & TIMEOUT) && !hallucResisted(u);
 
         // C :398-411 clearing temporary hallucination without toggling vision
@@ -2801,7 +2825,8 @@ async function getobj_dip_ok(word, inacc) {
         for (const o of game.invent || []) {
             if (o?.invlet && obj_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
         }
-        lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+        // C sortloot_cmp `:473` — invletter_value, not charCodeAt.
+        lets.sort((a, b) => invletter_value(a) - invletter_value(b));
         return lets.join('');
     };
 

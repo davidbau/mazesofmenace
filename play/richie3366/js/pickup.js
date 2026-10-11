@@ -21,7 +21,7 @@ import {
     splittable, will_feel_cockatrice, feel_cockatrice, is_worn,
     not_fully_identified,
     taking_off, count_unpaid, tally_BUCX, getobj, Blind, hold_another_object, currency,
-    makeknown, useup, useupf, consume_obj_charge,
+    makeknown, useup, useupf, consume_obj_charge, invletter_value,
 } from './invent.js';
 import {
     nomul, check_special_room, set_uinwater, is_pool, is_lava, in_rooms, dosinkfall,
@@ -2981,14 +2981,15 @@ function stash_ok(obj) {
     return GETOBJ_SUGGEST;
 }
 
-/** SUGGEST invlets for stash getobj (C bp / lets[]; bag is not listed). */
+/** SUGGEST invlets for stash getobj (C bp / lets[]; bag is not listed). C sortloot INVLET order. */
 function stash_raw_lets() {
     const lets = [];
     for (const o of game.invent || []) {
         if (!o?.invlet) continue;
         if (stash_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
     }
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    // C sortloot_cmp `:473` — invletter_value, not charCodeAt.
+    lets.sort((a, b) => invletter_value(a) - invletter_value(b));
     return lets.join('');
 }
 

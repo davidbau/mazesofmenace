@@ -27,7 +27,7 @@ import {
 import { retouch_object, set_artifact_intrinsic, is_art, u_wield_art, restrict_name, arti_speak } from './artifact.js';
 import { setworn, reset_remarm } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE, ART_OGRESMASHER, ART_SUNSWORD } from './generated/artifacts_data.js';
-import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
+import { makeknown, encumber_msg, compactify_invlets, invletter_value, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
 import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
 import { trycall, hcolor } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
@@ -662,7 +662,8 @@ function wield_ok(obj) {
 
 /**
  * Invent letters with GETOBJ_SUGGEST only (C getobj `bp` / `lets[]`).
- * Sorted by invlet like C sortloot(SORTLOOT_INVLET).
+ * C sortloot(SORTLOOT_INVLET) ranks by invletter_value (`:390–399`), not
+ * ASCII — lowercase before uppercase (C «bG», not «Gb»).
  */
 function wield_suggest_lets() {
     const lets = [];
@@ -670,7 +671,8 @@ function wield_suggest_lets() {
         if (!o?.invlet) continue;
         if (wield_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
     }
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    // C sortloot_cmp `:473` — invletter_value, not charCodeAt.
+    lets.sort((a, b) => invletter_value(a) - invletter_value(b));
     return lets.join('');
 }
 
@@ -881,13 +883,15 @@ function ready_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
-/** Invent-order SUGGEST letters for #quiver (C getobj; '-' space when SUGGEST). */
+/** SUGGEST letters for #quiver in C sortloot INVLET order (C getobj; '-' space when SUGGEST). */
 function ready_suggest_lets() {
     const lets = [];
     for (const o of game.invent || []) {
         if (!o?.invlet) continue;
         if (ready_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
     }
+    // C sortloot_cmp `:473` — invletter_value, not invent order.
+    lets.sort((a, b) => invletter_value(a) - invletter_value(b));
     return lets.join('');
 }
 

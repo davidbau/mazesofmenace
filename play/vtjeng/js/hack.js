@@ -250,7 +250,7 @@ import {
     surface,
     u_on_newpos,
 } from './dungeon.js';
-import { gethungry } from './eat.js';
+import { gethungry, morehungry } from './eat.js';
 import { done } from './end.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import {
@@ -346,6 +346,7 @@ import {
     COIN_CLASS,
     CORPSE,
     DWARVISH_MATTOCK,
+    HEAVY_IRON_BALL,
     LEVITATION_BOOTS,
     NUM_OBJECTS,
     PICK_AXE,
@@ -379,6 +380,7 @@ import {
 } from './monsters.js';
 import {
     curr_mon_load,
+    hideunder,
     m_in_air,
     minliquid,
     mnexto,
@@ -396,6 +398,7 @@ import {
     can_ooze,
     can_fog,
     closed_door,
+    dissolve_bars,
     onscary,
     set_apparxy,
     wormCross,
@@ -2073,11 +2076,13 @@ export async function still_chewing(x, y, state = game) {
         digtxt = 'You chew through the tree.';
         lev.typ = ROOM;
     } else if (lev.typ === IRONBARS) {
-        if (metallivorous(state.youmonst.data))
-            note_unported('eat.c morehungry');
+        if (metallivorous(state.youmonst.data)) {
+            const nut = Math.trunc(state.objects[HEAVY_IRON_BALL].oc_weight);
+            await morehungry(-nut, state);
+        }
         digtxt = u_at(x, y, state)
             ? 'You devour the iron bars.' : 'You eat through the bars.';
-        note_unported('trap.c dissolve_bars');
+        await dissolve_bars(x, y, state);
     } else if (lev.typ === SDOOR) {
         if ((lev.doormask ?? lev.flags ?? 0) & D_TRAPPED) {
             lev.doormask = D_NODOOR;
@@ -4453,6 +4458,15 @@ async function domove_core(state = game) {
 
     if (hero_tread_disturbs_buried_zombies(state))
         disturb_buried_zombies(newx, newy, state);
+
+    // C ref: hack.c domove_core():2950-2952. Recheck concealment after the
+    // final hero position is known, including failed movement attempts that
+    // leave dx/dy set for source hideunder() to clear or preserve.
+    if (hides_under(state.youmonst.data)
+        || state.youmonst.data.mlet === S_EEL
+        || u.dx || u.dy) {
+        hideunder(state.youmonst, { state });
+    }
 
     newsym(oldx, oldy);
     vision_recalc(1);

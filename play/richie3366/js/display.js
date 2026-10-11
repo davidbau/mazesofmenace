@@ -4192,8 +4192,21 @@ export function terrain_glyph(loc, x, y) {
     // horizontal ? S_hodbridge : S_vodbridge.
     case DRAWBRIDGE_DOWN:
         return cmap_idx_to_tty(loc.horizontal ? S_HODBRIDGE : S_VODBRIDGE);
-    // C ref: display.c back_to_glyph — walls/SDOOR use wall_angle(seenv)
+    // C ref: display.c back_to_glyph `:2305` + wall_angle `:3600` — an
+    // arboreal (garden-hack set_levltyp SDOOR→AIR, mkmaze.c:85; rm.h:224
+    // aliases the bit to candig) secret door renders as a tree (S_tree)
+    // before any wall logic, with no seenv gate (C returns S_tree
+    // unconditionally). Mirrors the back_to_glyph twin; the tty is the
+    // TREE arm's (DEC meta-g green). wall_glyph's table cannot render
+    // S_tree (falls back to stone), so this arm never reaches it.
     case SDOOR:
+        if (loc.arboreal_sdoor) {
+            return dec
+                ? { ch: 'g', color: CLR_GREEN, dec: true }
+                : { ch: '#', color: CLR_GREEN, dec: false };
+        }
+        return wall_glyph(loc);
+    // C ref: display.c back_to_glyph — walls use wall_angle(seenv)
     case HWALL:
     case VWALL:
     case TLCORNER:

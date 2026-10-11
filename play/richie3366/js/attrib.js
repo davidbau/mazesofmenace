@@ -24,6 +24,8 @@ import {
     DRAIN_RES,
     BLINDED,
     BLND_RES,
+    DEAF,
+    FACE,
     TELEPORT_CONTROL,
     SEARCHING,
     FIRE_RES,
@@ -91,7 +93,7 @@ import { ART_OGRESMASHER, ART_EYES_OF_THE_OVERWORLD } from './generated/artifact
 import { adj_erinys, G_UNIQ, mons, haseyes } from './monsters.js';
 import { name_to_mon } from './mondata.js';
 import { type_is_pname } from './do_name.js';
-import { uasmon_maxStr } from './polyself.js';
+import { uasmon_maxStr, body_part } from './polyself.js';
 import { summon_furies } from './makemon.js';
 
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
@@ -1268,12 +1270,16 @@ export function is_innate(propidx) {
 }
 
 /**
- * C ref: attrib.c from_what — wizard-mode intrinsic source suffix.
- * Ported: innate reasons; FAST+Very_fast known speed-boots / worn-
- * equipment arms; what_gives extrinsic worn/artifact; " pair of " strip;
+ * C ref: attrib.c from_what `:904–1001` — wizard-mode intrinsic source
+ * suffix, whole chain in C order: birth blind/deaf `:936–938` (FIRST,
+ * before innateness); innate reasons; FAST+Very_fast known speed-boots /
+ * worn-equipment arms; what_gives extrinsic worn/artifact; Blindfolded_only
+ * `:962–963`; cream-pie goop `:964–968` (no leading space — C-verbatim:
+ * enl_msg glues suffix+value, "(5)due to goop..."); " pair of " strip;
  * negative BLINDED Eyes-of-the-Overworld / INVIS mummy-wrapping /
  * CLAIRVOYANT cornuthaum arms (D-3208).
- * Named omissions: birth blind/deaf; Blindfolded_only / cream.
+ * Named omissions: none — H/E/B read the flats, the same store the
+ * status_enlightenment Blind painter reads (js/invent.js:6219–6243).
  */
 export function from_what(propidx) {
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
@@ -1306,8 +1312,13 @@ export function from_what(propidx) {
         return '';
     }
     let buf = '';
+    const u = game.u || {};
     const innateness = is_innate(propidx);
-    if (innateness === FROM_ROLE_REASON || innateness === FROM_RACE_REASON) {
+    // C attrib.c:936-938 — birth blind/deaf FIRST, before innateness.
+    if ((propidx === BLINDED && u.uroleplay?.blind)
+        || (propidx === DEAF && u.uroleplay?.deaf)) {
+        buf = ' from birth';
+    } else if (innateness === FROM_ROLE_REASON || innateness === FROM_RACE_REASON) {
         buf = ' innately';
     } else if (innateness === FROM_INTR) {
         buf = ' intrinsically';
@@ -1321,7 +1332,6 @@ export function from_what(propidx) {
         // C attrib.c: propidx == FAST && Very_fast — before what_gives.
         // Known speed boots (W_ARMF + dknown + oc_name_known) →
         // ysimple_name(uarmf); blue DSM EFast|W_ARM → "worn equipment".
-        const u = game.u || {};
         const h = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
         const e = (u.EFast | 0) | (u.uprops?.[FAST]?.extrinsic | 0);
         if ((h & TIMEOUT) !== 0) {
@@ -1347,6 +1357,19 @@ export function from_what(propidx) {
                 ? bare_artifactname(obj)
                 : ysimple_name(obj);
             buf = ` because of ${because}`;
+        } else if (propidx === BLINDED
+            // C youprop.h:97 Blindfolded_only ≡ EBlinded && !(HBlinded && !BBlinded).
+            && ((u.EBlinded | 0) && !((u.HBlinded | 0) && !(u.BBlinded | 0)))) {
+            // C attrib.c:962-963 — blindfold/towel alone.
+            buf = ` because of ${ysimple_name(u.ublindf)}`;
+        } else if (propidx === BLINDED
+            && (u.ucreamed | 0)
+            && (((u.HBlinded | 0) & TIMEOUT) === (u.ucreamed | 0))
+            && !(u.EBlinded | 0)
+            && !((u.HBlinded | 0) & ~TIMEOUT)) {
+            // C attrib.c:964-968 — cream-pie goop; NOTE no leading space
+            // (C-verbatim: enl_msg glues suffix+value, "(5)due to ...").
+            buf = `due to goop covering your ${body_part(FACE)}`;
         }
     }
     // C attrib.c:971–975 — copynchars(p+1, p+9) keeps the match's first

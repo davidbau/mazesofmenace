@@ -1310,9 +1310,10 @@ function loot_xname(obj) {
 
 /**
  * C invent.c invletter_value `:390–399` — '$' first, then a-z, A-Z, '#'.
- * invlet_basic is 52.
+ * invlet_basic is 52. Exported: the getobj prompt-lets clones
+ * (wield/dip/stash/stone/charge/ready) sort by this per sortloot_cmp `:473`.
  */
-function invletter_value(c) {
+export function invletter_value(c) {
     const ch = typeof c === 'string' && c.length ? c.charAt(0) : '';
     if (!ch) return 1 + 52 + 1 + 1;
     if (ch >= 'a' && ch <= 'z') return ch.charCodeAt(0) - 97 + 2;

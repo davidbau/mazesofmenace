@@ -209,7 +209,7 @@ import {
 import { get_obj_location, obj_is_burning } from './light.js';
 import { snuff_lit } from './apply_splash_lit.js';
 import { bagotricks, set_malign } from './makemon.js';
-import { makemon, makemon_runtime } from './makemon_create.js';
+import { makemon_runtime } from './makemon_create.js';
 import { courtmon } from './mkroom.js';
 import { remove_worn_item } from './steal.js';
 import { hornoplenty } from './mkobj_hornoplenty.js';
@@ -230,6 +230,7 @@ import {
     WAN_CANCELLATION,
 } from './objects.js';
 import { PM_CLERIC, PM_HOUSECAT, PM_ICE_TROLL, PM_STONE_GOLEM } from './monsters.js';
+import { hideunder } from './mon.js';
 import {
     an, ansimpleoname, corpse_xname, Doname2, killer_xname, Tobjnam, Yname2,
     Ysimple_name2, donameFresh, doname_with_price,
@@ -1684,11 +1685,8 @@ export async function pickup(what, state = game) {
     }
 
     if (!swallowed && !skipFloorTail) {
-        // C calls hideunder(&youmonst) for a discarded result.  The existing
-        // hero-concealment owner is still an explicit source gap; keep that
-        // call visible in game.unported rather than fabricating a redraw.
         if (hides_under(state.youmonst?.data))
-            note_unported('mon.c hideunder');
+            hideunder(state.youmonst, { state });
         // newsym_force is newsym() plus dirty bookkeeping; the display owner
         // treats the ordinary redraw as the complete effect here.
         if (n_picked) newsym(u.ux, u.uy);
@@ -1911,7 +1909,7 @@ export async function u_handsy(state) {
 // Keep the random choice and object mutation in this canonical pickup.c owner.
 export async function observe_quantum_cat(box, makecat, givemsg, rawEnv = {}) {
     const state = rawEnv.state ?? game;
-    const random = rawEnv.random ?? { rn2 };
+    const random = { rn1, rn2, rnd, rne, rnz, d, ...rawEnv.random };
     const sc = "Schroedinger's Cat";
     let deadcat = box?.cobj ?? null;
     let livecat = null;
@@ -1927,7 +1925,7 @@ export async function observe_quantum_cat(box, makecat, givemsg, rawEnv = {}) {
 
     if (itsalive) {
         if (makecat) {
-            livecat = makemon(
+            livecat = await makemon_runtime(
                 state.mons?.[PM_HOUSECAT] ?? null,
                 box.ox,
                 box.oy,
@@ -1961,7 +1959,7 @@ export async function observe_quantum_cat(box, makecat, givemsg, rawEnv = {}) {
             box.spe = 0;
             if (!state.context?.mon_moving) {
                 more_experienced(10, 20, state);
-                await newexplevel(state);
+                await newexplevel(state, { message: ttyPline, random });
             }
         }
     } else {
@@ -1982,7 +1980,7 @@ export async function observe_quantum_cat(box, makecat, givemsg, rawEnv = {}) {
             oname(deadcat, sc, ONAME_NO_FLAGS, { state });
             if (!state.context?.mon_moving) {
                 more_experienced(20, 10, state);
-                await newexplevel(state);
+                await newexplevel(state, { message: ttyPline, random });
             }
         }
     }
@@ -1995,8 +1993,8 @@ export async function observe_quantum_cat(box, makecat, givemsg, rawEnv = {}) {
 // 'q'/Escape exit, and cleanup (cknown, update_inventory, sellobj_state,
 // null out current_container).
 //
-// Covered: the ':' (view) and 'q'/'n' (quit/next) paths, the
-// SchroedingersBox FALSE stub for ordinary containers, the cknown and
+// Covered: the ':' (view), 'q'/'n' (quit/next), and Schrödinger-box
+// observation paths, plus cknown/current_container cleanup.
 // C ref: pickup.c in_or_out_menu() (3397-3476). Builds a PICK_ONE menu for
 // the MENU_PARTIAL/MENU_FULL container-action prompt.
 async function in_or_out_menu(
@@ -2091,9 +2089,8 @@ async function boh_loss(container, held, state) {
 
 // sellobj_state containerdone cleanup.
 //
-// Not covered: 'o'/'i'/'b'/'r'/'s' (item transfer), otrapped/chest_trap,
-// and SchroedingersBox/observe_quantum_cat. Those branches keep their named
-// source boundaries.
+// Not covered: 'o'/'i'/'b'/'r'/'s' (item transfer) and otrapped/chest_trap.
+// Those branches keep their named source boundaries.
 export async function use_container(obj, held, more_containers, state) {
     state.ga ??= {};
     state.ga.abort_looting = false;
@@ -2136,9 +2133,8 @@ export async function use_container(obj, held, more_containers, state) {
     // SchroedingersBox: spe === 1 on a LARGE_BOX.
     const quantum_cat = (obj.otyp === LARGE_BOX && obj.spe === 1);
     if (quantum_cat) {
-        throw new UnsupportedPickupError(
-            'use_container: SchroedingersBox (observe_quantum_cat)',
-        );
+        await observe_quantum_cat(obj, true, true, { state });
+        used = ECMD_TIME;
     }
 
     // Cursed bag of holding.
@@ -3962,9 +3958,10 @@ async function tipcontainer_checks(box, targetbox, allowempty, state) {
         return TIPCHECK_CANNOT;
     }
 
-    // pickup.c:4034-4045. Schrodinger's box.
+    // pickup.c:4034-4045. Resolve a Schrodinger box before checking its
+    // contents, because a live cat leaves it empty and a dead cat remains.
     if (box.otyp === LARGE_BOX && box.spe === 1) {
-        note_unported('pickup.c observe_quantum_cat');
+        await observe_quantum_cat(box, true, true, { state });
         if (!hasContents(box))
             await ttyPline(`${shk_your(box, state)}box is now empty.`, state);
         box.cknown = 1;

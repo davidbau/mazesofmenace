@@ -281,7 +281,7 @@ import {
     disguised_as_mon, disguised_as_non_mon,
 } from './uhitm.js';
 import { mon_nam, Monnam, a_monnam, noit_Monnam, noname_monnam, type_is_pname, christen_monst, hliquid, Hallucination, rndmonnam, free_oname, Amonnam, s_suffix, hcolor } from './do_name.js';
-import { rnd_hallublast, m_useup } from './mthrowu.js';
+import { rnd_hallublast, m_useup, hit } from './mthrowu.js';
 import { finish_losehp_done, done } from './end.js';
 import {
     burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap, deltrap,
@@ -1539,15 +1539,8 @@ export function exclam(force) {
     return '!';
 }
 
-/** C ref: zap.c hit — ray hit message (objnam The adds article). */
-async function hit_zap(str, mtmp, force) {
-    const bx = game.bhitpos?.x ?? mtmp.mx;
-    const by = game.bhitpos?.y ?? mtmp.my;
-    const verbosely = game.flags?.verbose !== false
-        && (cansee(bx, by) || canseemon(mtmp));
-    const whom = verbosely ? mon_nam(mtmp) : 'it';
-    await pline(`${The(str)} ${vtense(str, 'hit')} ${whom}${force}`);
-}
+/* zap.c hit — canonical mthrowu.js import above (D-3801 removed the
+   canseemon-gated hit_zap clone; C reads canspotmon, not canseemon). */
 
 /**
  * C ref: invent.c useup — consume one from hero invent array.
@@ -1777,6 +1770,9 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
                     await finish_losehp_done();
                     if (game.program_state?.gameover) return dmg;
                 }
+                // C hack.c losehp:4289–4291 — maybe_wail runs inline;
+                // drain the deferred flag (zhitu :2322 shape).
+                await finish_maybe_wail();
                 exercise(A_STR, false);
             }
         }
@@ -2361,7 +2357,7 @@ async function disintegrate_mon(mon, type, fltxt) {
         if (!m_amulet) {
             await pline(`${Monnam(mon)} is disintegrated!`);
         } else {
-            await hit_msg(fltxt, mon, '!');
+            await hit(fltxt, mon, '!');
         }
     }
     for (let otmp = mon?.minvent; otmp;) {
@@ -2519,7 +2515,7 @@ export async function dobuzz(
                             // message + shield flash run only when seen, but
                             // the reversal runs regardless
                             if (cansee(target.mx, target.my)) {
-                                await hit_zap(
+                                await hit(
                                     flash_str(fltyp, false), target, exclam(0),
                                 );
                                 await shieldeff(target.mx, target.my);
@@ -2541,7 +2537,7 @@ export async function dobuzz(
                                 // C :4887–4905 — death breath cannot kill a
                                 // Rider: reintegrate + resurrect, beam ends
                                 if (canseemon(target)) {
-                                    await hit_zap(
+                                    await hit(
                                         flash_str(fltyp, false), target, '.',
                                     );
                                     await pline(
@@ -2565,7 +2561,7 @@ export async function dobuzz(
                                 && damgtype === ZT_DEATH) {
                                 // C :4906–4911 — Death absorbs death, beam ends
                                 if (canseemon(target)) {
-                                    await hit_zap(
+                                    await hit(
                                         flash_str(fltyp, false), target, '.',
                                     );
                                     await pline(
@@ -2605,7 +2601,7 @@ export async function dobuzz(
                                 }
                             } else if (!ootmp.otmp) {
                                 if (sayhit || canseemon(target)) {
-                                    await hit_zap(
+                                    await hit(
                                         flash_str(fltyp, false), target, exclam(tmp),
                                     );
                                 }
@@ -3865,15 +3861,8 @@ function Role_if(pm) {
     return (game.urole?.mnum | 0) === (pm | 0);
 }
 
-/** C ref: zap.c hit — wand/spell hit message. */
-async function hit_msg(str, mtmp, force) {
-    const bx = game._bhitpos?.x ?? mtmp.mx;
-    const by = game._bhitpos?.y ?? mtmp.my;
-    const verbosely = game.flags?.verbose !== false
-        && (cansee(bx, by) || canspotmon(mtmp));
-    const whom = verbosely ? mon_nam(mtmp) : 'it';
-    await pline(`${The(str)} ${vtense(str, 'hit')} ${whom}${force}`);
-}
+/* zap.c hit — canonical mthrowu.js import (D-3801 removed the hit_msg
+   clone; C also names youmonst/engulfing targets, which the clone dropped). */
 
 /**
  * C zap.c bhitm box_or_door — mimic appearances that have locks
@@ -4143,7 +4132,7 @@ export async function bhitm(mtmp, otmp) {
                 /* C zap.c bhitm :208–209 */
                 dmg = spell_damage_bonus(dmg);
             }
-            await hit_msg(zap_type_text, mtmp, exclam(dmg));
+            await hit(zap_type_text, mtmp, exclam(dmg));
             await resist(mtmp, otmp.oclass, dmg, TELL);
         } else {
             if (!disguised_mimic) await miss_msg(zap_type_text, mtmp);
@@ -4649,6 +4638,9 @@ export async function lightdamage(obj, ordinary, amt) {
         // C: might rehumanize(); fatal only for Unchanging — losehp
         // poly-death still named (hack.c rehumanize deferred).
         losehp(maybe_half_phys(dmg), buf, NO_KILLER_PREFIX);
+        // C hack.c losehp:4289–4291 — maybe_wail runs inline;
+        // drain the deferred flag (zhitu :2322 shape).
+        await finish_maybe_wail();
     }
     return dmg;
 }
@@ -6975,6 +6967,9 @@ async function zap_updown(obj) {
                 // still lands. Return only on true death.
                 if (game.program_state?.gameover) return disclose;
             }
+            // C hack.c losehp:4289–4291 — maybe_wail runs inline;
+            // drain the deferred flag (zhitu :2322 shape).
+            await finish_maybe_wail();
             const otmp = mksobj_at(ROCK, x, y, false, false);
             if (otmp) {
                 xname(otmp);
@@ -7320,6 +7315,10 @@ async function backfire(otmp) {
         await finish_losehp_done();
         return;
     }
+    // C hack.c losehp:4289–4291 — maybe_wail runs inline; drain the
+    // deferred flag before continuing (zhitu :2322 shape) so a low-HP
+    // turn cannot wail a turn late.
+    await finish_maybe_wail();
     useupall(otmp);
 }
 
@@ -7373,6 +7372,9 @@ export async function dozap() {
                 await finish_losehp_done();
                 if (game.program_state?.gameover) return 1;
             }
+            // C hack.c losehp:4289–4291 — maybe_wail runs inline;
+            // drain the deferred flag (zhitu :2322 shape).
+            await finish_maybe_wail();
         }
     } else {
         game.current_wand = obj;

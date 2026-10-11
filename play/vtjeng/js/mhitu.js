@@ -203,6 +203,7 @@ import {
     thick_skinned,
     touch_petrifies,
     unsolid,
+    is_whirly,
     attacktype_fordmg,
     can_blnd,
     flaming,
@@ -302,7 +303,7 @@ import {
     make_stunned,
     incr_itimeout,
 } from './potion.js';
-import { burnarmor } from './trap_erode_obj.js';
+import { acid_damage, burnarmor } from './trap_erode_obj.js';
 import { destroy_items } from './zap_destroy_items.js';
 import { ignite_items } from './apply_catch_lit.js';
 import { burn_away_slime } from './timeout.js';
@@ -2092,27 +2093,55 @@ export async function mattacku(monster, rawEnv = {}) {
     return false;
 }
 
-// C ref: mhitu.c expels() (264-306). This is the non-digestive expulsion arm
-// reached by the ordinary ice-vortex slice below. mon.c:mnexto() owns its
-// overcrowding and optional monster-telecontrol continuations; expels waits
-// for that source-ordered work before it redraws or applies terrain effects.
+// C ref: mhitu.c expels() (264-306). A TRUE message selects the digesting,
+// enfolding, or engulf-attack wording before the common unstuck, relocation,
+// redraw and terrain-effects sequence. mon.c:mnexto() owns its overcrowding
+// and optional monster-telecontrol continuations; expels waits for them.
 export async function expels(mtmp, rawEnv = {}) {
     const state = rawEnv.state ?? game;
-    const unsupported = requireMattackuOperation(rawEnv, 'unsupported');
     if (rawEnv.message !== undefined && typeof rawEnv.message !== 'function') {
         throw new TypeError('expels requires a message operation');
     }
 
-    // The current caller passes FALSE, so C emits the user-facing line in
-    // gulpmu() immediately before this helper. The TRUE arm needs digests(),
-    // enfolds(), attacktype_fordmg() and the corresponding name formatters;
-    // none is reachable from the admitted ice-vortex attack.
-    if (rawEnv.expulsionMessage) {
-        unsupported('the named expulsion message');
-    }
-
     state.disp ??= {};
     state.disp.botl = true;
+    if (rawEnv.expulsionMessage) {
+        const mdat = rawEnv.mdat ?? mtmp.data;
+        const message = rawEnv.message ?? ttyPline;
+        if (digests(mdat)) {
+            await message('You get regurgitated!', state, rawEnv);
+        } else if (enfolds(mdat)) {
+            await message(
+                `${Monnam(mtmp, state, rawEnv)} unfolds and you are released!`,
+                state,
+                rawEnv,
+            );
+        } else {
+            const attack = attacktype_fordmg(mdat, M.AT_ENGL, M.AD_ANY);
+            let blast = '';
+            if (!attack) {
+                // C continues after its diagnostic-only impossible() call.
+                if (typeof rawEnv.impossible === 'function')
+                    rawEnv.impossible('Swallower has no engulfing attack?');
+                else
+                    note_unported('pline.c impossible');
+            } else {
+                if (is_whirly(mdat)) {
+                    if (attack.adtyp === M.AD_ELEC)
+                        blast = ' in a shower of sparks';
+                    else if (attack.adtyp === M.AD_COLD)
+                        blast = ' in a blast of frost';
+                } else {
+                    blast = ' with a squelch';
+                }
+                await message(
+                    `You get expelled from ${mon_nam(mtmp, state, rawEnv)}${blast}!`,
+                    state,
+                    rawEnv,
+                );
+            }
+        }
+    }
     // mon.c unstuck() owns the swallowed redraw and final re-hold cooldown;
     // expels() awaits that owner before relocation.
     await unstuck(mtmp, state, { ...rawEnv, state });
@@ -3307,8 +3336,8 @@ export function ranged_attk_available(mtmp, rawEnv = {}) {
 //
 // The source calls whose results are discarded but whose full owners
 // are outside this span remain named at their call sites: erode_armor,
-// acid_damage, drain_item, and shieldeff. Their surrounding source branches
-// still consume the conditional draws before recording the discarded call.
+// drain_item, and shieldeff. Their surrounding source branches still consume
+// the conditional draws before recording the discarded call.
 async function assess_dmg(mtmp, tmp, state, env) {
     const message = env.message
         ?? (env.planning ? async () => {} : ttyPline);
@@ -3385,7 +3414,8 @@ async function passiveum(olduasmon, mtmp, mattk, state, env) {
             tmp = 0;
         }
         if (!random.rn2(30)) note_unported('uhitm.c erode_armor');
-        if (!random.rn2(6)) note_unported('trap.c acid_damage');
+        if (!random.rn2(6))
+            await acid_damage(mtmp.mw, { ...env, state, random });
         return assess_dmg(mtmp, tmp, state, env);
     case M.AD_STON: /* cockatrice */
     {

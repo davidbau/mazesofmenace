@@ -4722,6 +4722,10 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         if (mdef.mhp < 1) {
             mdef.mhp = 0;
             await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
             const grew = await grow_up(magr, mdef);
             return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
         }
@@ -5704,6 +5708,10 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         mdef.mhp = 0;
         // C: mdamagem → troll_baned + gz.zombify; monkilled; reset both
         await mdamagem_monkilled(magr, mdef, mattk, mwep);
+        if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+        if (hitflags === M_ATTK_AGR_DIED) {
+            return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+        }
         const grew = await grow_up(magr, mdef);
         return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
     }

@@ -125,7 +125,7 @@ import { mon_nam, s_suffix, Monnam, hcolor, oname } from './do_name.js';
 import { mon_aligntyp } from './priest.js';
 import { wake_nearto, healmon } from './mon.js';
 import { burn_away_slime } from './timeout.js';
-import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj, observe_object, freeinv } from './invent.js';
+import { compactify_invlets, invletter_value, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj, observe_object, freeinv } from './invent.js';
 import { xname, the, The, vtense, cxname, otense, set_undiscovered_artifact, set_find_artifact, simple_typename, Tobjnam, distant_name, yname, killer_xname } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
 import { t_at, ignite_items, selftouch, float_up, float_down } from './trap.js';
@@ -1849,7 +1849,8 @@ async function getobj_charge() {
         await pline("You don't have anything to charge.");
         return null;
     }
-    suggest.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    // C sortloot_cmp `:473` — invletter_value, not charCodeAt.
+    suggest.sort((a, b) => invletter_value(a) - invletter_value(b));
     const raw = suggest.join('');
     for (;;) {
         await flush_topl_more();

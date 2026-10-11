@@ -1107,11 +1107,21 @@ export async function nh_timeout() {
                     const next = hc - 1;
                     u.HConfusion = next;
                     u.Confusion = next;
+                    // Keep uprops[CONFUSION] ≡ HConfusion (C single storage;
+                    // BLINDED-arm shape below, D-1817 DEAF precedent).
+                    if (!u.uprops) u.uprops = {};
+                    if (!u.uprops[CONFUSION]) {
+                        u.uprops[CONFUSION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+                    }
+                    u.uprops[CONFUSION].intrinsic =
+                        ((u.uprops[CONFUSION].intrinsic | 0) & ~TIMEOUT) | (next & TIMEOUT);
                     if (!(next & TIMEOUT)) {
                         // C case CONFUSION: set_itimeout(&HConfusion, 1L);
                         // make_confused(0L, TRUE); if (!Confusion) stop_occupation();
                         u.HConfusion = ((u.HConfusion | 0) & ~TIMEOUT) | 1;
                         u.Confusion = u.HConfusion;
+                        u.uprops[CONFUSION].intrinsic =
+                            ((u.uprops[CONFUSION].intrinsic | 0) & ~TIMEOUT) | 1;
                         await make_confused(0, true);
                         if (!(u.HConfusion | 0) && !(u.Confusion | 0)) {
                             await stop_occupation();

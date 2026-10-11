@@ -39,7 +39,7 @@ import { find_mac, mondied, monkilled, shade_miss, AT_WEAP, AT_SPIT } from './mh
 import { xkilled, can_blnd, Hate_silver, passive_obj } from './uhitm.js';
 import { mswings_verb } from './mhitu.js';
 import { ammo_and_launcher, is_launcher, is_pole, mwelded, is_ammo } from './wield.js';
-import { acurr, acurrstr, A_CON, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
+import { acurr, acurrstr, A_CON, A_DEX, A_STR, exercise, poisoned, Fumbling } from './attrib.js';
 import { calc_capacity, Blind } from './invent.js';
 import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation, You_hear, finish_maybe_wail } from './hack.js';
 import { finish_losehp_done } from './end.js';
@@ -720,12 +720,19 @@ export async function thitu(tlev, dam, objp, name) {
  * «You catch, but drop, the %s.») and the flight ends. C tests the live
  * form (`!nohands(gy.youmonst.data)`), not the base race. `freehand()`
  * is the canonical C `engrave.c:472–477` (`!uwep || !welded || ...`).
+ * C `:538–541` probes live prop macros, not sticky mirrors: the Blind
+ * gate reads `Blind()` (youprop.h `(HBlinded||EBlinded)&&!BBlinded`) —
+ * the sticky `u.Blind` syncs only in make_blinded, so a worn blindfold's
+ * EBlinded never sets it (95345@962 drew a catch rn2(87) C skips); the
+ * Fumbling gate reads live `Fumbling()` (`u.Fumbling` has no writers).
+ * Confusion/Stunned stay flats: every writer syncs them with H, and C
+ * reads H-only for both (temp suppressions restore synchronously).
  */
 async function u_catch_thrown_obj(otmp) {
     let catch_chance = 100 - acurr(A_DEX);
     if (Role_if(PM_MONK) || Role_if(PM_ROGUE)) catch_chance -= 20;
     const u = game.u || {};
-    if (!u.Blind && !u.Confusion && !u.Stunned && !u.Fumbling
+    if (!Blind() && !u.Confusion && !u.Stunned && !Fumbling()
         && otmp.oclass !== VENOM_CLASS
         && !nohands(game.youmonst?.data)
         && freehand()

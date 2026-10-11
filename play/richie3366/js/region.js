@@ -810,6 +810,7 @@ export function rest_regions(stored, elapsed, ghostly) {
         }
         /* C :876-884 n_monst + monsters + max_monst. */
         const nMonst = s.n_monst | 0;
+        reg.n_monst = nMonst; /* C :876 — the live prefix bound; without it the restored mids are invisible to run_regions (no fog sustain, no inside damage). */
         reg.monsters = nMonst > 0
             ? (s.monsters || []).slice(0, nMonst).map((m) => m | 0)
             : null;

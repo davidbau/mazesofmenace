@@ -4610,10 +4610,27 @@ async function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnl
                         continue;
                     }
                 }
-                // C test_move TEST_TRAV edge (:1400): closed doors pass,
+                // C test_move TEST_TRAV edge (:1395): closed doors pass,
                 // single boulders are enterable leaves, diagonal intact
                 // doorways banned both ways (travel_test_move).
                 if (!await travel_test_move(x, y, nx - x, ny - y)) continue;
+                // C `:1395–1398` — one combined gate: the reached cell must
+                // be remembered or currently visible, and the destination
+                // terminates only INSIDE it. An unseen, unremembered
+                // destination is never a valid travel point (VALID FALSE →
+                // auto_describe " (no travel path)"). Testing the
+                // destination before the gate falsely validated
+                // TEST_TRAV-reachable but invisible cells (sensed monsters,
+                // unexplored floor).
+                const _loc = game.level?.at(nx, ny);
+                if (!_loc) continue;
+                // C: seenv || (!Blind && couldsee). couldseeOnly ignores seenv
+                // (D-0702 workaround for over-broad JS seenv).
+                if (couldseeOnly && !u.Blind) {
+                    if (!couldsee(nx, ny)) continue;
+                } else if (!(_loc.seenv || (!u.Blind && couldsee(nx, ny)))) {
+                    continue;
+                }
 
                 if (nx === toX && ny === toY) {
                     // C :1400–1418 — TRAVP_TRAVEL/VALID success. visited is
@@ -4649,17 +4666,11 @@ async function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnl
                     selection_setpoint(u.ux, u.uy, tmap, 1);
                     return TRAVEL_STEP;
                 }
+                // C `:1420` — else-if: the destination returned above, so
+                // only unvisited cells are enqueued (the visibility gate
+                // already passed).
                 const key = `${nx},${ny}`;
                 if (travel.has(key)) continue;
-                const loc = game.level?.at(nx, ny);
-                if (!loc) continue;
-                // C: seenv || (!Blind && couldsee). couldseeOnly ignores seenv
-                // (D-0702 workaround for over-broad JS seenv).
-                if (couldseeOnly && !u.Blind) {
-                    if (!couldsee(nx, ny)) continue;
-                } else if (!(loc.seenv || (!u.Blind && couldsee(nx, ny)))) {
-                    continue;
-                }
                 travel.set(key, radius);
                 next.push({ x: nx, y: ny });
             }
