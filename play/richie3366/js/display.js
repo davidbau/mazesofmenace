@@ -1039,10 +1039,16 @@ export function glyph_is_cmap(glyph) {
         && g < (GLYPH_CMAP_C_OFF + ((S_goodpos - S_digbeam) + 1));
 }
 
-/** C display.h glyph_is_normal_object — GLYPH_OBJ_OFF bank. */
+/** C display.h glyph_is_normal_object `:851–856` — OBJ bank plus C's
+ * third disjunct (the normal-piletop arm). The OBJ range keeps the
+ * generic slots (C arms 1+2 exclude OFF+1..OFF+16): outcome-neutral —
+ * glyph_is_object ORs the generic arms anyway, glyph_to_obj peels
+ * generic identically, and the pager showsym arm wants every object
+ * glyph. */
 export function glyph_is_normal_object(glyph) {
     const g = glyph_id(glyph);
-    return g != null && g >= GLYPH_OBJ_OFF && g < GLYPH_OBJ_OFF + NUM_OBJECTS;
+    return g != null && ((g >= GLYPH_OBJ_OFF && g < GLYPH_OBJ_OFF + NUM_OBJECTS)
+        || glyph_is_normal_piletop_obj(glyph));
 }
 
 /** C display.h glyph_is_normal_generic_obj `:839–840` — OBJ bank below FIRST_OBJECT. */
@@ -1051,11 +1057,14 @@ export function glyph_is_normal_generic_obj(glyph) {
     return g != null && g > GLYPH_OBJ_OFF && g < GLYPH_OBJ_OFF + FIRST_OBJECT - 1;
 }
 
-/** C display.h glyph_is_piletop generic obj — GLYPH_OBJ_PILETOP_OFF. */
+/** C display.h glyph_is_piletop_generic_obj `:841–843` — PILETOP bank,
+ * class slots only (OFF, OFF+FIRST_OBJECT-1); a piletop otyp glyph
+ * is normal, never generic (else map_object's display.c:340 observe
+ * gate discos every nearby piletop). */
 export function glyph_is_piletop_generic_obj(glyph) {
     const g = glyph_id(glyph);
-    return g != null && g >= GLYPH_OBJ_PILETOP_OFF
-        && g < GLYPH_OBJ_PILETOP_OFF + NUM_OBJECTS;
+    return g != null && g > GLYPH_OBJ_PILETOP_OFF
+        && g < GLYPH_OBJ_PILETOP_OFF + FIRST_OBJECT - 1;
 }
 
 /** C display.h glyph_is_generic_object `:844–846` — normal or piletop generic. */
@@ -1099,8 +1108,8 @@ export function glyph_is_object(glyph) {
 
 /**
  * C display.h glyph_to_obj `:902–913` — CORPSE / STATUE / peel obj banks.
- * Normal piletop peels PILETOP_OFF (JS glyph_is_normal_object is OBJ-bank
- * only, so the piletop arm is explicit here, same outcome as C).
+ * Pile arms first (same peel as C's generic-then-normal order: both
+ * peel PILETOP_OFF); the OBJ arm peels OBJ_OFF.
  */
 export function glyph_to_obj(glyph) {
     if (glyph_is_body(glyph)) return CORPSE_OTYP;
@@ -1900,8 +1909,18 @@ function cmap_idx_to_tty(cmap_idx) {
     case S_ROOM_CMAP:
         return dec ? { ch: '~', color: NO_COLOR, dec: true }
             : { ch: '.', color: NO_COLOR, dec: false };
-    case S_DARKROOM:
-        return { ch: '.', color: CLR_BLACK, dec: false };
+    case S_DARKROOM: {
+        // C reglyph_darkroom `:1850–1853` showsyms equate: S_darkroom
+        // renders exactly as S_room (symset-aware) when dark_room+color,
+        // else as NOTHING (blank). Recorded C paint is DEC `~` + dim
+        // (90m = NO_COLOR), same ch the S_ROOM_CMAP arm above yields;
+        // ASCII '.' + CLR_BLACK never matches it.
+        const darkRoomColor = game.flags?.dark_room !== false
+            && game.iflags?.wc_color !== false;
+        if (!darkRoomColor) return { ch: ' ', color: NO_COLOR, dec: false };
+        return dec ? { ch: '~', color: NO_COLOR, dec: true }
+            : { ch: '.', color: NO_COLOR, dec: false };
+    }
     case S_ENGROOM:
         return { ch: '`', color: CLR_BRIGHT_BLUE, dec: false };
     case S_CORR:
@@ -5807,16 +5826,23 @@ export function feel_location(x, y) {
         if ((loc.typ | 0) === ROOM
             && (!loc.waslit || darkRoomColor)) {
             // C `:896–897` writes cmap(dark_room ? S_darkroom : S_stone),
-            // not DARKROOMSYM. The tty-match paint keeps darkroom_sym()
-            // (already fortress-green). The id-only arm is the integer
-            // write C's pick_lock compare reads.
+            // not DARKROOMSYM — flag-based, NOT rogue-aware: on a rogue
+            // level with dark_room set C stores S_darkroom (floor-rendered
+            // via showsyms) and the arrival reglyph_darkroom rogue arm
+            // (display.c:1838-1840) converts it to GLYPH_NOTHING. The
+            // previous darkroom_sym() pick (S_stone on rogue) skipped that
+            // conversion and left stale floor ch (scen-worldtour 95240
+            // (50,11)). Paint (ch/color) is unchanged, so tty pixels are
+            // identical; only the stored id is C-exact now (also what C's
+            // pick_lock compare reads).
             if (remembered_matches_cmap(mem, S_ROOM_CMAP)) {
                 const dark = {
                     ch: mem.ch,
                     color: NO_COLOR,
                     decgfx: !!mem.decgfx,
                 };
-                const darkId = cmap_to_glyph(darkroom_sym());
+                const darkRoom = game.flags?.dark_room !== false;
+                const darkId = cmap_to_glyph(darkRoom ? S_darkroom : S_stone);
                 loc.remembered_glyph = { ...dark, glyph: darkId };
                 show_glyph_cell(x, y, dark.ch, dark.color, !!dark.decgfx, 0, darkId);
             } else if (memory_is_cmap(mem, S_room)) {

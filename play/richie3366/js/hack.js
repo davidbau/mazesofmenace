@@ -2246,8 +2246,12 @@ export function u_locomotion(defWord) {
     const u = game.u || {};
     const c0 = (defWord ?? '').charAt(0); // C `:1819` *def == highc(*def)
     const capitalize = c0 === c0.toUpperCase();
-    if (u.Levitation) return capitalize ? 'Float' : 'float'; // C `:1826`
-    if (u.Flying) return capitalize ? 'Fly' : 'fly'; // C `:1827`
+    // C `:1826–1827` read the youprop.h macros; the combined u.Levitation /
+    // u.Flying flats are never written port-wide, so read the file-local
+    // slot unions (flats OR uprops H/E, either blocked source — the
+    // hack.js:994 / D-3809 shape), keeping the flat ORs.
+    if (u.Levitation || Levitation_st()) return capitalize ? 'Float' : 'float';
+    if (u.Flying || Flying_st()) return capitalize ? 'Fly' : 'fly';
     return locomotion(game.youmonst?.data, defWord); // C `:1828`
 }
 

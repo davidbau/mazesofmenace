@@ -3849,11 +3849,13 @@ async function travel_test_move(ux, uy, dx, dy) {
 
 /**
  * C ref: hack.c test_move DO_MOVE + flags.mention_walls on IS_OBSTRUCTED.
- * Uses defsyms[].explanation via an(); S_stone → "solid stone".
+ * Prose via live back_to_glyph + glyph_to_cmap + S_stone check
+ * (:1056–1070, incl. wall_angle seenv/wall_info modes — a mode-1/mode-2
+ * wall seen from an excluded angle reads "solid stone", not "a wall").
  * C: pline_dir(xytodir(dx,dy), "It's %s.", buf) (D-1216).
  * Deferred: Blind feel_location, Passes_walls/may_passwall on rock,
  * Underwater, tunnels/still_chewing rock, autodig, is_db_wall, Sokoban
- * resist, full back_to_glyph/wall_angle→S_stone edge cases.
+ * resist.
  * IRONBARS pass/chew is D-1270 (blocksMove / still_chewing, not here).
  * run>=2 boulder pline_dir is D-1226 (test_move, not this bump).
  * OOB / testdiag doorway / run-into-trap-or-liquid mention_walls is D-1800.
@@ -3866,16 +3868,20 @@ async function mention_walls_obstructed(x, y) {
         await pline('You cannot pass through the bars.');
         return;
     }
+    // C hack.c test_move :1056–1070 — the prose comes from back_to_glyph
+    // (wall_angle's seenv/wall_info modes), not from typ+seenv alone: a
+    // mode-1/mode-2 wall seen from an excluded angle reads S_stone
+    // (95400@1274: VWALL seenv=SV2|SV3 mode-2 → "solid stone", C-measured
+    // glyph=3929 sym=0). Same shape as js/hack.js test_move :1056–1070.
+    const glyph = back_to_glyph(x, y);
+    const sym = glyph_is_cmap(glyph) ? glyph_to_cmap(glyph) : -1;
     let buf;
-    // C: glyph = back_to_glyph; sym==S_stone → "solid stone"; else an(explanation)
-    if (loc.typ === TREE || (IS_TREE(loc.typ) && loc.typ !== STONE)) {
-        buf = an('tree');
-    } else if ((IS_WALL(loc.typ) || loc.typ === SDOOR) && loc.seenv) {
-        buf = an('wall');
-    } else {
-        // STONE / SCORR / unseen wall (wall_angle→S_stone) / other rock
+    if (sym === S_stone) // C :1062–1063
         buf = 'solid stone';
-    }
+    else if (sym >= 0) // C :1064–1065 an(defsyms[sym].explanation)
+        buf = an(defsym_explanation(sym));
+    else // C :1066–1068
+        buf = `impossible [background glyph=${glyph}]`;
     const u = game.u || {};
     const dx = ((x | 0) - (u.ux | 0)) | 0;
     const dy = ((y | 0) - (u.uy | 0)) | 0;

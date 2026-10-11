@@ -765,11 +765,16 @@ export async function getbones() {
         game.level = game._leave_gbuf_level;
         game.fmon = leaveFmon;
         // D-0852: goto_level already ran vision_off_newsym_gbuf for RNG;
-        // only re-newsym when leave path skipped that burn.
+        // only re-newsym when leave path skipped that burn. The newsym
+        // pass stays (leave memory/disp must match C's shutdown), but
+        // the Terminal paint moved to the wizard yn arms below: C
+        // flushes gbuf only at the prompts; the silent non-wizard
+        // load/discard flushes nothing (public ten-diverse-deaths seg9
+        // descent showed the shutdown-yellow branch stair where C
+        // shows default).
         if (!game._leave_viz_burned) {
             vision_off_newsym_gbuf();
         }
-        paint_gbuf_level_to_terminal(game._leave_gbuf_level);
         game.level = savedLevel;
         game.fmon = savedFmon;
     }
@@ -791,6 +796,12 @@ export async function getbones() {
         } else {
             ok = 1;
             if (wizard) {
+                // C: this prompt's flush_screen paints the shutdown gbuf
+                // (D-0583 @198); the silent paths above paint nothing.
+                // Guard: game-start getbones has no leave level.
+                if (game._leave_gbuf_level) {
+                    paint_gbuf_level_to_terminal(game._leave_gbuf_level);
+                }
                 if ((await yn_function('Get bones?', 'yn', 'n')) === 'n') {
                     compress_bonesfile(); // C `:673` (close above named: no handle)
                     ps.reading_bonesfile = 0;

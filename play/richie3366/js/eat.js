@@ -35,7 +35,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
-    pline, You_feel, newsym, see_monsters, more,
+    pline, You_feel, pline_The, newsym, see_monsters, more,
     canspotmon, canseemon, bot, Hallucination, verbalize, impossible,
     curs_on_u,
 } from './display.js';
@@ -99,7 +99,7 @@ import {
     ACID_RES, STONE_RES, TELEPAT, TELEPORT, TELEPORT_CONTROL, LAST_PROP,
     SEE_INVIS, INVIS, PROT_FROM_SHAPE_CHANGERS, LEVITATION, SLEEPY,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, DISMOUNT_FELL,
-    WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
+    WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel, Is_airlevel,
     Is_astralevel, EXPL_FIERY,
     CHOKING, STARVING, STARVED, A_LAWFUL, STRANGLED, PARANOID_EATING,
     POISONING, LL_CONDUCT,
@@ -2429,8 +2429,9 @@ export function Hear_again() {
  * @returns {number} 1 if fainted (dont_start), else 0
  */
 async function rottenfood(obj) {
-    // C `:1815–1816` — Rotten when rottable else Awful; foodword poly deferred
-    await pline('Blecch!  %s food!', is_rottable(obj) ? 'Rotten' : 'Awful');
+    // C `:1815–1816` — Rotten when rottable else Awful; foodword(obj) live
+    // (D-3293 deferral lifted: C passes foodword(obj) in this pline)
+    await pline('Blecch!  %s %s!', is_rottable(obj) ? 'Rotten' : 'Awful', foodword(obj));
     if (!rn2(4)) {
         const u = game.u || {};
         if (u.Hallucination || u.HHallucination) {
@@ -2446,9 +2447,24 @@ async function rottenfood(obj) {
         await make_blinded(BlindedTimeout() + d(2, 10), false);
         if (!Blind()) await pline('Your vision quickly clears.');
     } else if (!rn2(3)) {
+        // C `:1834–1841` — what/where triple: sighted / airborne / slap-ground
         const duration = rnd(10);
-        await pline('The world spins and goes dark.');
-        // C: incr_itimeout(&HDeaf, duration); nomul(-duration); afternmv=Hear_again
+        const u0 = game.u || {};
+        // C youprop.h Levitation — (H||E) && !B over split storage (:576 shape)
+        const HLev = (u0.HLevitation | 0) || (u0.uprops?.[LEVITATION]?.intrinsic | 0);
+        const ELev = (u0.ELevitation | 0) || (u0.uprops?.[LEVITATION]?.extrinsic | 0);
+        const BLev = (u0.BLevitation | 0) || (u0.uprops?.[LEVITATION]?.blocked | 0);
+        let what, where;
+        if (!Blind()) {
+            what = 'goes'; where = 'dark';
+        } else if (((HLev || ELev) && !BLev) || Is_airlevel(u0.uz) || Is_waterlevel(u0.uz)) {
+            what = 'you lose control of'; where = 'yourself';
+        } else {
+            what = 'you slap against the';
+            where = u0.usteed ? 'saddle' : surface(u0.ux | 0, u0.uy | 0);
+        }
+        await pline_The('world spins and %s %s.', what, where);
+        // C: incr_itimeout(&HDeaf, duration); disp.botl; nomul(-duration); afternmv=Hear_again
         const u = game.u || (game.u = {});
         u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | (((u.HDeaf | 0) & TIMEOUT) + duration);
         if (!u.uprops) u.uprops = {};
@@ -2456,6 +2472,9 @@ async function rottenfood(obj) {
             u.uprops[DEAF] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
         }
         u.uprops[DEAF].intrinsic = u.HDeaf | 0;
+        // C `:1843` — disp.botl = TRUE (status redraw after the faint)
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
         nomul(-duration);
         game.multi_reason = 'unconscious from rotten food';
         game.nomovemsg = 'You are conscious again.';

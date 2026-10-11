@@ -67,7 +67,7 @@ import {
     flush_screen, flush_topl_more, newsym, glyph_to_cmap, map_background, map_object,
     assign_graphics, check_gold_symbol,
     You_feel, canseemon, canspotmon, impossible, describe_level,
-    see_monsters,
+    see_monsters, reglyph_darkroom,
 } from './display.js';
 import { yn_function, paranoid_ynq, y_n } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
@@ -1799,18 +1799,25 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     } else {
         game._leave_viz_snapshot = null;
     }
-    // C vision_recalc(2) burns Hallu display_warning on prior sight while
-    // !cansee before level tear-down (D-0852). JS skips that loop inside
-    // vision_recalc(2) (D-0583). Hallu-only: non-Hallu !cansee newsym
-    // memory/waslit incompleteness regresses PASS cohort (#992).
+    // C do.c:1631 goto_level runs vision_recalc(2)'s full update loop on
+    // departure (not_in_sight arm, vision.c:820-836): old IN_SIGHT||COULD_SEE
+    // cells newsym with viz swapped to empty (!cansee) BEFORE savelev, so
+    // the rogue S_room→S_stone (display.c:1082-1084), litcorr→corr and
+    // S_room→DARKROOMSYM memory rewrites persist in the level file
+    // (scen-worldtour 95240/95218: revisits showed remembered floor where C
+    // shows stone). JS skips that loop inside vision_recalc(2) (D-0583;
+    // the #992 getpos/unflushed-tty narrowing stands for non-departure
+    // shutdowns) — run the C-cited helper here instead, like the D-0852
+    // Hallu path did. Paints land on the leave level and stay invisible:
+    // arrival docrt repaints everything; the bones yn re-flush is D-0583's
+    // paint_gbuf_level_to_terminal (the helper is idempotent there).
     {
-        const u = game.u || {};
-        if (u.Hallucination
-            || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))) {
-            const { vision_off_newsym_gbuf } = await import('./vision.js');
-            vision_off_newsym_gbuf({ useLiveViz: true });
-            game._leave_viz_burned = true;
-        }
+        // No Hallu gate: C vision.c:820-836 runs the loop for every
+        // departure (D-0852's gate was the under-port, not a narrowing —
+        // the #992 narrowing stands for non-departure shutdowns only).
+        const { vision_off_newsym_gbuf } = await import('./vision.js');
+        vision_off_newsym_gbuf({ useLiveViz: true });
+        game._leave_viz_burned = true;
     }
     vision_recalc(2);
 
@@ -2085,6 +2092,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             || game.level?.flags?.sokoban);
         close_nhfile(nhfp); // C do.c:1712 — after getlev (`:1713` oinit has no counterpart on this path — pre-existing)
     }
+
+    // C do.c:1715 — reglyph_darkroom() after the getlev/mklev join (fresh
+    // and restored levels alike), before set_uinwater/vision_reset, while
+    // viz is still the stale leave-level array C's !cansee arms read.
+    // The rogue arm (S_darkroom + !waslit → GLYPH_NOTHING) blanks unlit
+    // room memory the departure shutdown felt (scen-worldtour 95240
+    // (50,11), 95218 (16,15)); restgamestate `:926` stays a named omit
+    // (save.js).
+    reglyph_darkroom();
 
     await set_uinwater(0); /* C do.c:1716 — after getlev/mklev, before vision_reset */
     vision_reset();

@@ -21,7 +21,7 @@ import {
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG, DISMOUNT_ENGULFED,
     something, Something, u_at, ERODE_RUST, ERODE_CORRODE,
     SICK_ALL, SICK_NONVOMITABLE, SICK_RES, AD_CURS, ERODE_ROT, SLIMED, TT_WEB, OBJ_FREE,
-    OBJ_FLOOR,
+    OBJ_FLOOR, FLYING,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -703,13 +703,16 @@ export function Levitation() {
         && !(u.BLevitation | 0));
 }
 
-/** C ref: youprop.h Flying — (H||E||steed flyer) && !B; Lev overrides elsewhere. */
+/** C ref: youprop.h Flying `:253–256` — (HFlying||EFlying||steed is_flyer) && !BFlying, all ≡ uprops[FLYING] (prop.h:71). confer_oc_oprop writes worn AMULET_OF_FLYING extrinsic to the slot and never mirrors EFlying, while float_vs_flight writes the BFlying flat — so read the D-1085 union (flats OR slot H/E, either blocked source), the display.js _statusLine2 arm shape; Lev overrides elsewhere. */
 export function Flying() {
     const u = game.u || {};
     if (u.Flying) return true;
+    const prop = u.uprops?.[FLYING];
     const steedFly = !!(u.usteed && is_flyer(u.usteed.data));
-    return !!(((u.HFlying | 0) || (u.EFlying | 0) || steedFly)
-        && !(u.BFlying | 0));
+    return !!((((u.HFlying | 0) || (u.EFlying | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0))
+        || steedFly)
+        && !((u.BFlying | 0) || (prop?.blocked | 0)));
 }
 
 /**

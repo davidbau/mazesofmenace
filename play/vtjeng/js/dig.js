@@ -238,6 +238,7 @@ import {
 } from './objnam.js';
 import { altar_wrath, altarmask_at } from './pray.js';
 import { note_unported } from './unported.js';
+import { angry_priest } from './priest.js';
 import { heroIsBlind } from './startup_a11y.js';
 import { mk_tt_object } from './mkroom.js';
 import { mkclass } from './makemon.js';
@@ -604,7 +605,7 @@ export async function dig(state = game, rawEnv = {}) {
 
         if (IS_ALTAR(location.typ, state)) {
             await altar_wrath(x, y, state);
-            note_unported('pray.c angry_priest');
+            await angry_priest(state, rawEnv);
         }
         if (await dighole(true, false, null, {
             ...rawEnv, state, message, random,
@@ -1450,7 +1451,8 @@ export async function digactualhole(
     } else if (atHero) {
         await switch_terrain(state, rawEnv);
         if (Levitation(state) || Flying(state)) wontFall = true;
-        if (!state.u.ustuck && !wontFall && !next_to_u(state)) {
+        if (!state.u.ustuck && !wontFall
+            && !(await next_to_u(state, rawEnv))) {
             await message('You are jerked back by your pet!', state, rawEnv);
             wontFall = true;
         }

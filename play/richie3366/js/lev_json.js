@@ -166,7 +166,15 @@ export function serMon(mtmp) {
         if (v != null && typeof v === 'object') {
             if (k === 'mextra') {
                 try {
-                    out[k] = JSON.parse(JSON.stringify(v, (_key, val) => {
+                    out[k] = JSON.parse(JSON.stringify(v, (key, val) => {
+                        // C save.c:871–875 — the ebones death record is a
+                        // plain data blob (struct ebones, mextra.h:189:
+                        // role/race/oldalign/deathlevel/luck/mnum/female/
+                        // demigod/crowned); its Role_switch `mnum` must not
+                        // trip the live-monst filter below (C restores it
+                        // at restore.c:362–366; JS restmon already does at
+                        // restore.js:228–232).
+                        if (key === 'ebones') return val;
                         if (val && typeof val === 'object'
                             && (val.mnum != null || val.mx != null)) {
                             return undefined;

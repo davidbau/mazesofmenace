@@ -564,8 +564,9 @@ const AD_WRAP = 28;
 /**
  * C ref: mondata.c sticks — AD_STCK, non-engulf AD_WRAP, or AT_HUGS.
  * Short-circuit matches C: STCK || (WRAP && !ENGL) || HUGS.
- * Exported for sit.js dosit lap (D-1072). Do not import monmove.js
- * sticks (AT_HUGS commented as 6, AT_ENGL as 7).
+ * Exported for sit.js dosit lap (D-1072). Canonical site: monmove.js
+ * re-exports this binding (its wrong-const twin removed); mhitm, insight,
+ * end, trap, dog import it from here.
  */
 export function sticks(ptr) {
     return !!(dmgtype(ptr, AD_STCK)

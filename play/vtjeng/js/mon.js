@@ -123,6 +123,7 @@ import {
     NATTK,
     NEUTRAL,
     NOGARLIC,
+    NO_MM_FLAGS,
     NORMAL_SPEED,
     NOTONL,
     OBJ_FLOOR,
@@ -220,9 +221,9 @@ import {
     surface,
 } from './dungeon.js';
 import { del_engr_at, sengr_at } from './engrave.js';
-import { p_coaligned } from './priest.js';
+import { ghod_hitsu, p_coaligned } from './priest.js';
 import { record_achievement } from './insight.js';
-import { quest_info } from './questpgr.js';
+import { quest_info, stinky_nemesis } from './questpgr.js';
 import { in_rooms } from './rooms.js';
 import { adjalign, ALIGNLIM } from './attrib.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
@@ -876,6 +877,19 @@ export function get_iter_mons(bfunc, state = game) {
         next = mtmp.nmon;
         if (mtmp.mhp < 1 /* DEADMONSTER() */ || mon_offmap(mtmp)) continue;
         if (bfunc(mtmp)) return mtmp;
+    }
+    return null;
+}
+
+// Async counterpart for C mon.c get_iter_mons() callers whose callbacks await
+// source operations. Cache nmon before awaiting so callback mutations preserve
+// the same next monster and first-match short circuit as the C loop.
+export async function get_iter_mons_async(bfunc, state = game) {
+    let next = null;
+    for (let mtmp = state.level?.monlist ?? null; mtmp; mtmp = next) {
+        next = mtmp.nmon;
+        if (mtmp.mhp < 1 /* DEADMONSTER() */ || mon_offmap(mtmp)) continue;
+        if (await bfunc(mtmp)) return mtmp;
     }
     return null;
 }
@@ -3954,7 +3968,7 @@ export async function wakeup(monster, via_attack, rawEnv = {}) {
         if (was_peaceful) {
             if (monster.ispriest
                 && in_rooms(monster.mx, monster.my, TEMPLE, state).length)
-                note_unported('priest.c ghod_hitsu');
+                await ghod_hitsu(monster, { ...rawEnv, state });
             if (monster.isshk && !state.u.ushops?.[0])
                 note_unported('shk.c hot_pursuit');
         }
@@ -4318,9 +4332,8 @@ export async function mcalcdistress(state = game, env = {}) {
 // xkilled() -> mondead() -> m_detach() -> mon_leaving_level(), leaving a
 // corpse, perhaps an object, and the experience and alignment it was worth.
 //
-// mon.c mongone() now uses these same removal functions when a monster
-// disappears. Its guard case remains blocked on vault.c grddead(); the
-// ordinary case preserves C's inventory-discard then detach order.
+// mon.c mongone() uses these same removal functions when a monster disappears.
+// The vault-guard arm waits for vault.c:grddead() before continuing removal.
 // ---------------------------------------------------------------------------
 
 function requiredKillOperation(env, name) {
@@ -4719,11 +4732,11 @@ export function mnearto(
 // of mtmp from other data structures". `mptr` is mtmp->data as it stood before
 // the death, which mondead() saves before restoring a chameleon's true form.
 //
-// The still-unported branches stop under their source conditions:
+// The remaining unported branches stop under their source conditions:
 //
 //   2741-2742  m_unleash(), for a leashed pet.
 //   2761-2762  wizdeadorgone(), for the Wizard of Yendor.
-//   2768-2776  nemdead(), nemesis_stinks() and leaddead(), the quest arms.
+//   2774-2775  leaddead(), for a dying quest leader.
 //   2800-2801  asynchronous DISMOUNT_GENERIC release when the departing
 //              monster was the hero's steed.
 // thiefdead(), shkgone(), wormgone(), MON_ENDGAME_FREE, and the detach flag
@@ -4744,6 +4757,7 @@ export function m_detach(
 ) {
     const unsupported = requiredKillOperation(env, 'unsupported');
     const mx = mtmp.mx;
+    const my = mtmp.my;
 
     if (mtmp.mleashed) m_unleash(mtmp, false, { ...env, state });
 
@@ -4811,14 +4825,32 @@ export function m_detach(
 
     const finishAfterLeaving = () => {
         if (due_to_death) {
-            if (mtmp.data.msound === MS_NEMESIS)
-                unsupported("the quest nemesis's death");
-            if (mtmp.data.msound === MS_LEADER)
-                unsupported("the quest leader's death");
-            /* "release (drop onto map) all objects carried by mtmp; assumes that
-               mtmp->mx,my contains the appropriate location" */
-            return relobj(mtmp, 1, false, { ...env, state })
-                .then(finishDetach);
+            const finishDeathEffects = async () => {
+                if (mtmp.data.msound === MS_NEMESIS) {
+                    // mon.c:2769-2773. nemdead() displays and records the
+                    // role's quest message before stinky_nemesis() reads its
+                    // unconverted text; only then can a cloud be created.
+                    const { nemdead, nemesis_stinks } = await import('./quest.js');
+                    const random = env.random ?? { d, rn1, rn2, rnd, rne, rnl, rnz };
+                    await nemdead(state, {
+                        random,
+                        output: env.output,
+                    });
+                    if (await stinky_nemesis(mtmp, state, random.rn2)) {
+                        await nemesis_stinks(mx, my, state, {
+                            ...env,
+                            random,
+                        });
+                    }
+                }
+                if (mtmp.data.msound === MS_LEADER)
+                    unsupported("the quest leader's death");
+                /* "release (drop onto map) all objects carried by mtmp; assumes that
+                   mtmp->mx,my contains the appropriate location" */
+                await relobj(mtmp, 1, false, { ...env, state });
+                return finishDetach();
+            };
+            return finishDeathEffects();
         }
         return finishDetach();
     };
@@ -4837,9 +4869,9 @@ function monsterOnLevelChain(monster, state) {
     return false;
 }
 
-// C ref: mon.c mongone() (3267-3286). The common temporary-monster path is
-// source-wired here; grddead() remains an explicit blocker for a live vault
-// guard because its return determines whether C stops or detaches the guard.
+// C ref: mon.c mongone() (3267-3283). The vault guard must remain on the
+// monster chain until grddead() has removed its temporary corridor. Keep the
+// ordinary path synchronous; only the guard-specific corridor work is async.
 export function mongone(monster, env = {}) {
     const state = env.state ?? game;
     if (!monster || typeof monster !== 'object')
@@ -4850,10 +4882,6 @@ export function mongone(monster, env = {}) {
         throw new Error('mongone: monster is already detached');
 
     monster.mhp = 0;
-    if (monster.isgd) {
-        note_unported('vault.c grddead');
-        throw new Error('mongone: vault.c grddead is not ported');
-    }
 
     // mon.c mongone() releases a holder before object handling; m_detach()
     // repeats this call after inventory disposal, where it is then a no-op.
@@ -4873,8 +4901,6 @@ export function mongone(monster, env = {}) {
                 note_unported('mon.c seemimic');
             else if (branch === "the Wizard of Yendor's death")
                 note_unported('end.c wizdeadorgone');
-            else if (branch === 'the quest nemesis\'s death')
-                note_unported('quest.c nemdead');
             else if (branch === 'the quest leader\'s death')
                 note_unported('questpgr.c leaddead');
             else
@@ -4888,10 +4914,22 @@ export function mongone(monster, env = {}) {
             unsupported,
         });
     };
-    const release = unstuck(monster, state, env);
-    return release && typeof release.then === 'function'
-        ? release.then(finishRemoval)
-        : finishRemoval();
+    const releaseAndFinish = () => {
+        const release = unstuck(monster, state, env);
+        return release && typeof release.then === 'function'
+            ? release.then(finishRemoval)
+            : finishRemoval();
+    };
+    if (!monster.isgd) return releaseAndFinish();
+
+    // C mon.c:3273 uses grddead's return value to decide whether it may
+    // release inventory and detach the guard. vault.js already imports this
+    // module for the reverse direction, so resolve it only on this rare arm.
+    return import('./vault.js').then(({ grddead }) =>
+        grddead(monster, state, env)).then((dispose) => {
+        if (!dispose) return;
+        return releaseAndFinish();
+    });
 }
 
 // C ref: mon.c mlifesaver() (2825-2836). "find the worn amulet of life saving
@@ -5126,18 +5164,16 @@ export async function anger_quest_guardians(mtmp, state = game, env = {}) {
 // species-gated, the rn2(10) at 3104 to a steam vortex and the rnd(5) at 3149
 // to a Keystone Kop.
 //
-// Five arms stop:
+// Source effects before detach:
 //
 //   3096-3097  vamprises(), when a shape-shifted vampire reverts rather than
 //              dying. The guard is is_vampshifter() alone, which is the outer
 //              half of C's `&&` and so the condition for reaching vamprises().
-//   3100-3101  the sad feeling for a lost pet. monkilled() below is the flag's
-//              only writer here, so this fires for a pet that dies out of
-//              sight; the reader clears it either way, as C does.
+//   3100-3101  print the sad-pet message when monkilled() set the flag.
 //   3103-3104  create_gas_cloud(), the steam vortex's parting cloud.
-//   3108-3109  grddead(), which parks a dead vault guard at <0,0>.
-//   3147-3166  the Kop resurrection, whose rnd(5) needs makemon() at a
-//              staircase and again at a random spot.
+//   3108-3109  grddead(), which may park a dead vault guard at <0,0>.
+//   3147-3166  the Kop resurrection, whose rnd(5) controls makemon() at a
+//              staircase or random spot.
 //   3170-3171  unmap_object(), for a monster on a remembered invisible glyph.
 //              The JavaScript planning clone owns its level map-memory cells,
 //              so this source write runs in both planning and live passes;
@@ -5146,7 +5182,8 @@ export async function anger_quest_guardians(mtmp, state = game, env = {}) {
 // gd.disintegested and gv.vamp_rise_msg, which xkilled() sets around this
 // call, are read by vamprises() and by the life-saved return at 3558.
 export async function mondead(mtmp, state = game, env = {}) {
-    const unsupported = requiredKillOperation(env, 'unsupported');
+    const random = env.random ?? { d, rn1, rn2, rnd, rne, rnl, rnz };
+    const message = env.message ?? ttyPline;
 
     /* "potential pet message; always clear global flag" */
     const be_sad = state.iflags?.sad_feeling;
@@ -5160,15 +5197,26 @@ export async function mondead(mtmp, state = game, env = {}) {
     /* "vampire in bat/fog/wolf form reverts to vampire instead of dying" */
     if (is_vampshifter(mtmp) && await vamprises(mtmp, state, env)) return;
 
-    if (be_sad) unsupported('the sad feeling for a lost pet');
+    if (be_sad)
+        await message('You have a sad feeling for a moment, then it passes.',
+                      state, env);
 
     if (mtmp.data === state.mons[PM_STEAM_VORTEX])
-        unsupported("a steam vortex's parting gas cloud");
+        await (await import('./region.js')).create_gas_cloud(
+            mtmp.mx,
+            mtmp.my,
+            random.rn2(10) + 5,
+            0,
+            { ...env, state, random, message },
+        );
 
     /* "dead vault guard is actually kept at coordinate <0,0> until his
        temporary corridor to/from the vault has been removed; need to do this
        after life-saving and before m_detach()" */
-    if (mtmp.isgd) unsupported("a vault guard's death");
+    if (mtmp.isgd) {
+        const { grddead } = await import('./vault.js');
+        if (!await grddead(mtmp, state, env)) return;
+    }
 
     const mptr = mtmp.data; /* "save this for m_detach()" */
     /* "restore chameleon, lycanthropes to true form at death" */
@@ -5202,7 +5250,36 @@ export async function mondead(mtmp, state = game, env = {}) {
     if (mndx === PM_MAIL_DAEMON)
         state.svm.mvitals[mndx].mvflags |= G_GENOD;
 
-    if (mtmp.data.mlet === S_KOP) unsupported('a Keystone Kop coming back');
+    if (mtmp.data.mlet === S_KOP) {
+        const { stairway_find_type_dir } = await import('./stairs.js');
+        const stway = stairway_find_type_dir(false, false, state);
+        switch (random.rnd(5)) {
+        case 1: /* Dead Kops may return near the stairs. */
+            if (stway) {
+                const makeMonster = env.makemon ?? makemon_runtime;
+                await makeMonster(mtmp.data, stway.sx, stway.sy, NO_MM_FLAGS, {
+                    ...env,
+                    state,
+                    random,
+                    message,
+                });
+                break;
+            }
+            /* C falls through when there is no down staircase. */
+        case 2: {
+            const makeMonster = env.makemon ?? makemon_runtime;
+            await makeMonster(mtmp.data, 0, 0, NO_MM_FLAGS, {
+                ...env,
+                state,
+                random,
+                message,
+            });
+            break;
+        }
+        default:
+            break;
+        }
+    }
 
     /* "achievement and/or livelog" */
     logdeadmon(mtmp, mndx, state, env);

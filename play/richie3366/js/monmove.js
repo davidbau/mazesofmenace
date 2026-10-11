@@ -14,7 +14,7 @@ import {
     resists_ston, is_rider, dmgtype,
 } from './monsters.js';
 import { gettrack } from './track.js';
-import { wipe_engr_at } from './engrave.js';
+import { wipe_engr_at, sticks } from './engrave.js';
 import { objects_at, obj_extract_self, splitobj, delobj, eaten_stat, is_organic, is_mines_prize, is_soko_prize, g_at, place_object, stackobj, sobj_at } from './mkobj.js';
 import { find_defensive, use_defensive, find_misc, use_misc, find_offensive, searches_for_item } from './muse.js';
 import { hero_conflict, resist_conflict, m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type } from './mondata.js';
@@ -1993,22 +1993,15 @@ function m_balks_at_approaching(oldappr, mtmp, pdist) {
 }
 
 /**
- * C ref: mondata.c sticks — AD_STCK, non-engulf AD_WRAP, or AT_HUGS.
+ * C ref: mondata.c sticks `:653–659` — AD_STCK, non-engulf AD_WRAP, or
+ * AT_HUGS (monattk.h: AT_HUGS=7, AT_ENGL=11). Re-export of the canonical
+ * engrave.js sticks: the former monmove-local twin tested hugs as 6
+ * (AT_STNG) and engl as 7 (AT_HUGS), so hug-form heroes read non-sticky
+ * and release_hero printed "You get released!" where C stays silent.
+ * Internal users (itsstuck, release_hero) + zap.js release_hold import
+ * this name; the binding is engrave's.
  */
-export function sticks(ptr) {
-    const atks = ptr?.mattk || [];
-    let hasWrap = false;
-    let hasEngl = false;
-    for (const a of atks) {
-        const ad = a?.adtyp | 0;
-        const aa = a?.aatyp | 0;
-        if (ad === 19 /* AD_STCK */) return true;
-        if (aa === 6 /* AT_HUGS */) return true;
-        if (ad === 28 /* AD_WRAP */) hasWrap = true;
-        if (aa === 7 /* AT_ENGL */) hasEngl = true;
-    }
-    return hasWrap && !hasEngl;
-}
+export { sticks };
 
 /**
  * C ref: monmove.c itsstuck — stuck grabber cannot walk away.

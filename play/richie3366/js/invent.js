@@ -6754,15 +6754,11 @@ export async function enlightenment(mode, final = 0) {
             || (u.uprops?.[INVULNERABLE]?.extrinsic | 0))) {
             lines.push(you_are('invulnerable', from_what(INVULNERABLE)));
         }
-        // C attributes_enlightenment: Antimagic early among resistances
-        // Cloak MR via setworn oc_oprop still deferred.
-        const { ANTIMAGIC } = await import('./const.js');
-        const { objectNames: onames } = await import('./objects.js');
-        const CLOAK_MR = onames.indexOf('CLOAK_OF_MAGIC_RESISTANCE');
-        const antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic
-            || u.uprops?.[ANTIMAGIC]?.intrinsic
-            || u.uprops?.[ANTIMAGIC]?.extrinsic
-            || (u.uarmc && u.uarmc.otyp === CLOAK_MR));
+        // C insight.c:1523-1524 — Antimagic early among resistances;
+        // youprop.h:55-57 reads uprops[ANTIMAGIC] H||E bits only (C never
+        // reads the worn gear live; the gamestate save/restore clobber is
+        // permanent — D-3790). In-file hero_Antimagic mirror, no worn arm.
+        const antimagic = hero_Antimagic(u);
         if (antimagic) lines.push(you_are('magic-protected', from_what(ANTIMAGIC)));
         // C insight.c:1525-1527 — Fire + item-fire before Cold.
         if (hero_Fire_resistance(u)) {
@@ -8497,7 +8493,7 @@ export async function doattributes(enl_mode = null) {
             lines.push(o(enlght_line_txt('You ', 'are ', werebuf, '')));
         }
         // C insight.c:1892-1893 — Unchanging while poly (!Upolyd handled
-        // above), after were-form, before Fast.
+        // above), after were-form, before Hate_silver.
         {
             const { Unchanging: isUnchangingPoly } = await import('./polyself.js');
             if (isUnchangingPoly(u) && Upolyd(u)) {
@@ -8506,6 +8502,13 @@ export async function doattributes(enl_mode = null) {
                     from_what(UNCHANGING),
                 )));
             }
+        }
+        // C insight.c:1894-1895 — Hate_silver after the shape-change arms
+        // (youprop.h:401: ulycn >= LOW_PM || hates_silver(youmonst.data);
+        // the final≠0 builder `:7392–7397` shape).
+        if (ismnum((u.ulycn ?? NON_PM) | 0)
+            || hates_silver(game.youmonst?.data)) {
+            lines.push(o(enlght_line_txt('You ', 'are ', 'harmed by silver', '')));
         }
         if (Fast()) {
             const fastAttr = Very_fast() ? 'very fast' : 'fast';
@@ -8675,6 +8678,12 @@ export async function doattributes(enl_mode = null) {
     for (let i = 0; i < lines.length; i++) lines[i] = end_menu_cut_str(lines[i], 79);
     const cItems = lines.map((t) => (t.startsWith(' ') ? t.slice(1) : t));
     const { offx } = nhw_menu_geometry(cItems, '(end) ');
+    // C win/tty/wintty.c tty_display_nhwindow NHW_MENU `:1921–1922` — flush
+    // a pending topline --More-- before painting any menu (the
+    // select_menu_pick_none `:3271` / corner-painter `:3040` shape; this
+    // inline painter lacked it, so an invoke-enlightenment covered the
+    // queued low-HP wail instead of paging it first).
+    await flush_topl_more();
     const waitMenuKey = async () => {
         for (;;) {
             const c = await nhgetch();
