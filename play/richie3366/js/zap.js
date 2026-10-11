@@ -423,10 +423,6 @@ const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
 const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const SPE_SLEEP = objectNames.indexOf('SPE_SLEEP');
-const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
-const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
-const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
-const SILVER_DRAGON_SCALE_MAIL = objectNames.indexOf('SILVER_DRAGON_SCALE_MAIL');
 const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
 const SPE_DIG = objectNames.indexOf('SPE_DIG');
 const WAN_DEATH = objectNames.indexOf('WAN_DEATH');
@@ -504,7 +500,6 @@ const RIN_INCREASE_DAMAGE = objectNames.indexOf('RIN_INCREASE_DAMAGE');
 const RIN_PROTECTION = objectNames.indexOf('RIN_PROTECTION');
 const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
 const HELM_OF_BRILLIANCE = objectNames.indexOf('HELM_OF_BRILLIANCE');
-const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const PM_CLAY_GOLEM = monsterNames.indexOf('PM_CLAY_GOLEM');
 const PM_KNIGHT = monsterNames.indexOf('PM_KNIGHT');
 const PM_HEALER = monsterNames.indexOf('PM_HEALER');
@@ -692,22 +687,21 @@ function Half_spell_damage() {
  */
 
 /**
- * C ref: youprop.h Reflecting — HReflecting || EReflecting
- * (uprops[REFLECTING] + W_WEP flat). Worn otyp / silver-dragon form
- * stand in while confer_oc_oprop does not mirror EReflecting (D-1353).
+ * C ref: include/youprop.h:379–381 (`#define Reflecting (HReflecting ||
+ * EReflecting)` ≡ uprops[REFLECTING].intrinsic/extrinsic, nothing else).
+ * Worn amulet/shield/silver-dragon-mail confer via worn.c setworn's generic
+ * oc_oprop extrinsic (all three are oc_oprop REFLECTING, objects.h:507/534/
+ * 678) mirrored by do_wear.js confer_oc_oprop; silver-dragon form via
+ * polyself.c:106 PROPSET mirrored by polyself.js propset_fromform (which
+ * also writes the u.HReflecting flat). The retired worn-otyp / polyform /
+ * flat stand-ins (D-1353) misread the nhlua.c nhl_gamestate restore, whose
+ * save side runs setnotworn() over the inventory before memcpy'ing `u` and
+ * whose restore side re-wears before memcpy'ing the stored (extrinsic-0)
+ * `u` back over it: worn amulet, EReflecting 0 (D-3841).
  */
 export function Reflecting() {
-    const u = game.u || {};
-    if (u.HReflecting || u.EReflecting || u.Reflecting) return true;
-    const e = u.uprops?.[REFLECTING];
-    if ((e?.intrinsic | 0) || (e?.extrinsic | 0)) return true;
-    if (u.uarms?.otyp === SHIELD_OF_REFLECTION) return true;
-    if (u.uamul?.otyp === AMULET_OF_REFLECTION) return true;
-    const arm = u.uarm?.otyp | 0;
-    if (arm === SILVER_DRAGON_SCALES || arm === SILVER_DRAGON_SCALE_MAIL) {
-        return true;
-    }
-    return (game.youmonst?.data?.mndx | 0) === PM_SILVER_DRAGON;
+    const e = (game.u || {}).uprops?.[REFLECTING];
+    return !!((e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /**

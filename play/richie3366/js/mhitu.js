@@ -3213,6 +3213,10 @@ async function hitmu(mtmp, mattk) {
     }
 
     await mhitm_adtyping_u(mtmp, mattk, mhm);
+    // C mhitu.c:1191–1193 — done() is NORETURN (extern.h:997): a fatal
+    // adtyping never reaches knockback (D-3732/D-3746 gameover-gate idiom;
+    // lifesave / wizard Die?-decline falls through: gameover stays false).
+    if (game.program_state?.gameover) return mhm.hitflags;
     // C ref: mhitu.c hitmu — knockback(mtmp, &youmonst, mattk, &hitflags, MON_WEP!=0)
     await mhitm_knockback(mtmp, game.youmonst, mattk, mhm, MON_WEP(mtmp) != null);
 

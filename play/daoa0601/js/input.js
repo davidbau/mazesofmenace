@@ -1,41 +1,122 @@
-// input.js — Keystroke input handling.
-// Provides async nhgetch() that reads from an input queue.
-
-import { game } from './gstate.js';
+// input.js — The single boundary for NetHack key input.
+// C refs: win/tty/wintty.c:tty_nhgetch(), win/tty/getline.c.
 import { KEY_BINDINGS } from './terminal.js';
-
-const _inputQueue = [];
-
+import { game } from './gstate.js';
+import { NATIVE_COMMAND_PROFILE } from './command_data.js';
+function keyCode(key) {
+    if (typeof key === 'number')
+        return key;
+    if (typeof key === 'string' && key.length > 0)
+        return key.charCodeAt(0);
+    throw new TypeError('InputGate accepts character strings or key codes');
+}
+export class InputGate {
+    beforeRead;
+    display;
+    queue;
+    pendingRead;
+    blockedWaiters;
+    constructor({ beforeRead = null, display = null } = {}) {
+        this.beforeRead = beforeRead;
+        this.display = display;
+        this.queue = [];
+        this.pendingRead = null;
+        this.blockedWaiters = [];
+    }
+    feed(keys) {
+        const values = typeof keys === 'string' ? [...keys]
+            : typeof keys === 'number' ? [keys] : keys;
+        for (const key of values)
+            this.feedOne(keyCode(key));
+    }
+    feedOne(code) {
+        // The pinned Unix tty retains ICRNL for external keyboard input.
+        // Generated fuzzer bytes bypass this source conversion.
+        if (code === 13)
+            code = 10;
+        if (!this.pendingRead) {
+            this.queue.push(code);
+            return;
+        }
+        const resolve = this.pendingRead;
+        this.pendingRead = null;
+        resolve(code);
+    }
+    async readKey() {
+        await this.beforeRead?.();
+        const queued = this.queue.shift();
+        if (queued !== undefined)
+            return queued;
+        if (this.display) {
+            const code = await this.display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
+            return code === 13 ? 10 : code;
+        }
+        const key = new Promise(resolve => {
+            this.pendingRead = resolve;
+        });
+        this.notifyBlocked();
+        return key;
+    }
+    waitUntilBlocked() {
+        if (this.isBlocked)
+            return Promise.resolve();
+        return new Promise(resolve => this.blockedWaiters.push(resolve));
+    }
+    notifyBlocked() {
+        const waiters = this.blockedWaiters;
+        this.blockedWaiters = [];
+        for (const resolve of waiters)
+            resolve();
+    }
+    clear() {
+        this.queue.length = 0;
+    }
+    get isBlocked() {
+        return this.pendingRead !== null;
+    }
+}
+let activeInputGate = new InputGate();
+export function bindInputGate(inputGate) {
+    if (!(inputGate instanceof InputGate))
+        throw new TypeError('bindInputGate requires an InputGate');
+    activeInputGate = inputGate;
+}
 export function pushKey(key) {
-    _inputQueue.push(typeof key === 'number' ? key : key.charCodeAt(0));
+    activeInputGate.feed(key);
 }
-
 export function pushKeys(keys) {
-    for (const k of keys) pushKey(k);
+    activeInputGate.feed(keys);
 }
-
-// C ref: tty_nhgetch — read one key.
-// In replay mode, reads from the input queue.
-// In browser mode, waits for a real keypress.
 export async function nhgetch() {
-    // Fire the capture hook before reading the next key
-    const hook = game._preNhgetchHook;
-    if (hook) await hook();
-
-    if (_inputQueue.length > 0) {
-        return _inputQueue.shift();
+    const key = await activeInputGate.readKey();
+    // tty_nhgetch() marks the displayed topline as seen after any key.
+    // Keep its text visible, but a later screen reset must not page it again.
+    if (game._pending_message) {
+        game._retained_message = game._pending_message;
+        game._pending_message = '';
     }
-
-    // Browser mode: wait for keypress from the display
-    const display = game?.nhDisplay;
-    if (display?.readKey) {
-        return await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
-    }
-
-    throw new Error('Input queue empty - test may be missing keystrokes');
+    // tty_nhgetch() treats NUL as Escape, including a typed Ctrl-@.
+    return key === 0 ? 27 : key;
 }
-
-// Reset input state
+// C cmd.c:readchar_core(). Escape prefixes only have meaning in command,
+// direction, and position input. Ordinary prompts keep a literal Escape.
+export async function readchar(inputState = 'other') {
+    let key = await nhgetch();
+    if (key === -1) {
+        key = 27;
+    }
+    else if (key === 27 && game.iflags?.altmeta && inputState !== 'other') {
+        // pgetchar() returns char, unlike the first nh_poskey() int.
+        const next = nativeChar(await nhgetch());
+        key = next === -1 || next === 0 || next === 27 ? 27 : next | 128;
+    }
+    return nativeChar(key);
+}
+function nativeChar(key) {
+    return NATIVE_COMMAND_PROFILE.signedChar ? (key << 24) >> 24 : key & 255;
+}
 export function resetInputState() {
-    _inputQueue.length = 0;
+    activeInputGate = new InputGate();
+    return activeInputGate;
 }
+//# sourceMappingURL=input.js.map

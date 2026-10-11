@@ -26,8 +26,7 @@
 // offer_different_alignment_altar; offer_too_soon / offer_fake_amulet /
 // offer_real_amulet live + wired in dosacrifice (dosacrifice ECMD_TIME
 // after pick is D-1667);
-// known_spell SPE_TURN_UNDEAD /
-// spelleffects fallback for non-Knight/Cleric; resist TELL pline polish;
+// resist TELL pline polish;
 // other livelog paths; can_chant is mondata.c (D-2926); Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix; music.c do_earthquake altar
 // desecrate_altar; SetVoice pitch; ureflects W_AMUL/W_ARM/dragon D-1353;
@@ -60,7 +59,7 @@ import {
 } from './mkobj.js';
 import { yn_function, y_n, paranoid_query } from './getline.js';
 import { livelog_printf } from './pline.js';
-import { can_chant, known_spell, spe_Unknown, spe_Fresh, spe_Forgotten, spell_skilltype, force_learn_spell } from './spell.js';
+import { can_chant, known_spell, spe_Unknown, spe_Fresh, spe_Forgotten, spell_skilltype, force_learn_spell, spelleffects } from './spell.js';
 import { couldsee } from './vision.js';
 import { monflee } from './monmove.js';
 import { set_malign, makemon } from './makemon.js';
@@ -177,6 +176,7 @@ const RUNESWORD = objectNames.indexOf('RUNESWORD');
 const SPE_FINGER_OF_DEATH = objectNames.indexOf('SPE_FINGER_OF_DEATH');
 const SPE_RESTORE_ABILITY = objectNames.indexOf('SPE_RESTORE_ABILITY');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
+const SPE_TURN_UNDEAD = objectNames.indexOf('SPE_TURN_UNDEAD');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
@@ -337,7 +337,9 @@ function Cursed_obj(obj, typ) {
 
 /** C youprop.h Blindfolded / BlindedTimeout / Blinded / Passes_walls / Fixed_abil. */
 function Blindfolded() {
-    return !!(game.u?.EBlinded || game.u?.ublindf);
+    // C youprop.h:96: Blindfolded ≡ EBlinded (worn blindfold or towel;
+    // lenses don't set [BLINDED].extrinsic — never `|| ublindf`).
+    return !!(game.u?.EBlinded);
 }
 function Blindfolded_only() {
     return Blindfolded() && !BlindedProp();
@@ -2963,15 +2965,18 @@ async function maybe_turn_mon_iter(mtmp, turn_undead_range, msgCnt) {
 }
 
 /**
- * C ref: pray.c doturn — #turn undead (Knight / Cleric).
- * Named omissions: known_spell(SPE_TURN_UNDEAD)/spelleffects for other
- * roles; resist TELL pline.
+ * C ref: pray.c doturn `:2414–2487` — #turn undead (Knight / Cleric).
+ * Named omissions: resist TELL pline.
  */
 export async function doturn() {
     const u = game.u || (game.u = {});
 
     if (!Role_if(PM_CLERIC) && !Role_if(PM_KNIGHT)) {
-        // known_spell / spelleffects deferred
+        // C pray.c:2419–2424 — other roles try the "turn undead" spell;
+        // known_spell is the spellknowledge enum (spe_Unknown = 0), so a
+        // plain truthiness test matches C (Fresh/GoingStale/Forgotten cast).
+        if (known_spell(SPE_TURN_UNDEAD))
+            return spelleffects(SPE_TURN_UNDEAD, false, false);
         await pline("You don't know how to turn undead!");
         return ECMD_OK;
     }

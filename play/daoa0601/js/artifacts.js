@@ -3,108 +3,51 @@
 // include/artilist.h.  Keep artifact identity separate from the base object:
 // readobjnam() first resolves the artifact to an object type, mksobj() builds
 // that ordinary object, and oname() then commits the named artifact.
-
-import { game } from './gstate.js';
+import { ARTIFACT_DATA } from './artifact_data.js';
+import { P_BASIC, P_SKILLED, Upolyd, W_ARM } from './const.js';
+import { heroHasDrainResistance } from './armor.js';
+import { game, requirePlayingGame } from './gstate.js';
+import { recordGameLogEvent } from './gamelog.js';
+import { insideShopRoomAt } from './shk.js';
+import { mksobj } from './mklev.js';
+import { ensureHeroSkills } from './skills.js';
+import { races } from './roles.js';
+import { objectClassForType } from './object_knowledge.js';
 import { d, rnd, rn2 } from './rng.js';
-import { OBJECT_NAMES } from './object_data.js';
-
-const RAW_ARTIFACTS = [
-    ['Excalibur', 'long sword', 1, 'knight', true, true, null],
-    ['Stormbringer', 'runesword', -1, null, true, false, null],
-    ['Mjollnir', 'war hammer', 0, 'valkyrie', false, false, null],
-    ['Cleaver', 'battle-axe', 0, 'barbarian', false, false, null],
-    ['Grimtooth', 'orcish dagger', -1, null, false, false, 'fling-poison'],
-    ['Orcrist', 'elven broadsword', -1, null, false, false, null],
-    ['Sting', 'elven dagger', -1, null, false, false, null],
-    ['Magicbane', 'athame', 0, 'wizard', false, false, null],
-    ['Frost Brand', 'long sword', null, null, false, false, 'snowstorm'],
-    ['Fire Brand', 'long sword', null, null, false, false, 'firestorm'],
-    ['Dragonbane', 'broadsword', null, null, false, false, null],
-    ['Demonbane', 'silver mace', 1, 'priest', false, false, 'banish'],
-    ['Werebane', 'silver saber', null, null, false, false, null],
-    ['Grayswandir', 'silver saber', 1, null, false, false, null],
-    ['Giantslayer', 'long sword', 0, null, false, false, null],
-    ['Ogresmasher', 'war hammer', null, null, false, false, null],
-    ['Trollsbane', 'morning star', null, null, false, false, null],
-    ['Vorpal Blade', 'long sword', 0, null, false, false, null],
-    ['Snickersnee', 'katana', 1, 'samurai', false, false, null],
-    ['Sunsword', 'long sword', 1, null, false, false, 'blinding-ray'],
-    [
-        'The Orb of Detection', 'crystal ball', 1, 'archeologist', true, true,
-        'invisibility',
-    ],
-    [
-        'The Heart of Ahriman', 'luckstone', 0, 'barbarian', true, true,
-        'levitation',
-    ],
-    [
-        'The Sceptre of Might', 'mace', 1, 'caveman', true, true,
-        'conflict',
-    ],
-    // The Palantir remains inside artilist.h's historical #if 0 block and is
-    // not part of NetHack 5.0's artifact enum or runtime table.
-    [
-        'The Staff of Aesculapius', 'quarterstaff', 0, 'healer', true, true,
-        'healing',
-    ],
-    [
-        'The Magic Mirror of Merlin', 'mirror', 1, 'knight', true, true, null,
-    ],
-    [
-        'The Eyes of the Overworld', 'lenses', 0, 'monk', true, true,
-        'enlightening',
-    ],
-    [
-        'The Mitre of Holiness', 'helm of brilliance', 1, 'priest', true,
-        true, 'energy-boost',
-    ],
-    [
-        'The Longbow of Diana', 'bow', -1, 'ranger', true, true,
-        'create-ammo',
-    ],
-    [
-        'The Master Key of Thievery', 'skeleton key', -1, 'rogue', true,
-        true, 'untrap',
-    ],
-    [
-        'The Tsurugi of Muramasa', 'tsurugi', 1, 'samurai', true, true, null,
-    ],
-    [
-        'The Platinum Yendorian Express Card', 'credit card', 0, 'tourist',
-        true, true, 'charge-object',
-    ],
-    [
-        'The Orb of Fate', 'crystal ball', 0, 'valkyrie', true, true,
-        'level-teleport',
-    ],
-    [
-        'The Eye of the Aethiopica', 'amulet of ESP', 0, 'wizard', true,
-        true, 'create-portal',
-    ],
-];
-
-// C include/artilist.h attack fields.  Keep attack behavior on the artifact
-// identity rather than on silver saber: ordinary and named sabers share the
-// base weapon die, but only Grayswandir receives PHYS(5, 0).  Profiles are
-// added here as their spec_applies() target predicates are ported; treating an
-// unsupported artifact as ordinary is safer than silently applying its bonus
-// to the wrong monster class or resistance.
-const SUPPORTED_ATTACK_PROFILES = new Map([
-    ['Grayswandir', {
-        damageType: 'physical',
-        toHitDie: 5,
-        damageDie: 0,
-        targetPredicate: 'all',
-    }],
-]);
-
-// C include/artilist.h `spfx` capabilities which apply while the artifact is
-// wielded.  Keep these distinct from attack and carried-property profiles:
-// set_artifact_intrinsic() installs them under the weapon equipment mask.
-const SUPPORTED_WIELDED_PROPERTIES = new Map([
-    ['Grayswandir', ['hallucinationResistance']],
-]);
-
+import { GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES, OBJECT_NAMES, OBJECT_SUBTYPE, OBJECT_UNIQUE, requireObjectData, } from './object_data.js';
+import { objectMaterial } from './object_material.js';
+import { MONSTER_ALIGNMENT, MONSTER_FLAGS2, MONSTER_MAGIC_RESISTANCE, MONSTER_SYMBOL, monsterIsCovetous, monsterIsPlayerMonster, } from './monster_data.js';
+import { monsterWieldedWeapon } from './monster_weapon.js';
+import { monsterAlignmentType } from './monster_alignment.js';
+import { monsterHasColdResistance, monsterHasDrainResistance, monsterHasFireResistance, monsterHasShockResistance, } from './monster_resistance.js';
+import { heroHatesSilver, heroSpecies } from './hero_species.js';
+import { roles } from './roles.js';
+const M2_UNDEAD = 0x00000002;
+const M2_WERE = 0x00000004;
+const M2_ELF = 0x00000010;
+const M2_ORC = 0x00000080;
+const M2_DEMON = 0x00000100;
+const M2_GIANT = 0x00002000;
+const S_DRAGON = 30;
+const S_OGRE = 41;
+const S_TROLL = 46;
+const SILVER = 14;
+const FLAG2_TARGETS = {
+    M2_UNDEAD,
+    M2_WERE,
+    M2_ELF,
+    M2_ORC,
+    M2_DEMON,
+    M2_GIANT,
+};
+const SYMBOL_TARGETS = {
+    S_DRAGON,
+    S_OGRE,
+    S_TROLL,
+};
+function wieldedProperties(artifact) {
+    return artifact.flags.includes('SPFX_HALRES') ? ['hallucinationResistance'] : [];
+}
 function fuzzyArtifactName(value) {
     return String(value || '')
         .trim()
@@ -112,177 +55,432 @@ function fuzzyArtifactName(value) {
         .replace(/[\s-]+/g, '')
         .toLowerCase();
 }
-
-export const ARTIFACTS = RAW_ARTIFACTS.map((
-    [
-        name, baseName, alignment, role, selfWilled, noGeneration,
-        invokePower,
-    ], index,
-) => ({
-    id: index + 1,
-    name,
-    baseName,
-    baseType: OBJECT_NAMES.findIndex(candidate => candidate === baseName),
-    alignment,
-    role,
-    selfWilled,
-    // Orcrist and Sting are the two artilist.h entries without SPFX_RESTR.
-    // Alignment is still metadata on them, but it must not trigger the
-    // hero-touch alignment probe.
-    restricted: name !== 'Orcrist' && name !== 'Sting',
-    noGeneration,
-    invokePower,
-    attack: SUPPORTED_ATTACK_PROFILES.get(name) || null,
-    wieldedProperties: SUPPORTED_WIELDED_PROPERTIES.get(name) || [],
-}));
-
-function artifactList(state = game) {
-    return state._artifactRuntime instanceof Map
-        ? [...state._artifactRuntime.values()] : ARTIFACTS;
+const QUEST_ARTIFACT_NAMES = new Set(roles.map((role) => fuzzyArtifactName(role.artifactName)).filter(Boolean));
+export const ARTIFACTS = ARTIFACT_DATA.map((artifact) => {
+    const baseName = requireObjectData(OBJECT_NAMES, artifact.baseType);
+    if (baseName === null)
+        throw new Error(`Artifact ${artifact.id} requires a named base type`);
+    return {
+        ...artifact,
+        baseName,
+        selfWilled: artifact.flags.includes('SPFX_INTEL'),
+        restricted: artifact.flags.includes('SPFX_RESTR'),
+        noGeneration: artifact.flags.includes('SPFX_NOGEN'),
+        questArtifact: QUEST_ARTIFACT_NAMES.has(fuzzyArtifactName(artifact.name)),
+        wieldedProperties: wieldedProperties(artifact),
+    };
+});
+export function artifactWarningMask(object, state = game) {
+    const artifact = artifactById(object?.oartifact, state);
+    return artifact?.flags.includes('SPFX_WARN') && artifact.target.kind === 'flag2'
+        ? FLAG2_TARGETS[artifact.target.value]
+        : 0;
 }
-
+export function artifactGlowColor(object, state = game) {
+    const artifact = artifactById(object.oartifact, state);
+    if (!artifact)
+        throw new Error('Artifact glow requires a known artifact');
+    if (artifact.color === 'CLR_RED')
+        return 'red';
+    if (artifact.color === 'CLR_BRIGHT_BLUE')
+        return 'light blue';
+    throw new Error(`Artifact ${artifact.id} has no glow color`);
+}
+function artifactList(state = game) {
+    return state._artifactRuntime instanceof Map ? [...state._artifactRuntime.values()] : ARTIFACTS;
+}
 export function artifactByName(value, state = game) {
     const wanted = fuzzyArtifactName(value);
-    return artifactList(state).find(artifact =>
-        fuzzyArtifactName(artifact.name) === wanted) || null;
+    return (artifactList(state).find((artifact) => fuzzyArtifactName(artifact.name) === wanted) || null);
 }
-
 export function artifactById(id, state = game) {
+    if (id == null)
+        return null;
     if (state._artifactRuntime instanceof Map)
         return state._artifactRuntime.get(id) || null;
-    return ARTIFACTS.find(artifact => artifact.id === id) || null;
+    return ARTIFACTS.find((artifact) => artifact.id === id) || null;
 }
-
 // C artifact.c:init_artifacts()/hack_artifacts().  The static artilist is
 // copied per game because selected role/alignment can retarget gift and quest
 // artifacts.  Existence/discovery state is new-game state, not module state.
 export function initializeArtifacts(state = game) {
     const role = state.urole?.key || null;
     const alignment = state.initAlignment?.value ?? 0;
-    const runtime = new Map(ARTIFACTS.map(artifact => [artifact.id, {
-        ...artifact,
-        attack: artifact.attack ? { ...artifact.attack } : null,
-        wieldedProperties: [...artifact.wieldedProperties],
-    }]));
-
+    const runtime = new Map(ARTIFACTS.map((artifact) => [
+        artifact.id,
+        {
+            ...artifact,
+            flags: [...artifact.flags],
+            carriedFlags: [...artifact.carriedFlags],
+            target: { ...artifact.target },
+            attack: artifact.attack ? { ...artifact.attack } : null,
+            wieldedProperties: [...artifact.wieldedProperties],
+        },
+    ]));
     for (const artifact of runtime.values()) {
         if (artifact.role === role && artifact.alignment !== null)
             artifact.alignment = alignment;
     }
-    const excalibur = [...runtime.values()].find(artifact =>
-        artifact.name === 'Excalibur');
-    if (excalibur && role !== 'knight') excalibur.role = null;
-
+    const excalibur = [...runtime.values()].find((artifact) => artifact.name === 'Excalibur');
+    if (excalibur && role !== 'knight')
+        excalibur.role = null;
     const questName = state.urole?.artifactName;
     const questArtifact = questName
-        ? [...runtime.values()].find(artifact =>
-            fuzzyArtifactName(artifact.name) === fuzzyArtifactName(questName))
+        ? [...runtime.values()].find((artifact) => fuzzyArtifactName(artifact.name) === fuzzyArtifactName(questName))
         : null;
     if (questArtifact) {
         questArtifact.alignment = alignment;
         questArtifact.role = role;
     }
-
     state._artifactRuntime = runtime;
     state._artifactExists = new Set();
+    state._artifactFound = new Set();
     state._artifactDiscoveries = [];
-    state._artifactExistByBase = new Map();
-    state._artifactExistCount = 0;
     return runtime;
 }
-
-function existenceSet() {
-    if (!(game._artifactExists instanceof Set))
-        game._artifactExists = new Set();
-    return game._artifactExists;
+function existenceSet(state) {
+    if (!(state._artifactExists instanceof Set))
+        state._artifactExists = new Set();
+    return state._artifactExists;
 }
-
 // C artifact.c:artifact_exists().  The caller has already created the base
 // object.  Naming commits both the object's identity and the global existence
 // bit; later random-artifact ranges consume the shared count.
-export function nameArtifact(object, artifact) {
-    if (!object || !artifact) return false;
-    const exists = existenceSet();
-    if (exists.has(artifact.id)) return false;
+export function nameArtifact(object, artifact, { knownOrigin = false, state = game } = {}) {
+    if (!object || !artifact)
+        return false;
+    const exists = existenceSet(state);
+    if (exists.has(artifact.id))
+        return false;
     exists.add(artifact.id);
-    game._artifactExistCount = (game._artifactExistCount ?? 0) + 1;
+    if (knownOrigin)
+        markArtifactFound(artifact.id, state);
+    else
+        state._artifactFound?.delete(artifact.id);
     object.artifact = true;
     object.oartifact = artifact.id;
     object.oextra = {
         ...(object.oextra || {}),
         oname: artifact.name,
     };
+    if (artifact.invokePower === 'fling-poison')
+        object.opoisoned = 1;
     object.age = 0;
     object.quan = 1;
     object.quantity = 1;
     return true;
 }
-
-export function artifactExistCount() {
-    return game._artifactExistCount ?? existenceSet().size;
+export function uncreateArtifact(object, state = game) {
+    if (!object?.oartifact)
+        return false;
+    const removed = state._artifactExists?.delete(object.oartifact) ?? false;
+    state._artifactFound?.delete(object.oartifact);
+    object.artifact = false;
+    object.oartifact = 0;
+    return removed;
 }
-
-// C artifact.c:spec_applies().  Grayswandir has neither SPFX_DBONUS nor
-// SPFX_ATTK, so its physical profile applies to every defender.
-function supportedAttackApplies(artifact, defender) {
-    return !!defender
-        && artifact?.attack?.damageType === 'physical'
-        && artifact.attack.targetPredicate === 'all';
+export function artifactExistCount(state = game) {
+    return state._artifactExists?.size ?? 0;
 }
-
-// C weapon.c:hitval() -> artifact.c:spec_abon().  This call belongs before
-// hitum()'s ordinary d20, which is observable in the contest RNG transcript.
-export function artifactToHitBonus(object, defender, roll = rnd) {
-    const artifact = artifactById(object?.oartifact);
-    if (!supportedAttackApplies(artifact, defender)
-        || !(artifact.attack.toHitDie > 0)) return 0;
+// C found_artifact(): wishes and gifts are known without a "found" log.
+export function markArtifactFound(id, state = game) {
+    (state._artifactFound ||= new Set()).add(id);
+}
+// C xname() -> find_artifact(). Only the object's real dknown flag counts,
+// not a temporary full-identification view.
+export function findArtifact(object, { source = object, state = game, } = {}) {
+    const id = object.oartifact;
+    if (!id || !object.dknown || state._artifactFound?.has(id))
+        return false;
+    markArtifactFound(id, state);
+    let where = '';
+    if (source.where === 'floor') {
+        where = insideShopRoomAt(state, source.ox, source.oy) ? ' in a shop' : ' on the floor';
+    }
+    else if (source.where === 'contained') {
+        where = ' in a container';
+    }
+    else if (source.where === 'minvent') {
+        where = ' carried by a monster';
+    }
+    const artifact = artifactById(id, state);
+    if (!artifact)
+        throw new Error(`Unknown found artifact ${id}`);
+    const name = artifact.name.replace(/^The /, 'the ');
+    recordGameLogEvent(`found ${name}${where}`, { state });
+    return true;
+}
+export function discoverArtifact(id, state = game) {
+    const discoveries = (state._artifactDiscoveries ||= []);
+    if (!discoveries.includes(id))
+        discoveries.push(id);
+}
+// C mk_artifact() without an alignment: convert an existing object.
+export function createRandomArtifact(object, { maximumValue = 99, adjustEnchantment = true, state = game, } = {}) {
+    if (OBJECT_UNIQUE[object.otyp])
+        return object;
+    const candidates = artifactList(state).filter((artifact) => artifact.baseType === object.otyp &&
+        !artifact.noGeneration &&
+        !state._artifactExists?.has(artifact.id) &&
+        (artifact.giftValue <= maximumValue || artifact.role === state.urole?.key));
+    if (!candidates.length)
+        return object;
+    const artifact = candidates[rn2(candidates.length)];
+    if (!artifact)
+        throw new Error('Artifact selection requires a candidate');
+    return finishArtifactGeneration(object, artifact, adjustEnchantment, state);
+}
+function finishArtifactGeneration(object, artifact, adjustEnchantment, state) {
+    object.oeroded = object.oeroded2 = 0;
+    nameArtifact(object, artifact, { state });
+    if (adjustEnchantment) {
+        const enchantment = object.spe + artifact.generationEnchantment;
+        if (enchantment >= -10 && enchantment < 10)
+            object.spe = enchantment;
+    }
+    return object;
+}
+// C artifact.c:mk_artifact(), when choosing a divine gift by alignment.
+export async function createArtifactGift(alignment, maximumValue, state = game) {
+    requirePlayingGame(state);
+    const candidates = [];
+    const fallback = [];
+    const skills = ensureHeroSkills(state);
+    for (const artifact of artifactList(state)) {
+        if (state._artifactExists?.has(artifact.id) || artifact.noGeneration)
+            continue;
+        const roleGift = artifact.role === state.urole?.key;
+        if (artifact.giftValue > maximumValue && !roleGift)
+            continue;
+        if (artifact.alignment !== null && artifact.alignment !== alignment)
+            continue;
+        const artifactRace = races.find((race) => race.name === artifact.race);
+        if (artifactRace && artifactRace.selfmask & state.urace.hatemask)
+            continue;
+        if (roleGift) {
+            candidates.length = 0;
+            candidates.push(artifact);
+            break;
+        }
+        const weapon = objectClassForType(artifact.baseType) === 2;
+        const skill = Math.abs(requireObjectData(OBJECT_SUBTYPE, artifact.baseType));
+        const compatibility = weapon ? (skills?.[skill]?.maxSkill ?? 0) : P_SKILLED;
+        if ((artifact.alignment !== null || (state.u.ugifts ?? 0) > 0 || !rn2(3)) &&
+            (!rn2(4) || compatibility >= P_SKILLED || (compatibility >= P_BASIC && rn2(2)))) {
+            candidates.push(artifact);
+        }
+        else if (!candidates.length) {
+            fallback.push(artifact);
+        }
+    }
+    const choices = candidates.length ? candidates : fallback;
+    if (!choices.length)
+        return null;
+    const artifact = choices[rn2(choices.length)];
+    if (!artifact)
+        throw new Error('Artifact gift selection requires a candidate');
+    const object = await mksobj(artifact.baseType, true, false);
+    return finishArtifactGeneration(object, artifact, true, state);
+}
+function defendedByArtifact(artifact, damageType) {
+    return artifact?.defense === damageType;
+}
+function carriedArtifactDefends(inventory, damageType, state) {
+    return (inventory || []).some((object) => artifactById(object?.oartifact, state)?.carriedDefense === damageType);
+}
+function artifactDefenseApplies(defender, damageType, hero, state) {
+    if (!hero && !defender)
+        return false;
+    const weapon = hero ? state.uwep || state.u?.uwep : monsterWieldedWeapon(defender);
+    if (defendedByArtifact(artifactById(weapon?.oartifact, state), damageType)) {
+        return true;
+    }
+    const inventory = hero ? state.inventory : defender?.minvent || defender?.inventory;
+    return carriedArtifactDefends(inventory, damageType, state);
+}
+export function heroHasArtifactDefense(damageType, state = game) {
+    return artifactDefenseApplies(null, damageType, true, state);
+}
+export function monsterHasArtifactDefense(monster, damageType, state = game) {
+    return artifactDefenseApplies(monster, damageType, false, state);
+}
+export function heroHasCarriedArtifactFlag(flag, state = game) {
+    return (state.inventory || []).some((object) => artifactById(object?.oartifact, state)?.carriedFlags.includes(flag));
+}
+function resistanceAttackApplies(artifact, defender, { hero, random, state }) {
+    if (!artifact.attack)
+        return false;
+    const damageType = artifact.attack.damageType;
+    if (artifactDefenseApplies(defender, damageType, hero, state))
+        return false;
+    if (hero) {
+        const heroState = state.u || {};
+        const currentForm = { mnum: heroSpecies(state) };
+        if (damageType === 'fire')
+            return !(heroState.fireResistance || monsterHasFireResistance(currentForm));
+        if (damageType === 'cold')
+            return !(heroState.coldResistance || monsterHasColdResistance(currentForm));
+        if (damageType === 'shock')
+            return !(heroState.shockResistance || monsterHasShockResistance(currentForm));
+        if (damageType === 'life-drain')
+            return !(heroHasDrainResistance(state) ||
+                monsterHasDrainResistance(currentForm) ||
+                (heroState.ulycn !== undefined &&
+                    Number.isInteger(heroState.ulycn) &&
+                    heroState.ulycn >= 0));
+        if (damageType === 'stun')
+            return !heroState.antimagic;
+        return false;
+    }
+    if (damageType === 'fire')
+        return !monsterHasFireResistance(defender);
+    if (damageType === 'cold')
+        return !monsterHasColdResistance(defender);
+    if (damageType === 'shock')
+        return !monsterHasShockResistance(defender);
+    if (damageType === 'life-drain')
+        return !monsterHasDrainResistance(defender);
+    if (damageType === 'stun') {
+        const resistance = MONSTER_MAGIC_RESISTANCE[defender.mnum] ?? 0;
+        return random(100) >= resistance;
+    }
+    return false;
+}
+function artifactAttackApplies(artifact, defender, { hero = false, random = rn2, state = game } = {}) {
+    if (!defender || !artifact)
+        return false;
+    const target = artifact.target;
+    if (target.kind === 'resistance') {
+        return resistanceAttackApplies(artifact, defender, { hero, random, state });
+    }
+    const mnum = defender.mnum;
+    switch (target.kind) {
+        case 'all':
+            return true;
+        case 'flag2': {
+            const flag = FLAG2_TARGETS[target.value] ?? 0;
+            return (!!((MONSTER_FLAGS2[mnum] ?? 0) & flag) ||
+                (hero && !Upolyd(state.u) && !!((state.urace?.selfmask ?? 0) & flag)) ||
+                (hero &&
+                    target.value === 'M2_WERE' &&
+                    state.u.ulycn !== undefined &&
+                    Number.isInteger(state.u.ulycn) &&
+                    state.u.ulycn >= 0));
+        }
+        case 'symbol':
+            return MONSTER_SYMBOL[mnum] === SYMBOL_TARGETS[target.value];
+        case 'alignment': {
+            const alignment = hero ? state.u?.ualign?.type : MONSTER_ALIGNMENT[mnum];
+            if (hero)
+                return alignment !== artifact.alignment;
+            return (alignment === -128 ||
+                alignment === undefined ||
+                Math.sign(alignment) !== artifact.alignment);
+        }
+        default:
+            return false;
+    }
+}
+// C weapon.c:hitval() calls spec_abon() before hitum() rolls its ordinary d20.
+export function artifactToHitBonus(object, defender, roll = rnd, { hero = false, random = rn2, state = game } = {}) {
+    const artifact = artifactById(object?.oartifact, state);
+    if (!artifact?.attack ||
+        !(artifact.attack.toHitDie > 0) ||
+        !artifactAttackApplies(artifact, defender, { hero, random, state }))
+        return 0;
     return roll(artifact.attack.toHitDie);
 }
-
 // C artifact.c:artifact_hit() -> spec_dbon().  A zero damage die means "add
 // the current weapon damage again", not zero bonus.  Strength and ring damage
 // are added later by hmon_hitmon_dmg_recalc(), so callers pass only dmgval().
-export function artifactDamageBonus(
-    object, defender, baseWeaponDamage, roll = rnd,
-) {
-    const artifact = artifactById(object?.oartifact);
-    if (!supportedAttackApplies(artifact, defender)) return 0;
+export function artifactDamageBonus(object, defender, baseWeaponDamage, roll = rnd, { hero = false, random = rn2, state = game } = {}) {
+    const artifact = artifactById(object?.oartifact, state);
+    if (!artifact?.attack)
+        return 0;
+    const applies = artifact.name === 'Grimtooth' ||
+        artifactAttackApplies(artifact, defender, { hero, random, state });
+    if (!applies)
+        return 0;
     return artifact.attack.damageDie > 0
         ? roll(artifact.attack.damageDie)
         : Math.max(baseWeaponDamage, 1);
 }
-
-// C artifact.c:touch_artifact() hero branch.  The current block needs the
-// alignment refusal probe even when it does not blast; retain the complete
-// common damage/exercise transaction so future artifact wishes do not need a
-// second owner.
-export function touchArtifactByHero(object, artifact) {
-    if (!object?.oartifact || !artifact) return { allowed: true, blasted: false };
-    const heroRole = game.urole?.key || null;
-    const heroAlignment = game.u?.ualign?.type ?? 0;
-    const alignmentRecord = game.u?.ualign?.record ?? 0;
-    const badClass = artifact.selfWilled
-        && !!artifact.role && artifact.role !== heroRole;
-    const badAlignment = artifact.restricted
-        && artifact.alignment !== null
-        && (artifact.alignment !== heroAlignment || alignmentRecord < 0);
-
-    let blasted = false;
-    if (((badClass || badAlignment) && artifact.selfWilled)
-        || (badAlignment && rn2(4) === 0)) {
-        blasted = true;
-        const antimagic = !!(game.u?.antimagic || game.antimagic);
-        const damage = d(antimagic ? 2 : 4, 4);
-        game.u.uhp = Math.max(0, (game.u.uhp ?? 1) - damage);
-        if (!Array.isArray(game.u._exercise))
-            game.u._exercise = Array(6).fill(0);
-        game.u._exercise[4] -= rn2(2);
+export function artifactDoublesWeaponDamage(object, defender, { hero = false, random = rn2, state = game } = {}) {
+    const artifact = artifactById(object?.oartifact, state);
+    return (!!artifact?.attack &&
+        artifactAttackApplies(artifact, defender, { hero, random, state }) &&
+        artifact.attack.damageDie === 0);
+}
+export function artifactEmitsLight(object) {
+    if (!object)
+        return false;
+    if ([GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES].includes(object?.otyp) &&
+        (object.owornmask ?? 0) & W_ARM)
+        return true;
+    return artifactById(object?.oartifact)?.name === 'Sunsword';
+}
+export function artifactStrikesShade(object) {
+    return artifactById(object?.oartifact)?.name === 'Sunsword';
+}
+export function artifactBaneApplies(artifact, state = game) {
+    if (!artifact)
+        return false;
+    if (!['flag2', 'symbol', 'alignment'].includes(artifact?.target.kind))
+        return false;
+    return artifactAttackApplies(artifact, { mnum: heroSpecies(state) }, { hero: true, state });
+}
+// Unlike the hero, a monster refuses a hostile artifact without taking a blast.
+export function monsterCanTouchArtifact(monster, object, state = game) {
+    const artifact = artifactById(object.oartifact, state);
+    if (!artifact)
+        return true;
+    if (!monsterIsCovetous(monster) && !monsterIsPlayerMonster(monster.mnum)) {
+        if (artifact.selfWilled && artifact.role && artifact.name !== 'Excalibur')
+            return false;
+        if (artifact.restricted &&
+            artifact.alignment !== null &&
+            artifact.alignment !== monsterAlignmentType(monster))
+            return false;
     }
-
+    const targetsMonsterKind = ['flag2', 'symbol', 'alignment'].includes(artifact.target.kind);
+    return !targetsMonsterKind || !artifactAttackApplies(artifact, monster, { state });
+}
+// C artifact.c:touch_artifact() hero branch up to its blast message.
+export function resolveHeroArtifactTouch(object, artifact, state = game) {
+    if (!object?.oartifact || !artifact) {
+        return { allowed: true, blasted: false };
+    }
+    const heroRole = state.urole?.key || null;
+    const heroAlignment = state.u?.ualign?.type ?? 0;
+    const alignmentRecord = state.u?.ualign?.record ?? 0;
+    const badClass = artifact.selfWilled && !!artifact.role && artifact.role !== heroRole;
+    const bane = artifactBaneApplies(artifact, state);
+    let badAlignment = artifact.restricted &&
+        artifact.alignment !== null &&
+        (artifact.alignment !== heroAlignment || alignmentRecord < 0);
+    if (!badAlignment)
+        badAlignment = bane;
+    let blasted = false;
+    if (((badClass || badAlignment) && artifact.selfWilled) || (badAlignment && rn2(4) === 0)) {
+        blasted = true;
+    }
     return {
         allowed: !(badClass && badAlignment && artifact.selfWilled),
         blasted,
         badClass,
         badAlignment,
+        bane,
     };
 }
+export function rollHeroArtifactBlast(object, artifact, state = game) {
+    const antimagic = !!state.u?.antimagic;
+    let damage = d(antimagic ? 2 : 4, artifact.selfWilled ? 10 : 4);
+    if (objectMaterial(object, state) === SILVER && heroHatesSilver(state)) {
+        let silverDamage = rnd(10);
+        if (state.u?.halfPhysicalDamage)
+            silverDamage = Math.trunc((silverDamage + 1) / 2);
+        damage += silverDamage;
+    }
+    return damage;
+}
+//# sourceMappingURL=artifacts.js.map

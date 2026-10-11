@@ -48,7 +48,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          TEST_MOVE,
          WIN_ERR,
          } from './const.js';
-import { FOOD_CLASS, objectNames } from './objects.js';
+import { FOOD_CLASS, objectNames, is_pick } from './objects.js';
 import { EXTCMDLIST, CMD_PARAM } from './generated/extcmdlist_data.js';
 import { PM_GRID_BUG, PM_DWARF } from './generated/monsters_data.js';
 
@@ -3854,8 +3854,9 @@ async function travel_test_move(ux, uy, dx, dy) {
  * wall seen from an excluded angle reads "solid stone", not "a wall").
  * C: pline_dir(xytodir(dx,dy), "It's %s.", buf) (D-1216).
  * Deferred: Blind feel_location, Passes_walls/may_passwall on rock,
- * Underwater, autodig, is_db_wall, Sokoban resist.
+ * Underwater, is_db_wall, Sokoban resist.
  * tunnels/still_chewing rock is live in domove (test_move :1037–1042).
+ * autodig/use_pick_axe2 rock is live in domove (test_move :1042–1048).
  * IRONBARS pass/chew is D-1270 (blocksMove / still_chewing, not here).
  * run>=2 boulder pline_dir is D-1226 (test_move, not this bump).
  * OOB / testdiag doorway / run-into-trap-or-liquid mention_walls is D-1800.
@@ -6764,6 +6765,33 @@ export async function domove(dx, dy) {
                 nomul(0);
                 return;
             }
+        }
+
+        // C ref: hack.c test_move :1042–1048 MRKR — autodig when moving
+        // into obstructed rock while wielding a pick-axe: use_pick_axe2
+        // sets the dig occupation ("You start digging."). In C order
+        // after the tunnels chew, before the generic bump; FALSE with
+        // !door_opened → move=0, nomul(0) per domove_core :2843–2848.
+        // Underwater blocks first (:1017–1025 — message deferred, gate
+        // preserved like the tunnels arm); Passes_walls+may_passwall
+        // (:1014) stays deferred (turns.md:401).
+        // C :1037–1048 — the obstructed chain is else-if: when the
+        // tunnels arm matches (tunnels && !needspick) but still_chewing
+        // returns FALSE (chewed through this move), C skips the :1042
+        // autodig arm and returns TRUE (:1253). Without this guard JS
+        // fires use_pick_axe2 on the stale destTyp (review 2702:
+        // tunnels polyform + wielded pick + autodig).
+        const chewDat = game.youmonst?.data;
+        if (destTyp !== IRONBARS && IS_OBSTRUCTED(destTyp)
+            && !(u.uinwater | 0)
+            && !(chewDat && tunnels(chewDat) && !needspick(chewDat))
+            && game.flags?.autodig && !(game.context.run | 0)
+            && !(game.context.nopick | 0)
+            && u.uwep && is_pick(u.uwep)) {
+            await use_pick_axe2(u.uwep);
+            game.context.move = 0;
+            nomul(0);
+            return;
         }
 
         // C ref: hack.c test_move testdiag — no diagonal into intact doorway

@@ -9327,14 +9327,17 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     }
 
     if (dfeature && !skip_dfeature) {
-        // C `:4224–4231` — "molten lava", plain "ice", "frozen …"
-        // (hallucination), thawing ice ("solid ice", "thin ice", &c via
-        // case-insensitive " ice" suffix). C's "iron bars" never matches
-        // the "set of iron bars" dfeature; kept as the JS string.
+        // C `:4224–4233` — "molten lava", "iron bars", plain "ice",
+        // "frozen …" (hallucination), thawing ice ("solid ice", "thin
+        // ice", &c: first space + case-insensitive " ice" tail). C's
+        // "iron bars" never matches dfeature_at's "set of iron bars"
+        // (invent.c:4094), so iron bars take an(): "a set of iron
+        // bars" — kept verbatim, never "corrected" to the live string.
         let article = 1;
-        if (dfeature === 'set of iron bars' || dfeature === 'molten lava'
+        const sp = dfeature.indexOf(' ');
+        if (dfeature === 'molten lava' || dfeature === 'iron bars'
             || dfeature === 'ice' || dfeature.startsWith('frozen ')
-            || / ice$/i.test(dfeature))
+            || (sp !== -1 && dfeature.slice(sp).toLowerCase() === ' ice'))
             article = 0;
         let feat = dfeature;
         if (article === 1) feat = an(dfeature);

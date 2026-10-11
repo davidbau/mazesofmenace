@@ -24,7 +24,7 @@ import {
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, ERODE_RUST, EF_GREASE, EF_NONE, EF_VERBOSE, STONING,
-    KILLED_BY_AN, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
+    KILLED_BY_AN, SLOW_DIGESTION, FREE_ACTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
     M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_ACID,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
     EXPL_FIERY, ismnum, EXT_ENCUMBER, NOTELL,
@@ -3261,7 +3261,11 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
     } else tmp = 0;
 
     const u = game.u || {};
-    const Free_action = !!(u.Free_action || u.HFree_action || u.EFree_action);
+    // C youprop.h:383 — Free_action ≡ uprops[FREE_ACTION].extrinsic, which
+    // setworn confers for a worn ring (worn.c:124-125); the flats alone
+    // miss it (cf. the enlightenment union, invent.js:7441).
+    const Free_action = !!(u.Free_action || u.HFree_action || u.EFree_action
+        || (u.uprops?.[FREE_ACTION]?.extrinsic | 0));
     const Cold_resistance = !!(u.Cold_resistance || u.HCold_resistance
         || u.ECold_resistance);
     const Fire_resistance = !!(u.Fire_resistance || u.HFire_resistance

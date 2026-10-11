@@ -227,8 +227,8 @@ export async function com_pager_legacy(statusSnap = null, pauper = false) {
 
 /**
  * C ref: dat/quest.lua firsttime texts
- * (Arc/Bar/Pri/Wiz + Hea/Kni/Ran/Rog/Sam/Tou exercised).
- * Cav/Mon/Val burn nhl_init shuffle only until ported.
+ * (Arc/Bar/Pri/Wiz + Hea/Kni/Ran/Rog/Sam/Tou/Val/Mon exercised).
+ * Cav burns nhl_init shuffle only until ported.
  */
 const QUEST_FIRSTTIME = {
     // C ref: dat/quest.lua Arc firsttime (output=text)
@@ -326,6 +326,12 @@ In places, the snow and ice have been melted into steaming pools of
 water.  Fumaroles and pools of bubbling lava surround the hill.
 The stench of sulphur is carried through the air, and you %x creatures
 that should not be able to live in this environment moving towards you.`,
+    // C ref: dat/quest.lua Mon firsttime (output=text) — quest.lua:1389-1395
+    Mon: `You find yourself standing in sight of %H.
+Something is obviously wrong here.  Strange shapes lumber around
+outside %H!
+
+You realize that %l needs your assistance!`,
 };
 
 /** C ref: dat/quest.lua leader_first (Arc + Pri). */
@@ -439,7 +445,7 @@ regain the Amulet of Yendor for %d?"`,
     Pri: `"Welcome back, %p.  How is your quest for the Amulet going?"`,
 };
 
-/** C ref: dat/quest.lua locate_first (Bar + Arc + Pri + Wiz exercised). */
+/** C ref: dat/quest.lua locate_first (Bar + Arc + Pri + Wiz + Ran exercised). */
 const QUEST_LOCATE_FIRST = {
     Bar: `The scent of water comes to you in the desert breeze.  You know that
 you have located %i.`,
@@ -455,6 +461,18 @@ You remember the descriptions of %i, given to you by
 %l.  It is ahead that you will find %ns trail.`,
     // C ref: dat/quest.lua Wiz locate_first (default pline) — seed0360 @780
     Wiz: `Wisps of fog swirl nearby.  You feel that %ns lair is close.`,
+    // C ref: dat/quest.lua Ran locate_first (output=text) — quest.lua:1914-1928
+    Ran: `This must be %i.
+
+You are in a cave built of many different rooms, all interconnected
+by tunnels.  Your quest is to find and shoot the evil wumpus that
+resides elsewhere in the cave without running into any bottomless
+pits or using up your limited supply of arrows.  Good luck.
+
+You are in room 9 of the cave.  There are tunnels to rooms
+5, 8, and 10.
+*rustle* *rustle* (must be bats nearby.)
+*sniff* (I can smell the evil wumpus nearby!)`,
 };
 
 /** C ref: dat/quest.lua locate_next (Bar + Arc + Pri + Wiz). */
@@ -486,9 +504,9 @@ You have an odd feeling this may be the last time you ever come here.`,
 the final time you come here.`,
 };
 
-/** C ref: dat/quest.lua goal_first (Arc + Bar + Cav + Pri + Kni + Ran + Sam + Wiz).
- * Cav/Ran output=text (+ synopsis in QUEST_MSG_META); Wiz has neither key
- * in lua, so it delivers as a plain pline via the default arm. */
+/** C ref: dat/quest.lua goal_first (Arc + Bar + Cav + Pri + Kni + Ran + Sam + Tou + Wiz).
+ * Cav/Ran output=text (+ synopsis in QUEST_MSG_META); Wiz/Tou have neither key
+ * in lua, so they deliver as a plain pline via the default arm. */
 const QUEST_GOAL_FIRST = {
     Arc: `A strange feeling washes over you, and you think back to things you
 learned during the many lectures of %l.
@@ -531,6 +549,8 @@ Off in the distance, you hear a sound like the clattering of many
 hooves on rock.`,
     // C ref: dat/quest.lua Wiz goal_first (no output/synopsis keys: pline)
     Wiz: `You feel your mentor's presence; perhaps %o is nearby.`,
+    // C ref: dat/quest.lua Tou goal_first (no output/synopsis keys: pline) — quest.lua:2507-2509
+    Tou: `You sense the presence of %o.`,
 };
 
 /** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni + Ran). */
@@ -686,6 +706,10 @@ const QUEST_MSG_META = {
             output: 'text',
             synopsis: '[You arrive below %H.  Something is wrong; there is lava present.]',
         },
+        Mon: {
+            output: 'text',
+            synopsis: '[You have reached %H but something is wrong.  %lC needs your aid.]',
+        },
     },
     leader_first: {
         Arc: {
@@ -741,6 +765,10 @@ const QUEST_MSG_META = {
         Pri: {
             output: 'text',
             synopsis: '[You have found %i.  The trail to %n lies ahead.]',
+        },
+        Ran: {
+            output: 'text',
+            synopsis: '[This is %i.  There are bats nearby.  Beware the wumpus!]',
         },
     },
     goal_first: {
