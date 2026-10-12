@@ -451,6 +451,7 @@ import { m_in_air, minliquid, setmangry, wake_nearto, wakeup } from './mon.js';
 import { mpickobj, remove_worn_item } from './steal.js';
 import { goodpos, rloc, tele_restrict } from './teleport.js';
 import { is_quest_artifact } from './questpgr.js';
+import { finish_quest } from './quest.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { set_malign } from './makemon.js';
 import { makemon_runtime } from './makemon_create.js';
@@ -468,7 +469,7 @@ import {
 import { erode_obj } from './trap_erode_obj.js';
 import { dotrap, mintrap } from './trap_effects.js';
 import { Punished } from './steed.js';
-import { move_bc, drag_ball } from './ball.js';
+import { move_bc, drag_ball, drop_ball } from './ball.js';
 import { note_unported } from './unported.js';
 import { cutworm } from './worm.js';
 import { snuff_candle } from './apply_splash_lit.js';
@@ -2879,7 +2880,8 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
     if ((state.u.ushops?.[0] || obj.unpaid) && obj !== state.uball)
         note_unported('dothrow.c check_shop_obj');
     stackobj(obj, { state, hooks: { extractExternalObject: remove_object } });
-    if (obj === state.uball) note_unported('ball.c drop_ball');
+    if (obj === state.uball)
+        await drop_ball(bx, by, state);
     if (cansee(bx, by, state)) newsym(bx, by);
     if (obj_sheds_light(obj, state)) state.vision_full_recalc = 1;
     throwit_return(false, state);
@@ -3024,7 +3026,7 @@ export async function thitmonst(mon, obj, state = game, rawEnv = {}) {
                     note_unported('dothrow.c check_shop_obj');
                 mpickobj(mon, obj, operationEnv);
             } else {
-                note_unported('quest.c finish_quest');
+                await finish_quest(obj, operationEnv);
                 const next2u = monnear(mon, u.ux, u.uy, state);
                 await message(
                     `${Some_Monnam(mon, state, operationEnv)} `

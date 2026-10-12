@@ -314,6 +314,12 @@ export async function getlin(query, bufp) {
         // gp.prevmsg becomes `query + " "` (echo-free, preloaded text
         // arrives via addtopl, not the prompt line).
         prevmsg_set_prompt(`${query} `);
+        // C getline.c `:60–67` custompline → vpline `:266–271` — the prompt
+        // flushes a pending vision_full_recalc before flush_screen/putmesg
+        // (a summon-light recalc pending at a docall prompt must paint
+        // before the prompt blocks). Once: echo repaints are addtopl, no
+        // vpline (yn precedent: tty_yn_function below).
+        vpline_flush_vision();
         await paint();
         for (;;) {
             const c = await nhgetch();
@@ -1657,6 +1663,10 @@ export async function get_ext_cmd() {
         // C hooked_tty_getlin custompline — gp.prevmsg is the initiator
         // prompt (`"# "`, echo-free) like getlin above.
         prevmsg_set_prompt(`${initiator} `);
+        // C getline.c `:60–67` custompline → vpline `:266–271`, same as
+        // getlin above: flush a pending vision_full_recalc once before
+        // the initial paint (echo repaints are addtopl, no vpline).
+        vpline_flush_vision();
         await paint();
         for (;;) {
             const c = await nhgetch();

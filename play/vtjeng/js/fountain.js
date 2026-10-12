@@ -27,7 +27,6 @@ import {
     HAND,
     HEAD,
     INVIS,
-    IS_DOOR,
     IS_FOUNTAIN,
     KILLED_BY,
     KILLED_BY_AN,
@@ -39,13 +38,11 @@ import {
     PICK_NONE,
     POOL,
     ROOM,
-    SDOOR,
     S_LRING,
     SEE_INVIS,
     UNCHANGING,
     nothing_seems_to_happen,
 } from './const.js';
-import { isok } from './cmd_isok.js';
 import { acurr, adjattrib, exercise, poison_strdmg } from './attrib.js';
 import { monster_detect } from './detect.js';
 import {
@@ -56,6 +53,7 @@ import { level_difficulty, dunlevs_in_dungeon, dunlev } from './dungeon.js';
 import { del_engr_at } from './engrave.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { game } from './gstate.js';
+import { nexttodoor } from './mkroom.js';
 import { in_town, losehp } from './hack.js';
 import { distmin } from './hacklib.js';
 import {
@@ -428,19 +426,6 @@ export async function dogushforth(drinking, state = game, env = {}) {
             await message('Water sprays all over you.', state);
         }
     }
-}
-
-// C ref: mkroom.c nexttodoor() (623-637). Returns true if any adjacent
-// square is a door or secret door.
-function nexttodoor(sx, sy, state) {
-    for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-            if (!isok(sx + dx, sy + dy)) continue;
-            const typ = state.level.at(sx + dx, sy + dy).typ;
-            if (IS_DOOR(typ) || typ === SDOOR) return true;
-        }
-    }
-    return false;
 }
 
 // ── dofindgem ──
@@ -1397,8 +1382,20 @@ export async function drinksink(state = game, env = {}) {
     }
     case 13:
         await message('Ew, what a stench!', state);
-        // Positive-damage gas clouds are not ported. C discards this return.
-        note_unported('region.c create_gas_cloud');
+        // C ref: fountain.c:698. The sink creates a damaging one-square
+        // region at the hero; region.js owns its TTL draw and activation.
+        await create_gas_cloud(x, y, 1, 4, {
+            ...env,
+            state,
+            random,
+            blockPoint: (cx, cy) => block_point(cx, cy, state),
+            unblockPoint: (cx, cy) => unblock_point(cx, cy, state),
+            doesBlock: (cx, cy, region) =>
+                does_block(cx, cy, region, state),
+            canSee: (cx, cy) => cansee(cx, cy, state),
+            newsym: (cx, cy) => newsym(cx, cy, state),
+            message,
+        });
         break;
     case 19:
         if (hallucination) {

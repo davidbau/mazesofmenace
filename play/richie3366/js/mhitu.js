@@ -1769,11 +1769,16 @@ async function gulpmu(mtmp, mattk) {
         // More consumes post-engulf keys so once-per-input swallowed(0)
         // does not double-fire, and vision_off restores the 8×~drn2(5).
         await flush_topl_more();
-        {
-            const Hallu = !!(u.Hallucination
-                || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0)));
-            if (Hallu) vision_off_newsym_gbuf({ useLiveViz: true });
-        }
+        // C mhitu.c:1376 — vision_recalc(2)'s main update loop
+        // (vision.c:741–836) runs unconditionally here (no Hallu gate):
+        // TEMP-C measured it newsyming (71,4) (old IN_SIGHT, Wizard
+        // present, mon_warning) via display_warning → show_mon_or_warn →
+        // unmap_object, clearing the search-mapped 'I' to S_stone before
+        // uswallow=1 (D-3863). The loop's screen paints are wiped by
+        // swallowed(1)'s cls below, so only memory effects persist (no
+        // #992-class mid-screen regression possible at this site);
+        // D-3807 precedent (departure gate removal).
+        vision_off_newsym_gbuf({ useLiveViz: true });
         vision_recalc(2);
         u.uswallow = 1;
         if ((mattk.adtyp | 0) === AD_DGST) {

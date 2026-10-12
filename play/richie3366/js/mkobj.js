@@ -1162,25 +1162,27 @@ export function write_timer(timer) {
         // so C writes the struct untouched.
         if (timer.needs_fixup)
             return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
-        // C :2520–2529 — replace the object pointer with its o_id for the
-        // write, then put the pointer back (:2527). The `cg.zeroany` union
-        // step collapses: JS timers hold obj beside the record, so the
-        // record takes the id while the live entry is never mutated
-        // (no in-place swap needed outside the binary write). A restored
-        // (relinked) entry keeps its numeric arg_id — prefer it, matching
-        // the old serTimer fallback exactly.
-        if (timer.arg_id != null)
-            return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
-        return { ...base, arg_id: timer.obj?.o_id | 0, arg_kind: timer.kind | 0 }; // C :2524.
+        // C :2520–2529 — replace the object pointer with its CURRENT o_id
+        // for the write (:2524), then put the pointer back (:2527). The
+        // `cg.zeroany` union step collapses: JS timers hold obj beside the
+        // record, so the record takes the id while the live entry is never
+        // mutated (no in-place swap needed outside the binary write). The
+        // stored arg_id must NOT shadow the pointer: on the bones path it
+        // is the pre-remap blob id, and re-saving it threw `relink_timers:
+        // no object` on the next load (D-3867). Entries with no live
+        // pointer yet (deserTimer shape before relink) keep the numeric id.
+        if (timer.obj)
+            return { ...base, arg_id: timer.obj.o_id | 0, arg_kind: timer.kind | 0 }; // C :2524.
+        return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
     case TIMER_MONSTER: // C :2532.
         // C :2533–2534 — needs_fixup entries already carry the numeric id.
         if (timer.needs_fixup)
             return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
-        // C :2535–2544 — replace the monster pointer with its m_id (:2539);
-        // restored entries keep arg_id (see OBJECT arm).
-        if (timer.arg_id != null)
-            return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
-        return { ...base, arg_id: timer.mon?.m_id | 0, arg_kind: timer.kind | 0 };
+        // C :2535–2544 — replace the monster pointer with its CURRENT m_id
+        // (:2539); no-pointer entries keep the numeric id (OBJECT arm).
+        if (timer.mon)
+            return { ...base, arg_id: timer.mon.m_id | 0, arg_kind: timer.kind | 0 }; // C :2539.
+        return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
     default:
         // C :2547–2550 — panic("write_timer").
         panic('write_timer: bad kind %d', timer.kind | 0);
@@ -1256,8 +1258,8 @@ export function save_timers(range) {
  * Callees: live `insert_timer` above (C `:2724`, `#ifndef SFCTOOL` always
  * true in JS).
  * @param {object[]} list hydrated timer entries (deserTimerList shape)
- * @param {boolean} [ghostly] bones-load remap (C `:2722`; no JS caller
- * passes true — ghostly ⇔ getlev_bones, which never restores timers)
+ * @param {boolean} [ghostly] bones-load remap (C `:2722`; getlev_bones
+ * passes true with moves−omoves elapsed, C restore.c `:1111`)
  * @param {number} [adjust] bones timeout skew (C `:2723`)
  */
 export function restore_timers(list, ghostly = false, adjust = 0) {

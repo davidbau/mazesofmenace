@@ -2176,7 +2176,7 @@ async function savelife(how) {
     if (!game.context) game.context = {};
     game.context.move = 0; // C `:728`
     game.multi = -1; // C `:730` — can't move again during the current turn
-    const rolePm = game.urole?.malenum;
+    const rolePm = game.urole?.mnum; // C Role_if ≡ gu.urole.mnum (you.h:247)
     game.multi_reason = (rolePm === PM_TOURIST) // C `:735–736`
         ? 'being toyed with by Fate'
         : 'attempting to cheat Death';

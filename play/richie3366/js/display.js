@@ -1616,10 +1616,11 @@ export function map_background(x, y, show) {
 }
 
 /**
- * C ref: display.c unmap_object — replace remembered glyph with trap /
- * engraving / background (no show). Clears invisible-monster / object
- * memory without remapping a live floor object (map_location would).
- * Named omissions: dark-room S_room→S_stone waslit when !waslit.
+ * C ref: display.c unmap_object :409–437 — replace remembered glyph with
+ * trap / engraving / background (no show). Clears invisible-monster /
+ * object memory without remapping a live floor object (map_location
+ * would). Both fallbacks write S_stone (renders blank, but is not
+ * GLYPH_NOTHING — arrival reglyph_darkroom :1845 only darkens NOTHING).
  */
 export function unmap_object(x, y) {
     if (!game.level?.flags?.hero_memory) return;
@@ -1631,7 +1632,8 @@ export function unmap_object(x, y) {
         return;
     }
     if (loc.seenv) {
-        // C: engraving if spot_shows && !covers_traps; else map_background
+        // C :422–429: engraving if spot_shows && !covers_traps; else
+        // map_background.
         if (spot_shows_engravings(loc) && !covers_traps(x, y)) {
             const ep = engr_at(x, y);
             if (ep) {
@@ -1641,20 +1643,21 @@ export function unmap_object(x, y) {
             }
         }
         map_background(x, y, 0);
-        // C: !waslit && S_room glyph && ROOM → S_stone (dark-room tweak)
-        if (!loc.waslit && loc.typ === ROOM) {
-            const mem = loc.remembered_glyph;
-            const roomFloor = mem
-                && ((mem.ch === '~' && mem.decgfx)
-                    || (mem.ch === '.' && !mem.decgfx));
-            if (roomFloor) {
-                loc.remembered_glyph = {
-                    ch: ' ', color: NO_COLOR, decgfx: false,
-                };
-            }
+        // C :431–434 — turn remembered dark room squares dark: !waslit
+        // && glyph == S_room && typ == ROOM → S_stone.
+        if (!loc.waslit && loc.typ === ROOM
+            && memory_is_cmap(loc.remembered_glyph, S_room)) {
+            const g = cmap_idx_to_glyph(S_stone);
+            loc.remembered_glyph = {
+                ch: g.ch, color: g.color, decgfx: !!g.dec, glyph: g.glyph,
+            };
         }
     } else {
-        loc.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false };
+        // C :436 — default val S_stone.
+        const g = cmap_idx_to_glyph(S_stone);
+        loc.remembered_glyph = {
+            ch: g.ch, color: g.color, decgfx: !!g.dec, glyph: g.glyph,
+        };
     }
 }
 

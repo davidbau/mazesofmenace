@@ -1180,6 +1180,9 @@ async function newman() {
             return; /* lifesaved */
         }
     }
+    // C `:436` — the re-rolled uhunger (`:414`) recomputes uhs here, before
+    // the new-form announce; without it u.uhs stays stale (Satiated).
+    await newuhs(false);
 
     const female = Upolyd(u) ? !!u.mfemale : !!flags.female;
     const race = game.urace || {};

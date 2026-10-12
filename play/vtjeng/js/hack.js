@@ -268,6 +268,7 @@ import {
     engr_at,
     wipe_engr_at,
 } from './engrave.js';
+import { check_leash } from './apply.js';
 import { game } from './gstate.js';
 import { breaktest } from './dothrow.js';
 import { hit_bars } from './mthrowu.js';
@@ -494,6 +495,7 @@ import {
     trapname,
     into_vs_onto,
     immune_to_trap,
+    sokoban_guilt,
 } from './trap.js';
 import {
     blow_up_landmine,
@@ -1931,7 +1933,7 @@ async function cannot_push(otmp, sx, sy, state, env) {
                         ? ' and could pick it up' : ''}.`,
                 state,
             );
-            note_unported('trap.c sokoban_guilt');
+            sokoban_guilt(state);
         }
         return 0;
     }
@@ -1944,7 +1946,7 @@ async function cannot_push(otmp, sx, sy, state, env) {
         await message(
             'However, you can squeeze yourself into a small opening.', state,
         );
-        note_unported('trap.c sokoban_guilt');
+        sokoban_guilt(state);
         return 0;
     }
     return -1;
@@ -2384,7 +2386,7 @@ async function moverock_core(sx, sy, state, env) {
                     `You ${u_locomotion('step', state)} over a boulder here.`,
                     state,
                 );
-                note_unported('trap.c sokoban_guilt');
+                sokoban_guilt(state);
                 return 0;
             }
             if (could_move_onto_boulder(sx, sy, u.dx, u.dy, state)) {
@@ -2393,7 +2395,7 @@ async function moverock_core(sx, sy, state, env) {
                         ? 'over' : 'against'} the boulder.`,
                     state,
                 );
-                note_unported('trap.c sokoban_guilt');
+                sokoban_guilt(state);
                 return 0;
             }
             await message('There is a boulder in your way.', state);
@@ -4467,6 +4469,10 @@ async function domove_core(state = game) {
         || u.dx || u.dy) {
         hideunder(state.youmonst, { state });
     }
+
+    // C ref: hack.c domove_core():2962. The leash response precedes redraw,
+    // vision refresh, and the destination's spot effects.
+    await check_leash(u.ux0, u.uy0, { state });
 
     newsym(oldx, oldy);
     vision_recalc(1);

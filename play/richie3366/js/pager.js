@@ -8,8 +8,9 @@
 // (OPTIONS_AT_RUNTIME → get_lua_version nhlib shuffle) + display_file
 // dat/* pages + dokeylist/domenucontrols/docontact; data.base lookups for
 // checkfile. object_from_map + look_at_object (SLIME_MOLD spe =
-// current_fruit). getpos auto_describe / brief_at glyph_is_object
-// fakeobj (D-1547). mhidden_description (D-1554). howmonseen look
+// current_fruit). getpos auto_describe glyph_is_object fakeobj
+// (D-1547; the brief_at describeAt fallback had no C counterpart and
+// is removed). mhidden_description (D-1554). howmonseen look
 // monbuf (D-1562). Full glyph encyclopedia and PORT_HELP deferred.
 // whatdoes_help pages KEYHELP (D-2929).
 
@@ -2192,20 +2193,6 @@ export function lookat(x, y) {
 }
 
 /**
- * C ref: getpos.c auto_describe — prints firstmatch after
- * do_screen_description(+lookat), not the full out_str / dfeature_at.
- * Stairs: DECgraphics showsyms keep '<'/'>' for stairs while ladders use
- * ≤/≥, so cmap match is ordinary+branch staircase only; lookat overwrites
- * firstmatch with S_br* / S_*stair explanation.
- *
- * C do_screen_description didlook: blocked-staircase rewrite after lookat.
- */
-function brief_at(x, y) {
-    const { buf } = lookat(x, y);
-    return maybe_blocked_staircase_down(buf);
-}
-
-/**
  * C ref: pager.c is_swallow_sym — gs.showsyms[S_sw_tl..S_sw_br].
  * Full showsyms table deferred; match dat/symbols DECgraphics overrides
  * (tc/ml/mr/bc) plus Primary defaults for unset swallow corners.
@@ -2828,7 +2815,7 @@ export async function do_look(mode = 0, click_cc = null) {
                 // Force --More-- before getpos when message is long
                 if ((game._pending_message || '').length > 40) await more();
                 // C: getpos(&cc, quick, …) — quick glance uses force=TRUE
-                ans = await getpos(cc, quick, WHAT_IS_A_LOCATION, brief_at);
+                ans = await getpos(cc, quick, WHAT_IS_A_LOCATION);
                 if (ans < 0 || cc.x < 0) break; /* done */
                 if (game.flags) game.flags.verbose = false; /* ask once */
             }

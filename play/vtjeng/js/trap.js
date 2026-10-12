@@ -3,7 +3,7 @@
 // C ref: trap.c -- t_at(), hole_destination(), maketrap(), deltrap(),
 // conjoined_pits(), clear_conjoined_pits(), adj_nonconjoined_pit(),
 // choose_trapnote(), set_utrap(), reset_utrap(), fill_pit(), float_down(),
-// climb_pit(), lava_effects(),
+// climb_pit(), lava_effects(), sokoban_guilt(),
 // trapname(), dountrap(), could_untrap(), untrap_prob(), cnv_trap_obj(),
 // into_vs_onto(), move_into_trap(), try_disarm(), reward_untrap(),
 // disarm_holdingtrap(), disarm_landmine(), unsqueak_ok(),
@@ -230,7 +230,7 @@ import {
 } from './dungeon.js';
 import { schedule_goto } from './do.js';
 import { next_to_u } from './apply_next_to_u.js';
-import { number_leashed, unleash_all } from './apply.js';
+import { check_leash, number_leashed, unleash_all } from './apply.js';
 import { done } from './end.js';
 import {
     canseemon, feel_newsym, rank_of, map_invisible, under_water,
@@ -352,6 +352,16 @@ import { costly_spot, shop_keeper, shk_your, shopdig } from './shk.js';
 import { quest_info } from './questpgr.js';
 import { mon_has_amulet } from './wizard.js';
 import { canspotmon } from './display.js';
+import { change_luck } from './moveloop_preamble.js';
+
+// C ref: trap.c sokoban_guilt() (7036-7055). Sokoban is the current-level
+// flag. Conduct and luck remain the separate player values initialized by
+// character creation.
+export function sokoban_guilt(state = game) {
+    if (!state.level?.flags?.sokoban_rules) return;
+    state.u.uconduct.sokocheat++;
+    change_luck(-1, state);
+}
 
 // C ref: trap.c instapetrify() (3844-3855). Supporting wielding_corpse's
 // protection-loss callers; other source callers retain their named gaps, so
@@ -1404,7 +1414,8 @@ export async function drown(state = game) {
     }
     await water_damage_chain(state.invent, false, { state });
     if (u.umonnum === PM_GREMLIN && rn2(3)) {
-        note_unported('mon.c split_mon');
+        const { split_mon } = await import('./potion.js');
+        await split_mon(state.youmonst, null, { state });
     } else if (u.umonnum === PM_IRON_GOLEM) {
         await ttyPline('You rust!', state);
         const damage = Maybe_Half_Phys(d(2, 6), state);
@@ -1456,9 +1467,9 @@ export async function drown(state = game) {
     if (teleports && !unaware
         && (teleportControl || rn2(3) < (u.uluck ?? 0) + 2)) {
         await ttyPline('You attempt a teleport spell.', state);
-        const { noteleport_level, tele } = await import('./teleport.js');
+        const { dotele, noteleport_level } = await import('./teleport.js');
         if (!noteleport_level(state.youmonst, state)) {
-            await tele(state);
+            await dotele(false, state);
             if (!is_pool(u.ux, u.uy, state)) return true;
         } else {
             await ttyPline('The attempted teleport spell fails.', state);
@@ -2522,7 +2533,8 @@ async function move_into_trap(ttmp, state = game) {
         u.umoved = true;
         newsym(u.ux0, u.uy0);
         vision_recalc(1, { state });
-        note_unported('apply.c check_leash');
+        // C ref: trap.c move_into_trap():5413, before move_bc() and spoteffects().
+        await check_leash(u.ux0, u.uy0, { state });
         if (Punished(state))
             move_bc(0, bc.value, bx.value, by.value, cx.value, cy.value, state);
         ttmp.tseen = 0; /* hack for check_here() */

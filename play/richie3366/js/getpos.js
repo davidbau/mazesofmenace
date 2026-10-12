@@ -1349,7 +1349,7 @@ export async function show_getpos_tip() {
  * C ref: getpos.c getpos — force=TRUE (travel) keeps unknown keys in-loop;
  * force=FALSE (whatis) may abort. Returns LOOK_* (>=0) or -1 on cancel.
  */
-export async function getpos(ccp, force, goal, describeAt) {
+export async function getpos(ccp, force, goal) {
     const g = game;
     if (!g.flags) g.flags = {};
     // C `:814–829` — entry: a queued direction (mouse-click MCMD replay
@@ -1454,7 +1454,15 @@ export async function getpos(ccp, force, goal, describeAt) {
             flush_screen_getpos_dirty();
             need_full_flush = false;
         } else if (g.iflags?.autodescribe && !msg_given) {
-            // C getpos.c:865–866. describeAt is not this arm.
+            // C getpos.c:865–866 — the loop's only describe path.
+            // C `:1144–1148` (nxtc) curs(WIN_MAP,cx,cy) ends EVERY arm
+            // pass and therefore precedes this loop-top describe; on a
+            // describe miss C prints nothing but keeps the nxtc cursor
+            // on the moved cell (wizmap terrain-browse w/o TER_MON
+            // skips pager.c:1328's monster arm on a displayed 'o').
+            // auto_describe curses only on a hit, so the nxtc curs goes
+            // here; on a hit it re-curses the same spot (no-op).
+            curs_win_map(cx, cy);
             await auto_describe(cx, cy);
             need_full_flush = false;
         } else if (need_full_flush) {
@@ -1610,12 +1618,9 @@ export async function getpos(ccp, force, goal, describeAt) {
             const next = truncate_to_map(cx, cy, dx, dy);
             cx = next.x;
             cy = next.y;
-            // C: describe at loop top via auto_describe; when that option
-            // is off, keep caller describeAt (whatis brief_at) as fallback.
-            if (!g.iflags?.autodescribe && typeof describeAt === 'function') {
-                const brief = describeAt(cx, cy);
-                if (brief) g._pending_message = brief;
-            }
+            // C `:914–920` — movecmd truncates and falls to nxtc; no arm
+            // describes. The loop top (`:865–866`) is the only describe
+            // path, so moves stay silent with autodescribe off.
             continue;
         }
 

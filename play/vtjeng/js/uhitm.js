@@ -11,6 +11,7 @@ import {
     artifact_hit,
     artifact_light,
     defends,
+    find_artifact,
     is_art,
     permapoisoned,
     retouch_equipment,
@@ -21,6 +22,7 @@ import {
     is_waterwall,
 } from './dbridge.js';
 import { isok } from './cmd_isok.js';
+import { upstart } from './hacklib.js';
 import { adjalign, adjattrib, exercise } from './attrib.js';
 import { some_armor, setwornEnv } from './do_wear.js';
 import { snuff_lit } from './apply_splash_lit.js';
@@ -114,11 +116,13 @@ import {
     EXACT_NAME,
     IS_OBSTRUCTED,
     MMOVE_DIED,
+    MIM_OMIT_WAIT,
     MIM_REVEAL,
     M_AP_FURNITURE,
     M_AP_MONSTER,
     M_AP_OBJECT,
     M_AP_NOTHING,
+    OBJ_FREE,
     PROT_FROM_SHAPE_CHANGERS,
     SEE_INVIS,
     SICK,
@@ -158,12 +162,14 @@ import {
     W_RINGL,
     W_RINGR,
     W_SADDLE,
+    W_WEP,
     W_ARMU,
     engulfing_u,
     helpless,
     ismnum,
     M_AP_TYPE,
     HAND,
+    OBJ_INVENT,
     NO_TRAP_FLAGS,
     MAX_EGG_HATCH_TIME,
     NEW_MOON,
@@ -184,6 +190,7 @@ import {
     a_monnam,
     capitalizedAlwaysVisibleMonsterName,
     capitalizedMonsterName,
+    hcolor,
     hliquid,
     l_monnam,
     mon_nam,
@@ -198,7 +205,11 @@ import {
     x_monnam,
     y_monnam,
 } from './do_name.js';
-import { livelog_printf, verbalize } from './pline.js';
+import {
+    consume_msg_xy,
+    livelog_printf,
+    verbalize,
+} from './pline.js';
 import {
     displayPendingTtyMessageWindow,
     ttyPline,
@@ -214,7 +225,6 @@ import {
     glyph_is_warning,
     glyph_to_cmap,
     glyph_to_mon,
-    glyph_to_obj,
     map_invisible,
     map_location,
     mon_to_glyph,
@@ -353,6 +363,7 @@ import {
     sticks,
     thick_skinned,
     touch_petrifies,
+    mhe,
     poly_when_stoned,
     unsolid,
     is_swimmer,
@@ -459,6 +470,7 @@ import {
     PM_IRON_GOLEM,
     PM_MEDUSA,
     PM_FAMINE,
+    PM_GHOUL,
     PM_PESTILENCE,
     PM_PAPER_GOLEM,
     PM_PYROLISK,
@@ -526,7 +538,7 @@ import {
 } from './obj.js';
 import {
     add_to_minv, addinv_runtime, carrying, freeinv, INVLET_BASIC, merge_choice,
-    obfree, obj_extract_self, update_inventory, useup, useupall,
+    hold_another_object, obfree, obj_extract_self, update_inventory, useup, useupall,
 } from './invent.js';
 import { clone_mon, grow_up } from './makemon.js';
 import {
@@ -560,6 +572,7 @@ import {
     BOOMERANG,
     BOULDER,
     CLOVE_OF_GARLIC,
+    COIN_CLASS,
     CORPSE,
     CREAM_PIE,
     DUNCE_CAP,
@@ -583,6 +596,7 @@ import {
     POTION_CLASS,
     ROCK,
     SILVER,
+    STRANGE_OBJECT,
     SPBOOK_CLASS,
     VEGGY,
     ARMOR_CLASS,
@@ -636,14 +650,16 @@ import {
     find_mac,
     is_pole,
     mon_adjust_speed,
+    setnotworn,
     set_twoweap,
     which_armor,
 } from './worn.js';
-import { findgold, steal, stealgold } from './steal.js';
+import { findgold, mpickobj, steal, stealgold, stealamulet } from './steal.js';
 import { rloc, tele, tele_restrict, u_teleport_mon } from './teleport.js';
 import {
     Flying,
     Levitation,
+    instapetrify,
     unconscious,
 } from './trap.js';
 import { mintrap } from './trap_effects.js';
@@ -669,7 +685,7 @@ import {
 import { delayed_killer, done, done_in_by } from './end.js';
 import { observe_object } from './o_init.js';
 import { obj_resists } from './bury.js';
-import { mhidden_description } from './pager.js';
+import { mhidden_description, object_from_map } from './pager.js';
 import { cutworm } from './worm.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
 import { erode_obj } from './trap_erode_obj.js';
@@ -1019,10 +1035,12 @@ export async function mhitm_mgc_atk_negated(
 // object, monster, blind) choose the format string, and four what-branches
 // (invisible, M_AP_MONSTER, sleeping S_MIMIC, default) choose the substitute.
 // `mimic_flags` carries MIM_REVEAL and MIM_OMIT_WAIT.
-async function that_is_a_mimic(mtmp, mimic_flags, state = game, env = {}) {
+export async function that_is_a_mimic(
+    mtmp, mimic_flags, state = game, env = {},
+) {
     const S_trapped_chest = 73; // defsym.h PCHAR 73
     const reveal_it = (mimic_flags & MIM_REVEAL) !== 0;
-    const omit_wait = (mimic_flags & 2 /* MIM_OMIT_WAIT */) !== 0;
+    const omit_wait = (mimic_flags & MIM_OMIT_WAIT) !== 0;
     const generic = 'a monster';
     let fmtbuf = "Wait!  That's %s!";
     let what = null;
@@ -1052,13 +1070,22 @@ async function that_is_a_mimic(mtmp, mimic_flags, state = game, env = {}) {
                 fmtbuf = `That ${explanation} actually is %s!`;
             }
         } else if (glyph_is_object(glyph)) {
-            // C ref: pager.c object_from_map() line 317.
-            const otyp = glyph_to_obj(glyph);
-            const otmp = mksobj(otyp, false, false, { state });
-            const otmp_name = simpleonames(otmp, state);
-            const those = is_plural(otmp, state) ? 'Those' : 'That';
-            const verb = otense(otmp, 'are', state);
-            fmtbuf = `${those} ${otmp_name} ${verb} %s!`;
+            const { object: otmp, fakeobj } = object_from_map(
+                glyph, x, y, state,
+            );
+            try {
+                const otmp_name = otmp && otmp.otyp !== STRANGE_OBJECT
+                    ? simpleonames(otmp, state) : 'strange object';
+                const those = otmp && is_plural(otmp, state)
+                    ? 'Those' : 'That';
+                const verb = otmp ? otense(otmp, 'are', state) : 'is';
+                fmtbuf = `${those} ${otmp_name} ${verb} %s!`;
+            } finally {
+                if (fakeobj && otmp) {
+                    otmp.where = OBJ_FREE;
+                    dealloc_obj(otmp, { state });
+                }
+            }
         } else if (glyph_is_monster(glyph)) {
             const mndx = glyph_to_mon(glyph);
             const mtmp_name = pmname(
@@ -1085,7 +1112,10 @@ async function that_is_a_mimic(mtmp, mimic_flags, state = game, env = {}) {
 
     if (what) {
         const i = (omit_wait && fmtbuf.startsWith('Wait!  ')) ? 7 : 0;
-        await env.pline?.(fmtbuf.substring(i).replace('%s', what), state);
+        const line = consume_msg_xy(
+            fmtbuf.substring(i).replace('%s', what), state,
+        );
+        await (env.pline ?? env.message ?? ttyPline)(line, state, env);
     }
     if (reveal_it)
         seemimic(mtmp, state);
@@ -2900,13 +2930,21 @@ async function hmon_hitmon_weapon(hmd, mon, obj, state, env, random) {
     }
 }
 
-// C ref: uhitm.c hmon_hitmon_misc_obj() (1204-1300). The cream pie arm is
-// reached by dothrow.c for a thrown nonweapon. It blinds and angers a visible
-// defender, consumes the object, and leaves zero damage while marking the hit
-// text so the generic damage and message tails do not add a second result.
+// C ref: uhitm.c hmon_hitmon_misc_obj() (1119-1386). This switch handles
+// held and thrown nonweapon hits, including their object-lifetime effects.
 async function hmon_hitmon_misc_obj(hmd, mon, obj, state, env, random) {
     const message = requireAttackOperation(env, 'message');
-    const lifeEnv = { ...env, state, random };
+    const wornEnv = setwornEnv(state, env);
+    const lifeEnv = {
+        ...env,
+        state,
+        random,
+        hooks: {
+            ...wornEnv.hooks,
+            // invent.c:useupall reaches worn.c:setnotworn before extraction.
+            setNotWorn: target => setnotworn(target, wornEnv),
+        },
+    };
 
     /* Keep the complete non-weapon switch in the uhitm.c owner.  These arms
        are reached by do_hit() for ordinary objects and by dothrow for thrown
@@ -2942,9 +2980,10 @@ async function hmon_hitmon_misc_obj(hmd, mon, obj, state, env, random) {
             `You succeed in destroying ${ysimpleName(obj, state)}.  Congratulations!`,
             state,
         );
-        // release_camera_demon() is a discarded side effect in C.  Preserve
-        // that explicit source boundary without inventing a monster or draw.
-        note_unported('dothrow.c release_camera_demon');
+        // dothrow.c's void helper runs before invent.c consumes the equipped
+        // camera. Dynamic import follows the adjacent breaktest() path above.
+        const { release_camera_demon } = await import('./dothrow.js');
+        await release_camera_demon(obj, state.u.ux, state.u.uy, lifeEnv);
         await useup(obj, lifeEnv);
         hmd.doreturn = true;
         hmd.retval = true;
@@ -3588,6 +3627,59 @@ export async function hmon_hitmon_msg_silver(hmd, mon, state = game, env = {}) {
     await requireAttackOperation(env, 'message')(text, state);
 }
 
+// C ref: uhitm.c hmon_hitmon_msg_lightobj() (1702-1730); obj is unused.
+export async function hmon_hitmon_msg_lightobj(hmd, mon, state = game, env = {}) {
+    // C evaluates mon_nam() before its separate visibility test. Under
+    // hallucination, the existing name owner may consume display RNG here.
+    let whom = mon_nam(mon, state, env);
+    const visible = canspotmon(mon, state);
+    let prefix;
+    let suffix;
+    if (visible) {
+        prefix = hmd.saved_oname
+            ? s_suffix(hmd.saved_oname) + ' radiance penetrates deep into '
+            : 'The light sears ';
+        suffix = '!';
+    } else {
+        whom = highc(whom[0]) + whom.slice(1);
+        prefix = '';
+        suffix = ' is seared!';
+    }
+    if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
+        whom = s_suffix(whom) + ' flesh';
+    const line = visible ? prefix + whom + suffix : whom + suffix;
+    await requireAttackOperation(env, 'message')(line, state);
+}
+
+// C ref: uhitm.c nohandglow() (6314-6337). The helper emits the current
+// hand-feedback branch before consuming one turn of u.umconf. hcolor() keeps
+// its source display-RNG draw when the hero is hallucinating.
+async function nohandglow(mon, state, env) {
+    if (!state.u.umconf || mon.mconf) return;
+
+    const hands = makeplural(body_part(HAND, state.youmonst));
+    const altfeedback = heroIsBlind(state) || heroInvisible(state);
+    const postMessage = requireAttackOperation(env, 'message');
+    if (state.u.umconf === 1) {
+        if (altfeedback) {
+            await postMessage(`Your ${hands} stop tingling.`, state);
+        } else {
+            await postMessage(
+                `Your ${hands} stop glowing ${hcolor('red', state, env)}.`,
+                state,
+            );
+        }
+    } else if (altfeedback) {
+        await postMessage(`The tingling in your ${hands} lessens.`, state);
+    } else {
+        await postMessage(
+            `Your ${hands} no longer glow so brightly ${hcolor('red', state, env)}.`,
+            state,
+        );
+    }
+    state.u.umconf--;
+}
+
 // C ref: uhitm.c hmon_hitmon() (1752-1935), the guts of hmon(). Everything
 // between the decision that a blow landed and the target's reaction to it.
 //
@@ -3602,11 +3694,11 @@ export async function hmon_hitmon_msg_silver(hmd, mon, state = game, env = {}) {
 //   1821-1822 shade_miss() feedback, for a shade that took no damage.
 //   1826      hmon_hitmon_jousting(), which can move a mounted target through
 //             the return-valued mhurtle_to_doom() helper.
-//   1880      hmon_hitmon_msg_lightobj(), the remaining Sunsword feedback gap.
+//   1880      hmon_hitmon_msg_lightobj(), which uses the saved artifact name
 //   1898-1907 the poison messages and xkilled(); hmon_hitmon_poison() sets
 //             those flags before this tail.
 //   1911      killed(), the kill itself, which mon.c owns.
-//   1914-1919 the confused-touch arm behind u.umconf.
+//   1912-1917 nohandglow() feedback, then spellbook resistance and confusion.
 //
 // ispoisoned, dryit and unpoisonmsg are all live flags: their writers are the
 // weapon/misc/poison owners above, and their common-tail consumers preserve
@@ -3758,7 +3850,7 @@ async function hmon_hitmon(mon, obj, thrown, dieroll, state = game, env = {}) {
         await hmon_hitmon_msg_silver(hmd, mon, state, env);
 
     if (hmd.lightobj)
-        note_unported('uhitm.c hmon_hitmon_msg_lightobj');
+        await hmon_hitmon_msg_lightobj(hmd, mon, state, env);
 
     const postMessage = requireAttackOperation(env, 'message');
     if (hmd.needpoismsg)
@@ -3786,9 +3878,7 @@ async function hmon_hitmon(mon, obj, thrown, dieroll, state = game, env = {}) {
             state.gm.mkcorpstat_norevive = false;
         }
     } else if (state.u.umconf && hmd.hand_to_hand) {
-        /* nohandglow() is a discarded visual effect, but the source still
-           applies the canonical spellbook resistance before setting mconf. */
-        note_unported('uhitm.c nohandglow');
+        await nohandglow(mon, state, env);
         if (!mon.mconf
             && !await resist(mon, SPBOOK_CLASS, 0, NOTELL, state, random)) {
             mon.mconf = 1;
@@ -3858,9 +3948,122 @@ function first_weapon_hit(weapon, state = game) {
     );
 }
 
+// C ref: uhitm.c theft_petrifies() (2148-2173). A stolen cockatrice or
+// Medusa corpse stops further theft even when instapetrify() is survived.
+async function theft_petrifies(otmp, state = game, rawEnv = {}) {
+    if (state.uarmg || otmp.otyp !== CORPSE
+        || !touch_petrifies(state.mons?.[otmp.corpsenm])
+        || heroStoneResistance(state)) {
+        return false;
+    }
+    await instapetrify(
+        corpse_xname(otmp, 'stolen', CXN_ARTICLE, state),
+        state,
+        { ...rawEnv, state },
+    );
+    return true;
+}
+
+// C ref: uhitm.c steal_it() (2174-2280). Remove monster gold while choosing
+// thefts, then restore it through mpickobj() in the same source order.
+async function steal_it(mdef, mattk, state = game, rawEnv = {}) {
+    const random = rawEnv.random ?? { d, rn1, rn2, rnd, rne, rnz };
+    const message = requireAttackOperation(rawEnv, 'message');
+    const env = { ...rawEnv, state, random, message };
+    const nameEnv = { ...env, canSpotMonster: canspotmon };
+    const inventoryEnv = {
+        ...env,
+        hooks: {
+            ...env.hooks,
+            message: env.hooks?.message ?? message,
+            encumberMessage: env.hooks?.encumberMessage
+                ?? env.encumberMessage
+                ?? ((currentState) => encumber_msg(currentState, { message })),
+        },
+    };
+    let otmp = mdef.minvent;
+    if (!otmp || (otmp.oclass === COIN_CLASS && !otmp.nobj))
+        return;
+
+    let ustealo = null;
+    if (could_seduce(state.youmonst, mdef, mattk, env) && mdef.mcanmove) {
+        let link = mdef;
+        let linkField = 'minvent';
+        while (link[linkField]) {
+            otmp = link[linkField];
+            if (otmp.owornmask & W_ARM) {
+                if (ustealo)
+                    throw new Error('steal_it: multiple worn suits');
+                link[linkField] = otmp.nobj;
+                ustealo = otmp;
+                ustealo.nobj = null;
+            } else {
+                link = otmp;
+                linkField = 'nobj';
+            }
+        }
+        link[linkField] = ustealo;
+    }
+
+    let gold = findgold(mdef.minvent);
+    if (ustealo) {
+        if (Boolean(gender(mdef)) === Boolean(state.u.mfemale)
+            && state.youmonst.data.mlet === S_NYMPH) {
+            await message(
+                `You charm ${mon_nam(mdef, state, env)}.  ${upstart(mhe(mdef, nameEnv))} gladly hands over ${gold ? 'most of ' : ''}${mhis(mdef, nameEnv)} possessions.`,
+                state,
+            );
+        } else {
+            await message(
+                `You seduce ${mon_nam(mdef, state, env)} and ${mhe(mdef, nameEnv)} starts to take off ${mhis(mdef, nameEnv)} clothes.`,
+                state,
+            );
+        }
+    }
+
+    if (gold) obj_extract_self(gold, env);
+    while ((otmp = mdef.minvent)) {
+        if (gold) {
+            mpickobj(mdef, gold, env);
+            gold = null;
+        }
+        if (!Upolyd(state.u)) break;
+        const unwornmask = otmp.owornmask ?? 0;
+        if (otmp.oartifact && !heroIsBlind(state))
+            find_artifact(otmp, state);
+        await extract_from_minvent(mdef, otmp, true, false, env);
+        if (otmp === ustealo) {
+            await message(
+                `${Monnam(mdef, state, env)} finishes taking off ${mhis(mdef, nameEnv)} suit.`,
+                state,
+            );
+        }
+        otmp = await hold_another_object(
+            otmp,
+            'You snatched but dropped %s.',
+            donameFresh(otmp, state),
+            'You steal: ',
+            inventoryEnv,
+        );
+        if (!otmp || otmp.where !== OBJ_INVENT) continue;
+        if (await theft_petrifies(otmp, state, env)) break;
+        if (unwornmask & W_WEP) {
+            possibly_unwield(mdef, false, env);
+        } else if (unwornmask & W_ARMG) {
+            // trap.c:mselftouch() is a void callee with an unfinished
+            // minstapetrify() path; record and skip that source boundary.
+            note_unported('trap.c mselftouch');
+            if (mdef.mhp < 1) break;
+        }
+        if (!ustealo) break;
+        if ((gold = findgold(mdef.minvent))) obj_extract_self(gold, env);
+    }
+    if (gold) mpickobj(mdef, gold, env);
+}
+
 // C ref: uhitm.c mhitm_ad_sedu() (4623-4748). Seduction / item theft attack.
-// Three arms: hero attacks monster (uhitm, still delegated to steal_it()),
-// monster attacks hero (mhitu, ported below), and monster attacks monster
+// Three arms: hero attacks monster (uhitm via steal_it()), monster attacks
+// hero (mhitu, ported below), and monster attacks monster
 // (mhitm, ported below).
 //
 // The mhitu arm: if the attacker is an animal, it acts like a hit message then
@@ -3872,10 +4075,7 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
     const message = requireAttackOperation(env, 'message');
 
     if (magr === state.youmonst) {
-        // uhitm: steal_it() is a void callee whose result C discards. Keep
-        // the source call boundary visible while the hero-versus-monster
-        // theft operation remains outside this span.
-        note_unported('uhitm.c steal_it');
+        await steal_it(mdef, mattk, state, { ...env, state, random, message });
         mhm.damage = 0;
         return;
     }
@@ -4341,15 +4541,9 @@ export async function mhitm_ad_cold(
     }
 }
 
-// C ref: uhitm.c mhitm_ad_elec() (2683-2739), the `mdef == &gy.youmonst` arm.
-// A shock attack landing on the hero: the attack's own message, the magic
-// cancellation test, and the item destruction a high-level attacker adds.
-//
-// C's other two arms refuse. The hero's own shock attack (uhitm) has no caller
-// here, because js/uhitm.js damageum() is unported. One monster shocking
-// another (mhitm) does: js/mhitm.js mdamagem() reaches mhitm_adtyping(), which
-// dispatches AD_ELEC here, so a pet that fights a shocking monster stops at
-// that arm.
+// C ref: uhitm.c mhitm_ad_elec() (2683-2739), all three combat directions.
+// The attack's entry damage is the amount passed to zap.c:destroy_items even
+// when resistance resets the direct hit to zero.
 export async function mhitm_ad_elec(
     magr,
     mattk,
@@ -4360,41 +4554,68 @@ export async function mhitm_ad_elec(
 ) {
     const random = env.random ?? { rn2 };
     const message = requireAttackOperation(env, 'message');
-    const unsupported = requireAttackOperation(env, 'unsupported');
-    // C's `orig_dmg` is the damage as it stood on entry, which only the three
-    // destroy_items() calls read. All three refuse below, so nothing here
-    // outlives mhm.damage.
+    const effectEnv = { ...env, state, random };
+    const orig_dmg = mhm.damage;
 
     if (magr === state.youmonst) {
         /* uhitm */
-        unsupported("the hero's own shock attack");
+        if (await mhitm_mgc_atk_negated(magr, mdef, true, state, env)) {
+            mhm.damage = 0;
+            return;
+        }
+        if (!heroIsBlind(state))
+            await message(`${Monnam(mdef, state, env)} is zapped!`, state, env);
+        if (Resists_Elem(mdef, SHOCK_RES, state)
+            || defended(mdef, AD_ELEC, state)) {
+            if (!heroIsBlind(state))
+                await message(`The zap doesn't shock ${mon_nam(mdef, state, env)}!`,
+                    state, env);
+            await golemeffects(mdef, AD_ELEC, mhm.damage, effectEnv);
+            await shieldeff(mdef.mx, mdef.my, state);
+            mhm.damage = 0;
+        }
+        mhm.damage += await destroy_items(mdef, AD_ELEC, orig_dmg, effectEnv);
     } else if (mdef === state.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk, state, env);
         if (!await mhitm_mgc_atk_negated(magr, mdef, true, state, env)) {
             await message('You get zapped!', state);
             if (propertyPresent(state.u, SHOCK_RES)) {
-                // youprop.h:44 Shock_resistance. The arm prints "The zap
-                // doesn't shock you!" and then records the resistance through
-                // mondata.c monstseesu(), which is unported -- js/mondata.js
-                // carries monstunseesu() alone -- so the whole arm stops
-                // before its first line rather than printing and forgetting.
-                unsupported('a shock-resistant hero shrugging off an attack');
+                await message("The zap doesn't shock you!", state);
+                monstseesu(M_SEEN_ELEC, state);
+                mhm.damage = 0;
             } else {
                 monstunseesu(M_SEEN_ELEC, state);
             }
-            if (magr.m_lev > random.rn2(20)) {
-                // zap.c destroy_items() for the hero's own pack. Only the
-                // monster half is ported (js/zap_destroy_items.js), and it
-                // covers fire alone.
-                unsupported("electricity destroying the hero's items");
-            }
+            if (magr.m_lev > random.rn2(20))
+                await destroy_items(state.youmonst, AD_ELEC, orig_dmg,
+                    effectEnv);
         } else {
             mhm.damage = 0;
         }
     } else {
         /* mhitm */
-        unsupported('one monster shocking another');
+        if (await mhitm_mgc_atk_negated(magr, mdef, true, state, env)) {
+            mhm.damage = 0;
+            return;
+        }
+        if (state.gv?.vis && canseemon(mdef, state))
+            await message(messageAt(
+                `${Monnam(mdef, state, env)} gets zapped!`,
+                mdef.mx,
+                mdef.my,
+                state,
+            ), state, env);
+        if (Resists_Elem(mdef, SHOCK_RES, state)
+            || defended(mdef, AD_ELEC, state)) {
+            if (state.gv?.vis && canseemon(mdef, state))
+                await message(`The zap doesn't shock ${mon_nam(mdef, state, env)}!`,
+                    state, env);
+            await shieldeff(mdef.mx, mdef.my, state);
+            await golemeffects(mdef, AD_ELEC, mhm.damage, effectEnv);
+            mhm.damage = 0;
+        }
+        mhm.damage += await destroy_items(mdef, AD_ELEC, orig_dmg, effectEnv);
     }
 }
 
@@ -5059,13 +5280,12 @@ export async function mhitm_ad_ston(
             }
         }
     } else {
-        // C discards do_stone_mon()'s void result. Keep this call boundary
-        // explicit until that source function is ported; do not use a gap's
-        // return as hitflags or damage data.
+        // C: mhitm. The call communicates through mhm; its void return is not
+        // hitflags or damage data.
         if (magr.mcan)
             return;
-        note_unported('uhitm.c do_stone_mon');
-        return;
+        await do_stone_mon(magr, mattk, mdef, mhm, state, env);
+        if (mhm.done) return;
     }
 }
 
@@ -6421,8 +6641,7 @@ export async function mhitm_ad_famn(
 
 // C ref: uhitm.c mhitm_ad_pest() (3808-3834). Snapshot the attacker's form
 // before the awaited name/message path. The valid build has no hero form with
-// AD_PEST; monster-to-monster disease effects remain at the exact discarded
-// void call until mhitm_ad_dise() is ported.
+// AD_PEST; that source arm still shares the AD_DISE monster-target logic.
 export async function mhitm_ad_pest(
     magr,
     mattk,
@@ -6433,11 +6652,13 @@ export async function mhitm_ad_pest(
 ) {
     const pa = magr.data;
 
-    if (magr === state.youmonst) {
+    if (magr === state.youmonst || mdef !== state.youmonst) {
         // uhitm.c documents that no valid polymorph form can select this arm.
-        // Preserve the source's goto into the AD_DISE case at its void gap.
-        note_unported('uhitm.c mhitm_ad_dise');
-    } else if (mdef === state.youmonst) {
+        // Both this goto and the monster-pair arm copy the attack, change its
+        // type to AD_DISE, and apply the same helper.
+        const altAttk = { ...mattk, adtyp: AD_DISE };
+        await mhitm_ad_dise(magr, altAttk, mdef, mhm, state, env);
+    } else {
         const message = requireAttackOperation(env, 'message');
         await message(
             `${Monnam(magr, state, env)} reaches out, and you feel fever and chills.`,
@@ -6447,10 +6668,6 @@ export async function mhitm_ad_pest(
         // C discards diseasemu's Boolean here; its disease mutation is the
         // effect, and hitmu() still applies the ordinary attack damage.
         await diseasemu(pa, { ...env, state });
-    } else {
-        // uhitm.c copies mattk, changes adtyp to AD_DISE and discards the
-        // mhitm_ad_dise result. Keep its unported effect at that call boundary.
-        note_unported('uhitm.c mhitm_ad_dise');
     }
 }
 
@@ -6470,8 +6687,36 @@ export async function mhitm_ad_samu(
     } else if (mdef === state.youmonst) {
         await hitmsg(magr, mattk, state, env);
         const random = env.random ?? { rn2 };
-        if (!random.rn2(20)) note_unported('steal.c stealamulet');
+        if (!random.rn2(20))
+            await stealamulet(magr, { ...env, state });
     } else {
+        mhm.damage = 0;
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_dise() (4593-4619). The hero-attacker case jumps to
+// the monster-pair guard; a monster attacking the hero instead emits hitmsg
+// and keeps damage only when diseasemu succeeds.
+export async function mhitm_ad_dise(
+    magr,
+    mattk,
+    mdef,
+    mhm,
+    state = game,
+    env = {},
+) {
+    const pa = magr.data;
+    const pd = mdef.data;
+
+    if (magr !== state.youmonst && mdef === state.youmonst) {
+        await hitmsg(magr, mattk, state, env);
+        if (!await diseasemu(pa, { ...env, state }))
+            mhm.damage = 0;
+        return;
+    }
+
+    if (pd.mlet === S_FUNGUS || pd === state.mons[PM_GHOUL]
+        || defended(mdef, AD_DISE, state)) {
         mhm.damage = 0;
     }
 }
@@ -7224,7 +7469,9 @@ export async function mhitm_adtyping(
     case AD_POLY:
         await mhitm_ad_poly(magr, mattk, mdef, mhm, state, env);
         break;
-    case AD_DISE: unported('mhitm_ad_dise'); break;
+    case AD_DISE:
+        await mhitm_ad_dise(magr, mattk, mdef, mhm, state, env);
+        break;
     case AD_SAMU:
         await mhitm_ad_samu(magr, mattk, mdef, mhm, state, env);
         break;

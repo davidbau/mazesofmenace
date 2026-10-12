@@ -321,16 +321,6 @@ export function cvt_sdoor_to_door(lev) {
     lev.candig = 0;
 }
 
-/** Clear counted search / multi — C nomul(0) subset for find paths */
-function nomul_clear() {
-    game.multi = 0;
-    game._repeat_search = false;
-    if (game.context) {
-        game.context.mv = 0;
-        game.context.run = 0;
-    }
-}
-
 /**
  * C ref: detect.c find_trap `:1936–1962` — mark seen, exercise, reveal,
  * message, and the clutter redraw wait.
@@ -500,7 +490,11 @@ export async function dosearch0(aflag) {
                 cvt_sdoor_to_door(loc);
                 recalc_block_point(x, y); // C: recalc_block_point
                 exercise(A_WIS, true);
-                nomul_clear();
+                // C detect.c:2048 — nomul(0), not a silent multi clear:
+                // disp.botl (multi>=0) + end_running time_botl repaint
+                // the status clock (scen-chain-Knight-578142 step 308:
+                // run-stop trap find showed stale T:39, C paints T:40).
+                nomul(0);
                 // C: feel_location — make sure door shows up
                 feel_location(x, y);
                 // C detect.c:2050 — set_msg_xy before the find pline.
@@ -512,7 +506,8 @@ export async function dosearch0(aflag) {
                 // C detect.c:2056 — unblock_point (vision), not recalc.
                 unblock_point(x, y);
                 exercise(A_WIS, true);
-                nomul_clear();
+                // C detect.c:2058 — nomul(0): botl + run-stop time_botl.
+                nomul(0);
                 // C: feel_newsym — make sure passage shows up
                 feel_newsym(x, y);
                 // C detect.c:2060 — set_msg_xy before the find pline.
@@ -533,7 +528,8 @@ export async function dosearch0(aflag) {
 
                 const trap = t_at(x, y);
                 if (trap && !trap.tseen && !rnl(8)) {
-                    nomul_clear();
+                    // C detect.c:2080 — nomul(0): botl + run-stop time_botl.
+                    nomul(0);
                     if (trap.ttyp === STATUE_TRAP) {
                         if (await activate_statue_trap(trap, x, y, false)) {
                             exercise(A_WIS, true);

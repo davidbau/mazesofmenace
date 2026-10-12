@@ -2,7 +2,8 @@
 // creation and naming share.
 // C refs: src/eat.c is_edible(), gethungry(), newuhs(), unfaint(), eat_brains(), nonrotting_corpse(),
 //         vegan(), vegetarian(), tin_variety(), set_tin_variety(),
-//         tin_details(), opentin(), Popeye(), eat_ok(), floorfood(), doeat(),
+//         tin_details(), opentin(), Popeye(), eatmdone(), eatmupdate(),
+//         eat_ok(), floorfood(), doeat(),
 //         and vomit().
 
 import {
@@ -49,6 +50,7 @@ import {
     GETOBJ_EXCLUDE_SELECTABLE,
     GETOBJ_NOFLAGS,
     GETOBJ_SUGGEST,
+    GD_EATGOLD,
     GLIB,
     Has_contents,
     IRONBARS,
@@ -72,6 +74,7 @@ import {
     MAGICAL_BREATHING,
     M_AP_NOTHING,
     M_AP_OBJECT,
+    M_AP_TYPE,
     M_ATTK_AGR_DIED,
     M_ATTK_HIT,
     M_ATTK_MISS,
@@ -161,6 +164,7 @@ import { is_ice,
     is_pool_or_lava,
 } from './dbridge.js';
 import { note_unported } from './unported.js';
+import { vault_gd_watching } from './vault.js';
 import { unpunish } from './read.js';
 import { heroDeaf, livelog_printf, verbalize, youHear } from './pline.js';
 import {
@@ -209,7 +213,7 @@ import { outrumor } from './random_text.js';
 import { fall_asleep, obj_stop_timers } from './timeout.js';
 import {
     Flying, Levitation, b_trapped, deltrap, float_up, reset_utrap, t_at, unconscious } from './trap.js';
-import { ttyPline } from './tty_message.js';
+import { displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
 import { remove_worn_item } from './steal.js';
 import { costly_spot, sellobj_state } from './shk.js';
 import { explode } from './explode.js';
@@ -1738,6 +1742,30 @@ export async function maybe_finished_meal(stopping, state = game, env = {}) {
     return false;
 }
 
+// C ref: eat.c cant_finish_meal() (3893-3912), called before revive() locates
+// the corpse or creates the monster. Clear the active meal first so a
+// makemon()-triggered stop_occupation() cannot finish and consume the corpse
+// while revive() still needs it. Keep the source's non-null donull occupation
+// until stop_occupation() runs; null would skip its "You stop eating" arm.
+export async function cant_finish_meal(corpse, state = game, env = {}) {
+    if (state.go?.occupation !== eatfood
+        || state.context?.victual?.piece !== corpse) return;
+
+    state.context.victual = zero_victual();
+    if (!corpse.oeaten) corpse.oeaten = 1;
+
+    const { donull } = await import('./cmd.js');
+    state.go.occupation = donull;
+    const { stop_occupation } = await import('./allmain.js');
+    const mealEnv = {
+        ...env,
+        message: env.message ?? (env.planning ? async () => {} : ttyPline),
+        endRunning: env.endRunning ?? endRunning,
+    };
+    await stop_occupation(state, mealEnv);
+    await newuhs(false, state, mealEnv);
+}
+
 // C ref: eat.c unfaint() (3336-3344), invoked by hack.c unmul().
 export async function unfaint(state = game, env = {}) {
     await Hear_again(state, env);
@@ -2572,6 +2600,43 @@ export function eatmdone(state = game, env = {}) {
     return 0;
 }
 
+// C ref: eat.c eatmupdate() (181-213). Hallucination can change the object
+// appearance and the pending completion message while corpse mimicry is active.
+export function eatmupdate(state = game, env = {}) {
+    if (!state.eatmbuf || state.nomovemsg !== state.eatmbuf) return;
+
+    let altmsg = null;
+    let altapp = 0;
+    if (M_AP_TYPE(state.youmonst) === M_AP_OBJECT
+        && state.youmonst.mappearance === ORANGE
+        && !Hallucination(state)) {
+        // Revert the hallucinatory orange appearance to mimicked gold.
+        altmsg = 'You now prefer mimicking yourself.';
+        altapp = GOLD_PIECE;
+    } else if (M_AP_TYPE(state.youmonst) === M_AP_OBJECT
+        && state.youmonst.mappearance === GOLD_PIECE
+        && Hallucination(state)) {
+        // C retains this branch although normal callers end mimicry before
+        // starting hallucination during the immobilized occupation.
+        altmsg = 'Your rind escaped intact.';
+        altapp = ORANGE;
+    }
+
+    if (altmsg) {
+        // C copies the replacement into ge.eatmbuf and points nomovemsg at
+        // that same buffer; these two state fields represent those references.
+        state.eatmbuf = altmsg;
+        state.nomovemsg = state.eatmbuf;
+        state.youmonst.mappearance = altapp;
+
+        // newsym() updates the live map. Planning callers inject a silent
+        // redraw, and isolated states without a redraw must not repaint game.
+        const redraw = env.redraw
+            ?? (env.planning || state !== game ? null : newsym);
+        redraw?.(state.u.ux, state.u.uy, state);
+    }
+}
+
 // C ref: eat.c cpostfx() (1127-1319), called after completely consuming a
 // corpse. `state.eatmbuf` is the JS representation of C's ge.eatmbuf.
 async function cpostfx(pm, state, env = {}) {
@@ -2696,7 +2761,7 @@ async function cpostfx(pm, state, env = {}) {
             state.youmonst.mappearance = hallucinating ? ORANGE : GOLD_PIECE;
             newsym(state.u.ux, state.u.uy);
             await curs_on_u(state);
-            note_unported('windows.c display_nhwindow');
+            await displayPendingTtyMessageWindow(state);
         }
         break;
     case PM_QUANTUM_MECHANIC: {
@@ -4028,9 +4093,7 @@ async function eatspecial(state, env) {
             await useupall(otmp, env);
         else
             await useupf(otmp, otmp.quan, env);
-        // The watcher result is discarded by C. Its source owner is not
-        // ported, so do not invent a shop update for eaten gold.
-        note_unported('vault.c vault_gd_watching');
+        vault_gd_watching(GD_EATGOLD, state);
         return;
     }
 

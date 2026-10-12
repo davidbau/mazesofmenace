@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
-import { next_ident, obj_extract_self, dealloc_obj, curse, free_omonst, set_corpsenm, weight, is_mines_prize, is_soko_prize } from './mkobj.js';
+import { next_ident, obj_extract_self, dealloc_obj, curse, free_omonst, set_corpsenm, weight, is_mines_prize, is_soko_prize, restore_timers } from './mkobj.js';
 import { peace_minded, set_malign, propagate } from './makemon.js';
 import {
     OBJ_FLOOR, OBJ_CONTAINED, SHOPBASE, ROOMOFFSET, ONAME_BONES,
@@ -533,8 +533,9 @@ function remapObjChainIds(head) {
  * Recorded by remapMonChainIds, consumed by region.js reset_region_mids
  * (returns the new id, null when unmapped — the boolean+out-param shape
  * collapsed, same contract), cleared at both ends of getlev_bones like C.
- * (C light.c:543 / timeout.c:2760 ghostly lookups have no JS restore
- * counterpart yet — future rows, named here.)
+ * (C light.c:543's ghostly lookup has no JS restore counterpart yet —
+ * named at getlev_bones. C timeout.c:2760 needs none: deserLevel relinks
+ * timers against the blob's pre-remap o_ids before this map exists.)
  */
 const bonesIdMap = new Map();
 export function record_bones_id(oldId, newId) {
@@ -618,8 +619,10 @@ async function trickery(reason) {
  * against the blob, review 657), then the ghostly arms: loadfruitchn →
  * restmonchn/restobjchn id remap + propagate + ghostfruit, peace/malign
  * reset for the new hero, install, rest_track, freefruitchn.
- * Named omissions: installing the blob's RANGE_LEVEL timers/lights,
+ * Named omissions: installing the blob's RANGE_LEVEL lights
+ * (restore_light_sources + relink_light_sources ghostly, light.c),
  * lastseentyp (C getlev restores it); shk residency peace; hide_monst.
+ * The RANGE_LEVEL timers ARE installed below (C `:1144`).
  * Regions ARE restored (rest_regions ghostly arm below, D-2639).
  * Exclusions likewise (load_exclusions, same C order).
  * @param {object} payload  bones VFS payload (top-level level blob)
@@ -706,6 +709,15 @@ function getlev_bones(payload) {
     load_exclusions(info.exclusion_zones);
     // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
     rest_track(info.track);
+    // C restore.c getlev `:1111` elapsed + `:1144` restore_timers ghostly
+    // (timeout.c `:2722–2723` timeout += elapsed): install the blob's
+    // RANGE_LEVEL timers with the old-clock→new-clock skew. Entries were
+    // relinked to live object pointers by deserLevel against the blob's
+    // (pre-remap) o_ids, so C timeout.c `:2760`'s ghostly id-map lookup
+    // has no work left; the remap above only renumbered o_ids, which the
+    // installed pointers do not use. The lights half of `:1144–1145` /
+    // `:1300` stays a named omission (light.c, separate file).
+    restore_timers(info.timers, true, (game.moves | 0) - (info.omoves | 0));
     // C restore.c getlev `:1301` reset_oattached_mids(ghostly) in C order —
     // after all mons & objs are restored, before clear_id_mapping `:1304`:
     // ghostly omonst m_id zeroing + peace reset, omid remap through the

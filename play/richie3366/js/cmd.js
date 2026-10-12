@@ -7086,15 +7086,17 @@ export async function domove(dx, dy) {
     // C hack.c:2953–2960 — mimic furniture/object unhide (D-1260)
     hero_mimic_unhide_after_move();
 
-    // Update display. C hack.c:2964–2973 — newsym(ux0,uy0);
+    // Update display. C hack.c:2964–2974 — newsym(ux0,uy0);
     // vision_recalc(1); invocation_message(); only when the hero
-    // actually stepped (ux0!=ux || uy0!=uy). JS extra newsym(dest)
-    // is display-only, not this peel. Same-cell occupy (swallow onto
+    // actually stepped (ux0!=ux || uy0!=uy). C `:2969` is explicit:
+    // "vision_recalc() will print our new one" — no direct
+    // newsym(dest): under Hallucination the extra paint burns a
+    // display-RNG draw and desyncs every later hallucinated glyph
+    // (Samurai-578121 step 1328). Same-cell occupy (swallow onto
     // ustuck) skips the clue.
     if (did_step) {
         newsym(oldx, oldy);
         vision_recalc(1);
-        newsym(newx, newy);
         await invocation_message();
     }
 

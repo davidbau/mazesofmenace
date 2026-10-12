@@ -159,7 +159,9 @@ import { reset_trapset } from './apply.js';
 import { bones_include_name } from './bones.js';
 import { obj_resists } from './bury.js';
 import { buried_ball_to_punishment, bury_objs, rot_corpse, use_pick_axe2 } from './dig.js';
-import { ballfall, ballrelease, drag_down, placebc, unplacebc } from './ball.js';
+import {
+    ballfall, ballrelease, drag_down, drop_ball, placebc, unplacebc,
+} from './ball.js';
 import { next_to_u } from './apply_next_to_u.js';
 import {
     paranoid_ynq, reset_occupations, set_move_cmd, set_occupation, y_n,
@@ -179,7 +181,9 @@ import {
     y_monnam, obj_pmname,
 } from './do_name.js';
 import { setwornEnv } from './do_wear.js';
-import { keepdogs, losedogs, update_mlstmv } from './dog.js';
+import {
+    keepdogs, losedogs, mon_arrive, mon_catchup_elapsed_time, update_mlstmv,
+} from './dog.js';
 import { can_reach_floor, engr_at } from './engrave.js';
 import { make_grave } from './grave.js';
 import { fruitname, makeplural } from './fruit.js';
@@ -1581,7 +1585,7 @@ export function dropCommandEnv(state, env = {}) {
     };
 }
 
-// C ref: do.c dodrop() (28-42), the 'd' command.
+// C ref: do.c dodrop() (29-49), the 'd' command.
 export async function dodrop(state = game) {
     let result;
 
@@ -1589,22 +1593,16 @@ export async function dodrop(state = game) {
     // hero stands in; hack.c move_update() maintains it and js/rooms.js stores
     // it as a fixed five-entry array, so an empty list reads as a zero here
     // exactly as an empty string does there.
-    if (state.u?.ushops?.[0]) {
-        // shk.c sellobj_state() switches the shopkeeper's billing mode either
-        // side of the drop, which is what makes a deliberate drop an offer to
-        // sell. Both calls stop together, because the drop between them is
-        // what they bracket.
-        throw new UnsupportedDropError('sellobj_state() inside a shop');
-    }
+    if (state.u?.ushops?.[0])
+        sellobj_state(SELL_DELIBERATE, state);
     result = await drop(
         await getobj(
             'drop', any_obj_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT, state,
         ),
         state,
     );
-    // do.c:37-38's second `if (*u.ushops)` reads the same value, which the
-    // drop cannot change; the arm above has already stopped every hero it
-    // would be true for.
+    if (state.u?.ushops?.[0])
+        sellobj_state(SELL_NORMAL, state);
     if (result)
         reset_occupations(state);
 
@@ -2194,9 +2192,10 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
         const { impact_disturbs_zombies } = await import('./dothrow.js');
         impact_disturbs_zombies(obj, true, normalized.state);
         if (obj === normalized.state.uball) {
-            // ball.c:drop_ball() owns punishment-chain relocation and trap
-            // release; its result is void and this caller skips only that gap.
-            note_unported('ball.c drop_ball');
+            // C do.c:dropz() runs punishment-chain relocation after impact
+            // effects and before stacking the dropped object.
+            await drop_ball(normalized.state.u.ux, normalized.state.u.uy,
+                normalized.state);
         } else if (normalized.state.level?.flags?.has_shop) {
             // shk.c:sellobj() is void; shop billing is deliberately not
             // approximated here.
@@ -3156,7 +3155,15 @@ export async function goto_level(
         } else if (newdungeon && u.uhave?.amulet) {
             // C resurrect() returns no value and is already the canonical
             // caller for this arm.
-            await resurrect(state, { makemon, redraw: newsym });
+            await resurrect(state, {
+                makemon,
+                redraw: newsym,
+                monArrive: (monster) => mon_arrive(monster, 'Wiz_arrive', {
+                    state,
+                }),
+                monCatchupElapsedTime: (monster, elapsed) =>
+                    mon_catchup_elapsed_time(monster, elapsed, { state }),
+            });
         }
     } else if (In_quest(u.uz)) {
         // C ref: do.c:1891-1892.

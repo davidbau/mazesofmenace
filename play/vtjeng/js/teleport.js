@@ -2,12 +2,15 @@
 // own level teleport and within-level teleport.
 // C ref: teleport.c goodpos(), m_blocks_teleporting(), tele_jump_ok(),
 // enexto(), enexto_core(), collect_coords(),
-// teleok(), scrolltele(), tele(), level_tele(), random_teleport_level(),
+// teleok(), scrolltele(), tele(), dotelecmd(), dotele(), level_tele(),
+// random_teleport_level(),
 // rloc_pos_ok(), stairway_find_forwiz(), rloc_to_core(), rloc_to_flag(),
 // rloc_to(), rloc(), control_mon_tele() and u_teleport_mon().
 
 import { buried_ball_to_punishment } from './dig.js';
 import {
+    A_STR,
+    A_WIS,
     ALTAR,
     ANTIMAGIC,
     BLINDED,
@@ -19,6 +22,8 @@ import {
     CC_SKIP_MONS,
     CC_UNSHUFFLED,
     COLNO,
+    ECMD_OK,
+    ECMD_TIME,
     SHOPBASE,
     CONFUSION,
     DIED,
@@ -27,8 +32,13 @@ import {
     GP_ALLOW_XY,
     GP_AVOID_MONPOS,
     GP_CHECKSCARY,
+    FORCETRAP,
+    HALLUC,
+    HALLUC_RES,
     HOLE,
     IS_STWALL,
+    I_SPECIAL,
+    LEVEL_TELEP,
     MAGIC_PORTAL,
     LR_MONGEN,
     MIGR_RANDOM,
@@ -40,7 +50,9 @@ import {
     NO_TRAP,
     NO_TRAP_FLAGS,
     NO_KILLER_PREFIX,
+    MENU_BEHAVE_STANDARD,
     OBJ_FREE,
+    PICK_ONE,
     PASSES_WALLS,
     RLOC_MSG,
     RLOC_NOMSG,
@@ -56,12 +68,16 @@ import {
     MAGICAL_BREATHING,
     TELEDS_ALLOW_DRAG,
     TELEDS_TELEPORT,
+    TELEP_TRAP,
+    TELEPORT,
     TELEPORT_CONTROL,
+    TIMEOUT,
     TRAPDOOR,
     TT_BURIEDBALL,
     UTOTYPE_NONE,
     VAULT,
     VIBRATING_SQUARE,
+    VIASITTING,
     WATER,
     WWALKING,
     FIRE_RES,
@@ -117,7 +133,7 @@ import {
     onscary,
     set_apparxy,
 } from './monmove.js';
-import { getlin } from './windows.js';
+import { getlin, select_menu } from './windows.js';
 import { game } from './gstate.js';
 import { addinv, prinv, obj_extract_self, sobj_at } from './invent.js';
 import { objectGenerationEnv } from './object_generation.js';
@@ -136,11 +152,15 @@ import {
     requireSimpleHeroDestination,
     spoteffects,
     switch_terrain,
+    check_capacity,
     UnsupportedHeroMoveBoundaryError,
+    u_locomotion,
 } from './hack.js';
+import { exercise, acurr } from './attrib.js';
 import { dist2, distmin } from './hacklib.js';
 import {
     control_teleport,
+    can_teleport,
     is_covetous,
     is_dlord,
     is_dprince,
@@ -174,6 +194,7 @@ import {
     S_HUMAN,
     S_MIMIC,
     S_VAMPIRE,
+    PM_WIZARD,
 } from './monsters.js';
 import {
     get_iter_mons,
@@ -191,6 +212,7 @@ import {
     BOULDER,
     CORPSE,
     SCR_SCARE_MONSTER,
+    SPE_TELEPORT_AWAY,
     WAN_TELEPORTATION,
 } from './objects.js';
 import { within_bounded_area } from './rect.js';
@@ -199,7 +221,7 @@ import { rn1, rn2, rnd, rnl } from './rng.js';
 import { messageAt } from './startup_a11y.js';
 import { getpos } from './getpos.js';
 import { in_out_region } from './region.js';
-import { make_blinded } from './potion.js';
+import { make_blinded, make_confused } from './potion.js';
 import { mon_has_amulet } from './wizard.js';
 import { verbalize } from './pline.js';
 import { y_n } from './cmd.js';
@@ -216,6 +238,8 @@ import {
     u_left_shop,
 } from './shk.js';
 import { note_unported } from './unported.js';
+import { menuTitleStyle } from './tty_menu.js';
+import { morehungry } from './eat.js';
 import { deltrap, fill_pit, Flying, reset_utrap, t_at, unconscious }
     from './trap.js';
 import { mintrap } from './trap_effects.js';
@@ -223,7 +247,7 @@ import { somexyspace } from './mklev.js';
 import { search_special } from './mkroom.js';
 import { settrack } from './track.js';
 import { ttyPline } from './tty_message.js';
-import { vault_occupied } from './vault.js';
+import { findgd, vault_occupied } from './vault.js';
 import { couldsee, vision_recalc } from './vision.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
 
@@ -1518,6 +1542,237 @@ export async function tele(state = game, rawEnv = {}) {
     await scrolltele(null, state, rawEnv);
 }
 
+// C ref: teleport.c dotelecmd() (919-1031). Keep the command's temporary
+// intrinsic/spellbook edits around dotele() and restore them even when an
+// asynchronous caller returns through a prompt or spell effect.
+export async function dotelecmd(state = game, rawEnv = {}) {
+    const env = teleportEnv({ ...rawEnv, state });
+    const { TPORT_SPELL_ACTION } = await import('./spell.js');
+    const { tport_spell } = await import('./spell.js');
+    let selectedTeleportMode = null;
+
+    if (state.wizard && state.iflags?.menu_requested) {
+        const selected = await select_menu(state, {
+            items: [
+                {
+                    selector: 'n',
+                    label: 'normal ^T on demand; no spell, obey restrictions',
+                    value: 'n',
+                },
+                {
+                    selector: 's',
+                    label: 'via spellcast; no intrinsic teleport',
+                    value: 's',
+                },
+                {
+                    selector: 't',
+                    label: 'try ^T without having it; no spell',
+                    value: 't',
+                },
+                {
+                    selector: 'w',
+                    label: 'debug mode; ignore restrictions',
+                    value: 'w',
+                    selected: true,
+                },
+            ],
+            how: PICK_ONE,
+            returnSelections: true,
+            cancelValue: null,
+            title: 'Which way do you want to teleport?',
+            behavior: MENU_BEHAVE_STANDARD,
+            ...menuTitleStyle(state),
+        });
+        if (selected === null) return ECMD_OK;
+
+        const modes = selected.map((entry) => entry.value);
+        selectedTeleportMode = modes.length ? modes[0] : 'w';
+        // C returns its preselected w plus the explicitly selected row.
+        if (modes.length > 1 && selectedTeleportMode === 'w')
+            selectedTeleportMode = modes[1];
+    }
+
+    let teleportProperty;
+    let savedTeleportation;
+    let spellRestore = TPORT_SPELL_ACTION.NOOP;
+    try {
+        if (selectedTeleportMode !== null) {
+            teleportProperty = state.u.uprops[TELEPORT] ??= {
+                intrinsic: 0,
+                extrinsic: 0,
+                blocked: 0,
+            };
+            savedTeleportation = {
+                intrinsic: teleportProperty.intrinsic,
+                extrinsic: teleportProperty.extrinsic,
+            };
+            if (selectedTeleportMode === 'n') {
+                teleportProperty.intrinsic =
+                    (Number(teleportProperty.intrinsic) || 0) | I_SPECIAL;
+                spellRestore = tport_spell(TPORT_SPELL_ACTION.HIDE, state);
+            } else if (selectedTeleportMode === 's') {
+                teleportProperty.intrinsic = 0;
+                teleportProperty.extrinsic = 0;
+                spellRestore = tport_spell(TPORT_SPELL_ACTION.ADD, state);
+            } else if (selectedTeleportMode === 't') {
+                teleportProperty.intrinsic = 0;
+                teleportProperty.extrinsic = 0;
+                spellRestore = tport_spell(TPORT_SPELL_ACTION.HIDE, state);
+            }
+        }
+
+        const ignoreRestrictions = !state.wizard
+            ? false
+            : selectedTeleportMode === null || selectedTeleportMode === 'w';
+        const result = await dotele(ignoreRestrictions, state, env);
+        return result ? ECMD_TIME : ECMD_OK;
+    } finally {
+        if (savedTeleportation) {
+            teleportProperty.intrinsic = savedTeleportation.intrinsic;
+            teleportProperty.extrinsic = savedTeleportation.extrinsic;
+            if (spellRestore !== TPORT_SPELL_ACTION.NOOP)
+                tport_spell(spellRestore, state);
+        }
+    }
+}
+
+// C ref: teleport.c dotele() (1033-1162). It returns whether teleportation
+// consumed a move; callers that discard the result still use its output and
+// state changes, while dotelecmd() converts it to ECMD_TIME.
+export async function dotele(breakTheRules = false, state = game, rawEnv = {}) {
+    const env = teleportEnv({ ...rawEnv, state });
+    const message = env.message ?? ttyPline;
+    const askYesNo = teleportInput(env, 'y_n', y_n);
+    let trap = t_at(state.u.ux, state.u.uy, state);
+    let trapOnce = false;
+
+    if (trap && !trap.tseen) trap = null;
+    if (trap) {
+        if (trap.ttyp === LEVEL_TELEP && trap.tseen) {
+            if (await askYesNo(
+                'There is a level teleporter here. Trigger it?', state,
+            ) === 'y'.charCodeAt(0)) {
+                // C discards level_tele_trap()'s void result and always spends
+                // this attempted jump, even when the level change is refused.
+                await level_tele_trap(trap, FORCETRAP, state, env);
+                return 1;
+            }
+            trap = null;
+        } else if (trap.ttyp === TELEP_TRAP) {
+            trapOnce = Boolean(trap.once);
+            if (trap.once) {
+                await message(
+                    'This is a vault teleport, usable once only.', state, env,
+                );
+                if (await askYesNo('Jump in?', state) === 'n'.charCodeAt(0)) {
+                    trap = null;
+                } else {
+                    deltrap(trap, state);
+                    newsym(state.u.ux, state.u.uy);
+                }
+            }
+            if (trap)
+                await message(
+                    `You ${u_locomotion('jump', state)} onto the teleportation trap.`,
+                    state,
+                    env,
+                );
+        } else {
+            trap = null;
+        }
+    }
+
+    if (!trap && !breakTheRules) {
+        let castIt = false;
+        const teleportProperty = state.u?.uprops?.[TELEPORT];
+        const hasTeleportation = Boolean(
+            (teleportProperty?.intrinsic || teleportProperty?.extrinsic)
+            && !teleportProperty?.blocked,
+        );
+        const roleWizard = state.urole?.mnum === PM_WIZARD;
+        const formCanTeleport = can_teleport(state.youmonst?.data);
+        if (!hasTeleportation
+            || (state.u.ulevel < (roleWizard ? 8 : 12)
+                && !formCanTeleport)) {
+            const { known_spell, spe_Fresh, spe_Unknown } = await import('./spell.js');
+            const knownSpell = known_spell(SPE_TELEPORT_AWAY, state);
+            const confused = Boolean(
+                state.u?.uprops?.[CONFUSION]?.intrinsic
+                || state.u?.uprops?.[CONFUSION]?.extrinsic,
+            );
+            castIt = knownSpell >= spe_Fresh && !confused;
+            if (!castIt) {
+                const reason = !hasTeleportation
+                    ? (knownSpell !== spe_Unknown
+                        ? "can't cast that spell" : "don't know that spell")
+                    : 'are not able to teleport at will';
+                await message(`You ${reason}.`, state, env);
+                return 0;
+            }
+        }
+
+        const spellLevel = Math.trunc(
+            state.objects?.[SPE_TELEPORT_AWAY]?.oc_level ?? 6,
+        );
+        const energy = 5 * spellLevel;
+        let cantDoIt = null;
+        if ((state.u.uhunger ?? 901) <= 10)
+            cantDoIt = 'are too weak from hunger';
+        else if (acurr(state, A_STR) < 4)
+            cantDoIt = 'lack the strength';
+        else if (energy > state.u.uen)
+            cantDoIt = 'lack the energy';
+        if (cantDoIt) {
+            await message(
+                `You ${cantDoIt} ${castIt ? 'for a teleport spell' : 'to teleport'}.`,
+                state,
+                env,
+            );
+            return 0;
+        }
+        if (await check_capacity(
+            'Your concentration falters from carrying so much.', state,
+        )) return 1;
+
+        if (castIt) {
+            await exercise(A_WIS, true, state);
+            const { spelleffects } = await import('./spell.js');
+            if (await spelleffects(
+                SPE_TELEPORT_AWAY, true, false, state,
+            ) & ECMD_TIME) return 1;
+            if (!breakTheRules) return 0;
+        } else {
+            state.u.uen -= energy;
+            state.disp ??= {};
+            state.disp.botl = true;
+        }
+    }
+
+    if (await next_to_u(state, env)) {
+        if (trap && trapOnce) {
+            await vault_tele(state, env);
+        } else if (trap && isok(trap.teledest?.x, trap.teledest?.y)) {
+            await teleds(
+                trap.teledest.x,
+                trap.teledest.y,
+                TELEDS_TELEPORT,
+                state,
+                env,
+            );
+        } else {
+            if (state.iflags)
+                state.iflags.travelcc = { x: 0, y: 0 };
+            await tele(state, env);
+        }
+        await next_to_u(state, env);
+    } else {
+        await message('You shudder for a moment.', state, env);
+        return 0;
+    }
+    if (!trap) await morehungry(100, state);
+    return 1;
+}
+
 // ── Hero relocation (C ref: teleport.c teleds()) ──
 
 // C ref: teleport.c teleds() (448-573). Puts the hero on <nux,nuy> and runs
@@ -1534,14 +1789,9 @@ export async function teleds(nux, nuy, teleds_flags, state = game, rawEnv = {}) 
     const u = state.u;
     let allow_drag = (teleds_flags & TELEDS_ALLOW_DRAG) !== 0;
     const is_teleport = (teleds_flags & TELEDS_TELEPORT) !== 0;
-    const vault_guard = vault_occupied(u.urooms, state);
-
-    if (vault_guard) {
-        // findgd() and uleftvault() own the guard's shrill whistle.
-        throw new UnsupportedHeroMoveBoundaryError(
-            'teleds() out of an occupied vault',
-        );
-    }
+    const vault_guard = vault_occupied(u.urooms, state)
+        ? findgd(state)
+        : null;
     if (u.utraptype === TT_BURIEDBALL) {
         await buried_ball_to_punishment(state);
     }
@@ -1667,6 +1917,15 @@ export async function teleds(nux, nuy, teleds_flags, state = game, rawEnv = {}) 
        unblocked; do this after map+vision has been updated */
     if (state.level.at(u.ux, u.uy).typ !== state.level.at(u.ux0, u.uy0).typ)
         await switch_terrain(state, env);
+    // C teleds() temporarily recalculates u.urooms so uleftvault() can sound
+    // the guard's alarm before spoteffects() emits room-entry messages.
+    if (vault_guard) {
+        const savedUrooms = u.urooms;
+        u.urooms = in_rooms(u.ux, u.uy, VAULT, state);
+        if (!vault_occupied(u.urooms, state))
+            note_unported('vault.c uleftvault');
+        u.urooms = savedUrooms;
+    }
     /* possible shop entry message comes after guard's shrill whistle */
     // C teleds() does not exclude an occupied destination; spoteffects() owns
     // the resident monster's surprise after the hero has arrived.
@@ -1737,6 +1996,60 @@ export async function tele_trap(trap, state = game) {
         }
     } finally {
         in_tele_trap = false;
+    }
+}
+
+// C ref: teleport.c level_tele_trap() (1538-1574). Both the walking trap
+// effect and dotele()'s forced trigger call this same hero path.
+export async function level_tele_trap(
+    trap,
+    trflags,
+    state = game,
+    rawEnv = {},
+) {
+    const env = teleportEnv({ ...rawEnv, state });
+    const message = env.message ?? ttyPline;
+    const intentional = (trflags & (VIASITTING | FORCETRAP)) !== 0;
+    const verb = intentional ? 'trigger'
+        : `${u_locomotion('step', state)} onto`;
+
+    await message(`You ${verb} a level teleport trap!`, state, env);
+
+    const antimagic = Antimagic_prop(state);
+    if (antimagic && !intentional)
+        await shieldeff(state.u.ux, state.u.uy, state);
+    if ((antimagic && !intentional) || inEndgame(state)) {
+        await message('You feel a wrenching sensation.', state, env);
+        return;
+    }
+
+    deltrap(trap, state);
+    if (typeof env.redraw === 'function')
+        env.redraw(state.u.ux, state.u.uy);
+    else
+        newsym(state.u.ux, state.u.uy);
+    await level_tele(state);
+
+    const hallucination = Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
+        && !Boolean(state.u?.uprops?.[HALLUC_RES]?.intrinsic
+            || state.u?.uprops?.[HALLUC_RES]?.extrinsic);
+    if (hallucination || Teleport_control_prop(state)) {
+        await message(
+            `You briefly feel ${hallucination ? 'oriented' : 'centered'}.`,
+            state,
+            env,
+        );
+    } else {
+        await message(
+            `You feel ${Confusion(state) ? 'even more ' : ''}disoriented.`,
+            state,
+            env,
+        );
+    }
+
+    if (!Teleport_control_prop(state)) {
+        const confusion = state.u?.uprops?.[CONFUSION]?.intrinsic ?? 0;
+        await make_confused((confusion & TIMEOUT) + 3, false, state, env);
     }
 }
 

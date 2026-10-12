@@ -5,7 +5,8 @@
 //        in_trouble() (198-284), worst_cursed_item() (288-346),
 //        god_zaps_you() (610-694), fry_by_god() (696-702),
 //        angrygods() (704-784), gods_upset() (1436-1443),
-//        consume_offering() (1446-1474), bestow_artifact() (1780-1834),
+//        consume_offering() (1446-1474), desecrate_altar() (1501-1523),
+//        bestow_artifact() (1780-1834),
 //        give_spell() (999-1070),
 //        sacrifice_your_race() (1698-1778), sacrifice_value() (1838-1850),
 //        dosacrifice() (1854-1896), eval_offering() (1898-1957),
@@ -52,6 +53,8 @@ import {
     CONFUSION,
     DEAF,
     DIED,
+    ESCAPED,
+    ASCENDED,
     DISINT_RES,
     ECMD_OK,
     ECMD_TIME,
@@ -155,6 +158,7 @@ import { newsym, shieldeff, xlev_to_rank } from './display.js';
 import { dropy, heal_legs } from './do.js';
 import {
     disintegrate_arm,
+    Amulet_off,
     stuck_ring,
     unchanger,
     setwornEnv,
@@ -259,7 +263,7 @@ import {
     make_stunned,
     set_itimeout,
 } from './potion.js';
-import { region_danger } from './region.js';
+import { region_danger, region_safety } from './region.js';
 import { losexp, pluslvl } from './exper.js';
 import { d, rn1, rn2, rnl, rnd, rne, rnz } from './rng.js';
 import { aggravate } from './wizard.js';
@@ -271,7 +275,10 @@ import {
     reset_utrap,
 } from './trap.js';
 import { safe_teleds } from './teleport.js';
-import { ttyPline } from './tty_message.js';
+import {
+    displayPendingTtyMessageWindow,
+    ttyPline,
+} from './tty_message.js';
 import { set_voice } from './sounds.js';
 import {
     angry_priest,
@@ -279,7 +286,7 @@ import {
     p_coaligned,
     temple_occupied,
 } from './priest.js';
-import { couldsee } from './vision.js';
+import { cansee, couldsee, does_block, unblock_point } from './vision.js';
 import { heroIsBlind, messageAt } from './startup_a11y.js';
 import { Monnam, a_monnam, mon_nam } from './do_name.js';
 import { killed, mon_offmap, wake_nearby, xkilled } from './mon.js';
@@ -421,6 +428,86 @@ export function a_gname(state = game) {
     return a_gname_at(u.ux, u.uy, state);
 }
 
+// C ref: pray.c offer_real_amulet() (1529-1589). A real Amulet on a Sanctum
+// high altar ends the game unless the hero survives Moloch's first death.
+async function offer_real_amulet(otmp, altaralign, state) {
+    const { u } = state;
+    const cloudOfSmoke = 'A cloud of %s smoke surrounds you...';
+
+    if (state.uamul === otmp) await Amulet_off(state);
+    if (carried(otmp)) useup(otmp, { state });
+    else await useupf(otmp, 1, { state });
+
+    await ttyPline(
+        'You offer the Amulet of Yendor to ' + a_gname(state) + '...',
+        state,
+    );
+
+    if (altaralign === A_NONE) {
+        // Moloch's high altar at the bottom of Gehennom.
+        if (u.ualign.record > -99) u.ualign.record = -99;
+        await ttyPline(
+            'An invisible choir chants, and you are bathed in darkness...',
+            state,
+        );
+        await ttyPline(
+            Moloch + ' shrugs and retains dominion over ' + u_gname(state) + ',',
+            state,
+        );
+        await ttyPline('then mercilessly snuffs out your life.', state);
+        state.killer ??= { name: '', format: KILLED_BY_AN };
+        state.killer.name = s_suffix(Moloch) + ' indifference';
+        state.killer.format = KILLED_BY;
+        await done(DIED, state);
+
+        // C continues if wizard or explore mode declines death.
+        await ttyPline(Moloch + ' snarls and tries again...', state);
+        await fry_by_god(A_NONE, true, state);
+        await ttyPline(
+            cloudOfSmoke.replace('%s', hcolor('black', state)),
+            state,
+        );
+        await done(ESCAPED, state);
+    } else if (u.ualign.type !== altaralign) {
+        adjalign(-99, state);
+        await ttyPline(
+            a_gname(state) + ' accepts your gift, and gains dominion over '
+                + u_gname(state) + '...',
+            state,
+        );
+        await ttyPline(u_gname(state) + ' is enraged...', state);
+        await ttyPline(
+            'Fortunately, ' + a_gname(state) + ' permits you to live...',
+            state,
+        );
+        await ttyPline(
+            cloudOfSmoke.replace('%s', hcolor('orange', state)),
+            state,
+        );
+        await done(ESCAPED, state);
+    } else {
+        u.uevent.ascended = 1;
+        adjalign(10, state);
+        await ttyPline(
+            'An invisible choir sings, and you are bathed in radiance...',
+            state,
+        );
+        await godvoice(altaralign, 'Mortal, thou hast done well!', state);
+        await displayPendingTtyMessageWindow(state);
+        // SetVoice() is an empty macro in the recorder's TTY build.
+        await verbalize(
+            'In return for thy service, I grant thee the gift of Immortality!',
+            state,
+        );
+        await ttyPline(
+            'You ascend to the status of Demigod'
+                + (state.flags.female ? 'dess' : '') + '...',
+            state,
+        );
+        await done(ASCENDED, state);
+    }
+}
+
 // C ref: pray.c dosacrifice() (1854-1896). The floorfood() selector is shared
 // with eat.c and returns the selected object before the offering helper arms.
 // Unsupported offer_corpse branches remain explicit gaps at their own source
@@ -450,10 +537,7 @@ export async function dosacrifice(state = game) {
             await offer_too_soon(altaralign, state);
             return ECMD_TIME;
         }
-        note_unported('pray.c offer_real_amulet');
-        // C marks offer_real_amulet() NOTREACHED. Its return is void, so the
-        // source control flow continues to the final nothing_happens arm if
-        // this still-unported helper unexpectedly returns.
+        await offer_real_amulet(otmp, altaralign, state);
     }
     if (otmp.otyp === FAKE_AMULET_OF_YENDOR) {
         await offer_fake_amulet(otmp, highaltar, altaralign, state);
@@ -489,6 +573,27 @@ async function offer_too_soon(altaralign, state) {
         ? 'You dream that you feel'
         : 'You feel';
     await ttyPline(`${prefix} ${feeling}.`, state);
+}
+
+// C ref: pray.c desecrate_altar() (1501-1523). Keep the alignment penalty,
+// messages, god-voice draw, and divine retaliation in source order.
+export async function desecrate_altar(highaltar, altaralign, state = game) {
+    const { u } = state;
+    if (altaralign === u.ualign.type) {
+        adjalign(-20, state);
+        u.ugangr += 5;
+    }
+
+    await ttyPline('You feel the air around you grow charged...', state);
+    await ttyPline(
+        `Suddenly, you realize that ${align_gname(altaralign, state)} `
+            + 'has noticed you...',
+        state,
+    );
+    const temple = highaltar ? 'High Temple' : 'altar';
+    const words = `So, mortal!  You dare desecrate my ${temple}!`;
+    await godvoice(altaralign, words, state);
+    await god_zaps_you(altaralign, state);
 }
 
 // C ref: pray.c:1446-1474 consume_offering(). The offering is consumed before
@@ -664,9 +769,8 @@ async function eval_offering(otmp, altaralign, state) {
     return value;
 }
 
-// C ref: pray.c:1698-1780 sacrifice_your_race(). The altar-offense helpers
-// below are void calls in C; until those source units are ported, record and
-// skip them at their original call sites.
+// C ref: pray.c:1698-1780 sacrifice_your_race(). The high-altar branch calls
+// desecrate_altar() before returning, matching the source's retaliation order.
 async function sacrifice_your_race(otmp, highaltar, altaralign, state) {
     const { u } = state;
     if (is_demon(state.youmonst?.data)) {
@@ -679,7 +783,7 @@ async function sacrifice_your_race(otmp, highaltar, altaralign, state) {
 
     if (highaltar
         && (altaralign !== A_CHAOTIC || u.ualign.type !== A_CHAOTIC)) {
-        note_unported('pray.c desecrate_altar');
+        await desecrate_altar(highaltar, altaralign, state);
         return;
     } else if (altaralign !== A_CHAOTIC && altaralign !== A_NONE) {
         await ttyPline(
@@ -763,12 +867,12 @@ async function sacrifice_your_race(otmp, highaltar, altaralign, state) {
     else await useupf(otmp, 1, useupEnv);
 }
 
-// C ref: pray.c:1592-1599 offer_negative_valued(). The high-altar
-// desecration result is discarded in C and remains a named void-call gap.
+// C ref: pray.c:1592-1599 offer_negative_valued(). C discards the helper's
+// result; JavaScript awaits its side effects before continuing.
 async function offer_negative_valued(highaltar, altaralign, state) {
     const { u } = state;
     if (altaralign !== u.ualign.type && highaltar) {
-        note_unported('pray.c desecrate_altar');
+        await desecrate_altar(highaltar, altaralign, state);
     } else {
         await gods_upset(altaralign, state);
     }
@@ -934,7 +1038,7 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
         return;
     }
     if (altaralign !== u.ualign.type && highaltar) {
-        note_unported('pray.c desecrate_altar');
+        await desecrate_altar(highaltar, altaralign, state);
         return;
     }
     if (u.ualign.type !== altaralign) {
@@ -1382,7 +1486,15 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         await make_sick(0, null, false, SICK_ALL, state);
         break;
     case TROUBLE_REGION:
-        note_unported('region.c region_safety');
+        await region_safety(state, {
+            safeTeleds: (flags) => safe_teleds(flags, state),
+            message: (text) => ttyPline(text, state),
+            doesBlock: (x, y, location) => does_block(x, y, location, state),
+            unblockPoint: (x, y) => unblock_point(x, y, state),
+            canSee: (x, y) => cansee(x, y, state),
+            newsym: (x, y) => newsym(x, y),
+            random: { d },
+        });
         break;
     case TROUBLE_HIT: {
         await ttyPline('You feel much better.', state);
