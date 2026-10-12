@@ -95,7 +95,8 @@ import { mon_nam, m_at, dmgval } from './uhitm.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { makeplural as _makeplural_vs, cloak_simple_name, helm_simple_name, gloves_simple_name, suit_simple_name, an, the, obj_is_pname, doname, mshot_xname, vtense, xname, distant_name, simpleonames, otense, Yobjnam2, cxname } from './objnam.js';
 import { chooseTrapnote } from './mklev_choose_trapnote.js';
-import { set_utrap, bury_an_obj } from './dig.js';
+import { set_utrap, bury_an_obj, fillholetyp_, liquid_flow_, maybe_dunk_boulders } from './dig.js';
+import { spot_checks as _spot_checks } from './cmd.js';
 import { float_up, bimanual, hard_helmet } from './do_wear.js';
 /* C trap.c:1955-1959 — pit falls release and possibly damage the punished
  * hero's ball before placebc() restores it underfoot. */
@@ -111,7 +112,7 @@ import { ARMOR_DATA } from './armor_data.js';
 /* C do_name.c Monnam(mon) — mon_nam() capitalised; js/mcastu.js owns the port. */
 import { Monnam, monstseesu as monstseesu_real, monstunseesu as monstunseesu_real } from './mcastu.js';
 import { You } from './eat.js';
-import { In_quest, In_sokoban } from './const.js';
+import { In_quest, In_sokoban, Is_juiblex_level } from './const.js';
 import { SHOP_HOLE_COST } from './const.js';
 import { otrapped_of } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
 /* trapeffect_hole's monster arm (trap.c:2033/2038): Can_fall_thru(&u.uz) and
@@ -261,7 +262,9 @@ function missile_dmgval(otyp, spe, mtmp, otmp) {
         tmp -= Math.max(otmp.oeroded | 0, otmp.oeroded2 | 0);
         if (tmp < 1) tmp = 1;
     }
-    return (tmp < 1) ? 1 : tmp;
+    /* C weapon.c:358 `return tmp` — a negative-enchantment missile can deal 0
+     * (weapon.c:300-301 clamps to 0, not 1). */
+    return tmp;
 }
 
 /* t_missile(otyp, trap) — make a single arrow/dart/rock for a trap.
@@ -944,12 +947,10 @@ function _gp_is_moat(x, y) {
     const ltyp = lev_typ(x, y);
     const loc = lev_flags(x, y);
     const dbmask = loc ? (loc.drawbridgemask | 0) : 0;
-    /* Is_juiblex_level(&u.uz) — Juiblex's lair is a special level that the
-       dungeon side-channel does not identify here; it is never the level any
-       goodpos() caller in this module runs on, so this reads as false, which
-       is C's behaviour on every ordinary level. */
-    return ltyp === MOAT
-        || (ltyp === DRAWBRIDGE_UP && (dbmask & DB_UNDER) === DB_MOAT);
+    /* C dbridge.c:107-110 excludes Juiblex's level from moat semantics. */
+    return !Is_juiblex_level(game.u?.uz)
+        && (ltyp === MOAT
+            || (ltyp === DRAWBRIDGE_UP && (dbmask & DB_UNDER) === DB_MOAT));
 }
 /* C ref: dbridge.c:45-59 is_pool(x,y). */
 function _gp_is_pool(x, y) {
@@ -2424,7 +2425,7 @@ function closed_door_lo(x, y) {
     if (!loc) return false;
     return IS_DOOR(loc.typ | 0) && !!((loc.doormask | 0) & (D_LOCKED | D_CLOSED));
 }
-const HALF_PHYSICAL_DAMAGE = 74; /* C prop.h HALF_PHYS_DAM */
+const HALF_PHYSICAL_DAMAGE = 56; /* C prop.h HALF_PHDAM */
 function Maybe_Half_Phys_lo(dmg) {
     const p = game.u?.uprops?.[HALF_PHYSICAL_DAMAGE];
     const half = !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
@@ -3491,7 +3492,7 @@ async function trapeffect_arrow_trap(trap, trflags) {
     await pline('An arrow shoots out at you!');
     const otmp = await t_missile(OTYP_ARROW, trap);
     const dmg = missile_dmgval(OTYP_ARROW, otmp.spe | 0, game.u, otmp);
-    const hit = await thitu(8, dmg, otmp, 'arrow');
+    const hit = await thitu(8, Maybe_Half_Phys_lo(dmg), otmp, 'arrow');
     if (!hit) await hero_missile_lands(otmp);
     return Trap_Effect_Finished;
 }
@@ -3514,7 +3515,7 @@ async function trapeffect_dart_trap(trap, trflags) {
     if (!rn2(6)) otmp.opoisoned = 1; /* C trap.c:1272 */
     const oldumort = game.u.umortality | 0;
     const dmg = missile_dmgval(OTYP_DART, otmp.spe | 0, game.u, otmp);
-    const hit = await thitu(7, dmg, otmp, 'little dart');
+    const hit = await thitu(7, Maybe_Half_Phys_lo(dmg), otmp, 'little dart');
     if (hit) {
         /* C: poisoned(...) only fires when otmp->opoisoned; obfree(otmp). */
         if (otmp.opoisoned) {
@@ -4985,6 +4986,44 @@ async function trapeffect_level_telep_mon(mtmp, trap, trflags) {
  * used by mintrap.  Mirrors the same switch but dispatches only the monster
  * branches of each leaf, which consume RNG but no async screen I/O.  Unported
  * types fall through to Trap_Effect_Finished. */
+/* C ref: trap.c:3172-3218 blow_up_landmine() — shared by the hero and monster
+ * landmine arms.  The drawbridge-destruction arm (3189-3196) is not ported. */
+async function blow_up_landmine(trap) {
+    const x = trap.tx | 0, y = trap.ty | 0;
+    const lev = game.level?.at(x, y);
+    const old_typ = lev ? lev.typ | 0 : 0;
+    await scatter(x, y, 4,
+        MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS, null);
+    del_engr_at(x, y);
+    wake_nearto(x, y, 400);
+    if (lev && IS_DOOR(lev.typ | 0))
+        lev.doormask = D_BROKEN;
+    const live = t_at(x, y); /* expected to be null after destruction */
+    if (live) {
+        if (_gp_Is_waterlevel() || (game.u?.uz && game.air_level
+                && game.u.uz.dnum === game.air_level.dnum
+                && game.u.uz.dlevel === game.air_level.dlevel)) {
+            deltrap(live); /* no pits here */
+        } else {
+            /* fill pit with water, if applicable */
+            const typ = fillholetyp_(x, y, false);
+            if (typ !== ROOM) {
+                lev.typ = typ;
+                await liquid_flow_(x, y, typ, live,
+                    cansee(x, y) ? 'The hole fills with %s!' : null);
+            } else {
+                live.ttyp = PIT; /* explosion creates a pit */
+                live.madeby_u = 0;
+                seetrap(live);
+            }
+        }
+    }
+    await fill_pit(x, y);
+    await maybe_dunk_boulders(x, y);
+    recalc_block_point(x, y);
+    _spot_checks(x, y, old_typ);
+}
+
 let _recursive_mine = false;
 async function trapeffect_landmine_u(trap, trflags) {
     const u = game.u;
@@ -5023,19 +5062,7 @@ async function trapeffect_landmine_u(trap, trflags) {
     trap.ttyp = PIT;
     trap.madeby_u = 0;
     await losehp(Maybe_Half_Phys_lo(damage), 'land mine', KILLED_BY_AN);
-    const tx = trap.tx | 0, ty = trap.ty | 0;
-    await scatter(tx, ty, 4,
-        MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS, null);
-    del_engr_at(tx, ty);
-    wake_nearto(tx, ty, 400);
-    const liveTrap = t_at(tx, ty);
-    if (liveTrap) {
-        liveTrap.ttyp = PIT;
-        liveTrap.madeby_u = 0;
-        seetrap(liveTrap);
-    }
-    await fill_pit(tx, ty);
-    recalc_block_point(tx, ty);
+    await blow_up_landmine(trap);
     newsym(u.ux | 0, u.uy | 0); /* update trap symbol */
     /* fall recursively into the pit... */
     const t2 = t_at(u.ux | 0, u.uy | 0);
@@ -5086,18 +5113,7 @@ async function trapeffect_landmine_mon(mtmp, trap, trflags) {
         void pline('Kaablamm!  You hear an explosion in the distance!');
 
     const tx = trap.tx | 0, ty = trap.ty | 0;
-    await scatter(tx, ty, 4,
-        MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS, null);
-    del_engr_at(tx, ty);
-    wake_nearto(tx, ty, 400);
-    const liveTrap = t_at(tx, ty);
-    if (liveTrap) {
-        liveTrap.ttyp = PIT;
-        liveTrap.madeby_u = 0;
-        seetrap(liveTrap);
-    }
-    await fill_pit(tx, ty);
-    recalc_block_point(tx, ty);
+    await blow_up_landmine(trap);
 
     let trapkilled = (mtmp.mhp | 0) < 1;
     if (!trapkilled)

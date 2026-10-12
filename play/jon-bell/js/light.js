@@ -457,6 +457,20 @@ export function arti_light_radius(obj) {
     return res;
 }
 
+/* C ref: light.c:915-931 arti_light_description(obj) */
+/* C ref: light.c:915-931 arti_light_description(struct obj *obj) — the adverb
+ * for an activated light-emitting artifact, keyed off arti_light_radius(). */
+export function arti_light_description(obj) {
+    switch (arti_light_radius(obj)) {
+    case 4: return 'radiantly'; /* blessed gold dragon scale mail */
+    case 3: return 'brilliantly'; /* blessed artifact, uncursed gold DSM */
+    case 2: return 'brightly'; /* uncursed artifact, cursed gold DSM */
+    case 1: return 'dimly'; /* cursed artifact, embedded scales */
+    default: break;
+    }
+    return 'strangely';
+}
+
 /* C ref: light.c:806-822 obj_merge_light_sources(struct obj *src, struct obj *dest)
  *     "light source `src' has been folded into light source `dest';
  *      used for merging lit candles and adding candle(s) to lit candelabrum"

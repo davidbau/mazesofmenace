@@ -78,7 +78,7 @@ import { make_slimed } from './potion.js';
 import { polymon as polymon_polyself, polyself as polyself_real } from './polyself.js';
 /* C end.c:1023 done(), run at C's own position inside the attack loop. */
 import { drain_pending_death_in_place } from './fastforward.js';
-import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_SEEN_NOTHING, M_SEEN_FIRE, M_SEEN_SLEEP, M_SEEN_REFL, SLEEP_RES as SLEEP_RES_MU, FIRE_RES as FIRE_RES_MU, STONE_RES as STONE_RES_MU, REFLECTING as REFLECTING_MU, NATTK, Upolyd as Upolyd_fn, INVIS, DISPLACED as DISPLACED_MU, SEE_INVIS, P_WHIP, Is_rogue_level, CONFUSION, SLIMED, CQ_CANNED, DETECT_MONSTERS as DETECT_MONSTERS_MU, DEAF, PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MU, CONFLICT as CONFLICT_MU, is_pit as is_pit_mu, NEW_MOON, ERODE_CORRODE, ERODE_ROT, } from './const.js';
+import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_SEEN_NOTHING, M_SEEN_FIRE, M_SEEN_SLEEP, M_SEEN_REFL, SLEEP_RES as SLEEP_RES_MU, FIRE_RES as FIRE_RES_MU, STONE_RES as STONE_RES_MU, REFLECTING as REFLECTING_MU, NATTK, Upolyd as Upolyd_fn, INVIS, DISPLACED as DISPLACED_MU, SEE_INVIS, P_WHIP, Is_rogue_level, CONFUSION, SLIMED, CQ_CANNED, DETECT_MONSTERS as DETECT_MONSTERS_MU, DEAF, PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MU, CONFLICT as CONFLICT_MU, is_pit as is_pit_mu, NEW_MOON, ERODE_CORRODE, ERODE_ROT, PROTECTION, W_AMUL, } from './const.js';
 /* C exper.c:207 losexp(drainer) — mhitm_ad_drli's hero-defender arm. */
 import { losexp } from './exper.js';
 /* C attrib.c:509 exercise(i, incr) — mhitm_ad_phys_u's AT_HUGS "already
@@ -86,9 +86,8 @@ import { losexp } from './exper.js';
 import { exercise, adjattrib, get_artifact, ART_NONARTIFACT, arti_spfx, arti_cspfx } from './attrib.js';
 import { eat_brains } from './eat.js';
 import { losespells, drain_weapon_skill } from './read.js';
-/* objects[otyp].oc_oprop, extracted from the compiled include/objects.h — the
- * same table js/do_wear.js and js/mhitm.js read.  Pure data module, no cycle. */
-import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
+/* Object metadata extracted from compiled include/objects.h; pure data module. */
+import { MKOBJ_OC_OPROP, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
 /* C monst.h PM_ROPE_GOLEM — mhitm_ad_phys_u's AT_HUGS choke-vs-crush wording
  * (uhitm.c:4033). */
 import { PM_ROPE_GOLEM as PM_ROPE_GOLEM_MU } from './pm.generated.js';
@@ -180,7 +179,8 @@ import { isok as isok_mu, IS_OBSTRUCTED as IS_OBSTRUCTED_MU, IRONBARS as IRONBAR
 import { BACKTRACK as BACKTRACK_MU, W_WEP as W_WEP_MU, HAND as HAND_MU,
          FOOT as FOOT_MU, LEG as LEG_MU } from './const.js';
 import { closed_door as closed_door_mu, is_pool as is_pool_mu } from './look.js';
-import { Is_waterlevel as Is_waterlevel_mu, DROWNING as DROWNING_MU } from './const.js';
+import { y_monnam as y_monnam_mu } from './mhitm.js';
+import { Is_waterlevel as Is_waterlevel_mu, Is_airlevel as Is_airlevel_mu, LEVITATION as LEVITATION_MU, FLYING as FLYING_MU, DROWNING as DROWNING_MU } from './const.js';
 import { observe_object as observe_object_mu } from './o_init.js';
 import { hold_another_object } from './hold_another_object.js';
 /* C objnam.c:2424 simpleonames(obj) — minimal_xname made plural for quan>1.
@@ -503,7 +503,7 @@ function Blind(gs) {
 }
 function Fire_resistance(gs) { const p = gs.u?.uprops?.[FIRE_RES_MU]; return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)); }
 function Stone_resistance(gs) { const p = gs.u?.uprops?.[STONE_RES_MU]; return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)); }
-/* C uhitm.c:3924 do_stone_u — shared cockatrice petrification transition. */
+/* C uhitm.c:3924 do_stone_u — hero stoning transition and killer attribution. */
 async function do_stone_u(magr) {
     const u = game.u || {};
     const props = u.uprops || {};
@@ -512,14 +512,17 @@ async function do_stone_u(magr) {
     if ((stoned?.intrinsic | 0) || (stoneRes?.intrinsic | 0) || (stoneRes?.extrinsic | 0))
         return false;
     const data = magr?.data || {};
-    const unique = !!((data.geno | 0) & 0x1000);
-    const name = mon_nam_uh(magr);
+    let kformat = KILLED_BY_AN_MU;
+    let kname = pmname(data, Mgender(magr));
+    if (is_uniq_mhu(magr)) {
+        if (!type_is_pname_mhu(magr)) kname = the(kname);
+        kformat = KILLED_BY_MU;
+    }
     /* C uhitm.c:3924-3937: this state transition must complete before the
      * attack returns.  make_stoned updates the delayed killer and bottom line
      * asynchronously in the JS port, so await it rather than dropping its
      * promise and letting knockback run first. */
-    await make_stoned(5, null, unique ? KILLED_BY_MU : KILLED_BY_AN_MU,
-                      unique ? `the ${name}` : name);
+    await make_stoned(5, null, kformat, kname);
     return true;
 }
 function Sleep_resistance(gs) { const p = gs.u?.uprops?.[SLEEP_RES_MU]; return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)); }
@@ -1028,7 +1031,11 @@ function je_Monnam(mtmp) {
 }
 
 /* C ref: mhitu.c:1086 magic_negation — hero defender (is_you) path only.
- * Returns mc in [0..3].  Reads worn-armor a_can and extrinsic Protection. */
+ * Returns mc in [0..3]. Reads worn-armor a_can, extrinsic Protection, and
+ * intrinsic Protection when blessed, the spell-protection minimum, and the
+ * innate minimum for minion forms. Aligned-cleric intrinsic protection remains
+ * unmodeled here. */
+const AMULET_OF_GUARDING_MU = 210; /* C objects.h:855 */
 function magic_negation_u() {
     const u = game.u || {};
     let mc = 0;
@@ -1037,6 +1044,21 @@ function magic_negation_u() {
         if (!o) continue;
         const armpro = obj_a_can(o);
         if (armpro > mc) mc = armpro;
+    }
+    const protProp = (u.uprops && u.uprops[PROTECTION]) || {};
+    let via_amul = false;
+    for (let o = game.invent; o; o = o.nobj)
+        if ((o.owornmask & W_AMUL) !== 0 && o.otyp === AMULET_OF_GUARDING_MU)
+            via_amul = true;
+    /* C mhitu.c:1115-1133: EProtection raises mc once (twice for a guarding
+     * amulet), capped at 3. Without it, blessed HProtection and u.uspellprot
+     * each provide a minimum of 1. */
+    if (protProp.extrinsic) {
+        mc += via_amul ? 2 : 1;
+        if (mc > 3) mc = 3;
+    } else if (mc < 1 && ((protProp.intrinsic && u.ublessed > 0) || u.uspellprot
+        || is_minion(game.youmonst?.data))) {
+        mc = 1;
     }
     return mc;
 }
@@ -1473,6 +1495,26 @@ function mon_give_prop_mu(mtmp, prop) {
         pline(msg, Monnam(mtmp));
 }
 
+/* C uhitm.c:5217-5243 m_is_steadfast(&youmonst) — equipment/terrain check that
+ * protects the hero from knockback.  Flying here is the property only (the
+ * Upolyd-flyer / flying-steed clauses of youprop.h Flying are not modelled). */
+function _hero_is_steadfast_mu() {
+    const u = game.u || {};
+    const prop = (k) => {
+        const p = u.uprops?.[k];
+        return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+    };
+    if (prop(LEVITATION_MU) || prop(FLYING_MU)
+        || Is_airlevel_mu(u.uz)
+        || (Is_waterlevel_mu(u.uz) && !is_pool_mu(u.ux | 0, u.uy | 0)))
+        return false;
+    if (u.uwep && (u.uwep.oartifact | 0) === 15 /* ART_GIANTSLAYER */)
+        return true;
+    for (let o = game.invent; o; o = o.nobj)
+        if ((o.otyp | 0) === 471 /* LOADSTONE */)
+            return true;
+    return false;
+}
 async function mhitm_knockback_u(mtmp, mattk, hitflags) {
     const u = game.u || (game.u = {});
     /* C uhitm.c:5259 — int knockdistance = rn2(3) ? 1 : 2;  (unconditional) */
@@ -1539,6 +1581,10 @@ async function mhitm_knockback_u(mtmp, mattk, hitflags) {
      * life drain) leaves M_ATTK_HIT unset in mhitm_ad_phys (uhitm.c:4067-4072). */
     if (!((hitflags | 0) & M_ATTK_HIT))
         return false;
+    if (_hero_is_steadfast_mu()) {
+        await pline(`You ${u.usteed ? `and ${y_monnam_mu(u.usteed)} ` : ''}don't budge.`);
+        return false;
+    }
 
     const knockedhow = will_hurtle_hero(defx + dx, defy + dy) ? 'backward' : 'back';
 
@@ -2650,6 +2696,7 @@ async function mhitm_ad_poly_u(mtmp, mattk, mhm) {
         if (negated) {
             if (mtmp.mcan) pline("You aren't transformed.");
         } else {
+            const oldform = (game.u?.umonnum ?? -1) | 0; /* mhitm.c:1124 (data identity ~ form index) */
             if (Antimagic_mu()) {
                 /* shieldeff: display only */
             } else if (Unchanging_mu()) {
@@ -2659,6 +2706,10 @@ async function mhitm_ad_poly_u(mtmp, mattk, mhm) {
                 await polyself_real(0);
                 mhm.damage = 0;
             }
+            /* mhitm.c:1203-1204: a changed hero form (magr != youmonst)
+             * costs the attacker rnd(2) of mspec_used. */
+            if (((game.u?.umonnum ?? -1) | 0) !== oldform)
+                mtmp.mspec_used = (mtmp.mspec_used | 0) + rnd(2);
             mhm.hitflags |= M_ATTK_HIT;
             mhm.done = true;
         }
@@ -3192,8 +3243,11 @@ async function hitmu_je(mtmp, mattk) {
         mhm.damage -= rnd(-(u.uac | 0));
         if (mhm.damage < 1) mhm.damage = 1;
     }
-    /* C mhitu.c:1212 — Half_physical_damage / mitre path deferred (no RNG). */
     if (mhm.damage > 0) {
+        /* C mhitu.c:1212-1216 — Half_physical_damage (RNG-free).  The Mitre of
+         * Holiness clause is not ported. */
+        if (_half_phys_prop_mu())
+            mhm.damage = Math.trunc((mhm.damage + 1) / 2);
         /* C mhitu.c:1222-1252 — Death's life force drain (mhm.permdmg). */
         if (mhm.permdmg) {
             const polyd = !!Upolyd_fn(u);
@@ -3836,7 +3890,13 @@ function URETREATING_MU(x, y) {
 function bigmonst_mu(ptr) { return !!ptr && (ptr.msize | 0) >= 3; }
 /* C hack.h:1236 Maybe_Half_Phys(dmg) — Half_physical_damage is an unported
  * hero property (js/dokick.js:176 says the same), so this is the identity. */
-function maybe_half_phys_mu(dmg) { return dmg | 0; }
+function _half_phys_prop_mu() {
+    const p = game.u?.uprops?.[56 /* HALF_PHDAM */];
+    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
+}
+function maybe_half_phys_mu(dmg) {
+    return _half_phys_prop_mu() ? Math.trunc(((dmg | 0) + 1) / 2) : (dmg | 0);
+}
 /* C &gy.youmonst / gy.youmonst.data.  dmgval(otmp, mon) reads mon.data, so the
  * hero-as-monster record must carry it; game.youmonst is not always seeded
  * (js/cmd.js:5332 documents the same defaulting), so reconstruct from u.umonnum. */
@@ -4069,7 +4129,7 @@ function multishot_class_bonus_mu(mtmp, otmp, mwep) {
  * substantial objects stop at the bars.  The full hit_bars side effects are
  * display/object-break work, but the boolean decision is what controls the
  * flight path and its RNG alignment here. */
-function hits_bars_mu(obj, always_hit) {
+export function hits_bars_mu(obj, always_hit) {
     if (!obj) return false;
     if (always_hit) return true;
     const otyp = obj.otyp | 0;
@@ -4087,11 +4147,13 @@ function hits_bars_mu(obj, always_hit) {
             && otyp !== CREDIT_CARD_MHU && otyp !== TALLOW_CANDLE_MHU
             && otyp !== WAX_CANDLE_MHU && otyp !== LENSES_MHU
             && otyp !== TIN_WHISTLE_MHU && otyp !== MAGIC_WHISTLE_MHU;
+    /* C: mons[otmp->corpsenm].msize > MZ_TINY (0) — the size is the
+     * MONSTER's, not a field on the object, so read it from the pack. */
     if (oclass === ROCK_CLASS_MHU)
-        return otyp !== STATUE_MHU || (obj.msize | 0) > 1;
+        return otyp !== STATUE_MHU || _kb_msize(obj.corpsenm | 0) > 0;
     if (oclass === FOOD_CLASS_MHU)
         return otyp === MEAT_STICK_MHU || otyp === ENORMOUS_MEATBALL_MHU
-            || (otyp === CORPSE_MHU && (obj.msize | 0) > 1);
+            || (otyp === CORPSE_MHU && _kb_msize(obj.corpsenm | 0) > 0);
     return oclass === SPBOOK_CLASS_MHU || oclass === WAND_CLASS_MHU
         || oclass === BALL_CLASS_MHU || oclass === CHAIN_CLASS_MHU;
 }
@@ -4163,15 +4225,19 @@ export async function drop_throw(obj, ohit, x, y) {
  * stones) or missiles break.  Ported locally rather than imported from
  * js/cmd.js:23073 to keep this file off the cmd.js import cycle; the two
  * bodies must stay in step (both are transcriptions of the same C function). */
+/* C objects[].oc_tough: GEM_CLASS entries whose HARDGEM(mohs) is true
+ * (objects.h:1516-1525, HARDGEM >= 8). */
+const TOUGH_GEMS_MU = new Set([440, 441, 442, 443, 444, 445, 448, 450]);
 function should_mulch_missile_mu(obj) {
     if (!obj || !(is_ammo_mu(obj) || is_missile_mu(obj)))
         return false;
     const BOOMERANG_MU = 26; /* js otyp (js/m_initweap.js:52) */
     if ((obj.otyp | 0) === BOOMERANG_MU)
         return false;
-    /* C: || objects[obj->otyp].oc_magic — no standard ammo/missile carries it
-     * (the magic stones are GEM_CLASS luckstone/loadstone/flint/touchstone,
-     * excluded by is_ammo's oc_skill range). */
+    /* C dothrow.c:1987 — magical sling stones pass is_ammo_mu() by oc_skill,
+     * then return here before any breakage or survival RNG. */
+    if (MKOBJ_OC_MAGIC[obj.otyp | 0])
+        return false;
     const chance = 3 + Math.max(obj.oeroded | 0, obj.oeroded2 | 0) - (obj.spe | 0);
     let broken = chance > 1 ? !!rn2(chance) : !rn2(4);
     if (obj.blessed) {
@@ -4179,10 +4245,11 @@ function should_mulch_missile_mu(obj) {
         if (mon_moving ? !rn2(3) : !rnl(4))
             broken = false;
     }
-    /* C: flint and hard gems don't break easily.  oc_tough is not carried in
-     * js/mkobj_data.js; FLINT is (js otyp 473). */
     const FLINT_MU = 473;
-    if ((obj.otyp | 0) === FLINT_MU && !rn2(2))
+    const otyp = obj.otyp | 0;
+    if (((obj.oclass | 0) === OCLASS_GEM_MU && TOUGH_GEMS_MU.has(otyp)
+            || otyp === FLINT_MU)
+        && !rn2(2))
         broken = false;
     return broken;
 }
@@ -4997,8 +5064,8 @@ function _engl_dmgtype_gu(mndx, adtyp) {
     }
     return false;
 }
-function digests_gu(mndx) { return _engl_dmgtype_gu(mndx, AD_DGST_GU); }
-function enfolds_gu(mndx) { return _engl_dmgtype_gu(mndx, AD_WRAP_GU); }
+export function digests_gu(mndx) { return _engl_dmgtype_gu(mndx, AD_DGST_GU); }
+export function enfolds_gu(mndx) { return _engl_dmgtype_gu(mndx, AD_WRAP_GU); }
 /* C mondata.h:57 is_whirly(ptr) — mlet == S_VORTEX || ptr == &mons[PM_AIR_ELEMENTAL].
  * monsym.h S_VORTEX is monster class 22; PM_AIR_ELEMENTAL is 154. */
 const S_VORTEX_GU = 22, PM_AIR_ELEMENTAL_GU = 154;
@@ -6225,17 +6292,18 @@ function is_weptool(obj) {
  * (mon == &gy.youmonst) — see trap.js:2938-2943 for the established idiom. */
 export function magic_negation(mon) {
     const u = game.u || {};
+    const mndx = (mon.data?.pmidx ?? mon.mnum ?? -1) | 0;
     const is_you = (mon.m_id === 1);
     let via_amul = false;
     let gotprot;
 
     if (is_you) {
         /* EProtection != 0L */
-        const protProp = (u.uprops && u.uprops[59]) || {};
+        const protProp = (u.uprops && u.uprops[PROTECTION]) || {};
         gotprot = !!(protProp.extrinsic);
     } else {
         /* high priests have innate protection */
-        gotprot = ((mon.data_mndx | 0) === PM_HIGH_PRIEST);
+        gotprot = (mndx === PM_HIGH_PRIEST);
     }
 
     let mc = 0;
@@ -6246,7 +6314,7 @@ export function magic_negation(mon) {
             const armpro = obj_a_can(o);
             if (armpro > mc) mc = armpro;
         } else if ((o.owornmask & 0x00010000) !== 0) { /* W_AMUL */
-            via_amul = (o.otyp === 342); /* AMULET_OF_GUARDING */
+            via_amul = (o.otyp === AMULET_OF_GUARDING_MU);
         }
         /* if we've already confirmed Protection, skip additional checks */
         if (is_you || gotprot)
@@ -6269,10 +6337,10 @@ export function magic_negation(mon) {
     } else if (mc < 1) {
         /* intrinsic Protection is weaker (play balance; obtaining divine
            protection is too easy); it confers minimum mc 1 instead of 0 */
-        const protProp = (u.uprops && u.uprops[59]) || {};
+        const protProp = (u.uprops && u.uprops[PROTECTION]) || {};
         if ((is_you && ((protProp.intrinsic && u.ublessed > 0) || u.uspellprot))
             /* aligned priests and angels have innate intrinsic Protection */
-            || ((mon.data_mndx | 0) === PM_ALIGNED_CLERIC
+            || (mndx === PM_ALIGNED_CLERIC
                 || is_minion(mon.data)))
             mc = 1;
     }
@@ -6290,12 +6358,15 @@ function is_wet_towel(obj) {
     return (obj.otyp | 0) === OTYP_TOWEL && (obj.spe | 0) > 0;
 }
 
-/* C ref: objects[].oc_dir, WEAPON_CLASS rows only (objects.h WEAPON()/
- * PROJECTILE()/BOW() "typ" field, P=PIERCE=1, S=SLASH=2, B=WHACK=4, 0 for
- * bows/none). Non-weapon rows are 0. Indices align 1:1 with otyp and with
- * MKOBJ_OC_SKILL (js/mkobj_erosion_meta.js) — both derived from the same
- * objects.h OBJECTS_INIT table. */
-const MKOBJ_OC_DIR = new Int8Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 0, 1, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 3, 2, 2, 3, 2, 3, 5, 5, 4, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 2, 1, 2, 2, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 0]);
+/* C ref: objects[].oc_dir, WEAPON_CLASS rows plus the WEPTOOL() weapon-tools
+ * (objects.h WEAPON()/PROJECTILE()/BOW()/WEPTOOL() "typ" field, P=PIERCE=1,
+ * S=SLASH=2, B=WHACK=4, 0 for bows/none). Other non-weapon rows are 0.
+ * WEPTOOL rows (pick-axe 259, grappling hook 260, unicorn horn 261) were
+ * missing and read 0, so mswings_verb never said "thrusts" for a horn.
+ * Indices align 1:1 with otyp and with MKOBJ_OC_SKILL
+ * (js/mkobj_erosion_meta.js) — both derived from the same objects.h
+ * OBJECTS_INIT table. */
+const MKOBJ_OC_DIR = new Int8Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 0, 1, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 3, 2, 2, 3, 2, 3, 5, 5, 4, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 2, 1, 2, 2, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 0]);
 
 /* C ref: mhitu.c:105-128 mswings_verb(mwep, bash). */
 export function mswings_verb(mwep, bash) {

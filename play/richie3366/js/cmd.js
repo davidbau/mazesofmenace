@@ -4501,14 +4501,13 @@ export async function continue_run() {
     // C ref: hack.c domove_core `:2724–2728` — travel recomputes step
     // each turn: `if (!findtravelpath(TRAVP_TRAVEL))
     // findtravelpath(TRAVP_GUESS); travel1 = 0;` then FALLS THROUGH to
-    // the step. No-path has no early return: findtravelpath's `found:`
-    // (hack.c `:1516–1520`, ported in findtravelpath_guess) already
-    // zeroed dx/dy + nomul(0) (multi cleared, travel over via
-    // end_running inside nomul); domove below self-steps (no-op) with
-    // move=1 and the turn still runs (movemon, timers, dosounds,
-    // gethungry). move=0/return here skipped the turn C runs
-    // (scen-town-Wizard-94142 travel step 8 from (21,17): hero
-    // unmoved, 95 draws, then the next command's getpos).
+    // the step with dx/dy as the callees left them (stale on BFS-exhaust
+    // `:1515`; only `found:` `:1518–1522`, ported in the travel/guess
+    // callees, zeroes dx/dy + nomul(0)). No zeroing here: a zeroed-`found:`
+    // NOPATH self-steps (no-op) with move=1 and the turn still runs
+    // (movemon, timers, dosounds, gethungry). move=0/return here skipped
+    // the turn C runs (scen-town-Wizard-94142 travel step 8 from (21,17):
+    // hero unmoved, 95 draws, then the next command's getpos).
     if (game.context?.travel) {
         // C: if (!findtravelpath(TRAVP_TRAVEL)) findtravelpath(TRAVP_GUESS)
         let travelStep = await findtravelpath_travel();
@@ -4954,19 +4953,20 @@ async function dotravel_target() {
     // C cmd.c:5375 + hack.c domove_core :2724-2728 — dotravel_target calls
     // domove() unconditionally; the travel-step recompute (travel→guess,
     // travel1=0) sits at the top of domove_core and NOPATH FALLS THROUGH
-    // (findtravelpath `found:` :1518-1522 zeroes dx/dy + nomul(0)), so
-    // domove's pre-step arms — carrying, uswallow (zero dx/dy, attack the
-    // engulfer), turbulence, impaired, trap/liquid, sticky, m_at — always
-    // run. Same shape as continue_run (D-3583). Gating domove on
-    // travelStep skipped the engulfed first-step attack (95332@817: C
-    // melee gethungry→hitum vs a movemon-only turn). C steps on ANY
-    // findtravelpath direction, detours included (no distance gate; the
-    // door-route detour town-94242 step 72 is C's own path — D-3563), and
-    // TEST_TRAV paths through closed doors (the hero bumps them on
-    // arrival since travel sets context.run, which skips autoopen). Do NOT
-    // prefer couldsee-only first: that skipped seenv CLOUD cells on Quest
-    // and stepped SE while C walked S (D-0784). D-0702's seenv-detour
-    // rest stays covered: NOPATH falls through to a domove self-step with
+    // with dx/dy as the callees left them (stale on BFS-exhaust :1515;
+    // only `found:` :1518-1522 zeroes), so domove's pre-step arms —
+    // carrying, uswallow (zero dx/dy, attack the engulfer), turbulence,
+    // impaired, trap/liquid, sticky, m_at — always run. Same shape as
+    // continue_run (D-3583). Gating domove on travelStep skipped the
+    // engulfed first-step attack (95332@817: C melee gethungry→hitum vs a
+    // movemon-only turn). C steps on ANY findtravelpath direction,
+    // detours included (no distance gate; the door-route detour
+    // town-94242 step 72 is C's own path — D-3563), and TEST_TRAV paths
+    // through closed doors (the hero bumps them on arrival since travel
+    // sets context.run, which skips autoopen). Do NOT prefer couldsee-only
+    // first: that skipped seenv CLOUD cells on Quest and stepped SE while
+    // C walked S (D-0784). D-0702's seenv-detour rest stays covered: a
+    // zeroed-`found:` NOPATH falls through to a domove self-step with
     // move=1 and the turn still runs.
     let travelStep = await findtravelpath_travel(false);
     if (travelStep === TRAVEL_STEP_UNSURE) {
@@ -4980,16 +4980,15 @@ async function dotravel_target() {
             travelStep = TRAVEL_STEP;
         }
     }
-    if (!travelStep) {
-        // C findtravelpath `found:` (:1518-1522) — NOPATH zeroes dx/dy +
-        // nomul(0) (JS nomul ends running, like C :4171). The
-        // BFS-exhausted exits return NOPATH without it, so apply it here
-        // (the guess no-pick and dest==hero exits already did;
-        // re-applying is a no-op).
-        u.dx = 0;
-        u.dy = 0;
-        nomul(0);
-    }
+    // C hack.c findtravelpath — a BFS-exhausted NOPATH (`return FALSE`
+    // :1515, TRAVEL mode or the guess pick's second BFS) leaves u.dx/u.dy
+    // (and multi/travel) UNTOUCHED: domove_core :2724–2728 falls through
+    // and steps the stale direction. Only `found:` (:1518–1522 —
+    // dest==hero skip :1289, guess no-pick TEST_MOVE fail :1489) zeroes
+    // dx/dy + nomul(0), and both callees above already apply those two
+    // exits. Zeroing here self-stepped (0,0) instead of the stale step:
+    // a held hero on an un-enterable square (TREE) drew escape_from_sticky_mon
+    // rn2(40) where C bumped the holder silently (Valkyrie-578204 s895).
     if (game.context) game.context.travel1 = 0;
     await domove(u.dx || 0, u.dy || 0);
     if (game.context && game.context.move !== 0) game.context.move = 1;
@@ -5510,7 +5509,13 @@ export async function rhack(key) {
             }
             if ((res & ECMD_TIME) !== 0) {
                 game.context.move = 1;
-                game.kickedloc = { x: 0, y: 0 };
+                // C rhack `:3819–3826` — the canned entry shares the tlist
+                // tail (`goto do_cmdq_extcmd`), so func != dokick keeps a
+                // canned kick's square avoided this turn.
+                const cannedIsKick = (typeof canned === 'object' && canned !== null)
+                    ? (canned.run === dokick || canned.txt === 'kick')
+                    : canned === dokick;
+                if (!cannedIsKick) game.kickedloc = { x: 0, y: 0 };
             } else {
                 game.context.move = 0;
             }
@@ -6268,6 +6273,9 @@ export async function rhack(key) {
             reset_cmd_vars((game.multi | 0) < 0);
         }
         game.context.move = (teleRes & 0x01) ? 1 : 0; // ECMD_TIME
+        // C rhack `:3819–3826` — TIME via dotelecmd (func != dokick)
+        // resets kickedloc so pets stop avoiding the last-kicked square.
+        if ((teleRes & ECMD_TIME) !== 0) game.kickedloc = { x: 0, y: 0 };
     } else if (key === 24) { // ^X
         // C ref: insight.c enlightenment / doattributes
         await doattributes();
@@ -6318,6 +6326,9 @@ export async function rhack(key) {
             reset_cmd_vars((game.multi | 0) < 0);
         }
         game.context.move = (lookRes & ECMD_TIME) ? 1 : 0;
+        // C rhack `:3819–3826` — TIME via dolook (Blind feel takes the
+        // turn; func != dokick) resets kickedloc like any timed command.
+        if ((lookRes & ECMD_TIME) !== 0) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === '&') {
         // C ref: cmd.c '&' → dowhatdoes (IFBURIED|GENERALCMD) — ECMD_OK, no turn
         await dowhatdoes();
@@ -6378,6 +6389,10 @@ export async function rhack(key) {
         } else if ((extRes & ECMD_TIME) === 0) {
             reset_cmd_vars((game.multi | 0) < 0);
         }
+        // C rhack `:3819–3826` — TIME via doextcmd (func != dokick:
+        // the ext_tlist swap never re-points func) resets kickedloc,
+        // so pets stop avoiding the last-kicked square after #dip etc.
+        if ((extRes & ECMD_TIME) !== 0) game.kickedloc = { x: 0, y: 0 };
     } else {
         // C rhack cmdbind_get tlist path for keys the if/else missed
         // (M('?') → doextlist; other default meta binds with EXT_CMDS).
@@ -7051,12 +7066,16 @@ export async function domove(dx, dy) {
     // C ref: hack.c domove :2708 — kickedloc clears unconditionally at
     // domove() end (finally block below), even on bumps/failed steps.
 
-    // C: running stops on door / obstructed / furniture (dest tmpr)
+    // C hack.c domove_core `:2936–2941` — run stops on door /
+    // obstructed / furniture at dest (tmpr): nomul(0), not end_running.
+    // nomul sets disp.botl (multi>=0) so the post-pickup encumbrance
+    // paints via flush_screen→bot in check_here; end_running clears run
+    // without botl and leaves the status stale (D-3850).
     if (game.context?.run && game.context.run < 8) {
         const tmpr = game.level?.at(newx, newy);
         if (tmpr && (tmpr.typ === DOOR || IS_OBSTRUCTED(tmpr.typ)
             || IS_FURNITURE(tmpr.typ))) {
-            end_running(true);
+            nomul(0);
         }
     }
 

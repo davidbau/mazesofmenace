@@ -1,5 +1,5 @@
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency } from './shk.js';
-import { COST_CONTENTS, BURN_OBJECT, otrapped_of } from './const.js';
+import { COST_CONTENTS, BURN_OBJECT, otrapped_of, GLIB as GLIB_PROP_ON } from './const.js';
 // @ts-nocheck
 // objnam.js — readobjnam and helpers for wish parsing.
 // C ref: nethack-c/src/objnam.c
@@ -25,7 +25,13 @@ import { mksobj, mkobj, place_object, eos, lowc, highc, letter, mungspaces, digi
           * block (objnam.c:5216-5222).  It re-runs start_corpse_timeout, so it
           * DRAWS; see the leaf note in _finalize_wish. */
          set_corpsenm, can_be_hatched, Can_fall_thru } from './mklev.js';
-import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING } from './pm.generated.js';
+import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING,
+         PM_STUDENT, PM_CHIEFTAIN, PM_NEANDERTHAL, PM_ATTENDANT, PM_PAGE,
+         PM_ABBOT, PM_ACOLYTE, PM_HUNTER, PM_THUG, PM_ROSHI, PM_GUIDE,
+         PM_APPRENTICE, PM_WARRIOR, PM_ARCHEOLOGIST, PM_BARBARIAN,
+         PM_CAVEMAN, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CLERIC, PM_RANGER,
+         PM_ROGUE, PM_SAMURAI, PM_TOURIST, PM_WIZARD, PM_VALKYRIE, PM_HUMAN,
+         PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
 import { MKOBJ_OC_PROB, MKOBJ_SVB_BASES, MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { getObjName } from './o_init.js';
 import { OC_NAME } from './oc_name_data.js';
@@ -73,7 +79,7 @@ import { FOUNTAIN, THRONE, SINK, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, ICE
          A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_NONE, IS_WALL, IS_GRAVE, IS_FOUNTAIN, IS_SINK, IS_DOOR,
          Align2amask, TT_LAVA, MELT_ICE_AWAY, IS_FURNITURE, Is_rogue_level, LADDER, STAIRS,
          W_NONDIGGABLE, W_NONPASSWALL, HALLUC_RES, LEVITATION, FLYING, isok, COLNO, ROWNO } from './const.js';
-import { update_inventory } from './mhitm.js';
+import { update_inventory, noit_mon_nam } from './mhitm.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_MERGE, MKOBJ_OC_MAGIC,
          MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 /* observe_object() lives in o_init.c, i.e. js/o_init.js — import the ONE
@@ -181,6 +187,11 @@ const PLATE_MAIL          = 121;
 const LOCK_PICK           = 222;
 const LENSES              = 232;
 const TOWEL               = 234;
+const SKELETON_KEY        = 221;
+const HEAVY_IRON_BALL     = 477;
+const IRON_CHAIN          = 478;
+const BLINDING_VENOM      = 479;
+const ACID_VENOM          = 480;
 const FIGURINE            = 241;
 const WOODEN_HARP         = 253;
 const MAGIC_HARP          = 254;
@@ -249,6 +260,34 @@ function _is_male_pm(P)   { return ((P?.mflags2 | 0) & M2_MALE_OBJNAM) !== 0; }
 function _is_female_pm(P) { return ((P?.mflags2 | 0) & M2_FEMALE_OBJNAM) !== 0; }
 function _is_neuter_pm(P) { return ((P?.mflags2 | 0) & M2_NEUTER_OBJNAM) !== 0; }
 function _is_were_pm(P)   { return ((P?.mflags2 | 0) & M2_WERE_OBJNAM) !== 0; }
+/* C mon.c:470 genus() — a quest guardian's species, or (mode 1) its role. */
+function genus(mndx, mode) {
+    const g = (a, b) => (mode ? a : b);
+    switch (mndx) {
+    case PM_STUDENT: return g(PM_ARCHEOLOGIST, PM_HUMAN);
+    case PM_CHIEFTAIN: return g(PM_BARBARIAN, PM_HUMAN);
+    case PM_NEANDERTHAL: return g(PM_CAVEMAN, PM_HUMAN);
+    case PM_ATTENDANT: return g(PM_HEALER, PM_HUMAN);
+    case PM_PAGE: return g(PM_KNIGHT, PM_HUMAN);
+    case PM_ABBOT: return g(PM_MONK, PM_HUMAN);
+    case PM_ACOLYTE: return g(PM_CLERIC, PM_HUMAN);
+    case PM_HUNTER: return g(PM_RANGER, PM_HUMAN);
+    case PM_THUG: return g(PM_ROGUE, PM_HUMAN);
+    case PM_ROSHI: return g(PM_SAMURAI, PM_HUMAN);
+    case PM_GUIDE: return g(PM_TOURIST, PM_HUMAN);
+    case PM_APPRENTICE: return g(PM_WIZARD, PM_HUMAN);
+    case PM_WARRIOR: return g(PM_VALKYRIE, PM_HUMAN);
+    default: {
+        const f2 = permonstTemplate(mndx)?.mflags2 | 0;
+        if (f2 & 0x08) return PM_HUMAN;
+        if (f2 & 0x10) return PM_ELF;
+        if (f2 & 0x20) return PM_DWARF;
+        if (f2 & 0x40) return PM_GNOME;
+        if (f2 & 0x80) return PM_ORC;
+    }
+    }
+    return mndx;
+}
 function _is_human_pm(P)  { return ((P?.mflags2 | 0) & M2_HUMAN_OBJNAM) !== 0; }
 /* C svm.mvitals[mndx].mvflags, restricted to the two bits this file tests.
  * mklev.js:1393 composes it the same way: the STATIC G_NOCORPSE bit comes from
@@ -1982,6 +2021,7 @@ export const hands_obj = Object.freeze({ _hands_obj: true });
 
 export async function readobjnam(bp, no_wish) {
     const g = game;
+    const ftype = g.svc?.context?.current_fruit | 0;
 
     /* bp == null → random object (the "any:" path in C) */
     if (bp === null || bp === undefined) {
@@ -1996,7 +2036,7 @@ export async function readobjnam(bp, no_wish) {
          * purpose — the `goto any` at :4915 jumps PAST `if (!d.cnt) d.cnt = 1`
          * at :4931, so C's quantity block (`else if (d.cnt > 0)`) is SKIPPED on
          * this path and a random stack keeps the quantity mkobj gave it. */
-        return _finalize_wish((await mkobj(oclass, false)), 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        return _finalize_wish((await mkobj(oclass, false)), 0, 0, 0, 0, 0, 0, 0, 0, 0, { ftype });
     }
 
     /* mungspaces: trim and collapse whitespace */
@@ -2017,11 +2057,11 @@ export async function readobjnam(bp, no_wish) {
      * `origbp` is C's d->origbp — the string as preparse left it, which
      * postparse3 uses as its fourth and last name-lookup candidate. */
     const dx = {
-        trapped: d.trapped, locked: d.locked, unlocked: d.unlocked,
+        ispoisoned: d.ispoisoned, trapped: d.trapped, locked: d.locked, unlocked: d.unlocked,
         broken: d.broken, isgreased: d.isgreased, isdiluted: d.isdiluted,
         halfeaten: d.halfeaten, eroded: d.eroded, eroded2: d.eroded2, ishistoric: d.ishistoric,
         contents: d.contents, wetness: d.wetness, very: d.very,
-        mntmp: NON_PM, mgend: d.mgend, tvariety: -1, gsize: d.gsize | 0,
+        mntmp: NON_PM, mgend: d.mgend, tvariety: -1, gsize: d.gsize | 0, ftype,
     };
 
     if (!cnt) cnt = 1;
@@ -2152,6 +2192,31 @@ export async function readobjnam(bp, no_wish) {
             return _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx);
         }
     }
+    /* C objnam.c:4469-4480 — can't use the spellings list for this one due
+     * to shuffling; then "armour" -> "armor" (drop the 'u'). */
+    if (bp.slice(0, 10).toLowerCase() === 'grey spell')
+        bp = bp.slice(0, 2) + 'a' + bp.slice(3);
+    {
+        const ai = bp.toLowerCase().indexOf('armour');
+        if (ai >= 0)
+            bp = bp.slice(0, ai + 4) + bp.slice(ai + 5);
+    }
+
+    /* C objnam.c:4468-4470: spellbook descriptions are shuffled, so "grey spell*"
+     * is rewritten to "gray spell*" in place rather than via spellings[]. */
+    if (/^grey spell/i.test(bp))
+        bp = bp.slice(0, 2) + 'a' + bp.slice(3);
+    /* C objnam.c:4468-4477 — can't use spellings list for this one due to
+     * shuffling; then strip 'armour' -> 'armor'. */
+    if (bp.slice(0, 10).toLowerCase() === 'grey spell')
+        bp = bp.slice(0, 2) + 'a' + bp.slice(3);
+    {
+        const ai = bp.toLowerCase().indexOf('armour');
+        if (ai >= 0)
+            bp = bp.slice(0, ai + 4) + bp.slice(ai + 5);
+    }
+    if (/^grey spell/i.test(bp))
+        bp = bp.slice(0, 2) + 'a' + bp.slice(3);
 
     /* "blank scroll" / "blank spellbook" path (unlabeled flag set by preparse) */
     if (unlabeled && /scroll$/i.test(bp)) {
@@ -2628,7 +2693,7 @@ export async function readobjnam(bp, no_wish) {
 // ── _finalize_wish — apply BUC and enchantment from wish string ───────────────
 // C ref: objnam.c:5038-5395 (the typfnd/finalize section)
 // Applies blessed/cursed/uncursed and +spe from wish prefix.
-// Does NOT consume RNG (all RNG was in mksobj_init).
+// Some type-specific arms draw after mksobj_init, in C's order below.
 function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rechrg, islit, erodeproof, dx) {
     if (!otmp) return otmp;
     dx = dx || {};
@@ -2637,7 +2702,8 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
     if (dx.tvariety === undefined) dx = { ...dx, tvariety: -2 };
     {
         const t = otmp.otyp | 0;
-        if (t === TIN) {
+        switch (t) {
+        case TIN:
             otmp.spe = 0;
             if (dx.contents === TIN_EMPTY) {
                 otmp.corpsenm = NON_PM;
@@ -2645,7 +2711,10 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
                 otmp.corpsenm = NON_PM;
                 otmp.spe = 1;
             }
-        } else if (t === CORPSE || t === STATUE || t === FIGURINE) {
+            break;
+        case CORPSE:
+        case STATUE:
+        case FIGURINE: {
             const P = ismnum(dx.mntmp) ? permonstTemplate(dx.mntmp) : null;
             const mg = (dx.mgend === undefined) ? -1 : dx.mgend;
             otmp.spe = !P ? CORPSTAT_RANDOM
@@ -2659,11 +2728,38 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
                         : (rn2(2) ? CORPSTAT_MALE : CORPSTAT_FEMALE);
             if (dx.ishistoric && t === STATUE)
                 otmp.spe = (otmp.spe | 0) | CORPSTAT_HISTORIC;
-        } else if (t === SLIME_MOLD && dx.ftype !== undefined) {
-            otmp.spe = dx.ftype; /* objnam.c:5137-5138 */
-        } else if (t === TOWEL) {
+            break;
+        }
+        case SLIME_MOLD:
+            otmp.spe = dx.ftype | 0; /* objnam.c:5137-5138 */
+            break;
+        case TOWEL:
             /* C objnam.c:5129-5132 — "wet"/"moist" set a towel's spe. */
             if (dx.wetness) otmp.spe = dx.wetness | 0;
+            break;
+        case SKELETON_KEY:
+        case CHEST:
+        case LARGE_BOX:
+        case HEAVY_IRON_BALL:
+        case IRON_CHAIN:
+            /* C retains the initializer's spe, ignoring numeric prefixes. */
+            break;
+        case SCR_MAIL_OTYP:
+        case ACID_VENOM:
+        case BLINDING_VENOM:
+            otmp.spe = 1;
+            break;
+        case WAN_WISHING:
+            if (!wizard()) {
+                otmp.spe = rn2(10) ? -1 : 0;
+                break;
+            }
+            /* FALLTHRU */
+        default:
+            /* C objnam.c:5184 — only the default arm uses parsed d.spe.
+             * With no numeric request, d.spe is the initializer's value. */
+            if (spesgn !== 0) otmp.spe = spesgn * spe;
+            break;
         }
     }
     /* ── C objnam.c:5188-5252 — "set otmp->corpsenm or dragon scale [mail]".
@@ -2697,6 +2793,8 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         case CORPSE:
             if (((P.geno | 0) & G_UNIQ_OBJNAM) === 0 || wizard()) {
                 if (((_mvflags_of(mntmp) & G_NOCORPSE_OBJNAM) === 0)) {
+                    if ((P.msound | 0) === MS_GUARDIAN)
+                        mntmp = genus(mntmp, 1);
                     set_corpsenm(otmp, mntmp);
                 }
             }
@@ -2742,13 +2840,6 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         otmp.cursed = true;
         otmp.blessed = false;
     }
-    /* Apply enchantment from wish string */
-    if (spesgn !== 0) {
-        otmp.spe = spesgn * spe;
-    }
-
-    if ((otmp.otyp | 0) === SCR_MAIL_OTYP)
-        otmp.spe = 1;
     /* C objnam.c:5042-5071 — globs: quantity is always 1, the count magnifies
      * weight instead.  (The wizard-mode "Override glob weight limit?" y_n at
      * :5065 is not modelled; it only fires when cnt exceeds rn1(5, 2).) */
@@ -2827,6 +2918,13 @@ function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cnt, rec
         otmp.recharged = rechrg | 0;
     }
 
+    /* C objnam.c:5299-5306 — set poisoned (the readobjnam wish path never applied it). */
+    if (dx.ispoisoned) {
+        if (is_poisonable(otmp))
+            otmp.opoisoned = ((game.u?.uluck | 0) >= 0) ? 1 : 0;
+        else if ((otmp.oclass | 0) === FOOD_CLASS)
+            otmp.age = 1;
+    }
     const _typ = otmp.otyp | 0;
     const _isBox = (_typ === LARGE_BOX || _typ === CHEST);
     if (dx.trapped) {
@@ -3749,8 +3847,11 @@ export function Tobjnam(otmp, verb) {
 export function yobjnam(obj, verb) {
     // ensure fields that xname_* may access are present on the replayed object
     obj.oname = undefined;
-    obj.odiluted = undefined;
-    obj.opoisoned = undefined;
+    /* odiluted/opoisoned are C unions aliased onto oeroded/otrapped (game.js
+     * objProto accessors), so an unconditional write clobbers live erosion:
+     * a +1 enchant on an eroded cloak lost its erosion and AC read 1 too low. */
+    if (obj.odiluted === undefined) obj.odiluted = undefined;
+    if (obj.opoisoned === undefined) obj.opoisoned = undefined;
 
     let s = aobjnam(obj, verb);
     if (!carried(obj) || !obj_is_pname(obj)
@@ -5069,6 +5170,12 @@ async function doname_base(obj, doname_flags) {
             bp += doffing(obj) ? ' (being doffed)'
                 : donning(obj) ? ' (being donned)'
                 : ' (being worn)';
+            /* C objnam.c:1397-1406 — Concat(bp, 1, "; slippery)") is
+             * strncat at the real end of the string, so the ')' is NOT
+             * replaced: C yields "(being worn); slippery)".  Ported as-is. */
+            if (bp.endsWith(')') && obj === game.u?.uarmg
+                && ((game.u.uprops?.[GLIB_PROP_ON]?.intrinsic) | 0) !== 0)
+                bp += '; slippery)';
         }
         /* FALLTHROUGH — C:1420 */
     case WEAPON_CLASS:
@@ -5082,7 +5189,17 @@ async function doname_base(obj, doname_flags) {
             break;
         }
         if (otyp === LEASH && (obj.leashmon | 0) !== 0) {
-            /* GAP — C:1428-1444 " (attached to <mon>)" needs find_mid. */
+            /* C:1431-1445 — find_mid(obj->leashmon, FM_FMON) walks fmon
+             * (dead nodes included, hence the DEADMONSTER test below). */
+            let mlsh = null;
+            for (let m = game.fmon; m; m = m.nmon)
+                if ((m.m_id | 0) === (obj.leashmon | 0)) { mlsh = m; break; }
+            if (mlsh && (mlsh.mhp | 0) >= 1) {
+                bp += ` (attached to ${noit_mon_nam(mlsh)})`;
+            } else {
+                impossible_(mlsh ? 'leashed monster is dead' : 'leashed monster not found');
+                obj.leashmon = 0;
+            }
             break;
         }
         if (otyp === CANDELABRUM) {

@@ -1169,8 +1169,9 @@ async function polyman(msg) {
         if (!Lev && !u.ustuck && is_pool_or_lava(u.ux, u.uy))
             await spoteffects(true);
     }
-    // see_monsters(): RNG-free display bookkeeping.
-    // C polyself.c:267 see_monsters(): RNG-free display bookkeeping.
+    // C polyself.c:267 see_monsters().  Not RNG-free: while Hallucination
+    // each newsym() of a monster draws on the DISPLAY isaac64 stream.
+    see_monsters();
 }
 
 export async function rehumanize() {
@@ -1421,6 +1422,8 @@ export async function newman() {
         await make_slimed(10, null);
     }
     if (g.disp) g.disp.botl = 1; /* SET_BOTL */
+    // C polyself.c:460 see_monsters() (display-RNG draws while hallucinating).
+    see_monsters();
     await encumber_msg();
     // C polyself.c:461 retouch_equipment(2) / selftouch().  selftouch is
     // safe here even when the ordinary inventory has no petrifying corpse;
@@ -2380,7 +2383,7 @@ export async function still_chewing(x, y) {
     let digtxt = null, dmgtxt = null;
     if (IS_WALL(lev.typ)) {
         if (in_rooms(x, y, SHOPBASE).length) {
-            add_damage(x, y, 10 * Math.min(acurr(0), 125));
+            add_damage(x, y, 10 * Math.min(acurr(game.u, 0), 125));
             dmgtxt = 'damage';
         }
         digtxt = 'chew a hole in the wall.';

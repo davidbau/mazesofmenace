@@ -495,6 +495,16 @@ export function parseNethackrc(rc) {
          * A full symbols.c parser remains outside this rc parser's scope. */
         const symbolsMatch = line.match(/^SYMBOLS=(.+)/i);
         if (symbolsMatch) {
+            /* C cfgfiles.c cnf_line_SYMBOLS: a definition parsesymbols() rejects
+             * is reported, in file order.  G_ glyph references are matched by
+             * glyphs.c, not modeled by parsesymbols_ok, so they are skipped. */
+            if (!/(^|,)\s*G_/i.test(symbolsMatch[1])) {
+                parsesymbols_cut = -1;
+                if (!parsesymbols_ok(symbolsMatch[1])) {
+                    const bufp = parsesymbols_cut < 0 ? symbolsMatch[1] : symbolsMatch[1].slice(0, parsesymbols_cut);
+                    config_error_add("Error in SYMBOLS definition '%s'", bufp);
+                }
+            }
             for (const entry of symbolsMatch[1].split(',')) {
                 /* symbols.c parsesymbols(): a G_ glyph reference goes through
                  * glyphrep_to_custom_map_entries() (glyphs.c:111) */
@@ -559,6 +569,21 @@ export function parseNethackrc(rc) {
                 /* options.c:676-681 parseoptions(): pfx_match && optn_err */
                 if (reslt !== 0)
                     config_error_add("bad option suffix variation '%s'", menuopts.split(':')[0]);
+                /* botl.c:820 condopt_info[] bl_bareh is opt_in: cond_barehanded
+                 * (>= 4 chars, a prefix of "barehanded") enables the Bare
+                 * condition tested at botl.c:1205. */
+                /* botl.c:1354-1371 parse_cond_option() sets condopt(i, ...) for the
+                 * matched condtests[].useroption; bl_bareh is opt_in (botl.c:820),
+                 * so cond_barehanded turns the "Bare" condition on. */
+                else {
+                    const cu = menuname.slice(5);
+                    if (cu.length >= 4 && 'barehanded'.startsWith(cu))
+                        result.flags.cond_barehanded = !menunegated;
+                    if (cu.length >= 4 && 'tethered'.startsWith(cu))
+                        result.flags.cond_tethered = !menunegated;
+                    if (cu.length >= 4 && 'trap'.startsWith(cu))
+                        result.flags.cond_trap = !menunegated;
+                }
                 continue;
             }
             /* C options.c:2868-2891 optfn_paranoid_confirmation(do_set): the
@@ -577,6 +602,16 @@ export function parseNethackrc(rc) {
                     result.flags.paranoia_bits =
                         parse_paranoid_confirmation(existing, menunegated ? '-pray' : '+pray', false);
                 }
+                continue;
+            }
+            /* C options.c:5099-5101 pfxfn_font(do_set): a font_ prefix whose
+             * name is no font_<win>/font_size_<win> option complains, returns
+             * FALSE (== optn_err), and parseoptions() :674-681 then adds the
+             * bad-suffix line. */
+            if (menuname.startsWith('font_')
+                && !/^font_(map|menu|message|status|text|size_(map|menu|message|status|text))$/.test(menuname)) {
+                config_error_add("Unknown %s parameter '%s'", 'font', menuopts);
+                config_error_add("bad option suffix variation '%s'", menuopts.split(':')[0]);
                 continue;
             }
             if (menuname && !ALLOPT.some(r => r[0].toLowerCase().startsWith(menuname))) {
@@ -691,8 +726,22 @@ export function parseNethackrc(rc) {
                     else if (val === 'cat' || val === 'c')
                         result.preferred_pet = 'c';
                 }
-                else if (key === 'symset')
+                /* C options.c optfn_roguesymset -> load_symset(ROGUESET): the Rogue
+                 * IBM sets (dat/symbols "Handling: IBM", "Color: Yes") are the only
+                 * ones HAS_ROGUE_IBM_GRAPHICS (display.c:2582) accepts. */
+                else if (key === 'roguesymset') {
+                    if (val && gs.symset && gs.symset[1]) {
+                        gs.symset[1].name = val;
+                        gs.symset[1].handling = /^Rogue(Epyx|IBM|Windows)$/.test(val) ? 1 : 0;
+                    }
+                }
+                else if (key === 'symset') {
                     result.symset = val;
+                    /* C options.c optfn_symset names the set as soon as the line is
+                     * parsed, so a later SYMBOLS=G_x:...color finds a named symset
+                     * (glyphs.c:to_custom_symset_entry_callback) and does not nag. */
+                    if (val && gs.symset && gs.symset[0]) gs.symset[0].name = val;
+                }
                 else if (key === 'fruit') {
                     const f = negated ? '' : val.replace(/\s+/g, ' ').trim().slice(0, 31);
                     if (negated || f) result.fruit = f;
@@ -723,6 +772,14 @@ export function parseNethackrc(rc) {
                         result.flags.runmode = RUN_STEP;
                     else if (mode && 'crawl'.startsWith(mode))
                         result.flags.runmode = RUN_CRAWL;
+                }
+                else if (key === 'sortloot') {
+                    /* C ref: options.c:3943 sortltype[] = none/loot/full;
+                     * optfn_sortloot stores the matched entry's first letter
+                     * in flags.sortloot (init 'l'). */
+                    const sl = ['none', 'loot', 'full'].find(
+                        (n) => val && n.startsWith(String(val).toLowerCase()));
+                    if (sl) result.flags.sortloot = sl[0];
                 }
                 else if (key === 'pickup_types') {
                     if (!val) {
@@ -848,7 +905,7 @@ import { rnd, rn2 } from './rng.js';
  * rewrite reads all four. */
 import { makesingular } from './objnam.js';
 import { name_to_mon } from './makemon.js';
-import { ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
+import { gs, ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
 import { OC_NAME } from './oc_name_data.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 const FOOD_CLASS = 7;

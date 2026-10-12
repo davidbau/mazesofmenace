@@ -1507,6 +1507,133 @@ export function leppie_avoidance(mon) {
     return !!gold && gold.quan > (findgold(game.invent)?.quan ?? 0);
 }
 
+/* C postmov (monmove.c:1543-1646) door arm: open a door, or crash through it,
+ * if 'mtmp' can.  Shared by the hostile path in m_move and the pet path
+ * (C: a tame mover reaches the same postmov).  Returns MMOVE_DIED_MV when
+ * mb_trapped() kills the mover, else undefined. */
+async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
+        const _dloc = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0];
+        if (_dloc && (_dloc.typ | 0) === DOOR_TYP_MV
+            && !(_mf1_ct & M1_WALLWALK_MV) && !can_tunnel_mv) {
+            const _mndx_d = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+            const _mrow_d = (_mndx_d >= 0 && _mndx_d < _MONS_MV.length) ? _MONS_MV[_mndx_d] : null;
+            const _mf1_d = _mrow_d ? (_mrow_d[6] | 0) : 0;
+            const _mf2_d = _mrow_d ? (_mrow_d[7] | 0) : 0;
+            const _msize_d = (_mndx_d >= 0 && _mndx_d < _MONS_MSIZE_MV.length)
+                ? (_MONS_MSIZE_MV[_mndx_d] | 0) : MZ_SMALL_MV;
+            const _can_open_d = !((_mf1_d & M1_NOHANDS_MV) || (_msize_d < MZ_SMALL_MV));
+            /* passes_walls / can_tunnel: false for the common ground walker
+             * (the existing mfndpos posture); if either held the door is
+             * skipped, as in C (the !passes_walls && !can_tunnel guard). */
+            const _dm_d = _dloc.doormask | 0;
+            const _btrapped_d = (_dm_d & D_TRAPPED_MV) !== 0;
+            let _btrapped_now = _btrapped_d;
+            if (_btrapped_now) {
+                let _mk = mtmp.minvent;
+                for (; _mk; _mk = _mk.nobj)
+                    if ((_mk.oartifact | 0) === ART_MASTER_KEY_MV) break;
+                if (_mk) {
+                    _dloc.doormask = _dm_d & ~D_TRAPPED_MV;
+                    _btrapped_now = false;
+                }
+            }
+            if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
+                && (_mf1_d & M1_AMORPHOUS_MV) !== 0) {
+                /* C monmove.c:1549-1553 — amorphous monsters flow/ooze under
+                 * a closed or locked door; the door state is untouched. */
+                if (game.flags?.verbose !== false && canseemon(mtmp))
+                    await pline(`${YMonnam(mtmp)} ${(_mndx_d === 106 /* PM_FOG_CLOUD */
+                        || (_mrow_d && (_mrow_d[0] | 0) === S_LIGHT_MV)) ? 'flows' : 'oozes'} under the door.`);
+            } else if ((_dm_d & D_CLOSED_MV) === D_CLOSED_MV && !(_dm_d & D_LOCKED_MV)
+                && _can_open_d) {
+                let _doorDone = false;
+                /* C UnblockDoor (monmove.c:1552): doormask = <what>; newsym;
+                 * recalc_block_point; vision_recalc(0).  <what> is D_ISOPEN
+                 * for an untrapped door and D_NODOOR for a trapped one — the
+                 * trap blows the door off its hinges (monmove.c:1577). */
+                _dloc.doormask = _btrapped_now ? D_NODOOR_MV : D_ISOPEN_MV;
+                newsym(mtmp.mx | 0, mtmp.my | 0);
+                recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
+                vision_recalc(0);
+                /* C monmove.c:1535 UnblockDoor — canseeit = didseeit || cansee(). */
+                const _canseeit_d = _didseeit_pm || !!cansee(mtmp.mx | 0, mtmp.my | 0);
+                /* C monmove.c:1576-1580 — a trapped door blows up INSTEAD of
+                 * any of the three "opens a door" feedback arms, and
+                 * mb_trapped() returns TRUE when the blast kills the mover. */
+                if (_btrapped_now) {
+                    if (await mb_trapped(mtmp, _canseeit_d))
+                        return MMOVE_DIED_MV;
+                    _doorDone = true;
+                }
+                let _doormsg = null;
+                let _doorhear = false;
+                if (game.flags?.verbose === false) {
+                    /* C: the whole feedback block is skipped */
+                } else if (_doorDone) {
+                    /* mb_trapped() gave the feedback */
+                } else if (!_canseeit_d) {
+                    /* C monmove.c:1613: !Deaf → You_hear("a door open.");
+                     * display.js You_hear carries the Deaf / Unaware
+                     * ("You dream that you hear ") prefixes (pline.c:447). */
+                    /* The explicit !Deaf guard (monmove.c:1588) is separate
+                     * from You_hear's own (Deaf && !Unaware) test. */
+                    const _du = game.u || {};
+                    _doorhear = !(((_du.HDeaf | 0) !== 0) || ((_du.EDeaf | 0) !== 0)
+                        || !!(_du.uprops?.[DEAF]?.intrinsic | 0)
+                        || !!(_du.uprops?.[DEAF]?.extrinsic | 0)
+                        || !!(_du.uroleplay && _du.uroleplay.deaf));
+                } else if (!canspotmon(mtmp)) {
+                    /* C monmove.c:1611: canseeit && !canspotmon →
+                     * You_see("a door open."). */
+                    _doormsg = 'You see a door open.';
+                }
+                else {
+                    _doormsg = `${Monnam_dm(mtmp)} opens a door.`;
+                }
+                /* C monmove.c:1609-1613 routes every feedback arm through
+                 * pline/You_see/You_hear.  Keep that real display call: its
+                 * pre-message flush is the physical frame a subsequent
+                 * width-driven more() freezes. */
+                if (_doorhear)
+                    await You_hear('a door open.');
+                else if (_doormsg)
+                    await pline(_doormsg);
+            } else if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
+                && (_mf2_d & M2_GIANT_MAF) !== 0) {
+                /* C monmove.c:1617-1641.  mfndpos only admits this square
+                 * for a doorbuster after the amorphous/unlock/open arms
+                 * have failed.  A locked door consumes the rn2(2) even
+                 * when it winds up merely broken. */
+                const _maskd = (_btrapped_now
+                    || ((_dm_d & D_LOCKED_MV) !== 0 && rn2(2) === 0))
+                    ? D_NODOOR_MV : D_BROKEN_MV;
+                _dloc.doormask = _maskd;
+                newsym(mtmp.mx | 0, mtmp.my | 0);
+                recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
+                vision_recalc(0);
+                const _canseeit_d = _didseeit_pm
+                    || !!cansee(mtmp.mx | 0, mtmp.my | 0);
+                if (_btrapped_now) {
+                    if (await mb_trapped(mtmp, _canseeit_d))
+                        return MMOVE_DIED_MV;
+                } else if (game.flags?.verbose !== false) {
+                    /* C monmove.c:1607-1614: every arm goes through
+                     * pline_mon/You_see/You_hear, so WIN_STOP (ESC at an
+                     * earlier --More--) and paging apply; the old direct
+                     * _pending_message write bypassed both. */
+                    if (_canseeit_d && canspotmon(mtmp))
+                        await pline(`${Monnam_dm(mtmp)} smashes down a door.`);
+                    else if (_canseeit_d)
+                        await You_see('a door crash open.');
+                    else
+                        await You_hear('a door crash open.');
+                }
+                if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV).length)
+                    add_damage(mtmp.mx | 0, mtmp.my | 0, 0);
+            }
+        }
+}
+
 export async function m_move(mtmp, after) {
     if (!mtmp) return MMOVE_NOTHING_MV;
 
@@ -1570,6 +1697,7 @@ export async function m_move(mtmp, after) {
     if (mtmp.mtame | 0) {
         /* C: return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...) */
         const res = await dog_move(mtmp, after);
+        const _pdidsee = res === MMOVE_MOVED_MV && !!cansee(mtmp.mx | 0, mtmp.my | 0);
         if (res === MMOVE_MOVED_MV)
             newsym(_entry_omx, _entry_omy);
         if (res === MMOVE_MOVED_MV) {
@@ -1592,10 +1720,34 @@ export async function m_move(mtmp, after) {
                 _handle_sqky_board_mon(mtmp, _trap, mtmp.mx | 0, mtmp.my | 0);
             }
         }
+        /* C postmov (monmove.c:1549-1553) — the door block runs for a tame mover
+         * too: an amorphous pet that moved onto a closed/locked door cell oozes
+         * under it, with the message and no state change.  (The open/unlock arms
+         * for pets are not ported on this path.) */
+        if (res === MMOVE_MOVED_MV) {
+            const _pdl = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0];
+            if (_pdl && (_pdl.typ | 0) === DOOR_TYP_MV
+                && ((_pdl.doormask | 0) & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
+                && mtmp.data && ((mtmp.data.mflags1 | 0) & M1_AMORPHOUS_MV) !== 0
+                && !(mtmp.data.mflags1 & M1_WALLWALK_MV)
+                && game.flags?.verbose !== false && canseemon(mtmp))
+                await pline(`${YMonnam(mtmp)} ${((mtmp.mndx ?? mtmp.mnum ?? 0) === 106
+                    || (mtmp.data.mlet | 0) === S_LIGHT_MV) ? 'flows' : 'oozes'} under the door.`);
+        }
         /* C postmov (monmove.c:1656) `newsym(mtmp->mx, mtmp->my);` — the SECOND
          * half of the pair, at the very end of the `mmoved == MMOVE_MOVED` block,
          * i.e. after mintrap and after the door block.  This is what finally puts
          * the pet's glyph on its destination cell. */
+        if (res === MMOVE_MOVED_MV) {
+            const _pi = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+            const _prow = (_pi >= 0 && _pi < _MONS_MV.length) ? _MONS_MV[_pi] : null;
+            const _pmf1 = _prow ? (_prow[6] >>> 0) : 0;
+            const _pctun = !Is_rogue_level(game.u?.uz) && !!(_pmf1 & M1_TUNNEL_MDW)
+                && !((_pmf1 & M1_NEEDPICK_MDW) && _conflict_mv()
+                     && dist2(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0) <= 8);
+            const _pdr = await postmov_door(mtmp, _pdidsee, _pmf1, _pctun);
+            if (_pdr === MMOVE_DIED_MV) return _pdr;
+        }
         if (res === MMOVE_MOVED_MV)
             newsym(mtmp.mx | 0, mtmp.my | 0);
         /* C monmove.c:1773 — the pet path IS a `return postmov(...)`, so it runs
@@ -1789,11 +1941,10 @@ export async function m_move(mtmp, after) {
         }
     }
 
-    /* C monmove.c:1915-1928: if (!mpeaceful || !rn2(10)) && !rogue_level → getitems check */
-    /* rogue_level stub: false */
+    /* C monmove.c:1890: if ((!mpeaceful || !rn2(10)) && !Is_rogue_level(&u.uz)) → getitems check */
     let getitems = false;
     let mmoved_pre = MMOVE_NOTHING_MV; /* C: mmoved local, passed into m_search_items */
-    if (!(mtmp.mpeaceful | 0) || !rn2(10)) {
+    if ((!(mtmp.mpeaceful | 0) || !rn2(10)) && !Is_rogue_level(game.u?.uz)) {
         /* C: in_line = lined_up(mtmp) && distmin(mx,my,mux,muy) <= (throws_rocks?20:ACURRSTR/2+1) */
         const _dmin = distmin_mv(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0);
         /* ACURRSTR/2+1: typical early ACURRSTR ~11 → 6; throws_rocks rare here. */
@@ -1900,12 +2051,21 @@ export async function m_move(mtmp, after) {
      * &mfp, ggx, ggy). Now real (was "should_displace stub: false").
      * mfndpos now admits C's displacer cells; the ordinary displacement
      * preference remains false unless should_displace itself finds a target. */
+    /* C monmove.c:1940-1944 — a unicorn on a noteleport level cannot avoid the
+     * hero's line by teleporting, so if any candidate is off-line it skips
+     * every NOTONL candidate (monmove.c:1948). */
+    let avoid = false;
+    if (_is_unicorn_mv(mtmp.data.pmidx | 0) && _noteleport_level_mv(mtmp, mtmp.data.pmidx | 0)) {
+        for (let i = 0; i < cnt; i++)
+            if (!(mfp_poss[i].info & NOTONL_MV)) avoid = true;
+    }
     const better_with_displacing = should_displace(mtmp, mfp, ggx | 0, ggy | 0);
 
     for (let i = 0; i < cnt; i++) {
         const nx = mfp_poss[i].x | 0;
         const ny = mfp_poss[i].y | 0;
         const info_i = mfp_poss[i].info | 0;
+        if (avoid && (info_i & NOTONL_MV)) continue; /* C monmove.c:1948 */
 
         /* C monmove.c:1980-1982: if (MON_AT(nx,ny) && (info[i]&ALLOW_MDISP)
          * && !(info[i]&ALLOW_M) && !better_with_displacing) continue;
@@ -2105,126 +2265,8 @@ export async function m_move(mtmp, after) {
         }
 
         {
-            const _dloc = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0];
-            if (_dloc && (_dloc.typ | 0) === DOOR_TYP_MV
-                && !(_mf1_ct & M1_WALLWALK_MV) && !can_tunnel_mv) {
-                const _mndx_d = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-                const _mrow_d = (_mndx_d >= 0 && _mndx_d < _MONS_MV.length) ? _MONS_MV[_mndx_d] : null;
-                const _mf1_d = _mrow_d ? (_mrow_d[6] | 0) : 0;
-                const _mf2_d = _mrow_d ? (_mrow_d[7] | 0) : 0;
-                const _msize_d = (_mndx_d >= 0 && _mndx_d < _MONS_MSIZE_MV.length)
-                    ? (_MONS_MSIZE_MV[_mndx_d] | 0) : MZ_SMALL_MV;
-                const _can_open_d = !((_mf1_d & M1_NOHANDS_MV) || (_msize_d < MZ_SMALL_MV));
-                /* passes_walls / can_tunnel: false for the common ground walker
-                 * (the existing mfndpos posture); if either held the door is
-                 * skipped, as in C (the !passes_walls && !can_tunnel guard). */
-                const _dm_d = _dloc.doormask | 0;
-                const _btrapped_d = (_dm_d & D_TRAPPED_MV) !== 0;
-                let _btrapped_now = _btrapped_d;
-                if (_btrapped_now) {
-                    let _mk = mtmp.minvent;
-                    for (; _mk; _mk = _mk.nobj)
-                        if ((_mk.oartifact | 0) === ART_MASTER_KEY_MV) break;
-                    if (_mk) {
-                        _dloc.doormask = _dm_d & ~D_TRAPPED_MV;
-                        _btrapped_now = false;
-                    }
-                }
-                if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
-                    && (_mf1_d & M1_AMORPHOUS_MV) !== 0) {
-                    /* C monmove.c:1549-1553 — amorphous monsters flow/ooze under
-                     * a closed or locked door; the door state is untouched. */
-                    if (game.flags?.verbose !== false && canseemon(mtmp))
-                        await pline(`${YMonnam(mtmp)} ${(_mndx_d === 106 /* PM_FOG_CLOUD */
-                            || (_mrow_d && (_mrow_d[0] | 0) === S_LIGHT_MV)) ? 'flows' : 'oozes'} under the door.`);
-                } else if ((_dm_d & D_CLOSED_MV) === D_CLOSED_MV && !(_dm_d & D_LOCKED_MV)
-                    && _can_open_d) {
-                    let _doorDone = false;
-                    /* C UnblockDoor (monmove.c:1552): doormask = <what>; newsym;
-                     * recalc_block_point; vision_recalc(0).  <what> is D_ISOPEN
-                     * for an untrapped door and D_NODOOR for a trapped one — the
-                     * trap blows the door off its hinges (monmove.c:1577). */
-                    _dloc.doormask = _btrapped_now ? D_NODOOR_MV : D_ISOPEN_MV;
-                    newsym(mtmp.mx | 0, mtmp.my | 0);
-                    recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
-                    vision_recalc(0);
-                    /* C monmove.c:1535 UnblockDoor — canseeit = didseeit || cansee(). */
-                    const _canseeit_d = _didseeit_pm || !!cansee(mtmp.mx | 0, mtmp.my | 0);
-                    /* C monmove.c:1576-1580 — a trapped door blows up INSTEAD of
-                     * any of the three "opens a door" feedback arms, and
-                     * mb_trapped() returns TRUE when the blast kills the mover. */
-                    if (_btrapped_now) {
-                        if (await mb_trapped(mtmp, _canseeit_d))
-                            return MMOVE_DIED_MV;
-                        _doorDone = true;
-                    }
-                    let _doormsg = null;
-                    let _doorhear = false;
-                    if (game.flags?.verbose === false) {
-                        /* C: the whole feedback block is skipped */
-                    } else if (_doorDone) {
-                        /* mb_trapped() gave the feedback */
-                    } else if (!_canseeit_d) {
-                        /* C monmove.c:1613: !Deaf → You_hear("a door open.");
-                         * display.js You_hear carries the Deaf / Unaware
-                         * ("You dream that you hear ") prefixes (pline.c:447). */
-                        /* The explicit !Deaf guard (monmove.c:1588) is separate
-                         * from You_hear's own (Deaf && !Unaware) test. */
-                        const _du = game.u || {};
-                        _doorhear = !(((_du.HDeaf | 0) !== 0) || ((_du.EDeaf | 0) !== 0)
-                            || !!(_du.uprops?.[DEAF]?.intrinsic | 0)
-                            || !!(_du.uprops?.[DEAF]?.extrinsic | 0)
-                            || !!(_du.uroleplay && _du.uroleplay.deaf));
-                    } else if (!canspotmon(mtmp)) {
-                        /* C monmove.c:1611: canseeit && !canspotmon →
-                         * You_see("a door open."). */
-                        _doormsg = 'You see a door open.';
-                    }
-                    else {
-                        _doormsg = `${Monnam_dm(mtmp)} opens a door.`;
-                    }
-                    /* C monmove.c:1609-1613 routes every feedback arm through
-                     * pline/You_see/You_hear.  Keep that real display call: its
-                     * pre-message flush is the physical frame a subsequent
-                     * width-driven more() freezes. */
-                    if (_doorhear)
-                        await You_hear('a door open.');
-                    else if (_doormsg)
-                        await pline(_doormsg);
-                } else if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
-                    && (_mf2_d & M2_GIANT_MAF) !== 0) {
-                    /* C monmove.c:1617-1641.  mfndpos only admits this square
-                     * for a doorbuster after the amorphous/unlock/open arms
-                     * have failed.  A locked door consumes the rn2(2) even
-                     * when it winds up merely broken. */
-                    const _maskd = (_btrapped_now
-                        || ((_dm_d & D_LOCKED_MV) !== 0 && rn2(2) === 0))
-                        ? D_NODOOR_MV : D_BROKEN_MV;
-                    _dloc.doormask = _maskd;
-                    newsym(mtmp.mx | 0, mtmp.my | 0);
-                    recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
-                    vision_recalc(0);
-                    const _canseeit_d = _didseeit_pm
-                        || !!cansee(mtmp.mx | 0, mtmp.my | 0);
-                    if (_btrapped_now) {
-                        if (await mb_trapped(mtmp, _canseeit_d))
-                            return MMOVE_DIED_MV;
-                    } else if (game.flags?.verbose !== false) {
-                        /* C monmove.c:1607-1614: every arm goes through
-                         * pline_mon/You_see/You_hear, so WIN_STOP (ESC at an
-                         * earlier --More--) and paging apply; the old direct
-                         * _pending_message write bypassed both. */
-                        if (_canseeit_d && canspotmon(mtmp))
-                            await pline(`${Monnam_dm(mtmp)} smashes down a door.`);
-                        else if (_canseeit_d)
-                            await You_see('a door crash open.');
-                        else
-                            await You_hear('a door crash open.');
-                    }
-                    if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV).length)
-                        add_damage(mtmp.mx | 0, mtmp.my | 0, 0);
-                }
-            }
+            const _dr = await postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv);
+            if (_dr === MMOVE_DIED_MV) return _dr;
         }
 
         /* C monmove.c:1623-1639 — the IRONBARS arm of "doors and bars".  The

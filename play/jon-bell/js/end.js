@@ -29,7 +29,7 @@
 import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_special_level } from './bones.js';
-import { force_more, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
+import { force_more, force_more_lone_frame, pline, urgent_pline, flush_screen, bot, _topl_joins_committed,
          _topline_more_pending, capture_painted_frame_with_status } from './display.js';
 import { topl_park_cursor } from './display.js';
 import { putmsghistory } from './display.js';
@@ -434,6 +434,12 @@ export async function savelife(how, inPlace) {
     // that attempt on your life." on its own topline, after the
     // "OK, so you don't die.  The kitten bites the giant bat.--More--" page).
     g.multi = inPlace ? -1 : 0;
+    /* The deferred path skips the multi<0 countdown, so C's unmul() never
+     * runs here; it ends with `u.usleep = 0` (hack.c:4197).  Left set, a
+     * hero who died asleep keeps u.usleep < moves and mhitu.c:940 draws a
+     * spurious rn2(10) on every later M_ATTK_HIT. */
+    if (!inPlace)
+        u.usleep = 0;
     /* C end.c:739-747 — clear the other fatal-state residue before releasing
      * a swallowed or held hero. */
     g.multi_reason = ((g.urole?.mnum | 0) === (PM_TOURIST | 0))
@@ -735,13 +741,22 @@ export async function do_death_sequence(opts) {
             // command-read boundary in cmd.js rhack): this turn's world block has
             // already run, so the multi<0 countdown cannot be replayed.
             // C end.c:1117-1119 — pline("OK, so you don't die."); savelife(how).
+            /* A swallowed hero is expelled inside savelife (end.c:749-758), and
+             * that unstuck()/docrt() pages the topline, so C's "OK, so you don't
+             * die." (end.c:1117) must already be on it: speak it first. */
+            const _okFirst = !!(g.u?.uswallow && g.u?.ustuck);
+            if (_okFirst)
+                await pline("OK, so you don't %s.", ((pd.how | 0) === CHOKING_END) ? "choke" : "die");
             await savelife(pd.how);
             // "OK, so you don't die." (done) and the nomovemsg (savelife) both land on
             // when the multi<0 countdown completes; here both are the command-result
             // line the next rhack(0) restores).
-            g._resultMessage = "OK, so you don't " + (((pd.how | 0) === CHOKING_END) ? "choke" : "die") + ".  "
+            g._resultMessage = (_okFirst ? "" : "OK, so you don't " + (((pd.how | 0) === CHOKING_END) ? "choke" : "die") + ".  ")
                 + (g.nomovemsg || 'You survived that attempt on your life.');
             g.nomovemsg = null;
+            /* The deferred path skips the multi countdown, so do unmul()'s
+             * u.usleep = 0 here (hack.c:4177-4197); else mhitu.c:940 draws rn2(10). */
+            if (g.u) g.u.usleep = 0;
         }
         /* C end.c:1120-1124: debug/explore refusal sets survive just like
          * amulet life saving. Clear the failed death's killer before done()
@@ -817,7 +832,7 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
     if (!g._topl_win_stop && !g._topl_win_stop_armed) {
         if (_topline_more_pending()) await flush_screen(1);
         if (unacknowledged && g._pending_message)
-            await force_more(g._pending_message);
+            await force_more_lone_frame(g._pending_message);
     }
     g._topl_unacknowledged = false;
     g._topl_win_stop = false;
@@ -1150,9 +1165,14 @@ async function disclose(how, taken) {
              * compositor takes a cell count, so this is WIN_COL-2 for the
              * right-aligned menu (the recorded disclosure menu starts at
              * column 32 and leaves 30 status characters). */
-            const _statusClip = (_discloseInv?.WIN_COL === 0)
-                ? -1
-                : Math.max(0, (_discloseInv?.WIN_COL ?? 2) - 2);
+            /* docorner() (wintty.c:3650-3720) repaints the status rows via
+             * bot() only when `ymax >= wins[WIN_STATUS]->offy`; a menu shorter
+             * than the status offy (22) leaves both status rows intact. */
+            const _statusClip = ((_discloseInv?.winRows ?? 99) < 22)
+                ? undefined
+                : (_discloseInv?.WIN_COL === 0)
+                    ? -1
+                    : Math.max(0, (_discloseInv?.WIN_COL ?? 2) - 2);
             await container_contents(g.invent, true, true, false, _statusClip);
         }
         if (c === 'q')

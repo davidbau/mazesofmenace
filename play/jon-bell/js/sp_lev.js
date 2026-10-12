@@ -10,7 +10,7 @@
 // call in this file must match C's sp_lev.c in order and argument.
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
-import { FILL_NORMAL } from './const.js';
+import { FILL_NORMAL, MELT_ICE_AWAY } from './const.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
 import { oinit } from './o_init.js';
 import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, newcham, add_door, makeroguerooms, themeroom_lspo_map_redo_maploc_rng, u_on_newpos, set_wall_state, mdrop_obj_md } from './mklev.js';
@@ -44,7 +44,7 @@ import { on_level } from './dungeon.js';
 import { m_at, monmightthrowwep } from './uhitm.js';
 import { christen_monst, poly_when_stoned } from './mhitm.js';
 import { within_bounded_area } from './rect.js';
-import { create_gas_cloud, create_gas_cloud_selection as create_region_gas_cloud_selection } from './region.js';
+import { create_gas_cloud, create_gas_cloud_selection as create_region_gas_cloud_selection, regions_list } from './region.js';
 import { PM_MINOTAUR, PM_ARCHEOLOGIST, PM_WIZARD, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_CLERIC, PM_DWARF, PM_GNOME, NUMMONS } from './pm.generated.js';
 import { dat_content } from './dat_source.js';
 import { tokenize } from './lua/lexer.js';
@@ -54,7 +54,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { create_drawbridge } from './dokick.js';
 import { impossible } from './pline.js';
-import { map_background, map_object, map_trap, newsym_force as newsym_force_real } from './display.js';
+import { map_background, map_object, map_trap, newsym_force as newsym_force_real, terrain_glyph, GLYPHCLS_CMAP } from './display.js';
 import { enexto_core, rloc } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
 import { m_into_limbo } from './dog.js';
@@ -5111,6 +5111,38 @@ function map_cleanup() {
 // (flp&2). Draws ZERO rn2/rnd/d/rne/rnz — pure coordinate transposition.
 // extras=true is the #wizfliplevel path.  The same structural transpose is
 // used, with the additional hero/ball/travel state updates below.
+/* C ref: sp_lev.c:455-490 flip_visuals — for #wizfliplevel; update seen vector
+   for the whole flip area and the remembered glyph of known walls. */
+function flip_visuals(flp, minx, miny, maxx, maxy) {
+    for (let y = miny; y <= maxy; ++y) {
+        for (let x = minx; x <= maxx; ++x) {
+            const lev = game.level.locations[x][y];
+            let seenv = (lev.seenv | 0) & 0xff;
+            if (seenv === 0)
+                continue;
+            if (seenv !== SVALL) {
+                if (flp & 1) {
+                    seenv = swapbits(seenv, 2, 4);
+                    seenv = swapbits(seenv, 1, 5);
+                    seenv = swapbits(seenv, 0, 6);
+                }
+                if (flp & 2) {
+                    seenv = swapbits(seenv, 2, 0);
+                    seenv = swapbits(seenv, 3, 7);
+                    seenv = swapbits(seenv, 4, 6);
+                }
+                lev.seenv = seenv;
+            }
+            if ((IS_WALL(lev.typ) || lev.typ === SDOOR)
+                && lev.remembered_glyph?.cls === GLYPHCLS_CMAP) {
+                const tg = terrain_glyph(lev, x, y);
+                lev.remembered_glyph = { ch: tg.ch, color: tg.color,
+                                         decgfx: tg.dec, cls: GLYPHCLS_CMAP };
+            }
+        }
+    }
+}
+
 export async function flip_level(flp, extras) {
     if ((flp & 3) === 0)
         return;
@@ -5319,15 +5351,34 @@ export async function flip_level(flp, extras) {
         }
     }
 
-    // regions (poison clouds etc, sp_lev.c:736-763) — OMITTED. See
-    // "region.js's svn.n_regions is always 0 (module-private, no accessor,
-    // nothing ever increments it) — a loop that cannot run".  All three
-    // clauses are false.  `add_region()` (js/region.js) increments
-    // svn.n_regions and has SIX live callers outside its own module
-    // (js/monmove.js:2811/:2814/:2842, js/makemon.js:4700, js/potion.js:1329,
-    // js/trap.js:564, all through create_gas_cloud), and js/region.js now
-    // exports `regions_list()` as exactly the accessor this claimed did not
-    // but it is NOT justified by "the loop cannot run".
+    // regions (poison clouds etc) — C ref: sp_lev.c:736-763
+    for (const reg of regions_list()) {
+        let tmp1, tmp2;
+        if (flp & 1) {
+            tmp1 = FlipY(reg.bounding_box.ly);
+            tmp2 = FlipY(reg.bounding_box.hy);
+            reg.bounding_box.ly = Math.min(tmp1, tmp2);
+            reg.bounding_box.hy = Math.max(tmp1, tmp2);
+            for (let j = 0; j < reg.nrects; j++) {
+                tmp1 = FlipY(reg.rects[j].ly);
+                tmp2 = FlipY(reg.rects[j].hy);
+                reg.rects[j].ly = Math.min(tmp1, tmp2);
+                reg.rects[j].hy = Math.max(tmp1, tmp2);
+            }
+        }
+        if (flp & 2) {
+            tmp1 = FlipX(reg.bounding_box.lx);
+            tmp2 = FlipX(reg.bounding_box.hx);
+            reg.bounding_box.lx = Math.min(tmp1, tmp2);
+            reg.bounding_box.hx = Math.max(tmp1, tmp2);
+            for (let j = 0; j < reg.nrects; j++) {
+                tmp1 = FlipX(reg.rects[j].lx);
+                tmp2 = FlipX(reg.rects[j].hx);
+                reg.rects[j].lx = Math.min(tmp1, tmp2);
+                reg.rects[j].hx = Math.max(tmp1, tmp2);
+            }
+        }
+    }
 
     // rooms + subrooms — sp_lev.c:765-812. game.level.rooms is an array
     // that carries a trailing sentinel entry ({hx:-1}, see mklev.js
@@ -5442,8 +5493,21 @@ export async function flip_level(flp, extras) {
         }
     }
 
-    // timed effects (MELT_ICE_AWAY, sp_lev.c:863-875) — OMITTED. No timer
-    // row 13.
+    // C ref: sp_lev.c:862-874 — timed effects: MELT_ICE_AWAY timers carry
+    // (x << 16) | y in arg.a_long; flip them with the map.  The timer chain
+    // lives on game.gt.timer_base (js/timeout.js gtimer()).
+    for (let timer = game.gt ? game.gt.timer_base : null; timer; timer = timer.next) {
+        if (timer.func_index === MELT_ICE_AWAY) {
+            let ty = timer.arg.a_long & 0xffff;
+            let tx = (timer.arg.a_long >> 16) & 0xffff;
+
+            if (flp & 1)
+                ty = FlipY(ty);
+            if (flp & 2)
+                tx = FlipX(tx);
+            timer.arg.a_long = ((tx << 16) | ty);
+        }
+    }
 
     // C ref: sp_lev.c:877-897 — flip the level's exclusion zones with the map.
     //
@@ -5496,6 +5560,7 @@ export async function flip_level(flp, extras) {
         const digging = game.context?.digging?.pos;
         if (digging) Flip_coord(digging);
         set_wall_state();
+        if (flp) flip_visuals(flp, minx, miny, maxx, maxy);
     }
     vision_reset();
 }

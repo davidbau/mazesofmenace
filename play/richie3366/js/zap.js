@@ -2389,7 +2389,10 @@ async function disintegrate_mon(mon, type, fltxt) {
  * passes FALSE like C (Hallu "blast of …"; each sits inside the same
  * cansee/canseemon/Blind guard, so the hallu RNG draws in C order);
  * the zhitu killer keeps TRUE (`:4980` suppresses hallucination).
- * Explode combat internals live in explode.js (D-0973).
+ * Explode combat internals live in explode.js (D-0973). The bounce test
+ * + bchance re-read the LIVE cell (zap_over_floor may rewrite typ,
+ * `:4998`/`:5003`); no local door-absorb block (zap_over_floor `:5416`
+ * /`:5459` owns message + rangemod).
  */
 export async function dobuzz(
     type, nd, sx0, sy0, dx0, dy0, sayhit, saymiss, forcemiss,
@@ -2487,12 +2490,10 @@ export async function dobuzz(
                     );
                 }
 
-                // Prior wand path: closed door absorb pline (C uses
-                // zap_over_floor rangemod; keep message for screen PASS).
-                if (!fireball && (type | 0) >= 0 && closed_door(sx, sy)) {
-                    await pline('The door absorbs your bolt!');
-                    range += -1000;
-                }
+                // C: no door-absorb block here — zap_over_floor above owns
+                // both the absorb message (:5459) and rangemod -1000
+                // (:5416). A prior shim re-printed it (double message,
+                // double range cut); deleted.
 
                 mon = m_at(sx, sy); // C :4861 — re-fetch after floor effects
                 // C zap.c `buzzmonst:` (:4867) — the mon-hit core, also
@@ -2714,7 +2715,12 @@ export async function dobuzz(
                     await zap_over_floor(sx, sy, type, shopdamage, true, 0);
                 }
 
-                if (!ZAP_POS(typ) || (closed_door(sx, sy) && range >= 0)) {
+                // C zap.c:4998 — the bounce test reads the LIVE cell:
+                // zap_over_floor above may have rewritten typ (SDOOR→DOOR
+                // :5398, ice melt, pool→ROOM+PIT, bars dissolve), so the
+                // iteration-start `typ` is stale past that point.
+                const liveTyp = game.level?.at?.(sx, sy)?.typ;
+                if (!ZAP_POS(liveTyp) || (closed_door(sx, sy) && range >= 0)) {
                     do_bounce = true;
                 }
             }
@@ -2725,8 +2731,11 @@ export async function dobuzz(
                 // C: bounce_dir always runs once in make_bounce; pline only when
                 // (--range > 0 && cansee previous). Cardinal bounce uses no rn2.
                 // C zap.c:5014–5016 — Mines walls bounce at 20, elsewhere 75
-                const bchance = (!isok(sx, sy) || typ === STONE) ? 10
-                    : (In_mines(game.u?.uz) && IS_WALL(typ)) ? 20
+                // C zap.c:5003 — bchance reads the live cell too (same
+                // staleness as the :4998 test above).
+                const btyp = game.level?.at?.(sx, sy)?.typ;
+                const bchance = (!isok(sx, sy) || btyp === STONE) ? 10
+                    : (In_mines(game.u?.uz) && IS_WALL(btyp)) ? 20
                         : 75;
                 if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy))
                     || fireball) {

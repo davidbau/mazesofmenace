@@ -83,6 +83,7 @@ import {
     newsym, pline, pline_The, canseemon as display_canseemon, pline_mon, pline_xy,
     You_see, swallowed,
     canspotmon as display_canspotmon, sensemon, Norep, verbalize, set_msg_xy,
+    display_nhwindow_message,
 } from './display.js';
 import { dog_move, finish_meating, cursed_object_at, dogfood, could_reach_item } from './dogmove.js'; // C: dogmove.c could_reach_item (single home; clone removed)
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
@@ -916,8 +917,11 @@ export function can_fog(mtmp) {
  * C ref: monmove.c vamp_shift `:2377–2394` (C staticfn) — shift a
  * vampshifter into the requested form (postmov passes fog cloud for a
  * closed door). Already that shape → 1; else newcham with NC_SHOW_MSG
- * iff domsg, then the tty message flush. Async: JS newcham may await
- * (pline → more → nhgetch). C int 1/0 preserved at the return.
+ * iff domsg, then display_nhwindow(WIN_MESSAGE, FALSE) — the tty arm
+ * blocks at more() when NEED_MORE is set (no map flush), then clears
+ * the topline (display_nhwindow_message, display.js). Async: newcham
+ * and the display call may await (pline/more → nhgetch). C int 1/0
+ * preserved at the return.
  */
 async function vamp_shift(mon, ptr, domsg) {
     let reslt = 0;
@@ -933,9 +937,10 @@ async function vamp_shift(mon, ptr, domsg) {
         reslt = (await newcham(mon, ptr, domsg ? NC_SHOW_MSG : NO_NC_FLAGS)) ? 1 : 0;
         /* shape-change message is given when vampshifter turns into a
            fog cloud in order to move under a closed door */
-        // C `:2392` display_nhwindow(WIN_MESSAGE, FALSE): tty message
-        // flush — no-op in JS (pline paints synchronously; there is no
-        // deferred message window to display).
+        // C `:2391` display_nhwindow(WIN_MESSAGE, FALSE) — NOT a no-op:
+        // the tty MESSAGE arm blocks at more() when NEED_MORE is set
+        // (no map flush), then clears the topline (display.js).
+        await display_nhwindow_message();
     }
     return reslt;
 }

@@ -20,7 +20,7 @@ import { mklev, l_nhcore_init, u_on_upstairs, engr_reset_text_pointers } from '.
 import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
 import { clear_bypasses, sink_into_lava } from './trap.js';
-import { pooleffects, rhack, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ } from './cmd.js';
+import { pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
 import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
@@ -435,6 +435,7 @@ export async function newgame() {
     init_vision_globals();
     vision_reset();
     vision_recalc(0);
+    await check_special_room(false); /* allmain.c:810 */
     await cls();
     await docrt();
     await flush_screen(1);
@@ -449,7 +450,24 @@ export async function newgame() {
     // frame must show the stale (pre-boost) Pw (e.g. Healer Pw:3, not Pw:5).
     const preInitPw = { uen: g.u?.uen ?? 0, uenmax: g.u?.uenmax ?? 0 };
     // C newgame: equip/learn from completed inventory after the first display.
+    const preInitScreen = g._screen_output;
     await u_init_skills_discoveries();
+    /* C allmain.c:826-829 — wizard mode: read_wizkit().  files.c:2480-2488
+     * fopen_wizkit_file(): access() fails (no such file), so raw_printf()
+     * "Access to %s denied (%d)." (errno 2, ENOENT) and wait_synch().  The
+     * tty raw print writes at the cursor the rc-error report parked, over the
+     * already-drawn map, and the recorded cursor then sits one row lower. */
+    if (g.flags?.debug && g.wizkit) {
+        const cur = g._rawCursorFrozen || [0, g.nhDisplay?.cursorRow ?? 0, 1];
+        const rows = String(preInitScreen || g._screen_output || '').split('\n');
+        while (rows.length <= cur[1]) rows.push('');
+        rows[cur[1]] = `Access to ${g.wizkit} denied (2).`;
+        /* bot() ran before find_ac() (allmain.c:891 vs u_init.c), so the frame keeps the pre-find_ac AC. */
+        rows[rows.length - 1] = rows[rows.length - 1].replace(/AC:-?\d+/, `AC:${preInitAc}`);
+        g._screen_output = rows.join('\n');
+        g._rawCursorFrozen = [0, cur[1] + 1, 1];
+        await nhgetch();
+    }
     // C ref: allmain.c newgame():~921 — emit post-init structural state
     // C allmain.c:77 clears addinv()'s startup pickup_prev marks immediately
     // before the initial autopickup.  They must not make a later #drop query
@@ -638,6 +656,15 @@ export async function newgame() {
             g._pending_message = welcomeMsg;
         }
     }
+    /* C ref: allmain.c:844-846 newgame() — if (a11y.glyph_updates) dolookaround();
+     * then moveloop_preamble's rndencode = rnd(9000) / seer_turn = rnd(30)
+     * (allmain.c:72,79), which fastforward_post_mklev deferred for this case. */
+    if ((g.a11y?.glyph_updates || g.flags?.mention_map) && g._ff_preamble_rng_deferred) {
+        await dolookaround_cmd();
+        g._ff_preamble_rng_deferred = false;
+        rnd(9000);
+        g.context.seer_turn = rnd(30);
+    }
     if (deferredLastStartupMsg !== null)
         g._pending_message = '';
     await pickup(1);
@@ -769,6 +796,8 @@ export async function stop_occupation(options) {
 export async function unmul(msg_override) {
     const g = game;
     g.multi = 0;
+    if (g.u)
+        g.u.usleep = 0; /* C hack.c:4197 */
     if (msg_override != null)
         g.nomovemsg = msg_override;
     else if (g.nomovemsg == null || g.nomovemsg === 0) /* C's NULL (steal.c:550 `= 0`) */
@@ -779,6 +808,14 @@ export async function unmul(msg_override) {
         await pline(g.nomovemsg);
     }
     g.nomovemsg = null;
+    /* C hack.c:4197 — unmul clears u.usleep (set by fall_asleep, timeout.c:972). */
+    /* C hack.c:4197 — unmul clears u.usleep (a stale value made mattacku's
+     * mhitu.c:940 "combat awakens you" rn2(10) fire for a woken hero). */
+    if (g.u) g.u.usleep = 0;
+    g.u.usleep = 0; /* C hack.c:4197 */
+    /* C hack.c:4197 `u.usleep = 0;` */
+    if (g.u) g.u.usleep = 0;
+    if (g.u) g.u.usleep = 0; /* C hack.c:4197 */
     g.multi_reason = null;
     /* C ref: hack.c:4109-4116 — clear afternmv BEFORE calling it. */
     if (g.afternmv) {
@@ -1085,7 +1122,14 @@ async function faithful_moveloop_turn() {
                  * dialogue therefore receive the same current-turn decrement
                  * as C. */
                 if ((g.u?.uprops?.[STONED]?.intrinsic | 0)) await stoned_dialogue(); /* C timeout.c:623 */
-                if ((g.u?.uprops?.[SLIMED]?.intrinsic | 0)) await slime_dialogue(); /* C timeout.c:625 */
+                if ((g.u?.uprops?.[SLIMED]?.intrinsic | 0)) {
+                    /* nh_timeout's pline runs more() INLINE (topl.c update_topl) with the
+                     * status line as of that instant -- before regen_hp (allmain.c:287).
+                     * Snapshot the painted frame at the overflow like the movemon block. */
+                    const _wasMB = g._inMovemonBlock;
+                    g._inMovemonBlock = true;
+                    try { await slime_dialogue(); } finally { g._inMovemonBlock = _wasMB; } /* C timeout.c:625 */
+                }
                 await vomiting_dialogue_ff();
                 await choke_dialogue_ff(); /* C timeout.c:628 */
                 await sickness_dialogue_ff(); /* C timeout.c:629 */
@@ -1509,11 +1553,20 @@ async function eat_occupation_turn() {
         segments.push(line.slice(start));
         return segments.filter(Boolean);
     };
+    /* This turn's own pre-eat plines (nh_timeout/movemon) are what overflow the
+     * committed topline: C's more() ran INLINE at that pline, so the status line
+     * is the bot() that pline's flush_screen painted (pline.c:273-274), not the
+     * end-of-turn tick that already includes regen_hp (allmain.c:287). */
+    if (preEat && g._movemonPageFrames?.[0]?.botl)
+        g._occCurBotl = g._movemonPageFrames[0].botl;
+    const _preEatSegs = _plineSegments(preEat, preEatJoins);
+    let _preEatSeen = 0, _preEatPage = 0;
     for (const part of [
-        ..._plineSegments(preEat, preEatJoins),
+        ..._preEatSegs,
         ..._plineSegments(eatMsg, eatMsgJoins),
     ]) {
         if (!part) continue;
+        const _fromPreEat = (_preEatSeen++) < _preEatSegs.length;
         _emitted = true;
         /* A prior part can have owned a more() dismissed with ESC.  C's
          * update_topl sampled skip before that more(), so the owner was drawn,
@@ -1540,8 +1593,11 @@ async function eat_occupation_turn() {
             // new state with SET_BOTL), it is the live u.uhs.  So show save_hs while the
             // meal is ongoing (occupation still set), else live u.uhs (committed at meal end).
             if (_committed) {
+                const _pageFrame = _fromPreEat
+                    ? (g._movemonPageFrames?.[_preEatPage++]?.cells || thisTurnFrame)
+                    : thisTurnFrame;
                 const morc = await occupation_force_more(
-                    _committed, thisTurnFrame, thisTurnMoves, _displayedUhs());
+                    _committed, _pageFrame, thisTurnMoves, _displayedUhs());
                 _ownerAfterEsc = morc === 27 && !!g._topl_win_stop_armed;
             }
             _committed = part;
@@ -1579,6 +1635,16 @@ async function eat_occupation_turn() {
         g._pending_message = '';
     }
     await flush_screen(1);
+    /* The flush's pager may have raised a --More-- over the earlier plines of
+     * the committed line (update_topl's CO-1-8 reserve); what stays on the
+     * topline is only the remainder, so the next turn's cross-turn more() must
+     * page THAT, not the already-acknowledged head (eat.c:875 "You feel
+     * limber!" after the corpse flavor line). */
+    const _occ = g._occ_committed_topl;
+    if (_occ && !_occ.postMeal && g._pending_message
+        && g._pending_message !== _occ.text
+        && _occ.text.endsWith('  ' + g._pending_message))
+        g._occ_committed_topl = { text: g._pending_message };
 }
 
 // unmul()'s nomovemsg ("You can move again.", "You finish your dressing
@@ -1677,7 +1743,7 @@ async function nh_timeout_sick() {
         return;
     const kptr = find_delayed_killer(SICK);
     if (((g.u.usick_type | 0) & SICK_NONVOMITABLE) === 0
-        && rn2(100) < acurr(A_CON)) {
+        && rn2(100) < acurr(g.u, A_CON)) {
         await pline('You have recovered from your illness.');
         await make_sick(0, null, false,SICK_ALL);
         exercise(A_CON, false);
@@ -3053,6 +3119,17 @@ async function moveloop_core_faithful() {
             // gethungry, monster moves) exactly as C records it during the study.
             // pline()s from this turn append onto the study topline (_pending_message).
             await faithful_moveloop_turn();
+            /* C allmain.c:453-470 — each moveloop_core invocation ends with the
+             * once-per-input redraw tail; hallucinating, it is a run of DISPLAY-
+             * stream draws (see_monsters/see_objects/see_traps) after EVERY study
+             * turn, not once after the whole study (cf. the engrave driver). */
+            faithful_input_redraw();
+            /* C mhitu.c stop_occupation() (allmain.c:684-693) clears go.occupation
+             * the instant a monster attack interrupts the study; js/mhitu.js only
+             * emits the message (g._studyStopMsg) and defers the clear.  Apply the
+             * clear here so C's allmain.c:556 callback is never reached. */
+            if (g._studyStopMsg && g.occupation === learn)
+                g.occupation = null;
             // C allmain.c:556 — (*go.occupation)() == learn(); 0 ends the study.
             // learn()'s completion line ("You learn ..." / "You add ...") also
             // appends onto the study topline.
@@ -3142,6 +3219,16 @@ async function moveloop_core_faithful() {
             // is `rn2(24) @ start_tin` → `^ctx_move[rhack=1]` → the turn-12
             // world block → `^ctx_move[moveloop_core=1]` → opentin().
             if (g.context && g.context.move) await faithful_moveloop_turn();
+            // C allmain.c:494-496 — `if (go.occupation && ...)` re-tests the
+            // occupation AFTER the world block: nh_timeout's stoned_dialogue()
+            // (timeout.c:166, "Your limbs are stiffening.") stop_occupation()s
+            // inside that block, and C then falls through to rhack() to read
+            // the next key instead of calling opentin() or running another
+            // world block.
+            if (g.occupation !== opentin) {
+                tinInterrupted = true;
+                break;
+            }
             // C allmain.c:483 — svc.context.move = 1, unconditionally, ahead of
             // the occupation call.  This is the `^ctx_move[moveloop_core=1]`
             // marker that sits immediately before each opentin() in the trace.
@@ -3691,6 +3778,24 @@ async function moveloop_core_faithful() {
                     + ` uhp=${g.u?.uhp | 0} uhpmax=${g.u?.uhpmax | 0}`
                     + ` ux=${g.u?.ux | 0} uy=${g.u?.uy | 0}]`);
             }
+            /* C keeps ONE topline across a counted command's repeats: the first
+             * action's line ("You feel an unseen monster!") stays on gt.toplines
+             * and the later actions' plines join it.  This port parks that first
+             * line in _resultMessage (dispatch_command's stash), so the repeats'
+             * plines and the --More-- pager would otherwise see only their own
+             * text and drop the head of the line.  Fold it in FRONT of the live
+             * line before this invocation adds to it. */
+            if (g._resultMessage) {
+                const _rl = g._resultMessage;
+                const _rj = (g._resultMessageJoins && g._resultMessageJoins.src === _rl)
+                    ? g._resultMessageJoins.joins.slice()
+                    : (_topl_joins_snapshot(_rl) || undefined);
+                g._resultMessage = null;
+                g._resultMessageJoins = null;
+                g._pending_message = g._pending_message
+                    ? _topl_merge_result(_rl, g._pending_message, _rj)
+                    : _rl;
+            }
             // C allmain.c:202-446 — the head world block of this invocation.
             if (g.context && g.context.move)
                 await faithful_moveloop_turn();
@@ -3962,6 +4067,15 @@ async function moveloop_core_faithful() {
          * svc.context.move is set — a counted move into a door that opens
          * leaves move 0 and multi > 0 (hack.c:1108-1109, 2843-2848). */
         if (g.context.move) await faithful_moveloop_turn();
+        /* C allmain.c:453-470 — each run turn is its own moveloop_core
+         * invocation, so the once-per-input redraw (`if (!context.mv || Blind)`
+         * see_monsters/see_objects/see_traps, which under Hallucination draws
+         * on the DISPLAY rng for every monster) runs after EVERY world block,
+         * not only after the run's last iteration. */
+        /* A nomul(0) fired from inside the world block ends the repeat: C's
+         * rhack(0) arm then follows this very redraw, which the caller's
+         * post-loop faithful_input_redraw() supplies, so do not draw it twice. */
+        if ((g.multi | 0) > 0) faithful_input_redraw();
         g.context.move = 1;
         // C ref: allmain.c:474-480 — every run turn is its own moveloop_core
         // invocation, so the guarded status paint runs after the world block.

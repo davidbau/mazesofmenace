@@ -393,7 +393,7 @@ async function do_pit(x, y, tu_pit) {
             const keepfooting =
                 (!(prop_on_(FUMBLING) && rn2(5))
                  && (!(rnl(arch ? 3 : 9))
-                     || ((acurr(A_DEX) > 7) && rn2(5))));
+                     || ((acurr(game.u, A_DEX) > 7) && rn2(5))));
 
             await pline('You are jostled around violently!');
             set_utrap(rn1(6, 2), TT_PIT);

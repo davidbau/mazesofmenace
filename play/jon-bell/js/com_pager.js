@@ -22,7 +22,7 @@ import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's mat
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel,
-         oclass_sym, rogue_graphics, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot } from './display.js';
+         oclass_sym, rogue_graphics, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1 } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -218,7 +218,14 @@ function render_map_row_clipped(y, clipX) {
             activeInverse = true;
         }
         const wantAnsi = ANSI_COLOR[color] ?? ANSI_DEFAULT;
-        if (wantAnsi !== activeColor) {
+        /* petattr:underline / bold (terminal.js attr 4 / 2): SGR fused with the
+         * colour and closed by \e[0m right after the glyph, as display.js does. */
+        const sgrA = inverse ? 0 : (((loc?.disp_attr | 0) & 2) ? 1 : (((loc?.disp_attr | 0) & 4) ? 4 : 0));
+        if (sgrA) {
+            output += `\x1b[${sgrA};${wantAnsi}m`;
+            activeColor = wantAnsi;
+        }
+        else if (wantAnsi !== activeColor) {
             output += `\x1b[${wantAnsi}m`;
             activeColor = wantAnsi;
         }
@@ -231,6 +238,11 @@ function render_map_row_clipped(y, clipX) {
             activeDec = false;
         }
         output += ch;
+        if (sgrA) {
+            if (activeDec) { output += '\x0f'; activeDec = false; }
+            output += '\x1b[0m';
+            activeColor = ANSI_DEFAULT;
+        }
         if (inverse) {
             /* close the inverse run immediately after the glyph (C emits \e[0m
              * right after it); that reset drops colour + DEC state too. */
@@ -392,7 +404,7 @@ export async function display_text_window(lines) {
     }
 }
 export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCol, pwOverride,
-                                    fullScreen = false) {
+                                    fullScreen = false, mapClipExtra = 0) {
     const _prevRows = (typeof game._screen_output === 'string')
         ? game._screen_output.split('\n') : null;
     /* wintty.c:4289-4298 / 3814: with statuslines:3 the status rows are
@@ -407,7 +419,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
         && _prevRows.slice(1, 22).some((r) => r.includes('\x0e'));
     const winRows = windowLines.length;
     // CLIP_X: 1-indexed max map column to render when window covers this row.
-    const CLIP_X = WIN_COL - 1;
+    const CLIP_X = WIN_COL - 1 + mapClipExtra;
     // statusClipCol: when a TALLER window was just dismissed and a SHORTER
     // window (e.g. itemactions over the inventory menu) is now displayed, the
     // dismiss docorner() cleared the corner from the prior window's column
@@ -498,8 +510,12 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
                  * priorWinCol from the pickinv window state it set. */
                 const priorCol = game._pickinv_window?.WIN_COL;
                 const title = _statusLine1().split('\x1b', 1)[0];
+                /* docorner() clears only offx..79, so every status cell left of
+                 * priorWinCol-2 survives (title, cursor-forward gap, and any
+                 * stat text that starts before the clip: "...S" of "St:"). */
                 output += priorCol != null
-                    ? title.slice(0, Math.max(0, priorCol - 2)) : title;
+                    ? _overlay_status_line(_statusLine1(), Math.max(0, priorCol - 2), '')
+                    : title;
                 output += '\n';
                 continue;
             }
@@ -692,7 +708,12 @@ function _cp_rank_of(ulevel, roleName, female) {
 function _statusLine1() {
     const g = game;
     const u = g.u;
-    if (!u)
+    /* C botl.c:259-260 bot(): nothing is painted while !iflags.status_updates,
+     * so the physical status rows stay blank for the whole game. */
+    if (!u || g.iflags?.status_updates === false)
+        return '';
+    /* C botl.c:260 — no bot() paint under !status_updates: rows stay blank. */
+    if (g.iflags?.status_updates === false)
         return '';
     // C ref: botl.c:58-60 — capitalize first letter of plname
     const rawName = g.plname || 'Hero';
@@ -722,6 +743,8 @@ function _statusLine1() {
     const stStr = (_st != null) ? _strengthStr(_st) : '?';
     const stats = `St:${stStr} Dx:${_acur(A_DEX) ?? '?'} Co:${_acur(A_CON) ?? '?'} In:${_acur(A_INT) ?? '?'} Wi:${_acur(A_WIS) ?? '?'} Ch:${_acur(A_CHA) ?? '?'}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
+    if (g.iflags?.wc2_hitpointbar)
+        return hitpointbar_status1(title, stats, align, ulevel, Upolyd);
     const gap = Math.max(1, 31 - title.length);
     if (gap > 4)
         return `${title}\x1b[${gap}C${stats} ${align}`;
@@ -741,7 +764,12 @@ export function money_cnt(otmp) {
 function _statusLine2(uacOverride, pwOverride) {
     const g = game;
     const u = g.u;
-    if (!u)
+    /* C botl.c:259-260 bot(): nothing is painted while !iflags.status_updates,
+     * so the physical status rows stay blank for the whole game. */
+    if (!u || g.iflags?.status_updates === false)
+        return '';
+    /* C botl.c:260 — no bot() paint under !status_updates: rows stay blank. */
+    if (g.iflags?.status_updates === false)
         return '';
     const uac = uacOverride !== undefined ? uacOverride : (u.uac ?? 10);
     /* pwOverride mirrors the same display-staleness workaround as uacOverride:
@@ -785,7 +813,12 @@ function _statusLine2(uacOverride, pwOverride) {
     }
     game._botlPreInv = pwOverride !== undefined;
     try {
-        s += botl_status_suffix(u.uhs | 0, undefined);
+        /* The menu window leaves the bottom line alone, so it still shows the cap
+         * of the LAST bot() (botl.c:188; _botlPaintedCap), not near_capacity()
+         * now: seffect_charging's useup() drops the scroll's weight before the
+         * getobj menu opens, but nothing has SET_BOTL'd yet, so C keeps
+         * " Burdened" on the inventory pages. */
+        s += botl_status_suffix(u.uhs | 0, g._botlPaintedCap);
         return status_row_finish(s);
     } finally {
         game._botlPreInv = false;
@@ -921,9 +954,17 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
     // The legacy window is shown by tty_display_nhwindow() and ends in
     // "--More--", so it takes the `79 - maxcol` branch of tty_window_offx().
     const footerKind = 'more';
-    const WIN_COL = tty_window_offx(windowLines, footerKind);
+    /* C ref: wintty.c:1927 — `cw->offx == 10 || cw->maxrow >= rows ||
+     * !iflags.menu_overlay` drops the window to offx 0 and clears the whole
+     * screen (map and status included); "--More--" is then drawn at offx+1. */
+    const fullScreen = windowLines.length >= 24
+        || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+    const WIN_COL = fullScreen ? 1 : tty_window_offx(windowLines, footerKind);
     // preInitAc mirrors C's u.uac=0 (from memset) at the time bot() rendered step 0.
-    const screenOutput = build_window_screen(windowLines, WIN_COL, preInitAc, undefined, preInitPw);
+    const screenOutput = fullScreen
+        ? windowLines.map((ln, i) => (i === windowLines.length - 1 ? ' ' : '')
+            + _encode_blank_runs(String(ln).replace(/\s+$/, ''))).join('\n')
+        : build_window_screen(windowLines, WIN_COL, preInitAc, undefined, preInitPw);
     // Set cursor to end of --More-- line
     // C ref: tty_display_nhwindow → cursor positioned at end of "--More--"
     const moreRow = windowLines.length - 1;

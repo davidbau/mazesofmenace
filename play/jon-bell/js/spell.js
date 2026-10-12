@@ -12,7 +12,7 @@ import { P_NONE, P_MASTER, P_GRAND_MASTER } from './const.js';
 import { P_SKILL } from './skills.js';
 import { roles } from './roles.js';
 import { nhgetch } from './input.js';
-import { pline, flush_screen, newsym, show_glyph_cell } from './display.js';
+import { cast_chain_lightning, pline, flush_screen, newsym, show_glyph_cell, topl_force_break_now } from './display.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { build_window_screen, tty_window_offx } from './com_pager.js';
 import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT, BLINDED, CLAIRVOYANT, SICK, SLIMED, HEAD,
@@ -918,6 +918,25 @@ async function deadbook(book2) {
     }
 }
 
+/* C ref: spell.c:187-209 confused_book() — study while confused: returns TRUE
+ * if the book is destroyed. */
+async function confused_book(spellbook) {
+    const sp = game.context.spbook;
+    let gone = false;
+    if (!rn2(3) && (spellbook.otyp | 0) !== SPE_BOOK_OF_THE_DEAD) {
+        spellbook.in_use = true; /* in case called from learn() */
+        await pline('Being confused you have difficulties in controlling your actions.');
+        topl_force_break_now();
+        await pline('You accidentally tear the spellbook to pieces.');
+        await trycall(spellbook);
+        await useup(spellbook);
+        gone = true;
+    } else {
+        await pline(`You find yourself reading the ${spellbook === sp.book ? 'next' : 'first'} line over and over again.`);
+    }
+    return gone;
+}
+
 export async function learn() {
     const g = game;
     g.context = g.context || {};
@@ -929,6 +948,18 @@ export async function learn() {
     if (sp.delay && g.u && g.u.ublindf
         && (g.u.ublindf.otyp | 0) === LENSES && rn2(2))
         sp.delay = (sp.delay | 0) + 1;
+
+    // C spell.c:368-375 — became confused while learning.
+    if ((g.u?.uprops?.[CONFUSION]?.intrinsic | 0) !== 0) {
+        await confused_book(book);
+        sp.book = null;
+        sp.o_id = 0;
+        nomul(sp.delay);
+        g.multi_reason = 'reading a book';
+        g.nomovemsg = null;
+        sp.delay = 0;
+        return 0;
+    }
 
     // C spell.c:378 — still counting down the study delay: return 1 (busy).
     if (sp.delay) {
@@ -1129,6 +1160,19 @@ export async function study_book_learn(spellbook) {
                                 && (g.u.ublindf.otyp | 0) === LENSES) ? 2 : 0;
                 const read_ability = acurr_real(g.u, A_INT) + 4
                     + Math.trunc((g.u?.ulevel | 0) / 2) - 2 * oc_level + lenses;
+                /* C spell.c:588-598 — only WIZARDS are warned that a book looks
+                 * too difficult, and only when read_ability < 20 and unconfused.
+                 * (the y_n default is 'n': ESC/space/return decline). */
+                if (g.urole?.mnum === PM_WIZARD && read_ability < 20 && !confused) {
+                    const qbuf = `This spellbook is ${read_ability < 12 ? 'very ' : ''}difficult to comprehend.  Continue?`;
+                    const ans = await yn_function(qbuf, 'yn', 'n');
+                    if (ans !== 'y') {
+                        /* tty_yn_function leaves the prompt painted. */
+                        g._topl_sticky = `${qbuf} [yn] (n)`;
+                        spellbook.in_use = false;
+                        return true;   /* C spell.c:594-595 return 1 */
+                    }
+                }
                 /* C spell.c:600-602 — "its up to random luck now". */
                 if (rnd(20) > read_ability)
                     too_hard = true;
@@ -1155,7 +1199,9 @@ export async function study_book_learn(spellbook) {
             }
             return true;               /* C returns 1 → ECMD_TIME */
         } else if (confused) {
-            spellbook.in_use = false;
+            /* C spell.c:621-628 */
+            if (!(await confused_book(spellbook)))
+                spellbook.in_use = false;
             nomul(sp.delay);
             g.multi_reason = 'reading a book';
             g.nomovemsg = null;
@@ -1977,7 +2023,7 @@ export async function spelleffects(spell_otyp, atme, force) {
             await pline('Nothing happens.');
         break;
     case SPE_CHAIN_LIGHTNING:
-        /* UNPORTED: cast_chain_lightning() — spell.c:1589. */
+        await cast_chain_lightning(); /* C spell.c:1588-1589 */
         break;
     default:
         /* C ref: spell.c:1591-1594 impossible("Unknown spell %d attempted.") */

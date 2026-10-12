@@ -250,13 +250,21 @@ export async function fastforward_post_mklev(initrole = -1) {
     await u_init_inventory_attrs();
     if (game.flags?.legacy !== false)
         nhlib_com_pager_rng();
-    rnd(9000);
-    /* C ref: allmain.c:82 moveloop_preamble — svc.context.seer_turn = (long) rnd(30);
-     * Initialise seer_turn from rnd(30) (1..30) consumed here; store on g.context
-     * so the seer_turn check in moveloop_core can compare svm.moves >= seer_turn. */
-    const seerInit = rnd(30);
+    /* C ref: allmain.c:831-846 newgame() runs welcome(TRUE) and, under
+     * a11y.glyph_updates (mention_map), dolookaround() BEFORE moveloop_preamble's
+     * rndencode = rnd(9000) / seer_turn = rnd(30) (allmain.c:72,79).  dolookaround
+     * can draw (next_ident via fake objects), so with mention_map the two draws
+     * are deferred to allmain.js newgame(), after that look-around. */
     game.context = game.context || {};
-    game.context.seer_turn = seerInit;
+    if (game.a11y?.glyph_updates || game.flags?.mention_map) {
+        game._ff_preamble_rng_deferred = true;
+    } else {
+        rnd(9000);
+        /* C ref: allmain.c:82 moveloop_preamble — svc.context.seer_turn = (long) rnd(30);
+         * store on g.context so the seer_turn check in moveloop_core can compare
+         * svm.moves >= seer_turn. */
+        game.context.seer_turn = rnd(30);
+    }
     /* C ref: allmain.c:849 moveloop_preamble — svc.context.tribute.enabled = TRUE.
      * Unconditionally enable 3.6 tribute so stock_room fires rnd(stockcount) for
      * the specialspot before the item-placement loop (C shknam.c:768-778). */
@@ -1436,6 +1444,9 @@ async function regen_hp(wtcap) {
             if (heal) {
                 (game.disp ||= {}).botl = 1;
                 u.uhp = uhp + heal;
+                /* display.js's rehumanize pre-reversion HP takeback undoes exactly
+                 * this turn's heal, so it needs to know one happened. */
+                game._uhpRegenMoves = game.moves | 0;
                 if ((u.uhp | 0) > uhpmax)
                     u.uhp = uhpmax;
                 /* C allmain.c:738 — "stop voluntary multi-turn activity if now

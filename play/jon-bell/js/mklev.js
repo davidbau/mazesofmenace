@@ -3,10 +3,11 @@ import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './trap.js';
 import { discover_object as lifesave_discover_object } from './o_init.js';
 import { s_suffix as lifesave_s_suffix } from './hacklib.js';
-import { wary_dog } from './dog.js';
+import { wary_dog, dismount_steed as dismount_steed_mk } from './dog.js';
 import { mondied as mondied_ml } from './makemon.js';
 import { xkilled as xkilled_ml } from './uhitm.js';
-import { XKILL_NOMSG } from './const.js';
+import { XKILL_NOMSG, DISMOUNT_GENERIC } from './const.js';
+import { flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message } from './cmd.js';
 import { water_damage_chain as water_damage_chain_ml } from './cmd.js';
 import { hliquid as hliquid_ml } from './mhitm.js';
 import { W_AMUL, HEALTHY_TIN } from './const.js';
@@ -154,6 +155,7 @@ import { spot_stop_timers } from './timeout.js';
 import { long_to_any } from './cmd.js';
 import { IS_ROOM, DB_UNDER, DB_ICE, DB_FLOOR, DB_MOAT, DB_LAVA, MELT_ICE_AWAY, TIMER_LEVEL, SHOP_HOLE_COST, Is_juiblex_level } from './const.js';
 import { shop_keeper } from './shk.js';
+import { delete_contents } from './shk.js';
 /* C shknam.c:793's on_level(&u.uz, &orcus_level); the real body, NOT
  * js/shk.js's or js/priest.js's throw-stub of the same name. */
 import { on_level } from './dungeon.js';
@@ -4884,6 +4886,9 @@ export async function mongone(mdef) {
         otmp.ocarry = null;
         otmp.owornmask = 0;
         otmp.where = OBJ_FREE;
+        /* C shk.c:1266 obfree(): Has_contents -> delete_contents before dealloc_obj */
+        if (otmp.cobj)
+            await delete_contents(otmp);
         await dealloc_obj(otmp);
         const _bstore = game.__bridge__ || (game.__bridge__ = {});
         const _bkey = 'objs_deleted.count';
@@ -5708,6 +5713,7 @@ async function _mkcorpstat_corpse(corpsenm, x, y, corpstatflags) {
     if (otmp.otyp === CORPSE
         && (!!game.flags?.zombify || special_corpse(old_corpsenm)
             || special_corpse(otmp.corpsenm))) {
+        obj_stop_timers(otmp); /* C mkobj.c:2111-2114: drop the random species' timer */
         start_corpse_timeout(otmp);
     }
     place_object(otmp, x | 0, y | 0);
@@ -5812,6 +5818,22 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
             return obj;
         }
     }
+    /* C mon.c:716-731 — oozes and puddings leave a glob, not a corpse:
+     *     obj = mksobj_at(GLOB_OF_BLACK_PUDDING - (PM_BLACK_PUDDING - mndx), x, y, TRUE, FALSE);
+     *     while (obj && (otmp = obj_nexto(obj)) != 0) { pudding_merge_message(obj, otmp);
+     *            obj = obj_meld(&obj, &otmp); }
+     * These species are G_NOCORPSE, so default_1 below returned null and drew
+     * nothing (missing next_ident / start_glob_timeout / obj_nexto_xy draws). */
+    if (mndx >= PM_GRAY_OOZE_MK && mndx <= PM_GRAY_OOZE_MK + 3) {
+        let gobj = await mksobj_at(GLOB_OF_BLACK_PUDDING - (PM_GRAY_OOZE_MK + 3 - mndx), x, y, true, false);
+        let gother;
+        while (gobj && (gother = await flooreffects_obj_nexto_xy(gobj, gobj.ox | 0, gobj.oy | 0, true)) != null) {
+            flooreffects_pudding_merge_message(gobj, gother);
+            gobj = await flooreffects_obj_meld(gobj, gother);
+        }
+        newsym(x | 0, y | 0);
+        return gobj;
+    }
     /* C mon.c:582-597 — gray/gold/silver fall through into the colored dragons: scales first (rn2 3, or 20 if revived), then
      * goto default_1.  The dragon order matches the scale order. */
     if (mndx >= PM_GRAY_DRAGON && mndx <= PM_YELLOW_DRAGON_MC) {
@@ -5847,6 +5869,12 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     // so the corpse carries no saved monster struct — mksobj(CORPSE, init=TRUE)
     // fires the random-corpsenm + timeout RNG, then we override corpsenm to mdat.
     const otmp = await _mkcorpstat_corpse(mndx, x, y, corpstatflags | CORPSTAT_INIT);
+    /* C mon.c:920-921 — the common tail names the corpse after a named
+     * monster: `if (has_mgivenname(mtmp)) obj = oname(obj, MGIVENNAME(mtmp),
+     * ONAME_NO_FLAGS);` (ONAME_NO_FLAGS == 0).  Missing here, so a named pet's
+     * corpse listed as "a little dog corpse" instead of "... named Slasher". */
+    if (mtmp.mextra?.mgivenname)
+        oname(otmp, mtmp.mextra.mgivenname, 0);
     // C mon.c:934-935 — make_corpse ends `stackobj(obj); newsym(x, y);`.  Every
     // newsym the death path issued before this one ran while the corpse did not
     // exist yet (mondead → m_detach → mon_leaving_level, mon.c:2725), so they
@@ -6554,6 +6582,9 @@ async function makelevel_generate() {
                 const j = rn2(i);
                 [themedAlign[i - 1], themedAlign[j]] = [themedAlign[j], themedAlign[i - 1]];
             }
+            /* nhlib.lua:24-25 `align` is a Lua global of the themes state, read
+             * later by themerms.lua:215-217 (Temple of the gods). */
+            g._themedAlign = themedAlign;
             g._luathemes_loaded[dnum] = true;
         }
         await makerooms();
@@ -7734,8 +7765,12 @@ async function themeroom_fill_rng(aroom, difficulty) {
                 // Mark the placed altar so subsequent altars know the cell is taken.
                 // C ref: sp_lev.c:2467 create_altar: set_levltyp(x, y, ALTAR).
                 const placedLoc = game.level.at(c.x, c.y);
-                if (placedLoc && placedLoc.typ === ROOM)
+                if (placedLoc && placedLoc.typ === ROOM) {
                     placedLoc.typ = ALTAR;
+                    /* lspo_altar get_table_align (sp_lev.c): align = align[altarI+1] */
+                    const nm = (game._themedAlign || ['law', 'neutral', 'chaos'])[altarI];
+                    placedLoc.altarmask = Align2amask(nm === 'law' ? A_LAWFUL : nm === 'neutral' ? 0 : -1);
+                }
             }
         }
         else if (pick.name === 'Ghost of an Adventurer') {
@@ -10021,26 +10056,11 @@ export function somexyspace(croom, c) {
 // Stairs
 // ============================================================
 function generate_stairs_room_good(croom, phase) {
-    if (!croom || croom.hx < 0)
-        return false;
-    if (!croom.needjoining && phase >= 0)
-        return false;
-    let hasDown = false, hasUp = false;
-    for (let st = game.stairs; st; st = st.next) {
-        const inRoom = st.sx >= croom.lx && st.sx <= croom.hx
-            && st.sy >= croom.ly && st.sy <= croom.hy;
-        if (!inRoom)
-            continue;
-        if (st.up)
-            hasUp = true;
-        else
-            hasDown = true;
-    }
-    if (phase >= 1 && (hasDown || hasUp))
-        return false;
-    if (croom.rtype !== OROOM && !(phase < 2 && croom.rtype === THEMEROOM))
-        return false;
-    return true;
+    /* C mklev.c:2198-2211 */
+    return !!(croom && (croom.needjoining || (phase < 0))
+        && ((!has_dnstairs(croom) && !has_upstairs(croom)) || phase < 1)
+        && (croom.rtype === OROOM
+            || ((phase < 2) && croom.rtype === THEMEROOM)));
 }
 function generate_stairs_find_room() {
     const g = game;
@@ -10978,9 +10998,18 @@ function mkfount(croom) {
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos))
         return;
+    /* C mklev.c:2293 — set_levltyp() recounts the level's features
+     * (mkmaze.c:106-108), and mkfount() then increments on top of that. */
+    /* C mklev.c:2293 — set_levltyp() recounts every fountain/sink (mkmaze.c:107),
+     * then the explicit nfountains++ below counts this one a second time. */
+    if (!set_levltyp(pos.x, pos.y, FOUNTAIN))
+        return;
     const loc = game.level?.at(pos.x, pos.y);
+    /* C mklev.c:2293 — set_levltyp() runs count_level_features() (mkmaze.c:106-108),
+     * a full recount (themeroom fountains included), and THEN nfountains++ below. */
     if (loc) {
-        loc.typ = FOUNTAIN;
+        if (!set_levltyp(pos.x, pos.y, FOUNTAIN))
+            return;
         // C ref: rm.h:391 — blessedftn aliases horizontal (same 1-bit field).
         // Setting blessedftn=1 also sets horizontal=1 in C's struct rm.
         if (!rn2(7)) {
@@ -10995,11 +11024,11 @@ function mksink(croom) {
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos))
         return;
-    const loc = game.level?.at(pos.x, pos.y);
-    if (loc) {
-        loc.typ = SINK;
-        game.level.flags.nsinks++;
-    }
+    /* C mklev.c:2325-2328 — set_levltyp() recounts tracked features, then
+     * mksink() increments nsinks once. */
+    if (!set_levltyp(pos.x, pos.y, SINK))
+        return;
+    game.level.flags.nsinks++;
 }
 function mkaltar(croom) {
     if (!croom || croom.rtype !== OROOM)
@@ -11015,9 +11044,11 @@ function mkaltar(croom) {
     loc.flags = Align2amask(al);
 }
 async function mkgrave_room(croom) {
+    /* C mklev.c:2358-2361 — dobell's initializer draws rn2(10) BEFORE the
+     * rtype check, so a THEMEROOM still consumes the draw. */
+    const dobell = !rn2(10);
     if (croom.rtype !== OROOM)
         return;
-    const dobell = !rn2(10);
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos))
         return;
@@ -12175,8 +12206,12 @@ export async function m_respond(mtmp) {
 
 /* Unported helper for m_respond shrieker case */
 async function m_respond_shrieker(mtmp) {
-    if (!game.u?. deaf)
+    if (!game.u?. deaf) {
         pline(`${Monnam(mtmp)} shrieks.`);
+        /* C: mon.c:4092 stop_occupation() follows the shriek pline. */
+        const { stop_occupation } = await import('./allmain.js');
+        await stop_occupation();
+    }
     /* C: !rn2(10) makemon(rn2(13) ? random : purple/baby-purple,0,0). */
     if (!rn2(10)) {
         await makemon(rn2(13) ? null : permonstTemplate(PM_BABY_PURPLE_WORM), 0, 0, MM_NOMSG);
@@ -14199,6 +14234,10 @@ export async function mondead(mtmp) {
      * repainting cells remove_worm() has already zeroed. */
     if (mtmp.wormno)
         wormgone_mk(mtmp);
+    /* C mon.c:2799-2801 m_detach() tail: hero is thrown from his steed when it
+     * dies or gets genocided. */
+    if (game.u && mtmp === game.u.usteed)
+        await dismount_steed_mk(DISMOUNT_GENERIC);
 }
 
 

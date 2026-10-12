@@ -1899,9 +1899,23 @@ async function savebones(how, when, corpse) {
         m.seen_resistance = M_SEEN_NOTHING;
     }
     // C `:552–555` — traps lose their maker; only holes stay seen.
-    for (let t = game.ftrap; t; t = t.ntrap) {
-        t.madeby_u = 0;
-        t.tseen = unhideable_trap(t.ttyp);
+    // Live list is level.traps (maketrap/t_at); game.ftrap is the node
+    // chain only on restored levels (can_make_bones `:660–676` shape) —
+    // walking the chain alone reset nothing, so bones kept tseen and the
+    // next life's dosearch0 skipped its rnl(8) (D-3851).
+    const bonesTraps = game.level?.traps;
+    if (Array.isArray(bonesTraps)) {
+        for (const t of bonesTraps) {
+            if (!t) continue;
+            t.madeby_u = 0;
+            t.tseen = unhideable_trap(t.ttyp);
+        }
+    }
+    if (game.ftrap && !Array.isArray(game.ftrap)) {
+        for (let t = game.ftrap; t; t = t.ntrap) {
+            t.madeby_u = 0;
+            t.tseen = unhideable_trap(t.ttyp);
+        }
     }
     // C `:556–559` — floor and buried chains like the monster ones.
     set_ghostly_objlist(game.fobj);

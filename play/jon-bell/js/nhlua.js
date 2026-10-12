@@ -194,7 +194,7 @@ export async function restore_luadata(text) {
 // reading argument 1 while popping the last argument.
 export async function nhl_text(...args) {
     if (!args.length) return;
-    const win = new TtyMenu({ overlay: true });
+    const win = new TtyMenu({ overlay: !(game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0) }); /* wintty.c:1927 */
     while (args.length) {
         const text = lua_checkstring(args[0]);
         let start = 0;

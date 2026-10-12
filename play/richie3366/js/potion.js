@@ -325,12 +325,18 @@ function compact_lets(lets) {
     return out;
 }
 
-/** C ref: potion.c dip_ok — suggest non-coin invent, uncompacted, C sortloot INVLET order. */
-function dippable_lets_raw() {
+/** C ref: potion.c dip_ok `:2220–2224` — suggest non-coin, accessible invent,
+ * uncompacted, C sortloot INVLET order. Gold EXCLUDE `:2220–2221`;
+ * inaccessible_equipment EXCLUDE_INACCESS `:2223–2224` (dropped from the
+ * prompt; a letter pick still returns so the caller presents the failure,
+ * dodip `:2282`). `inacc` is do_wear.c inaccessible_equipment via
+ * apply.js (no clone). */
+function dippable_lets_raw(inacc) {
     const inv = game.invent || [];
     const lets = [];
     for (const o of inv) {
         if (o.oclass === COIN_CLASS) continue;
+        if (inacc && inacc(o, false)) continue;
         if (o.invlet) lets.push(o.invlet);
     }
     // C sortloot_cmp `:473` — invletter_value, not ASCII (C «bG», not «Gb»).
@@ -338,9 +344,9 @@ function dippable_lets_raw() {
     return lets.join('');
 }
 
-/** C ref: potion.c dip_ok — suggest non-coin invent. */
-function dippable_lets() {
-    return compact_lets(dippable_lets_raw().split(''));
+/** C ref: potion.c dip_ok `:2220–2224` — suggest non-coin, accessible invent. */
+function dippable_lets(inacc) {
+    return compact_lets(dippable_lets_raw(inacc).split(''));
 }
 
 /** C ref: invent.c useup() — consume one from a stack / remove if gone. */
@@ -823,7 +829,9 @@ export async function speed_up(duration) {
 export async function make_vomiting(xtime, talk) {
     const u = game.u || (game.u = {});
     const old = u.Vomiting | 0;
-    if (u.Unaware) talk = false;
+    // C potion.c:247-248 — live youprop.h:399 macro (eat.js Unaware);
+    // the u.Unaware field has no writers, so it never suppressed.
+    if (Unaware()) talk = false;
     u.Vomiting = ((u.Vomiting | 0) & ~TIMEOUT) | itimeout(xtime);
     if (game.disp) game.disp.botl = true;
     if (game.flags) game.flags.botl = true;
@@ -930,7 +938,9 @@ export async function make_confused(xtime, talk) {
         u.uprops[CONFUSION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     }
     const old = u.HConfusion | 0;
-    if (u.Unaware) talk = false;
+    // C potion.c:93-94 — live youprop.h:399 macro (eat.js Unaware);
+    // the u.Unaware field has no writers, so it never suppressed.
+    if (Unaware()) talk = false;
     // C: if (!xtime && old) You_feel("less …") when talk
     if (!xtime && old && talk) {
         const hallu = !!(u.Hallucination || u.HHallucination);
@@ -987,7 +997,9 @@ function stagger_poly(ptr, def) {
 export async function make_stunned(xtime, talk) {
     const u = game.u || (game.u = {});
     const old = u.HStun | 0;
-    if (u.Unaware) talk = false;
+    // C potion.c:111-112 — live youprop.h:399 macro (eat.js Unaware);
+    // the u.Unaware field has no writers, so it never suppressed.
+    if (Unaware()) talk = false;
     if (!xtime && old && talk) {
         const hallu = !!(u.Hallucination || u.HHallucination);
         await You_feel(`${hallu ? 'less wobbly' : 'a bit steadier'} now.`);
@@ -1074,7 +1086,8 @@ export async function make_stoned(xtime, msg, killedby, killername) {
  * C ref: potion.c make_sick — fatal illness / food poisoning TIMEOUT.
  * Branch envelope: onset (Sick_resistance gate + talk msgs); cure by
  * usick_type mask (partial vs full); delayed SICK killer.
- * Named omissions: Unaware talk suppress.
+ * No Unaware suppress arm: C potion.c:145 #if 0 — talks while
+ * unaware by design ("tell player even if hero is unconscious").
  */
 export async function make_sick(xtime, cause, talk, type) {
     const u = game.u || (game.u = {});
@@ -2522,11 +2535,19 @@ export async function dodrink() {
  * `:1833–1837`), accepted-but-unlisted on DOWNPLAY; both set allownone.
  * Canned CMDQ_KEY answers before the prompt (invent.c `:1776–1820`;
  * HANDS_SYM `:1790–1794`). `?`/`*` → pickinv menu (invent.c
- * `:1963–1992`). Loop on missing letter.
+ * `:1963–1992`). Loop on missing letter. Covered-item letters are dropped
+ * from the prompt via dip_ok `:2223–2224` (a letter pick still returns so
+ * dodip `:2282` presents the failure).
  */
 export async function getobj_dip(at_here) {
-    // C potion.c:2279 — obj_ok selected once, NULL verdict before the loop
-    const obj_ok = at_here ? dip_hands_ok : dip_ok;
+    // C potion.c:2279 — obj_ok selected once, NULL verdict before the loop.
+    // The verdict carries dip_ok `:2223–2224` (inaccessible_equipment via
+    // apply.js, no clone). Dynamic import: apply.js already imports
+    // potion.js (dip_into/dodip shape, no new edge).
+    const { equipment_is_inaccessible } = await import('./apply.js');
+    const obj_ok = at_here
+        ? ((o) => dip_hands_ok(o, equipment_is_inaccessible))
+        : ((o) => dip_ok(o, equipment_is_inaccessible));
     // C invent.c:1776-1820 — canned CMDQ_KEY answers before the prompt
     // (shared verdict helper, like sibling getobj_dip_ok).
     const canned = cmdq_pop_getobj_key(obj_ok);
@@ -2536,7 +2557,7 @@ export async function getobj_dip(at_here) {
     for (;;) {
         await flush_topl_more();
         // C invent.c:1835-1836 + :1905: '- ' prefix, '-' alone when empty
-        const rawLets = dippable_lets();
+        const rawLets = dippable_lets(equipment_is_inaccessible);
         const lets = handsListed ? (rawLets ? `- ${rawLets}` : '-') : rawLets;
         const query = lets
             ? `What do you want to dip? [${lets} or ?*]`
@@ -2565,7 +2586,7 @@ export async function getobj_dip(at_here) {
             // Mirror of sibling getobj_dip_ok; GETOBJ_NOFLAGS → no count.
             const counted = { cnt: 0, cntgiven: false };
             const ilet = await getobj_display_pickinv(
-                ch, dippable_lets_raw(), false, counted,
+                ch, dippable_lets_raw(equipment_is_inaccessible), false, counted,
                 { word: 'dip', allownone: true, promptHasHands: handsListed },
             );
             if (ilet === '\x1b') {
@@ -2800,11 +2821,12 @@ function dip_ok(obj, inacc) {
  * C potion.c dip_hands_ok `:2229–2237` — getobj callback for #dip when the
  * hero stands at a pool, fountain or sink (sole C caller dodip `:2279`).
  * Null (hands) is SUGGEST when Glib and the floor is reachable, so C
- * getobj lists '-' in the prompt (invent.c `:1833–1837`); else dip_ok.
+ * getobj lists '-' in the prompt (invent.c `:1833–1837`); else dip_ok
+ * (C `:2236` — same gold/inaccessible verdicts; `inacc` threaded).
  */
-function dip_hands_ok(obj) {
+function dip_hands_ok(obj, inacc) {
     if (!obj && Glib() && can_reach_floor(false)) return GETOBJ_SUGGEST;
-    return dip_ok(obj);
+    return dip_ok(obj, inacc);
 }
 
 /**

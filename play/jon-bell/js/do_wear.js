@@ -1813,7 +1813,12 @@ export async function armoron(otmp) {
         await unmul('');
         await on_msg(otmp);
     }
-    /* do_wear.c:2405 — clear takeoff bookkeeping; RNG-free no-op in JS. */
+    /* do_wear.c:2404 — clear takeoff bookkeeping.  Not a no-op: an interrupted
+     * 'A' leaves takeoff.what set, and doffing() (objnam.c:1391) reads it, so a
+     * stale value renders the freshly worn armor "(being doffed)". */
+    g.context = g.context || {};
+    g.context.takeoff = g.context.takeoff || {};
+    g.context.takeoff.mask = g.context.takeoff.what = 0;
     return ECMD_TIME;
 }
 /* C ref: do_wear.c:2012 already_wearing(cc) —

@@ -498,6 +498,13 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
             setuhpmax(Math.max(newuhpmax, minuhpmax(3)), true);
             loss = adjuhploss(loss, olduhp);
             losehp(loss, killer, kprefix);
+            /* C attrib.c:378 losehp runs its full tail (showdamage,
+               rehumanize, maybe_wail) before :379 adjattrib — drain the
+               deferred tail (the :391 i>5-arm idiom below); a
+               rehumanize-newly-dies gameover is noreturn in C. */
+            const { finish_maybe_wail } = await import('./hack.js');
+            await finish_maybe_wail();
+            if (game.program_state?.gameover) return;
             if (await adjattrib(A_CON, (typ | 0) !== A_CON ? -1 : -3, true)) {
                 await poisontell(A_CON, true);
             }

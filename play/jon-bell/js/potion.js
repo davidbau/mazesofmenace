@@ -3226,6 +3226,19 @@ async function _hold_potion(obj) {
         reorder_invent();
         survivor = obj;
     }
+    /* C invent.c:1142 addinv_core0 `added:` — `obj->pickup_prev = 1;` on the
+     * surviving node, merge path included (obj = otmp at :850). */
+    /* C invent.c:1142 `added:` — obj->pickup_prev = 1 on the survivor of both
+     * the merge and the new-slot arm (shows as the D menu's "Just picked up"). */
+    /* C invent.c:1142 `added:` — addinv_core0 stamps pickup_prev=1 on the
+     * survivor on BOTH the merge arm (`goto added`, :1112) and the fresh-slot
+     * arm.  Without it the mixed potion stays unmarked and #drop's
+     * query_category loses its "P - Just picked up" row (do.c:994, pickup.c:1433). */
+    survivor.pickup_prev = 1;
+
+    /* C invent.c:1141-1142 `added:` label — addinv_core0 sets pickup_prev = 1
+     * on the surviving object (merged-into stack or the new node). */
+    survivor.pickup_prev = 1;
 
     /* prinv "<let> - <doname>." — drop_fmt was non-null so hold_another_object
      * always prinv()s.  The pline auto-pages the prior topline. */

@@ -68,7 +68,7 @@ import { verbalize, list_genocided } from './cmd.js';
 import { DEAF } from './const.js';
 /* makemon's C home is makemon.c:1338; the real port lives in js/mklev.js
  * (NOT js/makemon.js — that file only has makemonDomesticSaddle). */
-import { makemon, courtmon as courtmon_real, kill_genocided_monsters, upstart } from './mklev.js';
+import { makemon, courtmon as courtmon_real, kill_genocided_monsters, upstart, mongone } from './mklev.js';
 import { heal_legs as heal_legs_real, y_n_default } from './cmd.js';
 /* polyself's C home is polyself.c:1306. */
 import { polyself } from './polyself.js';
@@ -198,7 +198,18 @@ export async function do_class_genocide() {
             if (gonecnt) await pline('All such monsters are already nonexistent.');
             else if (immunecnt || cls === 35 /* S_invisible */)
                 await You("aren't permitted to genocide such monsters.");
-            else
+            else if (wizard() && buf[0] === '*') {
+                /* C read.c:2706-2717 */
+                let n = 0;
+                for (let mtmp = game.fmon, nx; mtmp; mtmp = nx) {
+                    nx = mtmp.nmon;
+                    if ((mtmp.mhp | 0) < 1) continue;
+                    await mongone(mtmp);
+                    n++;
+                }
+                await pline('Eliminated %d monster%s.', n, n === 1 ? '' : 's');
+                return;
+            } else
                 await pline('That %s does not represent any monster.',
                     buf.length === 1 ? 'symbol' : 'response');
             continue;
@@ -446,8 +457,25 @@ const AGGRAVATE_MONSTER = 43;
 /* remove a random INTRINSIC ability from hero.
    returns the intrinsic property which was removed,
    or 0 if nothing was removed. */
+const _ATTRCURSE_PROPS = [[FIRE_RES, 'HFire_resistance'], [TELEPORT, 'HTeleportation'],
+    [POISON_RES, 'HPoison_resistance'], [TELEPAT, 'HTelepat'], [COLD_RES, 'HCold_resistance'],
+    [INVIS, 'HInvis'], [SEE_INVIS, 'HSee_invisible'], [STEALTH, 'HStealth'],
+    [PROTECTION, 'HProtection'], [AGGRAVATE_MONSTER, 'HAggravate_monster']];
+/* HFoo is u.uprops[FOO].intrinsic (youprop.h); this port also mirrors it in a
+ * u.HFoo scalar that the cases below test.  #wizintrinsic/potions fill only the
+ * uprops slot, so a cursed Invis survived "You feel paranoid." — sync both ways. */
 export async function attrcurse() {
     const u = game.u || {};
+    const r = await _attrcurse_body(u);
+    for (const [prop, name] of _ATTRCURSE_PROPS) {
+        const p = u.uprops?.[prop];
+        if (p && u[name] != null) p.intrinsic = (p.intrinsic | 0) & ~(INTRINSIC & ~(u[name] | 0));
+    }
+    return r;
+}
+async function _attrcurse_body(u) {
+    for (const [prop, name] of _ATTRCURSE_PROPS)
+        u[name] = (u[name] | 0) | ((u.uprops?.[prop]?.intrinsic | 0) & INTRINSIC);
     let ret = 0;
 
     switch (rnd(11)) {
@@ -823,7 +851,7 @@ async function special_throne_effect(effect) {
  * (topl.c:257-266), so stash it for the post-rhack wipe in js/allmain.js. */
 async function analyze_throne() {
     const ans = await y_n_default("Analyze throne?", 'n');
-    game._resultMessage = "Analyze throne? [yn] (n)";
+    game._resultMessage = game._ynStaleTopline = "Analyze throne? [yn] (n)";
     return ans;
 }
 export async function throne_sit_effect() {
@@ -904,6 +932,7 @@ export async function throne_sit_effect() {
                 /* RNG: rn2(5) — only on the luck branch; makewish has own RNG */
                 const luck = (u.uluck | 0) + (u.moreluck | 0);
                 if (luck + rn2(5) < 0) {
+                    await You_feel("your luck is changing.");
                     change_luck(1);
                 }
                 else {
@@ -912,19 +941,40 @@ export async function throne_sit_effect() {
                 break;
             }
             case 7: {
-                /* RNG: rnd(10) for cnt; then courtmon() calls per monster */
+                /* RNG: rnd(10) for cnt; then courtmon() calls per monster.
+                 * C sit.c:105-122: magical voice, then the summons line. */
                 const cnt = rnd(10);
+                /* Magical voice not affected by deafness (sit.c:114-117) */
+                await pline('A voice echoes:');
+                await verbalize('Thine audience hath been summoned, %s!',
+                                game.flags?.female ? 'Dame' : 'Sire');
+                await pline('A voice echoes:');
+                await verbalize('Thine audience hath been summoned, %s!',
+                    game.flags?.female ? 'Dame' : 'Sire');
                 for (let i = cnt; i > 0; --i) {
                     await makemon(courtmon_real(), tx, ty, /* NO_MM_FLAGS */ 0);
                 }
                 break;
             }
             case 8:
-                /* No RNG here — do_genocide() has its own RNG */
+                /* sit.c:124-128 */
+                await pline('A voice echoes:');
+                await verbalize('By thine Imperious order, %s...',
+                                game.flags?.female ? 'Dame' : 'Sire');
+                /* C sit.c:125-131: magical voice, not affected by deafness.
+                 * No RNG here — do_genocide() has its own RNG. */
+                await pline('A voice echoes:');
+                await verbalize('By thine Imperious order, %s...',
+                    game.flags?.female ? 'Dame' : 'Sire');
                 await do_genocide(5); /* REALLY|ONTHRONE */
                 break;
             case 9: {
+                /* sit.c:131-135 */
+                await pline('A voice echoes:');
+                await verbalize('A curse upon thee for sitting upon this most holy throne!');
                 /* RNG: rn1(100,250) always; optionally rnd(2) if Luck > 1 */
+                await pline('A voice echoes:');
+                await verbalize('A curse upon thee for sitting upon this most holy throne!');
                 const luck = (u.uluck | 0) + (u.moreluck | 0);
                 if (luck > 0) {
                     const blindTimeout = (u.uprops?.[BLINDED]?.intrinsic | 0) & TIMEOUT;

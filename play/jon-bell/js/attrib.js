@@ -114,6 +114,10 @@ export function acurr(u, i) {
         && ((game.youmonst?.data?.mlet | 0) === 14 /* S_NYMPH */
             || (u.umonnum | 0) === 290 /* PM_AMOROUS_DEMON */))
         return 18;
+    /* C attrib.c:1226-1227: wielding Ogresmasher (artifact index 16) pins
+     * Con at 25. */
+    if (i === A_CON && u.uwep && (u.uwep.oartifact | 0) === 16)
+        return 25;
     if ((i === A_INT || i === A_WIS) && u.uarmh && (u.uarmh.otyp | 0) === 94)
         return 6;
     if (tmp >= 25)

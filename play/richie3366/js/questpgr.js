@@ -334,11 +334,16 @@ outside %H!
 You realize that %l needs your assistance!`,
 };
 
-/** C ref: dat/quest.lua leader_first (Arc + Pri). */
+/** C ref: dat/quest.lua leader_first (Arc + Bar + Pri). */
 const QUEST_LEADER_FIRST = {
     Arc: `"Finally you have returned, %p.  You were always
 my most promising student.  Allow me to see if you are ready for the
 most difficult task of your career."`,
+    // C ref: dat/quest.lua Bar leader_first (output=text) — quest.lua:562-569
+    Bar: `"Ah, %p.  You have returned at last.  The world is in dire
+need of your help.  There is a great quest you must undertake.
+
+"But first, I must see if you are ready to take on such a challenge."`,
     Pri: `"Ah, %p, my %S.  You have returned to us at last.
 A great blow has befallen our order; perhaps you can help us.
 First, however, I must determine if you are prepared for this
@@ -366,13 +371,18 @@ undead that befoul the land.
 "Go with %d as your guide, %p."`,
 };
 
-/** C ref: dat/quest.lua badalign (Arc). */
+/** C ref: dat/quest.lua badalign (Arc + Bar). */
 const QUEST_BADALIGN = {
     Arc: `"%pC!  I've heard that you've been using sloppy techniques.  Your
 results lately can hardly be called suitable for %ra!
 
 "How could you have strayed from the %a path?  Go from here, and come
 back only when you have purified yourself."`,
+    // C ref: dat/quest.lua Bar badalign (output=text) — quest.lua:443-450
+    Bar: `"%pC!  You have wandered from the path of the %a!
+If you attempt to overcome %n in this state, he will surely
+enslave your soul.  Your only hope, and ours, lies in your purification.
+Go forth, and return when you feel ready."`,
 };
 
 /** C ref: dat/quest.lua badlevel (Arc + Bar + Pri). */
@@ -484,7 +494,9 @@ const QUEST_LOCATE_NEXT = {
     Wiz: `You believe that you may once again invade %i.`,
 };
 
-/** C ref: dat/quest.lua nexttime (Arc + Bar + Pri + Wiz). */
+/** C ref: dat/quest.lua nexttime (Arc + Bar + Pri + Wiz + Mon + Rog).
+ * Mon/Rog have neither output nor synopsis keys in lua, so they deliver
+ * as a plain pline via the default arm (Wiz precedent). */
 const QUEST_NEXTTIME = {
     Arc: `Once again, you are back at %H.`,
     Bar: `Once again, you near %H.  You know that %l
@@ -492,6 +504,11 @@ will be waiting.`,
     Pri: `Once again, you stand before %H.`,
     // C ref: dat/quest.lua Wiz nexttime (no output/synopsis keys: pline)
     Wiz: `Once again, you are back at %H.`,
+    // C ref: dat/quest.lua Mon nexttime (no output/synopsis keys: pline) — quest.lua:1503-1505
+    Mon: `Once again, you stand before %H.`,
+    // C ref: dat/quest.lua Rog nexttime (no output/synopsis keys: pline) — quest.lua:2157-2160
+    Rog: `Once again, you find yourself back in Ransmannsby.  Fond memories are
+replaced by fear, knowing that %l is waiting for you.`,
 };
 
 /** C ref: dat/quest.lua othertime (Arc + Bar + Pri). */
@@ -716,6 +733,10 @@ const QUEST_MSG_META = {
             output: 'text',
             synopsis: '["You have returned, %p, to a difficult task."]',
         },
+        Bar: {
+            output: 'text',
+            synopsis: '["At last you have returned.  There is a great quest you must undertake."]',
+        },
         Pri: {
             output: 'text',
             synopsis: '[You have returned and we need your help.  Are you ready?]',
@@ -731,6 +752,10 @@ const QUEST_MSG_META = {
         Arc: {
             output: 'text',
             synopsis: '["%pC, you have strayed from the %a path.  Purify yourself!"]',
+        },
+        Bar: {
+            output: 'text',
+            synopsis: '["You have wandered from the path of the %a.  Come back when you have atoned."]',
         },
     },
     badlevel: {
@@ -1374,7 +1399,8 @@ async function deliver_by_window(msg, how) {
  * pauper_legacy still use com_pager_legacy (not this window); TEST_PATTERN (lua self-test
  * only); other-role bodies except the five nemesis msgids (D-2853, all 13
  * filecodes), the guardtalk pair (all 13 filecodes, extracted), and the
- * leader badlevel/encourage/leader_next/posthanks sets (Arc/Bar/Pri);
+ * leader badlevel/encourage/leader_next/posthanks sets (Arc/Bar/Pri),
+ * leader_first (Arc/Bar/Pri) + badalign (Arc/Bar);
  * convert_arg catalogue is D-1649;
  * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
  * Lua helpers with no JS counterpart: nhl_init/nhl_loadlua/nhl_done

@@ -3,7 +3,7 @@
 // C ref: nethack-c/src/eat.c — gethungry (line 3163), newuhs (line 3363).
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
 import { rn2, rnd, rn1, d } from './rng.js';
-import { Blind as hero_Blind } from './vision.js';
+import { Blind as hero_Blind, vision_recalc, vision_recalc as vision_recalc_eat } from './vision.js';
 import { ORGANISER_IS_MACOS } from './platform_identity.js';
 import { PM_KILLER_BEE, PM_QUEEN_BEE, PM_STONE_GOLEM, PM_DWARF,
          PM_SCORPION, PM_KNIGHT } from './pm.generated.js';
@@ -61,7 +61,7 @@ import { reset_utrap, selftouch, t_at as t_at_real, deltrap as deltrap_real } fr
 import { on_level } from './dungeon.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
-         STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
+         STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, INVIS as INVIS_PROP, SEE_INVIS as SEE_INVIS_PROP, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
          FAST as FAST_PROP, DEAF as DEAF_PROP, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP } from './const.js';
 /* make_confused's C home is potion.c:88.  This file used to carry its own
  * `_eat_make_confused`, which wrote a flat `game.HConfusion` that only this
@@ -76,6 +76,7 @@ import { PM_VIOLET_FUNGUS, PM_WRAITH, PM_NURSE,
          PM_NEWT } from './pm.generated.js';
 import { dmgtype, stackobj_dm } from './dogmove.js';
 import { attacktype } from './makemon.js';
+import { mon_track_clear } from './monmove.js'; /* C monmove.c:90 */
 /* C monattk.h — AT_MAGC (ranged spellcasting) and the AD_ damage types
  * cpostfx's hallucination test reads.  Values verified against the copies
  * already in js/mhitu.js (AD_STUN=12), js/polyself.js (AD_HALU=36) and
@@ -106,7 +107,7 @@ import { is_were, you_unwere } from './were.js';
 import { polymon, rehumanize } from './polyself.js';
 import { toggle_displacement } from './do_wear.js';
 import { fingers_or_gloves } from './do_wear.js';
-import { make_hallucinated, make_glib, make_vomiting, make_sick, vomit, make_slimed } from './potion.js';
+import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_sick, vomit, make_slimed } from './potion.js';
 /* C cmd.c:206 set_occupation(fn, txt, xtime) — js/cmd.js holds the one body;
  * js/lock.js already imports it the same way (cmd.js -> eat.js is an existing
  * edge, and this closes it, so the import is used LAZILY inside start_tin's
@@ -989,7 +990,7 @@ function _Popeye_stoned() {
     if (!otin.known) return true;
     const mndx = otin.corpsenm | 0;
     return _ismnum(mndx)
-        && (mndx === PM_LIZARD_E || _acidicE(permonstTemplate(mndx)));
+        && (mndx === PM_LIZARD_E || _acidicE(mndx));
 }
 const _STONED_TEXTS = ['You are slowing down.', 'Your limbs are stiffening.',
     'Your limbs have turned to stone.', 'You have turned to stone.',
@@ -2118,6 +2119,7 @@ function _monflee_untimed(mtmp) {
         mtmp.mspec_used = 75 + rn2(25);
     }
     mtmp.mflee = 1;
+    mon_track_clear(mtmp); /* monmove.c:529-530 */
 }
 
 /* C eat.c:2084-2089 garlic_breath(mtmp) — eating a clove of garlic scares every
@@ -2342,6 +2344,10 @@ export function corpse_floor_xname(otmp) {
         base = FLOOR_FOOD_XNAME[otmp.otyp | 0] || null;
     }
     if (!base) return null;
+    /* C objnam.c:1370-1371 doname_base: `if (obj->greased) Strcat(prefix,
+     * "greased ");` — the prefix sits between the article and the name, so the
+     * article is chosen from "greased ..." (an() runs on the whole buffer). */
+    if (otmp.greased) base = `greased ${base}`;
     /* C an(): "a"/"an" by first letter (vowel → an). */
     const article = /^[aeiou]/i.test(base) ? 'an' : 'a';
     return `${article} ${base}`;
@@ -2464,7 +2470,7 @@ async function _cprefx_unstone(pm) {
     if (!_ismnum(pm)) return;
     if (pm === PM_LIZARD_E) {
         if (_uprop_on(STONED)) await fix_petrification();
-    } else if (_acidicE(permonstTemplate(pm)) && _uprop_on(STONED)) {
+    } else if (_acidicE(pm) && _uprop_on(STONED)) {
         await fix_petrification();
     }
 }
@@ -3798,8 +3804,25 @@ async function cpostfx(pm) {
         check_intrinsics = true; /* might also convey poison resistance */
         break;
     case PM_STALKER:
-        /* C eat.c:1164-1173 — set_itimeout(&HInvis, rn1(100,50)) etc.
-         * WIRE_PENDING; CONSUMES rn1(100,50) in C. */
+        /* C eat.c:1164-1175 */
+        {
+            const inv = _uprop(INVIS_PROP);
+            const sinv = _uprop(SEE_INVIS_PROP);
+            /* Invis = (HInvis || EInvis) && !BInvis (youprop.h) */
+            const Invis = (((inv.intrinsic | 0) || (inv.extrinsic | 0)) && !(inv.blocked | 0));
+            if (!Invis) {
+                /* set_itimeout(&HInvis, rn1(100, 50)) */
+                inv.intrinsic = ((inv.intrinsic | 0) & ~TIMEOUT) | rn1(100, 50);
+                if (!_eat_Blind() && !(inv.blocked | 0))
+                    await self_invis_message();
+            } else {
+                if (!((inv.intrinsic | 0) & FROMOUTSIDE))
+                    await _emit_eat_pline('You feel hidden!');
+                inv.intrinsic = (inv.intrinsic | 0) | FROMOUTSIDE;
+                sinv.intrinsic = (sinv.intrinsic | 0) | FROMOUTSIDE;
+            }
+            newsym(game.u.ux | 0, game.u.uy | 0);
+        }
         /* FALLTHROUGH to the stun arms, as C does. */
         /* fallthrough */
     case PM_YELLOW_LIGHT:
@@ -3929,11 +3952,24 @@ export function eatmupdate() {
 
 export function You(line, ...args) {
     const msg = 'You ' + (args.length > 0 ? nh_sprintf(line, args) : String(line));
+    if (game.vision_full_recalc && !game._topl_win_stop && !game._topl_win_stop_armed)
+        vision_recalc(0);
     /* topl.c:257 update_topl: while WIN_STOP is live (an ESC-dismissed --More--
      * earlier this turn, not yet cleared by an nhgetch) the text only reaches
      * gt.toplines and never the screen.  pline() owns that suppression. */
     if (game._topl_win_stop || game._topl_win_stop_armed)
         return pline(msg);
+    /* pline.c:266-272 — vpline() recalcs vision before its flush_screen(), so
+     * the frame a --More-- freezes carries post-recalc vision (RNG-free). */
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+    /* C ref: pline.c:266-272 — vpline() recalculates vision BEFORE its
+     * flush_screen()/putmesg(), so the --More-- frame this message raises
+     * carries the post-recalc view (float_up's "You float over a pit." after
+     * the pit exit sets vision_full_recalc).  Same step display.js's pline()
+     * makes; this direct writer bypassed it. */
+    if (game.vision_full_recalc)
+        vision_recalc_eat(0);
     /* C has one topline.  If a prior pline is still live in the pending
      * channel (for example a pet-swap message before its landing trap), this
      * direct You() writer must extend that same line.  Writing resultMessage

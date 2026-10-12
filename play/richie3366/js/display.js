@@ -3262,6 +3262,36 @@ export function mark_topline_empty() {
 }
 
 /**
+ * C ref: wintty.c tty_display_nhwindow NHW_MESSAGE arm `:1873–1882`.
+ * The blocking flag is ignored for the message window ("with ttys, all
+ * windows are blocking"): NEED_MORE blocks at more() — with NO map
+ * flush (C more() never flushes) — then NEED_MORE is re-set (more()
+ * resets it) so the clear arm runs (home+cl_end the topline, cur zero,
+ * toplin EMPTY); else toplin EMPTY + cur zero. `if (!cw->active)
+ * window_inited` is startup-only (the JS window is always live).
+ * Named: HUPSKIP / WIN_ERR panic / WIN_CANCELLED early return /
+ * lastwin+rawprint bookkeeping (putstr :9441 precedent; the JS message
+ * window is never cancelled); MAP/STATUS/MENU/TEXT arms (other callers).
+ * This is NOT flush_topl_more (that idiom skips history, skips the
+ * clear, and adds a STOP check C's arm lacks).
+ */
+export async function display_nhwindow_message() {
+    ensure_message_win();
+    if (_toplin === TOPLINE_NEED_MORE) {
+        // C keeps gt.toplines through more()+clear (the NEXT message's
+        // remember_topl histories it); JS more()/clear wipe _toplines,
+        // so flush the ring here (update_topl :9338 precedent) — same
+        // net ^P history.
+        remember_topl();
+        await more();
+        _toplin = TOPLINE_NEED_MORE; // C: more resets this
+        clear_nhwindow_message();
+        return;
+    }
+    mark_topline_empty();
+}
+
+/**
  * C ref: wintty.c tty_clear_nhwindow(WIN_MESSAGE) `:1047–1058` + `:1108`
  * (unconditional cur zero) — the NHW_MENU overlay call shape
  * (`:1938–1941`), WITHOUT clear_nhwindow_message's parse-time

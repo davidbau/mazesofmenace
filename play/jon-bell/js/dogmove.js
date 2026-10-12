@@ -1,6 +1,8 @@
 import { touch_artifact_mon, lifesaved_monster, m_consume_obj, add_to_minv as add_to_minv_real } from './mklev.js';
 import { newobj } from './game.js';
-import { flooreffects as flooreffects_dm } from './cmd.js';
+import { flooreffects as flooreffects_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
+import { m_in_out_region as m_in_out_region_dm } from './region.js';
+import { set_apparxy as set_apparxy_dm } from './monmove.js';
 // @ts-nocheck
 // js/dogmove.js — Pet AI: dog_move, dog_goal, dog_invent, dog_hunger helpers.
 // C ref: nethack-c/src/dogmove.c
@@ -37,7 +39,7 @@ import { place_object, set_ustuck, resists_ston, resists_poison,
          mksobj as mksobj_dg, healmon as healmon_dg, wake_nearto as wake_nearto_dg, mlifesaver as mlifesaver_dg, set_corpsenm as set_corpsenm_dg } from './mklev.js';
 import { closed_door, accessible, is_pool } from './look.js';
 import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as m_useup_dg } from './trap.js';
-import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE } from './pm.generated.js';
+import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
 import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data } from './makemon.js';
 import { pline, newsym, _topline_more_pending, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
 import { Japanese_item_name, xname_scroll, xname_armor, xname_amulet, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
@@ -68,7 +70,9 @@ import { Monnam, perceives as perceives_dm } from './mcastu.js';
 import { mon_givit as mon_givit_dg } from './eat.js';
 import { _mon_reflects_zap as mon_reflects_dm } from './zap.js';
 import { attacktype, max_passive_dmg, resist_conflict, poly_when_stoned } from './mhitm.js';
-import { seemimic } from './mhitm.js';
+import { resists_blnd as resists_blnd_gz, Adjmonnam as Adjmonnam_gz } from './mhitm.js';
+import { mhitm_ad_blnd as mhitm_ad_blnd_gz } from './uhitm.js';
+import { seemimic, resists_magm as resists_magm_dm, defended as defended_dm } from './mhitm.js';
 import { mfndpos, make_corpse, zombie_form, On_stairs, is_rustprone } from './mklev.js';
 import { isok, is_pit, ARTICLE_A, ARTICLE_NONE, MON_DETACH, CORPSTAT_NONE, G_GONE, CONFLICT as CONFLICT_DM, engulfing_u as engulfing_u_const, MAGIC_PORTAL } from './const.js';
 import { otrapped_of } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
@@ -2269,7 +2273,9 @@ export function m_harmless_trap(mtmp, ttmp) {
             break;
         case T_STATUE: return true;
         case T_MAGIC: return true;
-        case T_ANTIMAGIC: /* resists_magm — default no */ break;
+        case T_ANTIMAGIC: /* C trap.c:1172-1174 */
+            if (resists_magm_dm(mtmp) || defended_dm(mtmp, 1 /* AD_MAGM */)) return true;
+            break;
         case T_VIBSQ: return true;
         default: break;
     }
@@ -2831,7 +2837,7 @@ export async function mattackm(magr, mdef) {
 
         case AT_GAZE:
             strike = 0;
-            res[i] = gazemm(magr, mdef, mattk);
+            res[i] = await gazemm(magr, mdef, mattk);
             break;
 
         case AT_EXPL:
@@ -3198,6 +3204,10 @@ export async function mondied_dm(mdef, mondead_only = false) {
     newsym(deadMx, deadMy);
 
     await relobj_dead_dm(mdef);
+    /* C mon.c:2799-2801 m_detach() tail: hero is thrown from his steed when it
+     * dies or gets genocided. */
+    if (game.u && mdef === game.u.usteed)
+        await dismount_steed_qm(0 /* DISMOUNT_GENERIC */);
 
     /* C mon.c:3234 corpse_chance (default/common case):
      *   tmp = 2 + ((mdat->geno & G_FREQ) < 2) + verysmall(mdat);
@@ -3374,7 +3384,61 @@ export function failed_grab(magr, mdef, mattk) {
     }
     return true;
 }
-function gazemm(magr, mdef, mattk) { return M_ATTK_MISS; }
+/* C mhitm.c:735-798 gazemm() */
+async function gazemm(magr, mdef, mattk) {
+    const AD_BLND_GZ = 11;
+    const archon = (magr.mnum === PM_ARCHON && mattk.adtyp === AD_BLND_GZ);
+    const altmesg = (archon && !magr.mcansee);
+
+    if ((mdef.data?.mlet | 0) === 13 /* S_MIMIC */
+        && ((mdef.m_ap_type | 0) & 0x7) !== 0 /* M_AP_NOTHING */)
+        seemimic(mdef);
+    mdef.mundetected = 0;
+
+    if (game.v?.vis) {
+        const buf = (altmesg ? Adjmonnam_gz(magr, 'blinded') : Monnam_dm(magr))
+                    + ' gazes ' + (altmesg ? 'toward' : 'at');
+        pline(buf + ' ' + (canspotmon(mdef) ? mon_nam_dm(mdef) : 'something') + '...');
+    }
+
+    if (magr.mcan || !mdef.mcansee
+        || (archon ? resists_blnd_gz(mdef) : !magr.mcansee)
+        || (magr.minvis && !perceives_dm(mdef.data)) || mdef.msleeping) {
+        if (game.v?.vis && canspotmon(mdef))
+            pline('but nothing happens.');
+        return M_ATTK_MISS;
+    }
+    if (magr.mnum === PM_MEDUSA && mon_reflects_dm(mdef, null)) {
+        if (canseemon(mdef))
+            mon_reflects_dm(mdef, 'The gaze is reflected away by %s %s.');
+        if (mdef.mcansee) {
+            if (mon_reflects_dm(magr, null)) {
+                if (canseemon(magr))
+                    mon_reflects_dm(magr, 'The gaze is reflected away by %s %s.');
+                return M_ATTK_MISS;
+            }
+            if (mdef.minvis && !perceives_dm(magr.data)) {
+                if (canseemon(magr))
+                    pline(Monnam_dm(magr) + " doesn't seem to notice that "
+                          + mhis_dm(magr)
+                          + ' gaze was reflected.');
+                return M_ATTK_MISS;
+            }
+            if (canseemon(magr))
+                pline(Monnam_dm(magr) + ' is turned to stone!');
+            await monstone(magr);
+            if (!DEADMONSTER_dm(magr))
+                return M_ATTK_MISS;
+            return M_ATTK_AGR_DIED;
+        }
+    } else if (archon) {
+        mhitm_ad_blnd_gz(magr, mattk, mdef, null);
+        if (rn2(2))
+            mdef.mstun = 1;
+    }
+
+    return await mdamagem_dm(magr, mdef, mattk, null, 0);
+}
 function getmattk(magr, mdef, i, res, alt_attk) {
     const row = mon_mattk_raw((magr.mndx ?? magr.mnum ?? 0) | 0);
     if (row && i < row.length) {
@@ -3626,8 +3690,8 @@ export async function dog_move(mtmp, after) {
         if (j === 2)
             return MMOVE_DIED;
         if (j === 1)
-            /* ate something — skip to newdogpos */
-            return MMOVE_MOVED;
+            /* ate something — C `goto newdogpos` with nix/niy == omx/omy */
+            return leash_kludge_dm(mtmp, omx, omy, nix, niy);
 
         const moves_c = FF_FAITHFUL ? moves : (moves - 1);
         whappr = ((moves_c - (edog.whistletime | 0)) < 5) ? 1 : 0;
@@ -3976,6 +4040,44 @@ export async function dog_move(mtmp, after) {
         return MMOVE_MOVED;
     }
 
+    return leash_kludge_dm(mtmp, omx, omy, nix, niy);
+}
+
+/* C dogmove.c:1322-1355 — newdogpos's `else if (mtmp->mleashed &&
+ * distu(omx, omy) > 4)` arm ("an incredible kludge"). */
+function leash_kludge_dm(mtmp, omx, omy, nix, niy) {
+    if (mtmp.mleashed && distu(omx, omy) > 4) {
+        const u = game.u;
+        const nx = sgn_dm(omx - (u.ux | 0));
+        const ny = sgn_dm(omy - (u.uy | 0));
+        const cc = { x: (u.ux | 0) + nx, y: (u.uy | 0) + ny };
+        let found = !!goodpos_real(cc.x, cc.y, mtmp, 0);
+        if (!found) {
+            const i = xytodir_dm(nx, ny);
+            /* hack.h DIR_LEFT/RIGHT/LEFT2/RIGHT2 */
+            const l1 = (i + 7) % 8, r1 = (i + 1) % 8;
+            const l2 = (i + 6) % 8, r2 = (i + 2) % 8;
+            for (let j = l1; !found && j < r1; j++) {
+                dirtocoord_dm(cc, j);
+                if (goodpos_real(cc.x, cc.y, mtmp, 0)) found = true;
+            }
+            for (let j = l2; !found && j < r2; j++) {
+                dirtocoord_dm(cc, j);
+                if (goodpos_real(cc.x, cc.y, mtmp, 0)) found = true;
+            }
+            if (!found) {
+                cc.x = mtmp.mx;
+                cc.y = mtmp.my;
+            }
+        }
+        /* dognext: (stale nix/niy are C's) */
+        if (!m_in_out_region_dm(mtmp, nix, niy))
+            return MMOVE_MOVED;
+        mtmp.mx = cc.x;
+        mtmp.my = cc.y;
+        newsym(cc.x, cc.y);
+        set_apparxy_dm(mtmp);
+    }
     return MMOVE_MOVED;
 }
 

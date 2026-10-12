@@ -301,6 +301,19 @@ export async function touch_artifact_youmonst(otmp) {
         g._touch_artifact_blast_msg =
             `You are blasted by ${_ta_s_suffix(the(_ta_xname(otmp)))} power!`;
 
+        /* tty update_topl (topl.c:277-290): a message of CO (80) or more columns is
+         * split at a space and paged at once, so the --More-- (over the PRE-damage
+         * HP) precedes artifact.c:953's d() and the losehp. */
+        if (g._touch_artifact_blast_msg.length >= 80) {
+            const _bm = g._touch_artifact_blast_msg;
+            g._touch_artifact_blast_msg = null;
+            await force_more(_bm);
+            /* This more() was raised inside the blast's OWN update_topl, so an ESC
+             * (WIN_STOP) is live for every later message of this command
+             * (the evade/prinv plines below). */
+            if (g._topl_win_stop_armed) { g._topl_win_stop_armed = false; g._topl_win_stop = true; }
+        }
+
         /* C artifact.c:953 */
         let dmg = d(_ta_Antimagic() ? 2 : 4, self_willed ? 10 : 4);
         /* C artifact.c:955-956 — half (maybe quarter) of the silver bonus. */
@@ -315,6 +328,20 @@ export async function touch_artifact_youmonst(otmp) {
         /* A lethal blast: done() plines "You die..." inside losehp, which more()s
          * the You() still on the topline (artifact.c:951 precedes :958), so the
          * blast line must reach the tty before the death sequence runs. */
+        /* tty update_topl (topl.c): a message of n0 >= CO (80) columns wraps and
+         * more()s inside its own pline, i.e. BEFORE losehp moves u.uhp. */
+        if (dmg < ((u.uhp ?? 0) | 0) && g._touch_artifact_blast_msg
+            && g._touch_artifact_blast_msg.length >= 80) {
+            const _bm = g._touch_artifact_blast_msg;
+            g._touch_artifact_blast_msg = null;
+            await force_more(_bm);
+            /* ESC at that more() sets WIN_STOP for the very next pline
+             * (topl.c:232-235), e.g. "...evades your grasp!" below. */
+            if (g._topl_win_stop_armed) {
+                g._topl_win_stop_armed = false;
+                g._topl_win_stop = true;
+            }
+        }
         if (dmg >= ((u.uhp ?? 0) | 0) && g._touch_artifact_blast_msg) {
             const _bm = g._touch_artifact_blast_msg;
             g._touch_artifact_blast_msg = null;

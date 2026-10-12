@@ -55,6 +55,9 @@ const MUSE_CAMERA = 18;
 const MUSE_SCR_EARTH = 17;
 const MUSE_WAN_DEATH = 1, MUSE_WAN_SLEEP = 2, MUSE_WAN_FIRE = 3,
       MUSE_WAN_COLD = 4, MUSE_WAN_LIGHTNING = 5, MUSE_WAN_MAGIC_MISSILE = 6;
+const MUSE_FROST_HORN = 12, MUSE_FIRE_HORN = 13;
+const FROST_HORN = 250;
+const AD_MAGM = 1, AD_FIRE = 2, AD_COLD = 3;
 const MUSE_POT_PARALYSIS = 9;
 const MUSE_POT_BLINDNESS = 10;
 const MUSE_POT_CONFUSION = 11;
@@ -171,6 +174,24 @@ async function mzapwand(mtmp, otmp, self) {
          * either way; the charge below is still spent, as in C. */
     } else {
         pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
+        await stop_occupation();
+    }
+    otmp.spe = (otmp.spe | 0) - 1;
+}
+
+/* C ref: muse.c:195-233 mplayhorn(mtmp, otmp, self) — announce the horn,
+ * spend a charge.  The self arm is unreachable from use_offensive. */
+async function mplayhorn(mtmp, otmp, self) {
+    if (!canseemon(mtmp)) {
+        const range = couldsee(mtmp.mx | 0, mtmp.my | 0)
+                      ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+        const near = dist2(mtmp.mx | 0, mtmp.my | 0,
+                           game.u.ux | 0, game.u.uy | 0) <= range * range;
+        pline(`You hear a horn being played ${near ? "nearby" : "in the distance"}.`);
+    } else if (!self) {
+        observe_object(otmp);
+        pline(`${Monnam(mtmp)} plays ${an(xname(otmp))} directed at you!`);
+        makeknown(otmp.otyp | 0);
         await stop_occupation();
     }
     otmp.spe = (otmp.spe | 0) - 1;
@@ -396,6 +417,26 @@ export async function use_offensive(mtmp) {
                          sgn((mtmp.muy | 0) - (mtmp.my | 0)), true, false, forceMiss);
         }
         game.buzzer = 0;
+        game.m_using = false;
+        mtmp.mwandexp = true;
+        return DEADMONSTER(mtmp) ? 1 : 2;
+    case MUSE_FIRE_HORN:
+    case MUSE_FROST_HORN:
+        /* C muse.c:1867-1880 — a fire/frost horn is blown, then buzzes as an
+         * AD_FIRE/AD_COLD ray of rn1(6, 6) dice via BZ_M_WAND(BZ_OFS_AD()). */
+        await mplayhorn(mtmp, otmp, false);
+        game.m_using = true;
+        game.buzzer = mtmp;
+        game.current_wand = otmp;
+        {
+            const ofs = Math.abs(((otmp.otyp | 0) === FROST_HORN ? AD_COLD : AD_FIRE) - AD_MAGM) % 10;
+            const nd = rn1(6, 6);
+            await dobuzz(-30 - ofs, nd, mtmp.mx | 0, mtmp.my | 0,
+                         sgn((mtmp.mux | 0) - (mtmp.mx | 0)),
+                         sgn((mtmp.muy | 0) - (mtmp.my | 0)), true, false, !mtmp.mwandexp);
+        }
+        game.buzzer = 0;
+        game.current_wand = 0;
         game.m_using = false;
         mtmp.mwandexp = true;
         return DEADMONSTER(mtmp) ? 1 : 2;

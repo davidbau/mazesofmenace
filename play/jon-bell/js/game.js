@@ -44,7 +44,7 @@ export const YOU_FIELDS = (`
     uhpinc ueninc ugangr ugifts ublessed ublesscnt umoney0 uspare1 uexp urexp
     ucleansed usleep uinvault ustuck usteed ustuck_mid usteed_mid ugallop urideturns
     umortality ugrave_arise weapon_slots skills_advanced skill_record
-    weapon_skills twoweap mcham umovement uachieved umonst
+    weapon_skills twoweap mcham umovement uachieved umonst HDeaf
 `).trim().split(/\s+/);
 const YOU_INLINE_FIELDS = new Set((`
     uz uz0 utolev ucamefrom urooms urooms0 uentered ushops ushops0

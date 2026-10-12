@@ -22,6 +22,7 @@ import {
     something, Something, u_at, ERODE_RUST, ERODE_CORRODE,
     SICK_ALL, SICK_NONVOMITABLE, SICK_RES, AD_CURS, ERODE_ROT, SLIMED, TT_WEB, OBJ_FREE,
     OBJ_FLOOR, FLYING,
+    FIRE_RES, COLD_RES, SHOCK_RES, ACID_RES, SLOW_DIGESTION,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -1660,13 +1661,19 @@ export async function gulp_blnd_check() {
 }
 
 /**
- * C ref: youprop.h Slow_digestion — H||E (eat.js Slow_digestion shape).
+ * C ref: youprop.h:289–291 Slow_digestion — H||E (eat.js Slow_digestion shape).
  * Module-local like Blind/Unaware/Amphibious/Breathless above: eat.js does
  * not export it and the gulpmu DGST + expel-taste arms need it in C order.
+ * C reads the single uprops[SLOW_DIGESTION] store; JS dual storage needs
+ * the slot ORed with the flats (worn ring of slow digestion confers via
+ * oc_oprop → confer_oc_oprop, uprops only — same shape as the resist
+ * locals below).
  */
 function Slow_digestion() {
     const u = game.u || {};
-    return !!((u.HSlow_digestion | 0) || (u.ESlow_digestion | 0));
+    const slot = u.uprops?.[SLOW_DIGESTION];
+    return !!((u.HSlow_digestion | 0) || (u.ESlow_digestion | 0)
+        || (slot?.intrinsic | 0) || (slot?.extrinsic | 0));
 }
 
 /**
@@ -1808,14 +1815,24 @@ async function gulpmu(mtmp, mattk) {
     }
     if ((u.uswldtim | 0) > 0) u.uswldtim = (u.uswldtim | 0) - 1;
 
-    const Cold_resistance = !!(u.Cold_resistance || u.HCold_resistance
-        || u.ECold_resistance);
-    const Fire_resistance = !!(u.Fire_resistance || u.HFire_resistance
-        || u.EFire_resistance);
-    const Shock_resistance = !!(u.Shock_resistance || u.HShock_resistance
-        || u.EShock_resistance);
-    const Acid_resistance = !!(u.Acid_resistance || u.HAcid_resistance
-        || u.EAcid_resistance);
+    // C youprop.h:28,32,44,61 — Fire/Cold/Shock/Acid_resistance ≡
+    // u.uprops[PROP].intrinsic||extrinsic (single store). JS keeps dual
+    // storage: intrinsic paths (eat/pray/sit) write the H* flats while worn
+    // gear (confer_oc_oprop, do_wear.js — no E* mirror for resists) writes
+    // uprops only, so a faithful read ORs flats with the slot (the
+    // teleport.js Fire_resistance / trap.js lava_effects idiom).
+    const Cold_resistance = !!(u.Cold_resistance || (u.HCold_resistance | 0)
+        || (u.ECold_resistance | 0)
+        || (u.uprops?.[COLD_RES]?.intrinsic | 0) || (u.uprops?.[COLD_RES]?.extrinsic | 0));
+    const Fire_resistance = !!(u.Fire_resistance || (u.HFire_resistance | 0)
+        || (u.EFire_resistance | 0)
+        || (u.uprops?.[FIRE_RES]?.intrinsic | 0) || (u.uprops?.[FIRE_RES]?.extrinsic | 0));
+    const Shock_resistance = !!(u.Shock_resistance || (u.HShock_resistance | 0)
+        || (u.EShock_resistance | 0)
+        || (u.uprops?.[SHOCK_RES]?.intrinsic | 0) || (u.uprops?.[SHOCK_RES]?.extrinsic | 0));
+    const Acid_resistance = !!(u.Acid_resistance || (u.HAcid_resistance | 0)
+        || (u.EAcid_resistance | 0)
+        || (u.uprops?.[ACID_RES]?.intrinsic | 0) || (u.uprops?.[ACID_RES]?.extrinsic | 0));
     const halfPhys = !!((u.HHalf_physical_damage | 0)
         || (u.EHalf_physical_damage | 0));
 

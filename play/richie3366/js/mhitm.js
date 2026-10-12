@@ -104,6 +104,8 @@ import {
     EF_VERBOSE,
     ER_NOTHING,
     PROTECTION,
+    ANTIMAGIC,
+    UNCHANGING,
     TEST_MOVE,
 } from './const.js';
 import {
@@ -136,7 +138,7 @@ import { an, xname, makeplural, cxname, vtense, The, simpleonames, doname } from
 import { mon_explodes } from './explode.js';
 import { makemon, makemon_appear_msg, newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
 import { stairway_find_type_dir } from './mklev.js';
-import { polyself } from './polyself.js';
+import { polyself, poly_gender } from './polyself.js';
 import { you_were, you_unwere, were_change } from './were.js';
 import { night } from './calendar.js';
 import { resists_drli, shieldeff_mon, drain_item } from './zap.js';
@@ -584,14 +586,28 @@ export function get_mattk(magr, i, mdef = undefined, prev_result = null) {
     return attk;
 }
 
-/** C ref: youprop.h Antimagic — H || E flat. */
+/**
+ * C ref: youprop.h:57 Antimagic — HAntimagic || EAntimagic ≡
+ * uprops[ANTIMAGIC].intrinsic || .extrinsic. confer_oc_oprop writes worn
+ * oprop gear (cloak of MR, gray DSM) only to uprops — the EAntimagic
+ * flat is never written — so OR the live slot (sit.js D-1089 idiom).
+ */
 function Antimagic(u = game.u || {}) {
-    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    const e = u.uprops?.[ANTIMAGIC];
+    return !!((u.Antimagic || u.HAntimagic || u.EAntimagic)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
-/** C ref: youprop.h Unchanging — H || E flat. */
+/**
+ * C ref: youprop.h:370–371 Unchanging — HUnchanging || EUnchanging ≡
+ * uprops[UNCHANGING].intrinsic || .extrinsic. The amulet of unchanging
+ * confers via the same uprops-only confer_oc_oprop mechanism; the
+ * EUnchanging flat is never written. Same OR as Antimagic above.
+ */
 function Unchanging(u = game.u || {}) {
-    return !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+    const e = u.uprops?.[UNCHANGING];
+    return !!((u.Unchanging || u.HUnchanging || u.EUnchanging)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /**
@@ -2128,13 +2144,8 @@ function gender(mtmp) {
     return mtmp?.female ? 1 : 0;
 }
 
-/**
- * C ref: polyself.c poly_gender — 0/1 ≡ flags.female, 2=none.
- * Named omission: is_neuter non-humanoid → 2.
- */
-function poly_gender() {
-    return game.flags?.female ? 1 : 0;
-}
+/* C polyself.c poly_gender — live export from './polyself.js' (local
+ * clone removed; could_seduce needs the is_neuter/non-humanoid → 2 arm). */
 
 /** C ref: youprop.h See_invisible. */
 function See_invisible() {

@@ -34,7 +34,7 @@ import { place_object, obj_extract_self, sobj_at, add_to_buried, in_rooms, mksob
 import { obj_resists } from './dogmove.js';
 import { is_ice, cant_reach_floor } from './engrave.js';
 import { uteetering_at_seen_pit, uescaped_shaft } from './pickup.js';
-import { yobjnam, Yobjnam2, an, An } from './objnam.js';
+import { yobjnam, Yobjnam2, an, An, simpleonames } from './objnam.js';
 import { IS_STWALL } from './const.js';
 import { trapname } from './makemon.js';
 import { is_pool, may_dig } from './look.js';
@@ -1123,7 +1123,7 @@ export async function dig() {
          * spawn does not apply (Dlvl 1 is not the earth level). */
         let digtxt = null;
         const digtyp = dig_typ(u.uwep || tool, dpx, dpy);
-        let bobj, sobj;
+        let bobj, sobj, dmgtxt = null;
         if (digtyp === DIGTYP_STATUE && (sobj = sobj_at(STATUE, dpx, dpy))) {
             /* C dig.c:451-458 */
             digtxt = (await break_statue(sobj)) ? 'The statue shatters.' : null;
@@ -1143,11 +1143,30 @@ export async function dig() {
             /* C dig.c:488-500 — ordinary wall → doorless doorway. */
             lev.typ = DOOR; lev.doormask = D_NODOOR;
             digtxt = 'You make an opening in the wall.';
+        } else if (lev && lev.typ === SDOOR) {
+            /* C dig.c:501-505 */
+            cvt_sdoor_to_door(lev); /* ->typ = DOOR */
+            digtxt = 'You break through a secret door!';
+            if (!((lev.doormask | 0) & D_TRAPPED))
+                lev.doormask = D_BROKEN;
+        } else if (closed_door(dpx, dpy)) {
+            /* C dig.c:506-516 */
+            digtxt = `You break through the door with your ${simpleonames(u.uwep)}.`;
+            if (in_rooms(dpx, dpy, SHOPBASE).length > 0) {
+                add_damage(dpx, dpy, 400); /* SHOP_DOOR_COST */
+                dmgtxt = 'break';
+            }
+            if (!((lev.doormask | 0) & D_TRAPPED))
+                lev.doormask = D_BROKEN;
+        } else {
+            return 0; /* statue or boulder got taken (C dig.c:517-518) */
         }
         unblock_point(dpx, dpy);
         feel_newsym(dpx, dpy);
         if (digtxt && !d.quiet)
             await pline(digtxt);
+        if (dmgtxt)
+            await pay_for_damage(dmgtxt, false); /* C dig.c:526-527 */
         /* C dig.c:539-543 cleanup — lastdigtime = moves; clear the dig level. */
         d.lastdigtime = g.moves | 0;
         d.quiet = false;
@@ -1698,18 +1717,21 @@ function debugpline1(_fmt, _arg) { }
 // otmp === uball/uchain or otyp === LEASH) — stubbed per charter rather than
 // ported.
 export async function unpunish() {
+    // C read.c:3066-3077.  delobj(chain) runs delobj_core's obj_resists(0,0)
+    // (invent.c:1446) — one rn2(100) — before the extract.
     const { uball, uchain } = findBallChain();
     if (!uball && !uchain)
         return false;
+    const u = game.u;
     if (uchain) {
         uchain.owornmask = (uchain.owornmask | 0) & ~W_CHAIN;
-        if ((uchain.where | 0) === OBJ_INVENT)
-            await useup(uchain);
-        else if ((uchain.where | 0) === OBJ_FLOOR)
-            remove_object(uchain);
+        u.uchain = null;                       /* setworn(0, W_CHAIN) */
+        await delobj(uchain);
     }
-    if (uball)
+    if (uball) {
         uball.owornmask = (uball.owornmask | 0) & ~W_BALL;
+        u.uball = null;                        /* setworn(0, W_BALL) */
+    }
     return true;
 }
 /* C apply.c:711-724 — an about-to-be-destroyed leash releases its monster. */
@@ -2032,7 +2054,7 @@ export async function mdig_tunnel(mtmp) {
             }
         } else {
             if (game.flags.verbose) {
-                if (!game.flags.unaware && !rn2(3)) /* not too often.. */
+                if (!Unaware_real() && !rn2(3)) /* not too often.. */
                     draft_message(true); /* "You feel an unexpected draft." */
             }
         }

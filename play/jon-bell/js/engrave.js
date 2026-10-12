@@ -122,13 +122,22 @@ function stylus_ok(obj) {
 
 async function u_can_engrave() {
     const u = game.u || {};
-    if (u.uswallow) {
-        return false;
-    }
-    /* C engrave.c:520-533 — terrain arms */
+    /* C engrave.c:510-518 — swallowed: animal engulfers get the Jonah joke,
+     * whirly ones cannot be reached; amorphous ones fall through (jello). */
     const lev = game.level?.at?.(u.ux, u.uy);
     const levtyp = lev ? (lev.typ | 0) : 0;
-    if (lev) {
+    if (u.uswallow) {
+        const sd = u.ustuck?.data;
+        if (sd && ((sd.mflags1 | 0) & 0x00040000 /* M1_ANIMAL */) !== 0) {
+            await pline("What would you write?  \"Jonah was here\"?");
+            return false;
+        } else if (sd && ((sd.mlet | 0) === 22 /* S_VORTEX */
+                          || (sd.pmidx | 0) === 154 /* PM_AIR_ELEMENTAL */)) {
+            await cant_reach_floor(u.ux, u.uy, false, false, false);
+            return false;
+        }
+    } else if (lev) {
+        /* C engrave.c:519-532 — terrain arms */
         if (levtyp === LAVAPOOL || levtyp === LAVAWALL) {
             await pline(`You can't write on the ${surface_real(u.ux, u.uy)}!`);
             return false;

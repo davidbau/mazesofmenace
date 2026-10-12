@@ -97,7 +97,7 @@ import { create_particular } from './wizcmds.js';
 import { YMonnam, little_to_big, update_inventory, Some_Monnam, mon_hates_silver, locomotion, s_suffix, Adjmonnam, poly_when_stoned, y_monnam, can_blow, resists_blnd, helpless, noit_mon_nam, mon_nam_too } from './mhitm.js';
 import { mon_nam, m_at } from './uhitm.js';
 import { unconscious } from './pickup.js';
-import { an, makeplural, makesingular, vtense, doname_potion, doname, distant_name, ansimpleoname, bare_artifactname } from './objnam.js';
+import { an, makeplural, makesingular, vtense, singular, doname, distant_name, ansimpleoname, bare_artifactname } from './objnam.js';
 /* mloot_container (muse.c:2264, use_misc's MUSE_BAG arm) needs C's shared
  * can_carry(mon, obj) — the same function dog.c's pet-pickup path calls.
  * Creates a bidirectional import cycle with js/dogmove.js (which already
@@ -4054,7 +4054,7 @@ async function precheck(mtmp, otmp) {
             const cc = enexto_out(mtmp.mx | 0, mtmp.my | 0, permonstTemplate(PM_GHOST_MM));
             if (!cc)
                 return 0;
-            mquaffmsg(mtmp, otmp);
+            await mquaffmsg(mtmp, otmp);
             m_useup(mtmp, otmp);
             const mon = await makemon(permonstTemplate(PM_GHOST_MM), cc.x | 0, cc.y | 0, MM_NOMSG);
             if (!mon) {
@@ -4074,7 +4074,7 @@ async function precheck(mtmp, otmp) {
             const cc = enexto_out(mtmp.mx | 0, mtmp.my | 0, permonstTemplate(PM_DJINNI_MM));
             if (!cc)
                 return 0;
-            mquaffmsg(mtmp, otmp);
+            await mquaffmsg(mtmp, otmp);
             m_useup(mtmp, otmp);
             const mon = await makemon(permonstTemplate(PM_DJINNI_MM), cc.x | 0, cc.y | 0, MM_NOMSG);
             if (!mon) {
@@ -4113,6 +4113,24 @@ async function precheck(mtmp, otmp) {
 }
 const POTION_CLASS_MM = 8, WAND_CLASS_MM = 11, WAND_BACKFIRE_CHANCE_MM = 100;
 const PM_GHOST_MM = 287, PM_DJINNI_MM = 315;
+/* ---------------------------------------------------------------------------
+ * mquaffmsg(mtmp, otmp) — C ref: nethack-c/src/muse.c:292-302 (staticfn).
+ *
+ *   if (canseemon(mtmp)) {
+ *       observe_object(otmp);
+ *       pline_mon(mtmp, "%s drinks %s!", Monnam(mtmp), singular(otmp, doname));
+ *   } else if (!Deaf) {
+ *       Soundeffect(se_mon_chugging_potion, 25);
+ *       You_hear("a chugging sound.");
+ *   }
+ *
+ * C uses singular(otmp, doname), including xname's naming side effects.
+ * In particular, a Cleric learns BUC while the name is formatted.  Use the
+ * canonical formatter and restore the stack quantity before the caller
+ * consumes the potion.  Naming under Hallucination retains that formatter's
+ * own C-derived behavior; this wrapper does not fabricate RNG draws.
+ * ---------------------------------------------------------------------------
+ */
 /* C ref: nethack-c/include/youprop.h:125 Deaf = (HDeaf || EDeaf ||
  * u.uroleplay.deaf).  DEAF is prop.h index 40; js/const.js exports it. */
 function mquaffmsg_Deaf() {
@@ -4136,20 +4154,16 @@ const BOLT_LIM_MM = 8;
 function mquaffmsg_You_hear(line) { return You_hear(line); }
 /* C ref: nethack-c/src/objnam.c:1116-1127 singular(otmp, func) — call func
  * with the object's quantity temporarily forced to 1. */
-function mquaffmsg_singular_doname(otmp) {
-    const savequan = otmp.quan;
-    otmp.quan = 1;
-    const nam = doname_potion(otmp);
-    otmp.quan = savequan;
-    return nam;
+async function mquaffmsg_singular_doname(otmp) {
+    return await singular(otmp, doname);
 }
-function mquaffmsg(mtmp, otmp) {
+async function mquaffmsg(mtmp, otmp) {
     if (!mtmp || !otmp)
         return;
     if (canseemon(mtmp)) {
         /* C muse.c:295-297 */
         observe_object(otmp);
-        pline_mon(mtmp, `${Monnam(mtmp)} drinks ${mquaffmsg_singular_doname(otmp)}!`);
+        pline_mon(mtmp, `${Monnam(mtmp)} drinks ${await mquaffmsg_singular_doname(otmp)}!`);
     } else if (!mquaffmsg_Deaf()) {
         /* C muse.c:298-301 — Soundeffect() is audio only. */
         mquaffmsg_You_hear('a chugging sound.');
@@ -4348,7 +4362,17 @@ async function you_aggravate(mtmp) {
      * from an earlier page of the same turn (HP 115 vs C 78). */
     const _agg_sv = game._paintedSnapshot;
     game._paintedSnapshot = null;
-    await force_more(String(game._pending_message || _agg1));
+    const _agg1Morc = await force_more(String(game._pending_message || _agg1));
+    /* C's cls() is a separate blocking display_nhwindow after _agg1's
+     * pline has completed. If its page is dismissed with ESC, WIN_STOP is
+     * already live when the later You_feel(_agg2) arrives, so that message is
+     * buffered but not painted. force_more's generic armed bit models a page
+     * raised inside the same update_topl call and deliberately lets that
+     * message paint; promote only this explicit post-pline cls page here. */
+    if (_agg1Morc === 27) {
+        game._topl_win_stop = true;
+        game._topl_win_stop_armed = false;
+    }
     if (game._paintedSnapshot == null) game._paintedSnapshot = _agg_sv;
     await cls();
     const mndx = Hallucination() ? rn2_on_display_rng(NUMMONS) : monsndx(mtmp);
@@ -4870,7 +4894,7 @@ export async function use_defensive(mtmp) {
         if (!otmp)
             throw new Error("use_defensive: no bugle");
         if (vismon) {
-            pline_mon(mtmp, `${Monnam(mtmp)} plays ${doname(otmp)}!`);
+            pline_mon(mtmp, `${Monnam(mtmp)} plays ${await doname(otmp)}!`);
         } else if (!mquaffmsg_Deaf()) {
             mquaffmsg_You_hear('a bugle playing reveille!');
         }
@@ -5220,7 +5244,7 @@ export async function use_defensive(mtmp) {
     case MUSE_POT_HEALING:
         if (!otmp)
             throw new Error("use_defensive: no potion of healing");
-        mquaffmsg(mtmp, otmp);
+        await mquaffmsg(mtmp, otmp);
         i = d(6 + 2 * bcsign(otmp), 4);
         healmon(mtmp, i, 1);
         if (!otmp.cursed && !mtmp.mcansee)
@@ -5234,7 +5258,7 @@ export async function use_defensive(mtmp) {
     case MUSE_POT_EXTRA_HEALING:
         if (!otmp)
             throw new Error("use_defensive: no potion of extra healing");
-        mquaffmsg(mtmp, otmp);
+        await mquaffmsg(mtmp, otmp);
         i = d(6 + 2 * bcsign(otmp), 8);
         healmon(mtmp, i, otmp.blessed ? 5 : 2);
         if (!mtmp.mcansee)
@@ -5248,7 +5272,7 @@ export async function use_defensive(mtmp) {
     case MUSE_POT_FULL_HEALING_DEF:
         if (!otmp)
             throw new Error("use_defensive: no potion of full healing");
-        mquaffmsg(mtmp, otmp);
+        await mquaffmsg(mtmp, otmp);
         if ((otmp.otyp | 0) === POT_SICKNESS)
             unbless_potion(otmp); /* Pestilence */
         healmon(mtmp, mtmp.mhpmax, otmp.blessed ? 8 : 4);
@@ -5291,7 +5315,7 @@ export async function use_misc(mtmp) {
     case MUSE_POT_GAIN_LEVEL:
         if (!otmp)
             throw new Error("use_misc: no potion of gain level");
-        mquaffmsg(mtmp, otmp);
+        await mquaffmsg(mtmp, otmp);
         if (otmp.cursed) {
             if (Can_rise_up(mtmp.mx, mtmp.my, game.u.uz)) {
                 let tolev = depth_of_level(game.u.uz) - 1;
@@ -5337,7 +5361,7 @@ export async function use_misc(mtmp) {
         if (otmp.otyp === WAN_MAKE_INVISIBLE_OTYP) {
             await mzapwand(mtmp, otmp, true);
         } else {
-            mquaffmsg(mtmp, otmp);
+            await mquaffmsg(mtmp, otmp);
         }
         nambuf = mon_nam(mtmp);
         mon_set_minvis(mtmp, !otmp.cursed ? false : true);
@@ -5373,7 +5397,7 @@ export async function use_misc(mtmp) {
     case MUSE_POT_SPEED:
         if (!otmp)
             throw new Error("use_misc: no potion of speed");
-        mquaffmsg(mtmp, otmp);
+        await mquaffmsg(mtmp, otmp);
         mon_adjust_speed(mtmp, 1, otmp);
         await m_useup(mtmp, otmp);
         return 2;
@@ -5390,7 +5414,7 @@ export async function use_misc(mtmp) {
     case MUSE_POT_POLYMORPH:
         if (!otmp)
             throw new Error("use_misc: no potion of polymorph");
-        mquaffmsg(mtmp, otmp);
+        await mquaffmsg(mtmp, otmp);
         await m_useup(mtmp, otmp);
         if (vismon)
             pline_mon(mtmp, `${Monnam(mtmp)} suddenly mutates!`);

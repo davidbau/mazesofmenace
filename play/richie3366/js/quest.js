@@ -6,7 +6,7 @@
 // (calls live in chat_with_leader — miss no-ops after the C nhl_init shuffle);
 // exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest.
-// nexttime: Arc+Bar+Pri+Wiz (Wiz plain pline, no output/synopsis in lua);
+// nexttime: Arc+Bar+Pri+Wiz+Mon+Rog (Wiz+Mon+Rog plain pline, no output/synopsis in lua);
 // othertime: Arc+Bar+Pri; firsttime: +Val+Mon (Cav misses);
 // goal_first: Arc+Bar+Cav+Pri+Kni+Ran+Sam+Tou+Wiz
 // (Wiz+Tou plain pline, no output/synopsis in lua),

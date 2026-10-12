@@ -520,22 +520,10 @@ function chainInMiddle(chx, chy, x, y, uball) {
         && distmin(chx, chy, uball.ox, uball.oy) <= 1;
 }
 
-// place_object (mkobj.c:2307-2369), reproduced locally the same way
-// js/mklev.js's own place_object is local/non-exported there — this file
-// cannot import it (not exported), so the fobj/nexthere splice needed by
-// move_bc's before=0 half is reproduced here. The boulder-vs-boulder
-// under/over ordering special case is omitted: uball/uchain are never a
-// (before=0 only occurs via SKIP_TO_DRAG or the hmon/miss branch, neither
-// ever taken — see file header).
+// non-boulder-goes-under-boulders rule (mkobj.c:2336-2345) applies — a
+// hand-rolled head-insert put the chain on top of a boulder pile.
 function placeObjectOnFloor(otmp, x, y) {
-    const otmp2 = game.level.levelObjects[x][y] ?? null;
-    otmp.nexthere = otmp2;
-    game.level.levelObjects[x][y] = otmp;
-    otmp.ox = x;
-    otmp.oy = y;
-    otmp.where = OBJ_FLOOR;
-    otmp.nobj = game.fobj;
-    game.fobj = otmp;
+    place_object(otmp, x, y);
 }
 
 // move_bc (ball.c:437-558) — state-relevant subset only; see file header.

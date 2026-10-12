@@ -365,7 +365,22 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     /* tty window origin is capped at column 41 even for a narrow menu. */
     const WIN_COL = Math.min(41, 80 - maxLen - 2);
     const uac = g.u?.uac ?? 0;
-    const screenOutput = build_window_screen(lines, WIN_COL, uac);
+    /* C tty_dismiss_nhwindow -> docorner(cw->offx, cw->maxrow + 1, 0)
+     * (wintty.c:3684-3687): a getobj menu dismissed just before this one wiped
+     * status rows from its offx-1 rightward when it was tall enough to reach
+     * them, and nothing repaints them under this shorter window.  Same rule as
+     * itemactions (js/cmd.js). */
+    const prior = g._getobj_menu_win;
+    g._getobj_menu_win = null;
+    let statusClip;
+    if (prior && prior.moves === g.moves && prior.winRows >= 22 && lines.length <= 22)
+        statusClip = prior.winRows === 22
+            ? (prior.WIN_COL <= 34 ? -1 : prior.WIN_COL - 3) : prior.WIN_COL - 2;
+    /* The wiped corner stays wiped under the menus that follow (nothing
+     * repaints status until the next bot()), e.g. the category menu. */
+    g._carryStatusClip = statusClip !== undefined
+        ? { clip: statusClip, moves: g.moves } : null;
+    const screenOutput = build_window_screen(lines, WIN_COL, uac, statusClip);
     const endRow = lines.length - 1;
     const endCursorCol = WIN_COL + 5 + 1; /* WIN_COL + len('(end)') + 1 */
 
@@ -623,8 +638,14 @@ function _invert_test(mode, skipinvert, is_selected) {
         return true;
     return is_selected ? true : false;
 }
-async function _tty_pick_any_menu(renderLines, items, winColFooter) {
+/* Geometry of the pick-any menu most recently dismissed by query_category, so
+ * the take-out/put-in menu opened right after it can reproduce the
+ * tty_dismiss_nhwindow docorner() erase of status line 1 (wintty.c:3684). */
+let _priorPickMenu = null;
+let _lastPickGeom = null;
+async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null) {
     const g = game;
+    _lastPickGeom = null;
     /* Same tty window boundary as in_or_out_menu: an insertion message must be
      * acknowledged before reversed looting opens its take-out menu. */
     if (g._pending_message)
@@ -671,8 +692,23 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter) {
         const uac = g.u?.uac ?? 0;
         g._pending_message = '';
         g._topl_sticky = null;
+        const carry = g._carryStatusClip;
         g._screen_output = build_window_screen(lines, WIN_COL, uac,
-                                               tall ? 0 : undefined);
+                                               tall ? 0
+                                               : (carry && carry.moves === g.moves ? carry.clip : undefined));
+        /* A dismissed 22+-row menu's docorner() cleared row 22 from its offx;
+         * row 23 survives.  Reuse build_window_screen's -1 arm, which keeps
+         * game._pickinv_window.WIN_COL - 2 columns of the title. */
+        const clipPrior = !tall && prior && prior.rows >= 22 && lines.length < 22;
+        const savedPW = g._pickinv_window;
+        if (clipPrior) g._pickinv_window = { ...(savedPW || {}), WIN_COL: prior.col };
+        try {
+            g._screen_output = build_window_screen(lines, WIN_COL, uac,
+                                                   tall ? 0 : clipPrior ? -1 : undefined);
+        } finally {
+            if (clipPrior) g._pickinv_window = savedPW;
+        }
+        _lastPickGeom = { rows: tall ? 24 : lines.length, col: WIN_COL };
         set_cursor(tall
             ? WIN_COL + String(lines[footerRow] || '').length
             : WIN_COL + 6,
@@ -780,6 +816,7 @@ async function query_category_takeout(box) {
  * which C emits from JUSTPICKED for either direction but which only a put-in
  * list can populate (pickup_prev is set on things the hero just picked up). */
 async function _query_category(contents, action, withJustPicked) {
+    _priorPickMenu = null;
 
     const _ir = (game.flags && game.flags.initrole != null) ? (game.flags.initrole | 0) : -1;
     /* PM_CLERIC is role index 6 in this port (same shape as js/dogmove.js). */
@@ -902,6 +939,7 @@ async function _query_category(contents, action, withJustPicked) {
     };
 
     const cancelled = await _tty_pick_any_menu(render, items, 'end');
+    _priorPickMenu = cancelled ? null : _lastPickGeom;
     game._pending_message = '';
     await flush_screen(1);
     if (cancelled)
@@ -1087,7 +1125,9 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
         return out;
     };
 
-    const cancelled = await _tty_pick_any_menu(renderLines, items, 'end');
+    const prior = _priorPickMenu;
+    _priorPickMenu = null;
+    const cancelled = await _tty_pick_any_menu(renderLines, items, 'end', prior);
     game._pending_message = '';
     await flush_screen(1);
     if (cancelled) return [];

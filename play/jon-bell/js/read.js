@@ -927,7 +927,13 @@ export async function study_book(spellbook) {
     for (const s of spl_book) {
         if ((s.sp_id | 0) === booktype) { sb = s; break; }
     }
-    if (sb && (sb.sp_know | 0) > 2000 /* KEEN/10 */) {
+    /* C ref: spell.c:496-503 — the already-known test (561-573) lives in the
+     * ELSE of the resume-after-interrupt branch, so a resumed study skips it. */
+    const _sp = g.context?.spbook;
+    const _confused = !!(g.u?.uprops?.[CONFUSION]?.intrinsic);
+    const _resuming = !!(_sp && _sp.delay && !_confused && spellbook === _sp.book
+                         && booktype !== 407 /* SPE_BLANK_PAPER */);
+    if (!_resuming && sb && (sb.sp_know | 0) > 2000 /* KEEN/10 */) {
         const idx = booktype - _SPBOOK_FIRST_OTYP;
         const name = (idx >= 0 && idx < _SPBOOK_NAMES.length)
             ? _SPBOOK_NAMES[idx] : 'a spell';
@@ -2984,8 +2990,18 @@ function reconstrain_map_rd() {
 }
 async function map_redisplay_rd() {
     const saved = reconstrain_map_rd();
-    if (game._pending_message)
-        await force_more(game._pending_message);
+    if (game._pending_message) {
+        const morc = await force_more(game._pending_message);
+        /* docrt()'s flush is a separate blocking display_nhwindow; ESC there
+         * sets WIN_STOP (topl.c more():232-235), so later plines this turn
+         * are buffered, not painted. */
+        /* topl.c:264 more(): ESC on this cls() page sets WIN_STOP, so later
+         * plines this turn (mattacku) are buffered, not painted. */
+        if (morc === 27) {
+            game._topl_win_stop = true;
+            game._topl_win_stop_armed = false;
+        }
+    }
     await docrt();
     // C detect.c:101-102 restores the constrained view after docrt().
     if (saved.uinwater)
@@ -3254,7 +3270,16 @@ async function gold_detect(sobj) {
             await _strange_feeling(sobj, buf);
             return 1;
         }
-        if (stale) await docrt();
+        if (stale) {
+            /* C detect.c:409: docrt() reaches cls(), which flushes the
+             * message window before repainting the map (display.c:1748,2196;
+             * wintty.c:1873-1880). The swallowed/underwater/buried branches
+             * also reach cls() through their mode-1 helpers (display.c:1338,
+             * 1407,1455). Preserve docrt_flags' early bypass as well. */
+            if (u.ux && !g.program_state?.in_docrt && g._pending_message)
+                await force_more(g._pending_message);
+            await docrt();
+        }
         await You('notice some gold between your %s.', makeplural(food_body_part(FOOT_GD)));
         return 0;
     }
@@ -4293,7 +4318,11 @@ export function losespells() {
     g.context.spbook.book = null;
     g.context.spbook.o_id = 0;
     const spl = g.spl_book || [];
-    const n = spl.length;
+    /* C spell.c:1769-1771 — n counts up to the first NO_SPELL slot; spl_book
+     * may be padded with empty (sp_id 0) rows, so length is not n. */
+    let n = 0;
+    while (n < spl.length && spl[n] && (spl[n].sp_id | 0) !== 0 /* NO_SPELL */)
+        n++;
     /* C has no n == 0 early-out: rn2(0 + 1) still draws (spell.c:1778). */
     let nzap = rn2(n + 1);
     if (_Confusion() !== 0) {
@@ -4752,7 +4781,26 @@ export function magic_map_background(loc, x, y) {
     let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
     /* C: if (!cansee(x,y) && !lev->waslit) — dark-room / dark-corridor correction. */
     if (!cansee(x, y) && !loc.waslit) {
-        if (loc.typ === ROOM && rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR) {
+        const darkRoomOn = !!(game.flags?.dark_room && game.iflags?.use_color);
+        if (loc.typ === ROOM && Is_rogue_level(game.u?.uz)
+            && ((rg.ch === '.' && !rg.decgfx) || (rg.ch === '~' && rg.decgfx))) {
+            rg = { ch: ' ', color: NO_COLOR, decgfx: false };
+        } else if (loc.typ === ROOM && !(game.flags?.dark_room && game.iflags?.use_color)
+                   && ((rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR)
+                       || (rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR))) {
+            /* display.c:245-247 — without dark_room+use_color the glyph is
+             * GLYPH_NOTHING (blank), not a dark dot. */
+            rg = { ch: ' ', color: NO_COLOR, decgfx: false };
+        } else if (loc.typ === ROOM && game.flags?.dark_room === false
+                   && ((rg.ch === '.' && !rg.decgfx) || (rg.ch === '~' && rg.decgfx))
+                   && rg.color === NO_COLOR) {
+            /* C display.c:245-247: !flags.dark_room → GLYPH_NOTHING (blank). */
+            rg = { ch: ' ', color: NO_COLOR, decgfx: false };
+        } else if (loc.typ === ROOM && !darkRoomOn
+                   && ((rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR)
+                       || (rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR))) {
+            rg = { ch: ' ', color: NO_COLOR, decgfx: false };
+        } else if (loc.typ === ROOM && rg.ch === '.' && !rg.decgfx && rg.color === NO_COLOR) {
             rg.color = CLR_BLACK;
         } else if (loc.typ === ROOM && rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR) {
             rg.color = CLR_BLACK;

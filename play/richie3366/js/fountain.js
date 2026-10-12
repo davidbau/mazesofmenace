@@ -86,7 +86,8 @@ import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, A_DEX, adjattrib, exercise, acurr } from './attrib.js';
 import { morehungry, poison_strdmg, vomit, newuhs } from './eat.js';
-import { losehp, in_town, You_hear } from './hack.js';
+import { losehp, finish_maybe_wail, in_town, You_hear } from './hack.js';
+import { finish_losehp_done } from './end.js';
 import { distmin, level_difficulty } from './hacklib.js';
 import { monster_detect } from './detect.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -824,7 +825,17 @@ export async function drinkfountain() {
                 await pline(
                     `Perhaps it is runoff from the nearby ${fruitname(false)} farm.`,
                 );
+                // C fountain.c:304 — losehp is noreturn when fatal
+                // (hack.c:4287-4288 urgent_pline("You die...") + done(DIED));
+                // on wizard lifesave C breaks to the dryup tail. Drain in C
+                // order (potion.js D-3608 oil idiom): fatal → done, else wail.
                 losehp(rnd(4), 'unrefrigerated sip of juice', KILLED_BY_AN);
+                if (game._losehp_needs_done) {
+                    await finish_losehp_done();
+                    if (game.program_state?.gameover) return;
+                } else {
+                    await finish_maybe_wail();
+                }
                 break;
             }
             // clang LTR: poison_strdmg(rn1(4,3), rnd(10), ...)
@@ -833,6 +844,19 @@ export async function drinkfountain() {
             // C fountain.c:307 "contaminated water", KILLED_BY.
             await poison_strdmg(strloss, dmg,
                 'contaminated water', KILLED_BY);
+            // C :305-309 — losestr/losehp inside poison_strdmg are noreturn
+            // when fatal, so exercise runs only when the hero survives.
+            // losestr drains its own death (D-3782): a set gameover here is
+            // true death → return. Otherwise drain the trailing losehp
+            // (fatal → done; lifesave → exercise) or the low-HP wail —
+            // same oil idiom as the poisRes arm above.
+            if (game.program_state?.gameover) return;
+            if (game._losehp_needs_done) {
+                await finish_losehp_done();
+                if (game.program_state?.gameover) return;
+            } else {
+                await finish_maybe_wail();
+            }
             exercise(A_CON, false);
             break;
         }

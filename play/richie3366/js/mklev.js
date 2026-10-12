@@ -6882,7 +6882,9 @@ function load_wiz_strt() {
         let pm = mlet ? mkclass(mlet, G_NOGEN) : null;
         pm = splev_mines_maybe_clear_your_race(pm);
         const moved = splev_resolve_occupied(mx + rx, my + ry, pm);
-        const mtmp = pm ? makemon(pm, moved.x, moved.y, 0) : null;
+        // C sp_lev.c create_monster :1959–1988 — a mines-gate-cleared (or
+        // mkclass-failed) null pm still spawns: makemon(NULL) → rndmonst().
+        const mtmp = makemon(pm, moved.x, moved.y, 0);
         // C sp_lev.c create_monster :2125 — des.monster class letters keep
         // the tmpmons.female = 0 default (:3230); clobber the makemon
         // birth draw (cf. splev_create_monster D-0873).
@@ -17921,7 +17923,8 @@ function load_minetn_5() {
         let x = mx + rx, y = my + ry;
         const moved = splev_resolve_occupied(x, y, pm);
         x = moved.x; y = moved.y;
-        if (!pm) return;
+        // C sp_lev.c create_monster :1959–1988 — a mines-gate-cleared null
+        // pm still spawns: makemon(NULL) → rndmonst(), not an early return.
         const mtmp = makemon(pm, x, y, 0);
         // C sp_lev.c create_monster :2125 — des.monster class letters keep
         // the tmpmons.female = 0 default (:3230); clobber the makemon
@@ -27430,7 +27433,8 @@ function load_wizard3() {
         let pm = mlet ? mkclass(mlet, G_NOGEN) : null;
         pm = splev_mines_maybe_clear_your_race(pm);
         const moved = splev_resolve_occupied(mx + rx, my + ry, pm);
-        if (!pm) return;
+        // C sp_lev.c create_monster :1959–1988 — a mines-gate-cleared (or
+        // mkclass-failed) null pm still spawns: makemon(NULL) → rndmonst().
         const mtmp = makemon(pm, moved.x, moved.y, 0);
         // C sp_lev.c create_monster :2125 — des.monster class letters keep
         // the tmpmons.female = 0 default (:3230); clobber the makemon

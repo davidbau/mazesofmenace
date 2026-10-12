@@ -23,7 +23,10 @@ import { optfn_fruit_set } from './options.js';
 import { reset_needed_visuals } from './options_runtime.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
 import { number_pad_value } from './cmd_config.js';
-import { reset_commands, update_rest_on_space } from './cmd_binds.js';
+import { reset_commands, update_rest_on_space, cmdbind_get, bind_key } from './cmd_binds.js';
+import { EXTCMDLIST } from './cmd_extcmd_data.js';
+import { pgetchar, key2txt } from './cmd.js';
+import { display_text_window } from './com_pager.js';
 import { TtyMenu, PICK_ANY, PICK_ONE, ATR_NONE } from './tty_menu.js';
 import { menutype } from './menustyle.js';
 /* C ref: wintty.c process_menu_window's overlay composition — the shared
@@ -842,6 +845,126 @@ export async function handler_autounlock(preserveStatus = false) {
         await pline(`'autounlock' ${chngd ? 'changed to' : 'is still'} '${autounlockStr()}'.`);
 }
 
+/* C cmd.c:2208 count_bind_keys() — extended commands bound to a non-default
+ * key, plus commands that should have a key but have none. */
+function count_bind_keys() {
+    const keys = new Uint8Array(256);
+    let nbinds = 0;
+    for (let bind = game.Cmd?.cmdbinds; bind; bind = bind.next) {
+        keys[bind.key] = 1;
+        if (bind.userbind && bind.cmd && bind.cmd.key !== bind.key) nbinds++;
+    }
+    for (const ec of EXTCMDLIST)
+        if (ec.key && !keys[ec.key]) nbinds++;
+    return nbinds;
+}
+
+/* C cmd.c:2243 get_changed_key_binds(NULL) — text window form. */
+async function get_changed_key_binds() {
+    const lines = [];
+    const keys = new Uint8Array(256);
+    for (let bind = game.Cmd?.cmdbinds; bind; bind = bind.next) {
+        keys[bind.key] = 1;
+        if (bind.userbind && bind.cmd && bind.cmd.key !== bind.key) {
+            if (bind.cmd.flags & 0x4000 /* CMD_PARAM */)
+                lines.push(`BIND=${key2txt(bind.key)}:${bind.cmd.name}(${bind.param})`);
+            else
+                lines.push(`BIND=${key2txt(bind.key)}:${bind.cmd.name}`);
+        }
+    }
+    for (const ec of EXTCMDLIST)
+        if (ec.key && !keys[ec.key])
+            lines.push(`BIND=${key2txt(ec.key)}:nothing`);
+    await display_text_window(lines);
+}
+
+/* C cmd.c:2291 handler_rebind_keys_add(keyfirst). */
+/* Returns true when something flushed the topline/status (pline). */
+async function handler_rebind_keys_add(keyfirst) {
+    let key = 0, flushed = false;
+    if (keyfirst) {
+        await pline('Bind which key? ');
+        await flush_screen(1);
+        key = (await pgetchar()) & 0xff;
+        if (!key || key === 27) return true;
+    }
+    /* ~170 items span several pages, so tty_display_nhwindow() uses the
+     * whole screen (offx 0), unlike the two-line "Do what?" overlay. */
+    await drainTopline();
+    const m = new TtyMenu();
+    if (key) {
+        const bind = cmdbind_get(key);
+        if (bind && bind.cmd)
+            m.add_menu_str(`Key '${key2txt(key)}' is currently bound to "${bind.cmd.name}".`);
+        else
+            m.add_menu_str(`Key '${key2txt(key)}' is not bound to anything.`);
+        m.add_menu_str('');
+    }
+    m.add_menu(-1, 0, ATR_NONE, 'nothing: unbind the key', false, false);
+    m.add_menu_str('');
+    EXTCMDLIST.forEach((ec, i) => {
+        if (ec.flags & (0x0400 | 0x0040 | 0x0010)) return; /* MOVEMENTCMD|INTERNALCMD|CMD_NOT_AVAILABLE */
+        m.add_menu(i + 1, 0, ATR_NONE, `${ec.name}: ${ec.desc}`, false, false);
+    });
+    m.end_menu(key ? `Bind '${key2txt(key)}' to what command?` : 'Bind what command?');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    if (count > 0) {
+        const i = picks[0];
+        let ec = null, cmdstr;
+        if (i === -1) {
+            cmdstr = 'nothing';
+        } else {
+            ec = EXTCMDLIST[i - 1];
+            if (ec.flags & 0x4000 /* CMD_PARAM */) {
+                const parambuf = mungspaces(await getlin(`Command ${ec.name} requires a parameter:`));
+                cmdstr = `${ec.name}(${parambuf})`;
+            } else {
+                cmdstr = ec.name;
+            }
+        }
+        if (!key) {
+            await pline('Bind which key? ');
+            await flush_screen(1);
+            flushed = true; /* painted AFTER the full-screen command menu */
+            key = (await pgetchar()) & 0xff;
+            if (!key || key === 27) return true;
+        }
+        const prevcmd = cmdbind_get(key);
+        if (bind_key(key, cmdstr, true)) {
+            if (prevcmd && prevcmd.cmd !== ec)
+                flushed = true, await pline(`Changed key '${key2txt(key)}' from "${prevcmd.cmd.name}" to "${cmdstr}".`);
+            else if (!prevcmd)
+                flushed = true, await pline(`Bound key '${key2txt(key)}' to "${cmdstr}".`);
+        } else {
+            await pline('Key binding failed?!');
+            flushed = true;
+        }
+    }
+    return flushed;
+}
+
+/* C cmd.c:2408 handler_rebind_keys. */
+export async function handler_rebind_keys() {
+    /* The options window blanked the status rows; once any sub-step has
+     * flushed (pline, --More--), later menus overlay a painted status. */
+    let statusPainted = false;
+    for (;;) {
+        /* C: opening the window over a pending topline message more()s it. */
+        await drainTopline();
+        const m = new TtyMenu({ overlay: true, statusClipCol: statusPainted ? undefined : 0 });
+        m.add_menu(1, 0, ATR_NONE, 'bind key to a command', false, false);
+        m.add_menu(2, 0, ATR_NONE, 'bind command to a key', false, false);
+        if (count_bind_keys())
+            m.add_menu(3, 0, ATR_NONE, 'view changed key binds', false, false);
+        m.end_menu('Do what?');
+        const { count, picks } = await m.select_menu(PICK_ONE);
+        if (count <= 0) return;
+        const i = picks[0];
+        if (i === 1 || i === 2) { if (await handler_rebind_keys_add(i === 1)) statusPainted = true; }
+        else if (i === 3) { await get_changed_key_binds(); statusPainted = true; }
+    }
+}
+
 export async function doset() {
     const g = game;
     g.flags = g.flags || {};
@@ -981,6 +1104,10 @@ export async function doset() {
                 } else if (ent.row.name === 'msg_window') {
                     await drainTopline();
                     await handler_msg_window(statusRefreshed);
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'bind keys') {
+                    await drainTopline();
+                    await handler_rebind_keys();
                     statusRefreshed = true;
                 } else if (ent.row.name === 'runmode') {
                     await drainTopline();

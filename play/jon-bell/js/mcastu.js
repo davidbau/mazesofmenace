@@ -350,7 +350,7 @@ const HEAD_MC = 8;                    /* hack.h body-part index (js/cmd.js:35893
  * spell that did damage halted the run the moment mattacku's AT_MAGC case was
  * wired.  Re-exported rather than re-derived (js/mhitm.js:170 holds a THIRD,
  * silent-no-op copy — fleet-feedback work, not this target's). */
-import { mdamageu } from './mhitu.js';
+import { mdamageu, ignite_items } from './mhitu.js';
 import { helpless } from './mhitm.js';
 export { mdamageu };
 export async function burn_away_slime() {
@@ -689,6 +689,9 @@ export async function mcast_fire_pillar(mtmp, dmg) {
     await burn_away_slime();
     await burnarmor(game.youmonst || u);
     await destroy_items(true, AD_FIRE, orig_dmg);
+    await ignite_items(game.invent || null);
+    await ignite_items(game.invent); /* mcastu.c:559 */
+    await ignite_items(game.invent); /* C mcastu.c:559 ignite_items(gi.invent) */
     await mon_spell_hits_spot(mtmp, AD_FIRE, u.ux, u.uy);
     return dmg;
 }
@@ -1404,7 +1407,8 @@ function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 // ── BZ_ macros from zap.h ──
 function BZ_VALID_ADTYP(adtyp) { return adtyp >= 1 && adtyp <= 8; }
 function BZ_OFS_AD(adtyp) { return adtyp - 1; }
-function BZ_M_SPELL(ofs) { return ofs + 12; }
+/* C hack.h:1486 BZ_M_SPELL(bztyp) = (-10 - (bztyp)): monster spells are NEGATIVE. */
+function BZ_M_SPELL(ofs) { return -10 - ofs; }
 
 // ── unported helper ──
 export async function buzz(type, dmg, x, y, dx, dy) {

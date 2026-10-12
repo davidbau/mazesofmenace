@@ -181,6 +181,10 @@ export class NethackGame {
             g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set)
             g.tutorial_set_in_config = true;
+        /* C cfgfiles.c:1216 WIZKIT= names gw.wizkit; read_wizkit() (allmain.c:827)
+         * reports it unreadable (files.c:2487) — this port has no filesystem. */
+        { const wk = /^WIZKIT=(.*)$/m.exec(this._nethackrc || '');
+          if (wk) g.wizkit = wk[1].trim(); }
         // Apply symset option → gs.symset[PRIMARYSET].handling.
         // C ref: options.c optfn_DECgraphics / handler_symset — sets gs.symset[PRIMARYSET].handling.
         // Default (no symset option) keeps H_UNK → ASCII PCHAR glyphs from defsym.h.
@@ -460,8 +464,11 @@ export class NethackGame {
             }
             nhGame._rngSlices.push(slice);
             // Keep the marker through stale brown-mold frames; clear it only
-            if (String(game._screen_output || '').startsWith('You return to human form'))
+            if (/^(?:[^\n]*?\s)?You return to \w+ form/.test(String(game._screen_output || '').split('\n', 1)[0]))
+            if (/You return to \w+ form/.test(String(game._screen_output || ''))) /* polyself.c:1395 "You return to %s form!" with urace.adj */
+            if (String(game._screen_output || '').includes('You return to human form'))
                 game._rehumanizeDisplayPending = false;
+            if (game._rehumanizeDisplayApplied) { game._rehumanizeDisplayApplied = false; game._rehumanizeDisplayPending = false; }
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
             if (typeof process !== 'undefined' && ENV?.FF_INVENT_TRACE === '1') {
                 const inv = [];
