@@ -4,18 +4,11 @@
 // win/tty/topl.c putsyms(), addtopl(), show_topl(), and
 // tty_clear_nhwindow(WIN_MESSAGE) painting they drive.
 //
-// win/tty/topl.c tty_yn_function() lives here as well. It is the port's other
-// top-line prompt reader, and it shares every painting helper below with
-// hooked_tty_getlin(): the same WIN_STOP handling, the same
-// remember_topl()/show_topl() pair for a SUPPRESS_HISTORY prompt, and the same
-// topl_putsym() cursor model. Splitting the two would put one of them behind
-// an import cycle for no gain.
-//
 // getline.c defines NEWAUTOCOMP for every build except MACOS9, so the
 // autocompletion arms below are the ones that write the expansion ahead of an
 // unmoved cursor and erase a stale expansion in place.
 
-import { BUFSZ, COLNO, quitchars } from './const.js';
+import { BUFSZ, COLNO } from './const.js';
 import {
     ECM_EXACTMATCH,
     ECM_IGNOREAC,
@@ -25,30 +18,24 @@ import {
 import {
     extcmd_initiator,
     extcmds_match,
-    key2txt,
-    readchar,
 } from './cmd.js';
 import { flush_screen } from './display.js';
 import { game } from './gstate.js';
 import { mungspaces, visctrl } from './hacklib.js';
 import { nhgetch } from './input.js';
-import { NO_COLOR } from './terminal.js';
 import {
     TOPLINE_EMPTY,
     TOPLINE_NEED_MORE,
-    TOPLINE_NON_EMPTY,
     dismissPendingTtyMessage,
     ttyPline,
 } from './tty_message.js';
-
-// A getlin path this port has not reached yet.
-export class UnsupportedGetlinBoundaryError extends Error {
-    constructor(reason) {
-        super(`unsupported getlin input: ${reason}`);
-        this.name = 'UnsupportedGetlinBoundaryError';
-        this.reason = reason;
-    }
-}
+import {
+    putsyms,
+    remember_topl,
+    show_topl,
+    topl_putsym,
+    tty_doprev_message,
+} from './topl.js';
 
 // sys/share/unixtty.c gettty() copies these from the terminal.  Recorder
 // patch 006 synthesizes the conventional pair when there is no controlling
@@ -81,31 +68,6 @@ let suppress_history = false;
 // docorner() repair: both are wrapped-prompt
 // rendering and neither can be validated against a C recording without the
 // other.
-function topl_putsym(display, ch) {
-    if (ch === '\b') {
-        if (display.cursorCol === 0 && display.cursorRow > 0) {
-            display.setCursor(display.cols - 1, display.cursorRow - 1);
-        }
-        if (display.cursorCol > 0) {
-            display.setCursor(display.cursorCol - 1, display.cursorRow);
-        }
-        return;
-    }
-    if (ch === '\n') {
-        display.clearToEol();
-        display.setCursor(0, display.cursorRow + 1);
-        return;
-    }
-    if (display.cursorCol === display.cols - 1) topl_putsym(display, '\n');
-    display.setCell(display.cursorCol, display.cursorRow, ch, NO_COLOR, 0);
-    display.setCursor(display.cursorCol + 1, display.cursorRow);
-}
-
-// C ref: win/tty/topl.c putsyms().
-function putsyms(display, text) {
-    for (const ch of text) topl_putsym(display, ch);
-}
-
 // C ref: win/tty/wintty.c tty_clear_nhwindow(WIN_MESSAGE).  home() and
 // cl_end() clear the top row; docorner() repairs the map rows a wrapped
 // prompt overwrote, which only a prompt longer than one terminal row reaches.
@@ -114,15 +76,6 @@ function clearMessageWindow(display) {
     for (let row = 0; row <= lastRow && row < display.rows; ++row)
         display.clearRow(row);
     display.setCursor(0, 0);
-}
-
-// C ref: win/tty/topl.c show_topl(), which pline.c putmesg() reaches because
-// custompline()'s SUPPRESS_HISTORY becomes ATR_NOHISTORY and win/tty/wintty.c
-// advertises WC2_SUPPRESS_HIST: home(); cl_end(); addtopl(str).
-function show_topl(display, text) {
-    display.clearRow(0);
-    display.setCursor(0, 0);
-    putsyms(display, text);
 }
 
 // C ref: win/tty/getline.c hooked_tty_getlin().  Returns the buffer as C
@@ -155,13 +108,15 @@ async function hooked_tty_getlin(query, hook, state) {
     display.inread = (display.inread ?? 0) + 1;
     let text = '';
     let pos = 0;
+    let doprev = false;
     try {
         // custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, "%s ", query).  vpline()
-        // flushes the map first; remember_topl() then moves whatever the top line
-        // held into history and empties gt.toplines before show_topl() repaints.
+        // flushes the map first; remember_topl() moves the old line into
+        // history before show_topl() repaints.
         if (state.u?.ux) await flush_screen(1);
-        state._ttyToplines = '';
-        show_topl(display, `${query} `);
+        remember_topl(state);
+        show_topl(`${query} `, state);
+        state._ttyToplines = `${query} `;
         state._pending_message = '';
         // addtopl() leaves ttyDisplay->toplin at TOPLINE_NEED_MORE.
         display.toplin = TOPLINE_NEED_MORE;
@@ -195,28 +150,60 @@ async function hooked_tty_getlin(query, hook, state) {
                     text = '';
                     pos = 0;
                     clearMessageWindow(display);
-                    putsyms(display, `${query} `);
+                    putsyms(`${query} `, state);
                     continue;
                 }
                 text = '\x1B';
                 break;
             }
             if (c === CTRL_P) {
-                // ctrl-P replays message history through tty_doprev_message(),
-                // which nothing in this port owns yet.
-                throw new UnsupportedGetlinBoundaryError(
-                    'ctrl-P recalls message history at a getlin prompt',
+                const mode = state.iflags?.prevmsg_window ?? 's';
+                if (mode === 's' || (mode === 'c' && !doprev)) {
+                    const savedInread = display.inread;
+                    display.inread = 0;
+                    if (!doprev) await tty_doprev_message(state);
+                    await tty_doprev_message(state);
+                    display.inread = savedInread;
+                    doprev = true;
+                    continue;
+                }
+                const savedInread = display.inread;
+                display.inread = 0;
+                await tty_doprev_message(state);
+                display.inread = savedInread;
+                clearMessageWindow(display);
+                state._ttyToplines = `${query} ${text}`;
+                display.toplines = state._ttyToplines;
+                show_topl(state._ttyToplines, state);
+                pos = Math.min(pos, text.length);
+                display.setCursor(
+                    Math.min(display.cols - 1, query.length + 1 + pos), 0,
                 );
+                text = text.slice(0, pos);
+                doprev = false;
+                continue;
+            }
+            if (doprev) {
+                clearMessageWindow(display);
+                state._ttyToplines = `${query} ${text}`;
+                display.toplines = state._ttyToplines;
+                show_topl(state._ttyToplines, state);
+                display.setCursor(
+                    Math.min(display.cols - 1, query.length + 1 + pos), 0,
+                );
+                text = text.slice(0, pos);
+                doprev = false;
+                continue;
             }
             if (c === ERASE_CHAR || c === BACKSPACE) {
                 if (pos) {
                     --pos;
-                    topl_putsym(display, '\b');
+                    topl_putsym('\b', state);
                     // Blank whatever the hook painted past the new insertion
                     // point, then step the cursor back over those blanks.
                     const painted = text.length - pos;
-                    for (let i = 0; i < painted; ++i) topl_putsym(display, ' ');
-                    for (let i = 0; i < painted; ++i) topl_putsym(display, '\b');
+                    for (let i = 0; i < painted; ++i) topl_putsym(' ', state);
+                    for (let i = 0; i < painted; ++i) topl_putsym('\b', state);
                     text = text.slice(0, pos);
                 }
                 // tty_nhbell() otherwise, which writes no cell.
@@ -228,29 +215,29 @@ async function hooked_tty_getlin(query, hook, state) {
                 // before *bufp = c truncates the buffer at the insertion point.
                 const priorEnd = text.length;
                 text = text.slice(0, pos) + String.fromCharCode(c);
-                putsyms(display, text.slice(pos));
+                putsyms(text.slice(pos), state);
                 ++pos;
                 const expansion = hook ? hook(text) : null;
                 if (expansion !== null) {
                     text = expansion;
-                    putsyms(display, text.slice(pos));
+                    putsyms(text.slice(pos), state);
                     // Pointer and cursor left where they were.
                     for (let i = pos; i < text.length; ++i)
-                        topl_putsym(display, '\b');
+                        topl_putsym('\b', state);
                 } else if (priorEnd > pos) {
                     // Erase the rest of the prior guess.
                     for (let i = pos; i < priorEnd; ++i)
-                        topl_putsym(display, ' ');
+                        topl_putsym(' ', state);
                     for (let i = pos; i < priorEnd; ++i)
-                        topl_putsym(display, '\b');
+                        topl_putsym('\b', state);
                 }
                 continue;
             }
             if (c === KILL_CHAR || c === 0x7F) {
                 // This test comes last because '@' can be the kill character.
-                for (let i = pos; i < text.length; ++i) topl_putsym(display, ' ');
+                for (let i = pos; i < text.length; ++i) topl_putsym(' ', state);
                 for (pos = text.length; pos > 0; --pos)
-                    putsyms(display, '\b \b');
+                    putsyms('\b \b', state);
                 text = '';
             }
             // tty_nhbell() for anything else.
@@ -274,195 +261,6 @@ async function hooked_tty_getlin(query, hook, state) {
     }
     display.topMessage = state._ttyToplines;
     return text;
-}
-
-// C ref: win/tty/topl.c tty_yn_function() (363-550).  Two arms.  With
-// `resp == (char *) 0` any single keystroke is accepted and returned: the
-// prompt is written, one key is read, and the function jumps straight to
-// clean_up.  With a response set, the prompt names the allowed keys and their
-// default and a loop rejects everything else.
-//
-// Three parts of the restricted arm retain source-specific handling here:
-//   a set holding '#', which turns digits into a count in yn_number;
-//   a set holding an uppercase letter, which suppresses lowc() on the answer;
-//   a set holding <esc>, whose tail names responses the prompt hides.
-// The ctrl-P reprompt inside the loop stops as well, for the same reason
-// hooked_tty_getlin()'s does: tty_doprev_message() has no port.
-//
-// `def` is unread on the unrestricted arm; C names it because clean_up is
-// shared, and on the restricted arm quitchars and Escape resolve to it.
-export async function tty_yn_function(query, resp, def, state = game) {
-    const display = state.nhDisplay;
-    if (!display) throw new Error('a yn prompt requires an initialized display');
-
-    // C's file-global yn_number is scoped to one tty_yn_function() call. Keep
-    // the equivalent on the game state so askchain() can consume a counted
-    // response after yn_function() returns '#'.
-    state.yn_number = 0;
-    if (display.toplin === TOPLINE_NEED_MORE && !state._ttyMessageStopped)
-        await dismissPendingTtyMessage(state);
-    // topl.c:391 clears WIN_STOP and WIN_NOSTOP whether or not more() ran.
-    state._ttyMessageStopped = false;
-    // topl.c:392 then assigns ttyDisplay->toplin = TOPLINE_SPECIAL_PROMPT and
-    // topl.c:393 raises ttyDisplay->inread. This yn reader still omits those
-    // wrapped-prompt/history states; hooked_tty_getlin models inread for its
-    // physical-screen-preserving prompt flush.
-
-    // Both arms end in the same
-    // custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, "%s", prompt); they
-    // differ only in the prompt they build for it.  The restricted arm's
-    // trailing space is already in the string, "in case of reprompt".
-    const preserveCase = resp !== null && /[A-Z]/u.test(resp);
-    let prompt;
-    if (resp !== null) {
-        /* normally we force lowercase, but if any uppercase letters
-           are present in the allowed response, preserve case */
-        if (preserveCase) {
-            throw new UnsupportedGetlinBoundaryError(
-                'tty_yn_function() preserving case in the answer',
-            );
-        }
-        // C ref: topl.c:412-413. Characters after the first ESC in resp are
-        // accepted but not shown in the prompt bracket. The displayed portion
-        // is everything before the ESC; the full resp (without the ESC itself)
-        // is used for key matching.
-        let displayResp = resp;
-        if (resp.includes('\x1B')) {
-            const escIdx = resp.indexOf('\x1B');
-            displayResp = resp.slice(0, escIdx);
-            // Replace resp with visible + hidden (without the ESC separator)
-            // so the matching loop below accepts hidden characters too.
-            resp = resp.slice(0, escIdx) + resp.slice(escIdx + 1);
-        }
-        // C ref: topl.c:415 `if (def)` tests a char, so '\0' (0) is falsy
-        // and suppresses the default display.  In JS the parameter arrives
-        // as a one-character string, so '\0' is truthy; test the code point.
-        const showDef = def && def.charCodeAt(0) !== 0;
-        prompt = `${query} [${displayResp}]${showDef ? ` (${def})` : ''} `;
-    } else {
-        prompt = `${query} `;
-    }
-    if (state.u?.ux && !state._bonesRestorePrompt) await flush_screen(1);
-    // remember_topl() moves whatever the top line held into history and
-    // empties gt.toplines; show_topl() then repaints from column zero.
-    state._ttyToplines = '';
-    show_topl(display, prompt);
-    state._pending_message = '';
-    // addtopl() leaves ttyDisplay->toplin at TOPLINE_NEED_MORE.
-    display.toplin = TOPLINE_NEED_MORE;
-    state._ttyPreviousMessage = prompt;
-
-    // Every key below is the byte readchar() returns, as on the unrestricted
-    // arm; `def` arrives as the one-character string its callers spell.
-    const defByte = def ? def.charCodeAt(0) : 0;
-    let q;
-    if (resp === null) {
-        q = await readchar(state);
-    } else {
-        do { /* loop until we get valid input */
-            q = await readchar(state);
-            /* !preserve_case */
-            if (q >= 0x41 && q <= 0x5A) q |= 0x20; /* lowc() */
-            if (q === CTRL_P) {
-                // Both ctrl-P arms replay message history through
-                // tty_doprev_message() and then repaint the prompt; neither is
-                // ported.  `doprev` is only ever set inside them, so the
-                // `else if (doprev)` reprompt below cannot be reached either.
-                throw new UnsupportedGetlinBoundaryError(
-                    'ctrl-P recalls message history at a yn prompt',
-                );
-            }
-            if (q === ESC) {
-                if (resp.includes('q')) q = 'q'.charCodeAt(0);
-                else if (resp.includes('n')) q = 'n'.charCodeAt(0);
-                else q = defByte;
-                break;
-            } else if (quitchars.includes(String.fromCharCode(q))) {
-                // decl.c:96 quitchars[] is " \r\n\033". Escape is tested by
-                // the arm above, so only space, carriage return and line feed
-                // reach this one.
-                q = defByte;
-                break;
-            }
-            const allowNum = resp.includes('#');
-            const digitOk = allowNum && q >= 0x30 && q <= 0x39;
-            if (!resp.includes(String.fromCharCode(q)) && !digitOk) {
-                // tty_nhbell(), which writes no cell and moves no cursor.
-                q = 0;
-            } else if (q === 0x23 || digitOk) {
-                // topl.c:478-529. A digit or '#' starts a count. The first
-                // digit is part of the count, then digits continue until a
-                // terminator. A positive count returns '#' and is exposed as
-                // state.yn_number; zero and malformed counts follow C's no or
-                // reprompt paths respectively.
-                let value = q === 0x23 ? 0 : q - 0x30;
-                let digitLength = q === 0x23 ? 0 : 1;
-                let invalid = false;
-                for (;;) {
-                    const z = await readchar(state);
-                    const lower = !preserveCase && z >= 0x41 && z <= 0x5A
-                        ? z | 0x20 : z;
-                    if (lower >= 0x30 && lower <= 0x39) {
-                        value = value * 10 + lower - 0x30;
-                        digitLength++;
-                        if (!Number.isSafeInteger(value)) {
-                            invalid = true;
-                            break;
-                        }
-                    } else if (lower === 0x79
-                        || quitchars.includes(String.fromCharCode(lower))) {
-                        if (lower === ESC) invalid = true;
-                        break;
-                    } else if (lower === ERASE_CHAR || lower === BACKSPACE) {
-                        if (digitLength <= 0) {
-                            invalid = true;
-                            break;
-                        }
-                        value = Math.trunc(value / 10);
-                        digitLength--;
-                    } else {
-                        invalid = true;
-                        break;
-                    }
-                }
-                if (invalid || value < 0) {
-                    q = 0;
-                } else if (value === 0) {
-                    q = 0x6e; // 'n'
-                } else {
-                    state.yn_number = value;
-                    q = 0x23; // '#'
-                }
-            }
-        } while (!q);
-    }
-
-    // clean_up: gt.toplines is rewritten as the prompt followed by the key,
-    // so message recall shows the answered prompt rather than the bare query.
-    const answerText = state.yn_number
-        ? `#${state.yn_number}` : key2txt(q);
-    state._ttyToplines = `${prompt}${answerText}`;
-    display.toplines = state._ttyToplines;
-    display.topMessage = state._ttyToplines;
-    // The answer itself is not drawn: C's `addtopl(rtmp)` at topl.c:541 is
-    // commented out in favour of rewriting gt.toplines. A one-line prompt
-    // stays on the physical line, and js/display.js _buildScreenOutput()
-    // repaints row 0 from _pending_message. TOPLINE_NON_EMPTY is what stops
-    // the next message treating that line as one awaiting --More--, exactly
-    // as topl.c update_topl():262 does.
-    //
-    // topl.c:547 clears WIN_MESSAGE when cury is nonzero. display.cursorRow
-    // tracks that same wrapped-prompt state, so retain the source cleanup for
-    // long prompts before deciding whether the answered line remains pending.
-    if (display.cursorRow > 0) {
-        clearMessageWindow(display);
-        state._pending_message = '';
-        display.toplin = TOPLINE_EMPTY;
-    } else {
-        state._pending_message = prompt;
-        display.toplin = TOPLINE_NON_EMPTY;
-    }
-    return q;
 }
 
 // C ref: win/tty/getline.c tty_getlin().  Returns the answer, or "\x1b" when

@@ -106,6 +106,7 @@ import { flooreffects } from './do.js';
 import { surface } from './sit.js';
 /* uhitm.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
 import { attacktype_fordmg } from './uhitm.js';
+import { Invis } from './timeout.js'; // C: youprop.h:198 live Invis (same SCC; hoisted fn, runtime use only — imports.mjs SAFE; shk↔timeout precedent)
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
@@ -3124,8 +3125,13 @@ export function mfndpos(mon, data, flag) {
     const maxx = Math.min(x + 1, COLNO - 1);
     const maxy = Math.min(y + 1, ROWNO - 1);
     // C: monseeu is constant across the neighbour scan
-    const Invis = !!(game.u?.Invis);
-    const monseeu = !!(mon.mcansee && (!Invis || perceives(mdat)));
+    // C ref: mon.c mfndpos `monseeu` (:2261–2262) + youprop.h:198 Invis —
+    // live (HInvis||EInvis)&&!BInvis via the canonical timeout.js export
+    // (the u.Invis flat is only synced by the magic-trap toggle — D-3873
+    // class, stale-false under a worn ring — and the B half needs the
+    // worn-mummy-wrapping arm, worn.c:39 W_BLOCKS; D-3874's inline clone
+    // omitted it, review 2734).
+    const monseeu = !!(mon.mcansee && (!Invis() || perceives(mdat)));
     // Displacement for onscary hero-image arm
     const u = game.u || {};
     const DisplacedHero = !!(u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic

@@ -521,8 +521,8 @@ You have an odd feeling this may be the last time you ever come here.`,
 the final time you come here.`,
 };
 
-/** C ref: dat/quest.lua goal_first (Arc + Bar + Cav + Pri + Kni + Ran + Sam + Tou + Wiz).
- * Cav/Ran output=text (+ synopsis in QUEST_MSG_META); Wiz/Tou have neither key
+/** C ref: dat/quest.lua goal_first (Arc + Bar + Cav + Pri + Kni + Ran + Sam + Tou + Wiz + Hea + Val).
+ * Cav/Ran/Hea/Val output=text (+ synopsis in QUEST_MSG_META); Wiz/Tou have neither key
  * in lua, so they deliver as a plain pline via the default arm. */
 const QUEST_GOAL_FIRST = {
     Arc: `A strange feeling washes over you, and you think back to things you
@@ -568,6 +568,17 @@ hooves on rock.`,
     Wiz: `You feel your mentor's presence; perhaps %o is nearby.`,
     // C ref: dat/quest.lua Tou goal_first (no output/synopsis keys: pline) — quest.lua:2507-2509
     Tou: `You sense the presence of %o.`,
+    // C ref: dat/quest.lua Hea goal_first (output=text) — quest.lua:954-963
+    Hea: `You stand within sight of the infamous Isle of %n.  Even
+the words of %l had not prepared you for this.
+
+Steeling yourself against the wails of the ill that pierce your ears,
+you hurry on your task.  Maybe with %o you can
+heal them on your return, but not now.`,
+    // C ref: dat/quest.lua Val goal_first (output=text) — quest.lua:2725-2730
+    Val: `Through clouds of sulphurous gasses, you %x a rock palisade
+surrounded with a moat of bubbling lava.  You remember the description
+from something that %l said.  This is the lair of %n.`,
 };
 
 /** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni + Ran). */
@@ -824,6 +835,14 @@ const QUEST_MSG_META = {
         Ran: {
             output: 'text',
             synopsis: '[You descend into a subterranean complex.  Hooves clatter in the distance.]',
+        },
+        Hea: {
+            output: 'text',
+            synopsis: '[You have reached the lair of %n.  Take %o away from %ni.]',
+        },
+        Val: {
+            output: 'text',
+            synopsis: '[This is the lair of %n.]',
         },
     },
     killed_nemesis: {

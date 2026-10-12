@@ -85,7 +85,7 @@ import {
 } from './monsters.js';
 import {
     mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
-    weight, obj_stop_timers, objects_at, splitobj,
+    weight, obj_stop_timers, objects_at, splitobj, sobj_at,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry,

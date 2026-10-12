@@ -334,6 +334,7 @@ import {
     locomotion,
     mindless,
     Resists_Elem,
+    touch_petrifies,
     monsndx,
     gender,
     needspick,
@@ -660,6 +661,7 @@ import {
     vtense,
     xnameFresh,
     ansimpleoname,
+    an,
 } from './objnam.js';
 import { bury_an_obj, obj_resists } from './bury.js';
 import { objdescr_is } from './o_init.js';
@@ -3022,10 +3024,21 @@ function* apply_newcham_steps(
         state,
         random,
     });
-    if (!(monster.misc_worn_check & W_ARMG))
-        // C discards trap.c mselftouch()'s result.  Its full trap-side effect
-        // is not in this source span, so preserve the named source boundary.
-        note_unported('trap.c mselftouch');
+    const weapon = monster.mw;
+    if (!(monster.misc_worn_check & W_ARMG)
+        && weapon?.otyp === CORPSE
+        && touch_petrifies(state.mons?.[weapon.corpsenm])
+        && !Resists_Elem(monster, STONE_RES, state)) {
+        // mon.c passes !mon_moving so a hero-caused shape change keeps kill
+        // credit. The source void call is a synchronous no-op unless this
+        // exact corpse-contact branch can petrify the monster.
+        yield import('./trap_effects.js').then(({ mselftouch }) => mselftouch(
+            monster,
+            'No longer petrify-resistant, ',
+            !state.context?.mon_moving,
+            { ...normalized, state },
+        ));
+    }
     check_gear_next_turn(monster);
 
     if (monster.minvent && !throws_rocks(target)) {
@@ -6234,7 +6247,7 @@ export async function mon_to_stone(mtmp, state = game, env = {}) {
         if (await newcham(mtmp, state.mons[PM_STONE_GOLEM], { ...env, state })) {
             if (canseemon(mtmp, state)) {
                 await message(
-                    `Now it's ${an(pmname(mtmp.data, gender(mtmp)))}`,
+                    `Now it's ${an(pmname(mtmp.data, gender(mtmp)))}.`,
                     state,
                     env,
                 );

@@ -88,6 +88,7 @@ import {
     SICK,
     SLIMED,
     STONED,
+    SUPPRESS_HISTORY,
     STRANGLED,
     TER_FULL,
     TER_MAP,
@@ -220,10 +221,9 @@ import {
 export { extcmds_match } from './cmd_autocomplete.js';
 import { initialExtcmdFlags, parseautocomplete } from './cmd_autocomplete.js';
 import {
-    UnsupportedGetlinBoundaryError,
     tty_get_ext_cmd,
-    tty_yn_function,
 } from './getline.js';
+import { tty_yn_function } from './topl.js';
 import { game } from './gstate.js';
 import { getnow } from './calendar.js';
 import { getpos } from './getpos.js';
@@ -277,7 +277,9 @@ import {
     remove_achievement,
     UnsupportedEnlightenmentError,
 } from './insight.js';
-import { dodiscovered, UnsupportedDiscoveryDisplayError } from './o_init.js';
+import {
+    doclassdisco, dodiscovered, UnsupportedDiscoveryDisplayError,
+} from './o_init.js';
 import { donameFresh, UnsupportedObjectNameError } from './objnam.js';
 import {
     doset,
@@ -384,6 +386,7 @@ import { aggravate } from './wizard.js';
 import { dotalk, UnsupportedChatError } from './sounds.js';
 import {
     clearTtyMessageWindow,
+    ttyCustomPline,
     ttyNorep,
     ttyPline,
 } from './tty_message.js';
@@ -1865,6 +1868,7 @@ export function end_of_input(state = game) {
 // while the typed names work.
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
+    'prevmsg',
     'call', 'name',
     'eat', 'engrave', 'apply', 'rub', 'open', 'close', 'down', 'up', 'drop', 'droptype', 'pickup', 'pay',
     'takeoff', 'takeoffall', 'remove', 'wear',
@@ -1973,11 +1977,11 @@ function commandQueue(state) {
     return state.command_queue;
 }
 
-// C ref: cmd.c doprev_message() (164-169). The window-port helper's return
-// value is discarded by C, so record the missing callee and preserve the
-// command's non-time-consuming result.
-export function doprev_message(state = game) {
-    note_unported('nhwindows.c nh_doprev_message');
+// C ref: cmd.c doprev_message() (164-169). The window-port callback's return
+// value is discarded by C, and the command itself does not consume a turn.
+export async function doprev_message(state = game) {
+    const { tty_doprev_message } = await import('./topl.js');
+    await tty_doprev_message(state);
     return ECMD_OK;
 }
 
@@ -2854,7 +2858,6 @@ export function failClosedCommandRefusals() {
         // same two classes where a monster's attack reaches it.
         UnsupportedVaultGuardError,
         UnsupportedWeaponSkillError,
-        UnsupportedGetlinBoundaryError,
         UnsupportedSearchError,
         UnsupportedDirectionBoundaryError,
         UnsupportedApplyError,
@@ -3088,6 +3091,24 @@ async function runKnownCommand(key, state) {
                 }
                 : line)),
         ),
+    }));
+}
+
+// C ref: o_init.c doclassdisco(), reached by cmd.c #knownclass.
+async function runKnownClassCommand(key, state) {
+    return failClosedCommand(key, state, () => doclassdisco(state, {
+        message: ttyPline,
+        textWindow: (lines) => displayTtyTextWindow(
+            state,
+            lines.map((line) => (line.heading
+                ? {
+                    ...line,
+                    attr: menuTitleStyle(state).titleAttr,
+                    color: menuTitleStyle(state).titleColor,
+                }
+                : line)),
+        ),
+        yesNo: yn_function,
     }));
 }
 
@@ -5111,6 +5132,8 @@ async function doextcmd(key, state, onSelectedEntry = null) {
             return await runShowspellsCommand(key, state);
         case 'dodiscovered':
             return await runKnownCommand(key, state) ? ECMD_TIME : ECMD_OK;
+        case 'doclassdisco':
+            return await runKnownClassCommand(key, state);
         case 'dosearch':
             return await runSearchCommand(key, state);
         case 'doterrain':
@@ -5667,6 +5690,14 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             const res = await failClosedCommand(
                 key, state, () => doorganize(state),
             );
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        if (command === 'prevmsg') {
+            const res = await doprev_message(state);
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
                 resetCommandVars(state, state.multi < 0);
@@ -6575,14 +6606,15 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             );
         }
 
-        // C ref: cmd.c rhack()'s bad-command path. Its custompline() differs
-        // from pline() only in SUPPRESS_HISTORY, which keeps the line out of
-        // the message history that doprev_message() recalls; no message
-        // history is ported. iflags.sanity_no_check suppresses only the debug
-        // sanity check.
+        // C ref: cmd.c rhack()'s bad-command path. SUPPRESS_HISTORY keeps
+        // this feedback visible without adding it to Ctrl-P message history.
         cmdq_clear(CQ_CANNED, state);
         cmdq_clear(CQ_REPEAT, state);
-        await ttyPline(`Unknown command '${visibleCommandKey(key)}'.`, state);
+        await ttyCustomPline(
+            `Unknown command '${visibleCommandKey(key)}'.`,
+            SUPPRESS_HISTORY,
+            state,
+        );
         state.context.move = 0;
         state.multi = 0;
     } catch (error) {

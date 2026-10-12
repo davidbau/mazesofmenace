@@ -4628,7 +4628,14 @@ export async function shk_move(shkp) {
         }
         avoid = false; // :4957
     } else {
-        if (u.Invis || u.usteed) { // :4960-4961
+        // C `:4960` Invis is the youprop.h macro (HInvis||EInvis)&&!BInvis,
+        // live from uprops — not the u.Invis flat (synced only by the
+        // magic-trap toggle, timeout.js D-1999). The flat misses worn-ring
+        // extrinsic (uprops[INVIS].extrinsic), so an invisible hero took the
+        // onlineu/satdoor arm below (appr=0 draws) where C skips it silent.
+        // Invis() is the already-imported timeout.js export (:129), used at
+        // :913/:964/:968 for the same predicate.
+        if (Invis() || u.usteed) { // :4960-4961
             avoid = false;
         } else {
             uondoor = u_at(eshkp.shd?.x | 0, eshkp.shd?.y | 0); // :4963

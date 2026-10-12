@@ -4402,6 +4402,14 @@ export function save_mtraits(obj, mtmp) {
             || k === 'minvent' || k === 'mw' || k === 'edog') continue;
         mtmp2[k] = mtmp[k];
     }
+    // C `*mtmp2 = *mtmp` copies the embedded `mtrack[MTSZ]` array by value
+    // (decl.c zeromonst note: inline in the struct). A shared reference lets
+    // dealloc_monst's zeromonst wipe the snapshot's track in place, so the
+    // revived mon loses its history (m_move@713: C revived troll keeps
+    // [(21,6),(22,6),(23,5),(24,5)]). Deep-copy the slots.
+    if (Array.isArray(mtmp.mtrack)) {
+        mtmp2.mtrack = mtmp.mtrack.map((s) => ({ x: s?.x | 0, y: s?.y | 0 }));
+    }
     mtmp2.mextra = null;
     mtmp2.mnum = mtmp.data?.mndx ?? mtmp.mnum ?? 0;
     mtmp2.nmon = null;

@@ -6374,7 +6374,9 @@ export async function water_damage(obj, ostr, force) {
         return ER_DAMAGED;
     }
 
-    if (!force && ((game.u?.Luck | 0) + 5) > rn2(20)) {
+    /* C you.h:464 Luck ≡ u.uluck + u.moreluck (trap.js:6711 idiom) */
+    const luck = ((game.u?.uluck | 0) + (game.u?.moreluck | 0));
+    if (!force && (luck + 5) > rn2(20)) {
         return ER_NOTHING;
     }
 

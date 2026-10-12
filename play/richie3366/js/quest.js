@@ -8,7 +8,7 @@
 // catalogue for assignquest.
 // nexttime: Arc+Bar+Pri+Wiz+Mon+Rog (Wiz+Mon+Rog plain pline, no output/synopsis in lua);
 // othertime: Arc+Bar+Pri; firsttime: +Val+Mon (Cav misses);
-// goal_first: Arc+Bar+Cav+Pri+Kni+Ran+Sam+Tou+Wiz
+// goal_first: Arc+Bar+Cav+Pri+Kni+Ran+Sam+Tou+Wiz+Hea+Val
 // (Wiz+Tou plain pline, no output/synopsis in lua),
 // goal_next: Arc+Bar+Pri+Kni+Ran (Ran plain pline, no output/synopsis
 // in lua; other-role goal_* miss then D-1662 common retry; still no body).

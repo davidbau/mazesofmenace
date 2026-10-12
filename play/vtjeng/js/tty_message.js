@@ -16,7 +16,9 @@ import {
     PLINE_SPEECH,
     PLINE_VERBALIZE,
     PLNMSG_UNKNOWN,
+    SUPPRESS_HISTORY,
     URGENT_MESSAGE,
+    WIN_NOSTOP,
 } from './const.js';
 import { flush_screen } from './display.js';
 import {
@@ -25,10 +27,18 @@ import {
 } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { emitGlyphUpdateNotices } from './startup_a11y.js';
-import { NO_COLOR } from './terminal.js';
+import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { vision_recalc } from './vision.js';
 import { msgtype_type } from './options.js';
 import { sound_speak } from './sounds.js';
+import {
+    fitsOnTtyTopline,
+    remember_topl,
+    show_topl,
+    update_topl,
+    wrapTtyTopline,
+    writeRecorderTtyLine,
+} from './topl.js';
 
 // C ref: win/tty/wintty.c defmorestr[], the prompt both more() and dmore()
 // print when no window supplies its own.
@@ -74,40 +84,6 @@ function normalizeVplineMessage(value) {
     ]);
 }
 
-function writeRecorderTtyLine(display, row, value) {
-    const line = String(value);
-    let column = 0;
-    for (const ch of line) {
-        if (column >= display.cols) break;
-        // Recorder patch 006 receives signed high-bit bytes after topl_putsym()
-        // advances curx. nomux_putch() ignores those bytes, preserving the
-        // prior shadow cell at that column.
-        if (ch !== '\0')
-            display.setCell(column, row, ch, NO_COLOR, 0);
-        ++column;
-    }
-    display.setCursor(column, row);
-    display.clearToEol();
-    return column;
-}
-
-// C ref: win/tty/topl.c update_topl()'s same-line append arm advances the
-// message cursor over its two-space separator, then addtopl() writes only the
-// new bytes and calls cl_end(). Keep the already-rendered prefix intact:
-// putsyms() ignores recorder-shadow high-bit bytes while still advancing the
-// source cursor, and cl_end() clears only after the appended text.
-function appendRecorderTtyLine(display, startColumn, row, value) {
-    let column = startColumn;
-    for (const ch of String(value)) {
-        if (column >= display.cols) break;
-        if (ch !== '\0')
-            display.setCell(column, row, ch, NO_COLOR, 0);
-        ++column;
-    }
-    display.setCursor(column, row);
-    display.clearToEol();
-}
-
 function snapshotRows(display, rowCount) {
     return display.grid.slice(0, rowCount).map(
         (row) => row.map((cell) => ({ ...cell })),
@@ -138,14 +114,28 @@ function pendingTtyMessageLayout(state) {
 // Write the pending message and its source-owned More marker without waiting.
 // C's tty_wait_synch() map-window arm refreshes the map and leaves this marker
 // for the next tty_yn_function() read; it does not call getret().
-function writePendingTtyMessagePrompt(state, layout) {
+function writePendingTtyMessagePrompt(state, layout, promptAttr = ATR_NONE) {
     const { display, lines, promptRow, promptColumn } = layout;
     for (let row = 0; row < lines.length; ++row)
         writeRecorderTtyLine(display, row, lines[row]);
     if (state._ttyMixedFirstCell)
         display.setCell(0, 0, state._ttyMixedFirstCell, NO_COLOR, 0);
-    display.putstr(promptColumn, promptRow, MORE_PROMPT, NO_COLOR, 0);
+    display.putstr(promptColumn, promptRow, MORE_PROMPT, NO_COLOR, promptAttr);
     display.setCursor(promptColumn + MORE_PROMPT.length, promptRow);
+}
+
+function writeMorePromptAtCursor(display, promptAttr) {
+    let row = Math.min(display.cursorRow ?? 0, display.rows - 1);
+    let column = Math.min(display.cursorCol ?? 0, display.cols - 1);
+    if (display.toplin && column >= display.cols - MORE_PROMPT.length) {
+        row = Math.min(row + 1, display.rows - 1);
+        column = 0;
+    }
+    for (const ch of MORE_PROMPT) {
+        if (column >= display.cols) break;
+        display.setCell(column++, row, ch, NO_COLOR, promptAttr);
+    }
+    display.setCursor(column, row);
 }
 
 // C ref: wintty.c tty_display_nhwindow(WIN_MAP, FALSE) leaves an existing
@@ -190,69 +180,6 @@ export async function xwaitforspace(
     }
 }
 
-// C ref: win/tty/topl.c update_topl().  It replaces the last space before
-// column 80 with a newline whenever the remaining message is at least one
-// terminal row long.
-export function wrapTtyTopline(message, columns) {
-    const logicalLines = [];
-    let remaining = String(message);
-    while (remaining.length >= columns) {
-        let split = columns - 1;
-        while (split > 0 && remaining[split] !== ' ') --split;
-        if (split === 0) {
-            split = remaining.indexOf(' ');
-            if (split < 0) break;
-        }
-        logicalLines.push(remaining.slice(0, split));
-        remaining = remaining.slice(split + 1);
-    }
-    logicalLines.push(remaining);
-
-    // topl_putsym() moves to the next row before writing a byte at CO - 1.
-    // That physical wrap still happens when update_topl() could not insert a
-    // newline into a long token, but it does not alter gt.toplines history.
-    const physicalWidth = Math.max(1, columns - 1);
-    return logicalLines.flatMap((line) => {
-        if (!line.length) return [''];
-        const rows = [];
-        for (let start = 0; start < line.length; start += physicalWidth) {
-            rows.push(line.slice(start, start + physicalWidth));
-        }
-        return rows;
-    });
-}
-
-function rememberPendingMessage(state, message, mixedFirstCell = null) {
-    state._pending_message = message;
-    if (mixedFirstCell) state._ttyMixedFirstCell = mixedFirstCell;
-    else delete state._ttyMixedFirstCell;
-    state._ttyToplines = message;
-    const display = state.nhDisplay;
-    if (display) {
-        display.topMessage = message;
-        display.toplines = message;
-        display.toplin = TOPLINE_NEED_MORE;
-    }
-}
-
-// C ref: topl.c redotoplin(), reached by update_topl() after
-// tty_nhgetch() has demoted an acknowledged top line to TOPLINE_NON_EMPTY.
-// That branch replaces the physical line immediately; retaining only the
-// logical pending string leaves the old line on the terminal until a later
-// More prompt redraws it.  Keep this separate from
-// writePendingTtyMessagePrompt(), whose --More-- marker belongs only to a
-// blocking display_nhwindow()/more() boundary.
-function redrawTtyTopline(state, message, mixedFirstCell = null) {
-    const display = state.nhDisplay;
-    if (!display) return;
-    const lines = wrapTtyTopline(message, display.cols);
-    for (let row = 0; row < lines.length; ++row)
-        writeRecorderTtyLine(display, row, lines[row]);
-    if (mixedFirstCell)
-        display.setCell(0, 0, mixedFirstCell, NO_COLOR, 0);
-    display.setCursor(lines.at(-1)?.length ?? 0, lines.length - 1);
-}
-
 // C ref: win/tty/wintty.c tty_clear_nhwindow(WIN_MESSAGE).  Command parsing
 // clears the physical top line after the final key has been read while
 // retaining gt.toplines for message history.
@@ -278,16 +205,26 @@ export async function dismissPendingTtyMessage(
         dismissMore = 0,
         preventEscapeStop = false,
         returnResponse = false,
+        alwaysPrompt = false,
+        promptAttr = ATR_NONE,
     } = {},
 ) {
-    if (!state._pending_message) return false;
+    const hasPendingMessage = Boolean(state._pending_message);
+    if (!hasPendingMessage && !alwaysPrompt) return false;
     const display = state.nhDisplay;
     if (!display)
         throw new Error('tty message dismissal requires an initialized display');
 
-    const layout = pendingTtyMessageLayout(state);
+    const layout = hasPendingMessage
+        ? pendingTtyMessageLayout(state)
+        : {
+            display,
+            lines: [],
+            promptRow: Math.min(display.cursorRow ?? 0, display.rows - 1),
+            promptColumn: Math.min(display.cursorCol ?? 0, display.cols - 1),
+        };
     const { lines, promptRow, promptColumn } = layout;
-    const multiline = promptRow > 0;
+    const multiline = Boolean(display.toplin && promptRow > 0);
     const snapshot = multiline
         ? snapshotRows(display, promptRow + 1)
         : null;
@@ -302,11 +239,15 @@ export async function dismissPendingTtyMessage(
     // high-bit bytes, and calls cl_end() after every logical/physical line.
     // Do not clear the prefix first: skipped byte cells retain their prior
     // character, color, and attributes in the recorder shadow grid.
-    writePendingTtyMessagePrompt(state, layout);
+    if (hasPendingMessage)
+        writePendingTtyMessagePrompt(state, layout, promptAttr);
+    else
+        writeMorePromptAtCursor(display, promptAttr);
 
     // wintty.c tty_nhgetch() clears WIN_STOP before every key. more() restores
     // it only when this prompt's final response is Escape without WIN_NOSTOP.
     const response = await xwaitforspace(state, QUITCHARS, dismissMore);
+    display.morc = response;
 
     if (snapshot) {
         restoreRows(display, snapshot);
@@ -321,8 +262,13 @@ export async function dismissPendingTtyMessage(
     // sets WIN_STOP after tty_nhgetch() returns; subsequent plines update
     // that logical buffer without drawing until the next key wait.
     state._ttyToplines ??= lines.join('\n');
-    if ((response === 0 || response === 27) && !preventEscapeStop)
+    const messageWin = state.wintty?.wins?.[state.wintty.messageWindow];
+    if ((response === 0 || response === 27)
+        && !preventEscapeStop
+        && !(messageWin?.flags & WIN_NOSTOP)) {
+        // _ttyMessageStopped is the single JS owner of C's WIN_STOP bit.
         state._ttyMessageStopped = true;
+    }
     display.topMessage = state._ttyToplines;
     display.toplines = state._ttyToplines;
     display.toplin = TOPLINE_EMPTY;
@@ -392,12 +338,6 @@ export async function displayPendingTtyMessageWindow(state) {
     }
 }
 
-function fitsOnTtyTopline(prior, next, columns) {
-    return wrapTtyTopline(prior, columns).length === 1
-        && next.length + prior.length + 3
-            < columns - MORE_PROMPT.length;
-}
-
 // Whether an ordinary pline() will reach xwaitforspace() before it returns.
 // Monster-action planning uses this to distinguish a message which itself is
 // the next supported input boundary from one which would run straight into an
@@ -429,22 +369,6 @@ export function ttyPlineWillWait(message, state = game) {
     if (current) return true;
     return wrapTtyTopline(next, columns).length > 1
         || msgtype === MSGTYP_STOP;
-}
-
-function rememberSuppressedMessage(state, message, columns) {
-    const next = String(message);
-    const current = state._ttyToplines ?? '';
-    const sharesTopline = current
-        && fitsOnTtyTopline(current, next, columns);
-    const toplines = sharesTopline ? `${current}  ${next}` : next;
-    state._ttyToplines = toplines;
-    const display = state.nhDisplay;
-    if (display) {
-        // WIN_STOP prevents this logical update from reaching the terminal.
-        // A message rendered by the update_topl() call which received Escape
-        // remains visible, with its existing TOPLINE_NEED_MORE state.
-        display.toplines = toplines;
-    }
 }
 
 // C refs: pline.c vpline(), Norep(); win/tty/topl.c update_topl(). Messages
@@ -514,92 +438,72 @@ async function ttyPlineCore(
     // before tty_putstr() invokes update_topl(): its clear_nhwindow(WIN_MESSAGE)
     // removes the stale physical line and clears WIN_STOP. Do the same at
     // this stage, then let the urgent line take the ordinary replacement path.
+    const messageWin = state.wintty?.wins?.[state.wintty.messageWindow];
     if (urgentMessage && stoppedAtEntry) {
         clearTtyMessageWindow(state);
         state._ttyMessageStopped = false;
         stoppedAtEntry = false;
         current = '';
     }
+    // wintty.c:2277-2300 sets the one-shot WIN_NOSTOP for every urgent
+    // message, after clearing persistent WIN_STOP and before update_topl().
+    if (urgentMessage && messageWin) messageWin.flags |= WIN_NOSTOP;
+    if (pflags & SUPPRESS_HISTORY) {
+        // C win/tty/wintty.c: tty_putstr(WIN_MESSAGE, ATR_NOHISTORY, ...)
+        // remembers the old gt.toplines, then show_topl() paints this message
+        // without making it the new history line. In particular, Ctrl-P
+        // recalls the message before this one, not this transient feedback.
+        if (state._ttyToplines) remember_topl(state);
+        if (!stoppedAtEntry) {
+            const display = state.nhDisplay;
+            if (display) {
+                if (show_topl(next, state)) {
+                    display.topMessage = next;
+                    state._pending_message = next;
+                }
+            }
+        }
+        state._ttyToplines = '';
+        if (state.nhDisplay) state.nhDisplay.toplines = '';
+        state._ttyPreviousMessage = normalizedMessage;
+        if (resetLastMessage) {
+            state.iflags ??= {};
+            state.iflags.last_msg = PLNMSG_UNKNOWN;
+        }
+        if (urgentMessage && messageWin)
+            messageWin.flags &= ~WIN_NOSTOP;
+        return;
+    }
     if (pflags & (PLINE_VERBALIZE | PLINE_SPEECH))
         sound_speak(normalizedMessage, state);
-    // "You die" is update_topl()'s exception to WIN_STOP.  Other messages
-    // continue updating gt.toplines for history but remain invisible.
-    if (stoppedAtEntry && !deathComparisonReached) {
-        rememberSuppressedMessage(state, next, columns);
-        state._ttyPreviousMessage = normalizedMessage;
-        // WIN_STOP suppresses drawing inside putmesg, so vpline still resets
-        // last_msg. MSGTYPE suppression above returns before putmesg.
-        if (resetLastMessage) {
-            state.iflags ??= {};
-            state.iflags.last_msg = PLNMSG_UNKNOWN;
-        }
-        return;
-    }
-    if (stoppedAtEntry) state._ttyMessageStopped = false;
-
-    if (current
-        && !deathMessage
-        && fitsOnTtyTopline(current, next, columns)) {
-        // topl.c update_topl() appends two spaces to the source buffer, moves
-        // cw->curx past them, then addtopl() paints the new bytes and clears
-        // the remainder. Do not redraw the prefix: its first cell may be a
-        // tty_putmixed() DEC glyph, and ignored high-bit cells retain their
-        // existing shadow-grid attributes.
-        rememberPendingMessage(
-            state,
-            `${current}  ${next}`,
-            state._ttyMixedFirstCell ?? null,
-        );
-        if (!stoppedAtEntry && state.nhDisplay) {
-            appendRecorderTtyLine(
-                state.nhDisplay,
-                current.length + 2,
-                0,
-                next,
-            );
-        }
-        state._ttyPreviousMessage = normalizedMessage;
-        if (resetLastMessage) {
-            state.iflags ??= {};
-            state.iflags.last_msg = PLNMSG_UNKNOWN;
-        }
-        if (msgtype === MSGTYP_STOP)
-            await displayPendingTtyMessageWindow(state);
-        return;
-    }
-    // topl.c update_topl() retains its entry-time `skip` snapshot for the
-    // replacement below.  In particular, a death message must replace the
-    // stopped line without calling more() a second time after the earlier
-    // Escape has already supplied its input.
-    if (current && !stoppedAtEntry) {
-        await dismissPendingTtyMessage(state, {
-            // wintty.c tty_putstr() keeps WIN_NOSTOP set only while its
-            // urgent update_topl() call can dismiss a prior or wrapped line.
-            // vpline()'s later explicit MSGTYP_STOP display is outside it.
-            preventEscapeStop: urgentMessage,
-        });
-    }
-    // When the comparison above was reached, update_topl() clears WIN_STOP
-    // after more() has had the opportunity to set it from an Escape response.
-    if (deathComparisonReached) state._ttyMessageStopped = false;
-    if (acknowledgedTopline)
-        redrawTtyTopline(state, next, mixedFirstCell);
-    rememberPendingMessage(state, next, mixedFirstCell);
-    state._ttyPreviousMessage = normalizedMessage;
-    // redotoplin() immediately invokes more() when update_topl() wrapped the
-    // new message onto a second terminal row.
-    if (wrapTtyTopline(next, columns).length > 1)
-        await dismissPendingTtyMessage(state, {
-            preventEscapeStop: urgentMessage,
-        });
-    // pline.c:vpline resets after putmesg returns, before the explicit STOP
-    // display. Keep this after any wrapped-line More input above.
-    if (resetLastMessage) {
-        state.iflags ??= {};
-        state.iflags.last_msg = PLNMSG_UNKNOWN;
-    }
-    if (msgtype === MSGTYP_STOP)
-        await displayPendingTtyMessageWindow(state);
+    // pline.c has prepared the message and wintty.c has handled urgent output.
+    // topl.c:update_topl() now owns the complete history, same-line, wait,
+    // redraw, and replacement transition. These callbacks are its terminal
+    // primitives, not alternate branch implementations.
+    await update_topl(next, state, {
+        msgtype,
+        urgentMessage,
+        mixedFirstCell,
+        stoppedAtEntry,
+        deathMessage,
+        deathComparisonReached,
+        acknowledgedTopline,
+        columns,
+        normalizedMessage,
+        resetLastMessage: () => {
+            if (resetLastMessage) {
+                state.iflags ??= {};
+                state.iflags.last_msg = PLNMSG_UNKNOWN;
+            }
+        },
+        callbacks: {
+            displayPendingTtyMessageWindow,
+            dismissPendingTtyMessage,
+        },
+    });
+    // wintty.c clears the one-shot after the source-selected write path.
+    if (urgentMessage && messageWin)
+        messageWin.flags &= ~WIN_NOSTOP;
 }
 
 export async function ttyPline(message, state = game) {
@@ -634,16 +538,14 @@ export async function ttyNorep(message, state = game) {
 
 export class UnsupportedCustomPlineFlagsError extends Error {
     constructor(pflags) {
-        super(`custompline() flags ${pflags} outside OVERRIDE_MSGTYPE`);
+        super(`custompline() flags ${pflags} are not ported`);
         this.name = 'UnsupportedCustomPlineFlagsError';
     }
 }
 
-// C ref: pline.c custompline(). This API admits the sole operation its current
-// consumer needs. Every other flag stops before glyph notices, output, state,
-// or input because its distinct source effect is not ported at this boundary.
+// C ref: pline.c custompline().
 export async function ttyCustomPline(message, pflags, state = game) {
-    if (pflags !== OVERRIDE_MSGTYPE)
+    if (![SUPPRESS_HISTORY, OVERRIDE_MSGTYPE].includes(pflags))
         throw new UnsupportedCustomPlineFlagsError(pflags);
     return ttyPlineCore(message, state, pflags);
 }

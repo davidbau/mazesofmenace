@@ -1058,6 +1058,7 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
     let otmp = null;
     let ilet = '';
     let oneloop = false;
+    let msggiven = false;
     // C's bp starts at buf and the hands/self arm may advance it past a "- "
     // prefix; the letters it then collects are what `lets` copies and
     // compactify() rewrites, so the two halves are kept apart here.
@@ -1163,6 +1164,11 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
             ilet = String.fromCharCode(await readchar(state));
         } else if (state.iflags.force_invmenu) {
             ilet = oneloop ? '' : (lets || altletsStr ? '?' : '*');
+            if (!msggiven) {
+                const { tty_putmsghistory } = await import('./topl.js');
+                tty_putmsghistory(qbuf, false, state);
+                msggiven = true;
+            }
             oneloop = true;
         } else {
             const prompt = qbuf + (buf ? ` [${buf} or ?*]` : ' [*]');
@@ -5321,7 +5327,7 @@ export async function dotypeinv(state = game, hooks = {}) {
             | INVORDER_SORT | INCLUDE_VENOM,
         (obj) => this_type_only(obj, state),
         state,
-        state.gt.this_title ?? undefined,
+        state.gt.this_title ?? null,
     );
     if (result.n > 0) {
         const object = result.pick_list[0]?.obj;
