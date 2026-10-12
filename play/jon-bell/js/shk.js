@@ -4418,8 +4418,8 @@ export function get_cost_of_shop_item(obj, nochrg) {
         top = top.ocontainer;
     const eshkp = ESHK(shkp);
     const freespot = ((top.where | 0) === 1
-                      && loc.x === (eshkp?.shk?.x | 0)
-                      && loc.y === (eshkp?.shk?.y | 0));
+                      && loc.x === ((eshkp?.shk_x ?? eshkp?.shk?.x ?? 0) | 0)
+                      && loc.y === ((eshkp?.shk_y ?? eshkp?.shk?.y ?? 0) | 0));
     const nc = (((top.where | 0) === 1) && (obj.no_charge || freespot)) ? 1 : 0;
     if (nochrg) nochrg.value = nc;
 

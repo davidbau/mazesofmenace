@@ -22,7 +22,7 @@ export { update_inventory } from './inventory_refresh.js';
 import { W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, A_WIS, IS_DOOR, ROOMOFFSET } from './const.js';
 import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { rn2, rnd, d, rn1, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
-import { pline, sensemon, canspotmon, canseemon, rank_of, map_invisible } from './display.js';
+import { pline, sensemon, canspotmon, canseemon, rank_of, map_invisible, Deaf } from './display.js';
 import { exercise, acurr, arti_defn_adtyp, arti_cary_adtyp, change_luck } from './attrib.js';
 import { erode_obj, mon_learns_traps, m_carrying, split_mon_rt } from './trap.js';
 /* C obj.h:257 bimanual(otmp).  Placed immediately after the ./trap.js import
@@ -45,7 +45,7 @@ W_ARMG, W_ARMF, W_ARMH, W_ARMC, W_ARM, W_ARMS, W_ARMU, ER_NOTHING,
 /* erosion types */
 ERODE_BURN, ERODE_RUST, ERODE_CORRODE,
 /* erosion flags */
-EF_GREASE, EF_VERBOSE,
+EF_NONE, EF_GREASE, EF_VERBOSE,
 /* monster-seen flags */
 M_SEEN_ACID, M_SEEN_COLD, M_SEEN_FIRE, M_SEEN_ELEC, M_SEEN_MAGR,
 M_SEEN_NOTHING, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_POISON, M_SEEN_REFL,
@@ -68,7 +68,7 @@ import { mon_nam, exclam, artifact_hit } from './uhitm.js';
 import { xkilled as xkilled_mh, XKILL_GIVEMSG as XKILL_GIVEMSG_MH, XKILL_NOMSG as XKILL_NOMSG_MH } from './uhitm.js';
 import { dmgval as dmgval_weapon, weapon_dam_bonus, use_skill, weapon_type, dbon } from './uhitm.js';
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
-import { setmangry, wake_msg, wake_nearto, healmon } from './mklev.js';
+import { setmangry, wake_msg, wake_nearto, healmon, angry_guards } from './mklev.js';
 /* make_stunned — js/potion.js:5813 (C ref: potion.c:106-127) is the one real
  * body; re-export it so js/mcastu.js's `make_stunned as make_stunned_mc`
  * import (mcast_stun_you, its OWN monster-cast-stuns-hero path) also stops
@@ -923,7 +923,9 @@ export async function passive_obj(mon, obj, mattk) {
         case AD_FIRE:
             /* C uhitm.c:6159: if (!rn2(6) && !mon->mcan && mon->data != &mons[PM_STEAM_VORTEX]) */
             if (!rn2(6) && !mon.mcan && mobjMndx !== PM_STEAM_VORTEX) {
-                await erode_obj(obj, null, ERODE_BURN, EF_GREASE | EF_VERBOSE);
+                /* C uhitm.c:6161: erode_obj(obj, NULL, ERODE_BURN, EF_NONE) — no EF_VERBOSE,
+                 * so the not-affected / Somehow messages stay silent here */
+                await erode_obj(obj, null, ERODE_BURN, EF_NONE);
             }
             break;
         case AD_ACID:
@@ -1199,7 +1201,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                                 void pline(`${Monnam(mon)} looks ${!rn2(2) ? "" : "rather "}${!rn2(2) ? "numb" : "stupefied"}.`);
                             }
                             else {
-                                const free_act = _hero_prop_active(FREE_ACTION); /* Free_action */
+                                /* youprop.h:383 — Free_action is the EXTRINSIC slot only. */
+                                const free_act = !!(game.u?.uprops?.[FREE_ACTION]?.extrinsic | 0); /* Free_action */
                                 if (free_act) {
                                     void pline(`You momentarily stiffen under ${s_suffix(mon_nam(mon))} gaze!`);
                                 }
@@ -1225,7 +1228,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
                 else {
                     /* C uhitm.c:6055: Free_action — gelatinous cube else */
-                    const free_act = _hero_prop_active(FREE_ACTION);
+                    /* youprop.h:383 — Free_action is the EXTRINSIC slot only. */
+                    const free_act = !!(game.u?.uprops?.[FREE_ACTION]?.extrinsic | 0);
                     if (free_act) {
                         void pline("You momentarily stiffen.");
                     }
@@ -2368,6 +2372,9 @@ export function growl(mtmp) {
     if (growl_verb) {
         /* C: if (canseemon(mtmp) || !Deaf) — this port has no deaf hero. */
         pline(Monnam_mm(mtmp) + ' ' + vtense(null, growl_verb) + '!');
+        /* C sounds.c:418-419 — a growl interrupts a run/rush. */
+        if (game.context?.run)
+            nomul(0);
         wake_nearto(mtmp.mx | 0, mtmp.my | 0, (data.mlevel | 0) * 18);
         return true;
     }
@@ -2396,14 +2403,17 @@ export function yelp(mtmp) {
     if (xm_Hallucination()) {
         yelp_verb = H_SOUNDS_MM[rn2(H_SOUNDS_MM.length)];
     } else {
+        /* C sounds.c:440-470 — each arm picks a Deaf verb when the hero is
+         * Deaf (the pet's sound is not heard, so the verb is a visible guess). */
+        const deaf = Deaf();
         switch (msound) {
-        case MS_MEW_MM:   yelp_verb = 'yowl'; break;
+        case MS_MEW_MM:   yelp_verb = !deaf ? 'yowl' : 'arch'; break;
         case MS_BARK_MM:
-        case MS_GROWL_MM: yelp_verb = 'yelp'; break;
-        case MS_ROAR_MM:  yelp_verb = 'snarl'; break;
-        case MS_SQEEK_MM: yelp_verb = 'squeal'; break;
-        case MS_SQAWK_MM: yelp_verb = 'screak'; break;
-        case MS_WAIL_MM:  yelp_verb = 'wail'; break;
+        case MS_GROWL_MM: yelp_verb = !deaf ? 'yelp' : 'recoil'; break;
+        case MS_ROAR_MM:  yelp_verb = !deaf ? 'snarl' : 'bluff'; break;
+        case MS_SQEEK_MM: yelp_verb = !deaf ? 'squeal' : 'quiver'; break;
+        case MS_SQAWK_MM: yelp_verb = !deaf ? 'screak' : 'thrash'; break;
+        case MS_WAIL_MM:  yelp_verb = !deaf ? 'wail' : 'cringe'; break;
         default: break;
         }
     }
@@ -2479,11 +2489,13 @@ export async function wakeup_attack(mtmp, via_attack) {
 
 export async function hmon(mon, obj, thrown, dieroll) {
     const anger_guards = (mon.mpeaceful
-        && (mon.ispriest || mon.isshk /* || is_watch(mon.data) */));
+        && (mon.ispriest || mon.isshk
+            || mon.data?.pmidx === PM_WATCHMAN || mon.data?.pmidx === PM_WATCH_CAPTAIN));
     const result = await hmon_hitmon(mon, obj, thrown, dieroll);
     if (mon.ispriest && !rn2(2))
         await ghod_hitsu(mon);
     if (anger_guards) {
+        await angry_guards(!!Deaf());  /* uhitm.c:832 */
     }
     return result;
 }
@@ -2764,6 +2776,26 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
         hmd.hittxt = true;
         hmd.get_dmg_bonus = false;
         hmd.dmg = 0;   /* C uhitm.c:1317 — the pie itself does NO damage */
+        return;
+    }
+    /* C uhitm.c:1319-1337 case ACID_VENOM (thrown or spit).  Unlike the pie
+     * arm this one DOES damage: dmgval(obj, mon) unless the monster resists
+     * acid, and it sets no blindness and no mangry.  The object is consumed
+     * as obfree() when thrown, as useup() otherwise. */
+    if ((obj.otyp | 0) === ACID_VENOM_HM) {
+        const MR_ACID_HM = 0x40; /* monflag.h MR_ACID; see resists_acid above */
+        const resistbits = ((mon.data ? (mon.data.mresists | 0) : 0)
+                            | (mon.mextrinsics | 0) | (mon.mintrinsics | 0));
+        if (resistbits & MR_ACID_HM) {
+            pline(`Your venom hits ${mon_nam(mon)} harmlessly.`);
+            hmd.dmg = 0;
+        } else {
+            pline(`Your venom burns ${mon_nam(mon)}!`);
+            hmd.dmg = dmgval_weapon(obj, mon);
+        }
+        game.thrownobj = null;
+        hmd.hittxt = true;
+        hmd.get_dmg_bonus = false;
         return;
     }
     const mat = MKOBJ_OC_MATERIAL[(obj.otyp | 0)] | 0;
@@ -4000,6 +4032,7 @@ const PM_RAVEN = 128;
 const CREAM_PIE = 287;
 /* objects.h VENOM() BLINDING_VENOM — js/cmd.js:32321. */
 const BLINDING_VENOM_HM = 479;
+const ACID_VENOM_HM = 480; /* objects.h:1642 VENOM_CLASS ACID_VENOM */
 /* hack.h:133 FACE = 2.  (The AT_SPIT that used to be declared here said 7,
  * which is 5.0's AT_HUGS; the one live constant is the shared AT_SPIT above.) */
 const FACE_HM = 2;
@@ -4172,6 +4205,7 @@ const PM_BALUCHITHERIUM = 86;            /* was 324 = iguana */
 const PM_LURKER_ABOVE = 98;              /* was 158 = lichen */
 const PM_CAVE_DWELLER = 333;             /* was 178 = jabberwock */
 const PM_WATCHMAN = 282;                 /* was 236 = yeti */
+const PM_WATCH_CAPTAIN = 283;             /* pm.generated.js */
 const PM_MUMAK = 82;                     /* was 329 = salamander */
 const PM_ERINYS = 292;                   /* was 308 = Baalzebub */
 const NON_PM = -1;

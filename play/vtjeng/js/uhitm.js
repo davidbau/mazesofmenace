@@ -43,6 +43,7 @@ import {
     COLD_RES,
     CONFUSION,
     DEAF,
+    DIED,
     DRAIN_RES,
     DISP_ALWAYS,
     DISP_END,
@@ -94,6 +95,7 @@ import {
     NATTK,
     NOTELL,
     NEED_WEAPON,
+    NO_MM_FLAGS,
     NO_KILLER_PREFIX,
     NO_NC_FLAGS,
     P_BARE_HANDED_COMBAT,
@@ -276,7 +278,7 @@ import {
     u_slow_down,
     u_slip_free,
 } from './mhitu.js';
-import { abuse_dog } from './dog.js';
+import { abuse_dog, tamedog } from './dog.js';
 import { dog_nutrition } from './dogmove.js';
 import { losexp } from './exper.js';
 import {
@@ -512,6 +514,7 @@ import {
     slept_monst,
     attk_protection,
     xdrainenergym,
+    rustm,
 } from './mhitm.js';
 import { burn_away_slime, fall_asleep } from './timeout.js';
 import { set_ulycn } from './were.js';
@@ -542,6 +545,8 @@ import {
     hold_another_object, obfree, obj_extract_self, update_inventory, useup, useupall,
 } from './invent.js';
 import { clone_mon, grow_up } from './makemon.js';
+import { makemon_runtime } from './makemon_create.js';
+import { ndemon } from './minion.js';
 import {
     an,
     bare_artifactname,
@@ -611,7 +616,8 @@ import { acurr } from './attrib.js';
 import { dropCommandEnv, dropy, set_wounded_legs } from './do.js';
 import { encumber_msg } from './pickup.js';
 import {
-    make_blinded, make_confused, make_sick, make_slimed, make_stunned,
+    make_blinded, make_confused, make_sick, make_slimed, make_stoned,
+    make_stunned,
     split_mon,
     potionhit,
 } from './potion.js';
@@ -1590,12 +1596,14 @@ export async function gulpum(mdef, mattk, state = game, env = {}) {
         }
 
         if (fatalGulp && !is_rider(pd)) {
+            let monsterName = pmname(pd, Mgender(mdef, state));
+            if (!type_is_pname(pd)) monsterName = an(monsterName);
             await message(
                 `You ${uDigest ? 'englut' : 'engulf'} ${mon_nam(mdef, state, env)}.`,
                 state,
             );
-            // trap.c instapetrify() is a discarded void death transition.
-            note_unported('trap.c instapetrify');
+            const killer = `${uDigest ? 'swallowing' : uEnfold ? 'enclosing' : 'engulfing'} ${monsterName}${uDigest ? ' whole' : ''}`;
+            await instapetrify(killer, state, { ...env, random, message });
         } else {
             await start_engulf(mdef, state, { ...env, random, message });
             switch (mattk.adtyp) {
@@ -1608,7 +1616,7 @@ export async function gulpum(mdef, mattk, state = game, env = {}) {
                     state.killer ??= {};
                     state.killer.name = `unwisely tried to eat ${pmname(pd, Mgender(mdef, state))}`;
                     state.killer.format = NO_KILLER_PREFIX;
-                    note_unported('end.c done');
+                    await done(DIED, state, { ...env, random, message });
                     return M_ATTK_MISS;
                 }
                 if (heroSlowDigestion(state)) {
@@ -2418,12 +2426,10 @@ export async function known_hitum(
             if (!random.rn2(25) && mon.mhp < Math.trunc(mon.mhpmax / 2)
                 && !engulfing_u(mon, state)) {
                 const fleeTime = !random.rn2(3) ? random.rnd(100) : 0;
-                // monmove.c monflee() discards create_gas_cloud()'s return.
-                // Positive-damage gas remains an unported region callback, so
-                // preserve the source gap without replacing the flight owner.
-                const createGasCloud = env.createGasCloud ?? (() => {
-                    note_unported('region.c create_gas_cloud');
-                });
+                // C monmove.c:monflee() owns the source call to
+                // create_gas_cloud(); keep the caller's injected operation
+                // when present, otherwise monflee supplies its production
+                // region adapter.
                 await monflee(mon, fleeTime, false, true, {
                     ...env,
                     state,
@@ -2434,7 +2440,8 @@ export async function known_hitum(
                     message: env.message ?? (env.planning
                         ? async () => {}
                         : undefined),
-                    createGasCloud,
+                    ...(env.createGasCloud === undefined ? {}
+                        : { createGasCloud: env.createGasCloud }),
                 });
 
                 if (state.u.ustuck === mon && !state.u.uswallow
@@ -4053,7 +4060,7 @@ async function steal_it(mdef, mattk, state = game, rawEnv = {}) {
         if (!otmp || otmp.where !== OBJ_INVENT) continue;
         if (await theft_petrifies(otmp, state, env)) break;
         if (unwornmask & W_WEP) {
-            possibly_unwield(mdef, false, env);
+            await possibly_unwield(mdef, false, env);
         } else if (unwornmask & W_ARMG) {
             await mselftouch(mdef, null, true, { ...env, state });
             if (mdef.mhp < 1) break;
@@ -4172,7 +4179,7 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
                     state,
                 );
             }
-            await monflee(magr, 0, false, false, state, env);
+            await monflee(magr, 0, false, false, { ...env, state, random });
             mhm.hitflags = M_ATTK_AGR_DONE;
             mhm.done = true;
             return;
@@ -4250,7 +4257,7 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
         // Both calls are void source callees. Existing partial ports are
         // safe no-ops when extraction cleared the weapon; retain their source
         // order before checking whether the defender died.
-        possibly_unwield(mdef, false, env);
+        await possibly_unwield(mdef, false, env);
         mdef.mstrategy &= ~STRAT_WAITFORU;
         await mselftouch(mdef, null, false, { ...env, state });
 
@@ -4958,9 +4965,7 @@ export async function mhitm_ad_phys(
                 }
             }
 
-            // rustm() is a discarded void call in mhitm.c. Its own C random/
-            // erosion effect remains a named gap until that owner is ported.
-            note_unported('mhitm.c rustm');
+            await rustm(state.youmonst, otmp, state, { ...env, random });
             if (wasPoisoned && (env.dieroll ?? 0) <= 5) {
                 const reason = `${s_suffix(Monnam(magr, state, env))} `
                     + `${mpoisons_subj(magr, mattk, state)}`;
@@ -5040,7 +5045,7 @@ export async function mhitm_ad_phys(
         }
 
         if (mhm.damage)
-            note_unported('mhitm.c rustm');
+            await rustm(mdef, mwep, state, { ...env, random });
         if ((mwep.opoisoned || permapoisoned(mwep)) && !random.rn2(4))
             await mhitm_really_poison(magr, mattk, mdef, mhm, state, {
                 ...env, random,
@@ -5181,9 +5186,9 @@ export async function mhitm_ad_blnd(
 // C ref: uhitm.c do_stone_u() (3924-3942). Return TRUE exactly when the
 // hero's petrification has been started. A successful poly_when_stoned()
 // transition to a stone golem returns FALSE, because polymon() handled the
-// petrification and C continues without make_stoned(). The make_stoned() call
-// has no return value; its potion.c owner is still outside this span, so retain
-// the source call as an explicit gap.
+// petrification and C continues without make_stoned(). On the ordinary arm,
+// make_stoned() starts the timeout and records the delayed killer before this
+// helper returns TRUE.
 export async function do_stone_u(mtmp, state = game, env = {}) {
     const stoned = Boolean(
         (state.u?.uprops?.[STONED]?.intrinsic ?? 0) & TIMEOUT,
@@ -5202,13 +5207,9 @@ export async function do_stone_u(mtmp, state = game, env = {}) {
                 kname = the(kname, state);
             kformat = KILLED_BY;
         }
-        // C: make_stoned(5L, NULL, kformat, kname).  The return is void and
-        // no local state may be invented for this unported owner.
-        note_unported('potion.c make_stoned');
-        // Keep the arguments evaluated in C order for future owner wiring.
-        void kformat;
-        void kname;
-        void env;
+        // C's void make_stoned() call starts the delayed stoning timer and
+        // records the monster as its delayed killer before returning TRUE.
+        await make_stoned(5, null, kformat, kname, state);
         return true;
     }
     return false;
@@ -7355,6 +7356,36 @@ export async function mhitm_ad_dgst(
     }
 }
 
+// C ref: uhitm.c mhitm_ad_halu() (3897-3921). Black-light contact confuses
+// an eyed, seeing monster when another uncancelled monster delivers it; the
+// hero attack directions only suppress damage.
+async function mhitm_ad_halu(magr, mdef, mhm, state = game, env = {}) {
+    if (magr === state.youmonst || mdef === state.youmonst) {
+        mhm.damage = 0;
+        return;
+    }
+
+    if (!magr.mcan && haseyes(mdef.data) && mdef.mcansee) {
+        if (state.gv?.vis && canseemon(mdef, state)) {
+            const message = requireAttackOperation(env, 'message');
+            const confusion = mdef.mconf ? 'more confused' : 'confused';
+            await message(
+                messageAt(
+                    `${Monnam(mdef, state, env)} looks ${confusion}.`,
+                    mdef.mx,
+                    mdef.my,
+                    state,
+                ),
+                state,
+                env,
+            );
+        }
+        mdef.mconf = 1;
+        mdef.mstrategy &= ~STRAT_WAITFORU;
+    }
+    mhm.damage = 0;
+}
+
 // C ref: uhitm.c mhitm_ad_dren() (2418-2442). This is the complete AD_DREN
 // resolver shared by polymorphed-hero and monster-versus-monster attacks.
 export async function mhitm_ad_dren(
@@ -7540,7 +7571,9 @@ export async function mhitm_adtyping(
     case AD_DGST:
         await mhitm_ad_dgst(magr, mattk, mdef, mhm, state, env);
         break;
-    case AD_HALU: unported('mhitm_ad_halu'); break;
+    case AD_HALU:
+        await mhitm_ad_halu(magr, mdef, mhm, state, env);
+        break;
     default:
         mhm.damage = 0;
     }
@@ -7572,8 +7605,7 @@ export async function damageum(
         && !state.uwep
         && state.u.umonnum !== PM_AMOROUS_DEMON
         && state.u.umonnum !== PM_BALROG) {
-        // demonpet() has no return value used by damageum().
-        note_unported('demon.c demonpet');
+        await demonpet(state, { ...env, random, message });
         return M_ATTK_MISS;
     }
 
@@ -7615,6 +7647,31 @@ export async function damageum(
         return M_ATTK_DEF_DIED;
     }
     return M_ATTK_HIT;
+}
+
+// C ref: uhitm.c:demonpet() (2131-2145). An eligible unarmed demon form
+// calls this from damageum(); preserve its summon, taming, and Wisdom order.
+async function demonpet(state, rawEnv = {}) {
+    const random = rawEnv.random ?? { d, rn1, rn2, rnd };
+    const message = rawEnv.message ?? ttyPline;
+
+    await message('Some hell-p has arrived!', state);
+    const demon = !random.rn2(6)
+        ? ndemon(state.u.ualign.type, state, random)
+        : NON_PM;
+    const species = demon !== NON_PM
+        ? state.mons[demon]
+        : state.youmonst.data;
+    const monster = await makemon_runtime(
+        species,
+        state.u.ux,
+        state.u.uy,
+        NO_MM_FLAGS,
+        { ...rawEnv, state, random, message },
+    );
+    if (monster)
+        await tamedog(monster, null, false, { ...rawEnv, state, random, message });
+    await exercise(A_WIS, true, state, random);
 }
 
 // C ref: uhitm.c missum() (5198-5215). Reports a swing that did not land and

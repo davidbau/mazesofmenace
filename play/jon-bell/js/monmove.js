@@ -51,7 +51,7 @@ import { TELEPAT as TELEPAT_MV, HALF_SPDAM as HALF_SPDAM_MV, KILLED_BY_AN as KIL
 import { see_wsegs, worm_nomove, worm_move } from './worm.js';
 import { ranged_attk_available } from './mhitu.js';
 import { mon_wield_item, sticks } from './dog.js';
-import { mwelded, is_pole, is_mines_prize, is_soko_prize } from './cmd.js';
+import { mwelded, is_pole, is_mines_prize, is_soko_prize, bill_dummy_object } from './cmd.js';
 import { is_pick, mdig_tunnel, mb_trapped } from './dig.js';
 import { fracture_rock } from './zap.js';
 /* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
@@ -3081,13 +3081,16 @@ export async function m_break_boulder_mv(mtmp, x, y) {
         const deaf = !!(game.u?.uprops?.[DEAF]?.intrinsic
                      || game.u?.uprops?.[DEAF]?.extrinsic);
         if (!deaf && mdistu(mtmp) < 16) {
-            if (canspotmon(mtmp))
-                await pline(`${Monnam_dm(mtmp)} mutters ${mtmp.ispriest ? 'a prayer' : 'an incantation'}.`);
+            await pline(`${Monnam_dm(mtmp)} mutters ${mtmp.ispriest ? 'a prayer' : 'an incantation'}.`);
         }
         mtmp.mspec_used = (mtmp.mspec_used | 0) + rn1(20, 10);
     }
     if (cansee(x, y))
         await pline('The boulder falls apart.');
+    /* C monmove.c:166-168: a boulder pushed off a shop's bill is billed
+     * dummy-copied first; bill_dummy_object draws next_ident (rnd(2)). */
+    if (boulder.unpaid)
+        await bill_dummy_object(boulder);
     await fracture_rock(boulder);
     return true;
 }

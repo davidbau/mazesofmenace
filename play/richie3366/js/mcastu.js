@@ -53,7 +53,7 @@ import { enexto, unconscious } from './teleport.js';
 import { is_fainted } from './eat.js';
 import { setuhpmax } from './exper.js';
 import { done, finish_losehp_done } from './end.js';
-import { burn_away_slime } from './timeout.js';
+import { burn_away_slime, Invis as hero_Invis } from './timeout.js';
 // C ref: mhitu.c mdamageu — castmu FIRE/COLD/MAGM tail (imports.mjs: hoisted, cycle-safe).
 import { mdamageu } from './mhitu.js';
 import { Soundeffect } from './sndprocs.js';
@@ -900,12 +900,17 @@ const STRANGE_OBJECT = 0;
 async function cursetxt(mtmp, undirected) {
     if (canseemon(mtmp) && couldsee(mtmp.mx, mtmp.my)) {
         const u = game.u || {};
-        const Invis = !!(u.Invis || u.HInvis || u.EInvis);
+        // C youprop.h:198 — Invis is the live macro ((HInvis||EInvis) &&
+        // !BInvis); the u.Invis/HInvis/EInvis flats are stale (only the
+        // magic-trap toggle syncs them — D-1999), so call the live
+        // timeout.js Invis(), the same reader set_apparxy/m_move use
+        // (Caveman-582707 s900: worn-item extrinsic Invis, zero flats set).
+        const Invis_now = hero_Invis();
         const Displaced = !!(u.Displaced || u.HDisplaced || u.EDisplaced);
         let point_msg;
         if (undirected) {
             point_msg = 'all around, then curses';
-        } else if ((Invis && !perceives(mtmp.data)
+        } else if ((Invis_now && !perceives(mtmp.data)
                     && ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0)))
                    || (M_AP_TYPE(game.youmonst) === M_AP_OBJECT
                        && game.youmonst?.mappearance === STRANGE_OBJECT)

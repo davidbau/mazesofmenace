@@ -20,7 +20,7 @@ import { def_char_to_objclass } from './drawing.js';
 import { DOSET_BOOLS } from './doset_data.js';
 import { optfn_menustyle_set } from './menustyle.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
-import { parsebindings, optfn_number_pad_set } from './cmd_config.js';
+import { parsebindings, parseautocomplete, optfn_number_pad_set } from './cmd_config.js';
 import { config_error_add } from './cmd_binds.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
 import { config_line_error } from './cfgfiles.js';
@@ -395,10 +395,46 @@ function parsesymbols_ok(opts) {
  * joins backslash-continued lines, drops lines outside the CHOOSE-d section,
  * and draws rn2(nsep) for CHOOSE=a,b,c.  Returns the logical lines the
  * statement parser sees. */
+/* C cfgfiles.c:1668 parser->inbufsz = 4 * BUFSZ (global.h:389): each
+ * physical line is read by fgets(inbuf, inbufsz), i.e. at most inbufsz-1
+ * characters per call. */
+const CNF_INBUFSZ = 4 * 256;
+
+/* C cfgfiles.c:1851 fgets() loop + parse_conf_buf() (:1691-1715): yields
+ * the physical lines C processes, newline removed.  A line whose first
+ * fgets() chunk has no newline and is not short of the buffer is rejected
+ * with config_error_add("Line too long, skipping") and every chunk up to the
+ * next newline is discarded unread. */
+function* rc_fgets_lines(rc) {
+    let pos = 0, skip = false;
+    while (pos < rc.length) {
+        const nl = rc.indexOf('\n', pos);
+        const end = Math.min(rc.length, pos + CNF_INBUFSZ - 1);
+        const chunkEnd = (nl >= 0 && nl < end) ? nl + 1 : end;
+        const chunk = rc.slice(pos, chunkEnd);
+        pos = chunkEnd;
+        const hasNl = chunk.endsWith('\n');
+        if (skip) {
+            if (hasNl) skip = false;
+            continue;
+        }
+        if (!hasNl) {
+            if (chunk.length < CNF_INBUFSZ - 2) {
+                yield chunk;
+            } else {
+                config_error_add('Line too long, skipping');
+                skip = true;
+            }
+            continue;
+        }
+        yield chunk.slice(0, -1);
+    }
+}
+
 function rc_logical_lines(rc) {
     const out = [];
     let chosen = null, current = null, buf = null;
-    for (let line of rc.split('\n')) {
+    for (let line of rc_fgets_lines(rc)) {
         const more = line.endsWith('\\');
         if (more) line = line.slice(0, -1);
         line = line.replace(/[ \t\r]+$/, '');
@@ -462,7 +498,10 @@ export function parseNethackrc(rc) {
         return result;
     let number_pad_seen = false;
     const bool_dup_seen = new Set();
+    const cfgerr_base = (game._config_errors || []).filter(m => typeof m === 'string').length;
     for (const rawLine of rc_logical_lines(rc)) {
+        if ((game._config_errors || []).filter(m => typeof m === 'string').length > cfgerr_base)
+            break;
         const line = rawLine.trim();
         if (!line || line.startsWith('#'))
             continue;
@@ -473,6 +512,13 @@ export function parseNethackrc(rc) {
         const bindMatch = line.match(/^(?:BIND|BINDI|BINDIN|BINDING|BINDINGS)=(.+)/i);
         if (bindMatch) {
             parsebindings(bindMatch[1]);
+            continue;
+        }
+
+        /* C cfgfiles.c:627 cnf_line_AUTOCOMPLETE (CNFL_N(AUTOCOMPLETE, 5)) */
+        const acMatch = line.match(/^(AUTOC[A-Z]*)\s*=\s*(.*)$/i);
+        if (acMatch && 'AUTOCOMPLETE'.startsWith(acMatch[1].toUpperCase())) {
+            parseautocomplete(acMatch[2], true);
             continue;
         }
 
@@ -510,9 +556,13 @@ export function parseNethackrc(rc) {
                  * glyphrep_to_custom_map_entries() (glyphs.c:111) */
                 if (/^\s*G_/.test(entry))
                     glyphrep_to_custom_map_entries(entry.trim(), { value: 0 });
-                const poolMatch = entry.match(/^\s*S_pool\s*:\s*(.)/i);
-                if (poolMatch)
-                    (result.symbolOverrides ||= {}).S_pool = poolMatch[1];
+                /* C symbols.c loadsyms: an explicit S_<name>:<char> replaces the
+                 * symset glyph for that cmap symbol.  Retained here only for the
+                 * consumers that exist: S_pool (display.js) and the wall cmap
+                 * names resolved by _wall_angle_glyph (display.js). */
+                const symMatch = entry.match(/^\s*(S_(?:pool|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
+                if (symMatch)
+                    (result.symbolOverrides ||= {})['S_' + symMatch[1].slice(2).toLowerCase()] = symMatch[2];
             }
             continue;
         }
@@ -528,6 +578,27 @@ export function parseNethackrc(rc) {
                 try {
                     (result.msgtypes ||= []).push(new RegExp(msgtypeMatch[2]));
                 } catch (e) { /* bad pattern: C reports and skips */ }
+            }
+            continue;
+        }
+
+        /* C cfgfiles.c cnf_line_MENUCOLOR -> coloratt.c add_menu_coloring() */
+        const mcMatch = line.match(/^MENUCOLOR=(.*)$/i);
+        if (mcMatch) {
+            (result.menucolors ||= []).push(mcMatch[1]);
+            continue;
+        }
+
+        /* C options.c:9300-9345 add_autopickup_exception via cfgfiles.c:612
+         * cnf_line_AUTOPICKUP_EXCEPTION: "<pat" (grab) or ">pat" / "pat". */
+        const apeMatch = line.match(/^AUTOPICKUP_EXCEPTION=\s*(.*)$/i);
+        if (apeMatch) {
+            const m = /^"([<>]?)([^"]{1,253})"\s*(?:#.*)?$/.exec(apeMatch[1]);
+            if (m) {
+                try {
+                    new RegExp(m[2]);
+                    (result.apelist ||= []).unshift({ pattern: m[2], grab: m[1] === '<' });
+                } catch (e) { /* regex error: C reports and skips */ }
             }
             continue;
         }
@@ -579,10 +650,20 @@ export function parseNethackrc(rc) {
                     const cu = menuname.slice(5);
                     if (cu.length >= 4 && 'barehanded'.startsWith(cu))
                         result.flags.cond_barehanded = !menunegated;
+                    if (cu.length >= 4 && 'busy'.startsWith(cu))
+                        result.flags.cond_busy = !menunegated;
+                    if (cu.length >= 4 && 'paralyzed'.startsWith(cu))
+                        result.flags.cond_paralyzed = !menunegated;
+                    if (cu.length >= 4 && 'sleep'.startsWith(cu))
+                        result.flags.cond_sleep = !menunegated;
+                    if (cu.length >= 4 && 'unconscious'.startsWith(cu))
+                        result.flags.cond_unconscious = !menunegated;
                     if (cu.length >= 4 && 'tethered'.startsWith(cu))
                         result.flags.cond_tethered = !menunegated;
                     if (cu.length >= 4 && 'trap'.startsWith(cu))
                         result.flags.cond_trap = !menunegated;
+                    if (cu.length >= 4 && 'woundedlegs'.startsWith(cu))
+                        result.flags.cond_woundedlegs = !menunegated;
                 }
                 continue;
             }
@@ -634,6 +715,15 @@ export function parseNethackrc(rc) {
                     config_error_add(hlerr[0], hlerr[1]);
                     continue;
                 }
+                /* C botl.c:2593 parse_status_hl1() keeps the rule; a
+                 * condition/<name>/<colour>&<attr> rule is carried to
+                 * display.js, which paints the condition's own text. */
+                const hlop = menuopts.slice(menusep + 1).trim();
+                if (/^condition\//i.test(hlop))
+                    (game.status_condition_hilites ||= []).push(hlop);
+                /* C botl.c:2593 parse_status_hl2(): a field rule (strength/always/yellow&inverse) is kept too; display.js paints the field's text. */
+                else
+                    (game.status_field_hilites ||= []).push(hlop);
             }
             /* C options.c:3446-3460 optfn_player_selection(do_set) */
             if (menuname.length >= 3 && 'player_selection'.startsWith(menuname)
@@ -653,6 +743,21 @@ export function parseNethackrc(rc) {
                         config_error_add('The %s option may not %sbe negated.', menuname, 'both have a value and ');
                 }
                 continue;
+            }
+            /* C options.c:2396-2427 optfn_mouse_support(do_set): a value that
+             * is not 0..2 is config_error_add("Illegal %s parameter '%s'") +
+             * optn_err.  parseoptions() adds no suffix line for it (pfx_match is
+             * FALSE), so the error stands alone.  atoi() semantics: a non-numeric
+             * value reads as 0 and is only legal when it starts with '0'. */
+            if (menuname.length >= 5 && 'mouse_support'.startsWith(menuname)
+                && !menunegated && menusep >= 0 && menuopts.slice(menusep + 1).trim()) {
+                const msop = menuopts.slice(menusep + 1).trim();
+                const msmode = parseInt(msop, 10) || 0;
+                if (msmode < 0 || msmode > 2 || (msmode === 0 && msop[0] !== '0')) {
+                    config_error_add("Illegal %s parameter '%s'", 'mouse_support', msop);
+                    continue;
+                }
+                game.iflags.wc_mouse_support = msmode;
             }
             /* C options.c:620-623 parseoptions(): duplicate_opt_detection()
              * (options.c:6782, during the rc file only) bumps allopt[].dupdetected;
@@ -795,6 +900,21 @@ export function parseNethackrc(rc) {
                     const itmp = negated ? 2 : (val ? (parseInt(val, 10) || 0) : 0);
                     if (!negated && itmp >= 2 && itmp <= 3)
                         result.iflags.wc2_statuslines = itmp;
+                }
+                /* C options.c:2396-2425 optfn_mouse_support(do_set), the rc arm:
+                 * atoi(op) must be 0..2 (and a zero must be spelled '0'), else
+                 * config_error_add("Illegal mouse_support parameter") and
+                 * iflags.wc_mouse_support is left unchanged. */
+                else if (key === 'mouse_support') {
+                    if (!val)
+                        result.iflags.wc_mouse_support = negated ? 0 : 1;
+                    else {
+                        const mode = parseInt(val, 10) || 0;
+                        if (mode < 0 || mode > 2 || (mode === 0 && val[0] !== '0'))
+                            config_error_add("Illegal %s parameter '%s'", 'mouse_support', val);
+                        else
+                            result.iflags.wc_mouse_support = mode;
+                    }
                 }
                 else if (key === 'petattr') {
                     const PETATTRS = { none: 0, normal: 0, bold: 1, dim: 2, italic: 3,

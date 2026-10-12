@@ -170,6 +170,29 @@ export function count_wsegs(mtmp) {
     return i;
 }
 
+/* C worm.c:945-965 wseg_at(worm, x, y) — index of the segment at (x,y),
+ * counted from the tail; 0 when the worm does not occupy that square.  Returns
+ * the number of segments from the matched one through the head, the same
+ * quantity mstatusline() prints as "Nth of M segments". */
+export function wseg_at(worm, x, y) {
+    let res = 0;
+
+    if (worm && worm.wormno && m_at(x, y) === worm) {
+        let curr;
+        let i, n;
+
+        for (i = 0, curr = wtails[worm.wormno]; curr; curr = curr.nseg) {
+            if (curr.wx === x && curr.wy === y)
+                break;
+            ++i;
+        }
+        for (n = i; curr; curr = curr.nseg)
+            ++n;
+        res = n - i;
+    }
+    return res;
+}
+
 /* C worm.c:145-167 toss_wsegs(curr, display_update) — drop this segment and
  * every one after it. */
 function toss_wsegs(curr, display_update) {
@@ -694,6 +717,19 @@ export function see_wsegs(worm) {
         newsym(curr.wx, curr.wy);
         curr = curr.nseg;
     }
+}
+
+/* C ref: worm.c:503-519 detect_wsegs(worm, use_detection_glyph) walks the same
+ * chain as see_wsegs() — every segment from wtails[] up to, NOT including,
+ * wheads[] — and show_glyph()s the tail monster on each one.  The paint is
+ * display.js's job (it owns show_glyph / _render_monster_glyph); this is the
+ * chain walk only, so the private segment chains stay private. */
+export function worm_tail_cells(worm) {
+    const cells = [];
+    const wnum = worm.wormno | 0;
+    for (let curr = wtails[wnum]; curr && curr !== wheads[wnum]; curr = curr.nseg)
+        cells.push(curr);
+    return cells;
 }
 
 /* C ref: worm.c:877-891 worm_known().  Kept here with the private segment

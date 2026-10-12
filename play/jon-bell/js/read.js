@@ -735,7 +735,7 @@ import { dmgtype } from './dogmove.js';
  * js/display.js also declares a private `observe_object`, but that one is a
  * bare `obj.dknown = 1` with neither the FIRST_OBJECT nor the Hallucination
  * guard, so it is NOT the copy to wire. */
-import { getObjFromGetobj, observe_object, level_tele, getobj_redo_menu, check_capacity, getpos } from './cmd.js';
+import { getObjFromGetobj, observe_object, level_tele, getobj_redo_menu, check_capacity, getpos, getpos_sethilite } from './cmd.js';
 /* C teleport.c:844 scrolltele() — the non-confused, non-cursed arm of
  * seffect_teleportation (read.c:1796). */
 import { scrolltele } from './teleport.js';
@@ -3499,7 +3499,7 @@ async function seffect_food_detection(sobjp) {
 }
 
 /* C read.c:687-724 charge_ok() — getobj classifier for the object to charge. */
-function charge_ok(obj) {
+export function charge_ok(obj) {
     const MAGIC_LAMP = 228;
     if (!obj) return GETOBJ_EXCLUDE;
     if (obj.oclass === WAND_CLASS) return GETOBJ_SUGGEST;
@@ -3567,7 +3567,9 @@ function can_center_cloud(x, y) {
 }
 
 /* C ref: read.c:1864-1932 seffect_fire.  The getpos_sethilite() highlight
- * (display_stinking_cloud_positions) is cosmetic and not modelled. */
+ * (display_stinking_cloud_positions) is cosmetic and not modelled; its
+ * validity callback (can_center_cloud) IS installed, because autodescribe
+ * reads it back for " (invalid target)". */
 async function seffect_fire(holder) {
     const sobj = holder.obj;
     const g = game, u = g.u;
@@ -3608,6 +3610,10 @@ async function seffect_fire(holder) {
                 await pline('This is a scroll of fire!');
             dam *= 5;
             await pline('Where do you want to center the explosion?');
+            /* C ref: read.c:1897-1898 getpos_sethilite(display_stinking_cloud_positions,
+             * can_center_cloud) — the validity callback is what getpos's
+             * autodescribe reads back for " (invalid target)" (getpos.c:655). */
+            await getpos_sethilite(() => {}, can_center_cloud);
             await getpos(cc, true, 'the desired position');
             if (!can_center_cloud(cc.x, cc.y)) {
                 /* try to reach too far, get burned */
@@ -3630,6 +3636,9 @@ async function do_stinking_cloud(sobj, mention_stinking) {
     const u = game.u;
     await pline(`Where do you want to center the ${mention_stinking ? 'stinking ' : ''}cloud?`);
     const cc = { x: u.ux, y: u.uy };
+    /* C ref: read.c:3090 getpos_sethilite(display_stinking_cloud_positions,
+     * can_center_cloud) — installs the validity callback for autodescribe. */
+    await getpos_sethilite(() => {}, can_center_cloud);
     if ((await getpos(cc, true, 'the desired position')) < 0) {
         await pline('Never mind.');
         return;
@@ -4655,6 +4664,21 @@ async function _identify_objlist_menu(promptText) {
     const WIN_COL = FULL_SCREEN
         ? 1
         : tty_window_offx([...GEOM_LINES.slice(0, PAGE_CONTENT), '(end)'], 'end');
+    /* The entries whose row falls on page 1 (line 0 is the prompt, line 1 the
+     * separator, then one heading line per class ahead of its items). */
+    const onPage1 = () => {
+        const onPage = new Set();
+        let line = 2;
+        for (const oc of classOrder) {
+            line++;
+            for (const e of entries) {
+                if ((e.obj.oclass | 0) !== oc) continue;
+                if (line < PAGE_CONTENT) onPage.add(e);
+                line++;
+            }
+        }
+        return onPage;
+    };
     const frameRows = () => {
         const lines = buildLines();
         const pageCount = Math.max(1, Math.ceil(lines.length / PAGE_CONTENT));
@@ -4692,6 +4716,17 @@ async function _identify_objlist_menu(promptText) {
         }
         const e = LETTERSET.get(kc);
         if (e) { e.selected = !e.selected; continue; }
+        const BULK = {
+            46: [false, 'set'], 45: [false, 'clear'], 64: [false, 'invert'],
+            44: [true, 'set'], 92: [true, 'clear'], 126: [true, 'invert'],
+        };
+        if (BULK[kc]) {
+            const [pageOnly, mode] = BULK[kc];
+            const targets = pageOnly ? onPage1() : entries;
+            for (const t of targets)
+                t.selected = mode === 'invert' ? !t.selected : mode === 'set';
+            continue;
+        }
         if (kc === 0x3a /* ':' MENU_SEARCH */) {
             /* C ref: win/tty/wintty.c:1700-1730 — tty_getlin("Search for:"),
              * "*%s*", then pmatchi() over the whole mlist toggling every
@@ -4832,7 +4867,10 @@ export function show_map_spot(loc, x, y, cnf) {
     }
     const oldCls = loc.disp_cls;
     const oldGlyph = { ch: loc.disp_ch, color: loc.disp_color, decgfx: !!loc.disp_decgfx,
-                       cls: oldCls };
+                       cls: oldCls, attr: loc.disp_attr | 0,
+                       /* the glyph number encodes the object type (and a statue's
+                          or corpse's species), which object farlook decodes */
+                       otyp: loc.disp_obj_otyp, corpsenm: loc.disp_obj_corpsenm };
     /* C detect.c:1400-1405: hero_memory path — magic_map_background then newsym. */
     magic_map_background(loc, x, y);
     newsym(x, y);
@@ -4852,10 +4890,13 @@ export function show_map_spot(loc, x, y, cnf) {
             /* C detect.c:1412-1414 show_glyph(x,y,oldglyph) + (hero_memory)
              * lev->glyph = oldglyph — put back the trap/object the background
              * overwrite just wiped. */
-            show_glyph_cell(x, y, oldGlyph.ch, oldGlyph.color, oldGlyph.decgfx, 0, oldCls);
+            show_glyph_cell(x, y, oldGlyph.ch, oldGlyph.color, oldGlyph.decgfx, 0, oldCls,
+                            false, oldGlyph.otyp, oldGlyph.corpsenm);
             if (game.level?.flags?.hero_memory)
                 loc.remembered_glyph = { ch: oldGlyph.ch, color: oldGlyph.color,
-                                         decgfx: oldGlyph.decgfx, cls: oldCls };
+                                         decgfx: oldGlyph.decgfx, cls: oldCls,
+                                         otyp: oldGlyph.otyp,
+                                         corpsenm: oldGlyph.corpsenm };
         }
     }
     if (!cnf && (loc.roomno | 0) >= ROOMOFFSET)

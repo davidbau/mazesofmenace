@@ -28,8 +28,8 @@ import { omon_adj, _spoteffects_pickup, welded, setuwep, setuswapwep,
          setuqwep, freeinv, body_part, set_wounded_legs } from './cmd.js';
 import { find_mac, t_at, reset_utrap, fill_pit } from './trap.js';
 import { remove_object, obj_extract_self, maybe_unhide_at, place_object } from './mklev.js';
-import { flooreffects } from './cmd.js';
-import { rn2, rnd } from './rng.js';
+import { flooreffects, Yname2 } from './cmd.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { You, hard_helmet, encumber_msg } from './do_wear.js';
 import { xname } from './do_wear.js';
 import { losehp } from './dokick.js';
@@ -316,14 +316,14 @@ export async function ballfall() {
     await ballrelease(true);
     if (!gets_hit) return;
 
-    let dmg = 25 + rnd(7) - 1; // rn1(7, 25)
+    let dmg = rn1(7, 25); // C ball.c:54 rn1(7,25) = rn2(7)+25
     void pline(`The iron ball falls on your ${body_part(HEAD)}.`);
     if (u.uarmh) {
         if (hard_helmet(u.uarmh)) {
             void pline('Fortunately, you are wearing a hard helmet.');
             dmg = 3;
         } else if (game.flags?.verbose !== false) {
-            void pline('Your helmet does not protect you.');
+            await pline(`${Yname2(u.uarmh)} does not protect you.`); /* C ball.c:59 */
         }
     }
     await losehp(ball_Maybe_Half_Phys(dmg),

@@ -24,7 +24,7 @@ import { pline_with_more, money_cnt, build_window_screen, tty_window_offx } from
 import { autokey, pick_lock, getdir } from './lock.js';
 import { nomul } from './allmain.js';
 import { nhgetch } from './input.js';
-import { touch_artifact_youmonst } from './wizcmds.js';
+import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
 import { poly_when_stoned } from './mhitm.js';
 import { polymon } from './polyself.js';
 import { PM_STONE_GOLEM } from './pm.generated.js';
@@ -360,7 +360,13 @@ async function doloot_core() {
 
     g.abort_looting = false;
 
-    /* C pickup.c:2188 — check_capacity: false (unencumbered hero). */
+    /* C pickup.c:2188 -> hack.c:4400-4407 check_capacity((char *) 0):
+     * Overtaxed or worse prints "You can't do that while carrying so much
+     * stuff." and the command costs no time. */
+    if (near_capacity() >= 4 /* EXT_ENCUMBER */) {
+        await pline("You can't do that while carrying so much stuff.");
+        return ECMD_OK;
+    }
     if (_loot_nohands()) {
         await pline("You have no hands!");
         return ECMD_OK;
@@ -918,9 +924,9 @@ function autopick_testobj(otmp, calc_costly) {
 
     if ((g.flags?.pickup_thrown ?? true) /* default On, optlist.h:579 */ && (otmp.how_lost | 0) === LOST_THROWN)
         return true;
-    if (g.flags?.pickup_stolen && (otmp.how_lost | 0) === LOST_STOLEN)
+    if ((g.flags?.pickup_stolen ?? true) /* default On, optlist.h:576 */ && (otmp.how_lost | 0) === LOST_STOLEN)
         return true;
-    if (g.flags?.nopick_dropped && (otmp.how_lost | 0) === LOST_DROPPED)
+    if ((g.flags?.nopick_dropped ?? true) /* default On, optlist.h:291 */ && (otmp.how_lost | 0) === LOST_DROPPED)
         return false;
     if ((otmp.how_lost | 0) === LOST_EXPLODING)
         return false;
@@ -1324,7 +1330,7 @@ export async function lift_object(obj, container, cnt, telekinesis) {
         // options.c initializes pickup_burden to MOD_ENCUMBER. The port's
         // sparse flags object may omit it; an explicit UNENCUMBERED (0)
         // must still retain its stricter prompting threshold.
-        const burden = (g.flags?.pickup_burden ?? MOD_ENCUMBER) | 0;
+        const burden = _pickup_burden_level(g.flags?.pickup_burden);
         if (prev_encumbr < burden)
             prev_encumbr = burden;
         const next_encumbr = calc_capacity(cc.wt_after - cc.wt_before);

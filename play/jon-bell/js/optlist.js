@@ -31,10 +31,12 @@
 // "(not applicable)").  The arms taken here are the ones a unix + tty build
 // selects: ALTMETA, INSURANCE, TTY_GRAPHICS, NEWS, BACKWARD_COMPAT,
 // CRASHREPORT, PREV_MSGS, STATUS_HILITES and SELECTSAVED defined; MICRO,
-// AMIGA, MAC, MSDOS, DEBUG, SCORE_ON_BOTL, TIMED_DELAY (unixconf.h:115 leaves
+// AMIGA, MAC, MSDOS, SCORE_ON_BOTL, TIMED_DELAY (unixconf.h:115 leaves
 // it commented out and MACOS — the pre-OSX Mac port macro — is not defined),
-// TTY_TILES_ESCCODES and TTY_SOUND_ESCCODES undefined.  `#if 0` entries
-// (large_font) are dropped.
+// TTY_TILES_ESCCODES and TTY_SOUND_ESCCODES undefined.  DEBUG IS DEFINED:
+// travel_debug has addr &iflags.trav_debug and option_help() lists it in
+// 1560, row 22 "travel, travel_debug, tutorial,").
+// `#if 0` entries (large_font) are dropped.
 //
 // Consumers must apply C's own run-time filters (wizard mode, opttyp) rather
 // than assuming this list is pre-filtered — see options.js option_help().
@@ -232,7 +234,7 @@ export const ALLOPT = [
     ["toptenwin", 'B', 'in_game', "", "show top scores in window"],
     ["traps", 'C', 'in_config', "", "list of symbols to use in drawing traps"],
     ["travel", 'B', 'in_game', "", "enable traveling via mouse click"],
-    ["travel_debug", 'B', 'wizonly', "noaddr", ""],
+    ["travel_debug", 'B', 'wizonly', "", ""],
     ["tutorial", 'B', 'in_config', "", "ask if you want the tutorial"],
     ["use_darkgray", 'B', 'in_config', "", "use bold black color instead of blue"],
     ["use_inverse", 'B', 'in_game', "", "display detected monsters in inverse"],

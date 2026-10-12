@@ -1,6 +1,6 @@
 import { touch_artifact_mon, lifesaved_monster, m_consume_obj, add_to_minv as add_to_minv_real } from './mklev.js';
 import { newobj } from './game.js';
-import { flooreffects as flooreffects_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
+import { is_pole as is_pole_dm, flooreffects as flooreffects_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
 import { m_in_out_region as m_in_out_region_dm } from './region.js';
 import { set_apparxy as set_apparxy_dm } from './monmove.js';
 // @ts-nocheck
@@ -13,9 +13,9 @@ import { rn1, rn2, rnd, d } from './rng.js';
 import { obj_resists } from './zap.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { unstuck as unstuck_dm, m_unleash, sticks, dismount_steed as dismount_steed_qm } from './dog.js';
-import { topl_force_break_after as topl_force_break_after_qm } from './display.js';
-import { y_monnam as y_monnam_qm, mon_hates_silver } from './mhitm.js';
-import { an as an_qm } from './objnam.js';
+import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM } from './display.js';
+import { y_monnam as y_monnam_qm, mon_hates_silver, stagger as stagger_dm } from './mhitm.js';
+import { an as an_qm, makeplural as makeplural_dm } from './objnam.js';
 import { OC_DESCR as OC_DESCR_QM } from './oc_descr_data.js';
 import { OC_NAME as OC_NAME_QM } from './oc_name_data.js';
 import { DEFSYM_EXPLANATION as DEFSYM_EXPL_QM } from './defsym_data.js';
@@ -24,8 +24,13 @@ import { NON_PM } from './const.js';
 import { PLNMSG_HIDE_UNDER as PLNMSG_HIDE_UNDER_C } from './const.js';
 import { HALLUC, HALLUC_RES } from './const.js';
 import { PROT_FROM_SHAPE_CHANGERS as PROT_SHAPE_QM } from './const.js';
-import { mon_mattk_raw, could_seduce, mattacku, mswings_verb,
+import { mon_mattk_raw, getmattk as getmattk_mhitu, could_seduce, mattacku, mswings_verb,
          breamm as breamm_mu, spitmm as spitmm_mu, mhis_mon as mhis_mon_mu } from './mhitu.js';
+import { monshoot } from './mhitu.js';
+import { m_lined_up } from './makemon.js';
+import { select_rwep } from './uhitm.js';
+import { ammo_and_launcher as ammo_and_launcher_dm } from './hold_another_object.js';
+import { nomul as nomul_dm } from './allmain.js';
 import { x_monnam, You, hliquid, noit_Monnam } from './mhitm.js';
 import { game } from './gstate.js';
 import { dist2, s_suffix } from './hacklib.js';
@@ -42,7 +47,7 @@ import { erode_obj, mintrap as mintrap_real, goodpos as goodpos_real, m_useup as
 import { PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_STEAM_VORTEX, PM_AIR_ELEMENTAL, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_SHADE, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_CHICKATRICE, PM_COCKATRICE, PM_MEDUSA, PM_STONE_GOLEM, PM_ANGEL, PM_RUST_MONSTER, PM_GELATINOUS_CUBE, PM_ARCHON } from './pm.generated.js';
 import { zombie_maker, dmgtype_fromattack, grow_up, nonliving, onscary, monPmname, splitobj, nextoid, which_armor, permonstTemplate, set_mon_data } from './makemon.js';
 import { pline, newsym, _topline_more_pending, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, unmap_object, You_hear, Deaf, sensemon } from './display.js';
-import { Japanese_item_name, xname_scroll, xname_armor, xname_amulet, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
+import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
  * call has, and the reason distant_name() exists at all.  Imported here
  * because _dm_doname() below reproduces xname_flags()'s prologue for the
@@ -52,7 +57,7 @@ import { observe_object as observe_object_dm } from './o_init.js';
 /* C youprop.h:103 Blind — prop.h BLINDED. */
 import { BLINDED as BLINDED_DM } from './const.js';
 import { FF_FAITHFUL } from './fastforward.js';
-import { remove_worm as remove_worm_real,
+import { remove_worm as remove_worm_real, wormgone as wormgone_real,
          place_worm_tail_randomly as place_worm_tail_randomly_real } from './worm.js';
 
 /* C pline_mon() adds a monster-coordinate channel that this terminal does
@@ -604,10 +609,18 @@ function _vegan(mndx) {
         || _noncorporeal(mndx);
 }
 /* C obj.h polyfood(obj): a corpse/egg/tin whose corpsenm can be polymorphed into
- * (pm_to_cham) or whose attacks include AD_POLY.  No early pet eats such a corpse;
- * the only common case is a chameleon corpse.  Conservative: false unless chameleon. */
-const PM_CHAMELEON_C = 327;
-function _polyfood_corpse(cn) { return cn === PM_CHAMELEON_C; }
+ * (pm_to_cham) or whose attacks include AD_POLY (obj.h:321-324).  Callers only
+ * reach this for CORPSE, so ofood(obj) holds. */
+const M2_SHAPESHIFTER_DM = 0x00004000;
+const AD_POLY_DM = 43;
+function _polyfood_corpse(cn) {
+    if (cn < 0 || cn >= _MONS.length)
+        return false;
+    /* pm_to_cham(cn) != NON_PM: M2_SHAPESHIFTER (mon.c:516-528) */
+    if ((_mf2(cn) & M2_SHAPESHIFTER_DM) !== 0)
+        return true;
+    return !!dmgtype_fromattack(permonstTemplate(cn), AD_POLY_DM, -1);
+}
 /* C mondata.c same_race(pm1, pm2): player races have own predicates, else mlet. */
 function _same_race(m1, m2) {
     if (m1 === m2) return true;
@@ -715,7 +728,7 @@ export function dogfood(mtmp, obj) {
                  && !(fx === PM_LIZARD_C || fx === PM_LICHEN_C)
                  && mlet_pet !== S_FUNGUS)
                 || (fxValid && _acidic(fx) /* && !resists_acid(mon) */)
-                || (fxValid && _poisonous(fx) /* && !resists_poison(mon) */))
+                || (fxValid && _poisonous(fx) && !resists_poison(mtmp)))
                 return POISON;
             /* C dog.c:1076 — polyfood corpse, smart tame pet, not starving → MANFOOD. */
             else if (_polyfood_corpse(fx) && (mtmp.mtame | 0) > 1 && !starving)
@@ -1170,7 +1183,11 @@ function noit_Monnam_dm(mtmp) {
 
 async function dog_obj_name(obj) {
     const otyp = obj.otyp | 0;
-    if (otyp === CORPSE_OTYP) {
+    /* The corpse shortcut dropped doname's prefixes ("greased frost giant
+     * corpse", dogmove.c:285 distant_name(obj, doname)); doname covers it. */
+    /* A greased corpse is "a greased jackal corpse" (objnam.c:1370-1371), which
+     * the species shortcut below cannot render; only a bare corpse may take it. */
+    if (otyp === CORPSE_OTYP && !(obj.greased | 0)) {
         const sp = obj_pmname_dm(obj);
         const base = sp ? sp + ' corpse' : 'corpse';
         return an_qm(base);
@@ -1214,25 +1231,11 @@ async function _dm_doname(obj) {
     }
     if ((obj.oclass | 0) === POTION_CLASS_DM)
         return doname_potion(obj);
-    /* C objnam.c:866-872 xname_flags: Role_if(PM_SAMURAI) swaps in
-     * Japanese_item_name() ("gunyoki"); this hand table knows only the
-     * English OBJ_NAME, so a Samurai falls through to the real doname(). */
-    const fn = (_dm_Role_if_samurai() && Japanese_item_name(otyp) != null)
-        ? null : FOOD_OTYP_NAMES[otyp];
-    if (fn) {
-        const q = (obj.quan | 0);
-        return (q > 1) ? `${q} ${fn}s` : an_dm(fn);
-    }
     /* C objnam.c:796-798 xname COIN_CLASS → "gold piece"; doname (objnam.c:1283-
      * 1298) prefixes "N " when quan!=1 (pluralizing → "gold pieces") else "a ". */
     if ((obj.oclass | 0) === COIN_CLASS) {
         const q = (obj.quan | 0);
         return (q !== 1) ? `${q} gold pieces` : an_dm('gold piece');
-    }
-    if ((obj.oclass | 0) === _AMULET_CLASS_DM) {
-        const am = xname_amulet(obj);
-        const q = (obj.quan | 0);
-        return (q > 1) ? `${q} ${am}s` : an_dm(am);
     }
     const generic = await doname(obj);
     if (generic)
@@ -1267,7 +1270,6 @@ function _dm_Role_if_samurai() {
     return ((g.urole && g.urole.mnum != null) ? (g.urole.mnum | 0) : -1) === _ROLE_IDX_SAMURAI_DM;
 }
 const _ARMOR_CLASS_DM = 3; /* C ARMOR_CLASS */
-const _AMULET_CLASS_DM = 5; /* C AMULET_CLASS */
 const SCROLL_CLASS_DM = 9; /* C SCROLL_CLASS */
 const POTION_CLASS_DM = 8; /* C POTION_CLASS */
 const WEAPON_OTYP_NAMES = { 18: 'arrow', 24: 'dart', 474: 'rock' };
@@ -2166,6 +2168,13 @@ function pet_has_ranged_attk(mtmp) {
         || a === AT_MAGC || a === AT_WEAP;
 }
 
+/* C mondata.h:46 haseyes(ptr) — !(M1_NOEYES) */
+function haseyes_dm(data) {
+    const mndx = (data?.pmidx ?? data?.mndx ?? -1) | 0;
+    if (mndx < 0 || mndx >= _MONS.length) return true;
+    return ((_MONS[mndx][6] | 0) & 0x00001000) === 0;
+}
+
 async function pet_ranged_attk(mtmp, forced) {
     /* C: hungry check */
     let hungry = 0;
@@ -2193,6 +2202,16 @@ async function pet_ranged_attk(mtmp, forced) {
                 (game.gn ||= {}).notonhead = false;
                 const mstatus = await mattackm(mtmp, mtarg);
                 if (mstatus & M_ATTK_AGR_DIED) return MMOVE_DIED;
+                /* C dogmove.c:955-975 — the targeted nasty may strike back */
+                if ((mstatus & M_ATTK_HIT) && !(mstatus & M_ATTK_DEF_DIED)
+                    && rn2(4)) {
+                    if (mtarg.mcansee && haseyes_dm(mtarg.data)) {
+                        game.gb.bhitpos = { x: mtmp.mx, y: mtmp.my };
+                        game.gn.notonhead = false;
+                        const mresp = await mattackm(mtarg, mtmp);
+                        if (mresp & M_ATTK_DEF_DIED) return MMOVE_DIED;
+                    }
+                }
                 if (mstatus !== M_ATTK_MISS) return MMOVE_DONE;
             }
         } else {
@@ -2534,21 +2553,35 @@ async function passivemm_rng(magr, mdef, mhitb, mdead) {
                     const _haseyes_m = !((_madat.mflags1 | 0) & 0x00001000);
                     if ((magr.mcansee | 0) && _haseyes_m && (mdef.mcansee | 0)
                         && (perceives_dm(_madat) || !(mdef.minvis | 0))) {
-                        if (mon_reflects_dm(magr, null))
+                        /* C mhitm.c:1376-1378: buf = s_suffix(Monnam(mdef)) is
+                         * built UNCONDITIONALLY, before the reflection test —
+                         * under hallucination Monnam draws rn2_on_display_rng
+                         * (rndmonnam), whether or not anyone sees it. */
+                        const _gaze_fmt = `${s_suffix(Monnam_dm(mdef))} gaze is reflected by %s %s.`;
+                        if (mon_reflects_dm(magr, canseemon(magr) ? _gaze_fmt : null))
                             return mdead | mhit;
+                        const _magr_name = Monnam_dm(magr);
                         if (canseemon(magr))
-                            pline(`${Monnam_dm(magr)} is frozen by ${s_suffix(mon_nam_dm(mdef))} gaze!`);
+                            pline(`${_magr_name} is frozen by ${s_suffix(mon_nam_dm(mdef))} gaze!`);
                         paralyze_monst(magr, tmp);
                         return mdead | mhit;
                     }
                 } else { /* gelatinous cube, C mhitm.c:1386-1392 */
+                    const _magr_name = Monnam_dm(magr);
                     if (canseemon(magr))
-                        pline(`${Monnam_dm(magr)} is frozen by ${mon_nam_dm(mdef)}.`);
+                        pline(`${_magr_name} is frozen by ${mon_nam_dm(mdef)}.`);
                     paralyze_monst(magr, tmp);
                     return mdead | mhit;
                 }
                 return 1; /* C mhitm.c:1394 */
-            /* AD_COLD/AD_FIRE/AD_ELEC/AD_STUN and default: no further RNG */
+            case _AD_STUN: /* C mhitm.c:1398-1412 — stunned attacker, no RNG */
+                if (!(magr.mstun | 0)) {
+                    magr.mstun = 1;
+                    if (canseemon(magr))
+                        pline(`${Monnam_dm(magr)} ${makeplural_dm(stagger_dm(magr.data, "stagger"))}...`);
+                }
+                break;
+            /* AD_COLD/AD_FIRE/AD_ELEC and default: no further RNG */
             default:
                 break;
         }
@@ -2751,7 +2784,7 @@ export async function mattackm(magr, mdef) {
         switch (mattk.aatyp) {
         case AT_WEAP:
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
-                strike = (thrwmm(magr, mdef) === M_ATTK_MISS) ? 0 : 1;
+                strike = (await thrwmm(magr, mdef) === M_ATTK_MISS) ? 0 : 1;
                 if (strike)
                     res[i] |= M_ATTK_HIT;
                 if (DEADMONSTER_dm(mdef))
@@ -3019,7 +3052,12 @@ function sticks_dm(ptr) { return sticks(ptr); }
  * consumed first, exactly as C does before any of the disqualifying checks. */
 export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     const knockdistance = rn2(3) ? 1 : 2;
-    const chance = 6;
+    let chance = 6;
+    /* C uhitm.c:5256-5263: wep = weapon_used ? MON_WEP(magr) : 0;
+     * Ogresmasher (artifact index 16) knocks back 1/2 of the time. */
+    const wep = weapon_used ? MON_WEP_dm(magr) : null;
+    if (wep && (wep.oartifact | 0) === 16)
+        chance = 2;
     if (rn2(chance))
         return false;
 
@@ -3047,6 +3085,16 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
      * already happened above). */
     if (!(((magr.data?.msize | 0) > (mdef.data?.msize | 0) + 1)))
         return false;
+    /* C uhitm.c:5329-5331: no knockback with a flimsy or non-blunt weapon.
+     * is_flimsy: oc_material <= LEATHER or RUBBER_HOSE; is_blunt_weapon: WHACK
+     * rows (otyp 69..81 minus 72, plus pick-axe 259 / grappling hook 260),
+     * same table as js/mhitu.js mhitu_knockback. */
+    if (wep) {
+        const wo = wep.otyp | 0;
+        const blunt = (wo >= 69 && wo <= 81 && wo !== 72) || wo === 259 || wo === 260;
+        if ((MKOBJ_OC_MATERIAL[wo] | 0) <= 7 /* LEATHER */ || wo === 78 /* RUBBER_HOSE */ || !blunt)
+            return false;
+    }
     if (unsolid_dm(magr.data))
         return false;
     /* C:5343 m_is_steadfast(mdef) skipped — not modeled. */
@@ -3060,7 +3108,9 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
         const { will_hurtle } = await import('./cmd.js');
         const knockedhow = will_hurtle(mdef, defx + dx, defy + dy)
             ? 'backward' : 'back';
-        await pline(`${Monnam_dm(magr)} knocks ${mon_nam_dm(mdef)} ${knockedhow} with a ${
+        /* C uhitm.c:5365 mdefbuf = y_monnam(mdef): a tame defender reads
+         * "your kitten", not "the kitten". */
+        await pline(`${Monnam_dm(magr)} knocks ${y_monnam_qm(mdef)} ${knockedhow} with a ${
             rn2(2) ? 'forceful' : 'powerful'} ${rn2(2) ? 'blow' : 'strike'}!`);
     }
 
@@ -3201,9 +3251,16 @@ export async function mondied_dm(mdef, mondead_only = false) {
      * out in C itself — "too many places assume that the stale monst->mx,my
      * values are still valid"). Off-map status is carried by mstate alone. */
     mdef.mstate = (mdef.mstate | 0) | MON_DETACH;
+    /* C mon.c:2709-2710 mon_leaving_level(): a long worm takes its whole tail
+     * off the map (remove_worm, newsym per segment) before the head newsym. */
+    if (mdef.wormno)
+        remove_worm_real(mdef);
     newsym(deadMx, deadMy);
 
     await relobj_dead_dm(mdef);
+    /* C mon.c:2786-2787 m_detach(): if (mtmp->wormno) wormgone(mtmp); */
+    if (mdef.wormno)
+        wormgone_real(mdef);
     /* C mon.c:2799-2801 m_detach() tail: hero is thrown from his steed when it
      * dies or gets genocided. */
     if (game.u && mdef === game.u.usteed)
@@ -3442,8 +3499,11 @@ async function gazemm(magr, mdef, mattk) {
 function getmattk(magr, mdef, i, res, alt_attk) {
     const row = mon_mattk_raw((magr.mndx ?? magr.mnum ?? 0) | 0);
     if (row && i < row.length) {
-        const a = row[i];
-        return { aatyp: a[0] | 0, adtyp: a[1] | 0, damn: a[2] | 0, damd: a[3] | 0 };
+        /* C mhitm.c:313 getmattk() IS mhitu.c:310 getmattk(): the lich
+         * cold-touch -> physical substitution (mhitu.c:413-433, 1d10 -> 1d6
+         * against a cold-resistant defender) and the other alt-attack arms. */
+        const a = getmattk_mhitu(magr, false, mdef, i, res);
+        if (a) return { aatyp: a.aatyp | 0, adtyp: a.adtyp | 0, damn: a.damn | 0, damd: a.damd | 0 };
     }
     const dm = magr.data?.mattk;
     if (dm && dm[i]) {
@@ -3552,7 +3612,10 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
               + ' ' + mon_nam_dm(mdef) + ' '
               + ((compat === 2) ? 'engagingly' : 'seductively') + '.');
     } else if (game.v?.vis)
-        pline(Monnam_dm(magr) + ' ' + attack_verb_dm(mattk.aatyp | 0)
+        /* C mhitm.c:685-688 AT_TENT: "%s tentacles suck" with s_suffix(magr_name) */
+        pline((mattk.aatyp === AT_TENT
+               ? s_suffix(Monnam_dm(magr)) + ' tentacles suck'
+               : Monnam_dm(magr) + ' ' + attack_verb_dm(mattk.aatyp | 0))
               + ' ' + mon_nam_dm(mdef) + '.');
     else
         noises_dm(magr, mattk); /* C mhitm.c:729 */
@@ -3584,10 +3647,7 @@ function mswingsm(magr, mdef, mwep) {
         && !(u.uprops[BLINDED_DM].blocked | 0);
     if (!(game.flags?.verbose ?? true) || blinded || !mon_visible(magr))
         return;
-    const skill = mwep?.oc_skill | 0;
-    const isPole = (skill === 16 || skill === 19
-                    || (mwep?.oartifact | 0) === 19);
-    const bash = isPole && (mwep?.oartifact | 0) !== 19
+    const bash = is_pole_dm(mwep) && (mwep?.oartifact | 0) !== 19 /* ART_SNICKERSNEE */
         && dist2(magr.mx | 0, magr.my | 0, mdef.mx | 0, mdef.my | 0) <= 2;
     const pronoun = mhis_dm(magr);
     pline(`${Monnam(magr)} ${mswings_verb(mwep, bash)} ${mwep.quan > 1 ? 'one of ' : ''}${pronoun} ${xname(mwep)} at ${mon_nam(mdef)}.`);
@@ -3643,7 +3703,41 @@ export async function possibly_unwield(magr, flag) {
 function spitmm(magr, mattk, mdef) {
     return spitmm_mu(magr, mattk, mdef);
 }
-function thrwmm(magr, mdef) { return M_ATTK_MISS; }
+/* C ref: mthrowu.c:969-1012 thrwmm() — monster throws item at another monster */
+async function thrwmm(mtmp, mtarg) {
+    /* Polearms won't be applied by monsters against other monsters */
+    if (mtmp.weapon_check === NEED_WEAPON$ || !MON_WEP_dm(mtmp)) {
+        mtmp.weapon_check = NEED_RANGED_WEAPON_DM;
+        /* mon_wield_item resets weapon_check as appropriate */
+        if (await mon_wield_item(mtmp) !== 0)
+            return M_ATTK_MISS;
+    }
+    const otmp = await select_rwep(mtmp);
+    if (!otmp)
+        return M_ATTK_MISS;
+    const ispole = is_pole_dm(otmp);
+    const x = mtmp.mx, y = mtmp.my;
+    const mwep = MON_WEP_dm(mtmp);
+    if (!ispole && m_lined_up(mtarg, mtmp)) {
+        const chance = Math.max(BOLT_LIM_DM - distmin(x, y, mtarg.mx, mtarg.my), 1);
+        if (!mtarg.mflee || !rn2(chance)) {
+            if (ammo_and_launcher_dm(otmp, mwep)
+                && dist2(mtmp.mx, mtmp.my, mtarg.mx, mtarg.my) > PET_MISSILE_RANGE2_DM)
+                return M_ATTK_MISS; /* Out of range */
+            const gm = game.gm || (game.gm = {});
+            gm.mtarget = mtarg;
+            gm.marcher = mtmp;
+            await monshoot(mtmp, otmp, mwep);
+            gm.marcher = gm.mtarget = null;
+            nomul_dm(0);
+            return M_ATTK_HIT;
+        }
+    }
+    return M_ATTK_MISS;
+}
+const NEED_RANGED_WEAPON_DM = 2; /* monst.h wpn_chk_flags */
+const BOLT_LIM_DM = 8;
+const PET_MISSILE_RANGE2_DM = 36;
 
 export async function dog_move(mtmp, after) {
     /* C: edog = EDOG(mtmp) if mtame && has_edog */
@@ -4011,7 +4105,12 @@ export async function dog_move(mtmp, after) {
         mtmp.my = niy;
         if (chi >= 0 && cursemsg[chi] && (wasseen || canseemon(mtmp))) {
             /* C dogmove.c:1360: o = (!Hallucination && hero_memory && glyph_is_object) ? vobj_at : 0 */
-            const o = dm_hallucinating() ? null : top_floor_obj(nix, niy);
+            /* C tests the REMEMBERED glyph (levl[][].glyph), not the live pile:
+             * a pet stepping onto a corpse the hero has never seen reads
+             * "something", not the object's name. */
+            const _rg = game.level?.at?.(nix, niy)?.remembered_glyph;
+            const o = (!dm_hallucinating() && game.level?.flags?.hero_memory
+                       && _rg?.cls === GLYPHCLS_OBJ_DM) ? top_floor_obj(nix, niy) : null;
             const what = o ? (await distant_obj_name(o)) : 'something';
             const verb = locomotion_step(mtmp);
             const prep = (is_flyer_dm(mtmp) || is_floater_dm(mtmp)) ? 'over' : 'onto';

@@ -22,10 +22,12 @@
 import { game } from './gstate.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, LS_OBJECT, LS_MONSTER, TEMP_LIT, COULD_SEE,
-    RANGE_LEVEL, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED,
+    RANGE_LEVEL, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED,
     BURIED_TOO, CONTAINED_TOO, u_at,
 } from './const.js';
-import { clear_path, circle_ptr } from './vision.js';
+import { clear_path, circle_ptr, vision_recalc } from './vision.js';
+import { place_object, remove_object } from './mklev.js';
+import { flush_screen } from './display.js';
 /* end_burn — obj_merge_light_sources's src != dest arm (light.c:812).  This is
  * the reverse edge of the js/timeout.js -> js/light.js import; see the note on
  * obj_merge_light_sources below. */
@@ -531,4 +533,17 @@ export function candle_light_range(obj) {
         radius = 3; /* arbitrary */
     }
     return radius;
+}
+
+export function show_transient_light(obj, x, y) {
+    let ls = light_base;
+    for (; ls; ls = ls.next)
+        if (ls.type === LS_OBJECT && ls.id?.a_obj === obj)
+            break;
+    if (!ls || (obj.where | 0) !== OBJ_FREE)
+        return; /* C: impossible("transient light ...") */
+    place_object(obj, game.bhitpos.x, game.bhitpos.y);
+    vision_recalc(0);
+    flush_screen(0);
+    remove_object(obj);
 }

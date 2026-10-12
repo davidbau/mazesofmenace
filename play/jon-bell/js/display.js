@@ -4,12 +4,12 @@
 import { game } from './gstate.js';
 import { classifyTerrain } from './terrain-status.js';
 import { glyph_to_cmap as glyph_to_cmap_real } from './glyphs.js';
-import { see_wsegs, worm_seg_at, worm_known as worm_known_real } from './worm.js';
+import { see_wsegs, worm_seg_at, worm_known as worm_known_real, worm_tail_cells } from './worm.js';
 import { cansee, couldsee, vision_recalc, Blind } from './vision.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { observe_object } from './o_init.js';
-import { sticks } from './dog.js';
+import { sticks, attacktype } from './dog.js';
 import { SEE_INVIS, TELEPAT, DETECT_MONSTERS, INVIS } from './const.js';
 import { MAX_TYPE, TT_LAVA, TT_BURIEDBALL } from './const.js';
 import { PICK_ONE, PICK_ANY, DEVTEAM_EMAIL } from './const.js';
@@ -17,7 +17,7 @@ import { u_at, is_pit, BEAR_TRAP, WEB } from './const.js';
 /* C ref: include/align.h:29-39 — altar_to_glyph's alignment-mask tests. */
 import { AM_MASK, AM_SANCTUM, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC } from './const.js';
 import { SICK, STONED, STRANGLED, SLIMED, SICK_VOMITABLE, SICK_NONVOMITABLE } from './const.js';
-import { BLINDED, CONFUSION, STUNNED, INFRAVISION, WARNING, WARN_OF_MON, FLYING, LEVITATION, HALLUC, HALLUC_RES, DEAF, Is_rogue_level, Is_waterlevel, LA_DOWN, In_mines, In_sokoban, Is_knox_level } from './const.js';
+import { BLINDED, CONFUSION, STUNNED, WOUNDED_LEGS, INFRAVISION, WARNING, WARN_OF_MON, FLYING, LEVITATION, HALLUC, HALLUC_RES, DEAF, Is_rogue_level, Is_waterlevel, LA_DOWN, In_mines, In_sokoban, Is_knox_level } from './const.js';
 
 function _display_hallucinating() {
     const u = game.u;
@@ -27,7 +27,8 @@ function _display_hallucinating() {
               && !((hrp?.intrinsic | 0) || (hrp?.extrinsic | 0)));
 }
 import { COLNO, ROWNO, STONE, ROOM, CORR, ICE, DOOR, STAIRS, LADDER, SDOOR, SCORR, TREE, POOL, MOAT, WATER, DRAWBRIDGE_UP, DBWALL, LAVAPOOL, LAVAWALL, IRONBARS, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, DRAWBRIDGE_DOWN, AIR, CLOUD, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_ISOPEN, D_CLOSED, D_LOCKED, gs, H_DEC, PRIMARYSET, WM_MASK, WM_T_LONG, WM_T_BL, WM_T_BR, WM_C_OUTER, WM_C_INNER, WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, isok, } from './const.js';
-import { NO_COLOR, CLR_GRAY, CLR_RED, CLR_GREEN, CLR_BROWN, CLR_BLUE, CLR_CYAN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE, CLR_BLACK, CLR_MAGENTA, CLR_ORANGE, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, DEC_TO_UNICODE } from './terminal.js';
+import { NO_COLOR, CLR_GRAY, CLR_RED, CLR_GREEN, CLR_BROWN, CLR_BLUE, CLR_CYAN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE, CLR_BLACK, CLR_MAGENTA, CLR_ORANGE, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, DEC_TO_UNICODE, ATR_BOLD, ATR_INVERSE } from './terminal.js';
+import { match_str2clr } from './coloratt.js';
 import { MKOBJ_OC_COLOR, MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { IS_OBSTRUCTED, IS_DOOR, IS_ROOM, IS_POOL, OBJ_FLOOR, BC_BALL, BC_CHAIN, M_AP_TYPMASK, M_AP_FURNITURE, M_AP_NOTHING, M_AP_OBJECT, M_AP_MONSTER, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT } from './const.js';
 /* C display.c:570 — the corpsenm a mimicked object gets when the monster has
@@ -42,6 +43,8 @@ const PM_TENGU_DISP = 55;
  * js/makemon_pmnames.json[330] = "long worm tail" and cross-checked against
  * js/pm.generated.js:333 PM_LONG_WORM_TAIL = 330. */
 const PM_LONG_WORM_TAIL_DISP = 330;
+/* PM_LONG_WORM = 114 (js/pm.generated.js:120); map_monst's showtail arm. */
+const PM_LONG_WORM_DISP = 114;
 import { engr_at, engravings_list } from './mklev.js';
 import { acurr } from './attrib.js';
 import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA } from './const.js';
@@ -506,6 +509,13 @@ function _wall_angle_glyph(loc, decMode) {
      * is coloured from wallcolors[] per dungeon branch, not from
      * defsyms[S_vwall].color.  See _wall_color() below. */
     const wallColor = _wall_color();
+    /* C ref: symbols.c loadsyms — an explicit SYMBOLS=S_<name>:<char> replaces
+     * the symset glyph for that cmap symbol, a plain tty character (not a DEC
+     * byte).  The rc's SYMBOLS=S_trcorn:% makes C draw '%' at the intro box's
+     * top-right corner (display.c:3688 wall_angle -> S_trcorn). */
+    const override = game.symbolOverrides?.[`S_${key}`];
+    if (override)
+        return { ch: override, color: wallColor, dec: false };
     return decMode
         ? { ch: sym.d, color: wallColor, dec: true }
         : { ch: sym.a, color: wallColor, dec: false };
@@ -568,6 +578,13 @@ const ROGUE_OCLASS_CHAR = {
     12: '*',  /* COIN_CLASS   */
 };
 const COIN_CLASS_DISP = 12; /* objclass.h COIN_CLASS */
+/* The character botl.c:131 labels the gold field with: '$' on RogueEpyx (its
+ * S_coin is \x0f, so check_gold_symbol() sets invis_goldsym), else the live
+ * COIN_CLASS object symbol.  Shared by bot() and the window-screen status row
+ * (com_pager.js) so both read the same label on a Rogue level. */
+export function gold_status_char() {
+    return rogue_ibm_color() ? '$' : (oclass_sym(COIN_CLASS_DISP) ?? '$');
+}
 export function oclass_sym(oc) {
     if (rogue_graphics()) {
         const r = ROGUE_OCLASS_CHAR[oc | 0];
@@ -833,6 +850,12 @@ function _terrain_glyph_base(loc, x, y, assumeVisible) {
     }
 }
 // ── Dark-room re-glyph (S_darkroom) ──
+// C display.c:1168-1171: showsyms[S_darkroom] is the dark-room symbol only when
+// flags.dark_room && iflags.use_color; otherwise it is SYM_NOTHING and the glyph
+// paints blank. The S_darkroom glyph itself is still assigned in memory.
+function _darkroom_paints() {
+    return (game.flags?.dark_room ?? true) && (game.iflags?.use_color ?? true);
+}
 // C ref: display.c:1116-1123 newsym() out-of-sight branch + sym.h:96 DARKROOMSYM
 // + defsym.h:113 PCHAR(20,'.',S_darkroom,...,CLR_BLACK).
 //   if (!waslit || (flags.dark_room && iflags.use_color))
@@ -851,7 +874,26 @@ export function _darken_room_floor(loc, rg) {
     const isAsciiFloor = rg.ch === '.' && !rg.decgfx;
     const isDecFloor = rg.ch === '~' && rg.decgfx;
     if ((isAsciiFloor || isDecFloor) && rg.color === NO_COLOR) {
+        if (_darkroom_paints()) {
+            rg.color = CLR_BLACK; // S_darkroom color → ANSI 90
+            return true;
+        }
+        if (loc.waslit)
+            return false;
+        // and showsyms[S_darkroom] is SYM_NOTHING without dark_room, so it paints
+        // blank. reglyph_darkroom() (display.c:1138-1148) demotes it the same way.
+        rg.ch = ' ';
+        rg.color = NO_COLOR;
+        rg.decgfx = false;
         rg.color = CLR_BLACK; // S_darkroom color → ANSI 90
+        // C display.c:1851-1853 (reglyph_darkroom): with !flags.dark_room the
+        // S_darkroom symbol is showsyms[SYM_NOTHING + SYM_OFF_X] (blank), still
+        // CLR_BLACK.
+        const useColor = game.iflags?.wc_color ?? game.iflags?.use_color ?? true;
+        if (game.flags?.dark_room === false || !useColor) {
+            rg.ch = ' ';
+            rg.decgfx = false;
+        }
         return true;
     }
     return false;
@@ -932,6 +974,9 @@ export function reglyph_darkroom() {
                         rg.ch = ' ';
                         rg.color = NO_COLOR;
                         rg.decgfx = false;
+                        // GLYPH_NOTHING is distinct from S_stone (a plain blank ' '
+                        // glyph); only this demotion makes it (display.c:1836-1840).
+                        rg.nothing = true;
                     }
                 }
             } else {
@@ -941,12 +986,13 @@ export function reglyph_darkroom() {
                 const isRoomDec = rg.ch === '~' && rg.decgfx && rg.color === NO_COLOR;
                 if ((isRoomAscii || isRoomDec) && loc.seenv && loc.waslit && !cansee(x, y)) {
                     rg.color = CLR_BLACK; // → S_darkroom
-                } else if (rg.ch === ' ' && !rg.decgfx && rg.color === NO_COLOR
+                } else if (rg.nothing && rg.ch === ' ' && !rg.decgfx && rg.color === NO_COLOR
                     && loc.typ === ROOM && loc.seenv && !cansee(x, y)) {
                     // GLYPH_NOTHING + typ==ROOM + seenv + !cansee → S_darkroom
                     rg.ch = dec_mode() ? '~' : '.';
                     rg.color = CLR_BLACK;
                     rg.decgfx = dec_mode();
+                    delete rg.nothing;
                 }
             }
         }
@@ -992,6 +1038,7 @@ export const GLYPHCLS_OBJ = 'obj';     /* object, corpse, or statue */
 export const GLYPHCLS_TRAP = 'trap';   /* seen trap */
 export const GLYPHCLS_ENGR = 'engr';   /* cmap glyph with is_cmap_engraving(sym) */
 export const GLYPHCLS_INVIS = 'invis'; /* GLYPH_INVISIBLE "I" marker */
+export const GLYPHCLS_SWALLOW = 'swallow';
 // ── show_glyph_cell ──
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0,
                                 cls = GLYPHCLS_CMAP, isWarning = false,
@@ -1015,6 +1062,30 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
         ? objectCorpsenm : null;
     loc.disp_is_warning = !!isWarning;
     loc.gnew = 1;
+    /* #wizloaddes: C's gbuf survives clear_level_structures() and every
+     * newsym()/show_glyph() the loader's makemon/mksobj calls make updates it
+     * (makemon.c:1473), so the frozen pre-load frame must absorb those cells
+     * (wizcmds.js wiz_load_splua sets liveGbuf).  C's show_glyph() returns
+     * early under _suppress_map_output() (display.c:703-708, in_mklev) so
+     * premap_detect's map_background() writes nothing to gbuf there. */
+    const frz = game._levelgenPaintFreeze;
+    if (frz && frz.liveGbuf && frz.cells && !suppress_map_output()) {
+        /* C flush_screen() returns at once while in_mklev (display.c:2220), so
+         * a gbuf update made before the loader raised in_mklev (the
+         * makemap_remove_mons newsym()s) reaches the physical screen only at
+         * the first unsuppressed flush: stage it in `pending`. */
+        const pend = (frz.pending ||= new Map());
+        pend.set(y * COLNO + x, ch === ' ' ? null
+                 : { ch, color, dec: !!decgfx, attr: attr | 0 });
+    }
+}
+/* Apply the gbuf updates staged by show_glyph_cell once a flush can run. */
+function _levelgen_freeze_flush(frz) {
+    if (!frz || !frz.pending || suppress_map_output()) return;
+    for (const [k, c] of frz.pending) {
+        if (c === null) frz.cells.delete(k); else frz.cells.set(k, c);
+    }
+    frz.pending = null;
 }
 // C ref: display.c:378-385 map_invisible(x,y) — place the "I" (GLYPH_INVISIBLE)
 // marker at (x,y) when a monster at that position cannot be spotted by the hero.
@@ -1689,7 +1760,27 @@ export function map_monst(mtmp, showtail) {
     const x = mtmp.mx | 0, y = mtmp.my | 0;
     const loc = game.level?.at ? game.level.at(x, y) : null;
     const tg = loc ? terrain_glyph(loc, x, y) : null;
-    _render_monster_glyph(x, y, mtmp, loc, tg, false);
+    /* C detect.c:123-125 — a monster whose class symbol is ' ' (ghost, shade)
+     * takes detected_mon_to_glyph (MG_DETECT -> tty ATR_INVERSE); every other
+     * monster takes the plain pet/mon glyph. */
+    const _mn = (mtmp.mnum ?? mtmp.mndx) | 0;
+    const _ml = (_mn >= 0 && _mn < MON_MLET.length) ? MON_MLET[_mn] : 53;
+    _render_monster_glyph(x, y, mtmp, loc, tg, false, false,
+                          (DEF_MONSYM_CHARS[_ml] ?? '@') === ' ');
+    /* showtail: C detect.c:133 `if (showtail && mtmp->data == &mons[PM_LONG_WORM])
+     * detect_wsegs(mtmp, 0);` — worm.c:503-519 paints every non-head segment
+     * with the tail glyph.  Each segment goes through the worm-tail arm of
+     * _render_monster_glyph, the same routine display_monster uses for a tail.
+     * Known gap: under Hallucination that routine draws rn2 per segment, while
+     * C resolves what_mon(PM_LONG_WORM_TAIL) once for the whole tail. */
+    if (showtail && ((mtmp.mnum ?? mtmp.mndx) | 0) === PM_LONG_WORM_DISP) {
+        for (const seg of worm_tail_cells(mtmp)) {
+            const sx = seg.wx | 0, sy = seg.wy | 0;
+            const sloc = game.level?.at ? game.level.at(sx, sy) : null;
+            const stg = sloc ? terrain_glyph(sloc, sx, sy) : null;
+            _render_monster_glyph(sx, sy, mtmp, sloc, stg, false, true, false);
+        }
+    }
 }
 
 /* C ref: display.c:1180-1189 display_self(void) — paint the hero's own square
@@ -1885,6 +1976,13 @@ export function newsym(x, y) {
             display_self();
         return;
     }
+    if (game.u?.uinwater && !Is_waterlevel(game.u?.uz)) {
+        const ux = game.u.ux | 0, uy = game.u.uy | 0;
+        const typ = game.level?.at(x, y)?.typ | 0;
+        const d2 = (x - ux) * (x - ux) + (y - uy) * (y - uy);
+        if (!(is_pool_or_lava(x, y) || typ === ICE) || d2 > 2)
+            return;
+    }
     const loc = game.level?.at(x, y);
     if (!loc)
         return;
@@ -2002,7 +2100,7 @@ export function newsym(x, y) {
             if (!worm_tail && mon_warning(mon)) {
                 const wl = _display_warning_level(mon);
                 const sym = DEF_WARNSYMS[wl] || DEF_WARNSYMS[0];
-                show_mon_or_warn(x, y, sym.ch, sym.color, false, 0, GLYPHCLS_MON, true);
+                show_mon_or_warn(x, y, sym.ch, _warn_color(sym), false, 0, GLYPHCLS_MON, true);
                 return;
             }
             /* otherwise fall through to C's glyph_is_invisible / _map_location
@@ -2320,6 +2418,12 @@ const DEF_WARNSYMS = [
     { ch: '5', color: CLR_BRIGHT_MAGENTA },
 ];
 
+/* C display.c:2838-2842 (reset_glyphmap, warning glyphs): has_rogue_color
+ * (RogueEpyx on the Rogue level) paints them NO_COLOR, else warn_color(). */
+function _warn_color(sym) {
+    return rogue_ibm_color() ? NO_COLOR : sym.color;
+}
+
 // C ref: display.c:638-656 display_warning(mon) — "not a map_XXXX() function":
 // the warning glyph FLOATS over the terrain via show_mon_or_warn() → show_glyph()
 // and is deliberately NOT written into levl[][].glyph, so it vanishes from the
@@ -2340,7 +2444,7 @@ function _oos_warning_monster(x, y) {
     if (!mon_warning(mon)) return false;
     const wl = _display_warning_level(mon);
     const sym = DEF_WARNSYMS[wl] || DEF_WARNSYMS[0];
-    show_mon_or_warn(x, y, sym.ch, sym.color, false, 0, GLYPHCLS_MON, true);
+    show_mon_or_warn(x, y, sym.ch, _warn_color(sym), false, 0, GLYPHCLS_MON, true);
     return true;
 }
 
@@ -2445,6 +2549,8 @@ export function docrt_flags(refresh_flags) {
 
     if (!game.program_state) game.program_state = {};
     game.program_state.in_docrt = true;
+    game._map_blanked = false; /* display.c docrt_flags repaints the physical map */
+    game._map_corner = null;
     cosmic_push_owner_real("docrt_flags");
 
     let skip_to_post = false;
@@ -2511,17 +2617,31 @@ export function docrt_flags(refresh_flags) {
 // Step 1: render remembered terrain glyphs for all cells.
 // Step 2: overlay visible monsters via newsym() (mirrors C see_monsters()).
 // Step 3: show hero.
-export async function docrt() {
+export async function docrt(pageTopl = false) {
     if (!game.level)
         return;
     if (game.u?.uswallow | 0) {
         swallowed(1);
         return;
     }
+    if (game.u?.uinwater && !Is_waterlevel(game.u.uz)) {
+        under_water(1);
+        update_inventory();
+        game.disp ??= {};
+        game.disp.botlx = 1;
+        return;
+    }
     /* C docrt_flags(): `if (!nocls) cls();` clears the PHYSICAL screen, so the
      * RogueEpyx hero's \x01 square (which paints no glyph) is blank again until
      * something is drawn there -- display.js cls() resets _epyxPhys likewise. */
+    if (pageTopl && game._pending_message) {
+        topl_force_break_now();
+        game.nhDisplay?.clearScreen?.();
+        clear_glyph_buffer();
+    }
     game._epyxPhys = null;
+    game._map_blanked = false;
+    game._map_corner = null;
     // Step 1: remembered terrain (mirrors C docrt_flags: show_glyph(x,y,lev->glyph))
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++) {
@@ -2547,25 +2667,13 @@ export async function docrt() {
     // line-of-sight wedge C leaves blank.
     vision_recalc(2);
     vision_recalc(0);
-    // Step 2: overlay visible monsters (mirrors C see_monsters() → newsym(mon->mx, mon->my))
-    // C ref: display.c:1539-1549 see_monsters() — walk fmon chain, call newsym per monster.
+    // Step 2: C display.c:2074 `see_monsters()` — the real routine, not a bare
+    // newsym walk: it also paints worm tails (see_wsegs) and ends with the
+    // hero's newsym (display.c:1581-1583), each a display-RNG consumer under
     if (!game.defer_see_monsters) /* C display.c see_monsters(): deferred during dorecover */
-    for (let m = game.fmon; m != null; m = m.nmon) {
-        if (m.mx != null && m.my != null)
-            newsym(m.mx, m.my);
-    }
-    // Step 3: the hero's own square.  C's docrt_flags() has NO separate hero
-    // paint: vision_recalc(0) newsym()s the hero's square like any other, and
-    // canspotself() — so an INVISIBLE hero's square shows what lies under her.
-    // This step used to paint hero_glyph unconditionally, which is
-    // indistinguishable from C only while nothing can turn the hero invisible.
-    // previous level (canspotself() already returns false, and steps 306-307
-    // match C with no '@'), descends, and C paints the '<' of the up-staircase
-    // she arrives on while this port repainted '@' over it — the segment's
-    // first miss from there on.  Routing through newsym() also picks up the
-    // steed and the under-hero object memory that arm already carries.
-    if (game.u?.ux > 0)
-        newsym(game.u.ux, game.u.uy);
+        see_monsters();
+    // Step 3 (removed): C's docrt_flags() has no hero paint of its own; the
+    // hero is newsym()ed by vision_recalc (vision.c:850) and see_monsters().
     /* C docrt_flags post_map: refresh inventory and request a full status
      * repaint.  The next flush/bot must observe state restored since the
      * previous paint, including HConfusion after magic-trap remove curse. */
@@ -2591,6 +2699,7 @@ export async function docrt() {
 // the C tty physical terminal's last flush.  DISPLAY-ONLY: reads disp_* only,
 // consumes no RNG, mutates no game state.  Returns a Map keyed y*COLNO+x.
 function _capture_painted_cells() {
+    if (game?._physBlankToDocrt) return new Map();
     const frz = game?._levelgenPaintFreeze;
     if (frz && frz.cells) return new Map(frz.cells);
     const lvl = game?.level;
@@ -2642,6 +2751,9 @@ function _painted_moves(live) {
     if (tutorial != null) return tutorial | 0;
     const f = g ? g._timeBotlFrozenMoves : null;
     if (f != null) return f | 0;
+    /* movemon() runs before svm.moves++ (allmain.c:252-295); a caller that bumps
+     * g.moves first pins the status clock the pass's more() frames still show. */
+    if (live == null && g && g._movemonStatusMoves != null) return g._movemonStatusMoves | 0;
     return (live != null) ? (live | 0) : ((g && g.moves) | 0);
 }
 // C allmain.c:261-263, called at each svm.moves++ with the PRE-increment value
@@ -2684,7 +2796,11 @@ function _maybe_snapshot_painted_screen() {
     const g = game;
     if (!g) return;
     // Only inside the per-turn monster-movement block (C: svc.context.mon_moving).
-    if (!g._inMovemonBlock) return;
+    /* #wizloaddes: load_special's makemon/newsym run under a frozen physical
+     * paint (wizcmds.js wiz_load_splua); each overflowing pline's flush_screen
+     * (pline.c:273-274) freezes the terminal at that instant, exactly as in a
+     * movemon block, so the later newsyms must not reach that page's frame. */
+    if (!g._inMovemonBlock && !g._levelgenPaintFreeze?.liveGbuf) return;
     if (!g.level) return;
     const _pend = g._pending_message || '';
     let msg = _pend;
@@ -2695,11 +2811,22 @@ function _maybe_snapshot_painted_screen() {
          * the first-overflow botl/cells pin is taken from the joined line; page
          * accounting still follows the pending line alone. */
         const _res = g.occupation ? (g._occ_committed_topl?.text || '') : '';
-        if (/ corpse (?:tastes|is) /.test(_res)) return; /* corpse flavor has _eatPreEffectFrame */
+        if (/ corpse (?:tastes|is) /.test(_res)) {
+            /* corpse flavor has _eatPreEffectFrame.  Its first overflow can fire a
+             * turn later than the pin (see _eb below), so pin the botl here too. */
+            if (!_pend.startsWith(_res)
+                && (_topl_split_for_more(_res + '  ' + _pend) !== null
+                    || !_topl_joins_committed(_res, _pend.split('  ')[0]))
+                && (!g._earlyBotl || !g._earlyBotl.corpse || g._earlyBotl.turn !== (g.moves | 0)))
+                g._earlyBotl = { turn: g.moves | 0, botl: _capture_botl(), corpse: true,
+                    cells: _capture_painted_cells(), moves: _painted_moves() };
+            return;
+        }
         if (!_res || _pend.startsWith(_res)
             || _topl_split_for_more(_res + '  ' + _pend) === null) return;
         if (!g._earlyBotl || g._earlyBotl.turn !== (g.moves | 0))
-            g._earlyBotl = { turn: g.moves | 0, botl: _capture_botl() };
+            g._earlyBotl = { turn: g.moves | 0, botl: _capture_botl(),
+                cells: _capture_painted_cells(), moves: _painted_moves() };
         return;
     }
     // The FIRST overflow (the instant C's more() would fire) is the single-page
@@ -2736,7 +2863,8 @@ function _maybe_snapshot_painted_screen() {
     // the way out (`disp.botl = disp.botlx = disp.time_botl = FALSE;`,
     // command re-latches cap/deaf where C's second flush_screen would have found
     // has that property; these two add to it rather than create it.
-    const _eb = (g._earlyBotl && g._earlyBotl.turn === (g.moves | 0)) ? g._earlyBotl.botl : null;
+    const _eb = (g._earlyBotl && (g._earlyBotl.turn === (g.moves | 0) || g._earlyBotl.corpse))
+        ? g._earlyBotl.botl : null;
     if (!g._paintedSnapshot)
         g._paintedSnapshot = { cells: _capture_painted_cells(), moves: _painted_moves(),
             botl: _eb || _capture_botl(), ..._snap_key_stamp() };
@@ -2929,6 +3057,30 @@ export function capture_painted_frame() {
     if (!g || !g.level) return null;
     return { cells: _capture_painted_cells(), moves: _painted_moves() };
 }
+/* The status half of a pre-movemon frame (pickup-encumber prinv page). C ref:
+ * pline.c:273-274 flush_screen() -> bot() at the encumber_msg instant. */
+export function overlay_live_warning_cells(frame) {
+    const lvl = game?.level;
+    if (!frame || !lvl) return frame;
+    let cells = null;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = lvl.at(x, y);
+            if (!loc || !loc.disp_is_warning || !loc.disp_ch || loc.disp_ch === ' ') continue;
+            if (!cells) cells = new Map(frame.cells);
+            cells.set(y * COLNO + x, {
+                ch: loc.disp_ch,
+                color: loc.disp_color ?? NO_COLOR,
+                dec: !!loc.disp_decgfx,
+                attr: loc.disp_attr | 0,
+            });
+        }
+    }
+    return cells ? { cells, moves: frame.moves } : frame;
+}
+export function capture_pre_movemon_botl() {
+    return game?.level ? _capture_botl() : null;
+}
 /* Install the map as of the last flush_screen() as the frozen frame for ONE
  * following force_more()/--More-- render.  C ref: tty_display_nhwindow(NHW_TEXT)
  * does no flush_screen, so the more() in update_topl (topl.c:390) shows the
@@ -3070,9 +3222,10 @@ export async function level_transition_arrival_more(msg, oldPaint) {
 // Snapshot-aware cell accessor: during a movemon --More-- frame returns the
 // snapshot cell (the C-flushed physical paint); otherwise the live disp_* cell.
 const ROGUE_HERO_CH = '\x01';
+const _PHYS_BLANK = { cells: new Map() };
 function _snapCellAt(x, y) {
     const snap = (game._inMovemonMore && game._paintedSnapshot) ? game._paintedSnapshot
-               : (game._levelgenPaintFreeze || null);
+               : (game._levelgenPaintFreeze || (game._physBlankToDocrt ? _PHYS_BLANK : null));
     if (snap) {
         const c = snap.cells.get(y * COLNO + x);
         if (c && c.ch === ROGUE_HERO_CH)
@@ -3436,9 +3589,13 @@ export function botl_mon_mlevel(mndx) { return _mon_mlevel(mndx); }
 export function hitpointbar_status1(title, stats, align, ulevel, Upolyd) {
     const u = game.u;
     let bar = title.slice(0, 30).padEnd(30, ' ');
+    const _hs = (game._inMovemonMore && game._paintedSnapshot
+                 && game._paintedSnapshot.botl
+                 && game._paintedSnapshot.botl.mtimedone != null)
+        ? game._paintedSnapshot.botl : null;
     /* repad_with_dashes (botl.c:2168) when critically_low_hp(TRUE) (pray.c:113) */
-    const curhp = Upolyd ? (u.mh | 0) : (u.uhp | 0);
-    let maxhp = Upolyd ? (u.mhmax | 0) : (u.uhpmax | 0);
+    const curhp = Upolyd ? ((_hs ? _hs.mh : u.mh) | 0) : ((_hs ? _hs.uhp : u.uhp) | 0);
+    let maxhp = Upolyd ? ((_hs ? _hs.mhmax : u.mhmax) | 0) : ((_hs ? _hs.uhpmax : u.uhpmax) | 0);
     const maxhp0 = maxhp;
     if (maxhp > 15 * ulevel) maxhp = 15 * ulevel;
     const r = _xlev_to_rank(ulevel);
@@ -3465,7 +3622,67 @@ export function hitpointbar_status1(title, stats, align, ulevel, Upolyd) {
     if (trail > 4) p1 = `${p1.slice(0, p1.length - trail)}\x1b[${trail}C`;
     return `[${p1 ? '\x1b[7m' + p1 : ''}\x1b[0m${bar.slice(pos)}] ${stats} ${align}`;
 }
-function _statusLine1() {
+/* C botl.c:2364-2560 get_hilite() + tty_putstatusfield: persistent
+ * (always / absolute-threshold) hilite_status rules, applied to the painted
+ * status text.  Percentage rules and the temporary up/down/changed rules (which
+ * need the per-field blstats history and hilite_delta timers) are NOT modelled;
+ * a rule of those kinds is ignored here. */
+const _HL_COLORS = { black: 30, red: 31, green: 32, brown: 33, blue: 34, magenta: 35,
+    cyan: 36, orange: 91, 'bright-green': 92, yellow: 93, 'bright-blue': 94,
+    'bright-magenta': 95, 'bright-cyan': 96, white: 97 };
+let _hlCacheRc = null, _hlCacheRules = null;
+function _hilite_rules() {
+    const rc = String(game._hilite_rc || '');
+    if (rc === _hlCacheRc) return _hlCacheRules;
+    const rules = [];
+    for (const m of rc.matchAll(/^\s*OPTIONS\s*=\s*hilite_status\s*:\s*([^\n\r]*)/gim)) {
+        for (const spec of m[1].split(/\s+/)) {
+            const parts = spec.toLowerCase().split('/');
+            if (parts.length < 3) continue;
+            const fld = { charisma: 'Ch', cha: 'Ch', strength: 'St', dexterity: 'Dx', dx: 'Dx',
+                constitution: 'Co', con: 'Co', co: 'Co', intelligence: 'In', wisdom: 'Wi',
+                gold: 'gold', 'hitpoints-max': 'hpmax', 'hp-max': 'hpmax' }[parts[0]];
+            const col = _HL_COLORS[parts[2].split('&')[0]];
+            if (!fld || col === undefined) continue;
+            const t = /^(always|([<>]=?|=)?(-?\d+))$/.exec(parts[1]);
+            if (!t) continue;
+            rules.push(t[1] === 'always' ? { fld, beh: 'always', col }
+                : { fld, beh: 'abs', rel: t[2] || '=', val: +t[3], col });
+        }
+    }
+    _hlCacheRc = rc; _hlCacheRules = rules;
+    return rules;
+}
+/* get_hilite()'s best-fit pick among persistent rules for one field value. */
+function _hilite_pick(fld, v) {
+    let rule = null, exact = false, minV = Infinity, maxV = -Infinity, abs = false;
+    for (const r of _hilite_rules()) {
+        if (r.fld !== fld) continue;
+        if (abs && r.beh === 'always') continue;
+        if (r.beh === 'always') { rule = r; continue; }
+        if (r.rel === '=' && v === r.val) { rule = r; exact = abs = true; minV = maxV = r.val; }
+        else if (exact) continue;
+        else if (r.rel === '<' && v < r.val && r.val <= minV) { rule = r; minV = r.val; abs = true; }
+        else if (r.rel === '<=' && v <= r.val && r.val <= minV) { rule = r; minV = r.val; abs = true; }
+        else if (r.rel === '>' && v > r.val && r.val >= maxV) { rule = r; maxV = r.val; abs = true; }
+        else if (r.rel === '>=' && v >= r.val && r.val >= maxV) { rule = r; maxV = r.val; abs = true; }
+    }
+    return rule;
+}
+export function _hilite_status_wrap(row) {
+    if (!row || !_hilite_rules().length) return row;
+    const w = (fld, v, text) => {
+        const r = _hilite_pick(fld, v);
+        return r ? `\x1b[${r.col}m${text}\x1b[39m` : text;
+    };
+    return row
+        .replace(/\b(St|Dx|Co|In|Wi|Ch):(\d+)(?:\/\d+)?/g, (m, f, n) => w(f, +n, m))
+        .replace(/\$:(\d+)/, (m, n) => w('gold', +n, m))
+        .replace(/(HP:\d+)(\((\d+)\))/, (m, a, b, n) => a + w('hpmax', +n, b));
+}
+function _statusLine1() { return _hilite_status_wrap(_statusLine1Raw()); }
+function _statusLine2() { return _hilite_status_wrap(_statusLine2Raw()); }
+function _statusLine1Raw() {
     const u = game.u;
     /* C botl.c:259-260 bot(): nothing is painted while !iflags.status_updates,
      * so the physical status rows stay blank for the whole game. */
@@ -3493,7 +3710,11 @@ function _statusLine1() {
     const _b1s = (game._inMovemonMore && game._paintedSnapshot
                   && game._paintedSnapshot.botl
                   && game._paintedSnapshot.botl.mtimedone != null)
-        ? game._paintedSnapshot.botl : null;
+        ? game._paintedSnapshot.botl
+        /* botl.c:279 — u.uhp == -1 leaves the last paint on the terminal, title
+         * (rank of the painted level) included. */
+        : ((((u.uhp | 0) === -1 || game._botlFrozenDeath) && game._lastPaintedBotl
+            && game._lastPaintedBotl.umonnum != null) ? game._lastPaintedBotl : null);
     // Rank and experience must come from the same painted status snapshot.
     const ulevel = (_b1s?.ulevel ?? u.ulevel) || 1;
     /* C you.h:554 (u.umonnum != u.umonster), not the u.mtimedone timer. */
@@ -3546,7 +3767,7 @@ function money_cnt(otmp) {
     }
     return 0;
 }
-function _statusLine2() {
+function _statusLine2Raw() {
     const p = _statusLine2Parts();
     if (p === null)
         return '';
@@ -3580,7 +3801,7 @@ function _statusLine2Parts() {
     // dlevel override (only set during the descend/climb --More-- window), so it
     // has ZERO effect on any non-transition render.
     const _snap2 = (game._inMovemonMore && game._paintedSnapshot) ? game._paintedSnapshot : null;
-    const _uzFrozen = (!_snap2 && game._botlUzFrozen) || null;
+    const _uzFrozen = ((!_snap2 || _snap2.dlevel == null) && game._botlUzFrozen) || null;
     const _dnum = (_snap2 && _snap2.dnum != null) ? _snap2.dnum : _uzFrozen ? _uzFrozen.dnum : (u.uz?.dnum);
     const _dlevelRaw = (_snap2 && _snap2.dlevel != null) ? _snap2.dlevel : _uzFrozen ? _uzFrozen.dlevel : (u.uz?.dlevel ?? 1);
     /* C ref: wintty.c:4546-4556 — for BL_LEVELDESC the tty windowport strips the
@@ -3599,7 +3820,8 @@ function _statusLine2Parts() {
     /* C you.h:554 (u.umonnum != u.umonster), not the u.mtimedone timer. */
     const Upolyd = (((_p2s ? _p2s.umonnum : u.umonnum) | 0)
                     !== (((_p2s && _p2s.umonster != null) ? _p2s.umonster : u.umonster) | 0));
-    const _frozenAtMinusOne = (((u.uhp | 0) === -1 || game._botlFrozenDeath || game._botlHeldEat)
+    const _frozenAtMinusOne = (((u.uhp | 0) === -1 || game._botlFrozenDeath || game._botlHeldEat
+                                || game._botlPaintHeld)
                                && game._lastPaintedBotl)
         ? game._lastPaintedBotl : null;
     const _bs = (game._inMovemonMore && game._paintedSnapshot
@@ -3609,7 +3831,7 @@ function _statusLine2Parts() {
     let _hp = Upolyd ? (_bu.mh | 0) : (_bu.uhp || 0);
     /* C paints the pre-reversion physical HP once when rehumanize() runs
      * inside movemon; the live value is already restored for later turns. */
-    if (game._rehumanizeDisplayPending && !Upolyd && !_bs
+    if (game._rehumanizeDisplayPending && !Upolyd && !_bs && (game._rehumanizeMoves | 0) === (game.moves | 0)
         && (game._uhpRegenMoves | 0) === (game.moves | 0)
         && (_bu.uhp | 0) < (_bu.uhpmax | 0))
         { _hp = Math.max(0, _hp - 1); game._rehumanizeDisplayApplied = true; }
@@ -3617,7 +3839,8 @@ function _statusLine2Parts() {
         _hp = 0;
     _hp = Math.min(_hp, 9999);
     const _hpmax = Math.min(Upolyd ? (_bu.mhmax | 0) : (_bu.uhpmax || 0), 9999);
-    const _pw = Math.min(_bu.uen || 0, 9999);
+    const _pw = Math.min((!_bs && game._botlStaleUen !== undefined
+                          ? game._botlStaleUen : _bu.uen) || 0, 9999);
     const _pwmax = Math.min(_bu.uenmax || 0, 9999);
     const _lp = game._lastPaintedBotl;
     const _uac = (_bs && _bs.uac != null) ? _bs.uac
@@ -3626,7 +3849,7 @@ function _statusLine2Parts() {
     const _xpLevel = ((_bs && _bs.ulevel != null) ? _bs.ulevel : u.ulevel) || 1;
     /* RogueEpyx S_coin = \x0f <= ' ': check_gold_symbol() sets invis_goldsym
      * (botl.c:42-44) and the field is labelled "$" (botl.c:131). */
-    const _goldch = rogue_ibm_color() ? '$' : (oclass_sym(COIN_CLASS_DISP) ?? '$');
+    const _goldch = gold_status_char();
     let s = `${_goldch}:${gold} HP:${_hp}(${_hpmax}) Pw:${_pw}(${_pwmax}) AC:${_uac}`;
     let _timeStr = '';
     if (Upolyd) {
@@ -3676,7 +3899,8 @@ function _statusLine2Parts() {
      * clamped u.uhs to FAINTING and Hear_again may have cleared Deaf, and C's
      * status row shows exactly that ("Fainting", no Deaf). */
     const _postUnfaint = !game._resultMessage && !game._paintedSnapshot
-        && /^You faint from lack of food.(  You regain consciousness.)?$/.test(game._pending_message || '');
+        && (/^You faint from lack of food.(  You regain consciousness.)?$/.test(game._pending_message || '')
+            || /You faint from lack of food\..*  You regain consciousness\.$/.test(game._pending_message || ''));
     if (_uhs === 4 && !_postUnfaint
         && _faintTop.includes('You faint from lack of food.'))
         _uhs = 5;
@@ -3721,7 +3945,11 @@ function _statusLine2Parts() {
                             (_p2s && _p2s.sickType !== undefined) ? _p2s.sickType | 0 : undefined,
                             (_p2s && _p2s.levitating !== undefined) ? !!_p2s.levitating : undefined,
                             (_p2s && _p2s.slimed !== undefined) ? !!_p2s.slimed : undefined,
-                            (_p2s && _p2s.inLava !== undefined) ? !!_p2s.inLava : undefined);
+                            (_p2s && _p2s.inLava !== undefined) ? !!_p2s.inLava : undefined,
+                            (_p2s && _p2s.woundedLegs !== undefined) ? !!_p2s.woundedLegs : undefined,
+                            (_p2s && _p2s.strangled !== undefined) ? !!_p2s.strangled : undefined,
+                            (_p2s && _p2s.busy !== undefined) ? !!_p2s.busy : undefined,
+                            (_p2s && _p2s.grabbed !== undefined) ? !!_p2s.grabbed : undefined);
     const _m = /^((?: (?:Satiated|Hungry|Weak|Fainting|Fainted|Starved))?(?: (?:Burdened|Stressed|Strained|Overtaxed|Overloaded))?)(.*)$/.exec(_suffix);
     return { desc: _leveldescField, mid: s, time: _timeStr, hunger: _m[1], conds: _m[2] };
 }
@@ -3807,13 +4035,124 @@ export function armor_status() {
 /* C botl.c:1251-1259 optional weapon/armor fields, appended after
  * BL_CONDITION in twolineorder (wintty.c:4284). */
 export function status_row_finish(base) {
-    const _row = fit_status_line_width(`${base}${_statusExtras()}`);
+    const _vlen = game.flags?.showvers ? 6 : 0;
+    const _row = fit_status_line_width(`${base}${_statusExtras()}`, 79 - _vlen);
     /* wintty.c:5185-5210: BL_VERS last in its row is right-justified to the terminal width. */
     if (game.flags?.showvers) {
         const v = '5.0.0';
         return _row.length < 79 - v.length ? _row.padEnd(79 - v.length, ' ') + v : `${_row} ${v}`;
     }
     return _row;
+}
+/* C botl.c status_hilite(): a hilite_status rule
+ * condition/<name>/<colour>&<attr> colours the condition's own text in the
+ * status row (botl.c:2593 parse_status_hl1 stores it; options.js keeps the
+ * rule in game.status_condition_hilites).  Returns Map(col -> {color, attr}).
+ * Only the colour and the normal/bold/inverse attrs are modelled. */
+const _HL_ATTR = { normal: 0, none: 0, bold: ATR_BOLD, inverse: ATR_INVERSE, reverse: ATR_INVERSE };
+/* C botl.c get_hilite() for a hilite_status FIELD rule
+ * <field>/<threshold>/<colour>&<attr>[/<threshold>/<colour>&<attr>...].
+ * The rule paints the whole text of the field, label included (C
+ * "St:18/02" is 7;93 in full).  Modelled: 'always', and =/</>/<=/>= on the
+ * field value, and N% on value/max.  NOT modelled: up/down/changed and
+ * critical-HP (botl.c:2420-2440 temp highlights), and get_hilite's best-fit
+ * precedence among matching thresholds (the first matching threshold wins). */
+const _HL_FIELD_LABEL = {
+    strength: 'St:', dexterity: 'Dx:', constitution: 'Co:', intelligence: 'In:',
+    wisdom: 'Wi:', charisma: 'Ch:', power: 'Pw:', hitpoints: 'HP:',
+    'armor-class': 'AC:', 'experience-level': 'Xp:', 'dungeon-level': 'Dlvl:',
+};
+function _status_field_hilites(row) {
+    const cells = new Map();
+    for (const spec of game.status_field_hilites || []) {
+        const parts = spec.split('/');
+        const label = _HL_FIELD_LABEL[parts[0].trim().toLowerCase()];
+        if (!label) continue;
+        const fm = new RegExp(`(?:^| )(${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\S*)`).exec(row);
+        if (!fm) continue;
+        const text = fm[1];
+        const start = fm.index + fm[0].length - text.length;
+        const body = text.slice(label.length);
+        const sm = /^(\d+)\/(\d+)/.exec(body);
+        const cur = sm ? (+sm[1] === 18 ? 18 + +sm[2] : +sm[1]) : parseInt(body, 10);
+        const max = /\((\d+)\)/.exec(body);
+        let always = null, hit = null;
+        for (let i = 1; i + 1 < parts.length; i += 2) {
+            const thr = parts[i].trim().toLowerCase();
+            const [colName, ...attrNames] = parts[i + 1].trim().split(/[&+]/);
+            const color = match_str2clr(colName.trim(), true);
+            if (color >= 16) continue; /* CLR_MAX: unknown colour name, C rejects the rule */
+            const attr = attrNames.reduce((a, n) => a | (_HL_ATTR[n.trim().toLowerCase()] ?? 0), 0);
+            const rule = { color, attr };
+            if (thr === 'always') { always ??= rule; continue; }
+            const pm = /^(<=|>=|<|>|=)?(-?\d+)(%?)$/.exec(thr);
+            if (!pm) continue;
+            let v = cur;
+            if (pm[3]) {
+                if (!max || !(+max[1] > 0)) continue;
+                v = Math.trunc((cur * 100) / +max[1]);
+            }
+            const want = +pm[2], rel = pm[1] || '=';
+            const ok = rel === '=' ? v === want : rel === '<' ? v < want : rel === '>' ? v > want
+                : rel === '<=' ? v <= want : v >= want;
+            if (ok && !hit) hit = rule;
+        }
+        const h = hit || always;
+        if (!h) continue;
+        for (let c = start; c < start + text.length; c++)
+            cells.set(c, h);
+    }
+    return cells;
+}
+function _status_condition_hilites(row) {
+    const cells = new Map();
+    for (const spec of game.status_condition_hilites || []) {
+        const m = /^condition\/([^/]+)\/([^&]*)(?:&(.*))?$/i.exec(spec);
+        if (!m) continue;
+        const color = match_str2clr(m[2].trim(), true);
+        if (color >= 16) continue; /* CLR_MAX: unknown colour name, C rejects the rule */
+        const attr = _HL_ATTR[(m[3] || 'normal').trim().toLowerCase()] ?? 0;
+        const at = new RegExp(` (${m[1].trim()})(?= |$)`).exec(row);
+        if (!at) continue;
+        for (let c = at.index + 1; c < at.index + 1 + m[1].trim().length; c++)
+            cells.set(c, { color, attr });
+    }
+    for (const [c, h] of _status_field_hilites(row)) cells.set(c, h);
+    return cells;
+}
+/* The screen text carries the highlight as SGR (tty term_start_attr/term_end):
+ * C emits \e[33mStun\e[39m for a brown Stun rule and \e[7;93m for an
+ * inverse yellow strength rule (attr codes first, then the colour).  Grid
+ * cells are written from the plain row, so only the text output is decorated. */
+function _status_sgr_open(h) {
+    const codes = [];
+    if (h.attr & ATR_INVERSE) codes.push(7);
+    if (h.attr & ATR_BOLD) codes.push(1);
+    codes.push(ANSI_COLOR[h.color] ?? ANSI_DEFAULT);
+    return `\x1b[${codes.join(';')}m`;
+}
+function _status_sgr(raw) {
+    /* C botl.c writes the fields after a cursor-forward (\e[nC) to the next
+     * column; the grid paint path reads the row with those moves as blanks, so
+     * the hilite match and its columns must see the same blanks (a field whose
+     * label follows \e[11C is otherwise not at a word start). */
+    const row = raw.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n));
+    const hl = _status_condition_hilites(row);
+    if (!hl.size) return raw;
+    /* term_end_attr: an attribute run closes with \e[0m (C's "St:18/02\e[0m"),
+     * a colour-only run with \e[39m (C's "\e[35mIn:8\e[39m"). */
+    const _close = (h) => `\x1b[${h.attr ? 0 : ANSI_DEFAULT}m`;
+    let out = '', cur = null;
+    for (let c = 0; c < row.length; c++) {
+        const h = hl.get(c) ?? null;
+        if (h?.color !== cur?.color || h?.attr !== cur?.attr) {
+            if (cur) out += _close(cur);
+            if (h) out += _status_sgr_open(h);
+            cur = h;
+        }
+        out += row[c];
+    }
+    return cur ? out + _close(cur) : out;
 }
 function _statusExtras() {
     let t = '';
@@ -3843,8 +4182,34 @@ export function _statusRows3() {
         return ['', '', ''];
     const ai = l1.lastIndexOf(' ');
     const align = l1.slice(ai + 1);
-    const row1 = l1.slice(0, ai).replace(/\x1b\[(\d+)C/g, (m, n) => ' '.repeat(Math.max(0, +n)));
-    return [row1, `${align} ${p.mid}${p.hunger}`, `${p.desc}${p.time}${p.conds}`];
+    /* C tty_putstatusfield() moves the cursor over the trailing blanks of the
+     * inverse title (ESC[nC): they are not painted, so keep the sequence. */
+    const row1 = l1.slice(0, ai);
+    /* C wintty.c:4296 threelineorder row 3: LEVELDESC TIME CONDITION WEAPON
+     * ARMOR TERRAIN VERS — the optional fields follow the conditions. */
+    const row2 = `${align} ${p.mid}${p.hunger}`;
+    const extras = _statusExtras();
+    const st = game._st3 || (game._st3 = { extras, erased: false });
+    if (st.extras !== extras) { st.extras = extras; st.erased = false; }
+    const condTxt = p.conds;
+    if (condTxt && condTxt.trim() !== '') {
+        const front = `${p.desc}${p.time}`;
+        const x = front.length + 1, tlth = condTxt.length, lastCol = 80;
+        const hungerX = row2.length - p.hunger.length + 1;
+        let cstart;
+        if (x < hungerX && hungerX + tlth < lastCol - 1)
+            cstart = hungerX;
+        else if (x + tlth < lastCol - 1)
+            cstart = lastCol - tlth;
+        else
+            cstart = x;
+        if (cstart > x && !st.erased && extras !== '') st.erased = true;
+        if (cstart > x) {
+            const row = front.padEnd(cstart - 1, ' ') + condTxt;
+            return [row1, row2, st.erased ? row : status_row_finish(row)];
+        }
+    }
+    return [row1, row2, status_row_finish(`${p.desc}${p.time}${p.conds}`)];
 }
 export function _threeStatusLines() {
     /* C options.c optfn_statuslines sets iflags.wc2_statuslines; js/options.js
@@ -3864,9 +4229,19 @@ function _live_flying() {
     const u = game.u, fp = u?.uprops?.[FLYING];
     return !!fp && !!((fp.intrinsic | 0) || (fp.extrinsic | 0)) && !(fp.blocked | 0);
 }
+function _busy_condition() {
+    if (!game.flags?.cond_busy || (game.multi | 0) >= 0) return false;
+    const reason = game.multi_reason || '';
+    const unconsc = !!game.flags?.cond_unconscious && !!game.nomovemsg
+        && !game.u?.usleep && unconscious();
+    const parlyz = !!game.flags?.cond_paralyzed
+        && (reason.startsWith('paralyzed') || reason.startsWith('frozen'));
+    const asleep = !!game.flags?.cond_sleep && !!game.u?.usleep;
+    return !unconsc && !parlyz && !asleep;
+}
 export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen,
                                    halluFrozen, confFrozen, flyFrozen, sickTypeFrozen, levFrozen,
-                                   slimedFrozen, inLavaFrozen) {
+                                   slimedFrozen, inLavaFrozen, wLegsFrozen, strangledFrozen, busyFrozen, grabFrozen) {
     const u = game.u;
     if (!u) return '';
     let s = '';
@@ -3902,11 +4277,14 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         /* C ref: botl.c:792 conditions[] bl_grab ranking 2 (sorts first) and
          * botl.c:1164-1188: with u.ustuck and !u.uswallow and not a
          * Upolyd sticks() form, Grab == (u.ustuck->data->mlet == S_EEL). */
-        if (u.ustuck && !u.uswallow
-            && !(((u.umonnum | 0) !== (u.umonster | 0)) && sticks(game.youmonst?.data))
-            && (u.ustuck.data?.mlet | 0) === 57 /* S_EEL */)
+        if ((grabFrozen !== undefined) ? grabFrozen
+            : (u.ustuck && !u.uswallow
+               && !(((u.umonnum | 0) !== (u.umonster | 0)) && sticks(game.youmonst?.data))
+               && (u.ustuck.data?.mlet | 0) === 57 /* S_EEL */))
             s += ' Grab';
-        if (ip(STRANGLED)) s += ' Strngl';
+        /* `strangledFrozen` is the value bot() painted at a frozen --More-- pline,
+         * threaded in like slimedFrozen; undefined for every other render. */
+        if ((strangledFrozen !== undefined) ? strangledFrozen : ip(STRANGLED)) s += ' Strngl';
         /* `sickTypeFrozen` is the usick_type bits bot() had painted at a frozen
          * --More-- pline (0 when not sick); undefined reads the live state.
          * make_sick (potion.c:292-302) plines "You feel deathly sick" BEFORE it
@@ -4022,8 +4400,15 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     /* C botl.c:1198 test_if_enabled(bl_bareh) = (!uarmg && !uwep); rank 20
      * sorts after every rank<=15 condition above.  Enabled by cond_barehanded. */
     if (game.flags?.cond_barehanded
-        && !_equipView().uarmg && !_equipView().uwep)
-        s += ' Bare';
+        && !_equipView().uarmg && !_equipView().uwep) {
+        if (game._botlPreInv && (game.u.uarmg || game.u.uwep)) {
+            if (_threeStatusLines()) s += '     ';
+            else s += ' Bare';
+        } else
+            s += ' Bare';
+    }
+    if (busyFrozen !== undefined ? busyFrozen : _busy_condition())
+        s += ' Busy';
     /* C botl.c:1154-1163: bl_tethered (opt_in) is u.utraptype == TT_BURIEDBALL;
      * bl_trapped (opt_in) is any other u.utrap, tethered/in-lava lumped in
      * only when their own condition is disabled.  Rank 20, after barehanded. */
@@ -4034,6 +4419,14 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         if (game.flags?.cond_trap && !teth && !((u.utraptype | 0) === TT_LAVA))
             s += ' Trap';
     }
+    /* C botl.c:1208 test_if_enabled(bl_woundedl) = (Wounded_legs) (youprop.h:138
+     * HWounded_legs || EWounded_legs); opt_in, rank 20, after Trap/Out. */
+    if (game.flags?.cond_woundedlegs) {
+        const wl = u.uprops && u.uprops[WOUNDED_LEGS];
+        if ((wLegsFrozen !== undefined) ? wLegsFrozen
+            : (wl && ((wl.intrinsic | 0) || (wl.extrinsic | 0))))
+            s += ' WLegs';
+    }
     return s;
 }
 
@@ -4041,7 +4434,47 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
  * second line would overflow.  botl.c supplies the long/medium/short spellings
  * in conditions[]; apply the short spelling one condition at a time, in status
  * order, until the physical line fits. */
+let _dlvlField = null; /* { src, cur }: status_vals[BL_LEVELDESC] across frames */
+/* C wintty.c:4860-4868 shrink_enc(): BL_CAP becomes " " + encvals[lvl][enclev]
+ * even when unencumbered (the empty word), so once a shrink pass has run a
+ * lone extra blank (lth 1) sits between the fields before the conditions and
+ * the first condition, until BL_CAP is re-sent. */
+function _insertEncSpace(str) {
+    const encRe = / (?:Burdened|Burden|Brd|Stressed|Stress|Strs|Strained|Strain|Strn|Overtaxed|Overtax|Ovtx|Overloaded|Overload|Ovld)(?= |$)/;
+    if (encRe.test(str)) return str;
+    const names = ['Grab','Grb','Gr','Stone','Ston','Sto','Slime','Slim','Slm','Strngl','Stngl','Str',
+        'FoodPois','Fpois','Poi','TermIll','Ill','Blind','Blnd','Bl','Deaf','Def','Df','Stun','St',
+        'Conf','Cnf','Cf','Hallu','Hal','Hl','Lev','Lv','Fly','Fl','Ride','Rid','Rd','Bare','Bar','Bh',
+        'Busy','Bsy','By','Iron','Irn','Fe','Glow','Glo','Gl','Held','Hld','Hd','Icy','Ic','InLava','Lav','La',
+        'Parlyz','Para','Par','Zzz','Zz','Slip','Slp','Sl','Submrg','Subm','Sm','Teth','Tth','Te',
+        'Trap','Trp','Tr','Out','KO','WLegs','Leg','Lg','UHold','UHld','UHd'];
+    const m = new RegExp(` (?:${names.join('|')})(?= |$)`).exec(str);
+    return m ? `${str.slice(0, m.index)} ${str.slice(m.index)}` : str;
+}
+let _fitMemo = null; /* repeated identical renders of one frame must not re-run the shrink state */
 export function fit_status_line_width(s, width = 79) {
+    if (_fitMemo && _fitMemo.s === s && _fitMemo.width === width) return _fitMemo.out;
+    const out = _fit_status_line_width(s, width);
+    _fitMemo = { s, width, out };
+    return out;
+}
+function _fit_status_line_width(s, width) {
+    /* C wintty.c:4546-4547, 4594-4595, 4870-4884: BL_LEVELDESC is only
+     * re-sent when its value changes (full-length, dlvl_shrinklvl = 0).
+     * Otherwise make_things_fit() starts with shrink_dlvl(0), which rewrites
+     * "Dl:n" -> "Dlvl:n" (and "Tutorial:n" has already become "Dlvl:n" once
+     * shrunk), so the shrunken label never returns to "Tutorial". */
+    const lm = /^(Dlvl|Tutorial|Dl):/.exec(s);
+    if (lm) {
+        const src = s.slice(0, s.indexOf(' ') < 0 ? s.length : s.indexOf(' '));
+        const full = _dlvlField && _dlvlField.fresh === src ? _dlvlField : null;
+        if (!full) _dlvlField = { src, fresh: src, cur: lm[1] };
+        else if (_dlvlField.cur === 'Dl' && (_dlvlField.at !== (game._ff_last_input_frame | 0) || _dlvlField.lastIn !== s)) _dlvlField.cur = 'Dlvl';
+        _dlvlField.lastIn = s; /* a changed status flush re-runs make_things_fit, which starts at shrink_dlvl(0) */
+        if (_dlvlField.cur !== lm[1])
+            s = _dlvlField.cur + s.slice(lm[1].length);
+        if (_dlvlField.encSpace) s = _insertEncSpace(s);
+    }
     if (s.length <= width) return s;
     /* C wintty.c make_things_fit() advances cond_shrinklvl globally: it
      * retries the complete condition field at medium spelling, then at short
@@ -4056,6 +4489,13 @@ export function fit_status_line_width(s, width = 79) {
         ['Conf', 'Cnf', 'Cf'], ['Hallu', 'Hal', 'Hl'],
         ['Lev', 'Lev', 'Lv'], ['Fly', 'Fly', 'Fl'],
         ['Ride', 'Rid', 'Rd'],
+        /* the rest of botl.c:781-815 conditions[] txt1/txt2/txt3 */
+        ['Bare', 'Bar', 'Bh'], ['Busy', 'Bsy', 'By'], ['Iron', 'Irn', 'Fe'],
+        ['Glow', 'Glo', 'Gl'], ['Held', 'Hld', 'Hd'], ['Icy', 'Icy', 'Ic'],
+        ['InLava', 'Lav', 'La'], ['Parlyz', 'Para', 'Par'],
+        ['Zzz', 'Zzz', 'Zz'], ['Slip', 'Slp', 'Sl'], ['Submrg', 'Subm', 'Sm'],
+        ['Teth', 'Tth', 'Te'], ['Trap', 'Trp', 'Tr'], ['Out', 'Out', 'KO'],
+        ['WLegs', 'Leg', 'Lg'], ['UHold', 'UHld', 'UHd'],
     ];
     const original = s;
     let last = s;
@@ -4082,7 +4522,11 @@ export function fit_status_line_width(s, width = 79) {
         ['Overtaxed', 'Overtax', 'Ovtx'],
         ['Overloaded', 'Overload', 'Ovld'],
     ];
-    const encBase = last;
+    let encBase = last;
+    if (!_dlvlField?.encSpace) {
+        encBase = _insertEncSpace(encBase);
+        if (_dlvlField) _dlvlField.encSpace = encBase !== last;
+    }
     for (let level = 1; level <= 2; level++) {
         let candidate = encBase;
         for (const names of encumbrance) {
@@ -4094,7 +4538,17 @@ export function fit_status_line_width(s, width = 79) {
             return candidate;
         last = candidate;
     }
-    return last;
+    /* C wintty.c:4628 / :4870-4884 shrink_dlvl(1): the third "other option"
+     * rewrites the level label ("Dlvl:1", "Tutorial:1") to "Dl" + the text
+     * from its ':' on. */
+    {
+        const candidate = last.replace(/^[^:]*:/, 'Dl:');
+        if (_dlvlField && /^(Dlvl|Tutorial|Dl):/.test(last)) { _dlvlField.cur = 'Dl'; _dlvlField.at = game._ff_last_input_frame | 0; }
+        if (candidate.length <= width)
+            return candidate;
+        last = candidate;
+    }
+    return last.length > width ? last.slice(0, width) : last;
 }
 // ── Serialize terminal grid for screen comparison ──
 export function serialize_terminal_grid(display) {
@@ -4190,11 +4644,18 @@ function _prompt_physical_status_rows() {
         return null;
     /* A menu dismissal blanks the status windows before the following getlin;
      * `_screen_output` can still contain the menu which occupied those rows. */
-    if (game._status_blanked)
-        return ['', ''];
+    /* tty_menu.js sets _statusBlankAfterDocrt on a full-screen menu dismiss
+     * (wintty.c:966-983 erase_menu_or_text -> docrt cls()); it holds until
+     * the next bot() paint. */
+    if (game._status_blanked || game._statusBlankAfterDocrt === true)
+        return _threeStatusLines() ? ['', '', ''] : ['', ''];
     if (!game._screen_output)
         return null;
     const rows = String(game._screen_output).split('\n');
+    /* wintty.c:4289-4298: with statuslines:3 the physical status rows are
+     * 21/22/23, so the held frame's third row is rows[21]. */
+    if (_threeStatusLines())
+        return rows.length >= 24 ? [rows[21], rows[22], rows[23]] : null;
     return rows.length >= 24 ? [rows[22], rows[23]] : null;
 }
 function _buildScreenOutput() {
@@ -4229,8 +4690,12 @@ function _buildScreenOutput() {
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
     /* wintty.c:3814 — with 3 status rows the map window loses its last row. */
     const _rows3 = _threeStatusLines();
+    /* `_map_blanked`: read_wizkit()'s raw_printf/wait_synch (files.c:2487) left
+     * the physical terminal blank; tty repaints map cells only from newsym()
+     * changes or docrt(), so the map stays blank until the next docrt. */
     for (let y = 0; y < (_rows3 ? ROWNO - 1 : ROWNO); y++) {
-        output += render_map_row(y) + '\n';
+        output += (game._map_blanked && !(game._map_corner && y + 1 < game._map_corner.ymax)
+            ? '' : render_map_row(y)) + '\n';
     }
     // Row 22-23: status
     /* C's tutorial gamestate memcpy restores the live hero before the next
@@ -4240,7 +4705,7 @@ function _buildScreenOutput() {
      * clears it after the final dismissal. */
     const _tutorialStatusOverride = game._tutorialStatusOverride;
     const _promptStatusRows = _prompt_physical_status_rows();
-    let _status1 = '', _status2 = '';
+    let _status1 = '', _status2 = '', _status3 = '';
     if (_tutorialStatusOverride) {
         const _liveU = game.u;
         game.u = _tutorialStatusOverride.u;
@@ -4249,16 +4714,16 @@ function _buildScreenOutput() {
         game.u = _liveU;
     } else if (_promptStatusRows) {
         [_status1, _status2] = _promptStatusRows;
+        if (_rows3) _status3 = _promptStatusRows[2];
     } else if (!game._status_blanked) {
         _status1 = _statusLine1();
         _status2 = _statusLine2();
     }
-    let _status3 = '';
     if (_rows3 && !_promptStatusRows && !game._status_blanked && !_tutorialStatusOverride)
         [_status1, _status2, _status3] = _statusRows3();
-    output += _status1 + '\n';
-    output += _status2;
-    if (_rows3) output += '\n' + _status3;
+    output += _status_sgr(_status1) + '\n';
+    output += _status_sgr(_status2);
+    if (_rows3) output += '\n' + _status_sgr(_status3);
     game._screen_output = output;
     // Also write to grid for serialize_terminal_grid
     if (display.grid) {
@@ -4280,13 +4745,16 @@ function _buildScreenOutput() {
         // Status lines
         const _r0 = _rows3 ? 21 : 22;
         const s1 = _status1.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m => m.match(/\x1b\[\d+C/) ? ' '.repeat(Math.max(0, parseInt(m.slice(2)))) : '');
+        const h1 = _status_condition_hilites(s1);
         for (let c = 0; c < Math.min(s1.length, display.cols); c++)
-            display.setCell(c, _r0, s1[c], NO_COLOR, 0);
+            display.setCell(c, _r0, s1[c], h1.get(c)?.color ?? NO_COLOR, h1.get(c)?.attr ?? 0);
         const s2 = _status2;
+        const h2 = _status_condition_hilites(s2);
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
-            display.setCell(c, _r0 + 1, s2[c], NO_COLOR, 0);
+            display.setCell(c, _r0 + 1, s2[c], h2.get(c)?.color ?? NO_COLOR, h2.get(c)?.attr ?? 0);
+        const h3 = _status_condition_hilites(_status3);
         for (let c = 0; _rows3 && c < Math.min(_status3.length, display.cols); c++)
-            display.setCell(c, 23, _status3[c], NO_COLOR, 0);
+            display.setCell(c, 23, _status3[c], h3.get(c)?.color ?? NO_COLOR, h3.get(c)?.attr ?? 0);
         // Cursor at hero
         if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
@@ -4312,7 +4780,7 @@ function _buildScreenOutputWithMoreRows(rows) {
         output += _toplStr(rows[r]) + '\n';           /* rows 0..M-1: message */
     for (let y = M - 1; y < ROWNO; y++)                /* rows M..21: map y=(M-1)..20 */
         output += render_map_row(y) + '\n';
-    const _promptStatusRows = _prompt_physical_status_rows();
+    const _promptStatusRows = _prompt_physical_status_rows()?.slice(-2);
     output += (_promptStatusRows?.[0] ?? _statusLine1()) + '\n'; /* row 22 */
     output += (_promptStatusRows?.[1] ?? _statusLine2());        /* row 23 */
     game._screen_output = output;
@@ -4670,15 +5138,24 @@ function _capture_botl() {
     if (!u) return null;
     if ((u.uhp | 0) === -1)
         return game._lastPaintedBotl || null;
+    /* goto_level's flush_screen(-1) (do.c:1717) turned delay_flushing on, so no
+     * pline until do.c:1836 reaches bot(): the physical status row keeps the
+     * last paint (HP before ballfall's losehp).  Set around ballfall only. */
+    if (game._botlPaintHeld && game._lastPaintedBotl)
+        return game._lastPaintedBotl;
     const _d = game.disp;
     if (_d && ((_d.botl | 0) || (_d.botlx | 0))) {
+        game._botlStaleUen = undefined;
         game._botlPaintedCap = near_capacity() | 0;
         /* Same PAINT-time rule for the Deaf condition — see the `deaf` field
          * below and botl_status_suffix's note. */
         game._botlPaintedDeaf = _live_deaf();
         game._botlPaintedFlying = _live_flying();
         game._botlPaintedConfused = !!(u.uprops?.[CONFUSION]?.intrinsic | 0);
+        game._botlPaintedBlind = _disp_Blind();
+        game._botlPaintedSlimed = !!(u.uprops?.[SLIMED]?.intrinsic | 0);
         game._botlPaintedLevel = u.ulevel | 0;
+        game._botlPaintedUhs = u.uhs | 0;
         game._botlPaintedExp = u.uexp ?? 0n;
     }
     return (game._lastPaintedBotl = {
@@ -4688,7 +5165,8 @@ function _capture_botl() {
             ? (game._botlPaintedCap | 0) : (near_capacity() | 0),
         uhp: u.uhp, uhpmax: u.uhpmax,
         mh: u.mh, mhmax: u.mhmax,
-        uen: u.uen, uenmax: u.uenmax,
+        uen: game._botlStaleUen !== undefined ? game._botlStaleUen : u.uen,
+        uenmax: u.uenmax,
         /* C botl.c:867-869 BL_AC — bot() reads u.uac, which only find_ac() writes
          * and which SET_BOTL()s on every change; see the SCOPE note above. */
         uac: u.uac ?? 0,
@@ -4702,7 +5180,9 @@ function _capture_botl() {
         uexp: (game._botlPaintedExp != null)
             ? game._botlPaintedExp : (u.uexp ?? 0n),
         uhs: game._saved_hs && game.occupation?.name === 'eatfood'
-            ? (game._save_hs | 0) : (u.uhs | 0),
+            && !(_d && ((_d.botl | 0) || (_d.botlx | 0)))
+            ? (game._botlPaintedUhs != null ? (game._botlPaintedUhs | 0) : (game._save_hs | 0))
+            : (u.uhs | 0),
         attrs: (u.acurr && u.acurr.a)
             ? [acurr(u, A_STR), acurr(u, A_DEX), acurr(u, A_CON),
                acurr(u, A_INT), acurr(u, A_WIS), acurr(u, A_CHA)]
@@ -4725,6 +5205,10 @@ function _capture_botl() {
              * redraw. Preserve that status for the message's frozen frame. */
             if (game._blindfoldOffFrameBlind !== undefined)
                 return !!game._blindfoldOffFrameBlind;
+            /* polyman()'s make_blinded() (polyself.c:258-261) pline()s "You can see
+             * again." with HBlinded=1 stored but SET_BOTL only in toggle_blindness
+             * afterwards, so the --More-- frame keeps the previous bot() paint. */
+            if (game._botlPaintedBlind != null) return !!game._botlPaintedBlind;
             return (!!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
                     && !(bp.blocked | 0));
         })(),
@@ -4732,11 +5216,32 @@ function _capture_botl() {
             const sp = u.uprops && u.uprops[STUNNED];
             return !!sp && (sp.intrinsic | 0) !== 0;
         })(),
+        /* C botl.c:1229 condtests[bl_busy] — latched with the other conditions so a
+         * frozen --More-- keeps the Busy the hero had at the pline (see _busy_condition). */
+        busy: _busy_condition(),
+        /* botl.c:1164-1188 bl_grab, painted-time like the rest: the eel's
+         * AD_WRAP sets u.ustuck mid-attack-chain, after earlier plines flushed. */
+        grabbed: !!(u.ustuck && !u.uswallow
+            && !(((u.umonnum | 0) !== (u.umonster | 0)) && sticks(game.youmonst?.data))
+            && (u.ustuck.data?.mlet | 0) === 57 /* S_EEL */),
         flying: (game._botlPaintedFlying != null) ? !!game._botlPaintedFlying : _live_flying(),
         sickType: (u.uprops?.[SICK]?.intrinsic | 0) ? (u.usick_type | 0) : 0,
         /* botl.c:1149-1157 Slimed (intrinsic only) and bl_inlava, painted-time like Sick. */
-        slimed: !!(u.uprops?.[SLIMED]?.intrinsic | 0),
+        /* C timeout.c:655-672: the Slimed countdown is decremented BEFORE
+         * slimed_to_death()'s polymon pline, and nothing SET_BOTLs for that
+         * decrement, so the --More-- frame still shows the Slime word that bot()
+         * last painted.  Latched like Blind above; live when nothing was painted. */
+        slimed: (game._botlPaintedSlimed != null)
+            ? !!game._botlPaintedSlimed : !!(u.uprops?.[SLIMED]?.intrinsic | 0),
+        /* botl.c:1151 Strangled (intrinsic only), painted-time like Slimed: the
+         * prayer that cures it runs fix_worst_trouble (pray.c:1139) only AFTER
+         * pleased()'s "You feel that X is pleased." pline (pray.c:1077), so that
+         * --More-- frame must still show Strngl. */
+        strangled: !!(u.uprops?.[STRANGLED]?.intrinsic | 0),
         inLava: !!(u.utrap && (u.utraptype | 0) === TT_LAVA),
+        /* botl.c:1208 bl_woundedl, painted-time: a bear trap's pline precedes
+         * set_wounded_legs (trap.c), so the --More-- page shows no WLegs. */
+        woundedLegs: !!((u.uprops?.[WOUNDED_LEGS]?.intrinsic | 0) || (u.uprops?.[WOUNDED_LEGS]?.extrinsic | 0)),
         levitating: (() => {
             const lq = u.uprops && u.uprops[LEVITATION];
             return !!lq && !!((lq.intrinsic | 0) || (lq.extrinsic | 0)) && !(lq.blocked | 0);
@@ -4994,15 +5499,30 @@ function _topl_joins_for(line) {
 // A line with NO joins is a single atomic pline and is NEVER split, regardless of
 // width (C update_topl prints the over-wide line and only more()s when a NEXT
 // message arrives — which, for a lone pline, never does this turn).
-export function topl_force_break_after(msg) {
+export function topl_force_break_after(msg, clears = false, fullLine = null) {
     const t = String(msg ?? '');
     if (!t) return;
+    /* An earlier break on the same text stops being the LAST such segment once
+     * the accumulated line has grown by another identical pline (climb_pit's
+     * "Your leg gets stuck in a crevice." repeated across a rush): bump its
+     * fromEnd so each flush pages after ITS OWN occurrence, as the successive
+     * display_nhwindow calls do in C. */
+    if (fullLine != null) {
+        for (const e of (game._topl_force_breaks || [])) {
+            if (e.text === t && e.fullLine != null && fullLine.length > e.fullLine.length)
+                e.fromEnd = ((e.fromEnd ?? 0) | 0) + 1;
+        }
+    }
     (game._topl_force_breaks ||= []).push({
         text: t,
         /* Registrations are made for the message that is currently last on
          * the topline.  Match that occurrence from the END so repeated combat
          * text ("It bites!", etc.) cannot force a page at its first copy. */
         fromEnd: 0,
+        fullLine,
+        /* the flush is followed by a cls() (gulpmu's swallowed(1)), which
+         * wipes the line if more() was a no-op under WIN_STOP */
+        clears,
         frame: { cells: _capture_painted_cells(), moves: _painted_moves(),
                  botl: _capture_botl() },
     });
@@ -5011,8 +5531,18 @@ export function topl_force_break_after(msg) {
  * whatever pline it just emitted.  The topline accumulator holds the WHOLE
  * window's text by then, so the break belongs after its LAST segment — the
  * boundary _topl_joins records. */
-export function topl_force_break_now() {
+export function topl_force_break_now(clears = false) {
     const g = game;
+    /* C ref: win/tty/topl.c tty_display_nhwindow(WIN_MESSAGE) — more() fires
+     * whenever the topline is occupied, whether or not the caller blocks.  A
+     * message plined earlier in the SAME command can already have been banked
+     * into _resultMessage (it is painted at the next input frame), leaving
+     * _pending_message empty; hand it back to the live accumulator first so
+     * the break lands on it (same carry as allmain.js's amulet-wish block). */
+    if (!g?._pending_message && g?._resultMessage) {
+        g._pending_message = String(g._resultMessage);
+        g._resultMessage = null;
+    }
     const line = String(g?._pending_message || '');
     if (!line) return;
     if (ENV.FF_MLTRACE === '1')
@@ -5020,7 +5550,7 @@ export function topl_force_break_now() {
     const joins = (g._topl_joins_src === line && Array.isArray(g._topl_joins))
         ? g._topl_joins : null;
     const start = (joins && joins.length) ? joins[joins.length - 1] + 2 : 0;
-    topl_force_break_after(line.slice(start));
+    topl_force_break_after(line.slice(start), clears, line);
 }
 function _topl_force_break_here(seg, laterSegments = []) {
     /* topl.c:150 — more() is a no-op while WIN_STOP is live (ESC at an earlier
@@ -5041,9 +5571,14 @@ function _topl_force_break_here(seg, laterSegments = []) {
 function _topl_force_break_entry(committed) {
     const fb = game?._topl_force_breaks;
     if (!fb || !fb.length || !committed) return -1;
-    let k = fb.findIndex((e) => e.text === committed);
+    const _last = (pred) => { for (let i = fb.length - 1; i >= 0; --i) if (pred(fb[i])) return i; return -1; };
+    let k = _last((e) => e.text === committed);
+    if (k > 0) {
+        const mv = fb[k].frame?.moves;
+        while (k > 0 && fb[k - 1].text === committed && fb[k - 1].frame?.moves === mv) --k;
+    }
     if (k < 0)
-        k = fb.findIndex((e) => e.text && committed.endsWith('  ' + e.text));
+        k = _last((e) => e.text && committed.endsWith('  ' + e.text));
     return k;
 }
 function _topl_split_for_more(line, joins) {
@@ -5295,7 +5830,12 @@ async function _topl_more(committed, dismissMore) {
  * to the live-map force_more when no frame matches `msg`. */
 export async function force_more_lone_frame(msg) {
     const f = game?._lonePlineFrame;
-    if (!f || f.msg !== msg) return force_more(msg);
+    if (!f || (f.msg !== msg && !(f.tail && String(msg).endsWith(f.msg)))) return force_more(msg);
+    /* A mapOnly flush frame (see force_more) goes stale once the time option's
+     * clock advance flushed the screen: let force_more pick the live map. */
+    const _mo = game._plineFlushFrames?.at(-1);
+    if (_mo?.mapOnly && _mo.msg === f.msg && game.flags?.time
+        && (_mo.moves | 0) !== (_painted_moves() | 0)) return force_more(msg);
     const saved = game._paintedSnapshot;
     game._paintedSnapshot = { cells: f.cells, moves: f.moves, botl: _capture_botl() };
     try {
@@ -5419,6 +5959,13 @@ export async function force_more(committed, dismissMore) {
          * (already fully shown by the page before it); it owes no more(). */
         if (!_pages[i] && i) continue;
         g._pending_message = _pages[i];
+        /* done()'s forced bot() (end.c:1043-1046) runs after the tutorial
+         * restore's "Resetting time" pline (nhlua.c:1738) and before the more()
+         * that pages it, so the LAST page shows the restored hero while the
+         * earlier pages (raised by plines before the memcpy) keep the old one. */
+        if (g._tutorialStatusOverride?.freshOnLastPage
+            && !_pages.slice(i + 1).some(Boolean))
+            g._tutorialStatusOverride = null;
         /* C vpline() flushes the screen before the putmesg() whose update_topl
          * raises this page's more() (pline.c:273-274), so a page that was
          * raised by a pline of the COMMAND (teleds' "You materialize..." then
@@ -5432,7 +5979,14 @@ export async function force_more(committed, dismissMore) {
          * pline's redotoplin/yn prompt, after that pline's flush_screen
          * (pline.c:273-277), so the frame is the one keyed at the end of the
          * text before it. */
-        if (!_pf && i > 0) _pf = _pline_flush_frame_select(_ownOff, _full, _flushFrames);
+        /* g._moreFromCls: this more() is cls()'s display_nhwindow(WIN_MESSAGE)
+         * (display.c:2196), not a pline's, so the last page shows the status as of
+         * the latest bot(), not the flush frame of its own pline. */
+        const _lastFromCls = g._moreFromCls && i === _pages.length - 1;
+        if (!_pf && i > 0 && !_lastFromCls) _pf = _pline_flush_frame_select(_ownOff, _full, _flushFrames);
+        if (!_pf && i > 0 && !_lastFromCls) _pf = _frameLog?.[i];
+        let _ownFlushPf = false;
+        if (!_pf && i > 0) { _pf = _pline_flush_frame_select(_ownOff, _full, _flushFrames); _ownFlushPf = !!_pf; }
         if (!_pf && i > 0) _pf = _frameLog?.[i];
         /* A lone first message whose more() is raised by the NEXT prompt (not by a
          * later pline) froze the map at its own pline's flush; the keyed -2 frame
@@ -5445,13 +5999,34 @@ export async function force_more(committed, dismissMore) {
              * turn counter moved since that pline. */
             const _bi = (o) => JSON.stringify(o, (k, v) => typeof v === 'bigint' ? String(v) : v);
             const _lf = _pline_flush_frame_select(-2, _full, _flushFrames);
-            if (_lf && (_lf.mapOnly || (_lf.turn !== undefined && !(g.flags?.time && _lf.turn !== g.moves)
+            /* A mapOnly frame holds only while bot()/timebot() + curs_on_u()
+             * (allmain.c:474-480) did not flush after the world turn: with the
+             * time option the advanced clock sets time_botl, so the map was
+             * repainted. */
+            if (_lf && ((_lf.mapOnly && !(g.flags?.time && (_lf.moves | 0) !== (_painted_moves() | 0))) || (_lf.turn !== undefined && !(g.flags?.time && _lf.turn !== g.moves)
                 && _bi(_capture_botl()) === _bi(_lf.botl ?? _capture_botl())))) {
                 _pf = _lf; _lonePf = true;
             }
         }
         const _sv = g._paintedSnapshot;
-        if (_pf && (_sv || _lonePf)) g._paintedSnapshot = { cells: _pf.cells, moves: _pf.moves, botl: _pf.botl || null };
+        /* A mapOnly frame froze only the MAP at its pline; bot() repainted the status
+         * afterwards (allmain.c:473-478), so its clock is the live one. */
+        if (_pf && (_sv || _lonePf)) g._paintedSnapshot = { cells: _pf.cells, moves: (_lonePf && _pf.mapOnly) ? _painted_moves() : _pf.moves, botl: _pf.botl || null };
+        /* A mapOnly frame (cmd.js wield_tool, "You now wield") freezes the MAP as
+         * of its pline, but its more() is raised by the re-applied command's
+         * getdir prompt AFTER the wield turn's bot() (allmain.c:474) — so the
+         * status turn counter is the post-turn value, not the wield-time one.
+         * C ref: use_whip apply.c:2964-2968 (ECMD_TIME + cmdq re-apply). */
+        if (_pf && (_sv || _lonePf)) g._paintedSnapshot = { cells: _pf.cells, moves: _pf.mapOnly ? (g.moves | 0) : _pf.moves, botl: _pf.botl || null };
+        /* A LAST page whose more() was not raised by a later pline of this window
+         * and which fits the line (no width-wrap more() inside its own
+         * redotoplin, topl.c:157-160) is paged at the next flush_screen(1) —
+         * pline.c:274 of the NEXT message, or the input-time bot() — so its
+         * status row is the one painted THEN, after any mdamageu/losehp that
+         * ran between this message and that flush, not as of its own pline. */
+        const _ownStatusLive = _ownFlushPf && i === _pages.length - 1
+            && _pages[i].length < 80;
+        if (_pf && (_sv || _lonePf)) g._paintedSnapshot = { cells: _pf.cells, moves: _pf.moves, botl: _ownStatusLive ? null : (_pf.botl || null) };
         _morc = await _topl_more(_pages[i], dismissMore);
         if (_pf && (_sv || _lonePf)) g._paintedSnapshot = _sv;
     }
@@ -5553,7 +6128,7 @@ export async function await_menu_key(rerender, selectors, gacc, how, onToggle, s
 // the dismiss key) but no RNG.  `committed` is the prior topline to page; the painted
 // frame and moves are supplied by the occupation driver via `frame`.
 // Returns `morc` (see force_more) so the occupation driver can see an ESC dismiss.
-export async function occupation_force_more(committed, frame, framesMoves, framesUhs) {
+export async function occupation_force_more(committed, frame, framesMoves, framesUhs, postNewuhs) {
     const g = game;
     if (!g) return 0;
     routeTag('occupation_force_more', committed); /* telemetry only */
@@ -5570,6 +6145,11 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
         g._paintedSnapshot = { cells: frame, moves: (framesMoves | 0),
             uhs: (framesUhs == null ? null : (framesUhs | 0)),
             botl: g._occCurBotl || null };
+        /* done_eating (eat.c:549-556) runs newuhs(FALSE) — botl = TRUE — BEFORE
+         * its "You finish eating" pline, whose flush_screen repaints the status
+         * with the NEW hunger before more() pages the prior line. */
+        if (postNewuhs && framesUhs != null && g._paintedSnapshot.botl)
+            g._paintedSnapshot.botl = { ...g._paintedSnapshot.botl, uhs: (framesUhs | 0) };
     }
     const morc = await _topl_more(committed);
     // Page-cleanup: drop the snapshot we installed (so the post-dismiss render uses the
@@ -5593,12 +6173,14 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
 let _flush_screen_flushing = false;
 export function _flush_screen_in_progress() { return _flush_screen_flushing; }
 function flush_screen_point(mode) {
+    _levelgen_freeze_flush(game?._levelgenPaintFreeze);
     const wasFlushing = _flush_screen_flushing;
     _flush_screen_flushing = true;
     try { _flush_screen_repaint(mode); }
     finally { _flush_screen_flushing = wasFlushing; }
 }
 export async function flush_screen(mode) {
+    _levelgen_freeze_flush(game?._levelgenPaintFreeze);
     // C ref: update_topl/more() — if the accumulated topline won't fit on one
     // row, flush the committed portion with --More-- before showing the rest.
     const wasFlushing = _flush_screen_flushing;
@@ -5700,7 +6282,8 @@ async function _flush_screen_body(mode) {
         const pickupPrinv = game._pickupEncMorePending?.prinvText;
         if (_pep && pickupPrinv
             && (committed === pickupPrinv || committed.endsWith('  ' + pickupPrinv))) {
-            game._paintedSnapshot = { cells: _pep.cells, moves: _pep.moves | 0, cap: _pep.cap | 0 };
+            game._paintedSnapshot = { cells: _pep.cells, moves: _pep.moves | 0, cap: _pep.cap | 0,
+                botl: _pep.botl || null };
             game._inMovemonMore = true;
             _pickupFrozen = true;
         } else if (_forcedFrame) {
@@ -5831,7 +6414,7 @@ async function _flush_screen_body(mode) {
                 /* wintty.c:2282 holds WIN_NOSTOP across the urgent head's
                  * update_topl, so more() (topl.c:233) never set WIN_STOP:
                  * disarm what _topl_more armed for this ESC. */
-                if (_rel === 0) game._topl_win_stop_armed = false;
+                game._topl_win_stop_armed = false;
                 const _newRem = remainder.slice(_rel);
                 const _newJoins = (remainderJoins || [])
                     .filter((j) => j >= _rel).map((j) => j - _rel);
@@ -5892,6 +6475,14 @@ async function _flush_screen_body(mode) {
              * urgent update_topl (wintty.c:2282-2300). */
             const _headEnd = (remainderJoins && remainderJoins.length)
                 ? remainderJoins[0] : remainder.length;
+            /* mhitu.c:1370-1372 gulpmu: the head was drawn (it owned the page),
+             * then display_nhwindow(WIN_MESSAGE)'s more() returns at once under
+             * WIN_STOP (topl.c:150) and swallowed(1)'s cls() wipes the line. */
+            if (!_pageWasForcedBreak && game._pending_message) {
+                const _fk = _topl_force_break_entry(remainder.slice(0, _headEnd));
+                if (_fk >= 0 && game._topl_force_breaks[_fk].clears)
+                    game._pending_message = '';
+            }
             if (!(game._topl_urgent_marks || []).includes(remainder.slice(0, _headEnd))) {
                 game._topl_win_stop_armed = false;
                 game._topl_win_stop = true;
@@ -6093,17 +6684,38 @@ export async function bot() {
     /* Same latch for '$:' (botl.c:837 money_cnt(gi.invent)): goto_level's
      * tutorial exit raises its --More-- before bot() reruns. */
     game._botlPaintedGold = money_cnt(game.invent ?? null);
+    /* Same latch for T: (botl.c:260): the clock the physical line holds. */
+    game._botlPaintedMoves = game.moves | 0;
     game._botlPaintedDeaf = _live_deaf();
     game._botlPaintedFlying = _live_flying();
     /* C botl.c condtests[bl_conf]: retain the last painted condition when
      * HConfusion is restored without SET_BOTL after a magic-trap effect. */
     game._botlPaintedConfused = !!(game.u?.uprops?.[CONFUSION]?.intrinsic | 0);
+    game._botlPaintedBlind = _disp_Blind();
+    game._botlPaintedSlimed = !!(game.u?.uprops?.[SLIMED]?.intrinsic | 0);
     if ((game?.u?.uhp | 0) !== -1 && !game._botlHeldEat) {
         game._lastPaintedBotl = _capture_botl();
         /* This IS C's next real paint: whatever done() left pending is now on
          * the physical line, so the death freeze (see js/end.js
          * _done_force_hp_zero) is over. */
         game._botlFrozenDeath = false;
+    }
+    /* C botl.c:279 bot() writes the status rows to the terminal at once.  Every
+     * other repaint here is a later flush_screen(), but under WIN_STOP (topl.c:232,
+     * an ESC'd --More--) the rest of the turn's plines raise no flush, so the
+     * physical rows must be updated now: a following getlin/yn prompt keeps
+     * them (_prompt_physical_status_rows) and showed the pre-bot() HP where C's
+     * done() -> bot() had painted the death-time one ("Die?" prompt, C HP:92
+     * against 103 painted before the suppressed attacks). */
+    if ((game._topl_win_stop || game._topl_win_stop_armed) && game._screen_output
+        && !game._status_blanked && !game._statusBlankAfterDocrt
+        && (game?.u?.uhp | 0) !== -1 && !game._botlHeldEat) {
+        const _rows = String(game._screen_output).split('\n');
+        if (_rows.length >= 24 && !_threeStatusLines()) {
+            _rows[22] = _status_sgr(_statusLine1());
+            _rows[23] = _status_sgr(_statusLine2());
+            game._screen_output = _rows.join('\n');
+        }
     }
     /* C botl.c:260-269 — bot() repaints the WHOLE status line, `T:' included, so
      * the run-suppression latch above is discharged by any paint that gets here. */
@@ -6118,6 +6730,9 @@ export async function bot() {
         game.disp.botlx = 0;
         game.disp.time_botl = 0;
     }
+    // The status rows are physically repainted here, so any blank-status
+    // latch left by a full-screen menu's docrt() (see tty_menu.js) is over.
+    if (game) game._statusBlankAfterDocrt = false;
 }
 // ── Message history ring (for ^P / doprev_message) ──
 // C ref: topl.c remember_topl() / putmsghistory() — NetHack keeps a ring of
@@ -6279,6 +6894,13 @@ export async function pline(msg, ...args) {
         const _p = String(game._pending_message || ''), _r = String(game._resultMessage || '');
         pushRngLogEntry(`^ml_pline[msglen=${String(msg).length} msghead=${encodeURIComponent(String(msg).slice(0,80))} plen=${_p.length} phead=${encodeURIComponent(_p.slice(0,80))} rlen=${_r.length} rhead=${encodeURIComponent(_r.slice(0,80))} joins=${(game._topl_joins || []).join(',')}]`);
     }
+    /* C ref: pline.c:266-272 — vpline() recalcs vision BEFORE update_topl()
+     * decides anything, so a message swallowed by WIN_STOP (an ESC-dismissed
+     * --More--) still runs it.  Leaving it to the paint path below skipped it
+     * for every swallowed message and deferred its newsym() draws (display rng
+     * under Hallucination) past the explosion's rndmonnam() draws. */
+    if (game._topl_win_stop && game.vision_full_recalc)
+        vision_recalc(0);
     if (game._topl_win_stop) {
         const _txt = String(msg);
         const _buf = (game._topl_win_stop_buf != null)
@@ -6379,6 +7001,13 @@ export async function pline(msg, ...args) {
         /* The result-channel merge above has already appended this message. */
         if (adoptedResult) {
             // keep the join record created by _topl_merge_result()
+            /* Same pline.c:274 freeze for the yn prompt's more() as the join arm
+             * below: the gush's first message pushes the command result into More,
+             * and the later Dry-up prompt shows the terminal as flushed here. */
+            if (!game._inMovemonBlock && game._inGushforth && game.level)
+                game._lonePlineFrame = { msg: String(msg), tail: true,
+                                         cells: _capture_painted_cells(),
+                                         moves: _painted_moves() };
         } else {
         const joined = prev + '  ' + msg;
         // Record the JOIN offset (the index of the "  " separator within the
@@ -6388,6 +7017,18 @@ export async function pline(msg, ...args) {
         // win/tty/topl.c — each pline()→update_topl() makes an independent
         // fit/more() decision per message, not per "  " in the rendered text.
         _topl_record_join(prev, joined);
+        /* pline.c:274 — each pline flushes the screen before update_topl()'s
+         * more(); a page raised by THIS message froze the map as of here, not
+         * as of the end of the hero's command (fountain gush: later pools). */
+        if (!game._inMovemonBlock && game._inGushforth) {
+            _pline_flush_frame_record(prev.length, String(msg));
+            /* A later yn prompt's more() shows the terminal as the LAST pline
+             * flushed it; `tail` lets the joined remainder match this frame. */
+            if (game.level)
+                game._lonePlineFrame = { msg: String(msg), tail: true,
+                                         cells: _capture_painted_cells(),
+                                         moves: _painted_moves() };
+        }
         game._pending_message = joined;
         }
     } else {
@@ -6820,7 +7461,9 @@ const BOULDER_OTYP = 475; /* objects.h BOULDER (js/cmd.js:8911, js/m_initweap.js
 
 function _feel_can_reach_floor() {
     const u = game.u || {};
-    if (u.uswallow)
+    if (u.uswallow
+        || (u.ustuck && !sticks(game.youmonst?.data)
+            && attacktype(u.ustuck.data, 7 /* AT_HUGS */)))
         return false;
     const lp = u.uprops && u.uprops[LEVITATION];
     const levitating = !!lp && !!((lp.intrinsic | 0) || (lp.extrinsic | 0))
@@ -6912,7 +7555,9 @@ export function feel_location(x, y) {
                 do_room_glyph = true;
             }
             if (do_room_glyph) {
-                const dark = !Is_rogue_level(game.u?.uz);
+                /* C: flags.dark_room && iflags.use_color && !Is_rogue_level →
+                 * S_darkroom (display.c:836-843); otherwise S_room or S_stone. */
+                const dark = _darkroom_paints() && !Is_rogue_level(game.u?.uz);
                 const glyph = dark
                     ? { ch: dec_mode() ? '~' : '.', color: CLR_BLACK, decgfx: dec_mode(), cls: GLYPHCLS_CMAP }
                     : (lev.waslit
@@ -7008,15 +7653,17 @@ function _rg_is_boulder(rg) {
  * defsym.h cmap indices 0..19: S_stone, the eleven wall symbols, S_ndoor,
  * the four door symbols, S_bars, S_tree, S_room.  S_darkroom (20) and every
  * later cmap (S_corr onward) are OUTSIDE the range.  In this port's
- * {ch,color} glyph model that set is identified by char+color; the sole
- * ambiguity is '#', shared by S_bars (CLR_CYAN) / S_tree (CLR_GREEN) — in
- * range — and S_corr / S_litcorr (NO_COLOR / CLR_WHITE) — out of range. */
+ * {ch,color} glyph model that set is identified by char+color.  Two char
+ * collisions need the colour: '#' is S_bars (CLR_CYAN) / S_tree (CLR_GREEN) —
+ * in range — versus S_corr / S_litcorr (NO_COLOR / CLR_WHITE) — out of range;
+ * '|' is walls (CLR_GRAY) and horizontal open doors (CLR_BROWN) — in range —
+ * versus S_grave (CLR_WHITE, defsym.h:131, index 34) — out of range. */
 function _rg_in_stone_to_room_range(rg) {
     if (!rg || rg.cls !== GLYPHCLS_CMAP)
         return false;
     switch (rg.ch) {
     case ' ':  return rg.color === NO_COLOR;                 /* S_stone */
-    case '|':
+    case '|':  return rg.color !== CLR_WHITE;  /* walls / open doors; S_grave is CLR_WHITE */
     case '-':  return true;    /* walls (CLR_GRAY), open doors (CLR_BROWN) */
     case '+':  return true;    /* closed doors */
     case '.':  return rg.color !== CLR_BLACK;   /* S_ndoor / S_room, not dark */
@@ -7368,6 +8015,44 @@ export function map_background(x, y, show) {
 
 export function map_location(x, y, show) {
     _map_location(x, y, show);
+}
+
+/* C uhitm.c:4931-4943 start_engulf(mdef) — the DISPLAY half only; the
+ * "You engulf/swallow <mdef>!" message is printed by the caller in the C order.
+ *     if (!Invisible) {
+ *         map_location(u.ux, u.uy, TRUE);
+ *         tmp_at(DISP_ALWAYS, mon_to_glyph(&gy.youmonst, rn2_on_display_rng));
+ *         tmp_at(mdef->mx, mdef->my);
+ *     }
+ * The hero's own square is re-mapped (it stops showing the hero while
+ * swallowed) and the hero's glyph is flashed on the ENGULFER'S square until
+ * end_engulf().  The flash glyph is hero_glyph (no hallucination draw here). */
+export function start_engulf(mdef) {
+    const u = game.u || {};
+    const invisP = _uprop(INVIS);
+    const Invis = !!((invisP.i || invisP.e) && !invisP.b);
+    const siP = _uprop(SEE_INVIS);
+    const Invisible = Invis && !(siP.i || siP.e);
+    if (!Invisible) {
+        map_location(u.ux, u.uy, true);
+        tmp_at(DISP_ALWAYS, _hero_glyph());
+        tmp_at(mdef.mx, mdef.my);
+    }
+}
+
+/* C uhitm.c:4947-4956 end_engulf(void): clear the engulf flash and repaint the
+ * hero's square.  Called from gulpum() after xkilled() on the digest arm and
+ * unconditionally before the damage on the non-digest arms. */
+export function end_engulf() {
+    const u = game.u || {};
+    const invisP = _uprop(INVIS);
+    const Invis = !!((invisP.i || invisP.e) && !invisP.b);
+    const siP = _uprop(SEE_INVIS);
+    const Invisible = Invis && !(siP.i || siP.e);
+    if (!Invisible) {
+        tmp_at(DISP_END, 0);
+        newsym(u.ux, u.uy);
+    }
 }
 
 /* C ref: display.h:218-222
@@ -7961,7 +8646,7 @@ function _show_swallow_sym(x, y, idx, mndx) {
         ? rn2_on_display_rng(MON_MCOLOR.length)
         : mndx;
     const color = (shown >= 0 && shown < MON_MCOLOR.length) ? MON_MCOLOR[shown] : CLR_GRAY;
-    show_glyph_cell(x, y, useDec ? e.d : e.a, color, useDec, 0, GLYPHCLS_CMAP);
+    show_glyph_cell(x, y, useDec ? e.d : e.a, color, useDec, 0, GLYPHCLS_SWALLOW);
 }
 /* C youprop.h:120 Hallucination = (HHallucination && !Halluc_resistance),
  * Halluc_resistance = (HHalluc_resistance || EHalluc_resistance).  Same
@@ -8136,7 +8821,12 @@ export async function cast_chain_lightning() {
             zap.strength--;
             propagate(zap);
             if (zap.strength < 2) zap.strength = 0;
-            else if ((u.uen | 0) > 0) u.uen--;
+            else if ((u.uen | 0) > 0) {
+                if (!(game.disp && ((game.disp.botl | 0) || (game.disp.botlx | 0)))
+                    && game._botlStaleUen === undefined)
+                    game._botlStaleUen = u.uen | 0;
+                u.uen--;
+            }
             zap.dir = DIR_LEFT(zap.dir);
             propagate(zap);
             zap.dir = DIR_RIGHT2(zap.dir);

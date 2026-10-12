@@ -50,7 +50,8 @@ import { addinv } from './hold_another_object.js';
 import { pickup_prinv, fatal_corpse_mistake, lift_object } from './pickup.js';
 import { splitobj, unsplitobj, permonstTemplate, removed_from_icebox, set_malign } from './makemon.js';
 import { age_is_relative, stop_timer } from './timeout.js';
-import { ROT_CORPSE, REVIVE_MON, SHRINK_GLOB } from './const.js';
+import { ROT_CORPSE, REVIVE_MON, SHRINK_GLOB, MENU_PARTIAL, MENU_FULL } from './const.js';
+import { yn_function } from './end.js';
 import { PM_ICE_TROLL, PM_HOUSECAT } from './pm.generated.js';
 import { christen_monst } from './mhitm.js';
 import { mon_nam, newexplevel } from './uhitm.js';
@@ -808,6 +809,16 @@ async function query_category_takeout(box) {
     for (let o = box.cobj; o; o = o.nobj) contents.push(o);
     return await _query_category(contents, 'Take out', false);
 }
+/* C menu_loot (pickup.c:3276-3279): only MENU_FULL asks the "<action> what
+ * type of objects?" category query.  Any other style leaves all_categories
+ * TRUE and goes straight to query_objlist with allow_all. */
+function _menu_style_is_full() {
+    return (game.flags?.menu_style ?? MENU_FULL) === MENU_FULL;
+}
+function _no_category_sel() {
+    return { menuShown: false, autopick: false, lootEverything: false,
+             allCategories: true, classes: new Set(), justPickedCount: 0 };
+}
 /* C ref: pickup.c:1226 query_category(), reached from menu_loot() at :3287
  * with olist = put_in ? gi.invent : current_container->cobj and the SAME
  * mflags (ALL_TYPES | UNPAID_TYPES | BUCX_TYPES | CHOOSE_ALL | JUSTPICKED).
@@ -1340,11 +1351,36 @@ export async function use_container_impl(cobjRef, held, more_containers) {
         const promptText = outmaybe
             ? `Do what with ${_yname_box(obj)}?`
             : `${_Yname_box(obj)} is ${cursedMbag ? 'now ' : ''}empty.  Do what with it?`;
-        if (!inokay && !outmaybe) {
-            c = 'b';
+        /* C pickup.c:3079-3080: MENU_PARTIAL|MENU_FULL → in_or_out_menu;
+         * otherwise (MENU_TRADITIONAL|MENU_COMBINATION) a yn_function prompt.
+         * options.c:7258 sets MENU_FULL as the default, so unset means FULL. */
+        const menuStyle = game.flags?.menu_style ?? MENU_FULL;
+        if (menuStyle === MENU_PARTIAL || menuStyle === MENU_FULL) {
+            if (!inokay && !outmaybe) {
+                c = 'b';
+            } else {
+                c = await in_or_out_menu(promptText, obj, outmaybe, inokay,
+                                         (used !== ECMD_OK), more_containers);
+            }
         } else {
-            c = await in_or_out_menu(promptText, obj, outmaybe, inokay,
-                                     (used !== ECMD_OK), more_containers);
+            /* C pickup.c:3095-3115: the accepted keys are displayed in pbuf
+             * and the rest are accepted silently after an ESC in xbuf. */
+            let pbuf = ':';
+            let xbuf = '';
+            pbuf += outmaybe ? 'o' : ''; xbuf += outmaybe ? '' : 'o';
+            pbuf += inokay ? 'i' : ''; xbuf += inokay ? '' : 'i';
+            pbuf += outmaybe ? 'b' : ''; xbuf += outmaybe ? '' : 'b';
+            pbuf += inokay ? 'rs' : ''; xbuf += inokay ? '' : 'rs';
+            pbuf += ' ';
+            pbuf += more_containers ? 'n' : ''; xbuf += more_containers ? '' : 'n';
+            pbuf += 'q';
+            if (game.iflags?.cmdassist ?? true) pbuf += ' or ?';
+            else xbuf += '?';
+            if (xbuf) pbuf += '\x1b' + xbuf;
+            const ynDef = more_containers ? 'n' : 'q';
+            c = await yn_function(promptText, pbuf, ynDef, true);
+            if (c !== '?' && c !== ':')
+                g._topl_sticky = `${promptText} [${pbuf.split('\x1b')[0]}] (${ynDef})`;
         }
         if (c === '?') {
             /* explain_container_prompt — not exercised; loop again. */
@@ -1378,7 +1414,9 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             /* C pickup.c:3282-3311 menu_loot — with flags.menu_style ==
              * MENU_FULL (the default) the TYPE filter menu comes first. */
             g.pickup_encumbrance = 0;
-            const sel = await query_category_takeout(obj);
+            const sel = _menu_style_is_full()
+                ? await query_category_takeout(obj)
+                : _no_category_sel();
             if (!sel.autopick && !sel.allCategories && sel.classes.size === 0) {
                 /* C: return ECMD_OK from menu_loot — no menu, no cknown. */
             } else if (sel.autopick) {
@@ -1440,7 +1478,9 @@ export async function use_container_impl(cobjRef, held, more_containers) {
         g.pickup_encumbrance = 0; // C menu_loot resets report suppression.
         const invlist = [];
         for (let o = g.invent; o; o = o.nobj) invlist.push(o);
-        const sel = await _query_category(invlist, 'Put in', true);
+        const sel = _menu_style_is_full()
+            ? await _query_category(invlist, 'Put in', true)
+            : _no_category_sel();
         if (sel.menuShown && !sel.autopick
             && !sel.allCategories && sel.classes.size === 0) {
             /* C:3293-3294 `if (!n) return ECMD_OK;` — nothing picked. */

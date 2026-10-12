@@ -7,14 +7,19 @@ import { force_more, _topl_more_pages, _topl_joins_snapshot, docrt_flags, flush_
 export async function displayLookWindow(lines) {
     const g = game;
     // display_nhwindow(WIN_MESSAGE, FALSE) acknowledges existing messages first.
-    if (g._pending_message) {
+    if (g._pending_message && g._topl_win_stop) {
+        /* topl.c more():232-246 — WIN_STOP live: no key is read and the closing
+         * tty_clear_nhwindow(WIN_MESSAGE) wipes the line an ESC's owner drew. */
+        g._pending_message = '';
+        g._topl_joins = [];
+    } else if (g._pending_message) {
         const live = g._pending_message;
         const snapshot = g._toplResultSnapshot;
         for (const page of _topl_more_pages(live, _topl_joins_snapshot(live) || undefined))
             if (page) await force_more(page);
         if (g._resultMessage != null && snapshot != null
             && String(g._resultMessage) === String(snapshot)
-            && String(snapshot) === String(live)) {
+            && String(live).startsWith(String(snapshot))) {
             g._resultMessage = null;
             g._resultMessageJoins = null;
         }
@@ -35,12 +40,12 @@ export async function displayLookWindow(lines) {
             const page = lines.slice(offset, offset + 23);
             const screenRows = build_text_window_screen(page).split('\n');
             screenRows[23] = '';
-            screenRows[page.length] = '--More--';
+            screenRows[page.length] = ' --More--'; /* tty_curs(window, 1, n) -> offx+1 */
             let key;
             do {
                 g._screen_output = screenRows.join('\n');
                 if (g.nhDisplay) {
-                    g.nhDisplay.cursorCol = 8;
+                    g.nhDisplay.cursorCol = 9;
                     g.nhDisplay.cursorRow = page.length;
                 }
                 key = await nhgetch();

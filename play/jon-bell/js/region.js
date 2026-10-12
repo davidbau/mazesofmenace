@@ -16,8 +16,8 @@ import { EYE, LUNG, POISON_RES, KILLED_BY_AN, M_SEEN_POISON, M_POISONGAS_OK } fr
 import { wake_nearto, resists_poison, setmangry } from './mklev.js';
 import { isok } from './hacklib.js';
 import { m_at } from './uhitm.js';
-import { cansee, Blind, block_point, unblock_point, does_block } from './vision.js';
-import { newsym, pline, _topl_record_join } from './display.js';
+import { cansee, Blind, block_point, unblock_point, does_block, vision_recalc } from './vision.js';
+import { newsym, pline, pline_flush_point, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { m_poisongas_ok } from './mklev.js';
 import { is_pool_or_lava } from './look.js';
 
@@ -135,6 +135,9 @@ function u_at(x, y) {
 function region_pline_sync(msg) {
     const g = game;
     if (!g || !msg) return;
+    if (g.vision_full_recalc)
+        vision_recalc(0);
+    pline_flush_point();
     /* topl.c:257 skip = (flags & (WIN_STOP|WIN_NOSTOP)) == WIN_STOP: after an ESC
      * at a --More-- the message updates gt.toplines but is never drawn. */
     if (g._topl_win_stop) {
@@ -144,6 +147,16 @@ function region_pline_sync(msg) {
         return;
     }
     const prev = g._pending_message;
+    if ((!prev || prev.length === 0) && g._resultMessage
+        && g._resultMessage !== msg) {
+        const result = String(g._resultMessage);
+        const joins = g._resultMessageJoins?.src === result
+            ? g._resultMessageJoins.joins : _topl_joins_snapshot(result);
+        g._resultMessage = null;
+        g._resultMessageJoins = null;
+        g._pending_message = _topl_merge_result(result, String(msg), joins || undefined);
+        return;
+    }
     if (prev && prev.length > 0) {
         const joined = prev + '  ' + msg;
         _topl_record_join(prev, joined);
@@ -441,7 +454,7 @@ export function remove_region(reg) {
 // the blind hero simply skips redraws.  js/mhitu.js:173 uses the same
 // flags.blind reading; no RNG on either branch.
 function Blind_reg() {
-    return !!(game.flags && game.flags.blind);
+    return Blind();
 }
 
 // C ref: region.c:927-952 reset_region_mids(NhRegion *reg) — bones-file

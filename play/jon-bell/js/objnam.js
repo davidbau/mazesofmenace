@@ -108,6 +108,7 @@ import { cansee as cansee_on } from './vision.js';
 import { BOGUSMON_LINES } from './bogusmon_data.js';
 import { mons_cnutrit, obj_nutrition } from './food_props.js';
 import { counter_were } from './were.js';
+import { artifact_light, arti_light_description } from './light.js';
 
 /* C ref: nethack-c/src/pline.c:587-637 impossible(const char *s, ...) — it
  * logs to the message window / paniclog and RETURNS; it never aborts.  Callers
@@ -5285,6 +5286,11 @@ async function doname_base(obj, doname_flags) {
             bp += ` (${tethered ? 'tethered to'
                        : twoweap_primary ? 'wielded in'
                        : 'weapon in'} ${hand_s})`;
+            /* C objnam.c:1604-1610 — a lit light-emitting artifact weapon
+             * overwrites the closing paren with ", <adverb> lit)".  (The
+             * warn_obj_cnt/Sting glow arm at 1599-1603 is not ported.) */
+            if (!_Blind() && obj.lamplit && artifact_light(obj))
+                bp = `${bp.slice(0, -1)}, ${arti_light_description(obj)} lit)`;
         }
     }
     if (mask & W_SWAPWEP_D) {

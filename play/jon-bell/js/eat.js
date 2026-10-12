@@ -8,7 +8,8 @@ import { ORGANISER_IS_MACOS } from './platform_identity.js';
 import { PM_KILLER_BEE, PM_QUEEN_BEE, PM_STONE_GOLEM, PM_DWARF,
          PM_SCORPION, PM_KNIGHT } from './pm.generated.js';
 import { FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, SICK_RES, TELEPORT, TELEPORT_CONTROL, TELEPAT, STUNNED, DISPLACED } from './const.js';
-import { PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER } from './pm.generated.js';
+import { PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER, PM_PYROLISK,
+         PM_LITTLE_DOG, PM_DOG, PM_LARGE_DOG, PM_KITTEN, PM_HOUSECAT, PM_LARGE_CAT } from './pm.generated.js';
 import { permonstTemplate, olfaction, monPmname, splitobj, attacktype_fordmg, levelDifficulty, mon_set_minvis } from './makemon.js';
 import { same_race } from './mhitm.js';
 import { monstone as monstone_real } from './dogmove.js';
@@ -61,7 +62,7 @@ import { reset_utrap, selftouch, t_at as t_at_real, deltrap as deltrap_real } fr
 import { on_level } from './dungeon.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
-         STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, INVIS as INVIS_PROP, SEE_INVIS as SEE_INVIS_PROP, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
+         EXPL_FIERY, STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, INVIS as INVIS_PROP, SEE_INVIS as SEE_INVIS_PROP, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
          FAST as FAST_PROP, DEAF as DEAF_PROP, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP } from './const.js';
 /* make_confused's C home is potion.c:88.  This file used to carry its own
  * `_eat_make_confused`, which wrote a flat `game.HConfusion` that only this
@@ -104,7 +105,7 @@ import { rndmonnam } from './do_name.js';
 import { observe_object } from './o_init.js';
 import { hcolor, poly_when_stoned as poly_when_stoned_eat } from './mhitm.js';
 import { is_were, you_unwere } from './were.js';
-import { polymon, rehumanize } from './polyself.js';
+import { polymon, rehumanize, still_chewing } from './polyself.js';
 import { toggle_displacement } from './do_wear.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_sick, vomit, make_slimed } from './potion.js';
@@ -117,7 +118,7 @@ import { set_occupation, dropx, dropy as dropy_real, instapetrify as instapetrif
 import { near_capacity, weight, encumber_msg as encumber_msg_real } from './weight.js';
 import { obj_here } from './cmd.js';
 import { losehp } from './dokick.js';
-import { obj_resists, make_blinded } from './zap.js';
+import { obj_resists, make_blinded, explode } from './zap.js';
 import { Monnam } from './mcastu.js';
 import { mon_nam } from './uhitm.js';
 import { s_suffix } from './mhitm.js';
@@ -322,6 +323,9 @@ export async function doeat() {
     }
 
     if (otmp === hands_obj) {
+        if ((await still_chewing(u.ux, u.uy)) && game.level.at(u.ux, u.uy).typ === IRONBARS) {
+            await pline('You pause to swallow.');
+        }
         return ECMD_TIME;
     }
 
@@ -473,20 +477,6 @@ export async function newuhs(incr) {
     }
     /* C eat.c:3451-3513 — update u.uhs, notify. */
     if (newhs !== (u.uhs | 0)) {
-        /* The temporary weakness penalty remains active through the
-         * fainting states; C clears it only when hunger rises above WEAK. */
-        if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
-        if (!u.atemp.a) u.atemp.a = [0, 0, 0, 0, 0, 0];
-        if (newhs >= WEAK && (u.atemp.a[0] | 0) >= 0)
-            u.atemp.a[0] = -1;
-        else if (newhs < WEAK && (u.atemp.a[0] | 0) < 0)
-            u.atemp.a[0] = 0;
-        /* C eat.c:3452-3466: ATEMP(A_STR) = -1 on crossing INTO weak and 0 on
-         * crossing back out.  STILL GAPPED, and the cost is a wrong St on the
-         * status line for as long as the hero is WEAK (u.atemp lives in
-         * js/attrib.js and is DISPLAY-ordered via C_ATTR_TO_DISP, neither of
-         * which this module reaches).  It is NOT the reason the switch below
-         * was missing. */
         switch (newhs) {
         case HUNGRY:
             if (_eat_Hallucination()) {
@@ -527,6 +517,12 @@ export async function newuhs(incr) {
             end_running(true);
             break;
         }
+        if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
+        if (!u.atemp.a) u.atemp.a = [0, 0, 0, 0, 0, 0];
+        if (newhs >= WEAK && (u.atemp.a[0] | 0) >= 0)
+            u.atemp.a[0] = -1;
+        else if (newhs < WEAK && (u.atemp.a[0] | 0) < 0)
+            u.atemp.a[0] = 0;
         u.uhs = newhs;
         /* C hack.h SET_BOTL() */
         if (g.disp)
@@ -770,6 +766,10 @@ export async function choke(food) {
     g.svk = g.svk || {};
     g.svk.killer = g.svk.killer || {};
     g.svk.killer.format = KILLED_BY_AN;
+    if (g._occPreEatLive && !g._pending_message) {
+        g._pending_message = g._occPreEatLive;
+        g._occPreEatUsed = true;
+    }
     if (food) {
         await pline(`You choke over your ${_foodword(food)}.`);
         if ((food.oclass | 0) === COIN_CLASS) {
@@ -934,7 +934,9 @@ async function _done(how) {
      * 'n',FALSE): ESC and the quitchars " \r\n" all resolve to the default
      * 'n'; 'y'/'n' are accepted directly; anything else rings the bell and
      * re-reads without redrawing the prompt. */
+    g._botlReleaseAtDieQuery = true;
     const diesArm = await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_DIE), 'Die?');
+    g._botlReleaseAtDieQuery = false;
     if (diesArm) {
         /* C end.c:1115-1117 — an explicit yes falls through to
          * really_done(); defer that confirmed death through the shared
@@ -1006,6 +1008,10 @@ export async function stoned_dialogue() {
             && buf.includes('limbs'))
             buf = buf.replace('limbs', 'extremities');
         await urgent_pline(buf);
+        /* nh_timeout runs AFTER the HEAD svm.moves++ (allmain.c:257, timeout.c:624),
+         * so a --More-- this pline raises freezes T: at the CURRENT svm.moves, not
+         * the movemon-turn tag (moves-1) left by an earlier turn's pending line. */
+        if (game._pending_message) game._movemonMsgTurn = game.moves | 0;
     }
     switch (i) {
     case 5:
@@ -1100,6 +1106,11 @@ async function make_stoned(xtime, msg, killedby, killername) {
     await make_stoned_shared(xtime, msg, killedby, killername);
 }
 let _ate_brains = 0;
+/* C eat.c CANNIBAL_ALLOWED(): Caveman role or Orc race. */
+function _cannibal_allowed() {
+    const g = game;
+    return ((g.flags?.initrole | 0) === 2) || ((g.urace?.mnum | 0) === 72);
+}
 function maybe_cannibal(pm, allowmsg) {
     const g = game, u = g.u || {};
     const food = permonstTemplate(pm | 0);
@@ -1107,10 +1118,7 @@ function maybe_cannibal(pm, allowmsg) {
     /* eat.c:765-768 */
     if ((g.moves | 0) === _ate_brains) return false;
     _ate_brains = g.moves | 0;
-    /* CANNIBAL_ALLOWED: Caveman role or Orc race. */
-    const allowed = ((g.flags?.initrole | 0) === 2)
-        || ((g.urace?.mnum | 0) === 72);
-    if (allowed) return false;
+    if (_cannibal_allowed()) return false;
     /* your_race(fptr): M2 selfmask of the hero's initrace (human/elf/dwarf/gnome/orc) */
     const mask = [0x08, 0x10, 0x20, 0x40, 0x80][(g.flags?.initrace ?? 0) | 0] ?? 0x08;
     const yourRace = ((food.mflags2 | 0) & mask) !== 0;
@@ -1167,7 +1175,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
         await pline("Your brain is eaten!");
     } else {
         if (visflag && canspotmon(mdef))
-            _emit_eat_pline(s_suffix(Monnam(mdef)) + " brain is eaten!");
+            await pline(s_suffix(Monnam(mdef)) + " brain is eaten!");
     }
 
     if (_flesh_petrifies(pd)) {
@@ -2003,7 +2011,9 @@ async function eatcorpse(otmp) {
         const hallu = _eat_Hallucination();
         const use_is = (hallu || (palatable && palat_msg[0] === 'I'));
         /* C eat.c:2002-2014 — "This <food> tastes/is <adj>!/." */
-        const pmxnam = `${_monNameLower(mnum)} corpse`;
+        /* C eat.c:2000 pmxnam = food_xname(otmp, FALSE): a glob is named by
+         * xname ("small glob of gray ooze"), a corpse by corpse_xname. */
+        const pmxnam = _food_xname(otmp, false);
         const prefix = 'This '; /* type_is_pname/the_unique_pm false for goblin */
         const verb = use_is ? 'is' : 'tastes';
         const adj = hallu
@@ -2024,6 +2034,26 @@ async function _fprefx(otmp) {
     const isElf = initrace === 1, isOrc = initrace === 4;
     const heroCarn = _hero_carnivorous();
     const u = game.u;
+    if (otyp === EGG_OTYP) {
+        /* C eat.c:2101-2115 — case EGG: a pyrolisk egg explodes in the hero's
+         * face (useup first, then d(3,6) as explode()'s damage argument, then
+         * return FALSE so the eat is abandoned); a stale egg (eat.c:2110,
+         * stale_egg() = obj.h:316, moves - age > 2*MAX_EGG_HATCH_TIME) makes
+         * the hero vomit and skips to give_feedback. */
+        if ((otmp.corpsenm | 0) === PM_PYROLISK) {
+            if (_eat_carried(otmp)) await useup(otmp);
+            else await useupf(otmp, 1);
+            await explode(u.ux | 0, u.uy | 0, -11, d(3, 6), 0, EXPL_FIERY);
+            return false;
+        } else if (((game.moves | 0) - (otmp.age | 0)) > 2 * 200) {
+            _emit_eat_pline('Ugh.  Rotten egg.');
+            /* make_vomiting((Vomiting & TIMEOUT) + d(10, 4), TRUE) */
+            const vom = (game.u?.uprops?.[VOMITING]?.intrinsic | 0) & TIMEOUT;
+            await make_vomiting(vom + d(10, 4), true);
+            return true;
+        }
+        /* else goto give_feedback — the default arm below */
+    }
     if (otyp === FOOD_RATION_OTYP_E) {
         const h = u ? (u.uhunger | 0) : 0;
         if (h <= 200) _emit_eat_pline('This food really hits the spot!');
@@ -2357,13 +2387,20 @@ const FLOOR_FOOD_XNAME = { 293: 'food ration', 264: 'tripe ration' };
 /* C invent.c food_xname — for a singleton corpse: "<monster> corpse", with a
  * leading "the" when article=true (food_xname(.,TRUE)). */
 function _food_xname(otmp, the_pfx) {
-    if ((otmp.otyp | 0) === CORPSE_OTYP) {
-        const mname = _monNameLower(otmp.corpsenm | 0);
-        return `${the_pfx ? 'the ' : ''}${mname} corpse`;
-    }
+    /* C eat.c:217-223: CORPSE → corpse_xname(food, NULL, CXN_SINGULAR
+     * [| CXN_PFX_THE]).  corpse_xname owns the proper-name rule (a
+     * M2_PNAME monster drops the article and takes the possessive form,
+     * "Scorpius' corpse", objnam.c:1821-1919) and the named-object form, so
+     * a local "<monster> corpse" copy here is wrong for those corpses.
+     * C's trailing the() is a no-op on the already-prefixed result. */
+    if ((otmp.otyp | 0) === CORPSE_OTYP)
+        return corpse_xname(otmp, null, 1 /* CXN_SINGULAR */ | (the_pfx ? 4 /* CXN_PFX_THE */ : 0));
     /* C eat.c food_xname -> xname(): a glob carries its size prefix
      * ("small glob of brown pudding", objnam.c:1019-1030). */
-    if (otmp.globby) {
+    if (otmp.globby || (otmp.oclass | 0) !== FOOD_CLASS) {
+        /* A metallivore's non-food meal (eat.c:2802 doeat_nonfood, via
+         * singular(otmp, xname)) shows the unidentified appearance
+         * ("hexagonal amulet"), not the true OBJ_NAME. */
         const gn = xname_eat(otmp);
         return the_pfx ? `the ${gn}` : gn;
     }
@@ -2475,6 +2512,26 @@ async function _cprefx_unstone(pm) {
     }
 }
 
+/* C eat.c:816-826 cprefx() domestic-animal switch arm: eating a dog or cat
+ * is a bad idea for non-cannibals (sets FROMOUTSIDE aggravate monster). */
+async function _cprefx_domestic(pm) {
+    switch (pm | 0) {
+    case PM_LITTLE_DOG:
+    case PM_DOG:
+    case PM_LARGE_DOG:
+    case PM_KITTEN:
+    case PM_HOUSECAT:
+    case PM_LARGE_CAT:
+        if (!_cannibal_allowed()) {
+            _emit_eat_pline(`You feel that eating the ${monPmname(pm, 2)} was a bad idea.`);
+            _give_fromoutside(AGGRAVATE_MONSTER);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 /* C eat.c:2022 start_eating(otmp, already_partly_eaten) — begin the meal. */
 export async function start_eating(otmp, already_partly_eaten) {
     const v = _victual();
@@ -2486,6 +2543,7 @@ export async function start_eating(otmp, already_partly_eaten) {
         maybe_cannibal(otmp.corpsenm | 0, true); /* cprefx eat.c:793 */
         await _cprefx_petrify(otmp.corpsenm | 0);
         if (!v.piece || !v.eating) return; /* lifesaved */
+        await _cprefx_domestic(otmp.corpsenm | 0);
         await _cprefx_slime(otmp.corpsenm | 0);
         await _cprefx_unstone(otmp.corpsenm | 0);
     }
@@ -2581,7 +2639,12 @@ export async function doeat_food(otmp) {
                 return true;
             }
         } else {
-            _emit_eat_pline(`You ${v.reqtime === 1 ? 'eat' : 'begin eating'} ${_food_xname(otmp)}.`);
+            /* C eat.c:3044-3046 — You("%s %s.", ..., doname(otmp)): the full
+             * doname, so a bitten item reads "a partly eaten food ration". */
+            /* C eat.c:3041-3046 — doname(otmp), not food_xname: the full
+             * name carries "partly eaten " and the article ("a partly eaten
+             * food ration"), which the topline must show. */
+            _emit_eat_pline(`You ${v.reqtime === 1 ? 'eat' : 'begin eating'} ${await doname(otmp)}.`);
         }
     }
 
@@ -3040,7 +3103,14 @@ async function consume_tin(mesg) {
 
         _zero_victual(); /* C eat.c:1598 svc.context.victual = zero_victual */
 
-        _emit_eat_pline(`You consume ${TINTXTS[r | 0].txt} ${monPmname(mnum, 2)}.`);
+        const _consumeMsg = `You consume ${TINTXTS[r | 0].txt} ${monPmname(mnum, 2)}.`;
+        if (game._resultMessage) {
+            _pline_flush_frame_record(game._resultMessage.length, _consumeMsg);
+        } else {
+            _pline_flush_frame_record(-2, _consumeMsg);
+            game._plineFlushFrames.at(-1).mapOnly = true;
+        }
+        _emit_eat_pline(_consumeMsg);
 
         eating_conducts(ptr);
 
@@ -3103,19 +3173,8 @@ async function consume_tin(mesg) {
                 ? "Swee'pea"
                 : 'Popeye'}!`);
 
-        /* C attrib.c:203 gainstr(otmp, 0, FALSE).  The strength increment is
-         * random only when the base value is below the encoded 18 threshold;
-         * adjattrib(..., 1) performs the cap and status bookkeeping. */
-        const di = C_ATTR_TO_DISP[A_STR] ?? A_STR;
-        const abase = (getAbase(u)[di] | 0);
-        let num;
-        if (abase < 18)
-            num = rn2(4) ? 1 : rnd(6);
-        else if (abase < 19)
-            num = rnd(10);
-        else
-            num = 1;
-        adjattrib(A_STR, tin.cursed ? -num : num, 1);
+        /* C eat.c:1684 gainstr(tin, 0, FALSE) */
+        await gainstr(tin, 0, false);
 
         tin = (await costly_tin(COST_OPEN));
         nutamt = tin.blessed ? 600
@@ -3786,7 +3845,17 @@ export function mon_givit(mtmp, ptr) {
     if (vis && !innate) _emit_eat_pline(`${Monnam(mtmp)} ${suffix}`);
 }
 
-async function cpostfx(pm) {
+/* C eat.c:3961 Finish_digestion(void) — ga.afternmv for the digest timer
+ * (uhitm.c:5101). The hero swallowed a monster whole and has finished it. */
+export async function Finish_digestion() {
+    if (game.corpsenm_digested != null && game.corpsenm_digested !== -1) {
+        await cpostfx(game.corpsenm_digested);
+        game.corpsenm_digested = -1;
+    }
+    return 0;
+}
+
+export async function cpostfx(pm) {
     let check_intrinsics = false;
     switch (pm) {
     case PM_WRAITH:
@@ -4092,8 +4161,14 @@ export async function floorfood(verb, corpsecheck) {
             }
             if (c === 'y')
                 return hands_obj;
-            else if (c === 'q')
+            else if (c === 'q') {
+                /* C topl.c clean_up leaves gt.toplines = prompt + key2txt(q), and
+                 * tty never clears the answered prompt: the next parse() flush
+                 * still paints "There are iron bars here; eat them? [ynq] (n)"
+                 * until the next command key is read (cmd.c:5147). */
+                g._resultMessage = g._ynStaleTopline = qbuf + " [ynq] (n)";
                 return null;
+            }
             ++g.getobj_else;
         }
         if (_pmidxOf(uptr) !== (PM_RUST_MONSTER | 0)

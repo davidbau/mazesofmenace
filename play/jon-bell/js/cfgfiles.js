@@ -19,6 +19,7 @@ export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
     const digest = sha1Hex(JSON.stringify([seedValue, datetime, nethackrc, moves]))
         .slice(0, 16);
     game._configfile = `/tmp/regen-${digest}/.nethackrc`;
+    game._hilite_rc = String(nethackrc || ""); /* source text for hilite_status rules (botl.c parse_status_hl1) */
     game._generated_configfile = String(datetime || '').startsWith('2026');
 }
 

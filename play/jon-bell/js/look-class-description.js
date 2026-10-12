@@ -162,7 +162,14 @@ export function collectScreenDescriptionClasses(options = {}) {
             // becoming a long list.  The screen-description phrase is the
             // generic class, leaving location-specific detail to lookat().
             if (isTrap) {
-                if (!hitTrap) add('trap', { needs: true });
+                // C pager.c add_cmap_descr (1133-1235): the first trap is "a trap"
+                // only when it is the FIRST match (found == 0); after an object or
+                // monster class it appends that trap's own defsym name ("a web"),
+                // and hit_trap then suppresses every later trap.
+                if (!hitTrap) {
+                    if (matchCount === 0) add('a trap', { needs: true, plain: true });
+                    else add(description, { needs: true });
+                }
                 hitTrap = true;
                 continue;
             }

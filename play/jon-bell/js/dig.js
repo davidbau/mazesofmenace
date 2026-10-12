@@ -78,7 +78,7 @@ import { is_pit, is_hole, is_magical_trap, Is_airlevel, Is_waterlevel, Is_botlev
          DIGCHECK_FAIL_TOOHARD, DIGCHECK_FAIL_UNDESTROYABLETRAP,
          DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_BOULDER,
          DIGCHECK_FAIL_OBJ_POOL_OR_TRAP, DIGCHECK_FAILED, TT_INFLOOR, ICE, MELT_ICE_AWAY,
-         NO_TRAP_FLAGS } from './const.js';
+         NO_TRAP_FLAGS, IS_ROOM, IS_FURNITURE, Is_earthlevel } from './const.js';
 import { d } from './rng.js';
 import { IRONBARS, IS_WATERWALL, KILLED_BY, HALF_PHDAM, WEB } from './const.js';
 import { nomul } from './allmain.js';
@@ -762,7 +762,13 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
     const shopdoor = IS_DOOR(old_typ) && in_rooms(x, y, SHOPBASE)[0];
     const oldobjs = floorObjsAt_(x, y);
 
-    const surface_type = surface_(x, y); /* computed before maketrap (dig.c:626-637) */
+    let surface_type, furniture = '';
+    if (IS_FURNITURE(old_typ)) {
+        surface_type = (IS_ROOM(old_typ) && !Is_earthlevel(u.uz)) ? 'floor' : 'ground';
+        furniture = surface_(x, y);
+    } else {
+        surface_type = surface_(x, y); /* computed before maketrap (dig.c:626-637) */
+    }
     const ttmp = await maketrap(x, y, ttyp);
     if (!ttmp) return;
     const newobjs = floorObjsAt_(x, y);
@@ -795,6 +801,9 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
                 await pline('%s appears in the %s.', An(tname), surface_type);
         }
     }
+    /* C dig.c:670-671 */
+    if (IS_FURNITURE(old_typ) && cansee(x, y))
+        await pline('The %s falls into the %s!', furniture, trapname(ttyp, true));
 
     if (ttyp === PIT) {
         if (shopdoor && heros_fault) await pay_for_damage('ruin', false);
@@ -963,7 +972,10 @@ async function dighole(pit_only, by_magic, cc) {
         }
         await delobj(boulder_here); /* throws: js/dokick.js:2274, not yet ported */
     } else if (IS_GRAVE(old_typ)) {
+        // C dig.c:959-962: digactualhole(PIT) first, then dig_up_grave(cc), retval = TRUE
+        await digactualhole_(dig_x, dig_y, BY_YOU_, PIT);
         await dig_up_grave_(dig_x, dig_y);
+        retval = true;
     } else if (old_typ === DRAWBRIDGE_UP) {
         const typ = fillholetyp_(dig_x, dig_y, false);
         if (typ === ROOM) {
@@ -1233,6 +1245,19 @@ export async function use_pick_axe2(obj) {
     const verbing = ispick ? 'digging' : 'chopping';
     const dz = u.dz | 0;
 
+    if (u.uswallow && await do_attack(u.ustuck)) {
+        /* C dig.c:1171-1172 — swallowed: attack the engulfer; return ECMD_TIME. */
+        g.context = g.context || {};
+        g.context.move = 1;
+        return 1;
+    }
+    if (u.uinwater) {
+        /* C dig.c:1173-1174 — Underwater is !!u.uinwater (hack.h). */
+        await pline(`Turbulence torpedoes your ${verbing} attempts.`);
+        g.context = g.context || {};
+        g.context.move = 1;
+        return 1;
+    }
     if (dz < 0) {
         /* C dig.c:1175-1179 — can't reach the ceiling. */
         if (Levitation_())
@@ -1345,7 +1370,12 @@ export async function use_pick_axe2(obj) {
         const dc = diggingCtx();
         g.did_dig_msg = false;
         dc.quiet = false;
-        if (dc.pos.x !== rx || dc.pos.y !== ry || dc.down) {
+        /* C dig.c:1283-1284 — !on_level(&digging.level, &u.uz) also restarts. */
+        const _uz = g.u && g.u.uz ? g.u.uz : { dnum: 0, dlevel: 0 };
+        const _dl = dc.level;
+        const _sameLevel = !!_dl && (_dl.dnum | 0) === (_uz.dnum | 0)
+            && (_dl.dlevel | 0) === (_uz.dlevel | 0);
+        if (dc.pos.x !== rx || dc.pos.y !== ry || !_sameLevel || dc.down) {
             dc.down = false;
             dc.chew = false;
             dc.warned = false;
@@ -1564,7 +1594,7 @@ function pick_can_reach(pick, x, y) {
 
 export function dig_dirsyms(obj) {
     const u = game.u || {};
-    const DIRCH = ['h', 'y', 'k', 'u', 'l', 'n', 'j', 'b', '<', '>'];
+    const DIRCH = ['h', 'y', 'k', 'u', 'l', 'n', 'j', 'b', '>', '<'];
     const XD = [-1, -1, 0, 1, 1, 1, 0, -1, 0, 0];
     const YD = [0, -1, -1, -1, 0, 1, 1, 1, 0, 0];
     const downok = !!can_reach_floor_dg(false);
@@ -1583,7 +1613,7 @@ export function dig_dirsyms(obj) {
                 continue;
         } else {
             /* up or down: include only the likely one */
-            const dz = dir === 8 ? -1 : 1;   /* DIRCH[8] is '<' (up), DIRCH[9] '>' */
+            const dz = dir === 8 ? 1 : -1;   /* DIRCH[8] is '>' (down), DIRCH[9] '<' (up) */
             if ((dz > 0) !== downok)
                 continue;
         }

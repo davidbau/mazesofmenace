@@ -88,7 +88,7 @@ import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
 import { oid_price_adjustment, inhishop, shop_keeper, onbill } from './shk.js';
 import { inhistemple } from './priest.js';
-import { force_more, pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
+import { force_more, force_more_pages, pline, urgent_pline as urgent_pline_disp, newsym, canspotmon, canseemon, map_invisible, sensemon, cls, docrt, show_glyph, show_monster_glyph_at, display_self } from './display.js';
 /* create_critters (makemon.c:1556) reaches these two; both are cyclic imports
  * (teleport.js and wizcmds.js each import this file) but every binding used is
  * a hoisted function declaration, so the cycle resolves. */
@@ -4353,8 +4353,12 @@ async function you_aggravate(mtmp) {
      * message (n0 + strlen(toplines) + 3 >= CO - 8) is paged with --More-- first. */
     const _prev = String(game._pending_message || '');
     const _overflow = _prev && (_agg1.length + _prev.length + 3 >= 72);
-    if (_overflow)
-        await force_more(_prev);
+    if (_overflow) {
+        /* vpline's flush_screen()/bot() (pline.c:273-277) runs BEFORE update_topl's
+         * more(): the overflowing last page shows the live map/status, earlier
+         * pages keep their own pline-time frames (retainFinalFrame=false). */
+        await force_more_pages(_prev, false);
+    }
     await pline(_agg1);
     /* display.c:2196 cls() -> display_nhwindow(WIN_MESSAGE, FALSE) pages the pending topline.
      * vpline's flush_screen()/bot() (pline.c:273-277) ran at THIS pline, so the page
@@ -5480,7 +5484,7 @@ export async function use_misc(mtmp) {
                 where_to = 0;
             }
             if (!where_to) {
-                pline_The(`whip slips free.`);
+                pline(`The whip slips free.`); /* C muse.c:2588 pline_The("whip slips free.") */
                 return 1;
             } else if (where_to === 3 && mon_hates_silver(mtmp)
                        && (MKOBJ_OC_MATERIAL[obj.otyp | 0] | 0) === SILVER) {

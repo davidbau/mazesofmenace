@@ -6,7 +6,7 @@
 // This is the single shared, C-faithful implementation; the old per-file
 import { game } from './gstate.js';
 import { acurr } from './attrib.js';
-import { UNENCUMBERED, OVERLOADED, LEVITATION, LOW_PM, Upolyd, WOUNDED_LEGS, LEFT_SIDE, RIGHT_SIDE, Is_airlevel } from './const.js';
+import { UNENCUMBERED, OVERLOADED, LEVITATION, LOW_PM, Upolyd, WOUNDED_LEGS, LEFT_SIDE, RIGHT_SIDE, Is_airlevel, W_ARMF } from './const.js';
 import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTYP_STATUE, OTYP_BOULDER } from './oc_weight.generated.js';
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
@@ -127,6 +127,13 @@ export function weight_cap() {
     const u = game.u;
     if (!u) return 1;
 
+    const levPropW = (u.uprops && u.uprops[LEVITATION]) ? u.uprops[LEVITATION] : null;
+    const save_ELev = levPropW ? (levPropW.extrinsic | 0) : 0;
+    if (game.afternmv === 'Boots_on' && levPropW && (save_ELev & W_ARMF)) {
+        levPropW.extrinsic = save_ELev & ~W_ARMF;
+        float_vs_flight();
+    }
+
     let carrcap = (WT_WEIGHTCAP_STRCON * (acurrstr(u) + (acurr(u, A_CON) | 0)))
                   + WT_WEIGHTCAP_SPARE;
 
@@ -187,6 +194,11 @@ export function weight_cap() {
      * near_capacity) after trapmove() zeroed u.utrap but before reset_utrap()
      * drops the block, and reset_utrap(TRUE) then sees was_Lev true and prints
      * no float_up message. */
+    /* C hack.c:4338-4343 — undo the boot-delay mask and re-block Flying. */
+    if (levPropW && (levPropW.extrinsic | 0) !== save_ELev) {
+        levPropW.extrinsic = save_ELev;
+        float_vs_flight();
+    }
     if (levProp && ((levProp.blocked | 0) & I_SPECIAL_BIT)) float_vs_flight();
 
     return Math.max(carrcap, 1); /* never return 0 */

@@ -126,11 +126,13 @@ export function acurr(u, i) {
         return 3;
     return tmp;
 }
-/* C attrib.h ATTRMAX(x) = gu.urace.attrmax[x] (ordinary non-polymorph case).
+/* C attrib.h ATTRMAX(x) = (x == A_STR && Upolyd) ? uasmon_maxStr()
+ *                                               : gu.urace.attrmax[x].
  * Race attrmax table: index 0=human 1=elf 2=dwarf 3=gnome 4=orc; attrs Str-Cha.
- * The x==A_STR && Upolyd branch (uasmon_maxStr()) is handled at redist_attr's
- * own call site below — this shared helper's other callers (adjattrib,
- * exerchk) are unaffected. */
+ * The Upolyd Strength cap is shared by every ATTRMAX caller (adjattrib,
+ * redist_attr, exerchk): a polymorphed hero's Str cap stays at the form's
+ * uasmon_maxStr() after rehumanizing (C never restores AMAX(STR)), so a later
+ * gain is clamped to it and prints "already as strong as you can get". */
 const RACE_ATTRMAX = [
     /* hum */ [118, 18, 18, 18, 18, 18],
     /* elf */ [18, 20, 20, 18, 16, 18],
@@ -140,6 +142,11 @@ const RACE_ATTRMAX = [
 ];
 const RACE_ATTRMIN = 3; /* C attrib.h ATTRMIN(x) = gu.urace.attrmin[x] (all 3) */
 export function attrmax(u, i) {
+    /* C attrib.h:43 ATTRMAX(x): (x == A_STR && Upolyd) ? uasmon_maxStr() */
+    if (i === A_STR && Upolyd(u)) {
+        const mndx = u.umonnum | 0;
+        return uasmon_maxStr(mndx, permonstTemplate(mndx));
+    }
     const ir = (game.flags?.initrace ?? -1) | 0;
     const row = (ir >= 0 && ir < RACE_ATTRMAX.length) ? RACE_ATTRMAX[ir] : RACE_ATTRMAX[0];
     return row[i];
@@ -148,15 +155,13 @@ export function redist_attr() {
     const u = game.u;
     const abase = getAbase(u);
     const amax = getAmax(u);
-    const mndx = game.u.umonnum | 0;
-    const ptr = permonstTemplate(mndx);
     for (let i = 0; i < A_MAX; i++) {
         if (i === A_INT || i === A_WIS)
             continue;
         const di = C_ATTR_TO_DISP[i];
         const tmp = amax[di];
         amax[di] += (rn2(5) - 2);
-        const hi = (i === A_STR) ? uasmon_maxStr(mndx, ptr) : attrmax(u, i);
+        const hi = attrmax(u, i); /* C ATTRMAX(i), Upolyd Str cap included */
         if (amax[di] > hi)
             amax[di] = hi;
         if (amax[di] < RACE_ATTRMIN)

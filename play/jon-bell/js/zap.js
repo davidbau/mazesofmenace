@@ -10,7 +10,7 @@ import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_STONE_GOLEM, PM_CLAY_GOLEM, PM_WOOD_G
          PM_PAPER_GOLEM, PM_STRAW_GOLEM } from './pm.generated.js';
 import { splitobj, ureflects, create_critters, which_armor, permonstTemplate } from './makemon.js';
 import { is_demon, nonliving, check_gear_next_turn } from './makemon.js';
-import { resists_magm, Resists_Elem, defended, sleep_monst, seemimic,
+import { resists_magm, Resists_Elem, defended, sleep_monst, slept_monst, seemimic,
          erode_armor } from './mhitm.js';
 import { x_monnam } from './mhitm.js';
 import { resists_blnd as resists_blnd_real, take_resists_blnd_impossible } from './mhitm.js';
@@ -31,7 +31,7 @@ import { TtyMenu, PICK_ONE, ATR_NONE } from './tty_menu.js';
 import { get_obj_location } from './light.js';
 import { map_trap, terrain_glyph, update_lastseentyp, GLYPHCLS_CMAP } from './display.js';
 import { BURIED_TOO, CONTAINED_TOO, TRAPPED_CHEST, Has_contents } from './const.js';
-import { pline, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real } from './display.js';
+import { pline, Norep, flush_screen, newsym, feel_newsym, canspotmon, canseemon, _topl_joins_snapshot, _topline_more_pending, _defer_until_more_dismissed, tmp_at, zapdir_to_glyph, map_invisible, unmap_invisible, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, newsym_force, _topl_merge_result, shieldeff as shieldeff_real, Deaf as _live_deaf_reading } from './display.js';
 import { topl_park_cursor, _topl_stash_result, flush_pending_messages } from './display.js';
 import { bot, see_monsters, force_more, GLYPHCLS_INVIS, Unaware } from './display.js';
 import { deadhero, pending_death_is_final, do_death_sequence } from './end.js';
@@ -95,7 +95,7 @@ import { makewish } from './wizcmds.js';
  * does — there is only one in C (read.c:2491).  The port lives in js/read.js;
  * this file used to redeclare it as a throw-stub, shadowing that body for
  * zapnodir()'s WAN_LIGHT / SPE_LIGHT arm (see the note at the former stub). */
-import { litroom } from './read.js';
+import { litroom, magic_map_background } from './read.js';
 import { PM_GREMLIN, PM_SILVER_DRAGON, PM_CHROMATIC_DRAGON, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CYCLOPS, PM_FLOATING_EYE } from './pm.generated.js';
 /* pm.generated.js's generator dropped this one as a "duplicate" of PM_PRIEST
  * (275, the temple NPC) — the role player-character monster ("priest,
@@ -125,6 +125,10 @@ import { DEAF, INVULNERABLE, PLNMSG_CAUGHT_IN_EXPLOSION, PLNMSG_TOWER_OF_FLAME,
          DIED, Upolyd, engulfing_u, M_AP_TYPE, M_SEEN_MAGR, M_SEEN_FIRE,
          M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_REFL, LOST_EXPLODING,
          HALF_SPDAM } from './const.js';
+import { upstart } from './mklev.js';
+import { noname_monnam } from './mhitm.js';
+import { ARTICLE_THE } from './const.js';
+import { cxname_singular } from './objnam.js';
 import { Monnam, monstseesu, monstunseesu,
          death_inflicted_by, burn_away_slime } from './mcastu.js';
 import { s_suffix, ugolemeffects } from './mhitm.js';
@@ -139,6 +143,7 @@ import { mondead as mondead_zap } from './mklev.js';
 import { pay_for_damage } from './shk.js';
 import { shk_your as shk_your_uy, Shk_Your as Shk_Your_uy } from './shk.js';
 import { corpse_xname as corpse_xname_uy } from './objnam.js';
+import { cxname_singular as cxname_singular_bh } from './objnam.js';
 import { encumber_msg } from './weight.js';
 import { dist2 } from './hacklib.js';
 import { LAVAPOOL, LAVAWALL, IRONBARS, DRAWBRIDGE_UP, ICE, VWALL, HWALL,
@@ -168,7 +173,7 @@ import { in_town } from './cmd.js';
 import { rloco } from './steal.js';
 import { reset_utrap } from './trap.js';
 import { waterbody_name, set_uinwater, switch_terrain } from './cmd.js';
-import { long_to_any, mstatusline, display_minventory } from './cmd.js';
+import { long_to_any, mstatusline, display_minventory, ustatusline } from './cmd.js';
 import { noit_Monnam } from './mhitm.js';
 import { wakeup, wakeup_attack, update_inventory } from './mhitm.js';
 import { sticks, abuse_dog } from './dog.js';
@@ -217,6 +222,7 @@ const WAN_MAKE_INVISIBLE = 418;
 const WAN_SLOW_MONSTER = 419;
 const WAN_SPEED_MONSTER = 420;
 const WAN_UNDEAD_TURNING = 421;
+const M2_PNAME_ZAP = 0x00080000; /* C monflag.h:141 */
 const WAN_POLYMORPH = 422;
 const WAN_CANCELLATION = 423;
 const WAN_TELEPORTATION = 424;
@@ -1466,8 +1472,7 @@ export async function zapyourself(obj, ordinary) {
             _zp_probe_objchain(game.invent);
             update_inventory();
             learn_it = true;
-            if (game.disp)
-                game.disp.botl = 1; /* ustatusline() */
+            await ustatusline();
             break;
         case SPE_STONE_TO_FLESH:
             /* C zap.c:2961-2998.  Stone to Flesh affects every carried
@@ -1553,7 +1558,20 @@ function findone(zx, zy, found) {
         /* C detect.c:1657-1662: cvt_sdoor_to_door → typ=DOOR; reveal. */
         cvt_sdoor_to_door(lev);
         recalc_block_point(zx, zy);
-        newsym(zx, zy);
+        /* C detect.c:1663-1666: magic_map_background(zx, zy, 0) — the door glyph
+         * becomes the remembered glyph, so an unseen door is painted. */
+        magic_map_background(lev, zx, zy);
+        /* C detect.c:1610-1624 foundone(): cmap glyph => seenv = SVALL, newsym
+         * with temporary visibility, then the incoming bitmap returns. */
+        lev.seenv = SVALL;
+        const row = game.viz_array?.[zy];
+        const saved = row?.[zx];
+        if (row && !Blind()) row[zx] = COULD_SEE | IN_SIGHT;
+        try {
+            newsym(zx, zy);
+        } finally {
+            if (row) row[zx] = saved;
+        }
         found.num_sdoors++;
     } else if (lev.typ === SCORR) {
         /* C detect.c:1663-1670: magic_map_background, then foundone. */
@@ -3152,10 +3170,8 @@ const EXPL_NO_ACTION = 0, EXPL_MON = 1, EXPL_HERO = 2, EXPL_SKIP = 4;
  * 7157 as the base of the explosion glyph block. */
 const GLYPH_EXPLODE_DARK_OFF = 7157;
 
-/* C youprop.h Deaf — (HDeaf || EDeaf). */
 function _expl_deaf() {
-    const p = game.u?.uprops?.[DEAF];
-    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
+    return _live_deaf_reading();
 }
 /* C youprop.h:73 Invulnerable — u.uprops[INVULNERABLE].intrinsic. */
 function _expl_invulnerable() {
@@ -4734,6 +4750,10 @@ function _zp_replace_object(obj, otmp) {
     obj.nobj = otmp;
     obj.nexthere = otmp;
     _zp_extract_floor(obj);
+    /* C mkobj.c:2612 extract_nobj(): obj->where = OBJ_FREE, so poly_obj's
+     * trailing delobj() (zap.c:1985) has update_map FALSE (invent.c:1453) and
+     * draws no newsym; only bhito's own newsym (zap.c:2223) repaints. */
+    obj.where = ZP_OBJ_FREE;
 }
 
 /* C zap.c:1650 do_osshock(struct obj *obj) — the "shudders" destruction. */
@@ -5233,10 +5253,82 @@ export async function bhito(obj, otmp) {
         maybe_unhide_at(ox, oy);
         break;
     }
+    case WAN_UNDEAD_TURNING:
+    case SPE_TURN_UNDEAD: {
+        /* C zap.c:2332-2392; corpse arm only (revive_egg unported -> res 0) */
+        if ((obj.otyp | 0) !== CORPSE) { res = 0; break; }
+        const by_u = !(g.context && g.context.mon_moving);
+        const ox = obj.ox | 0, oy = obj.oy | 0;
+        const corpsname = cxname_singular_bh(obj);
+        const save_norevive = obj.norevive;
+        obj.norevive = 0;
+        /* revive() zap.c:1034-1048: glow pline comes after makemon placed it */
+        let glowmsg = null;
+        if (by_u && cansee(ox, oy)) {
+            const one_of = (obj.quan | 0) > 1;
+            let buf = one_of ? 'one of ' : '';
+            buf += shk_your_uy('', obj);
+            if (one_of) obj.quan = (obj.quan | 0) + 1;
+            buf += corpse_xname_uy(obj, null, 2 /* CXN_NO_PFX */);
+            if (one_of) obj.quan = (obj.quan | 0) - 1;
+            glowmsg = `${buf.charAt(0).toUpperCase() + buf.slice(1)} glows iridescently.`;
+        }
+        const mtmp = await revive_corpse(obj, false);
+        if (mtmp && glowmsg) await pline(glowmsg);
+        if (!mtmp) {
+            obj.norevive = save_norevive ? 1 : 0;
+            res = 0;
+        } else if (cansee(ox, oy)) {
+            if (canspotmon(mtmp)) {
+                const nm = x_monnam(mtmp, 1 /* ARTICLE_THE */, null, 0x20 /* SUPPRESS_NAME */, false);
+                await pline(`${nm.charAt(0).toUpperCase() + nm.slice(1)} is resurrected!`);
+                if (by_u) learn_it = true;
+            } else {
+                await pline(`The ${corpsname} disappears.`);
+            }
+        }
+        /* C zap.c:2388-2389: if (learn_it) exercise(A_WIS, TRUE) */
+        if (mtmp && learn_it) exercise(A_WIS, true);
+        break;
+    }
     case SPE_STONE_TO_FLESH:
         /* C zap.c:2412-2413: res = stone_to_flesh_obj(obj); no learn_it. */
         res = await stone_to_flesh_obj(obj);
         break;
+    case WAN_UNDEAD_TURNING:
+    case SPE_TURN_UNDEAD: {
+        /* C zap.c:2332-2370, corpse arm. EGG (revive_egg) is unported: res stays 1. */
+        if ((obj.otyp | 0) !== CORPSE)
+            break;
+        /* C zap.c:884 revive(corpse, TRUE): the glow names the corpse before it is consumed */
+        const ox = obj.ox | 0, oy = obj.oy | 0, corpsenm = obj.corpsenm | 0;
+        const corpsename = cxname_singular(obj);
+        const glow = cansee(ox, oy) ? upstart(shk_your_uy('', obj) + corpse_xname_uy(obj, null, 2)) : null;
+        const save_norevive = obj.norevive | 0;
+        obj.norevive = 0;
+        const mtmp = await revive_corpse(obj, false);
+        if (!mtmp) {
+            obj.norevive = save_norevive;
+            res = 0; /* no monster implies corpse was left intact */
+            break;
+        }
+        if (glow != null)
+            await pline(`${glow} glows iridescently.`);
+        if (cansee(ox, oy) && canspotmon(mtmp)) {
+            await pline(`${upstart(noname_monnam(mtmp, ARTICLE_THE))} is resurrected!`);
+            learn_it = !(game.context && game.context.mon_moving) || !!game.zap_oseen;
+        } else if (cansee(ox, oy)) {
+            /* C zap.c:2357-2366 */
+            const pname = (permonstTemplate(corpsenm)?.mflags2 | 0) & M2_PNAME_ZAP;
+            await pline(`${pname ? corpsename : The(corpsename)} disappears.`);
+        } else if (canspotmon(mtmp)) {
+            /* C zap.c:2368-2369; the Healer "You hear ... reviving" arm is unported */
+            await pline(`${Monnam(mtmp)} appears.`);
+        }
+        if (learn_it)
+            exercise(A_WIS, true);
+        break;
+    }
     default:
         res = 0;
         break;
@@ -6229,6 +6321,19 @@ async function _bhitm_wand(mtmp, obj) {
                 map_invisible(bx, by);
         }
         return 0;
+    }
+    if (otyp === WAN_SLEEP) {
+        /* C zap.c:480-487 bhitm() case WAN_SLEEP (broken wand): reveal_invis
+         * = TRUE; if (sleep_monst(mtmp, d(1 + otmp->spe, 12), WAND_CLASS))
+         * slept_monst(mtmp); if (!Blind) learn_it = TRUE; break; -- then the
+         * shared wake/reveal tail (zap.c:555-559). */
+        let learn_it = false;
+        const sleepDur = d(1 + (obj.spe | 0), 12);
+        if (await sleep_monst(mtmp, sleepDur, WAND_CLASS))
+            await slept_monst(mtmp);
+        if (!_Blind())
+            learn_it = true;
+        return _bhitm_wand_epilogue(mtmp, false, true, learn_it, obj);
     }
     if (otyp === WAN_PROBING) {
         /* C zap.c:376-381: wake = FALSE; reveal_invis = TRUE;

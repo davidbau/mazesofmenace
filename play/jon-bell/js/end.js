@@ -1051,6 +1051,11 @@ export async function done(how) {
         if (g.disp) g.disp.botlx = true;
         g.botlx = true;
         g.botl = true;
+        /* done()'s forced bot() physically repaints the restored hero, so a
+           tutorial-exit status held over from before nhl_gamestate's memcpy
+           (nhlua.c:1738) no longer describes the terminal. */
+        if (g._tutorialStatusOverride)
+            g._tutorialStatusOverride.freshOnLastPage = true;
         await bot();
     }
     done_death_context(how);
@@ -1171,7 +1176,10 @@ async function disclose(how, taken) {
             const _statusClip = ((_discloseInv?.winRows ?? 99) < 22)
                 ? undefined
                 : (_discloseInv?.WIN_COL === 0)
-                    ? -1
+                    /* offx 0: docorner(0, ...) (wintty.c:3650-3684) erases both
+                     * status rows from column 0 and the text window that
+                     * follows never repaints them (recorded: both blank). */
+                    ? 0
                     : Math.max(0, (_discloseInv?.WIN_COL ?? 2) - 2);
             await container_contents(g.invent, true, true, false, _statusClip);
         }

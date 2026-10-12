@@ -3,7 +3,7 @@
 // share it without routing input through cmd.js/end.js cycles.
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, force_more, topl_park_cursor,
+import { flush_screen, force_more, topl_park_cursor, bot,
          _topline_more_pending } from './display.js';
 import { PARANOID_CONFIRM, BUFSZ, QBUFSZ } from './const.js';
 
@@ -21,6 +21,12 @@ async function read_getlin(prompt) {
         if (g._pending_message)
             await force_more(g._pending_message);
     }
+    /* hooked_tty_getlin's prompt replaces the topline (getline.c:51-56): a
+     * message already shown there that did not need a --More-- (the shade's
+     * "touches you again!" after the page was dismissed) is gone, and must
+     * not be re-joined in front of the text printed after the answer. */
+    g._resultMessage = null;
+    g._resultMessageJoins = null;
     const savedEcho = g._topl_prompt_echo;
     g._topl_prompt_echo = true;
     const paint = async () => {
@@ -71,6 +77,16 @@ async function read_yn(prompt, acceptQ) {
         await flush_screen(1);
     if (unacknowledged && g._pending_message)
         await force_more(g._pending_message);
+    /* C tty_yn_function's flush after the --More-- paints the status with
+     * disp.botl still set by done()'s force-HP-to-zero (end.c:1075), so the
+     * zeroed HP shows while "Die?" is up. eat.js _done arms this for that one
+     * query; the pre-query hold it lifts only covered the --More-- frame. */
+    if (g._botlReleaseAtDieQuery) {
+        g._botlReleaseAtDieQuery = false;
+        g._botlHeldEat = false;
+        await bot();
+        await flush_screen(1);
+    }
     /* tty_yn_function sets TOPLINE_SPECIAL_PROMPT: custompline hard-wraps a
      * long prompt (topl.c:412-420, topl_putsym) with no --More--. */
     const savedEcho = g._topl_prompt_echo;

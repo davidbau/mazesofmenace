@@ -4,6 +4,7 @@
 // For browser play, see nethack.js.
 import { game, resetGame } from './gstate.js';
 import { vfsDeleteFile } from './storage.js';
+import { add_menu_coloring } from './coloratt.js';
 import { savefile_name } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
 import { newgame, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
@@ -109,6 +110,9 @@ export class NethackGame {
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
         g.msgtype_hide = opts.msgtypes || [];
+        g.menu_colorings = null;
+        for (const mc of opts.menucolors || []) add_menu_coloring(mc);
+        g.apelist = opts.apelist || null;
         // C ref: options.c optfn_name — svp.plname[] is empty unless the rc
         // named the hero.  The 'Hero' default is a JS-side placeholder for
         // the replay path; the played-chargen path asks instead (askname).
@@ -183,7 +187,7 @@ export class NethackGame {
             g.tutorial_set_in_config = true;
         /* C cfgfiles.c:1216 WIZKIT= names gw.wizkit; read_wizkit() (allmain.c:827)
          * reports it unreadable (files.c:2487) — this port has no filesystem. */
-        { const wk = /^WIZKIT=(.*)$/m.exec(this._nethackrc || '');
+        { const wk = /^WIZKIT=(.*)$/im.exec(this._nethackrc || '');
           if (wk) g.wizkit = wk[1].trim(); }
         // Apply symset option → gs.symset[PRIMARYSET].handling.
         // C ref: options.c optfn_DECgraphics / handler_symset — sets gs.symset[PRIMARYSET].handling.

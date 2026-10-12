@@ -332,7 +332,13 @@ export async function pluslvl(incr) {
         const newrank = xlev_to_rank(u.ulevel | 0);
         if (newrank > oldrank)
             record_achievement(achieve_rank(newrank));
-        void old_ach_cnt;
+        /* C exper.c:366-367: a new rank achievement logs its own message; when
+         * none was recorded, livelog a simpler line ("re" prefix when the hero
+         * has been at this level or higher before, read before ulevelpeak below).
+         * livelog_printf is the gamelog half only (no screen output, no RNG), so
+         * it feeds #chronicle without touching the topline or the draw stream. */
+        if (count_achievements() === old_ach_cnt)
+            livelog_printf(LL_MINORAC, `${((u.ulevel | 0) <= (u.ulevelpeak | 0)) ? 're' : ''}gained experience level ${u.ulevel | 0}`);
         await adjabil((u.ulevel | 0) - 1, u.ulevel | 0);
         /* Per-pline update_topl: page if adjabil's intrinsic-gain plines overflowed. */
         if (!incr)

@@ -22,7 +22,7 @@ import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
 import { clear_bypasses, sink_into_lava } from './trap.js';
 import { pooleffects, rhack, check_special_room, domove, prayer_done, deferred_goto, schedule_goto, heal_legs, timed_occupation, cmdq_clear, wipeoff, body_part, surface, confdir, hurtle, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
 import { lookaround, end_running, is_pool, is_pool_or_lava } from './look.js';
-import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { docrt, cls, bot, timebot, time_botl_moves_incremented, time_botl_run_ended, flush_screen, pline, urgent_pline, Norep, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed } from './dog.js';
@@ -50,7 +50,7 @@ import { picklock, forcelock } from './lock.js';
 import { dig } from './dig.js';
 import { carrying } from './eat.js';
 import { PM_ARCHEOLOGIST } from './pm.generated.js';
-import { stoned_dialogue, slime_dialogue, eatfood, Hear_again, maybe_finished_meal, reset_eat, is_fainted, opentin } from './eat.js';
+import { stoned_dialogue, slime_dialogue, eatfood, Hear_again, maybe_finished_meal, reset_eat, is_fainted, opentin, Finish_digestion } from './eat.js';
 import { do_vicinity_map } from './detect.js';
 import { learn } from './spell.js';
 import { engrave } from './engrave.js';
@@ -83,6 +83,17 @@ function timed_clairvoyance_active() {
     return !!((u?.uhave?.amulet || clairvoyant)
         && !In_endgame(u?.uz)
         && !(p?.blocked | 0));
+}
+/* C allmain.c:464-470 — the once-per-new-turn seer_turn check, for callers that
+ * fold a whole new-turn block into a command (cmd.js's pick-axe wield turn).
+ * svm.moves has already been incremented by the caller. */
+export async function seer_turn_check() {
+    game.context = game.context || {};
+    if (game.context.seer_turn == null) game.context.seer_turn = 1;
+    if ((game.moves || 1) >= game.context.seer_turn) {
+        if (timed_clairvoyance_active()) await do_vicinity_map(null);
+        game.context.seer_turn = (game.moves || 1) + rn1(31, 15);
+    }
 }
 /* C allmain.c:456-469's "redo monsters" arms and their two property tests.
  * The real bodies, in the files that own them — NOT another file-local copy of
@@ -319,6 +330,16 @@ export async function newgame() {
     // including ledger_start and dunlev_ureached. Do not copy or reset it here.
     g.u = g.u || {};
     g.u.uz = { dnum: 0, dlevel: 1 };
+    // C u_init.c:954 memset(&u,0,...) zeroes u.uz0 ({0,0}); moveloop_preamble
+    // (allmain.c:97) then sets u.uz0.dlevel = u.uz.dlevel before the first
+    // turn. Without it on_level(&u.uz,&u.uz0) (teleport.c:1460, domagicportal)
+    // reads an undefined u.uz0 and throws, parking the segment at the first
+    g.u.uz0 = { dnum: 0, dlevel: g.u.uz.dlevel };
+    // C ref: u_init.c:979-984 sets u.uz0.dnum=0 and u.uz0.dlevel=0, then
+    // allmain.c:97 `u.uz0.dlevel = u.uz.dlevel` before the first move.  Without
+    // this, u.uz0 is undefined and on_level(&u.uz, &u.uz0) (teleport.c:1460,
+    // domagicportal) throws on the first magic-portal step of a fresh game.
+    g.u.uz0 = { dnum: 0, dlevel: 1 };
     g.flags = g.flags || {};
     // Branch: Mines entrance on level 1 (for seed 8000)
     g.branches = [
@@ -458,8 +479,11 @@ export async function newgame() {
      * tty raw print writes at the cursor the rc-error report parked, over the
      * already-drawn map, and the recorded cursor then sits one row lower. */
     if (g.flags?.debug && g.wizkit) {
-        const cur = g._rawCursorFrozen || [0, g.nhDisplay?.cursorRow ?? 0, 1];
-        const rows = String(preInitScreen || g._screen_output || '').split('\n');
+        /* allmain.c:826 runs before docrt(): with no rc-error report having
+         * painted the screen, raw_printf lands on a blank terminal at row 0. */
+        const noReport = !g._rawCursorFrozen;
+        const cur = g._rawCursorFrozen || [0, 0, 1];
+        const rows = noReport ? [''] : String(preInitScreen || g._screen_output || '').split('\n');
         while (rows.length <= cur[1]) rows.push('');
         rows[cur[1]] = `Access to ${g.wizkit} denied (2).`;
         /* bot() ran before find_ac() (allmain.c:891 vs u_init.c), so the frame keeps the pre-find_ac AC. */
@@ -467,6 +491,11 @@ export async function newgame() {
         g._screen_output = rows.join('\n');
         g._rawCursorFrozen = [0, cur[1] + 1, 1];
         await nhgetch();
+        /* wait_synch() leaves the raw_printf row physically on the terminal;
+         * later windows (legacy quote) only erase from their own offx. */
+        if (noReport) g._blank_below_window = true;
+        if (noReport) g._map_blanked = true;
+        if (noReport) g._topl_sticky = `Access to ${g.wizkit} denied (2).`;
     }
     // C ref: allmain.c newgame():~921 — emit post-init structural state
     // C allmain.c:77 clears addinv()'s startup pickup_prev marks immediately
@@ -795,6 +824,9 @@ export async function stop_occupation(options) {
 // callbacks are RNG-free (do_wear.c:909 Armor_off etc.).
 export async function unmul(msg_override) {
     const g = game;
+    /* C hack.c:4179 `disp.botl = TRUE;` — the whole status line (T: included, even
+     * while a run suppresses time_botl) repaints at the nomovemsg pline's flush. */
+    (g.disp ||= {}).botl = 1;
     g.multi = 0;
     if (g.u)
         g.u.usleep = 0; /* C hack.c:4197 */
@@ -831,6 +863,7 @@ export async function unmul(msg_override) {
 async function afternmv_dispatch(tag) {
     switch (tag) {
         case 'stealarm':   return stealarm_mu(); /* steal.c:165 */
+        case 'Finish_digestion': return Finish_digestion(); /* eat.c:3961 */
         case 'Armor_off':  return Armor_off();
         case 'Shield_off': return Shield_off();
         case 'Helmet_off': return Helmet_off();
@@ -872,7 +905,7 @@ async function afternmv_dispatch(tag) {
  * faithful_moveloop_turn() can itself contain several iterations of C's
  * hero-can't-move do/while, so callers invoke this once per emulated
  * moveloop_core boundary, after the whole world block and find_ac(). */
-function faithful_input_redraw() {
+export function faithful_input_redraw() {
     const g = game;
     if (!(g.context && g.context.mv) || Blind()) {
         if (_fumble_hallucinating()) {
@@ -1173,7 +1206,13 @@ async function faithful_moveloop_turn() {
                 await nh_timeout_deaf();
                 await nh_timeout_sick();
                 await nh_timeout_stoned();
-                await nh_timeout_slimed();
+                /* C timeout.c:686-688 -> slimed_to_death() -> polymon(): its
+                 * "You turn into a green slime!" pline raises more() INLINE
+                 * (topl.c update_topl), before polymon changes u.umonnum, so the
+                 * frozen frame keeps the pre-polymon status.  Snapshot as above. */
+                const _wasMB2 = g._inMovemonBlock;
+                g._inMovemonBlock = true;
+                try { await nh_timeout_slimed(); } finally { g._inMovemonBlock = _wasMB2; }
                 await nh_timeout_strangled();
                 // C timeout.c:689, VOMITING (20): dialogue ran above;
                 // the generic timeout loop decrements the property here.
@@ -1444,7 +1483,17 @@ async function eat_occupation_turn() {
     // own turns; the dog-pickup pline lands on the post-meal turn, not here).
     // C allmain.c:556 — (*go.occupation)() == eatfood(); returns 0 when done.  eatfood
     // plines this turn's lesshungry/done_eating message into _resultMessage.
+    /* The turn's nh_timeout/movemon plines (preEat) are still unflushed when the
+     * bite runs; choke()'s fatal path never returns here, so it needs them on the
+     * live topline (timeout.c:628 precedes allmain.c:485). */
+    g._occPreEatLive = (!prior && preEat) ? preEat : null;
     const r = await eatfood();
+    g._occPreEatLive = null;
+    if (g._occPreEatUsed) {
+        g._occPreEatUsed = false;
+        preEat = '';
+        preEatJoins = [];
+    }
     if (r === 0) {
         g.occupation = null;
         // With no fresh monster pline, the next moveloop is the post-meal world
@@ -1559,6 +1608,17 @@ async function eat_occupation_turn() {
      * end-of-turn tick that already includes regen_hp (allmain.c:287). */
     if (preEat && g._movemonPageFrames?.[0]?.botl)
         g._occCurBotl = g._movemonPageFrames[0].botl;
+    else if (preEat && prior?.text) {
+        /* Same rule when the overflowing pline is not a movemon one (no page
+         * frame): encumber_msg's pline (allmain.c:208) raises the more() over
+         * the PREVIOUS message, and its own flush_screen() found botl clear, so
+         * the status row is the one bot() left before it -- not the end-of-turn
+         * tick, which re-latches the post-bite encumbrance.  The pline's flush
+         * frame recorded exactly that (off == end of the committed text). */
+        const _pf = (g._plineFlushFrames || []).findLast((f) => f.off === prior.text.length
+            && f.botl && preEat.startsWith(f.msg));
+        if (_pf) g._occCurBotl = _pf.botl;
+    }
     const _preEatSegs = _plineSegments(preEat, preEatJoins);
     let _preEatSeen = 0, _preEatPage = 0;
     for (const part of [
@@ -1593,11 +1653,20 @@ async function eat_occupation_turn() {
             // new state with SET_BOTL), it is the live u.uhs.  So show save_hs while the
             // meal is ongoing (occupation still set), else live u.uhs (committed at meal end).
             if (_committed) {
-                const _pageFrame = _fromPreEat
-                    ? (g._movemonPageFrames?.[_preEatPage++]?.cells || thisTurnFrame)
-                    : thisTurnFrame;
+                const _eb = (g._earlyBotl && g._earlyBotl.cells && g._earlyBotl.turn === thisTurnMoves - 1) ? g._earlyBotl : null;
+                const _pf = _fromPreEat
+                    ? (g._movemonPageFrames?.[_preEatPage++] || _eb
+                        /* encumber_msg's pline (allmain.c:208) runs BEFORE movemon:
+                         * its more() pages over the gbuf its own flush_screen synced,
+                         * pet not yet moved. */
+                        || (g._plineFlushFrames || []).findLast((f) => f.cells && f.msg === part))
+                    : null;
+                const _pageFrame = _pf?.cells || thisTurnFrame;
+                /* The movemon pline's flush_screen()/bot() ran before moves++
+                 * (allmain.c:261), so its --More-- shows that frame's T:. */
                 const morc = await occupation_force_more(
-                    _committed, _pageFrame, thisTurnMoves, _displayedUhs());
+                    _committed, _pageFrame, _pf?.cells ? (_pf.moves | 0) : thisTurnMoves,
+                    _displayedUhs(), !_fromPreEat && !g.occupation);
                 _ownerAfterEsc = morc === 27 && !!g._topl_win_stop_armed;
             }
             _committed = part;
@@ -2002,6 +2071,10 @@ async function nh_timeout_deaf() {
     const dp = u.uprops?.[DEAF_AM];
     if (dp && ((dp.intrinsic | 0) & TIMEOUT)) {
         dp.intrinsic = (dp.intrinsic | 0) - 1;
+        /* make_deaf writes the flat u.HDeaf too; C has ONE HDeaf, so the two
+         * copies must count down together (#wizintrinsic reads their OR). */
+        if ((u.HDeaf | 0) & TIMEOUT)
+            u.HDeaf = (u.HDeaf | 0) - 1;
         if ((dp.intrinsic | 0) & TIMEOUT)
             return;
         const was = { value: dp.intrinsic | 0 };
@@ -2494,6 +2567,7 @@ async function moveloop_core_faithful() {
         if (g._pickupEncMorePending) {
             const f = capture_painted_frame();
             if (f) {
+                f.botl = capture_pre_movemon_botl();
                 f.cap = g._pickupEncMorePending.oldcap | 0;
                 g._pickupEncPreFrame = f;
             }
@@ -2976,6 +3050,15 @@ async function moveloop_core_faithful() {
             while (g.occupation === dig && digGuard++ < 4096) {
                 const r = await dig();
                 if (r === 0) g.occupation = null;
+                // C allmain.c:504-507 — the occupation branch runs
+                // monster_nearby() right after (*go.occupation)() and before the
+                // turn's movemon; a hostile adjacent square stops the dig with
+                // "You stop digging." ahead of the monster's attack (the
+                // attack lands in the next world block, which still runs).
+                if (g.occupation === dig && monster_nearby()) {
+                    await stop_occupation();
+                    reset_eat();
+                }
                 await faithful_moveloop_turn();
                 // Page this turn's accumulated topline (the dig + movemon plines).
                 if (g.vision_full_recalc) {
@@ -3725,7 +3808,33 @@ async function moveloop_core_faithful() {
         // Guard `!g._occ_committed_topl` so this start block fires only on the rhack
         // that set the occupation, not on continuation re-entries.
         if (g._resultMessage) {
-            g._occ_committed_topl = { text: g._resultMessage };
+            /* The begin plines (eatcorpse's flavor line, cprefx's "You cannibal!")
+             * each ran their own update_topl; one that overflows the CO-1-8
+             * reserve paged the earlier text with a --More-- inside this rhack
+             * (topl.c:257-274), leaving only the later pline committed. */
+            let text = g._resultMessage;
+            const rj = g._resultMessageJoins?.src === text
+                && Array.isArray(g._resultMessageJoins.joins)
+                ? g._resultMessageJoins.joins : null;
+            if (rj && rj.length) {
+                const segs = [];
+                let st = 0;
+                for (const off of rj) { segs.push(text.slice(st, off)); st = off + 2; }
+                segs.push(text.slice(st));
+                const frame = g._eatPreEffectFrame;
+                let committed = segs[0];
+                for (const seg of segs.slice(1)) {
+                    if (_topl_joins_committed(committed, seg)) {
+                        committed = committed + '  ' + seg;
+                    } else {
+                        await occupation_force_more(committed, frame?.cells || null,
+                                                    g.moves | 0, null);
+                        committed = seg;
+                    }
+                }
+                text = committed;
+            }
+            g._occ_committed_topl = { text };
             g._resultMessage = null;
         }
         // Clear the topline channel: the begin message lives ONLY in

@@ -100,7 +100,7 @@ import { stairway_at } from './mklev.js';
 import { place_monster, remove_monster } from './steed.js';
 import {
     monflee, maybe_unhide_at, locomotion, accessible, mon_would_take_item,
-    can_carry, mon_offmap,
+    can_carry, mon_offmap, hero_Deaf,
 } from './monmove.js';
 import { SchroedingersBox } from './pickup.js';
 import { age_is_relative, begin_burn } from './timeout.js';
@@ -119,7 +119,7 @@ import { fill_pit } from './dig.js';
 import { surface } from './sit.js';
 import { body_part } from './polyself.js';
 import { Soundeffect, SetVoice } from './sndprocs.js';
-import { se_bugle_playing_reveille, se_crash_through_floor, se_zap_then_explosion, se_boing, se_zap } from './generated/seffects_data.js';
+import { se_bugle_playing_reveille, se_crash_through_floor, se_zap_then_explosion, se_boing, se_zap, se_mon_chugging_potion } from './generated/seffects_data.js';
 import { awaken_soldiers } from './music.js';
 
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
@@ -1334,17 +1334,23 @@ function healmon(mtmp, amt, overheal) {
 }
 
 /**
- * C ref: muse.c mquaffmsg.
+ * C ref: muse.c mquaffmsg `:293–302`. The unseen arm is `else if (!Deaf)`
+ * (`:298`): Deaf is the youprop.h:125 macro via hero_Deaf() (monmove.js,
+ * D-3572 — HDeaf||EDeaf||uroleplay.deaf; the sticky u.Deaf flat is never
+ * written port-wide), then Soundeffect(se_mon_chugging_potion, 25)
+ * (`:299`, sndprocs.js no-op stub — contest !SND_LIB) and the live
+ * You_hear export (hack.js, D-2941). The inline pline dropped You_hear's
+ * Deaf/acoustics gate and its Underwater/Unaware arms (D-2941 named
+ * omission: muse.c:300 → this site).
  */
 async function mquaffmsg(mtmp, otmp) {
     if (canseemon(mtmp)) {
         observe_object(otmp);
         // C muse.c:297 pline_mon (not pline).
         await pline_mon(mtmp, `${Monnam(mtmp)} drinks ${singular(otmp, doname)}!`);
-    } else {
-        const u = game.u || {};
-        const deaf = (u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf;
-        if (!deaf) await pline('You hear a chugging sound.');
+    } else if (!hero_Deaf()) {
+        Soundeffect(se_mon_chugging_potion, 25);
+        await You_hear('a chugging sound.');
     }
 }
 

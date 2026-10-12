@@ -348,6 +348,12 @@ export class TtyMenu {
             }
         }
 
+        if (!this.overlay) {
+            const { docrt } = await import('./display.js');
+            await docrt();
+            game._statusBlankAfterDocrt = true;
+            if (game.disp) game.disp.botlx = 1;
+        }
         if (this.cancelled) return { count: -1, picks: [] };
         const picks = this.mlist.filter((c) => c.aInt && c.selected).map((c) => c.aInt);
         return { count: picks.length, picks };

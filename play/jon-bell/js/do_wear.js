@@ -36,8 +36,8 @@ import { nhgetch } from './input.js';
 import { nomul, unmul, stop_occupation } from './allmain.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { discover_object } from './o_init.js';
-import { exercise, change_luck, acurr, C_ATTR_TO_DISP } from './attrib.js';
-import { STR19, PROTECTION, INTRINSIC } from './const.js';
+import { exercise, change_luck, acurr, C_ATTR_TO_DISP, adjalign } from './attrib.js';
+import { STR19, PROTECTION, INTRINSIC, Is_astralevel } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE } from './pm.generated.js';
 import { float_vs_flight, breakarm, num_horns, obj_pmname, y_monnam } from './mhitm.js';
 import { s_suffix } from './hacklib.js';
@@ -50,7 +50,7 @@ import { HALLUC, HALLUC_RES } from './const.js';
  * both halves are imported rather than re-derived here. */
 import { sliparm, permonstTemplate } from './makemon.js';
 import { canletgo } from './makemon.js';
-import { weapon_descr, touch_petrifies as corpse_touch_petrifies } from './uhitm.js';
+import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam } from './uhitm.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed, cmdq_pop, cmdq_peek, dropx, cmdq_clear, instapetrify as corpse_instapetrify,
          carrying_stoning_corpse } from './cmd.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
@@ -60,10 +60,11 @@ import { W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
 const PETRIFY_CORPSE = 265; /* objects.h CORPSE */
 /* C mkobj.c:1865 set_bknown() — the project's real one (js/mklev.js:11078).
  * mklev.js does not import this file, so there is no cycle. */
-import { set_bknown } from './mklev.js';
+import { set_bknown, set_ustuck } from './mklev.js';
+import { sticks } from './dog.js';
 import { Can_fall_thru } from './mklev.js';
 import { on_level } from './dungeon.js';
-import { self_invis_message } from './potion.js';
+import { self_invis_message, make_confused } from './potion.js';
 import { set_mimic_blocking } from './sit.js';
 import { paranoid_query } from './paranoid.js';
 /* C do_wear.c:3258 obj_erode_type() / :3299 destroy_arm() read the objclass.h
@@ -864,7 +865,19 @@ export async function Cloak_off() {
     if (propRec)
         propRec.extrinsic = (propRec.extrinsic | 0) & ~W_ARMC;
     await takeoff_slot('uarmc');
-    if (otyp === ELVEN_CLOAK_OTYP) {
+    if (otyp === CLOAK_OF_INVISIBILITY_OTYP) {
+        /* C do_wear.c:412-420 — CLOAK_OF_INVISIBILITY: "Suddenly you can see
+         * yourself." fires only when the removal actually reveals the hero:
+         * oldprop, HInvis (u.uprops[INVIS].intrinsic) and Blind all read after
+         * setworn() cleared the cloak's extrinsic bit. */
+        const HInvis = (g.u?.uprops?.[INVIS_PROP]?.intrinsic) | 0;
+        if (!oldprop && !HInvis && !_Blind_dw()) {
+            makeknown_otyp(otyp);
+            newsym(g.u.ux | 0, g.u.uy | 0);
+            await pline(`Suddenly you can ${_propOn(SEE_INVIS_PROP)
+                ? 'no longer see through yourself' : 'see yourself'}.`);
+        }
+    } else if (otyp === ELVEN_CLOAK_OTYP) {
         /* C do_wear.c:401 toggle_stealth(otmp, oldprop, FALSE) */
         if (!g.context?.takeoff?.cancelled_don && !oldprop
             && !(propRec ? (propRec.intrinsic | 0) : 0)
@@ -874,6 +887,25 @@ export async function Cloak_off() {
         }
     } else if (otyp === CLOAK_OF_DISPLACEMENT_OTYP || otyp === 'CLOAK_OF_DISPLACEMENT')
         await toggle_displacement(otmp, oldprop, false);
+    else if (otyp === MUMMY_WRAPPING_OTYP) {
+        /* C do_wear.c:385-391 — taking the wrapping off first resets Invisible;
+         * if the hero is still invisible and not blind, say so. */
+        if (_propOn(INVIS_PROP) && !_propOn(BLINDED_PROP)) {
+            newsym(g.u.ux | 0, g.u.uy | 0);
+            await pline(`You can ${_propOn(SEE_INVIS_PROP)
+                ? 'see through yourself' : 'no longer see yourself'}.`);
+        }
+    } else if (otyp === CLOAK_OF_INVISIBILITY_OTYP) {
+        /* C do_wear.c:412-421 — removing the cloak of invisibility while no
+         * other source of invisibility or blindness is in play reveals the
+         * hero.  HInvis/Blind are read after setworn() cleared the cloak. */
+        if (!oldprop && !_propOn(INVIS_PROP) && !_propOn(BLINDED_PROP)) {
+            makeknown_otyp(otyp);
+            newsym(g.u.ux | 0, g.u.uy | 0);
+            await pline(`Suddenly you can ${_propOn(SEE_INVIS_PROP)
+                ? 'no longer see through yourself' : 'see yourself'}.`);
+        }
+    }
     return 0;
 }
 function don_slot(_slot) {
@@ -991,6 +1023,26 @@ export async function Armor_on()  {
 }
 export function Shield_on() { return don_slot('uarms'); }
 const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93;
+/* C attrib.c:1320 uchangealign(newalign, A_CG_HELM_ON) — the put-on arm only
+ * (CONVERT/HELM_OFF are reached from pray.c and do_wear.c:556). Omitted:
+ * livelog_printf (not game-visible) and retouch_equipment(0) (artifact.c:2640,
+ * a no-op for artifact-free worn gear). summon_furies (makemon.c:2605) is NOT
+ * ported: it throws if the rn2(50) < abuse arm fires, rather than skipping it. */
+async function uchangealign_helm_on(newalign) {
+    const u = game.u;
+    const oldalign = u.ualign.type;
+    u.ublessed = 0;
+    if (game.disp) game.disp.botl = 1;
+    u.ualign.type = newalign;
+    adjalign(-7); /* for abuse -- record will be cleared shortly */
+    const hallu = u.uprops?.[HALLUC]?.intrinsic && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
+    await pline(`Your mind oscillates ${hallu ? 'wildly' : 'briefly'}.`);
+    make_confused(rn2(2) + 3, false); /* C rn1(2,3) */
+    if (Is_astralevel(u.uz) || ((rn2(50) >>> 0) < (u.ualign.abuse >>> 0)))
+        throw new Error('summon_furies (makemon.c:2605) unported: rn2(50) < abuse arm fired');
+    if (u.ualign.type !== oldalign)
+        u.ualign.record = 0; /* slate is wiped clean */
+}
 export async function Helmet_on() {
     const u = game.u;
     /* u_init.js's starting-gear scaffold (iniInvWornArmor) stores the worn
@@ -1025,10 +1077,16 @@ export async function Helmet_on() {
     /* C do_wear.c:451-452 HELM_OF_CAUTION: see_monsters(). */
     if (u.uarmh && (u.uarmh.otyp | 0) === 95)
         see_monsters();
-    /* C do_wear.c:480-505 DUNCE_CAP (HELM_OF_OPPOSITE_ALIGNMENT's uchangealign
-     * half is still unported and stays deferred). */
-    if (u.uarmh && (u.uarmh.otyp | 0) === 94) {
-        if (!u.uarmh.cursed) {
+    /* C do_wear.c:465-505 HELM_OF_OPPOSITE_ALIGNMENT (flips alignment first),
+     * falling through to DUNCE_CAP (do_wear.c:480-505). */
+    if (u.uarmh && ((u.uarmh.otyp | 0) === 94 || (u.uarmh.otyp | 0) === 99)) {
+        if ((u.uarmh.otyp | 0) === 99) {
+            u.uarmh.known = 1;
+            await uchangealign_helm_on((u.ualign.type !== 0)
+                ? -u.ualign.type
+                : ((u.uarmh.o_id | 0) % 2 ? -1 : 1)); /* A_CHAOTIC : A_LAWFUL */
+        }
+        if (u.uarmh && !u.uarmh.cursed) {
             if (_propOn(BLINDED_PROP))
                 await pline(`${Tobjnam(u.uarmh, 'vibrate')} for a moment.`);
             else
@@ -1046,6 +1104,8 @@ export async function Helmet_on() {
             && !(game.u.uprops[HALLUC_RES]?.intrinsic || game.u.uprops[HALLUC_RES]?.extrinsic);
         if (hallu) {
             await pline('My brain hurts!');
+        } else if ((u.uarmh?.otyp | 0) !== 94) {
+            makeknown_otyp(99); /* C do_wear.c:504 makeknown(HELM_OF_OPPOSITE_ALIGNMENT) */
         } else {
             const di = C_ATTR_TO_DISP[A_INT] ?? A_INT;
             const tot = ((u.acurr?.a?.[di]) | 0) + ((u.abon?.a?.[di]) | 0) + ((u.atemp?.a?.[di]) | 0);
@@ -2664,6 +2724,15 @@ async function Ring_off_or_gone(obj, gone) {
     /* C do_wear.c:1360 switch(obj->otyp): only the ring types that produce an
      * immediate off-effect are handled; the property/break rings fall through
      * with no effect (already deconferred above). */
+    if ((obj.otyp | 0) === RIN_STEALTH_OTYP) {
+        const sp = u.uprops?.[STEALTH_PROP];
+        const oldprop = (sp?.extrinsic | 0) & ~mask;
+        if (!(game.context.takeoff.cancelled_don)
+            && !oldprop && !(sp?.intrinsic | 0) && !(sp?.blocked | 0)) {
+            learnring(obj, true);
+            await pline('You sure are noisy.');
+        }
+    }
     if ((obj.otyp | 0) === RIN_SEE_INVISIBLE_OTYP) {
         const see = u.uprops?.[SEE_INVIS_PROP];
         const seeInvisible = !!((see?.intrinsic | 0) || (see?.extrinsic | 0));
@@ -2861,7 +2930,24 @@ export async function float_down(hmask, emask) {
     } else {
         float_vs_flight();
     }
+    /* C trap.c:4088-4096 — a stuck hero is released when levitation ends:
+     * "Startled, X can no longer hold you!" then set_ustuck(NULL). The
+     * sticks(youmonst.data) arm ("aren't able to maintain your hold") is
+     * deferred: the hero is never a sticker on this path. */
+    if (!Flying() && !u.uswallow && u.ustuck) {
+        await pline(`Startled, ${mon_nam(u.ustuck)} can no longer hold you!`);
+        set_ustuck(null);
+    }
     /* uswallow/Punished/pool/lava branches deferred (FALSE here). */
+    /* C trap.c:4086-4095 — a stuck-to hero (not swallowed) is released. */
+    if (!Flying() && !u.uswallow && u.ustuck) {
+        const ym = game.youmonst;
+        if (sticks(ym && ym.data ? ym.data : null))
+            await pline(`You aren't able to maintain your hold on ${mon_nam(u.ustuck)}.`);
+        else
+            await pline(`Startled, ${mon_nam(u.ustuck)} can no longer hold you!`);
+        set_ustuck(null);
+    }
     if (!(emask & W_SADDLE_FD)) {
         const hallu = u.uprops?.[HALLUC]?.intrinsic
             && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
@@ -3160,7 +3246,8 @@ export async function Blindf_on(otmp) {
 
     if (_Blind_dw() && !already_blind) {
         changed = true;
-        await pline("You can't see any more.");
+        if (game.flags && game.flags.verbose)
+            await pline("You can't see any more.");
     } else if (already_blind && !_Blind_dw()) {
         changed = true;
         await pline('You can see!');
@@ -3218,6 +3305,7 @@ const RIN_ADORNMENT_OTYP = 173;
 const RIN_INCREASE_ACCURACY_OTYP = 176;
 const RIN_INCREASE_DAMAGE_OTYP = 177;
 const RIN_PROTECTION_OTYP = 178;
+const RIN_STEALTH_OTYP = 181; /* adornment 173 + 8 (objects.h ring order) */
 /* property-only / break-only rings: no immediate side effect on don
  * (RIN_TELEPORTATION..RIN_SUSTAIN_ABILITY all `break;` in C). */
 
@@ -3395,6 +3483,18 @@ export async function Ring_on(obj) {
                     await spoteffects_for_levitation();
             } else {
                 float_vs_flight();
+            }
+            break;
+        }
+        case RIN_STEALTH_OTYP: {
+            /* C do_wear.c:1279-1280 -> toggle_stealth(obj, oldprop, TRUE)
+             * (:100-132): discover the ring and announce, iff stealth is
+             * changing (no other extrinsic, intrinsic or blocker). */
+            const sp = u.uprops?.[STEALTH_PROP];
+            if (!game.initial_don && !oldprop && !(sp?.intrinsic | 0)
+                && !(sp?.blocked | 0)) {
+                learnring(obj, true);
+                await pline('You move very quietly.');
             }
             break;
         }

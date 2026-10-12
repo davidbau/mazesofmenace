@@ -312,7 +312,7 @@ function fuzzymatch(s1, s2, ignore, casesensitive) {
 }
 
 // Port of match_str2clr() from coloratt.c:338-363
-function match_str2clr(str, suppress_msg) {
+export function match_str2clr(str, suppress_msg) {
     const CLR_MAX = 16;
     let i, c = CLR_MAX;
     for (i = 0; i < colornames.length; i++) {
@@ -343,4 +343,43 @@ function check_enhanced_colors(buf) {
     }
     // Note: skipping sscanf("#rrggbb") and colortable fuzzymatch branches
     return retcolor;
+}
+
+/* C ref: coloratt.c:543-611 add_menu_coloring_parsed() / :613 add_menu_coloring()
+ * — MENUCOLOR="regex"=color[&attr].  Entries are PREPENDED (gm.menu_colorings
+ * = tmp), so the last rc line that matches wins in get_menu_coloring().
+ * Setting a menucolor turns iflags.use_menu_color on (coloratt.c:611). */
+export function add_menu_coloring(tmpstr) {
+    const m = /^\s*"(.*)"\s*=\s*([^&]*?)\s*(?:&\s*(.*?))?\s*$/.exec(tmpstr);
+    if (!m) return false;
+    const c = match_str2clr(m[2], true);
+    if (c === 16) return false;
+    let re;
+    try { re = new RegExp(m[1]); } catch (e) { return false; }
+    /* coloratt.c:543-611 — the "&attr" half (ATR_* index); tty maps inverse to SGR 7 */
+    const ATTRS = { none: 0, bold: 1, dim: 2, underline: 4, blink: 5, inverse: 7 };
+    let attr = 0;
+    if (m[3]) for (const a of m[3].split('+')) attr = ATTRS[a.trim().toLowerCase()] ?? attr;
+    (game.menu_colorings ||= []).unshift({ match: re, color: c, attr });
+    if (game.iflags) game.iflags.use_menu_color = true;
+    return true;
+}
+
+/* C ref: src/windows.c:1803-1807 add_menu() + :1843 get_menu_coloring() — the
+ * tty then paints the text after the "x - " selector in the matched colour
+ * (term_start_color ... term_end_color).  Returns `body` wrapped in the SGR
+ * pair, or unchanged when no MENUCOLOR pattern matches. */
+export function menucolor_text(body) {
+    /* iflags is rebuilt after the rc parse (jsmain.js), so a non-empty list is
+     * the live form of iflags.use_menu_color here. */
+    if (!game.menu_colorings?.length) return body;
+    for (const mc of game.menu_colorings) {
+        if (mc.match.test(body)) {
+            const c = mc.color;
+            const sgr = c < 8 ? 30 + c : 90 + (c - 8);
+            if (mc.attr) return `\x1b[${mc.attr};${sgr}m${body}\x1b[0m`;
+            return `\x1b[${sgr}m${body}\x1b[39m`;
+        }
+    }
+    return body;
 }

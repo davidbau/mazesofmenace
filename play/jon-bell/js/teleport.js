@@ -402,9 +402,7 @@ export async function teleds(nux, nuy, teleds_flags) {
     see_monsters();
     /* C 538/541: vision_full_recalc then vision_recalc(0) before effects */
     vision_recalc(0);
-    /* C 539: nomul(0) */
     nomul(0);
-    newsym(u.ux, u.uy);
     /* C 545-547: materialize message (flags.verbose defaults On) */
     if (is_teleport && (game.flags?.verbose !== false)) {
         const same = (nux === u.ux0 && nuy === u.uy0);
@@ -424,7 +422,12 @@ export async function teleds(nux, nuy, teleds_flags) {
      * update_topl reserve rule in flush_screen sees both plines and raises the
      * --More-- between them exactly where C does (topl.c:264: no join when
      * len(new) + len(committed) + 3 >= CO-8, and 36 + 39 + 3 = 78). */
-    if (is_teleport && (game.flags?.verbose !== false)) {
+    /* Under a live WIN_STOP (ESC'd --More-- while fainting) the materialize
+     * pline was suppressed (topl.c:257 skip), so _pending_message is empty and
+     * the topline C still shows is the already-published result; do not
+     * clobber it with the empty pending line. */
+    if (is_teleport && (game.flags?.verbose !== false)
+        && (game._pending_message || !game._resultMessage)) {
         const _joins = _topl_joins_snapshot(game._pending_message);
         game._resultMessage = game._pending_message;
         game._pending_message = '';
@@ -434,7 +437,10 @@ export async function teleds(nux, nuy, teleds_flags) {
          * already-published teleport result instead of dropping it. */
         game._teleportResultPublished = true;
     }
-    if (!game.in_steed_dismounting) {
+    /* hack.c:3335-3336 — spoteffects() is a no-op while lava_effects() is
+     * mid-rescue (iflags.in_lava_effects); lava_effects() re-runs it itself
+     * after "You find yourself ..." (trap.c:6959). */
+    if (!game.in_steed_dismounting && !game.iflags?.in_lava_effects) {
         /* hack.c:3375-3394 — pickup(1) before dotrap unless the trap is a pit
          * (then after); a hero who jumps/teleports onto a trap springs it. */
         const _trap = t_at(u.ux | 0, u.uy | 0);

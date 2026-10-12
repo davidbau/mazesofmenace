@@ -69,7 +69,8 @@ ARM, HEAD, MAY_HIT, MAY_DESTROY, MAY_FRACTURE, VIS_EFFECTS, } from './const.js';
 import { ohitmon } from './mhitu.js';
 import { poisoned } from './uhitm.js';
 import { tele_trap, mlevel_tele_trap, mtele_trap, domagicportal, next_to_u } from './teleport.js';
-import { make_stunned, make_hallucinated, self_invis_message, make_confused, potionhit as potionhit_thitu } from './potion.js';
+import { make_stunned, make_hallucinated, self_invis_message, make_confused, potionhit as potionhit_thitu, polymorph_sink } from './potion.js';
+import { COLNO, ROWNO, SINK } from './const.js';
 import { hates_silver as hates_silver_thitu, trapname as trapname_real } from './makemon.js';
 /* trapeffect_fire_trap's monster arm (C trap.c:1729-1821).  zap.js already
  * imports this module; both of these are read at CALL time inside a function
@@ -91,7 +92,7 @@ import { artifact_light, arti_light_radius } from './light.js';
  * per-file convention as js/dig.js:619 and js/mklev.js:886. */
 function obj_to_any(o) { return { a_obj: o, a_long: null }; }
 import { set_levltyp } from './mkmaze.js';
-import { mon_nam, m_at, dmgval } from './uhitm.js';
+import { mon_nam, m_at, dmgval, corpse_chance } from './uhitm.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { makeplural as _makeplural_vs, cloak_simple_name, helm_simple_name, gloves_simple_name, suit_simple_name, an, the, obj_is_pname, doname, mshot_xname, vtense, xname, distant_name, simpleonames, otense, Yobjnam2, cxname } from './objnam.js';
 import { chooseTrapnote } from './mklev_choose_trapnote.js';
@@ -373,44 +374,16 @@ function trap_msize(mndx) {
     return (mndx >= 0 && mndx < _TRAP_MSIZE.length) ? (_TRAP_MSIZE[mndx] | 0) : MZ_SMALL_T;
 }
 
-/* corpse_chance — C mon.c:3173-3236, ordinary-monster path (magr == NULL,
- * was_swallowed == FALSE; the explosion/engulfer branches need an aggressor and
- * do not apply to a pit/trap death).  Returns whether a corpse should drop and,
+/* corpse_chance — C mon.c:3173-3236, for a pit/trap death (magr == NULL,
+ * was_swallowed == FALSE).  Returns whether a corpse should drop and,
  * as in C, consumes rn2(tmp) only on the final clause.
  *   if (LEVEL_SPECIFIC_NOCORPSE) return FALSE;            // no RNG
  *   if (((bigmonst||LIZARD) && !mcloned) || golem || mplayer || rider || isshk)
  *       return TRUE;                                      // no RNG
  *   tmp = 2 + ((geno & G_FREQ) < 2) + verysmall;
  *   return !rn2(tmp); */
-function corpse_chance_mon(mtmp) {
-    if (ENV.FF_DEATH_TRACE === '1')
-        pushRngLogEntry(`^corpse_chance[id=${mtmp.m_id|0} pm=${(mtmp.mndx ?? mtmp.mnum ?? -1)|0} pos=${mtmp.mx|0},${mtmp.my|0}]`);
-    const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
-    const row = (mndx >= 0 && mndx < _TRAP_MONS.length) ? _TRAP_MONS[mndx] : null;
-    const geno = row ? (row[3] | 0) : 0;
-    const msize = trap_msize(mndx);
-    /* C mon.c:3231 special-always-corpse classes.  None apply to the ordinary
-     * trap-killed pet (a dog is small, not a golem/player/rider/shopkeeper, and
-     * is never mcloned on this path).  Mirrored as a guard so a future big/golem
-     * monster dying in a trap matches C's no-RNG TRUE return. */
-    /* C mon.c:3241 LEVEL_SPECIFIC_NOCORPSE (mon.c:44): rogue level, a level
-     * without deathdrops (Plane of Water etc.), or an undead on a graveyard
-     * level (the third disjunct draws rn2(3)).  Precedes every other arm. */
-    if (Is_rogue_level(game.u?.uz)
-        || !(game.level?.flags?.deathdrops)
-        || (!!(game.level?.flags?.graveyard) && row
-            && ((row[7] | 0) & 0x00000002) !== 0 && !!rn2(3)))
-        return false;
-    const bigmonst = (msize >= MZ_LARGE_T);
-    if ((bigmonst && !(mtmp.mcloned | 0))
-        || mtmp.isshk) {
-        return true;
-    }
-    /* C mon.c:3234: tmp = 2 + ((geno & G_FREQ) < 2) + verysmall(mdat).
-     * verysmall(ptr) = (msize < MZ_SMALL). */
-    const tmp = 2 + (((geno & G_FREQ_T) < 2) ? 1 : 0)
-        + ((msize < MZ_SMALL_T) ? 1 : 0);
-    return !rn2(tmp);
+async function corpse_chance_mon(mtmp) {
+    return corpse_chance(mtmp, null, false);
 }
 
 /* monkilled_trap — the monster-death path reached from thitm() when a trap's
@@ -474,6 +447,12 @@ export async function monkilled_trap(mtmp, fltxt = '') {
             set_mon_data(mtmp, trueData);
             mtmp.cham = NON_PM;
         }
+    } else {
+        const cur = (mtmp.mnum ?? -1) | 0;
+        const human = cur === 15 /* PM_WEREJACKAL */ ? 262 /* PM_HUMAN_WEREJACKAL */
+            : cur === 21 /* PM_WEREWOLF */ ? 263 /* PM_HUMAN_WEREWOLF */
+            : cur === 91 /* PM_WERERAT */ ? 261 /* PM_HUMAN_WERERAT */ : -1;
+        if (human >= 0) set_mon_data(mtmp, permonstTemplate(human));
     }
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
     if (g.mvitals && mndx >= 0) {
@@ -493,7 +472,7 @@ export async function monkilled_trap(mtmp, fltxt = '') {
     /* C mon.c:3144-3162: mondead's S_KOP revival roll precedes m_detach. */
     await kop_revival(mtmp);
     await relobj_md(mtmp);
-    const dropCorpse = corpse_chance_mon(mtmp);
+    const dropCorpse = await corpse_chance_mon(mtmp);
     if (dropCorpse) {
         const make_corpse = _trapFns.make_corpse_fn;
         if (make_corpse) await make_corpse(mtmp, _dx, _dy);
@@ -5808,8 +5787,11 @@ export async function mintrap(mtmp, mintrapflags) {
         const already_seen = mon_knows_traps(mtmp, tt)
             || (tt === HOLE && !mindless);
         /* C trap.c:3778-3781: fixed_tele_trap → FORCETRAP (no fixed dest here). */
-        /* C trap.c:3783: usteed; 3785: Sokoban pit — not applicable. */
-        if (!forcetrap) {
+        if (mtmp === game.u?.usteed) {
+            ; /* true when called from dotrap, inescapable is not an option */
+        } else if (In_sokoban(game.u?.uz) && (is_pit(tt) || is_hole(tt)) && !trap.madeby_u) {
+            ; /* nothing here, the trap effects will handle messaging */
+        } else if (!forcetrap) {
             if (floor_trigger(tt) && check_in_air(mtmp, mintrapflags)) {
                 return Trap_Effect_Finished;
             }
@@ -7695,9 +7677,8 @@ export async function drain_en(n, max_already_drained) {
  * kitchen sink."  drop() (js/cmd.js, C do.c:748-752) used to skip this and
  * print "You drop X." where C prints "You drop X down the drain." plus the
  * per-ring sink effect, then rn2(20)/rn2(5) for the ring's fate.
- * teleport_sink()/polymorph_sink() (RIN_TELEPORTATION / RIN_POLYMORPH) are
- * not ported anywhere in js/; those two arms throw rather than diverge
- * silently.
+ * teleport_sink() (file-local below) and polymorph_sink() (js/potion.js)
+ * back the RIN_TELEPORTATION / RIN_POLYMORPH arms.
  * ------------------------------------------------------------------------ */
 import { doname as _sr_doname, otense as _sr_otense, fruitname as _sr_fruitname, makeplural as _sr_makeplural } from './objnam.js';
 import { yname as _sr_yname } from './do_wear.js';
@@ -7714,6 +7695,32 @@ function _sr_Hallucination() {
     const p = game.u?.uprops;
     const on = (i) => !!(p?.[i] && (p[i].intrinsic | 0 || p[i].extrinsic | 0) && !(p[i].blocked | 0));
     return (on(_SR_HALLUC) && !on(_SR_HALLUC_RES)) || !!(p?.[_SR_HALLUC]?.extrinsic | 0);
+}
+
+/* C do.c:438-464 teleport_sink(void): moves the sink under the hero to a
+ * random plain ROOM square out of sight; returns TRUE if the sink moved. */
+function teleport_sink() {
+    const u = game.u;
+    let trycnt = 0;
+    do {
+        const cx = 1 + rnd((COLNO - 1) - 2); /* 2..COLNO-2 */
+        const cy = 1 + rn2(ROWNO - 2);       /* 1..ROWNO-2 */
+        if (lev_typ(cx, cy) === ROOM
+            && !t_at(cx, cy) && !engr_at(cx, cy)
+            && (!cansee(cx, cy) || distu_ft(cx, cy) > 3 * 3)) {
+            const alreadylooted = game.level.at(u.ux, u.uy).looted;
+            /* remove old sink */
+            set_levltyp(u.ux, u.uy, ROOM);
+            game.level.at(u.ux, u.uy).looted = 0;
+            newsym(u.ux, u.uy);
+            /* create sink at new position */
+            set_levltyp(cx, cy, SINK);
+            game.level.at(cx, cy).looted = alreadylooted ? 1 : 0;
+            newsym(cx, cy);
+            return true;
+        }
+    } while (++trycnt < 200);
+    return false;
 }
 
 export async function dosinkring(obj) {
@@ -7783,9 +7790,18 @@ export async function dosinkring(obj) {
         await pline('Several flies buzz around the sink.');
         break;
     case 194: /* RIN_TELEPORTATION */
-        throw new Error('not yet ported: teleport_sink (do.c:438)');
+        nosink = teleport_sink();
+        /* give message even if blind; we know we're not levitating,
+           so can feel the outcome even if we can't directly see it */
+        await pline(`The sink ${nosink ? '' : 'momentarily '}vanishes.`);
+        ideed = false;
+        break;
     case 196: /* RIN_POLYMORPH */
-        throw new Error('not yet ported: polymorph_sink (do.c:466)');
+        await polymorph_sink();
+        nosink = true;
+        /* for S_room case, same message as for teleportation is given */
+        ideed = (game.level.at(u.ux, u.uy).typ !== ROOM);
+        break;
     default:
         ideed = false;
         break;

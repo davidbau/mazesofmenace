@@ -3702,6 +3702,9 @@ So, have you succeeded in your quest for the Amulet of Yendor?"`,
  * only async entry point into this path — and cached here.  Same dynamic-import
  * convention deliver_by_window() already uses for display_text_window. */
 let _cmdmod = null;
+export function bind_cmdmod(mod) {
+    _cmdmod = mod;
+}
 
 /* C questpgr.c:196 convert_arg(c) — expand one %-arg into cvt_buf. */
 function convert_arg(c) {

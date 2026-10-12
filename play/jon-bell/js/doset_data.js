@@ -172,8 +172,8 @@ export const DOSET_COMPOUNDS = [
     { name: "playmode", sel: false, hasHandler: false, val: () => F().debug ? "debug" : F().explore ? "explore" : "normal" },
     /* C: options.c optfn_name get_val -> svp.plname */
     { name: "name", sel: false, hasHandler: false, val: () => game.plname || "" },
-    /* C: options.c optfn_role get_val -> roles[flags.initrole].name.m/.f */
-    { name: "role", sel: false, hasHandler: false, val: () => (game.urole?.name && (game.flags?.initgend === 1 ? game.urole.name.f : game.urole.name.m)) || "" },
+    /* C: options.c optfn_role get_val -> rolestring(flags.initrole, roles, name.m) (options.c:3615): always the MALE name, never .f */
+    { name: "role", sel: false, hasHandler: false, val: () => game.urole?.name?.m || "" },
     /* C: options.c optfn_race get_val -> races[flags.initrace].noun; js/roles.js spells that field `name` ("orc") and keeps the C `adj` ("orcish") beside it */
     { name: "race", sel: false, hasHandler: false, val: () => game.urace?.name || "" },
     /* C: options.c optfn_gender get_val -> genders[flags.initgend].adj */
@@ -275,7 +275,7 @@ export const DOSET_OTHERS = [
     /* C: options.c optfn_o_autocomplete get_val -> count_autocompletions() */
     { name: "autocompletions", sel: true, val: () => "(0 currently set)" },
     /* C: options.c optfn_o_autopickup_exceptions get_val */
-    { name: "autopickup exceptions", sel: true, val: () => "(0 currently set)" },
+    { name: "autopickup exceptions", sel: true, val: () => `(${(game.apelist || []).length} currently set)` },
     /* C: options.c optfn_o_bind_keys get_val */
     { name: "bind keys", sel: true, val: () => "(0 currently set)" },
     /* C: options.c optfn_o_menu_colors get_val */

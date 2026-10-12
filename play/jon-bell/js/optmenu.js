@@ -15,12 +15,14 @@ import { game } from './gstate.js';
 import { ECMD_OK } from './const.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, force_more, docrt } from './display.js';
+import { update_inventory } from './inventory_refresh.js';
 /* C options.c:8944 — the generic compound-option path reads its value with
  * getlin(); mungspaces (objnam.c) normalises it before it is stored. */
 import { getlin } from './wizcmds.js';
 import { mungspaces } from './mklev.js';
 import { optfn_fruit_set } from './options.js';
 import { reset_needed_visuals } from './options_runtime.js';
+import { vision_recalc } from './vision.js';
 import { optfn_suppress_alert_set } from './feature_alert.js';
 import { number_pad_value } from './cmd_config.js';
 import { reset_commands, update_rest_on_space, cmdbind_get, bind_key } from './cmd_binds.js';
@@ -94,7 +96,7 @@ const PAGES = [
          * the menu must toggle and display the same field or the three writers
          * disagree and the pickup_types/autopick path reads a flag nobody set. */
         { name: 'autopickup', kind: 'bool', flag: 'pickup' },
-        { name: 'autopickup exceptions', kind: 'othr', value: () => '(0 currently set)' },
+        { name: 'autopickup exceptions', kind: 'othr', value: () => `(${(game.apelist || []).length} currently set)` },
         { name: 'autoquiver', kind: 'bool', flag: 'autoquiver' },
         { name: 'autounlock', kind: 'comp', value: autounlockStr },
         { name: 'cmdassist', kind: 'bool', flag: 'cmdassist', defOn: true },
@@ -378,9 +380,12 @@ const PICKUP_CLASSES = [
     { sym: '_', name: 'iron chain' },
     { sym: '.', name: 'splash of venom' },
 ];
-function renderPickupSubmenu(marks, bgRows, classes, preserveStatus) {
+function renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased = false) {
     const body = [];
-    body.push('Autopickup what?');
+    /* C ref: getline.c:213 clear_nhwindow(WIN_MESSAGE) blanks row 0 after a
+     * MENU_SEARCH getlin, and process_menu_window does not repaint the page, so
+     * the title stays erased until the menu is re-entered. */
+    body.push(titleErased ? null : 'Autopickup what?');
     body.push(null);
     let letter = 'a'.charCodeAt(0);
     for (const c of classes) {
@@ -475,9 +480,22 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false) {
     let letter = 'a'.charCodeAt(0);
     for (const c of classes) symByAcc.set(String.fromCharCode(letter++), c.sym);
     const symSet = new Set(classes.map((c) => c.sym));
+    /* C ref: windows.c:1644-1760 choose_classes_menu adds each row as
+     * "%c - %s" (wintty.c:2596-2600 tty_add_menu), and the 'A' row last; the
+     * MENU_SEARCH ':' case (wintty.c:1700-1730) matches the typed text against
+     * those strings and toggles every hit. */
+    const mlist = [];
+    {
+        let acc = 'a'.charCodeAt(0);
+        for (const c of classes)
+            mlist.push({ str: `${String.fromCharCode(acc++)} - ${c.sym}  ${c.name}`, sym: c.sym });
+        mlist.push({ str: 'A - All classes of objects', sym: 'A' });
+    }
+    let titleErased = false;
     while (true) {
         // No flush_screen (it would rebuild _screen_output from the map).
-        renderPickupSubmenu(marks, bgRows, classes, preserveStatus);
+        renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased);
+        const frame = game._screen_output;
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
         if (key === 27 /* ESC */) {
@@ -485,6 +503,19 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false) {
         }
         if (key === 10 || key === 13 || key === 32 /* Enter / space confirm */) {
             break;
+        }
+        if (key === 0x3a /* ':' MENU_SEARCH — a menu command, never a selector */) {
+            await menu_search_case('ANY', mlist, () => frame.split('\n'), (curr) => {
+                if (curr.sym === 'A') {
+                    allPicked = !allPicked;
+                    marks.set('A', allPicked ? '+' : '-');
+                    return;
+                }
+                if (cur.has(curr.sym)) cur.delete(curr.sym); else cur.add(curr.sym);
+                marks.set(curr.sym, cur.has(curr.sym) ? '+' : '-');
+            });
+            titleErased = true;   /* getline.c:213 blanked row 0; menu not repainted */
+            continue;
         }
         if (ch === 'A') {
             /* C ref: windows.c:1746-1753 — 'A' is an ordinary PICK_ANY toggle on
@@ -602,9 +633,12 @@ export async function doset_simple() {
             if (pageIdx + 1 < pageCount()) { pageIdx++; titleErased = false; continue; }
             break;
         }
+        /* C ref: wintty.c:1606-1610 — MENU_NEXT_PAGE '>' advances a page, and
+         * on the last page does NOTHING ("stop '>' doing the same" as ' ' finishing
+         * there).  Only ' ' finishes; '>' repaints the same page. */
         if (ch === '>') {
-            if (pageIdx + 1 < pageCount()) { pageIdx++; titleErased = false; continue; }
-            break;
+            if (pageIdx + 1 < pageCount()) { pageIdx++; titleErased = false; }
+            continue;
         }
         if (ch === '<') {
             if (pageIdx > 0) { pageIdx--; titleErased = false; }
@@ -800,6 +834,26 @@ export async function handler_runmode(preserveStatus = false) {
     m.end_menu('Select run/travel display mode:');
     const { count, picks } = await m.select_menu(PICK_ONE);
     if (count > 0) game.flags.runmode = picks[0] - 1;
+}
+
+/* C options.c:220 sortltype[]: none / loot / full. */
+const sortltypes = ['none', 'loot', 'full'];
+/* C options.c:6165 handler_sortloot.  The menu is PICK_ONE; the currently
+ * selected sortloot entry is preselected (MENU_ITEMFLAGS_SELECTED), and a
+ * second pick of that same entry resolves to the next one (options.c:6190). */
+export async function handler_sortloot(preserveStatus = false) {
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    sortltypes.forEach((n, i) => m.add_menu(i + 1, n[0], ATR_NONE, n, false,
+        game.flags.sortloot === n[0]));
+    m.end_menu('Select loot sorting type:');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    if (count > 0) {
+        let c = sortltypes[picks[0] - 1][0];
+        if (count > 1 && c === game.flags.sortloot) c = sortltypes[picks[1] - 1][0];
+        game.flags.sortloot = c;
+        /* C options.c:6197: changing sortloot affects the persistent inventory. */
+        if (game.iflags?.perm_invent) update_inventory();
+    }
 }
 
 /* C options.c:207 unlocktypes[] */
@@ -1056,6 +1110,10 @@ export async function doset() {
 
         m.end_menu('Set what options?');
         const { count, picks } = await m.select_menu(PICK_ANY);
+        /* C wintty.c tty_dismiss_nhwindow(NHW_MENU) docrt()s the map, whose cls()
+         * blanks the physical screen: a RogueEpyx hero square (\x01 paints no
+         * glyph) must not keep a cell painted before the full-screen menu. */
+        g._epyxPhys = null;
 
         let statusRefreshed = false;
         if (count > 0) {
@@ -1082,6 +1140,21 @@ export async function doset() {
                     /* C optfn_boolean (options.c:5412-5416): these set the pending-visual flags. */
                     if (ent.row.name === 'customcolors') { g.go.opt_reset_customcolors = true; needVisuals = true; }
                     if (ent.row.name === 'customsymbols') { g.go.opt_reset_customsymbols = true; needVisuals = true; }
+                    /* C optfn_boolean (options.c:5369-5385): dark_room and lit_corridor
+                     * shut down vision, delay the full recalc, and request a darkroom
+                     * redraw. Without it the doset walk never reaches reset_needed_visuals()
+                     * and the cls()'s --More-- on the toggled message is lost. */
+                    if (ent.row.name === 'dark_room' || ent.row.name === 'lit_corridor') {
+                        vision_recalc(2);
+                        g.vision_full_recalc = 1;
+                        if (g.iflags.use_color) g.go.opt_need_redraw = true;
+                        needVisuals = true;
+                    }
+                    if (ent.row.name === 'hitpointbar'
+                        && (!g.windowprocs || (g.windowprocs.wincap2 & (0x8 | 0x80)))) {
+                        g.go.opt_need_redraw = true;
+                        needVisuals = true;
+                    }
                     /* C ref: options.c:5438-5440 — give_opt_msg is TRUE on the
                      * doset() path (only doset_simple clears it). */
                     await pline(`'${ent.row.name}' option toggled ${!negated ? 'on' : 'off'}.`);
@@ -1112,6 +1185,10 @@ export async function doset() {
                 } else if (ent.row.name === 'runmode') {
                     await drainTopline();
                     await handler_runmode(statusRefreshed);
+                    statusRefreshed = true;
+                } else if (ent.row.name === 'sortloot') {
+                    await drainTopline();
+                    await handler_sortloot(statusRefreshed);
                     statusRefreshed = true;
                 } else if (ent.row.name === 'menustyle') {
                     await drainTopline();

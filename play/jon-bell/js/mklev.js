@@ -3,11 +3,11 @@ import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './trap.js';
 import { discover_object as lifesave_discover_object } from './o_init.js';
 import { s_suffix as lifesave_s_suffix } from './hacklib.js';
-import { wary_dog, dismount_steed as dismount_steed_mk } from './dog.js';
+import { wary_dog, dismount_steed as dismount_steed_mk, sticks } from './dog.js';
 import { mondied as mondied_ml } from './makemon.js';
 import { xkilled as xkilled_ml } from './uhitm.js';
 import { XKILL_NOMSG, DISMOUNT_GENERIC } from './const.js';
-import { flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message } from './cmd.js';
+import { flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message, switch_terrain } from './cmd.js';
 import { water_damage_chain as water_damage_chain_ml } from './cmd.js';
 import { hliquid as hliquid_ml } from './mhitm.js';
 import { W_AMUL, HEALTHY_TIN } from './const.js';
@@ -55,6 +55,7 @@ import { noveltitle, safe_oname as safe_oname_real } from './do_name.js';
 import { set_msg_xy, set_quest_leader_m_id } from './cmd.js';
 import { PLNMSG_HIDE_UNDER, Is_earthlevel } from './const.js';
 import { PROT_FROM_SHAPE_CHANGERS } from './const.js';
+import { DEFSYM_EXPLANATION } from './defsym_data.js';
 /* C makemon.c:1384 mongets() — makemon's `mitem` block hands the extra
  * starting item over the same helper m_initweap uses. */
 import { mongets } from './m_initweap.js';
@@ -126,7 +127,7 @@ import { t_at, deltrap, mon_knows_traps, mon_learns_traps, m_carrying, linedup, 
 import { ALL_TRAPS } from './const.js';
 import { rloco as steal_rloco } from './steal.js';
 import { cansee, couldsee, block_point, vision_recalc } from './vision.js';
-import { canseemon, canspotmon, pline, newsym, sensemon, unmap_object, glyph_is_invisible_at, see_nearby_objects, You_hear, You_see, map_location } from './display.js';
+import { canseemon, canspotmon, pline, newsym, sensemon, unmap_object, glyph_is_invisible_at, see_nearby_objects, You_hear, You_see, map_location, swallowed } from './display.js';
 import { invalidateTerrainStatus } from './terrain-status.js';
 /* rumors.c outrumor()'s is_fainted() guard.  CYCLIC (js/eat.js imports getrumor
  * from this file); is_fainted is a hoisted `export function`, so it resolves. */
@@ -136,7 +137,7 @@ import { impossible as lifecycle_impossible } from './pline.js';
 import { LS_OBJECT } from './const.js';
 /* m_calcdistress (mon.c:1180) arms — see the block above minliquid() below. */
 import { were_change, is_were, new_were } from './were.js';
-import { MON_FLOOR, BOLT_LIM, NC_SHOW_MSG, ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_SADDLE } from './const.js';
+import { MON_FLOOR, BOLT_LIM, NC_SHOW_MSG, ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_SADDLE, ARTICLE_NONE } from './const.js';
 import { MON_DETACH } from './const.js';
 /* prop.h property indices for the Blind/Hallucination macros below.  Aliased
  * because this file already has locals named BLINDED-ish in other scopes. */
@@ -184,6 +185,7 @@ import { set_apparxy, dochugw } from './monmove.js';           /* C monmove.c:14
  * audit — every call site in this file now goes through these aliases. */
 import { readobjnam as readobjnam_mk, distant_name as distant_name_nc, doname as doname_nc, Tobjnam } from './objnam.js';
 import { simpleonames as simpleonames_mk, an as an_mk, corpse_xname as corpse_xname_rc, The as The_rc } from './objnam.js';
+import { DEFSYM_EXPLANATION as DEFSYM_EXPLANATION_MK } from './defsym_data.js';
 import { Monnam as Monnam_rc } from './mcastu.js';
 import { Adjmonnam as Adjmonnam_rc } from './mhitm.js';
 import { observe_object as observe_object_mk } from './o_init.js';
@@ -199,7 +201,7 @@ import { maybe_reset_pick } from './lock.js';
  * stamps into owornmask; js/dokick.js's deliver_obj_to_mon() tests for it. */
 import { MIGR_TO_SPECIES } from './const.js';
 import { dmgtype, m_harmless_trap } from './dogmove.js';
-import { mon_mattk_raw } from './mhitu.js';
+import { mon_mattk_raw, expels_gu, digests_gu } from './mhitu.js';
 import { unpunish } from './dig.js';
 import { m_at, mon_nam as mon_nam_wm, experience, newexplevel } from './uhitm.js';
 import { hastrack } from './track.js';
@@ -845,7 +847,11 @@ export async function u_on_rndspot(upflag) {
     await place_lregion(d.lx || 0, d.ly || 0, d.hx || 0, d.hy || 0,
                   d.nlx || 0, d.nly || 0, d.nhx || 0, d.nhy || 0,
                   up ? LR_UPTELE : LR_DOWNTELE, null);
-    // C: switch_terrain() — verified no-op here, see summary above.
+    /* C dungeon.c:1636-1637 — "might have just left solid rock and unblocked
+     * levitation": switch_terrain() runs unconditionally after the placement.
+     * A level-teleport arrival that lands on a free square with a blocked
+     * BLevitation clears it and float_up()s ("You start to float in the air!"). */
+    await switch_terrain();
 }
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
 export async function u_on_upstairs() {
@@ -2786,6 +2792,7 @@ async function shkinit(shp, shpIndx, sroom) {
     shk.isshk = 1;
     shk.mpeaceful = 1;
     shk.msleeping = 0;
+    mon_learns_traps(shk, ALL_TRAPS); /* shknam.c:669 we know all the traps already */
     /* C: eshkp->shoproom, shoptype, shoplevel, shd, shk.x/y, etc. */
     eshkp.shoproom = rmno;
     eshkp.shoplevel = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
@@ -4647,7 +4654,7 @@ export async function makemon(mdat, x, y, mmflags) {
         if (makemonDomesticSaddle(mon, mndx, mmflags))
             await put_saddle_on_mon(null, mon); /* C makemon.c:1448-1453 */
     }
-    const _mflags3 = (mon.data?.mflags3 ?? 0) >>> 0;
+    const _mflags3 = (permonstTemplate(mndx)?.mflags3 ?? 0) >>> 0;
     if (_mflags3 && !(mmflags & MM_NOWAIT)) {
         if (_mflags3 & 0x0040 /* M3_WAITFORU */)
             mon.mstrategy = ((mon.mstrategy | 0) | STRAT_WAITFORU) >>> 0;
@@ -4678,11 +4685,13 @@ export async function makemon(mdat, x, y, mmflags) {
          * NOTE next2u()/distu() take the ORIGINAL x,y the caller asked for --
          * the hero's own square for a byyou creation -- not mtmp's relocated
          * position, so the " next to you" clause is unconditional there.
-         * The mimic-masquerading-as-furniture arm needs mhidden_description,
-         * which js/ has no body for; it is left out rather than approximated,
-         * and a mimic makes no `what` so no message is emitted (C would). */
+         * The mimic-masquerading-as-furniture arm is ported below from
+         * defsyms[mappearance].explanation (DEFSYM_EXPLANATION, defsym_data.js)
+         * and mhidden_description's MHID_ARTICLE|MHID_ALTMON tail, pager.c:205-215.
+         * A mimic that masquerades as neither object nor furniture still makes no
+         * `what`, and the mimic-as-object arm stays as it was. */
         if (!(mmflags & MM_NOMSG)) {
-            const M_AP_NOTHING = 0, M_AP_MONSTER = 3, MM_NOEXCLAM_MK = 262144;
+            const M_AP_NOTHING = 0, M_AP_FURNITURE = 1, M_AP_MONSTER = 3, MM_NOEXCLAM_MK = 262144;
             let exclaim = !(mmflags & MM_NOEXCLAM_MK);
             let what = null;
             const apType = (mon.m_ap_type | 0);
@@ -4691,6 +4700,21 @@ export async function makemon(mdat, x, y, mmflags) {
                 what = Amonnam(mon);
                 if (apType === M_AP_MONSTER)
                     exclaim = true;
+            } else if (canseemon(mon) && apType === M_AP_FURNITURE
+                       && DEFSYM_EXPLANATION[mon.mappearance | 0] != null) {
+                /* C makemon.c:1486-1489 + pager.c:205-215: MHID_ARTICLE gives
+                 * an(defsyms[mappearance].explanation); upstart() capitalises it
+                 * ("A closed door appears next to you."). */
+                what = upstart(an_mk(DEFSYM_EXPLANATION[mon.mappearance | 0]));
+            } else if (canseemon(mon) && apType === 1 /* M_AP_FURNITURE */
+                       && DEFSYM_EXPLANATION_MK[mon.mappearance | 0]) {
+                /* C makemon.c:1486-1489 via pager.c:201-205 — mimic masquerading
+                 * as furniture: mhidden_description(MHID_ARTICLE|MHID_ALTMON)
+                 * takes defsyms[mappearance].explanation (drawing.c defsyms,
+                 * js/defsym_data.js), an()'d, then upstart()'d by makemon.
+                 * "A staircase up appears next to you." — a stair-disguised
+                 * mimic's appearance message, not a silent arrival. */
+                what = upstart(an_mk(DEFSYM_EXPLANATION_MK[mon.mappearance | 0]));
             } else if (canseemon(mon) && apType === 2 /* M_AP_OBJECT */
                        && Number.isInteger(mon.mappearance)
                        && OC_NAME_MK[mon.mappearance | 0] != null) {
@@ -7590,7 +7614,8 @@ async function themeroom_fill_rng(aroom, difficulty) {
             //
             // 1. des.object({id="chest"}) → sp_lev.c create_object():
             //    C ref: sp_lev.c create_object:2203 get_location_coord.
-            const _chestPos = somexy(aroom, {});
+            const _chestXY = {};
+            const _chestPos = somexy(aroom, _chestXY) ? _chestXY : null;
             //    then mksobj_at(CHEST, x, y, init=TRUE): mksobj(CHEST,TRUE) →
             //      next_ident + mksobj_init (olocked rn2(5) + otrapped rn2(10) + tknown)
             //      + mkbox_cnts(chest) (auto-stocks the container — the recursive
@@ -7968,7 +7993,11 @@ async function themerooms_post_level_generate() {
             // C themerms.lua:1052-1068 make_dig_engraving — burn "Dig <direction>"
             // pointing from the engraving cell toward the buried chest (data.x/y).
             //   tx = data.x - pos.x - 1;  ty = data.y - pos.y;
-            const _tx = (entry.data ? (entry.data.x | 0) : 0) - _pos.x - 1;
+            // l_selection_rndcoord (nhlsel.c:412-421) returns pos RELATIVE: with no
+            // coder croom it subtracts gx.xstart/gy.ystart (sp_lev.c:208-209: 1, 0),
+            // while xobj.ox/oy are absolute.  So lua's `data.x - pos.x - 1` is
+            // ox - (x - 1) - 1 = ox - x.
+            const _tx = (entry.data ? (entry.data.x | 0) : 0) - _pos.x;
             const _ty = (entry.data ? (entry.data.y | 0) : 0) - _pos.y;
             let _dig = '';
             if (_tx === 0 && _ty === 0) {
@@ -12005,7 +12034,7 @@ export function touch_artifact_mon(otmp, mtmp) {
     /* C mondata.h is_covetous(ptr): ptr->mflags3 & M3_COVETOUS (0x001f);
      * is_mplayer(ptr): the PM_ARCHEOLOGIST..PM_WIZARD player-monster block. */
     const covetous = ((ptr.mflags3 | 0) & 0x001f) !== 0;
-    const mplayer = is_mplayer_nc(mtmp.data_mndx | 0);
+    const mplayer = is_mplayer_nc((mtmp.data?.pmidx ?? mtmp.data_mndx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0);
     if (!covetous && !mplayer) {
         /* C artifact.c:930-933 */
         badclass = self_willed && oart.role && arti !== ART_EXCALIBUR_MK;
@@ -12047,7 +12076,7 @@ function bane_applies_mk(arti, mtmp) {
     const ptr = mtmp.data;
     /* C artifact.c:1020-1034, with `yours` FALSE throughout. */
     if (spfx & SPFX_DMONS_MK)
-        return (mtmp.data_mndx | 0) === mtype;
+        return ((mtmp.data?.pmidx ?? mtmp.data_mndx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0) === mtype;
     if (spfx & SPFX_DCLAS_MK)
         return mtype === (ptr.mlet | 0);
     if (spfx & SPFX_DFLAG1_MK)
@@ -15069,7 +15098,7 @@ export async function newcham(mtmp, mdat, ncflags) {
     let newmndx = (mdat === null || mdat === undefined) ? NON_PM : (mdat | 0);
 
     const polyspot = ((ncflags | 0) & NC_VIA_WAND_OR_SPELL) !== 0;
-    const msg = ((ncflags | 0) & NC_SHOW_MSG) !== 0;
+    let msg = ((ncflags | 0) & NC_SHOW_MSG) !== 0;
     const seenorsensed = canspotmon(mtmp);
 
     /* C mon.c:5292-5306 — the `cham == NON_PM` (not-a-shapechanger) guards:
@@ -15215,8 +15244,34 @@ export async function newcham(mtmp, mdat, ncflags) {
     if (mtmp.mundetected)
         hideunder(mtmp);
 
-    /* C mon.c:5411-5443 — the u.ustuck / u.uswallow arms cannot apply to a
-     * monster makemon is still building. */
+    /* C mon.c:5411-5443 — live: an engulfing fog cloud shapeshifts mid-fight
+     * (mon.c:4894), expels the hero and draws collect_coords (teleport.c:700). */
+    if (game.u.ustuck === mtmp) {
+        if (game.u.uswallow) {
+            if (!attacktype(newdata, MPICKOBJ_AT_ENGL)) {
+                /* Does mdat care? */
+                if (!noncorporeal_mv(newdata) && !is_whirly_mv(newdata, newmndx)
+                    && !(amorphous_mcd(newdata) || (newdata.mlet | 0) === 25 /* S_LIGHT, defsym.h:324 */)) {
+                    let msgtrail = '';
+                    if (is_vampshifter_nc(mtmp)) {
+                        msgtrail = ` which was a shapeshifted ${noname_monnam(mtmp, ARTICLE_NONE)}`;
+                    } else if (digests_gu(newmndx)) {
+                        msgtrail = "'s stomach";
+                    }
+                    const emerge = amorphous_mcd(oldPermonst) || is_whirly_mv(oldPermonst, olddata);
+                    pline(`You ${emerge ? 'emerge from' : 'break out of'} ${l_oldname}${msgtrail}!`);
+                    msg = false; /* message has been given */
+                    mtmp.mhp = 1; /* almost dead */
+                }
+                await expels_gu(mtmp, olddata, false);
+            } else {
+                /* update swallow glyphs for new monster */
+                swallowed(0);
+            }
+        } else if ((!sticks(newdata) && !sticks(game.youmonst.data)) || unsolid_mv(newdata)) {
+            await unstuck_mk(mtmp);
+        }
+    }
 
     if (newmndx === PM_LONG_WORM && (mtmp.wormno = get_wormno()) !== 0) {
         initworm(mtmp, rn2(5));
@@ -15535,7 +15590,7 @@ export async function clone_mon_ml(mon, x, y) {
 
 /* C ref: potion.c:2873 split_mon(mon, mtmp) — monster arm only (the hero arm
  * is cloneu).  Clone a gremlin or mold; HP halved, odd point stays. */
-async function split_mon_ml(mon, mtmp) {
+export async function split_mon_ml(mon, mtmp) {
     void mtmp;
     if ((mon.mhp | 0) > (mon.mhpmax | 0))
         mon.mhp = mon.mhpmax | 0;
@@ -16620,7 +16675,7 @@ async function peacefuls_respond(mtmp) {
                     || ((mdata?.pmidx | 0) === quest_info(MS_LEADER_SM)
                         && (mtmp.data?.pmidx | 0) !== _sm_guardnum())) {
                     if (exclaimed)
-                        pline_mon(mon, "%s%s", buf, " then shrugs.");
+                        await pline_mon(mon, "%s%s", buf, " then shrugs.");
                     continue;
                 }
                 if ((mdata?.mlevel | 0) < rn2(10)
@@ -16637,7 +16692,7 @@ async function peacefuls_respond(mtmp) {
                     }
                 }
                 if (buf)
-                    pline_mon(mon, "%s%s", buf, needpunct ? "." : "");
+                    await pline_mon(mon, "%s%s", buf, needpunct ? "." : "");
                 if (mon.mtame) {
                     /* C: mustn't set mpeaceful to 0 as below */
                 } else {
@@ -16645,7 +16700,7 @@ async function peacefuls_respond(mtmp) {
                     mon.mstrategy = (mon.mstrategy | 0) & ~(STRAT_CLOSE | STRAT_WAITFORU);
                     adjalign(-1);
                     if (!exclaimed)
-                        pline_mon(mon, "%s gets angry!", Monnam(mon));
+                        await pline_mon(mon, "%s gets angry!", Monnam(mon));
                 }
             }
         } else if ((mdata?.mlet | 0) === (mtmp.data?.mlet | 0)
@@ -16739,7 +16794,7 @@ export async function setmangry(mtmp, via_attack) {
     }
     if (humanoid(mtmp.data) || mtmp.isshk || mtmp.isgd) {
         if (couldsee(mtmp.mx, mtmp.my))
-            pline_mon(mtmp, "%s gets angry!", Monnam(mtmp));
+            await pline_mon(mtmp, "%s gets angry!", Monnam(mtmp));
     } else {
         growl(mtmp);
     }

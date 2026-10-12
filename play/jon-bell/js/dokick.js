@@ -52,7 +52,7 @@ import { PM_KILLER_BEE, PM_BLACK_PUDDING, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD
  * pm.generated.js (a 3.7-vs-5.0 role-swap name, see js/mhitu.js's own
  * PM_AMOROUS_DEMON_MU local const for the identical reason) so it is a local
  * constant here too, matching mnum 290 used consistently elsewhere in js/. */
-import { hcolor, You } from './mhitm.js';
+import { hcolor, You, noit_mon_nam } from './mhitm.js';
 const PM_AMOROUS_DEMON_DK = 290;
 import { m_at, do_attack, overexertion } from './uhitm.js';
 import { wipe_engr_at, maybe_unhide_at, place_object, makemon, mkgold, wake_nearto } from './mklev.js';
@@ -123,7 +123,7 @@ import { LEG, TT_PIT, is_pit, WEB, STATUE_TRAP, ZAP_POS } from './const.js';
 import { obj_resists } from './zap.js';
 import { useup } from './cmd.js';
 export { is_unpaid, in_rooms, shop_keeper };
-import { mksobj_at, mksobj, mpickobj, obj_extract_self } from './mklev.js';
+import { mksobj_at, mksobj, mpickobj, obj_extract_self, rnd_class } from './mklev.js';
 /* C mkobj.c:1977-1987 rnd_treefruit_at(x, y) — the one real body lives in
  * js/dig.js (a monster-digs-near-a-tree caller already exercises it), which
  * used to keep it file-local; exported there rather than re-derived here so
@@ -374,6 +374,32 @@ async function maybe_wail() {
  * RNG: rn2(3)             — maybe set wounded legs.
  *      rnd(con>15 ? 3 : 5) — damage.
  *      rn1(2, 4)          — hurtle distance (only if Is_airlevel || Levitation). */
+/* C ref: dokick.c:792-830 kickstr() — cause of death if kicking kills kicker.
+ * gm.maploc is the kicked square (dokick.c:1146 area); callers pass its x,y. */
+function kickstr(maploc, kickobjnam) {
+    let what;
+    if (kickobjnam) what = kickobjnam;
+    else if (!maploc) what = "nothing";
+    else {
+        const t = maploc.typ;
+        if (IS_DOOR(t)) what = "a door";
+        else if (IS_TREE(t)) what = "a tree";
+        else if (IS_STWALL(t)) what = "a wall";
+        else if (IS_OBSTRUCTED(t)) what = "a rock";
+        else if (IS_THRONE(t)) what = "a throne";
+        else if (IS_FOUNTAIN(t)) what = "a fountain";
+        else if (IS_GRAVE(t)) what = "a headstone";
+        else if (IS_SINK(t)) what = "a sink";
+        else if (IS_ALTAR(t)) what = "an altar";
+        else if (IS_DRAWBRIDGE(t)) what = "a drawbridge";
+        else if (t === STAIRS) what = "the stairs";
+        else if (t === LADDER) what = "a ladder";
+        else if (t === IRONBARS) what = "an iron bar";
+        else what = "something weird";
+    }
+    return "kicking " + what;
+}
+
 async function kick_ouch(x, y, kickobjnam) {
     const g = game;
     const u = g.u || {};
@@ -389,7 +415,7 @@ async function kick_ouch(x, y, kickobjnam) {
     /* C: dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5) */
     const con = acurr(u, A_CON) | 0;
     const dmg = rnd(con > 15 ? 3 : 5); /* consume RNG */
-    await losehp(dmg, "kicking something", KILLED_BY);
+    await losehp(dmg, kickstr(isok(x, y) ? g.level?.at(x, y) : null, kickobjnam), KILLED_BY);
     /* C: if (Is_airlevel || Levitation) hurtle(-u.dx, -u.dy, rn1(2,4), TRUE)
      * Levitation now reads the real uprop (Levitation_dk, dokick.js:153) —
      * see kick_dumb's identical fix above (import-note "CHECKED, NOT
@@ -502,16 +528,13 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             /* C: while (i--) mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE-1), x, y, FALSE, TRUE) */
             const DILITHIUM_CRYSTAL = 439; /* C ref: objects.h */
             const LUCKSTONE = 470; /* C ref: objects.h */
-            while (i--) {
-                /* C: rnd_class calls rnd(sum) or rn1(range, first) — consume RNG */
-                _rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1);
-                /* mksobj_at stub — WIRE_PENDING */
-            }
+            while (i--)
+                await mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), x, y, false, true);
             if (Blind) {
-                /* You("kick %s loose!", something) — no RNG */
+                await pline("You kick something loose!");
             }
             else {
-                /* You("kick loose some ornamental coins and gems!") */
+                await pline("You kick loose some ornamental coins and gems!");
                 newsym(x, y);
             }
             maploc.looted = T_LOOTED;
@@ -1538,6 +1561,10 @@ async function really_kick_object(x, y, kickedobj) {
         mon = m_at(bx, by);
         if (mon)
             break;
+        /* C zap.c:4049-4054 bhit(): kicked gold stops on a square that
+         * already holds objects (result == NULL). */
+        if (isgold && obj_at(bx, by))
+            break;
         /* C zap.c:4076-4080 bhit(): a wall/stone or closed door stops the
          * object and bhitpos backs up one square. */
         if (!ZAP_POS(bloc.typ | 0) || closed_door(bx, by)) {
@@ -1741,19 +1768,6 @@ export function is_db_wall(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     return (loc.typ | 0) === DBWALL;
-}
-/* C ref: objnam.c:5400-5417 rnd_class(first, last) — weighted random object type.
- * RNG: rnd(sum) if sum != 0, else rn1(last-first+1, first).
- * Inlined locally because objnam.js is not yet ported.
- * WIRE_PENDING: replace with import from objnam.js when ported. */
-function _rnd_class(first, last) {
-    if (last > first) {
-        /* C: compute sum of oc_prob for range — objects table not available yet.
-         * Assume sum = 0 (equal probability fallback: rn1(last-first+1, first)). */
-        /* WIRE_PENDING: import objects[] table and compute sum properly */
-        return rn1(last - first + 1, first);
-    }
-    return (first === last) ? first : 0; /* STRANGE_OBJECT = 0 */
 }
 /* C ref: dokick.c:1510-1631 impact_drop(missile, x, y, dlev)
  * Player or missile impacts location, causing objects to fall down.
@@ -2286,6 +2300,16 @@ export function picked_container(obj) {
  * its list); it is not ported, so it throws rather than silently returning the
  * true name and skipping two RNG draws. */
 export function shkname(mtmp) {
+    /* C shknam.c:861-864: the name buffer comes from noit_mon_nam(), with
+     * isshk cleared so mon_nam() cannot recurse back here. Under Hallucination
+     * that call draws rndmonnam() (do_name.c:952) on the DISPLAY stream and the
+     * result is then overwritten below, so the draws are a pure side effect. */
+    if (mtmp) {
+        const save_isshk = mtmp.isshk;
+        mtmp.isshk = 0;
+        noit_mon_nam(mtmp);
+        mtmp.isshk = save_isshk;
+    }
     /* C shknam.c:874-890: Hallucination (HHallucination && !Halluc_resistance)
      * and not gameover picks a random shop type, then a random name from its
      * list (two rn2 draws, js/mklev.js shkname_halluc_pick). */

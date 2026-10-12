@@ -28,7 +28,7 @@
 import { game, wizard } from './gstate.js';
 import { block_point, unblock_point, cansee } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT } from './const.js';
+import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT, A_NONE } from './const.js';
 import { PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE_VORTEX, PM_FREEZING_SPHERE, PM_STEAM_VORTEX, PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE, PM_EARTH_ELEMENTAL, PM_DUST_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_YELLOW_LIGHT, NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST } from './pm.generated.js';
 
 function _hero_resists(prop) {
@@ -605,7 +605,7 @@ function dprince(atyp) {
         const pm = PM_ORCUS + rn1(PM_DEMOGORGON + 1 - PM_ORCUS, 0);
         const v = game.mvitals?.[pm];
         const d = permonstTemplate(pm);
-        if (!((v?.mvflags | 0) & 0x08) /* G_GONE */
+        if (!((v?.mvflags | 0) & G_GONE) /* C minion.c:396 */
             && (atyp === -128 || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
             return pm;
     }
@@ -618,7 +618,7 @@ function dlord(atyp) {
         const pm = PM_JUIBLEX + rn1(PM_YEENOGHU + 1 - PM_JUIBLEX, 0);
         const v = game.mvitals?.[pm];
         const d = permonstTemplate(pm);
-        if (!((v?.mvflags | 0) & 0x08)
+        if (!((v?.mvflags | 0) & G_GONE)
             && (atyp === -128 || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
             return pm;
     }
@@ -649,9 +649,13 @@ _ENV([PM_EARTH_ELEMENTAL, PM_DUST_VORTEX], 'cloud', 'dust'); _ENV([PM_FIRE_ELEME
 _ENV([PM_ANGEL, PM_YELLOW_LIGHT], 'flash', 'light');
 export async function msummon(mon) {
     const ptr = mon?.data || permonstTemplate(PM_WIZARD_OF_YENDOR);
-    const atyp = Math.sign((mon?.ispriest && mon.mextra?.epri ? mon.mextra.epri.shralign
-        : mon?.isminion && mon.mextra?.emin ? mon.mextra.emin.min_align
-        : ptr.maligntyp) | 0);
+    /* C minion.c:76-82: a priest or minion carries its own alignment; any
+     * other species keeps A_NONE (the Wizard), which dprince()/dlord() read
+     * as "any alignment".  Math.sign(A_NONE) is -1 and would reject every
+     * prince of the other sign. */
+    const atyp = (mon?.ispriest && mon.mextra?.epri) ? Math.sign(mon.mextra.epri.shralign | 0)
+        : (mon?.isminion && mon.mextra?.emin) ? Math.sign(mon.mextra.emin.min_align | 0)
+        : ptr.maligntyp === A_NONE ? A_NONE : Math.sign(ptr.maligntyp | 0);
     let dtype = NON_PM, cnt = 0;
     const princeOrWizard = !!(ptr.mflags2 & M2_PRINCE) || !mon;
     if (princeOrWizard) {

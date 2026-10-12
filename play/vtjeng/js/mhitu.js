@@ -2322,10 +2322,22 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
             // Planning suppresses only the display operation. Source state
             // transitions and game-RNG draws below still run on the clone.
         } else {
-            const engulferName = capitalizedMonsterName(mtmp, state, {
-                ...rawEnv,
-                canSpotMonster: () => !mtmp.minvis && !mtmp.mundetected,
-            });
+            const injectedSpotOwner = rawEnv.canSpotMonster
+                ?? rawEnv.canSeeMonster;
+            const engulferName = capitalizedMonsterName(mtmp, state,
+                injectedSpotOwner ? rawEnv : {
+                    ...rawEnv,
+                    // C calls Monnam after placing the attacker on the
+                    // hero's square. JS omits that occupied square from the
+                    // sight grid, so restore only its physical visibility
+                    // through mon_visible; canspotmon retains sensing rules.
+                    canSpotMonster: (monster, ownerState) =>
+                        canspotmon(monster, ownerState)
+                        || (!heroIsBlind(ownerState)
+                            && monster.mx === ownerState.u?.ux
+                            && monster.my === ownerState.u?.uy
+                            && mon_visible(monster, ownerState)),
+                });
             const verb = digests(mtmp.data) ? 'swallows you whole'
                 : enfolds(mtmp.data) ? 'folds itself around you' : 'engulfs you';
             await urgentMessage(`${engulferName} ${verb}!`, state, rawEnv);

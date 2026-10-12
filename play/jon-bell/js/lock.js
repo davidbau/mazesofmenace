@@ -16,9 +16,10 @@ import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, r
 import { visctrl } from './cmd_binds.js';
 import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2 } from './const.js';
 import { impossible } from './pline.js';
-import { pline, force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon } from './display.js';
+import { pline, force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, You_hear, Unaware } from './display.js';
+import { mb_trapped } from './dig.js';
 import { topl_park_cursor, putmsghistory, feel_location } from './display.js';
-import { block_point, recalc_block_point, vision_recalc } from './vision.js';
+import { block_point, recalc_block_point, vision_recalc, unblock_point } from './vision.js';
 import { nhgetch } from './input.js';
 import { yn_function } from './end.js';
 import { display_text_window } from './com_pager.js';
@@ -188,6 +189,23 @@ export async function doopen_indir(x, y) {
     const loc = g.level?.at(cx, cy);
     if (!loc) return ECMD_OK;
     const portcullis = _is_drawbridge_wall_stub(cx, cy) >= 0;
+
+    /* C lock.c:830-839 — "using a key skips [the Blind test] so we do too":
+     *     int oldglyph = door->glyph;
+     *     schar oldlastseentyp = update_mapseen_for(cc.x, cc.y);
+     *     newsym(cc.x, cc.y);
+     *     if (door->glyph != oldglyph || svl.lastseentyp[cc.x][cc.y] != oldlastseentyp)
+     *         res = ECMD_TIME; // learned something
+     * Without this, `o` at a wall whose remembered glyph newsym rewrites
+     * (wall_angle seen-vector change) spent no turn where C does. */
+    {
+        const _sig = (l) => { const r = l.remembered_glyph;
+            return r ? `${r.ch}|${r.color}|${r.cls}|${r.decgfx}` : ''; };
+        const _og = _sig(loc), _ot = loc.lastseentyp | 0;
+        await newsym(cx, cy);
+        if (_sig(loc) !== _og || (loc.lastseentyp | 0) !== _ot)
+            res = ECMD_TIME;
+    }
 
     if (portcullis || loc.typ !== DOOR) {
         if (_is_db_wall_stub(cx, cy) || loc.typ === 19 /* DRAWBRIDGE_UP */) {
@@ -1251,6 +1269,13 @@ export async function pick_lock(pick, rx, ry, container) {
         return PICKLOCK_DID_SOMETHING;
     }
 
+    /* C lock.c:408-411 — an engulfed hero cannot reach any lock; this runs
+     * BEFORE the direction prompt at lock.c:424, so no getdir() happens. */
+    if (u.uswallow) {
+        await pline(`You can't ${picktyp === CREDIT_CARD_OTYP ? '' : 'lock or '}unlock ${mon_nam(u.ustuck)}.`);
+        return PICKLOCK_DID_NOTHING;
+    }
+
     /* C lock.c:421 — autounlock provides coordinates; else getdir → u.dx/u.dy. */
     let cx, cy;
     if ((rx | 0) !== 0) {
@@ -1606,12 +1631,32 @@ export async function doorlock(otmp, x, y) {
     case 376: /* SPE_FORCE_BOLT */
         if ((door.doormask | 0) & (D_LOCKED | D_CLOSED)) {
             if ((door.doormask | 0) & D_TRAPPED) {
-                /* KNOWN GAP — lock.c:1105-1135: a trapped door explodes
-                 * (doormask = D_NODOOR, mb_trapped() on any monster in the
-                 * doorway, "KABOOM!!" and loudness 40).  Missing dependency:
-                 * mb_trapped (trap.c), which draws RNG.  Returns FALSE
-                 * rather than throwing; see the SDOOR arm above. */
-                return false;
+                /* C lock.c:1105-1135: a trapped door explodes.  The doorway
+                 * is emptied and its light unblocked; a monster standing in
+                 * it sets the trap off via mb_trapped(); otherwise the blast
+                 * is loud (loudness 40) and prints KABOOM when seen. */
+                const mtmp = m_at(x, y);
+                const sawit0 = mtmp ? canseemon(mtmp) : cansee(x, y);
+                door.doormask = D_NODOOR;
+                unblock_point(x, y);
+                newsym(x, y);
+                const seeit = mtmp ? canseemon(mtmp) : cansee(x, y);
+                if (mtmp) {
+                    await mb_trapped(mtmp, sawit0 || seeit);
+                } else {
+                    /* C lock.c:1121-1131 — Soundeffect() is a no-op here */
+                    loudness = 40;
+                    if (game.flags?.verbose) {
+                        if ((sawit0 || seeit) && !Unaware())
+                            await pline("KABOOM!!  You see a door explode.");
+                        else if (!_lock_Deaf()) {
+                            const u = game.u;
+                            const d2 = ((x - u.ux) ** 2) + ((y - u.uy) ** 2);
+                            await You_hear(`a ${(d2 > 7 * 7) ? 'distant' : 'nearby'} explosion.`);
+                        }
+                    }
+                }
+                break;
             }
             const sawit = cansee(x, y);
             door.doormask = D_BROKEN;

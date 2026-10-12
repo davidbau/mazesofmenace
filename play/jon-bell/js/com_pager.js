@@ -22,7 +22,7 @@ import { pmatchi } from './strutil.js'; /* C strutil.c:151 — MENU_SEARCH's mat
 import { putmsghistory, _strengthStr, force_more, force_more_pages, await_more_dismiss,
          await_topl_more_dismiss, pline_flush_point,
          botl_pmname, botl_upstart_words, botl_mon_mlevel,
-         oclass_sym, rogue_graphics, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1 } from './display.js';
+         gold_status_char, rogue_graphics, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap } from './display.js';
 // ── ANSI color helpers (inlined from display.js — not exported there) ──
 const ANSI_DEFAULT = 39;
 // C ref: color.h:10-14 — CLR_BLACK(0) renders as bright-black (90); CLR_GRAY(7)
@@ -141,12 +141,28 @@ function format_legacy_text(template, roleIdx, alignType, female) {
 // Returns { str: string, endCol: number } where endCol is the 0-indexed column
 // after the last character rendered.
 function render_map_row_clipped(y, clipX) {
-    if (!game.level)
+    /* A dismissed legacy window's docorner() repaints the map rows it covered
+     * (wintty.c tty_dismiss_nhwindow, ymax = maxrow+1) even after read_wizkit()
+     * blanked the terminal: js/com_pager.js sets `_map_corner`. */
+    if (!game.level || (game._map_blanked
+        && !(game._map_corner && y + 1 < game._map_corner.ymax)))
         return { str: '', endCol: 0 };
+    /* RogueEpyx S_human = \x01 (dat/symbols): a control byte puts no glyph on
+     * the terminal, so the hero's square keeps what the physical screen held
+     * (blank after a cls) -- the same rule as js/display.js _snapCellAt. */
+    const cellAt = (x) => {
+        const loc = game.level.at(x, y);
+        if (loc?.disp_ch === '\x01') {
+            const p = game._epyxPhys?.get(y * COLNO + x);
+            return { disp_ch: p?.ch ?? ' ', disp_color: p?.color ?? NO_COLOR,
+                     disp_decgfx: !!p?.dec, disp_attr: p?.attr | 0 };
+        }
+        return loc;
+    };
     // Find visible range within [1, clipX]
     let firstCol = -1, lastCol = -1;
     for (let x = 1; x <= clipX && x < COLNO; x++) {
-        const loc = game.level.at(x, y);
+        const loc = cellAt(x);
         if (loc?.disp_ch && loc.disp_ch !== ' ') {
             if (firstCol < 0)
                 firstCol = x;
@@ -160,17 +176,19 @@ function render_map_row_clipped(y, clipX) {
     let activeDec = false;
     let activeInverse = false;
     /* C display.c:3077-3081 / symbols.c:217-233 — on a Rogue level every glyph
-     * colour is NO_COLOR and the symbols are plain ASCII (no DEC mode). */
+     * colour is NO_COLOR and the symbols are plain ASCII (no DEC mode), unless
+     * has_rogue_color keeps them (HAS_ROGUE_IBM_GRAPHICS, display.c:2582-2587). */
     const rogueMap = rogue_graphics();
+    const rogueColor = rogue_ibm_color();
     const gap = firstCol - 1;
     if (gap > 4)
         output += `\x1b[${gap}C`;
     else if (gap > 0)
         output += ' '.repeat(Math.max(0, gap));
     for (let x = firstCol; x <= lastCol; x++) {
-        const loc = game.level.at(x, y);
+        const loc = cellAt(x);
         const ch = loc?.disp_ch ?? ' ';
-        const color = (rogueMap || game.iflags?.use_color === false)
+        const color = ((rogueMap && !rogueColor) || game.iflags?.use_color === false)
             ? NO_COLOR : (loc?.disp_color ?? NO_COLOR);
         const dec = !rogueMap && !!loc?.disp_decgfx;
         const inverse = !!((loc?.disp_attr | 0) & 1 /* ATR_INVERSE */);
@@ -193,7 +211,7 @@ function render_map_row_clipped(y, clipX) {
                 activeColor = ANSI_DEFAULT;
             }
             let run = 1;
-            while (x + run <= lastCol && (game.level.at(x + run, y)?.disp_ch ?? ' ') === ' ')
+            while (x + run <= lastCol && (cellAt(x + run)?.disp_ch ?? ' ') === ' ')
                 run++;
             if (activeDec) {
                 output += '\x0f';
@@ -284,6 +302,12 @@ function _overlay_status_line(base, col, text) {
     let out = '';
     let visCol = 0;       // current visible column
     let i = 0;
+    // C wintty.c:4969 term_start_attr(ATR_INVERSE) for the status title is
+    // closed by term_end_attr(ATR_INVERSE) right after the title's text, before
+    // the cursor-forward gap.  A clip that lands inside the inverse run must
+    // still leave the terminal in the reset state, or the menu footer written
+    // after the clip (and every later blank cell) paints in reverse video.
+    let sgrOpen = false;
     while (i < base.length && visCol < col) {
         const ch = base[i];
         if (ch === '\x1b' && base[i + 1] === '[') {
@@ -302,6 +326,7 @@ function _overlay_status_line(base, col, text) {
             } else {
                 // SGR or other: emit as-is (no visible width)
                 out += base.slice(i, j + 1);
+                if (fin === 'm') sgrOpen = !/^(0)?$/.test(params);
             }
             i = j + 1;
             continue;
@@ -311,6 +336,8 @@ function _overlay_status_line(base, col, text) {
         visCol++;
         i++;
     }
+    // The clip ended inside an open SGR run: close it (term_end_attr).
+    if (sgrOpen) out += '\x1b[0m';
     // Pad from current visible column up to `col`
     if (visCol < col) {
         const gap = col - visCol;
@@ -404,19 +431,28 @@ export async function display_text_window(lines) {
     }
 }
 export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCol, pwOverride,
-                                    fullScreen = false, mapClipExtra = 0) {
+                                    fullScreen = false, mapClipExtra = 0, clipRow23 = false) {
     const _prevRows = (typeof game._screen_output === 'string')
         ? game._screen_output.split('\n') : null;
     /* wintty.c:4289-4298 / 3814: with statuslines:3 the status rows are
      * 21/22/23 and the map loses its last row. */
     const rows3 = _threeStatusLines();
-    const st3 = rows3 ? _statusRows3() : null;
+    /* C ref: allmain.c:891 bot() ran before u_init's ini_inv, so the legacy
+     * step-0 frame (the only caller passing pwOverride) paints row 23's
+     * weapon/armor fields from an empty equipment set — "Bare-hnds Naked".
+     * Same flag as the menu path below (line ~1049); display.js _equipView() reads it. */
+    const _preInvRows3 = rows3 && pwOverride !== undefined;
+    if (_preInvRows3) game._botlPreInv = true;
+    let st3 = null;
+    try { st3 = rows3 ? _statusRows3() : null; }
+    finally { if (_preInvRows3) game._botlPreInv = false; }
     const rowStatus = (r) => rows3 ? st3[r - 21]
         : (r === 22 ? _statusLine1() : _statusLine2(uacStep0, pwOverride));
-    const statusStillBlank = !!_prevRows && _prevRows.length >= 24
+    const statusStillBlank = (game._statusBlankAfterDocrt === true && statusClipCol == null)
+        || (!!_prevRows && _prevRows.length >= 24
         && (rows3 ? _prevRows[21] === '' : true)
         && _prevRows[22] === '' && _prevRows[23] === '' && statusClipCol == null
-        && _prevRows.slice(1, 22).some((r) => r.includes('\x0e'));
+        && _prevRows.slice(1, 22).some((r) => r.includes('\x0e')));
     const winRows = windowLines.length;
     // CLIP_X: 1-indexed max map column to render when window covers this row.
     const CLIP_X = WIN_COL - 1 + mapClipExtra;
@@ -569,7 +605,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipCo
         }
         if (screenRow === 23) {
             // Status line 2: render regardless of window coverage
-            if (statusClipCol === -1 || statusClipCol > 30) {
+            if (statusClipCol === -1 || (statusClipCol > 30 && !clipRow23)) {
                 output += rowStatus(23);
                 continue;
             }
@@ -705,7 +741,8 @@ function _cp_rank_of(ulevel, roleName, female) {
         return null;
     return rank_of(idx, ulevel, female);
 }
-function _statusLine1() {
+function _statusLine1() { return _hilite_status_wrap(_statusLine1Raw()); }
+function _statusLine1Raw() {
     const g = game;
     const u = g.u;
     /* C botl.c:259-260 bot(): nothing is painted while !iflags.status_updates,
@@ -761,7 +798,8 @@ export function money_cnt(otmp) {
 // C ref: botl.c — status line 2 format.
 // Respects flags.showexp and flags.time options.
 // Note: uac passed as parameter to allow caller control (step 0 = pre-find_ac, step 1+ = current).
-function _statusLine2(uacOverride, pwOverride) {
+function _statusLine2(uacOverride, pwOverride) { return _hilite_status_wrap(_statusLine2Raw(uacOverride, pwOverride)); }
+function _statusLine2Raw(uacOverride, pwOverride) {
     const g = game;
     const u = g.u;
     /* C botl.c:259-260 bot(): nothing is painted while !iflags.status_updates,
@@ -793,7 +831,7 @@ function _statusLine2(uacOverride, pwOverride) {
     _hp = Math.min(_hp, 9999);
     const _hpmax = Math.min(Upolyd ? (u.mhmax | 0) : (u.uhpmax || 0), 9999);
     const _leveldescField = describe_level_buf(1, u.uz).replace(/ +$/, '');
-    let s = `${_leveldescField} ${oclass_sym(12 /* COIN_CLASS */) ?? "$"}:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
+    let s = `${_leveldescField} ${gold_status_char()}:${gold} HP:${_hp}(${_hpmax}) Pw:${uen}(${uenmax}) AC:${uac}`;
     if (Upolyd) {
         s += ` HD:${botl_mon_mlevel(u.umonnum | 0)}`;
     }
@@ -889,6 +927,23 @@ export async function topl_more_page(msg, uacAtCapture) {
         // Row 23: status line 2 (with uac = actual post-find_ac value)
         output += _statusLine2(uacAtCapture);
     }
+    /* read_wizkit() blanked the physical terminal before the first docrt()
+     * paint (files.c:2487, js/display.js _map_blanked): the map rows are empty
+     * and bot() has painted only the field that changed since — AC, after
+     * find_ac() (wintty.c tty_status_update repaints changed fields only). */
+    if (g._map_blanked && !_threeStatusLines()) {
+        const rows = output.split('\n');
+        const moreRows = rows.findIndex(r => r.endsWith('--More--')) + 1;
+        /* docorner() of the dismissed legacy window repainted the rows it
+         * covered (_map_corner); everything else is still blank. */
+        const keep = g._map_corner ? Math.min(g._map_corner.ymax, 22) : moreRows;
+        const blanked = rows.slice(0, Math.max(moreRows, keep));
+        while (blanked.length < 23) blanked.push('');
+        /* the AC field sits at its column in status line 2 (botl.c) */
+        const acCol = Math.max(0, _statusLine2(uacAtCapture).replace(/\x1b\[[0-9;]*m/g, '').indexOf('AC:'));
+        blanked.push(`\x1b[${acCol}CAC:` + (uacAtCapture ?? g.u?.uac ?? 0));
+        output = blanked.join('\n');
+    }
     g._screen_output = output;
     // Cursor at end of '--More--'
     const disp = g?.nhDisplay;
@@ -961,10 +1016,16 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
         || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
     const WIN_COL = fullScreen ? 1 : tty_window_offx(windowLines, footerKind);
     // preInitAc mirrors C's u.uac=0 (from memset) at the time bot() rendered step 0.
-    const screenOutput = fullScreen
+    let screenOutput = fullScreen
         ? windowLines.map((ln, i) => (i === windowLines.length - 1 ? ' ' : '')
             + _encode_blank_runs(String(ln).replace(/\s+$/, ''))).join('\n')
         : build_window_screen(windowLines, WIN_COL, preInitAc, undefined, preInitPw);
+    /* allmain.c:826 read_wizkit() ran before the first docrt()/bot(): the map
+     * and status rows below the window have never been painted. */
+    if (g._blank_below_window) {
+        g._blank_below_window = false;
+        screenOutput = screenOutput.split('\n').slice(0, windowLines.length).join('\n');
+    }
     // Set cursor to end of --More-- line
     // C ref: tty_display_nhwindow → cursor positioned at end of "--More--"
     const moreRow = windowLines.length - 1;
@@ -983,6 +1044,8 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
     };
     await _show();
     await await_more_dismiss(_show);
+    if (g._map_blanked && !fullScreen)
+        g._map_corner = { xmin: WIN_COL, ymax: windowLines.length };
     // C ref: questpgr.c:597-608 com_pager_core — after deliver_by_window, the
     // "legacy"/"pauper_legacy" entry carries a `synopsis` that is added to the
     // message history ring (putmsghistory(out_line, FALSE)) but never displayed

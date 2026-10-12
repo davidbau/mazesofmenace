@@ -4,6 +4,7 @@
 // Hand-maintained JS (not tsc-emitted). Sibling imports from js/*.js.
 import { u_safe_from_fatal_corpse } from './pickup.js';
 import { game, wizard } from './gstate.js';
+import { reassign } from './inventory_refresh.js';
 import { COLNO } from './const.js';
 const IN_SIGHT_BIT = 0x2; /* vision.h IN_SIGHT */
 import { s_suffix as _ta_s_suffix } from './hacklib.js';
@@ -651,9 +652,18 @@ function _wish_merged_reconcile(into, obj) {
     }
     if ((obj.bknown | 0) !== (into.bknown | 0)) {
         into.bknown = 1;
-        discovered = true;
+        if (!_wish_role_is_priest()) discovered = true;
     }
     return discovered;
+}
+
+/* C you.h:247 Role_if(X) is gu.urole.mnum == X; the Priest role index is 6
+ * (role.c), read the way hold_another_object.js _Role_if reads it. */
+const _WISH_ROLE_PRIEST = 6;
+function _wish_role_is_priest() {
+    const ir = ((game.flags?.initrole ?? -1) | 0);
+    if (ir >= 0) return ir === _WISH_ROLE_PRIEST;
+    return (((game.urole && game.urole.mnum) ?? -1) | 0) === _WISH_ROLE_PRIEST;
 }
 
 /* C ref: pickup.c:1972 encumber_msg() — the load-change line.  Returns the
@@ -733,6 +743,16 @@ function _wish_Fumbling() {
     return !!fp && !!((fp.intrinsic | 0) || (fp.extrinsic | 0));
 }
 
+/* C invent.c:2861 obj_to_let(), called by prinv()'s xprname (invent.c:2888):
+ * with !fixinv the object's letter is blanked and reassign() (invent.c:4855)
+ * re-letters the whole pack in chain order, resetting gl.lastinvnr. */
+function _wish_obj_to_let(obj) {
+    if (!(game.flags?.invlet_constant ?? true)) {
+        obj.invlet = 0x23; /* NOINVSYM */
+        reassign();
+    }
+}
+
 function _wish_drop_spec(obj) {
     const g = game, u = g.u || {};
     const airOrWater = Is_airlevel(u.uz) || Is_waterlevel(u.uz);
@@ -761,13 +781,23 @@ async function _wish_drop_overburdened(obj, dropSpec) {
 }
 
 import { merged as merged_glob } from './hold_another_object.js';
+/* options.c:3297 burdentype[]: the option may hold the level's name. */
+export function _pickup_burden_level(v) {
+    if (v == null) return 2; /* MOD_ENCUMBER */
+    if (typeof v === 'string') {
+        const i = ['unencumbered', 'burdened', 'stressed', 'strained',
+                   'overtaxed', 'overloaded'].indexOf(v);
+        return i < 0 ? 2 : i;
+    }
+    return v | 0;
+}
 async function _wish_addinv_prinv(otmp, dropSpec) {
     const g = game;
 
     /* C ref: hold_another_object snapshots go.oldcap before addinv; encumber_msg
      * compares near_capacity() to it after the object is in inventory.  RNG-free. */
     const _oldcap = near_capacity();
-    const _pickupBurden = (g.flags?.pickup_burden ?? 2) | 0;
+    const _pickupBurden = _pickup_burden_level(g.flags?.pickup_burden);
     const _dropCap = Math.max(_oldcap, _pickupBurden);
     const _oquan = (otmp.quan ?? 1) | 0;
 
@@ -813,6 +843,14 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                  * obj_absorb) instead of adding quantity. */
                 await merged_glob({ o }, { o: otmp });
             } else {
+            /* C invent.c:820-834 merged() — approximate age, weighted by the
+             * PRE-merge quantities (skipped for lit objects and globs; globs
+             * took the branch above).  Without it a wished food stack kept
+             * the old age and doeat skipped/ran the rn2(7) rot roll
+             * (eat.c:3028-3031) differently from C. */
+            if (!otmp.lamplit && ((o.quan ?? 1) | 0) + oquan)
+                o.age = Math.trunc((((o.age | 0) * ((o.quan ?? 1) | 0))
+                    + ((otmp.age | 0) * oquan)) / (((o.quan ?? 1) | 0) + oquan));
             o.quan = ((o.quan ?? 1) | 0) + oquan;
             /* C invent.c:838-839 — merged() clears bknown on merged gold
              * before comparing the id dimensions (:871) */
@@ -844,12 +882,14 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 await setuqwep(o);
             let prinvLine = null;
             if (o.invlet) {
+                _wish_obj_to_let(o);
                 const total_of = (oquan > 0 && oquan < (o.quan | 0));
                 const dot = total_of ? '' : '.';
                 /* prinv prints the merged stack with quan=oquan (xprname's quan
                  * arg), not the merged total. */
                 const totalbuf = (total_of && g.flags?.verbose) ? ` (${o.quan | 0} in total).` : '';
                 prinvLine = `${String.fromCharCode(o.invlet | 0)} - ${(await _wish_doname(o, oquan))}${dot}${totalbuf}`;
+                if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
                 g._resultMessage = g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
             }
             await _wish_encumber_msg(_oldcap, prinvLine);
@@ -918,8 +958,10 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
     /* C invent.c:2889 prinv — "<invlet> - <doname>." on the topline. */
     let prinvLine = null;
     if (otmp.invlet) {
+        _wish_obj_to_let(otmp);
         prinvLine = `${String.fromCharCode(otmp.invlet | 0)} - ${(await _wish_doname(otmp))}.`;
-        g._resultMessage = g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
+        if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
+                g._resultMessage = g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
     }
     await _wish_encumber_msg(_oldcap, prinvLine);
 }
@@ -2049,6 +2091,7 @@ export async function wiz_load_splua() {
          * type 2!--More--") is drawn over the OLD map.  Freeze the paint on
          * the pre-reset frame until makemap_prepost's cls() releases it. */
         const frame = (await import('./display.js')).capture_painted_frame();
+        if (frame) frame.liveGbuf = true;
         game._levelgenPaintFreeze = frame;
         try {
             await sp.lspo_reset_level();

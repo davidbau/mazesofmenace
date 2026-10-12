@@ -11,10 +11,13 @@ import { CQ_CANNED, ECMD_FAIL } from './const.js';
 import { EXPL_FIERY } from './const.js';
 import { RIGHT_HANDED, STRANGLED, A_STR, ismnum, BOLT_LIM, Upolyd } from './const.js';
 import { set_levltyp } from './mkmaze.js';
+import { SINK, GRAVE, THRONE, T_LOOTED, AM_NONE, Align2amask } from './const.js';
+import { In_hell, make_grave } from './mklev.js';
+import { an } from './objnam.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
 import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE } from './pm.generated.js';
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
-import { pline, flush_screen, newsym, force_more, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind } from './display.js';
+import { pline, flush_screen, newsym, force_more, force_more_lone_frame, await_topl_more_dismiss, canspotmon, canseemon, map_invisible, getobj_never_mind, You_see } from './display.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
 import { aggravate, monstseesu as monstseesu_real } from './mcastu.js';
@@ -41,7 +44,7 @@ import { curse } from './mkobj.js';
 import { heal_legs, unfixable_trouble_count, doup, body_part as body_part_cmd, ceiling, altar_wrath } from './cmd.js';
 import { WOUNDED_LEGS } from './const.js';
 /* C hack.h:129-149 enum bodypart_types — the indices body_part() takes. */
-import { EYE, FINGER, LEG, ARM, STOMACH } from './const.js';
+import { EYE, FINGER, LEG, ARM, STOMACH, FACE } from './const.js';
 /* make_confused's C home is THIS file (potion.c:88); it used to be imported
  * from js/mhitu.js, where it was an exported empty body. */
 import { unconscious } from './pickup.js';
@@ -144,7 +147,7 @@ import { enlightenment_menu } from './cmd.js';
 import { MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, A_INT } from './const.js';
 import { PM_GHOST, PM_TENGU, PM_CYCLOPS, PM_FLOATING_EYE } from './pm.generated.js';
 import { set_malign, findgold, mon_set_minvis, which_armor, dmgtype_fromattack } from './makemon.js';
-import { mongone } from './mklev.js';
+import { mongone, split_mon_ml } from "./mklev.js";
 import { tamedog } from './dog.js';
 import { Monnam } from './mcastu.js';
 import { makewish } from './wizcmds.js';
@@ -345,7 +348,7 @@ async function y_n(question) {
     if (game._pending_message && !game._topl_win_stop) {
         await flush_screen(1);
         if (game._pending_message && !game._topl_win_stop)
-            await force_more(game._pending_message);
+            await force_more_lone_frame(game._pending_message);
     }
     game._pending_message = prompt;
     await flush_screen(1);
@@ -902,7 +905,13 @@ async function dowaternymph() {
 export async function dogushforth(drinking) {
     const madepool = { n: 0 };
 
-    await do_clear_area_async(game.u.ux, game.u.uy, 7, gush, madepool);
+    const _was = game._inGushforth;
+    game._inGushforth = true;
+    try {
+        await do_clear_area_async(game.u.ux, game.u.uy, 7, gush, madepool);
+    } finally {
+        game._inGushforth = _was;
+    }
     if (!madepool.n) {
         if (drinking)
             await pline('Your thirst is quenched.');
@@ -2721,7 +2730,7 @@ function _potion_Fast() {
 /* C youprop.h:125  Deaf (HDeaf || EDeaf || u.uroleplay.deaf). */
 function _potion_Deaf() {
     const dp = game.u?.uprops?.[DEAF];
-    return !!((dp?.intrinsic | 0) || (dp?.extrinsic | 0)
+    return !!((dp?.intrinsic | 0) || (dp?.extrinsic | 0) || (game.u?.HDeaf | 0)
               || (game.u?.uroleplay?.deaf ? 1 : 0));
 }
 /* C youprop.h:69  Sick_resistance (HSick_resistance || ESick_resistance || ...).
@@ -2735,12 +2744,20 @@ function _potion_Sick_resistance() {
 /* C potion.c:442-455  make_deaf(long xtime, boolean talk) */
 export async function make_deaf(xtime, talk) {
     const pd = _uprop(DEAF);
-    const old = pd.intrinsic | 0;
+    const u = game.u;
+    /* HDeaf is the FLAT u.HDeaf slot in this port (music.js incr_HDeaf,
+     * eat.js rottenfood write it); u.uprops[DEAF].intrinsic is the legacy
+     * mirror.  Reading only the mirror made healup() skip "You can hear
+     * again." (potion.c:1450 -> 454) on a hero deafened by a drum/rotten food. */
+    const old = (u.HDeaf | 0) || (pd.intrinsic | 0);
 
     if (_Unaware())
         talk = false;
 
     _set_prop_itimeout(pd, xtime);
+    const hbox = { value: u.HDeaf | 0 };
+    set_itimeout(hbox, xtime);
+    u.HDeaf = hbox.value;
     if (!!xtime !== !!old) {
         SET_BOTL();
         if (talk)
@@ -3306,9 +3323,12 @@ function _simpleoname(obj) {
     return descr ? `${descr} potion` : 'potion';
 }
 function _simpleonames(obj) {
-    /* C simpleonames = makeplural(simpleoname) when quan>1 else simpleoname. */
+    /* C objnam.c:2428 simpleonames: makeplural(simpleoname) when quan != 1.
+     * makeplural pluralises the head noun ("potion of blindness" ->
+     * "potions of blindness"); a trailing-'s' test on the whole string is
+     * wrong because "blindness" itself ends in 's'. */
     const base = _simpleoname(obj);
-    if ((obj.quan | 0) > 1) return base.endsWith('s') ? base : `${base}s`;
+    if ((obj.quan | 0) !== 1) return makeplural_objnam(base);
     return base;
 }
 function _thesimpleoname(obj) { return `the ${_simpleoname(obj)}`; }
@@ -3730,7 +3750,7 @@ async function potion_dip(obj, potion) {
         if (!more_dips) {
             /* C potion.c:2687-2691 */
             exercise(A_WIS, wisx);
-            if (potion.dknown) discover_object(potion.otyp | 0, true, true);
+            if (potion.dknown) discover_object(potion.otyp | 0, true, true, true);
             _useup(potion);
             return ECMD_TIME;
         }
@@ -3772,7 +3792,7 @@ async function potion_dip(obj, potion) {
             _useup(potion);
             exercise(A_WIS, true);
         }
-        if (potion.dknown) discover_object(POT_OIL, true, true);
+        if (potion.dknown) discover_object(POT_OIL, true, true, true);
         obj.spe = 1;
         /* update_inventory() — display bookkeeping, no RNG. */
         return ECMD_TIME;
@@ -4010,9 +4030,62 @@ export async function dip_into() {
 }
 
 /* C ref: potion.c:2269 dodip() — the #dip command. */
+/* C do.c:404-456 polymorph_sink(void): sink -> fountain/throne/altar/grave. */
+export async function polymorph_sink() {
+    const u = game.u;
+    const loc = game.level?.at(u.ux, u.uy);
+    if (!loc || loc.typ !== SINK) return;
+    const sinklooted = (loc.looted | 0) !== 0;
+    loc.flags = loc.looted = 0;
+    let sym;
+    switch (rn2(4)) {
+    case 0: default:
+        sym = 'fountain'; set_levltyp(u.ux, u.uy, FOUNTAIN); loc.blessedftn = 0;
+        if (sinklooted) loc.flags = 1; /* SET_FOUNTAIN_LOOTED */
+        break;
+    case 1:
+        sym = 'opulent throne'; set_levltyp(u.ux, u.uy, THRONE);
+        if (sinklooted) loc.looted = T_LOOTED;
+        break;
+    case 2: {
+        sym = 'altar'; set_levltyp(u.ux, u.uy, ALTAR);
+        const algn = rn2(3) - 1; /* drawn before the Inhell test, as C does */
+        loc.altarmask = (In_hell(u.uz) && rn2(3)) ? AM_NONE : Align2amask(algn);
+        break;
+    }
+    case 3:
+        sym = 'grave'; set_levltyp(u.ux, u.uy, ROOM); make_grave(u.ux, u.uy, null); break;
+    }
+    if (loc.typ !== ROOM) await pline(`The sink transforms into ${an(sym)}!`);
+    else await pline('The sink vanishes.');
+    newsym(u.ux, u.uy);
+}
+
+/* C fountain.c:800-822 sink_backs_up(x, y) — "Flupp! Muddy waste pops up from
+ * the drain", then a once-per-sink ring (mkobj_at) if the sink is unlooted. */
+export async function sink_backs_up(x, y) {
+    const g = game;
+    const Blind = _potion_Blind();
+    let buf;
+    if (!Blind) buf = 'Muddy waste pops up from the drain';
+    else if (!_potion_Deaf()) buf = 'You hear a sloshing sound';
+    else buf = `Something splashes you in the ${body_part(FACE)}`;
+    await pline(`${!_potion_Deaf() ? 'Flupp!  ' : ''}${buf}.`);
+
+    const loc = g.level.at(x, y);
+    if (!((loc.looted | 0) & S_LRING)) { /* once per sink */
+        if (!Blind) await You_see('a ring shining in its midst.');
+        await mkobj_at(RING_CLASS, x, y, true);
+        newsym(x, y);
+        exercise(A_DEX, true);
+        exercise(A_WIS, true); /* a discovery! */
+        loc.looted = (loc.looted | 0) | S_LRING;
+    }
+}
+
 /* C fountain.c:722-799 dipsink(obj) — #dip while standing on a sink.
- * WIRE_PENDING: wash_hands() (is_hands arm), polymorph_sink() and
- * sink_backs_up() are not ported; those arms only do their messages here. */
+ * WIRE_PENDING: wash_hands() (is_hands arm) is not ported; that arm only
+ * returns here. */
 export async function dipsink(obj) {
     const g = game;
     const u = g.u;
@@ -4038,7 +4111,7 @@ export async function dipsink(obj) {
     await pline(`You pour ${(obj.quan | 0) > 1 ? 'one of ' : ''}${await the(await xname(obj))} down the drain.`);
     switch (obj.otyp | 0) {
     case POT_POLYMORPH:
-        /* polymorph_sink() — unported */
+        await polymorph_sink();
         try_call = true;
         break;
     case POT_OIL:
@@ -4054,7 +4127,7 @@ export async function dipsink(obj) {
         else { await pline(nothing_seems_to_happen); try_call = false; }
         break;
     case POT_LEVITATION:
-        /* sink_backs_up() — unported */
+        await sink_backs_up(u.ux, u.uy);
         try_call = true;
         break;
     case POT_OBJECT_DETECTION:
@@ -4378,7 +4451,7 @@ export async function potionhit(mon, obj, how) {
                 /* C potion.c:1854-1856 — split the gremlin using the existing
                  * clone/state/RNG preserving trap-layer helper. */
                 angermon = false;
-                split_mon_rt(mon, null);
+                await split_mon_ml(mon, null);
             } else if ((pdata ? (pdata.pmidx | 0) : -1) === PM_IRON_GOLEM) {
                 if (canseemon(mon)) pline(`${Monnam(mon)} rusts.`);
                 mon.mhp = (mon.mhp | 0) - d(1, 6);

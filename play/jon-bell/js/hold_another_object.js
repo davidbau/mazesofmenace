@@ -85,7 +85,7 @@ import { oname, obj_typename } from './objnam.js';
 import { Blind } from './vision.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { setnotworn } from './worn.js';
-import { touch_artifact_youmonst } from './wizcmds.js';
+import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
 import { place_object, remove_object, dealloc_obj } from './mklev.js';
 import { update_inventory } from './inventory_refresh.js';
 import { obj_merge_light_sources } from './light.js';
@@ -626,7 +626,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         const oquan = obj.quan | 0;
         let prev_encumbr = near_capacity(); /* before addinv() */
 
-        const pickup_burden = (g.flags?.pickup_burden ?? MOD_ENCUMBER) | 0;
+        const pickup_burden = _pickup_burden_level(g.flags?.pickup_burden);
         if (prev_encumbr < pickup_burden)
             prev_encumbr = pickup_burden;
 

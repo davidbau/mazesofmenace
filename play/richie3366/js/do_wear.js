@@ -94,6 +94,7 @@ import { gulp_blnd_check } from './mhitu.js';
 import { region_danger } from './region.js';
 import { can_be_strangled } from './uhitm.js';
 import { remove_worn_item } from './steal.js';
+import { surface } from './sit.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const HELMET = objectNames.indexOf('HELMET');
@@ -1248,25 +1249,26 @@ export async function Shirt_off() {
 }
 
 /**
- * C ref: do_wear.c Armor_on `:886–900` — known + dragon_armor_handling +
- * gold-DSM arti_light begin_burn in C order. find_ac kept (house; C relies
- * on the botl repaint instead).
+ * C ref: do_wear.c Armor_on `:887–906` — known + dragon_armor_handling +
+ * gold-DSM arti_light begin_burn in C order. No find_ac here (D-0810:
+ * C never recomputes uac in Armor_on; uac refreshes at the allmain
+ * once-per-player-input find_ac, so a mid-turn donning completion paints
+ * the stale AC until the turn ends — cf. scen-sweep-Priest-582714 s1376).
  */
 async function Armor_on() {
     const uarm = game.u?.uarm;
-    if (!uarm) return 0;
+    if (!uarm) return 0; // C `:889–890`
     if (!uarm.known) {
-        uarm.known = 1;
+        uarm.known = 1; // C `:891–894`
         update_inventory();
     }
-    await dragon_armor_handling(uarm, true, true);
+    await dragon_armor_handling(uarm, true, true); // C `:895`
     /* gold DSM requires extra handling since it emits light when worn */
-    if (artifact_light(uarm) && !uarm.lamplit) {
+    if (artifact_light(uarm) && !uarm.lamplit) { // C `:898–904`
         begin_burn(uarm, false);
         if (!Blind()) await pline(`${Yname2(uarm)} ${otense(uarm, 'begin')} to shine ${arti_light_description(uarm)}!`);
     }
-    find_ac();
-    return 0;
+    return 0; // C `:905`
 }
 
 /**
@@ -4293,9 +4295,11 @@ export async function disintegrate_arm(atmp) {
         // C do_wear.c:3224–3225 — snuff before the dust message so
         // Armor_gone does not report "stop shining" after destruction.
         if (otmp.lamplit) end_burn(otmp, false);
+        // C do_wear.c:3226–3229 — the dust falls "to the %s", surface(u.ux,u.uy)
+        // (dungeon.c:1750: ROOM → "floor", default "ground"), never a fixed word.
         await urgent_pline(
             `Your ${suit} ${vtense(suit, 'turn')} to dust and `
-            + `${vtense(suit, 'fall')} to the ground!`,
+            + `${vtense(suit, 'fall')} to the ${surface(u.ux, u.uy)}!`,
         );
     } else if (!resistedc.v && !resistedsuit.v
         && (otmp = maybe_destroy_armor(u.uarmu, atmp, resisted))) {

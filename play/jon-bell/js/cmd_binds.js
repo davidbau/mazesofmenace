@@ -289,7 +289,12 @@ export function bind_specialkey(key, command) {
 }
 
 // C cmd.c:3344. Backups are genuine command references, not rebuilt defaults.
+const EXTCMD_FLAGS_PRISTINE = EXTCMDLIST.map(e => e.flags);
 export function reset_commands(initial) {
+    /* C's extcmdlist flags live for one process; the port replays several
+     * games per process, so undo a prior game's AUTOCOMPLETE= edits. */
+    if (initial)
+        EXTCMDLIST.forEach((e, i) => { e.flags = EXTCMD_FLAGS_PRISTINE[i]; });
     const cmd = command_state(), saved = binding_statics();
     const { back_dir_cmd, back_dir_key } = saved;
     const sdir = 'hykulnjb><', sdir_swap_yz = 'hzkulnjb><';

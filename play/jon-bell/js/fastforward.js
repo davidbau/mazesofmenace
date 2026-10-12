@@ -490,6 +490,11 @@ export async function ff_movemon_one_pass() {
 }
 
 export async function drain_pending_death_in_place() {
+        /* C bot() ran at this pass's first flush_screen, after allmain.c:295
+         * svm.moves++; a movemon-turn tag from an earlier pass (T:N) must not
+         * freeze the "You die..." page's T: below the live turn. */
+        if (game._movemonMsgTurn != null && (game._movemonMsgTurn | 0) < (game.moves | 0))
+            game._movemonMsgTurn = null;
         if (game._resultMessage) {
             /* The single-slot `_topl_joins_src` is keyed to whatever string
              * was last built by pline(), which by now is THIS turn's movemon
@@ -1206,7 +1211,7 @@ export async function sickness_dialogue_ff() {
             const pronoun = mhe(game.youmonst);
             buf += `  ${upstart(pronoun)} ${vtense(pronoun, 'are')} inviting you in.`;
         }
-        await pline(buf);
+        await urgent_pline(buf); /* C timeout.c:342 urgent_pline("%s", buf) */
     }
     exercise(A_CON, false);
 }
@@ -1257,6 +1262,48 @@ export async function fastforward_step(stepNum) {
 // movement=0 (from the initial mapstate checkpoint) and C's movemon() fires 0 RNG when
 // no monster has movement >= NORMAL_SPEED. Steps 11+ use fastforward_step_generic_turn()
 // which includes dochug dispatch, since by then monsters have accumulated movement.
+/* C allmain.c:307-342 — Teleportation rn2(85), Polymorph rn2(100) and the
+ * delayed mvl_change. Shared by ff_head_phase_post and the generic turns. */
+async function _ff_tele_poly_changes() {
+    // C allmain.c:307-342. mvl_change survives turns, including paralysis and
+    // Unchanging, but is cancelled if its underlying condition disappears.
+    // Read each property at its C use site: tele() can change hero state.
+    {
+        const u = game.u;
+        const property = index => !!(u.uprops?.[index]?.intrinsic
+                                    || u.uprops?.[index]?.extrinsic);
+        if (!u.uinvulnerable) {
+            if (property(TELEPORT) && !rn2(85)) {
+                const old_ux = u.ux, old_uy = u.uy;
+                await tele();
+                if (u.ux !== old_ux || u.uy !== old_uy) {
+                    if (!next_to_u())
+                        await check_leash(old_ux, old_uy);
+                    cmdq_clear(CQ_CANNED);
+                    cmdq_clear(CQ_REPEAT);
+                }
+            }
+            if ((game.mvl_change === 1 && !property(POLYMORPH))
+                || (game.mvl_change === 2 && (u.ulycn | 0) === NON_PM))
+                game.mvl_change = 0;
+            if (property(POLYMORPH) && !rn2(100))
+                game.mvl_change = 1;
+            else if (ismnum(u.ulycn | 0) && !Upolyd(u)
+                     && !rn2(80 - (20 * night())))
+                game.mvl_change = 2;
+            if (game.mvl_change && !property(UNCHANGING)) {
+                if ((game.multi | 0) >= 0) {
+                    await stop_occupation();
+                    if (game.mvl_change === 1)
+                        await polyself(POLY_NOFLAGS);
+                    else
+                        await you_were();
+                    game.mvl_change = 0;
+                }
+            }
+        }
+    }
+}
 async function _ff_generic_regen_hp() {
     const u = game.u;
     if (!u || u.uinvulnerable)
@@ -1266,6 +1313,44 @@ async function _ff_generic_regen_hp() {
         : (((u.mh | 0) < (u.mhmax | 0)) || _uasmon_mlet(u) === S_EEL_FF);
     if (needs)
         await regen_hp(UNENCUMBERED);
+}
+/* C allmain.c:307-342 — teleport / polymorph checks.  The calibrated generic
+ * turns omitted them, so a Teleportation or Polymorph hero lost rn2(85) /
+ * rn2(100) on every turn here (the doapply wield-turn, cmd.js:24495). */
+async function _ff_generic_teleport_polymorph() {
+    const u = game.u;
+    if (!u || u.uinvulnerable)
+        return;
+    const property = index => !!(u.uprops?.[index]?.intrinsic
+                                || u.uprops?.[index]?.extrinsic);
+    if (property(TELEPORT) && !rn2(85)) {
+        const old_ux = u.ux, old_uy = u.uy;
+        await tele();
+        if (u.ux !== old_ux || u.uy !== old_uy) {
+            if (!next_to_u())
+                await check_leash(old_ux, old_uy);
+            cmdq_clear(CQ_CANNED);
+            cmdq_clear(CQ_REPEAT);
+        }
+    }
+    if ((game.mvl_change === 1 && !property(POLYMORPH))
+        || (game.mvl_change === 2 && (u.ulycn | 0) === NON_PM))
+        game.mvl_change = 0;
+    if (property(POLYMORPH) && !rn2(100))
+        game.mvl_change = 1;
+    else if (ismnum(u.ulycn | 0) && !Upolyd(u)
+             && !rn2(80 - (20 * night())))
+        game.mvl_change = 2;
+    if (game.mvl_change && !property(UNCHANGING)) {
+        if ((game.multi | 0) >= 0) {
+            await stop_occupation();
+            if (game.mvl_change === 1)
+                await polyself(POLY_NOFLAGS);
+            else
+                await you_were();
+            game.mvl_change = 0;
+        }
+    }
 }
 /* Generic turn for step 1 only — no dochug dispatch because monsters have
  * movement=0 at the initial mapstate checkpoint (C's movemon fires 0 RNG).
@@ -1289,6 +1374,8 @@ async function fastforward_step_generic_turn_nodochug() {
      * wounded hero's rn2(100) (allmain.c:659) vanished on any turn run through
      * here (the doapply wield-turn, js/cmd.js). */
     await _ff_generic_regen_hp();
+    await _ff_tele_poly_changes();
+    await _ff_generic_teleport_polymorph();
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
     await autosearch_rng();
@@ -1332,7 +1419,13 @@ async function fastforward_step_generic_turn() {
      * dosounds in the per-turn block; this calibrated block omitted it, so a
      * wounded hero's rn2(100) (allmain.c:659) vanished on any turn run through
      * here (the doapply wield-turn, js/cmd.js). */
+    /* C allmain.c:272-273 — nh_timeout() (its sickness/choke/vomit dialogues
+     * draw exercise(), timeout.c:184-344) precedes regen_hp (allmain.c:294).
+     * The wield-turn caller (js/cmd.js doapply) installs the hook. */
+    if (game._ff_nh_timeout_hook) await game._ff_nh_timeout_hook();
     await _ff_generic_regen_hp();
+    await _ff_tele_poly_changes();
+    await _ff_generic_teleport_polymorph();
     /* C ref: allmain.c:395-397 — intrinsic autosearch: if (Searching &&
      * !noautosearch && gm.multi >= 0) dosearch0(1).  Fires BEFORE dosounds. */
     await autosearch_rng();
@@ -1537,44 +1630,7 @@ export async function ff_head_phase_post() {
         }
     }
     regen_pw(mvl_wtcap);
-    // C allmain.c:307-342. mvl_change survives turns, including paralysis and
-    // Unchanging, but is cancelled if its underlying condition disappears.
-    // Read each property at its C use site: tele() can change hero state.
-    {
-        const u = game.u;
-        const property = index => !!(u.uprops?.[index]?.intrinsic
-                                    || u.uprops?.[index]?.extrinsic);
-        if (!u.uinvulnerable) {
-            if (property(TELEPORT) && !rn2(85)) {
-                const old_ux = u.ux, old_uy = u.uy;
-                await tele();
-                if (u.ux !== old_ux || u.uy !== old_uy) {
-                    if (!next_to_u())
-                        await check_leash(old_ux, old_uy);
-                    cmdq_clear(CQ_CANNED);
-                    cmdq_clear(CQ_REPEAT);
-                }
-            }
-            if ((game.mvl_change === 1 && !property(POLYMORPH))
-                || (game.mvl_change === 2 && (u.ulycn | 0) === NON_PM))
-                game.mvl_change = 0;
-            if (property(POLYMORPH) && !rn2(100))
-                game.mvl_change = 1;
-            else if (ismnum(u.ulycn | 0) && !Upolyd(u)
-                     && !rn2(80 - (20 * night())))
-                game.mvl_change = 2;
-            if (game.mvl_change && !property(UNCHANGING)) {
-                if ((game.multi | 0) >= 0) {
-                    await stop_occupation();
-                    if (game.mvl_change === 1)
-                        await polyself(POLY_NOFLAGS);
-                    else
-                        await you_were();
-                    game.mvl_change = 0;
-                }
-            }
-        }
-    }
+    await _ff_tele_poly_changes();
     await autosearch_rng();
     /* C ref: allmain.c:345-346 — if (Warning) warnreveal(). */
     if (Warning()) await warnreveal();

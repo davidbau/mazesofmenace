@@ -17,10 +17,10 @@
 //   d(mlvl,8)            new-form maxHP    polyself.c:868
 import { rn2, rnd, rn1, d } from './rng.js';
 import { game } from './gstate.js';
-import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
+import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM } from './pm.generated.js';
 function pline_The(msg, ...args) { return pline('The ' + msg, ...args); }
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
-import { pline, urgent_pline, newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon } from './display.js';
+import { pline, urgent_pline, newsym, see_monsters, flush_screen, force_more, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon } from './display.js';
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
 import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
 import { getlin } from './wizcmds.js';
@@ -30,14 +30,15 @@ import { mnexto } from './teleport.js';
 import { rndexp } from './exper_pure.js';
 import { newhp, newpw } from './exper.js';
 import {
-    find_ac, donning, encumber_msg, takeoff_slot_noac, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
+    find_ac, donning, encumber_msg, takeoff_slot_noac, Boots_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
 import { dropx, useup, welded, setuwep, surface, ceiling, waterbody_name, yname, You_cant, youhiding as youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
 import { losehp } from './dokick.js';
 import { end_burn } from './timeout.js';
 import { make_sick, make_stoned, make_slimed } from './potion.js';
 import { newuhs } from './eat.js';
-import { artifact_light, arti_light_radius } from './light.js';
+import { artifact_light, arti_light_radius, new_light_source, del_light_source, monst_to_any } from './light.js';
+import { emits_light } from './makemon.js';
 import { setworn } from './worn.js';
 import { uwepgone as _uwepgone, uswapwepgone as _uswapwepgone } from './steal.js';
 import { weapon_descr, MONS_NAMES } from './uhitm.js';
@@ -68,7 +69,7 @@ import { nomul, unmul } from './allmain.js';
 import { deadhero, do_death_sequence, done, yn_function } from './end.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { dmgtype } from './dogmove.js';
-import { float_vs_flight, breakarm, num_horns, update_inventory, hliquid, defended, Some_Monnam } from './mhitm.js';
+import { float_vs_flight, breakarm, num_horns, update_inventory, hliquid, defended, Some_Monnam, poly_when_stoned } from './mhitm.js';
 import { is_pool } from './look.js';
 /* Shared trap timer/status bookkeeping (C trap.c:set_utrap). */
 import { set_utrap, unpunish } from './dig.js';
@@ -85,7 +86,7 @@ import { may_dig as may_dig_look } from './look.js';
 import { watch_dig } from './dig.js';
 import { morehungry } from './eat.js';
 import { recalc_block_point } from './vision.js';
-import { IS_OBSTRUCTED, IS_TREE, IS_WALL, IS_DOOR, DOOR, SDOOR, D_BROKEN, D_NODOOR, D_TRAPPED, ROOM, CORR, SHOPBASE, SHOP_DOOR_COST, DISMOUNT_POLY } from './const.js';
+import { LS_MONSTER, IS_OBSTRUCTED, IS_TREE, IS_WALL, IS_DOOR, DOOR, SDOOR, D_BROKEN, D_NODOOR, D_TRAPPED, ROOM, CORR, SHOPBASE, SHOP_DOOR_COST, DISMOUNT_POLY, IRONBARS } from './const.js';
 import { set_mimic_blocking } from './sit.js';
 import { sticks } from './dog.js';
 import {
@@ -423,7 +424,7 @@ function _can_ride_poly(ptr, steed) {
 export async function polymon(mntmp) {
     const g = game;
     const u = g.u;
-    const ptr = permonstTemplate(mntmp);
+    let ptr = permonstTemplate(mntmp);
 
     // C: if (svm.mvitals[mntmp].mvflags & G_GENOD) { You_feel rather %s-ish; exercise(A_WIS,TRUE); return 0; }
     const mv = (g.mvitals && g.mvitals[mntmp]) ? (g.mvitals[mntmp].mvflags | 0) : 0;
@@ -497,6 +498,16 @@ export async function polymon(mntmp) {
     }
     buf += monPmname(mntmp, g.flags?.female ? FEMALE : MALE);
     await pline(`You ${verb} ${an(buf)}!`);
+
+    // C polyself.c:809-812 — a Stoned hero whose new form is not a stone golem
+    // turns into a stone golem instead: make_stoned(0, "You turn to stone!")
+    // cures the countdown, and mntmp (and its template) is retargeted before
+    // u.umonnum is set below.
+    if (u.uprops?.[STONED]?.intrinsic && poly_when_stoned(ptr)) {
+        mntmp = PM_STONE_GOLEM;
+        ptr = permonstTemplate(mntmp);
+        await make_stoned(0, 'You turn to stone!', 0, null);
+    }
 
     // C polyself.c:813 — u.mtimedone = rn1(500, 500).
     // Latch Blind before set_uasmon() changes the form's BLINDED intrinsic;
@@ -848,7 +859,7 @@ async function break_armor() {
                 await pline('Your boots fall away!');
             else
                 await pline(`Your boots ${_verysmall(uptr) ? 'slide' : 'are pushed'} off your feet!`);
-            await takeoff_slot_noac('uarmf'); /* C: Boots_off() — no find_ac */
+            await Boots_off(); /* C polyself.c:1285 Boots_off() — speed boots' "slow down" pline (do_wear.c:274-280) precedes polymon's find_ac() */
             await dropp(otmp);
         }
     }
@@ -1178,7 +1189,7 @@ export async function rehumanize() {
     const g = game;
     const u = g.u;
     if (g.context?.mon_moving)
-        g._rehumanizeDisplayPending = true;
+        { g._rehumanizeDisplayPending = true; g._rehumanizeMoves = g.moves | 0; }
     /* C polyself.c:1369 — latch Flying before polyman() replaces the form.
      * Flying is a property of the current monster form (and equipment/steed),
      * so reading it after set_uasmon() would lose the transition that controls
@@ -1221,8 +1232,11 @@ export async function rehumanize() {
         }
     }
 
-    /* C:1393-1394 emits_light/del_light_source — light-source bookkeeping for
-     * a glowing form; display-only and RNG-free. */
+    /* C:1393-1394 emits_light/del_light_source — delete_ls sets
+     * vision_full_recalc (light.c:160), so polyman's urgent_pline recalcs
+     * vision before its --More-- frame (pline.c:266). */
+    if (emits_light(g.youmonst.data))
+        del_light_source(LS_MONSTER, monst_to_any(g.youmonst));
     await polyman(`You return to ${g.urace?.adj || 'human'} form!`);
 
     if ((u.uhp | 0) < 1) {
@@ -1450,7 +1464,30 @@ const POLY_MONSTER = 0x02;
 const POLY_REVERT = 0x04;
 const POLY_LOW_CTRL = 0x08;
 
+/* C polyself.c:472,497,720-730 — old_light is sampled once the uncontrolled
+ * system-shock roll is past; `made_change` then moves the hero's light source
+ * to match the new form.  A yellow light (emits_light 1) is given radius 2
+ * ("otherwise it's undetectable"). */
 export async function polyself(psflags) {
+    const st = { old_light: null };
+    await polyself_body(psflags, st);
+    if (st.old_light === null)
+        return; /* failed / aborted before the form could change */
+    const youmonst = game.youmonst;
+    const old_light = st.old_light;
+    let new_light = emits_light(youmonst.data);
+    if (old_light !== new_light) {
+        if (old_light)
+            del_light_source(LS_MONSTER, monst_to_any(youmonst));
+        if (new_light === 1)
+            ++new_light;
+        if (new_light)
+            new_light_source(game.u.ux, game.u.uy, new_light, LS_MONSTER,
+                             monst_to_any(youmonst));
+    }
+}
+
+async function polyself_body(psflags, st) {
     const g = game;
     const u = g.u;
     psflags = psflags | 0;
@@ -1509,6 +1546,7 @@ export async function polyself(psflags) {
         }
     }
 
+    st.old_light = emits_light(g.youmonst?.data); /* C polyself.c:497 */
     let mntmp = -1; /* NON_PM */
     // C's controlled-poly wizard-revert jumps directly to made_change after
     // rehumanize(); keep this separate from the normal target dispatch so we
@@ -1543,10 +1581,11 @@ export async function polyself(psflags) {
             suit.otyp = ot + (111 - 101);
             observe_object(suit);
         }
-        // setworn(NULL,W_ARM) clears the suit slot and its W_ARM bit; the
-        // embedded scales retain the inventory node and receive I_SPECIAL.
+        // C polyself.c:656-659: uarm is zeroed directly (no setworn), so the
+        // suit keeps its W_ARM bit; the "save/restore hack" only ORs I_SPECIAL.
+        // objnam.c:1388 then reads W_ARMOR and names it "(embedded in your skin)".
         u.uarm = null;
-        suit.owornmask = ((suit.owornmask | 0) & ~W_ARM) | I_SPECIAL;
+        suit.owornmask = (suit.owornmask | 0) | I_SPECIAL;
         u.uskin = suit;
         if (wasLit) suit.lamplit = true;
         update_inventory();
@@ -1612,6 +1651,19 @@ export async function polyself(psflags) {
                 : _rm;
             game._resultMessage = null;
         }
+        /* C hooked_tty_getlin (getline.c:53-54) more()s the standing topline
+         * BEFORE anything repaints the status: the physical status row is what
+         * the last bot() painted (the monster's damage), not this turn's
+         * moveloop regen_hp (allmain.c:~304) that has already raised disp.botl.
+         * Page it here with the paint held (do.c:1717 shape) so the frozen
+         * frame reads the last painted status. */
+        if (game._pending_message && game._lastPaintedBotl) {
+            game._botlPaintHeld = true;
+            try {
+                await flush_screen(1);
+                if (game._pending_message) await force_more(game._pending_message);
+            } finally { game._botlPaintHeld = false; }
+        }
         do {
             mntmp = NON_PM;
             // C polyself.c:519 — getlin("Become what kind of monster? [type the name]").
@@ -1620,7 +1672,7 @@ export async function polyself(psflags) {
             buf = mungspaces(buf);
             // C polyself.c:521-528 — ESC cancels (wizard #polyself → "Never mind.").
             if (buf.charCodeAt(0) === 27 /* '\033' */) {
-                if (forcecontrol) { await pline('Never mind.'); return; }
+                if (forcecontrol) { await pline('Never mind.'); st.old_light = null; return; }
                 buf = '*';
             }
             // C polyself.c:529-533 — explicit random request.
@@ -1769,7 +1821,7 @@ export async function polyself(psflags) {
             }
             if (controllable_poly) {
                 const answer = await yn_function(`Become ${an(monPmname(mntmp, g.flags?.female ? FEMALE : MALE))}?`, 'yn', 'n');
-                if (answer !== 'y') return;
+                if (answer !== 'y') { st.old_light = null; return; }
             }
             await polymon(mntmp);
             return;
@@ -1816,8 +1868,10 @@ export async function polyself(psflags) {
     // sex_change_ok and all target selection.  The current JS rehumanize body
     // performs the state and display work itself; returning preserves that
     // control flow and, crucially, avoids drawing RNG for a second transform.
-    if (directRevert)
+    if (directRevert) {
+        st.old_light = 0; /* C polyself.c:581 rehumanize() extinguishes the light */
         return;
+    }
 
     // C polyself.c:698-706 — random "ordinary" monster pick loop (only if no form yet).
     if (mntmp < LOW_PM) {
@@ -2353,7 +2407,10 @@ export async function still_chewing(x, y) {
         nomul(0);
         return true;
     }
-    const what = IS_TREE(lev.typ) ? 'tree' : obstructed ? 'rock' : 'door';
+    // C hack.c:669-674 / 689-698 / 713-716: iron bars are "bar" in the start
+    // message and "bars" in the continue message (C ref hack.c:703-716).
+    const isbars = lev.typ === IRONBARS;
+    const what = IS_TREE(lev.typ) ? 'tree' : obstructed ? 'rock' : isbars ? 'bar' : 'door';
     const udaminc = u.udaminc | 0;
     if (!dg.chew || dg.pos.x !== x || dg.pos.y !== y
         || !dg.level || dg.level.dnum !== u.uz.dnum || dg.level.dlevel !== u.uz.dlevel) {
@@ -2363,7 +2420,7 @@ export async function still_chewing(x, y) {
         dg.pos = { x, y };
         dg.level = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
         dg.effort = (obstructed && !IS_TREE(lev.typ) ? 30 : 60) + udaminc;
-        await pline(`You start chewing ${IS_TREE(lev.typ) ? 'on a' : 'a hole in the'} ${what}.`
+        await pline(`You start chewing ${(IS_TREE(lev.typ) || isbars) ? 'on a' : 'a hole in the'} ${what}.`
             .replace('a hole in the tree', 'on a tree'));
         await watch_dig(null, x, y, false);
         return true;
@@ -2371,7 +2428,7 @@ export async function still_chewing(x, y) {
     dg.effort = (dg.effort | 0) + 30 + udaminc;
     if (dg.effort <= 100) {
         if (g.flags?.verbose !== false)
-            await pline(`You ${dg.chew ? 'continue' : 'begin'} chewing on the ${what}.`);
+            await pline(`You ${dg.chew ? 'continue' : 'begin'} chewing on the ${isbars ? 'bars' : what}.`);
         dg.chew = true;
         await watch_dig(null, x, y, false);
         return true;

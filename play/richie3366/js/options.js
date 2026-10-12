@@ -11462,96 +11462,98 @@ export async function doset() {
         game.go.opt_need_redraw = false;
         game.go.opt_need_glyph_reset = false;
         const selected = await select_menu_pick_any(raw);
-        // C `:8968–8973` — '?' displays the help file ('?' is the first
-        // menu row, so first among picks — ahead of every category below,
-        // exactly C's pick order); gavehelp feeds the rerun gate.
-        for (const it of selected)
-            if (it.kind === 'help') { // C opt_indx == HELP_IDX
-                await display_file(OPTMENUHELP, false); // C `:8969`
-                gavehelp = true; // C `:8970`
-            }
-        const boolPicks = [];
-        const handlerPicks = [];
-        const getlinPicks = [];
-        const othrPicks = [];
+        // C options.c doset `:8914–8959` — one loop over pick_list in menu
+        // order (tty_select_menu `:2806–2811` collects walking cw->mlist),
+        // each pick dispatched by type: '?' help, bool toggle, handler
+        // compound, getlin compound, othr. A category partition here
+        // prompted a getlin compound (statushilites) before a menu-earlier
+        // handler compound (pickup_types) — scen-options-Ranger-582811 s91.
         for (const it of selected) {
-            if (it.kind === 'bool') boolPicks.push(it.name);
-            else if (it.kind === 'comp' && it.handler)
-                handlerPicks.push(it.name);
-            // C `:8941–8956` — compounds without a handler go through getlin
-            // "Set %s to what?" + parseoptions (D-3403; was packorder-only).
-            else if (it.kind === 'comp') getlinPicks.push(it.name);
-            else if (it.kind === 'othr') othrPicks.push(it.name);
-        }
-        // C options.c doset → parseoptions → optfn_boolean: one pline per bool.
-        // pline appends with "  " while NEED_MORE fits; otherwise more() first.
-        // Botl-affecting opts (showexp/time) set flags.botl before their pline so
-        // flush_screen→bot() runs before more() on the *previous* pair — matching
-        // C’s Xp:1/0 without T: during price_quotes More (D-0499).
-        for (const name of boolPicks) {
-            if (!DOSET_BOOL_ADDR[name]) continue;
-            // C: doset toggle → parseoptions → optfn_boolean negated = old value
-            const negated = doset_bool_value(name);
-            const applied = await optfn_boolean_do_set(name, negated, false);
-            // C `:5438–5439` toggle-message gate (idlecheckpoint forces
-            // give_opt_msg off instead of plining here).
-            if (applied && game.give_opt_msg !== false)
-                await pline(`'${name}' option toggled ${!negated ? 'on' : 'off'}.`);
-            preference_update(name); // C `:8956–8958` (tty no-op stub; doset ignores the optfn return)
-        }
-        for (const name of getlinPicks) {
-            // C doset :8941–8956, no handler: getlin, ESC, parseoptions.
-            await doset_compound_via_getlin({ name, hasHandler: false });
-            preference_update(name); // C `:8956–8958` (tty no-op stub)
-        }
-        for (const name of handlerPicks) {
-            if (name === 'pickup_types') {
-                const reslt = await handler_pickup_types();
-                if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-                preference_update(name); // C `:8956–8958` (tty no-op stub)
-            } else if (name === 'perminv_mode') {
-                await handler_perminv_mode();
-                preference_update(name); // C `:8956–8958` (tty no-op stub)
-            } else {
-                // C doset `:8935–8939`: optfn do_handler; optn_ok marks the row
-                // for a later options save.
-                const reslt = await doset_optfn_do_handler(name);
-                if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-                preference_update(name); // C `:8956–8958` (tty no-op stub)
+            // C `:8916–8919` — '?' displays the help file and continues
+            // (there might be more picks); gavehelp feeds the rerun gate.
+            if (it.kind === 'help') { // C opt_indx == HELP_IDX
+                await display_file(OPTMENUHELP, false); // C `:8917`
+                gavehelp = true; // C `:8918`
+                continue;
             }
-        }
-        // C options.c doset Othr rows → optfn do_handler; bind keys
-        // (handler_rebind_keys, C `:8340`), message types
-        // (handler_msgtype, C `:8408`), menu colors
-        // (handler_menu_colors, C `:8383`), status condition fields
-        // (cond_menu, C optfn_o_status_cond `:8436–8439`), and status
-        // highlight rules (status_hilite_menu, C optfn_o_status_hilites
-        // `:8464–8471`) have live handlers.
-        for (const name of othrPicks) {
-            // C options.c:8340 optfn_o_bind_keys do_handler.
-            if (name === 'bind keys') {
-                const reslt = await optfn_o_bind_keys(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
-                if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-            } else if (name === 'autocompletions') {
-                // C options.c:8362 optfn_o_autocomplete do_handler; the optfn
-                // returns optn_ok, so doset `:8939` marks the row for a later
-                // options save.
-                await handler_change_autocompletions();
-                opt_set_in_config[allopt_idx(name)] = true;
-            } else if (name === 'autopickup exceptions') {
-                const reslt = await handler_autopickup_exception(); // C `:8318`
-                if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-            } else if (name === 'message types') {
-                // C doset `:8935` has_handler → optfn do_handler → `:8408`.
-                const reslt = await handler_msgtype();
-                if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-            } else if (name === 'menu colors') {
-                const reslt = await optfn_o_menu_colors(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
-                if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-            } else if (name === 'status condition fields') {
-                if (await cond_menu()) opt_set_in_config[PFX_COND_IDX] = true;
-            } else if (name === 'status highlight rules') {
-                await optfn_o_status_hilites(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
+            const name = it.name;
+            // C options.c doset → parseoptions → optfn_boolean: one pline per bool.
+            // pline appends with "  " while NEED_MORE fits; otherwise more() first.
+            // Botl-affecting opts (showexp/time) set flags.botl before their pline so
+            // flush_screen→bot() runs before more() on the *previous* pair — matching
+            // C’s Xp:1/0 without T: during price_quotes More (D-0499).
+            if (it.kind === 'bool') { // C `:8925–8929`
+                if (!DOSET_BOOL_ADDR[name]) continue;
+                // C: doset toggle → parseoptions → optfn_boolean negated = old value
+                const negated = doset_bool_value(name);
+                const applied = await optfn_boolean_do_set(name, negated, false);
+                // C `:5438–5439` toggle-message gate (idlecheckpoint forces
+                // give_opt_msg off instead of plining here).
+                if (applied && game.give_opt_msg !== false)
+                    await pline(`'${name}' option toggled ${!negated ? 'on' : 'off'}.`);
+                preference_update(name); // C `:8956–8958` (tty no-op stub; doset ignores the optfn return)
+                continue;
+            }
+            // C doset `:8934–8940`, has_handler: optfn do_handler; optn_ok
+            // marks the row for a later options save.
+            if (it.kind === 'comp' && it.handler) {
+                if (name === 'pickup_types') {
+                    const reslt = await handler_pickup_types();
+                    if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
+                    preference_update(name); // C `:8956–8958` (tty no-op stub)
+                } else if (name === 'perminv_mode') {
+                    await handler_perminv_mode();
+                    preference_update(name); // C `:8956–8958` (tty no-op stub)
+                } else {
+                    // C doset `:8935–8939`: optfn do_handler; optn_ok marks the row
+                    // for a later options save.
+                    const reslt = await doset_optfn_do_handler(name);
+                    if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
+                    preference_update(name); // C `:8956–8958` (tty no-op stub)
+                }
+                continue;
+            }
+            // C `:8941–8954` — compounds without a handler go through getlin
+            // "Set %s to what?" + parseoptions (D-3403; was packorder-only).
+            if (it.kind === 'comp') {
+                const abuf = await doset_compound_via_getlin({ name, hasHandler: false });
+                if (abuf === '\x1b') continue; // C `:8947–8948` ESC skips parseoptions + preference_update
+                preference_update(name); // C `:8956–8958` (tty no-op stub)
+                continue;
+            }
+            // C options.c doset Othr rows → optfn do_handler; bind keys
+            // (handler_rebind_keys, C `:8340`), message types
+            // (handler_msgtype, C `:8408`), menu colors
+            // (handler_menu_colors, C `:8383`), status condition fields
+            // (cond_menu, C optfn_o_status_cond `:8436–8439`), and status
+            // highlight rules (status_hilite_menu, C optfn_o_status_hilites
+            // `:8464–8471`) have live handlers.
+            if (it.kind === 'othr') {
+                // C options.c:8340 optfn_o_bind_keys do_handler.
+                if (name === 'bind keys') {
+                    const reslt = await optfn_o_bind_keys(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
+                    if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
+                } else if (name === 'autocompletions') {
+                    // C options.c:8362 optfn_o_autocomplete do_handler; the optfn
+                    // returns optn_ok, so doset `:8939` marks the row for a later
+                    // options save.
+                    await handler_change_autocompletions();
+                    opt_set_in_config[allopt_idx(name)] = true;
+                } else if (name === 'autopickup exceptions') {
+                    const reslt = await handler_autopickup_exception(); // C `:8318`
+                    if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
+                } else if (name === 'message types') {
+                    // C doset `:8935` has_handler → optfn do_handler → `:8408`.
+                    const reslt = await handler_msgtype();
+                    if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
+                } else if (name === 'menu colors') {
+                    const reslt = await optfn_o_menu_colors(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
+                    if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
+                } else if (name === 'status condition fields') {
+                    if (await cond_menu()) opt_set_in_config[PFX_COND_IDX] = true;
+                } else if (name === 'status highlight rules') {
+                    await optfn_o_status_hilites(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
+                }
             }
         }
         // C `:8965–8971` — '?' as the sole pick reruns without help rows.

@@ -33,7 +33,7 @@ import monKbMonsPack from './makemon_mons.json' with { type: 'json' };
 import { rn2, rn1, rnd, d, pushRngLogEntry } from './rng.js';
 import { pline, urgent_pline as urgent_pline_disp, newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, glyph_is_invisible_at, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, flush_pending_messages } from './display.js';
 import { m_at as uhitm_m_at, hitval, mon_wield_item, dmgval, select_rwep } from './uhitm.js';
-import { burnarmor as burnarmor_real, erode_obj, drain_en as drain_en_trap } from './trap.js';
+import { burnarmor as burnarmor_real, erode_obj, drain_en as drain_en_trap, goodpos } from './trap.js';
 import { msummon as msummon_real, attrcurse as attrcurse_mu } from './sit.js';
 import { PM_CLAY_GOLEM as PM_CLAY_GOLEM_MU } from './pm.generated.js';
 import { _mon_reflects_zap as mon_reflects_real } from './zap.js';
@@ -78,7 +78,7 @@ import { make_slimed } from './potion.js';
 import { polymon as polymon_polyself, polyself as polyself_real } from './polyself.js';
 /* C end.c:1023 done(), run at C's own position inside the attack loop. */
 import { drain_pending_death_in_place } from './fastforward.js';
-import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_SEEN_NOTHING, M_SEEN_FIRE, M_SEEN_SLEEP, M_SEEN_REFL, SLEEP_RES as SLEEP_RES_MU, FIRE_RES as FIRE_RES_MU, STONE_RES as STONE_RES_MU, REFLECTING as REFLECTING_MU, NATTK, Upolyd as Upolyd_fn, INVIS, DISPLACED as DISPLACED_MU, SEE_INVIS, P_WHIP, Is_rogue_level, CONFUSION, SLIMED, CQ_CANNED, DETECT_MONSTERS as DETECT_MONSTERS_MU, DEAF, PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MU, CONFLICT as CONFLICT_MU, is_pit as is_pit_mu, NEW_MOON, ERODE_CORRODE, ERODE_ROT, PROTECTION, W_AMUL, } from './const.js';
+import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_SEEN_NOTHING, M_SEEN_FIRE, M_SEEN_SLEEP, M_SEEN_REFL, SLEEP_RES as SLEEP_RES_MU, FIRE_RES as FIRE_RES_MU, STONE_RES as STONE_RES_MU, REFLECTING as REFLECTING_MU, NATTK, Upolyd as Upolyd_fn, INVIS, DISPLACED as DISPLACED_MU, SEE_INVIS, P_WHIP, Is_rogue_level, CONFUSION, SLIMED, CQ_CANNED, DETECT_MONSTERS as DETECT_MONSTERS_MU, DEAF, PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MU, CONFLICT as CONFLICT_MU, is_pit as is_pit_mu, NEW_MOON, ERODE_CORRODE, ERODE_ROT, PROTECTION, W_AMUL, MM_IGNOREWATER, MM_IGNORELAVA, } from './const.js';
 /* C exper.c:207 losexp(drainer) — mhitm_ad_drli's hero-defender arm. */
 import { losexp } from './exper.js';
 /* C attrib.c:509 exercise(i, incr) — mhitm_ad_phys_u's AT_HUGS "already
@@ -99,7 +99,7 @@ import { mbodypart as mbodypart_mu, snuff_candle as snuff_candle_mu } from './cm
 import { subfrombill as subfrombill_real, shop_keeper as shop_keeper_real } from './shk.js';
 /* mwelded (C wield.c:1072) is used at the autoreturn_weapon arm below; the
    binding was never imported, so reaching that arm threw a ReferenceError. */
-import { mwelded, showdamage as showdamage_mu } from './cmd.js';
+import { mwelded, showdamage as showdamage_mu, growl_sound } from './cmd.js';
 import { make_confused, make_stoned, make_sick, potionhit } from './potion.js';
 import { SICK_RES as SICK_RES_MU, SICK_NONVOMITABLE as SICK_NONVOMITABLE_MU } from './const.js';
 import { PM_MEDUSA, PM_ARCHON, PM_STONE_GOLEM, PM_INCUBUS, PM_HIGH_PRIEST, PM_PRIEST as PM_ALIGNED_CLERIC, PM_BARBED_DEVIL as PM_BARBED_DEVIL_MU, } from './pm.generated.js';
@@ -163,7 +163,8 @@ import { force_more_pages as force_more_pages_mu,
          _topl_merge_result as _topl_merge_result_mu,
          _topl_joins_snapshot as _topl_joins_snapshot_mu } from './display.js';
 import { cansee as cansee_mu, vision_recalc as vision_recalc_mu } from './vision.js';
-import { is_waterwall as is_waterwall_mu } from './dokick.js';
+import { is_waterwall as is_waterwall_mu, breaks as breaks_mu } from './dokick.js';
+import { harmless_missile as harmless_missile_mu } from './throw_vertical.js';
 /* explmu's callees (C mhitu.c:1589-1665).  Every one of these has a REAL body
  * elsewhere in js/ and this file carries a file-local no-op or `return false`
  * shadow of two of them (resists_blnd at :220, make_blinded at :314), so the
@@ -177,7 +178,7 @@ import { PM_BLACK_LIGHT as PM_BLACK_LIGHT_MU, PM_VIOLET_FUNGUS as PM_VIOLET_FUNG
 import { isok as isok_mu, IS_OBSTRUCTED as IS_OBSTRUCTED_MU, IRONBARS as IRONBARS_MU,
          SINK as SINK_MU, u_at as u_at_mu } from './const.js';
 import { BACKTRACK as BACKTRACK_MU, W_WEP as W_WEP_MU, HAND as HAND_MU,
-         FOOT as FOOT_MU, LEG as LEG_MU } from './const.js';
+         FOOT as FOOT_MU, LEG as LEG_MU, FACE as FACE_MU } from './const.js';
 import { closed_door as closed_door_mu, is_pool as is_pool_mu } from './look.js';
 import { y_monnam as y_monnam_mu } from './mhitm.js';
 import { Is_waterlevel as Is_waterlevel_mu, Is_airlevel as Is_airlevel_mu, LEVITATION as LEVITATION_MU, FLYING as FLYING_MU, DROWNING as DROWNING_MU } from './const.js';
@@ -412,6 +413,13 @@ const u_slow_down = u_slow_down_uh;
 export async function mdamageu(mtmp, n) {
     const u = game.u || (game.u = {});
     if (n < 0) n = 0;
+    const _afterFlush = game._botlRaisedAfterFlush;
+    game._botlRaisedAfterFlush = false;
+    if (game.disp && game.disp.botl && !_afterFlush && !Upolyd_fn(game.u || {})
+        && ((game.u?.uhp | 0) - n) === -1)
+        await bot_mu();
+    if (game.disp) game.disp.botl = true;      /* C mhitu.c:1909 */
+    if (game.disp) game.disp.botl = true;       /* C mhitu.c:1909 */
     if (Upolyd_fn(u)) {
         u.mh = (u.mh | 0) - n;
         showdamage_mu(n);                      /* C mhitu.c:1912 */
@@ -1330,23 +1338,12 @@ function will_hurtle_hero(x, y) {
         return false;
     /* mon->mtrapped is youmonst.mtrapped, which C never sets from u.utrap
      * (set_utrap() writes only u.utrap), so a trapped hero still "will hurtle". */
-    const loc = game.level?.locations?.[x]?.[y];
-    if (!loc)
-        return false;
-    const typ = loc.typ | 0;
-    /* ACCESSIBLE(typ) with water/lava ignored (MM_IGNOREWATER|MM_IGNORELAVA):
-     * obstructed rock (< POOL) and iron bars are never goodpos for the hero. */
-    if (typ < IS_OBSTRUCTED_TYP || typ === IRONBARS_TYP)
-        return false;
-    if (typ === DOOR_TYP) {
-        const dmask = loc ? (loc.doormask ?? 0) : 0;
-        if ((dmask & (D_CLOSED_KB | D_LOCKED_KB)) !== 0)
-            return false; /* closed_door */
-    }
-    /* MON_AT(x,y): another monster already occupies the destination. */
-    if (uhitm_m_at(x, y))
-        return false;
-    return true;
+    /* C goodpos(x, y, &gy.youmonst, MM_IGNOREWATER|MM_IGNORELAVA)
+     * (teleport.c:86): MON_AT, accessible() (closed doors and obstructed
+     * terrain), and sobj_at(BOULDER) all refuse the hero's destination.
+     * The hand-rolled terrain test here omitted the boulder check, so a
+     * boulder square read "backward" where C reads "back". */
+    return !!goodpos(x, y, game.youmonst, MM_IGNOREWATER | MM_IGNORELAVA);
 }
 
 /* sgn for knockback direction. */
@@ -2633,6 +2630,15 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
             if (!(await diseasemu_gu({ mnum: (mtmp.mnum ?? mtmp.mndx ?? 0) | 0 })))
                 mhm.damage = 0;
             break;
+        /* C uhitm.c:3808-3822 mhitm_ad_pest, mhitu arm: its own pline_mon
+         * message (no hitmsg), then diseasemu(pa) with the return IGNORED, so
+         * resistance does not zero the damage (unlike AD_DISE above).  This
+         * adtyp fell into the default arm, which printed "touches you!" and
+         * skipped the make_sick rn1(ACURR(A_CON),20) draw. */
+        case AD_PEST_MK:
+            pline_mon(mtmp, `${Monnam(mtmp)} reaches out, and you feel fever and chills.`);
+            await diseasemu_gu({ mnum: (mtmp.mnum ?? mtmp.mndx ?? 0) | 0 });
+            break;
         /* C uhitm.c:3729-3763 mhitm_ad_poly + mhitm.c:1122 mon_poly, hero arm. */
         case AD_POLY_MK:
             await mhitm_ad_poly_u(mtmp, mattk, mhm); break;
@@ -2739,11 +2745,18 @@ async function mhitm_ad_drin_u(mtmp, mattk, mhm) {
         return;
     }
 
-    const halfPhysical = game.u?.uprops?.[74]; /* prop.h HALF_PHYS_DAM */
+    const halfPhysical = game.u?.uprops?.[56]; /* prop.h HALF_PHDAM = 56 (was 74: not a prop.h index) */
     if (halfPhysical && ((halfPhysical.intrinsic | 0) || (halfPhysical.extrinsic | 0)))
+    /* C uhitm.c:3242 `if (Half_physical_damage)` = HALF_PHDAM (prop.h:79, 56). */
+    if (_half_phys_prop_mu())
         mhm.damage = Math.trunc(((mhm.damage | 0) + 1) / 2);
+    const _deathBeforeDamage = game._pendingDeath || null;
     await mdamageu(mtmp, mhm.damage | 0);
     mhm.damage = 0;
+    if (game._pendingDeath && game._pendingDeath !== _deathBeforeDamage) {
+        await drain_pending_death_in_place();
+        if (pending_death_is_final()) return;
+    }
 
     if (!u.uarmh || (u.uarmh.otyp | 0) !== 94 /* DUNCE_CAP */) {
         const oldmort = u.umortality | 0;
@@ -2769,6 +2782,7 @@ async function mhitm_ad_drli_u(mtmp, mattk, mhm) {
     if (!rn2(3) && !Drain_resistance_mu()
         && !mhitm_mgc_atk_negated_u(true, mtmp)) {
         await losexp("life drainage");
+        game._botlRaisedAfterFlush = true;
         /* C's own comment: unlike hitting with Stormbringer, wounded attacker
            doesn't heal any from the drained life */
     }
@@ -2909,7 +2923,7 @@ function mhitm_ad_were_u(mtmp, mattk, mhm) {
         /* C uhitm.c:4280-4285: the bite changes the hero's lycanthropy
          * species immediately.  mtmp.mnum is monsndx(mtmp->data), the same
          * numeric identity used by set_ulycn(). */
-        pline('You feel feverish.');
+        urgent_pline_disp('You feel feverish.');
         exercise(A_CON, false);
         set_ulycn_real((mtmp.mnum ?? mtmp.mndx ?? NON_PM_MU) | 0);
         /* C retouch_equipment(2) can damage or remove worn gear.  There is no
@@ -3426,6 +3440,11 @@ async function passiveum(olduasmonMndx, mtmp, mattk) {
     if (rn2(3)) {
         switch (oldu_mattk.adtyp) {
         case AD_PHYS_UM:
+            if (oldu_mattk.aatyp === AT_BOOM_) {
+                await pline('You explode!');
+                await rehumanize();
+                return assess_dmg_um(mtmp, tmp);
+            }
             break;
         case AD_PLYS_UM: {
             if (tmp > 127) tmp = 127;
@@ -3966,7 +3985,7 @@ function monmulti(mtmp, otmp, mwep) {
 /* C ref: mthrowu.c:262 monshoot(mtmp, otmp, mwep) — mtmp throws otmp, or shoots
  * otmp with mwep, at the hero (gm.mtarget == 0 on the thrwmu path) or at mtarg.
  * Caller must have called lined_up() to set up <gt.tbx, gt.tby>. */
-async function monshoot(mtmp, otmp, mwep) {
+export async function monshoot(mtmp, otmp, mwep) {
     const g = game;
     const gm = g.gm || (g.gm = {});
     const mtarg = gm.mtarget || null;
@@ -3991,7 +4010,7 @@ async function monshoot(mtmp, otmp, mwep) {
         /* C:288 Strcpy(trgbuf, mtarg ? some_mon_nam(mtarg) : "") — the thrwmu
          * path always has mtarg == 0, and the monster-vs-monster caller
          * (thrwmm) is not wired to monshoot in this port. */
-        const trgbuf = mtarg ? uhitm_mon_nam(mtarg) : '';
+        const trgbuf = mtarg ? some_mon_nam(mtarg) : '';
         pline(`${je_Monnam(mtmp)} ${gm.m_shot.s ? 'shoots' : 'throws'} ${onm}`
               + `${mtarg ? ' at ' : ''}${trgbuf}!`);
         gm.m_shot.o = otmp.otyp | 0;
@@ -4171,14 +4190,48 @@ const SKELETON_KEY_MHU = 221, LOCK_PICK_MHU = 222, CREDIT_CARD_MHU = 223,
 /* C ref: mthrowu.c:552 MT_FLIGHTCHECK(pre, forcehit) — has the missile run out
  * of map?  Evaluated at <bhitpos + d>, except the sink test which is at
  * <bhitpos> itself and only on the post-move pass. */
-export function mt_flightcheck(bx, by, dx, dy, pre, forcehit = false, obj = null) {
+/* C ref: mthrowu.c:1417-1496 hit_bars(), non-hero arm (your_fault FALSE): the
+ * missile either breaks on the bars (breaks() -> breaktest -> obj_resists
+ * rn2(100)) or clangs against them.  dissolve_bars() (POT_ACID) is not ported.
+ * Returns TRUE when the object is gone (C: *objp = 0). */
+async function hit_bars_mu(otmp, objx, objy, barsx, barsy) {
+    const t = otmp.otyp | 0;
+    if (await breaks_mu(otmp, objx, objy))
+        return true;
+    const flimsy = (MKOBJ_OC_MATERIAL[t] | 0) <= 7 /* LEATHER */ || t === 78 /* RUBBER_HOSE */;
+    const harmless = harmless_missile_mu(otmp);
+    const mat = MKOBJ_OC_MATERIAL[t] | 0;
+    if (!Deaf_mu()) {
+        const idx = (t === 475 || t === 477) ? 1 : harmless ? 2 : flimsy ? 3
+            : ((otmp.oclass | 0) === 12 /* COIN_CLASS */ || mat === 14 || mat === 15) ? 4 : 5;
+        await pline(`${['', 'Whang', 'Whap', 'Flapp', 'Clink', 'Clonk'][idx]}!`);
+    }
+    if (!(harmless || flimsy))
+        wake_nearto_mu(barsx, barsy, 4 * 4);
+    return false;
+}
+
+function gm0_take_gone() {
+    const g = game.gm;
+    if (!g || !g._mt_obj_gone) return false;
+    g._mt_obj_gone = false;
+    return true;
+}
+
+export async function mt_flightcheck(bx, by, dx, dy, pre, forcehit = false, obj = null) {
     const nx = bx + dx, ny = by + dy;
     if (!isok_mu(nx, ny)) return true;
     const nloc = game.level?.at(nx, ny);
     if (nloc && IS_OBSTRUCTED_MU(nloc.typ | 0)) return true;
     if (closed_door_mu(nx, ny)) return true;
     if (nloc && (nloc.typ | 0) === IRONBARS_MU
-        && hits_bars_mu(obj, !pre && !!forcehit)) return true;
+        && hits_bars_mu(obj, !pre && !!forcehit)) {
+        /* C mthrowu.c:1554 hits_bars(whodidit 0) -> hit_bars; the missile may
+         * be destroyed ("hits_bars might have destroyed it", mthrowu.c:801). */
+        if (obj && await hit_bars_mu(obj, bx, by, nx, ny))
+            (game.gm || (game.gm = {}))._mt_obj_gone = true;
+        return true;
+    }
     if (!pre) {
         const cloc = game.level?.at(bx, by);
         if (cloc && (cloc.typ | 0) === SINK_MU) return true;
@@ -4565,8 +4618,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     }
 
     /* C mthrowu.c:639-642 — blocked before it even starts. */
-    if (mt_flightcheck(bx, by, dx, dy, true, false, singleobj)) {
-        await drop_throw(singleobj, 0, bx, by);
+    if (await mt_flightcheck(bx, by, dx, dy, true, false, singleobj)) {
+        if (!gm0_take_gone())
+            await drop_throw(singleobj, 0, bx, by);
         return;
     }
     const gm = game.gm || (game.gm = {});
@@ -4670,7 +4724,12 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                                         ? AT_SPIT_MU : AT_WEAP_MU,
                                     singleobj)) {
                 blindinc = rnd(25);
-                if ((singleobj.otyp | 0) === BLINDING_VENOM_MU && !Blind(game))
+                if ((singleobj.otyp | 0) === CREAM_PIE_OHITMON_MU) {
+                    if (!Blind(game))
+                        pline("Yecch!  You've been creamed.");
+                    else
+                        pline(`There's something sticky all over your ${mbodypart_mu(_hero_monst_mu(), FACE_MU)}.`);
+                } else if ((singleobj.otyp | 0) === BLINDING_VENOM_MU && !Blind(game))
                     pline('The venom blinds you.');
             }
             if (game._pendingDeath)
@@ -4691,7 +4750,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
          * already break out. */
         const forcehit = !rn2(5);
         void forcehit; /* only hits_bars consumes it, and that arm is a GAP */
-        if (!range || mt_flightcheck(bx, by, dx, dy, false, forcehit, singleobj)) {
+        if (!range || await mt_flightcheck(bx, by, dx, dy, false, forcehit, singleobj)) {
+            if (gm0_take_gone())
+                break;
             /* C mthrowu.c:810-814 — "<The missile> misses." when a multishot
              * volley overshoots in view. */
             /* no 'range &&' here: C's range test guards only the sink arm; the
@@ -5036,8 +5097,27 @@ async function summonmu_mu(mtmp, youseeit = false) {
             } else {
                 await pline('But none comes.');
             }
-        } else if (numhelp > 0 && (visible.value | 0) === 0) {
-            await pline('You feel hemmed in.');
+        } else {
+            /* C:1003-1020 — unseen summoner: growl unless Deaf; then the help
+             * that came is announced ("appears from nowhere" when Deaf), or
+             * felt as "hemmed in" if none of it was visible. */
+            let from_nowhere = '';
+            if (!Deaf_mu()) {
+                await pline(`Something ${makeplural(growl_sound(mtmp))}!`);
+            } else {
+                from_nowhere = ' from nowhere';
+            }
+            if (numhelp > 0) {
+                if ((visible.value | 0) < 1) {
+                    await pline('You feel hemmed in.');
+                } else {
+                    const genericwere = 'creature';
+                    const buf = (visible.value | 0) === 1
+                        ? `${an(genericwere)} appears`
+                        : `${makeplural(genericwere)} appear`;
+                    await pline(`${buf.charAt(0).toUpperCase()}${buf.slice(1)}${from_nowhere}!`);
+                }
+            } /* else no help came; but you didn't know it tried */
         }
     }
 }
@@ -5281,7 +5361,7 @@ async function gulpmu(mtmp, mattk) {
          * engulfs you!--More--" on a topline of its own and the next turn's
          * damage message starts fresh.  See js/display.js
          * topl_force_break_after for why this is registered by text. */
-        topl_force_break_now_mu();
+        topl_force_break_now_mu(true);
         /* C mhitu.c:1371 vision_recalc(2) — "hero can't see anything".  It is
          * the reason a swallowed hero's pet stops apporting: dog_goal's
          * `in_masters_sight = couldsee(omx, omy)` goes false, and with it the
@@ -5535,7 +5615,7 @@ function is_art_mk(otmp, art) {
  * @param indx        attack slot
  * @param prev_result the caller's sum[]/res[] array of earlier slots' results
  */
-function getmattk(magr, udefend, mdef, indx, prev_result) {
+export function getmattk(magr, udefend, mdef, indx, prev_result) {
     const mndx = (magr.mndx ?? magr.mnum ?? -1) | 0;
     const raw = mon_mattk_raw(mndx);
     const attk = mon_mattk(mndx, indx);
@@ -5771,6 +5851,11 @@ export async function mattacku(mtmp) {
         nomul(0);
     if (DEADMONSTER(mtmp))
         return 1;
+    /* C ref: mhitu.c:516-517 — a submerged hero can only be attacked by a
+     * swimmer (is_swimmer(ptr) = M1_SWIM, mondata.h); anything else returns
+     * before any to-hit roll is drawn.  RNG-free up to here. */
+    if (_Underwater_mu() && !((mtmp.data?.mflags1 | 0) & 0x00000002 /* M1_SWIM */))
+        return 0;
     /* C ref: mhitu.c:519-526 — the head of the swallowed/mounted chain:
      *     if (u.uswallow) {
      *         if (mtmp != u.ustuck) return 0;

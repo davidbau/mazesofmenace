@@ -1609,7 +1609,10 @@ export async function pickup_object(obj, count, telekinesis) {
     // (pickup.c query_objlist: -1 / oversize → curr->quan).
     if (!count) count = obj.quan || 1;
 
-    if (!game.u?.Blind) observe_object(obj);
+    // C pickup.c:1817 — `if (!Blind) observe_object(obj)`; Blind is the
+    // youprop.h macro (HBlinded||EBlinded)&&!BBlinded, not the u.Blind
+    // flat (stale under a worn blindfold: extrinsic only, D-0928 class).
+    if (!Blind()) observe_object(obj);
 
     if (obj === game.u?.uchain) return 0;
     if ((obj.where | 0) === OBJ_MINVENT && (obj.owornmask | 0)

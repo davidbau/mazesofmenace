@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { bind_key, bind_mousebtn, bind_specialkey, reset_commands,
     config_error_add, visctrl } from './cmd_binds.js';
+import { EXTCMDLIST } from './cmd_extcmd_data.js';
 import { def_char_to_objclass } from './drawing.js';
 
 // global.h's NHSTDC M(c) subtracts 128, then txt2key returns uchar.
@@ -232,4 +233,36 @@ export function number_pad_value(config = false) {
     if (config) return String(index === 5 ? -1 : index);
     return ['0=off', '1=on', '2=on, MSDOS compatible', '3=on, phone-style layout',
         '4=on, phone layout, MSDOS compatible', '-1=off, y & z swapped'][index];
+}
+
+export function parseautocomplete(autocomplete, condition) {
+    const AUTOCOMPLETE = 0x0002, AUTOCOMP_ADJ = 0x2000;
+    const m = /[,:]/.exec(autocomplete);
+    if (m) {
+        parseautocomplete(autocomplete.slice(m.index + 1), condition);
+        autocomplete = autocomplete.slice(0, m.index);
+    }
+    autocomplete = autocomplete.trim();
+    if (!autocomplete)
+        return;
+    if (autocomplete[0] === '!') {
+        autocomplete = autocomplete.slice(1).trim();
+        condition = !condition;
+    }
+    for (const efp of EXTCMDLIST) {
+        if (autocomplete === efp.name) {
+            if (condition === !(efp.flags & AUTOCOMPLETE)) {
+                if (efp.flags & AUTOCOMP_ADJ)
+                    efp.flags &= ~AUTOCOMP_ADJ;
+                else
+                    efp.flags |= AUTOCOMP_ADJ;
+            }
+            if (condition)
+                efp.flags |= AUTOCOMPLETE;
+            else
+                efp.flags &= ~AUTOCOMPLETE;
+            return;
+        }
+    }
+    /* not a real extended command: C raw_printf()s a complaint */
 }

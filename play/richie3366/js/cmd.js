@@ -2587,7 +2587,7 @@ async function handler_rebind_keys_add(keyfirst) {
  * key binds" when count_bind_keys is nonzero. Item 3 drains the NULL arm of
  * get_changed_key_binds via show_text_pages (the D-2550 named sink, now
  * live). Async only because JS menus await input (Constitution §2).
- * Caller: options.c:8340 (optfn_o_bind_keys do_handler → doset() othrPicks
+ * Caller: options.c:8340 (optfn_o_bind_keys do_handler → doset() othr
  * 'bind keys' arm, js/options.js); options.c:8336 get_val → doset row val.
  */
 export async function handler_rebind_keys() {
@@ -6809,6 +6809,26 @@ export async function domove(dx, dy) {
             return;
         }
 
+        // C ref: hack.c test_move :1049–1072 — the generic rock/bars
+        // bump precedes the door branch (:1074) and the doorway-OUT
+        // check (:1229–1235), so it runs before both diagonal checks
+        // below: a doorway hero bumping a wall reads the wall.
+        if (blocksMove(newx, newy)) {
+            // C ref: hack.c test_move — DO_MOVE + mention_walls on rock/bars
+            const bloc = game.level?.at(newx, newy);
+            if (bloc && (IS_OBSTRUCTED(bloc.typ) || bloc.typ === IRONBARS)) {
+                await mention_walls_obstructed(newx, newy);
+            }
+            // out-of-bounds is move_out_of_bounds (D-1800), not this bump
+            // C hack.c domove_core :2841-2846 — !test_move(DO_MOVE)
+            // without door_opened ends move = 0; nomul(0). Without the
+            // nomul a stale mv-replay (multi >= COLNO, run cleared)
+            // rebumped this wall forever (scen-ride-Knight-94415 hang).
+            game.context.move = 0;
+            nomul(0);
+            return;
+        }
+
         // C ref: hack.c test_move testdiag — no diagonal into intact doorway
         // (open/closed/locked; only doorless D_NODOOR/D_BROKEN allowed).
         if (u.dx && u.dy) {
@@ -6840,22 +6860,6 @@ export async function domove(dx, dy) {
                 nomul(0);
                 return;
             }
-        }
-
-        if (blocksMove(newx, newy)) {
-            // C ref: hack.c test_move — DO_MOVE + mention_walls on rock/bars
-            const bloc = game.level?.at(newx, newy);
-            if (bloc && (IS_OBSTRUCTED(bloc.typ) || bloc.typ === IRONBARS)) {
-                await mention_walls_obstructed(newx, newy);
-            }
-            // out-of-bounds is move_out_of_bounds (D-1800), not this bump
-            // C hack.c domove_core :2841-2846 — !test_move(DO_MOVE)
-            // without door_opened ends move = 0; nomul(0). Without the
-            // nomul a stale mv-replay (multi >= COLNO, run cleared)
-            // rebumped this wall forever (scen-ride-Knight-94415 hang).
-            game.context.move = 0;
-            nomul(0);
-            return;
         }
 
         // C ref: hack.c test_move — after dest obstacles, before boulder:

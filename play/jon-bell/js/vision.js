@@ -5,7 +5,8 @@
 // light-source hook: vision.c:702 `do_light_sources(next_array)` plus the two
 // TEMP_LIT tests it feeds (vision.c:756 and vision.c:772).
 import { game } from './gstate.js';
-import { Is_rogue_level, ROOMOFFSET, COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
+import { is_pool } from './look.js';
+import { Is_waterlevel, Is_rogue_level, ROOMOFFSET, COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
 import { newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon, MATCH_WARN_OF_MON } from './display.js';
 import { worm_known } from './worm.js';
 import { do_light_sources } from './light.js';
@@ -811,7 +812,20 @@ export function vision_recalc(control = 0) {
         // through to the remembered/dark-room glyph (display.c:243-248), so a dark
         // room that was fully visible before the dig shows only its 3x3 lit core
         // scope; keep the normal view_from for every non-pit hero.
-        if (u.utrap && (u.utraptype | 0) === 2 /* TT_PIT */) {
+        /* C ref: vision.c:589-604 — Underwater (not the Plane of Water): the
+         * hero sees only the surrounding locations that are also pool; every
+         * other square, lit or not, is neither COULD_SEE nor IN_SIGHT. */
+        if (u.uinwater && !Is_waterlevel(u.uz)) {
+            for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
+                for (let col = Math.max((u.ux | 0) - 1, 1); col <= (u.ux | 0) + 1; col++) {
+                    if (!isok(col, row) || !is_pool(col, row))
+                        continue;
+                    next_rmin[row] = Math.min(next_rmin[row], col);
+                    next_rmax[row] = Math.max(next_rmax[row], col);
+                    next[row][col] = IN_SIGHT | COULD_SEE;
+                }
+            }
+        } else if (u.utrap && (u.utraptype | 0) === 2 /* TT_PIT */) {
             for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
                 if (row < 0) continue;
                 if (row >= ROWNO) break;
